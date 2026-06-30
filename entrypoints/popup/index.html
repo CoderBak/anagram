@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Anagram</title>
+    <style>
+      /* Layout only — colours, type and controls come from Basecoat (Vega). */
+      html { width: 300px; }
+      body { margin: 0; background: var(--background); color: var(--foreground); font-size: 13px; line-height: 1.45; }
+      header.hdr { display: flex; align-items: center; gap: 10px; padding: 12px 14px 10px; border-bottom: 1px solid var(--border); }
+      header.hdr img { width: 30px; height: 30px; border-radius: 8px; }
+      header.hdr .brand { flex: 1; min-width: 0; }
+      header.hdr h1 { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.2; letter-spacing: -0.01em; }
+      header.hdr p { margin: 1px 0 0; font-size: 11.5px; color: var(--muted-foreground); }
+      main { padding: 4px 14px 12px; }
+      .grp { padding: 9px 0 8px; border-bottom: 1px solid var(--border); }
+      .grp:last-of-type { border-bottom: 0; }
+      .grp > h2 { margin: 0 0 7px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted-foreground); }
+      .grp .field { min-height: 30px; }
+      .grp .field + .field { margin-top: 5px; }
+      .grp .field > label, .grp .field > section > label { font-size: 13px; font-weight: 450; }
+      .grp .field > section > p { margin: 0; font-size: 11px; color: var(--muted-foreground); }
+      .grp .field > select { width: 150px; height: 30px; font-size: 12px; }
+      .tabs > [role="tablist"] { height: 30px; }
+      .tabs > [role="tablist"] > [role="tab"] { font-size: 12px; padding: 2px 9px; }
+      .status { font-size: 12px; color: var(--muted-foreground); min-height: 17px; margin: 2px 0 1px; }
+      .status .flagged { color: var(--destructive); font-weight: 600; }
+      .backend { font-size: 11px; color: var(--muted-foreground); min-height: 15px; margin: 0 0 9px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+      .backend b { color: var(--foreground); font-weight: 600; }
+      .backend.down b { color: var(--destructive); }
+      .w-full { width: 100%; }
+      .hint-line { margin: 9px 0 0; font-size: 11px; color: var(--muted-foreground); text-align: center; }
+      .hint-line .kbd { vertical-align: middle; }
+      @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+    </style>
+  </head>
+  <body>
+    <header class="hdr">
+      <img class="logo" src="/icons/icon-48.png" alt="" />
+      <div class="brand">
+        <h1>Anagram</h1>
+        <p>AI text detector</p>
+      </div>
+      <button id="gear" class="btn" data-variant="ghost" data-size="icon-sm" type="button" title="All settings" aria-label="All settings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.08a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.08a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.08a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+      </button>
+    </header>
+
+    <main>
+      <section class="grp">
+        <h2>Detection</h2>
+        <div class="field" data-orientation="horizontal">
+          <label for="enabled">All websites</label>
+          <input id="enabled" type="checkbox" role="switch" data-size="sm" />
+        </div>
+        <div class="field" data-orientation="horizontal">
+          <section>
+            <label for="siteEnabled">This site</label>
+            <p id="siteHost">…</p>
+          </section>
+          <input id="siteEnabled" type="checkbox" role="switch" data-size="sm" />
+        </div>
+      </section>
+
+      <section class="grp">
+        <h2>Display</h2>
+        <div class="field" data-orientation="horizontal">
+          <label id="displayModeLbl">Show</label>
+          <div class="tabs">
+            <nav role="tablist" aria-orientation="horizontal" aria-labelledby="displayModeLbl" data-seg="displayMode">
+              <button type="button" role="tab" data-value="all" aria-selected="true">All chips</button>
+              <button type="button" role="tab" data-value="flagged" aria-selected="false">Flagged only</button>
+            </nav>
+          </div>
+        </div>
+        <div class="field" data-orientation="horizontal">
+          <label for="highlights">Mark text</label>
+          <input id="highlights" type="checkbox" role="switch" data-size="sm" />
+        </div>
+        <div class="field" data-orientation="horizontal">
+          <label for="markStyle">Marking style</label>
+          <select id="markStyle">
+            <option value="both">Underline + tint</option>
+            <option value="underline">Underline</option>
+            <option value="tint">Tint</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="grp">
+        <h2>Analysis</h2>
+        <div class="field" data-orientation="horizontal">
+          <label id="scopeLbl">Scope</label>
+          <div class="tabs" title="Main content = the article body only (Readability)">
+            <nav role="tablist" aria-orientation="horizontal" aria-labelledby="scopeLbl" data-seg="analysisScope">
+              <button type="button" role="tab" data-value="page" aria-selected="true">Whole page</button>
+              <button type="button" role="tab" data-value="main" aria-selected="false">Main content</button>
+            </nav>
+          </div>
+        </div>
+      </section>
+
+      <section class="grp">
+        <div class="status" id="status">…</div>
+        <div class="backend" id="backend"></div>
+        <button id="rescan" class="btn w-full" data-variant="outline" data-size="sm" type="button">Rescan page</button>
+        <p class="hint-line"><kbd class="kbd">Alt</kbd>+<kbd class="kbd">Shift</kbd>+<kbd class="kbd">P</kbd> toggles the overlay</p>
+      </section>
+    </main>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

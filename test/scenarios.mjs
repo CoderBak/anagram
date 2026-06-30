@@ -1,0 +1,731 @@
+// test/scenarios.mjs — the wide-net scenario matrix.
+//
+// Phase A (deterministic, local): UI behaviours on test/ui-fixtures.html —
+// edge-aware hover card (top/right), RTL placement, font scaling, layout-shift
+// bound, shadow DOM + slot capture, overflow containers, copy hygiene,
+// badge-after-link isolation, per-anchor dark theme, duplicate fan-out.
+//
+// Phase B (live, soft): real-site sweep with per-site expectations — HF paper
+// (the original bug), EN/AR/JA Wikipedia, MDN, paulgraham, arXiv, StackOverflow,
+// GitHub, a text/plain RFC, and zero-badge aggregator pages. A site that fails
+// to LOAD is SKIP (network flake), but a loaded site violating its expectation
+// is FAIL. Only console errors originating from the extension count against us.
+//
+//   node test/scenarios.mjs            # full matrix
+//   node test/scenarios.mjs --local    # phase A only
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+import { readFileSync } from "node:fs";
+import { launchExtension, serveHtml, BADGE_SEL } from "./harness.mjs";
+import { startFakeDaemon } from "./fake-daemon.mjs";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const LOCAL_ONLY = process.argv.includes("--local");
+
+const results = []; // { phase, name, status: PASS|FAIL|SKIP, note }
+const record = (phase, name, ok, note = "") =>
+  results.push({ phase, name, status: ok === null ? "SKIP" : ok ? "PASS" : "FAIL", note });
+
+// ---- fake daemon (deterministic verdicts) + server for the fixture page -------------
+let daemon = await startFakeDaemon();
+const daemonPort = daemon.port;
+const PARA = (tag) => `${tag} paragraph is long enough to be scored on its own because it carries well over fifty ordinary English words describing nothing in particular except the fact that a self-rewriting page must still end up with chips after it replaces its own document element, which is what legacy challenge pages and some old single-page frameworks do.`;
+const REWRITE_HTML = `<!doctype html><html><head><meta charset="utf-8"><title>rewrite fixture</title></head><body>
+<p>Interstitial: checking your browser, please wait…</p>
+<script>
+  setTimeout(() => {
+    document.open();
+    document.write('<!doctype html><html><head><meta charset="utf-8"><title>rewritten</title></head><body><main><p id="rw1">${PARA("REWRITTEN-ONE")}</p><p id="rw2">${PARA("REWRITTEN-TWO")}</p></main></body></html>');
+    document.close();
+  }, 1500);
+</script></body></html>`;
+const server = await serveHtml({
+  "/ui-fixtures.html": readFileSync(join(__dirname, "ui-fixtures.html"), "utf8"),
+  "/rewrite.html": REWRITE_HTML,
+});
+const fixturesUrl = server.url("/ui-fixtures.html");
+
+const { context, sw } = await launchExtension({ backendUrl: daemon.url });
+await context.grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => {});
+console.log("extension SW:", sw ? "loaded" : "NOT loaded", "· fake daemon at", daemon.url);
+
+async function sweep(page, steps = 6) {
+  await page
+    .evaluate(async (n) => {
+      const step = Math.round(window.innerHeight * 0.8);
+      for (let i = 0; i < n; i++) {
+        window.scrollBy(0, step);
+        await new Promise((r) => setTimeout(r, 300));
+      }
+      window.scrollTo(0, 0);
+    }, steps)
+    .catch(() => {});
+}
+
+// =====================================================================================
+// PHASE A — deterministic UI fixtures
+// =====================================================================================
+{
+  const page = await context.newPage();
+  const extErrors = [];
+  page.on("console", (m) => {
+    const u = m.location()?.url ?? "";
+    // chrome-extension://invalid/ is a page-side extension-detection probe (Google
+    // Docs does this), not our resource.
+    if (m.type() === "error" && u.startsWith("chrome-extension://") && !u.startsWith("chrome-extension://invalid"))
+      extErrors.push(m.text().slice(0, 160));
+  });
+  await page.goto(fixturesUrl, { waitUntil: "load" });
+  await page.waitForSelector(BADGE_SEL, { timeout: 12000 }).catch(() => {});
+  await sweep(page, 8);
+  await page.waitForTimeout(2500);
+
+  // A1: top-edge hover card flips below and stays in-viewport.
+  {
+    await page.evaluate(() => window.scrollTo(0, 0));
+    const badge = page.locator(`#topedge ${BADGE_SEL}`).first();
+    let ok = false, note = "no badge";
+    if (await badge.count()) {
+      await badge.hover();
+      await page.waitForTimeout(450);
+      const r = await page.evaluate((sel) => {
+        const host = document.querySelector(`#topedge ${sel}`);
+        const card = host.shadowRoot.querySelector(".card");
+        const cr = card.getBoundingClientRect();
+        return {
+          below: card.classList.contains("below"),
+          inViewport:
+            cr.top >= 0 && cr.left >= 0 &&
+            cr.bottom <= innerHeight && cr.right <= innerWidth,
+          visible: getComputedStyle(card).visibility === "visible",
+        };
+      }, BADGE_SEL);
+      ok = r.below && r.inViewport && r.visible;
+      note = JSON.stringify(r);
+      await page.screenshot({ path: join(__dirname, "scn-card-below.png") });
+    }
+    record("ui", "hover card flips BELOW at viewport top, fully visible", ok, note);
+    await page.mouse.move(5, 400); // unhover
+  }
+
+  // A2: right-edge column card stays inside the viewport.
+  {
+    const badge = page.locator(`#rightcol ${BADGE_SEL}`).first();
+    let ok = false, note = "no badge";
+    if (await badge.count()) {
+      await badge.hover();
+      await page.waitForTimeout(450);
+      const r = await page.evaluate((sel) => {
+        const host = document.querySelector(`#rightcol ${sel}`);
+        const cr = host.shadowRoot.querySelector(".card").getBoundingClientRect();
+        return { right: Math.round(cr.right), vw: innerWidth, fits: cr.right <= innerWidth + 1 && cr.left >= -1 };
+      }, BADGE_SEL);
+      ok = r.fits;
+      note = JSON.stringify(r);
+    }
+    record("ui", "hover card pinned inside viewport at right edge", ok, note);
+    await page.mouse.move(5, 400);
+  }
+
+  // A3: RTL — chip sits at the INLINE END of the last text line: in RTL that
+  // means visually to the LEFT of where the last line's text ends, on that line.
+  {
+    const r = await page.evaluate((sel) => {
+      const host = document.querySelector(`#rtl ${sel}`);
+      if (!host) return null;
+      const range = document.createRange();
+      range.selectNodeContents(host.closest("p"));
+      range.setEndBefore(host);
+      const rects = [...range.getClientRects()].filter((x) => x.width > 1);
+      const lastLine = rects[rects.length - 1];
+      const hr = host.getBoundingClientRect();
+      const sameLine = Math.abs(hr.top + hr.height / 2 - (lastLine.top + lastLine.height / 2)) < lastLine.height;
+      const leftOfTextEnd = hr.right <= lastLine.left + 4;
+      return {
+        badgeRight: Math.round(hr.right),
+        textEndLeft: Math.round(lastLine.left),
+        sameLine,
+        leftOfTextEnd,
+      };
+    }, BADGE_SEL);
+    record("ui", "RTL: chip at inline end of last line (left of text end)", r ? r.sameLine && r.leftOfTextEnd : false, JSON.stringify(r));
+  }
+
+  // A4: chip scales with surrounding font size (clamped 9–12px).
+  {
+    const r = await page.evaluate((sel) => {
+      const fs = (scope) => {
+        const host = document.querySelector(`${scope} ${sel}`);
+        if (!host) return null;
+        return parseFloat(getComputedStyle(host.shadowRoot.querySelector(".pill")).fontSize);
+      };
+      return { tiny: fs("#tiny"), large: fs("#large") };
+    }, BADGE_SEL);
+    const ok =
+      r.tiny !== null && r.large !== null &&
+      r.tiny < r.large && r.tiny >= 8.5 && r.large <= 12.5;
+    record("ui", "chip font scales with page text (tiny < large, clamped)", ok, JSON.stringify(r));
+  }
+
+  // A5: tight line-height — chip height within line box + tolerance.
+  {
+    const r = await page.evaluate((sel) => {
+      const host = document.querySelector(`#tight ${sel}`);
+      if (!host) return null;
+      const p = host.closest("p");
+      const lh = parseFloat(getComputedStyle(p).lineHeight);
+      const h = host.shadowRoot.querySelector(".pill").getBoundingClientRect().height;
+      return { chipH: Math.round(h * 10) / 10, lineH: Math.round(lh * 10) / 10, fits: h <= lh + 4 };
+    }, BADGE_SEL);
+    record("ui", "chip does not expand tight line boxes", r ? r.fits : false, JSON.stringify(r));
+  }
+
+  // A6: shadow DOM + slotted content both badged (composed traversal).
+  {
+    const r = await page.evaluate((sel) => {
+      const root = document.getElementById("shadowhost")?.shadowRoot;
+      const inShadow = root ? root.querySelectorAll(sel).length : -1;
+      const slotted = document.querySelectorAll(`#slotted-src ${sel}`).length;
+      return { inShadow, slotted };
+    }, BADGE_SEL);
+    record("ui", "open shadow root paragraph badged", r.inShadow >= 1, JSON.stringify(r));
+    record("ui", "slotted light-DOM paragraph badged", r.slotted >= 1, JSON.stringify(r));
+  }
+
+  // A6b: content appended INSIDE the open shadow root after the first scan is still
+  // picked up (the MutationObserver watches each discovered root, not just the document).
+  {
+    const before = await page.evaluate((sel) => document.getElementById("shadowhost")?.shadowRoot?.querySelectorAll(sel).length ?? -1, BADGE_SEL);
+    await page.evaluate(() => {
+      const root = document.getElementById("shadowhost").shadowRoot;
+      const p = document.createElement("p");
+      p.id = "shadow-late";
+      p.textContent = "SHADOWLATE paragraph was appended into the open shadow root well after the " +
+        "initial scan finished, and it must still receive a badge because the observer has to " +
+        "watch mutations inside every shadow root the walker descended into, not only the light " +
+        "document tree where a subtree observer on the root element never sees this change.";
+      root.querySelector("div").appendChild(p);
+    });
+    const ok = await page
+      .waitForFunction(({ sel, n }) => (document.getElementById("shadowhost")?.shadowRoot?.querySelectorAll(sel).length ?? 0) > n, { sel: BADGE_SEL, n: before }, { timeout: 6000 })
+      .then(() => true)
+      .catch(() => false);
+    record("ui", "paragraph appended inside a shadow root after the scan is badged", ok, `before=${before}`);
+  }
+
+  // A7: overflow:hidden container — badge visible inside the box.
+  {
+    const r = await page.evaluate((sel) => {
+      const host = document.querySelector(`#clipbox ${sel}`);
+      if (!host) return null;
+      const hr = host.getBoundingClientRect();
+      const br = document.getElementById("clipbox").getBoundingClientRect();
+      return {
+        inside: hr.top >= br.top - 1 && hr.bottom <= br.bottom + 1 && hr.right <= br.right + 1,
+        visible: hr.width > 0 && hr.height > 0,
+      };
+    }, BADGE_SEL);
+    record("ui", "badge stays visible inside overflow:hidden box", r ? r.inside && r.visible : false, JSON.stringify(r));
+  }
+
+  // A7b: the HOVER CARD escapes the overflow:hidden box (top layer). The card must
+  // extend outside the clip box and still be the element under the pointer there.
+  {
+    const badge = page.locator(`#clipbox ${BADGE_SEL}`).first();
+    let ok = false, note = "no badge";
+    if (await badge.count()) {
+      await badge.scrollIntoViewIfNeeded();
+      await badge.hover();
+      await page.waitForTimeout(450);
+      const r = await page.evaluate((sel) => {
+        const host = document.querySelector(`#clipbox ${sel}`);
+        const card = host.shadowRoot.querySelector(".card");
+        const cr = card.getBoundingClientRect();
+        const br = document.getElementById("clipbox").getBoundingClientRect();
+        const outsideY = cr.top < br.top - 4 ? cr.top + 6 : cr.bottom > br.bottom + 4 ? cr.bottom - 6 : null;
+        const hit = outsideY === null ? null : document.elementFromPoint(cr.left + cr.width / 2, outsideY);
+        return {
+          topLayer: card.matches(":popover-open"),
+          extendsOutsideBox: outsideY !== null,
+          paintedOutsideBox: hit === host, // retargeted to our host, not the page element behind
+          visible: getComputedStyle(card).visibility === "visible",
+        };
+      }, BADGE_SEL);
+      ok = r.topLayer && r.extendsOutsideBox && r.paintedOutsideBox && r.visible;
+      note = JSON.stringify(r);
+    }
+    record("ui", "hover card escapes overflow:hidden (top layer)", ok, note);
+    await page.mouse.move(5, 400);
+  }
+
+  // A8: copy hygiene — clipboard payload excludes the chip's "% AI" label.
+  {
+    const r = await page.evaluate(async () => {
+      const p = document.getElementById("copysrc");
+      const range = document.createRange();
+      range.selectNodeContents(p);
+      const selObj = getSelection();
+      selObj.removeAllRanges();
+      selObj.addRange(range);
+      const selText = selObj.toString();
+      let clip = null;
+      try {
+        document.execCommand("copy");
+        clip = await navigator.clipboard.readText();
+      } catch {
+        /* clipboard permission not granted — selection text is the proxy */
+      }
+      const probe = clip ?? selText;
+      return {
+        via: clip !== null ? "clipboard" : "selection",
+        hasWords: probe.includes("COPYSRC paragraph exists"),
+        leaked: /\b\d{1,3}%/.test(probe),
+      };
+    });
+    record("ui", `copy excludes badge text (${r.via})`, r.hasWords && !r.leaked, JSON.stringify(r));
+  }
+
+  // A9: badge after a trailing link — outside the anchor; clicking never navigates.
+  {
+    const r = await page.evaluate((sel) => {
+      const host = document.querySelector(`#linkend ${sel}`);
+      if (!host) return null;
+      const insideLink = !!host.closest("#lastlink");
+      host.click();
+      return { insideLink, hash: location.hash };
+    }, BADGE_SEL);
+    record(
+      "ui",
+      "badge escapes trailing <a>; click does not navigate",
+      r ? !r.insideLink && r.hash !== "#never-navigate" : false,
+      JSON.stringify(r),
+    );
+  }
+
+  // A10: per-anchor dark theme — dark card chip dark, following light chip light.
+  {
+    const r = await page.evaluate((sel) => {
+      const darkHost = document.querySelector(`#darksection ${sel}`);
+      const lightHost = document.querySelector(`#lightafter ${sel}`);
+      return {
+        dark: darkHost ? darkHost.classList.contains("pg-dark") : null,
+        light: lightHost ? !lightHost.classList.contains("pg-dark") : null,
+      };
+    }, BADGE_SEL);
+    record("ui", "per-anchor dark detection (dark card vs light page)", r.dark === true && r.light === true, JSON.stringify(r));
+  }
+
+  // A10b: CSS Color 4 background (oklch) — computed style is not rgb(); still dark.
+  {
+    const r = await page.evaluate((sel) => {
+      const host = document.querySelector(`#oklchdark ${sel}`);
+      return {
+        computedBg: getComputedStyle(document.getElementById("oklchdark")).backgroundColor,
+        dark: host ? host.classList.contains("pg-dark") : null,
+      };
+    }, BADGE_SEL);
+    record("ui", "oklch() background classified dark (CSS Color 4 parsing)", r.dark === true, JSON.stringify(r));
+  }
+
+  // A11: exact duplicates — both badged, identical fanned-out score.
+  {
+    const r = await page.evaluate((sel) => {
+      const hosts = [...document.querySelectorAll(`#dupes ${sel}`)];
+      const nums = hosts.map((h) => h.shadowRoot.querySelector(".num").textContent);
+      return { count: hosts.length, nums, same: nums.length === 2 && nums[0] === nums[1] };
+    }, BADGE_SEL);
+    record("ui", "duplicate paragraphs each badged with the same score", r.count === 2 && r.same, JSON.stringify(r));
+  }
+
+  // A12: KaTeX-shaped formula — ONE single-part unit (the formula never splits the
+  // sentence), the formula counted in the card, and the unit text (Copy text) free of
+  // the duplicated visual/accessible formula copies.
+  {
+    await page.locator("#katex").scrollIntoViewIfNeeded();
+    const badge = page.locator(`#katex ${BADGE_SEL}`).first();
+    let r = { badges: await badge.count() };
+    if (r.badges === 1) {
+      await badge.hover();
+      await page.waitForTimeout(420);
+      const info = await page.evaluate((sel) => {
+        const host = document.querySelector(`#katex ${sel}`);
+        const sr = host?.shadowRoot;
+        const rows = [...(sr?.querySelectorAll(".card .row") ?? [])].map((x) => x.textContent);
+        sr?.querySelector(".act.copy")?.click();
+        return { num: sr?.querySelector(".num")?.textContent ?? "", formulasRow: rows.find((t) => t.startsWith("Formulas omitted")) ?? null };
+      }, BADGE_SEL);
+      await page.waitForTimeout(250);
+      const clip = await page.evaluate(() => navigator.clipboard.readText().catch(() => null));
+      r = { ...r, ...info, singlePart: !/×/.test(info.num), dupLeak: clip === null ? null : clip.includes("KATEXDUP"), tail: clip === null ? null : clip.includes("KATEXTAIL") };
+      await page.mouse.move(5, 400);
+    }
+    record("ui", "KaTeX-style math: one single-part unit, formula counted, no duplicated formula text", r.badges === 1 && r.singlePart && r.formulasRow === "Formulas omitted1" && r.dupLeak !== true && r.tail !== false, JSON.stringify(r));
+  }
+
+  // A13: modal <dialog> — top-layer prose is scored; the FAB rides the top layer
+  // as a manual popover where supported.
+  {
+    await page.locator("#openmodal").scrollIntoViewIfNeeded();
+    await page.locator("#openmodal").click();
+    const badged = await page
+      .waitForFunction(
+        (sel) => document.querySelectorAll(`#modal ${sel}`).length >= 1,
+        BADGE_SEL,
+        { timeout: 8000 },
+      )
+      .then(() => true)
+      .catch(() => false);
+    const fabTop = await page.evaluate(() => {
+      const fab = document.getElementById("anagram-fab");
+      if (!fab) return { supported: false, open: false };
+      if (!("showPopover" in fab)) return { supported: false, open: true }; // fallback path OK
+      try {
+        return { supported: true, open: fab.matches(":popover-open") };
+      } catch {
+        return { supported: true, open: false };
+      }
+    });
+    await page.locator("#closemodal").click();
+    record("ui", "paragraph inside showModal dialog badged", badged, "");
+    record("ui", "FAB promoted to top layer (popover)", fabTop.open, JSON.stringify(fabTop));
+  }
+
+  // A14: vertical writing mode — unit collected, chip present, column flow intact.
+  {
+    const r = await page.evaluate((sel) => {
+      const host = document.querySelector(`#vertical ${sel}`);
+      if (!host) return null;
+      const box = host.closest("div").getBoundingClientRect();
+      const hr = host.getBoundingClientRect();
+      return { present: true, inside: hr.left >= box.left - 30 && hr.right <= box.right + 30 };
+    }, BADGE_SEL);
+    record("ui", "vertical-rl (Japanese) paragraph badged in-flow", !!r && r.present && r.inside, JSON.stringify(r));
+  }
+
+  // A15: "analyzing…" chips are transient — they must all DRAIN into verdicts.
+  {
+    const drained = await page
+      .waitForFunction(
+        (sel) => {
+          for (const h of document.querySelectorAll(sel)) {
+            if (h.shadowRoot?.querySelector(".pill.pending")) return false;
+          }
+          return true;
+        },
+        BADGE_SEL,
+        { timeout: 6000 },
+      )
+      .then(() => true)
+      .catch(() => false);
+    record("ui", "pending chips all drain into verdicts", drained, "");
+  }
+
+  // A15b: a paragraph added while a nearby counter ticks every 80 ms must be badged
+  // within a bounded wait — a trailing debounce alone would starve until the ticking stops.
+  {
+    await page.locator("#churnAdd").scrollIntoViewIfNeeded();
+    const t0 = Date.now();
+    await page.locator("#churnAdd").click();
+    const ok = await page
+      .waitForFunction((sel) => document.querySelectorAll(`#churn ${sel}`).length >= 1, BADGE_SEL, { timeout: 3500 })
+      .then(() => true)
+      .catch(() => false);
+    record("ui", "re-scan is not starved by continuous mutation (debounce max-wait)", ok, `${Date.now() - t0} ms`);
+  }
+
+  // A16: hover card — 4-bucket distribution bar + Copy text action; copy puts the
+  // paragraph (not the chip label) on the clipboard.
+  {
+    await page.locator("#copysrc").scrollIntoViewIfNeeded();
+    const badge = page.locator(`#copysrc ${BADGE_SEL}`).first();
+    let ok = false, note = "no badge";
+    if (await badge.count()) {
+      await badge.hover();
+      await page.waitForTimeout(420);
+      const parts = await page.evaluate((sel) => {
+        const host = document.querySelector(`#copysrc ${sel}`);
+        const card = host?.shadowRoot?.querySelector(".card");
+        if (!card) return null;
+        const meter = card.querySelectorAll(".dist .dbar .seg").length === 4 && card.querySelectorAll(".dist .drow").length === 4;
+        const btn = card.querySelector(".act.copy");
+        if (btn) btn.click();
+        return { meter, hasCopy: !!btn };
+      }, BADGE_SEL);
+      await page.waitForTimeout(250);
+      const clip = await page.evaluate(() => navigator.clipboard.readText().catch(() => null));
+      ok =
+        !!parts && parts.meter && parts.hasCopy &&
+        (clip === null || (clip.includes("COPYSRC paragraph exists") && !/\b\d{1,3}%/.test(clip)));
+      note = JSON.stringify({ ...parts, clip: clip?.slice(0, 40) });
+    }
+    record("ui", "hover card: distribution readout + working Copy text action", ok, note);
+    await page.mouse.move(5, 400);
+  }
+
+  // A17: triage panel — opens from the counter, filter chips appear when both
+  // verdict bands exist, and filtering narrows the list.
+  {
+    const r = await page.evaluate(() => {
+      const fab = document.getElementById("anagram-fab");
+      const sr = fab?.shadowRoot;
+      sr?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      const panel = sr?.querySelector(".panel");
+      const open = !!panel?.classList.contains("open");
+      const items = panel?.querySelectorAll(".pitem").length ?? 0;
+      const chips = [...(panel?.querySelectorAll(".fchip") ?? [])].map((c) => c.textContent);
+      let filtered = -1;
+      const aiChip = [...(panel?.querySelectorAll(".fchip") ?? [])].find((c) => c.textContent.startsWith("AI"));
+      if (aiChip) {
+        aiChip.click();
+        filtered = sr.querySelectorAll(".panel .pitem:not(.band-ai)").length;
+      }
+      // close it again
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      return { open, items, chips, filtered };
+    });
+    const filterOk = r.chips.length === 0 || r.filtered === 0;
+    record("ui", "triage panel opens; verdict filters narrow the list", r.open && r.items > 0 && filterOk, JSON.stringify(r));
+  }
+
+  // A18: FAB drag → snaps to the nearest edge and remembers the side.
+  {
+    const ball = page.locator("#anagram-fab .fab").first();
+    await ball.hover().catch(() => {}); // untuck first — a tucked ball sits half off-screen
+    await page.waitForTimeout(350);
+    const box = await ball.boundingBox();
+    let r = null;
+    if (box) {
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(140, 300, { steps: 8 }); // drop near the LEFT edge
+      await page.mouse.up();
+      await page.waitForTimeout(400);
+      r = await page.evaluate(() => {
+        const stack = document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".stack");
+        return {
+          left: stack?.style.left,
+          sideLeft: stack?.classList.contains("side-left"),
+        };
+      });
+    }
+    record("ui", "FAB snaps to the left edge after drag", !!r && r.left === "12px" && r.sideLeft, JSON.stringify(r));
+  }
+
+  // A19: idle tuck — the ball slides half off the edge after a few seconds and
+  // returns on hover.
+  {
+    await page.mouse.move(600, 300); // pointer far away, no interactions
+    await page.waitForTimeout(4300);
+    const tucked = await page.evaluate(
+      () => !!document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".stack.tucked"),
+    );
+    const ball = page.locator("#anagram-fab .fab").first();
+    await ball.hover().catch(() => {});
+    await page.waitForTimeout(350);
+    const untucked = await page.evaluate(
+      () => !document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".stack.tucked"),
+    );
+    record("ui", "FAB tucks when idle and returns on hover", tucked && untucked, JSON.stringify({ tucked, untucked }));
+  }
+
+  record("ui", "no extension console errors on fixtures", extErrors.length === 0, extErrors.join(" | "));
+  await page.screenshot({ path: join(__dirname, "scn-ui-fixtures.png"), fullPage: true });
+  await page.close();
+
+  // A20: "main content" scope pulls Readability in as an on-demand vendor chunk —
+  // import()ed by extension URL from the content script's isolated world (a
+  // web-accessible resource). Debug logging on → the orchestrator says so.
+  {
+    const extId = sw ? new URL(sw.url()).host : null;
+    let r = { loaded: false, failed: false, badges: 0 };
+    if (extId) {
+      const opt = await context.newPage();
+      await opt.goto(`chrome-extension://${extId}/options.html`);
+      await opt.evaluate(() => new Promise((res) => chrome.storage.local.set({ debug: true, analysisScope: "main" }, res)));
+      const p = await context.newPage();
+      const logs = [];
+      p.on("console", (m) => logs.push(m.text()));
+      await p.goto(fixturesUrl, { waitUntil: "load" });
+      await p.waitForFunction(() => false, null, { timeout: 2500 }).catch(() => {});
+      await p.waitForSelector(BADGE_SEL, { timeout: 10000 }).catch(() => {});
+      r = {
+        loaded: logs.some((l) => l.includes("Readability chunk loaded")),
+        failed: logs.some((l) => l.includes("Readability chunk failed")),
+        badges: await p.evaluate((sel) => document.querySelectorAll(sel).length, BADGE_SEL),
+      };
+      await opt.evaluate(() => new Promise((res) => chrome.storage.local.set({ debug: false, analysisScope: "page" }, res)));
+      await p.close();
+      await opt.close();
+    }
+    record("ui", "main-content scope loads the Readability vendor chunk on demand", r.loaded && !r.failed && r.badges > 0, JSON.stringify(r));
+  }
+
+  // A22: a page that replaces its own <html> after load (document.open()/write(),
+  // as challenge interstitials and legacy frameworks do) — the extension must restart
+  // on the new tree: chips on the new paragraphs, ball present, marks painted.
+  {
+    const p = await context.newPage();
+    await p.goto(server.url("/rewrite.html"), { waitUntil: "load" });
+    // Settled chips (not the "analyzing…" ones inserted at dispatch) — marks land with the verdict.
+    const ok = await p.waitForFunction((sel) => {
+      const hosts = [...document.querySelectorAll(`#rw1 ${sel}, #rw2 ${sel}`)];
+      return hosts.length === 2 && hosts.every((h) => !h.shadowRoot?.querySelector(".pill.pending")) && !!document.getElementById("anagram-fab") && document.title === "rewritten";
+    }, BADGE_SEL, { timeout: 20000 }).then(() => true).catch(() => false);
+    const marks = await p.evaluate(() => { let n = 0; for (const h of CSS.highlights.values()) n += h.size; return n; }).catch(() => -1);
+    record("ui", "self-rewriting page (document.open/write): chips, ball and marks on the new tree", ok && marks >= 2, JSON.stringify({ ok, marks }));
+    await p.close();
+  }
+
+  // A21: the daemon goes away → the batch in flight renders "Unavailable", nothing new
+  // is dispatched, the ball's counter shows "!"; the daemon comes back → everything is
+  // re-queued automatically (no reload, no Rescan).
+  {
+    const p = await context.newPage();
+    await p.goto(fixturesUrl, { waitUntil: "load" });
+    await p.waitForSelector(BADGE_SEL, { timeout: 12000 }).catch(() => {});
+    const addPara = (id) =>
+      p.evaluate((pid) => {
+        const el = document.createElement("p");
+        el.id = pid;
+        el.textContent = `${pid.toUpperCase()} paragraph is appended while the scoring daemon is stopped, so ` +
+          "the extension must not invent a verdict for it: the batch that hits the dead socket renders as " +
+          "Unavailable and later paragraphs wait without any chip, until a health probe succeeds again and " +
+          "every waiting or unavailable unit is queued once more without a reload or a manual rescan.";
+        document.querySelector("main").prepend(el);
+      }, id);
+    const badgeIn = (id, timeout) =>
+      p.waitForFunction(({ sel, pid }) => document.querySelectorAll(`#${pid} ${sel}`).length >= 1, { sel: BADGE_SEL, pid: id }, { timeout }).then(() => true).catch(() => false);
+    // Settled = past the "analyzing…" state (the pending chip is inserted at dispatch,
+    // BEFORE the reply that flips the page into the down state).
+    const settledIn = (id, timeout) =>
+      p.waitForFunction(({ sel, pid }) => {
+        const pill = document.querySelector(`#${pid} ${sel}`)?.shadowRoot?.querySelector(".pill");
+        return !!pill && !pill.classList.contains("pending");
+      }, { sel: BADGE_SEL, pid: id }, { timeout }).then(() => true).catch(() => false);
+    const bandOf = (id) => p.evaluate(({ sel, pid }) => [...(document.querySelector(`#${pid} ${sel}`)?.shadowRoot?.querySelector(".pill")?.classList ?? [])].find((c) => c.startsWith("band-")) ?? null, { sel: BADGE_SEL, pid: id });
+    const bubble = () => p.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.textContent ?? null);
+
+    await daemon.close(); // connection refused from here on
+    await addPara("down1");
+    const gotDown1 = (await badgeIn("down1", 8000)) && (await settledIn("down1", 8000));
+    const band1 = await bandOf("down1");
+    await addPara("down2");
+    await p.waitForTimeout(2000);
+    const down2Chips = await p.evaluate((sel) => document.querySelectorAll(`#down2 ${sel}`).length, BADGE_SEL);
+    const bubbleDown = await bubble();
+    record("ui", "daemon down: in-flight batch renders Unavailable, later paragraphs get no chip, counter shows !", gotDown1 && band1 === "band-unknown" && down2Chips === 0 && bubbleDown === "!", JSON.stringify({ band1, down2Chips, bubbleDown }));
+
+    daemon = await startFakeDaemon({ port: daemonPort }); // same URL as the extension setting
+    const back1 = await badgeIn("down2", 20000);
+    const back2 = await p.waitForFunction(({ sel, pid }) => {
+      const pill = document.querySelector(`#${pid} ${sel}`)?.shadowRoot?.querySelector(".pill");
+      return !!pill && !pill.classList.contains("band-unknown") && !pill.classList.contains("pending");
+    }, { sel: BADGE_SEL, pid: "down1" }, { timeout: 20000 }).then(() => true).catch(() => false);
+    const bubbleUp = await bubble();
+    record("ui", "daemon back: waiting + Unavailable units re-queued automatically", back1 && back2 && bubbleUp !== "!", JSON.stringify({ back1, back2, bubbleUp }));
+    await p.close();
+  }
+}
+
+// =====================================================================================
+// PHASE B — live sites (soft: unreachable → SKIP; loaded-but-wrong → FAIL)
+// =====================================================================================
+const LIVE = [
+  { name: "hf-paper", url: "https://huggingface.co/papers/2606.12385", min: 3, chromeMax: 0 },
+  { name: "wiki-en", url: "https://en.wikipedia.org/wiki/Alan_Turing", min: 10, chromeMax: 0 },
+  { name: "wiki-ar-rtl", url: "https://ar.wikipedia.org/wiki/%D8%A2%D9%84%D8%A7%D9%86_%D8%AA%D9%88%D8%B1%D9%86%D8%BA", min: 3 },
+  { name: "wiki-ja-cjk", url: "https://ja.wikipedia.org/wiki/%E3%82%A2%E3%83%A9%E3%83%B3%E3%83%BB%E3%83%81%E3%83%A5%E3%83%BC%E3%83%AA%E3%83%B3%E3%82%B0", min: 3 },
+  { name: "mdn", url: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Overview", min: 5, chromeMax: 0 },
+  { name: "paulgraham", url: "https://www.paulgraham.com/greatwork.html", min: 50 },
+  { name: "arxiv-abs", url: "https://arxiv.org/abs/2301.10226", min: 1 },
+  { name: "stackoverflow", url: "https://stackoverflow.com/questions/11227809/why-is-processing-a-sorted-array-faster-than-processing-an-unsorted-array", min: 1, noPre: true },
+  { name: "github-readme", url: "https://github.com/nodejs/node", min: 1, noPre: true },
+  { name: "rfc-txt", url: "https://www.rfc-editor.org/rfc/rfc768.txt", min: 1 },
+  { name: "samaltman-blog", url: "https://blog.samaltman.com/", min: 1 },
+  { name: "hackernews-zero", url: "https://news.ycombinator.com/", max: 0 },
+  { name: "bbc-near-zero", url: "https://www.bbc.com/news", max: 2 },
+];
+
+if (!LOCAL_ONLY) {
+  for (const site of LIVE) {
+    const page = await context.newPage();
+    const extErrors = [];
+    page.on("console", (m) => {
+      const u = m.location()?.url ?? "";
+      if (m.type() === "error" && u.startsWith("chrome-extension://") && !u.startsWith("chrome-extension://invalid"))
+        extErrors.push(m.text().slice(0, 140));
+    });
+    let loaded = true;
+    try {
+      await page.goto(site.url, { waitUntil: "domcontentloaded", timeout: 30000 });
+    } catch {
+      loaded = false;
+    }
+    if (!loaded) {
+      record("live", site.name, null, "goto failed — network/flake");
+      await page.close();
+      continue;
+    }
+    // Anti-bot interstitials (Cloudflare "Verifying you are human", "Just a moment…")
+    // carry no prose; they say nothing about the extension.
+    const botWall = await page
+      .evaluate(() => /verifying you are human|just a moment|attention required|checking your browser/i.test(document.title + " " + (document.body?.innerText ?? "").slice(0, 600)))
+      .catch(() => false);
+    if (botWall) {
+      record("live", site.name, null, "bot-check interstitial (Cloudflare) — not a page");
+      await page.close();
+      continue;
+    }
+    await page.waitForSelector(BADGE_SEL, { timeout: 10000 }).catch(() => {});
+    // Lazy sections (HF community comments) need a patient sweep + settle.
+    await sweep(page, 6);
+    await page.waitForTimeout(3200);
+
+    const stats = await page
+      .evaluate((sel) => {
+        const hosts = [...document.querySelectorAll(sel)];
+        const anchors = hosts.map((h) => h.parentElement).filter(Boolean);
+        let chrome = 0;
+        let inPre = 0;
+        for (const el of anchors) {
+          if (el.closest("nav, header, footer, aside, [role=navigation], [role=banner], [role=contentinfo]")) chrome++;
+          if (el.closest("pre")) inPre++;
+        }
+        return { badges: hosts.length, chrome, inPre, sample: (anchors[0]?.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 60) };
+      }, BADGE_SEL)
+      .catch(() => null);
+
+    await page.screenshot({ path: join(__dirname, `scn-${site.name}.png`) }).catch(() => {});
+    if (!stats) {
+      record("live", site.name, null, "evaluate failed");
+      await page.close();
+      continue;
+    }
+
+    let ok = true;
+    const notes = [`badges=${stats.badges}`, `chrome=${stats.chrome}`];
+    if (site.min !== undefined && stats.badges < site.min) ok = false;
+    if (site.max !== undefined && stats.badges > site.max) ok = false;
+    if (site.chromeMax !== undefined && stats.chrome > site.chromeMax) ok = false;
+    if (site.noPre && stats.inPre > 0) { ok = false; notes.push(`inPre=${stats.inPre}`); }
+    if (extErrors.length > 0) { ok = false; notes.push(`extErrors=${extErrors.length}`); }
+    if (stats.sample) notes.push(`“${stats.sample}”`);
+    record("live", site.name, ok, notes.join("  "));
+    await page.close();
+  }
+}
+
+// ---- summary -------------------------------------------------------------------------
+await context.close();
+await server.close();
+await daemon.close();
+
+console.log("\n=== SCENARIO RESULTS ===");
+for (const r of results) {
+  console.log(`${r.status.padEnd(4)}  [${r.phase}]  ${r.name}${r.note ? `  —  ${r.note}` : ""}`);
+}
+const fails = results.filter((r) => r.status === "FAIL");
+const skips = results.filter((r) => r.status === "SKIP");
+console.log(`\n${results.length - fails.length - skips.length} pass / ${fails.length} fail / ${skips.length} skip`);
+console.log(fails.length === 0 ? "✅ SCENARIOS GREEN" : "❌ SCENARIO FAILURES");
+process.exit(fails.length === 0 ? 0 : 1);

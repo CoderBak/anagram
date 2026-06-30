@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Anagram self-test</title>
+<style>
+  body { max-width: 680px; margin: 40px auto; font: 16px/1.6 system-ui; }
+  section { margin: 18px 0 30px; }
+  h2 { font-size: 15px; color: #666; border-bottom: 1px solid #eee; padding-bottom: 4px; }
+  .tabpanel { display: none; }
+  .tabpanel.active { display: block; }
+  #prewrap { white-space: pre-wrap; }
+  button { margin: 4px 0; }
+</style></head>
+<body>
+  <h1>Anagram AI-detection self-test (v2)</h1>
+
+  <h2>1 · Human-looking paragraph</h2>
+  <section id="human">
+  <p>This is a longer human-written paragraph, with the kind of idiosyncratic phrasing, the
+     occasional typo here nad there, and the faintly uneven rhythm that real people tend to
+     produce when they are writing quickly and not thinking very hard about how every single
+     sentence is going to sound to somebody else. It rambles a little, doubles back on itself
+     once or twice, and generally refuses to be tidy, which is more or less the whole point of
+     putting it at the very top of this particular test page in the first place.</p>
+  </section>
+
+  <h2>2 · AI-looking paragraph (removable)</h2>
+  <section id="aiwrap">
+  <p id="ai">As an AI language model, I can provide a comprehensive overview of the multifaceted
+     considerations inherent to this topic. Firstly, it is important to note that the subject
+     encompasses a wide array of nuanced dimensions that merit careful and deliberate
+     examination. Furthermore, one must carefully weigh the various interconnected factors at
+     play in order to arrive at a well-rounded and balanced conclusion that adequately addresses
+     the full breadth of the relevant concerns and considerations at hand.</p>
+  <button id="removeAi">Remove the AI paragraph</button>
+  </section>
+
+  <h2>3 · Too short AND isolated (must stay unbadged)</h2>
+  <section id="short">
+  <p>This short paragraph has well under fifty words, so the minimum-length threshold
+     should skip it and leave it with no badge at all.</p>
+  </section>
+
+  <h2>4 · Blockquote</h2>
+  <section id="quote">
+  <blockquote><p>This is a quoted paragraph nested inside a blockquote, written deliberately
+     long enough to clear the fifty-word minimum, and used to confirm two separate things at
+     once: that the walker anchors the badge to the inner block rather than the quote wrapper
+     itself, and that the underline reliably covers the whole quoted passage even when the
+     source happens to contain a line break partway through the running text.</p></blockquote>
+  </section>
+
+  <h2>5 · div/span content (Zhihu-style, EN + ZH)</h2>
+  <section id="divbased">
+    <div>This paragraph is built entirely from div and span elements with no paragraph tag
+      anywhere, exactly the way Zhihu and most modern single-page applications render their
+      body text, so it exercises the generalized block detection. It runs comfortably past the
+      fifty-word minimum, so the walker should capture this div-based content and render a
+      confidence badge for it rather than ignoring everything that is not a semantic tag.</div>
+    <div lang="zh">这是一个完全用 div 和 span 构建的中文段落，没有使用任何 p 标签，就像知乎以及大量现代单页
+      应用渲染正文内容那样，因此它专门用来验证泛化之后的块检测逻辑能否正确地处理中文文本。这段文字被刻意写得
+      足够长，从而越过五十词的最小长度阈值，这样我们就能够确认，扩展程序在面对基于 div 的中文内容时，依然
+      可以正确地捕获文本，并最终为它渲染出对应的置信度徽章，而不仅仅是处理使用语义化标签的英文网页内容。</div>
+  </section>
+
+  <h2>6 · Long paragraph (&gt;1500 chars — the HF-abstract regression)</h2>
+  <section id="longpara">
+  <p>Modern language model training pipelines increasingly rely on other models at every stage
+     of their construction, using them to generate synthetic data, to filter enormous crawled
+     corpora, to judge candidate outputs during preference tuning, and to guide countless small
+     development decisions that never make it into the final report. These dependencies form a
+     sprawling and largely undocumented graph that connects hundreds of public artifacts across
+     model families, dataset releases, and evaluation suites, and the connections are often
+     visible only through a stray sentence in an appendix, a configuration file in a repository,
+     or an offhand remark in a community discussion thread. Mapping that graph by hand is slow
+     and error-prone, because the evidence is scattered, the naming is inconsistent, and the
+     same artifact frequently appears under several different identities that must be resolved
+     before any structural analysis can begin. An automated approach must therefore read the
+     documentation the way a careful human reviewer would, following references across papers,
+     model cards, and code, while keeping track of exactly which claim came from which source
+     and how confident it is entitled to be about each recovered edge in the graph. The system
+     described here does precisely that, and it matters for this test page for one specific
+     reason: this paragraph is deliberately written to run well past fifteen hundred characters
+     so that any walker which still truncates a unit at a fixed character cap will visibly stop
+     partway through, whereas the correct behaviour is a single badge whose underline runs all
+     the way to the final LONGTAIL sentence at the very end of the paragraph.</p>
+  </section>
+
+  <h2>7 · BR-separated paragraphs (merged into one unit)</h2>
+  <section id="brsplit">
+  <div>BRPART-ONE begins here and continues with enough ordinary words to pass the merge floor
+     comfortably, describing absolutely nothing of consequence in a calm and steady voice.<br><br>
+     BRPART-TWO follows after a double line break inside the very same div element, also long
+     enough to matter, and the two halves together should merge into exactly one scored unit.</div>
+  </section>
+
+  <h2>8 · Three short siblings (merged into one unit)</h2>
+  <section id="mergeshorts">
+  <p>MS-ONE is a deliberately short paragraph of roughly twenty words that could never be
+     scored on its own under the evidence floor.</p>
+  <p>MS-TWO is another short sibling paragraph, again around twenty words long, that should
+     be grouped together with its neighbours.</p>
+  <p>MS-THREE closes the trio with one more short paragraph so the merged segment clears the
+     fifty-word minimum and earns a single badge.</p>
+  </section>
+
+  <h2>9 · Inline code must not split the sentence</h2>
+  <section id="inlinecode">
+  <p>Installing the toolchain starts with running <code>npm install</code> in the project root,
+     after which the configuration lives in <code>config.yaml</code> and can be checked by
+     invoking the command line interface with the <code>--verbose</code> flag to print every
+     resolved option. None of those inline code spans should break this paragraph into
+     fragments; the whole thing must be captured as one unit whose underline continues past
+     the last code span all the way to the ICODE tail marker.</p>
+  </section>
+
+  <h2>10 · Pure CJK (no Latin letters at all)</h2>
+  <section id="purecjk">
+  <p lang="zh">这一段完全由中文写成，没有任何拉丁字母出现，用来验证字母检测已经从只认西文的正则换成了
+     统一的万国码字母判断。早先的版本会把这样的段落直接丢弃，因为它在文本里找不到英文字母，于是整段中文
+     就被误判为噪声。现在的实现应当正确地统计中文词数，判断这段文字超过了最低词数要求，并且给它渲染出
+     一枚置信度徽章，同时给整段文字画上对应颜色的下划线，其中包含纯中文标记这几个字。</p>
+  </section>
+
+  <h2>11 · Preserved whitespace (blank-line paragraphs)</h2>
+  <section>
+<div id="prewrap">PREWRAP-ONE keeps its own newlines because this container uses pre-wrap whitespace, and this first paragraph carries enough words to clear the merge floor without any trouble at all.
+
+PREWRAP-TWO sits after a genuinely blank line inside the same text node, so the walker must split the node at the gap and the two paragraphs should merge into one scored unit.</div>
+  </section>
+
+  <h2>12 · Hidden tab (revealed by class flip)</h2>
+  <section id="tabs">
+  <button id="tabbtn">Reveal the hidden tab</button>
+  <div id="tabpanel" class="tabpanel">
+    <p>TABPANEL content stays completely hidden behind a display-none class until the button
+       above flips it to active, at which point the attribute observer must notice the class
+       change, re-scan this revealed subtree, and give this comfortably long paragraph its own
+       confidence badge without requiring any page reload or manual rescan from the popup.</p>
+  </div>
+  </section>
+
+  <h2>13 · details/summary</h2>
+  <section id="detailswrap">
+  <details id="details">
+    <summary>Expand for more</summary>
+    <p>DETAILS content lives inside a collapsed details element and therefore renders with zero
+       size until the element is opened, at which point the open attribute appears, the observer
+       marks the subtree dirty, and this paragraph — long enough to clear every floor — must be
+       captured, scored, and badged exactly like any other ordinary visible paragraph.</p>
+  </details>
+  </section>
+
+  <h2>14 · SPA pushState navigation</h2>
+  <section id="spa">
+  <p>SPA-INITIAL content represents the first client-side route of a single page application,
+     written long enough to receive a badge of its own, and it will be entirely replaced when
+     the navigation button below pushes a new history entry and swaps this container's markup
+     for a fresh route without ever reloading the page.</p>
+  <button id="spaNav">Navigate (pushState + swap)</button>
+  </section>
+
+  <h2>15 · Never scored: code block, nav links, editor, aria-hidden</h2>
+  <section id="never">
+  <pre><code>// a code block that must NOT be scored (excluded tag)
+function noScore() { return 42; }
+const alsoIgnored = "even though this string is fairly long and wordy";</code></pre>
+  <div id="linklist">
+    <a href="#a">First linked story headline written with around nine words total</a><br>
+    <a href="#b">Second linked story headline also written with roughly nine words</a><br>
+    <a href="#c">Third linked story headline continuing the pattern of linked text</a><br>
+    <a href="#d">Fourth linked story headline keeping the link density extremely high</a><br>
+    <a href="#e">Fifth linked story headline so the whole block is links</a><br>
+    <a href="#f">Sixth linked story headline rounding out the navigation list nicely</a>
+  </div>
+  <div id="editable" contenteditable="true">This editable region simulates a comment box or a
+     document editor and, although it easily contains more than fifty words of perfectly
+     ordinary prose spread over several sentences, it must never receive a badge because live
+     editors are excluded from scoring by design, exactly like real Google Docs surfaces and
+     the comment forms on every mainstream site.</div>
+  <div aria-hidden="true">This aria-hidden container also carries more than enough words to be
+     scored, yet it is explicitly marked as hidden from assistive technology, which the walker
+     treats as a signal that the content is not really part of the page's readable prose, so
+     no badge and no underline may ever appear anywhere inside this particular container.</div>
+  </section>
+
+  <h2>16 · Dynamic insertion</h2>
+  <section id="dyn">
+  <button id="add">Add a paragraph dynamically</button>
+  <div id="sink"></div>
+  </section>
+
+  <script>
+    document.getElementById('add').onclick = () => {
+      const p = document.createElement('p');
+      p.textContent = 'Dynamically inserted paragraph, written long enough to clear the '
+        + 'fifty-word minimum so that it actually receives a badge, and used to verify that '
+        + 'the MutationObserver reliably picks up brand-new content as it is appended to the '
+        + 'page, schedules that content for scoring through the queue, and then renders a fresh '
+        + 'badge in place without ever requiring a full reload of the surrounding document.';
+      document.getElementById('sink').appendChild(p);
+    };
+    document.getElementById('tabbtn').onclick = () => {
+      document.getElementById('tabpanel').classList.add('active');
+    };
+    document.getElementById('removeAi').onclick = () => {
+      document.getElementById('ai')?.remove();
+    };
+    document.getElementById('spaNav').onclick = () => {
+      history.pushState({ route: 2 }, '', location.pathname + '?route=2');
+      document.getElementById('spa').innerHTML =
+        '<p>SPA-SECOND route content arrives after a pushState navigation that no popstate '
+        + 'event will ever announce, so the extension has to notice the URL change or the DOM '
+        + 'swap on its own, collect this replacement paragraph, and badge it while also '
+        + 'purging the stale unit that belonged to the initial route content it replaced.</p>';
+    };
+  </script>
+</body></html>

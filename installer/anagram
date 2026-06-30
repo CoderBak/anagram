@@ -1,0 +1,141 @@
+#!/bin/sh
+# anagram — control the Anagram scoring daemon installed under $ANAGRAM_HOME (~/.anagram).
+#
+#   anagram start | stop | restart | status | logs | selftest | model | path | update | uninstall
+#
+# The daemon is an ordinary background process of your user: no launch agent, no service,
+# nothing starts at login. It listens on 127.0.0.1 only and reads nothing outside this folder.
+set -eu
+
+ANAGRAM_HOME="${ANAGRAM_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+PY="$ANAGRAM_HOME/venv/bin/python"
+APP="$ANAGRAM_HOME/app/serve.py"
+MODEL_DIR="$ANAGRAM_HOME/models/editlens_roberta-large"
+LID="$ANAGRAM_HOME/models/lid.176.ftz"
+PIDFILE="$ANAGRAM_HOME/run/anagramd.pid"
+LOG="$ANAGRAM_HOME/logs/anagramd.log"
+PORT=8765
+[ -f "$ANAGRAM_HOME/config" ] && . "$ANAGRAM_HOME/config"
+HEALTH="http://127.0.0.1:$PORT/health"
+
+# Keep every library's side files inside the folder; never phone home at runtime.
+export HF_HOME="$ANAGRAM_HOME/hf"
+export HF_HUB_OFFLINE=1
+export HF_HUB_DISABLE_TELEMETRY=1
+export TRANSFORMERS_OFFLINE=1
+export XDG_CACHE_HOME="$ANAGRAM_HOME/cache"
+export TOKENIZERS_PARALLELISM=false
+
+say()  { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
+die()  { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
+alive() { [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; }
+healthy() { curl -fsS -m 2 "$HEALTH" >/dev/null 2>&1; }
+
+cmd_status() {
+  if healthy; then
+    HEALTH_JSON="$(curl -fsS -m 2 "$HEALTH")" "$PY" - <<'PYEOF'
+import json, os
+d = json.loads(os.environ["HEALTH_JSON"])
+m = d["model"]
+print(f"running · {m['id']} {m['ver']} · {d['device']} {d.get('dtype', '')} · language gate {d.get('lid') or 'OFF'}"
+      f" · {d['scored_blocks']} paragraphs scored · up {int(d['uptime_s'])} s")
+PYEOF
+    echo "    http://127.0.0.1:$PORT  ·  log: $LOG"
+    alive || echo "    (answering on the port, but not started by 'anagram start' — another daemon, e.g. npm run serve)"
+  elif alive; then
+    echo "starting (pid $(cat "$PIDFILE")) — not answering yet; see $LOG"
+  else
+    echo "not running  —  start with: $ANAGRAM_HOME/bin/anagram start"
+    return 1
+  fi
+}
+
+cmd_start() {
+  [ -x "$PY" ] || die "no daemon environment in $ANAGRAM_HOME — run the installer again"
+  [ -f "$MODEL_DIR/config.json" ] || die "no checkpoint in $MODEL_DIR — run: $ANAGRAM_HOME/bin/anagram model"
+  if healthy; then say "already running"; cmd_status; return 0; fi
+  if alive; then say "already starting (pid $(cat "$PIDFILE"))"; return 0; fi
+  say "Starting anagramd on 127.0.0.1:$PORT"
+  nohup "$PY" "$APP" --model-dir "$MODEL_DIR" --lid-model "$LID" --host 127.0.0.1 --port "$PORT" >> "$LOG" 2>&1 &
+  echo $! > "$PIDFILE"
+  i=0
+  while [ $i -lt 120 ]; do
+    if healthy; then cmd_status; return 0; fi
+    if ! alive; then die "the daemon exited — last lines of $LOG:
+$(tail -n 20 "$LOG")"; fi
+    sleep 1; i=$((i + 1))
+  done
+  die "still not answering after 120 s — see $LOG"
+}
+
+cmd_stop() {
+  if alive; then
+    pid="$(cat "$PIDFILE")"
+    say "Stopping anagramd (pid $pid)"
+    kill "$pid" 2>/dev/null || true
+    i=0; while [ $i -lt 20 ] && kill -0 "$pid" 2>/dev/null; do sleep 0.5; i=$((i + 1)); done
+    kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
+  else
+    # A daemon started by hand from this folder, without a pid file.
+    pkill -f "$APP" 2>/dev/null && say "Stopped a daemon started outside 'anagram start'" || echo "not running"
+  fi
+  rm -f "$PIDFILE"
+}
+
+cmd_model() {
+  [ -x "$PY" ] || die "run the installer first"
+  TOKEN="${ANAGRAM_HF_TOKEN:-}"
+  if [ -z "$TOKEN" ] && [ -t 0 ]; then
+    echo "The EditLens checkpoint is gated on Hugging Face: accept its terms at"
+    echo "https://huggingface.co/pangram/editlens_roberta-large and paste a read token."
+    printf 'token: '; read -r TOKEN
+  fi
+  [ -n "$TOKEN" ] || die "set ANAGRAM_HF_TOKEN=… or run interactively"
+  say "Downloading the EditLens checkpoint into $MODEL_DIR"
+  HF_HUB_OFFLINE=0 HF_TOKEN="$TOKEN" "$PY" - "$MODEL_DIR" <<'PYEOF'
+import sys
+from huggingface_hub import snapshot_download
+snapshot_download("pangram/editlens_roberta-large", revision="f93e1ace74528cfb48f337ab2fe946fb71a728cb", local_dir=sys.argv[1], allow_patterns=["*.json", "*.txt", "*.safetensors", "README.md"])
+PYEOF
+  [ -f "$LID" ] || curl -fsSL --retry 3 -o "$LID" https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz
+  say "done"
+}
+
+cmd_uninstall() {
+  if [ "${1:-}" != "-y" ] && [ -t 0 ]; then
+    printf 'Remove %s and everything in it (the daemon, its Python, the model, the extension)? [y/N] ' "$ANAGRAM_HOME"
+    read -r ans; case "$ans" in y|Y|yes) ;; *) echo "kept"; return 0;; esac
+  fi
+  cmd_stop || true
+  rm -rf "$ANAGRAM_HOME"
+  say "Removed $ANAGRAM_HOME. Nothing else was ever installed. Remove the unpacked extension from chrome://extensions."
+}
+
+case "${1:-}" in
+  start)    cmd_start ;;
+  stop)     cmd_stop ;;
+  restart)  cmd_stop || true; cmd_start ;;
+  status)   cmd_status ;;
+  logs)     exec tail -n 50 -f "$LOG" ;;
+  selftest) exec "$PY" "$APP" --model-dir "$MODEL_DIR" --lid-model "$LID" --selftest ;;
+  model)    cmd_model ;;
+  path)     echo "$ANAGRAM_HOME/extension" ;;
+  version)  cat "$ANAGRAM_HOME/VERSION" 2>/dev/null || echo "unknown" ;;
+  update)   if [ -f "$ANAGRAM_HOME/app/install.sh" ]; then ANAGRAM_HOME="$ANAGRAM_HOME" sh "$ANAGRAM_HOME/app/install.sh"; else curl -fsSL https://github.com/CoderBak/anagram/releases/latest/download/install.sh | ANAGRAM_HOME="$ANAGRAM_HOME" sh; fi ;;
+  uninstall) cmd_uninstall "${2:-}" ;;
+  *) cat <<USAGE
+anagram — the Anagram scoring daemon in $ANAGRAM_HOME
+
+  anagram start       start the daemon in the background (127.0.0.1:$PORT)
+  anagram stop        stop it
+  anagram restart
+  anagram status      is it running, which model, how many paragraphs scored
+  anagram logs        follow the log
+  anagram selftest    score four sample paragraphs (one Chinese → unsupported) and exit
+  anagram model       (re)download the EditLens checkpoint
+  anagram path        print the folder to "Load unpacked" in chrome://extensions
+  anagram update      re-run the installer (updates in place)
+  anagram uninstall   remove $ANAGRAM_HOME — the only thing the installer created
+USAGE
+  ;;
+esac

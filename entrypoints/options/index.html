@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Anagram for Chrome — Options</title>
+    <style>
+      /* Layout only — colours, type and controls come from Basecoat (Vega). */
+      body { margin: 0; background: var(--background); color: var(--foreground); font-size: 14px; line-height: 1.5; }
+      .page { max-width: 760px; margin: 0 auto; padding: 32px 24px 56px; }
+      header.hdr { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+      header.hdr img { width: 44px; height: 44px; border-radius: 11px; }
+      header.hdr h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.2; }
+      header.hdr .ver { margin-top: 3px; font-size: 12px; color: var(--muted-foreground); }
+      .stack { display: flex; flex-direction: column; gap: 16px; }
+      .card > section { display: flex; flex-direction: column; gap: 14px; }
+      .card > header p { margin: 0; }
+      .field > section > p { margin: 0; }
+      .field > select { width: 250px; }
+      .field > input.url { width: 260px; }
+      .field > .btn { flex: none; }
+      .form-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      .form-row .input { flex: 1 1 200px; }
+      .form-row .select { width: 150px; }
+      .form-error { margin: 6px 0 0; font-size: 12.5px; color: var(--destructive); }
+      .empty { margin: 0; padding: 2px 0; color: var(--muted-foreground); font-size: 13px; }
+      .mode-on { color: oklch(0.55 0.15 150); font-weight: 500; }
+      .mode-off { color: var(--muted-foreground); }
+      .shortcuts { display: grid; grid-template-columns: max-content 1fr; gap: 8px 14px; align-items: center; }
+      .shortcuts .keys { display: inline-flex; align-items: center; gap: 3px; }
+      .shortcuts .plus { color: var(--muted-foreground); font-size: 11px; }
+      .legend { display: flex; flex-wrap: wrap; gap: 8px; }
+      .legend .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+      .dot-human { background: #1a7f37; }
+      .dot-light { background: #d4a017; }
+      .dot-heavy { background: #e8590c; }
+      .dot-ai { background: #dc2626; }
+      .dot-none { background: #a3a3a3; }
+      .dot-lang { background: #a3a3a3; box-shadow: inset 0 0 0 2px var(--card); }
+      .mini { margin: 4px 0 0; font-size: 12px; font-weight: 600; color: var(--muted-foreground); text-transform: uppercase; letter-spacing: 0.06em; }
+      .privacy { margin: 0; color: var(--muted-foreground); font-size: 13px; }
+      footer.foot { margin-top: 24px; font-size: 12.5px; line-height: 1.6; color: var(--muted-foreground); }
+      code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; background: var(--muted); padding: 1px 5px; border-radius: 5px; }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header class="hdr">
+        <img src="/icons/icon-128.png" alt="" />
+        <div>
+          <h1>Anagram for Chrome</h1>
+          <div class="ver" id="version"></div>
+        </div>
+      </header>
+
+      <div class="stack">
+        <section class="card" data-size="sm">
+          <header>
+            <h2>Detection</h2>
+            <p>What gets analyzed, and how paragraphs are grouped.</p>
+          </header>
+          <section>
+            <div class="field" data-orientation="horizontal">
+              <section>
+                <label for="enabled">Enable on all sites</label>
+                <p>Per-site rules below override this default. Toggling applies to new page loads and open tabs.</p>
+              </section>
+              <input id="enabled" type="checkbox" role="switch" />
+            </div>
+            <div class="field" data-orientation="horizontal">
+              <section>
+                <label for="analysisScope">Analysis scope</label>
+                <p>Main content only analyzes the article region — found the way Firefox Reader View does
+                  (Mozilla Readability) — and skips comments/sidebars outside it. Falls back to whole page when
+                  no clear region exists.</p>
+              </section>
+              <select id="analysisScope">
+                <option value="page">Whole page</option>
+                <option value="main">Main content only</option>
+              </select>
+            </div>
+            <div class="field" data-orientation="horizontal">
+              <section>
+                <label for="mergeShorts">Group short neighboring paragraphs</label>
+                <p>Paragraphs under the 50-word evidence floor are analyzed together with compatible
+                  neighbors — the chip shows ×N. Off: short paragraphs are skipped entirely.</p>
+              </section>
+              <input id="mergeShorts" type="checkbox" role="switch" />
+            </div>
+          </section>
+        </section>
+
+        <section class="card" data-size="sm">
+          <header>
+            <h2>Display</h2>
+            <p>How verdicts are drawn on the page.</p>
+          </header>
+          <section>
+            <div class="field" data-orientation="horizontal">
+              <section>
+                <label for="highlights">Mark analyzed paragraphs</label>
+                <p>Colors each paragraph by verdict — green = human, yellow = lightly edited, orange = heavily edited, red = AI-generated. Badges stay either way.</p>
+              </section>
+              <input id="highlights" type="checkbox" role="switch" />
+            </div>
+            <div class="field" data-orientation="horizontal">
+              <section>
+                <label for="markStyle">Mark style</label>
+                <p>How analyzed paragraphs are marked in place. “Mark analyzed paragraphs” above stays the master on/off.</p>
+              </section>
+              <select id="markStyle">
+                <option value="both">Underline + tint</option>
+                <option value="underline">Underline only</option>
+                <option value="tint">Tint only</option>
+              </select>
+            </div>
+            <div class="field" data-orientation="horizontal">
+              <section>
+                <label for="displayMode">What to show</label>
+                <p>Every paragraph is analyzed either way. “Flagged only” keeps pages calm and marks just heavily-edited and AI-generated verdicts.</p>
+              </section>
+              <select id="displayMode">
+                <option value="all">All chips</option>
+                <option value="flagged">Flagged only</option>
+              </select>
+            </div>
+          </section>
+        </section>
+
+        <section class="card" data-size="sm">
+          <header>
+            <h2>Scoring daemon</h2>
+            <p>Verdicts come from the local <code>anagramd</code> daemon (EditLens roberta-large, running on this
+              computer). Start it with <code>~/.anagram/bin/anagram start</code> (or <code>npm run serve</code> from a
+              source checkout). When it is not running, paragraphs show as Unavailable and are retried
+              automatically. There is no other backend.</p>
+          </header>
+          <section>
+            <div class="field" data-orientation="horizontal">
+              <section>
+                <label for="serverUrl">Daemon URL</label>
+                <p>Where <code>anagramd</code> listens. Local addresses only — page text never leaves this computer.
+                  Default <code>http://127.0.0.1:8765</code>.</p>
+                <p class="form-error" id="serverUrlError" hidden></p>
+              </section>
+              <input id="serverUrl" class="url" type="url" placeholder="http://127.0.0.1:8765" spellcheck="false" />
+            </div>
+            <div class="field" data-orientation="horizontal">
+              <section>
+                <label for="checkBackend">Status</label>
+                <p id="backendStatus">Checking…</p>
+              </section>
+              <button type="button" class="btn" data-variant="outline" data-size="sm" id="checkBackend">Check now</button>
+            </div>
+          </section>
+        </section>
+
+        <section class="card" data-size="sm">
+          <header>
+            <h2>Per-site rules</h2>
+            <p>Always-on / always-off overrides for specific hostnames.</p>
+          </header>
+          <section>
+            <div id="sites"></div>
+            <form class="form-row" id="addRule">
+              <input id="addHost" class="input" type="text" placeholder="example.com" aria-label="Hostname"
+                autocomplete="off" spellcheck="false" />
+              <select id="addMode" class="select" aria-label="Rule">
+                <option value="on">Always on</option>
+                <option value="off">Always off</option>
+              </select>
+              <button type="submit" class="btn">Add</button>
+              <p class="form-error" id="addError" hidden></p>
+            </form>
+          </section>
+        </section>
+
+        <section class="card" data-size="sm">
+          <header>
+            <h2>Advanced</h2>
+          </header>
+          <section>
+            <div class="field" data-orientation="horizontal">
+              <section>
+                <label for="debug">Debug logging</label>
+                <p>Verbose console logs from the content script (namespaced <code>[anagram:*]</code>).</p>
+              </section>
+              <input id="debug" type="checkbox" role="switch" />
+            </div>
+          </section>
+        </section>
+
+        <section class="card" data-size="sm">
+          <header>
+            <h2>About &amp; shortcuts</h2>
+          </header>
+          <section>
+            <div class="shortcuts">
+              <span class="keys"><kbd class="kbd">Alt</kbd><span class="plus">+</span><kbd class="kbd">Shift</kbd><span class="plus">+</span><kbd class="kbd">P</kbd></span>
+              <span class="what">Show or hide the Anagram overlay on the current page.</span>
+              <span class="keys"><kbd class="kbd">Right-click</kbd></span>
+              <span class="what">Choose “Analyze selection with Anagram” to score just the highlighted text.</span>
+            </div>
+            <p class="privacy">Nothing leaves your computer — scoring runs in the local <code>anagramd</code> daemon on this Mac. The daemon URL is restricted to local addresses.</p>
+            <h3 class="mini">Verdict colors</h3>
+            <div class="legend">
+              <span class="badge" data-variant="outline"><span class="dot dot-human"></span>Human</span>
+              <span class="badge" data-variant="outline"><span class="dot dot-light"></span>Lightly edited</span>
+              <span class="badge" data-variant="outline"><span class="dot dot-heavy"></span>Heavily edited</span>
+              <span class="badge" data-variant="outline"><span class="dot dot-ai"></span>AI-generated</span>
+              <span class="badge" data-variant="outline"><span class="dot dot-none"></span>Unavailable</span>
+              <span class="badge" data-variant="outline"><span class="dot dot-lang"></span>Unsupported language</span>
+            </div>
+          </section>
+        </section>
+      </div>
+
+      <footer class="foot">
+        A chip's number is EditLens's estimate of how far a paragraph sits between untouched human writing
+        (0%) and fully AI-generated text (100%) — not a share of words, not proof. Detection runs per
+        paragraph with a 50-word evidence floor; shorter neighboring paragraphs are analyzed together.
+        Model: pangram/editlens_roberta-large (CC BY-NC-SA 4.0, non-commercial).
+      </footer>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,33 @@
+# Release: on a version tag, build the extension and the daemon bundle and attach them to a
+# GitHub Release. The installer's one-liner points at .../releases/latest/download/install.sh.
+# The Hugging Face token for the gated checkpoint comes from the ANAGRAM_HF_TOKEN repository
+# secret and is substituted into install.sh at this step only — it is never committed.
+name: release
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test:node
+      - run: node scripts/release.mjs
+        env:
+          ANAGRAM_HF_TOKEN: ${{ secrets.ANAGRAM_HF_TOKEN }}
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/anagram.tar.gz
+            dist/anagram.tar.gz.sha256
+            dist/install.sh
+            dist/anagram-chrome-*.zip

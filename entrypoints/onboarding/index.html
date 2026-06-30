@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Welcome to Anagram</title>
+    <style>
+      /* Layout + the in-page chip demo; colours, type and controls come from Basecoat (Vega). */
+      :root {
+        --d-human: #1a7f37; --d-light: #d4a017; --d-heavy: #e8590c; --d-ai: #dc2626; --d-none: #a3a3a3;
+        --c-human: #116a37; --c-light: #7a5b00; --c-heavy: #a13d00; --c-ai: #b42318; --c-none: #525252;
+      }
+      html.dark {
+        --d-human: #4ecb71; --d-light: #e6c84c; --d-heavy: #ff9a57; --d-ai: #ff7b81; --d-none: #9aa3ad;
+        --c-human: #4ecb71; --c-light: #e6c84c; --c-heavy: #ff9a57; --c-ai: #ff7b81; --c-none: #9aa3ad;
+      }
+      body { margin: 0; background: var(--background); color: var(--foreground); font-size: 15px; line-height: 1.55; }
+      .page { max-width: 720px; margin: 0 auto; padding: 40px 24px 56px; }
+      header.hdr { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; }
+      header.hdr img { width: 56px; height: 56px; border-radius: 14px; }
+      header.hdr h1 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
+      header.hdr .ver { margin-top: 4px; font-size: 13px; color: var(--muted-foreground); }
+      .lede { margin: 0 0 22px; font-size: 16.5px; line-height: 1.55; }
+      .lede em { font-style: italic; }
+      .stack { display: flex; flex-direction: column; gap: 14px; }
+      .card > section { display: flex; flex-direction: column; gap: 10px; }
+      .card p { margin: 0; color: var(--muted-foreground); font-size: 14px; line-height: 1.6; }
+      .card p strong { color: var(--foreground); font-weight: 600; }
+      .card ul { margin: 0; padding-left: 18px; list-style: disc; color: var(--muted-foreground); font-size: 14px; line-height: 1.6; }
+      .card ul li + li { margin-top: 5px; }
+      .card ul strong { color: var(--foreground); font-weight: 600; }
+
+      /* The demo: three fragments marked and chipped exactly like the in-page overlay. */
+      .demo { padding: 4px 0 2px; font-family: Georgia, "Iowan Old Style", "Times New Roman", serif; font-size: 16.5px; line-height: 1.8; }
+      .demo-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 8px; }
+      .frag { text-decoration-line: underline; text-decoration-thickness: 1.5px; text-underline-offset: 3px; border-radius: 3px; padding: 0 2px; }
+      .u-human { background: rgba(26, 127, 55, 0.07); text-decoration-color: rgba(26, 127, 55, 0.5); }
+      .u-light { background: rgba(212, 160, 23, 0.12); text-decoration-color: rgba(212, 160, 23, 0.75); }
+      .u-ai { background: rgba(220, 38, 38, 0.14); text-decoration-style: wavy; text-decoration-color: rgba(220, 38, 38, 0.9); text-underline-offset: 2px; }
+      .chip {
+        display: inline-flex; align-items: center; gap: 0.42em; padding: 0.3em 0.6em 0.3em 0.5em;
+        border-radius: 6px; border: 1px solid var(--border); background: var(--card);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        font: 600 11px/1 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        letter-spacing: 0.01em; white-space: nowrap; vertical-align: middle;
+      }
+      .chip .cdot { width: 0.56em; height: 0.56em; border-radius: 50%; }
+      .c-human { color: var(--c-human); } .c-human .cdot { background: var(--d-human); box-shadow: 0 0 0 3px rgba(26, 127, 55, 0.18); }
+      .c-light { color: var(--c-light); } .c-light .cdot { background: var(--d-light); box-shadow: 0 0 0 3px rgba(212, 160, 23, 0.22); }
+      .c-ai { color: var(--c-ai); } .c-ai .cdot { background: var(--d-ai); box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18); }
+
+      .bands { display: flex; flex-wrap: wrap; gap: 8px; }
+      .bands .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+      .b-human .dot { background: var(--d-human); } .b-light .dot { background: var(--d-light); }
+      .b-heavy .dot { background: var(--d-heavy); } .b-ai .dot { background: var(--d-ai); } .b-none .dot { background: var(--d-none); }
+      .b-lang .dot { background: var(--d-none); box-shadow: inset 0 0 0 2px var(--card); }
+      .kbd { vertical-align: middle; }
+      footer.foot { margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--border); font-size: 13px; line-height: 1.6; color: var(--muted-foreground); }
+      code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; background: var(--muted); padding: 1px 5px; border-radius: 5px; }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header class="hdr">
+        <img src="/icons/icon-128.png" alt="" />
+        <div>
+          <h1>Welcome to Anagram</h1>
+          <div class="ver" id="version"></div>
+        </div>
+      </header>
+      <p class="lede">Anagram answers <em>&ldquo;how much of this did an AI write?&rdquo;</em> as you
+        browse: every analyzed paragraph gets a small <strong>chip</strong> with a number &mdash; the
+        model's estimate of the <strong>extent of AI editing</strong> &mdash; and a matching underline,
+        quiet on human text, louder as AI involvement grows.</p>
+
+      <div class="stack">
+        <section class="card" data-size="sm" aria-label="How Anagram reads a page">
+          <header><h2>How it reads</h2></header>
+          <section>
+            <div class="demo">
+              <div class="demo-line">
+                <span class="frag u-human">The quick brown fox jumps over the lazy dog.</span>
+                <span class="chip c-human"><span class="cdot"></span>4%</span>
+              </div>
+              <div class="demo-line">
+                <span class="frag u-light">moreover, this underscores a broader point&hellip;</span>
+                <span class="chip c-light"><span class="cdot"></span>38% &times;2</span>
+              </div>
+              <div class="demo-line">
+                <span class="frag u-ai">Delving into the rich tapestry of interconnected factors&hellip;</span>
+                <span class="chip c-ai"><span class="cdot"></span>96%</span>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <section class="card" data-size="sm">
+          <header><h2>Reading the verdicts</h2></header>
+          <section>
+            <div class="bands">
+              <span class="badge b-human" data-variant="outline"><span class="dot"></span>Human</span>
+              <span class="badge b-light" data-variant="outline"><span class="dot"></span>Lightly edited</span>
+              <span class="badge b-heavy" data-variant="outline"><span class="dot"></span>Heavily edited</span>
+              <span class="badge b-ai" data-variant="outline"><span class="dot"></span>AI-generated</span>
+              <span class="badge b-none" data-variant="outline"><span class="dot"></span>Unavailable</span>
+              <span class="badge b-lang" data-variant="outline"><span class="dot"></span>Unsupported language</span>
+            </div>
+            <p>The model (<strong>EditLens</strong>, ICLR 2026) rates how far a paragraph sits
+              between untouched human writing (0%) and fully AI-generated text (100%). The number is
+              <strong>not a share of words</strong> written by AI &mdash; it is the model's estimate of
+              how much AI editing changed the text as a whole. Hover (or tap) a chip for the full
+              readout: the four-way probability split behind the verdict and the word count. EditLens
+              reads English only: other languages get a gray chip with the detected language code
+              instead of a number. Every number is an <strong>estimate, not proof</strong>. Snippets
+              under ~50 words are only scored when grouped with neighbors &mdash; a
+              <strong>&times;2</strong> on a chip means it covers such a group.</p>
+          </section>
+        </section>
+
+        <section class="card" data-size="sm">
+          <header><h2>The floating ball</h2></header>
+          <section>
+            <p>Lives bottom-right on every page. <strong>Click</strong> it to show or hide all marks
+              instantly. <strong>Drag</strong> it anywhere &mdash; it snaps to the nearest edge and
+              tucks itself half-away when idle; hover brings it back. Its red <strong>counter</strong>
+              opens the triage panel: filter by verdict, jump to each flagged paragraph,
+              <strong>Copy report</strong>, or turn Anagram off for this site &mdash; all inside the
+              panel.</p>
+          </section>
+        </section>
+
+        <section class="card" data-size="sm">
+          <header><h2>Power moves</h2></header>
+          <section>
+            <ul>
+              <li><strong>Analyze selection</strong> &mdash; select text, right-click, done. Works
+                inside text boxes and editors too.</li>
+              <li><kbd class="kbd">Alt</kbd>+<kbd class="kbd">Shift</kbd>+<kbd class="kbd">P</kbd>
+                &mdash; toggle Anagram on the current page.</li>
+              <li><strong>Flagged only</strong> &mdash; switch <em>Show &rarr; Flagged only</em> in the
+                popup and calm pages stay untouched; marks appear only where something was flagged.</li>
+            </ul>
+          </section>
+        </section>
+
+        <section class="card" data-size="sm">
+          <header><h2>Google Docs</h2></header>
+          <section>
+            <p>Docs is an editor, not a page &mdash; so Anagram brings its own reading surface. Click
+              <strong>Analyze document</strong> on the floating ball and a <strong>reading mode</strong>
+              opens right in the tab, with every paragraph of the document analyzed. No navigation, and
+              your file is never touched. Press <kbd class="kbd">Esc</kbd> or <strong>Back to
+              editor</strong> to return instantly &mdash; or use <strong>Open as page</strong> if you
+              prefer a separate tab.</p>
+          </section>
+        </section>
+
+        <section class="card" data-size="sm">
+          <header><h2>Privacy</h2></header>
+          <section>
+            <p>Nothing leaves your computer. Scoring runs in the local <code>anagramd</code> daemon on
+              this Mac; requests carry only a <strong>hostname and language hint</strong> by design
+              &mdash; never full URLs.</p>
+          </section>
+        </section>
+
+        <section class="card" data-size="sm">
+          <header><h2>Make it yours</h2></header>
+          <section>
+            <p>The <strong>popup</strong> and <strong>options page</strong> hold the rest: pick a
+              marking style (<strong>underline</strong> or a soft <strong>tint</strong>), choose the
+              analysis scope (<strong>whole page</strong> or <strong>main content only</strong>), and
+              check the local scoring daemon's status.</p>
+          </section>
+        </section>
+      </div>
+
+      <footer class="foot" id="stub-note"></footer>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
