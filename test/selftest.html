@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Pangram self-test</title>
+<style>body{max-width:680px;margin:40px auto;font:16px/1.6 system-ui}</style></head>
+<body>
+  <h1>Pangram AI-detection self-test</h1>
+
+  <p>This is a longer human-written paragraph, with the kind of idiosyncratic phrasing, the
+     occasional typo here nad there, and the faintly uneven rhythm that real people tend to
+     produce when they are writing quickly and not thinking very hard about how every single
+     sentence is going to sound to somebody else. It rambles a little, doubles back on itself
+     once or twice, and generally refuses to be tidy, which is more or less the whole point of
+     putting it at the very top of this particular test page in the first place.</p>
+
+  <p>As an AI language model, I can provide a comprehensive overview of the multifaceted
+     considerations inherent to this topic. Firstly, it is important to note that the subject
+     encompasses a wide array of nuanced dimensions that merit careful and deliberate
+     examination. Furthermore, one must carefully weigh the various interconnected factors at
+     play in order to arrive at a well-rounded and balanced conclusion that adequately addresses
+     the full breadth of the relevant concerns and considerations at hand.</p>
+
+  <p>This short paragraph has well under fifty words, so the new minimum-length threshold
+     should skip it and leave it with no badge at all.</p>
+
+  <blockquote><p>This is a quoted paragraph nested inside a blockquote, written deliberately
+     long enough to clear the fifty-word minimum, and used to confirm two separate things at
+     once: that the walker anchors the badge to the inner block rather than the quote wrapper
+     itself, and that an AI-flagged paragraph reliably underlines the specific sentences that
+     the detector considers to be machine generated, even when the source happens to contain a
+     line break partway through the running text.</p></blockquote>
+
+  <pre><code>// a code block that must NOT be scored (excluded tag)
+function noScore() { return 42; }</code></pre>
+
+  <button id="add">Add a paragraph dynamically</button>
+  <div id="sink"></div>
+  <script>
+    document.getElementById('add').onclick = () => {
+      const p = document.createElement('p');
+      p.textContent = 'Dynamically inserted paragraph, written long enough to clear the '
+        + 'fifty-word minimum so that it actually receives a badge, and used to verify that '
+        + 'the MutationObserver reliably picks up brand-new content as it is appended to the '
+        + 'page, schedules that content for scoring through the queue, and then renders a fresh '
+        + 'badge in place without ever requiring a full reload of the surrounding document.';
+      document.getElementById('sink').appendChild(p);
+    };
+  </script>
+</body></html>

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pangram AI Detector</title>
+    <style>
+      body { width: 260px; margin: 0; padding: 12px 14px; font: 13px/1.4 system-ui, sans-serif; }
+      h1 { font-size: 14px; margin: 0 0 10px; }
+      .row { display: flex; align-items: center; justify-content: space-between; margin: 8px 0; }
+      button { font: inherit; padding: 6px 10px; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <h1>Pangram AI Detector</h1>
+    <div class="row">
+      <label for="enabled">Enabled</label>
+      <input id="enabled" type="checkbox" />
+    </div>
+    <div class="row">
+      <label for="siteEnabled">This site</label>
+      <input id="siteEnabled" type="checkbox" />
+    </div>
+    <div class="row">
+      <button id="rescan">Rescan</button>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

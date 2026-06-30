@@ -1,0 +1,22 @@
+{
+  "name": "pangram-extension",
+  "description": "Pangram AI Detector — per-paragraph AI-generated-text confidence badges.",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "build:firefox": "wxt build -b firefox",
+    "zip": "wxt zip",
+    "typecheck": "wxt prepare && tsc --noEmit",
+    "browser": "node test/browser.mjs",
+    "test:e2e": "node test/e2e.mjs",
+    "postinstall": "wxt prepare"
+  },
+  "devDependencies": {
+    "playwright": "^1.61.1",
+    "typescript": "^5.9.3",
+    "wxt": "^0.20.27"
+  }
+}
