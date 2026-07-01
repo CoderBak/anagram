@@ -1,9 +1,10 @@
-// lib/render/fab.ts — floating overlay toggle button (bottom-right), Shadow DOM.
+// lib/render/fab.ts — floating overlay toggle (bottom-right), Shadow DOM.
 //
-// An always-present control (like Immersive Translate's floating ball) that shows/hides the
-// detection overlay WITHOUT re-running detection. Reflects the active state and the count of
-// flagged paragraphs. Its host carries MARK_ATTR="host" so the walker's self-mutation guard
-// ignores it, and id="pangram-fab" so it can be found/clicked.
+// An always-present control (like Immersive Translate's floating ball) that
+// shows/hides the detection overlay WITHOUT re-running detection, plus an
+// optional secondary ACTION chip stacked above it (e.g. "Reading view" on Google
+// Docs). Its host carries MARK_ATTR="host" so the walker skips it, and
+// id="pangram-fab" so tests can find/click it.
 import { MARK_ATTR } from "../types";
 
 export interface Fab {
@@ -12,26 +13,33 @@ export interface Fab {
   setActive(active: boolean): void;
   /** Update the flagged-paragraph counter. */
   setCount(flagged: number, total: number): void;
+  /** Show (label + callback) or hide (null) the secondary action chip. */
+  setAction(label: string | null, onAction?: () => void): void;
   unmount(): void;
 }
 
 const FAB_CSS = `
 :host { all: initial; }
 
-.fab {
+.stack {
   position: fixed;
   right: 18px;
   bottom: 18px;
   z-index: 2147483647;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.chip {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  height: 38px;
-  padding: 0 13px 0 11px;
   box-sizing: border-box;
   border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.92);
   -webkit-backdrop-filter: saturate(1.4) blur(12px);
   backdrop-filter: saturate(1.4) blur(12px);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.16), 0 1px 3px rgba(0, 0, 0, 0.08);
@@ -41,9 +49,19 @@ const FAB_CSS = `
   user-select: none;
   transition: box-shadow 140ms ease, transform 140ms ease, opacity 140ms ease;
 }
+.chip:hover { transform: translateY(-1px); box-shadow: 0 10px 28px rgba(0, 0, 0, 0.20), 0 2px 4px rgba(0, 0, 0, 0.10); }
+.chip:active { transform: translateY(0); }
 
-.fab:hover { transform: translateY(-1px); box-shadow: 0 10px 28px rgba(0, 0, 0, 0.20), 0 2px 4px rgba(0, 0, 0, 0.10); }
-.fab:active { transform: translateY(0); }
+.fab { height: 38px; padding: 0 13px 0 11px; }
+
+.action {
+  height: 30px;
+  padding: 0 12px;
+  font-size: 11px;
+  color: #3730a3;
+  display: none;
+}
+.action.show { display: inline-flex; }
 
 .mark {
   width: 18px;
@@ -80,6 +98,8 @@ const FAB_CSS = `
 /* inactive (overlay hidden) → muted */
 .fab.off { opacity: 0.62; }
 .fab.off .mark { filter: grayscale(0.5); }
+
+@media print { .stack { display: none !important; } }
 `;
 
 let _sheet: CSSStyleSheet | null = null;
@@ -94,25 +114,41 @@ function sheet(): CSSStyleSheet {
 export function createFab(opts: { onToggle: () => void }): Fab {
   let host: HTMLElement | null = null;
   let fabEl: HTMLButtonElement | null = null;
+  let actionEl: HTMLButtonElement | null = null;
   let countEl: HTMLElement | null = null;
   let active = true;
+  let actionLabel: string | null = null;
+  let actionCb: (() => void) | undefined;
 
   function applyState(): void {
     if (!fabEl) return;
     fabEl.classList.toggle("off", !active);
     fabEl.title = active ? "Hide AI detection" : "Show AI detection";
+    if (actionEl) {
+      actionEl.classList.toggle("show", actionLabel !== null);
+      actionEl.textContent = actionLabel ?? "";
+    }
   }
 
   function mount(): void {
     if (host) return;
     host = document.createElement("div");
-    host.setAttribute(MARK_ATTR, "host"); // walker self-mutation guard skips it
+    host.setAttribute(MARK_ATTR, "host");
     host.id = "pangram-fab";
     const shadow = host.attachShadow({ mode: "open" });
     shadow.adoptedStyleSheets = [sheet()];
 
+    const stack = document.createElement("div");
+    stack.className = "stack";
+
+    actionEl = document.createElement("button");
+    actionEl.className = "chip action";
+    actionEl.type = "button";
+    actionEl.id = "pangram-action";
+    actionEl.addEventListener("click", () => actionCb?.());
+
     fabEl = document.createElement("button");
-    fabEl.className = "fab";
+    fabEl.className = "chip fab";
     fabEl.type = "button";
 
     const mark = document.createElement("span");
@@ -129,7 +165,9 @@ export function createFab(opts: { onToggle: () => void }): Fab {
 
     fabEl.append(mark, label, countEl);
     fabEl.addEventListener("click", () => opts.onToggle());
-    shadow.appendChild(fabEl);
+
+    stack.append(actionEl, fabEl);
+    shadow.appendChild(stack);
     (document.body ?? document.documentElement).appendChild(host);
     applyState();
   }
@@ -145,12 +183,19 @@ export function createFab(opts: { onToggle: () => void }): Fab {
     countEl.classList.toggle("zero", flagged === 0);
   }
 
+  function setAction(label: string | null, onAction?: () => void): void {
+    actionLabel = label;
+    actionCb = onAction;
+    applyState();
+  }
+
   function unmount(): void {
     host?.remove();
     host = null;
     fabEl = null;
+    actionEl = null;
     countEl = null;
   }
 
-  return { mount, setActive, setCount, unmount };
+  return { mount, setActive, setCount, setAction, unmount };
 }

@@ -37,7 +37,8 @@ await page.waitForTimeout(3500); // let viewport scoring settle
 
 const stats = await page.evaluate((sel) => {
   const hosts = [...document.querySelectorAll(sel)];
-  const scored = [...document.querySelectorAll('[data-pangram="scored"]')];
+  // v2: no marker attributes on page DOM — a unit's anchor is the badge host's parent.
+  const scored = hosts.map((h) => h.parentElement).filter(Boolean);
   const where = { content: 0, infobox: 0, refs: 0, nav: 0, table: 0, other: 0 };
   for (const el of scored) {
     if (el.closest(".infobox")) where.infobox++;

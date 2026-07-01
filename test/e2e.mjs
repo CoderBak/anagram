@@ -1,9 +1,13 @@
-// test/e2e.mjs — Playwright end-to-end smoke test for the Pangram MV3 extension.
+// test/e2e.mjs — Playwright end-to-end test for the Pangram MV3 extension (v2).
 //
 // Loads the built unpacked extension into a persistent Chromium context, serves the
-// self-test page over http (so the <all_urls> content script injects), waits for badges,
-// verifies the AI-sentence highlights and the floating toggle, exercises dynamic insertion
-// and the show/hide toggle, screenshots, and asserts the core behaviours.
+// self-test page over http (so the <all_urls> content script injects), scrolls the
+// whole page (scoring is viewport-first BY DESIGN), then asserts the v2 behaviours:
+// long paragraphs badge once and underline to the end (the HF regression),
+// BR-split/short-sibling/pre-wrap content merges into single units, inline code
+// does not fragment prose, pure-CJK text is scored, hidden tabs and <details>
+// get badges when revealed, pushState swaps re-badge and purge, removals purge,
+// never-score zones stay clean, and the page DOM carries no marker attributes.
 //
 //   node test/e2e.mjs            # headed (most reliable for MV3 extensions)
 //   HEADLESS=1 node test/e2e.mjs # try new-headless
@@ -58,71 +62,170 @@ page.on("console", (m) => {
   if (m.type() === "error") consoleErrors.push("console.error: " + m.text());
 });
 await page.goto(url, { waitUntil: "load" });
+await page.waitForTimeout(1200);
 
-// 5) wait for the first badge, then settle.
-await page.waitForSelector(BADGE_SEL, { timeout: 15000 }).catch(() => {});
-await page.waitForTimeout(2000);
+// 5) scoring is viewport-first: scroll through the page so everything dispatches.
+async function sweepScroll() {
+  await page.evaluate(async () => {
+    const step = Math.round(window.innerHeight * 0.8);
+    for (let y = 0; y <= document.documentElement.scrollHeight; y += step) {
+      window.scrollTo(0, y);
+      await new Promise((r) => setTimeout(r, 320));
+    }
+    window.scrollTo(0, 0);
+  });
+}
+await sweepScroll();
+
+// 6) wait until the badge count stabilizes.
+async function badgeCount() {
+  return page.evaluate((sel) => document.querySelectorAll(sel).length, BADGE_SEL);
+}
+{
+  let last = -1;
+  const deadline = Date.now() + 20000;
+  while (Date.now() < deadline) {
+    const n = await badgeCount();
+    if (n > 0 && n === last) break;
+    last = n;
+    await page.waitForTimeout(1200);
+  }
+}
 
 const visibleBadges = () =>
   page.evaluate(
     (sel) =>
-      [...document.querySelectorAll(sel)].filter((h) => getComputedStyle(h).display !== "none").length,
+      [...document.querySelectorAll(sel)].filter((h) => getComputedStyle(h).display !== "none")
+        .length,
     BADGE_SEL,
   );
 
+// 7) core snapshot.
 const snapshot = await page.evaluate((sel) => {
-  const scored = [...document.querySelectorAll('[data-pangram="scored"]')];
-  const tally = {};
-  for (const el of scored) tally[el.nodeName] = (tally[el.nodeName] || 0) + 1;
+  const inSection = (id) => document.querySelectorAll(`#${id} ${sel}`).length;
+  const highlightTexts = (() => {
+    if (typeof CSS === "undefined" || !CSS.highlights) return [];
+    const out = [];
+    for (const h of CSS.highlights.values()) for (const r of h) out.push(r.toString());
+    return out;
+  })();
+  const hlHas = (marker) => highlightTexts.some((t) => t.includes(marker));
+  const strayMarks = [...document.querySelectorAll("[data-pangram]")].filter(
+    (el) => !["host", "style"].includes(el.getAttribute("data-pangram")),
+  ).length;
   return {
-    badgeCount: document.querySelectorAll(sel).length,
+    badgeTotal: document.querySelectorAll(sel).length,
     fabPresent: !!document.getElementById("pangram-fab"),
-    highlightCount: typeof CSS !== "undefined" && CSS.highlights ? CSS.highlights.size : -1,
-    highlightedTexts: (() => {
-      if (typeof CSS === "undefined" || !CSS.highlights) return [];
-      const out = [];
-      for (const h of CSS.highlights.values()) for (const r of h) out.push(r.toString());
-      return out;
-    })(),
-    labels: [...document.querySelectorAll(sel)].map(
-      (h) => h.shadowRoot?.querySelector(".label")?.textContent || "?",
-    ),
-    scoredTagTally: tally,
-    preScored: scored.some((el) => el.closest("pre") || el.nodeName === "PRE"),
-    codeScored: scored.some((el) => el.closest("code")),
-    shortScored: scored.some((el) => (el.textContent || "").includes("well under fifty words")),
-    divEnScored: scored.some((el) => (el.textContent || "").includes("built entirely from div and span")),
-    divZhScored: scored.some((el) => (el.textContent || "").includes("泛化之后的块检测")),
+    highlightCount: highlightTexts.length,
+    sections: {
+      human: inSection("human"),
+      aiwrap: inSection("aiwrap"),
+      short: inSection("short"),
+      quote: inSection("quote"),
+      divbased: inSection("divbased"),
+      longpara: inSection("longpara"),
+      brsplit: inSection("brsplit"),
+      mergeshorts: inSection("mergeshorts"),
+      inlinecode: inSection("inlinecode"),
+      purecjk: inSection("purecjk"),
+      tabs: inSection("tabs"),
+      detailswrap: inSection("detailswrap"),
+      spa: inSection("spa"),
+      never: inSection("never"),
+    },
+    prewrapBadges: document.querySelectorAll(`#prewrap ${sel}`).length,
+    hl: {
+      longtail: hlHas("final LONGTAIL sentence"),
+      br1: hlHas("BRPART-ONE"),
+      br2: hlHas("BRPART-TWO"),
+      ms1: hlHas("MS-ONE"),
+      ms2: hlHas("MS-TWO"),
+      ms3: hlHas("MS-THREE"),
+      icode: hlHas("ICODE tail marker"),
+      cjk: hlHas("纯中文标记"),
+      pw1: hlHas("PREWRAP-ONE"),
+      pw2: hlHas("PREWRAP-TWO"),
+    },
+    strayMarks,
   };
 }, BADGE_SEL);
 console.log("\nSNAPSHOT:");
 console.log(JSON.stringify(snapshot, null, 2));
 
-// 6) RAPID dynamic insertion — fire N clicks synchronously (identical text each time, the
-// real fast-click race). Every added paragraph must get its own badge.
-const before = snapshot.badgeCount;
+// 8) hidden-tab reveal (class flip → attribute observer).
+await page.locator("#tabbtn").scrollIntoViewIfNeeded();
+await page.locator("#tabbtn").click();
+const tabBadged = await page
+  .waitForFunction(
+    (sel) => document.querySelectorAll(`#tabpanel ${sel}`).length >= 1,
+    BADGE_SEL,
+    { timeout: 8000 },
+  )
+  .then(() => true)
+  .catch(() => false);
+
+// 9) <details> open (open attribute → observer).
+await page.locator("#details summary").scrollIntoViewIfNeeded();
+await page.locator("#details summary").click();
+const detailsBadged = await page
+  .waitForFunction(
+    (sel) => document.querySelectorAll(`#detailswrap ${sel}`).length >= 1,
+    BADGE_SEL,
+    { timeout: 8000 },
+  )
+  .then(() => true)
+  .catch(() => false);
+
+// 10) SPA pushState swap: new route content badged, stale unit purged.
+await page.locator("#spaNav").scrollIntoViewIfNeeded();
+await page.locator("#spaNav").click();
+const spaBadged = await page
+  .waitForFunction(
+    (sel) => {
+      const spa = document.getElementById("spa");
+      return (
+        spa &&
+        spa.textContent.includes("SPA-SECOND") &&
+        spa.querySelectorAll(sel).length === 1
+      );
+    },
+    BADGE_SEL,
+    { timeout: 8000 },
+  )
+  .then(() => true)
+  .catch(() => false);
+
+// 11) removal purge: removing a badged paragraph takes its badge with it.
+await page.locator("#removeAi").scrollIntoViewIfNeeded();
+const beforeRemove = await badgeCount();
+await page.locator("#removeAi").click();
+await page.waitForTimeout(900);
+const afterRemove = await badgeCount();
+
+// 12) RAPID dynamic insertion — N synchronous clicks with identical text (the
+// fast-click race). Every added paragraph must get its own badge.
+const beforeAdd = await badgeCount();
 const RAPID = 5;
 await page.evaluate((n) => {
   const b = document.getElementById("add");
   for (let i = 0; i < n; i++) b?.click();
 }, RAPID);
-// The new (tall) paragraphs land below the fold; the extension scores viewport-first by
-// design, so scroll them into view to exercise the full add→score→badge path.
 await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
 await page
   .waitForFunction(
-    (target, sel) => document.querySelectorAll(sel).length >= target,
-    before + RAPID,
-    BADGE_SEL,
+    ({ target, sel }) => document.querySelectorAll(sel).length >= target,
+    { target: beforeAdd + RAPID, sel: BADGE_SEL },
     { timeout: 12000 },
   )
   .catch(() => {});
-const afterAdd = await page.evaluate((sel) => document.querySelectorAll(sel).length, BADGE_SEL);
-console.log(`rapid add: badges ${before} -> ${afterAdd} (clicked ${RAPID})`);
+const afterAdd = await badgeCount();
+console.log(`rapid add: badges ${beforeAdd} -> ${afterAdd} (clicked ${RAPID})`);
 
-// 7) toggle test: click the FAB → badges hidden → click again → shown.
+// 13) toggle test: FAB click → hidden → click → shown.
 const clickFab = () =>
-  page.evaluate(() => document.getElementById("pangram-fab")?.shadowRoot?.querySelector("button")?.click());
+  page.evaluate(() =>
+    document.getElementById("pangram-fab")?.shadowRoot?.querySelector("button.fab")?.click(),
+  );
 const shownN = await visibleBadges();
 await clickFab();
 await page.waitForTimeout(300);
@@ -132,26 +235,35 @@ await page.waitForTimeout(300);
 const reshownN = await visibleBadges();
 console.log(`toggle: visible ${shownN} -> hidden ${hiddenN} -> visible ${reshownN}`);
 
-// 8) screenshot (overlay shown).
+// 14) screenshot (overlay shown).
 const shot = join(__dirname, "e2e-screenshot.png");
+await page.evaluate(() => window.scrollTo(0, 0));
 await page.screenshot({ path: shot, fullPage: true });
 console.log("screenshot:", shot);
 
-// 9) checks + summary.
+// 15) checks + summary.
+const s = snapshot;
 const checks = [
   ["extension loaded (service worker)", !!sw],
-  ["badges rendered (3 long paragraphs)", snapshot.badgeCount >= 3],
-  ["floating toggle present", snapshot.fabPresent],
-  ["AI-sentence highlights present", snapshot.highlightCount > 0],
-  [
-    "underlines span whole sentences (source-newline split not fragmenting)",
-    snapshot.highlightedTexts.some((t) => t.trim().length > 40),
-  ],
-  ["<pre>/<code> NOT scored", !snapshot.preScored && !snapshot.codeScored],
-  ["short paragraph (< 50 words) is skipped", !snapshot.shortScored],
-  ["div-based English paragraph badged (no <p>)", snapshot.divEnScored],
-  ["div-based Chinese paragraph badged (CJK)", snapshot.divZhScored],
-  ["rapid insert: every added paragraph badged", afterAdd === before + RAPID],
+  ["badges rendered across the page", s.badgeTotal >= 11],
+  ["floating toggle present", s.fabPresent],
+  ["underlines present", s.highlightCount > 0],
+  ["human/ai/quote/div-EN/div-ZH badged", s.sections.human === 1 && s.sections.aiwrap === 1 && s.sections.quote === 1 && s.sections.divbased === 2],
+  ["LONG paragraph: exactly ONE badge (no 1000-char split)", s.sections.longpara === 1],
+  ["LONG paragraph underline reaches the end (HF regression)", s.hl.longtail],
+  ["BR-split halves merged into one unit", s.sections.brsplit === 1 && s.hl.br1 && s.hl.br2],
+  ["three short siblings merged into one unit", s.sections.mergeshorts === 1 && s.hl.ms1 && s.hl.ms2 && s.hl.ms3],
+  ["inline <code> does not fragment the paragraph", s.sections.inlinecode === 1 && s.hl.icode],
+  ["pure-CJK paragraph badged (unicode letter check)", s.sections.purecjk === 1 && s.hl.cjk],
+  ["pre-wrap blank-line paragraphs split + merged", s.prewrapBadges === 1 && s.hl.pw1 && s.hl.pw2],
+  ["short isolated paragraph skipped", s.sections.short === 0],
+  ["never-score zone clean (code/nav-links/editor/aria-hidden)", s.sections.never === 0],
+  ["page DOM carries no marker attributes", s.strayMarks === 0],
+  ["hidden tab badged after class-flip reveal", tabBadged],
+  ["<details> content badged after open", detailsBadged],
+  ["pushState swap: new route badged, stale purged", spaBadged],
+  ["removing a paragraph removes its badge", afterRemove === beforeRemove - 1],
+  ["rapid insert: every added paragraph badged", afterAdd === beforeAdd + RAPID],
   ["toggle hides + re-shows badges", hiddenN === 0 && reshownN === shownN && shownN > 0],
   ["no console errors", consoleErrors.length === 0],
 ];

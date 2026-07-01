@@ -6,7 +6,9 @@ import { storage } from "#imports";
 export const settings = {
   enabled: storage.defineItem<boolean>("local:enabled", { fallback: true }),
   siteOverrides: storage.defineItem<Record<string, "on" | "off">>("local:siteOverrides", { fallback: {} }),
-  showHighlights: storage.defineItem<boolean>("local:showHighlights", { fallback: false }),
+  // The paragraph underline is part of the core product; on by default (orchestrator
+  // respects live changes to this setting).
+  showHighlights: storage.defineItem<boolean>("local:showHighlights", { fallback: true }),
   debug: storage.defineItem<boolean>("local:debug", { fallback: false }),
   scorePre: storage.defineItem<boolean>("local:scorePre", { fallback: false }),
 };

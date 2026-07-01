@@ -4,220 +4,295 @@
 > today, why it's built the way it is, and what to do next.** Written for an agent picking up
 > the work cold.
 
-Last updated: 2026-07-01. Working dir: `/Users/coderbak/Code/pangram/extension` (a git repo).
-Design docs live one level up in `/Users/coderbak/Code/pangram/` (see §12).
+Last updated: 2026-07-01 (v2 surface). Working dir: `/Users/coderbak/Code/pangram/extension`
+(a git repo). Design docs live one level up in `/Users/coderbak/Code/pangram/` (see §12).
 
 ---
 
 ## 0. TL;DR — orient in 60 seconds
 
-- **Product:** a real-time, in-page **AI-generated-text detector**. It labels each paragraph
-  on a web page with an AI-confidence badge — think **Immersive Translate, but for "is this AI?"
+- **Product:** a real-time, in-page **AI-generated-text detector**. It labels text on a web
+  page with an AI-confidence badge — think **Immersive Translate, but for "is this AI?"
   instead of translation.** Browser extension now; desktop app later.
 - **Two halves, deliberately decoupled:**
-  1. **Surface system** (capture text on screen → render badges/marks). ← **this repo, ~done (M1).**
-  2. **Detection backend** (the actual "is this AI?" model). ← **still a random stub.**
+  1. **Surface system** (capture text on screen → render badges/underlines). ← **this repo,
+     now at v2.**
+  2. **Detection backend** (the actual "is this AI?" model). ← **still a random stub, by
+     design for this milestone.**
 - **The seam between them is a stable contract** (`lib/contract.ts`). The surface calls a
   `ScoreClient.scoreBatch(blocks) → results`. Today that's `RandomStubScoreClient`. Swapping in
   the real detector changes **one file** (`lib/backend/getScoreClient.ts`) and nothing else.
-- **The #1 next task:** wire a **real backend** so scores reflect content instead of random
-  noise. Everything above the socket is finished and tested. See **§9**.
-- **Status:** M1 committed (`e210321`); working tree has uncommitted follow-ups (Zhihu/div
-  walker fix + `output/` rename) — **commit them** (see §11).
+- **v2 (this iteration) rebuilt the surface for robustness**: style-aware segmentation with
+  short-paragraph merging, an ownership/invalidation model for dynamic pages, inline-flow
+  badges with a hover card and dark mode, pushState SPA handling, revealed-content handling
+  (tabs/accordions/details), Google Docs reading-view support, and a 22-check e2e suite.
+- **The #1 next task remains:** wire a **real backend** so scores reflect content instead of
+  random noise. See **§9**.
 
 ---
 
 ## 1. Product vision & goal
 
 Users read AI-generated text everywhere and can't tell. Pangram overlays a **calibrated,
-per-paragraph AI-confidence signal directly on the page**, non-destructively, the way
-Immersive Translate overlays translations. Design tenets:
+per-unit AI-confidence signal directly on the page**, non-destructively, the way Immersive
+Translate overlays translations. Design tenets:
 
-- **Paragraph-level, in-place.** A small badge at the end of each substantive paragraph +
-  an optional colored underline on the paragraph. Toggleable with a floating button; hiding
-  and re-showing is instant and does **not** re-detect.
+- **Paragraph-aligned, in-place.** A small inline chip at the end of each scored unit +
+  a colored underline across the unit. Toggleable with a floating button; hiding and
+  re-showing is instant and does **not** re-detect.
 - **Calibrated, honest wording.** Never "98% AI." Bands are **Human / AI-Assisted / AI /
-  Insufficient** derived from a statistical contract (credible interval + p-value), not a raw
-  percentage presented as truth.
-- **Only judge what's judgeable.** Short text is unreliable, so we enforce a **50-word minimum**
-  (matches Pangram's own policy) and skip nav/titles/boilerplate.
-- **Backend-agnostic.** The capture/annotation layer must never assume how detection works.
-  Random stub today; on-device ONNX, local daemon, or remote API tomorrow — same contract.
+  Insufficient** derived from a statistical contract (credible interval + p-value); the hover
+  card shows the interval, the p-value, the word count, and an "estimate, not proof" caveat.
+- **Only judge what's judgeable.** Detection is unreliable below ~50 words, so a unit is only
+  scored at ≥50 words — but v2 **merges adjacent short paragraphs into one unit** instead of
+  silently skipping them (see §6), so chat threads/comments/listicles get covered.
+- **Backend-agnostic.** The capture/annotation layer never assumes how detection works.
 
 The eventual surface targets go beyond the browser (desktop app reading other apps via
-Accessibility APIs / OCR); see `../surface-system-design.md`. **This repo is the browser M1.**
+Accessibility APIs / OCR); see `../surface-system-design.md`. **This repo is the browser
+surface.**
 
 ---
 
 ## 2. The detection contract (the IO everything is built around)
 
-The detector's contract (from the v2 system design). Input: `(text, alpha)` where `alpha` is a
-significance level; output per block:
+Unchanged from M1 — `CONTRACT_VERSION = "1.0"`:
 
 ```ts
-// lib/contract.ts  — CONTRACT_VERSION = "1.0"
+// lib/contract.ts
 interface ScoreResult {
   id: string;                       // echoes the input block id (render keys off this)
   detected: boolean;                // is the block judged AI-generated?
   theta_interval: [number, number]; // calibrated AI-probability credible interval [lo,hi] ⊂ [0,1]
   e_theta: number;                  // point estimate of AI-probability θ ∈ [0,1]
   p_value: number;                  // p-value of the human-null hypothesis (small ⇒ strong AI)
-  sentence_flags?: boolean[];       // optional per-sentence AI flags (see caveat in §6)
+  sentence_flags?: boolean[];       // optional per-sentence AI flags (unused by the UI — §6)
 }
 ```
 
 Request/response envelopes (`ScoreBatchRequest` / `ScoreBatchResponse`), `ScoreBlock`, and the
-`ScoreClient` interface are all in `lib/contract.ts`. **Do not break this shape** — it's the
-whole point of the decoupling. Bump `CONTRACT_VERSION` if you must extend it.
+`ScoreClient` interface are all in `lib/contract.ts`. **Do not break this shape.** Bump
+`CONTRACT_VERSION` if you must extend it.
 
-**Band derivation** (`lib/render/band.ts`) — this is how a `ScoreResult` becomes a user-facing label:
+**Band derivation** (`lib/render/band.ts`): unknown (wide interval + p≈1) → Insufficient;
+detected → AI; e_theta ≥ 0.4 → AI-Assisted; else Human. Colors: green / amber / red / gray.
 
-```ts
-if (p_value >= 0.99 && theta_interval width > 0.5) → "unknown"  // Insufficient
-if (detected)                                      → "ai"       // AI
-if (e_theta >= 0.4)                                → "mixed"    // AI-Assisted
-else                                               → "human"    // Human
-```
-
-Badge colors: Human = green, AI-Assisted = amber, AI = red, Insufficient = gray.
+One v2 nuance: `ScoreBlock.text` for a very long paragraph is **truncated at a sentence
+boundary near 4000 chars** (`truncateForScoring`); rendering always covers the full paragraph.
+The unit is never split visually (that was the M1 HF-abstract bug).
 
 ---
 
-## 3. Architecture & data flow
+## 3. Architecture & data flow (v2)
 
 ```
  content.ts (top frame only, document_end)
-   └─ createOrchestrator().start()                         lib/capture/orchestrator.ts
-        ├─ collectUnits(document.body)                     lib/dom/walker.ts   ← paragraph detection
-        ├─ observers: IntersectionObserver (viewport-first, rootMargin 500px)
-        │             + MutationObserver (dirty queue, debounced)   lib/capture/observers.ts
-        ├─ scheduler: batch + dedup-by-id + concurrency cap + epoch guard  lib/capture/scheduler.ts
+   ├─ Google Docs? → FAB action chip: editor ⇄ /mobilebasic reading view   lib/docs.ts
+   └─ createOrchestrator().start()                        lib/capture/orchestrator.ts
+        ├─ collectUnits(document.body, {claimFilter})     lib/dom/walker.ts  ← SEGMENTER
+        │     walk: composed tree (shadow/slots), computed-display classification,
+        │           boilerplate/notranslate/editable/hidden pruning, BR + blank-line
+        │           paragraph breaks, sr-only skip                lib/dom/{style,tags,boilerplate}.ts
+        │     asm:  runs ≥50w → unit; consecutive 8–49w runs MERGE until ≥50w;
+        │           headings/nav/link-dense runs are barriers     lib/dom/text.ts
+        ├─ OWNERSHIP: every text node of a live unit is claimed (WeakMap node→unit);
+        │   re-scans skip exact-match runs, stale owners are invalidated + re-taken
+        ├─ observers                                       lib/capture/observers.ts
+        │     IntersectionObserver (viewport-first, rootMargin 500px, unit-id latches)
+        │     MutationObserver (childList + characterData + attributes[class/style/
+        │       hidden/open/aria-hidden], debounced drain, per-element attr rate limit)
+        ├─ URL watcher (500ms poll + popstate + hashchange) → incremental refresh
+        ├─ scheduler: 3 lanes + upgrade, batch, epoch guard  lib/capture/scheduler.ts
         │     └─ send(): cache-first, dedup misses by TEXT, fan one score to all ids
         │           └─ requestScores(req)                  lib/messaging/client.ts  (→ SW)
         │                 └─ background.ts → createRouter().handle()   lib/backend/router.ts
-        │                       ├─ SW-side cache + in-flight dedup + micro-batch + retry/fallback
+        │                       ├─ SW cache + in-flight dedup + micro-batch + retry/fallback
         │                       └─ getScoreClient().scoreBatch(blocks) ★ THE SEAM ★
         │                             = RandomStubScoreClient          lib/backend/randomStub.ts
-        └─ render(results): per result →                   (badge + paragraph underline)
-              ├─ badges.render(unit, result)               lib/render/badge.ts   (Shadow-DOM badge)
-              └─ setHighlight(unit, result)                lib/render/highlight.ts (CSS Custom Highlight)
-        + floating toggle (FAB) with flagged counter       lib/render/fab.ts
+        └─ render(results): per result →
+              ├─ badges.render(unit, result)   lib/render/badge.ts   INLINE chip + hover card
+              └─ setHighlight(unit, result)    lib/render/highlight.ts  one range PER PART
+        + floating toggle (FAB) with flagged counter + action chip    lib/render/fab.ts
 ```
 
 Key properties:
-- **Viewport-first:** only paragraphs near the viewport are scored; below-the-fold content is
-  scored **as it scrolls into view** (by design — not a bug).
-- **Two cache layers:** content-script `send()` cache + SW-side router cache, both keyed by
-  normalized text hash (cyrb53). Identical paragraphs are scored once and fanned out by id.
-- **Instant show/hide:** the FAB toggles CSS visibility of badges + disables the highlight
-  stylesheet; results stay cached — **no re-detection**.
+- **Viewport-first:** paragraphs score as they (nearly) enter the viewport. Tests must scroll.
+- **Ownership + invalidation:** removed DOM purges its units; text edits invalidate and
+  re-score; revealed content (tabs, accordions, `<details>`) is picked up via attribute
+  observation. SPA pushState navigations refresh incrementally without flicker.
+- **Zero page mutation policy:** v2 writes **no attributes and no inline styles on page
+  elements**. The only page-DOM changes are (a) inserting inline badge hosts and (b) splitting
+  text nodes at blank-line boundaries in preserved-whitespace contexts.
+- **Two cache layers** keyed by normalized text hash; identical paragraphs score once.
+- **Instant show/hide:** the FAB toggles CSS visibility only; results stay cached.
 
 ---
 
-## 4. Current state — what's built and working (M1)
+## 4. Current state — what's built and working (v2)
 
-**Framework:** WXT (wxt.dev) + Vite + TypeScript, Manifest V3, `matches: ["<all_urls>"]`,
-`allFrames: false`.
+Working and covered by the 22-check e2e:
+- ✅ **Long paragraphs are single units** — no 1000-char mid-paragraph split; underline runs to
+  the end (this was the huggingface.co/papers "stops at a weird point" bug: a 1662-char
+  abstract was split at 1000 chars and the tail silently dropped).
+- ✅ **Short-paragraph merging**: BR-separated halves, consecutive short `<p>`/`<li>`/chat-div
+  siblings, and blank-line paragraphs in pre-wrap text merge into one multi-part unit
+  (badge after the last part, underline per part).
+- ✅ **Inline markup never splits a sentence**: `<code>`, `<em>`, links, drop caps (floated
+  spans), `<wbr>` are all inline flow. (M1 closed units at inline `<code>` — MDN-style prose
+  fragmented into sub-minimum shards.)
+- ✅ **Style-aware classification**: computed display decides block vs inline (div/span sites,
+  display:contents, inline-block cards, table cells); composed-tree traversal (open shadow
+  roots + slots).
+- ✅ **Unicode letter check + CJK word counting** — pure-Chinese paragraphs score (M1's
+  Latin-only regex dropped them).
+- ✅ **Reveal handling**: display-none tab panels, class flips, `<details>` open, style/hidden/
+  aria-hidden changes — attribute observation with a per-element rate limit.
+- ✅ **Removal/edit handling**: removed nodes purge badge+underline+result+counter; edited
+  paragraphs invalidate and re-score.
+- ✅ **SPA navigation**: pushState/replacePath URL changes (500ms poll) + popstate + hashchange
+  → incremental refresh; the popup Rescan stays the full reset.
+- ✅ **Re-enable and rescan actually re-score** (M1 latched dispatched elements in a WeakSet —
+  after toggle-off/on or Rescan, nothing ever scored again).
+- ✅ **Inline-flow badges**: reflow with text (resize/fonts/floats/RTL), never clipped by
+  overflow, never in a float gutter; hover card with the calibrated readout; dark-background
+  detection; badges inside 1990s inline-wrapper essays place correctly (paulgraham.com).
+- ✅ **Boilerplate filter** (trafilatura/Readability-inspired, conservative): nav/landmark
+  roles, page-level header/footer/aside, cookie/consent/paywall/breadcrumb/ad class tokens.
+  Plus the link-density barrier for menus/story lists.
+- ✅ **Plain-text documents** (`text/plain` viewer): blank-line paragraphs are segmented,
+  merged and badged.
+- ✅ **Google Docs**: editor pages get a FAB action chip → opens the static-HTML
+  `/mobilebasic` reading view (the Immersive Translate approach — the editor itself is
+  canvas and has no DOM text); the reading view scores normally and offers "Back to editor".
+- ✅ Popup (enable/disable + per-site + rescan), options scaffold, settings
+  (`showHighlights` now respected live; default on).
 
-Working and regression-tested:
-- ✅ Paragraph detection incl. **`<div>`/`<span>`-based sites** (Zhihu, most React/Vue SPAs), not
-  just semantic `<p>` — via computed-`display` block detection (see §6).
-- ✅ **50-word minimum** (matches Pangram) + link-density filter → prose only; titles/nav/
-  metadata/boilerplate skipped. **CJK word counting** works (Intl.Segmenter).
-- ✅ Shadow-DOM **confidence badge** (colored dot + AI-involvement number), anchored to the end
-  of the paragraph's **last text line** (correct on float/sidebar layouts like Wikipedia).
-- ✅ **Paragraph-level colored underline** by verdict (green/amber/red; none when insufficient),
-  via the CSS Custom Highlight API (zero DOM mutation).
-- ✅ **Floating toggle** (FAB) with a flagged-paragraph counter; instant show/hide.
-- ✅ Dynamic content (MutationObserver), SPA route changes (popstate/hashchange → rescan),
-  viewport-first scheduling, dedup, retry/neutral-fallback.
-- ✅ Popup (enable/disable + rescan) and options page scaffolds.
+**Not real yet:** the **scores** (random stub, deterministic per text). Everything else is
+final surface behavior.
 
-**Not real yet:** the **scores** (random stub). Everything else is final.
-
-Verified on: the self-test page (12-check Playwright e2e, all pass), Wikipedia, MDN, Paul
-Graham, Hacker News (0 — correctly no prose), BBC (0), Substack (0). Prose sites badge their
-paragraphs; aggregator/nav pages stay clean.
+Verified on: selftest (22 checks), huggingface.co/papers (abstract + comments badge, zero
+chrome), Wikipedia (19 units, all prose, inline placement beside the infobox float), MDN,
+paulgraham.com (98 units, one per BR-paragraph, correctly placed), GitHub README, HN/BBC/
+Substack ≈ 0 (correctly no prose), dark-mode fixture, pure-CJK fixture.
 
 ---
 
-## 5. Repo layout (annotated)
+## 5. Repo layout (annotated, v2)
 
 ```
 extension/
 ├─ HANDOFF.md                 ← you are here
 ├─ README.md                  build/load quickstart
-├─ wxt.config.ts              WXT config; outDir: "output" (see §7)
+├─ wxt.config.ts              WXT config; outDir: "output"
 ├─ entrypoints/
-│   ├─ content.ts             content script: start orchestrator if enabled; popup msg handling
+│   ├─ content.ts             start orchestrator; Google Docs FAB action; popup messages
 │   ├─ background.ts          MV3 service worker: routes ScoreBatchRequest → router
 │   ├─ popup/                 toolbar popup (enable/disable, rescan, scored count)
 │   └─ options/               options page scaffold
 ├─ lib/
 │   ├─ contract.ts            ★ the surface↔backend contract (ScoreBlock/Result, ScoreClient)
-│   ├─ types.ts               Unit, Lane, MARK_ATTR, shared types
+│   ├─ types.ts               Unit/UnitPart re-export, Lane, MARK_ATTR
+│   ├─ docs.ts                Google Docs URL detection + reading-view/editor URLs
 │   ├─ dom/
-│   │   ├─ walker.ts          ★ paragraph detection (selectBlocks + getUnitsForBlock)
-│   │   ├─ text.ts            isInvalidText (50-word floor), splitSentences, linkTextRatio, normalize
-│   │   ├─ tags.ts            INLINE/BLOCK/NO_SCORE tag sets
-│   │   └─ visibility.ts      isVisible
+│   │   ├─ walker.ts          ★ THE SEGMENTER: composed-tree walk → runs → merge → Units
+│   │   ├─ style.ts           computed-style cache, flow classification, sr-only detection
+│   │   ├─ tags.ts            hard-exclusion tags + inline fallback set + heading check
+│   │   ├─ boilerplate.ts     chrome filter (roles, page-level sectioning, class tokens)
+│   │   ├─ text.ts            Unit/UnitPart, floors, countWords/splitSentences (cached
+│   │   │                     Intl.Segmenter), truncateForScoring, linkTextRatio
+│   │   └─ visibility.ts      geometric (rect) visibility cache
 │   ├─ capture/
-│   │   ├─ orchestrator.ts    ★ ties everything together (start/stop/rescan/toggle, send/render)
-│   │   ├─ observers.ts       IntersectionObserver + MutationObserver
-│   │   ├─ scheduler.ts       batch/dedup-by-id/concurrency/epoch
+│   │   ├─ orchestrator.ts    ★ ownership/claims, invalidation, URL watcher, lifecycles
+│   │   ├─ observers.ts       IO (unit-id latches) + MO (childList/charData/attributes)
+│   │   ├─ scheduler.ts       lanes + upgrade, batching, epoch guard, scoring truncation
 │   │   └─ cache.ts           content-script score cache (cyrb53)
-│   ├─ backend/
-│   │   ├─ getScoreClient.ts  ★★ THE SEAM — returns the active ScoreClient (change this to go real)
+│   ├─ backend/               (unchanged seam)
+│   │   ├─ getScoreClient.ts  ★★ THE SEAM — swap here to go real
 │   │   ├─ randomStub.ts      RandomStubScoreClient (deterministic per text)
-│   │   ├─ router.ts          SW-side dedup/batch/retry/neutral-fallback/cache wrapper
+│   │   ├─ router.ts          SW-side dedup/batch/retry/neutral-fallback/cache
 │   │   └─ swCache.ts         SW-side cache
-│   ├─ messaging/
-│   │   ├─ client.ts          requestScores(): content script → SW round-trip
-│   │   └─ protocol.ts        ACTIONS, ControlMessage, TabState
+│   ├─ messaging/             requestScores() + protocol
 │   ├─ render/
-│   │   ├─ badge.ts           Shadow-DOM badge + last-line-rect placement + setVisible
-│   │   ├─ badge.css.ts       badge styles (constructable stylesheet)
-│   │   ├─ highlight.ts       ★ paragraph-level CSS Custom Highlight underline
-│   │   ├─ band.ts            ScoreResult → Band + labels/colors
-│   │   └─ fab.ts             floating toggle button + counter
-│   ├─ settings/settings.ts   enabledForSite, storage-backed settings
+│   │   ├─ badge.ts           ★ inline-flow chip + hover card + dark detection
+│   │   ├─ badge.css.ts       chip/card styles (constructable stylesheet)
+│   │   ├─ highlight.ts       CSS Custom Highlight underline, one range per part
+│   │   ├─ band.ts            ScoreResult → Band + labels
+│   │   └─ fab.ts             floating toggle + counter + action chip (Docs)
+│   ├─ settings/settings.ts   enabledForSite, showHighlights (default ON), debug
 │   └─ log.ts                 gated logger
-└─ test/                      Playwright harness (Node .mjs, no test runner) — see §8
-    ├─ selftest.html          controlled fixture (human/AI/short/blockquote/code/div-EN/div-ZH/dynamic)
-    ├─ e2e.mjs                12-check smoke test (run this after any change)
+└─ test/
+    ├─ selftest.html          16-section fixture page (all v2 edge cases)
+    ├─ e2e.mjs                22-check suite — run after any change (npm run test:e2e)
     ├─ browser.mjs            persistent LIVE window for eyeballing (npm run browser)
-    ├─ wiki.mjs               Wikipedia tester (badge placement)
-    ├─ sites.mjs              6-real-site sweep (over/under-badging regression)
-    └─ zhihu.mjs              Zhihu/div-site structural diagnostic
+    ├─ sites.mjs              8-real-site sweep incl. the HF papers page
+    ├─ wiki.mjs               Wikipedia placement tester
+    └─ zhihu.mjs              div-site structural diagnostic
 ```
 
 ---
 
 ## 6. Key design decisions & rationale (so you don't undo them)
 
-- **Walker is generalized beyond semantic tags.** `selectBlocks` finds **any block-laid-out
-  element (computed `display`) that directly holds text/inline content**, keeping the outermost
-  ones; `getUnitsForBlock` then splits each into paragraph units. This is what makes Zhihu / X /
-  Reddit / SPAs work. The 50-word floor + link-density filter keep it from over-badging. (The
-  original M1 walker only queried `P, LI, H*, TABLE, OL, PRE` and found **nothing** on div-based
-  sites.) Ported/inspired by old-immersive-translate + read-frog/kiss-translator.
-- **50-word minimum**, not character count. Pangram's own policy ("can't attribute below ~75
-  words"). Lives in `lib/dom/text.ts` (`MIN_WORDS=50`, `MIN_CHARS=200` secondary). Uses
-  `Intl.Segmenter` so **CJK counts correctly**.
-- **Highlighting is PARAGRAPH-LEVEL, not sentence-level.** We tried per-sentence coloring and
-  reverted it: (a) the stub's `sentence_flags` are random noise, and (b) **real detectors
-  (Pangram included) cannot attribute human-vs-AI below ~75 words**, so per-sentence marks
-  over-claim precision. The whole paragraph gets one color matching its badge. `sentence_flags`
-  stays in the contract for a *possible* future "deep scan" mode **only if** a model can reliably
-  localize. Don't resurrect sentence-level marks without that.
-- **Badge placement uses the last-line client rect** (`Range.getClientRects()`), not the block
-  box — otherwise badges land in float gutters/sidebars (Wikipedia infobox bug).
-- **Viewport-first is intentional.** Tests must **scroll** to score below-the-fold content
-  (the e2e's rapid-insert test does this). Don't "fix" a below-fold no-badge as a bug.
-- **Dedup is by unit `id`, then by text with fan-out** — fixes rapid-insert dropping identical
-  paragraphs. Don't dedup the *scheduler* by text hash.
-- **Stub is deterministic per text** (`cyrb53(text) → mulberry32`), so the same paragraph always
-  gets the same score across runs — makes tests stable and demos coherent.
+- **Units are SEGMENTS, not raw paragraphs — the answer to "should detection be
+  paragraph-level?"** The visual paragraph is still the alignment target (badges/underlines
+  land on paragraphs), but the *scoring* unit is a paragraph-aligned segment with an evidence
+  floor: a run ≥50 words stands alone; consecutive 8–49-word runs (same/sibling/cousin
+  containers) merge until the floor is met; <8-word runs (bylines, timestamps) are
+  transparent; headings, page chrome, link-dense and letterless runs are barriers no merge
+  crosses. Full paragraphs never absorb orphans (kept pure). This buys coverage on comment
+  threads/chat/listicles that M1 silently skipped, without ever scoring below the reliability
+  floor, and without merging across topic boundaries. If you change the floors
+  (`MIN_UNIT_WORDS=50`, `MIN_MERGE_WORDS=8` in `lib/dom/text.ts`), keep Pangram's ~50-word
+  reliability policy in mind.
+- **Layout classification is COMPUTED STYLE, tags are fallback.** Inline vs block comes from
+  computed display (with tag-set fallback when style is unavailable). This is what makes
+  div/span sites, display:contents wrappers, inline-block cards and table cells segment like
+  they LOOK. Special cases handled in the walk: BR = paragraph break (merge rejoins), WBR =
+  transparent, floated phrase tags = drop caps (inline), inline-block with block children =
+  embedded card (boundary), visually-hidden inline (sr-only) skipped mid-sentence without
+  closing the run, `visibility:hidden` respected per computed value.
+- **No mid-paragraph size splits, ever.** M1's 1000-char cap chopped the HF abstract and the
+  one-badge-per-block dedup dropped the tail. v2 keeps a unit whole for rendering and caps
+  only the SCORED text at a sentence boundary (4000 chars). If a real backend needs shorter
+  inputs, window internally at the backend — never at the surface.
+- **Ownership model (claims) instead of DOM markers.** M1 marked scored blocks with
+  `data-pangram="scored"` — which broke sites' attribute-sensitive CSS/JS risk-wise, swallowed
+  mutations inside scored blocks (the observer treated them as self-mutations), and made
+  one-badge-per-block dedup drop legitimate second paragraphs (BR case). v2 claims text NODES
+  in a WeakMap; re-scans skip exact-match runs and invalidate stale owners. The page DOM
+  carries zero Pangram attributes (only our own hosts do).
+- **Inline-flow badges, not absolutely-positioned overlays.** M1 positioned badges by
+  measuring the last line rect and injected `position:relative` into page blocks — which
+  breaks sites whose absolutely-positioned descendants anchor to a further ancestor, drifts
+  on reflow, and clips under overflow ancestors. The inline chip reflows with text by
+  construction. The insertion point climbs out of inline ancestors ONLY while the node is the
+  last meaningful child (a `<font>` wrapper spanning a whole BR-essay must not collect every
+  badge at its end — paulgraham.com regression). Badges swallow clicks (a badge inside a link
+  must not navigate).
+- **Highlights are per-PART ranges.** A merged unit spans multiple paragraphs; one range
+  across them would sweep up interstitial content (code blocks, images). Underline color =
+  unit verdict; sentence-level marks remain intentionally unsupported (real detectors,
+  Pangram included, cannot attribute below ~75 words — see the M1 note; don't resurrect
+  sentence marks without a model that localizes).
+- **trafilatura / resiliparse: adopted as HEURISTICS, not as libraries.** Those extractors
+  (and Mozilla Readability) operate on a serialized/cloned document and return extracted
+  text/HTML — but this surface must keep LIVE node references to render in place, and
+  detection must ALSO cover user-generated content (comments, chat) that main-content
+  extractors deliberately strip. So v2 ports their strongest safe signals into
+  `lib/dom/boilerplate.ts` (landmark roles, page-level header/footer/aside outside
+  article/main scope, strong class/id tokens like cookie/consent/paywall/breadcrumb/ad) +
+  the link-density barrier. If the backend ever needs server-side extraction (e.g. for a
+  "score this URL" API), trafilatura is the right tool THERE — not in the content script.
+- **Google Docs = reading view, not canvas heroics.** The editor draws text on `<canvas>`;
+  only the gated Annotated Canvas API could overlay it. Immersive Translate's answer (and
+  ours): swap to the `/mobilebasic` static-HTML view via the FAB action chip and run the
+  normal pipeline there; offer the way back. Published docs (`/pub`) are plain HTML and just
+  work with the generic walker.
+- **Viewport-first is intentional.** Tests must scroll. Don't "fix" a below-fold no-badge.
+- **Stub is deterministic per text** (`cyrb53 → mulberry32`), so badges are stable across
+  re-scans and the e2e is reproducible. Scores are RANDOM by design until the real backend.
+- **Attribute observation is rate-limited** (1.5s per element) so style-animation churn can't
+  storm the drain loop; the debounced drain + claims make repeat scans cheap no-ops.
 
 ---
 
@@ -225,128 +300,103 @@ extension/
 
 ```bash
 npm install
-npm run build          # → output/chrome-mv3/   (WXT; note: outDir is "output", not ".output")
+npm run build          # → output/chrome-mv3/
 npm run typecheck      # wxt prepare && tsc --noEmit
-npm run test:e2e       # Playwright 12-check smoke test (headed) — run after every change
-npm run browser        # opens a persistent LIVE Chromium with the extension for eyeballing
+npm run test:e2e       # Playwright 22-check suite (headed) — run after every change
+npm run browser        # persistent LIVE Chromium with the extension for eyeballing
+node test/sites.mjs    # 8-real-site sweep (incl. HF papers) + screenshots
 ```
 
-**Load into your own Chrome** (best for real-site/login testing — your profile is already
-logged in):
-1. `chrome://extensions` → enable **Developer mode**.
-2. **Load unpacked** → select `/Users/coderbak/Code/pangram/extension/output/chrome-mv3`.
-3. After a rebuild: click the **⟳ reload** icon on the card, then **refresh the page**.
-
-> The build dir is `output/` (renamed from WXT's default `.output/` so it's visible in Finder).
-> It's git-ignored and regenerated by `npm run build`.
+**Load into your own Chrome:** `chrome://extensions` → Developer mode → Load unpacked →
+`output/chrome-mv3`. After a rebuild: reload the extension card, then refresh the page.
 
 ---
 
-## 8. Testing harness (important — no framework, just Node + Playwright)
+## 8. Testing harness (no framework, just Node + Playwright)
 
-- **Playwright + MV3 gotchas (learned the hard way):** load the unpacked extension via
-  `chromium.launchPersistentContext("", { args: ["--disable-extensions-except=…","--load-extension=…"] })`,
-  **headed** (MV3 service workers are unreliable in old headless). Use a **fresh `""` profile**
-  each launch — a persistent profile **caches a stale extension build** and causes lock-race
-  relaunch failures. (This burned us: a "fix didn't work" was actually a stale cached build.)
-- `test/e2e.mjs` serves `selftest.html` over http and asserts **12 checks**: badges render,
-  FAB present, highlights present + span whole sentences, `<pre>/<code>` skipped, short (<50w)
-  skipped, **div-based EN + ZH badged**, rapid-insert (scroll!) badges all, toggle hides/reshows,
-  no console errors. **Run it after every change; keep it green.**
-- `test/sites.mjs` sweeps 6 real sites and prints badge counts + in-chrome(nav/header/footer)
-  counts → catches over/under-badging regressions. Expected: prose sites badge, HN/BBC/Substack ≈ 0.
-- `test/zhihu.mjs [url]` dumps, per largest text block, tag/chars/words/link/nearest-block — use
-  it to diagnose any div-based site that shows nothing. (Note: Zhihu **rate-limits bots (429)**;
-  `/explore` is a directory page with no prose — not representative of the `/follow` feed.)
+- **MV3 gotchas:** load unpacked via `launchPersistentContext("", {args:
+  ["--disable-extensions-except=…","--load-extension=…"]})`, **headed**; use a **fresh `""`
+  profile** each launch (a persistent profile caches a stale build — this burned us).
+- `test/e2e.mjs` — 22 checks over `selftest.html` (served over http): long-paragraph
+  wholeness (HF regression), BR/short-sibling/pre-wrap merging, inline-code integrity,
+  pure CJK, isolated-short skip, never-score zones (code/nav/editable/aria-hidden), zero
+  marker attributes, tab reveal, `<details>`, pushState swap + purge, removal purge, rapid
+  insert, toggle, no console errors. **Keep it green.**
+- `test/sites.mjs` — real-site sweep with per-site badge counts + in-chrome counts +
+  screenshots. Expected: prose sites badge; HN/BBC/Substack ≈ 0; hf-paper ≥ 3 with 0 chrome.
+- Scoring is viewport-first: both scripts scroll before asserting.
 
 ---
 
 ## 9. ★ THE next task: wire a real detection backend
 
-This is the highest-value work and the reason the surface was built backend-agnostic.
+Unchanged plan — the seam is `lib/backend/getScoreClient.ts` (returns
+`RandomStubScoreClient`). Implement a new `ScoreClient` and return it there;
+`scoreBatch(blocks) → Promise<ScoreResult[]>` (one result per block, by id). The router
+gives you dedup, micro-batching, concurrency cap, retry + neutral fallback, and SW caching
+for free.
 
-**Where it plugs in:** `lib/backend/getScoreClient.ts` — a one-function factory currently
-returning `new RandomStubScoreClient()`. Implement a new `ScoreClient` and return it here.
-`scoreBatch(blocks: ScoreBlock[]) → Promise<ScoreResult[]>` (one result per block, by id).
+Options (see `../survey-models.md`): on-device ONNX/transformers.js in the SW (private,
+recommended first), local daemon over HTTP, native messaging, or a remote API (send only
+`domain`/`lang` hints — never full URLs).
 
-Everything else already exists around it: the SW **router** (`lib/backend/router.ts`) gives you
-dedup, micro-batching (800-char budget), concurrency cap (4), single retry + backoff, neutral
-fallback, and SW-side caching **for free** — a new client only has to score a small batch.
-
-**Backend options** (the seam supports all — pick per product goals):
-1. **On-device (recommended first):** ONNX / `transformers.js` model running **in the service
-   worker**. No network, private. Must emit the calibrated `ScoreResult` (detected /
-   theta_interval / e_theta / p_value). Watch MV3 SW memory/CPU limits; consider an offscreen
-   document or WASM threads. See `../survey-models.md` for candidate detectors.
-2. **Local daemon:** `HttpScoreClient` → `http://127.0.0.1:PORT` running the real "pangramd"
-   statistical detector `(text, alpha) → result`.
-3. **Native messaging:** `NativeScoreClient` via `chrome.runtime.connectNative` → `pangramd`.
-4. **Remote API:** `HttpScoreClient` → hosted endpoint (adds privacy/latency considerations;
-   `domain`/`lang` hints are sent, never full URLs — keep it that way).
-
-**Must-dos when going real:**
-- Keep the **exact `ScoreResult` shape** and the **band thresholds** (`band.ts`) meaningful, or
-  fix `band.ts` to match the real calibration. The stub picks `detected = interval_lo > 0.5`;
-  a real model defines its own — verify the band mapping still reads well.
-- Update `STUB_MODEL` / the response `model` field to identify the real model.
-- Real detectors have a **minimum input length** — the 50-word floor already respects Pangram's.
-- Decide `sentence_flags`: leave `[]`/absent unless the model does reliable localization (see §6).
-- Re-run `npm run test:e2e` — but note the self-test's *specific* colors are stub-driven; you may
-  need to adjust fixtures once scores are real. The structural checks (what gets badged) still hold.
+Must-dos when going real:
+- Keep the `ScoreResult` shape; re-verify `band.ts` thresholds against the real calibration.
+- Update the response `model` field (it also keys the SW cache — stale entries invalidate).
+- Note `ScoreBlock.text` is sentence-truncated at ~4000 chars; window longer inputs
+  backend-side if the model wants more.
+- Leave `sentence_flags` empty unless the model reliably localizes (§6).
+- Re-run `npm run test:e2e`; the structural checks hold regardless of scores.
 
 ---
 
 ## 10. Known issues & limitations
 
-- **Google Docs (and other canvas apps) don't work — and can't, with a DOM walker.** Docs renders
-  text to a `<canvas>` (pixels, no DOM text). Real fix requires the **Annotated Canvas** partner
-  API (what Grammarly uses) or the Google Docs API — a gated, separate track. Not a quick fix.
-- **Zhihu `/follow`:** the div-walker fix is implemented and **verified on synthetic div EN+ZH
-  content**, but **not confirmed on the live logged-in feed** (needs the user's session; bot gets
-  429 / `/explore` has no prose). Verify by loading into the user's own Chrome and opening
-  `/follow`. If still empty, likely feed cards are `<a>`-wrapped (link-density skip) or excerpts
-  are <50 words — both tunable in `walker.ts` / `text.ts`.
-- **No icons** (MV3 build intentionally ships without PNG icons for M1).
-- Performance of the generalized walker on huge pages: `querySelectorAll("*")` + `getComputedStyle`
-  for text-bearing elements. Fine so far; watch it on very large SPAs.
+- **Google Docs editor remains canvas** — the reading-view chip is the supported path. A
+  true in-editor overlay needs the gated Annotated Canvas partner API. The `/mobilebasic`
+  view is read-only and mobile-styled (fine on desktop, just plain).
+- **Ephemeral overlays** (toasts, tooltips) can transiently badge if they carry ≥50 words —
+  rare; the purge removes the badge when they go.
+- **Aggressive page CSS** using `!important` on descendants of body could theoretically
+  affect host layout; critical host props are inline + `!important` in the shadow sheet
+  (shadow !important wins), so this is belt-and-suspenders covered.
+- **Very large pages**: the initial walk computes style per element once (cached per scan).
+  Fine on Wikipedia/MDN-scale; profile before optimizing further (idle-chunked walking is
+  the next lever if ever needed).
+- **Copy/paste**: badge text lives in shadow DOM with `user-select:none`; Chrome excludes it
+  from copied text. Other browsers unverified (Firefox port is M-next anyway).
+- **No icons** (MV3 build intentionally ships without PNG icons).
+- **Zhihu live feed** still unverified with a logged-in session (bots get 429). The synthetic
+  div/span fixtures pass; verify on the real `/follow` feed when convenient.
 
 ---
 
-## 11. Git state & immediate housekeeping
+## 11. Git state & housekeeping
 
-- One commit: `e210321 feat: Pangram AI-detection browser extension (M1 surface)`.
-- **Uncommitted working-tree changes that should be committed** (the session after M1):
-  - `lib/dom/walker.ts` — the div/computed-display walker generalization (Zhihu fix).
-  - `wxt.config.ts` + all `test/*.mjs` + `README.md` + `.gitignore` — `.output` → `output` rename.
-  - `test/selftest.html` + `test/e2e.mjs` — div-based EN/ZH fixtures + checks.
-  - `test/zhihu.mjs` — new diagnostic (untracked).
-  - **Suggested:** commit these as "feat(walker): capture div/span-based sites + rename output/".
-- Commit convention (from the repo): author Haoxiang Sun; end messages with the
-  `Co-Authored-By: Claude …` + `Claude-Session: …` trailers (see the M1 commit).
+- `e210321` M1 surface → `284f580` M1 follow-ups (div walker, output/ rename, HANDOFF) →
+  **v2 refactor (this commit)**.
+- Commit convention: author Haoxiang Sun; end messages with the `Co-Authored-By: Claude …`
+  + `Claude-Session: …` trailers.
 - `.gitignore` excludes `output/`, `node_modules/`, `.wxt/`, `test/*.png`, `test/.pw-profile/`.
-- **Not pushed** — no remote configured. Parent `/Users/coderbak/Code/pangram/` is **not** a repo.
+- **Not pushed** — no remote configured. Parent `/Users/coderbak/Code/pangram/` is not a repo.
 
 ---
 
 ## 12. Background reading (parent dir `/Users/coderbak/Code/pangram/`)
 
-- `surface-system-design.md` — full surface-system design (browser-first + desktop AX/OCR,
-  transport, privacy). **The architectural north star.**
-- `extension-build-spec.md` — the paste-ready build spec this extension was built from (contract,
-  walker algorithm, module list, stub design). **Most directly relevant to this repo.**
-- `research.md` — original problem research.
-- `survey-*.md` — landscape survey of AI-text detection: `survey-index.md` (start here),
-  `survey-models.md`, `survey-datasets.md`, `survey-papers-benchmarks.md`,
-  `survey-tools-landscape.md`, `survey-analysis.md`. **Read `survey-models.md` before choosing a
-  real backend.**
+- `surface-system-design.md` — surface-system north star (browser + desktop AX/OCR).
+- `extension-build-spec.md` — the original M1 build spec (superseded in walker/render
+  details by this doc + the code, still right about the contract and the seam).
+- `research.md`, `survey-*.md` — detection landscape. **Read `survey-models.md` before
+  choosing a real backend.**
 
 ---
 
 ## 13. Suggested first moves for the continuing agent
 
-1. Read this file, then `../extension-build-spec.md` and `../surface-system-design.md`.
-2. `npm install && npm run build && npm run test:e2e` — confirm green (12 checks).
-3. `npm run browser` (or load unpacked) — see it live on Wikipedia/Zhihu.
-4. **Commit the uncommitted walker/rename changes** (§11).
-5. Start the real backend (§9): pick an approach, implement a `ScoreClient`, wire it in
+1. Read this file; skim `lib/dom/walker.ts` and `lib/capture/orchestrator.ts` (the two
+   files that define v2 behavior).
+2. `npm install && npm run build && npm run test:e2e` — confirm 22/22 green.
+3. `npm run browser` — eyeball Wikipedia, the HF papers page, paulgraham.com, a dark site.
+4. Start the real backend (§9): pick an approach, implement a `ScoreClient`, wire it in
    `getScoreClient.ts`, keep the contract + bands honest, re-run the e2e.

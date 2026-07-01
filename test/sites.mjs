@@ -1,5 +1,8 @@
 // test/sites.mjs — load the extension across a spread of common sites; capture stats + a
 // screenshot per site. Screenshots: test/site-<name>.png
+//
+// v2 note: the page DOM carries no marker attributes any more; a unit's anchor is
+// the badge host's parentElement (the host is inline, inside the scored block).
 import { chromium } from "playwright";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -15,6 +18,8 @@ if (!existsSync(join(EXT, "manifest.json"))) {
 }
 
 const SITES = [
+  ["hf-paper", "https://huggingface.co/papers/2606.12385"],
+  ["wikipedia", "https://en.wikipedia.org/wiki/Alan_Turing"],
   ["mdn", "https://developer.mozilla.org/en-US/docs/Web/HTTP/Overview"],
   ["paulgraham", "https://www.paulgraham.com/greatwork.html"],
   ["hackernews", "https://news.ycombinator.com/"],
@@ -47,21 +52,29 @@ for (const [name, url] of SITES) {
   }
   if (loaded) {
     await page.waitForSelector(BADGE_SEL, { timeout: 12000 }).catch(() => {});
-    await page.waitForTimeout(3000);
+    // Scroll a couple of screens — scoring is viewport-first by design.
+    await page.evaluate(async () => {
+      for (let i = 0; i < 4; i++) {
+        window.scrollBy(0, Math.round(window.innerHeight * 0.85));
+        await new Promise((r) => setTimeout(r, 350));
+      }
+      window.scrollTo(0, 0);
+    }).catch(() => {});
+    await page.waitForTimeout(2500);
   }
 
   const stats = await page.evaluate((sel) => {
-    const scored = [...document.querySelectorAll('[data-pangram="scored"]')];
     const hosts = [...document.querySelectorAll(sel)];
+    const anchors = hosts.map((h) => h.parentElement).filter(Boolean);
     let chrome = 0;
-    for (const el of scored) {
+    for (const el of anchors) {
       if (el.closest("nav, header, footer, aside, [role=navigation], [role=banner], [role=contentinfo]")) chrome++;
     }
     return {
       badges: hosts.length,
       chromeBadges: chrome,
       fab: document.getElementById("pangram-fab")?.shadowRoot?.querySelector(".count")?.textContent ?? "?",
-      samples: scored.slice(0, 6).map((el) => (el.textContent || "").trim().replace(/\s+/g, " ").slice(0, 55)),
+      samples: anchors.slice(0, 6).map((el) => (el.textContent || "").trim().replace(/\s+/g, " ").slice(0, 55)),
     };
   }, BADGE_SEL).catch(() => ({ badges: 0, chromeBadges: 0, fab: "?", samples: [] }));
 

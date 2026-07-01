@@ -1,44 +1,38 @@
-// lib/dom/tags.ts
-
-/** Stage 1 coarse block-container tags (querySelectorAll targets). UPPERCASE nodeName. */
-export const BLOCK_TAGS = new Set<string>([
-  "H1", "H2", "H3", "H4", "H5", "H6",
-  "TABLE", "OL", "P", "LI", "PRE", // PRE included unless treatPreAsBlock is off (see note)
-]);
+// lib/dom/tags.ts — tag sets for the v2 segmenter.
+//
+// v2 classifies inline-vs-block by COMPUTED DISPLAY (lib/dom/style.ts); tags are now
+// only (a) hard exclusions that no style can override and (b) the fallback inline
+// classification for contexts where computed style is unavailable.
 
 /**
- * Stage 2 inline-text tags. A child whose nodeName IS in this set does NOT break the
- * current unit (text keeps accumulating). "#text" is included so text nodes count.
- * Verbatim from pageTranslator.js:225.
- */
-export const INLINE_TEXT_TAGS = new Set<string>([
-  "#text", "A", "ABBR", "ACRONYM", "B", "BDO", "BIG", "CITE", "DFN", "EM", "I",
-  "LABEL", "Q", "S", "SMALL", "SPAN", "STRONG", "SUB", "SUP", "U", "TT", "VAR",
-]);
-
-/**
- * Inline tags that are IGNORED as non-descended boundaries: they close the current unit
- * and the walker does not recurse into them. Verbatim from pageTranslator.js:226 (+PRE).
- */
-export const INLINE_IGNORE_TAGS = new Set<string>([
-  "BR", "CODE", "KBD", "WBR", "PRE",
-]);
-
-/**
- * Hard "never look inside, never score" tags. Verbatim from pageTranslator.js:227,
- * extended with the detector-appropriate media/form tags from the design doc blocklist.
+ * Hard "never look inside, never score" tags. Media, form controls, embedded
+ * documents, machine text, and ruby annotations (RT/RP would interleave furigana
+ * into the base text).
  */
 export const NO_SCORE_TAGS = new Set<string>([
-  "TITLE", "SCRIPT", "STYLE", "TEXTAREA", "SVG",
-  "NOSCRIPT", "HEAD", "INPUT", "IMG", "VIDEO", "AUDIO", "CANVAS", "MATH",
+  "TITLE", "SCRIPT", "STYLE", "TEXTAREA", "SVG", "MATH",
+  "NOSCRIPT", "HEAD", "INPUT", "SELECT", "OPTION", "OPTGROUP", "DATALIST",
+  "BUTTON", "METER", "PROGRESS",
+  "IMG", "PICTURE", "SOURCE", "TRACK", "VIDEO", "AUDIO", "CANVAS",
+  "IFRAME", "FRAME", "OBJECT", "EMBED", "APPLET",
+  "MAP", "AREA", "TEMPLATE", "STYLE", "LINK", "META", "BASE",
+  "RT", "RP",
 ]);
 
-/** Element is a block boundary in Stage 2 iff its nodeName is NOT inline-text. */
-export function isInlineDisplay(node: Node): boolean {
-  return INLINE_TEXT_TAGS.has(node.nodeName);
-}
+/**
+ * Fallback inline classification when computed style is unavailable (detached or
+ * foreign contexts). Includes the phrase-content tags the M1 walker treated as
+ * inline PLUS code/kbd/samp/etc — inline code must NOT split the sentence around it
+ * (that fragmented MDN/HF-style prose into sub-minimum shards in M1).
+ */
+export const INLINE_FALLBACK_TAGS = new Set<string>([
+  "A", "ABBR", "ACRONYM", "B", "BDO", "BDI", "BIG", "CITE", "CODE", "DATA",
+  "DEL", "DFN", "EM", "FONT", "I", "INS", "KBD", "LABEL", "MARK", "NOBR",
+  "OUTPUT", "Q", "RUBY", "S", "SAMP", "SMALL", "SPAN", "STRONG", "SUB", "SUP",
+  "TIME", "TT", "U", "VAR", "WBR",
+]);
 
-/** Stage 1: is this a candidate block container? */
-export function isBlock(el: Element): boolean {
-  return BLOCK_TAGS.has(el.nodeName);
+/** Heading detection (topic boundaries — never scored, never merged across). */
+export function isHeading(el: Element): boolean {
+  return /^H[1-6]$/.test(el.nodeName) || el.getAttribute("role") === "heading";
 }

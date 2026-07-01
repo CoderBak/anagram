@@ -1,231 +1,431 @@
-// lib/dom/walker.ts — §3 paragraph-detection algorithm (two-stage capture pipeline).
-import { INLINE_TEXT_TAGS, INLINE_IGNORE_TAGS, NO_SCORE_TAGS } from "./tags";
-import { isVisible } from "./visibility";
-import { type Unit, extractUnitText, isInvalidText, linkTextRatio } from "./text";
+// lib/dom/walker.ts — v2 paragraph segmentation.
+//
+// One recursive pass over the COMPOSED tree (shadow roots + slots) segments the
+// page into visual paragraphs by computed layout, then assembles them into
+// scoreable Units:
+//
+//   walk  — text nodes accumulate into an inline RUN; block-laid-out elements
+//           close runs (a run == one visual paragraph). Inline markup — <code>,
+//           <em>, links, drop caps — never splits a sentence. <br> and blank
+//           lines in preserved-whitespace contexts are paragraph breaks.
+//   asm   — runs ≥ MIN_UNIT_WORDS become units directly. Consecutive SHORT runs
+//           (chat messages, list items, comment threads, BR-separated prose)
+//           MERGE into one multi-part unit until the evidence floor is met —
+//           short text gets covered instead of silently skipped. Headings,
+//           boilerplate, link-dense and letterless runs are barriers no merge
+//           may cross.
+//
+// v1's hard 1000-char mid-paragraph split is gone: a long paragraph is ONE unit
+// end-to-end (the HF-abstract "underline stops mid-paragraph" bug); only the text
+// sent to the backend is capped, at a sentence boundary (lib/dom/text.ts).
+import { NO_SCORE_TAGS, INLINE_FALLBACK_TAGS, isHeading } from "./tags";
+import { isBoilerplate } from "./boilerplate";
+import {
+  createStyleCache,
+  flowClassOf,
+  isInlineDisplay,
+  isVisuallyHiddenInline,
+  preservesNewlines,
+} from "./style";
+import { createRectVisibleCache } from "./visibility";
+import {
+  type Unit,
+  type UnitPart,
+  extractPartText,
+  hasLetters,
+  countWords,
+  linkTextRatio,
+  MIN_UNIT_WORDS,
+  MIN_MERGE_WORDS,
+  MAX_UNIT_TEXT_CHARS,
+} from "./text";
 import { MARK_ATTR } from "../types";
 
-const MAX_UNIT_CHARS = 1000; // reference's hard size cap (pageTranslator.js)
-
-/** True if this node/subtree must be skipped entirely (do not descend, do not score). */
-export function isExcluded(node: Node): boolean {
-  if (node.nodeType !== Node.ELEMENT_NODE) return false;
-  const el = node as Element & { isContentEditable?: boolean };
-
-  // Tag-based hard skips.
-  if (INLINE_IGNORE_TAGS.has(el.nodeName)) return true;
-  if (NO_SCORE_TAGS.has(el.nodeName)) return true;
-
-  // Author opt-outs.
-  if (el.classList.contains("notranslate")) return true; // honor existing convention
-  if (el.getAttribute("translate") === "no") return true;
-  if ((el as HTMLElement).isContentEditable) return true; // skip editors (Docs, comment boxes)
-
-  // Our own injected nodes / already-scored subtrees (self-mutation guard).
-  if (el.hasAttribute(MARK_ATTR)) return true;
-  const parent = el.parentElement;
-  if (parent && parent.hasAttribute(MARK_ATTR)) return true;
-  if (el.closest(`[${MARK_ATTR}="host"]`)) return true; // inside a badge host
-  if (el.closest(`[${MARK_ATTR}="scored"]`)) return true;
-
-  return false;
+/** One assembled inline run (== one visual paragraph) awaiting unit assembly. */
+interface Run {
+  nodes: Text[];
+  container: Element;
+  text: string;
+  words: number;
+  linkRatio: number;
 }
 
-/** A child whose nodeName is inline-text does NOT break the current unit. */
-function isInlineNode(node: Node): boolean {
-  return INLINE_TEXT_TAGS.has(node.nodeName);
+export interface CollectOptions {
+  /**
+   * Ownership filter for incremental re-scans. "skip" → this exact run is already
+   * owned by a live unit; "take" → process it (the orchestrator invalidates any
+   * stale owner before answering "take").
+   */
+  claimFilter?: (nodes: Text[]) => "take" | "skip";
 }
+
+/** Max link-text fraction for a run to count as prose (nav/menu barrier above it). */
+const MAX_LINK_RATIO = 0.6;
+
+/** Blank line inside preserved-whitespace text == paragraph gap. */
+const PARA_GAP_RE = /\n[ \t\r]*\n/;
+
+let _unitSeq = 0;
 
 /**
- * STAGE 2 — split a block element's descendant text nodes into Units at inline/block
- * boundaries. Faithful port of getPiecesToTranslate / getAllNodes (pageTranslator.js:394).
+ * TOP-LEVEL — collect scoreable Units under `root` (default: document.body).
+ * Safe to call on subtree roots for incremental re-scans; claimed runs are skipped.
  */
-export function getUnitsForBlock(root: Element): Omit<Unit, "id">[] {
-  const units: Array<Omit<Unit, "id">> = [
-    { nodes: [], parentElement: root, topElement: null, bottomElement: null, text: "", isScored: false },
-  ];
-  let index = 0;
-  let currentSize = 0;
+export function collectUnits(
+  root: ParentNode = document.body,
+  opts: CollectOptions = {},
+): Unit[] {
+  if (!root) return [];
+  const rootEl: Element | null = root instanceof Element ? root : null;
+  if (rootEl && !rootEl.isConnected) return [];
+  if (rootEl && isExcludedByAncestry(rootEl)) return [];
 
-  function closeUnitIfNonEmpty() {
-    if (units[index].nodes.length > 0) {
-      units.push({ nodes: [], parentElement: null as any, topElement: null, bottomElement: null, text: "", isScored: false });
-      index++;
+  const plainTextDoc = document.contentType === "text/plain";
+  const styles = createStyleCache();
+  const rects = createRectVisibleCache();
+  const asm = createAssembler();
+
+  // ---- run accumulation ------------------------------------------------------------
+
+  let cur: Text[] = [];
+  let curContainer: Element | null = null;
+
+  function closeRun(): void {
+    if (cur.length === 0) return;
+    const nodes = cur;
+    const container = curContainer as Element;
+    cur = [];
+    curContainer = null;
+    processRun(nodes, container);
+  }
+
+  function processRun(nodes: Text[], container: Element): void {
+    if (opts.claimFilter && opts.claimFilter(nodes) === "skip") return;
+    if (!rects.get(container)) return; // zero-size container → invisible text
+    const text = extractPartText(nodes).replace(/\s+/g, " ").trim();
+    if (!text) return;
+    asm.run({
+      nodes,
+      container,
+      text,
+      words: countWords(text),
+      linkRatio: linkTextRatio(nodes),
+    });
+  }
+
+  // ---- traversal ---------------------------------------------------------------------
+
+  interface Ctx {
+    container: Element; // nearest block-laid-out ancestor
+    hidden: boolean; // computed visibility: hidden/collapse
+    preserves: boolean; // computed white-space preserves newlines
+  }
+
+  function visitChildren(el: Element, ctx: Ctx): void {
+    for (const child of composedChildren(el)) visit(child, ctx);
+  }
+
+  function visit(node: Node, ctx: Ctx): void {
+    if (node.nodeType === Node.TEXT_NODE) {
+      visitText(node as Text, ctx);
+      return;
     }
-  }
-
-  function walk(node: Node, lastBlockEl: Element | null) {
-    if (node.nodeType === Node.ELEMENT_NODE || node.nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
-      // Shadow fragment: remember host as the "last block element".
-      if (node.nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
-        lastBlockEl = (node as ShadowRoot).host ?? lastBlockEl;
-      } else {
-        lastBlockEl = node as Element;
-      }
-
-      if (isExcluded(node)) {           // BR/CODE/KBD/WBR/PRE, SCRIPT/STYLE/…, notranslate, CE, marked
-        closeUnitIfNonEmpty();
-        return;                         // do NOT descend
-      }
-
-      const children = Array.from((node as Element | ShadowRoot).childNodes);
-      for (const child of children) {
-        if (!isInlineNode(child)) {
-          // BLOCK boundary: close, recurse, close again.
-          closeUnitIfNonEmpty();
-          walk(child, lastBlockEl);
-          closeUnitIfNonEmpty();
-        } else {
-          // INLINE: keep accumulating into the same unit.
-          walk(child, lastBlockEl);
-        }
-      }
-
-      // Descend into an open shadow root if present.
-      const sr = (node as Element).shadowRoot;
-      if (sr) {
-        for (const child of Array.from(sr.childNodes)) {
-          if (!isInlineNode(child)) { closeUnitIfNonEmpty(); walk(child, lastBlockEl); closeUnitIfNonEmpty(); }
-          else walk(child, lastBlockEl);
-        }
-      }
-    } else if (node.nodeType === Node.TEXT_NODE) {
-      const text = node as Text;
-      if ((text.textContent ?? "").trim().length === 0) return; // drop whitespace-only
-
-      const unit = units[index];
-      // Resolve nearest BLOCK ancestor by climbing past inline ancestors.
-      if (!unit.parentElement) {
-        let temp: Node | null = text.parentNode;
-        while (
-          temp && temp !== root &&
-          (INLINE_TEXT_TAGS.has(temp.nodeName) || INLINE_IGNORE_TAGS.has(temp.nodeName))
-        ) {
-          temp = temp.parentNode;
-        }
-        if (temp && temp.nodeType === Node.DOCUMENT_FRAGMENT_NODE) temp = (temp as ShadowRoot).host;
-        unit.parentElement = (temp as Element) ?? root;
-      }
-      if (!unit.topElement) unit.topElement = lastBlockEl;
-
-      // Hard 1000-char cap → force a new unit.
-      if (currentSize > MAX_UNIT_CHARS) {
-        currentSize = 0;
-        unit.bottomElement = lastBlockEl;
-        const carriedParent = unit.parentElement;
-        units.push({ nodes: [], parentElement: carriedParent, topElement: lastBlockEl, bottomElement: null, text: "", isScored: false });
-        index++;
-      }
-      currentSize += (text.textContent ?? "").length;
-      units[index].nodes.push(text);
-      units[index].bottomElement = null;
-    }
-  }
-
-  walk(root, root);
-
-  // Pop trailing empty unit.
-  if (units.length > 0 && units[units.length - 1].nodes.length === 0) units.pop();
-
-  // Finalize text + drop empties/invalids. (parentElement falls back to root.)
-  const out: Array<Omit<Unit, "id">> = [];
-  for (const u of units) {
-    if (u.nodes.length === 0) continue;
-    if (!u.parentElement) u.parentElement = root;
-    u.text = extractUnitText(u.nodes);
-    out.push(u);
-  }
-  return out;
-}
-
-/**
- * STAGE 1 — paragraph-container selection, generalized beyond semantic tags so it also works
- * on sites that build text from <div>/<span> instead of <p> (Zhihu, most React/Vue SPAs).
- * A "paragraph container" = a block-laid-out element that DIRECTLY holds text/inline content
- * (not just nested blocks). We keep the OUTERMOST such elements; getUnitsForBlock then splits
- * each into per-paragraph units, recursing through any nested blocks.
- */
-export function selectBlocks(root: ParentNode): Element[] {
-  const candidates: Element[] = [];
-  for (const el of root.querySelectorAll("*")) {
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const el = node as Element;
     const tag = el.nodeName;
-    if (INLINE_TEXT_TAGS.has(tag) || INLINE_IGNORE_TAGS.has(tag)) continue; // definitely inline
-    if (!hasDirectInlineContent(el)) continue; // cheap: must directly hold text/inline
-    if (isExcluded(el)) continue;
-    if (!isBlockDisplay(el)) continue; // must be block-laid-out (not an inline span)
-    candidates.push(el);
+
+    if (tag === "BR") {
+      closeRun(); // hard line/paragraph break — merge logic rejoins short halves
+      return;
+    }
+    if (tag === "WBR") return; // word-break OPPORTUNITY — must not split the word
+    if (NO_SCORE_TAGS.has(tag)) {
+      closeRun();
+      return;
+    }
+    // <pre> is machine text — except when the whole document IS plain text
+    // (Chrome's text viewer wraps .txt/.log/.md files in body > pre).
+    if (tag === "PRE" && !plainTextDoc) {
+      closeRun();
+      return;
+    }
+    if (el.hasAttribute(MARK_ATTR)) return; // our own UI — transparent, mid-flow safe
+    if (el.getAttribute("translate") === "no" || el.classList.contains("notranslate")) {
+      closeRun();
+      return;
+    }
+    if ((el as HTMLElement).isContentEditable) {
+      closeRun(); // live editors (comment boxes, docs) are never scored
+      return;
+    }
+    if (el.getAttribute("aria-hidden") === "true") {
+      closeRun();
+      return;
+    }
+    if (isBoilerplate(el)) {
+      closeRun();
+      asm.barrier(); // page chrome separates sections — no merging across it
+      return;
+    }
+
+    const cs = styles.get(el);
+    const flow = flowClassOf(el, cs);
+    if (flow === "hidden") {
+      closeRun();
+      return;
+    }
+    if (cs && (cs.opacity === "0" || (cs as any).contentVisibility === "hidden")) {
+      closeRun();
+      return;
+    }
+
+    const hidden = cs ? cs.visibility === "hidden" || cs.visibility === "collapse" : ctx.hidden;
+    const preserves = cs ? preservesNewlines(cs) : ctx.preserves;
+
+    if (flow === "contents") {
+      visitChildren(el, { container: ctx.container, hidden, preserves });
+      return;
+    }
+
+    if (flow === "inline") {
+      // Visually-absent inline content (sr-only labels, "(opens in new tab)") is
+      // skipped WITHOUT closing the run — it sits mid-sentence.
+      if (cs && isVisuallyHiddenInline(cs)) return;
+      // An inline-block/-flex/-grid hosting its own block children is a CARD laid
+      // into the line (tweet embeds, product tiles) — treat as a block boundary.
+      if (cs && cs.display.startsWith("inline-") && hasBlockChildren(el)) {
+        closeRun();
+        visitChildren(el, { container: el, hidden, preserves });
+        closeRun();
+        return;
+      }
+      visitChildren(el, { container: ctx.container, hidden, preserves });
+      return;
+    }
+
+    // block-laid-out from here on.
+    // Floated phrase-tag elements (drop caps: <span class="dropcap">T</span>) still
+    // read as part of the sentence — keep them in the run.
+    const float = cs ? ((cs as any).float ?? cs.cssFloat ?? "none") : "none";
+    if (float !== "none" && INLINE_FALLBACK_TAGS.has(tag)) {
+      visitChildren(el, { container: ctx.container, hidden, preserves });
+      return;
+    }
+    if (isHeading(el)) {
+      closeRun();
+      asm.barrier(); // topic boundary; headings themselves are never scored
+      return;
+    }
+    closeRun();
+    visitChildren(el, { container: el, hidden, preserves });
+    closeRun();
   }
 
-  // Keep the OUTERMOST candidates (drop any with a candidate ancestor); getUnitsForBlock
-  // recurses into nested blocks, so a container's inner content is still captured.
-  const candSet = new Set<Element>(candidates);
-  const outer = candidates.filter((el) => {
-    let p = el.parentElement;
-    while (p && p !== root) {
-      if (candSet.has(p)) return false;
-      p = p.parentElement;
+  function visitText(tn: Text, ctx: Ctx): void {
+    if (ctx.hidden) return;
+    const s = tn.textContent ?? "";
+    if (ctx.preserves && PARA_GAP_RE.test(s)) {
+      splitPreservedText(tn, ctx);
+      return;
     }
-    return true;
-  });
+    if (s.trim().length === 0) return;
+    cur.push(tn);
+    curContainer ??= ctx.container;
+  }
 
-  const valid = outer.filter((el) => {
-    if (!isVisible(el)) return false;
-    // image-only <P> filter: a P that is basically just an image.
-    if (el.nodeName === "P" && el.querySelector("img") && el.childNodes.length < 3) {
-      return (el as HTMLElement).innerText.length >= 80;
+  /**
+   * Preserved-whitespace text (plain-text docs, pre-wrap chat transcripts): blank
+   * lines are paragraph gaps. The node is split ONCE at each gap (idempotent — the
+   * resulting chunk nodes contain no further gaps) so parts stay whole-node spans.
+   */
+  function splitPreservedText(tn: Text, ctx: Ctx): void {
+    let node: Text = tn;
+    for (;;) {
+      const s = node.textContent ?? "";
+      const m = PARA_GAP_RE.exec(s);
+      if (!m) {
+        if (s.trim()) {
+          cur.push(node);
+          curContainer ??= ctx.container;
+        }
+        return;
+      }
+      if (m.index > 0) {
+        const rest = node.splitText(m.index); // node keeps the paragraph text
+        if ((node.textContent ?? "").trim()) {
+          cur.push(node);
+          curContainer ??= ctx.container;
+        }
+        closeRun();
+        node = rest; // rest begins with the gap → next iteration hits index 0
+        continue;
+      }
+      // Gap at position 0: consume it (and any following blank space) and move on.
+      let end = m.index + m[0].length;
+      while (end < s.length && /\s/.test(s[end])) end++;
+      const rest = node.splitText(end);
+      closeRun();
+      node = rest;
     }
-    return true;
-  });
+  }
 
-  valid.sort((a, b) =>
-    a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
-  );
-  return valid;
+  function hasBlockChildren(el: Element): boolean {
+    for (const c of el.children) {
+      const d = styles.get(c)?.display ?? "";
+      if (d && d !== "none" && d !== "contents" && !isInlineDisplay(d)) return true;
+    }
+    return false;
+  }
+
+  // ---- go ------------------------------------------------------------------------
+
+  const startEl = rootEl ?? document.body;
+  if (!startEl) return [];
+  visit(startEl, { container: startEl, hidden: false, preserves: false });
+  closeRun();
+  return asm.finish();
 }
 
-/** True if el directly contains rendered text — a non-empty text node or an inline element. */
-function hasDirectInlineContent(el: Element): boolean {
-  for (const child of el.childNodes) {
-    if (child.nodeType === Node.TEXT_NODE) {
-      if ((child.textContent ?? "").trim().length > 0) return true;
-    } else if (child.nodeType === Node.ELEMENT_NODE && INLINE_TEXT_TAGS.has(child.nodeName)) {
-      return true;
-    }
+/** Composed-tree children: shadow root replaces light children; slots resolve. */
+function composedChildren(el: Element): Node[] {
+  const sr = el.shadowRoot;
+  if (sr) return Array.from(sr.childNodes);
+  if (typeof HTMLSlotElement !== "undefined" && el instanceof HTMLSlotElement) {
+    return el.assignedNodes({ flatten: true });
+  }
+  return Array.from(el.childNodes);
+}
+
+/** Hard exclusion check up the ancestor chain — guards partial re-scan roots. */
+function isExcludedByAncestry(start: Element): boolean {
+  const plainTextDoc = document.contentType === "text/plain";
+  let el: Element | null = start;
+  while (el) {
+    const tag = el.nodeName;
+    if (NO_SCORE_TAGS.has(tag)) return true;
+    if (tag === "PRE" && !plainTextDoc) return true;
+    if (el.hasAttribute(MARK_ATTR)) return true;
+    if (el.getAttribute("translate") === "no" || el.classList.contains("notranslate")) return true;
+    if ((el as HTMLElement).isContentEditable) return true;
+    if (el.getAttribute("aria-hidden") === "true") return true;
+    if (isBoilerplate(el)) return true;
+    el = el.parentElement ?? ((el.getRootNode() as ShadowRoot).host ?? null);
   }
   return false;
 }
 
-/** True if el is laid out as a block (a paragraph container), not an inline span. */
-function isBlockDisplay(el: Element): boolean {
-  const d = getComputedStyle(el).display;
-  return d !== "none" && d !== "contents" && !d.startsWith("inline");
+// ---- unit assembly ---------------------------------------------------------------
+
+interface Assembler {
+  run(r: Run): void;
+  barrier(): void;
+  finish(): Unit[];
 }
 
 /**
- * TOP-LEVEL — collectUnits(root): Stage 1 → Stage 2 → filter noise → emit Units with ids.
- * This is the public entry the orchestrator calls.
+ * Merge compatibility: same container (BR-split halves), sibling containers (chat
+ * messages, <li>s), or one-level cousins (<li><p> structures). Anything further
+ * apart is a different section and must not merge.
  */
-let _unitCounter = 0;
-export function collectUnits(root: ParentNode = document.body): Unit[] {
-  const blocks = selectBlocks(root);
-  // Cache isVisible verdicts for this scan (parentElement repeats across a block's units).
-  const visCache = new WeakMap<Element, boolean>();
-  const visible = (el: Element): boolean => {
-    let v = visCache.get(el);
-    if (v === undefined) {
-      v = isVisible(el);
-      visCache.set(el, v);
-    }
-    return v;
-  };
+function compatible(a: Element, b: Element): boolean {
+  if (a === b) return true;
+  const ap = a.parentElement;
+  const bp = b.parentElement;
+  if (ap && ap === bp) return true;
+  if (ap && bp && (ap === bp.parentElement || bp === ap.parentElement)) return true;
+  return false;
+}
 
+function createAssembler(): Assembler {
   const units: Unit[] = [];
-  for (const block of blocks) {
-    for (const partial of getUnitsForBlock(block)) {
-      if (isInvalidText(partial.text)) continue;        // min-length / noise floor
-      if (!visible(partial.parentElement)) continue;    // explicit visibility skip (cached)
-      if (linkTextRatio(partial.nodes) > 0.6) continue; // skip link-dense (titles/nav/lists)
-      units.push({ ...partial, id: `b_${(_unitCounter++).toString(36)}` });
-    }
+  let group: Run[] = [];
+  let groupWords = 0;
+  /** Last unit emitted via the merge path — may absorb a trailing short orphan. */
+  let lastMergedUnit: Unit | null = null;
+
+  function emit(runs: Run[]): Unit {
+    const parts: UnitPart[] = runs.map((r) => ({ nodes: r.nodes, container: r.container }));
+    const text = runs.map((r) => r.text).join("\n\n").slice(0, MAX_UNIT_TEXT_CHARS);
+    const seq = _unitSeq++;
+    const unit: Unit = {
+      id: `u_${seq.toString(36)}`,
+      parts,
+      text,
+      wordCount: runs.reduce((n, r) => n + r.words, 0),
+      order: seq,
+      topElement: runs[0].container,
+      container: runs[runs.length - 1].container,
+      isScored: false,
+    };
+    units.push(unit);
+    return unit;
   }
-  return units;
+
+  function extend(unit: Unit, runs: Run[]): void {
+    for (const r of runs) unit.parts.push({ nodes: r.nodes, container: r.container });
+    unit.text = (unit.text + "\n\n" + runs.map((r) => r.text).join("\n\n")).slice(
+      0,
+      MAX_UNIT_TEXT_CHARS,
+    );
+    unit.wordCount += runs.reduce((n, r) => n + r.words, 0);
+    unit.container = runs[runs.length - 1].container;
+  }
+
+  function flushGroup(): void {
+    if (group.length === 0) return;
+    const g = group;
+    const words = groupWords;
+    group = [];
+    groupWords = 0;
+    if (words >= MIN_UNIT_WORDS) {
+      lastMergedUnit = emit(g);
+    } else if (
+      lastMergedUnit &&
+      compatible(lastMergedUnit.container, g[0].container)
+    ) {
+      extend(lastMergedUnit, g); // trailing orphan joins the previous merged unit
+    }
+    // else: below the evidence floor with nothing to join — dropped (by policy).
+  }
+
+  return {
+    barrier(): void {
+      flushGroup();
+      lastMergedUnit = null; // nothing merges or extends across a barrier
+    },
+
+    run(r: Run): void {
+      if (!hasLetters(r.text)) {
+        // "* * *" separators, number rows: visual dividers → barrier.
+        flushGroup();
+        lastMergedUnit = null;
+        return;
+      }
+      if (r.linkRatio > MAX_LINK_RATIO) {
+        // Nav/menu/story-title lists: not prose AND a section boundary.
+        flushGroup();
+        lastMergedUnit = null;
+        return;
+      }
+      if (r.words >= MIN_UNIT_WORDS) {
+        flushGroup();
+        emit([r]); // full paragraphs stay pure — they never absorb orphans
+        lastMergedUnit = null;
+        return;
+      }
+      if (r.words < MIN_MERGE_WORDS) return; // bylines/timestamps — transparent
+      if (group.length > 0 && !compatible(group[group.length - 1].container, r.container)) {
+        flushGroup();
+        lastMergedUnit = null; // container context changed
+      }
+      group.push(r);
+      groupWords += r.words;
+      if (groupWords >= MIN_UNIT_WORDS) flushGroup();
+    },
+
+    finish(): Unit[] {
+      flushGroup();
+      return units;
+    },
+  };
 }

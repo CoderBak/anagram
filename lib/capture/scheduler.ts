@@ -1,14 +1,15 @@
-// lib/capture/scheduler.ts — 3-lane priority queue + epoch/generation guard (§4.3).
+// lib/capture/scheduler.ts — 3-lane priority queue + epoch/generation guard.
 //
 // Lanes: viewport > near > background. Units are micro-batched up to a char budget
-// (default 800), with a bounded fan-out (maxInFlight=4). Dedup is by UNIT IDENTITY — a unit
-// is never enqueued twice — NOT by text: distinct paragraphs that happen to share the same
-// text must each get their own badge. (Request-level dedup by text lives in the
-// orchestrator's send(), which scores each unique text once and fans the result out to every
-// id.) Each enqueue captures the current epoch; a response is discarded if its epoch no
-// longer matches — bumpEpoch() bumps on SPA nav / teardown so stale renders never paint.
+// (default 800) with a bounded fan-out (maxInFlight=4). Dedup is by UNIT IDENTITY —
+// a unit is never in flight twice — NOT by text: distinct paragraphs sharing the
+// same text each need their own badge (text-level dedup lives in the orchestrator's
+// send()). A unit already queued in a LOWER lane is upgraded when re-enqueued for a
+// higher one (near → viewport on scroll). Each enqueue captures the current epoch;
+// responses from a superseded generation are discarded.
 import type { Unit, Lane } from "../types";
 import type { ScoreBlock, ScoreResult } from "../contract";
+import { truncateForScoring } from "../dom/text";
 
 export interface Scheduler {
   enqueue(unit: Unit, lane: Lane): void;
@@ -18,6 +19,7 @@ export interface Scheduler {
 }
 
 const LANES: Lane[] = ["viewport", "near", "background"];
+const LANE_RANK: Record<Lane, number> = { viewport: 0, near: 1, background: 2 };
 
 interface Pending {
   unit: Unit;
@@ -25,8 +27,8 @@ interface Pending {
 }
 
 export function createScheduler(opts: {
-  batchCharBudget: number; // default 800 (reference) — parameterized
-  maxInFlight: number; // concurrency cap the reference LACKED (default 4)
+  batchCharBudget: number;
+  maxInFlight: number;
   send(blocks: ScoreBlock[], lane: Lane): Promise<ScoreResult[]>;
   render(results: ScoreResult[], epoch: number): void;
 }): Scheduler {
@@ -43,14 +45,21 @@ export function createScheduler(opts: {
   let inFlight = 0;
   let pumpScheduled = false;
 
-  // Dedup by UNIT id: a unit is queued or in flight, never both, never twice. Distinct
-  // units with identical text are all kept — each one needs its own badge.
-  const queuedIds = new Set<string>();
+  // id → lane it is queued in (for upgrade); in-flight ids are separate.
+  const queuedLane = new Map<string, Lane>();
   const inFlightIds = new Set<string>();
 
   function enqueue(unit: Unit, lane: Lane): void {
-    if (queuedIds.has(unit.id) || inFlightIds.has(unit.id)) return; // same unit only
-    queuedIds.add(unit.id);
+    if (inFlightIds.has(unit.id)) return;
+    const existing = queuedLane.get(unit.id);
+    if (existing !== undefined) {
+      if (LANE_RANK[lane] >= LANE_RANK[existing]) return; // same or lower — keep
+      // Upgrade: pull out of the lower lane, re-push into the higher one.
+      const q = queues[existing];
+      const i = q.findIndex((p) => p.unit.id === unit.id);
+      if (i >= 0) q.splice(i, 1);
+    }
+    queuedLane.set(unit.id, lane);
     queues[lane].push({ unit, epoch: currentEpoch });
     schedulePump();
   }
@@ -64,7 +73,7 @@ export function createScheduler(opts: {
     });
   }
 
-  /** Pull the next batch from the highest-priority non-empty lane, up to the char budget. */
+  /** Pull the next batch from the highest-priority non-empty lane, up to the budget. */
   function pickBatch(): { lane: Lane; batch: Pending[] } | null {
     for (const lane of LANES) {
       const q = queues[lane];
@@ -73,10 +82,10 @@ export function createScheduler(opts: {
       let chars = 0;
       while (q.length > 0) {
         const next = q[0];
-        // Always take at least one; stop before exceeding the budget thereafter.
-        if (batch.length > 0 && chars + next.unit.text.length > batchCharBudget) break;
+        const len = Math.min(next.unit.text.length, 4096);
+        if (batch.length > 0 && chars + len > batchCharBudget) break;
         batch.push(q.shift()!);
-        chars += next.unit.text.length;
+        chars += len;
         if (chars >= batchCharBudget) break;
       }
       return { lane, batch };
@@ -95,49 +104,42 @@ export function createScheduler(opts: {
   function dispatch(lane: Lane, batch: Pending[]): void {
     inFlight++;
     for (const p of batch) {
-      queuedIds.delete(p.unit.id);
+      queuedLane.delete(p.unit.id);
       inFlightIds.add(p.unit.id);
     }
-    // All entries in a batch share the live epoch (bumpEpoch clears the queues).
     const batchEpoch = batch[0].epoch;
-    const blocks: ScoreBlock[] = batch.map((p, i) => ({
+    const blocks: ScoreBlock[] = batch.map((p) => ({
       id: p.unit.id,
-      text: p.unit.text,
-      order: i,
+      // Long paragraphs render whole but are SCORED on a sentence-bounded prefix.
+      text: truncateForScoring(p.unit.text),
+      order: p.unit.order,
     }));
 
     opts
       .send(blocks, lane)
       .then((results) => {
-        // Epoch/generation guard: discard renders from a superseded scan generation.
         if (batchEpoch === currentEpoch) {
           opts.render(results, batchEpoch);
         }
       })
       .catch(() => {
-        // The router owns retry + neutral fallback; swallow here so the pump survives.
+        // The router owns retry + neutral fallback; swallow so the pump survives.
       })
       .finally(() => {
         inFlight--;
         for (const p of batch) inFlightIds.delete(p.unit.id);
-        schedulePump(); // keep draining behind the concurrency cap
+        schedulePump();
       });
   }
 
   function bumpEpoch(): number {
     currentEpoch++;
-    // Drop everything still queued for the old generation; in-flight responses are
-    // discarded by the epoch guard when they land.
-    for (const lane of LANES) {
-      const q = queues[lane];
-      for (const p of q) queuedIds.delete(p.unit.id);
-      q.length = 0;
-    }
+    for (const lane of LANES) queues[lane].length = 0;
+    queuedLane.clear();
     return currentEpoch;
   }
 
   function flush(): void {
-    // Force an immediate drain of whatever is queued (partial batches go out).
     pumpScheduled = false;
     pump();
   }

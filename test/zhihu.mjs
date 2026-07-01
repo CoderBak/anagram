@@ -53,7 +53,7 @@ const diag = await page.evaluate((sel) => {
       inLink: !!r.el.closest("a"),
       nearestBlock: nearestBlock(r.el),
       hasInnerP: !!r.el.querySelector("p"),
-      badged: !!(r.el.closest('[data-pangram="scored"]') || r.el.querySelector('[data-pangram="host"]')),
+      badged: !!(r.el.querySelector('[data-pangram="host"]') || (r.el.closest && [...document.querySelectorAll('[data-pangram="host"]')].some((h) => r.el.contains(h) || h.parentElement?.contains(r.el)))),
       sample: r.t.slice(0, 46),
     }));
 

@@ -1,9 +1,11 @@
-// entrypoints/content.ts — main content script (spec §4.1).
-// Constructs + starts the orchestrator when scoring is enabled for this site, and listens
-// for popup/SW control messages (RESCAN / SET_ENABLED / GET_TAB_STATE / TEARDOWN).
+// entrypoints/content.ts — main content script.
+// Constructs + starts the orchestrator when scoring is enabled for this site,
+// wires the Google Docs reading-view action, and listens for popup/SW control
+// messages (RESCAN / SET_ENABLED / GET_TAB_STATE / TEARDOWN).
 import { defineContentScript, browser } from "#imports";
 import { createOrchestrator } from "../lib/capture/orchestrator";
 import { enabledForSite } from "../lib/settings/settings";
+import { detectDocsPage, readingViewUrl, editorUrl } from "../lib/docs";
 import { ACTIONS } from "../lib/messaging/protocol";
 import type { ControlMessage, TabState } from "../lib/messaging/protocol";
 
@@ -15,6 +17,21 @@ export default defineContentScript({
     const orchestrator = createOrchestrator(ctx);
     let enabled = await enabledForSite(location.hostname);
     if (enabled) orchestrator.start();
+
+    // Google Docs: the editor is a canvas (no DOM text). Offer the static-HTML
+    // reading view; from the reading view, offer the way back.
+    const docs = detectDocsPage(location);
+    if (docs) {
+      if (docs.kind === "editor") {
+        orchestrator.setFabAction("Open reading view", () => {
+          location.href = readingViewUrl(docs.id);
+        });
+      } else {
+        orchestrator.setFabAction("Back to editor", () => {
+          location.href = editorUrl(docs.id);
+        });
+      }
+    }
 
     browser.runtime.onMessage.addListener(
       (

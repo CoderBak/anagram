@@ -1,8 +1,10 @@
 # Pangram AI Detector (M1)
 
 A Manifest V3 Chrome extension (built with [WXT](https://wxt.dev)) that detects
-AI-generated text on web pages and renders a per-paragraph AI-confidence badge
-(Shadow DOM) plus an optional in-place highlight. It is **not** a translator.
+AI-generated text on web pages and renders an inline AI-confidence chip (Shadow
+DOM) plus a colored underline per scored unit. Short neighbouring paragraphs are
+merged into one unit so chat/comment-style content is covered; long paragraphs are
+never split. It is **not** a translator.
 
 The detection backend is a swappable `ScoreClient` seam; M1 ships an in-extension
 **random stub** that returns the same contract the real backend will.
@@ -33,9 +35,9 @@ npm run build      # outputs output/chrome-mv3/
 
 ## Self-test
 
-Open `test/selftest.html` (enable "Allow access to file URLs" for the extension).
-Each paragraph / list item / blockquote should show one badge; `<pre>`/`<code>`
-and short fragments show none. See the build spec §8.5.
+Run `npm run test:e2e` (22 checks over `test/selftest.html`, served over http),
+or `npm run browser` for a live window. `node test/sites.mjs` sweeps real sites
+(incl. the HuggingFace papers page) with screenshots. See HANDOFF.md §8.
 
 ## Layout
 

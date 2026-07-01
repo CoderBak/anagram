@@ -1,13 +1,12 @@
-// lib/render/badge.ts — Shadow-DOM per-paragraph badge layer (§4.8).
+// lib/render/badge.ts — Shadow-DOM per-unit badge layer.
 //
-// For each scored Unit we mount ONE Shadow-DOM host element anchored to
-// `unit.parentElement`. The host is appended as the last child of the anchor block and
-// absolutely positioned into a corner (the anchor gets `position: relative` if it is
-// statically positioned) so the badge stays small and avoids major layout shift.
-//
-// The host carries MARK_ATTR="host" and the anchor block is marked MARK_ATTR="scored" so
-// the walker's self-mutation guard skips both on re-walk. Constructable stylesheets are
-// adopted into the shadow root — we never fetch a CSS URL.
+// v2 renders each badge as an INLINE-FLOW chip inserted right after the unit's
+// last text run (climbing out of inline ancestors so it never lands inside a
+// link). Because it participates in layout it reflows with the text — no absolute
+// positioning, no `position:relative` injection into page elements, no marker
+// attributes on page DOM, no clipping by overflow ancestors, correct in RTL and
+// with floats. The chip shows a colored dot + the AI-involvement number; a hover
+// card carries the full calibrated readout.
 import type { Unit } from "../types";
 import { MARK_ATTR } from "../types";
 import type { ScoreResult } from "../contract";
@@ -33,128 +32,179 @@ function badgeSheet(): CSSStyleSheet {
 }
 
 export function createBadgeLayer(): BadgeLayer {
-  // Track mounted hosts by unit id for idempotent re-render + teardown.
   const hosts = new Map<string, HTMLElement>();
+  // Dark-context verdict per container (bg colors rarely change mid-session).
+  const darkCache = new WeakMap<Element, boolean>();
+  let visible = true;
 
   function render(unit: Unit, result: ScoreResult): void {
-    const anchor = unit.parentElement as HTMLElement | null;
-    if (!anchor) return;
-
     const b: Band = band(result);
-    const label = BAND_LABEL[b];
-
     let host = hosts.get(unit.id);
 
-    if (!host) {
-      // First mount: create the host, attach a shadow root, adopt the stylesheet.
-      host = document.createElement("span");
-      host.setAttribute(MARK_ATTR, "host");
-      const shadow = host.attachShadow({ mode: "open" });
-      shadow.adoptedStyleSheets = [badgeSheet()];
-
-      const pill = document.createElement("span");
-      pill.className = "pill";
-      const dot = document.createElement("span");
-      dot.className = "dot";
-      const labelEl = document.createElement("span");
-      labelEl.className = "label";
-      pill.append(dot, labelEl);
-      shadow.appendChild(pill);
-
-      // Anchor the host: ensure the block is a positioning context so the absolutely
-      // positioned host lands in its corner, then append as the last child.
-      ensurePositioned(anchor);
-      anchor.appendChild(host);
-
-      // Mark the scored block so the walker's self-mutation guard skips it on re-walk.
-      anchor.setAttribute(MARK_ATTR, "scored");
-
+    if (!host || !host.isConnected) {
+      host?.remove();
+      host = buildHost();
+      const anchor = insertionPoint(unit);
+      if (!anchor) return; // unit detached mid-flight — purge will collect it
+      anchor.after(host);
       hosts.set(unit.id, host);
     }
 
-    // Anchor the badge just after where the paragraph's TEXT actually ends (its last line),
-    // so it sits beside the words — not out in the empty box area next to a floated infobox,
-    // figure or sidebar (paragraph boxes are full-width on sites like Wikipedia).
-    positionBadge(host, anchor);
+    host.classList.toggle("pg-hidden", !visible);
+    host.classList.toggle("pg-dark", isDarkContext(unit.container, darkCache));
 
-    // Idempotent update-in-place: refresh the label text + band class (keep the dot).
-    const pill = host.shadowRoot?.querySelector(".pill") as HTMLElement | null;
-    const labelEl = host.shadowRoot?.querySelector(".label") as HTMLElement | null;
-    if (pill && labelEl) {
-      // Minimal chip: coloured dot + the AI-involvement number (0–100). The full label and
-      // an "estimate, not proof" caveat live on hover so the chip stays uncluttered.
-      const pct = Math.round(result.e_theta * 100);
-      labelEl.textContent = b === "unknown" ? "?" : String(pct);
-      pill.className = `pill band-${b}`;
-      pill.title =
-        b === "unknown"
-          ? "Insufficient text to judge"
-          : `${label} · est. ${pct}% AI involvement (calibrated estimate, not proof)`;
-    }
+    const root = host.shadowRoot!;
+    const pill = root.querySelector(".pill") as HTMLElement;
+    const num = root.querySelector(".num") as HTMLElement;
+    const pct = Math.round(result.e_theta * 100);
+
+    pill.className = `pill band-${b}`;
+    num.textContent = b === "unknown" ? "?" : String(pct);
+
+    renderCard(root.querySelector(".card") as HTMLElement, unit, result, b, pct);
+  }
+
+  function buildHost(): HTMLElement {
+    const host = document.createElement("span");
+    host.setAttribute(MARK_ATTR, "host");
+    host.setAttribute("aria-hidden", "true");
+    // Inline styles back up the !important :host rules against page CSS.
+    host.style.cssText = "display:inline-block;position:relative;margin-left:6px;";
+    // A badge can legitimately sit inside an <a>; a click on it must never
+    // navigate or trigger page handlers.
+    host.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    const shadow = host.attachShadow({ mode: "open" });
+    shadow.adoptedStyleSheets = [badgeSheet()];
+
+    const pill = document.createElement("span");
+    pill.className = "pill";
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    const num = document.createElement("span");
+    num.className = "num";
+    pill.append(dot, num);
+
+    const card = document.createElement("div");
+    card.className = "card";
+
+    shadow.append(pill, card);
+    return host;
+  }
+
+  function renderCard(
+    card: HTMLElement,
+    unit: Unit,
+    result: ScoreResult,
+    b: Band,
+    pct: number,
+  ): void {
+    const [lo, hi] = result.theta_interval;
+    const row = (k: string, v: string) =>
+      `<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+    const partsNote =
+      unit.parts.length > 1 ? ` · ${unit.parts.length} paragraphs analyzed together` : "";
+    card.innerHTML =
+      `<div class="head"><span class="verdict band-${b}">${BAND_LABEL[b]}</span>` +
+      `<span class="big">${b === "unknown" ? "—" : pct + "%"}</span></div>` +
+      row("AI involvement (est.)", `${Math.round(lo * 100)}–${Math.round(hi * 100)}%`) +
+      row("p-value vs human", result.p_value.toFixed(3)) +
+      row("Words analyzed", `${unit.wordCount}`) +
+      `<div class="foot">Calibrated estimate, not proof${partsNote}.</div>`;
   }
 
   function remove(id: string): void {
     const host = hosts.get(id);
     if (!host) return;
-    const anchor = host.parentElement;
     host.remove();
     hosts.delete(id);
-    // If the anchor no longer hosts any of our badges, drop the scored marker so it can
-    // be re-walked and re-scored later.
-    if (anchor && !anchor.querySelector(`[${MARK_ATTR}="host"]`)) {
-      anchor.removeAttribute(MARK_ATTR);
-    }
   }
 
-  function setVisible(visible: boolean): void {
-    for (const [, host] of hosts) host.classList.toggle("pg-hidden", !visible);
+  function setVisible(v: boolean): void {
+    visible = v;
+    for (const [, host] of hosts) host.classList.toggle("pg-hidden", !v);
   }
 
   function teardownAll(): void {
-    for (const [, host] of hosts) {
-      const anchor = host.parentElement;
-      host.remove();
-      if (anchor && !anchor.querySelector(`[${MARK_ATTR}="host"]`)) {
-        anchor.removeAttribute(MARK_ATTR);
-      }
-    }
+    for (const [, host] of hosts) host.remove();
     hosts.clear();
   }
 
   return { render, remove, setVisible, teardownAll };
 }
 
-/** Make `el` a positioning context for the absolutely-positioned host, if it is not one. */
-function ensurePositioned(el: HTMLElement): void {
-  const pos = getComputedStyle(el).position;
-  if (pos === "static") {
-    el.style.position = "relative";
+/**
+ * Where the badge goes: after the unit's last text node, climbed out of inline
+ * ancestors so the chip sits in the block's flow (never inside an <a>/<em>).
+ * Climbing only continues while the node is the LAST meaningful child of its
+ * inline parent — an inline wrapper can span many BR-separated paragraphs
+ * (1990s-style <font> essays), and climbing past mid-wrapper content would pile
+ * every badge at the wrapper's end.
+ */
+function insertionPoint(unit: Unit): ChildNode | null {
+  const lastPart = unit.parts[unit.parts.length - 1];
+  const nodes = lastPart.nodes;
+  const lastNode = nodes[nodes.length - 1];
+  if (!lastNode || !lastNode.isConnected) return null;
+  let n: Node = lastNode;
+  for (let i = 0; i < 12; i++) {
+    const p = n.parentElement;
+    if (!p || p === lastPart.container) break;
+    if (!isInlineFlowElement(p)) break;
+    if (!isLastMeaningfulChild(n, p)) break;
+    n = p;
+  }
+  return n as ChildNode;
+}
+
+/** True if nothing but whitespace / our own hosts follows `n` inside `parent`. */
+function isLastMeaningfulChild(n: Node, _parent: Element): boolean {
+  let sib = n.nextSibling;
+  while (sib) {
+    if (sib.nodeType === Node.TEXT_NODE) {
+      if ((sib.textContent ?? "").trim()) return false;
+    } else if (sib.nodeType === Node.ELEMENT_NODE) {
+      if (!(sib as Element).hasAttribute(MARK_ATTR)) return false;
+    }
+    sib = sib.nextSibling;
+  }
+  return true;
+}
+
+function isInlineFlowElement(el: Element): boolean {
+  try {
+    const d = getComputedStyle(el).display;
+    return d.startsWith("inline") || d === "ruby" || d === "contents";
+  } catch {
+    return false;
   }
 }
 
-/**
- * Place the host just after the end of the paragraph's last line of TEXT. Using the text's
- * client rects (not the box's right edge) keeps the badge beside the words even when the box
- * is full-width with a floated figure/infobox/sidebar in the empty area (e.g. Wikipedia).
- */
-function positionBadge(host: HTMLElement, anchor: HTMLElement): void {
-  let left = anchor.clientWidth;
-  let top = 0;
-  try {
-    const range = document.createRange();
-    range.selectNodeContents(anchor);
-    // Exclude our own badge (the last child) from the measurement.
-    if (host.parentElement === anchor) range.setEndBefore(host);
-    const rects = range.getClientRects();
-    if (rects.length > 0) {
-      const base = anchor.getBoundingClientRect();
-      const last = rects[rects.length - 1];
-      left = last.right - base.left;
-      top = last.top - base.top + last.height / 2 - 10; // center the 20px pill on the line
+/** True if the text around `el` sits on a dark background (nearest painted bg). */
+function isDarkContext(el: Element, cache: WeakMap<Element, boolean>): boolean {
+  const hit = cache.get(el);
+  if (hit !== undefined) return hit;
+  let dark = false;
+  let node: Element | null = el;
+  for (let i = 0; i < 8 && node; i++, node = node.parentElement) {
+    const rgba = parseColor(getComputedStyle(node).backgroundColor);
+    if (rgba && rgba.a > 0.1) {
+      dark = luminance(rgba) < 0.42;
+      break;
     }
-  } catch {
-    /* fall back to the top-right of the box */
   }
-  host.style.left = `${Math.max(0, left) + 8}px`;
-  host.style.top = `${Math.max(0, top)}px`;
+  cache.set(el, dark);
+  return dark;
+}
+
+function parseColor(s: string): { r: number; g: number; b: number; a: number } | null {
+  const m = s.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)/);
+  if (!m) return null;
+  return { r: +m[1], g: +m[2], b: +m[3], a: m[4] === undefined ? 1 : +m[4] };
+}
+
+function luminance(c: { r: number; g: number; b: number }): number {
+  return (0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b) / 255;
 }

@@ -1,48 +1,53 @@
 // lib/capture/observers.ts — IntersectionObserver (viewport-first) + MutationObserver
-// (dirty queue) (§4.3).
+// (dirty queue).
 //
-// IntersectionObserver { root: null, rootMargin: "500px 0px", threshold: 0 } replaces
-// the reference's 600ms getBoundingClientRect poll: an entry that intersects the real
-// viewport → onVisible (viewport lane); an entry that intersects only within the
-// rootMargin band → onNear (near lane).
-//
-// MutationObserver { childList, subtree, characterData } pushes dirty subtrees into a
-// dedup Set and tracks removedNodes, drained on a 250ms trailing-edge debounce — an
-// upgrade from the reference's blunt 2000ms setInterval. A self-mutation guard skips
-// our own injected DOM (MARK_ATTR hosts) and inline/no-score churn so the badge layer
-// never feeds its own mutations back into the queue.
+// v2 fixes over M1:
+// - Dispatch latches key off UNIT ID, not element identity. (M1 latched elements in
+//   a WeakSet, so after a rescan or a disable→enable cycle the same elements never
+//   re-fired and nothing was ever scored again.)
+// - An element can anchor SEVERAL units (a container whose BR-split halves each
+//   cleared the word floor), so the registry is Element → Map<unitId, Unit>.
+// - Attribute mutations (class/style/hidden/open/aria-hidden) mark subtrees dirty:
+//   tab panels, accordions, "read more" reveals and <details> now get scored when
+//   they appear. Rate-limited per element so style-animation churn can't storm.
+// - Added inline elements (spans carrying new text — chat apps) are no longer
+//   filtered out of the dirty queue; only our own UI and no-score tags are.
+// - removedNodes are surfaced so the orchestrator can purge dead units.
 import { MARK_ATTR, type Unit } from "../types";
-import { NO_SCORE_TAGS, INLINE_TEXT_TAGS, INLINE_IGNORE_TAGS } from "../dom/tags";
+import { NO_SCORE_TAGS } from "../dom/tags";
 
 export interface Observers {
-  observeUnit(unit: Unit): void; // register topElement with the IO
+  observeUnit(unit: Unit): void;
+  /** Stop tracking one unit (scored, invalidated, or purged). */
+  dropUnit(unit: Unit): void;
+  /** Externally mark a subtree dirty (same debounced drain as mutations). */
+  markDirty(node: Node): void;
   start(): void;
   stop(): void;
 }
 
 const DRAIN_DEBOUNCE_MS = 250;
 const ROOT_MARGIN = "500px 0px";
+/** Min interval between attribute-driven re-scans of the SAME element. */
+const ATTR_RESCAN_MIN_MS = 1500;
+const WATCHED_ATTRS = ["class", "style", "hidden", "open", "aria-hidden"];
 
 export function createObservers(opts: {
-  onVisible(unit: Unit): void; // unit entered viewport → enqueue 'viewport'
-  onNear(unit: Unit): void; // within rootMargin → enqueue 'near'
-  onDirty(nodes: Node[], removed: Node[]): void; // debounced mutation drain
+  onVisible(unit: Unit): void;
+  onNear(unit: Unit): void;
+  onDirty(nodes: Node[], removed: Node[]): void;
 }): Observers {
-  const unitByEl = new WeakMap<Element, Unit>();
-  // Per-element dispatch latches: don't re-fire the same lane for the same element.
-  const visibleDispatched = new WeakSet<Element>();
-  const nearDispatched = new WeakSet<Element>();
+  const unitsByEl = new WeakMap<Element, Map<string, Unit>>();
+  /** Per-unit dispatch latch: which lane has fired. Cleaned up in dropUnit. */
+  const dispatched = new Map<string, "near" | "viewport">();
+  const attrScanAt = new WeakMap<Element, number>();
 
-  // Mutation dirty queue (dedup by node identity, reference's newNodes.indexOf) +
-  // removed-node tracking (reference's removed-node guard).
   const dirty = new Set<Node>();
   const removed = new Set<Node>();
   let drainTimer: ReturnType<typeof setTimeout> | null = null;
   let started = false;
 
-  // --- Self-mutation guard -------------------------------------------------------
-
-  /** True if this node is (or lives inside) one of our own MARK_ATTR-marked hosts. */
+  /** True if this node is (or lives inside) one of our own MARK_ATTR hosts. */
   function inSelfHost(node: Node): boolean {
     const el: Element | null =
       node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
@@ -51,29 +56,26 @@ export function createObservers(opts: {
     return el.closest(`[${MARK_ATTR}]`) !== null;
   }
 
-  /** True if this element's tag is inline/no-score churn we never treat as a new block. */
-  function isGuardedTag(node: Node): boolean {
-    const name = node.nodeName;
-    return (
-      NO_SCORE_TAGS.has(name) ||
-      INLINE_TEXT_TAGS.has(name) ||
-      INLINE_IGNORE_TAGS.has(name)
-    );
-  }
-
   function ingest(records: MutationRecord[]): void {
     for (const rec of records) {
       if (rec.type === "characterData") {
-        // In-place text edit (SPA paragraph update). Guard only against our own DOM;
-        // the tag-union guard does not apply to text targets, otherwise characterData
-        // watching would be pointless ("#text" ∈ INLINE_TEXT_TAGS).
         if (!inSelfHost(rec.target)) dirty.add(rec.target);
+        continue;
+      }
+      if (rec.type === "attributes") {
+        const el = rec.target as Element;
+        if (inSelfHost(el)) continue;
+        const now = Date.now();
+        const last = attrScanAt.get(el) ?? 0;
+        if (now - last < ATTR_RESCAN_MIN_MS) continue; // animation churn guard
+        attrScanAt.set(el, now);
+        dirty.add(el);
         continue;
       }
       // childList
       rec.addedNodes.forEach((n) => {
         if (inSelfHost(n)) return;
-        if (n.nodeType === Node.ELEMENT_NODE && isGuardedTag(n)) return;
+        if (n.nodeType === Node.ELEMENT_NODE && NO_SCORE_TAGS.has(n.nodeName)) return;
         dirty.add(n);
       });
       rec.removedNodes.forEach((n) => {
@@ -84,15 +86,12 @@ export function createObservers(opts: {
   }
 
   function scheduleDrain(): void {
-    // Trailing-edge debounce: each new mutation pushes the drain out to 250ms after
-    // the last one.
     if (drainTimer !== null) clearTimeout(drainTimer);
     drainTimer = setTimeout(drain, DRAIN_DEBOUNCE_MS);
   }
 
   function drain(): void {
     drainTimer = null;
-    // Flush any records the observer has buffered but not yet delivered.
     if (mo) ingest(mo.takeRecords());
     if (dirty.size === 0 && removed.size === 0) return;
     const nodes = Array.from(dirty);
@@ -102,31 +101,36 @@ export function createObservers(opts: {
     opts.onDirty(nodes, rem);
   }
 
-  // --- Observers -----------------------------------------------------------------
-
   const io = new IntersectionObserver(
     (entries) => {
       const vh = window.innerHeight || document.documentElement.clientHeight;
       for (const entry of entries) {
         if (!entry.isIntersecting) continue;
         const el = entry.target;
-        const unit = unitByEl.get(el);
-        if (!unit) continue;
-        const r = entry.boundingClientRect;
-        // Intersecting the *real* viewport → visible; only inside the rootMargin
-        // band (above/below the fold) → near.
-        const inViewport = r.bottom > 0 && r.top < vh;
-        if (inViewport) {
-          if (visibleDispatched.has(el)) continue;
-          visibleDispatched.add(el);
-          io.unobserve(el); // one-shot: highest priority reached
-          opts.onVisible(unit);
-        } else {
-          if (nearDispatched.has(el)) continue;
-          nearDispatched.add(el);
-          // Keep observing so it can still upgrade to 'viewport' on further scroll.
-          opts.onNear(unit);
+        const units = unitsByEl.get(el as Element);
+        if (!units || units.size === 0) {
+          io.unobserve(el);
+          continue;
         }
+        const r = entry.boundingClientRect;
+        // Intersecting the REAL viewport → 'viewport' lane; only within the
+        // rootMargin band above/below the fold → 'near' lane.
+        const inViewport = r.bottom > 0 && r.top < vh;
+        for (const unit of units.values()) {
+          if (unit.isScored) continue;
+          const lane = dispatched.get(unit.id);
+          if (inViewport) {
+            if (lane !== "viewport") {
+              dispatched.set(unit.id, "viewport");
+              opts.onVisible(unit);
+            }
+          } else if (!lane) {
+            dispatched.set(unit.id, "near");
+            opts.onNear(unit);
+          }
+        }
+        // Highest priority reached for everything anchored here → one-shot.
+        if (inViewport) io.unobserve(el);
       }
     },
     { root: null, rootMargin: ROOT_MARGIN, threshold: 0 },
@@ -138,12 +142,31 @@ export function createObservers(opts: {
   });
 
   function observeUnit(unit: Unit): void {
-    // Register the unit's topElement (viewport gating anchor); fall back to its block
-    // parent when the walker could not resolve a top block.
-    const el = unit.topElement ?? unit.parentElement;
-    if (!el) return;
-    unitByEl.set(el, unit);
-    io.observe(el);
+    const el = unit.topElement;
+    if (!el || !el.isConnected) return;
+    let units = unitsByEl.get(el);
+    if (!units) {
+      units = new Map();
+      unitsByEl.set(el, units);
+    }
+    units.set(unit.id, unit);
+    io.observe(el); // observing an already-observed target is a no-op
+  }
+
+  function dropUnit(unit: Unit): void {
+    dispatched.delete(unit.id);
+    const el = unit.topElement;
+    const units = el ? unitsByEl.get(el) : undefined;
+    if (units) {
+      units.delete(unit.id);
+      if (units.size === 0 && el) io.unobserve(el);
+    }
+  }
+
+  function markDirty(node: Node): void {
+    if (inSelfHost(node)) return;
+    dirty.add(node);
+    scheduleDrain();
   }
 
   function start(): void {
@@ -153,6 +176,8 @@ export function createObservers(opts: {
       childList: true,
       subtree: true,
       characterData: true,
+      attributes: true,
+      attributeFilter: WATCHED_ATTRS,
     });
   }
 
@@ -166,7 +191,8 @@ export function createObservers(opts: {
     }
     dirty.clear();
     removed.clear();
+    dispatched.clear();
   }
 
-  return { observeUnit, start, stop };
+  return { observeUnit, dropUnit, markDirty, start, stop };
 }
