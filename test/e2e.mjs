@@ -14,7 +14,7 @@ import { readFileSync, existsSync } from "node:fs";
 import http from "node:http";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const EXT = join(__dirname, "..", ".output", "chrome-mv3");
+const EXT = join(__dirname, "..", "output", "chrome-mv3");
 const SELFTEST = join(__dirname, "selftest.html");
 const HEADLESS = process.env.HEADLESS === "1";
 
@@ -91,6 +91,8 @@ const snapshot = await page.evaluate((sel) => {
     preScored: scored.some((el) => el.closest("pre") || el.nodeName === "PRE"),
     codeScored: scored.some((el) => el.closest("code")),
     shortScored: scored.some((el) => (el.textContent || "").includes("well under fifty words")),
+    divEnScored: scored.some((el) => (el.textContent || "").includes("built entirely from div and span")),
+    divZhScored: scored.some((el) => (el.textContent || "").includes("泛化之后的块检测")),
   };
 }, BADGE_SEL);
 console.log("\nSNAPSHOT:");
@@ -147,6 +149,8 @@ const checks = [
   ],
   ["<pre>/<code> NOT scored", !snapshot.preScored && !snapshot.codeScored],
   ["short paragraph (< 50 words) is skipped", !snapshot.shortScored],
+  ["div-based English paragraph badged (no <p>)", snapshot.divEnScored],
+  ["div-based Chinese paragraph badged (CJK)", snapshot.divZhScored],
   ["rapid insert: every added paragraph badged", afterAdd === before + RAPID],
   ["toggle hides + re-shows badges", hiddenN === 0 && reshownN === shownN && shownN > 0],
   ["no console errors", consoleErrors.length === 0],

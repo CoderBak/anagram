@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { existsSync } from "node:fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const EXT = join(__dirname, "..", ".output", "chrome-mv3");
+const EXT = join(__dirname, "..", "output", "chrome-mv3");
 const BADGE_SEL = '[data-pangram="host"]:not(#pangram-fab)';
 
 if (!existsSync(join(EXT, "manifest.json"))) {

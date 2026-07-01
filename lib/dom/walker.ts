@@ -1,5 +1,5 @@
 // lib/dom/walker.ts — §3 paragraph-detection algorithm (two-stage capture pipeline).
-import { INLINE_TEXT_TAGS, INLINE_IGNORE_TAGS, BLOCK_TAGS, NO_SCORE_TAGS, isBlock } from "./tags";
+import { INLINE_TEXT_TAGS, INLINE_IGNORE_TAGS, NO_SCORE_TAGS } from "./tags";
 import { isVisible } from "./visibility";
 import { type Unit, extractUnitText, isInvalidText, linkTextRatio } from "./text";
 import { MARK_ATTR } from "../types";
@@ -138,31 +138,66 @@ export function getUnitsForBlock(root: Element): Omit<Unit, "id">[] {
 }
 
 /**
- * STAGE 1 — coarse block selection. Faithful port of getNodesThatNeedToTranslate
- * (enhance.js:215): querySelectorAll over block tags, filter invalid, dedup nested,
- * sort in document order. Returns clean per-paragraph containers.
+ * STAGE 1 — paragraph-container selection, generalized beyond semantic tags so it also works
+ * on sites that build text from <div>/<span> instead of <p> (Zhihu, most React/Vue SPAs).
+ * A "paragraph container" = a block-laid-out element that DIRECTLY holds text/inline content
+ * (not just nested blocks). We keep the OUTERMOST such elements; getUnitsForBlock then splits
+ * each into per-paragraph units, recursing through any nested blocks.
  */
 export function selectBlocks(root: ParentNode): Element[] {
-  const found: Element[] = [];
-  for (const tag of BLOCK_TAGS) {
-    root.querySelectorAll(tag.toLowerCase()).forEach((el) => found.push(el));
+  const candidates: Element[] = [];
+  for (const el of root.querySelectorAll("*")) {
+    const tag = el.nodeName;
+    if (INLINE_TEXT_TAGS.has(tag) || INLINE_IGNORE_TAGS.has(tag)) continue; // definitely inline
+    if (!hasDirectInlineContent(el)) continue; // cheap: must directly hold text/inline
+    if (isExcluded(el)) continue;
+    if (!isBlockDisplay(el)) continue; // must be block-laid-out (not an inline span)
+    candidates.push(el);
   }
-  // image-only <P> filter (enhance.js:155): a P with an <img>, <3 children, <80 chars text.
-  const valid = found.filter((el) => {
-    if (isExcluded(el)) return false;
+
+  // Keep the OUTERMOST candidates (drop any with a candidate ancestor); getUnitsForBlock
+  // recurses into nested blocks, so a container's inner content is still captured.
+  const candSet = new Set<Element>(candidates);
+  const outer = candidates.filter((el) => {
+    let p = el.parentElement;
+    while (p && p !== root) {
+      if (candSet.has(p)) return false;
+      p = p.parentElement;
+    }
+    return true;
+  });
+
+  const valid = outer.filter((el) => {
     if (!isVisible(el)) return false;
+    // image-only <P> filter: a P that is basically just an image.
     if (el.nodeName === "P" && el.querySelector("img") && el.childNodes.length < 3) {
       return (el as HTMLElement).innerText.length >= 80;
     }
     return true;
   });
-  // Dedup: drop any element contained by another selected block (keep the inner block).
-  const blocks = valid.filter((el) => !valid.some((other) => other !== el && el.contains(other) && isBlock(other)));
-  // Document order.
-  blocks.sort((a, b) =>
+
+  valid.sort((a, b) =>
     a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
   );
-  return blocks;
+  return valid;
+}
+
+/** True if el directly contains rendered text — a non-empty text node or an inline element. */
+function hasDirectInlineContent(el: Element): boolean {
+  for (const child of el.childNodes) {
+    if (child.nodeType === Node.TEXT_NODE) {
+      if ((child.textContent ?? "").trim().length > 0) return true;
+    } else if (child.nodeType === Node.ELEMENT_NODE && INLINE_TEXT_TAGS.has(child.nodeName)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** True if el is laid out as a block (a paragraph container), not an inline span. */
+function isBlockDisplay(el: Element): boolean {
+  const d = getComputedStyle(el).display;
+  return d !== "none" && d !== "contents" && !d.startsWith("inline");
 }
 
 /**

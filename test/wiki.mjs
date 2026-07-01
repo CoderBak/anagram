@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { existsSync } from "node:fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const EXT = join(__dirname, "..", ".output", "chrome-mv3");
+const EXT = join(__dirname, "..", "output", "chrome-mv3");
 const URL = process.argv[2] || "https://en.wikipedia.org/wiki/Alan_Turing";
 const BADGE_SEL = '[data-pangram="host"]:not(#pangram-fab)';
 

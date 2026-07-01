@@ -28,6 +28,19 @@
      the detector considers to be machine generated, even when the source happens to contain a
      line break partway through the running text.</p></blockquote>
 
+  <!-- div/span-based content (no <p>), the way Zhihu and most SPAs render text -->
+  <div class="divbased">
+    <div>This paragraph is built entirely from div and span elements with no paragraph tag
+      anywhere, exactly the way Zhihu and most modern single-page applications render their
+      body text, so it exercises the generalized block detection. It runs comfortably past the
+      fifty-word minimum, so the walker should capture this div-based content and render a
+      confidence badge for it rather than ignoring everything that is not a semantic tag.</div>
+    <div lang="zh">这是一个完全用 div 和 span 构建的中文段落，没有使用任何 p 标签，就像知乎以及大量现代单页
+      应用渲染正文内容那样，因此它专门用来验证泛化之后的块检测逻辑能否正确地处理中文文本。这段文字被刻意写得
+      足够长，从而越过五十词的最小长度阈值，这样我们就能够确认，扩展程序在面对基于 div 的中文内容时，依然
+      可以正确地捕获文本，并最终为它渲染出对应的置信度徽章，而不仅仅是处理使用语义化标签的英文网页内容。</div>
+  </div>
+
   <pre><code>// a code block that must NOT be scored (excluded tag)
 function noScore() { return 42; }</code></pre>
 

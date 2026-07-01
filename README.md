@@ -23,12 +23,12 @@ npm run typecheck  # wxt prepare && tsc --noEmit
 ## Build + load unpacked
 
 ```bash
-npm run build      # outputs .output/chrome-mv3/
+npm run build      # outputs output/chrome-mv3/
 ```
 
 1. Open `chrome://extensions`.
 2. Enable **Developer mode** (top-right).
-3. **Load unpacked** → select `.output/chrome-mv3`.
+3. **Load unpacked** → select `output/chrome-mv3`.
 4. Pin the extension; the toolbar icon opens the popup (on/off, per-site, Rescan).
 
 ## Self-test

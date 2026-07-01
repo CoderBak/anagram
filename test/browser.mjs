@@ -14,7 +14,7 @@ import { readFileSync, existsSync } from "node:fs";
 import http from "node:http";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const EXT = join(__dirname, "..", ".output", "chrome-mv3");
+const EXT = join(__dirname, "..", "output", "chrome-mv3");
 const SELFTEST = join(__dirname, "selftest.html");
 
 if (!existsSync(join(EXT, "manifest.json"))) {
