@@ -1,9 +1,15 @@
 // lib/render/badge.css.ts — constructable stylesheet for the badge shadow root.
 //
-// The v2 badge host is an INLINE-FLOW element inserted after the paragraph's last
-// text run. It reflows with the text automatically — resize, font/image load,
-// collapsed sections, RTL — with no positioning math and no risk of landing in a
-// float gutter or being clipped by an overflow ancestor.
+// The badge host is an INLINE-FLOW element inserted after the paragraph's last
+// text run. Typography rules:
+// - The host inherits the surrounding font-size (set AFTER `all: initial`), so the
+//   chip scales with the text it annotates (clamped 9–12px) and sits on the SAME
+//   BASELINE as the words before it — no vertical fudge factors.
+// - `margin-inline-start` keeps the gap on the correct side in RTL text.
+// - The chip reads "<pct>% AI" — the number plus its unit tag, self-explanatory
+//   without hovering; the full calibrated readout stays in the hover card.
+// - The card is edge-aware: badge.ts flips it below the chip near the viewport
+//   top and pins it left/right near the horizontal edges.
 //
 // Cascade note: page rules from the outer tree beat ordinary :host declarations,
 // but shadow-context !important beats page !important — so the layout-critical
@@ -11,10 +17,11 @@
 export const BADGE_CSS: string = `
 :host {
   all: initial;
+  font-size: inherit; /* after all:initial — chip scales with the annotated text */
   display: inline-block !important;
   position: relative !important;
-  vertical-align: -0.15em;
-  margin: 0 0 0 6px !important;
+  vertical-align: baseline;
+  margin-inline-start: 6px;
   line-height: normal;
   z-index: 2147483646;
   user-select: none;
@@ -30,50 +37,50 @@ export const BADGE_CSS: string = `
 }
 
 @keyframes pangram-badge-in {
-  from { opacity: 0; transform: scale(0.86); }
-  to   { opacity: 1; transform: scale(1); }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 .pill {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 0.4em;
   box-sizing: border-box;
-  height: 16px;
-  padding: 0 7px 0 6px;
+  font-size: clamp(9px, 0.66em, 12px);
+  line-height: 1;
+  padding: 0.3em 0.7em 0.3em 0.55em;
   border-radius: 9999px;
   border: 1px solid rgba(0, 0, 0, 0.07);
   background: rgba(255, 255, 255, 0.88);
   -webkit-backdrop-filter: saturate(1.4) blur(8px);
   backdrop-filter: saturate(1.4) blur(8px);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.10), 0 1px 1px rgba(0, 0, 0, 0.05);
-  font: 600 10px/1 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-weight: 650;
   letter-spacing: 0.01em;
   color: #57606a;
   white-space: nowrap;
   cursor: default;
-  animation: pangram-badge-in 160ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
-  transition: box-shadow 120ms ease, transform 120ms ease;
+  animation: pangram-badge-in 160ms ease-out both;
+  transition: box-shadow 120ms ease;
 }
 
 :host(:hover) .pill {
-  transform: translateY(-1px);
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.16), 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
 .dot {
-  width: 6px;
-  height: 6px;
+  width: 0.55em;
+  height: 0.55em;
   flex: 0 0 auto;
   border-radius: 50%;
   background: var(--dot, #9aa3ad);
-  box-shadow: 0 0 0 2px var(--ring, rgba(154, 163, 173, 0.16));
+  box-shadow: 0 0 0 0.18em var(--ring, rgba(154, 163, 173, 0.16));
 }
 
 .num {
   display: inline-block;
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
 }
 
 .pill.band-human   { --dot: #1a7f37; --ring: rgba(26, 127, 55, 0.18);   color: #116a37; }
@@ -82,12 +89,15 @@ export const BADGE_CSS: string = `
 .pill.band-unknown { --dot: #9aa3ad; --ring: rgba(154, 163, 173, 0.16); color: #57606a; }
 
 /* ---- hover detail card ------------------------------------------------------- */
+/* Default: centered above the chip. badge.ts adds .below / .align-left /
+   .align-right when the chip sits near a viewport edge. Fixed 11px type —
+   card readability should not scale with page text. */
 
 .card {
   position: absolute;
   bottom: calc(100% + 8px);
   left: 50%;
-  transform: translate(-50%, 4px);
+  transform: translateX(-50%);
   box-sizing: border-box;
   width: max-content;
   min-width: 216px;
@@ -105,16 +115,19 @@ export const BADGE_CSS: string = `
   white-space: normal;
   visibility: hidden;
   opacity: 0;
-  transition: opacity 120ms ease, transform 120ms ease, visibility 0s linear 120ms;
+  transition: opacity 120ms ease, visibility 0s linear 120ms;
   pointer-events: none;
   z-index: 1;
 }
 
+.card.below { bottom: auto; top: calc(100% + 8px); }
+.card.align-left  { left: 0; right: auto; transform: none; }
+.card.align-right { left: auto; right: 0; transform: none; }
+
 :host(:hover) .card {
   visibility: visible;
   opacity: 1;
-  transform: translate(-50%, 0);
-  transition-delay: 60ms, 60ms, 60ms;
+  transition-delay: 60ms, 60ms;
 }
 
 .card .head {

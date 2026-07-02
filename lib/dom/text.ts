@@ -151,6 +151,38 @@ export function truncateForScoring(text: string, max: number = MAX_SCORE_CHARS):
   return ws >= max / 2 ? head.slice(0, ws) : head;
 }
 
+// ---- structural noise ---------------------------------------------------------------
+
+const STRUCTURAL_SYMBOLS = new Set([
+  "+", "-", "|", "=", "_", "~", "^", "*", "\\", "/", "<", ">", "#", "`",
+  "─", "│", "┌", "┐", "└", "┘", "├", "┤", "┬", "┴", "┼", "═", "║", "╔", "╗", "╚", "╝",
+]);
+
+/**
+ * Fraction of non-whitespace characters that are structural/box-drawing symbols.
+ * ASCII diagrams, table rules and divider rows score far above prose (which sits
+ * around 0.02–0.06 even with heavy hyphenation) — used as a merge barrier.
+ */
+export function symbolNoiseRatio(text: string): number {
+  let sym = 0;
+  let total = 0;
+  for (const ch of text) {
+    if (/\s/.test(ch)) continue;
+    total++;
+    if (STRUCTURAL_SYMBOLS.has(ch)) sym++;
+  }
+  return total > 0 ? sym / total : 0;
+}
+
+/**
+ * Column-layout detector for preserved-whitespace text: prose never contains 8+
+ * consecutive INTERIOR SPACES on one line (newlines don't match), but headers,
+ * TOCs and tabular layouts do ("RFC 768<spaces>J. Postel").
+ */
+export function hasColumnGaps(rawText: string): boolean {
+  return /\S {8,}\S/.test(rawText);
+}
+
 // ---- link density ------------------------------------------------------------------
 
 /**

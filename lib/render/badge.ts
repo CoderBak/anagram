@@ -59,7 +59,9 @@ export function createBadgeLayer(): BadgeLayer {
     const pct = Math.round(result.e_theta * 100);
 
     pill.className = `pill band-${b}`;
-    num.textContent = b === "unknown" ? "?" : String(pct);
+    // Number + its unit tag, readable without hovering ("38% AI"); the calibrated
+    // detail stays in the card.
+    num.textContent = b === "unknown" ? "?" : `${pct}% AI`;
 
     renderCard(root.querySelector(".card") as HTMLElement, unit, result, b, pct);
   }
@@ -69,12 +71,24 @@ export function createBadgeLayer(): BadgeLayer {
     host.setAttribute(MARK_ATTR, "host");
     host.setAttribute("aria-hidden", "true");
     // Inline styles back up the !important :host rules against page CSS.
-    host.style.cssText = "display:inline-block;position:relative;margin-left:6px;";
+    host.style.cssText = "display:inline-block;position:relative;margin-inline-start:6px;";
     // A badge can legitimately sit inside an <a>; a click on it must never
     // navigate or trigger page handlers.
     host.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
+    });
+    // Edge-aware hover card: flip below near the viewport top, pin horizontally
+    // near the left/right edges. Decided at hover time — layout may have changed.
+    host.addEventListener("mouseenter", () => {
+      const card = host.shadowRoot?.querySelector(".card");
+      if (!card) return;
+      card.classList.remove("below", "align-left", "align-right");
+      const r = host.getBoundingClientRect();
+      if (r.top < 190) card.classList.add("below");
+      const vw = window.innerWidth || document.documentElement.clientWidth;
+      if (r.left < 150) card.classList.add("align-left");
+      else if (vw - r.right < 150) card.classList.add("align-right");
     });
     const shadow = host.attachShadow({ mode: "open" });
     shadow.adoptedStyleSheets = [badgeSheet()];

@@ -154,8 +154,11 @@ Working and covered by the 22-check e2e:
 - ✅ **Re-enable and rescan actually re-score** (M1 latched dispatched elements in a WeakSet —
   after toggle-off/on or Rescan, nothing ever scored again).
 - ✅ **Inline-flow badges**: reflow with text (resize/fonts/floats/RTL), never clipped by
-  overflow, never in a float gutter; hover card with the calibrated readout; dark-background
-  detection; badges inside 1990s inline-wrapper essays place correctly (paulgraham.com).
+  overflow, never in a float gutter; the chip reads "38% AI" (number + unit tag), scales with
+  the surrounding font (clamped 9–12px) and sits on the text baseline; the hover card is
+  edge-aware (flips below near the viewport top, pins horizontally near the sides);
+  per-anchor dark-background detection; the FAB is a compact ball with a count bubble that
+  expands on hover; badges inside 1990s inline-wrapper essays place correctly.
 - ✅ **Boilerplate filter** (trafilatura/Readability-inspired, conservative): nav/landmark
   roles, page-level header/footer/aside, cookie/consent/paywall/breadcrumb/ad class tokens.
   Plus the link-density barrier for menus/story lists.
@@ -322,9 +325,15 @@ node test/sites.mjs    # 8-real-site sweep (incl. HF papers) + screenshots
   pure CJK, isolated-short skip, never-score zones (code/nav/editable/aria-hidden), zero
   marker attributes, tab reveal, `<details>`, pushState swap + purge, removal purge, rapid
   insert, toggle, no console errors. **Keep it green.**
-- `test/sites.mjs` — real-site sweep with per-site badge counts + in-chrome counts +
-  screenshots. Expected: prose sites badge; HN/BBC/Substack ≈ 0; hf-paper ≥ 3 with 0 chrome.
-- Scoring is viewport-first: both scripts scroll before asserting.
+- `test/scenarios.mjs` — **the wide-net matrix (26 checks)**. Phase A (deterministic, on
+  `test/ui-fixtures.html`): edge-aware hover card (top/right), RTL inline-end placement,
+  chip font scaling + line-box bound, shadow DOM + slotted capture, overflow:hidden,
+  clipboard hygiene, badge-after-link isolation, per-anchor dark theme, duplicate fan-out.
+  Phase B (live, soft — unreachable site → SKIP, loaded-but-wrong → FAIL): HF paper, EN/AR/JA
+  Wikipedia, MDN, paulgraham, arXiv, StackOverflow (no badges in <pre>), GitHub, a text/plain
+  RFC, samaltman blog, and HN/BBC zero-badge expectations. `--local` runs phase A only.
+- `test/sites.mjs` — quicker real-site sweep with per-site badge counts + screenshots.
+- Scoring is viewport-first: all scripts scroll before asserting.
 
 ---
 

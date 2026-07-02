@@ -52,7 +52,31 @@ const FAB_CSS = `
 .chip:hover { transform: translateY(-1px); box-shadow: 0 10px 28px rgba(0, 0, 0, 0.20), 0 2px 4px rgba(0, 0, 0, 0.10); }
 .chip:active { transform: translateY(0); }
 
-.fab { height: 38px; padding: 0 13px 0 11px; }
+/* Compact by default (a 40px ball, like Immersive Translate); the label slides
+   out on hover. The count sits as a corner bubble so it reads at a glance. */
+.fabwrap { position: relative; }
+
+.fab {
+  height: 40px;
+  min-width: 40px;
+  padding: 0 11px;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.label {
+  white-space: nowrap;
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-width 180ms ease, opacity 140ms ease, margin-left 180ms ease;
+  margin-left: 0;
+}
+.fab:hover .label {
+  max-width: 120px;
+  opacity: 1;
+  margin-left: 2px;
+}
 
 .action {
   height: 30px;
@@ -77,27 +101,31 @@ const FAB_CSS = `
   font-weight: 700;
 }
 
-.label { white-space: nowrap; }
-
 .count {
+  position: absolute;
+  top: -5px;
+  right: -5px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
   box-sizing: border-box;
   border-radius: 9999px;
-  background: rgba(229, 72, 77, 0.14);
-  color: #b42318;
-  font-size: 11px;
+  background: #e5484d;
+  color: #fff;
+  font-size: 10px;
   font-weight: 700;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
 }
-.count.zero { background: rgba(26, 127, 55, 0.14); color: #116a37; }
+.count.zero { background: #1a7f37; }
 
 /* inactive (overlay hidden) → muted */
 .fab.off { opacity: 0.62; }
 .fab.off .mark { filter: grayscale(0.5); }
+.fab.off + .count, .fabwrap.off .count { opacity: 0.5; }
 
 @media print { .stack { display: none !important; } }
 `;
@@ -123,6 +151,7 @@ export function createFab(opts: { onToggle: () => void }): Fab {
   function applyState(): void {
     if (!fabEl) return;
     fabEl.classList.toggle("off", !active);
+    fabEl.parentElement?.classList.toggle("off", !active);
     fabEl.title = active ? "Hide AI detection" : "Show AI detection";
     if (actionEl) {
       actionEl.classList.toggle("show", actionLabel !== null);
@@ -163,10 +192,14 @@ export function createFab(opts: { onToggle: () => void }): Fab {
     countEl.className = "count zero";
     countEl.textContent = "0";
 
-    fabEl.append(mark, label, countEl);
+    fabEl.append(mark, label);
     fabEl.addEventListener("click", () => opts.onToggle());
 
-    stack.append(actionEl, fabEl);
+    const wrap = document.createElement("div");
+    wrap.className = "fabwrap";
+    wrap.append(fabEl, countEl); // count is a corner bubble over the ball
+
+    stack.append(actionEl, wrap);
     shadow.appendChild(stack);
     (document.body ?? document.documentElement).appendChild(host);
     applyState();

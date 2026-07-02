@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Pangram UI fixtures</title>
+<style>
+  body { margin: 0; font: 16px/1.6 system-ui; }
+  main { max-width: 720px; margin: 0 auto; padding: 0 16px 60px; }
+  section { margin: 26px 0; }
+  h2 { font-size: 14px; color: #666; }
+  #topedge { margin-top: 0; padding-top: 4px; }
+  #rightcol { width: 260px; margin-left: auto; }
+  #tiny  { font-size: 11px; line-height: 1.5; }
+  #large { font-size: 22px; line-height: 1.5; }
+  #tight { font-size: 15px; line-height: 1.25; }
+  #clipbox { overflow: hidden; height: 140px; border: 1px dashed #ccc; padding: 8px; }
+  #darksection { background: #14161a; color: #cdd3da; padding: 18px; border-radius: 8px; }
+  #rtl { direction: rtl; }
+</style></head>
+<body>
+<main>
+  <!-- 1: paragraph at the very top — hover card must flip BELOW the chip -->
+  <section id="topedge">
+  <p>TOPEDGE paragraph sits at the very top of the viewport before any heading, so when the
+     pointer hovers its badge the detail card cannot open upward without leaving the screen,
+     and the edge-aware placement is expected to flip the card underneath the chip instead,
+     keeping every pixel of the readout inside the visible viewport for the reader.</p>
+  </section>
+
+  <!-- 2: narrow right-aligned column — card must pin to the right edge -->
+  <section>
+  <div id="rightcol">
+    <p>RIGHTEDGE paragraph lives inside a narrow column pushed against the right side of the
+       page, which drives its badge close to the right viewport edge and therefore exercises
+       the horizontal pinning branch of the edge-aware hover card placement logic under a
+       realistic sidebar-like layout rather than a synthetic absolute position.</p>
+  </div>
+  </section>
+
+  <!-- 3: RTL — chip must follow the logical end of the text -->
+  <section id="rtl" dir="rtl" lang="ar">
+  <p>هذه فقرة تجريبية مكتوبة باللغة العربية من اليمين إلى اليسار وتحتوي على عدد كافٍ من الكلمات
+     لتتجاوز الحد الأدنى المطلوب للتقييم بسهولة، والغرض منها هو التحقق من أن الشارة تظهر في نهاية
+     السطر الأخير من الفقرة في الاتجاه الصحيح وأن الهامش المنطقي يعمل كما هو متوقع في النصوص
+     المكتوبة بالاتجاه المعاكس تماماً للنصوص اللاتينية المعتادة على صفحات الويب الحديثة.</p>
+  </section>
+
+  <!-- 4: font scaling — the chip must scale with the annotated text -->
+  <section>
+  <p id="tiny">TINY paragraph is set in an eleven pixel font so the badge chip is expected to
+     scale itself down toward its lower clamp and sit on the same baseline as this small text,
+     never towering over the line box, which is exactly what a fixed pixel chip used to do on
+     dense forum layouts and footnote-sized print styles across many older websites today.</p>
+  <p id="large">LARGE paragraph is set in a twenty-two pixel font so the chip is expected to
+     scale up toward its upper clamp and keep visual proportion with these larger words,
+     demonstrating that the badge inherits the surrounding type size instead of rendering at
+     one hard-coded size regardless of the typography of the page hosting it.</p>
+  </section>
+
+  <!-- 5: tight line-height — chip must not expand the line box noticeably -->
+  <section>
+  <p id="tight">TIGHT paragraph uses a deliberately compact line height so any oversized inline
+     chip would visibly push its final line apart from the rest, and the assertion measures
+     that the chip's rendered height stays within the paragraph's computed line height plus a
+     small tolerance, guaranteeing the badge introduces no jarring vertical layout shift.</p>
+  </section>
+
+  <!-- 6: open shadow DOM with a slot — composed traversal -->
+  <section>
+  <div id="shadowhost"></div>
+  <p id="slotted-src" hidden>SLOTTED light-DOM paragraph is assigned into a slot inside the open
+     shadow root and must be captured through the composed-tree traversal, receiving its own
+     badge exactly as if it were ordinary markup, because slotted content renders inside the
+     shadow root even though the nodes themselves belong to the light document tree.</p>
+  </section>
+
+  <!-- 7: overflow hidden container — inline badge must stay inside, not clip away -->
+  <section>
+  <div id="clipbox">
+    <p>CLIPBOX paragraph sits inside an overflow-hidden container of fixed height, a layout
+       that used to clip absolutely-positioned overlays into invisibility, and the inline
+       badge is expected to remain fully visible inside the container because it participates
+       in the normal flow of the text instead of floating above it at computed coordinates.</p>
+  </div>
+  </section>
+
+  <!-- 8: selection/copy — badge text must not pollute copied text -->
+  <section>
+  <p id="copysrc">COPYSRC paragraph exists to verify that selecting and copying the entire
+     block of text never captures the badge's percentage label along with it, because the
+     badge lives in a closed-off shadow tree marked non-selectable, so the clipboard payload
+     must contain exactly the words of this paragraph and nothing injected by the extension.</p>
+  </section>
+
+  <!-- 9: paragraph ending with a link — badge must not live inside the anchor -->
+  <section>
+  <p id="linkend">LINKEND paragraph runs long enough to be scored and deliberately finishes its
+     final sentence with a hyperlink so the insertion logic has to climb out of the anchor
+     element before placing the chip, ensuring a click on the badge never triggers the
+     navigation of the <a href="#never-navigate" id="lastlink">link that ends this paragraph</a>.</p>
+  </section>
+
+  <!-- 10: dark section inside a light page — per-anchor theme detection -->
+  <section>
+  <div id="darksection">
+    <p>DARKSECTION paragraph is rendered on a nearly black card embedded in an otherwise light
+       page, and the badge attached to it must detect the local dark background of its own
+       container rather than the global page background, switching to the dark chip theme so
+       it stays legible without glowing against the surrounding dark surface.</p>
+  </div>
+  <p id="lightafter">LIGHTAFTER paragraph immediately follows the dark card on the normal white
+     background, and its badge must remain in the light theme, proving the background probe is
+     genuinely per-anchor instead of a single page-level decision that would misclassify mixed
+     designs like hero sections, code panels, and dark call-out boxes on light pages.</p>
+  </section>
+
+  <!-- 11: exact duplicates — every copy gets its own badge.
+       Each copy must clear the 50-word floor ON ITS OWN, otherwise the two short
+       siblings would (correctly) merge into a single unit. -->
+  <section id="dupes">
+  <p>DUPLICATE paragraph text appears twice in a row with byte-identical content so the text
+     level deduplication must score it only once at the backend while the unit level rendering
+     still gives each visual copy its own independent badge and underline on the page, and this
+     copy also carries enough extra words to clear the evidence floor entirely on its own.</p>
+  <p>DUPLICATE paragraph text appears twice in a row with byte-identical content so the text
+     level deduplication must score it only once at the backend while the unit level rendering
+     still gives each visual copy its own independent badge and underline on the page, and this
+     copy also carries enough extra words to clear the evidence floor entirely on its own.</p>
+  </section>
+
+  <script>
+    // Shadow DOM fixture: open root, own paragraph + slot receiving light content.
+    const host = document.getElementById('shadowhost');
+    const root = host.attachShadow({ mode: 'open' });
+    root.innerHTML = `
+      <div>
+        <p>SHADOW paragraph lives directly inside an open shadow root rather than the light
+           document, and the walker must reach it through the composed children traversal,
+           badge it like any ordinary paragraph, and keep its underline working through the
+           highlight ranges even though the nodes belong to a shadow tree entirely.</p>
+        <slot></slot>
+      </div>`;
+    const src = document.getElementById('slotted-src');
+    src.removeAttribute('hidden');
+    host.appendChild(src); // now assigned into the slot
+  </script>
+</main>
+</body></html>

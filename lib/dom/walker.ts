@@ -35,6 +35,8 @@ import {
   hasLetters,
   countWords,
   linkTextRatio,
+  symbolNoiseRatio,
+  hasColumnGaps,
   MIN_UNIT_WORDS,
   MIN_MERGE_WORDS,
   MAX_UNIT_TEXT_CHARS,
@@ -46,6 +48,8 @@ interface Run {
   nodes: Text[];
   container: Element;
   text: string;
+  /** Pre-collapse text — interior column gaps only survive here. */
+  raw: string;
   words: number;
   linkRatio: number;
 }
@@ -102,12 +106,14 @@ export function collectUnits(
   function processRun(nodes: Text[], container: Element): void {
     if (opts.claimFilter && opts.claimFilter(nodes) === "skip") return;
     if (!rects.get(container)) return; // zero-size container → invisible text
-    const text = extractPartText(nodes).replace(/\s+/g, " ").trim();
+    const raw = extractPartText(nodes);
+    const text = raw.replace(/\s+/g, " ").trim();
     if (!text) return;
     asm.run({
       nodes,
       container,
       text,
+      raw,
       words: countWords(text),
       linkRatio: linkTextRatio(nodes),
     });
@@ -397,6 +403,13 @@ function createAssembler(): Assembler {
     run(r: Run): void {
       if (!hasLetters(r.text)) {
         // "* * *" separators, number rows: visual dividers → barrier.
+        flushGroup();
+        lastMergedUnit = null;
+        return;
+      }
+      if (symbolNoiseRatio(r.text) > 0.2 || hasColumnGaps(r.raw)) {
+        // ASCII diagrams / table rules / column-layout headers ("RFC 768   J.
+        // Postel"): machine layout, not prose — barrier, never merged.
         flushGroup();
         lastMergedUnit = null;
         return;
