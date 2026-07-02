@@ -5,16 +5,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Pangram AI Detector</title>
     <style>
-      body { width: 260px; margin: 0; padding: 12px 14px; font: 13px/1.4 system-ui, sans-serif; }
-      h1 { font-size: 14px; margin: 0 0 10px; }
-      .row { display: flex; align-items: center; justify-content: space-between; margin: 8px 0; }
-      button { font: inherit; padding: 6px 10px; cursor: pointer; }
+      :root { color-scheme: light dark; }
+      body { width: 272px; margin: 0; padding: 12px 14px 10px; font: 13px/1.45 system-ui, sans-serif; color: #1f2328; }
+      @media (prefers-color-scheme: dark) {
+        body { color: #e6edf3; background: #1c1e21; }
+        .status { color: #8b949e !important; }
+        hr { border-color: #30363d !important; }
+        button { background: #21262d; color: #e6edf3; border-color: #30363d; }
+      }
+      header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+      header img { width: 20px; height: 20px; border-radius: 5px; }
+      h1 { font-size: 14px; margin: 0; flex: 1; }
+      #gear { background: none; border: none; padding: 2px; cursor: pointer; font-size: 15px; line-height: 1; }
+      .row { display: flex; align-items: center; justify-content: space-between; margin: 7px 0; }
+      .status { font-size: 12px; color: #656d76; margin: 4px 0 2px; min-height: 16px; }
+      hr { border: none; border-top: 1px solid #d0d7de; margin: 9px 0; }
+      button { font: inherit; font-size: 12px; padding: 5px 10px; border: 1px solid #d0d7de; border-radius: 6px; background: #f6f8fa; cursor: pointer; }
+      input[type="checkbox"] { width: 16px; height: 16px; }
     </style>
   </head>
   <body>
-    <h1>Pangram AI Detector</h1>
+    <header>
+      <img src="/icons/icon-48.png" alt="" />
+      <h1>Pangram</h1>
+      <button id="gear" title="All settings">⚙︎</button>
+    </header>
     <div class="row">
-      <label for="enabled">Enabled</label>
+      <label for="enabled">Enabled everywhere</label>
       <input id="enabled" type="checkbox" />
     </div>
     <div class="row">
@@ -22,7 +39,13 @@
       <input id="siteEnabled" type="checkbox" />
     </div>
     <div class="row">
-      <button id="rescan">Rescan</button>
+      <label for="highlights">Underlines</label>
+      <input id="highlights" type="checkbox" />
+    </div>
+    <hr />
+    <div class="status" id="status">…</div>
+    <div class="row">
+      <button id="rescan">Rescan page</button>
     </div>
     <script type="module" src="./main.ts"></script>
   </body>

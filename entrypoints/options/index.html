@@ -5,12 +5,85 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Pangram AI Detector — Options</title>
     <style>
-      body { max-width: 560px; margin: 40px auto; font: 14px/1.6 system-ui, sans-serif; }
+      :root { color-scheme: light dark; }
+      body {
+        max-width: 620px; margin: 40px auto 80px; padding: 0 20px;
+        font: 14px/1.6 system-ui, sans-serif; color: #1f2328; background: #fff;
+      }
+      @media (prefers-color-scheme: dark) {
+        body { color: #e6edf3; background: #0d1117; }
+        section { border-color: #30363d !important; }
+        .hint { color: #8b949e !important; }
+        td, th { border-color: #30363d !important; }
+        button { background: #21262d; color: #e6edf3; border-color: #30363d; }
+      }
+      header { display: flex; align-items: center; gap: 12px; margin-bottom: 26px; }
+      header img { width: 36px; height: 36px; border-radius: 8px; }
+      h1 { font-size: 18px; margin: 0; }
+      .ver { font-size: 12px; color: #8b949e; }
+      section { border: 1px solid #d0d7de; border-radius: 10px; padding: 16px 18px; margin: 14px 0; }
+      h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: #656d76; margin: 0 0 10px; }
+      .row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 7px 0; }
+      .row label { font-weight: 600; }
+      .hint { font-size: 12px; color: #656d76; margin: 2px 0 0; max-width: 440px; }
+      input[type="checkbox"] { width: 18px; height: 18px; flex: 0 0 auto; }
+      table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #d0d7de; }
+      td.mode-on { color: #116a37; font-weight: 600; }
+      td.mode-off { color: #b42318; font-weight: 600; }
+      button { font: inherit; font-size: 12px; padding: 4px 10px; border: 1px solid #d0d7de; border-radius: 6px; background: #f6f8fa; cursor: pointer; }
+      button:hover { filter: brightness(0.97); }
+      .empty { color: #8b949e; font-size: 13px; padding: 8px 0; }
+      footer { margin-top: 22px; font-size: 12px; color: #8b949e; }
     </style>
   </head>
   <body>
-    <h1>Pangram AI Detector</h1>
-    <p>Options are deferred for M1. All settings live in the toolbar popup.</p>
+    <header>
+      <img src="/icons/icon-128.png" alt="" />
+      <div>
+        <h1>Pangram AI Detector</h1>
+        <div class="ver" id="version"></div>
+      </div>
+    </header>
+
+    <section>
+      <h2>Detection</h2>
+      <div class="row">
+        <div>
+          <label for="enabled">Enable on all sites</label>
+          <p class="hint">Per-site rules below override this default. Toggling applies to new page loads and open tabs.</p>
+        </div>
+        <input id="enabled" type="checkbox" />
+      </div>
+      <div class="row">
+        <div>
+          <label for="highlights">Underline analyzed paragraphs</label>
+          <p class="hint">Colored underline per verdict (green = human, amber = AI-assisted, red = AI). Badges stay either way.</p>
+        </div>
+        <input id="highlights" type="checkbox" />
+      </div>
+    </section>
+
+    <section>
+      <h2>Per-site rules</h2>
+      <div id="sites"></div>
+    </section>
+
+    <section>
+      <h2>Advanced</h2>
+      <div class="row">
+        <div>
+          <label for="debug">Debug logging</label>
+          <p class="hint">Verbose console logs from the content script (namespaced <code>[pangram:*]</code>).</p>
+        </div>
+        <input id="debug" type="checkbox" />
+      </div>
+    </section>
+
+    <footer>
+      Scores shown are calibrated estimates, not proof. Detection runs per paragraph with a
+      50-word evidence floor; shorter neighboring paragraphs are analyzed together.
+    </footer>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>
