@@ -63,6 +63,11 @@ export interface CollectOptions {
    * stale owner before answering "take").
    */
   claimFilter?: (nodes: Text[]) => "take" | "skip";
+  /**
+   * Group sub-floor paragraphs with compatible neighbors until the evidence floor
+   * is met (default). False = strict per-paragraph mode: short runs are skipped.
+   */
+  mergeShorts?: boolean;
 }
 
 /** Max link-text fraction for a run to count as prose (nav/menu barrier above it). */
@@ -89,7 +94,7 @@ export function collectUnits(
   const plainTextDoc = document.contentType === "text/plain";
   const styles = createStyleCache();
   const rects = createRectVisibleCache();
-  const asm = createAssembler();
+  const asm = createAssembler(opts.mergeShorts ?? true);
 
   // ---- run accumulation ------------------------------------------------------------
 
@@ -346,7 +351,7 @@ function compatible(a: Element, b: Element): boolean {
   return false;
 }
 
-function createAssembler(): Assembler {
+function createAssembler(mergeShorts: boolean): Assembler {
   const units: Unit[] = [];
   let group: Run[] = [];
   let groupWords = 0;
@@ -432,6 +437,7 @@ function createAssembler(): Assembler {
         lastMergedUnit = null;
         return;
       }
+      if (!mergeShorts) return; // strict per-paragraph mode: sub-floor runs skipped
       if (r.words < MIN_MERGE_WORDS) return; // bylines/timestamps — transparent
       if (group.length > 0 && !compatible(group[group.length - 1].container, r.container)) {
         flushGroup();

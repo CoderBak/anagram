@@ -8,6 +8,7 @@ import { settings, clearSiteOverride } from "../../lib/settings/settings";
 const enabledEl = document.getElementById("enabled") as HTMLInputElement;
 const highlightsEl = document.getElementById("highlights") as HTMLInputElement;
 const displayModeEl = document.getElementById("displayMode") as HTMLSelectElement;
+const mergeShortsEl = document.getElementById("mergeShorts") as HTMLInputElement;
 const debugEl = document.getElementById("debug") as HTMLInputElement;
 const sitesEl = document.getElementById("sites") as HTMLElement;
 const versionEl = document.getElementById("version") as HTMLElement;
@@ -68,6 +69,7 @@ async function renderSites(): Promise<void> {
 bindToggle(enabledEl, settings.enabled);
 bindToggle(highlightsEl, settings.showHighlights);
 bindToggle(debugEl, settings.debug);
+bindToggle(mergeShortsEl, settings.mergeShorts);
 void settings.displayMode.getValue().then((v) => {
   displayModeEl.value = v;
 });

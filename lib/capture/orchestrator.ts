@@ -98,8 +98,10 @@ export function createOrchestrator(
   let visible = true;
   let highlightsEnabled = true;
   let displayMode: "all" | "flagged" = "all";
+  let mergeShorts = true;
   let unwatchHighlights: (() => void) | null = null;
   let unwatchDisplay: (() => void) | null = null;
+  let unwatchMerge: (() => void) | null = null;
   let lastBadgeSent = -1;
   let lastHref = location.href;
   let urlTimer: ReturnType<typeof setInterval> | null = null;
@@ -436,7 +438,7 @@ export function createOrchestrator(
       for (const root of queue) {
         if (scanned.has(root) || !root.isConnected) continue;
         scanned.add(root);
-        ingestUnits(collectUnits(root, { claimFilter: filter }));
+        ingestUnits(collectUnits(root, { claimFilter: filter, mergeShorts }));
       }
       queue = [...extra].filter((r) => !scanned.has(r));
     }
@@ -452,7 +454,7 @@ export function createOrchestrator(
     // badges stay put (no flicker); MutationObserver covers the DOM swap itself.
     purgeDisconnected();
     if (document.body) {
-      ingestUnits(collectUnits(document.body, { claimFilter: makeClaimFilter() }));
+      ingestUnits(collectUnits(document.body, { claimFilter: makeClaimFilter(), mergeShorts }));
     }
     updateFab();
     log.log("url change refresh", location.href);
@@ -496,9 +498,17 @@ export function createOrchestrator(
     void settings.displayMode.getValue().then(applyDisplayMode);
     unwatchDisplay?.();
     unwatchDisplay = settings.displayMode.watch(applyDisplayMode);
+    const applyMergeShorts = (v: boolean): void => {
+      if (v === mergeShorts) return;
+      mergeShorts = v; // structural — segmentation itself changes
+      if (started) rescan();
+    };
+    void settings.mergeShorts.getValue().then(applyMergeShorts);
+    unwatchMerge?.();
+    unwatchMerge = settings.mergeShorts.watch(applyMergeShorts);
 
     observers.start();
-    ingestUnits(collectUnits(document.body, { claimFilter: makeClaimFilter() }));
+    ingestUnits(collectUnits(document.body, { claimFilter: makeClaimFilter(), mergeShorts }));
 
     window.addEventListener("popstate", onUrlMaybeChanged);
     window.addEventListener("hashchange", onUrlMaybeChanged);
@@ -554,6 +564,8 @@ export function createOrchestrator(
     unwatchHighlights = null;
     unwatchDisplay?.();
     unwatchDisplay = null;
+    unwatchMerge?.();
+    unwatchMerge = null;
     notifyToolbarBadge(0);
     log.log("stopped");
   }
@@ -569,7 +581,7 @@ export function createOrchestrator(
     badges.resetTheme(); // the site theme may have toggled since the last scan
     refreshHighlightTheme();
     if (document.body) {
-      ingestUnits(collectUnits(document.body, { claimFilter: makeClaimFilter() }));
+      ingestUnits(collectUnits(document.body, { claimFilter: makeClaimFilter(), mergeShorts }));
     }
     updateFab();
     log.log("rescan");

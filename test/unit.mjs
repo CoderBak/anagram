@@ -169,6 +169,14 @@ const results = await page.evaluate(() => {
   u = collect(`<p>${words(30)}          ${words(25)}</p>`);
   check("8+ source spaces in collapsed HTML do not drop prose", u.length === 1, JSON.stringify(u.map(x => x.words)));
 
+  // 5a) strict per-paragraph mode (mergeShorts:false): sub-floor runs are skipped.
+  sandbox.innerHTML = `<p>${words(20)}</p><p>${words(20)}</p><p>${words(20)}</p>`;
+  const strict = PW.collectUnits(sandbox, { mergeShorts: false });
+  check("mergeShorts:false — shorts never grouped", strict.length === 0, JSON.stringify(strict.length));
+  sandbox.innerHTML = `<p>${words(60)}</p><p>${words(20)}</p>`;
+  const strictLong = PW.collectUnits(sandbox, { mergeShorts: false });
+  check("mergeShorts:false — full paragraphs still scored", strictLong.length === 1 && strictLong[0].parts.length === 1);
+
   // 5) shorts must not merge ACROSS an existing claimed unit.
   sandbox.innerHTML = `<p>${words(20)}</p><p>${words(60)}</p><p>${words(20)}</p>`;
   const first = PW.collectUnits(sandbox);

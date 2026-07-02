@@ -65,9 +65,11 @@ export function createBadgeLayer(): BadgeLayer {
     const pct = Math.round(result.e_theta * 100);
 
     pill.className = `pill band-${b}`;
-    // Number + its unit tag, readable without hovering ("38% AI"); the calibrated
-    // detail stays in the card.
-    num.textContent = b === "unknown" ? "?" : `${pct}% AI`;
+    // Number + its unit tag, readable without hovering ("38% AI"). A merged unit
+    // says so up front ("38% AI ×3") — one verdict covering N short paragraphs
+    // must never masquerade as a single-paragraph judgment.
+    const xn = unit.parts.length > 1 ? ` ×${unit.parts.length}` : "";
+    num.textContent = (b === "unknown" ? "?" : `${pct}% AI`) + xn;
 
     renderCard(root.querySelector(".card") as HTMLElement, unit, result, b, pct);
   }
@@ -125,15 +127,18 @@ export function createBadgeLayer(): BadgeLayer {
     const [lo, hi] = result.theta_interval;
     const row = (k: string, v: string) =>
       `<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>`;
-    const partsNote =
-      unit.parts.length > 1 ? ` · ${unit.parts.length} paragraphs analyzed together` : "";
+    const partsRow =
+      unit.parts.length > 1
+        ? row("Paragraphs analyzed together", `${unit.parts.length}`)
+        : "";
     card.innerHTML =
       `<div class="head"><span class="verdict band-${b}">${BAND_LABEL[b]}</span>` +
       `<span class="big">${b === "unknown" ? "—" : pct + "%"}</span></div>` +
+      partsRow +
       row("AI involvement (est.)", `${Math.round(lo * 100)}–${Math.round(hi * 100)}%`) +
       row("p-value vs human", result.p_value.toFixed(3)) +
       row("Words analyzed", `${unit.wordCount}`) +
-      `<div class="foot">Calibrated estimate, not proof${partsNote}.</div>`;
+      `<div class="foot">Calibrated estimate, not proof.</div>`;
   }
 
   function remove(id: string): void {

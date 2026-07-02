@@ -15,6 +15,9 @@ export const settings = {
   displayMode: storage.defineItem<"all" | "flagged">("local:displayMode", {
     fallback: "all",
   }),
+  // Group sub-floor paragraphs with neighbors to reach the evidence floor (the
+  // chip shows ×N). Off = strict per-paragraph mode; short paragraphs are skipped.
+  mergeShorts: storage.defineItem<boolean>("local:mergeShorts", { fallback: true }),
   // FAB position per host, as {r,b} offsets from the bottom-right corner.
   fabPos: storage.defineItem<Record<string, { r: number; b: number }>>("local:fabPos", {
     fallback: {},
