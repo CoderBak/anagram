@@ -333,6 +333,11 @@ node test/sites.mjs    # 8-real-site sweep (incl. HF papers) + screenshots
   pure CJK, isolated-short skip, never-score zones (code/nav/editable/aria-hidden), zero
   marker attributes, tab reveal, `<details>`, pushState swap + purge, removal purge, rapid
   insert, toggle, no console errors. **Keep it green.**
+- `test/unit.mjs` — **38-check unit harness (~5s)**: esbuild-bundles the walker +
+  pure helpers into a blank Chromium page (real computed styles) and runs
+  table-driven DOM cases over merge rules, barriers, exclusions, CJK, pre-wrap,
+  shadow DOM, sr-only, claimFilter, truncation, docs URLs, band mapping.
+  `npm run test:unit` — run it FIRST; it is the fastest signal.
 - `test/scenarios.mjs` — **the wide-net matrix (26 checks)**. Phase A (deterministic, on
   `test/ui-fixtures.html`): edge-aware hover card (top/right), RTL inline-end placement,
   chip font scaling + line-box bound, shadow DOM + slotted capture, overflow:hidden,
@@ -399,7 +404,48 @@ Must-dos when going real:
 
 ---
 
-## 12. Background reading (parent dir `/Users/coderbak/Code/pangram/`)
+## 12. Roadmap (prioritized; assessed 2026-07-02)
+
+**P0 — the product**
+1. **Real detection backend** (§9). Everything above the seam is done and tested.
+   Re-derive `band.ts` thresholds against the real calibration; update the response
+   `model` field (keys the caches); leave `sentence_flags` empty unless the model
+   localizes. On-device ONNX in the SW is the privacy-first option; check MV3
+   memory limits (offscreen document if needed).
+2. **Git remote + CI.** Local-only repo. Push to GitHub; Actions running
+   `test:unit` + typecheck on every push, e2e (xvfb) nightly.
+
+**P1 — before other users**
+3. Backend-adjacent: IndexedDB L2 result cache; per-block language hints;
+   optionally fill ctx_before/ctx_after.
+4. Store submission: privacy policy (mandatory with any remote backend), listing
+   copy, screenshots (test/ has them), version discipline. Icons/options/popup ✅
+   (done 2026-07-02).
+5. Comment-thread author boundaries (open DESIGN question — discuss with mentor):
+   the merger combines short comments from different authors (compatible
+   siblings). Fine for "is there AI here", wrong for attribution. Candidate fix:
+   dropped metadata runs (bylines <8w) act as soft barriers — costs BR-prose
+   merging; decide with real-model behavior in hand.
+
+**P2 — quality ladder**
+6. Infinite-feed stress with a real session (X/Twitter, Zhihu /follow, Discord).
+7. Firefox port (WXT cross-build; Highlight API + `zoom` are in current FF).
+8. Offline extraction-QA corpus (trafilatura reference diff over saved pages) —
+   also makes the live scenario half CI-safe.
+9. Polish: Docs reading-view scroll preservation, PDF story (pdf.js text layers),
+   i18n, a11y pass (badges are aria-hidden; consider an SR-visible page summary).
+
+**Deliberately not doing:** sentence-level rendering without a localizing model;
+canvas heroics for the Docs editor (reading view is the answer).
+
+Done this session (2026-07-02): icons + options page + popup status/underlines,
+dark highlight palette, draggable FAB (per-site memory), tap-to-pin card,
+iframe pipeline with size gates, 38-check unit harness, multi-agent adversarial
+review (see git log for fixes).
+
+---
+
+## 13. Background reading (parent dir `/Users/coderbak/Code/pangram/`)
 
 - `surface-system-design.md` — surface-system north star (browser + desktop AX/OCR).
 - `extension-build-spec.md` — the original M1 build spec (superseded in walker/render
@@ -409,7 +455,7 @@ Must-dos when going real:
 
 ---
 
-## 13. Suggested first moves for the continuing agent
+## 14. Suggested first moves for the continuing agent
 
 1. Read this file; skim `lib/dom/walker.ts` and `lib/capture/orchestrator.ts` (the two
    files that define v2 behavior).
