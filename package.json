@@ -16,7 +16,8 @@
     "test:unit": "node test/unit.mjs",
     "test:scenarios": "node test/scenarios.mjs",
     "test:perf": "node test/perf.mjs",
-    "zip:firefox": "wxt zip -b firefox"
+    "zip:firefox": "wxt zip -b firefox",
+    "play": "node test/playground.mjs"
   },
   "devDependencies": {
     "playwright": "^1.61.1",
