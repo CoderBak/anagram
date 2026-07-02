@@ -33,7 +33,8 @@ this?"* — inline, live, on every site.
   of flagged paragraphs; click to show/hide everything instantly — no re-analysis,
   or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>. **Click the counter** to
   open the triage panel: every flagged paragraph in order — click one to jump
-  there and pulse its chip. The toolbar icon shows the per-tab flagged count too.
+  there and pulse its chip, or **Copy report** for a markdown summary of all
+  verdicts. The toolbar icon shows the per-tab flagged count too.
 - **"Flagged only" mode**: every paragraph is still analyzed, but chips and
   underlines appear only on AI / AI-Assisted verdicts — calm pages by default if
   you prefer (popup → Show).
@@ -78,13 +79,20 @@ Text on the web is messy; the capture engine is built for it:
 
 ```bash
 npm install
-npm run build          # → output/chrome-mv3/
+npm run build          # Chrome  → output/chrome-mv3/
+npm run build:firefox  # Firefox → output/firefox-mv2/  (web-ext lint: 0 errors)
 ```
 
-1. Open `chrome://extensions`, enable **Developer mode**.
-2. **Load unpacked** → select `output/chrome-mv3`.
-3. Browse anywhere with prose. The ball sits bottom-right; the toolbar popup and
-   the options page hold the switches.
+**Chrome:** `chrome://extensions` → Developer mode → **Load unpacked** →
+`output/chrome-mv3`.
+
+**Firefox (128+):** `about:debugging` → This Firefox → **Load Temporary
+Add-on…** → `output/firefox-mv2/manifest.json`. (Underlines need Firefox 140+;
+older versions degrade gracefully to chips-only. `npm run zip:firefox` builds
+the AMO-submittable zip.)
+
+Browse anywhere with prose. The ball sits bottom-right; the toolbar popup and
+the options page hold the switches.
 
 ## Testing
 

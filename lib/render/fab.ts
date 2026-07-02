@@ -50,6 +50,9 @@ const FAB_CSS = `
   align-items: flex-end;
   gap: 8px;
 }
+/* Anchored by LEFT when parked on the left half: hover-expansion and the panel
+   then grow rightward, staying on-screen. */
+.stack.anchor-left { align-items: flex-start; }
 
 .chip {
   display: inline-flex;
@@ -151,9 +154,15 @@ const FAB_CSS = `
 .count:hover { filter: brightness(1.1); }
 .count.zero { background: #1a7f37; }
 
-/* ---- flagged-paragraphs triage panel ---- */
+/* ---- flagged-paragraphs triage panel ----
+   Absolutely positioned against the stack so it never shifts the ball, and
+   edge-aware: opens ABOVE by default, flips below/right when the ball has been
+   dragged near the top/left viewport edges. */
 .panel {
   display: none;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
   flex-direction: column;
   width: 320px;
   max-height: 340px;
@@ -171,6 +180,8 @@ const FAB_CSS = `
   cursor: default;
 }
 .panel.open { display: flex; }
+.panel.below { bottom: auto; top: calc(100% + 8px); }
+.panel.leftalign { right: auto; left: 0; }
 .panel .phead {
   display: flex;
   align-items: center;
@@ -213,6 +224,8 @@ const FAB_CSS = `
 .panel .pitem:hover { background: rgba(109, 94, 252, 0.08); }
 .panel .ppct {
   flex: 0 0 auto;
+  min-width: 38px;
+  text-align: right;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   font-size: 11px;
@@ -279,8 +292,19 @@ export function createFab(opts: { onToggle: () => void; panel?: PanelHooks }): F
 
   function applyPos(stack: HTMLElement, r: number, b: number): void {
     const c = clampPos(r, b);
-    stack.style.right = `${c.r}px`;
     stack.style.bottom = `${c.b}px`;
+    const vw = window.innerWidth || 1280;
+    const leftEdge = vw - c.r - 40; // ball width
+    if (leftEdge < vw / 2) {
+      // Left half: anchor by left so hover-expansion/panel grow RIGHTWARD.
+      stack.style.left = `${Math.max(6, leftEdge)}px`;
+      stack.style.right = "auto";
+      stack.classList.add("anchor-left");
+    } else {
+      stack.style.right = `${c.r}px`;
+      stack.style.left = "auto";
+      stack.classList.remove("anchor-left");
+    }
   }
 
   /** Grab-to-move with a small threshold so plain clicks still toggle. */
@@ -427,6 +451,12 @@ export function createFab(opts: { onToggle: () => void; panel?: PanelHooks }): F
       return;
     }
     renderPanel();
+    const stackRect = panelEl.parentElement?.getBoundingClientRect();
+    panelEl.classList.toggle("below", !!stackRect && stackRect.top < 400);
+    panelEl.classList.toggle(
+      "leftalign",
+      !!stackRect && stackRect.right < 344 /* panel width + margin */,
+    );
     panelEl.classList.add("open");
   }
 

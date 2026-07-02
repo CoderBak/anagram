@@ -20,7 +20,7 @@ export const BADGE_CSS: string = `
   font-size: inherit; /* after all:initial — chip scales with the annotated text */
   display: inline-block !important;
   position: relative !important;
-  vertical-align: baseline;
+  vertical-align: middle;
   margin-inline-start: 6px;
   line-height: normal;
   z-index: 2147483646;
