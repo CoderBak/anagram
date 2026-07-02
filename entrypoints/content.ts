@@ -5,7 +5,15 @@
 import { defineContentScript, browser } from "#imports";
 import { createOrchestrator } from "../lib/capture/orchestrator";
 import { enabledForSite } from "../lib/settings/settings";
-import { detectDocsPage, readingViewUrl, editorUrl } from "../lib/docs";
+import {
+  detectDocsPage,
+  readingViewUrl,
+  editorUrl,
+  currentTabParam,
+  isReadingMarked,
+  applyDocsReadingStyle,
+  DOCS_RETURN_KEY,
+} from "../lib/docs";
 import { ACTIONS } from "../lib/messaging/protocol";
 import type { ControlMessage, TabState } from "../lib/messaging/protocol";
 
@@ -19,16 +27,33 @@ export default defineContentScript({
     if (enabled) orchestrator.start();
 
     // Google Docs: the editor is a canvas (no DOM text). Offer the static-HTML
-    // reading view; from the reading view, offer the way back.
+    // reading view; from the reading view, offer the way back to the SAME tab.
     const docs = detectDocsPage(location);
     if (docs) {
       if (docs.kind === "editor") {
-        orchestrator.setFabAction("Open reading view", () => {
-          location.href = readingViewUrl(docs.id);
-        });
+        orchestrator.setFabAction(
+          "Open reading view",
+          () => {
+            try {
+              sessionStorage.setItem(DOCS_RETURN_KEY, location.href);
+            } catch {
+              /* storage may be blocked — fallback return URL still works */
+            }
+            location.href = readingViewUrl(docs.id, currentTabParam(location));
+          },
+          { attention: true }, // the main toggle is useless on canvas — point here
+        );
       } else {
+        if (isReadingMarked(location)) applyDocsReadingStyle();
         orchestrator.setFabAction("Back to editor", () => {
-          location.href = editorUrl(docs.id);
+          let target = editorUrl(docs.id);
+          try {
+            const saved = sessionStorage.getItem(DOCS_RETURN_KEY);
+            if (saved && saved.includes(`/d/${docs.id}/`)) target = saved;
+          } catch {
+            /* fall back to the bare editor URL */
+          }
+          location.href = target;
         });
       }
     }

@@ -14,7 +14,7 @@ export interface Fab {
   /** Update the flagged-paragraph counter. */
   setCount(flagged: number, total: number): void;
   /** Show (label + callback) or hide (null) the secondary action chip. */
-  setAction(label: string | null, onAction?: () => void): void;
+  setAction(label: string | null, onAction?: () => void, opts?: { attention?: boolean }): void;
   unmount(): void;
 }
 
@@ -87,6 +87,14 @@ const FAB_CSS = `
 }
 .action.show { display: inline-flex; }
 
+/* Brief attention pulse (Docs editor: the action chip is the useful control). */
+@keyframes pangram-attn {
+  0%, 100% { transform: scale(1); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.16), 0 1px 3px rgba(0, 0, 0, 0.08); }
+  50% { transform: scale(1.06); box-shadow: 0 8px 26px rgba(109, 94, 252, 0.45), 0 2px 5px rgba(0, 0, 0, 0.10); }
+}
+.action.attn { animation: pangram-attn 1.3s ease-in-out 3; }
+@media (prefers-reduced-motion: reduce) { .action.attn { animation: none; } }
+
 .mark {
   width: 18px;
   height: 18px;
@@ -147,6 +155,7 @@ export function createFab(opts: { onToggle: () => void }): Fab {
   let active = true;
   let actionLabel: string | null = null;
   let actionCb: (() => void) | undefined;
+  let actionAttention = false;
 
   function applyState(): void {
     if (!fabEl) return;
@@ -155,6 +164,7 @@ export function createFab(opts: { onToggle: () => void }): Fab {
     fabEl.title = active ? "Hide AI detection" : "Show AI detection";
     if (actionEl) {
       actionEl.classList.toggle("show", actionLabel !== null);
+      actionEl.classList.toggle("attn", actionLabel !== null && actionAttention);
       actionEl.textContent = actionLabel ?? "";
     }
   }
@@ -216,9 +226,14 @@ export function createFab(opts: { onToggle: () => void }): Fab {
     countEl.classList.toggle("zero", flagged === 0);
   }
 
-  function setAction(label: string | null, onAction?: () => void): void {
+  function setAction(
+    label: string | null,
+    onAction?: () => void,
+    opts?: { attention?: boolean },
+  ): void {
     actionLabel = label;
     actionCb = onAction;
+    actionAttention = opts?.attention ?? false;
     applyState();
   }
 

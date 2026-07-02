@@ -52,7 +52,7 @@ export interface Orchestrator {
   /** Number of units that have rendered a badge (popup GET_TAB_STATE). */
   scoredCount(): number;
   /** Configure the FAB's secondary action chip (Google Docs reading view etc.). */
-  setFabAction(label: string | null, onAction?: () => void): void;
+  setFabAction(label: string | null, onAction?: () => void, opts?: { attention?: boolean }): void;
 }
 
 function newSessionId(): string {
@@ -420,8 +420,12 @@ export function createOrchestrator(_ctx: ContentScriptContext): Orchestrator {
     return scoredIds.size;
   }
 
-  function setFabAction(label: string | null, onAction?: () => void): void {
-    fab.setAction(label, onAction);
+  function setFabAction(
+    label: string | null,
+    onAction?: () => void,
+    opts?: { attention?: boolean },
+  ): void {
+    fab.setAction(label, onAction, opts);
   }
 
   return { start, stop, rescan, toggle, scoredCount, setFabAction };

@@ -72,7 +72,10 @@ async function sweep(page, steps = 6) {
   const page = await context.newPage();
   const extErrors = [];
   page.on("console", (m) => {
-    if (m.type() === "error" && (m.location()?.url ?? "").startsWith("chrome-extension://"))
+    const u = m.location()?.url ?? "";
+    // chrome-extension://invalid/ is a page-side extension-detection probe (Google
+    // Docs does this), not our resource.
+    if (m.type() === "error" && u.startsWith("chrome-extension://") && !u.startsWith("chrome-extension://invalid"))
       extErrors.push(m.text().slice(0, 160));
   });
   await page.goto(fixturesUrl, { waitUntil: "load" });
@@ -303,7 +306,8 @@ if (!LOCAL_ONLY) {
     const page = await context.newPage();
     const extErrors = [];
     page.on("console", (m) => {
-      if (m.type() === "error" && (m.location()?.url ?? "").startsWith("chrome-extension://"))
+      const u = m.location()?.url ?? "";
+      if (m.type() === "error" && u.startsWith("chrome-extension://") && !u.startsWith("chrome-extension://invalid"))
         extErrors.push(m.text().slice(0, 140));
     });
     let loaded = true;

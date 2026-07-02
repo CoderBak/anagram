@@ -164,9 +164,15 @@ Working and covered by the 22-check e2e:
   Plus the link-density barrier for menus/story lists.
 - ✅ **Plain-text documents** (`text/plain` viewer): blank-line paragraphs are segmented,
   merged and badged.
-- ✅ **Google Docs**: editor pages get a FAB action chip → opens the static-HTML
-  `/mobilebasic` reading view (the Immersive Translate approach — the editor itself is
-  canvas and has no DOM text); the reading view scores normally and offers "Back to editor".
+- ✅ **Google Docs** (verified end-to-end on a real public doc, `test/docs-flow.mjs`):
+  editor pages get a pulsing FAB action chip → opens the static-HTML `/mobilebasic`
+  reading view (the Immersive Translate approach — the editor itself is canvas and has no
+  DOM text). The doc TAB (`?tab=t.0`) is forwarded, our navigations carry a
+  `#pangram-reading` fragment that opts the page into reading-mode typography (zoomed
+  centered card — `zoom` preserves the doc's own heading hierarchy against its ~hundreds
+  of inline font sizes), and "Back to editor" restores the EXACT saved editor URL
+  (sessionStorage) including the tab. Note: Google Docs itself probes
+  `chrome-extension://invalid/` — console noise, not ours.
 - ✅ Popup (enable/disable + per-site + rescan), options scaffold, settings
   (`showHighlights` now respected live; default on).
 
@@ -289,8 +295,10 @@ extension/
 - **Google Docs = reading view, not canvas heroics.** The editor draws text on `<canvas>`;
   only the gated Annotated Canvas API could overlay it. Immersive Translate's answer (and
   ours): swap to the `/mobilebasic` static-HTML view via the FAB action chip and run the
-  normal pipeline there; offer the way back. Published docs (`/pub`) are plain HTML and just
-  work with the generic walker.
+  normal pipeline there; offer the way back (exact editor URL incl. tab, via
+  sessionStorage). Reading-mode typography is GATED on the `#pangram-reading` fragment our
+  button appends — organic mobilebasic visits stay untouched, consistent with the
+  zero-mutation policy. Published docs (`/pub`) are plain HTML and just work.
 - **Viewport-first is intentional.** Tests must scroll. Don't "fix" a below-fold no-badge.
 - **Stub is deterministic per text** (`cyrb53 → mulberry32`), so badges are stable across
   re-scans and the e2e is reproducible. Scores are RANDOM by design until the real backend.
