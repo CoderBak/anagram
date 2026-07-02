@@ -1,47 +1,110 @@
-# Pangram AI Detector (M1)
+# Pangram AI Detector
 
-A Manifest V3 Chrome extension (built with [WXT](https://wxt.dev)) that detects
-AI-generated text on web pages and renders an inline AI-confidence chip (Shadow
-DOM) plus a colored underline per scored unit. Short neighbouring paragraphs are
-merged into one unit so chat/comment-style content is covered; long paragraphs are
-never split. It is **not** a translator.
+**See what's AI-written, right on the page.** Pangram is a Chrome extension that
+labels the text you read with a small per-paragraph confidence chip — think
+Immersive Translate, but instead of translating, it answers *"did a human write
+this?"* — inline, live, on every site.
 
-The detection backend is a swappable `ScoreClient` seam; M1 ships an in-extension
-**random stub** that returns the same contract the real backend will.
+> **Scoring status:** the detection backend is currently a development stub that
+> produces deterministic pseudo-random scores (the same paragraph always gets the
+> same number). The entire surface — capture, merging, rendering, caching — is
+> final; the real detector plugs into one file (`lib/backend/getScoreClient.ts`)
+> behind a stable contract (`lib/contract.ts`).
 
-## Develop
+| Article pages | Dark mode + detail card |
+| --- | --- |
+| ![Wikipedia with per-paragraph chips](docs/screenshots/wikipedia.png) | ![Dark page with pinned detail card](docs/screenshots/dark-mode.png) |
+
+| Paper / abstract pages | Google Docs reading view |
+| --- | --- |
+| ![HuggingFace paper page](docs/screenshots/article-page.png) | ![Docs mobilebasic reading view](docs/screenshots/google-docs-reading-view.png) |
+
+## What you get
+
+- **A chip after every analyzed paragraph** — `38% AI` with a color-coded verdict
+  (green = Human, amber = AI-Assisted, red = AI, gray = Insufficient). Chips scale
+  with the surrounding text, sit on its baseline, and reflow with the page (RTL
+  included). Hover — or tap, on touch — for the full calibrated readout: verdict,
+  credible interval, p-value, words analyzed, always with an
+  *"estimate, not proof"* caveat.
+- **A colored underline across each analyzed unit** (toggleable), with a
+  dark-tuned palette on dark pages.
+- **A floating ball** (draggable, position remembered per site) with a live count
+  of flagged paragraphs; click to show/hide everything instantly — no re-analysis.
+- **Popup + options page**: per-site on/off rules, underline toggle, live scored
+  count, per-site rule management.
+- **Google Docs support**: the editor is a canvas, so the ball offers
+  **"Open reading view"** — a typographically cleaned static view of the same
+  document where every paragraph is analyzed — and the way back to the exact tab
+  you were editing.
+
+## What it handles (the hard parts)
+
+Text on the web is messy; the capture engine is built for it:
+
+- **Visual paragraphs, not tags.** Layout is classified by computed style, so
+  `<div>`-built sites (Zhihu, X-style apps), BR-separated prose, and
+  pre-wrap chat transcripts segment the way they *look*. Inline markup —
+  links, `code`, emphasis, drop caps, icons, images, formulas — never splits a
+  sentence.
+- **An evidence floor with merging.** Detection below ~50 words is unreliable, so
+  short neighboring paragraphs (chat messages, list items, comment threads) are
+  **analyzed together** as one unit instead of being skipped — while headings,
+  navigation, link lists, ASCII art and column layouts act as barriers that are
+  never merged across.
+- **Living pages.** Infinite scroll, SPA navigations (pushState included), tab
+  panels, accordions, `<details>`, edited and deleted text — badges appear,
+  update, and disappear with the content. Scoring is viewport-first, so pages
+  stay fast.
+- **Everything, everywhere:** open shadow DOM and slots, same- and cross-origin
+  iframes (webmail readers, embedded posts — ad slots are size-gated out),
+  plain-text documents (`.txt`/`.log`/RFCs), pure-CJK and RTL text.
+- **Zero page mutation** beyond inserting the chips themselves: no attributes, no
+  inline styles on your DOM, underlines via the CSS Custom Highlight API, copied
+  text never includes badge labels, badges inside links never navigate.
+
+## Install (unpacked)
 
 ```bash
-npm install        # also runs `wxt prepare` via postinstall
-npm run dev        # launches a Chrome profile with the extension + HMR
+npm install
+npm run build          # → output/chrome-mv3/
 ```
 
-## Typecheck
+1. Open `chrome://extensions`, enable **Developer mode**.
+2. **Load unpacked** → select `output/chrome-mv3`.
+3. Browse anywhere with prose. The ball sits bottom-right; the toolbar popup and
+   the options page hold the switches.
 
-```bash
-npm run typecheck  # wxt prepare && tsc --noEmit
-```
+## Testing
 
-## Build + load unpacked
+Four suites, all runnable headed on a normal machine:
 
-```bash
-npm run build      # outputs output/chrome-mv3/
-```
+| Suite | Command | Checks | What it covers |
+| --- | --- | --- | --- |
+| Unit | `npm run test:unit` | 46 | walker/assembler logic in a real Chromium page (~5s) |
+| E2E | `npm run test:e2e` | 22 | full extension on a 16-section fixture page |
+| Scenarios | `npm run test:scenarios` | 26 | UI edge cases + 13 live sites (EN/AR/JA Wikipedia, HF, StackOverflow, RFC txt…) |
+| Docs flow | `node test/docs-flow.mjs` | — | editor ⇄ reading-view round trip on a real public doc |
 
-1. Open `chrome://extensions`.
-2. Enable **Developer mode** (top-right).
-3. **Load unpacked** → select `output/chrome-mv3`.
-4. Pin the extension; the toolbar icon opens the popup (on/off, per-site, Rescan).
+`npm run browser` opens a live Chromium with the extension for manual poking;
+`node test/genicons.mjs` regenerates the icon set.
 
-## Self-test
+## Architecture (one paragraph)
 
-Run `npm run test:e2e` (22 checks over `test/selftest.html`, served over http),
-or `npm run browser` for a live window. `node test/sites.mjs` sweeps real sites
-(incl. the HuggingFace papers page) with screenshots. See HANDOFF.md §8.
+A content script segments the page (`lib/dom/walker.ts`) into scoreable units,
+claims their text nodes for incremental re-scans, and observes viewport,
+mutations, attribute reveals and URL changes (`lib/capture/`). Units are batched
+through a 3-lane priority scheduler to the MV3 service worker, which dedups,
+caches (53-bit content hashes, model-versioned keys) and calls the active
+`ScoreClient` — today `RandomStubScoreClient`, tomorrow a real detector, with
+retry and never-cached degraded fallbacks (`lib/backend/`). Results render as
+inline shadow-DOM chips and Highlight-API underlines (`lib/render/`). The
+surface↔backend contract lives in `lib/contract.ts`; swapping in a real model
+touches exactly one factory function.
 
-## Layout
+## Privacy
 
-- `entrypoints/` — WXT scans this to build the manifest (content, background, popup, options).
-- `lib/` — shared modules: DOM walker, capture pipeline, messaging, render, backend, settings.
-- `public/` — copied verbatim into the bundle (icons go here post-M1).
-- `test/` — hand-made self-test page.
+Nothing leaves the browser. Text goes from the page to the extension's own
+service worker and back; the stub scores locally. The batch envelope carries only
+a hostname + language hint by design — if a remote backend is ever added, that
+contract keeps full URLs and page identity out of every request.

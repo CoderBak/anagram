@@ -20,8 +20,6 @@ export interface Observers {
   observeUnit(unit: Unit): void;
   /** Stop tracking one unit (scored, invalidated, or purged). */
   dropUnit(unit: Unit): void;
-  /** Externally mark a subtree dirty (same debounced drain as mutations). */
-  markDirty(node: Node): void;
   start(): void;
   stop(): void;
 }
@@ -197,12 +195,6 @@ export function createObservers(opts: {
     }
   }
 
-  function markDirty(node: Node): void {
-    if (inSelfHost(node)) return;
-    dirty.add(node);
-    scheduleDrain();
-  }
-
   function start(): void {
     if (started) return;
     started = true;
@@ -234,5 +226,5 @@ export function createObservers(opts: {
     dispatched.clear();
   }
 
-  return { observeUnit, dropUnit, markDirty, start, stop };
+  return { observeUnit, dropUnit, start, stop };
 }

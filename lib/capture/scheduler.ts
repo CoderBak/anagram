@@ -14,7 +14,6 @@ import { truncateForScoring } from "../dom/text";
 export interface Scheduler {
   enqueue(unit: Unit, lane: Lane): void;
   bumpEpoch(): number; // SPA route change / teardown
-  flush(): void;
   stop(): void;
 }
 
@@ -139,15 +138,10 @@ export function createScheduler(opts: {
     return currentEpoch;
   }
 
-  function flush(): void {
-    pumpScheduled = false;
-    pump();
-  }
-
   function stop(): void {
     bumpEpoch();
     inFlightIds.clear();
   }
 
-  return { enqueue, bumpEpoch, flush, stop };
+  return { enqueue, bumpEpoch, stop };
 }

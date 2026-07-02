@@ -22,7 +22,3 @@ export const BAND_LABEL: Record<Band, string> = {
   unknown: "Insufficient",
 };
 
-/** Convenience: label directly from a result. */
-export function bandLabel(r: ScoreResult): string {
-  return BAND_LABEL[band(r)];
-}

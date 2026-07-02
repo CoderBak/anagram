@@ -10,7 +10,6 @@ export const settings = {
   // respects live changes to this setting).
   showHighlights: storage.defineItem<boolean>("local:showHighlights", { fallback: true }),
   debug: storage.defineItem<boolean>("local:debug", { fallback: false }),
-  scorePre: storage.defineItem<boolean>("local:scorePre", { fallback: false }),
   // FAB position per host, as {r,b} offsets from the bottom-right corner.
   fabPos: storage.defineItem<Record<string, { r: number; b: number }>>("local:fabPos", {
     fallback: {},
@@ -50,22 +49,3 @@ export async function clearSiteOverride(hostname: string): Promise<void> {
   }
 }
 
-let _ready: Promise<void> | null = null;
-function hydrate(): Promise<void> {
-  if (!_ready) {
-    // Touch every item once so storage is read at least once; resolves after first hydrate.
-    _ready = Promise.all([
-      settings.enabled.getValue(),
-      settings.siteOverrides.getValue(),
-      settings.showHighlights.getValue(),
-      settings.debug.getValue(),
-      settings.scorePre.getValue(),
-    ]).then(() => undefined);
-  }
-  return _ready;
-}
-
-/** Resolves the callback after the first storage hydrate. */
-export function onReady(cb: () => void): void {
-  void hydrate().then(cb);
-}

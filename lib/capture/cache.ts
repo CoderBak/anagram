@@ -1,17 +1,14 @@
-// lib/capture/cache.ts — per-tab L1 content-hash cache (§4.4).
+// lib/capture/cache.ts — per-tab L1 content-hash cache.
 // Keyed by hash(normalizeText(text)) so a paragraph's badge stays stable across
-// re-scroll / re-entry (virtualized lists). Plus an in-flight Promise map
-// (reference's translationsInProgress) so duplicate paragraphs scrolling in
-// together collapse to one request.
+// re-scroll / re-entry (virtualized lists). Request-level dedup lives in the
+// orchestrator's send() and the SW router.
 import type { ScoreResult } from "../contract";
 import { normalizeText } from "../dom/text";
 
 export interface ScoreCache {
   get(text: string): ScoreResult | undefined;
   set(text: string, r: ScoreResult): void;
-  inFlight(text: string): Promise<ScoreResult> | undefined;
-  setInFlight(text: string, p: Promise<ScoreResult>): void;
-  keyOf(text: string): string; // sync 64-bit-ish hash of normalizeText(text)
+  keyOf(text: string): string; // sync 53-bit hash of normalizeText(text)
 }
 
 /**
@@ -33,7 +30,6 @@ function cyrb53(str: string, seed = 0): number {
 
 export function createScoreCache(): ScoreCache {
   const l1 = new Map<string, ScoreResult>();
-  const flight = new Map<string, Promise<ScoreResult>>();
 
   function keyOf(text: string): string {
     return cyrb53(normalizeText(text)).toString(36);
@@ -46,19 +42,6 @@ export function createScoreCache(): ScoreCache {
     },
     set(text: string, r: ScoreResult): void {
       l1.set(keyOf(text), r);
-    },
-    inFlight(text: string): Promise<ScoreResult> | undefined {
-      return flight.get(keyOf(text));
-    },
-    setInFlight(text: string, p: Promise<ScoreResult>): void {
-      const k = keyOf(text);
-      flight.set(k, p);
-      // Self-clean once settled so the in-flight map never leaks. Only delete if it
-      // is still the same promise — a newer setInFlight for the same key wins.
-      const clear = () => {
-        if (flight.get(k) === p) flight.delete(k);
-      };
-      void p.then(clear, clear);
     },
   };
 }
