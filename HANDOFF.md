@@ -440,8 +440,15 @@ canvas heroics for the Docs editor (reading view is the answer).
 
 Done this session (2026-07-02): icons + options page + popup status/underlines,
 dark highlight palette, draggable FAB (per-site memory), tap-to-pin card,
-iframe pipeline with size gates, 38-check unit harness, multi-agent adversarial
-review (see git log for fixes).
+iframe pipeline with size gates, 46-check unit harness, and a 55-agent
+adversarial review (5 finders × 2 skeptics per finding) that confirmed 21
+defects — all fixed in the five fix(...) commits of 2026-07-02, notably: an
+infinite preserved-whitespace rescan loop, SVG/MathML exclusions never firing
+(nodeName case), inline exclusions fragmenting sentences, stale verdicts after
+mid-part edits, the unreachable near→viewport lane upgrade, options/global
+toggles not reaching open tabs, degraded results being cached, and 32-bit SW
+cache keys. Final matrix: unit 46/46, e2e 22/22, scenarios 26/26, docs-flow
+green.
 
 ---
 
