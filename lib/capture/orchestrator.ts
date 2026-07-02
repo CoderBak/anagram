@@ -65,7 +65,16 @@ function isFlagged(r: ScoreResult): boolean {
   return b === "ai" || b === "mixed";
 }
 
-export function createOrchestrator(_ctx: ContentScriptContext): Orchestrator {
+export interface OrchestratorOptions {
+  /** Mount the floating toggle. False in subframes — one FAB per TAB, in the top frame. */
+  mountFab?: boolean;
+}
+
+export function createOrchestrator(
+  _ctx: ContentScriptContext,
+  opts: OrchestratorOptions = {},
+): Orchestrator {
+  const mountFab = opts.mountFab ?? true;
   const cache: ScoreCache = createScoreCache();
   const badges: BadgeLayer = createBadgeLayer();
 
@@ -341,8 +350,10 @@ export function createOrchestrator(_ctx: ContentScriptContext): Orchestrator {
     lastHref = location.href;
 
     registerHighlightStyles();
-    fab.mount();
-    fab.setActive(true);
+    if (mountFab) {
+      fab.mount();
+      fab.setActive(true);
+    }
 
     void settings.showHighlights.getValue().then(applyHighlightSetting);
     settings.showHighlights.watch(applyHighlightSetting);
