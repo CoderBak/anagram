@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Welcome to Pangram</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        max-width: 640px; margin: 48px auto 90px; padding: 0 22px;
+        font: 15px/1.65 system-ui, sans-serif; color: #1f2328; background: #fff;
+      }
+      @media (prefers-color-scheme: dark) {
+        body { color: #e6edf3; background: #0d1117; }
+        section { border-color: #30363d !important; }
+        .muted { color: #8b949e !important; }
+        kbd { background: #21262d; border-color: #30363d; }
+      }
+      header { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+      header img { width: 44px; height: 44px; border-radius: 10px; }
+      h1 { font-size: 22px; margin: 0; }
+      .muted { color: #656d76; }
+      section { border: 1px solid #d0d7de; border-radius: 12px; padding: 16px 20px; margin: 16px 0; }
+      h2 { font-size: 15px; margin: 0 0 8px; }
+      .bands { display: flex; flex-wrap: wrap; gap: 10px 18px; margin: 10px 0 2px; }
+      .band { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; font-size: 13px; }
+      .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+      .b-human .dot { background: #1a7f37; } .b-human { color: #116a37; }
+      .b-mixed .dot { background: #d99e00; } .b-mixed { color: #8a5a00; }
+      .b-ai .dot { background: #e5484d; } .b-ai { color: #b42318; }
+      .b-unknown .dot { background: #9aa3ad; } .b-unknown { color: #57606a; }
+      kbd { font: 600 12px/1 ui-monospace, monospace; background: #f6f8fa; border: 1px solid #d0d7de; border-bottom-width: 2px; border-radius: 5px; padding: 2px 6px; }
+      .chip-demo { display: inline-flex; align-items: center; gap: 4px; font: 650 10px/1 system-ui; color: #b42318; border: 1px solid rgba(0,0,0,0.07); border-radius: 999px; padding: 3px 7px 3px 6px; background: rgba(255,255,255,0.9); box-shadow: 0 1px 4px rgba(0,0,0,0.1); vertical-align: -2px; }
+      .chip-demo .d { width: 6px; height: 6px; border-radius: 50%; background: #e5484d; }
+      footer { margin-top: 20px; font-size: 12px; color: #8b949e; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <img src="/icons/icon-128.png" alt="" />
+      <div>
+        <h1>Welcome to Pangram</h1>
+        <div class="muted" id="version"></div>
+      </div>
+    </header>
+    <p>Pangram labels the text you read with a small confidence chip — like
+      <span class="chip-demo"><span class="d"></span>87% AI</span> — right after each analyzed
+      paragraph, answering <em>"did a human write this?"</em> as you browse.</p>
+
+    <section>
+      <h2>Reading the verdicts</h2>
+      <div class="bands">
+        <span class="band b-human"><span class="dot"></span>Human</span>
+        <span class="band b-mixed"><span class="dot"></span>AI-Assisted</span>
+        <span class="band b-ai"><span class="dot"></span>AI</span>
+        <span class="band b-unknown"><span class="dot"></span>Insufficient</span>
+      </div>
+      <p class="muted">Hover (or tap) a chip for the full readout: the estimate's credible
+        interval, a p-value against the human baseline, and how many words were analyzed.
+        Every number is a <strong>calibrated estimate, not proof</strong>. Text under 50
+        words is only analyzed when it can be grouped with its neighbors — short fragments
+        are unreliable to judge alone.</p>
+    </section>
+
+    <section>
+      <h2>The floating ball</h2>
+      <p class="muted">Bottom-right of every page: click it to show/hide everything
+        instantly, drag it anywhere (it remembers per site), and click its red counter to
+        open the <strong>flagged-paragraphs panel</strong> — jump straight to anything
+        marked AI. Prefer calm pages? Switch <em>Show → Flagged only</em> in the popup.</p>
+    </section>
+
+    <section>
+      <h2>Power moves</h2>
+      <p class="muted">
+        Select any text → right-click → <strong>Analyze selection with Pangram</strong> —
+        works even in editors and comment boxes.<br />
+        Press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> to toggle the overlay.<br />
+        On <strong>Google Docs</strong>, the ball offers a reading view where every
+        paragraph of your document gets analyzed.
+      </p>
+    </section>
+
+    <section>
+      <h2>Privacy</h2>
+      <p class="muted">Nothing leaves your browser. Analysis happens inside the extension;
+        requests carry only a hostname and language hint by design — never full URLs.</p>
+    </section>
+
+    <footer id="stub-note"></footer>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

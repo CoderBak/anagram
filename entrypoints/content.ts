@@ -15,6 +15,7 @@ import {
   applyDocsReadingStyle,
   DOCS_RETURN_KEY,
 } from "../lib/docs";
+import { analyzeSelection } from "../lib/render/selectionCard";
 import { ACTIONS } from "../lib/messaging/protocol";
 import type { ControlMessage, TabState } from "../lib/messaging/protocol";
 
@@ -159,6 +160,14 @@ export default defineContentScript({
             sendResponse(state);
             return; // synchronous response
           }
+
+          case ACTIONS.TOGGLE_OVERLAY:
+            if (enabled && frameGateOk()) orchestrator.toggle();
+            return;
+
+          case ACTIONS.ANALYZE_SELECTION:
+            void analyzeSelection(); // works even where passive capture skips
+            return;
 
           case ACTIONS.TEARDOWN:
             enabled = false;

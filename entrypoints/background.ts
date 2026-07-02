@@ -17,6 +17,40 @@ import type {
 export default defineBackground(() => {
   const router = createRouter(getScoreClient());
 
+  // "Analyze selection" context menu; recreate idempotently on install/update.
+  browser.runtime.onInstalled.addListener((details) => {
+    void browser.contextMenus.removeAll().then(() => {
+      browser.contextMenus.create({
+        id: "pangram-analyze-selection",
+        title: "Analyze selection with Pangram",
+        contexts: ["selection"],
+      });
+    });
+    if (details.reason === "install") {
+      void browser.tabs.create({ url: browser.runtime.getURL("/onboarding.html") });
+    }
+  });
+
+  browser.contextMenus.onClicked.addListener((info, tab) => {
+    if (info.menuItemId !== "pangram-analyze-selection" || tab?.id == null) return;
+    // Target the frame the selection lives in.
+    void browser.tabs
+      .sendMessage(tab.id, { action: ACTIONS.ANALYZE_SELECTION }, { frameId: info.frameId ?? 0 })
+      .catch(() => undefined);
+  });
+
+  // Keyboard command: show/hide the overlay on the active tab (all frames).
+  browser.commands?.onCommand.addListener((command) => {
+    if (command !== "toggle-overlay") return;
+    void browser.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+      if (tab?.id != null) {
+        void browser.tabs
+          .sendMessage(tab.id, { action: ACTIONS.TOGGLE_OVERLAY })
+          .catch(() => undefined);
+      }
+    });
+  });
+
   browser.runtime.onMessage.addListener(
     (
       message: unknown,

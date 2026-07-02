@@ -8,7 +8,13 @@ export default defineConfig({
   manifest: {
     name: "Pangram AI Detector",
     description: "Per-paragraph AI-generated-text confidence badges.",
-    permissions: ["storage", "activeTab"],
+    permissions: ["storage", "activeTab", "contextMenus"],
+    commands: {
+      "toggle-overlay": {
+        suggested_key: { default: "Alt+Shift+P" },
+        description: "Show/hide Pangram badges",
+      },
+    },
     host_permissions: ["<all_urls>"],
     icons: {
       16: "icons/icon-16.png",
