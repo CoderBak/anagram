@@ -30,9 +30,20 @@ this?"* — inline, live, on every site.
 - **A colored underline across each analyzed unit** (toggleable), with a
   dark-tuned palette on dark pages.
 - **A floating ball** (draggable, position remembered per site) with a live count
-  of flagged paragraphs; click to show/hide everything instantly — no re-analysis.
-- **Popup + options page**: per-site on/off rules, underline toggle, live scored
-  count, per-site rule management.
+  of flagged paragraphs; click to show/hide everything instantly — no re-analysis,
+  or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>. **Click the counter** to
+  open the triage panel: every flagged paragraph in order — click one to jump
+  there and pulse its chip. The toolbar icon shows the per-tab flagged count too.
+- **"Flagged only" mode**: every paragraph is still analyzed, but chips and
+  underlines appear only on AI / AI-Assisted verdicts — calm pages by default if
+  you prefer (popup → Show).
+- **Analyze any selection**: select text → right-click →
+  *Analyze selection with Pangram* — works even in editors, comment boxes and
+  fragments passive capture skips; below the 50-word floor it says
+  "too short to judge" instead of pretending.
+- **Popup + options page**: per-site on/off rules, underline toggle, display
+  mode, live scored count, per-site rule management; a first-run page explains
+  the verdicts.
 - **Google Docs support**: the editor is a canvas, so the ball offers
   **"Open reading view"** — a typographically cleaned static view of the same
   document where every paragraph is analyzed — and the way back to the exact tab
@@ -85,6 +96,7 @@ Four suites, all runnable headed on a normal machine:
 | E2E | `npm run test:e2e` | 22 | full extension on a 16-section fixture page |
 | Scenarios | `npm run test:scenarios` | 26 | UI edge cases + 13 live sites (EN/AR/JA Wikipedia, HF, StackOverflow, RFC txt…) |
 | Docs flow | `node test/docs-flow.mjs` | — | editor ⇄ reading-view round trip on a real public doc |
+| Perf | `npm run test:perf` | 3 | 3000-paragraph budget: first badge <4s (measured ~0.4s), no long task >1s |
 
 `npm run browser` opens a live Chromium with the extension for manual poking;
 `node test/genicons.mjs` regenerates the icon set.

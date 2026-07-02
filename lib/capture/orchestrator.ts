@@ -41,7 +41,10 @@ const log = createLogger("orchestrator");
 
 const BATCH_CHAR_BUDGET = 800;
 const MAX_IN_FLIGHT = 4;
-const URL_POLL_MS = 500;
+// The MAIN-world nav hook (entrypoints/nav-hook.content.ts) announces pushState/
+// replaceState instantly via "pangram:navigate"; the poll is only a slow fallback
+// for exotic navigation paths the hook cannot see.
+const URL_POLL_MS = 2500;
 
 export interface Orchestrator {
   /** Begin capture: initial scan + observers + scheduler + floating toggle. Idempotent. */
@@ -455,6 +458,7 @@ export function createOrchestrator(
 
     window.addEventListener("popstate", onUrlMaybeChanged);
     window.addEventListener("hashchange", onUrlMaybeChanged);
+    window.addEventListener("pangram:navigate", onUrlMaybeChanged);
     urlTimer = setInterval(onUrlMaybeChanged, URL_POLL_MS);
     log.log("started", { session, domain });
   }
@@ -497,6 +501,7 @@ export function createOrchestrator(
     fab.unmount();
     window.removeEventListener("popstate", onUrlMaybeChanged);
     window.removeEventListener("hashchange", onUrlMaybeChanged);
+    window.removeEventListener("pangram:navigate", onUrlMaybeChanged);
     if (urlTimer !== null) {
       clearInterval(urlTimer);
       urlTimer = null;
