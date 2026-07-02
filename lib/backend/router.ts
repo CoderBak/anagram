@@ -38,6 +38,7 @@ function neutral(block: ScoreBlock): ScoreResult {
     e_theta: 0.5,
     p_value: 1,
     sentence_flags: [],
+    degraded: true, // fallback, not a model output — never cached
   };
 }
 
@@ -104,10 +105,11 @@ export function createRouter(client: ScoreClient): BackendRouter {
       group.push(block);
     }
 
-    /** Apply a representative's result to every block sharing its key + cache it. */
+    /** Apply a representative's result to every block sharing its key; cache REAL
+     *  results only (a degraded fallback cached once would outlive the outage). */
     const fanOut = (key: string, r: ScoreResult): void => {
       const text = keyToBlocks.get(key)?.[0]?.text;
-      if (text !== undefined) cache.set(text, r);
+      if (text !== undefined && !r.degraded) cache.set(text, r);
       for (const b of keyToBlocks.get(key) ?? []) {
         resultById.set(b.id, { ...r, id: b.id });
       }

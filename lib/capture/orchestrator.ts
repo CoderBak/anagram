@@ -223,7 +223,7 @@ export function createOrchestrator(
       for (const [k, rep] of repByKey) {
         const r = byId.get(rep.id);
         if (!r) continue;
-        cache.set(rep.text, r);
+        if (!r.degraded) cache.set(rep.text, r); // fallbacks must not outlive the outage
         for (const id of idsByKey.get(k)!) out.push({ ...r, id });
       }
     }

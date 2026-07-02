@@ -33,6 +33,13 @@ export interface ScoreResult {
   p_value: number;
   /** Optional per-sentence AI flags, aligned to sentence split of `text`. */
   sentence_flags?: boolean[];
+  /**
+   * True when this result is a transport/backend-failure FALLBACK, not a model
+   * output. Degraded results render ("Insufficient") but must never enter any
+   * cache — a transient outage must not pin permanent wrong verdicts. Additive
+   * optional field; absent means a real result.
+   */
+  degraded?: boolean;
 }
 
 export type ScanPriority = "viewport" | "near" | "background";

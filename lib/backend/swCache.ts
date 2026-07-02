@@ -3,6 +3,7 @@
 // dimension so swapping the active backend invalidates stale entries.
 import type { ScoreResult } from "../contract";
 import { normalizeText } from "../dom/text";
+import { cyrb53 } from "../hash";
 import { STUB_MODEL } from "./randomStub";
 
 export interface SwCache {
@@ -14,20 +15,12 @@ export interface SwCache {
 /** Model-version dimension folded into every cache key (reference gap). */
 const MODEL_DIM = `${STUB_MODEL.id}@${STUB_MODEL.ver}`;
 
-/** Small synchronous string hash (FNV-1a) — adequate for a per-tab cache key. */
-function fnv1a(s: string): string {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return (h >>> 0).toString(36);
-}
-
 export function createSwCache(): SwCache {
   const map = new Map<string, ScoreResult>();
+  // 53-bit key (shared cyrb53) — the 32-bit FNV-1a this used made wrong-badge
+  // collisions realistic across a long browsing session.
   const keyOf = (text: string): string =>
-    `${MODEL_DIM}:${fnv1a(normalizeText(text))}`;
+    `${MODEL_DIM}:${cyrb53(normalizeText(text)).toString(36)}`;
   return {
     keyOf,
     get(text) {
