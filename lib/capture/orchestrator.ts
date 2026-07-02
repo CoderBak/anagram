@@ -28,6 +28,7 @@ import {
   clearHighlight,
   registerHighlightStyles,
   setHighlightsVisible,
+  refreshHighlightTheme,
 } from "../render/highlight";
 import { createFab, type Fab } from "../render/fab";
 import { band } from "../render/band";
@@ -251,6 +252,7 @@ export function createOrchestrator(
   }
 
   function updateFab(): void {
+    if (started && mountFab) fab.mount(); // re-mounts if the page wiped the host
     let flagged = 0;
     for (const r of resultsById.values()) if (isFlagged(r)) flagged++;
     fab.setCount(flagged, resultsById.size);
@@ -444,6 +446,8 @@ export function createOrchestrator(
     scheduler.bumpEpoch();
     for (const unit of [...unitsById.values()]) observers.dropUnit(unit);
     clearAllResults();
+    badges.resetTheme(); // the site theme may have toggled since the last scan
+    refreshHighlightTheme();
     if (document.body) {
       ingestUnits(collectUnits(document.body, { claimFilter: makeClaimFilter() }));
     }

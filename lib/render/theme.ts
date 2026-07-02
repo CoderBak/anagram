@@ -13,8 +13,17 @@ export interface Rgba {
 
 export function parseColor(s: string): Rgba | null {
   const m = s.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)/);
-  if (!m) return null;
-  return { r: +m[1], g: +m[2], b: +m[3], a: m[4] === undefined ? 1 : +m[4] };
+  if (m) {
+    return { r: +m[1], g: +m[2], b: +m[3], a: m[4] === undefined ? 1 : +m[4] };
+  }
+  // Wide-gamut backgrounds serialize as color(srgb r g b / a) with 0–1 channels
+  // (Chrome keeps the authored color space in the computed value).
+  const c = s.match(/color\(srgb(?:-linear)?\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.%]+))?\s*\)/);
+  if (c) {
+    const a = c[4] === undefined ? 1 : c[4].endsWith("%") ? parseFloat(c[4]) / 100 : +c[4];
+    return { r: +c[1] * 255, g: +c[2] * 255, b: +c[3] * 255, a };
+  }
+  return null;
 }
 
 export function luminance(c: { r: number; g: number; b: number }): number {

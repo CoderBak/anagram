@@ -19,6 +19,8 @@ export interface BadgeLayer {
   remove(id: string): void;
   /** Show/hide all badges without removing them (instant toggle, keeps results). */
   setVisible(visible: boolean): void;
+  /** Forget cached background verdicts (site theme toggled; used by Rescan). */
+  resetTheme(): void;
   teardownAll(): void;
 }
 
@@ -35,8 +37,8 @@ function badgeSheet(): CSSStyleSheet {
 export function createBadgeLayer(): BadgeLayer {
   installOutsideCloser();
   const hosts = new Map<string, HTMLElement>();
-  // Dark-context verdict per container (bg colors rarely change mid-session).
-  const darkCache = new WeakMap<Element, boolean>();
+  // Dark-context verdict per container (invalidated via resetTheme on Rescan).
+  let darkCache = new WeakMap<Element, boolean>();
   let visible = true;
 
   function render(unit: Unit, result: ScoreResult): void {
@@ -144,12 +146,16 @@ export function createBadgeLayer(): BadgeLayer {
     for (const [, host] of hosts) host.classList.toggle("pg-hidden", !v);
   }
 
+  function resetTheme(): void {
+    darkCache = new WeakMap();
+  }
+
   function teardownAll(): void {
     for (const [, host] of hosts) host.remove();
     hosts.clear();
   }
 
-  return { render, remove, setVisible, teardownAll };
+  return { render, remove, setVisible, resetTheme, teardownAll };
 }
 
 // One pinned card at a time; tapping anywhere else closes it.
@@ -167,7 +173,10 @@ function installOutsideCloser(): void {
   document.addEventListener(
     "pointerdown",
     (e) => {
-      if (_openCardHost && e.target !== _openCardHost) closeOpenCard();
+      // composedPath: for badges inside a page shadow root, e.target retargets to
+      // the outer host and a raw comparison would close (then instantly re-open)
+      // the card on every tap of the badge itself.
+      if (_openCardHost && !e.composedPath().includes(_openCardHost)) closeOpenCard();
     },
     true,
   );

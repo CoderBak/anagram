@@ -114,6 +114,11 @@ export function setHighlightsVisible(visible: boolean): void {
   if (_styleEl) _styleEl.disabled = !visible;
 }
 
+/** Re-evaluate the page background and swap the palette (site theme toggles). */
+export function refreshHighlightTheme(): void {
+  if (_styleEl) _styleEl.textContent = isDarkPage() ? HIGHLIGHT_CSS_DARK : HIGHLIGHT_CSS;
+}
+
 /**
  * Underline the unit in its verdict colour — green (human), amber (AI-Assisted),
  * red (AI). Detection cannot attribute below the unit level, so the whole unit is

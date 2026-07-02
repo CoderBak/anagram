@@ -228,9 +228,14 @@ export function createFab(opts: { onToggle: () => void }): Fab {
   }
 
   let suppressNextClick = false;
+  let lastFlagged = 0;
 
   function mount(): void {
-    if (host) return;
+    // Re-mount if the page wiped our host (SPA body replacement) — a stale
+    // non-null reference would otherwise hide the toggle forever.
+    if (host?.isConnected) return;
+    host?.remove();
+    host = null;
     host = document.createElement("div");
     host.setAttribute(MARK_ATTR, "host");
     host.id = "pangram-fab";
@@ -285,6 +290,7 @@ export function createFab(opts: { onToggle: () => void }): Fab {
     shadow.appendChild(stack);
     (document.body ?? document.documentElement).appendChild(host);
     applyState();
+    setCount(lastFlagged, 0); // restore the counter across re-mounts
   }
 
   function setActive(a: boolean): void {
@@ -293,6 +299,7 @@ export function createFab(opts: { onToggle: () => void }): Fab {
   }
 
   function setCount(flagged: number, _total: number): void {
+    lastFlagged = flagged;
     if (!countEl) return;
     countEl.textContent = String(flagged);
     countEl.classList.toggle("zero", flagged === 0);
