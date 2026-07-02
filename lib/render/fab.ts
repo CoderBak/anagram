@@ -3,9 +3,11 @@
 // An always-present control (like Immersive Translate's floating ball) that
 // shows/hides the detection overlay WITHOUT re-running detection, plus an
 // optional secondary ACTION chip stacked above it (e.g. "Reading view" on Google
-// Docs). Its host carries MARK_ATTR="host" so the walker skips it, and
-// id="pangram-fab" so tests can find/click it.
+// Docs). DRAGGABLE: grab the ball to move it out of the way of site UI (chat
+// widgets); the position persists per host. Its host carries MARK_ATTR="host"
+// so the walker skips it, and id="pangram-fab" so tests can find/click it.
 import { MARK_ATTR } from "../types";
+import { settings } from "../settings/settings";
 
 export interface Fab {
   mount(): void;
@@ -62,6 +64,7 @@ const FAB_CSS = `
   padding: 0 11px;
   justify-content: center;
   overflow: hidden;
+  touch-action: none; /* pointer-drag must not turn into page scroll */
 }
 
 .label {
@@ -169,6 +172,63 @@ export function createFab(opts: { onToggle: () => void }): Fab {
     }
   }
 
+  function clampPos(r: number, b: number): { r: number; b: number } {
+    const vw = window.innerWidth || 1280;
+    const vh = window.innerHeight || 800;
+    return {
+      r: Math.min(Math.max(6, r), Math.max(6, vw - 52)),
+      b: Math.min(Math.max(6, b), Math.max(6, vh - 52)),
+    };
+  }
+
+  function applyPos(stack: HTMLElement, r: number, b: number): void {
+    const c = clampPos(r, b);
+    stack.style.right = `${c.r}px`;
+    stack.style.bottom = `${c.b}px`;
+  }
+
+  /** Grab-to-move with a small threshold so plain clicks still toggle. */
+  function makeDraggable(stack: HTMLElement, ball: HTMLButtonElement): void {
+    let startX = 0;
+    let startY = 0;
+    let startR = 18;
+    let startB = 18;
+    let dragging = false;
+
+    ball.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0 && e.pointerType === "mouse") return;
+      startX = e.clientX;
+      startY = e.clientY;
+      const cs = getComputedStyle(stack);
+      startR = parseFloat(cs.right) || 18;
+      startB = parseFloat(cs.bottom) || 18;
+      dragging = false;
+      ball.setPointerCapture(e.pointerId);
+    });
+    ball.addEventListener("pointermove", (e) => {
+      if (!ball.hasPointerCapture(e.pointerId)) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (!dragging && Math.hypot(dx, dy) < 5) return;
+      dragging = true;
+      applyPos(stack, startR - dx, startB - dy);
+    });
+    ball.addEventListener("pointerup", (e) => {
+      if (!ball.hasPointerCapture(e.pointerId)) return;
+      ball.releasePointerCapture(e.pointerId);
+      if (!dragging) return;
+      dragging = false;
+      suppressNextClick = true;
+      const cs = getComputedStyle(stack);
+      const pos = clampPos(parseFloat(cs.right) || 18, parseFloat(cs.bottom) || 18);
+      void settings.fabPos.getValue().then((all) => {
+        void settings.fabPos.setValue({ ...all, [location.hostname]: pos });
+      });
+    });
+  }
+
+  let suppressNextClick = false;
+
   function mount(): void {
     if (host) return;
     host = document.createElement("div");
@@ -203,7 +263,19 @@ export function createFab(opts: { onToggle: () => void }): Fab {
     countEl.textContent = "0";
 
     fabEl.append(mark, label);
-    fabEl.addEventListener("click", () => opts.onToggle());
+    fabEl.addEventListener("click", () => {
+      if (suppressNextClick) {
+        suppressNextClick = false; // that click ended a drag, not a toggle
+        return;
+      }
+      opts.onToggle();
+    });
+    makeDraggable(stack, fabEl);
+    // Restore the saved per-host position (clamped to the current viewport).
+    void settings.fabPos.getValue().then((all) => {
+      const pos = all[location.hostname];
+      if (pos && host) applyPos(stack, pos.r, pos.b);
+    });
 
     const wrap = document.createElement("div");
     wrap.className = "fabwrap";

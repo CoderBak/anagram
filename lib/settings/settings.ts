@@ -11,6 +11,10 @@ export const settings = {
   showHighlights: storage.defineItem<boolean>("local:showHighlights", { fallback: true }),
   debug: storage.defineItem<boolean>("local:debug", { fallback: false }),
   scorePre: storage.defineItem<boolean>("local:scorePre", { fallback: false }),
+  // FAB position per host, as {r,b} offsets from the bottom-right corner.
+  fabPos: storage.defineItem<Record<string, { r: number; b: number }>>("local:fabPos", {
+    fallback: {},
+  }),
 };
 
 /**

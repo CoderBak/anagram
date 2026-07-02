@@ -124,11 +124,13 @@ export const BADGE_CSS: string = `
 .card.align-left  { left: 0; right: auto; transform: none; }
 .card.align-right { left: auto; right: 0; transform: none; }
 
-:host(:hover) .card {
+:host(:hover) .card,
+.card.open {
   visibility: visible;
   opacity: 1;
   transition-delay: 60ms, 60ms;
 }
+.card.open { pointer-events: auto; }
 
 .card .head {
   display: flex;

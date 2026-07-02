@@ -12,6 +12,7 @@ import { MARK_ATTR } from "../types";
 import type { ScoreResult } from "../contract";
 import { band, BAND_LABEL, type Band } from "./band";
 import { BADGE_CSS } from "./badge.css";
+import { isDarkContext } from "./theme";
 
 export interface BadgeLayer {
   render(unit: Unit, result: ScoreResult): void;
@@ -32,6 +33,7 @@ function badgeSheet(): CSSStyleSheet {
 }
 
 export function createBadgeLayer(): BadgeLayer {
+  installOutsideCloser();
   const hosts = new Map<string, HTMLElement>();
   // Dark-context verdict per container (bg colors rarely change mid-session).
   const darkCache = new WeakMap<Element, boolean>();
@@ -51,7 +53,7 @@ export function createBadgeLayer(): BadgeLayer {
     }
 
     host.classList.toggle("pg-hidden", !visible);
-    host.classList.toggle("pg-dark", isDarkContext(unit.container, darkCache));
+    host.classList.toggle("pg-dark", darkFor(unit.container, darkCache));
 
     const root = host.shadowRoot!;
     const pill = root.querySelector(".pill") as HTMLElement;
@@ -73,23 +75,24 @@ export function createBadgeLayer(): BadgeLayer {
     // Inline styles back up the !important :host rules against page CSS.
     host.style.cssText = "display:inline-block;position:relative;margin-inline-start:6px;";
     // A badge can legitimately sit inside an <a>; a click on it must never
-    // navigate or trigger page handlers.
+    // navigate or trigger page handlers. A click/tap also PINS the card open
+    // (the hover story for touch devices); a second tap unpins.
     host.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
+      const card = host.shadowRoot?.querySelector(".card");
+      if (!card) return;
+      const opening = !card.classList.contains("open");
+      closeOpenCard();
+      if (opening) {
+        positionCard(host);
+        card.classList.add("open");
+        _openCardHost = host;
+      }
     });
     // Edge-aware hover card: flip below near the viewport top, pin horizontally
     // near the left/right edges. Decided at hover time — layout may have changed.
-    host.addEventListener("mouseenter", () => {
-      const card = host.shadowRoot?.querySelector(".card");
-      if (!card) return;
-      card.classList.remove("below", "align-left", "align-right");
-      const r = host.getBoundingClientRect();
-      if (r.top < 190) card.classList.add("below");
-      const vw = window.innerWidth || document.documentElement.clientWidth;
-      if (r.left < 150) card.classList.add("align-left");
-      else if (vw - r.right < 150) card.classList.add("align-right");
-    });
+    host.addEventListener("mouseenter", () => positionCard(host));
     const shadow = host.attachShadow({ mode: "open" });
     shadow.adoptedStyleSheets = [badgeSheet()];
 
@@ -149,6 +152,39 @@ export function createBadgeLayer(): BadgeLayer {
   return { render, remove, setVisible, teardownAll };
 }
 
+// One pinned card at a time; tapping anywhere else closes it.
+let _openCardHost: HTMLElement | null = null;
+let _outsideCloserInstalled = false;
+
+function closeOpenCard(): void {
+  _openCardHost?.shadowRoot?.querySelector(".card")?.classList.remove("open");
+  _openCardHost = null;
+}
+
+function installOutsideCloser(): void {
+  if (_outsideCloserInstalled) return;
+  _outsideCloserInstalled = true;
+  document.addEventListener(
+    "pointerdown",
+    (e) => {
+      if (_openCardHost && e.target !== _openCardHost) closeOpenCard();
+    },
+    true,
+  );
+}
+
+/** Edge-aware placement: flip below near the viewport top, pin near the sides. */
+function positionCard(host: HTMLElement): void {
+  const card = host.shadowRoot?.querySelector(".card");
+  if (!card) return;
+  card.classList.remove("below", "align-left", "align-right");
+  const r = host.getBoundingClientRect();
+  if (r.top < 190) card.classList.add("below");
+  const vw = window.innerWidth || document.documentElement.clientWidth;
+  if (r.left < 150) card.classList.add("align-left");
+  else if (vw - r.right < 150) card.classList.add("align-right");
+}
+
 /**
  * Where the badge goes: after the unit's last text node, climbed out of inline
  * ancestors so the chip sits in the block's flow (never inside an <a>/<em>).
@@ -196,29 +232,11 @@ function isInlineFlowElement(el: Element): boolean {
   }
 }
 
-/** True if the text around `el` sits on a dark background (nearest painted bg). */
-function isDarkContext(el: Element, cache: WeakMap<Element, boolean>): boolean {
+/** Cached per-anchor dark verdict via the shared theme probe. */
+function darkFor(el: Element, cache: WeakMap<Element, boolean>): boolean {
   const hit = cache.get(el);
   if (hit !== undefined) return hit;
-  let dark = false;
-  let node: Element | null = el;
-  for (let i = 0; i < 8 && node; i++, node = node.parentElement) {
-    const rgba = parseColor(getComputedStyle(node).backgroundColor);
-    if (rgba && rgba.a > 0.1) {
-      dark = luminance(rgba) < 0.42;
-      break;
-    }
-  }
+  const dark = isDarkContext(el);
   cache.set(el, dark);
   return dark;
-}
-
-function parseColor(s: string): { r: number; g: number; b: number; a: number } | null {
-  const m = s.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)/);
-  if (!m) return null;
-  return { r: +m[1], g: +m[2], b: +m[3], a: m[4] === undefined ? 1 : +m[4] };
-}
-
-function luminance(c: { r: number; g: number; b: number }): number {
-  return (0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b) / 255;
 }

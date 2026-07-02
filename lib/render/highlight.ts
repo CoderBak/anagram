@@ -11,6 +11,7 @@ import type { Unit } from "../types";
 import { MARK_ATTR } from "../types";
 import type { ScoreResult } from "../contract";
 import { band, type Band } from "./band";
+import { isDarkPage } from "./theme";
 
 const HIGHLIGHT_NAME: Record<Band, string> = {
   human: "pangram-human",
@@ -19,7 +20,9 @@ const HIGHLIGHT_NAME: Record<Band, string> = {
   unknown: "pangram-unknown",
 };
 
-// Per-band tint + underline (matches the badge palette).
+// Per-band tint + underline (matches the badge palette). ::highlight() rules are
+// GLOBAL, so the palette can only switch per page — registerHighlightStyles picks
+// the variant from the page-level background verdict.
 const HIGHLIGHT_CSS = `
 ::highlight(pangram-human)   {
   background-color: rgba(26, 127, 55, 0.07);
@@ -43,6 +46,33 @@ const HIGHLIGHT_CSS = `
   text-underline-offset: 2px;
 }
 ::highlight(pangram-unknown) { background-color: rgba(95, 99, 104, 0.10); }
+`;
+
+// Dark-page variant: lighter decoration colors, slightly stronger tints so the
+// marks read against dark surfaces without glowing.
+const HIGHLIGHT_CSS_DARK = `
+::highlight(pangram-human)   {
+  background-color: rgba(78, 203, 113, 0.10);
+  text-decoration-line: underline;
+  text-decoration-style: solid;
+  text-decoration-color: rgba(78, 203, 113, 0.55);
+  text-underline-offset: 3px;
+}
+::highlight(pangram-mixed)   {
+  background-color: rgba(230, 184, 76, 0.16);
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: rgba(230, 184, 76, 0.85);
+  text-underline-offset: 2px;
+}
+::highlight(pangram-ai)      {
+  background-color: rgba(255, 123, 129, 0.16);
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: rgba(255, 123, 129, 0.9);
+  text-underline-offset: 2px;
+}
+::highlight(pangram-unknown) { background-color: rgba(160, 168, 176, 0.12); }
 `;
 
 function highlightsSupported(): boolean {
@@ -74,7 +104,7 @@ export function registerHighlightStyles(): void {
   _stylesInjected = true;
   const style = document.createElement("style");
   style.setAttribute(MARK_ATTR, "style");
-  style.textContent = HIGHLIGHT_CSS;
+  style.textContent = isDarkPage() ? HIGHLIGHT_CSS_DARK : HIGHLIGHT_CSS;
   (document.head ?? document.documentElement).appendChild(style);
   _styleEl = style;
 }
