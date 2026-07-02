@@ -91,6 +91,7 @@ export function createOrchestrator(
   let started = false;
   let visible = true;
   let highlightsEnabled = true;
+  let unwatchHighlights: (() => void) | null = null;
   let lastHref = location.href;
   let urlTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -123,12 +124,16 @@ export function createOrchestrator(
   }
 
   /** Purge units whose DOM disappeared (SPA swaps, virtualized lists). */
-  function purgeDisconnected(): void {
+  function purgeDisconnected(rescanQueue?: Set<Element>): void {
     for (const unit of [...unitsById.values()]) {
       const gone =
         !unit.container.isConnected ||
-        unit.parts.some((p) => p.nodes.length > 0 && !p.nodes[0].isConnected);
-      if (gone) invalidateUnit(unit);
+        unit.parts.some((p) => {
+          const first = p.nodes[0];
+          const last = p.nodes[p.nodes.length - 1];
+          return (first && !first.isConnected) || (last && !last.isConnected);
+        });
+      if (gone) invalidateUnit(unit, rescanQueue);
     }
   }
 
@@ -267,35 +272,51 @@ export function createOrchestrator(
     onNear(unit) {
       scheduler.enqueue(unit, "near");
     },
-    onDirty(nodes, _removed) {
+    onDirty(nodes, removed) {
       try {
-        handleDirty(nodes);
+        handleDirty(nodes, removed);
       } catch (e) {
         log.warn("dirty re-scan failed", e);
       }
     },
   });
 
-  function handleDirty(nodes: Node[]): void {
-    // 1) Purge units whose DOM went away entirely.
-    purgeDisconnected();
+  function handleDirty(nodes: Node[], removed: Node[]): void {
+    const seedQueue = new Set<Element>();
 
-    // 2) Invalidate units whose text changed inside the dirty subtrees.
-    const roots = computeScanRoots(nodes);
-    if (roots.length > 0) {
-      for (const unit of [...unitsById.values()]) {
-        const touched = roots.some(
-          (r) => r.contains(unit.topElement) || r.contains(unit.container),
-        );
-        if (touched && currentTextOf(unit) !== unit.text) invalidateUnit(unit);
+    // 0) Direct hits: dirty/removed TEXT nodes owned by a live unit. This catches
+    //    in-place characterData edits in MIDDLE parts and under nested inline
+    //    wrappers, where the subtree-root containment test below cannot see them.
+    for (const n of nodes.concat(removed)) {
+      if (n.nodeType !== Node.TEXT_NODE) continue;
+      const owner = nodeOwner.get(n as Text);
+      if (!owner || !unitsById.has(owner.id)) continue;
+      if (!(n as Text).isConnected || currentTextOf(owner) !== owner.text) {
+        invalidateUnit(owner, seedQueue);
       }
     }
 
-    // 3) Re-scan the dirty roots. Stale-claim invalidations release parts that may
-    //    live OUTSIDE these roots — their containers queue up for a follow-up round.
+    // 1) Purge units whose DOM went away entirely (released parts get re-scanned).
+    purgeDisconnected(seedQueue);
+
+    // 2) Invalidate units whose text changed inside the dirty subtrees. A unit is
+    //    touched if any root intersects ANY of its parts, in either direction.
+    const roots = computeScanRoots(nodes);
+    if (roots.length > 0) {
+      for (const unit of [...unitsById.values()]) {
+        const touched = roots.some((r) =>
+          unit.parts.some((p) => r.contains(p.container) || p.container.contains(r)),
+        );
+        if (touched && currentTextOf(unit) !== unit.text) invalidateUnit(unit, seedQueue);
+      }
+    }
+
+    // 3) Re-scan the dirty roots PLUS every container released by invalidations
+    //    above (multi-part units span containers outside the mutation root).
+    //    Stale-claim invalidations during scanning queue further rounds.
     const scanned = new Set<Element>();
-    let queue: Element[] = roots;
-    for (let round = 0; round < 3 && queue.length > 0; round++) {
+    let queue: Element[] = dedupeRoots([...roots, ...seedQueue]);
+    for (let round = 0; round < 4 && queue.length > 0; round++) {
       const extra = new Set<Element>();
       const filter = makeClaimFilter(extra);
       for (const root of queue) {
@@ -356,7 +377,8 @@ export function createOrchestrator(
     }
 
     void settings.showHighlights.getValue().then(applyHighlightSetting);
-    settings.showHighlights.watch(applyHighlightSetting);
+    unwatchHighlights?.();
+    unwatchHighlights = settings.showHighlights.watch(applyHighlightSetting);
 
     observers.start();
     ingestUnits(collectUnits(document.body, { claimFilter: makeClaimFilter() }));
@@ -409,6 +431,8 @@ export function createOrchestrator(
       clearInterval(urlTimer);
       urlTimer = null;
     }
+    unwatchHighlights?.();
+    unwatchHighlights = null;
     log.log("stopped");
   }
 
@@ -440,6 +464,12 @@ export function createOrchestrator(
   }
 
   return { start, stop, rescan, toggle, scoredCount, setFabAction };
+}
+
+/** Merge scan roots, dropping disconnected ones and any contained by another. */
+function dedupeRoots(all: Element[]): Element[] {
+  const uniq = [...new Set(all)].filter((el) => el.isConnected);
+  return uniq.filter((r) => !uniq.some((o) => o !== r && o.contains(r)));
 }
 
 /**

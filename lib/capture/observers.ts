@@ -44,8 +44,22 @@ export function createObservers(opts: {
 
   const dirty = new Set<Node>();
   const removed = new Set<Node>();
+  const attrPending = new Set<Element>();
+  let attrTimer: ReturnType<typeof setTimeout> | null = null;
   let drainTimer: ReturnType<typeof setTimeout> | null = null;
   let started = false;
+
+  function flushAttrPending(): void {
+    attrTimer = null;
+    if (attrPending.size === 0) return;
+    const now = Date.now();
+    for (const el of attrPending) {
+      attrScanAt.set(el, now);
+      dirty.add(el);
+    }
+    attrPending.clear();
+    scheduleDrain();
+  }
 
   /** True if this node is (or lives inside) one of our own MARK_ATTR hosts. */
   function inSelfHost(node: Node): boolean {
@@ -67,7 +81,15 @@ export function createObservers(opts: {
         if (inSelfHost(el)) continue;
         const now = Date.now();
         const last = attrScanAt.get(el) ?? 0;
-        if (now - last < ATTR_RESCAN_MIN_MS) continue; // animation churn guard
+        if (now - last < ATTR_RESCAN_MIN_MS) {
+          // Animation-churn guard — but DEFER instead of dropping, or the second
+          // change inside the window (the actual reveal) would never be scanned.
+          attrPending.add(el);
+          if (attrTimer === null) {
+            attrTimer = setTimeout(flushAttrPending, ATTR_RESCAN_MIN_MS - (now - last) + 20);
+          }
+          continue;
+        }
         attrScanAt.set(el, now);
         dirty.add(el);
         continue;
@@ -101,39 +123,47 @@ export function createObservers(opts: {
     opts.onDirty(nodes, rem);
   }
 
-  const io = new IntersectionObserver(
+  // TWO observers: with a single rootMargin observer and threshold 0, no event
+  // fires when an element moves from the margin band INTO the real viewport (the
+  // intersection state vs the expanded root never changes), so the near→viewport
+  // lane upgrade was unreachable. ioNear prefetches; ioViewport upgrades.
+  function dispatchLane(el: Element, lane: "near" | "viewport"): void {
+    const units = unitsByEl.get(el);
+    if (!units || units.size === 0) return;
+    for (const unit of units.values()) {
+      if (unit.isScored) continue;
+      const prev = dispatched.get(unit.id);
+      if (lane === "viewport" && prev !== "viewport") {
+        dispatched.set(unit.id, "viewport"); // fresh dispatch or near→viewport upgrade
+        opts.onVisible(unit);
+      } else if (lane === "near" && prev === undefined) {
+        dispatched.set(unit.id, "near");
+        opts.onNear(unit);
+      }
+    }
+  }
+
+  const ioNear = new IntersectionObserver(
     (entries) => {
-      const vh = window.innerHeight || document.documentElement.clientHeight;
       for (const entry of entries) {
-        if (!entry.isIntersecting) continue;
-        const el = entry.target;
-        const units = unitsByEl.get(el as Element);
-        if (!units || units.size === 0) {
-          io.unobserve(el);
-          continue;
-        }
-        const r = entry.boundingClientRect;
-        // Intersecting the REAL viewport → 'viewport' lane; only within the
-        // rootMargin band above/below the fold → 'near' lane.
-        const inViewport = r.bottom > 0 && r.top < vh;
-        for (const unit of units.values()) {
-          if (unit.isScored) continue;
-          const lane = dispatched.get(unit.id);
-          if (inViewport) {
-            if (lane !== "viewport") {
-              dispatched.set(unit.id, "viewport");
-              opts.onVisible(unit);
-            }
-          } else if (!lane) {
-            dispatched.set(unit.id, "near");
-            opts.onNear(unit);
-          }
-        }
-        // Highest priority reached for everything anchored here → one-shot.
-        if (inViewport) io.unobserve(el);
+        if (entry.isIntersecting) dispatchLane(entry.target as Element, "near");
       }
     },
     { root: null, rootMargin: ROOT_MARGIN, threshold: 0 },
+  );
+
+  const ioViewport = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const el = entry.target as Element;
+        dispatchLane(el, "viewport");
+        // Highest priority reached for everything anchored here → one-shot.
+        ioViewport.unobserve(el);
+        ioNear.unobserve(el);
+      }
+    },
+    { root: null, threshold: 0 },
   );
 
   const mo = new MutationObserver((records) => {
@@ -150,7 +180,8 @@ export function createObservers(opts: {
       unitsByEl.set(el, units);
     }
     units.set(unit.id, unit);
-    io.observe(el); // observing an already-observed target is a no-op
+    ioNear.observe(el); // observing an already-observed target is a no-op
+    ioViewport.observe(el);
   }
 
   function dropUnit(unit: Unit): void {
@@ -159,7 +190,10 @@ export function createObservers(opts: {
     const units = el ? unitsByEl.get(el) : undefined;
     if (units) {
       units.delete(unit.id);
-      if (units.size === 0 && el) io.unobserve(el);
+      if (units.size === 0 && el) {
+        ioNear.unobserve(el);
+        ioViewport.unobserve(el);
+      }
     }
   }
 
@@ -183,12 +217,18 @@ export function createObservers(opts: {
 
   function stop(): void {
     started = false;
-    io.disconnect();
+    ioNear.disconnect();
+    ioViewport.disconnect();
     mo.disconnect();
     if (drainTimer !== null) {
       clearTimeout(drainTimer);
       drainTimer = null;
     }
+    if (attrTimer !== null) {
+      clearTimeout(attrTimer);
+      attrTimer = null;
+    }
+    attrPending.clear();
     dirty.clear();
     removed.clear();
     dispatched.clear();
