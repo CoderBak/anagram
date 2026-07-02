@@ -12,7 +12,9 @@
 // re-collected or gone. SPA navigations (pushState included — watched by URL poll,
 // popstate and hashchange) refresh incrementally without flickering still-valid
 // badges. The popup Rescan button remains the full teardown+rescan.
+import { browser } from "#imports";
 import type { ContentScriptContext } from "#imports";
+import { ACTIONS } from "../messaging/protocol";
 import type { Unit, Lane } from "../types";
 import type { ScoreBlock, ScoreResult, ScoreBatchRequest } from "../contract";
 import { CONTRACT_VERSION } from "../contract";
@@ -92,11 +94,40 @@ export function createOrchestrator(
   let started = false;
   let visible = true;
   let highlightsEnabled = true;
+  let displayMode: "all" | "flagged" = "all";
   let unwatchHighlights: (() => void) | null = null;
+  let unwatchDisplay: (() => void) | null = null;
+  let lastBadgeSent = -1;
   let lastHref = location.href;
   let urlTimer: ReturnType<typeof setInterval> | null = null;
 
-  const fab: Fab = createFab({ onToggle: () => toggle() });
+  const fab: Fab = createFab({
+    onToggle: () => toggle(),
+    panel: {
+      entries: () =>
+        [...resultsById.entries()]
+          .filter(([id, r]) => isFlagged(r) && unitsById.has(id))
+          .map(([id, r]) => ({
+            id,
+            pct: Math.round(r.e_theta * 100),
+            band: band(r),
+            snippet: unitsById.get(id)!.text.slice(0, 70),
+            order: unitsById.get(id)!.order,
+          }))
+          .sort((a, b) => a.order - b.order),
+      onJump: (id) => {
+        const unit = unitsById.get(id);
+        if (!unit || !unit.container.isConnected) return;
+        unit.container.scrollIntoView({ behavior: "smooth", block: "center" });
+        setTimeout(() => badges.flash(id), 350); // pulse once the scroll settles
+      },
+    },
+  });
+
+  /** Painted under the current display mode? Everything is analyzed regardless. */
+  function visibleUnderMode(r: ScoreResult): boolean {
+    return displayMode === "all" || isFlagged(r);
+  }
 
   // --- ownership / invalidation ----------------------------------------------------
 
@@ -236,12 +267,13 @@ export function createOrchestrator(
       const unit = unitsById.get(r.id);
       if (!unit) continue; // invalidated while the batch was in flight
       resultsById.set(r.id, r);
+      scoredIds.add(r.id);
+      unit.isScored = true;
+      observers.dropUnit(unit); // analyzed — stop viewport tracking
+      if (!visibleUnderMode(r)) continue; // analyzed but not painted (flagged-only)
       try {
         badges.render(unit, r);
-        scoredIds.add(r.id);
         if (highlightsEnabled) setHighlight(unit, r);
-        unit.isScored = true;
-        observers.dropUnit(unit); // done — stop viewport tracking
       } catch (e) {
         log.warn("render failed for", r.id, e);
       }
@@ -251,11 +283,44 @@ export function createOrchestrator(
     updateFab();
   }
 
+  /** Repaint everything under a new display mode (results are all cached). */
+  function applyDisplayMode(v: "all" | "flagged"): void {
+    if (v === displayMode) return;
+    displayMode = v;
+    for (const [id, r] of resultsById) {
+      const unit = unitsById.get(id);
+      if (!unit) continue;
+      if (visibleUnderMode(r)) {
+        try {
+          badges.render(unit, r);
+          if (highlightsEnabled) setHighlight(unit, r);
+        } catch {
+          /* detached mid-flight — purge will catch it */
+        }
+      } else {
+        badges.remove(id);
+        clearHighlight(id);
+      }
+    }
+    badges.setVisible(visible);
+    setHighlightsVisible(visible && highlightsEnabled);
+  }
+
   function updateFab(): void {
     if (started && mountFab) fab.mount(); // re-mounts if the page wiped the host
     let flagged = 0;
     for (const r of resultsById.values()) if (isFlagged(r)) flagged++;
     fab.setCount(flagged, resultsById.size);
+    notifyToolbarBadge(flagged);
+  }
+
+  /** Per-tab flagged count on the toolbar icon (top frame owns the tab's number). */
+  function notifyToolbarBadge(flagged: number): void {
+    if (!mountFab || flagged === lastBadgeSent) return;
+    lastBadgeSent = flagged;
+    void browser.runtime
+      .sendMessage({ action: ACTIONS.UPDATE_BADGE, flagged })
+      .catch(() => undefined);
   }
 
   const scheduler: Scheduler = createScheduler({
@@ -381,6 +446,9 @@ export function createOrchestrator(
     void settings.showHighlights.getValue().then(applyHighlightSetting);
     unwatchHighlights?.();
     unwatchHighlights = settings.showHighlights.watch(applyHighlightSetting);
+    void settings.displayMode.getValue().then(applyDisplayMode);
+    unwatchDisplay?.();
+    unwatchDisplay = settings.displayMode.watch(applyDisplayMode);
 
     observers.start();
     ingestUnits(collectUnits(document.body, { claimFilter: makeClaimFilter() }));
@@ -396,7 +464,7 @@ export function createOrchestrator(
     if (v) {
       for (const [id, r] of resultsById) {
         const unit = unitsById.get(id);
-        if (unit) {
+        if (unit && visibleUnderMode(r)) {
           try {
             setHighlight(unit, r);
           } catch {
@@ -435,6 +503,9 @@ export function createOrchestrator(
     }
     unwatchHighlights?.();
     unwatchHighlights = null;
+    unwatchDisplay?.();
+    unwatchDisplay = null;
+    notifyToolbarBadge(0);
     log.log("stopped");
   }
 

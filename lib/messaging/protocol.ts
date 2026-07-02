@@ -7,6 +7,12 @@ export const ACTIONS = {
   SET_ENABLED: "setEnabled",
   GET_TAB_STATE: "getTabState",
   TEARDOWN: "teardown",
+  /** content (top frame) → SW: reflect the flagged count on the toolbar icon. */
+  UPDATE_BADGE: "updateBadge",
+  /** SW (keyboard command) → content: show/hide the overlay. */
+  TOGGLE_OVERLAY: "toggleOverlay",
+  /** SW (context menu) → content: score the current selection, show a card. */
+  ANALYZE_SELECTION: "analyzeSelection",
 } as const;
 
 export type ActionName = (typeof ACTIONS)[keyof typeof ACTIONS];
@@ -50,12 +56,30 @@ export interface TeardownMessage {
   action: typeof ACTIONS.TEARDOWN;
 }
 
+/** content (top frame) → SW: per-tab flagged count for the toolbar badge. */
+export interface UpdateBadgeMessage {
+  action: typeof ACTIONS.UPDATE_BADGE;
+  flagged: number;
+}
+
+/** SW → content: toggle overlay visibility (keyboard command). */
+export interface ToggleOverlayMessage {
+  action: typeof ACTIONS.TOGGLE_OVERLAY;
+}
+
+/** SW → content (specific frame): analyze the live selection. */
+export interface AnalyzeSelectionMessage {
+  action: typeof ACTIONS.ANALYZE_SELECTION;
+}
+
 /** Union of all control messages the content script may receive. */
 export type ControlMessage =
   | RescanMessage
   | SetEnabledMessage
   | GetTabStateMessage
-  | TeardownMessage;
+  | TeardownMessage
+  | ToggleOverlayMessage
+  | AnalyzeSelectionMessage;
 
 /** Union of all messages the service worker may receive. */
 export type BackgroundMessage = ScoreBatchMessage | GetTabStateMessage;

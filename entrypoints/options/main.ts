@@ -7,6 +7,7 @@ import { settings, clearSiteOverride } from "../../lib/settings/settings";
 
 const enabledEl = document.getElementById("enabled") as HTMLInputElement;
 const highlightsEl = document.getElementById("highlights") as HTMLInputElement;
+const displayModeEl = document.getElementById("displayMode") as HTMLSelectElement;
 const debugEl = document.getElementById("debug") as HTMLInputElement;
 const sitesEl = document.getElementById("sites") as HTMLElement;
 const versionEl = document.getElementById("version") as HTMLElement;
@@ -67,6 +68,12 @@ async function renderSites(): Promise<void> {
 bindToggle(enabledEl, settings.enabled);
 bindToggle(highlightsEl, settings.showHighlights);
 bindToggle(debugEl, settings.debug);
+void settings.displayMode.getValue().then((v) => {
+  displayModeEl.value = v;
+});
+displayModeEl.addEventListener("change", () => {
+  void settings.displayMode.setValue(displayModeEl.value as "all" | "flagged");
+});
 void renderSites();
 settings.siteOverrides.watch(() => void renderSites());
 versionEl.textContent = `v${browser.runtime.getManifest().version} · surface v2 · backend: random stub`;

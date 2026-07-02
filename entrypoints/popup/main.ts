@@ -14,6 +14,7 @@ import type { ControlMessage, TabState } from "../../lib/messaging/protocol";
 const enabledEl = document.getElementById("enabled") as HTMLInputElement;
 const siteEl = document.getElementById("siteEnabled") as HTMLInputElement;
 const highlightsEl = document.getElementById("highlights") as HTMLInputElement;
+const displayModeEl = document.getElementById("displayMode") as HTMLSelectElement;
 const rescanEl = document.getElementById("rescan") as HTMLButtonElement;
 const statusEl = document.getElementById("status") as HTMLElement;
 const gearEl = document.getElementById("gear") as HTMLButtonElement;
@@ -62,6 +63,7 @@ async function init(): Promise<void> {
 
   enabledEl.checked = await settings.enabled.getValue();
   highlightsEl.checked = await settings.showHighlights.getValue();
+  displayModeEl.value = await settings.displayMode.getValue();
   siteEl.checked = host ? await enabledForSite(host) : enabledEl.checked;
   siteEl.disabled = !host;
 
@@ -83,6 +85,10 @@ async function init(): Promise<void> {
   highlightsEl.addEventListener("change", () => {
     // The content script watches this setting and re-derives underlines live.
     void settings.showHighlights.setValue(highlightsEl.checked);
+  });
+
+  displayModeEl.addEventListener("change", () => {
+    void settings.displayMode.setValue(displayModeEl.value as "all" | "flagged");
   });
 
   rescanEl.addEventListener("click", () => {

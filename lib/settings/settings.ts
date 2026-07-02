@@ -10,6 +10,11 @@ export const settings = {
   // respects live changes to this setting).
   showHighlights: storage.defineItem<boolean>("local:showHighlights", { fallback: true }),
   debug: storage.defineItem<boolean>("local:debug", { fallback: false }),
+  // What to paint: every analyzed unit, or only flagged (AI / AI-Assisted) ones.
+  // Everything is still ANALYZED either way — this filters rendering only.
+  displayMode: storage.defineItem<"all" | "flagged">("local:displayMode", {
+    fallback: "all",
+  }),
   // FAB position per host, as {r,b} offsets from the bottom-right corner.
   fabPos: storage.defineItem<Record<string, { r: number; b: number }>>("local:fabPos", {
     fallback: {},

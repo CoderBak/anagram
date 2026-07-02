@@ -11,6 +11,7 @@ import { ACTIONS } from "../lib/messaging/protocol";
 import type {
   ScoreBatchMessage,
   ScoreBatchReply,
+  UpdateBadgeMessage,
 } from "../lib/messaging/protocol";
 
 export default defineBackground(() => {
@@ -19,11 +20,28 @@ export default defineBackground(() => {
   browser.runtime.onMessage.addListener(
     (
       message: unknown,
-      _sender,
+      sender,
       sendResponse: (response?: unknown) => void,
     ): boolean | undefined => {
-      const msg = message as Partial<ScoreBatchMessage>;
-      if (!msg || msg.action !== ACTIONS.SCORE_BATCH || !msg.req) return;
+      const msg = message as {
+        action?: string;
+        req?: ScoreBatchMessage["req"];
+        flagged?: UpdateBadgeMessage["flagged"];
+      };
+      if (!msg) return;
+
+      // Per-tab flagged count on the toolbar icon (sent by the TOP frame only).
+      if (msg.action === ACTIONS.UPDATE_BADGE) {
+        const tabId = sender.tab?.id;
+        if (tabId != null) {
+          const flagged = typeof msg.flagged === "number" ? msg.flagged : 0;
+          void browser.action.setBadgeText({ tabId, text: flagged > 0 ? String(flagged) : "" });
+          void browser.action.setBadgeBackgroundColor({ tabId, color: "#e5484d" });
+        }
+        return;
+      }
+
+      if (msg.action !== ACTIONS.SCORE_BATCH || !msg.req) return;
 
       router
         .handle(msg.req)

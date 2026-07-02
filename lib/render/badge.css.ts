@@ -190,8 +190,15 @@ export const BADGE_CSS: string = `
 :host(.pg-dark) .card .verdict.band-ai    { color: #ff7b81; }
 :host(.pg-dark) .card .foot { border-top-color: rgba(255, 255, 255, 0.09); color: #768390; }
 
+@keyframes pangram-flash {
+  0%, 100% { box-shadow: 0 1px 4px rgba(0, 0, 0, 0.10); transform: scale(1); }
+  25%, 65% { box-shadow: 0 0 0 6px rgba(109, 94, 252, 0.35), 0 1px 4px rgba(0, 0, 0, 0.10); transform: scale(1.12); }
+}
+.pill.pg-flash { animation: pangram-flash 800ms ease-in-out 2; }
+
 @media (prefers-reduced-motion: reduce) {
   .pill { animation: none; transition: none; }
+  .pill.pg-flash { animation: none; outline: 2px solid rgba(109, 94, 252, 0.8); }
   .card { transition: none; }
 }
 `;

@@ -22,6 +22,7 @@
       hr { border: none; border-top: 1px solid #d0d7de; margin: 9px 0; }
       button { font: inherit; font-size: 12px; padding: 5px 10px; border: 1px solid #d0d7de; border-radius: 6px; background: #f6f8fa; cursor: pointer; }
       input[type="checkbox"] { width: 16px; height: 16px; }
+      select { font: inherit; font-size: 12px; padding: 3px 6px; border-radius: 6px; }
     </style>
   </head>
   <body>
@@ -41,6 +42,13 @@
     <div class="row">
       <label for="highlights">Underlines</label>
       <input id="highlights" type="checkbox" />
+    </div>
+    <div class="row">
+      <label for="displayMode">Show</label>
+      <select id="displayMode">
+        <option value="all">All chips</option>
+        <option value="flagged">Flagged only</option>
+      </select>
     </div>
     <hr />
     <div class="status" id="status">…</div>

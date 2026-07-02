@@ -9,6 +9,21 @@
 import { MARK_ATTR } from "../types";
 import { settings } from "../settings/settings";
 
+export interface PanelEntry {
+  id: string;
+  pct: number;
+  band: "human" | "mixed" | "ai" | "unknown";
+  snippet: string;
+  order: number;
+}
+
+export interface PanelHooks {
+  /** Current flagged units, document order. Called each time the panel opens. */
+  entries(): PanelEntry[];
+  /** Scroll to a unit and flash its chip. */
+  onJump(id: string): void;
+}
+
 export interface Fab {
   mount(): void;
   /** Reflect whether the overlay is currently shown. */
@@ -129,9 +144,70 @@ const FAB_CSS = `
   font-size: 10px;
   font-weight: 700;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
-  pointer-events: none;
+  cursor: pointer; /* opens the flagged-paragraphs panel */
 }
+.count:hover { filter: brightness(1.1); }
 .count.zero { background: #1a7f37; }
+
+/* ---- flagged-paragraphs triage panel ---- */
+.panel {
+  display: none;
+  flex-direction: column;
+  width: 320px;
+  max-height: 340px;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.97);
+  -webkit-backdrop-filter: saturate(1.3) blur(14px);
+  backdrop-filter: saturate(1.3) blur(14px);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.08);
+  font: 400 12px/1.45 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  color: #1f2328;
+  cursor: default;
+}
+.panel.open { display: flex; }
+.panel .phead {
+  font-size: 11px;
+  font-weight: 700;
+  color: #656d76;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 6px 8px 4px;
+}
+.panel .pitem {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  width: 100%;
+}
+.panel .pitem:hover { background: rgba(109, 94, 252, 0.08); }
+.panel .ppct {
+  flex: 0 0 auto;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+}
+.panel .pitem.band-ai .ppct { color: #b42318; }
+.panel .pitem.band-mixed .ppct { color: #8a5a00; }
+.panel .ptext {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #424a53;
+}
+.panel .pempty { padding: 10px 8px; color: #8b949e; }
 
 /* inactive (overlay hidden) → muted */
 .fab.off { opacity: 0.62; }
@@ -150,11 +226,12 @@ function sheet(): CSSStyleSheet {
   return _sheet;
 }
 
-export function createFab(opts: { onToggle: () => void }): Fab {
+export function createFab(opts: { onToggle: () => void; panel?: PanelHooks }): Fab {
   let host: HTMLElement | null = null;
   let fabEl: HTMLButtonElement | null = null;
   let actionEl: HTMLButtonElement | null = null;
   let countEl: HTMLElement | null = null;
+  let panelEl: HTMLElement | null = null;
   let active = true;
   let actionLabel: string | null = null;
   let actionCb: (() => void) | undefined;
@@ -266,6 +343,15 @@ export function createFab(opts: { onToggle: () => void }): Fab {
     countEl = document.createElement("span");
     countEl.className = "count zero";
     countEl.textContent = "0";
+    countEl.title = "Show flagged paragraphs";
+    countEl.addEventListener("click", (e) => {
+      e.stopPropagation();
+      togglePanel();
+    });
+    countEl.addEventListener("pointerdown", (e) => e.stopPropagation()); // no drag from bubble
+
+    panelEl = document.createElement("div");
+    panelEl.className = "panel";
 
     fabEl.append(mark, label);
     fabEl.addEventListener("click", () => {
@@ -286,7 +372,17 @@ export function createFab(opts: { onToggle: () => void }): Fab {
     wrap.className = "fabwrap";
     wrap.append(fabEl, countEl); // count is a corner bubble over the ball
 
-    stack.append(actionEl, wrap);
+    stack.append(panelEl, actionEl, wrap);
+    // Tapping anywhere outside the FAB closes the panel.
+    document.addEventListener(
+      "pointerdown",
+      (e) => {
+        if (panelEl?.classList.contains("open") && host && !e.composedPath().includes(host)) {
+          panelEl.classList.remove("open");
+        }
+      },
+      true,
+    );
     shadow.appendChild(stack);
     (document.body ?? document.documentElement).appendChild(host);
     applyState();
@@ -303,6 +399,52 @@ export function createFab(opts: { onToggle: () => void }): Fab {
     if (!countEl) return;
     countEl.textContent = String(flagged);
     countEl.classList.toggle("zero", flagged === 0);
+  }
+
+  function togglePanel(): void {
+    if (!panelEl) return;
+    if (panelEl.classList.contains("open")) {
+      panelEl.classList.remove("open");
+      return;
+    }
+    renderPanel();
+    panelEl.classList.add("open");
+  }
+
+  function renderPanel(): void {
+    if (!panelEl) return;
+    panelEl.textContent = "";
+    const head = document.createElement("div");
+    head.className = "phead";
+    const entries = opts.panel?.entries() ?? [];
+    head.textContent = entries.length
+      ? `Flagged paragraphs (${entries.length})`
+      : "Flagged paragraphs";
+    panelEl.appendChild(head);
+    if (entries.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "pempty";
+      empty.textContent = "Nothing flagged on this page.";
+      panelEl.appendChild(empty);
+      return;
+    }
+    for (const entry of entries) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = `pitem band-${entry.band}`;
+      const pct = document.createElement("span");
+      pct.className = "ppct";
+      pct.textContent = `${entry.pct}%`;
+      const text = document.createElement("span");
+      text.className = "ptext";
+      text.textContent = entry.snippet;
+      item.append(pct, text);
+      item.addEventListener("click", () => {
+        panelEl?.classList.remove("open");
+        opts.panel?.onJump(entry.id);
+      });
+      panelEl.appendChild(item);
+    }
   }
 
   function setAction(
@@ -322,6 +464,7 @@ export function createFab(opts: { onToggle: () => void }): Fab {
     fabEl = null;
     actionEl = null;
     countEl = null;
+    panelEl = null;
   }
 
   return { mount, setActive, setCount, setAction, unmount };

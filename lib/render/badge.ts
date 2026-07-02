@@ -21,6 +21,8 @@ export interface BadgeLayer {
   setVisible(visible: boolean): void;
   /** Forget cached background verdicts (site theme toggled; used by Rescan). */
   resetTheme(): void;
+  /** Briefly pulse a badge (triage-panel jump target). */
+  flash(id: string): void;
   teardownAll(): void;
 }
 
@@ -150,12 +152,21 @@ export function createBadgeLayer(): BadgeLayer {
     darkCache = new WeakMap();
   }
 
+  function flash(id: string): void {
+    const pill = hosts.get(id)?.shadowRoot?.querySelector(".pill");
+    if (!pill) return;
+    pill.classList.remove("pg-flash"); // restart if already flashing
+    void (pill as HTMLElement).offsetWidth;
+    pill.classList.add("pg-flash");
+    setTimeout(() => pill.classList.remove("pg-flash"), 1600);
+  }
+
   function teardownAll(): void {
     for (const [, host] of hosts) host.remove();
     hosts.clear();
   }
 
-  return { render, remove, setVisible, resetTheme, teardownAll };
+  return { render, remove, setVisible, resetTheme, flash, teardownAll };
 }
 
 // One pinned card at a time; tapping anywhere else closes it.
