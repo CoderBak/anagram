@@ -22,6 +22,8 @@ export interface PanelHooks {
   entries(): PanelEntry[];
   /** Scroll to a unit and flash its chip. */
   onJump(id: string): void;
+  /** Markdown report of the page's verdicts (for the Copy report button). */
+  buildReport(): string;
 }
 
 export interface Fab {
@@ -170,6 +172,10 @@ const FAB_CSS = `
 }
 .panel.open { display: flex; }
 .panel .phead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   font-size: 11px;
   font-weight: 700;
   color: #656d76;
@@ -177,6 +183,19 @@ const FAB_CSS = `
   letter-spacing: 0.04em;
   padding: 6px 8px 4px;
 }
+.panel .pcopy {
+  font: 600 10px/1 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  text-transform: none;
+  letter-spacing: 0;
+  color: #3730a3;
+  border: 1px solid rgba(109, 94, 252, 0.35);
+  background: rgba(109, 94, 252, 0.07);
+  border-radius: 999px;
+  padding: 4px 9px;
+  cursor: pointer;
+}
+.panel .pcopy:hover { background: rgba(109, 94, 252, 0.14); }
+.panel .pcopy.done { color: #116a37; border-color: rgba(26, 127, 55, 0.4); background: rgba(26, 127, 55, 0.08); }
 .panel .pitem {
   display: flex;
   align-items: baseline;
@@ -417,9 +436,44 @@ export function createFab(opts: { onToggle: () => void; panel?: PanelHooks }): F
     const head = document.createElement("div");
     head.className = "phead";
     const entries = opts.panel?.entries() ?? [];
-    head.textContent = entries.length
+    const title = document.createElement("span");
+    title.textContent = entries.length
       ? `Flagged paragraphs (${entries.length})`
       : "Flagged paragraphs";
+    head.appendChild(title);
+    if (opts.panel && entries.length > 0) {
+      const copy = document.createElement("button");
+      copy.type = "button";
+      copy.className = "pcopy";
+      copy.textContent = "Copy report";
+      copy.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const report = opts.panel!.buildReport();
+        const done = () => {
+          copy.textContent = "Copied ✓";
+          copy.classList.add("done");
+          setTimeout(() => {
+            copy.textContent = "Copy report";
+            copy.classList.remove("done");
+          }, 1600);
+        };
+        navigator.clipboard.writeText(report).then(done, () => {
+          // Clipboard API can be blocked — textarea/execCommand fallback.
+          const ta = document.createElement("textarea");
+          ta.value = report;
+          ta.style.cssText = "position:fixed;opacity:0";
+          document.body.appendChild(ta);
+          ta.select();
+          try {
+            document.execCommand("copy");
+            done();
+          } finally {
+            ta.remove();
+          }
+        });
+      });
+      head.appendChild(copy);
+    }
     panelEl.appendChild(head);
     if (entries.length === 0) {
       const empty = document.createElement("div");

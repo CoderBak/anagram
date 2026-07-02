@@ -33,7 +33,7 @@ import {
   refreshHighlightTheme,
 } from "../render/highlight";
 import { createFab, type Fab } from "../render/fab";
-import { band } from "../render/band";
+import { band, BAND_LABEL } from "../render/band";
 import { settings } from "../settings/settings";
 import { createLogger } from "../log";
 
@@ -124,8 +124,52 @@ export function createOrchestrator(
         unit.container.scrollIntoView({ behavior: "smooth", block: "center" });
         setTimeout(() => badges.flash(id), 350); // pulse once the scroll settles
       },
+      buildReport,
     },
   });
+
+  /** Markdown summary of this page's verdicts — the triage panel's Copy report. */
+  function buildReport(): string {
+    const flagged = [...resultsById.entries()]
+      .filter(([id, r]) => isFlagged(r) && unitsById.has(id))
+      .map(([id, r]) => ({ unit: unitsById.get(id)!, r }))
+      .sort((a, b) => a.unit.order - b.unit.order);
+
+    const lines: string[] = [];
+    lines.push(`# Pangram AI report — ${document.title || location.hostname}`);
+    lines.push("");
+    lines.push(`- Page: ${location.href}`);
+    lines.push(`- Generated: ${new Date().toLocaleString()}`);
+    lines.push(
+      `- Analyzed: ${resultsById.size} unit${resultsById.size === 1 ? "" : "s"} · Flagged: ${flagged.length}`,
+    );
+    lines.push("");
+    if (flagged.length === 0) {
+      lines.push("No paragraphs were flagged as AI or AI-Assisted.");
+    } else {
+      lines.push(`## Flagged paragraphs (${flagged.length})`);
+      lines.push("");
+      flagged.forEach(({ unit, r }, i) => {
+        const pct = Math.round(r.e_theta * 100);
+        const [lo, hi] = r.theta_interval;
+        const snippet = unit.text.replace(/\s+/g, " ").slice(0, 220);
+        const ellipsis = unit.text.length > 220 ? "…" : "";
+        lines.push(
+          `${i + 1}. **${BAND_LABEL[band(r)]} · ${pct}% AI** ` +
+            `(interval ${Math.round(lo * 100)}–${Math.round(hi * 100)}%, ` +
+            `p=${r.p_value.toFixed(3)}, ${unit.wordCount} words)`,
+        );
+        lines.push(`   > ${snippet}${ellipsis}`);
+      });
+    }
+    lines.push("");
+    lines.push(
+      "---",
+      "All numbers are calibrated estimates, not proof. Scores in this build come from " +
+        "a deterministic development stub; a real detection model is pending.",
+    );
+    return lines.join("\n");
+  }
 
   /** Painted under the current display mode? Everything is analyzed regardless. */
   function visibleUnderMode(r: ScoreResult): boolean {
