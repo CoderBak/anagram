@@ -5,7 +5,7 @@
 // frame size so ad slots and tracking pixels never pay for a walk.
 import { defineContentScript, browser } from "#imports";
 import { createOrchestrator } from "../lib/capture/orchestrator";
-import { enabledForSite } from "../lib/settings/settings";
+import { enabledForSite, settings } from "../lib/settings/settings";
 import {
   detectDocsPage,
   readingViewUrl,
@@ -29,13 +29,34 @@ export default defineContentScript({
   async main(ctx) {
     const isTop = window.self === window.top;
     const orchestrator = createOrchestrator(ctx, { mountFab: isTop });
-    let enabled = await enabledForSite(location.hostname);
+
+    // Site rules are keyed on the TOP page's hostname — that is what the popup
+    // writes. Cross-origin frames cannot read it; the referrer (the embedding
+    // page) is the honest fallback, then the frame's own host.
+    const effectiveHost = ((): string => {
+      if (isTop) return location.hostname;
+      try {
+        const h = window.top?.location.hostname; // same-origin frames only
+        if (h) return h;
+      } catch {
+        /* cross-origin */
+      }
+      try {
+        if (document.referrer) return new URL(document.referrer).hostname;
+      } catch {
+        /* unparsable referrer */
+      }
+      return location.hostname;
+    })();
+
+    let enabled = await enabledForSite(effectiveHost);
 
     const frameGateOk = (): boolean =>
       isTop ||
       (window.innerWidth >= MIN_FRAME_WIDTH &&
         window.innerWidth * window.innerHeight >= MIN_FRAME_AREA);
 
+    let resizeArmed = false;
     const startWhenGated = (): void => {
       if (!enabled) return;
       if (frameGateOk()) {
@@ -43,15 +64,30 @@ export default defineContentScript({
         return;
       }
       // Lazy frames start collapsed and grow later (embeds, chat panes) —
-      // retry once the frame is resized past the gate.
+      // retry once the frame is resized past the gate. Armed at most once.
+      if (resizeArmed) return;
+      resizeArmed = true;
       const onResize = (): void => {
         if (!enabled || !frameGateOk()) return;
         window.removeEventListener("resize", onResize);
+        resizeArmed = false;
         orchestrator.start();
       };
       window.addEventListener("resize", onResize);
     };
     startWhenGated();
+
+    // Options-page / popup changes must reach already-open tabs: recompute the
+    // effective state whenever the global flag or the site rules change.
+    const applyEnabled = async (): Promise<void> => {
+      const v = await enabledForSite(effectiveHost);
+      if (v === enabled) return;
+      enabled = v;
+      if (v) startWhenGated();
+      else orchestrator.stop();
+    };
+    settings.enabled.watch(() => void applyEnabled());
+    settings.siteOverrides.watch(() => void applyEnabled());
 
     // Google Docs (top frame only): the editor is a canvas (no DOM text). Offer
     // the static-HTML reading view; from the reading view, offer the way back to
@@ -97,13 +133,14 @@ export default defineContentScript({
 
         switch (msg.action) {
           case ACTIONS.RESCAN:
-            orchestrator.rescan();
+            // Rescan must never force-start a disabled page or bypass the gate.
+            if (enabled && frameGateOk()) orchestrator.rescan();
             return;
 
           case ACTIONS.SET_ENABLED:
             if (msg.value && !enabled) {
               enabled = true;
-              if (frameGateOk()) orchestrator.start();
+              startWhenGated(); // arms the resize retry for collapsed lazy frames
             } else if (!msg.value && enabled) {
               enabled = false;
               orchestrator.stop();
