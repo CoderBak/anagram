@@ -16,6 +16,14 @@ import type {
 
 export default defineBackground(() => {
   const router = createRouter(getScoreClient());
+  // Chrome MV3 exposes `action`; Firefox MV2 exposes `browserAction`. We only
+  // need the two badge setters, so type just those.
+  interface BadgeApi {
+    setBadgeText(details: { tabId: number; text: string }): Promise<void> | void;
+    setBadgeBackgroundColor(details: { tabId: number; color: string }): Promise<void> | void;
+  }
+  const b = browser as unknown as { action?: BadgeApi; browserAction?: BadgeApi };
+  const actionApi: BadgeApi | undefined = b.action ?? b.browserAction;
 
   // "Analyze selection" context menu; recreate idempotently on install/update.
   browser.runtime.onInstalled.addListener((details) => {
@@ -67,10 +75,10 @@ export default defineBackground(() => {
       // Per-tab flagged count on the toolbar icon (sent by the TOP frame only).
       if (msg.action === ACTIONS.UPDATE_BADGE) {
         const tabId = sender.tab?.id;
-        if (tabId != null) {
+        if (tabId != null && actionApi) {
           const flagged = typeof msg.flagged === "number" ? msg.flagged : 0;
-          void browser.action.setBadgeText({ tabId, text: flagged > 0 ? String(flagged) : "" });
-          void browser.action.setBadgeBackgroundColor({ tabId, color: "#e5484d" });
+          void actionApi.setBadgeText({ tabId, text: flagged > 0 ? String(flagged) : "" });
+          void actionApi.setBadgeBackgroundColor({ tabId, color: "#e5484d" });
         }
         return;
       }

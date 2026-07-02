@@ -12,6 +12,9 @@ export default defineContentScript({
   runAt: "document_start",
   world: "MAIN",
   allFrames: true,
+  // Firefox builds are MV2, which has no `world` key — there the orchestrator's
+  // slow URL poll + popstate/hashchange cover SPA navigation instead.
+  exclude: ["firefox"],
   main() {
     const announce = () => window.dispatchEvent(new Event("pangram:navigate"));
     for (const method of ["pushState", "replaceState"] as const) {

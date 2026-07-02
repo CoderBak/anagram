@@ -5,10 +5,21 @@ import { defineConfig } from "wxt";
 export default defineConfig({
   // Build into ./output (not WXT's default ./.output) so it's visible in Finder.
   outDir: "output",
-  manifest: {
+  manifest: ({ browser }) => ({
     name: "Pangram AI Detector",
     description: "Per-paragraph AI-generated-text confidence badges.",
     permissions: ["storage", "activeTab", "contextMenus"],
+    ...(browser === "firefox"
+      ? {
+          browser_specific_settings: {
+            gecko: {
+              id: "pangram@coderbak.dev",
+              // Intl.Segmenter 125, zoom 126; underlines feature-detect (140+).
+              strict_min_version: "128.0",
+            },
+          },
+        }
+      : {}),
     commands: {
       "toggle-overlay": {
         suggested_key: { default: "Alt+Shift+P" },
@@ -25,5 +36,5 @@ export default defineConfig({
       default_popup: "popup/index.html",
       default_title: "Pangram AI Detector",
     },
-  },
+  }),
 });

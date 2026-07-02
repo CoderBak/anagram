@@ -15,7 +15,8 @@
     "postinstall": "wxt prepare",
     "test:unit": "node test/unit.mjs",
     "test:scenarios": "node test/scenarios.mjs",
-    "test:perf": "node test/perf.mjs"
+    "test:perf": "node test/perf.mjs",
+    "zip:firefox": "wxt zip -b firefox"
   },
   "devDependencies": {
     "playwright": "^1.61.1",
