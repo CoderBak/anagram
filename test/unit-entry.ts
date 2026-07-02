@@ -1,0 +1,19 @@
+// test/unit-entry.ts — bundle entry for the in-browser unit tests.
+// esbuild bundles this to an IIFE exposing `PW` on the page; test/unit.mjs
+// injects it into a real Chromium page (the walker needs real computed styles,
+// which jsdom cannot provide) and runs table-driven cases against it.
+export { collectUnits } from "../lib/dom/walker";
+export {
+  countWords,
+  splitSentences,
+  truncateForScoring,
+  symbolNoiseRatio,
+  hasColumnGaps,
+  normalizeText,
+  hasLetters,
+  MIN_UNIT_WORDS,
+  MIN_MERGE_WORDS,
+} from "../lib/dom/text";
+export { isBoilerplate } from "../lib/dom/boilerplate";
+export { detectDocsPage, readingViewUrl, editorUrl } from "../lib/docs";
+export { band } from "../lib/render/band";
