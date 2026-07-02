@@ -32,7 +32,16 @@ export const INLINE_FALLBACK_TAGS = new Set<string>([
   "TIME", "TT", "U", "VAR", "WBR",
 ]);
 
+/**
+ * Normalized tag name. HTML elements report uppercase nodeName, but SVG/MathML
+ * (and every element in XHTML documents) report lowercase — matching against the
+ * uppercase sets with the raw nodeName silently skipped ALL those exclusions.
+ */
+export function tagOf(node: Node): string {
+  return node.nodeName.toUpperCase();
+}
+
 /** Heading detection (topic boundaries — never scored, never merged across). */
 export function isHeading(el: Element): boolean {
-  return /^H[1-6]$/.test(el.nodeName) || el.getAttribute("role") === "heading";
+  return /^H[1-6]$/.test(tagOf(el)) || el.getAttribute("role") === "heading";
 }

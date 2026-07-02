@@ -138,6 +138,45 @@ const results = await page.evaluate(() => {
   const skipped = PW.collectUnits(sandbox, { claimFilter: () => "skip" });
   check("claimFilter skip suppresses owned runs", skipped.length === 0);
 
+  // ---- regression: review-workflow findings ------------------------------------------
+  // 1) preserved-whitespace splitting must be IDEMPOTENT (no infinite observe loop).
+  sandbox.innerHTML = `<div style="white-space:pre-wrap">${words(30)}\n\n${words(30)}</div>`;
+  PW.collectUnits(sandbox);
+  const nAfter1 = sandbox.firstElementChild.childNodes.length;
+  PW.collectUnits(sandbox);
+  PW.collectUnits(sandbox);
+  const nAfter3 = sandbox.firstElementChild.childNodes.length;
+  check("preserved-ws split is idempotent (no node growth on re-walk)", nAfter1 === nAfter3, `${nAfter1} -> ${nAfter3}`);
+
+  // 2) SVG exclusion fires despite lowercase nodeName; embedded title/style never leak.
+  u = collect(`<p>${words(30)} <svg viewBox="0 0 10 10"><title>SVGLEAK</title><style>.q{fill:red}</style><text x="0" y="9">42</text></svg> ${words(25)}</p>`);
+  check("inline SVG excluded, title/style text never leaks, sentence intact",
+    u.length === 1 && u[0].parts === 1 && !u[0].text.includes("SVGLEAK") && !u[0].text.includes("fill:red"),
+    JSON.stringify(u.map(x => [x.parts, x.text.slice(0, 40)])));
+  u = collect(`<svg width="400" height="200"><text x="0" y="20">${words(60)}</text></svg>`);
+  check("standalone SVG chart text never scored", u.length === 0);
+
+  // 3) inline exclusions must not split the sentence around them.
+  u = collect(`<p>${words(30)} <img alt="pic"> ${words(25)}</p>`);
+  check("<img> mid-sentence does not split the run", u.length === 1 && u[0].parts === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
+  u = collect(`<p>${words(30)} <span aria-hidden="true">★</span> ${words(25)}</p>`);
+  check("aria-hidden icon mid-sentence does not split the run", u.length === 1 && u[0].parts === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
+  u = collect(`<p>${words(30)} <span style="display:none">HIDDENLEAK</span> ${words(25)}</p>`);
+  check("display:none span mid-sentence: no split, no leak",
+    u.length === 1 && u[0].parts === 1 && !u[0].text.includes("HIDDENLEAK"), JSON.stringify(u.map(x => [x.parts, x.words])));
+
+  // 4) column-gap barrier applies ONLY to preserved-whitespace runs.
+  u = collect(`<p>${words(30)}          ${words(25)}</p>`);
+  check("8+ source spaces in collapsed HTML do not drop prose", u.length === 1, JSON.stringify(u.map(x => x.words)));
+
+  // 5) shorts must not merge ACROSS an existing claimed unit.
+  sandbox.innerHTML = `<p>${words(20)}</p><p>${words(60)}</p><p>${words(20)}</p>`;
+  const first = PW.collectUnits(sandbox);
+  const owned = new Set();
+  for (const un of first) for (const part of un.parts) for (const n of part.nodes) owned.add(n);
+  const second = PW.collectUnits(sandbox, { claimFilter: (nodes) => (nodes.some((n) => owned.has(n)) ? "skip" : "take") });
+  check("no merging across a claimed unit on incremental re-scan", second.length === 0, JSON.stringify(second.map(x => [x.parts, x.words])));
+
   // ---- pure text utils ---------------------------------------------------------------
   const long = (words(40) + " ").repeat(30);
   const t = PW.truncateForScoring(long);

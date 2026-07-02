@@ -18,7 +18,7 @@
 // v1's hard 1000-char mid-paragraph split is gone: a long paragraph is ONE unit
 // end-to-end (the HF-abstract "underline stops mid-paragraph" bug); only the text
 // sent to the backend is capped, at a sentence boundary (lib/dom/text.ts).
-import { NO_SCORE_TAGS, INLINE_FALLBACK_TAGS, isHeading } from "./tags";
+import { NO_SCORE_TAGS, INLINE_FALLBACK_TAGS, isHeading, tagOf } from "./tags";
 import { isBoilerplate } from "./boilerplate";
 import {
   createStyleCache,
@@ -50,6 +50,8 @@ interface Run {
   text: string;
   /** Pre-collapse text — interior column gaps only survive here. */
   raw: string;
+  /** Run came from preserved-whitespace context (column-gap check applies). */
+  preserved: boolean;
   words: number;
   linkRatio: number;
 }
@@ -93,18 +95,34 @@ export function collectUnits(
 
   let cur: Text[] = [];
   let curContainer: Element | null = null;
+  let curPreserved = false;
+
+  function pushNode(tn: Text, ctx: Ctx): void {
+    if (cur.length === 0) {
+      curContainer = ctx.container;
+      curPreserved = ctx.preserves;
+    }
+    cur.push(tn);
+  }
 
   function closeRun(): void {
     if (cur.length === 0) return;
     const nodes = cur;
     const container = curContainer as Element;
+    const preserved = curPreserved;
     cur = [];
     curContainer = null;
-    processRun(nodes, container);
+    curPreserved = false;
+    processRun(nodes, container, preserved);
   }
 
-  function processRun(nodes: Text[], container: Element): void {
-    if (opts.claimFilter && opts.claimFilter(nodes) === "skip") return;
+  function processRun(nodes: Text[], container: Element, preserved: boolean): void {
+    if (opts.claimFilter && opts.claimFilter(nodes) === "skip") {
+      // An existing rendered unit sits here — new shorts on either side must not
+      // merge ACROSS it (they are not adjacent prose).
+      asm.barrier();
+      return;
+    }
     if (!rects.get(container)) return; // zero-size container → invisible text
     const raw = extractPartText(nodes);
     const text = raw.replace(/\s+/g, " ").trim();
@@ -114,6 +132,7 @@ export function collectUnits(
       container,
       text,
       raw,
+      preserved,
       words: countWords(text),
       linkRatio: linkTextRatio(nodes),
     });
@@ -138,50 +157,38 @@ export function collectUnits(
     }
     if (node.nodeType !== Node.ELEMENT_NODE) return;
     const el = node as Element;
-    const tag = el.nodeName;
+    const tag = tagOf(el); // normalized — SVG/MathML/XHTML report lowercase nodeName
 
     if (tag === "BR") {
       closeRun(); // hard line/paragraph break — merge logic rejoins short halves
       return;
     }
     if (tag === "WBR") return; // word-break OPPORTUNITY — must not split the word
-    if (NO_SCORE_TAGS.has(tag)) {
-      closeRun();
-      return;
-    }
-    // <pre> is machine text — except when the whole document IS plain text
-    // (Chrome's text viewer wraps .txt/.log/.md files in body > pre).
-    if (tag === "PRE" && !plainTextDoc) {
-      closeRun();
-      return;
-    }
     if (el.hasAttribute(MARK_ATTR)) return; // our own UI — transparent, mid-flow safe
-    if (el.getAttribute("translate") === "no" || el.classList.contains("notranslate")) {
-      closeRun();
-      return;
-    }
-    if ((el as HTMLElement).isContentEditable) {
-      closeRun(); // live editors (comment boxes, docs) are never scored
-      return;
-    }
-    if (el.getAttribute("aria-hidden") === "true") {
-      closeRun();
-      return;
-    }
-    if (isBoilerplate(el)) {
-      closeRun();
-      asm.barrier(); // page chrome separates sections — no merging across it
-      return;
-    }
 
     const cs = styles.get(el);
     const flow = flowClassOf(el, cs);
-    if (flow === "hidden") {
-      closeRun();
-      return;
-    }
-    if (cs && (cs.opacity === "0" || (cs as any).contentVisibility === "hidden")) {
-      closeRun();
+    // display:none takes NO space: the text around it reads as one sentence, so it
+    // must never close the run (hidden template spans, lazy content, <script>…).
+    if (flow === "hidden") return;
+
+    // Exclusions: never descend, never score. Whether they BREAK the sentence
+    // depends on layout — inline exclusions (icons, <img>, MathJax spans, sr-only,
+    // aria-hidden decorations) sit mid-sentence and are skipped silently; block
+    // exclusions occupy their own space and close the run.
+    const boiler = isBoilerplate(el);
+    const excluded =
+      boiler ||
+      NO_SCORE_TAGS.has(tag) ||
+      (tag === "PRE" && !plainTextDoc) || // Chrome's text viewer wraps .txt in body>pre
+      el.getAttribute("translate") === "no" ||
+      el.classList.contains("notranslate") ||
+      (el as HTMLElement).isContentEditable ||
+      el.getAttribute("aria-hidden") === "true" ||
+      (cs !== null && (cs.opacity === "0" || (cs as any).contentVisibility === "hidden"));
+    if (excluded) {
+      if (flow !== "inline" && flow !== "contents") closeRun();
+      if (boiler) asm.barrier(); // page chrome separates sections — no merging across
       return;
     }
 
@@ -235,8 +242,7 @@ export function collectUnits(
       return;
     }
     if (s.trim().length === 0) return;
-    cur.push(tn);
-    curContainer ??= ctx.container;
+    pushNode(tn, ctx);
   }
 
   /**
@@ -250,28 +256,26 @@ export function collectUnits(
       const s = node.textContent ?? "";
       const m = PARA_GAP_RE.exec(s);
       if (!m) {
-        if (s.trim()) {
-          cur.push(node);
-          curContainer ??= ctx.container;
-        }
+        if (s.trim()) pushNode(node, ctx);
         return;
       }
       if (m.index > 0) {
         const rest = node.splitText(m.index); // node keeps the paragraph text
-        if ((node.textContent ?? "").trim()) {
-          cur.push(node);
-          curContainer ??= ctx.container;
-        }
+        if ((node.textContent ?? "").trim()) pushNode(node, ctx);
         closeRun();
         node = rest; // rest begins with the gap → next iteration hits index 0
         continue;
       }
-      // Gap at position 0: consume it (and any following blank space) and move on.
+      // Gap at position 0: consume it (and any following blank space).
       let end = m.index + m[0].length;
       while (end < s.length && /\s/.test(s[end])) end++;
-      const rest = node.splitText(end);
       closeRun();
-      node = rest;
+      // Whole node is gap: NOTHING to split. splitText(length) would be a mutating
+      // no-op that fires fresh mutation records — the first scan already left this
+      // gap in its own node, and re-splitting it forever fed an infinite
+      // observe→rescan loop with one leaked empty text node per cycle.
+      if (end >= s.length) return;
+      node = node.splitText(end);
     }
   }
 
@@ -307,7 +311,7 @@ function isExcludedByAncestry(start: Element): boolean {
   const plainTextDoc = document.contentType === "text/plain";
   let el: Element | null = start;
   while (el) {
-    const tag = el.nodeName;
+    const tag = tagOf(el);
     if (NO_SCORE_TAGS.has(tag)) return true;
     if (tag === "PRE" && !plainTextDoc) return true;
     if (el.hasAttribute(MARK_ATTR)) return true;
@@ -407,9 +411,11 @@ function createAssembler(): Assembler {
         lastMergedUnit = null;
         return;
       }
-      if (symbolNoiseRatio(r.text) > 0.2 || hasColumnGaps(r.raw)) {
+      if (symbolNoiseRatio(r.text) > 0.2 || (r.preserved && hasColumnGaps(r.raw))) {
         // ASCII diagrams / table rules / column-layout headers ("RFC 768   J.
-        // Postel"): machine layout, not prose — barrier, never merged.
+        // Postel"): machine layout, not prose — barrier, never merged. The
+        // column-gap check applies ONLY to preserved-whitespace runs: in normal
+        // HTML, interior space runs collapse invisibly and must not drop prose.
         flushGroup();
         lastMergedUnit = null;
         return;

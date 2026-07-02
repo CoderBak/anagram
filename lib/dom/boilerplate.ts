@@ -30,7 +30,7 @@ const CHROME_TOKEN_RE =
  * Called once per element during a walk — must stay cheap.
  */
 export function isBoilerplate(el: Element): boolean {
-  const tag = el.nodeName;
+  const tag = el.nodeName.toUpperCase(); // XHTML documents report lowercase
 
   // <nav> and chrome landmark roles: always skip.
   if (tag === "NAV") return true;

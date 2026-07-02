@@ -8,7 +8,7 @@
 // getComputedStyle is the expensive primitive here, so every walk carries one
 // StyleCache and each element is resolved at most once per scan. The cached
 // CSSStyleDeclaration is live, but a scan is synchronous, so reads are coherent.
-import { INLINE_FALLBACK_TAGS } from "./tags";
+import { INLINE_FALLBACK_TAGS, tagOf } from "./tags";
 
 export interface StyleCache {
   /** Computed style for el, resolved at most once per scan. Null if unavailable. */
@@ -51,7 +51,7 @@ export type FlowClass = "inline" | "block" | "contents" | "hidden";
 export function flowClassOf(el: Element, cs: CSSStyleDeclaration | null): FlowClass {
   const display = cs?.display ?? "";
   if (display === "") {
-    return INLINE_FALLBACK_TAGS.has(el.nodeName) ? "inline" : "block";
+    return INLINE_FALLBACK_TAGS.has(tagOf(el)) ? "inline" : "block";
   }
   if (display === "none") return "hidden";
   if (display === "contents") return "contents";

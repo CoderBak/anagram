@@ -75,7 +75,7 @@ export function createObservers(opts: {
       // childList
       rec.addedNodes.forEach((n) => {
         if (inSelfHost(n)) return;
-        if (n.nodeType === Node.ELEMENT_NODE && NO_SCORE_TAGS.has(n.nodeName)) return;
+        if (n.nodeType === Node.ELEMENT_NODE && NO_SCORE_TAGS.has(n.nodeName.toUpperCase())) return;
         dirty.add(n);
       });
       rec.removedNodes.forEach((n) => {
