@@ -7,6 +7,12 @@
 // attributes on page DOM, no clipping by overflow ancestors, correct in RTL and
 // with floats. The chip shows a colored dot + the AI-involvement number; a hover
 // card carries the full calibrated readout.
+//
+// v3: a unit can render a PENDING chip the moment its batch is actually sent
+// (renderPending) and morph in place when the verdict lands — the host is reused
+// so the surrounding line lays out once. The card gained a credible-interval
+// meter, a per-sentence signal strip, and a Copy-text action (hover cards are
+// pointer-interactive; Escape closes a pinned card).
 import type { Unit } from "../types";
 import { MARK_ATTR } from "../types";
 import type { ScoreResult } from "../contract";
@@ -16,6 +22,8 @@ import { isDarkContext } from "./theme";
 
 export interface BadgeLayer {
   render(unit: Unit, result: ScoreResult): void;
+  /** Insert the chip in its "analyzing…" state (no verdict yet). */
+  renderPending(unit: Unit): void;
   remove(id: string): void;
   /** Show/hide all badges without removing them (instant toggle, keeps results). */
   setVisible(visible: boolean): void;
@@ -43,21 +51,26 @@ export function createBadgeLayer(): BadgeLayer {
   let darkCache = new WeakMap<Element, boolean>();
   let visible = true;
 
-  function render(unit: Unit, result: ScoreResult): void {
-    const b: Band = band(result);
+  /** Find or (re)build the chip host for a unit, inserted after its last run. */
+  function ensureHost(unit: Unit): HTMLElement | null {
     let host = hosts.get(unit.id);
-
     if (!host || !host.isConnected) {
       host?.remove();
       host = buildHost();
       const anchor = insertionPoint(unit);
-      if (!anchor) return; // unit detached mid-flight — purge will collect it
+      if (!anchor) return null; // unit detached mid-flight — purge will collect it
       anchor.after(host);
       hosts.set(unit.id, host);
     }
-
     host.classList.toggle("pg-hidden", !visible);
     host.classList.toggle("pg-dark", darkFor(unit.container, darkCache));
+    return host;
+  }
+
+  function render(unit: Unit, result: ScoreResult): void {
+    const b: Band = band(result);
+    const host = ensureHost(unit);
+    if (!host) return;
 
     const root = host.shadowRoot!;
     const pill = root.querySelector(".pill") as HTMLElement;
@@ -74,6 +87,19 @@ export function createBadgeLayer(): BadgeLayer {
     renderCard(root.querySelector(".card") as HTMLElement, unit, result, b, pct);
   }
 
+  function renderPending(unit: Unit): void {
+    if (hosts.get(unit.id)?.shadowRoot?.querySelector(".card .head")) return; // verdict already painted
+    const host = ensureHost(unit);
+    if (!host) return;
+    const root = host.shadowRoot!;
+    const pill = root.querySelector(".pill") as HTMLElement;
+    if (pill.classList.contains("pending")) return;
+    pill.className = "pill band-unknown pending";
+    (root.querySelector(".num") as HTMLElement).textContent = "···";
+    (root.querySelector(".card") as HTMLElement).innerHTML =
+      `<div class="foot" style="margin:0;padding:0;border:0">Analyzing this paragraph…</div>`;
+  }
+
   function buildHost(): HTMLElement {
     const host = document.createElement("span");
     host.setAttribute(MARK_ATTR, "host");
@@ -82,12 +108,14 @@ export function createBadgeLayer(): BadgeLayer {
     host.style.cssText = "display:inline-block;position:relative;margin-inline-start:6px;";
     // A badge can legitimately sit inside an <a>; a click on it must never
     // navigate or trigger page handlers. A click/tap also PINS the card open
-    // (the hover story for touch devices); a second tap unpins.
+    // (the hover story for touch devices); a second tap unpins. Clicks INSIDE
+    // the card (Copy action) must not toggle the pin.
     host.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
       const card = host.shadowRoot?.querySelector(".card");
       if (!card) return;
+      if (e.composedPath().includes(card)) return; // card-internal click (action button)
       const opening = !card.classList.contains("open");
       closeOpenCard();
       if (opening) {
@@ -125,25 +153,71 @@ export function createBadgeLayer(): BadgeLayer {
     pct: number,
   ): void {
     const [lo, hi] = result.theta_interval;
+    const loPct = Math.round(lo * 100);
+    const hiPct = Math.round(hi * 100);
     const row = (k: string, v: string) =>
       `<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>`;
     const partsRow =
       unit.parts.length > 1
         ? row("Paragraphs analyzed together", `${unit.parts.length}`)
         : "";
+
+    // Credible-interval meter (skip for "unknown" — a full-width gray band reads
+    // as data when the honest message is "no reliable estimate").
+    const meter =
+      b === "unknown"
+        ? ""
+        : `<div class="meter band-${b}">
+             <div class="track">
+               <div class="fill" style="left:${loPct}%;width:${Math.max(hiPct - loPct, 1)}%"></div>
+               <div class="tick" style="left:calc(${pct}% - 1px)"></div>
+             </div>
+             <div class="mlabels"><span>0</span><span>estimate ${pct}% · range ${loPct}–${hiPct}%</span><span>100</span></div>
+           </div>`;
+
+    // Per-sentence signal strip — only for flagged verdicts, where "which part"
+    // is the natural next question. Cap the cells so pathological units stay sane.
+    let sent = "";
+    const flags = result.sentence_flags ?? [];
+    if ((b === "ai" || b === "mixed") && flags.length > 1) {
+      const shown = flags.slice(0, 40);
+      const cells = shown
+        .map((f) => `<span class="sq${f ? " on" : ""}"></span>`)
+        .join("");
+      const n = flags.filter(Boolean).length;
+      sent =
+        `<div class="sent band-${b}">` +
+        `<div class="row"><span class="k">Sentence-level signal</span><span class="v">${n}/${flags.length}</span></div>` +
+        `<div class="cells">${cells}${flags.length > 40 ? "…" : ""}</div></div>`;
+    }
+
+    // The meter already carries the estimate + range caption — repeat the
+    // interval as a text row only when the meter is absent (unknown band).
+    const intervalRow = b === "unknown" ? row("AI involvement (est.)", `${loPct}–${hiPct}%`) : "";
     card.innerHTML =
       `<div class="head"><span class="verdict band-${b}">${BAND_LABEL[b]}</span>` +
-      `<span class="big">${b === "unknown" ? "—" : pct + "%"}</span></div>` +
+      `<span class="big">${b === "unknown" ? "—" : pct + "% AI"}</span></div>` +
+      meter +
       partsRow +
-      row("AI involvement (est.)", `${Math.round(lo * 100)}–${Math.round(hi * 100)}%`) +
+      intervalRow +
       row("p-value vs human", result.p_value.toFixed(3)) +
       row("Words analyzed", `${unit.wordCount}`) +
-      `<div class="foot">Calibrated estimate, not proof.</div>`;
+      sent +
+      `<div class="actions"><button type="button" class="act copy">Copy text</button></div>` +
+      `<div class="foot">Calibrated estimate, not proof.</div>` +
+      `<span class="caret"></span>`;
+
+    const copy = card.querySelector(".act.copy") as HTMLButtonElement;
+    copy.addEventListener("click", (e) => {
+      e.stopPropagation();
+      copyText(unit.text, copy);
+    });
   }
 
   function remove(id: string): void {
     const host = hosts.get(id);
     if (!host) return;
+    if (host === _openCardHost) _openCardHost = null;
     host.remove();
     hosts.delete(id);
   }
@@ -169,12 +243,39 @@ export function createBadgeLayer(): BadgeLayer {
   function teardownAll(): void {
     for (const [, host] of hosts) host.remove();
     hosts.clear();
+    _openCardHost = null;
   }
 
-  return { render, remove, setVisible, resetTheme, flash, teardownAll };
+  return { render, renderPending, remove, setVisible, resetTheme, flash, teardownAll };
 }
 
-// One pinned card at a time; tapping anywhere else closes it.
+/** Copy with execCommand fallback (Clipboard API can be permission-blocked). */
+function copyText(text: string, button: HTMLElement): void {
+  const done = () => {
+    const prev = button.textContent;
+    button.textContent = "Copied ✓";
+    button.classList.add("done");
+    setTimeout(() => {
+      button.textContent = prev;
+      button.classList.remove("done");
+    }, 1400);
+  };
+  navigator.clipboard.writeText(text).then(done, () => {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.cssText = "position:fixed;opacity:0";
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand("copy");
+      done();
+    } finally {
+      ta.remove();
+    }
+  });
+}
+
+// One pinned card at a time; tapping anywhere else (or Escape) closes it.
 let _openCardHost: HTMLElement | null = null;
 let _outsideCloserInstalled = false;
 
@@ -196,6 +297,13 @@ function installOutsideCloser(): void {
     },
     true,
   );
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      if (e.key === "Escape" && _openCardHost) closeOpenCard();
+    },
+    true,
+  );
 }
 
 /** Edge-aware placement: flip below near the viewport top, pin near the sides. */
@@ -204,10 +312,10 @@ function positionCard(host: HTMLElement): void {
   if (!card) return;
   card.classList.remove("below", "align-left", "align-right");
   const r = host.getBoundingClientRect();
-  if (r.top < 190) card.classList.add("below");
+  if (r.top < 230) card.classList.add("below");
   const vw = window.innerWidth || document.documentElement.clientWidth;
-  if (r.left < 150) card.classList.add("align-left");
-  else if (vw - r.right < 150) card.classList.add("align-right");
+  if (r.left < 160) card.classList.add("align-left");
+  else if (vw - r.right < 160) card.classList.add("align-right");
 }
 
 /**

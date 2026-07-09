@@ -277,6 +277,177 @@ async function sweep(page, steps = 6) {
     record("ui", "duplicate paragraphs each badged with the same score", r.count === 2 && r.same, JSON.stringify(r));
   }
 
+  // A12: KaTeX-shaped formula — one unit, duplicated formula text never leaks.
+  {
+    const r = await page.evaluate((sel) => {
+      const badges = document.querySelectorAll(`#katex ${sel}`).length;
+      const hl = [];
+      if (typeof CSS !== "undefined" && CSS.highlights) {
+        for (const h of CSS.highlights.values()) for (const rg of h) hl.push(rg.toString());
+      }
+      const joined = hl.join(" ");
+      return {
+        badges,
+        tail: joined.includes("KATEXTAIL") || badges === 1,
+        dupLeak: joined.includes("KATEXDUP"),
+      };
+    }, BADGE_SEL);
+    record("ui", "KaTeX-style math: one unit, no duplicated formula text", r.badges === 1 && !r.dupLeak, JSON.stringify(r));
+  }
+
+  // A13: modal <dialog> — top-layer prose is scored; the FAB rides the top layer
+  // as a manual popover where supported.
+  {
+    await page.locator("#openmodal").scrollIntoViewIfNeeded();
+    await page.locator("#openmodal").click();
+    const badged = await page
+      .waitForFunction(
+        (sel) => document.querySelectorAll(`#modal ${sel}`).length >= 1,
+        BADGE_SEL,
+        { timeout: 8000 },
+      )
+      .then(() => true)
+      .catch(() => false);
+    const fabTop = await page.evaluate(() => {
+      const fab = document.getElementById("pangram-fab");
+      if (!fab) return { supported: false, open: false };
+      if (!("showPopover" in fab)) return { supported: false, open: true }; // fallback path OK
+      try {
+        return { supported: true, open: fab.matches(":popover-open") };
+      } catch {
+        return { supported: true, open: false };
+      }
+    });
+    await page.locator("#closemodal").click();
+    record("ui", "paragraph inside showModal dialog badged", badged, "");
+    record("ui", "FAB promoted to top layer (popover)", fabTop.open, JSON.stringify(fabTop));
+  }
+
+  // A14: vertical writing mode — unit collected, chip present, column flow intact.
+  {
+    const r = await page.evaluate((sel) => {
+      const host = document.querySelector(`#vertical ${sel}`);
+      if (!host) return null;
+      const box = host.closest("div").getBoundingClientRect();
+      const hr = host.getBoundingClientRect();
+      return { present: true, inside: hr.left >= box.left - 30 && hr.right <= box.right + 30 };
+    }, BADGE_SEL);
+    record("ui", "vertical-rl (Japanese) paragraph badged in-flow", !!r && r.present && r.inside, JSON.stringify(r));
+  }
+
+  // A15: "analyzing…" chips are transient — they must all DRAIN into verdicts.
+  {
+    const drained = await page
+      .waitForFunction(
+        (sel) => {
+          for (const h of document.querySelectorAll(sel)) {
+            if (h.shadowRoot?.querySelector(".pill.pending")) return false;
+          }
+          return true;
+        },
+        BADGE_SEL,
+        { timeout: 6000 },
+      )
+      .then(() => true)
+      .catch(() => false);
+    record("ui", "pending chips all drain into verdicts", drained, "");
+  }
+
+  // A16: hover card v2 — interval meter + Copy text action; copy puts the
+  // paragraph (not the chip label) on the clipboard.
+  {
+    await page.locator("#copysrc").scrollIntoViewIfNeeded();
+    const badge = page.locator(`#copysrc ${BADGE_SEL}`).first();
+    let ok = false, note = "no badge";
+    if (await badge.count()) {
+      await badge.hover();
+      await page.waitForTimeout(420);
+      const parts = await page.evaluate((sel) => {
+        const host = document.querySelector(`#copysrc ${sel}`);
+        const card = host?.shadowRoot?.querySelector(".card");
+        if (!card) return null;
+        const meter = !!card.querySelector(".meter .fill");
+        const btn = card.querySelector(".act.copy");
+        if (btn) btn.click();
+        return { meter, hasCopy: !!btn };
+      }, BADGE_SEL);
+      await page.waitForTimeout(250);
+      const clip = await page.evaluate(() => navigator.clipboard.readText().catch(() => null));
+      ok =
+        !!parts && parts.meter && parts.hasCopy &&
+        (clip === null || (clip.includes("COPYSRC paragraph exists") && !/%\s*AI/.test(clip)));
+      note = JSON.stringify({ ...parts, clip: clip?.slice(0, 40) });
+    }
+    record("ui", "hover card: interval meter + working Copy text action", ok, note);
+    await page.mouse.move(5, 400);
+  }
+
+  // A17: triage panel — opens from the counter, filter chips appear when both
+  // verdict bands exist, and filtering narrows the list.
+  {
+    const r = await page.evaluate(() => {
+      const fab = document.getElementById("pangram-fab");
+      const sr = fab?.shadowRoot;
+      sr?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      const panel = sr?.querySelector(".panel");
+      const open = !!panel?.classList.contains("open");
+      const items = panel?.querySelectorAll(".pitem").length ?? 0;
+      const chips = [...(panel?.querySelectorAll(".fchip") ?? [])].map((c) => c.textContent);
+      let filtered = -1;
+      const aiChip = [...(panel?.querySelectorAll(".fchip") ?? [])].find((c) => c.textContent.startsWith("AI"));
+      if (aiChip) {
+        aiChip.click();
+        filtered = sr.querySelectorAll(".panel .pitem:not(.band-ai)").length;
+      }
+      // close it again
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      return { open, items, chips, filtered };
+    });
+    const filterOk = r.chips.length === 0 || r.filtered === 0;
+    record("ui", "triage panel opens; verdict filters narrow the list", r.open && r.items > 0 && filterOk, JSON.stringify(r));
+  }
+
+  // A18: FAB drag → snaps to the nearest edge and remembers the side.
+  {
+    const ball = page.locator("#pangram-fab .fab").first();
+    await ball.hover().catch(() => {}); // untuck first — a tucked ball sits half off-screen
+    await page.waitForTimeout(350);
+    const box = await ball.boundingBox();
+    let r = null;
+    if (box) {
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(140, 300, { steps: 8 }); // drop near the LEFT edge
+      await page.mouse.up();
+      await page.waitForTimeout(400);
+      r = await page.evaluate(() => {
+        const stack = document.getElementById("pangram-fab")?.shadowRoot?.querySelector(".stack");
+        return {
+          left: stack?.style.left,
+          sideLeft: stack?.classList.contains("side-left"),
+        };
+      });
+    }
+    record("ui", "FAB snaps to the left edge after drag", !!r && r.left === "12px" && r.sideLeft, JSON.stringify(r));
+  }
+
+  // A19: idle tuck — the ball slides half off the edge after a few seconds and
+  // returns on hover.
+  {
+    await page.mouse.move(600, 300); // pointer far away, no interactions
+    await page.waitForTimeout(4300);
+    const tucked = await page.evaluate(
+      () => !!document.getElementById("pangram-fab")?.shadowRoot?.querySelector(".stack.tucked"),
+    );
+    const ball = page.locator("#pangram-fab .fab").first();
+    await ball.hover().catch(() => {});
+    await page.waitForTimeout(350);
+    const untucked = await page.evaluate(
+      () => !document.getElementById("pangram-fab")?.shadowRoot?.querySelector(".stack.tucked"),
+    );
+    record("ui", "FAB tucks when idle and returns on hover", tucked && untucked, JSON.stringify({ tucked, untucked }));
+  }
+
   record("ui", "no extension console errors on fixtures", extErrors.length === 0, extErrors.join(" | "));
   await page.screenshot({ path: join(__dirname, "scn-ui-fixtures.png"), fullPage: true });
   await page.close();

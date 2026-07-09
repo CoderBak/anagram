@@ -1,7 +1,8 @@
 // entrypoints/popup/main.ts — popup logic.
 // Global on/off, per-site on/off (siteOverrides keyed on the active tab's hostname),
-// underline toggle (live via settings watch in the content script), scored-count
-// status line (GET_TAB_STATE), Rescan, and a gear to the full options page.
+// display mode / mark-text / marking-style / analysis-scope controls (all applied
+// live via settings watches in the content script), scored + flagged status line
+// (GET_TAB_STATE), Rescan, and a gear to the full options page.
 import { browser } from "#imports";
 import {
   settings,
@@ -13,11 +14,19 @@ import type { ControlMessage, TabState } from "../../lib/messaging/protocol";
 
 const enabledEl = document.getElementById("enabled") as HTMLInputElement;
 const siteEl = document.getElementById("siteEnabled") as HTMLInputElement;
+const siteHostEl = document.getElementById("siteHost") as HTMLElement;
 const highlightsEl = document.getElementById("highlights") as HTMLInputElement;
-const displayModeEl = document.getElementById("displayMode") as HTMLSelectElement;
+const markStyleEl = document.getElementById("markStyle") as HTMLSelectElement;
 const rescanEl = document.getElementById("rescan") as HTMLButtonElement;
 const statusEl = document.getElementById("status") as HTMLElement;
 const gearEl = document.getElementById("gear") as HTMLButtonElement;
+// Segmented controls are radio groups (keyboard: arrow keys within the group).
+const displayModeEls = Array.from(
+  document.querySelectorAll<HTMLInputElement>('input[name="displayMode"]'),
+);
+const scopeEls = Array.from(
+  document.querySelectorAll<HTMLInputElement>('input[name="analysisScope"]'),
+);
 
 async function activeTab() {
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
@@ -39,9 +48,29 @@ function sendToTab(tabId: number | undefined, msg: ControlMessage): void {
   void browser.tabs.sendMessage(tabId, msg).catch(() => undefined);
 }
 
+function checkSeg(els: HTMLInputElement[], value: string): void {
+  for (const el of els) el.checked = el.value === value;
+}
+
+function setStatusText(text: string): void {
+  statusEl.textContent = text;
+}
+
+function showCounts(state: TabState): void {
+  const flaggedEl = document.createElement("span");
+  flaggedEl.textContent = `${state.flagged} flagged`;
+  if (state.flagged > 0) flaggedEl.classList.add("flagged");
+  statusEl.replaceChildren(
+    document.createTextNode(
+      `${state.scored} paragraph${state.scored === 1 ? "" : "s"} analyzed · `,
+    ),
+    flaggedEl,
+  );
+}
+
 async function refreshStatus(tabId: number | undefined): Promise<void> {
   if (tabId == null) {
-    statusEl.textContent = "No active tab.";
+    setStatusText("No active tab.");
     return;
   }
   try {
@@ -49,11 +78,10 @@ async function refreshStatus(tabId: number | undefined): Promise<void> {
       action: ACTIONS.GET_TAB_STATE,
     })) as TabState | undefined;
     if (!state) throw new Error("no state");
-    statusEl.textContent = state.enabled
-      ? `${state.scored} unit${state.scored === 1 ? "" : "s"} analyzed on this page.`
-      : "Detection is off for this page.";
+    if (state.enabled) showCounts(state);
+    else setStatusText("Detection is off for this page.");
   } catch {
-    statusEl.textContent = "Not available on this page.";
+    setStatusText("Not available on this page.");
   }
 }
 
@@ -63,9 +91,13 @@ async function init(): Promise<void> {
 
   enabledEl.checked = await settings.enabled.getValue();
   highlightsEl.checked = await settings.showHighlights.getValue();
-  displayModeEl.value = await settings.displayMode.getValue();
+  markStyleEl.value = await settings.markStyle.getValue();
+  checkSeg(displayModeEls, await settings.displayMode.getValue());
+  checkSeg(scopeEls, await settings.analysisScope.getValue());
   siteEl.checked = host ? await enabledForSite(host) : enabledEl.checked;
   siteEl.disabled = !host;
+  siteHostEl.textContent = host ? `on ${host}` : "unavailable here";
+  siteHostEl.title = host;
 
   enabledEl.addEventListener("change", async () => {
     await settings.enabled.setValue(enabledEl.checked);
@@ -83,17 +115,35 @@ async function init(): Promise<void> {
   });
 
   highlightsEl.addEventListener("change", () => {
-    // The content script watches this setting and re-derives underlines live.
+    // The content script watches this setting and re-derives text marks live.
     void settings.showHighlights.setValue(highlightsEl.checked);
   });
 
-  displayModeEl.addEventListener("change", () => {
-    void settings.displayMode.setValue(displayModeEl.value as "all" | "flagged");
+  markStyleEl.addEventListener("change", () => {
+    void settings.markStyle.setValue(
+      markStyleEl.value as "both" | "underline" | "tint",
+    );
   });
+
+  for (const el of displayModeEls) {
+    el.addEventListener("change", () => {
+      if (el.checked) {
+        void settings.displayMode.setValue(el.value as "all" | "flagged");
+      }
+    });
+  }
+
+  for (const el of scopeEls) {
+    el.addEventListener("change", () => {
+      if (el.checked) {
+        void settings.analysisScope.setValue(el.value as "page" | "main");
+      }
+    });
+  }
 
   rescanEl.addEventListener("click", () => {
     sendToTab(tab?.id, { action: ACTIONS.RESCAN });
-    statusEl.textContent = "Rescanning…";
+    setStatusText("Rescanning…");
     setTimeout(() => void refreshStatus(tab?.id), 1500);
   });
 

@@ -1,13 +1,18 @@
-// lib/render/fab.ts — floating overlay toggle (bottom-right), Shadow DOM.
+// lib/render/fab.ts — floating overlay toggle (edge-snapped ball), Shadow DOM.
 //
 // An always-present control (like Immersive Translate's floating ball) that
 // shows/hides the detection overlay WITHOUT re-running detection, plus an
-// optional secondary ACTION chip stacked above it (e.g. "Reading view" on Google
-// Docs). DRAGGABLE: grab the ball to move it out of the way of site UI (chat
-// widgets); the position persists per host. Its host carries MARK_ATTR="host"
-// so the walker skips it, and id="pangram-fab" so tests can find/click it.
+// optional secondary ACTION chip stacked above it (e.g. "Analyze document" on
+// Google Docs). DRAGGABLE: grab the ball to move it; on release it SNAPS to the
+// nearest screen edge and the position persists per host. After a few idle
+// seconds the ball TUCKS half-off the edge (hover restores it) so it never
+// competes with page content. Hidden entirely while the page is fullscreen
+// (video). Where the Popover API exists, the host is promoted to the top layer
+// so cookie walls and modal overlays cannot bury it. Its host carries
+// MARK_ATTR="host" so the walker skips it, and id="pangram-fab" so tests can
+// find/click it.
 import { MARK_ATTR } from "../types";
-import { settings } from "../settings/settings";
+import { settings, setSiteOverride } from "../settings/settings";
 
 export interface PanelEntry {
   id: string;
@@ -37,6 +42,9 @@ export interface Fab {
   unmount(): void;
 }
 
+const BALL = 42; // ball diameter (px) — layout math + clamping use this
+const TUCK_AFTER_MS = 3500;
+
 const FAB_CSS = `
 :host { all: initial; }
 
@@ -50,37 +58,46 @@ const FAB_CSS = `
   align-items: flex-end;
   gap: 8px;
 }
-/* Anchored by LEFT when parked on the left half: hover-expansion and the panel
+/* Anchored by LEFT when parked on the left edge: hover-expansion and the panel
    then grow rightward, staying on-screen. */
 .stack.anchor-left { align-items: flex-start; }
+.stack.snapping { transition: left 200ms ease, right 200ms ease, bottom 200ms ease; }
+.stack.fs-hidden { display: none; }
 
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   box-sizing: border-box;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.94);
   -webkit-backdrop-filter: saturate(1.4) blur(12px);
   backdrop-filter: saturate(1.4) blur(12px);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.16), 0 1px 3px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.16), 0 1px 3px rgba(15, 23, 42, 0.08);
   font: 600 12px/1 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   color: #1f2328;
   cursor: pointer;
   user-select: none;
   transition: box-shadow 140ms ease, transform 140ms ease, opacity 140ms ease;
 }
-.chip:hover { transform: translateY(-1px); box-shadow: 0 10px 28px rgba(0, 0, 0, 0.20), 0 2px 4px rgba(0, 0, 0, 0.10); }
+.chip:hover { transform: translateY(-1px); box-shadow: 0 10px 28px rgba(15, 23, 42, 0.20), 0 2px 4px rgba(15, 23, 42, 0.10); }
 .chip:active { transform: translateY(0); }
 
-/* Compact by default (a 40px ball, like Immersive Translate); the label slides
-   out on hover. The count sits as a corner bubble so it reads at a glance. */
-.fabwrap { position: relative; }
+/* Compact by default (a ${BALL}px ball, like Immersive Translate); the label
+   slides out on hover. The count sits as a corner bubble so it reads at a glance. */
+.fabwrap { position: relative; transition: transform 240ms ease, opacity 240ms ease; }
+
+/* Idle tuck: slide half off the snapped edge; any hover/drag restores. */
+.stack.tucked.side-right .fabwrap { transform: translateX(56%); opacity: 0.62; }
+.stack.tucked.side-left  .fabwrap { transform: translateX(-56%); opacity: 0.62; }
+.stack.tucked .fabwrap:hover { transform: none; opacity: 1; }
+/* An open panel always presents a fully visible ball, whatever the tuck state. */
+.stack:has(.panel.open) .fabwrap { transform: none; opacity: 1; }
 
 .fab {
-  height: 40px;
-  min-width: 40px;
+  height: ${BALL}px;
+  min-width: ${BALL}px;
   padding: 0 11px;
   justify-content: center;
   overflow: hidden;
@@ -112,15 +129,14 @@ const FAB_CSS = `
 
 /* Brief attention pulse (Docs editor: the action chip is the useful control). */
 @keyframes pangram-attn {
-  0%, 100% { transform: scale(1); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.16), 0 1px 3px rgba(0, 0, 0, 0.08); }
-  50% { transform: scale(1.06); box-shadow: 0 8px 26px rgba(109, 94, 252, 0.45), 0 2px 5px rgba(0, 0, 0, 0.10); }
+  0%, 100% { transform: scale(1); box-shadow: 0 6px 20px rgba(15, 23, 42, 0.16), 0 1px 3px rgba(15, 23, 42, 0.08); }
+  50% { transform: scale(1.06); box-shadow: 0 8px 26px rgba(109, 94, 252, 0.45), 0 2px 5px rgba(15, 23, 42, 0.10); }
 }
 .action.attn { animation: pangram-attn 1.3s ease-in-out 3; }
-@media (prefers-reduced-motion: reduce) { .action.attn { animation: none; } }
 
 .mark {
-  width: 18px;
-  height: 18px;
+  width: 19px;
+  height: 19px;
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
@@ -153,35 +169,48 @@ const FAB_CSS = `
 }
 .count:hover { filter: brightness(1.1); }
 .count.zero { background: #1a7f37; }
+.stack.anchor-left .count { right: auto; left: -5px; }
 
 /* ---- flagged-paragraphs triage panel ----
    Absolutely positioned against the stack so it never shifts the ball, and
    edge-aware: opens ABOVE by default, flips below/right when the ball has been
    dragged near the top/left viewport edges. */
 .panel {
-  display: none;
+  display: flex;
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(5px);
+  pointer-events: none;
   position: absolute;
   bottom: calc(100% + 8px);
   right: 0;
   flex-direction: column;
-  width: 320px;
-  max-height: 340px;
-  overflow-y: auto;
+  width: 336px;
+  max-height: 360px;
   box-sizing: border-box;
   padding: 6px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.98);
   -webkit-backdrop-filter: saturate(1.3) blur(14px);
   backdrop-filter: saturate(1.3) blur(14px);
-  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18), 0 2px 6px rgba(15, 23, 42, 0.08);
   font: 400 12px/1.45 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   color: #1f2328;
   cursor: default;
+  transition: opacity 150ms ease, transform 150ms ease, visibility 0s linear 150ms;
 }
-.panel.open { display: flex; }
-.panel.below { bottom: auto; top: calc(100% + 8px); }
+.panel.open {
+  visibility: visible;
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+  transition-delay: 0s;
+}
+.panel.below { bottom: auto; top: calc(100% + 8px); transform: translateY(-5px); }
+.panel.below.open { transform: none; }
 .panel.leftalign { right: auto; left: 0; }
+
 .panel .phead {
   display: flex;
   align-items: center;
@@ -192,7 +221,7 @@ const FAB_CSS = `
   color: #656d76;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  padding: 6px 8px 4px;
+  padding: 7px 8px 5px;
 }
 .panel .pcopy {
   font: 600 10px/1 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
@@ -207,6 +236,22 @@ const FAB_CSS = `
 }
 .panel .pcopy:hover { background: rgba(109, 94, 252, 0.14); }
 .panel .pcopy.done { color: #116a37; border-color: rgba(26, 127, 55, 0.4); background: rgba(26, 127, 55, 0.08); }
+
+/* Verdict filter chips. */
+.panel .pfilters { display: flex; gap: 5px; padding: 0 8px 6px; }
+.panel .fchip {
+  font: 600 10px/1 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  color: #57606a;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: none;
+  border-radius: 999px;
+  padding: 4px 9px;
+  cursor: pointer;
+}
+.panel .fchip:hover { background: rgba(15, 23, 42, 0.04); }
+.panel .fchip[aria-pressed="true"] { color: #3730a3; border-color: rgba(109, 94, 252, 0.5); background: rgba(109, 94, 252, 0.09); }
+
+.panel .plist { overflow-y: auto; overscroll-behavior: contain; }
 .panel .pitem {
   display: flex;
   align-items: baseline;
@@ -222,6 +267,9 @@ const FAB_CSS = `
   width: 100%;
 }
 .panel .pitem:hover { background: rgba(109, 94, 252, 0.08); }
+.panel .pdot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; align-self: center; }
+.panel .pitem.band-ai .pdot { background: #e5484d; }
+.panel .pitem.band-mixed .pdot { background: #d99e00; }
 .panel .ppct {
   flex: 0 0 auto;
   min-width: 38px;
@@ -240,12 +288,32 @@ const FAB_CSS = `
   color: #424a53;
 }
 .panel .pempty { padding: 10px 8px; color: #8b949e; }
+.panel .pfoot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 5px 8px 3px;
+  border-top: 1px solid rgba(15, 23, 42, 0.06);
+  margin-top: 4px;
+}
+.panel .psiteoff {
+  font: 500 10px/1.2 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  color: #8b949e;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 3px 4px;
+}
+.panel .psiteoff:hover { color: #b42318; text-decoration: underline; }
 
 /* inactive (overlay hidden) → muted */
 .fab.off { opacity: 0.62; }
 .fab.off .mark { filter: grayscale(0.5); }
 .fab.off + .count, .fabwrap.off .count { opacity: 0.5; }
 
+@media (prefers-reduced-motion: reduce) {
+  .action.attn { animation: none; }
+  .fabwrap, .panel, .stack.snapping { transition: none; }
+}
 @media print { .stack { display: none !important; } }
 `;
 
@@ -258,8 +326,11 @@ function sheet(): CSSStyleSheet {
   return _sheet;
 }
 
+type Side = "left" | "right";
+
 export function createFab(opts: { onToggle: () => void; panel?: PanelHooks }): Fab {
   let host: HTMLElement | null = null;
+  let stackEl: HTMLElement | null = null;
   let fabEl: HTMLButtonElement | null = null;
   let actionEl: HTMLButtonElement | null = null;
   let countEl: HTMLElement | null = null;
@@ -268,6 +339,9 @@ export function createFab(opts: { onToggle: () => void; panel?: PanelHooks }): F
   let actionLabel: string | null = null;
   let actionCb: (() => void) | undefined;
   let actionAttention = false;
+  let panelFilter: "all" | "ai" | "mixed" = "all";
+  let side: Side = "right";
+  let tuckTimer: ReturnType<typeof setTimeout> | null = null;
 
   function applyState(): void {
     if (!fabEl) return;
@@ -279,32 +353,100 @@ export function createFab(opts: { onToggle: () => void; panel?: PanelHooks }): F
       actionEl.classList.toggle("attn", actionLabel !== null && actionAttention);
       actionEl.textContent = actionLabel ?? "";
     }
+    // The action chip is the page's primary control where present (Docs) — never
+    // tuck it away.
+    if (actionLabel !== null) cancelTuck();
+    else scheduleTuck();
   }
 
-  function clampPos(r: number, b: number): { r: number; b: number } {
-    const vw = window.innerWidth || 1280;
+  // ---- idle tuck ------------------------------------------------------------------
+
+  function scheduleTuck(): void {
+    cancelTuckTimer();
+    if (actionLabel !== null) return;
+    tuckTimer = setTimeout(() => {
+      if (panelEl?.classList.contains("open")) return; // panel in use — stay out
+      stackEl?.classList.add("tucked");
+    }, TUCK_AFTER_MS);
+  }
+
+  function cancelTuckTimer(): void {
+    if (tuckTimer !== null) {
+      clearTimeout(tuckTimer);
+      tuckTimer = null;
+    }
+  }
+
+  /** Untuck immediately (interaction) and re-arm the idle timer. */
+  function cancelTuck(rearm = false): void {
+    cancelTuckTimer();
+    stackEl?.classList.remove("tucked");
+    if (rearm) scheduleTuck();
+  }
+
+  // ---- positioning ----------------------------------------------------------------
+
+  function clampB(b: number): number {
     const vh = window.innerHeight || 800;
-    return {
-      r: Math.min(Math.max(6, r), Math.max(6, vw - 52)),
-      b: Math.min(Math.max(6, b), Math.max(6, vh - 52)),
-    };
+    return Math.min(Math.max(6, b), Math.max(6, vh - BALL - 12));
   }
 
-  function applyPos(stack: HTMLElement, r: number, b: number): void {
-    const c = clampPos(r, b);
-    stack.style.bottom = `${c.b}px`;
+  /** Park the stack against `s` at bottom-offset `b` and remember the side. */
+  function applySide(stack: HTMLElement, s: Side, b: number): void {
+    side = s;
+    stack.style.bottom = `${clampB(b)}px`;
+    if (s === "left") {
+      stack.style.left = "12px";
+      stack.style.right = "auto";
+    } else {
+      stack.style.right = "12px";
+      stack.style.left = "auto";
+    }
+    stack.classList.toggle("anchor-left", s === "left");
+    stack.classList.toggle("side-left", s === "left");
+    stack.classList.toggle("side-right", s === "right");
+  }
+
+  /** Free position during a drag (no snapping until release). */
+  function applyFreePos(stack: HTMLElement, r: number, b: number): void {
     const vw = window.innerWidth || 1280;
-    const leftEdge = vw - c.r - 40; // ball width
+    stack.style.bottom = `${clampB(b)}px`;
+    const leftEdge = vw - r - BALL;
     if (leftEdge < vw / 2) {
-      // Left half: anchor by left so hover-expansion/panel grow RIGHTWARD.
       stack.style.left = `${Math.max(6, leftEdge)}px`;
       stack.style.right = "auto";
       stack.classList.add("anchor-left");
     } else {
-      stack.style.right = `${c.r}px`;
+      stack.style.right = `${Math.max(6, r)}px`;
       stack.style.left = "auto";
       stack.classList.remove("anchor-left");
     }
+  }
+
+  /** Restore a persisted position; legacy {r,b} entries derive their side from r. */
+  function restorePos(stack: HTMLElement, pos: { r: number; b: number; side?: Side }): void {
+    const vw = window.innerWidth || 1280;
+    const s: Side = pos.side ?? (vw - pos.r - BALL < vw / 2 ? "left" : "right");
+    applySide(stack, s, pos.b);
+  }
+
+  /** Snap to the nearest edge after a drag and persist {side, b}. */
+  function snapAndPersist(stack: HTMLElement): void {
+    const rect = stack.getBoundingClientRect();
+    const vw = window.innerWidth || 1280;
+    const vh = window.innerHeight || 800;
+    const ballCenterX = rect.left + (stack.classList.contains("anchor-left") ? BALL / 2 : rect.width - BALL / 2);
+    const s: Side = ballCenterX < vw / 2 ? "left" : "right";
+    const b = clampB(vh - rect.bottom);
+    stack.classList.add("snapping");
+    applySide(stack, s, b);
+    setTimeout(() => stack.classList.remove("snapping"), 240);
+    void settings.fabPos
+      .getValue()
+      .then((all) =>
+        settings.fabPos.setValue({ ...all, [location.hostname]: { r: 12, b, side: s } }),
+      )
+      .catch(() => undefined); // storage gone (context invalidated) — position just won't stick
   }
 
   /** Grab-to-move with a small threshold so plain clicks still toggle. */
@@ -317,11 +459,14 @@ export function createFab(opts: { onToggle: () => void; panel?: PanelHooks }): F
 
     ball.addEventListener("pointerdown", (e) => {
       if (e.button !== 0 && e.pointerType === "mouse") return;
+      cancelTuck();
       startX = e.clientX;
       startY = e.clientY;
-      const cs = getComputedStyle(stack);
-      startR = parseFloat(cs.right) || 18;
-      startB = parseFloat(cs.bottom) || 18;
+      const rect = stack.getBoundingClientRect();
+      const vw = window.innerWidth || 1280;
+      const vh = window.innerHeight || 800;
+      startR = vw - rect.right;
+      startB = vh - rect.bottom;
       dragging = false;
       ball.setPointerCapture(e.pointerId);
     });
@@ -331,24 +476,25 @@ export function createFab(opts: { onToggle: () => void; panel?: PanelHooks }): F
       const dy = e.clientY - startY;
       if (!dragging && Math.hypot(dx, dy) < 5) return;
       dragging = true;
-      applyPos(stack, startR - dx, startB - dy);
+      applyFreePos(stack, startR - dx, startB - dy);
     });
     ball.addEventListener("pointerup", (e) => {
       if (!ball.hasPointerCapture(e.pointerId)) return;
       ball.releasePointerCapture(e.pointerId);
+      scheduleTuck();
       if (!dragging) return;
       dragging = false;
       suppressNextClick = true;
-      const cs = getComputedStyle(stack);
-      const pos = clampPos(parseFloat(cs.right) || 18, parseFloat(cs.bottom) || 18);
-      void settings.fabPos.getValue().then((all) => {
-        void settings.fabPos.setValue({ ...all, [location.hostname]: pos });
-      });
+      snapAndPersist(stack);
     });
   }
 
   let suppressNextClick = false;
   let lastFlagged = 0;
+
+  function onFullscreenChange(): void {
+    stackEl?.classList.toggle("fs-hidden", !!document.fullscreenElement);
+  }
 
   function mount(): void {
     // Re-mount if the page wiped our host (SPA body replacement) — a stale
@@ -363,7 +509,8 @@ export function createFab(opts: { onToggle: () => void; panel?: PanelHooks }): F
     shadow.adoptedStyleSheets = [sheet()];
 
     const stack = document.createElement("div");
-    stack.className = "stack";
+    stack.className = "stack side-right";
+    stackEl = stack;
 
     actionEl = document.createElement("button");
     actionEl.className = "chip action";
@@ -405,31 +552,64 @@ export function createFab(opts: { onToggle: () => void; panel?: PanelHooks }): F
       opts.onToggle();
     });
     makeDraggable(stack, fabEl);
+    // Any pointer entering the stack untucks and re-arms the idle timer.
+    stack.addEventListener("pointerenter", () => cancelTuck());
+    stack.addEventListener("pointerleave", () => scheduleTuck());
     // Restore the saved per-host position (clamped to the current viewport).
-    void settings.fabPos.getValue().then((all) => {
-      const pos = all[location.hostname];
-      if (pos && host) applyPos(stack, pos.r, pos.b);
-    });
+    void settings.fabPos
+      .getValue()
+      .then((all) => {
+        const pos = all[location.hostname];
+        if (pos && host) restorePos(stack, pos);
+      })
+      .catch(() => undefined);
 
     const wrap = document.createElement("div");
     wrap.className = "fabwrap";
     wrap.append(fabEl, countEl); // count is a corner bubble over the ball
 
     stack.append(panelEl, actionEl, wrap);
-    // Tapping anywhere outside the FAB closes the panel.
-    document.addEventListener(
-      "pointerdown",
-      (e) => {
-        if (panelEl?.classList.contains("open") && host && !e.composedPath().includes(host)) {
-          panelEl.classList.remove("open");
-        }
-      },
-      true,
-    );
+    // Tapping anywhere outside the FAB closes the panel; Escape too.
+    document.addEventListener("pointerdown", onOutsidePointer, true);
+    document.addEventListener("keydown", onKeydown, true);
+    document.addEventListener("fullscreenchange", onFullscreenChange);
     shadow.appendChild(stack);
     (document.body ?? document.documentElement).appendChild(host);
+
+    // Top-layer promotion: a manual popover renders above every page z-index AND
+    // above later modal dialogs/popovers the page opens. The UA popover styles
+    // (fixed inset margins, border, background) are neutralized inline so the
+    // shadow stack keeps doing the actual positioning.
+    try {
+      if ("showPopover" in host) {
+        host.setAttribute("popover", "manual");
+        host.style.cssText =
+          "position:fixed;inset:auto;margin:0;border:none;padding:0;background:transparent;" +
+          "width:auto;height:auto;overflow:visible;color-scheme:light";
+        (host as HTMLElement & { showPopover(): void }).showPopover();
+      }
+    } catch {
+      host.removeAttribute("popover"); // stay a normal fixed element
+    }
+
     applyState();
     setCount(lastFlagged, 0); // restore the counter across re-mounts
+    onFullscreenChange();
+    scheduleTuck();
+  }
+
+  function onOutsidePointer(e: Event): void {
+    if (panelEl?.classList.contains("open") && host && !e.composedPath().includes(host)) {
+      panelEl.classList.remove("open");
+      scheduleTuck();
+    }
+  }
+
+  function onKeydown(e: KeyboardEvent): void {
+    if (e.key === "Escape" && panelEl?.classList.contains("open")) {
+      panelEl.classList.remove("open");
+      scheduleTuck();
+    }
   }
 
   function setActive(a: boolean): void {
@@ -448,14 +628,16 @@ export function createFab(opts: { onToggle: () => void; panel?: PanelHooks }): F
     if (!panelEl) return;
     if (panelEl.classList.contains("open")) {
       panelEl.classList.remove("open");
+      scheduleTuck();
       return;
     }
+    cancelTuck();
     renderPanel();
     const stackRect = panelEl.parentElement?.getBoundingClientRect();
-    panelEl.classList.toggle("below", !!stackRect && stackRect.top < 400);
+    panelEl.classList.toggle("below", !!stackRect && stackRect.top < 420);
     panelEl.classList.toggle(
       "leftalign",
-      !!stackRect && stackRect.right < 344 /* panel width + margin */,
+      !!stackRect && stackRect.right < 360 /* panel width + margin */,
     );
     panelEl.classList.add("open");
   }
@@ -463,15 +645,19 @@ export function createFab(opts: { onToggle: () => void; panel?: PanelHooks }): F
   function renderPanel(): void {
     if (!panelEl) return;
     panelEl.textContent = "";
+    const all = opts.panel?.entries() ?? [];
+    const counts = {
+      ai: all.filter((e) => e.band === "ai").length,
+      mixed: all.filter((e) => e.band === "mixed").length,
+    };
+    const entries = panelFilter === "all" ? all : all.filter((e) => e.band === panelFilter);
+
     const head = document.createElement("div");
     head.className = "phead";
-    const entries = opts.panel?.entries() ?? [];
     const title = document.createElement("span");
-    title.textContent = entries.length
-      ? `Flagged paragraphs (${entries.length})`
-      : "Flagged paragraphs";
+    title.textContent = all.length ? `Flagged paragraphs (${all.length})` : "Flagged paragraphs";
     head.appendChild(title);
-    if (opts.panel && entries.length > 0) {
+    if (opts.panel && all.length > 0) {
       const copy = document.createElement("button");
       copy.type = "button";
       copy.className = "pcopy";
@@ -505,46 +691,104 @@ export function createFab(opts: { onToggle: () => void; panel?: PanelHooks }): F
       head.appendChild(copy);
     }
     panelEl.appendChild(head);
+
+    // Verdict filters — only when both bands are present (a one-band page needs
+    // no chrome for it).
+    if (counts.ai > 0 && counts.mixed > 0) {
+      const filters = document.createElement("div");
+      filters.className = "pfilters";
+      const mk = (key: typeof panelFilter, text: string): HTMLButtonElement => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "fchip";
+        b.textContent = text;
+        b.setAttribute("aria-pressed", String(panelFilter === key));
+        b.addEventListener("click", (e) => {
+          e.stopPropagation();
+          panelFilter = key;
+          renderPanel();
+        });
+        return b;
+      };
+      filters.append(
+        mk("all", `All ${all.length}`),
+        mk("ai", `AI ${counts.ai}`),
+        mk("mixed", `Assisted ${counts.mixed}`),
+      );
+      panelEl.appendChild(filters);
+    }
+
+    const list = document.createElement("div");
+    list.className = "plist";
     if (entries.length === 0) {
       const empty = document.createElement("div");
       empty.className = "pempty";
       empty.textContent = "Nothing flagged on this page.";
-      panelEl.appendChild(empty);
-      return;
+      list.appendChild(empty);
     }
     for (const entry of entries) {
       const item = document.createElement("button");
       item.type = "button";
       item.className = `pitem band-${entry.band}`;
+      const dot = document.createElement("span");
+      dot.className = "pdot";
       const pct = document.createElement("span");
       pct.className = "ppct";
       pct.textContent = `${entry.pct}%`;
       const text = document.createElement("span");
       text.className = "ptext";
       text.textContent = entry.snippet;
-      item.append(pct, text);
+      item.append(dot, pct, text);
       item.addEventListener("click", () => {
         panelEl?.classList.remove("open");
+        scheduleTuck();
         opts.panel?.onJump(entry.id);
       });
-      panelEl.appendChild(item);
+      list.appendChild(item);
     }
+    panelEl.appendChild(list);
+
+    // Footer: per-site kill switch (writes the same rule the popup manages).
+    const foot = document.createElement("div");
+    foot.className = "pfoot";
+    const off = document.createElement("button");
+    off.type = "button";
+    off.className = "psiteoff";
+    off.textContent = `Turn off on ${location.hostname}`;
+    off.title = "Adds a per-site rule — re-enable any time from the toolbar popup";
+    off.addEventListener("click", (e) => {
+      e.stopPropagation();
+      panelEl?.classList.remove("open");
+      void setSiteOverride(location.hostname, "off").catch(() => undefined);
+    });
+    foot.appendChild(off);
+    panelEl.appendChild(foot);
   }
 
   function setAction(
     label: string | null,
     onAction?: () => void,
-    opts?: { attention?: boolean },
+    actionOpts?: { attention?: boolean },
   ): void {
     actionLabel = label;
     actionCb = onAction;
-    actionAttention = opts?.attention ?? false;
+    actionAttention = actionOpts?.attention ?? false;
     applyState();
   }
 
   function unmount(): void {
+    cancelTuckTimer();
+    document.removeEventListener("pointerdown", onOutsidePointer, true);
+    document.removeEventListener("keydown", onKeydown, true);
+    document.removeEventListener("fullscreenchange", onFullscreenChange);
+    try {
+      (host as (HTMLElement & { hidePopover(): void }) | null)?.hidePopover?.();
+    } catch {
+      /* already hidden or not a popover */
+    }
     host?.remove();
     host = null;
+    stackEl = null;
     fabEl = null;
     actionEl = null;
     countEl = null;

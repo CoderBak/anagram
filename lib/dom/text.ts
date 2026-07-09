@@ -71,13 +71,26 @@ export function extractPartText(nodes: Text[]): string {
 }
 
 /**
- * Normalize for hashing/cache: NFC, collapse whitespace, strip zero-width.
+ * Presentation-only invisibles that must never reach hashing OR the detector:
+ * zero-width space/joiners, BOM, soft hyphens (hyphenation hints), and bidi
+ * control characters. The same visible sentence on two sites must produce the
+ * same payload — soft-hyphenated news text was scoring differently per site.
+ */
+const INVISIBLES_RE =
+  // ZWSP..RLM | SHY | BOM | LRE..RLO+PDF | word-joiner block | LRI..PDI
+  /[\u200B-\u200F\u00AD\uFEFF\u202A-\u202E\u2060-\u2064\u2066-\u2069]/g;
+
+/** Strip presentation-only invisible characters (kept in the rendered DOM). */
+export function stripInvisibles(s: string): string {
+  return s.replace(INVISIBLES_RE, "");
+}
+
+/**
+ * Normalize for hashing/cache: NFC, strip invisibles, collapse whitespace.
  * Do NOT lowercase or strip punctuation — detection is surface-sensitive.
  */
 export function normalizeText(s: string): string {
-  return s
-    .normalize("NFC")
-    .replace(/[​-‍﻿]/g, "") // zero-width
+  return stripInvisibles(s.normalize("NFC"))
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -138,10 +151,12 @@ export function splitSentences(text: string): string[] {
 }
 
 /**
- * Truncate text for SCORING at a sentence boundary near `max` chars. Rendering
- * always covers the full unit; only the backend input is capped.
+ * Prepare text for SCORING: strip presentation invisibles, then truncate at a
+ * sentence boundary near `max` chars. Rendering always covers the full unit;
+ * only the backend input is capped.
  */
 export function truncateForScoring(text: string, max: number = MAX_SCORE_CHARS): string {
+  text = stripInvisibles(text);
   if (text.length <= max) return text;
   const head = text.slice(0, max);
   // Prefer the last sentence end in the head; fall back to last whitespace; then hard cut.

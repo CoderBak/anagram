@@ -18,8 +18,22 @@ export const settings = {
   // Group sub-floor paragraphs with neighbors to reach the evidence floor (the
   // chip shows ×N). Off = strict per-paragraph mode; short paragraphs are skipped.
   mergeShorts: storage.defineItem<boolean>("local:mergeShorts", { fallback: true }),
-  // FAB position per host, as {r,b} offsets from the bottom-right corner.
-  fabPos: storage.defineItem<Record<string, { r: number; b: number }>>("local:fabPos", {
+  // How analyzed text is marked in place. "both" = underline + light tint
+  // (default), or each alone. showHighlights remains the master on/off.
+  markStyle: storage.defineItem<"both" | "underline" | "tint">("local:markStyle", {
+    fallback: "both",
+  }),
+  // What part of the page to analyze. "page" = everything except recognized
+  // chrome (default); "main" = only the detected main-content region
+  // (trafilatura-style precision mode — comments/sidebars outside it are skipped).
+  analysisScope: storage.defineItem<"page" | "main">("local:analysisScope", {
+    fallback: "page",
+  }),
+  // FAB position per host: bottom offset + snapped side. Legacy entries carry
+  // only {r,b} (pre-snap free positions) — side is derived from r on restore.
+  fabPos: storage.defineItem<
+    Record<string, { r: number; b: number; side?: "left" | "right" }>
+  >("local:fabPos", {
     fallback: {},
   }),
 };

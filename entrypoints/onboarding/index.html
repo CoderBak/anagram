@@ -5,34 +5,141 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Welcome to Pangram</title>
     <style>
-      :root { color-scheme: light dark; }
-      body {
-        max-width: 640px; margin: 48px auto 90px; padding: 0 22px;
-        font: 15px/1.65 system-ui, sans-serif; color: #1f2328; background: #fff;
+      :root {
+        color-scheme: light dark;
+        --bg: #ffffff;
+        --fg: #1f2328;
+        --muted: #59636e;
+        --hairline: rgba(15, 23, 42, 0.12);
+        --card: #ffffff;
+        --bar: #e8ecf2;
+        --kbd-bg: #f6f8fa;
+        --kbd-border: #d0d7de;
+        --accent: linear-gradient(135deg, #6d5efc, #b15efc);
+        /* band (legend) text colors */
+        --c-human: #116a37; --c-mixed: #8a5a00; --c-ai: #b42318; --c-unknown: #57606a;
+        /* underline decoration colors */
+        --d-human: #1a7f37; --d-mixed: #d99e00; --d-ai: #e5484d;
       }
       @media (prefers-color-scheme: dark) {
-        body { color: #e6edf3; background: #0d1117; }
-        section { border-color: #30363d !important; }
-        .muted { color: #8b949e !important; }
-        kbd { background: #21262d; border-color: #30363d; }
+        :root {
+          --bg: #0d1117;
+          --fg: #e6edf3;
+          --muted: #9198a1;
+          --hairline: rgba(230, 237, 243, 0.14);
+          --card: #131a22;
+          --bar: #2b3340;
+          --kbd-bg: #21262d;
+          --kbd-border: #30363d;
+          --c-human: #3fb950; --c-mixed: #d29922; --c-ai: #f85149; --c-unknown: #9aa3ad;
+          --d-human: #3fb950; --d-mixed: #d29922; --d-ai: #f85149;
+        }
       }
-      header { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
-      header img { width: 44px; height: 44px; border-radius: 10px; }
-      h1 { font-size: 22px; margin: 0; }
-      .muted { color: #656d76; }
-      section { border: 1px solid #d0d7de; border-radius: 12px; padding: 16px 20px; margin: 16px 0; }
-      h2 { font-size: 15px; margin: 0 0 8px; }
+
+      body {
+        max-width: 660px; margin: 48px auto 80px; padding: 0 24px;
+        font: 15px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        color: var(--fg); background: var(--bg);
+        -webkit-font-smoothing: antialiased;
+      }
+      .muted { color: var(--muted); }
+      .muted strong { color: var(--fg); font-weight: 600; }
+
+      /* ---- header ---- */
+      header { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
+      header img {
+        width: 46px; height: 46px; border-radius: 12px;
+        box-shadow: 0 3px 12px rgba(109, 94, 252, 0.35), 0 8px 26px rgba(177, 94, 252, 0.2);
+      }
+      h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+      #version { font-size: 12.5px; }
+      .lede { margin: 6px 0 18px; }
+
+      /* ---- cards ---- */
+      section {
+        border: 1px solid var(--hairline); border-radius: 12px; background: var(--card);
+        padding: 16px 20px; margin: 14px 0;
+      }
+      h2 { font-size: 15px; margin: 0 0 6px; letter-spacing: -0.01em; }
+      h2::before {
+        content: ""; display: block; width: 22px; height: 3px; border-radius: 2px;
+        background: var(--accent); margin-bottom: 8px;
+      }
+      section p { margin: 6px 0 0; }
+
+      /* ---- hero demo strip ---- */
+      .demo-cap {
+        font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+        color: #7c5ef9; margin-bottom: 12px;
+      }
+      @supports ((-webkit-background-clip: text) or (background-clip: text)) {
+        .demo-cap {
+          display: inline-block; background: var(--accent);
+          -webkit-background-clip: text; background-clip: text;
+          -webkit-text-fill-color: transparent; color: transparent;
+        }
+      }
+      .demo-line {
+        display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px;
+      }
+      .demo-line + .demo-line { margin-top: 14px; }
+      .frag {
+        font-size: 13.5px; line-height: 1.5;
+        text-decoration-line: underline; text-underline-offset: 4px;
+      }
+      .u-human { text-decoration-style: solid; text-decoration-color: var(--d-human); text-decoration-thickness: 2px; }
+      .u-mixed { text-decoration-style: wavy; text-decoration-color: var(--d-mixed); }
+      .u-ai    { text-decoration-style: wavy; text-decoration-color: var(--d-ai); }
+      .bar {
+        flex: 1 1 26px; min-width: 18px; height: 8px; border-radius: 4px;
+        background: var(--bar);
+      }
+      .bar-s { flex: 0 0 42px; }
+
+      /* ---- demo chips (matches the real in-page chip recipe) ---- */
+      .chip {
+        display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px;
+        border: 1px solid rgba(15, 23, 42, 0.09); border-radius: 9999px;
+        background: rgba(255, 255, 255, 0.92);
+        font: 650 10px/1 system-ui, sans-serif; white-space: nowrap;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1); vertical-align: middle;
+      }
+      .chip .cdot { width: 6px; height: 6px; border-radius: 50%; }
+      .c-human { color: #116a37; }
+      .c-human .cdot { background: #1a7f37; box-shadow: 0 0 0 3px rgba(26, 127, 55, 0.16); }
+      .c-mixed { color: #8a5a00; }
+      .c-mixed .cdot { background: #d99e00; box-shadow: 0 0 0 3px rgba(217, 158, 0, 0.18); }
+      .c-ai { color: #b42318; }
+      .c-ai .cdot { background: #e5484d; box-shadow: 0 0 0 3px rgba(229, 72, 77, 0.16); }
+
+      /* ---- verdict legend ---- */
       .bands { display: flex; flex-wrap: wrap; gap: 10px 18px; margin: 10px 0 2px; }
       .band { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; font-size: 13px; }
-      .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-      .b-human .dot { background: #1a7f37; } .b-human { color: #116a37; }
-      .b-mixed .dot { background: #d99e00; } .b-mixed { color: #8a5a00; }
-      .b-ai .dot { background: #e5484d; } .b-ai { color: #b42318; }
-      .b-unknown .dot { background: #9aa3ad; } .b-unknown { color: #57606a; }
-      kbd { font: 600 12px/1 ui-monospace, monospace; background: #f6f8fa; border: 1px solid #d0d7de; border-bottom-width: 2px; border-radius: 5px; padding: 2px 6px; }
-      .chip-demo { display: inline-flex; align-items: center; gap: 4px; font: 650 10px/1 system-ui; color: #b42318; border: 1px solid rgba(0,0,0,0.07); border-radius: 999px; padding: 3px 7px 3px 6px; background: rgba(255,255,255,0.9); box-shadow: 0 1px 4px rgba(0,0,0,0.1); vertical-align: middle; }
-      .chip-demo .d { width: 6px; height: 6px; border-radius: 50%; background: #e5484d; }
-      footer { margin-top: 20px; font-size: 12px; color: #8b949e; }
+      .band .dot { width: 10px; height: 10px; border-radius: 50%; }
+      .b-human { color: var(--c-human); }   .b-human .dot { background: var(--d-human); }
+      .b-mixed { color: var(--c-mixed); }   .b-mixed .dot { background: var(--d-mixed); }
+      .b-ai { color: var(--c-ai); }         .b-ai .dot { background: var(--d-ai); }
+      .b-unknown { color: var(--c-unknown); } .b-unknown .dot { background: #9aa3ad; }
+
+      /* ---- lists, kbd ---- */
+      .moves { list-style: none; margin: 8px 0 0; padding: 0; }
+      .moves li + li { margin-top: 8px; }
+      kbd {
+        font: 600 12px/1 ui-monospace, monospace;
+        background: var(--kbd-bg); border: 1px solid var(--kbd-border);
+        border-bottom-width: 2px; border-radius: 5px; padding: 2px 6px;
+      }
+
+      /* ---- quiet closing section ---- */
+      section.quiet { border: none; background: none; padding: 2px 20px 0; }
+      section.quiet h2 { font-size: 13.5px; }
+      section.quiet h2::before { display: none; }
+      section.quiet p { font-size: 13.5px; }
+
+      footer {
+        margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--hairline);
+        font-size: 12px; color: var(--muted);
+      }
     </style>
   </head>
   <body>
@@ -43,9 +150,29 @@
         <div class="muted" id="version"></div>
       </div>
     </header>
-    <p>Pangram labels the text you read with a small confidence chip — like
-      <span class="chip-demo"><span class="d"></span>87% AI</span> — right after each analyzed
-      paragraph, answering <em>"did a human write this?"</em> as you browse.</p>
+    <p class="lede">Pangram answers <em>&ldquo;did a human write this?&rdquo;</em> as you browse:
+      every analyzed paragraph gets a small <strong>confidence chip</strong> and a matching
+      underline &mdash; quiet on human text, louder as confidence in AI authorship grows.</p>
+
+    <section aria-label="How Pangram reads a page">
+      <div class="demo-cap">How it reads</div>
+      <div class="demo-line">
+        <span class="frag u-human">The quick brown fox jumps over the lazy dog.</span>
+        <span class="bar" aria-hidden="true"></span>
+        <span class="chip c-human"><span class="cdot"></span>12% AI</span>
+      </div>
+      <div class="demo-line">
+        <span class="bar bar-s" aria-hidden="true"></span>
+        <span class="frag u-mixed">moreover, this underscores a broader point&hellip;</span>
+        <span class="bar" aria-hidden="true"></span>
+        <span class="chip c-mixed"><span class="cdot"></span>54% AI &times;2</span>
+      </div>
+      <div class="demo-line">
+        <span class="frag u-ai">Delving into the rich tapestry of interconnected factors&hellip;</span>
+        <span class="bar" aria-hidden="true"></span>
+        <span class="chip c-ai"><span class="cdot"></span>87% AI</span>
+      </div>
+    </section>
 
     <section>
       <h2>Reading the verdicts</h2>
@@ -55,36 +182,59 @@
         <span class="band b-ai"><span class="dot"></span>AI</span>
         <span class="band b-unknown"><span class="dot"></span>Insufficient</span>
       </div>
-      <p class="muted">Hover (or tap) a chip for the full readout: the estimate's credible
-        interval, a p-value against the human baseline, and how many words were analyzed.
-        Every number is a <strong>calibrated estimate, not proof</strong>. Text under 50
-        words is only analyzed when it can be grouped with its neighbors — short fragments
-        are unreliable to judge alone.</p>
+      <p class="muted">Hover (or tap) a chip for the full readout: credible interval, p-value
+        against the human baseline, and the word count behind it. Every number is a
+        <strong>calibrated estimate, not proof</strong>. Snippets under ~50 words are only
+        scored when grouped with neighbors &mdash; a <strong>&times;2</strong> on a chip
+        means it covers such a group.</p>
     </section>
 
     <section>
       <h2>The floating ball</h2>
-      <p class="muted">Bottom-right of every page: click it to show/hide everything
-        instantly, drag it anywhere (it remembers per site), and click its red counter to
-        open the <strong>flagged-paragraphs panel</strong> — jump straight to anything
-        marked AI. Prefer calm pages? Switch <em>Show → Flagged only</em> in the popup.</p>
+      <p class="muted">Lives bottom-right on every page. <strong>Click</strong> it to show or
+        hide all marks instantly. <strong>Drag</strong> it anywhere &mdash; it snaps to the
+        nearest edge and tucks itself half-away when idle; hover brings it back. Its red
+        <strong>counter</strong> opens the triage panel: filter by verdict, jump to each
+        flagged paragraph, <strong>Copy report</strong>, or turn Pangram off for this site
+        &mdash; all inside the panel.</p>
     </section>
 
     <section>
       <h2>Power moves</h2>
-      <p class="muted">
-        Select any text → right-click → <strong>Analyze selection with Pangram</strong> —
-        works even in editors and comment boxes.<br />
-        Press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> to toggle the overlay.<br />
-        On <strong>Google Docs</strong>, the ball offers a reading view where every
-        paragraph of your document gets analyzed.
-      </p>
+      <ul class="moves muted">
+        <li><strong>Analyze selection</strong> &mdash; select text, right-click, done. Works
+          inside text boxes and editors too.</li>
+        <li><kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> &mdash; toggle Pangram on the
+          current page.</li>
+        <li><strong>Flagged only</strong> &mdash; switch <em>Show &rarr; Flagged only</em> in
+          the popup and calm pages stay untouched; marks appear only where something was
+          flagged.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Google Docs</h2>
+      <p class="muted">Docs is an editor, not a page &mdash; so Pangram brings its own
+        reading surface. Click <strong>Analyze document</strong> on the floating ball and a
+        <strong>reading mode</strong> opens right in the tab, with every paragraph of the
+        document analyzed. No navigation, and your file is never touched. Press
+        <kbd>Esc</kbd> or <strong>Back to editor</strong> to return instantly &mdash; or use
+        <strong>Open as page</strong> if you prefer a separate tab.</p>
     </section>
 
     <section>
       <h2>Privacy</h2>
       <p class="muted">Nothing leaves your browser. Analysis happens inside the extension;
-        requests carry only a hostname and language hint by design — never full URLs.</p>
+        requests carry only a <strong>hostname and language hint</strong> by design &mdash;
+        never full URLs.</p>
+    </section>
+
+    <section class="quiet">
+      <h2>Make it yours</h2>
+      <p class="muted">The <strong>popup</strong> and <strong>options page</strong> hold the
+        rest: pick a marking style (<strong>underline</strong> or a soft
+        <strong>tint</strong>) and choose the analysis scope (<strong>whole page</strong> or
+        <strong>main content only</strong>).</p>
     </section>
 
     <footer id="stub-note"></footer>

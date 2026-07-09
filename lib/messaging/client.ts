@@ -5,6 +5,20 @@ import { ACTIONS } from "./protocol";
 import type { ScoreBatchMessage, ScoreBatchReply } from "./protocol";
 
 /**
+ * False once this content script's extension context has been invalidated
+ * (extension reloaded/updated while the tab stayed open). Every runtime/storage
+ * API throws from then on — callers use this to freeze quietly instead of
+ * spamming "Extension context invalidated" into the page console.
+ */
+export function contextAlive(): boolean {
+  try {
+    return typeof browser.runtime?.id === "string";
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Promise-wrapped runtime.sendMessage: one batch request → one ScoreResult[] response.
  * Isolated behind this function so the transport can swap to a long-lived Port later.
  *

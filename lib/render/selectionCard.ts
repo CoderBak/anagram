@@ -87,12 +87,48 @@ function row(k: string, v: string): string {
   return `<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>`;
 }
 
+/** The focused element, descended through open shadow roots. */
+function deepActiveElement(): Element | null {
+  let el: Element | null = document.activeElement;
+  while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+  return el;
+}
+
+/**
+ * The current selection: page selection normally, but Chrome exposes NOTHING via
+ * window.getSelection() for <textarea>/<input> — read selectionStart/End there,
+ * anchored to the field's box. This is what makes "analyze what I just wrote in
+ * this comment box" actually work.
+ */
+function currentSelection(): { text: string; rect: DOMRect | null } {
+  const active = deepActiveElement();
+  if (
+    active instanceof HTMLTextAreaElement ||
+    (active instanceof HTMLInputElement && active.type === "text")
+  ) {
+    const { selectionStart, selectionEnd } = active;
+    if (
+      selectionStart !== null &&
+      selectionEnd !== null &&
+      selectionEnd > selectionStart
+    ) {
+      return {
+        text: active.value.slice(selectionStart, selectionEnd).trim(),
+        rect: active.getBoundingClientRect(),
+      };
+    }
+  }
+  const sel = window.getSelection();
+  return {
+    text: sel?.toString().trim() ?? "",
+    rect: sel && sel.rangeCount > 0 ? sel.getRangeAt(0).getBoundingClientRect() : null,
+  };
+}
+
 /** Score the current selection and show the result card next to it. */
 export async function analyzeSelection(): Promise<void> {
-  const sel = window.getSelection();
-  const text = sel?.toString().trim() ?? "";
+  const { text, rect } = currentSelection();
   if (!text) return;
-  const rect = sel!.rangeCount > 0 ? sel!.getRangeAt(0).getBoundingClientRect() : null;
 
   dismiss();
   const host = document.createElement("div");

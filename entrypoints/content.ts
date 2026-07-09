@@ -15,6 +15,7 @@ import {
   applyDocsReadingStyle,
   DOCS_RETURN_KEY,
 } from "../lib/docs";
+import { createDocsOverlay } from "../lib/docsOverlay";
 import { analyzeSelection } from "../lib/render/selectionCard";
 import { ACTIONS } from "../lib/messaging/protocol";
 import type { ControlMessage, TabState } from "../lib/messaging/protocol";
@@ -29,7 +30,13 @@ export default defineContentScript({
   allFrames: true,
   async main(ctx) {
     const isTop = window.self === window.top;
-    const orchestrator = createOrchestrator(ctx, { mountFab: isTop });
+    // Google Docs (top frame only): the editor is a canvas (no DOM text) — the
+    // FAB's action opens our in-tab analyzed reading overlay instead.
+    const docs = isTop ? detectDocsPage(location) : null;
+    const orchestrator = createOrchestrator(ctx, {
+      mountFab: isTop,
+      lockScope: docs?.kind === "editor" ? "page" : undefined,
+    });
 
     // Site rules are keyed on the TOP page's hostname — that is what the popup
     // writes. Cross-origin frames cannot read it; the referrer (the embedding
@@ -81,7 +88,12 @@ export default defineContentScript({
     // Options-page / popup changes must reach already-open tabs: recompute the
     // effective state whenever the global flag or the site rules change.
     const applyEnabled = async (): Promise<void> => {
-      const v = await enabledForSite(effectiveHost);
+      let v: boolean;
+      try {
+        v = await enabledForSite(effectiveHost);
+      } catch {
+        return; // storage gone (extension context invalidated) — keep current state
+      }
       if (v === enabled) return;
       enabled = v;
       if (v) startWhenGated();
@@ -90,25 +102,48 @@ export default defineContentScript({
     settings.enabled.watch(() => void applyEnabled());
     settings.siteOverrides.watch(() => void applyEnabled());
 
-    // Google Docs (top frame only): the editor is a canvas (no DOM text). Offer
-    // the static-HTML reading view; from the reading view, offer the way back to
-    // the SAME tab.
-    const docs = isTop ? detectDocsPage(location) : null;
     if (docs) {
       if (docs.kind === "editor") {
-        orchestrator.setFabAction(
-          "Open reading view",
-          () => {
-            try {
-              sessionStorage.setItem(DOCS_RETURN_KEY, location.href);
-            } catch {
-              /* storage may be blocked — fallback return URL still works */
-            }
-            location.href = readingViewUrl(docs.id, currentTabParam(location));
-          },
-          { attention: true }, // the main toggle is useless on canvas — point here
-        );
+        // Classic flow — kept as the fallback and as the "Open as page" action.
+        const goToReadingPage = (): void => {
+          try {
+            sessionStorage.setItem(DOCS_RETURN_KEY, location.href);
+          } catch {
+            /* storage may be blocked — fallback return URL still works */
+          }
+          location.href = readingViewUrl(docs.id, currentTabParam(location));
+        };
+
+        const overlay = createDocsOverlay({
+          id: docs.id,
+          tab: currentTabParam(location),
+          onClose: () => setEditorAction(),
+          onOpenAsPage: goToReadingPage,
+        });
+
+        const openOverlay = async (): Promise<void> => {
+          orchestrator.setFabAction("Loading document…");
+          const ok = await overlay.open();
+          if (!ok) {
+            // Same-origin fetch failed (offline, consent wall) — the navigation
+            // flow still works; never strand the user on a dead button.
+            goToReadingPage();
+            return;
+          }
+          orchestrator.setFabAction("Close reading mode", () => overlay.close());
+        };
+
+        function setEditorAction(): void {
+          orchestrator.setFabAction(
+            "Analyze document",
+            () => void openOverlay(),
+            { attention: true }, // the main toggle is useless on canvas — point here
+          );
+        }
+        setEditorAction();
       } else {
+        // Organic /mobilebasic visit via our marker: apply reading typography and
+        // offer the way back to the exact editor tab.
         if (isReadingMarked(location)) applyDocsReadingStyle();
         orchestrator.setFabAction("Back to editor", () => {
           let target = editorUrl(docs.id);
@@ -156,6 +191,7 @@ export default defineContentScript({
               enabled,
               hostname: location.hostname,
               scored: orchestrator.scoredCount(),
+              flagged: orchestrator.flaggedCount(),
             };
             sendResponse(state);
             return; // synchronous response

@@ -7,6 +7,15 @@
 // v2: a unit may span SEVERAL visual paragraphs (merged short runs), so we paint
 // ONE RANGE PER PART — never a single range across parts, which would sweep up
 // interstitial content (code blocks, images) that is not part of the unit.
+//
+// v3 additions:
+// - markStyle variants (underline + tint / underline only / tint only), rebuilt
+//   live when the setting changes;
+// - shadow-root adoption: ::highlight() rules only paint text whose tree scope
+//   has the rule, so surfaces we render INTO a shadow root (the Docs overlay)
+//   adopt a shared constructable sheet carrying the same rules;
+// - print suppression: verdict marks are reading aids, not document content —
+//   all rules live under `@media screen`.
 import type { Unit } from "../types";
 import { MARK_ATTR } from "../types";
 import type { ScoreResult } from "../contract";
@@ -20,60 +29,51 @@ const HIGHLIGHT_NAME: Record<Band, string> = {
   unknown: "pangram-unknown",
 };
 
+export type MarkStyle = "both" | "underline" | "tint";
+
+interface BandPaint {
+  bg: string;
+  lineColor: string;
+  lineStyle: "solid" | "wavy";
+  offset: string;
+}
+
 // Per-band tint + underline (matches the badge palette). ::highlight() rules are
-// GLOBAL, so the palette can only switch per page — registerHighlightStyles picks
-// the variant from the page-level background verdict.
-const HIGHLIGHT_CSS = `
-::highlight(pangram-human)   {
-  background-color: rgba(26, 127, 55, 0.07);
-  text-decoration-line: underline;
-  text-decoration-style: solid;
-  text-decoration-color: rgba(26, 127, 55, 0.5);
-  text-underline-offset: 3px;
-}
-::highlight(pangram-mixed)   {
-  background-color: rgba(217, 158, 0, 0.18);
-  text-decoration-line: underline;
-  text-decoration-style: wavy;
-  text-decoration-color: rgba(217, 158, 0, 0.85);
-  text-underline-offset: 2px;
-}
-::highlight(pangram-ai)      {
-  background-color: rgba(229, 72, 77, 0.16);
-  text-decoration-line: underline;
-  text-decoration-style: wavy;
-  text-decoration-color: rgba(229, 72, 77, 0.9);
-  text-underline-offset: 2px;
-}
-::highlight(pangram-unknown) { background-color: rgba(95, 99, 104, 0.10); }
-`;
+// GLOBAL per tree scope, so the palette can only switch per page — the page-level
+// background verdict picks light or dark.
+const LIGHT: Record<"human" | "mixed" | "ai", BandPaint> = {
+  human: { bg: "rgba(26, 127, 55, 0.07)", lineColor: "rgba(26, 127, 55, 0.5)", lineStyle: "solid", offset: "3px" },
+  mixed: { bg: "rgba(217, 158, 0, 0.18)", lineColor: "rgba(217, 158, 0, 0.85)", lineStyle: "wavy", offset: "2px" },
+  ai: { bg: "rgba(229, 72, 77, 0.16)", lineColor: "rgba(229, 72, 77, 0.9)", lineStyle: "wavy", offset: "2px" },
+};
 
 // Dark-page variant: lighter decoration colors, slightly stronger tints so the
 // marks read against dark surfaces without glowing.
-const HIGHLIGHT_CSS_DARK = `
-::highlight(pangram-human)   {
-  background-color: rgba(78, 203, 113, 0.10);
-  text-decoration-line: underline;
-  text-decoration-style: solid;
-  text-decoration-color: rgba(78, 203, 113, 0.55);
-  text-underline-offset: 3px;
+const DARK: Record<"human" | "mixed" | "ai", BandPaint> = {
+  human: { bg: "rgba(78, 203, 113, 0.10)", lineColor: "rgba(78, 203, 113, 0.55)", lineStyle: "solid", offset: "3px" },
+  mixed: { bg: "rgba(230, 184, 76, 0.16)", lineColor: "rgba(230, 184, 76, 0.85)", lineStyle: "wavy", offset: "2px" },
+  ai: { bg: "rgba(255, 123, 129, 0.16)", lineColor: "rgba(255, 123, 129, 0.9)", lineStyle: "wavy", offset: "2px" },
+};
+
+function buildCss(dark: boolean, style: MarkStyle): string {
+  const pal = dark ? DARK : LIGHT;
+  const rules: string[] = [];
+  for (const b of ["human", "mixed", "ai"] as const) {
+    const p = pal[b];
+    const decl: string[] = [];
+    if (style !== "underline") decl.push(`background-color: ${p.bg}`);
+    if (style !== "tint") {
+      decl.push(
+        "text-decoration-line: underline",
+        `text-decoration-style: ${p.lineStyle}`,
+        `text-decoration-color: ${p.lineColor}`,
+        `text-underline-offset: ${p.offset}`,
+      );
+    }
+    rules.push(`::highlight(${HIGHLIGHT_NAME[b]}) { ${decl.join("; ")}; }`);
+  }
+  return `@media screen {\n${rules.join("\n")}\n}`;
 }
-::highlight(pangram-mixed)   {
-  background-color: rgba(230, 184, 76, 0.16);
-  text-decoration-line: underline;
-  text-decoration-style: wavy;
-  text-decoration-color: rgba(230, 184, 76, 0.85);
-  text-underline-offset: 2px;
-}
-::highlight(pangram-ai)      {
-  background-color: rgba(255, 123, 129, 0.16);
-  text-decoration-line: underline;
-  text-decoration-style: wavy;
-  text-decoration-color: rgba(255, 123, 129, 0.9);
-  text-underline-offset: 2px;
-}
-::highlight(pangram-unknown) { background-color: rgba(160, 168, 176, 0.12); }
-`;
 
 function highlightsSupported(): boolean {
   return typeof CSS !== "undefined" && "highlights" in CSS && typeof Highlight !== "undefined";
@@ -96,6 +96,16 @@ const _byUnit = new Map<string, Array<{ band: Band; range: Range }>>();
 
 let _stylesInjected = false;
 let _styleEl: HTMLStyleElement | null = null;
+/** Shared constructable sheet adopted by shadow-root surfaces (Docs overlay). */
+let _shadowSheet: CSSStyleSheet | null = null;
+let _markStyle: MarkStyle = "both";
+let _visible = true;
+
+function applyCss(): void {
+  const css = buildCss(isDarkPage(), _markStyle);
+  if (_styleEl) _styleEl.textContent = css;
+  if (_shadowSheet) _shadowSheet.replaceSync(css);
+}
 
 /** Inject the `::highlight()` pseudo rules once. */
 export function registerHighlightStyles(): void {
@@ -104,19 +114,45 @@ export function registerHighlightStyles(): void {
   _stylesInjected = true;
   const style = document.createElement("style");
   style.setAttribute(MARK_ATTR, "style");
-  style.textContent = isDarkPage() ? HIGHLIGHT_CSS_DARK : HIGHLIGHT_CSS;
   (document.head ?? document.documentElement).appendChild(style);
   _styleEl = style;
+  applyCss();
 }
 
-/** Instantly show/hide ALL highlights by toggling the stylesheet (keeps ranges). */
+/**
+ * Make highlights paint inside a shadow root we render into (the Docs overlay).
+ * ::highlight() rules do not cross tree scopes, so each such root adopts a shared
+ * sheet carrying the same rules. Idempotent per root.
+ */
+export function adoptHighlightStyles(root: ShadowRoot): void {
+  if (!highlightsSupported()) return;
+  if (!_shadowSheet) {
+    _shadowSheet = new CSSStyleSheet();
+    _shadowSheet.replaceSync(buildCss(isDarkPage(), _markStyle));
+    _shadowSheet.disabled = !_visible;
+  }
+  if (!root.adoptedStyleSheets.includes(_shadowSheet)) {
+    root.adoptedStyleSheets = [...root.adoptedStyleSheets, _shadowSheet];
+  }
+}
+
+/** Instantly show/hide ALL highlights by toggling the stylesheets (keeps ranges). */
 export function setHighlightsVisible(visible: boolean): void {
+  _visible = visible;
   if (_styleEl) _styleEl.disabled = !visible;
+  if (_shadowSheet) _shadowSheet.disabled = !visible;
+}
+
+/** Switch between underline / tint / both (live from the settings watch). */
+export function setMarkStyle(style: MarkStyle): void {
+  if (style === _markStyle) return;
+  _markStyle = style;
+  applyCss();
 }
 
 /** Re-evaluate the page background and swap the palette (site theme toggles). */
 export function refreshHighlightTheme(): void {
-  if (_styleEl) _styleEl.textContent = isDarkPage() ? HIGHLIGHT_CSS_DARK : HIGHLIGHT_CSS;
+  applyCss();
 }
 
 /**

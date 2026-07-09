@@ -125,6 +125,50 @@
      copy also carries enough extra words to clear the evidence floor entirely on its own.</p>
   </section>
 
+  <!-- 12: KaTeX-shaped formula — visual copy is aria-hidden, accessible copy is a
+       clip-hidden inline span wrapping MathML. The sentence must stay ONE unit and
+       the formula text must not leak in twice. -->
+  <section id="katex">
+  <p>KATEX paragraph carries an inline formula
+     <span class="katex">
+       <span class="katex-mathml" style="position:absolute;clip:rect(1px,1px,1px,1px);width:1px;height:1px;overflow:hidden"><math><mrow><mi>E</mi><mo>=</mo><mi>m</mi><msup><mi>c</mi><mn>2</mn></msup></mrow></math>KATEXDUP</span>
+       <span class="katex-html" aria-hidden="true"><span class="base">E=mc<sup>2</sup>KATEXDUP</span></span>
+     </span>
+     right in the middle of a sentence that keeps going long enough to clear the fifty
+     word evidence floor comfortably, proving that math markup rendered the KaTeX way with
+     duplicated visual and accessible copies never splits the sentence and never counts the
+     formula text twice in the unit that finally receives the badge KATEXTAIL marker.</p>
+  </section>
+
+  <!-- 13: modal <dialog> — page content in the TOP LAYER. Its prose must still be
+       scored, and the FAB (a manual popover) must remain usable above/with it. -->
+  <section id="modalwrap">
+  <button id="openmodal" type="button">Open modal</button>
+  <dialog id="modal">
+    <p>MODAL paragraph lives inside a showModal dialog which the browser promotes into the
+       top layer above every ordinary stacking context on the page, and it still deserves a
+       badge like any other paragraph because reading happens inside modals all the time on
+       real sites, from privacy policies to full article previews and cookie-free readers.</p>
+    <button id="closemodal" type="button">Close</button>
+  </dialog>
+  </section>
+
+  <!-- 14: vertical writing mode (Japanese novel layout) — the chip must not wreck
+       the column flow; the unit must still be collected. -->
+  <section id="vertical">
+  <div style="writing-mode:vertical-rl;height:340px;font-size:14px;line-height:1.9">
+    <p>VERTICAL 縦書きの段落は日本の小説や新聞でよく使われる伝統的な組み方であり、右から左へ流れる
+       縦のレイアウトの中でも本文はほかの段落と同じように解析される必要があります。この段落には
+       五十語の下限を確実に超えるだけの十分な語数が含まれており、チップが行の流れを壊さずに末尾へ
+       挿入されることと、下線が縦書きでも正しく描画されることを検証するための標識文です。</p>
+  </div>
+  </section>
+
+  <script>
+    document.getElementById('openmodal').addEventListener('click', () => document.getElementById('modal').showModal());
+    document.getElementById('closemodal').addEventListener('click', () => document.getElementById('modal').close());
+  </script>
+
   <script>
     // Shadow DOM fixture: open root, own paragraph + slot receiving light content.
     const host = document.getElementById('shadowhost');

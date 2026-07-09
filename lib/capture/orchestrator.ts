@@ -19,17 +19,19 @@ import type { Unit, Lane } from "../types";
 import type { ScoreBlock, ScoreResult, ScoreBatchRequest } from "../contract";
 import { CONTRACT_VERSION } from "../contract";
 import { collectUnits } from "../dom/walker";
+import { findMainContent } from "../dom/mainContent";
 import { extractPartText, MAX_UNIT_TEXT_CHARS } from "../dom/text";
 import { createObservers, type Observers } from "./observers";
 import { createScheduler, type Scheduler } from "./scheduler";
 import { createScoreCache, type ScoreCache } from "./cache";
-import { requestScores } from "../messaging/client";
+import { requestScores, contextAlive } from "../messaging/client";
 import { createBadgeLayer, type BadgeLayer } from "../render/badge";
 import {
   setHighlight,
   clearHighlight,
   registerHighlightStyles,
   setHighlightsVisible,
+  setMarkStyle,
   refreshHighlightTheme,
 } from "../render/highlight";
 import { createFab, type Fab } from "../render/fab";
@@ -57,6 +59,8 @@ export interface Orchestrator {
   toggle(): void;
   /** Number of units that have rendered a badge (popup GET_TAB_STATE). */
   scoredCount(): number;
+  /** Number of units flagged AI / AI-Assisted (popup GET_TAB_STATE). */
+  flaggedCount(): number;
   /** Configure the FAB's secondary action chip (Google Docs reading view etc.). */
   setFabAction(label: string | null, onAction?: () => void, opts?: { attention?: boolean }): void;
 }
@@ -74,6 +78,12 @@ function isFlagged(r: ScoreResult): boolean {
 export interface OrchestratorOptions {
   /** Mount the floating toggle. False in subframes — one FAB per TAB, in the top frame. */
   mountFab?: boolean;
+  /**
+   * Pin the analysis scope regardless of the user setting. Docs editor pages set
+   * "page": the real content lives in our overlay's shadow root, which the
+   * main-region probe cannot see into — "main" would mis-scope to app chrome.
+   */
+  lockScope?: "page";
 }
 
 export function createOrchestrator(
@@ -99,9 +109,14 @@ export function createOrchestrator(
   let highlightsEnabled = true;
   let displayMode: "all" | "flagged" = "all";
   let mergeShorts = true;
+  let analysisScope: "page" | "main" = "page";
+  /** Resolved scope root when analysisScope === "main"; null → whole page. */
+  let scopeRoot: Element | null = null;
   let unwatchHighlights: (() => void) | null = null;
   let unwatchDisplay: (() => void) | null = null;
   let unwatchMerge: (() => void) | null = null;
+  let unwatchMarkStyle: (() => void) | null = null;
+  let unwatchScope: (() => void) | null = null;
   let lastBadgeSent = -1;
   let lastHref = location.href;
   let urlTimer: ReturnType<typeof setInterval> | null = null;
@@ -176,6 +191,30 @@ export function createOrchestrator(
   /** Painted under the current display mode? Everything is analyzed regardless. */
   function visibleUnderMode(r: ScoreResult): boolean {
     return displayMode === "all" || isFlagged(r);
+  }
+
+  // --- analysis scope ----------------------------------------------------------------
+
+  /** Re-detect the main-content region (scope "main"); body-wide otherwise. */
+  function resolveScopeRoot(): void {
+    scopeRoot = analysisScope === "main" ? findMainContent() : null;
+  }
+
+  /** The element full scans start from under the current scope. */
+  function scanBase(): Element | null {
+    if (scopeRoot && scopeRoot.isConnected) return scopeRoot;
+    if (scopeRoot) resolveScopeRoot(); // SPA replaced the region — re-detect
+    return scopeRoot ?? document.body;
+  }
+
+  /** Under "main" scope, ignore dirty roots outside the region. */
+  function inScope(el: Element): boolean {
+    if (!scopeRoot) return true;
+    if (!scopeRoot.isConnected) {
+      resolveScopeRoot(); // stale region — re-detect before judging
+      if (!scopeRoot) return true;
+    }
+    return scopeRoot.contains(el) || el.contains(scopeRoot);
   }
 
   // --- ownership / invalidation ----------------------------------------------------
@@ -276,6 +315,20 @@ export function createOrchestrator(
     }
 
     if (misses.length > 0) {
+      // The chip appears in its "analyzing…" state the moment real work starts
+      // (cache hits render instantly and never flash it). Skipped in flagged-only
+      // mode — most pending chips would pop in and vanish again.
+      if (visible && displayMode === "all") {
+        for (const b of misses) {
+          const unit = unitsById.get(b.id);
+          if (!unit) continue;
+          try {
+            badges.renderPending(unit);
+          } catch {
+            /* detached mid-flight — purge will collect it */
+          }
+        }
+      }
       // Dedup the REQUEST by text: score each unique text once, then fan the result
       // out to every block sharing it — duplicate paragraphs each still get a badge.
       const repByKey = new Map<string, ScoreBlock>();
@@ -306,8 +359,42 @@ export function createOrchestrator(
         if (!r.degraded) cache.set(rep.text, r); // fallbacks must not outlive the outage
         for (const id of idsByKey.get(k)!) out.push({ ...r, id });
       }
+      // Hard transport failure (extension reloaded/updated mid-flight): nothing
+      // came back for these — retire their pending chips instead of leaving
+      // "analyzing…" stuck on the page forever.
+      const answered = new Set(out.map((r) => r.id));
+      for (const b of misses) {
+        if (!answered.has(b.id)) badges.remove(b.id);
+      }
+      // Dead extension context: no future request can ever succeed. Freeze in
+      // place — existing verdicts stay readable, everything else goes quiet.
+      if (fresh.length === 0 && !contextAlive()) freeze();
     }
     return out;
+  }
+
+  /**
+   * The extension context was invalidated under us (update/reload). Stop all
+   * observation, scheduling and timers WITHOUT tearing down rendered badges —
+   * the reader keeps what was analyzed; new content simply stops being scored.
+   */
+  let frozen = false;
+  function freeze(): void {
+    if (frozen) return;
+    frozen = true;
+    try {
+      observers.stop();
+      scheduler.stop();
+    } catch {
+      /* observers may be half-dead — freezing must never throw */
+    }
+    if (urlTimer !== null) {
+      clearInterval(urlTimer);
+      urlTimer = null;
+    }
+    window.removeEventListener("popstate", onUrlMaybeChanged);
+    window.removeEventListener("hashchange", onUrlMaybeChanged);
+    window.removeEventListener("pangram:navigate", onUrlMaybeChanged);
   }
 
   /** Scheduler render(): id-keyed badge paint + per-part underline. */
@@ -430,8 +517,13 @@ export function createOrchestrator(
     // 3) Re-scan the dirty roots PLUS every container released by invalidations
     //    above (multi-part units span containers outside the mutation root).
     //    Stale-claim invalidations during scanning queue further rounds.
+    //    Under "main" scope, roots outside the detected region are not scanned.
     const scanned = new Set<Element>();
-    let queue: Element[] = dedupeRoots([...roots, ...seedQueue]);
+    let queue: Element[] = dedupeRoots([...roots, ...seedQueue])
+      .filter(inScope)
+      // A root ABOVE the scope region (body-level swap) scans the region, not
+      // the whole subtree — out-of-scope content must not sneak in from above.
+      .map((r) => (scopeRoot && r !== scopeRoot && r.contains(scopeRoot) ? scopeRoot : r));
     for (let round = 0; round < 4 && queue.length > 0; round++) {
       const extra = new Set<Element>();
       const filter = makeClaimFilter(extra);
@@ -453,8 +545,10 @@ export function createOrchestrator(
     // Incremental refresh: purge what's gone, pick up what's new. Still-valid
     // badges stay put (no flicker); MutationObserver covers the DOM swap itself.
     purgeDisconnected();
-    if (document.body) {
-      ingestUnits(collectUnits(document.body, { claimFilter: makeClaimFilter(), mergeShorts }));
+    resolveScopeRoot(); // the route's main region may be a different element now
+    const base = scanBase();
+    if (base) {
+      ingestUnits(collectUnits(base, { claimFilter: makeClaimFilter(), mergeShorts }));
     }
     updateFab();
     log.log("url change refresh", location.href);
@@ -506,9 +600,27 @@ export function createOrchestrator(
     void settings.mergeShorts.getValue().then(applyMergeShorts);
     unwatchMerge?.();
     unwatchMerge = settings.mergeShorts.watch(applyMergeShorts);
+    void settings.markStyle.getValue().then(setMarkStyle);
+    unwatchMarkStyle?.();
+    unwatchMarkStyle = settings.markStyle.watch(setMarkStyle);
+    const applyScope = (v: "page" | "main"): void => {
+      if (opts.lockScope) return; // pinned (Docs editor) — user scope not applied
+      if (v === analysisScope) return;
+      analysisScope = v; // structural — what gets collected changes
+      if (started) rescan();
+    };
+    void settings.analysisScope.getValue().then((v) => {
+      // First resolution happens before the initial collect below when the value
+      // is already "main"; the async path re-scans if it arrives later.
+      applyScope(v);
+    });
+    unwatchScope?.();
+    unwatchScope = settings.analysisScope.watch(applyScope);
 
     observers.start();
-    ingestUnits(collectUnits(document.body, { claimFilter: makeClaimFilter(), mergeShorts }));
+    resolveScopeRoot();
+    const base = scanBase();
+    if (base) ingestUnits(collectUnits(base, { claimFilter: makeClaimFilter(), mergeShorts }));
 
     window.addEventListener("popstate", onUrlMaybeChanged);
     window.addEventListener("hashchange", onUrlMaybeChanged);
@@ -566,6 +678,10 @@ export function createOrchestrator(
     unwatchDisplay = null;
     unwatchMerge?.();
     unwatchMerge = null;
+    unwatchMarkStyle?.();
+    unwatchMarkStyle = null;
+    unwatchScope?.();
+    unwatchScope = null;
     notifyToolbarBadge(0);
     log.log("stopped");
   }
@@ -580,8 +696,10 @@ export function createOrchestrator(
     clearAllResults();
     badges.resetTheme(); // the site theme may have toggled since the last scan
     refreshHighlightTheme();
-    if (document.body) {
-      ingestUnits(collectUnits(document.body, { claimFilter: makeClaimFilter(), mergeShorts }));
+    resolveScopeRoot();
+    const base = scanBase();
+    if (base) {
+      ingestUnits(collectUnits(base, { claimFilter: makeClaimFilter(), mergeShorts }));
     }
     updateFab();
     log.log("rescan");
@@ -589,6 +707,12 @@ export function createOrchestrator(
 
   function scoredCount(): number {
     return scoredIds.size;
+  }
+
+  function flaggedCount(): number {
+    let n = 0;
+    for (const r of resultsById.values()) if (isFlagged(r)) n++;
+    return n;
   }
 
   function setFabAction(
@@ -599,7 +723,7 @@ export function createOrchestrator(
     fab.setAction(label, onAction, opts);
   }
 
-  return { start, stop, rescan, toggle, scoredCount, setFabAction };
+  return { start, stop, rescan, toggle, scoredCount, flaggedCount, setFabAction };
 }
 
 /** Merge scan roots, dropping disconnected ones and any contained by another. */

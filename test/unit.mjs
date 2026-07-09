@@ -185,7 +185,81 @@ const results = await page.evaluate(() => {
   const second = PW.collectUnits(sandbox, { claimFilter: (nodes) => (nodes.some((n) => owned.has(n)) ? "skip" : "take") });
   check("no merging across a claimed unit on incremental re-scan", second.length === 0, JSON.stringify(second.map(x => [x.parts, x.words])));
 
+  // ---- boilerplate token expansion (trafilatura-derived) ------------------------------
+  u = collect(`<div class="social-share">${words(60)}</div>`);
+  check("social-share widget skipped", u.length === 0);
+  u = collect(`<div class="related-articles">${words(60)}</div>`);
+  check("related-articles widget skipped", u.length === 0);
+  u = collect(`<section class="related-work">${words(60)}</section>`);
+  check("compound guard: 'related-work' prose section KEPT", u.length === 1);
+  u = collect(`<div class="OUTBRAIN">${words(60)}</div>`);
+  check("outbrain widget skipped", u.length === 0);
+  u = collect(`<div role="complementary">${words(60)}</div>`);
+  check("role=complementary skipped", u.length === 0);
+  u = collect(`<div class="byline">${words(60)}</div>`);
+  check("byline row skipped", u.length === 0);
+  u = collect(`<div class="registration-info">${words(60)}</div>`);
+  check("compound guard: 'registration-info' prose KEPT", u.length === 1);
+  u = collect(`<div class="login-form">${words(60)}</div>`);
+  check("login-form chrome skipped", u.length === 0);
+  u = collect(`<div class="sharedwith">${words(60)}</div>`);
+  check("token boundary: 'sharedwith' (no delimiter) KEPT", u.length === 1);
+  {
+    // Regression: Wikipedia Vector-2022 body classes ("…-toc-pinned-…") must
+    // never classify a page-level container as chrome.
+    const b = document.createElement("body");
+    b.className = "skin-vector vector-toc-pinned-clientpref-1 vector-feature-limited-width";
+    check("page-level guard: Wikipedia-style <body> never boilerplate", PW.isBoilerplate(b) === false);
+    const m = document.createElement("main");
+    m.className = "share"; // pathological but structural — must stay content
+    check("page-level guard: <main> never boilerplate", PW.isBoilerplate(m) === false);
+    const d = document.createElement("div");
+    d.className = "vector-toc-pinned-clientpref-1";
+    check("bare 'toc' token dropped (link-density owns TOC boxes)", PW.isBoilerplate(d) === false);
+  }
+
+  // ---- main-content detection ----------------------------------------------------------
+  {
+    sandbox.innerHTML =
+      `<header>${words(20)}</header>` +
+      `<main id="mc">${words(80)}<p>${words(60)}</p></main>` +
+      `<footer>${words(20)}</footer>`;
+    const mc = PW.findMainContent(document);
+    // NOTE: findMainContent probes the whole document; the sandbox IS the page here.
+    check("findMainContent picks <main>", mc && mc.id === "mc", mc && (mc.id || mc.tagName));
+  }
+  {
+    sandbox.innerHTML =
+      `<div>${words(10)}</div>` +
+      `<div><div><div id="core">${"<p>" + words(60) + "</p>"}${"<p>" + words(60) + "</p>"}${"<p>" + words(60) + "</p>"}</div></div></div>`;
+    const mc = PW.findMainContent(document);
+    check(
+      "findMainContent dominant-path descent finds the text-mass core",
+      mc && (mc.id === "core" || mc.contains(document.getElementById("core")) || document.getElementById("core").contains(mc)),
+      mc && (mc.id || mc.tagName),
+    );
+  }
+  {
+    sandbox.innerHTML = `<p>${words(10)}</p>`;
+    const mc = PW.findMainContent(document);
+    check("findMainContent honest null on tiny pages", mc === null, mc && mc.tagName);
+  }
+
   // ---- pure text utils ---------------------------------------------------------------
+  check(
+    "stripInvisibles removes SHY/ZWSP/bidi controls",
+    PW.stripInvisibles("hy\u00ADphen\u200Bated \u202Ebidi\u202C \u2066iso\u2069") === "hyphenated bidi iso",
+    JSON.stringify(PW.stripInvisibles("hy\u00ADphen\u200Bated")),
+  );
+  check(
+    "normalizeText: soft-hyphenated text hashes like plain text",
+    PW.normalizeText("news\u00ADpaper text") === PW.normalizeText("newspaper text"),
+  );
+  check(
+    "truncateForScoring strips invisibles from the payload",
+    !PW.truncateForScoring("soft\u00ADwrap sentence.").includes("\u00AD"),
+  );
+
   const long = (words(40) + " ").repeat(30);
   const t = PW.truncateForScoring(long);
   check("truncateForScoring caps at ~4000 on a sentence end", t.length <= 4000 && /[.!?。！？]$/.test(t.trim()), `len=${t.length}`);

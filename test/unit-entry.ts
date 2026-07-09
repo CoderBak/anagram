@@ -7,6 +7,7 @@ export {
   countWords,
   splitSentences,
   truncateForScoring,
+  stripInvisibles,
   symbolNoiseRatio,
   hasColumnGaps,
   normalizeText,
@@ -15,5 +16,6 @@ export {
   MIN_MERGE_WORDS,
 } from "../lib/dom/text";
 export { isBoilerplate } from "../lib/dom/boilerplate";
+export { findMainContent } from "../lib/dom/mainContent";
 export { detectDocsPage, readingViewUrl, editorUrl } from "../lib/docs";
 export { band } from "../lib/render/band";
