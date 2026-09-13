@@ -61,7 +61,7 @@ for (const url of TABS.slice(1)) {
 }
 await first.bringToFront();
 
-console.log("\n🟢  Pangram playground is live.");
+console.log("\n🟢  Anagram playground is live.");
 console.log("    Tabs: self-test · Wikipedia · HF paper · your Google Doc · RFC txt");
 console.log("    Close the browser window (or Ctrl+C here) to stop.\n");
 

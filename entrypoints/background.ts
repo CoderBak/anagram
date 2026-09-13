@@ -29,8 +29,8 @@ export default defineBackground(() => {
   browser.runtime.onInstalled.addListener((details) => {
     void browser.contextMenus.removeAll().then(() => {
       browser.contextMenus.create({
-        id: "pangram-analyze-selection",
-        title: "Analyze selection with Pangram",
+        id: "anagram-analyze-selection",
+        title: "Analyze selection with Anagram",
         contexts: ["selection"],
       });
     });
@@ -40,7 +40,7 @@ export default defineBackground(() => {
   });
 
   browser.contextMenus.onClicked.addListener((info, tab) => {
-    if (info.menuItemId !== "pangram-analyze-selection" || tab?.id == null) return;
+    if (info.menuItemId !== "anagram-analyze-selection" || tab?.id == null) return;
     // Target the frame the selection lives in.
     void browser.tabs
       .sendMessage(tab.id, { action: ACTIONS.ANALYZE_SELECTION }, { frameId: info.frameId ?? 0 })

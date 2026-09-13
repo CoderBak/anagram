@@ -9,7 +9,7 @@
 // no state was lost, no navigation happened.
 //
 // Scoring comes free: the overlay content is ordinary DOM inside a shadow root
-// WITHOUT our data-pangram marker, so the page's MutationObserver sees the host
+// WITHOUT our data-anagram marker, so the page's MutationObserver sees the host
 // arrive, the walker descends the composed tree, and the normal pipeline badges
 // every paragraph — same chips, same underlines (the shadow root adopts the
 // ::highlight rules), same FAB counter and triage panel. Only the overlay's own
@@ -20,7 +20,7 @@
 import { MARK_ATTR } from "./types";
 import { adoptHighlightStyles } from "./render/highlight";
 
-export const DOCS_OVERLAY_ID = "pangram-docs-overlay";
+export const DOCS_OVERLAY_ID = "anagram-docs-overlay";
 
 export interface DocsOverlayOptions {
   /** Document id (the /d/<id>/ path segment). */
@@ -49,9 +49,9 @@ const OVERLAY_CSS = `
   background: rgba(241, 243, 244, 0.99);
   font: 15px/1.6 Arial, "Helvetica Neue", sans-serif;
   color: #1f2328;
-  animation: pangram-ovl-in 180ms ease-out both;
+  animation: anagram-ovl-in 180ms ease-out both;
 }
-@keyframes pangram-ovl-in {
+@keyframes anagram-ovl-in {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
@@ -231,7 +231,7 @@ export function createDocsOverlay(opts: DocsOverlayOptions): DocsOverlay {
       return false;
     }
 
-    // 3) build the overlay. The HOST intentionally has NO data-pangram marker —
+    // 3) build the overlay. The HOST intentionally has NO data-anagram marker —
     //    the walker must descend into it; only the bar (our chrome) is marked.
     host = document.createElement("div");
     host.id = DOCS_OVERLAY_ID;
@@ -259,7 +259,7 @@ export function createDocsOverlay(opts: DocsOverlayOptions): DocsOverlay {
     t.textContent = docTitle || "Google Docs document";
     const s = document.createElement("div");
     s.className = "s";
-    s.textContent = "Pangram reading mode — every paragraph analyzed · editor untouched behind";
+    s.textContent = "Anagram reading mode — every paragraph analyzed · editor untouched behind";
     titles.append(t, s);
 
     const openPage = document.createElement("button");
@@ -274,7 +274,7 @@ export function createDocsOverlay(opts: DocsOverlayOptions): DocsOverlay {
     const closeBtn = document.createElement("button");
     closeBtn.type = "button";
     closeBtn.className = "primary";
-    closeBtn.id = "pangram-ovl-close";
+    closeBtn.id = "anagram-ovl-close";
     closeBtn.textContent = "Back to editor · Esc";
     closeBtn.addEventListener("click", close);
 

@@ -11,7 +11,7 @@
 // - Docs now have TABS (/edit?tab=t.0). The tab param is forwarded to mobilebasic
 //   and the EXACT editor URL is remembered (sessionStorage) so "Back to editor"
 //   returns to the same tab instead of a bare /edit.
-// - Navigations we initiate carry a #pangram-reading fragment; only then do we
+// - Navigations we initiate carry a #anagram-reading fragment; only then do we
 //   apply the reading-mode typography below, so organic mobilebasic visits stay
 //   untouched (fragments are client-side only — Google never sees it).
 
@@ -26,10 +26,10 @@ export interface DocsPage {
 const DOC_PATH_RE = /^\/document\/(?:u\/\d+\/)?d\/([\w-]+)\/(edit|view|preview|mobilebasic)\b/;
 
 /** sessionStorage key holding the editor URL to return to (same-origin, same tab). */
-export const DOCS_RETURN_KEY = "pangram-docs-return";
+export const DOCS_RETURN_KEY = "anagram-docs-return";
 
 /** Fragment marking a mobilebasic navigation initiated by our button. */
-export const READING_MARKER = "pangram-reading";
+export const READING_MARKER = "anagram-reading";
 
 /** Detect whether `loc` is a Google Docs document page we can act on. */
 export function detectDocsPage(loc: Location | URL): DocsPage | null {
@@ -76,7 +76,7 @@ export function isReadingMarked(loc: Location | URL): boolean {
 // survives, just comfortably larger — plus a centered measure and a paper card.
 
 const DOCS_READING_CSS = `
-/* pangram reading mode (only on navigations we initiated) */
+/* anagram reading mode (only on navigations we initiated) */
 body {
   background: #f3f4f6 !important;
 }
@@ -101,7 +101,7 @@ let _readingStyleEl: HTMLStyleElement | null = null;
 export function applyDocsReadingStyle(): void {
   if (_readingStyleEl?.isConnected) return;
   const style = document.createElement("style");
-  style.setAttribute("data-pangram", "style");
+  style.setAttribute("data-anagram", "style");
   style.textContent = DOCS_READING_CSS;
   (document.head ?? document.documentElement).appendChild(style);
   _readingStyleEl = style;

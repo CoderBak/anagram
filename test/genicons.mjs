@@ -17,7 +17,7 @@ for (const size of [16, 48, 128]) {
       color: #fff;
       font: 800 ${fontPx}px/1 -apple-system, "Segoe UI", system-ui, sans-serif;
     }
-  </style></head><body><div class="mark">P</div></body></html>`);
+  </style></head><body><div class="mark">A</div></body></html>`);
   await page.locator(".mark").screenshot({
     path: `public/icons/icon-${size}.png`,
     omitBackground: true,

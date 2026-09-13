@@ -1,6 +1,6 @@
 // lib/contract.ts
 // The versioned surface↔backend contract. Identical shape for the random stub and the
-// eventual real pangram daemon — nothing above the socket changes when the backend swaps.
+// eventual real anagram daemon — nothing above the socket changes when the backend swaps.
 
 export const CONTRACT_VERSION = "1.0";
 
@@ -72,7 +72,7 @@ export interface ScoreBatchResponse {
 
 /**
  * The swappable backend seam. M1 implementation = RandomStubScoreClient (in-extension).
- * Future: HttpScoreClient / NativeScoreClient (connectNative → pangramd) drop in here
+ * Future: HttpScoreClient / NativeScoreClient (connectNative → anagramd) drop in here
  * with zero content-script changes.
  */
 export interface ScoreClient {

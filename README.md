@@ -1,6 +1,6 @@
-# Pangram AI Detector
+# Anagram for Chrome
 
-**See what's AI-written, right on the page.** Pangram is a Chrome extension that
+**See what's AI-written, right on the page.** Anagram is a Chrome extension that
 labels the text you read with a small per-paragraph confidence chip — think
 Immersive Translate, but instead of translating, it answers *"did a human write
 this?"* — inline, live, on every site.
@@ -45,7 +45,7 @@ this?"* — inline, live, on every site.
   <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>. **Click the counter** to open the
   triage panel: every flagged paragraph in order with **verdict filters**
   (All / AI / Assisted) — click one to jump there and pulse its chip, **Copy
-  report** for a markdown summary, or **turn Pangram off for the site** right
+  report** for a markdown summary, or **turn Anagram off for the site** right
   from the panel. The toolbar icon shows the per-tab flagged count too.
 - **"Flagged only" mode**: every paragraph is still analyzed, but chips and
   marks appear only on AI / AI-Assisted verdicts — calm pages by default if you
@@ -55,7 +55,7 @@ this?"* — inline, live, on every site.
   comments, sidebars and widgets outside it (falls back to whole-page when no
   clear region exists).
 - **Analyze any selection**: select text → right-click →
-  *Analyze selection with Pangram* — works in editors, comment boxes,
+  *Analyze selection with Anagram* — works in editors, comment boxes,
   **`<textarea>`/`<input>` fields** (which browsers hide from normal selection
   APIs) and fragments passive capture skips; below the 50-word floor it says
   "too short to judge" instead of pretending.
@@ -169,5 +169,5 @@ Nothing leaves the browser. Text goes from the page to the extension's own
 service worker and back; the stub scores locally. The batch envelope carries only
 a hostname + language hint by design — if a remote backend is ever added, that
 contract keeps full URLs and page identity out of every request. The Google Docs
-reading mode fetches the document same-origin with your own cookies — Pangram
+reading mode fetches the document same-origin with your own cookies — Anagram
 itself contacts no server.

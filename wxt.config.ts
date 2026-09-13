@@ -5,36 +5,39 @@ import { defineConfig } from "wxt";
 export default defineConfig({
   // Build into ./output (not WXT's default ./.output) so it's visible in Finder.
   outDir: "output",
-  manifest: ({ browser }) => ({
-    name: "Pangram AI Detector",
-    description: "Per-paragraph AI-generated-text confidence badges.",
-    permissions: ["storage", "activeTab", "contextMenus"],
-    ...(browser === "firefox"
-      ? {
-          browser_specific_settings: {
-            gecko: {
-              id: "pangram@coderbak.dev",
-              // Intl.Segmenter 125, zoom 126; underlines feature-detect (140+).
-              strict_min_version: "128.0",
+  manifest: ({ browser }) => {
+    const productName = browser === "firefox" ? "Anagram for Firefox" : "Anagram for Chrome";
+    return {
+      name: productName,
+      description: "Per-paragraph AI-generated-text confidence badges.",
+      permissions: ["storage", "activeTab", "contextMenus"],
+      ...(browser === "firefox"
+        ? {
+            browser_specific_settings: {
+              gecko: {
+                id: "anagram@coderbak.dev",
+                // Intl.Segmenter 125, zoom 126; underlines feature-detect (140+).
+                strict_min_version: "128.0",
+              },
             },
-          },
-        }
-      : {}),
-    commands: {
-      "toggle-overlay": {
-        suggested_key: { default: "Alt+Shift+P" },
-        description: "Show/hide Pangram badges",
+          }
+        : {}),
+      commands: {
+        "toggle-overlay": {
+          suggested_key: { default: "Alt+Shift+P" },
+          description: "Show/hide Anagram badges",
+        },
       },
-    },
-    host_permissions: ["<all_urls>"],
-    icons: {
-      16: "icons/icon-16.png",
-      48: "icons/icon-48.png",
-      128: "icons/icon-128.png",
-    },
-    action: {
-      default_popup: "popup/index.html",
-      default_title: "Pangram AI Detector",
-    },
-  }),
+      host_permissions: ["<all_urls>"],
+      icons: {
+        16: "icons/icon-16.png",
+        48: "icons/icon-48.png",
+        128: "icons/icon-128.png",
+      },
+      action: {
+        default_popup: "popup/index.html",
+        default_title: productName,
+      },
+    };
+  },
 });

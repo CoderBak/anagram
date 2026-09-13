@@ -51,7 +51,7 @@ if (!sw) sw = await context.waitForEvent("serviceworker", { timeout: 15000 });
 const extId = new URL(sw.url()).host;
 
 async function settle(page, sweeps = 6) {
-  await page.waitForSelector('[data-pangram="host"]', { timeout: 15000 }).catch(() => {});
+  await page.waitForSelector('[data-anagram="host"]', { timeout: 15000 }).catch(() => {});
   await page.evaluate(async (n) => {
     for (let i = 0; i < n; i++) { scrollBy(0, innerHeight * 0.8); await new Promise((r) => setTimeout(r, 280)); }
     scrollTo(0, 0);
@@ -79,7 +79,7 @@ try {
   // pin the highest-percent badge's card (the money shot: meter + sentences)
   await p.evaluate(() => {
     let best = null, bestPct = -1;
-    for (const h of document.querySelectorAll('[data-pangram="host"]:not(#pangram-fab)')) {
+    for (const h of document.querySelectorAll('[data-anagram="host"]:not(#anagram-fab)')) {
       const t = h.shadowRoot?.querySelector(".num")?.textContent ?? "";
       const m = t.match(/(\d+)%/);
       if (m && +m[1] > bestPct) { bestPct = +m[1]; best = h; }
@@ -108,12 +108,12 @@ try {
   await p.goto(`${DOC}/edit?usp=sharing`, { waitUntil: "domcontentloaded", timeout: 45000 });
   await p.waitForTimeout(6000);
   await p.evaluate(() => {
-    document.getElementById("pangram-fab")?.shadowRoot?.querySelector("#pangram-action")?.click();
+    document.getElementById("anagram-fab")?.shadowRoot?.querySelector("#anagram-action")?.click();
   });
   await p.waitForFunction(
     () => {
-      const sr = document.getElementById("pangram-docs-overlay")?.shadowRoot;
-      return sr && sr.querySelectorAll('[data-pangram="host"]').length >= 3;
+      const sr = document.getElementById("anagram-docs-overlay")?.shadowRoot;
+      return sr && sr.querySelectorAll('[data-anagram="host"]').length >= 3;
     },
     null, { timeout: 25000 },
   );
@@ -157,7 +157,7 @@ try {
   await p.goto("https://en.wikipedia.org/wiki/Alan_Turing", { waitUntil: "domcontentloaded", timeout: 40000 });
   await settle(p, 4);
   await p.evaluate(() => {
-    document.getElementById("pangram-fab")?.shadowRoot?.querySelector(".count")
+    document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")
       ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
   await p.waitForTimeout(500);

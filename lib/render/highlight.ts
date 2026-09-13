@@ -23,10 +23,10 @@ import { band, type Band } from "./band";
 import { isDarkPage } from "./theme";
 
 const HIGHLIGHT_NAME: Record<Band, string> = {
-  human: "pangram-human",
-  mixed: "pangram-mixed",
-  ai: "pangram-ai",
-  unknown: "pangram-unknown",
+  human: "anagram-human",
+  mixed: "anagram-mixed",
+  ai: "anagram-ai",
+  unknown: "anagram-unknown",
 };
 
 export type MarkStyle = "both" | "underline" | "tint";

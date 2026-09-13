@@ -1,4 +1,4 @@
-// test/e2e.mjs — Playwright end-to-end test for the Pangram MV3 extension (v2).
+// test/e2e.mjs — Playwright end-to-end test for the Anagram MV3 extension (v2).
 //
 // Loads the built unpacked extension into a persistent Chromium context, serves the
 // self-test page over http (so the <all_urls> content script injects), scrolls the
@@ -22,8 +22,8 @@ const EXT = join(__dirname, "..", "output", "chrome-mv3");
 const SELFTEST = join(__dirname, "selftest.html");
 const HEADLESS = process.env.HEADLESS === "1";
 
-// Badge hosts share data-pangram="host" with the FAB host — exclude the FAB by id.
-const BADGE_SEL = '[data-pangram="host"]:not(#pangram-fab)';
+// Badge hosts share data-anagram="host" with the FAB host — exclude the FAB by id.
+const BADGE_SEL = '[data-anagram="host"]:not(#anagram-fab)';
 
 if (!existsSync(join(EXT, "manifest.json"))) {
   console.error("Built extension not found at", EXT, "- run `npm run build` first.");
@@ -110,12 +110,12 @@ const snapshot = await page.evaluate((sel) => {
     return out;
   })();
   const hlHas = (marker) => highlightTexts.some((t) => t.includes(marker));
-  const strayMarks = [...document.querySelectorAll("[data-pangram]")].filter(
-    (el) => !["host", "style"].includes(el.getAttribute("data-pangram")),
+  const strayMarks = [...document.querySelectorAll("[data-anagram]")].filter(
+    (el) => !["host", "style"].includes(el.getAttribute("data-anagram")),
   ).length;
   return {
     badgeTotal: document.querySelectorAll(sel).length,
-    fabPresent: !!document.getElementById("pangram-fab"),
+    fabPresent: !!document.getElementById("anagram-fab"),
     highlightCount: highlightTexts.length,
     sections: {
       human: inSection("human"),
@@ -224,7 +224,7 @@ console.log(`rapid add: badges ${beforeAdd} -> ${afterAdd} (clicked ${RAPID})`);
 // 13) toggle test: FAB click → hidden → click → shown.
 const clickFab = () =>
   page.evaluate(() =>
-    document.getElementById("pangram-fab")?.shadowRoot?.querySelector("button.fab")?.click(),
+    document.getElementById("anagram-fab")?.shadowRoot?.querySelector("button.fab")?.click(),
   );
 const shownN = await visibleBadges();
 await clickFab();

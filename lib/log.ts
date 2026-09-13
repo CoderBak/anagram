@@ -25,7 +25,7 @@ export interface Logger {
 /** Create a namespaced logger. Output is suppressed unless `settings.debug` is true. */
 export function createLogger(namespace: string): Logger {
   ensureSubscribed();
-  const tag = `[pangram:${namespace}]`;
+  const tag = `[anagram:${namespace}]`;
   return {
     log(...args: unknown[]) {
       if (_enabled) console.log(tag, ...args);

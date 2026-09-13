@@ -9,7 +9,7 @@
 // competes with page content. Hidden entirely while the page is fullscreen
 // (video). Where the Popover API exists, the host is promoted to the top layer
 // so cookie walls and modal overlays cannot bury it. Its host carries
-// MARK_ATTR="host" so the walker skips it, and id="pangram-fab" so tests can
+// MARK_ATTR="host" so the walker skips it, and id="anagram-fab" so tests can
 // find/click it.
 import { MARK_ATTR } from "../types";
 import { settings, setSiteOverride } from "../settings/settings";
@@ -128,11 +128,11 @@ const FAB_CSS = `
 .action.show { display: inline-flex; }
 
 /* Brief attention pulse (Docs editor: the action chip is the useful control). */
-@keyframes pangram-attn {
+@keyframes anagram-attn {
   0%, 100% { transform: scale(1); box-shadow: 0 6px 20px rgba(15, 23, 42, 0.16), 0 1px 3px rgba(15, 23, 42, 0.08); }
   50% { transform: scale(1.06); box-shadow: 0 8px 26px rgba(109, 94, 252, 0.45), 0 2px 5px rgba(15, 23, 42, 0.10); }
 }
-.action.attn { animation: pangram-attn 1.3s ease-in-out 3; }
+.action.attn { animation: anagram-attn 1.3s ease-in-out 3; }
 
 .mark {
   width: 19px;
@@ -504,7 +504,7 @@ export function createFab(opts: { onToggle: () => void; panel?: PanelHooks }): F
     host = null;
     host = document.createElement("div");
     host.setAttribute(MARK_ATTR, "host");
-    host.id = "pangram-fab";
+    host.id = "anagram-fab";
     const shadow = host.attachShadow({ mode: "open" });
     shadow.adoptedStyleSheets = [sheet()];
 
@@ -515,7 +515,7 @@ export function createFab(opts: { onToggle: () => void; panel?: PanelHooks }): F
     actionEl = document.createElement("button");
     actionEl.className = "chip action";
     actionEl.type = "button";
-    actionEl.id = "pangram-action";
+    actionEl.id = "anagram-action";
     actionEl.addEventListener("click", () => actionCb?.());
 
     fabEl = document.createElement("button");
@@ -524,11 +524,11 @@ export function createFab(opts: { onToggle: () => void; panel?: PanelHooks }): F
 
     const mark = document.createElement("span");
     mark.className = "mark";
-    mark.textContent = "P";
+    mark.textContent = "A";
 
     const label = document.createElement("span");
     label.className = "label";
-    label.textContent = "Pangram";
+    label.textContent = "Anagram";
 
     countEl = document.createElement("span");
     countEl.className = "count zero";

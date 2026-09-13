@@ -13,7 +13,7 @@ import http from "node:http";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const EXT = join(__dirname, "..", "output", "chrome-mv3");
-const BADGE_SEL = '[data-pangram="host"]:not(#pangram-fab)';
+const BADGE_SEL = '[data-anagram="host"]:not(#anagram-fab)';
 const N = 3000;
 
 const words = (seed) => {

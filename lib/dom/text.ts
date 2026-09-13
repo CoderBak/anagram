@@ -38,7 +38,7 @@ export interface Unit {
 // ---- thresholds -------------------------------------------------------------------
 
 /**
- * Evidence floor per unit. Pangram's own policy: predictions are unreliable below
+ * Evidence floor per unit. Pangram Labs (the commercial detector) states predictions are unreliable below
  * ~50 words (it cannot attribute below ~75). A unit is only emitted at ≥ this.
  */
 export const MIN_UNIT_WORDS = 50;

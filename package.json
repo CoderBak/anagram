@@ -1,6 +1,6 @@
 {
-  "name": "pangram-extension",
-  "description": "Pangram AI Detector \u2014 per-paragraph AI-generated-text confidence badges.",
+  "name": "anagram-extension",
+  "description": "Anagram for Chrome \u2014 per-paragraph AI-generated-text confidence badges.",
   "private": true,
   "version": "0.3.0",
   "type": "module",

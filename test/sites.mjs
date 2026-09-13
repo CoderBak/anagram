@@ -10,7 +10,7 @@ import { existsSync } from "node:fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const EXT = join(__dirname, "..", "output", "chrome-mv3");
-const BADGE_SEL = '[data-pangram="host"]:not(#pangram-fab)';
+const BADGE_SEL = '[data-anagram="host"]:not(#anagram-fab)';
 
 if (!existsSync(join(EXT, "manifest.json"))) {
   console.error("Build first: npm run build");
@@ -73,7 +73,7 @@ for (const [name, url] of SITES) {
     return {
       badges: hosts.length,
       chromeBadges: chrome,
-      fab: document.getElementById("pangram-fab")?.shadowRoot?.querySelector(".count")?.textContent ?? "?",
+      fab: document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.textContent ?? "?",
       samples: anchors.slice(0, 6).map((el) => (el.textContent || "").trim().replace(/\s+/g, " ").slice(0, 55)),
     };
   }, BADGE_SEL).catch(() => ({ badges: 0, chromeBadges: 0, fab: "?", samples: [] }));

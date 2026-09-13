@@ -44,7 +44,7 @@ const log = createLogger("orchestrator");
 const BATCH_CHAR_BUDGET = 800;
 const MAX_IN_FLIGHT = 4;
 // The MAIN-world nav hook (entrypoints/nav-hook.content.ts) announces pushState/
-// replaceState instantly via "pangram:navigate"; the poll is only a slow fallback
+// replaceState instantly via "anagram:navigate"; the poll is only a slow fallback
 // for exotic navigation paths the hook cannot see.
 const URL_POLL_MS = 2500;
 
@@ -153,7 +153,7 @@ export function createOrchestrator(
       .sort((a, b) => a.unit.order - b.unit.order);
 
     const lines: string[] = [];
-    lines.push(`# Pangram AI report — ${document.title || location.hostname}`);
+    lines.push(`# Anagram AI report — ${document.title || location.hostname}`);
     lines.push("");
     lines.push(`- Page: ${location.href}`);
     lines.push(`- Generated: ${new Date().toLocaleString()}`);
@@ -394,7 +394,7 @@ export function createOrchestrator(
     }
     window.removeEventListener("popstate", onUrlMaybeChanged);
     window.removeEventListener("hashchange", onUrlMaybeChanged);
-    window.removeEventListener("pangram:navigate", onUrlMaybeChanged);
+    window.removeEventListener("anagram:navigate", onUrlMaybeChanged);
   }
 
   /** Scheduler render(): id-keyed badge paint + per-part underline. */
@@ -624,7 +624,7 @@ export function createOrchestrator(
 
     window.addEventListener("popstate", onUrlMaybeChanged);
     window.addEventListener("hashchange", onUrlMaybeChanged);
-    window.addEventListener("pangram:navigate", onUrlMaybeChanged);
+    window.addEventListener("anagram:navigate", onUrlMaybeChanged);
     urlTimer = setInterval(onUrlMaybeChanged, URL_POLL_MS);
     log.log("started", { session, domain });
   }
@@ -667,7 +667,7 @@ export function createOrchestrator(
     fab.unmount();
     window.removeEventListener("popstate", onUrlMaybeChanged);
     window.removeEventListener("hashchange", onUrlMaybeChanged);
-    window.removeEventListener("pangram:navigate", onUrlMaybeChanged);
+    window.removeEventListener("anagram:navigate", onUrlMaybeChanged);
     if (urlTimer !== null) {
       clearInterval(urlTimer);
       urlTimer = null;

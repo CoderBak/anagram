@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const EXT = join(__dirname, "..", "output", "chrome-mv3");
-const BADGE_SEL = '[data-pangram="host"]:not(#pangram-fab)';
+const BADGE_SEL = '[data-anagram="host"]:not(#anagram-fab)';
 const DOC =
   process.argv[2] ??
   "https://docs.google.com/document/d/1gRLkVx985SLnysZvrkm8PQolykP-rRWxBtxFoywXXRo";
@@ -42,8 +42,8 @@ await page.goto(`${DOC}/edit?usp=sharing`, { waitUntil: "domcontentloaded", time
 await page.waitForTimeout(6000); // editor bootstraps slowly
 
 const editorState = await page.evaluate(() => {
-  const fab = document.getElementById("pangram-fab");
-  const action = fab?.shadowRoot?.querySelector("#pangram-action");
+  const fab = document.getElementById("anagram-fab");
+  const action = fab?.shadowRoot?.querySelector("#anagram-action");
   return {
     fab: !!fab,
     actionShown: action ? getComputedStyle(action).display !== "none" : false,
@@ -57,14 +57,14 @@ await page.screenshot({ path: join(__dirname, "docs-editor.png") });
 
 const editorUrl = page.url();
 await page.evaluate(() => {
-  document.getElementById("pangram-fab")?.shadowRoot?.querySelector("#pangram-action")?.click();
+  document.getElementById("anagram-fab")?.shadowRoot?.querySelector("#anagram-action")?.click();
 });
 
 // Overlay mounts after the same-origin fetch — badges live inside ITS shadow root.
 const overlayReady = await page
   .waitForFunction(
     (sel) => {
-      const ovl = document.getElementById("pangram-docs-overlay");
+      const ovl = document.getElementById("anagram-docs-overlay");
       return !!ovl?.shadowRoot && ovl.shadowRoot.querySelectorAll(sel).length >= 1;
     },
     BADGE_SEL,
@@ -77,7 +77,7 @@ check("overlay: NO navigation happened (URL unchanged)", page.url() === editorUr
 
 // Scroll the overlay itself so below-fold paragraphs dispatch, then count.
 await page.evaluate(async () => {
-  const ovl = document.getElementById("pangram-docs-overlay")?.shadowRoot?.querySelector(".ovl");
+  const ovl = document.getElementById("anagram-docs-overlay")?.shadowRoot?.querySelector(".ovl");
   if (!ovl) return;
   for (let i = 0; i < 10; i++) {
     ovl.scrollBy(0, ovl.clientHeight * 0.8);
@@ -88,9 +88,9 @@ await page.evaluate(async () => {
 await page.waitForTimeout(2500);
 
 const overlayState = await page.evaluate((sel) => {
-  const ovl = document.getElementById("pangram-docs-overlay");
+  const ovl = document.getElementById("anagram-docs-overlay");
   const sr = ovl?.shadowRoot;
-  const fabSr = document.getElementById("pangram-fab")?.shadowRoot;
+  const fabSr = document.getElementById("anagram-fab")?.shadowRoot;
   const hl = [];
   if (typeof CSS !== "undefined" && CSS.highlights) {
     for (const h of CSS.highlights.values()) for (const rg of h) hl.push(rg);
@@ -100,7 +100,7 @@ const overlayState = await page.evaluate((sel) => {
     title: sr?.querySelector(".bar .t")?.textContent?.slice(0, 40) ?? null,
     paper: !!sr?.querySelector(".paper"),
     highlights: hl.length,
-    fabAction: fabSr?.querySelector("#pangram-action")?.textContent ?? null,
+    fabAction: fabSr?.querySelector("#anagram-action")?.textContent ?? null,
     sample: (sr?.querySelector(`${sel}`)?.parentElement?.textContent ?? "").trim().slice(0, 50),
   };
 }, BADGE_SEL);
@@ -114,21 +114,21 @@ await page.screenshot({ path: join(__dirname, "docs-overlay.png") });
 await page.keyboard.press("Escape");
 await page.waitForTimeout(800);
 const afterClose = await page.evaluate(() => ({
-  overlayGone: !document.getElementById("pangram-docs-overlay"),
+  overlayGone: !document.getElementById("anagram-docs-overlay"),
   url: location.href,
   canvas: !!document.querySelector("canvas"),
-  action: document.getElementById("pangram-fab")?.shadowRoot?.querySelector("#pangram-action")?.textContent ?? null,
+  action: document.getElementById("anagram-fab")?.shadowRoot?.querySelector("#anagram-action")?.textContent ?? null,
 }));
 check("overlay: Esc closes, editor + URL untouched", afterClose.overlayGone && afterClose.url === editorUrl && afterClose.canvas, JSON.stringify(afterClose.action));
 check("overlay: FAB action restored", afterClose.action === "Analyze document", afterClose.action ?? "");
 
 // ---- phase 2: classic navigation flow (fallback / "Open as page") ---------------------
 await page.evaluate(() => {
-  document.getElementById("pangram-fab")?.shadowRoot?.querySelector("#pangram-action")?.click();
+  document.getElementById("anagram-fab")?.shadowRoot?.querySelector("#anagram-action")?.click();
 });
-await page.waitForFunction(() => !!document.getElementById("pangram-docs-overlay")?.shadowRoot?.querySelector(".bar"), null, { timeout: 25000 }).catch(() => {});
+await page.waitForFunction(() => !!document.getElementById("anagram-docs-overlay")?.shadowRoot?.querySelector(".bar"), null, { timeout: 25000 }).catch(() => {});
 await page.evaluate(() => {
-  const sr = document.getElementById("pangram-docs-overlay")?.shadowRoot;
+  const sr = document.getElementById("anagram-docs-overlay")?.shadowRoot;
   const openPage = [...(sr?.querySelectorAll(".bar button") ?? [])].find((b) => b.textContent.includes("Open as page"));
   openPage?.click();
 });
@@ -138,14 +138,14 @@ await page.waitForSelector(BADGE_SEL, { timeout: 12000 }).catch(() => {});
 const readingState = await page.evaluate((sel) => ({
   url: location.href.slice(0, 110),
   badges: document.querySelectorAll(sel).length,
-  actionLabel: document.getElementById("pangram-fab")?.shadowRoot?.querySelector("#pangram-action")?.textContent ?? null,
-  readingStyle: !!document.querySelector('style[data-pangram="style"]'),
+  actionLabel: document.getElementById("anagram-fab")?.shadowRoot?.querySelector("#anagram-action")?.textContent ?? null,
+  readingStyle: !!document.querySelector('style[data-anagram="style"]'),
 }), BADGE_SEL);
 console.log("READING PAGE:", JSON.stringify(readingState, null, 2));
 check("page view: mobilebasic badged with Back action", /mobilebasic/.test(readingState.url) && readingState.badges >= 1 && readingState.actionLabel === "Back to editor", JSON.stringify(readingState));
 
 await page.evaluate(() => {
-  document.getElementById("pangram-fab")?.shadowRoot?.querySelector("#pangram-action")?.click();
+  document.getElementById("anagram-fab")?.shadowRoot?.querySelector("#anagram-action")?.click();
 });
 await page.waitForURL(/\/edit/, { timeout: 20000 }).catch(() => {});
 check("page view: Back returns to the editor", /\/edit/.test(page.url()), page.url().slice(0, 90));

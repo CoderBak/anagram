@@ -1,4 +1,4 @@
-# CI for the Pangram extension. Activates as soon as this repo gets a GitHub remote.
+# CI for the Anagram extension. Activates as soon as this repo gets a GitHub remote.
 # Live-site scenarios (test/scenarios.mjs) and the perf benchmark stay local-only —
 # they depend on network and machine speed.
 name: ci

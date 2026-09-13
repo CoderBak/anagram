@@ -21,7 +21,7 @@ import http from "node:http";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const EXT = join(__dirname, "..", "output", "chrome-mv3");
-const BADGE_SEL = '[data-pangram="host"]:not(#pangram-fab)';
+const BADGE_SEL = '[data-anagram="host"]:not(#anagram-fab)';
 const LOCAL_ONLY = process.argv.includes("--local");
 
 if (!existsSync(join(EXT, "manifest.json"))) {
@@ -309,7 +309,7 @@ async function sweep(page, steps = 6) {
       .then(() => true)
       .catch(() => false);
     const fabTop = await page.evaluate(() => {
-      const fab = document.getElementById("pangram-fab");
+      const fab = document.getElementById("anagram-fab");
       if (!fab) return { supported: false, open: false };
       if (!("showPopover" in fab)) return { supported: false, open: true }; // fallback path OK
       try {
@@ -386,7 +386,7 @@ async function sweep(page, steps = 6) {
   // verdict bands exist, and filtering narrows the list.
   {
     const r = await page.evaluate(() => {
-      const fab = document.getElementById("pangram-fab");
+      const fab = document.getElementById("anagram-fab");
       const sr = fab?.shadowRoot;
       sr?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       const panel = sr?.querySelector(".panel");
@@ -409,7 +409,7 @@ async function sweep(page, steps = 6) {
 
   // A18: FAB drag → snaps to the nearest edge and remembers the side.
   {
-    const ball = page.locator("#pangram-fab .fab").first();
+    const ball = page.locator("#anagram-fab .fab").first();
     await ball.hover().catch(() => {}); // untuck first — a tucked ball sits half off-screen
     await page.waitForTimeout(350);
     const box = await ball.boundingBox();
@@ -421,7 +421,7 @@ async function sweep(page, steps = 6) {
       await page.mouse.up();
       await page.waitForTimeout(400);
       r = await page.evaluate(() => {
-        const stack = document.getElementById("pangram-fab")?.shadowRoot?.querySelector(".stack");
+        const stack = document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".stack");
         return {
           left: stack?.style.left,
           sideLeft: stack?.classList.contains("side-left"),
@@ -437,13 +437,13 @@ async function sweep(page, steps = 6) {
     await page.mouse.move(600, 300); // pointer far away, no interactions
     await page.waitForTimeout(4300);
     const tucked = await page.evaluate(
-      () => !!document.getElementById("pangram-fab")?.shadowRoot?.querySelector(".stack.tucked"),
+      () => !!document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".stack.tucked"),
     );
-    const ball = page.locator("#pangram-fab .fab").first();
+    const ball = page.locator("#anagram-fab .fab").first();
     await ball.hover().catch(() => {});
     await page.waitForTimeout(350);
     const untucked = await page.evaluate(
-      () => !document.getElementById("pangram-fab")?.shadowRoot?.querySelector(".stack.tucked"),
+      () => !document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".stack.tucked"),
     );
     record("ui", "FAB tucks when idle and returns on hover", tucked && untucked, JSON.stringify({ tucked, untucked }));
   }

@@ -16,7 +16,7 @@ export default defineContentScript({
   // slow URL poll + popstate/hashchange cover SPA navigation instead.
   exclude: ["firefox"],
   main() {
-    const announce = () => window.dispatchEvent(new Event("pangram:navigate"));
+    const announce = () => window.dispatchEvent(new Event("anagram:navigate"));
     for (const method of ["pushState", "replaceState"] as const) {
       const original = history[method];
       history[method] = function (this: History, ...args: Parameters<History["pushState"]>) {

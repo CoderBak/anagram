@@ -1,4 +1,4 @@
-// test/browser.mjs — launch a PERSISTENT, headed Chromium with the Pangram extension
+// test/browser.mjs — launch a PERSISTENT, headed Chromium with the Anagram extension
 // loaded, open the self-test page, and stay open until you close the window.
 //
 // Unlike e2e.mjs (which asserts + exits), this just opens a real browser you drive
@@ -60,7 +60,7 @@ if (process.env.SNAP === "1") {
   process.exit(0);
 }
 
-console.log("\n🟢  Pangram extension is live in this Chromium window.");
+console.log("\n🟢  Anagram extension is live in this Chromium window.");
 console.log("    Self-test page:  " + selftestUrl);
 console.log("    Navigate anywhere — badges appear on any page with paragraphs.");
 console.log("    Toggle it / per-site / Rescan from the toolbar popup.");

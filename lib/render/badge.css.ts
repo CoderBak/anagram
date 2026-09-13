@@ -40,7 +40,7 @@ export const BADGE_CSS: string = `
   :host { display: none !important; }
 }
 
-@keyframes pangram-badge-in {
+@keyframes anagram-badge-in {
   from { opacity: 0; transform: translateY(1px); }
   to   { opacity: 1; transform: translateY(0); }
 }
@@ -66,7 +66,7 @@ export const BADGE_CSS: string = `
   white-space: nowrap;
   direction: ltr; /* "9% AI" must not bidi-flip to "AI 9%" inside RTL paragraphs */
   cursor: default;
-  animation: pangram-badge-in 180ms ease-out both;
+  animation: anagram-badge-in 180ms ease-out both;
   transition: box-shadow 130ms ease, transform 130ms ease;
 }
 
@@ -99,11 +99,11 @@ export const BADGE_CSS: string = `
    into the verdict. The dot breathes; the number slot holds a fixed-width
    ellipsis so the morph barely moves the line. */
 
-@keyframes pangram-breathe {
+@keyframes anagram-breathe {
   0%, 100% { opacity: 0.35; transform: scale(0.82); }
   50%      { opacity: 1;    transform: scale(1); }
 }
-.pill.pending .dot { animation: pangram-breathe 1.1s ease-in-out infinite; }
+.pill.pending .dot { animation: anagram-breathe 1.1s ease-in-out infinite; }
 .pill.pending .num { min-width: 1.2em; text-align: center; letter-spacing: 0.14em; }
 
 /* ---- hover detail card ------------------------------------------------------- */
@@ -330,11 +330,11 @@ export const BADGE_CSS: string = `
   .dot, .meter .fill, .meter .tick, .sent .sq.on { forced-color-adjust: none; }
 }
 
-@keyframes pangram-flash {
+@keyframes anagram-flash {
   0%, 100% { box-shadow: 0 1px 4px rgba(15, 23, 42, 0.10); transform: scale(1); }
   25%, 65% { box-shadow: 0 0 0 6px rgba(109, 94, 252, 0.35), 0 1px 4px rgba(15, 23, 42, 0.10); transform: scale(1.12); }
 }
-.pill.pg-flash { animation: pangram-flash 800ms ease-in-out 2; }
+.pill.pg-flash { animation: anagram-flash 800ms ease-in-out 2; }
 
 @media (prefers-reduced-motion: reduce) {
   .pill { animation: none; transition: none; }

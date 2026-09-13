@@ -4,7 +4,7 @@ import { RandomStubScoreClient } from "./randomStub";
 
 /**
  * Returns the active ScoreClient. M1 → RandomStubScoreClient. Swapping in a real
- * NativeScoreClient (connectNative → pangramd) later changes only this one file.
+ * NativeScoreClient (connectNative → anagramd) later changes only this one file.
  */
 export function getScoreClient(): ScoreClient {
   return new RandomStubScoreClient();
