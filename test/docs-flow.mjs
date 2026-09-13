@@ -6,7 +6,12 @@
 // Phase 2 (the classic flow, still used as fallback + "Open as page"): overlay's
 // "Open as page" navigates to /mobilebasic, badges render there, "Back to
 // editor" returns to the same editor URL.
-//   node test/docs-flow.mjs [docUrlBase]
+//   node test/docs-flow.mjs [docUrlBase]      (or ANAGRAM_DOC_URL=…)
+//
+// Needs a PUBLIC Google Doc ("anyone with the link can view"). The original demo
+// document was deleted from Drive in Sept 2026 (its /mobilebasic now answers 410),
+// so the suite pre-flights the URL and SKIPS (exit 0) instead of failing when the
+// document is gone — pass your own doc to run it for real.
 import { chromium } from "playwright";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -16,7 +21,26 @@ const EXT = join(__dirname, "..", "output", "chrome-mv3");
 const BADGE_SEL = '[data-anagram="host"]:not(#anagram-fab)';
 const DOC =
   process.argv[2] ??
+  process.env.ANAGRAM_DOC_URL ??
   "https://docs.google.com/document/d/1gRLkVx985SLnysZvrkm8PQolykP-rRWxBtxFoywXXRo";
+
+// Pre-flight: is the document still there and public? (410 = deleted, 401/403 = private.)
+{
+  let status = 0;
+  try {
+    status = (await fetch(`${DOC}/mobilebasic`, { redirect: "follow", signal: AbortSignal.timeout(15000) })).status;
+  } catch (e) {
+    console.log(`SKIP  docs-flow: cannot reach Google Docs (${String(e).slice(0, 60)})`);
+    process.exit(0);
+  }
+  if (status !== 200) {
+    console.log(
+      `SKIP  docs-flow: the test document answers HTTP ${status} (${status === 410 ? "deleted" : "not public"}). ` +
+        "Pass a public doc URL as the first argument (or ANAGRAM_DOC_URL) to run this suite.",
+    );
+    process.exit(0);
+  }
+}
 
 const checks = [];
 const check = (name, ok, note = "") => {

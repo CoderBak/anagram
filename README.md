@@ -199,7 +199,7 @@ Six suites, all runnable headed on a normal machine:
 | E2E | `npm run test:e2e` | 22 | full extension on a 16-section fixture page (stub backend) |
 | Scenarios | `npm run test:scenarios` | 35 | UI edge cases (hover card, panel filters, FAB snap/tuck, top-layer, KaTeX, vertical text) + 13 live sites (`-- --local` skips the live sweep) |
 | Server | `npm run test:server` | 14 | **the real model**: spawns `anagramd`, checks the API on human/AI samples, drives the built extension in Auto mode — real verdicts on every chip, the 4-bucket card, the popup's model line |
-| Docs flow | `node test/docs-flow.mjs` | 12 | in-tab overlay + classic page flow on a real public doc (depends on Google's current Docs markup) |
+| Docs flow | `node test/docs-flow.mjs <public doc URL>` | 12 | in-tab overlay + classic page flow on a real public Google Doc — the original demo doc was deleted from Drive, so without a URL (or `ANAGRAM_DOC_URL`) the suite reports SKIP |
 | Perf | `npm run test:perf` | 3 | 3000-paragraph budget: first badge <4s (measured ~0.3s), no long task >1s |
 
 `npm run browser` opens a live Chromium with the extension for manual poking;

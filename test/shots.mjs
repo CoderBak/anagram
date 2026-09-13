@@ -10,7 +10,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 const EXT = join(ROOT, "output", "chrome-mv3");
 const OUT = join(ROOT, "docs", "screenshots");
-const DOC = "https://docs.google.com/document/d/1gRLkVx985SLnysZvrkm8PQolykP-rRWxBtxFoywXXRo";
+// Public Google Doc for the overlay shot. The original was deleted (410) in Sept 2026 —
+// set ANAGRAM_DOC_URL to a public doc to regenerate google-docs-overlay.png.
+const DOC = process.env.ANAGRAM_DOC_URL ?? "https://docs.google.com/document/d/1gRLkVx985SLnysZvrkm8PQolykP-rRWxBtxFoywXXRo";
+const docAlive = await fetch(`${DOC}/mobilebasic`, { signal: AbortSignal.timeout(15000) }).then((r) => r.status === 200, () => false);
 
 const DARK_PAGE = `<!doctype html><html><head><meta charset="utf-8"><style>
   body { background:#0d1117; color:#c9d1d9; font:17px/1.75 Georgia, serif;
@@ -134,7 +137,8 @@ try {
 } catch (e) { console.log("SKIP article-page:", String(e).slice(0, 80)); }
 
 // 4) Google Docs overlay (live)
-try {
+if (!docAlive) console.log("SKIP docs overlay: the test document is gone (HTTP != 200) — set ANAGRAM_DOC_URL");
+else try {
   const p = await context.newPage();
   await p.goto(`${DOC}/edit?usp=sharing`, { waitUntil: "domcontentloaded", timeout: 45000 });
   await p.waitForTimeout(6000);
