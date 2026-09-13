@@ -8,7 +8,8 @@ import { MARK_ATTR } from "../types";
 import type { ScoreBatchRequest } from "../contract";
 import { CONTRACT_VERSION } from "../contract";
 import { requestScores } from "../messaging/client";
-import { band, BAND_LABEL, type Band } from "./band";
+import { band, BAND_LABEL, scorePct, type Band } from "./band";
+import { DIST_CSS, distributionHtml } from "./dist";
 import { countWords, truncateForScoring, MIN_UNIT_WORDS } from "../dom/text";
 import { isDarkPage } from "./theme";
 
@@ -30,7 +31,8 @@ const CARD_CSS = `
 .head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 5px; }
 .verdict { font-weight: 700; font-size: 12px; }
 .verdict.band-human   { color: #116a37; }
-.verdict.band-mixed   { color: #8a5a00; }
+.verdict.band-light   { color: #7a5b00; }
+.verdict.band-heavy   { color: #a13d00; }
 .verdict.band-ai      { color: #b42318; }
 .verdict.band-unknown { color: #57606a; }
 .big { font-weight: 700; font-size: 12px; font-variant-numeric: tabular-nums; }
@@ -54,9 +56,10 @@ const CARD_CSS = `
 :host(.pg-dark) .row .k { color: #9aa3ad; }
 :host(.pg-dark) .foot { border-top-color: rgba(255, 255, 255, 0.09); color: #768390; }
 :host(.pg-dark) .verdict.band-human { color: #4ecb71; }
-:host(.pg-dark) .verdict.band-mixed { color: #e6b84c; }
+:host(.pg-dark) .verdict.band-light { color: #e6c84c; }
+:host(.pg-dark) .verdict.band-heavy { color: #ff9a57; }
 :host(.pg-dark) .verdict.band-ai    { color: #ff7b81; }
-`;
+` + DIST_CSS;
 
 let _sheet: CSSStyleSheet | null = null;
 function sheet(): CSSStyleSheet {
@@ -185,16 +188,15 @@ export async function analyzeSelection(): Promise<void> {
         `<div class="foot">The scoring backend did not respond — try again.</div>`;
     } else {
       const b: Band = band(r);
-      const pct = Math.round(r.e_theta * 100);
-      const [lo, hi] = r.theta_interval;
+      const pct = scorePct(r);
       card.innerHTML =
         closeBtn +
         `<div class="head"><span class="verdict band-${b}">${BAND_LABEL[b]}</span>` +
         `<span class="big">${b === "unknown" ? "—" : pct + "% AI"}</span></div>` +
-        row("AI involvement (est.)", `${Math.round(lo * 100)}–${Math.round(hi * 100)}%`) +
-        row("p-value vs human", r.p_value.toFixed(3)) +
+        (b === "unknown" ? "" : distributionHtml(r, b)) +
         row("Words analyzed", String(words)) +
-        `<div class="foot">Calibrated estimate, not proof.</div>`;
+        (r.truncated ? row("Model window", `first ${r.tokens ?? 512} tokens`) : "") +
+        `<div class="foot">${b === "unknown" ? "The scoring backend did not answer — try again." : "EditLens estimate of AI editing, not proof."}</div>`;
     }
   }
   shadow.querySelector(".close")?.addEventListener("click", dismiss);

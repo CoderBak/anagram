@@ -1,5 +1,5 @@
 // lib/messaging/protocol.ts — action constants + typed envelope shapes.
-import type { ScoreBatchRequest, ScoreResult } from "../contract";
+import type { ModelInfo, ScoreBatchRequest, ScoreResult } from "../contract";
 
 export const ACTIONS = {
   SCORE_BATCH: "scoreBatch",
@@ -13,6 +13,8 @@ export const ACTIONS = {
   TOGGLE_OVERLAY: "toggleOverlay",
   /** SW (context menu) → content: score the current selection, show a card. */
   ANALYZE_SELECTION: "analyzeSelection",
+  /** popup/options → SW: which scoring backend is live (optionally force a fresh probe). */
+  GET_BACKEND_STATUS: "getBackendStatus",
 } as const;
 
 export type ActionName = (typeof ACTIONS)[keyof typeof ACTIONS];
@@ -26,6 +28,24 @@ export interface ScoreBatchMessage {
 /** SW → content (response to SCORE_BATCH). */
 export interface ScoreBatchReply {
   results: ScoreResult[];
+  /** Backend that produced this batch (report footer, popup). */
+  model?: ModelInfo;
+}
+
+/** popup/options → SW: ask which backend is live. `probe` forces a fresh /health check. */
+export interface GetBackendStatusMessage {
+  action: typeof ACTIONS.GET_BACKEND_STATUS;
+  probe?: boolean;
+}
+
+/** SW → popup/options (response to GET_BACKEND_STATUS). */
+export interface BackendStatus {
+  mode: "auto" | "server" | "stub";
+  serverUrl: string;
+  /** What will actually score the next batch. */
+  active: "server" | "stub";
+  model: ModelInfo;
+  server: { ok: boolean; checkedAt: number; device?: string; error?: string };
 }
 
 /** popup/SW → content: force a re-scan of the active tab. */
@@ -84,4 +104,4 @@ export type ControlMessage =
   | AnalyzeSelectionMessage;
 
 /** Union of all messages the service worker may receive. */
-export type BackgroundMessage = ScoreBatchMessage | GetTabStateMessage;
+export type BackgroundMessage = ScoreBatchMessage | GetTabStateMessage | GetBackendStatusMessage;

@@ -6,7 +6,7 @@
 // script via tabs.sendMessage (spec §4.9), so they do not pass through here.
 import { defineBackground, browser } from "#imports";
 import { createRouter } from "../lib/backend/router";
-import { getScoreClient } from "../lib/backend/getScoreClient";
+import { getScoreClient, getSwitchingClient } from "../lib/backend/getScoreClient";
 import { ACTIONS } from "../lib/messaging/protocol";
 import type {
   ScoreBatchMessage,
@@ -69,6 +69,7 @@ export default defineBackground(() => {
         action?: string;
         req?: ScoreBatchMessage["req"];
         flagged?: UpdateBadgeMessage["flagged"];
+        probe?: boolean;
       };
       if (!msg) return;
 
@@ -83,12 +84,20 @@ export default defineBackground(() => {
         return;
       }
 
+      // Popup/options: which backend is live (optionally a forced re-probe).
+      if (msg.action === ACTIONS.GET_BACKEND_STATUS) {
+        getSwitchingClient()
+          .status(msg.probe === true)
+          .then((s) => sendResponse(s), () => sendResponse(undefined));
+        return true;
+      }
+
       if (msg.action !== ACTIONS.SCORE_BATCH || !msg.req) return;
 
       router
         .handle(msg.req)
         .then((resp) => {
-          const reply: ScoreBatchReply = { results: resp.results };
+          const reply: ScoreBatchReply = { results: resp.results, model: resp.model };
           sendResponse(reply);
         })
         .catch(() => {

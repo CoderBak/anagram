@@ -13,11 +13,12 @@
 // find/click it.
 import { MARK_ATTR } from "../types";
 import { settings, setSiteOverride } from "../settings/settings";
+import type { Band } from "./band";
 
 export interface PanelEntry {
   id: string;
   pct: number;
-  band: "human" | "mixed" | "ai" | "unknown";
+  band: Band;
   snippet: string;
   order: number;
 }
@@ -269,7 +270,8 @@ const FAB_CSS = `
 .panel .pitem:hover { background: rgba(109, 94, 252, 0.08); }
 .panel .pdot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; align-self: center; }
 .panel .pitem.band-ai .pdot { background: #e5484d; }
-.panel .pitem.band-mixed .pdot { background: #d99e00; }
+.panel .pitem.band-heavy .pdot { background: #e8590c; }
+.panel .pitem.band-light .pdot { background: #d4a017; }
 .panel .ppct {
   flex: 0 0 auto;
   min-width: 38px;
@@ -279,7 +281,8 @@ const FAB_CSS = `
   font-size: 11px;
 }
 .panel .pitem.band-ai .ppct { color: #b42318; }
-.panel .pitem.band-mixed .ppct { color: #8a5a00; }
+.panel .pitem.band-heavy .ppct { color: #a13d00; }
+.panel .pitem.band-light .ppct { color: #7a5b00; }
 .panel .ptext {
   flex: 1 1 auto;
   overflow: hidden;
@@ -339,7 +342,7 @@ export function createFab(opts: { onToggle: () => void; panel?: PanelHooks }): F
   let actionLabel: string | null = null;
   let actionCb: (() => void) | undefined;
   let actionAttention = false;
-  let panelFilter: "all" | "ai" | "mixed" = "all";
+  let panelFilter: "all" | "ai" | "heavy" = "all";
   let side: Side = "right";
   let tuckTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -648,7 +651,7 @@ export function createFab(opts: { onToggle: () => void; panel?: PanelHooks }): F
     const all = opts.panel?.entries() ?? [];
     const counts = {
       ai: all.filter((e) => e.band === "ai").length,
-      mixed: all.filter((e) => e.band === "mixed").length,
+      heavy: all.filter((e) => e.band === "heavy").length,
     };
     const entries = panelFilter === "all" ? all : all.filter((e) => e.band === panelFilter);
 
@@ -694,7 +697,7 @@ export function createFab(opts: { onToggle: () => void; panel?: PanelHooks }): F
 
     // Verdict filters — only when both bands are present (a one-band page needs
     // no chrome for it).
-    if (counts.ai > 0 && counts.mixed > 0) {
+    if (counts.ai > 0 && counts.heavy > 0) {
       const filters = document.createElement("div");
       filters.className = "pfilters";
       const mk = (key: typeof panelFilter, text: string): HTMLButtonElement => {
@@ -713,7 +716,7 @@ export function createFab(opts: { onToggle: () => void; panel?: PanelHooks }): F
       filters.append(
         mk("all", `All ${all.length}`),
         mk("ai", `AI ${counts.ai}`),
-        mk("mixed", `Assisted ${counts.mixed}`),
+        mk("heavy", `Heavily edited ${counts.heavy}`),
       );
       panelEl.appendChild(filters);
     }

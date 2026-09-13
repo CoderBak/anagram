@@ -264,7 +264,13 @@
       }
       .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
       .dot-human { background: #1a7f37; }
-      .dot-assisted { background: #d99e00; }
+      .dot-light { background: #d4a017; }
+      .dot-heavy { background: #e8590c; }
+      .row input.url {
+        flex: 0 0 auto; width: 210px; font: inherit; font-size: 13px; padding: 6px 9px;
+        border: 1px solid var(--hairline, #d0d7de); border-radius: 7px;
+        background: transparent; color: inherit;
+      }
       .dot-ai { background: #e5484d; }
       .dot-none { background: #8b949e; }
 
@@ -317,7 +323,7 @@
       <div class="row">
         <div>
           <label for="highlights">Mark analyzed paragraphs</label>
-          <p class="hint">Colors each paragraph by verdict — green = human, amber = AI-assisted, red = AI. Badges stay either way.</p>
+          <p class="hint">Colors each paragraph by verdict — green = human, yellow = lightly edited, orange = heavily edited, red = AI-generated. Badges stay either way.</p>
         </div>
         <input id="highlights" type="checkbox" />
       </div>
@@ -335,12 +341,43 @@
       <div class="row">
         <div>
           <label for="displayMode">What to show</label>
-          <p class="hint">Every paragraph is analyzed either way. “Flagged only” keeps pages calm and marks just AI / AI-Assisted verdicts.</p>
+          <p class="hint">Every paragraph is analyzed either way. “Flagged only” keeps pages calm and marks just heavily-edited and AI-generated verdicts.</p>
         </div>
         <select id="displayMode">
           <option value="all">All chips</option>
           <option value="flagged">Flagged only</option>
         </select>
+      </div>
+    </section>
+
+    <section>
+      <h2>Scoring backend</h2>
+      <div class="row">
+        <div>
+          <label for="backend">Backend</label>
+          <p class="hint">Auto uses the local <code>anagramd</code> daemon (EditLens roberta-large,
+            running on this Mac) whenever it answers, and falls back to the demo stub otherwise.
+            Start it with <code>npm run serve</code> in the extension folder.</p>
+        </div>
+        <select id="backend">
+          <option value="auto">Auto (daemon, else demo stub)</option>
+          <option value="server">Local daemon only</option>
+          <option value="stub">Demo stub only</option>
+        </select>
+      </div>
+      <div class="row">
+        <div>
+          <label for="serverUrl">Daemon URL</label>
+          <p class="hint">Where <code>anagramd</code> listens. Default <code>http://127.0.0.1:8765</code>.</p>
+        </div>
+        <input id="serverUrl" class="url" type="url" placeholder="http://127.0.0.1:8765" spellcheck="false" />
+      </div>
+      <div class="row">
+        <div>
+          <label for="checkBackend">Status</label>
+          <p class="hint" id="backendStatus">Checking…</p>
+        </div>
+        <button type="button" class="quiet" id="checkBackend">Check now</button>
       </div>
     </section>
 
@@ -378,19 +415,21 @@
         <span class="keys"><kbd>Right-click</kbd></span>
         <span class="what">Choose “Analyze selection with Anagram” to score just the highlighted text.</span>
       </div>
-      <p class="privacy">Nothing leaves the browser — scoring runs in the extension’s own service worker.</p>
+      <p class="privacy">Nothing leaves your computer — scoring runs in the local <code>anagramd</code> daemon on this Mac (or in the extension’s demo stub).</p>
       <h3 class="mini">Verdict colors</h3>
       <div class="legend">
         <span class="chip"><span class="dot dot-human"></span>Human</span>
-        <span class="chip"><span class="dot dot-assisted"></span>AI-Assisted</span>
-        <span class="chip"><span class="dot dot-ai"></span>AI</span>
-        <span class="chip"><span class="dot dot-none"></span>Insufficient</span>
+        <span class="chip"><span class="dot dot-light"></span>Lightly edited</span>
+        <span class="chip"><span class="dot dot-heavy"></span>Heavily edited</span>
+        <span class="chip"><span class="dot dot-ai"></span>AI-generated</span>
+        <span class="chip"><span class="dot dot-none"></span>Unavailable</span>
       </div>
     </section>
 
     <footer>
-      Scores shown are calibrated estimates, not proof. Detection runs per paragraph with a
-      50-word evidence floor; shorter neighboring paragraphs are analyzed together.
+      Scores are EditLens estimates of how much of a paragraph was AI-edited (0–100%), not proof.
+      Detection runs per paragraph with a 50-word evidence floor; shorter neighboring paragraphs
+      are analyzed together. Model: pangram/editlens_roberta-large (CC BY-NC-SA 4.0, non-commercial).
     </footer>
     <script type="module" src="./main.ts"></script>
   </body>

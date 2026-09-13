@@ -17,7 +17,8 @@
         --kbd-border: #d0d7de;
         --accent: linear-gradient(135deg, #6d5efc, #b15efc);
         /* band (legend) text colors */
-        --c-human: #116a37; --c-mixed: #8a5a00; --c-ai: #b42318; --c-unknown: #57606a;
+        --c-human: #116a37; --c-mixed: #8a5a00; --c-light: #7a5b00; --c-heavy: #a13d00; --c-ai: #b42318; --c-unknown: #57606a;
+        --d-light: #d4a017; --d-heavy: #e8590c;
         /* underline decoration colors */
         --d-human: #1a7f37; --d-mixed: #d99e00; --d-ai: #e5484d;
       }
@@ -31,7 +32,8 @@
           --bar: #2b3340;
           --kbd-bg: #21262d;
           --kbd-border: #30363d;
-          --c-human: #3fb950; --c-mixed: #d29922; --c-ai: #f85149; --c-unknown: #9aa3ad;
+          --c-human: #3fb950; --c-mixed: #d29922; --c-light: #e6c84c; --c-heavy: #ff9a57; --c-ai: #f85149; --c-unknown: #9aa3ad;
+          --d-light: #e6c84c; --d-heavy: #ff9a57;
           --d-human: #3fb950; --d-mixed: #d29922; --d-ai: #f85149;
         }
       }
@@ -118,6 +120,8 @@
       .band .dot { width: 10px; height: 10px; border-radius: 50%; }
       .b-human { color: var(--c-human); }   .b-human .dot { background: var(--d-human); }
       .b-mixed { color: var(--c-mixed); }   .b-mixed .dot { background: var(--d-mixed); }
+      .b-light { color: var(--c-light); }   .b-light .dot { background: var(--d-light); }
+      .b-heavy { color: var(--c-heavy); }   .b-heavy .dot { background: var(--d-heavy); }
       .b-ai { color: var(--c-ai); }         .b-ai .dot { background: var(--d-ai); }
       .b-unknown { color: var(--c-unknown); } .b-unknown .dot { background: #9aa3ad; }
 
@@ -151,26 +155,27 @@
       </div>
     </header>
     <p class="lede">Anagram answers <em>&ldquo;did a human write this?&rdquo;</em> as you browse:
-      every analyzed paragraph gets a small <strong>confidence chip</strong> and a matching
-      underline &mdash; quiet on human text, louder as confidence in AI authorship grows.</p>
+      every analyzed paragraph gets a small <strong>chip</strong> with its estimated <strong>extent of
+      AI editing</strong> and a matching underline &mdash; quiet on human text, louder as the
+      share of AI writing grows.</p>
 
     <section aria-label="How Anagram reads a page">
       <div class="demo-cap">How it reads</div>
       <div class="demo-line">
         <span class="frag u-human">The quick brown fox jumps over the lazy dog.</span>
         <span class="bar" aria-hidden="true"></span>
-        <span class="chip c-human"><span class="cdot"></span>12% AI</span>
+        <span class="chip c-human"><span class="cdot"></span>4% AI</span>
       </div>
       <div class="demo-line">
         <span class="bar bar-s" aria-hidden="true"></span>
         <span class="frag u-mixed">moreover, this underscores a broader point&hellip;</span>
         <span class="bar" aria-hidden="true"></span>
-        <span class="chip c-mixed"><span class="cdot"></span>54% AI &times;2</span>
+        <span class="chip c-mixed"><span class="cdot"></span>38% AI &times;2</span>
       </div>
       <div class="demo-line">
         <span class="frag u-ai">Delving into the rich tapestry of interconnected factors&hellip;</span>
         <span class="bar" aria-hidden="true"></span>
-        <span class="chip c-ai"><span class="cdot"></span>87% AI</span>
+        <span class="chip c-ai"><span class="cdot"></span>96% AI</span>
       </div>
     </section>
 
@@ -178,13 +183,15 @@
       <h2>Reading the verdicts</h2>
       <div class="bands">
         <span class="band b-human"><span class="dot"></span>Human</span>
-        <span class="band b-mixed"><span class="dot"></span>AI-Assisted</span>
-        <span class="band b-ai"><span class="dot"></span>AI</span>
-        <span class="band b-unknown"><span class="dot"></span>Insufficient</span>
+        <span class="band b-light"><span class="dot"></span>Lightly edited</span>
+        <span class="band b-heavy"><span class="dot"></span>Heavily edited</span>
+        <span class="band b-ai"><span class="dot"></span>AI-generated</span>
+        <span class="band b-unknown"><span class="dot"></span>Unavailable</span>
       </div>
-      <p class="muted">Hover (or tap) a chip for the full readout: credible interval, p-value
-        against the human baseline, and the word count behind it. Every number is a
-        <strong>calibrated estimate, not proof</strong>. Snippets under ~50 words are only
+      <p class="muted">The model (<strong>EditLens</strong>, ICLR 2026) rates how much of a
+        paragraph was written or rewritten by AI. Hover (or tap) a chip for the full readout: the
+        four-way probability split behind the verdict and the word count. Every number is an
+        <strong>estimate, not proof</strong>. Snippets under ~50 words are only
         scored when grouped with neighbors &mdash; a <strong>&times;2</strong> on a chip
         means it covers such a group.</p>
     </section>

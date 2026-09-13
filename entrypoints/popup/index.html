@@ -120,6 +120,9 @@
       /* Status + footer */
       .status { font-size: 12px; color: var(--muted); min-height: 17px; margin: 1px 0 9px; }
       .status .flagged { color: var(--red); font-weight: 600; }
+      .backend { font-size: 11px; color: var(--muted); margin: -5px 0 9px; line-height: 1.4; min-height: 15px; }
+      .backend b { color: var(--fg); font-weight: 600; }
+      .backend.demo b { color: var(--red); }
       .btn-quiet {
         width: 100%; font: inherit; font-size: 12.5px; font-weight: 500;
         padding: 7px 10px; border: 1px solid var(--hairline); border-radius: 8px;
@@ -207,6 +210,7 @@
 
     <section class="group">
       <div class="status" id="status">…</div>
+      <div class="backend" id="backend"></div>
       <button id="rescan" class="btn-quiet" type="button">Rescan page</button>
       <p class="hint-line"><kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> toggles the overlay</p>
     </section>

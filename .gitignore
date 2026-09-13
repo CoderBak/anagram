@@ -8,3 +8,7 @@ node_modules/
 test/*.png
 test/.pw-profile/
 test/.unit-bundle.js
+
+# anagramd local venv
+anagramd/.venv/
+anagramd/__pycache__/

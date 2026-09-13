@@ -353,7 +353,7 @@ async function sweep(page, steps = 6) {
     record("ui", "pending chips all drain into verdicts", drained, "");
   }
 
-  // A16: hover card v2 — interval meter + Copy text action; copy puts the
+  // A16: hover card — 4-bucket distribution bar + Copy text action; copy puts the
   // paragraph (not the chip label) on the clipboard.
   {
     await page.locator("#copysrc").scrollIntoViewIfNeeded();
@@ -366,7 +366,7 @@ async function sweep(page, steps = 6) {
         const host = document.querySelector(`#copysrc ${sel}`);
         const card = host?.shadowRoot?.querySelector(".card");
         if (!card) return null;
-        const meter = !!card.querySelector(".meter .fill");
+        const meter = card.querySelectorAll(".dist .dbar .seg").length === 4 && card.querySelectorAll(".dist .drow").length === 4;
         const btn = card.querySelector(".act.copy");
         if (btn) btn.click();
         return { meter, hasCopy: !!btn };
@@ -378,7 +378,7 @@ async function sweep(page, steps = 6) {
         (clip === null || (clip.includes("COPYSRC paragraph exists") && !/%\s*AI/.test(clip)));
       note = JSON.stringify({ ...parts, clip: clip?.slice(0, 40) });
     }
-    record("ui", "hover card: interval meter + working Copy text action", ok, note);
+    record("ui", "hover card: distribution readout + working Copy text action", ok, note);
     await page.mouse.move(5, 400);
   }
 

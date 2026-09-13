@@ -24,10 +24,15 @@ import { isDarkPage } from "./theme";
 
 const HIGHLIGHT_NAME: Record<Band, string> = {
   human: "anagram-human",
-  mixed: "anagram-mixed",
+  light: "anagram-light",
+  heavy: "anagram-heavy",
   ai: "anagram-ai",
   unknown: "anagram-unknown",
 };
+
+/** Bands that get a mark ("unknown" is painted by nothing). */
+type PaintBand = Exclude<Band, "unknown">;
+const PAINT_BANDS: readonly PaintBand[] = ["human", "light", "heavy", "ai"];
 
 export type MarkStyle = "both" | "underline" | "tint";
 
@@ -41,24 +46,26 @@ interface BandPaint {
 // Per-band tint + underline (matches the badge palette). ::highlight() rules are
 // GLOBAL per tree scope, so the palette can only switch per page — the page-level
 // background verdict picks light or dark.
-const LIGHT: Record<"human" | "mixed" | "ai", BandPaint> = {
+const LIGHT: Record<PaintBand, BandPaint> = {
   human: { bg: "rgba(26, 127, 55, 0.07)", lineColor: "rgba(26, 127, 55, 0.5)", lineStyle: "solid", offset: "3px" },
-  mixed: { bg: "rgba(217, 158, 0, 0.18)", lineColor: "rgba(217, 158, 0, 0.85)", lineStyle: "wavy", offset: "2px" },
+  light: { bg: "rgba(212, 160, 23, 0.12)", lineColor: "rgba(212, 160, 23, 0.75)", lineStyle: "solid", offset: "3px" },
+  heavy: { bg: "rgba(232, 89, 12, 0.15)", lineColor: "rgba(232, 89, 12, 0.85)", lineStyle: "wavy", offset: "2px" },
   ai: { bg: "rgba(229, 72, 77, 0.16)", lineColor: "rgba(229, 72, 77, 0.9)", lineStyle: "wavy", offset: "2px" },
 };
 
 // Dark-page variant: lighter decoration colors, slightly stronger tints so the
 // marks read against dark surfaces without glowing.
-const DARK: Record<"human" | "mixed" | "ai", BandPaint> = {
+const DARK: Record<PaintBand, BandPaint> = {
   human: { bg: "rgba(78, 203, 113, 0.10)", lineColor: "rgba(78, 203, 113, 0.55)", lineStyle: "solid", offset: "3px" },
-  mixed: { bg: "rgba(230, 184, 76, 0.16)", lineColor: "rgba(230, 184, 76, 0.85)", lineStyle: "wavy", offset: "2px" },
+  light: { bg: "rgba(230, 200, 76, 0.13)", lineColor: "rgba(230, 200, 76, 0.75)", lineStyle: "solid", offset: "3px" },
+  heavy: { bg: "rgba(255, 154, 87, 0.15)", lineColor: "rgba(255, 154, 87, 0.85)", lineStyle: "wavy", offset: "2px" },
   ai: { bg: "rgba(255, 123, 129, 0.16)", lineColor: "rgba(255, 123, 129, 0.9)", lineStyle: "wavy", offset: "2px" },
 };
 
 function buildCss(dark: boolean, style: MarkStyle): string {
   const pal = dark ? DARK : LIGHT;
   const rules: string[] = [];
-  for (const b of ["human", "mixed", "ai"] as const) {
+  for (const b of PAINT_BANDS) {
     const p = pal[b];
     const decl: string[] = [];
     if (style !== "underline") decl.push(`background-color: ${p.bg}`);
@@ -156,9 +163,10 @@ export function refreshHighlightTheme(): void {
 }
 
 /**
- * Underline the unit in its verdict colour — green (human), amber (AI-Assisted),
- * red (AI). Detection cannot attribute below the unit level, so the whole unit is
- * marked uniformly (matching its badge); "insufficient" gets no mark.
+ * Underline the unit in its verdict colour — green (human), yellow (lightly
+ * edited), orange (heavily edited), red (AI-generated). Detection cannot attribute
+ * below the unit level, so the whole unit is marked uniformly (matching its
+ * badge); "unavailable" gets no mark.
  */
 export function setHighlight(unit: Unit, result: ScoreResult): void {
   if (!highlightsSupported()) return;

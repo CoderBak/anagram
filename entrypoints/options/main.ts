@@ -5,6 +5,8 @@
 // strings (hostnames are user data).
 import { browser } from "#imports";
 import { settings, clearSiteOverride, setSiteOverride } from "../../lib/settings/settings";
+import { ACTIONS } from "../../lib/messaging/protocol";
+import type { BackendStatus } from "../../lib/messaging/protocol";
 
 const enabledEl = document.getElementById("enabled") as HTMLInputElement;
 const highlightsEl = document.getElementById("highlights") as HTMLInputElement;
@@ -19,6 +21,10 @@ const addRuleEl = document.getElementById("addRule") as HTMLFormElement;
 const addHostEl = document.getElementById("addHost") as HTMLInputElement;
 const addModeEl = document.getElementById("addMode") as HTMLSelectElement;
 const addErrorEl = document.getElementById("addError") as HTMLElement;
+const backendEl = document.getElementById("backend") as HTMLSelectElement;
+const serverUrlEl = document.getElementById("serverUrl") as HTMLInputElement;
+const backendStatusEl = document.getElementById("backendStatus") as HTMLElement;
+const checkBackendEl = document.getElementById("checkBackend") as HTMLButtonElement;
 
 function bindToggle(
   el: HTMLInputElement,
@@ -132,4 +138,45 @@ bindSelect(markStyleEl, settings.markStyle);
 bindSelect(analysisScopeEl, settings.analysisScope);
 void renderSites();
 settings.siteOverrides.watch(() => void renderSites());
-versionEl.textContent = `v${browser.runtime.getManifest().version} · surface v2 · backend: random stub`;
+const version = browser.runtime.getManifest().version;
+versionEl.textContent = `v${version} · contract 2.0`;
+
+// --- scoring backend -------------------------------------------------------------
+bindSelect(backendEl, settings.backend);
+void settings.serverUrl.getValue().then((v) => {
+  serverUrlEl.value = v;
+});
+serverUrlEl.addEventListener("change", () => {
+  const v = serverUrlEl.value.trim().replace(/\/+$/, "") || "http://127.0.0.1:8765";
+  serverUrlEl.value = v;
+  void settings.serverUrl.setValue(v).then(() => refreshBackend(true));
+});
+
+/** Ask the service worker which backend is live; `probe` forces a fresh /health check. */
+async function refreshBackend(probe: boolean): Promise<void> {
+  backendStatusEl.textContent = "Checking…";
+  try {
+    const s = (await browser.runtime.sendMessage({
+      action: ACTIONS.GET_BACKEND_STATUS,
+      probe,
+    })) as BackendStatus | undefined;
+    if (!s) throw new Error("no status");
+    if (s.active === "server") {
+      backendStatusEl.textContent =
+        `Connected — ${s.model.id} (${s.model.ver}) on ${s.server.device ?? "?"} at ${s.serverUrl}.`;
+    } else if (s.mode === "stub") {
+      backendStatusEl.textContent = "Demo stub selected — scores are deterministic placeholders, not verdicts.";
+    } else {
+      backendStatusEl.textContent =
+        `Daemon not reachable at ${s.serverUrl} — ` +
+        (s.mode === "auto" ? "using the demo stub until it comes up." : "paragraphs will show as Unavailable.");
+    }
+    versionEl.textContent =
+      `v${version} · contract 2.0 · backend: ${s.active === "server" ? s.model.id : "demo stub"}`;
+  } catch {
+    backendStatusEl.textContent = "Could not reach the extension’s service worker.";
+  }
+}
+checkBackendEl.addEventListener("click", () => void refreshBackend(true));
+settings.backend.watch(() => void refreshBackend(true));
+void refreshBackend(false);

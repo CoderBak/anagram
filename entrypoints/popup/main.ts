@@ -10,7 +10,7 @@ import {
   setSiteOverride,
 } from "../../lib/settings/settings";
 import { ACTIONS } from "../../lib/messaging/protocol";
-import type { ControlMessage, TabState } from "../../lib/messaging/protocol";
+import type { BackendStatus, ControlMessage, TabState } from "../../lib/messaging/protocol";
 
 const enabledEl = document.getElementById("enabled") as HTMLInputElement;
 const siteEl = document.getElementById("siteEnabled") as HTMLInputElement;
@@ -20,6 +20,7 @@ const markStyleEl = document.getElementById("markStyle") as HTMLSelectElement;
 const rescanEl = document.getElementById("rescan") as HTMLButtonElement;
 const statusEl = document.getElementById("status") as HTMLElement;
 const gearEl = document.getElementById("gear") as HTMLButtonElement;
+const backendEl = document.getElementById("backend") as HTMLElement;
 // Segmented controls are radio groups (keyboard: arrow keys within the group).
 const displayModeEls = Array.from(
   document.querySelectorAll<HTMLInputElement>('input[name="displayMode"]'),
@@ -66,6 +67,31 @@ function showCounts(state: TabState): void {
     ),
     flaggedEl,
   );
+}
+
+/** Which backend is scoring right now — the real model or the demo stub. */
+async function refreshBackend(): Promise<void> {
+  try {
+    const s = (await browser.runtime.sendMessage({
+      action: ACTIONS.GET_BACKEND_STATUS,
+    })) as BackendStatus | undefined;
+    if (!s) throw new Error("no status");
+    const b = document.createElement("b");
+    backendEl.classList.toggle("demo", s.active !== "server");
+    if (s.active === "server") {
+      b.textContent = s.model.id;
+      backendEl.replaceChildren("Model: ", b, ` · local${s.server.device ? " · " + s.server.device : ""}`);
+    } else {
+      b.textContent = "demo stub";
+      backendEl.replaceChildren(
+        "Scores: ",
+        b,
+        s.mode === "stub" ? " (chosen in options)" : " — start anagramd for real scores",
+      );
+    }
+  } catch {
+    backendEl.textContent = "";
+  }
 }
 
 async function refreshStatus(tabId: number | undefined): Promise<void> {
@@ -152,6 +178,7 @@ async function init(): Promise<void> {
   });
 
   void refreshStatus(tab?.id);
+  void refreshBackend();
 }
 
 void init();

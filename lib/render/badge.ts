@@ -5,18 +5,21 @@
 // link). Because it participates in layout it reflows with the text — no absolute
 // positioning, no `position:relative` injection into page elements, no marker
 // attributes on page DOM, no clipping by overflow ancestors, correct in RTL and
-// with floats. The chip shows a colored dot + the AI-involvement number; a hover
-// card carries the full calibrated readout.
+// with floats. The chip shows a colored dot + the extent-of-AI-editing number; a
+// hover card carries the full readout.
 //
 // v3: a unit can render a PENDING chip the moment its batch is actually sent
 // (renderPending) and morph in place when the verdict lands — the host is reused
-// so the surrounding line lays out once. The card gained a credible-interval
-// meter, a per-sentence signal strip, and a Copy-text action (hover cards are
-// pointer-interactive; Escape closes a pinned card).
+// so the surrounding line lays out once. Hover cards are pointer-interactive
+// (Copy-text action); Escape closes a pinned card.
+//
+// v4 (EditLens): the card shows the model's four-bucket distribution — human /
+// lightly edited / heavily edited / AI-generated — as a stacked bar plus rows.
 import type { Unit } from "../types";
 import { MARK_ATTR } from "../types";
 import type { ScoreResult } from "../contract";
-import { band, BAND_LABEL, type Band } from "./band";
+import { band, BAND_LABEL, scorePct, type Band } from "./band";
+import { distributionHtml } from "./dist";
 import { BADGE_CSS } from "./badge.css";
 import { isDarkContext } from "./theme";
 
@@ -75,7 +78,7 @@ export function createBadgeLayer(): BadgeLayer {
     const root = host.shadowRoot!;
     const pill = root.querySelector(".pill") as HTMLElement;
     const num = root.querySelector(".num") as HTMLElement;
-    const pct = Math.round(result.e_theta * 100);
+    const pct = scorePct(result);
 
     pill.className = `pill band-${b}`;
     // Number + its unit tag, readable without hovering ("38% AI"). A merged unit
@@ -152,9 +155,6 @@ export function createBadgeLayer(): BadgeLayer {
     b: Band,
     pct: number,
   ): void {
-    const [lo, hi] = result.theta_interval;
-    const loPct = Math.round(lo * 100);
-    const hiPct = Math.round(hi * 100);
     const row = (k: string, v: string) =>
       `<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>`;
     const partsRow =
@@ -162,49 +162,25 @@ export function createBadgeLayer(): BadgeLayer {
         ? row("Paragraphs analyzed together", `${unit.parts.length}`)
         : "";
 
-    // Credible-interval meter (skip for "unknown" — a full-width gray band reads
-    // as data when the honest message is "no reliable estimate").
-    const meter =
+    // The model's whole 4-way distribution is the honest part of the readout. Skip
+    // it for "unknown" — a flat gray bar reads as data when the message is "no answer".
+    const dist = b === "unknown" ? "" : distributionHtml(result, b);
+    const windowRow = result.truncated
+      ? row("Model window", `first ${result.tokens ?? 512} tokens`)
+      : "";
+    const foot =
       b === "unknown"
-        ? ""
-        : `<div class="meter band-${b}">
-             <div class="track">
-               <div class="fill" style="left:${loPct}%;width:${Math.max(hiPct - loPct, 1)}%"></div>
-               <div class="tick" style="left:calc(${pct}% - 1px)"></div>
-             </div>
-             <div class="mlabels"><span>0</span><span>estimate ${pct}% · range ${loPct}–${hiPct}%</span><span>100</span></div>
-           </div>`;
-
-    // Per-sentence signal strip — only for flagged verdicts, where "which part"
-    // is the natural next question. Cap the cells so pathological units stay sane.
-    let sent = "";
-    const flags = result.sentence_flags ?? [];
-    if ((b === "ai" || b === "mixed") && flags.length > 1) {
-      const shown = flags.slice(0, 40);
-      const cells = shown
-        .map((f) => `<span class="sq${f ? " on" : ""}"></span>`)
-        .join("");
-      const n = flags.filter(Boolean).length;
-      sent =
-        `<div class="sent band-${b}">` +
-        `<div class="row"><span class="k">Sentence-level signal</span><span class="v">${n}/${flags.length}</span></div>` +
-        `<div class="cells">${cells}${flags.length > 40 ? "…" : ""}</div></div>`;
-    }
-
-    // The meter already carries the estimate + range caption — repeat the
-    // interval as a text row only when the meter is absent (unknown band).
-    const intervalRow = b === "unknown" ? row("AI involvement (est.)", `${loPct}–${hiPct}%`) : "";
+        ? "The scoring backend did not answer — try Rescan."
+        : "EditLens estimate of AI editing, not proof.";
     card.innerHTML =
       `<div class="head"><span class="verdict band-${b}">${BAND_LABEL[b]}</span>` +
       `<span class="big">${b === "unknown" ? "—" : pct + "% AI"}</span></div>` +
-      meter +
+      dist +
       partsRow +
-      intervalRow +
-      row("p-value vs human", result.p_value.toFixed(3)) +
       row("Words analyzed", `${unit.wordCount}`) +
-      sent +
+      windowRow +
       `<div class="actions"><button type="button" class="act copy">Copy text</button></div>` +
-      `<div class="foot">Calibrated estimate, not proof.</div>` +
+      `<div class="foot">${foot}</div>` +
       `<span class="caret"></span>`;
 
     const copy = card.querySelector(".act.copy") as HTMLButtonElement;

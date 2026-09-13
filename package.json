@@ -16,8 +16,10 @@
     "test:unit": "node test/unit.mjs",
     "test:scenarios": "node test/scenarios.mjs",
     "test:perf": "node test/perf.mjs",
+    "test:server": "node test/server.mjs",
     "zip:firefox": "wxt zip -b firefox",
-    "play": "node test/playground.mjs"
+    "play": "node test/playground.mjs",
+    "serve": "sh anagramd/run.sh"
   },
   "devDependencies": {
     "playwright": "^1.61.1",

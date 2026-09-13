@@ -1,8 +1,16 @@
 // lib/contract.ts
 // The versioned surface↔backend contract. Identical shape for the random stub and the
-// eventual real anagram daemon — nothing above the socket changes when the backend swaps.
+// real anagram daemon — nothing above the socket changes when the backend swaps.
+//
+// v2.0 (EditLens): the detector is a 4-way classifier over the EXTENT of AI editing
+// (Thai et al., ICLR 2026 — pangram/editlens_roberta-large). A result carries the
+// full bucket distribution plus its probability-weighted score; the UI derives
+// verdict bands from the bucket and shows the score as "% AI".
 
-export const CONTRACT_VERSION = "1.0";
+export const CONTRACT_VERSION = "2.0";
+
+/** Bucket count the UI is built for: 0 human · 1 lightly edited · 2 heavily edited · 3 AI-generated. */
+export const BUCKET_COUNT = 4;
 
 /** One scoreable paragraph as sent to the backend. */
 export interface ScoreBlock {
@@ -23,23 +31,30 @@ export interface ScoreBlock {
 /** Per-block detection result. EXACTLY the detector's IO contract. */
 export interface ScoreResult {
   id: string;
-  /** True if the block is judged AI-generated. */
-  detected: boolean;
-  /** Calibrated AI-probability credible interval [lo, hi], both in [0,1], lo <= hi. */
-  theta_interval: [number, number];
-  /** Point estimate of AI-probability (theta), in [0,1]. */
-  e_theta: number;
-  /** p-value of the human-null hypothesis (small ⇒ strong AI evidence), in [0,1]. */
-  p_value: number;
-  /** Optional per-sentence AI flags, aligned to sentence split of `text`. */
-  sentence_flags?: boolean[];
+  /** Predicted editing bucket (argmax): 0 = fully human … BUCKET_COUNT-1 = fully AI-generated. */
+  bucket: number;
+  /** Softmax probability per bucket, length BUCKET_COUNT, sums to 1. */
+  probs: number[];
+  /** Extent of AI editing in [0,1]: Σ probs[i]·i / (BUCKET_COUNT−1). Shown as "% AI". */
+  score: number;
+  /** Tokens the model actually saw (after truncation to its window). */
+  tokens?: number;
+  /** True when the text exceeded the model window and was cut (roberta: 512 tokens). */
+  truncated?: boolean;
   /**
    * True when this result is a transport/backend-failure FALLBACK, not a model
-   * output. Degraded results render ("Insufficient") but must never enter any
+   * output. Degraded results render ("Unavailable") but must never enter any
    * cache — a transient outage must not pin permanent wrong verdicts. Additive
    * optional field; absent means a real result.
    */
   degraded?: boolean;
+}
+
+/** Identity of the backend that produced a batch — folded into every cache key. */
+export interface ModelInfo {
+  id: string;
+  ver: string;
+  calibration: string;
 }
 
 export type ScanPriority = "viewport" | "near" | "background";
@@ -64,18 +79,22 @@ export interface ScoreBatchResponse {
   v: typeof CONTRACT_VERSION;
   session: string;
   /** Identifies the backend that produced these results. */
-  model: { id: string; ver: string; calibration: string };
+  model: ModelInfo;
   /** True if more results for this request are still coming (reserved for streaming). */
   partial: boolean;
   results: ScoreResult[];
 }
 
 /**
- * The swappable backend seam. M1 implementation = RandomStubScoreClient (in-extension).
- * Future: HttpScoreClient / NativeScoreClient (connectNative → anagramd) drop in here
- * with zero content-script changes.
+ * The swappable backend seam. Implementations: RandomStubScoreClient (in-extension
+ * demo), HttpScoreClient (the local anagramd daemon), and the SwitchingScoreClient
+ * that picks between them from settings — see lib/backend/getScoreClient.ts.
  */
 export interface ScoreClient {
   /** Score a batch of blocks. Returns one ScoreResult per input block (by id). */
   scoreBatch(blocks: ScoreBlock[]): Promise<ScoreResult[]>;
+  /** Best-known identity of the backend that will answer the next scoreBatch (sync). */
+  model(): ModelInfo;
+  /** Optional: settle backend discovery before model() is consulted for cache keys. */
+  ready?(): Promise<void>;
 }

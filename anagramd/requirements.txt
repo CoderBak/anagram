@@ -1,0 +1,7 @@
+torch>=2.1
+transformers>=4.40
+safetensors>=0.4
+numpy>=1.26
+flask>=3.0
+emoji>=2.10
+huggingface_hub>=0.23

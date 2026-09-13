@@ -18,6 +18,8 @@
 // Cascade note: page rules from the outer tree beat ordinary :host declarations,
 // but shadow-context !important beats page !important — so the layout-critical
 // host props are declared !important here AND mirrored as inline styles.
+import { DIST_CSS } from "./dist";
+
 export const BADGE_CSS: string = `
 :host {
   all: initial;
@@ -90,7 +92,8 @@ export const BADGE_CSS: string = `
 }
 
 .pill.band-human   { --dot: #1a7f37; --ring: rgba(26, 127, 55, 0.18);   color: #116a37; }
-.pill.band-mixed   { --dot: #d99e00; --ring: rgba(217, 158, 0, 0.22);   color: #8a5a00; }
+.pill.band-light   { --dot: #d4a017; --ring: rgba(212, 160, 23, 0.22);  color: #7a5b00; }
+.pill.band-heavy   { --dot: #e8590c; --ring: rgba(232, 89, 12, 0.20);   color: #a13d00; }
 .pill.band-ai      { --dot: #e5484d; --ring: rgba(229, 72, 77, 0.20);   color: #b42318; }
 .pill.band-unknown { --dot: #9aa3ad; --ring: rgba(154, 163, 173, 0.16); color: #57606a; }
 
@@ -197,49 +200,11 @@ export const BADGE_CSS: string = `
 }
 .card .verdict { font-weight: 700; font-size: 12px; }
 .card .verdict.band-human   { color: #116a37; }
-.card .verdict.band-mixed   { color: #8a5a00; }
+.card .verdict.band-light   { color: #7a5b00; }
+.card .verdict.band-heavy   { color: #a13d00; }
 .card .verdict.band-ai      { color: #b42318; }
 .card .verdict.band-unknown { color: #57606a; }
 .card .big { font-weight: 700; font-size: 12px; font-variant-numeric: tabular-nums; color: #1f2328; }
-
-/* Credible-interval meter: the [lo,hi] band on a 0–100 track, tick at the point
-   estimate. The range is the honest part of the readout — give it geometry. */
-.meter { margin: 2px 0 7px; }
-.meter .track {
-  position: relative;
-  height: 4px;
-  border-radius: 999px;
-  background: rgba(15, 23, 42, 0.08);
-  overflow: visible;
-}
-.meter .fill {
-  position: absolute;
-  top: 0;
-  height: 100%;
-  border-radius: 999px;
-  background: var(--mc, #9aa3ad);
-  opacity: 0.45;
-}
-.meter .tick {
-  position: absolute;
-  top: -2.5px;
-  width: 2.5px;
-  height: 9px;
-  border-radius: 2px;
-  background: var(--mc, #9aa3ad);
-  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.9);
-}
-.meter.band-human { --mc: #1a7f37; }
-.meter.band-mixed { --mc: #d99e00; }
-.meter.band-ai    { --mc: #e5484d; }
-.meter .mlabels {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 3px;
-  font-size: 9px;
-  color: #8b949e;
-  font-variant-numeric: tabular-nums;
-}
 
 .card .row {
   display: flex;
@@ -248,20 +213,6 @@ export const BADGE_CSS: string = `
 }
 .card .row .k { color: #656d76; }
 .card .row .v { font-variant-numeric: tabular-nums; color: #1f2328; }
-
-/* Per-sentence signal strip (mixed/ai verdicts): one cell per sentence, flagged
-   cells in the band colour — communicates "where in the paragraph". */
-.sent { margin: 6px 0 1px; }
-.sent .cells { display: flex; flex-wrap: wrap; gap: 2.5px; margin-top: 4px; }
-.sent .sq {
-  width: 8px;
-  height: 8px;
-  border-radius: 2.5px;
-  background: rgba(15, 23, 42, 0.10);
-}
-.sent .sq.on { background: var(--mc, #e5484d); opacity: 0.85; }
-.sent.band-mixed { --mc: #d99e00; }
-.sent.band-ai    { --mc: #e5484d; }
 
 .card .actions {
   display: flex;
@@ -298,7 +249,8 @@ export const BADGE_CSS: string = `
   color: #b9c0c8;
 }
 :host(.pg-dark) .pill.band-human   { color: #4ecb71; }
-:host(.pg-dark) .pill.band-mixed   { color: #e6b84c; }
+:host(.pg-dark) .pill.band-light   { color: #e6c84c; }
+:host(.pg-dark) .pill.band-heavy   { color: #ff9a57; }
 :host(.pg-dark) .pill.band-ai      { color: #ff7b81; }
 :host(.pg-dark) .pill.band-unknown { color: #b9c0c8; }
 
@@ -312,12 +264,9 @@ export const BADGE_CSS: string = `
 :host(.pg-dark) .card .row .k { color: #9aa3ad; }
 :host(.pg-dark) .card .row .v { color: #e6edf3; }
 :host(.pg-dark) .card .verdict.band-human { color: #4ecb71; }
-:host(.pg-dark) .card .verdict.band-mixed { color: #e6b84c; }
+:host(.pg-dark) .card .verdict.band-light { color: #e6c84c; }
+:host(.pg-dark) .card .verdict.band-heavy { color: #ff9a57; }
 :host(.pg-dark) .card .verdict.band-ai    { color: #ff7b81; }
-:host(.pg-dark) .meter .track { background: rgba(255, 255, 255, 0.12); }
-:host(.pg-dark) .meter .tick { box-shadow: 0 0 0 1.5px rgba(28, 30, 33, 0.9); }
-:host(.pg-dark) .meter .mlabels { color: #768390; }
-:host(.pg-dark) .sent .sq { background: rgba(255, 255, 255, 0.14); }
 :host(.pg-dark) .card .act { color: #b6aefc; border-color: rgba(150, 136, 252, 0.45); background: rgba(150, 136, 252, 0.10); }
 :host(.pg-dark) .card .act:hover { background: rgba(150, 136, 252, 0.2); }
 :host(.pg-dark) .card .foot { border-top-color: rgba(255, 255, 255, 0.09); color: #768390; }
@@ -327,7 +276,7 @@ export const BADGE_CSS: string = `
    guarantee a visible chip boundary. */
 @media (forced-colors: active) {
   .pill, .card { border: 1px solid ButtonText; }
-  .dot, .meter .fill, .meter .tick, .sent .sq.on { forced-color-adjust: none; }
+  .dot { forced-color-adjust: none; }
 }
 
 @keyframes anagram-flash {
@@ -342,4 +291,4 @@ export const BADGE_CSS: string = `
   .pill.pg-flash { animation: none; outline: 2px solid rgba(109, 94, 252, 0.8); }
   .card { transition: none; }
 }
-`;
+` + DIST_CSS;

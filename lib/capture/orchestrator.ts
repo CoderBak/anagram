@@ -24,7 +24,7 @@ import { extractPartText, MAX_UNIT_TEXT_CHARS } from "../dom/text";
 import { createObservers, type Observers } from "./observers";
 import { createScheduler, type Scheduler } from "./scheduler";
 import { createScoreCache, type ScoreCache } from "./cache";
-import { requestScores, contextAlive } from "../messaging/client";
+import { requestScores, contextAlive, lastModel } from "../messaging/client";
 import { createBadgeLayer, type BadgeLayer } from "../render/badge";
 import {
   setHighlight,
@@ -35,7 +35,7 @@ import {
   refreshHighlightTheme,
 } from "../render/highlight";
 import { createFab, type Fab } from "../render/fab";
-import { band, BAND_LABEL } from "../render/band";
+import { band, BAND_LABEL, BUCKET_BANDS, isFlagged, scorePct } from "../render/band";
 import { settings } from "../settings/settings";
 import { createLogger } from "../log";
 
@@ -59,7 +59,7 @@ export interface Orchestrator {
   toggle(): void;
   /** Number of units that have rendered a badge (popup GET_TAB_STATE). */
   scoredCount(): number;
-  /** Number of units flagged AI / AI-Assisted (popup GET_TAB_STATE). */
+  /** Number of units flagged heavily edited / AI-generated (popup GET_TAB_STATE). */
   flaggedCount(): number;
   /** Configure the FAB's secondary action chip (Google Docs reading view etc.). */
   setFabAction(label: string | null, onAction?: () => void, opts?: { attention?: boolean }): void;
@@ -67,12 +67,6 @@ export interface Orchestrator {
 
 function newSessionId(): string {
   return "s_" + Math.random().toString(36).slice(2, 10);
-}
-
-/** A unit worth surfacing in the floating counter: AI or AI-Assisted. */
-function isFlagged(r: ScoreResult): boolean {
-  const b = band(r);
-  return b === "ai" || b === "mixed";
 }
 
 export interface OrchestratorOptions {
@@ -129,7 +123,7 @@ export function createOrchestrator(
           .filter(([id, r]) => isFlagged(r) && unitsById.has(id))
           .map(([id, r]) => ({
             id,
-            pct: Math.round(r.e_theta * 100),
+            pct: scorePct(r),
             band: band(r),
             snippet: unitsById.get(id)!.text.slice(0, 70),
             order: unitsById.get(id)!.order,
@@ -162,29 +156,33 @@ export function createOrchestrator(
     );
     lines.push("");
     if (flagged.length === 0) {
-      lines.push("No paragraphs were flagged as AI or AI-Assisted.");
+      lines.push("No paragraphs were flagged as heavily edited or AI-generated.");
     } else {
       lines.push(`## Flagged paragraphs (${flagged.length})`);
       lines.push("");
       flagged.forEach(({ unit, r }, i) => {
-        const pct = Math.round(r.e_theta * 100);
-        const [lo, hi] = r.theta_interval;
+        const pct = scorePct(r);
+        const dist = r.probs
+          .map((p, i) => `${BAND_LABEL[BUCKET_BANDS[i]]} ${Math.round(p * 100)}%`)
+          .join(" · ");
         const snippet = unit.text.replace(/\s+/g, " ").slice(0, 220);
         const ellipsis = unit.text.length > 220 ? "…" : "";
         lines.push(
           `${i + 1}. **${BAND_LABEL[band(r)]} · ${pct}% AI** ` +
-            `(interval ${Math.round(lo * 100)}–${Math.round(hi * 100)}%, ` +
-            `p=${r.p_value.toFixed(3)}, ${unit.wordCount} words)`,
+            `(${dist}; ${unit.wordCount} words)`,
         );
         lines.push(`   > ${snippet}${ellipsis}`);
       });
     }
     lines.push("");
-    lines.push(
-      "---",
-      "All numbers are calibrated estimates, not proof. Scores in this build come from " +
-        "a deterministic development stub; a real detection model is pending.",
-    );
+    const m = lastModel();
+    const backend =
+      !m || m.id === "stub"
+        ? "Scores in this report come from the demo stub — the local anagramd daemon was not " +
+          "running. They are placeholders, not verdicts."
+        : `Scores from ${m.id} (${m.ver}) via the local anagramd daemon — EditLens estimates ` +
+          "of AI-editing extent, not proof.";
+    lines.push("---", backend);
     return lines.join("\n");
   }
 

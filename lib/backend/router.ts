@@ -8,8 +8,8 @@ import type {
   ScoreBatchRequest,
   ScoreBatchResponse,
 } from "../contract";
+import { BUCKET_COUNT } from "../contract";
 import { createSwCache } from "./swCache";
-import { STUB_MODEL } from "./randomStub";
 import { createLogger } from "../log";
 
 const log = createLogger("router");
@@ -29,21 +29,22 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-/** Neutral "unknown" result so a badge can still render and no awaiter hangs. */
+/** Neutral "unavailable" result so a badge can still render and no awaiter hangs. */
 function neutral(block: ScoreBlock): ScoreResult {
   return {
     id: block.id,
-    detected: false,
-    theta_interval: [0, 1], // wide interval
-    e_theta: 0.5,
-    p_value: 1,
-    sentence_flags: [],
+    bucket: 0,
+    probs: new Array<number>(BUCKET_COUNT).fill(1 / BUCKET_COUNT),
+    score: 0,
     degraded: true, // fallback, not a model output — never cached
   };
 }
 
 export function createRouter(client: ScoreClient): BackendRouter {
-  const cache = createSwCache();
+  const cache = createSwCache(() => {
+    const m = client.model();
+    return `${m.id}@${m.ver}`;
+  });
   // In-flight dedup across concurrent handle() calls: content-key → pending ScoreResult.
   const inFlight = new Map<string, Promise<ScoreResult>>();
 
@@ -82,6 +83,8 @@ export function createRouter(client: ScoreClient): BackendRouter {
   }
 
   async function handle(req: ScoreBatchRequest): Promise<ScoreBatchResponse> {
+    // Settle backend discovery first so cache keys carry the right model dimension.
+    await client.ready?.();
     const resultById = new Map<string, ScoreResult>();
     // Unique content-key → every block in THIS request that shares it.
     const keyToBlocks = new Map<string, ScoreBlock[]>();
@@ -178,11 +181,7 @@ export function createRouter(client: ScoreClient): BackendRouter {
     return {
       v: req.v,
       session: req.session,
-      model: {
-        id: STUB_MODEL.id,
-        ver: STUB_MODEL.ver,
-        calibration: STUB_MODEL.calibration,
-      },
+      model: client.model(),
       partial: false,
       results,
     };

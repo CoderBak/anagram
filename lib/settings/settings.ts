@@ -3,7 +3,13 @@
 // + per-site helpers with always/never mutual exclusion. (spec §4.10)
 import { storage } from "#imports";
 
+export type BackendMode = "auto" | "server" | "stub";
+
 export const settings = {
+  // Which scoring backend answers: "auto" = the local anagramd daemon when its
+  // /health responds, else the demo stub; "server" = daemon only; "stub" = demo only.
+  backend: storage.defineItem<BackendMode>("local:backend", { fallback: "auto" }),
+  serverUrl: storage.defineItem<string>("local:serverUrl", { fallback: "http://127.0.0.1:8765" }),
   enabled: storage.defineItem<boolean>("local:enabled", { fallback: true }),
   siteOverrides: storage.defineItem<Record<string, "on" | "off">>("local:siteOverrides", { fallback: {} }),
   // The paragraph underline is part of the core product; on by default (orchestrator

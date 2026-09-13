@@ -1,6 +1,6 @@
 // lib/messaging/client.ts — content→SW client.
 import { browser } from "#imports";
-import type { ScoreBatchRequest, ScoreResult } from "../contract";
+import type { ModelInfo, ScoreBatchRequest, ScoreResult } from "../contract";
 import { ACTIONS } from "./protocol";
 import type { ScoreBatchMessage, ScoreBatchReply } from "./protocol";
 
@@ -18,6 +18,13 @@ export function contextAlive(): boolean {
   }
 }
 
+let _lastModel: ModelInfo | null = null;
+
+/** Backend that answered the most recent batch in this frame (null before the first). */
+export function lastModel(): ModelInfo | null {
+  return _lastModel;
+}
+
 /**
  * Promise-wrapped runtime.sendMessage: one batch request → one ScoreResult[] response.
  * Isolated behind this function so the transport can swap to a long-lived Port later.
@@ -33,6 +40,7 @@ export async function requestScores(req: ScoreBatchRequest): Promise<ScoreResult
       const reply = (await browser.runtime.sendMessage(message)) as
         | ScoreBatchReply
         | undefined;
+      if (reply?.model) _lastModel = reply.model;
       return reply?.results ?? [];
     } catch {
       if (attempt >= 1) return [];

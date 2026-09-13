@@ -275,8 +275,15 @@ const results = await page.evaluate(() => {
   const d3 = PW.detectDocsPage(new URL("https://docs.google.com/spreadsheets/d/abc/edit"));
   check("detectDocsPage editor/reading/none", d1?.kind === "editor" && d2?.kind === "reading" && d3 === null, JSON.stringify([d1, d2, d3]));
 
-  check("band(): neutral fallback → unknown", PW.band({ id: "x", detected: false, theta_interval: [0, 1], e_theta: 0.5, p_value: 1 }) === "unknown");
-  check("band(): detected → ai", PW.band({ id: "x", detected: true, theta_interval: [0.6, 0.9], e_theta: 0.8, p_value: 0.001 }) === "ai");
+  // Contract v2 (EditLens): bucket → band; degraded → unknown; flagged = heavy/ai.
+  const mk = (bucket, probs, extra = {}) => ({ id: "x", bucket, probs, score: probs.reduce((a, p, i) => a + p * i, 0) / 3, ...extra });
+  check("band(): bucket 0 → human", PW.band(mk(0, [0.9, 0.06, 0.03, 0.01])) === "human");
+  check("band(): bucket 1 → light", PW.band(mk(1, [0.2, 0.5, 0.2, 0.1])) === "light");
+  check("band(): bucket 2 → heavy", PW.band(mk(2, [0.05, 0.2, 0.6, 0.15])) === "heavy");
+  check("band(): bucket 3 → ai", PW.band(mk(3, [0.01, 0.02, 0.07, 0.9])) === "ai");
+  check("band(): degraded fallback → unknown", PW.band(mk(0, [0.25, 0.25, 0.25, 0.25], { degraded: true })) === "unknown");
+  check("isFlagged(): heavy + ai only", PW.isFlagged(mk(2, [0, 0.2, 0.6, 0.2])) && PW.isFlagged(mk(3, [0, 0, 0.1, 0.9])) && !PW.isFlagged(mk(1, [0.2, 0.6, 0.2, 0])) && !PW.isFlagged(mk(0, [0.9, 0.1, 0, 0])));
+  check("scorePct(): probability-weighted extent", PW.scorePct(mk(3, [0, 0, 0, 1])) === 100 && PW.scorePct(mk(0, [1, 0, 0, 0])) === 0 && PW.scorePct(mk(1, [0.25, 0.25, 0.25, 0.25])) === 50);
 
   sandbox.remove();
   return out;

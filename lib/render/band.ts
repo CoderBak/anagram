@@ -1,24 +1,40 @@
-// lib/render/band.ts — confidence band mapping (Appendix B) + human-facing label.
+// lib/render/band.ts — verdict bands for the EditLens 4-bucket contract + labels.
+//
+// The model classifies the EXTENT of AI editing into four buckets; each bucket is a
+// band with its own colour. "unknown" is not a model output — it is what a degraded
+// (backend-failure) result renders as.
 import type { ScoreResult } from "../contract";
 
-export type Band = "human" | "mixed" | "ai" | "unknown";
+export type Band = "human" | "light" | "heavy" | "ai" | "unknown";
 
-/** Derive the human-facing band from the contract (calibrated wording; never "98% AI"). */
+/** Bucket index → band, in model order. */
+export const BUCKET_BANDS: readonly Band[] = ["human", "light", "heavy", "ai"];
+
+/** Derive the human-facing band from the contract. */
 export function band(r: ScoreResult): Band {
-  if (r.p_value >= 0.99 && r.theta_interval[1] - r.theta_interval[0] > 0.5) return "unknown";
-  if (r.detected) return "ai";
-  if (r.e_theta >= 0.4) return "mixed"; // possible AI-assisted
-  return "human";
+  if (r.degraded) return "unknown";
+  return BUCKET_BANDS[r.bucket] ?? "unknown";
 }
 
-/**
- * Badge text for each band. Honor the detector's vocabulary; never surface raw
- * percentages as truth claims.
- */
+/** Badge text for each band — the model's own vocabulary, never "98% certain". */
 export const BAND_LABEL: Record<Band, string> = {
   human: "Human",
-  mixed: "AI-Assisted",
-  ai: "AI",
-  unknown: "Insufficient",
+  light: "Lightly edited",
+  heavy: "Heavily edited",
+  ai: "AI-generated",
+  unknown: "Unavailable",
 };
 
+/** Bands that count as "flagged" (counter, triage panel, toolbar badge, flagged-only mode). */
+export function isFlaggedBand(b: Band): boolean {
+  return b === "heavy" || b === "ai";
+}
+
+export function isFlagged(r: ScoreResult): boolean {
+  return isFlaggedBand(band(r));
+}
+
+/** The chip number: extent of AI editing as a whole percentage. */
+export function scorePct(r: ScoreResult): number {
+  return Math.round(r.score * 100);
+}

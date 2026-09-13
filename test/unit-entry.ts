@@ -18,4 +18,4 @@ export {
 export { isBoilerplate } from "../lib/dom/boilerplate";
 export { findMainContent } from "../lib/dom/mainContent";
 export { detectDocsPage, readingViewUrl, editorUrl } from "../lib/docs";
-export { band } from "../lib/render/band";
+export { band, isFlagged, scorePct } from "../lib/render/band";

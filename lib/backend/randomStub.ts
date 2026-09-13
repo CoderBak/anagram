@@ -1,8 +1,11 @@
-// lib/backend/randomStub.ts
-import { ScoreClient, ScoreBlock, ScoreResult } from "../contract";
-import { splitSentences } from "../dom/text";
+// lib/backend/randomStub.ts — deterministic demo backend (contract v2 shape).
+// Fabricates an EditLens-style bucket distribution seeded by the paragraph text, so
+// the whole surface can be exercised without the model. Never mistake its numbers
+// for verdicts: the popup and report footer say "demo stub" whenever it is active.
+import { BUCKET_COUNT } from "../contract";
+import type { ModelInfo, ScoreClient, ScoreBlock, ScoreResult } from "../contract";
 
-const MODEL = { id: "stub", ver: "0.0.0", calibration: "none" };
+const MODEL: ModelInfo = { id: "stub", ver: "0.0.0", calibration: "none" };
 
 /** Deterministic 53-bit hash of a string (cyrb53) → seed. */
 function cyrb53(str: string, seed = 0): number {
@@ -32,49 +35,30 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+function round(x: number): number { return Math.round(x * 10000) / 10000; }
+
 /** Fabricate one coherent ScoreResult for a block, seeded by its text (stable). */
 export function randomScore(block: ScoreBlock): ScoreResult {
   const rng = mulberry32(cyrb53(block.text));
-
-  // e_theta: point estimate of AI-probability in [0,1].
-  const e_theta = rng();
-
-  // theta_interval: a plausible credible band around e_theta, clamped to [0,1].
-  const halfWidth = 0.05 + rng() * 0.15;             // 0.05–0.20
-  const lo = Math.max(0, e_theta - halfWidth);
-  const hi = Math.min(1, e_theta + halfWidth);
-
-  // detected = lo > 0.5 (the whole credible interval sits in the AI region).
-  // (Design §4.5 says "detected = lo>0"; we use lo>0.5 so 'detected' tracks a meaningful
-  //  AI judgment rather than being almost-always true. This is the coherent reading.)
-  const detected = lo > 0.5;
-
-  // p_value: small when AI evidence is strong (e_theta high), noisy otherwise.
-  const p_value = detected
-    ? Math.max(0.0001, (1 - e_theta) * rng() * 0.05)   // strong evidence → tiny p
-    : Math.min(1, 0.2 + rng() * 0.8);                  // weak/human → large p
-
-  // sentence_flags: one boolean per sentence, biased by e_theta. Use the SAME canonical
-  // splitter the highlight layer uses (lib/dom/text splitSentences) so flags[i] lines up
-  // with the i-th sentence the renderer underlines. A different split here (e.g. a source
-  // newline that one splitter treats as a sentence break and the other doesn't) silently
-  // misaligns the marks — that was why the blockquote got a badge but no underline.
-  const sentences = splitSentences(block.text);
-  // A fully-AI paragraph (detected) → every sentence is AI, so the whole thing underlines
-  // and matches the red badge. Otherwise flag per-sentence by e_theta (the "mixed" case).
-  // Demo coherence: a flagged paragraph (e_theta >= 0.4) always marks >= 1 sentence.
-  // (A real detector emits this badge↔sentence consistency itself.)
-  const sentence_flags = detected
-    ? sentences.map(() => true)
-    : sentences.map(() => rng() < e_theta);
-  if (e_theta >= 0.4 && sentence_flags.length > 0 && !sentence_flags.some(Boolean)) {
-    sentence_flags[0] = true;
+  // A latent "extent of AI editing", then a distribution peaked around it so the
+  // probabilities look like a real classifier's (one dominant bucket, neighbours
+  // share the remainder) rather than noise.
+  const latent = rng();
+  const sigma = 0.14 + rng() * 0.12;
+  const logits: number[] = [];
+  for (let i = 0; i < BUCKET_COUNT; i++) {
+    const center = i / (BUCKET_COUNT - 1);
+    logits.push(-((latent - center) ** 2) / (2 * sigma * sigma));
   }
-
-  return { id: block.id, detected, theta_interval: [round(lo), round(hi)], e_theta: round(e_theta), p_value: round(p_value), sentence_flags };
+  const max = Math.max(...logits);
+  const exps = logits.map((l) => Math.exp(l - max));
+  const sum = exps.reduce((a, b) => a + b, 0);
+  const probs = exps.map((e) => round(e / sum));
+  let bucket = 0;
+  for (let i = 1; i < probs.length; i++) if (probs[i] > probs[bucket]) bucket = i;
+  const score = round(probs.reduce((acc, p, i) => acc + p * i, 0) / (BUCKET_COUNT - 1));
+  return { id: block.id, bucket, probs, score, tokens: Math.min(512, Math.ceil(block.text.length / 4)) };
 }
-
-function round(x: number): number { return Math.round(x * 1000) / 1000; }
 
 export class RandomStubScoreClient implements ScoreClient {
   /** Artificial latency band (ms) so viewport/dedup/concurrency paths are realistic. */
@@ -85,6 +69,10 @@ export class RandomStubScoreClient implements ScoreClient {
     const latency = this.minLatency + Math.random() * (this.maxLatency - this.minLatency);
     await sleep(latency);
     return blocks.map(randomScore);
+  }
+
+  model(): ModelInfo {
+    return MODEL;
   }
 }
 
