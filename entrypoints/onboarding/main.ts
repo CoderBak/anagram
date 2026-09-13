@@ -1,6 +1,9 @@
 // entrypoints/onboarding/main.ts — first-run welcome page.
 import { browser } from "#imports";
+import "../../lib/ui/basecoat-vega.cdn.min.css";
+import { followSystemTheme } from "../../lib/ui/theme";
 
+followSystemTheme();
 const manifest = browser.runtime.getManifest();
 document.getElementById("version")!.textContent = `v${manifest.version}`;
 import { ACTIONS } from "../../lib/messaging/protocol";

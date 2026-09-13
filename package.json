@@ -1,6 +1,6 @@
 {
   "name": "anagram-extension",
-  "description": "Anagram for Chrome \u2014 per-paragraph AI-generated-text confidence badges.",
+  "description": "Anagram for Chrome — per-paragraph AI-generated-text confidence badges.",
   "private": true,
   "version": "0.3.0",
   "type": "module",
@@ -19,9 +19,11 @@
     "test:server": "node test/server.mjs",
     "zip:firefox": "wxt zip -b firefox",
     "play": "node test/playground.mjs",
-    "serve": "sh anagramd/run.sh"
+    "serve": "sh anagramd/run.sh",
+    "vendor:basecoat": "cp node_modules/basecoat-css/dist/basecoat-vega.cdn.min.css lib/ui/basecoat-vega.cdn.min.css"
   },
   "devDependencies": {
+    "basecoat-css": "^1.0.2",
     "playwright": "^1.61.1",
     "typescript": "^5.9.3",
     "wxt": "^0.20.27"

@@ -4,6 +4,8 @@
 // buttons). All rendering is DOM construction — never innerHTML with stored
 // strings (hostnames are user data).
 import { browser } from "#imports";
+import "../../lib/ui/basecoat-vega.cdn.min.css";
+import { followSystemTheme } from "../../lib/ui/theme";
 import { settings, clearSiteOverride, setSiteOverride } from "../../lib/settings/settings";
 import { ACTIONS } from "../../lib/messaging/protocol";
 import type { BackendStatus } from "../../lib/messaging/protocol";
@@ -64,7 +66,10 @@ async function renderSites(): Promise<void> {
     return;
   }
 
+  const wrap = document.createElement("div");
+  wrap.className = "table-container";
   const table = document.createElement("table");
+  table.className = "table";
   const head = table.createTHead().insertRow();
   for (const h of ["Site", "Rule", ""]) {
     const th = document.createElement("th");
@@ -82,14 +87,17 @@ async function renderSites(): Promise<void> {
     const actions = row.insertCell();
     const remove = document.createElement("button");
     remove.type = "button";
-    remove.className = "quiet";
+    remove.className = "btn";
+    remove.dataset.variant = "ghost";
+    remove.dataset.size = "xs";
     remove.textContent = "Remove";
     remove.addEventListener("click", () => {
       void clearSiteOverride(host).then(renderSites);
     });
     actions.appendChild(remove);
   }
-  sitesEl.appendChild(table);
+  wrap.appendChild(table);
+  sitesEl.appendChild(wrap);
 }
 
 /**
@@ -129,6 +137,7 @@ addHostEl.addEventListener("input", () => {
   addErrorEl.hidden = true;
 });
 
+followSystemTheme();
 bindToggle(enabledEl, settings.enabled);
 bindToggle(highlightsEl, settings.showHighlights);
 bindToggle(debugEl, settings.debug);

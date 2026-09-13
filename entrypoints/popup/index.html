@@ -5,156 +5,44 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Anagram</title>
     <style>
-      :root {
-        color-scheme: light dark;
-        --bg: #ffffff;
-        --fg: #1f2328;
-        --muted: #69707c;
-        --hairline: #e8eaef;
-        --track: #d3d8df;
-        --knob: #ffffff;
-        --seg-bg: #eef0f4;
-        --seg-active: #ffffff;
-        --seg-shadow: 0 1px 2px rgba(16, 20, 28, 0.16), 0 0 0 0.5px rgba(16, 20, 28, 0.04);
-        --btn-bg: #f5f6f8;
-        --btn-hover: #eceef2;
-        --accent: #6d5efc;
-        --accent-grad: linear-gradient(135deg, #6d5efc, #b15efc);
-        --red: #e5484d;
-      }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --bg: #1c1e22;
-          --fg: #e8ecf1;
-          --muted: #99a1ad;
-          --hairline: #2e333a;
-          --track: #3e444d;
-          --knob: #f2f4f7;
-          --seg-bg: #26292f;
-          --seg-active: #464d57;
-          --seg-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-          --btn-bg: #24272d;
-          --btn-hover: #2c3037;
-        }
-      }
-      * { box-sizing: border-box; }
-      body {
-        width: 300px;
-        margin: 0;
-        font: 13px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-        background: var(--bg);
-        color: var(--fg);
-        -webkit-font-smoothing: antialiased;
-      }
-
-      /* Header */
-      header { display: flex; align-items: center; gap: 10px; padding: 12px 14px 11px; }
-      .logo { width: 30px; height: 30px; border-radius: 8px; flex: none; }
-      .brand { flex: 1; min-width: 0; }
-      .brand h1 { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.25; letter-spacing: 0.01em; }
-      .brand p { margin: 0; font-size: 11px; line-height: 1.3; color: var(--muted); }
-      .icon-btn {
-        flex: none; display: grid; place-items: center;
-        width: 28px; height: 28px; padding: 0;
-        border: none; border-radius: 7px;
-        background: transparent; color: var(--muted); cursor: pointer;
-      }
-      .icon-btn:hover { background: var(--btn-hover); color: var(--fg); }
-
-      /* Sections */
-      .group { padding: 9px 14px 11px; border-top: 1px solid var(--hairline); }
-      .group > h2 {
-        margin: 0 0 3px; font-size: 10.5px; font-weight: 600;
-        letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted);
-      }
-      .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 31px; }
-      .lbl { flex: 1; min-width: 0; font-size: 13px; }
-      .sub {
-        display: block; font-size: 11px; line-height: 1.3; color: var(--muted);
-        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-      }
-
-      /* Switches */
-      .switch {
-        appearance: none; -webkit-appearance: none;
-        flex: none; width: 36px; height: 21px; margin: 0;
-        border-radius: 999px; background: var(--track);
-        position: relative; cursor: pointer;
-        transition: background 0.16s ease;
-      }
-      .switch::before {
-        content: ""; position: absolute; top: 2px; left: 2px;
-        width: 17px; height: 17px; border-radius: 50%;
-        background: var(--knob); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
-        transition: transform 0.16s ease;
-      }
-      .switch:checked { background: var(--accent-grad); }
-      .switch:checked::before { transform: translateX(15px); }
-      .switch:disabled { opacity: 0.45; cursor: default; }
-
-      /* Segmented controls */
-      .seg {
-        flex: none; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
-        gap: 2px; padding: 2px; border-radius: 8px; background: var(--seg-bg);
-      }
-      .seg label { position: relative; display: block; }
-      .seg input { position: absolute; inset: 0; opacity: 0; margin: 0; pointer-events: none; }
-      .seg span {
-        display: block; padding: 3px 9px; border-radius: 6px;
-        font-size: 12px; line-height: 1.4; text-align: center; white-space: nowrap;
-        color: var(--muted); cursor: pointer; user-select: none;
-        transition: background 0.12s ease, color 0.12s ease;
-      }
-      .seg input:checked + span {
-        background: var(--seg-active); color: var(--fg);
-        font-weight: 600; box-shadow: var(--seg-shadow);
-      }
-
-      /* Select */
-      select {
-        flex: none; max-width: 150px; font: inherit; font-size: 12px;
-        padding: 4px 6px; border: 1px solid var(--hairline); border-radius: 7px;
-        background: var(--btn-bg); color: var(--fg);
-      }
-
-      /* Status + footer */
-      .status { font-size: 12px; color: var(--muted); min-height: 17px; margin: 1px 0 9px; }
-      .status .flagged { color: var(--red); font-weight: 600; }
-      .backend { font-size: 11px; color: var(--muted); margin: -5px 0 9px; line-height: 1.4; min-height: 15px; }
-      .backend b { color: var(--fg); font-weight: 600; }
-      .backend.demo b { color: var(--red); }
-      .btn-quiet {
-        width: 100%; font: inherit; font-size: 12.5px; font-weight: 500;
-        padding: 7px 10px; border: 1px solid var(--hairline); border-radius: 8px;
-        background: var(--btn-bg); color: var(--fg); cursor: pointer;
-      }
-      .btn-quiet:hover { background: var(--btn-hover); }
-      .hint-line { margin: 9px 0 1px; font-size: 11px; color: var(--muted); text-align: center; }
-      kbd {
-        font: 10px/1.1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-        padding: 1px 4px; border: 1px solid var(--hairline); border-bottom-width: 2px;
-        border-radius: 4px; background: var(--btn-bg);
-      }
-
-      /* Focus */
-      .switch:focus-visible, select:focus-visible,
-      .btn-quiet:focus-visible, .icon-btn:focus-visible {
-        outline: 2px solid var(--accent); outline-offset: 1px;
-      }
-      .seg input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
-      @media (prefers-reduced-motion: reduce) {
-        .switch, .switch::before, .seg span { transition: none; }
-      }
+      /* Layout only — colours, type and controls come from Basecoat (Vega). */
+      html { width: 300px; }
+      body { margin: 0; background: var(--background); color: var(--foreground); font-size: 13px; line-height: 1.45; }
+      header.hdr { display: flex; align-items: center; gap: 10px; padding: 12px 14px 10px; border-bottom: 1px solid var(--border); }
+      header.hdr img { width: 30px; height: 30px; border-radius: 8px; }
+      header.hdr .brand { flex: 1; min-width: 0; }
+      header.hdr h1 { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.2; letter-spacing: -0.01em; }
+      header.hdr p { margin: 1px 0 0; font-size: 11.5px; color: var(--muted-foreground); }
+      main { padding: 4px 14px 12px; }
+      .grp { padding: 9px 0 8px; border-bottom: 1px solid var(--border); }
+      .grp:last-of-type { border-bottom: 0; }
+      .grp > h2 { margin: 0 0 7px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted-foreground); }
+      .grp .field { min-height: 30px; }
+      .grp .field + .field { margin-top: 5px; }
+      .grp .field > label, .grp .field > section > label { font-size: 13px; font-weight: 450; }
+      .grp .field > section > p { margin: 0; font-size: 11px; color: var(--muted-foreground); }
+      .grp .field > select { width: 150px; height: 30px; font-size: 12px; }
+      .tabs > [role="tablist"] { height: 30px; }
+      .tabs > [role="tablist"] > [role="tab"] { font-size: 12px; padding: 2px 9px; }
+      .status { font-size: 12px; color: var(--muted-foreground); min-height: 17px; margin: 2px 0 1px; }
+      .status .flagged { color: var(--destructive); font-weight: 600; }
+      .backend { font-size: 11px; color: var(--muted-foreground); min-height: 15px; margin: 0 0 9px; }
+      .backend b { color: var(--foreground); font-weight: 600; }
+      .backend.demo b { color: var(--destructive); }
+      .w-full { width: 100%; }
+      .hint-line { margin: 9px 0 0; font-size: 11px; color: var(--muted-foreground); text-align: center; }
+      .hint-line .kbd { vertical-align: middle; }
+      @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
     </style>
   </head>
   <body>
-    <header>
+    <header class="hdr">
       <img class="logo" src="/icons/icon-48.png" alt="" />
       <div class="brand">
         <h1>Anagram</h1>
         <p>AI text detector</p>
       </div>
-      <button id="gear" class="icon-btn" type="button" title="All settings" aria-label="All settings">
+      <button id="gear" class="btn" data-variant="ghost" data-size="icon-sm" type="button" title="All settings" aria-label="All settings">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="12" cy="12" r="3" />
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.08a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.08a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.08a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
@@ -162,58 +50,67 @@
       </button>
     </header>
 
-    <section class="group">
-      <h2>Detection</h2>
-      <div class="row">
-        <label class="lbl" for="enabled">All websites</label>
-        <input id="enabled" class="switch" type="checkbox" />
-      </div>
-      <div class="row">
-        <label class="lbl" for="siteEnabled">This site<span class="sub" id="siteHost">…</span></label>
-        <input id="siteEnabled" class="switch" type="checkbox" />
-      </div>
-    </section>
-
-    <section class="group">
-      <h2>Display</h2>
-      <div class="row">
-        <span class="lbl" id="displayModeLbl">Show</span>
-        <div class="seg" role="radiogroup" aria-labelledby="displayModeLbl">
-          <label><input type="radio" name="displayMode" value="all" /><span>All chips</span></label>
-          <label><input type="radio" name="displayMode" value="flagged" /><span>Flagged only</span></label>
+    <main>
+      <section class="grp">
+        <h2>Detection</h2>
+        <div class="field" data-orientation="horizontal">
+          <label for="enabled">All websites</label>
+          <input id="enabled" type="checkbox" role="switch" data-size="sm" />
         </div>
-      </div>
-      <div class="row">
-        <label class="lbl" for="highlights">Mark text</label>
-        <input id="highlights" class="switch" type="checkbox" />
-      </div>
-      <div class="row">
-        <label class="lbl" for="markStyle">Marking style</label>
-        <select id="markStyle">
-          <option value="both">Underline + tint</option>
-          <option value="underline">Underline</option>
-          <option value="tint">Tint</option>
-        </select>
-      </div>
-    </section>
-
-    <section class="group">
-      <h2>Analysis</h2>
-      <div class="row">
-        <span class="lbl" id="scopeLbl">Scope</span>
-        <div class="seg" role="radiogroup" aria-labelledby="scopeLbl" title="Main content = article body only, trafilatura-style">
-          <label><input type="radio" name="analysisScope" value="page" /><span>Whole page</span></label>
-          <label><input type="radio" name="analysisScope" value="main" /><span>Main content</span></label>
+        <div class="field" data-orientation="horizontal">
+          <section>
+            <label for="siteEnabled">This site</label>
+            <p id="siteHost">…</p>
+          </section>
+          <input id="siteEnabled" type="checkbox" role="switch" data-size="sm" />
         </div>
-      </div>
-    </section>
+      </section>
 
-    <section class="group">
-      <div class="status" id="status">…</div>
-      <div class="backend" id="backend"></div>
-      <button id="rescan" class="btn-quiet" type="button">Rescan page</button>
-      <p class="hint-line"><kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> toggles the overlay</p>
-    </section>
+      <section class="grp">
+        <h2>Display</h2>
+        <div class="field" data-orientation="horizontal">
+          <label id="displayModeLbl">Show</label>
+          <div class="tabs">
+            <nav role="tablist" aria-orientation="horizontal" aria-labelledby="displayModeLbl" data-seg="displayMode">
+              <button type="button" role="tab" data-value="all" aria-selected="true">All chips</button>
+              <button type="button" role="tab" data-value="flagged" aria-selected="false">Flagged only</button>
+            </nav>
+          </div>
+        </div>
+        <div class="field" data-orientation="horizontal">
+          <label for="highlights">Mark text</label>
+          <input id="highlights" type="checkbox" role="switch" data-size="sm" />
+        </div>
+        <div class="field" data-orientation="horizontal">
+          <label for="markStyle">Marking style</label>
+          <select id="markStyle">
+            <option value="both">Underline + tint</option>
+            <option value="underline">Underline</option>
+            <option value="tint">Tint</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="grp">
+        <h2>Analysis</h2>
+        <div class="field" data-orientation="horizontal">
+          <label id="scopeLbl">Scope</label>
+          <div class="tabs" title="Main content = article body only, trafilatura-style">
+            <nav role="tablist" aria-orientation="horizontal" aria-labelledby="scopeLbl" data-seg="analysisScope">
+              <button type="button" role="tab" data-value="page" aria-selected="true">Whole page</button>
+              <button type="button" role="tab" data-value="main" aria-selected="false">Main content</button>
+            </nav>
+          </div>
+        </div>
+      </section>
+
+      <section class="grp">
+        <div class="status" id="status">…</div>
+        <div class="backend" id="backend"></div>
+        <button id="rescan" class="btn w-full" data-variant="outline" data-size="sm" type="button">Rescan page</button>
+        <p class="hint-line"><kbd class="kbd">Alt</kbd>+<kbd class="kbd">Shift</kbd>+<kbd class="kbd">P</kbd> toggles the overlay</p>
+      </section>
+    </main>
 
     <script type="module" src="./main.ts"></script>
   </body>

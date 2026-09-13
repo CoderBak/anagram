@@ -124,14 +124,12 @@ export const BADGE_CSS: string = `
   min-width: 232px;
   max-width: min(300px, 78vw);
   padding: 11px 13px 10px;
-  border-radius: 11px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(255, 255, 255, 0.98);
-  -webkit-backdrop-filter: saturate(1.3) blur(14px);
-  backdrop-filter: saturate(1.3) blur(14px);
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16), 0 2px 6px rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.10);
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 10px 28px rgba(0, 0, 0, 0.10);
   font: 400 11px/1.5 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  color: #1f2328;
+  color: #252525;
   text-align: left;
   white-space: normal;
   visibility: hidden;
@@ -204,38 +202,40 @@ export const BADGE_CSS: string = `
 .card .verdict.band-heavy   { color: #a13d00; }
 .card .verdict.band-ai      { color: #b42318; }
 .card .verdict.band-unknown { color: #57606a; }
-.card .big { font-weight: 700; font-size: 12px; font-variant-numeric: tabular-nums; color: #1f2328; }
+.card .big { font-weight: 700; font-size: 12px; font-variant-numeric: tabular-nums; color: #252525; }
 
 .card .row {
   display: flex;
   justify-content: space-between;
   gap: 12px;
 }
-.card .row .k { color: #656d76; }
-.card .row .v { font-variant-numeric: tabular-nums; color: #1f2328; }
+.card .row .k { color: #737373; }
+.card .row .v { font-variant-numeric: tabular-nums; color: #252525; }
 
 .card .actions {
   display: flex;
   gap: 6px;
   margin-top: 8px;
 }
+/* Basecoat "outline" button: hairline border, plain surface, muted hover. */
 .card .act {
-  font: 600 10px/1 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  color: #3730a3;
-  border: 1px solid rgba(109, 94, 252, 0.35);
-  background: rgba(109, 94, 252, 0.06);
-  border-radius: 999px;
-  padding: 4px 10px;
+  font: 500 10.5px/1 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  color: #252525;
+  border: 1px solid #e5e5e5;
+  background: #ffffff;
+  border-radius: 6px;
+  padding: 5px 10px;
   cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
-.card .act:hover { background: rgba(109, 94, 252, 0.14); }
+.card .act:hover { background: #f5f5f5; }
 .card .act.done { color: #116a37; border-color: rgba(26, 127, 55, 0.4); background: rgba(26, 127, 55, 0.08); }
 
 .card .foot {
   margin-top: 7px;
   padding-top: 6px;
-  border-top: 1px solid rgba(15, 23, 42, 0.06);
-  color: #8b949e;
+  border-top: 1px solid #f0f0f0;
+  color: #8a8a8a;
   font-size: 10px;
   line-height: 1.4;
 }
@@ -255,21 +255,21 @@ export const BADGE_CSS: string = `
 :host(.pg-dark) .pill.band-unknown { color: #b9c0c8; }
 
 :host(.pg-dark) .card {
-  border-color: rgba(255, 255, 255, 0.12);
-  background: rgba(28, 30, 33, 0.98);
-  color: #e6edf3;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.35);
+  border-color: rgba(255, 255, 255, 0.10);
+  background: #262626;
+  color: #fafafa;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.55);
 }
-:host(.pg-dark) .card .big { color: #e6edf3; }
-:host(.pg-dark) .card .row .k { color: #9aa3ad; }
-:host(.pg-dark) .card .row .v { color: #e6edf3; }
+:host(.pg-dark) .card .big { color: #fafafa; }
+:host(.pg-dark) .card .row .k { color: #a3a3a3; }
+:host(.pg-dark) .card .row .v { color: #fafafa; }
 :host(.pg-dark) .card .verdict.band-human { color: #4ecb71; }
 :host(.pg-dark) .card .verdict.band-light { color: #e6c84c; }
 :host(.pg-dark) .card .verdict.band-heavy { color: #ff9a57; }
 :host(.pg-dark) .card .verdict.band-ai    { color: #ff7b81; }
-:host(.pg-dark) .card .act { color: #b6aefc; border-color: rgba(150, 136, 252, 0.45); background: rgba(150, 136, 252, 0.10); }
-:host(.pg-dark) .card .act:hover { background: rgba(150, 136, 252, 0.2); }
-:host(.pg-dark) .card .foot { border-top-color: rgba(255, 255, 255, 0.09); color: #768390; }
+:host(.pg-dark) .card .act { color: #fafafa; border-color: rgba(255, 255, 255, 0.15); background: rgba(255, 255, 255, 0.06); box-shadow: none; }
+:host(.pg-dark) .card .act:hover { background: rgba(255, 255, 255, 0.12); }
+:host(.pg-dark) .card .foot { border-top-color: rgba(255, 255, 255, 0.08); color: #8a8a8a; }
 
 /* ---- forced colors (Windows High Contrast) ------------------------------------ */
 /* Let the system palette flatten surfaces, but keep the verdict dot semantic and

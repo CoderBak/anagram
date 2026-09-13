@@ -70,14 +70,14 @@ const FAB_CSS = `
   align-items: center;
   gap: 8px;
   box-sizing: border-box;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.10);
   border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.94);
+  background: rgba(255, 255, 255, 0.96);
   -webkit-backdrop-filter: saturate(1.4) blur(12px);
   backdrop-filter: saturate(1.4) blur(12px);
-  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.16), 0 1px 3px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 6px 20px rgba(0, 0, 0, 0.14);
   font: 600 12px/1 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  color: #1f2328;
+  color: #252525;
   cursor: pointer;
   user-select: none;
   transition: box-shadow 140ms ease, transform 140ms ease, opacity 140ms ease;
@@ -123,7 +123,7 @@ const FAB_CSS = `
   height: 30px;
   padding: 0 12px;
   font-size: 11px;
-  color: #3730a3;
+  color: #252525;
   display: none;
 }
 .action.show { display: inline-flex; }
@@ -131,7 +131,7 @@ const FAB_CSS = `
 /* Brief attention pulse (Docs editor: the action chip is the useful control). */
 @keyframes anagram-attn {
   0%, 100% { transform: scale(1); box-shadow: 0 6px 20px rgba(15, 23, 42, 0.16), 0 1px 3px rgba(15, 23, 42, 0.08); }
-  50% { transform: scale(1.06); box-shadow: 0 8px 26px rgba(109, 94, 252, 0.45), 0 2px 5px rgba(15, 23, 42, 0.10); }
+  50% { transform: scale(1.06); box-shadow: 0 8px 26px rgba(0, 0, 0, 0.28), 0 2px 5px rgba(0, 0, 0, 0.10); }
 }
 .action.attn { animation: anagram-attn 1.3s ease-in-out 3; }
 
@@ -190,14 +190,12 @@ const FAB_CSS = `
   max-height: 360px;
   box-sizing: border-box;
   padding: 6px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 13px;
-  background: rgba(255, 255, 255, 0.98);
-  -webkit-backdrop-filter: saturate(1.3) blur(14px);
-  backdrop-filter: saturate(1.3) blur(14px);
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18), 0 2px 6px rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.10);
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 12px 32px rgba(0, 0, 0, 0.12);
   font: 400 12px/1.45 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  color: #1f2328;
+  color: #252525;
   cursor: default;
   transition: opacity 150ms ease, transform 150ms ease, visibility 0s linear 150ms;
 }
@@ -218,39 +216,40 @@ const FAB_CSS = `
   justify-content: space-between;
   gap: 8px;
   font-size: 11px;
-  font-weight: 700;
-  color: #656d76;
+  font-weight: 600;
+  color: #737373;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   padding: 7px 8px 5px;
 }
+/* Basecoat "primary" button: near-black surface, light text. */
 .panel .pcopy {
-  font: 600 10px/1 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font: 500 10.5px/1 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   text-transform: none;
   letter-spacing: 0;
-  color: #3730a3;
-  border: 1px solid rgba(109, 94, 252, 0.35);
-  background: rgba(109, 94, 252, 0.07);
-  border-radius: 999px;
-  padding: 4px 9px;
+  color: #fafafa;
+  border: 1px solid transparent;
+  background: #171717;
+  border-radius: 6px;
+  padding: 5px 9px;
   cursor: pointer;
 }
-.panel .pcopy:hover { background: rgba(109, 94, 252, 0.14); }
+.panel .pcopy:hover { background: #333333; }
 .panel .pcopy.done { color: #116a37; border-color: rgba(26, 127, 55, 0.4); background: rgba(26, 127, 55, 0.08); }
 
 /* Verdict filter chips. */
 .panel .pfilters { display: flex; gap: 5px; padding: 0 8px 6px; }
 .panel .fchip {
-  font: 600 10px/1 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  color: #57606a;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  background: none;
-  border-radius: 999px;
+  font: 500 10.5px/1 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  color: #525252;
+  border: 1px solid #e5e5e5;
+  background: #ffffff;
+  border-radius: 6px;
   padding: 4px 9px;
   cursor: pointer;
 }
-.panel .fchip:hover { background: rgba(15, 23, 42, 0.04); }
-.panel .fchip[aria-pressed="true"] { color: #3730a3; border-color: rgba(109, 94, 252, 0.5); background: rgba(109, 94, 252, 0.09); }
+.panel .fchip:hover { background: #f5f5f5; color: #252525; }
+.panel .fchip[aria-pressed="true"] { color: #fafafa; border-color: transparent; background: #171717; }
 
 .panel .plist { overflow-y: auto; overscroll-behavior: contain; }
 .panel .pitem {
@@ -267,7 +266,7 @@ const FAB_CSS = `
   color: inherit;
   width: 100%;
 }
-.panel .pitem:hover { background: rgba(109, 94, 252, 0.08); }
+.panel .pitem:hover { background: #f5f5f5; }
 .panel .pdot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; align-self: center; }
 .panel .pitem.band-ai .pdot { background: #e5484d; }
 .panel .pitem.band-heavy .pdot { background: #e8590c; }
@@ -288,19 +287,19 @@ const FAB_CSS = `
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #424a53;
+  color: #404040;
 }
-.panel .pempty { padding: 10px 8px; color: #8b949e; }
+.panel .pempty { padding: 10px 8px; color: #8a8a8a; }
 .panel .pfoot {
   display: flex;
   justify-content: flex-end;
   padding: 5px 8px 3px;
-  border-top: 1px solid rgba(15, 23, 42, 0.06);
+  border-top: 1px solid #f0f0f0;
   margin-top: 4px;
 }
 .panel .psiteoff {
   font: 500 10px/1.2 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  color: #8b949e;
+  color: #8a8a8a;
   border: none;
   background: none;
   cursor: pointer;

@@ -3,434 +3,229 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="manifest.open_in_tab" content="true" />
     <title>Anagram for Chrome — Options</title>
     <style>
-      :root {
-        color-scheme: light dark;
-        --bg: #f6f7f9;
-        --card: #ffffff;
-        --text: #1c2128;
-        --muted: #656d76;
-        --border: #e2e5e9;
-        --divider: #edeff2;
-        --input-bg: #ffffff;
-        --input-border: #d4d9df;
-        --track: #d8dce2;
-        --kbd-bg: #f2f3f6;
-        --accent-a: #6d5efc;
-        --accent-b: #b15efc;
-        --rule-on: #1a7f37;
-        --rule-off: #e5484d;
-        --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-      }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --bg: #0d1117;
-          --card: #151b23;
-          --text: #e6edf3;
-          --muted: #8b949e;
-          --border: #262d36;
-          --divider: #222933;
-          --input-bg: #0d1117;
-          --input-border: #363f4a;
-          --track: #30363d;
-          --kbd-bg: #21262d;
-          --rule-on: #3fb950;
-          --rule-off: #f85149;
-        }
-      }
-
-      * { box-sizing: border-box; }
-      body {
-        max-width: 680px;
-        margin: 48px auto 72px;
-        padding: 0 24px;
-        font: 14px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
-        color: var(--text);
-        background: var(--bg);
-      }
-
-      /* ---- header ---- */
-      header { display: flex; align-items: center; gap: 14px; margin-bottom: 28px; }
-      header img { width: 40px; height: 40px; border-radius: 10px; }
-      h1 { font-size: 18px; font-weight: 650; letter-spacing: -0.01em; margin: 0; }
-      .ver { font-size: 12px; color: var(--muted); margin-top: 2px; }
-
-      /* ---- section cards ---- */
-      section {
-        background: var(--card);
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        padding: 18px 22px;
-        margin: 0 0 16px;
-      }
-      h2 {
-        font-size: 12px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        color: var(--muted);
-        margin: 0 0 6px;
-      }
-
-      /* ---- setting rows ---- */
-      .row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 24px;
-        padding: 13px 0;
-      }
-      .row + .row { border-top: 1px solid var(--divider); }
-      .row label { font-weight: 600; }
-      .hint {
-        font-size: 12.5px;
-        line-height: 1.5;
-        color: var(--muted);
-        margin: 3px 0 0;
-        max-width: 460px;
-      }
-      .hint code {
-        font-family: var(--mono);
-        font-size: 11.5px;
-        background: var(--kbd-bg);
-        padding: 1px 5px;
-        border-radius: 4px;
-      }
-
-      /* ---- switches (appearance:none checkboxes) ---- */
-      input[type="checkbox"] {
-        appearance: none;
-        -webkit-appearance: none;
-        flex: 0 0 auto;
-        width: 40px;
-        height: 22px;
-        margin: 0;
-        border: 1px solid var(--input-border);
-        border-radius: 999px;
-        background: var(--track);
-        position: relative;
-        cursor: pointer;
-        transition: background 0.15s ease, border-color 0.15s ease;
-      }
-      input[type="checkbox"]::after {
-        content: "";
-        position: absolute;
-        top: 2px;
-        left: 2px;
-        width: 16px;
-        height: 16px;
-        border-radius: 50%;
-        background: #fff;
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-        transition: transform 0.18s ease;
-      }
-      input[type="checkbox"]:checked {
-        background: linear-gradient(135deg, #6d5efc, #b15efc);
-        border-color: transparent;
-      }
-      input[type="checkbox"]:checked::after { transform: translateX(18px); }
-      @media (prefers-reduced-motion: reduce) {
-        input[type="checkbox"],
-        input[type="checkbox"]::after { transition: none; }
-      }
-
-      /* ---- selects, text inputs, buttons ---- */
-      select,
-      input[type="text"] {
-        font: inherit;
-        font-size: 13px;
-        color: var(--text);
-        background: var(--input-bg);
-        border: 1px solid var(--input-border);
-        border-radius: 8px;
-        padding: 6px 10px;
-      }
-      select { flex: 0 0 auto; cursor: pointer; }
-      button { font: inherit; cursor: pointer; border-radius: 8px; }
-      button.primary {
-        border: none;
-        padding: 7px 16px;
-        font-size: 13px;
-        font-weight: 600;
-        color: #fff;
-        background: linear-gradient(135deg, var(--accent-a), var(--accent-b));
-      }
-      button.primary:hover { filter: brightness(1.06); }
-      button.quiet {
-        border: none;
-        background: transparent;
-        color: var(--muted);
-        font-size: 12px;
-        padding: 4px 8px;
-      }
-      button.quiet:hover { color: var(--rule-off); background: var(--divider); }
-      input[type="checkbox"]:focus-visible,
-      input[type="text"]:focus-visible,
-      select:focus-visible,
-      button:focus-visible {
-        outline: 2px solid var(--accent-a);
-        outline-offset: 2px;
-      }
-
-      /* ---- per-site rules table ---- */
-      table { width: 100%; border-collapse: collapse; font-size: 13px; }
-      th {
-        font-size: 11px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: var(--muted);
-        text-align: left;
-        padding: 4px 8px 8px;
-      }
-      td { text-align: left; padding: 8px; border-top: 1px solid var(--divider); }
-      th:first-child, td:first-child { padding-left: 0; }
-      th:last-child, td:last-child { padding-right: 0; text-align: right; }
-      td:first-child { font-family: var(--mono); font-size: 12.5px; }
-      td.mode-on { color: var(--rule-on); font-weight: 600; }
-      td.mode-off { color: var(--rule-off); font-weight: 600; }
-      .empty { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
-
-      /* ---- add-rule form ---- */
-      .add-rule {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-top: 14px;
-        padding-top: 14px;
-        border-top: 1px solid var(--divider);
-      }
-      .add-rule input[type="text"] {
-        flex: 1 1 180px;
-        font-family: var(--mono);
-        font-size: 12.5px;
-      }
-      .form-error {
-        flex-basis: 100%;
-        color: var(--rule-off);
-        font-size: 12.5px;
-        margin: 0;
-      }
-
-      /* ---- about & shortcuts ---- */
-      .shortcuts {
-        display: grid;
-        grid-template-columns: max-content 1fr;
-        gap: 10px 18px;
-        align-items: baseline;
-        margin: 10px 0 2px;
-      }
-      .keys { white-space: nowrap; }
-      .keys .plus { color: var(--muted); font-size: 11px; margin: 0 3px; }
-      kbd {
-        display: inline-block;
-        font: 600 11px/1 var(--mono);
-        color: var(--text);
-        background: var(--kbd-bg);
-        border: 1px solid var(--input-border);
-        border-bottom-width: 2px;
-        border-radius: 5px;
-        padding: 4px 6px;
-      }
-      .what { font-size: 13px; }
-      .privacy {
-        margin: 16px 0 0;
-        padding: 10px 12px;
-        font-size: 12.5px;
-        color: var(--muted);
-        background: var(--kbd-bg);
-        border-radius: 8px;
-      }
-      .mini {
-        font-size: 11px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: var(--muted);
-        margin: 18px 0 8px;
-      }
+      /* Layout only — colours, type and controls come from Basecoat (Vega). */
+      body { margin: 0; background: var(--background); color: var(--foreground); font-size: 14px; line-height: 1.5; }
+      .page { max-width: 760px; margin: 0 auto; padding: 32px 24px 56px; }
+      header.hdr { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+      header.hdr img { width: 44px; height: 44px; border-radius: 11px; }
+      header.hdr h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.2; }
+      header.hdr .ver { margin-top: 3px; font-size: 12px; color: var(--muted-foreground); }
+      .stack { display: flex; flex-direction: column; gap: 16px; }
+      .card > section { display: flex; flex-direction: column; gap: 14px; }
+      .card > header p { margin: 0; }
+      .field > section > p { margin: 0; }
+      .field > select { width: 250px; }
+      .field > input.url { width: 260px; }
+      .field > .btn { flex: none; }
+      .form-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      .form-row .input { flex: 1 1 200px; }
+      .form-row .select { width: 150px; }
+      .form-error { margin: 6px 0 0; font-size: 12.5px; color: var(--destructive); }
+      .empty { margin: 0; padding: 2px 0; color: var(--muted-foreground); font-size: 13px; }
+      .mode-on { color: oklch(0.55 0.15 150); font-weight: 500; }
+      .mode-off { color: var(--muted-foreground); }
+      .shortcuts { display: grid; grid-template-columns: max-content 1fr; gap: 8px 14px; align-items: center; }
+      .shortcuts .keys { display: inline-flex; align-items: center; gap: 3px; }
+      .shortcuts .plus { color: var(--muted-foreground); font-size: 11px; }
       .legend { display: flex; flex-wrap: wrap; gap: 8px; }
-      .chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 7px;
-        font-size: 12.5px;
-        font-weight: 500;
-        padding: 4px 12px 4px 9px;
-        border: 1px solid var(--border);
-        border-radius: 999px;
-      }
-      .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+      .legend .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
       .dot-human { background: #1a7f37; }
       .dot-light { background: #d4a017; }
       .dot-heavy { background: #e8590c; }
-      .row input.url {
-        flex: 0 0 auto; width: 210px; font: inherit; font-size: 13px; padding: 6px 9px;
-        border: 1px solid var(--hairline, #d0d7de); border-radius: 7px;
-        background: transparent; color: inherit;
-      }
       .dot-ai { background: #e5484d; }
-      .dot-none { background: #8b949e; }
-
-      footer { margin-top: 24px; font-size: 12px; line-height: 1.6; color: var(--muted); }
+      .dot-none { background: #9aa3ad; }
+      .mini { margin: 4px 0 0; font-size: 12px; font-weight: 600; color: var(--muted-foreground); text-transform: uppercase; letter-spacing: 0.06em; }
+      .privacy { margin: 0; color: var(--muted-foreground); font-size: 13px; }
+      footer.foot { margin-top: 24px; font-size: 12.5px; line-height: 1.6; color: var(--muted-foreground); }
+      code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; background: var(--muted); padding: 1px 5px; border-radius: 5px; }
     </style>
   </head>
   <body>
-    <header>
-      <img src="/icons/icon-128.png" alt="" />
-      <div>
-        <h1>Anagram for Chrome</h1>
-        <div class="ver" id="version"></div>
-      </div>
-    </header>
+    <div class="page">
+      <header class="hdr">
+        <img src="/icons/icon-128.png" alt="" />
+        <div>
+          <h1>Anagram for Chrome</h1>
+          <div class="ver" id="version"></div>
+        </div>
+      </header>
 
-    <section>
-      <h2>Detection</h2>
-      <div class="row">
-        <div>
-          <label for="enabled">Enable on all sites</label>
-          <p class="hint">Per-site rules below override this default. Toggling applies to new page loads and open tabs.</p>
-        </div>
-        <input id="enabled" type="checkbox" />
-      </div>
-      <div class="row">
-        <div>
-          <label for="analysisScope">Analysis scope</label>
-          <p class="hint">Main content only analyzes the detected article region (trafilatura-style)
-            and skips comments/sidebars outside it. Falls back to whole page when no clear region
-            exists.</p>
-        </div>
-        <select id="analysisScope">
-          <option value="page">Whole page</option>
-          <option value="main">Main content only</option>
-        </select>
-      </div>
-      <div class="row">
-        <div>
-          <label for="mergeShorts">Group short neighboring paragraphs</label>
-          <p class="hint">Paragraphs under the 50-word evidence floor are analyzed together with
-            compatible neighbors — the chip shows ×N. Off: short paragraphs are skipped entirely
-            (strict per-paragraph mode).</p>
-        </div>
-        <input id="mergeShorts" type="checkbox" />
-      </div>
-    </section>
+      <div class="stack">
+        <section class="card" data-size="sm">
+          <header>
+            <h2>Detection</h2>
+            <p>What gets analyzed, and how paragraphs are grouped.</p>
+          </header>
+          <section>
+            <div class="field" data-orientation="horizontal">
+              <section>
+                <label for="enabled">Enable on all sites</label>
+                <p>Per-site rules below override this default. Toggling applies to new page loads and open tabs.</p>
+              </section>
+              <input id="enabled" type="checkbox" role="switch" />
+            </div>
+            <div class="field" data-orientation="horizontal">
+              <section>
+                <label for="analysisScope">Analysis scope</label>
+                <p>Main content only analyzes the detected article region (trafilatura-style) and skips
+                  comments/sidebars outside it. Falls back to whole page when no clear region exists.</p>
+              </section>
+              <select id="analysisScope">
+                <option value="page">Whole page</option>
+                <option value="main">Main content only</option>
+              </select>
+            </div>
+            <div class="field" data-orientation="horizontal">
+              <section>
+                <label for="mergeShorts">Group short neighboring paragraphs</label>
+                <p>Paragraphs under the 50-word evidence floor are analyzed together with compatible
+                  neighbors — the chip shows ×N. Off: short paragraphs are skipped entirely.</p>
+              </section>
+              <input id="mergeShorts" type="checkbox" role="switch" />
+            </div>
+          </section>
+        </section>
 
-    <section>
-      <h2>Display</h2>
-      <div class="row">
-        <div>
-          <label for="highlights">Mark analyzed paragraphs</label>
-          <p class="hint">Colors each paragraph by verdict — green = human, yellow = lightly edited, orange = heavily edited, red = AI-generated. Badges stay either way.</p>
-        </div>
-        <input id="highlights" type="checkbox" />
-      </div>
-      <div class="row">
-        <div>
-          <label for="markStyle">Mark style</label>
-          <p class="hint">How analyzed paragraphs are marked in place. “Mark analyzed paragraphs” above stays the master on/off.</p>
-        </div>
-        <select id="markStyle">
-          <option value="both">Underline + tint</option>
-          <option value="underline">Underline only</option>
-          <option value="tint">Tint only</option>
-        </select>
-      </div>
-      <div class="row">
-        <div>
-          <label for="displayMode">What to show</label>
-          <p class="hint">Every paragraph is analyzed either way. “Flagged only” keeps pages calm and marks just heavily-edited and AI-generated verdicts.</p>
-        </div>
-        <select id="displayMode">
-          <option value="all">All chips</option>
-          <option value="flagged">Flagged only</option>
-        </select>
-      </div>
-    </section>
+        <section class="card" data-size="sm">
+          <header>
+            <h2>Display</h2>
+            <p>How verdicts are drawn on the page.</p>
+          </header>
+          <section>
+            <div class="field" data-orientation="horizontal">
+              <section>
+                <label for="highlights">Mark analyzed paragraphs</label>
+                <p>Colors each paragraph by verdict — green = human, yellow = lightly edited, orange = heavily edited, red = AI-generated. Badges stay either way.</p>
+              </section>
+              <input id="highlights" type="checkbox" role="switch" />
+            </div>
+            <div class="field" data-orientation="horizontal">
+              <section>
+                <label for="markStyle">Mark style</label>
+                <p>How analyzed paragraphs are marked in place. “Mark analyzed paragraphs” above stays the master on/off.</p>
+              </section>
+              <select id="markStyle">
+                <option value="both">Underline + tint</option>
+                <option value="underline">Underline only</option>
+                <option value="tint">Tint only</option>
+              </select>
+            </div>
+            <div class="field" data-orientation="horizontal">
+              <section>
+                <label for="displayMode">What to show</label>
+                <p>Every paragraph is analyzed either way. “Flagged only” keeps pages calm and marks just heavily-edited and AI-generated verdicts.</p>
+              </section>
+              <select id="displayMode">
+                <option value="all">All chips</option>
+                <option value="flagged">Flagged only</option>
+              </select>
+            </div>
+          </section>
+        </section>
 
-    <section>
-      <h2>Scoring backend</h2>
-      <div class="row">
-        <div>
-          <label for="backend">Backend</label>
-          <p class="hint">Auto uses the local <code>anagramd</code> daemon (EditLens roberta-large,
-            running on this Mac) whenever it answers, and falls back to the demo stub otherwise.
-            Start it with <code>npm run serve</code> in the extension folder.</p>
-        </div>
-        <select id="backend">
-          <option value="auto">Auto (daemon, else demo stub)</option>
-          <option value="server">Local daemon only</option>
-          <option value="stub">Demo stub only</option>
-        </select>
-      </div>
-      <div class="row">
-        <div>
-          <label for="serverUrl">Daemon URL</label>
-          <p class="hint">Where <code>anagramd</code> listens. Default <code>http://127.0.0.1:8765</code>.</p>
-        </div>
-        <input id="serverUrl" class="url" type="url" placeholder="http://127.0.0.1:8765" spellcheck="false" />
-      </div>
-      <div class="row">
-        <div>
-          <label for="checkBackend">Status</label>
-          <p class="hint" id="backendStatus">Checking…</p>
-        </div>
-        <button type="button" class="quiet" id="checkBackend">Check now</button>
-      </div>
-    </section>
+        <section class="card" data-size="sm">
+          <header>
+            <h2>Scoring backend</h2>
+            <p>Where the verdicts come from. Nothing leaves this computer either way.</p>
+          </header>
+          <section>
+            <div class="field" data-orientation="horizontal">
+              <section>
+                <label for="backend">Backend</label>
+                <p>Auto uses the local <code>anagramd</code> daemon (EditLens roberta-large, running on this Mac)
+                  whenever it answers, and falls back to the demo stub otherwise. Start it with
+                  <code>npm run serve</code> in the extension folder.</p>
+              </section>
+              <select id="backend">
+                <option value="auto">Auto (daemon, else stub)</option>
+                <option value="server">Local daemon only</option>
+                <option value="stub">Demo stub only</option>
+              </select>
+            </div>
+            <div class="field" data-orientation="horizontal">
+              <section>
+                <label for="serverUrl">Daemon URL</label>
+                <p>Where <code>anagramd</code> listens. Default <code>http://127.0.0.1:8765</code>.</p>
+              </section>
+              <input id="serverUrl" class="url" type="url" placeholder="http://127.0.0.1:8765" spellcheck="false" />
+            </div>
+            <div class="field" data-orientation="horizontal">
+              <section>
+                <label for="checkBackend">Status</label>
+                <p id="backendStatus">Checking…</p>
+              </section>
+              <button type="button" class="btn" data-variant="outline" data-size="sm" id="checkBackend">Check now</button>
+            </div>
+          </section>
+        </section>
 
-    <section>
-      <h2>Per-site rules</h2>
-      <div id="sites"></div>
-      <form class="add-rule" id="addRule">
-        <input id="addHost" type="text" placeholder="example.com" aria-label="Hostname"
-          autocomplete="off" spellcheck="false" />
-        <select id="addMode" aria-label="Rule">
-          <option value="on">Always on</option>
-          <option value="off">Always off</option>
-        </select>
-        <button type="submit" class="primary">Add</button>
-        <p class="form-error" id="addError" hidden></p>
-      </form>
-    </section>
+        <section class="card" data-size="sm">
+          <header>
+            <h2>Per-site rules</h2>
+            <p>Always-on / always-off overrides for specific hostnames.</p>
+          </header>
+          <section>
+            <div id="sites"></div>
+            <form class="form-row" id="addRule">
+              <input id="addHost" class="input" type="text" placeholder="example.com" aria-label="Hostname"
+                autocomplete="off" spellcheck="false" />
+              <select id="addMode" class="select" aria-label="Rule">
+                <option value="on">Always on</option>
+                <option value="off">Always off</option>
+              </select>
+              <button type="submit" class="btn">Add</button>
+              <p class="form-error" id="addError" hidden></p>
+            </form>
+          </section>
+        </section>
 
-    <section>
-      <h2>Advanced</h2>
-      <div class="row">
-        <div>
-          <label for="debug">Debug logging</label>
-          <p class="hint">Verbose console logs from the content script (namespaced <code>[anagram:*]</code>).</p>
-        </div>
-        <input id="debug" type="checkbox" />
-      </div>
-    </section>
+        <section class="card" data-size="sm">
+          <header>
+            <h2>Advanced</h2>
+          </header>
+          <section>
+            <div class="field" data-orientation="horizontal">
+              <section>
+                <label for="debug">Debug logging</label>
+                <p>Verbose console logs from the content script (namespaced <code>[anagram:*]</code>).</p>
+              </section>
+              <input id="debug" type="checkbox" role="switch" />
+            </div>
+          </section>
+        </section>
 
-    <section>
-      <h2>About &amp; shortcuts</h2>
-      <div class="shortcuts">
-        <span class="keys"><kbd>Alt</kbd><span class="plus">+</span><kbd>Shift</kbd><span class="plus">+</span><kbd>P</kbd></span>
-        <span class="what">Show or hide the Anagram overlay on the current page.</span>
-        <span class="keys"><kbd>Right-click</kbd></span>
-        <span class="what">Choose “Analyze selection with Anagram” to score just the highlighted text.</span>
+        <section class="card" data-size="sm">
+          <header>
+            <h2>About &amp; shortcuts</h2>
+          </header>
+          <section>
+            <div class="shortcuts">
+              <span class="keys"><kbd class="kbd">Alt</kbd><span class="plus">+</span><kbd class="kbd">Shift</kbd><span class="plus">+</span><kbd class="kbd">P</kbd></span>
+              <span class="what">Show or hide the Anagram overlay on the current page.</span>
+              <span class="keys"><kbd class="kbd">Right-click</kbd></span>
+              <span class="what">Choose “Analyze selection with Anagram” to score just the highlighted text.</span>
+            </div>
+            <p class="privacy">Nothing leaves your computer — scoring runs in the local <code>anagramd</code> daemon on this Mac (or in the extension’s demo stub).</p>
+            <h3 class="mini">Verdict colors</h3>
+            <div class="legend">
+              <span class="badge" data-variant="outline"><span class="dot dot-human"></span>Human</span>
+              <span class="badge" data-variant="outline"><span class="dot dot-light"></span>Lightly edited</span>
+              <span class="badge" data-variant="outline"><span class="dot dot-heavy"></span>Heavily edited</span>
+              <span class="badge" data-variant="outline"><span class="dot dot-ai"></span>AI-generated</span>
+              <span class="badge" data-variant="outline"><span class="dot dot-none"></span>Unavailable</span>
+            </div>
+          </section>
+        </section>
       </div>
-      <p class="privacy">Nothing leaves your computer — scoring runs in the local <code>anagramd</code> daemon on this Mac (or in the extension’s demo stub).</p>
-      <h3 class="mini">Verdict colors</h3>
-      <div class="legend">
-        <span class="chip"><span class="dot dot-human"></span>Human</span>
-        <span class="chip"><span class="dot dot-light"></span>Lightly edited</span>
-        <span class="chip"><span class="dot dot-heavy"></span>Heavily edited</span>
-        <span class="chip"><span class="dot dot-ai"></span>AI-generated</span>
-        <span class="chip"><span class="dot dot-none"></span>Unavailable</span>
-      </div>
-    </section>
 
-    <footer>
-      Scores are EditLens estimates of how much of a paragraph was AI-edited (0–100%), not proof.
-      Detection runs per paragraph with a 50-word evidence floor; shorter neighboring paragraphs
-      are analyzed together. Model: pangram/editlens_roberta-large (CC BY-NC-SA 4.0, non-commercial).
-    </footer>
+      <footer class="foot">
+        Scores are EditLens estimates of how much of a paragraph was AI-edited (0–100%), not proof.
+        Detection runs per paragraph with a 50-word evidence floor; shorter neighboring paragraphs
+        are analyzed together. Model: pangram/editlens_roberta-large (CC BY-NC-SA 4.0, non-commercial).
+      </footer>
+    </div>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>

@@ -4,6 +4,8 @@
 // live via settings watches in the content script), scored + flagged status line
 // (GET_TAB_STATE), Rescan, and a gear to the full options page.
 import { browser } from "#imports";
+import "../../lib/ui/basecoat-vega.cdn.min.css";
+import { followSystemTheme } from "../../lib/ui/theme";
 import {
   settings,
   enabledForSite,
@@ -21,13 +23,32 @@ const rescanEl = document.getElementById("rescan") as HTMLButtonElement;
 const statusEl = document.getElementById("status") as HTMLElement;
 const gearEl = document.getElementById("gear") as HTMLButtonElement;
 const backendEl = document.getElementById("backend") as HTMLElement;
-// Segmented controls are radio groups (keyboard: arrow keys within the group).
-const displayModeEls = Array.from(
-  document.querySelectorAll<HTMLInputElement>('input[name="displayMode"]'),
-);
-const scopeEls = Array.from(
-  document.querySelectorAll<HTMLInputElement>('input[name="analysisScope"]'),
-);
+// Segmented controls are Basecoat tab lists (buttons with aria-selected).
+const displayModeEls = segButtons("displayMode");
+const scopeEls = segButtons("analysisScope");
+
+function segButtons(name: string): HTMLButtonElement[] {
+  return Array.from(
+    document.querySelectorAll<HTMLButtonElement>(`nav[data-seg="${name}"] > [role="tab"]`),
+  );
+}
+
+/** Wire a tab list as a single-choice control (click + arrow keys) → callback. */
+function bindSeg(els: HTMLButtonElement[], onPick: (value: string) => void): void {
+  els.forEach((el, i) => {
+    el.addEventListener("click", () => {
+      checkSeg(els, el.dataset.value ?? "");
+      onPick(el.dataset.value ?? "");
+    });
+    el.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+      e.preventDefault();
+      const next = els[(i + (e.key === "ArrowRight" ? 1 : els.length - 1)) % els.length];
+      next.focus();
+      next.click();
+    });
+  });
+}
 
 async function activeTab() {
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
@@ -49,8 +70,12 @@ function sendToTab(tabId: number | undefined, msg: ControlMessage): void {
   void browser.tabs.sendMessage(tabId, msg).catch(() => undefined);
 }
 
-function checkSeg(els: HTMLInputElement[], value: string): void {
-  for (const el of els) el.checked = el.value === value;
+function checkSeg(els: HTMLButtonElement[], value: string): void {
+  for (const el of els) {
+    const on = el.dataset.value === value;
+    el.setAttribute("aria-selected", String(on));
+    el.tabIndex = on ? 0 : -1;
+  }
 }
 
 function setStatusText(text: string): void {
@@ -112,6 +137,7 @@ async function refreshStatus(tabId: number | undefined): Promise<void> {
 }
 
 async function init(): Promise<void> {
+  followSystemTheme();
   const tab = await activeTab();
   const host = hostOf(tab?.url);
 
@@ -151,21 +177,8 @@ async function init(): Promise<void> {
     );
   });
 
-  for (const el of displayModeEls) {
-    el.addEventListener("change", () => {
-      if (el.checked) {
-        void settings.displayMode.setValue(el.value as "all" | "flagged");
-      }
-    });
-  }
-
-  for (const el of scopeEls) {
-    el.addEventListener("change", () => {
-      if (el.checked) {
-        void settings.analysisScope.setValue(el.value as "page" | "main");
-      }
-    });
-  }
+  bindSeg(displayModeEls, (v) => void settings.displayMode.setValue(v as "all" | "flagged"));
+  bindSeg(scopeEls, (v) => void settings.analysisScope.setValue(v as "page" | "main"));
 
   rescanEl.addEventListener("click", () => {
     sendToTab(tab?.id, { action: ACTIONS.RESCAN });

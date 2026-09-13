@@ -94,20 +94,21 @@ const OVERLAY_CSS = `
 .bar button {
   flex: 0 0 auto;
   font: 600 12px/1 ui-sans-serif, system-ui, sans-serif;
-  border-radius: 999px;
+  border-radius: 8px;
   padding: 7px 13px;
   cursor: pointer;
-  border: 1px solid rgba(15, 23, 42, 0.12);
+  border: 1px solid #e5e5e5;
   background: #fff;
-  color: #1f2328;
+  color: #252525;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
-.bar button:hover { background: #f6f8fa; }
+.bar button:hover { background: #f5f5f5; }
 .bar button.primary {
-  background: linear-gradient(135deg, #6d5efc, #8b5efc);
+  background: #171717;
   border-color: transparent;
-  color: #fff;
+  color: #fafafa;
 }
-.bar button.primary:hover { filter: brightness(1.06); }
+.bar button.primary:hover { background: #333333; }
 
 .paperwrap { padding: 26px 16px 120px; }
 .paper {
