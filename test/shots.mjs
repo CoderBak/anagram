@@ -35,12 +35,43 @@ const DARK_PAGE = `<!doctype html><html><head><meta charset="utf-8"><style>
      sanded until nothing catches, and the sanding itself is the fingerprint it leaves behind.</p>
 </body></html>`;
 
-const server = http.createServer((_q, r) => {
+// A light article page mixing verdicts (human / lightly edited / AI) so the triage
+// panel has something to list without depending on a live site.
+const MIXED_PAGE = `<!doctype html><html><head><meta charset="utf-8"><style>
+  body { background:#fff; color:#1f2328; font:17px/1.75 Georgia, serif; max-width:720px; margin:48px auto; padding:0 24px; }
+  h1 { font:700 28px/1.3 system-ui, sans-serif; margin-bottom:4px; }
+  .byline { color:#656d76; font:13px system-ui, sans-serif; margin-bottom:28px; }
+</style></head><body>
+  <h1>Notes on a Call, a Flat, and a Writing Habit</h1>
+  <div class="byline">A mixed-authorship reading demo</div>
+  <p>I got the call around six, right when the rice was starting to catch on the bottom of the pan. My brother
+     never rings on weeknights, so I turned the burner off and sat on the floor to listen. He talked for twenty
+     minutes about a dog he was thinking of adopting and never mentioned the thing we both knew he had rung to
+     say. Afterwards the rice was ruined and I ate it anyway.</p>
+  <p>The call came at around six o'clock, precisely as the rice began adhering to the bottom of the pan. Because
+     my brother seldom telephones on weeknights, I switched off the burner and settled onto the floor to listen
+     attentively. For twenty minutes he discussed a dog he was contemplating adopting, carefully avoiding the
+     matter we both understood to be the true reason for his call. By the end, the rice was beyond saving,
+     though I consumed it regardless.</p>
+  <p>Our tenancy began in March, at a time when the radiators produced nightly clanking sounds and the landlord
+     repeatedly assured us that a plumber would arrive, though none ever materialized. The kitchen window faced
+     a brick wall situated a mere six feet away; however, by leaning out sufficiently, one could glimpse a narrow
+     section of the canal, where, on favorable mornings, a heron stood with a proprietary air. We remained there
+     for four years, and the memory of that heron persists to this day.</p>
+  <p>Building a consistent writing habit is one of the most valuable investments you can make in your personal
+     and professional development. Start by setting aside a dedicated time each day, even if it's just fifteen
+     minutes, and create a distraction-free environment that allows you to focus. Remember that progress matters
+     more than perfection, so embrace imperfect drafts and celebrate small wins along the way. Over time, these
+     small, intentional steps compound into meaningful growth.</p>
+</body></html>`;
+
+const server = http.createServer((q, r) => {
   r.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-  r.end(DARK_PAGE);
+  r.end(q.url?.startsWith("/mixed") ? MIXED_PAGE : DARK_PAGE);
 });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const darkUrl = `http://localhost:${server.address().port}/dark.html`;
+const mixedUrl = `http://localhost:${server.address().port}/mixed.html`;
 
 const context = await chromium.launchPersistentContext("", {
   headless: false, viewport: { width: 1180, height: 780 },
@@ -151,11 +182,11 @@ try {
   console.log("ok popup.png");
 }
 
-// 6) triage panel on wikipedia (live; falls back to dark page if offline)
+// 6) triage panel on the local mixed-authorship page (deterministic; real model → flagged items)
 try {
   const p = await context.newPage();
-  await p.goto("https://en.wikipedia.org/wiki/Alan_Turing", { waitUntil: "domcontentloaded", timeout: 40000 });
-  await settle(p, 4);
+  await p.goto(mixedUrl, { waitUntil: "load" });
+  await settle(p, 2);
   await p.evaluate(() => {
     document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")
       ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
