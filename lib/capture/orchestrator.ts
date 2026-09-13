@@ -41,8 +41,14 @@ import { createLogger } from "../log";
 
 const log = createLogger("orchestrator");
 
-const BATCH_CHAR_BUDGET = 800;
+// Per-lane batch sizes (chars): the viewport lane favours time-to-first-chip, the
+// background prefetch lane favours model throughput (see scheduler.ts).
+const BATCH_CHAR_BUDGET = { viewport: 2400, near: 4000, background: 6000 } as const;
 const MAX_IN_FLIGHT = 4;
+/** Background prefetch may hold at most this many of the in-flight slots. */
+const MAX_BACKGROUND_IN_FLIGHT = 1;
+/** Units enqueued per idle prefetch pass (huge pages drain in successive passes). */
+const PREFETCH_PASS = 300;
 // The MAIN-world nav hook (entrypoints/nav-hook.content.ts) announces pushState/
 // replaceState instantly via "anagram:navigate"; the poll is only a slow fallback
 // for exotic navigation paths the hook cannot see.
@@ -297,6 +303,36 @@ export function createOrchestrator(
       }
       observers.observeUnit(u);
     }
+    schedulePrefetch();
+  }
+
+  // --- idle prefetch -----------------------------------------------------------------
+  // Everything the observers have not yet asked for is scored in the background lane
+  // during idle time, in document order, so by the time the reader scrolls there the
+  // verdict is already cached (both here and in the daemon-side persistent cache).
+  // The lane is lowest priority and capped to one in-flight batch, so it never delays
+  // the viewport; a unit that scrolls into view meanwhile is simply upgraded.
+  let prefetchScheduled = false;
+  function schedulePrefetch(): void {
+    if (prefetchScheduled || frozen) return;
+    prefetchScheduled = true;
+    const run = () => {
+      prefetchScheduled = false;
+      if (!started || frozen) return;
+      let n = 0;
+      const pending = [...unitsById.values()]
+        .filter((u) => !u.isScored && !resultsById.has(u.id))
+        .sort((a, b) => a.order - b.order);
+      for (const u of pending) {
+        scheduler.enqueue(u, "background");
+        if (++n >= PREFETCH_PASS) break;
+      }
+      if (n > 0) log.log("prefetch: queued", n, "of", pending.length, "unscored units");
+    };
+    const ric = (window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number })
+      .requestIdleCallback;
+    if (typeof ric === "function") ric(run, { timeout: 1500 });
+    else setTimeout(run, 400);
   }
 
   // --- scheduler send/render seam ----------------------------------------------------
@@ -415,6 +451,8 @@ export function createOrchestrator(
     badges.setVisible(visible);
     setHighlightsVisible(visible && highlightsEnabled);
     updateFab();
+    // A pass may have been capped (huge page): keep draining while there is work left.
+    if (scheduler.pendingCount() === 0) schedulePrefetch();
   }
 
   /** Repaint everything under a new display mode (results are all cached). */
@@ -460,6 +498,7 @@ export function createOrchestrator(
   const scheduler: Scheduler = createScheduler({
     batchCharBudget: BATCH_CHAR_BUDGET,
     maxInFlight: MAX_IN_FLIGHT,
+    maxBackgroundInFlight: MAX_BACKGROUND_IN_FLIGHT,
     send,
     render,
   });

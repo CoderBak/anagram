@@ -14,8 +14,10 @@ import { createLogger } from "../log";
 
 const log = createLogger("router");
 
-/** Default per-batch character budget (reference value). */
-const BATCH_CHAR_BUDGET = 800;
+/** Per-request character budget. The model scores ~3× more paragraphs per second in
+ *  batches of 12+ than singly, so requests are re-packed generously here (the content
+ *  script already sends viewport-first batches; this only merges what arrives together). */
+const BATCH_CHAR_BUDGET = 6000;
 /** Bounded fan-out the reference lacked. */
 const MAX_IN_FLIGHT = 4;
 /** Backoff (ms) before the single retry. */
@@ -91,14 +93,17 @@ export function createRouter(client: ScoreClient): BackendRouter {
     // Representative block per not-yet-known key that we must fetch fresh.
     const toFetch: ScoreBlock[] = [];
 
-    for (const block of req.blocks) {
+    // One memory+storage lookup for the whole request (the persistent layer is async).
+    const keys = req.blocks.map((b) => cache.keyOf(b.text));
+    const hits = await cache.getMany(keys);
+    for (const [i, block] of req.blocks.entries()) {
       // SW-side cache hit → skip the backend entirely.
-      const cached = cache.get(block.text);
+      const key = keys[i];
+      const cached = hits.get(key);
       if (cached) {
         resultById.set(block.id, { ...cached, id: block.id });
         continue;
       }
-      const key = cache.keyOf(block.text);
       let group = keyToBlocks.get(key);
       if (!group) {
         group = [];

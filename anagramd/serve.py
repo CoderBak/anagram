@@ -103,12 +103,18 @@ class EditLens:
         self.lock = threading.Lock()
         self.scored = 0
         self.started = time.time()
+        self.last_run_ms = 0.0
+        self.last_wait_ms = 0.0
 
         if not (model_dir / "config.json").exists():
             sys.exit(f"model dir {model_dir} has no config.json — download the model first:\n"
                      f"  hf download pangram/editlens_roberta-large --local-dir {model_dir}")
 
         self.device = self._pick_device(device)
+        # fp16 on the GPU is numerically indistinguishable here (probs agree to 3-4 decimals) and
+        # ~20% faster at batch 16-32; CPU stays fp32 (half precision is slow on CPU kernels).
+        if dtype == "auto":
+            dtype = "fp16" if self.device in ("mps", "cuda") else "fp32"
         self.dtype = torch.float16 if dtype == "fp16" and self.device != "cpu" else torch.float32
         t0 = time.time()
         self.tok = AutoTokenizer.from_pretrained(str(model_dir))
@@ -155,7 +161,10 @@ class EditLens:
         out: list[dict | None] = [None] * len(cleaned)
         idx = np.arange(self.n_buckets, dtype=np.float64)
 
+        t_wait = time.time()
         with self.lock, torch.inference_mode():
+            self.last_wait_ms = (time.time() - t_wait) * 1000  # time spent queued behind another batch
+            t_run = time.time()
             for start in range(0, len(order), self.batch_size):
                 chunk = order[start:start + self.batch_size]
                 enc = self.tok([cleaned[i] for i in chunk], truncation=True, max_length=self.max_length,
@@ -173,6 +182,7 @@ class EditLens:
                         "tokens": min(lengths[i], self.max_length),
                         "truncated": lengths[i] > self.max_length,
                     }
+            self.last_run_ms = (time.time() - t_run) * 1000
         self.scored += len(cleaned)
         return out  # type: ignore[return-value]
 
@@ -238,8 +248,9 @@ def make_app(engine: EditLens):
             else:
                 results.append({"id": b["id"], **r})
         ms = (time.time() - t0) * 1000
-        log.info("score %d blocks (%d tok) in %.0f ms — buckets %s", len(texts),
-                 sum(r["tokens"] for r in scored), ms, [r["bucket"] for r in scored])
+        log.info("score %d blocks (%d tok): %.0f ms model, %.0f ms queued, %.0f ms total — buckets %s",
+                 len(texts), sum(r["tokens"] for r in scored), getattr(engine, "last_run_ms", 0.0),
+                 getattr(engine, "last_wait_ms", 0.0), ms, [r["bucket"] for r in scored])
         return jsonify({"v": CONTRACT_VERSION, "session": body.get("session"),
                         "model": engine.info()["model"], "partial": False, "results": results})
 
@@ -270,9 +281,10 @@ def main() -> None:
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--device", default="auto", choices=["auto", "mps", "cuda", "cpu"])
-    ap.add_argument("--dtype", default="fp32", choices=["fp32", "fp16"])
+    ap.add_argument("--dtype", default="auto", choices=["auto", "fp32", "fp16"],
+                    help="auto = fp16 on mps/cuda, fp32 on cpu")
     ap.add_argument("--max-length", type=int, default=512, help="roberta-large caps at 512")
-    ap.add_argument("--batch-size", type=int, default=16)
+    ap.add_argument("--batch-size", type=int, default=32)
     ap.add_argument("--selftest", action="store_true", help="score three sample paragraphs, print, exit")
     args = ap.parse_args()
 

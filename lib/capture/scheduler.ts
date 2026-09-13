@@ -1,12 +1,18 @@
 // lib/capture/scheduler.ts — 3-lane priority queue + epoch/generation guard.
 //
-// Lanes: viewport > near > background. Units are micro-batched up to a char budget
-// (default 800) with a bounded fan-out (maxInFlight=4). Dedup is by UNIT IDENTITY —
-// a unit is never in flight twice — NOT by text: distinct paragraphs sharing the
-// same text each need their own badge (text-level dedup lives in the orchestrator's
-// send()). A unit already queued in a LOWER lane is upgraded when re-enqueued for a
-// higher one (near → viewport on scroll). Each enqueue captures the current epoch;
+// Lanes: viewport > near > background. Units are micro-batched up to a per-lane char
+// budget with a bounded fan-out (maxInFlight). Dedup is by UNIT IDENTITY — a unit is
+// never in flight twice — NOT by text: distinct paragraphs sharing the same text each
+// need their own badge (text-level dedup lives in the orchestrator's send()). A unit
+// already queued in a LOWER lane is upgraded when re-enqueued for a higher one
+// (background → near → viewport on scroll). Each enqueue captures the current epoch;
 // responses from a superseded generation are discarded.
+//
+// Budgets are per lane because the trade-off differs: the viewport lane wants the
+// first chip fast (small batch), the background prefetch lane wants throughput (the
+// model scores ~3× more paragraphs per second in batches of 12+ than one at a time).
+// The background lane is also capped to `maxBackgroundInFlight` concurrent batches so
+// prefetch never starves what the reader can actually see.
 import type { Unit, Lane } from "../types";
 import type { ScoreBlock, ScoreResult } from "../contract";
 import { truncateForScoring } from "../dom/text";
@@ -15,10 +21,13 @@ export interface Scheduler {
   enqueue(unit: Unit, lane: Lane): void;
   bumpEpoch(): number; // SPA route change / teardown
   stop(): void;
+  /** Units currently queued (any lane) or in flight. */
+  pendingCount(): number;
 }
 
 const LANES: Lane[] = ["viewport", "near", "background"];
 const LANE_RANK: Record<Lane, number> = { viewport: 0, near: 1, background: 2 };
+const DEFAULT_BUDGET = 800;
 
 interface Pending {
   unit: Unit;
@@ -26,13 +35,18 @@ interface Pending {
 }
 
 export function createScheduler(opts: {
-  batchCharBudget: number;
+  batchCharBudget: number | Partial<Record<Lane, number>>;
   maxInFlight: number;
+  maxBackgroundInFlight?: number;
   send(blocks: ScoreBlock[], lane: Lane): Promise<ScoreResult[]>;
   render(results: ScoreResult[], epoch: number): void;
 }): Scheduler {
-  const batchCharBudget = opts.batchCharBudget || 800;
   const maxInFlight = opts.maxInFlight || 4;
+  const maxBackground = Math.max(1, opts.maxBackgroundInFlight ?? 1);
+  const budgetFor = (lane: Lane): number =>
+    typeof opts.batchCharBudget === "number"
+      ? opts.batchCharBudget || DEFAULT_BUDGET
+      : opts.batchCharBudget[lane] || DEFAULT_BUDGET;
 
   const queues: Record<Lane, Pending[]> = {
     viewport: [],
@@ -42,6 +56,7 @@ export function createScheduler(opts: {
 
   let currentEpoch = 0;
   let inFlight = 0;
+  let inFlightBackground = 0;
   let pumpScheduled = false;
 
   // id → lane it is queued in (for upgrade); in-flight ids are separate.
@@ -72,20 +87,22 @@ export function createScheduler(opts: {
     });
   }
 
-  /** Pull the next batch from the highest-priority non-empty lane, up to the budget. */
+  /** Pull the next batch from the highest-priority eligible non-empty lane, up to its budget. */
   function pickBatch(): { lane: Lane; batch: Pending[] } | null {
     for (const lane of LANES) {
       const q = queues[lane];
       if (q.length === 0) continue;
+      if (lane === "background" && inFlightBackground >= maxBackground) continue;
+      const budget = budgetFor(lane);
       const batch: Pending[] = [];
       let chars = 0;
       while (q.length > 0) {
         const next = q[0];
         const len = Math.min(next.unit.text.length, 4096);
-        if (batch.length > 0 && chars + len > batchCharBudget) break;
+        if (batch.length > 0 && chars + len > budget) break;
         batch.push(q.shift()!);
         chars += len;
-        if (chars >= batchCharBudget) break;
+        if (chars >= budget) break;
       }
       return { lane, batch };
     }
@@ -102,6 +119,7 @@ export function createScheduler(opts: {
 
   function dispatch(lane: Lane, batch: Pending[]): void {
     inFlight++;
+    if (lane === "background") inFlightBackground++;
     for (const p of batch) {
       queuedLane.delete(p.unit.id);
       inFlightIds.add(p.unit.id);
@@ -126,6 +144,7 @@ export function createScheduler(opts: {
       })
       .finally(() => {
         inFlight--;
+        if (lane === "background") inFlightBackground--;
         for (const p of batch) inFlightIds.delete(p.unit.id);
         schedulePump();
       });
@@ -143,5 +162,9 @@ export function createScheduler(opts: {
     inFlightIds.clear();
   }
 
-  return { enqueue, bumpEpoch, stop };
+  function pendingCount(): number {
+    return queuedLane.size + inFlightIds.size;
+  }
+
+  return { enqueue, bumpEpoch, stop, pendingCount };
 }

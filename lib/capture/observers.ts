@@ -25,7 +25,9 @@ export interface Observers {
 }
 
 const DRAIN_DEBOUNCE_MS = 250;
-const ROOT_MARGIN = "500px 0px";
+// Prefetch margin for the "near" lane: at reading-speed scrolling, ~1.5 screens ahead
+// keeps chips landing before the paragraph enters the viewport.
+const ROOT_MARGIN = "1200px 0px";
 /** Min interval between attribute-driven re-scans of the SAME element. */
 const ATTR_RESCAN_MIN_MS = 1500;
 const WATCHED_ATTRS = ["class", "style", "hidden", "open", "aria-hidden"];
