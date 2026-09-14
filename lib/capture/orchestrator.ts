@@ -577,8 +577,6 @@ export function createOrchestrator(
     badges.setVisible(visible);
     setHighlightsVisible(visible && highlightsEnabled);
     updateFab();
-    // A pass may have been capped (huge page): keep draining while there is work left.
-    if (scheduler.pendingCount() === 0) schedulePrefetch();
   }
 
   /** Repaint everything under a new display mode (results are all cached). */
@@ -627,6 +625,10 @@ export function createOrchestrator(
     maxBackgroundInFlight: MAX_BACKGROUND_IN_FLIGHT,
     send,
     render,
+    // A prefetch pass is capped (PREFETCH_PASS): keep draining while work is left.
+    onIdle: () => {
+      if (started && !frozen && !backendDown) schedulePrefetch();
+    },
   });
 
   // --- observers ---------------------------------------------------------------------
@@ -644,6 +646,12 @@ export function createOrchestrator(
       } catch (e) {
         log.warn("dirty re-scan failed", e);
       }
+    },
+    onDocumentReplaced() {
+      // document.open()/write() swapped <html> under us (challenge pages, legacy
+      // SPAs): every element we held is detached — start over on the new tree.
+      log.log("document replaced — restarting");
+      if (started) rescan();
     },
   });
 
@@ -884,6 +892,7 @@ export function createOrchestrator(
     for (const unit of [...unitsById.values()]) observers.dropUnit(unit);
     clearAllResults();
     cache.clear(); // a rescan must re-derive every verdict from the current backend
+    registerHighlightStyles(); // no-op unless the document was replaced under us
     badges.resetTheme(); // the site theme may have toggled since the last scan
     refreshHighlightTheme();
     resolveScopeRoot();

@@ -29,7 +29,20 @@ const record = (phase, name, ok, note = "") =>
 // ---- fake daemon (deterministic verdicts) + server for the fixture page -------------
 let daemon = await startFakeDaemon();
 const daemonPort = daemon.port;
-const server = await serveHtml({ "/ui-fixtures.html": readFileSync(join(__dirname, "ui-fixtures.html"), "utf8") });
+const PARA = (tag) => `${tag} paragraph is long enough to be scored on its own because it carries well over fifty ordinary English words describing nothing in particular except the fact that a self-rewriting page must still end up with chips after it replaces its own document element, which is what legacy challenge pages and some old single-page frameworks do.`;
+const REWRITE_HTML = `<!doctype html><html><head><meta charset="utf-8"><title>rewrite fixture</title></head><body>
+<p>Interstitial: checking your browser, please wait…</p>
+<script>
+  setTimeout(() => {
+    document.open();
+    document.write('<!doctype html><html><head><meta charset="utf-8"><title>rewritten</title></head><body><main><p id="rw1">${PARA("REWRITTEN-ONE")}</p><p id="rw2">${PARA("REWRITTEN-TWO")}</p></main></body></html>');
+    document.close();
+  }, 1500);
+</script></body></html>`;
+const server = await serveHtml({
+  "/ui-fixtures.html": readFileSync(join(__dirname, "ui-fixtures.html"), "utf8"),
+  "/rewrite.html": REWRITE_HTML,
+});
 const fixturesUrl = server.url("/ui-fixtures.html");
 
 const { context, sw } = await launchExtension({ backendUrl: daemon.url });
@@ -545,6 +558,22 @@ async function sweep(page, steps = 6) {
       await opt.close();
     }
     record("ui", "main-content scope loads the Readability vendor chunk on demand", r.loaded && !r.failed && r.badges > 0, JSON.stringify(r));
+  }
+
+  // A22: a page that replaces its own <html> after load (document.open()/write(),
+  // as challenge interstitials and legacy frameworks do) — the extension must restart
+  // on the new tree: chips on the new paragraphs, ball present, marks painted.
+  {
+    const p = await context.newPage();
+    await p.goto(server.url("/rewrite.html"), { waitUntil: "load" });
+    // Settled chips (not the "analyzing…" ones inserted at dispatch) — marks land with the verdict.
+    const ok = await p.waitForFunction((sel) => {
+      const hosts = [...document.querySelectorAll(`#rw1 ${sel}, #rw2 ${sel}`)];
+      return hosts.length === 2 && hosts.every((h) => !h.shadowRoot?.querySelector(".pill.pending")) && !!document.getElementById("anagram-fab") && document.title === "rewritten";
+    }, BADGE_SEL, { timeout: 20000 }).then(() => true).catch(() => false);
+    const marks = await p.evaluate(() => { let n = 0; for (const h of CSS.highlights.values()) n += h.size; return n; }).catch(() => -1);
+    record("ui", "self-rewriting page (document.open/write): chips, ball and marks on the new tree", ok && marks >= 2, JSON.stringify({ ok, marks }));
+    await p.close();
   }
 
   // A21: the daemon goes away → the batch in flight renders "Unavailable", nothing new

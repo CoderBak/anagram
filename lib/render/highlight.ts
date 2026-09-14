@@ -93,9 +93,11 @@ function bandHighlight(b: Band): Highlight | null {
   let h = _bandHighlights.get(b);
   if (!h) {
     h = new Highlight();
-    CSS.highlights.set(HIGHLIGHT_NAME[b], h);
     _bandHighlights.set(b, h);
   }
+  // Chrome empties the HighlightRegistry when a page reopens its document
+  // (document.open()/write()); a cached Highlight must be re-registered to paint.
+  if (CSS.highlights.get(HIGHLIGHT_NAME[b]) !== h) CSS.highlights.set(HIGHLIGHT_NAME[b], h);
   return h;
 }
 
@@ -115,9 +117,9 @@ function applyCss(): void {
   if (_shadowSheet) _shadowSheet.replaceSync(css);
 }
 
-/** Inject the `::highlight()` pseudo rules once. */
+/** Inject the `::highlight()` pseudo rules once (again if the document was replaced). */
 export function registerHighlightStyles(): void {
-  if (_stylesInjected) return;
+  if (_stylesInjected && _styleEl?.isConnected) return;
   if (!highlightsSupported()) return;
   _stylesInjected = true;
   const style = document.createElement("style");

@@ -242,6 +242,24 @@ export function hasColumnGaps(rawText: string): boolean {
   return /\S {8,}\S/.test(rawText);
 }
 
+// ---- name lists / citation strings ------------------------------------------------------
+
+/**
+ * "Pallarés-Carratalá V, Polo García J, Martín Rioboo E, …" — author lists, bylines
+ * and citation strings clear the word floor on reference pages but are not prose:
+ * nearly every token is a capitalised name or initial and commas come every few
+ * tokens. Prose (even German, with its capitalised nouns) stays well under the
+ * capitalised share; title-case headlines are too short to matter.
+ */
+export function looksLikeNameList(text: string): boolean {
+  const tokens = text.split(/\s+/).filter((t) => /\p{L}/u.test(t));
+  if (tokens.length < 12) return false;
+  let capitalised = 0;
+  for (const t of tokens) if (/^[("]?\p{Lu}[\p{L}'’\-.]*[,;.)]?$/u.test(t)) capitalised++;
+  const commas = (text.match(/,/g) ?? []).length;
+  return capitalised / tokens.length >= 0.6 && commas >= tokens.length / 8;
+}
+
 // ---- link density ------------------------------------------------------------------
 
 /**

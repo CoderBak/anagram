@@ -19,7 +19,7 @@
 // end-to-end (the HF-abstract "underline stops mid-paragraph" bug); only the text
 // sent to the backend is capped, at a sentence boundary (lib/dom/text.ts).
 import { NO_SCORE_TAGS, INLINE_FALLBACK_TAGS, isHeading, tagOf } from "./tags";
-import { isBoilerplate } from "./boilerplate";
+import { isBoilerplate, isNoTranslate } from "./boilerplate";
 import {
   createStyleCache,
   flowClassOf,
@@ -39,6 +39,7 @@ import {
   symbolNoiseRatio,
   hasColumnGaps,
   isSeparatorRun,
+  looksLikeNameList,
   MIN_UNIT_WORDS,
   MIN_MERGE_WORDS,
   MAX_UNIT_TEXT_CHARS,
@@ -123,6 +124,9 @@ export interface CollectOptions {
 
 /** Max link-text fraction for a run to count as prose (nav/menu barrier above it). */
 const MAX_LINK_RATIO = 0.6;
+/** An out-of-flow element with at most this much text is a marker (page number,
+ *  badge, anchor label), not content — skipped without breaking the sentence. */
+const SMALL_OUT_OF_FLOW_CHARS = 40;
 
 /** Blank line inside preserved-whitespace text == paragraph gap. */
 const PARA_GAP_RE = /\n[ \t\r]*\n/;
@@ -250,6 +254,12 @@ export function collectUnits(
     }
     if (isCitationMarker(el, tag)) return;
     if (cs && isVisuallyHidden(cs)) return;
+    // Absolutely positioned page numbers ("[Pg 12]"), corner badges and anchor labels
+    // sit in the middle of a paragraph's markup but not in its sentence. (Chromium
+    // blockifies them, so without this they closed the run — Gutenberg paragraphs were
+    // scored in two pieces.) Large out-of-flow boxes (tooltips, positioned columns)
+    // keep behaving as their own blocks.
+    if (cs && isOutOfFlow(cs) && (el.textContent ?? "").trim().length <= SMALL_OUT_OF_FLOW_CHARS) return;
 
     // Exclusions: never descend, never score. Whether they BREAK the sentence
     // depends on layout — inline exclusions (icons, <img>, MathJax spans, sr-only,
@@ -260,8 +270,7 @@ export function collectUnits(
       boiler ||
       NO_SCORE_TAGS.has(tag) ||
       (tag === "PRE" && !plainTextDoc) || // Chrome's text viewer wraps .txt in body>pre
-      el.getAttribute("translate") === "no" ||
-      el.classList.contains("notranslate") ||
+      isNoTranslate(el) ||
       (el as HTMLElement).isContentEditable ||
       el.getAttribute("aria-hidden") === "true" ||
       (cs !== null && (cs.opacity === "0" || (cs as any).contentVisibility === "hidden"));
@@ -403,7 +412,7 @@ function isExcludedByAncestry(start: Element): boolean {
     if (NO_SCORE_TAGS.has(tag)) return true;
     if (tag === "PRE" && !plainTextDoc) return true;
     if (el.hasAttribute(MARK_ATTR)) return true;
-    if (el.getAttribute("translate") === "no" || el.classList.contains("notranslate")) return true;
+    if (isNoTranslate(el)) return true;
     if ((el as HTMLElement).isContentEditable) return true;
     if (el.getAttribute("aria-hidden") === "true") return true;
     if (isBoilerplate(el)) return true;
@@ -514,8 +523,9 @@ function createAssembler(mergeShorts: boolean): Assembler {
         lastMergedUnit = null;
         return;
       }
-      if (r.linkRatio > MAX_LINK_RATIO) {
-        // Nav/menu/story-title lists: not prose AND a section boundary.
+      if (r.linkRatio > MAX_LINK_RATIO || looksLikeNameList(r.text)) {
+        // Nav/menu/story-title lists and author/citation strings: not prose AND a
+        // section boundary.
         flushGroup();
         lastMergedUnit = null;
         return;

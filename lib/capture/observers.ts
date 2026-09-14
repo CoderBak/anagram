@@ -41,6 +41,8 @@ export function createObservers(opts: {
   onVisible(unit: Unit): void;
   onNear(unit: Unit): void;
   onDirty(nodes: Node[], removed: Node[]): void;
+  /** The document element itself was replaced (document.open()/write()). */
+  onDocumentReplaced?(): void;
 }): Observers {
   const unitsByEl = new WeakMap<Element, Map<string, Unit>>();
   /** Per-unit dispatch latch: which lane has fired. Cleaned up in dropUnit. */
@@ -54,6 +56,7 @@ export function createObservers(opts: {
   let drainTimer: ReturnType<typeof setTimeout> | null = null;
   /** When the oldest undrained dirt arrived (max-wait guard). */
   let dirtySince: number | null = null;
+  let documentReplaced = false;
   let started = false;
   /** Shadow roots the single MutationObserver also watches (it accepts many targets). */
   let observedRoots = new WeakSet<ShadowRoot>();
@@ -89,6 +92,14 @@ export function createObservers(opts: {
 
   function ingest(records: MutationRecord[]): void {
     for (const rec of records) {
+      // A childList record on the Document node means <html> itself came or went.
+      if (rec.type === "childList" && rec.target.nodeType === Node.DOCUMENT_NODE) {
+        if ([...rec.addedNodes].some((n) => n.nodeType === Node.ELEMENT_NODE)) {
+          documentReplaced = true;
+          scheduleDrain();
+        }
+        continue;
+      }
       if (rec.type === "characterData") {
         if (!inSelfHost(rec.target)) dirty.add(rec.target);
         continue;
@@ -136,6 +147,13 @@ export function createObservers(opts: {
     drainTimer = null;
     dirtySince = null;
     if (mo) ingest(mo.takeRecords());
+    if (documentReplaced) {
+      documentReplaced = false;
+      dirty.clear();
+      removed.clear();
+      opts.onDocumentReplaced?.();
+      return;
+    }
     if (dirty.size === 0 && removed.size === 0) return;
     const nodes = Array.from(dirty);
     const rem = Array.from(removed);
@@ -228,7 +246,9 @@ export function createObservers(opts: {
   function start(): void {
     if (started) return;
     started = true;
-    mo.observe(document.documentElement, MO_OPTIONS);
+    // The Document node, not <html>: document.open()/write() replaces <html>, and an
+    // observer on the old element would never hear from the new tree.
+    mo.observe(document, MO_OPTIONS);
     for (const root of pendingRoots) mo.observe(root, MO_OPTIONS);
     pendingRoots.clear();
   }

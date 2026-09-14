@@ -14,6 +14,7 @@ export {
   canonicalForScoring,
   scoringText,
   isSeparatorRun,
+  looksLikeNameList,
   hasLetters,
   MIN_UNIT_WORDS,
   MIN_MERGE_WORDS,

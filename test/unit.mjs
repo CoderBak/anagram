@@ -326,6 +326,26 @@ const results = await page.evaluate(() => {
   u = collect(`<p>${words(58)} shown in <cite class="ltx_cite">[<a href="#b">12</a>]</cite> below.</p>`);
   check("bracketed <cite> reference is skipped", u.length === 1 && !u[0].text.includes("[12]") && u[0].text.endsWith("shown in below."), JSON.stringify(u.map(x => x.text.slice(-24))));
 
+  // ---- markers, accordions, name lists, page-level hints ------------------------------
+  u = collect(`<p>${words(30)}<span style="position:absolute;right:0">[Pg 12]</span> ${words(30)}</p>`);
+  check("absolutely positioned page-number span does not split the paragraph", u.length === 1 && u[0].parts === 1 && !u[0].text.includes("[Pg"), JSON.stringify(u.map(x => [x.parts, x.words])));
+  u = collect(`<p>${words(30)}<div style="position:absolute;left:0">${words(20)}</div> ${words(30)}</p>`);
+  check("a large out-of-flow box still behaves as its own block", u.length >= 1 && u.every(x => !x.text.includes(words(20).slice(0, 20)) || x.words >= 20), JSON.stringify(u.map(x => [x.parts, x.words])));
+  u = collect(`<div role="tablist"><div role="tab">Section 1</div><div role="tabpanel"><p>${words(60)}</p></div></div>`);
+  check("role=tablist accordion content is scored; the tab label is chrome", u.length === 1 && !u[0].text.includes("Section 1"), JSON.stringify(u.map(x => [x.parts, x.words])));
+  {
+    const b = document.createElement("body"); b.className = "notranslate";
+    const s = document.createElement("span"); s.className = "notranslate";
+    check("notranslate is ignored at page level, honoured on spans", PW.isBoilerplate(b) === false && (() => { sandbox.innerHTML = `<p>${words(58)} <span class="notranslate">BRANDLEAK</span> end.</p>`; const [x] = PW.collectUnits(sandbox); return x && !x.text.includes("BRANDLEAK"); })());
+  }
+  {
+    const names = "Pallarés-Carratalá V, Polo García J, Martín Rioboo E, Ruíz García A, Serrano-Cumplido A, Divisón-Garrote JA, Segura-Fragoso A, Cinza-Sanjurjo S, Prieto-Díaz MÁ, Barquilla-García A, Escobar-Cervantes C, Velilla-Zancada S, Micó-Pérez RM, Rey-Aldana D, Vitelli-Storelli F, Cebrián-Cuenca AM, Turégano-Yedro M.";
+    check("looksLikeNameList: author list yes, prose no, German prose no",
+      PW.looksLikeNameList(names) && !PW.looksLikeNameList(words(60)) && !PW.looksLikeNameList("Im März 1952 wurde Turing wegen seiner Homosexualität, die damals noch als Straftat verfolgt wurde, zu einer Hormonbehandlung verurteilt, und im Jahr 2009 sprach der britische Premierminister Gordon Brown eine offizielle Entschuldigung im Namen der Regierung aus."));
+    u = collect(`<div class="docsum-citation">${names}</div>`);
+    check("author-list block is never a unit", u.length === 0, JSON.stringify(u.map(x => x.words)));
+  }
+
   // ---- canonical scoring text ------------------------------------------------------------
   check("canonical: LaTeX residue and escapes", PW.canonicalForScoring("steps---prompting, 74.1\\% and ``quoted''") === 'steps—prompting, 74.1% and "quoted"', JSON.stringify(PW.canonicalForScoring("steps---prompting, 74.1\\% and ``quoted''")));
   check("canonical: typographic quotes, ranges, NBSP, ligatures → one convention", PW.canonicalForScoring("LLMs’ “rich” 1–5\u00a0ﬁnal") === `LLMs' "rich" 1-5 final`, JSON.stringify(PW.canonicalForScoring("LLMs’ “rich” 1–5\u00a0ﬁnal")));

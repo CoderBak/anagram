@@ -43,6 +43,8 @@ export function createScheduler(opts: {
   maxBackgroundInFlight?: number;
   send(blocks: ScoreBlock[], lane: Lane): Promise<ScoreResult[]>;
   render(results: ScoreResult[], epoch: number): void;
+  /** Nothing queued and nothing in flight any more (fired after each batch settles). */
+  onIdle?(): void;
 }): Scheduler {
   const maxInFlight = opts.maxInFlight || 4;
   const maxBackground = Math.max(1, opts.maxBackgroundInFlight ?? 1);
@@ -153,6 +155,10 @@ export function createScheduler(opts: {
         if (lane === "background") inFlightBackground--;
         for (const p of batch) inFlightIds.delete(p.unit.id);
         schedulePump();
+        // Only now is the batch fully released — a pendingCount() check inside render()
+        // still saw these ids in flight, which is how the idle prefetch stalled after
+        // its first pass on very long pages.
+        if (pendingCount() === 0) opts.onIdle?.();
       });
   }
 

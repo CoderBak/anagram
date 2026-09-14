@@ -14,14 +14,31 @@
 // COMPOUND form ("social-share", "related-articles") — a paper's
 // `<section class="related-work">` is content, not chrome.
 
-/** Landmark roles that are page chrome by definition. */
+/** Landmark roles that are page chrome by definition. NOT "tablist": Bootstrap-style
+ *  accordions put role="tablist" on the container that holds every panel's CONTENT
+ *  (EUR-Lex wraps whole regulations that way) — only the tab labels (role="tab") are
+ *  chrome. */
 const CHROME_ROLES = new Set([
   "navigation", "banner", "contentinfo", "menu", "menubar", "toolbar",
-  "tree", "directory", "tablist", "search", "searchbox", "slider",
+  "tree", "directory", "tab", "search", "searchbox", "slider",
   "scrollbar", "progressbar", "switch",
   // Landmark for asides/widgets; live-region roles are toasts and counters.
   "complementary", "alert", "status",
 ]);
+
+/** Containers a site-wide hint must never exclude (a `notranslate` <body> is a
+ *  translation opt-out, not "no prose here"). */
+const PAGE_LEVEL_TAGS = new Set(["BODY", "HTML", "MAIN", "ARTICLE"]);
+
+/**
+ * `translate="no"` / `.notranslate` honoured only below page level: on code, brand
+ * names and widgets it means "not prose"; on <body> it just opts out of machine
+ * translation and would otherwise blank the whole site.
+ */
+export function isNoTranslate(el: Element): boolean {
+  if (PAGE_LEVEL_TAGS.has(el.nodeName.toUpperCase()) || el.getAttribute("role") === "main") return false;
+  return el.getAttribute("translate") === "no" || el.classList.contains("notranslate");
+}
 
 /**
  * Class/id token patterns that mark unambiguous chrome. Each entry matches as a
