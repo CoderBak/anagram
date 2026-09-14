@@ -25,6 +25,9 @@ export interface Unit {
   text: string;
   /** Word count of `text` (Intl.Segmenter — CJK counts correctly). */
   wordCount: number;
+  /** Formulas (MathML / MathJax / KaTeX / Wikipedia math) skipped inside the unit —
+   *  disclosed in the card, because the model scored prose with holes in it. */
+  formulas: number;
   /** Document-order index at collect time (contract ScoreBlock.order). */
   order: number;
   /** First part's container — IntersectionObserver anchor. */
@@ -85,14 +88,44 @@ export function stripInvisibles(s: string): string {
   return s.replace(INVISIBLES_RE, "");
 }
 
+/** Un-rendered inline LaTeX ($\tau^{2}$): only spans that contain a command — "$5 and $10" stays. */
+const RAW_LATEX_RE = /\$[^$\n]*\\[A-Za-z]+[^$\n]*\$/g;
+
 /**
- * Normalize for hashing/cache: NFC, strip invisibles, collapse whitespace.
- * Do NOT lowercase or strip punctuation — detection is surface-sensitive.
+ * The ONE canonical form of a paragraph for scoring AND for cache keys.
+ *
+ * Presentation is normalized, content is not: the same sentence rendered by arXiv's
+ * abstract page, its HTML converter, a PDF-derived copy or a CMS must reach the model
+ * as the same bytes. EditLens is surface-sensitive — a LaTeX `---` where the page
+ * meant an em dash moved a verdict from 55 % to 9 % — so LaTeX residue and
+ * typographic variants are folded to one convention: NFKC (ligatures, full-width
+ * forms), invisibles and non-breaking spaces out, `---`/`--` → dashes, LaTeX quotes
+ * and escapes (`\%`) → characters, curly quotes/apostrophes → ASCII, digit ranges
+ * `1–5` → `1-5`, whitespace collapsed. No lowercasing, no punctuation stripping — the
+ * daemon applies the model's own preprocessing on top of this.
  */
-export function normalizeText(s: string): string {
-  return stripInvisibles(s.normalize("NFC"))
+export function canonicalForScoring(s: string): string {
+  return stripInvisibles(s.normalize("NFKC"))
+    .replace(/\u00A0/g, " ")
+    .replace(/---/g, "—")
+    .replace(/(?<=\S)--(?=\S)/g, "–")
+    .replace(/``|''/g, '"')
+    .replace(/(?<=\s|^)`(?=\S)/g, "'")
+    .replace(/\\([%&_#$])/g, "$1")
+    .replace(RAW_LATEX_RE, "")
+    .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
+    .replace(/(\d)[\u2013\u2010\u2011](\d)/g, "$1-$2")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/**
+ * Normalize for hashing/cache — the same canonical form the model receives, so two
+ * renderings of one paragraph share one cache entry and one verdict.
+ */
+export function normalizeText(s: string): string {
+  return canonicalForScoring(s);
 }
 
 /** True if the text contains at least one letter in ANY script (incl. CJK). */
@@ -164,6 +197,17 @@ export function truncateForScoring(text: string, max: number = MAX_SCORE_CHARS):
   if (m && m[0].length >= max / 2) return m[0];
   const ws = head.lastIndexOf(" ");
   return ws >= max / 2 ? head.slice(0, ws) : head;
+}
+
+/** What is actually SENT for a unit: canonical form, then the sentence-bounded cap. */
+export function scoringText(text: string, max: number = MAX_SCORE_CHARS): string {
+  return truncateForScoring(canonicalForScoring(text), max);
+}
+
+/** Separator-looking runs ("* * *", "———"): punctuation/symbols only, no digits. */
+export function isSeparatorRun(text: string): boolean {
+  const t = text.replace(/\s+/g, "");
+  return t.length >= 3 && /^[\p{P}\p{S}]+$/u.test(t);
 }
 
 // ---- structural noise ---------------------------------------------------------------

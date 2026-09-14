@@ -11,7 +11,7 @@ import { CONTRACT_VERSION } from "../contract";
 import { requestScores } from "../messaging/client";
 import { band, BAND_LABEL, isNoVerdict, languageName, scorePct, type Band } from "./band";
 import { DIST_CSS, distributionHtml } from "./dist";
-import { countWords, truncateForScoring, MIN_UNIT_WORDS } from "../dom/text";
+import { countWords, scoringText, MIN_UNIT_WORDS } from "../dom/text";
 import { isDarkPage } from "./theme";
 
 const CARD_CSS = `
@@ -188,7 +188,7 @@ export async function analyzeSelection(): Promise<void> {
       priority: "viewport",
       lang: document.documentElement.getAttribute("lang") || "und",
       domain: location.hostname || "und",
-      blocks: [{ id: "sel_0", text: truncateForScoring(text), order: 0 }],
+      blocks: [{ id: "sel_0", text: scoringText(text), order: 0 }],
     };
     const { results: [r], backend } = await requestScores(req);
     if (!_host || _host !== host) return; // dismissed while in flight

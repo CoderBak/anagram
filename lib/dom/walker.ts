@@ -24,7 +24,8 @@ import {
   createStyleCache,
   flowClassOf,
   isInlineDisplay,
-  isVisuallyHiddenInline,
+  isOutOfFlow,
+  isVisuallyHidden,
   preservesNewlines,
 } from "./style";
 import { createRectVisibleCache } from "./visibility";
@@ -37,11 +38,52 @@ import {
   linkTextRatio,
   symbolNoiseRatio,
   hasColumnGaps,
+  isSeparatorRun,
   MIN_UNIT_WORDS,
   MIN_MERGE_WORDS,
   MAX_UNIT_TEXT_CHARS,
 } from "./text";
 import { MARK_ATTR } from "../types";
+
+/**
+ * Formula containers of every renderer in use: raw MathML, MathJax v2/v3, KaTeX,
+ * Wikipedia's math element, LaTeXML's equation tables, Material-for-MkDocs arithmatex.
+ * A formula is skipped mid-sentence and counted — never a run break, whatever its
+ * computed display (Chromium gives `<math>` `display: math`, MathJax an inline-block
+ * with a hidden block child, LaTeXML display equations a `<table>`).
+ * Case-sensitive on purpose: arXiv marks whole abstracts `class="abstract mathjax"`
+ * (a "please typeset this" hint), which must not read as a formula.
+ */
+const MATH_CLASS_RE =
+  /(?:^|\s)(?:katex|katex-display|MathJax|MathJax_Preview|MathJax_Display|MathJax_SVG|MathJax_CHTML|mwe-math-element|math-container|ltx_Math|ltx_equation|ltx_equationgroup|ltx_eqn|arithmatex)(?:\s|$)/;
+
+function isMathContainer(el: Element, tag: string): boolean {
+  if (tag === "MATH" || tag === "MJX-CONTAINER") return true;
+  const cls = el.getAttribute("class");
+  return !!cls && MATH_CLASS_RE.test(cls);
+}
+
+/**
+ * Footnote / citation marks: `<sup class="reference">[7]</sup>` (Wikipedia),
+ * `<sup class="ltx_note_mark">1</sup>` and `<cite class="ltx_cite">[12]</cite>` (arXiv),
+ * markdown footnote refs, `[citation needed]`, daggers. Not prose — skipped without
+ * closing the run. A bare-number `<sup>` counts only when it is a link, so
+ * `km<sup>2</sup>` keeps its exponent.
+ */
+const MARKER_CLASS_RE =
+  /(?:^|\s)(?:reference|references|footnote|footnote-ref|footnote-reference|footnoteRef|fn-ref|fnref|noteref|note-ref|ltx_note_mark|ltx_cite|citation|cite-bracket|Inline-Template|mw-ref)(?:\s|$)/;
+
+function isCitationMarker(el: Element, tag: string): boolean {
+  if (tag !== "SUP" && tag !== "CITE") return false;
+  const text = (el.textContent ?? "").trim();
+  if (text.length > 40) return false; // a real <cite> title
+  const cls = el.getAttribute("class");
+  if (cls && MARKER_CLASS_RE.test(cls)) return true;
+  if (/^\[[^\]]{1,30}\]$/.test(text)) return true; // [7] · [a] · [12, 13] · [citation needed]
+  if (tag === "SUP" && /^[*†‡§¶]{1,3}$/.test(text)) return true;
+  if (tag === "SUP" && /^\d{1,3}$/.test(text) && el.querySelector("a")) return true;
+  return false;
+}
 
 /** One assembled inline run (== one visual paragraph) awaiting unit assembly. */
 interface Run {
@@ -54,6 +96,8 @@ interface Run {
   preserved: boolean;
   words: number;
   linkRatio: number;
+  /** Formulas skipped inside this run. */
+  formulas: number;
 }
 
 export interface CollectOptions {
@@ -108,6 +152,7 @@ export function collectUnits(
   let cur: Text[] = [];
   let curContainer: Element | null = null;
   let curPreserved = false;
+  let curFormulas = 0;
 
   function pushNode(tn: Text, ctx: Ctx): void {
     if (cur.length === 0) {
@@ -121,6 +166,8 @@ export function collectUnits(
     // Interior whitespace nodes were kept (see visitText); trailing ones are not
     // part of the paragraph.
     while (cur.length > 0 && (cur[cur.length - 1].textContent ?? "").trim() === "") cur.pop();
+    const formulas = curFormulas;
+    curFormulas = 0;
     if (cur.length === 0) {
       cur = [];
       curContainer = null;
@@ -133,10 +180,10 @@ export function collectUnits(
     cur = [];
     curContainer = null;
     curPreserved = false;
-    processRun(nodes, container, preserved);
+    processRun(nodes, container, preserved, formulas);
   }
 
-  function processRun(nodes: Text[], container: Element, preserved: boolean): void {
+  function processRun(nodes: Text[], container: Element, preserved: boolean, formulas: number): void {
     if (opts.claimFilter && opts.claimFilter(nodes) === "skip") {
       // An existing rendered unit sits here — new shorts on either side must not
       // merge ACROSS it (they are not adjacent prose).
@@ -155,6 +202,7 @@ export function collectUnits(
       preserved,
       words: countWords(text),
       linkRatio: linkTextRatio(nodes),
+      formulas,
     });
   }
 
@@ -192,6 +240,17 @@ export function collectUnits(
     // must never close the run (hidden template spans, lazy content, <script>…).
     if (flow === "hidden") return;
 
+    // Mid-sentence markup that is not prose — skipped WITHOUT closing the run, so the
+    // sentence continues around it: formulas (counted for the card), footnote and
+    // citation marks, and visually hidden out-of-flow copies (sr-only text, the
+    // accessibility MathML that math renderers keep beside the visible glyphs).
+    if (isMathContainer(el, tag)) {
+      curFormulas++;
+      return;
+    }
+    if (isCitationMarker(el, tag)) return;
+    if (cs && isVisuallyHidden(cs)) return;
+
     // Exclusions: never descend, never score. Whether they BREAK the sentence
     // depends on layout — inline exclusions (icons, <img>, MathJax spans, sr-only,
     // aria-hidden decorations) sit mid-sentence and are skipped silently; block
@@ -221,9 +280,6 @@ export function collectUnits(
     }
 
     if (flow === "inline") {
-      // Visually-absent inline content (sr-only labels, "(opens in new tab)") is
-      // skipped WITHOUT closing the run — it sits mid-sentence.
-      if (cs && isVisuallyHiddenInline(cs)) return;
       // An inline-block/-flex/-grid hosting its own block children is a CARD laid
       // into the line (tweet embeds, product tiles) — treat as a block boundary.
       if (cs && cs.display.startsWith("inline-") && hasBlockChildren(el)) {
@@ -308,7 +364,9 @@ export function collectUnits(
 
   function hasBlockChildren(el: Element): boolean {
     for (const c of el.children) {
-      const d = styles.get(c)?.display ?? "";
+      const ccs = styles.get(c);
+      const d = ccs?.display ?? "";
+      if (ccs && isOutOfFlow(ccs)) continue; // absolutely positioned helpers are not layout
       if (d && d !== "none" && d !== "contents" && !isInlineDisplay(d)) return true;
     }
     return false;
@@ -392,6 +450,7 @@ function createAssembler(mergeShorts: boolean): Assembler {
       parts,
       text,
       wordCount: runs.reduce((n, r) => n + r.words, 0),
+      formulas: runs.reduce((n, r) => n + r.formulas, 0),
       order: seq,
       topElement: runs[0].container,
       container: runs[runs.length - 1].container,
@@ -408,6 +467,7 @@ function createAssembler(mergeShorts: boolean): Assembler {
       MAX_UNIT_TEXT_CHARS,
     );
     unit.wordCount += runs.reduce((n, r) => n + r.words, 0);
+    unit.formulas += runs.reduce((n, r) => n + r.formulas, 0);
     unit.container = runs[runs.length - 1].container;
   }
 
@@ -436,9 +496,13 @@ function createAssembler(mergeShorts: boolean): Assembler {
 
     run(r: Run): void {
       if (!hasLetters(r.text)) {
-        // "* * *" separators, number rows: visual dividers → barrier.
-        flushGroup();
-        lastMergedUnit = null;
+        // "* * *" and rule-like separators are section dividers → barrier. Other
+        // letterless runs (an equation number "(3)", a page number, a lone "12") are
+        // transparent: not prose, but not a boundary either.
+        if (isSeparatorRun(r.text)) {
+          flushGroup();
+          lastMergedUnit = null;
+        }
         return;
       }
       if (symbolNoiseRatio(r.text) > 0.2 || (r.preserved && hasColumnGaps(r.raw))) {

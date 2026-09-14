@@ -33,9 +33,15 @@ export function createStyleCache(): StyleCache {
   };
 }
 
-/** True if this computed display participates in inline flow (does not break a paragraph). */
+/** True if this computed display participates in inline flow (does not break a paragraph).
+ *  Chromium reports inline `<math>` as `display: math` (and display math as `block math`). */
 export function isInlineDisplay(display: string): boolean {
-  return display.startsWith("inline") || display === "ruby";
+  return display.startsWith("inline") || display === "ruby" || display === "math";
+}
+
+/** Out of the normal flow (absolute/fixed): never breaks the surrounding sentence. */
+export function isOutOfFlow(cs: CSSStyleDeclaration): boolean {
+  return cs.position === "absolute" || cs.position === "fixed";
 }
 
 /**
@@ -65,14 +71,16 @@ export function preservesNewlines(cs: CSSStyleDeclaration | null): boolean {
 }
 
 /**
- * Screen-reader-only / decorative inline content: visually absent text that would
- * otherwise pollute the middle of a sentence ("(opens in a new tab)", icon labels,
- * legacy clip-rect sr-only spans). Checked only for inline-flow elements.
+ * Visually absent content, whatever its display: screen-reader-only copies ("(opens
+ * in a new tab)", icon labels, legacy clip-rect sr-only spans) and the hidden
+ * accessibility copies math renderers keep next to the visible glyphs (Wikipedia's
+ * `display:block; position:absolute; clip:…` MathML, MathJax's assistive MathML).
+ * Such elements are skipped silently — they must never close a run.
  */
-export function isVisuallyHiddenInline(cs: CSSStyleDeclaration): boolean {
+export function isVisuallyHidden(cs: CSSStyleDeclaration): boolean {
   if (parseFloat(cs.fontSize) === 0) return true;
   if (cs.opacity === "0") return true;
-  if (cs.position === "absolute" || cs.position === "fixed") {
+  if (isOutOfFlow(cs)) {
     const w = parseFloat(cs.width);
     const h = parseFloat(cs.height);
     if ((!Number.isNaN(w) && w <= 2) || (!Number.isNaN(h) && h <= 2)) return true;

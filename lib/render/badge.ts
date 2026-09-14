@@ -29,7 +29,7 @@ import type { Unit } from "../types";
 import { MARK_ATTR } from "../types";
 import type { ScoreResult } from "../contract";
 import { band, BAND_LABEL, isNoVerdict, languageName, scorePct, type Band } from "./band";
-import { countWords, truncateForScoring, MAX_SCORE_CHARS } from "../dom/text";
+import { countWords, scoringText, MAX_SCORE_CHARS } from "../dom/text";
 import { distributionHtml } from "./dist";
 import { BADGE_CSS } from "./badge.css";
 import { isDarkContext } from "./theme";
@@ -191,9 +191,11 @@ export function createBadgeLayer(): BadgeLayer {
       : result.truncated
         ? row("Scored", `first ${result.tokens ?? 512} tokens`)
         : clientCut
-          ? row("Scored", `first ${countWords(truncateForScoring(unit.text))} words`)
+          ? row("Scored", `first ${countWords(scoringText(unit.text))} words`)
           : "";
     const prefixOnly = !isNoVerdict(b) && (result.truncated || clientCut);
+    // Formula-heavy prose was scored with holes where the math was — say so.
+    const formulaRow = !isNoVerdict(b) && unit.formulas > 0 ? row("Formulas omitted", `${unit.formulas}`) : "";
     const langRow =
       b === "unsupported"
         ? row("Detected language", `${languageName(result.lang)} · ${Math.round((result.lang_prob ?? 0) * 100)}%`)
@@ -214,6 +216,7 @@ export function createBadgeLayer(): BadgeLayer {
       partsRow +
       row("Words", `${unit.wordCount}`) +
       scoredRow +
+      formulaRow +
       `<div class="actions"><button type="button" class="act copy">Copy text</button></div>` +
       `<div class="foot">${foot}</div>` +
       `<span class="caret"></span>`;

@@ -324,22 +324,29 @@ async function sweep(page, steps = 6) {
     record("ui", "duplicate paragraphs each badged with the same score", r.count === 2 && r.same, JSON.stringify(r));
   }
 
-  // A12: KaTeX-shaped formula — one unit, duplicated formula text never leaks.
+  // A12: KaTeX-shaped formula — ONE single-part unit (the formula never splits the
+  // sentence), the formula counted in the card, and the unit text (Copy text) free of
+  // the duplicated visual/accessible formula copies.
   {
-    const r = await page.evaluate((sel) => {
-      const badges = document.querySelectorAll(`#katex ${sel}`).length;
-      const hl = [];
-      if (typeof CSS !== "undefined" && CSS.highlights) {
-        for (const h of CSS.highlights.values()) for (const rg of h) hl.push(rg.toString());
-      }
-      const joined = hl.join(" ");
-      return {
-        badges,
-        tail: joined.includes("KATEXTAIL") || badges === 1,
-        dupLeak: joined.includes("KATEXDUP"),
-      };
-    }, BADGE_SEL);
-    record("ui", "KaTeX-style math: one unit, no duplicated formula text", r.badges === 1 && !r.dupLeak, JSON.stringify(r));
+    await page.locator("#katex").scrollIntoViewIfNeeded();
+    const badge = page.locator(`#katex ${BADGE_SEL}`).first();
+    let r = { badges: await badge.count() };
+    if (r.badges === 1) {
+      await badge.hover();
+      await page.waitForTimeout(420);
+      const info = await page.evaluate((sel) => {
+        const host = document.querySelector(`#katex ${sel}`);
+        const sr = host?.shadowRoot;
+        const rows = [...(sr?.querySelectorAll(".card .row") ?? [])].map((x) => x.textContent);
+        sr?.querySelector(".act.copy")?.click();
+        return { num: sr?.querySelector(".num")?.textContent ?? "", formulasRow: rows.find((t) => t.startsWith("Formulas omitted")) ?? null };
+      }, BADGE_SEL);
+      await page.waitForTimeout(250);
+      const clip = await page.evaluate(() => navigator.clipboard.readText().catch(() => null));
+      r = { ...r, ...info, singlePart: !/×/.test(info.num), dupLeak: clip === null ? null : clip.includes("KATEXDUP"), tail: clip === null ? null : clip.includes("KATEXTAIL") };
+      await page.mouse.move(5, 400);
+    }
+    record("ui", "KaTeX-style math: one single-part unit, formula counted, no duplicated formula text", r.badges === 1 && r.singlePart && r.formulasRow === "Formulas omitted1" && r.dupLeak !== true && r.tail !== false, JSON.stringify(r));
   }
 
   // A13: modal <dialog> — top-layer prose is scored; the FAB rides the top layer

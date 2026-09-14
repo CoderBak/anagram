@@ -15,7 +15,7 @@
 // prefetch never starves what the reader can actually see.
 import type { Unit, Lane } from "../types";
 import type { ScoreBlock, ScoreResult } from "../contract";
-import { truncateForScoring } from "../dom/text";
+import { scoringText } from "../dom/text";
 
 export interface Scheduler {
   enqueue(unit: Unit, lane: Lane): void;
@@ -132,8 +132,9 @@ export function createScheduler(opts: {
     const batchEpoch = batch[0].epoch;
     const blocks: ScoreBlock[] = batch.map((p) => ({
       id: p.unit.id,
-      // Long paragraphs render whole but are SCORED on a sentence-bounded prefix.
-      text: truncateForScoring(p.unit.text),
+      // Canonical form (typography/LaTeX residue folded), sentence-bounded prefix for
+      // very long units; rendering still covers the whole paragraph.
+      text: scoringText(p.unit.text),
       order: p.unit.order,
     }));
 
