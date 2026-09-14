@@ -159,7 +159,7 @@ if (extId) {
   const status = await popup.evaluate(() =>
     new Promise((resolve) => chrome.runtime.sendMessage({ action: "getBackendStatus" }, resolve)),
   );
-  check("GET_BACKEND_STATUS → active server", status?.active === "server" && status?.model?.id === "editlens_roberta-large", JSON.stringify(status?.server));
+  check("GET_BACKEND_STATUS → active server, model named", status?.active === "server" && status?.model?.id === "editlens_roberta-large", JSON.stringify(status?.server));
 }
 
 await context.close();

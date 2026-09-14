@@ -37,6 +37,8 @@ export interface Fab {
   mount(): void;
   /** Reflect whether the overlay is currently shown. */
   setActive(active: boolean): void;
+  /** The scoring daemon stopped answering (counter shows "!", panel explains + Retry). */
+  setBackendDown(down: boolean): void;
   /** Update the flagged-paragraph counter. */
   setCount(flagged: number, total: number): void;
   /** Show (label + callback) or hide (null) the secondary action chip. */
@@ -171,6 +173,7 @@ const FAB_CSS = `
 }
 .count:hover { filter: brightness(1.1); }
 .count.zero { background: #1a7f37; }
+.count.down { background: #737373; }
 .stack.anchor-left .count { right: auto; left: -5px; }
 
 /* ---- flagged-paragraphs triage panel ----
@@ -236,6 +239,21 @@ const FAB_CSS = `
 }
 .panel .pcopy:hover { background: #333333; }
 .panel .pcopy.done { color: #116a37; border-color: rgba(26, 127, 55, 0.4); background: rgba(26, 127, 55, 0.08); }
+
+/* Daemon-down notice at the top of the panel. */
+.panel .pnotice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 2px 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #f5f5f5;
+  color: #525252;
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+.panel .pnotice .fchip { flex: 0 0 auto; }
 
 /* Verdict filter chips. */
 .panel .pfilters { display: flex; gap: 5px; padding: 0 8px 6px; }
@@ -330,7 +348,7 @@ function sheet(): CSSStyleSheet {
 
 type Side = "left" | "right";
 
-export function createFab(opts: { onToggle: () => void; panel?: PanelHooks }): Fab {
+export function createFab(opts: { onToggle: () => void; onRetry?: () => void; panel?: PanelHooks }): Fab {
   let host: HTMLElement | null = null;
   let stackEl: HTMLElement | null = null;
   let fabEl: HTMLButtonElement | null = null;
@@ -342,6 +360,7 @@ export function createFab(opts: { onToggle: () => void; panel?: PanelHooks }): F
   let actionCb: (() => void) | undefined;
   let actionAttention = false;
   let panelFilter: "all" | "ai" | "heavy" = "all";
+  let backendDown = false;
   let side: Side = "right";
   let tuckTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -622,8 +641,22 @@ export function createFab(opts: { onToggle: () => void; panel?: PanelHooks }): F
   function setCount(flagged: number, _total: number): void {
     lastFlagged = flagged;
     if (!countEl) return;
+    countEl.classList.toggle("down", backendDown);
+    if (backendDown) {
+      countEl.textContent = "!";
+      countEl.title = "Scoring daemon not running — click for details";
+      return;
+    }
     countEl.textContent = String(flagged);
+    countEl.title = "Show flagged paragraphs";
     countEl.classList.toggle("zero", flagged === 0);
+  }
+
+  function setBackendDown(down: boolean): void {
+    if (down === backendDown) return;
+    backendDown = down;
+    setCount(lastFlagged, 0);
+    if (panelEl?.classList.contains("open")) renderPanel();
   }
 
   function togglePanel(): void {
@@ -665,6 +698,23 @@ export function createFab(opts: { onToggle: () => void; panel?: PanelHooks }): F
       heavy: all.filter((e) => e.band === "heavy").length,
     };
     const entries = panelFilter === "all" ? all : all.filter((e) => e.band === panelFilter);
+
+    if (backendDown) {
+      const notice = document.createElement("div");
+      notice.className = "pnotice";
+      const text = document.createElement("span");
+      text.textContent = "Scoring daemon not running. Start it with npm run serve — new paragraphs wait until it answers.";
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "fchip";
+      retry.textContent = "Retry";
+      retry.addEventListener("click", (e) => {
+        e.stopPropagation();
+        opts.onRetry?.();
+      });
+      notice.append(text, retry);
+      panelEl.appendChild(notice);
+    }
 
     const head = document.createElement("div");
     head.className = "phead";
@@ -809,5 +859,5 @@ export function createFab(opts: { onToggle: () => void; panel?: PanelHooks }): F
     panelEl = null;
   }
 
-  return { mount, setActive, setCount, setAction, unmount };
+  return { mount, setActive, setBackendDown, setCount, setAction, unmount };
 }

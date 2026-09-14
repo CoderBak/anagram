@@ -200,7 +200,7 @@ export function createBadgeLayer(): BadgeLayer {
         : "";
     const foot =
       b === "unknown"
-        ? "The scoring backend did not answer — try Rescan."
+        ? "The scoring daemon did not answer. Retried automatically once it is running."
         : b === "unsupported"
           ? "EditLens is trained on English text only, so this paragraph was not scored."
           : (prefixOnly ? "Only the opening of this paragraph was scored. " : "") +

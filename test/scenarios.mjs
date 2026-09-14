@@ -13,44 +13,28 @@
 //
 //   node test/scenarios.mjs            # full matrix
 //   node test/scenarios.mjs --local    # phase A only
-import { chromium } from "playwright";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { readFileSync, existsSync } from "node:fs";
-import http from "node:http";
+import { readFileSync } from "node:fs";
+import { launchExtension, serveHtml, BADGE_SEL } from "./harness.mjs";
+import { startFakeDaemon } from "./fake-daemon.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const EXT = join(__dirname, "..", "output", "chrome-mv3");
-const BADGE_SEL = '[data-anagram="host"]:not(#anagram-fab)';
 const LOCAL_ONLY = process.argv.includes("--local");
-
-if (!existsSync(join(EXT, "manifest.json"))) {
-  console.error("Build first: npm run build");
-  process.exit(2);
-}
 
 const results = []; // { phase, name, status: PASS|FAIL|SKIP, note }
 const record = (phase, name, ok, note = "") =>
   results.push({ phase, name, status: ok === null ? "SKIP" : ok ? "PASS" : "FAIL", note });
 
-// ---- server for the fixture page ----------------------------------------------------
-const fixturesHtml = readFileSync(join(__dirname, "ui-fixtures.html"), "utf8");
-const server = http.createServer((_q, r) => {
-  r.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-  r.end(fixturesHtml);
-});
-await new Promise((r) => server.listen(0, "127.0.0.1", r));
-const fixturesUrl = `http://localhost:${server.address().port}/ui-fixtures.html`;
+// ---- fake daemon (deterministic verdicts) + server for the fixture page -------------
+let daemon = await startFakeDaemon();
+const daemonPort = daemon.port;
+const server = await serveHtml({ "/ui-fixtures.html": readFileSync(join(__dirname, "ui-fixtures.html"), "utf8") });
+const fixturesUrl = server.url("/ui-fixtures.html");
 
-const context = await chromium.launchPersistentContext("", {
-  headless: false,
-  viewport: { width: 1280, height: 850 },
-  args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`],
-});
+const { context, sw } = await launchExtension({ backendUrl: daemon.url });
 await context.grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => {});
-let [sw] = context.serviceWorkers();
-if (!sw) sw = await context.waitForEvent("serviceworker", { timeout: 15000 }).catch(() => null);
-console.log("extension SW:", sw ? "loaded" : "NOT loaded");
+console.log("extension SW:", sw ? "loaded" : "NOT loaded", "· fake daemon at", daemon.url);
 
 async function sweep(page, steps = 6) {
   await page
@@ -555,6 +539,56 @@ async function sweep(page, steps = 6) {
     }
     record("ui", "main-content scope loads the Readability vendor chunk on demand", r.loaded && !r.failed && r.badges > 0, JSON.stringify(r));
   }
+
+  // A21: the daemon goes away → the batch in flight renders "Unavailable", nothing new
+  // is dispatched, the ball's counter shows "!"; the daemon comes back → everything is
+  // re-queued automatically (no reload, no Rescan).
+  {
+    const p = await context.newPage();
+    await p.goto(fixturesUrl, { waitUntil: "load" });
+    await p.waitForSelector(BADGE_SEL, { timeout: 12000 }).catch(() => {});
+    const addPara = (id) =>
+      p.evaluate((pid) => {
+        const el = document.createElement("p");
+        el.id = pid;
+        el.textContent = `${pid.toUpperCase()} paragraph is appended while the scoring daemon is stopped, so ` +
+          "the extension must not invent a verdict for it: the batch that hits the dead socket renders as " +
+          "Unavailable and later paragraphs wait without any chip, until a health probe succeeds again and " +
+          "every waiting or unavailable unit is queued once more without a reload or a manual rescan.";
+        document.querySelector("main").prepend(el);
+      }, id);
+    const badgeIn = (id, timeout) =>
+      p.waitForFunction(({ sel, pid }) => document.querySelectorAll(`#${pid} ${sel}`).length >= 1, { sel: BADGE_SEL, pid: id }, { timeout }).then(() => true).catch(() => false);
+    // Settled = past the "analyzing…" state (the pending chip is inserted at dispatch,
+    // BEFORE the reply that flips the page into the down state).
+    const settledIn = (id, timeout) =>
+      p.waitForFunction(({ sel, pid }) => {
+        const pill = document.querySelector(`#${pid} ${sel}`)?.shadowRoot?.querySelector(".pill");
+        return !!pill && !pill.classList.contains("pending");
+      }, { sel: BADGE_SEL, pid: id }, { timeout }).then(() => true).catch(() => false);
+    const bandOf = (id) => p.evaluate(({ sel, pid }) => [...(document.querySelector(`#${pid} ${sel}`)?.shadowRoot?.querySelector(".pill")?.classList ?? [])].find((c) => c.startsWith("band-")) ?? null, { sel: BADGE_SEL, pid: id });
+    const bubble = () => p.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.textContent ?? null);
+
+    await daemon.close(); // connection refused from here on
+    await addPara("down1");
+    const gotDown1 = (await badgeIn("down1", 8000)) && (await settledIn("down1", 8000));
+    const band1 = await bandOf("down1");
+    await addPara("down2");
+    await p.waitForTimeout(2000);
+    const down2Chips = await p.evaluate((sel) => document.querySelectorAll(`#down2 ${sel}`).length, BADGE_SEL);
+    const bubbleDown = await bubble();
+    record("ui", "daemon down: in-flight batch renders Unavailable, later paragraphs get no chip, counter shows !", gotDown1 && band1 === "band-unknown" && down2Chips === 0 && bubbleDown === "!", JSON.stringify({ band1, down2Chips, bubbleDown }));
+
+    daemon = await startFakeDaemon({ port: daemonPort }); // same URL as the extension setting
+    const back1 = await badgeIn("down2", 20000);
+    const back2 = await p.waitForFunction(({ sel, pid }) => {
+      const pill = document.querySelector(`#${pid} ${sel}`)?.shadowRoot?.querySelector(".pill");
+      return !!pill && !pill.classList.contains("band-unknown") && !pill.classList.contains("pending");
+    }, { sel: BADGE_SEL, pid: "down1" }, { timeout: 20000 }).then(() => true).catch(() => false);
+    const bubbleUp = await bubble();
+    record("ui", "daemon back: waiting + Unavailable units re-queued automatically", back1 && back2 && bubbleUp !== "!", JSON.stringify({ back1, back2, bubbleUp }));
+    await p.close();
+  }
 }
 
 // =====================================================================================
@@ -647,7 +681,8 @@ if (!LOCAL_ONLY) {
 
 // ---- summary -------------------------------------------------------------------------
 await context.close();
-server.close();
+await server.close();
+await daemon.close();
 
 console.log("\n=== SCENARIO RESULTS ===");
 for (const r of results) {

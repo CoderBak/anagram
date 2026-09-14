@@ -6,7 +6,7 @@
 import { browser } from "#imports";
 import "../../lib/ui/basecoat-vega.cdn.min.css";
 import { followSystemTheme } from "../../lib/ui/theme";
-import { settings, clearSiteOverride, setSiteOverride } from "../../lib/settings/settings";
+import { settings, clearSiteOverride, setSiteOverride, normalizeServerUrl, DEFAULT_SERVER_URL } from "../../lib/settings/settings";
 import { ACTIONS } from "../../lib/messaging/protocol";
 import { CONTRACT_VERSION } from "../../lib/contract";
 import type { BackendStatus } from "../../lib/messaging/protocol";
@@ -24,8 +24,8 @@ const addRuleEl = document.getElementById("addRule") as HTMLFormElement;
 const addHostEl = document.getElementById("addHost") as HTMLInputElement;
 const addModeEl = document.getElementById("addMode") as HTMLSelectElement;
 const addErrorEl = document.getElementById("addError") as HTMLElement;
-const backendEl = document.getElementById("backend") as HTMLSelectElement;
 const serverUrlEl = document.getElementById("serverUrl") as HTMLInputElement;
+const serverUrlErrorEl = document.getElementById("serverUrlError") as HTMLElement;
 const backendStatusEl = document.getElementById("backendStatus") as HTMLElement;
 const checkBackendEl = document.getElementById("checkBackend") as HTMLButtonElement;
 
@@ -151,18 +151,31 @@ settings.siteOverrides.watch(() => void renderSites());
 const version = browser.runtime.getManifest().version;
 versionEl.textContent = `v${version} · contract ${CONTRACT_VERSION}`;
 
-// --- scoring backend -------------------------------------------------------------
-bindSelect(backendEl, settings.backend);
+// --- scoring daemon ------------------------------------------------------------------
 void settings.serverUrl.getValue().then((v) => {
   serverUrlEl.value = v;
 });
 serverUrlEl.addEventListener("change", () => {
-  const v = serverUrlEl.value.trim().replace(/\/+$/, "") || "http://127.0.0.1:8765";
+  const raw = serverUrlEl.value.trim();
+  const v = raw === "" ? DEFAULT_SERVER_URL : normalizeServerUrl(raw);
+  if (v === null) {
+    // Loopback only: page text must never leave this computer.
+    serverUrlErrorEl.textContent = "Only a local address is allowed (http://127.0.0.1:… or http://localhost:…).";
+    serverUrlErrorEl.hidden = false;
+    void settings.serverUrl.getValue().then((prev) => {
+      serverUrlEl.value = prev;
+    });
+    return;
+  }
+  serverUrlErrorEl.hidden = true;
   serverUrlEl.value = v;
   void settings.serverUrl.setValue(v).then(() => refreshBackend(true));
 });
+serverUrlEl.addEventListener("input", () => {
+  serverUrlErrorEl.hidden = true;
+});
 
-/** Ask the service worker which backend is live; `probe` forces a fresh /health check. */
+/** Ask the service worker whether the daemon answers; `probe` forces a fresh /health check. */
 async function refreshBackend(probe: boolean): Promise<void> {
   backendStatusEl.textContent = "Checking…";
   try {
@@ -171,22 +184,19 @@ async function refreshBackend(probe: boolean): Promise<void> {
       probe,
     })) as BackendStatus | undefined;
     if (!s) throw new Error("no status");
-    if (s.active === "server") {
+    if (s.active === "server" && s.model) {
       backendStatusEl.textContent =
         `Connected — ${s.model.id} (${s.model.ver}) on ${s.server.device ?? "?"} at ${s.serverUrl}.`;
-    } else if (s.mode === "stub") {
-      backendStatusEl.textContent = "Demo stub selected — scores are deterministic placeholders, not verdicts.";
     } else {
       backendStatusEl.textContent =
-        `Daemon not reachable at ${s.serverUrl} — ` +
-        (s.mode === "auto" ? "using the demo stub until it comes up." : "paragraphs will show as Unavailable.");
+        `Not running at ${s.serverUrl} — paragraphs show as Unavailable until it answers` +
+        (s.server.error?.includes("loopback") ? ` (${s.server.error}).` : ".");
     }
     versionEl.textContent =
-      `v${version} · contract ${CONTRACT_VERSION} · backend: ${s.active === "server" ? s.model.id : "demo stub"}`;
+      `v${version} · contract ${CONTRACT_VERSION} · ${s.active === "server" && s.model ? s.model.id : "daemon not running"}`;
   } catch {
     backendStatusEl.textContent = "Could not reach the extension’s service worker.";
   }
 }
 checkBackendEl.addEventListener("click", () => void refreshBackend(true));
-settings.backend.watch(() => void refreshBackend(true));
 void refreshBackend(false);

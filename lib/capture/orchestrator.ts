@@ -15,6 +15,7 @@
 import { browser } from "#imports";
 import type { ContentScriptContext } from "#imports";
 import { ACTIONS } from "../messaging/protocol";
+import type { BackendStatus } from "../messaging/protocol";
 import type { Unit, Lane } from "../types";
 import type { ScoreBlock, ScoreResult, ScoreBatchRequest } from "../contract";
 import { CONTRACT_VERSION } from "../contract";
@@ -26,6 +27,7 @@ import { createObservers, type Observers } from "./observers";
 import { createScheduler, type Scheduler } from "./scheduler";
 import { createScoreCache, type ScoreCache } from "./cache";
 import { requestScores, contextAlive, lastModel } from "../messaging/client";
+import { modelDim } from "../backend/router";
 import { createBadgeLayer, type BadgeLayer } from "../render/badge";
 import {
   setHighlight,
@@ -55,6 +57,8 @@ const PREFETCH_PASS = 300;
 // from the content script's isolated world, so no MAIN-world history patch is needed.
 // Where it is missing (Firefox) a slow URL poll covers pushState instead.
 const URL_POLL_MS = 2500;
+/** While the daemon is down: how often the content script asks the worker to re-probe. */
+const DOWN_POLL_MS = 5000;
 
 function navigationApi(): EventTarget | null {
   const n = (window as unknown as { navigation?: EventTarget }).navigation;
@@ -78,6 +82,8 @@ export interface Orchestrator {
   unsupportedCount(): number;
   /** Configure the FAB's secondary action chip (Google Docs reading view etc.). */
   setFabAction(label: string | null, onAction?: () => void, opts?: { attention?: boolean }): void;
+  /** Popup/panel "Retry": re-probe the daemon now; re-queue every "Unavailable" unit. */
+  retryBackend(): void;
 }
 
 function newSessionId(): string {
@@ -127,11 +133,17 @@ export function createOrchestrator(
   let unwatchMarkStyle: (() => void) | null = null;
   let unwatchScope: (() => void) | null = null;
   let lastBadgeSent = -1;
+  /** Backend identity the L1 cache currently belongs to (from the last reply). */
+  let l1Dim: string | null = null;
   let lastHref = location.href;
   let urlTimer: ReturnType<typeof setInterval> | null = null;
+  /** The daemon stopped answering: dispatch is paused until a probe succeeds. */
+  let backendDown = false;
+  let downTimer: ReturnType<typeof setInterval> | null = null;
 
   const fab: Fab = createFab({
     onToggle: () => toggle(),
+    onRetry: () => retryBackend(),
     panel: {
       entries: () =>
         [...resultsById.entries()]
@@ -194,12 +206,10 @@ export function createOrchestrator(
     }
     lines.push("");
     const m = lastModel();
-    const backend =
-      !m || m.id === "stub"
-        ? "Scores in this report come from the demo stub — the local anagramd daemon was not " +
-          "running. They are placeholders, not verdicts."
-        : `Scores from ${m.id} (${m.ver}) via the local anagramd daemon — EditLens estimates ` +
-          "of AI-editing extent, not proof.";
+    const backend = m
+      ? `Scores from ${m.id} (${m.ver}) via the local anagramd daemon — EditLens estimates ` +
+        "of AI-editing extent, not proof."
+      : "No scoring daemon answered while this page was analyzed.";
     lines.push("---", backend);
     return lines.join("\n");
   }
@@ -402,7 +412,21 @@ export function createOrchestrator(
         domain,
         blocks: [...repByKey.values()],
       };
-      const fresh = await requestScores(req);
+      const reply = await requestScores(req);
+      const fresh = reply.results;
+      if (reply.backend === "down") enterDown();
+      else if (reply.backend === "up") leaveDown();
+      // The reply names the backend that produced it. A different identity than the
+      // one this tab's L1 holds means every earlier entry is another model's verdict.
+      const m = lastModel();
+      const dim = m ? modelDim(m) : null;
+      if (dim && dim !== l1Dim) {
+        if (l1Dim !== null) {
+          log.log("backend changed", l1Dim, "→", dim, "— dropping", cache.size(), "L1 entries");
+          cache.clear();
+        }
+        l1Dim = dim;
+      }
       const byId = new Map(fresh.map((r) => [r.id, r] as const));
       for (const [k, rep] of repByKey) {
         const r = byId.get(rep.id);
@@ -440,6 +464,81 @@ export function createOrchestrator(
       /* observers may be half-dead — freezing must never throw */
     }
     unwatchUrl();
+    stopDownPolling();
+  }
+
+  // --- daemon down / back --------------------------------------------------------------
+  // In-flight batches render "Unavailable" (degraded results, never cached). Nothing
+  // else is dispatched until the worker's probe succeeds again; then every Unavailable
+  // unit is re-observed so it re-dispatches by visibility, and the queue resumes.
+
+  function enterDown(): void {
+    if (backendDown) return;
+    backendDown = true;
+    scheduler.pause();
+    fab.setBackendDown(true);
+    if (downTimer === null) downTimer = setInterval(() => void checkBackend(false), DOWN_POLL_MS);
+    log.warn("scoring daemon not answering — dispatch paused, re-checking every", DOWN_POLL_MS, "ms");
+  }
+
+  function leaveDown(): void {
+    if (!backendDown) return;
+    backendDown = false;
+    stopDownPolling();
+    fab.setBackendDown(false);
+    scheduler.resume();
+    retryUnavailable();
+    log.log("scoring daemon back");
+  }
+
+  function stopDownPolling(): void {
+    if (downTimer !== null) {
+      clearInterval(downTimer);
+      downTimer = null;
+    }
+  }
+
+  async function checkBackend(force: boolean): Promise<void> {
+    if (!contextAlive()) {
+      freeze();
+      return;
+    }
+    try {
+      const s = (await browser.runtime.sendMessage({ action: ACTIONS.GET_BACKEND_STATUS, probe: force })) as
+        | BackendStatus
+        | undefined;
+      if (s?.active === "server") leaveDown();
+    } catch {
+      /* worker restarting — next tick */
+    }
+  }
+
+  /** Forget every degraded verdict and let the observers re-dispatch those units. */
+  function retryUnavailable(): void {
+    let n = 0;
+    for (const [id, r] of [...resultsById]) {
+      if (!r.degraded) continue;
+      const unit = unitsById.get(id);
+      if (!unit) continue;
+      badges.remove(id);
+      clearHighlight(id);
+      resultsById.delete(id);
+      scoredIds.delete(id);
+      unit.isScored = false;
+      observers.observeUnit(unit);
+      n++;
+    }
+    if (n > 0) {
+      schedulePrefetch();
+      updateFab();
+      log.log("re-queued", n, "unavailable units");
+    }
+  }
+
+  function retryBackend(): void {
+    if (!started) return;
+    if (backendDown) void checkBackend(true);
+    else retryUnavailable();
   }
 
   /** Scheduler render(): id-keyed badge paint + per-part underline. */
@@ -739,6 +838,9 @@ export function createOrchestrator(
     started = false;
     observers.stop();
     scheduler.stop();
+    stopDownPolling();
+    backendDown = false;
+    fab.setBackendDown(false);
     clearAllResults();
     setHighlightsVisible(false);
     fab.unmount();
@@ -765,6 +867,7 @@ export function createOrchestrator(
     scheduler.bumpEpoch();
     for (const unit of [...unitsById.values()]) observers.dropUnit(unit);
     clearAllResults();
+    cache.clear(); // a rescan must re-derive every verdict from the current backend
     badges.resetTheme(); // the site theme may have toggled since the last scan
     refreshHighlightTheme();
     resolveScopeRoot();
@@ -798,7 +901,7 @@ export function createOrchestrator(
     fab.setAction(label, onAction, opts);
   }
 
-  return { start, stop, rescan, toggle, scoredCount, flaggedCount, unsupportedCount, setFabAction };
+  return { start, stop, rescan, toggle, scoredCount, flaggedCount, unsupportedCount, setFabAction, retryBackend };
 }
 
 /** Merge scan roots, dropping disconnected ones and any contained by another. */

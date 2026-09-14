@@ -190,13 +190,17 @@ export async function analyzeSelection(): Promise<void> {
       domain: location.hostname || "und",
       blocks: [{ id: "sel_0", text: truncateForScoring(text), order: 0 }],
     };
-    const [r] = await requestScores(req);
+    const { results: [r], backend } = await requestScores(req);
     if (!_host || _host !== host) return; // dismissed while in flight
-    if (!r) {
+    if (!r || r.degraded) {
       card.innerHTML =
         closeBtn +
         `<div class="head"><span class="verdict band-unknown">Unavailable</span><span class="big">—</span></div>` +
-        `<div class="foot">The scoring backend did not respond — try again.</div>`;
+        `<div class="foot">${
+          backend === "down"
+            ? "The scoring daemon is not running — start it with <code>npm run serve</code> and try again."
+            : "The scoring backend did not respond — try again."
+        }</div>`;
     } else {
       const b: Band = band(r);
       const pct = scorePct(r);
@@ -210,7 +214,7 @@ export async function analyzeSelection(): Promise<void> {
         (r.truncated ? row("Model window", `first ${r.tokens ?? 512} tokens`) : "") +
         `<div class="foot">${
           b === "unknown"
-            ? "The scoring backend did not answer — try again."
+            ? "The scoring daemon did not answer — try again."
             : b === "unsupported"
               ? "EditLens is trained on English text only, so this selection was not scored."
               : "EditLens estimate of AI editing, not proof."

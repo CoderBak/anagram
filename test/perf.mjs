@@ -6,14 +6,9 @@
 // smoothly while scrolling. Run before/after walker changes.
 //
 //   node test/perf.mjs
-import { chromium } from "playwright";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
-import http from "node:http";
+import { launchExtension, serveHtml, BADGE_SEL } from "./harness.mjs";
+import { startFakeDaemon } from "./fake-daemon.mjs";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const EXT = join(__dirname, "..", "output", "chrome-mv3");
-const BADGE_SEL = '[data-anagram="host"]:not(#anagram-fab)';
 const N = 3000;
 
 const words = (seed) => {
@@ -26,13 +21,10 @@ let body = "";
 for (let i = 0; i < N; i++) body += `<p>${words(i)}</p>\n`;
 const html = `<!doctype html><body style="max-width:720px;margin:30px auto;font:15px/1.6 system-ui">${body}</body>`;
 
-const server = http.createServer((_q, r) => { r.writeHead(200, {"content-type":"text/html"}); r.end(html); });
-await new Promise((r) => server.listen(0, "127.0.0.1", r));
+const daemon = await startFakeDaemon();
+const server = await serveHtml({ "/perf.html": html });
 
-const context = await chromium.launchPersistentContext("", {
-  headless: false, viewport: { width: 1100, height: 850 },
-  args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`],
-});
+const { context } = await launchExtension({ backendUrl: daemon.url, viewport: { width: 1100, height: 850 } });
 const page = await context.newPage();
 await page.addInitScript(() => {
   window.__longTasks = [];
@@ -42,7 +34,7 @@ await page.addInitScript(() => {
 });
 
 const t0 = Date.now();
-await page.goto(`http://localhost:${server.address().port}/perf.html`, { waitUntil: "domcontentloaded" });
+await page.goto(server.url("/perf.html"), { waitUntil: "domcontentloaded" });
 await page.waitForSelector(BADGE_SEL, { timeout: 15000 });
 const firstBadgeMs = Date.now() - t0;
 
@@ -58,7 +50,8 @@ const stats = await page.evaluate((sel) => ({
   worst: Math.max(0, ...window.__longTasks),
 }), BADGE_SEL);
 await context.close();
-server.close();
+await server.close();
+await daemon.close();
 
 const checks = [
   ["first badge < 4000ms", firstBadgeMs < 4000, `${firstBadgeMs}ms`],

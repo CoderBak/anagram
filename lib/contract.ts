@@ -95,6 +95,13 @@ export interface ScoreBatchResponse {
   results: ScoreResult[];
 }
 
+/** One scored batch plus the identity of the backend that ACTUALLY produced it — the
+ *  router caches under this, never under whatever the client reports afterwards. */
+export interface ScoredBatch {
+  results: ScoreResult[];
+  model: ModelInfo;
+}
+
 /**
  * The swappable backend seam. Implementations: RandomStubScoreClient (in-extension
  * demo), HttpScoreClient (the local anagramd daemon), and the SwitchingScoreClient
@@ -102,7 +109,7 @@ export interface ScoreBatchResponse {
  */
 export interface ScoreClient {
   /** Score a batch of blocks. Returns one ScoreResult per input block (by id). */
-  scoreBatch(blocks: ScoreBlock[]): Promise<ScoreResult[]>;
+  scoreBatch(blocks: ScoreBlock[]): Promise<ScoredBatch>;
   /** Best-known identity of the backend that will answer the next scoreBatch (sync). */
   model(): ModelInfo;
   /** Optional: settle backend discovery before model() is consulted for cache keys. */

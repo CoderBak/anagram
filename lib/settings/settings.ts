@@ -3,20 +3,40 @@
 // + per-site helpers with always/never mutual exclusion. (spec §4.10)
 import { storage } from "#imports";
 
-export type BackendMode = "auto" | "server" | "stub";
+export const DEFAULT_SERVER_URL = "http://127.0.0.1:8765";
+
+/**
+ * Only a loopback daemon may score page text — "nothing leaves this computer" is
+ * enforced here and in the service-worker client, not merely promised.
+ */
+export function isLoopbackUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return false;
+    const h = u.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+    return h === "localhost" || h === "::1" || /^127\.\d+\.\d+\.\d+$/.test(h);
+  } catch {
+    return false;
+  }
+}
+
+/** Trim + strip trailing slashes; null when not a loopback http(s) URL. */
+export function normalizeServerUrl(raw: string): string | null {
+  const url = raw.trim().replace(/\/+$/, "");
+  return url && isLoopbackUrl(url) ? url : null;
+}
 
 export const settings = {
-  // Which scoring backend answers: "auto" = the local anagramd daemon when its
-  // /health responds, else the demo stub; "server" = daemon only; "stub" = demo only.
-  backend: storage.defineItem<BackendMode>("local:backend", { fallback: "auto" }),
-  serverUrl: storage.defineItem<string>("local:serverUrl", { fallback: "http://127.0.0.1:8765" }),
+  // The local anagramd daemon that scores paragraphs (loopback only). There is no
+  // other backend: when it does not answer, paragraphs are "Unavailable".
+  serverUrl: storage.defineItem<string>("local:serverUrl", { fallback: DEFAULT_SERVER_URL }),
   enabled: storage.defineItem<boolean>("local:enabled", { fallback: true }),
   siteOverrides: storage.defineItem<Record<string, "on" | "off">>("local:siteOverrides", { fallback: {} }),
   // The paragraph underline is part of the core product; on by default (orchestrator
   // respects live changes to this setting).
   showHighlights: storage.defineItem<boolean>("local:showHighlights", { fallback: true }),
   debug: storage.defineItem<boolean>("local:debug", { fallback: false }),
-  // What to paint: every analyzed unit, or only flagged (AI / AI-Assisted) ones.
+  // What to paint: every analyzed unit, or only flagged (heavily edited / AI-generated) ones.
   // Everything is still ANALYZED either way — this filters rendering only.
   displayMode: storage.defineItem<"all" | "flagged">("local:displayMode", {
     fallback: "all",

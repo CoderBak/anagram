@@ -129,27 +129,18 @@
 
         <section class="card" data-size="sm">
           <header>
-            <h2>Scoring backend</h2>
-            <p>Where the verdicts come from. Nothing leaves this computer either way.</p>
+            <h2>Scoring daemon</h2>
+            <p>Verdicts come from the local <code>anagramd</code> daemon (EditLens roberta-large, running on this
+              computer). Start it with <code>npm run serve</code> in the extension folder. When it is not running,
+              paragraphs show as Unavailable and are retried automatically. There is no other backend.</p>
           </header>
           <section>
             <div class="field" data-orientation="horizontal">
               <section>
-                <label for="backend">Backend</label>
-                <p>Auto uses the local <code>anagramd</code> daemon (EditLens roberta-large, running on this Mac)
-                  whenever it answers, and falls back to the demo stub otherwise. Start it with
-                  <code>npm run serve</code> in the extension folder.</p>
-              </section>
-              <select id="backend">
-                <option value="auto">Auto (daemon, else stub)</option>
-                <option value="server">Local daemon only</option>
-                <option value="stub">Demo stub only</option>
-              </select>
-            </div>
-            <div class="field" data-orientation="horizontal">
-              <section>
                 <label for="serverUrl">Daemon URL</label>
-                <p>Where <code>anagramd</code> listens. Default <code>http://127.0.0.1:8765</code>.</p>
+                <p>Where <code>anagramd</code> listens. Local addresses only — page text never leaves this computer.
+                  Default <code>http://127.0.0.1:8765</code>.</p>
+                <p class="form-error" id="serverUrlError" hidden></p>
               </section>
               <input id="serverUrl" class="url" type="url" placeholder="http://127.0.0.1:8765" spellcheck="false" />
             </div>
@@ -209,7 +200,7 @@
               <span class="keys"><kbd class="kbd">Right-click</kbd></span>
               <span class="what">Choose “Analyze selection with Anagram” to score just the highlighted text.</span>
             </div>
-            <p class="privacy">Nothing leaves your computer — scoring runs in the local <code>anagramd</code> daemon on this Mac (or in the extension’s demo stub).</p>
+            <p class="privacy">Nothing leaves your computer — scoring runs in the local <code>anagramd</code> daemon on this Mac. The daemon URL is restricted to local addresses.</p>
             <h3 class="mini">Verdict colors</h3>
             <div class="legend">
               <span class="badge" data-variant="outline"><span class="dot dot-human"></span>Human</span>

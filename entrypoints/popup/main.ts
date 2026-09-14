@@ -94,25 +94,35 @@ function showCounts(state: TabState): void {
   );
 }
 
-/** Which backend is scoring right now — the real model or the demo stub. */
-async function refreshBackend(): Promise<void> {
+/** Is the local daemon scoring right now? Down → say so, offer Retry. */
+async function refreshBackend(tabId: number | undefined, probe = false): Promise<void> {
   try {
     const s = (await browser.runtime.sendMessage({
       action: ACTIONS.GET_BACKEND_STATUS,
+      probe,
     })) as BackendStatus | undefined;
     if (!s) throw new Error("no status");
     const b = document.createElement("b");
-    backendEl.classList.toggle("demo", s.active !== "server");
-    if (s.active === "server") {
+    backendEl.classList.toggle("down", s.active !== "server");
+    if (s.active === "server" && s.model) {
       b.textContent = s.model.id;
       backendEl.replaceChildren("Model: ", b, ` · local${s.server.device ? " · " + s.server.device : ""}`);
     } else {
-      b.textContent = "demo stub";
-      backendEl.replaceChildren(
-        "Scores: ",
-        b,
-        s.mode === "stub" ? " (chosen in options)" : " — start anagramd for real scores",
-      );
+      b.textContent = "Daemon not running";
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "btn";
+      retry.dataset.variant = "outline";
+      retry.dataset.size = "xs";
+      retry.textContent = "Retry";
+      retry.addEventListener("click", () => {
+        retry.disabled = true;
+        void refreshBackend(tabId, true).then(() => {
+          sendToTab(tabId, { action: ACTIONS.RETRY_BACKEND });
+          setTimeout(() => void refreshStatus(tabId), 800);
+        });
+      });
+      backendEl.replaceChildren(b, " — start it with npm run serve ", retry);
     }
   } catch {
     backendEl.textContent = "";
@@ -191,7 +201,7 @@ async function init(): Promise<void> {
   });
 
   void refreshStatus(tab?.id);
-  void refreshBackend();
+  void refreshBackend(tab?.id);
 }
 
 void init();

@@ -3,7 +3,8 @@
 // 1. With anagramd up: load the built extension on the self-test page, read each
 //    chip's paragraph text + the probabilities in its hover card, POST the SAME text
 //    to the daemon's API directly, and compare. Also counts the daemon's requests.
-// 2. With anagramd down: reload; the popup must say "demo stub" and the numbers differ.
+// 2. With anagramd down: reload; the popup must say the daemon is not running and NO
+//    paragraph may carry a verdict (there is no fallback scorer).
 //   node test/verify-backend.mjs
 import { spawn } from "node:child_process";
 import { chromium } from "playwright";
@@ -39,14 +40,18 @@ const server = http.createServer((_q, res) => { res.writeHead(200, { "content-ty
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const url = `http://localhost:${server.address().port}/selftest.html`;
 
-async function readChips(context) {
+async function readChips(context, expectChips = true) {
   const page = await context.newPage();
   await page.goto(url, { waitUntil: "domcontentloaded" });
-  await page.waitForSelector(BADGE_SEL, { timeout: 30000 });
-  await page.waitForFunction((sel) => {
-    const hosts = [...document.querySelectorAll(sel)];
-    return hosts.length >= 5 && hosts.every((x) => !x.shadowRoot?.querySelector(".pill.pending"));
-  }, BADGE_SEL, { timeout: 60000 });
+  if (expectChips) {
+    await page.waitForSelector(BADGE_SEL, { timeout: 30000 });
+    await page.waitForFunction((sel) => {
+      const hosts = [...document.querySelectorAll(sel)];
+      return hosts.length >= 5 && hosts.every((x) => !x.shadowRoot?.querySelector(".pill.pending"));
+    }, BADGE_SEL, { timeout: 60000 });
+  } else {
+    await page.waitForTimeout(4000);
+  }
   const chips = await page.evaluate((sel) => [...document.querySelectorAll(sel)].slice(0, 5).map((host) => {
     const sr = host.shadowRoot;
     // The chip lives in a shadow root, so the parent's light-DOM textContent is the paragraph alone.
@@ -59,7 +64,11 @@ async function readChips(context) {
   await popup.goto(`chrome-extension://${id}/popup.html`);
   await popup.waitForFunction(() => /Model|Scores/.test(document.getElementById("backend")?.textContent ?? ""), null, { timeout: 10000 }).catch(() => {});
   const backendLine = await popup.evaluate(() => document.getElementById("backend")?.textContent ?? "");
-  return { chips, backendLine };
+  const verdicts = await page.evaluate((sel) => [...document.querySelectorAll(sel)].filter((h) => {
+    const pill = h.shadowRoot?.querySelector(".pill");
+    return pill && !pill.classList.contains("band-unknown") && !pill.classList.contains("pending");
+  }).length, BADGE_SEL);
+  return { chips, backendLine, verdicts };
 }
 
 const launch = () => chromium.launchPersistentContext("", {
@@ -101,11 +110,12 @@ if (daemon) {
   daemon.kill("SIGTERM");
   for (let i = 0; i < 20 && (await health()); i++) await new Promise((r) => setTimeout(r, 250));
   ctx = await launch();
-  const down = await readChips(ctx);
+  const down = await readChips(ctx, false);
   await ctx.close();
   console.log(`\nwith the daemon stopped, popup says:  "${down.backendLine}"`);
-  const differ = down.chips.filter((c, i) => c.num !== up.chips[i]?.num).length;
-  console.log(`stub numbers differ from the model's on ${differ}/${down.chips.length} chips (first chip: ${down.chips[0]?.num} vs ${up.chips[0]?.num})`);
+  const honest = /Daemon not running/.test(down.backendLine) && down.verdicts === 0;
+  console.log(honest ? "✅ no verdict is shown without the daemon" : `❌ ${down.verdicts} verdict chips rendered without a daemon`);
+  allMatch &&= honest;
 }
 server.close();
 process.exit(allMatch ? 0 : 1);

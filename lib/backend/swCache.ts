@@ -22,10 +22,13 @@ import { createLogger } from "../log";
 const log = createLogger("swcache");
 
 export interface SwCache {
-  keyOf(text: string): string; // sync hash of normalizeText(text), incl. model-version dim
+  /** Sync key: `<dim>:<hash of normalizeText(text)>` — `dim` is the backend identity
+   *  ("id@ver") the caller snapshotted for this request (router.ts modelDim). */
+  keyOf(text: string, dim: string): string;
   /** Resolve many keys at once: memory first, then one IndexedDB transaction for the misses. */
   getMany(keys: string[]): Promise<Map<string, ScoreResult>>;
-  set(text: string, r: ScoreResult): void;
+  /** Store a REAL result under the identity that produced it. */
+  set(text: string, r: ScoreResult, dim: string): void;
 }
 
 /** Compact stored row (short field names — tens of thousands of these live in the store). */
@@ -122,18 +125,14 @@ async function sweepLegacyStore(): Promise<void> {
   }
 }
 
-/**
- * @param modelDim current backend identity ("id@ver") — evaluated per call, because
- *   the active backend can change mid-session (daemon started/stopped, mode switched).
- */
-export function createSwCache(modelDim: () => string): SwCache {
+export function createSwCache(): SwCache {
   const memory = new Map<string, ScoreResult>();
   const pendingWrites = new Map<string, Stored>();
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   let writesSincePrune = 0;
 
-  const keyOf = (text: string): string =>
-    `${modelDim()}:${cyrb53(normalizeText(text)).toString(36)}`;
+  const keyOf = (text: string, dim: string): string =>
+    `${dim}:${cyrb53(normalizeText(text)).toString(36)}`;
 
   async function getMany(keys: string[]): Promise<Map<string, ScoreResult>> {
     const out = new Map<string, ScoreResult>();
@@ -163,9 +162,9 @@ export function createSwCache(modelDim: () => string): SwCache {
     return out;
   }
 
-  function set(text: string, r: ScoreResult): void {
+  function set(text: string, r: ScoreResult, dim: string): void {
     if (r.degraded) return; // fallbacks must never outlive the outage
-    const k = keyOf(text);
+    const k = keyOf(text, dim);
     memory.set(k, r);
     pendingWrites.set(k, toStored(k, r));
     if (flushTimer === null) flushTimer = setTimeout(flush, FLUSH_MS);

@@ -206,6 +206,10 @@ export default defineContentScript({
             void analyzeSelection(); // works even where passive capture skips
             return;
 
+          case ACTIONS.RETRY_BACKEND:
+            if (enabled) orchestrator.retryBackend();
+            return;
+
           case ACTIONS.TEARDOWN:
             enabled = false;
             orchestrator.stop();

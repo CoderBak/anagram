@@ -1,16 +1,17 @@
-// lib/backend/getScoreClient.ts — factory for the active ScoreClient.
+// lib/backend/getScoreClient.ts — the one ScoreClient: the local anagramd daemon.
 //
-// The SwitchingScoreClient picks a backend per batch from settings:
-//   "auto"   → the local anagramd daemon when its /health answers, else the demo stub
-//   "server" → the daemon only (failures become degraded "Unavailable" results)
-//   "stub"   → the in-extension deterministic stub
-// Health is probed lazily and cached (60 s when up, 5 s when down) so a daemon that
-// comes online mid-session is picked up within seconds without hammering it.
-import type { ModelInfo, ScoreBlock, ScoreClient, ScoreResult } from "../contract";
-import { RandomStubScoreClient, STUB_MODEL } from "./randomStub";
+// There is no scoring fallback. When the daemon does not answer, batches fail, the
+// router hands back degraded results (rendered "Unavailable", never cached) and tells
+// the content script the backend is down; the content script pauses and re-checks
+// through status() until the daemon is back. Health is probed lazily and cached
+// (60 s when up, 5 s when down) so a daemon that comes online mid-session is picked up
+// within seconds without being hammered.
+//
+// Only LOOPBACK URLs are accepted: page text must never leave this machine. A setting
+// that points elsewhere is treated as "no daemon", with the reason in status().
+import type { ModelInfo, ScoreBlock, ScoreClient, ScoredBatch } from "../contract";
 import { HttpScoreClient, fetchHealth } from "./httpClient";
-import { settings } from "../settings/settings";
-import type { BackendMode } from "../settings/settings";
+import { settings, DEFAULT_SERVER_URL, isLoopbackUrl } from "../settings/settings";
 import type { BackendStatus } from "../messaging/protocol";
 import { createLogger } from "../log";
 
@@ -18,51 +19,60 @@ const log = createLogger("backend");
 const UP_TTL_MS = 60_000;
 const DOWN_TTL_MS = 5_000;
 
-class SwitchingScoreClient implements ScoreClient {
-  private stub = new RandomStubScoreClient();
+/** Placeholder identity while no daemon has answered (nothing is cached under it —
+ *  every result produced meanwhile is degraded). */
+const NO_MODEL: ModelInfo = { id: "none", ver: "0", calibration: "none" };
+
+interface Probe {
+  ok: boolean;
+  at: number;
+  model: ModelInfo | null;
+  device?: string;
+  error?: string;
+}
+
+export class DaemonClient implements ScoreClient {
   private http: HttpScoreClient | null = null;
-  private mode: BackendMode = "auto";
-  private serverUrl = "";
+  private serverUrl = DEFAULT_SERVER_URL;
   private settingsLoaded: Promise<void>;
-  private probe: { ok: boolean; at: number; model: ModelInfo | null; device?: string; error?: string } = {
-    ok: false,
-    at: 0,
-    model: null,
-  };
+  private probe: Probe = { ok: false, at: 0, model: null };
   private probing: Promise<void> | null = null;
+  /** Bumped on every settings change so a probe of the OLD endpoint cannot commit. */
+  private generation = 0;
 
   constructor() {
-    this.settingsLoaded = Promise.all([settings.backend.getValue(), settings.serverUrl.getValue()]).then(
-      ([mode, url]) => {
-        this.mode = mode;
-        this.serverUrl = url;
-      },
-    );
-    settings.backend.watch((v) => {
-      this.mode = v;
-      this.invalidate();
+    this.settingsLoaded = settings.serverUrl.getValue().then((url) => {
+      this.serverUrl = url;
     });
-    settings.serverUrl.watch((v) => {
-      this.serverUrl = v;
+    settings.serverUrl.watch((url) => {
+      this.serverUrl = url;
       this.invalidate();
     });
   }
 
   private invalidate(): void {
+    this.generation++;
     this.probe = { ok: false, at: 0, model: null };
     this.http = null;
+    this.probing = null;
   }
 
   /** Re-probe when the cached verdict is older than its TTL (or forced). */
   private async ensureProbe(force = false): Promise<void> {
     await this.settingsLoaded;
-    if (this.mode === "stub") return;
     const ttl = this.probe.ok ? UP_TTL_MS : DOWN_TTL_MS;
     if (!force && Date.now() - this.probe.at < ttl) return;
     if (this.probing) return this.probing;
+    const gen = this.generation;
+    const url = this.serverUrl;
     this.probing = (async () => {
-      const url = this.serverUrl;
+      if (!isLoopbackUrl(url)) {
+        this.probe = { ok: false, at: Date.now(), model: null, error: `daemon URL must be a loopback address (got ${url})` };
+        this.http = null;
+        return;
+      }
       const h = await fetchHealth(url);
+      if (gen !== this.generation) return; // settings changed under us — stale answer
       if (h) {
         if (!this.http || !this.probe.ok || this.probe.model?.ver !== h.model.ver) {
           this.http = new HttpScoreClient(url, h.model);
@@ -70,7 +80,7 @@ class SwitchingScoreClient implements ScoreClient {
         }
         this.probe = { ok: true, at: Date.now(), model: h.model, device: h.device };
       } else {
-        if (this.probe.ok) log.warn("anagramd went away — falling back per mode", this.mode);
+        if (this.probe.ok) log.warn("anagramd went away — batches will be Unavailable until it is back");
         this.probe = { ok: false, at: Date.now(), model: null, error: `no healthy anagramd at ${url}` };
         this.http = null;
       }
@@ -84,49 +94,55 @@ class SwitchingScoreClient implements ScoreClient {
     await this.ensureProbe();
   }
 
+  isUp(): boolean {
+    return this.probe.ok;
+  }
+
   model(): ModelInfo {
-    if (this.mode !== "stub" && this.probe.ok && this.probe.model) return this.probe.model;
-    return STUB_MODEL;
+    return this.probe.ok && this.probe.model ? this.probe.model : NO_MODEL;
   }
 
-  async scoreBatch(blocks: ScoreBlock[]): Promise<ScoreResult[]> {
+  async scoreBatch(blocks: ScoreBlock[]): Promise<ScoredBatch> {
     await this.ensureProbe();
-    if (this.mode === "stub") return this.stub.scoreBatch(blocks);
-    if (this.http && this.probe.ok) {
-      try {
-        return await this.http.scoreBatch(blocks);
-      } catch (e) {
-        log.warn("anagramd batch failed", e);
-        this.probe = { ok: false, at: Date.now(), model: null, error: String(e) };
-        this.http = null;
+    if (!this.http || !this.probe.ok) throw new Error(this.probe.error ?? "anagramd unavailable");
+    try {
+      const batch = await this.http.scoreBatch(blocks);
+      // Provenance comes from the response; a daemon restarted with other weights
+      // between probes is noticed here rather than a minute later.
+      if (batch.model.ver !== this.probe.model?.ver || batch.model.id !== this.probe.model?.id) {
+        this.probe = { ...this.probe, model: batch.model };
+        this.http = new HttpScoreClient(this.serverUrl, batch.model);
       }
+      return batch;
+    } catch (e) {
+      log.warn("anagramd batch failed", e);
+      this.probe = { ok: false, at: Date.now(), model: null, error: String(e) };
+      this.http = null;
+      throw e;
     }
-    if (this.mode === "auto") return this.stub.scoreBatch(blocks);
-    throw new Error(this.probe.error ?? "anagramd unavailable");
   }
 
-  /** For the popup/options: which backend is live right now (optionally re-probed). */
+  /** For the popup/options/content script: is the daemon up (optionally re-probed now)? */
   async status(force: boolean): Promise<BackendStatus> {
     await this.ensureProbe(force);
-    const active = this.mode !== "stub" && this.probe.ok ? "server" : "stub";
     return {
-      mode: this.mode,
       serverUrl: this.serverUrl,
-      active,
-      model: this.model(),
+      active: this.probe.ok ? "server" : "down",
+      model: this.probe.ok ? this.probe.model : null,
       server: { ok: this.probe.ok, checkedAt: this.probe.at, device: this.probe.device, error: this.probe.error },
     };
   }
 }
 
-let _client: SwitchingScoreClient | null = null;
+let _client: DaemonClient | null = null;
 
-/** Returns the active ScoreClient (one per service-worker lifetime). */
-export function getScoreClient(): ScoreClient {
-  return getSwitchingClient();
+/** The daemon client (one per service-worker lifetime). */
+export function getDaemonClient(): DaemonClient {
+  if (!_client) _client = new DaemonClient();
+  return _client;
 }
 
-export function getSwitchingClient(): SwitchingScoreClient {
-  if (!_client) _client = new SwitchingScoreClient();
-  return _client;
+/** The active ScoreClient — always the daemon. */
+export function getScoreClient(): ScoreClient {
+  return getDaemonClient();
 }

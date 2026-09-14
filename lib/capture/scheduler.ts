@@ -23,6 +23,9 @@ export interface Scheduler {
   stop(): void;
   /** Units currently queued (any lane) or in flight. */
   pendingCount(): number;
+  /** Hold dispatch (backend down): queued units wait, in-flight batches finish. */
+  pause(): void;
+  resume(): void;
 }
 
 const LANES: Lane[] = ["viewport", "near", "background"];
@@ -58,6 +61,7 @@ export function createScheduler(opts: {
   let inFlight = 0;
   let inFlightBackground = 0;
   let pumpScheduled = false;
+  let paused = false;
 
   // id → lane it is queued in (for upgrade); in-flight ids are separate.
   const queuedLane = new Map<string, Lane>();
@@ -110,6 +114,7 @@ export function createScheduler(opts: {
   }
 
   function pump(): void {
+    if (paused) return;
     while (inFlight < maxInFlight) {
       const picked = pickBatch();
       if (!picked) break;
@@ -160,11 +165,22 @@ export function createScheduler(opts: {
   function stop(): void {
     bumpEpoch();
     inFlightIds.clear();
+    paused = false;
   }
 
   function pendingCount(): number {
     return queuedLane.size + inFlightIds.size;
   }
 
-  return { enqueue, bumpEpoch, stop, pendingCount };
+  function pause(): void {
+    paused = true;
+  }
+
+  function resume(): void {
+    if (!paused) return;
+    paused = false;
+    schedulePump();
+  }
+
+  return { enqueue, bumpEpoch, stop, pendingCount, pause, resume };
 }

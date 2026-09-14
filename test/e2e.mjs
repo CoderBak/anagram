@@ -1,6 +1,7 @@
 // test/e2e.mjs — Playwright end-to-end test for the Anagram MV3 extension (v2).
 //
-// Loads the built unpacked extension into a persistent Chromium context, serves the
+// Loads the built unpacked extension into a persistent Chromium context pointed at the
+// test-only fake daemon (deterministic verdicts, no model needed), serves the
 // self-test page over http (so the <all_urls> content script injects), scrolls the
 // whole page (scoring is viewport-first BY DESIGN), then asserts the v2 behaviours:
 // long paragraphs badge once and underline to the end (the HF regression),
@@ -11,47 +12,23 @@
 //
 //   node test/e2e.mjs            # headed (most reliable for MV3 extensions)
 //   HEADLESS=1 node test/e2e.mjs # try new-headless
-import { chromium } from "playwright";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { readFileSync, existsSync } from "node:fs";
-import http from "node:http";
+import { readFileSync } from "node:fs";
+import { launchExtension, serveHtml, BADGE_SEL } from "./harness.mjs";
+import { startFakeDaemon } from "./fake-daemon.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const EXT = join(__dirname, "..", "output", "chrome-mv3");
-const SELFTEST = join(__dirname, "selftest.html");
 const HEADLESS = process.env.HEADLESS === "1";
 
-// Badge hosts share data-anagram="host" with the FAB host — exclude the FAB by id.
-const BADGE_SEL = '[data-anagram="host"]:not(#anagram-fab)';
+// 1) the fake daemon + a tiny static server for the self-contained self-test page.
+const daemon = await startFakeDaemon();
+const server = await serveHtml({ "/selftest.html": readFileSync(join(__dirname, "selftest.html"), "utf8") });
+const url = server.url("/selftest.html");
+console.log("serving self-test at", url, "· fake daemon at", daemon.url);
 
-if (!existsSync(join(EXT, "manifest.json"))) {
-  console.error("Built extension not found at", EXT, "- run `npm run build` first.");
-  process.exit(2);
-}
-
-// 1) tiny static server for the self-contained self-test page.
-const html = readFileSync(SELFTEST, "utf8");
-const server = http.createServer((_req, res) => {
-  res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-  res.end(html);
-});
-await new Promise((r) => server.listen(0, "127.0.0.1", r));
-const port = server.address().port;
-const url = `http://localhost:${port}/selftest.html`;
-console.log("serving self-test at", url);
-
-// 2) launch a persistent context with the unpacked extension loaded.
-const launchOpts = {
-  headless: HEADLESS,
-  args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`],
-};
-if (HEADLESS) launchOpts.channel = "chromium";
-const context = await chromium.launchPersistentContext("", launchOpts);
-
-// 3) confirm the MV3 background service worker registered.
-let [sw] = context.serviceWorkers();
-if (!sw) sw = await context.waitForEvent("serviceworker", { timeout: 15000 }).catch(() => null);
+// 2) launch a persistent context with the unpacked extension pointed at the fake.
+const { context, sw } = await launchExtension({ backendUrl: daemon.url, headless: HEADLESS, viewport: { width: 1280, height: 720 } });
 console.log("extension service worker:", sw ? sw.url() : "NOT FOUND");
 
 // 4) open the page; capture content-script console errors.
@@ -257,7 +234,7 @@ const checks = [
   ["BR-split halves merged into one unit", s.sections.brsplit === 1 && s.hl.br1 && s.hl.br2],
   ["three short siblings merged into one unit", s.sections.mergeshorts === 1 && s.hl.ms1 && s.hl.ms2 && s.hl.ms3],
   ["inline <code> does not fragment the paragraph", s.sections.inlinecode === 1 && s.hl.icode],
-  ["pure-CJK paragraph badged (scored by the stub, or 'unsupported' via the daemon's language gate)", s.sections.purecjk === 1 && (s.hl.cjk || s.cjkUnsupported)],
+  ["pure-CJK paragraph badged as 'unsupported' (language gate)", s.sections.purecjk === 1 && s.cjkUnsupported],
   ["pre-wrap blank-line paragraphs split + merged", s.prewrapBadges === 1 && s.hl.pw1 && s.hl.pw2],
   ["short isolated paragraph skipped", s.sections.short === 0],
   ["never-score zone clean (code/nav-links/editor/aria-hidden)", s.sections.never === 0],
@@ -280,5 +257,6 @@ const pass = checks.every(([, ok]) => ok);
 console.log("\n" + (pass ? "✅ ALL CHECKS PASSED" : "❌ SOME CHECKS FAILED"));
 
 await context.close();
-server.close();
+await server.close();
+await daemon.close();
 process.exit(pass ? 0 : 1);

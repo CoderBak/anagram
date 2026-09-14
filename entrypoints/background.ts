@@ -1,12 +1,13 @@
-// entrypoints/background.ts — MV3 service worker (spec §4.6).
+// entrypoints/background.ts — MV3 service worker.
 // Registers a SINGLE runtime.onMessage listener SYNCHRONOUSLY at top level (MV3 wakes the
-// worker by re-running this registration), routes SCORE_BATCH → router.handle, and returns
-// true to keep the message channel open for the async sendResponse. Popup control actions
-// (RESCAN / SET_ENABLED / GET_TAB_STATE) are addressed straight to the active tab's content
-// script via tabs.sendMessage (spec §4.9), so they do not pass through here.
+// worker by re-running this registration). It routes SCORE_BATCH → router.handle, answers
+// GET_BACKEND_STATUS (is the daemon up?), and mirrors the per-tab flagged count onto the
+// toolbar icon (UPDATE_BADGE). Popup control actions (RESCAN / SET_ENABLED / GET_TAB_STATE /
+// RETRY_BACKEND) are addressed straight to the active tab's content script via
+// tabs.sendMessage, so they do not pass through here.
 import { defineBackground, browser } from "#imports";
 import { createRouter } from "../lib/backend/router";
-import { getScoreClient, getSwitchingClient } from "../lib/backend/getScoreClient";
+import { getScoreClient, getDaemonClient } from "../lib/backend/getScoreClient";
 import { ACTIONS } from "../lib/messaging/protocol";
 import type {
   ScoreBatchMessage,
@@ -84,9 +85,9 @@ export default defineBackground(() => {
         return;
       }
 
-      // Popup/options: which backend is live (optionally a forced re-probe).
+      // Popup/options/content: is the daemon up (optionally a forced re-probe).
       if (msg.action === ACTIONS.GET_BACKEND_STATUS) {
-        getSwitchingClient()
+        getDaemonClient()
           .status(msg.probe === true)
           .then((s) => sendResponse(s), () => sendResponse(undefined));
         return true;
@@ -97,11 +98,12 @@ export default defineBackground(() => {
       router
         .handle(msg.req)
         .then((resp) => {
-          const reply: ScoreBatchReply = { results: resp.results, model: resp.model };
+          const up = getDaemonClient().isUp();
+          const reply: ScoreBatchReply = { results: resp.results, model: up ? resp.model : undefined, backend: up ? "up" : "down" };
           sendResponse(reply);
         })
         .catch(() => {
-          const reply: ScoreBatchReply = { results: [] };
+          const reply: ScoreBatchReply = { results: [], backend: getDaemonClient().isUp() ? "up" : "down" };
           sendResponse(reply);
         });
 

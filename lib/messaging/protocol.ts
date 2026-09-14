@@ -13,8 +13,10 @@ export const ACTIONS = {
   TOGGLE_OVERLAY: "toggleOverlay",
   /** SW (context menu) → content: score the current selection, show a card. */
   ANALYZE_SELECTION: "analyzeSelection",
-  /** popup/options → SW: which scoring backend is live (optionally force a fresh probe). */
+  /** popup/options/content → SW: is the daemon up (optionally force a fresh probe). */
   GET_BACKEND_STATUS: "getBackendStatus",
+  /** popup → content: re-check the daemon now and re-queue "Unavailable" units. */
+  RETRY_BACKEND: "retryBackend",
 } as const;
 
 export type ActionName = (typeof ACTIONS)[keyof typeof ACTIONS];
@@ -30,6 +32,8 @@ export interface ScoreBatchReply {
   results: ScoreResult[];
   /** Backend that produced this batch (report footer, popup). */
   model?: ModelInfo;
+  /** Whether the daemon answered its last probe — "down" makes the content script pause. */
+  backend: "up" | "down";
 }
 
 /** popup/options → SW: ask which backend is live. `probe` forces a fresh /health check. */
@@ -38,13 +42,13 @@ export interface GetBackendStatusMessage {
   probe?: boolean;
 }
 
-/** SW → popup/options (response to GET_BACKEND_STATUS). */
+/** SW → popup/options/content (response to GET_BACKEND_STATUS). */
 export interface BackendStatus {
-  mode: "auto" | "server" | "stub";
   serverUrl: string;
-  /** What will actually score the next batch. */
-  active: "server" | "stub";
-  model: ModelInfo;
+  /** "server" when the daemon answered its last probe; "down" otherwise. */
+  active: "server" | "down";
+  /** The daemon's model when up; null when down. */
+  model: ModelInfo | null;
   server: { ok: boolean; checkedAt: number; device?: string; error?: string };
 }
 
@@ -96,6 +100,11 @@ export interface AnalyzeSelectionMessage {
   action: typeof ACTIONS.ANALYZE_SELECTION;
 }
 
+/** popup → content: the user pressed Retry — re-check the daemon, re-queue Unavailable units. */
+export interface RetryBackendMessage {
+  action: typeof ACTIONS.RETRY_BACKEND;
+}
+
 /** Union of all control messages the content script may receive. */
 export type ControlMessage =
   | RescanMessage
@@ -103,7 +112,8 @@ export type ControlMessage =
   | GetTabStateMessage
   | TeardownMessage
   | ToggleOverlayMessage
-  | AnalyzeSelectionMessage;
+  | AnalyzeSelectionMessage
+  | RetryBackendMessage;
 
 /** Union of all messages the service worker may receive. */
-export type BackgroundMessage = ScoreBatchMessage | GetTabStateMessage | GetBackendStatusMessage;
+export type BackgroundMessage = ScoreBatchMessage | UpdateBadgeMessage | GetBackendStatusMessage;
