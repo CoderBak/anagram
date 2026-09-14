@@ -1,0 +1,284 @@
+{
+  "device": "mps",
+  "dtype": "fp16",
+  "torch": "2.14.0",
+  "models": {
+    "roberta-large": {
+      "params_M": 355,
+      "disk_GB": 1.33,
+      "load_s": 2.1,
+      "rss_growth_on_load_GB": 0.34,
+      "accel_mem_after_load_GB": 1.01,
+      "runs": [
+        {
+          "batch": 1,
+          "tokens_per_para": 81,
+          "median_ms": 30.4,
+          "p95_ms": 30.6,
+          "paras_per_s": 32.89,
+          "tokens_per_s": 2664,
+          "words": 60
+        },
+        {
+          "batch": 8,
+          "tokens_per_para": 85,
+          "median_ms": 156.7,
+          "p95_ms": 158.1,
+          "paras_per_s": 51.07,
+          "tokens_per_s": 4334,
+          "words": 60
+        },
+        {
+          "batch": 32,
+          "tokens_per_para": 85,
+          "median_ms": 609.8,
+          "p95_ms": 633.2,
+          "paras_per_s": 52.47,
+          "tokens_per_s": 4437,
+          "words": 60
+        },
+        {
+          "batch": 1,
+          "tokens_per_para": 145,
+          "median_ms": 52.4,
+          "p95_ms": 53.6,
+          "paras_per_s": 19.1,
+          "tokens_per_s": 2770,
+          "words": 120
+        },
+        {
+          "batch": 8,
+          "tokens_per_para": 145,
+          "median_ms": 279.6,
+          "p95_ms": 281.4,
+          "paras_per_s": 28.61,
+          "tokens_per_s": 4160,
+          "words": 120
+        },
+        {
+          "batch": 32,
+          "tokens_per_para": 146,
+          "median_ms": 1083.0,
+          "p95_ms": 1086.3,
+          "paras_per_s": 29.55,
+          "tokens_per_s": 4300,
+          "words": 120
+        },
+        {
+          "batch": 1,
+          "tokens_per_para": 305,
+          "median_ms": 79.6,
+          "p95_ms": 82.4,
+          "paras_per_s": 12.56,
+          "tokens_per_s": 3830,
+          "words": 250
+        },
+        {
+          "batch": 8,
+          "tokens_per_para": 303,
+          "median_ms": 559.1,
+          "p95_ms": 560.1,
+          "paras_per_s": 14.31,
+          "tokens_per_s": 4341,
+          "words": 250
+        },
+        {
+          "batch": 32,
+          "tokens_per_para": 303,
+          "median_ms": 2211.8,
+          "p95_ms": 2223.9,
+          "paras_per_s": 14.47,
+          "tokens_per_s": 4377,
+          "words": 250
+        },
+        {
+          "batch": 1,
+          "tokens_per_para": 473,
+          "median_ms": 122.4,
+          "p95_ms": 124.3,
+          "paras_per_s": 8.17,
+          "tokens_per_s": 3863,
+          "words": 400
+        },
+        {
+          "batch": 8,
+          "tokens_per_para": 467,
+          "median_ms": 949.6,
+          "p95_ms": 972.8,
+          "paras_per_s": 8.42,
+          "tokens_per_s": 3934,
+          "words": 400
+        },
+        {
+          "batch": 32,
+          "tokens_per_para": 467,
+          "median_ms": 3923.1,
+          "p95_ms": 3949.9,
+          "paras_per_s": 8.16,
+          "tokens_per_s": 3806,
+          "words": 400
+        }
+      ],
+      "sanity": [
+        {
+          "expected": "human",
+          "bucket": "human",
+          "score": 0.025
+        },
+        {
+          "expected": "ai",
+          "bucket": "ai-generated",
+          "score": 0.999
+        },
+        {
+          "expected": "edited",
+          "bucket": "lightly-edited",
+          "score": 0.431
+        }
+      ],
+      "peak_accel_mem_GB": 2.02,
+      "peak_rss_GB": 2.33
+    },
+    "llama-3.2-3b": {
+      "params_M": 3213,
+      "disk_GB": 6.05,
+      "load_s": 14.7,
+      "rss_growth_on_load_GB": 0.05,
+      "accel_mem_after_load_GB": 6.74,
+      "runs": [
+        {
+          "batch": 1,
+          "tokens_per_para": 80,
+          "median_ms": 221.5,
+          "p95_ms": 222.1,
+          "paras_per_s": 4.51,
+          "tokens_per_s": 361,
+          "words": 60
+        },
+        {
+          "batch": 8,
+          "tokens_per_para": 83,
+          "median_ms": 1489.1,
+          "p95_ms": 1493.6,
+          "paras_per_s": 5.37,
+          "tokens_per_s": 448,
+          "words": 60
+        },
+        {
+          "batch": 32,
+          "tokens_per_para": 83,
+          "median_ms": 5975.6,
+          "p95_ms": 6082.3,
+          "paras_per_s": 5.36,
+          "tokens_per_s": 445,
+          "words": 60
+        },
+        {
+          "batch": 1,
+          "tokens_per_para": 143,
+          "median_ms": 353.4,
+          "p95_ms": 353.9,
+          "paras_per_s": 2.83,
+          "tokens_per_s": 405,
+          "words": 120
+        },
+        {
+          "batch": 8,
+          "tokens_per_para": 143,
+          "median_ms": 2694.0,
+          "p95_ms": 2710.8,
+          "paras_per_s": 2.97,
+          "tokens_per_s": 426,
+          "words": 120
+        },
+        {
+          "batch": 32,
+          "tokens_per_para": 144,
+          "median_ms": 18580.8,
+          "p95_ms": 23584.3,
+          "paras_per_s": 1.72,
+          "tokens_per_s": 247,
+          "words": 120
+        },
+        {
+          "batch": 1,
+          "tokens_per_para": 302,
+          "median_ms": 941.4,
+          "p95_ms": 1004.2,
+          "paras_per_s": 1.06,
+          "tokens_per_s": 321,
+          "words": 250
+        },
+        {
+          "batch": 8,
+          "tokens_per_para": 300,
+          "median_ms": 7827.9,
+          "p95_ms": 7973.6,
+          "paras_per_s": 1.02,
+          "tokens_per_s": 307,
+          "words": 250
+        },
+        {
+          "batch": 32,
+          "tokens_per_para": 300,
+          "median_ms": 34879.2,
+          "p95_ms": 35493.8,
+          "paras_per_s": 0.92,
+          "tokens_per_s": 275,
+          "words": 250
+        },
+        {
+          "batch": 1,
+          "tokens_per_para": 468,
+          "median_ms": 1690.6,
+          "p95_ms": 1853.1,
+          "paras_per_s": 0.59,
+          "tokens_per_s": 277,
+          "words": 400
+        },
+        {
+          "batch": 8,
+          "tokens_per_para": 463,
+          "median_ms": 14477.9,
+          "p95_ms": 16173.8,
+          "paras_per_s": 0.55,
+          "tokens_per_s": 256,
+          "words": 400
+        },
+        {
+          "batch": 32,
+          "tokens_per_para": 462,
+          "median_ms": 48601.7,
+          "p95_ms": 50379.4,
+          "paras_per_s": 0.66,
+          "tokens_per_s": 304,
+          "words": 400
+        }
+      ],
+      "sanity": [
+        {
+          "expected": "human",
+          "bucket": "human",
+          "score": 0.423
+        },
+        {
+          "expected": "ai",
+          "bucket": "ai-generated",
+          "score": 1.0
+        },
+        {
+          "expected": "edited",
+          "bucket": "ai-generated",
+          "score": 0.628
+        }
+      ],
+      "peak_accel_mem_GB": 10.3,
+      "peak_rss_GB": 5.95
+    }
+  },
+  "machine": {
+    "chip": "Apple M4",
+    "ram_GB": 24,
+    "macos": "27.0"
+  }
+}
