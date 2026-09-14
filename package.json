@@ -17,6 +17,7 @@
     "test:scenarios": "node test/scenarios.mjs",
     "test:perf": "node test/perf.mjs",
     "test:server": "node test/server.mjs",
+    "test:verify": "node test/verify-backend.mjs",
     "zip:firefox": "wxt zip -b firefox",
     "play": "node test/playground.mjs",
     "serve": "sh anagramd/run.sh",

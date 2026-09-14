@@ -202,6 +202,9 @@ Six suites, all runnable headed on a normal machine:
 | Docs flow | `node test/docs-flow.mjs <public doc URL>` | 12 | in-tab overlay + classic page flow on a real public Google Doc — the original demo doc was deleted from Drive, so without a URL (or `ANAGRAM_DOC_URL`) the suite reports SKIP |
 | Perf | `npm run test:perf` | 3 | 3000-paragraph budget: first badge <4s (measured ~0.3s), no long task >1s |
 
+`npm run test:verify` proves the chips come from the model: it reads each chip's
+probabilities, sends the same paragraph text straight to the daemon's API, and
+compares — then stops the daemon and shows the popup flip to "demo stub".
 `npm run browser` opens a live Chromium with the extension for manual poking;
 `npm run play` opens a multi-tab playground; `node test/shots.mjs` regenerates
 the README screenshots; `node test/genicons.mjs` regenerates the icon set.
