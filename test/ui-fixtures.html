@@ -175,7 +175,24 @@
   </div>
   </section>
 
+  <!-- 15: continuous mutation — a live ticker must not starve the re-scan of a
+       paragraph added while it ticks (debounce max-wait). Ticking starts on click. -->
+  <section id="churn">
+  <div>Live counter: <span id="ticker">0</span> <button id="churnAdd" type="button">Add paragraph while ticking</button></div>
+  </section>
+
   <script>
+    document.getElementById('churnAdd').addEventListener('click', () => {
+      const t = document.getElementById('ticker');
+      let n = 0;
+      const iv = setInterval(() => { t.textContent = String(++n); if (n >= 60) clearInterval(iv); }, 80);
+      const p = document.createElement('p');
+      p.textContent = 'CHURN paragraph was appended at the same moment a nearby counter began ' +
+        'updating its text every eighty milliseconds for several seconds, which resets a naive ' +
+        'trailing debounce on every tick and would postpone the incremental re-scan until the ' +
+        'page fell silent, so the observer must force a drain after a bounded wait instead.';
+      document.getElementById('churn').appendChild(p);
+    });
     document.getElementById('openmodal').addEventListener('click', () => document.getElementById('modal').showModal());
     document.getElementById('closemodal').addEventListener('click', () => document.getElementById('modal').close());
   </script>

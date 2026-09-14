@@ -195,6 +195,27 @@ async function sweep(page, steps = 6) {
     record("ui", "slotted light-DOM paragraph badged", r.slotted >= 1, JSON.stringify(r));
   }
 
+  // A6b: content appended INSIDE the open shadow root after the first scan is still
+  // picked up (the MutationObserver watches each discovered root, not just the document).
+  {
+    const before = await page.evaluate((sel) => document.getElementById("shadowhost")?.shadowRoot?.querySelectorAll(sel).length ?? -1, BADGE_SEL);
+    await page.evaluate(() => {
+      const root = document.getElementById("shadowhost").shadowRoot;
+      const p = document.createElement("p");
+      p.id = "shadow-late";
+      p.textContent = "SHADOWLATE paragraph was appended into the open shadow root well after the " +
+        "initial scan finished, and it must still receive a badge because the observer has to " +
+        "watch mutations inside every shadow root the walker descended into, not only the light " +
+        "document tree where a subtree observer on the root element never sees this change.";
+      root.querySelector("div").appendChild(p);
+    });
+    const ok = await page
+      .waitForFunction(({ sel, n }) => (document.getElementById("shadowhost")?.shadowRoot?.querySelectorAll(sel).length ?? 0) > n, { sel: BADGE_SEL, n: before }, { timeout: 6000 })
+      .then(() => true)
+      .catch(() => false);
+    record("ui", "paragraph appended inside a shadow root after the scan is badged", ok, `before=${before}`);
+  }
+
   // A7: overflow:hidden container — badge visible inside the box.
   {
     const r = await page.evaluate((sel) => {
@@ -393,6 +414,19 @@ async function sweep(page, steps = 6) {
       .then(() => true)
       .catch(() => false);
     record("ui", "pending chips all drain into verdicts", drained, "");
+  }
+
+  // A15b: a paragraph added while a nearby counter ticks every 80 ms must be badged
+  // within a bounded wait — a trailing debounce alone would starve until the ticking stops.
+  {
+    await page.locator("#churnAdd").scrollIntoViewIfNeeded();
+    const t0 = Date.now();
+    await page.locator("#churnAdd").click();
+    const ok = await page
+      .waitForFunction((sel) => document.querySelectorAll(`#churn ${sel}`).length >= 1, BADGE_SEL, { timeout: 3500 })
+      .then(() => true)
+      .catch(() => false);
+    record("ui", "re-scan is not starved by continuous mutation (debounce max-wait)", ok, `${Date.now() - t0} ms`);
   }
 
   // A16: hover card — 4-bucket distribution bar + Copy text action; copy puts the

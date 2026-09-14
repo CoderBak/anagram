@@ -29,6 +29,7 @@ import type { Unit } from "../types";
 import { MARK_ATTR } from "../types";
 import type { ScoreResult } from "../contract";
 import { band, BAND_LABEL, isNoVerdict, languageName, scorePct, type Band } from "./band";
+import { countWords, truncateForScoring, MAX_SCORE_CHARS } from "../dom/text";
 import { distributionHtml } from "./dist";
 import { BADGE_CSS } from "./badge.css";
 import { isDarkContext } from "./theme";
@@ -181,9 +182,18 @@ export function createBadgeLayer(): BadgeLayer {
     // The model's whole 4-way distribution is the honest part of the readout. Skip
     // it for "unknown" — a flat gray bar reads as data when the message is "no answer".
     const dist = isNoVerdict(b) ? "" : distributionHtml(result, b);
-    const windowRow = result.truncated
-      ? row("Model window", `first ${result.tokens ?? 512} tokens`)
-      : "";
+    // Coverage, honestly: the client sends a sentence-bounded prefix of very long
+    // units (MAX_SCORE_CHARS) and the daemon cuts at its token window. "Words" is the
+    // whole unit; "Scored" appears only when the model saw less than that.
+    const clientCut = unit.text.length > MAX_SCORE_CHARS;
+    const scoredRow = isNoVerdict(b)
+      ? ""
+      : result.truncated
+        ? row("Scored", `first ${result.tokens ?? 512} tokens`)
+        : clientCut
+          ? row("Scored", `first ${countWords(truncateForScoring(unit.text))} words`)
+          : "";
+    const prefixOnly = !isNoVerdict(b) && (result.truncated || clientCut);
     const langRow =
       b === "unsupported"
         ? row("Detected language", `${languageName(result.lang)} · ${Math.round((result.lang_prob ?? 0) * 100)}%`)
@@ -193,15 +203,16 @@ export function createBadgeLayer(): BadgeLayer {
         ? "The scoring backend did not answer — try Rescan."
         : b === "unsupported"
           ? "EditLens is trained on English text only, so this paragraph was not scored."
-          : "EditLens estimate of AI editing, not proof.";
+          : (prefixOnly ? "Only the opening of this paragraph was scored. " : "") +
+            "EditLens estimate of AI editing, not proof.";
     card.innerHTML =
       `<div class="head"><span class="verdict band-${b}">${BAND_LABEL[b]}</span>` +
       `<span class="big">${isNoVerdict(b) ? "—" : pct + "% AI"}</span></div>` +
       dist +
       langRow +
       partsRow +
-      row(b === "unsupported" ? "Words" : "Words analyzed", `${unit.wordCount}`) +
-      windowRow +
+      row("Words", `${unit.wordCount}`) +
+      scoredRow +
       `<div class="actions"><button type="button" class="act copy">Copy text</button></div>` +
       `<div class="foot">${foot}</div>` +
       `<span class="caret"></span>`;

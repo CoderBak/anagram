@@ -68,6 +68,13 @@ export interface CollectOptions {
    * is met (default). False = strict per-paragraph mode: short runs are skipped.
    */
   mergeShorts?: boolean;
+  /**
+   * Called once per open shadow root the walk descends into. The orchestrator
+   * registers a MutationObserver on each: subtree observation of the document
+   * never crosses a shadow boundary, so content appended inside a web component
+   * after the first scan would otherwise never be seen.
+   */
+  onShadowRoot?: (root: ShadowRoot) => void;
 }
 
 /** Max link-text fraction for a run to count as prose (nav/menu barrier above it). */
@@ -111,7 +118,15 @@ export function collectUnits(
   }
 
   function closeRun(): void {
-    if (cur.length === 0) return;
+    // Interior whitespace nodes were kept (see visitText); trailing ones are not
+    // part of the paragraph.
+    while (cur.length > 0 && (cur[cur.length - 1].textContent ?? "").trim() === "") cur.pop();
+    if (cur.length === 0) {
+      cur = [];
+      curContainer = null;
+      curPreserved = false;
+      return;
+    }
     const nodes = cur;
     const container = curContainer as Element;
     const preserved = curPreserved;
@@ -152,7 +167,7 @@ export function collectUnits(
   }
 
   function visitChildren(el: Element, ctx: Ctx): void {
-    for (const child of composedChildren(el)) visit(child, ctx);
+    for (const child of composedChildren(el, opts.onShadowRoot)) visit(child, ctx);
   }
 
   function visit(node: Node, ctx: Ctx): void {
@@ -246,7 +261,14 @@ export function collectUnits(
       splitPreservedText(tn, ctx);
       return;
     }
-    if (s.trim().length === 0) return;
+    if (s.trim().length === 0) {
+      // A whitespace-only node BETWEEN inline elements is the space between two
+      // words (`<b>Alan</b> <i>Turing</i>`); dropping it glued them into one token
+      // and starved the word count. Keep it while a run is open; leading ones are
+      // nothing, trailing ones are trimmed in closeRun.
+      if (cur.length > 0) pushNode(tn, ctx);
+      return;
+    }
     pushNode(tn, ctx);
   }
 
@@ -302,9 +324,12 @@ export function collectUnits(
 }
 
 /** Composed-tree children: shadow root replaces light children; slots resolve. */
-function composedChildren(el: Element): Node[] {
+function composedChildren(el: Element, onShadowRoot?: (root: ShadowRoot) => void): Node[] {
   const sr = el.shadowRoot;
-  if (sr) return Array.from(sr.childNodes);
+  if (sr) {
+    onShadowRoot?.(sr);
+    return Array.from(sr.childNodes);
+  }
   if (typeof HTMLSlotElement !== "undefined" && el instanceof HTMLSlotElement) {
     return el.assignedNodes({ flatten: true });
   }

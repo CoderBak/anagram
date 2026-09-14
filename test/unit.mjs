@@ -143,6 +143,27 @@ const results = await page.evaluate(() => {
   const skipped = PW.collectUnits(sandbox, { claimFilter: () => "skip" });
   check("claimFilter skip suppresses owned runs", skipped.length === 0);
 
+  // ---- inline whitespace fidelity ------------------------------------------------------
+  // Whitespace-only text nodes BETWEEN inline elements are the spaces between words.
+  u = collect(`<p>${Array.from({ length: 60 }, (_, i) => `<span>${VOCAB[i % VOCAB.length]}</span>`).join(" ")}.</p>`);
+  check("span-per-word paragraph keeps its spaces (60 words, one unit)", u.length === 1 && u[0].words === 60, JSON.stringify(u.map(x => [x.words, x.text.slice(0, 30)])));
+  u = collect(`<p><b>Alan Turing</b> <small>OBE</small> ${words(55)}</p>`);
+  check("`<b>…</b> <small>…</small>` is not glued into one token", u.length === 1 && u[0].text.startsWith("Alan Turing OBE "), JSON.stringify(u.map(x => x.text.slice(0, 24))));
+  {
+    sandbox.innerHTML = `<p>\n  <span>${words(60)}</span>\n  </p>`;
+    const [unit] = PW.collectUnits(sandbox);
+    const nodes = unit?.parts[0].nodes ?? [];
+    const edgesClean = nodes.length > 0 && nodes[0].textContent.trim() !== "" && nodes[nodes.length - 1].textContent.trim() !== "";
+    check("leading/trailing whitespace nodes are not part of the run", edgesClean, JSON.stringify(nodes.map(n => JSON.stringify(n.textContent.slice(0, 8)))));
+  }
+  {
+    sandbox.innerHTML = `<div id="sh2"></div>`;
+    sandbox.querySelector("#sh2").attachShadow({ mode: "open" }).innerHTML = `<p>${words(60)}</p>`;
+    const roots = [];
+    const got = PW.collectUnits(sandbox, { onShadowRoot: (r) => roots.push(r) });
+    check("walker reports each open shadow root it descends into", got.length === 1 && roots.length === 1 && roots[0] instanceof ShadowRoot, `${roots.length}`);
+  }
+
   // ---- regression: review-workflow findings ------------------------------------------
   // 1) preserved-whitespace splitting must be IDEMPOTENT (no infinite observe loop).
   sandbox.innerHTML = `<div style="white-space:pre-wrap">${words(30)}\n\n${words(30)}</div>`;

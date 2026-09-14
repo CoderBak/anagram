@@ -305,6 +305,11 @@ export function createOrchestrator(
     };
   }
 
+  /** One walk under `root`: shadow roots it descends into become observer targets. */
+  function collect(root: ParentNode, claimFilter: (nodes: Text[]) => "take" | "skip"): Unit[] {
+    return collectUnits(root, { claimFilter, mergeShorts, onShadowRoot: observers.observeRoot });
+  }
+
   /** Register freshly collected units: claim their nodes, observe, index. */
   function ingestUnits(units: Unit[]): void {
     for (const u of units) {
@@ -573,7 +578,7 @@ export function createOrchestrator(
       for (const root of queue) {
         if (scanned.has(root) || !root.isConnected) continue;
         scanned.add(root);
-        ingestUnits(collectUnits(root, { claimFilter: filter, mergeShorts }));
+        ingestUnits(collect(root, filter));
       }
       queue = [...extra].filter((r) => !scanned.has(r));
     }
@@ -590,9 +595,7 @@ export function createOrchestrator(
     purgeDisconnected();
     resolveScopeRoot(); // the route's main region may be a different element now
     const base = scanBase();
-    if (base) {
-      ingestUnits(collectUnits(base, { claimFilter: makeClaimFilter(), mergeShorts }));
-    }
+    if (base) ingestUnits(collect(base, makeClaimFilter()));
     updateFab();
     log.log("url change refresh", location.href);
   }
@@ -679,7 +682,7 @@ export function createOrchestrator(
     observers.start();
     resolveScopeRoot();
     const base = scanBase();
-    if (base) ingestUnits(collectUnits(base, { claimFilter: makeClaimFilter(), mergeShorts }));
+    if (base) ingestUnits(collect(base, makeClaimFilter()));
 
     watchUrl();
     log.log("started", { session, domain });
@@ -766,9 +769,7 @@ export function createOrchestrator(
     refreshHighlightTheme();
     resolveScopeRoot();
     const base = scanBase();
-    if (base) {
-      ingestUnits(collectUnits(base, { claimFilter: makeClaimFilter(), mergeShorts }));
-    }
+    if (base) ingestUnits(collect(base, makeClaimFilter()));
     updateFab();
     log.log("rescan");
   }

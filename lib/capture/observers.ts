@@ -18,6 +18,8 @@ import { NO_SCORE_TAGS } from "../dom/tags";
 
 export interface Observers {
   observeUnit(unit: Unit): void;
+  /** Watch mutations inside an open shadow root the walker descended into. Idempotent. */
+  observeRoot(root: ShadowRoot): void;
   /** Stop tracking one unit (scored, invalidated, or purged). */
   dropUnit(unit: Unit): void;
   start(): void;
@@ -25,6 +27,9 @@ export interface Observers {
 }
 
 const DRAIN_DEBOUNCE_MS = 250;
+/** A trailing debounce alone never fires on a page that mutates continuously (live
+ *  tickers, streaming chat): the drain is forced once dirt has waited this long. */
+const DRAIN_MAX_WAIT_MS = 1000;
 // Prefetch margin for the "near" lane: at reading-speed scrolling, ~1.5 screens ahead
 // keeps chips landing before the paragraph enters the viewport.
 const ROOT_MARGIN = "1200px 0px";
@@ -47,7 +52,19 @@ export function createObservers(opts: {
   const attrPending = new Set<Element>();
   let attrTimer: ReturnType<typeof setTimeout> | null = null;
   let drainTimer: ReturnType<typeof setTimeout> | null = null;
+  /** When the oldest undrained dirt arrived (max-wait guard). */
+  let dirtySince: number | null = null;
   let started = false;
+  /** Shadow roots the single MutationObserver also watches (it accepts many targets). */
+  let observedRoots = new WeakSet<ShadowRoot>();
+  const pendingRoots = new Set<ShadowRoot>();
+  const MO_OPTIONS: MutationObserverInit = {
+    childList: true,
+    subtree: true,
+    characterData: true,
+    attributes: true,
+    attributeFilter: WATCHED_ATTRS,
+  };
 
   function flushAttrPending(): void {
     attrTimer = null;
@@ -108,12 +125,16 @@ export function createObservers(opts: {
   }
 
   function scheduleDrain(): void {
+    const now = Date.now();
+    if (dirtySince === null) dirtySince = now;
     if (drainTimer !== null) clearTimeout(drainTimer);
-    drainTimer = setTimeout(drain, DRAIN_DEBOUNCE_MS);
+    const wait = Math.max(0, Math.min(DRAIN_DEBOUNCE_MS, dirtySince + DRAIN_MAX_WAIT_MS - now));
+    drainTimer = setTimeout(drain, wait);
   }
 
   function drain(): void {
     drainTimer = null;
+    dirtySince = null;
     if (mo) ingest(mo.takeRecords());
     if (dirty.size === 0 && removed.size === 0) return;
     const nodes = Array.from(dirty);
@@ -197,16 +218,19 @@ export function createObservers(opts: {
     }
   }
 
+  function observeRoot(root: ShadowRoot): void {
+    if (observedRoots.has(root)) return;
+    observedRoots.add(root);
+    if (started) mo.observe(root, MO_OPTIONS);
+    else pendingRoots.add(root);
+  }
+
   function start(): void {
     if (started) return;
     started = true;
-    mo.observe(document.documentElement, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-      attributes: true,
-      attributeFilter: WATCHED_ATTRS,
-    });
+    mo.observe(document.documentElement, MO_OPTIONS);
+    for (const root of pendingRoots) mo.observe(root, MO_OPTIONS);
+    pendingRoots.clear();
   }
 
   function stop(): void {
@@ -226,7 +250,10 @@ export function createObservers(opts: {
     dirty.clear();
     removed.clear();
     dispatched.clear();
+    dirtySince = null;
+    observedRoots = new WeakSet(); // disconnect() dropped them; the next scan re-registers
+    pendingRoots.clear();
   }
 
-  return { observeUnit, dropUnit, start, stop };
+  return { observeUnit, observeRoot, dropUnit, start, stop };
 }
