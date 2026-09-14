@@ -101,8 +101,11 @@ const FAB_CSS = `
 .fab {
   height: ${BALL}px;
   min-width: ${BALL}px;
-  padding: 0 11px;
+  padding: 0 10px; /* 20 px mark + 2×10 + 2×1 border = a ${BALL} px square */
   justify-content: center;
+  /* No flex gap here: the collapsed label would still claim it and push the mark
+     off-centre. The label brings its own margin when it slides out. */
+  gap: 0;
   overflow: hidden;
   touch-action: none; /* pointer-drag must not turn into page scroll */
 }
@@ -118,7 +121,7 @@ const FAB_CSS = `
 .fab:hover .label {
   max-width: 120px;
   opacity: 1;
-  margin-left: 2px;
+  margin-left: 8px;
 }
 
 .action {
