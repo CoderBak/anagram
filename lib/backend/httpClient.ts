@@ -13,7 +13,7 @@ export interface HealthInfo {
   device: string;
 }
 
-/** Scoring can take a while on a cold Mac; batches are ≤ ~800 chars so 60 s is generous. */
+/** Scoring can take a while on a cold Mac; the router packs up to ~6000 chars per request, so 60 s is generous. */
 const SCORE_TIMEOUT_MS = 60_000;
 const HEALTH_TIMEOUT_MS = 1_500;
 

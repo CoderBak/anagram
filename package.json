@@ -24,7 +24,15 @@
     "vendor:basecoat": "cp node_modules/basecoat-css/dist/basecoat-vega.cdn.min.css lib/ui/basecoat-vega.cdn.min.css"
   },
   "devDependencies": {
+    "@floating-ui/dom": "^1.8.0",
+    "@mozilla/readability": "^0.6.0",
+    "@types/culori": "^4.0.1",
     "basecoat-css": "^1.0.2",
+    "culori": "^4.0.2",
+    "dompurify": "^3.4.15",
+    "idb": "^8.0.3",
+    "p-limit": "^7.3.2",
+    "p-retry": "^8.0.1",
     "playwright": "^1.61.1",
     "typescript": "^5.9.3",
     "wxt": "^0.20.27"

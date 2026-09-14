@@ -43,7 +43,7 @@ npm run serve                      # http://127.0.0.1:8765 — GET /health, POST
 The extension's default backend mode is **Auto**: it uses the daemon whenever
 `/health` answers and the demo stub otherwise, and the popup always says which
 one produced the scores. Options → *Scoring backend* switches modes or the URL.
-`sh anagramd/run.sh --selftest` scores three sample paragraphs as a sanity check.
+`sh anagramd/run.sh --selftest` scores four sample paragraphs (one of them Chinese, which must come back unsupported) as a sanity check.
 
 ## What you get
 
@@ -231,7 +231,7 @@ daemon over HTTP when it is up, the deterministic stub otherwise — with retry
 and never-cached degraded fallbacks (`lib/backend/`). Results render as inline
 shadow-DOM chips and Highlight-API marks (`lib/render/`); the Google Docs
 overlay (`lib/docsOverlay.ts`) reuses the same pipeline inside a shadow-root
-reader. The surface↔backend contract (`lib/contract.ts`, v2.0) is exactly the
+reader. The surface↔backend contract (`lib/contract.ts`, v2.1) is exactly the
 daemon's IO: `{bucket, probs[4], score, lang}` per paragraph, or `unsupported` for
 non-English text.
 

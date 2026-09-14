@@ -14,7 +14,7 @@ pip install -r anagramd/requirements.txt
 
 # 3. run
 npm run serve            # = python3 anagramd/serve.py  → http://127.0.0.1:8765
-python3 anagramd/serve.py --selftest   # sanity check: three paragraphs, prints buckets
+python3 anagramd/serve.py --selftest   # sanity check: four paragraphs (one Chinese → unsupported), prints buckets
 ```
 
 With the daemon up, the extension's default backend mode (**Auto**) picks it up on

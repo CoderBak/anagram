@@ -3,22 +3,10 @@
 // the whole surface can be exercised without the model. Never mistake its numbers
 // for verdicts: the popup and report footer say "demo stub" whenever it is active.
 import { BUCKET_COUNT } from "../contract";
+import { cyrb53 } from "../hash";
 import type { ModelInfo, ScoreClient, ScoreBlock, ScoreResult } from "../contract";
 
 const MODEL: ModelInfo = { id: "stub", ver: "0.0.0", calibration: "none" };
-
-/** Deterministic 53-bit hash of a string (cyrb53) → seed. */
-function cyrb53(str: string, seed = 0): number {
-  let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed;
-  for (let i = 0; i < str.length; i++) {
-    const ch = str.charCodeAt(i);
-    h1 = Math.imul(h1 ^ ch, 2654435761);
-    h2 = Math.imul(h2 ^ ch, 1597334677);
-  }
-  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-  return 4294967296 * (2097151 & h2) + (h1 >>> 0);
-}
 
 /** Mulberry32 PRNG → deterministic [0,1) stream from a seed. */
 function mulberry32(seed: number): () => number {

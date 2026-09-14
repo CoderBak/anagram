@@ -3,7 +3,7 @@
 
 Wraps `pangram/editlens_roberta-large` (EditLens: Thai, Emi, Masrour & Iyyer, ICLR 2026;
 https://arxiv.org/abs/2510.03154) behind a tiny HTTP API on 127.0.0.1 that speaks the
-extension's contract (lib/contract.ts, CONTRACT_VERSION "2.0").
+extension's contract (lib/contract.ts, CONTRACT_VERSION "2.1").
 
 The model is a 4-way sequence classifier over the *extent of AI editing* in a text:
     bucket 0  fully human-written
@@ -27,7 +27,7 @@ Endpoints
 
 Usage
     python anagramd/serve.py                 # ../../models/editlens_roberta-large on :8765
-    python anagramd/serve.py --selftest      # score three sample paragraphs and exit
+    python anagramd/serve.py --selftest      # score four sample paragraphs (one non-English) and exit
     python anagramd/serve.py --model-dir /path/to/editlens_roberta-large --port 8765
 
 License note: the weights are CC BY-NC-SA 4.0 (non-commercial). Nothing here uploads text

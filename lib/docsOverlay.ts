@@ -251,7 +251,7 @@ export function createDocsOverlay(opts: DocsOverlayOptions): DocsOverlay {
 
     const mark = document.createElement("span");
     mark.className = "mark";
-    mark.textContent = "P";
+    mark.textContent = "A";
 
     const titles = document.createElement("div");
     titles.className = "titles";

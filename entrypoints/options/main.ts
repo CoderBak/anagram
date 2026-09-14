@@ -8,6 +8,7 @@ import "../../lib/ui/basecoat-vega.cdn.min.css";
 import { followSystemTheme } from "../../lib/ui/theme";
 import { settings, clearSiteOverride, setSiteOverride } from "../../lib/settings/settings";
 import { ACTIONS } from "../../lib/messaging/protocol";
+import { CONTRACT_VERSION } from "../../lib/contract";
 import type { BackendStatus } from "../../lib/messaging/protocol";
 
 const enabledEl = document.getElementById("enabled") as HTMLInputElement;
@@ -148,7 +149,7 @@ bindSelect(analysisScopeEl, settings.analysisScope);
 void renderSites();
 settings.siteOverrides.watch(() => void renderSites());
 const version = browser.runtime.getManifest().version;
-versionEl.textContent = `v${version} · contract 2.0`;
+versionEl.textContent = `v${version} · contract ${CONTRACT_VERSION}`;
 
 // --- scoring backend -------------------------------------------------------------
 bindSelect(backendEl, settings.backend);
@@ -181,7 +182,7 @@ async function refreshBackend(probe: boolean): Promise<void> {
         (s.mode === "auto" ? "using the demo stub until it comes up." : "paragraphs will show as Unavailable.");
     }
     versionEl.textContent =
-      `v${version} · contract 2.0 · backend: ${s.active === "server" ? s.model.id : "demo stub"}`;
+      `v${version} · contract ${CONTRACT_VERSION} · backend: ${s.active === "server" ? s.model.id : "demo stub"}`;
   } catch {
     backendStatusEl.textContent = "Could not reach the extension’s service worker.";
   }
