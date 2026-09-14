@@ -1,11 +1,12 @@
-// Generate extension icons by rendering the FAB mark design at exact sizes.
+// Generate extension icons by rendering the FAB mark design at exact sizes:
+// Basecoat's primary token (near-black) square, modest radius, white "A". No gradient.
 import { chromium } from "playwright";
 const browser = await chromium.launch();
 const page = await browser.newPage();
 for (const size of [16, 48, 128]) {
   await page.setViewportSize({ width: size, height: size });
   const fontPx = Math.round(size * 0.62);
-  const radius = Math.round(size * 0.22);
+  const radius = Math.round(size * 0.2);
   await page.setContent(`<!doctype html><html><head><style>
     * { margin: 0; padding: 0; }
     body { width: ${size}px; height: ${size}px; }
@@ -13,8 +14,8 @@ for (const size of [16, 48, 128]) {
       width: ${size}px; height: ${size}px;
       display: flex; align-items: center; justify-content: center;
       border-radius: ${radius}px;
-      background: linear-gradient(135deg, #6d5efc, #b15efc);
-      color: #fff;
+      background: #171717;
+      color: #fafafa;
       font: 800 ${fontPx}px/1 -apple-system, "Segoe UI", system-ui, sans-serif;
     }
   </style></head><body><div class="mark">A</div></body></html>`);

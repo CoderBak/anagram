@@ -92,13 +92,13 @@ export function createBadgeLayer(): BadgeLayer {
     const pct = scorePct(result);
 
     pill.className = `pill band-${b}`;
-    // Number + its unit tag, readable without hovering ("38% AI"). A merged unit
-    // says so up front ("38% AI ×3") — one verdict covering N short paragraphs
-    // must never masquerade as a single-paragraph judgment.
+    // The bare number ("38%") — what it means is in the card and the intro, not on
+    // every line. A merged unit says so up front ("38% ×3"): one verdict covering N
+    // short paragraphs must never masquerade as a single-paragraph judgment.
     const xn = unit.parts.length > 1 ? ` ×${unit.parts.length}` : "";
     // Unsupported language → the detected code ("zh"), never a number.
     num.textContent =
-      (b === "unknown" ? "?" : b === "unsupported" ? (result.lang ?? "n/a") : `${pct}% AI`) + xn;
+      (b === "unknown" ? "?" : b === "unsupported" ? (result.lang ?? "n/a") : `${pct}%`) + xn;
 
     renderCard(root.querySelector(".card") as HTMLElement, unit, result, b, pct);
   }
@@ -204,10 +204,11 @@ export function createBadgeLayer(): BadgeLayer {
         : b === "unsupported"
           ? "EditLens is trained on English text only, so this paragraph was not scored."
           : (prefixOnly ? "Only the opening of this paragraph was scored. " : "") +
-            "EditLens estimate of AI editing, not proof.";
+            "The number is EditLens's estimate of how far this text sits from untouched " +
+            "human writing toward fully AI-generated — not a share of words, not proof.";
     card.innerHTML =
       `<div class="head"><span class="verdict band-${b}">${BAND_LABEL[b]}</span>` +
-      `<span class="big">${isNoVerdict(b) ? "—" : pct + "% AI"}</span></div>` +
+      `<span class="big" title="Extent of AI editing (EditLens scale)">${isNoVerdict(b) ? "—" : pct + "%"}</span></div>` +
       dist +
       langRow +
       partsRow +

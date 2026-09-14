@@ -34,9 +34,9 @@
       .dot-human { background: #1a7f37; }
       .dot-light { background: #d4a017; }
       .dot-heavy { background: #e8590c; }
-      .dot-ai { background: #e5484d; }
-      .dot-none { background: #9aa3ad; }
-      .dot-lang { background: #9aa3ad; box-shadow: inset 0 0 0 2px var(--card); }
+      .dot-ai { background: #dc2626; }
+      .dot-none { background: #a3a3a3; }
+      .dot-lang { background: #a3a3a3; box-shadow: inset 0 0 0 2px var(--card); }
       .mini { margin: 4px 0 0; font-size: 12px; font-weight: 600; color: var(--muted-foreground); text-transform: uppercase; letter-spacing: 0.06em; }
       .privacy { margin: 0; color: var(--muted-foreground); font-size: 13px; }
       footer.foot { margin-top: 24px; font-size: 12.5px; line-height: 1.6; color: var(--muted-foreground); }
@@ -215,9 +215,10 @@
       </div>
 
       <footer class="foot">
-        Scores are EditLens estimates of how much of a paragraph was AI-edited (0–100%), not proof.
-        Detection runs per paragraph with a 50-word evidence floor; shorter neighboring paragraphs
-        are analyzed together. Model: pangram/editlens_roberta-large (CC BY-NC-SA 4.0, non-commercial).
+        A chip's number is EditLens's estimate of how far a paragraph sits between untouched human writing
+        (0%) and fully AI-generated text (100%) — not a share of words, not proof. Detection runs per
+        paragraph with a 50-word evidence floor; shorter neighboring paragraphs are analyzed together.
+        Model: pangram/editlens_roberta-large (CC BY-NC-SA 4.0, non-commercial).
       </footer>
     </div>
     <script type="module" src="./main.ts"></script>

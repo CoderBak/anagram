@@ -26,7 +26,7 @@ export const DIST_CSS = `
 .dist .dbar {
   display: flex;
   height: 6px;
-  border-radius: 999px;
+  border-radius: 3px;
   overflow: hidden;
   background: rgba(15, 23, 42, 0.08);
 }
@@ -35,7 +35,7 @@ export const DIST_CSS = `
 .dist .band-human { --bc: #1a7f37; }
 .dist .band-light { --bc: #d4a017; }
 .dist .band-heavy { --bc: #e8590c; }
-.dist .band-ai    { --bc: #e5484d; }
+.dist .band-ai    { --bc: #dc2626; }
 .dist .drows {
   display: grid;
   grid-template-columns: auto 1fr auto;

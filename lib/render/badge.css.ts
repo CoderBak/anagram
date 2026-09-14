@@ -6,8 +6,11 @@
 //   chip scales with the text it annotates (clamped 9–12px) and sits on the SAME
 //   BASELINE as the words before it — no vertical fudge factors.
 // - `margin-inline-start` keeps the gap on the correct side in RTL text.
-// - The chip reads "<pct>% AI" — the number plus its unit tag, self-explanatory
-//   without hovering; the full calibrated readout stays in the hover card.
+// - The chip reads the bare number ("38%"); what the number means is explained in
+//   the hover card's footer and on the onboarding page, not repeated on every line.
+// - Visual language follows Basecoat's Vega pack (the extension pages): neutral
+//   greys, hairline borders, 6–8 px radii, one flat shadow, no gradients, no blur,
+//   verdict colour only on the dot / text / marks.
 // - A chip can render in a PENDING state ("analyzing") the moment its unit is
 //   dispatched, then morphs in place into the verdict — the host is reused, so
 //   the line lays out once, not twice.
@@ -54,27 +57,25 @@ export const BADGE_CSS: string = `
   box-sizing: border-box;
   font-size: clamp(9px, 0.66em, 12px);
   line-height: 1;
-  padding: 0.34em 0.72em 0.34em 0.56em;
-  border-radius: 9999px;
-  border: 1px solid rgba(15, 23, 42, 0.09);
-  background: rgba(255, 255, 255, 0.92);
-  -webkit-backdrop-filter: saturate(1.4) blur(8px);
-  backdrop-filter: saturate(1.4) blur(8px);
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.10), 0 1px 1px rgba(15, 23, 42, 0.04);
+  padding: 0.3em 0.6em 0.3em 0.5em;
+  border-radius: 6px;
+  border: 1px solid #e5e5e5;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
   font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  font-weight: 640;
+  font-weight: 600;
   letter-spacing: 0.01em;
-  color: #57606a;
+  color: #525252;
   white-space: nowrap;
-  direction: ltr; /* "9% AI" must not bidi-flip to "AI 9%" inside RTL paragraphs */
+  direction: ltr; /* the number must not bidi-flip inside RTL paragraphs */
   cursor: default;
   animation: anagram-badge-in 180ms ease-out both;
-  transition: box-shadow 130ms ease, transform 130ms ease;
+  transition: background-color 130ms ease, border-color 130ms ease;
 }
 
 :host(:hover) .pill {
-  transform: translateY(-0.5px);
-  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.16), 0 1px 2px rgba(15, 23, 42, 0.08);
+  background: #f5f5f5;
+  border-color: #d4d4d4;
 }
 
 .dot {
@@ -91,12 +92,12 @@ export const BADGE_CSS: string = `
   font-variant-numeric: tabular-nums;
 }
 
-.pill.band-human   { --dot: #1a7f37; --ring: rgba(26, 127, 55, 0.18);   color: #116a37; }
-.pill.band-light   { --dot: #d4a017; --ring: rgba(212, 160, 23, 0.22);  color: #7a5b00; }
-.pill.band-heavy   { --dot: #e8590c; --ring: rgba(232, 89, 12, 0.20);   color: #a13d00; }
-.pill.band-ai      { --dot: #e5484d; --ring: rgba(229, 72, 77, 0.20);   color: #b42318; }
-.pill.band-unknown { --dot: #9aa3ad; --ring: rgba(154, 163, 173, 0.16); color: #57606a; }
-.pill.band-unsupported { --dot: #9aa3ad; --ring: rgba(154, 163, 173, 0.16); color: #737373; font-weight: 500; }
+.pill.band-human   { --dot: #1a7f37; --ring: rgba(26, 127, 55, 0.16);   color: #116a37; }
+.pill.band-light   { --dot: #d4a017; --ring: rgba(212, 160, 23, 0.20);  color: #7a5b00; }
+.pill.band-heavy   { --dot: #e8590c; --ring: rgba(232, 89, 12, 0.18);   color: #a13d00; }
+.pill.band-ai      { --dot: #dc2626; --ring: rgba(220, 38, 38, 0.18);   color: #b42318; }
+.pill.band-unknown { --dot: #a3a3a3; --ring: rgba(163, 163, 163, 0.16); color: #525252; }
+.pill.band-unsupported { --dot: #a3a3a3; --ring: rgba(163, 163, 163, 0.16); color: #737373; font-weight: 500; }
 
 /* ---- pending ("analyzing") state --------------------------------------------- */
 /* Shown the moment a unit's batch actually goes to the backend; morphs in place
@@ -130,10 +131,10 @@ export const BADGE_CSS: string = `
   min-width: 232px;
   max-width: min(300px, 78vw);
   padding: 11px 13px 10px;
-  border-radius: 12px;
-  border: 1px solid rgba(0, 0, 0, 0.10);
+  border-radius: 8px;
+  border: 1px solid #e5e5e5;
   background: #ffffff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 10px 28px rgba(0, 0, 0, 0.10);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   font: 400 11px/1.5 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   color: #252525;
   text-align: left;
@@ -251,11 +252,12 @@ export const BADGE_CSS: string = `
 /* ---- dark surfaces ------------------------------------------------------------ */
 
 :host(.pg-dark) .pill {
-  border-color: rgba(255, 255, 255, 0.14);
-  background: rgba(32, 34, 37, 0.92);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
-  color: #b9c0c8;
+  border-color: rgba(255, 255, 255, 0.12);
+  background: #171717;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  color: #a3a3a3;
 }
+:host(.pg-dark:hover) .pill { background: #262626; border-color: rgba(255, 255, 255, 0.2); }
 :host(.pg-dark) .pill.band-human   { color: #4ecb71; }
 :host(.pg-dark) .pill.band-light   { color: #e6c84c; }
 :host(.pg-dark) .pill.band-heavy   { color: #ff9a57; }
@@ -266,9 +268,9 @@ export const BADGE_CSS: string = `
 
 :host(.pg-dark) .card {
   border-color: rgba(255, 255, 255, 0.10);
-  background: #262626;
+  background: #171717;
   color: #fafafa;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 }
 :host(.pg-dark) .card .big { color: #fafafa; }
 :host(.pg-dark) .card .row .k { color: #a3a3a3; }
@@ -289,16 +291,17 @@ export const BADGE_CSS: string = `
   .dot { forced-color-adjust: none; }
 }
 
+/* Jump-target pulse: a ring in the chip's own verdict colour, nothing foreign. */
 @keyframes anagram-flash {
-  0%, 100% { box-shadow: 0 1px 4px rgba(15, 23, 42, 0.10); transform: scale(1); }
-  25%, 65% { box-shadow: 0 0 0 6px rgba(109, 94, 252, 0.35), 0 1px 4px rgba(15, 23, 42, 0.10); transform: scale(1.12); }
+  0%, 100% { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); }
+  25%, 65% { box-shadow: 0 0 0 5px color-mix(in oklab, var(--dot, #a3a3a3) 35%, transparent); }
 }
 .pill.pg-flash { animation: anagram-flash 800ms ease-in-out 2; }
 
 @media (prefers-reduced-motion: reduce) {
   .pill { animation: none; transition: none; }
   .pill.pending .dot { animation: none; opacity: 0.6; }
-  .pill.pg-flash { animation: none; outline: 2px solid rgba(109, 94, 252, 0.8); }
+  .pill.pg-flash { animation: none; outline: 2px solid var(--dot, #a3a3a3); outline-offset: 2px; }
   .card { transition: none; }
 }
 ` + DIST_CSS;

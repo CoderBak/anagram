@@ -87,8 +87,9 @@ body {
   padding: 44px 52px !important;
   box-sizing: border-box;
   background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.07), 0 10px 36px rgba(0, 0, 0, 0.06);
+  border-radius: 8px;
+  border: 1px solid #e5e5e5;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 @media (max-width: 760px) {
   .doc .doc-content { zoom: 1; padding: 20px 18px !important; margin: 10px auto 90px !important; }

@@ -101,7 +101,7 @@ up.chips.forEach((c, i) => {
   const apiPct = Math.round(r.score * 100);
   const match = apiProbs.every((p, k) => Math.abs(p - c.probs[k]) <= 1) && Math.abs(apiPct - parseInt(c.num, 10)) <= 1;
   allMatch &&= match;
-  console.log(`${c.num.padEnd(12)} ${JSON.stringify(c.probs).padEnd(22)} | ${String(apiPct + "% AI").padEnd(9)} ${JSON.stringify(apiProbs).padEnd(20)} ${match ? "✓" : "✗"}   "${c.text.slice(0, 40)}…"`);
+  console.log(`${c.num.padEnd(12)} ${JSON.stringify(c.probs).padEnd(22)} | ${String(apiPct + "%").padEnd(9)} ${JSON.stringify(apiProbs).padEnd(20)} ${match ? "✓" : "✗"}   "${c.text.slice(0, 40)}…"`);
 });
 console.log(allMatch ? "\n✅ every chip equals the daemon's answer for the same paragraph" : "\n❌ mismatch");
 

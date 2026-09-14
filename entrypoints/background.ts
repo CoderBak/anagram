@@ -80,7 +80,7 @@ export default defineBackground(() => {
         if (tabId != null && actionApi) {
           const flagged = typeof msg.flagged === "number" ? msg.flagged : 0;
           void actionApi.setBadgeText({ tabId, text: flagged > 0 ? String(flagged) : "" });
-          void actionApi.setBadgeBackgroundColor({ tabId, color: "#e5484d" });
+          void actionApi.setBadgeBackgroundColor({ tabId, color: "#dc2626" });
         }
         return;
       }

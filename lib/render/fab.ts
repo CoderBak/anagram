@@ -68,25 +68,24 @@ const FAB_CSS = `
 .stack.snapping { transition: left 200ms ease, right 200ms ease, bottom 200ms ease; }
 .stack.fs-hidden { display: none; }
 
+/* Basecoat (Vega) surface: white, hairline border, one flat shadow, 8–10 px radius. */
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   box-sizing: border-box;
-  border: 1px solid rgba(0, 0, 0, 0.10);
-  border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.96);
-  -webkit-backdrop-filter: saturate(1.4) blur(12px);
-  backdrop-filter: saturate(1.4) blur(12px);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 6px 20px rgba(0, 0, 0, 0.14);
+  border: 1px solid #e5e5e5;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   font: 600 12px/1 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   color: #252525;
   cursor: pointer;
   user-select: none;
-  transition: box-shadow 140ms ease, transform 140ms ease, opacity 140ms ease;
+  transition: background-color 140ms ease, border-color 140ms ease, opacity 140ms ease;
 }
-.chip:hover { transform: translateY(-1px); box-shadow: 0 10px 28px rgba(15, 23, 42, 0.20), 0 2px 4px rgba(15, 23, 42, 0.10); }
-.chip:active { transform: translateY(0); }
+.chip:hover { background: #f5f5f5; border-color: #d4d4d4; }
+.chip:active { background: #ededed; }
 
 /* Compact by default (a ${BALL}px ball, like Immersive Translate); the label
    slides out on hover. The count sits as a corner bubble so it reads at a glance. */
@@ -126,6 +125,7 @@ const FAB_CSS = `
   height: 30px;
   padding: 0 12px;
   font-size: 11px;
+  border-radius: 8px;
   color: #252525;
   display: none;
 }
@@ -133,46 +133,51 @@ const FAB_CSS = `
 
 /* Brief attention pulse (Docs editor: the action chip is the useful control). */
 @keyframes anagram-attn {
-  0%, 100% { transform: scale(1); box-shadow: 0 6px 20px rgba(15, 23, 42, 0.16), 0 1px 3px rgba(15, 23, 42, 0.08); }
-  50% { transform: scale(1.06); box-shadow: 0 8px 26px rgba(0, 0, 0, 0.28), 0 2px 5px rgba(0, 0, 0, 0.10); }
+  0%, 100% { box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); }
+  50% { box-shadow: 0 0 0 4px rgba(23, 23, 23, 0.18), 0 2px 8px rgba(0, 0, 0, 0.08); }
 }
 .action.attn { animation: anagram-attn 1.3s ease-in-out 3; }
 
+/* The mark: the primary token (near-black) — no gradient, no accent colour. */
 .mark {
-  width: 19px;
-  height: 19px;
+  width: 20px;
+  height: 20px;
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #6d5efc, #b15efc);
-  color: #fff;
+  border-radius: 6px;
+  background: #171717;
+  color: #fafafa;
   font-size: 11px;
   font-weight: 700;
 }
 
+/* Flagged counter: colour ONLY when something is flagged (destructive token); a zero
+   count and the daemon-down "!" stay neutral. */
 .count {
   position: absolute;
-  top: -5px;
-  right: -5px;
+  top: -6px;
+  right: -6px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 17px;
-  height: 17px;
-  padding: 0 4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
   box-sizing: border-box;
-  border-radius: 9999px;
-  background: #e5484d;
+  border-radius: 6px;
+  border: 1px solid #ffffff;
+  background: #dc2626;
   color: #fff;
   font-size: 10px;
   font-weight: 700;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
   cursor: pointer; /* opens the flagged-paragraphs panel */
 }
-.count:hover { filter: brightness(1.1); }
-.count.zero { background: #1a7f37; }
+.count:hover { filter: brightness(1.08); }
+.count.zero { background: #737373; }
 .count.down { background: #737373; }
 .stack.anchor-left .count { right: auto; left: -5px; }
 
@@ -194,10 +199,10 @@ const FAB_CSS = `
   max-height: 360px;
   box-sizing: border-box;
   padding: 6px;
-  border: 1px solid rgba(0, 0, 0, 0.10);
-  border-radius: 12px;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
   background: #ffffff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 12px 32px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   font: 400 12px/1.45 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   color: #252525;
   cursor: default;
@@ -247,7 +252,7 @@ const FAB_CSS = `
   gap: 8px;
   margin: 2px 2px 6px;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: 6px;
   background: #f5f5f5;
   color: #525252;
   font-size: 11.5px;
@@ -275,7 +280,7 @@ const FAB_CSS = `
   align-items: baseline;
   gap: 8px;
   padding: 6px 8px;
-  border-radius: 8px;
+  border-radius: 6px;
   cursor: pointer;
   text-align: left;
   border: none;
@@ -286,7 +291,7 @@ const FAB_CSS = `
 }
 .panel .pitem:hover { background: #f5f5f5; }
 .panel .pdot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; align-self: center; }
-.panel .pitem.band-ai .pdot { background: #e5484d; }
+.panel .pitem.band-ai .pdot { background: #dc2626; }
 .panel .pitem.band-heavy .pdot { background: #e8590c; }
 .panel .pitem.band-light .pdot { background: #d4a017; }
 .panel .ppct {

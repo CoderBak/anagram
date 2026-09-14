@@ -21,10 +21,10 @@ const CARD_CSS = `
   box-sizing: border-box;
   width: 264px;
   padding: 11px 13px 10px;
-  border-radius: 12px;
-  border: 1px solid rgba(0, 0, 0, 0.10);
+  border-radius: 8px;
+  border: 1px solid #e5e5e5;
   background: #ffffff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 12px 36px rgba(0, 0, 0, 0.14);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   font: 400 11px/1.5 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   color: #252525;
   z-index: 2147483647;
@@ -51,9 +51,9 @@ const CARD_CSS = `
 
 :host(.pg-dark) .card {
   border-color: rgba(255, 255, 255, 0.10);
-  background: #262626;
+  background: #171717;
   color: #fafafa;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 36px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 }
 :host(.pg-dark) .row .k { color: #a3a3a3; }
 :host(.pg-dark) .foot { border-top-color: rgba(255, 255, 255, 0.08); color: #8a8a8a; }
@@ -207,7 +207,7 @@ export async function analyzeSelection(): Promise<void> {
       card.innerHTML =
         closeBtn +
         `<div class="head"><span class="verdict band-${b}">${BAND_LABEL[b]}</span>` +
-        `<span class="big">${isNoVerdict(b) ? "—" : pct + "% AI"}</span></div>` +
+        `<span class="big" title="Extent of AI editing (EditLens scale)">${isNoVerdict(b) ? "—" : pct + "%"}</span></div>` +
         (isNoVerdict(b) ? "" : distributionHtml(r, b)) +
         (b === "unsupported" ? row("Detected language", `${languageName(r.lang)} · ${Math.round((r.lang_prob ?? 0) * 100)}%`) : "") +
         row(b === "unsupported" ? "Words" : "Words analyzed", String(words)) +
@@ -217,7 +217,7 @@ export async function analyzeSelection(): Promise<void> {
             ? "The scoring daemon did not answer — try again."
             : b === "unsupported"
               ? "EditLens is trained on English text only, so this selection was not scored."
-              : "EditLens estimate of AI editing, not proof."
+              : "The number is EditLens's estimate of how far this text sits from untouched human writing toward fully AI-generated — not a share of words, not proof."
         }</div>`;
     }
     place();

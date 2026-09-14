@@ -266,7 +266,7 @@ async function sweep(page, steps = 6) {
       return {
         via: clip !== null ? "clipboard" : "selection",
         hasWords: probe.includes("COPYSRC paragraph exists"),
-        leaked: /%\s*AI/.test(probe),
+        leaked: /\b\d{1,3}%/.test(probe),
       };
     });
     record("ui", `copy excludes badge text (${r.via})`, r.hasWords && !r.leaked, JSON.stringify(r));
@@ -435,7 +435,7 @@ async function sweep(page, steps = 6) {
       const clip = await page.evaluate(() => navigator.clipboard.readText().catch(() => null));
       ok =
         !!parts && parts.meter && parts.hasCopy &&
-        (clip === null || (clip.includes("COPYSRC paragraph exists") && !/%\s*AI/.test(clip)));
+        (clip === null || (clip.includes("COPYSRC paragraph exists") && !/\b\d{1,3}%/.test(clip)));
       note = JSON.stringify({ ...parts, clip: clip?.slice(0, 40) });
     }
     record("ui", "hover card: distribution readout + working Copy text action", ok, note);

@@ -167,7 +167,7 @@ const verdicts = chips.filter((c) => c.band !== "band-unknown");
 const unsupported = chips.filter((c) => c.band === "band-unsupported");
 const scored = chips.filter((c) => c.band !== "band-unsupported");
 check("chips rendered with real verdicts", chips.length > 5 && verdicts.length === chips.length, `${chips.length} chips, bands: ${[...new Set(chips.map((c) => c.band))].join(",")}`);
-check("every scored chip reads '<n>% AI'", scored.every((c) => /^\d{1,3}% AI( ×\d+)?$/.test(c.num)), scored.slice(0, 4).map((c) => c.num).join(" | "));
+check("every scored chip reads a bare '<n>%'", scored.every((c) => /^\d{1,3}%( ×\d+)?$/.test(c.num)), scored.slice(0, 4).map((c) => c.num).join(" | "));
 check("hover cards carry the 4-bucket distribution", scored.every((c) => c.segs === 4 && c.rows === 4));
 check("card footer names EditLens (not the stub)", chips.every((c) => /EditLens/.test(c.foot)), chips[0]?.foot);
 check("the Chinese fixture paragraph renders as unsupported ('zh'), no distribution", unsupported.length >= 1 && unsupported.every((c) => /^zh/.test(c.num) && c.segs === 0), unsupported.map((c) => c.num).join(" | "));

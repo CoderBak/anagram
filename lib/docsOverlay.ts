@@ -67,11 +67,8 @@ const OVERLAY_CSS = `
   align-items: center;
   gap: 12px;
   padding: 10px 18px;
-  background: rgba(255, 255, 255, 0.92);
-  -webkit-backdrop-filter: saturate(1.3) blur(12px);
-  backdrop-filter: saturate(1.3) blur(12px);
-  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
-  box-shadow: 0 1px 8px rgba(15, 23, 42, 0.05);
+  background: #ffffff;
+  border-bottom: 1px solid #e5e5e5;
 }
 .bar .mark {
   width: 26px;
@@ -80,9 +77,9 @@ const OVERLAY_CSS = `
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #6d5efc, #b15efc);
-  color: #fff;
+  border-radius: 6px;
+  background: #171717;
+  color: #fafafa;
   font: 700 13px/1 ui-sans-serif, system-ui, sans-serif;
 }
 .bar .titles { flex: 1 1 auto; min-width: 0; }
@@ -117,16 +114,16 @@ const OVERLAY_CSS = `
   max-width: 760px;
   margin: 0 auto;
   background: #fff;
-  border-radius: 12px;
-  border: 1px solid rgba(15, 23, 42, 0.05);
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.07), 0 12px 40px rgba(15, 23, 42, 0.07);
+  border-radius: 8px;
+  border: 1px solid #e5e5e5;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
   padding: 52px 58px 64px;
   box-sizing: border-box;
   overflow-wrap: break-word;
 }
 @media (max-width: 800px) {
   .paperwrap { padding: 12px 8px 90px; }
-  .paper { padding: 26px 20px 40px; border-radius: 10px; }
+  .paper { padding: 26px 20px 40px; border-radius: 8px; }
 }
 .paper img { max-width: 100%; height: auto; }
 .paper table { max-width: 100%; }
