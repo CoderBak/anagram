@@ -212,7 +212,7 @@ Six suites, all runnable headed on a normal machine:
 | --- | --- | --- | --- |
 | Unit | `npm run test:unit` | 74 | walker/assembler/extraction + band mapping + Readability-guided scope in a real Chromium page (~5s) |
 | E2E | `npm run test:e2e` | 22 | full extension on a 16-section fixture page (either backend — the Chinese paragraph must be scored by the stub or come back unsupported from the daemon) |
-| Scenarios | `npm run test:scenarios` | 36 | UI edge cases (hover card, panel filters, FAB snap/tuck, top-layer, KaTeX, vertical text, CSS Color 4 backgrounds) + 13 live sites (`-- --local` skips the live sweep) |
+| Scenarios | `npm run test:scenarios` | 37 | UI edge cases (hover card, panel filters, FAB snap/tuck, top-layer, KaTeX, vertical text, CSS Color 4 backgrounds, on-demand Readability chunk) + 13 live sites (bot-check interstitials count as skips) (`-- --local` skips the live sweep) |
 | Server | `npm run test:server` | 18 | **the real model**: spawns `anagramd`, checks the API on human/AI/Chinese samples (the last one must come back unsupported via fastText), drives the built extension in Auto mode — real verdicts on every English chip, the 4-bucket card, the "zh" unsupported chip, the popup's model line |
 | Docs flow | `node test/docs-flow.mjs <public doc URL>` | 12 | in-tab overlay + classic page flow on a real public Google Doc — the original demo doc was deleted from Drive, so without a URL (or `ANAGRAM_DOC_URL`) the suite reports SKIP |
 | Perf | `npm run test:perf` | 3 | 3000-paragraph budget: first badge <4s (measured ~0.3s), no long task >1s |

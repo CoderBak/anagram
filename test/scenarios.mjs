@@ -463,6 +463,34 @@ async function sweep(page, steps = 6) {
   record("ui", "no extension console errors on fixtures", extErrors.length === 0, extErrors.join(" | "));
   await page.screenshot({ path: join(__dirname, "scn-ui-fixtures.png"), fullPage: true });
   await page.close();
+
+  // A20: "main content" scope pulls Readability in as an on-demand vendor chunk —
+  // import()ed by extension URL from the content script's isolated world (a
+  // web-accessible resource). Debug logging on → the orchestrator says so.
+  {
+    const extId = sw ? new URL(sw.url()).host : null;
+    let r = { loaded: false, failed: false, badges: 0 };
+    if (extId) {
+      const opt = await context.newPage();
+      await opt.goto(`chrome-extension://${extId}/options.html`);
+      await opt.evaluate(() => new Promise((res) => chrome.storage.local.set({ debug: true, analysisScope: "main" }, res)));
+      const p = await context.newPage();
+      const logs = [];
+      p.on("console", (m) => logs.push(m.text()));
+      await p.goto(fixturesUrl, { waitUntil: "load" });
+      await p.waitForFunction(() => false, null, { timeout: 2500 }).catch(() => {});
+      await p.waitForSelector(BADGE_SEL, { timeout: 10000 }).catch(() => {});
+      r = {
+        loaded: logs.some((l) => l.includes("Readability chunk loaded")),
+        failed: logs.some((l) => l.includes("Readability chunk failed")),
+        badges: await p.evaluate((sel) => document.querySelectorAll(sel).length, BADGE_SEL),
+      };
+      await opt.evaluate(() => new Promise((res) => chrome.storage.local.set({ debug: false, analysisScope: "page" }, res)));
+      await p.close();
+      await opt.close();
+    }
+    record("ui", "main-content scope loads the Readability vendor chunk on demand", r.loaded && !r.failed && r.badges > 0, JSON.stringify(r));
+  }
 }
 
 // =====================================================================================
@@ -501,6 +529,16 @@ if (!LOCAL_ONLY) {
     }
     if (!loaded) {
       record("live", site.name, null, "goto failed — network/flake");
+      await page.close();
+      continue;
+    }
+    // Anti-bot interstitials (Cloudflare "Verifying you are human", "Just a moment…")
+    // carry no prose; they say nothing about the extension.
+    const botWall = await page
+      .evaluate(() => /verifying you are human|just a moment|attention required|checking your browser/i.test(document.title + " " + (document.body?.innerText ?? "").slice(0, 600)))
+      .catch(() => false);
+    if (botWall) {
+      record("live", site.name, null, "bot-check interstitial (Cloudflare) — not a page");
       await page.close();
       continue;
     }

@@ -654,7 +654,13 @@ export function createOrchestrator(
         // Readability is an on-demand chunk: fetch it once, then re-collect under the
         // new scope (the text-mass probe covers the rare failure to load).
         void loadReadability()
-          .then(useReadability, (e) => log.warn("Readability chunk failed to load", e))
+          .then(
+            (mod) => {
+              useReadability(mod);
+              log.log("Readability chunk loaded");
+            },
+            (e) => log.warn("Readability chunk failed to load", e),
+          )
           .finally(() => {
             if (started && analysisScope === "main") rescan();
           });
