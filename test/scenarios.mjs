@@ -210,6 +210,36 @@ async function sweep(page, steps = 6) {
     record("ui", "badge stays visible inside overflow:hidden box", r ? r.inside && r.visible : false, JSON.stringify(r));
   }
 
+  // A7b: the HOVER CARD escapes the overflow:hidden box (top layer). The card must
+  // extend outside the clip box and still be the element under the pointer there.
+  {
+    const badge = page.locator(`#clipbox ${BADGE_SEL}`).first();
+    let ok = false, note = "no badge";
+    if (await badge.count()) {
+      await badge.scrollIntoViewIfNeeded();
+      await badge.hover();
+      await page.waitForTimeout(450);
+      const r = await page.evaluate((sel) => {
+        const host = document.querySelector(`#clipbox ${sel}`);
+        const card = host.shadowRoot.querySelector(".card");
+        const cr = card.getBoundingClientRect();
+        const br = document.getElementById("clipbox").getBoundingClientRect();
+        const outsideY = cr.top < br.top - 4 ? cr.top + 6 : cr.bottom > br.bottom + 4 ? cr.bottom - 6 : null;
+        const hit = outsideY === null ? null : document.elementFromPoint(cr.left + cr.width / 2, outsideY);
+        return {
+          topLayer: card.matches(":popover-open"),
+          extendsOutsideBox: outsideY !== null,
+          paintedOutsideBox: hit === host, // retargeted to our host, not the page element behind
+          visible: getComputedStyle(card).visibility === "visible",
+        };
+      }, BADGE_SEL);
+      ok = r.topLayer && r.extendsOutsideBox && r.paintedOutsideBox && r.visible;
+      note = JSON.stringify(r);
+    }
+    record("ui", "hover card escapes overflow:hidden (top layer)", ok, note);
+    await page.mouse.move(5, 400);
+  }
+
   // A8: copy hygiene — clipboard payload excludes the chip's "% AI" label.
   {
     const r = await page.evaluate(async () => {

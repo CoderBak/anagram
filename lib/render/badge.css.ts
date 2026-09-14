@@ -111,14 +111,20 @@ export const BADGE_CSS: string = `
 .pill.pending .num { min-width: 1.2em; text-align: center; letter-spacing: 0.14em; }
 
 /* ---- hover detail card ------------------------------------------------------- */
-/* Coordinates come from Floating UI (badge.ts positionCard); .below marks the
+/* A manual popover in the TOP LAYER (immune to ancestor overflow/clip/z-index);
+   coordinates come from Floating UI (badge.ts positionCard); .below marks the
    flipped orientation for the caret and hover bridge. Fixed 11px type — card
-   readability should not scale with page text. */
+   readability should not scale with page text. The UA popover styles (inset:0,
+   margin:auto, overflow:auto, border, padding, colors) are all overridden here. */
 
 .card {
   position: absolute;
+  inset: auto;
   top: 0;
   left: 0;
+  margin: 0;
+  overflow: visible;
+  height: auto;
   box-sizing: border-box;
   width: max-content;
   min-width: 232px;
@@ -137,6 +143,23 @@ export const BADGE_CSS: string = `
   transition: opacity 130ms ease, visibility 0s linear 190ms;
   pointer-events: none;
   z-index: 1;
+}
+.card[popover] { position: fixed; }
+/* Shown: hover (.showing / :popover-open) or pinned (.open). */
+.card.showing,
+.card.open,
+.card:popover-open {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  transition-delay: 60ms, 60ms;
+}
+/* Popover open/close toggles display — fade in from the starting style. */
+.card[popover] {
+  transition: opacity 130ms ease, display 130ms allow-discrete, overlay 130ms allow-discrete;
+}
+@starting-style {
+  .card:popover-open { opacity: 0; }
 }
 
 /* Invisible bridge across the chip↔card gap so the pointer can travel into the
@@ -173,14 +196,6 @@ export const BADGE_CSS: string = `
   border-right: none;
   border-radius: 2px 0 0 0;
 }
-:host(:hover) .card,
-.card.open {
-  visibility: visible;
-  opacity: 1;
-  pointer-events: auto;
-  transition-delay: 60ms, 60ms;
-}
-
 .card .head {
   display: flex;
   align-items: baseline;

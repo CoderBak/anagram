@@ -16,9 +16,14 @@
 // v4 (EditLens): the card shows the model's four-bucket distribution — human /
 // lightly edited / heavily edited / AI-generated — as a stacked bar plus rows.
 //
-// Card placement is Floating UI's: flip above/below, shift to stay inside the
-// viewport, arrow middleware aims the caret, autoUpdate re-places it while it is
-// showing (scroll, resize, and the card's own content changing size).
+// The card renders in the browser's TOP LAYER (Popover API, manual mode), so no
+// ancestor overflow:hidden / clip / stacking context can cut it off — an absolutely
+// positioned descendant of the chip was clipped to the paragraph box on sites whose
+// paragraphs hide overflow. Floating UI places it in viewport coordinates (flip
+// above/below, shift to stay on screen, arrow middleware aims the caret) and
+// autoUpdate re-places it while it shows (scroll, resize, content growth). Hover and
+// pin drive show/hide from JS; where the Popover API is missing the card falls back to
+// an absolutely positioned element with the same rules.
 import { arrow, autoUpdate, computePosition, flip, offset, shift } from "@floating-ui/dom";
 import type { Unit } from "../types";
 import { MARK_ATTR } from "../types";
@@ -123,22 +128,21 @@ export function createBadgeLayer(): BadgeLayer {
     host.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      const card = host.shadowRoot?.querySelector(".card");
+      const card = cardOf(host);
       if (!card) return;
       if (e.composedPath().includes(card)) return; // card-internal click (action button)
       const opening = !card.classList.contains("open");
       closeOpenCard();
       if (opening) {
-        startFloating(host);
-        card.classList.add("open");
+        showCard(host);
+        card.classList.add("open"); // pinned
         _openCardHost = host;
       }
     });
-    // Live placement while the card shows: hover starts it, leaving stops it unless
-    // the card is pinned (a pinned card stops when it closes).
-    host.addEventListener("mouseenter", () => startFloating(host));
+    // Hover shows the card; leaving hides it unless it is pinned.
+    host.addEventListener("mouseenter", () => showCard(host));
     host.addEventListener("mouseleave", () => {
-      if (_openCardHost !== host) stopFloating(host);
+      if (_openCardHost !== host) hideCard(host);
     });
     const shadow = host.attachShadow({ mode: "open" });
     shadow.adoptedStyleSheets = [badgeSheet()];
@@ -153,6 +157,8 @@ export function createBadgeLayer(): BadgeLayer {
 
     const card = document.createElement("div");
     card.className = "card";
+    // Top layer where available (Chrome 114+, Firefox 125+): immune to clipping.
+    if ("showPopover" in card) card.setAttribute("popover", "manual");
 
     shadow.append(pill, card);
     return host;
@@ -211,7 +217,7 @@ export function createBadgeLayer(): BadgeLayer {
     const host = hosts.get(id);
     if (!host) return;
     if (host === _openCardHost) _openCardHost = null;
-    stopFloating(host);
+    hideCard(host);
     host.remove();
     hosts.delete(id);
   }
@@ -236,7 +242,7 @@ export function createBadgeLayer(): BadgeLayer {
 
   function teardownAll(): void {
     for (const [, host] of hosts) {
-      stopFloating(host);
+      hideCard(host);
       host.remove();
     }
     hosts.clear();
@@ -277,10 +283,11 @@ let _openCardHost: HTMLElement | null = null;
 let _outsideCloserInstalled = false;
 
 function closeOpenCard(): void {
-  if (!_openCardHost) return;
-  _openCardHost.shadowRoot?.querySelector(".card")?.classList.remove("open");
-  stopFloating(_openCardHost);
+  const host = _openCardHost;
+  if (!host) return;
   _openCardHost = null;
+  cardOf(host)?.classList.remove("open");
+  if (!host.matches(":hover")) hideCard(host); // still hovered → stays as a hover card
 }
 
 function installOutsideCloser(): void {
@@ -305,9 +312,48 @@ function installOutsideCloser(): void {
   );
 }
 
-// ---- card placement (Floating UI) ----------------------------------------------
+// ---- card show / hide / placement --------------------------------------------------
 
 const _floating = new WeakMap<HTMLElement, () => void>();
+
+function cardOf(host: HTMLElement): HTMLElement | null {
+  return (host.shadowRoot?.querySelector(".card") as HTMLElement | null) ?? null;
+}
+
+/** Make the card visible (top-layer popover, or the CSS fallback) and keep it placed. */
+function showCard(host: HTMLElement): void {
+  const card = cardOf(host);
+  if (!card) return;
+  if (card.hasAttribute("popover")) {
+    if (!card.matches(":popover-open")) {
+      try {
+        card.showPopover();
+      } catch {
+        /* not connected — nothing to show */
+      }
+    }
+  } else {
+    card.classList.add("showing");
+  }
+  startFloating(host); // after showing: a display:none popover has no size to measure
+}
+
+function hideCard(host: HTMLElement): void {
+  stopFloating(host);
+  const card = cardOf(host);
+  if (!card) return;
+  if (card.hasAttribute("popover")) {
+    if (card.matches(":popover-open")) {
+      try {
+        card.hidePopover();
+      } catch {
+        /* already hidden */
+      }
+    }
+  } else {
+    card.classList.remove("showing");
+  }
+}
 
 /** Place the card once: above the chip, flipped below when that would leave the
  *  viewport, shifted to stay inside it, caret aimed at the chip. */
@@ -319,7 +365,9 @@ function positionCard(host: HTMLElement): void {
   const caret = card.querySelector(".caret") as HTMLElement | null;
   void computePosition(pill, card, {
     placement: "top",
-    strategy: "absolute",
+    // Top-layer elements are positioned against the viewport; the fallback card is
+    // positioned inside the host.
+    strategy: card.hasAttribute("popover") ? "fixed" : "absolute",
     middleware: [
       offset(9),
       flip({ padding: 8 }),
