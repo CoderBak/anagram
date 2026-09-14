@@ -154,8 +154,11 @@ Text on the web is messy; the capture engine is built for it:
   `<div>`-built sites (Zhihu, X-style apps), BR-separated prose, and
   pre-wrap chat transcripts segment the way they *look*. Inline markup —
   links, `code`, emphasis, drop caps, icons, images, formulas — never splits a
-  sentence, and KaTeX/MathJax-style **duplicated math markup** (visual +
-  accessible copies) is never counted twice.
+  sentence. **Formulas never split a paragraph**: raw MathML, MathJax, KaTeX
+  and Wikipedia's math markup are skipped mid-sentence on every renderer (the
+  card says "Formulas omitted: N"), and their hidden accessibility copies,
+  footnote and citation marks (`[7]`, `[citation needed]`), page-number markers
+  and author-list citation strings never reach the model.
 - **An evidence floor with merging.** Detection below ~50 words is unreliable, so
   short neighboring paragraphs (chat messages, list items, comment threads) are
   **analyzed together** as one unit instead of being skipped — while headings,
@@ -170,7 +173,10 @@ Text on the web is messy; the capture engine is built for it:
 - **Living pages.** Infinite scroll, SPA navigations (pushState included, heard
   instantly through the Navigation API — no history patching, no polling), tab
   panels, accordions, `<details>`, **modal `<dialog>`s (top layer)**, edited and
-  deleted text — badges appear, update, and disappear with the content.
+  deleted text, content appended inside shadow roots, and even pages that
+  **rewrite their own document** after load (`document.open()/write()`
+  challenge interstitials) — badges appear, update, and disappear with the
+  content. Very long pages (a whole novel) are scored to the end in the idle lane.
 - **Fast and ahead of you.** Scoring is viewport-first with a 1.5-screen
   prefetch margin, then an **idle-time background lane** scores the rest of the
   page in document order while you read, one capped batch at a time so it never
@@ -186,9 +192,15 @@ Text on the web is messy; the capture engine is built for it:
   iframes (webmail readers, embedded posts — ad slots are size-gated out),
   plain-text documents (`.txt`/`.log`/RFCs), pure-CJK, RTL, and
   **vertical writing modes** (`vertical-rl` novels).
-- **Invisible characters, normalized.** Soft hyphens, zero-width and bidi
-  control characters are stripped from scoring payloads and cache keys — the
-  same visible sentence scores identically on every site that renders it.
+- **One canonical text per paragraph.** Soft hyphens, zero-width and bidi
+  control characters, non-breaking spaces and ligatures are normalized, LaTeX
+  residue (`---`, ``` `` ``` quotes, `\%`) and typographic variants (curly
+  quotes, `1–5`) are folded to one convention, and that canonical form is both
+  what the model receives and what the caches key on — the same sentence
+  scores identically however a site renders it. This matters: EditLens is
+  surface-sensitive enough that a LaTeX `---` alone moved an abstract from
+  55 % to 9 %; `node test/abs-vs-html.mjs` measures the agreement between
+  arXiv's abstract page and its HTML rendering.
 - **Zero page mutation** beyond inserting the chips themselves: no attributes, no
   inline styles on your DOM, marks via the CSS Custom Highlight API, copied
   text never includes badge labels, badges inside links never navigate. Hover
@@ -233,10 +245,10 @@ daemon's contract with text-seeded, deterministic verdicts (nothing of it ships)
 
 | Suite | Command | Checks | What it covers |
 | --- | --- | --- | --- |
-| Node | `npm run test:node` | 20 | vitest + `wxt/testing`: router invariants (keys snapshotted per request, joined requests settle across a backend change, results cached under the producing model, priority order), wire validation, the daemon client (loopback only, down TTL) |
-| Unit | `npm run test:unit` | 78 | walker/assembler/extraction + band mapping + Readability-guided scope in a real Chromium page (~5s) |
+| Node | `npm run test:node` | 23 | vitest + `wxt/testing`: router invariants (keys snapshotted per request, joined requests settle across a backend change, results cached under the producing model, priority order), scheduler idle/pause/upgrade, wire validation, the daemon client (loopback only, down TTL) |
+| Unit | `npm run test:unit` | 98 | walker/assembler/extraction (math, citation marks, hidden copies, out-of-flow markers, accordions, author lists), canonical scoring text, band mapping, Readability-guided scope — in a real Chromium page (~5s) |
 | E2E | `npm run test:e2e` | 23 | full extension on a 16-section fixture page against the fake daemon — including that non-English text never reaches it |
-| Scenarios | `npm run test:scenarios` | 42 | UI edge cases (hover card, panel filters, FAB snap/tuck, top-layer, KaTeX, vertical text, CSS Color 4 backgrounds, late shadow-root content, mutation storms, on-demand Readability chunk, daemon down → Unavailable → daemon back → auto re-queue) + 13 live sites (bot-check interstitials count as skips) (`-- --local` skips the live sweep) |
+| Scenarios | `npm run test:scenarios` | 43 | UI edge cases (hover card, panel filters, FAB snap/tuck, top-layer, KaTeX, vertical text, CSS Color 4 backgrounds, late shadow-root content, mutation storms, on-demand Readability chunk, self-rewriting page, daemon down → Unavailable → daemon back → auto re-queue) + 13 live sites (bot-check interstitials count as skips) (`-- --local` skips the live sweep) |
 | Server | `npm run test:server` | 27 | **the real model**: spawns `anagramd`, checks the API on human/AI/Chinese samples (the last one must come back unsupported via fastText), the request limits, the Host allow-list and the absence of CORS grants, then drives the built extension — real verdicts on every English chip, the 4-bucket card, the "zh" unsupported chip, the popup's model line |
 | Docs flow | `node test/docs-flow.mjs <public doc URL>` | 12 | in-tab overlay + classic page flow on a real public Google Doc — the original demo doc was deleted from Drive, so without a URL (or `ANAGRAM_DOC_URL`) the suite reports SKIP |
 | Perf | `npm run test:perf` | 3 | 3000-paragraph budget: first badge <4s (measured ~0.3s), no long task >1s |
@@ -245,6 +257,12 @@ daemon's contract with text-seeded, deterministic verdicts (nothing of it ships)
 probabilities, sends the same paragraph text straight to the daemon's API, and
 compares — then stops the daemon and shows that no verdict is rendered without
 it and the popup says so.
+`node test/survey.mjs` loads two dozen pages of different kinds (news, docs,
+forums, papers, legal text, a whole novel, shops, government, plain text, wikis)
+with the real daemon and reports, per page, chips by verdict, chips in page
+chrome, paragraphs cut into several units, long paragraphs with no chip and stuck
+chips, with a screenshot each — the magnifying glass that found the accordion,
+page-number, author-list, prefetch and self-rewriting-page defects.
 `npm run browser` opens a live Chromium with the extension for manual poking;
 `npm run play` opens a multi-tab playground; `node test/shots.mjs` regenerates
 the README screenshots; `node test/genicons.mjs` regenerates the icon set.
