@@ -9,11 +9,11 @@ Nothing leaves localhost.
 # 1. weights (gated on Hugging Face — accept the terms once, then):
 hf download pangram/editlens_roberta-large --local-dir ../models/editlens_roberta-large
 
-# 2. deps (torch, transformers, flask, emoji)
-pip install -r anagramd/requirements.txt
+# 2. deps (torch, transformers, fastapi, uvicorn, emoji, fasttext) — an isolated venv is simplest:
+cd anagramd && uv venv .venv --python 3.13 && uv pip install --python .venv/bin/python -r requirements.txt && cd ..
 
 # 3. run
-npm run serve            # = python3 anagramd/serve.py  → http://127.0.0.1:8765
+npm run serve            # = sh anagramd/run.sh (uses .venv if present) → http://127.0.0.1:8765
 python3 anagramd/serve.py --selftest   # sanity check: four paragraphs (one Chinese → unsupported), prints buckets
 ```
 
@@ -21,7 +21,13 @@ With the daemon up, the extension's default backend mode (**Auto**) picks it up 
 the next page load; the popup shows which backend produced the scores. Without it,
 Auto falls back to the deterministic demo stub and says so.
 
+If the model directory is missing, the daemon downloads the checkpoint itself through
+`huggingface_hub` (accept the terms on the model page and `hf auth login` once).
+
 ## API
+
+Served by FastAPI + uvicorn; request and response bodies are validated with pydantic, and
+an interactive OpenAPI UI lives at `http://127.0.0.1:8765/docs`.
 
 | Route | Body | Returns |
 | --- | --- | --- |

@@ -2,7 +2,7 @@
 """anagramd — local scoring daemon for the Anagram extension.
 
 Wraps `pangram/editlens_roberta-large` (EditLens: Thai, Emi, Masrour & Iyyer, ICLR 2026;
-https://arxiv.org/abs/2510.03154) behind a tiny HTTP API on 127.0.0.1 that speaks the
+https://arxiv.org/abs/2510.03154) behind a small HTTP API on 127.0.0.1 that speaks the
 extension's contract (lib/contract.ts, CONTRACT_VERSION "2.1").
 
 The model is a 4-way sequence classifier over the *extent of AI editing* in a text:
@@ -19,11 +19,16 @@ lid.176 language identifier (Joulin et al.) and only blocks whose top label is `
 the model; the rest come back as `unsupported: true` with the detected language so the
 extension can say "Unsupported language" instead of showing a meaningless percentage.
 
+Stack: FastAPI (request/response validation via pydantic, CORS, OpenAPI docs at /docs)
+served by uvicorn; the model runs under torch on MPS/CUDA in fp16 (CPU fp32); weights are
+fetched with huggingface_hub when the model directory is missing.
+
 Endpoints
     GET  /health   → model / device / bucket / language info (the extension polls this)
     POST /score    → {"v": "2.1", "blocks": [{"id": "...", "text": "..."}]}
                    → {"v": "2.1", "model": {...}, "results": [{"id", "bucket", "probs", "score",
                                                                 "lang", "lang_prob", ...}]}
+    GET  /docs     → interactive OpenAPI UI (FastAPI)
 
 Usage
     python anagramd/serve.py                 # ../../models/editlens_roberta-large on :8765
@@ -36,9 +41,7 @@ anywhere — the daemon binds to localhost and the extension only ever talks to 
 from __future__ import annotations
 
 import argparse
-import json
 import logging
-import os
 import re
 import sys
 import threading
@@ -46,8 +49,10 @@ import time
 from pathlib import Path
 
 import numpy as np
+from pydantic import BaseModel, ConfigDict, Field
 
 CONTRACT_VERSION = "2.1"
+HF_REPO = "pangram/editlens_roberta-large"
 MODEL_ID = "editlens_roberta-large"
 # Bump when the weights or preprocessing change — the extension folds this into its cache keys.
 MODEL_VER = "hf-2026-03-21"
@@ -146,6 +151,25 @@ class LanguageId:
 # --- model ---------------------------------------------------------------------------------------
 
 
+def ensure_model(model_dir: Path) -> None:
+    """Fetch the weights with huggingface_hub when the directory has no checkpoint.
+
+    The repo is gated (CC BY-NC-SA — accept the terms on the model page once); the Hub
+    client picks up the token from `hf auth login` / HF_TOKEN. Resumable, checksum-verified.
+    """
+    if (model_dir / "config.json").exists():
+        return
+    log.info("no checkpoint at %s — downloading %s via huggingface_hub", model_dir, HF_REPO)
+    try:
+        from huggingface_hub import snapshot_download
+
+        snapshot_download(HF_REPO, local_dir=str(model_dir))
+    except Exception as e:
+        sys.exit(f"could not download {HF_REPO} into {model_dir}: {e}\n"
+                 f"  accept the model terms at https://huggingface.co/{HF_REPO}, run `hf auth login`, then\n"
+                 f"  hf download {HF_REPO} --local-dir {model_dir}")
+
+
 class EditLens:
     def __init__(self, model_dir: Path, device: str, max_length: int, batch_size: int, dtype: str):
         import emoji
@@ -162,9 +186,7 @@ class EditLens:
         self.last_run_ms = 0.0
         self.last_wait_ms = 0.0
 
-        if not (model_dir / "config.json").exists():
-            sys.exit(f"model dir {model_dir} has no config.json — download the model first:\n"
-                     f"  hf download pangram/editlens_roberta-large --local-dir {model_dir}")
+        ensure_model(model_dir)
 
         self.device = self._pick_device(device)
         # fp16 on the GPU is numerically indistinguishable here (probs agree to 3-4 decimals) and
@@ -210,9 +232,12 @@ class EditLens:
         """Score raw texts; returns one dict per input in the same order."""
         torch = self.torch
         cleaned = [clean_text(t, self.emoji) for t in texts]
-        # Token counts BEFORE truncation so the client can see when a paragraph was cut.
-        full_ids = self.tok(cleaned, add_special_tokens=True, truncation=False)["input_ids"]
-        lengths = [len(ids) for ids in full_ids]
+        # ONE tokenizer pass: full ids give the pre-truncation length (so the client can see
+        # when a paragraph was cut); the window is applied by slicing, which is exactly what
+        # the tokenizer's own truncation produces ([cls] + tokens[:max-2] + [sep]).
+        all_ids = self.tok(cleaned, add_special_tokens=True, truncation=False)["input_ids"]
+        lengths = [len(ids) for ids in all_ids]
+        eos = self.tok.eos_token_id if self.tok.eos_token_id is not None else self.tok.sep_token_id
         order = sorted(range(len(cleaned)), key=lambda i: lengths[i])  # length-sorted batching
         out: list[dict | None] = [None] * len(cleaned)
         idx = np.arange(self.n_buckets, dtype=np.float64)
@@ -223,8 +248,9 @@ class EditLens:
             t_run = time.time()
             for start in range(0, len(order), self.batch_size):
                 chunk = order[start:start + self.batch_size]
-                enc = self.tok([cleaned[i] for i in chunk], truncation=True, max_length=self.max_length,
-                               padding=True, return_tensors="pt").to(self.device)
+                ids = [all_ids[i] if lengths[i] <= self.max_length
+                       else all_ids[i][: self.max_length - 1] + [eos] for i in chunk]
+                enc = self.tok.pad({"input_ids": ids}, padding=True, return_tensors="pt").to(self.device)
                 logits = self.model(**enc).logits.float().cpu().numpy()
                 logits = logits - logits.max(axis=1, keepdims=True)
                 probs = np.exp(logits)
@@ -259,7 +285,50 @@ class EditLens:
         }
 
 
-# --- HTTP ----------------------------------------------------------------------------------------
+# --- wire types (pydantic) — module level so FastAPI can resolve the postponed annotations ----------
+
+
+class Block(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    text: str = ""
+
+
+class ScoreRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    v: str | None = None
+    session: str | None = None
+    blocks: list[Block] = Field(default_factory=list)
+
+
+class ScoreResult(BaseModel):
+    id: str
+    bucket: int
+    probs: list[float]
+    score: float
+    tokens: int
+    truncated: bool
+    lang: str | None = None
+    lang_prob: float | None = None
+    unsupported: bool | None = None
+    degraded: bool | None = None
+
+
+class ModelInfo(BaseModel):
+    id: str
+    ver: str
+    calibration: str
+
+
+class ScoreResponse(BaseModel):
+    v: str
+    session: str | None
+    model: ModelInfo
+    partial: bool
+    results: list[ScoreResult]
+
+
+# --- HTTP (FastAPI) --------------------------------------------------------------------------------
 
 
 def unsupported_result(block_id: str, n_buckets: int, lang: str, prob: float) -> dict:
@@ -268,69 +337,60 @@ def unsupported_result(block_id: str, n_buckets: int, lang: str, prob: float) ->
 
 
 def make_app(engine: EditLens):
-    from flask import Flask, jsonify, request
+    from fastapi import FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
+    app = FastAPI(title="anagramd", version=MODEL_VER,
+                  description="Local EditLens scoring daemon for the Anagram extension "
+                              "(contract " + CONTRACT_VERSION + ").")
+    # The extension's service worker has host permission for localhost so CORS is moot for it,
+    # but permissive headers let you poke the daemon from any page or a plain fetch() too.
+    app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET", "POST", "OPTIONS"],
+                       allow_headers=["content-type"])
 
-    app = Flask("anagramd")
+    @app.get("/health")
+    def health() -> dict:
+        return engine.info()
 
-    @app.after_request
-    def cors(resp):
-        # The extension's service worker has host permission for localhost so CORS is moot for it,
-        # but permissive headers let you poke the daemon from any page or a plain fetch() too.
-        resp.headers["Access-Control-Allow-Origin"] = "*"
-        resp.headers["Access-Control-Allow-Headers"] = "content-type"
-        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-        return resp
-
-    @app.route("/health", methods=["GET"])
-    def health():
-        return jsonify(engine.info())
-
-    @app.route("/score", methods=["POST", "OPTIONS"])
-    def score():
-        if request.method == "OPTIONS":
-            return ("", 204)
-        body = request.get_json(silent=True)
-        if not isinstance(body, dict) or not isinstance(body.get("blocks"), list):
-            return jsonify({"error": "expected {blocks: [{id, text}]}"}), 400
-        blocks = [b for b in body["blocks"] if isinstance(b, dict) and isinstance(b.get("id"), str)]
+    # Sync `def` → FastAPI runs it in a worker thread; the model lock serializes GPU work
+    # while language-id and JSON handling for other requests proceed concurrently.
+    @app.post("/score", response_model=ScoreResponse, response_model_exclude_none=True)
+    def score(req: ScoreRequest) -> dict:
         t0 = time.time()
         texts, todo, langs, skipped = [], [], {}, {}
-        for b in blocks:
-            text = b.get("text")
-            if not (isinstance(text, str) and text.strip()):
+        for b in req.blocks:
+            if not b.text.strip():
                 continue
             if engine.lid.enabled:
-                lang, prob = engine.lid.detect(text)
+                lang, prob = engine.lid.detect(b.text)
                 if lang not in SUPPORTED_LANGUAGES:
-                    skipped[b["id"]] = (lang, prob)
+                    skipped[b.id] = (lang, prob)
                     continue
-                langs[b["id"]] = (lang, prob)
-            todo.append(b["id"])
-            texts.append(text)
+                langs[b.id] = (lang, prob)
+            todo.append(b.id)
+            texts.append(b.text)
         scored = engine.score(texts) if texts else []
         by_id = dict(zip(todo, scored))
         results = []
-        for b in blocks:
-            bid = b["id"]
-            if bid in skipped:
-                results.append(unsupported_result(bid, engine.n_buckets, *skipped[bid]))
+        for b in req.blocks:
+            if b.id in skipped:
+                results.append(unsupported_result(b.id, engine.n_buckets, *skipped[b.id]))
                 continue
-            r = by_id.get(bid)
+            r = by_id.get(b.id)
             if r is None:  # empty text — no model output, mark degraded so it is never cached
-                results.append({"id": bid, "bucket": 0, "probs": [1 / engine.n_buckets] * engine.n_buckets,
+                results.append({"id": b.id, "bucket": 0, "probs": [1 / engine.n_buckets] * engine.n_buckets,
                                 "score": 0.0, "tokens": 0, "truncated": False, "degraded": True})
             else:
-                out = {"id": bid, **r}
-                if bid in langs:
-                    out["lang"], out["lang_prob"] = langs[bid][0], round(langs[bid][1], 3)
+                out = {"id": b.id, **r}
+                if b.id in langs:
+                    out["lang"], out["lang_prob"] = langs[b.id][0], round(langs[b.id][1], 3)
                 results.append(out)
         ms = (time.time() - t0) * 1000
         log.info("score %d blocks (%d tok): %.0f ms model, %.0f ms queued, %.0f ms total — buckets %s%s",
-                 len(texts), sum(r["tokens"] for r in scored), getattr(engine, "last_run_ms", 0.0),
-                 getattr(engine, "last_wait_ms", 0.0), ms, [r["bucket"] for r in scored],
+                 len(texts), sum(r["tokens"] for r in scored), engine.last_run_ms, engine.last_wait_ms, ms,
+                 [r["bucket"] for r in scored],
                  f" — {len(skipped)} unsupported ({', '.join(sorted({v[0] for v in skipped.values()}))})" if skipped else "")
-        return jsonify({"v": CONTRACT_VERSION, "session": body.get("session"),
-                        "model": engine.info()["model"], "partial": False, "results": results})
+        return {"v": CONTRACT_VERSION, "session": req.session, "model": engine.info()["model"],
+                "partial": False, "results": results}
 
     return app
 
@@ -390,10 +450,12 @@ def main() -> None:
               f" (language gate: {'on' if engine.lid.enabled else 'OFF'})")
         return
 
+    import uvicorn
+
     app = make_app(engine)
-    log.info("listening on http://%s:%d  (GET /health, POST /score)", args.host, args.port)
-    # Werkzeug's dev server is fine here: localhost-only, one model, a handful of clients.
-    app.run(host=args.host, port=args.port, threaded=True, debug=False, use_reloader=False)
+    log.info("listening on http://%s:%d  (GET /health, POST /score, GET /docs)", args.host, args.port)
+    # Our own per-request log line above replaces uvicorn's access log.
+    uvicorn.run(app, host=args.host, port=args.port, log_level="warning", access_log=False)
 
 
 if __name__ == "__main__":
