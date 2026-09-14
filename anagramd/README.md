@@ -10,8 +10,8 @@ Nothing leaves localhost — and the daemon is hardened like a service, not a sc
 # 1. weights (gated on Hugging Face — accept the terms once, then):
 hf download pangram/editlens_roberta-large --local-dir ../models/editlens_roberta-large
 
-# 2. deps (torch, transformers, fastapi, uvicorn, emoji, fasttext) — an isolated venv is simplest:
-cd anagramd && uv venv .venv --python 3.13 && uv pip install --python .venv/bin/python -r requirements.txt && cd ..
+# 2. deps from the lockfile (torch, transformers, fastapi, uvicorn, emoji, fasttext) into anagramd/.venv:
+cd anagramd && uv sync --frozen && cd ..
 
 # 3. run
 npm run serve            # = sh anagramd/run.sh (uses .venv if present) → http://127.0.0.1:8765

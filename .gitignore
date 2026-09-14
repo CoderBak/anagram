@@ -12,3 +12,6 @@ test/.unit-bundle.js
 # anagramd local venv
 anagramd/.venv/
 anagramd/__pycache__/
+
+# release assets
+dist/

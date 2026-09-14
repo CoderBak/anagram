@@ -198,7 +198,7 @@ export async function analyzeSelection(): Promise<void> {
         `<div class="head"><span class="verdict band-unknown">Unavailable</span><span class="big">—</span></div>` +
         `<div class="foot">${
           backend === "down"
-            ? "The scoring daemon is not running — start it with <code>npm run serve</code> and try again."
+            ? "The scoring daemon is not running — run <code>anagram start</code> and try again."
             : "The scoring backend did not respond — try again."
         }</div>`;
     } else {

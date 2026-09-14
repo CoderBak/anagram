@@ -711,7 +711,7 @@ export function createFab(opts: { onToggle: () => void; onRetry?: () => void; pa
       const notice = document.createElement("div");
       notice.className = "pnotice";
       const text = document.createElement("span");
-      text.textContent = "Scoring daemon not running. Start it with npm run serve — new paragraphs wait until it answers.";
+      text.textContent = "Scoring daemon not running. Run \u201canagram start\u201d \u2014 new paragraphs wait until it answers.";
       const retry = document.createElement("button");
       retry.type = "button";
       retry.className = "fchip";

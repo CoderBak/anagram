@@ -25,7 +25,29 @@ write?"* — inline, live, on every site.
 | --- | --- |
 | ![Popup with toggles, marking style and scope](docs/screenshots/popup.png) | ![Flagged-paragraph panel with verdict filters](docs/screenshots/triage-panel.png) |
 
-## Quick start
+## Install (one line, one folder)
+
+```bash
+curl -fsSL https://github.com/CoderBak/anagram/releases/latest/download/install.sh | sh
+```
+
+That puts **everything** — a private Python, the daemon and its packages, the EditLens
+checkpoint, the built extension — under `~/.anagram/` and touches nothing else: no
+sudo, no Homebrew, no system Python, no shell-profile edits, no launch agent. Then:
+
+```bash
+~/.anagram/bin/anagram start       # the scoring daemon, 127.0.0.1:8765, stays until you stop it
+```
+
+and load the extension: `chrome://extensions` → Developer mode → **Load unpacked** →
+`~/.anagram/extension`. `anagram status | stop | logs | selftest | update` do what
+they say; `anagram uninstall` deletes the folder, which is the only thing the
+installer ever created. The checkpoint is gated on Hugging Face (CC BY-NC-SA): the
+installer asks for a read token unless `ANAGRAM_HF_TOKEN` is set; `ANAGRAM_HOME`
+relocates the folder; `ANAGRAM_SKIP_MODEL=1` defers the 1.4 GB download to
+`anagram model`. Footprint about 2 GB, install time a few minutes, mostly the download.
+
+## Quick start from source
 
 ```bash
 # 1. the extension
@@ -35,10 +57,13 @@ npm run build                      # Chrome → output/chrome-mv3/   (load unpac
 # 2. the model (gated on Hugging Face: accept the CC BY-NC-SA terms once, then)
 hf download pangram/editlens_roberta-large --local-dir ../models/editlens_roberta-large
 
-# 3. the scoring daemon (own venv; torch + transformers + fastapi + fasttext)
-cd anagramd && uv venv .venv --python 3.13 && uv pip install --python .venv/bin/python -r requirements.txt && cd ..
+# 3. the scoring daemon (own venv from the lockfile; torch + transformers + fastapi + fasttext)
+cd anagramd && uv sync --frozen && cd ..     # → anagramd/.venv
 npm run serve                      # http://127.0.0.1:8765 — GET /health, POST /score
 ```
+
+`npm run release` builds what the installer consumes (`dist/anagram.tar.gz` + checksum,
+`dist/install.sh`, the store zip); pushing a `v*` tag publishes them as a GitHub Release.
 
 The extension probes the daemon's `/health` and picks it up within seconds of it
 starting; the popup names the model that is scoring, or says *Daemon not running*

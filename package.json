@@ -23,7 +23,8 @@
     "serve": "sh anagramd/run.sh",
     "vendor:basecoat": "cp node_modules/basecoat-css/dist/basecoat-vega.cdn.min.css lib/ui/basecoat-vega.cdn.min.css",
     "vendor:lazy": "node scripts/vendor.mjs",
-    "test:node": "vitest run"
+    "test:node": "vitest run",
+    "release": "node scripts/release.mjs"
   },
   "devDependencies": {
     "@floating-ui/dom": "^1.8.0",

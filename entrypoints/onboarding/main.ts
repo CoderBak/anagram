@@ -27,6 +27,6 @@ void (async () => {
   }
   note.textContent =
     "The local scoring daemon (anagramd) is not running, so paragraphs will show as Unavailable " +
-    "until you start it with `npm run serve` in the extension folder — it is picked up automatically. " +
-    "Scores come from pangram/editlens_roberta-large; nothing leaves this computer.";
+    "until you start it: ~/.anagram/bin/anagram start (or `npm run serve` from a source checkout) — it is " +
+    "picked up automatically. Scores come from pangram/editlens_roberta-large; nothing leaves this computer.";
 })();

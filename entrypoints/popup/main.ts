@@ -122,7 +122,7 @@ async function refreshBackend(tabId: number | undefined, probe = false): Promise
           setTimeout(() => void refreshStatus(tabId), 800);
         });
       });
-      backendEl.replaceChildren(b, " — start it with npm run serve ", retry);
+      backendEl.replaceChildren(b, " — run: anagram start ", retry);
     }
   } catch {
     backendEl.textContent = "";
