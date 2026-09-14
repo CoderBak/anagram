@@ -28,10 +28,11 @@ const HIGHLIGHT_NAME: Record<Band, string> = {
   heavy: "anagram-heavy",
   ai: "anagram-ai",
   unknown: "anagram-unknown",
+  unsupported: "anagram-unsupported",
 };
 
 /** Bands that get a mark ("unknown" is painted by nothing). */
-type PaintBand = Exclude<Band, "unknown">;
+type PaintBand = Exclude<Band, "unknown" | "unsupported">;
 const PAINT_BANDS: readonly PaintBand[] = ["human", "light", "heavy", "ai"];
 
 export type MarkStyle = "both" | "underline" | "tint";
@@ -174,7 +175,7 @@ export function setHighlight(unit: Unit, result: ScoreResult): void {
   clearHighlight(unit.id);
 
   const b = band(result);
-  if (b === "unknown") return;
+  if (b === "unknown" || b === "unsupported") return; // no verdict → no mark
 
   const highlight = bandHighlight(b);
   if (!highlight) return;

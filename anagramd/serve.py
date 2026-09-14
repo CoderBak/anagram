@@ -13,10 +13,17 @@ The model is a 4-way sequence classifier over the *extent of AI editing* in a te
 Its continuous score is the probability-weighted bucket index normalized to [0, 1]
 (exactly what the reference `scripts/inference.py` emits as `*_score`).
 
+Language gate: EditLens is trained on English only (model card: `language: en`; every
+dataset source in the paper is English). Every block is first run through fastText's
+lid.176 language identifier (Joulin et al.) and only blocks whose top label is `en` reach
+the model; the rest come back as `unsupported: true` with the detected language so the
+extension can say "Unsupported language" instead of showing a meaningless percentage.
+
 Endpoints
-    GET  /health   → model / device / bucket info (the extension polls this to pick a backend)
-    POST /score    → {"v": "2.0", "blocks": [{"id": "...", "text": "..."}]}
-                   → {"v": "2.0", "model": {...}, "results": [{"id", "bucket", "probs", "score", ...}]}
+    GET  /health   → model / device / bucket / language info (the extension polls this)
+    POST /score    → {"v": "2.1", "blocks": [{"id": "...", "text": "..."}]}
+                   → {"v": "2.1", "model": {...}, "results": [{"id", "bucket", "probs", "score",
+                                                                "lang", "lang_prob", ...}]}
 
 Usage
     python anagramd/serve.py                 # ../../models/editlens_roberta-large on :8765
@@ -40,13 +47,16 @@ from pathlib import Path
 
 import numpy as np
 
-CONTRACT_VERSION = "2.0"
+CONTRACT_VERSION = "2.1"
 MODEL_ID = "editlens_roberta-large"
 # Bump when the weights or preprocessing change — the extension folds this into its cache keys.
 MODEL_VER = "hf-2026-03-21"
 CALIBRATION = "editlens-4bucket-cosine(0.03,0.15)"
 BUCKET_LABELS = ["human", "lightly-edited", "heavily-edited", "ai-generated"]
 DEFAULT_MODEL_DIR = Path(__file__).resolve().parents[2] / "models" / "editlens_roberta-large"
+SUPPORTED_LANGUAGES = ["en"]
+LID_URL = "https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz"
+DEFAULT_LID_PATH = DEFAULT_MODEL_DIR.parent / "lid.176.ftz"
 
 log = logging.getLogger("anagramd")
 
@@ -85,6 +95,52 @@ def clean_text(text: str, emoji_mod) -> str:
     text = _remove_ai_header(text, emoji_mod)
     text = text.lower()
     return _normalize_whitespace(text)
+
+
+# --- language identification (fastText lid.176) ---------------------------------------------------
+
+
+class LanguageId:
+    """fastText lid.176 (176 languages, ~1 MB compressed). `detect` → (iso639-1 code, prob).
+
+    Disabled (every block passes) when fastText or the model file is unavailable — the
+    daemon logs it loudly and /health reports `lid: null`.
+    """
+
+    def __init__(self, path: Path):
+        self.model = None
+        self.name = None
+        try:
+            import fasttext  # noqa: F401
+        except Exception as e:  # pragma: no cover
+            log.warning("fasttext not importable (%s) — language gate DISABLED, all text is scored", e)
+            return
+        if not path.exists():
+            try:
+                import urllib.request
+                log.info("downloading fastText lid.176 (~1 MB) to %s", path)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                urllib.request.urlretrieve(LID_URL, path)
+            except Exception as e:
+                log.warning("could not fetch %s (%s) — language gate DISABLED", LID_URL, e)
+                return
+        import fasttext
+        self.model = fasttext.load_model(str(path))
+        self.name = "fasttext-lid.176"
+        log.info("language gate: fastText lid.176 loaded; supported = %s", SUPPORTED_LANGUAGES)
+
+    @property
+    def enabled(self) -> bool:
+        return self.model is not None
+
+    def detect(self, text: str) -> tuple[str, float]:
+        # fasttext 0.9.3's predict() wrapper breaks on NumPy 2 (np.array(copy=False));
+        # the C++ binding returns [(prob, "__label__xx"), ...] and is stable.
+        pairs = self.model.f.predict(text.replace("\n", " "), 1, 0.0, "strict")
+        if not pairs:
+            return ("und", 0.0)
+        prob, label = pairs[0]
+        return (label.replace("__label__", ""), float(prob))
 
 
 # --- model ---------------------------------------------------------------------------------------
@@ -193,6 +249,8 @@ class EditLens:
             "model": {"id": MODEL_ID, "ver": MODEL_VER, "calibration": CALIBRATION},
             "n_buckets": self.n_buckets,
             "buckets": BUCKET_LABELS[: self.n_buckets],
+            "languages": SUPPORTED_LANGUAGES,
+            "lid": self.lid.name if getattr(self, "lid", None) and self.lid.enabled else None,
             "max_tokens": self.max_length,
             "device": self.device,
             "dtype": str(self.dtype).replace("torch.", ""),
@@ -202,6 +260,11 @@ class EditLens:
 
 
 # --- HTTP ----------------------------------------------------------------------------------------
+
+
+def unsupported_result(block_id: str, n_buckets: int, lang: str, prob: float) -> dict:
+    return {"id": block_id, "bucket": 0, "probs": [1 / n_buckets] * n_buckets, "score": 0.0,
+            "tokens": 0, "truncated": False, "lang": lang, "lang_prob": round(prob, 3), "unsupported": True}
 
 
 def make_app(engine: EditLens):
@@ -230,27 +293,42 @@ def make_app(engine: EditLens):
         if not isinstance(body, dict) or not isinstance(body.get("blocks"), list):
             return jsonify({"error": "expected {blocks: [{id, text}]}"}), 400
         blocks = [b for b in body["blocks"] if isinstance(b, dict) and isinstance(b.get("id"), str)]
-        texts, todo = [], []
+        t0 = time.time()
+        texts, todo, langs, skipped = [], [], {}, {}
         for b in blocks:
             text = b.get("text")
-            if isinstance(text, str) and text.strip():
-                todo.append(b["id"])
-                texts.append(text)
-        t0 = time.time()
+            if not (isinstance(text, str) and text.strip()):
+                continue
+            if engine.lid.enabled:
+                lang, prob = engine.lid.detect(text)
+                if lang not in SUPPORTED_LANGUAGES:
+                    skipped[b["id"]] = (lang, prob)
+                    continue
+                langs[b["id"]] = (lang, prob)
+            todo.append(b["id"])
+            texts.append(text)
         scored = engine.score(texts) if texts else []
         by_id = dict(zip(todo, scored))
         results = []
         for b in blocks:
-            r = by_id.get(b["id"])
+            bid = b["id"]
+            if bid in skipped:
+                results.append(unsupported_result(bid, engine.n_buckets, *skipped[bid]))
+                continue
+            r = by_id.get(bid)
             if r is None:  # empty text — no model output, mark degraded so it is never cached
-                results.append({"id": b["id"], "bucket": 0, "probs": [1 / engine.n_buckets] * engine.n_buckets,
+                results.append({"id": bid, "bucket": 0, "probs": [1 / engine.n_buckets] * engine.n_buckets,
                                 "score": 0.0, "tokens": 0, "truncated": False, "degraded": True})
             else:
-                results.append({"id": b["id"], **r})
+                out = {"id": bid, **r}
+                if bid in langs:
+                    out["lang"], out["lang_prob"] = langs[bid][0], round(langs[bid][1], 3)
+                results.append(out)
         ms = (time.time() - t0) * 1000
-        log.info("score %d blocks (%d tok): %.0f ms model, %.0f ms queued, %.0f ms total — buckets %s",
+        log.info("score %d blocks (%d tok): %.0f ms model, %.0f ms queued, %.0f ms total — buckets %s%s",
                  len(texts), sum(r["tokens"] for r in scored), getattr(engine, "last_run_ms", 0.0),
-                 getattr(engine, "last_wait_ms", 0.0), ms, [r["bucket"] for r in scored])
+                 getattr(engine, "last_wait_ms", 0.0), ms, [r["bucket"] for r in scored],
+                 f" — {len(skipped)} unsupported ({', '.join(sorted({v[0] for v in skipped.values()}))})" if skipped else "")
         return jsonify({"v": CONTRACT_VERSION, "session": body.get("session"),
                         "model": engine.info()["model"], "partial": False, "results": results})
 
@@ -272,6 +350,8 @@ SELFTEST = [
                "floor to listen. He spoke for twenty minutes about a dog he was considering adopting, never "
                "mentioning what we both knew he had actually called to discuss. Afterwards, the rice was "
                "ruined, but I ate it regardless."),
+    ("zh", "这是一个完全用中文写成的段落。模型只在英文数据上训练过，所以这段文字不应该被打分，"
+           "而应该被标记为不支持的语言。检测器应该能够识别出这一点，并且不要给出一个看起来很可信的百分比。"),
 ]
 
 
@@ -285,19 +365,29 @@ def main() -> None:
                     help="auto = fp16 on mps/cuda, fp32 on cpu")
     ap.add_argument("--max-length", type=int, default=512, help="roberta-large caps at 512")
     ap.add_argument("--batch-size", type=int, default=32)
-    ap.add_argument("--selftest", action="store_true", help="score three sample paragraphs, print, exit")
+    ap.add_argument("--lid-model", type=Path, default=DEFAULT_LID_PATH,
+                    help="fastText lid.176.ftz path (downloaded on first run if missing)")
+    ap.add_argument("--no-language-gate", action="store_true", help="score every block regardless of language")
+    ap.add_argument("--selftest", action="store_true", help="score sample paragraphs (incl. a non-English one), print, exit")
     args = ap.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s", datefmt="%H:%M:%S")
     engine = EditLens(args.model_dir, args.device, args.max_length, args.batch_size, args.dtype)
+    engine.lid = LanguageId(args.lid_model) if not args.no_language_gate else LanguageId(Path("/nonexistent"))
 
     if args.selftest:
         t0 = time.time()
-        results = engine.score([t for _, t in SELFTEST])
-        for (label, _), r in zip(SELFTEST, results):
+        for label, text in SELFTEST:
+            if engine.lid.enabled:
+                lang, prob = engine.lid.detect(text)
+                if lang not in SUPPORTED_LANGUAGES:
+                    print(f"  expected≈{label:7s} → UNSUPPORTED language {lang} ({prob:.2f}) — not scored")
+                    continue
+            r = engine.score([text])[0]
             print(f"  expected≈{label:7s} → bucket {r['bucket']} ({BUCKET_LABELS[r['bucket']]:15s}) "
                   f"score {r['score']:.3f}  probs {r['probs']}  tokens {r['tokens']}")
-        print(f"  {len(SELFTEST)} paragraphs in {(time.time() - t0) * 1000:.0f} ms on {engine.device}")
+        print(f"  {len(SELFTEST)} paragraphs in {(time.time() - t0) * 1000:.0f} ms on {engine.device}"
+              f" (language gate: {'on' if engine.lid.enabled else 'OFF'})")
         return
 
     app = make_app(engine)

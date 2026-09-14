@@ -8,7 +8,7 @@ import { MARK_ATTR } from "../types";
 import type { ScoreBatchRequest } from "../contract";
 import { CONTRACT_VERSION } from "../contract";
 import { requestScores } from "../messaging/client";
-import { band, BAND_LABEL, scorePct, type Band } from "./band";
+import { band, BAND_LABEL, isNoVerdict, languageName, scorePct, type Band } from "./band";
 import { DIST_CSS, distributionHtml } from "./dist";
 import { countWords, truncateForScoring, MIN_UNIT_WORDS } from "../dom/text";
 import { isDarkPage } from "./theme";
@@ -35,6 +35,7 @@ const CARD_CSS = `
 .verdict.band-heavy   { color: #a13d00; }
 .verdict.band-ai      { color: #b42318; }
 .verdict.band-unknown { color: #57606a; }
+.verdict.band-unsupported { color: #737373; }
 .big { font-weight: 700; font-size: 12px; font-variant-numeric: tabular-nums; }
 .row { display: flex; justify-content: space-between; gap: 12px; }
 .row .k { color: #737373; }
@@ -192,11 +193,18 @@ export async function analyzeSelection(): Promise<void> {
       card.innerHTML =
         closeBtn +
         `<div class="head"><span class="verdict band-${b}">${BAND_LABEL[b]}</span>` +
-        `<span class="big">${b === "unknown" ? "—" : pct + "% AI"}</span></div>` +
-        (b === "unknown" ? "" : distributionHtml(r, b)) +
-        row("Words analyzed", String(words)) +
+        `<span class="big">${isNoVerdict(b) ? "—" : pct + "% AI"}</span></div>` +
+        (isNoVerdict(b) ? "" : distributionHtml(r, b)) +
+        (b === "unsupported" ? row("Detected language", `${languageName(r.lang)} · ${Math.round((r.lang_prob ?? 0) * 100)}%`) : "") +
+        row(b === "unsupported" ? "Words" : "Words analyzed", String(words)) +
         (r.truncated ? row("Model window", `first ${r.tokens ?? 512} tokens`) : "") +
-        `<div class="foot">${b === "unknown" ? "The scoring backend did not answer — try again." : "EditLens estimate of AI editing, not proof."}</div>`;
+        `<div class="foot">${
+          b === "unknown"
+            ? "The scoring backend did not answer — try again."
+            : b === "unsupported"
+              ? "EditLens is trained on English text only, so this selection was not scored."
+              : "EditLens estimate of AI editing, not proof."
+        }</div>`;
     }
   }
   shadow.querySelector(".close")?.addEventListener("click", dismiss);

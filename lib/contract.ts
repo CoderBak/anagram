@@ -7,7 +7,7 @@
 // full bucket distribution plus its probability-weighted score; the UI derives
 // verdict bands from the bucket and shows the score as "% AI".
 
-export const CONTRACT_VERSION = "2.0";
+export const CONTRACT_VERSION = "2.1";
 
 /** Bucket count the UI is built for: 0 human · 1 lightly edited · 2 heavily edited · 3 AI-generated. */
 export const BUCKET_COUNT = 4;
@@ -41,6 +41,16 @@ export interface ScoreResult {
   tokens?: number;
   /** True when the text exceeded the model window and was cut (roberta: 512 tokens). */
   truncated?: boolean;
+  /** Detected language (ISO 639-1, fastText lid.176) — set by the daemon; absent from the stub. */
+  lang?: string;
+  /** Confidence of `lang`, in [0,1]. */
+  lang_prob?: number;
+  /**
+   * True when the block was NOT scored because its language is outside the model's
+   * training languages (EditLens: English only). bucket/probs/score are placeholders;
+   * render as "Unsupported language". A real, cacheable result (deterministic).
+   */
+  unsupported?: boolean;
   /**
    * True when this result is a transport/backend-failure FALLBACK, not a model
    * output. Degraded results render ("Unavailable") but must never enter any

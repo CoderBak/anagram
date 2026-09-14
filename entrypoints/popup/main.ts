@@ -86,11 +86,11 @@ function showCounts(state: TabState): void {
   const flaggedEl = document.createElement("span");
   flaggedEl.textContent = `${state.flagged} flagged`;
   if (state.flagged > 0) flaggedEl.classList.add("flagged");
+  const analyzed = state.scored - (state.unsupported ?? 0);
   statusEl.replaceChildren(
-    document.createTextNode(
-      `${state.scored} paragraph${state.scored === 1 ? "" : "s"} analyzed · `,
-    ),
+    document.createTextNode(`${analyzed} paragraph${analyzed === 1 ? "" : "s"} analyzed · `),
     flaggedEl,
+    document.createTextNode(state.unsupported ? ` · ${state.unsupported} not English` : ""),
   );
 }
 

@@ -59,6 +59,9 @@ function coerce(raw: unknown, id: string): ScoreResult | null {
   if (typeof r.tokens === "number") out.tokens = r.tokens;
   if (r.truncated === true) out.truncated = true;
   if (r.degraded === true) out.degraded = true;
+  if (typeof r.lang === "string" && r.lang) out.lang = r.lang.slice(0, 8);
+  if (typeof r.lang_prob === "number") out.lang_prob = r.lang_prob;
+  if (r.unsupported === true) out.unsupported = true;
   return out;
 }
 

@@ -78,10 +78,16 @@ if (daemon) console.log(`daemon handled ${after - before} scoring requests while
 
 console.log("\nchip (extension)        card probs H/L/H/AI   |  daemon API on the same text   match?");
 const api = await fetch(`${BASE}/score`, { method: "POST", headers: { "content-type": "application/json" },
-  body: JSON.stringify({ v: "2.0", blocks: up.chips.map((c, i) => ({ id: String(i), text: c.text })) }) }).then((r) => r.json());
+  body: JSON.stringify({ v: "2.1", blocks: up.chips.map((c, i) => ({ id: String(i), text: c.text })) }) }).then((r) => r.json());
 let allMatch = true;
 up.chips.forEach((c, i) => {
   const r = api.results.find((x) => x.id === String(i));
+  if (r.unsupported) {
+    const match = c.num.startsWith(r.lang) && c.probs.length === 0;
+    allMatch &&= match;
+    console.log(`${c.num.padEnd(12)} ${"(no verdict)".padEnd(22)} | ${("unsupported: " + r.lang).padEnd(30)} ${match ? "✓" : "✗"}   "${c.text.slice(0, 40)}…"`);
+    return;
+  }
   const apiProbs = r.probs.map((p) => Math.round(p * 100));
   const apiPct = Math.round(r.score * 100);
   const match = apiProbs.every((p, k) => Math.abs(p - c.probs[k]) <= 1) && Math.abs(apiPct - parseInt(c.num, 10)) <= 1;

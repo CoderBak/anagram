@@ -29,6 +29,9 @@ interface Stored {
   s: number;
   k?: number;
   x?: 1;
+  l?: string;
+  lp?: number;
+  u?: 1;
   t: number;
 }
 
@@ -47,6 +50,9 @@ function toStored(r: ScoreResult): Stored {
   };
   if (typeof r.tokens === "number") s.k = r.tokens;
   if (r.truncated) s.x = 1;
+  if (r.lang) s.l = r.lang;
+  if (typeof r.lang_prob === "number") s.lp = r.lang_prob;
+  if (r.unsupported) s.u = 1;
   return s;
 }
 
@@ -55,6 +61,9 @@ function fromStored(id: string, s: Stored): ScoreResult | null {
   const r: ScoreResult = { id, bucket: s.b, probs: s.p, score: s.s };
   if (typeof s.k === "number") r.tokens = s.k;
   if (s.x) r.truncated = true;
+  if (s.l) r.lang = s.l;
+  if (typeof s.lp === "number") r.lang_prob = s.lp;
+  if (s.u) r.unsupported = true;
   return r;
 }
 

@@ -111,7 +111,15 @@ probability-weighted score (`Σ pᵢ·i / 3`, shown as `% AI`).
 | 2 | Heavily edited | substantial AI rewriting |
 | 3 | AI-generated | written by a model |
 
-Honest limits: English-only training data; a 512-token window (longer paragraphs
+**English only.** The model card declares `language: en`, every dataset source in
+the paper is English, and the base model is RoBERTa. So the daemon runs every
+paragraph through **fastText `lid.176`** (the standard 176-language identifier)
+before scoring and refuses anything whose top label is not English: those
+paragraphs get a gray **"Unsupported language"** chip showing the detected code
+(`zh`, `ja`, `ar`…) with the language name in the card, no percentage, no mark,
+and never count as flagged. The popup reports them as "N not English".
+
+Honest limits: a 512-token window (longer paragraphs
 are scored on their sentence-bounded prefix and the card says so); accuracy
 drops out-of-domain and on models unseen in training (the paper reports ternary
 macro-F1 0.904 in-domain → 0.866 on a held-out domain); light edits by
@@ -195,10 +203,10 @@ Six suites, all runnable headed on a normal machine:
 
 | Suite | Command | Checks | What it covers |
 | --- | --- | --- | --- |
-| Unit | `npm run test:unit` | 71 | walker/assembler/extraction + band mapping in a real Chromium page (~5s) |
+| Unit | `npm run test:unit` | 72 | walker/assembler/extraction + band mapping in a real Chromium page (~5s) |
 | E2E | `npm run test:e2e` | 22 | full extension on a 16-section fixture page (stub backend) |
 | Scenarios | `npm run test:scenarios` | 35 | UI edge cases (hover card, panel filters, FAB snap/tuck, top-layer, KaTeX, vertical text) + 13 live sites (`-- --local` skips the live sweep) |
-| Server | `npm run test:server` | 14 | **the real model**: spawns `anagramd`, checks the API on human/AI samples, drives the built extension in Auto mode — real verdicts on every chip, the 4-bucket card, the popup's model line |
+| Server | `npm run test:server` | 18 | **the real model**: spawns `anagramd`, checks the API on human/AI/Chinese samples (the last one must come back unsupported via fastText), drives the built extension in Auto mode — real verdicts on every English chip, the 4-bucket card, the "zh" unsupported chip, the popup's model line |
 | Docs flow | `node test/docs-flow.mjs <public doc URL>` | 12 | in-tab overlay + classic page flow on a real public Google Doc — the original demo doc was deleted from Drive, so without a URL (or `ANAGRAM_DOC_URL`) the suite reports SKIP |
 | Perf | `npm run test:perf` | 3 | 3000-paragraph budget: first badge <4s (measured ~0.3s), no long task >1s |
 
@@ -224,7 +232,8 @@ and never-cached degraded fallbacks (`lib/backend/`). Results render as inline
 shadow-DOM chips and Highlight-API marks (`lib/render/`); the Google Docs
 overlay (`lib/docsOverlay.ts`) reuses the same pipeline inside a shadow-root
 reader. The surface↔backend contract (`lib/contract.ts`, v2.0) is exactly the
-daemon's IO: `{bucket, probs[4], score}` per paragraph.
+daemon's IO: `{bucket, probs[4], score, lang}` per paragraph, or `unsupported` for
+non-English text.
 
 ## Privacy
 

@@ -69,8 +69,10 @@ export interface TabState {
   enabled: boolean;
   hostname: string;
   scored: number;
-  /** Units flagged AI / AI-Assisted (popup stat line). */
+  /** Units flagged heavily edited / AI-generated (popup stat line). */
   flagged: number;
+  /** Units skipped because their language is outside the model's (popup stat line). */
+  unsupported: number;
 }
 
 /** popup/SW → content: tear down all badges and observers. */

@@ -192,6 +192,7 @@ export default defineContentScript({
               hostname: location.hostname,
               scored: orchestrator.scoredCount(),
               flagged: orchestrator.flaggedCount(),
+              unsupported: orchestrator.unsupportedCount(),
             };
             sendResponse(state);
             return; // synchronous response

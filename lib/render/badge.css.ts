@@ -96,6 +96,7 @@ export const BADGE_CSS: string = `
 .pill.band-heavy   { --dot: #e8590c; --ring: rgba(232, 89, 12, 0.20);   color: #a13d00; }
 .pill.band-ai      { --dot: #e5484d; --ring: rgba(229, 72, 77, 0.20);   color: #b42318; }
 .pill.band-unknown { --dot: #9aa3ad; --ring: rgba(154, 163, 173, 0.16); color: #57606a; }
+.pill.band-unsupported { --dot: #9aa3ad; --ring: rgba(154, 163, 173, 0.16); color: #737373; font-weight: 500; }
 
 /* ---- pending ("analyzing") state --------------------------------------------- */
 /* Shown the moment a unit's batch actually goes to the backend; morphs in place
@@ -202,6 +203,7 @@ export const BADGE_CSS: string = `
 .card .verdict.band-heavy   { color: #a13d00; }
 .card .verdict.band-ai      { color: #b42318; }
 .card .verdict.band-unknown { color: #57606a; }
+.card .verdict.band-unsupported { color: #737373; }
 .card .big { font-weight: 700; font-size: 12px; font-variant-numeric: tabular-nums; color: #252525; }
 
 .card .row {
@@ -253,6 +255,8 @@ export const BADGE_CSS: string = `
 :host(.pg-dark) .pill.band-heavy   { color: #ff9a57; }
 :host(.pg-dark) .pill.band-ai      { color: #ff7b81; }
 :host(.pg-dark) .pill.band-unknown { color: #b9c0c8; }
+:host(.pg-dark) .pill.band-unsupported { color: #a3a3a3; }
+:host(.pg-dark) .card .verdict.band-unsupported { color: #a3a3a3; }
 
 :host(.pg-dark) .card {
   border-color: rgba(255, 255, 255, 0.10);

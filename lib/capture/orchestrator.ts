@@ -67,6 +67,8 @@ export interface Orchestrator {
   scoredCount(): number;
   /** Number of units flagged heavily edited / AI-generated (popup GET_TAB_STATE). */
   flaggedCount(): number;
+  /** Number of units skipped as an unsupported language (popup GET_TAB_STATE). */
+  unsupportedCount(): number;
   /** Configure the FAB's secondary action chip (Google Docs reading view etc.). */
   setFabAction(label: string | null, onAction?: () => void, opts?: { attention?: boolean }): void;
 }
@@ -157,8 +159,11 @@ export function createOrchestrator(
     lines.push("");
     lines.push(`- Page: ${location.href}`);
     lines.push(`- Generated: ${new Date().toLocaleString()}`);
+    let skipped = 0;
+    for (const r of resultsById.values()) if (r.unsupported) skipped++;
     lines.push(
-      `- Analyzed: ${resultsById.size} unit${resultsById.size === 1 ? "" : "s"} · Flagged: ${flagged.length}`,
+      `- Analyzed: ${resultsById.size - skipped} unit${resultsById.size - skipped === 1 ? "" : "s"} · Flagged: ${flagged.length}` +
+        (skipped > 0 ? ` · Skipped (unsupported language): ${skipped}` : ""),
     );
     lines.push("");
     if (flagged.length === 0) {
@@ -752,6 +757,12 @@ export function createOrchestrator(
     return n;
   }
 
+  function unsupportedCount(): number {
+    let n = 0;
+    for (const r of resultsById.values()) if (r.unsupported) n++;
+    return n;
+  }
+
   function setFabAction(
     label: string | null,
     onAction?: () => void,
@@ -760,7 +771,7 @@ export function createOrchestrator(
     fab.setAction(label, onAction, opts);
   }
 
-  return { start, stop, rescan, toggle, scoredCount, flaggedCount, setFabAction };
+  return { start, stop, rescan, toggle, scoredCount, flaggedCount, unsupportedCount, setFabAction };
 }
 
 /** Merge scan roots, dropping disconnected ones and any contained by another. */

@@ -64,6 +64,9 @@ const HUMAN =
   "My brother never rings on weeknights, so I turned the burner off and sat on the floor to listen. " +
   "He talked for twenty minutes about a dog he was thinking of adopting and never mentioned the thing " +
   "we both knew he had rung to say. Afterwards the rice was ruined and I ate it anyway.";
+const ZH =
+  "这是一个完全用中文写成的段落。模型只在英文数据上训练过，所以这段文字不应该被打分，而应该被标记为不支持的语言。" +
+  "检测器应该能够识别出这一点，并且不要给出一个看起来很可信的百分比。";
 const AI =
   "In today's rapidly evolving digital landscape, effective communication has become more crucial than " +
   "ever. By leveraging cutting-edge technologies and fostering a culture of collaboration, organizations " +
@@ -73,13 +76,16 @@ const AI =
   const r = await fetch(`${BASE}/score`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ v: "2.0", blocks: [{ id: "h", text: HUMAN }, { id: "a", text: AI }, { id: "e", text: "" }] }),
+    body: JSON.stringify({ v: "2.1", blocks: [{ id: "h", text: HUMAN }, { id: "a", text: AI }, { id: "e", text: "" }, { id: "z", text: ZH }] }),
   }).then((r) => r.json());
   const by = Object.fromEntries(r.results.map((x) => [x.id, x]));
   check("API: human sample → bucket 0", by.h?.bucket === 0 && by.h.score < 0.2, JSON.stringify(by.h?.probs));
   check("API: AI sample → bucket 3", by.a?.bucket === 3 && by.a.score > 0.8, JSON.stringify(by.a?.probs));
   check("API: empty text → degraded, never cached", by.e?.degraded === true, JSON.stringify(by.e));
   check("API: probs sum to 1", Math.abs(by.h.probs.reduce((s, p) => s + p, 0) - 1) < 0.01);
+  check("API: English samples carry lang=en", by.h?.lang === "en" && by.a?.lang === "en", `${by.h?.lang} ${by.h?.lang_prob}`);
+  check("API: Chinese sample → unsupported, not scored (fastText lid)", by.z?.unsupported === true && by.z.lang === "zh" && by.z.tokens === 0, JSON.stringify({ lang: by.z?.lang, p: by.z?.lang_prob }));
+  check("daemon /health lists languages + lid", Array.isArray(h.languages) && h.languages.includes("en") && typeof h.lid === "string", `${h.languages} · ${h.lid}`);
 }
 
 // --- 3. extension against the daemon --------------------------------------------------
@@ -134,10 +140,13 @@ const chips = await page.evaluate((sel) => {
   }));
 }, BADGE_SEL);
 const verdicts = chips.filter((c) => c.band !== "band-unknown");
+const unsupported = chips.filter((c) => c.band === "band-unsupported");
+const scored = chips.filter((c) => c.band !== "band-unsupported");
 check("chips rendered with real verdicts", chips.length > 5 && verdicts.length === chips.length, `${chips.length} chips, bands: ${[...new Set(chips.map((c) => c.band))].join(",")}`);
-check("every chip reads '<n>% AI'", chips.every((c) => /^\d{1,3}% AI( ×\d+)?$/.test(c.num)), chips.slice(0, 4).map((c) => c.num).join(" | "));
-check("hover cards carry the 4-bucket distribution", chips.every((c) => c.segs === 4 && c.rows === 4));
+check("every scored chip reads '<n>% AI'", scored.every((c) => /^\d{1,3}% AI( ×\d+)?$/.test(c.num)), scored.slice(0, 4).map((c) => c.num).join(" | "));
+check("hover cards carry the 4-bucket distribution", scored.every((c) => c.segs === 4 && c.rows === 4));
 check("card footer names EditLens (not the stub)", chips.every((c) => /EditLens/.test(c.foot)), chips[0]?.foot);
+check("the Chinese fixture paragraph renders as unsupported ('zh'), no distribution", unsupported.length >= 1 && unsupported.every((c) => /^zh/.test(c.num) && c.segs === 0), unsupported.map((c) => c.num).join(" | "));
 check("no page/console errors", errors.length === 0, errors[0] ?? "");
 
 // --- 4. popup names the model ---------------------------------------------------------
