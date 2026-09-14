@@ -75,9 +75,10 @@ one produced the scores. Options → *Scoring backend* switches modes or the URL
   marks appear only on heavily-edited / AI-generated verdicts — calm pages by
   default if you prefer (popup → Show).
 - **Analysis scope**: whole page (default) or **main content only** — a
-  trafilatura-style precision mode that detects the article region and skips
-  comments, sidebars and widgets outside it (falls back to whole-page when no
-  clear region exists).
+  precision mode that lets **Mozilla Readability** (the Firefox Reader View
+  extractor) decide what the article is, maps that back onto the live DOM, and
+  skips comments, sidebars and widgets outside it (a text-mass probe covers
+  pages Readability declines; whole-page when no clear region exists).
 - **Analyze any selection**: select text → right-click →
   *Analyze selection with Anagram* — works in editors, comment boxes,
   **`<textarea>`/`<input>` fields** (which browsers hide from normal selection
@@ -148,7 +149,8 @@ Text on the web is messy; the capture engine is built for it:
   guards so a paper's `related-work` *section* stays content, and page-level
   containers (`body`, `main`, `article`) can never be misclassified by a skin's
   utility classes.
-- **Living pages.** Infinite scroll, SPA navigations (pushState included), tab
+- **Living pages.** Infinite scroll, SPA navigations (pushState included, heard
+  instantly through the Navigation API — no history patching, no polling), tab
   panels, accordions, `<details>`, **modal `<dialog>`s (top layer)**, edited and
   deleted text — badges appear, update, and disappear with the content.
 - **Fast and ahead of you.** Scoring is viewport-first with a 1.5-screen
@@ -157,8 +159,9 @@ Text on the web is messy; the capture engine is built for it:
   delays what's on screen. Batches are packed per lane (small for the viewport,
   large for prefetch) because the model scores ~3× more paragraphs per second in
   batches of 12+. Verdicts are cached three ways — per tab, in the service
-  worker, and **persistently in extension storage** (hash + buckets only, keyed
-  by model version) — so revisits and worker restarts never re-score.
+  worker, and **persistently in IndexedDB** (hash + buckets only, keyed by model
+  version, pruned oldest-first through an index) — so revisits and worker
+  restarts never re-score.
 - **Everything, everywhere:** open shadow DOM and slots, same- and cross-origin
   iframes (webmail readers, embedded posts — ad slots are size-gated out),
   plain-text documents (`.txt`/`.log`/RFCs), pure-CJK, RTL, and
@@ -168,7 +171,11 @@ Text on the web is messy; the capture engine is built for it:
   same visible sentence scores identically on every site that renders it.
 - **Zero page mutation** beyond inserting the chips themselves: no attributes, no
   inline styles on your DOM, marks via the CSS Custom Highlight API, copied
-  text never includes badge labels, badges inside links never navigate.
+  text never includes badge labels, badges inside links never navigate. Hover
+  cards, the selection card and the triage panel are placed by **Floating UI**
+  (flip, shift, arrow), so they stay on screen at any edge; chip theming reads
+  page backgrounds through **culori**, so `oklch()` / `display-p3` / `lab()`
+  surfaces are classified correctly.
 - **Graceful under failure.** If the extension is updated/reloaded while a tab
   is open (dead context), the page **freezes quietly** — verdicts stay readable,
   observers and timers stop, nothing spams the console. If the daemon goes away
@@ -203,9 +210,9 @@ Six suites, all runnable headed on a normal machine:
 
 | Suite | Command | Checks | What it covers |
 | --- | --- | --- | --- |
-| Unit | `npm run test:unit` | 72 | walker/assembler/extraction + band mapping in a real Chromium page (~5s) |
-| E2E | `npm run test:e2e` | 22 | full extension on a 16-section fixture page (stub backend) |
-| Scenarios | `npm run test:scenarios` | 35 | UI edge cases (hover card, panel filters, FAB snap/tuck, top-layer, KaTeX, vertical text) + 13 live sites (`-- --local` skips the live sweep) |
+| Unit | `npm run test:unit` | 74 | walker/assembler/extraction + band mapping + Readability-guided scope in a real Chromium page (~5s) |
+| E2E | `npm run test:e2e` | 22 | full extension on a 16-section fixture page (either backend — the Chinese paragraph must be scored by the stub or come back unsupported from the daemon) |
+| Scenarios | `npm run test:scenarios` | 36 | UI edge cases (hover card, panel filters, FAB snap/tuck, top-layer, KaTeX, vertical text, CSS Color 4 backgrounds) + 13 live sites (`-- --local` skips the live sweep) |
 | Server | `npm run test:server` | 18 | **the real model**: spawns `anagramd`, checks the API on human/AI/Chinese samples (the last one must come back unsupported via fastText), drives the built extension in Auto mode — real verdicts on every English chip, the 4-bucket card, the "zh" unsupported chip, the popup's model line |
 | Docs flow | `node test/docs-flow.mjs <public doc URL>` | 12 | in-tab overlay + classic page flow on a real public Google Doc — the original demo doc was deleted from Drive, so without a URL (or `ANAGRAM_DOC_URL`) the suite reports SKIP |
 | Perf | `npm run test:perf` | 3 | 3000-paragraph budget: first badge <4s (measured ~0.3s), no long task >1s |
@@ -221,19 +228,38 @@ the README screenshots; `node test/genicons.mjs` regenerates the icon set.
 
 A content script segments the page (`lib/dom/walker.ts`) into scoreable units,
 claims their text nodes for incremental re-scans, and observes viewport,
-mutations, attribute reveals and URL changes (`lib/capture/`). An optional
-precision scope narrows collection to the detected main-content region
-(`lib/dom/mainContent.ts`). Units are batched through a 3-lane priority
-scheduler (viewport / near / idle prefetch) to the MV3 service worker, which
-dedups, caches (53-bit content hashes, model-versioned keys, memory +
-persistent storage) and calls the active `ScoreClient` — the local `anagramd`
-daemon over HTTP when it is up, the deterministic stub otherwise — with retry
-and never-cached degraded fallbacks (`lib/backend/`). Results render as inline
-shadow-DOM chips and Highlight-API marks (`lib/render/`); the Google Docs
-overlay (`lib/docsOverlay.ts`) reuses the same pipeline inside a shadow-root
-reader. The surface↔backend contract (`lib/contract.ts`, v2.1) is exactly the
-daemon's IO: `{bucket, probs[4], score, lang}` per paragraph, or `unsupported` for
-non-English text.
+mutations, attribute reveals and URL changes (`lib/capture/`, Navigation API).
+An optional precision scope narrows collection to the main-content region
+(`lib/dom/mainContent.ts`, Readability-guided). Units are batched through a
+3-lane priority scheduler (viewport / near / idle prefetch) to the MV3 service
+worker, which dedups, caches (53-bit content hashes, model-versioned keys,
+memory + IndexedDB via `idb`) and calls the active `ScoreClient` — the local
+`anagramd` daemon over HTTP when it is up, the deterministic stub otherwise —
+with bounded concurrency and retry (`p-limit`, `p-retry`) and never-cached
+degraded fallbacks (`lib/backend/`). Results render as inline shadow-DOM chips
+and Highlight-API marks placed by Floating UI (`lib/render/`); the Google Docs
+overlay (`lib/docsOverlay.ts`) sanitizes the fetched document with DOMPurify
+and reuses the same pipeline inside a shadow-root reader. Readability and
+DOMPurify are **on-demand vendor chunks** (`scripts/vendor.mjs` →
+`public/vendor/`, loaded by `lib/lazy.ts`), so the content script that runs on
+every page stays small. The surface↔backend contract (`lib/contract.ts`, v2.1)
+is exactly the daemon's IO: `{bucket, probs[4], score, lang}` per paragraph, or
+`unsupported` for non-English text.
+
+### Libraries doing the heavy lifting
+
+| Concern | Library | Where |
+| --- | --- | --- |
+| HTTP API, validation, OpenAPI docs | FastAPI + uvicorn + pydantic | `anagramd/serve.py` |
+| Model download | huggingface_hub | `anagramd/serve.py` |
+| Language identification | fastText `lid.176` | `anagramd/serve.py` |
+| Main-content extraction | @mozilla/readability (on demand) | `lib/dom/mainContent.ts` |
+| HTML sanitizing (Docs reading mode) | DOMPurify (on demand) | `lib/docsOverlay.ts` |
+| Popover placement | @floating-ui/dom | `lib/render/badge.ts`, `selectionCard.ts`, `fab.ts` |
+| CSS colour parsing + luminance | culori | `lib/render/theme.ts` |
+| Persistent score cache | idb (IndexedDB) | `lib/backend/swCache.ts` |
+| Concurrency + retry | p-limit, p-retry | `lib/backend/router.ts` |
+| Extension pages | Basecoat (Vega) | `lib/ui/` |
 
 ## Privacy
 

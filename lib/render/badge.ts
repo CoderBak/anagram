@@ -15,6 +15,11 @@
 //
 // v4 (EditLens): the card shows the model's four-bucket distribution — human /
 // lightly edited / heavily edited / AI-generated — as a stacked bar plus rows.
+//
+// Card placement is Floating UI's: flip above/below, shift to stay inside the
+// viewport, arrow middleware aims the caret, autoUpdate re-places it while it is
+// showing (scroll, resize, and the card's own content changing size).
+import { arrow, autoUpdate, computePosition, flip, offset, shift } from "@floating-ui/dom";
 import type { Unit } from "../types";
 import { MARK_ATTR } from "../types";
 import type { ScoreResult } from "../contract";
@@ -124,14 +129,17 @@ export function createBadgeLayer(): BadgeLayer {
       const opening = !card.classList.contains("open");
       closeOpenCard();
       if (opening) {
-        positionCard(host);
+        startFloating(host);
         card.classList.add("open");
         _openCardHost = host;
       }
     });
-    // Edge-aware hover card: flip below near the viewport top, pin horizontally
-    // near the left/right edges. Decided at hover time — layout may have changed.
-    host.addEventListener("mouseenter", () => positionCard(host));
+    // Live placement while the card shows: hover starts it, leaving stops it unless
+    // the card is pinned (a pinned card stops when it closes).
+    host.addEventListener("mouseenter", () => startFloating(host));
+    host.addEventListener("mouseleave", () => {
+      if (_openCardHost !== host) stopFloating(host);
+    });
     const shadow = host.attachShadow({ mode: "open" });
     shadow.adoptedStyleSheets = [badgeSheet()];
 
@@ -203,6 +211,7 @@ export function createBadgeLayer(): BadgeLayer {
     const host = hosts.get(id);
     if (!host) return;
     if (host === _openCardHost) _openCardHost = null;
+    stopFloating(host);
     host.remove();
     hosts.delete(id);
   }
@@ -226,7 +235,10 @@ export function createBadgeLayer(): BadgeLayer {
   }
 
   function teardownAll(): void {
-    for (const [, host] of hosts) host.remove();
+    for (const [, host] of hosts) {
+      stopFloating(host);
+      host.remove();
+    }
     hosts.clear();
     _openCardHost = null;
   }
@@ -265,7 +277,9 @@ let _openCardHost: HTMLElement | null = null;
 let _outsideCloserInstalled = false;
 
 function closeOpenCard(): void {
-  _openCardHost?.shadowRoot?.querySelector(".card")?.classList.remove("open");
+  if (!_openCardHost) return;
+  _openCardHost.shadowRoot?.querySelector(".card")?.classList.remove("open");
+  stopFloating(_openCardHost);
   _openCardHost = null;
 }
 
@@ -291,16 +305,51 @@ function installOutsideCloser(): void {
   );
 }
 
-/** Edge-aware placement: flip below near the viewport top, pin near the sides. */
+// ---- card placement (Floating UI) ----------------------------------------------
+
+const _floating = new WeakMap<HTMLElement, () => void>();
+
+/** Place the card once: above the chip, flipped below when that would leave the
+ *  viewport, shifted to stay inside it, caret aimed at the chip. */
 function positionCard(host: HTMLElement): void {
-  const card = host.shadowRoot?.querySelector(".card");
-  if (!card) return;
-  card.classList.remove("below", "align-left", "align-right");
-  const r = host.getBoundingClientRect();
-  if (r.top < 230) card.classList.add("below");
-  const vw = window.innerWidth || document.documentElement.clientWidth;
-  if (r.left < 160) card.classList.add("align-left");
-  else if (vw - r.right < 160) card.classList.add("align-right");
+  const root = host.shadowRoot;
+  const pill = root?.querySelector(".pill") as HTMLElement | null;
+  const card = root?.querySelector(".card") as HTMLElement | null;
+  if (!pill || !card) return;
+  const caret = card.querySelector(".caret") as HTMLElement | null;
+  void computePosition(pill, card, {
+    placement: "top",
+    strategy: "absolute",
+    middleware: [
+      offset(9),
+      flip({ padding: 8 }),
+      shift({ padding: 8 }),
+      ...(caret ? [arrow({ element: caret, padding: 10 })] : []),
+    ],
+  }).then(({ x, y, placement, middlewareData }) => {
+    card.style.left = `${x}px`;
+    card.style.top = `${y}px`;
+    card.classList.toggle("below", placement.startsWith("bottom"));
+    if (caret) {
+      const ax = middlewareData.arrow?.x;
+      caret.style.left = ax != null ? `${ax}px` : "";
+    }
+  });
+}
+
+/** Keep the card placed while it shows (scroll, resize, content growth). Idempotent. */
+function startFloating(host: HTMLElement): void {
+  if (_floating.has(host)) return;
+  const root = host.shadowRoot;
+  const pill = root?.querySelector(".pill");
+  const card = root?.querySelector(".card") as HTMLElement | null;
+  if (!pill || !card) return;
+  _floating.set(host, autoUpdate(pill, card, () => positionCard(host)));
+}
+
+function stopFloating(host: HTMLElement): void {
+  _floating.get(host)?.();
+  _floating.delete(host);
 }
 
 /**

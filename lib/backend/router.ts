@@ -1,6 +1,6 @@
 // lib/backend/router.ts — SW-side dedup/batch/retry wrapper around the ScoreClient.
-// Ports the reference's getRequests dedup/batch wrapper, ADDING a concurrency cap and
-// retry/error-fallback (the reference lacked both). See spec §4.6.
+// Ports the reference's getRequests dedup/batch wrapper, ADDING a concurrency cap
+// (p-limit) and retry/error-fallback (p-retry) — the reference lacked both. See spec §4.6.
 import type {
   ScoreClient,
   ScoreBlock,
@@ -9,6 +9,8 @@ import type {
   ScoreBatchResponse,
 } from "../contract";
 import { BUCKET_COUNT } from "../contract";
+import pLimit from "p-limit";
+import pRetry from "p-retry";
 import { createSwCache } from "./swCache";
 import { createLogger } from "../log";
 
@@ -20,15 +22,12 @@ const log = createLogger("router");
 const BATCH_CHAR_BUDGET = 6000;
 /** Bounded fan-out the reference lacked. */
 const MAX_IN_FLIGHT = 4;
-/** Backoff (ms) before the single retry. */
+/** One retry after this backoff (ms), then the neutral fallback. */
+const RETRIES = 1;
 const RETRY_BACKOFF_MS = 150;
 
 export interface BackendRouter {
   handle(req: ScoreBatchRequest): Promise<ScoreBatchResponse>;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
 }
 
 /** Neutral "unavailable" result so a badge can still render and no awaiter hangs. */
@@ -50,38 +49,24 @@ export function createRouter(client: ScoreClient): BackendRouter {
   // In-flight dedup across concurrent handle() calls: content-key → pending ScoreResult.
   const inFlight = new Map<string, Promise<ScoreResult>>();
 
+  // Bounded fan-out shared by every handle() call in this worker lifetime.
+  const limit = pLimit(MAX_IN_FLIGHT);
+
   /** Score one batch, retry once with backoff, then fall back to neutral results. */
   async function scoreBatchSafe(batch: ScoreBlock[]): Promise<ScoreResult[]> {
     try {
-      return await client.scoreBatch(batch);
-    } catch (e1) {
-      log.warn("scoreBatch failed, retrying after backoff", e1);
-      await sleep(RETRY_BACKOFF_MS);
-      try {
-        return await client.scoreBatch(batch);
-      } catch (e2) {
-        log.error("scoreBatch failed after retry, using neutral fallback", e2);
-        return batch.map(neutral);
-      }
+      return await pRetry(() => client.scoreBatch(batch), {
+        retries: RETRIES,
+        minTimeout: RETRY_BACKOFF_MS,
+        factor: 1,
+        randomize: false,
+        onFailedAttempt: ({ error, retriesLeft }) =>
+          log.warn(`scoreBatch failed (${retriesLeft} retr${retriesLeft === 1 ? "y" : "ies"} left)`, error),
+      });
+    } catch (e) {
+      log.error("scoreBatch failed after retry, using neutral fallback", e);
+      return batch.map(neutral);
     }
-  }
-
-  /** Run batches with a bounded concurrency pool. */
-  async function runPool(
-    batches: ScoreBlock[][],
-    worker: (batch: ScoreBlock[]) => Promise<void>,
-  ): Promise<void> {
-    let next = 0;
-    const lane = async (): Promise<void> => {
-      while (next < batches.length) {
-        const batch = batches[next++];
-        await worker(batch);
-      }
-    };
-    const lanes: Array<Promise<void>> = [];
-    const width = Math.min(MAX_IN_FLIGHT, batches.length);
-    for (let i = 0; i < width; i++) lanes.push(lane());
-    await Promise.all(lanes);
   }
 
   async function handle(req: ScoreBatchRequest): Promise<ScoreBatchResponse> {
@@ -176,7 +161,7 @@ export function createRouter(client: ScoreClient): BackendRouter {
       }
     };
 
-    await Promise.all([runPool(batches, runBatch), ...joined]);
+    await Promise.all([...batches.map((b) => limit(() => runBatch(b))), ...joined]);
 
     // Assemble in original request order; neutral fallback for any gap.
     const results = req.blocks.map(

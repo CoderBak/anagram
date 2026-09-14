@@ -17,6 +17,8 @@
 //
 // The old navigation flow (lib/docs.ts) remains the fallback when the fetch
 // fails, and the "Open as page" button in the bar for users who want a real tab.
+import type { DOMPurify as Purifier } from "dompurify";
+import { loadPurify } from "./lazy";
 import { MARK_ATTR } from "./types";
 import { adoptHighlightStyles } from "./render/highlight";
 
@@ -154,27 +156,17 @@ function mobilebasicUrl(id: string, tab: string | null): string {
 }
 
 /**
- * Strip active content from the fetched document fragment. DOMParser never
- * executes scripts, but the nodes are about to be adopted into a live tree —
- * remove script-bearing elements and event/JS-URL attributes outright.
+ * DOMPurify, in place. Its defaults already drop scripts, event handlers, javascript:
+ * URLs, iframes/objects/embeds and the other active vectors; on top of that we forbid
+ * document-level and form machinery. The document's own <style> rules are collected
+ * separately and injected into the shadow root, so they are stripped here too.
  */
-function sanitize(root: Element): void {
-  root
-    .querySelectorAll("script, style, link, meta, base, iframe, frame, object, embed, applet, form")
-    .forEach((el) => el.remove());
-  for (const el of root.querySelectorAll("*")) {
-    for (const attr of [...el.attributes]) {
-      const n = attr.name.toLowerCase();
-      if (n.startsWith("on")) {
-        el.removeAttribute(attr.name);
-      } else if (
-        (n === "href" || n === "src" || n === "xlink:href") &&
-        /^\s*javascript:/i.test(attr.value)
-      ) {
-        el.removeAttribute(attr.name);
-      }
-    }
-  }
+function sanitize(DOMPurify: Purifier, root: Element): void {
+  DOMPurify.sanitize(root, {
+    IN_PLACE: true,
+    FORBID_TAGS: ["style", "link", "meta", "base", "form"],
+    ALLOW_DATA_ATTR: false,
+  });
 }
 
 export function createDocsOverlay(opts: DocsOverlayOptions): DocsOverlay {
@@ -218,16 +210,18 @@ export function createDocsOverlay(opts: DocsOverlayOptions): DocsOverlay {
     // 2) parse + extract. mobilebasic wraps the document in .doc-content; the
     //    fetched <style> rules are collected so headings/lists keep their look
     //    (they style class names that exist only inside our shadow root).
+    //    DOMPurify is an on-demand vendor chunk — fetched alongside the document.
     let content: Element | null = null;
     let docTitle = "";
     let docCss = "";
     try {
+      const { default: DOMPurify } = await loadPurify();
       const parsed = new DOMParser().parseFromString(html, "text/html");
       docTitle = parsed.title.replace(/ - Google Docs$/, "").trim();
       for (const st of parsed.querySelectorAll("style")) docCss += st.textContent ?? "";
       content = parsed.querySelector(".doc-content") ?? parsed.body;
       if (!content || !(content.textContent ?? "").trim()) return false;
-      sanitize(content);
+      sanitize(DOMPurify, content);
     } catch {
       return false;
     }

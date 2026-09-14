@@ -4,6 +4,7 @@
 // places passive capture deliberately skips (editors, textareas, fragments under
 // the evidence floor) — and shows the calibrated readout in a small fixed card
 // near the selection. Below the floor it says so honestly instead of scoring.
+import { computePosition, flip, offset, shift } from "@floating-ui/dom";
 import { MARK_ATTR } from "../types";
 import type { ScoreBatchRequest } from "../contract";
 import { CONTRACT_VERSION } from "../contract";
@@ -148,13 +149,20 @@ export async function analyzeSelection(): Promise<void> {
   document.addEventListener("pointerdown", onOutside, true);
   document.addEventListener("keydown", onKey, true);
 
-  // Place below the selection; flip above when near the viewport bottom.
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-  const top = rect ? (rect.bottom + 190 < vh ? rect.bottom + 8 : Math.max(8, rect.top - 190)) : 80;
-  const left = rect ? Math.min(Math.max(8, rect.left), vw - 280) : vw / 2 - 132;
-  card.style.top = `${Math.round(top)}px`;
-  card.style.left = `${Math.round(left)}px`;
+  // Floating UI against the selection rectangle (a virtual element): below it,
+  // flipped above near the viewport bottom, shifted to stay on screen. Re-run after
+  // each content change since the card grows when the verdict lands.
+  const anchor = rect ?? new DOMRect(window.innerWidth / 2, 72, 0, 0);
+  const place = (): void => {
+    void computePosition({ getBoundingClientRect: () => anchor }, card, {
+      strategy: "fixed",
+      placement: "bottom-start",
+      middleware: [offset(8), flip({ padding: 8 }), shift({ padding: 8 })],
+    }).then(({ x, y }) => {
+      card.style.left = `${x}px`;
+      card.style.top = `${y}px`;
+    });
+  };
 
   const words = countWords(text);
   const closeBtn = `<button class="close" title="Close">✕</button>`;
@@ -166,11 +174,13 @@ export async function analyzeSelection(): Promise<void> {
       row("Words selected", String(words)) +
       row("Needed for a reliable read", `${MIN_UNIT_WORDS}+`) +
       `<div class="foot">Detection is unreliable below the evidence floor — select a longer passage.</div>`;
+    place();
   } else {
     card.innerHTML =
       closeBtn +
       `<div class="head"><span class="verdict band-unknown spin">Analyzing…</span><span class="big"></span></div>` +
       row("Words selected", String(words));
+    place();
     const req: ScoreBatchRequest = {
       v: CONTRACT_VERSION,
       session: "sel_" + Math.random().toString(36).slice(2, 10),
@@ -206,6 +216,7 @@ export async function analyzeSelection(): Promise<void> {
               : "EditLens estimate of AI editing, not proof."
         }</div>`;
     }
+    place();
   }
   shadow.querySelector(".close")?.addEventListener("click", dismiss);
 }

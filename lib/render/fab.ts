@@ -11,6 +11,7 @@
 // so cookie walls and modal overlays cannot bury it. Its host carries
 // MARK_ATTR="host" so the walker skips it, and id="anagram-fab" so tests can
 // find/click it.
+import { computePosition, flip, offset, shift } from "@floating-ui/dom";
 import { MARK_ATTR } from "../types";
 import { settings, setSiteOverride } from "../settings/settings";
 import type { Band } from "./band";
@@ -173,9 +174,9 @@ const FAB_CSS = `
 .stack.anchor-left .count { right: auto; left: -5px; }
 
 /* ---- flagged-paragraphs triage panel ----
-   Absolutely positioned against the stack so it never shifts the ball, and
-   edge-aware: opens ABOVE by default, flips below/right when the ball has been
-   dragged near the top/left viewport edges. */
+   Absolutely positioned against the stack so it never shifts the ball; Floating UI
+   places it (above the ball, flipped below / shifted when the ball sits near a
+   viewport edge — fab.ts togglePanel). */
 .panel {
   display: flex;
   visibility: hidden;
@@ -183,8 +184,8 @@ const FAB_CSS = `
   transform: translateY(5px);
   pointer-events: none;
   position: absolute;
-  bottom: calc(100% + 8px);
-  right: 0;
+  top: 0;
+  left: 0;
   flex-direction: column;
   width: 336px;
   max-height: 360px;
@@ -206,9 +207,8 @@ const FAB_CSS = `
   pointer-events: auto;
   transition-delay: 0s;
 }
-.panel.below { bottom: auto; top: calc(100% + 8px); transform: translateY(-5px); }
+.panel.below { transform: translateY(-5px); }
 .panel.below.open { transform: none; }
-.panel.leftalign { right: auto; left: 0; }
 
 .panel .phead {
   display: flex;
@@ -635,13 +635,25 @@ export function createFab(opts: { onToggle: () => void; panel?: PanelHooks }): F
     }
     cancelTuck();
     renderPanel();
-    const stackRect = panelEl.parentElement?.getBoundingClientRect();
-    panelEl.classList.toggle("below", !!stackRect && stackRect.top < 420);
-    panelEl.classList.toggle(
-      "leftalign",
-      !!stackRect && stackRect.right < 360 /* panel width + margin */,
-    );
     panelEl.classList.add("open");
+    placePanel();
+  }
+
+  /** Floating UI: above the ball (aligned to the snapped side), flipped below or
+   *  shifted when the ball has been dragged near a viewport edge. */
+  function placePanel(): void {
+    const panel = panelEl;
+    const anchor = fabEl?.parentElement; // .fabwrap — the ball plus its counter bubble
+    if (!panel || !anchor) return;
+    void computePosition(anchor, panel, {
+      placement: side === "left" ? "top-start" : "top-end",
+      strategy: "absolute",
+      middleware: [offset(8), flip({ padding: 8 }), shift({ padding: 8 })],
+    }).then(({ x, y, placement }) => {
+      panel.style.left = `${x}px`;
+      panel.style.top = `${y}px`;
+      panel.classList.toggle("below", placement.startsWith("bottom"));
+    });
   }
 
   function renderPanel(): void {

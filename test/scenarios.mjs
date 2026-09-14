@@ -267,6 +267,18 @@ async function sweep(page, steps = 6) {
     record("ui", "per-anchor dark detection (dark card vs light page)", r.dark === true && r.light === true, JSON.stringify(r));
   }
 
+  // A10b: CSS Color 4 background (oklch) — computed style is not rgb(); still dark.
+  {
+    const r = await page.evaluate((sel) => {
+      const host = document.querySelector(`#oklchdark ${sel}`);
+      return {
+        computedBg: getComputedStyle(document.getElementById("oklchdark")).backgroundColor,
+        dark: host ? host.classList.contains("pg-dark") : null,
+      };
+    }, BADGE_SEL);
+    record("ui", "oklch() background classified dark (CSS Color 4 parsing)", r.dark === true, JSON.stringify(r));
+  }
+
   // A11: exact duplicates — both badged, identical fanned-out score.
   {
     const r = await page.evaluate((sel) => {

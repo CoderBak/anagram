@@ -12,6 +12,7 @@
   #tight { font-size: 15px; line-height: 1.25; }
   #clipbox { overflow: hidden; height: 140px; border: 1px dashed #ccc; padding: 8px; }
   #darksection { background: #14161a; color: #cdd3da; padding: 18px; border-radius: 8px; }
+  #oklchdark { background: oklch(0.22 0.03 260); color: #d5d9de; padding: 18px; border-radius: 8px; }
   #rtl { direction: rtl; }
 </style></head>
 <body>
@@ -109,6 +110,16 @@
      background, and its badge must remain in the light theme, proving the background probe is
      genuinely per-anchor instead of a single page-level decision that would misclassify mixed
      designs like hero sections, code panels, and dark call-out boxes on light pages.</p>
+  </section>
+
+  <!-- 10b: CSS Color 4 background — computed style stays oklch(); chip must still go dark -->
+  <section>
+  <div id="oklchdark">
+  <p>OKLCHDARK paragraph sits on a surface whose background is declared with the oklch() colour
+     function, which Chrome keeps verbatim in the computed style rather than converting to rgb(),
+     so the chip theming has to parse a modern colour space to notice that this card is dark and
+     switch to the dark chip palette instead of painting a bright pill onto a near-black surface.</p>
+  </div>
   </section>
 
   <!-- 11: exact duplicates — every copy gets its own badge.

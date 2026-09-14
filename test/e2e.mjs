@@ -134,6 +134,9 @@ const snapshot = await page.evaluate((sel) => {
       never: inSection("never"),
     },
     prewrapBadges: document.querySelectorAll(`#prewrap ${sel}`).length,
+    // With the real daemon behind Auto mode the Chinese paragraph is (correctly) an
+    // "unsupported language" chip with no mark; with the stub it is scored + marked.
+    cjkUnsupported: !!document.querySelector(`#purecjk ${sel}`)?.shadowRoot?.querySelector(".pill.band-unsupported"),
     hl: {
       longtail: hlHas("final LONGTAIL sentence"),
       br1: hlHas("BRPART-ONE"),
@@ -254,7 +257,7 @@ const checks = [
   ["BR-split halves merged into one unit", s.sections.brsplit === 1 && s.hl.br1 && s.hl.br2],
   ["three short siblings merged into one unit", s.sections.mergeshorts === 1 && s.hl.ms1 && s.hl.ms2 && s.hl.ms3],
   ["inline <code> does not fragment the paragraph", s.sections.inlinecode === 1 && s.hl.icode],
-  ["pure-CJK paragraph badged (unicode letter check)", s.sections.purecjk === 1 && s.hl.cjk],
+  ["pure-CJK paragraph badged (scored by the stub, or 'unsupported' via the daemon's language gate)", s.sections.purecjk === 1 && (s.hl.cjk || s.cjkUnsupported)],
   ["pre-wrap blank-line paragraphs split + merged", s.prewrapBadges === 1 && s.hl.pw1 && s.hl.pw2],
   ["short isolated paragraph skipped", s.sections.short === 0],
   ["never-score zone clean (code/nav-links/editor/aria-hidden)", s.sections.never === 0],

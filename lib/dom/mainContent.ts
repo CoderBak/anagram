@@ -1,22 +1,30 @@
 // lib/dom/mainContent.ts — main-content region detection ("precision scope").
 //
-// trafilatura's core move is extracting the main content region and ignoring the
-// rest; resiliparse and Readability score candidate containers by text mass. We
-// need the LIVE element (rendering anchors into it), so this ports the idea as a
-// two-step probe over the real DOM:
+// Mozilla Readability (the extractor behind Firefox Reader View) decides WHAT the
+// article is. We only need to know WHERE it lives in the live DOM, because rendering
+// anchors into real nodes and Readability works on a clone that it rewrites (node
+// identity is lost). So: take a handful of sentences from its extracted content,
+// locate each one in the live document by descending to the deepest element that
+// contains it, and return their lowest common ancestor — the live article container.
 //
-//   1. semantic candidates — <main>, [role=main], <article>: pick the one with
-//      the most machine-visible text, if it holds a sane share of the page;
-//   2. dominant-path descent — from <body>, repeatedly step into the child that
-//      carries the clear majority of the remaining text mass. Where dominance
-//      ends (content splits across siblings), that element is the content root.
+// Pages Readability declines (portals, feeds, apps) fall back to a text-mass probe:
+// semantic candidates (<main>, [role=main], <article>) first, then a dominant-path
+// descent from <body>. Body itself means "no dominant region" → null, and callers keep
+// whole-page behaviour. The walk's own style- and boilerplate-level filters still apply
+// INSIDE whatever scope is returned.
 //
-// Text mass is textContent length minus script/style/template/noscript subtrees,
-// computed in one bottom-up pass (O(page)); the walk's own style- and
-// boilerplate-level filters still apply INSIDE the returned scope.
-//
-// Returns null when the page has no dominant region (portals, feeds, apps) —
-// callers must fall back to whole-page analysis.
+// Readability itself is NOT bundled into the content script: it is a vendor chunk
+// loaded on demand (lib/lazy.ts) and handed in through useReadability() by the
+// orchestrator when the scope setting is "main". Until then (or if the load fails)
+// the text-mass probe answers alone.
+import type { ReadabilityModule } from "../lazy";
+
+let _readability: ReadabilityModule | null = null;
+
+/** Provide the Readability implementation (lazy vendor chunk, or a test double). */
+export function useReadability(mod: ReadabilityModule | null): void {
+  _readability = mod;
+}
 
 const SKIP_MASS_TAGS = new Set(["SCRIPT", "STYLE", "TEMPLATE", "NOSCRIPT", "HEAD"]);
 
@@ -27,6 +35,119 @@ const MIN_REGION_CHARS = 500;
 /** Minimum share of the page's text a semantic candidate must hold. */
 const MIN_SEMANTIC_SHARE = 0.2;
 const MAX_DESCENT = 14;
+
+/** Snippets sampled from the extracted article to locate it in the live DOM. Taken from
+ *  the MIDDLE of a block: opening sentences get duplicated in teasers and link lists. */
+const MAX_NEEDLES = 10;
+const NEEDLE_CHARS = 48;
+const MIN_NEEDLE_SOURCE_CHARS = 120;
+
+/**
+ * Find the page's main content container, or null when none dominates.
+ * Costs one document clone + Readability pass (or one linear text-mass pass) — call
+ * per scan session, not per mutation.
+ */
+export function findMainContent(doc: Document = document): Element | null {
+  if (!doc.body) return null;
+  return fromReadability(doc) ?? fromTextMass(doc);
+}
+
+// ---- Readability-guided --------------------------------------------------------------
+
+function fromReadability(doc: Document): Element | null {
+  const R = _readability;
+  if (!R) return null;
+  try {
+    if (!R.isProbablyReaderable(doc, { minContentLength: MIN_REGION_CHARS / 4 })) return null;
+    const article = new R.Readability(doc.cloneNode(true) as Document, {
+      charThreshold: MIN_REGION_CHARS,
+    }).parse();
+    if (!article?.content) return null;
+    const needles = sampleNeedles(article.content);
+    if (needles.length < 2) return null;
+    const hits: Element[] = [];
+    for (const re of needles) {
+      const el = deepestContaining(doc.body, re);
+      if (el) hits.push(el);
+    }
+    // Most samples must be locatable, or Readability rewrote too much to trust the map.
+    if (hits.length < Math.max(2, Math.ceil(needles.length / 2))) return null;
+    const lca = lowestCommonAncestor(hits);
+    if (!lca || lca === doc.body || lca === doc.documentElement) return null;
+    return lca;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Up to MAX_NEEDLES evenly spaced block-level snippets of the extracted article, each
+ * a whitespace-tolerant regex so it matches the live text however it is wrapped.
+ */
+function sampleNeedles(articleHtml: string): RegExp[] {
+  const parsed = new DOMParser().parseFromString(articleHtml, "text/html");
+  const blocks: string[] = [];
+  for (const el of parsed.querySelectorAll("p, li, blockquote, td, pre, h1, h2, h3, h4, dd")) {
+    const t = (el.textContent ?? "").replace(/\s+/g, " ").trim();
+    if (t.length >= MIN_NEEDLE_SOURCE_CHARS) blocks.push(t);
+  }
+  if (blocks.length === 0) return [];
+  const step = Math.max(1, Math.floor(blocks.length / MAX_NEEDLES));
+  const out: RegExp[] = [];
+  for (let i = 0; i < blocks.length && out.length < MAX_NEEDLES; i += step) {
+    const b = blocks[i];
+    const start = Math.floor((b.length - NEEDLE_CHARS) / 2);
+    const words = b.slice(start, start + NEEDLE_CHARS).split(" ");
+    if (words.length > 2) {
+      words.shift(); // both ends may be cut words
+      words.pop();
+    }
+    const escaped = words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+");
+    out.push(new RegExp(escaped));
+  }
+  return out;
+}
+
+/**
+ * The deepest element under `root` whose text contains the needle. Null when the
+ * needle is absent OR ambiguous (matches more than one sibling at some level — a
+ * sentence echoed in a teaser or a duplicated block cannot locate the article).
+ */
+function deepestContaining(root: Element, re: RegExp): Element | null {
+  let el: Element = root;
+  if (!re.test(el.textContent ?? "")) return null;
+  for (let depth = 0; depth < 64; depth++) {
+    let next: Element | null = null;
+    for (const c of el.children) {
+      if (SKIP_MASS_TAGS.has(c.nodeName.toUpperCase())) continue;
+      if (re.test(c.textContent ?? "")) {
+        if (next) return null; // ambiguous
+        next = c;
+      }
+    }
+    if (!next) return el;
+    el = next;
+  }
+  return el;
+}
+
+function lowestCommonAncestor(els: Element[]): Element | null {
+  if (els.length === 0) return null;
+  const chain = new Set<Element>();
+  for (let n: Element | null = els[0]; n; n = n.parentElement) chain.add(n);
+  let lca: Element | null = els[0];
+  for (const el of els.slice(1)) {
+    let n: Element | null = el;
+    while (n && !chain.has(n)) n = n.parentElement;
+    if (!n) return null;
+    // Trim the chain to the new common prefix: everything below n is no longer shared.
+    for (let m: Element | null = lca; m && m !== n; m = m.parentElement) chain.delete(m);
+    lca = n;
+  }
+  return lca;
+}
+
+// ---- text-mass fallback ----------------------------------------------------------------
 
 /** Text mass per element, skipping machine-text subtrees. One pass, memoized. */
 function buildMassMap(root: Element): Map<Element, number> {
@@ -54,13 +175,8 @@ function buildMassMap(root: Element): Map<Element, number> {
   return mass;
 }
 
-/**
- * Find the page's main content container, or null when none dominates.
- * Costs one linear DOM pass — call per scan session, not per mutation.
- */
-export function findMainContent(doc: Document = document): Element | null {
+function fromTextMass(doc: Document): Element | null {
   const body = doc.body;
-  if (!body) return null;
   const mass = buildMassMap(body);
   const bodyMass = mass.get(body) ?? 0;
   if (bodyMass < MIN_REGION_CHARS) return null;
@@ -99,8 +215,6 @@ export function findMainContent(doc: Document = document): Element | null {
     cur = dominant;
   }
 
-  // Body itself means "no dominant region" — analyzing "main" would equal "page",
-  // so report the honest null and let the caller keep whole-page behavior.
   if (cur === body) return null;
   if ((mass.get(cur) ?? 0) < MIN_REGION_CHARS) return null;
   return cur;

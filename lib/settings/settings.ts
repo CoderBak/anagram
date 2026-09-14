@@ -31,7 +31,7 @@ export const settings = {
   }),
   // What part of the page to analyze. "page" = everything except recognized
   // chrome (default); "main" = only the detected main-content region
-  // (trafilatura-style precision mode — comments/sidebars outside it are skipped).
+  // (Readability-guided precision mode — comments/sidebars outside it are skipped).
   analysisScope: storage.defineItem<"page" | "main">("local:analysisScope", {
     fallback: "page",
   }),

@@ -9,9 +9,9 @@
 //
 // Invalidation keeps everything honest against dynamic pages: units whose DOM was
 // removed or whose text changed lose their badge/underline/result and are either
-// re-collected or gone. SPA navigations (pushState included — watched by URL poll,
-// popstate and hashchange) refresh incrementally without flickering still-valid
-// badges. The popup Rescan button remains the full teardown+rescan.
+// re-collected or gone. SPA navigations (pushState included — the Navigation API's
+// currententrychange, plus popstate/hashchange) refresh incrementally without
+// flickering still-valid badges. The popup Rescan button remains the full teardown+rescan.
 import { browser } from "#imports";
 import type { ContentScriptContext } from "#imports";
 import { ACTIONS } from "../messaging/protocol";
@@ -19,7 +19,8 @@ import type { Unit, Lane } from "../types";
 import type { ScoreBlock, ScoreResult, ScoreBatchRequest } from "../contract";
 import { CONTRACT_VERSION } from "../contract";
 import { collectUnits } from "../dom/walker";
-import { findMainContent } from "../dom/mainContent";
+import { findMainContent, useReadability } from "../dom/mainContent";
+import { loadReadability } from "../lazy";
 import { extractPartText, MAX_UNIT_TEXT_CHARS } from "../dom/text";
 import { createObservers, type Observers } from "./observers";
 import { createScheduler, type Scheduler } from "./scheduler";
@@ -49,10 +50,16 @@ const MAX_IN_FLIGHT = 4;
 const MAX_BACKGROUND_IN_FLIGHT = 1;
 /** Units enqueued per idle prefetch pass (huge pages drain in successive passes). */
 const PREFETCH_PASS = 300;
-// The MAIN-world nav hook (entrypoints/nav-hook.content.ts) announces pushState/
-// replaceState instantly via "anagram:navigate"; the poll is only a slow fallback
-// for exotic navigation paths the hook cannot see.
+// The Navigation API (window.navigation, Chrome 102+) fires `currententrychange` for
+// every same-document navigation — pushState/replaceState included — and is reachable
+// from the content script's isolated world, so no MAIN-world history patch is needed.
+// Where it is missing (Firefox) a slow URL poll covers pushState instead.
 const URL_POLL_MS = 2500;
+
+function navigationApi(): EventTarget | null {
+  const n = (window as unknown as { navigation?: EventTarget }).navigation;
+  return n && typeof n.addEventListener === "function" ? n : null;
+}
 
 export interface Orchestrator {
   /** Begin capture: initial scan + observers + scheduler + floating toggle. Idempotent. */
@@ -427,13 +434,7 @@ export function createOrchestrator(
     } catch {
       /* observers may be half-dead — freezing must never throw */
     }
-    if (urlTimer !== null) {
-      clearInterval(urlTimer);
-      urlTimer = null;
-    }
-    window.removeEventListener("popstate", onUrlMaybeChanged);
-    window.removeEventListener("hashchange", onUrlMaybeChanged);
-    window.removeEventListener("anagram:navigate", onUrlMaybeChanged);
+    unwatchUrl();
   }
 
   /** Scheduler render(): id-keyed badge paint + per-part underline. */
@@ -649,7 +650,17 @@ export function createOrchestrator(
       if (opts.lockScope) return; // pinned (Docs editor) — user scope not applied
       if (v === analysisScope) return;
       analysisScope = v; // structural — what gets collected changes
-      if (started) rescan();
+      if (v === "main") {
+        // Readability is an on-demand chunk: fetch it once, then re-collect under the
+        // new scope (the text-mass probe covers the rare failure to load).
+        void loadReadability()
+          .then(useReadability, (e) => log.warn("Readability chunk failed to load", e))
+          .finally(() => {
+            if (started && analysisScope === "main") rescan();
+          });
+      } else if (started) {
+        rescan();
+      }
     };
     void settings.analysisScope.getValue().then((v) => {
       // First resolution happens before the initial collect below when the value
@@ -664,11 +675,26 @@ export function createOrchestrator(
     const base = scanBase();
     if (base) ingestUnits(collectUnits(base, { claimFilter: makeClaimFilter(), mergeShorts }));
 
+    watchUrl();
+    log.log("started", { session, domain });
+  }
+
+  function watchUrl(): void {
     window.addEventListener("popstate", onUrlMaybeChanged);
     window.addEventListener("hashchange", onUrlMaybeChanged);
-    window.addEventListener("anagram:navigate", onUrlMaybeChanged);
-    urlTimer = setInterval(onUrlMaybeChanged, URL_POLL_MS);
-    log.log("started", { session, domain });
+    const nav = navigationApi();
+    if (nav) nav.addEventListener("currententrychange", onUrlMaybeChanged);
+    else urlTimer = setInterval(onUrlMaybeChanged, URL_POLL_MS);
+  }
+
+  function unwatchUrl(): void {
+    window.removeEventListener("popstate", onUrlMaybeChanged);
+    window.removeEventListener("hashchange", onUrlMaybeChanged);
+    navigationApi()?.removeEventListener("currententrychange", onUrlMaybeChanged);
+    if (urlTimer !== null) {
+      clearInterval(urlTimer);
+      urlTimer = null;
+    }
   }
 
   function applyHighlightSetting(v: boolean): void {
@@ -707,13 +733,7 @@ export function createOrchestrator(
     clearAllResults();
     setHighlightsVisible(false);
     fab.unmount();
-    window.removeEventListener("popstate", onUrlMaybeChanged);
-    window.removeEventListener("hashchange", onUrlMaybeChanged);
-    window.removeEventListener("anagram:navigate", onUrlMaybeChanged);
-    if (urlTimer !== null) {
-      clearInterval(urlTimer);
-      urlTimer = null;
-    }
+    unwatchUrl();
     unwatchHighlights?.();
     unwatchHighlights = null;
     unwatchDisplay?.();

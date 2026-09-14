@@ -1,27 +1,28 @@
 {
   "name": "anagram-extension",
-  "description": "Anagram for Chrome — per-paragraph AI-generated-text confidence badges.",
+  "description": "Anagram for Chrome \u2014 per-paragraph AI-generated-text confidence badges.",
   "private": true,
   "version": "0.3.0",
   "type": "module",
   "scripts": {
-    "dev": "wxt",
-    "build": "wxt build",
-    "build:firefox": "wxt build -b firefox",
-    "zip": "wxt zip",
+    "dev": "node scripts/vendor.mjs && wxt",
+    "build": "node scripts/vendor.mjs && wxt build",
+    "build:firefox": "node scripts/vendor.mjs && wxt build -b firefox",
+    "zip": "node scripts/vendor.mjs && wxt zip",
     "typecheck": "wxt prepare && tsc --noEmit",
     "browser": "node test/browser.mjs",
     "test:e2e": "node test/e2e.mjs",
-    "postinstall": "wxt prepare",
+    "postinstall": "wxt prepare && node scripts/vendor.mjs",
     "test:unit": "node test/unit.mjs",
     "test:scenarios": "node test/scenarios.mjs",
     "test:perf": "node test/perf.mjs",
     "test:server": "node test/server.mjs",
     "test:verify": "node test/verify-backend.mjs",
-    "zip:firefox": "wxt zip -b firefox",
+    "zip:firefox": "node scripts/vendor.mjs && wxt zip -b firefox",
     "play": "node test/playground.mjs",
     "serve": "sh anagramd/run.sh",
-    "vendor:basecoat": "cp node_modules/basecoat-css/dist/basecoat-vega.cdn.min.css lib/ui/basecoat-vega.cdn.min.css"
+    "vendor:basecoat": "cp node_modules/basecoat-css/dist/basecoat-vega.cdn.min.css lib/ui/basecoat-vega.cdn.min.css",
+    "vendor:lazy": "node scripts/vendor.mjs"
   },
   "devDependencies": {
     "@floating-ui/dom": "^1.8.0",
@@ -35,6 +36,7 @@
     "p-retry": "^8.0.1",
     "playwright": "^1.61.1",
     "typescript": "^5.9.3",
-    "wxt": "^0.20.27"
+    "wxt": "^0.20.27",
+    "esbuild": "^0.27.7"
   }
 }

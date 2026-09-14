@@ -18,6 +18,8 @@ export default defineConfig({
                 id: "anagram@coderbak.dev",
                 // Intl.Segmenter 125, zoom 126; underlines feature-detect (140+).
                 strict_min_version: "128.0",
+                // AMO's data-collection disclosure: nothing is collected or transmitted.
+                data_collection_permissions: { required: ["none"] },
               },
             },
           }
@@ -29,6 +31,9 @@ export default defineConfig({
         },
       },
       host_permissions: ["<all_urls>"],
+      // On-demand vendor chunks (Readability, DOMPurify) are import()ed by URL from
+      // content scripts — see lib/lazy.ts and scripts/vendor.mjs.
+      web_accessible_resources: [{ resources: ["vendor/*"], matches: ["<all_urls>"] }],
       icons: {
         16: "icons/icon-16.png",
         48: "icons/icon-48.png",

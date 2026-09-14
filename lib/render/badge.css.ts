@@ -11,9 +11,9 @@
 // - A chip can render in a PENDING state ("analyzing") the moment its unit is
 //   dispatched, then morphs in place into the verdict — the host is reused, so
 //   the line lays out once, not twice.
-// - The card is edge-aware: badge.ts flips it below the chip near the viewport
-//   top and pins it left/right near the horizontal edges; a caret points at the
-//   chip in the centered orientations.
+// - The card is placed by Floating UI (badge.ts): above the chip, flipped below
+//   near the viewport top, shifted to stay on screen; the caret is aimed at the
+//   chip by the arrow middleware.
 //
 // Cascade note: page rules from the outer tree beat ordinary :host declarations,
 // but shadow-context !important beats page !important — so the layout-critical
@@ -111,15 +111,14 @@ export const BADGE_CSS: string = `
 .pill.pending .num { min-width: 1.2em; text-align: center; letter-spacing: 0.14em; }
 
 /* ---- hover detail card ------------------------------------------------------- */
-/* Default: centered above the chip. badge.ts adds .below / .align-left /
-   .align-right when the chip sits near a viewport edge. Fixed 11px type —
-   card readability should not scale with page text. */
+/* Coordinates come from Floating UI (badge.ts positionCard); .below marks the
+   flipped orientation for the caret and hover bridge. Fixed 11px type — card
+   readability should not scale with page text. */
 
 .card {
   position: absolute;
-  bottom: calc(100% + 9px);
-  left: 50%;
-  transform: translateX(-50%);
+  top: 0;
+  left: 0;
   box-sizing: border-box;
   width: max-content;
   min-width: 232px;
@@ -152,15 +151,13 @@ export const BADGE_CSS: string = `
 }
 .card.below::before { top: auto; bottom: 100%; }
 
-/* Caret pointing at the chip — centered orientations only (edge-pinned cards sit
-   asymmetrically; a mis-aimed caret is worse than none). */
+/* Caret pointing at the chip — its left offset is set by the arrow middleware. */
 .caret {
   position: absolute;
-  left: 50%;
+  left: 0;
   bottom: -5px;
   width: 9px;
   height: 9px;
-  margin-left: -4.5px;
   transform: rotate(45deg);
   background: inherit;
   border: inherit;
@@ -176,12 +173,6 @@ export const BADGE_CSS: string = `
   border-right: none;
   border-radius: 2px 0 0 0;
 }
-.card.align-left .caret, .card.align-right .caret { display: none; }
-
-.card.below { bottom: auto; top: calc(100% + 9px); }
-.card.align-left  { left: 0; right: auto; transform: none; }
-.card.align-right { left: auto; right: 0; transform: none; }
-
 :host(:hover) .card,
 .card.open {
   visibility: visible;
