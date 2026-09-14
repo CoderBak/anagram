@@ -5,9 +5,45 @@
 #
 # The daemon is an ordinary background process of your user: no launch agent, no service,
 # nothing starts at login. It listens on 127.0.0.1 only and reads nothing outside this folder.
+#
+# Safety: the folder is derived from this script's own real location; an ANAGRAM_HOME from the
+# environment is honoured only if it is a real (non-symlink) Anagram folder carrying the
+# .anagram-home marker. `uninstall` re-checks all of that, refuses the roots nobody means, and
+# never runs without confirmation (interactive) or -y (scripted).
 set -eu
 
-ANAGRAM_HOME="${ANAGRAM_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+MARKER=".anagram-home"
+say()  { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
+die()  { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
+
+# Resolve this script's real path (through symlinks) without GNU readlink -f.
+self="$0"
+n=0
+while [ -L "$self" ] && [ $n -lt 16 ]; do
+  link="$(readlink "$self")"
+  case "$link" in /*) self="$link" ;; *) self="$(dirname "$self")/$link" ;; esac
+  n=$((n + 1))
+done
+SELF_HOME="$(cd "$(dirname "$self")/.." 2>/dev/null && pwd -P)"
+
+is_anagram_home() {
+  [ -n "$1" ] && [ -d "$1" ] && [ ! -L "$1" ] && [ -f "$1/$MARKER" ]
+}
+if [ -n "${ANAGRAM_HOME:-}" ]; then
+  is_anagram_home "$ANAGRAM_HOME" || die "ANAGRAM_HOME='$ANAGRAM_HOME' is not an Anagram folder (no $MARKER, or a symlink) — refusing to use it"
+else
+  ANAGRAM_HOME="$SELF_HOME"
+  is_anagram_home "$ANAGRAM_HOME" || die "this script is not inside an Anagram folder ($ANAGRAM_HOME has no $MARKER)"
+fi
+case "$ANAGRAM_HOME" in
+  /*) ;;
+  *) die "ANAGRAM_HOME must be absolute" ;;
+esac
+case "$ANAGRAM_HOME" in
+  "${HOME:-/nonexistent}"|/|/usr|/usr/local|/opt|/etc|/var|/tmp|/private/tmp|/Users|/home|/Applications|/Library|/System)
+    die "refusing to operate on '$ANAGRAM_HOME'" ;;
+esac
+
 PY="$ANAGRAM_HOME/venv/bin/python"
 APP="$ANAGRAM_HOME/app/serve.py"
 MODEL_DIR="$ANAGRAM_HOME/models/editlens_roberta-large"
@@ -15,25 +51,32 @@ LID="$ANAGRAM_HOME/models/lid.176.ftz"
 PIDFILE="$ANAGRAM_HOME/run/anagramd.pid"
 LOG="$ANAGRAM_HOME/logs/anagramd.log"
 PORT=8765
-[ -f "$ANAGRAM_HOME/config" ] && . "$ANAGRAM_HOME/config"
+if [ -f "$ANAGRAM_HOME/config" ]; then
+  # config holds `PORT=<digits>` only; never sourced as shell.
+  cfg_port="$(sed -n 's/^PORT=\([0-9][0-9]*\)$/\1/p' "$ANAGRAM_HOME/config" | head -n 1)"
+  [ -n "$cfg_port" ] && PORT="$cfg_port"
+fi
 HEALTH="http://127.0.0.1:$PORT/health"
 
-# Keep every library's side files inside the folder; never phone home at runtime.
-export HF_HOME="$ANAGRAM_HOME/hf"
-export HF_HUB_OFFLINE=1
-export HF_HUB_DISABLE_TELEMETRY=1
-export TRANSFORMERS_OFFLINE=1
-export XDG_CACHE_HOME="$ANAGRAM_HOME/cache"
-export TOKENIZERS_PARALLELISM=false
+# A scrubbed environment for the daemon and the downloader: inherited PYTHONPATH & co.
+# cannot hijack them, and every library's side files stay inside the folder.
+clean_env() {
+  env -i HOME="$HOME" PATH="/usr/bin:/bin:/usr/sbin:/sbin" LANG="${LANG:-C.UTF-8}" \
+    HF_HOME="$ANAGRAM_HOME/hf" HF_HUB_DISABLE_TELEMETRY=1 XDG_CACHE_HOME="$ANAGRAM_HOME/cache" \
+    TOKENIZERS_PARALLELISM=false PYTHONNOUSERSITE=1 PYTHONSAFEPATH=1 \
+    ${http_proxy:+http_proxy="$http_proxy"} ${https_proxy:+https_proxy="$https_proxy"} ${no_proxy:+no_proxy="$no_proxy"} \
+    ${HTTP_PROXY:+HTTP_PROXY="$HTTP_PROXY"} ${HTTPS_PROXY:+HTTPS_PROXY="$HTTPS_PROXY"} ${NO_PROXY:+NO_PROXY="$NO_PROXY"} \
+    ${SSL_CERT_FILE:+SSL_CERT_FILE="$SSL_CERT_FILE"} ${REQUESTS_CA_BUNDLE:+REQUESTS_CA_BUNDLE="$REQUESTS_CA_BUNDLE"} \
+    "$@"
+}
 
-say()  { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
-die()  { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
+sha256_of() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -c1-64; }
 alive() { [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; }
 healthy() { curl -fsS -m 2 "$HEALTH" >/dev/null 2>&1; }
 
 cmd_status() {
   if healthy; then
-    HEALTH_JSON="$(curl -fsS -m 2 "$HEALTH")" "$PY" - <<'PYEOF'
+    clean_env HEALTH_JSON="$(curl -fsS -m 2 "$HEALTH")" "$PY" - <<'PYEOF'
 import json, os
 d = json.loads(os.environ["HEALTH_JSON"])
 m = d["model"]
@@ -56,7 +99,8 @@ cmd_start() {
   if healthy; then say "already running"; cmd_status; return 0; fi
   if alive; then say "already starting (pid $(cat "$PIDFILE"))"; return 0; fi
   say "Starting anagramd on 127.0.0.1:$PORT"
-  nohup "$PY" "$APP" --model-dir "$MODEL_DIR" --lid-model "$LID" --host 127.0.0.1 --port "$PORT" >> "$LOG" 2>&1 &
+  clean_env HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
+    nohup "$PY" "$APP" --model-dir "$MODEL_DIR" --lid-model "$LID" --host 127.0.0.1 --port "$PORT" >> "$LOG" 2>&1 &
   echo $! > "$PIDFILE"
   i=0
   while [ $i -lt 120 ]; do
@@ -76,8 +120,8 @@ cmd_stop() {
     i=0; while [ $i -lt 20 ] && kill -0 "$pid" 2>/dev/null; do sleep 0.5; i=$((i + 1)); done
     kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
   else
-    # A daemon started by hand from this folder, without a pid file.
-    pkill -f "$APP" 2>/dev/null && say "Stopped a daemon started outside 'anagram start'" || echo "not running"
+    # Only a daemon running THIS folder's serve.py qualifies.
+    pkill -f "$PY $APP" 2>/dev/null && say "Stopped a daemon started outside 'anagram start'" || echo "not running"
   fi
   rm -f "$PIDFILE"
 }
@@ -92,17 +136,25 @@ cmd_model() {
   fi
   [ -n "$TOKEN" ] || die "set ANAGRAM_HF_TOKEN=… or run interactively"
   say "Downloading the EditLens checkpoint into $MODEL_DIR"
-  HF_HUB_OFFLINE=0 HF_TOKEN="$TOKEN" "$PY" - "$MODEL_DIR" <<'PYEOF'
+  clean_env HF_TOKEN="$TOKEN" "$PY" - "$MODEL_DIR" <<'PYEOF'
 import sys
 from huggingface_hub import snapshot_download
 snapshot_download("pangram/editlens_roberta-large", revision="f93e1ace74528cfb48f337ab2fe946fb71a728cb", local_dir=sys.argv[1], allow_patterns=["*.json", "*.txt", "*.safetensors", "README.md"])
 PYEOF
-  [ -f "$LID" ] || curl -fsSL --retry 3 -o "$LID" https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz
+  if [ ! -f "$LID" ]; then
+    curl -fsSL --retry 3 -o "$LID.part" https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz
+    [ "$(sha256_of "$LID.part")" = "8f3472cfe8738a7b6099e8e999c3cbfae0dcd15696aac7d7738a8039db603e83" ] || die "checksum mismatch for lid.176.ftz"
+    mv "$LID.part" "$LID"
+  fi
   say "done"
 }
 
 cmd_uninstall() {
-  if [ "${1:-}" != "-y" ] && [ -t 0 ]; then
+  # Re-validate right before the one destructive command in this program.
+  is_anagram_home "$ANAGRAM_HOME" || die "'$ANAGRAM_HOME' is not an Anagram folder — nothing removed"
+  case "$ANAGRAM_HOME" in "${HOME:-/nonexistent}"|/) die "refusing";; esac
+  if [ "${1:-}" != "-y" ]; then
+    [ -t 0 ] || die "not an interactive terminal — pass -y to remove $ANAGRAM_HOME"
     printf 'Remove %s and everything in it (the daemon, its Python, the model, the extension)? [y/N] ' "$ANAGRAM_HOME"
     read -r ans; case "$ans" in y|Y|yes) ;; *) echo "kept"; return 0;; esac
   fi
@@ -117,7 +169,7 @@ case "${1:-}" in
   restart)  cmd_stop || true; cmd_start ;;
   status)   cmd_status ;;
   logs)     exec tail -n 50 -f "$LOG" ;;
-  selftest) exec "$PY" "$APP" --model-dir "$MODEL_DIR" --lid-model "$LID" --selftest ;;
+  selftest) clean_env HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 "$PY" "$APP" --model-dir "$MODEL_DIR" --lid-model "$LID" --selftest ;;
   model)    cmd_model ;;
   path)     echo "$ANAGRAM_HOME/extension" ;;
   version)  cat "$ANAGRAM_HOME/VERSION" 2>/dev/null || echo "unknown" ;;
@@ -135,7 +187,7 @@ anagram — the Anagram scoring daemon in $ANAGRAM_HOME
   anagram model       (re)download the EditLens checkpoint
   anagram path        print the folder to "Load unpacked" in chrome://extensions
   anagram update      re-run the installer (updates in place)
-  anagram uninstall   remove $ANAGRAM_HOME — the only thing the installer created
+  anagram uninstall   remove $ANAGRAM_HOME — the only thing the installer created (-y to skip the prompt)
 USAGE
   ;;
 esac
