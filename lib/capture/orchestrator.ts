@@ -26,6 +26,7 @@ import { extractPartText, MAX_UNIT_TEXT_CHARS } from "../dom/text";
 import { createObservers, type Observers } from "./observers";
 import { createScheduler, type Scheduler } from "./scheduler";
 import { createScoreCache, type ScoreCache } from "./cache";
+import { detectUnsupported, unsupportedResult } from "./langGate";
 import { requestScores, contextAlive, lastModel } from "../messaging/client";
 import { modelDim } from "../backend/router";
 import { createBadgeLayer, type BadgeLayer } from "../render/badge";
@@ -364,16 +365,31 @@ export function createOrchestrator(
 
   // --- scheduler send/render seam ----------------------------------------------------
 
-  /** Scheduler send(): cache-first, then one batched requestScores() for the misses. */
+  /** Scheduler send(): cache-first, local language gate, then one batched
+   *  requestScores() for the misses. */
   async function send(blocks: ScoreBlock[], lane: Lane): Promise<ScoreResult[]> {
     const out: ScoreResult[] = [];
     const misses: ScoreBlock[] = [];
 
+    const candidates: ScoreBlock[] = [];
     for (const b of blocks) {
       const hit = cache.get(b.text);
       if (hit) out.push({ ...hit, id: b.id });
-      else misses.push(b);
+      else candidates.push(b);
     }
+    // Confidently non-English paragraphs are settled here (browser CLD) — the daemon's
+    // fastText gate would refuse them anyway, so they never cost a round trip.
+    const gate = await Promise.all(candidates.map((b) => detectUnsupported(b.text)));
+    candidates.forEach((b, i) => {
+      const g = gate[i];
+      if (g) {
+        const r = unsupportedResult(b.id, g.lang, g.prob);
+        cache.set(b.text, r);
+        out.push(r);
+      } else {
+        misses.push(b);
+      }
+    });
 
     if (misses.length > 0) {
       // The chip appears in its "analyzing…" state the moment real work starts

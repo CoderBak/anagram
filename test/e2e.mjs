@@ -246,7 +246,9 @@ const checks = [
   ["rapid insert: every added paragraph badged", afterAdd === beforeAdd + RAPID],
   ["toggle hides + re-shows badges", hiddenN === 0 && reshownN === shownN && shownN > 0],
   ["no console errors", consoleErrors.length === 0],
+  ["non-English text is gated locally (the daemon received none)", daemon.stats.blocks > 5 && daemon.stats.nonEnglishBlocks === 0],
 ];
+console.log(`fake daemon saw ${daemon.stats.requests} requests / ${daemon.stats.blocks} blocks (${daemon.stats.nonEnglishBlocks} non-English)`);
 console.log("\n=== CHECKS ===");
 for (const [name, ok] of checks) console.log(`${ok ? "PASS" : "FAIL"}  ${name}`);
 if (consoleErrors.length) {

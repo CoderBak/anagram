@@ -19,9 +19,20 @@ lid.176 language identifier (Joulin et al.) and only blocks whose top label is `
 the model; the rest come back as `unsupported: true` with the detected language so the
 extension can say "Unsupported language" instead of showing a meaningless percentage.
 
-Stack: FastAPI (request/response validation via pydantic, CORS, OpenAPI docs at /docs)
-served by uvicorn; the model runs under torch on MPS/CUDA in fp16 (CPU fp32); weights are
-fetched with huggingface_hub when the model directory is missing.
+Stack: FastAPI (request/response validation via pydantic, OpenAPI docs at /docs) served by
+uvicorn; the model runs under torch on MPS/CUDA in fp16 (CPU fp32); weights are fetched with
+huggingface_hub (pinned revision) when the model directory is missing.
+
+Hardening (the daemon is a local service, but a local service is still a service):
+    - binds 127.0.0.1 only unless --allow-remote is given explicitly
+    - Host header allow-list (loopback names only) — defeats DNS-rebinding
+    - no CORS headers: the extension talks to it with host permissions, web pages cannot read it
+    - request limits: blocks per request, characters per block, body bytes, unique ids,
+      contract major version — checked by pydantic BEFORE any tokenization
+    - the language gate FAILS CLOSED: no fastText model → the daemon refuses to start
+      (unless --no-language-gate is passed on purpose)
+    - the model version the extension keys its caches by is derived from the weights'
+      SHA-256, so a changed checkpoint can never serve another checkpoint's cache
 
 Endpoints
     GET  /health   → model / device / bucket / language info (the extension polls this)
@@ -41,6 +52,9 @@ anywhere — the daemon binds to localhost and the extension only ever talks to 
 from __future__ import annotations
 
 import argparse
+import hashlib
+import ipaddress
+import json
 import logging
 import re
 import sys
@@ -49,19 +63,37 @@ import time
 from pathlib import Path
 
 import numpy as np
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 CONTRACT_VERSION = "2.1"
+CONTRACT_MAJOR = CONTRACT_VERSION.split(".")[0]
 HF_REPO = "pangram/editlens_roberta-large"
+# Hub commit the daemon was verified against; snapshot_download pins it so a silent
+# upstream change cannot alter verdicts under the same cache keys.
+HF_REVISION = "f93e1ace74528cfb48f337ab2fe946fb71a728cb"
 MODEL_ID = "editlens_roberta-large"
-# Bump when the weights or preprocessing change — the extension folds this into its cache keys.
-MODEL_VER = "hf-2026-03-21"
+# SHA-256 of model.safetensors at that revision. The served model version is derived
+# from the ACTUAL weights (see weights_version) — this constant only lets startup warn
+# when the checkpoint on disk is not the verified one.
+EXPECTED_WEIGHTS_SHA256 = "869f33df7928c447bbd150d3b5192b4ea90b1cbd2ee4aad97f5d51d59dfc8cfb"
+# Preprocessing/bucket-definition revision, folded into the version alongside the hash.
+PIPELINE_REV = "pre1"
+# The bucket edges EditLens used (cosine distance 0.03 / 0.15) — a description of the
+# classes, not a calibration of the probabilities.
 CALIBRATION = "editlens-4bucket-cosine(0.03,0.15)"
 BUCKET_LABELS = ["human", "lightly-edited", "heavily-edited", "ai-generated"]
 DEFAULT_MODEL_DIR = Path(__file__).resolve().parents[2] / "models" / "editlens_roberta-large"
 SUPPORTED_LANGUAGES = ["en"]
 LID_URL = "https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz"
 DEFAULT_LID_PATH = DEFAULT_MODEL_DIR.parent / "lid.176.ftz"
+
+# Request limits (the extension sends ≤ ~120 blocks of ≤ 4000 chars; these leave headroom
+# for other local clients while bounding what a stray POST can make the GPU chew on).
+MAX_BLOCKS = 256
+MAX_TEXT_CHARS = 16_000
+MAX_ID_CHARS = 64
+MAX_BODY_BYTES = 2 * 1024 * 1024
+LOOPBACK_HOSTS = ["127.0.0.1", "localhost"]
 
 log = logging.getLogger("anagramd")
 
@@ -108,8 +140,10 @@ def clean_text(text: str, emoji_mod) -> str:
 class LanguageId:
     """fastText lid.176 (176 languages, ~1 MB compressed). `detect` → (iso639-1 code, prob).
 
-    Disabled (every block passes) when fastText or the model file is unavailable — the
-    daemon logs it loudly and /health reports `lid: null`.
+    The gate FAILS CLOSED: if fastText or its model cannot be loaded the daemon exits
+    instead of quietly scoring every language with an English-only model. Only
+    `--no-language-gate` (explicit, logged, reported by /health as `lid: null`) turns
+    it off.
     """
 
     def __init__(self, path: Path):
@@ -118,8 +152,8 @@ class LanguageId:
         try:
             import fasttext  # noqa: F401
         except Exception as e:  # pragma: no cover
-            log.warning("fasttext not importable (%s) — language gate DISABLED, all text is scored", e)
-            return
+            sys.exit(f"fasttext is not importable ({e}) — the language gate cannot run.\n"
+                     f"  pip install fasttext, or pass --no-language-gate to score every language (not advised)")
         if not path.exists():
             try:
                 import urllib.request
@@ -127,12 +161,21 @@ class LanguageId:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 urllib.request.urlretrieve(LID_URL, path)
             except Exception as e:
-                log.warning("could not fetch %s (%s) — language gate DISABLED", LID_URL, e)
-                return
+                sys.exit(f"could not fetch {LID_URL} ({e}) — the language gate cannot run.\n"
+                         f"  place lid.176.ftz at {path}, or pass --no-language-gate (not advised)")
         import fasttext
         self.model = fasttext.load_model(str(path))
         self.name = "fasttext-lid.176"
         log.info("language gate: fastText lid.176 loaded; supported = %s", SUPPORTED_LANGUAGES)
+
+    @classmethod
+    def disabled(cls) -> "LanguageId":
+        """Explicitly OFF (--no-language-gate): every block is scored, whatever its language."""
+        obj = cls.__new__(cls)
+        obj.model = None
+        obj.name = None
+        log.warning("language gate DISABLED by --no-language-gate — non-English text WILL be scored")
+        return obj
 
     @property
     def enabled(self) -> bool:
@@ -155,19 +198,58 @@ def ensure_model(model_dir: Path) -> None:
     """Fetch the weights with huggingface_hub when the directory has no checkpoint.
 
     The repo is gated (CC BY-NC-SA — accept the terms on the model page once); the Hub
-    client picks up the token from `hf auth login` / HF_TOKEN. Resumable, checksum-verified.
+    client picks up the token from `hf auth login` / HF_TOKEN. Resumable, checksum-verified,
+    pinned to HF_REVISION.
     """
     if (model_dir / "config.json").exists():
         return
-    log.info("no checkpoint at %s — downloading %s via huggingface_hub", model_dir, HF_REPO)
+    log.info("no checkpoint at %s — downloading %s@%s via huggingface_hub", model_dir, HF_REPO, HF_REVISION[:12])
     try:
         from huggingface_hub import snapshot_download
 
-        snapshot_download(HF_REPO, local_dir=str(model_dir))
+        snapshot_download(HF_REPO, revision=HF_REVISION, local_dir=str(model_dir))
     except Exception as e:
         sys.exit(f"could not download {HF_REPO} into {model_dir}: {e}\n"
                  f"  accept the model terms at https://huggingface.co/{HF_REPO}, run `hf auth login`, then\n"
-                 f"  hf download {HF_REPO} --local-dir {model_dir}")
+                 f"  hf download {HF_REPO} --revision {HF_REVISION} --local-dir {model_dir}")
+
+
+def weights_version(model_dir: Path) -> str:
+    """`sha256:<12 hex>-<pipeline rev>` of the checkpoint actually loaded.
+
+    Hashing 1.4 GB takes a second or two; the digest is memoized next to the weights
+    together with the file's size and mtime, so restarts are free. The extension folds this
+    into every cache key — two different checkpoints can never share a cached verdict.
+    """
+    weights = model_dir / "model.safetensors"
+    if not weights.exists():  # sharded / other formats: fall back to config + tokenizer identity
+        files = sorted(p for p in model_dir.glob("*.safetensors")) or sorted(model_dir.glob("*.bin"))
+        if not files:
+            return f"unknown-{PIPELINE_REV}"
+        weights = files[0]
+    st = weights.stat()
+    memo = model_dir / ".anagram-weights-sha256.json"
+    try:
+        cached = json.loads(memo.read_text())
+        if cached.get("size") == st.st_size and cached.get("mtime") == st.st_mtime:
+            digest = cached["sha256"]
+        else:
+            raise KeyError
+    except Exception:
+        h = hashlib.sha256()
+        with weights.open("rb") as f:
+            for chunk in iter(lambda: f.read(1 << 22), b""):
+                h.update(chunk)
+        digest = h.hexdigest()
+        try:
+            memo.write_text(json.dumps({"file": weights.name, "size": st.st_size, "mtime": st.st_mtime, "sha256": digest}))
+        except OSError:
+            pass
+    if EXPECTED_WEIGHTS_SHA256 and digest != EXPECTED_WEIGHTS_SHA256:
+        log.warning("weights %s have sha256 %s…, not the verified %s… — verdicts may differ from the "
+                    "benchmarked checkpoint (cache keys stay distinct)", weights.name, digest[:12],
+                    EXPECTED_WEIGHTS_SHA256[:12])
+    return f"sha256:{digest[:12]}-{PIPELINE_REV}"
 
 
 class EditLens:
@@ -187,6 +269,7 @@ class EditLens:
         self.last_wait_ms = 0.0
 
         ensure_model(model_dir)
+        self.version = weights_version(model_dir)
 
         self.device = self._pick_device(device)
         # fp16 on the GPU is numerically indistinguishable here (probs agree to 3-4 decimals) and
@@ -272,12 +355,13 @@ class EditLens:
         return {
             "ok": True,
             "contract": CONTRACT_VERSION,
-            "model": {"id": MODEL_ID, "ver": MODEL_VER, "calibration": CALIBRATION},
+            "model": {"id": MODEL_ID, "ver": self.version, "calibration": CALIBRATION},
             "n_buckets": self.n_buckets,
             "buckets": BUCKET_LABELS[: self.n_buckets],
             "languages": SUPPORTED_LANGUAGES,
             "lid": self.lid.name if getattr(self, "lid", None) and self.lid.enabled else None,
             "max_tokens": self.max_length,
+            "limits": {"max_blocks": MAX_BLOCKS, "max_text_chars": MAX_TEXT_CHARS, "max_body_bytes": MAX_BODY_BYTES},
             "device": self.device,
             "dtype": str(self.dtype).replace("torch.", ""),
             "uptime_s": round(time.time() - self.started, 1),
@@ -290,15 +374,31 @@ class EditLens:
 
 class Block(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    id: str
-    text: str = ""
+    id: str = Field(min_length=1, max_length=MAX_ID_CHARS)
+    text: str = Field(default="", max_length=MAX_TEXT_CHARS)
 
 
 class ScoreRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    v: str | None = None
-    session: str | None = None
-    blocks: list[Block] = Field(default_factory=list)
+    v: str = Field(max_length=16)
+    session: str | None = Field(default=None, max_length=64)
+    blocks: list[Block] = Field(default_factory=list, max_length=MAX_BLOCKS)
+
+    @field_validator("v")
+    @classmethod
+    def _contract_major(cls, v: str) -> str:
+        if v.split(".")[0] != CONTRACT_MAJOR:
+            raise ValueError(f"contract {v} is not {CONTRACT_MAJOR}.x")
+        return v
+
+    @model_validator(mode="after")
+    def _unique_ids(self) -> "ScoreRequest":
+        seen: set[str] = set()
+        for b in self.blocks:
+            if b.id in seen:
+                raise ValueError(f"duplicate block id {b.id!r}")
+            seen.add(b.id)
+        return self
 
 
 class ScoreResult(BaseModel):
@@ -336,16 +436,25 @@ def unsupported_result(block_id: str, n_buckets: int, lang: str, prob: float) ->
             "tokens": 0, "truncated": False, "lang": lang, "lang_prob": round(prob, 3), "unsupported": True}
 
 
-def make_app(engine: EditLens):
-    from fastapi import FastAPI
-    from fastapi.middleware.cors import CORSMiddleware
-    app = FastAPI(title="anagramd", version=MODEL_VER,
+def make_app(engine: EditLens, allowed_hosts: list[str]):
+    from fastapi import FastAPI, Request
+    from fastapi.middleware.trustedhost import TrustedHostMiddleware
+    from fastapi.responses import JSONResponse
+    app = FastAPI(title="anagramd", version=engine.version,
                   description="Local EditLens scoring daemon for the Anagram extension "
                               "(contract " + CONTRACT_VERSION + ").")
-    # The extension's service worker has host permission for localhost so CORS is moot for it,
-    # but permissive headers let you poke the daemon from any page or a plain fetch() too.
-    app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET", "POST", "OPTIONS"],
-                       allow_headers=["content-type"])
+    # Host allow-list: a page that resolves its own name to 127.0.0.1 (DNS rebinding) still
+    # sends its own Host header, and is refused. No CORS middleware on purpose — the
+    # extension calls with host permissions (no CORS needed) and web pages get no headers
+    # that would let them read a response.
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
+
+    @app.middleware("http")
+    async def cap_body(request: Request, call_next):
+        length = request.headers.get("content-length")
+        if length and length.isdigit() and int(length) > MAX_BODY_BYTES:
+            return JSONResponse({"detail": f"body exceeds {MAX_BODY_BYTES} bytes"}, status_code=413)
+        return await call_next(request)
 
     @app.get("/health")
     def health() -> dict:
@@ -419,6 +528,8 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Anagram local scoring daemon (EditLens roberta-large)")
     ap.add_argument("--model-dir", type=Path, default=DEFAULT_MODEL_DIR)
     ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--allow-remote", action="store_true",
+                    help="permit a non-loopback --host (page text then leaves this machine — not advised)")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--device", default="auto", choices=["auto", "mps", "cuda", "cpu"])
     ap.add_argument("--dtype", default="auto", choices=["auto", "fp32", "fp16"],
@@ -432,8 +543,15 @@ def main() -> None:
     args = ap.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s", datefmt="%H:%M:%S")
+    try:
+        loopback = ipaddress.ip_address(args.host).is_loopback
+    except ValueError:
+        loopback = args.host == "localhost"
+    if not loopback and not args.allow_remote:
+        sys.exit(f"--host {args.host} is not a loopback address; pass --allow-remote if you really "
+                 "want page text to leave this machine")
     engine = EditLens(args.model_dir, args.device, args.max_length, args.batch_size, args.dtype)
-    engine.lid = LanguageId(args.lid_model) if not args.no_language_gate else LanguageId(Path("/nonexistent"))
+    engine.lid = LanguageId.disabled() if args.no_language_gate else LanguageId(args.lid_model)
 
     if args.selftest:
         t0 = time.time()
@@ -452,8 +570,10 @@ def main() -> None:
 
     import uvicorn
 
-    app = make_app(engine)
-    log.info("listening on http://%s:%d  (GET /health, POST /score, GET /docs)", args.host, args.port)
+    allowed_hosts = list(LOOPBACK_HOSTS) if loopback else [args.host, *LOOPBACK_HOSTS]
+    app = make_app(engine, allowed_hosts)
+    log.info("listening on http://%s:%d  (GET /health, POST /score, GET /docs) — model %s",
+             args.host, args.port, engine.version)
     # Our own per-request log line above replaces uvicorn's access log.
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning", access_log=False)
 

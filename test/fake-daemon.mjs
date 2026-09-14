@@ -86,7 +86,7 @@ export function fakeScore(text) {
  * refused" = daemon down); start again with the same `port` to bring it back.
  */
 export function startFakeDaemon({ port = 0, latency = [60, 160], model = FAKE_MODEL } = {}) {
-  const stats = { requests: 0, blocks: 0 };
+  const stats = { requests: 0, blocks: 0, nonEnglishBlocks: 0 };
   const server = http.createServer((req, res) => {
     const json = (code, body) => {
       res.writeHead(code, { "content-type": "application/json" });
@@ -111,6 +111,7 @@ export function startFakeDaemon({ port = 0, latency = [60, 160], model = FAKE_MO
         const blocks = Array.isArray(parsed?.blocks) ? parsed.blocks : [];
         stats.requests++;
         stats.blocks += blocks.length;
+        for (const b of blocks) if (typeof b?.text === "string" && detectLanguage(b.text)[0] !== "en") stats.nonEnglishBlocks++;
         const results = blocks.map((b) =>
           typeof b?.text === "string" && b.text.trim()
             ? { id: b.id, ...fakeScore(b.text) }

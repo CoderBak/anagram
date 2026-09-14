@@ -86,6 +86,30 @@ const AI =
   check("API: English samples carry lang=en", by.h?.lang === "en" && by.a?.lang === "en", `${by.h?.lang} ${by.h?.lang_prob}`);
   check("API: Chinese sample → unsupported, not scored (fastText lid)", by.z?.unsupported === true && by.z.lang === "zh" && by.z.tokens === 0, JSON.stringify({ lang: by.z?.lang, p: by.z?.lang_prob }));
   check("daemon /health lists languages + lid", Array.isArray(h.languages) && h.languages.includes("en") && typeof h.lid === "string", `${h.languages} · ${h.lid}`);
+  check("model version is derived from the weights hash", /^sha256:[0-9a-f]{12}-/.test(h?.model?.ver ?? ""), h?.model?.ver);
+}
+
+// --- 2b. hardening: limits, contract, ids, host, CORS ---------------------------------
+{
+  const post = (body, headers = {}) =>
+    fetch(`${BASE}/score`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: typeof body === "string" ? body : JSON.stringify(body) });
+  const many = { v: "2.1", blocks: Array.from({ length: h.limits.max_blocks + 1 }, (_, i) => ({ id: `b${i}`, text: "x" })) };
+  check("API: too many blocks → 422", (await post(many)).status === 422);
+  const long = { v: "2.1", blocks: [{ id: "a", text: "x".repeat(h.limits.max_text_chars + 1) }] };
+  check("API: oversized block → 422", (await post(long)).status === 422);
+  check("API: duplicate ids → 422", (await post({ v: "2.1", blocks: [{ id: "a", text: HUMAN }, { id: "a", text: AI }] })).status === 422);
+  check("API: other contract major → 422", (await post({ v: "9.0", blocks: [{ id: "a", text: HUMAN }] })).status === 422);
+  check("API: missing contract version → 422", (await post({ blocks: [{ id: "a", text: HUMAN }] })).status === 422);
+  const big = await post(JSON.stringify({ v: "2.1", blocks: [] }).padEnd(h.limits.max_body_bytes + 10, " "));
+  check("API: body over the byte cap → 413", big.status === 413);
+  const rebind = await new Promise((resolve) => {
+    const req = http.request({ host: "127.0.0.1", port: PORT, path: "/health", method: "GET", headers: { Host: "evil.example" } }, (res) => resolve(res.statusCode));
+    req.on("error", () => resolve(-1));
+    req.end();
+  });
+  check("Host header not loopback (DNS rebinding) → 400", rebind === 400, `status ${rebind}`);
+  const preflight = await fetch(`${BASE}/score`, { method: "OPTIONS", headers: { Origin: "https://evil.example", "Access-Control-Request-Method": "POST" } });
+  check("no CORS grant to web origins", !preflight.headers.get("access-control-allow-origin"), `ACAO=${preflight.headers.get("access-control-allow-origin")}`);
 }
 
 // --- 3. extension against the daemon --------------------------------------------------
