@@ -10,8 +10,8 @@ write?"* — inline, live, on every site.
 > *extent of AI editing* in a paragraph on four levels — human / lightly edited /
 > heavily edited / AI-generated. It runs **on your machine** in a small local
 > daemon (`anagramd/`, Apple-silicon GPU via MPS, ~30 ms per paragraph in
-> batches). Without the daemon the extension falls back to a clearly-labelled
-> demo stub so the surface still works.
+> batches). There is no other scorer: without the daemon, paragraphs show as
+> *Unavailable* and are retried automatically once it answers.
 
 | Article pages | Dark mode + detail card |
 | --- | --- |
@@ -35,22 +35,25 @@ npm run build                      # Chrome → output/chrome-mv3/   (load unpac
 # 2. the model (gated on Hugging Face: accept the CC BY-NC-SA terms once, then)
 hf download pangram/editlens_roberta-large --local-dir ../models/editlens_roberta-large
 
-# 3. the scoring daemon (own venv; torch + transformers + flask)
+# 3. the scoring daemon (own venv; torch + transformers + fastapi + fasttext)
 cd anagramd && uv venv .venv --python 3.13 && uv pip install --python .venv/bin/python -r requirements.txt && cd ..
 npm run serve                      # http://127.0.0.1:8765 — GET /health, POST /score
 ```
 
-The extension's default backend mode is **Auto**: it uses the daemon whenever
-`/health` answers and the demo stub otherwise, and the popup always says which
-one produced the scores. Options → *Scoring backend* switches modes or the URL.
-`sh anagramd/run.sh --selftest` scores four sample paragraphs (one of them Chinese, which must come back unsupported) as a sanity check.
+The extension probes the daemon's `/health` and picks it up within seconds of it
+starting; the popup names the model that is scoring, or says *Daemon not running*
+with a Retry. Options → *Scoring daemon* holds the URL, which is restricted to
+loopback addresses. `sh anagramd/run.sh --selftest` scores four sample paragraphs
+(one of them Chinese, which must come back unsupported) as a sanity check.
 
 ## What you get
 
-- **A chip after every analyzed paragraph** — `38% AI`, the model's estimated
-  extent of AI editing, with a color-coded verdict (green = Human, yellow =
-  Lightly edited, orange = Heavily edited, red = AI-generated, gray =
-  Unavailable). Chips scale with the surrounding text, sit on its baseline,
+- **A chip after every analyzed paragraph** — `38%`, the model's estimate of how
+  far the text sits between untouched human writing and fully AI-generated
+  prose, with a color-coded verdict (green = Human, yellow = Lightly edited,
+  orange = Heavily edited, red = AI-generated, gray = Unavailable). What the
+  number means is spelled out in the hover card and on the first-run page, not
+  repeated on every line. Chips scale with the surrounding text, sit on its baseline,
   reflow with the page (RTL included — the label itself never bidi-flips), and
   appear in a subtle **"analyzing…" state** the moment a paragraph is actually
   sent for scoring, morphing in place when the verdict lands. Hover — or tap, on
@@ -99,11 +102,22 @@ one produced the scores. Options → *Scoring backend* switches modes or the URL
 ## The model
 
 EditLens formalizes *scoring text by the extent of AI intervention* rather than
-a binary human/AI call. The released `roberta-large` checkpoint is a 4-way
-classifier trained on 60k texts across reviews, creative writing, educational
-articles and news, edited by GPT-4.1 / Claude 4 Sonnet / Gemini 2.5 Flash with
-303 editing prompts; the daemon reports the argmax bucket and the
-probability-weighted score (`Σ pᵢ·i / 3`, shown as `% AI`).
+a binary human/AI call. Its target is a **change magnitude** between the original
+and the edited text (1 − similarity, measured with sentence embeddings or soft
+n-gram overlap); the four classes are threshold cuts of that magnitude, and the
+model never sees the original at inference. The released `roberta-large`
+checkpoint is a 4-way classifier trained on 60k texts across reviews, creative
+writing, educational articles and news, edited by GPT-4.1 / Claude 4 Sonnet /
+Gemini 2.5 Flash with 303 editing prompts; the daemon reports the argmax bucket
+and the probability-weighted score (`Σ pᵢ·i / 3`, the reference script's
+`score_pred`), shown as the chip's number.
+
+**What the number is not.** `38%` is *not* "38 % of the words were written by
+AI": the paper explicitly rejects token-level attribution for edited text. It is
+the model's estimate of how far the paragraph sits, as a whole, between untouched
+human writing (0 %) and fully AI-generated text (100 %). Two very different
+distributions can share one number, which is why the card always shows all four
+probabilities.
 
 | Bucket | Verdict | Meaning |
 | --- | --- | --- |
@@ -113,12 +127,16 @@ probability-weighted score (`Σ pᵢ·i / 3`, shown as `% AI`).
 | 3 | AI-generated | written by a model |
 
 **English only.** The model card declares `language: en`, every dataset source in
-the paper is English, and the base model is RoBERTa. So the daemon runs every
-paragraph through **fastText `lid.176`** (the standard 176-language identifier)
-before scoring and refuses anything whose top label is not English: those
-paragraphs get a gray **"Unsupported language"** chip showing the detected code
-(`zh`, `ja`, `ar`…) with the language name in the card, no percentage, no mark,
-and never count as flagged. The popup reports them as "N not English".
+the paper is English, and the base model is RoBERTa. So non-English text is
+gated twice: the content script asks the browser's built-in detector
+(`browser.i18n.detectLanguage`, no download) and settles confidently non-English
+paragraphs locally, so a Chinese page never wakes the model; everything else
+goes to the daemon, which runs it through **fastText `lid.176`** (the standard
+176-language identifier) before scoring and refuses anything whose top label is
+not English. Those paragraphs get a gray **"Unsupported language"** chip showing
+the detected code (`zh`, `ja`, `ar`…) with the language name in the card, no
+number, no mark, and never count as flagged. The popup reports them as "N not
+English".
 
 Honest limits: a 512-token window (longer paragraphs
 are scored on their sentence-bounded prefix and the card says so); accuracy
@@ -158,10 +176,12 @@ Text on the web is messy; the capture engine is built for it:
   page in document order while you read, one capped batch at a time so it never
   delays what's on screen. Batches are packed per lane (small for the viewport,
   large for prefetch) because the model scores ~3× more paragraphs per second in
-  batches of 12+. Verdicts are cached three ways — per tab, in the service
-  worker, and **persistently in IndexedDB** (hash + buckets only, keyed by model
-  version, pruned oldest-first through an index) — so revisits and worker
-  restarts never re-score.
+  batches of 12+, and the lane priority travels into the worker's queue, so a
+  visible paragraph in any tab is scored before anyone's prefetch. Verdicts are
+  cached three ways — per tab, in the service worker, and **persistently in
+  IndexedDB** (hash + buckets only, keyed by the model's weights hash, pruned
+  oldest-first through an index) — so revisits and worker restarts never
+  re-score, and a changed checkpoint can never serve another's verdicts.
 - **Everything, everywhere:** open shadow DOM and slots, same- and cross-origin
   iframes (webmail readers, embedded posts — ad slots are size-gated out),
   plain-text documents (`.txt`/`.log`/RFCs), pure-CJK, RTL, and
@@ -179,10 +199,11 @@ Text on the web is messy; the capture engine is built for it:
 - **Graceful under failure.** If the extension is updated/reloaded while a tab
   is open (dead context), the page **freezes quietly** — verdicts stay readable,
   observers and timers stop, nothing spams the console. If the daemon goes away
-  mid-session, Auto mode falls back to the stub and the popup says so; transient
-  failures render as "Unavailable" and are never cached. Forced-colors (High
-  Contrast) keeps chips visible with semantic dots; `prefers-reduced-motion` is
-  honored throughout.
+  mid-session, the batch in flight renders "Unavailable" (never cached), nothing
+  else is dispatched, the ball's counter shows "!", and the page re-checks every
+  few seconds and re-queues everything the moment the daemon answers again — no
+  reload, no Rescan. Forced-colors (High Contrast) keeps chips visible with
+  semantic dots; `prefers-reduced-motion` is honored throughout.
 
 ## Install (unpacked)
 
@@ -201,25 +222,29 @@ older versions degrade gracefully to chips-only. `npm run zip:firefox` builds
 the AMO-submittable zip.)
 
 Browse anywhere with prose. The ball sits bottom-right; the toolbar popup and
-the options page hold the switches. Keep `npm run serve` running in a terminal
-for real scores — see [`anagramd/README.md`](anagramd/README.md) for the API.
+the options page hold the switches. Keep `npm run serve` running in a terminal —
+see [`anagramd/README.md`](anagramd/README.md) for the API and its hardening.
 
 ## Testing
 
-Six suites, all runnable headed on a normal machine:
+Seven suites. The browser suites that must not depend on the model point the
+extension at `test/fake-daemon.mjs`, a test-only Node server that speaks the
+daemon's contract with text-seeded, deterministic verdicts (nothing of it ships):
 
 | Suite | Command | Checks | What it covers |
 | --- | --- | --- | --- |
-| Unit | `npm run test:unit` | 74 | walker/assembler/extraction + band mapping + Readability-guided scope in a real Chromium page (~5s) |
-| E2E | `npm run test:e2e` | 22 | full extension on a 16-section fixture page (either backend — the Chinese paragraph must be scored by the stub or come back unsupported from the daemon) |
-| Scenarios | `npm run test:scenarios` | 37 | UI edge cases (hover card, panel filters, FAB snap/tuck, top-layer, KaTeX, vertical text, CSS Color 4 backgrounds, on-demand Readability chunk) + 13 live sites (bot-check interstitials count as skips) (`-- --local` skips the live sweep) |
-| Server | `npm run test:server` | 18 | **the real model**: spawns `anagramd`, checks the API on human/AI/Chinese samples (the last one must come back unsupported via fastText), drives the built extension in Auto mode — real verdicts on every English chip, the 4-bucket card, the "zh" unsupported chip, the popup's model line |
+| Node | `npm run test:node` | 20 | vitest + `wxt/testing`: router invariants (keys snapshotted per request, joined requests settle across a backend change, results cached under the producing model, priority order), wire validation, the daemon client (loopback only, down TTL) |
+| Unit | `npm run test:unit` | 78 | walker/assembler/extraction + band mapping + Readability-guided scope in a real Chromium page (~5s) |
+| E2E | `npm run test:e2e` | 23 | full extension on a 16-section fixture page against the fake daemon — including that non-English text never reaches it |
+| Scenarios | `npm run test:scenarios` | 42 | UI edge cases (hover card, panel filters, FAB snap/tuck, top-layer, KaTeX, vertical text, CSS Color 4 backgrounds, late shadow-root content, mutation storms, on-demand Readability chunk, daemon down → Unavailable → daemon back → auto re-queue) + 13 live sites (bot-check interstitials count as skips) (`-- --local` skips the live sweep) |
+| Server | `npm run test:server` | 27 | **the real model**: spawns `anagramd`, checks the API on human/AI/Chinese samples (the last one must come back unsupported via fastText), the request limits, the Host allow-list and the absence of CORS grants, then drives the built extension — real verdicts on every English chip, the 4-bucket card, the "zh" unsupported chip, the popup's model line |
 | Docs flow | `node test/docs-flow.mjs <public doc URL>` | 12 | in-tab overlay + classic page flow on a real public Google Doc — the original demo doc was deleted from Drive, so without a URL (or `ANAGRAM_DOC_URL`) the suite reports SKIP |
 | Perf | `npm run test:perf` | 3 | 3000-paragraph budget: first badge <4s (measured ~0.3s), no long task >1s |
 
 `npm run test:verify` proves the chips come from the model: it reads each chip's
 probabilities, sends the same paragraph text straight to the daemon's API, and
-compares — then stops the daemon and shows the popup flip to "demo stub".
+compares — then stops the daemon and shows that no verdict is rendered without
+it and the popup says so.
 `npm run browser` opens a live Chromium with the extension for manual poking;
 `npm run play` opens a multi-tab playground; `node test/shots.mjs` regenerates
 the README screenshots; `node test/genicons.mjs` regenerates the icon set.
@@ -232,11 +257,13 @@ mutations, attribute reveals and URL changes (`lib/capture/`, Navigation API).
 An optional precision scope narrows collection to the main-content region
 (`lib/dom/mainContent.ts`, Readability-guided). Units are batched through a
 3-lane priority scheduler (viewport / near / idle prefetch) to the MV3 service
-worker, which dedups, caches (53-bit content hashes, model-versioned keys,
-memory + IndexedDB via `idb`) and calls the active `ScoreClient` — the local
-`anagramd` daemon over HTTP when it is up, the deterministic stub otherwise —
-with bounded concurrency and retry (`p-limit`, `p-retry`) and never-cached
-degraded fallbacks (`lib/backend/`). Results render as inline shadow-DOM chips
+worker, which dedups, caches (53-bit content hashes, keys carrying the producing
+model's identity, memory + IndexedDB via `idb`) and calls the local `anagramd`
+daemon over HTTP through a prioritised, bounded queue with one retry (`p-queue`,
+`p-retry`); every response is validated (`valibot`) before it can become a chip,
+and failures become never-cached degraded results (`lib/backend/`). Confidently
+non-English paragraphs are settled locally first (`browser.i18n.detectLanguage`).
+Results render as inline shadow-DOM chips
 and Highlight-API marks placed by Floating UI (`lib/render/`); the Google Docs
 overlay (`lib/docsOverlay.ts`) sanitizes the fetched document with DOMPurify
 and reuses the same pipeline inside a shadow-root reader. Readability and
@@ -258,14 +285,22 @@ is exactly the daemon's IO: `{bucket, probs[4], score, lang}` per paragraph, or
 | Popover placement | @floating-ui/dom | `lib/render/badge.ts`, `selectionCard.ts`, `fab.ts` |
 | CSS colour parsing + luminance | culori | `lib/render/theme.ts` |
 | Persistent score cache | idb (IndexedDB) | `lib/backend/swCache.ts` |
-| Concurrency + retry | p-limit, p-retry | `lib/backend/router.ts` |
-| Extension pages | Basecoat (Vega) | `lib/ui/` |
+| Prioritised queue + retry | p-queue, p-retry | `lib/backend/router.ts` |
+| Wire validation | valibot | `lib/backend/httpClient.ts` |
+| Local language pre-gate | `browser.i18n.detectLanguage` (built-in CLD) | `lib/capture/langGate.ts` |
+| Daemon request limits + Host allow-list | pydantic, Starlette TrustedHost | `anagramd/serve.py` |
+| Extension pages + in-page design tokens | Basecoat (Vega) | `lib/ui/`, `lib/render/` |
+| Node-level tests | vitest + `wxt/testing` | `test/node/` |
 
 ## Privacy
 
-Nothing leaves your computer. Text goes from the page to the extension's
-service worker and on to `anagramd` on `127.0.0.1`, which runs the model
-locally; the batch envelope carries only a hostname + language hint by design,
-and the persistent cache stores hashes and bucket probabilities, never text.
-The Google Docs reading mode fetches the document same-origin with your own
-cookies — Anagram itself contacts no remote server.
+Nothing leaves your computer, and that is enforced rather than promised: the
+daemon URL setting accepts loopback addresses only, the daemon binds `127.0.0.1`
+unless told otherwise, refuses any non-loopback `Host` header (DNS rebinding),
+sets no CORS headers (web pages cannot read it; the extension uses host
+permissions), and bounds every request (blocks, characters, bytes, unique ids,
+contract version) before tokenizing anything. The batch envelope carries only a
+hostname + language hint by design, and the persistent cache stores hashes and
+bucket probabilities, never text. The Google Docs reading mode fetches the
+document same-origin with your own cookies — Anagram itself contacts no remote
+server.
