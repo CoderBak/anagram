@@ -346,6 +346,40 @@ const results = await page.evaluate(() => {
     check("author-list block is never a unit", u.length === 0, JSON.stringify(u.map(x => x.words)));
   }
 
+  // ---- where the chip is inserted ---------------------------------------------------------
+  {
+    const layer = PW.createBadgeLayer();
+    const chipFor = (html) => {
+      sandbox.innerHTML = html;
+      const [unit] = PW.collectUnits(sandbox);
+      if (!unit) return null;
+      layer.render(unit, { id: unit.id, bucket: 0, probs: [0.9, 0.06, 0.03, 0.01], score: 0.05 });
+      return sandbox.querySelector('[data-anagram="host"]');
+    };
+    const desc = (h) => h && `${h.previousElementSibling?.tagName ?? "#text"}|host|${h.nextElementSibling?.tagName ?? "-"}`;
+
+    let host = chipFor(`<p>${words(60)} <img alt="emoji"></p>`);
+    check("chip goes AFTER a trailing emoji image (end of the line, not mid-sentence)",
+      host && host.previousElementSibling?.tagName === "IMG" && host.parentElement.lastElementChild === host, desc(host));
+
+    host = chipFor(`<p><span>${words(60)} <img alt="emoji"></span></p>`);
+    check("…also when the text and the emoji sit inside an inline wrapper",
+      host && host.parentElement.tagName === "P" && host.parentElement.lastElementChild === host, desc(host));
+
+    host = chipFor(`<p>${words(60)}<sup class="reference"><a href="#c">[7]</a></sup></p>`);
+    check("chip goes after a trailing citation mark", host && host.previousElementSibling?.tagName === "SUP", desc(host));
+
+    host = chipFor(`<p>${words(55)} and it ends with <a href="#x">a real link</a>.</p>`);
+    check("a trailing link with words is NOT jumped; the chip stays outside the anchor",
+      host && !host.closest("a") && host.parentElement.tagName === "P", desc(host));
+
+    host = chipFor(`<p>${words(60)}<br></p>`);
+    check("a trailing <br> is never jumped (the chip must not fall to the next line)",
+      host && host.nextElementSibling?.tagName === "BR", desc(host));
+
+    layer.teardownAll();
+  }
+
   // ---- canonical scoring text ------------------------------------------------------------
   check("canonical: LaTeX residue and escapes", PW.canonicalForScoring("steps---prompting, 74.1\\% and ``quoted''") === 'steps—prompting, 74.1% and "quoted"', JSON.stringify(PW.canonicalForScoring("steps---prompting, 74.1\\% and ``quoted''")));
   check("canonical: typographic quotes, ranges, NBSP, ligatures → one convention", PW.canonicalForScoring("LLMs’ “rich” 1–5\u00a0ﬁnal") === `LLMs' "rich" 1-5 final`, JSON.stringify(PW.canonicalForScoring("LLMs’ “rich” 1–5\u00a0ﬁnal")));

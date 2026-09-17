@@ -29,7 +29,7 @@ import type { Unit } from "../types";
 import { MARK_ATTR } from "../types";
 import type { ScoreResult } from "../contract";
 import { band, BAND_LABEL, isNoVerdict, languageName, scorePct, type Band } from "./band";
-import { countWords, scoringText, MAX_SCORE_CHARS } from "../dom/text";
+import { countWords, hasLetters, scoringText, MAX_SCORE_CHARS } from "../dom/text";
 import { distributionHtml } from "./dist";
 import { BADGE_CSS } from "./badge.css";
 import { isDarkContext } from "./theme";
@@ -417,11 +417,11 @@ function stopFloating(host: HTMLElement): void {
 
 /**
  * Where the badge goes: after the unit's last text node, climbed out of inline
- * ancestors so the chip sits in the block's flow (never inside an <a>/<em>).
- * Climbing only continues while the node is the LAST meaningful child of its
- * inline parent — an inline wrapper can span many BR-separated paragraphs
- * (1990s-style <font> essays), and climbing past mid-wrapper content would pile
- * every badge at the wrapper's end.
+ * ancestors so the chip sits in the block's flow (never inside an <a>/<em>), then
+ * moved past whatever decorates the end of the line. Climbing only continues while
+ * the node is the LAST meaningful child of its inline parent — an inline wrapper can
+ * span many BR-separated paragraphs (1990s-style <font> essays), and climbing past
+ * mid-wrapper content would pile every badge at the wrapper's end.
  */
 function insertionPoint(unit: Unit): ChildNode | null {
   const lastPart = unit.parts[unit.parts.length - 1];
@@ -436,19 +436,41 @@ function insertionPoint(unit: Unit): ChildNode | null {
     if (!isLastMeaningfulChild(n, p)) break;
     n = p;
   }
-  return n as ChildNode;
+  return lastDecoratedSibling(n as ChildNode);
 }
 
-/** True if nothing but whitespace / our own hosts follows `n` inside `parent`. */
-function isLastMeaningfulChild(n: Node, _parent: Element): boolean {
-  let sib = n.nextSibling;
-  while (sib) {
-    if (sib.nodeType === Node.TEXT_NODE) {
-      if ((sib.textContent ?? "").trim()) return false;
-    } else if (sib.nodeType === Node.ELEMENT_NODE) {
-      if (!(sib as Element).hasAttribute(MARK_ATTR)) return false;
+/**
+ * Trailing inline decoration: the emoji image, icon or citation mark a sentence ends
+ * with. It carries no letters of its own and the walker never scored it, so the chip
+ * belongs AFTER it — otherwise the chip lands mid-line, in front of the emoji that
+ * closes a comment (Zhihu, chat apps) or in front of a "[7]" reference (Wikipedia).
+ * <br> is never a decoration: the chip must not jump to the next line.
+ */
+function isTrailingDecoration(node: Node): boolean {
+  if (node.nodeType === Node.TEXT_NODE) return (node.textContent ?? "").trim() === "";
+  if (node.nodeType !== Node.ELEMENT_NODE) return true; // comments, processing instructions
+  const el = node as Element;
+  if (el.hasAttribute(MARK_ATTR)) return true; // our own UI
+  if (el.nodeName === "BR") return false;
+  if (hasLetters(el.textContent ?? "")) return false; // real words — the run ends before it
+  return isInlineFlowElement(el);
+}
+
+/** `n`, or the last trailing decoration after it (so the chip closes the line). */
+function lastDecoratedSibling(n: ChildNode): ChildNode {
+  let last = n;
+  for (let sib = n.nextSibling; sib && isTrailingDecoration(sib); sib = sib.nextSibling) {
+    if (sib.nodeType === Node.ELEMENT_NODE && !(sib as Element).hasAttribute(MARK_ATTR)) {
+      last = sib as ChildNode;
     }
-    sib = sib.nextSibling;
+  }
+  return last;
+}
+
+/** True if nothing but whitespace, decorations or our own hosts follows `n`. */
+function isLastMeaningfulChild(n: Node, _parent: Element): boolean {
+  for (let sib = n.nextSibling; sib; sib = sib.nextSibling) {
+    if (!isTrailingDecoration(sib)) return false;
   }
   return true;
 }

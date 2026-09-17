@@ -164,6 +164,19 @@
   </dialog>
   </section>
 
+  <!-- 13b: a site overlay (comment sheet, lightbox, cookie wall) must COVER the chips
+       of the article behind it — a chip is part of its paragraph, not floating chrome.
+       Our own ball rides the TOP LAYER and stays usable above it. -->
+  <section id="overlaywrap">
+  <button id="openoverlay" type="button">Open site overlay</button>
+  <div id="siteoverlay" hidden style="position:fixed;inset:0;background:#fff;z-index:2147483000;padding:24px;box-shadow:0 0 40px rgba(0,0,0,.35)">
+    <p>SITEOVERLAY panel stands in for the comment sheet a site opens over its article, stacked with a
+       very high z-index of its own, and every badge that belongs to the page underneath has to stay
+       underneath it instead of floating across the panel the way an absolutely stacked overlay would.</p>
+    <button id="closeoverlay" type="button">Close overlay</button>
+  </div>
+  </section>
+
   <!-- 14: vertical writing mode (Japanese novel layout) — the chip must not wreck
        the column flow; the unit must still be collected. -->
   <section id="vertical">
@@ -193,6 +206,8 @@
         'page fell silent, so the observer must force a drain after a bounded wait instead.';
       document.getElementById('churn').appendChild(p);
     });
+    document.getElementById('openoverlay').addEventListener('click', () => document.getElementById('siteoverlay').hidden = false);
+    document.getElementById('closeoverlay').addEventListener('click', () => document.getElementById('siteoverlay').hidden = true);
     document.getElementById('openmodal').addEventListener('click', () => document.getElementById('modal').showModal());
     document.getElementById('closemodal').addEventListener('click', () => document.getElementById('modal').close());
   </script>

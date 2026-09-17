@@ -390,6 +390,42 @@ async function sweep(page, steps = 6) {
     record("ui", "FAB promoted to top layer (popover)", fabTop.open, JSON.stringify(fabTop));
   }
 
+  // A13b: a site overlay covers the chips behind it (a chip is part of its paragraph,
+  // never floating chrome), while our own ball keeps riding the top layer. Before the
+  // fix every chip on the page bled THROUGH such overlays — Zhihu's comment sheet showed
+  // the article's chips scattered across it.
+  {
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.locator("#openoverlay").scrollIntoViewIfNeeded();
+    const r = await page.evaluate((sel) => {
+      // Hit-test the centre of the on-screen part: an idle-tucked ball hangs half off
+      // the edge, and a raw centre would fall outside the viewport.
+      const centreHit = (el) => {
+        const b = el.getBoundingClientRect();
+        const x = (Math.max(b.left, 0) + Math.min(b.right, innerWidth - 1)) / 2;
+        const y = (Math.max(b.top, 0) + Math.min(b.bottom, innerHeight - 1)) / 2;
+        return document.elementFromPoint(x, y);
+      };
+      const inView = [...document.querySelectorAll(sel)].filter((h) => {
+        const r = h.getBoundingClientRect();
+        return r.width > 0 && r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth;
+      });
+      const before = inView.filter((h) => centreHit(h) === h).length;
+      document.getElementById("openoverlay").click();
+      const overlay = document.getElementById("siteoverlay");
+      // The panel's own children answer the hit-test where they sit, so "covered" means
+      // the overlay or anything inside it — anything but the chip.
+      const covered = inView.filter((h) => overlay.contains(centreHit(h))).length;
+      const fab = document.getElementById("anagram-fab");
+      const ball = fab?.shadowRoot?.querySelector(".fab");
+      const fabOnTop = ball ? centreHit(ball) === fab : null;
+      document.getElementById("closeoverlay").click();
+      return { chipsInView: inView.length, hitBefore: before, coveredByOverlay: covered, fabOnTop };
+    }, BADGE_SEL);
+    const ok = r.chipsInView > 0 && r.hitBefore === r.chipsInView && r.coveredByOverlay === r.chipsInView && r.fabOnTop === true;
+    record("ui", "a site overlay covers the chips behind it; the ball stays above (top layer)", ok, JSON.stringify(r));
+  }
+
   // A14: vertical writing mode — unit collected, chip present, column flow intact.
   {
     const r = await page.evaluate((sel) => {

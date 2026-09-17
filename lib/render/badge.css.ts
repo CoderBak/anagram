@@ -32,7 +32,14 @@ export const BADGE_CSS: string = `
   vertical-align: middle;
   margin-inline-start: 6px;
   line-height: normal;
-  z-index: 2147483646;
+  /* NO z-index on purpose. The chip is part of the paragraph's flow and must be
+     covered by whatever covers that paragraph — a comment modal, a lightbox, a
+     cookie wall. A huge z-index made every chip on the page bleed THROUGH such
+     overlays (Zhihu's comment sheet showed the article's chips floating over it).
+     contain:layout already makes the host its own stacking context, so it paints
+     as a z-index:0 positioned element: above its paragraph's own inline content,
+     below any overlay the site stacks on top. Our own chrome that DOES need to sit
+     above everything (the ball, the hover card) uses the top layer instead. */
   user-select: none;
   -webkit-user-select: none;
   contain: layout style;

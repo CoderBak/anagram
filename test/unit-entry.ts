@@ -23,3 +23,4 @@ export { isBoilerplate } from "../lib/dom/boilerplate";
 export { findMainContent, useReadability } from "../lib/dom/mainContent";
 export { detectDocsPage, readingViewUrl, editorUrl } from "../lib/docs";
 export { band, isFlagged, scorePct } from "../lib/render/band";
+export { createBadgeLayer } from "../lib/render/badge";
