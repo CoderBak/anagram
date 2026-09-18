@@ -1,7 +1,8 @@
 // entrypoints/background.ts — MV3 service worker.
 // Registers a SINGLE runtime.onMessage listener SYNCHRONOUSLY at top level (MV3 wakes the
 // worker by re-running this registration). It routes SCORE_BATCH → router.handle, answers
-// GET_BACKEND_STATUS (is the daemon up?), and mirrors the per-tab flagged count onto the
+// GET_BACKEND_STATUS (is the daemon up?) and GET_TOP_HOST (which page is this frame in?),
+// and mirrors the per-tab flagged count onto the
 // toolbar icon (UPDATE_BADGE). Popup control actions (RESCAN / SET_ENABLED / GET_TAB_STATE /
 // RETRY_BACKEND) are addressed straight to the active tab's content script via
 // tabs.sendMessage, so they do not pass through here.
@@ -12,6 +13,7 @@ import { ACTIONS } from "../lib/messaging/protocol";
 import type {
   ScoreBatchMessage,
   ScoreBatchReply,
+  TopHostReply,
   UpdateBadgeMessage,
 } from "../lib/messaging/protocol";
 
@@ -90,6 +92,21 @@ export default defineBackground(() => {
           void actionApi.setBadgeBackgroundColor({ tabId, color: "#dc2626" });
         }
         return;
+      }
+
+      // A subframe asking whose page it sits in. Site rules are keyed on the TOP
+      // hostname, which a cross-origin frame cannot read and a no-referrer embed cannot
+      // guess — but the sender carries the tab's own URL (<all_urls> host permission).
+      if (msg.action === ACTIONS.GET_TOP_HOST) {
+        let host = "";
+        try {
+          if (sender.tab?.url) host = new URL(sender.tab.url).hostname;
+        } catch {
+          /* about:blank and friends have no hostname — the frame keeps its fallbacks */
+        }
+        const reply: TopHostReply = { host };
+        sendResponse(reply);
+        return; // synchronous response
       }
 
       // Popup/options/content: is the daemon up (optionally a forced re-probe).

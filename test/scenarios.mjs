@@ -4,7 +4,8 @@
 // edge-aware hover card (top/right), RTL placement, font scaling, layout-shift
 // bound, shadow DOM + slot capture, overflow containers, copy hygiene,
 // badge-after-link isolation, per-anchor dark theme, duplicate fan-out — plus
-// keyboard-only access to the triage panel and its commands on /keyboard.html.
+// keyboard-only access to the triage panel and its commands on /keyboard.html,
+// and a cross-origin no-referrer subframe obeying the top page's site rule.
 //
 // Phase B (live, soft): real-site sweep with per-site expectations — HF paper
 // (the original bug), EN/AR/JA Wikipedia, MDN, paulgraham, arXiv, StackOverflow,
@@ -78,13 +79,27 @@ const KEYS_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><t
 <div style="height:900px"></div>
 ${KEY_TAGS.map((t, i) => `<p id="k${i + 1}">${KEY_PARA(t)}</p>\n<div style="height:700px"></div>`).join("\n")}
 </body></html>`;
-const server = await serveHtml({
+// Frame fixture: the embedded page is served from 127.0.0.1 while its host page is on
+// localhost — a different origin, so the frame cannot read window.top — and the embed
+// forbids the referrer, which used to leave the frame keyed on its OWN hostname and
+// therefore deaf to the rule written for the page it sits in.
+const FRAME_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>framed article</title></head><body style="margin:12px;font:15px/1.6 system-ui">
+<p id="fp">${PARA("FRAMED")}</p></body></html>`;
+const PAGES = {
   "/ui-fixtures.html": readFileSync(join(__dirname, "ui-fixtures.html"), "utf8"),
   "/rewrite.html": REWRITE_HTML,
   "/scope.html": SCOPE_HTML,
   "/stall.html": STALL_HTML,
   "/keyboard.html": KEYS_HTML,
-});
+  "/frame.html": FRAME_HTML,
+};
+const server = await serveHtml(PAGES);
+// The host page can only be written once the port is known; the server reads PAGES per
+// request, so adding it here is enough.
+PAGES["/frame-top.html"] = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>frame host</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+<p id="topp">${PARA("FRAMEHOST")}</p>
+<iframe id="embed" src="${server.base.replace("localhost", "127.0.0.1")}/frame.html" referrerpolicy="no-referrer" width="640" height="320" style="border:1px solid #ccc"></iframe>
+</body></html>`;
 const fixturesUrl = server.url("/ui-fixtures.html");
 
 const { context, sw } = await launchExtension({ backendUrl: daemon.url });
@@ -965,6 +980,54 @@ async function sweep(page, steps = 6) {
     await p.close();
   }
 
+  // A28: a cross-origin subframe follows the TOP page's site rule. It cannot read
+  // window.top, and the embed's no-referrer policy takes document.referrer away too, so
+  // without the worker's answer the frame keys the rule on its own hostname and keeps
+  // scoring a page the reader turned Anagram off on.
+  {
+    const extId = sw ? new URL(sw.url()).host : null;
+    const topUrl = server.url("/frame-top.html");
+    const chipsIn = async (page) => {
+      const frame = page.frames().find((f) => f.url().includes("/frame.html"));
+      return {
+        top: await page.evaluate((sel) => document.querySelectorAll(sel).length, BADGE_SEL),
+        frame: frame ? await frame.evaluate((sel) => document.querySelectorAll(sel).length, BADGE_SEL) : -1,
+        // The proof that the old chain is dead here: no referrer, and the frame's own
+        // host is 127.0.0.1, which the rule below never names.
+        referrer: frame ? await frame.evaluate(() => document.referrer) : null,
+      };
+    };
+    let r = { on: null, off: null };
+    if (extId) {
+      const opt = await context.newPage();
+      await opt.goto(`chrome-extension://${extId}/options.html`);
+
+      const open = await context.newPage();
+      await open.goto(topUrl, { waitUntil: "load" });
+      await open.waitForSelector(BADGE_SEL, { timeout: 15000 }).catch(() => {});
+      await open.frameLocator("#embed").locator(BADGE_SEL).first().waitFor({ timeout: 15000 }).catch(() => {});
+      r.on = await chipsIn(open);
+      await open.close();
+
+      await opt.evaluate(() => new Promise((res) => chrome.storage.local.set({ siteOverrides: { localhost: "off" } }, res)));
+      const ruled = await context.newPage();
+      await ruled.goto(topUrl, { waitUntil: "load" });
+      await ruled.waitForTimeout(4000); // long enough that a chip would have appeared
+      r.off = await chipsIn(ruled);
+      await ruled.close();
+
+      // Every later fixture is served from localhost too — the rule must not outlive this.
+      await opt.evaluate(() => new Promise((res) => chrome.storage.local.set({ siteOverrides: {} }, res)));
+      await opt.close();
+    }
+    record(
+      "ui",
+      "a no-referrer cross-origin subframe follows the top page's site rule",
+      !!r.on && r.on.top > 0 && r.on.frame > 0 && r.on.referrer === "" &&
+        !!r.off && r.off.top === 0 && r.off.frame === 0 && r.off.referrer === "",
+      JSON.stringify(r),
+    );
+  }
 }
 
 // =====================================================================================

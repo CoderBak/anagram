@@ -18,11 +18,43 @@ import {
 import { createDocsOverlay } from "../lib/docsOverlay";
 import { analyzeSelection } from "../lib/render/selectionCard";
 import { ACTIONS } from "../lib/messaging/protocol";
-import type { ControlMessage, TabState } from "../lib/messaging/protocol";
+import type { ControlMessage, TabState, TopHostReply } from "../lib/messaging/protocol";
 
 /** Min frame viewport for a subframe to be worth scanning (ad slots are smaller). */
 const MIN_FRAME_AREA = 40_000; // e.g. 400×100
 const MIN_FRAME_WIDTH = 200;
+/** How long a subframe waits for the worker's answer before falling back. A sleeping
+ *  MV3 worker normally wakes in tens of ms; nothing here is worth stalling a scan for. */
+const TOP_HOST_TIMEOUT_MS = 1000;
+
+/**
+ * Which page is this SUBFRAME embedded in? The same-origin shortcut comes first (no
+ * round trip at all), then the worker, which reads the tab's URL off the sender —
+ * the only source an `referrerpolicy="no-referrer"` embed cannot take away.
+ */
+async function resolveFrameHost(): Promise<string> {
+  try {
+    const h = window.top?.location.hostname; // same-origin frames only
+    if (h) return h;
+  } catch {
+    /* cross-origin */
+  }
+  try {
+    const reply = (await Promise.race([
+      browser.runtime.sendMessage({ action: ACTIONS.GET_TOP_HOST }),
+      new Promise<undefined>((r) => setTimeout(() => r(undefined), TOP_HOST_TIMEOUT_MS)),
+    ])) as TopHostReply | undefined;
+    if (reply?.host) return reply.host;
+  } catch {
+    /* worker asleep mid-restart, or the extension context is gone */
+  }
+  try {
+    if (document.referrer) return new URL(document.referrer).hostname;
+  } catch {
+    /* unparsable referrer */
+  }
+  return location.hostname;
+}
 
 export default defineContentScript({
   matches: ["<all_urls>"],
@@ -38,24 +70,12 @@ export default defineContentScript({
       lockScope: docs?.kind === "editor" ? "page" : undefined,
     });
 
-    // Site rules are keyed on the TOP page's hostname — that is what the popup
-    // writes. Cross-origin frames cannot read it; the referrer (the embedding
-    // page) is the honest fallback, then the frame's own host.
-    const effectiveHost = ((): string => {
-      if (isTop) return location.hostname;
-      try {
-        const h = window.top?.location.hostname; // same-origin frames only
-        if (h) return h;
-      } catch {
-        /* cross-origin */
-      }
-      try {
-        if (document.referrer) return new URL(document.referrer).hostname;
-      } catch {
-        /* unparsable referrer */
-      }
-      return location.hostname;
-    })();
+    // Site rules are keyed on the TOP page's hostname — that is what the popup writes.
+    // The top frame knows it outright; a cross-origin frame has to ask the worker, which
+    // sees the tab's URL on the sender. Only if the worker says nothing does the old
+    // chain apply: the referrer (empty under a no-referrer policy, which is exactly the
+    // case that used to let an embed ignore its host page's rule), then the frame itself.
+    const effectiveHost = isTop ? location.hostname : await resolveFrameHost();
 
     let enabled = await enabledForSite(effectiveHost);
 

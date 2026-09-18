@@ -21,6 +21,15 @@ Notable changes to Anagram, newest first. The format follows
   <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>K</kbd> walk to the next and previous
   flagged paragraph, wrapping around.
 
+### Fixed
+
+- An embedded frame follows the site rule of the page it sits in. A frame that
+  could read neither the top page nor a referrer — an embed with
+  `referrerpolicy="no-referrer"`, or any site sending `Referrer-Policy:
+  no-referrer` — used to fall back to its own hostname and keep scoring on a
+  site Anagram was turned off on. It now asks the extension's worker, which
+  knows the tab's page.
+
 ## [0.3.2] — 2026-09-18
 
 ### Fixed

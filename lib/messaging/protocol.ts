@@ -17,6 +17,8 @@ export const ACTIONS = {
   NEXT_FLAGGED: "nextFlagged",
   /** SW (keyboard command) → content (top frame): go to the previous flagged paragraph. */
   PREV_FLAGGED: "prevFlagged",
+  /** content (subframe) → SW: the hostname of the TAB's top-level page. */
+  GET_TOP_HOST: "getTopHost",
   /** SW (context menu) → content: score the current selection, show a card. */
   ANALYZE_SELECTION: "analyzeSelection",
   /** popup/options/content → SW: is the daemon up (optionally force a fresh probe). */
@@ -131,6 +133,20 @@ export interface PrevFlaggedMessage {
   action: typeof ACTIONS.PREV_FLAGGED;
 }
 
+/**
+ * content (subframe) → SW: which hostname does this tab's top-level page have? A
+ * cross-origin frame cannot read it, and `document.referrer` is empty under a
+ * no-referrer policy — but the worker sees the tab's URL on the sender.
+ */
+export interface GetTopHostMessage {
+  action: typeof ACTIONS.GET_TOP_HOST;
+}
+
+/** SW → content (response to GET_TOP_HOST). `host` is "" when the worker cannot tell. */
+export interface TopHostReply {
+  host: string;
+}
+
 /** SW → content (specific frame): analyze the live selection. */
 export interface AnalyzeSelectionMessage {
   action: typeof ACTIONS.ANALYZE_SELECTION;
@@ -155,4 +171,8 @@ export type ControlMessage =
   | RetryBackendMessage;
 
 /** Union of all messages the service worker may receive. */
-export type BackgroundMessage = ScoreBatchMessage | UpdateBadgeMessage | GetBackendStatusMessage;
+export type BackgroundMessage =
+  | ScoreBatchMessage
+  | UpdateBadgeMessage
+  | GetBackendStatusMessage
+  | GetTopHostMessage;
