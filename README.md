@@ -369,6 +369,18 @@ with the real daemon and reports, per page, chips by verdict, chips in page
 chrome, paragraphs cut into several units, long paragraphs with no chip and stuck
 chips, with a screenshot each — the magnifying glass that found the accordion,
 page-number, author-list, prefetch and self-rewriting-page defects.
+`node test/coverage.mjs --label before` asks the layer below that — the segmenter
+alone, no extension and no daemon — the same question over the ~120 real pages of
+`test/coverage.urls.json` (news, blogs, papers, docs, wikis, forums, social,
+shops, video, long documents, AI surfaces, mail archives, EN and ZH): per page it
+reports reachability (a login wall, a bot check or a timeout is a result), words
+judged against words of visible prose, **silent** containers that hold 50 words
+and produce no unit — each with a structural reason obtained by re-running the
+walker's own predicates in the page (which ancestry test, which boilerplate class
+token, link-dense, name-list, a `role="heading"` wrapper, a "show more" clamp) —
+posts cut into several units, units spanning two voices, units in page chrome,
+and the cost of `collectUnits`. `--diff before.json after.json` says what a
+change to the grouping rules moved; reports go to the artifacts folder.
 `npm run browser` opens a live Chromium with the extension for manual poking;
 `npm run play` opens a multi-tab playground; `node test/shots.mjs` regenerates
 the README screenshots; `node test/genicons.mjs` regenerates the icon set.
