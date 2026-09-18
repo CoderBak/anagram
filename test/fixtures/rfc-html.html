@@ -1,0 +1,107 @@
+<!doctype html>
+<!--
+  An RFC published as HTML, synthetic text.
+
+  Verified against the live DOM (rfc-editor.org/rfc/rfc2616.html, 2026-09): the document
+  is 176 <pre> blocks, one per printed page, each opening with a `<span class="grey">`
+  running head in column layout and holding the body as wrapped, blank-line-separated
+  paragraphs; the front page is a two-column header and the table of contents is a list
+  of dotted leaders. Every <pre> used to be excluded outright, so 59 963 words produced no
+  unit — while the same RFC served as text/plain was read in full. A <pre> is now read
+  when nothing says "code" and the text itself reads as prose (lib/dom/walker.ts); the
+  running heads and the table of contents stay out through the column-gap barrier and the
+  shape test respectively.
+
+  Annotation: see x-timeline.html.
+-->
+<html><head><meta charset="utf-8"><title>Fixture: RFC as HTML</title>
+<style>
+  body { font: 13px/1.2 monospace; max-width: 900px; margin: 0 auto; }
+  pre { margin: 0; }
+  .grey { color: #777; }
+</style></head>
+<body>
+
+<!-- front page: two columns of author/date metadata, then the title -->
+<pre data-voice="rfc" data-expect="none">
+Network Working Group                                        A. Sandoval
+Request for Comments: 9999                                  Example Labs
+Category: Standards Track                                      M. Ferrer
+                                                        Example Networks
+                                                              June 2026
+
+
+                  A Protocol for Exchanging Short Notes
+
+Status of This Memo
+
+   This memo defines a protocol.
+</pre>
+
+<!-- table of contents: dotted leaders, two or three words per line — not prose -->
+<pre data-voice="rfc" data-expect="none">
+<span class="grey" data-chrome><a href="#toc">RFC 9999</a>                       Short Notes                      June 2026</span>
+
+
+Table of Contents
+
+   1   Introduction ...................................................3
+   1.1    Purpose......................................................3
+   1.2    Terminology .................................................4
+   2   Notes ..........................................................5
+   2.1    Sending .....................................................6
+   2.2    Receiving ...................................................7
+   3   Security Considerations ........................................9
+</pre>
+
+<!-- a body page: the running head is a barrier, the paragraphs are read -->
+<pre data-voice="rfc" data-expect="unit">
+<span class="grey" data-chrome><a href="#p3">RFC 9999</a>                       Short Notes                      June 2026</span>
+
+
+   A note is a message that one participant leaves for another without
+   expecting an answer. Because no answer is expected, a sender cannot
+   learn from the protocol whether a note was read, and an implementation
+   that reports otherwise is reporting something it has invented rather
+   than something it has observed. Senders that need an answer are
+   expected to ask for one in the note itself, in whatever words their
+   application uses for the purpose.
+
+   Implementations are expected to keep a note until the recipient has
+   asked for it or until the sender withdraws it, whichever happens
+   first. A note that has been withdrawn is not an error, and a recipient
+   that asks for a withdrawn note is told only that there is nothing to
+   deliver, because telling it more would leak the fact that a note once
+   existed.
+</pre>
+
+<!-- another body page -->
+<pre data-voice="rfc" data-expect="unit">
+<span class="grey" data-chrome><a href="#p4">RFC 9999</a>                       Short Notes                      June 2026</span>
+
+
+   The ordering of notes between two participants is the order in which
+   the sender released them, and no implementation is required to preserve
+   any relationship between notes sent by different participants. Where an
+   ordering is observed by a recipient, it is a property of that
+   implementation and not of this protocol, and depending on it makes a
+   program that works in one deployment and fails quietly in the next.
+</pre>
+
+<!-- a grammar block: punctuation-dense, never read -->
+<pre data-voice="rfc" data-expect="none">
+   note-message  = note-line *( note-line ) [ trailer ]
+   note-line     = 1*( %x20-7E ) CRLF
+   trailer       = "." CRLF
+   sender-id     = ALPHA *( ALPHA / DIGIT / "-" / "_" )
+   note-id       = 16( HEXDIG )
+</pre>
+
+<!-- an example with <code> in it: markup says code, so it stays excluded -->
+<pre data-voice="rfc" data-expect="none"><code>   The following exchange shows a note being sent and acknowledged by a
+   server that has decided to keep it for the recipient to collect later.
+   NOTE sender-id=alice note-id=0123456789abcdef
+   200 stored, and the recipient will be told about it when next asked.</code>
+</pre>
+
+</body></html>

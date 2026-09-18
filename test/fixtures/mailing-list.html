@@ -1,0 +1,80 @@
+<!doctype html>
+<!--
+  A mailing-list message, synthetic text.
+
+  Verified against the live DOM (lists.debian.org/…/msg00003.html and lore.kernel.org
+  thread views, 2026-09): the headers are a <ul> of links, the message itself is one
+  <pre> — bare text on lists.debian.org, quoted blocks wrapped in `<span class="q">` on
+  lore — and a patch comes as a <pre> of its own. Every <pre> used to be excluded, so a
+  whole archive read as nothing.
+
+  Two things are being checked here: the reply is read, and the lines the author QUOTES
+  are somebody else's words — a change of quote depth ends the group, whether the marker
+  sits inside a text node (the first message) or in a span of its own (the second).
+
+  Annotation: see x-timeline.html.
+-->
+<html><head><meta charset="utf-8"><title>Fixture: mailing-list message</title>
+<style>
+  body { font: 13px/1.3 monospace; max-width: 860px; margin: 0 auto; }
+  pre { margin: 12px 0; }
+  .q { color: #666; }
+  ul.headers { list-style: none; padding: 0; font: 12px monospace; }
+</style></head>
+<body>
+
+<ul class="headers" data-chrome>
+  <li>To: <a href="#list">debian-devel@example.org</a></li>
+  <li>Subject: Re: copyright years in d/copyright</li>
+  <li>From: Bob Nowak &lt;<a href="#bob">bob@example.org</a>&gt;</li>
+  <li>Date: Tue, 16 Sep 2026 11:02:14 +0200</li>
+</ul>
+
+<!-- lists.debian.org: one bare text node, quote markers inside it -->
+<pre data-voice="bob" data-expect="unit">Alice Moreau [16/Sep 9:43am -07] wrote:
+&gt; Right, so a package that has been maintained by four people over
+&gt; eleven years ends up with a list of years that nobody can check
+&gt; against anything, and the only honest answer is the range that the
+&gt; version control history gives us.
+
+I agree that the history is the better record, but it is not the record
+the licence asks for, and the two of them disagree in exactly the cases
+where somebody is likely to look: a file imported from another project,
+a patch applied on behalf of somebody who never had commit access, and
+the year a package sat unchanged while its maintainer was away. What I
+would rather have is a tool that writes the range from the history and
+says so in a comment, so that the next person knows where the numbers
+came from and can disagree with them in one place.
+
+--
+Bob Nowak
+</pre>
+
+<!-- lore.kernel.org: the quoted block is a span of its own -->
+<pre data-voice="dana" data-expect="unit">On Tue, Sep 16, 2026 at 09:12AM, Carol Iyer wrote:
+<span class="q" data-expect="none">&gt; The description in the binding says the controller is optional, which
+&gt; contradicts the example two paragraphs further down, where it is
+&gt; required for every board that has the second power rail.</span>
+
+That contradiction is mine, and it comes from the board I had on my desk
+when I wrote the first draft, which is the only one in the family that
+can run without the rail. The others cannot, and the example is right
+about them. I will make the description say that the controller is
+required unless the second rail is absent, which is the shape the other
+bindings in this directory use, and which at least has the virtue of
+being checkable by a program rather than by a reader.
+</pre>
+
+<!-- the patch itself: machine text, never read -->
+<pre data-voice="dana" data-expect="none">--- a/doc/bindings/example-controller.txt
++++ b/doc/bindings/example-controller.txt
+@@ -12,7 +12,9 @@ Required properties:
+-  - control-gpios: optional, see the example below
++  - control-gpios: required unless the second supply is absent; the
++    example below shows the only board in the family that omits it
+
+ Optional properties:
+   - label: a human readable name for the controller
+</pre>
+
+</body></html>

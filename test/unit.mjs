@@ -1116,6 +1116,10 @@ const results = await page.evaluate(() => {
   // marked notranslate, a box that clips its own text, and prose typeset in <pre>. Every
   // check below fails on the walker as it was before these rules.
   {
+    // A line of ten filler words ending in a full stop — `preProse(6)` is six such lines,
+    // i.e. prose shaped like an RFC page: ten words to the line, a sentence per line.
+    const preProse = (n) => Array.from({ length: n }, () => words(10)).join("\n");
+
     // 1 · a heading is a barrier only while it is a LABEL ------------------------------------
     u = collect(`<div role="heading" aria-level="3"><p>${sent(30)}</p><p>${sent(30)}</p></div>`);
     check("a div[role=heading] holding paragraphs is a container, not a heading: its text is read (lobste.rs comment bodies)",
@@ -1218,6 +1222,72 @@ const results = await page.evaluate(() => {
       check("a re-scan rooted inside a clipped box yields nothing", inside.length === 0, JSON.stringify(inside.length));
     }
 
+    // 4 · prose typeset in <pre> -----------------------------------------------------------------
+    u = collect(`<pre>${preProse(6)}</pre>`);
+    check("a <pre> of wrapped PROSE is read (RFCs as HTML, man pages, mailing-list archives)",
+      u.length === 1 && u[0].words >= 50, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+    u = collect(`<pre><code>${preProse(6)}</code></pre>`);
+    check("…but markup that says code keeps it out, whatever the text reads like", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+    u = collect(`<div class="highlight-python notranslate"><div class="highlight"><pre>${preProse(6)}</pre></div></div>`);
+    check("…and so does a highlighter's wrapper (Sphinx, Pygments, Prism)", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+    {
+      const code = {
+        python: "def parse(path):\n    with open(path) as fh:\n        data = json.load(fh)\n    result = {}\n    for key, value in data.items():\n        if key.startswith(\"_\"):\n            continue\n        result[key] = normalise(value)\n    return result",
+        javascript: "export function createStore(reducer, state) {\n  const listeners = new Set();\n  return {\n    getState() { return state; },\n    dispatch(action) { state = reducer(state, action); return action; },\n    subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },\n  };\n}",
+        c: "static int probe(struct device *dev)\n{\n\tstruct ctx *c;\n\tint ret;\n\n\tc = alloc(sizeof(*c));\n\tif (!c)\n\t\treturn -ENOMEM;\n\tret = request_irq(dev, irq, handler, 0, \"name\", c);\n\treturn ret < 0 ? ret : 0;\n}",
+        json: '{\n  "name": "example",\n  "version": "1.2.3",\n  "scripts": { "build": "make", "test": "make check" },\n  "keywords": ["one", "two", "three"],\n  "private": true\n}',
+        yaml: "version: 2\njobs:\n  build:\n    docker:\n      - image: node:22\n    steps:\n      - checkout\n      - run: npm ci\n      - run: npm test\nworkflows:\n  main:\n    jobs: [build]",
+        shell: "$ git clone https://example.org/repo.git\nCloning into 'repo'...\nremote: Enumerating objects: 4122, done.\n$ cd repo && npm ci\nadded 431 packages in 12s\n$ npm test\n  120 passing (3s)\n$ echo $?\n0",
+        sql: "SELECT u.id, u.name, count(o.id) AS orders\n  FROM users u\n  LEFT JOIN orders o ON o.user_id = u.id\n WHERE u.status <> 'deleted'\n GROUP BY u.id, u.name\n HAVING count(o.id) > 3\n ORDER BY orders DESC\n LIMIT 50;",
+        diff: "--- a/one/two.txt\n+++ b/one/two.txt\n@@ -12,7 +12,9 @@ Required properties:\n-  - control: optional, see below\n+  - control: required unless the second supply is absent\n+    as the example below shows\n \n Optional properties:\n   - label: a readable name",
+        "stack trace": 'Traceback (most recent call last):\n  File "/usr/lib/python3.12/runpy.py", line 198, in _run_module\n    return _run_code(code, main_globals, None,\n  File "/srv/app/main.py", line 42, in <module>\n    app.run(host="0.0.0.0", port=8000)\nRuntimeError: address already in use',
+        log: "2026-09-18T09:14:02.113Z INFO  [worker-3] GET /api/units 200 12ms\n2026-09-18T09:14:02.884Z WARN  [worker-1] cache miss key=u_3f\n2026-09-18T09:14:03.002Z ERROR [worker-7] daemon timeout after 20000ms\n2026-09-18T09:14:03.551Z INFO  [worker-3] POST /score 200 233ms batch=8",
+        "ASCII table": "+---------+--------+---------+\n| profile | chips  | ms      |\n+---------+--------+---------+\n| phone   |     12 |     840 |\n| laptop  |     12 |     610 |\n+---------+--------+---------+",
+        "table of contents": "Table of Contents\n\n   1   Introduction ..................................3\n   1.1    Purpose....................................3\n   1.2    Terminology ...............................4\n   2   Notes ........................................5\n   3   Security Considerations ......................9",
+      };
+      const scored = Object.entries(code).filter(([, text]) => collect(`<pre>${text.replace(/</g, "&lt;")}</pre>`).length > 0);
+      check("code and near-code in a <pre> stay out: Python, JavaScript, C, JSON, YAML, a shell session, SQL, a diff, a stack trace, log output, an ASCII table, a table of contents",
+        scored.length === 0, scored.map(([k]) => k).join(", "));
+
+      const licence = "Permission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files, to deal in the Software\nwithout restriction, including without limitation the rights to use, copy,\nmodify, merge, publish, distribute, sublicense, and to permit persons to whom\nthe Software is furnished to do so, subject to the following conditions.\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.";
+      u = collect(`<pre>${licence}</pre>`);
+      check("a licence header IS prose — English sentences, written by a person — and is read", u.length === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+      const poem = "the quiet town keeps walking through the rain\nand children read their books near warm windows\nwhile rooftops hold the evening over us\nthe lazy dog has given up the garden\nand nothing in the house is moving now\nthe long quiet evenings fall on every roof";
+      u = collect(`<pre>${poem}</pre>`);
+      check("…while lines that never punctuate like sentences (a poem) stay excluded, as anything unclear does", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+    }
+
+    {
+      // A mailing-list message: the reply is the author's, the "> " lines are not.
+      const quoted = "> QUOTED the committee met on thursday to consider the revised plan\n> QUOTED and several members asked for the deadline to be moved again";
+      sandbox.innerHTML = `<pre>Alice Moreau wrote:\n${quoted}\n\n${preProse(6)}</pre>`;
+      let got = PW.collectUnits(sandbox);
+      check("an e-mail quotation never merges with the reply under it",
+        got.length === 1 && !got[0].text.includes("QUOTED"), JSON.stringify(got.map(x => [x.parts.length, x.wordCount, x.text.slice(0, 20)])));
+
+      // lore.kernel.org wraps each quoted block in a span: the boundary is between nodes.
+      sandbox.innerHTML = `<pre>Alice Moreau wrote:\n<span class="q">${quoted}</span>\n${preProse(6)}</pre>`;
+      got = PW.collectUnits(sandbox);
+      check("…including where the quote sits in a <span> of its own (lore.kernel.org)",
+        got.length === 1 && !got[0].text.includes("QUOTED"), JSON.stringify(got.map(x => [x.parts.length, x.wordCount, x.text.slice(0, 20)])));
+    }
+
+    u = collect(`<pre>RFC 9999                       Short Notes                      June 2026\n\n${preProse(6)}</pre>`);
+    check("a running head in column layout inside an accepted <pre> is still a barrier, never part of the text",
+      u.length === 1 && !u[0].text.includes("Short Notes"), JSON.stringify(u.map(x => [x.parts, x.text.slice(0, 20)])));
+
+    {
+      // An incremental re-scan rooted inside a <pre> follows the same rule as the walk.
+      sandbox.innerHTML = `<pre><span id="in-prose">${preProse(6)}</span></pre>`;
+      const inProse = PW.collectUnits(sandbox.querySelector("#in-prose")).length;
+      sandbox.innerHTML = `<pre><code><span id="in-code">${preProse(6)}</span></code></pre>`;
+      const inCode = PW.collectUnits(sandbox.querySelector("#in-code")).length;
+      check("a re-scan inside a <pre>: prose is read, code is not", inProse === 1 && inCode === 0, `${inProse} / ${inCode}`);
+    }
   }
 
   // ---- canonical scoring text ------------------------------------------------------------
@@ -1313,10 +1383,12 @@ const EXPECTED = {
   "listicle": [1, 1],
   "listicle-divsoup": [2, 1],
   "lobsters-comment": [3, 1],
+  "mailing-list": [2, 0],
   "mastodon-shell": [2, 1],
   "news-article": [1, 1],
   "recipe-faq": [5, 4],
   "reddit-thread": [3, 2],
+  "rfc-html": [3, 0],
   "substack-article": [16, 13],
   "substack-note": [1, 0],
   "wordpress-comments": [2, 2],

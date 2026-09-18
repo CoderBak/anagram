@@ -199,13 +199,30 @@ export function collectUnits(
   let curContainer: Element | null = null;
   let curPreserved = false;
   let curFormulas = 0;
+  /** Quote depth the last processed run spoke in (e-mail quotations, see processRun). */
+  let quoteLevel = 0;
+  /** Quote depth the OPEN run speaks in; -1 until it has its first node. */
+  let curQuote = -1;
 
   function pushNode(tn: Text, ctx: Ctx): void {
     if (cur.length === 0) {
       curContainer = ctx.container;
       curPreserved = ctx.preserves;
+      curQuote = ctx.preserves ? runQuoteDepth(tn.textContent ?? "") : 0;
     }
     cur.push(tn);
+  }
+
+  /** Does the text accumulated so far end a line, so that the next node opens one?
+   *  lore.kernel.org wraps every quoted block in a `<span class="q">` of its own, which
+   *  puts the quote boundary BETWEEN two text nodes rather than inside one. */
+  function atLineStart(): boolean {
+    for (let i = cur.length - 1; i >= 0; i--) {
+      const s = cur[i].textContent ?? "";
+      if (s.length === 0) continue;
+      return /\n[ \t]*$/.test(s);
+    }
+    return true;
   }
 
   function closeRun(): void {
@@ -218,6 +235,7 @@ export function collectUnits(
       cur = [];
       curContainer = null;
       curPreserved = false;
+      curQuote = -1;
       return;
     }
     const nodes = cur;
@@ -226,6 +244,7 @@ export function collectUnits(
     cur = [];
     curContainer = null;
     curPreserved = false;
+    curQuote = -1;
     processRun(nodes, container, preserved, formulas);
   }
 
@@ -256,7 +275,16 @@ export function collectUnits(
       return;
     }
     const run = read(found, false);
-    if (run) asm.run(run);
+    if (!run) return;
+    // A change of e-mail quote depth is a change of voice: the reply of a
+    // lists.debian.org message never merges with the lines it quotes, nor those with
+    // the quotation nested inside them.
+    const depth = run.preserved ? runQuoteDepth(run.raw) : 0;
+    if (depth !== quoteLevel) {
+      quoteLevel = depth;
+      asm.barrier(run.container);
+    }
+    asm.run(run);
   }
 
   // ---- traversal ---------------------------------------------------------------------
@@ -318,7 +346,9 @@ export function collectUnits(
     const excluded =
       boiler ||
       NO_SCORE_TAGS.has(tag) ||
-      (tag === "PRE" && !plainTextDoc) || // Chrome's text viewer wraps .txt in body>pre
+      // Chrome's text viewer wraps .txt in body>pre. A <pre> of PROSE — an RFC or a man
+      // page published as HTML, a mailing-list message — is read like any other block.
+      (tag === "PRE" && !plainTextDoc && !isProsePre(el)) ||
       isNoTranslate(el) ||
       (el as HTMLElement).isContentEditable ||
       el.getAttribute("aria-hidden") === "true" ||
@@ -378,7 +408,15 @@ export function collectUnits(
   function visitText(tn: Text, ctx: Ctx): void {
     if (ctx.hidden) return;
     const s = tn.textContent ?? "";
-    if (ctx.preserves && PARA_GAP_RE.test(s)) {
+    if (ctx.preserves && s.trim() !== "" && curQuote >= 0 && (curQuote > 0 || s.indexOf(">") >= 0)) {
+      // The quotation ends (or begins) at a node boundary rather than inside a node:
+      // lore.kernel.org puts every quoted block in a `<span class="q">` of its own. The
+      // boundary is a line start on either side of the seam — the span ends its line, or
+      // the text after it opens one.
+      const opensLine = /^[ \t]*\n/.test(s) || atLineStart();
+      if (opensLine && runQuoteDepth(s) !== curQuote) closeRun();
+    }
+    if (ctx.preserves && (PARA_GAP_RE.test(s) || nextQuoteBoundary(s) > 0)) {
       splitPreservedText(tn, ctx);
       return;
     }
@@ -394,15 +432,26 @@ export function collectUnits(
   }
 
   /**
-   * Preserved-whitespace text (plain-text docs, pre-wrap chat transcripts): blank
-   * lines are paragraph gaps. The node is split ONCE at each gap (idempotent — the
-   * resulting chunk nodes contain no further gaps) so parts stay whole-node spans.
+   * Preserved-whitespace text (plain-text docs, pre-wrap chat transcripts, a
+   * mailing-list message): blank lines are paragraph gaps, and so is the line where an
+   * e-mail quotation starts or ends — a reply written under the quoted lines with no
+   * blank line between them is still two voices. The node is split ONCE at each break
+   * (idempotent — the resulting chunk nodes contain no further breaks) so parts stay
+   * whole-node spans.
    */
   function splitPreservedText(tn: Text, ctx: Ctx): void {
     let node: Text = tn;
     for (;;) {
       const s = node.textContent ?? "";
       const m = PARA_GAP_RE.exec(s);
+      const quoteAt = nextQuoteBoundary(s);
+      if (quoteAt > 0 && (m === null || quoteAt < m.index)) {
+        const rest = node.splitText(quoteAt); // the boundary is a line start: never 0
+        if ((node.textContent ?? "").trim()) pushNode(node, ctx);
+        closeRun();
+        node = rest;
+        continue;
+      }
       if (!m) {
         if (s.trim()) pushNode(node, ctx);
         return;
@@ -465,7 +514,7 @@ function isExcludedByAncestry(start: Element): boolean {
   while (el) {
     const tag = tagOf(el);
     if (NO_SCORE_TAGS.has(tag)) return true;
-    if (tag === "PRE" && !plainTextDoc) return true;
+    if (tag === "PRE" && !plainTextDoc && !isProsePre(el)) return true;
     if (el.hasAttribute(MARK_ATTR)) return true;
     if (isNoTranslate(el)) return true;
     if ((el as HTMLElement).isContentEditable) return true;
@@ -478,6 +527,188 @@ function isExcludedByAncestry(start: Element): boolean {
     el = el.parentElement ?? ((el.getRootNode() as ShadowRoot).host ?? null);
   }
   return false;
+}
+
+// ---- <pre>: machine text, or prose that happens to be typeset? -----------------------
+
+/** How much of a <pre> is sampled for the shape tests. Twenty-five lines settle it,
+ *  and an RFC published as HTML has 176 of these blocks in one document. */
+const PRE_SAMPLE_CHARS = 2000;
+/** Below this there is nothing to score anyway, and a short <pre> is nearly always a
+ *  command line or a snippet. */
+const PRE_MIN_WORDS = 20;
+const PRE_MIN_LINES = 3;
+/** Code lines are short (a statement, a key, a flag); wrapped prose fills its column. */
+const PRE_MIN_WORDS_PER_LINE = 4;
+/** Share of non-space characters that may be code punctuation — `(){}[];=<>`. Prose in
+ *  an RFC stays under 0.03 even where it quotes header syntax; Python sits at 0.10,
+ *  C and JavaScript above that, a unified diff at 0.12. */
+const PRE_MAX_CODE_PUNCT = 0.03;
+/** Share of words that begin in lower case (or in a script without case): running text.
+ *  JSON, SQL, logs and a table of contents are far below it. */
+const PRE_MIN_LOWER_SHARE = 0.5;
+/** Sentence ends per hundred words. Code, configuration and log lines have none. */
+const PRE_MIN_SENTENCE_ENDS = 1.5;
+
+const CODE_PUNCT_CHARS = new Set(["(", ")", "{", "}", "[", "]", ";", "=", "<", ">"]);
+
+/** Markup that means "this is code", on the <pre> itself or just above it: the
+ *  `<pre><code>` idiom, and the class tokens every highlighter and docs generator
+ *  leaves behind (highlight.js, Pygments/Sphinx, Chroma, prettify, Prism's
+ *  `language-*`, GitHub's `data-lang`). */
+const CODE_MARKUP_SELECTOR = "code,samp,kbd,var";
+const CODE_CLASS_RE =
+  /(?:^|[\s_-])(?:code|codeblock|codehilite|highlight|highlighter|hljs|chroma|prettyprint|prettyprinted|linenums|sourcecode|syntax|snippet|terminal|console|repl|crayon|gist|diff|patch|listing|language-[\w+#.-]+|lang-[\w+#.-]+|brush:[\w+#.-]+)(?:[\s_-]|$)/i;
+/** How far above the <pre> the wrapper of a highlighter sits (Sphinx: `<div
+ *  class="highlight-python"><div class="highlight"><pre>`). */
+const CODE_WRAPPER_LEVELS = 3;
+
+function hasCodeMarkup(el: Element): boolean {
+  if (el.querySelector(CODE_MARKUP_SELECTOR) !== null) return true;
+  let cur: Element | null = el;
+  for (let up = 0; cur && up < CODE_WRAPPER_LEVELS; up++, cur = cur.parentElement) {
+    if (up > 0 && tagOf(cur) === "CODE") return true;
+    if (cur.hasAttribute("data-lang") || cur.hasAttribute("data-language")) return true;
+    const hay = `${(cur as HTMLElement).id ?? ""} ${cur.getAttribute("class") ?? ""}`;
+    if (hay.trim() !== "" && CODE_CLASS_RE.test(hay)) return true;
+  }
+  return false;
+}
+
+/**
+ * Does this text READ as prose? One pass over the sample counts lines, words, words
+ * that begin in lower case, code punctuation and sentence ends — no allocation, because
+ * a document may hold 176 of these blocks. Every threshold has to be cleared, so
+ * anything ambiguous stays excluded, exactly as before.
+ */
+function readsAsProse(raw: string): boolean {
+  const t = raw.length > PRE_SAMPLE_CHARS ? raw.slice(0, PRE_SAMPLE_CHARS) : raw;
+  let lines = 0;
+  let words = 0;
+  let lowerWords = 0;
+  let punct = 0;
+  let nonSpace = 0;
+  let sentences = 0;
+  let lineHasText = false;
+  let inWord = false;
+  let wordHasLetter = false;
+  let wordStartsLower = false;
+  const endWord = (): void => {
+    if (inWord && wordHasLetter) {
+      words++;
+      if (wordStartsLower) lowerWords++;
+    }
+    inWord = false;
+    wordHasLetter = false;
+    wordStartsLower = false;
+  };
+  for (let i = 0; i < t.length; i++) {
+    const code = t.charCodeAt(i);
+    if (code === 10 /* \n */) {
+      endWord();
+      if (lineHasText) lines++;
+      lineHasText = false;
+      continue;
+    }
+    if (code === 32 || code === 9 || code === 13) {
+      endWord();
+      continue;
+    }
+    nonSpace++;
+    lineHasText = true;
+    const ch = t[i];
+    if (CODE_PUNCT_CHARS.has(ch)) punct++;
+    if (code === 46 /* . */ || code === 33 /* ! */ || code === 63 /* ? */) {
+      // A full stop ends a sentence only where a space or the end of the text follows
+      // it, so "1.1" and "ls.1" do not count.
+      const next = i + 1 < t.length ? t.charCodeAt(i + 1) : 32;
+      if (next === 32 || next === 9 || next === 10 || next === 13) sentences++;
+    }
+    // Letters: ASCII plus everything above it (accented Latin, Cyrillic, CJK). A script
+    // without case counts as lower case — its prose is running text too.
+    const letter = (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || code > 127;
+    if (!inWord) {
+      inWord = true;
+      wordStartsLower = (code >= 97 && code <= 122) || code > 127;
+    }
+    if (letter) wordHasLetter = true;
+  }
+  endWord();
+  if (lineHasText) lines++;
+  if (words < PRE_MIN_WORDS || lines < PRE_MIN_LINES) return false;
+  if (words / lines < PRE_MIN_WORDS_PER_LINE) return false;
+  if (punct / Math.max(1, nonSpace) > PRE_MAX_CODE_PUNCT) return false;
+  if (lowerWords / words < PRE_MIN_LOWER_SHARE) return false;
+  return (sentences / words) * 100 >= PRE_MIN_SENTENCE_ENDS;
+}
+
+/**
+ * Whole classes of document are prose typeset in a `<pre>`: RFCs published as HTML
+ * (RFC 2616 has 176 of them, 59 963 words, and produced nothing — while the same RFC
+ * served as text/plain was read), the messages of lore.kernel.org and lists.debian.org,
+ * man pages on man7.org. Excluding every `<pre>` lost all of it.
+ *
+ * The test is deliberately one-sided: a `<pre>` is prose only when nothing around it
+ * says "code" (no `<code>`/`<samp>`/`<kbd>` inside or above it, no highlighter or
+ * `language-*` class on it or its wrapper) AND the text itself reads as prose. When
+ * anything is unclear it stays excluded, exactly as it was. What gets in is walked as
+ * preserved-whitespace text, so blank lines are paragraph gaps and the existing
+ * column-gap and symbol-noise barriers still keep tables of contents, ASCII tables,
+ * headers and diffs out of the units.
+ */
+function isProsePre(el: Element): boolean {
+  if (hasCodeMarkup(el)) return false;
+  return readsAsProse(el.textContent ?? "");
+}
+
+// ---- e-mail quotations ---------------------------------------------------------------
+
+/**
+ * Quote depth of a line: "> " once, ">> " twice. In a mailing-list message the quoted
+ * lines are somebody ELSE's words and the reply around them is the author's, so the two
+ * never belong to one unit — the same boundary a <blockquote> draws in HTML.
+ */
+function quoteDepth(line: string): number {
+  let depth = 0;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === ">") {
+      depth++;
+      continue;
+    }
+    if (ch === " " || ch === "\t") continue;
+    break;
+  }
+  return depth;
+}
+
+/** Offset of the first line whose quote depth differs from the line before it, or -1.
+ *  Blank lines carry no depth of their own and never break the comparison. The text of
+ *  a page has no quote marker in it at all nine times out of ten — that is one indexOf,
+ *  and the line scan never runs. */
+function nextQuoteBoundary(s: string): number {
+  if (s.indexOf(">") < 0) return -1;
+  let lineStart = 0;
+  let depth = -1;
+  for (let i = 0; i <= s.length; i++) {
+    if (i < s.length && s[i] !== "\n") continue;
+    const line = s.slice(lineStart, i);
+    if (line.trim() !== "") {
+      const d = quoteDepth(line);
+      if (depth >= 0 && d !== depth && lineStart > 0) return lineStart;
+      depth = d;
+    }
+    lineStart = i + 1;
+  }
+  return -1;
+}
+
+/** Quote depth a run speaks in: that of its first line with text in it. */
+function runQuoteDepth(raw: string): number {
+  for (const line of raw.split("\n")) {
+    if (line.trim() !== "") return quoteDepth(line);
+  }
+  return 0;
 }
 
 // ---- unit assembly ---------------------------------------------------------------
