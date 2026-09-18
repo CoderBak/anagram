@@ -8,23 +8,31 @@
 //           close runs (a run == one visual paragraph). Inline markup — <code>,
 //           <em>, links, drop caps — never splits a sentence. <br> and blank
 //           lines in preserved-whitespace contexts are paragraph breaks.
-//   asm   — runs ≥ MIN_UNIT_WORDS become units directly. Consecutive SHORT runs of
-//           ONE VOICE (the lines of a post, list items, the short paragraphs of an
-//           article or of one comment) MERGE into one multi-part unit until the
-//           evidence floor is met — short text gets covered instead of silently
-//           skipped. A merge never crosses a voice boundary to get there: every run
-//           has a SCOPE (its post, quotation, figure or quoted card; else the page)
-//           and merges only within it, an embedded scope interrupting the text
-//           around it without ending it. What a short run IS decides its part: a
-//           further line of the block being read and a sentence join, an
-//           unpunctuated name / time / action row never does — and on a page with no
-//           semantic markup that row is what separates two voices. Text too short
-//           on its own gets no unit. Headings, boilerplate, link-dense runs, name
-//           lists, ASCII art and separator rules are barriers no merge may cross.
+//   asm   — a paragraph of ≥ MIN_UNIT_WORDS is a unit of its own. Consecutive SHORT runs
+//           of ONE VOICE (the lines of a post, list items, the short paragraphs of an
+//           article or of one comment) MERGE into multi-part units — short text gets
+//           covered instead of silently skipped. The stretch is read to its end and then
+//           divided, between paragraphs and evenly, into groups of at most ONE MODEL
+//           WINDOW: the merged-group analogue of a paragraph chip, never one verdict per
+//           thousand words and never an arbitrary cut at the floor. A short text that
+//           cannot stand alone joins the full paragraph next to it when the two fit one
+//           window — no orphans inside one voice. A merge never crosses a voice
+//           boundary: every run has a SCOPE (its post, quotation, figure or quoted card;
+//           else the page) and merges only within it, an embedded scope interrupting the
+//           text around it without ending it. A declared scope whose own prose fits ONE
+//           window is a POST and becomes one unit whole, its full paragraphs included; a
+//           longer one is an article and keeps a unit per full paragraph. What a short
+//           run IS decides its part: a further line of the block being read and a
+//           sentence join, an unpunctuated name / time / action row never does — and on
+//           a page with no semantic markup that row is what separates two voices. Text
+//           too short on its own, with nobody of its voice to join, gets no unit.
+//           Headings, boilerplate, link-dense runs, name lists, ASCII art and separator
+//           rules are barriers nothing is merged across (inside a post they are merely
+//           left out).
 //
 // v1's hard 1000-char mid-paragraph split is gone: a long paragraph is ONE unit
-// end-to-end (the HF-abstract "underline stops mid-paragraph" bug); only the text
-// sent to the backend is capped, at a sentence boundary (lib/dom/text.ts).
+// end-to-end (the HF-abstract "underline stops mid-paragraph" bug); a unit that does not
+// fit the model's window is read in windows (lib/capture/windows.ts), never cut here.
 import { NO_SCORE_TAGS, INLINE_FALLBACK_TAGS, isHeading, tagOf } from "./tags";
 import { isBoilerplate, isNoTranslate } from "./boilerplate";
 import {
@@ -56,6 +64,7 @@ import {
   MIN_LINE_WORDS,
   MAX_UNIT_TEXT_CHARS,
 } from "./text";
+import { WINDOW_CHARS } from "../capture/windows";
 import { MARK_ATTR } from "../types";
 
 /**
@@ -113,18 +122,34 @@ interface Run {
   formulas: number;
   /** Position in the walk (set by the assembler) — units are returned in this order. */
   index: number;
+  /** Incremental re-scan: a live unit already owns exactly this run. */
+  claimed: boolean;
+}
+
+/** A run the walk has found but nobody has READ yet: reading — joining the text, counting
+ *  its words, measuring its links and its box — is most of what a run costs. */
+interface Found {
+  nodes: Text[];
+  container: Element;
+  preserved: boolean;
+  formulas: number;
 }
 
 export interface CollectOptions {
   /**
-   * Ownership filter for incremental re-scans. "skip" → this exact run is already
-   * owned by a live unit; "take" → process it (the orchestrator invalidates any
-   * stale owner before answering "take").
+   * Ownership filter for incremental re-scans. "skip" → exactly these nodes are a part
+   * of a live unit; "take" → process them (the orchestrator invalidates any stale owner
+   * before answering "take"). Asked once per run. A re-scan reads the page the way a
+   * first scan would, owned runs included, and a unit that would come out holding only
+   * owned runs is the live one and is left alone. One that would hold owned runs NEXT TO
+   * new ones — a post that gained a paragraph — is asked for once more, as a whole: that
+   * node list is no live part, so the stale owner is retired and the unit is taken anew.
    */
   claimFilter?: (nodes: Text[]) => "take" | "skip";
   /**
-   * Group sub-floor paragraphs with compatible neighbors until the evidence floor
-   * is met (default). False = strict per-paragraph mode: short runs are skipped.
+   * Group sub-floor paragraphs with compatible neighbors of the same voice, and read a
+   * post that fits one model window whole (default). False = strict per-paragraph
+   * mode: every full paragraph by itself, short runs skipped.
    */
   mergeShorts?: boolean;
   /**
@@ -163,7 +188,9 @@ export function collectUnits(
   const plainTextDoc = document.contentType === "text/plain";
   const styles = createStyleCache();
   const rects = createRectVisibleCache();
-  const asm = createAssembler(opts.mergeShorts ?? true);
+  const startEl = rootEl ? wholePost(rootEl) : document.body;
+  if (!startEl) return [];
+  const asm = createAssembler(opts.mergeShorts ?? true, startEl, read, (nodes) => opts.claimFilter?.(nodes) !== "skip");
 
   // ---- run accumulation ------------------------------------------------------------
 
@@ -201,18 +228,13 @@ export function collectUnits(
     processRun(nodes, container, preserved, formulas);
   }
 
-  function processRun(nodes: Text[], container: Element, preserved: boolean, formulas: number): void {
-    if (opts.claimFilter && opts.claimFilter(nodes) === "skip") {
-      // An existing rendered unit sits here — new shorts on either side must not
-      // merge ACROSS it (they are not adjacent prose).
-      asm.barrier(container);
-      return;
-    }
-    if (!rects.get(container)) return; // zero-size container → invisible text
+  function read(found: Found, claimed: boolean): Run | null {
+    const { nodes, container, preserved, formulas } = found;
+    if (!rects.get(container)) return null; // zero-size container → invisible text
     const raw = extractPartText(nodes);
     const text = raw.replace(/\s+/g, " ").trim();
-    if (!text) return;
-    asm.run({
+    if (!text) return null;
+    return {
       nodes,
       container,
       text,
@@ -222,7 +244,18 @@ export function collectUnits(
       linkRatio: linkTextRatio(nodes),
       formulas,
       index: 0,
-    });
+      claimed,
+    };
+  }
+
+  function processRun(nodes: Text[], container: Element, preserved: boolean, formulas: number): void {
+    const found: Found = { nodes, container, preserved, formulas };
+    if (opts.claimFilter && opts.claimFilter(nodes) === "skip") {
+      asm.owned(found); // a live unit's part: read only if something new turns up beside it
+      return;
+    }
+    const run = read(found, false);
+    if (run) asm.run(run);
   }
 
   // ---- traversal ---------------------------------------------------------------------
@@ -398,8 +431,6 @@ export function collectUnits(
 
   // ---- go ------------------------------------------------------------------------
 
-  const startEl = rootEl ?? document.body;
-  if (!startEl) return [];
   visit(startEl, { container: startEl, hidden: false, preserves: false });
   closeRun();
   return asm.finish();
@@ -440,7 +471,9 @@ function isExcludedByAncestry(start: Element): boolean {
 
 interface Assembler {
   run(r: Run): void;
-  /** Nothing merges or extends across this point. `at` — the element the barrier
+  /** A run a live unit owns (incremental re-scan), not read yet. */
+  owned(found: Found): void;
+  /** No group of short runs continues across this point. `at` — the element the barrier
    *  sits in — keeps a barrier INSIDE a quotation or a figure from also ending the
    *  author's text around it; without it everything open is closed. */
   barrier(at?: Element): void;
@@ -484,7 +517,7 @@ function compatible(a: Element, b: Element): boolean {
  * Not <li>: bullet lists inside one author's text are what merging is for. Not
  * <td>: forums laid out with tables (Hacker News) keep each comment several levels
  * deep in a cell of its own, which proximity already separates, while a prose table
- * is one author's. One closest() per short run; shadow hosts are climbed through.
+ * is one author's. One closest() per run; shadow hosts are climbed through.
  */
 const VOICE_SCOPE_SELECTOR = 'article,[role="article"],blockquote,figure,[role="link"]';
 
@@ -498,37 +531,173 @@ function scopeOf(el: Element): Element | null {
   return null;
 }
 
+/** `root` holds `el` in the COMPOSED tree: contains() alone stops at a shadow root. */
+function composedContains(root: Element, el: Element): boolean {
+  for (let cur: Element | null = el; cur; ) {
+    if (root.contains(cur)) return true;
+    const shadow = cur.getRootNode();
+    cur = shadow instanceof ShadowRoot ? shadow.host : null;
+  }
+  return false;
+}
+
+/** All the text of a scope — names, counters and a quoted post included — up to which a
+ *  walk that was asked to start INSIDE the scope starts at the scope instead. */
+const WHOLE_POST_CHARS = 2 * WINDOW_CHARS;
+
+/**
+ * Where a walk asked to start at `root` really starts. Whether a declared scope is a post
+ * or an article (see `settle`) can only be told from ALL of its prose, and a re-scan
+ * usually starts inside one: React sets the text of X's `div[data-testid=tweetText]`
+ * anew when a post is opened or translated in place, a forum appends a paragraph to the
+ * post body, and the orchestrator re-scans what a retired unit released one container at
+ * a time — each <p> of a comment, read by itself, is a short text with nobody to join. A
+ * root inside a scope that is small ALTOGETHER is therefore moved up to the scope: cheap
+ * by construction, and the re-scan decides from what the first scan saw. Inside anything
+ * larger the walk stays where it was asked to start and the scope is read as an article,
+ * so a mutation in a long article never re-reads the article.
+ */
+function wholePost(root: Element): Element {
+  const scope = scopeOf(root);
+  if (!scope || scope === root) return root;
+  const all = scope.textContent ?? "";
+  // Pretty-printed markup is mostly indentation; far beyond the bound it is not worth collapsing.
+  if (all.length > 8 * WHOLE_POST_CHARS) return root;
+  return all.replace(/\s+/g, " ").length <= WHOLE_POST_CHARS ? scope : root;
+}
+
+/** Length of the text these runs become as one unit: their texts, "\n\n" between them. */
+function joinedChars(runs: Run[]): number {
+  return runs.reduce((n, r) => n + r.text.length, 0) + 2 * Math.max(0, runs.length - 1);
+}
+
+function wordsOf(runs: Run[]): number {
+  return runs.reduce((n, r) => n + r.words, 0);
+}
+
+/** `runs` in `n` consecutive pieces, each as near to an even share of the characters as the
+ *  joints between two runs allow. */
+function evenPieces(runs: Run[], n: number): Run[][] {
+  const total = joinedChars(runs);
+  const pieces: Run[][] = [];
+  let piece: Run[] = [];
+  let seen = 0;
+  for (const r of runs) {
+    const next = seen + r.text.length + 2;
+    const share = ((pieces.length + 1) * total) / n;
+    if (piece.length > 0 && pieces.length < n - 1 && Math.abs(seen - share) <= Math.abs(next - share)) {
+      pieces.push(piece);
+      piece = [];
+    }
+    piece.push(r);
+    seen = next;
+  }
+  pieces.push(piece);
+  return pieces;
+}
+
+/**
+ * A stretch of short runs of one voice as the units it becomes. Closing a group the
+ * moment it reached fifty words cut a 1767-word Zhihu answer of 49 paragraphs into 20
+ * chips and a 288-word X post into four; reading the whole stretch as ONE unit would put
+ * a single number on a thousand words, and what makes a chip worth having on a long text
+ * is that it is fine-grained. So the stretch is divided into groups of at most one model
+ * window (WINDOW_CHARS, some 300 words — about the mean length of the texts the model was
+ * trained on, and what it judges in a single reading): ceil(total / window) of them, cut
+ * between two paragraphs, as even as the paragraphs allow, so there is no small tail
+ * group. Every group keeps the evidence floor; only where that cannot be had inside a
+ * window (words of thirty letters) is a group longer, and read in windows like any long
+ * paragraph.
+ */
+function modelSized(runs: Run[]): Run[][] {
+  if (joinedChars(runs) <= WINDOW_CHARS) return [runs];
+  const floor = (pieces: Run[][]): boolean => pieces.every((p) => wordsOf(p) >= MIN_UNIT_WORDS);
+  const first = Math.ceil(joinedChars(runs) / WINDOW_CHARS);
+  let best: Run[][] | null = null;
+  for (let n = first; n <= runs.length; n++) {
+    const pieces = evenPieces(runs, n);
+    if (!floor(pieces)) break;
+    best = pieces;
+    if (pieces.every((p) => joinedChars(p) <= WINDOW_CHARS)) break; // else a joint fell badly: one more
+  }
+  for (let n = first - 1; !best && n > 1; n--) {
+    const pieces = evenPieces(runs, n);
+    if (floor(pieces)) best = pieces;
+  }
+  return best ?? [runs];
+}
+
+/**
+ * The prose of a post, divided by where it stands: a run belongs with the first earlier
+ * run it is `compatible` with. A LinkedIn card sets the author's headline ("VP, Chief
+ * Strategy Officer at …", eleven words that read like running text) in the entity lockup
+ * at the top of the same <article>, far from the commentary; X hangs a reader-written
+ * context note under a status. Neither is the post, and the rule that keeps a group of
+ * short runs to one section keeps them out of it. Paragraphs on both sides of a list whose
+ * items sit a level deeper still find each other, because ANY earlier run will do.
+ */
+function standingTogether(runs: Run[]): Run[][] {
+  const places: Run[][] = [];
+  for (const r of runs) {
+    const home = places.find((place) => place.some((other) => compatible(other.container, r.container)));
+    if (home) home.push(r);
+    else places.push([r]);
+  }
+  return places;
+}
+
 /** The merge state of one scope. Scopes nest (a quotation inside a post inside the
  *  page), so the assembler keeps a stack of these. */
 interface Frame {
   /** The voice boundary element; null = the page itself. */
   scope: Element | null;
+  /** The short runs being read together; open until the voice ends. */
   group: Run[];
-  words: number;
-  /** Last unit emitted via the merge path — may absorb a trailing short orphan. */
-  lastMerged: Unit | null;
   /** Container of the line the group read last (or of `pending`): a further run in
    *  the SAME container is the next line of one text block. */
   block: Element | null;
   /** An unpunctuated first line that could not open a group by itself. */
   pending: Run | null;
+  /** The unit of the last FULL paragraph, not yet let go: a short text right after it that
+   *  cannot stand alone may still join it (see `endGroup`). */
+  prev: Run[] | null;
+  /** A declared scope: every run of its own prose, in document order … */
+  prose: Run[];
+  /** … and the units it becomes if it turns out to be an article. Both are held until the
+   *  walk leaves the scope, because only then is it known which of the two it is. */
+  held: Run[][];
+  /** The walk started inside this scope and cannot see all of it. */
+  partial: boolean;
+  /** Owned runs that arrived while nothing new was being read here, in order, position in
+   *  the walk included; `null` is a barrier among them (see `owned`). */
+  unread: ((Found & { index: number }) | null)[];
+  /** Something NEW is being read here, so owned runs are read as they come (see `owned`):
+   *  on the page while a new run is open, in a declared scope from the first new run on. */
+  live: boolean;
 }
 
-function createAssembler(mergeShorts: boolean): Assembler {
+function createAssembler(
+  mergeShorts: boolean,
+  walkRoot: Element,
+  /** Read a found run; null when there is nothing to read (invisible, empty). */
+  read: (found: Found, claimed: boolean) => Run | null,
+  /** Ask the claim filter for a whole would-be unit; true = its stale owners are gone. */
+  retake: (nodes: Text[]) => boolean,
+): Assembler {
   /** Emitted units with the walk index of their first run — scopes interleave, so
    *  units complete out of document order and are sorted once at the end. */
   const emitted: { unit: Unit; at: number }[] = [];
   const stack: Frame[] = [];
   let runIndex = 0;
 
-  function emit(runs: Run[]): Unit {
+  function emit(runs: Run[]): void {
     const parts: UnitPart[] = runs.map((r) => ({ nodes: r.nodes, container: r.container }));
     const text = runs.map((r) => r.text).join("\n\n").slice(0, MAX_UNIT_TEXT_CHARS);
     const unit: Unit = {
       id: "",
       parts,
       text,
-      wordCount: runs.reduce((n, r) => n + r.words, 0),
+      wordCount: wordsOf(runs),
       formulas: runs.reduce((n, r) => n + r.formulas, 0),
       order: 0,
       topElement: runs[0].container,
@@ -536,40 +705,115 @@ function createAssembler(mergeShorts: boolean): Assembler {
       isScored: false,
     };
     emitted.push({ unit, at: runs[0].index });
-    return unit;
   }
 
-  function extend(unit: Unit, runs: Run[]): void {
-    for (const r of runs) unit.parts.push({ nodes: r.nodes, container: r.container });
-    unit.text = (unit.text + "\n\n" + runs.map((r) => r.text).join("\n\n")).slice(
-      0,
-      MAX_UNIT_TEXT_CHARS,
-    );
-    unit.wordCount += runs.reduce((n, r) => n + r.words, 0);
-    unit.formulas += runs.reduce((n, r) => n + r.formulas, 0);
-    unit.container = runs[runs.length - 1].container;
+  /**
+   * One would-be unit leaves the assembler. Runs a live unit owns (incremental re-scan)
+   * are never emitted a second time: all of them owned → this IS the live unit. Owned
+   * runs next to new ones — a comment that gained a paragraph while it was on screen,
+   * a chat answer still being streamed into its <article> — are what the old unit no
+   * longer describes: the whole is asked for again, which retires the owner, and taken
+   * as one unit. Emitting only the new paragraph would leave it a short text with
+   * nobody to join, under a chip that speaks for a post it has not read to the end.
+   */
+  function release(runs: Run[]): void {
+    const owned = runs.reduce((n, r) => n + (r.claimed ? 1 : 0), 0);
+    if (owned === runs.length) return;
+    if (owned > 0 && !retake(runs.flatMap((r) => r.nodes))) return;
+    emit(runs);
   }
 
-  function flushGroup(f: Frame): void {
-    if (f.group.length === 0) return;
+  /** What a frame produces: the page emits as it goes, a declared scope holds (see settle). */
+  function out(f: Frame, runs: Run[]): void {
+    if (f.scope === null) release(runs);
+    else f.held.push(runs);
+  }
+
+  /**
+   * The stretch of short runs ends here — at a barrier, another section, the end of the
+   * scope, or at `following`, the full paragraph that comes right after it. With fifty
+   * words it stands by itself, in model-sized groups. Without them it used to be dropped,
+   * and next to full paragraphs that is most of what went unjudged: a Substack article
+   * lost 570 of its 2407 words that way (isolated paragraphs of 40 to 47 words between
+   * full ones), a Zhihu answer the 13-word lead-in before a 57-word paragraph and the
+   * 40-word close after an 82-word one. NO ORPHANS INSIDE ONE VOICE: such a text joins
+   * the full paragraph standing next to it — the one before it by preference, else the
+   * one after — when the two are in the same place (`compatible`, the proximity merging
+   * always required) and together still fit one model window. The chip then reads ×2.
+   * Nothing else may lie between them: a barrier or another voice's name row has let the
+   * earlier unit go (`close`) before the orphan gets here. Returns what joins `following`.
+   */
+  function endGroup(f: Frame, following: Run | null): Run[] {
     const g = f.group;
-    const words = f.words;
     f.group = [];
-    f.words = 0;
-    if (words >= MIN_UNIT_WORDS) {
-      f.lastMerged = emit(g);
-    } else if (f.lastMerged && compatible(f.lastMerged.container, g[0].container)) {
-      extend(f.lastMerged, g); // trailing orphan joins the previous merged unit
+    let lead: Run[] = [];
+    if (g.length > 0 && wordsOf(g) >= MIN_UNIT_WORDS) {
+      for (const runs of modelSized(g)) out(f, runs);
+    } else if (g.length > 0) {
+      const beside = (a: Run, b: Run): boolean => compatible(a.container, b.container);
+      if (f.prev && beside(f.prev[f.prev.length - 1], g[0]) && joinedChars([...f.prev, ...g]) <= WINDOW_CHARS) {
+        f.prev.push(...g);
+      } else if (following && beside(g[g.length - 1], following) && joinedChars([...g, following]) <= WINDOW_CHARS) {
+        lead = g;
+      }
+      // else: below the evidence floor with nobody of its voice to join — dropped (by policy).
     }
-    // else: below the evidence floor with nothing to join — dropped (by policy).
+    if (f.prev) out(f, f.prev);
+    f.prev = null;
+    return lead;
   }
 
-  /** End whatever the frame was reading: nothing merges or extends across this. */
+  /** End whatever the frame was reading: nothing is merged across this. */
   function close(f: Frame): void {
-    flushGroup(f);
-    f.lastMerged = null;
+    endGroup(f, null);
     f.block = null;
     f.pending = null;
+    if (f.scope === null) f.live = false;
+  }
+
+  /**
+   * The walk has left the scope: decide what it was. X cut a 181-word post of twelve
+   * short paragraphs into three chips (×4 / ×4 / ×4) when groups still closed at the
+   * floor, and a post written as [30 words][55][20][60][25] got two chips and three
+   * paragraphs nobody judged — arbitrary pieces of what a reader sees as ONE thing said
+   * by ONE person. So a declared scope whose own prose (nested scopes, name and action
+   * rows left out as always) clears the floor and fits ONE model window is a POST: one
+   * unit, every paragraph of it in document order, the full ones included. One window —
+   * WINDOW_CHARS, some 300 words — is about the mean length of the texts the model was
+   * trained on, and it is what it judges in a single reading.
+   *
+   * Barriers inside a post end nothing: a heading over a forum post, a line of hashtags
+   * or a "Show more" link in the middle of a status, a row of asterisks are left out of
+   * the unit, but the text on both sides of them is still the same person's. Proximity
+   * still counts (standingTogether): what stands elsewhere in the card is not the post.
+   *
+   * Anything longer is an ARTICLE — a paper, a news story, a long answer — and keeps
+   * what readers of those rely on: a chip per full paragraph, only the short ones
+   * grouped. A scope the walk cannot see all of is read as one too (see wholePost).
+   */
+  function settle(f: Frame): void {
+    close(f);
+    f.unread = []; // nothing new came to stand beside them
+    if (f.scope === null) return;
+    if (!f.partial && wordsOf(f.prose) >= MIN_UNIT_WORDS && joinedChars(f.prose) <= WINDOW_CHARS) {
+      for (const runs of standingTogether(f.prose)) if (wordsOf(runs) >= MIN_UNIT_WORDS) release(runs);
+      return;
+    }
+    // A post that has just outgrown the window while a unit still owns ALL of what it was
+    // (an answer streamed paragraph by paragraph does this once): its paragraphs are
+    // about to get chips of their own, so that owner goes first.
+    const owned = f.prose.filter((r) => r.claimed);
+    if (
+      !f.partial &&
+      owned.length > 1 &&
+      owned.length < f.prose.length &&
+      wordsOf(owned) >= MIN_UNIT_WORDS &&
+      joinedChars(owned) <= WINDOW_CHARS &&
+      retake(owned.flatMap((r) => r.nodes))
+    ) {
+      for (const r of owned) r.claimed = false;
+    }
+    for (const runs of f.held) release(runs);
   }
 
   /**
@@ -577,7 +821,7 @@ function createAssembler(mergeShorts: boolean): Assembler {
    * open underneath: a quotation, a caption or a quoted post interrupts the author's
    * text, it does not end it — the two short paragraphs around a block quotation in a
    * news article still read as one unit, without the quotation. A frame that does not
-   * contain it is closed for good (a subtree is contiguous; the walk never comes back).
+   * contain it is settled for good (a subtree is contiguous; the walk never comes back).
    * Returns the frame of `scope` itself if it is open.
    */
   function unwindTo(scope: Element | null): Frame | null {
@@ -585,7 +829,7 @@ function createAssembler(mergeShorts: boolean): Assembler {
       const top = stack[stack.length - 1];
       if (top.scope === scope) return top;
       if (top.scope === null || (scope !== null && top.scope.contains(scope))) return null;
-      close(top);
+      settle(top);
       stack.pop();
     }
     return null;
@@ -594,33 +838,95 @@ function createAssembler(mergeShorts: boolean): Assembler {
   function enter(scope: Element | null): Frame {
     let f = unwindTo(scope);
     if (!f) {
-      f = { scope, group: [], words: 0, lastMerged: null, block: null, pending: null };
+      const partial = scope !== null && !composedContains(walkRoot, scope);
+      f = { scope, group: [], block: null, pending: null, prev: null, prose: [], held: [], partial, unread: [], live: false };
       stack.push(f);
     }
     return f;
   }
 
   /**
-   * A barrier ends the scope it sits in, and whatever is nested inside that. The link-
-   * dense `<cite><a>…</a></cite>` under a block quotation, the credit link of a figure
-   * and a heading inside an embedded card are barriers INSIDE the embed: the author's
-   * paragraphs around it are still adjacent. With no position, everything open ends.
+   * A barrier ends the group of the scope it sits in, and whatever is nested inside that.
+   * The link-dense `<cite><a>…</a></cite>` under a block quotation, the credit link of a
+   * figure and a heading inside an embedded card are barriers INSIDE the embed: the
+   * author's paragraphs around it are still adjacent. With no position, everything open
+   * ends.
    */
   function barrier(at?: Element): void {
     if (stack.length === 0) return;
     if (!at) {
-      while (stack.length > 0) close(stack.pop() as Frame);
+      while (stack.length > 0) settle(stack.pop() as Frame);
       return;
     }
     const f = unwindTo(scopeOf(at));
-    if (f) close(f);
+    if (!f) return;
+    if (f.scope === null) f.unread = []; // on the page nothing reaches across a barrier: never needed
+    if (f.unread.length > 0) f.unread.push(null); // in a post it ends nothing, in an article it must keep its place
+    else close(f);
   }
 
+  /**
+   * INCREMENTAL RE-SCANS. A re-scan reads the page the way a first scan would, the runs
+   * live units own included — a full paragraph still ends the group before it, a line of
+   * a post is still a line of that post — and `release` keeps them from being emitted
+   * twice. But an owned run only matters if something NEW comes to stand beside it, and
+   * nearly always nothing does: Wikipedia appends a preview card to <body> for every link
+   * the pointer crosses, which re-scans a page of a thousand owned paragraphs, and reading
+   * those (joining text, counting words, measuring boxes) is seven times the cost of
+   * walking past them. So owned runs wait unread, in order, until a new run arrives in
+   * their frame; a frame reading something new (`live`) reads them as they come.
+   */
+  function catchUp(f: Frame): void {
+    if (f.unread.length === 0) return;
+    const unread = f.unread;
+    f.unread = [];
+    for (const found of unread) {
+      if (found === null) {
+        close(f);
+        continue;
+      }
+      const r = read(found, true);
+      if (r) route(r, found.index);
+    }
+  }
+
+  /**
+   * The group does NOT close when it reaches the evidence floor. It used to, and one
+   * voice came out in arbitrary pieces: a status of twelve short paragraphs as three
+   * chips (×4 / ×4 / ×4), a list of ten items as two. The stretch is read to its end — a
+   * barrier, a full paragraph, another section, the end of the scope — and divided
+   * evenly then (endGroup, modelSized).
+   */
   function push(f: Frame, r: Run): void {
     f.group.push(r);
-    f.words += r.words;
     f.block = r.container;
-    if (f.words >= MIN_UNIT_WORDS) flushGroup(f);
+    if (f.scope !== null) f.prose.push(r);
+    if (!r.claimed) f.live = true;
+  }
+
+  /**
+   * A FULL paragraph: a unit of its own, and the end of the stretch of shorts before it.
+   * It is not let go at once: a short text on either side that cannot stand alone joins
+   * it (endGroup), so the unit stays with the frame until what follows it is known.
+   * Inside a declared scope it is held beyond that, like everything else, because a post
+   * that fits one window is read whole (settle).
+   */
+  function full(r: Run): void {
+    if (!mergeShorts) {
+      release([r]); // strict per-paragraph mode: nothing is grouped, so nothing is held
+      return;
+    }
+    const f = enter(scopeOf(r.container));
+    catchUp(f);
+    const lead = endGroup(f, r);
+    // Inside a post a further run in the same container is the next line of this text block
+    // ("Here is what I learned" after a full paragraph of an X status). On the bare page
+    // that is where a forum sets "Posted by alice on March 3" under the message.
+    f.block = f.scope !== null ? r.container : null;
+    f.pending = null;
+    f.prev = [...lead, r];
+    if (f.scope !== null) f.prose.push(r);
+    f.live = f.scope === null ? f.prev.some((x) => !x.claimed) : f.live || !r.claimed;
   }
 
   /**
@@ -632,6 +938,8 @@ function createAssembler(mergeShorts: boolean): Assembler {
    */
   function short(r: Run): void {
     const f = enter(scopeOf(r.container));
+    catchUp(f);
+    if (!r.claimed && f.scope !== null) f.live = true;
     const punctuated = endsLikeProse(r.text);
 
     if (f.block === r.container) {
@@ -658,9 +966,10 @@ function createAssembler(mergeShorts: boolean): Assembler {
       shape.running &&
       (((punctuated || endsInColon(r.text)) && shape.letterWords >= MIN_SENTENCE_WORDS) ||
         shape.letterWords >= MIN_MERGE_WORDS);
+    // What the text stood beside last: the open group, else the full paragraph before it.
+    const last = f.group.length > 0 ? f.group[f.group.length - 1] : f.prev ? f.prev[f.prev.length - 1] : null;
     if (prose) {
       f.pending = null;
-      const last = f.group[f.group.length - 1];
       if (last && !compatible(last.container, r.container)) close(f); // another section
       push(f, r);
       return;
@@ -683,8 +992,7 @@ function createAssembler(mergeShorts: boolean): Assembler {
     //   · buried deeper than the text, it is a widget's crumb — the "Play" link of the
     //     live samples between two paragraphs on MDN, which has no <article>.
     const tag = tagOf(r.container);
-    const before = f.group.length > 0 ? f.group[f.group.length - 1].container : f.lastMerged?.container;
-    if (f.scope === null && tag !== "LI" && tag !== "DT" && before && compatible(before, r.container)) {
+    if (f.scope === null && tag !== "LI" && tag !== "DT" && last && compatible(last.container, r.container)) {
       close(f);
     }
     if (f.group.length === 0 && shape.letterWords >= MIN_LINE_WORDS) {
@@ -692,41 +1000,55 @@ function createAssembler(mergeShorts: boolean): Assembler {
       // only if the next run turns out to be a further line of the same block.
       f.pending = r;
       f.block = r.container;
+      if (!r.claimed) f.live = true;
     }
+  }
+
+  /** What a run is decides where it goes. `index` is its position in the walk. */
+  function route(r: Run, index: number): void {
+    r.index = index;
+    if (!hasLetters(r.text)) {
+      // "* * *" and rule-like separators are section dividers → barrier. Other
+      // letterless runs (an equation number "(3)", a page number, a lone "12") are
+      // transparent: not prose, but not a boundary either.
+      if (isSeparatorRun(r.text)) barrier(r.container);
+      return;
+    }
+    if (symbolNoiseRatio(r.text) > 0.2 || (r.preserved && hasColumnGaps(r.raw))) {
+      // ASCII diagrams / table rules / column-layout headers ("RFC 768   J.
+      // Postel"): machine layout, not prose — barrier, never merged. The
+      // column-gap check applies ONLY to preserved-whitespace runs: in normal
+      // HTML, interior space runs collapse invisibly and must not drop prose.
+      barrier(r.container);
+      return;
+    }
+    if (r.linkRatio > MAX_LINK_RATIO || looksLikeNameList(r.text)) {
+      // Nav/menu/story-title lists and author/citation strings: not prose AND a
+      // section boundary.
+      barrier(r.container);
+      return;
+    }
+    if (r.words >= MIN_UNIT_WORDS) full(r);
+    else if (mergeShorts) short(r); // strict per-paragraph mode: sub-floor runs skipped
   }
 
   return {
     barrier,
 
     run(r: Run): void {
-      r.index = runIndex++;
-      if (!hasLetters(r.text)) {
-        // "* * *" and rule-like separators are section dividers → barrier. Other
-        // letterless runs (an equation number "(3)", a page number, a lone "12") are
-        // transparent: not prose, but not a boundary either.
-        if (isSeparatorRun(r.text)) barrier(r.container);
+      route(r, runIndex++);
+    },
+
+    owned(found: Found): void {
+      const index = runIndex++;
+      if (!mergeShorts) return; // strict per-paragraph mode: nothing stands beside anything
+      const f = enter(scopeOf(found.container));
+      if (!f.live) {
+        f.unread.push({ ...found, index });
         return;
       }
-      if (symbolNoiseRatio(r.text) > 0.2 || (r.preserved && hasColumnGaps(r.raw))) {
-        // ASCII diagrams / table rules / column-layout headers ("RFC 768   J.
-        // Postel"): machine layout, not prose — barrier, never merged. The
-        // column-gap check applies ONLY to preserved-whitespace runs: in normal
-        // HTML, interior space runs collapse invisibly and must not drop prose.
-        barrier(r.container);
-        return;
-      }
-      if (r.linkRatio > MAX_LINK_RATIO || looksLikeNameList(r.text)) {
-        // Nav/menu/story-title lists and author/citation strings: not prose AND a
-        // section boundary.
-        barrier(r.container);
-        return;
-      }
-      if (r.words >= MIN_UNIT_WORDS) {
-        barrier(r.container);
-        emit([r]); // full paragraphs stay pure — they never absorb orphans
-        return;
-      }
-      if (mergeShorts) short(r); // strict per-paragraph mode: sub-floor runs skipped
+      const r = read(found, true);
+      if (r) route(r, index);
     },
 
     finish(): Unit[] {

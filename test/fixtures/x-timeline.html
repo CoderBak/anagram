@@ -2,18 +2,26 @@
 <!--
   X / Twitter-style timeline (react-native-web markup), synthetic text.
 
-  Verified against the live DOM (platform.twitter.com embed, 2026-09; x.com itself answers a
-  headless browser with 403): every post is <article role="article" tabindex="0">, its text a
-  `div[data-testid=tweetText][dir=auto][lang]` with white-space: pre-wrap whose lines are separated
-  by newlines inside one <span>; names, handles and timestamps are `a[role=link]`; the action bar
-  is made of buttons. The QUOTED post — `div[role=link][tabindex=0]` inside the quoting post's
-  <article> — is modelled from the logged-in site's markup; Bluesky's live feed (same framework)
-  nests its quote embeds exactly that way.
+  Measured in a logged-in Chrome on x.com (2026-09-18): every post is
+  <article role="article" tabindex="0">; under deep flex wrappers its text is ONE
+  `div[data-testid=tweetText][dir=auto][lang]` with display: block and white-space: pre-wrap,
+  holding an inline <span> whose single text node is the WHOLE post — paragraphs are blank
+  lines ("\n\n") inside that node, not elements. Links, mentions, hashtags and emoji are
+  further inline children (`a`, `span > a`, `img`), so a longer post is several text nodes
+  in one block. One real post measured 181 words in 12 paragraphs of 10 to 24 words (post 2
+  has that shape). On the timeline X cuts every long post to about 280 characters and puts
+  a "Show more" link under the text: 41 to 48 visible words, just under the evidence floor
+  (post 4) — such a post gets nothing until it is opened, which is X's doing, not ours.
+  Names, handles and timestamps are `a[role=link]`; the action bar is made of buttons. The
+  QUOTED post — `div[role=link][tabindex=0]` inside the quoting post's <article> — follows
+  the logged-in site's markup; Bluesky's live feed (same framework) nests its quote embeds
+  exactly that way. The exact attributes of the "Show more" link are modelled.
 
   Annotation used by test/unit.mjs:
     data-voice="name"   the text inside is this voice's (nearest ancestor wins)
     data-chrome         a name / handle / timestamp / action row — never part of a unit
     data-expect="unit"  some unit must cover text in here;  data-expect="none": no unit may
+    data-parts="n"      …and the unit covering it has exactly n parts
 -->
 <html lang="en"><head><meta charset="utf-8"><title>Fixture: X-style timeline</title>
 <style>
@@ -72,7 +80,145 @@ I would do it all again 🙂</span></div>
   </article>
   </div></div></div>
 
-  <!-- 2 · a short post by somebody else: too short by itself, and nobody to borrow from -->
+  <!-- 2 · the measured shape: ONE post of twelve short paragraphs (blank lines in a text node,
+       inline mention / emoji / link / hashtag children) → ONE unit of twelve parts -->
+  <div class="v" data-testid="cellInnerDiv"><div class="v"><div class="v">
+  <article class="v" role="article" tabindex="0" data-testid="tweet">
+    <div class="v"><div class="h" style="align-items:flex-start">
+      <div class="v" data-testid="Tweet-User-Avatar"><a href="#ivan" role="link" tabindex="-1" class="v"><img alt="" width="40" height="40"></a></div>
+      <div class="v" style="flex:1">
+        <div class="h" data-testid="User-Name" data-chrome>
+          <div class="v"><a href="#ivan" role="link" class="v"><div dir="ltr" class="t"><span><span>Ivan Petrov</span></span></div></a></div>
+          <div class="h"><a href="#ivan" role="link" tabindex="-1" class="v"><div dir="ltr" class="t"><span>@ivanpetrov</span></div></a>
+            <div dir="ltr" aria-hidden="true" class="t"><span>·</span></div>
+            <a href="#s-ivan" role="link" dir="ltr" aria-label="1h ago" class="t"><time datetime="2026-09-18T09:00:00.000Z">1h</time></a></div>
+        </div>
+        <div dir="auto" lang="en" class="t" data-testid="tweetText" data-voice="ivan" data-expect="unit" data-parts="12"><span>I reviewed about four hundred pull requests this year, and one pattern keeps returning.
+
+The slow reviews are never the big ones, oddly enough.
+
+A two thousand line change gets a nervous glance and an approval, because nobody wants to be the person holding it up.
+
+A forty line change gets eleven comments, three of them about naming, and sits open until somebody merges it on a Friday.
+
+I think </span><span class="r"><a dir="ltr" href="#grace" role="link">@gracehopperfan</a></span><span> called this the bikeshed tax, and she was right.
+
+So last month we tried something that sounded silly when said out loud.
+
+Every review starts with one sentence about what could go wrong.
+
+Not what you would have done differently, and not what the linter already said.
+
+Just the one thing that would wake somebody up at three in the morning </span><img alt="😴" draggable="false" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" width="18" height="18"><span> if it broke.
+
+Reviews got shorter, which I expected, and they got faster, which I did not.
+
+What I did not expect: people now write that sentence into the description themselves, unasked: </span><a dir="ltr" href="#t-co" role="link" target="_blank">example.org/review-notes</a><span>
+
+It turns out most of us already know where the risk is. </span><span class="r"><a dir="ltr" href="#hashtag" role="link">#codereview</a></span></div>
+        <div class="h" role="group" aria-label="4 replies, 2 reposts, 19 likes" data-chrome>
+          <button role="button" aria-label="4 Replies. Reply" data-testid="reply"><div class="h"><span>4</span></div></button>
+          <button role="button" aria-label="2 reposts. Repost" data-testid="retweet"><div class="h"><span>2</span></div></button>
+          <button role="button" aria-label="19 Likes. Like" data-testid="like"><div class="h"><span>19</span></div></button>
+        </div>
+      </div>
+    </div></div>
+  </article>
+  </div></div></div>
+
+  <!-- 3 · one post, mixed paragraphs — short, full, short, a line of hashtags, full, short — still ONE unit -->
+  <div class="v" data-testid="cellInnerDiv"><div class="v"><div class="v">
+  <article class="v" role="article" tabindex="0" data-testid="tweet">
+    <div class="v"><div class="h" style="align-items:flex-start">
+      <div class="v" data-testid="Tweet-User-Avatar"><a href="#heidi" role="link" tabindex="-1" class="v"><img alt="" width="40" height="40"></a></div>
+      <div class="v" style="flex:1">
+        <div class="h" data-testid="User-Name" data-chrome>
+          <div class="v"><a href="#heidi" role="link" class="v"><div dir="ltr" class="t"><span><span>Heidi Brandt</span></span></div></a></div>
+          <div class="h"><a href="#heidi" role="link" tabindex="-1" class="v"><div dir="ltr" class="t"><span>@heidibrandt</span></div></a>
+            <div dir="ltr" aria-hidden="true" class="t"><span>·</span></div>
+            <a href="#s-heidi" role="link" dir="ltr" aria-label="2h ago" class="t"><time datetime="2026-09-18T09:00:00.000Z">2h</time></a></div>
+        </div>
+        <div dir="auto" lang="en" class="t" data-testid="tweetText" data-voice="heidi" data-expect="unit" data-parts="5"><span>We shut down our on-call rotation in March and replaced it with nothing, which is the kind of sentence that makes other engineering managers put their coffee down, so let me explain.
+
+The rotation existed because of one service, written in a hurry four years ago by people who have all since left, that fell over roughly twice a week for reasons nobody could reproduce; every other system we run had paged a human exactly three times in two years, and two of those three were the monitoring itself being wrong.
+
+So we spent one quarter rewriting that one service, slowly, with tests, and with a rollback we actually rehearsed.
+
+</span><span class="r"><a dir="ltr" href="#hashtag" role="link">#oncall</a></span><span> </span><span class="r"><a dir="ltr" href="#hashtag" role="link">#sre</a></span><span> </span><span class="r"><a dir="ltr" href="#hashtag" role="link">#engineeringmanagement</a></span><span>
+
+Since then the pager has gone off once, for a certificate that expired on a Sunday, and the person who fixed it did so from a phone in under ten minutes and went back to lunch; we pay that person, and whoever is next, a flat fee for being reachable, which costs less per year than the rotation cost us per month in tired people making small mistakes on Monday mornings.
+
+I am not saying rotations are wrong. I am saying ours was a tax we paid to avoid fixing one thing, and we had stopped noticing.</span></div>
+        <div class="h" role="group" aria-label="4 replies, 2 reposts, 19 likes" data-chrome>
+          <button role="button" aria-label="4 Replies. Reply" data-testid="reply"><div class="h"><span>4</span></div></button>
+          <button role="button" aria-label="2 reposts. Repost" data-testid="retweet"><div class="h"><span>2</span></div></button>
+          <button role="button" aria-label="19 Likes. Like" data-testid="like"><div class="h"><span>19</span></div></button>
+        </div>
+      </div>
+    </div></div>
+  </article>
+  </div></div></div>
+
+  <!-- 3b · a second measured shape: 288 words in six blank-line paragraphs, some of them full.
+       It came out as four chips (51, 65, 51 and 75 words, 46 words unjudged); it fits one
+       window, so it is ONE unit of six parts -->
+  <div class="v" data-testid="cellInnerDiv"><div class="v"><div class="v">
+  <article class="v" role="article" tabindex="0" data-testid="tweet">
+    <div class="v"><div class="h" style="align-items:flex-start">
+      <div class="v" data-testid="Tweet-User-Avatar"><a href="#kim" role="link" tabindex="-1" class="v"><img alt="" width="40" height="40"></a></div>
+      <div class="v" style="flex:1">
+        <div class="h" data-testid="User-Name" data-chrome>
+          <div class="v"><a href="#kim" role="link" class="v"><div dir="ltr" class="t"><span><span>Kim Aldana</span></span></div></a></div>
+          <div class="h"><a href="#kim" role="link" tabindex="-1" class="v"><div dir="ltr" class="t"><span>@kimaldana</span></div></a>
+            <div dir="ltr" aria-hidden="true" class="t"><span>·</span></div>
+            <a href="#s-kim" role="link" dir="ltr" aria-label="2 hours ago" class="t"><time datetime="2026-09-18T10:00:00.000Z">2h</time></a></div>
+        </div>
+        <div dir="auto" lang="en" class="t" data-testid="tweetText" data-voice="kim" data-expect="unit" data-parts="6"><span>Two years ago I turned down the best offer I have ever had, and I still get asked about it, so here is the long version for absolutely anyone who is about to make the same kind of choice and wants to hear from somebody who has lived with the result.
+
+The money was double. The title was much bigger. The team was one I had wanted to work with since my first job out of school, and they knew it.
+
+What I could not get past was one sentence in the last interview, said kindly and clearly meant as a compliment: we need somebody who will not ask too many questions in the first year.
+
+I asked what kind of questions. The answer was the kind that slow a launch down, and that was the whole conversation, because the person who said it honestly believed it was a reasonable thing to want from a senior hire and simply had no idea how it sounded to me.
+
+I went straight home that same evening, made a list of every serious mistake I had ever seen a company make, and found that each and every one of them had started with a question that somebody decided not to ask because the timing was bad.
+
+So I said no, and then I spent a fairly miserable six months wondering whether I had been principled or merely frightened, which from the inside feel almost exactly the same. The company launched on time. The product was withdrawn nine months later for a reason that three different people had apparently noticed and not raised. I take no pleasure in that. I really only know now which room I would rather have been in.</span></div>
+        <div class="h" role="group" aria-label="31 replies, 12 reposts, 240 likes" data-chrome>
+          <button role="button" aria-label="31 Replies. Reply" data-testid="reply"><div class="h"><span>31</span></div></button>
+          <button role="button" aria-label="12 reposts. Repost" data-testid="retweet"><div class="h"><span>12</span></div></button>
+          <button role="button" aria-label="240 Likes. Like" data-testid="like"><div class="h"><span>240</span></div></button>
+        </div>
+      </div>
+    </div></div>
+  </article>
+  </div></div></div>
+
+  <!-- 4 · the timeline's own truncation: about 280 characters and a "Show more" link → nothing -->
+  <div class="v" data-testid="cellInnerDiv"><div class="v"><div class="v">
+  <article class="v" role="article" tabindex="0" data-testid="tweet">
+    <div class="v"><div class="h" style="align-items:flex-start">
+      <div class="v" data-testid="Tweet-User-Avatar"><a href="#judy" role="link" tabindex="-1" class="v"><img alt="" width="40" height="40"></a></div>
+      <div class="v" style="flex:1">
+        <div class="h" data-testid="User-Name" data-chrome>
+          <div class="v"><a href="#judy" role="link" class="v"><div dir="ltr" class="t"><span><span>Judy Alvarez</span></span></div></a></div>
+          <div class="h"><a href="#judy" role="link" tabindex="-1" class="v"><div dir="ltr" class="t"><span>@judyalvarez</span></div></a>
+            <div dir="ltr" aria-hidden="true" class="t"><span>·</span></div>
+            <a href="#s-judy" role="link" dir="ltr" aria-label="2h ago" class="t"><time datetime="2026-09-18T09:00:00.000Z">2h</time></a></div>
+        </div>
+        <div dir="auto" lang="en" class="t" data-testid="tweetText" data-voice="judy" data-expect="none"><span>Some thoughts after migrating forty engineers from a monolith to separate services: what it cost, what we eventually got back, and what I would tell another team considering something similar. Surprisingly, the technical migration itself was the straightforward part, whereas the…</span></div>
+        <a href="#s-judy" role="link" dir="ltr" class="t" data-testid="tweet-text-show-more-link" data-chrome>Show more</a>
+        <div class="h" role="group" aria-label="4 replies, 2 reposts, 19 likes" data-chrome>
+          <button role="button" aria-label="4 Replies. Reply" data-testid="reply"><div class="h"><span>4</span></div></button>
+          <button role="button" aria-label="2 reposts. Repost" data-testid="retweet"><div class="h"><span>2</span></div></button>
+          <button role="button" aria-label="19 Likes. Like" data-testid="like"><div class="h"><span>19</span></div></button>
+        </div>
+      </div>
+    </div></div>
+  </article>
+  </div></div></div>
+
+  <!-- 5 · a short post by somebody else: too short by itself, and nobody to borrow from -->
   <div class="v" data-testid="cellInnerDiv"><div class="v"><div class="v">
   <article class="v" role="article" tabindex="0" data-testid="tweet">
     <div class="v"><div class="h" style="align-items:flex-start">
@@ -93,7 +239,7 @@ I would do it all again 🙂</span></div>
   </article>
   </div></div></div>
 
-  <!-- 3 · a post QUOTING another post: the quoted one sits inside the quoting one's <article> -->
+  <!-- 6 · a post QUOTING another post: the quoted one sits inside the quoting one's <article> -->
   <div class="v" data-testid="cellInnerDiv"><div class="v"><div class="v">
   <article class="v" role="article" tabindex="0" data-testid="tweet">
     <div class="v"><div class="h" style="align-items:flex-start">
@@ -123,7 +269,42 @@ I would do it all again 🙂</span></div>
   </article>
   </div></div></div>
 
-  <!-- 4 · a long post: one ordinary single-part unit -->
+  <!-- 7 · a post long enough to be judged, quoting a post long enough to be judged: TWO units, the
+       quoted one never inside the quoting one's -->
+  <div class="v" data-testid="cellInnerDiv"><div class="v"><div class="v">
+  <article class="v" role="article" tabindex="0" data-testid="tweet">
+    <div class="v"><div class="h" style="align-items:flex-start">
+      <div class="v" data-testid="Tweet-User-Avatar"><a href="#mallory" role="link" tabindex="-1" class="v"><img alt="" width="40" height="40"></a></div>
+      <div class="v" style="flex:1">
+        <div class="h" data-testid="User-Name" data-chrome>
+          <div class="v"><a href="#mallory" role="link" class="v"><div dir="ltr" class="t"><span><span>Mallory Nakamura</span></span></div></a></div>
+          <div class="h"><a href="#mallory" role="link" tabindex="-1" class="v"><div dir="ltr" class="t"><span>@mallorynk</span></div></a>
+            <div dir="ltr" aria-hidden="true" class="t"><span>·</span></div>
+            <a href="#s7" role="link" dir="ltr" aria-label="5 hours ago" class="t"><time datetime="2026-09-18T07:00:00.000Z">5h</time></a></div>
+        </div>
+        <div dir="auto" lang="en" class="t" data-testid="tweetText" data-voice="mallory" data-expect="unit" data-parts="3"><span>I disagree with almost every line of this, and I still think everybody who runs a team should read it twice.
+
+The part about estimates is wrong in an interesting way: he treats a missed date as a failure of honesty, when in my experience it is nearly always a failure of curiosity.
+
+Nobody lied. Nobody asked the second question either.</span></div>
+        <div class="v" aria-labelledby="q7">
+          <div class="v quote" role="link" tabindex="0" id="q7">
+            <div class="v"><div class="h" data-testid="User-Name" data-chrome>
+              <div class="v"><div dir="ltr" class="t"><span><span>Niaj Rahman</span></span></div></div>
+              <div class="h"><div dir="ltr" class="t"><span>@niajr</span></div><div dir="ltr" aria-hidden="true" class="t"><span>·</span></div><div dir="ltr" class="t"><time datetime="2026-09-17T07:00:00.000Z">Sep 17</time></div></div>
+            </div></div>
+            <div class="v"><div dir="auto" lang="en" class="t" data-testid="tweetText" data-voice="niaj" data-expect="unit" data-parts="1"><span>After fifteen years of running projects I have come to believe that an estimate is a promise made by somebody who has not been told the truth yet, and that the only honest schedule is the one you write down after the work is finished, which is of course the one schedule nobody has ever asked me for.</span></div></div>
+          </div>
+        </div>
+        <div class="h" role="group" aria-label="7 replies" data-chrome>
+          <button role="button" aria-label="7 Replies. Reply" data-testid="reply"><div class="h"><span>7</span></div></button>
+        </div>
+      </div>
+    </div></div>
+  </article>
+  </div></div></div>
+
+  <!-- 8 · a long post: one ordinary single-part unit -->
   <div class="v" data-testid="cellInnerDiv"><div class="v"><div class="v">
   <article class="v" role="article" tabindex="0" data-testid="tweet">
     <div class="v"><div class="h" style="align-items:flex-start">
@@ -140,7 +321,7 @@ I would do it all again 🙂</span></div>
   </article>
   </div></div></div>
 
-  <!-- 5 + 6 · two consecutive short posts of ONE author: separate posts are separate scopes -->
+  <!-- 9 + 10 · two consecutive short posts of ONE author: separate posts are separate scopes -->
   <div class="v" data-testid="cellInnerDiv"><div class="v"><div class="v">
   <article class="v" role="article" tabindex="0" data-testid="tweet">
     <div class="v"><div class="h" style="align-items:flex-start">

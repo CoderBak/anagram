@@ -5,7 +5,8 @@
 // block container. Most units have exactly one part; short neighbouring paragraphs
 // of ONE voice (list items, BR-separated lines of a post, the short paragraphs of
 // one article or one comment) are merged into multi-part units so text below the
-// per-paragraph evidence floor still gets covered instead of being silently skipped.
+// per-paragraph evidence floor still gets covered instead of being silently skipped,
+// and a post that fits one model window is one unit whole (lib/dom/walker.ts).
 
 /** One visual paragraph inside a unit: an inline run of text nodes + its block. */
 export interface UnitPart {

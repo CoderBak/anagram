@@ -66,7 +66,7 @@ const results = await page.evaluate(() => {
   check("BR-split halves → one 2-part unit", u.length === 1 && u[0].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
 
   u = collect(`<p>${words(20)}</p><p>${words(60)}</p><p>${words(20)}</p>`);
-  check("short|LONG|short → only the long unit (orphans below floor)", u.length === 1 && u[0].parts === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
+  check("short|LONG|short → ONE unit of three parts: a short text that cannot stand alone joins the full paragraph beside it", u.length === 1 && u[0].parts === 3 && u[0].words === 100, JSON.stringify(u.map(x => [x.parts, x.words])));
 
   u = collect(`<p>${words(30)}</p><h3>Break</h3><p>${words(30)}</p>`);
   check("heading is a merge barrier", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
@@ -357,13 +357,337 @@ const results = await page.evaluate(() => {
   check("mergeShorts:false — one-sentence paragraphs are still skipped in strict mode", PW.collectUnits(sandbox, { mergeShorts: false }).length === 0);
 
   {
-    // Incremental re-scan inside one article: the claimed unit is a barrier for ITS scope.
-    sandbox.innerHTML = `<article><p>${sent(20)}</p><p>${sent(60)}</p><p>${sent(20)}</p></article>`;
+    // Incremental re-scan of an ARTICLE (longer than a window): the full paragraph a live
+    // unit owns still ends the group before it, and nothing is emitted a second time.
+    sandbox.innerHTML = `<article><p>${sent(40)}</p><p>${sent(320)}</p><p>${sent(40)}</p><p>${sent(320)}</p></article>`;
     const firstScan = PW.collectUnits(sandbox);
     const ownedNodes = new Set();
     for (const un of firstScan) for (const part of un.parts) for (const n of part.nodes) ownedNodes.add(n);
     const again = PW.collectUnits(sandbox, { claimFilter: (nodes) => (nodes.some((n) => ownedNodes.has(n)) ? "skip" : "take") });
-    check("claimed unit inside a scope: still no merging across it on re-scan", firstScan.length === 1 && again.length === 0, JSON.stringify(again.map(x => x.parts.length)));
+    check("claimed unit inside a scope: still no merging across it on re-scan", firstScan.length === 2 && firstScan.every((x) => x.parts.length === 1) && again.length === 0, JSON.stringify([firstScan.map(x => x.parts.length), again.map(x => x.parts.length)]));
+  }
+
+  // ---- one voice, one verdict: posts are read whole, groups stay open until the voice ends ----
+  // X as measured: article[role=article] → flex wrappers → div[data-testid=tweetText]
+  // (display:block, white-space:pre-wrap) → ONE inline span whose text node is the whole
+  // post, paragraphs separated by blank lines.
+  const xPost = (paras, { who = "Some Name", after = "" } = {}) =>
+    `<article role="article" tabindex="0"><div style="display:flex;flex-direction:column"><div style="display:flex;flex-direction:row">` +
+    `<div data-testid="User-Name"><a href="#u" role="link"><div><span>${who}</span></div></a></div></div>` +
+    `<div style="display:flex;flex-direction:column"><div data-testid="tweetText" dir="auto" lang="en" style="display:block;white-space:pre-wrap"><span>${paras.join("\n\n")}</span></div>${after}</div>` +
+    `<div role="group" style="display:flex"><button><div><span>12</span></div></button><button><div><span>3</span></div></button></div></div></article>`;
+  const shape = (units) => JSON.stringify(units.map((x) => [x.parts, x.words]));
+  {
+    const TWELVE = [14, 10, 22, 22, 12, 13, 11, 14, 17, 14, 16, 16]; // 181 words, as measured on x.com
+    u = collect(xPost(TWELVE.map((n, i) => `P${i} ${sent(n - 1)}`)));
+    check("X: a 181-word post of twelve short paragraphs is ONE unit of twelve parts (it was ×4 / ×4 / ×4)",
+      u.length === 1 && u[0].parts === 12 && u[0].words === 181 && partsOf(u[0]).every((t, i) => t.startsWith(`P${i} `)), shape(u));
+
+    u = collect(xPost([`A ${sent(29)}`, `B ${sent(54)}`, `C ${sent(19)}`, `D ${sent(59)}`, `E ${sent(24)}`]));
+    check("X: a post of mixed paragraphs [30][55][20][60][25] is ONE unit, in document order (it was two chips and three paragraphs nobody judged)",
+      u.length === 1 && u[0].parts === 5 && u[0].words === 190 && partsOf(u[0]).map((t) => t[0]).join("") === "ABCDE", shape(u));
+
+    const tags = `<span><a href="#h1" role="link">#oncall</a></span> <span><a href="#h2" role="link">#sre</a></span>`;
+    u = collect(xPost([`A ${sent(29)}`, tags, `B ${sent(54)}`, "* * *", `C ${sent(19)}`]));
+    check("…a line of hashtags and a row of asterisks inside a post are left out of it and end nothing",
+      u.length === 1 && u[0].parts === 3 && !/#oncall|\*/.test(u[0].text), shape(u));
+
+    u = collect(`<article><h2>A heading inside a forum post</h2><p>A ${sent(29)}</p><h3>Another one</h3><p>B ${sent(29)}</p></article>`);
+    check("…and so is a heading: inside a post it is no boundary", u.length === 1 && u[0].parts === 2 && !u[0].text.includes("heading"), shape(u));
+
+    // Just above one window: an article. Full paragraphs keep their chip, shorts group.
+    const over = [`A ${sent(24)}`, `B ${sent(24)}`, `C ${sent(99)}`, `D ${sent(19)}`, `E ${sent(19)}`, `F ${sent(19)}`, `G ${sent(119)}`];
+    u = collect(xPost(over));
+    const overChars = over.join("\n\n").length;
+    check("a post just ABOVE one window is an article: a unit per full paragraph, the short ones grouped between them",
+      overChars > PW.WINDOW_CHARS && overChars < PW.WINDOW_CHARS * 1.2 && shape(u) === JSON.stringify([[2, 50], [1, 100], [3, 60], [1, 120]]), `${overChars} chars ${shape(u)}`);
+    const under = [`A ${sent(24)}`, `B ${sent(24)}`, `C ${sent(99)}`, `D ${sent(19)}`, `E ${sent(19)}`, `F ${sent(19)}`, `G ${sent(69)}`];
+    u = collect(xPost(under));
+    check("…and the same post a sentence shorter, inside the window, is one unit", under.join("\n\n").length <= PW.WINDOW_CHARS && u.length === 1 && u[0].parts === 7, `${under.join("\n\n").length} chars ${shape(u)}`);
+
+    u = collect(xPost([`ALICE ${sent(44)}`], { who: "Alice" }) + xPost([`BOB ${sent(44)}`], { who: "Bob" }));
+    check("two adjacent posts by different authors, each under the floor: nothing, never added up", u.length === 0, shape(u));
+
+    const more = `<a href="#status" role="link" dir="ltr" style="display:block" data-testid="tweet-text-show-more-link">Show more</a>`;
+    u = collect(xPost([`${sent(30)} ${sent(13).slice(0, -1)}…`], { after: more }));
+    check("a post the timeline cut at 280 characters (44 visible words and 'Show more') gets nothing until it is opened", u.length === 0, shape(u));
+
+    const quoted = (text) => `<div><div role="link" tabindex="0" style="display:flex;flex-direction:column"><div data-testid="User-Name"><div><span>Quoted Person</span></div></div><div data-testid="tweetText" style="display:block;white-space:pre-wrap"><span>${text}</span></div></div></div>`;
+    u = collect(xPost([`OUTER-A ${sent(29)}`, `OUTER-B ${sent(29)}`], { after: quoted(`QUOTED ${sent(39)}`) }));
+    check("a quoted post (div[role=link] inside the quoting post) is excluded from the post's unit",
+      u.length === 1 && u[0].parts === 2 && u[0].text.includes("OUTER-A") && u[0].text.includes("OUTER-B") && !u[0].text.includes("QUOTED"), shape(u));
+    u = collect(xPost([`OUTER-A ${sent(29)}`, `OUTER-B ${sent(29)}`], { after: quoted(`QUOTED ${sent(59)}`) }));
+    check("…and one long enough to be judged is a unit of its own: two voices, two verdicts",
+      u.length === 2 && u[0].parts === 2 && !u[0].text.includes("QUOTED") && u[1].parts === 1 && u[1].text.startsWith("QUOTED"), shape(u));
+
+    u = collect(`<article><div class="lockup"><div><a href="#a">Alice Moreau</a></div><p>${line(11)}</p></div><div class="text"><p>TEXT ${sent(29)}</p><p>${sent(30)}</p></div></article>`);
+    check("what stands elsewhere in the card (LinkedIn's headline row, running text by its looks) is not the post",
+      u.length === 1 && u[0].parts === 2 && u[0].text.startsWith("TEXT"), shape(u));
+
+    u = collect(`<article><p>${sent(30)}</p><ul><li><p>ITEM ${sent(11)}</p></li><li><p>ITEM ${sent(11)}</p></li></ul><p>LAST ${sent(29)}</p></article>`);
+    check("the paragraphs on both sides of a list set a level deeper still belong together", u.length === 1 && u[0].parts === 2 && u[0].text.includes("LAST") && !u[0].text.includes("ITEM"), shape(u));
+
+    sandbox.innerHTML = xPost([`A ${sent(29)}`, `B ${sent(54)}`, `C ${sent(19)}`]);
+    const strictPost = PW.collectUnits(sandbox, { mergeShorts: false });
+    check("mergeShorts:false — a post is NOT read whole: strict per-paragraph mode", strictPost.length === 1 && strictPost[0].parts.length === 1 && strictPost[0].wordCount === 55, JSON.stringify(strictPost.map((x) => [x.parts.length, x.wordCount])));
+  }
+  {
+    // Groups no longer close at the floor — on the bare page and in articles alike.
+    u = collect(Array.from({ length: 6 }, (_, i) => `<p>P${i} ${sent(24)}</p>`).join(""));
+    check("six 25-word paragraphs of one voice on the bare page → ONE unit of six parts (they were ×2 / ×2 / ×2)", u.length === 1 && u[0].parts === 6 && u[0].words === 150, shape(u));
+
+    u = collect(`<p>${sent(25)}</p><p>${sent(25)}</p><p>${sent(25)}</p><p>FULL ${sent(79)}</p><p>${sent(25)}</p><p>${sent(25)}</p>`);
+    check("a full paragraph still ends the group before it and stays a unit of its own", shape(u) === JSON.stringify([[3, 75], [1, 80], [2, 50]]), shape(u));
+
+    u = collect(`<p>${sent(25)}</p><p>${sent(25)}</p><p>${sent(25)}</p><h3>Next topic</h3><p>${sent(25)}</p><p>${sent(25)}</p><p>${sent(20)}</p>`);
+    check("…and so does a heading", shape(u) === JSON.stringify([[3, 75], [3, 70]]), shape(u));
+
+    // A thousand words of 20-word lines, one voice: neither a chip every three lines nor one
+    // number for the lot — model-sized groups, cut between lines, even, nothing dropped.
+    const lines = (n) => Array.from({ length: n }, (_, i) => `<p>L${i} ${sent(9)} ${sent(10)}</p>`).join("");
+    sandbox.innerHTML = lines(50);
+    let got = PW.collectUnits(sandbox);
+    const sized = (units) => JSON.stringify(units.map((x) => [x.parts.length, x.wordCount, x.text.length]));
+    check("a 1000-word run of 20-word lines → three groups of one model window each (they were sixteen of ×3), every line in one of them",
+      got.length === 3 && got.reduce((n, x) => n + x.parts.length, 0) === 50 && got.reduce((n, x) => n + x.wordCount, 0) === 1000 &&
+      got.every((x) => x.text.length <= PW.WINDOW_CHARS && PW.planWindows(x.text).length === 1 && Math.abs(x.parts.length - 50 / 3) < 1), sized(got));
+
+    sandbox.innerHTML = lines(300);
+    got = PW.collectUnits(sandbox);
+    check("a 6000-word run → ceil(length / window) groups, none above a window, none below the floor, as even as the lines allow",
+      got.length === Math.ceil((got.reduce((n, x) => n + x.text.length, 0) + 2 * (got.length - 1)) / PW.WINDOW_CHARS) && got.reduce((n, x) => n + x.parts.length, 0) === 300 && got.reduce((n, x) => n + x.wordCount, 0) === 6000 &&
+      got.every((x) => x.text.length <= PW.WINDOW_CHARS && x.wordCount >= 50 && Math.abs(x.parts.length - 300 / got.length) <= 1), sized(got));
+
+    u = collect(Array.from({ length: 7 }, (_, i) => `<p>P${i} ${sent(54)}</p>`).join("").replace(/<p>P3 [^<]*<\/p>/, `<p>P3 ${sent(19)}</p>`));
+    check("full paragraphs are never grouped with each other, however short", u.length === 6 && u.filter((x) => x.parts === 2).length === 1, shape(u));
+  }
+  {
+    // No orphans inside one voice: a short text that cannot stand alone joins the full
+    // paragraph beside it — the one before it by preference — if the two fit one window.
+    u = collect(`<p>FULL ${sent(59)}</p><p>TAIL ${sent(19)}</p>`);
+    check("[60][20] → one unit ×2: the tail joins the paragraph before it", u.length === 1 && u[0].parts === 2 && u[0].words === 80 && u[0].text.startsWith("FULL"), shape(u));
+    u = collect(`<p>LEAD ${sent(12)}</p><p>FULL ${sent(56)}</p>`);
+    check("[13][57] → one unit ×2: a lead-in with nothing before it joins the paragraph after it (Zhihu)", u.length === 1 && u[0].parts === 2 && u[0].words === 70 && u[0].text.startsWith("LEAD"), shape(u));
+    u = collect(`<p>A ${sent(59)}</p><p>MID ${sent(19)}</p><p>B ${sent(59)}</p>`);
+    check("[60][20][60] → the paragraph BEFORE it is preferred", shape(u) === JSON.stringify([[2, 80], [1, 60]]) && u[0].text.includes("MID"), shape(u));
+    u = collect(`<p>${sent(39)}</p><p>${sent(121)}</p><p>${sent(226)}</p><p>${sent(120)}</p>`);
+    check("[39][121][226][120] → the 39-word opening is judged with the paragraph after it (Zhihu)", shape(u) === JSON.stringify([[2, 160], [1, 226], [1, 120]]), shape(u));
+    u = collect(`<p>${sent(62)}</p><p>${sent(108)}</p><p>${sent(118)}</p><p>${sent(82)}</p><p>${sent(40)}</p>`);
+    check("[62][108][118][82][40] → the 40-word close is judged with the paragraph before it (Zhihu)", shape(u) === JSON.stringify([[1, 62], [1, 108], [1, 118], [2, 122]]), shape(u));
+
+    const brim = sent(300); // a paragraph that nearly fills a window by itself
+    u = collect(`<p>A ${brim}</p><p>MID ${sent(39)}</p><p>B ${sent(59)}</p>`);
+    check("no room in the paragraph before it (the two would not fit one window) → it joins the one after",
+      `A ${brim}`.length <= PW.WINDOW_CHARS && `A ${brim}\n\nMID ${sent(39)}`.length > PW.WINDOW_CHARS && shape(u) === JSON.stringify([[1, 301], [2, 100]]) && u[1].text.startsWith("MID"), shape(u));
+    u = collect(`<p>A ${brim}</p><p>MID ${sent(39)}</p><p>B ${brim}</p>`);
+    check("no room on either side → it stays unjudged, as before", shape(u) === JSON.stringify([[1, 301], [1, 301]]), shape(u));
+
+    u = collect(`<p>${sent(60)}</p><h3>Next topic</h3><p>${sent(20)}</p>`);
+    check("a heading between them: not joined", shape(u) === JSON.stringify([[1, 60]]), shape(u));
+    u = collect(`<p>${sent(60)}</p><div><a href="#a">One</a> · <a href="#b">Two</a> · <a href="#c">Three</a></div><p>${sent(20)}</p>`);
+    check("a link row between them: not joined", shape(u) === JSON.stringify([[1, 60]]), shape(u));
+    u = collect(`<section><p>${sent(60)}</p></section><section><p>${sent(20)}</p></section>`);
+    check("standing in another section: not joined", shape(u) === JSON.stringify([[1, 60]]), shape(u));
+    u = collect(`<article><p>${sent(60)}</p></article><article><p>${sent(20)}</p></article>`);
+    check("another post: never joined", shape(u) === JSON.stringify([[1, 60]]), shape(u));
+    u = collect(`<p>${sent(60)}</p><blockquote><p>QUOTED ${sent(19)}</p></blockquote><figure><img alt=""><figcaption>CAPTION ${sent(14)}</figcaption></figure>`);
+    check("a short quotation or a caption after a full paragraph is another voice: never joined", shape(u) === JSON.stringify([[1, 60]]) && !/QUOTED|CAPTION/.test(u[0].text), shape(u));
+    u = collect(`<div class="thread"><div class="row head">alice · 2h</div><div class="row msg">ALICE ${sent(59)}</div><div class="row act">Reply · Share</div><div class="row head">bob · 1h</div><div class="row msg">BOB ${sent(19)}</div></div>`);
+    check("div-soup thread: the next speaker's short message does NOT join the full message before it — the name row lets it go", shape(u) === JSON.stringify([[1, 60]]) && !u[0].text.includes("BOB"), shape(u));
+    u = collect(`<p>${sent(250)}</p><p>${sent(25)}</p><p>${sent(25)}</p>`);
+    check("shorts that reach the floor together stand by themselves; only an orphan joins", shape(u) === JSON.stringify([[1, 250], [2, 50]]), shape(u));
+    sandbox.innerHTML = `<p>${sent(60)}</p><p>${sent(20)}</p>`;
+    check("mergeShorts:false — nothing joins anything", JSON.stringify(PW.collectUnits(sandbox, { mergeShorts: false }).map((x) => [x.parts.length, x.wordCount])) === "[[1,60]]");
+
+    u = collect(xPost([`FULL ${sent(54)}`, `Here is what happened next`, `LAST ${sent(29)}`]));
+    check("X: an unpunctuated line after a FULL paragraph of the same text block is still a line of that post", u.length === 1 && u[0].parts === 3 && u[0].text.includes("Here is what happened next"), shape(u));
+    u = collect(`<div>${sent(60)}<br>Posted by alice on March 3</div>`);
+    check("…on the bare page it is not: that is where a forum sets 'Posted by alice on March 3' under a message", u.length === 1 && u[0].parts === 1 && !u[0].text.includes("Posted"), shape(u));
+    u = collect(xPost([51, 30, 35, 51, 46, 75].map((n, i) => `P${i} ${sent(n - 1)}`)));
+    check("X: a 288-word post in six blank-line paragraphs is ONE unit (it was four: 51, 65, 51, 75 words, 46 unjudged)", u.length === 1 && u[0].parts === 6 && u[0].words === 288 && u[0].text.length <= PW.WINDOW_CHARS, `${shape(u)} ${u[0]?.text.length}`);
+  }
+  {
+    // Papers and articles: a unit per full paragraph, in an <article> and on the bare page alike.
+    const body = [120, 80, 200, 95, 150, 110].map((n, i) => `<p>PARA${i} ${sent(n - 1)}</p>`).join("");
+    const bare = collect(`<h1>Title</h1>${body}`);
+    const inArticle = collect(`<article><h1>Title</h1>${body}</article>`);
+    check("an article of 80–200-word paragraphs: one single-part unit per paragraph, with or without <article>",
+      shape(bare) === JSON.stringify([[1, 120], [1, 80], [1, 200], [1, 95], [1, 150], [1, 110]]) && shape(inArticle) === shape(bare), `${shape(bare)} ${shape(inArticle)}`);
+    u = collect(`<article><h1>Title</h1>${body}<p>${sent(20)}</p><p>${sent(20)}</p><p>${sent(20)}</p></article>`);
+    check("…its short paragraphs group among themselves and never into a full one", u.length === 7 && u[6].parts === 3 && u.slice(0, 6).every((x) => x.parts === 1), shape(u));
+  }
+  {
+    // Incremental re-scan, the way lib/capture/orchestrator.ts does it: nodes are owned by
+    // live units; a run that is exactly a live part is skipped, any other node list retires
+    // its owners and queues the containers they release; dirty roots are the PARENT of what
+    // was added, scanned round by round.
+    const orchestrator = () => {
+      const owner = new Map();
+      const live = new Map();
+      const retired = [];
+      const invalidate = (unit, queue) => {
+        for (const part of unit.parts) {
+          for (const n of part.nodes) if (owner.get(n) === unit) owner.delete(n);
+          if (queue && part.container.isConnected) queue.add(part.container);
+        }
+        live.delete(unit.id);
+        retired.push(unit.id);
+      };
+      const filterFor = (queue) => (nodes) => {
+        const owners = new Set(nodes.map((n) => owner.get(n)).filter(Boolean));
+        if (owners.size === 0) return "take";
+        if (owners.size === 1) {
+          const [only] = owners;
+          const part = only.parts.find((x) => x.nodes.includes(nodes[0]));
+          if (live.has(only.id) && part && part.nodes.length === nodes.length && part.nodes.every((n, i) => n === nodes[i])) return "skip";
+        }
+        for (const unit of owners) if (live.has(unit.id)) invalidate(unit, queue);
+        return "take";
+      };
+      const ingest = (units) => { for (const unit of units) { live.set(unit.id, unit); for (const part of unit.parts) for (const n of part.nodes) owner.set(n, unit); } };
+      const scan = (roots) => {
+        for (const unit of [...live.values()]) if (unit.parts.some((part) => part.nodes.some((n) => !n.isConnected))) invalidate(unit, null);
+        const scanned = new Set();
+        let queue = roots;
+        for (let round = 0; round < 4 && queue.length > 0; round++) {
+          const extra = new Set();
+          const filter = filterFor(extra);
+          for (const root of queue) {
+            if (scanned.has(root) || !root.isConnected) continue;
+            scanned.add(root);
+            ingest(PW.collectUnits(root, { claimFilter: filter }));
+          }
+          queue = [...extra].filter((r) => !scanned.has(r));
+        }
+      };
+      // Every text node of `el` that a live unit owns, per unit — and the ones owned twice.
+      const census = (el) => {
+        const seen = new Map();
+        let twice = 0;
+        for (const unit of live.values()) for (const part of unit.parts) for (const n of part.nodes) {
+          if (!el.contains(n)) continue;
+          if (seen.has(n)) twice++;
+          seen.set(n, unit.id);
+        }
+        return { units: [...live.values()].filter((x) => x.parts.some((part) => el.contains(part.container))).map((x) => [x.parts.length, x.wordCount]), twice, text: [...seen.keys()].map((n) => n.data).join(" ") };
+      };
+      return { scan, live, retired, census };
+    };
+
+    // 1) a forum post that gains a paragraph while it is on screen
+    sandbox.innerHTML = `<article><header><a href="#a">alice</a></header><div class="body"><p>ONE ${sent(29)}</p><p>TWO ${sent(54)}</p><p>THREE ${sent(19)}</p></div><footer><a href="#r">Reply</a></footer></article>`;
+    let o = orchestrator();
+    o.scan([sandbox]);
+    const before = o.census(sandbox);
+    const firstId = [...o.live.keys()][0];
+    const p = document.createElement("p");
+    p.textContent = `FOUR ${sent(24)}`;
+    sandbox.querySelector(".body").appendChild(p);
+    o.scan([sandbox.querySelector(".body")]); // computeScanRoots: the parent of what was added
+    let after = o.census(sandbox);
+    check("re-scan: a one-unit post that gains a paragraph is re-taken as ONE unit — the old one retired, no duplicate, no orphan",
+      JSON.stringify(before.units) === "[[3,105]]" && JSON.stringify(after.units) === "[[4,130]]" && after.twice === 0 && o.retired.includes(firstId) && !o.live.has(firstId) &&
+      ["ONE", "TWO", "THREE", "FOUR"].every((k) => after.text.includes(k)), JSON.stringify([before.units, after.units, after.twice, o.retired]));
+    o.scan([sandbox.querySelector(".body")]);
+    const settled = o.census(sandbox);
+    check("…and scanning it again changes nothing (a unit of owned runs only is the live one)", JSON.stringify(settled.units) === "[[4,130]]" && o.retired.length === 1, JSON.stringify([settled.units, o.retired]));
+
+    // 2) the released paragraphs are re-scanned ONE BY ONE, and the root is a single <p>:
+    //    each of them, read by itself, would be a short text with nobody to join.
+    sandbox.innerHTML = `<article><div class="body"><p>ONE ${sent(29)}</p><p id="grow">TWO ${sent(19)}</p><p>THREE ${sent(19)}</p></div></article>`;
+    o = orchestrator();
+    o.scan([sandbox]);
+    sandbox.querySelector("#grow").insertAdjacentHTML("beforeend", ` <em>ADDED ${sent(9)}</em>`);
+    o.scan([sandbox.querySelector("#grow")]);
+    after = o.census(sandbox);
+    check("re-scan from INSIDE a post starts at the post: a paragraph that grew is re-read with its neighbours",
+      JSON.stringify(after.units) === "[[3,80]]" && after.twice === 0 && after.text.includes("ADDED") && o.retired.length === 1, JSON.stringify([after.units, after.twice, o.retired]));
+
+    // 3) a post whose text changes in place: X's tweetText span has ONE string child, so
+    //    React sets its text anew and the nodes the walker split are gone.
+    sandbox.innerHTML = xPost([`A ${sent(19)}`, `B ${sent(19)}`, `C ${sent(19)}`]);
+    o = orchestrator();
+    o.scan([sandbox]);
+    const span = sandbox.querySelector('[data-testid="tweetText"] > span');
+    span.textContent = [`A ${sent(19)}`, `B ${sent(19)}`, `C ${sent(19)}`, `D ${sent(54)}`, `E ${sent(19)}`].join("\n\n");
+    o.scan([span.parentElement]);
+    after = o.census(sandbox);
+    check("re-scan: an X-shaped post whose text is re-rendered in place is ONE unit again, full paragraph included",
+      JSON.stringify(after.units) === "[[5,135]]" && after.twice === 0 && o.retired.length === 1, JSON.stringify([after.units, o.retired]));
+
+    // 4) an answer streamed into its <article> outgrows the window: the post becomes an article.
+    sandbox.innerHTML = `<article><div class="md"><p>ONE ${sent(59)}</p><p>TWO ${sent(19)}</p><p>THREE ${sent(64)}</p></div></article>`;
+    o = orchestrator();
+    o.scan([sandbox]);
+    const whole = o.census(sandbox).units;
+    sandbox.querySelector(".md").insertAdjacentHTML("beforeend", `<p>FOUR ${sent(299)}</p>`);
+    o.scan([sandbox.querySelector(".md")]);
+    after = o.census(sandbox);
+    check("re-scan: a post that outgrows the window is retired whole and re-taken per paragraph — no stale ×3 next to the new chips",
+      JSON.stringify(whole) === "[[3,145]]" && JSON.stringify(after.units) === "[[2,80],[1,65],[1,300]]" && after.twice === 0, JSON.stringify([whole, after.units, o.retired]));
+
+    // 5) the bare page: a list of short items that gets one more.
+    sandbox.innerHTML = `<ul>${Array.from({ length: 4 }, (_, i) => `<li>ITEM${i} ${sent(19)}</li>`).join("")}</ul>`;
+    o = orchestrator();
+    o.scan([sandbox]);
+    sandbox.querySelector("ul").insertAdjacentHTML("beforeend", `<li>ITEM4 ${sent(19)}</li>`);
+    o.scan([sandbox.querySelector("ul")]);
+    after = o.census(sandbox);
+    check("re-scan: a group on the bare page that gains an item is one unit again (it used to leave the new item out)",
+      JSON.stringify(after.units) === "[[5,100]]" && after.twice === 0 && after.text.includes("ITEM4"), JSON.stringify([after.units, o.retired]));
+
+    // 5b) owned runs are not even READ unless something new comes to stand beside them:
+    //     a re-scan of a page where nothing changed counts no words at all.
+    {
+      sandbox.innerHTML = `<article><p>${sent(30)}</p><p>${sent(30)}</p></article>` + Array.from({ length: 40 }, (_, i) => `<p>BODY${i} ${sent(59)}</p>`).join("") + `<ul><li>${sent(30)}</li><li>${sent(30)}</li></ul>`;
+      o = orchestrator();
+      o.scan([sandbox]);
+      const segment = Intl.Segmenter.prototype.segment;
+      let reads = 0;
+      Intl.Segmenter.prototype.segment = function (...args) { reads++; return segment.apply(this, args); };
+      o.scan([sandbox]);
+      Intl.Segmenter.prototype.segment = segment;
+      check("re-scan of an unchanged page: 44 owned runs walked past, none of them read, nothing retired", o.live.size === 42 && o.retired.length === 0 && reads === 0, `${o.live.size} units, ${reads} reads`);
+    }
+
+    // 5c) a heading between what a unit owns and what is new keeps its place: in an article
+    //     it still ends the group; in a post it never did.
+    sandbox.innerHTML = `<article><div class="b"><p>ONE ${sent(29)}</p><p>TWO ${sent(29)}</p><h3>Next topic</h3><p>LONG ${sent(339)}</p></div></article>`;
+    o = orchestrator();
+    o.scan([sandbox]);
+    sandbox.querySelector("h3").insertAdjacentHTML("afterend", `<p>NEW ${sent(39)}</p>`);
+    o.scan([sandbox.querySelector(".b")]);
+    after = o.census(sandbox);
+    check("re-scan of an article: a new short paragraph BEHIND a heading does not reach across it into an owned group",
+      JSON.stringify(after.units) === "[[2,60],[1,340]]" && o.retired.length === 0 && !after.text.includes("NEW"), JSON.stringify([after.units, o.retired]));
+    sandbox.innerHTML = `<article><div class="b"><p>ONE ${sent(29)}</p><p>TWO ${sent(29)}</p><h3>Next topic</h3><p>LONG ${sent(299)}</p></div></article>`;
+    o = orchestrator();
+    o.scan([sandbox]);
+    sandbox.querySelector("h3").insertAdjacentHTML("afterend", `<p>NEW ${sent(19)}</p>`);
+    o.scan([sandbox.querySelector(".b")]);
+    after = o.census(sandbox);
+    check("…it joins the owned full paragraph after it instead, whose unit is retired and re-taken as ×2",
+      JSON.stringify(after.units) === "[[2,60],[2,320]]" && o.retired.length === 1 && after.twice === 0 && after.text.includes("NEW"), JSON.stringify([after.units, o.retired]));
+    sandbox.innerHTML = `<article><div class="b"><p>ONE ${sent(29)}</p><p>TWO ${sent(29)}</p><h3>Next topic</h3></div></article>`;
+    o = orchestrator();
+    o.scan([sandbox]);
+    sandbox.querySelector("h3").insertAdjacentHTML("afterend", `<p>NEW ${sent(19)}</p>`);
+    o.scan([sandbox.querySelector(".b")]);
+    after = o.census(sandbox);
+    check("…while in a post the same paragraph joins the post", JSON.stringify(after.units) === "[[3,80]]" && o.retired.length === 1 && after.twice === 0, JSON.stringify([after.units, o.retired]));
+
+    // 6) inside a LONG article the walk stays where it was asked to start, and what it sees
+    //    there is never mistaken for a post: the full paragraphs keep their own units.
+    sandbox.innerHTML = `<article><section id="sec"><p>S1 ${sent(59)}</p><p>S2 ${sent(19)}</p><p>S3 ${sent(69)}</p></section>${Array.from({ length: 8 }, (_, i) => `<p>BODY${i} ${sent(119)}</p>`).join("")}</article>`;
+    o = orchestrator();
+    o.scan([sandbox]);
+    const articleBefore = o.census(sandbox).units;
+    sandbox.querySelector("#sec").insertAdjacentHTML("beforeend", `<p>S4 ${sent(19)}</p><p>S5 ${sent(34)}</p>`);
+    o.scan([sandbox.querySelector("#sec")]);
+    after = o.census(sandbox);
+    check("re-scan inside a long article: its section is not taken for a post — every unit untouched, the new shorts a group of their own",
+      JSON.stringify(articleBefore.slice(0, 2)) === "[[2,80],[1,70]]" && articleBefore.length === 10 && o.retired.length === 0 && JSON.stringify(after.units.slice(0, 10)) === JSON.stringify(articleBefore) && JSON.stringify(after.units[10]) === "[2,55]" && after.twice === 0 && after.text.includes("S5"),
+      JSON.stringify([articleBefore, after.units, o.retired]));
   }
 
   check("endsLikeProse: sentence and clause ends, CJK, closers, trailing emoji — not names, times, colons",
@@ -653,8 +977,8 @@ const results = await page.evaluate(() => {
       JSON.stringify(ranges && ranges.map((r) => r.map((x) => JSON.stringify(x.toString().slice(0, 16))))));
   }
   {
-    // A merged unit closes as soon as it clears the fifty-word floor, so only absurdly long
-    // words make one that outgrows a window: three list items of two dozen 30-letter words.
+    // Three list items of two dozen 30-letter words: parts so long that no joint is within
+    // reach of the even split, so the cut falls INSIDE an item and that item gets two ranges.
     const longWords = (n, from) => Array.from({ length: n }, (_, j) => VOCAB[(from + j) % VOCAB.length] + "abcdefghijklmnopqrstuvwxy").join(" ");
     sandbox.innerHTML = `<ul>${Array.from({ length: 3 }, (_, i) => `<li>ITEM${i} <i>${longWords(11, i)}.</i> Then ${longWords(11, i + 11)}.</li>`).join("")}</ul>`;
     const [unit] = PW.collectUnits(sandbox);
@@ -866,20 +1190,24 @@ const results = await page.evaluate(() => {
 //   data-voice="name"   nearest ancestor names the voice of a text node
 //   data-chrome         name / handle / timestamp / action rows and pseudo-headings
 //   data-expect         "unit": some unit covers text in here · "none": no unit does
+//   data-parts          "n": exactly ONE unit covers text in here, and it has n parts
 const FIXTURES = join(__dirname, "fixtures");
 /** [units, multi-part units] per fixture — a change here is a change of behaviour. */
 const EXPECTED = {
   "chat-transcript": [2, 1],
   "discourse-thread": [2, 2],
+  "github-issue": [3, 3],
   "hn-thread": [2, 1],
   "linkedin-feed": [2, 2],
-  "listicle": [2, 2],
+  "listicle": [1, 1],
   "listicle-divsoup": [2, 1],
-  "news-article": [4, 4],
+  "news-article": [1, 1],
   "recipe-faq": [5, 4],
   "reddit-thread": [3, 2],
-  "wordpress-comments": [3, 1],
-  "x-timeline": [2, 1],
+  "substack-article": [16, 13],
+  "wordpress-comments": [2, 2],
+  "x-timeline": [7, 5],
+  "zhihu-answers": [12, 7],
 };
 const fixtureFiles = readdirSync(FIXTURES).filter((f) => f.endsWith(".html")).sort();
 results.push({ name: "every fixture has an expectation (and the other way round)", ok: JSON.stringify(fixtureFiles.map((f) => f.replace(".html", "")).sort()) === JSON.stringify(Object.keys(EXPECTED).sort()), note: fixtureFiles.join(",") });
@@ -906,6 +1234,12 @@ for (const file of fixtureFiles) {
     for (const el of document.querySelectorAll("[data-expect]")) {
       const want = el.getAttribute("data-expect") === "unit";
       if (covered.has(el) !== want) wrong.push(`${want ? "no unit for" : "unexpected unit on"} "${el.textContent.trim().slice(0, 40)}"`);
+      // data-parts="n": ONE unit covers this block, and it has exactly n parts.
+      if (el.hasAttribute("data-parts")) {
+        const mine = units.filter((u) => u.parts.some((part) => el.contains(part.container)));
+        const got = mine.map((u) => u.parts.length).join("+");
+        if (got !== el.getAttribute("data-parts")) wrong.push(`${got || "no"} parts instead of ${el.getAttribute("data-parts")} on "${el.textContent.trim().slice(0, 40)}"`);
+      }
     }
     return { units: units.length, merged: units.filter((u) => u.parts.length > 1).length, mixed, chrome, wrong, annotated: document.querySelectorAll("[data-expect]").length };
   });

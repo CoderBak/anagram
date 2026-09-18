@@ -1,0 +1,270 @@
+<!doctype html>
+<!--
+  Zhihu-style question page: several answers as siblings, NO <article> anywhere. Synthetic text.
+
+  Measured in a logged-in Chrome on zhihu.com (2026-09-18): an answer is
+  `div.ContentItem.AnswerItem`; its text chain is … → a DIV forced to display: inline →
+  `span.RichText.ztext` (inline) → `p` × N, so every paragraph's parent is an INLINE span and
+  the paragraphs of two answers are neither siblings nor cousins. One real answer measured
+  1767 words in 49 <p>; the walker of 2026-09 cut it into 20 units and left 441 of its words
+  (25 %) unjudged: [13][57] lost the lead-in, [39][121][226][120] the opening,
+  [62][108][118][82][40] the close. Answer 1 has that shape — the three measured sequences,
+  with stretches of short paragraphs between them — and EVERY paragraph of it must be
+  covered. The wrapper class names between the measured elements, the author row and the
+  action bar are modelled. The prose is generated English filler (the walker does not care
+  what language it reads); the chrome keeps the site's own labels.
+
+  None of these containers is a declared voice scope, so what keeps two answers apart is
+  proximity and the link-dense rows between them. Answer 2 is too short to be judged and
+  must not borrow from its neighbours; answer 3 is three short paragraphs → one unit.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="zh"><head><meta charset="utf-8"><title>Fixture: Zhihu-style answers</title>
+<style>
+  body { margin: 0; font: 15px/1.6 system-ui, sans-serif; background: #f6f6f6; }
+  .Question-main { width: 694px; margin: 10px auto; }
+  .List-item { background: #fff; padding: 16px 20px; border-bottom: 1px solid #ebebeb; }
+  .AuthorInfo { display: flex; align-items: center; }
+  .AuthorInfo-content { margin-left: 14px; }
+  .AuthorInfo-badgeText { font-size: 14px; color: #646464; }
+  .css-inline { display: inline !important; }
+  .RichText { word-break: break-word; }
+  .RichText p { margin: 1.4em 0; }
+  .ContentItem-time { font-size: 14px; color: #8590a6; margin-top: 10px; }
+  .ContentItem-actions { display: flex; align-items: center; gap: 12px; padding: 10px 0 0; }
+  a { color: inherit; text-decoration: none; }
+</style></head>
+<body>
+<main role="main" class="App-main">
+<div class="Question-main"><div class="ListShortcut"><div class="List" id="QuestionAnswers-answers">
+<div class="List-header" data-chrome><h4 class="List-headerText"><span>3 个回答</span></h4></div>
+<div role="list">
+
+  <!-- 1 · the measured answer: 49 paragraphs, 1767 words — every one of them judged -->
+  <div class="List-item" tabindex="0">
+  <div class="ContentItem AnswerItem" data-zop='{"itemId":"0","type":"answer"}'>
+    <div class="ContentItem-meta" data-chrome>
+      <div class="AuthorInfo AnswerItem-authorInfo">
+        <span class="UserLink AuthorInfo-avatarWrapper"><a class="UserLink-link" href="#answerer-1"><img class="Avatar AuthorInfo-avatar" alt="" width="38" height="38"></a></span>
+        <div class="AuthorInfo-content">
+          <div class="AuthorInfo-head"><span class="UserLink AuthorInfo-name"><a class="UserLink-link" href="#answerer-1">某知乎用户</a></span></div>
+          <div class="AuthorInfo-detail"><div class="AuthorInfo-badge"><div class="ztext AuthorInfo-badgeText">信息技术行业 从业人员</div></div></div>
+        </div>
+      </div>
+      <div class="css-voters"><span><span class="Voters"><button type="button" class="Button Button--plain">1,204 人赞同了该回答</button></span></span></div>
+    </div>
+    <div class="RichContent RichContent--unescapable">
+      <span><div class="RichContent-inner"><div class="css-inline" data-voice="answerer-1">
+        <span class="RichText ztext CopyrightRichText-richText" options="[object Object]" itemprop="text">
+          <p data-pid="0" data-expect="unit">A friend of mine followed a box of letters for most of that.</p>
+          <p data-pid="1" data-expect="unit">The old printer repaired a box of letters long after it stopped being useful again. Our small team
+            described a box of letters because nobody. My neighbour followed a box of letters and then wrote. A
+            friend of mine sorted a map. The old printer sorted a shelf of manuals because nobody had asked them
+            not again.</p>
+          <p data-pid="2" data-expect="unit">The landlord repaired every broken hinge for most of that spring so my neighbour rewrote a jar
+            again.</p>
+          <p data-pid="3" data-expect="unit">Our upstairs tenant repaired a list of small debts and then wrote it all. Every new hire rebuilt a
+            list of small.</p>
+          <p data-pid="4" data-expect="unit">Our upstairs tenant sorted the same three questions because nobody had asked them not again.</p>
+          <p data-pid="5" data-expect="unit">The ferry crew borrowed the water meter until the money ran out because the survey. The reading
+            group questioned two folding chairs on the last working day.</p>
+          <p data-pid="6" data-expect="unit">Our upstairs tenant rebuilt the same three questions as if it had always been done that. Our small
+            team found a list of small debts even when it made no difference.</p>
+          <p data-pid="7" data-expect="unit">The corner bakery repaired the winter schedule even when it made no.</p>
+          <p data-pid="8" data-expect="unit">The night shift ignored a jar of spare keys without saying again. My first manager measured an empty
+            notebook which surprised everyone but me.</p>
+          <p data-pid="9" data-expect="unit">The survey team rebuilt a shelf of manuals even when it made no. The harbour office measured a map.</p>
+          <p data-pid="10" data-expect="unit">A retired teacher followed an empty notebook until the money ran out again. The committee watched a
+            shelf of manuals as if again. The committee measured a map.</p>
+          <p data-pid="11" data-expect="unit">The reading group measured a box of letters even when it made no difference and again.</p>
+          <p data-pid="12" data-expect="unit">The corner bakery found the second draft for most of that spring so again. My neighbour ignored the
+            winter schedule until.</p>
+          <p data-pid="13" data-expect="unit">The old printer repaired the winter schedule for most of that spring so the landlord. A retired
+            teacher watched every broken hinge because nobody had.</p>
+          <p data-chrome><b>二、后来发生的事</b></p>
+          <p data-pid="15" data-expect="unit">Our upstairs tenant watched a jar of spare keys in the hour after lunch. A friend of mine ignored
+            the water meter. The night shift kept the second draft and nobody noticed for a month although a
+            friend again.</p>
+          <p data-pid="16" data-expect="unit">A retired teacher borrowed two folding chairs and then wrote again. The reading group counted the
+            second draft and then wrote it all down so again. The committee carried a jar of spare. A retired
+            teacher postponed two folding chairs and nobody noticed. Every new hire ignored an empty notebook
+            again. The reading group rewrote a jar of spare keys before. A retired teacher rebuilt every broken
+            hinge which surprised everyone but me although again. Our small team followed the back staircase
+            which surprised everyone but me. The night shift borrowed the monthly figures before. Our upstairs
+            tenant measured a jar of spare keys. A friend of mine kept the winter schedule again. A friend of
+            mine described the second draft.</p>
+          <p data-pid="17" data-expect="unit">The harbour office rewrote a list again. The reading group carried a map of the valley until the
+            money ran out because again. A friend of mine kept the back staircase again. The committee measured
+            a shelf of manuals until the money ran out although the survey team. The survey team ignored a box
+            of letters and then wrote it all down again. The committee rebuilt the back staircase although the
+            rules said otherwise because the landlord. The harbour office rewrote the back staircase until the
+            money. The old printer followed the back staircase although the rules said otherwise again. The old
+            printer measured two folding chairs until the money ran. A friend of mine postponed an empty
+            notebook because nobody had. The survey team borrowed an empty notebook while the rain came through
+            again. The corner bakery questioned a map of the valley long after it stopped. The reading group
+            rebuilt two folding chairs before anyone else arrived again. My first manager rebuilt every broken
+            hinge and then wrote it all. Our small team carried the long way round. The harbour office measured
+            a map of the valley. A friend of mine watched the water meter for most of that spring. My neighbour
+            borrowed a map of the valley for most again. The committee rebuilt the long way round for most of
+            that spring again.</p>
+          <p data-pid="18" data-expect="unit">The reading group described the long way. Every new hire ignored a shelf again. The night shift
+            rewrote a list again. The landlord sorted the back staircase while the rain came through the roof
+            and again. The committee rewrote a jar of spare. The old printer described a jar of spare keys which
+            surprised everyone but me. My first manager rewrote an empty notebook although the rules said
+            otherwise and the landlord. The committee rebuilt the long way round with more. My neighbour rebuilt
+            the missing invoice in the hour. Every new hire sorted a box of letters even when it made no
+            difference and again. A retired teacher questioned the water meter and then wrote it all down again.</p>
+          <p data-pid="19" data-expect="unit">The reading group followed the same three. The landlord counted the winter schedule again.</p>
+          <p data-pid="20" data-expect="unit">Our small team measured the missing invoice without saying a word. The committee sorted a list of
+            small debts and then wrote again.</p>
+          <p data-pid="21" data-expect="unit">A friend of mine followed the water meter. My first manager measured a box of letters again.</p>
+          <p data-pid="22" data-expect="unit">A friend of mine kept an empty notebook for most of that spring and again. Our upstairs tenant found
+            the winter schedule and then wrote it all down again.</p>
+          <p data-pid="23" data-expect="unit">Our small team rebuilt a jar of spare keys as if.</p>
+          <p data-pid="24" data-expect="unit">The harbour office counted the second draft again. The survey team followed the same three questions
+            on the last working day of the year because again.</p>
+          <p data-pid="25" data-expect="unit">The reading group carried a list of small debts. The survey team found a jar of spare keys as if.</p>
+          <p data-pid="26" data-expect="unit">The landlord watched a list of small debts. Our upstairs tenant postponed every broken hinge long
+            after it stopped being useful again. Our small team postponed the long way round which surprised
+            everyone.</p>
+          <p data-pid="27" data-expect="unit">The landlord rebuilt the same three questions until the money. The harbour office repaired again.</p>
+          <p data-pid="28" data-expect="unit">A retired teacher counted a jar of spare. The committee borrowed the winter schedule on the last
+            working day of the year.</p>
+          <p data-pid="29" data-expect="unit">The corner bakery sorted the monthly figures with more patience than I expected so a retired teacher
+            followed.</p>
+          <p data-pid="30" data-expect="unit">The reading group questioned the missing invoice. The committee sorted the long way round and nobody
+            noticed. The corner bakery followed the same three questions and nobody.</p>
+          <p data-pid="31" data-expect="unit">The harbour office found the long way round because nobody had asked them.</p>
+          <p data-pid="32" data-expect="unit">My first manager measured an empty notebook. The reading group rewrote two folding chairs with more
+            patience than I expected and the committee followed.</p>
+          <p data-pid="33" data-expect="unit">Our upstairs tenant measured a list of small debts on the last working. A friend of mine borrowed
+            again.</p>
+          <p data-pid="34" data-expect="unit">My first manager sorted the long way round as if it had always been done that.</p>
+          <p data-pid="35" data-expect="unit">Every new hire sorted a jar of spare keys which surprised everyone again. The night shift borrowed
+            the same three questions long after it stopped.</p>
+          <p data-pid="36" data-expect="unit">The survey team counted the back staircase although the rules said otherwise but our upstairs. The
+            night shift questioned the same.</p>
+          <p data-pid="37" data-expect="unit">A retired teacher carried the second draft before anyone else arrived again.</p>
+          <p data-pid="38" data-expect="unit">The reading group found a jar of spare keys as if. A retired teacher measured the second draft for
+            most of that spring although the harbour office counted.</p>
+          <p data-pid="39" data-expect="unit">The ferry crew sorted the winter schedule until the money ran out and my neighbour described again.</p>
+          <p data-pid="40" data-expect="unit">The corner bakery postponed the back staircase again. Every new hire measured the monthly figures
+            again. Our small team found the winter schedule.</p>
+          <p data-pid="41" data-expect="unit">My neighbour sorted the monthly figures as if it had always been done that.</p>
+          <p data-pid="42" data-expect="unit">The ferry crew ignored every broken hinge for most of that spring but my first. The committee kept a
+            list of small debts even when again.</p>
+          <p data-pid="43" data-expect="unit">The reading group counted a jar of spare keys and then. Every new hire kept a map of the valley.</p>
+          <p data-pid="44" data-expect="unit">The committee rewrote a jar of spare keys with more.</p>
+          <p data-pid="45" data-expect="unit">The harbour office counted a map of again. The survey team found the water meter with more patience.
+            The corner bakery rewrote the winter schedule in the hour after lunch. Our small team rewrote a jar
+            of spare keys long after it stopped being useful. The landlord counted the back staircase and then
+            wrote it all. My first manager ignored a jar.</p>
+          <p data-pid="46" data-expect="unit">The survey team described a box of letters until again. My neighbour rewrote the winter schedule
+            until the money ran out while again. The reading group ignored the same three questions while the
+            rain came through again. The landlord borrowed the back staircase without saying a word about again.
+            The corner bakery repaired the water meter even when it made. The old printer kept the same three
+            questions again. A retired teacher described every broken hinge long. A retired teacher sorted a map
+            of the valley for most of that. The survey team rewrote two folding chairs. The reading group
+            repaired a jar of spare keys before anyone.</p>
+          <p data-pid="47" data-expect="unit">Every new hire followed a box of letters which surprised everyone but me. Our upstairs tenant
+            rebuilt a box again. Our small team questioned two folding chairs as if again. My neighbour carried
+            the water meter as if it had always been. The committee rebuilt the winter schedule and then wrote
+            it all. The survey team postponed the missing invoice again. The survey team measured a jar of spare
+            keys while the rain came. My first manager measured an empty notebook. Our upstairs tenant repaired
+            the same three questions long after it stopped. The night shift counted a map of the valley for most
+            of that. The survey team questioned a shelf again. Our small team carried again.</p>
+          <p data-pid="48" data-expect="unit">The ferry crew watched the back staircase again. A friend of mine described the back staircase and
+            then. The old printer sorted a list of small debts as if it had always been. The harbour office
+            repaired the long way round as if it had always been done that. Our upstairs tenant counted a shelf
+            of manuals and then. A friend of mine sorted the second draft although again. The corner bakery
+            carried an empty notebook again. Our upstairs tenant found again.</p>
+          <p data-pid="49" data-expect="unit">Every new hire postponed two folding chairs without saying a word about it again. The landlord
+            rebuilt two folding chairs while the rain came through the roof although our upstairs. A retired
+            teacher rewrote a box of letters and nobody.</p>
+        </span>
+      </div></div></span>
+      <div><div class="ContentItem-time" data-chrome><a target="_blank" href="#t-answerer-1"><span>发布于 2026-09-01 10:24</span></a></div></div>
+      <div class="ContentItem-actions" data-chrome>
+        <span><button type="button" class="Button VoteButton">赞同 1,204</button><button type="button" class="Button VoteButton VoteButton--down"></button></span>
+        <button type="button" class="Button ContentItem-action Button--plain">12 条评论</button>
+        <button type="button" class="Button ContentItem-action Button--plain">分享</button>
+        <button type="button" class="Button ContentItem-action Button--plain">收藏</button>
+        <button type="button" class="Button ContentItem-action Button--plain">喜欢</button>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <!-- 2 · 31 words: nothing, and nothing borrowed -->
+  <div class="List-item" tabindex="0">
+  <div class="ContentItem AnswerItem" data-zop='{"itemId":"0","type":"answer"}'>
+    <div class="ContentItem-meta" data-chrome>
+      <div class="AuthorInfo AnswerItem-authorInfo">
+        <span class="UserLink AuthorInfo-avatarWrapper"><a class="UserLink-link" href="#answerer-2"><img class="Avatar AuthorInfo-avatar" alt="" width="38" height="38"></a></span>
+        <div class="AuthorInfo-content">
+          <div class="AuthorInfo-head"><span class="UserLink AuthorInfo-name"><a class="UserLink-link" href="#answerer-2">路过的读者</a></span></div>
+          <div class="AuthorInfo-detail"><div class="AuthorInfo-badge"><div class="ztext AuthorInfo-badgeText">学生</div></div></div>
+        </div>
+      </div>
+      <div class="css-voters"><span><span class="Voters"><button type="button" class="Button Button--plain">3 人赞同了该回答</button></span></span></div>
+    </div>
+    <div class="RichContent RichContent--unescapable">
+      <span><div class="RichContent-inner"><div class="css-inline" data-voice="answerer-2">
+        <span class="RichText ztext CopyrightRichText-richText" options="[object Object]" itemprop="text">
+          <p data-pid="0" data-expect="none">A friend of mine found the second draft as if it had. The landlord kept the water.</p>
+          <p data-pid="1" data-expect="none">The night shift sorted the same three questions long after it stopped being useful.</p>
+        </span>
+      </div></div></span>
+      <div><div class="ContentItem-time" data-chrome><a target="_blank" href="#t-answerer-2"><span>发布于 2026-09-01 10:24</span></a></div></div>
+      <div class="ContentItem-actions" data-chrome>
+        <span><button type="button" class="Button VoteButton">赞同 3</button><button type="button" class="Button VoteButton VoteButton--down"></button></span>
+        <button type="button" class="Button ContentItem-action Button--plain">12 条评论</button>
+        <button type="button" class="Button ContentItem-action Button--plain">分享</button>
+        <button type="button" class="Button ContentItem-action Button--plain">收藏</button>
+        <button type="button" class="Button ContentItem-action Button--plain">喜欢</button>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <!-- 3 · three short paragraphs of one answer → one unit -->
+  <div class="List-item" tabindex="0">
+  <div class="ContentItem AnswerItem" data-zop='{"itemId":"0","type":"answer"}'>
+    <div class="ContentItem-meta" data-chrome>
+      <div class="AuthorInfo AnswerItem-authorInfo">
+        <span class="UserLink AuthorInfo-avatarWrapper"><a class="UserLink-link" href="#answerer-3"><img class="Avatar AuthorInfo-avatar" alt="" width="38" height="38"></a></span>
+        <div class="AuthorInfo-content">
+          <div class="AuthorInfo-head"><span class="UserLink AuthorInfo-name"><a class="UserLink-link" href="#answerer-3">另一位用户</a></span></div>
+          <div class="AuthorInfo-detail"><div class="AuthorInfo-badge"><div class="ztext AuthorInfo-badgeText">自由职业</div></div></div>
+        </div>
+      </div>
+      <div class="css-voters"><span><span class="Voters"><button type="button" class="Button Button--plain">57 人赞同了该回答</button></span></span></div>
+    </div>
+    <div class="RichContent RichContent--unescapable">
+      <span><div class="RichContent-inner"><div class="css-inline" data-voice="answerer-3">
+        <span class="RichText ztext CopyrightRichText-richText" options="[object Object]" itemprop="text">
+          <p data-pid="0" data-expect="unit">The survey team watched the same three. The corner bakery measured the same three questions. The
+            harbour office described a list of small debts.</p>
+          <p data-pid="1" data-expect="unit">My neighbour sorted two folding chairs with more patience than I expected again. The landlord kept a
+            map of the valley.</p>
+          <p data-pid="2" data-expect="unit">The old printer rebuilt the missing invoice and nobody noticed for a month. The night shift measured
+            the winter schedule without saying a word about it again.</p>
+        </span>
+      </div></div></span>
+      <div><div class="ContentItem-time" data-chrome><a target="_blank" href="#t-answerer-3"><span>发布于 2026-09-01 10:24</span></a></div></div>
+      <div class="ContentItem-actions" data-chrome>
+        <span><button type="button" class="Button VoteButton">赞同 57</button><button type="button" class="Button VoteButton VoteButton--down"></button></span>
+        <button type="button" class="Button ContentItem-action Button--plain">12 条评论</button>
+        <button type="button" class="Button ContentItem-action Button--plain">分享</button>
+        <button type="button" class="Button ContentItem-action Button--plain">收藏</button>
+        <button type="button" class="Button ContentItem-action Button--plain">喜欢</button>
+      </div>
+    </div>
+  </div>
+  </div>
+
+</div>
+</div></div></div>
+</main>
+</body></html>
