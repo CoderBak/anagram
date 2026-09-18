@@ -109,7 +109,17 @@ function measure(sel) {
 const clickFab = (page) =>
   page.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector("button.fab")?.click());
 
+/** One profile, once more if the BROWSER died under it (a crashed or killed Chromium on a
+ *  loaded CI runner says nothing about the extension). A failed assertion is never retried,
+ *  and a retry is printed, so a profile that needs one every time does not go unnoticed. */
 async function runProfile(profile) {
+  const first = await attemptProfile(profile);
+  if (!first.checks.some((c) => c.id === "ran")) return first;
+  const second = await attemptProfile(profile);
+  return { ...second, retried: first.checks.find((c) => c.id === "ran").note };
+}
+
+async function attemptProfile(profile) {
   const { name, ...launch } = profile;
   const checks = [];
   const check = (id, ok, note = "") => checks.push({ id, ok: !!ok, note: typeof note === "string" ? note : JSON.stringify(note) });
@@ -286,7 +296,7 @@ await Promise.all(
       results[i] = await runProfile(selected[i]);
       const r = results[i];
       const failed = r.checks.filter((c) => !c.ok);
-      console.log(`${failed.length ? "FAIL" : "PASS"}  ${r.name.padEnd(40)} ${String(r.seconds).padStart(5)}s  ${failed.map((c) => c.id).join(",")}`);
+      console.log(`${failed.length ? "FAIL" : "PASS"}  ${r.name.padEnd(40)} ${String(r.seconds).padStart(5)}s  ${failed.map((c) => c.id).join(",")}${r.retried ? `  (second attempt — first: ${r.retried.slice(0, 90)})` : ""}`);
     }
   }),
 );
