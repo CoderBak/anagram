@@ -1263,6 +1263,25 @@ const results = await page.evaluate(() => {
         sandbox.querySelectorAll('[data-anagram="host"]').length === 1 && !!moved && moved.isConnected && moved.previousElementSibling === box(),
         `${sandbox.querySelectorAll('[data-anagram="host"]').length} host(s)`);
 
+      // A quotation, a list or a spoiler span INSIDE the clipped text is not a post
+      // boundary: the chips of quoted passages in Goodreads reviews used to stay in the
+      // truncated box, out of sight (2 of 150 chips on one book page).
+      r = chipsFor(`<article class="post"><div id="box" style="${CLIPPED}">${sent(30)}<blockquote><p>${sent(60)}</p></blockquote></div></article>`);
+      check("a chip anchored inside a <blockquote> in the clipped text still finds the box above it (Goodreads reviews)",
+        r.hosts.length >= 1 && r.hosts.every((h) => !box().contains(h)) && r.hosts[r.hosts.length - 1].previousElementSibling === box(),
+        `${r.hosts.filter((h) => box().contains(h)).length} of ${r.hosts.length} still inside`);
+
+      r = chipsFor(`<article class="post"><div id="box" style="${CLIPPED}"><ul><li>${sent(40)}</li><li>${sent(40)}</li></ul></div></article>`);
+      check("…and so does one anchored in a list item", r.hosts.length >= 1 && r.hosts.every((h) => !box().contains(h)), `${r.hosts.length} host(s)`);
+
+      // But a chip never leaves its post: the box has to be INSIDE the post.
+      r = chipsFor(`<article id="box" class="post" style="${CLIPPED}">${sent(80)}</article>`);
+      check("guard: when the clipping box IS the post, the chip stays inside it rather than beside the post",
+        r.hosts.length === 1 && box().contains(r.hosts[0]), `${r.hosts.length} host(s)`);
+
+      r = chipsFor(`<div id="box" style="${CLIPPED}"><article class="post">${sent(80)}</article></div>`);
+      check("guard: a clipping box that holds the whole post keeps the chip in the post", r.hosts.length === 1 && box().contains(r.hosts[0]), `${r.hosts.length} host(s)`);
+
       // Nothing moves for an ordinary paragraph, or for the guards above.
       for (const [name, style, text] of [
         ["a plain paragraph", "width:400px", sent(80)],
@@ -1415,6 +1434,48 @@ const results = await page.evaluate(() => {
       r.zh.length >= 2 && r.zh.join("").length === r.zhLen && r.zh.every((t) => t.startsWith("第") && t.endsWith("。")),
     note: JSON.stringify([r.starts, r.en.map((t) => t.length), r.zh.map((t) => t.length)]),
   });
+}
+
+// ---- a chip inside a clipped box follows the page when it reflows -------------------------
+// The placement is measured once, when the verdict lands, and the page does not stand still:
+// on a Goodreads book page the reviews grow as their images and web fonts arrive, and a chip
+// that was inside the visible band of a truncated review ends up below it (measured: a box
+// showing the end of the text at 141 px of 160 px showed it at 228 px a few seconds later).
+// The layer watches such a chip with an IntersectionObserver rooted at the box; the check
+// needs a turn of the event loop, so it runs in a page of its own.
+{
+  const rf = await browser.newPage();
+  await rf.setContent("<!doctype html><html><body></body></html>");
+  await rf.addScriptTag({ path: BUNDLE });
+  const r = await rf.evaluate(async () => {
+    const WORDS = "the quick brown fox jumps over a lazy dog while rain falls gently on rooftops and children read books near warm windows during long quiet evenings".split(" ");
+    const words = (n) => Array.from({ length: n }, (_, i) => WORDS[i % WORDS.length]).join(" ") + ".";
+    document.body.innerHTML = `<div class="post"><div id="box" style="width:400px;height:150px;overflow:hidden"><div id="pad" style="height:0"></div><p id="first">${words(60)}</p><h3>A heading keeps the two apart</h3><p>${words(120)}</p></div></div>`;
+    const layer = window.PW_LAYER = PW.createBadgeLayer();
+    const box = document.getElementById("box");
+    const units = PW.collectUnits(document.body);
+    for (const unit of units) {
+      const result = { id: unit.id, bucket: 0, probs: [0.9, 0.06, 0.03, 0.01], score: 0.05 };
+      layer.render(unit, PW.unitVerdict(unit.id, unit.text.length, [{ start: 0, end: unit.text.length, result }]));
+    }
+    const inFirst = document.querySelector('#first [data-anagram="host"]');
+    const before = { placedInsideBox: !!inFirst && box.contains(inFirst), units: units.length };
+    // The page reflows under the chip: something above the paragraph grows.
+    document.getElementById("pad").style.height = "300px";
+    await new Promise((done) => setTimeout(done, 400));
+    return {
+      ...before,
+      stillInsideBox: !!inFirst && box.contains(inFirst),
+      afterBox: !!inFirst && inFirst.previousElementSibling === box,
+      chips: document.querySelectorAll('[data-anagram="host"]').length,
+    };
+  });
+  results.push({
+    name: "a chip left inside a clipped box is moved out when the page reflows under it",
+    ok: r.placedInsideBox && !r.stillInsideBox && r.afterBox && r.chips === 2,
+    note: JSON.stringify(r),
+  });
+  await rf.close();
 }
 
 // ---- structural fixtures: who is scored with whom on real-site markup ------------------

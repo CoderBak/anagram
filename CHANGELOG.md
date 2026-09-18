@@ -101,10 +101,14 @@ Notable changes to Anagram, newest first. The format follows
     out of sight. When a box clips its own text (a line clamp, or a fixed height
     with more than twice as much text inside), the chip of a paragraph whose last
     line is out of sight now goes right after that box, under the visible lines,
-    and stays there when the post is opened. Paragraphs still on screen keep
-    their chip where it is, and scroll containers, carousels, `<details>`, a
-    page-level `overflow:hidden` under an open modal and a few pixels of overflow
-    change nothing.
+    and stays there when the post is opened. A quotation or a list inside the
+    clipped text is part of the post and its chip comes out with the rest; the one
+    thing a chip never leaves is the post itself. Paragraphs still on screen keep
+    their chip where it is, and it follows the text when the page reflows under it
+    — a Goodreads review grows as its images arrive — so no chip is left below the
+    fold. Scroll containers, carousels, `<details>`, a page-level
+    `overflow:hidden` under an open modal and a few pixels of overflow change
+    nothing.
   - **Prose typeset in `<pre>`** is read: RFCs published as HTML, man pages and
     mailing-list archives, where every `<pre>` used to be skipped as code. A
     `<pre>` gets in only when nothing around it says code and the text itself

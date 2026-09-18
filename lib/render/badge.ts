@@ -70,17 +70,61 @@ export function createBadgeLayer(): BadgeLayer {
   // Dark-context verdict per container (invalidated via resetTheme on Rescan).
   let darkCache = new WeakMap<Element, boolean>();
   let visible = true;
+  /** One IntersectionObserver per clipping box, rooted AT the box: it reports the moment
+   *  a chip inside it stops being in its visible band. See watchInsideClip. */
+  const clipWatchers = new WeakMap<Element, IntersectionObserver>();
+  const liveWatchers = new Set<IntersectionObserver>();
+
+  /**
+   * A chip left inside a box that clips its own text is in the right place only while the
+   * layout it was measured in holds — and a page does not stand still. On a Goodreads book
+   * page the reviews grow after the chips land, as their images and web fonts arrive: a box
+   * that showed the end of a review at 141 px of 160 px showed it at 228 px seconds later,
+   * with the chip below the fold. An IntersectionObserver ROOTED AT THE BOX reports that
+   * without polling, and the chip is then moved after the box — where it would have gone
+   * at render time. One observer per box, one observation per chip: after the move there
+   * is nothing left to watch.
+   */
+  function watchInsideClip(host: HTMLElement, box: Element): void {
+    let io = clipWatchers.get(box);
+    if (!io) {
+      io = new IntersectionObserver(
+        (entries, self) => {
+          for (const entry of entries) {
+            const chip = entry.target as HTMLElement;
+            if (entry.isIntersecting) continue;
+            // A chip hidden by the toggle has no box at all — that is not a reflow.
+            if (chip.classList.contains("pg-hidden")) continue;
+            self.unobserve(chip);
+            if (!chip.isConnected || !box.isConnected || !box.contains(chip)) continue;
+            // The reader may have opened the post in the meantime; then nothing clips.
+            try {
+              if (!clipsOwnText(box, getComputedStyle(box))) continue;
+            } catch {
+              continue;
+            }
+            box.after(chip);
+          }
+        },
+        { root: box, threshold: 0 },
+      );
+      clipWatchers.set(box, io);
+      liveWatchers.add(io);
+    }
+    io.observe(host);
+  }
 
   /** Find or (re)build the chip host for a unit, inserted after its last run. */
   function ensureHost(unit: Unit): HTMLElement | null {
     let host = hosts.get(unit.id);
     if (!host || !host.isConnected) {
       host?.remove();
+      const placement = insertionPoint(unit);
+      if (!placement) return null; // unit detached mid-flight — purge will collect it
       host = buildHost();
-      const anchor = insertionPoint(unit);
-      if (!anchor) return null; // unit detached mid-flight — purge will collect it
-      anchor.after(host);
+      placement.at.after(host);
       hosts.set(unit.id, host);
+      if (placement.inside) watchInsideClip(host, placement.inside);
     }
     host.classList.toggle("pg-hidden", !visible);
     host.classList.toggle("pg-dark", darkFor(unit.container, darkCache));
@@ -271,6 +315,8 @@ export function createBadgeLayer(): BadgeLayer {
       host.remove();
     }
     hosts.clear();
+    for (const io of liveWatchers) io.disconnect();
+    liveWatchers.clear();
     _openCardHost = null;
   }
 
@@ -437,7 +483,7 @@ function stopFloating(host: HTMLElement): void {
  * span many BR-separated paragraphs (1990s-style <font> essays), and climbing past
  * mid-wrapper content would pile every badge at the wrapper's end.
  */
-function insertionPoint(unit: Unit): ChildNode | null {
+function insertionPoint(unit: Unit): Placement | null {
   const lastPart = unit.parts[unit.parts.length - 1];
   const nodes = lastPart.nodes;
   const lastNode = nodes[nodes.length - 1];
@@ -451,15 +497,20 @@ function insertionPoint(unit: Unit): ChildNode | null {
     n = p;
   }
   const at = lastDecoratedSibling(n as ChildNode);
-  return outOfClippedBox(at) ?? at;
+  const clip = clippingBoxOf(at);
+  if (!clip) return { at, inside: null };
+  return clip.visible ? { at, inside: clip.box } : { at: clip.box, inside: null };
 }
 
-/**
- * Elements the chip may never be lifted out of: one of them IS the post, and a chip
- * belongs to the post it judges. The climb stops at the first of these it meets.
- */
-const POST_BOUNDARY_SELECTOR =
-  'article,[role="article"],[role="link"],section,main,aside,li,blockquote,figure,body';
+/** Where a chip goes, and — when it stays inside a box that clips its own text — which
+ *  box that is, so the layer can watch it (the page may reflow under the chip). */
+interface Placement {
+  at: ChildNode;
+  inside: Element | null;
+}
+
+/** The container a chip must never leave: it belongs to the post it judges. */
+const POST_SELECTOR = 'article,[role="article"],[role="link"],main,body';
 /** How far above the text a "see more" box may sit. LinkedIn's is the text's own parent,
  *  Goodreads' two levels up; more than this and the box is page layout, not a post. */
 const CLIP_BOX_LEVELS = 6;
@@ -472,30 +523,40 @@ const CLIP_BOX_LEVELS = 6;
  * and the reader can open it — but the chip must not be inserted after its last word,
  * because that word is inside the clipped box where nobody sees it.
  *
- * So: if the natural insertion point falls OUT OF SIGHT inside a box that clips its own
- * text, the chip goes right after that box, under the visible lines (and, on LinkedIn,
- * beside the "…more" control). A unit whose own anchor is still visible — the first
- * paragraph of a long clipped review — keeps its chip where it is, so several units in
- * one box do not all pile up underneath it. Returns null when nothing has to move.
+ * So: the nearest ancestor that clips its own text is found (at most CLIP_BOX_LEVELS up),
+ * and the chip goes after it when the line it would close is out of sight — under the
+ * visible lines, and on LinkedIn beside the "…more" control. A unit whose own anchor is
+ * still visible keeps its chip where it is, so several units in one box do not all pile
+ * up underneath it.
+ *
+ * The one thing the chip may not do is leave its POST, so the box has to lie inside the
+ * post the anchor belongs to. Structure INSIDE the clipped text — a quotation, a list, a
+ * spoiler span — is not a post boundary: stopping the climb at every `blockquote`/`li`
+ * left the chips of quoted passages in Goodreads reviews inside the truncated box, out
+ * of sight (measured: 2 of 150 chips on one book page).
  */
-function outOfClippedBox(at: ChildNode): ChildNode | null {
-  let el: Element | null = at.nodeType === Node.ELEMENT_NODE ? (at as Element) : at.parentElement;
-  for (let i = 0; el && i < CLIP_BOX_LEVELS; i++, el = el.parentElement) {
-    try {
-      if (el.matches(POST_BOUNDARY_SELECTOR)) return null;
-      const cs = getComputedStyle(el);
-      if (!clipsOwnText(el, cs)) continue;
-    } catch {
-      return null;
+function clippingBoxOf(at: ChildNode): { box: Element; visible: boolean } | null {
+  const start = at.nodeType === Node.ELEMENT_NODE ? (at as Element) : at.parentElement;
+  if (!start) return null;
+  let box: Element | null = null;
+  try {
+    for (let el: Element | null = start, i = 0; el && i < CLIP_BOX_LEVELS; i++, el = el.parentElement) {
+      if (clipsOwnText(el, getComputedStyle(el))) {
+        box = el;
+        break;
+      }
     }
-    const anchor = endRectOf(at);
-    // No box of its own (a collapsed whitespace node): leave the chip where it is.
-    if (!anchor || (anchor.width === 0 && anchor.height === 0)) return null;
-    const box = el.getBoundingClientRect();
-    if (anchor.top < box.bottom - 1) return null; // the line the chip closes is on screen
-    return el;
+    if (!box) return null;
+    const post = start.closest(POST_SELECTOR);
+    if (post && (post === box || !post.contains(box))) return null; // the box is not inside the post
+  } catch {
+    return null;
   }
-  return null;
+  const anchor = endRectOf(at);
+  // No box of its own (a collapsed whitespace node): leave the chip where it is.
+  if (!anchor || (anchor.width === 0 && anchor.height === 0)) return null;
+  const rect = box.getBoundingClientRect();
+  return { box, visible: anchor.top < rect.bottom - 1 };
 }
 
 /**
