@@ -278,7 +278,8 @@ switch (cmd) {
     const e = labEnv(info);
     console.log(`lab: running${CONTEXT ? ` on ${CONTEXT}` : ""} — screen ${e.screen}${e.scale > 1 ? ` @${e.scale}x` : ""}`);
     console.log(`     view   ${viewerUrl(e.port, false)}`);
-    console.log(exec("ps -eo pid,etime,args | grep -E 'show.mjs|chrome --|vitest|test/[a-z-]+\\.mjs' | grep -v grep | cut -c1-110 | head -8", { show: false }).stdout.trim() || "     idle");
+    const busy = exec("ps -eo etime,args | grep -E '^ *[0-9:-]+ node (test/|.*vitest)' | grep -v grep | cut -c1-100", { show: false }).stdout.trim();
+    console.log(busy ? busy.split("\n").map((l) => `     running  ${l.trim()}`).join("\n") : "     idle — nothing on the screen");
     break;
   }
   default:
