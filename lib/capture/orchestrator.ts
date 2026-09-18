@@ -27,6 +27,7 @@ import { extractPartText, MAX_UNIT_TEXT_CHARS } from "../dom/text";
 import { createObservers, type Observers } from "./observers";
 import { createScheduler, type Scheduler } from "./scheduler";
 import { createScoreCache, type ScoreCache } from "./cache";
+import { readInWindows, unitVerdict, type UnitVerdict } from "./windows";
 import { detectUnsupported, unsupportedResult } from "./langGate";
 import { requestScores, contextAlive, lastModel } from "../messaging/client";
 import { modelDim } from "../backend/router";
@@ -41,6 +42,7 @@ import {
 } from "../render/highlight";
 import { createFab, type Fab } from "../render/fab";
 import { band, BAND_LABEL, BUCKET_BANDS, isFlagged, scorePct } from "../render/band";
+import { windowReadout } from "../render/coverage";
 import { settings } from "../settings/settings";
 import { createLogger } from "../log";
 
@@ -138,7 +140,8 @@ export function createOrchestrator(
   const badges: BadgeLayer = createBadgeLayer();
 
   let unitsById = new Map<string, Unit>();
-  let resultsById = new Map<string, ScoreResult>();
+  /** One verdict per analyzed unit — the aggregate everything counts by, plus its windows. */
+  let verdictsById = new Map<string, UnitVerdict>();
   let scoredIds = new Set<string>();
   /** Text-node ownership: node → live unit. Recreated on stop/rescan. */
   let nodeOwner = new WeakMap<Text, Unit>();
@@ -184,9 +187,9 @@ export function createOrchestrator(
     onRetry: () => retryBackend(),
     panel: {
       entries: () =>
-        [...resultsById.entries()]
-          .filter(([id, r]) => isFlagged(r) && unitsById.has(id))
-          .map(([id, r]) => ({
+        [...verdictsById.entries()]
+          .filter(([id, v]) => isFlagged(v.result) && unitsById.has(id))
+          .map(([id, { result: r }]) => ({
             id,
             pct: scorePct(r),
             band: band(r),
@@ -212,9 +215,9 @@ export function createOrchestrator(
   /** Flagged units still in the DOM, in document order. */
   function flaggedUnits(): Unit[] {
     const out: Unit[] = [];
-    for (const [id, r] of resultsById) {
+    for (const [id, v] of verdictsById) {
       const unit = unitsById.get(id);
-      if (unit && isFlagged(r) && unit.container.isConnected) out.push(unit);
+      if (unit && isFlagged(v.result) && unit.container.isConnected) out.push(unit);
     }
     return out.sort((a, b) => a.order - b.order);
   }
@@ -250,9 +253,9 @@ export function createOrchestrator(
 
   /** Markdown summary of this page's verdicts — the triage panel's Copy report. */
   function buildReport(): string {
-    const flagged = [...resultsById.entries()]
-      .filter(([id, r]) => isFlagged(r) && unitsById.has(id))
-      .map(([id, r]) => ({ unit: unitsById.get(id)!, r }))
+    const flagged = [...verdictsById.entries()]
+      .filter(([id, v]) => isFlagged(v.result) && unitsById.has(id))
+      .map(([id, v]) => ({ unit: unitsById.get(id)!, v, r: v.result }))
       .sort((a, b) => a.unit.order - b.unit.order);
 
     const lines: string[] = [];
@@ -265,11 +268,11 @@ export function createOrchestrator(
     // an outage look like a clean sweep.
     let skipped = 0;
     let unavailable = 0;
-    for (const r of resultsById.values()) {
+    for (const { result: r } of verdictsById.values()) {
       if (r.unsupported) skipped++;
       else if (r.degraded) unavailable++;
     }
-    const analyzed = resultsById.size - skipped - unavailable;
+    const analyzed = verdictsById.size - skipped - unavailable;
     lines.push(
       `- Analyzed: ${analyzed} unit${analyzed === 1 ? "" : "s"} · Flagged: ${flagged.length}` +
         (unavailable > 0 ? ` · Unavailable: ${unavailable}` : "") +
@@ -289,16 +292,23 @@ export function createOrchestrator(
     } else {
       lines.push(`## Flagged paragraphs (${flagged.length})`);
       lines.push("");
-      flagged.forEach(({ unit, r }, i) => {
+      flagged.forEach(({ unit, v, r }, i) => {
         const pct = scorePct(r);
         const dist = r.probs
           .map((p, i) => `${BAND_LABEL[BUCKET_BANDS[i]]} ${Math.round(p * 100)}%`)
           .join(" · ");
         const snippet = unit.text.replace(/\s+/g, " ").slice(0, 220);
         const ellipsis = unit.text.length > 220 ? "…" : "";
+        // A long paragraph's percentage is an average over windows; whoever reads the
+        // report without the page in front of them needs the parts it was made from.
+        const read = windowReadout(v);
+        const windows = read
+          ? `; scored in ${read.count} windows: ${read.pcts.join(" · ")}` +
+            (v.unreadChars > 0 ? "; the end of the paragraph was not read" : "")
+          : "";
         lines.push(
           `${i + 1}. **${BAND_LABEL[band(r)]} · ${pct}%** ` +
-            `(${dist}; ${unit.wordCount} words)`,
+            `(${dist}; ${unit.wordCount} words${windows})`,
         );
         lines.push(`   > ${snippet}${ellipsis}`);
       });
@@ -314,8 +324,8 @@ export function createOrchestrator(
   }
 
   /** Painted under the current display mode? Everything is analyzed regardless. */
-  function visibleUnderMode(r: ScoreResult): boolean {
-    return displayMode === "all" || isFlagged(r);
+  function visibleUnderMode(v: UnitVerdict): boolean {
+    return displayMode === "all" || isFlagged(v.result);
   }
 
   // --- analysis scope ----------------------------------------------------------------
@@ -382,7 +392,7 @@ export function createOrchestrator(
       if (rescanQueue && part.container.isConnected) rescanQueue.add(part.container);
     }
     unitsById.delete(unit.id);
-    resultsById.delete(unit.id);
+    verdictsById.delete(unit.id);
     scoredIds.delete(unit.id);
   }
 
@@ -465,7 +475,7 @@ export function createOrchestrator(
       if (!started || frozen) return;
       let n = 0;
       const pending = [...unitsById.values()]
-        .filter((u) => !u.isScored && !resultsById.has(u.id))
+        .filter((u) => !u.isScored && !verdictsById.has(u.id))
         .sort((a, b) => a.order - b.order);
       for (const u of pending) {
         scheduler.enqueue(u, "background");
@@ -481,16 +491,48 @@ export function createOrchestrator(
 
   // --- scheduler send/render seam ----------------------------------------------------
 
-  /** Scheduler send(): cache-first, local language gate, then one batched
-   *  requestScores() for the misses. */
-  async function send(blocks: ScoreBlock[], lane: Lane): Promise<ScoreResult[]> {
-    const out: ScoreResult[] = [];
+  /**
+   * Scheduler send(): one verdict per unit. A unit longer than the model reads in one
+   * pass is read in windows (lib/capture/windows.ts); every window of every unit in the
+   * batch goes through scoreBlocks() TOGETHER, and a unit gets a verdict only once all
+   * of its windows have one — so nothing of a long paragraph is ever painted half-read.
+   * What aggregation does with a failed or a non-English window is unitVerdict()'s rule.
+   */
+  async function send(units: Unit[], lane: Lane): Promise<UnitVerdict[]> {
+    const read = await readInWindows(units, (blocks, owners) => scoreBlocks(blocks, owners, lane));
+    const out: UnitVerdict[] = [];
+    for (const unit of units) {
+      const windows = read.get(unit.id);
+      if (windows) out.push(unitVerdict(unit.id, unit.text.length, windows));
+      // Hard transport failure (extension reloaded/updated mid-flight): some window of
+      // this unit was never answered — retire its pending chip instead of leaving
+      // "analyzing…" stuck on the page forever.
+      else badges.remove(unit.id);
+    }
+    return out;
+  }
+
+  /**
+   * Blocks in, results out, by block id: cache-first, local language gate, then one
+   * batched requestScores() for the misses. A block is a whole unit or one window of a
+   * long one and is treated the same either way — per-window text is what gets cached,
+   * gated and deduplicated. So when some windows of a unit are cache hits and others are
+   * not, only the missing ones travel; and when one window comes back degraded, its
+   * siblings are cached all the same (each is a true answer about its own text), which
+   * makes the retry ask for the failed window alone.
+   */
+  async function scoreBlocks(
+    blocks: ScoreBlock[],
+    owners: ReadonlyMap<string, string>,
+    lane: Lane,
+  ): Promise<Map<string, ScoreResult>> {
+    const out = new Map<string, ScoreResult>();
     const misses: ScoreBlock[] = [];
 
     const candidates: ScoreBlock[] = [];
     for (const b of blocks) {
       const hit = cache.get(b.text);
-      if (hit) out.push({ ...hit, id: b.id });
+      if (hit) out.set(b.id, { ...hit, id: b.id });
       else candidates.push(b);
     }
     // Confidently non-English paragraphs are settled here (browser CLD) — the daemon's
@@ -501,7 +543,7 @@ export function createOrchestrator(
       if (g) {
         const r = unsupportedResult(b.id, g.lang, g.prob);
         cache.set(b.text, r);
-        out.push(r);
+        out.set(b.id, r);
       } else {
         misses.push(b);
       }
@@ -512,8 +554,8 @@ export function createOrchestrator(
       // (cache hits render instantly and never flash it). Skipped in flagged-only
       // mode — most pending chips would pop in and vanish again.
       if (visible && displayMode === "all") {
-        for (const b of misses) {
-          const unit = unitsById.get(b.id);
+        for (const unitId of new Set(misses.map((b) => owners.get(b.id)))) {
+          const unit = unitId ? unitsById.get(unitId) : undefined;
           if (!unit) continue;
           try {
             badges.renderPending(unit);
@@ -556,14 +598,7 @@ export function createOrchestrator(
         const r = byId.get(rep.id);
         if (!r) continue;
         if (!r.degraded) cache.set(rep.text, r); // fallbacks must not outlive the outage
-        for (const id of idsByKey.get(k)!) out.push({ ...r, id });
-      }
-      // Hard transport failure (extension reloaded/updated mid-flight): nothing
-      // came back for these — retire their pending chips instead of leaving
-      // "analyzing…" stuck on the page forever.
-      const answered = new Set(out.map((r) => r.id));
-      for (const b of misses) {
-        if (!answered.has(b.id)) badges.remove(b.id);
+        for (const id of idsByKey.get(k)!) out.set(id, { ...r, id });
       }
       // Dead extension context: no future request can ever succeed. Freeze in
       // place — existing verdicts stay readable, everything else goes quiet.
@@ -664,13 +699,13 @@ export function createOrchestrator(
   /** Forget every degraded verdict and let the observers re-dispatch those units. */
   function retryUnavailable(): void {
     let n = 0;
-    for (const [id, r] of [...resultsById]) {
-      if (!r.degraded) continue;
+    for (const [id, v] of [...verdictsById]) {
+      if (!v.result.degraded) continue;
       const unit = unitsById.get(id);
       if (!unit) continue;
       badges.remove(id);
       clearHighlight(id);
-      resultsById.delete(id);
+      verdictsById.delete(id);
       scoredIds.delete(id);
       unit.isScored = false;
       observers.observeUnit(unit);
@@ -689,21 +724,26 @@ export function createOrchestrator(
     else retryUnavailable();
   }
 
-  /** Scheduler render(): id-keyed badge paint + per-part underline. */
-  function render(results: ScoreResult[], _epoch: number): void {
-    for (const r of results) {
-      const unit = unitsById.get(r.id);
+  /**
+   * Scheduler render(): id-keyed badge paint + per-window underline. A unit invalidated
+   * while its batch was in flight is gone from unitsById (a changed paragraph comes back
+   * as a NEW unit with a new id), so a verdict whose window offsets describe the old text
+   * can never be painted onto the new one.
+   */
+  function render(verdicts: UnitVerdict[], _epoch: number): void {
+    for (const v of verdicts) {
+      const unit = unitsById.get(v.id);
       if (!unit) continue; // invalidated while the batch was in flight
-      resultsById.set(r.id, r);
-      scoredIds.add(r.id);
+      verdictsById.set(v.id, v);
+      scoredIds.add(v.id);
       unit.isScored = true;
       observers.dropUnit(unit); // analyzed — stop viewport tracking
-      if (!visibleUnderMode(r)) continue; // analyzed but not painted (flagged-only)
+      if (!visibleUnderMode(v)) continue; // analyzed but not painted (flagged-only)
       try {
-        badges.render(unit, r);
-        if (highlightsEnabled) setHighlight(unit, r);
+        badges.render(unit, v);
+        if (highlightsEnabled) setHighlight(unit, v);
       } catch (e) {
-        log.warn("render failed for", r.id, e);
+        log.warn("render failed for", v.id, e);
       }
     }
     badges.setVisible(visible);
@@ -715,13 +755,13 @@ export function createOrchestrator(
   function applyDisplayMode(v: "all" | "flagged"): void {
     if (v === displayMode) return;
     displayMode = v;
-    for (const [id, r] of resultsById) {
+    for (const [id, verdict] of verdictsById) {
       const unit = unitsById.get(id);
       if (!unit) continue;
-      if (visibleUnderMode(r)) {
+      if (visibleUnderMode(verdict)) {
         try {
-          badges.render(unit, r);
-          if (highlightsEnabled) setHighlight(unit, r);
+          badges.render(unit, verdict);
+          if (highlightsEnabled) setHighlight(unit, verdict);
         } catch {
           /* detached mid-flight — purge will catch it */
         }
@@ -760,8 +800,8 @@ export function createOrchestrator(
   function updateFab(): void {
     if (started && mountFab) fab.mount(); // re-mounts if the page wiped the host
     let flagged = 0;
-    for (const r of resultsById.values()) if (isFlagged(r)) flagged++;
-    fab.setCount(flagged, resultsById.size);
+    for (const v of verdictsById.values()) if (isFlagged(v.result)) flagged++;
+    fab.setCount(flagged, verdictsById.size);
     notifyToolbarBadge(flagged);
   }
 
@@ -774,7 +814,7 @@ export function createOrchestrator(
       .catch(() => undefined);
   }
 
-  const scheduler: Scheduler = createScheduler({
+  const scheduler: Scheduler = createScheduler<UnitVerdict>({
     batchCharBudget: BATCH_CHAR_BUDGET,
     maxInFlight: MAX_IN_FLIGHT,
     maxBackgroundInFlight: MAX_BACKGROUND_IN_FLIGHT,
@@ -1036,11 +1076,11 @@ export function createOrchestrator(
   function applyHighlightSetting(v: boolean): void {
     highlightsEnabled = v;
     if (v) {
-      for (const [id, r] of resultsById) {
+      for (const [id, verdict] of verdictsById) {
         const unit = unitsById.get(id);
-        if (unit && visibleUnderMode(r)) {
+        if (unit && visibleUnderMode(verdict)) {
           try {
-            setHighlight(unit, r);
+            setHighlight(unit, verdict);
           } catch {
             /* detached mid-flight — purge will catch it */
           }
@@ -1058,7 +1098,7 @@ export function createOrchestrator(
     flaggedCursor = null; // the ids it names are about to stop existing
     scoredIds = new Set();
     unitsById = new Map();
-    resultsById = new Map();
+    verdictsById = new Map();
     nodeOwner = new WeakMap();
   }
 
@@ -1118,20 +1158,20 @@ export function createOrchestrator(
 
   function flaggedCount(): number {
     let n = 0;
-    for (const r of resultsById.values()) if (isFlagged(r)) n++;
+    for (const v of verdictsById.values()) if (isFlagged(v.result)) n++;
     return n;
   }
 
   function unsupportedCount(): number {
     let n = 0;
-    for (const r of resultsById.values()) if (r.unsupported) n++;
+    for (const v of verdictsById.values()) if (v.result.unsupported) n++;
     return n;
   }
 
   /** Degraded verdicts are the daemon's silence, not an analysis — counted apart. */
   function unavailableCount(): number {
     let n = 0;
-    for (const r of resultsById.values()) if (r.degraded) n++;
+    for (const v of verdictsById.values()) if (v.result.degraded) n++;
     return n;
   }
 

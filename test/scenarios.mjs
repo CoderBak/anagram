@@ -34,7 +34,15 @@ const record = (phase, name, ok, note = "") =>
 // other request keeps the daemon's ordinary latency.
 const STALL_MARKER = "SLOWPOKE";
 const STALL_MS = 4000;
-const DAEMON_OPTS = { delayFor: (text) => (text.includes(STALL_MARKER) ? STALL_MS : null) };
+// Texts carrying a density marker are LONGER to the fake's model than their characters
+// suggest: DENSEPACK costs a token per two characters (a 1500-character paragraph overflows
+// the 512-token window, each half of it fits), SOLIDPACK overflows whatever its length.
+const DENSE_MARKER = "DENSEPACK";
+const SOLID_MARKER = "SOLIDPACK";
+const DAEMON_OPTS = {
+  delayFor: (text) => (text.includes(STALL_MARKER) ? STALL_MS : null),
+  tokensFor: (text) => (text.includes(SOLID_MARKER) ? 600 : text.includes(DENSE_MARKER) ? Math.ceil(text.length / 2) : null),
+};
 let daemon = await startFakeDaemon(DAEMON_OPTS);
 const daemonPort = daemon.port;
 const PARA = (tag) => `${tag} paragraph is long enough to be scored on its own because it carries well over fifty ordinary English words describing nothing in particular except the fact that a self-rewriting page must still end up with chips after it replaces its own document element, which is what legacy challenge pages and some old single-page frameworks do.`;
@@ -85,8 +93,36 @@ ${KEY_TAGS.map((t, i) => `<p id="k${i + 1}">${KEY_PARA(t)}</p>\n<div style="heig
 // therefore deaf to the rule written for the page it sits in.
 const FRAME_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>framed article</title></head><body style="margin:12px;font:15px/1.6 system-ui">
 <p id="fp">${PARA("FRAMED")}</p></body></html>`;
+// Window fixtures: the self-test page's three-window paragraph (~3750 characters, its
+// seeded window verdicts add up to a FLAGGED aggregate — test/e2e.mjs prints them), once as
+// a paragraph for the copied report and once in a <textarea>, which passive capture never
+// scores, so the only thing that can read it is the selection card.
+const WINDOWED_TEXT = readFileSync(join(__dirname, "selftest.html"), "utf8")
+  .match(/<section id="windowed">\s*<p>([\s\S]*?)<\/p>/)[1]
+  .replace(/\s+/g, " ")
+  .trim();
+const WINDOWS_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>windows fixture</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+<h1>One paragraph, three windows</h1>
+<p id="wp">${WINDOWED_TEXT}</p>
+</body></html>`;
+const LONGSEL_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>long selection fixture</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+<h1>A selection longer than the model reads in one pass</h1>
+<textarea id="draft" style="width:100%;height:420px">${WINDOWED_TEXT}</textarea>
+</body></html>`;
+// Dense fixture: two paragraphs that fit the extension's character budget and still do not
+// fit the model. Every sentence carries the marker, so both halves of a re-read are dense too.
+const DENSE_PARA = (marker) =>
+  Array.from({ length: 14 }, (_, i) => `Line ${i + 1} of the ${marker} ledger lists the figures for that week, the running totals and the initials of whoever checked them.`).join(" ");
+const DENSE_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>dense fixture</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+<h1>Fewer characters than a window, more tokens than the model takes</h1>
+<p id="dense">${DENSE_PARA(DENSE_MARKER)}</p>
+<p id="solid">${DENSE_PARA(SOLID_MARKER)}</p>
+</body></html>`;
 const PAGES = {
   "/ui-fixtures.html": readFileSync(join(__dirname, "ui-fixtures.html"), "utf8"),
+  "/dense.html": DENSE_HTML,
+  "/windows.html": WINDOWS_HTML,
+  "/longsel.html": LONGSEL_HTML,
   "/rewrite.html": REWRITE_HTML,
   "/scope.html": SCOPE_HTML,
   "/stall.html": STALL_HTML,
@@ -805,6 +841,53 @@ async function sweep(page, steps = 6) {
     await p.close();
   }
 
+  // A24b: a selection longer than the model reads in one pass is read COMPLETELY — in
+  // windows, all in one request — so "Words analyzed" is the selection again, not the
+  // "first N" of it. Runs before anything else has scored this text, so the blocks the
+  // daemon saw are this card's own.
+  {
+    const p = await context.newPage();
+    await p.goto(server.url("/longsel.html"), { waitUntil: "load" });
+    await p.bringToFront();
+    await p.evaluate(() => {
+      const ta = document.getElementById("draft");
+      ta.focus();
+      ta.setSelectionRange(0, ta.value.length);
+    });
+    await sw.evaluate(async () => {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      try {
+        await chrome.tabs.sendMessage(tab.id, { action: "analyzeSelection" });
+      } catch {
+        /* the content script answers nothing to this one */
+      }
+    });
+    const rows = await p
+      .waitForFunction(
+        (sel) => {
+          const card = [...document.querySelectorAll(sel)].map((h) => h.shadowRoot?.querySelector(".card")).find((c) => c?.querySelector(".close"));
+          if (!card?.querySelector(".dist")) return null;
+          return Object.fromEntries([...card.querySelectorAll(".row")].map((r) => [r.querySelector(".k").textContent, r.querySelector(".v").textContent]));
+        },
+        BADGE_SEL,
+        { timeout: 12000 },
+      )
+      .then((h) => h.jsonValue())
+      .catch(() => null);
+    const blocks = [...new Set(daemon.stats.texts.filter((t) => t.length > 200 && WINDOWED_TEXT.includes(t)))]
+      .sort((a, b) => WINDOWED_TEXT.indexOf(a) - WINDOWED_TEXT.indexOf(b));
+    const ok =
+      !!rows &&
+      Number(rows["Words selected"]) > 600 &&
+      rows["Words analyzed"] === rows["Words selected"] &&
+      /^\d+%\s·\s\d+%\s·\s\d+%$/.test(rows["Scored in 3 windows"] ?? "") &&
+      !("Model window" in rows) &&
+      blocks.length === 3 &&
+      blocks.join(" ") === WINDOWED_TEXT;
+    record("ui", "selection card: a long selection is analyzed whole, in windows — words analyzed = words selected", ok, JSON.stringify({ rows, blocks: blocks.map((t) => t.length) }));
+    await p.close();
+  }
+
   // A25: the copied report never says "62% AI" — the number is an estimate of EDITING
   // EXTENT, not a share of AI-written words — and it carries the legend that says so.
   {
@@ -831,6 +914,70 @@ async function sweep(page, steps = 6) {
       !report.includes("% AI") &&
       report.includes("not a share of words, not proof");
     record("ui", "copied report: bare percentages plus the legend that explains them", ok, JSON.stringify({ clicked, head: report?.slice(0, 48) }));
+    await p.close();
+  }
+
+  // A25b: a flagged paragraph that was scored in windows says so in the report, with each
+  // window's own number — whoever reads the report has no underline to look at.
+  {
+    const p = await context.newPage();
+    await p.goto(server.url("/windows.html"), { waitUntil: "load" });
+    const chipped = await p
+      .waitForFunction((sel) => /^\d+%$/.test(document.querySelector(`#wp ${sel}`)?.shadowRoot?.querySelector(".num")?.textContent ?? ""), BADGE_SEL, { timeout: 12000 })
+      .then(() => true)
+      .catch(() => false);
+    await p.evaluate(() => navigator.clipboard.writeText("NO REPORT COPIED").catch(() => {}));
+    await p.evaluate(() => {
+      const sr = document.getElementById("anagram-fab")?.shadowRoot;
+      sr?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      sr?.querySelector(".pcopy")?.click();
+    });
+    await p.waitForTimeout(500);
+    const report = await p.evaluate(() => navigator.clipboard.readText().catch(() => null));
+    const line = (report ?? "").split("\n").find((l) => l.startsWith("1. ")) ?? "";
+    const ok = chipped && /; \d+ words; scored in 3 windows: \d+% · \d+% · \d+%\)$/.test(line) && !line.includes("not read");
+    record("ui", "copied report: a paragraph scored in windows says so, with each window's percentage", ok, JSON.stringify({ chipped, line }));
+    await p.close();
+  }
+
+  // A25c: a paragraph inside the character budget that still overflows the model's window
+  // (figures, URLs, names) is not left half-read: the daemon's `truncated` answer sends both
+  // halves back for a second reading. When even a half overflows, the card says so.
+  {
+    const p = await context.newPage();
+    await p.goto(server.url("/dense.html"), { waitUntil: "load" });
+    const cards = await p
+      .waitForFunction(
+        (sel) => {
+          const read = (id) => {
+            const root = document.querySelector(`#${id} ${sel}`)?.shadowRoot;
+            if (!root?.querySelector(".card .head")) return null;
+            const rows = Object.fromEntries([...root.querySelectorAll(".card .row")].map((r) => [r.querySelector(".k").textContent, r.querySelector(".v").textContent]));
+            return { rows, foot: root.querySelector(".card .foot").textContent };
+          };
+          const dense = read("dense");
+          const solid = read("solid");
+          return dense && solid ? { dense, solid } : null;
+        },
+        BADGE_SEL,
+        { timeout: 12000 },
+      )
+      .then((h) => h.jsonValue())
+      .catch(() => null);
+    const text = DENSE_PARA(DENSE_MARKER);
+    const sent = [...new Set(daemon.stats.texts.filter((t) => t.includes(DENSE_MARKER)))];
+    const halves = sent.filter((t) => t !== text);
+    const ok =
+      !!cards &&
+      "Scored in 2 windows" in cards.dense.rows &&
+      !("Windows cut short" in cards.dense.rows) &&
+      !/not read/.test(cards.dense.foot) &&
+      sent.includes(text) &&
+      halves.length === 2 &&
+      halves.sort((a, b) => text.indexOf(a) - text.indexOf(b)).join(" ") === text &&
+      cards.solid.rows["Windows cut short"] === "2 of 2" &&
+      /too dense for the model's window and was not read/.test(cards.solid.foot);
+    record("ui", "dense text: a paragraph the daemon had to cut is re-read in two halves; one still cut says so", ok, JSON.stringify({ cards: cards && { dense: cards.dense.rows, solid: cards.solid.rows }, sent: sent.map((t) => t.length) }));
     await p.close();
   }
 

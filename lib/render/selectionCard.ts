@@ -3,16 +3,20 @@
 // Invoked from the context menu: scores EXACTLY the selected text — including
 // places passive capture deliberately skips (editors, textareas, fragments under
 // the evidence floor) — and shows the calibrated readout in a small fixed card
-// near the selection. Below the floor it says so honestly instead of scoring.
+// near the selection. Below the floor it says so honestly instead of scoring. A long
+// selection is read completely, in the same windows a long paragraph is (one aggregate,
+// each window's own number in the card), so "Words analyzed" is the selection again.
 import { computePosition, flip, offset, shift } from "@floating-ui/dom";
 import { MARK_ATTR } from "../types";
 import type { ScoreBatchRequest } from "../contract";
 import { CONTRACT_VERSION } from "../contract";
-import { requestScores } from "../messaging/client";
+import { isScoredWindow, readInWindows, unitVerdict } from "../capture/windows";
+import { requestScores, type ScoreReply } from "../messaging/client";
 import { SURFACE } from "../surface";
 import { band, BAND_LABEL, isNoVerdict, languageName, scorePct, type Band } from "./band";
+import { coverageNote, windowPcts, windowReadout } from "./coverage";
 import { DIST_CSS, distributionHtml } from "./dist";
-import { countWords, scoringText, MIN_UNIT_WORDS } from "../dom/text";
+import { countWords, MIN_UNIT_WORDS } from "../dom/text";
 import { isDarkPage } from "./theme";
 
 const CARD_CSS = `
@@ -42,6 +46,8 @@ const CARD_CSS = `
 .row { display: flex; justify-content: space-between; gap: 12px; }
 .row .k { color: #737373; }
 .row .v { font-variant-numeric: tabular-nums; }
+.row.wins .k { flex: none; }
+.row.wins .v { text-align: right; }
 .foot { margin-top: 6px; padding-top: 6px; border-top: 1px solid #f0f0f0; color: #8a8a8a; font-size: 10px; }
 .close {
   position: absolute; top: 6px; right: 8px;
@@ -89,8 +95,8 @@ function onKey(e: KeyboardEvent): void {
   if (e.key === "Escape") dismiss();
 }
 
-function row(k: string, v: string): string {
-  return `<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+function row(k: string, v: string, cls = ""): string {
+  return `<div class="row${cls}"><span class="k">${k}</span><span class="v">${v}</span></div>`;
 }
 
 /** The focused element, descended through open shadow roots. */
@@ -190,22 +196,28 @@ export async function analyzeSelection(): Promise<void> {
       `<div class="head"><span class="verdict band-unknown spin">Analyzing…</span><span class="big"></span></div>` +
       row("Words selected", String(words));
     place();
-    // Only a sentence-bounded prefix of a long selection is sent (scoringText): the card
-    // must not report the whole selection as the thing that was read.
-    const sent = scoringText(text);
-    const sentWords = countWords(sent);
-    const req: ScoreBatchRequest = {
-      v: CONTRACT_VERSION,
-      session: "sel_" + Math.random().toString(36).slice(2, 10),
-      surface: SURFACE,
-      priority: "viewport",
-      lang: document.documentElement.getAttribute("lang") || "und",
-      domain: location.hostname || "und",
-      blocks: [{ id: "sel_0", text: sent, order: 0 }],
-    };
-    const { results: [r], backend } = await requestScores(req);
+    // The selection's windows travel in ONE request, straight to the worker: no page
+    // cache and no local language gate stand between a selection and the daemon.
+    let backend = "up" as ScoreReply["backend"];
+    const session = "sel_" + Math.random().toString(36).slice(2, 10);
+    const read = await readInWindows([{ id: "sel", text, order: 0 }], async (blocks) => {
+      const req: ScoreBatchRequest = {
+        v: CONTRACT_VERSION,
+        session,
+        surface: SURFACE,
+        priority: "viewport",
+        lang: document.documentElement.getAttribute("lang") || "und",
+        domain: location.hostname || "und",
+        blocks,
+      };
+      const reply = await requestScores(req);
+      backend = reply.backend;
+      return new Map(reply.results.map((r) => [r.id, r] as const));
+    });
     if (!_host || _host !== host) return; // dismissed while in flight
-    if (!r || r.degraded) {
+    const windows = read.get("sel");
+    const verdict = windows ? unitVerdict("sel", text.length, windows) : null;
+    if (!verdict || verdict.result.degraded) {
       card.innerHTML =
         closeBtn +
         `<div class="head"><span class="verdict band-unknown">Unavailable</span><span class="big">—</span></div>` +
@@ -215,8 +227,16 @@ export async function analyzeSelection(): Promise<void> {
             : "The scoring backend did not respond — try again."
         }</div>`;
     } else {
+      const r = verdict.result;
       const b: Band = band(r);
       const pct = scorePct(r);
+      const readout = isNoVerdict(b) ? null : windowReadout(verdict);
+      // Everything selected, unless the selection outgrew the window cap or the language
+      // gate refused part of it — then it is the words of the windows that were scored.
+      const partial = verdict.unreadChars > 0 || (readout !== null && readout.skipped > 0);
+      const analyzed = partial
+        ? verdict.windows.filter(isScoredWindow).reduce((n, w) => n + countWords(text.slice(w.start, w.end)), 0)
+        : words;
       card.innerHTML =
         closeBtn +
         `<div class="head"><span class="verdict band-${b}">${BAND_LABEL[b]}</span>` +
@@ -224,14 +244,17 @@ export async function analyzeSelection(): Promise<void> {
         (isNoVerdict(b) ? "" : distributionHtml(r, b)) +
         (b === "unsupported" ? row("Detected language", `${languageName(r.lang)} · ${Math.round((r.lang_prob ?? 0) * 100)}%`) : "") +
         row("Words selected", String(words)) +
-        (sentWords < words ? row("Words analyzed", `first ${sentWords}`) : "") +
-        (r.truncated ? row("Model window", `first ${r.tokens ?? 512} tokens`) : "") +
+        (readout ? row("Words analyzed", verdict.unreadChars > 0 ? `first ${analyzed}` : String(analyzed)) : "") +
+        (readout ? row(`Scored in ${readout.count} windows`, windowPcts(readout), " wins") : "") +
+        (readout && readout.cutShort > 0 ? row("Windows cut short", `${readout.cutShort} of ${readout.count}`) : "") +
+        (readout && readout.skipped > 0 ? row("Windows not in English", `${readout.skipped} of ${readout.count}`) : "") +
         `<div class="foot">${
           b === "unknown"
             ? "The scoring daemon did not answer — try again."
             : b === "unsupported"
               ? "EditLens is trained on English text only, so this selection was not scored."
-              : "The number is EditLens's estimate of how far this text sits from untouched human writing toward fully AI-generated — not a share of words, not proof."
+              : coverageNote(verdict, "selection") +
+                "The number is EditLens's estimate of how far this text sits from untouched human writing toward fully AI-generated — not a share of words, not proof."
         }</div>`;
     }
     place();

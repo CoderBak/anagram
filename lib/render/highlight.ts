@@ -16,10 +16,19 @@
 //   adopt a shared constructable sheet carrying the same rules;
 // - print suppression: verdict marks are reading aids, not document content —
 //   all rules live under `@media screen`.
+//
+// v4: marks are per WINDOW. A paragraph longer than the model reads in one pass is
+// scored in consecutive windows, and each window's text is marked in its OWN band — so a
+// paragraph that turns from human to AI halfway shows where. Ranges then start and end
+// inside text nodes (lib/dom/locate.ts); still nothing in the page is touched. Text no
+// window covers (past the window cap) and windows the language gate refused get no mark:
+// a mark claims that the model read what it covers.
 import type { Unit } from "../types";
 import { MARK_ATTR } from "../types";
-import type { ScoreResult } from "../contract";
-import { band, type Band } from "./band";
+import type { UnitVerdict } from "../capture/windows";
+import { isScoredWindow } from "../capture/windows";
+import { locateSpans } from "../dom/locate";
+import { band, isNoVerdict, type Band } from "./band";
 import { isDarkPage } from "./theme";
 
 const HIGHLIGHT_NAME: Record<Band, string> = {
@@ -165,24 +174,9 @@ export function refreshHighlightTheme(): void {
   applyCss();
 }
 
-/**
- * Underline the unit in its verdict colour — green (human), yellow (lightly
- * edited), orange (heavily edited), red (AI-generated). Detection cannot attribute
- * below the unit level, so the whole unit is marked uniformly (matching its
- * badge); "unavailable" gets no mark.
- */
-export function setHighlight(unit: Unit, result: ScoreResult): void {
-  if (!highlightsSupported()) return;
-
-  clearHighlight(unit.id);
-
-  const b = band(result);
-  if (b === "unknown" || b === "unsupported") return; // no verdict → no mark
-
-  const highlight = bandHighlight(b);
-  if (!highlight) return;
-
-  const entries: Array<{ band: Band; range: Range }> = [];
+/** One range per part, first text node to last — the whole unit, as it was scanned. */
+function wholeParts(unit: Unit): Range[] {
+  const ranges: Range[] = [];
   for (const part of unit.parts) {
     const first = part.nodes[0];
     const last = part.nodes[part.nodes.length - 1];
@@ -191,10 +185,52 @@ export function setHighlight(unit: Unit, result: ScoreResult): void {
       const range = new Range();
       range.setStart(first, 0);
       range.setEnd(last, last.textContent?.length ?? 0);
-      highlight.add(range);
-      entries.push({ band: b, range });
+      ranges.push(range);
     } catch {
       /* node detached mid-flight — skip this part */
+    }
+  }
+  return ranges;
+}
+
+/**
+ * Underline what was read, in the colour of its verdict — green (human), yellow
+ * (lightly edited), orange (heavily edited), red (AI-generated); "unavailable" and
+ * "unsupported" get no mark. Detection cannot attribute below what the model read in
+ * one pass, so that is the grain of the marks: the whole unit for nearly every
+ * paragraph (one window, marked uniformly in the chip's band, no offsets resolved), and
+ * window by window for a long one.
+ *
+ * When a window cannot be found in the page any more (the DOM changed between the scan
+ * and the verdict), the unit falls back to whole parts in the AGGREGATE band rather
+ * than showing nothing; the mutation observer is about to retire it anyway.
+ */
+export function setHighlight(unit: Unit, verdict: UnitVerdict): void {
+  if (!highlightsSupported()) return;
+
+  clearHighlight(unit.id);
+
+  const b = band(verdict.result);
+  if (isNoVerdict(b)) return; // no verdict → no mark
+
+  const marks: Array<{ band: Band; ranges: Range[] }> = [];
+  const onePass = verdict.windows.length === 1 && verdict.unreadChars === 0;
+  const located = onePass ? null : locateSpans(unit.parts, unit.text, verdict.windows);
+  if (located) {
+    verdict.windows.forEach((w, i) => {
+      if (isScoredWindow(w)) marks.push({ band: band(w.result), ranges: located[i] });
+    });
+  } else {
+    marks.push({ band: b, ranges: wholeParts(unit) });
+  }
+
+  const entries: Array<{ band: Band; range: Range }> = [];
+  for (const mark of marks) {
+    const highlight = bandHighlight(mark.band);
+    if (!highlight) continue;
+    for (const range of mark.ranges) {
+      highlight.add(range);
+      entries.push({ band: mark.band, range });
     }
   }
   if (entries.length > 0) _byUnit.set(unit.id, entries);

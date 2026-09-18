@@ -228,6 +228,10 @@ export const BADGE_CSS: string = `
 }
 .card .row .k { color: #737373; }
 .card .row .v { font-variant-numeric: tabular-nums; color: #252525; }
+/* "Scored in 8 windows" carries up to eight numbers: the label keeps its line and the
+   numbers wrap under each other, flush right like every other value. */
+.card .row.wins .k { flex: none; }
+.card .row.wins .v { text-align: right; }
 
 .card .actions {
   display: flex;

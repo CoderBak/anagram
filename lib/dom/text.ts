@@ -70,13 +70,6 @@ export const MIN_LINE_WORDS = 4;
 /** Hard storage cap for a single unit's text (pathological single-node dumps). */
 export const MAX_UNIT_TEXT_CHARS = 20_000;
 
-/**
- * Cap on the text actually SENT for scoring; cut at a sentence boundary. The
- * rendered unit still covers the full paragraph — long paragraphs must never be
- * split mid-flow at the surface (the M1 1000-char cap truncated the HF abstract
- * and dropped its tail).
- */
-export const MAX_SCORE_CHARS = 4000;
 
 // ---- extraction / normalization ---------------------------------------------------
 
@@ -219,27 +212,6 @@ export function sentenceStarts(text: string): number[] {
     if (at > 0 && at < text.length && out[out.length - 1] !== at) out.push(at);
   }
   return out;
-}
-
-/**
- * Prepare text for SCORING: strip presentation invisibles, then truncate at a
- * sentence boundary near `max` chars. Rendering always covers the full unit;
- * only the backend input is capped.
- */
-export function truncateForScoring(text: string, max: number = MAX_SCORE_CHARS): string {
-  text = stripInvisibles(text);
-  if (text.length <= max) return text;
-  const head = text.slice(0, max);
-  // Prefer the last sentence end in the head; fall back to last whitespace; then hard cut.
-  const m = head.match(/[\s\S]*[.!?。！？](?=\s|$)/);
-  if (m && m[0].length >= max / 2) return m[0];
-  const ws = head.lastIndexOf(" ");
-  return ws >= max / 2 ? head.slice(0, ws) : head;
-}
-
-/** What is actually SENT for a unit: canonical form, then the sentence-bounded cap. */
-export function scoringText(text: string, max: number = MAX_SCORE_CHARS): string {
-  return truncateForScoring(canonicalForScoring(text), max);
 }
 
 // ---- what a short run IS (the assembler's role test) -----------------------------------

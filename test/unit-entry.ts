@@ -7,13 +7,11 @@ export {
   countWords,
   splitSentences,
   sentenceStarts,
-  truncateForScoring,
   stripInvisibles,
   symbolNoiseRatio,
   hasColumnGaps,
   normalizeText,
   canonicalForScoring,
-  scoringText,
   isSeparatorRun,
   looksLikeNameList,
   hasLetters,
@@ -42,3 +40,4 @@ export {
   MAX_READ_CHARS,
 } from "../lib/capture/windows";
 export { windowReadout, coverageNote } from "../lib/render/coverage";
+export { setHighlight, clearHighlight } from "../lib/render/highlight";

@@ -14,11 +14,16 @@ export const CONTRACT_VERSION = "2.1";
 /** Bucket count the UI is built for: 0 human · 1 lightly edited · 2 heavily edited · 3 AI-generated. */
 export const BUCKET_COUNT = 4;
 
-/** One scoreable paragraph as sent to the backend. */
+/**
+ * One scoreable text as sent to the backend: a whole unit, or ONE WINDOW of a unit longer
+ * than the model reads in one pass (lib/capture/windows.ts). The backend cannot tell the
+ * two apart and does not need to.
+ */
 export interface ScoreBlock {
-  /** Stable per-scan id (e.g. "b_3f9a"); rendering keys off this, NOT array index. */
+  /** Stable per-scan id ("u_3f" for a whole unit, "u_3f:1259-2567" for a window of it);
+   *  results are matched by this, NOT by array index. */
   id: string;
-  /** The exact paragraph text (join of the unit's text nodes). */
+  /** The canonical form (canonicalForScoring) of the unit's text, or of one window of it. */
   text: string;
   /** Optional neighbor context (tail of previous block) — reserved; may be "" in M1. */
   ctx_before?: string;
@@ -41,7 +46,9 @@ export interface ScoreResult {
   score: number;
   /** Tokens the model actually saw (after truncation to its window). */
   tokens?: number;
-  /** True when the text exceeded the model window and was cut (roberta: 512 tokens). */
+  /** True when the text exceeded the model window and was cut (roberta: 512 tokens). The
+   *  extension sizes its blocks so that this is rare, and re-reads a block that comes back
+   *  cut as two halves. */
   truncated?: boolean;
   /** Detected language (fastText lid.176 label, e.g. "en") — set by the daemon, and
    *  absent when it could not tell. */

@@ -2,11 +2,11 @@
 import { describe, expect, it } from "vitest";
 import { createScheduler } from "../../lib/capture/scheduler";
 import type { Unit } from "../../lib/types";
-import type { ScoreBlock, ScoreResult } from "../../lib/contract";
 
-const unit = (i: number): Unit =>
-  ({ id: `u${i}`, parts: [], text: `paragraph number ${i} `.repeat(12), wordCount: 36, formulas: 0, order: i, topElement: null as never, container: null as never, isScored: false });
-const score = (b: ScoreBlock): ScoreResult => ({ id: b.id, bucket: 0, probs: [1, 0, 0, 0], score: 0 });
+const unit = (i: number, text = `paragraph number ${i} `.repeat(12)): Unit =>
+  ({ id: `u${i}`, parts: [], text, wordCount: 36, formulas: 0, order: i, topElement: null as never, container: null as never, isScored: false });
+/** The scheduler moves units and hands back whatever send() answers — here, just the id. */
+const score = (u: Unit): { id: string } => ({ id: u.id });
 const tick = () => new Promise((r) => setTimeout(r, 5));
 
 describe("scheduler", () => {
@@ -17,12 +17,12 @@ describe("scheduler", () => {
     s = createScheduler({
       batchCharBudget: 800,
       maxInFlight: 2,
-      async send(blocks) {
+      async send(units) {
         await tick();
-        return blocks.map(score);
+        return units.map(score);
       },
-      render(results) {
-        for (const r of results) rendered.push(r.id);
+      render(verdicts) {
+        for (const v of verdicts) rendered.push(v.id);
         // Inside render() the batch is still in flight — this used to be where the
         // orchestrator checked for idleness, and it never saw zero.
         expect(s.pendingCount()).toBeGreaterThan(0);
@@ -40,9 +40,9 @@ describe("scheduler", () => {
     const s = createScheduler({
       batchCharBudget: 800,
       maxInFlight: 2,
-      async send(blocks) {
-        sent.push(...blocks.map((b) => b.id));
-        return blocks.map(score);
+      async send(units) {
+        sent.push(...units.map((u) => u.id));
+        return units.map(score);
       },
       render() {},
     });
@@ -62,10 +62,10 @@ describe("scheduler", () => {
     const s = createScheduler({
       batchCharBudget: 80, // one unit per batch
       maxInFlight: 1,
-      async send(blocks, lane) {
-        lanes.push(`${lane}:${blocks.map((b) => b.id).join(",")}`);
+      async send(units, lane) {
+        lanes.push(`${lane}:${units.map((u) => u.id).join(",")}`);
         await tick();
-        return blocks.map(score);
+        return units.map(score);
       },
       render() {},
     });
@@ -77,5 +77,28 @@ describe("scheduler", () => {
     // The pump runs in a microtask, after all four enqueues: the upgraded unit wins
     // the first slot, the background units follow in order, u3 is sent exactly once.
     expect(lanes).toEqual(["viewport:u3", "background:u1", "background:u2"]);
+  });
+
+  it("charges a long unit for all of its windows: it travels whole, in a batch of its own", async () => {
+    const batches: string[] = [];
+    const s = createScheduler({
+      batchCharBudget: 6000,
+      maxInFlight: 1,
+      async send(units) {
+        batches.push(units.map((u) => u.id).join(","));
+        await tick();
+        return units.map(score);
+      },
+      render() {},
+    });
+    // 10 000 characters are six windows. Priced at the 4096 characters that used to be
+    // the most ever sent for a unit, it would have taken the short units behind it along,
+    // to wait for six forward passes of somebody else's text.
+    s.enqueue(unit(1), "background");
+    s.enqueue(unit(2, "x".repeat(10_000)), "background");
+    s.enqueue(unit(3), "background");
+    s.enqueue(unit(4), "background");
+    await new Promise((r) => setTimeout(r, 120));
+    expect(batches).toEqual(["u1", "u2", "u3,u4"]);
   });
 });

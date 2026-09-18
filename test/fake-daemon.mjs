@@ -60,8 +60,10 @@ export function detectLanguage(text) {
   return best;
 }
 
-/** One coherent, text-seeded result (one dominant bucket, neighbours share the rest). */
-export function fakeScore(text) {
+/** One coherent, text-seeded result (one dominant bucket, neighbours share the rest).
+ *  `tokens` is how long the text is to the model — four characters a token unless told
+ *  otherwise; past 512 the result comes back `truncated`, as the real daemon's does. */
+export function fakeScore(text, tokens = Math.ceil(text.length / 4)) {
   const [lang, prob] = detectLanguage(text);
   if (lang !== "en") {
     return { bucket: 0, probs: FLAT, score: 0, tokens: 0, truncated: false, lang, lang_prob: prob, unsupported: true };
@@ -77,7 +79,6 @@ export function fakeScore(text) {
   let bucket = 0;
   for (let i = 1; i < 4; i++) if (probs[i] > probs[bucket]) bucket = i;
   const score = round(probs.reduce((acc, p, i) => acc + p * i, 0) / 3);
-  const tokens = Math.ceil(text.length / 4);
   return { bucket, probs, score, tokens: Math.min(512, tokens), truncated: tokens > 512, lang: "en", lang_prob: 0.99 };
 }
 
@@ -92,9 +93,12 @@ const MAX_RECORDED_TEXTS = 500;
  * `stats.texts` is what the daemon was actually asked about — a suite proving that some
  * paragraph never left the page reads it. `delayFor(text)` returns milliseconds to hold
  * a request for, which parks a chosen paragraph in flight (a stalled daemon) while
- * everything else keeps its ordinary latency.
+ * everything else keeps its ordinary latency. `tokensFor(text)` returns a token count for
+ * a chosen text (null = the ordinary four characters a token), which is how a suite makes
+ * a short paragraph DENSE: more tokens than the model's window in fewer characters than
+ * the extension's window budget.
  */
-export function startFakeDaemon({ port = 0, latency = [60, 160], model = FAKE_MODEL, delayFor = null } = {}) {
+export function startFakeDaemon({ port = 0, latency = [60, 160], model = FAKE_MODEL, delayFor = null, tokensFor = null } = {}) {
   const stats = { requests: 0, blocks: 0, nonEnglishBlocks: 0, texts: [] };
   const server = http.createServer((req, res) => {
     const json = (code, body) => {
@@ -130,7 +134,7 @@ export function startFakeDaemon({ port = 0, latency = [60, 160], model = FAKE_MO
         }
         const results = blocks.map((b) =>
           typeof b?.text === "string" && b.text.trim()
-            ? { id: b.id, ...fakeScore(b.text) }
+            ? { id: b.id, ...fakeScore(b.text, tokensFor?.(b.text) ?? undefined) }
             : { id: b.id, bucket: 0, probs: FLAT, score: 0, tokens: 0, truncated: false, degraded: true },
         );
         // A request is answered no sooner than its slowest block asks for.

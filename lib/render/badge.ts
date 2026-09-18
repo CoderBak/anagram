@@ -16,6 +16,10 @@
 // v4 (EditLens): the card shows the model's four-bucket distribution — human /
 // lightly edited / heavily edited / AI-generated — as a stacked bar plus rows.
 //
+// v5: the chip states the UNIT's verdict. A paragraph longer than the model reads in one
+// pass was read in windows; the chip shows their aggregate and the card says how it was
+// read ("Scored in 3 windows" with each window's own number).
+//
 // The card renders in the browser's TOP LAYER (Popover API, manual mode), so no
 // ancestor overflow:hidden / clip / stacking context can cut it off — an absolutely
 // positioned descendant of the chip was clipped to the paragraph box on sites whose
@@ -27,15 +31,16 @@
 import { arrow, autoUpdate, computePosition, flip, offset, shift } from "@floating-ui/dom";
 import type { Unit } from "../types";
 import { MARK_ATTR } from "../types";
-import type { ScoreResult } from "../contract";
+import type { UnitVerdict } from "../capture/windows";
 import { band, BAND_LABEL, isNoVerdict, languageName, scorePct, type Band } from "./band";
-import { countWords, hasLetters, scoringText, MAX_SCORE_CHARS } from "../dom/text";
+import { countWords, hasLetters } from "../dom/text";
+import { coverageNote, windowPcts, windowReadout } from "./coverage";
 import { distributionHtml } from "./dist";
 import { BADGE_CSS } from "./badge.css";
 import { isDarkContext } from "./theme";
 
 export interface BadgeLayer {
-  render(unit: Unit, result: ScoreResult): void;
+  render(unit: Unit, verdict: UnitVerdict): void;
   /** Insert the chip in its "analyzing…" state (no verdict yet). */
   renderPending(unit: Unit): void;
   remove(id: string): void;
@@ -81,7 +86,8 @@ export function createBadgeLayer(): BadgeLayer {
     return host;
   }
 
-  function render(unit: Unit, result: ScoreResult): void {
+  function render(unit: Unit, verdict: UnitVerdict): void {
+    const result = verdict.result;
     const b: Band = band(result);
     const host = ensureHost(unit);
     if (!host) return;
@@ -100,7 +106,7 @@ export function createBadgeLayer(): BadgeLayer {
     num.textContent =
       (b === "unknown" ? "?" : b === "unsupported" ? (result.lang ?? "n/a") : `${pct}%`) + xn;
 
-    renderCard(root.querySelector(".card") as HTMLElement, unit, result, b, pct);
+    renderCard(root.querySelector(".card") as HTMLElement, unit, verdict, b, pct);
   }
 
   function renderPending(unit: Unit): void {
@@ -168,12 +174,13 @@ export function createBadgeLayer(): BadgeLayer {
   function renderCard(
     card: HTMLElement,
     unit: Unit,
-    result: ScoreResult,
+    verdict: UnitVerdict,
     b: Band,
     pct: number,
   ): void {
-    const row = (k: string, v: string) =>
-      `<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+    const result = verdict.result;
+    const row = (k: string, v: string, cls = "") =>
+      `<div class="row${cls}"><span class="k">${k}</span><span class="v">${v}</span></div>`;
     const partsRow =
       unit.parts.length > 1
         ? row("Paragraphs analyzed together", `${unit.parts.length}`)
@@ -182,18 +189,20 @@ export function createBadgeLayer(): BadgeLayer {
     // The model's whole 4-way distribution is the honest part of the readout. Skip
     // it for "unknown" — a flat gray bar reads as data when the message is "no answer".
     const dist = isNoVerdict(b) ? "" : distributionHtml(result, b);
-    // Coverage, honestly: the client sends a sentence-bounded prefix of very long
-    // units (MAX_SCORE_CHARS) and the daemon cuts at its token window. "Words" is the
-    // whole unit; "Scored" appears only when the model saw less than that.
-    const clientCut = unit.text.length > MAX_SCORE_CHARS;
-    const scoredRow = isNoVerdict(b)
+    // Coverage, honestly. "Words" is the whole unit. A unit read in one pass says nothing
+    // more; one read in windows shows each window's own number, in reading order, next to
+    // the aggregate above; and "Scored: first N words" is left for the one case in which
+    // the model really saw less than the unit — a text past the window cap.
+    const read = isNoVerdict(b) ? null : windowReadout(verdict);
+    const last = verdict.windows[verdict.windows.length - 1];
+    const coverageRows = isNoVerdict(b)
       ? ""
-      : result.truncated
-        ? row("Scored", `first ${result.tokens ?? 512} tokens`)
-        : clientCut
-          ? row("Scored", `first ${countWords(scoringText(unit.text))} words`)
-          : "";
-    const prefixOnly = !isNoVerdict(b) && (result.truncated || clientCut);
+      : (read ? row(`Scored in ${read.count} windows`, windowPcts(read), " wins") : "") +
+        (verdict.unreadChars > 0 && last
+          ? row("Scored", `first ${countWords(unit.text.slice(0, last.end))} words`)
+          : "") +
+        (read && read.cutShort > 0 ? row("Windows cut short", `${read.cutShort} of ${read.count}`) : "") +
+        (read && read.skipped > 0 ? row("Windows not in English", `${read.skipped} of ${read.count}`) : "");
     // Formula-heavy prose was scored with holes where the math was — say so.
     const formulaRow = !isNoVerdict(b) && unit.formulas > 0 ? row("Formulas omitted", `${unit.formulas}`) : "";
     const langRow =
@@ -205,7 +214,7 @@ export function createBadgeLayer(): BadgeLayer {
         ? "The scoring daemon did not answer. Retried automatically once it is running."
         : b === "unsupported"
           ? "EditLens is trained on English text only, so this paragraph was not scored."
-          : (prefixOnly ? "Only the opening of this paragraph was scored. " : "") +
+          : coverageNote(verdict, "paragraph") +
             "The number is EditLens's estimate of how far this text sits from untouched " +
             "human writing toward fully AI-generated — not a share of words, not proof.";
     card.innerHTML =
@@ -215,7 +224,7 @@ export function createBadgeLayer(): BadgeLayer {
       langRow +
       partsRow +
       row("Words", `${unit.wordCount}`) +
-      scoredRow +
+      coverageRows +
       formulaRow +
       `<div class="actions"><button type="button" class="act copy">Copy text</button></div>` +
       `<div class="foot">${foot}</div>` +

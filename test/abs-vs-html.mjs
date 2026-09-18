@@ -1,7 +1,10 @@
 // test/abs-vs-html.mjs — same abstract, two renderings: does the pipeline send the model the
 // same bytes? For each arXiv id, the abstract is extracted from the /abs page and from the
-// HTML rendering with the extension's own walker, the exact scoring payload (scoringText)
-// is scored by the daemon, and the two are compared. Residual gaps are content differences
+// HTML rendering with the extension's own walker, its canonical scoring form
+// (canonicalForScoring) is scored by the daemon, and the two are compared. The extension
+// itself sends an abstract longer than one window as several blocks cut from that same text;
+// here each abstract stays ONE block, because the question is whether the two renderings
+// agree, not how a long one is read. Residual gaps are content differences
 // (paper versions, arXiv's URL rewriting, paragraph segmentation) or the model's own
 // sensitivity — not extraction. Needs `npm run serve` and a fresh test/.unit-bundle.js
 // (`npm run test:unit` builds it).
@@ -33,7 +36,7 @@ async function extract(url, canonical) {
       const pageAbs = (document.querySelector("blockquote.abstract, .ltx_abstract")?.textContent ?? "").replace(/\s+/g, " ").trim();
       const key = pageAbs.replace(/^Abstract:?\s*/i, "").slice(20, 60);
       const u = PW.collectUnits(document.body).find((u) => u.text.includes(key));
-      return u ? (window.__canon ? PW.scoringText(u.text) : u.text) : null;
+      return u ? (window.__canon ? PW.canonicalForScoring(u.text) : u.text) : null;
     });
   } catch { return null; } finally { await page.close(); }
 }
@@ -51,7 +54,7 @@ const res = await fetch("http://127.0.0.1:8765/score", { method: "POST", headers
 const S = Object.fromEntries(res.results.map((x) => [x.id, x]));
 const pct = (x) => Math.round(x.score * 100);
 let dRaw = 0, dCanon = 0, agreeRaw = 0, agreeCanon = 0, sameText = 0;
-console.log("NOTE: raw = the new walker's unit text (markers already skipped); canon = what the extension now SENDS (scoringText)");
+console.log("NOTE: raw = the new walker's unit text (markers already skipped); canon = its canonical form, which is what the extension SENDS (whole, or cut into windows)");
 console.log("paper       abs raw  html raw  | abs sent   html sent  | payloads identical?");
 for (const r of rows) {
   const a = S[`${r.id}:absRaw`], h = S[`${r.id}:htmlRaw`], ac = S[`${r.id}:absCanon`], hc = S[`${r.id}:htmlCanon`];

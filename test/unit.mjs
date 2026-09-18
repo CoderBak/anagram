@@ -518,7 +518,8 @@ const results = await page.evaluate(() => {
       sandbox.innerHTML = html;
       const [unit] = PW.collectUnits(sandbox);
       if (!unit) return null;
-      layer.render(unit, { id: unit.id, bucket: 0, probs: [0.9, 0.06, 0.03, 0.01], score: 0.05 });
+      const result = { id: unit.id, bucket: 0, probs: [0.9, 0.06, 0.03, 0.01], score: 0.05 };
+      layer.render(unit, PW.unitVerdict(unit.id, unit.text.length, [{ start: 0, end: unit.text.length, result }]));
       return sandbox.querySelector('[data-anagram="host"]');
     };
     const desc = (h) => h && `${h.previousElementSibling?.tagName ?? "#text"}|host|${h.nextElementSibling?.tagName ?? "-"}`;
@@ -712,11 +713,78 @@ const results = await page.evaluate(() => {
     check("a unit read in one pass has no window readout and no coverage note", PW.windowReadout(single) === null && PW.coverageNote(single, "paragraph") === "");
   }
 
+  // ---- long texts: what the marks and the card claim ----------------------------------------
+  {
+    const bandsOver = (el) => {
+      const out = {};
+      for (const [name, hl] of CSS.highlights) for (const r of hl) if (el.contains(r.startContainer)) (out[name] ??= []).push(collapse(r.toString()));
+      return out;
+    };
+    sandbox.innerHTML = `<p>${prose(59)} The final TAILMARK sentence closes the paragraph.</p>`;
+    const htmlBefore = sandbox.innerHTML;
+    const [unit] = PW.collectUnits(sandbox);
+    const spans = PW.planWindows(unit.text);
+    const verdict = PW.unitVerdict(unit.id, unit.text.length, [
+      { ...spans[0], result: res([0.9, 0.1, 0, 0]) },
+      { ...spans[1], result: res([0.05, 0.15, 0.6, 0.2]) },
+      { ...spans[2], result: res([0, 0, 0.1, 0.9]) },
+    ]);
+    PW.setHighlight(unit, verdict);
+    let marks = bandsOver(sandbox);
+    check("marks are per window: each window's text is underlined in ITS band, to the last sentence",
+      spans.length === 3 && Object.keys(marks).sort().join() === "anagram-ai,anagram-heavy,anagram-human" &&
+      marks["anagram-human"][0] === unit.text.slice(spans[0].start, spans[0].end).trim() && marks["anagram-heavy"][0] === unit.text.slice(spans[1].start, spans[1].end).trim() && marks["anagram-ai"][0].endsWith("TAILMARK sentence closes the paragraph."),
+      JSON.stringify(Object.fromEntries(Object.entries(marks).map(([k, v]) => [k, v.map((t) => t.slice(-30))]))));
+    check("…without touching the page", sandbox.innerHTML === htmlBefore);
+
+    const layer = PW.createBadgeLayer();
+    layer.render(unit, verdict);
+    const cardText = () => sandbox.querySelector('[data-anagram="host"]').shadowRoot.querySelector(".card").textContent;
+    const chips = sandbox.querySelectorAll('[data-anagram="host"]').length;
+    check("the card says how it was read: 'Scored in 3 windows' with each window's number; ONE chip with the aggregate",
+      chips === 1 && /Scored in 3 windows\s*3%\s*·\s*65%\s*·\s*97%/.test(cardText()) && /averaged by length/.test(cardText()) && !/Only the opening/.test(cardText()) && !/first \d+/.test(cardText()) &&
+      sandbox.querySelector('[data-anagram="host"]').shadowRoot.querySelector(".num").textContent === `${PW.scorePct(verdict.result)}%`, cardText());
+
+    // Two of three windows read (as under the window cap): the tail is neither marked nor claimed.
+    const partial = PW.unitVerdict(unit.id, unit.text.length, verdict.windows.slice(0, 2));
+    PW.setHighlight(unit, partial);
+    layer.render(unit, partial);
+    marks = bandsOver(sandbox);
+    check("text no window covers gets no mark, and the card says only the opening was scored",
+      !Object.values(marks).flat().some((t) => t.includes("TAILMARK")) && partial.unreadChars > 0 && /Only the opening of this paragraph was scored/.test(cardText()) && /Scored\s*first \d+ words/.test(cardText()), cardText());
+
+    const gated = PW.unitVerdict(unit.id, unit.text.length, [verdict.windows[0], { ...spans[1], result: res([0.25, 0.25, 0.25, 0.25], { unsupported: true, lang: "fr", score: 0 }) }, verdict.windows[2]]);
+    PW.setHighlight(unit, gated);
+    marks = bandsOver(sandbox);
+    check("a window the language gate refused is not marked", Object.keys(marks).sort().join() === "anagram-ai,anagram-human" && Object.values(marks).flat().length === 2, JSON.stringify(Object.keys(marks)));
+
+    // The DOM moves on while the verdict is in flight: whole parts, aggregate band.
+    unit.parts[0].nodes[0].data = "Edited " + unit.parts[0].nodes[0].data;
+    PW.setHighlight(unit, verdict);
+    marks = bandsOver(sandbox);
+    const aggregate = `anagram-${PW.band(verdict.result)}`;
+    check("a window that cannot be found falls back to the whole part in the aggregate band, never to nothing",
+      Object.keys(marks).join() === aggregate && marks[aggregate].length === 1 && marks[aggregate][0].startsWith("Edited Sentence number 0") && marks[aggregate][0].endsWith("closes the paragraph."), JSON.stringify(Object.keys(marks)));
+
+    // The common case stays what it was: one whole-part range, no offsets resolved.
+    PW.clearHighlight(unit.id);
+    sandbox.innerHTML = `<p>${words(60)}</p>`;
+    const [small] = PW.collectUnits(sandbox);
+    const smallVerdict = PW.unitVerdict(small.id, small.text.length, [{ start: 0, end: small.text.length, result: res([0, 0, 0.1, 0.9]) }]);
+    PW.setHighlight(small, smallVerdict);
+    layer.render(small, smallVerdict);
+    marks = bandsOver(sandbox);
+    check("a one-window unit is marked and carded exactly as before", Object.keys(marks).join() === "anagram-ai" && marks["anagram-ai"].length === 1 && marks["anagram-ai"][0] === small.text && !/Scored/.test(cardText()) && !/window/.test(cardText()), cardText());
+    PW.clearHighlight(small.id);
+    layer.teardownAll();
+  }
+
   // ---- canonical scoring text ------------------------------------------------------------
   check("canonical: LaTeX residue and escapes", PW.canonicalForScoring("steps---prompting, 74.1\\% and ``quoted''") === 'steps—prompting, 74.1% and "quoted"', JSON.stringify(PW.canonicalForScoring("steps---prompting, 74.1\\% and ``quoted''")));
   check("canonical: typographic quotes, ranges, NBSP, ligatures → one convention", PW.canonicalForScoring("LLMs’ “rich” 1–5\u00a0ﬁnal") === `LLMs' "rich" 1-5 final`, JSON.stringify(PW.canonicalForScoring("LLMs’ “rich” 1–5\u00a0ﬁnal")));
   check("canonical: un-rendered LaTeX math dropped, dollar amounts kept", PW.canonicalForScoring("on the $\\tau^{2}$-bench costs $5 and $10") === "on the -bench costs $5 and $10", JSON.stringify(PW.canonicalForScoring("on the $\\tau^{2}$-bench costs $5 and $10")));
-  check("cache key equals the scoring text's canonical form", PW.normalizeText("a---b ‘c’") === PW.scoringText("a---b ‘c’"));
+  check("cache key equals the canonical form of what is sent, and canonicalizing twice changes nothing",
+    PW.normalizeText("a---b ‘c’") === PW.blockText("a---b ‘c’", { start: 0, end: 9 }) && PW.normalizeText(PW.normalizeText("a---b ‘c’ ``d''")) === PW.normalizeText("a---b ‘c’ ``d''"));
   check("isSeparatorRun: rules yes, numbers no", PW.isSeparatorRun("* * *") && PW.isSeparatorRun("———") && !PW.isSeparatorRun("(3)") && !PW.isSeparatorRun("12"));
 
   // ---- pure text utils ---------------------------------------------------------------
@@ -730,13 +798,9 @@ const results = await page.evaluate(() => {
     PW.normalizeText("news\u00ADpaper text") === PW.normalizeText("newspaper text"),
   );
   check(
-    "truncateForScoring strips invisibles from the payload",
-    !PW.truncateForScoring("soft\u00ADwrap sentence.").includes("\u00AD"),
+    "blockText strips invisibles from the payload",
+    !PW.blockText("soft\u00ADwrap sentence.", { start: 0, end: 19 }).includes("\u00AD"),
   );
-
-  const long = (words(40) + " ").repeat(30);
-  const t = PW.truncateForScoring(long);
-  check("truncateForScoring caps at ~4000 on a sentence end", t.length <= 4000 && /[.!?。！？]$/.test(t.trim()), `len=${t.length}`);
 
   check("countWords counts CJK", PW.countWords("这是一个测试句子。") >= 4, PW.countWords("这是一个测试句子。"));
   check("symbolNoiseRatio flags box drawing", PW.symbolNoiseRatio("+----+----+ | cell |") > 0.2, PW.symbolNoiseRatio("+----+----+ | cell |").toFixed(2));

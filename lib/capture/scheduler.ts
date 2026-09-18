@@ -8,6 +8,12 @@
 // (background → near → viewport on scroll). Each enqueue captures the current epoch;
 // responses from a superseded generation are discarded.
 //
+// The queue moves UNITS and nothing smaller. What a unit becomes on the wire — one block,
+// or several windows when it is longer than the model reads in one pass — is send()'s
+// business, and send() answers with one verdict per unit, so a long unit can never be
+// split across two batches or rendered half-done. `V` is that verdict; the scheduler
+// never looks inside it.
+//
 // Budgets are per lane because the trade-off differs: the viewport lane wants the
 // first chip fast (small batch), the background prefetch lane can afford a larger one.
 // Batching buys less than one would hope — it amortises the per-request overhead (HTTP
@@ -18,8 +24,7 @@
 // nothing at all. The background lane is also capped to `maxBackgroundInFlight`
 // concurrent batches so prefetch never starves what the reader can actually see.
 import type { Unit, Lane } from "../types";
-import type { ScoreBlock, ScoreResult } from "../contract";
-import { scoringText } from "../dom/text";
+import { MAX_READ_CHARS } from "./windows";
 
 export interface Scheduler {
   enqueue(unit: Unit, lane: Lane): void;
@@ -41,12 +46,12 @@ interface Pending {
   epoch: number;
 }
 
-export function createScheduler(opts: {
+export function createScheduler<V>(opts: {
   batchCharBudget: number | Partial<Record<Lane, number>>;
   maxInFlight: number;
   maxBackgroundInFlight?: number;
-  send(blocks: ScoreBlock[], lane: Lane): Promise<ScoreResult[]>;
-  render(results: ScoreResult[], epoch: number): void;
+  send(units: Unit[], lane: Lane): Promise<V[]>;
+  render(verdicts: V[], epoch: number): void;
   /** Nothing queued and nothing in flight any more (fired after each batch settles). */
   onIdle?(): void;
 }): Scheduler {
@@ -108,7 +113,10 @@ export function createScheduler(opts: {
       let chars = 0;
       while (q.length > 0) {
         const next = q[0];
-        const len = Math.min(next.unit.text.length, 4096);
+        // A unit costs what is sent for it: all of a long one's windows, up to the cap.
+        // One that outweighs the budget alone still goes — in a batch of its own when it
+        // leads the queue, and closing the batch in front of it when it does not.
+        const len = Math.min(next.unit.text.length, MAX_READ_CHARS);
         if (batch.length > 0 && chars + len > budget) break;
         batch.push(q.shift()!);
         chars += len;
@@ -136,19 +144,12 @@ export function createScheduler(opts: {
       inFlightIds.add(p.unit.id);
     }
     const batchEpoch = batch[0].epoch;
-    const blocks: ScoreBlock[] = batch.map((p) => ({
-      id: p.unit.id,
-      // Canonical form (typography/LaTeX residue folded), sentence-bounded prefix for
-      // very long units; rendering still covers the whole paragraph.
-      text: scoringText(p.unit.text),
-      order: p.unit.order,
-    }));
 
     opts
-      .send(blocks, lane)
-      .then((results) => {
+      .send(batch.map((p) => p.unit), lane)
+      .then((verdicts) => {
         if (batchEpoch === currentEpoch) {
-          opts.render(results, batchEpoch);
+          opts.render(verdicts, batchEpoch);
         }
       })
       .catch(() => {

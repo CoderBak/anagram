@@ -4,7 +4,9 @@
 // test-only fake daemon (deterministic verdicts, no model needed), serves the
 // self-test page over http (so the <all_urls> content script injects), scrolls the
 // whole page (scoring is viewport-first BY DESIGN), then asserts the v2 behaviours:
-// long paragraphs badge once and underline to the end (the HF regression),
+// long paragraphs badge once and underline to the end (the HF regression), a paragraph
+// longer than the model reads in one pass is scored completely — in windows, one chip,
+// each window marked in its own band —
 // BR-split/short-sibling/pre-wrap content merges into single units, a post written one
 // short sentence per line is one unit while two voices never share one, inline code
 // does not fragment prose, pure-CJK text is settled by the local language gate
@@ -18,7 +20,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
 import { launchExtension, serveHtml, artifact, BADGE_SEL } from "./harness.mjs";
-import { startFakeDaemon } from "./fake-daemon.mjs";
+import { startFakeDaemon, fakeScore } from "./fake-daemon.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -102,6 +104,7 @@ const snapshot = await page.evaluate((sel) => {
       quote: inSection("quote"),
       divbased: inSection("divbased"),
       longpara: inSection("longpara"),
+      windowed: inSection("windowed"),
       brsplit: inSection("brsplit"),
       mergeshorts: inSection("mergeshorts"),
       postlines: inSection("postlines"),
@@ -118,8 +121,23 @@ const snapshot = await page.evaluate((sel) => {
     // language gate settles it and renders an "unsupported language" chip with no number
     // and no mark. The fake daemon is asserted below to have seen no non-English block.
     cjkUnsupported: !!document.querySelector(`#purecjk ${sel}`)?.shadowRoot?.querySelector(".pill.band-unsupported"),
+    // The paragraph scored in windows: its own text (what the daemon's blocks must add up
+    // to), the chip and card it got, and the band of every range laid over it.
+    windowed: (() => {
+      const p = document.querySelector("#windowed p");
+      const root = document.querySelector(`#windowed ${sel}`)?.shadowRoot;
+      const bands = new Set();
+      for (const [name, h] of CSS.highlights ?? []) for (const r of h) if (p.contains(r.startContainer)) bands.add(name.replace("anagram-", ""));
+      return {
+        text: p.textContent.replace(/\s+/g, " ").trim(),
+        chip: root?.querySelector(".num")?.textContent ?? "",
+        card: root?.querySelector(".card")?.textContent ?? "",
+        bands: [...bands].sort(),
+      };
+    })(),
     hl: {
       longtail: hlHas("final LONGTAIL sentence"),
+      windowtail: hlHas("final WINDOWTAIL sentence"),
       br1: hlHas("BRPART-ONE"),
       br2: hlHas("BRPART-TWO"),
       ms1: hlHas("MS-ONE"),
@@ -137,6 +155,9 @@ const snapshot = await page.evaluate((sel) => {
     strayMarks,
   };
 }, BADGE_SEL);
+const snapshotCardOf = {
+  longpara: await page.evaluate((sel) => document.querySelector(`#longpara ${sel}`)?.shadowRoot?.querySelector(".card")?.textContent ?? "", BADGE_SEL),
+};
 console.log("\nSNAPSHOT:");
 console.log(JSON.stringify(snapshot, null, 2));
 
@@ -231,6 +252,16 @@ console.log("screenshot:", shot);
 
 // 15) checks + summary.
 const s = snapshot;
+// What the daemon was asked about the windowed paragraph: every block that is a piece of
+// it, in reading order. The fake's verdict is a pure function of the text, so the bands
+// the page must show are known here without asking the page.
+const BANDS = ["human", "light", "heavy", "ai"];
+const windowBlocks = [...new Set(daemon.stats.texts.filter((t) => t.length > 200 && s.windowed.text.includes(t)))]
+  .sort((a, b) => s.windowed.text.indexOf(a) - s.windowed.text.indexOf(b));
+const windowVerdicts = windowBlocks.map((t) => fakeScore(t));
+const expectedBands = [...new Set(windowVerdicts.map((v) => BANDS[v.bucket]))].sort();
+const expectedPcts = windowVerdicts.map((v) => `${Math.round(v.score * 100)}%`);
+console.log(`windowed paragraph: ${s.windowed.text.length} chars → ${windowBlocks.length} blocks of ${windowBlocks.map((t) => t.length).join(" / ")} chars → ${expectedPcts.join(" · ")} (${expectedBands.join(", ")})`);
 const checks = [
   ["extension loaded (service worker)", !!sw],
   ["badges rendered across the page", s.badgeTotal >= 11],
@@ -239,6 +270,15 @@ const checks = [
   ["human/ai/quote/div-EN/div-ZH badged", s.sections.human === 1 && s.sections.aiwrap === 1 && s.sections.quote === 1 && s.sections.divbased === 2],
   ["LONG paragraph: exactly ONE badge (no 1000-char split)", s.sections.longpara === 1],
   ["LONG paragraph underline reaches the end (HF regression)", s.hl.longtail],
+  ["LONG paragraph is still one window: no window row in its card", !/Scored/.test(snapshotCardOf.longpara)],
+  ["WINDOWED paragraph: exactly ONE chip, showing one percentage", s.sections.windowed === 1 && /^\d+%$/.test(s.windowed.chip)],
+  ["WINDOWED paragraph: the daemon received it whole, as 3 consecutive blocks, none past its token window",
+    windowBlocks.length === 3 && windowBlocks.join(" ") === s.windowed.text && windowVerdicts.every((v) => v.truncated === false)],
+  ["WINDOWED paragraph: underline reaches the final sentence", s.hl.windowtail],
+  ["WINDOWED paragraph: each window is marked in its own band (more than one, as the verdicts differ)",
+    expectedBands.length > 1 && JSON.stringify(s.windowed.bands) === JSON.stringify(expectedBands)],
+  ["WINDOWED paragraph: the card reads 'Scored in 3 windows' with each window's number, and claims no prefix",
+    s.windowed.card.includes(`Scored in 3 windows${expectedPcts.join("\u00a0· ")}`) && !/Only the opening|first \d+/.test(s.windowed.card)],
   ["BR-split halves merged into one unit", s.sections.brsplit === 1 && s.hl.br1 && s.hl.br2],
   ["three short siblings merged into one unit", s.sections.mergeshorts === 1 && s.hl.ms1 && s.hl.ms2 && s.hl.ms3],
   ["one-sentence-per-line post: one unit from the first line to the last, without the name row", s.sections.postlines === 1 && s.hl.post1 && s.hl.postN && !s.hl.posterName],

@@ -1,7 +1,9 @@
 // lib/capture/cache.ts — per-tab L1 content-hash cache.
 // Keyed by hash(normalizeText(text)) so a paragraph's badge stays stable across
 // re-scroll / re-entry (virtualized lists). Request-level dedup lives in the
-// orchestrator's send() and the SW router.
+// orchestrator's scoreBlocks() and the SW router. An entry answers for one BLOCK's text —
+// a whole unit, or one window of a long one; a unit's aggregate is never stored, it is
+// derived again from its windows' entries.
 //
 // The layer belongs to ONE backend identity: the orchestrator clears it whenever the
 // producing model changes (a reply names a different model) and on every Rescan, so a
