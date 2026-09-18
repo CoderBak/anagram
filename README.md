@@ -205,10 +205,14 @@ Text on the web is messy; the capture engine is built for it:
   footnote and citation marks (`[7]`, `[citation needed]`), page-number markers
   and author-list citation strings never reach the model.
 - **An evidence floor with merging.** Detection below ~50 words is unreliable, so
-  short neighboring paragraphs (chat messages, list items, comment threads) are
-  **analyzed together** as one unit instead of being skipped — while headings,
-  navigation, link lists, ASCII art and column layouts act as barriers that are
-  never merged across.
+  short neighboring paragraphs *of one voice* (the lines of a post written one
+  sentence per line, list items, the short paragraphs of an article or of a single
+  comment) are **analyzed together** as one unit instead of being skipped. A unit
+  never crosses an authorship boundary to reach the floor — another post or
+  comment, a quotation, a caption, a quoted post, the name row between two chat
+  messages: text that is too short on its own simply gets no chip. Headings,
+  navigation, link lists, ASCII art and column layouts are barriers that are never
+  merged across either.
 - **Boilerplate skipping, trafilatura-style.** Landmark roles, sectioning tags
   and a curated token list (share bars, related-article widgets, taboola/outbrain
   slots, bylines, cookie walls…) are pruned during the walk — with compound-token
