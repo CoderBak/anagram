@@ -7,7 +7,7 @@
 //    paragraph may carry a verdict (there is no fallback scorer).
 //   node test/verify-backend.mjs
 import { spawn } from "node:child_process";
-import { chromium } from "playwright";
+import { launchExtension } from "./harness.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
@@ -15,7 +15,6 @@ import http from "node:http";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
-const EXT = join(ROOT, "output", "chrome-mv3");
 const BASE = "http://127.0.0.1:8765";
 const BADGE_SEL = '[data-anagram="host"]:not(#anagram-fab)';
 
@@ -71,10 +70,7 @@ async function readChips(context, expectChips = true) {
   return { chips, backendLine, verdicts };
 }
 
-const launch = () => chromium.launchPersistentContext("", {
-  headless: false, viewport: { width: 1200, height: 800 },
-  args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`, "--no-first-run"],
-});
+const launch = async () => (await launchExtension({ viewport: { width: 1200, height: 800 } })).context;
 
 // --- 1. daemon UP ---------------------------------------------------------------------
 const before = (daemonLog.match(/score \d+ blocks/g) ?? []).length;

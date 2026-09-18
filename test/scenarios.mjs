@@ -16,7 +16,7 @@
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
-import { launchExtension, serveHtml, BADGE_SEL } from "./harness.mjs";
+import { launchExtension, serveHtml, artifact, BADGE_SEL } from "./harness.mjs";
 import { startFakeDaemon } from "./fake-daemon.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -102,7 +102,7 @@ async function sweep(page, steps = 6) {
       }, BADGE_SEL);
       ok = r.below && r.inViewport && r.visible;
       note = JSON.stringify(r);
-      await page.screenshot({ path: join(__dirname, "scn-card-below.png") });
+      await page.screenshot({ path: artifact("scn-card-below.png") });
     }
     record("ui", "hover card flips BELOW at viewport top, fully visible", ok, note);
     await page.mouse.move(5, 400); // unhover
@@ -565,7 +565,7 @@ async function sweep(page, steps = 6) {
   }
 
   record("ui", "no extension console errors on fixtures", extErrors.length === 0, extErrors.join(" | "));
-  await page.screenshot({ path: join(__dirname, "scn-ui-fixtures.png"), fullPage: true });
+  await page.screenshot({ path: artifact("scn-ui-fixtures.png"), fullPage: true });
   await page.close();
 
   // A20: "main content" scope pulls Readability in as an on-demand vendor chunk —
@@ -731,7 +731,7 @@ if (!LOCAL_ONLY) {
       }, BADGE_SEL)
       .catch(() => null);
 
-    await page.screenshot({ path: join(__dirname, `scn-${site.name}.png`) }).catch(() => {});
+    await page.screenshot({ path: artifact(`scn-${site.name}.png`) }).catch(() => {});
     if (!stats) {
       record("live", site.name, null, "evaluate failed");
       await page.close();

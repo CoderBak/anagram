@@ -8,11 +8,9 @@
 //
 //   node test/survey.mjs                       # the default site list below
 //   SITES='[["name","https://…"],…]' node test/survey.mjs
-import { launchExtension, BADGE_SEL, sweep } from "./harness.mjs";
-import { fileURLToPath } from "node:url";
-import { dirname } from "node:path";
+import { launchExtension, BADGE_SEL, ARTIFACTS, sweep } from "./harness.mjs";
 import { writeFileSync } from "node:fs";
-const OUT = dirname(fileURLToPath(import.meta.url));
+const OUT = ARTIFACTS;
 const SITES = process.env.SITES ? JSON.parse(process.env.SITES) : [
   ["news-front", "https://www.theguardian.com/international"],
   ["longform-book", "https://www.gutenberg.org/files/1342/1342-h/1342-h.htm"],

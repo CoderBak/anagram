@@ -264,9 +264,14 @@ see [`anagramd/README.md`](anagramd/README.md) for the API and its hardening.
 
 ## Testing
 
-Seven suites. The browser suites that must not depend on the model point the
+Eight suites. The browser suites that must not depend on the model point the
 extension at `test/fake-daemon.mjs`, a test-only Node server that speaks the
-daemon's contract with text-seeded, deterministic verdicts (nothing of it ships):
+daemon's contract with text-seeded, deterministic verdicts (nothing of it ships).
+
+**No suite opens a window.** They run Chromium's new headless mode (it loads MV3
+extensions) with a throwaway profile, so a run takes no focus, shows no Dock icon
+and never touches your own Chrome. `HEADED=1 npm run test:e2e` brings the window
+back when you want to watch; only `npm run browser` / `npm run play` always do.
 
 | Suite | Command | Checks | What it covers |
 | --- | --- | --- | --- |
@@ -276,7 +281,40 @@ daemon's contract with text-seeded, deterministic verdicts (nothing of it ships)
 | Scenarios | `npm run test:scenarios` | 43 | UI edge cases (hover card, panel filters, FAB snap/tuck, top-layer, KaTeX, vertical text, CSS Color 4 backgrounds, late shadow-root content, mutation storms, on-demand Readability chunk, self-rewriting page, daemon down → Unavailable → daemon back → auto re-queue) + 13 live sites (bot-check interstitials count as skips) (`-- --local` skips the live sweep) |
 | Server | `npm run test:server` | 27 | **the real model**: spawns `anagramd`, checks the API on human/AI/Chinese samples (the last one must come back unsupported via fastText), the request limits, the Host allow-list and the absence of CORS grants, then drives the built extension — real verdicts on every English chip, the 4-bucket card, the "zh" unsupported chip, the popup's model line |
 | Docs flow | `node test/docs-flow.mjs <public doc URL>` | 12 | in-tab overlay + classic page flow on a real public Google Doc — the original demo doc was deleted from Drive, so without a URL (or `ANAGRAM_DOC_URL`) the suite reports SKIP |
+| Matrix | `npm run test:matrix` | 136 | the UI fixtures under **17 device profiles** — 360 px phones to a 3440 px ultrawide, pixel ratios 1 / 1.25 / 1.5 / 2 / 3 (Windows display scaling), classic layout-eating scrollbars, a 420 px-tall window, dark scheme, forced colours, reduced motion, touch, zh-CN and Arabic UI locales — asserting what must hold on every one: all chips reach a verdict, showing them adds no side-scroll and grows no paragraph by more than a line, no chip leaves its block, the detail card (hover, or tap on touch) and the panel open fully inside the viewport, the ball stays on top, the options and onboarding pages fit the width, no console errors. A screenshot per profile lands in the artifacts folder. `node test/matrix.mjs phone dark` runs a subset |
 | Perf | `npm run test:perf` | 3 | 3000-paragraph budget: first badge <4s (measured ~0.3s), no long task >1s |
+
+### The lab: a screen of its own
+
+`npm run lab` drives a Linux container (OrbStack or Docker) that has **its own
+display**. Browsers started there are windows on that display, not on your desktop:
+they cannot take focus or move your pointer, and you can still see — and use —
+them through one page you park wherever you like.
+
+```bash
+npm run lab -- up          # build (first time: a few minutes) and start; prints the viewer URL
+npm run lab -- view        # open the viewer — put this window on a desktop of its own
+npm run lab -- test        # sync, build and run node + unit + e2e + scenarios + matrix ON that screen
+npm run lab -- test matrix --headless
+npm run lab -- show --size 390x844 --dark https://en.wikipedia.org/wiki/Alan_Turing
+npm run lab -- show --real # score with the real daemon running on the Mac instead of the fake
+npm run lab -- hide        # close what show opened
+npm run lab -- shot        # picture of the lab's screen → test-results/lab/screen.png
+npm run lab -- down
+```
+
+What the container can touch: the repository, **read-only**; one writable folder,
+`test-results/lab` (screenshots, `matrix.json`, `summary.json`); and one port, the
+viewer, bound to `127.0.0.1`. Dependencies and the build live inside it (Linux
+binaries never land in your `node_modules`), CPU and memory are capped
+(`LAB_CPUS`, `LAB_MEMORY`), and `up --hidpi` renders the screen at 2x for a Retina
+display. The Chromium build is the one the repo's Playwright version pins; when
+Playwright's CDN cannot be reached the image takes it from npmmirror's copy
+(`PLAYWRIGHT_DOWNLOAD_HOST` overrides).
+
+Platforms: the lab is Linux; macOS is covered by the headless runs on your machine;
+CI runs everything (matrix included) on Linux **and Windows** on every push, plus
+macOS on tags and manual runs, and keeps the screenshots as build artifacts.
 
 `npm run test:verify` proves the chips come from the model: it reads each chip's
 probabilities, sends the same paragraph text straight to the daemon's API, and

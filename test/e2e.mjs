@@ -10,16 +10,15 @@
 // get badges when revealed, pushState swaps re-badge and purge, removals purge,
 // never-score zones stay clean, and the page DOM carries no marker attributes.
 //
-//   node test/e2e.mjs            # headed (most reliable for MV3 extensions)
-//   HEADLESS=1 node test/e2e.mjs # try new-headless
+//   node test/e2e.mjs            # headless — no window (see test/harness.mjs)
+//   HEADED=1 node test/e2e.mjs   # watch it run
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
-import { launchExtension, serveHtml, BADGE_SEL } from "./harness.mjs";
+import { launchExtension, serveHtml, artifact, BADGE_SEL } from "./harness.mjs";
 import { startFakeDaemon } from "./fake-daemon.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const HEADLESS = process.env.HEADLESS === "1";
 
 // 1) the fake daemon + a tiny static server for the self-contained self-test page.
 const daemon = await startFakeDaemon();
@@ -28,7 +27,7 @@ const url = server.url("/selftest.html");
 console.log("serving self-test at", url, "· fake daemon at", daemon.url);
 
 // 2) launch a persistent context with the unpacked extension pointed at the fake.
-const { context, sw } = await launchExtension({ backendUrl: daemon.url, headless: HEADLESS, viewport: { width: 1280, height: 720 } });
+const { context, sw } = await launchExtension({ backendUrl: daemon.url, viewport: { width: 1280, height: 720 } });
 console.log("extension service worker:", sw ? sw.url() : "NOT FOUND");
 
 // 4) open the page; capture content-script console errors.
@@ -216,7 +215,7 @@ const reshownN = await visibleBadges();
 console.log(`toggle: visible ${shownN} -> hidden ${hiddenN} -> visible ${reshownN}`);
 
 // 14) screenshot (overlay shown).
-const shot = join(__dirname, "e2e-screenshot.png");
+const shot = artifact("e2e-screenshot.png");
 await page.evaluate(() => window.scrollTo(0, 0));
 await page.screenshot({ path: shot, fullPage: true });
 console.log("screenshot:", shot);

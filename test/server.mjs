@@ -8,7 +8,7 @@
 //
 //   node test/server.mjs            (ANAGRAMD_PORT to override 8765)
 import { spawn } from "node:child_process";
-import { chromium } from "playwright";
+import { launchExtension } from "./harness.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readFileSync, existsSync } from "node:fs";
@@ -121,14 +121,7 @@ const server = http.createServer((_q, res) => {
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const url = `http://localhost:${server.address().port}/selftest.html`;
 
-const context = await chromium.launchPersistentContext("", {
-  headless: false,
-  viewport: { width: 1280, height: 900 },
-  args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`, "--no-first-run"],
-});
-let [sw] = context.serviceWorkers();
-if (!sw) sw = await context.waitForEvent("serviceworker", { timeout: 15000 }).catch(() => null);
-const extId = sw ? new URL(sw.url()).host : null;
+const { context, extId } = await launchExtension({ viewport: { width: 1280, height: 900 } });
 check("extension service worker loaded", !!extId, extId ?? "");
 
 const page = await context.newPage();

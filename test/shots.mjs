@@ -1,14 +1,13 @@
 // test/shots.mjs — regenerate the README screenshots (docs/screenshots/).
 // Live-site shots (Wikipedia, HF, Google Docs) need network; the dark-mode and
 // popup shots are fully local.  node test/shots.mjs
-import { chromium } from "playwright";
+import { launchExtension } from "./harness.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import http from "node:http";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
-const EXT = join(ROOT, "output", "chrome-mv3");
 const OUT = join(ROOT, "docs", "screenshots");
 // Public Google Doc for the overlay shot. The original was deleted (410) in Sept 2026 —
 // set ANAGRAM_DOC_URL to a public doc to regenerate google-docs-overlay.png.
@@ -76,13 +75,7 @@ await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const darkUrl = `http://localhost:${server.address().port}/dark.html`;
 const mixedUrl = `http://localhost:${server.address().port}/mixed.html`;
 
-const context = await chromium.launchPersistentContext("", {
-  headless: false, viewport: { width: 1180, height: 780 },
-  args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`],
-});
-let [sw] = context.serviceWorkers();
-if (!sw) sw = await context.waitForEvent("serviceworker", { timeout: 15000 });
-const extId = new URL(sw.url()).host;
+const { context, extId } = await launchExtension({ viewport: { width: 1180, height: 780 } });
 
 async function settle(page, sweeps = 6) {
   await page.waitForSelector('[data-anagram="host"]', { timeout: 15000 }).catch(() => {});

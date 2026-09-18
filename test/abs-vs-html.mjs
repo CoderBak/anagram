@@ -8,7 +8,7 @@
 //
 //   node test/abs-vs-html.mjs                 # 12 recent cs.CL papers + 2212.10001
 //   node test/abs-vs-html.mjs 2212.10001 2609.12191
-import { chromium } from "playwright";
+import { launchPlain } from "./harness.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -20,7 +20,7 @@ if (!argIds.length) ids.unshift("2212.10001");
 
 /** Prototype canonicalization for the SCORING payload (presentation, not content). */
 
-const browser = await chromium.launch({ headless: false });
+const browser = await launchPlain();
 const rows = [];
 async function extract(url, canonical) {
   const page = await browser.newPage();

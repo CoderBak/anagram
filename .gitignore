@@ -15,3 +15,6 @@ anagramd/__pycache__/
 
 # release assets
 dist/
+
+# sandboxed test runs (npm run lab)
+test-results/

@@ -1,15 +1,33 @@
-# CI for the Anagram extension. Activates as soon as this repo gets a GitHub remote.
-# Live-site scenarios (test/scenarios.mjs) and the perf benchmark stay local-only —
-# they depend on network and machine speed.
+# CI for the Anagram extension.
+#
+# Every push runs the deterministic suites on Linux AND Windows (fonts, scrollbars and
+# text metrics differ per platform — the device matrix in test/matrix.mjs runs on both).
+# macOS runners cost 10x the minutes on a private repository, so that leg runs on tags and
+# on demand (Actions → ci → Run workflow); day to day macOS is covered locally, headless.
+# Live-site scenarios and the perf benchmark stay local — they depend on network and
+# machine speed. Screenshots of every matrix profile are kept as build artifacts.
 name: ci
 on:
   push:
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # macOS joins on tags and manual runs only (see the note at the top).
+        os: ${{ fromJSON((github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')) && '["ubuntu-latest","windows-latest","macos-latest"]' || '["ubuntu-latest","windows-latest"]') }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      ANAGRAM_ARTIFACTS: ${{ github.workspace }}/test-results/ci
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -17,10 +35,29 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install chromium --with-deps
+      - name: install Chromium
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then npx playwright install --with-deps chromium; else npx playwright install chromium; fi
       - run: npm run typecheck
       - run: npm run build
       - run: npm run test:node
       - run: npm run test:unit
-      - name: e2e (fixture-only, headed under xvfb)
-        run: xvfb-run -a npm run test:e2e
+      - name: installer safety (offline cases)
+        if: runner.os != 'Windows'
+        run: npm run test:installer
+      - run: npm run test:e2e
+      - name: scenarios (local fixtures)
+        run: node test/scenarios.mjs --local
+      - name: device matrix
+        run: npm run test:matrix
+      - name: e2e again with a real window (Xvfb)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a env HEADED=1 npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots-${{ matrix.os }}
+          path: test-results/ci
+          if-no-files-found: ignore
+          retention-days: 7

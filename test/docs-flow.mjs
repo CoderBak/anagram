@@ -12,12 +12,8 @@
 // document was deleted from Drive in Sept 2026 (its /mobilebasic now answers 410),
 // so the suite pre-flights the URL and SKIPS (exit 0) instead of failing when the
 // document is gone — pass your own doc to run it for real.
-import { chromium } from "playwright";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { launchExtension, artifact } from "./harness.mjs";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const EXT = join(__dirname, "..", "output", "chrome-mv3");
 const BADGE_SEL = '[data-anagram="host"]:not(#anagram-fab)';
 const DOC =
   process.argv[2] ??
@@ -48,10 +44,7 @@ const check = (name, ok, note = "") => {
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}${note ? `  —  ${note}` : ""}`);
 };
 
-const context = await chromium.launchPersistentContext("", {
-  headless: false, viewport: { width: 1280, height: 850 },
-  args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`],
-});
+const { context } = await launchExtension({ viewport: { width: 1280, height: 850 } });
 const page = await context.newPage();
 const errors = [];
 page.on("console", (m) => {
@@ -77,7 +70,7 @@ const editorState = await page.evaluate(() => {
 });
 check("editor: FAB present with action chip", editorState.fab && editorState.actionShown, JSON.stringify(editorState));
 check("editor: action offers in-tab analysis", editorState.actionLabel === "Analyze document", editorState.actionLabel ?? "");
-await page.screenshot({ path: join(__dirname, "docs-editor.png") });
+await page.screenshot({ path: artifact("docs-editor.png") });
 
 const editorUrl = page.url();
 await page.evaluate(() => {
@@ -132,7 +125,7 @@ console.log("OVERLAY:", JSON.stringify(overlayState, null, 2));
 check("overlay: multiple paragraphs analyzed", overlayState.badges >= 2, `badges=${overlayState.badges}`);
 check("overlay: underlines painted inside the shadow tree", overlayState.highlights > 0, `ranges=${overlayState.highlights}`);
 check("overlay: FAB action switched to close", overlayState.fabAction === "Close reading mode", overlayState.fabAction ?? "");
-await page.screenshot({ path: join(__dirname, "docs-overlay.png") });
+await page.screenshot({ path: artifact("docs-overlay.png") });
 
 // Esc closes instantly, editor untouched, action restored.
 await page.keyboard.press("Escape");

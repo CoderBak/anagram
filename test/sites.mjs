@@ -3,7 +3,7 @@
 //
 // v2 note: the page DOM carries no marker attributes any more; a unit's anchor is
 // the badge host's parentElement (the host is inline, inside the scored block).
-import { chromium } from "playwright";
+import { launchExtension, artifact } from "./harness.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { existsSync } from "node:fs";
@@ -28,13 +28,7 @@ const SITES = [
   ["substack", "https://astralcodexten.substack.com/"],
 ];
 
-const context = await chromium.launchPersistentContext("", {
-  headless: false,
-  viewport: { width: 1440, height: 900 },
-  args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`],
-});
-let [sw] = context.serviceWorkers();
-if (!sw) sw = await context.waitForEvent("serviceworker", { timeout: 15000 }).catch(() => null);
+const { context, sw } = await launchExtension({ viewport: { width: 1440, height: 900 } });
 console.log("extension SW:", sw ? "loaded" : "NOT loaded", "\n");
 
 for (const [name, url] of SITES) {
@@ -78,7 +72,7 @@ for (const [name, url] of SITES) {
     };
   }, BADGE_SEL).catch(() => ({ badges: 0, chromeBadges: 0, fab: "?", samples: [] }));
 
-  await page.screenshot({ path: join(__dirname, `site-${name}.png`) }).catch(() => {});
+  await page.screenshot({ path: artifact(`site-${name}.png`) }).catch(() => {});
 
   console.log(`### ${name}  (${url})`);
   console.log(`   badges=${stats.badges}  in-chrome(nav/header/footer/aside)=${stats.chromeBadges}  fab=${stats.fab}  errors=${errors.length}`);

@@ -7,8 +7,8 @@
 // the whole suite runs in a few seconds.
 //
 //   node test/unit.mjs
-import { chromium } from "playwright";
-import { execFileSync } from "node:child_process";
+import { launchPlain } from "./harness.mjs";
+import { buildSync } from "esbuild";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -16,13 +16,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 const BUNDLE = join(__dirname, ".unit-bundle.js");
 
-execFileSync(
-  join(ROOT, "node_modules", ".bin", "esbuild"),
-  [join(__dirname, "unit-entry.ts"), "--bundle", "--format=iife", "--global-name=PW", `--outfile=${BUNDLE}`],
-  { stdio: "pipe" },
-);
+// esbuild's JS API rather than node_modules/.bin/esbuild: the .bin shim is a shell script on
+// macOS/Linux and a .cmd on Windows, and only one of those can be exec'd directly.
+buildSync({ entryPoints: [join(__dirname, "unit-entry.ts")], bundle: true, format: "iife", globalName: "PW", outfile: BUNDLE, logLevel: "error" });
 
-const browser = await chromium.launch();
+const browser = await launchPlain({ headless: true });
 const page = await browser.newPage();
 await page.setContent("<!doctype html><html><body></body></html>");
 await page.addScriptTag({ path: BUNDLE });
