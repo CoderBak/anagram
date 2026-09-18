@@ -49,7 +49,21 @@ export interface BackendStatus {
   active: "server" | "down";
   /** The daemon's model when up; null when down. */
   model: ModelInfo | null;
-  server: { ok: boolean; checkedAt: number; device?: string; error?: string };
+  server: {
+    ok: boolean;
+    checkedAt: number;
+    device?: string;
+    error?: string;
+    /**
+     * Why the daemon is not usable, when it is not: nothing answered ("unreachable"),
+     * something answered but speaks another contract major ("contract"), or the
+     * configured URL is not a loopback address ("loopback"). Absent when it is up.
+     * The pages advise "start it" or "update it" from this, never from `error`.
+     */
+    reason?: "unreachable" | "contract" | "loopback";
+    /** The contract string a mismatched daemon reported, when `reason` is "contract". */
+    contract?: string;
+  };
 }
 
 /** popup/SW → content: force a re-scan of the active tab. */

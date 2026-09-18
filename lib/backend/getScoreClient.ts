@@ -9,6 +9,7 @@
 //
 // Only LOOPBACK URLs are accepted: page text must never leave this machine. A setting
 // that points elsewhere is treated as "no daemon", with the reason in status().
+import { CONTRACT_VERSION } from "../contract";
 import type { ModelInfo, ScoreBlock, ScoreClient, ScoredBatch } from "../contract";
 import { HttpScoreClient, fetchHealth } from "./httpClient";
 import { settings, DEFAULT_SERVER_URL, isLoopbackUrl } from "../settings/settings";
@@ -29,6 +30,11 @@ interface Probe {
   model: ModelInfo | null;
   device?: string;
   error?: string;
+  /** Why the daemon is unusable, so the UI can advise "start it" or "update it" rather
+   *  than guessing from the error string. Absent while it is up. */
+  reason?: "unreachable" | "contract" | "loopback";
+  /** The contract a mismatched daemon reported, for the same message. */
+  contract?: string;
 }
 
 export class DaemonClient implements ScoreClient {
@@ -67,13 +73,20 @@ export class DaemonClient implements ScoreClient {
     const url = this.serverUrl;
     this.probing = (async () => {
       if (!isLoopbackUrl(url)) {
-        this.probe = { ok: false, at: Date.now(), model: null, error: `daemon URL must be a loopback address (got ${url})` };
+        this.probe = {
+          ok: false,
+          at: Date.now(),
+          model: null,
+          reason: "loopback",
+          error: `daemon URL must be a loopback address (got ${url})`,
+        };
         this.http = null;
         return;
       }
-      const h = await fetchHealth(url);
+      const res = await fetchHealth(url);
       if (gen !== this.generation) return; // settings changed under us — stale answer
-      if (h) {
+      if (res.ok) {
+        const h = res.health;
         if (!this.http || !this.probe.ok || this.probe.model?.ver !== h.model.ver) {
           this.http = new HttpScoreClient(url, h.model);
           log.log("anagramd up:", h.model.id, h.model.ver, "on", h.device);
@@ -81,7 +94,13 @@ export class DaemonClient implements ScoreClient {
         this.probe = { ok: true, at: Date.now(), model: h.model, device: h.device };
       } else {
         if (this.probe.ok) log.warn("anagramd went away — batches will be Unavailable until it is back");
-        this.probe = { ok: false, at: Date.now(), model: null, error: `no healthy anagramd at ${url}` };
+        // A daemon of another contract major is a different problem from an absent one:
+        // it needs updating, not starting, and the UI says so from `reason`.
+        const error =
+          res.reason === "contract"
+            ? `anagramd at ${url} speaks contract ${res.contract} — this extension needs ${CONTRACT_VERSION}`
+            : `no healthy anagramd at ${url}`;
+        this.probe = { ok: false, at: Date.now(), model: null, reason: res.reason, contract: res.contract, error };
         this.http = null;
       }
     })().finally(() => {
@@ -116,7 +135,9 @@ export class DaemonClient implements ScoreClient {
       return batch;
     } catch (e) {
       log.warn("anagramd batch failed", e);
-      this.probe = { ok: false, at: Date.now(), model: null, error: String(e) };
+      // A failed batch only says the daemon stopped answering properly; the next probe
+      // is what tells a version mismatch from an outage.
+      this.probe = { ok: false, at: Date.now(), model: null, reason: "unreachable", error: String(e) };
       this.http = null;
       throw e;
     }
@@ -129,7 +150,14 @@ export class DaemonClient implements ScoreClient {
       serverUrl: this.serverUrl,
       active: this.probe.ok ? "server" : "down",
       model: this.probe.ok ? this.probe.model : null,
-      server: { ok: this.probe.ok, checkedAt: this.probe.at, device: this.probe.device, error: this.probe.error },
+      server: {
+        ok: this.probe.ok,
+        checkedAt: this.probe.at,
+        device: this.probe.device,
+        error: this.probe.error,
+        reason: this.probe.reason,
+        contract: this.probe.contract,
+      },
     };
   }
 }

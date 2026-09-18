@@ -108,7 +108,10 @@ async function refreshBackend(tabId: number | undefined, probe = false): Promise
       b.textContent = s.model.id;
       backendEl.replaceChildren("Model: ", b, ` · local${s.server.device ? " · " + s.server.device : ""}`);
     } else {
-      b.textContent = "Daemon not running";
+      // A daemon that answers with another contract major is there — it needs updating,
+      // and telling the user to start it would send them down the wrong path.
+      const mismatch = s.server.reason === "contract";
+      b.textContent = mismatch ? "Daemon version mismatch" : "Daemon not running";
       const retry = document.createElement("button");
       retry.type = "button";
       retry.className = "btn";
@@ -122,7 +125,7 @@ async function refreshBackend(tabId: number | undefined, probe = false): Promise
           setTimeout(() => void refreshStatus(tabId), 800);
         });
       });
-      backendEl.replaceChildren(b, " — run: anagram start ", retry);
+      backendEl.replaceChildren(b, mismatch ? " — run: anagram update " : " — run: anagram start ", retry);
     }
   } catch {
     backendEl.textContent = "";

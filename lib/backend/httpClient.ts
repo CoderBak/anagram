@@ -24,6 +24,11 @@ export class ProtocolError extends Error {
 
 const Prob = v.pipe(v.number(), v.minValue(0), v.maxValue(1));
 
+/** A language tag and nothing else: fastText lid.176 emits 2–3 lowercase letters ("en",
+ *  "ceb") and the browser's own detector can add a subtag ("zh-CN"). The value reaches
+ *  chip text and card markup, so anything shaped differently is treated as malformed. */
+const LANG_CODE = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})?$/;
+
 const ModelSchema = v.object({
   id: v.pipe(v.string(), v.minLength(1), v.maxLength(120)),
   ver: v.pipe(v.string(), v.maxLength(120)),
@@ -41,7 +46,7 @@ const ResultSchema = v.object({
   score: v.pipe(v.number(), v.minValue(0), v.maxValue(1)),
   tokens: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
   truncated: v.optional(v.boolean()),
-  lang: v.optional(v.pipe(v.string(), v.maxLength(8))),
+  lang: v.optional(v.pipe(v.string(), v.regex(LANG_CODE, "must be a language code"))),
   lang_prob: v.optional(Prob),
   unsupported: v.optional(v.boolean()),
   degraded: v.optional(v.boolean()),
@@ -68,6 +73,28 @@ const HealthSchema = v.object({
 
 export type HealthInfo = v.InferOutput<typeof HealthSchema>;
 
+/**
+ * Why a /health probe did not produce a usable daemon. "unreachable" covers every
+ * transport-level miss (nothing listening, timeout, non-2xx, not JSON, a body that
+ * fails validation); "contract" means something DID answer and named a contract major
+ * other than ours. The two need opposite advice — start the daemon vs. update it — so
+ * they must not collapse into one "not running".
+ */
+export type HealthFailureReason = "unreachable" | "contract";
+
+export type HealthResult =
+  | { ok: true; health: HealthInfo }
+  | { ok: false; reason: HealthFailureReason; contract?: string };
+
+const UNREACHABLE: HealthResult = { ok: false, reason: "unreachable" };
+
+/**
+ * Redirects are never followed on either endpoint: the URL we chose is checked to be
+ * loopback, but a 307/308 from whatever is listening on that port would re-send the
+ * request — for /score, the page text itself — to an address we never vetted.
+ */
+const NO_REDIRECT = "error" as const;
+
 function withTimeout(ms: number): { signal: AbortSignal; done(): void } {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), ms);
@@ -78,17 +105,29 @@ function sameMajor(version: string): boolean {
   return version.split(".")[0] === CONTRACT_VERSION.split(".")[0];
 }
 
-/** GET /health — null when the daemon is down, unreachable, or speaks another contract. */
-export async function fetchHealth(baseUrl: string): Promise<HealthInfo | null> {
+/** GET /health — the daemon's identity, or why it cannot be used (see HealthResult). */
+export async function fetchHealth(baseUrl: string): Promise<HealthResult> {
   const t = withTimeout(HEALTH_TIMEOUT_MS);
   try {
-    const res = await fetch(`${baseUrl.replace(/\/$/, "")}/health`, { signal: t.signal, cache: "no-store" });
-    if (!res.ok) return null;
-    const parsed = v.safeParse(HealthSchema, await res.json());
-    if (!parsed.success || !sameMajor(parsed.output.contract)) return null;
-    return parsed.output;
+    const res = await fetch(`${baseUrl.replace(/\/$/, "")}/health`, {
+      signal: t.signal,
+      cache: "no-store",
+      redirect: NO_REDIRECT,
+    });
+    if (!res.ok) return UNREACHABLE;
+    const body: unknown = await res.json();
+    // The contract is read LENIENTLY, straight off the raw JSON and before the schema:
+    // a daemon of another major may well have changed the shape of /health too, and we
+    // still want to say "wrong version" rather than "not running" about it.
+    const reported = (body as { contract?: unknown } | null)?.contract;
+    if (typeof reported === "string" && !sameMajor(reported)) {
+      return { ok: false, reason: "contract", contract: reported };
+    }
+    const parsed = v.safeParse(HealthSchema, body);
+    if (!parsed.success) return UNREACHABLE;
+    return { ok: true, health: parsed.output };
   } catch {
-    return null;
+    return UNREACHABLE;
   } finally {
     t.done();
   }
@@ -124,6 +163,7 @@ export class HttpScoreClient implements ScoreClient {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ v: CONTRACT_VERSION, blocks: blocks.map((b) => ({ id: b.id, text: b.text })) }),
         signal: t.signal,
+        redirect: NO_REDIRECT,
       });
       if (!res.ok) throw new Error(`anagramd HTTP ${res.status}`);
       const parsed = v.safeParse(ScoreResponseSchema, await res.json());

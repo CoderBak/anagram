@@ -1,6 +1,8 @@
 // lib/contract.ts
-// The versioned surface↔backend contract. Identical shape for the random stub and the
-// real anagram daemon — nothing above the socket changes when the backend swaps.
+// The versioned surface↔backend contract: the shapes the extension and the local
+// anagramd daemon (anagramd/serve.py) exchange, and the seam everything above the
+// socket codes against. Scoring only ever happens in that daemon; the test suites
+// stand in for it with test/fake-daemon.mjs, which speaks the same contract.
 //
 // v2.0 (EditLens): the detector is a 4-way classifier over the EXTENT of AI editing
 // (Thai et al., ICLR 2026 — pangram/editlens_roberta-large). A result carries the
@@ -41,7 +43,8 @@ export interface ScoreResult {
   tokens?: number;
   /** True when the text exceeded the model window and was cut (roberta: 512 tokens). */
   truncated?: boolean;
-  /** Detected language (ISO 639-1, fastText lid.176) — set by the daemon; absent from the stub. */
+  /** Detected language (fastText lid.176 label, e.g. "en") — set by the daemon, and
+   *  absent when it could not tell. */
   lang?: string;
   /** Confidence of `lang`, in [0,1]. */
   lang_prob?: number;
@@ -103,9 +106,11 @@ export interface ScoredBatch {
 }
 
 /**
- * The swappable backend seam. Implementations: RandomStubScoreClient (in-extension
- * demo), HttpScoreClient (the local anagramd daemon), and the SwitchingScoreClient
- * that picks between them from settings — see lib/backend/getScoreClient.ts.
+ * The backend seam. One implementation: HttpScoreClient, one POST per batch to the
+ * local anagramd daemon (lib/backend/httpClient.ts), wrapped by the DaemonClient that
+ * probes its health and owns its status — see lib/backend/getScoreClient.ts. There is
+ * no in-extension scoring fallback: when the daemon is down, batches fail and the
+ * router hands back degraded results.
  */
 export interface ScoreClient {
   /** Score a batch of blocks. Returns one ScoreResult per input block (by id). */

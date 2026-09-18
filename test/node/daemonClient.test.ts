@@ -18,6 +18,7 @@ describe("DaemonClient", () => {
     const c = new DaemonClient();
     const s = await c.status(true);
     expect(s.active).toBe("down");
+    expect(s.server.reason).toBe("loopback");
     expect(s.server.error).toMatch(/loopback/);
     expect(fetchFn).not.toHaveBeenCalled();
     await expect(c.scoreBatch([{ id: "a", text: "x", order: 0 }])).rejects.toThrow(/loopback/);
@@ -29,11 +30,26 @@ describe("DaemonClient", () => {
     });
     vi.stubGlobal("fetch", fetchFn);
     const c = new DaemonClient();
-    expect((await c.status(false)).active).toBe("down");
+    const s = await c.status(false);
+    expect(s.active).toBe("down");
+    expect(s.server.reason).toBe("unreachable");
     expect((await c.status(false)).active).toBe("down");
     expect(fetchFn).toHaveBeenCalledTimes(1); // within the 5 s down TTL
     expect(c.isUp()).toBe(false);
     expect(c.model().id).toBe("none");
+  });
+
+  it("reports a daemon of another contract major as a version mismatch, not an outage", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ ...HEALTH, contract: "3.0" }), { status: 200 })),
+    );
+    const c = new DaemonClient();
+    const s = await c.status(true);
+    expect(s.active).toBe("down");
+    expect(s.server.reason).toBe("contract");
+    expect(s.server.contract).toBe("3.0");
+    expect(s.server.error).toMatch(/contract 3\.0/);
   });
 
   it("goes up on a healthy probe and adopts the model a score response names", async () => {

@@ -187,13 +187,20 @@ async function refreshBackend(probe: boolean): Promise<void> {
     if (s.active === "server" && s.model) {
       backendStatusEl.textContent =
         `Connected — ${s.model.id} (${s.model.ver}) on ${s.server.device ?? "?"} at ${s.serverUrl}.`;
+    } else if (s.server.reason === "contract") {
+      // Something IS listening; the fix is an update, not a start.
+      backendStatusEl.textContent =
+        `Found a daemon at ${s.serverUrl}, but it speaks contract ${s.server.contract ?? "?"} and this ` +
+        `extension needs ${CONTRACT_VERSION.split(".")[0]}.x — run: ~/.anagram/bin/anagram update.`;
     } else {
       backendStatusEl.textContent =
         `Not running at ${s.serverUrl} — paragraphs show as Unavailable until it answers` +
-        (s.server.error?.includes("loopback") ? ` (${s.server.error}).` : ".");
+        (s.server.reason === "loopback" && s.server.error ? ` (${s.server.error}).` : ".");
     }
-    versionEl.textContent =
-      `v${version} · contract ${CONTRACT_VERSION} · ${s.active === "server" && s.model ? s.model.id : "daemon not running"}`;
+    // The header summary must not contradict the status line above it.
+    const summary =
+      s.active === "server" && s.model ? s.model.id : s.server.reason === "contract" ? "daemon version mismatch" : "daemon not running";
+    versionEl.textContent = `v${version} · contract ${CONTRACT_VERSION} · ${summary}`;
   } catch {
     backendStatusEl.textContent = "Could not reach the extension’s service worker.";
   }
