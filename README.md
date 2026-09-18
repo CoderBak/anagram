@@ -212,15 +212,24 @@ Text on the web is messy; the capture engine is built for it:
   card says "Formulas omitted: N"), and their hidden accessibility copies,
   footnote and citation marks (`[7]`, `[citation needed]`), page-number markers
   and author-list citation strings never reach the model.
-- **An evidence floor with merging.** Detection below ~50 words is unreliable, so
-  short neighboring paragraphs *of one voice* (the lines of a post written one
-  sentence per line, list items, the short paragraphs of an article or of a single
-  comment) are **analyzed together** as one unit instead of being skipped. A unit
+- **An evidence floor with merging: one voice, one verdict.** Detection below ~50
+  words is unreliable, so short neighboring paragraphs *of one voice* (the lines of
+  a post written one sentence per line, list items, the short paragraphs of an
+  article or of a single comment) are **analyzed together** instead of being
+  skipped. A stretch of them is read to its end and then divided evenly, between
+  paragraphs, into groups of at most one model window (about 300 words), each with
+  its own chip (×N) — never cut the moment it reaches fifty words, and never one
+  number for a thousand words. A short paragraph that cannot stand alone joins the
+  full paragraph next to it when the two fit one window (×2) instead of going
+  unjudged. A **post, comment or quotation that fits one model window** is read
+  whole, its full paragraphs included: one post, one verdict — a status of twelve
+  short paragraphs is one chip (×12), not three. Anything longer is an article and
+  keeps a chip per full paragraph. A unit
   never crosses an authorship boundary to reach the floor — another post or
   comment, a quotation, a caption, a quoted post, the name row between two chat
   messages: text that is too short on its own simply gets no chip. Headings,
   navigation, link lists, ASCII art and column layouts are barriers that are never
-  merged across either.
+  merged across either (inside a short post they are simply left out).
 - **Boilerplate skipping, trafilatura-style.** Landmark roles, sectioning tags
   and a curated token list (share bars, related-article widgets, taboola/outbrain
   slots, bylines, cookie walls…) are pruned during the walk — with compound-token
@@ -319,8 +328,8 @@ back when you want to watch; only `npm run browser` / `npm run play` always do.
 | Suite | Command | Checks | What it covers |
 | --- | --- | --- | --- |
 | Node | `npm run test:node` | 45 | vitest + `wxt/testing`: reading a long text in windows (every window in one call, a text that fits sent exactly as before, a window the daemon cut re-read in halves once, no verdict on a partial answer, one failed window → Unavailable), router invariants (keys snapshotted per request, keys reserved before the queue so a waiting batch absorbs later requests, a joined request reports the identity that actually answered it, results cached under the producing model, priority order and promotion), LRU eviction in both in-memory caches, scheduler idle/pause/upgrade and a long unit priced by all of its windows, wire validation (including that no redirect can carry a request away), the daemon client (loopback only, down TTL, another contract major reported as a version mismatch rather than an outage) |
-| Unit | `npm run test:unit` | 223 | walker/assembler/extraction (voice scopes and which short paragraphs may be scored together — eleven fixtures modelled on real post, thread, feed and article markup — math, citation marks, hidden copies, out-of-flow markers, accordions, author lists), window planning (balance, sentence and CJK boundaries, the no-boundary and at-budget cases, the cap, the regex fallback), the mapping from a window back to text nodes (inline markup, collapsed whitespace, merged parts, a skipped formula, a DOM that changed), aggregation arithmetic, per-window marks and the card's window row, canonical scoring text, band mapping, Readability-guided scope — in a real Chromium page (~5s) |
-| E2E | `npm run test:e2e` | 31 | full extension on a 19-section fixture page against the fake daemon — including that non-English text never reaches it, and that a three-window paragraph reaches it whole: three consecutive blocks, none past the token window, one chip, each window marked in its own band |
+| Unit | `npm run test:unit` | 286 | walker/assembler/extraction (voice scopes and which short paragraphs may be scored together — fourteen fixtures modelled on real post, thread, feed, answer and article markup; a post read whole, a stretch of short paragraphs divided into model-sized groups, no orphan next to a full paragraph of its own voice, an article left per paragraph, and re-scans driven the way the orchestrator drives them — math, citation marks, hidden copies, out-of-flow markers, accordions, author lists), window planning (balance, sentence and CJK boundaries, a merged unit cut between two paragraphs, the no-boundary and at-budget cases, the cap, the regex fallback), the mapping from a window back to text nodes (inline markup, collapsed whitespace, merged parts, a skipped formula, a DOM that changed), aggregation arithmetic, per-window marks and the card's window row, canonical scoring text, band mapping, Readability-guided scope — in a real Chromium page (~5s) |
+| E2E | `npm run test:e2e` | 33 | full extension on a 20-section fixture page against the fake daemon — including that non-English text never reaches it, that a post of mixed paragraphs sits under one ×N chip and is one chip again after it is opened in place, and that a three-window paragraph reaches it whole: three consecutive blocks, none past the token window, one chip, each window marked in its own band |
 | Scenarios | `npm run test:scenarios` | 42 + 13 | UI edge cases (hover card, panel filters, FAB snap/tuck, top-layer, KaTeX, vertical text, CSS Color 4 backgrounds, late shadow-root content, mutation storms, on-demand Readability chunk, self-rewriting page, main-content scope honoured from the very first scan, the selection card's ✕ while the daemon is still thinking, a long selection analyzed whole in windows, the copied report's bare percentages and legend and its line for a paragraph scored in windows, dense text the daemon had to cut re-read in two halves, daemon down → Unavailable → daemon back → auto re-queue) + keyboard-only triage (focusable counter, Enter/Esc focus hand-off, accessible names, the three commands driven from the service worker) and a no-referrer cross-origin frame obeying the top page's site rule + 13 live sites (bot-check interstitials count as skips) (`-- --local` skips the live sweep) |
 | Server | `npm run test:server` | 39 | **the real model**: spawns `anagramd`, checks the API on human/AI/Chinese samples (the last one must come back unsupported via fastText), the request limits and the body cap counted on the bytes that arrive (a 2.1 MB chunked POST with no `Content-Length` is still 413), `application/json`-only on `/score`, the `Origin` allow-list (extensions and the daemon's own pass; `null` and a web origin are 403), the Host allow-list, the absence of CORS grants, and a model version that digests the whole pipeline, then drives the built extension — real verdicts on every English chip, the 4-bucket card, the "zh" unsupported chip, the popup's model line |
 | Docs flow | `node test/docs-flow.mjs <public doc URL>` | 12 | in-tab overlay + classic page flow on a real public Google Doc — the original demo doc was deleted from Drive, so without a URL (or `ANAGRAM_DOC_URL`) the suite reports SKIP |

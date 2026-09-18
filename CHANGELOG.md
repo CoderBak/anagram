@@ -41,6 +41,33 @@ Notable changes to Anagram, newest first. The format follows
 - One paragraph gets at most eight windows (some 2 300 words). Past that the card
   says only the opening was scored, and the rest is left unmarked instead of
   being underlined in a colour nobody measured.
+- One voice, one verdict. A group of short paragraphs no longer closes the moment
+  it reaches fifty words — a status written as twelve short paragraphs got three
+  arbitrary chips (×4, ×4, ×4), a 49-paragraph answer twenty. The stretch is now
+  read to its end — a heading, a full paragraph, another post, the end of the
+  comment — and divided evenly, between paragraphs, into groups of at most one
+  model window (about 300 words), each with its own chip: as fine-grained as a
+  paragraph chip, never one number for a thousand words.
+- No orphans inside one voice. A short paragraph standing alone between full ones
+  used to get no verdict at all — a quarter of the words of an ordinary newsletter
+  article. It now joins the full paragraph next to it (the one before it by
+  preference) when the two fit one model window, and that chip reads ×2. With a
+  heading, a link row or another voice in between, or no room on either side, it
+  stays unjudged as before.
+- A short post is read whole. A post, comment or quotation whose own text fits one
+  model window is one unit with every paragraph in it, the full ones included — a
+  post of a short, a long, a short, a long and a short paragraph used to get two
+  chips and three paragraphs nobody judged. Anything longer is an article and
+  keeps a chip per full paragraph, as before. Headings, hashtag rows and "Show
+  more" links inside such a post are left out without cutting it in two, and a
+  name or headline set elsewhere in the card is not taken for its text.
+- A post that changes while it is on screen — opened in place, a paragraph added,
+  an answer still being written — is taken again as one unit and its old chip
+  retired, instead of leaving the addition unjudged beside a chip that no longer
+  speaks for the whole.
+- A text of several paragraphs that is longer than the model's window — a long
+  selection, mostly — is cut into windows between two paragraphs rather than in
+  the middle of one.
 - Short paragraphs are scored together only within one voice. Two posts by
   different authors, an author and the person they quote, a paragraph and a
   figure caption, a post and the post it quotes no longer share a verdict; a

@@ -82,9 +82,10 @@
             <div class="field" data-orientation="horizontal">
               <section>
                 <label for="mergeShorts">Group short neighboring paragraphs</label>
-                <p>Paragraphs under the 50-word evidence floor are analyzed together with neighboring
-                  paragraphs of the same post or article — the chip shows ×N; never across posts, comments
-                  or quotations. Off: short paragraphs are skipped entirely.</p>
+                <p>A short post or comment is analyzed as a whole, and paragraphs under the 50-word
+                  evidence floor together with their neighbors in the same article — the chip shows ×N;
+                  never across posts, comments or quotations. Off: every paragraph by itself, short ones
+                  skipped entirely.</p>
               </section>
               <input id="mergeShorts" type="checkbox" role="switch" />
             </div>
@@ -226,7 +227,8 @@
       <footer class="foot">
         A chip's number is EditLens's estimate of how far a paragraph sits between untouched human writing
         (0%) and fully AI-generated text (100%) — not a share of words, not proof. Detection runs per
-        paragraph with a 50-word evidence floor; shorter neighboring paragraphs are analyzed together.
+        paragraph — per post for a short post — with a 50-word evidence floor; shorter neighboring
+        paragraphs are analyzed together.
         Model: pangram/editlens_roberta-large (CC BY-NC-SA 4.0, non-commercial).
       </footer>
     </div>
