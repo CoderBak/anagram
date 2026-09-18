@@ -76,7 +76,9 @@
 //              found in them belongs to the first post they CONTAIN.
 //   at an edge — a byline heads a post or signs it (Steam sets the reviewer UNDER the
 //              review). Evidence with text on both sides of it is in the middle of
-//              somebody's text: the figure boxes in the subsections of a PLOS paper.
+//              somebody's text: the figure boxes in the subsections of a PLOS paper. Text
+//              means CONTENT: the menu GitHub Discussions sets before a comment's header
+//              in the DOM — hidden items, a popover, buttons — is none (CONTROL_SELECTOR).
 //   opening  — the post a thread answers has no sibling like it either. V2EX sets a topic
 //              in a `div.box` of its own above the box of replies; of its body — paragraphs,
 //              lists, three-to-seven-word label <p>s between them — only the first two
@@ -302,15 +304,37 @@ function isByKind(el: Element, tag: string, pictured: Set<string>): boolean {
   return text !== "" && text.length <= MAX_CAPTION_CHARS;
 }
 
-/** The text inside `within` that stands before (or after) `byline`, counted no further than
- *  it matters. Scripts and styles are text to the DOM and nothing to a reader. */
+/**
+ * CONTROLS, not content: text a reader is not given to read, told by markup alone. A GitHub
+ * Discussions comment sets its "…" menu BEFORE its header in the DOM — `div[hidden]` with the
+ * menu's items (126 characters, measured logged-out; some 300 logged-in), a `tool-tip[popover]`,
+ * buttons — so its byline had "text on both sides", stood "in the middle of somebody's text",
+ * and every top-level comment stayed bare: a 206-word comment that fits one window was cut
+ * in two, two comments of 76 and 54 words got nothing. Classic GitHub menus are closed
+ * <details>; an OPEN one shows what it holds, and that counts (Reddit sets a whole comment
+ * in `<details open>`).
+ */
+const CONTROL_SELECTOR =
+  'button,select,textarea,input,option,template,script,style,[hidden],[popover],[role="menu"],[role="menuitem"],details:not([open])';
+
+/** The text under `node` that is content, counted no further than `limit` matters. */
+function contentChars(node: Node, limit: number): number {
+  if (node.nodeType === Node.TEXT_NODE) return (node.textContent ?? "").trim().length;
+  if (node.nodeType !== Node.ELEMENT_NODE) return 0;
+  const el = node as Element;
+  if (el.matches(CONTROL_SELECTOR)) return 0;
+  if (!el.querySelector(CONTROL_SELECTOR)) return (el.textContent ?? "").trim().length;
+  let chars = 0;
+  for (let child = el.firstChild; child && chars <= limit; child = child.nextSibling) chars += contentChars(child, limit - chars);
+  return chars;
+}
+
+/** The content inside `within` that stands before (or after) `byline`, counted no further
+ *  than it matters. */
 function textBeside(byline: Element, within: Element, side: "previousSibling" | "nextSibling"): number {
   let chars = 0;
   for (let cur: Node | null = byline; cur && cur !== within && chars <= EDGE_CHARS; cur = cur.parentNode) {
-    for (let sib = cur[side]; sib && chars <= EDGE_CHARS; sib = sib[side]) {
-      const tag = tagOf(sib);
-      if (tag !== "SCRIPT" && tag !== "STYLE" && tag !== "TEMPLATE") chars += (sib.textContent ?? "").trim().length;
-    }
+    for (let sib = cur[side]; sib && chars <= EDGE_CHARS; sib = sib[side]) chars += contentChars(sib, EDGE_CHARS - chars);
   }
   return chars;
 }

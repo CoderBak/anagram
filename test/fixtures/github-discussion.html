@@ -1,137 +1,295 @@
 <!doctype html>
 <!--
-  GitHub-style DISCUSSION: comment containers nested in comment containers. Synthetic text.
+  GitHub DISCUSSION: comment containers nested in comment containers, and a menu that comes
+  before the byline. Synthetic text.
 
-  Measured in the owner's logged-in Chrome (2026-09-18): a discussion comment is
-  `.js-comment-container`, and a reply's container sits INSIDE the container of the comment it
-  answers — a naive count sees 85 containers for some 40 comments. None of them is a declared
-  scope. What is inside a container (the header with avatar, author link and <relative-time>,
-  `.comment-body > p`) follows GitHub's classic timeline markup and is modelled, as are the
-  wrappers; github-issue.html is the issue thread (measured, flat).
+  The structure of a TOP-LEVEL comment is measured twice. In the owner's logged-in Chrome
+  (2026-09-19): … › `div.js-timeline-marker` › `div.js-timeline-item.js-timeline-progressive-
+  focus-container` (30 siblings: the level at which comments are alike) › its ONLY child
+  `div.TimelineItem.discussion-timeline-item.mx-0.js-comment-container` ›
+  `div.discussions-timeline-scroll-target` › `div.timeline-comment-group` › `div.d-flex` ›
+  `div.width-full` › `div.timeline-comment` › `div.edit-comment-hide` › `div.clearfix.d-flex`,
+  whose children in DOM order are (1) `div.timeline-comment-actions` — the "…" and reaction
+  menus, 304 characters of text, mostly not displayed, BEFORE the header; (2) an empty
+  `div.d-none.d-sm-flex`; (3) `h3.timeline-comment-header-text` with the avatar link and the
+  <relative-time>. Logged-out on a public discussion the same day (github.com/vercel/next.js):
+  the same chain; the menu block is `experimental-action-menu > button + tool-tip[popover]`, a
+  <template>, and `div[hidden]` holding the menu's items — 158 characters before the byline,
+  EVERY one of them inside [hidden], [popover] or a button; `flex-row-reverse` puts that block
+  at the right of the header it precedes; the body is `task-lists > table.d-block[role=
+  presentation] > tbody > tr > td.comment-body.markdown-body`; and the replies sit INSIDE the
+  parent's `div.timeline-comment`, in `div.js-timeline-marker.color-bg-inset.border-top`, as
+  `div.TimelineItem.js-comment-container.js-nested-comment-…` siblings after a paging item,
+  each beginning with its avatar. The words of the menu, the reactions row and the class names
+  not named above are modelled.
 
-  Every thread container and every reply that has a sibling like it is RECOGNISED — one of
-  several like it, each with its own byline — and the NEAREST one wins: a reply is never read
+  What went wrong: with the menu's text counted, a top-level comment's byline had "text on both
+  sides" — evidence in the middle of somebody's text, the rule that keeps a figure box in a
+  paper from being a post — so every top-level comment stayed bare while the replies under it
+  were recognised. Measured: a 206-word comment that fits one window was cut in two (51 w +
+  110 w), two comments of 76 and 54 words got nothing. Controls are not content
+  (lib/dom/scope.ts, CONTROL_SELECTOR), and the NEAREST container wins: a reply is never read
   with the comment it answers.
+
     1 · alice  a short, a full, a short and a full paragraph → ONE unit ×4 (it was two: ×3, ×1)
-        bob    short reply → nothing;  carol  short reply → nothing (never added up with bob's)
+        bob, carol  short replies → nothing; never added up, never a part of alice's
     2 · dave   one full paragraph → a unit
-        erin   the ONLY reply under dave: no sibling like it, and not shaped like the thread
-               container either, so it is not recognised — it is read inside dave's container,
-               where its own byline keeps it out of dave's text. Too short → nothing.
-    3 · frank  too short → nothing
+        erin   the ONLY reply under dave: nobody like it, and not shaped like the top-level
+               container either (its byline is its avatar, two levels down; dave's is nine
+               levels down, in the header) — not recognised. It is read inside dave's
+               container, where its own byline keeps it out of dave's text. Short → nothing.
+    3 · frank  two short paragraphs with a bold one-line label between them — 56 words that
+               got nothing on the bare page, where the label ended the group; among the text
+               of a post it cuts nothing → one unit ×2, without the label. (How the measured
+               76- and 54-word comments were laid out is not known; this shape is modelled.)
 
   Annotation: see x-timeline.html.
 -->
-<html lang="en"><head><meta charset="utf-8"><title>Fixture: GitHub-style discussion</title>
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: GitHub discussion</title>
 <style>
   body { margin: 0; font: 14px/1.5 -apple-system, system-ui, sans-serif; }
   .discussion { max-width: 880px; margin: 16px auto; }
-  .timeline-comment, .discussion-nested-comment { border: 1px solid #d1d9e0; border-radius: 6px; margin-bottom: 12px; }
-  .discussion-nested-comments { margin-left: 40px; }
-  .timeline-comment-header { display: flex; align-items: center; gap: 6px; padding: 8px 16px; background: #f6f8fa; }
-  .markdown-body { padding: 16px; }
-  .markdown-body p { margin: 0 0 16px; }
+  .d-flex { display: flex; } .d-block { display: block; } .d-none { display: none; } .d-inline-block { display: inline-block; }
+  .flex-column { flex-direction: column; } .flex-row-reverse { flex-direction: row-reverse; } .flex-items-center { align-items: center; }
+  .flex-shrink-0 { flex-shrink: 0; } .width-full { width: 100%; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+  .timeline-comment { border: 1px solid #d1d9e0; border-radius: 6px; margin-bottom: 16px; }
+  .timeline-comment-header-text { flex: 1; margin: 0; padding: 8px 16px; font-size: 14px; font-weight: 400; }
+  .comment-body { padding: 16px; } .comment-body p { margin: 0 0 16px; }
+  .color-bg-inset { background: #f6f8fa; padding: 8px 16px; }
+  .TimelineItem.js-comment-container { display: flex; gap: 8px; }
   a { color: inherit; text-decoration: none; }
 </style></head>
 <body>
 <main>
-<div class="discussion js-discussion">
+<div class="discussion js-discussion"><div class="js-timeline-marker">
 
-  <div class="js-timeline-item"><div class="js-comment-container discussion-timeline-item">
-      <div class="timeline-comment">
-        <div class="timeline-comment-header" data-chrome>
-          <a class="avatar-link" href="/alice-moreau"><img class="avatar avatar-user" alt="" width="40" height="40"></a>
-          <a class="author" href="/alice-moreau"><b>alice-moreau</b></a>
-          <span>commented <a href="#c-alice-moreau"><relative-time datetime="2026-09-16T08:00:00Z">2 days ago</relative-time></a></span>
+    <div class="js-timeline-item js-timeline-progressive-focus-container" data-gid="DC_101">
+      <div class="TimelineItem discussion-timeline-item mx-0 js-comment-container">
+        <div class="discussions-timeline-scroll-target js-targetable-element" id="discussioncomment-101">
+          <div class="timeline-comment-group js-minimizable-comment-group"><div class="d-flex"><div class="width-full">
+            <div class="timeline-comment unminimized-comment comment js-comment">
+              <div class="edit-comment-hide"><div class="clearfix d-flex flex-row-reverse flex-items-center">
+                <div class="timeline-comment-actions flex-shrink-0" data-chrome><div class="d-flex flex-row flex-items-center"><comment-actions-container><experimental-action-menu>
+                    <button role="button" aria-haspopup="true" aria-expanded="false" class="Button Button--iconOnly">More</button>
+                    <tool-tip popover="manual" data-type="label" class="sr-only">Comment options</tool-tip>
+                  </experimental-action-menu>
+                  <template><div class="Overlay">Report content</div></template>
+                  <div hidden><ul role="menu"><li role="menuitem">Copy link</li><li role="menuitem">Quote reply</li><li role="menuitem">Reference in new issue</li><li role="menuitem">Edit comment</li><li role="menuitem">Hide comment</li><li role="menuitem">Delete comment</li><li role="menuitem">Report content</li><li role="menuitem">Block this user from the organisation</li><li role="menuitem">Mark this comment as the answer to the discussion</li><li role="menuitem">Unsubscribe from notifications about this thread</li></ul>
+                    <button type="button" hidden class="js-comment-quote-reply">Quote reply</button></div>
+                </comment-actions-container></div></div>
+                <div class="d-none d-sm-flex flex-items-center"><span class="d-inline-block js-comment-edit-history"></span></div>
+                <h3 class="timeline-comment-header-text text-normal f5" data-chrome><div class="d-flex flex-items-center Truncate">
+                  <a data-hovercard-type="user" class="author Link--primary d-flex" href="/alice-moreau"><img class="avatar circle" alt="" width="32" height="32"><div class="d-flex flex-column Truncate"><span class="Truncate-text text-bold">alice-moreau</span></div></a>
+                  <a class="Link--secondary js-timestamp d-inline-block" href="#by-alice-moreau"><relative-time datetime="2026-09-16T08:00:00Z" class="no-wrap">2 days ago</relative-time></a>
+                </div></h3>
+              </div></div>
+              <div class="color-bg-default border-bottom position-relative"><div class="edit-comment-hide"><task-lists disabled sortable>
+                <table class="d-block" role="presentation"><tbody class="d-block"><tr class="d-block">
+                  <td class="d-block color-fg-default comment-body markdown-body js-comment-body" data-voice="alice" data-expect="unit" data-parts="4">
+                    <p>My first manager watched the second draft on the last working day of the year. The survey team
+                  ignored a list of small debts which surprised everyone but.</p>
+                    <p>The committee watched the long way round with more patience than I expected. Our small team repaired
+                  an empty notebook before anyone else arrived. The night shift rewrote the back
+                  staircase although the rules said otherwise. The ferry crew rebuilt the back
+                  staircase without saying a word about it. The night shift carried two folding
+                  chairs for most.</p>
+                    <p>The harbour office carried the missing invoice and then wrote it all down. The reading group ignored
+                  an empty notebook because.</p>
+                    <p>A friend of mine measured an empty notebook until the money ran out. A friend of mine questioned a
+                  jar of spare keys without saying a word about it. A retired teacher rebuilt the
+                  winter schedule as if it had always been done that way. The committee rebuilt the
+                  winter schedule because nobody had asked them not to and no difference.</p>
+                  </td>
+                </tr></tbody></table></task-lists>
+                <div class="d-block d-sm-flex flex-items-center" data-chrome><div class="reactions-container"><button class="social-reaction-summary-item">👍 3</button></div></div>
+              </div></div>
+              <div class="js-timeline-marker color-bg-inset border-top" data-child-comments>
+                <div class="TimelineItem TimelineItem--condensed discussion-nested-comment-paging" data-chrome><div class="TimelineItem-body"><form><button type="submit" class="Button--link">Show 2 previous replies</button></form></div></div>
+                <div class="TimelineItem js-comment-container js-nested-comment-102">
+                  <div class="avatar-parent-child flex-column flex-items-center" data-chrome><a class="d-inline-block" data-hovercard-type="user" href="/bob-okafor"><img class="avatar rounded-2 avatar-user" alt="" width="24" height="24"></a></div>
+                  <div class="discussions-timeline-scroll-target" id="discussioncomment-102">
+          <div class="timeline-comment-group js-minimizable-comment-group"><div class="d-flex"><div class="width-full">
+            <div class="timeline-comment unminimized-comment comment js-comment">
+              <div class="edit-comment-hide"><div class="clearfix d-flex flex-row-reverse flex-items-center">
+                <div class="timeline-comment-actions flex-shrink-0" data-chrome><div class="d-flex flex-row flex-items-center"><comment-actions-container><experimental-action-menu>
+                    <button role="button" aria-haspopup="true" aria-expanded="false" class="Button Button--iconOnly">More</button>
+                    <tool-tip popover="manual" data-type="label" class="sr-only">Comment options</tool-tip>
+                  </experimental-action-menu>
+                  <template><div class="Overlay">Report content</div></template>
+                  <div hidden><ul role="menu"><li role="menuitem">Copy link</li><li role="menuitem">Quote reply</li><li role="menuitem">Reference in new issue</li><li role="menuitem">Edit comment</li><li role="menuitem">Hide comment</li><li role="menuitem">Delete comment</li><li role="menuitem">Report content</li><li role="menuitem">Block this user from the organisation</li><li role="menuitem">Mark this comment as the answer to the discussion</li><li role="menuitem">Unsubscribe from notifications about this thread</li></ul>
+                    <button type="button" hidden class="js-comment-quote-reply">Quote reply</button></div>
+                </comment-actions-container></div></div>
+                <div class="d-none d-sm-flex flex-items-center"><span class="d-inline-block js-comment-edit-history"></span></div>
+                <h3 class="timeline-comment-header-text text-normal f5" data-chrome><div class="d-flex flex-items-center Truncate">
+                  <a data-hovercard-type="user" class="author Link--primary d-flex" href="/bob-okafor"><img class="avatar circle" alt="" width="32" height="32"><div class="d-flex flex-column Truncate"><span class="Truncate-text text-bold">bob-okafor</span></div></a>
+                  <a class="Link--secondary js-timestamp d-inline-block" href="#by-bob-okafor"><relative-time datetime="2026-09-16T10:00:00Z" class="no-wrap">2 days ago</relative-time></a>
+                </div></h3>
+              </div></div>
+              <div class="color-bg-default border-bottom position-relative"><div class="edit-comment-hide"><task-lists disabled sortable>
+                <table class="d-block" role="presentation"><tbody class="d-block"><tr class="d-block">
+                  <td class="d-block color-fg-default comment-body markdown-body js-comment-body" data-voice="bob" data-expect="none">
+                    <p>The survey team measured the missing invoice in the hour after lunch. The ferry crew borrowed the
+                  back staircase before anyone else arrived. The night shift rewrote a jar of.</p>
+                  </td>
+                </tr></tbody></table></task-lists>
+                <div class="d-block d-sm-flex flex-items-center" data-chrome><div class="reactions-container"><button class="social-reaction-summary-item">👍 3</button></div></div>
+              </div></div>
+            </div>
+          </div></div></div>
+                  </div>
+                </div>
+                <div class="TimelineItem js-comment-container js-nested-comment-103">
+                  <div class="avatar-parent-child flex-column flex-items-center" data-chrome><a class="d-inline-block" data-hovercard-type="user" href="/carol-lindqvist"><img class="avatar rounded-2 avatar-user" alt="" width="24" height="24"></a></div>
+                  <div class="discussions-timeline-scroll-target" id="discussioncomment-103">
+          <div class="timeline-comment-group js-minimizable-comment-group"><div class="d-flex"><div class="width-full">
+            <div class="timeline-comment unminimized-comment comment js-comment">
+              <div class="edit-comment-hide"><div class="clearfix d-flex flex-row-reverse flex-items-center">
+                <div class="timeline-comment-actions flex-shrink-0" data-chrome><div class="d-flex flex-row flex-items-center"><comment-actions-container><experimental-action-menu>
+                    <button role="button" aria-haspopup="true" aria-expanded="false" class="Button Button--iconOnly">More</button>
+                    <tool-tip popover="manual" data-type="label" class="sr-only">Comment options</tool-tip>
+                  </experimental-action-menu>
+                  <template><div class="Overlay">Report content</div></template>
+                  <div hidden><ul role="menu"><li role="menuitem">Copy link</li><li role="menuitem">Quote reply</li><li role="menuitem">Reference in new issue</li><li role="menuitem">Edit comment</li><li role="menuitem">Hide comment</li><li role="menuitem">Delete comment</li><li role="menuitem">Report content</li><li role="menuitem">Block this user from the organisation</li><li role="menuitem">Mark this comment as the answer to the discussion</li><li role="menuitem">Unsubscribe from notifications about this thread</li></ul>
+                    <button type="button" hidden class="js-comment-quote-reply">Quote reply</button></div>
+                </comment-actions-container></div></div>
+                <div class="d-none d-sm-flex flex-items-center"><span class="d-inline-block js-comment-edit-history"></span></div>
+                <h3 class="timeline-comment-header-text text-normal f5" data-chrome><div class="d-flex flex-items-center Truncate">
+                  <a data-hovercard-type="user" class="author Link--primary d-flex" href="/carol-lindqvist"><img class="avatar circle" alt="" width="32" height="32"><div class="d-flex flex-column Truncate"><span class="Truncate-text text-bold">carol-lindqvist</span></div></a>
+                  <a class="Link--secondary js-timestamp d-inline-block" href="#by-carol-lindqvist"><relative-time datetime="2026-09-16T11:00:00Z" class="no-wrap">2 days ago</relative-time></a>
+                </div></h3>
+              </div></div>
+              <div class="color-bg-default border-bottom position-relative"><div class="edit-comment-hide"><task-lists disabled sortable>
+                <table class="d-block" role="presentation"><tbody class="d-block"><tr class="d-block">
+                  <td class="d-block color-fg-default comment-body markdown-body js-comment-body" data-voice="carol" data-expect="none">
+                    <p>The corner bakery carried an empty notebook in the hour after lunch. Our small team kept a box of
+                  letters and then wrote it all down. The survey team questioned the second draft.</p>
+                  </td>
+                </tr></tbody></table></task-lists>
+                <div class="d-block d-sm-flex flex-items-center" data-chrome><div class="reactions-container"><button class="social-reaction-summary-item">👍 3</button></div></div>
+              </div></div>
+            </div>
+          </div></div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div></div></div>
         </div>
-        <div class="comment-body markdown-body" data-voice="alice" data-expect="unit" data-parts="4">
-            <p>My first manager watched the second draft on the last working day of the year. The survey team
-          ignored a list of small debts which surprised everyone but.</p>
-            <p>The committee watched the long way round with more patience than I expected. Our small team repaired
-          an empty notebook before anyone else arrived. The night shift rewrote the back staircase
-          although the rules said otherwise. The ferry crew rebuilt the back staircase without
-          saying a word about it. The night shift carried two folding chairs for most.</p>
-            <p>The harbour office carried the missing invoice and then wrote it all down. The reading group ignored
-          an empty notebook because.</p>
-            <p>A friend of mine measured an empty notebook until the money ran out. A friend of mine questioned a
-          jar of spare keys without saying a word about it. A retired teacher rebuilt the winter
-          schedule as if it had always been done that way. The committee rebuilt the winter schedule
-          because nobody had asked them not to and no difference.</p>
-          </div>
-        <div class="comment-reactions" data-chrome><button>👍 3</button></div>
       </div>
-      <div class="discussion-nested-comments">
-        <div class="js-comment-container discussion-nested-comment">
-          <div class="timeline-comment-header" data-chrome>
-          <a class="avatar-link" href="/bob-okafor"><img class="avatar avatar-user" alt="" width="40" height="40"></a>
-          <a class="author" href="/bob-okafor"><b>bob-okafor</b></a>
-          <span>replied <a href="#c-bob-okafor"><relative-time datetime="2026-09-16T10:00:00Z">2 days ago</relative-time></a></span>
-        </div>
-          <div class="comment-body markdown-body" data-voice="bob" data-expect="none">
-            <p>The survey team measured the missing invoice in the hour after lunch. The ferry crew borrowed the
-          back staircase before anyone else arrived. The night shift rewrote a jar of.</p>
-          </div>
-        </div>
-        <div class="js-comment-container discussion-nested-comment">
-          <div class="timeline-comment-header" data-chrome>
-          <a class="avatar-link" href="/carol-lindqvist"><img class="avatar avatar-user" alt="" width="40" height="40"></a>
-          <a class="author" href="/carol-lindqvist"><b>carol-lindqvist</b></a>
-          <span>replied <a href="#c-carol-lindqvist"><relative-time datetime="2026-09-16T11:00:00Z">2 days ago</relative-time></a></span>
-        </div>
-          <div class="comment-body markdown-body" data-voice="carol" data-expect="none">
-            <p>The corner bakery carried an empty notebook in the hour after lunch. Our small team kept a box of
-          letters and then wrote it all down. The survey team questioned the second draft.</p>
-          </div>
-        </div>
-      </div>
-  </div></div>
+    </div>
 
-  <div class="js-timeline-item"><div class="js-comment-container discussion-timeline-item">
-      <div class="timeline-comment">
-        <div class="timeline-comment-header" data-chrome>
-          <a class="avatar-link" href="/dave-whitfield"><img class="avatar avatar-user" alt="" width="40" height="40"></a>
-          <a class="author" href="/dave-whitfield"><b>dave-whitfield</b></a>
-          <span>commented <a href="#c-dave-whitfield"><relative-time datetime="2026-09-17T08:00:00Z">2 days ago</relative-time></a></span>
+    <div class="js-timeline-item js-timeline-progressive-focus-container" data-gid="DC_104">
+      <div class="TimelineItem discussion-timeline-item mx-0 js-comment-container">
+        <div class="discussions-timeline-scroll-target js-targetable-element" id="discussioncomment-104">
+          <div class="timeline-comment-group js-minimizable-comment-group"><div class="d-flex"><div class="width-full">
+            <div class="timeline-comment unminimized-comment comment js-comment">
+              <div class="edit-comment-hide"><div class="clearfix d-flex flex-row-reverse flex-items-center">
+                <div class="timeline-comment-actions flex-shrink-0" data-chrome><div class="d-flex flex-row flex-items-center"><comment-actions-container><experimental-action-menu>
+                    <button role="button" aria-haspopup="true" aria-expanded="false" class="Button Button--iconOnly">More</button>
+                    <tool-tip popover="manual" data-type="label" class="sr-only">Comment options</tool-tip>
+                  </experimental-action-menu>
+                  <template><div class="Overlay">Report content</div></template>
+                  <div hidden><ul role="menu"><li role="menuitem">Copy link</li><li role="menuitem">Quote reply</li><li role="menuitem">Reference in new issue</li><li role="menuitem">Edit comment</li><li role="menuitem">Hide comment</li><li role="menuitem">Delete comment</li><li role="menuitem">Report content</li><li role="menuitem">Block this user from the organisation</li><li role="menuitem">Mark this comment as the answer to the discussion</li><li role="menuitem">Unsubscribe from notifications about this thread</li></ul>
+                    <button type="button" hidden class="js-comment-quote-reply">Quote reply</button></div>
+                </comment-actions-container></div></div>
+                <div class="d-none d-sm-flex flex-items-center"><span class="d-inline-block js-comment-edit-history"></span></div>
+                <h3 class="timeline-comment-header-text text-normal f5" data-chrome><div class="d-flex flex-items-center Truncate">
+                  <a data-hovercard-type="user" class="author Link--primary d-flex" href="/dave-whitfield"><img class="avatar circle" alt="" width="32" height="32"><div class="d-flex flex-column Truncate"><span class="Truncate-text text-bold">dave-whitfield</span></div></a>
+                  <a class="Link--secondary js-timestamp d-inline-block" href="#by-dave-whitfield"><relative-time datetime="2026-09-17T08:00:00Z" class="no-wrap">2 days ago</relative-time></a>
+                </div></h3>
+              </div></div>
+              <div class="color-bg-default border-bottom position-relative"><div class="edit-comment-hide"><task-lists disabled sortable>
+                <table class="d-block" role="presentation"><tbody class="d-block"><tr class="d-block">
+                  <td class="d-block color-fg-default comment-body markdown-body js-comment-body" data-voice="dave" data-expect="unit" data-parts="1">
+                    <p>Our small team rebuilt the second draft in the hour after lunch. Our small team counted a list of
+                  small debts for most of that spring. The old printer postponed the back staircase
+                  and nobody noticed for a month. The committee described the water meter although
+                  the rules said otherwise. The survey team rebuilt every broken hinge while the
+                  rain came through.</p>
+                  </td>
+                </tr></tbody></table></task-lists>
+                <div class="d-block d-sm-flex flex-items-center" data-chrome><div class="reactions-container"><button class="social-reaction-summary-item">👍 3</button></div></div>
+              </div></div>
+              <div class="js-timeline-marker color-bg-inset border-top" data-child-comments>
+                <div class="TimelineItem TimelineItem--condensed discussion-nested-comment-paging" data-chrome><div class="TimelineItem-body"><form><button type="submit" class="Button--link">Show 2 previous replies</button></form></div></div>
+                <div class="TimelineItem js-comment-container js-nested-comment-105">
+                  <div class="avatar-parent-child flex-column flex-items-center" data-chrome><a class="d-inline-block" data-hovercard-type="user" href="/erin-castellanos"><img class="avatar rounded-2 avatar-user" alt="" width="24" height="24"></a></div>
+                  <div class="discussions-timeline-scroll-target" id="discussioncomment-105">
+          <div class="timeline-comment-group js-minimizable-comment-group"><div class="d-flex"><div class="width-full">
+            <div class="timeline-comment unminimized-comment comment js-comment">
+              <div class="edit-comment-hide"><div class="clearfix d-flex flex-row-reverse flex-items-center">
+                <div class="timeline-comment-actions flex-shrink-0" data-chrome><div class="d-flex flex-row flex-items-center"><comment-actions-container><experimental-action-menu>
+                    <button role="button" aria-haspopup="true" aria-expanded="false" class="Button Button--iconOnly">More</button>
+                    <tool-tip popover="manual" data-type="label" class="sr-only">Comment options</tool-tip>
+                  </experimental-action-menu>
+                  <template><div class="Overlay">Report content</div></template>
+                  <div hidden><ul role="menu"><li role="menuitem">Copy link</li><li role="menuitem">Quote reply</li><li role="menuitem">Reference in new issue</li><li role="menuitem">Edit comment</li><li role="menuitem">Hide comment</li><li role="menuitem">Delete comment</li><li role="menuitem">Report content</li><li role="menuitem">Block this user from the organisation</li><li role="menuitem">Mark this comment as the answer to the discussion</li><li role="menuitem">Unsubscribe from notifications about this thread</li></ul>
+                    <button type="button" hidden class="js-comment-quote-reply">Quote reply</button></div>
+                </comment-actions-container></div></div>
+                <div class="d-none d-sm-flex flex-items-center"><span class="d-inline-block js-comment-edit-history"></span></div>
+                <h3 class="timeline-comment-header-text text-normal f5" data-chrome><div class="d-flex flex-items-center Truncate">
+                  <a data-hovercard-type="user" class="author Link--primary d-flex" href="/erin-castellanos"><img class="avatar circle" alt="" width="32" height="32"><div class="d-flex flex-column Truncate"><span class="Truncate-text text-bold">erin-castellanos</span></div></a>
+                  <a class="Link--secondary js-timestamp d-inline-block" href="#by-erin-castellanos"><relative-time datetime="2026-09-17T09:00:00Z" class="no-wrap">2 days ago</relative-time></a>
+                </div></h3>
+              </div></div>
+              <div class="color-bg-default border-bottom position-relative"><div class="edit-comment-hide"><task-lists disabled sortable>
+                <table class="d-block" role="presentation"><tbody class="d-block"><tr class="d-block">
+                  <td class="d-block color-fg-default comment-body markdown-body js-comment-body" data-voice="erin" data-expect="none">
+                    <p>Every new hire sorted the long way round until the money ran out. My neighbour found every broken
+                  hinge even when it made no difference. Our small team counted the back.</p>
+                  </td>
+                </tr></tbody></table></task-lists>
+                <div class="d-block d-sm-flex flex-items-center" data-chrome><div class="reactions-container"><button class="social-reaction-summary-item">👍 3</button></div></div>
+              </div></div>
+            </div>
+          </div></div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div></div></div>
         </div>
-        <div class="comment-body markdown-body" data-voice="dave" data-expect="unit" data-parts="1">
-            <p>Our small team rebuilt the second draft in the hour after lunch. Our small team counted a list of
-          small debts for most of that spring. The old printer postponed the back staircase and
-          nobody noticed for a month. The committee described the water meter although the rules
-          said otherwise. The survey team rebuilt every broken hinge while the rain came through.</p>
-          </div>
-        <div class="comment-reactions" data-chrome><button>👍 3</button></div>
       </div>
-      <div class="discussion-nested-comments">
-        <div class="js-comment-container discussion-nested-comment">
-          <div class="timeline-comment-header" data-chrome>
-          <a class="avatar-link" href="/erin-castellanos"><img class="avatar avatar-user" alt="" width="40" height="40"></a>
-          <a class="author" href="/erin-castellanos"><b>erin-castellanos</b></a>
-          <span>replied <a href="#c-erin-castellanos"><relative-time datetime="2026-09-17T09:00:00Z">2 days ago</relative-time></a></span>
-        </div>
-          <div class="comment-body markdown-body" data-voice="erin" data-expect="none">
-            <p>Every new hire sorted the long way round until the money ran out. My neighbour found every broken
-          hinge even when it made no difference. Our small team counted the back.</p>
-          </div>
-        </div>
-      </div>
-  </div></div>
+    </div>
 
-  <div class="js-timeline-item"><div class="js-comment-container discussion-timeline-item">
-      <div class="timeline-comment">
-        <div class="timeline-comment-header" data-chrome>
-          <a class="avatar-link" href="/frank-osei"><img class="avatar avatar-user" alt="" width="40" height="40"></a>
-          <a class="author" href="/frank-osei"><b>frank-osei</b></a>
-          <span>commented <a href="#c-frank-osei"><relative-time datetime="2026-09-18T08:00:00Z">2 days ago</relative-time></a></span>
+    <div class="js-timeline-item js-timeline-progressive-focus-container" data-gid="DC_106">
+      <div class="TimelineItem discussion-timeline-item mx-0 js-comment-container">
+        <div class="discussions-timeline-scroll-target js-targetable-element" id="discussioncomment-106">
+          <div class="timeline-comment-group js-minimizable-comment-group"><div class="d-flex"><div class="width-full">
+            <div class="timeline-comment unminimized-comment comment js-comment">
+              <div class="edit-comment-hide"><div class="clearfix d-flex flex-row-reverse flex-items-center">
+                <div class="timeline-comment-actions flex-shrink-0" data-chrome><div class="d-flex flex-row flex-items-center"><comment-actions-container><experimental-action-menu>
+                    <button role="button" aria-haspopup="true" aria-expanded="false" class="Button Button--iconOnly">More</button>
+                    <tool-tip popover="manual" data-type="label" class="sr-only">Comment options</tool-tip>
+                  </experimental-action-menu>
+                  <template><div class="Overlay">Report content</div></template>
+                  <div hidden><ul role="menu"><li role="menuitem">Copy link</li><li role="menuitem">Quote reply</li><li role="menuitem">Reference in new issue</li><li role="menuitem">Edit comment</li><li role="menuitem">Hide comment</li><li role="menuitem">Delete comment</li><li role="menuitem">Report content</li><li role="menuitem">Block this user from the organisation</li><li role="menuitem">Mark this comment as the answer to the discussion</li><li role="menuitem">Unsubscribe from notifications about this thread</li></ul>
+                    <button type="button" hidden class="js-comment-quote-reply">Quote reply</button></div>
+                </comment-actions-container></div></div>
+                <div class="d-none d-sm-flex flex-items-center"><span class="d-inline-block js-comment-edit-history"></span></div>
+                <h3 class="timeline-comment-header-text text-normal f5" data-chrome><div class="d-flex flex-items-center Truncate">
+                  <a data-hovercard-type="user" class="author Link--primary d-flex" href="/frank-osei"><img class="avatar circle" alt="" width="32" height="32"><div class="d-flex flex-column Truncate"><span class="Truncate-text text-bold">frank-osei</span></div></a>
+                  <a class="Link--secondary js-timestamp d-inline-block" href="#by-frank-osei"><relative-time datetime="2026-09-18T08:00:00Z" class="no-wrap">2 days ago</relative-time></a>
+                </div></h3>
+              </div></div>
+              <div class="color-bg-default border-bottom position-relative"><div class="edit-comment-hide"><task-lists disabled sortable>
+                <table class="d-block" role="presentation"><tbody class="d-block"><tr class="d-block">
+                  <td class="d-block color-fg-default comment-body markdown-body js-comment-body" data-voice="frank" data-expect="unit" data-parts="2">
+                    <p>The reading group watched every broken hinge with more patience than I expected. A retired teacher
+                  sorted a list of small debts before anyone else arrived again.</p>
+                    <p data-chrome><strong>Steps to reproduce</strong></p>
+                    <p>The ferry crew found a shelf of manuals long after it stopped being useful. The night shift rewrote
+                  a box of letters and nobody noticed for a month again.</p>
+                  </td>
+                </tr></tbody></table></task-lists>
+                <div class="d-block d-sm-flex flex-items-center" data-chrome><div class="reactions-container"><button class="social-reaction-summary-item">👍 3</button></div></div>
+              </div></div>
+            </div>
+          </div></div></div>
         </div>
-        <div class="comment-body markdown-body" data-voice="frank" data-expect="none">
-            <p>The reading group rebuilt a box of letters with more patience than I expected. Every new hire
-          rewrote an empty notebook and then wrote it all.</p>
-          </div>
-        <div class="comment-reactions" data-chrome><button>👍 3</button></div>
       </div>
-      <div class="discussion-nested-comments">
-      </div>
-  </div></div>
-</div>
+    </div>
+</div></div>
 </main>
 </body></html>

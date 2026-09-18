@@ -1667,7 +1667,7 @@ const EXPECTED = {
   "comments-li": [2, 1],
   "discourse-thread": [2, 2],
   "front-page-cards": [2, 1],
-  "github-discussion": [2, 1],
+  "github-discussion": [3, 2],
   "github-issue": [3, 3],
   "hn-thread": [2, 1],
   "linkedin-clipped": [5, 1],
