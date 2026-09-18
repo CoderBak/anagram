@@ -1,0 +1,93 @@
+<!doctype html>
+<!--
+  Telegram's web preview of a channel (t.me/s/…): `div.tgme_widget_message_wrap` siblings,
+  no <article>. Synthetic text.
+
+  Measured logged-out on t.me/s/telegram (2026-09-19): `main.tgme_main > div.tgme_container >
+  section.tgme_channel_history > div.tgme_widget_message_wrap > div.tgme_widget_message >
+  div.tgme_widget_message_user (a > i > img) + div.tgme_widget_message_bubble >
+  div.tgme_widget_message_author (a.tgme_widget_message_owner_name) +
+  div.tgme_widget_message_text (bare text with <br>s) + div.tgme_widget_message_footer (views,
+  `a.tgme_widget_message_date > time[datetime]`)`. The picture and the name are two links to
+  the same place, and the <time> is in the footer, under the text. On a channel every message
+  is the channel's — the same author — and it is still one POST per message: a post is what
+  gets a verdict.
+
+    1  a short, a full, a short and a full paragraph → ONE unit ×4 (it was two: ×3, ×1)
+    2, 3  short neighbours → nothing, never added up      4  a full paragraph → a unit
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: Telegram channel preview</title>
+<style>
+  body { margin: 0; font: 15px/1.4 system-ui, sans-serif; background: #e6ebee; }
+  .tgme_container { max-width: 600px; margin: 0 auto; }
+  .tgme_widget_message { display: flex; gap: 8px; margin: 12px 0; }
+  .tgme_widget_message_user_photo { display: block; width: 36px; height: 36px; }
+  .tgme_widget_message_bubble { background: #fff; border-radius: 12px; padding: 8px 12px; min-width: 0; flex: 1; }
+  .tgme_widget_message_footer { font-size: 12px; color: #6d7f8f; text-align: right; }
+  .copyonly { display: none; }
+  a { color: inherit; text-decoration: none; }
+</style></head>
+<body class="widget_frame_base tgme_webpreview">
+<main class="tgme_main" data-url="/harbournews"><div class="tgme_container"><section class="tgme_channel_history js-message_history">
+
+  <div class="tgme_widget_message_wrap js-widget_message_wrap"><div class="tgme_widget_message js-widget_message" data-post="harbournews/421">
+    <div class="tgme_widget_message_user" data-chrome><a href="/harbournews"><i class="tgme_widget_message_user_photo"><img alt=""></i></a></div>
+    <div class="tgme_widget_message_bubble">
+      <div class="tgme_widget_message_author accent_color" data-chrome><a class="tgme_widget_message_owner_name" href="/harbournews"><span dir="auto">Harbour News</span></a></div>
+      <div class="tgme_widget_message_text js-message_text" dir="auto" data-voice="post-421" data-expect="unit" data-parts="4">The night shift kept the monthly figures as if it had always been done that way. The ferry crew
+            repaired the winter schedule although the rules said otherwise and out.<br><br>A friend of mine measured a box of letters in the hour after lunch. Our upstairs tenant described an
+            empty notebook long after it stopped being useful. A friend of mine carried the monthly
+            figures without saying a word about it. The ferry crew rebuilt the same three questions
+            without saying a word about it.<br><br>The harbour office postponed the monthly figures as if it had always been done that way. A friend of
+            mine.<br><br>A retired teacher found the long way round without saying a word about it. The corner bakery sorted
+            the winter schedule until the money ran out. A retired teacher rebuilt the back
+            staircase which surprised everyone but me. Our small team followed the long way round
+            until the money ran out. Every new hire repaired the monthly figures as if.</div>
+      <div class="tgme_widget_message_footer compact js-message_footer" data-chrome><div class="tgme_widget_message_info short js-message_info">
+        <span class="tgme_widget_message_views">12.4K</span><span class="copyonly"> views</span><span class="tgme_widget_message_meta"><a class="tgme_widget_message_date" href="/harbournews/421"><time datetime="2026-09-17T08:00:00+00:00" class="time">08:00</time></a></span>
+      </div></div>
+    </div>
+  </div></div>
+
+  <div class="tgme_widget_message_wrap js-widget_message_wrap"><div class="tgme_widget_message js-widget_message" data-post="harbournews/422">
+    <div class="tgme_widget_message_user" data-chrome><a href="/harbournews"><i class="tgme_widget_message_user_photo"><img alt=""></i></a></div>
+    <div class="tgme_widget_message_bubble">
+      <div class="tgme_widget_message_author accent_color" data-chrome><a class="tgme_widget_message_owner_name" href="/harbournews"><span dir="auto">Harbour News</span></a></div>
+      <div class="tgme_widget_message_text js-message_text" dir="auto" data-voice="post-422" data-expect="none">Our small team followed a list of small debts even when it made no difference. The ferry crew
+            carried the missing invoice for most of that spring and ran out.</div>
+      <div class="tgme_widget_message_footer compact js-message_footer" data-chrome><div class="tgme_widget_message_info short js-message_info">
+        <span class="tgme_widget_message_views">12.4K</span><span class="copyonly"> views</span><span class="tgme_widget_message_meta"><a class="tgme_widget_message_date" href="/harbournews/422"><time datetime="2026-09-18T08:00:00+00:00" class="time">08:00</time></a></span>
+      </div></div>
+    </div>
+  </div></div>
+
+  <div class="tgme_widget_message_wrap js-widget_message_wrap"><div class="tgme_widget_message js-widget_message" data-post="harbournews/423">
+    <div class="tgme_widget_message_user" data-chrome><a href="/harbournews"><i class="tgme_widget_message_user_photo"><img alt=""></i></a></div>
+    <div class="tgme_widget_message_bubble">
+      <div class="tgme_widget_message_author accent_color" data-chrome><a class="tgme_widget_message_owner_name" href="/harbournews"><span dir="auto">Harbour News</span></a></div>
+      <div class="tgme_widget_message_text js-message_text" dir="auto" data-voice="post-423" data-expect="none">The harbour office sorted the back staircase without saying a word about it. The landlord followed a
+            jar of spare keys long after it stopped being useful. My neighbour sorted the same three
+            questions.</div>
+      <div class="tgme_widget_message_footer compact js-message_footer" data-chrome><div class="tgme_widget_message_info short js-message_info">
+        <span class="tgme_widget_message_views">12.4K</span><span class="copyonly"> views</span><span class="tgme_widget_message_meta"><a class="tgme_widget_message_date" href="/harbournews/423"><time datetime="2026-09-10T08:00:00+00:00" class="time">08:00</time></a></span>
+      </div></div>
+    </div>
+  </div></div>
+
+  <div class="tgme_widget_message_wrap js-widget_message_wrap"><div class="tgme_widget_message js-widget_message" data-post="harbournews/424">
+    <div class="tgme_widget_message_user" data-chrome><a href="/harbournews"><i class="tgme_widget_message_user_photo"><img alt=""></i></a></div>
+    <div class="tgme_widget_message_bubble">
+      <div class="tgme_widget_message_author accent_color" data-chrome><a class="tgme_widget_message_owner_name" href="/harbournews"><span dir="auto">Harbour News</span></a></div>
+      <div class="tgme_widget_message_text js-message_text" dir="auto" data-voice="post-424" data-expect="unit" data-parts="1">The harbour office rewrote a box of letters and nobody noticed for a month. The corner bakery found
+            the water meter even when it made no difference. A retired teacher rewrote the water
+            meter with more patience than I expected. Our upstairs tenant sorted the missing invoice
+            on the last working day of the year. The harbour office followed the winter schedule.</div>
+      <div class="tgme_widget_message_footer compact js-message_footer" data-chrome><div class="tgme_widget_message_info short js-message_info">
+        <span class="tgme_widget_message_views">12.4K</span><span class="copyonly"> views</span><span class="tgme_widget_message_meta"><a class="tgme_widget_message_date" href="/harbournews/424"><time datetime="2026-09-11T08:00:00+00:00" class="time">08:00</time></a></span>
+      </div></div>
+    </div>
+  </div></div>
+</section></div></main>
+</body></html>

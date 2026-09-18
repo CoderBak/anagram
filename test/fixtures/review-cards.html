@@ -1,0 +1,111 @@
+<!doctype html>
+<!--
+  Steam-style review cards: the byline is UNDER the text, and the card has more boxes than
+  the review. Synthetic text.
+
+  Measured logged-out on steamcommunity.com/app/…/reviews (2026-09-19): `div#AppHubCards >
+  div#page1 > div.apphub_CardRow > div.apphub_Card`; in a card `div.found_helpful` (two
+  <br>-separated counter lines), `div.vote_header` ("Recommended", hours on record),
+  `div.apphub_CardTextContent` (`div.date_posted`, then the review as bare text with <br>s)
+  and, after all that, `div.apphub_CardContentAuthorBlock`: a picture link and a name link to
+  the same `/id/…`, the picture from an avatars host. No <time>, no `datetime`, no dated
+  title anywhere. The pages and rows repeat as well and "have a byline" — the one of the
+  first card inside them — which is why a post's byline must be its own.
+
+  What this guards: with every label transparent inside a recognised post, the two counter
+  lines were read as the opening lines of the review (13 words of the site's in every unit,
+  and a 333-word review that outgrew its window by them and was cut in two). A label is
+  transparent only AMONG THE TEXT; "Posted: 12 September" is a row of the card, and what was
+  read before it is concluded there, as the bare page always did.
+
+    alice  a short, a full, a short and a full paragraph → ONE unit ×4, no counter line in it
+    bob, carol  short neighbours in one row → nothing, never added up
+    dan    one full paragraph → a unit
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: Steam-style review cards</title>
+<style>
+  body { margin: 0; font: 13px/1.5 Arial, sans-serif; background: #1b2838; color: #acb2b8; }
+  #AppHubCards { width: 940px; margin: 20px auto; }
+  .apphub_CardRow { display: flex; gap: 12px; margin-bottom: 12px; }
+  .apphub_Card { flex: 1; background: #16202d; padding: 8px; min-width: 0; }
+  .found_helpful, .date_posted { font-size: 11px; color: #647580; }
+  .apphub_CardContentAuthorBlock { margin-top: 8px; }
+  a { color: inherit; text-decoration: none; }
+</style></head>
+<body>
+<div id="AppHubCards" class="apphub_Cards">
+  <div id="page1">
+    <div class="apphub_CardRow">
+      <div class="apphub_Card modalContentLink interactable" role="button">
+        <div class="apphub_CardContentMain"><div class="apphub_UserReviewCardContent">
+          <div class="found_helpful" data-chrome>26 people found this review helpful<br>3 people found this review funny</div>
+          <div class="vote_header" data-chrome><div class="reviewInfo"><div class="title">Recommended</div><div class="hours">1,204.5 hrs on record</div></div></div>
+          <div class="apphub_CardTextContent" data-voice="alice" data-expect="unit" data-parts="4"><div class="date_posted" data-chrome>Posted: 12 September</div>
+            The landlord carried the same three questions as if it had always been done that way. My neighbour
+            rewrote a list of small debts for most of that spring again.<br><br>Every new hire rewrote the long way round while the rain came through the roof. The old printer
+            found a box of letters although the rules said otherwise. The harbour office rewrote the
+            winter schedule long after it stopped being useful. The landlord repaired the missing
+            invoice because nobody had asked them not to again.<br><br>My neighbour carried two folding chairs and nobody noticed for a month. The survey team borrowed the
+            winter schedule although.<br><br>The harbour office ignored the back staircase without saying a word about it. The committee ignored
+            an empty notebook with more patience than I expected. The landlord watched the same
+            three questions while the rain came through the roof. The old printer measured the back
+            staircase for most of that spring. The survey team followed every broken hinge as if.</div>
+        </div></div>
+        <div class="apphub_CardContentAuthorBlock tall" data-chrome><div class="apphub_friend_block_container">
+          <a href="/id/alice"><div class="appHubIconHolder online"><img alt="" src="https://avatars.example.invalid/alice.jpg"></div></a>
+          <div class="apphub_CardContentAuthorName online ellipsis"><a href="/id/alice">alice</a></div>
+        </div></div>
+      </div>
+    </div>
+    <div class="apphub_CardRow">
+      <div class="apphub_Card modalContentLink interactable" role="button">
+        <div class="apphub_CardContentMain"><div class="apphub_UserReviewCardContent">
+          <div class="found_helpful" data-chrome>26 people found this review helpful<br>3 people found this review funny</div>
+          <div class="vote_header" data-chrome><div class="reviewInfo"><div class="title">Recommended</div><div class="hours">1,204.5 hrs on record</div></div></div>
+          <div class="apphub_CardTextContent" data-voice="bob" data-expect="none"><div class="date_posted" data-chrome>Posted: 12 September</div>
+            The landlord rewrote a jar of spare keys on the last working day of the year. The reading group kept
+            the back staircase even when it made no difference again.</div>
+        </div></div>
+        <div class="apphub_CardContentAuthorBlock tall" data-chrome><div class="apphub_friend_block_container">
+          <a href="/id/bob"><div class="appHubIconHolder online"><img alt="" src="https://avatars.example.invalid/bob.jpg"></div></a>
+          <div class="apphub_CardContentAuthorName online ellipsis"><a href="/id/bob">bob</a></div>
+        </div></div>
+      </div>
+      <div class="apphub_Card modalContentLink interactable" role="button">
+        <div class="apphub_CardContentMain"><div class="apphub_UserReviewCardContent">
+          <div class="found_helpful" data-chrome>26 people found this review helpful<br>3 people found this review funny</div>
+          <div class="vote_header" data-chrome><div class="reviewInfo"><div class="title">Recommended</div><div class="hours">1,204.5 hrs on record</div></div></div>
+          <div class="apphub_CardTextContent" data-voice="carol" data-expect="none"><div class="date_posted" data-chrome>Posted: 12 September</div>
+            The committee found a jar of spare keys while the rain came through the roof. The survey team
+            postponed a jar of spare keys until the money ran out. The ferry crew ignored the.</div>
+        </div></div>
+        <div class="apphub_CardContentAuthorBlock tall" data-chrome><div class="apphub_friend_block_container">
+          <a href="/id/carol"><div class="appHubIconHolder online"><img alt="" src="https://avatars.example.invalid/carol.jpg"></div></a>
+          <div class="apphub_CardContentAuthorName online ellipsis"><a href="/id/carol">carol</a></div>
+        </div></div>
+      </div>
+    </div>
+  </div>
+  <div id="page2">
+    <div class="apphub_CardRow">
+      <div class="apphub_Card modalContentLink interactable" role="button">
+        <div class="apphub_CardContentMain"><div class="apphub_UserReviewCardContent">
+          <div class="found_helpful" data-chrome>26 people found this review helpful<br>3 people found this review funny</div>
+          <div class="vote_header" data-chrome><div class="reviewInfo"><div class="title">Recommended</div><div class="hours">1,204.5 hrs on record</div></div></div>
+          <div class="apphub_CardTextContent" data-voice="dan" data-expect="unit" data-parts="1"><div class="date_posted" data-chrome>Posted: 12 September</div>
+            My neighbour watched a box of letters without saying a word about it. The survey team repaired two
+            folding chairs as if it had always been done that way. The landlord borrowed the back
+            staircase before anyone else arrived. The committee borrowed a jar of spare keys and
+            then wrote it all down. The harbour office rewrote the water meter with more.</div>
+        </div></div>
+        <div class="apphub_CardContentAuthorBlock tall" data-chrome><div class="apphub_friend_block_container">
+          <a href="/id/dan"><div class="appHubIconHolder online"><img alt="" src="https://avatars.example.invalid/dan.jpg"></div></a>
+          <div class="apphub_CardContentAuthorName online ellipsis"><a href="/id/dan">dan</a></div>
+        </div></div>
+      </div>
+    </div>
+  </div>
+</div>
+</body></html>

@@ -516,6 +516,95 @@ const results = await page.evaluate(() => {
     u = collect(`<article><h1>Title</h1>${body}<p>${sent(20)}</p><p>${sent(20)}</p><p>${sent(20)}</p></article>`);
     check("…its short paragraphs group among themselves and never into a full one", u.length === 7 && u[6].parts === 3 && u.slice(0, 6).every((x) => x.parts === 1), shape(u));
   }
+  // ---- who may be scored together: posts that do not declare themselves ------------------
+  // A post is ONE OF SEVERAL LIKE IT, EACH WITH ITS OWN BYLINE (lib/dom/scope.ts). `by` is a
+  // byline as most sites set it: a picture and a name that link to the same person, a <time>.
+  {
+    const by = (who) => `<div class="meta"><a href="/u/${who}"><img class="avatar" alt=""></a> <a href="/u/${who}">${who}</a> <time datetime="2026-09-18T08:00:00Z">2h</time></div>`;
+    const post = (who, ...paras) => `<div class="c">${by(who)}<div class="b">${paras.map((t) => `<p>${t}</p>`).join("")}</div></div>`;
+
+    u = collect(post("alice", `A ${sent(29)}`, `B ${sent(54)}`, `C ${sent(19)}`, `D ${sent(59)}`) + post("bob", sent(30)));
+    check("an undeclared comment of mixed paragraphs [30][55][20][60] is ONE unit, in order (it was two: ×3, ×1), the byline in none of it",
+      u.length === 1 && u[0].parts === 4 && u[0].words === 165 && partsOf(u[0]).map((t) => t[0]).join("") === "ABCD" && !/alice|2h/.test(u[0].text), shape(u));
+
+    u = collect(`<ul>${["alice", "bob", "carol"].map((who) => `<li><img class="avatar" alt=""> ${who.toUpperCase()} ${sent(24)}</li>`).join("")}</ul>`);
+    check("three short notes, siblings, with NOTHING but an avatar between them: never added up (proximity alone made them one unit of three voices)", u.length === 0, shape(u));
+    u = collect(`<ul>${["ALICE", "BOB", "CAROL"].map((who) => `<li>${who} ${sent(24)}</li>`).join("")}</ul>`);
+    check("…while the same items without a byline are one author's bullets, and merge as ever", u.length === 1 && u[0].parts === 3, shape(u));
+
+    u = collect(post("alice", `PARENT ${sent(29)}`).replace(/<\/div>$/, `<div class="replies">${post("bob", `REPLY ${sent(29)}`)}</div></div>`) + post("carol", sent(20)));
+    check("a reply standing ALONE under its parent has no sibling like it: it is a post by being shaped like the post around it — never read with its parent", u.length === 0, shape(u));
+    u = collect(post("alice", `PARENT ${sent(59)}`).replace(/<\/div>$/, `<div class="replies">${post("bob", `REPLY-A ${sent(27)}`, `REPLY-B ${sent(27)}`)}</div></div>`) + post("carol", sent(20)));
+    check("…and gets a verdict of its own when it has the words: [parent ×1][reply ×2]",
+      u.length === 2 && u[0].parts === 1 && u[0].text.startsWith("PARENT") && u[1].parts === 2 && u[1].text.startsWith("REPLY-A") && !u[0].text.includes("REPLY"), shape(u));
+
+    u = collect(`<div class="one">${by("alice")}<div class="b"><p>A ${sent(29)}</p><p>B ${sent(54)}</p><p>C ${sent(19)}</p><p>D ${sent(59)}</p></div></div>`);
+    check("ONE comment on its page has nobody like it and is not recognised: read as the bare page always was (×3, ×1) — a stated limit", shape(u) === JSON.stringify([[3, 105], [1, 60]]), shape(u));
+
+    // The chat transcript whose name rows carry avatars: every such row is "one of several
+    // like it, with a byline" and is recognised — as a post of no text. It must still END the
+    // group around it, as the row did on the bare page, or two voices are read together.
+    const row = (who, ...msgs) => `<div class="row head"><img class="avatar" alt=""> <span>${who}</span></div>` + msgs.map((t) => `<div class="row msg">${t}</div>`).join("");
+    u = collect(`<div class="log">${row("alice", `ALICE ${sent(29)}`)}${row("bob", `BOB ${sent(29)}`)}${row("carol", `CAROL ${sent(29)}`)}</div>`);
+    check("a flat chat whose name rows carry avatars: the recognised rows END the group, the voices are never added up", u.length === 0, shape(u));
+    u = collect(`<div class="log">${row("alice", `A1 ${sent(29)}`, `A2 ${sent(29)}`)}${row("bob", `BOB ${sent(19)}`)}</div>`);
+    check("…and one speaker's consecutive messages still are", u.length === 1 && u[0].parts === 2 && !u[0].text.includes("BOB"), shape(u));
+
+    // A label inside a recognised post: among the text it is the author's pseudo-heading and
+    // cuts nothing; as a row of the card it concludes what was read, as the bare page did.
+    u = collect(post("alice", `A ${sent(24)}`, "What went wrong with it", `B ${sent(24)}`, "Where we ended up", `C ${sent(24)}`) + post("bob", sent(20)));
+    check("a label AMONG THE TEXT of a recognised post (V2EX's unpunctuated <p>s, Zhihu's bold <p>) cuts nothing and is in no unit",
+      u.length === 1 && u[0].parts === 3 && !/wrong|ended/.test(u[0].text), shape(u));
+    const card = (who, text) => `<div class="card"><div class="main"><div class="stats">26 people found this review helpful<br>3 people found this review funny</div><div class="vote"><div class="t">Recommended</div></div><div class="text"><div class="date">Posted: 12 September</div>${text}</div></div><div class="author"><a href="/id/${who}"><img alt="" src="https://avatars.example.invalid/${who}.jpg"></a><a href="/id/${who}">${who}</a></div></div>`;
+    u = collect(card("alice", `REVIEW ${sent(59)}`) + card("bob", sent(20)));
+    check("a label that is a ROW OF THE CARD (Steam: 'Posted: …' between the counters and the review) concludes what was read: the site's counter lines are never the opening lines of a review",
+      u.length === 1 && u[0].parts === 1 && u[0].text.startsWith("REVIEW") && !/found this review/.test(u[0].text), shape(u));
+
+    // One text body: deeper because of LIST markup, never because of a layout box.
+    u = collect(post("alice", `LEAD ${sent(19)}`).replace("</p></div>", `</p><ol><li><p>ITEM-A ${sent(14)}</p></li><li><p>ITEM-B ${sent(14)}</p></li></ol><p>LAST ${sent(14)}</p></div>`) + post("bob", sent(20)));
+    check("inside a recognised post a paragraph and `ol > li > p` items two levels down are one text (a Zhihu answer lost such paragraphs: no neighbour by proximity)",
+      u.length === 1 && u[0].parts === 4 && u[0].text.includes("ITEM-A") && u[0].text.includes("LAST"), shape(u));
+    u = collect(post("alice", `REVIEW ${sent(59)}`).replace(/<\/div><\/div>$/, `</div><hr><div class="ask"><div class="q">Was this review helpful?</div></div></div>`) + post("bob", sent(20)));
+    check("…while a sentence of the SITE in a layout box under the text (Steam: 'Was this review helpful?') never joins it, byline between them or not",
+      u.length === 1 && u[0].parts === 1 && !u[0].text.includes("helpful"), shape(u));
+    u = collect(`<article><p>LEAD ${sent(19)}</p><ol><li><p>ITEM-A ${sent(14)}</p></li><li><p>ITEM-B ${sent(14)}</p></li></ol><p>LAST ${sent(34)}</p></article>`);
+    check("…and a DECLARED post is read exactly as before: the items a level deeper stay out", u.length === 1 && u[0].parts === 2 && !u[0].text.includes("ITEM"), shape(u));
+
+    // The opening post: no sibling like it, but the thread that answers it follows it.
+    const opening = (inner) => `<div class="box"><div class="hd">${by("alice")}</div><div class="cell">${inner}</div></div><div class="box"><div class="cell">${by("bob")}<p>${sent(20)}</p></div><div class="cell">${by("carol")}<p>${sent(20)}</p></div></div>`;
+    u = collect(opening(`<p>A ${sent(24)}</p><p>What we tried first</p><ul><li>${line(9)}</li><li>${line(9)}</li></ul><p>B ${sent(24)}</p>`));
+    check("the post a thread answers (V2EX's topic box) is a post: its label <p> cuts nothing → paragraphs and list items are ONE unit (the label ended the group: nothing)",
+      u.length === 1 && u[0].parts === 4 && !u[0].text.includes("tried"), shape(u));
+    u = collect(opening(`<h2>Summary</h2><p>SUMMARY ${sent(23)}</p><h2>Abstract</h2><p>ABSTRACT ${sent(59)}</p>`));
+    check("…but an ARTICLE with section headings and comments under it is none: its headings stay boundaries (a paper page read its AI summary with its abstract)",
+      u.length === 1 && u[0].parts === 1 && u[0].text.startsWith("ABSTRACT"), shape(u));
+
+    // What is evidence of a byline, and what is a sentence that happens to mention somebody.
+    const recognised = (html, sel) => { sandbox.innerHTML = html; const s = PW.createScopes(); return [...sandbox.querySelectorAll(sel)].map((el) => s.of(el) === el && s.recognised(el)); };
+    const two = (inner) => `<div class="x">${inner}<p>${sent(20)}</p></div><div class="x">${inner}<p>${sent(20)}</p></div>`;
+    check("byline evidence: <time>, [datetime], a title that spells out a moment, an avatar the site calls one, a link to a person, a picture and a name to the same place",
+      [`<time>2h</time>`, `<relative-time datetime="2026-09-18T08:00:00Z">2h</relative-time>`, `<span title="2026-09-18T07:00:00">2h</span>`, `<a title="Sep 12, 2026, 3:04 PM" href="/c/1">2h</a>`,
+        `<img class="Avatar" alt="">`, `<img alt="" src="https://avatars.example.invalid/u/1">`, `<a href="/member/alice">alice</a>`, `<a href="user?id=alice">alice</a>`, `<a href="./memberlist.php?mode=viewprofile&amp;u=7">alice</a>`,
+        `<a href="/in/alice?x=1"><img alt=""></a><a href="/in/alice?y=2">Alice Moreau</a>`]
+        .every((ev) => recognised(two(`<div class="m">${ev}</div>`), ".x").every(Boolean)));
+    check("…and what is none: evidence in the middle of a sentence, an avatar-sized icon, a book number in a title, a link to a person on another site",
+      [`<p>On <time>3 March</time> the council voted to keep the ferry and to pay for it.</p>`, `<p>Fixed in the spring release by <a href="/u/bob">@bob</a>, with thanks from all of us.</p>`,
+        `<img alt="" width="27" height="27">`, `<a title="Special:BookSources/978-0-19-825079-1" href="/b">ISBN</a>`, `<span title="John 3:16">verse</span>`, `<a href="https://web.archive.org/web/2020/https://example.org/author/alice">Archived</a>`]
+        .every((ev) => recognised(two(`<div class="m">${ev}</div>`), ".x").every((r) => !r)));
+
+    // A pure function of the page: whichever element is asked first, the answers are the same.
+    {
+      const html = post("alice", sent(30)).replace(/<\/div>$/, `<div class="replies">${post("bob", sent(30))}</div></div>`) + post("carol", sent(30)) + post("dan", sent(30));
+      sandbox.innerHTML = html;
+      const all = [...sandbox.querySelectorAll("*")];
+      const answers = (order) => { const s = PW.createScopes(); const got = new Map(); for (const el of order) got.set(el, s.of(el)); return all.map((el) => all.indexOf(got.get(el))); };
+      const forward = answers(all), backward = answers([...all].reverse()), inside = answers([...sandbox.querySelectorAll(".replies p"), ...all]);
+      const posts = [...sandbox.querySelectorAll(".c")].map((el) => all.indexOf(el));
+      check("scopes are a pure function of the page: asked top-down, bottom-up or from inside a reply first, every element gets the same scope — the four comments, and nothing else",
+        JSON.stringify(forward) === JSON.stringify(backward) && JSON.stringify(forward) === JSON.stringify(inside) && JSON.stringify([...new Set(forward)]) === JSON.stringify(posts), JSON.stringify([[...new Set(forward)], posts]));
+    }
+  }
+
   {
     // Incremental re-scan, the way lib/capture/orchestrator.ts does it: nodes are owned by
     // live units; a run that is exactly a live part is skipped, any other node list retires
@@ -688,6 +777,79 @@ const results = await page.evaluate(() => {
     check("re-scan inside a long article: its section is not taken for a post — every unit untouched, the new shorts a group of their own",
       JSON.stringify(articleBefore.slice(0, 2)) === "[[2,80],[1,70]]" && articleBefore.length === 10 && o.retired.length === 0 && JSON.stringify(after.units.slice(0, 10)) === JSON.stringify(articleBefore) && JSON.stringify(after.units[10]) === "[2,55]" && after.twice === 0 && after.text.includes("S5"),
       JSON.stringify([articleBefore, after.units, o.retired]));
+
+    // 7) RECOGNISED posts (lib/dom/scope.ts) under the same re-scans. `thread` is a list of
+    //    undeclared comments, each with a byline of its own.
+    const byline = (who) => `<div class="meta"><a href="/u/${who}"><img class="avatar" alt=""></a> <a href="/u/${who}">${who}</a> <time datetime="2026-09-18T08:00:00Z">2h</time></div>`;
+    const comment = (who, ...paras) => `<div class="c" id="c-${who}">${byline(who)}<div class="b">${paras.map((t) => `<p>${t}</p>`).join("")}</div></div>`;
+    const mixed = (tag) => [`${tag}1 ${sent(29)}`, `${tag}2 ${sent(54)}`, `${tag}3 ${sent(19)}`, `${tag}4 ${sent(59)}`];
+
+    sandbox.innerHTML = `<div class="thread">${comment("alice", ...mixed("A"))}${comment("bob", `B ${sent(29)}`)}${comment("carol", `C ${sent(59)}`)}</div>`;
+    o = orchestrator();
+    o.scan([sandbox]);
+    const threadBefore = o.census(sandbox).units;
+    sandbox.querySelector(".thread").insertAdjacentHTML("beforeend", comment("dave", ...mixed("D")));
+    o.scan([sandbox.querySelector(".thread")]); // computeScanRoots: the parent of what was added
+    after = o.census(sandbox);
+    check("re-scan: a comment APPENDED to a thread of recognised posts is one unit ×4 of its own — nobody else's chip retired, nothing owned twice, nothing borrowed from bob's short comment next to it",
+      JSON.stringify(threadBefore) === "[[4,165],[1,60]]" && JSON.stringify(after.units) === "[[4,165],[1,60],[4,165]]" && o.retired.length === 0 && after.twice === 0 && JSON.stringify(o.census(sandbox.querySelector("#c-dave")).units) === "[[4,165]]",
+      JSON.stringify([threadBefore, after.units, o.retired]));
+
+    // 7b) The thread had ONE comment — nobody like it, read as the bare page (×3, ×1). The
+    //     second comment makes both of them posts. The newcomer is read as one; the first
+    //     keeps the chips it has: its runs are owned, and nothing new came to stand beside them.
+    sandbox.innerHTML = `<div class="thread">${comment("alice", ...mixed("A"))}</div>`;
+    o = orchestrator();
+    o.scan([sandbox]);
+    const lone = o.census(sandbox).units;
+    sandbox.querySelector(".thread").insertAdjacentHTML("beforeend", comment("dave", ...mixed("D")));
+    o.scan([sandbox.querySelector(".thread")]);
+    after = o.census(sandbox);
+    check("re-scan: a second comment arrives next to a LONE one — the newcomer is a post (×4); the first keeps its two chips, none retired, none doubled, the two never mixed",
+      JSON.stringify(lone) === "[[3,105],[1,60]]" && JSON.stringify(after.units) === "[[3,105],[1,60],[4,165]]" && o.retired.length === 0 && after.twice === 0 &&
+      [...o.live.values()].every((x) => new Set(x.parts.map((part) => part.container.closest(".c").id)).size === 1), JSON.stringify([lone, after.units, o.retired]));
+
+    // 8) A comment EDITED in place: the framework sets the paragraph's text anew, the old
+    //    node is gone, and the root of the re-scan is the comment's body — inside the post.
+    sandbox.innerHTML = `<div class="thread">${comment("alice", `A1 ${sent(29)}`, `A2 ${sent(24)}`)}${comment("bob", `B ${sent(29)}`)}</div>`;
+    o = orchestrator();
+    o.scan([sandbox]);
+    const unedited = o.census(sandbox).units;
+    sandbox.querySelector("#c-alice .b p").textContent = `EDITED ${sent(34)}`;
+    o.scan([sandbox.querySelector("#c-alice .b")]);
+    after = o.census(sandbox);
+    check("re-scan: a recognised comment edited in place is re-taken WHOLE as one unit — the walk asked to start at its body starts at the post",
+      JSON.stringify(unedited) === "[[2,55]]" && JSON.stringify(after.units) === "[[2,60]]" && after.twice === 0 && o.retired.length === 1 && after.text.includes("EDITED") && after.text.includes("A2"), JSON.stringify([unedited, after.units, o.retired]));
+
+    // 9) A partial walk that starts INSIDE a recognised post finds the scope the full walk
+    //    found: one paragraph of it, read by itself, would be a short text with nobody to join.
+    sandbox.innerHTML = `<div class="thread">${comment("alice", `ONE ${sent(29)}`, `TWO ${sent(19)}`, `THREE ${sent(19)}`)}${comment("bob", `B ${sent(29)}`)}</div>`;
+    o = orchestrator();
+    o.scan([sandbox]);
+    sandbox.querySelector("#c-alice .b p:nth-child(2)").insertAdjacentHTML("beforeend", ` <em>ADDED ${sent(9)}</em>`);
+    o.scan([sandbox.querySelector("#c-alice .b p:nth-child(2)")]);
+    after = o.census(sandbox);
+    check("re-scan from INSIDE a recognised post starts at the post: a paragraph that grew is re-read with its neighbours (×3), bob's comment not touched",
+      JSON.stringify(after.units) === "[[3,80]]" && after.twice === 0 && after.text.includes("ADDED") && o.retired.length === 1 && !after.text.includes("B "), JSON.stringify([after.units, after.twice, o.retired]));
+    {
+      // …and the same question asked of the scopes directly: from any element inside, the same post.
+      const scopes = PW.createScopes();
+      const alice = sandbox.querySelector("#c-alice");
+      const insideOut = [...alice.querySelectorAll("*")].reverse();
+      check("…every element inside the comment, asked deepest first, belongs to that comment — and to no other", insideOut.every((el) => scopes.of(el) === alice) && scopes.recognised(alice) && scopes.of(sandbox.querySelector("#c-bob p")) === sandbox.querySelector("#c-bob"));
+    }
+
+    // 10) Inside a LONG recognised answer the walk stays where it was asked to start, exactly
+    //     as inside a long <article>: nothing is re-read, nothing is taken for a small post.
+    sandbox.innerHTML = `<div class="thread">${comment("alice", `S1 ${sent(59)}`, `S2 ${sent(19)}`, `S3 ${sent(69)}`, ...Array.from({ length: 8 }, (_, i) => `BODY${i} ${sent(119)}`))}${comment("bob", `B ${sent(29)}`)}</div>`;
+    o = orchestrator();
+    o.scan([sandbox]);
+    const answerBefore = o.census(sandbox).units;
+    sandbox.querySelector("#c-alice .b").insertAdjacentHTML("beforeend", `<p>S4 ${sent(19)}</p><p>S5 ${sent(34)}</p>`);
+    o.scan([sandbox.querySelector("#c-alice .b")]);
+    after = o.census(sandbox);
+    check("re-scan inside a long recognised answer: every unit untouched, the two new short paragraphs a group of their own",
+      answerBefore.length === 10 && o.retired.length === 0 && JSON.stringify(after.units.slice(0, 10)) === JSON.stringify(answerBefore) && JSON.stringify(after.units[10]) === "[2,55]" && after.twice === 0, JSON.stringify([answerBefore, after.units, o.retired]));
   }
 
   check("endsLikeProse: sentence and clause ends, CJK, closers, trailing emoji — not names, times, colons",
@@ -1499,26 +1661,39 @@ const results = await page.evaluate(() => {
 const FIXTURES = join(__dirname, "fixtures");
 /** [units, multi-part units] per fixture — a change here is a change of behaviour. */
 const EXPECTED = {
+  "article-list-table": [6, 5],
+  "bilibili-comments": [2, 2],
   "chat-transcript": [2, 1],
+  "comments-li": [2, 1],
   "discourse-thread": [2, 2],
+  "front-page-cards": [2, 1],
+  "github-discussion": [2, 1],
   "github-issue": [3, 3],
   "hn-thread": [2, 1],
   "linkedin-clipped": [5, 1],
   "linkedin-feed": [2, 2],
+  "linkedin-listitem": [2, 1],
   "listicle": [1, 1],
   "listicle-divsoup": [2, 1],
   "lobsters-comment": [3, 1],
   "mailing-list": [2, 0],
   "mastodon-shell": [2, 1],
   "news-article": [1, 1],
+  "permalink-single": [2, 1],
+  "phpbb-topic": [2, 1],
   "recipe-faq": [5, 4],
   "reddit-thread": [3, 2],
+  "review-cards": [2, 1],
   "rfc-html": [3, 0],
   "substack-article": [16, 13],
+  "substack-comments": [3, 2],
   "substack-note": [3, 1],
+  "telegram-channel": [2, 1],
+  "thread-100": [75, 50],
+  "v2ex-topic": [2, 2],
   "wordpress-comments": [2, 2],
   "x-timeline": [7, 5],
-  "zhihu-answers": [12, 7],
+  "zhihu-answers": [12, 6],
 };
 const fixtureFiles = readdirSync(FIXTURES).filter((f) => f.endsWith(".html")).sort();
 results.push({ name: "every fixture has an expectation (and the other way round)", ok: JSON.stringify(fixtureFiles.map((f) => f.replace(".html", "")).sort()) === JSON.stringify(Object.keys(EXPECTED).sort()), note: fixtureFiles.join(",") });
@@ -1529,7 +1704,17 @@ for (const file of fixtureFiles) {
   await fx.addScriptTag({ path: BUNDLE });
   const r = await fx.evaluate(() => {
     const units = PW.collectUnits(document.body);
-    const voiceOf = (part) => part.nodes[0].parentElement?.closest("[data-voice]")?.getAttribute("data-voice") ?? "(none)";
+    // The COMPOSED tree, as the walker sees it: Bilibili's comments are nested open shadow
+    // roots, which closest(), contains() and querySelectorAll() do not look into.
+    const up = (e) => e.parentElement ?? (e.getRootNode() instanceof ShadowRoot ? e.getRootNode().host : null);
+    const nearest = (e, attr) => { for (; e; e = up(e)) if (e.hasAttribute(attr)) return e; return null; };
+    const holds = (el, inner) => { for (let e = inner; e; e = up(e)) if (e === el) return true; return false; };
+    const everywhere = (root, sel, acc = []) => {
+      acc.push(...root.querySelectorAll(sel));
+      for (const host of root.querySelectorAll("*")) if (host.shadowRoot) everywhere(host.shadowRoot, sel, acc);
+      return acc;
+    };
+    const voiceOf = (part) => nearest(part.nodes[0].parentElement, "data-voice")?.getAttribute("data-voice") ?? "(none)";
     const mixed = [];
     const chrome = [];
     const covered = new Set();
@@ -1537,22 +1722,23 @@ for (const file of fixtureFiles) {
       const voices = [...new Set(u.parts.map(voiceOf))];
       if (voices.length > 1) mixed.push(voices.join("+"));
       for (const part of u.parts) for (const n of part.nodes) {
-        if (n.parentElement?.closest("[data-chrome]")) chrome.push(n.textContent.trim().slice(0, 30));
-        for (let e = n.parentElement; e; e = e.parentElement) covered.add(e);
+        if (nearest(n.parentElement, "data-chrome")) chrome.push(n.textContent.trim().slice(0, 30));
+        for (let e = n.parentElement; e; e = up(e)) covered.add(e);
       }
     }
     const wrong = [];
-    for (const el of document.querySelectorAll("[data-expect]")) {
+    const annotated = everywhere(document, "[data-expect]");
+    for (const el of annotated) {
       const want = el.getAttribute("data-expect") === "unit";
       if (covered.has(el) !== want) wrong.push(`${want ? "no unit for" : "unexpected unit on"} "${el.textContent.trim().slice(0, 40)}"`);
-      // data-parts="n": ONE unit covers this block, and it has exactly n parts.
+      // data-parts="n": ONE unit covers this block, and it has exactly n parts ("3+1": two units).
       if (el.hasAttribute("data-parts")) {
-        const mine = units.filter((u) => u.parts.some((part) => el.contains(part.container)));
+        const mine = units.filter((u) => u.parts.some((part) => holds(el, part.container)));
         const got = mine.map((u) => u.parts.length).join("+");
         if (got !== el.getAttribute("data-parts")) wrong.push(`${got || "no"} parts instead of ${el.getAttribute("data-parts")} on "${el.textContent.trim().slice(0, 40)}"`);
       }
     }
-    return { units: units.length, merged: units.filter((u) => u.parts.length > 1).length, mixed, chrome, wrong, annotated: document.querySelectorAll("[data-expect]").length };
+    return { units: units.length, merged: units.filter((u) => u.parts.length > 1).length, mixed, chrome, wrong, annotated: annotated.length };
   });
   await fx.close();
   const [wantUnits, wantMerged] = EXPECTED[name] ?? [-1, -1];

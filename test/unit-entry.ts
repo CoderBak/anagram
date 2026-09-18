@@ -3,6 +3,7 @@
 // injects it into a real Chromium page (the walker needs real computed styles,
 // which jsdom cannot provide) and runs table-driven cases against it.
 export { collectUnits } from "../lib/dom/walker";
+export { createScopes } from "../lib/dom/scope";
 export {
   countWords,
   splitSentences,

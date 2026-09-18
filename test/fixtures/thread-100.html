@@ -1,0 +1,46 @@
+<!doctype html>
+<!--
+  A thread of 100 comments, none of them declared — for what recognition COSTS, and for the
+  plain fact that a hundred neighbours never share a unit. Synthetic text. The comments are
+  built by the inline script below from a fixed seed, so the DOM is the same on every load
+  (a hundred comments written out would be a 70 kB fixture of filler); their markup is the
+  generic one: `div.comment > div.meta (avatar link, name link, <time>) + div.body > p…`.
+
+    comment i, by i mod 4:   0  a short, a full and a short paragraph → one unit ×3
+                             1  one short paragraph → nothing
+                             2  one full paragraph → a unit
+                             3  two short paragraphs → one unit ×2
+  → 75 units, 50 of them multi-part, no unit over two comments.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: a thread of 100 comments</title>
+<style>
+  body { max-width: 720px; margin: 20px auto; font: 15px/1.5 system-ui, sans-serif; }
+  .comment { margin: 14px 0; }
+  .meta { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+  .body p { margin: 0 0 10px; }
+  a { color: inherit; text-decoration: none; }
+</style></head>
+<body>
+<div class="thread" id="thread"></div>
+<script>
+  const VOCAB = "the quick brown fox jumps over a lazy dog while rain falls gently on rooftops and children read books near warm windows during long quiet evenings".split(" ");
+  let seed = 20260919;
+  const next = () => (seed = (seed * 1103515245 + 12345) % 2147483648);
+  const words = (n) => { const out = []; for (let i = 0; i < n; i++) out.push(VOCAB[next() % VOCAB.length]); const s = out.join(" ") + "."; return s[0].toUpperCase() + s.slice(1); };
+  const SHAPES = [[30, 55, 20], [25], [60], [28, 27]];
+  const thread = document.getElementById("thread");
+  for (let i = 0; i < 100; i++) {
+    const shape = SHAPES[i % 4];
+    const expect = i % 4 === 1 ? 'data-expect="none"' : `data-expect="unit" data-parts="${shape.length}"`;
+    const el = document.createElement("div");
+    el.className = "comment";
+    el.innerHTML =
+      `<div class="meta" data-chrome><a href="/u/user${i}"><img class="avatar" alt="" width="32" height="32"></a> <a href="/u/user${i}">user${i}</a> <time datetime="2026-09-18T08:00:00Z">${i + 1} minutes ago</time></div>` +
+      `<div class="body" data-voice="user${i}" ${expect}>${shape.map((n) => `<p>${words(n)}</p>`).join("")}</div>` +
+      `<div class="actions" data-chrome><span>Reply</span> · <span>Share</span></div>`;
+    thread.appendChild(el);
+  }
+</script>
+</body></html>

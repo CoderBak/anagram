@@ -1,0 +1,137 @@
+<!doctype html>
+<!--
+  GitHub-style DISCUSSION: comment containers nested in comment containers. Synthetic text.
+
+  Measured in the owner's logged-in Chrome (2026-09-18): a discussion comment is
+  `.js-comment-container`, and a reply's container sits INSIDE the container of the comment it
+  answers — a naive count sees 85 containers for some 40 comments. None of them is a declared
+  scope. What is inside a container (the header with avatar, author link and <relative-time>,
+  `.comment-body > p`) follows GitHub's classic timeline markup and is modelled, as are the
+  wrappers; github-issue.html is the issue thread (measured, flat).
+
+  Every thread container and every reply that has a sibling like it is RECOGNISED — one of
+  several like it, each with its own byline — and the NEAREST one wins: a reply is never read
+  with the comment it answers.
+    1 · alice  a short, a full, a short and a full paragraph → ONE unit ×4 (it was two: ×3, ×1)
+        bob    short reply → nothing;  carol  short reply → nothing (never added up with bob's)
+    2 · dave   one full paragraph → a unit
+        erin   the ONLY reply under dave: no sibling like it, and not shaped like the thread
+               container either, so it is not recognised — it is read inside dave's container,
+               where its own byline keeps it out of dave's text. Too short → nothing.
+    3 · frank  too short → nothing
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: GitHub-style discussion</title>
+<style>
+  body { margin: 0; font: 14px/1.5 -apple-system, system-ui, sans-serif; }
+  .discussion { max-width: 880px; margin: 16px auto; }
+  .timeline-comment, .discussion-nested-comment { border: 1px solid #d1d9e0; border-radius: 6px; margin-bottom: 12px; }
+  .discussion-nested-comments { margin-left: 40px; }
+  .timeline-comment-header { display: flex; align-items: center; gap: 6px; padding: 8px 16px; background: #f6f8fa; }
+  .markdown-body { padding: 16px; }
+  .markdown-body p { margin: 0 0 16px; }
+  a { color: inherit; text-decoration: none; }
+</style></head>
+<body>
+<main>
+<div class="discussion js-discussion">
+
+  <div class="js-timeline-item"><div class="js-comment-container discussion-timeline-item">
+      <div class="timeline-comment">
+        <div class="timeline-comment-header" data-chrome>
+          <a class="avatar-link" href="/alice-moreau"><img class="avatar avatar-user" alt="" width="40" height="40"></a>
+          <a class="author" href="/alice-moreau"><b>alice-moreau</b></a>
+          <span>commented <a href="#c-alice-moreau"><relative-time datetime="2026-09-16T08:00:00Z">2 days ago</relative-time></a></span>
+        </div>
+        <div class="comment-body markdown-body" data-voice="alice" data-expect="unit" data-parts="4">
+            <p>My first manager watched the second draft on the last working day of the year. The survey team
+          ignored a list of small debts which surprised everyone but.</p>
+            <p>The committee watched the long way round with more patience than I expected. Our small team repaired
+          an empty notebook before anyone else arrived. The night shift rewrote the back staircase
+          although the rules said otherwise. The ferry crew rebuilt the back staircase without
+          saying a word about it. The night shift carried two folding chairs for most.</p>
+            <p>The harbour office carried the missing invoice and then wrote it all down. The reading group ignored
+          an empty notebook because.</p>
+            <p>A friend of mine measured an empty notebook until the money ran out. A friend of mine questioned a
+          jar of spare keys without saying a word about it. A retired teacher rebuilt the winter
+          schedule as if it had always been done that way. The committee rebuilt the winter schedule
+          because nobody had asked them not to and no difference.</p>
+          </div>
+        <div class="comment-reactions" data-chrome><button>👍 3</button></div>
+      </div>
+      <div class="discussion-nested-comments">
+        <div class="js-comment-container discussion-nested-comment">
+          <div class="timeline-comment-header" data-chrome>
+          <a class="avatar-link" href="/bob-okafor"><img class="avatar avatar-user" alt="" width="40" height="40"></a>
+          <a class="author" href="/bob-okafor"><b>bob-okafor</b></a>
+          <span>replied <a href="#c-bob-okafor"><relative-time datetime="2026-09-16T10:00:00Z">2 days ago</relative-time></a></span>
+        </div>
+          <div class="comment-body markdown-body" data-voice="bob" data-expect="none">
+            <p>The survey team measured the missing invoice in the hour after lunch. The ferry crew borrowed the
+          back staircase before anyone else arrived. The night shift rewrote a jar of.</p>
+          </div>
+        </div>
+        <div class="js-comment-container discussion-nested-comment">
+          <div class="timeline-comment-header" data-chrome>
+          <a class="avatar-link" href="/carol-lindqvist"><img class="avatar avatar-user" alt="" width="40" height="40"></a>
+          <a class="author" href="/carol-lindqvist"><b>carol-lindqvist</b></a>
+          <span>replied <a href="#c-carol-lindqvist"><relative-time datetime="2026-09-16T11:00:00Z">2 days ago</relative-time></a></span>
+        </div>
+          <div class="comment-body markdown-body" data-voice="carol" data-expect="none">
+            <p>The corner bakery carried an empty notebook in the hour after lunch. Our small team kept a box of
+          letters and then wrote it all down. The survey team questioned the second draft.</p>
+          </div>
+        </div>
+      </div>
+  </div></div>
+
+  <div class="js-timeline-item"><div class="js-comment-container discussion-timeline-item">
+      <div class="timeline-comment">
+        <div class="timeline-comment-header" data-chrome>
+          <a class="avatar-link" href="/dave-whitfield"><img class="avatar avatar-user" alt="" width="40" height="40"></a>
+          <a class="author" href="/dave-whitfield"><b>dave-whitfield</b></a>
+          <span>commented <a href="#c-dave-whitfield"><relative-time datetime="2026-09-17T08:00:00Z">2 days ago</relative-time></a></span>
+        </div>
+        <div class="comment-body markdown-body" data-voice="dave" data-expect="unit" data-parts="1">
+            <p>Our small team rebuilt the second draft in the hour after lunch. Our small team counted a list of
+          small debts for most of that spring. The old printer postponed the back staircase and
+          nobody noticed for a month. The committee described the water meter although the rules
+          said otherwise. The survey team rebuilt every broken hinge while the rain came through.</p>
+          </div>
+        <div class="comment-reactions" data-chrome><button>👍 3</button></div>
+      </div>
+      <div class="discussion-nested-comments">
+        <div class="js-comment-container discussion-nested-comment">
+          <div class="timeline-comment-header" data-chrome>
+          <a class="avatar-link" href="/erin-castellanos"><img class="avatar avatar-user" alt="" width="40" height="40"></a>
+          <a class="author" href="/erin-castellanos"><b>erin-castellanos</b></a>
+          <span>replied <a href="#c-erin-castellanos"><relative-time datetime="2026-09-17T09:00:00Z">2 days ago</relative-time></a></span>
+        </div>
+          <div class="comment-body markdown-body" data-voice="erin" data-expect="none">
+            <p>Every new hire sorted the long way round until the money ran out. My neighbour found every broken
+          hinge even when it made no difference. Our small team counted the back.</p>
+          </div>
+        </div>
+      </div>
+  </div></div>
+
+  <div class="js-timeline-item"><div class="js-comment-container discussion-timeline-item">
+      <div class="timeline-comment">
+        <div class="timeline-comment-header" data-chrome>
+          <a class="avatar-link" href="/frank-osei"><img class="avatar avatar-user" alt="" width="40" height="40"></a>
+          <a class="author" href="/frank-osei"><b>frank-osei</b></a>
+          <span>commented <a href="#c-frank-osei"><relative-time datetime="2026-09-18T08:00:00Z">2 days ago</relative-time></a></span>
+        </div>
+        <div class="comment-body markdown-body" data-voice="frank" data-expect="none">
+            <p>The reading group rebuilt a box of letters with more patience than I expected. Every new hire
+          rewrote an empty notebook and then wrote it all.</p>
+          </div>
+        <div class="comment-reactions" data-chrome><button>👍 3</button></div>
+      </div>
+      <div class="discussion-nested-comments">
+      </div>
+  </div></div>
+</div>
+</main>
+</body></html>

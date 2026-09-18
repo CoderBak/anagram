@@ -4,9 +4,13 @@
 
   Measured in a logged-in Chrome on github.com (2026-09-18): a comment is
   `div[data-testid^=comment-viewer-outer-box]`, its text `div[data-testid=markdown-body] > p`
-  (and `ul`, `pre`, `blockquote` beside the paragraphs). None of these containers is a declared
-  voice scope, so what keeps two comments apart is proximity — the paragraphs of two comments
-  are neither siblings nor cousins — and the author rows between them. The header row (avatar,
+  (and `ul`, `pre`, `blockquote` beside the paragraphs). None of these containers is a DECLARED
+  voice scope; each comment is RECOGNISED as a post (lib/dom/scope.ts): one of several like it,
+  each with its own byline — the <relative-time>, the avatar, the author link. Before that,
+  only proximity kept two comments apart — their paragraphs are neither siblings nor cousins —
+  and the author rows between them. Measured logged-out on 2026-09-19: the box is the only
+  child of `div.react-issue-comment` in a `div[data-testid^=timeline-row-border]` row, and the
+  rows are what repeats; here the boxes are siblings themselves. The header row (avatar,
   author link, "commented 2 days ago", the "Member" label), the reactions bar and the
   wrappers between the measured elements are modelled.
 

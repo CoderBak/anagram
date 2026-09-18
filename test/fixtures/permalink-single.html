@@ -1,0 +1,44 @@
+<!doctype html>
+<!--
+  A permalink page that shows ONE comment: a post with a byline and nobody like it. Synthetic
+  text; modelled (the "link to this comment" page of most forums and comment systems).
+
+  NOT recognised, on purpose (lib/dom/scope.ts): "one of several like it" has nothing to
+  compare, and one byline that was found proves nothing about the ones that were not — an
+  article header above a hand-rolled comment list would otherwise make the whole column "one
+  post", in which name rows no longer keep two people apart. The page is read as the bare
+  page always was: nobody is next to this comment to be confused with, and the cost is that
+  the post rule does not fire — a short, a full, a short and a full paragraph are TWO units
+  (×3 and ×1) where a recognised post would be one. This fixture states that limit; it is not
+  a wish.
+
+  Annotation: see x-timeline.html ("3+1": two units cover the block).
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: single-comment permalink page</title>
+<style>
+  body { max-width: 680px; margin: 30px auto; font: 16px/1.6 system-ui, sans-serif; }
+  .meta { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+  .body p { margin: 0 0 12px; }
+</style></head>
+<body>
+<div class="page">
+  <div class="crumbs" data-chrome><a href="/t/ferry">Back to the whole discussion</a></div>
+  <div class="comment" id="c-101">
+    <div class="meta" data-chrome><a href="/u/alice"><img class="avatar" alt="" width="32" height="32"></a> <a href="/u/alice">alice</a> <time datetime="2026-09-16T08:00:00Z">2 days ago</time></div>
+    <div class="body" data-voice="alice" data-expect="unit" data-parts="3+1">
+      <p>The harbour office repaired the back staircase for most of that spring. Our small team followed the
+            long way round long after it stopped being useful. The reading group rewrote.</p>
+      <p>The corner bakery sorted a jar of spare keys as if it had always been done that way. The harbour
+            office followed an empty notebook even when it made no difference. The ferry crew
+            described the same three questions with more patience than I expected. The corner bakery
+            questioned the same three questions although the.</p>
+      <p>A friend of mine measured a list of small debts as if it had always been done that way again.</p>
+      <p>The old printer ignored the water meter because nobody had asked them not to. My neighbour kept the
+            monthly figures long after it stopped being useful. The corner bakery rewrote the long
+            way round long after it stopped being useful. Every new hire counted the long way round
+            and then wrote it all down. A friend of mine described a.</p>
+    </div>
+    <div class="actions" data-chrome><span>Reply</span> · <span>Share</span></div>
+  </div>
+</div>
+</body></html>

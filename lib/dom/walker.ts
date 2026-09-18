@@ -19,7 +19,9 @@
 //           window — no orphans inside one voice. A merge never crosses a voice
 //           boundary: every run has a SCOPE (its post, quotation, figure or quoted card;
 //           else the page) and merges only within it, an embedded scope interrupting the
-//           text around it without ending it. A declared scope whose own prose fits ONE
+//           text around it without ending it. A scope is declared by the markup or, where
+//           a site declares nothing, recognised by its structure — one of several like
+//           it, each with its own byline (lib/dom/scope.ts). A scope whose own prose fits ONE
 //           window is a POST and becomes one unit whole, its full paragraphs included; a
 //           longer one is an article and keeps a unit per full paragraph. What a short
 //           run IS decides its part: a further line of the block being read and a
@@ -64,6 +66,7 @@ import {
   MIN_LINE_WORDS,
   MAX_UNIT_TEXT_CHARS,
 } from "./text";
+import { type Scopes, createScopes } from "./scope";
 import { WINDOW_CHARS } from "../capture/windows";
 import { MARK_ATTR } from "../types";
 
@@ -729,40 +732,17 @@ function compatible(a: Element, b: Element): boolean {
 }
 
 /**
- * VOICE BOUNDARIES. Proximity alone merged two sibling <article>s by different
- * authors into one verdict describing nobody, and an author with the person they
- * quote. Every run therefore belongs to a SCOPE — the nearest ancestor-or-self of
- * its container that the markup declares to be one voice — and runs merge only
- * inside the same scope (no match: the page itself is the scope).
- *
- *   article, [role=article] — one post: X and Mastodon statuses, WordPress comments
- *                             (`ol.comment-list > li > article`), Discourse and
- *                             XenForo posts, LinkedIn feed cards; Reddit puts
- *                             role=article on each comment's <details>.
- *   blockquote              — the person being quoted, not the author quoting them.
- *   figure                  — a caption or a pull quote set into the text; on news
- *                             sites the caption is the picture desk's, not the writer's.
- *   [role=link]             — a whole card that is one link: the QUOTED post on X
- *                             sits inside the quoting post's <article>, in a
- *                             `div[role=link]`; Bluesky has no <article> at all, every
- *                             feed item and every quote embed is such a div. (An inline
- *                             `<span role=link>` never contains a run's container.)
- *
- * Not <li>: bullet lists inside one author's text are what merging is for. Not
- * <td>: forums laid out with tables (Hacker News) keep each comment several levels
- * deep in a cell of its own, which proximity already separates, while a prose table
- * is one author's. One closest() per run; shadow hosts are climbed through.
+ * VOICE BOUNDARIES. Every run belongs to a SCOPE — its post, comment, quotation, figure or
+ * quoted card, declared by the markup or recognised by its structure (lib/dom/scope.ts);
+ * else the page — and runs merge only inside one scope. The answers are cached per scan,
+ * and a scan asks twice: `wholePost` before the walk, the assembler during it. The first
+ * to ask creates the scopes of the scan and the assembler takes them over, so the page is
+ * surveyed for bylines once.
  */
-const VOICE_SCOPE_SELECTOR = 'article,[role="article"],blockquote,figure,[role="link"]';
+let scanScopes: Scopes | null = null;
 
-function scopeOf(el: Element): Element | null {
-  for (let cur: Element | null = el; cur; ) {
-    const hit = cur.closest(VOICE_SCOPE_SELECTOR);
-    if (hit) return hit;
-    const root = cur.getRootNode();
-    cur = root instanceof ShadowRoot ? root.host : null;
-  }
-  return null;
+function scopesOfScan(): Scopes {
+  return (scanScopes ??= createScopes());
 }
 
 /** `root` holds `el` in the COMPOSED tree: contains() alone stops at a shadow root. */
@@ -792,7 +772,7 @@ const WHOLE_POST_CHARS = 2 * WINDOW_CHARS;
  * so a mutation in a long article never re-reads the article.
  */
 function wholePost(root: Element): Element {
-  const scope = scopeOf(root);
+  const scope = scopesOfScan().of(root);
   if (!scope || scope === root) return root;
   const all = scope.textContent ?? "";
   // Pretty-printed markup is mostly indentation; far beyond the bound it is not worth collapsing.
@@ -870,10 +850,10 @@ function modelSized(runs: Run[]): Run[][] {
  * short runs to one section keeps them out of it. Paragraphs on both sides of a list whose
  * items sit a level deeper still find each other, because ANY earlier run will do.
  */
-function standingTogether(runs: Run[]): Run[][] {
+function standingTogether(runs: Run[], together: (a: Element, b: Element) => boolean): Run[][] {
   const places: Run[][] = [];
   for (const r of runs) {
-    const home = places.find((place) => place.some((other) => compatible(other.container, r.container)));
+    const home = places.find((place) => place.some((other) => together(other.container, r.container)));
     if (home) home.push(r);
     else places.push([r]);
   }
@@ -923,6 +903,20 @@ function createAssembler(
   const emitted: { unit: Unit; at: number }[] = [];
   const stack: Frame[] = [];
   let runIndex = 0;
+  const scopes = scopesOfScan();
+  scanScopes = null; // the next scan looks at the page anew
+  const scopeOf = (el: Element): Element | null => scopes.of(el);
+
+  /**
+   * Do two runs of one frame stand in the same place? Proximity (`compatible`) everywhere.
+   * Inside a RECOGNISED post also when nothing but that person's text lies between them
+   * (scope.ts, `oneBody`): there proximity is not what keeps a voice together — the post is.
+   * Declared scopes and the bare page are read exactly as before.
+   */
+  function together(f: Frame, a: Element, b: Element): boolean {
+    if (compatible(a, b)) return true;
+    return f.scope !== null && scopes.recognised(f.scope) && scopes.oneBody(a, b, f.scope);
+  }
 
   function emit(runs: Run[]): void {
     const parts: UnitPart[] = runs.map((r) => ({ nodes: r.nodes, container: r.container }));
@@ -984,7 +978,7 @@ function createAssembler(
     if (g.length > 0 && wordsOf(g) >= MIN_UNIT_WORDS) {
       for (const runs of modelSized(g)) out(f, runs);
     } else if (g.length > 0) {
-      const beside = (a: Run, b: Run): boolean => compatible(a.container, b.container);
+      const beside = (a: Run, b: Run): boolean => together(f, a.container, b.container);
       if (f.prev && beside(f.prev[f.prev.length - 1], g[0]) && joinedChars([...f.prev, ...g]) <= WINDOW_CHARS) {
         f.prev.push(...g);
       } else if (following && beside(g[g.length - 1], following) && joinedChars([...g, following]) <= WINDOW_CHARS) {
@@ -1026,28 +1020,54 @@ function createAssembler(
    * grouped. A scope the walk cannot see all of is read as one too (see wholePost).
    */
   function settle(f: Frame): void {
-    close(f);
+    conclude(f);
     f.unread = []; // nothing new came to stand beside them
+  }
+
+  /** Decide what the prose read so far in a scope was — a post or an article — and let it
+   *  go. At the end of the scope (settle), and in a recognised post at a row of the card
+   *  (see `short`): what comes after that row is read as a text of its own. */
+  function conclude(f: Frame): void {
+    close(f);
     if (f.scope === null) return;
     if (!f.partial && wordsOf(f.prose) >= MIN_UNIT_WORDS && joinedChars(f.prose) <= WINDOW_CHARS) {
-      for (const runs of standingTogether(f.prose)) if (wordsOf(runs) >= MIN_UNIT_WORDS) release(runs);
-      return;
+      for (const runs of standingTogether(f.prose, (a, b) => together(f, a, b))) if (wordsOf(runs) >= MIN_UNIT_WORDS) release(runs);
+    } else {
+      // A post that has just outgrown the window while a unit still owns ALL of what it was
+      // (an answer streamed paragraph by paragraph does this once): its paragraphs are
+      // about to get chips of their own, so that owner goes first.
+      const owned = f.prose.filter((r) => r.claimed);
+      if (
+        !f.partial &&
+        owned.length > 1 &&
+        owned.length < f.prose.length &&
+        wordsOf(owned) >= MIN_UNIT_WORDS &&
+        joinedChars(owned) <= WINDOW_CHARS &&
+        retake(owned.flatMap((r) => r.nodes))
+      ) {
+        for (const r of owned) r.claimed = false;
+      }
+      for (const runs of f.held) release(runs);
     }
-    // A post that has just outgrown the window while a unit still owns ALL of what it was
-    // (an answer streamed paragraph by paragraph does this once): its paragraphs are
-    // about to get chips of their own, so that owner goes first.
-    const owned = f.prose.filter((r) => r.claimed);
-    if (
-      !f.partial &&
-      owned.length > 1 &&
-      owned.length < f.prose.length &&
-      wordsOf(owned) >= MIN_UNIT_WORDS &&
-      joinedChars(owned) <= WINDOW_CHARS &&
-      retake(owned.flatMap((r) => r.nodes))
-    ) {
-      for (const r of owned) r.claimed = false;
-    }
-    for (const runs of f.held) release(runs);
+    f.prose = [];
+    f.held = [];
+  }
+
+  /**
+   * A label inside a recognised post stands AMONG THE TEXT when it is a sibling of one of
+   * the post's paragraphs (or of the list one of its items sits in): the bold
+   * `<p><b>二、后来发生的事</b></p>` in the middle of a Zhihu answer, the unpunctuated
+   * three-to-seven-word <p>s between the lists of a V2EX topic. That is a pseudo-heading the
+   * author wrote, and it cuts nothing.
+   */
+  function amongTheText(f: Frame, label: Element): boolean {
+    const home = label.parentElement;
+    return f.prose.some((r) => {
+      const at = r.container.parentElement;
+      if (at === home) return true;
+      const tag = tagOf(r.container);
+      return (tag === "LI" || tag === "DT" || tag === "DD") && at !== null && at.parentElement === home;
+    });
   }
 
   /**
@@ -1069,9 +1089,19 @@ function createAssembler(
     return null;
   }
 
+  /**
+   * The frame of `scope`, opened if the walk has just entered it. A DECLARED scope inside
+   * another text — a quotation, a caption, a quoted post — interrupts that text and no more
+   * (unwindTo). A RECOGNISED post is a peer, one of several like it, and it begins with a
+   * byline: on the bare page that byline was a name row or a link row and ended the group
+   * being read, and it still has to. A chat transcript whose name rows carry an avatar has
+   * every such row recognised as a "post" of its own; were it merely to interrupt, alice's
+   * last message and bob's first — siblings, both short — would be read together across it.
+   */
   function enter(scope: Element | null): Frame {
     let f = unwindTo(scope);
     if (!f) {
+      if (stack.length > 0 && scopes.recognised(scope)) cut(stack[stack.length - 1]);
       const partial = scope !== null && !composedContains(walkRoot, scope);
       f = { scope, group: [], block: null, pending: null, prev: null, prose: [], held: [], partial, unread: [], live: false };
       stack.push(f);
@@ -1093,7 +1123,11 @@ function createAssembler(
       return;
     }
     const f = unwindTo(scopeOf(at));
-    if (!f) return;
+    if (f) cut(f);
+  }
+
+  /** Nothing of `f` is merged across this point of the walk. */
+  function cut(f: Frame): void {
     if (f.scope === null) f.unread = []; // on the page nothing reaches across a barrier: never needed
     if (f.unread.length > 0) f.unread.push(null); // in a post it ends nothing, in an article it must keep its place
     else close(f);
@@ -1204,7 +1238,7 @@ function createAssembler(
     const last = f.group.length > 0 ? f.group[f.group.length - 1] : f.prev ? f.prev[f.prev.length - 1] : null;
     if (prose) {
       f.pending = null;
-      if (last && !compatible(last.container, r.container)) close(f); // another section
+      if (last && !together(f, last.container, r.container)) close(f); // another section
       push(f, r);
       return;
     }
@@ -1225,9 +1259,20 @@ function createAssembler(
     //   · in list markup it is an item or a term ("Sea salt", a glossary <dt>);
     //   · buried deeper than the text, it is a widget's crumb — the "Play" link of the
     //     live samples between two paragraphs on MDN, which has no <article>.
+    //
+    // A RECOGNISED post is a card of several boxes, and only one of them is the text. Steam
+    // sets "26 people found this review helpful / 3 people found this review funny" in a box
+    // above "Recommended", "1,204 hrs on record" and "Posted: 12 September", and the review
+    // under those; with every label transparent the two counter lines were read as the
+    // opening lines of the review, and one 333-word review outgrew its window by them. So
+    // there a label is transparent only AMONG THE TEXT. Standing where the text stands
+    // without being one of its paragraphs it is a row of the card: what was read so far is
+    // concluded, exactly where the bare page would have ended the group, and the post rule
+    // does not reach across it.
     const tag = tagOf(r.container);
-    if (f.scope === null && tag !== "LI" && tag !== "DT" && last && compatible(last.container, r.container)) {
-      close(f);
+    if (tag !== "LI" && tag !== "DT" && last && compatible(last.container, r.container)) {
+      if (f.scope === null) close(f);
+      else if (scopes.recognised(f.scope) && !amongTheText(f, r.container)) conclude(f);
     }
     if (f.group.length === 0 && shape.letterWords >= MIN_LINE_WORDS) {
       // "I quit my job" — the unpunctuated first line of a post. It opens the group

@@ -14,9 +14,18 @@
   action bar are modelled. The prose is generated English filler (the walker does not care
   what language it reads); the chrome keeps the site's own labels.
 
-  None of these containers is a declared voice scope, so what keeps two answers apart is
-  proximity and the link-dense rows between them. Answer 2 is too short to be judged and
-  must not borrow from its neighbours; answer 3 is three short paragraphs → one unit.
+  None of these containers is a DECLARED voice scope. Each `div.List-item` is RECOGNISED as
+  a post (lib/dom/scope.ts): one of several like it, each with its own byline — the
+  `img.Avatar` and the name link in `div.AuthorInfo`. Before that, only proximity and the
+  link-dense rows kept two answers apart, and the bold `<p><b>二、后来发生的事</b></p>` in the
+  middle of answer 1 — a label, on the bare page indistinguishable from a name row — ended
+  the group of short paragraphs before it: the twelve short paragraphs were one unit (×12),
+  and the 39-word paragraph after the label had to join the full one that follows (×2).
+  Inside one person's answer the label is transparent, as it always was inside an
+  <article>: the 39-word paragraph is read with the short ones before it (×13) and the full
+  paragraph keeps a chip of its own. Same 12 units, same 1839 words judged, the label still
+  in none of them. Answer 2 is too short to be judged and must not borrow from its
+  neighbours; answer 3 is three short paragraphs → one unit.
 
   Annotation: see x-timeline.html.
 -->

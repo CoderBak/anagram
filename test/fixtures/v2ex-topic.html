@@ -1,0 +1,111 @@
+<!doctype html>
+<!--
+  V2EX-style topic: an opening post and table-laid replies, no <article> anywhere. Synthetic text.
+
+  Measured in the owner's logged-in Chrome (2026-09-18): a reply is `div.cell[id^="r_"] >
+  table > tbody > tr > td` × 3 — avatar cell, spacer, content cell — the content cell holding
+  `strong > a` (name), `span.ago` and `div.reply_content` with <br>-separated lines. The topic
+  body is `div.topic_content > div.markdown_body` = `p,p,p,ul,p,ul,p,ul,p,ul,p,p,pre`; of it
+  only the first two <p> (52 words) were judged: the list items are short, and the three-to-
+  seven-word unpunctuated <p>s between the lists — labels, on the bare page — ended the group
+  each time. The topic header (avatar, `/member/` link, `span[title]` with the moment), the
+  two `div.box`es and the last reply's class `inner` (V2EX drops the bottom border that way)
+  are modelled from the public markup; the site is behind a bot check from here.
+
+    topic  RECOGNISED as the opening post: a bylined box with the thread right after it. Its
+           label <p>s stand among the text and cut nothing: two paragraphs, three lists of
+           three items and a closing paragraph → ONE unit ×12, the labels in none of it
+    bob    two <br>-separated lines → one unit ×2      carol  short → nothing
+    dan    the LAST reply is `div.inner`, not `div.cell`: not like its siblings, so it is not
+           recognised and is read as the bare page reads it. Short → nothing; nobody is merged
+           with it, because the replies around it are posts.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="zh"><head><meta charset="utf-8"><title>Fixture: V2EX-style topic</title>
+<style>
+  body { margin: 0; font: 14px/1.6 "Helvetica Neue", sans-serif; background: #e2e2e2; }
+  #Main { width: 770px; margin: 20px auto; }
+  .box { background: #fff; border-radius: 3px; }
+  .cell, .inner, .header { padding: 10px; border-bottom: 1px solid #e2e2e2; }
+  .inner { border-bottom: 0; }
+  .fr { float: right; }
+  .sep20 { height: 20px; } .sep5 { height: 5px; }
+  .gray, .ago { color: #999; font-size: 12px; }
+  a { color: inherit; text-decoration: none; }
+</style></head>
+<body>
+<div id="Main">
+  <div class="box">
+    <div class="header" data-chrome>
+      <div class="fr"><a href="/member/alice"><img class="avatar" alt="" width="73" height="73"></a></div>
+      <a href="/">V2EX</a> <span class="chevron">›</span> <a href="/go/programmer">程序员</a>
+      <div class="sep5"></div>
+      <h1>Moving a small team off a shared spreadsheet</h1>
+      <small class="gray"><a href="/member/alice">alice</a> · <span title="2026-09-18 07:00:00 +08:00">2 小时前</span> · 1234 次点击</small>
+    </div>
+    <div class="cell"><div class="topic_content"><div class="markdown_body" data-voice="alice" data-expect="unit" data-parts="12">
+        <p>Every new hire postponed the water meter which surprised everyone but me. A retired teacher counted
+            the water meter which surprised everyone but me. The old printer measured the back.</p>
+        <p>The survey team watched the winter schedule before anyone else arrived. The committee counted the
+            missing invoice and then wrote it all.</p>
+        <p data-chrome>What we tried first</p>
+        <ul>
+          <li>Our upstairs tenant carried a jar of spare keys</li>
+          <li>The night shift borrowed two folding chairs on the last</li>
+          <li>The reading group found two folding chairs which surprised</li>
+        </ul>
+        <p data-chrome>What went wrong with it</p>
+        <ul>
+          <li>The night shift counted the winter schedule and then</li>
+          <li>My neighbour kept a map of the valley even when</li>
+          <li>A retired teacher followed the back staircase with more</li>
+        </ul>
+        <p data-chrome>Where we ended up</p>
+        <ul>
+          <li>The ferry crew repaired the back staircase although the</li>
+          <li>The old printer found a jar of spare keys in</li>
+          <li>Our upstairs tenant described the back staircase with more</li>
+        </ul>
+        <p>Every new hire repaired a shelf of manuals which surprised everyone but me. The corner bakery
+            described a map of the valley and nobody noticed.</p>
+        <pre><code>$ tool export --sheet team --out team.csv</code></pre>
+    </div></div></div>
+  </div>
+  <div class="sep20"></div>
+  <div class="box">
+    <div class="cell" data-chrome><span class="gray">3 条回复</span></div>
+
+    <div id="r_1" class="cell"><table cellpadding="0" cellspacing="0" border="0" width="100%"><tbody><tr>
+      <td width="48" valign="top" align="center"><img class="avatar" alt="" width="48" height="48"></td>
+      <td width="10" valign="top"></td>
+      <td width="auto" valign="top" align="left"><div class="fr" data-chrome><span class="no">1</span></div>
+        <strong data-chrome><a href="/member/bob" class="dark">bob</a></strong> <span class="ago" title="2026-09-18 07:30:00 +08:00" data-chrome>1 小时前</span>
+        <div class="sep5"></div>
+        <div class="reply_content" data-voice="bob" data-expect="unit" data-parts="2">My first manager rewrote the long way round which surprised everyone but me. Our upstairs tenant
+            found the long way round while the rain came through the roof and useful.<br>A friend of mine carried the same three questions although the rules said otherwise. My first
+            manager measured two folding chairs as if it had always been done.</div></td>
+    </tr></tbody></table></div>
+
+    <div id="r_2" class="cell"><table cellpadding="0" cellspacing="0" border="0" width="100%"><tbody><tr>
+      <td width="48" valign="top" align="center"><img class="avatar" alt="" width="48" height="48"></td>
+      <td width="10" valign="top"></td>
+      <td width="auto" valign="top" align="left"><div class="fr" data-chrome><span class="no">2</span></div>
+        <strong data-chrome><a href="/member/carol" class="dark">carol</a></strong> <span class="ago" title="2026-09-18 08:00:00 +08:00" data-chrome>1 小时前</span>
+        <div class="sep5"></div>
+        <div class="reply_content" data-voice="carol" data-expect="none">My first manager measured an empty notebook and nobody noticed for a month. A friend of mine rewrote
+            the missing invoice which surprised everyone.</div></td>
+    </tr></tbody></table></div>
+
+    <div id="r_3" class="inner"><table cellpadding="0" cellspacing="0" border="0" width="100%"><tbody><tr>
+      <td width="48" valign="top" align="center"><img class="avatar" alt="" width="48" height="48"></td>
+      <td width="10" valign="top"></td>
+      <td width="auto" valign="top" align="left"><div class="fr" data-chrome><span class="no">3</span></div>
+        <strong data-chrome><a href="/member/dan" class="dark">dan</a></strong> <span class="ago" title="2026-09-18 08:20:00 +08:00" data-chrome>1 小时前</span>
+        <div class="sep5"></div>
+        <div class="reply_content" data-voice="dan" data-expect="none">The old printer borrowed the long way round long after it stopped being useful. The reading group
+            rebuilt a jar of spare keys as if it had always been done that way again.</div></td>
+    </tr></tbody></table></div>
+  </div>
+</div>
+</body></html>

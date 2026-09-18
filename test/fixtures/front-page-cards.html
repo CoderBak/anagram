@@ -1,0 +1,72 @@
+<!doctype html>
+<!--
+  A front page of teaser cards, no <article>: div-soup "river" of stories. Synthetic text,
+  modelled on the card markup of news and magazine front pages (thumbnail link, title link,
+  teaser, author and <time>).
+
+  Every card carries a byline, and treating each as a voice of its own is right: they are
+  different articles, mostly by different people. Cards never add up — two short teasers side
+  by side get nothing — a teaser long enough is judged by itself, and the two short
+  paragraphs of ONE card are read together.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: front page of teaser cards</title>
+<style>
+  body { max-width: 1000px; margin: 20px auto; font: 15px/1.5 Georgia, serif; }
+  .river { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .title { display: block; font: 700 18px/1.25 system-ui, sans-serif; margin: 6px 0; }
+  .meta { font: 12px system-ui, sans-serif; color: #666; }
+  .teaser p { margin: 0 0 6px; }
+  a { color: inherit; text-decoration: none; }
+</style></head>
+<body>
+<div class="front"><div class="river">
+
+    <div class="card">
+      <a class="thumb" href="/story/ferry-vote"><img alt="" width="320" height="180"></a>
+      <a class="title" href="/story/ferry-vote" data-chrome>Harbour town votes to keep its ferry</a>
+      <div class="teaser" data-voice="alice" data-expect="none"><p>The committee rewrote the same three questions because nobody had asked them not to. The survey team
+            described a jar of spare keys as if it had always been done.</p></div>
+      <div class="meta" data-chrome><a href="/author/alice">Alice Moreau</a> <time datetime="2026-09-18T06:00:00Z">3 hours ago</time></div>
+    </div>
+
+    <div class="card">
+      <a class="thumb" href="/story/press-flood"><img alt="" width="320" height="180"></a>
+      <a class="title" href="/story/press-flood" data-chrome>What the flood left on the high shelves</a>
+      <div class="teaser" data-voice="bob" data-expect="none"><p>My neighbour followed the long way round for most of that spring. The night shift carried the back
+            staircase in the hour after lunch. The harbour office carried the back staircase and
+            then wrote.</p></div>
+      <div class="meta" data-chrome><a href="/author/bob">Bob Okafor</a> <time datetime="2026-09-18T06:00:00Z">3 hours ago</time></div>
+    </div>
+
+    <div class="card">
+      <a class="thumb" href="/story/oat-biscuits"><img alt="" width="320" height="180"></a>
+      <a class="title" href="/story/oat-biscuits" data-chrome>The biscuits for when there is nothing in the house</a>
+      <div class="teaser" data-voice="carol" data-expect="unit" data-parts="2"><p>The harbour office questioned every broken hinge until the money ran out. Our small team questioned
+            the second draft even when it made no difference and that way.</p><p>The ferry crew repaired an empty notebook and nobody noticed for a month. The reading group ignored
+            an empty notebook until the money ran out and it.</p></div>
+      <div class="meta" data-chrome><a href="/author/carol">Carol Lindqvist</a> <time datetime="2026-09-18T06:00:00Z">3 hours ago</time></div>
+    </div>
+
+    <div class="card">
+      <a class="thumb" href="/story/retry-job"><img alt="" width="320" height="180"></a>
+      <a class="title" href="/story/retry-job" data-chrome>The retry job that billed a region twice</a>
+      <div class="teaser" data-voice="dan" data-expect="unit" data-parts="1"><p>The corner bakery questioned the same three questions with more patience than I expected. The
+            committee measured a jar of spare keys and then wrote it all down. The ferry crew
+            measured the back staircase although the rules said otherwise. The reading group kept
+            the second draft for most of that spring. My first manager ignored a list of small debts
+            on the last.</p></div>
+      <div class="meta" data-chrome><a href="/author/dan">Dan Whitfield</a> <time datetime="2026-09-18T06:00:00Z">3 hours ago</time></div>
+    </div>
+
+    <div class="card">
+      <a class="thumb" href="/story/workshop"><img alt="" width="320" height="180"></a>
+      <a class="title" href="/story/workshop" data-chrome>Three things before your first public workshop</a>
+      <div class="teaser" data-voice="erin" data-expect="none"><p>The night shift postponed the winter schedule and nobody noticed for a month. The committee sorted
+            every broken hinge which surprised everyone but me. A retired teacher ignored the same
+            three.</p></div>
+      <div class="meta" data-chrome><a href="/author/erin">Erin Castellanos</a> <time datetime="2026-09-18T06:00:00Z">3 hours ago</time></div>
+    </div>
+</div></div>
+</body></html>

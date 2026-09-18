@@ -1,0 +1,80 @@
+<!doctype html>
+<!--
+  ONE author's article on a page without <article>: paragraphs, a bulleted list, a prose
+  table, a list of linked projects with small icons — and a comment thread under it. Synthetic
+  text, modelled. This is the old concern about <li> and <td>: they repeat, and they are one
+  author's text; merging their short items is what merging is for.
+
+  Nothing in the article is a post. Its bullets and table rows carry no byline. The two
+  paragraphs with a <time> in them and the bullets that thank somebody by a linked name have
+  that evidence IN THE MIDDLE OF A SENTENCE, which is no byline. The icons are avatar-sized
+  (27 px, as on Wikipedia's sister-project lists) and the site does not call them avatars.
+  And although a comment thread follows, the article is no "opening post": it has section
+  headings (a Hugging Face paper page read its AI-generated summary and its abstract as one
+  post that way). So the article is read exactly as it always was — and the two short
+  comments under it are posts, each with a byline of its own, and are never added up.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: one author's article with a list and a table</title>
+<style>
+  body { max-width: 700px; margin: 30px auto; font: 17px/1.6 Georgia, serif; }
+  .meta { display: flex; gap: 8px; align-items: center; font: 13px system-ui, sans-serif; }
+  td { padding: 4px 8px; vertical-align: top; border-top: 1px solid #ddd; }
+  ul.projects { list-style: none; padding: 0; }
+  .comment { margin: 16px 0; font: 15px/1.5 system-ui, sans-serif; }
+</style></head>
+<body>
+<div class="page"><div class="column">
+  <div class="story">
+    <h1>How we moved the timetable off paper</h1>
+    <div class="meta" data-chrome><a href="/u/alice"><img class="avatar" alt="" width="32" height="32"></a> <a href="/u/alice">Alice Moreau</a> <time datetime="2026-09-10T08:00:00Z">2 days ago</time></div>
+    <div class="text" data-voice="author">
+      <p data-expect="unit">The ferry crew counted a jar of spare keys while the rain came through the roof. The survey team
+            sorted the missing invoice for most of that spring. The old printer followed the back
+            staircase in the hour after lunch. The survey team found the same three questions and
+            nobody noticed for a month. The ferry crew borrowed the monthly figures because.</p>
+      <p data-expect="unit">On <time datetime="2026-03-03">the third of March</time> My neighbour ignored an empty notebook on the last working day of the year. A friend of mine carried
+            a map of the valley.</p>
+      <p data-expect="unit">By <time datetime="2026-06-01">the first of June</time> The survey team rewrote every broken hinge because nobody had asked them not to. The old printer
+            borrowed every broken hinge for most of that spring.</p>
+      <h2>What changed</h2>
+      <ul>
+        <li data-expect="unit">The harbour office rebuilt the second draft before anyone else arrived, as <a href="/u/bob">@bob</a> suggested in the spring</li>
+        <li data-expect="unit">Our small team postponed the second draft and then wrote it all, which <a href="/u/carol">@carol</a> had asked for since last year</li>
+        <li data-expect="unit">Our small team found the back staircase before anyone else arrived and being useful.</li>
+        <li data-expect="unit">The committee kept two folding chairs as if it had always been done</li>
+      </ul>
+      <h2>What it cost</h2>
+      <table><tbody>
+        <tr data-parts="2"><td data-expect="unit">The reading group postponed a map of the valley and then wrote it all down. The old printer
+            postponed a map of the valley and then wrote it.</td><td data-expect="unit">The committee sorted the back staircase long after it stopped being useful. Our upstairs tenant
+            followed every broken hinge and then wrote it all down and lunch.</td></tr>
+        <tr data-parts="2"><td data-expect="unit">The night shift postponed a list of small debts without saying a word about it. My first manager
+            described an empty notebook before anyone else arrived.</td><td data-expect="unit">My neighbour ignored the monthly figures for most of that spring. A retired teacher postponed the
+            monthly figures which surprised everyone but me. The survey team rebuilt the winter.</td></tr>
+      </tbody></table>
+      <h2>Related projects</h2>
+      <ul class="projects">
+        <li data-expect="unit"><img alt="" width="27" height="27"> My neighbour ignored the same three questions which surprised everyone but me and me</li>
+        <li data-expect="unit"><img alt="" width="27" height="27"> The landlord watched the monthly figures on the last working day of the year again</li>
+        <li data-expect="unit"><img alt="" width="27" height="27"> Our small team postponed a map of the valley in the hour after</li>
+        <li data-expect="unit"><img alt="" width="27" height="27"> The night shift described the water meter which surprised everyone but me</li>
+      </ul>
+    </div>
+  </div>
+  <div class="comments">
+    <h2>2 comments</h2>
+    <div class="comment">
+      <div class="meta" data-chrome><a href="/u/dan"><img class="avatar" alt="" width="32" height="32"></a> <a href="/u/dan">dan</a> <time datetime="2026-09-11T08:00:00Z">2 days ago</time></div>
+      <div class="body" data-voice="dan" data-expect="none"><p>The landlord described a list of small debts until the money ran out. Every new hire described a jar
+            of spare keys before anyone else arrived. The corner bakery rebuilt.</p></div>
+    </div>
+    <div class="comment">
+      <div class="meta" data-chrome><a href="/u/erin"><img class="avatar" alt="" width="32" height="32"></a> <a href="/u/erin">erin</a> <time datetime="2026-09-11T09:00:00Z">2 days ago</time></div>
+      <div class="body" data-voice="erin" data-expect="none"><p>Every new hire borrowed an empty notebook until the money ran out. The night shift rebuilt a jar of
+            spare keys while the rain came through the roof. The committee sorted the long.</p></div>
+    </div>
+  </div>
+</div></div>
+</body></html>

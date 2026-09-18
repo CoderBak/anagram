@@ -1,0 +1,94 @@
+<!doctype html>
+<!--
+  Comments as list items, no <article>: the pre-HTML5 WordPress comment walker (also what
+  Disqus-style and many hand-rolled widgets emit), and a flat avatar-only list. Synthetic text.
+
+  The WordPress markup is the documented output of `wp_list_comments()` with the `div` style,
+  as thousands of older themes still ship it: `ol.commentlist > li.comment > div.comment-body >
+  div.comment-author.vcard (img.avatar, cite.fn) + div.comment-meta.commentmetadata (a linked
+  date in plain words) + the text + div.reply`, replies in `ul.children` inside the parent's
+  <li>. Not measured on a live page. Every other <li> carries `odd alt thread-odd …` after the
+  leading `comment`, which is why "like it" looks at the leading class token only.
+
+  <li> is NOT a scope by itself — a bullet list is one author's text (recipe-faq.html) — but an
+  <li> with a byline of its own, among others like it, is a comment.
+
+    alice  a short, a full, a short and a full paragraph → ONE unit ×4 (it was two: ×3, ×1)
+      bob  the only reply under alice (`ul.children > li.comment`) → a post of its own by being
+           shaped like the comment around it. Short → nothing, and never a part of alice's
+    carol  a full paragraph → a unit
+
+  The second list is the hard case: every note is bare text in its own <li>, siblings, with
+  NOTHING but an avatar image between two of them — no name, no date, no word. Proximity
+  alone read erin's and frank's short notes together as one unit of two voices (they are
+  siblings); each <li> with its own avatar is a post, and they are never added up.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: comments as list items</title>
+<style>
+  body { max-width: 700px; margin: 30px auto; font: 16px/1.6 Georgia, serif; }
+  ol.commentlist, ul.children, ul.notes { list-style: none; padding-left: 0; }
+  ul.children { padding-left: 32px; }
+  .comment-meta, .reply { font: 12px system-ui, sans-serif; }
+  .says { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(1px, 1px, 1px, 1px); }
+  ul.notes li { margin: 8px 0; }
+</style></head>
+<body>
+<div id="comments">
+  <h3 id="comments-title">3 Responses</h3>
+  <ol class="commentlist">
+
+    <li class="comment even thread-even depth-1" id="comment-11">
+      <div id="div-comment-11" class="comment-body">
+        <div class="comment-author vcard" data-chrome><img alt="" class="avatar avatar-32 photo" height="32" width="32"> <cite class="fn">Alice Moreau</cite> <span class="says">says:</span></div>
+        <div class="comment-meta commentmetadata" data-chrome><a href="#comment-11">March 3, 2014 at 10:12 am</a></div>
+        <div class="comment-text" data-voice="alice" data-expect="unit" data-parts="4"><p>Every new hire postponed the back staircase with more patience than I expected. My first manager
+            postponed the winter schedule as if it had always been done that way again.</p><p>A friend of mine counted a box of letters and then wrote it all down. The landlord repaired a shelf
+            of manuals with more patience than I expected. Every new hire questioned a map of the
+            valley before anyone else arrived. The ferry crew carried the second draft and then
+            wrote it all down again.</p><p>The night shift kept the water meter long after it stopped being useful. The reading group
+            questioned the water meter.</p><p>The old printer followed a map of the valley and nobody noticed for a month. A friend of mine
+            counted every broken hinge because nobody had asked them not to. A retired teacher
+            followed a list of small debts although the rules said otherwise. Every new hire
+            described a jar of spare keys for most of that spring and useful.</p></div>
+        <div class="reply" data-chrome><a class="comment-reply-link" href="#respond">Reply</a></div>
+      </div>
+      <ul class="children">
+    <li class="comment byuser bypostauthor odd alt depth-2" id="comment-12">
+      <div id="div-comment-12" class="comment-body">
+        <div class="comment-author vcard" data-chrome><img alt="" class="avatar avatar-32 photo" height="32" width="32"> <cite class="fn">Bob Okafor</cite> <span class="says">says:</span></div>
+        <div class="comment-meta commentmetadata" data-chrome><a href="#comment-12">March 3, 2014 at 10:12 am</a></div>
+        <div class="comment-text" data-voice="bob" data-expect="none"><p>The ferry crew carried the water meter with more patience than I expected. The reading group
+            described a box of letters until the money ran out. Every new hire borrowed.</p></div>
+        <div class="reply" data-chrome><a class="comment-reply-link" href="#respond">Reply</a></div>
+      </div>
+    </li>
+      </ul>
+    </li>
+
+    <li class="comment odd alt thread-odd thread-alt depth-1" id="comment-13">
+      <div id="div-comment-13" class="comment-body">
+        <div class="comment-author vcard" data-chrome><img alt="" class="avatar avatar-32 photo" height="32" width="32"> <cite class="fn">Carol Lindqvist</cite> <span class="says">says:</span></div>
+        <div class="comment-meta commentmetadata" data-chrome><a href="#comment-13">March 3, 2014 at 10:12 am</a></div>
+        <div class="comment-text" data-voice="carol" data-expect="unit" data-parts="1"><p>The survey team sorted a box of letters with more patience than I expected. The old printer measured
+            the missing invoice although the rules said otherwise. Our upstairs tenant watched a map
+            of the valley and nobody noticed for a month. The old printer rebuilt a shelf of manuals
+            while the rain came through the roof. My first manager rewrote an empty.</p></div>
+        <div class="reply" data-chrome><a class="comment-reply-link" href="#respond">Reply</a></div>
+      </div>
+    </li>
+  </ol>
+</div>
+<div id="guestbook">
+  <h3>Guestbook</h3>
+  <ul class="notes">
+    <li class="note"><img class="avatar" alt="" width="24" height="24"> <span data-voice="erin" data-expect="none">The harbour office watched the missing invoice before anyone else arrived. The corner bakery ignored
+            the back staircase which surprised everyone but me. The survey team carried an empty
+            notebook.</span></li>
+    <li class="note"><img class="avatar" alt="" width="24" height="24"> <span data-voice="frank" data-expect="none">The reading group questioned two folding chairs without saying a word about it. The committee
+            rebuilt a map of the valley without saying a word about it. The harbour office borrowed
+            the.</span></li>
+  </ul>
+</div>
+</body></html>

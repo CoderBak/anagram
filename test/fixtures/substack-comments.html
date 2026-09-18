@@ -1,0 +1,122 @@
+<!doctype html>
+<!--
+  Substack-style comments: nested `div.comment`s OUTSIDE the post's <article>. Synthetic text.
+
+  Measured in the owner's logged-in Chrome (2026-09-18): a comment is `div.comment`, replies
+  nest inside their parent's; `div.comment-meta` (name link, time) comes before
+  `div.comment-body > p…`; the comments sit outside `article.newsletter-post`. Measured
+  logged-out the same day: the avatar and the name are two links to `/profile/…`, the age is
+  a link whose `title` spells out the moment ("Sep 12, 2026, 3:04 PM") — there is no <time>
+  — and replies sit in a `div.comment-list > div.comment-list-items` under the parent. The
+  class names of the wrappers and the action row are modelled. (The logged-out page also
+  carries `role="article"` on a wrapper inside each comment; this fixture leaves it out, as
+  measured logged-in, so that nothing but structure says what a comment is.)
+
+    alice  a short, a full, a short and a full paragraph → ONE unit ×4 (it was two: ×3, ×1)
+      bob  the ONLY reply under alice: no sibling like it — recognised as a post because it
+           is shaped like the comment that encloses it. Two short paragraphs → one unit ×2,
+           and never a part of alice's
+    carol, dan  short neighbours → nothing, never added up
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: Substack-style comments</title>
+<style>
+  body { max-width: 728px; margin: 0 auto; padding: 24px; font: 16px/1.6 system-ui, sans-serif; }
+  .comment { margin: 16px 0; }
+  .comment .comment-list { margin-left: 32px; }
+  .comment-meta { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+  .comment-actions { font-size: 12px; color: #777; }
+  .comment-body p { margin: 0 0 12px; }
+  a { color: inherit; text-decoration: none; }
+</style></head>
+<body>
+<div class="single-post">
+  <article class="newsletter-post post" data-voice="writer">
+    <h1 class="post-title">What the ferry timetable taught me about estimates</h1>
+    <div class="body markup"><p data-expect="unit">The ferry crew found every broken hinge although the rules said otherwise. The survey team found the
+            missing invoice which surprised everyone but me. The reading group rebuilt a list of
+            small debts with more patience than I expected. My neighbour borrowed a map of the
+            valley on the last working day of the year. The old printer followed two folding chairs
+            on the last working day of the year.</p></div>
+  </article>
+</div>
+<div id="discussion" class="comments-page">
+  <h4 class="comments-heading">Discussion about this post</h4>
+  <div class="comment-list"><div class="comment-list-items">
+
+    <div class="comment">
+      <div class="comment-content">
+        <div class="comment-meta" data-chrome>
+          <a href="/profile/1-alice"><img alt="" width="32" height="32"></a>
+          <a class="commenter-name" href="/profile/1-alice">Alice Moreau</a>
+          <a class="comment-timestamp" href="/p/ferry/comment/1" title="Sep 12, 2026, 3:04 PM">Sep 12</a>
+        </div>
+        <div class="comment-body" data-voice="alice" data-expect="unit" data-parts="4">
+          <p>The landlord ignored a jar of spare keys in the hour after lunch. The ferry crew rewrote two folding
+            chairs in the hour after lunch. The corner bakery ignored the.</p>
+          <p>My neighbour sorted the monthly figures while the rain came through the roof. The survey team
+            watched the back staircase before anyone else arrived. Our upstairs tenant described a
+            box of letters in the hour after lunch. The old printer questioned a map of the valley
+            while the rain came through the roof and spring.</p>
+          <p>The reading group ignored a box of letters long after it stopped being useful. Every new hire
+            described a map.</p>
+          <p>The corner bakery found an empty notebook while the rain came through the roof. Every new hire
+            rebuilt an empty notebook until the money ran out. Every new hire repaired the back
+            staircase before anyone else arrived. The reading group measured a box of letters and
+            then wrote it all down. The committee sorted every broken hinge with more patience.</p>
+        </div>
+        <div class="comment-actions" data-chrome><span>LIKE (3)</span> <span>REPLY</span> <span>SHARE</span></div>
+      </div>
+      <div class="comment-list"><div class="comment-list-items">
+    <div class="comment">
+      <div class="comment-content">
+        <div class="comment-meta" data-chrome>
+          <a href="/profile/2-bob"><img alt="" width="32" height="32"></a>
+          <a class="commenter-name" href="/profile/2-bob">Bob Okafor</a>
+          <a class="comment-timestamp" href="/p/ferry/comment/2" title="Sep 12, 2026, 4:10 PM">Sep 12</a>
+        </div>
+        <div class="comment-body" data-voice="bob" data-expect="unit" data-parts="2">
+          <p>The night shift described a map of the valley until the money ran out. The ferry crew questioned the
+            monthly figures and nobody noticed for a month.</p>
+          <p>The night shift borrowed the back staircase and nobody noticed for a month. The old printer
+            questioned an empty notebook before anyone else arrived. The corner bakery sorted.</p>
+        </div>
+        <div class="comment-actions" data-chrome><span>LIKE (3)</span> <span>REPLY</span> <span>SHARE</span></div>
+      </div>
+    </div>
+      </div></div>
+    </div>
+
+    <div class="comment">
+      <div class="comment-content">
+        <div class="comment-meta" data-chrome>
+          <a href="/profile/3-carol"><img alt="" width="32" height="32"></a>
+          <a class="commenter-name" href="/profile/3-carol">Carol Lindqvist</a>
+          <a class="comment-timestamp" href="/p/ferry/comment/3" title="Sep 13, 2026, 9:00 AM">Sep 12</a>
+        </div>
+        <div class="comment-body" data-voice="carol" data-expect="none">
+          <p>The corner bakery postponed two folding chairs and then wrote it all down. A retired teacher rewrote
+            the water meter which surprised everyone but me. My neighbour described the water.</p>
+        </div>
+        <div class="comment-actions" data-chrome><span>LIKE (3)</span> <span>REPLY</span> <span>SHARE</span></div>
+      </div>
+    </div>
+
+    <div class="comment">
+      <div class="comment-content">
+        <div class="comment-meta" data-chrome>
+          <a href="/profile/4-dan"><img alt="" width="32" height="32"></a>
+          <a class="commenter-name" href="/profile/4-dan">Dan Whitfield</a>
+          <a class="comment-timestamp" href="/p/ferry/comment/4" title="Sep 13, 2026, 9:30 AM">Sep 12</a>
+        </div>
+        <div class="comment-body" data-voice="dan" data-expect="none">
+          <p>The survey team counted a jar of spare keys long after it stopped being useful. The landlord
+            borrowed a shelf of manuals as if it had always been done that way and a month.</p>
+        </div>
+        <div class="comment-actions" data-chrome><span>LIKE (3)</span> <span>REPLY</span> <span>SHARE</span></div>
+      </div>
+    </div>
+  </div></div>
+</div>
+</body></html>

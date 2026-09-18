@@ -1,0 +1,121 @@
+<!doctype html>
+<!--
+  phpBB topic (prosilver): `div.post` siblings, no <article>. Synthetic text.
+
+  Measured logged-out on forum.videolan.org/viewtopic.php (2026-09-19; phpBB 3.1 or later, judging by its prosilver markup — no version string was read): `div#page-body
+  > div#pNNN.post.has-profile.bg2|bg1 > div.inner > dl.postprofile + div.postbody >
+  div#post_contentNNN > h3 + ul.post-buttons + p.author + div.content`, the text of a post bare
+  in `div.content` with <br>s, `hr.divider` between two posts. There is NO <time>, no
+  `datetime`, no dated `title` and on this board no avatar: the only evidence of a byline is
+  the link to `./memberlist.php?mode=viewprofile&u=…` — a link to a person by the words of its
+  URL. The "Posts:" / "Joined:" lines and "by alice » 17 Sep 2026 10:12" are labels.
+
+    alice  a short, a full, a short and a full paragraph → ONE unit ×4 (it was two: ×3, ×1)
+    bob, carol  short neighbours → nothing, never added up      dan  a full paragraph → a unit
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: phpBB topic</title>
+<style>
+  body { font: 13px/1.4 Verdana, sans-serif; background: #f5f7fa; }
+  #page-body { width: 900px; margin: 20px auto; }
+  .post { background: #ecf3f7; padding: 8px; margin-bottom: 4px; } .post.bg1 { background: #e1ebf2; }
+  .postprofile { float: right; width: 22%; margin: 0; font-size: 11px; } .postprofile dd, .postprofile dt { margin: 0; display: block; }
+  .postbody { float: left; width: 76%; } .inner::after { content: ""; display: block; clear: both; }
+  .post-buttons { float: right; list-style: none; margin: 0; padding: 0; }
+  p.author { font-size: 11px; margin: 0 0 6px; } .back2top { clear: both; font-size: 11px; text-align: right; }
+  a { color: #105289; text-decoration: none; }
+</style></head>
+<body id="phpbb" class="section-viewtopic ltr">
+<div id="wrap"><div id="page-body">
+
+  <div id="p547887" class="post has-profile bg2">
+    <div class="inner">
+      <dl class="postprofile" id="profile547887" data-chrome>
+        <dt class="has-profile-rank no-avatar"><div class="avatar-container"></div><a href="./memberlist.php?mode=viewprofile&amp;u=101" class="username">alice</a></dt>
+        <dd class="profile-rank">New Cone</dd>
+        <dd class="profile-posts"><strong>Posts:</strong> <a href="./search.php?author_id=101&amp;sr=posts">12</a></dd>
+        <dd class="profile-joined"><strong>Joined:</strong> 03 Mar 2021 10:12</dd>
+      </dl>
+      <div class="postbody"><div id="post_content547887">
+        <h3 class="first"><a href="./viewtopic.php?p=547887#p547887">Re: Recording stops after a few seconds</a></h3>
+        <ul class="post-buttons" data-chrome><li><a href="./posting.php?mode=quote&amp;p=547887" title="Reply with quote" class="button"><span>Quote</span></a></li></ul>
+        <p class="author" data-chrome><a href="./viewtopic.php?p=547887#p547887"><span class="imageset" title="Post">Post</span></a><span class="responsive-hide">by <strong><a href="./memberlist.php?mode=viewprofile&amp;u=101" class="username">alice</a></strong> » </span>17 Sep 2026 10:12</p>
+        <div class="content" data-voice="alice" data-expect="unit" data-parts="4">The night shift counted the winter schedule long after it stopped being useful. The reading group
+            watched the back staircase even when it made no difference. The corner bakery repaired.<br><br>The harbour office repaired every broken hinge as if it had always been done that way. Every new
+            hire watched a list of small debts while the rain came through the roof. The corner
+            bakery ignored the second draft although the rules said otherwise. My neighbour repaired
+            the long way round while the rain came.<br><br>The reading group followed the monthly figures until the money ran out. Our upstairs tenant
+            questioned a list of small.<br><br>Our small team borrowed two folding chairs until the money ran out. The night shift rewrote the long
+            way round because nobody had asked them not to. Our small team questioned the second
+            draft which surprised everyone but me. The night shift followed two folding chairs and
+            then wrote it all down. The corner bakery postponed an empty notebook and.</div>
+      </div></div>
+      <div class="back2top" data-chrome><a href="#top" class="top" title="Top">Top</a></div>
+    </div>
+  </div>
+  <hr class="divider">
+
+  <div id="p547890" class="post has-profile bg1">
+    <div class="inner">
+      <dl class="postprofile" id="profile547890" data-chrome>
+        <dt class="has-profile-rank no-avatar"><div class="avatar-container"></div><a href="./memberlist.php?mode=viewprofile&amp;u=102" class="username">bob</a></dt>
+        <dd class="profile-rank">New Cone</dd>
+        <dd class="profile-posts"><strong>Posts:</strong> <a href="./search.php?author_id=102&amp;sr=posts">12</a></dd>
+        <dd class="profile-joined"><strong>Joined:</strong> 03 Mar 2021 10:12</dd>
+      </dl>
+      <div class="postbody"><div id="post_content547890">
+        <h3 class="first"><a href="./viewtopic.php?p=547890#p547890">Re: Recording stops after a few seconds</a></h3>
+        <ul class="post-buttons" data-chrome><li><a href="./posting.php?mode=quote&amp;p=547890" title="Reply with quote" class="button"><span>Quote</span></a></li></ul>
+        <p class="author" data-chrome><a href="./viewtopic.php?p=547890#p547890"><span class="imageset" title="Post">Post</span></a><span class="responsive-hide">by <strong><a href="./memberlist.php?mode=viewprofile&amp;u=102" class="username">bob</a></strong> » </span>17 Sep 2026 10:12</p>
+        <div class="content" data-voice="bob" data-expect="none">The ferry crew kept a box of letters while the rain came through the roof. Every new hire questioned
+            a shelf of manuals even when it made no difference again.</div>
+      </div></div>
+      <div class="back2top" data-chrome><a href="#top" class="top" title="Top">Top</a></div>
+    </div>
+  </div>
+  <hr class="divider">
+
+  <div id="p547893" class="post has-profile bg2">
+    <div class="inner">
+      <dl class="postprofile" id="profile547893" data-chrome>
+        <dt class="has-profile-rank no-avatar"><div class="avatar-container"></div><a href="./memberlist.php?mode=viewprofile&amp;u=103" class="username">carol</a></dt>
+        <dd class="profile-rank">New Cone</dd>
+        <dd class="profile-posts"><strong>Posts:</strong> <a href="./search.php?author_id=103&amp;sr=posts">12</a></dd>
+        <dd class="profile-joined"><strong>Joined:</strong> 03 Mar 2021 10:12</dd>
+      </dl>
+      <div class="postbody"><div id="post_content547893">
+        <h3 class="first"><a href="./viewtopic.php?p=547893#p547893">Re: Recording stops after a few seconds</a></h3>
+        <ul class="post-buttons" data-chrome><li><a href="./posting.php?mode=quote&amp;p=547893" title="Reply with quote" class="button"><span>Quote</span></a></li></ul>
+        <p class="author" data-chrome><a href="./viewtopic.php?p=547893#p547893"><span class="imageset" title="Post">Post</span></a><span class="responsive-hide">by <strong><a href="./memberlist.php?mode=viewprofile&amp;u=103" class="username">carol</a></strong> » </span>17 Sep 2026 10:12</p>
+        <div class="content" data-voice="carol" data-expect="none">My neighbour counted the long way round without saying a word about it. Our small team rebuilt the
+            same three questions on the last working day of the year. The landlord found a jar.</div>
+      </div></div>
+      <div class="back2top" data-chrome><a href="#top" class="top" title="Top">Top</a></div>
+    </div>
+  </div>
+  <hr class="divider">
+
+  <div id="p547899" class="post has-profile bg1">
+    <div class="inner">
+      <dl class="postprofile" id="profile547899" data-chrome>
+        <dt class="has-profile-rank no-avatar"><div class="avatar-container"></div><a href="./memberlist.php?mode=viewprofile&amp;u=104" class="username">dan</a></dt>
+        <dd class="profile-rank">New Cone</dd>
+        <dd class="profile-posts"><strong>Posts:</strong> <a href="./search.php?author_id=104&amp;sr=posts">12</a></dd>
+        <dd class="profile-joined"><strong>Joined:</strong> 03 Mar 2021 10:12</dd>
+      </dl>
+      <div class="postbody"><div id="post_content547899">
+        <h3 class="first"><a href="./viewtopic.php?p=547899#p547899">Re: Recording stops after a few seconds</a></h3>
+        <ul class="post-buttons" data-chrome><li><a href="./posting.php?mode=quote&amp;p=547899" title="Reply with quote" class="button"><span>Quote</span></a></li></ul>
+        <p class="author" data-chrome><a href="./viewtopic.php?p=547899#p547899"><span class="imageset" title="Post">Post</span></a><span class="responsive-hide">by <strong><a href="./memberlist.php?mode=viewprofile&amp;u=104" class="username">dan</a></strong> » </span>17 Sep 2026 10:12</p>
+        <div class="content" data-voice="dan" data-expect="unit" data-parts="1">Every new hire counted the winter schedule until the money ran out. The harbour office rewrote the
+            same three questions even when it made no difference. A retired teacher described the
+            long way round as if it had always been done that way. The ferry crew borrowed the
+            missing invoice in the hour after lunch. The survey team rewrote the winter schedule.</div>
+      </div></div>
+      <div class="back2top" data-chrome><a href="#top" class="top" title="Top">Top</a></div>
+    </div>
+  </div>
+  <hr class="divider">
+</div></div>
+</body></html>
