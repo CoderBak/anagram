@@ -203,6 +203,20 @@ export default defineContentScript({
             if (enabled && frameGateOk()) orchestrator.toggle();
             return;
 
+          // The remaining keyboard commands are the PAGE's, not a frame's: the panel and
+          // the ball live in the top frame, and so does the walk through its verdicts.
+          case ACTIONS.OPEN_PANEL:
+            if (isTop && enabled) orchestrator.openPanel();
+            return;
+
+          case ACTIONS.NEXT_FLAGGED:
+            if (isTop && enabled) orchestrator.jumpFlagged(1);
+            return;
+
+          case ACTIONS.PREV_FLAGGED:
+            if (isTop && enabled) orchestrator.jumpFlagged(-1);
+            return;
+
           case ACTIONS.ANALYZE_SELECTION:
             void analyzeSelection(); // works even where passive capture skips
             return;

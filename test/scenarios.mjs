@@ -3,7 +3,8 @@
 // Phase A (deterministic, local): UI behaviours on test/ui-fixtures.html —
 // edge-aware hover card (top/right), RTL placement, font scaling, layout-shift
 // bound, shadow DOM + slot capture, overflow containers, copy hygiene,
-// badge-after-link isolation, per-anchor dark theme, duplicate fan-out.
+// badge-after-link isolation, per-anchor dark theme, duplicate fan-out — plus
+// keyboard-only access to the triage panel and its commands on /keyboard.html.
 //
 // Phase B (live, soft): real-site sweep with per-site expectations — HF paper
 // (the original bug), EN/AR/JA Wikipedia, MDN, paulgraham, arXiv, StackOverflow,
@@ -65,11 +66,24 @@ const STALL_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><
 <h1>Selection while the daemon stalls</h1>
 <textarea id="draft" style="width:100%;height:150px">${STALL_TEXT}</textarea>
 </body></html>`;
+// Keyboard fixture: four paragraphs whose seeded verdicts all land in a FLAGGED band
+// (fake-daemon's fakeScore is a pure function of the text — these markers were chosen
+// for it), spread far enough apart that "the next one" is a real scroll. Nothing else
+// on the page carries words, so no short run can merge into a paragraph and change the
+// text the verdict is seeded from. The 900 px lead-in puts every paragraph BELOW the
+// viewport's middle at scroll 0, which is what makes "previous" wrap to the last one.
+const KEY_PARA = (tag) => `${tag} paragraph is long enough to be scored on its own because it carries well over fifty ordinary English words describing nothing in particular except the fact that a keyboard user must be able to walk the flagged paragraphs of a page without ever reaching for a mouse, which is what the next and previous commands are for.`;
+const KEY_TAGS = ["FLAG-1", "FLAG-4", "FLAG-5", "FLAG-7"];
+const KEYS_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>keyboard fixture</title></head><body style="max-width:720px;margin:0 auto;font:15px/1.6 system-ui">
+<div style="height:900px"></div>
+${KEY_TAGS.map((t, i) => `<p id="k${i + 1}">${KEY_PARA(t)}</p>\n<div style="height:700px"></div>`).join("\n")}
+</body></html>`;
 const server = await serveHtml({
   "/ui-fixtures.html": readFileSync(join(__dirname, "ui-fixtures.html"), "utf8"),
   "/rewrite.html": REWRITE_HTML,
   "/scope.html": SCOPE_HTML,
   "/stall.html": STALL_HTML,
+  "/keyboard.html": KEYS_HTML,
 });
 const fixturesUrl = server.url("/ui-fixtures.html");
 
@@ -804,6 +818,153 @@ async function sweep(page, steps = 6) {
     record("ui", "copied report: bare percentages plus the legend that explains them", ok, JSON.stringify({ clicked, head: report?.slice(0, 48) }));
     await p.close();
   }
+
+  // A26/A27: the chips are aria-hidden and unfocusable by design, so the panel is the
+  // accessible route to the verdicts — it has to be reachable, focusable and closable
+  // without a pointer, and the three commands have to work. Chrome swallows the real
+  // key combinations before the page sees them, so the commands are driven exactly the
+  // way background.ts drives them: a message from the service worker to the active tab.
+  {
+    const p = await context.newPage();
+    await p.bringToFront();
+    await p.goto(server.url("/keyboard.html"), { waitUntil: "load" });
+    const settled = await p
+      .waitForFunction(
+        (sel) => {
+          const hosts = [...document.querySelectorAll(sel)];
+          return hosts.length >= 4 && hosts.every((h) => !h.shadowRoot?.querySelector(".pill.pending"));
+        },
+        BADGE_SEL,
+        { timeout: 25000 },
+      )
+      .then(() => true)
+      .catch(() => false);
+
+    // A26: Tab-reachable button → Enter opens and hands over focus → Escape gives it back.
+    const counter = p.locator("#anagram-fab .count");
+    const tag = await counter.evaluate((el) => el.tagName).catch(() => null);
+    await counter.focus().catch(() => {});
+    const onCounter = await p.evaluate(() => {
+      const host = document.getElementById("anagram-fab");
+      const c = host?.shadowRoot?.querySelector(".count");
+      return {
+        focused: document.activeElement === host && host.shadowRoot.activeElement === c,
+        label: c?.getAttribute("aria-label") ?? null,
+        expanded: c?.getAttribute("aria-expanded") ?? null,
+        untucked: !host?.shadowRoot?.querySelector(".stack.tucked"),
+      };
+    });
+    await p.keyboard.press("Enter");
+    await p.waitForTimeout(400);
+    const opened = await p.evaluate(() => {
+      const sr = document.getElementById("anagram-fab")?.shadowRoot;
+      const panel = sr?.querySelector(".panel");
+      const named = panel?.getAttribute("aria-labelledby");
+      return {
+        open: !!panel?.classList.contains("open"),
+        role: panel?.getAttribute("role") ?? null,
+        name: named ? (sr.getElementById(named)?.textContent ?? null) : null,
+        inPanel: !!sr?.activeElement && panel.contains(sr.activeElement),
+        expanded: sr?.querySelector(".count")?.getAttribute("aria-expanded") ?? null,
+        itemLabel: panel?.querySelector(".pitem")?.getAttribute("aria-label") ?? null,
+      };
+    });
+    await p.keyboard.press("Escape");
+    await p.waitForTimeout(250);
+    const closed = await p.evaluate(() => {
+      const sr = document.getElementById("anagram-fab")?.shadowRoot;
+      return {
+        open: !!sr?.querySelector(".panel.open"),
+        backOnCounter: sr?.activeElement === sr?.querySelector(".count"),
+        expanded: sr?.querySelector(".count")?.getAttribute("aria-expanded") ?? null,
+      };
+    });
+    record(
+      "ui",
+      "triage panel: focusable counter button, Enter opens and takes focus, Escape returns it",
+      settled && tag === "BUTTON" && onCounter.focused && onCounter.untucked &&
+        opened.open && opened.role === "dialog" && !!opened.name && opened.inPanel &&
+        opened.expanded === "true" && !closed.open && closed.backOnCounter && closed.expanded === "false",
+      JSON.stringify({ settled, tag, onCounter, opened, closed }),
+    );
+    record(
+      "ui",
+      "accessible names carry the flagged count and each row's verdict",
+      /\b4 flagged paragraphs\b/.test(onCounter.label ?? "") &&
+        /^(Heavily edited|AI-generated), \d{1,3}%: \S/.test(opened.itemLabel ?? ""),
+      JSON.stringify({ label: onCounter.label, itemLabel: opened.itemLabel?.slice(0, 60) }),
+    );
+
+    // A27: the three keyboard commands, driven from the service worker.
+    const cmd = (action) =>
+      sw.evaluate(async (a) => {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        try {
+          await chrome.tabs.sendMessage(tab.id, { action: a });
+        } catch {
+          /* the content script answers nothing to these */
+        }
+      }, action);
+
+    await p.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.activeElement?.blur());
+    await cmd("openPanel");
+    await p.waitForTimeout(400);
+    const byCommand = await p.evaluate(() => {
+      const sr = document.getElementById("anagram-fab")?.shadowRoot;
+      const panel = sr?.querySelector(".panel");
+      return { open: !!panel?.classList.contains("open"), inPanel: !!sr?.activeElement && panel.contains(sr.activeElement) };
+    });
+    await p.keyboard.press("Escape");
+    await p.waitForTimeout(200);
+    record("ui", "open-panel command opens the triage panel and puts the keyboard in it", byCommand.open && byCommand.inPanel, JSON.stringify(byCommand));
+
+    // Each flagged chip's position in the document is its identity; the jump flashes the
+    // chip it landed on, which is how the walk is read back.
+    const flaggedAt = await p.evaluate(
+      (sel) =>
+        [...document.querySelectorAll(sel)]
+          .filter((h) => {
+            const pill = h.shadowRoot?.querySelector(".pill");
+            return !!pill && (pill.classList.contains("band-heavy") || pill.classList.contains("band-ai"));
+          })
+          .map((h) => Math.round(h.getBoundingClientRect().top + window.scrollY))
+          .sort((a, b) => a - b),
+      BADGE_SEL,
+    );
+    const flashing = (want) =>
+      p
+        .waitForFunction(
+          ({ sel, w }) => [...document.querySelectorAll(sel)].some((h) => !!h.shadowRoot?.querySelector(".pill.pg-flash")) === w,
+          { sel: BADGE_SEL, w: want },
+          { timeout: 8000 },
+        )
+        .then(() => true)
+        .catch(() => false);
+    const jump = async (action) => {
+      await flashing(false); // let the previous pulse finish, or the read below is stale
+      await cmd(action);
+      await flashing(true);
+      return p.evaluate((sel) => {
+        for (const h of document.querySelectorAll(sel)) {
+          if (h.shadowRoot?.querySelector(".pill.pg-flash")) return Math.round(h.getBoundingClientRect().top + window.scrollY);
+        }
+        return null;
+      }, BADGE_SEL);
+    };
+    await p.evaluate(() => window.scrollTo(0, 0));
+    const walk = { last: await jump("prevFlagged"), first: await jump("nextFlagged"), second: await jump("nextFlagged"), back: await jump("prevFlagged") };
+    record(
+      "ui",
+      "next/prev-flagged walk the flagged paragraphs in document order and wrap around",
+      flaggedAt.length === 4 &&
+        walk.last === flaggedAt[3] && walk.first === flaggedAt[0] &&
+        walk.second === flaggedAt[1] && walk.back === flaggedAt[0],
+      JSON.stringify({ flaggedAt, walk }),
+    );
+    await p.screenshot({ path: artifact("scn-keyboard-panel.png") }).catch(() => {});
+    await p.close();
+  }
+
 }
 
 // =====================================================================================

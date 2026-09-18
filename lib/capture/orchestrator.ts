@@ -90,6 +90,10 @@ export interface Orchestrator {
   setFabAction(label: string | null, onAction?: () => void, opts?: { attention?: boolean }): void;
   /** Popup/panel "Retry": re-probe the daemon now; re-queue every "Unavailable" unit. */
   retryBackend(): void;
+  /** Keyboard command: open the triage panel and hand it the focus. */
+  openPanel(): void;
+  /** Keyboard command: scroll to the next (1) / previous (-1) flagged paragraph. */
+  jumpFlagged(dir: 1 | -1): void;
 }
 
 function newSessionId(): string {
@@ -170,6 +174,10 @@ export function createOrchestrator(
   /** The daemon stopped answering: dispatch is paused until a probe succeeds. */
   let backendDown = false;
   let downTimer: ReturnType<typeof setInterval> | null = null;
+  /** The flagged unit the last jump parked on. Without it a second next-flagged press
+   *  would re-pick the paragraph the first one centred, since "the next one past the
+   *  scroll position" is that very paragraph. */
+  let flaggedCursor: string | null = null;
 
   const fab: Fab = createFab({
     onToggle: () => toggle(),
@@ -186,15 +194,59 @@ export function createOrchestrator(
             order: unitsById.get(id)!.order,
           }))
           .sort((a, b) => a.order - b.order),
-      onJump: (id) => {
-        const unit = unitsById.get(id);
-        if (!unit || !unit.container.isConnected) return;
-        unit.container.scrollIntoView({ behavior: "smooth", block: "center" });
-        setTimeout(() => badges.flash(id), 350); // pulse once the scroll settles
-      },
+      onJump: jumpTo,
       buildReport,
     },
   });
+
+  /** Centre a unit in the viewport and pulse its chip (panel rows and the
+   *  next/previous-flagged commands land the same way). */
+  function jumpTo(id: string): void {
+    const unit = unitsById.get(id);
+    if (!unit || !unit.container.isConnected) return;
+    flaggedCursor = id;
+    unit.container.scrollIntoView({ behavior: "smooth", block: "center" });
+    setTimeout(() => badges.flash(id), 350); // pulse once the scroll settles
+  }
+
+  /** Flagged units still in the DOM, in document order. */
+  function flaggedUnits(): Unit[] {
+    const out: Unit[] = [];
+    for (const [id, r] of resultsById) {
+      const unit = unitsById.get(id);
+      if (unit && isFlagged(r) && unit.container.isConnected) out.push(unit);
+    }
+    return out.sort((a, b) => a.order - b.order);
+  }
+
+  function jumpFlagged(dir: 1 | -1): void {
+    const list = flaggedUnits();
+    if (list.length === 0) return;
+    const at = flaggedCursor === null ? -1 : list.findIndex((u) => u.id === flaggedCursor);
+    const onScreen = at >= 0 && intersectsViewport(list[at].container);
+    let target: Unit;
+    if (onScreen) {
+      target = list[(at + dir + list.length) % list.length];
+    } else {
+      // Nothing to continue from (first press, or the reader scrolled away): take the
+      // nearest one in that direction from the middle of the viewport, wrapping around.
+      const vh = window.innerHeight || 0;
+      const ref = window.scrollY + vh / 2;
+      const mid = (u: Unit): number => {
+        const r = u.container.getBoundingClientRect();
+        return window.scrollY + r.top + r.height / 2;
+      };
+      target =
+        dir === 1
+          ? (list.find((u) => mid(u) > ref + 4) ?? list[0])
+          : ([...list].reverse().find((u) => mid(u) < ref - 4) ?? list[list.length - 1]);
+    }
+    jumpTo(target.id);
+  }
+
+  function openPanel(): void {
+    if (started && mountFab) fab.openPanel(true);
+  }
 
   /** Markdown summary of this page's verdicts — the triage panel's Copy report. */
   function buildReport(): string {
@@ -1003,6 +1055,7 @@ export function createOrchestrator(
   function clearAllResults(): void {
     for (const id of unitsById.keys()) clearHighlight(id);
     badges.teardownAll();
+    flaggedCursor = null; // the ids it names are about to stop existing
     scoredIds = new Set();
     unitsById = new Map();
     resultsById = new Map();
@@ -1101,7 +1154,15 @@ export function createOrchestrator(
     unavailableCount,
     setFabAction,
     retryBackend,
+    openPanel,
+    jumpFlagged,
   };
+}
+
+/** Any part of the element on screen right now. */
+function intersectsViewport(el: Element): boolean {
+  const r = el.getBoundingClientRect();
+  return r.bottom > 0 && r.top < (window.innerHeight || 0);
 }
 
 /** Merge scan roots, dropping disconnected ones and any contained by another. */

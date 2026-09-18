@@ -5,16 +5,22 @@
 // optional secondary ACTION chip stacked above it (e.g. "Analyze document" on
 // Google Docs). DRAGGABLE: grab the ball to move it; on release it SNAPS to the
 // nearest screen edge and the position persists per host. After a few idle
-// seconds the ball TUCKS half-off the edge (hover restores it) so it never
+// seconds the ball TUCKS half-off the edge (hover or focus restores it) so it never
 // competes with page content. Hidden entirely while the page is fullscreen
 // (video). Where the Popover API exists, the host is promoted to the top layer
 // so cookie walls and modal overlays cannot bury it. Its host carries
 // MARK_ATTR="host" so the walker skips it, and id="anagram-fab" so tests can
 // find/click it.
+//
+// KEYBOARD. The per-paragraph chips stay aria-hidden and unfocusable on purpose
+// (hundreds of tab stops, percentages read out mid-sentence), so this control IS
+// the accessible route to the verdicts: every part of it is a labelled button, and
+// the counter opens a role="dialog" panel that takes focus when a key opened it
+// (Escape gives it back). A pointer click still leaves the page's focus alone.
 import { computePosition, flip, offset, shift, size } from "@floating-ui/dom";
 import { MARK_ATTR } from "../types";
 import { settings, setSiteOverride } from "../settings/settings";
-import type { Band } from "./band";
+import { BAND_LABEL, type Band } from "./band";
 
 export interface PanelEntry {
   id: string;
@@ -43,6 +49,9 @@ export interface Fab {
   setCount(flagged: number, total: number): void;
   /** Show (label + callback) or hide (null) the secondary action chip. */
   setAction(label: string | null, onAction?: () => void, opts?: { attention?: boolean }): void;
+  /** Open the triage panel; with `focus`, move keyboard focus into it (the
+   *  keyboard command hands the panel over, a pointer never does). */
+  openPanel(focus?: boolean): void;
   unmount(): void;
 }
 
@@ -50,6 +59,9 @@ const BALL = 42; // ball diameter (px) — layout math + clamping use this
 const TUCK_AFTER_MS = 3500;
 const PANEL_MAX_HEIGHT = 360; // matches .panel max-height; placePanel lowers it in short windows
 const PANEL_MIN_HEIGHT = 140; // header + filter row + two entries
+/** aria-controls / aria-labelledby targets, resolved inside our own shadow root. */
+const PANEL_ID = "anagram-panel";
+const PANEL_TITLE_ID = "anagram-panel-title";
 
 const FAB_CSS = `
 :host { all: initial; }
@@ -96,7 +108,10 @@ const FAB_CSS = `
 /* Idle tuck: slide half off the snapped edge; any hover/drag restores. */
 .stack.tucked.side-right .fabwrap { transform: translateX(56%); opacity: 0.62; }
 .stack.tucked.side-left  .fabwrap { transform: translateX(-56%); opacity: 0.62; }
-.stack.tucked .fabwrap:hover { transform: none; opacity: 1; }
+/* A keyboard focus anywhere in the stack counts exactly like a hover: a tucked
+   ball must never leave the control the reader is on hanging off the edge. */
+.stack.tucked .fabwrap:hover,
+.stack.tucked:focus-within .fabwrap { transform: none; opacity: 1; }
 /* An open panel always presents a fully visible ball, whatever the tuck state. */
 .stack:has(.panel.open) .fabwrap { transform: none; opacity: 1; }
 
@@ -159,7 +174,9 @@ const FAB_CSS = `
 }
 
 /* Flagged counter: colour ONLY when something is flagged (destructive token); a zero
-   count and the daemon-down "!" stay neutral. */
+   count and the daemon-down "!" stay neutral. It is a real button (the panel behind it
+   is the accessible route to the results), so the four declarations a <button> would
+   otherwise bring from the UA sheet are pinned back to what the old <span> rendered. */
 .count {
   position: absolute;
   top: -6px;
@@ -170,13 +187,17 @@ const FAB_CSS = `
   min-width: 18px;
   height: 18px;
   padding: 0 5px;
+  margin: 0;
   box-sizing: border-box;
   border-radius: 6px;
   border: 1px solid #ffffff;
   background: #dc2626;
   color: #fff;
+  appearance: none;
+  font-family: inherit;
   font-size: 10px;
   font-weight: 700;
+  line-height: normal;
   font-variant-numeric: tabular-nums;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
   cursor: pointer; /* opens the flagged-paragraphs panel */
@@ -235,6 +256,9 @@ const FAB_CSS = `
   letter-spacing: 0.06em;
   padding: 7px 8px 5px;
 }
+/* The dialog's own heading (and its accessible name). Kept typographically identical
+   to the plain span it replaced — the row only gained semantics. */
+.panel .phead h2 { font: inherit; margin: 0; }
 /* Basecoat "primary" button: near-black surface, light text. */
 .panel .pcopy {
   font: 500 10.5px/1 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
@@ -340,6 +364,40 @@ const FAB_CSS = `
 .fab.off .mark { filter: grayscale(0.5); }
 .fab.off + .count, .fabwrap.off .count { opacity: 0.5; }
 
+/* ---- keyboard focus -------------------------------------------------------------
+   One ring for every control here: the primary near-black token, two pixels, held off
+   the surface so the counter's white hairline still reads. No glow, no accent colour —
+   :focus-visible keeps it off the pointer path. */
+.fab:focus-visible,
+.action:focus-visible,
+.count:focus-visible,
+.panel .pcopy:focus-visible,
+.panel .fchip:focus-visible,
+.panel .pitem:focus-visible,
+.panel .psiteoff:focus-visible,
+.panel .phead h2:focus-visible {
+  outline: 2px solid #171717;
+  outline-offset: 2px;
+}
+/* The list scrolls inside the panel: an offset ring on the first/last row would be
+   clipped by it, so those sit on the row itself. */
+.panel .pitem:focus-visible { outline-offset: -2px; }
+
+/* Forced colours override our palette wholesale; name the system focus colour so the
+   ring survives the substitution instead of landing on a forced border colour. */
+@media (forced-colors: active) {
+  .fab:focus-visible,
+  .action:focus-visible,
+  .count:focus-visible,
+  .panel .pcopy:focus-visible,
+  .panel .fchip:focus-visible,
+  .panel .pitem:focus-visible,
+  .panel .psiteoff:focus-visible,
+  .panel .phead h2:focus-visible {
+    outline-color: Highlight;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .action.attn { animation: none; }
   .fabwrap, .panel, .stack.snapping { transition: none; }
@@ -363,7 +421,7 @@ export function createFab(opts: { onToggle: () => void; onRetry?: () => void; pa
   let stackEl: HTMLElement | null = null;
   let fabEl: HTMLButtonElement | null = null;
   let actionEl: HTMLButtonElement | null = null;
-  let countEl: HTMLElement | null = null;
+  let countEl: HTMLButtonElement | null = null;
   let panelEl: HTMLElement | null = null;
   let active = true;
   let actionLabel: string | null = null;
@@ -379,6 +437,8 @@ export function createFab(opts: { onToggle: () => void; onRetry?: () => void; pa
     fabEl.classList.toggle("off", !active);
     fabEl.parentElement?.classList.toggle("off", !active);
     fabEl.title = active ? "Hide AI detection" : "Show AI detection";
+    // The ball's own content is a one-letter mark: without a label it announces as "A".
+    fabEl.setAttribute("aria-label", active ? "Hide AI detection marks" : "Show AI detection marks");
     if (actionEl) {
       actionEl.classList.toggle("show", actionLabel !== null);
       actionEl.classList.toggle("attn", actionLabel !== null && actionAttention);
@@ -561,18 +621,30 @@ export function createFab(opts: { onToggle: () => void; onRetry?: () => void; pa
     label.className = "label";
     label.textContent = "Anagram";
 
-    countEl = document.createElement("span");
+    // A real button: the per-paragraph chips are deliberately not focusable, so this
+    // bubble is the ONLY way to the results without a pointer.
+    countEl = document.createElement("button");
     countEl.className = "count zero";
+    countEl.type = "button";
     countEl.textContent = "0";
     countEl.title = "Show flagged paragraphs";
+    countEl.setAttribute("aria-expanded", "false");
+    countEl.setAttribute("aria-controls", PANEL_ID);
     countEl.addEventListener("click", (e) => {
       e.stopPropagation();
-      togglePanel();
+      // detail 0 = no pointer behind this click (Enter/Space on the button). That is
+      // the one activation that hands the panel the focus.
+      togglePanel(e.detail === 0);
     });
     countEl.addEventListener("pointerdown", (e) => e.stopPropagation()); // no drag from bubble
+    // A button pulls focus off the page when clicked; a span never did. Keep it that way.
+    countEl.addEventListener("mousedown", (e) => e.preventDefault());
 
     panelEl = document.createElement("div");
     panelEl.className = "panel";
+    panelEl.id = PANEL_ID;
+    panelEl.setAttribute("role", "dialog"); // non-modal: the page behind stays usable
+    panelEl.setAttribute("aria-labelledby", PANEL_TITLE_ID);
 
     fabEl.append(mark, label);
     fabEl.addEventListener("click", () => {
@@ -583,9 +655,12 @@ export function createFab(opts: { onToggle: () => void; onRetry?: () => void; pa
       opts.onToggle();
     });
     makeDraggable(stack, fabEl);
-    // Any pointer entering the stack untucks and re-arms the idle timer.
+    // Any pointer entering the stack untucks and re-arms the idle timer; keyboard focus
+    // does the same, so a tucked ball never hides the control the reader is standing on.
     stack.addEventListener("pointerenter", () => cancelTuck());
     stack.addEventListener("pointerleave", () => scheduleTuck());
+    stack.addEventListener("focusin", () => cancelTuck());
+    stack.addEventListener("focusout", () => scheduleTuck());
     // Restore the saved per-host position (clamped to the current viewport).
     void settings.fabPos
       .getValue()
@@ -599,7 +674,10 @@ export function createFab(opts: { onToggle: () => void; onRetry?: () => void; pa
     wrap.className = "fabwrap";
     wrap.append(fabEl, countEl); // count is a corner bubble over the ball
 
-    stack.append(panelEl, actionEl, wrap);
+    // The panel is absolutely positioned, so its place among the stack's children costs
+    // no layout — and last is where Tab wants it: ball, counter, then what the counter
+    // opened.
+    stack.append(actionEl, wrap, panelEl);
     // Tapping anywhere outside the FAB closes the panel; Escape too.
     document.addEventListener("pointerdown", onOutsidePointer, true);
     document.addEventListener("keydown", onKeydown, true);
@@ -630,17 +708,13 @@ export function createFab(opts: { onToggle: () => void; onRetry?: () => void; pa
   }
 
   function onOutsidePointer(e: Event): void {
-    if (panelEl?.classList.contains("open") && host && !e.composedPath().includes(host)) {
-      panelEl.classList.remove("open");
-      scheduleTuck();
-    }
+    if (host && !e.composedPath().includes(host)) closePanel();
   }
 
   function onKeydown(e: KeyboardEvent): void {
-    if (e.key === "Escape" && panelEl?.classList.contains("open")) {
-      panelEl.classList.remove("open");
-      scheduleTuck();
-    }
+    // Escape belongs to the panel wherever focus sits — including inside the page,
+    // which is where a pointer-opened panel leaves it.
+    if (e.key === "Escape") closePanel(true);
   }
 
   function setActive(a: boolean): void {
@@ -655,10 +729,15 @@ export function createFab(opts: { onToggle: () => void; onRetry?: () => void; pa
     if (backendDown) {
       countEl.textContent = "!";
       countEl.title = "Scoring daemon not running — click for details";
+      countEl.setAttribute("aria-label", "Scoring daemon not running — details");
       return;
     }
     countEl.textContent = String(flagged);
     countEl.title = "Show flagged paragraphs";
+    countEl.setAttribute(
+      "aria-label",
+      `${flagged} flagged paragraph${flagged === 1 ? "" : "s"} — show list`,
+    );
     countEl.classList.toggle("zero", flagged === 0);
   }
 
@@ -669,17 +748,36 @@ export function createFab(opts: { onToggle: () => void; onRetry?: () => void; pa
     if (panelEl?.classList.contains("open")) renderPanel();
   }
 
-  function togglePanel(): void {
-    if (!panelEl) return;
-    if (panelEl.classList.contains("open")) {
-      panelEl.classList.remove("open");
-      scheduleTuck();
-      return;
-    }
+  function togglePanel(focus = false): void {
+    if (panelEl?.classList.contains("open")) closePanel(focus);
+    else openPanel(focus);
+  }
+
+  function openPanel(focus = false): void {
+    if (!panelEl || !host?.isConnected) return;
     cancelTuck();
     renderPanel();
     panelEl.classList.add("open");
+    countEl?.setAttribute("aria-expanded", "true");
     placePanel();
+    // Focus goes to the first result, or to the heading when there is none to give —
+    // never to the page scroller, hence preventScroll.
+    if (focus) {
+      const target =
+        panelEl.querySelector<HTMLElement>(".pitem") ??
+        panelEl.querySelector<HTMLElement>(".phead h2");
+      target?.focus({ preventScroll: true });
+    }
+  }
+
+  /** `restoreFocus` hands focus back to the counter — but only if it is ours to hand
+   *  back: a panel opened by pointer never took it off the page in the first place. */
+  function closePanel(restoreFocus = false): void {
+    if (!panelEl?.classList.contains("open")) return;
+    panelEl.classList.remove("open");
+    countEl?.setAttribute("aria-expanded", "false");
+    if (restoreFocus && host?.shadowRoot?.activeElement) countEl?.focus({ preventScroll: true });
+    scheduleTuck();
   }
 
   /** Floating UI: above the ball (aligned to the snapped side), flipped below or
@@ -739,7 +837,9 @@ export function createFab(opts: { onToggle: () => void; onRetry?: () => void; pa
 
     const head = document.createElement("div");
     head.className = "phead";
-    const title = document.createElement("span");
+    const title = document.createElement("h2");
+    title.id = PANEL_TITLE_ID; // the dialog's accessible name
+    title.tabIndex = -1; // where keyboard focus lands when there is no result to land on
     title.textContent = all.length ? `Flagged paragraphs (${all.length})` : "Flagged paragraphs";
     head.appendChild(title);
     if (opts.panel && all.length > 0) {
@@ -823,10 +923,12 @@ export function createFab(opts: { onToggle: () => void; onRetry?: () => void; pa
       const text = document.createElement("span");
       text.className = "ptext";
       text.textContent = entry.snippet;
+      // Read out as a verdict, not as a loose number next to a sentence fragment: the
+      // dot and the colour that carry the band visually say nothing out loud.
+      item.setAttribute("aria-label", `${BAND_LABEL[entry.band]}, ${entry.pct}%: ${entry.snippet}`);
       item.append(dot, pct, text);
       item.addEventListener("click", () => {
-        panelEl?.classList.remove("open");
-        scheduleTuck();
+        closePanel();
         opts.panel?.onJump(entry.id);
       });
       list.appendChild(item);
@@ -843,7 +945,7 @@ export function createFab(opts: { onToggle: () => void; onRetry?: () => void; pa
     off.title = "Adds a per-site rule — re-enable any time from the toolbar popup";
     off.addEventListener("click", (e) => {
       e.stopPropagation();
-      panelEl?.classList.remove("open");
+      closePanel();
       void setSiteOverride(location.hostname, "off").catch(() => undefined);
     });
     foot.appendChild(off);
@@ -880,5 +982,5 @@ export function createFab(opts: { onToggle: () => void; onRetry?: () => void; pa
     panelEl = null;
   }
 
-  return { mount, setActive, setBackendDown, setCount, setAction, unmount };
+  return { mount, setActive, setBackendDown, setCount, setAction, openPanel, unmount };
 }

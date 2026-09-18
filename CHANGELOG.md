@@ -5,6 +5,22 @@ Notable changes to Anagram, newest first. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html). The extension, the
 `anagramd` daemon and the installer all carry the same version.
 
+## [Unreleased]
+
+### Added
+
+- The triage panel is reachable without a mouse. The ball's counter is a real
+  button that says what it is ("3 flagged paragraphs — show list"), Enter opens
+  the panel and moves the keyboard into it, Escape closes it and hands focus
+  back, and each row announces its verdict and percentage instead of a bare
+  snippet. Focus anywhere in the ball untucks it, and every control there now
+  draws a focus ring.
+- Three keyboard shortcuts, rebindable like the existing one:
+  <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd> opens the flagged-paragraph list
+  and puts the keyboard in it, <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>J</kbd> and
+  <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>K</kbd> walk to the next and previous
+  flagged paragraph, wrapping around.
+
 ## [0.3.2] — 2026-09-18
 
 ### Fixed

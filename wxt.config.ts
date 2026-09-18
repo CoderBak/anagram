@@ -24,10 +24,32 @@ export default defineConfig({
             },
           }
         : {}),
+      // Keyboard commands. Chrome accepts at most FOUR suggested keys per extension, so
+      // these four are the whole budget; everything else is rebindable at
+      // chrome://extensions/shortcuts (about:addons on Firefox).
+      //
+      // All four are Alt+Shift+<letter>, a range no browser claims on macOS (its own
+      // shortcuts are Command-based) and where the Windows/Linux exceptions are known and
+      // avoided: Alt+Shift+T is Chrome's toolbar focus, Alt+Shift+B its bookmarks bar,
+      // Alt+Shift+I its feedback form. P is the product's own letter; L is the LIST the
+      // counter opens; J/K walk down/up the way every list-with-a-cursor has since vi —
+      // and the pair sits under the right hand on QWERTY, next to each other.
       commands: {
         "toggle-overlay": {
           suggested_key: { default: "Alt+Shift+P" },
           description: "Show/hide Anagram badges",
+        },
+        "open-panel": {
+          suggested_key: { default: "Alt+Shift+L" },
+          description: "Open the flagged-paragraphs list",
+        },
+        "next-flagged": {
+          suggested_key: { default: "Alt+Shift+J" },
+          description: "Go to the next flagged paragraph",
+        },
+        "prev-flagged": {
+          suggested_key: { default: "Alt+Shift+K" },
+          description: "Go to the previous flagged paragraph",
         },
       },
       host_permissions: ["<all_urls>"],

@@ -31,6 +31,7 @@
       .backend.down b { color: var(--destructive); }
       .w-full { width: 100%; }
       .hint-line { margin: 9px 0 0; font-size: 11px; color: var(--muted-foreground); text-align: center; }
+      .hint-line + .hint-line { margin-top: 4px; }
       .hint-line .kbd { vertical-align: middle; }
       @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
     </style>
@@ -109,6 +110,7 @@
         <div class="backend" id="backend"></div>
         <button id="rescan" class="btn w-full" data-variant="outline" data-size="sm" type="button">Rescan page</button>
         <p class="hint-line"><kbd class="kbd">Alt</kbd>+<kbd class="kbd">Shift</kbd>+<kbd class="kbd">P</kbd> toggles the overlay</p>
+        <p class="hint-line"><kbd class="kbd">Alt</kbd>+<kbd class="kbd">Shift</kbd>+<kbd class="kbd">L</kbd> lists flagged &middot; <kbd class="kbd">J</kbd>/<kbd class="kbd">K</kbd> walk it</p>
       </section>
     </main>
 

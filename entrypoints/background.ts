@@ -48,14 +48,21 @@ export default defineBackground(() => {
       .catch(() => undefined);
   });
 
-  // Keyboard command: show/hide the overlay on the active tab (all frames).
+  // Keyboard commands, forwarded to the active tab. The message reaches every frame;
+  // which of them may act on it is the content script's own rule (the overlay is
+  // per-frame, the panel and the flagged walk belong to the top frame).
+  const COMMAND_ACTIONS: Record<string, string> = {
+    "toggle-overlay": ACTIONS.TOGGLE_OVERLAY,
+    "open-panel": ACTIONS.OPEN_PANEL,
+    "next-flagged": ACTIONS.NEXT_FLAGGED,
+    "prev-flagged": ACTIONS.PREV_FLAGGED,
+  };
   browser.commands?.onCommand.addListener((command) => {
-    if (command !== "toggle-overlay") return;
+    const action = COMMAND_ACTIONS[command];
+    if (!action) return;
     void browser.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
       if (tab?.id != null) {
-        void browser.tabs
-          .sendMessage(tab.id, { action: ACTIONS.TOGGLE_OVERLAY })
-          .catch(() => undefined);
+        void browser.tabs.sendMessage(tab.id, { action }).catch(() => undefined);
       }
     });
   });

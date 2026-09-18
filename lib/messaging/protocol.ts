@@ -11,6 +11,12 @@ export const ACTIONS = {
   UPDATE_BADGE: "updateBadge",
   /** SW (keyboard command) → content: show/hide the overlay. */
   TOGGLE_OVERLAY: "toggleOverlay",
+  /** SW (keyboard command) → content (top frame): open the triage panel, focus it. */
+  OPEN_PANEL: "openPanel",
+  /** SW (keyboard command) → content (top frame): go to the next flagged paragraph. */
+  NEXT_FLAGGED: "nextFlagged",
+  /** SW (keyboard command) → content (top frame): go to the previous flagged paragraph. */
+  PREV_FLAGGED: "prevFlagged",
   /** SW (context menu) → content: score the current selection, show a card. */
   ANALYZE_SELECTION: "analyzeSelection",
   /** popup/options/content → SW: is the daemon up (optionally force a fresh probe). */
@@ -111,6 +117,20 @@ export interface ToggleOverlayMessage {
   action: typeof ACTIONS.TOGGLE_OVERLAY;
 }
 
+/** SW → content: open the flagged-paragraphs panel and focus it (keyboard command). */
+export interface OpenPanelMessage {
+  action: typeof ACTIONS.OPEN_PANEL;
+}
+
+/** SW → content: walk to the next/previous flagged paragraph (keyboard commands). */
+export interface NextFlaggedMessage {
+  action: typeof ACTIONS.NEXT_FLAGGED;
+}
+
+export interface PrevFlaggedMessage {
+  action: typeof ACTIONS.PREV_FLAGGED;
+}
+
 /** SW → content (specific frame): analyze the live selection. */
 export interface AnalyzeSelectionMessage {
   action: typeof ACTIONS.ANALYZE_SELECTION;
@@ -128,6 +148,9 @@ export type ControlMessage =
   | GetTabStateMessage
   | TeardownMessage
   | ToggleOverlayMessage
+  | OpenPanelMessage
+  | NextFlaggedMessage
+  | PrevFlaggedMessage
   | AnalyzeSelectionMessage
   | RetryBackendMessage;
 
