@@ -1110,6 +1110,37 @@ const results = await page.evaluate(() => {
     layer.teardownAll();
   }
 
+  // ---- what the walk REACHES ---------------------------------------------------------------
+  // Four defects the 124-site survey (test/coverage.mjs) measured, each about text the walk
+  // never got to: a container that merely DECLARES itself a heading, an application shell
+  // marked notranslate, a box that clips its own text, and prose typeset in <pre>. Every
+  // check below fails on the walker as it was before these rules.
+  {
+    // 1 · a heading is a barrier only while it is a LABEL ------------------------------------
+    u = collect(`<div role="heading" aria-level="3"><p>${sent(30)}</p><p>${sent(30)}</p></div>`);
+    check("a div[role=heading] holding paragraphs is a container, not a heading: its text is read (lobste.rs comment bodies)",
+      u.length === 1 && u[0].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+    u = collect(`<h2><a href="#c">A teaser card title</a><p>${sent(60)}</p></h2>`);
+    check("…and so is a whole teaser card wrapped in <h2> (网易, 新浪, the Guardian's live blog, dev.to)",
+      u.length === 1 && !u[0].text.includes("teaser card title"), JSON.stringify(u.map(x => [x.parts, x.words])));
+
+    u = collect(`<div role="heading">Short Section Label</div><p>${sent(30)}</p><div role="heading">Another Label</div>`);
+    check("a real role=heading label is still a barrier and still never scored", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+    u = collect(`<p>${sent(30)}</p><h3><span>Title</span> <em>continued</em></h3><p>${sent(30)}</p>`);
+    check("…inline markup inside a heading does not make it a container", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+    u = collect(`<h2>${sent(60)}</h2>`);
+    check("a 'heading' of sixty words is a text block and is read as one (decided: length settles it)",
+      u.length === 1 && u[0].parts === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+    u = collect(`<h2><a href="#a">A long headline that runs to about twenty words and is still nothing but a headline on the page</a></h2><p>${sent(30)}</p><p>${sent(30)}</p>`);
+    check("…while a twenty-word headline is a label: a barrier, and no part of the text under it",
+      u.length === 1 && u[0].parts === 2 && !u[0].text.includes("headline"), JSON.stringify(u.map(x => [x.parts, x.words])));
+
+  }
+
   // ---- canonical scoring text ------------------------------------------------------------
   check("canonical: LaTeX residue and escapes", PW.canonicalForScoring("steps---prompting, 74.1\\% and ``quoted''") === 'steps—prompting, 74.1% and "quoted"', JSON.stringify(PW.canonicalForScoring("steps---prompting, 74.1\\% and ``quoted''")));
   check("canonical: typographic quotes, ranges, NBSP, ligatures → one convention", PW.canonicalForScoring("LLMs’ “rich” 1–5\u00a0ﬁnal") === `LLMs' "rich" 1-5 final`, JSON.stringify(PW.canonicalForScoring("LLMs’ “rich” 1–5\u00a0ﬁnal")));
@@ -1201,6 +1232,7 @@ const EXPECTED = {
   "linkedin-feed": [2, 2],
   "listicle": [1, 1],
   "listicle-divsoup": [2, 1],
+  "lobsters-comment": [3, 1],
   "news-article": [1, 1],
   "recipe-faq": [5, 4],
   "reddit-thread": [3, 2],

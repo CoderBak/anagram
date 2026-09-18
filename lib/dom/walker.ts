@@ -33,7 +33,7 @@
 // v1's hard 1000-char mid-paragraph split is gone: a long paragraph is ONE unit
 // end-to-end (the HF-abstract "underline stops mid-paragraph" bug); a unit that does not
 // fit the model's window is read in windows (lib/capture/windows.ts), never cut here.
-import { NO_SCORE_TAGS, INLINE_FALLBACK_TAGS, isHeading, tagOf } from "./tags";
+import { NO_SCORE_TAGS, INLINE_FALLBACK_TAGS, isHeading, isHeadingLabel, tagOf } from "./tags";
 import { isBoilerplate, isNoTranslate } from "./boilerplate";
 import {
   createStyleCache,
@@ -357,7 +357,10 @@ export function collectUnits(
       visitChildren(el, { container: ctx.container, hidden, preserves });
       return;
     }
-    if (isHeading(el)) {
+    // A heading is a barrier only while it is a LABEL. A container that merely declares
+    // itself one — lobste.rs' comment bodies, a teaser card wrapped in <h2> — is walked
+    // like the block it is (isHeadingLabel); the real headings inside it still stop here.
+    if (isHeading(el) && isHeadingLabel(el)) {
       closeRun();
       asm.barrier(el); // topic boundary; headings themselves are never scored
       return;

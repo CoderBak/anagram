@@ -1,0 +1,101 @@
+<!doctype html>
+<!--
+  lobste.rs comment thread, synthetic text.
+
+  Verified against the live DOM (lobste.rs/s/…, 2026-09): every comment is
+  `div.comment > div.details`, holding `div.byline` (author link, age, action links) and
+  the comment BODY as `div.comment_text role="heading" aria-level="3"` — an element that
+  declares itself a heading and holds paragraphs of up to 172 words. The walk used to
+  treat it as a barrier and never descend, so a thread of 2 913 prose words produced no
+  unit at all; a heading is a barrier only while it is a short label (lib/dom/tags.ts).
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: lobste.rs comments</title>
+<style>
+  body { font: 10pt/1.4 "Helvetica Neue", sans-serif; margin: 0 auto; max-width: 900px; }
+  .byline { font-size: 8pt; color: #888; }
+  .comment_text { font-size: 10pt; color: #111; }
+  .comment_text p { margin: 8px 0 0; }
+  .comment { border-left: 2px solid #eee; padding-left: 10px; margin: 12px 0; }
+  h1 { font-size: 14pt; }
+</style></head>
+<body>
+<div class="story">
+  <h1><a href="#story">A short story title that really is a heading</a></h1>
+</div>
+
+<ol class="comments comments1">
+
+  <!-- alice: two paragraphs inside the role="heading" body → one ×2 unit -->
+  <li><div class="comment" id="c_aa11">
+    <div class="details">
+      <div class="byline" data-chrome>
+        <a href="#u-alice" class="u-author">alice</a>
+        <span title="2026-09-18T07:00:00">2 hours ago</span> | <a href="#link">link</a> |
+        <a href="#reply">reply</a>
+      </div>
+      <div class="comment_text" role="heading" aria-level="3" data-voice="alice" data-expect="unit">
+        <p>The part that nobody mentions is that the tool was written for a team of four and
+           is now carrying a team of two hundred, which is a different problem wearing the
+           same name and answering to the same command line.</p>
+        <p>We kept it because rewriting it would have cost a quarter, and every quarter since
+           then somebody has proposed the rewrite, priced it at a quarter, and been told that
+           this is not the quarter for it.</p>
+      </div>
+    </div>
+  </div></li>
+
+  <!-- bob: one long paragraph → its own unit, never merged with alice's -->
+  <li><div class="comment" id="c_bb22">
+    <div class="details">
+      <div class="byline" data-chrome>
+        <a href="#u-bob" class="u-author">bob</a>
+        <span title="2026-09-18T07:40:00">1 hour ago</span> | <a href="#link">link</a> |
+        <a href="#reply">reply</a>
+      </div>
+      <div class="comment_text" role="heading" aria-level="3" data-voice="bob" data-expect="unit">
+        <p>My experience was the opposite: the small team wrote something general enough that
+           the large team never had to think about it, and the only reason anyone remembers it
+           exists is the one morning a year when the certificate expires and the whole
+           building learns the name of a program written before most of them were hired.</p>
+      </div>
+    </div>
+  </div></li>
+
+  <!-- carol: too short on its own, and nothing to borrow from — no unit -->
+  <li><div class="comment" id="c_cc33">
+    <div class="details">
+      <div class="byline" data-chrome>
+        <a href="#u-carol" class="u-author">carol</a>
+        <span title="2026-09-18T08:10:00">30 minutes ago</span> | <a href="#link">link</a> |
+        <a href="#reply">reply</a>
+      </div>
+      <div class="comment_text" role="heading" aria-level="3" data-voice="carol" data-expect="none">
+        <p>Both of those stories end with the certificate expiring, which says something.</p>
+      </div>
+    </div>
+  </div></li>
+
+  <!-- a real heading inside a comment body is still a barrier and still unscored -->
+  <li><div class="comment" id="c_dd44">
+    <div class="details">
+      <div class="byline" data-chrome>
+        <a href="#u-dave" class="u-author">dave</a>
+        <span title="2026-09-18T08:30:00">10 minutes ago</span> | <a href="#link">link</a> |
+        <a href="#reply">reply</a>
+      </div>
+      <div class="comment_text" role="heading" aria-level="3" data-voice="dave">
+        <p data-expect="unit">Two things have to be true before any of this matters, and the
+           second one is the expensive one, because it asks every team to agree on a schedule
+           that none of them owns and all of them can break by accident. The first is cheap
+           and we did it years ago, which is exactly why everybody remembers the plan as
+           having worked and nobody remembers that the hard half was never started.</p>
+        <h4 data-expect="none">What would have to change</h4>
+        <p data-expect="none">Ownership, mostly.</p>
+      </div>
+    </div>
+  </div></li>
+
+</ol>
+</body></html>
