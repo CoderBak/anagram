@@ -465,6 +465,17 @@ token, link-dense, name-list, a `role="heading"` wrapper, a "show more" clamp) �
 posts cut into several units, units spanning two voices, units in page chrome,
 and the cost of `collectUnits`. `--diff before.json after.json` says what a
 change to the grouping rules moved; reports go to the artifacts folder.
+`node test/dynamics.mjs` asks the question both of those leave out — what the
+whole extension does to a page **over time**: for each of the ~30 pages of
+`test/dynamics.urls.json` (infinite and virtualized feeds, lazy comment sections,
+"show more" expansions, a live blog that rewrites itself, SPA docs sites, a long
+static page as the control) it runs a scripted 60–120 s session against the fake
+daemon — scroll down screen by screen, back to the top, click the view-only
+controls the entry names, follow one in-site link and come back, resize, toggle
+the ball — sampling every 2 s, and reports chips that duplicate, pile up at one
+anchor, flicker, blink or stay "analyzing…", paragraphs sent to the daemon twice,
+whether the page's own text survived us, and the cost in long tasks, layout and
+heap **against a control run of the same page with no extension**.
 `npm run browser` opens a live Chromium with the extension for manual poking;
 `npm run play` opens a multi-tab playground; `node test/shots.mjs` regenerates
 the README screenshots; `node test/genicons.mjs` regenerates the icon set.
