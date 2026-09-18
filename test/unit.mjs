@@ -1139,6 +1139,27 @@ const results = await page.evaluate(() => {
     check("…while a twenty-word headline is a label: a barrier, and no part of the text under it",
       u.length === 1 && u[0].parts === 2 && !u[0].text.includes("headline"), JSON.stringify(u.map(x => [x.parts, x.words])));
 
+    // 2 · notranslate: a shell is not a widget ------------------------------------------------
+    u = collect(`<div id="mastodon" class="notranslate app-holder"><div class="ui"><main><div role="feed"><article><p>${sent(60)}</p></article></div></main></div></div>`);
+    check("a notranslate APPLICATION SHELL (Mastodon's app-holder) is walked: the statuses inside it are read",
+      u.length === 1 && u[0].words >= 50, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+    u = collect(`<div translate="no"><section><p>${sent(60)}</p></section></div>`);
+    check("…sectioning content anywhere under it is what tells a shell from a widget", u.length === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+    u = collect(`<div class="notranslate"><p>${sent(60)}</p></div>`);
+    check("a notranslate WIDGET is still honoured (no landmark, a sliver of the page)", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+    check("isNoTranslate: shell no, widget yes, page level no",
+      (() => {
+        sandbox.innerHTML = `<div class="shell notranslate"><main><p>x</p></main></div><div class="widget notranslate"><p>x</p></div>`;
+        const shell = sandbox.querySelector(".shell");
+        const widget = sandbox.querySelector(".widget");
+        const body = document.createElement("body");
+        body.className = "notranslate";
+        return PW.isNoTranslate(shell) === false && PW.isNoTranslate(widget) === true && PW.isNoTranslate(body) === false;
+      })());
+
   }
 
   // ---- canonical scoring text ------------------------------------------------------------
@@ -1233,6 +1254,7 @@ const EXPECTED = {
   "listicle": [1, 1],
   "listicle-divsoup": [2, 1],
   "lobsters-comment": [3, 1],
+  "mastodon-shell": [2, 1],
   "news-article": [1, 1],
   "recipe-faq": [5, 4],
   "reddit-thread": [3, 2],

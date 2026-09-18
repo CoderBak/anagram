@@ -23,7 +23,7 @@ export {
   MIN_SENTENCE_WORDS,
   MIN_LINE_WORDS,
 } from "../lib/dom/text";
-export { isBoilerplate } from "../lib/dom/boilerplate";
+export { isBoilerplate, isNoTranslate } from "../lib/dom/boilerplate";
 export { findMainContent, useReadability } from "../lib/dom/mainContent";
 export { detectDocsPage, readingViewUrl, editorUrl } from "../lib/docs";
 export { band, isFlagged, scorePct } from "../lib/render/band";

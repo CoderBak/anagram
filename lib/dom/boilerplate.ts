@@ -30,14 +30,42 @@ const CHROME_ROLES = new Set([
  *  translation opt-out, not "no prose here"). */
 const PAGE_LEVEL_TAGS = new Set(["BODY", "HTML", "MAIN", "ARTICLE"]);
 
+/** Sectioning and landmark content: what an application SHELL holds and a widget does
+ *  not. A brand name, a code sample or a date picker contains no <main> and no feed. */
+const SECTIONING_SELECTOR =
+  'main,article,section,[role="main"],[role="article"],[role="feed"],[role="region"]';
+
+/** With no landmark anywhere on the page, a shell is still the box that holds most of
+ *  it — this share of the document's elements. */
+const SHELL_ELEMENT_SHARE = 0.5;
+
 /**
- * `translate="no"` / `.notranslate` honoured only below page level: on code, brand
- * names and widgets it means "not prose"; on <body> it just opts out of machine
- * translation and would otherwise blank the whole site.
+ * Is this the application's own root rather than something inside the page? Mastodon's
+ * web client is `<body> → <div id="mastodon" class="notranslate app-holder"> → … →
+ * <main> → … → <article>`: taking that attribute at face value made every status on
+ * every Mastodon instance unreachable (16 silent `<article>`s on a profile, 12 on
+ * /explore, no unit anywhere). On a shell the attribute says "do not machine-translate
+ * this application"; on the small things it says "this is not prose".
+ */
+function isTranslationShell(el: Element): boolean {
+  if (el.querySelector(SECTIONING_SELECTOR) !== null) return true;
+  const body = el.ownerDocument?.body ?? null;
+  if (!body || el === body || !body.contains(el)) return false;
+  const total = body.getElementsByTagName("*").length;
+  return total > 0 && el.getElementsByTagName("*").length >= total * SHELL_ELEMENT_SHARE;
+}
+
+/**
+ * `translate="no"` / `.notranslate` honoured only below page level and only on things
+ * smaller than the page: on code, brand names and widgets it means "not prose"; on
+ * <body> or on an application shell it just opts out of machine translation and would
+ * otherwise blank the whole site. The attribute test comes first — the shell tests
+ * touch the DOM, and all but a handful of elements never carry the attribute at all.
  */
 export function isNoTranslate(el: Element): boolean {
+  if (el.getAttribute("translate") !== "no" && !el.classList.contains("notranslate")) return false;
   if (PAGE_LEVEL_TAGS.has(el.nodeName.toUpperCase()) || el.getAttribute("role") === "main") return false;
-  return el.getAttribute("translate") === "no" || el.classList.contains("notranslate");
+  return !isTranslationShell(el);
 }
 
 /**

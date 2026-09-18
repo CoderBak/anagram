@@ -1,0 +1,93 @@
+<!doctype html>
+<!--
+  Mastodon web client, synthetic text.
+
+  Verified against the live DOM (mastodon.social/@…, /explore, 2026-09): the whole
+  application hangs under `<div id="mastodon" class="notranslate app-holder">`, and below
+  it come `<main>`, the `role="feed"` column and one `<article class="status__wrapper">`
+  per status. `.notranslate` there means "do not machine-translate this application", not
+  "no prose here": honouring it blanked every Mastodon instance (16 silent <article>s on a
+  profile, 12 on /explore). An element carrying the attribute is only honoured when it is
+  NOT a shell — no sectioning content inside it, not most of the page (lib/dom/boilerplate.ts)
+  — which is why the display name below, a genuine `.notranslate` span, stays out of the text.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: Mastodon timeline</title>
+<style>
+  body { font: 15px/1.5 "Helvetica Neue", sans-serif; margin: 0; background: #191b22; color: #fff; }
+  .column { max-width: 600px; margin: 0 auto; background: #282c37; }
+  .status { padding: 14px; border-bottom: 1px solid #393f4f; }
+  .status__info { font-size: 13px; color: #9baec8; }
+  .status__content p { margin: 0 0 12px; }
+  .status__action-bar { font-size: 13px; color: #9baec8; }
+</style></head>
+<body class="app-body">
+<div id="mastodon" class="notranslate app-holder">
+  <div class="ui">
+    <div class="columns-area__panels">
+      <div class="columns-area__panels__main">
+        <main class="column" role="main">
+          <div class="scrollable" role="feed" aria-label="Home">
+
+            <!-- a status of two short paragraphs → one ×2 unit -->
+            <article class="status__wrapper" tabindex="0" data-voice="delta">
+              <div class="status__info" data-chrome>
+                <span class="display-name__html notranslate">DeltaWye</span>
+                <span class="display-name__account notranslate">@delta@example.social</span>
+                <a href="#t1" class="status__relative-time"><time datetime="2026-09-18T07:00:00">2h</time></a>
+              </div>
+              <div class="status__content" lang="en" data-expect="unit">
+                <p>The kitten has decided that the warmest place in the flat is the router, and
+                   the router has decided that it does not enjoy being sat on, so the internet
+                   now goes away every afternoon at about four.</p>
+                <p>I have moved the router twice. She has found it twice. I am beginning to
+                   think that the third move should be mine rather than the router's.</p>
+              </div>
+              <div class="status__action-bar" data-chrome>
+                <button type="button">Reply</button><button type="button">Boost</button>
+                <button type="button">Favourite</button>
+              </div>
+            </article>
+
+            <!-- a long single paragraph by somebody else → its own unit -->
+            <article class="status__wrapper" tabindex="0" data-voice="concretedog">
+              <div class="status__info" data-chrome>
+                <span class="display-name__html notranslate">concretedog</span>
+                <span class="display-name__account notranslate">@dog@example.social</span>
+                <a href="#t2" class="status__relative-time"><time datetime="2026-09-18T06:10:00">3h</time></a>
+              </div>
+              <div class="status__content" lang="en" data-expect="unit">
+                <p>Wondering whether anybody has actually measured how long the average small
+                   workshop keeps a machine before it is replaced, because every figure I can
+                   find comes from a manufacturer, and the two workshops I know best are both
+                   running equipment that is older than the people operating it and show no
+                   sign of wanting anything newer.</p>
+              </div>
+              <div class="status__action-bar" data-chrome>
+                <button type="button">Reply</button><button type="button">Boost</button>
+              </div>
+            </article>
+
+            <!-- a short status: no unit, and nothing borrowed from the neighbours -->
+            <article class="status__wrapper" tabindex="0" data-voice="raphael">
+              <div class="status__info" data-chrome>
+                <span class="display-name__html notranslate">raphaël</span>
+                <span class="display-name__account notranslate">@raphael@example.social</span>
+                <a href="#t3" class="status__relative-time"><time datetime="2026-09-18T05:00:00">4h</time></a>
+              </div>
+              <div class="status__content" lang="en" data-expect="none">
+                <p>Both of mine are older than I am and neither has ever been serviced.</p>
+              </div>
+              <div class="status__action-bar" data-chrome>
+                <button type="button">Reply</button><button type="button">Boost</button>
+              </div>
+            </article>
+
+          </div>
+        </main>
+      </div>
+    </div>
+  </div>
+</div>
+</body></html>
