@@ -26,7 +26,9 @@
 //           longer one is an article and keeps a unit per full paragraph. What a short
 //           run IS decides its part: a further line of the block being read and a
 //           sentence join, an unpunctuated name / time / action row never does — and on
-//           a page with no semantic markup that row is what separates two voices. Text
+//           a page with no semantic markup that row is what separates two voices; inside
+//           a post, short unpunctuated lines beside unstopped lines of the same body are
+//           lines of verse, and join. Text
 //           too short on its own, with nobody of its voice to join, gets no unit.
 //           Headings, boilerplate, link-dense runs, name lists, ASCII art and separator
 //           rules are barriers nothing is merged across (inside a post they are merely
@@ -755,6 +757,18 @@ function composedContains(root: Element, el: Element): boolean {
   return false;
 }
 
+/** Two blocks of ONE BODY of text: siblings of the same tag and the same class — the <p>s
+ *  of one rendered answer, not a paragraph and the stats row the card sets beside it. */
+function sameBody(a: Element, b: Element): boolean {
+  return (
+    a !== b &&
+    a.parentElement !== null &&
+    a.parentElement === b.parentElement &&
+    a.tagName === b.tagName &&
+    (a.getAttribute("class") ?? "") === (b.getAttribute("class") ?? "")
+  );
+}
+
 /** All the text of a scope — names, counters and a quoted post included — up to which a
  *  walk that was asked to start INSIDE the scope starts at the scope instead. */
 const WHOLE_POST_CHARS = 2 * WINDOW_CHARS;
@@ -872,6 +886,9 @@ interface Frame {
   block: Element | null;
   /** An unpunctuated first line that could not open a group by itself. */
   pending: Run | null;
+  /** Inside a post: unpunctuated lines in blocks of their own, side by side, that nothing
+   *  has shown to be text yet (see `short`, lines of verse). */
+  lines: Run[];
   /** The unit of the last FULL paragraph, not yet let go: a short text right after it that
    *  cannot stand alone may still join it (see `endGroup`). */
   prev: Run[] | null;
@@ -996,6 +1013,7 @@ function createAssembler(
     endGroup(f, null);
     f.block = null;
     f.pending = null;
+    f.lines = [];
     if (f.scope === null) f.live = false;
   }
 
@@ -1103,7 +1121,7 @@ function createAssembler(
     if (!f) {
       if (stack.length > 0 && scopes.recognised(scope)) cut(stack[stack.length - 1]);
       const partial = scope !== null && !composedContains(walkRoot, scope);
-      f = { scope, group: [], block: null, pending: null, prev: null, prose: [], held: [], partial, unread: [], live: false };
+      f = { scope, group: [], block: null, pending: null, lines: [], prev: null, prose: [], held: [], partial, unread: [], live: false };
       stack.push(f);
     }
     return f;
@@ -1192,6 +1210,7 @@ function createAssembler(
     // that is where a forum sets "Posted by alice on March 3" under the message.
     f.block = f.scope !== null ? r.container : null;
     f.pending = null;
+    f.lines = [];
     f.prev = [...lead, r];
     if (f.scope !== null) f.prose.push(r);
     f.live = f.scope === null ? f.prev.some((x) => !x.claimed) : f.live || !r.claimed;
@@ -1216,6 +1235,7 @@ function createAssembler(
       // three unpunctuated words are skipped, not joined — that is where a name or
       // "2h ago" sits when a site sets it in the message's own block.
       if (!punctuated && wordShape(r.text).letterWords < MIN_LINE_WORDS) return;
+      f.lines = [];
       if (f.pending) {
         const first = f.pending;
         f.pending = null;
@@ -1236,9 +1256,15 @@ function createAssembler(
         shape.letterWords >= MIN_MERGE_WORDS);
     // What the text stood beside last: the open group, else the full paragraph before it.
     const last = f.group.length > 0 ? f.group[f.group.length - 1] : f.prev ? f.prev[f.prev.length - 1] : null;
+    // Reads on without a stop at its end: a line of verse, if it is text at all.
+    const unstopped = !punctuated && !endsInColon(r.text);
     if (prose) {
+      const lines = f.lines;
+      f.lines = [];
       f.pending = null;
       if (last && !together(f, last.container, r.container)) close(f); // another section
+      // The short lines held before it are lines of the same verse (see below).
+      if (unstopped && lines.length > 0 && sameBody(lines[lines.length - 1].container, r.container)) for (const line of lines) push(f, line);
       push(f, r);
       return;
     }
@@ -1273,6 +1299,30 @@ function createAssembler(
     if (tag !== "LI" && tag !== "DT" && last && compatible(last.container, r.container)) {
       if (f.scope === null) close(f);
       else if (scopes.recognised(f.scope) && !amongTheText(f, r.container)) conclude(f);
+    }
+    // LINES OF VERSE. A Zhihu answer written one line per <p> — 4, 6, 13, 9, 13 and 7
+    // words, not one of them ending in punctuation — got nothing: only the three lines long
+    // enough to be prose without a full stop joined (35 words), and each shorter one was a
+    // "label". Inside a post they are all the same person's text. What tells such a line
+    // from the pseudo-heading that stays out (V2EX's "What we tried first" before a list,
+    // Zhihu's bold one-liner between two paragraphs) is its company: a heading introduces
+    // sentences, a line of verse stands beside other lines that read on without a stop, in
+    // the SAME BODY — sibling blocks of one tag and one class. So a short line is held, and
+    // counted only once an unstopped prose line of its body stands next to it, before or
+    // after. Two counter rows above a punctuated review are never that, and a row of the
+    // card has concluded what was read (above) before it gets here. List markup keeps its
+    // own rule — an item is prose from eight words, "Sea salt" and "2 spoons of brown sugar"
+    // are skipped: the short bullets of Google's terms of service and of an sspai article
+    // joined their longer neighbours as "verse", which no reader would call them.
+    const item = tag === "LI" || tag === "DT" || tag === "DD";
+    if (f.scope !== null && !item && shape.running && shape.letterWords >= MIN_LINE_WORDS) {
+      const before = f.group.length > 0 ? f.group[f.group.length - 1] : null;
+      if (before && !endsLikeProse(before.text) && !endsInColon(before.text) && sameBody(before.container, r.container)) {
+        push(f, r);
+        return;
+      }
+      const held = f.lines;
+      f.lines = held.length > 0 && sameBody(held[held.length - 1].container, r.container) ? [...held, r] : [r];
     }
     if (f.group.length === 0 && shape.letterWords >= MIN_LINE_WORDS) {
       // "I quit my job" — the unpunctuated first line of a post. It opens the group

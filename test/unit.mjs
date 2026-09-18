@@ -560,6 +560,39 @@ const results = await page.evaluate(() => {
     check("a label that is a ROW OF THE CARD (Steam: 'Posted: …' between the counters and the review) concludes what was read: the site's counter lines are never the opening lines of a review",
       u.length === 1 && u[0].parts === 1 && u[0].text.startsWith("REVIEW") && !/found this review/.test(u[0].text), shape(u));
 
+    // Lines of verse: one unpunctuated line per block. The short ones used to be "labels".
+    {
+      const VERSE = [4, 6, 13, 9, 13, 7]; // a Zhihu answer as measured: 52 words, no line ends in punctuation
+      const verse = VERSE.map((n, i) => `V${i} ${line(n - 1)}`);
+      u = collect(post("alice", ...verse) + post("bob", sent(20)));
+      check("a recognised answer written one unpunctuated line per <p> — 4, 6, 13, 9, 13, 7 words — is ONE unit of six lines, 52 words (only the three long lines joined: 35 words, nothing)",
+        u.length === 1 && u[0].parts === 6 && u[0].words === 52 && partsOf(u[0]).every((t, i) => t.startsWith(`V${i} `)), shape(u));
+      u = collect(`<article>${verse.map((t) => `<p>${t}</p>`).join("")}</article>`);
+      check("…and so is a declared post of that shape", u.length === 1 && u[0].parts === 6 && u[0].words === 52, shape(u));
+      u = collect(verse.map((t) => `<p>${t}</p>`).join(""));
+      check("…while on the bare page nothing changes: there a short unpunctuated line may be the next person's name row", u.length === 0, shape(u));
+
+      u = collect(post("alice", `A ${sent(24)}`, "What went wrong with it", `B ${sent(24)}`, `C ${line(9)}`) + post("bob", sent(20)));
+      check("a pseudo-heading is still in no unit: it introduces sentences, and a line of verse stands beside lines that read on without a stop",
+        u.length === 1 && u[0].parts === 3 && !u[0].text.includes("wrong"), shape(u));
+      u = collect(post("alice", `A ${sent(24)}`, "Where We Ended Up", `B ${line(12)}`, `C ${line(13)}`, `D ${line(12)}`) + post("bob", sent(20)));
+      check("…nor is a Title In Title Case before unstopped lines: a line of verse is running text", u.length === 1 && !u[0].text.includes("Ended"), shape(u));
+      const stats = `<div class="stat">26 people found this review helpful</div><div class="stat">3 people found this review funny</div>`;
+      u = collect(`<div class="c">${by("alice")}<div class="b">${stats}<div class="text">REVIEW ${sent(59)}</div></div></div>` + post("bob", sent(20)));
+      check("two counter rows of a card, side by side above a punctuated review, are no verse and stay out of it", u.length === 1 && u[0].parts === 1 && !/found this review/.test(u[0].text), shape(u));
+      u = collect(`<div class="c">${by("alice")}<div class="b">${stats}<div class="text">REVIEW ${line(60)}</div></div></div>` + post("bob", sent(20)));
+      check("…even above a review that has no full stop itself: they are not blocks of the text's body (another class)", u.length === 1 && u[0].parts === 1 && !/found this review/.test(u[0].text), shape(u));
+
+      u = collect(`<article><ul><li>ITEM-A ${line(12)}</li><li>two spoons of brown sugar</li><li>ITEM-B ${line(20)}</li><li>ITEM-C ${line(20)}</li></ul></article>`);
+      check("list items keep their own rule inside a post too: a five-word item beside long unpunctuated ones is skipped, not a line of verse (Google's terms, an sspai article)",
+        u.length === 1 && u[0].parts === 3 && !u[0].text.includes("spoons"), shape(u));
+
+      // LinkedIn as measured on the live page: 45 words of prose and a line that is all hashtags.
+      const tags = `<a href="/feed/hashtag/?keywords=oncall">#oncall</a> <a href="/feed/hashtag/?keywords=sre">#sre</a> <a href="/feed/hashtag/?keywords=reliability">#reliability</a>`;
+      u = collect(`<div role="list"><div><div role="listitem"><div class="hd">${by("alice")}</div><p><span data-testid="expandable-text-box">${sent(25)}<br><br>${sent(20)}<br><br>${tags}</span></p></div></div><div><div role="listitem"><div class="hd">${by("bob")}</div><p><span>${sent(30)}</span></p></div></div></div>`);
+      check("LinkedIn: 45 words of prose and an all-link hashtag line stay unjudged — the hashtags are never what lifts a post over the floor", u.length === 0, shape(u));
+    }
+
     // One text body: deeper because of LIST markup, never because of a layout box.
     u = collect(post("alice", `LEAD ${sent(19)}`).replace("</p></div>", `</p><ol><li><p>ITEM-A ${sent(14)}</p></li><li><p>ITEM-B ${sent(14)}</p></li></ol><p>LAST ${sent(14)}</p></div>`) + post("bob", sent(20)));
     check("inside a recognised post a paragraph and `ol > li > p` items two levels down are one text (a Zhihu answer lost such paragraphs: no neighbour by proximity)",
@@ -1693,7 +1726,7 @@ const EXPECTED = {
   "v2ex-topic": [2, 2],
   "wordpress-comments": [2, 2],
   "x-timeline": [7, 5],
-  "zhihu-answers": [12, 6],
+  "zhihu-answers": [13, 7],
 };
 const fixtureFiles = readdirSync(FIXTURES).filter((f) => f.endsWith(".html")).sort();
 results.push({ name: "every fixture has an expectation (and the other way round)", ok: JSON.stringify(fixtureFiles.map((f) => f.replace(".html", "")).sort()) === JSON.stringify(Object.keys(EXPECTED).sort()), note: fixtureFiles.join(",") });
