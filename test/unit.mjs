@@ -699,6 +699,16 @@ const results = await page.evaluate(() => {
     check("wordShape: letter words and running text", a.letterWords === 2 && !b.running && c.letterWords === 3 && c.running && d.running && d.letterWords >= 3 && e.letterWords === 1,
       JSON.stringify([a, b, c, d, e]));
   }
+  {
+    // A caseless script with a cased brand name in it: one "OpenAI" used to defeat the
+    // all-caseless fallback, and the sentence was "punctuated but not prose".
+    const zh = PW.wordShape("我觉得OpenAI的新模型确实很厉害。"), ar = PW.wordShape("أعتقد أن نموذج OpenAI الجديد مثير للإعجاب حقا."), name = PW.wordShape("Alice Moreau 博士"), brand = PW.wordShape("OpenAI");
+    check("wordShape: mostly caseless words are running text whatever brand they name; a cased name with one CJK word is not",
+      zh.running && ar.running && !name.running && !brand.running, JSON.stringify([zh, ar, name, brand]));
+    u = collect(Array.from({ length: 12 }, (_, i) => `<p>第${i}段，我觉得OpenAI的新模型确实很厉害。</p>`).join(""));
+    check("short Chinese paragraphs that each name OpenAI are read together (every one of them used to be skipped)",
+      u.length === 1 && u[0].parts === 12, JSON.stringify(u.map(x => [x.parts, x.words])));
+  }
 
   // ---- boilerplate token expansion (trafilatura-derived) ------------------------------
   u = collect(`<div class="social-share">${words(60)}</div>`);

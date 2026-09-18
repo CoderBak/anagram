@@ -246,18 +246,20 @@ export interface WordShape {
   /** Words that contain a letter: "10:42", "2026", "p. 208" are not the words of a
    *  sentence, and Wikipedia's "Hodges 1983, p. 208." is a citation, not a remark. */
   letterWords: number;
-  /** Some word of two or more letters starts in lowercase, or the script has no
-   *  case at all (CJK, Arabic, Thai): running text — not a Name Surname, a Title In
-   *  Title Case, "Acme Inc." or a SHOUTING BUTTON. */
+  /** Some word of two or more letters starts in lowercase, or most of the words are in
+   *  a script that has no case at all (CJK, Arabic, Thai): running text — not a Name
+   *  Surname, a Title In Title Case, "Acme Inc." or a SHOUTING BUTTON. */
   running: boolean;
 }
 
 export function wordShape(text: string): WordShape {
   let letterWords = 0;
+  let casedWords = 0;
   let lowerStart = false;
   const see = (t: string): void => {
     if (!/\p{L}/u.test(t)) return;
     letterWords++;
+    if (/[\p{Lu}\p{Ll}]/u.test(t)) casedWords++;
     if (/^\p{Ll}\p{L}/u.test(t)) lowerStart = true;
   };
   const seg = wordSegmenter();
@@ -266,7 +268,10 @@ export function wordShape(text: string): WordShape {
   } else {
     for (const t of text.split(/\s+/)) see(t);
   }
-  return { letterWords, running: lowerStart || !/[\p{Lu}\p{Ll}]/u.test(text) };
+  // A Chinese sentence that names OpenAI or an iPhone is still a Chinese sentence: one
+  // capitalised brand used to make it "punctuated but not prose", and a 223-word post on X
+  // was judged by 135 of its words. Most words caseless → running text.
+  return { letterWords, running: lowerStart || casedWords * 2 < letterWords };
 }
 
 /** Separator-looking runs ("* * *", "———"): punctuation/symbols only, no digits. */
