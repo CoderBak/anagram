@@ -81,12 +81,21 @@ export function fakeScore(text) {
   return { bucket, probs, score, tokens: Math.min(512, tokens), truncated: tokens > 512, lang: "en", lang_prob: 0.99 };
 }
 
+/** How many block texts `stats.texts` keeps (oldest dropped): a 3000-paragraph perf
+ *  page must not turn the recorder into a memory leak. */
+const MAX_RECORDED_TEXTS = 500;
+
 /**
  * Start the fake on 127.0.0.1. `close()` stops it (the extension then sees "connection
  * refused" = daemon down); start again with the same `port` to bring it back.
+ *
+ * `stats.texts` is what the daemon was actually asked about — a suite proving that some
+ * paragraph never left the page reads it. `delayFor(text)` returns milliseconds to hold
+ * a request for, which parks a chosen paragraph in flight (a stalled daemon) while
+ * everything else keeps its ordinary latency.
  */
-export function startFakeDaemon({ port = 0, latency = [60, 160], model = FAKE_MODEL } = {}) {
-  const stats = { requests: 0, blocks: 0, nonEnglishBlocks: 0 };
+export function startFakeDaemon({ port = 0, latency = [60, 160], model = FAKE_MODEL, delayFor = null } = {}) {
+  const stats = { requests: 0, blocks: 0, nonEnglishBlocks: 0, texts: [] };
   const server = http.createServer((req, res) => {
     const json = (code, body) => {
       res.writeHead(code, { "content-type": "application/json" });
@@ -111,13 +120,27 @@ export function startFakeDaemon({ port = 0, latency = [60, 160], model = FAKE_MO
         const blocks = Array.isArray(parsed?.blocks) ? parsed.blocks : [];
         stats.requests++;
         stats.blocks += blocks.length;
-        for (const b of blocks) if (typeof b?.text === "string" && detectLanguage(b.text)[0] !== "en") stats.nonEnglishBlocks++;
+        for (const b of blocks) {
+          if (typeof b?.text !== "string") continue;
+          if (detectLanguage(b.text)[0] !== "en") stats.nonEnglishBlocks++;
+          stats.texts.push(b.text);
+        }
+        if (stats.texts.length > MAX_RECORDED_TEXTS) {
+          stats.texts.splice(0, stats.texts.length - MAX_RECORDED_TEXTS);
+        }
         const results = blocks.map((b) =>
           typeof b?.text === "string" && b.text.trim()
             ? { id: b.id, ...fakeScore(b.text) }
             : { id: b.id, bucket: 0, probs: FLAT, score: 0, tokens: 0, truncated: false, degraded: true },
         );
-        const wait = latency[0] + Math.random() * (latency[1] - latency[0]);
+        // A request is answered no sooner than its slowest block asks for.
+        let wait = latency[0] + Math.random() * (latency[1] - latency[0]);
+        if (delayFor) {
+          for (const b of blocks) {
+            const d = typeof b?.text === "string" ? delayFor(b.text) : null;
+            if (typeof d === "number" && d > wait) wait = d;
+          }
+        }
         setTimeout(() => json(200, { v: CONTRACT, session: parsed.session ?? null, model, partial: false, results }), wait);
       });
       return;

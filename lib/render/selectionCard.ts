@@ -9,6 +9,7 @@ import { MARK_ATTR } from "../types";
 import type { ScoreBatchRequest } from "../contract";
 import { CONTRACT_VERSION } from "../contract";
 import { requestScores } from "../messaging/client";
+import { SURFACE } from "../surface";
 import { band, BAND_LABEL, isNoVerdict, languageName, scorePct, type Band } from "./band";
 import { DIST_CSS, distributionHtml } from "./dist";
 import { countWords, scoringText, MIN_UNIT_WORDS } from "../dom/text";
@@ -144,6 +145,14 @@ export async function analyzeSelection(): Promise<void> {
   shadow.adoptedStyleSheets = [sheet()];
   const card = document.createElement("div");
   card.className = "card";
+  // ONE delegated listener, bound before anything is rendered: the ✕ has to close the
+  // card in every state — including the whole wait for a stalled daemon, which is where
+  // it used to be dead — and it has to survive the innerHTML re-renders below, each of
+  // which replaces the button element.
+  card.addEventListener("click", (e) => {
+    const target = e.target as Element | null;
+    if (target?.closest?.(".close")) dismiss();
+  });
   shadow.appendChild(card);
   (document.body ?? document.documentElement).appendChild(host);
   document.addEventListener("pointerdown", onOutside, true);
@@ -181,14 +190,18 @@ export async function analyzeSelection(): Promise<void> {
       `<div class="head"><span class="verdict band-unknown spin">Analyzing…</span><span class="big"></span></div>` +
       row("Words selected", String(words));
     place();
+    // Only a sentence-bounded prefix of a long selection is sent (scoringText): the card
+    // must not report the whole selection as the thing that was read.
+    const sent = scoringText(text);
+    const sentWords = countWords(sent);
     const req: ScoreBatchRequest = {
       v: CONTRACT_VERSION,
       session: "sel_" + Math.random().toString(36).slice(2, 10),
-      surface: "chrome-ext",
+      surface: SURFACE,
       priority: "viewport",
       lang: document.documentElement.getAttribute("lang") || "und",
       domain: location.hostname || "und",
-      blocks: [{ id: "sel_0", text: scoringText(text), order: 0 }],
+      blocks: [{ id: "sel_0", text: sent, order: 0 }],
     };
     const { results: [r], backend } = await requestScores(req);
     if (!_host || _host !== host) return; // dismissed while in flight
@@ -210,7 +223,8 @@ export async function analyzeSelection(): Promise<void> {
         `<span class="big" title="Extent of AI editing (EditLens scale)">${isNoVerdict(b) ? "—" : pct + "%"}</span></div>` +
         (isNoVerdict(b) ? "" : distributionHtml(r, b)) +
         (b === "unsupported" ? row("Detected language", `${languageName(r.lang)} · ${Math.round((r.lang_prob ?? 0) * 100)}%`) : "") +
-        row(b === "unsupported" ? "Words" : "Words analyzed", String(words)) +
+        row("Words selected", String(words)) +
+        (sentWords < words ? row("Words analyzed", `first ${sentWords}`) : "") +
         (r.truncated ? row("Model window", `first ${r.tokens ?? 512} tokens`) : "") +
         `<div class="foot">${
           b === "unknown"
@@ -222,5 +236,4 @@ export async function analyzeSelection(): Promise<void> {
     }
     place();
   }
-  shadow.querySelector(".close")?.addEventListener("click", dismiss);
 }

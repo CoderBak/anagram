@@ -17,8 +17,9 @@ import type { ContentScriptContext } from "#imports";
 import { ACTIONS } from "../messaging/protocol";
 import type { BackendStatus } from "../messaging/protocol";
 import type { Unit, Lane } from "../types";
-import type { ScoreBlock, ScoreResult, ScoreBatchRequest } from "../contract";
+import type { ModelInfo, ScoreBlock, ScoreResult, ScoreBatchRequest } from "../contract";
 import { CONTRACT_VERSION } from "../contract";
+import { SURFACE } from "../surface";
 import { collectUnits } from "../dom/walker";
 import { findMainContent, useReadability } from "../dom/mainContent";
 import { loadReadability } from "../lazy";
@@ -60,6 +61,8 @@ const PREFETCH_PASS = 300;
 const URL_POLL_MS = 2500;
 /** While the daemon is down: how often the content script asks the worker to re-probe. */
 const DOWN_POLL_MS = 5000;
+/** How long the first collect waits for the Readability chunk under "main" scope. */
+const READABILITY_BOOT_MS = 1500;
 
 function navigationApi(): EventTarget | null {
   const n = (window as unknown as { navigation?: EventTarget }).navigation;
@@ -81,6 +84,8 @@ export interface Orchestrator {
   flaggedCount(): number;
   /** Number of units skipped as an unsupported language (popup GET_TAB_STATE). */
   unsupportedCount(): number;
+  /** Number of units left with a degraded "Unavailable" verdict (popup GET_TAB_STATE). */
+  unavailableCount(): number;
   /** Configure the FAB's secondary action chip (Google Docs reading view etc.). */
   setFabAction(label: string | null, onAction?: () => void, opts?: { attention?: boolean }): void;
   /** Popup/panel "Retry": re-probe the daemon now; re-queue every "Unavailable" unit. */
@@ -90,6 +95,24 @@ export interface Orchestrator {
 function newSessionId(): string {
   return "s_" + Math.random().toString(36).slice(2, 10);
 }
+
+/** Everything the FIRST collect depends on, read as one snapshot before it runs. */
+interface SettingsSnapshot {
+  showHighlights: boolean;
+  displayMode: "all" | "flagged";
+  mergeShorts: boolean;
+  markStyle: "both" | "underline" | "tint";
+  analysisScope: "page" | "main";
+}
+
+/** Storage answered nothing (dead extension context) — boot with the shipped defaults. */
+const DEFAULT_SNAPSHOT: SettingsSnapshot = {
+  showHighlights: true,
+  displayMode: "all",
+  mergeShorts: true,
+  markStyle: "both",
+  analysisScope: "page",
+};
 
 export interface OrchestratorOptions {
   /** Mount the floating toggle. False in subframes — one FAB per TAB, in the top frame. */
@@ -121,6 +144,12 @@ export function createOrchestrator(
   const lang = document.documentElement.getAttribute("lang") || "und";
 
   let started = false;
+  /** True once the settings snapshot has been applied AND the first collect has run. */
+  let booted = false;
+  /** Boot generation: a stop()+start() pair must not let the older boot finish. */
+  let bootSeq = 0;
+  /** The Readability chunk is in the main-content detector's hands. */
+  let readabilityLoaded = false;
   let visible = true;
   let highlightsEnabled = true;
   let displayMode: "all" | "flagged" = "all";
@@ -175,15 +204,32 @@ export function createOrchestrator(
       .sort((a, b) => a.unit.order - b.unit.order);
 
     const lines: string[] = [];
-    lines.push(`# Anagram AI report — ${document.title || location.hostname}`);
+    lines.push(`# Anagram report — ${document.title || location.hostname}`);
     lines.push("");
     lines.push(`- Page: ${location.href}`);
     lines.push(`- Generated: ${new Date().toLocaleString()}`);
+    // "Analyzed" is real verdicts only. A paragraph the language gate refused and one
+    // the daemon never answered for were both counted as analyzed before, which made
+    // an outage look like a clean sweep.
     let skipped = 0;
-    for (const r of resultsById.values()) if (r.unsupported) skipped++;
+    let unavailable = 0;
+    for (const r of resultsById.values()) {
+      if (r.unsupported) skipped++;
+      else if (r.degraded) unavailable++;
+    }
+    const analyzed = resultsById.size - skipped - unavailable;
     lines.push(
-      `- Analyzed: ${resultsById.size - skipped} unit${resultsById.size - skipped === 1 ? "" : "s"} · Flagged: ${flagged.length}` +
+      `- Analyzed: ${analyzed} unit${analyzed === 1 ? "" : "s"} · Flagged: ${flagged.length}` +
+        (unavailable > 0 ? ` · Unavailable: ${unavailable}` : "") +
         (skipped > 0 ? ` · Skipped (unsupported language): ${skipped}` : ""),
+    );
+    lines.push("");
+    // Every surface of the product says the number is an EXTENT of editing; the report
+    // used to print it as "62% AI", which reads as a share of AI-written words. It now
+    // carries the plain percentage and the card footer's own sentence to read it by.
+    lines.push(
+      "Each percentage is EditLens's estimate of how far that text sits from untouched " +
+        "human writing toward fully AI-generated — not a share of words, not proof.",
     );
     lines.push("");
     if (flagged.length === 0) {
@@ -199,7 +245,7 @@ export function createOrchestrator(
         const snippet = unit.text.replace(/\s+/g, " ").slice(0, 220);
         const ellipsis = unit.text.length > 220 ? "…" : "";
         lines.push(
-          `${i + 1}. **${BAND_LABEL[band(r)]} · ${pct}% AI** ` +
+          `${i + 1}. **${BAND_LABEL[band(r)]} · ${pct}%** ` +
             `(${dist}; ${unit.wordCount} words)`,
         );
         lines.push(`   > ${snippet}${ellipsis}`);
@@ -225,6 +271,24 @@ export function createOrchestrator(
   /** Re-detect the main-content region (scope "main"); body-wide otherwise. */
   function resolveScopeRoot(): void {
     scopeRoot = analysisScope === "main" ? findMainContent() : null;
+  }
+
+  /**
+   * Fetch the on-demand Readability chunk once and hand it to the detector. Resolves
+   * false when it cannot be loaded — the text-mass probe then answers alone, which is
+   * also what happens for as long as the chunk is in flight.
+   */
+  async function loadReadabilityOnce(): Promise<boolean> {
+    if (readabilityLoaded) return true;
+    try {
+      useReadability(await loadReadability());
+      readabilityLoaded = true;
+      log.log("Readability chunk loaded");
+      return true;
+    } catch (e) {
+      log.warn("Readability chunk failed to load", e);
+      return false;
+    }
   }
 
   /** The element full scans start from under the current scope. */
@@ -422,7 +486,7 @@ export function createOrchestrator(
       const req: ScoreBatchRequest = {
         v: CONTRACT_VERSION,
         session,
-        surface: "chrome-ext",
+        surface: SURFACE,
         priority: lane,
         lang,
         domain,
@@ -432,17 +496,9 @@ export function createOrchestrator(
       const fresh = reply.results;
       if (reply.backend === "down") enterDown();
       else if (reply.backend === "up") leaveDown();
-      // The reply names the backend that produced it. A different identity than the
-      // one this tab's L1 holds means every earlier entry is another model's verdict.
-      const m = lastModel();
-      const dim = m ? modelDim(m) : null;
-      if (dim && dim !== l1Dim) {
-        if (l1Dim !== null) {
-          log.log("backend changed", l1Dim, "→", dim, "— dropping", cache.size(), "L1 entries");
-          cache.clear();
-        }
-        l1Dim = dim;
-      }
+      // The reply names the backend that produced it — adopt it, dropping whatever the
+      // previous one left behind (both cached and already painted).
+      adoptBackend(lastModel());
       const byId = new Map(fresh.map((r) => [r.id, r] as const));
       for (const [k, rep] of repByKey) {
         const r = byId.get(rep.id);
@@ -523,10 +579,34 @@ export function createOrchestrator(
       const s = (await browser.runtime.sendMessage({ action: ACTIONS.GET_BACKEND_STATUS, probe: force })) as
         | BackendStatus
         | undefined;
-      if (s?.active === "server") leaveDown();
+      if (s?.active === "server") {
+        leaveDown();
+        // The daemon may have come back as a DIFFERENT model. A page whose paragraphs
+        // are all cache hits sends no request at all, so the probe is the only place
+        // such a tab can ever notice.
+        adoptBackend(s.model);
+      }
     } catch {
       /* worker restarting — next tick */
     }
+  }
+
+  /**
+   * Adopt the identity of the backend that answered. A different one than this tab's L1
+   * cache belongs to means every entry — and every verdict already on the page — is the
+   * previous model's, so both go and the page is derived again. Afterwards l1Dim names
+   * the new backend, so the rescan's own replies cannot start this over.
+   */
+  function adoptBackend(m: ModelInfo | null): void {
+    if (!m) return;
+    const dim = modelDim(m);
+    if (dim === l1Dim) return;
+    const previous = l1Dim;
+    l1Dim = dim;
+    if (previous === null) return; // first answer in this frame — nothing to drop
+    log.log("backend changed", previous, "→", dim, "— dropping", cache.size(), "L1 entries");
+    cache.clear();
+    if (started) rescan();
   }
 
   /** Forget every degraded verdict and let the observers re-dispatch those units. */
@@ -600,6 +680,29 @@ export function createOrchestrator(
     }
     badges.setVisible(visible);
     setHighlightsVisible(visible && highlightsEnabled);
+  }
+
+  /** Merging changes the segmentation itself, so the page must be collected again. */
+  function applyMergeShorts(v: boolean): void {
+    if (v === mergeShorts) return;
+    mergeShorts = v;
+    if (started) rescan();
+  }
+
+  /** Scope is structural too: WHAT gets collected changes. */
+  function applyScope(v: "page" | "main"): void {
+    if (opts.lockScope) return; // pinned (Docs editor) — user scope not applied
+    if (v === analysisScope) return;
+    analysisScope = v;
+    if (v === "main") {
+      // Readability is an on-demand chunk: fetch it once, then re-collect under the
+      // new scope (the text-mass probe covers the rare failure to load).
+      void loadReadabilityOnce().then(() => {
+        if (started && analysisScope === "main") rescan();
+      });
+    } else if (started) {
+      rescan();
+    }
   }
 
   function updateFab(): void {
@@ -746,6 +849,7 @@ export function createOrchestrator(
     if (started) return;
     if (!document.body) return;
     started = true;
+    booted = false;
     visible = true;
     lastHref = location.href;
 
@@ -754,61 +858,109 @@ export function createOrchestrator(
       fab.mount();
       fab.setActive(true);
     }
+    // The chrome goes up synchronously — callers treat start() as immediate — but
+    // nothing is COLLECTED until the user's own settings have been read: see boot().
+    void boot(++bootSeq);
+  }
 
-    void settings.showHighlights.getValue().then(applyHighlightSetting);
-    unwatchHighlights?.();
-    unwatchHighlights = settings.showHighlights.watch(applyHighlightSetting);
-    void settings.displayMode.getValue().then(applyDisplayMode);
-    unwatchDisplay?.();
-    unwatchDisplay = settings.displayMode.watch(applyDisplayMode);
-    const applyMergeShorts = (v: boolean): void => {
-      if (v === mergeShorts) return;
-      mergeShorts = v; // structural — segmentation itself changes
-      if (started) rescan();
-    };
-    void settings.mergeShorts.getValue().then(applyMergeShorts);
-    unwatchMerge?.();
-    unwatchMerge = settings.mergeShorts.watch(applyMergeShorts);
-    void settings.markStyle.getValue().then(setMarkStyle);
-    unwatchMarkStyle?.();
-    unwatchMarkStyle = settings.markStyle.watch(setMarkStyle);
-    const applyScope = (v: "page" | "main"): void => {
-      if (opts.lockScope) return; // pinned (Docs editor) — user scope not applied
-      if (v === analysisScope) return;
-      analysisScope = v; // structural — what gets collected changes
-      if (v === "main") {
-        // Readability is an on-demand chunk: fetch it once, then re-collect under the
-        // new scope (the text-mass probe covers the rare failure to load).
-        void loadReadability()
-          .then(
-            (mod) => {
-              useReadability(mod);
-              log.log("Readability chunk loaded");
-            },
-            (e) => log.warn("Readability chunk failed to load", e),
-          )
-          .finally(() => {
-            if (started && analysisScope === "main") rescan();
-          });
-      } else if (started) {
-        rescan();
-      }
-    };
-    void settings.analysisScope.getValue().then((v) => {
-      // First resolution happens before the initial collect below when the value
-      // is already "main"; the async path re-scans if it arrives later.
-      applyScope(v);
-    });
-    unwatchScope?.();
-    unwatchScope = settings.analysisScope.watch(applyScope);
+  /**
+   * The asynchronous half of start(). The first collect has to run under the settings
+   * the user chose, not under the defaults: scanning first and correcting afterwards
+   * dispatched paragraphs a "Main content only" reader never agreed to send, chipped
+   * them outside the region, and flashed "analyzing…" chips at a "Flagged only" reader
+   * before tearing the whole page down again. `seq` retires a boot whose start() has
+   * since been undone by a stop() or overtaken by a newer start().
+   */
+  async function boot(seq: number): Promise<void> {
+    applySnapshot(await readSettings());
+    if (seq !== bootSeq || !started) return; // stopped or restarted while we waited
 
+    // Under "main" scope the region is Readability's answer once the chunk is here and
+    // the text-mass probe's until then, and the two can disagree — so give the chunk a
+    // bounded head start instead of scanning the page twice on every load.
+    let lateReadability = false;
+    if (analysisScope === "main") {
+      const ready = loadReadabilityOnce();
+      lateReadability = await Promise.race([
+        ready.then(() => false),
+        new Promise<boolean>((r) => setTimeout(() => r(true), READABILITY_BOOT_MS)),
+      ]);
+      if (seq !== bootSeq || !started) return;
+    }
+
+    watchSettings();
     observers.start();
+    booted = true;
     resolveScopeRoot();
     const base = scanBase();
     if (base) ingestUnits(collect(base, makeClaimFilter()));
 
     watchUrl();
     log.log("started", { session, domain });
+
+    // The chunk was still in flight when the wait ran out, so this page was scoped by
+    // the text-mass probe alone: re-derive it once if Readability does turn up.
+    if (lateReadability) {
+      void loadReadabilityOnce().then((ok) => {
+        if (ok && started && seq === bootSeq && analysisScope === "main") rescan();
+      });
+    }
+  }
+
+  /** One awaited read of every setting the first collect depends on. */
+  async function readSettings(): Promise<SettingsSnapshot> {
+    try {
+      const [showHighlights, mode, merge, mark, scope] = await Promise.all([
+        settings.showHighlights.getValue(),
+        settings.displayMode.getValue(),
+        settings.mergeShorts.getValue(),
+        settings.markStyle.getValue(),
+        settings.analysisScope.getValue(),
+      ]);
+      return {
+        showHighlights,
+        displayMode: mode,
+        mergeShorts: merge,
+        markStyle: mark,
+        analysisScope: scope,
+      };
+    } catch (e) {
+      // Storage throws once the extension context is invalidated (reload/update).
+      log.warn("settings unreadable — booting with the defaults", e);
+      return DEFAULT_SNAPSHOT;
+    }
+  }
+
+  /**
+   * Adopt the snapshot in place. Nothing has been collected yet, so none of these values
+   * needs the repaint or the re-scan its live watcher performs.
+   */
+  function applySnapshot(s: SettingsSnapshot): void {
+    highlightsEnabled = s.showHighlights;
+    displayMode = s.displayMode;
+    mergeShorts = s.mergeShorts;
+    setMarkStyle(s.markStyle);
+    if (!opts.lockScope) analysisScope = s.analysisScope;
+    setHighlightsVisible(visible && highlightsEnabled);
+  }
+
+  /** Live changes from here on, exactly as they behaved before the snapshot existed. */
+  function watchSettings(): void {
+    try {
+      unwatchHighlights?.();
+      unwatchHighlights = settings.showHighlights.watch(applyHighlightSetting);
+      unwatchDisplay?.();
+      unwatchDisplay = settings.displayMode.watch(applyDisplayMode);
+      unwatchMerge?.();
+      unwatchMerge = settings.mergeShorts.watch(applyMergeShorts);
+      unwatchMarkStyle?.();
+      unwatchMarkStyle = settings.markStyle.watch(setMarkStyle);
+      unwatchScope?.();
+      unwatchScope = settings.analysisScope.watch(applyScope);
+    } catch (e) {
+      // Dead extension context: the page keeps the settings it booted with.
+      log.warn("settings watchers unavailable", e);
+    }
   }
 
   function watchUrl(): void {
@@ -860,6 +1012,7 @@ export function createOrchestrator(
   function stop(): void {
     if (!started) return;
     started = false;
+    booted = false;
     observers.stop();
     scheduler.stop();
     stopDownPolling();
@@ -888,6 +1041,10 @@ export function createOrchestrator(
       start();
       return;
     }
+    // Between start() and the first collect there is nothing to re-derive, and scanning
+    // here would do it under the defaults — which is the very thing boot() avoids. The
+    // boot's own collect, moments away, is the rescan.
+    if (!booted) return;
     scheduler.bumpEpoch();
     for (const unit of [...unitsById.values()]) observers.dropUnit(unit);
     clearAllResults();
@@ -918,6 +1075,13 @@ export function createOrchestrator(
     return n;
   }
 
+  /** Degraded verdicts are the daemon's silence, not an analysis — counted apart. */
+  function unavailableCount(): number {
+    let n = 0;
+    for (const r of resultsById.values()) if (r.degraded) n++;
+    return n;
+  }
+
   function setFabAction(
     label: string | null,
     onAction?: () => void,
@@ -926,7 +1090,18 @@ export function createOrchestrator(
     fab.setAction(label, onAction, opts);
   }
 
-  return { start, stop, rescan, toggle, scoredCount, flaggedCount, unsupportedCount, setFabAction, retryBackend };
+  return {
+    start,
+    stop,
+    rescan,
+    toggle,
+    scoredCount,
+    flaggedCount,
+    unsupportedCount,
+    unavailableCount,
+    setFabAction,
+    retryBackend,
+  };
 }
 
 /** Merge scan roots, dropping disconnected ones and any contained by another. */

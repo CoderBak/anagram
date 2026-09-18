@@ -193,6 +193,7 @@ export default defineContentScript({
               scored: orchestrator.scoredCount(),
               flagged: orchestrator.flaggedCount(),
               unsupported: orchestrator.unsupportedCount(),
+              unavailable: orchestrator.unavailableCount(),
             };
             sendResponse(state);
             return; // synchronous response

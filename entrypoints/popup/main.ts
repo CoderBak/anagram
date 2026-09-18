@@ -86,11 +86,15 @@ function showCounts(state: TabState): void {
   const flaggedEl = document.createElement("span");
   flaggedEl.textContent = `${state.flagged} flagged`;
   if (state.flagged > 0) flaggedEl.classList.add("flagged");
-  const analyzed = state.scored - (state.unsupported ?? 0);
+  // A paragraph the daemon never answered for was not analyzed, and neither was one
+  // the language gate refused — both are counted apart from the analyzed number.
+  const unavailable = state.unavailable ?? 0;
+  const analyzed = state.scored - (state.unsupported ?? 0) - unavailable;
   statusEl.replaceChildren(
     document.createTextNode(`${analyzed} paragraph${analyzed === 1 ? "" : "s"} analyzed · `),
     flaggedEl,
     document.createTextNode(state.unsupported ? ` · ${state.unsupported} not English` : ""),
+    document.createTextNode(unavailable ? ` · ${unavailable} unavailable` : ""),
   );
 }
 

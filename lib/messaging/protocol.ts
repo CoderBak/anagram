@@ -91,6 +91,8 @@ export interface TabState {
   flagged: number;
   /** Units skipped because their language is outside the model's (popup stat line). */
   unsupported: number;
+  /** Units left with a degraded "Unavailable" verdict — analyzed is what remains. */
+  unavailable: number;
 }
 
 /** popup/SW → content: tear down all badges and observers. */

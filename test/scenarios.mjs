@@ -27,7 +27,13 @@ const record = (phase, name, ok, note = "") =>
   results.push({ phase, name, status: ok === null ? "SKIP" : ok ? "PASS" : "FAIL", note });
 
 // ---- fake daemon (deterministic verdicts) + server for the fixture page -------------
-let daemon = await startFakeDaemon();
+// Texts carrying the stall marker are answered only after STALL_MS — long enough to
+// hold a selection card in its "Analyzing…" state while the test acts on it. Every
+// other request keeps the daemon's ordinary latency.
+const STALL_MARKER = "SLOWPOKE";
+const STALL_MS = 4000;
+const DAEMON_OPTS = { delayFor: (text) => (text.includes(STALL_MARKER) ? STALL_MS : null) };
+let daemon = await startFakeDaemon(DAEMON_OPTS);
 const daemonPort = daemon.port;
 const PARA = (tag) => `${tag} paragraph is long enough to be scored on its own because it carries well over fifty ordinary English words describing nothing in particular except the fact that a self-rewriting page must still end up with chips after it replaces its own document element, which is what legacy challenge pages and some old single-page frameworks do.`;
 const REWRITE_HTML = `<!doctype html><html><head><meta charset="utf-8"><title>rewrite fixture</title></head><body>
@@ -39,9 +45,31 @@ const REWRITE_HTML = `<!doctype html><html><head><meta charset="utf-8"><title>re
     document.close();
   }, 1500);
 </script></body></html>`;
+// Scope fixture: an article region both the text-mass probe and Readability land on,
+// plus a long paragraph OUTSIDE it carrying a marker word. Under "Main content only"
+// that paragraph must never be chipped and its text must never reach the daemon.
+const SCOPE_MARKER = "ZORBLAX";
+const OUTSIDE_PARA = `${SCOPE_MARKER} sits in a block outside the article region, and it is deliberately long enough to clear the evidence floor on its own, with well over sixty ordinary English words in it, so that nothing except the analysis scope can explain its absence: if the first scan ran under the default whole-page setting, this sentence would have been dispatched to the scoring daemon long before the stored setting ever arrived.`;
+const SCOPE_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>scope fixture</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+<main id="article"><h1>The article region</h1>
+<p id="s1">${PARA("SCOPED-ONE")}</p>
+<p id="s2">${PARA("SCOPED-TWO")}</p>
+<p id="s3">${PARA("SCOPED-THREE")}</p></main>
+<div id="offmain"><p id="s4">${OUTSIDE_PARA}</p></div>
+</body></html>`;
+// Stall fixture: the marker text sits in a <textarea>, which passive capture never
+// scores — so the only request it can ever produce is the selection card's own, and
+// no cached verdict can rob that card of its "Analyzing…" state.
+const STALL_TEXT = `${STALL_MARKER} is the marker word this selection carries so the fake daemon knows to hold its answer back for a few seconds, which is exactly the state the close button used to be dead in: the request is in flight, the card says it is analyzing, and the one listener that could dismiss it had not been attached yet, because attaching it was the last statement of the function.`;
+const STALL_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>stall fixture</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+<h1>Selection while the daemon stalls</h1>
+<textarea id="draft" style="width:100%;height:150px">${STALL_TEXT}</textarea>
+</body></html>`;
 const server = await serveHtml({
   "/ui-fixtures.html": readFileSync(join(__dirname, "ui-fixtures.html"), "utf8"),
   "/rewrite.html": REWRITE_HTML,
+  "/scope.html": SCOPE_HTML,
+  "/stall.html": STALL_HTML,
 });
 const fixturesUrl = server.url("/ui-fixtures.html");
 
@@ -651,7 +679,7 @@ async function sweep(page, steps = 6) {
     const bubbleDown = await bubble();
     record("ui", "daemon down: in-flight batch renders Unavailable, later paragraphs get no chip, counter shows !", gotDown1 && band1 === "band-unknown" && down2Chips === 0 && bubbleDown === "!", JSON.stringify({ band1, down2Chips, bubbleDown }));
 
-    daemon = await startFakeDaemon({ port: daemonPort }); // same URL as the extension setting
+    daemon = await startFakeDaemon({ port: daemonPort, ...DAEMON_OPTS }); // same URL as the extension setting
     const back1 = await badgeIn("down2", 20000);
     const back2 = await p.waitForFunction(({ sel, pid }) => {
       const pill = document.querySelector(`#${pid} ${sel}`)?.shadowRoot?.querySelector(".pill");
@@ -659,6 +687,121 @@ async function sweep(page, steps = 6) {
     }, { sel: BADGE_SEL, pid: "down1" }, { timeout: 20000 }).then(() => true).catch(() => false);
     const bubbleUp = await bubble();
     record("ui", "daemon back: waiting + Unavailable units re-queued automatically", back1 && back2 && bubbleUp !== "!", JSON.stringify({ back1, back2, bubbleUp }));
+    await p.close();
+  }
+
+  // A23: the FIRST scan already obeys the stored scope. With "Main content only" chosen
+  // before the page opens, the paragraph outside the article must never be chipped —
+  // and its text must never reach the daemon, not even during the few hundred
+  // milliseconds the settings read used to leave the page scanning whole-page defaults.
+  {
+    const extId = sw ? new URL(sw.url()).host : null;
+    let r = { inMain: 0, outside: 0, leaked: null };
+    if (extId) {
+      const opt = await context.newPage();
+      await opt.goto(`chrome-extension://${extId}/options.html`);
+      await opt.evaluate(() => new Promise((res) => chrome.storage.local.set({ analysisScope: "main" }, res)));
+      const p = await context.newPage();
+      await p.goto(server.url("/scope.html"), { waitUntil: "load" });
+      await p.waitForSelector(`main ${BADGE_SEL}`, { timeout: 12000 }).catch(() => {});
+      await sweep(p, 3);
+      await p.waitForTimeout(2500);
+      r = {
+        inMain: await p.evaluate((sel) => document.querySelectorAll(`main ${sel}`).length, BADGE_SEL),
+        outside: await p.evaluate((sel) => document.querySelectorAll(`#offmain ${sel}`).length, BADGE_SEL),
+        // Read BEFORE the setting is restored — restoring re-scans the page whole.
+        leaked: daemon.stats.texts.some((t) => t.includes(SCOPE_MARKER)),
+      };
+      await opt.evaluate(() => new Promise((res) => chrome.storage.local.set({ analysisScope: "page" }, res)));
+      await p.close();
+      await opt.close();
+    }
+    record("ui", "main-content scope holds from the first scan: nothing outside is chipped or sent", r.inMain > 0 && r.outside === 0 && r.leaked === false, JSON.stringify(r));
+  }
+
+  // A24: the selection card's ✕ closes it WHILE the request is in flight. The listener
+  // used to be attached after the await, so for as long as the daemon took (up to 25 s)
+  // the button did nothing.
+  {
+    const p = await context.newPage();
+    await p.goto(server.url("/stall.html"), { waitUntil: "load" });
+    await p.bringToFront();
+    await p.evaluate(() => {
+      const ta = document.getElementById("draft");
+      ta.focus();
+      ta.setSelectionRange(0, ta.value.length);
+    });
+    // Exactly what the context menu does: the service worker messages the active tab.
+    const t0 = Date.now();
+    await sw.evaluate(async () => {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      try {
+        await chrome.tabs.sendMessage(tab.id, { action: "analyzeSelection" });
+      } catch {
+        /* the content script answers nothing to this one */
+      }
+    });
+    // The card host is a plain badge host appended to <body>; only IT holds a .close.
+    const analyzing = await p
+      .waitForFunction(
+        (sel) => {
+          const host = [...document.querySelectorAll(sel)].find((h) => h.shadowRoot?.querySelector(".card .close"));
+          return !!host && /Analyzing/.test(host.shadowRoot.querySelector(".verdict")?.textContent ?? "");
+        },
+        BADGE_SEL,
+        { timeout: 8000 },
+      )
+      .then(() => true)
+      .catch(() => false);
+    const clicked = await p
+      .locator(`div[data-anagram="host"] .close`)
+      .click({ timeout: 4000 })
+      .then(() => true)
+      .catch(() => false);
+    const gone = await p
+      .waitForFunction(
+        (sel) => ![...document.querySelectorAll(sel)].some((h) => h.shadowRoot?.querySelector(".card .close")),
+        BADGE_SEL,
+        { timeout: 3000 },
+      )
+      .then(() => true)
+      .catch(() => false);
+    const elapsed = Date.now() - t0;
+    record(
+      "ui",
+      "selection card: ✕ closes it while the daemon is still thinking",
+      analyzing && clicked && gone && elapsed < STALL_MS,
+      JSON.stringify({ analyzing, clicked, gone, elapsed }),
+    );
+    await p.close();
+  }
+
+  // A25: the copied report never says "62% AI" — the number is an estimate of EDITING
+  // EXTENT, not a share of AI-written words — and it carries the legend that says so.
+  {
+    const p = await context.newPage();
+    await p.goto(fixturesUrl, { waitUntil: "load" });
+    await p.waitForSelector(BADGE_SEL, { timeout: 12000 }).catch(() => {});
+    await sweep(p, 6);
+    await p.waitForTimeout(2500);
+    await p.evaluate(() => navigator.clipboard.writeText("NO REPORT COPIED").catch(() => {}));
+    const clicked = await p.evaluate(() => {
+      const sr = document.getElementById("anagram-fab")?.shadowRoot;
+      sr?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      const copy = sr?.querySelector(".pcopy");
+      if (!copy) return false;
+      copy.click();
+      return true;
+    });
+    await p.waitForTimeout(500);
+    const report = await p.evaluate(() => navigator.clipboard.readText().catch(() => null));
+    const ok =
+      clicked &&
+      typeof report === "string" &&
+      report.startsWith("# Anagram report") &&
+      !report.includes("% AI") &&
+      report.includes("not a share of words, not proof");
+    record("ui", "copied report: bare percentages plus the legend that explains them", ok, JSON.stringify({ clicked, head: report?.slice(0, 48) }));
     await p.close();
   }
 }
