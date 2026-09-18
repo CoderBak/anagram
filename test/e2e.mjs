@@ -8,7 +8,9 @@
 // longer than the model reads in one pass is scored completely — in windows, one chip,
 // each window marked in its own band —
 // BR-split/short-sibling/pre-wrap content merges into single units, a post written one
-// short sentence per line is one unit while two voices never share one, inline code
+// short sentence per line is one unit while two voices never share one, a post of mixed
+// paragraphs (X markup) sits under ONE chip reading ×N and is one chip again after it is
+// opened in place, inline code
 // does not fragment prose, pure-CJK text is settled by the local language gate
 // instead of being scored (the daemon never sees it), hidden tabs and <details>
 // get badges when revealed, pushState swaps re-badge and purge, removals purge,
@@ -108,6 +110,7 @@ const snapshot = await page.evaluate((sel) => {
       brsplit: inSection("brsplit"),
       mergeshorts: inSection("mergeshorts"),
       postlines: inSection("postlines"),
+      postwhole: inSection("postwhole"),
       twovoices: inSection("twovoices"),
       inlinecode: inSection("inlinecode"),
       purecjk: inSection("purecjk"),
@@ -117,6 +120,7 @@ const snapshot = await page.evaluate((sel) => {
       never: inSection("never"),
     },
     prewrapBadges: document.querySelectorAll(`#prewrap ${sel}`).length,
+    postwholeChip: document.querySelector(`#postwhole ${sel}`)?.shadowRoot?.querySelector(".num")?.textContent ?? "",
     // The Chinese paragraph never reaches a backend at all: the content script's local
     // language gate settles it and renders an "unsupported language" chip with no number
     // and no mark. The fake daemon is asserted below to have seen no non-English block.
@@ -146,6 +150,8 @@ const snapshot = await page.evaluate((sel) => {
       post1: hlHas("POSTLINE-ONE"),
       postN: hlHas("POSTLINE-LAST"),
       posterName: hlHas("Poster Name"),
+      postwhole: ["POSTW-ONE", "POSTW-TWO", "POSTW-THREE", "POSTW-FOUR"].every(hlHas),
+      postwholeChrome: hlHas("Another Poster") || hlHas("Show more"),
       voices: ["VOICE-ONE", "VOICE-TWO", "VOICE-THREE", "VOICE-FOUR"].some(hlHas),
       icode: hlHas("ICODE tail marker"),
       cjk: hlHas("纯中文标记"),
@@ -160,6 +166,27 @@ const snapshotCardOf = {
 };
 console.log("\nSNAPSHOT:");
 console.log(JSON.stringify(snapshot, null, 2));
+
+// 7b) a post opened in place: the text is re-rendered with two more paragraphs. The old
+// unit's nodes are gone; the re-scan starts inside the post and must come back with ONE unit.
+await page.locator("#postmore").scrollIntoViewIfNeeded();
+await page.locator("#postmore").click();
+const postReopened = await page
+  .waitForFunction(
+    (sel) => {
+      const hosts = document.querySelectorAll(`#postwhole ${sel}`);
+      return hosts.length === 1 && /×6$/.test(hosts[0].shadowRoot?.querySelector(".num")?.textContent ?? "");
+    },
+    BADGE_SEL,
+    { timeout: 8000 },
+  )
+  .then(() => true)
+  .catch(() => false);
+const postReopenedMarks = await page.evaluate(() => {
+  const texts = [];
+  for (const h of CSS.highlights.values()) for (const r of h) texts.push(r.toString());
+  return ["POSTW-ONE", "POSTW-TWO", "POSTW-THREE", "POSTW-FOUR", "POSTW-FIVE", "POSTW-SIX"].every((m) => texts.some((t) => t.includes(m)));
+});
 
 // 8) hidden-tab reveal (class flip → attribute observer).
 await page.locator("#tabbtn").scrollIntoViewIfNeeded();
@@ -283,6 +310,9 @@ const checks = [
   ["three short siblings merged into one unit", s.sections.mergeshorts === 1 && s.hl.ms1 && s.hl.ms2 && s.hl.ms3],
   ["one-sentence-per-line post: one unit from the first line to the last, without the name row", s.sections.postlines === 1 && s.hl.post1 && s.hl.postN && !s.hl.posterName],
   ["two posts / an author and a quotation are never added up", s.sections.twovoices === 0 && !s.hl.voices],
+  ["a post of mixed paragraphs: ONE chip reading ×4, marks on every paragraph, none on the name or 'Show more'",
+    s.sections.postwhole === 1 && /^\d+% ×4$/.test(s.postwholeChip) && s.hl.postwhole && !s.hl.postwholeChrome],
+  ["…opened in place (text re-rendered, two more paragraphs): still ONE chip, now ×6, marks on all six", postReopened && postReopenedMarks],
   ["inline <code> does not fragment the paragraph", s.sections.inlinecode === 1 && s.hl.icode],
   ["pure-CJK paragraph badged as 'unsupported' (language gate)", s.sections.purecjk === 1 && s.cjkUnsupported],
   ["pre-wrap blank-line paragraphs split + merged", s.prewrapBadges === 1 && s.hl.pw1 && s.hl.pw2],
