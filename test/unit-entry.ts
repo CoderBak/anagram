@@ -16,8 +16,13 @@ export {
   isSeparatorRun,
   looksLikeNameList,
   hasLetters,
+  endsLikeProse,
+  endsInColon,
+  wordShape,
   MIN_UNIT_WORDS,
   MIN_MERGE_WORDS,
+  MIN_SENTENCE_WORDS,
+  MIN_LINE_WORDS,
 } from "../lib/dom/text";
 export { isBoilerplate } from "../lib/dom/boilerplate";
 export { findMainContent, useReadability } from "../lib/dom/mainContent";

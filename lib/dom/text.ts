@@ -3,9 +3,9 @@
 // v2 replaces the single-run Unit with a SEGMENT: one or more visual paragraphs
 // ("parts") scored together. A part is a run of consecutive text nodes inside one
 // block container. Most units have exactly one part; short neighbouring paragraphs
-// (chat messages, list items, BR-separated prose, comment threads) are merged into
-// multi-part units so text below the per-paragraph evidence floor still gets
-// covered instead of being silently skipped.
+// of ONE voice (list items, BR-separated lines of a post, the short paragraphs of
+// one article or one comment) are merged into multi-part units so text below the
+// per-paragraph evidence floor still gets covered instead of being silently skipped.
 
 /** One visual paragraph inside a unit: an inline run of text nodes + its block. */
 export interface UnitPart {
@@ -47,11 +47,25 @@ export interface Unit {
 export const MIN_UNIT_WORDS = 50;
 
 /**
- * A run must carry at least this many words to participate in merging. Filters
- * bylines, timestamps, "Reply · Share" rows out of merged segments without
- * treating them as section boundaries.
+ * Prose by LENGTH: a short run that does not end like a sentence (a bullet item
+ * without a full stop) still takes part in merging once it carries this many
+ * words. Under it, an unpunctuated run in a block of its own is a LABEL — a
+ * username, a timestamp, "Reply · Share", a pseudo-heading — and never prose.
  */
 export const MIN_MERGE_WORDS = 8;
+
+/** Prose by FORM: a run that ends like a sentence needs only this many words
+ *  ("I agree completely."). Shorter ones ("Yes.", "Me too!") are asides — skipped. */
+export const MIN_SENTENCE_WORDS = 3;
+
+/**
+ * A further LINE of the text block a group is already reading (BR- or blank-line-
+ * separated lines of one post) joins without any punctuation from this many words:
+ * "I quit my job", "Here is what happened next". Shorter unpunctuated lines are
+ * skipped — that is where a name, a handle or "2h ago" sits when a site puts it in
+ * the same block as the message.
+ */
+export const MIN_LINE_WORDS = 4;
 
 /** Hard storage cap for a single unit's text (pathological single-node dumps). */
 export const MAX_UNIT_TEXT_CHARS = 20_000;
@@ -202,6 +216,60 @@ export function truncateForScoring(text: string, max: number = MAX_SCORE_CHARS):
 /** What is actually SENT for a unit: canonical form, then the sentence-bounded cap. */
 export function scoringText(text: string, max: number = MAX_SCORE_CHARS): string {
   return truncateForScoring(canonicalForScoring(text), max);
+}
+
+// ---- what a short run IS (the assembler's role test) -----------------------------------
+
+/** Closing quotes/brackets and trailing emoji that may follow the last punctuation mark. */
+const END_TAIL = String.raw`["'”’»)\]」』）】]*[\s\p{S}\p{M}\u200D\uFE0F]*$`;
+const PROSE_END_RE = new RegExp(`[.!?…,;。！？，；、]${END_TAIL}`, "u");
+const LEAD_IN_END_RE = new RegExp(`[:：]${END_TAIL}`, "u");
+
+/**
+ * Ends the way running prose ends: sentence or clause punctuation (Latin and CJK),
+ * optionally followed by closing quotes/brackets and trailing emoji. Names, handles,
+ * timestamps, action rows and headings do not end like that.
+ */
+export function endsLikeProse(text: string): boolean {
+  return PROSE_END_RE.test(text);
+}
+
+/**
+ * Ends in a colon. Kept apart from endsLikeProse because a colon cuts both ways:
+ * "Can also be written as:" before a code sample is the author's own sentence (MDN
+ * is full of them), while "alice:" and "bob wrote:" name somebody ELSE. The assembler
+ * accepts the colon only on a run that is otherwise a sentence.
+ */
+export function endsInColon(text: string): boolean {
+  return LEAD_IN_END_RE.test(text);
+}
+
+/** What the words of a short run look like — the assembler's role test reads this. */
+export interface WordShape {
+  /** Words that contain a letter: "10:42", "2026", "p. 208" are not the words of a
+   *  sentence, and Wikipedia's "Hodges 1983, p. 208." is a citation, not a remark. */
+  letterWords: number;
+  /** Some word of two or more letters starts in lowercase, or the script has no
+   *  case at all (CJK, Arabic, Thai): running text — not a Name Surname, a Title In
+   *  Title Case, "Acme Inc." or a SHOUTING BUTTON. */
+  running: boolean;
+}
+
+export function wordShape(text: string): WordShape {
+  let letterWords = 0;
+  let lowerStart = false;
+  const see = (t: string): void => {
+    if (!/\p{L}/u.test(t)) return;
+    letterWords++;
+    if (/^\p{Ll}\p{L}/u.test(t)) lowerStart = true;
+  };
+  const seg = wordSegmenter();
+  if (seg) {
+    for (const s of seg.segment(text)) if ((s as any).isWordLike) see(s.segment);
+  } else {
+    for (const t of text.split(/\s+/)) see(t);
+  }
+  return { letterWords, running: lowerStart || !/[\p{Lu}\p{Ll}]/u.test(text) };
 }
 
 /** Separator-looking runs ("* * *", "———"): punctuation/symbols only, no digits. */

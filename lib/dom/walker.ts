@@ -8,12 +8,19 @@
 //           close runs (a run == one visual paragraph). Inline markup — <code>,
 //           <em>, links, drop caps — never splits a sentence. <br> and blank
 //           lines in preserved-whitespace contexts are paragraph breaks.
-//   asm   — runs ≥ MIN_UNIT_WORDS become units directly. Consecutive SHORT runs
-//           (chat messages, list items, comment threads, BR-separated prose)
-//           MERGE into one multi-part unit until the evidence floor is met —
-//           short text gets covered instead of silently skipped. Headings,
-//           boilerplate, link-dense and letterless runs are barriers no merge
-//           may cross.
+//   asm   — runs ≥ MIN_UNIT_WORDS become units directly. Consecutive SHORT runs of
+//           ONE VOICE (the lines of a post, list items, the short paragraphs of an
+//           article or of one comment) MERGE into one multi-part unit until the
+//           evidence floor is met — short text gets covered instead of silently
+//           skipped. A merge never crosses a voice boundary to get there: every run
+//           has a SCOPE (its post, quotation, figure or quoted card; else the page)
+//           and merges only within it, an embedded scope interrupting the text
+//           around it without ending it. What a short run IS decides its part: a
+//           further line of the block being read and a sentence join, an
+//           unpunctuated name / time / action row never does — and on a page with no
+//           semantic markup that row is what separates two voices. Text too short
+//           on its own gets no unit. Headings, boilerplate, link-dense runs, name
+//           lists, ASCII art and separator rules are barriers no merge may cross.
 //
 // v1's hard 1000-char mid-paragraph split is gone: a long paragraph is ONE unit
 // end-to-end (the HF-abstract "underline stops mid-paragraph" bug); only the text
@@ -40,8 +47,13 @@ import {
   hasColumnGaps,
   isSeparatorRun,
   looksLikeNameList,
+  endsLikeProse,
+  endsInColon,
+  wordShape,
   MIN_UNIT_WORDS,
   MIN_MERGE_WORDS,
+  MIN_SENTENCE_WORDS,
+  MIN_LINE_WORDS,
   MAX_UNIT_TEXT_CHARS,
 } from "./text";
 import { MARK_ATTR } from "../types";
@@ -99,6 +111,8 @@ interface Run {
   linkRatio: number;
   /** Formulas skipped inside this run. */
   formulas: number;
+  /** Position in the walk (set by the assembler) — units are returned in this order. */
+  index: number;
 }
 
 export interface CollectOptions {
@@ -191,7 +205,7 @@ export function collectUnits(
     if (opts.claimFilter && opts.claimFilter(nodes) === "skip") {
       // An existing rendered unit sits here — new shorts on either side must not
       // merge ACROSS it (they are not adjacent prose).
-      asm.barrier();
+      asm.barrier(container);
       return;
     }
     if (!rects.get(container)) return; // zero-size container → invisible text
@@ -207,6 +221,7 @@ export function collectUnits(
       words: countWords(text),
       linkRatio: linkTextRatio(nodes),
       formulas,
+      index: 0,
     });
   }
 
@@ -276,7 +291,7 @@ export function collectUnits(
       (cs !== null && (cs.opacity === "0" || (cs as any).contentVisibility === "hidden"));
     if (excluded) {
       if (flow !== "inline" && flow !== "contents") closeRun();
-      if (boiler) asm.barrier(); // page chrome separates sections — no merging across
+      if (boiler) asm.barrier(el); // page chrome separates sections — no merging across
       return;
     }
 
@@ -311,7 +326,7 @@ export function collectUnits(
     }
     if (isHeading(el)) {
       closeRun();
-      asm.barrier(); // topic boundary; headings themselves are never scored
+      asm.barrier(el); // topic boundary; headings themselves are never scored
       return;
     }
     closeRun();
@@ -425,14 +440,17 @@ function isExcludedByAncestry(start: Element): boolean {
 
 interface Assembler {
   run(r: Run): void;
-  barrier(): void;
+  /** Nothing merges or extends across this point. `at` — the element the barrier
+   *  sits in — keeps a barrier INSIDE a quotation or a figure from also ending the
+   *  author's text around it; without it everything open is closed. */
+  barrier(at?: Element): void;
   finish(): Unit[];
 }
 
 /**
- * Merge compatibility: same container (BR-split halves), sibling containers (chat
- * messages, <li>s), or one-level cousins (<li><p> structures). Anything further
- * apart is a different section and must not merge.
+ * Merge compatibility: same container (BR-split halves), sibling containers (the
+ * paragraphs of one post, <li>s), or one-level cousins (<li><p> structures). Anything
+ * further apart is a different section and must not merge.
  */
 function compatible(a: Element, b: Element): boolean {
   if (a === b) return true;
@@ -443,29 +461,81 @@ function compatible(a: Element, b: Element): boolean {
   return false;
 }
 
-function createAssembler(mergeShorts: boolean): Assembler {
-  const units: Unit[] = [];
-  let group: Run[] = [];
-  let groupWords = 0;
+/**
+ * VOICE BOUNDARIES. Proximity alone merged two sibling <article>s by different
+ * authors into one verdict describing nobody, and an author with the person they
+ * quote. Every run therefore belongs to a SCOPE — the nearest ancestor-or-self of
+ * its container that the markup declares to be one voice — and runs merge only
+ * inside the same scope (no match: the page itself is the scope).
+ *
+ *   article, [role=article] — one post: X and Mastodon statuses, WordPress comments
+ *                             (`ol.comment-list > li > article`), Discourse and
+ *                             XenForo posts, LinkedIn feed cards; Reddit puts
+ *                             role=article on each comment's <details>.
+ *   blockquote              — the person being quoted, not the author quoting them.
+ *   figure                  — a caption or a pull quote set into the text; on news
+ *                             sites the caption is the picture desk's, not the writer's.
+ *   [role=link]             — a whole card that is one link: the QUOTED post on X
+ *                             sits inside the quoting post's <article>, in a
+ *                             `div[role=link]`; Bluesky has no <article> at all, every
+ *                             feed item and every quote embed is such a div. (An inline
+ *                             `<span role=link>` never contains a run's container.)
+ *
+ * Not <li>: bullet lists inside one author's text are what merging is for. Not
+ * <td>: forums laid out with tables (Hacker News) keep each comment several levels
+ * deep in a cell of its own, which proximity already separates, while a prose table
+ * is one author's. One closest() per short run; shadow hosts are climbed through.
+ */
+const VOICE_SCOPE_SELECTOR = 'article,[role="article"],blockquote,figure,[role="link"]';
+
+function scopeOf(el: Element): Element | null {
+  for (let cur: Element | null = el; cur; ) {
+    const hit = cur.closest(VOICE_SCOPE_SELECTOR);
+    if (hit) return hit;
+    const root = cur.getRootNode();
+    cur = root instanceof ShadowRoot ? root.host : null;
+  }
+  return null;
+}
+
+/** The merge state of one scope. Scopes nest (a quotation inside a post inside the
+ *  page), so the assembler keeps a stack of these. */
+interface Frame {
+  /** The voice boundary element; null = the page itself. */
+  scope: Element | null;
+  group: Run[];
+  words: number;
   /** Last unit emitted via the merge path — may absorb a trailing short orphan. */
-  let lastMergedUnit: Unit | null = null;
+  lastMerged: Unit | null;
+  /** Container of the line the group read last (or of `pending`): a further run in
+   *  the SAME container is the next line of one text block. */
+  block: Element | null;
+  /** An unpunctuated first line that could not open a group by itself. */
+  pending: Run | null;
+}
+
+function createAssembler(mergeShorts: boolean): Assembler {
+  /** Emitted units with the walk index of their first run — scopes interleave, so
+   *  units complete out of document order and are sorted once at the end. */
+  const emitted: { unit: Unit; at: number }[] = [];
+  const stack: Frame[] = [];
+  let runIndex = 0;
 
   function emit(runs: Run[]): Unit {
     const parts: UnitPart[] = runs.map((r) => ({ nodes: r.nodes, container: r.container }));
     const text = runs.map((r) => r.text).join("\n\n").slice(0, MAX_UNIT_TEXT_CHARS);
-    const seq = _unitSeq++;
     const unit: Unit = {
-      id: `u_${seq.toString(36)}`,
+      id: "",
       parts,
       text,
       wordCount: runs.reduce((n, r) => n + r.words, 0),
       formulas: runs.reduce((n, r) => n + r.formulas, 0),
-      order: seq,
+      order: 0,
       topElement: runs[0].container,
       container: runs[runs.length - 1].container,
       isScored: false,
     };
-    units.push(unit);
+    emitted.push({ unit, at: runs[0].index });
     return unit;
   }
 
@@ -480,38 +550,161 @@ function createAssembler(mergeShorts: boolean): Assembler {
     unit.container = runs[runs.length - 1].container;
   }
 
-  function flushGroup(): void {
-    if (group.length === 0) return;
-    const g = group;
-    const words = groupWords;
-    group = [];
-    groupWords = 0;
+  function flushGroup(f: Frame): void {
+    if (f.group.length === 0) return;
+    const g = f.group;
+    const words = f.words;
+    f.group = [];
+    f.words = 0;
     if (words >= MIN_UNIT_WORDS) {
-      lastMergedUnit = emit(g);
-    } else if (
-      lastMergedUnit &&
-      compatible(lastMergedUnit.container, g[0].container)
-    ) {
-      extend(lastMergedUnit, g); // trailing orphan joins the previous merged unit
+      f.lastMerged = emit(g);
+    } else if (f.lastMerged && compatible(f.lastMerged.container, g[0].container)) {
+      extend(f.lastMerged, g); // trailing orphan joins the previous merged unit
     }
     // else: below the evidence floor with nothing to join — dropped (by policy).
   }
 
+  /** End whatever the frame was reading: nothing merges or extends across this. */
+  function close(f: Frame): void {
+    flushGroup(f);
+    f.lastMerged = null;
+    f.block = null;
+    f.pending = null;
+  }
+
+  /**
+   * Leave every frame the walk is no longer inside. A frame that CONTAINS `scope` stays
+   * open underneath: a quotation, a caption or a quoted post interrupts the author's
+   * text, it does not end it — the two short paragraphs around a block quotation in a
+   * news article still read as one unit, without the quotation. A frame that does not
+   * contain it is closed for good (a subtree is contiguous; the walk never comes back).
+   * Returns the frame of `scope` itself if it is open.
+   */
+  function unwindTo(scope: Element | null): Frame | null {
+    while (stack.length > 0) {
+      const top = stack[stack.length - 1];
+      if (top.scope === scope) return top;
+      if (top.scope === null || (scope !== null && top.scope.contains(scope))) return null;
+      close(top);
+      stack.pop();
+    }
+    return null;
+  }
+
+  function enter(scope: Element | null): Frame {
+    let f = unwindTo(scope);
+    if (!f) {
+      f = { scope, group: [], words: 0, lastMerged: null, block: null, pending: null };
+      stack.push(f);
+    }
+    return f;
+  }
+
+  /**
+   * A barrier ends the scope it sits in, and whatever is nested inside that. The link-
+   * dense `<cite><a>…</a></cite>` under a block quotation, the credit link of a figure
+   * and a heading inside an embedded card are barriers INSIDE the embed: the author's
+   * paragraphs around it are still adjacent. With no position, everything open ends.
+   */
+  function barrier(at?: Element): void {
+    if (stack.length === 0) return;
+    if (!at) {
+      while (stack.length > 0) close(stack.pop() as Frame);
+      return;
+    }
+    const f = unwindTo(scopeOf(at));
+    if (f) close(f);
+  }
+
+  function push(f: Frame, r: Run): void {
+    f.group.push(r);
+    f.words += r.words;
+    f.block = r.container;
+    if (f.words >= MIN_UNIT_WORDS) flushGroup(f);
+  }
+
+  /**
+   * A SHORT run. Whether it takes part in merging depends on what it IS, not on how
+   * long it is: a flat eight-word floor dropped a whole post written one short
+   * sentence per line (LinkedIn, X — exactly the text people want checked), and, being
+   * transparent, let a thread's short comments merge ACROSS the "alice · 2h" and
+   * "Reply · Share" rows between them — fifty words borrowed from other authors.
+   */
+  function short(r: Run): void {
+    const f = enter(scopeOf(r.container));
+    const punctuated = endsLikeProse(r.text);
+
+    if (f.block === r.container) {
+      // The next LINE of the text block this group is reading (BR- or blank-line-
+      // separated): the same author by construction, whatever the punctuation. One to
+      // three unpunctuated words are skipped, not joined — that is where a name or
+      // "2h ago" sits when a site sets it in the message's own block.
+      if (!punctuated && wordShape(r.text).letterWords < MIN_LINE_WORDS) return;
+      if (f.pending) {
+        const first = f.pending;
+        f.pending = null;
+        push(f, first);
+      }
+      push(f, r);
+      return;
+    }
+
+    // A block of its own is PROSE when it reads like a sentence ("I agree completely.",
+    // or the lead-in "Can also be written as:" before a code sample) or is long enough
+    // to be one without the full stop (most bullet items). Either way it must be running
+    // text: "Alice Moreau, Ph.D." and "SIGN UP TODAY!" are not, and neither is "alice:".
+    const shape = wordShape(r.text);
+    const prose =
+      shape.running &&
+      (((punctuated || endsInColon(r.text)) && shape.letterWords >= MIN_SENTENCE_WORDS) ||
+        shape.letterWords >= MIN_MERGE_WORDS);
+    if (prose) {
+      f.pending = null;
+      const last = f.group[f.group.length - 1];
+      if (last && !compatible(last.container, r.container)) close(f); // another section
+      push(f, r);
+      return;
+    }
+
+    // "Yes." / "Me too!" / "Hodges 1983, p. 208." — punctuated, but too little to be
+    // evidence or to mean anything about who is speaking: skipped without consequence.
+    if (punctuated) return;
+
+    // A LABEL: an unpunctuated handful of words in a block of its own — a username, a
+    // timestamp, "Reply · Share", a pseudo-heading made of a div. On the bare page —
+    // div-soup chat transcripts, hand-rolled comment widgets, nothing semantic anywhere —
+    // a label standing WHERE THE TEXT STANDS (a sibling or one-level cousin of the
+    // paragraph before it, the same proximity merging itself requires) is the only thing
+    // between two voices, so it ends the open group. Everything else stays transparent:
+    //   · inside a declared scope (one post, one quotation) it cannot be the next
+    //     author's name row — the bold `**Title**` lines of a listicle in an <article>
+    //     do not cut one author's text to pieces;
+    //   · in list markup it is an item or a term ("Sea salt", a glossary <dt>);
+    //   · buried deeper than the text, it is a widget's crumb — the "Play" link of the
+    //     live samples between two paragraphs on MDN, which has no <article>.
+    const tag = tagOf(r.container);
+    const before = f.group.length > 0 ? f.group[f.group.length - 1].container : f.lastMerged?.container;
+    if (f.scope === null && tag !== "LI" && tag !== "DT" && before && compatible(before, r.container)) {
+      close(f);
+    }
+    if (f.group.length === 0 && shape.letterWords >= MIN_LINE_WORDS) {
+      // "I quit my job" — the unpunctuated first line of a post. It opens the group
+      // only if the next run turns out to be a further line of the same block.
+      f.pending = r;
+      f.block = r.container;
+    }
+  }
+
   return {
-    barrier(): void {
-      flushGroup();
-      lastMergedUnit = null; // nothing merges or extends across a barrier
-    },
+    barrier,
 
     run(r: Run): void {
+      r.index = runIndex++;
       if (!hasLetters(r.text)) {
         // "* * *" and rule-like separators are section dividers → barrier. Other
         // letterless runs (an equation number "(3)", a page number, a lone "12") are
         // transparent: not prose, but not a boundary either.
-        if (isSeparatorRun(r.text)) {
-          flushGroup();
-          lastMergedUnit = null;
-        }
+        if (isSeparatorRun(r.text)) barrier(r.container);
         return;
       }
       if (symbolNoiseRatio(r.text) > 0.2 || (r.preserved && hasColumnGaps(r.raw))) {
@@ -519,37 +712,32 @@ function createAssembler(mergeShorts: boolean): Assembler {
         // Postel"): machine layout, not prose — barrier, never merged. The
         // column-gap check applies ONLY to preserved-whitespace runs: in normal
         // HTML, interior space runs collapse invisibly and must not drop prose.
-        flushGroup();
-        lastMergedUnit = null;
+        barrier(r.container);
         return;
       }
       if (r.linkRatio > MAX_LINK_RATIO || looksLikeNameList(r.text)) {
         // Nav/menu/story-title lists and author/citation strings: not prose AND a
         // section boundary.
-        flushGroup();
-        lastMergedUnit = null;
+        barrier(r.container);
         return;
       }
       if (r.words >= MIN_UNIT_WORDS) {
-        flushGroup();
+        barrier(r.container);
         emit([r]); // full paragraphs stay pure — they never absorb orphans
-        lastMergedUnit = null;
         return;
       }
-      if (!mergeShorts) return; // strict per-paragraph mode: sub-floor runs skipped
-      if (r.words < MIN_MERGE_WORDS) return; // bylines/timestamps — transparent
-      if (group.length > 0 && !compatible(group[group.length - 1].container, r.container)) {
-        flushGroup();
-        lastMergedUnit = null; // container context changed
-      }
-      group.push(r);
-      groupWords += r.words;
-      if (groupWords >= MIN_UNIT_WORDS) flushGroup();
+      if (mergeShorts) short(r); // strict per-paragraph mode: sub-floor runs skipped
     },
 
     finish(): Unit[] {
-      flushGroup();
-      return units;
+      barrier();
+      emitted.sort((a, b) => a.at - b.at);
+      return emitted.map(({ unit }) => {
+        const seq = _unitSeq++;
+        unit.id = `u_${seq.toString(36)}`;
+        unit.order = seq;
+        return unit;
+      });
     },
   };
 }

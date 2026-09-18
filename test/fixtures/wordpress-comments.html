@@ -1,0 +1,96 @@
+<!doctype html>
+<!--
+  WordPress post with a threaded comment list (default comment walker), synthetic text.
+
+  Verified against the live DOM (ma.tt, 2026-09): `div#comments.comments-area > h2.comments-title
+  + ol.comment-list > li.comment > article.comment-body`, which holds `footer.comment-meta`
+  (author in `b.fn > a`, date as a linked <time>), `div.comment-content > p…` and `div.reply > a`;
+  replies nest as `ol.children` inside the parent's <li>; the form is `div#respond`.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: WordPress comments</title>
+<style>
+  body { max-width: 700px; margin: 30px auto; font: 17px/1.6 Georgia, serif; }
+  ol.comment-list, ol.children { list-style: none; padding-left: 0; }
+  ol.children { padding-left: 32px; }
+  .comment-meta { font: 13px/1.4 system-ui, sans-serif; }
+  .says { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(1px, 1px, 1px, 1px); }
+  .reply { font: 13px/1.4 system-ui, sans-serif; }
+</style></head>
+<body class="single single-post">
+<main id="main" class="site-main">
+  <article id="post-1" class="post type-post hentry">
+    <header class="entry-header"><h1 class="entry-title">Notes from a slow week</h1></header>
+    <div class="entry-content" data-voice="author" data-expect="unit">
+      <p>I did not plan to write anything this week, but the workshop flooded on Tuesday and I spent three days moving boxes of paper from the low shelves to the high ones, which turns out to be an excellent way of finding everything you had forgotten you owned, including a complete run of a magazine I was certain I had given away.</p>
+      <p>So this is a short post about what was in the boxes, and a longer thank-you to the neighbours who turned up with a pump before I had even worked out where the water was coming from, and who refused to take anything for it except a cup of tea and a look at the old press.</p>
+    </div>
+  </article>
+
+  <div id="comments" class="comments-area">
+    <h2 class="comments-title">4 thoughts on “<span>Notes from a slow week</span>”</h2>
+    <ol class="comment-list">
+
+      <li id="comment-11" class="comment even thread-even depth-1 parent">
+        <article id="div-comment-11" class="comment-body">
+          <footer class="comment-meta" data-chrome>
+            <div class="comment-author vcard"><img alt="" class="avatar avatar-60 photo" height="60" width="60"> <b class="fn"><a href="#alice" class="url" rel="ugc external nofollow">Alice Moreau</a></b> <span class="says">says:</span></div>
+            <div class="comment-metadata"><a href="#comment-11"><time datetime="2026-09-11T09:12:00+00:00">September 11, 2026 at 9:12 am</time></a></div>
+          </footer>
+          <div class="comment-content" data-voice="alice" data-expect="unit">
+            <p>We had the same flood two streets over, and the same discovery: a whole shelf of things I had been meaning to sort for ten years, now sorted by the water.</p>
+            <p>If the magazines are the ones I think they are, the library in town is missing exactly those years and would be delighted to scan them before you decide anything.</p>
+          </div>
+          <div class="reply" data-chrome><a rel="nofollow" class="comment-reply-link" href="#respond" aria-label="Reply to Alice Moreau">Reply</a></div>
+        </article>
+        <ol class="children">
+          <li id="comment-12" class="comment byuser bypostauthor odd alt depth-2">
+            <article id="div-comment-12" class="comment-body">
+              <footer class="comment-meta" data-chrome>
+                <div class="comment-author vcard"><img alt="" class="avatar avatar-60 photo" height="60" width="60"> <b class="fn"><a href="#bob" class="url" rel="ugc">Bob Okafor</a></b> <span class="says">says:</span></div>
+                <div class="comment-metadata"><a href="#comment-12"><time datetime="2026-09-11T10:02:00+00:00">September 11, 2026 at 10:02 am</time></a></div>
+              </footer>
+              <div class="comment-content" data-voice="bob" data-expect="none">
+                <p>They are exactly those years. I will ring the library on Monday, and thank you for thinking of it before I did something foolish with a skip.</p>
+              </div>
+              <div class="reply" data-chrome><a rel="nofollow" class="comment-reply-link" href="#respond" aria-label="Reply to Bob Okafor">Reply</a></div>
+            </article>
+          </li>
+        </ol>
+      </li>
+
+      <li id="comment-13" class="comment even thread-odd thread-alt depth-1">
+        <article id="div-comment-13" class="comment-body">
+          <footer class="comment-meta" data-chrome>
+            <div class="comment-author vcard"><img alt="" class="avatar avatar-60 photo" height="60" width="60"> <b class="fn">Carol Lindqvist</b> <span class="says">says:</span></div>
+            <div class="comment-metadata"><a href="#comment-13"><time datetime="2026-09-11T11:30:00+00:00">September 11, 2026 at 11:30 am</time></a></div>
+          </footer>
+          <div class="comment-content" data-voice="carol" data-expect="none">
+            <p>Ahoy!</p>
+          </div>
+          <div class="reply" data-chrome><a rel="nofollow" class="comment-reply-link" href="#respond" aria-label="Reply to Carol Lindqvist">Reply</a></div>
+        </article>
+      </li>
+
+      <li id="comment-14" class="comment odd alt thread-even depth-1">
+        <article id="div-comment-14" class="comment-body">
+          <footer class="comment-meta" data-chrome>
+            <div class="comment-author vcard"><img alt="" class="avatar avatar-60 photo" height="60" width="60"> <b class="fn">Dan Whitfield</b> <span class="says">says:</span></div>
+            <div class="comment-metadata"><a href="#comment-14"><time datetime="2026-09-12T08:05:00+00:00">September 12, 2026 at 8:05 am</time></a></div>
+          </footer>
+          <div class="comment-content" data-voice="dan" data-expect="none">
+            <p>So jealous of the press, flood or no flood. I hope it stayed dry, because those rollers do not forgive a damp winter.</p>
+          </div>
+          <div class="reply" data-chrome><a rel="nofollow" class="comment-reply-link" href="#respond" aria-label="Reply to Dan Whitfield">Reply</a></div>
+        </article>
+      </li>
+
+    </ol>
+    <div id="respond" class="comment-respond">
+      <h3 id="reply-title" class="comment-reply-title">Leave a Reply</h3>
+      <form id="commentform" class="comment-form"><p class="comment-notes">Your email address will not be published. Required fields are marked *</p><textarea></textarea></form>
+    </div>
+  </div>
+</main>
+</body></html>

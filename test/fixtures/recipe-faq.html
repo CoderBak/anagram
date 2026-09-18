@@ -1,0 +1,69 @@
+<!doctype html>
+<!--
+  A recipe page with an ingredient list, numbered steps, a bullet list of tips and a short FAQ
+  (bold questions, then a dl/dt/dd glossary). One author, no <article> — recipe plugins and page builders
+  mostly emit plain <div>s around semantic lists. Synthetic text; list markup as emitted by the
+  common WordPress recipe-card plugins (`ul > li` ingredients, `ol > li` instructions).
+
+  Bullet lists are what merging is FOR: items join whether or not they end in a full stop, and a
+  short item ("Sea salt", "Rest the dough") or a glossary term is skipped, never a boundary.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: recipe with lists and FAQ</title>
+<style>
+  body { max-width: 680px; margin: 30px auto; font: 16px/1.6 system-ui, sans-serif; }
+  summary { cursor: pointer; font-weight: 600; }
+  dt { font-weight: 600; margin-top: 8px; }
+</style></head>
+<body>
+<div class="recipe-page" data-voice="author">
+
+  <h1>Brown butter oat biscuits</h1>
+  <div class="intro">
+    <p data-expect="unit">These are the biscuits I make when there is nothing in the house, because there is always butter, and there are always oats at the back of the cupboard behind the things I bought for one recipe and never used again. They take ten minutes of work, one pan and no planning at all.</p>
+  </div>
+
+  <h2>Ingredients</h2>
+  <ul class="ingredients">
+    <li data-expect="none">150 g unsalted butter</li>
+    <li data-expect="none">120 g soft brown sugar</li>
+    <li data-expect="none">Sea salt</li>
+    <li data-expect="none">200 g rolled oats</li>
+  </ul>
+
+  <h2>Method</h2>
+  <ol class="instructions">
+    <li data-expect="unit">Melt the butter in a wide pan and keep it on the heat until it smells of toasted nuts and the foam turns golden</li>
+    <li data-expect="unit">Take it off the heat at once, stir in the sugar and a good pinch of salt, and leave it for five minutes.</li>
+    <li data-expect="none">Rest the dough</li>
+    <li data-expect="unit">Fold in the oats, press the mixture into a lined tin and bake at 170 degrees for twenty minutes, until the edges have darkened</li>
+    <li data-expect="unit">Cut into squares while still warm, then leave them in the tin until completely cold.</li>
+  </ol>
+
+  <h2>Tips</h2>
+  <ul class="tips">
+    <li data-expect="unit">Use a pale pan so that you can see the colour of the butter change</li>
+    <li data-expect="unit">Jumbo oats make a looser biscuit that breaks when you cut it, so save them for porridge.</li>
+    <li data-expect="unit">The biscuits keep for a week in a tin and are better on the second day than on the first.</li>
+    <li data-expect="unit">They freeze well, wrapped in pairs, for up to three months</li>
+  </ul>
+
+  <h2>Questions</h2>
+  <div class="faq">
+    <p class="q" data-expect="unit"><strong>Can I use salted butter instead?</strong></p>
+    <p data-expect="unit">Yes, and leave out the pinch of salt. The browning takes a little longer because salted butter holds more water.</p>
+    <p class="q" data-expect="unit"><strong>Why did mine turn out greasy?</strong></p>
+    <p data-expect="unit">Almost always because the butter was still hot when the oats went in. Give it the full five minutes and they will soak it up instead of frying in it.</p>
+  </div>
+
+  <h2>Glossary</h2>
+  <dl class="glossary">
+    <dt data-chrome>Brown butter</dt>
+    <dd data-expect="unit">Butter cooked gently until its milk solids toast and sink. The French call it hazelnut butter, after the smell, and it burns within seconds of being ready.</dd>
+    <dt data-chrome>Rolled oats</dt>
+    <dd data-expect="unit">Whole oat groats that have been steamed and flattened between rollers, which is why they cook in minutes while the cut kind takes half an hour.</dd>
+  </dl>
+
+</div>
+</body></html>

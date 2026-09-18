@@ -1,0 +1,174 @@
+<!doctype html>
+<!--
+  X / Twitter-style timeline (react-native-web markup), synthetic text.
+
+  Verified against the live DOM (platform.twitter.com embed, 2026-09; x.com itself answers a
+  headless browser with 403): every post is <article role="article" tabindex="0">, its text a
+  `div[data-testid=tweetText][dir=auto][lang]` with white-space: pre-wrap whose lines are separated
+  by newlines inside one <span>; names, handles and timestamps are `a[role=link]`; the action bar
+  is made of buttons. The QUOTED post — `div[role=link][tabindex=0]` inside the quoting post's
+  <article> — is modelled from the logged-in site's markup; Bluesky's live feed (same framework)
+  nests its quote embeds exactly that way.
+
+  Annotation used by test/unit.mjs:
+    data-voice="name"   the text inside is this voice's (nearest ancestor wins)
+    data-chrome         a name / handle / timestamp / action row — never part of a unit
+    data-expect="unit"  some unit must cover text in here;  data-expect="none": no unit may
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: X-style timeline</title>
+<style>
+  body { margin: 0; font: 15px/20px system-ui, sans-serif; }
+  .v { display: flex; flex-direction: column; min-width: 0; }
+  .h { display: flex; flex-direction: row; align-items: center; gap: 4px; }
+  .t { display: block; white-space: pre-wrap; overflow-wrap: break-word; min-width: 0; }
+  .t span { white-space: inherit; }
+  main { width: 600px; margin: 0 auto; border: 1px solid #eff3f4; }
+  article { padding: 12px 16px; border-bottom: 1px solid #eff3f4; }
+  .quote { border: 1px solid #cfd9de; border-radius: 16px; padding: 12px; margin-top: 12px; cursor: pointer; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(1px, 1px, 1px, 1px); }
+  a { color: inherit; text-decoration: none; }
+  button { background: none; border: 0; }
+</style></head>
+<body>
+<main role="main" class="v">
+<section role="region" class="v" aria-labelledby="tl-h">
+<h1 id="tl-h" class="sr" role="heading" aria-level="1">Your Home Timeline</h1>
+<div class="v" aria-label="Timeline: Your Home Timeline">
+
+  <!-- 1 · one author, one post, one short sentence per line (blank lines in a pre-wrap block) -->
+  <div class="v" data-testid="cellInnerDiv"><div class="v"><div class="v">
+  <article class="v" role="article" tabindex="0" data-testid="tweet">
+    <div class="v"><div class="h" style="align-items:flex-start">
+      <div class="v" data-testid="Tweet-User-Avatar"><a href="#alice" role="link" tabindex="-1" class="v"><img alt="" width="40" height="40"></a></div>
+      <div class="v" style="flex:1">
+        <div class="h" data-testid="User-Name" data-chrome>
+          <div class="v"><a href="#alice" role="link" class="v"><div dir="ltr" class="t"><span><span>Alice Moreau</span></span></div></a></div>
+          <div class="h"><a href="#alice" role="link" tabindex="-1" class="v"><div dir="ltr" class="t"><span>@alicemoreau</span></div></a>
+            <div dir="ltr" aria-hidden="true" class="t"><span>·</span></div>
+            <a href="#s1" role="link" dir="ltr" aria-label="3 hours ago" class="t"><time datetime="2026-09-18T09:00:00.000Z">3h</time></a></div>
+        </div>
+        <div dir="auto" lang="en" class="t" data-testid="tweetText" data-voice="alice" data-expect="unit"><span>I spent three years building a product nobody wanted.
+
+Here is what I learned
+
+Talk to customers before writing any code.
+
+Charge money from the very first day.
+
+Ship the ugly version
+
+Nobody cares about your architecture, they care about their problem.
+
+Most advice is survivorship bias dressed up as wisdom.
+
+I would do it all again 🙂</span></div>
+        <div class="h" role="group" aria-label="12 replies, 3 reposts, 41 likes" data-chrome>
+          <button role="button" aria-label="12 Replies. Reply" data-testid="reply"><div class="h"><span>12</span></div></button>
+          <button role="button" aria-label="3 reposts. Repost" data-testid="retweet"><div class="h"><span>3</span></div></button>
+          <button role="button" aria-label="41 Likes. Like" data-testid="like"><div class="h"><span>41</span></div></button>
+        </div>
+      </div>
+    </div></div>
+  </article>
+  </div></div></div>
+
+  <!-- 2 · a short post by somebody else: too short by itself, and nobody to borrow from -->
+  <div class="v" data-testid="cellInnerDiv"><div class="v"><div class="v">
+  <article class="v" role="article" tabindex="0" data-testid="tweet">
+    <div class="v"><div class="h" style="align-items:flex-start">
+      <div class="v" data-testid="Tweet-User-Avatar"><a href="#bob" role="link" tabindex="-1" class="v"><img alt="" width="40" height="40"></a></div>
+      <div class="v" style="flex:1">
+        <div class="h" data-testid="User-Name" data-chrome>
+          <div class="v"><a href="#bob" role="link" class="v"><div dir="ltr" class="t"><span><span>Bob Okafor</span></span></div></a></div>
+          <div class="h"><a href="#bob" role="link" tabindex="-1" class="v"><div dir="ltr" class="t"><span>@bobokafor</span></div></a>
+            <div dir="ltr" aria-hidden="true" class="t"><span>·</span></div>
+            <a href="#s2" role="link" dir="ltr" aria-label="4 hours ago" class="t"><time datetime="2026-09-18T08:00:00.000Z">4h</time></a></div>
+        </div>
+        <div dir="auto" lang="en" class="t" data-testid="tweetText" data-voice="bob" data-expect="none"><span>The train was forty minutes late again this morning, so I finally finished the book about railway timetables that my sister gave me two winters ago, and it was honestly wonderful.</span></div>
+        <div class="h" role="group" aria-label="1 reply" data-chrome>
+          <button role="button" aria-label="1 Reply. Reply" data-testid="reply"><div class="h"><span>1</span></div></button>
+        </div>
+      </div>
+    </div></div>
+  </article>
+  </div></div></div>
+
+  <!-- 3 · a post QUOTING another post: the quoted one sits inside the quoting one's <article> -->
+  <div class="v" data-testid="cellInnerDiv"><div class="v"><div class="v">
+  <article class="v" role="article" tabindex="0" data-testid="tweet">
+    <div class="v"><div class="h" style="align-items:flex-start">
+      <div class="v" data-testid="Tweet-User-Avatar"><a href="#carol" role="link" tabindex="-1" class="v"><img alt="" width="40" height="40"></a></div>
+      <div class="v" style="flex:1">
+        <div class="h" data-testid="User-Name" data-chrome>
+          <div class="v"><a href="#carol" role="link" class="v"><div dir="ltr" class="t"><span><span>Carol Lindqvist</span></span></div></a></div>
+          <div class="h"><a href="#carol" role="link" tabindex="-1" class="v"><div dir="ltr" class="t"><span>@carolq</span></div></a>
+            <div dir="ltr" aria-hidden="true" class="t"><span>·</span></div>
+            <a href="#s3" role="link" dir="ltr" aria-label="5 hours ago" class="t"><time datetime="2026-09-18T07:00:00.000Z">5h</time></a></div>
+        </div>
+        <div dir="auto" lang="en" class="t" data-testid="tweetText" data-voice="carol" data-expect="none"><span>I keep coming back to this thread because it says out loud what most of us only admit in private, and I think the second point deserves far more attention.</span></div>
+        <div class="v" aria-labelledby="q3">
+          <div class="v quote" role="link" tabindex="0" id="q3">
+            <div class="v"><div class="h" data-testid="User-Name" data-chrome>
+              <div class="v"><div dir="ltr" class="t"><span><span>Dan Whitfield</span></span></div></div>
+              <div class="h"><div dir="ltr" class="t"><span>@danwhit</span></div><div dir="ltr" aria-hidden="true" class="t"><span>·</span></div><div dir="ltr" class="t"><time datetime="2026-09-17T07:00:00.000Z">Sep 17</time></div></div>
+            </div></div>
+            <div class="v"><div dir="auto" lang="en" class="t" data-testid="tweetText" data-voice="dan" data-expect="none"><span>Every team I have worked with believed their deadlines were unusual, their customers were unusually demanding and their code was unusually tangled, and every one of them was describing a perfectly ordinary software project.</span></div></div>
+          </div>
+        </div>
+        <div class="h" role="group" aria-label="2 replies" data-chrome>
+          <button role="button" aria-label="2 Replies. Reply" data-testid="reply"><div class="h"><span>2</span></div></button>
+        </div>
+      </div>
+    </div></div>
+  </article>
+  </div></div></div>
+
+  <!-- 4 · a long post: one ordinary single-part unit -->
+  <div class="v" data-testid="cellInnerDiv"><div class="v"><div class="v">
+  <article class="v" role="article" tabindex="0" data-testid="tweet">
+    <div class="v"><div class="h" style="align-items:flex-start">
+      <div class="v" style="flex:1">
+        <div class="h" data-testid="User-Name" data-chrome>
+          <div class="v"><a href="#erin" role="link" class="v"><div dir="ltr" class="t"><span><span>Erin Castellanos</span></span></div></a></div>
+          <div class="h"><a href="#erin" role="link" tabindex="-1" class="v"><div dir="ltr" class="t"><span>@erincast</span></div></a>
+            <div dir="ltr" aria-hidden="true" class="t"><span>·</span></div>
+            <a href="#s4" role="link" dir="ltr" aria-label="6 hours ago" class="t"><time datetime="2026-09-18T06:00:00.000Z">6h</time></a></div>
+        </div>
+        <div dir="auto" lang="en" class="t" data-testid="tweetText" data-voice="erin" data-expect="unit"><span>We moved the whole office to a four day week last spring and I was certain it would fall apart within a month, but the opposite happened: meetings got shorter, people stopped pretending to be busy on Friday afternoons, and the work that used to spill into the weekend simply got finished by Thursday because everybody wanted it to be.</span></div>
+      </div>
+    </div></div>
+  </article>
+  </div></div></div>
+
+  <!-- 5 + 6 · two consecutive short posts of ONE author: separate posts are separate scopes -->
+  <div class="v" data-testid="cellInnerDiv"><div class="v"><div class="v">
+  <article class="v" role="article" tabindex="0" data-testid="tweet">
+    <div class="v"><div class="h" style="align-items:flex-start">
+      <div class="v" style="flex:1">
+        <div class="h" data-testid="User-Name" data-chrome>
+          <div class="v"><a href="#frank" role="link" class="v"><div dir="ltr" class="t"><span><span>Frank Adeyemi</span></span></div></a></div>
+          <div class="h"><a href="#frank" role="link" tabindex="-1" class="v"><div dir="ltr" class="t"><span>@frankade</span></div></a></div>
+        </div>
+        <div dir="auto" lang="en" class="t" data-testid="tweetText" data-voice="frank-1" data-expect="none"><span>First of two thoughts about the conference: the talks were fine, but the hallway conversations were where I actually learned something, which is apparently what everybody says every single year.</span></div>
+      </div>
+    </div></div>
+  </article>
+  </div></div></div>
+  <div class="v" data-testid="cellInnerDiv"><div class="v"><div class="v">
+  <article class="v" role="article" tabindex="0" data-testid="tweet">
+    <div class="v"><div class="h" style="align-items:flex-start">
+      <div class="v" style="flex:1">
+        <div class="h" data-testid="User-Name" data-chrome>
+          <div class="v"><a href="#frank" role="link" class="v"><div dir="ltr" class="t"><span><span>Frank Adeyemi</span></span></div></a></div>
+          <div class="h"><a href="#frank" role="link" tabindex="-1" class="v"><div dir="ltr" class="t"><span>@frankade</span></div></a></div>
+        </div>
+        <div dir="auto" lang="en" class="t" data-testid="tweetText" data-voice="frank-2" data-expect="none"><span>Second thought: next year I am skipping the keynote entirely and spending that hour in the coffee queue, where the people who build the tools are standing around with nothing to do.</span></div>
+      </div>
+    </div></div>
+  </article>
+  </div></div></div>
+
+</div>
+</section>
+</main>
+</body></html>

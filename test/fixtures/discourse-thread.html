@@ -1,0 +1,108 @@
+<!doctype html>
+<!--
+  Discourse topic, synthetic text.
+
+  Verified against the live DOM (forum.obsidian.md, 2026-09): `div.post-stream > div.topic-post >
+  article#post_N > div.row > div.topic-avatar + div.topic-body`, the body holding
+  `div.topic-meta-data` (name link, title, date link), `div.regular.contents > div.cooked > p…`
+  and `section.post-menu-area > nav.post-controls` (buttons). A markdown quotation is a plain
+  <blockquote><p>; a quoted POST is `aside.quote > div.title + blockquote`.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: Discourse topic</title>
+<style>
+  body { max-width: 760px; margin: 30px auto; font: 15px/1.5 system-ui, sans-serif; }
+  .row { display: flex; }
+  .topic-avatar { width: 45px; margin-right: 11px; }
+  .topic-body { flex: 1; min-width: 0; }
+  .topic-meta-data, .names, .post-infos, nav.post-controls, .actions { display: flex; gap: 8px; }
+  .names span a { display: block; white-space: nowrap; }
+  blockquote { margin: 0 0 12px; padding: 8px 12px; border-left: 5px solid #ddd; background: #f6f6f6; }
+  aside.quote .title { font-size: 13px; }
+  h2.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(1px, 1px, 1px, 1px); }
+</style></head>
+<body class="docked">
+<section id="topic" class="topic-area"><div class="posts-wrapper"><div class="post-stream">
+
+  <!-- alice: two short paragraphs with a quotation of the manual between them -->
+  <div class="topic-post clearfix topic-owner regular">
+    <h2 id="post-heading-1" class="sr-only">post by alice on Oct 26, 2025</h2>
+    <article id="post_1" class="boxed onscreen-post" data-post-id="9001">
+      <div class="post__row row">
+        <div class="topic-avatar"><div class="post-avatar"><a class="main-avatar" tabindex="-1" href="#alice"><img alt="" width="45" height="45" class="avatar"></a></div></div>
+        <div class="post__body topic-body clearfix">
+          <div class="topic-meta-data" data-chrome>
+            <div class="names trigger-user-card"><span class="first username"><a href="#alice" tabindex="0" aria-label="alice's profile">alice</a></span><span class="user-title">Supporter</span></div>
+            <div class="post-infos"><div class="post-info post-date"><a class="post-date" href="#p1" aria-label="Oct 26, 2025"><span title="Oct 26, 2025 10:12 am" class="relative-date">Oct 2025</span></a></div></div>
+          </div>
+          <div class="post__regular regular post__contents contents">
+            <div class="cooked">
+              <p data-voice="alice" data-expect="unit">Linking to files outside the vault is mentioned in the manual, under drag and drop, but only in passing and without a single example of what the link should look like.</p>
+              <blockquote data-voice="manual" data-expect="none">
+                <p>Hold the modifier key while dropping a file to create a link to its location instead of copying it into the vault, which keeps large media out of your synchronised folders.</p>
+              </blockquote>
+              <p data-voice="alice" data-expect="unit">That is all it says, so I will write up the variants that work on each system below, and ask for the examples to be added to the official page as well.</p>
+            </div>
+            <section class="post__menu-area post-menu-area clearfix" role="group" aria-label="Post actions" data-chrome>
+              <nav class="post-controls expanded" role="none"><div class="actions"><button class="btn no-text btn-icon btn-flat" aria-label="like this post">30</button><button class="btn no-text btn-icon btn-flat" aria-label="copy a link to this post">Link</button></div></nav>
+            </section>
+          </div>
+        </div>
+      </div>
+    </article>
+  </div>
+
+  <!-- bob: quotes alice's POST (aside.quote) and answers in one short paragraph -->
+  <div class="topic-post clearfix regular">
+    <h2 id="post-heading-2" class="sr-only">post by bob on Oct 27, 2025</h2>
+    <article id="post_2" class="boxed onscreen-post" data-post-id="9002">
+      <div class="post__row row">
+        <div class="topic-avatar"><div class="post-avatar"><a class="main-avatar" tabindex="-1" href="#bob"><img alt="" width="45" height="45" class="avatar"></a></div></div>
+        <div class="post__body topic-body clearfix">
+          <div class="topic-meta-data" data-chrome>
+            <div class="names trigger-user-card"><span class="first username"><a href="#bob" tabindex="0" aria-label="bob's profile">bob</a></span></div>
+            <div class="post-infos"><div class="post-info post-date"><a class="post-date" href="#p2" aria-label="Oct 27, 2025"><span class="relative-date">Oct 2025</span></a></div></div>
+          </div>
+          <div class="post__regular regular post__contents contents">
+            <div class="cooked">
+              <aside class="quote no-group" data-username="alice" data-post="1" data-topic="70121">
+                <div class="title"><div class="quote-controls"></div><img alt="" width="24" height="24" class="avatar"> alice:</div>
+                <blockquote><p>I will write up the variants that work on each system below</p></blockquote>
+              </aside>
+              <p data-voice="bob" data-expect="none">Please do, because the forward slashes stopped working for me after the last update, and I have forty notes that point at a network share I can no longer open from inside the app.</p>
+            </div>
+            <section class="post__menu-area post-menu-area clearfix" role="group" aria-label="Post actions" data-chrome>
+              <nav class="post-controls expanded" role="none"><div class="actions"><button class="btn no-text btn-icon btn-flat" aria-label="like this post">2</button></div></nav>
+            </section>
+          </div>
+        </div>
+      </div>
+    </article>
+  </div>
+
+  <!-- carol: three short paragraphs of one post → one ×3 unit -->
+  <div class="topic-post clearfix regular">
+    <h2 id="post-heading-3" class="sr-only">post by carol on Oct 27, 2025</h2>
+    <article id="post_3" class="boxed onscreen-post" data-post-id="9003">
+      <div class="post__row row">
+        <div class="topic-avatar"><div class="post-avatar"><a class="main-avatar" tabindex="-1" href="#carol"><img alt="" width="45" height="45" class="avatar"></a></div></div>
+        <div class="post__body topic-body clearfix">
+          <div class="topic-meta-data" data-chrome>
+            <div class="names trigger-user-card"><span class="first username"><a href="#carol" tabindex="0" aria-label="carol's profile">carol</a></span></div>
+            <div class="post-infos"><div class="post-info post-date"><a class="post-date" href="#p3" aria-label="Oct 27, 2025"><span class="relative-date">Oct 2025</span></a></div></div>
+          </div>
+          <div class="post__regular regular post__contents contents">
+            <div class="cooked" data-voice="carol" data-expect="unit">
+              <p>On a network share the path needs four slashes after the scheme, not three.</p>
+              <p>I lost an afternoon to that. The app gives no error, the link simply does nothing when you click it.</p>
+              <p>Spaces are the other trap: wrap the whole address in angle brackets, or replace every space with its percent code, and do not mix the two styles inside one note.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </article>
+  </div>
+
+</div></div></section>
+</body></html>

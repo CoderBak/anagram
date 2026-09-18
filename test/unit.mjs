@@ -3,14 +3,17 @@
 // The walker classifies layout via getComputedStyle, which jsdom cannot fake —
 // so the "unit" harness is a real Chromium page: esbuild bundles lib/dom (+ a few
 // pure helpers) into an IIFE global `PW`, the bundle is injected into a blank
-// page, and table-driven DOM cases run in-page. No extension load, no network:
-// the whole suite runs in a few seconds.
+// page, and table-driven DOM cases run in-page. The structural fixtures in
+// test/fixtures/ (real-site markup, synthetic text) are then opened one by one and
+// checked for WHO is scored with whom. No extension load, no network: the whole
+// suite runs in a few seconds.
 //
 //   node test/unit.mjs
 import { launchPlain } from "./harness.mjs";
 import { buildSync } from "esbuild";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
+import { readdirSync } from "node:fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -208,6 +211,170 @@ const results = await page.evaluate(() => {
   for (const un of first) for (const part of un.parts) for (const n of part.nodes) owned.add(n);
   const second = PW.collectUnits(sandbox, { claimFilter: (nodes) => (nodes.some((n) => owned.has(n)) ? "skip" : "take") });
   check("no merging across a claimed unit on incremental re-scan", second.length === 0, JSON.stringify(second.map(x => [x.parts, x.words])));
+
+  // ---- who may be scored together: voice scopes ----------------------------------------
+  // `sent(n)` — n words ending in a full stop; `line(n)` — n words, no punctuation at all.
+  const sent = words;
+  const line = (n) => words(n).slice(0, -1);
+  const partsOf = (x) => x.text.split("\n\n");
+
+  u = collect(`<article><span class="by">alice</span> ${sent(30)}</article><article><span class="by">bob</span> ${sent(30)}</article>`);
+  check("two sibling <article>s by different authors never merge", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+  u = collect(`<div role="article">${sent(30)}</div><div role="article">${sent(30)}</div>`);
+  check("…nor two [role=article] posts (Reddit comments)", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+  u = collect(`<article><p>${sent(30)}</p><p>${sent(30)}</p></article><article><p>${sent(30)}</p></article>`);
+  check("the short paragraphs of ONE article still merge; the neighbour's stays out", u.length === 1 && u[0].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+  u = collect(`<p>${sent(30)}</p><blockquote>${sent(30)}</blockquote>`);
+  check("an author and a bare <blockquote> never merge", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+  u = collect(`<p>${sent(30)}</p><blockquote><p>${sent(30)}</p></blockquote>`);
+  check("…nor with <blockquote><p>", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+  u = collect(`<p>AUTHOR-A ${sent(30)}</p><blockquote><p>QUOTED ${sent(30)}</p></blockquote><p>AUTHOR-B ${sent(30)}</p>`);
+  check("a quotation interrupts the author's text, it does not end it: [p, p] without the quote",
+    u.length === 1 && u[0].parts === 2 && u[0].text.includes("AUTHOR-A") && u[0].text.includes("AUTHOR-B") && !u[0].text.includes("QUOTED"),
+    JSON.stringify(u.map(x => [x.parts, x.words])));
+
+  u = collect(`<p>AUTHOR-A ${sent(30)}</p><blockquote><p>QUOTED ${sent(60)}</p></blockquote><p>AUTHOR-B ${sent(30)}</p>`);
+  check("a full-length quotation is its own unit; units come back in document order",
+    u.length === 2 && u[0].parts === 2 && u[0].text.startsWith("AUTHOR-A") && u[1].parts === 1 && u[1].text.startsWith("QUOTED"),
+    JSON.stringify(u.map(x => [x.parts, x.text.slice(0, 10)])));
+  {
+    sandbox.innerHTML = `<p>${sent(30)}</p><blockquote><p>${sent(60)}</p></blockquote><p>${sent(30)}</p>`;
+    const got = PW.collectUnits(sandbox);
+    check("ids are unique and `order` ascends in document order", got.length === 2 && got[0].id !== got[1].id && got[0].order < got[1].order, JSON.stringify(got.map(x => [x.id, x.order])));
+  }
+
+  u = collect(`<p>${sent(30)}</p><blockquote><p>${sent(20)}</p><cite><a href="#s">The Source, 1931</a></cite></blockquote><p>${sent(30)}</p>`);
+  check("a barrier INSIDE a quotation (its linked <cite>) does not end the author's text around it", u.length === 1 && u[0].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+  u = collect(`<p>${sent(30)}</p><h3>Break</h3><blockquote><p>${sent(30)}</p></blockquote><p>${sent(30)}</p>`);
+  check("…while a heading in the author's own flow still does", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+  u = collect(`<p>${sent(30)}</p><figure><img alt=""><figcaption>CAPTION ${sent(14)}</figcaption></figure><p>${sent(30)}</p>`);
+  check("a figure caption between two short paragraphs is not borrowed: [p, p] without it",
+    u.length === 1 && u[0].parts === 2 && !u[0].text.includes("CAPTION"), JSON.stringify(u.map(x => [x.parts, x.words])));
+
+  u = collect(`<article><div class="t">${sent(30)}</div><div role="link" tabindex="0"><div class="t">${sent(30)}</div></div></article>`);
+  check("a QUOTED post — div[role=link] inside the quoting post's <article> — never merges with it", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+  u = collect(`<div role="link" tabindex="0"><div>${sent(30)}</div></div><div role="link" tabindex="0"><div>${sent(30)}</div></div>`);
+  check("feed items that are div[role=link] cards (Bluesky) never merge", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+  u = collect(`<p>${sent(58)} <span role="link" tabindex="0">a scripted link</span> inside.</p>`);
+  check("an inline span[role=link] is not a scope: the sentence stays whole", u.length === 1 && u[0].parts === 1 && u[0].text.includes("a scripted link inside."), JSON.stringify(u.map(x => [x.parts, x.words])));
+
+  {
+    sandbox.innerHTML = `<div id="host-a"></div>`;
+    sandbox.querySelector("#host-a").attachShadow({ mode: "open" }).innerHTML = `<p>${sent(30)}</p><blockquote><p>${sent(30)}</p></blockquote>`;
+    const inside = PW.collectUnits(sandbox);
+    check("a scope inside a shadow root separates there too", inside.length === 0, JSON.stringify(inside.map(x => x.parts.length)));
+
+    // The <article> is OUTSIDE the shadow tree the text lives in: closest() stops at the
+    // shadow root, so the lookup has to climb through the host — otherwise this text
+    // would count as bare-page text and the title row would cut it in two.
+    sandbox.innerHTML = `<article><div id="host-b"></div></article>`;
+    sandbox.querySelector("#host-b").attachShadow({ mode: "open" }).innerHTML = `<div><p>${sent(30)}</p><div class="ttl">Finish early</div><p>${sent(30)}</p></div>`;
+    const climbed = PW.collectUnits(sandbox);
+    check("scope lookup climbs through shadow hosts", climbed.length === 1 && climbed[0].parts.length === 2, JSON.stringify(climbed.map(x => x.parts.length)));
+  }
+
+  // ---- who may be scored together: role, not length --------------------------------------
+  u = collect(Array.from({ length: 10 }, (_, i) => `<p>POST${i} ${sent(5)}</p>`).join(""));
+  check("ten six-word one-sentence paragraphs of one post → ONE unit (the old 8-word floor dropped them all)",
+    u.length === 1 && u[0].parts === 10 && u[0].words === 60, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+  u = collect(`<div>${Array.from({ length: 10 }, (_, i) => `L${i} ${line(5)}`).join("<br>")}</div>`);
+  check("BR-separated short lines of one block join with NO punctuation at all",
+    u.length === 1 && u[0].parts === 10 && u[0].text.startsWith("L0 "), JSON.stringify(u.map(x => [x.parts, x.words])));
+
+  u = collect(`<div style="white-space:pre-wrap">${Array.from({ length: 10 }, (_, i) => `L${i} ${line(5)}`).join("\n\n")}</div>`);
+  check("…and so do blank-line-separated lines of a pre-wrap block (X, LinkedIn)", u.length === 1 && u[0].parts === 10, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+  u = collect(`<div>alice_92<br>2h ago<br>${Array.from({ length: 9 }, () => sent(6)).join("<br>")}<br>Reply · Share · Report</div>`);
+  check("a handle, a timestamp and an action row set in the message's own block are skipped, never joined",
+    u.length === 1 && !/alice_92|2h ago|Reply|Share/.test(u[0].text) && u[0].parts === 9, JSON.stringify(u.map(x => [x.parts, x.text.slice(0, 30)])));
+
+  {
+    const thread = (rows) => rows.map(([who, text]) => `<div class="row head">${who} · 2h</div><div class="row msg">${text}</div><div class="row act">Reply · Share</div>`).join("");
+    u = collect(`<div class="thread">${thread([["alice", sent(30)], ["bob", sent(30)], ["carol", sent(30)]])}</div>`);
+    check("div-soup thread: short comments do NOT merge across the name / action rows between them", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+    u = collect(`<div class="thread"><div class="row head">alice · 2h</div><div class="row msg">A1 ${sent(30)}</div><div class="row msg">A2 ${sent(30)}</div><div class="row act">Reply · Share</div><div class="row head">bob · 1h</div><div class="row msg">B1 ${sent(20)}</div></div>`);
+    check("…one speaker's consecutive messages do; the next speaker's orphan does not extend that unit",
+      u.length === 1 && u[0].parts === 2 && !u[0].text.includes("B1") && !/alice|bob|Reply/.test(u[0].text), JSON.stringify(u.map(x => [x.parts, x.text.slice(0, 12)])));
+  }
+
+  u = collect(`<article><div class="who">Alice Moreau</div><p>${sent(30)}</p><div class="meta">Edited 2h ago</div><p>${sent(30)}</p><div class="act">Reply · Share</div></article>`);
+  check("name, 'Edited 2h ago' and action rows inside a post are transparent — and never part of its text",
+    u.length === 1 && u[0].parts === 2 && !/Alice|Edited|Reply/.test(u[0].text), JSON.stringify(u.map(x => [x.parts, x.text.slice(0, 20)])));
+
+  u = collect(`<article><p>${sent(30)}</p><p><strong>2. One owner per decision</strong></p><p>${sent(30)}</p></article>`);
+  check("inside an <article> a bold pseudo-heading is transparent: the sections still merge, without it",
+    u.length === 1 && u[0].parts === 2 && !u[0].text.includes("owner"), JSON.stringify(u.map(x => [x.parts, x.words])));
+
+  u = collect(`<div><div class="txt">${sent(30)}</div><div class="ttl">Finish early</div><div class="txt">${sent(30)}</div></div>`);
+  check("on the bare page the same row is indistinguishable from a name row and ends the group (like a real heading)", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+  u = collect(`<p>${sent(30)}</p><div class="widget"><div class="bar"><div class="btns"><span style="display:block">Play</span></div></div></div><p>${sent(30)}</p>`);
+  check("a label buried deeper than the text is a widget's crumb, not a boundary (MDN's live-sample 'Play')", u.length === 1 && u[0].parts === 2 && !u[0].text.includes("Play"), JSON.stringify(u.map(x => [x.parts, x.words])));
+
+  u = collect(`<ul><li>${line(12)}</li><li>Sea salt</li><li>${sent(20)}</li><li>Rest the dough</li><li>${line(20)}</li></ul>`);
+  check("bullet items join with or without a full stop; a short item is skipped, never a boundary",
+    u.length === 1 && u[0].parts === 3 && !/Sea salt|Rest the dough/.test(u[0].text), JSON.stringify(u.map(x => [x.parts, x.words])));
+
+  u = collect(`<dl><dt>Brown butter</dt><dd>${sent(30)}</dd><dt>Rolled oats</dt><dd>${sent(30)}</dd></dl>`);
+  check("a glossary <dt> is a term, not a boundary", u.length === 1 && u[0].parts === 2 && !u[0].text.includes("Brown"), JSON.stringify(u.map(x => [x.parts, x.words])));
+
+  u = collect(`<p>${sent(25)}</p><p>Can also be written as:</p><p>${sent(25)}</p>`);
+  check("a lead-in sentence ending in a colon is the author's own and joins", u.length === 1 && u[0].parts === 3, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+  u = collect(`<div class="log"><div>${sent(30)}</div><div>bob wrote:</div><div>${sent(30)}</div></div>`);
+  check("…but 'bob wrote:' names somebody else: a label, and on the bare page a boundary", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+  u = collect(`<p>${sent(30)}</p><p>Yes.</p><p>${sent(30)}</p>`);
+  check("a punctuated aside too short to be evidence ('Yes.') is skipped without consequence", u.length === 1 && u[0].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+  u = collect(`<p>${sent(30)}</p><p>Hodges 1983, p. 208.</p><p>Alice Moreau, Ph.D.</p><p>SIGN UP TODAY!</p><p>${sent(30)}</p>`);
+  check("a citation, a name with a title and a shouting button end in punctuation but are not sentences",
+    u.length === 1 && u[0].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+  {
+    const zh = "我完全同意你的看法。";
+    u = collect(Array.from({ length: 12 }, () => `<p>${zh}</p>`).join(""));
+    check("short CJK sentences (。) are sentences too", u.length >= 1 && u[0].parts > 1, JSON.stringify(u.map(x => [x.parts, x.words])));
+  }
+
+  u = collect(`<div>${line(5)}<br>${Array.from({ length: 9 }, () => sent(6)).join("<br>")}</div>`);
+  check("an unpunctuated FIRST line ('I quit my job') is adopted once the next line shows it opens a block",
+    u.length === 1 && u[0].parts === 10, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+  u = collect(`<div><div>${line(5)}</div><div>${sent(30)}</div><div>${sent(30)}</div></div>`);
+  check("…and dropped when what follows is another block", u.length === 1 && u[0].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+  sandbox.innerHTML = Array.from({ length: 10 }, () => `<p>${sent(6)}</p>`).join("");
+  check("mergeShorts:false — one-sentence paragraphs are still skipped in strict mode", PW.collectUnits(sandbox, { mergeShorts: false }).length === 0);
+
+  {
+    // Incremental re-scan inside one article: the claimed unit is a barrier for ITS scope.
+    sandbox.innerHTML = `<article><p>${sent(20)}</p><p>${sent(60)}</p><p>${sent(20)}</p></article>`;
+    const firstScan = PW.collectUnits(sandbox);
+    const ownedNodes = new Set();
+    for (const un of firstScan) for (const part of un.parts) for (const n of part.nodes) ownedNodes.add(n);
+    const again = PW.collectUnits(sandbox, { claimFilter: (nodes) => (nodes.some((n) => ownedNodes.has(n)) ? "skip" : "take") });
+    check("claimed unit inside a scope: still no merging across it on re-scan", firstScan.length === 1 && again.length === 0, JSON.stringify(again.map(x => x.parts.length)));
+  }
+
+  check("endsLikeProse: sentence and clause ends, CJK, closers, trailing emoji — not names, times, colons",
+    ["It stung.", "Really?", "Wait…", "Two roads diverged in a yellow wood,", "He said “no.”", "(see below.)", "太好了！", "Great work! 🎉"].every(PW.endsLikeProse) &&
+    !["alice_92", "2h ago", "Reply · Share", "alice wrote:", "Ingredients:", "I would do it all again 🙂", "Start with the boring parts"].some(PW.endsLikeProse));
+  check("endsInColon: lead-ins", PW.endsInColon("Can also be written as:") && PW.endsInColon("如下：") && !PW.endsInColon("10:42"));
+  {
+    const a = PW.wordShape("Hodges 1983, p. 208."), b = PW.wordShape("Alice Moreau, Ph.D."), c = PW.wordShape("I agree completely."), d = PW.wordShape("我完全同意你的看法。"), e = PW.wordShape("10:42 · Edited");
+    check("wordShape: letter words and running text", a.letterWords === 2 && !b.running && c.letterWords === 3 && c.running && d.running && d.letterWords >= 3 && e.letterWords === 1,
+      JSON.stringify([a, b, c, d, e]));
+  }
 
   // ---- boilerplate token expansion (trafilatura-derived) ------------------------------
   u = collect(`<div class="social-share">${words(60)}</div>`);
@@ -429,6 +596,64 @@ const results = await page.evaluate(() => {
   sandbox.remove();
   return out;
 });
+
+// ---- structural fixtures: who is scored with whom on real-site markup ------------------
+// test/fixtures/*.html are reduced from the live DOM of the sites they name (each file says
+// what was verified and what was modelled). Every text block is annotated with the voice it
+// belongs to, so the checks are about AUTHORS, not about selectors:
+//   data-voice="name"   nearest ancestor names the voice of a text node
+//   data-chrome         name / handle / timestamp / action rows and pseudo-headings
+//   data-expect         "unit": some unit covers text in here · "none": no unit does
+const FIXTURES = join(__dirname, "fixtures");
+/** [units, multi-part units] per fixture — a change here is a change of behaviour. */
+const EXPECTED = {
+  "chat-transcript": [2, 1],
+  "discourse-thread": [2, 2],
+  "hn-thread": [2, 1],
+  "linkedin-feed": [2, 2],
+  "listicle": [2, 2],
+  "listicle-divsoup": [2, 1],
+  "news-article": [4, 4],
+  "recipe-faq": [5, 4],
+  "reddit-thread": [3, 2],
+  "wordpress-comments": [3, 1],
+  "x-timeline": [2, 1],
+};
+const fixtureFiles = readdirSync(FIXTURES).filter((f) => f.endsWith(".html")).sort();
+results.push({ name: "every fixture has an expectation (and the other way round)", ok: JSON.stringify(fixtureFiles.map((f) => f.replace(".html", "")).sort()) === JSON.stringify(Object.keys(EXPECTED).sort()), note: fixtureFiles.join(",") });
+for (const file of fixtureFiles) {
+  const name = file.replace(".html", "");
+  const fx = await browser.newPage();
+  await fx.goto(pathToFileURL(join(FIXTURES, file)).href);
+  await fx.addScriptTag({ path: BUNDLE });
+  const r = await fx.evaluate(() => {
+    const units = PW.collectUnits(document.body);
+    const voiceOf = (part) => part.nodes[0].parentElement?.closest("[data-voice]")?.getAttribute("data-voice") ?? "(none)";
+    const mixed = [];
+    const chrome = [];
+    const covered = new Set();
+    for (const u of units) {
+      const voices = [...new Set(u.parts.map(voiceOf))];
+      if (voices.length > 1) mixed.push(voices.join("+"));
+      for (const part of u.parts) for (const n of part.nodes) {
+        if (n.parentElement?.closest("[data-chrome]")) chrome.push(n.textContent.trim().slice(0, 30));
+        for (let e = n.parentElement; e; e = e.parentElement) covered.add(e);
+      }
+    }
+    const wrong = [];
+    for (const el of document.querySelectorAll("[data-expect]")) {
+      const want = el.getAttribute("data-expect") === "unit";
+      if (covered.has(el) !== want) wrong.push(`${want ? "no unit for" : "unexpected unit on"} "${el.textContent.trim().slice(0, 40)}"`);
+    }
+    return { units: units.length, merged: units.filter((u) => u.parts.length > 1).length, mixed, chrome, wrong, annotated: document.querySelectorAll("[data-expect]").length };
+  });
+  await fx.close();
+  const [wantUnits, wantMerged] = EXPECTED[name] ?? [-1, -1];
+  results.push({ name: `fixture ${name}: no unit mixes two voices`, ok: r.mixed.length === 0, note: r.mixed.join(" | ") });
+  results.push({ name: `fixture ${name}: no name / time / action row inside a unit`, ok: r.chrome.length === 0, note: r.chrome.join(" | ") });
+  results.push({ name: `fixture ${name}: covered exactly where expected (${r.annotated} annotated blocks)`, ok: r.annotated > 0 && r.wrong.length === 0, note: r.wrong.join(" | ") });
+  results.push({ name: `fixture ${name}: ${wantUnits} units, ${wantMerged} of them multi-part`, ok: r.units === wantUnits && r.merged === wantMerged, note: `${r.units} units, ${r.merged} multi-part` });
+}
 
 await browser.close();
 

@@ -1,0 +1,43 @@
+<!doctype html>
+<!--
+  A flat div-soup chat transcript: no <article>, no list, no table, no role — name/time rows and
+  message rows are SIBLINGS in one container, which is how exported support chats, hand-rolled
+  comment widgets and many "conversation" embeds are built. Synthetic text; modelled, not taken
+  from one site (the chat products themselves — Slack, Discord, Teams — need a login; their
+  messages sit several wrappers deep, which proximity already keeps apart).
+
+  Nothing semantic separates the voices here: the unpunctuated "alice · 10:01 AM" row IS the
+  boundary. A speaker's consecutive messages (no row between them) are one voice.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: div-soup chat transcript</title>
+<style>
+  body { max-width: 640px; margin: 30px auto; font: 15px/1.5 system-ui, sans-serif; }
+  .row { padding: 2px 12px; }
+  .head { margin-top: 10px; font-size: 13px; color: #555; }
+  .nick { font-weight: 600; color: #111; }
+  .actions { font-size: 12px; color: #777; }
+</style></head>
+<body>
+<div class="chat-log">
+
+  <div class="row head" data-chrome><span class="nick">alice</span> <span class="ts">10:01 AM</span></div>
+  <div class="row msg" data-voice="alice" data-expect="none">Morning. I looked at the invoice run from last night and about a third of the customers in the northern region were billed twice, so please do not send the reminder emails yet.</div>
+
+  <div class="row head" data-chrome><span class="nick">bob</span> <span class="ts">10:02 AM</span></div>
+  <div class="row msg" data-voice="bob" data-expect="unit">Already paused them. The duplicate rows all share one batch number, which makes me think the retry job fired while the first attempt was still writing to the ledger.</div>
+  <div class="row msg" data-voice="bob" data-expect="unit">I can reverse the second charge for everybody in that batch before lunch, but I would like somebody from finance to confirm the list first.</div>
+  <div class="row actions" data-chrome><span>Reply</span> · <span>Share</span> · <span>Pin</span></div>
+
+  <div class="row head" data-chrome><span class="nick">carol</span> <span class="ts">10:04 AM</span></div>
+  <div class="row msg" data-voice="carol" data-expect="none">Sounds good to me.</div>
+
+  <div class="row head" data-chrome><span class="nick">alice</span> <span class="ts">10:05 AM</span></div>
+  <div class="row msg" data-voice="alice-2" data-expect="none">Send me the list and I will check it against the bank file. If the totals match we reverse today, and I will write to the affected customers myself this afternoon.</div>
+
+  <div class="row head" data-chrome><span class="nick">dave</span> <span class="ts">10:09 AM</span></div>
+  <div class="row msg" data-voice="dave" data-expect="unit">For the record, the retry job is mine, and the reason it fired early is that I shortened its timeout on Friday without telling anybody, because the old value made the nightly report late. I have put it back, added a lock around the ledger write so that two attempts can never overlap again, and I will bring the change to the review on Thursday.</div>
+
+</div>
+</body></html>

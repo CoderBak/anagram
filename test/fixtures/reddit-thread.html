@@ -1,0 +1,135 @@
+<!doctype html>
+<!--
+  Reddit comment tree (the current "shreddit" markup), synthetic text.
+
+  Verified against the live DOM (www.reddit.com, 2026-09; old.reddit.com now demands a login):
+  `shreddit-comment[author][depth] > details[role=article][aria-label="Comment from …"]`, the
+  body in `div[slot=comment] > div#…-post-rtjson-content > p`, replies NESTED inside the parent
+  comment's <details> in `div#comment-children`. The author row (a link and a <time>) sits in the
+  <summary>; the action row is made of buttons.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: Reddit-style comment tree</title>
+<style>
+  body { margin: 0 auto; max-width: 760px; font: 14px/20px system-ui, sans-serif; }
+  shreddit-comment-tree, shreddit-comment, shreddit-comment-action-row { display: block; }
+  details > summary { list-style: none; }
+  .grid { display: grid; grid-template-columns: 32px 1fr; }
+  .col2 { grid-column-start: 2; min-width: 0; }
+  .children { grid-column: span 2; display: grid; grid-template-columns: 32px 1fr; }
+  .meta { display: flex; gap: 4px; align-items: center; font-size: 12px; }
+  p { margin: 0 0 8px; }
+</style></head>
+<body>
+<shreddit-comment-tree id="comment-tree">
+<section aria-label="Comments" style="display:flex;flex-direction:column;gap:16px">
+
+  <!-- alice: two short paragraphs of ONE comment → one ×2 unit -->
+  <shreddit-comment author="alice_m" depth="0" thingid="t1_a">
+    <details role="article" open tabindex="0" aria-label="Comment from alice_m 15 hours ago">
+      <summary data-chrome>
+        <div class="meta"><a href="#u-alice">alice_m</a><span>•</span><time datetime="2026-09-17T18:00:00Z">15h ago</time></div>
+      </summary>
+      <div class="grid">
+        <div class="col2">
+          <div id="t1_a-comment-rtjson-content" slot="comment">
+            <div id="t1_a-post-rtjson-content" data-voice="alice" data-expect="unit">
+              <p>The short answer is that nobody at the time thought of it as a conquest at all, which is why the sources are so frustrating to read if you come looking for one.</p>
+              <p>What you find instead is a decade of marriages, unpaid loans and border commissions, and only afterwards did anyone draw a line around it and give the whole thing a name.</p>
+            </div>
+          </div>
+        </div>
+        <shreddit-comment-action-row class="col2" data-chrome>
+          <button>Upvote</button><span>212</span><button>Reply</button><button>Award</button><button>Share</button>
+        </shreddit-comment-action-row>
+
+        <div id="comment-children" class="children">
+          <!-- bob replies INSIDE alice's <details>: short, stays unscored, never joins alice -->
+          <shreddit-comment class="col2" author="bob_the_second" depth="1" thingid="t1_b">
+            <details role="article" open tabindex="0" aria-label="Comment thread level 1: Reply from bob_the_second 15 hours ago">
+              <summary data-chrome>
+                <div class="meta"><a href="#u-bob">bob_the_second</a><span>•</span><time datetime="2026-09-17T18:20:00Z">15h ago</time></div>
+              </summary>
+              <div class="grid">
+                <div class="col2">
+                  <div id="t1_b-comment-rtjson-content" slot="comment">
+                    <div id="t1_b-post-rtjson-content" data-voice="bob" data-expect="none">
+                      <p>That matches what I remember from the survey course, although our lecturer insisted the loans mattered far more than the marriages ever did, and he was usually right about money.</p>
+                    </div>
+                  </div>
+                </div>
+                <shreddit-comment-action-row class="col2" data-chrome>
+                  <button>Upvote</button><span>40</span><button>Reply</button><button>Share</button>
+                </shreddit-comment-action-row>
+
+                <div id="comment-children" class="children">
+                  <shreddit-comment class="col2" author="alice_m" depth="2" thingid="t1_c">
+                    <details role="article" open tabindex="0" aria-label="Comment thread level 2: Reply from alice_m 14 hours ago">
+                      <summary data-chrome>
+                        <div class="meta"><a href="#u-alice">alice_m</a><span>•</span><time datetime="2026-09-17T19:00:00Z">14h ago</time></div>
+                      </summary>
+                      <div class="grid">
+                        <div class="col2">
+                          <div id="t1_c-comment-rtjson-content" slot="comment">
+                            <div id="t1_c-post-rtjson-content" data-voice="alice-reply" data-expect="none">
+                              <p>Thank you!</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </details>
+                  </shreddit-comment>
+                </div>
+              </div>
+            </details>
+          </shreddit-comment>
+        </div>
+      </div>
+    </details>
+  </shreddit-comment>
+
+  <!-- dave: three short paragraphs → one ×3 unit -->
+  <shreddit-comment author="dave_reads" depth="0" thingid="t1_d">
+    <details role="article" open tabindex="0" aria-label="Comment from dave_reads 12 hours ago">
+      <summary data-chrome>
+        <div class="meta"><a href="#u-dave">dave_reads</a><span>•</span><time datetime="2026-09-17T21:00:00Z">12h ago</time></div>
+      </summary>
+      <div class="grid">
+        <div class="col2">
+          <div id="t1_d-comment-rtjson-content" slot="comment">
+            <div id="t1_d-post-rtjson-content" data-voice="dave" data-expect="unit">
+              <p>If you want one book, read the second edition of the standard survey, not the first, because the first still repeats the old story.</p>
+              <p>The chapter on the border commissions is dry, but it is the only place the maps are reproduced properly.</p>
+              <p>Skip the introduction. It was written for a different argument and the author later said so himself.</p>
+            </div>
+          </div>
+        </div>
+        <shreddit-comment-action-row class="col2" data-chrome>
+          <button>Upvote</button><span>18</span><button>Reply</button><button>Share</button>
+        </shreddit-comment-action-row>
+      </div>
+    </details>
+  </shreddit-comment>
+
+  <!-- erin: a full paragraph → an ordinary single-part unit -->
+  <shreddit-comment author="erin_k" depth="0" thingid="t1_e">
+    <details role="article" open tabindex="0" aria-label="Comment from erin_k 9 hours ago">
+      <summary data-chrome>
+        <div class="meta"><a href="#u-erin">erin_k</a><span>•</span><time datetime="2026-09-18T00:00:00Z">9h ago</time></div>
+      </summary>
+      <div class="grid">
+        <div class="col2">
+          <div id="t1_e-comment-rtjson-content" slot="comment">
+            <div id="t1_e-post-rtjson-content" data-voice="erin" data-expect="unit">
+              <p>One thing worth adding is that the people who lived through it did not agree with each other either. The merchants in the port towns wrote about it as an opportunity, the clergy inland described the same years as a catastrophe, and the tax records suggest that for most farmers nothing changed at all until a generation later, when the new surveys finally reached them.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </details>
+  </shreddit-comment>
+
+</section>
+</shreddit-comment-tree>
+</body></html>

@@ -1,0 +1,44 @@
+<!doctype html>
+<!--
+  A blog listicle whose section titles are NOT headings: markdown's `**Title**` on a line of its
+  own becomes `<p><strong>Title</strong></p>` — the shape of most pasted-in chatbot answers and
+  of a great many WordPress / Ghost / Substack posts. One author, inside the theme's <article>.
+  Synthetic text; the wrapper is the WordPress one verified for wordpress-comments.html.
+
+  The bold one-liners are LABELS, but inside a declared post they cannot be another author's name
+  row, so the short sections still merge across them — without the titles in the text.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: listicle with pseudo-headings</title>
+<style>
+  body { max-width: 680px; margin: 30px auto; font: 17px/1.6 Georgia, serif; }
+  .tip-title { font-weight: 700; margin: 18px 0 4px; }
+</style></head>
+<body class="single single-post">
+<main id="main">
+<article id="post-7" class="post type-post hentry">
+  <header class="entry-header"><h1 class="entry-title">Five habits that made my small team faster</h1></header>
+  <div class="entry-content" data-voice="author">
+
+    <p data-expect="unit">None of these are new, and none of them needed a tool. They are simply the five things that, looking back over two years, made the most difference for the least effort.</p>
+
+    <p data-chrome><strong>1. Write the announcement first</strong></p>
+    <p data-expect="unit">Before anyone opens an editor we write the two paragraphs we would send to customers. If we cannot, the work is not ready to start.</p>
+
+    <p data-chrome><strong>2. One owner per decision</strong></p>
+    <p data-expect="unit">Everyone may argue, but one named person decides, and writes the decision down where the rest of us can find it next year.</p>
+
+    <p data-chrome><strong>3. Demo on Thursdays</strong></p>
+    <p data-expect="unit">A demo the day before the week ends leaves a day to fix what the demo revealed. Friday demos only reveal it to the weekend.</p>
+
+    <div class="tip-title" data-chrome>4. Delete the dashboard nobody opens</div>
+    <p data-expect="unit">We counted visits for a month and removed every chart with fewer than three. Nobody noticed, and the two that remained finally got read.</p>
+
+    <div class="tip-title">5. Keep a list of what you stopped doing</div>
+    <p data-expect="unit">It is the only record that the team ever learned anything, and it is the first page we show to somebody new.</p>
+
+  </div>
+</article>
+</main>
+</body></html>

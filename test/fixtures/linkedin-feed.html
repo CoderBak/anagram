@@ -1,0 +1,127 @@
+<!doctype html>
+<!--
+  LinkedIn-style feed: the "one short sentence per line" post, synthetic text.
+
+  Verified against the live DOM of the public (logged-out) feed (linkedin.com/company/…, 2026-09):
+  every post is an <article>; the entity lockup holds the name as a link, the headline as a bare
+  <p> ("EVP, Chief Strategy Officer at …") and a <time>; the commentary is ONE
+  `p.attributed-text-segment-list__content` with white-space: pre-wrap and newline-separated
+  lines. Post 2 uses the logged-in feed's form of the same thing — `span.break-words >
+  span[dir=ltr]` with <br>-separated lines — modelled from that markup, which needs an account.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: LinkedIn-style feed</title>
+<style>
+  body { max-width: 560px; margin: 20px auto; font: 14px/1.43 system-ui, sans-serif; background: #f4f2ee; }
+  article { background: #fff; border-radius: 8px; padding: 12px 16px; margin: 0 0 8px; position: relative; }
+  .lockup { display: flex; align-items: center; margin-bottom: 4px; }
+  .lockup .col { display: flex; flex-direction: column; margin-left: 4px; min-width: 0; }
+  .lockup p { margin: 0; font-size: 12px; white-space: nowrap; }
+  .commentary { white-space: pre-wrap; margin: 4px 0 6px; }
+  .break-words { white-space: pre-wrap; overflow-wrap: break-word; }
+  .reposted { font-size: 12px; margin: 0 0 4px; padding-bottom: 10px; border-bottom: 1px solid #e8e8e8; }
+  .counts { display: flex; gap: 8px; font-size: 12px; }
+</style></head>
+<body>
+<main>
+<ul style="list-style:none;padding:0;margin:0">
+
+  <!-- alice: public-feed markup, blank-line-separated one-liners in a pre-wrap <p> -->
+  <li>
+  <article class="relative main-feed-activity-card">
+    <p class="reposted" data-chrome><a class="link-styled" href="#contoso">Contoso</a> reposted this</p>
+    <div class="flex"><div class="base-main-feed-card__entity-lockup">
+      <div class="lockup" data-test-id="main-feed-activity-card__entity-lockup" data-chrome>
+        <a class="relative" href="#alice"><img alt="" width="48" height="48"></a>
+        <div class="col">
+          <div class="text-color-text"><a class="link-styled" href="#alice">Alice Moreau</a></div>
+          <p class="headline">VP, Chief Strategy and Transformation Officer at Contoso Industrial Group</p>
+          <span><time>20h</time></span>
+        </div>
+      </div>
+    </div></div>
+    <div class="attributed-text-segment-list__container">
+      <p class="attributed-text-segment-list__content commentary" dir="ltr" data-test-id="main-feed-activity-card__commentary" data-voice="alice" data-expect="unit">I got passed over for promotion last year
+
+It stung for about a week.
+
+Then I asked my manager one question
+
+What would you need to see from me?
+
+She wrote down four things on a napkin.
+
+None of them were about working harder
+
+All of them were about being visible.
+
+I did those four things for six months.
+
+Last Friday I got the job 🎉</p>
+    </div>
+    <div class="counts" data-chrome><a href="#l1">128 reactions</a><a href="#c1">14 comments</a></div>
+  </article>
+  </li>
+
+  <!-- bob: logged-in feed markup, <br>-separated six-word sentences in one span -->
+  <li>
+  <article class="relative main-feed-activity-card">
+    <div class="flex"><div class="base-main-feed-card__entity-lockup">
+      <div class="lockup" data-chrome>
+        <a class="relative" href="#bob"><img alt="" width="48" height="48"></a>
+        <div class="col">
+          <div class="text-color-text"><a class="link-styled" href="#bob">Bob Okafor</a></div>
+          <p class="headline">Founder at Tidewater Analytics</p>
+          <span><time>1d</time></span>
+        </div>
+      </div>
+    </div></div>
+    <div class="feed-shared-update-v2__description"><div class="update-components-text relative">
+      <span class="break-words"><span dir="ltr" data-voice="bob" data-expect="unit">We lost our biggest customer today.<br><br>Nobody on the team saw it coming.<br><br>The warning signs were all there.<br><br>Their invoices were paid later each month.<br><br>Their champion left in the spring.<br><br>Their usage halved over the summer.<br><br>We had dashboards for all of it.<br><br>Nobody was asked to look at them.<br><br>That part is entirely on me.<br><br>Tomorrow we start calling every single account.</span></span>
+    </div></div>
+    <div class="counts" data-chrome><a href="#l2">64 reactions</a><a href="#c2">9 comments</a></div>
+  </article>
+  </li>
+
+  <!-- carol: a short ordinary post. Too short; it must not borrow from bob or dan -->
+  <li>
+  <article class="relative main-feed-activity-card">
+    <div class="flex"><div class="base-main-feed-card__entity-lockup">
+      <div class="lockup" data-chrome>
+        <a class="relative" href="#carol"><img alt="" width="48" height="48"></a>
+        <div class="col">
+          <div class="text-color-text"><a class="link-styled" href="#carol">Carol Lindqvist</a></div>
+          <p class="headline">Hiring engineers in Gothenburg</p>
+          <span><time>2d</time></span>
+        </div>
+      </div>
+    </div></div>
+    <div class="attributed-text-segment-list__container">
+      <p class="attributed-text-segment-list__content commentary" dir="ltr" data-voice="carol" data-expect="none">We are opening two backend roles in Gothenburg next month. If you like boring, reliable systems and short meetings, my inbox is open.</p>
+    </div>
+  </article>
+  </li>
+
+  <!-- dan: also short -->
+  <li>
+  <article class="relative main-feed-activity-card">
+    <div class="flex"><div class="base-main-feed-card__entity-lockup">
+      <div class="lockup" data-chrome>
+        <a class="relative" href="#dan"><img alt="" width="48" height="48"></a>
+        <div class="col">
+          <div class="text-color-text"><a class="link-styled" href="#dan">Dan Whitfield</a></div>
+          <p class="headline">Operations lead</p>
+          <span><time>3d</time></span>
+        </div>
+      </div>
+    </div></div>
+    <div class="attributed-text-segment-list__container">
+      <p class="attributed-text-segment-list__content commentary" dir="ltr" data-voice="dan" data-expect="none">Proud of the warehouse team this week. Forty thousand parcels, two broken conveyors and not one late truck. Thank you all.</p>
+    </div>
+  </article>
+  </li>
+
+</ul>
+</main>
+</body></html>

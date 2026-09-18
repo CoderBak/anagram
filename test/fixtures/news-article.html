@@ -1,0 +1,64 @@
+<!doctype html>
+<!--
+  News article with short paragraphs, a block quotation, a figure with a caption, a pull quote
+  and a quotation set as a figure. Synthetic text.
+
+  Verified against the live DOM (theguardian.com article, 2026-09): body paragraphs are <p>
+  siblings inside the <article>; pictures are `figure > … > figcaption` whose text ends in a
+  credit ("Photograph: …"); pull quotes and the meta column are <aside>. The `figure > blockquote
+  + figcaption` quotation is the WHATWG-recommended markup (WordPress's pullquote block emits
+  `figure.wp-block-pullquote > blockquote > p + cite`).
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: news article</title>
+<style>
+  body { max-width: 620px; margin: 30px auto; font: 17px/1.5 Georgia, serif; }
+  figure { margin: 12px 0; }
+  figcaption { font: 13px/1.4 system-ui, sans-serif; color: #666; }
+  blockquote { margin: 12px 0; padding-left: 16px; border-left: 3px solid #c70000; }
+  aside.pullquote { float: right; width: 220px; margin: 4px 0 8px 16px; font-size: 22px; }
+  .byline { font: 14px system-ui, sans-serif; }
+</style></head>
+<body>
+<main>
+<article>
+  <header>
+    <h1>Harbour town votes to keep its ferry, and to pay for it</h1>
+    <div class="byline" data-chrome>Alice Moreau · Fri 18 Sep 2026 06.00</div>
+  </header>
+  <div class="article-body" data-voice="reporter">
+
+    <p data-expect="unit">The ferry has crossed the estuary eleven times a day since 1931, and for most of that time nobody in the town gave it a second thought, until the operator announced in March that the winter timetable would be its last.</p>
+    <p data-expect="unit">On Thursday night, after a meeting that ran past midnight, residents voted by a wide margin to take the service over themselves and to raise the harbour levy to pay for it.</p>
+
+    <blockquote data-voice="councillor" data-expect="none">
+      <p>We are not sentimental about a boat. We are practical about a bridge that is forty minutes away by road, and an ambulance that has to drive it.</p>
+    </blockquote>
+
+    <p data-expect="unit">That was the argument that carried the room, according to several people who were there, and it was made by a councillor who had opposed the plan until a week ago.</p>
+
+    <figure>
+      <img alt="" width="620" height="372">
+      <figcaption data-voice="picture-desk" data-expect="none">The ferry leaving the north slip on Thursday evening, an hour before the vote. Photograph: Bob Okafor/Estuary Press</figcaption>
+    </figure>
+
+    <p data-expect="unit">The levy will rise by about the price of two return tickets a year for a typical household, which the campaign had printed on every leaflet it delivered.</p>
+
+    <aside class="pullquote">“About the price of two return tickets a year”</aside>
+
+    <p data-expect="unit">Not everybody was persuaded. Owners of the holiday lets along the front, who pay the levy but rarely use the boat, asked for an exemption and were refused.</p>
+    <p data-expect="unit">Their representative said afterwards that they would not challenge the result, but that they expected the accounts to be published every quarter, in full.</p>
+
+    <figure class="quotation">
+      <blockquote data-voice="skipper" data-expect="none"><p>I have done this crossing nine thousand times. I would like to do it a few more.</p></blockquote>
+      <figcaption data-voice="picture-desk" data-expect="none">Carol Lindqvist, skipper since 2009</figcaption>
+    </figure>
+
+    <p data-expect="unit">The handover is planned for the first of January. Until then the present operator will run the winter timetable as announced, with one boat instead of two.</p>
+    <p data-expect="unit">A public meeting to elect the board of the new company will be held in the lifeboat station next month, and nominations are already open.</p>
+
+  </div>
+</article>
+</main>
+</body></html>

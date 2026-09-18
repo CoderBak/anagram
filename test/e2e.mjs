@@ -5,7 +5,8 @@
 // self-test page over http (so the <all_urls> content script injects), scrolls the
 // whole page (scoring is viewport-first BY DESIGN), then asserts the v2 behaviours:
 // long paragraphs badge once and underline to the end (the HF regression),
-// BR-split/short-sibling/pre-wrap content merges into single units, inline code
+// BR-split/short-sibling/pre-wrap content merges into single units, a post written one
+// short sentence per line is one unit while two voices never share one, inline code
 // does not fragment prose, pure-CJK text is settled by the local language gate
 // instead of being scored (the daemon never sees it), hidden tabs and <details>
 // get badges when revealed, pushState swaps re-badge and purge, removals purge,
@@ -103,6 +104,8 @@ const snapshot = await page.evaluate((sel) => {
       longpara: inSection("longpara"),
       brsplit: inSection("brsplit"),
       mergeshorts: inSection("mergeshorts"),
+      postlines: inSection("postlines"),
+      twovoices: inSection("twovoices"),
       inlinecode: inSection("inlinecode"),
       purecjk: inSection("purecjk"),
       tabs: inSection("tabs"),
@@ -122,6 +125,10 @@ const snapshot = await page.evaluate((sel) => {
       ms1: hlHas("MS-ONE"),
       ms2: hlHas("MS-TWO"),
       ms3: hlHas("MS-THREE"),
+      post1: hlHas("POSTLINE-ONE"),
+      postN: hlHas("POSTLINE-LAST"),
+      posterName: hlHas("Poster Name"),
+      voices: ["VOICE-ONE", "VOICE-TWO", "VOICE-THREE", "VOICE-FOUR"].some(hlHas),
       icode: hlHas("ICODE tail marker"),
       cjk: hlHas("纯中文标记"),
       pw1: hlHas("PREWRAP-ONE"),
@@ -234,6 +241,8 @@ const checks = [
   ["LONG paragraph underline reaches the end (HF regression)", s.hl.longtail],
   ["BR-split halves merged into one unit", s.sections.brsplit === 1 && s.hl.br1 && s.hl.br2],
   ["three short siblings merged into one unit", s.sections.mergeshorts === 1 && s.hl.ms1 && s.hl.ms2 && s.hl.ms3],
+  ["one-sentence-per-line post: one unit from the first line to the last, without the name row", s.sections.postlines === 1 && s.hl.post1 && s.hl.postN && !s.hl.posterName],
+  ["two posts / an author and a quotation are never added up", s.sections.twovoices === 0 && !s.hl.voices],
   ["inline <code> does not fragment the paragraph", s.sections.inlinecode === 1 && s.hl.icode],
   ["pure-CJK paragraph badged as 'unsupported' (language gate)", s.sections.purecjk === 1 && s.cjkUnsupported],
   ["pre-wrap blank-line paragraphs split + merged", s.prewrapBadges === 1 && s.hl.pw1 && s.hl.pw2],
