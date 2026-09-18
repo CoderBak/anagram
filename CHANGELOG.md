@@ -78,8 +78,36 @@ Notable changes to Anagram, newest first. The format follows
   timestamp or a "Reply · Share" row never becomes part of the scored text and,
   on pages with no semantic markup, ends the group instead of bridging two
   comments.
+- A post is recognised where the site does not say `<article>`. Zhihu answers,
+  GitHub comments, Hacker News and V2EX rows, Substack and old WordPress comments,
+  phpBB posts, Telegram messages and Steam reviews are plain `div`s, table rows or
+  list items, so none of the rules for posts applied to them: a comment of a
+  short, a long, a short and a long paragraph got two chips instead of one, and
+  only the byline rows that happen to stand between two comments kept their
+  short texts apart. A post is now recognised by what it is — one of several
+  elements like it, each with a byline of its own (a time, an avatar, a link to
+  a person, a picture and a name that lead to the same place) — and read like a
+  declared one: whole if it fits one model window, never together with its
+  neighbour, the nearest container winning where replies nest. A lone reply is
+  known by being shaped like the comment around it, the opening post of a thread
+  by the thread that follows it. A bullet list, a prose table and an article
+  with a byline at its head are still one author's text, and a single comment on
+  a page of its own is read as before. LinkedIn's new feed
+  (`div[role=listitem]` in a `div[role=list]`) and Bilibili's comments (nested
+  shadow roots, where no structure can be seen) are named outright.
+- Inside such a post, a bold one-liner or an unpunctuated line between two
+  paragraphs is the author's own heading and no longer cuts the text in two, and
+  a short paragraph next to a list set two levels deeper is read with it. A row
+  of the card — "Recommended", "Posted: 12 September" — still ends what was read
+  before it, so a site's counters never become the opening lines of a review.
 
 ### Fixed
+
+- Chinese, Japanese or Arabic text that names a brand in Latin letters is read
+  like any other. One capitalised word — "OpenAI" in a Chinese sentence — made
+  the paragraph look like a title rather than running text, and short paragraphs
+  of that kind were left out of their group: a 223-word Chinese post was judged
+  by 135 of its words.
 
 - Whole sites that produced no verdict at all now read. A survey of 124 real
   pages found four ways the walk never reached the text:
