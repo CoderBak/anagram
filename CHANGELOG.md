@@ -100,6 +100,17 @@ Notable changes to Anagram, newest first. The format follows
   a short paragraph next to a list set two levels deeper is read with it. A row
   of the card — "Recommended", "Posted: 12 September" — still ends what was read
   before it, so a site's counters never become the opening lines of a review.
+- A post written one short line per paragraph, without punctuation, is read. Its
+  longer lines were joined and its short ones taken for labels, so an answer of
+  six such lines and 52 words got no verdict. Inside a post, short unpunctuated
+  lines that stand beside other unpunctuated lines of the same text are lines of
+  that text; a one-line heading between ordinary sentences still stays out.
+- Top-level comments of a GitHub Discussion are recognised as posts. GitHub sets
+  a comment's "…" menu before its header in the page, hidden; counted as text,
+  it made the author line look like something in the middle of a paragraph, and
+  only the replies were recognised — a comment that fits one model window was
+  cut in two, shorter ones got nothing. Hidden elements, popovers, buttons, form
+  controls and closed menus are no longer counted as text around a byline.
 
 ### Fixed
 
