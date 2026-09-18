@@ -371,7 +371,10 @@ function hideCard(host: HTMLElement): void {
 }
 
 /** Place the card once: above the chip, flipped below when that would leave the
- *  viewport, shifted to stay inside it, caret aimed at the chip. */
+ *  viewport, shifted to stay inside it, caret aimed at the chip. In a window too short
+ *  for the card on either side of the chip (a docked devtools pane, a half-height tile)
+ *  the card slides over the chip rather than off the screen; the caret then points at
+ *  nothing and is hidden. */
 function positionCard(host: HTMLElement): void {
   const root = host.shadowRoot;
   const pill = root?.querySelector(".pill") as HTMLElement | null;
@@ -386,13 +389,14 @@ function positionCard(host: HTMLElement): void {
     middleware: [
       offset(9),
       flip({ padding: 8 }),
-      shift({ padding: 8 }),
+      shift({ padding: 8, crossAxis: true }),
       ...(caret ? [arrow({ element: caret, padding: 10 })] : []),
     ],
   }).then(({ x, y, placement, middlewareData }) => {
     card.style.left = `${x}px`;
     card.style.top = `${y}px`;
     card.classList.toggle("below", placement.startsWith("bottom"));
+    card.classList.toggle("overlap", Math.abs(middlewareData.shift?.y ?? 0) > 0.5);
     if (caret) {
       const ax = middlewareData.arrow?.x;
       caret.style.left = ax != null ? `${ax}px` : "";

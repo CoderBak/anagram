@@ -11,7 +11,7 @@
 // so cookie walls and modal overlays cannot bury it. Its host carries
 // MARK_ATTR="host" so the walker skips it, and id="anagram-fab" so tests can
 // find/click it.
-import { computePosition, flip, offset, shift } from "@floating-ui/dom";
+import { computePosition, flip, offset, shift, size } from "@floating-ui/dom";
 import { MARK_ATTR } from "../types";
 import { settings, setSiteOverride } from "../settings/settings";
 import type { Band } from "./band";
@@ -48,6 +48,8 @@ export interface Fab {
 
 const BALL = 42; // ball diameter (px) — layout math + clamping use this
 const TUCK_AFTER_MS = 3500;
+const PANEL_MAX_HEIGHT = 360; // matches .panel max-height; placePanel lowers it in short windows
+const PANEL_MIN_HEIGHT = 140; // header + filter row + two entries
 
 const FAB_CSS = `
 :host { all: initial; }
@@ -681,7 +683,8 @@ export function createFab(opts: { onToggle: () => void; onRetry?: () => void; pa
   }
 
   /** Floating UI: above the ball (aligned to the snapped side), flipped below or
-   *  shifted when the ball has been dragged near a viewport edge. */
+   *  shifted when the ball has been dragged near a viewport edge. In a short window the
+   *  panel takes the height there is (its list scrolls) instead of running off the top. */
   function placePanel(): void {
     const panel = panelEl;
     const anchor = fabEl?.parentElement; // .fabwrap — the ball plus its counter bubble
@@ -689,7 +692,17 @@ export function createFab(opts: { onToggle: () => void; onRetry?: () => void; pa
     void computePosition(anchor, panel, {
       placement: side === "left" ? "top-start" : "top-end",
       strategy: "absolute",
-      middleware: [offset(8), flip({ padding: 8 }), shift({ padding: 8 })],
+      middleware: [
+        offset(8),
+        flip({ padding: 8 }),
+        shift({ padding: 8 }),
+        size({
+          padding: 8,
+          apply({ availableHeight }) {
+            panel.style.maxHeight = `${Math.max(PANEL_MIN_HEIGHT, Math.min(PANEL_MAX_HEIGHT, Math.floor(availableHeight)))}px`;
+          },
+        }),
+      ],
     }).then(({ x, y, placement }) => {
       panel.style.left = `${x}px`;
       panel.style.top = `${y}px`;

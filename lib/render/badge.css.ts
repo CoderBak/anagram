@@ -196,6 +196,7 @@ export const BADGE_CSS: string = `
   border-left: none;
   border-radius: 0 0 2px 0;
 }
+.card.overlap .caret { display: none; }
 .card.below .caret {
   bottom: auto;
   top: -5px;
