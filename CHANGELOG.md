@@ -21,6 +21,19 @@ Notable changes to Anagram, newest first. The format follows
   <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>K</kbd> walk to the next and previous
   flagged paragraph, wrapping around.
 
+### Changed
+
+- Short paragraphs are scored together only within one voice. Two posts by
+  different authors, an author and the person they quote, a paragraph and a
+  figure caption, a post and the post it quotes no longer share a verdict; a
+  quotation or caption in the middle of an article pauses the author's group
+  instead of ending it. Text that is too short on its own simply gets no chip.
+- What joins a group is decided by what a line is, not by its length: a post
+  written one short sentence per line is now covered, while a username, a
+  timestamp or a "Reply · Share" row never becomes part of the scored text and,
+  on pages with no semantic markup, ends the group instead of bridging two
+  comments.
+
 ### Fixed
 
 - An embedded frame follows the site rule of the page it sits in. A frame that
