@@ -1160,6 +1160,64 @@ const results = await page.evaluate(() => {
         return PW.isNoTranslate(shell) === false && PW.isNoTranslate(widget) === true && PW.isNoTranslate(body) === false;
       })());
 
+    // 3 · a box that clips its own text is not read yet ----------------------------------------
+    const clipped = `<div style="width:400px;max-height:40px;overflow:hidden">${sent(80)}</div>`;
+    u = collect(clipped);
+    check("a box clipping most of its own text is not scored (LinkedIn's 'see more' post)", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+    u = collect(`<div style="width:400px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden">${sent(80)}</div>`);
+    check("…nor is a line-clamped one (Substack's Notes feed)", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+    u = collect(`<div style="width:400px;max-height:none;overflow:visible">${sent(80)}</div>`);
+    check("…and after the reader expands it, the same text IS scored", u.length === 1 && u[0].words === 80, JSON.stringify(u.map(x => [x.parts, x.words])));
+    {
+      // The real expansion: a class flip on the box, seen by the mutation observer.
+      sandbox.innerHTML = `<div id="clip" style="width:400px;max-height:40px;overflow:hidden">${sent(80)}</div>`;
+      const box = sandbox.querySelector("#clip");
+      const before = PW.collectUnits(sandbox).length;
+      box.style.maxHeight = "none";
+      const after = PW.collectUnits(sandbox).length;
+      check("…the very next scan after the box opens finds it — no reload", before === 0 && after === 1, `${before} -> ${after}`);
+      const watched = PW.WATCHED_ATTRS ?? [];
+      check("the observer watches the attributes those reveals use, aria-expanded included",
+        ["class", "style", "hidden", "open", "aria-hidden", "aria-expanded"].every((a) => watched.includes(a)), watched.join(","));
+    }
+
+    u = collect(`<div style="width:400px;max-height:40px;overflow:auto">${sent(80)}</div>`);
+    check("guard: a SCROLL container (overflow:auto) is readable and stays scored", u.length === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+    u = collect(`<div style="width:400px;overflow-x:hidden;white-space:nowrap">${sent(80)}</div>`);
+    check("guard: horizontal-only overflow (a carousel) is not vertical clipping", u.length === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+    u = collect(`<div style="width:400px;height:60px;overflow:hidden">${sent(20)}</div><p>${sent(40)}</p>`);
+    check("guard: a few pixels of decorative overflow never blanks a paragraph", u.length === 1 && u[0].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+    u = collect(`<div style="width:400px;height:${Math.round(window.innerHeight * 0.95)}px;overflow:hidden">${sent(80)}</div>`);
+    check("guard: a box as tall as the viewport is the page's own scrolling box", u.length === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+    u = collect(`<main style="width:400px;max-height:40px;overflow:hidden"><p>${sent(80)}</p></main>`);
+    check("guard: <main> and [role=main] are page level — never clipped away", u.length === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+    u = collect(`<details open style="width:400px;max-height:40px;overflow:hidden"><summary>More</summary><p>${sent(80)}</p></details>`);
+    check("guard: an open <details> is read whatever its overflow", u.length === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
+    {
+      // A modal opens: `body { overflow:hidden }` must not blank the page under it.
+      const prev = document.body.getAttribute("style");
+      document.body.setAttribute("style", "overflow:hidden;height:80px");
+      sandbox.innerHTML = `<p>${sent(80)}</p>`;
+      const underModal = PW.collectUnits(sandbox).length;
+      if (prev === null) document.body.removeAttribute("style");
+      else document.body.setAttribute("style", prev);
+      check("guard: body{overflow:hidden} under an open modal leaves the page scored", underModal === 1, `${underModal}`);
+    }
+    {
+      // An incremental re-scan STARTED inside a clipped box (a feed appends to the post it
+      // is hiding) must not score what the reader still cannot see.
+      sandbox.innerHTML = `<div style="width:400px;max-height:40px;overflow:hidden"><p id="inner">${sent(80)}</p></div>`;
+      const inside = PW.collectUnits(sandbox.querySelector("#inner"));
+      check("a re-scan rooted inside a clipped box yields nothing", inside.length === 0, JSON.stringify(inside.length));
+    }
+
   }
 
   // ---- canonical scoring text ------------------------------------------------------------
@@ -1250,6 +1308,7 @@ const EXPECTED = {
   "discourse-thread": [2, 2],
   "github-issue": [3, 3],
   "hn-thread": [2, 1],
+  "linkedin-clipped": [3, 0],
   "linkedin-feed": [2, 2],
   "listicle": [1, 1],
   "listicle-divsoup": [2, 1],
@@ -1259,6 +1318,7 @@ const EXPECTED = {
   "recipe-faq": [5, 4],
   "reddit-thread": [3, 2],
   "substack-article": [16, 13],
+  "substack-note": [1, 0],
   "wordpress-comments": [2, 2],
   "x-timeline": [7, 5],
   "zhihu-answers": [12, 7],

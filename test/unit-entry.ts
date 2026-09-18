@@ -24,6 +24,7 @@ export {
   MIN_LINE_WORDS,
 } from "../lib/dom/text";
 export { isBoilerplate, isNoTranslate } from "../lib/dom/boilerplate";
+export { WATCHED_ATTRS } from "../lib/capture/observers";
 export { findMainContent, useReadability } from "../lib/dom/mainContent";
 export { detectDocsPage, readingViewUrl, editorUrl } from "../lib/docs";
 export { band, isFlagged, scorePct } from "../lib/render/band";

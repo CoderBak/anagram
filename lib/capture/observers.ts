@@ -35,7 +35,11 @@ const DRAIN_MAX_WAIT_MS = 1000;
 const ROOT_MARGIN = "1200px 0px";
 /** Min interval between attribute-driven re-scans of the SAME element. */
 const ATTR_RESCAN_MIN_MS = 1500;
-const WATCHED_ATTRS = ["class", "style", "hidden", "open", "aria-hidden"];
+// "aria-expanded" belongs here because of the clipped-box rule (lib/dom/style.ts): the
+// only thing some "see more" controls change in the DOM is that flag on the BUTTON, and
+// the box it expands is the button's sibling — a scan root one level above the dirty
+// node covers both, so the post is scored the moment it opens.
+export const WATCHED_ATTRS = ["class", "style", "hidden", "open", "aria-hidden", "aria-expanded"];
 
 export function createObservers(opts: {
   onVisible(unit: Unit): void;

@@ -1,0 +1,105 @@
+<!doctype html>
+<!--
+  LinkedIn feed posts the site CLIPS to three lines, synthetic text.
+
+  Measured in the owner's Chrome on the logged-in feed (2026-09): the new UI holds the
+  whole post in `span[data-testid=expandable-text-box]` — `white-space: pre-wrap`,
+  `-webkit-line-clamp: 3`, `overflow: hidden`, text and <br>s — 206 words in the DOM of
+  which some 26 are on screen; the old UI uses `div.feed-shared-inline-show-more-text`,
+  60 px tall around a `scrollHeight` of 497 px. Both used to be scored whole, and the chip
+  landed after the last text node, i.e. INSIDE the clipped box where nobody sees it.
+  A box counts as clipped when it says so (overflow-y hidden/clip) AND measures so — at
+  least twice as much content as box (lib/dom/style.ts). The clamp below uses
+  `display:-webkit-box`, which is what clips in every Chromium; the live page's
+  `display:flow-root` clips the same way in Chrome 140 and measures the same.
+
+  Posts 3 to 5 are the guards: an expanded post, a scroll container, and a box that
+  overflows by a little — all three are read.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: LinkedIn clipped posts</title>
+<style>
+  body { max-width: 560px; margin: 20px auto; font: 14px/1.43 system-ui, sans-serif; background: #f4f2ee; }
+  article { background: #fff; border-radius: 8px; padding: 12px 16px; margin: 0 0 8px; }
+  .lockup { font-size: 12px; color: #666; }
+  /* new UI: the clamp */
+  .expandable { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3;
+                overflow: hidden; white-space: pre-wrap; width: 480px; }
+  /* old UI: a fixed height with the rest cut off */
+  .feed-shared-inline-show-more-text { overflow: hidden; max-height: 60px; width: 480px; }
+  .feed-shared-inline-show-more-text--expanded { max-height: none; overflow: visible; }
+  /* a scroll container is readable: the reader can get to all of it */
+  .scrolls { overflow: auto; max-height: 60px; width: 480px; }
+  /* a box that clips a line or two of a paragraph is still a paragraph one reads */
+  .tight { overflow: hidden; height: 84px; width: 480px; }
+  .see-more { font-size: 13px; color: #0a66c2; background: none; border: 0; padding: 0; }
+</style></head>
+<body>
+<main>
+
+  <!-- 1 · new UI: three lines shown of a long post — nothing here is read -->
+  <article data-voice="alice">
+    <div class="lockup" data-chrome><a href="#alice">Alice Moreau</a> · 20h</div>
+    <div class="update-components-text">
+      <span data-testid="expandable-text-box" class="expandable" dir="ltr" data-expect="none">Six months ago we moved the whole reporting stack from a nightly batch to a stream, and I promised the team a retrospective once the dust had settled.<br><br>The dust has settled. Here is what I would do again, and what I would not.<br><br>I would again start with the boring half: naming the events before writing a line of code, and making the names survive a review by somebody who does not work on the team. Half of the pain of the old system came from three different words for the same thing, and no amount of engineering fixes a vocabulary problem.<br><br>I would not again run the two systems side by side for a whole quarter. We told ourselves it was insurance; what it actually bought was two systems to maintain and a team that could never quite say which of them was the truth.</span>
+      <button type="button" class="see-more" aria-expanded="false" data-chrome>…see more</button>
+    </div>
+  </article>
+
+  <!-- 2 · old UI: sixty pixels of a long post — nothing here is read either -->
+  <article data-voice="bob">
+    <div class="lockup" data-chrome><a href="#bob">Bob Nowak</a> · 1d</div>
+    <div class="feed-shared-inline-show-more-text" data-expect="none">
+      <span dir="ltr">Hiring for a team of four taught me more about writing job adverts than any
+        course ever did. The first advert we published described the person we wished existed,
+        and it brought us forty applications from people who had learned to describe themselves
+        the same way. The second described the work: the systems that would be theirs on the
+        first morning, the meetings they would be expected to run by the second month, and the
+        parts of the job nobody enjoys. It brought us eleven applications, and we hired two of
+        them, and both are still here three years later.</span>
+      <button type="button" class="see-more" aria-expanded="false" data-chrome>…see more</button>
+    </div>
+  </article>
+
+  <!-- 3 · the same post after "see more": the class is gone and the text is read -->
+  <article data-voice="carol">
+    <div class="lockup" data-chrome><a href="#carol">Carol Iyer</a> · 2d</div>
+    <div class="feed-shared-inline-show-more-text feed-shared-inline-show-more-text--expanded" data-expect="unit">
+      <span dir="ltr">Hiring for a team of four taught me more about writing job adverts than any
+        course ever did. The first advert we published described the person we wished existed,
+        and it brought us forty applications from people who had learned to describe themselves
+        the same way. The second described the work: the systems that would be theirs on the
+        first morning, the meetings they would be expected to run by the second month, and the
+        parts of the job nobody enjoys. It brought us eleven applications, and we hired two of
+        them, and both are still here three years later.</span>
+      <button type="button" class="see-more" aria-expanded="true" data-chrome>see less</button>
+    </div>
+  </article>
+
+  <!-- 4 · a scroll container hides nothing: the reader can scroll to all of it -->
+  <article data-voice="dave">
+    <div class="lockup" data-chrome><a href="#dave">Dave Okafor</a> · 3d</div>
+    <div class="scrolls" data-expect="unit">
+      <span dir="ltr">The warehouse ran on a spreadsheet for eleven years and the only reason it
+        worked is that one person opened it every morning at six and closed it every evening at
+        seven, and in between she answered the phone. When she retired we replaced her with a
+        system that cost more than her salary and still calls her twice a month to ask what the
+        column called "hold 2" is for.</span>
+    </div>
+  </article>
+
+  <!-- 5 · a box that clips a line or so of a paragraph is not a "see more" box -->
+  <article data-voice="erin">
+    <div class="lockup" data-chrome><a href="#erin">Erin Vasquez</a> · 4d</div>
+    <div class="tight" data-expect="unit">
+      <span dir="ltr">Every team I have joined had one document that everybody quoted and nobody
+        had read, and finding it in the first week is the cheapest way to understand what the
+        team believes about itself and about its work. Mine is usually a page written by
+        somebody who left long ago, and the useful part is never the plan it contains but the
+        problem it was written to settle.</span>
+    </div>
+  </article>
+
+</main>
+</body></html>

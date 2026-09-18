@@ -71,6 +71,58 @@ export function preservesNewlines(cs: CSSStyleDeclaration | null): boolean {
 }
 
 /**
+ * Boxes whose overflow is about the PAGE, not about a paragraph: `body { overflow:
+ * hidden }` under an open modal, `html` under a scroll lock, the main region of an app
+ * with its own scrolling panes. Blanking those would blank the site. A `<details>` is
+ * here too: closed, it hides its content by other means (content-visibility), and open,
+ * it is read like any other block.
+ */
+const NEVER_CLIPPED_TAGS = new Set(["HTML", "BODY", "MAIN", "DETAILS"]);
+
+/** Content must be at least this much taller than its box before the box counts as
+ *  clipped: more of the text is out of sight than in it. */
+const CLIP_CONTENT_RATIO = 2;
+/** …and at least this many pixels of it must be hidden, so a few pixels of decorative
+ *  overflow (a shadow, a descender, a sticky row) never blanks a paragraph. */
+const CLIP_MIN_HIDDEN_PX = 32;
+/** A box as tall as the screen is the page's own scrolling box or a full-height panel,
+ *  not a three-line preview of a post. */
+const CLIP_MAX_VIEWPORT_SHARE = 0.9;
+
+/**
+ * Does this box CLIP ITS OWN TEXT vertically — text that is in the DOM but that the
+ * reader does not see until they expand it? LinkedIn's feed keeps the whole post and
+ * shows three lines (`span[data-testid=expandable-text-box]`, `-webkit-line-clamp:3;
+ * overflow:hidden`; the old UI's `div.feed-shared-inline-show-more-text` measures 60 px
+ * around 497 px of text), Substack's Notes feed clamps `div.pencraft` to 168 px of
+ * 1 708 px. Scoring that text judged a post by words nobody read, and put the chip
+ * inside the clipped box where nobody sees it.
+ *
+ * The rule is a measurement, not a declaration: `overflow-y` must be `hidden` or `clip`
+ * (`auto`/`scroll` are readable, and a carousel's `overflow-x:hidden` computes `overflow-y`
+ * to `auto`), and the content must be at least twice the height of the box. Guards keep
+ * it off everything that legitimately overflows: page-level boxes and `<details>`, boxes
+ * as tall as the viewport, and a few pixels of decorative overflow. After the reader
+ * expands the box the class/style/attribute change marks it dirty and it is scored then.
+ *
+ * COST: `clientHeight`/`scrollHeight` force layout, so they are read only once the cheap
+ * computed-style test says the box clips at all. The walk mutates nothing, so the first
+ * read computes layout once and every later one is free.
+ */
+export function clipsOwnText(el: Element, cs: CSSStyleDeclaration): boolean {
+  const overflowY = cs.overflowY;
+  if (overflowY !== "hidden" && overflowY !== "clip") return false;
+  if (NEVER_CLIPPED_TAGS.has(tagOf(el)) || el.getAttribute("role") === "main") return false;
+  const box = el.clientHeight;
+  const content = el.scrollHeight;
+  if (content - box < CLIP_MIN_HIDDEN_PX) return false;
+  if (content < box * CLIP_CONTENT_RATIO) return false;
+  const viewport = typeof window !== "undefined" ? window.innerHeight : 0;
+  if (viewport > 0 && box >= viewport * CLIP_MAX_VIEWPORT_SHARE) return false;
+  return true;
+}
+
+/**
  * Visually absent content, whatever its display: screen-reader-only copies ("(opens
  * in a new tab)", icon labels, legacy clip-rect sr-only spans) and the hidden
  * accessibility copies math renderers keep next to the visible glyphs (Wikipedia's

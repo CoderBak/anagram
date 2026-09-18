@@ -1,0 +1,55 @@
+<!doctype html>
+<!--
+  Substack Notes feed, synthetic text.
+
+  Measured in the owner's Chrome (substack.com/notes, 2026-09): a long note lives in a
+  `div.pencraft` clamped to six lines — 168 px of box around a `scrollHeight` of 1 708 px —
+  with a "Read more" control underneath. The note next to it is short and is not clamped
+  at all, and it is still read: the rule is about the box that hides its own text, not
+  about the feed (lib/dom/style.ts).
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: Substack notes</title>
+<style>
+  body { max-width: 620px; margin: 24px auto; font: 16px/1.5 Georgia, serif; }
+  .note { border-bottom: 1px solid #e7e7e7; padding: 16px 0; }
+  .meta { font: 13px system-ui, sans-serif; color: #6b6b6b; }
+  .pencraft { width: 560px; }
+  .clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; overflow: hidden; }
+  .read-more { font: 13px system-ui, sans-serif; color: #b95208; background: none; border: 0; padding: 0; }
+</style></head>
+<body>
+<main>
+
+  <!-- clamped to six lines of a long note: none of it is read until it is opened -->
+  <div class="note" data-voice="ash">
+    <div class="meta" data-chrome><a href="#ash">Ash Bergström</a> · 3h</div>
+    <div class="pencraft clamped" data-expect="none">I spent the winter reading the minutes of a
+      parish council from the eighteen-seventies, and the thing that stays with me is how much of
+      the work was about water: who could take it, who had spoiled it, and who would pay for the
+      pipe.<br><br>Every third meeting returns to the same ditch. The names change, the ditch does
+      not, and by the end of the decade the ditch has outlasted two clerks, a chairman and an
+      entire theory of drainage that somebody had brought back from a lecture in the county
+      town.<br><br>What I had expected to find was politics. What I found was maintenance, written
+      down by people who did not think of themselves as writing anything, week after week, in a
+      hand that gets worse as the decade goes on.<br><br>The last volume ends mid-sentence, in a
+      different hand again, and the index at the back was written by somebody who clearly never
+      read the meetings at all: it lists the ditch under four separate headings and none of them
+      is the one the clerk used for eleven years.</div>
+    <button type="button" class="read-more" aria-expanded="false" data-chrome>Read more</button>
+  </div>
+
+  <!-- an ordinary note beside it, not clamped: still read as before -->
+  <div class="note" data-voice="noor">
+    <div class="meta" data-chrome><a href="#noor">Noor Haddad</a> · 5h</div>
+    <div class="pencraft" data-expect="unit">
+      <p>The archive has a rule that you may photograph anything you can read without touching it,
+         which turns out to be a rule about posture more than about permission, and after three
+         days of it my back had opinions about the eighteenth century that my notes did not. The
+         reading room is kept at exactly the temperature that suits paper and nobody else.</p>
+    </div>
+  </div>
+
+</main>
+</body></html>
