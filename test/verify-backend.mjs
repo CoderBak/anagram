@@ -5,9 +5,13 @@
 //    to the daemon's API directly, and compare. Also counts the daemon's requests.
 // 2. With anagramd down: reload; the popup must say the daemon is not running and NO
 //    paragraph may carry a verdict (there is no fallback scorer).
-//   node test/verify-backend.mjs
+//
+//   node test/verify-backend.mjs                     (ANAGRAMD_PORT to override 8765)
+//
+// The extension is pointed at THAT port before any page opens, so a run on a spare port
+// never reads — or stops — the daemon somebody else is using.
 import { spawn } from "node:child_process";
-import { launchExtension } from "./harness.mjs";
+import { launchExtension, BADGE_SEL } from "./harness.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
@@ -15,8 +19,8 @@ import http from "node:http";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
-const BASE = "http://127.0.0.1:8765";
-const BADGE_SEL = '[data-anagram="host"]:not(#anagram-fab)';
+const PORT = Number(process.env.ANAGRAMD_PORT || 8765);
+const BASE = `http://127.0.0.1:${PORT}`;
 
 const health = () => fetch(`${BASE}/health`, { signal: AbortSignal.timeout(1500) }).then((r) => (r.ok ? r.json() : null), () => null);
 
@@ -24,14 +28,19 @@ const health = () => fetch(`${BASE}/health`, { signal: AbortSignal.timeout(1500)
 let daemonLog = "";
 let daemon = null;
 if (!(await health())) {
-  daemon = spawn("sh", [join(ROOT, "anagramd", "run.sh")], { stdio: ["ignore", "pipe", "pipe"] });
+  daemon = spawn("sh", [join(ROOT, "anagramd", "run.sh"), "--port", String(PORT)], { stdio: ["ignore", "pipe", "pipe"] });
   daemon.stdout.on("data", (d) => (daemonLog += d));
   daemon.stderr.on("data", (d) => (daemonLog += d));
   for (let i = 0; i < 120 && !(await health()); i++) await new Promise((r) => setTimeout(r, 1000));
 } else {
-  console.log("(reusing an already-running anagramd — request counting unavailable)");
+  console.log(`(reusing the anagramd already listening on ${BASE} — this run neither started nor will stop it; request counting unavailable)`);
 }
 const h = await health();
+if (!h) {
+  console.error(`no anagramd answered on ${BASE} — its log so far:\n${daemonLog.slice(-2000)}`);
+  daemon?.kill("SIGTERM");
+  process.exit(2);
+}
 console.log(`daemon: ${h.model.id} on ${h.device} (${h.dtype})`);
 
 const html = readFileSync(join(__dirname, "selftest.html"), "utf8");
@@ -63,14 +72,17 @@ async function readChips(context, expectChips = true) {
   await popup.goto(`chrome-extension://${id}/popup.html`);
   await popup.waitForFunction(() => /Model|Scores/.test(document.getElementById("backend")?.textContent ?? ""), null, { timeout: 10000 }).catch(() => {});
   const backendLine = await popup.evaluate(() => document.getElementById("backend")?.textContent ?? "");
+  // A scored verdict: not "Unavailable" (band-unknown), not still "analyzing…" (pending),
+  // and not an "unsupported language" chip — the page's Chinese paragraphs are settled by
+  // the content script's own language gate and appear with no daemon at all, by design.
   const verdicts = await page.evaluate((sel) => [...document.querySelectorAll(sel)].filter((h) => {
     const pill = h.shadowRoot?.querySelector(".pill");
-    return pill && !pill.classList.contains("band-unknown") && !pill.classList.contains("pending");
+    return pill && !pill.classList.contains("band-unknown") && !pill.classList.contains("pending") && !pill.classList.contains("band-unsupported");
   }).length, BADGE_SEL);
   return { chips, backendLine, verdicts };
 }
 
-const launch = async () => (await launchExtension({ viewport: { width: 1200, height: 800 } })).context;
+const launch = async () => (await launchExtension({ backendUrl: BASE, viewport: { width: 1200, height: 800 } })).context;
 
 // --- 1. daemon UP ---------------------------------------------------------------------
 const before = (daemonLog.match(/score \d+ blocks/g) ?? []).length;

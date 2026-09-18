@@ -9,10 +9,14 @@
 // responses from a superseded generation are discarded.
 //
 // Budgets are per lane because the trade-off differs: the viewport lane wants the
-// first chip fast (small batch), the background prefetch lane wants throughput (the
-// model scores ~3× more paragraphs per second in batches of 12+ than one at a time).
-// The background lane is also capped to `maxBackgroundInFlight` concurrent batches so
-// prefetch never starves what the reader can actually see.
+// first chip fast (small batch), the background prefetch lane can afford a larger one.
+// Batching buys less than one would hope — it amortises the per-request overhead (HTTP
+// round trip, tokenizer, language id), not the forward pass, which is already
+// compute-bound: on our own benchmark (docs/benchmarks/editlens-m4-24gb-2026-09-14.json,
+// roberta-large) 60-word paragraphs go 32.9 → 51.1 → 52.5 per second at batch 1 / 8 / 32
+// (about 1.5×, flat after 8) while 400-word ones stay at 8.2 → 8.4 → 8.2, i.e. gain
+// nothing at all. The background lane is also capped to `maxBackgroundInFlight`
+// concurrent batches so prefetch never starves what the reader can actually see.
 import type { Unit, Lane } from "../types";
 import type { ScoreBlock, ScoreResult } from "../contract";
 import { scoringText } from "../dom/text";

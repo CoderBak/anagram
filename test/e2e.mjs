@@ -6,7 +6,8 @@
 // whole page (scoring is viewport-first BY DESIGN), then asserts the v2 behaviours:
 // long paragraphs badge once and underline to the end (the HF regression),
 // BR-split/short-sibling/pre-wrap content merges into single units, inline code
-// does not fragment prose, pure-CJK text is scored, hidden tabs and <details>
+// does not fragment prose, pure-CJK text is settled by the local language gate
+// instead of being scored (the daemon never sees it), hidden tabs and <details>
 // get badges when revealed, pushState swaps re-badge and purge, removals purge,
 // never-score zones stay clean, and the page DOM carries no marker attributes.
 //
@@ -110,8 +111,9 @@ const snapshot = await page.evaluate((sel) => {
       never: inSection("never"),
     },
     prewrapBadges: document.querySelectorAll(`#prewrap ${sel}`).length,
-    // With the real daemon behind Auto mode the Chinese paragraph is (correctly) an
-    // "unsupported language" chip with no mark; with the stub it is scored + marked.
+    // The Chinese paragraph never reaches a backend at all: the content script's local
+    // language gate settles it and renders an "unsupported language" chip with no number
+    // and no mark. The fake daemon is asserted below to have seen no non-English block.
     cjkUnsupported: !!document.querySelector(`#purecjk ${sel}`)?.shadowRoot?.querySelector(".pill.band-unsupported"),
     hl: {
       longtail: hlHas("final LONGTAIL sentence"),

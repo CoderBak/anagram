@@ -9,8 +9,8 @@ write?"* — inline, live, on every site.
 > Thai, Emi, Masrour & Iyyer, ICLR 2026), a 355M-parameter model that rates the
 > *extent of AI editing* in a paragraph on four levels — human / lightly edited /
 > heavily edited / AI-generated. It runs **on your machine** in a small local
-> daemon (`anagramd/`, Apple-silicon GPU via MPS, ~30 ms per paragraph in
-> batches). There is no other scorer: without the daemon, paragraphs show as
+> daemon (`anagramd/`, Apple-silicon GPU via MPS, ~30 ms for a short
+> paragraph). There is no other scorer: without the daemon, paragraphs show as
 > *Unavailable* and are retried automatically once it answers.
 
 | Article pages | Dark mode + detail card |
@@ -66,10 +66,12 @@ npm run serve                      # http://127.0.0.1:8765 — GET /health, POST
 `dist/install.sh`, the store zip); pushing a `v*` tag publishes them as a GitHub Release.
 
 The extension probes the daemon's `/health` and picks it up within seconds of it
-starting; the popup names the model that is scoring, or says *Daemon not running*
-with a Retry. Options → *Scoring daemon* holds the URL, which is restricted to
-loopback addresses. `sh anagramd/run.sh --selftest` scores four sample paragraphs
-(one of them Chinese, which must come back unsupported) as a sanity check.
+starting; the popup names the model that is scoring, says *Daemon not running*
+with a Retry, or — when something on that port answers with another contract
+version — *Daemon version mismatch*. Options → *Scoring daemon* holds the URL,
+which is restricted to loopback addresses. `sh anagramd/run.sh --selftest` scores
+four sample paragraphs (one of them Chinese, which must come back unsupported),
+prints PASS/FAIL per sample and exits non-zero if any of them is wrong.
 
 ## What you get
 
@@ -111,11 +113,14 @@ loopback addresses. `sh anagramd/run.sh --selftest` scores four sample paragraph
   *Analyze selection with Anagram* — works in editors, comment boxes,
   **`<textarea>`/`<input>` fields** (which browsers hide from normal selection
   APIs) and fragments passive capture skips; below the 50-word floor it says
-  "too short to judge" instead of pretending.
+  "too short to judge" instead of pretending, and above the model window it says
+  how many of the selected words were actually analyzed.
 - **Popup + options page**: per-site rules (with an add-rule form), marking
   style, scope, display mode, live analyzed/flagged stats, the live backend, a
-  scoring-backend section (mode / daemon URL / check), Rescan; a first-run page
-  explains the verdicts.
+  scoring-backend section (daemon URL / status check), Rescan; a first-run page
+  explains the verdicts. A daemon that answers but speaks another contract
+  version is reported as a **version mismatch** ("run `anagram update`"), not as
+  "not running".
 - **Google Docs support, in place.** The editor is a canvas, so the ball offers
   **"Analyze document"**: a **reading mode opens right in the tab** — the
   document fetched same-origin, rendered as a clean paper view with every
@@ -165,8 +170,13 @@ English".
 
 Honest limits: a 512-token window (longer paragraphs
 are scored on their sentence-bounded prefix and the card says so); accuracy
-drops out-of-domain and on models unseen in training (the paper reports ternary
-macro-F1 0.904 in-domain → 0.866 on a held-out domain); light edits by
+drops out-of-domain and on models unseen in training — Pangram's
+[release post for the open models](https://www.pangram.com/blog/introducing-open-pangram)
+reports, for this released `roberta-large` checkpoint, ternary macro-F1 **0.881**
+in-domain → **0.673** on held-out Enron emails (binary human-vs-AI macro-F1 0.997
+→ 0.966), with the decision thresholds calibrated on a validation set, and Anagram
+shows the model's raw top bucket rather than those calibrated thresholds, so its
+labels are not the ones those figures were measured with; light edits by
 grammar tools mostly stay in the human bucket. The weights are **CC BY-NC-SA 4.0
 — non-commercial**, and Pangram asks that they not be used to enforce AI-usage
 policies. Every readout carries the *estimate, not proof* caveat for a reason.
@@ -206,13 +216,20 @@ Text on the web is messy; the capture engine is built for it:
   prefetch margin, then an **idle-time background lane** scores the rest of the
   page in document order while you read, one capped batch at a time so it never
   delays what's on screen. Batches are packed per lane (small for the viewport,
-  large for prefetch) because the model scores ~3× more paragraphs per second in
-  batches of 12+, and the lane priority travels into the worker's queue, so a
-  visible paragraph in any tab is scored before anyone's prefetch. Verdicts are
+  large for prefetch) to keep the per-request overhead off the short paragraphs —
+  batching amortises that overhead (round trip, tokenizer, language id), not the
+  forward pass, and our own benchmark
+  (`docs/benchmarks/editlens-m4-24gb-2026-09-14.json`, roberta-large) measures
+  32.9 → 51.1 → 52.5 paragraphs/s at batch 1 / 8 / 32 for 60-word paragraphs
+  (about 1.5×, flat after 8) and 8.2 → 8.4 → 8.2 for 400-word ones, i.e. nothing
+  at all. The lane priority travels into the worker's queue, so a visible
+  paragraph in any tab is scored before anyone's prefetch. Verdicts are
   cached three ways — per tab, in the service worker, and **persistently in
-  IndexedDB** (hash + buckets only, keyed by the model's weights hash, pruned
-  oldest-first through an index) — so revisits and worker restarts never
-  re-score, and a changed checkpoint can never serve another's verdicts.
+  IndexedDB** (hash + buckets only, keyed by the daemon's model version — which
+  digests the weights, the tokenizer and config files, the window length, the
+  dtype and the language-gate state, not the weights alone — pruned oldest-first
+  through an index) — so revisits and worker restarts never re-score, and no two
+  configurations that could disagree about a paragraph ever share an entry.
 - **Everything, everywhere:** open shadow DOM and slots, same- and cross-origin
   iframes (webmail readers, embedded posts — ad slots are size-gated out),
   plain-text documents (`.txt`/`.log`/RFCs), pure-CJK, RTL, and
@@ -239,8 +256,10 @@ Text on the web is messy; the capture engine is built for it:
   mid-session, the batch in flight renders "Unavailable" (never cached), nothing
   else is dispatched, the ball's counter shows "!", and the page re-checks every
   few seconds and re-queues everything the moment the daemon answers again — no
-  reload, no Rescan. Forced-colors (High Contrast) keeps chips visible with
-  semantic dots; `prefers-reduced-motion` is honored throughout.
+  reload, no Rescan. If it comes back as a *different* model, open tabs drop both
+  their cached and their already-painted verdicts and derive the page again, so
+  no tab can keep another model's answers. Forced-colors (High Contrast) keeps
+  chips visible with semantic dots; `prefers-reduced-motion` is honored throughout.
 
 ## Install (unpacked)
 
@@ -275,11 +294,11 @@ back when you want to watch; only `npm run browser` / `npm run play` always do.
 
 | Suite | Command | Checks | What it covers |
 | --- | --- | --- | --- |
-| Node | `npm run test:node` | 23 | vitest + `wxt/testing`: router invariants (keys snapshotted per request, joined requests settle across a backend change, results cached under the producing model, priority order), scheduler idle/pause/upgrade, wire validation, the daemon client (loopback only, down TTL) |
-| Unit | `npm run test:unit` | 98 | walker/assembler/extraction (math, citation marks, hidden copies, out-of-flow markers, accordions, author lists), canonical scoring text, band mapping, Readability-guided scope — in a real Chromium page (~5s) |
+| Node | `npm run test:node` | 37 | vitest + `wxt/testing`: router invariants (keys snapshotted per request, keys reserved before the queue so a waiting batch absorbs later requests, a joined request reports the identity that actually answered it, results cached under the producing model, priority order and promotion), LRU eviction in both in-memory caches, scheduler idle/pause/upgrade, wire validation (including that no redirect can carry a request away), the daemon client (loopback only, down TTL, another contract major reported as a version mismatch rather than an outage) |
+| Unit | `npm run test:unit` | 103 | walker/assembler/extraction (math, citation marks, hidden copies, out-of-flow markers, accordions, author lists), canonical scoring text, band mapping, Readability-guided scope — in a real Chromium page (~5s) |
 | E2E | `npm run test:e2e` | 23 | full extension on a 16-section fixture page against the fake daemon — including that non-English text never reaches it |
-| Scenarios | `npm run test:scenarios` | 43 | UI edge cases (hover card, panel filters, FAB snap/tuck, top-layer, KaTeX, vertical text, CSS Color 4 backgrounds, late shadow-root content, mutation storms, on-demand Readability chunk, self-rewriting page, daemon down → Unavailable → daemon back → auto re-queue) + 13 live sites (bot-check interstitials count as skips) (`-- --local` skips the live sweep) |
-| Server | `npm run test:server` | 27 | **the real model**: spawns `anagramd`, checks the API on human/AI/Chinese samples (the last one must come back unsupported via fastText), the request limits, the Host allow-list and the absence of CORS grants, then drives the built extension — real verdicts on every English chip, the 4-bucket card, the "zh" unsupported chip, the popup's model line |
+| Scenarios | `npm run test:scenarios` | 34 + 13 | UI edge cases (hover card, panel filters, FAB snap/tuck, top-layer, KaTeX, vertical text, CSS Color 4 backgrounds, late shadow-root content, mutation storms, on-demand Readability chunk, self-rewriting page, main-content scope honoured from the very first scan, the selection card's ✕ while the daemon is still thinking, the copied report's bare percentages and legend, daemon down → Unavailable → daemon back → auto re-queue) + 13 live sites (bot-check interstitials count as skips) (`-- --local` skips the live sweep) |
+| Server | `npm run test:server` | 39 | **the real model**: spawns `anagramd`, checks the API on human/AI/Chinese samples (the last one must come back unsupported via fastText), the request limits and the body cap counted on the bytes that arrive (a 2.1 MB chunked POST with no `Content-Length` is still 413), `application/json`-only on `/score`, the `Origin` allow-list (extensions and the daemon's own pass; `null` and a web origin are 403), the Host allow-list, the absence of CORS grants, and a model version that digests the whole pipeline, then drives the built extension — real verdicts on every English chip, the 4-bucket card, the "zh" unsupported chip, the popup's model line |
 | Docs flow | `node test/docs-flow.mjs <public doc URL>` | 12 | in-tab overlay + classic page flow on a real public Google Doc — the original demo doc was deleted from Drive, so without a URL (or `ANAGRAM_DOC_URL`) the suite reports SKIP |
 | Matrix | `npm run test:matrix` | 136 | the UI fixtures under **17 device profiles** — 360 px phones to a 3440 px ultrawide, pixel ratios 1 / 1.25 / 1.5 / 2 / 3 (Windows display scaling), classic layout-eating scrollbars, a 420 px-tall window, dark scheme, forced colours, reduced motion, touch, zh-CN and Arabic UI locales — asserting what must hold on every one: all chips reach a verdict, showing them adds no side-scroll and grows no paragraph by more than a line, no chip leaves its block, the detail card (hover, or tap on touch) and the panel open fully inside the viewport, the ball stays on top, the options and onboarding pages fit the width, no console errors. A screenshot per profile lands in the artifacts folder. `node test/matrix.mjs phone dark` runs a subset |
 | Perf | `npm run test:perf` | 3 | 3000-paragraph budget: first badge <4s (measured ~0.3s), no long task >1s |
@@ -339,8 +358,9 @@ An optional precision scope narrows collection to the main-content region
 (`lib/dom/mainContent.ts`, Readability-guided). Units are batched through a
 3-lane priority scheduler (viewport / near / idle prefetch) to the MV3 service
 worker, which dedups, caches (53-bit content hashes, keys carrying the producing
-model's identity, memory + IndexedDB via `idb`) and calls the local `anagramd`
-daemon over HTTP through a prioritised, bounded queue with one retry (`p-queue`,
+model's version — the daemon's digest of its whole scoring pipeline — memory +
+IndexedDB via `idb`) and calls the local `anagramd` daemon over HTTP, redirects
+refused, through a prioritised, bounded queue with one retry (`p-queue`,
 `p-retry`); every response is validated (`valibot`) before it can become a chip,
 and failures become never-cached degraded results (`lib/backend/`). Confidently
 non-English paragraphs are settled locally first (`browser.i18n.detectLanguage`).
@@ -369,19 +389,25 @@ is exactly the daemon's IO: `{bucket, probs[4], score, lang}` per paragraph, or
 | Prioritised queue + retry | p-queue, p-retry | `lib/backend/router.ts` |
 | Wire validation | valibot | `lib/backend/httpClient.ts` |
 | Local language pre-gate | `browser.i18n.detectLanguage` (built-in CLD) | `lib/capture/langGate.ts` |
-| Daemon request limits + Host allow-list | pydantic, Starlette TrustedHost | `anagramd/serve.py` |
+| Daemon request limits + Host / Origin allow-lists | pydantic, Starlette TrustedHost | `anagramd/serve.py` |
 | Extension pages + in-page design tokens | Basecoat (Vega) | `lib/ui/`, `lib/render/` |
 | Node-level tests | vitest + `wxt/testing` | `test/node/` |
 
 ## Privacy
 
 Nothing leaves your computer, and that is enforced rather than promised: the
-daemon URL setting accepts loopback addresses only, the daemon binds `127.0.0.1`
-unless told otherwise, refuses any non-loopback `Host` header (DNS rebinding),
-sets no CORS headers (web pages cannot read it; the extension uses host
-permissions), and bounds every request (blocks, characters, bytes, unique ids,
-contract version) before tokenizing anything. The batch envelope carries only a
-hostname + language hint by design, and the persistent cache stores hashes and
-bucket probabilities, never text. The Google Docs reading mode fetches the
-document same-origin with your own cookies — Anagram itself contacts no remote
-server.
+daemon URL setting accepts loopback addresses only and the extension refuses to
+follow a redirect off either endpoint (a 307 from whatever is listening on that
+port would have forwarded the page text somewhere unvetted), the daemon binds
+`127.0.0.1` unless told otherwise, refuses any non-loopback `Host` header (DNS
+rebinding), sets no CORS headers (web pages cannot read it; the extension uses
+host permissions), requires `POST /score` to be declared `application/json` —
+which forces a CORS preflight a web page cannot pass — and refuses any `Origin`
+that is not an extension's or its own, `null` included. Every request is bounded
+(blocks, characters, unique ids, contract version) before anything is tokenized,
+and the 2 MB body cap counts the bytes that actually arrive rather than the
+declared length, so a chunked POST is cut off mid-stream. The batch envelope
+carries only a hostname + language hint by design, and the persistent cache
+stores hashes and bucket probabilities, never text. The Google Docs reading mode
+fetches the document same-origin with your own cookies — Anagram itself contacts
+no remote server.
