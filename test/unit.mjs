@@ -1164,62 +1164,116 @@ const results = await page.evaluate(() => {
         return PW.isNoTranslate(shell) === false && PW.isNoTranslate(widget) === true && PW.isNoTranslate(body) === false;
       })());
 
-    // 3 · a box that clips its own text is not read yet ----------------------------------------
-    const clipped = `<div style="width:400px;max-height:40px;overflow:hidden">${sent(80)}</div>`;
-    u = collect(clipped);
-    check("a box clipping most of its own text is not scored (LinkedIn's 'see more' post)", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+    // 3 · a box that clips its own text is read; its CHIP goes where it can be seen ----------
+    // `clipsOwnText` no longer excludes anything: a feed post behind "see more" is one
+    // author's text, in the page, and the reader can open it. What it decides is where the
+    // chip is inserted (lib/render/badge.ts) — after the clipping box, not after a last word
+    // that is out of sight.
+    const CLIPPED = `width:400px;max-height:40px;overflow:hidden`;
+    u = collect(`<div style="${CLIPPED}">${sent(80)}</div>`);
+    check("a box clipping most of its own text is still scored (LinkedIn's 'see more' post)",
+      u.length === 1 && u[0].words === 80, JSON.stringify(u.map(x => [x.parts, x.words])));
 
     u = collect(`<div style="width:400px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden">${sent(80)}</div>`);
-    check("…nor is a line-clamped one (Substack's Notes feed)", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
-
-    u = collect(`<div style="width:400px;max-height:none;overflow:visible">${sent(80)}</div>`);
-    check("…and after the reader expands it, the same text IS scored", u.length === 1 && u[0].words === 80, JSON.stringify(u.map(x => [x.parts, x.words])));
+    check("…and so is a line-clamped one (Substack's Notes feed)", u.length === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
     {
-      // The real expansion: a class flip on the box, seen by the mutation observer.
-      sandbox.innerHTML = `<div id="clip" style="width:400px;max-height:40px;overflow:hidden">${sent(80)}</div>`;
-      const box = sandbox.querySelector("#clip");
-      const before = PW.collectUnits(sandbox).length;
-      box.style.maxHeight = "none";
-      const after = PW.collectUnits(sandbox).length;
-      check("…the very next scan after the box opens finds it — no reload", before === 0 && after === 1, `${before} -> ${after}`);
+      sandbox.innerHTML = `<div style="${CLIPPED}"><p id="inner">${sent(80)}</p></div>`;
+      const inside = PW.collectUnits(sandbox.querySelector("#inner"));
+      check("…including on a re-scan rooted inside such a box", inside.length === 1, JSON.stringify(inside.length));
       const watched = PW.WATCHED_ATTRS ?? [];
-      check("the observer watches the attributes those reveals use, aria-expanded included",
+      check("the observer watches the attributes a 'see more' reveal uses, aria-expanded included",
         ["class", "style", "hidden", "open", "aria-hidden", "aria-expanded"].every((a) => watched.includes(a)), watched.join(","));
     }
 
-    u = collect(`<div style="width:400px;max-height:40px;overflow:auto">${sent(80)}</div>`);
-    check("guard: a SCROLL container (overflow:auto) is readable and stays scored", u.length === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
-
-    u = collect(`<div style="width:400px;overflow-x:hidden;white-space:nowrap">${sent(80)}</div>`);
-    check("guard: horizontal-only overflow (a carousel) is not vertical clipping", u.length === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
-
-    u = collect(`<div style="width:400px;height:60px;overflow:hidden">${sent(20)}</div><p>${sent(40)}</p>`);
-    check("guard: a few pixels of decorative overflow never blanks a paragraph", u.length === 1 && u[0].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
-
-    u = collect(`<div style="width:400px;height:${Math.round(window.innerHeight * 0.95)}px;overflow:hidden">${sent(80)}</div>`);
-    check("guard: a box as tall as the viewport is the page's own scrolling box", u.length === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
-
-    u = collect(`<main style="width:400px;max-height:40px;overflow:hidden"><p>${sent(80)}</p></main>`);
-    check("guard: <main> and [role=main] are page level — never clipped away", u.length === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
-
-    u = collect(`<details open style="width:400px;max-height:40px;overflow:hidden"><summary>More</summary><p>${sent(80)}</p></details>`);
-    check("guard: an open <details> is read whatever its overflow", u.length === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
+    // What counts as a box that clips its own text, and everything that does not.
     {
-      // A modal opens: `body { overflow:hidden }` must not blank the page under it.
-      const prev = document.body.getAttribute("style");
-      document.body.setAttribute("style", "overflow:hidden;height:80px");
-      sandbox.innerHTML = `<p>${sent(80)}</p>`;
-      const underModal = PW.collectUnits(sandbox).length;
-      if (prev === null) document.body.removeAttribute("style");
-      else document.body.setAttribute("style", prev);
-      check("guard: body{overflow:hidden} under an open modal leaves the page scored", underModal === 1, `${underModal}`);
+      const clips = (style, html = sent(80), sel = "div") => {
+        sandbox.innerHTML = `<${sel} style="${style}">${html}</${sel}>`;
+        const el = sandbox.firstElementChild;
+        return PW.clipsOwnText(el, getComputedStyle(el));
+      };
+      check("clipsOwnText: a fixed height and a line clamp over twice their text",
+        clips(CLIPPED) &&
+        clips("width:400px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden") &&
+        clips("width:400px;max-height:40px;overflow-y:clip"));
+      check("guard: a SCROLL container (overflow:auto/scroll) is readable, not clipping",
+        !clips("width:400px;max-height:40px;overflow:auto") && !clips("width:400px;max-height:40px;overflow:scroll"));
+      check("guard: horizontal-only overflow (a carousel) is not vertical clipping",
+        !clips("width:400px;overflow-x:hidden;white-space:nowrap"));
+      check("guard: a few pixels of decorative overflow are not a hidden post",
+        !clips("width:400px;height:60px;overflow:hidden", sent(20)));
+      check("guard: a box as tall as the viewport is the page's own scrolling box",
+        !clips(`width:400px;height:${Math.round(window.innerHeight * 0.95)}px;overflow:hidden`));
+      check("guard: <main>, <body> and [role=main] are page level — body{overflow:hidden} under a modal clips nothing",
+        !clips(`${CLIPPED}`, `<p>${sent(80)}</p>`, "main") &&
+        (() => {
+          const prev = document.body.getAttribute("style");
+          document.body.setAttribute("style", "overflow:hidden;height:80px");
+          const v = PW.clipsOwnText(document.body, getComputedStyle(document.body));
+          if (prev === null) document.body.removeAttribute("style");
+          else document.body.setAttribute("style", prev);
+          return !v;
+        })());
+      check("guard: a <details> hides its content by other means and never counts as clipping",
+        !clips(`${CLIPPED}`, `<summary>More</summary><p>${sent(80)}</p>`, "details"));
     }
+
+    // Where the chip lands when the box clips.
     {
-      // An incremental re-scan STARTED inside a clipped box (a feed appends to the post it
-      // is hiding) must not score what the reader still cannot see.
-      sandbox.innerHTML = `<div style="width:400px;max-height:40px;overflow:hidden"><p id="inner">${sent(80)}</p></div>`;
-      const inside = PW.collectUnits(sandbox.querySelector("#inner"));
-      check("a re-scan rooted inside a clipped box yields nothing", inside.length === 0, JSON.stringify(inside.length));
+      const layer = PW.createBadgeLayer();
+      const chipsFor = (html) => {
+        sandbox.innerHTML = html;
+        const units = PW.collectUnits(sandbox);
+        for (const unit of units) {
+          const result = { id: unit.id, bucket: 0, probs: [0.9, 0.06, 0.03, 0.01], score: 0.05 };
+          layer.render(unit, PW.unitVerdict(unit.id, unit.text.length, [{ start: 0, end: unit.text.length, result }]));
+        }
+        return { units, hosts: [...sandbox.querySelectorAll('[data-anagram="host"]')] };
+      };
+      const box = () => sandbox.querySelector("#box");
+
+      let r = chipsFor(`<div class="post"><div id="box" style="${CLIPPED}">${sent(80)}</div><button type="button" aria-expanded="false">…see more</button></div>`);
+      check("the chip of a post whose last line is out of sight goes AFTER the clipping box, where the reader is",
+        r.hosts.length === 1 && r.hosts[0].previousElementSibling === box() && !box().contains(r.hosts[0]),
+        `${r.hosts.length} host(s), parent ${r.hosts[0]?.parentElement?.id || r.hosts[0]?.parentElement?.className}`);
+
+      // LinkedIn's new UI: the clamp is a <span> inside the <p> that also holds "…more".
+      r = chipsFor(`<p class="post"><span id="box" style="display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;width:400px">${sent(80)}</span><button type="button">…more</button></p>`);
+      check("…the same for a clamped <span>: the chip sits in the paragraph, beside the '…more' control",
+        r.hosts.length === 1 && r.hosts[0].previousElementSibling === box() && r.hosts[0].parentElement.className === "post",
+        `${r.hosts.length} host(s)`);
+
+      // Two units in one clipped box: only the one nobody can see moves.
+      r = chipsFor(`<div class="post"><div id="box" style="width:400px;max-height:120px;overflow:hidden"><p>${sent(60)}</p><p>${sent(60)}</p><p>${sent(60)}</p></div></div>`);
+      const visible = r.hosts.filter((h) => box().contains(h));
+      check("several units in one clipped box: the chips of the visible paragraphs stay put, only the hidden ones move out",
+        r.units.length >= 2 && visible.length >= 1 && visible.length < r.hosts.length,
+        `${visible.length} of ${r.hosts.length} inside the box`);
+
+      // Once the reader expands the post the chip stays where it is: the host is reused.
+      r = chipsFor(`<div class="post"><div id="box" style="${CLIPPED}">${sent(80)}</div></div>`);
+      const moved = r.hosts[0];
+      const unit = r.units[0];
+      box().style.maxHeight = "none";
+      if (unit) {
+        const again = { id: unit.id, bucket: 3, probs: [0.01, 0.02, 0.07, 0.9], score: 0.95 };
+        layer.render(unit, PW.unitVerdict(unit.id, unit.text.length, [{ start: 0, end: unit.text.length, result: again }]));
+      }
+      check("after the reader opens the post the chip is the same one, in the same place, and no second chip appears",
+        sandbox.querySelectorAll('[data-anagram="host"]').length === 1 && !!moved && moved.isConnected && moved.previousElementSibling === box(),
+        `${sandbox.querySelectorAll('[data-anagram="host"]').length} host(s)`);
+
+      // Nothing moves for an ordinary paragraph, or for the guards above.
+      for (const [name, style, text] of [
+        ["a plain paragraph", "width:400px", sent(80)],
+        ["a scroll container", "width:400px;max-height:40px;overflow:auto", sent(80)],
+        ["a box that overflows by a line", "width:400px;height:110px;overflow:hidden", sent(60)],
+      ]) {
+        r = chipsFor(`<div class="post"><div id="box" style="${style}">${text}</div></div>`);
+        check(`the chip stays inside ${name}`, r.hosts.length === 1 && box().contains(r.hosts[0]), `${r.hosts.length} host(s)`);
+      }
+      layer.teardownAll();
+      sandbox.innerHTML = "";
     }
 
     // 4 · prose typeset in <pre> -----------------------------------------------------------------
@@ -1378,7 +1432,7 @@ const EXPECTED = {
   "discourse-thread": [2, 2],
   "github-issue": [3, 3],
   "hn-thread": [2, 1],
-  "linkedin-clipped": [3, 0],
+  "linkedin-clipped": [5, 1],
   "linkedin-feed": [2, 2],
   "listicle": [1, 1],
   "listicle-divsoup": [2, 1],
@@ -1390,7 +1444,7 @@ const EXPECTED = {
   "reddit-thread": [3, 2],
   "rfc-html": [3, 0],
   "substack-article": [16, 13],
-  "substack-note": [1, 0],
+  "substack-note": [3, 1],
   "wordpress-comments": [2, 2],
   "x-timeline": [7, 5],
   "zhihu-answers": [12, 7],

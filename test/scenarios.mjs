@@ -118,8 +118,20 @@ const DENSE_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><
 <p id="dense">${DENSE_PARA(DENSE_MARKER)}</p>
 <p id="solid">${DENSE_PARA(SOLID_MARKER)}</p>
 </body></html>`;
+// Clipped fixture: a feed post the site shows three lines of, with the rest in the DOM
+// behind a "see more" control — the shape LinkedIn, Substack Notes and Goodreads use. The
+// text is scored; the chip has to end up UNDER the visible lines, not inside the box.
+const CLIPPED_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>clipped fixture</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+<h1>A post behind "see more"</h1>
+<div id="post" style="border:1px solid #ddd;padding:12px">
+  <div id="box" style="overflow:hidden;max-height:48px">${PARA("CLIPPEDPOST")} ${PARA("CLIPPEDPOST-MORE")}</div>
+  <button id="more" type="button" aria-expanded="false" onclick="document.getElementById('box').style.maxHeight='none';this.setAttribute('aria-expanded','true')">…see more</button>
+</div>
+<p id="plain">${PARA("PLAINPOST")}</p>
+</body></html>`;
 const PAGES = {
   "/ui-fixtures.html": readFileSync(join(__dirname, "ui-fixtures.html"), "utf8"),
+  "/clipped.html": CLIPPED_HTML,
   "/dense.html": DENSE_HTML,
   "/windows.html": WINDOWS_HTML,
   "/longsel.html": LONGSEL_HTML,
@@ -349,6 +361,50 @@ async function sweep(page, steps = 6) {
     }
     record("ui", "hover card escapes overflow:hidden (top layer)", ok, note);
     await page.mouse.move(5, 400);
+  }
+
+  // A7c: a post the site clips to three lines is scored, and its chip is inserted AFTER
+  // the clipping box — under the lines the reader sees, not inside the box where it would
+  // be painted out of sight. Opening the post leaves that chip where it is.
+  {
+    const p = await context.newPage();
+    await p.goto(server.url("/clipped.html"), { waitUntil: "load" });
+    const placed = await p
+      .waitForFunction(
+        (sel) => {
+          const host = document.querySelector(`#post ${sel}`);
+          if (!host?.shadowRoot?.querySelector(".card .head")) return null;
+          const box = document.getElementById("box");
+          const hr = host.getBoundingClientRect();
+          const br = box.getBoundingClientRect();
+          return {
+            insideBox: box.contains(host),
+            afterBox: host.previousElementSibling === box,
+            onScreen: hr.height > 0 && hr.top < br.bottom + 60,
+            clippedAway: hr.top >= br.bottom - 1 && box.contains(host),
+          };
+        },
+        BADGE_SEL,
+        { timeout: 12000 },
+      )
+      .then((h) => h.jsonValue())
+      .catch(() => null);
+    await p.click("#more");
+    await p.waitForTimeout(1200);
+    const after = await p.evaluate((sel) => {
+      const hosts = document.querySelectorAll(`#post ${sel}`);
+      const host = hosts[0];
+      return {
+        chips: hosts.length,
+        stillAfterBox: host?.previousElementSibling?.id === "box",
+        expanded: getComputedStyle(document.getElementById("box")).maxHeight === "none",
+      };
+    }, BADGE_SEL);
+    const ok =
+      !!placed && !placed.insideBox && placed.afterBox && placed.onScreen && !placed.clippedAway &&
+      after.chips === 1 && after.stillAfterBox && after.expanded;
+    record("ui", "a post clipped to three lines is scored and its chip sits under the visible text, before and after 'see more'", ok, JSON.stringify({ placed, after }));
+    await p.close();
   }
 
   // A8: copy hygiene — clipboard payload excludes the chip's "% AI" label.

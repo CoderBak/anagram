@@ -6,15 +6,17 @@
   whole post in `span[data-testid=expandable-text-box]` — `white-space: pre-wrap`,
   `-webkit-line-clamp: 3`, `overflow: hidden`, text and <br>s — 206 words in the DOM of
   which some 26 are on screen; the old UI uses `div.feed-shared-inline-show-more-text`,
-  60 px tall around a `scrollHeight` of 497 px. Both used to be scored whole, and the chip
-  landed after the last text node, i.e. INSIDE the clipped box where nobody sees it.
-  A box counts as clipped when it says so (overflow-y hidden/clip) AND measures so — at
-  least twice as much content as box (lib/dom/style.ts). The clamp below uses
+  60 px tall around a `scrollHeight` of 497 px. The text is READ — it is one author's post
+  and the reader can open it — but the chip used to land after its last word, i.e. inside
+  the clipped box where nobody sees it. A box counts as clipping when it says so
+  (overflow-y hidden/clip) AND measures so — at least twice as much content as box
+  (lib/dom/style.ts) — and the chip of a unit whose last line falls out of sight is
+  inserted after that box instead (lib/render/badge.ts). The clamp below uses
   `display:-webkit-box`, which is what clips in every Chromium; the live page's
   `display:flow-root` clips the same way in Chrome 140 and measures the same.
 
   Posts 3 to 5 are the guards: an expanded post, a scroll container, and a box that
-  overflows by a little — all three are read.
+  overflows by a little — none of them moves its chip.
 
   Annotation: see x-timeline.html.
 -->
@@ -42,7 +44,7 @@
   <article data-voice="alice">
     <div class="lockup" data-chrome><a href="#alice">Alice Moreau</a> · 20h</div>
     <div class="update-components-text">
-      <span data-testid="expandable-text-box" class="expandable" dir="ltr" data-expect="none">Six months ago we moved the whole reporting stack from a nightly batch to a stream, and I promised the team a retrospective once the dust had settled.<br><br>The dust has settled. Here is what I would do again, and what I would not.<br><br>I would again start with the boring half: naming the events before writing a line of code, and making the names survive a review by somebody who does not work on the team. Half of the pain of the old system came from three different words for the same thing, and no amount of engineering fixes a vocabulary problem.<br><br>I would not again run the two systems side by side for a whole quarter. We told ourselves it was insurance; what it actually bought was two systems to maintain and a team that could never quite say which of them was the truth.</span>
+      <span data-testid="expandable-text-box" class="expandable" dir="ltr" data-expect="unit">Six months ago we moved the whole reporting stack from a nightly batch to a stream, and I promised the team a retrospective once the dust had settled.<br><br>The dust has settled. Here is what I would do again, and what I would not.<br><br>I would again start with the boring half: naming the events before writing a line of code, and making the names survive a review by somebody who does not work on the team. Half of the pain of the old system came from three different words for the same thing, and no amount of engineering fixes a vocabulary problem.<br><br>I would not again run the two systems side by side for a whole quarter. We told ourselves it was insurance; what it actually bought was two systems to maintain and a team that could never quite say which of them was the truth.</span>
       <button type="button" class="see-more" aria-expanded="false" data-chrome>…see more</button>
     </div>
   </article>
@@ -50,7 +52,7 @@
   <!-- 2 · old UI: sixty pixels of a long post — nothing here is read either -->
   <article data-voice="bob">
     <div class="lockup" data-chrome><a href="#bob">Bob Nowak</a> · 1d</div>
-    <div class="feed-shared-inline-show-more-text" data-expect="none">
+    <div class="feed-shared-inline-show-more-text" data-expect="unit">
       <span dir="ltr">Hiring for a team of four taught me more about writing job adverts than any
         course ever did. The first advert we published described the person we wished existed,
         and it brought us forty applications from people who had learned to describe themselves

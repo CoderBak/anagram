@@ -94,12 +94,17 @@ Notable changes to Anagram, newest first. The format follows
     unreachable. The attribute is still honoured on code samples, brand names
     and widgets; on a shell — one holding the page's landmarks, or most of the
     page — it only means "do not machine-translate this app".
-  - Text a site **clips with CSS** is no longer judged. Feeds keep the whole post
-    in the DOM and show three lines of it (LinkedIn, Substack Notes): a box that
-    says it clips and measures more than twice as much text as box is left until
-    the reader expands it, and is scored then without a reload. Scroll
-    containers, carousels, `<details>`, a page-level `overflow:hidden` under an
-    open modal and a few pixels of overflow are untouched.
+  - A post a site **clips with CSS** keeps its verdict, and the chip moves to
+    where it can be seen. Feeds keep the whole post in the DOM and show three
+    lines of it (LinkedIn, Substack Notes, Goodreads reviews); the text was
+    scored, but the chip landed after its last word — inside the clipped box,
+    out of sight. When a box clips its own text (a line clamp, or a fixed height
+    with more than twice as much text inside), the chip of a paragraph whose last
+    line is out of sight now goes right after that box, under the visible lines,
+    and stays there when the post is opened. Paragraphs still on screen keep
+    their chip where it is, and scroll containers, carousels, `<details>`, a
+    page-level `overflow:hidden` under an open modal and a few pixels of overflow
+    change nothing.
   - **Prose typeset in `<pre>`** is read: RFCs published as HTML, man pages and
     mailing-list archives, where every `<pre>` used to be skipped as code. A
     `<pre>` gets in only when nothing around it says code and the text itself

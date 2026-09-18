@@ -34,6 +34,7 @@ import { MARK_ATTR } from "../types";
 import type { UnitVerdict } from "../capture/windows";
 import { band, BAND_LABEL, isNoVerdict, languageName, scorePct, type Band } from "./band";
 import { countWords, hasLetters } from "../dom/text";
+import { clipsOwnText } from "../dom/style";
 import { coverageNote, windowPcts, windowReadout } from "./coverage";
 import { distributionHtml } from "./dist";
 import { BADGE_CSS } from "./badge.css";
@@ -449,7 +450,75 @@ function insertionPoint(unit: Unit): ChildNode | null {
     if (!isLastMeaningfulChild(n, p)) break;
     n = p;
   }
-  return lastDecoratedSibling(n as ChildNode);
+  const at = lastDecoratedSibling(n as ChildNode);
+  return outOfClippedBox(at) ?? at;
+}
+
+/**
+ * Elements the chip may never be lifted out of: one of them IS the post, and a chip
+ * belongs to the post it judges. The climb stops at the first of these it meets.
+ */
+const POST_BOUNDARY_SELECTOR =
+  'article,[role="article"],[role="link"],section,main,aside,li,blockquote,figure,body';
+/** How far above the text a "see more" box may sit. LinkedIn's is the text's own parent,
+ *  Goodreads' two levels up; more than this and the box is page layout, not a post. */
+const CLIP_BOX_LEVELS = 6;
+
+/**
+ * Feeds show three lines of a post and keep the rest in the DOM behind "see more"
+ * (LinkedIn's `span[data-testid=expandable-text-box]` and its older
+ * `div.feed-shared-inline-show-more-text`, Goodreads' `div.TruncatedContent__text`,
+ * Substack's line-clamped `div.pencraft`). The text is read — it is one author's post
+ * and the reader can open it — but the chip must not be inserted after its last word,
+ * because that word is inside the clipped box where nobody sees it.
+ *
+ * So: if the natural insertion point falls OUT OF SIGHT inside a box that clips its own
+ * text, the chip goes right after that box, under the visible lines (and, on LinkedIn,
+ * beside the "…more" control). A unit whose own anchor is still visible — the first
+ * paragraph of a long clipped review — keeps its chip where it is, so several units in
+ * one box do not all pile up underneath it. Returns null when nothing has to move.
+ */
+function outOfClippedBox(at: ChildNode): ChildNode | null {
+  let el: Element | null = at.nodeType === Node.ELEMENT_NODE ? (at as Element) : at.parentElement;
+  for (let i = 0; el && i < CLIP_BOX_LEVELS; i++, el = el.parentElement) {
+    try {
+      if (el.matches(POST_BOUNDARY_SELECTOR)) return null;
+      const cs = getComputedStyle(el);
+      if (!clipsOwnText(el, cs)) continue;
+    } catch {
+      return null;
+    }
+    const anchor = endRectOf(at);
+    // No box of its own (a collapsed whitespace node): leave the chip where it is.
+    if (!anchor || (anchor.width === 0 && anchor.height === 0)) return null;
+    const box = el.getBoundingClientRect();
+    if (anchor.top < box.bottom - 1) return null; // the line the chip closes is on screen
+    return el;
+  }
+  return null;
+}
+
+/**
+ * Rectangle of the LAST line of a node — where the chip would actually be drawn. The
+ * whole-node rectangle is no use here: the text of a clipped post starts at the top of
+ * the box, on screen, and ends far below it.
+ */
+function endRectOf(node: ChildNode): DOMRect | null {
+  try {
+    let rects: DOMRectList;
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      rects = (node as Element).getClientRects();
+      if (rects.length === 0) return (node as Element).getBoundingClientRect();
+    } else {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      rects = range.getClientRects();
+      if (rects.length === 0) return range.getBoundingClientRect();
+    }
+    return rects[rects.length - 1];
+  } catch {
+    return null;
+  }
 }
 
 /**

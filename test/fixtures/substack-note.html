@@ -4,9 +4,9 @@
 
   Measured in the owner's Chrome (substack.com/notes, 2026-09): a long note lives in a
   `div.pencraft` clamped to six lines — 168 px of box around a `scrollHeight` of 1 708 px —
-  with a "Read more" control underneath. The note next to it is short and is not clamped
-  at all, and it is still read: the rule is about the box that hides its own text, not
-  about the feed (lib/dom/style.ts).
+  with a "Read more" control underneath. Both notes are read; what the clamp changes is
+  where the chip goes — after the clamped box, under the lines the reader sees, rather
+  than after a last word that is out of sight (lib/dom/style.ts, lib/render/badge.ts).
 
   Annotation: see x-timeline.html.
 -->
@@ -25,7 +25,7 @@
   <!-- clamped to six lines of a long note: none of it is read until it is opened -->
   <div class="note" data-voice="ash">
     <div class="meta" data-chrome><a href="#ash">Ash Bergström</a> · 3h</div>
-    <div class="pencraft clamped" data-expect="none">I spent the winter reading the minutes of a
+    <div class="pencraft clamped" data-expect="unit">I spent the winter reading the minutes of a
       parish council from the eighteen-seventies, and the thing that stays with me is how much of
       the work was about water: who could take it, who had spoiled it, and who would pay for the
       pipe.<br><br>Every third meeting returns to the same ditch. The names change, the ditch does

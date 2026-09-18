@@ -36,7 +36,6 @@
 import { NO_SCORE_TAGS, INLINE_FALLBACK_TAGS, isHeading, isHeadingLabel, tagOf } from "./tags";
 import { isBoilerplate, isNoTranslate } from "./boilerplate";
 import {
-  clipsOwnText,
   createStyleCache,
   flowClassOf,
   isInlineDisplay,
@@ -352,10 +351,6 @@ export function collectUnits(
       isNoTranslate(el) ||
       (el as HTMLElement).isContentEditable ||
       el.getAttribute("aria-hidden") === "true" ||
-      // A box that clips its own text is not read until the reader expands it. It takes
-      // space, so it closes the run — but it is no barrier: the paragraphs around a
-      // clamped teaser still read as one text.
-      (cs !== null && clipsOwnText(el, cs)) ||
       (cs !== null && (cs.opacity === "0" || (cs as any).contentVisibility === "hidden"));
     if (excluded) {
       if (flow !== "inline" && flow !== "contents") closeRun();
@@ -509,7 +504,6 @@ function composedChildren(el: Element, onShadowRoot?: (root: ShadowRoot) => void
 /** Hard exclusion check up the ancestor chain — guards partial re-scan roots. */
 function isExcludedByAncestry(start: Element): boolean {
   const plainTextDoc = document.contentType === "text/plain";
-  const styles = createStyleCache();
   let el: Element | null = start;
   while (el) {
     const tag = tagOf(el);
@@ -520,10 +514,6 @@ function isExcludedByAncestry(start: Element): boolean {
     if ((el as HTMLElement).isContentEditable) return true;
     if (el.getAttribute("aria-hidden") === "true") return true;
     if (isBoilerplate(el)) return true;
-    // A re-scan started INSIDE a clipped box (LinkedIn appends to the post it is
-    // hiding) must not score what the reader still cannot see.
-    const cs = styles.get(el);
-    if (cs !== null && clipsOwnText(el, cs)) return true;
     el = el.parentElement ?? ((el.getRootNode() as ShadowRoot).host ?? null);
   }
   return false;
