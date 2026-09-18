@@ -236,6 +236,23 @@ Text on the web is messy; the capture engine is built for it:
   guards so a paper's `related-work` *section* stays content, and page-level
   containers (`body`, `main`, `article`) can never be misclassified by a skin's
   utility classes.
+- **What a page SAYS it is, checked against what it is.** A tag is a claim, and
+  sites make claims they don't keep, so each one is measured: an element that
+  declares itself a heading is a barrier only while it reads like a label — a
+  container of paragraphs that merely carries `role="heading"` (lobste.rs comment
+  bodies, a whole teaser card wrapped in `<h2>`) is walked like the block it is;
+  `notranslate` on a code sample or a brand name means "not prose", but on an
+  application shell (Mastodon's app root) it only opts the app out of machine
+  translation, so shells are walked; and a `<pre>` is machine text until the text
+  in it reads as prose — RFCs published as HTML, man pages and mailing-list
+  archives are read, while code, configuration, diffs, logs and tables of contents
+  stay out.
+- **Only what the reader can see.** Feeds keep the whole post in the DOM and show
+  three lines of it. A box that clips its own text — a line clamp or a fixed
+  height with more than twice as much text inside — is left alone until the reader
+  expands it, and then it is scored without a reload. Scroll containers,
+  carousels, `<details>` and a page-level `overflow:hidden` under an open modal
+  are not clipping and stay scored.
 - **Living pages.** Infinite scroll, SPA navigations (pushState included, heard
   instantly through the Navigation API — no history patching, no polling), tab
   panels, accordions, `<details>`, **modal `<dialog>`s (top layer)**, edited and
@@ -265,7 +282,8 @@ Text on the web is messy; the capture engine is built for it:
   iframes (webmail readers, embedded posts — ad slots are size-gated out; a
   frame follows the **top page's** site rule, asking the worker whose tab it
   sits in when it cannot read that itself), plain-text documents
-  (`.txt`/`.log`/RFCs), pure-CJK, RTL, and **vertical writing modes**
+  (`.txt`/`.log`/RFCs) and the same documents typeset in `<pre>` (RFCs as HTML,
+  man pages, mail archives), pure-CJK, RTL, and **vertical writing modes**
   (`vertical-rl` novels).
 - **One canonical text per paragraph.** Soft hyphens, zero-width and bidi
   control characters, non-breaking spaces and ligatures are normalized, LaTeX
@@ -328,7 +346,7 @@ back when you want to watch; only `npm run browser` / `npm run play` always do.
 | Suite | Command | Checks | What it covers |
 | --- | --- | --- | --- |
 | Node | `npm run test:node` | 45 | vitest + `wxt/testing`: reading a long text in windows (every window in one call, a text that fits sent exactly as before, a window the daemon cut re-read in halves once, no verdict on a partial answer, one failed window → Unavailable), router invariants (keys snapshotted per request, keys reserved before the queue so a waiting batch absorbs later requests, a joined request reports the identity that actually answered it, results cached under the producing model, priority order and promotion), LRU eviction in both in-memory caches, scheduler idle/pause/upgrade and a long unit priced by all of its windows, wire validation (including that no redirect can carry a request away), the daemon client (loopback only, down TTL, another contract major reported as a version mismatch rather than an outage) |
-| Unit | `npm run test:unit` | 286 | walker/assembler/extraction (voice scopes and which short paragraphs may be scored together — fourteen fixtures modelled on real post, thread, feed, answer and article markup; a post read whole, a stretch of short paragraphs divided into model-sized groups, no orphan next to a full paragraph of its own voice, an article left per paragraph, and re-scans driven the way the orchestrator drives them — math, citation marks, hidden copies, out-of-flow markers, accordions, author lists), window planning (balance, sentence and CJK boundaries, a merged unit cut between two paragraphs, the no-boundary and at-budget cases, the cap, the regex fallback), the mapping from a window back to text nodes (inline markup, collapsed whitespace, merged parts, a skipped formula, a DOM that changed), aggregation arithmetic, per-window marks and the card's window row, canonical scoring text, band mapping, Readability-guided scope — in a real Chromium page (~5s) |
+| Unit | `npm run test:unit` | 343 | walker/assembler/extraction (voice scopes and which short paragraphs may be scored together — twenty fixtures modelled on real post, thread, feed, answer, article, forum, RFC and mail-archive markup; a post read whole, a stretch of short paragraphs divided into model-sized groups, no orphan next to a full paragraph of its own voice, an article left per paragraph, and re-scans driven the way the orchestrator drives them; what the walk reaches: heading containers, notranslate application shells, boxes that clip their own text and where their chip goes, prose in `<pre>` against code, configuration, diffs, logs and e-mail quotations — math, citation marks, hidden copies, out-of-flow markers, accordions, author lists), window planning (balance, sentence and CJK boundaries, a merged unit cut between two paragraphs, the no-boundary and at-budget cases, the cap, the regex fallback), the mapping from a window back to text nodes (inline markup, collapsed whitespace, merged parts, a skipped formula, a DOM that changed), aggregation arithmetic, per-window marks and the card's window row, canonical scoring text, band mapping, Readability-guided scope — in a real Chromium page (~5s) |
 | E2E | `npm run test:e2e` | 33 | full extension on a 20-section fixture page against the fake daemon — including that non-English text never reaches it, that a post of mixed paragraphs sits under one ×N chip and is one chip again after it is opened in place, and that a three-window paragraph reaches it whole: three consecutive blocks, none past the token window, one chip, each window marked in its own band |
 | Scenarios | `npm run test:scenarios` | 42 + 13 | UI edge cases (hover card, panel filters, FAB snap/tuck, top-layer, KaTeX, vertical text, CSS Color 4 backgrounds, late shadow-root content, mutation storms, on-demand Readability chunk, self-rewriting page, main-content scope honoured from the very first scan, the selection card's ✕ while the daemon is still thinking, a long selection analyzed whole in windows, the copied report's bare percentages and legend and its line for a paragraph scored in windows, dense text the daemon had to cut re-read in two halves, daemon down → Unavailable → daemon back → auto re-queue) + keyboard-only triage (focusable counter, Enter/Esc focus hand-off, accessible names, the three commands driven from the service worker) and a no-referrer cross-origin frame obeying the top page's site rule + 13 live sites (bot-check interstitials count as skips) (`-- --local` skips the live sweep) |
 | Server | `npm run test:server` | 39 | **the real model**: spawns `anagramd`, checks the API on human/AI/Chinese samples (the last one must come back unsupported via fastText), the request limits and the body cap counted on the bytes that arrive (a 2.1 MB chunked POST with no `Content-Length` is still 413), `application/json`-only on `/score`, the `Origin` allow-list (extensions and the daemon's own pass; `null` and a web origin are 403), the Host allow-list, the absence of CORS grants, and a model version that digests the whole pipeline, then drives the built extension — real verdicts on every English chip, the 4-bucket card, the "zh" unsupported chip, the popup's model line |

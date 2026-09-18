@@ -81,6 +81,31 @@ Notable changes to Anagram, newest first. The format follows
 
 ### Fixed
 
+- Whole sites that produced no verdict at all now read. A survey of 124 real
+  pages found four ways the walk never reached the text:
+  - A container that merely **declares itself a heading** used to swallow
+    everything inside it. lobste.rs marks every comment body
+    `<div role="heading">`, and news and feed sites wrap a whole teaser card in
+    an `<h2>` — a thread of 2 900 words gave nothing. A heading is a barrier
+    only while it reads like a label: short, and holding no paragraph of its
+    own. Real headings are still barriers and are still never scored.
+  - A **`notranslate` application shell** used to blank a whole site. Mastodon's
+    web client hangs under one, so every status on every instance was
+    unreachable. The attribute is still honoured on code samples, brand names
+    and widgets; on a shell — one holding the page's landmarks, or most of the
+    page — it only means "do not machine-translate this app".
+  - Text a site **clips with CSS** is no longer judged. Feeds keep the whole post
+    in the DOM and show three lines of it (LinkedIn, Substack Notes): a box that
+    says it clips and measures more than twice as much text as box is left until
+    the reader expands it, and is scored then without a reload. Scroll
+    containers, carousels, `<details>`, a page-level `overflow:hidden` under an
+    open modal and a few pixels of overflow are untouched.
+  - **Prose typeset in `<pre>`** is read: RFCs published as HTML, man pages and
+    mailing-list archives, where every `<pre>` used to be skipped as code. A
+    `<pre>` gets in only when nothing around it says code and the text itself
+    reads as prose, so code, configuration, diffs, logs, stack traces, ASCII
+    tables and tables of contents stay out, and the lines a mail quotes are
+    never scored together with the reply to them.
 - An embedded frame follows the site rule of the page it sits in. A frame that
   could read neither the top page nor a referrer — an embed with
   `referrerpolicy="no-referrer"`, or any site sending `Referrer-Policy:
