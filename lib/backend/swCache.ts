@@ -5,8 +5,8 @@
 // cache evaporates constantly and every tab re-scores paragraphs the model already
 // judged. The model is deterministic, so a hash of the normalized text plus the model
 // identity ("id@ver") is a complete key — stored rows hold buckets and probabilities
-// only, never text. Swapping backends (stub ↔ daemon, model upgrade) changes the key
-// dimension, so stale verdicts are never served across models.
+// only, never text. A different daemon model or checkpoint changes the key dimension, so
+// stale verdicts are never served across models.
 //
 // Why IndexedDB rather than storage.local: rows are read in one transaction instead of
 // a JSON round-trip, writes are structured clones, the store is not bounded by the
@@ -52,6 +52,11 @@ interface ScoreDB extends DBSchema {
 
 const DB_NAME = "anagram-scores";
 const STORE = "scores";
+/** Cap of the in-memory layer in front of the store. A worker that survives a long
+ *  reading session answers for every tab, so without a bound the map holds every
+ *  paragraph the browser has ever shown; the persistent layer below has its own, larger
+ *  cap and is what actually remembers. */
+export const MEMORY_MAX_ENTRIES = 5000;
 const MAX_ENTRIES = 20_000;
 const PRUNE_TO = 15_000;
 const PRUNE_EVERY_WRITES = 500;
@@ -134,11 +139,32 @@ export function createSwCache(): SwCache {
   const keyOf = (text: string, dim: string): string =>
     `${dim}:${cyrb53(normalizeText(text)).toString(36)}`;
 
+  /** Read the memory layer, moving a hit to the young end: Map iteration order is the
+   *  recency order the eviction below walks. */
+  function recall(key: string): ScoreResult | undefined {
+    const hit = memory.get(key);
+    if (!hit) return undefined;
+    memory.delete(key);
+    memory.set(key, hit);
+    return hit;
+  }
+
+  /** Write the memory layer and drop the least recently used entries over the cap. */
+  function remember(key: string, r: ScoreResult): void {
+    memory.delete(key);
+    memory.set(key, r);
+    while (memory.size > MEMORY_MAX_ENTRIES) {
+      const oldest = memory.keys().next();
+      if (oldest.done) break;
+      memory.delete(oldest.value);
+    }
+  }
+
   async function getMany(keys: string[]): Promise<Map<string, ScoreResult>> {
     const out = new Map<string, ScoreResult>();
     const misses: string[] = [];
     for (const k of keys) {
-      const hit = memory.get(k);
+      const hit = recall(k);
       if (hit) out.set(k, hit);
       else if (!out.has(k)) misses.push(k);
     }
@@ -152,7 +178,7 @@ export function createSwCache(): SwCache {
       rows.forEach((row, i) => {
         const r = fromStored(row);
         if (r) {
-          memory.set(misses[i], r);
+          remember(misses[i], r);
           out.set(misses[i], r);
         }
       });
@@ -165,7 +191,7 @@ export function createSwCache(): SwCache {
   function set(text: string, r: ScoreResult, dim: string): void {
     if (r.degraded) return; // fallbacks must never outlive the outage
     const k = keyOf(text, dim);
-    memory.set(k, r);
+    remember(k, r);
     pendingWrites.set(k, toStored(k, r));
     if (flushTimer === null) flushTimer = setTimeout(flush, FLUSH_MS);
   }

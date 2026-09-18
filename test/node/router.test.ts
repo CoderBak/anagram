@@ -2,7 +2,14 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { fakeBrowser } from "wxt/testing";
 import { createRouter } from "../../lib/backend/router";
-import type { ModelInfo, ScoreBatchRequest, ScoreBlock, ScoreClient, ScoredBatch } from "../../lib/contract";
+import type {
+  ModelInfo,
+  ScoreBatchRequest,
+  ScoreBatchResponse,
+  ScoreBlock,
+  ScoreClient,
+  ScoredBatch,
+} from "../../lib/contract";
 import { CONTRACT_VERSION } from "../../lib/contract";
 
 const A: ModelInfo = { id: "model-a", ver: "1", calibration: "none" };
@@ -27,11 +34,13 @@ function scored(blocks: ScoreBlock[], model: ModelInfo, bucket = 3): ScoredBatch
   };
 }
 
-/** A controllable fake backend: every scoreBatch call is recorded and can be held open. */
+/** A controllable fake backend: every scoreBatch call is recorded and can be held open.
+ *  A held call carries ITS OWN blocks, so releasing one or all of them answers each with
+ *  the paragraphs it was actually given. */
 function fakeClient(initial: ModelInfo) {
   let current = initial;
   const calls: ScoreBlock[][] = [];
-  const holds: Array<(v: ScoredBatch | Error) => void> = [];
+  const holds: Array<{ blocks: ScoreBlock[]; settle: (v: ScoredBatch) => void }> = [];
   let mode: "auto" | "hold" | "fail" = "auto";
   const client: ScoreClient & {
     calls: ScoreBlock[][];
@@ -39,6 +48,7 @@ function fakeClient(initial: ModelInfo) {
     hold(): void;
     fail(): void;
     release(model?: ModelInfo): void;
+    releaseOne(model?: ModelInfo): void;
   } = {
     calls,
     model: () => current,
@@ -51,17 +61,22 @@ function fakeClient(initial: ModelInfo) {
     fail: () => {
       mode = "fail";
     },
+    /** Answer every held call and let later ones through. */
     release: (model = current) => {
-      const pending = holds.splice(0);
-      for (const h of pending) h(scored(calls[calls.length - pending.length + pending.indexOf(h)] ?? [], model));
+      for (const h of holds.splice(0)) h.settle(scored(h.blocks, model));
       mode = "auto";
+    },
+    /** Answer the oldest held call only; the backend stays held. */
+    releaseOne: (model = current) => {
+      const h = holds.shift();
+      if (h) h.settle(scored(h.blocks, model));
     },
     async scoreBatch(blocks) {
       calls.push(blocks);
       if (mode === "fail") throw new Error("backend down");
       if (mode === "hold") {
-        return new Promise<ScoredBatch>((res, rej) => {
-          holds.push((v) => (v instanceof Error ? rej(v) : res(v)));
+        return new Promise<ScoredBatch>((res) => {
+          holds.push({ blocks, settle: res });
         });
       }
       return scored(blocks, current);
@@ -69,6 +84,9 @@ function fakeClient(initial: ModelInfo) {
   };
   return client;
 }
+
+/** Let the router's awaits (cache lookup, queue dispatch) run to quiescence. */
+const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 10));
 
 beforeEach(() => fakeBrowser.reset());
 
@@ -151,5 +169,84 @@ describe("router provenance", () => {
     expect(client.calls[4][0].text).toBe("vp");
     client.release();
     await Promise.all([...bg, vp]);
+  });
+
+  it("a joined request reports the identity that produced the batch it joined", async () => {
+    const client = fakeClient(A);
+    const router = createRouter(client);
+    client.hold();
+    const producer = router.handle(req(["one paragraph, two readers"]));
+    await settle();
+    const joiner = router.handle(req(["one paragraph, two readers"]));
+    await settle();
+    expect(client.calls.length).toBe(1);
+    client.setModel(B); // the health probe now reports another backend…
+    client.release(A); // …but this batch came from A
+    const [p, j] = await Promise.all([producer, joiner]);
+    expect(p.model).toEqual(A);
+    expect(j.model).toEqual(A); // the producer's identity, not the current snapshot
+  });
+});
+
+describe("router queueing", () => {
+  it("a request joins a batch that is still waiting for a slot", async () => {
+    const client = fakeClient(A);
+    const router = createRouter(client);
+    client.hold();
+    // Four held batches occupy every slot, so the fifth can only wait in the queue.
+    const busy = Array.from({ length: 4 }, (_, i) => router.handle(req([`busy ${i}`], "background")));
+    await settle();
+    expect(client.calls.length).toBe(4);
+    const first = router.handle(req(["queued paragraph"], "background"));
+    await settle();
+    expect(client.calls.length).toBe(4); // still queued: nothing reached the backend
+    const second = router.handle(req(["queued paragraph"], "background"));
+    await settle();
+    client.release();
+    const [r1, r2] = await Promise.all([first, second]);
+    await Promise.all(busy);
+    expect(client.calls.length).toBe(5); // the waiting batch was joined, not duplicated
+    expect(r1.results[0].degraded).toBeUndefined();
+    expect(r2.results[0].degraded).toBeUndefined();
+  });
+
+  it("a viewport request promotes the queued batch it joins", async () => {
+    const client = fakeClient(A);
+    const router = createRouter(client);
+    client.hold();
+    const busy = Array.from({ length: 4 }, (_, i) => router.handle(req([`busy ${i}`], "background")));
+    await settle();
+    const queued = ["q0", "q1", "q2"].map((t) => router.handle(req([t], "background")));
+    await settle();
+    expect(client.calls.length).toBe(4); // the three background batches are all waiting
+    const vp = router.handle(req(["q2"], "viewport")); // joins the LAST of them
+    await settle();
+    client.releaseOne(); // one slot frees; the promoted batch must take it
+    await settle();
+    expect(client.calls[4][0].text).toBe("q2");
+    client.release();
+    await Promise.all([...busy, ...queued, vp]);
+  });
+
+  it("a joined request settles degraded when the batch it joined fails", async () => {
+    const client = fakeClient(A);
+    const router = createRouter(client);
+    client.fail();
+    const first = router.handle(req(["doomed paragraph"]));
+    await settle(); // inside the retry backoff, so the join happens mid-flight
+    const second = router.handle(req(["doomed paragraph"]));
+    const both = await Promise.race([
+      Promise.all([first, second]),
+      new Promise<"timeout">((r) => setTimeout(() => r("timeout"), 2000)),
+    ]);
+    expect(both).not.toBe("timeout");
+    const [r1, r2] = both as ScoreBatchResponse[];
+    expect(r1.results[0].degraded).toBe(true);
+    expect(r2.results[0].degraded).toBe(true);
+    expect(client.calls.length).toBe(2); // one attempt plus the retry; the joiner added none
+    client.release();
+    const again = await router.handle(req(["doomed paragraph"]));
+    expect(again.results[0].degraded).toBeUndefined(); // nothing degraded was cached
+    expect(client.calls.length).toBe(3);
   });
 });

@@ -11,6 +11,12 @@ import type { ScoreResult } from "../contract";
 import { normalizeText } from "../dom/text";
 import { cyrb53 } from "../hash";
 
+/** Cap of the layer. A tab lives as long as the reader keeps it open and an infinite feed
+ *  scrolls past far more paragraphs than it ever shows again, so the map is bounded and
+ *  the least recently used entries go first; the model-keyed worker cache behind it
+ *  answers an evicted paragraph in a few ms. */
+export const L1_MAX_ENTRIES = 2000;
+
 export interface ScoreCache {
   get(text: string): ScoreResult | undefined;
   set(text: string, r: ScoreResult): void;
@@ -30,10 +36,23 @@ export function createScoreCache(): ScoreCache {
   return {
     keyOf,
     get(text: string): ScoreResult | undefined {
-      return l1.get(keyOf(text));
+      const key = keyOf(text);
+      const hit = l1.get(key);
+      if (!hit) return undefined;
+      // Re-insert so Map iteration order stays least-recently-used first.
+      l1.delete(key);
+      l1.set(key, hit);
+      return hit;
     },
     set(text: string, r: ScoreResult): void {
-      l1.set(keyOf(text), r);
+      const key = keyOf(text);
+      l1.delete(key);
+      l1.set(key, r);
+      while (l1.size > L1_MAX_ENTRIES) {
+        const oldest = l1.keys().next();
+        if (oldest.done) break;
+        l1.delete(oldest.value);
+      }
     },
     clear(): void {
       l1.clear();

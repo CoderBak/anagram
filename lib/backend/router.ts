@@ -9,8 +9,14 @@
 // snapshotted ONCE per request, every cache/in-flight key is computed from that snapshot
 // before any await, and a result is cached under the model that actually PRODUCED it
 // (returned with the batch) — never under whatever `client.model()` happens to say after
-// the fetch. Every in-flight deferred is settled in `finally`, so a joined request can
-// never hang when the backend changes mid-flight.
+// the fetch. A shared in-flight promise therefore carries its producer along with the
+// result, so a request that only JOINED reports the identity that answered it. Every
+// in-flight deferred is settled in `finally`, so a joined request can never hang when the
+// backend changes mid-flight.
+//
+// In-flight keys are reserved before the work reaches the queue, not when it starts: with
+// a concurrency cap most batches WAIT first, and a batch nobody can see is a batch someone
+// else will start a second time.
 import type {
   ModelInfo,
   ScanPriority,
@@ -28,8 +34,13 @@ import { createLogger } from "../log";
 
 const log = createLogger("router");
 
-/** Per-request character budget. The model scores ~3× more paragraphs per second in
- *  batches of 12+ than singly, so requests are re-packed generously here (the content
+/** Per-request character budget. Batching buys much less than one would hope: it mostly
+ *  amortises the per-request overhead (HTTP round trip, tokenizer, language id) rather
+ *  than the forward pass, which is already compute-bound. On our own benchmark
+ *  (docs/benchmarks/editlens-m4-24gb-2026-09-14.json, roberta-large) 60-word paragraphs go
+ *  32.9 → 51.1 → 52.5 per second at batch 1 / 8 / 32 — about 1.5× and flat after 8 — while
+ *  400-word ones stay at 8.2 → 8.4 → 8.2, i.e. nothing at all. So requests are re-packed
+ *  here to keep the overhead off the short paragraphs, not to chase throughput (the content
  *  script already sends viewport-first batches; this only merges what arrives together). */
 const BATCH_CHAR_BUDGET = 6000;
 /** Bounded fan-out the reference lacked. */
@@ -65,12 +76,51 @@ interface Keyed {
   key: string;
 }
 
+/** What a shared in-flight promise resolves: the result AND the identity that produced it,
+ *  null when the result is the neutral fallback, which has no producer. */
+interface Produced {
+  result: ScoreResult;
+  model: ModelInfo | null;
+}
+
+/** A batch handed to the queue, shared by every key it owns. `id` is p-queue's handle for
+ *  reprioritising it and `started` says whether that is still possible. */
+interface QueuedBatch {
+  id: string;
+  priority: number;
+  started: boolean;
+}
+
+/** One reserved key: the batch that will answer it, its shared promise and its resolver. */
+interface InFlight {
+  batch: QueuedBatch;
+  promise: Promise<Produced>;
+  resolve: (p: Produced) => void;
+}
+
 export function createRouter(client: ScoreClient): BackendRouter {
   const cache = createSwCache();
-  // In-flight dedup across concurrent handle() calls: cache key → pending ScoreResult.
-  const inFlight = new Map<string, Promise<ScoreResult>>();
+  // In-flight dedup across concurrent handle() calls: cache key → the batch answering it.
+  const inFlight = new Map<string, InFlight>();
   // Bounded, prioritised fan-out shared by every handle() call in this worker lifetime.
   const queue = new PQueue({ concurrency: MAX_IN_FLIGHT });
+  let nextBatchId = 0;
+
+  /** Raise a waiting batch's priority when a more urgent request joins it: the joiner is
+   *  blocked on that batch, so leaving it behind a queue of prefetches would make a visible
+   *  paragraph wait for work nobody is looking at. A batch the queue has already dispatched
+   *  cannot be reordered — p-queue's setPriority throws for an id it no longer holds — hence
+   *  both the `started` check and the catch around it. */
+  function promote(entry: InFlight, priority: number): void {
+    const { batch } = entry;
+    if (batch.started || priority <= batch.priority) return;
+    try {
+      queue.setPriority(batch.id, priority);
+      batch.priority = priority;
+    } catch (e) {
+      log.warn("could not reprioritise a queued batch", e);
+    }
+  }
 
   /** Score one batch, retry once with backoff; null when the backend failed. */
   async function scoreBatchSafe(batch: ScoreBlock[]): Promise<{ results: ScoreResult[]; model: ModelInfo } | null> {
@@ -131,14 +181,26 @@ export function createRouter(client: ScoreClient): BackendRouter {
       for (const b of group) resultById.set(b.id, { ...r, id: b.id });
     };
 
-    // Collapse against requests already in flight; the rest need a fresh fetch.
+    // Collapse against requests already in flight; the rest need a fresh fetch. From here
+    // to the registration below nothing may await: a gap is a window in which two callers
+    // both find the map empty and both start the same inference.
     const needFetch: Keyed[] = [];
     const joined: Array<Promise<void>> = [];
     for (const k of toFetch) {
       const pending = inFlight.get(k.key);
-      // A joined result was cached by its own batch; here it only needs fanning out.
-      if (pending) joined.push(pending.then((r) => fanOut(k.key, r, null)));
-      else needFetch.push(k);
+      if (!pending) {
+        needFetch.push(k);
+        continue;
+      }
+      // A joined result was cached by its own batch; here it only needs fanning out, and
+      // its provenance is that batch's producer — our snapshot may already be stale.
+      joined.push(
+        pending.promise.then(({ result, model }) => {
+          producing ??= model;
+          fanOut(k.key, result, null);
+        }),
+      );
+      promote(pending, priority);
     }
 
     // Char-budget micro-batching of the representatives we must fetch.
@@ -156,17 +218,30 @@ export function createRouter(client: ScoreClient): BackendRouter {
     }
     if (current.length > 0) batches.push(current);
 
-    const runBatch = async (batch: Keyed[]): Promise<void> => {
-      // Register an in-flight deferred per key BEFORE awaiting so concurrent calls dedup.
-      const resolvers = new Map<string, (r: ScoreResult) => void>();
+    // Reserve every key of every batch BEFORE the queue sees the work: with a concurrency
+    // cap a batch usually waits for a slot first, and while it waits a second caller asking
+    // for the same text must join it rather than start its own inference.
+    const reserved = batches.map((batch) => {
+      const record: QueuedBatch = { id: `q${nextBatchId++}`, priority, started: false };
+      const entries = new Map<string, InFlight>();
       for (const k of batch) {
-        let resolve!: (r: ScoreResult) => void;
-        const p = new Promise<ScoreResult>((res) => {
+        let resolve!: (p: Produced) => void;
+        const promise = new Promise<Produced>((res) => {
           resolve = res;
         });
-        inFlight.set(k.key, p);
-        resolvers.set(k.key, resolve);
+        const entry: InFlight = { batch: record, promise, resolve };
+        entries.set(k.key, entry);
+        inFlight.set(k.key, entry);
       }
+      return { batch, record, entries };
+    });
+
+    const runBatch = async (
+      batch: Keyed[],
+      record: QueuedBatch,
+      entries: Map<string, InFlight>,
+    ): Promise<void> => {
+      record.started = true; // the queue has dispatched it; reordering is no longer possible
       let byId = new Map<string, ScoreResult>();
       let producedBy: ModelInfo | null = null;
       try {
@@ -181,15 +256,22 @@ export function createRouter(client: ScoreClient): BackendRouter {
         for (const k of batch) {
           const r = byId.get(k.block.id) ?? neutral(k.block);
           fanOut(k.key, r, producedBy);
-          resolvers.get(k.key)?.(r);
-          if (inFlight.get(k.key) !== undefined) inFlight.delete(k.key);
+          const entry = entries.get(k.key);
+          entry?.resolve({ result: r, model: r.degraded ? null : producedBy });
+          // Only OUR reservation may go: a later request may already have claimed the key.
+          if (inFlight.get(k.key) === entry) inFlight.delete(k.key);
         }
       }
     };
 
-    // Register deferreds synchronously (dedup for callers arriving while we queue),
-    // then let the priority queue run the fetches.
-    await Promise.all([...batches.map((b) => queue.add(() => runBatch(b), { priority })), ...joined]);
+    // The reservations are in place, so the priority queue may now run the fetches whenever
+    // it likes; `id` is what lets a later, more urgent joiner move one of them forward.
+    await Promise.all([
+      ...reserved.map(({ batch, record, entries }) =>
+        queue.add(() => runBatch(batch, record, entries), { priority, id: record.id }),
+      ),
+      ...joined,
+    ]);
 
     // Assemble in original request order; neutral fallback for any gap.
     const results = req.blocks.map((b) => resultById.get(b.id) ?? neutral(b));
