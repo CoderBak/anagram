@@ -990,7 +990,8 @@ async function sweep(page, steps = 6) {
     });
     await p.waitForTimeout(500);
     const report = await p.evaluate(() => navigator.clipboard.readText().catch(() => null));
-    const line = (report ?? "").split("\n").find((l) => l.startsWith("1. ")) ?? "";
+    // Windows hands the clipboard back with CRLF line ends; the report itself is LF.
+    const line = (report ?? "").split(/\r?\n/).find((l) => l.startsWith("1. ")) ?? "";
     const ok = chipped && /; \d+ words; scored in 3 windows: \d+% · \d+% · \d+%\)$/.test(line) && !line.includes("not read");
     record("ui", "copied report: a paragraph scored in windows says so, with each window's percentage", ok, JSON.stringify({ chipped, line }));
     await p.close();
