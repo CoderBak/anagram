@@ -33,7 +33,7 @@
 # Re-running updates in place. `anagram uninstall` removes the folder — that is all there is.
 set -eu
 
-INSTALLER_VERSION="0.3.1"
+INSTALLER_VERSION="0.3.2"
 UV_VERSION="0.11.18"
 PYTHON_VERSION="${ANAGRAM_PYTHON:-3.12.13}"
 RELEASE_URL="${ANAGRAM_RELEASE_URL:-https://github.com/CoderBak/anagram/releases/latest/download}"

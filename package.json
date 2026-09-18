@@ -2,7 +2,7 @@
   "name": "anagram-extension",
   "description": "Anagram for Chrome \u2014 per-paragraph AI-generated-text confidence badges.",
   "private": true,
-  "version": "0.3.1",
+  "version": "0.3.2",
   "type": "module",
   "scripts": {
     "dev": "node scripts/vendor.mjs && wxt",
@@ -24,6 +24,7 @@
     "vendor:basecoat": "cp node_modules/basecoat-css/dist/basecoat-vega.cdn.min.css lib/ui/basecoat-vega.cdn.min.css",
     "vendor:lazy": "node scripts/vendor.mjs",
     "test:node": "vitest run",
+    "bump": "node scripts/bump.mjs",
     "release": "node scripts/release.mjs",
     "test:installer": "sh test/installer.sh",
     "test:matrix": "node test/matrix.mjs",
