@@ -6,6 +6,7 @@ export { collectUnits } from "../lib/dom/walker";
 export {
   countWords,
   splitSentences,
+  sentenceStarts,
   truncateForScoring,
   stripInvisibles,
   symbolNoiseRatio,
@@ -29,3 +30,15 @@ export { findMainContent, useReadability } from "../lib/dom/mainContent";
 export { detectDocsPage, readingViewUrl, editorUrl } from "../lib/docs";
 export { band, isFlagged, scorePct } from "../lib/render/band";
 export { createBadgeLayer } from "../lib/render/badge";
+export { locateSpans } from "../lib/dom/locate";
+export {
+  planWindows,
+  halve,
+  blockText,
+  unitVerdict,
+  WINDOW_CHARS,
+  MIN_WINDOW_CHARS,
+  MAX_WINDOWS,
+  MAX_READ_CHARS,
+} from "../lib/capture/windows";
+export { windowReadout, coverageNote } from "../lib/render/coverage";

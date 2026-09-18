@@ -149,7 +149,7 @@ export function hasLetters(text: string): boolean {
 
 // ---- segmenters (cached — constructing Intl.Segmenter per call is expensive) -------
 
-type Seg = { segment(s: string): Iterable<{ segment: string; isWordLike?: boolean }> };
+type Seg = { segment(s: string): Iterable<{ segment: string; index: number; isWordLike?: boolean }> };
 
 let _wordSeg: Seg | null | undefined;
 function wordSegmenter(): Seg | null {
@@ -195,6 +195,30 @@ export function splitSentences(text: string): string[] {
     return [...seg.segment(text)].map((x) => x.segment).filter((s) => s.trim());
   }
   return text.split(/(?<=[.!?。！？])\s+/).filter((s) => s.trim());
+}
+
+/**
+ * Offsets at which a new sentence STARTS (ascending, never 0 and never the end of the
+ * text) — the places a long text may be cut into windows. A sentence owns the
+ * whitespace that follows it, so a cut never opens a window on a space. The "\n\n"
+ * between the parts of a merged unit is a boundary too: a bullet list whose items carry
+ * no full stop can still be cut between two items. CJK sentence marks count with
+ * nothing after them, because Chinese and Japanese put no space there.
+ */
+export function sentenceStarts(text: string): number[] {
+  const out: number[] = [];
+  const seg = sentenceSegmenter();
+  if (seg) {
+    // ICU reports the second newline of a "\n\n" joint as a sentence of its own.
+    for (const s of seg.segment(text)) if (s.index > 0 && /\S/.test(s.segment)) out.push(s.index);
+    return out;
+  }
+  const re = /(?:[.!?]["'”’»)\]]*(?=\s)|[。！？][」』）】]*|\n\n)\s*/g;
+  for (let m = re.exec(text); m; m = re.exec(text)) {
+    const at = m.index + m[0].length;
+    if (at > 0 && at < text.length && out[out.length - 1] !== at) out.push(at);
+  }
+  return out;
 }
 
 /**

@@ -545,6 +545,173 @@ const results = await page.evaluate(() => {
     layer.teardownAll();
   }
 
+  // ---- long texts: window planning --------------------------------------------------------
+  // `prose(n)` — n distinct sentences of ~75 characters, each opening with a capital and
+  // ending in a full stop, so a cut at a sentence boundary is recognisable from the text.
+  const W = PW.WINDOW_CHARS;
+  const sentenceNo = (i) => `Sentence number ${i} keeps walking through the quiet town while the rain falls on it.`;
+  const prose = (n, from = 0) => Array.from({ length: n }, (_, i) => sentenceNo(from + i)).join(" ");
+  const contiguous = (text, spans, end = text.length) =>
+    spans.length > 0 && spans[0].start === 0 && spans[spans.length - 1].end === end && spans.every((s, i) => i === 0 || s.start === spans[i - 1].end);
+  const lens = (spans) => spans.map((s) => s.end - s.start);
+  {
+    const short = prose(10);
+    const one = PW.planWindows(short);
+    check("a text that fits is ONE window over all of it, sent as its plain canonical form",
+      one.length === 1 && one[0].start === 0 && one[0].end === short.length && PW.blockText(short, one[0]) === PW.canonicalForScoring(short), JSON.stringify(one));
+
+    const exact = prose(40).slice(0, W - 1) + ".";
+    check("exactly at the budget is still one window; one character more is two",
+      exact.length === W && PW.planWindows(exact).length === 1 && PW.planWindows(exact + " A").length === 2, `${exact.length}`);
+
+    const long = prose(60); // ~5000 characters → three windows
+    const spans = PW.planWindows(long);
+    const texts = spans.map((s) => long.slice(s.start, s.end));
+    check("a long text is cut into consecutive, non-overlapping windows that cover all of it",
+      spans.length === Math.ceil(long.length / W) && spans.length === 3 && contiguous(long, spans) && texts.join("") === long, JSON.stringify(spans));
+    check("every cut falls on a sentence boundary: windows open on a capital and close on a full stop",
+      texts.every((t) => /^Sentence number \d+ /.test(t) && /\.$/.test(t.trim())), JSON.stringify(texts.map((t) => [t.slice(0, 20), t.slice(-12)])));
+    check("the cuts are balanced: no window above the budget, none more than a sentence off the even split",
+      lens(spans).every((n) => n <= W && Math.abs(n - long.length / 3) <= 90), JSON.stringify(lens(spans)));
+
+    const tail = prose(45).slice(0, 2 * W + 40); // two full windows and forty characters
+    const tailSpans = PW.planWindows(tail);
+    check("no tiny tail window: 2 budgets + 40 characters become three windows of a third each",
+      tailSpans.length === 3 && contiguous(tail, tailSpans) && lens(tailSpans).every((n) => n >= PW.MIN_WINDOW_CHARS && n > 1000 && n <= W), JSON.stringify(lens(tailSpans)));
+
+    const zh = Array.from({ length: 140 }, (_, i) => `第${i}句话讲的是一座安静的小城和落在屋顶上的雨，孩子们在窗边读书。`).join("");
+    const zhSpans = PW.planWindows(zh);
+    check("CJK sentence ends (。 with no space after it) are boundaries too",
+      zhSpans.length >= 2 && contiguous(zh, zhSpans) && zhSpans.every((s) => zh[s.end - 1] === "。" && zh[s.start] === "第") && lens(zhSpans).every((n) => n <= W), JSON.stringify(lens(zhSpans)));
+
+    const unpunctuated = Array.from({ length: 900 }, (_, i) => VOCAB[i % VOCAB.length]).join(" ");
+    const upSpans = PW.planWindows(unpunctuated);
+    check("one enormous sentence without a full stop is cut between two words",
+      upSpans.length === Math.ceil(unpunctuated.length / W) && contiguous(unpunctuated, upSpans) && upSpans.slice(1).every((s) => unpunctuated[s.start - 1] === " " && unpunctuated[s.start] !== " ") && lens(upSpans).every((n) => n <= W && n >= PW.MIN_WINDOW_CHARS), JSON.stringify(lens(upSpans)));
+
+    const solid = "😀".repeat(1500); // 3000 UTF-16 units, no space, no sentence
+    const solidSpans = PW.planWindows(solid);
+    check("…and a text with no space at all is cut hard, never inside a surrogate pair",
+      solidSpans.length === 2 && contiguous(solid, solidSpans) && solidSpans.every((s) => s.start % 2 === 0) && lens(solidSpans).every((n) => n <= W), JSON.stringify(solidSpans));
+
+    // Merged unit: twenty unpunctuated bullet items joined the way the walker joins parts.
+    const items = Array.from({ length: 20 }, (_, i) => `ITEM${i} ` + Array.from({ length: 24 }, (_, j) => VOCAB[(i + j) % VOCAB.length]).join(" "));
+    const merged = items.join("\n\n");
+    const mSpans = PW.planWindows(merged);
+    check("a merged multi-part unit is cut at a joint between two parts",
+      mSpans.length >= 2 && contiguous(merged, mSpans) && mSpans.slice(1).every((s) => merged.slice(s.start - 2, s.start) === "\n\n" && merged.startsWith("ITEM", s.start)), JSON.stringify(mSpans));
+
+    const dump = prose(250).slice(0, 20000);
+    const dSpans = PW.planWindows(dump);
+    const readEnd = dSpans[dSpans.length - 1].end;
+    check("past the window cap the rest is left unread, and the reading stops at a sentence end",
+      dSpans.length === PW.MAX_WINDOWS && contiguous(dump, dSpans, readEnd) && readEnd <= PW.MAX_READ_CHARS && readEnd > PW.MAX_READ_CHARS - W && dump.slice(0, readEnd).trim().endsWith(".") && lens(dSpans).every((n) => n <= W && n >= PW.MIN_WINDOW_CHARS), JSON.stringify([readEnd, lens(dSpans)]));
+
+    const [h1, h2] = PW.halve(long, spans[1]);
+    check("a window the daemon had to cut is halved at a sentence boundary near its middle",
+      h1.start === spans[1].start && h1.end === h2.start && h2.end === spans[1].end && /^Sentence number/.test(long.slice(h2.start)) && Math.abs((h1.end - h1.start) - (h2.end - h2.start)) <= 90, JSON.stringify([h1, h2]));
+
+    check("sentenceStarts: inside the text only, each on the first letter of a sentence",
+      (() => { const st = PW.sentenceStarts("One. Two!\n\nThree? Four"); return JSON.stringify(st) === JSON.stringify([5, 11, 18]); })(), JSON.stringify(PW.sentenceStarts("One. Two!\n\nThree? Four")));
+  }
+
+  // ---- long texts: from a window back to the page ------------------------------------------
+  const collapse = (t) => t.replace(/\s+/g, " ").trim();
+  const located = (unit, spans) => PW.locateSpans(unit.parts, unit.text, spans);
+  {
+    // Inline markup everywhere, so window edges fall inside and between elements.
+    sandbox.innerHTML = `<p>${Array.from({ length: 60 }, (_, i) => i % 3 === 0 ? `<em>Sentence number ${i}</em> keeps <a href="#x">walking through</a> the quiet town while the rain falls on it.` : i % 3 === 1 ? `Sentence number ${i} keeps walking <b>through the quiet town while the rain</b> falls on it.` : `<span>Sentence <code>number</code> ${i} keeps walking through the quiet town while the rain falls on it.</span>`).join(" ")}</p>`;
+    const htmlBefore = sandbox.innerHTML;
+    const [unit] = PW.collectUnits(sandbox);
+    const spans = PW.planWindows(unit.text);
+    const ranges = located(unit, spans);
+    check("inline markup: every window resolves to one range whose text is the window's text",
+      unit.parts.length === 1 && spans.length === 3 && ranges && ranges.every((r, i) => r.length === 1 && collapse(r[0].toString()) === unit.text.slice(spans[i].start, spans[i].end).trim()),
+      JSON.stringify(ranges && ranges.map((r) => r.map((x) => collapse(x.toString()).slice(0, 24)))));
+    check("…ranges start and end INSIDE text nodes, and consecutive windows leave no gap",
+      ranges && ranges.every((r) => r[0].startContainer.nodeType === 3 && r[0].endContainer.nodeType === 3) &&
+      ranges.slice(1).every((r, i) => r[0].startContainer === ranges[i][0].endContainer && r[0].startOffset === ranges[i][0].endOffset));
+    check("…and resolving them leaves the page exactly as it was", sandbox.innerHTML === htmlBefore);
+  }
+  {
+    // Source whitespace the walker collapses: newlines, indentation, runs of spaces, NBSP.
+    const messy = Array.from({ length: 60 }, (_, i) => `Sentence   number\n      ${i}\u00a0keeps walking\tthrough the quiet town while the rain falls on it.`).join("\n   ");
+    sandbox.innerHTML = `<p>\n     ${messy}\n   </p>`;
+    const [unit] = PW.collectUnits(sandbox);
+    const spans = PW.planWindows(unit.text);
+    const ranges = located(unit, spans);
+    check("collapsed whitespace: offsets in the collapsed text land on the right raw characters",
+      spans.length >= 3 && ranges && ranges.every((r, i) => r.length === 1 && collapse(r[0].toString()) === unit.text.slice(spans[i].start, spans[i].end).trim() && /^S/.test(r[0].startContainer.data.slice(r[0].startOffset))),
+      JSON.stringify(ranges && ranges.map((r) => r.map((x) => JSON.stringify(x.toString().slice(0, 16))))));
+  }
+  {
+    // A merged unit closes as soon as it clears the fifty-word floor, so only absurdly long
+    // words make one that outgrows a window: three list items of two dozen 30-letter words.
+    const longWords = (n, from) => Array.from({ length: n }, (_, j) => VOCAB[(from + j) % VOCAB.length] + "abcdefghijklmnopqrstuvwxy").join(" ");
+    sandbox.innerHTML = `<ul>${Array.from({ length: 3 }, (_, i) => `<li>ITEM${i} <i>${longWords(11, i)}.</i> Then ${longWords(11, i + 11)}.</li>`).join("")}</ul>`;
+    const [unit] = PW.collectUnits(sandbox);
+    const spans = PW.planWindows(unit.text);
+    const ranges = located(unit, spans);
+    const perWindow = ranges && ranges.map((r) => r.map((x) => collapse(x.toString())).join("\n\n"));
+    check("merged parts: a window reaching over several parts is one range PER PART, none across two",
+      unit.parts.length === 3 && spans.length === 2 && ranges && ranges.every((r) => r.length > 1) &&
+      perWindow.every((t, i) => t === unit.text.slice(spans[i].start, spans[i].end).trim()) &&
+      ranges.flat().every((x) => x.startContainer.parentElement.closest("li") === x.endContainer.parentElement.closest("li")),
+      JSON.stringify(ranges && ranges.map((r) => r.length)));
+    check("…and together the windows' ranges cover every part exactly once", ranges && ranges.flat().length === unit.parts.length + spans.filter((s, i) => i > 0 && unit.text.slice(s.start - 2, s.start) !== "\n\n").length, JSON.stringify(ranges && ranges.flat().length));
+  }
+  {
+    // Formulas the walker skipped sit between two text nodes of the run — also right where
+    // a window ends. They are in no part.nodes; the text and the mapping run across them.
+    sandbox.innerHTML = `<p>${Array.from({ length: 60 }, (_, i) => `Sentence number ${i} keeps <math><mi>QQQ</mi></math> walking through the quiet town while the rain falls on it.`).join(" ")}</p>`;
+    const [unit] = PW.collectUnits(sandbox);
+    const spans = PW.planWindows(unit.text);
+    const ranges = located(unit, spans);
+    check("a skipped formula in mid-sentence shifts nothing: windows still resolve to their own words",
+      unit.formulas === 60 && !unit.text.includes("QQQ") && ranges && ranges.every((r, i) => r.length === 1 && collapse(r[0].toString().replace(/QQQ/g, " ")) === unit.text.slice(spans[i].start, spans[i].end).trim()),
+      JSON.stringify(ranges && ranges.map((r) => r.map((x) => collapse(x.toString()).slice(0, 30)))));
+
+    // The page changes under a verdict that is still in flight.
+    unit.parts[0].nodes[4].data = "Sentence REWRITTEN keeps ";
+    check("a DOM that no longer says what the unit says resolves to nothing (null), never to wrong words", located(unit, spans) === null);
+  }
+
+  // ---- long texts: one verdict from several windows ----------------------------------------
+  const res = (probs, extra = {}) => ({ id: "w", bucket: probs.indexOf(Math.max(...probs)), probs, score: probs.reduce((a, p, i) => a + p * i, 0) / 3, ...extra });
+  const near = (a, b) => Math.abs(a - b) < 1e-9;
+  {
+    const human = res([0.9, 0.1, 0, 0], { tokens: 300 });
+    const ai = res([0, 0, 0.2, 0.8], { tokens: 400 });
+    const v = PW.unitVerdict("u1", 4000, [{ start: 0, end: 1000, result: human }, { start: 1000, end: 4000, result: ai }]);
+    check("aggregate: length-weighted mean of the probability vectors, bucket = its argmax, score = Σ p̄ᵢ·i/3",
+      v.id === "u1" && v.result.id === "u1" && [0.225, 0.025, 0.15, 0.6].every((p, i) => near(v.result.probs[i], p)) && v.result.bucket === 3 &&
+      near(v.result.score, (0.025 + 2 * 0.15 + 3 * 0.6) / 3) && near(v.result.score, 0.25 * human.score + 0.75 * ai.score) && v.result.tokens === 700 && v.unreadChars === 0 && !v.result.truncated,
+      JSON.stringify(v.result));
+
+    const left = res([0.55, 0.45, 0, 0]);
+    const right = res([0, 0.45, 0.55, 0]);
+    const mid = PW.unitVerdict("u2", 2000, [{ start: 0, end: 1000, result: left }, { start: 1000, end: 2000, result: right }]);
+    check("…which may be a bucket no single window chose (human + heavily edited → lightly edited overall)", mid.result.bucket === 1 && near(mid.result.score, 1 / 3), JSON.stringify(mid.result));
+
+    const single = PW.unitVerdict("u3", 900, [{ start: 0, end: 900, result: human }]);
+    check("one window: the unit's verdict IS the daemon's result, number for number", single.result.probs === human.probs && single.result.score === human.score && single.result.id === "u3" && single.windows.length === 1);
+
+    const down = PW.unitVerdict("u4", 4000, [{ start: 0, end: 2000, result: ai }, { start: 2000, end: 4000, result: res([0.25, 0.25, 0.25, 0.25], { degraded: true }) }]);
+    check("one degraded window makes the whole unit Unavailable — never flagged on half an answer", down.result.degraded === true && PW.band(down.result) === "unknown" && !PW.isFlagged(down.result));
+
+    const fr = res([0.25, 0.25, 0.25, 0.25], { unsupported: true, lang: "fr", lang_prob: 0.97, score: 0 });
+    const mixed = PW.unitVerdict("u5", 3000, [{ start: 0, end: 1000, result: ai }, { start: 1000, end: 2000, result: fr }, { start: 2000, end: 3000, result: ai }]);
+    const allFr = PW.unitVerdict("u6", 2500, [{ start: 0, end: 1000, result: fr }, { start: 1000, end: 2500, result: { ...fr, lang: "de" } }]);
+    check("a window the language gate refused stays out of the mean; all of them refused → Unsupported language",
+      !mixed.result.unsupported && near(mixed.result.score, ai.score) && PW.windowReadout(mixed).skipped === 1 && PW.windowReadout(mixed).pcts.join("|") === "93%|fr|93%" &&
+      allFr.result.unsupported === true && allFr.result.lang === "de", JSON.stringify([mixed.result, allFr.result]));
+
+    const dense = PW.unitVerdict("u7", 5000, [{ start: 0, end: 2000, result: human }, { start: 2000, end: 4000, result: { ...ai, truncated: true } }]);
+    check("a window still cut after the re-read and an unread tail are both carried by the verdict",
+      dense.result.truncated === true && dense.unreadChars === 1000 && PW.windowReadout(dense).cutShort === 1 && /Only the opening/.test(PW.coverageNote(dense, "paragraph")) && /too dense/.test(PW.coverageNote(dense, "paragraph")));
+    check("a unit read in one pass has no window readout and no coverage note", PW.windowReadout(single) === null && PW.coverageNote(single, "paragraph") === "");
+  }
+
   // ---- canonical scoring text ------------------------------------------------------------
   check("canonical: LaTeX residue and escapes", PW.canonicalForScoring("steps---prompting, 74.1\\% and ``quoted''") === 'steps—prompting, 74.1% and "quoted"', JSON.stringify(PW.canonicalForScoring("steps---prompting, 74.1\\% and ``quoted''")));
   check("canonical: typographic quotes, ranges, NBSP, ligatures → one convention", PW.canonicalForScoring("LLMs’ “rich” 1–5\u00a0ﬁnal") === `LLMs' "rich" 1-5 final`, JSON.stringify(PW.canonicalForScoring("LLMs’ “rich” 1–5\u00a0ﬁnal")));
@@ -596,6 +763,30 @@ const results = await page.evaluate(() => {
   sandbox.remove();
   return out;
 });
+
+// ---- window cuts without Intl.Segmenter ---------------------------------------------------
+// The sentence segmenter is cached per page, so its regex fallback needs a page of its own
+// in which the API never existed.
+{
+  const fb = await browser.newPage();
+  await fb.setContent("<!doctype html><html><body></body></html>");
+  await fb.evaluate(() => { delete Intl.Segmenter; });
+  await fb.addScriptTag({ path: BUNDLE });
+  const r = await fb.evaluate(() => {
+    const en = Array.from({ length: 60 }, (_, i) => `Sentence number ${i} keeps walking through the quiet town while the rain falls on it.`).join(" ");
+    const zh = Array.from({ length: 140 }, (_, i) => `第${i}句话讲的是一座安静的小城和落在屋顶上的雨，孩子们在窗边读书。`).join("");
+    const cut = (t) => PW.planWindows(t).map((s) => t.slice(s.start, s.end));
+    return { starts: PW.sentenceStarts('One. Two!\n\nThree? "Four." Five'), en: cut(en), zh: cut(zh), enLen: en.length, zhLen: zh.length };
+  });
+  await fb.close();
+  results.push({
+    name: "no Intl.Segmenter: the regex fallback finds the same sentence starts, Latin and CJK",
+    ok: JSON.stringify(r.starts) === JSON.stringify([5, 11, 18, 26]) &&
+      r.en.length === 3 && r.en.join("").length === r.enLen && r.en.every((t) => /^Sentence number \d+ /.test(t) && t.trim().endsWith(".")) &&
+      r.zh.length >= 2 && r.zh.join("").length === r.zhLen && r.zh.every((t) => t.startsWith("第") && t.endsWith("。")),
+    note: JSON.stringify([r.starts, r.en.map((t) => t.length), r.zh.map((t) => t.length)]),
+  });
+}
 
 // ---- structural fixtures: who is scored with whom on real-site markup ------------------
 // test/fixtures/*.html are reduced from the live DOM of the sites they name (each file says
