@@ -85,11 +85,15 @@ prints PASS/FAIL per sample and exits non-zero if any of them is wrong.
   appear in a subtle **"analyzing…" state** the moment a paragraph is actually
   sent for scoring, morphing in place when the verdict lands. Hover — or tap, on
   touch — for the full readout: the verdict, a **four-bucket probability bar**
-  with a row per bucket, words analyzed, whether the model window was cut, and a
+  with a row per bucket, words analyzed, how a long paragraph was read
+  (**"Scored in 3 windows"** with each window's own number), and a
   **Copy text** action — always with an *"estimate, not proof"* caveat.
-- **Verdict marks across each analyzed unit** (toggleable) — underline + tint,
+- **Verdict marks across what was read** (toggleable) — underline + tint,
   underline only, or tint only (options), with a dark-tuned palette on dark
-  pages. Marks are screen-only: they never print.
+  pages. A paragraph longer than the model reads in one pass is scored in
+  consecutive windows and marked **window by window, each in its own colour**, so
+  a text that turns from human to AI halfway shows where; the chip carries the
+  one aggregate. Marks are screen-only: they never print.
 - **A floating ball** like Immersive Translate's: drag it anywhere — it **snaps
   to the nearest edge**, remembers its spot per site, and **tucks itself
   half-away when idle** (hover brings it back). It hides in fullscreen video and
@@ -178,9 +182,13 @@ the detected code (`zh`, `ja`, `ar`…) with the language name in the card, no
 number, no mark, and never count as flagged. The popup reports them as "N not
 English".
 
-Honest limits: a 512-token window (longer paragraphs
-are scored on their sentence-bounded prefix and the card says so); accuracy
-drops out-of-domain and on models unseen in training — Pangram's
+Honest limits: a 512-token window. A longer paragraph is read completely, in
+consecutive sentence-bounded windows of at most 1800 characters, and the chip
+shows the length-weighted average of the windows' probabilities — an aggregation
+EditLens was not evaluated with, and no window sees the sentences before or
+after it. Eight windows (some 2 300 words) is the most one paragraph gets; past
+that the card says only the opening was scored and the rest stays unmarked.
+Accuracy drops out-of-domain and on models unseen in training — Pangram's
 [release post for the open models](https://www.pangram.com/blog/introducing-open-pangram)
 reports, for this released `roberta-large` checkpoint, ternary macro-F1 **0.881**
 in-domain → **0.673** on held-out Enron emails (binary human-vs-AI macro-F1 0.997
@@ -310,10 +318,10 @@ back when you want to watch; only `npm run browser` / `npm run play` always do.
 
 | Suite | Command | Checks | What it covers |
 | --- | --- | --- | --- |
-| Node | `npm run test:node` | 37 | vitest + `wxt/testing`: router invariants (keys snapshotted per request, keys reserved before the queue so a waiting batch absorbs later requests, a joined request reports the identity that actually answered it, results cached under the producing model, priority order and promotion), LRU eviction in both in-memory caches, scheduler idle/pause/upgrade, wire validation (including that no redirect can carry a request away), the daemon client (loopback only, down TTL, another contract major reported as a version mismatch rather than an outage) |
-| Unit | `npm run test:unit` | 188 | walker/assembler/extraction (voice scopes and which short paragraphs may be scored together — eleven fixtures modelled on real post, thread, feed and article markup — math, citation marks, hidden copies, out-of-flow markers, accordions, author lists), canonical scoring text, band mapping, Readability-guided scope — in a real Chromium page (~5s) |
-| E2E | `npm run test:e2e` | 25 | full extension on an 18-section fixture page against the fake daemon — including that non-English text never reaches it |
-| Scenarios | `npm run test:scenarios` | 39 + 13 | UI edge cases (hover card, panel filters, FAB snap/tuck, top-layer, KaTeX, vertical text, CSS Color 4 backgrounds, late shadow-root content, mutation storms, on-demand Readability chunk, self-rewriting page, main-content scope honoured from the very first scan, the selection card's ✕ while the daemon is still thinking, the copied report's bare percentages and legend, daemon down → Unavailable → daemon back → auto re-queue) + keyboard-only triage (focusable counter, Enter/Esc focus hand-off, accessible names, the three commands driven from the service worker) and a no-referrer cross-origin frame obeying the top page's site rule + 13 live sites (bot-check interstitials count as skips) (`-- --local` skips the live sweep) |
+| Node | `npm run test:node` | 45 | vitest + `wxt/testing`: reading a long text in windows (every window in one call, a text that fits sent exactly as before, a window the daemon cut re-read in halves once, no verdict on a partial answer, one failed window → Unavailable), router invariants (keys snapshotted per request, keys reserved before the queue so a waiting batch absorbs later requests, a joined request reports the identity that actually answered it, results cached under the producing model, priority order and promotion), LRU eviction in both in-memory caches, scheduler idle/pause/upgrade and a long unit priced by all of its windows, wire validation (including that no redirect can carry a request away), the daemon client (loopback only, down TTL, another contract major reported as a version mismatch rather than an outage) |
+| Unit | `npm run test:unit` | 223 | walker/assembler/extraction (voice scopes and which short paragraphs may be scored together — eleven fixtures modelled on real post, thread, feed and article markup — math, citation marks, hidden copies, out-of-flow markers, accordions, author lists), window planning (balance, sentence and CJK boundaries, the no-boundary and at-budget cases, the cap, the regex fallback), the mapping from a window back to text nodes (inline markup, collapsed whitespace, merged parts, a skipped formula, a DOM that changed), aggregation arithmetic, per-window marks and the card's window row, canonical scoring text, band mapping, Readability-guided scope — in a real Chromium page (~5s) |
+| E2E | `npm run test:e2e` | 31 | full extension on a 19-section fixture page against the fake daemon — including that non-English text never reaches it, and that a three-window paragraph reaches it whole: three consecutive blocks, none past the token window, one chip, each window marked in its own band |
+| Scenarios | `npm run test:scenarios` | 42 + 13 | UI edge cases (hover card, panel filters, FAB snap/tuck, top-layer, KaTeX, vertical text, CSS Color 4 backgrounds, late shadow-root content, mutation storms, on-demand Readability chunk, self-rewriting page, main-content scope honoured from the very first scan, the selection card's ✕ while the daemon is still thinking, a long selection analyzed whole in windows, the copied report's bare percentages and legend and its line for a paragraph scored in windows, dense text the daemon had to cut re-read in two halves, daemon down → Unavailable → daemon back → auto re-queue) + keyboard-only triage (focusable counter, Enter/Esc focus hand-off, accessible names, the three commands driven from the service worker) and a no-referrer cross-origin frame obeying the top page's site rule + 13 live sites (bot-check interstitials count as skips) (`-- --local` skips the live sweep) |
 | Server | `npm run test:server` | 39 | **the real model**: spawns `anagramd`, checks the API on human/AI/Chinese samples (the last one must come back unsupported via fastText), the request limits and the body cap counted on the bytes that arrive (a 2.1 MB chunked POST with no `Content-Length` is still 413), `application/json`-only on `/score`, the `Origin` allow-list (extensions and the daemon's own pass; `null` and a web origin are 403), the Host allow-list, the absence of CORS grants, and a model version that digests the whole pipeline, then drives the built extension — real verdicts on every English chip, the 4-bucket card, the "zh" unsupported chip, the popup's model line |
 | Docs flow | `node test/docs-flow.mjs <public doc URL>` | 12 | in-tab overlay + classic page flow on a real public Google Doc — the original demo doc was deleted from Drive, so without a URL (or `ANAGRAM_DOC_URL`) the suite reports SKIP |
 | Matrix | `npm run test:matrix` | 136 | the UI fixtures under **17 device profiles** — 360 px phones to a 3440 px ultrawide, pixel ratios 1 / 1.25 / 1.5 / 2 / 3 (Windows display scaling), classic layout-eating scrollbars, a 420 px-tall window, dark scheme, forced colours, reduced motion, touch, zh-CN and Arabic UI locales — asserting what must hold on every one: all chips reach a verdict, showing them adds no side-scroll and grows no paragraph by more than a line, no chip leaves its block, the detail card (hover, or tap on touch) and the panel open fully inside the viewport, the ball stays on top, the options and onboarding pages fit the width, no console errors. A screenshot per profile lands in the artifacts folder. `node test/matrix.mjs phone dark` runs a subset |

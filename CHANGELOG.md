@@ -23,6 +23,24 @@ Notable changes to Anagram, newest first. The format follows
 
 ### Changed
 
+- A paragraph longer than the model reads in one pass is scored completely. It
+  used to be judged by its opening — roughly the first 380 words — while the chip
+  and the underline spoke for all of it. It is now cut at sentence boundaries into
+  consecutive windows of at most 1800 characters, every window is scored, and the
+  chip shows one aggregate: the length-weighted average of the windows'
+  probabilities. The marks are per window, each in its own colour, so a text that
+  turns from human to AI halfway shows where. The card says "Scored in 3 windows"
+  with each window's own number, and the copied report carries the same line.
+  Paragraphs that fit one window — nearly all of them — are sent, cached and
+  shown exactly as before.
+- "Analyze selection" reads a long selection the same way, so "Words analyzed"
+  is the whole selection again rather than the first part of it.
+- Dense text — figures, URLs, names — that overflows the model's window despite
+  the character budget is read again in two halves instead of being cut. Should a
+  half still overflow, the card says part of the text was not read.
+- One paragraph gets at most eight windows (some 2 300 words). Past that the card
+  says only the opening was scored, and the rest is left unmarked instead of
+  being underlined in a colour nobody measured.
 - Short paragraphs are scored together only within one voice. Two posts by
   different authors, an author and the person they quote, a paragraph and a
   figure caption, a post and the post it quotes no longer share a verdict; a
