@@ -93,11 +93,27 @@ PYEOF
   fi
 }
 
+# One generation of rotation before each start: every start appends to the same file, and
+# nothing else ever trims it. The rotation is skipped silently when logs/, the log or the
+# existing .1 is a symbolic link — this script writes only inside the validated $ANAGRAM_HOME,
+# and any of those links would move the bytes (or the mv) somewhere nobody asked for.
+rotate_log() {
+  if [ ! -f "$LOG" ] || [ -L "$ANAGRAM_HOME/logs" ] || [ -L "$LOG" ] || [ -L "$LOG.1" ]; then
+    return 0
+  fi
+  bytes="$(wc -c < "$LOG")"
+  if [ "$((bytes))" -gt 5242880 ]; then
+    mv "$LOG" "$LOG.1"
+    say "Log was over 5 MB — the previous one is now $LOG.1"
+  fi
+}
+
 cmd_start() {
   [ -x "$PY" ] || die "no daemon environment in $ANAGRAM_HOME — run the installer again"
   [ -f "$MODEL_DIR/config.json" ] || die "no checkpoint in $MODEL_DIR — run: $ANAGRAM_HOME/bin/anagram model"
   if healthy; then say "already running"; cmd_status; return 0; fi
   if alive; then say "already starting (pid $(cat "$PIDFILE"))"; return 0; fi
+  rotate_log
   say "Starting anagramd on 127.0.0.1:$PORT"
   clean_env HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
     nohup "$PY" "$APP" --model-dir "$MODEL_DIR" --lid-model "$LID" --host 127.0.0.1 --port "$PORT" >> "$LOG" 2>&1 &

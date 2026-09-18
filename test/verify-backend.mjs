@@ -1,4 +1,4 @@
-// test/verify-backend.mjs — prove the chips come from the real model, not the stub.
+// test/verify-backend.mjs — prove every chip is the daemon's own answer for that paragraph.
 //
 // 1. With anagramd up: load the built extension on the self-test page, read each
 //    chip's paragraph text + the probabilities in its hover card, POST the SAME text

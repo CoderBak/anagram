@@ -27,12 +27,16 @@ Hardening (the daemon is a local service, but a local service is still a service
     - binds 127.0.0.1 only unless --allow-remote is given explicitly
     - Host header allow-list (loopback names only) — defeats DNS-rebinding
     - no CORS headers: the extension talks to it with host permissions, web pages cannot read it
-    - request limits: blocks per request, characters per block, body bytes, unique ids,
-      contract major version — checked by pydantic BEFORE any tokenization
+    - POST /score must be application/json, and a request that carries an Origin must carry an
+      extension one (or our own) — together those keep a web page from reaching /score at all
+    - request limits: blocks per request, characters per block, unique ids, contract major
+      version — checked by pydantic BEFORE any tokenization; the body cap counts the bytes
+      that actually arrive, so a chunked body cannot walk past it
     - the language gate FAILS CLOSED: no fastText model → the daemon refuses to start
       (unless --no-language-gate is passed on purpose)
-    - the model version the extension keys its caches by is derived from the weights'
-      SHA-256, so a changed checkpoint can never serve another checkpoint's cache
+    - the model version the extension keys its caches by identifies the whole pipeline —
+      weights, tokenizer/config files, window, dtype, gate — so no two configurations that
+      can disagree about a paragraph ever share a cache entry
 
 Endpoints
     GET  /health   → model / device / bucket / language info (the extension polls this)
@@ -43,7 +47,8 @@ Endpoints
 
 Usage
     python anagramd/serve.py                 # ../../models/editlens_roberta-large on :8765
-    python anagramd/serve.py --selftest      # score four sample paragraphs (one non-English) and exit
+    python anagramd/serve.py --selftest      # score four sample paragraphs, assert what they should say,
+                                             # print PASS/FAIL per line and exit non-zero on any failure
     python anagramd/serve.py --model-dir /path/to/editlens_roberta-large --port 8765
 
 License note: the weights are CC BY-NC-SA 4.0 (non-commercial). Nothing here uploads text
@@ -73,11 +78,15 @@ HF_REPO = "pangram/editlens_roberta-large"
 HF_REVISION = "f93e1ace74528cfb48f337ab2fe946fb71a728cb"
 MODEL_ID = "editlens_roberta-large"
 # SHA-256 of model.safetensors at that revision. The served model version is derived
-# from the ACTUAL weights (see weights_version) — this constant only lets startup warn
+# from the ACTUAL weights (see pipeline_version) — this constant only lets startup warn
 # when the checkpoint on disk is not the verified one.
 EXPECTED_WEIGHTS_SHA256 = "869f33df7928c447bbd150d3b5192b4ea90b1cbd2ee4aad97f5d51d59dfc8cfb"
-# Preprocessing/bucket-definition revision, folded into the version alongside the hash.
+# Preprocessing/bucket-definition revision, folded into the version alongside the hashes.
 PIPELINE_REV = "pre1"
+# The small files that decide how text reaches the weights. Every one of them can change a
+# verdict without touching model.safetensors, so they are hashed into the served version too.
+PIPELINE_FILES = ("config.json", "tokenizer.json", "tokenizer_config.json", "vocab.json",
+                  "merges.txt", "special_tokens_map.json")
 # The bucket edges EditLens used (cosine distance 0.03 / 0.15) — a description of the
 # classes, not a calibration of the probabilities.
 CALIBRATION = "editlens-4bucket-cosine(0.03,0.15)"
@@ -214,52 +223,80 @@ def ensure_model(model_dir: Path) -> None:
                  f"  hf download {HF_REPO} --revision {HF_REVISION} --local-dir {model_dir}")
 
 
-def weights_version(model_dir: Path) -> str:
-    """`sha256:<12 hex>-<pipeline rev>` of the checkpoint actually loaded.
+def weights_digest(model_dir: Path) -> tuple[str, str] | None:
+    """(file name, SHA-256) of the checkpoint actually loaded, or None if there is none.
 
     Hashing 1.4 GB takes a second or two; the digest is memoized next to the weights
-    together with the file's size and mtime, so restarts are free. The extension folds this
-    into every cache key — two different checkpoints can never share a cached verdict.
+    together with the file's name, size and mtime, so restarts are free.
     """
     weights = model_dir / "model.safetensors"
-    if not weights.exists():  # sharded / other formats: fall back to config + tokenizer identity
+    if not weights.exists():  # sharded / other formats: hash whichever checkpoint is there
         files = sorted(p for p in model_dir.glob("*.safetensors")) or sorted(model_dir.glob("*.bin"))
         if not files:
-            return f"unknown-{PIPELINE_REV}"
+            return None
         weights = files[0]
     st = weights.stat()
     memo = model_dir / ".anagram-weights-sha256.json"
     try:
         cached = json.loads(memo.read_text())
-        if cached.get("size") == st.st_size and cached.get("mtime") == st.st_mtime:
-            digest = cached["sha256"]
-        else:
-            raise KeyError
+        if cached.get("file") == weights.name and cached.get("size") == st.st_size and cached.get("mtime") == st.st_mtime:
+            return (weights.name, cached["sha256"])
     except Exception:
-        h = hashlib.sha256()
-        with weights.open("rb") as f:
-            for chunk in iter(lambda: f.read(1 << 22), b""):
-                h.update(chunk)
-        digest = h.hexdigest()
-        try:
-            memo.write_text(json.dumps({"file": weights.name, "size": st.st_size, "mtime": st.st_mtime, "sha256": digest}))
-        except OSError:
-            pass
-    if EXPECTED_WEIGHTS_SHA256 and digest != EXPECTED_WEIGHTS_SHA256:
+        pass
+    h = hashlib.sha256()
+    with weights.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 22), b""):
+            h.update(chunk)
+    digest = h.hexdigest()
+    try:
+        memo.write_text(json.dumps({"file": weights.name, "size": st.st_size, "mtime": st.st_mtime, "sha256": digest}))
+    except OSError:
+        pass
+    return (weights.name, digest)
+
+
+def pipeline_version(model_dir: Path, max_length: int, dtype: str, language_gate: bool) -> str:
+    """`sha256:<12 hex of the weights>-p<8 hex of the rest>-<pipeline rev>`.
+
+    The extension keys every cached verdict by this string, so it has to change whenever the
+    same paragraph could come back with a different number — and the weights are only one of
+    the inputs. A swapped tokenizer or config, another --max-length, fp32 instead of fp16, or
+    a language gate turned off all move the answers while model.safetensors stays byte-for-byte
+    identical. The second digest therefore covers a canonical JSON manifest: the SHA-256 of
+    every small pipeline file that exists (kilobytes — hashed on every start, unlike the
+    weights) plus the settings that reach the model. The weights digest keeps the front of the
+    string because it is the expensive one and the one a human recognizes.
+    """
+    found = weights_digest(model_dir)
+    if found and EXPECTED_WEIGHTS_SHA256 and found[1] != EXPECTED_WEIGHTS_SHA256:
         log.warning("weights %s have sha256 %s…, not the verified %s… — verdicts may differ from the "
-                    "benchmarked checkpoint (cache keys stay distinct)", weights.name, digest[:12],
+                    "benchmarked checkpoint (cache keys stay distinct)", found[0], found[1][:12],
                     EXPECTED_WEIGHTS_SHA256[:12])
-    return f"sha256:{digest[:12]}-{PIPELINE_REV}"
+    manifest = {
+        "files": {name: hashlib.sha256((model_dir / name).read_bytes()).hexdigest()
+                  for name in PIPELINE_FILES if (model_dir / name).is_file()},
+        "max_length": max_length,
+        "dtype": dtype,
+        "language_gate": language_gate,
+        "rev": PIPELINE_REV,
+    }
+    blob = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+    head = f"sha256:{found[1][:12]}" if found else "unknown"
+    return f"{head}-p{hashlib.sha256(blob).hexdigest()[:8]}-{PIPELINE_REV}"
 
 
 class EditLens:
-    def __init__(self, model_dir: Path, device: str, max_length: int, batch_size: int, dtype: str):
+    # The language gate is a constructor argument, not something bolted on afterwards: it
+    # decides whether a paragraph is scored at all, so the served version has to know about it.
+    def __init__(self, model_dir: Path, device: str, max_length: int, batch_size: int, dtype: str,
+                 lid: LanguageId):
         import emoji
         import torch
         from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
         self.emoji = emoji
         self.torch = torch
+        self.lid = lid
         self.max_length = max_length
         self.batch_size = batch_size
         self.lock = threading.Lock()
@@ -269,7 +306,6 @@ class EditLens:
         self.last_wait_ms = 0.0
 
         ensure_model(model_dir)
-        self.version = weights_version(model_dir)
 
         self.device = self._pick_device(device)
         # fp16 on the GPU is numerically indistinguishable here (probs agree to 3-4 decimals) and
@@ -277,6 +313,9 @@ class EditLens:
         if dtype == "auto":
             dtype = "fp16" if self.device in ("mps", "cuda") else "fp32"
         self.dtype = torch.float16 if dtype == "fp16" and self.device != "cpu" else torch.float32
+        self.dtype_name = str(self.dtype).replace("torch.", "")
+        # Only now is everything that can move a verdict decided.
+        self.version = pipeline_version(model_dir, max_length, self.dtype_name, lid.enabled)
         t0 = time.time()
         self.tok = AutoTokenizer.from_pretrained(str(model_dir))
         self.model = self._load(AutoModelForSequenceClassification, model_dir)
@@ -285,7 +324,7 @@ class EditLens:
         if self.n_buckets != len(BUCKET_LABELS):
             log.warning("model has %d labels, extension expects %d", self.n_buckets, len(BUCKET_LABELS))
         log.info("loaded %s on %s (%s) in %.1fs — %d buckets, max %d tokens",
-                 model_dir.name, self.device, str(self.dtype).replace("torch.", ""), time.time() - t0,
+                 model_dir.name, self.device, self.dtype_name, time.time() - t0,
                  self.n_buckets, max_length)
         self._warmup()
 
@@ -359,11 +398,11 @@ class EditLens:
             "n_buckets": self.n_buckets,
             "buckets": BUCKET_LABELS[: self.n_buckets],
             "languages": SUPPORTED_LANGUAGES,
-            "lid": self.lid.name if getattr(self, "lid", None) and self.lid.enabled else None,
+            "lid": self.lid.name if self.lid.enabled else None,
             "max_tokens": self.max_length,
             "limits": {"max_blocks": MAX_BLOCKS, "max_text_chars": MAX_TEXT_CHARS, "max_body_bytes": MAX_BODY_BYTES},
             "device": self.device,
-            "dtype": str(self.dtype).replace("torch.", ""),
+            "dtype": self.dtype_name,
             "uptime_s": round(time.time() - self.started, 1),
             "scored_blocks": self.scored,
         }
@@ -428,6 +467,116 @@ class ScoreResponse(BaseModel):
     results: list[ScoreResult]
 
 
+# --- ASGI guards: refuse a request before FastAPI ever routes or parses it ---------------------------
+
+
+def _header(scope: dict, name: bytes) -> str | None:
+    """First value of a header in an ASGI scope (names arrive lowercased, values as bytes)."""
+    for key, value in scope.get("headers", []):
+        if key == name:
+            return value.decode("latin-1")
+    return None
+
+
+async def _refuse(send, status: int, detail: str) -> None:
+    """Answer straight on the ASGI channel, in FastAPI's own {"detail": …} error shape."""
+    body = json.dumps({"detail": detail}).encode()
+    await send({"type": "http.response.start", "status": status,
+                "headers": [(b"content-type", b"application/json"),
+                            (b"content-length", str(len(body)).encode())]})
+    await send({"type": "http.response.body", "body": body})
+
+
+class BodyCap:
+    """Cap the bytes we actually RECEIVE, not the bytes a client promises to send.
+
+    A Content-Length check alone is decorative: a chunked (or otherwise streamed) request
+    declares no length, so the whole body would be buffered and JSON-parsed before pydantic's
+    limits could apply to it. This counts the `http.request` chunks as uvicorn hands them over
+    and answers 413 the moment the count passes the cap, so the endpoint never runs.
+
+    Exactly one response reaches the client: after answering we hand the application a
+    disconnect (Starlette turns that into its own 400) and drop everything it tries to send.
+    """
+
+    def __init__(self, app, max_bytes: int = MAX_BODY_BYTES):
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        declared = _header(scope, b"content-length")
+        if declared and declared.isdigit() and int(declared) > self.max_bytes:
+            await _refuse(send, 413, f"body exceeds {self.max_bytes} bytes")
+            return
+        state = {"seen": 0, "over": False}
+
+        async def receive_capped():
+            if state["over"]:
+                return {"type": "http.disconnect"}
+            message = await receive()
+            if message.get("type") == "http.request":
+                state["seen"] += len(message.get("body", b""))
+                if state["seen"] > self.max_bytes:
+                    state["over"] = True
+                    await _refuse(send, 413, f"body exceeds {self.max_bytes} bytes")
+                    return {"type": "http.disconnect"}
+            return message
+
+        async def send_unless_answered(message):
+            if not state["over"]:
+                await send(message)
+
+        try:
+            await self.app(scope, receive_capped, send_unless_answered)
+        except Exception:
+            if not state["over"]:  # a real failure; ours is already answered for
+                raise
+
+
+class OriginGuard:
+    """Keep a web page out of /score, with two rules aimed at exactly that attacker.
+
+    Content type. A page can only reach a cross-origin URL *without* a CORS preflight when the
+    request uses a "simple" content type — text/plain, the form encodings, or none at all via a
+    typeless Blob. Demanding application/json therefore forces a preflight, and the preflight
+    fails because we answer it with no CORS headers, so the POST is never sent. Parameters
+    (`; charset=utf-8`) are fine; anything else, or nothing, is 415.
+
+    Origin. When a request does carry an Origin it must be an extension's, or our own so that
+    the /docs "Try it out" button keeps working. `null` — sandboxed iframes, file:// pages,
+    some redirects — names no origin we can trust and is refused with the rest. A request with
+    no Origin at all (curl, the `anagram` CLI, Node) passes as before: those are not browsers,
+    and a browser cannot omit the header on a cross-origin request. Sec-Fetch-* is deliberately
+    not consulted — we have not verified what browsers put there for extension requests.
+    """
+
+    EXTENSION_SCHEMES = ("chrome-extension://", "moz-extension://", "safari-web-extension://")
+
+    def __init__(self, app, own_origins: tuple[str, ...] = ()):
+        self.app = app
+        self.own_origins = own_origins
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] == "http":
+            origin = _header(scope, b"origin")
+            if origin is not None and not self._allowed(origin):
+                await _refuse(send, 403, f"origin {origin} is not allowed")
+                return
+            if scope["method"] == "POST" and scope["path"] == "/score":
+                media = (_header(scope, b"content-type") or "").split(";")[0].strip().lower()
+                if media != "application/json":
+                    await _refuse(send, 415, "POST /score requires content-type: application/json")
+                    return
+        await self.app(scope, receive, send)
+
+    def _allowed(self, origin: str) -> bool:
+        origin = origin.strip().lower()
+        return origin in self.own_origins or origin.startswith(self.EXTENSION_SCHEMES)
+
+
 # --- HTTP (FastAPI) --------------------------------------------------------------------------------
 
 
@@ -436,25 +585,23 @@ def unsupported_result(block_id: str, n_buckets: int, lang: str, prob: float) ->
             "tokens": 0, "truncated": False, "lang": lang, "lang_prob": round(prob, 3), "unsupported": True}
 
 
-def make_app(engine: EditLens, allowed_hosts: list[str]):
-    from fastapi import FastAPI, Request
+def make_app(engine: EditLens, allowed_hosts: list[str], port: int):
+    from fastapi import FastAPI
     from fastapi.middleware.trustedhost import TrustedHostMiddleware
-    from fastapi.responses import JSONResponse
     app = FastAPI(title="anagramd", version=engine.version,
                   description="Local EditLens scoring daemon for the Anagram extension "
                               "(contract " + CONTRACT_VERSION + ").")
-    # Host allow-list: a page that resolves its own name to 127.0.0.1 (DNS rebinding) still
-    # sends its own Host header, and is refused. No CORS middleware on purpose — the
-    # extension calls with host permissions (no CORS needed) and web pages get no headers
-    # that would let them read a response.
+    # Starlette runs the LAST middleware added first, so this reads bottom-up: cap the body
+    # before anything can buffer it, then refuse foreign origins and non-JSON posts, then the
+    # Host allow-list — a page that resolves its own name to 127.0.0.1 (DNS rebinding) still
+    # sends its own Host header, and is refused. No CORS middleware on purpose: the extension
+    # calls with host permissions (no CORS needed) and web pages get no headers that would let
+    # them read a response.
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
-
-    @app.middleware("http")
-    async def cap_body(request: Request, call_next):
-        length = request.headers.get("content-length")
-        if length and length.isdigit() and int(length) > MAX_BODY_BYTES:
-            return JSONResponse({"detail": f"body exceeds {MAX_BODY_BYTES} bytes"}, status_code=413)
-        return await call_next(request)
+    # Our own origin is every name we answer to on our own port — that is what a browser puts
+    # in Origin when the /docs page posts back to us.
+    app.add_middleware(OriginGuard, own_origins=tuple(f"http://{h.lower()}:{port}" for h in allowed_hosts))
+    app.add_middleware(BodyCap, max_bytes=MAX_BODY_BYTES)
 
     @app.get("/health")
     def health() -> dict:
@@ -524,22 +671,94 @@ SELFTEST = [
 ]
 
 
+def run_selftest(engine: EditLens) -> int:
+    """Score the samples, ASSERT what is robust about them, return the number of failures.
+
+    A selftest that prints whatever the model said and exits 0 cannot fail, which makes it
+    useless as the installer's "is this thing actually working" step. The exact numbers move a
+    little with device and dtype, so only the ordering is checked: the human paragraph lands in
+    bucket 0, the AI one in bucket 3, the lightly rewritten human paragraph strictly between the
+    two, the Chinese one is refused by the gate, and every output is a distribution.
+    """
+    t0 = time.time()
+    failures = 0
+    scores: dict[str, float] = {}
+    probs: dict[str, list[float]] = {}
+
+    def report(state: str, line: str) -> None:
+        nonlocal failures
+        print(f"  {state}  {line}")
+        if state == "FAIL":
+            failures += 1
+
+    for label, text in SELFTEST:
+        if label == "zh" and not engine.lid.enabled:
+            report("SKIP", "zh      → the language gate is off (--no-language-gate), nothing to refuse")
+            continue
+        if engine.lid.enabled:
+            lang, prob = engine.lid.detect(text)
+            if lang not in SUPPORTED_LANGUAGES:
+                report("PASS" if label == "zh" else "FAIL",
+                       f"{label:7s} → unsupported language {lang} ({prob:.2f}), not scored")
+                continue
+        r = engine.score([text])[0]
+        scores[label] = r["score"]
+        probs[label] = r["probs"]
+        line = (f"{label:7s} → bucket {r['bucket']} ({BUCKET_LABELS[r['bucket']]}), score {r['score']:.3f}, "
+                f"probs {r['probs']}, {r['tokens']} tokens")
+        if label == "human":
+            report("PASS" if r["bucket"] == 0 else "FAIL", f"{line}  [expected bucket 0]")
+        elif label == "ai":
+            report("PASS" if r["bucket"] == 3 else "FAIL", f"{line}  [expected bucket 3]")
+        else:
+            report("INFO", line)
+
+    if {"human", "edited", "ai"} <= scores.keys():
+        between = scores["human"] < scores["edited"] < scores["ai"]
+        report("PASS" if between else "FAIL",
+               f"edited {scores['edited']:.3f} lies strictly between human {scores['human']:.3f} "
+               f"and ai {scores['ai']:.3f}")
+    else:
+        report("FAIL", f"only {sorted(scores)} of the three English samples were scored")
+    sums = {label: sum(p) for label, p in probs.items()}
+    report("PASS" if sums and all(abs(s - 1) < 0.01 for s in sums.values()) else "FAIL",
+           "every probs vector sums to 1 — " + ", ".join(f"{k} {v:.4f}" for k, v in sums.items()))
+    print(f"  {len(SELFTEST)} paragraphs in {(time.time() - t0) * 1000:.0f} ms on {engine.device}"
+          f" (language gate: {'on' if engine.lid.enabled else 'OFF'}, model {engine.version})")
+    return failures
+
+
+def bounded_int(lo: int, hi: int):
+    """An argparse type that refuses an out-of-range option before the model is loaded."""
+    def parse(raw: str) -> int:
+        try:
+            value = int(raw)
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"must be a whole number (got {raw!r})")
+        if not lo <= value <= hi:
+            raise argparse.ArgumentTypeError(f"must be between {lo} and {hi} (got {value})")
+        return value
+    parse.__name__ = f"int in [{lo}, {hi}]"
+    return parse
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Anagram local scoring daemon (EditLens roberta-large)")
     ap.add_argument("--model-dir", type=Path, default=DEFAULT_MODEL_DIR)
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--allow-remote", action="store_true",
                     help="permit a non-loopback --host (page text then leaves this machine — not advised)")
-    ap.add_argument("--port", type=int, default=8765)
+    ap.add_argument("--port", type=bounded_int(1, 65535), default=8765)
     ap.add_argument("--device", default="auto", choices=["auto", "mps", "cuda", "cpu"])
     ap.add_argument("--dtype", default="auto", choices=["auto", "fp32", "fp16"],
                     help="auto = fp16 on mps/cuda, fp32 on cpu")
-    ap.add_argument("--max-length", type=int, default=512, help="roberta-large caps at 512")
-    ap.add_argument("--batch-size", type=int, default=32)
+    ap.add_argument("--max-length", type=bounded_int(8, 512), default=512, help="roberta-large caps at 512")
+    ap.add_argument("--batch-size", type=bounded_int(1, 256), default=32)
     ap.add_argument("--lid-model", type=Path, default=DEFAULT_LID_PATH,
                     help="fastText lid.176.ftz path (downloaded on first run if missing)")
     ap.add_argument("--no-language-gate", action="store_true", help="score every block regardless of language")
-    ap.add_argument("--selftest", action="store_true", help="score sample paragraphs (incl. a non-English one), print, exit")
+    ap.add_argument("--selftest", action="store_true",
+                    help="score the sample paragraphs, check what they should say, exit non-zero if not")
     args = ap.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s", datefmt="%H:%M:%S")
@@ -550,28 +769,20 @@ def main() -> None:
     if not loopback and not args.allow_remote:
         sys.exit(f"--host {args.host} is not a loopback address; pass --allow-remote if you really "
                  "want page text to leave this machine")
-    engine = EditLens(args.model_dir, args.device, args.max_length, args.batch_size, args.dtype)
-    engine.lid = LanguageId.disabled() if args.no_language_gate else LanguageId(args.lid_model)
+    # The gate is loaded first: it is part of what the served model version identifies.
+    lid = LanguageId.disabled() if args.no_language_gate else LanguageId(args.lid_model)
+    engine = EditLens(args.model_dir, args.device, args.max_length, args.batch_size, args.dtype, lid)
 
     if args.selftest:
-        t0 = time.time()
-        for label, text in SELFTEST:
-            if engine.lid.enabled:
-                lang, prob = engine.lid.detect(text)
-                if lang not in SUPPORTED_LANGUAGES:
-                    print(f"  expected≈{label:7s} → UNSUPPORTED language {lang} ({prob:.2f}) — not scored")
-                    continue
-            r = engine.score([text])[0]
-            print(f"  expected≈{label:7s} → bucket {r['bucket']} ({BUCKET_LABELS[r['bucket']]:15s}) "
-                  f"score {r['score']:.3f}  probs {r['probs']}  tokens {r['tokens']}")
-        print(f"  {len(SELFTEST)} paragraphs in {(time.time() - t0) * 1000:.0f} ms on {engine.device}"
-              f" (language gate: {'on' if engine.lid.enabled else 'OFF'})")
+        failures = run_selftest(engine)
+        if failures:
+            sys.exit(f"selftest FAILED: {failures} expectation(s) did not hold")
         return
 
     import uvicorn
 
     allowed_hosts = list(LOOPBACK_HOSTS) if loopback else [args.host, *LOOPBACK_HOSTS]
-    app = make_app(engine, allowed_hosts)
+    app = make_app(engine, allowed_hosts, args.port)
     log.info("listening on http://%s:%d  (GET /health, POST /score, GET /docs) — model %s",
              args.host, args.port, engine.version)
     # Our own per-request log line above replaces uvicorn's access log.
