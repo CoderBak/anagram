@@ -2,7 +2,8 @@
 //
 // EditLens reads 512 tokens and the daemon cuts whatever is longer, so a long paragraph
 // used to be judged by its opening alone while the chip and the underline spoke for all
-// of it. A text that does not fit one pass is now cut at sentence boundaries into
+// of it. A text that does not fit one pass is now cut at sentence boundaries — a unit of
+// several paragraphs between two of them, where it can be — into
 // consecutive, non-overlapping WINDOWS, each scored as a block of its own through the
 // ordinary pipeline (same wire contract; the canonical form of each window is what gets
 // deduplicated and cached). The chip states ONE aggregate for the unit; the marks are per
@@ -79,15 +80,31 @@ export interface TextSpan {
   end: number;
 }
 
-/** The cut nearest to `ideal` inside [lo, hi]: a sentence start if there is one, else
- *  a word start, else the ideal itself (one enormous "sentence" without a space). */
+/**
+ * How far from its even share a cut may move to fall BETWEEN two paragraphs instead of
+ * between two sentences of one. A text of several paragraphs — a selection across a page,
+ * a merged unit the walker could not keep inside one window (lib/dom/walker.ts divides a
+ * stretch of short paragraphs into window-sized groups, so that is the exception) — has
+ * paragraphs of two or three sentences each: the nearest sentence end is usually in the
+ * middle of one, which then closed one window, opened the next and was underlined in two
+ * bands. Short paragraphs are under fifty words, so a joint is rarely further than this.
+ */
+const JOINT_REACH_CHARS = MIN_WINDOW_CHARS / 2;
+
+/** The cut nearest to `ideal` inside [lo, hi]: the joint between two parts of a merged
+ *  unit if one is within reach, else a sentence start, else a word start, else the ideal
+ *  itself (one enormous "sentence" without a space). */
 function pickCut(text: string, starts: number[], ideal: number, lo: number, hi: number): number {
   let best = -1;
+  let joint = -1;
+  const nearer = (s: number, than: number): boolean => than < 0 || Math.abs(s - ideal) < Math.abs(than - ideal);
   for (const s of starts) {
     if (s < lo) continue;
     if (s > hi) break;
-    if (best < 0 || Math.abs(s - ideal) < Math.abs(best - ideal)) best = s;
+    if (nearer(s, best)) best = s;
+    if (Math.abs(s - ideal) <= JOINT_REACH_CHARS && text.startsWith("\n\n", s - 2) && nearer(s, joint)) joint = s;
   }
+  if (joint >= 0) return joint;
   if (best >= 0) return best;
   const mid = Math.min(hi, Math.max(lo, Math.round(ideal)));
   for (let d = 0; mid - d >= lo || mid + d <= hi; d++) {

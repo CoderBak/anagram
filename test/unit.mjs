@@ -602,6 +602,13 @@ const results = await page.evaluate(() => {
     check("a merged multi-part unit is cut at a joint between two parts",
       mSpans.length >= 2 && contiguous(merged, mSpans) && mSpans.slice(1).every((s) => merged.slice(s.start - 2, s.start) === "\n\n" && merged.startsWith("ITEM", s.start)), JSON.stringify(mSpans));
 
+    // Paragraphs of three uneven sentences: the sentence end nearest to an even share is
+    // usually INSIDE a paragraph. The cut still goes between two of them.
+    const trios = Array.from({ length: 50 }, (_, i) => `Line ${i} opens. ${words(14 + (i % 5))} And it closes here.`).join("\n\n");
+    const tSpans = PW.planWindows(trios);
+    check("…and between two parts even where a sentence end INSIDE a part lies nearer to the even split",
+      tSpans.length === 4 && contiguous(trios, tSpans) && tSpans.slice(1).every((s) => trios.slice(s.start - 2, s.start) === "\n\n" && /^Line \d+ opens/.test(trios.slice(s.start))) && lens(tSpans).every((n) => n <= W && n >= PW.MIN_WINDOW_CHARS), JSON.stringify(lens(tSpans)));
+
     const dump = prose(250).slice(0, 20000);
     const dSpans = PW.planWindows(dump);
     const readEnd = dSpans[dSpans.length - 1].end;
