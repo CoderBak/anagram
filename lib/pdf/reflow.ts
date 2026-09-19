@@ -132,6 +132,18 @@ const HEADING_SIZE = 1.12;
 const HEADING_MAX_WORDS = 20;
 /** A face carrying less than this share of the document's text is a display face. */
 const DISPLAY_FONT_SHARE = 0.06;
+/** Type this much smaller than the body, at the foot of a column, is a footnote. */
+const FOOTNOTE_SIZE = 0.92;
+/**
+ * The labels a caption opens with. A short list of the English ones and nothing more: it
+ * is not a dictionary but a typographic convention, and where it does not fire — a German
+ * "Abbildung 3", a Chinese caption — the text simply keeps the reading it has today.
+ */
+const CAPTION_LABEL = /^(?:fig(?:ure|s?\.)?|table|tab\.|chart|listing|algorithm|scheme)\s*\d/i;
+/** A caption is a legend, not an argument; past this length it is prose about a figure. */
+const CAPTION_MAX_WORDS = 60;
+/** At most this many footnotes and captions may stand between a paragraph and its rest. */
+const ASIDE_MAX = 2;
 /** "2", "3.1", "IV." — how a printed section announces itself. */
 const SECTION_NUMBER = /^(?:\d+(?:\.\d+)*\.?|[IVXLC]+\.)\s+\p{Lu}/u;
 /**
@@ -784,6 +796,42 @@ interface Draft {
   endsShort: boolean;
   /** The block is part of the first page's front matter, and reads as none of the rest. */
   front: boolean;
+  /** The block interrupts the text without continuing it: a footnote, a caption. */
+  aside?: boolean;
+}
+
+/**
+ * Footnotes and figure captions are set INTO the text and read outside it. A footnote
+ * sits at the foot of its column in smaller type, a caption under the figure it names,
+ * and either of them can fall between a paragraph and the rest of that paragraph in the
+ * next column or on the next page — which, without this, stops the two halves from ever
+ * being sewn back together. Marking them is enough: they stay where they are, and the
+ * join is allowed to reach past them.
+ */
+function markAsides(drafts: Draft[], bodySize: number): void {
+  for (const d of drafts) {
+    if (d.front || !CAPTION_LABEL.test(d.text)) continue;
+    // A paragraph that opens "Figure 3 shows that…" and then argues for a page is prose
+    // about a figure, not the figure's legend.
+    if (d.size < bodySize || d.text.split(/\s+/).length <= CAPTION_MAX_WORDS) d.aside = true;
+  }
+
+  // Footnotes, one column at a time: the run of small-type blocks that ENDS a column
+  // under type of the column's own size. Asking for the body-size block above them is
+  // what tells the foot of a page from a whole column set small — a reference list, a
+  // table's notes — which is nobody's paragraph and needs no reaching past.
+  let start = 0;
+  for (let i = 1; i <= drafts.length; i++) {
+    if (i < drafts.length && drafts[i].segment === drafts[start].segment) continue;
+    if (!drafts[start].front) {
+      let j = i - 1;
+      while (j > start && drafts[j].size <= bodySize * FOOTNOTE_SIZE) j--;
+      if (drafts[j].size > bodySize * FOOTNOTE_SIZE) {
+        for (let k = j + 1; k < i; k++) drafts[k].aside = true;
+      }
+    }
+    start = i;
+  }
 }
 
 /**
@@ -901,10 +949,19 @@ function paragraphsOf(lines: Line[], vocab: Vocabulary, front: boolean): Draft[]
  */
 function joinAcrossSegments(drafts: Draft[], vocab: Vocabulary): Draft[] {
   const out: Draft[] = [];
+  /** The last block that was part of the text, and the asides emitted since it. */
+  let open: Draft | null = null;
+  let held = 0;
   for (const d of drafts) {
-    const prev = out[out.length - 1];
+    if (d.aside) {
+      out.push({ ...d });
+      held++;
+      continue;
+    }
+    const prev = open;
     const continues =
       prev &&
+      held <= ASIDE_MAX &&
       prev.kind === "paragraph" &&
       d.kind === "paragraph" &&
       !prev.front &&
@@ -919,9 +976,14 @@ function joinAcrossSegments(drafts: Draft[], vocab: Vocabulary): Draft[] {
     if (continues) {
       prev.text = appendLine(prev.text, d.text, vocab);
       prev.endsShort = d.endsShort;
+      prev.segment = d.segment;
+      held = 0;
       continue;
     }
-    out.push({ ...d });
+    const copy = { ...d };
+    out.push(copy);
+    open = copy;
+    held = 0;
   }
   return out;
 }
@@ -1016,6 +1078,7 @@ export function reflowPdf(pages: PdfPageText[]): ReflowBlock[] {
   const front = frontMatterOf(perPage[0].filter((l) => !drop.has(l)), pages[0].height, bodySize);
   const drafts = segments(lines, front).flatMap((s) => paragraphsOf(s, vocab, front.has(s[0])));
   classifyHeadings(drafts, bodySize, displayFonts);
+  markAsides(drafts, bodySize);
 
   return joinAcrossSegments(drafts, vocab).map(({ kind, text, page }) => ({ kind, text, page }));
 }

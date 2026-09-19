@@ -527,6 +527,63 @@ describe("reflowPdf — furniture", () => {
   });
 });
 
+describe("reflowPdf — footnotes and captions", () => {
+  const LEFT = ["a paragraph that fills the", "left column right down to", "its foot and carries on", "straight past the end with", "no punctuation at all to", "stop it going, and"];
+  const RIGHT = ["so the right column takes", "it up again in lower case", "and finishes the sentence", "over there instead, on the", "very same printed page as", "the one it started on."];
+
+  it("reaches past a footnote at the foot of a column to the rest of the paragraph", () => {
+    const blocks = reflowPdf([
+      page(1, [
+        ...column(LEFT, 500, 72, 200),
+        { text: "1 The footnote sits under a rule at the", x: 72, y: 500 + 7 * PITCH, size: 8, width: 195 },
+        { text: "foot of the column, in smaller type.", x: 72, y: 500 + 8 * PITCH, size: 8, width: 195 },
+        ...column(RIGHT, 500, 320, 200),
+      ]),
+    ]);
+    expect(texts(blocks)).toEqual([
+      [...LEFT, ...RIGHT].join(" "),
+      "1 The footnote sits under a rule at the foot of the column, in smaller type.",
+    ]);
+  });
+
+  it("reaches past a figure caption on the next page", () => {
+    const blocks = reflowPdf([
+      page(1, column(["a paragraph that reaches the", "foot of the page and simply"], 120)),
+      page(2, [
+        { text: "Figure 3: the layout of a two-column page.", y: 100, size: 9, font: "caption", width: 300 },
+        ...column(["runs on from there without", "a break of any kind at all."], 160),
+      ]),
+    ]);
+    expect(texts(blocks)).toEqual([
+      "a paragraph that reaches the foot of the page and simply runs on from there without a break of any kind at all.",
+      "Figure 3: the layout of a two-column page.",
+    ]);
+  });
+
+  it("leaves a paragraph about a figure alone, however it opens", () => {
+    const prose = ["Figure 3 shows the layout of a two-column page, and the point of it", "is that a paragraph which argues about a figure for a page and a half", "is prose about that figure rather than the legend printed under it,", "however it happens to open, so it keeps its place in the reading order", "and is scored exactly as the paragraphs around it are scored here.", "Nothing about it is a caption but the first two words of the thing."];
+    const blocks = reflowPdf([page(1, column(prose, 120))]);
+    expect(texts(blocks)).toEqual([prose.join(" ")]);
+  });
+
+  it("does not reach past a whole column set in small type", () => {
+    // A reference list is not a footnote: nothing of the column's own size stands above
+    // it, so the paragraph before it has no claim on what comes after.
+    const refs = Array.from({ length: 8 }, (_, i) => `[${i}] Doe, J. A paper about papers. 202${i}.`);
+    const blocks = reflowPdf([
+      page(1, [
+        ...column(LEFT, 120, 72, 200),
+        { text: "carries on past the foot of it and", x: 72, y: 120 + 6 * PITCH, width: 200 },
+        { text: "over the end of the column here", x: 72, y: 120 + 7 * PITCH, width: 200 },
+        ...refs.map((text, i) => ({ text, x: 320, y: 120 + i * PITCH, size: 8, width: 200 })),
+      ]),
+    ]);
+    expect(blocks[0].text).toBe(
+      `${LEFT.join(" ")} carries on past the foot of it and over the end of the column here`,
+    );
+  });
+});
+
 describe("reflowPdf — across pages", () => {
   it("joins a paragraph that continues on the next page", () => {
     const blocks = reflowPdf([
