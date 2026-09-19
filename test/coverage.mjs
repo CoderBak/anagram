@@ -217,6 +217,15 @@ function analyse(cfg) {
   const T = C.text || {};
   const B = C.boiler || {};
   const TG = C.tags || {};
+  const W = C.walker || {};
+  /** A heading is a barrier only while it is a LABEL. A container that merely DECLARES
+   *  itself one — lobste.rs' comment bodies, a teaser card wrapped in an <h2> — is walked
+   *  like the block it is, so calling it a barrier named the wrong reason for every text
+   *  under it (tags.isHeadingLabel). */
+  const headingBarrier = (el) => !!(TG.isHeading && TG.isHeading(el) && (!TG.isHeadingLabel || TG.isHeadingLabel(el)));
+  /** A <pre> of PROSE — an RFC, a man page, a mailing-list message — is read like any other
+   *  block; only the rest is machine text the walk never enters (walker.isProsePre). */
+  const codePre = (el) => el.nodeName.toUpperCase() === "PRE" && !(W.isProsePre && W.isProsePre(el));
   const MARK = (C.types && C.types.MARK_ATTR) || "data-anagram";
   const MIN = typeof T.MIN_UNIT_WORDS === "number" ? T.MIN_UNIT_WORDS : 50;
   const MIN_MERGE = typeof T.MIN_MERGE_WORDS === "number" ? T.MIN_MERGE_WORDS : 8;
@@ -407,18 +416,18 @@ function analyse(cfg) {
     for (let cur = el; cur; cur = parentOf(cur)) {
       const tag = cur.nodeName.toUpperCase();
       if (TG.NO_SCORE_TAGS && TG.NO_SCORE_TAGS.has(tag)) return "ancestry: never-scored tag <" + tag.toLowerCase() + ">";
-      if (tag === "PRE" && !plain) return "ancestry: inside <pre>";
+      if (tag === "PRE" && !plain && codePre(cur)) return "ancestry: inside a <pre> of machine text";
       if (cur.hasAttribute && cur.hasAttribute(MARK)) return "ancestry: our own UI";
       if (B.isNoTranslate && B.isNoTranslate(cur)) return "ancestry: translate=no / .notranslate on <" + tag.toLowerCase() + ">";
       if (cur.isContentEditable) return "ancestry: contenteditable <" + tag.toLowerCase() + ">";
       if (cur.getAttribute && cur.getAttribute("aria-hidden") === "true") return "ancestry: aria-hidden <" + tag.toLowerCase() + ">";
       if (B.isBoilerplate && B.isBoilerplate(cur)) return "ancestry: boilerplate <" + tag.toLowerCase() + "> — " + boilerWhy(cur);
       // Not one of isExcludedByAncestry's tests, but it has the same effect: visit()
-      // treats a heading as a barrier and RETURNS without descending, so everything under
-      // an element that merely declares role="heading" is unreachable.
-      if (TG.isHeading && TG.isHeading(cur))
+      // treats a heading LABEL as a barrier and RETURNS without descending. A container
+      // that only declares itself a heading is walked, so it is no reason for anything.
+      if (headingBarrier(cur))
         return (
-          "ancestry: heading <" + tag.toLowerCase() +
+          "ancestry: heading label <" + tag.toLowerCase() +
           (cur.getAttribute && cur.getAttribute("role") === "heading" ? ' role="heading"' : "") +
           "> — the walk never descends into a heading"
         );
@@ -440,8 +449,8 @@ function analyse(cfg) {
     (function rec(el, block, inLink) {
       if (HARD_SKIP.has(el.nodeName.toUpperCase())) return;
       if (invisible(el)) return;
-      // visit() treats a heading as a barrier and RETURNS: nothing under it is ever read.
-      if (el !== root && TG.isHeading && TG.isHeading(el)) {
+      // visit() treats a heading LABEL as a barrier and RETURNS: nothing under one is read.
+      if (el !== root && headingBarrier(el)) {
         skipped.headingWords += words(el.textContent);
         skipped.headingTags.add(
           el.nodeName.toLowerCase() + (el.getAttribute("role") === "heading" ? '[role="heading"]' : ""),
@@ -470,7 +479,7 @@ function analyse(cfg) {
         zero: !rectVisible(el),
         nameList: T.looksLikeNameList ? !!T.looksLikeNameList(text) : false,
         noise: T.symbolNoiseRatio ? T.symbolNoiseRatio(text) : 0,
-        heading: /^H[1-6]$/.test(el.nodeName.toUpperCase()) || el.getAttribute("role") === "heading",
+        heading: headingBarrier(el),
       };
     });
     return { list, skipped };
@@ -676,8 +685,9 @@ function analyse(cfg) {
     ["cookie/consent", tokenRe("cookies?|consent|gdpr")],
     ["sidebar", tokenRe("sidebar|side[-_]?bar|rail")],
     ["related/promo", tokenRe("related|recommended|promo|promoted|trending|newsletter|subscribe|most[-_]?read")],
-    // <pre> is already excluded by the walker, so a hit here is inline <code> or a
-    // highlighted block. On a text/plain document the whole body IS a <pre> by design.
+    // A hit here is inline <code>, a highlighted block, or a <pre> of machine text. A <pre>
+    // of PROSE is read like any other block and is NOT code (see below). On a text/plain
+    // document the whole body IS a <pre> by design.
     ["code", plainDoc ? "code[data-never]" : "pre,code"],
     ["table of numbers", "table"],
     ["form", "form"],
@@ -687,6 +697,7 @@ function analyse(cfg) {
   let chromeUnitCount = 0;
   let layoutTableUnits = 0;
   let layoutWrapperUnits = 0;
+  let prosePreUnits = 0;
   for (let i = 0; i < units.length; i++) {
     const digits = (units[i].text.match(/\d/g) || []).length;
     const digitRatio = Math.round((digits / Math.max(1, units[i].text.length)) * 100) / 100;
@@ -698,6 +709,12 @@ function analyse(cfg) {
           hit = sel instanceof RegExp ? closestToken(c, sel) : closestComposed(c, sel);
         } catch {}
         if (!hit) continue;
+        // A <pre> that READS as prose is not a code block: an RFC published as HTML, a man
+        // page, a mailing-list message. RFC 2616 reported all 554 of its units as chrome.
+        if (name === "code" && !codePre(hit)) {
+          prosePreUnits++;
+          continue;
+        }
         // A table is only a finding when it really is a table of numbers: Hacker News and
         // other old forums lay out whole comment threads in tables of prose.
         if (name === "table of numbers" && digitRatio <= 0.15) {
@@ -755,6 +772,7 @@ function analyse(cfg) {
     chromeSamples,
     layoutTableUnits,
     layoutWrapperUnits,
+    prosePreUnits,
     visited,
     domElements: document.getElementsByTagName("*").length,
     collectMs,
@@ -766,24 +784,55 @@ function analyse(cfg) {
 
 const BOT_RE = /just a moment|verifying you are human|attention required|checking your browser|are you a robot|enable javascript and cookies|unusual traffic|access denied|请开启javascript|安全验证|人机验证|滑动验证/i;
 const WALL_RE = /log in to continue|sign in to continue|log in or sign up|create an account to continue|you must log in|register to view|members only|登录后查看|请先登录|登录知乎|扫码登录|continue with (?:google|apple|facebook)/i;
+/** What a sign-in box says, wherever in the world. Read only from a dialog that IS the
+ *  whole page, so an ordinary "Sign in" link in a header never matches. */
+const SIGN_IN_RE = /log ?in|sign ?in|sign ?up|join now|create (?:an |a free )?account|continue with|登录|注册|登入|ログイン|로그인/i;
+/** The dialog landmarks a modal sign-in box is built from. */
+const DIALOG_SEL = 'dialog,[role="dialog"],[role="alertdialog"]';
 
 /** Classify what the reader would meet. Body text is inspected in the page and only the
  *  verdict comes back. */
 async function reachOf(page, status) {
   const v = await page
     .evaluate(
-      ({ bot, wall }) => {
-        const t = (document.title || "") + " " + (document.body ? document.body.innerText.slice(0, 1500) : "");
-        const w = (document.body ? document.body.innerText : "").split(/\s+/).filter(Boolean).length;
-        return { bot: new RegExp(bot, "i").test(t), wall: new RegExp(wall, "i").test(t), words: w, path: location.pathname };
+      ({ bot, wall, dialogSel }) => {
+        const body = document.body;
+        const t = (document.title || "") + " " + (body ? body.innerText.slice(0, 1500) : "");
+        const count = (s) => String(s || "").split(/\s+/).filter(Boolean).length;
+        /** Outermost matches only, so nothing inside another match is counted twice. */
+        const tops = (sel) => {
+          const all = body ? Array.from(body.querySelectorAll(sel)) : [];
+          return all.filter((el) => !all.some((o) => o !== el && o.contains(el)));
+        };
+        const dialogs = tops(dialogSel);
+        const dialogText = dialogs.map((el) => el.innerText || "").join(" ");
+        // What a modal hides from the reader. Opening one marks the page behind it
+        // aria-hidden (Threads: `div#scrollview`, 1 422 words; LinkedIn:
+        // `main#main-content`, 1 573), and innerText still reports every word of it.
+        const behind = tops('[aria-hidden="true"]').filter((el) => !dialogs.some((d) => d.contains(el) || el.contains(d)));
+        return {
+          bot: new RegExp(bot, "i").test(t),
+          wall: new RegExp(wall, "i").test(t),
+          words: count(body ? body.innerText : ""),
+          dialogWords: count(dialogText),
+          hiddenWords: behind.reduce((n, el) => n + count(el.innerText), 0),
+          dialogText: dialogText.slice(0, 600),
+          path: location.pathname,
+        };
       },
-      { bot: BOT_RE.source, wall: WALL_RE.source },
+      { bot: BOT_RE.source, wall: WALL_RE.source, dialogSel: DIALOG_SEL },
     )
     .catch(() => null);
   if (!v) return "blocked";
   if (v.bot) return "bot check";
   if (/\/(?:login|signin|sign-in|signup|checkpoint|consent|challenge)\b/i.test(v.path)) return "login wall";
   if (v.wall && v.words < 900) return "login wall";
+  // A page that IS a dialog. Threads, LinkedIn and Facebook answer a logged-out reader with
+  // a sign-in box and mark everything behind it aria-hidden, which the walk honours: the
+  // page reports zero prose words and zero units, and the row said "ok" — which reads as
+  // "the walker found nothing here" rather than "there was nothing to find".
+  if (v.dialogWords >= 20 && v.words - v.dialogWords - v.hiddenWords < 30)
+    return SIGN_IN_RE.test(v.dialogText) ? "login wall" : "blocked (the page is one dialog)";
   if (status && status >= 400) return `blocked (HTTP ${status})`;
   if (v.words < 30) return "blocked (empty page)";
   return "ok";
@@ -997,6 +1046,7 @@ for (const r of rows) {
       md.push(`  - ${c.cats.join("+")}: \`<${c.tag}>\` ${c.parts}p/${c.words}w, digits ${c.digitRatio} · "${c.hint}"`);
   }
   if (r.layoutTableUnits) md.push(`- ${r.layoutTableUnits} units sit in a \`<table>\` that is prose, not numbers (layout table) — not counted as chrome`);
+  if (r.prosePreUnits) md.push(`- ${r.prosePreUnits} units sit in a \`<pre>\` that reads as prose (an RFC, a man page, a mail archive) — read like any other block, not counted as chrome`);
   md.push(`- weight: ${r.domElements} elements in the document, ${r.visited} visited, collectUnits ${r.collectMs} ms${r.longestTask > 200 ? `, longest task ${r.longestTask} ms` : ""}`);
   if (r.analyseError) md.push(`- analyse error: \`${r.analyseError}\``);
 }

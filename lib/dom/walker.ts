@@ -688,8 +688,12 @@ function readsAsProse(raw: string): boolean {
  * preserved-whitespace text, so blank lines are paragraph gaps and the existing
  * column-gap and symbol-noise barriers still keep tables of contents, ASCII tables,
  * headers and diffs out of the units.
+ *
+ * Exported for the survey tool (test/coverage.mjs), which re-runs the shipped predicate
+ * rather than keeping a copy of it: a `<pre>` it reports as excluded, or as a block of
+ * code, has to be one this answers `false` for.
  */
-function isProsePre(el: Element): boolean {
+export function isProsePre(el: Element): boolean {
   if (hasCodeMarkup(el)) return false;
   return readsAsProse(el.textContent ?? "");
 }
