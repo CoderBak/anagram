@@ -34,7 +34,7 @@ import { MARK_ATTR } from "../types";
 import type { UnitVerdict } from "../capture/windows";
 import { messageLocale, t } from "../i18n";
 import { band, bandLabel, isNoVerdict, languageName, scorePct, type Band } from "./band";
-import { countWords, hasLetters } from "../dom/text";
+import { countWords, hasLetters, unitParagraphs } from "../dom/text";
 import { coverageNote, windowPcts, windowReadout } from "./coverage";
 import { distributionHtml } from "./dist";
 import { BADGE_CSS } from "./badge.css";
@@ -361,10 +361,11 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
     pill.className = `pill band-${b}`;
     // The bare number ("38%") — what it means is in the card and the intro, not on
     // every line. A merged unit says so up front ("38% ×3"): one verdict covering N
-    // short paragraphs must never masquerade as a single-paragraph judgment. A unit whose
-    // text the DOCUMENT fixed is the other way round: its parts are the pieces a page
-    // break or a column cut one paragraph into, and it is one paragraph (Unit.textFixed).
-    const xn = unit.parts.length > 1 && !unit.textFixed ? ` ×${unit.parts.length}` : "";
+    // short paragraphs must never masquerade as a single-paragraph judgment. How many
+    // paragraphs that is is the unit's to say (unitParagraphs): in a PDF the parts are the
+    // pieces a page break or a column cut ONE paragraph into.
+    const paragraphs = unitParagraphs(unit);
+    const xn = paragraphs > 1 ? ` ×${paragraphs}` : "";
     // Unsupported language → the detected code ("zh"), never a number.
     num.textContent =
       (b === "unknown" ? "?" : b === "unsupported" ? (result.lang ?? "n/a") : `${pct}%`) + xn;
@@ -449,10 +450,8 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
     const result = verdict.result;
     const row = (k: string, v: string, cls = "") =>
       `<div class="row${cls}"><span class="k">${k}</span><span class="v">${v}</span></div>`;
-    const partsRow =
-      unit.parts.length > 1 && !unit.textFixed
-        ? row(t("cardPartsTogether"), `${unit.parts.length}`)
-        : "";
+    const paragraphs = unitParagraphs(unit);
+    const partsRow = paragraphs > 1 ? row(t("cardPartsTogether"), `${paragraphs}`) : "";
 
     // The model's whole 4-way distribution is the honest part of the readout. Skip
     // it for "unknown" — a flat gray bar reads as data when the message is "no answer".

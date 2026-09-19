@@ -83,6 +83,19 @@ export interface ReflowBlock {
   page: number;
   /** Where every stretch of `text` came from, in reading order. */
   runs: SourceRun[];
+  /**
+   * The block is set INTO the text and read outside it: a figure caption, a footnote, or
+   * the front matter of a paper. It is a paragraph like any other and is scored like one;
+   * what it is not is a neighbour, so short paragraphs are never read together with it or
+   * across it (lib/pdf/units.ts).
+   */
+  apart: boolean;
+  /**
+   * Nothing of the text before it runs into this block: another column, another page,
+   * the front matter. A paragraph the reflow already sewed across such a break is ONE
+   * block and says false, because the break is inside it rather than in front of it.
+   */
+  columnBreak: boolean;
 }
 
 // ---- tuning ---------------------------------------------------------------------------
@@ -1055,8 +1068,11 @@ interface Draft {
   /** Where every stretch of `text` was set — offsets into `text`. */
   runs: SourceRun[];
   page: number;
-  /** Identifies the page+column the block was set in — the unit a join crosses. */
+  /** Identifies the page+column the block ENDS in — the unit a join crosses. */
   segment: string;
+  /** …and the one it BEGINS in, which a join never moves: the two differ only for a
+   *  paragraph that was sewn back together across a break. */
+  start: string;
   size: number;
   font: string;
   /** The block's last line stopped short of the column's right edge. */
@@ -1164,12 +1180,14 @@ function paragraphsOf(lines: Line[], vocab: Vocabulary, front: boolean): Draft[]
       const last = group[group.length - 1];
       let widest = group[0];
       for (const l of group) if (l.x1 - l.x0 > widest.x1 - widest.x0) widest = l;
+      const segment = `${group[0].page}:${group[0].col}${front ? ":front" : ""}`;
       out.push({
         kind: "paragraph",
         text: t.text,
         runs: t.runs,
         page: group[0].page,
-        segment: `${group[0].page}:${group[0].col}${front ? ":front" : ""}`,
+        segment,
+        start: segment,
         size: median(group.map((l) => l.size)),
         font: widest.font,
         endsShort: last.x1 < rightEdge - last.size * SHORT_LINE,
@@ -1379,10 +1397,17 @@ export function reflowPdf(pages: PdfPageText[]): ReflowBlock[] {
   classifyHeadings(drafts, bodySize, displayFonts);
   markAsides(drafts, bodySize);
 
-  return joinAcrossSegments(drafts, vocab).map(({ kind, text, page, runs }) => ({
-    kind,
-    text,
-    page,
-    runs,
+  // What a block's NEIGHBOURS are is decided here, where the geometry still is: a block
+  // that opens a column, a page or the front matter has nothing running into it, and a
+  // caption, a footnote or a line of the front matter is beside the text rather than in
+  // it. lib/pdf/units.ts reads nothing else of the layout.
+  const joined = joinAcrossSegments(drafts, vocab);
+  return joined.map((d, i) => ({
+    kind: d.kind,
+    text: d.text,
+    page: d.page,
+    runs: d.runs,
+    apart: d.aside === true || d.front,
+    columnBreak: i === 0 || joined[i - 1].segment !== d.start,
   }));
 }

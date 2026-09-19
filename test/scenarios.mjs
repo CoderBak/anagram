@@ -21,7 +21,7 @@ import { readFileSync } from "node:fs";
 import http from "node:http";
 import { launchExtension, serveHtml, artifact, uiLanguage, uiLanguageOf, BADGE_SEL } from "./harness.mjs";
 import { startFakeDaemon } from "./fake-daemon.mjs";
-import { PDF_HEAD, PDF_HEADING, PDF_PARAS, TEST_PDF, servePdfs } from "./pdf-fixture.mjs";
+import { GROUPED_PARAS, GROUPED_UNIT_TEXT, PDF_HEAD, PDF_HEADING, PDF_PARAS, TEST_PDF, servePdfs } from "./pdf-fixture.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LOCAL_ONLY = process.argv.includes("--local");
@@ -1518,6 +1518,52 @@ async function sweep(page, steps = 6) {
       JSON.stringify({ panel, flagged, head: (report ?? "").slice(0, 60) }),
     );
     await p.screenshot({ path: artifact("scn-pdf-reader.png"), fullPage: false }).catch(() => {});
+    await p.close();
+  }
+
+  // A30b: the SHORT paragraphs of a paper. On a web page three short paragraphs of one
+  // voice are read together and the chip says ×3; in a PDF they used to be dropped one by
+  // one. The rules are now the same ones (lib/plan/group.ts), with the reconstruction
+  // supplying the barriers — so the three under the first heading are one unit and the two
+  // under the second, 48 words with nothing of their section to join, are read by nobody.
+  if (extId) {
+    const p = await context.newPage();
+    const seen = daemon.stats.texts.length;
+    await p.goto(readerUrl(fileUrl("/grouped.pdf")), { waitUntil: "load" });
+    await p.waitForSelector("#pages:not(.reading)", { timeout: 20000 }).catch(() => {});
+    await sweep(p, 4);
+    await p
+      .waitForFunction((sel) => {
+        const pills = [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill"));
+        return pills.length >= 1 && !pills.some((h) => h.shadowRoot.querySelector(".pill.pending"));
+      }, BADGE_SEL, { timeout: 20000 })
+      .catch(() => {});
+    const grouped = await readReader(p);
+    const groupedSent = daemon.stats.texts.slice(seen);
+    const chipNum = await p.evaluate((sel) => {
+      const host = [...document.querySelectorAll(sel)].find((h) => h.shadowRoot?.querySelector(".pill"));
+      return host?.shadowRoot.querySelector(".num")?.textContent ?? null;
+    }, BADGE_SEL);
+    record(
+      "ui",
+      "PDF reader: three short paragraphs under a heading are read as ONE unit, and nothing crosses the heading",
+      groupedSent.length === 1 && groupedSent[0] === GROUPED_UNIT_TEXT,
+      JSON.stringify({ sent: groupedSent.map((t) => t.slice(0, 48)) }),
+    );
+    record(
+      "ui",
+      "PDF reader: the grouped chip says ×3, sits inside its page and never over the text",
+      grouped.chips === 1 &&
+        /×3$/.test(chipNum ?? "") &&
+        grouped.placed.every((c) => c.inPage && !c.overText),
+      JSON.stringify({ chips: grouped.chips, chipNum, placed: grouped.placed }),
+    );
+    record(
+      "ui",
+      "PDF reader: the marks lie on all three paragraphs of the group",
+      GROUPED_PARAS.slice(0, 3).every((para) => grouped.marked.some((t) => t.includes(para[0]))),
+      JSON.stringify({ marks: grouped.marks, marked: grouped.marked.slice(0, 4).map((t) => t.slice(0, 32)) }),
+    );
     await p.close();
   }
 

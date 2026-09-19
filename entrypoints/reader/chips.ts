@@ -16,6 +16,7 @@
 // into the page box so nothing of ours can ever hang off the paper.
 import type { Unit } from "../../lib/types";
 import { MARK_ATTR } from "../../lib/types";
+import { unitParagraphs } from "../../lib/dom/text";
 import type { PageView, Viewer } from "./viewer";
 
 /** A box in page coordinates: points from the page's top-left corner, y growing down. */
@@ -32,6 +33,10 @@ interface Box {
  * before its number is written into it and a chip must never be placed optimistically.
  */
 const CHIP_W = 54;
+/** A unit of several paragraphs says so after the number ("38% ×3"), which is three more
+ *  characters — four from ten paragraphs up. A chip is never placed optimistically, so
+ *  the widest of those is what is reserved. */
+const CHIP_XN_W = 26;
 const CHIP_H = 22;
 /** The gap between the last word and the chip, in page points — about one word space. */
 const GAP = 5;
@@ -114,7 +119,7 @@ export function placeChip(viewer: Viewer, unit: Unit, host: HTMLElement): boolea
   const line = boxOf(page, end.span, scale);
   if (!line) return false;
 
-  const w = CHIP_W / scale;
+  const w = (CHIP_W + (unitParagraphs(unit) > 1 ? CHIP_XN_W : 0)) / scale;
   const h = CHIP_H / scale;
   const y = (line.y0 + line.y1) / 2;
   const right = page.width - EDGE;

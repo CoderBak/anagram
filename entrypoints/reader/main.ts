@@ -103,13 +103,15 @@ async function startPipeline(reportUrl: string, source: PdfUnitSource, view: Vie
     // mutation burst is the whole answer: the orchestrator asks once per scan root and
     // rebuilding the document's paragraphs ten times over would say the same thing ten
     // times. The rest of the task is answered with nothing; the next task starts fresh.
-    collect: (_root, claimFilter) => {
+    collect: (_root, claimFilter, options) => {
       if (answered) return [];
       answered = true;
       queueMicrotask(() => {
         answered = false;
       });
-      return source.collect(claimFilter);
+      // Grouping short paragraphs is the reader's setting as much as the page's: off, a
+      // paragraph under the floor is read by nobody here either.
+      return source.collect(claimFilter, options.mergeShorts);
     },
     placeBadge: (unit: Unit, host: HTMLElement) => placeChip(view, unit, host),
   });

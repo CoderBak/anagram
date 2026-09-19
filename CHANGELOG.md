@@ -9,6 +9,29 @@ Notable changes to Anagram, newest first. The format follows
 
 ### Added
 
+- **A PDF's short paragraphs are read, under the same rule a web page's are.** On
+  a page a paragraph below the fifty-word evidence floor is not thrown away:
+  short neighbours of one voice are read together in window-sized groups (the
+  chip says ×N) and a short text that cannot stand alone joins the full paragraph
+  beside it. In the PDF reading mode none of that happened — every reconstructed
+  paragraph under the floor was dropped, so a paper's short paragraphs were
+  silently unread. The rules were never the walk's own, so they now live in one
+  source-independent module (`lib/plan/group.ts`): the evidence floor, the
+  division of a stretch into groups of at most one model window, and the
+  orphan-joins-its-neighbour rule with its one-window bound. The DOM walker calls
+  it — its behaviour is unchanged, to the letter, and the 477 segmentation checks
+  pass with no expectation touched — and `lib/pdf/units.ts` calls the same module.
+  What a PDF has instead of markup is the reconstruction's own verdict on what
+  stands beside what: nothing is grouped across a heading, a caption, a footnote,
+  a paper's title block, a table row, a line of author names, a separator or a
+  column or page break, and a paragraph already sewn across a page break is one
+  paragraph. A grouped unit carries every part's provenance, so the marks land on
+  all of its paragraphs and its chip sits after the last one and reads ×N; the
+  chip's footprint in the reader reserves the room those characters need, so it
+  still never covers a glyph. Nothing that was scored before stops being scored:
+  above the floor every block is read exactly as it was. "Group short neighboring
+  paragraphs" turns this off for PDFs as it does for pages.
+
 - **The PDF reading mode shows the real pages.** It used to rebuild a PDF as
   plain `<h2>`/`<p>` on a sheet of its own, which makes the document text-only
   and breaks its format — figures, mathematics, columns, fonts, all gone.

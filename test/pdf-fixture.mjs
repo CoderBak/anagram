@@ -121,6 +121,56 @@ export const TEST_PDF = buildPdf([
 /** A valid PDF whose single page places no text at all — a scan, as far as we can tell. */
 export const SCANNED_PDF = buildPdf([[]]);
 
+// A document of SHORT paragraphs — the case a paper is full of and the reader used to drop
+// on the floor. Three paragraphs of 24 words each under a heading are read together, the
+// way three short <p>s of one voice are on a web page; the heading under them is a barrier,
+// so the two paragraphs after it (48 words, under the fifty-word floor with nothing of
+// their own section to join) are read by nobody. Every line starts in lower case and every
+// paragraph is set to the same measure, so the only thing separating two of them is the
+// blank line between — nothing here tests the reflow's cleverness, only the grouping.
+export const GROUPED_HEADINGS = ["Short paragraphs", "Another section"];
+export const GROUPED_PARAS = [
+  [
+    "the reader keeps every short paragraph in view",
+    "and joins it to the ones beside it",
+    "so that nothing written here goes unread today.",
+  ],
+  [
+    "a second short paragraph follows the first one",
+    "and carries its own handful of quiet words",
+    "which nobody would ever judge on their own.",
+  ],
+  [
+    "the third one closes the run of three",
+    "and brings the group past the evidence floor",
+    "where the model can finally read them together.",
+  ],
+  [
+    "under the second heading two more paragraphs sit",
+    "and they are shorter than the floor allows",
+    "so nothing here reaches the daemon at all.",
+  ],
+  [
+    "the heading between them is a hard barrier",
+    "which no group of paragraphs ever reads across",
+    "however short the paragraphs on either side are.",
+  ],
+];
+/** The three paragraphs as the daemon sees them: one unit, its parts joined by a space. */
+export const GROUPED_UNIT_TEXT = GROUPED_PARAS.slice(0, 3).map((p) => p.join(" ")).join(" ");
+
+export const GROUPED_PDF = buildPdf([
+  [
+    { x: 72, y: 700, size: 16, bold: true, text: GROUPED_HEADINGS[0] },
+    ...pdfColumn(GROUPED_PARAS[0], 670),
+    ...pdfColumn(GROUPED_PARAS[1], 614),
+    ...pdfColumn(GROUPED_PARAS[2], 558),
+    { x: 72, y: 502, size: 16, bold: true, text: GROUPED_HEADINGS[1] },
+    ...pdfColumn(GROUPED_PARAS[3], 474),
+    ...pdfColumn(GROUPED_PARAS[4], 418),
+  ],
+]);
+
 /**
  * A long two-column paper. Two suites need a document that does not fit on one screen:
  * the scenarios, to prove that a page far down the stack has its TEXT (and so its units,
@@ -172,7 +222,13 @@ export const BROKEN_PDF = Buffer.from("%PDF-1.7\nthis file claims to be a PDF an
  * everything as text/html, which a PDF is not.
  */
 export async function servePdfs(
-  files = { "/doc.pdf": TEST_PDF, "/scanned.pdf": SCANNED_PDF, "/broken.pdf": BROKEN_PDF, "/tall.pdf": TALL_PDF },
+  files = {
+    "/doc.pdf": TEST_PDF,
+    "/grouped.pdf": GROUPED_PDF,
+    "/scanned.pdf": SCANNED_PDF,
+    "/broken.pdf": BROKEN_PDF,
+    "/tall.pdf": TALL_PDF,
+  },
 ) {
   const server = http.createServer((req, res) => {
     const body = files[req.url.split("?")[0]];

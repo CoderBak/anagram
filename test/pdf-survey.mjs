@@ -11,6 +11,9 @@
 // The numbers, per document:
 //
 //   pages / blocks / headings         — how much structure came out at all;
+//   units / unread / unreadBefore     — how many units the reader makes of the document,
+//                 how many words of its paragraphs no unit reads, and how many went unread
+//                 before short paragraphs were grouped (every paragraph under the floor);
 //   unfinished  — paragraphs ending in no sentence punctuation, the proxy for a
 //                 paragraph cut in half at a column or page break (a few are legitimate:
 //                 headings set as paragraphs, table rows, addresses, formulae);
@@ -70,12 +73,18 @@ const only = argv.filter((a) => !a.startsWith("--"));
 
 // ---- the rules under test ---------------------------------------------------------------
 
-/** Bundle the reflow out of the tree, exactly as test/unit.mjs bundles the walker. */
-async function loadReflow(source) {
-  const out = join(tmpdir(), `anagram-reflow-${Date.now()}.mjs`);
+/** Bundle a module out of the tree, exactly as test/unit.mjs bundles the walker. */
+async function loadModule(source, tag) {
+  const out = join(tmpdir(), `anagram-${tag}-${Date.now()}.mjs`);
   buildSync({ entryPoints: [source], bundle: true, format: "esm", outfile: out, logLevel: "warning" });
   return import(pathToFileURL(out).href);
 }
+
+const loadReflow = (source) => loadModule(source, "reflow");
+/** …and the grouping the reader applies to those blocks (lib/plan/group.ts underneath).
+ *  It reads nothing of the page, so it runs under Node with no DOM at all; blocks from an
+ *  OLDER reflow simply carry no `apart`/`columnBreak` and are grouped without them. */
+const loadGrouping = () => loadModule(join(ROOT, "lib/pdf/units.ts"), "units");
 
 /**
  * The same page → runs mapping lib/pdf/extract.ts makes in the browser, against the
@@ -115,9 +124,17 @@ const HYPHEN_GAP = /\p{L}[-‐]\s\p{L}/gu;
 /** A long word with no vowel in its second half — what "indepth" and "followup" are not. */
 const LONG_WORD = /\p{L}{12,}/gu;
 
-function measure(name, pages, blocks, ms) {
+function measure(name, pages, blocks, ms, groupsOf) {
   const paragraphs = blocks.filter((b) => b.kind === "paragraph");
   const words = (t) => t.split(/\s+/).length;
+  // What the reader actually READS of the document, by the shipped grouping rules
+  // (lib/pdf/units.ts): short paragraphs are read in groups, so the words nobody judges
+  // are only the true orphans. `unreadBefore` is what v1 left on the floor — every
+  // paragraph under the fifty-word floor — which is the number this was written to watch.
+  const groups = groupsOf(blocks);
+  const read = new Set(groups.flat());
+  const unread = blocks.reduce((n, b, i) => (b.kind === "paragraph" && !read.has(i) ? n + words(b.text) : n), 0);
+  const unreadBefore = paragraphs.reduce((n, p) => (words(p.text) < 50 ? n + words(p.text) : n), 0);
   const unfinished = paragraphs.filter((p) => !SENTENCE_END.test(p.text));
   const lowerStart = paragraphs.filter((p) => /^\p{Ll}/u.test(p.text));
   const text = blocks.map((b) => b.text).join("\n");
@@ -132,6 +149,9 @@ function measure(name, pages, blocks, ms) {
     paragraphs: paragraphs.length,
     words: paragraphs.reduce((n, p) => n + words(p.text), 0),
     scorable: paragraphs.filter((p) => words(p.text) >= 50).length,
+    units: groups.length,
+    unread,
+    unreadBefore,
     unfinished: share(unfinished.length, paragraphs.length),
     lowerStart: share(lowerStart.length, paragraphs.length),
     hyphenGaps: (text.match(HYPHEN_GAP) ?? []).length,
@@ -167,7 +187,7 @@ if (diff) {
   for (const after of b) {
     const before = byName.get(after.name);
     if (!before) continue;
-    const moved = ["blocks", "headings", "paragraphs", "scorable", "unfinished", "lowerStart", "hyphenGaps", "longWords"]
+    const moved = ["blocks", "headings", "paragraphs", "scorable", "units", "unread", "unfinished", "lowerStart", "hyphenGaps", "longWords"]
       .map((k) => (before[k] === after[k] ? null : `${k} ${before[k]} → ${after[k]}`))
       .filter(Boolean);
     console.log(`${after.name}: ${moved.length === 0 ? "unchanged" : moved.join(", ")}`);
@@ -179,6 +199,7 @@ mkdirSync(PDFS, { recursive: true });
 mkdirSync(ARTIFACTS, { recursive: true });
 
 const { reflowPdf } = await loadReflow(reflowSource);
+const { groupsOf } = await loadGrouping();
 const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
 
 const wanted = dir
@@ -213,10 +234,13 @@ for (const [name, source] of wanted) {
     const blocks = reflowPdf(pages);
     const ms = Math.round(performance.now() - started);
     await doc.destroy();
-    const row = measure(name, count, blocks, ms);
+    const row = measure(name, count, blocks, ms, groupsOf);
     rows.push(row);
     console.log(
       `\n${row.name}  ${row.pages}p  ${row.blocks} blocks (${row.headings} headings, ${row.scorable} scorable)  ${row.ms} ms`,
+    );
+    console.log(
+      `  units ${row.units}  words unread ${row.unread} of ${row.words} (before grouping: ${row.unreadBefore})`,
     );
     console.log(
       `  unfinished ${row.unfinished}  lower-start ${row.lowerStart}  hyphen-gaps ${row.hyphenGaps}  long words ${row.longWords}`,
