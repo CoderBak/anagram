@@ -1665,6 +1665,114 @@ async function sweep(page, steps = 6) {
     );
     await p.close();
   }
+
+  // A33–A36: the first-run page's setup strip. A fresh install shows nothing on a real
+  // page until the SEPARATELY installed daemon is started, so the onboarding page leads
+  // with three live status rows — extension, daemon, ready — and, for each way the
+  // daemon can be wrong, the one command that fixes it in a copyable pill. The rows must
+  // follow the daemon WITHOUT a reload: the page stays open while the user runs that
+  // command in a terminal.
+  if (extId) {
+    const onboardingUrl = `chrome-extension://${extId}/onboarding.html`;
+    const readStrip = (page) =>
+      page.evaluate(() => {
+        const txt = (id) => document.getElementById(id)?.textContent ?? null;
+        const shown = (id) => (document.getElementById(id)?.hidden === false ? true : false);
+        return {
+          ext: document.querySelector("#row-ext .sval")?.textContent ?? null,
+          extVersion: txt("ext-version"),
+          extState: document.getElementById("row-ext")?.dataset.state ?? null,
+          daemon: txt("daemon-state"),
+          daemonState: document.getElementById("row-daemon")?.dataset.state ?? null,
+          detail: shown("daemon-detail") ? txt("daemon-detail") : null,
+          cmd: shown("daemon-cmd") ? txt("daemon-cmd-text") : null,
+          link: shown("daemon-link") ? document.getElementById("daemon-link").getAttribute("href") : null,
+          ready: txt("ready-text"),
+          readyState: document.getElementById("row-ready")?.dataset.state ?? null,
+          install: shown("install") ? txt("install-cmd") : null,
+        };
+      });
+    const waitDaemonRow = (page, words, timeout) =>
+      page
+        .waitForFunction((w) => document.getElementById("daemon-state")?.textContent === w, words, { timeout })
+        .then(() => true)
+        .catch(() => false);
+
+    const p = await context.newPage();
+    await p.goto(onboardingUrl, { waitUntil: "load" });
+    const sawRunning = await waitDaemonRow(p, "running", 15000);
+    const up = await readStrip(p);
+    record(
+      "ui",
+      "first-run page: the strip shows the extension, the daemon with its model and device, and Ready",
+      sawRunning &&
+        up.ext === "installed" && /^v\d/.test(up.extVersion ?? "") && up.extState === "ok" &&
+        up.daemonState === "ok" && up.detail === "fake-editlens · fake" && up.cmd === null &&
+        up.readyState === "ok" && up.ready === "Open any article — a chip appears after each paragraph." &&
+        up.install === null,
+      JSON.stringify(up),
+    );
+
+    // The daemon goes away and the page is opened fresh: one command, one copy button,
+    // and — because a daemon that was never installed cannot be started either — the
+    // install one-liner underneath.
+    await daemon.close();
+    await p.goto(onboardingUrl, { waitUntil: "load" });
+    const sawDown = await waitDaemonRow(p, "not running", 15000);
+    const down = await readStrip(p);
+    await p.bringToFront();
+    await p.evaluate(() => navigator.clipboard.writeText("NOTHING COPIED").catch(() => {}));
+    await p.click("#daemon-copy");
+    const clip = await p.evaluate(() => navigator.clipboard.readText().catch(() => null));
+    const copiedLabel = await p.evaluate(() => document.getElementById("daemon-copy").textContent);
+    record(
+      "ui",
+      "first-run page: no daemon → the start command, the install one-liner, and Copy puts exactly the command on the clipboard",
+      sawDown &&
+        down.daemonState === "bad" && down.cmd === "~/.anagram/bin/anagram start" && down.detail === null &&
+        down.readyState === "idle" && down.ready === "Waiting for the scoring daemon." &&
+        down.install === "curl -fsSL https://github.com/CoderBak/anagram/releases/latest/download/install.sh | sh" &&
+        clip === "~/.anagram/bin/anagram start" && copiedLabel === "Copied ✓",
+      JSON.stringify({ ...down, clip, copiedLabel }),
+    );
+
+    // Started in a terminal with the page still open: the strip has to notice by itself.
+    daemon = await startFakeDaemon({ port: daemonPort, ...DAEMON_OPTS });
+    const cameBack = await waitDaemonRow(p, "running", 12000);
+    const back = await readStrip(p);
+    record(
+      "ui",
+      "first-run page: the daemon comes back and the rows follow it without a reload",
+      cameBack && back.daemonState === "ok" && back.detail === "fake-editlens · fake" &&
+        back.cmd === null && back.readyState === "ok" && back.install === null,
+      JSON.stringify(back),
+    );
+
+    // A daemon of another generation IS answering: the fix is an update, not a start,
+    // and the install one-liner has no business being on screen.
+    const stub = http.createServer((req, res) => {
+      res.writeHead(req.url === "/health" ? 200 : 404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, contract: "3.0" }));
+    });
+    await new Promise((r) => stub.listen(0, "127.0.0.1", r));
+    const stubUrl = `http://127.0.0.1:${stub.address().port}`;
+    await p.evaluate((url) => new Promise((res) => chrome.storage.local.set({ serverUrl: url }, res)), stubUrl);
+    await p.goto(onboardingUrl, { waitUntil: "load" });
+    const sawMismatch = await waitDaemonRow(p, "version mismatch", 15000);
+    const mismatch = await readStrip(p);
+    // Back to the fake daemon before anything else runs on this context.
+    await p.evaluate((url) => new Promise((res) => chrome.storage.local.set({ serverUrl: url }, res)), daemon.url);
+    await new Promise((r) => stub.close(r));
+    const restored = await waitDaemonRow(p, "running", 15000);
+    record(
+      "ui",
+      "first-run page: a daemon of another contract asks to be updated, not started",
+      sawMismatch && mismatch.daemonState === "bad" && mismatch.cmd === "~/.anagram/bin/anagram update" &&
+        mismatch.install === null && mismatch.readyState === "idle" && restored,
+      JSON.stringify({ ...mismatch, restored }),
+    );
+    await p.close();
+  }
 }
 
 // =====================================================================================
