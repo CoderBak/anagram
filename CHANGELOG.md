@@ -502,6 +502,36 @@ Notable changes to Anagram, newest first. The format follows
   fail where nothing has been built. Plus `t()` answering a content script whose
   extension context was invalidated out of its own trimmed fallback, and
   returning the key name rather than throwing if it ever has neither.
+- The two live-site surveys stopped printing numbers that were not true, and
+  stopped writing into the repository. Their reports defaulted to `test/`, which
+  the header had always said they must never do: a run left
+  `coverage-<label>.json/.md` and two esbuild bundles in the tree. Both tools now
+  default to `$ANAGRAM_ARTIFACTS`, or to `<tmpdir>/anagram-surveys/<label>` when
+  that is unset, and print the folder. **Silent containers are named after their
+  BODY.** "link-dense" fired whenever half a container's blocks were link-dense —
+  but half a social card's blocks ARE the byline, the action row and the link
+  preview, while the post itself is silent for a different reason. Each block is
+  now classified on its own and the container takes the reason of its largest
+  block of prose, with the link-dense siblings named after it: Telegram's
+  messages report bodies of 28–52 words against the 50-word floor, Bluesky's
+  43–48, instead of "link-dense: 5/8 blocks". **"Piled" is a question about
+  placement, so it is asked of the DOM**: two or more chip hosts standing
+  together as siblings with nothing but whitespace between them and reading
+  different numbers. It used to mean "same parent, same preceding 100 characters,
+  different numbers", which called two teaser cards printing the same copy a
+  pile-up (theverge.com, on a page with no clipping box at all) and counted any
+  two chips that were still "analyzing…" as one, since a pending chip carries no
+  number — and these are maxima over a session, so that number could only go up.
+  **Coverage is a share of the same words on both sides of the division.** Units
+  found inside page chrome counted in the numerator while the denominator zeroed
+  those subtrees, which had `ai-perplexity` — a page that answers a logged-out
+  reader with a dialog — reporting 57 judged words over 6 of prose: 950 %
+  coverage. Judged words are now split into prose and chrome and only the first
+  is divided. **`hn-front-thread` opens a thread.** It opened the Hacker News
+  front page, which has no paragraph over 50 words and produced no chips of its
+  own: every chip in that row came from the page the navigation step visited. It
+  now opens an archived 2016 thread (967 comments, 454 of them over 50 words) and
+  the navigation step walks thread → front page → back.
 - An automated accessibility suite: `npm run test:a11y`. It runs **axe-core**
   (WCAG 2.1 A + AA, with axe's best-practice rules reported on a line of their
   own) over the popup, options, onboarding and PDF reader pages in light and

@@ -60,13 +60,16 @@
 //   node test/dynamics.mjs --list                 # what would run
 //   node test/dynamics.mjs --no-control           # skip the extension-less control runs
 //
-// Reports and screenshots go to ANAGRAM_ARTIFACTS (or --out), never into the repo.
+// Reports and screenshots go to $ANAGRAM_ARTIFACTS, or to <tmpdir>/anagram-surveys/<label>
+// when that is unset (`--out` overrides both) — never into the repo, whose test/ folder
+// this used to default to. The folder is printed at the start of every run.
 // Headless always; logged-out always (throwaway profile, no cookies); one page of a site
 // at a time. A wall, a bot check or a timeout is a RESULT, not a failure.
-import { withFakeDaemon, launchPlain, BADGE_SEL, ARTIFACTS, requireBuild } from "./harness.mjs";
+import { withFakeDaemon, launchPlain, BADGE_SEL, requireBuild } from "./harness.mjs";
 import { cyrb53 } from "./fake-daemon.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -88,8 +91,9 @@ const flag = (name) => {
   return true;
 };
 
-const OUT_DIR = String(opt("out", ARTIFACTS));
 const LABEL = String(opt("label", "run"));
+/** Outside the repository by default — see the note at the top. */
+const OUT_DIR = String(opt("out", process.env.ANAGRAM_ARTIFACTS || join(tmpdir(), "anagram-surveys", LABEL)));
 const KIND = opt("kind", null);
 const MINUTES = Number(opt("minutes", 1.5)) || 1.5;
 const NAV_TIMEOUT = Number(opt("timeout", 20000)) || 20000;
@@ -454,13 +458,9 @@ function SAMPLE(cfg) {
       }
     }
   }
-  // Two chips closing the same text are one of two different things, and the chips
-  // themselves say which: a chip states its unit's percentage and its unit's word count,
-  // so a group in which every chip reads the SAME number over the SAME number of words is
-  // one unit chipped twice, while a group whose numbers differ is several DISTINCT units
-  // whose chips were all inserted at one anchor (the clipped-box rule in
-  // badge.ts insertionPoint()/clippingBoxOf() moves a chip after the box when its own
-  // anchor is out of sight — every unit of a clamped post lands in the same place).
+  // A chip states its unit's percentage and its unit's word count, so two chips that read
+  // the SAME number over the SAME number of words are one unit chipped twice, and two that
+  // read different ones are two distinct units.
   const numOf = (h) => (h.shadowRoot?.querySelector(".num")?.textContent ?? "").trim();
   const wordsOf = (h) => {
     for (const r of h.shadowRoot?.querySelectorAll(".card .row") ?? []) {
@@ -468,23 +468,51 @@ function SAMPLE(cfg) {
     }
     return "";
   };
+
+  // ---- PILED: several chips at ONE insertion point ------------------------------------
+  //
+  // Piled is a question about PLACEMENT, so it is asked of the DOM, not of the text: two
+  // or more of our hosts standing next to each other as siblings with nothing but
+  // whitespace, comment markers and other hosts between them. That is what the reader
+  // sees as a row of numbers, and it is what badge.ts' insertionPoint()/clippingBoxOf()
+  // produces when every unit of a clamped post is parked after the same box.
+  //
+  // It used to be asked of the text instead — "same parent, same preceding 100 characters,
+  // different numbers" — and that answered a different question. A page that prints the
+  // same teaser twice (theverge-home: two cards with identical copy) has two chips with
+  // one preceding text in one parent and NO clipping box anywhere, and was reported as 2
+  // piled; and while chips are still "analyzing…" they carry no number at all, so any two
+  // pending chips under one parent were counted as a pile until they settled — a number
+  // that could only ever go up, since these are maxima over the session.
+  const isOurHost = (n) =>
+    !!(n && n.nodeType === 1 && n.getAttribute && n.getAttribute("data-anagram") === "host" && n.id !== "anagram-fab");
+  /** Whitespace and comments do not separate two chips; anything else does. */
+  const passable = (n) => (n.nodeType === 3 && !(n.nodeValue || "").trim()) || n.nodeType === 8;
+  const hostNeighbour = (h, dir) => {
+    for (let n = h[dir]; n; n = n[dir]) {
+      if (passable(n)) continue;
+      return isOurHost(n) ? n : null;
+    }
+    return null;
+  };
+  const piles = [];
+  for (const h of hosts) {
+    if (hostNeighbour(h, "previousSibling")) continue; // not the head of its run
+    const run = [h];
+    for (let n = hostNeighbour(h, "nextSibling"); n; n = hostNeighbour(n, "nextSibling")) run.push(n);
+    if (run.length > 1) piles.push(run);
+  }
+
   let dupGroups = 0;
   let dupChips = 0;
   let sameUnitGroups = 0;
   let sameUnitChips = 0;
   let pileUpGroups = 0;
   let pileUpChips = 0;
+  let pendingPiles = 0;
   let repeatedTextChips = 0;
-  for (const [key, g] of byAnchor) {
-    if (g.length < 2) continue;
-    const nums = [...new Set(g.map(numOf))];
-    const words = [...new Set(g.map(wordsOf))];
-    const sameParent = g.every((x) => x.parentElement === g[0].parentElement);
-    // Chips in DIFFERENT parents that close the same text are the page showing that text
-    // twice (a headline in the river and again in a rail). Two distinct units with one
-    // text get one chip each BY DESIGN — scheduler.ts dedups by unit identity, not text —
-    // so this is not a defect and is counted apart.
-    const kind = !sameParent ? "repeated" : nums.length === 1 && words.length === 1 && nums[0] !== "" ? "sameUnit" : "pileUp";
+  const grouped = new Set();
+  const record = (g, kind, hint, sameParent) => {
     dupGroups++;
     dupChips += g.length - 1;
     if (kind === "sameUnit") {
@@ -500,12 +528,45 @@ function SAMPLE(cfg) {
       dupSamples.push({
         chips: g.length,
         kind,
-        nums: nums.slice(0, 6),
-        words: words.slice(0, 6),
+        nums: [...new Set(g.map(numOf))].slice(0, 6),
+        words: [...new Set(g.map(wordsOf))].slice(0, 6),
         sameParent,
         parent: g[0].parentElement ? g[0].parentElement.nodeName.toLowerCase() : "?",
-        hint: key.slice(-60),
+        hint,
       });
+  };
+  for (const g of piles) {
+    const nums = [...new Set(g.map(numOf))];
+    const words = [...new Set(g.map(wordsOf))];
+    // A chip still "analyzing…" has no number, so a pile that holds one cannot yet be told
+    // from one unit chipped twice. It is counted apart and the next deep sample decides.
+    if (nums.some((n) => n === "")) {
+      pendingPiles++;
+      for (const h of g) grouped.add(h); // counted here, and not again below
+      continue;
+    }
+    for (const h of g) grouped.add(h);
+    record(g, nums.length === 1 && words.length === 1 ? "sameUnit" : "pileUp", preceding(g[0]).slice(-60), g.every((x) => x.parentElement === g[0].parentElement));
+  }
+
+  // ---- the same TEXT closed twice, in two places --------------------------------------
+  // Chips that close the same 100 characters but do NOT stand together: the page is
+  // showing that text twice (a headline in the river and again in a rail, a teaser
+  // repeated in two cards). Two distinct units with one text get one chip each BY DESIGN —
+  // scheduler.ts dedups by unit identity, not by text — so this is not a defect. What IS
+  // one is the same unit chipped twice in two places, and the numbers say which.
+  for (const [key, g0] of byAnchor) {
+    const g = g0.filter((h) => !grouped.has(h));
+    if (g.length < 2) continue;
+    const nums = [...new Set(g.map(numOf))];
+    const words = [...new Set(g.map(wordsOf))];
+    const sameParent = g.every((x) => x.parentElement === g[0].parentElement);
+    // Two chips in DIFFERENT parents read the same number over the same word count all the
+    // time — the page is showing one text twice and the verdict is a function of the text,
+    // so identical numbers are expected there and prove nothing. Only inside ONE parent do
+    // they mean one unit chipped twice.
+    const kind = sameParent && nums.length === 1 && words.length === 1 && nums[0] !== "" ? "sameUnit" : "repeated";
+    record(g, kind, key.slice(-60), sameParent);
   }
 
   // ---- the page's own text: duplicated sentences / duplicated adjacent text nodes -----
@@ -589,6 +650,7 @@ function SAMPLE(cfg) {
     sameUnitChips,
     pileUpGroups,
     pileUpChips,
+    pendingPiles,
     repeatedTextChips,
     dupSamples,
     dupSentences,
@@ -964,6 +1026,7 @@ function analyse(samples) {
     sameUnitGroupsMax: maxOf("sameUnitGroups"),
     pileUpChipsMax: maxOf("pileUpChips"),
     pileUpGroupsMax: maxOf("pileUpGroups"),
+    pendingPilesMax: maxOf("pendingPiles"),
     repeatedTextChipsMax: maxOf("repeatedTextChips"),
     zeroSizeMax: maxOf("zeroSize"),
     zeroSkippedMax: maxOf("zeroSkipped"),
@@ -1377,7 +1440,10 @@ md.push(
 md.push("");
 md.push(
   "**How to read the columns.** *chips* = hosts at the end / the most ever live at once. " +
-    "*dup* = chips closing the SAME preceding 100 characters of text (two chips for one text). " +
+    "*2× unit* = one unit chipped twice (two chips reading the same number over the same word " +
+    "count). *piled* = two or more chips standing together as siblings at ONE insertion point " +
+    "with nothing but whitespace between them, belonging to DIFFERENT units — a row of numbers " +
+    "under one box. *dup* = chips closing the SAME preceding 100 characters of text. " +
     "*flick* = chips that vanished / appeared between two samples in which the page's own text, " +
     "the scroll position and the viewport were all unchanged. *stuck* = chips left \"analyzing…\" " +
     "for more than 10 s. *orph* = connected chips with less than 15 characters of text before " +
@@ -1462,8 +1528,12 @@ for (const r of rows) {
     );
   if (x.pileUpChipsMax > 0)
     anomalies.push(
-      `**${x.pileUpChipsMax} chips of DISTINCT units piled at one insertion point** (${x.pileUpGroupsMax} anchors): ` +
+      `**${x.pileUpChipsMax} chips of DISTINCT units piled at one insertion point** (${x.pileUpGroupsMax} places where our hosts stand side by side as siblings): ` +
         (x.dupSample ?? []).filter((d) => d.kind === "pileUp").map((d) => `${d.chips} chips (${d.nums.join("/")}) in one \`<${d.parent}>\` after “…${d.hint}”`).join("; "),
+    );
+  if (x.pendingPilesMax > 0)
+    anomalies.push(
+      `${x.pendingPilesMax} places where chips stood side by side while still “analyzing…” — no number to tell one unit from two, so they are counted here and nowhere else`,
     );
   if (x.orphanMax > 0)
     anomalies.push(
@@ -1495,7 +1565,7 @@ for (const r of rows) {
     );
   if (x.repeatedTextChipsMax > 0)
     anomalies.push(
-      `${x.repeatedTextChipsMax} chips close text that appears more than once on the page, in different parents — one chip per copy, which is by design (noted so it is not read as a duplicate)`,
+      `${x.repeatedTextChipsMax} chips close text that appears more than once on the page but do not stand together — one chip per copy of the text, which is by design (noted so it is not read as a duplicate)`,
     );
   if (x.chromeMax > 0) anomalies.push(`chips in page chrome: ${x.chromeMax}`);
   if (x.zeroSizeMax > 0)

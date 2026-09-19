@@ -39,13 +39,18 @@
 //   node test/coverage.mjs --kind forum --jobs 2
 //   node test/coverage.mjs --diff a.json b.json   # what changed between two runs
 //
-// Reports go to ANAGRAM_ARTIFACTS (or --out dir), never into the repo. Headless always;
-// logged-out always (no profile, no cookies); at most one page of a site at a time, with a
-// pause between two pages of the same host. A wall, a bot check or a timeout is a RESULT.
-import { launchPlain, ARTIFACTS, sweep } from "./harness.mjs";
+// Reports go to $ANAGRAM_ARTIFACTS, or to <tmpdir>/anagram-surveys/<label> when that is
+// unset (`--out dir` overrides both) — never into the repo, whose test/ folder this used
+// to default to: a run left coverage-<label>.json/.md and two bundles behind in the tree.
+// The folder is printed at the start of every run and beside every file written.
+// Headless always; logged-out always (no profile, no cookies); at most one page of a site
+// at a time, with a pause between two pages of the same host. A wall, a bot check or a
+// timeout is a RESULT.
+import { launchPlain, sweep } from "./harness.mjs";
 import { buildSync } from "esbuild";
 import { fileURLToPath } from "node:url";
 import { dirname, join, basename } from "node:path";
+import { tmpdir } from "node:os";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -68,8 +73,11 @@ const flag = (name) => {
 };
 
 const DIFF = opt("diff", null);
-const OUT_DIR = opt("out", ARTIFACTS);
 const LABEL = String(opt("label", "run"));
+/** Outside the repository by default. ANAGRAM_ARTIFACTS is what CI and the lab set; with
+ *  nothing set the reports land in the system temp folder under the run's own label, so
+ *  two runs never overwrite each other and `git status` stays clean. */
+const OUT_DIR = String(opt("out", process.env.ANAGRAM_ARTIFACTS || join(tmpdir(), "anagram-surveys", LABEL)));
 const KIND = opt("kind", null);
 const JOBS = Math.max(1, Number(opt("jobs", 4)) || 4);
 const NAV_TIMEOUT = Number(opt("timeout", 20000)) || 20000;
@@ -92,6 +100,20 @@ if (DIFF) {
   process.exit(0);
 }
 
+/**
+ * The share of the page's own prose the walker judged.
+ *
+ * The numerator counts only the words of units that sit OUTSIDE page chrome, because the
+ * denominator (`wordsProse`) zeroes those same subtrees — counting a unit found in a
+ * sign-in dialog against a body of prose that excludes the dialog made `ai-perplexity`
+ * report 57 judged words over 6 of prose: 950 % coverage. `wordsJudgedProse` is written by
+ * newer runs; an older report falls back to the total, which is what it used to print.
+ */
+function coveragePct(r) {
+  const judged = r.wordsJudgedProse ?? r.wordsJudged ?? 0;
+  return r.wordsProse ? Math.round((judged / r.wordsProse) * 100) : 0;
+}
+
 /** Compare two runs page by page. Only what moved is printed. */
 function diffRuns(beforePath, afterPath) {
   const load = (p) => {
@@ -104,6 +126,7 @@ function diffRuns(beforePath, afterPath) {
     ["units", (r) => r.units],
     ["merged", (r) => r.merged],
     ["wordsJudged", (r) => r.wordsJudged],
+    ["coverage%", (r) => coveragePct(r)],
     ["silent", (r) => (r.silent ?? []).length],
     ["fragmented", (r) => (r.fragmented ?? []).length],
     ["splitParagraphs", (r) => r.splitParagraphs],
@@ -120,7 +143,7 @@ function diffRuns(beforePath, afterPath) {
     const b = B.rows.get(n);
     const a = A.rows.get(n);
     if (!b || !a) continue;
-    if (b.reach !== a.reach) moved.push(`| ${n} | reach | ${b.reach} | ${a.reach} |`);
+    if (b.reach !== a.reach) moved.push(`| ${n} | reach | ${b.reach} | ${a.reach} | |`);
     if (b.reach !== "ok" || a.reach !== "ok") continue;
     for (const [k, get] of METRICS) {
       const x = get(b) ?? 0;
@@ -380,6 +403,22 @@ function analyse(cfg) {
   // text); a block candidate is prose by construction.
   const setWords = set.map((el) => (usingPosts ? wordsOf.get(el) ?? words(el.innerText) : proseOf.get(el) ?? 0));
 
+  // ---- judged words, split the way the prose count is split --------------------------
+  // `wordsProse` zeroes the chrome subtrees, so a unit found INSIDE one (a sign-in dialog,
+  // a nav rail) must not be counted against it: ai-perplexity reported 57 judged words
+  // over 6 words of prose — 950 % coverage — because every unit it found was in the
+  // dialog the page opens on a logged-out reader. Counted per PART, with this tool's own
+  // counter (the same one `wordsProse` uses), so numerator and denominator are commensurable.
+  let wordsJudgedProse = 0;
+  let wordsJudgedChrome = 0;
+  for (const u of units) {
+    for (const p of u.parts) {
+      const w = words((p.nodes ?? []).map((n) => n.nodeValue || "").join(" "));
+      if (closestComposed(p.container, CHROME_SEL)) wordsJudgedChrome += w;
+      else wordsJudgedProse += w;
+    }
+  }
+
   // ---- SILENT: ≥ 50 words of visible prose, no unit ----------------------------------
 
   /** Which branch of isBoilerplate() fired, probed on a detached element so the answer is
@@ -532,9 +571,22 @@ function analyse(cfg) {
     const { list: runs, skipped } = runsIn(el);
     const texty = runs.filter((r) => r.words > 0);
     const maxWords = texty.reduce((m, r) => Math.max(m, r.words), 0);
+    // Per BLOCK, why the walker would decline it. A container is then named after the
+    // reason of the block that carries its PROSE, not after whatever most of its blocks
+    // are: on a social card half the blocks ARE the byline, the action row and the link
+    // preview, and blaming the card on "link-dense" hid the real answer — the post body
+    // is 25–48 words, under the floor (Telegram, Bluesky). Link-dense siblings are still
+    // named, after the body, because they are why merging could not reach the floor
+    // either.
+    const declined = (r) =>
+      r.zero ? "zero-size" : r.linkRatio > 0.6 ? "link-dense" : r.nameList ? "name-list" : r.noise > 0.2 ? "symbol-noise" : null;
+    const prose = texty.filter((r) => !declined(r));
+    const body = prose.reduce((m, r) => (!m || r.words > m.words ? r : m), null);
     const stats = {
       runs: texty.length,
       maxRunWords: maxWords,
+      bodyWords: body ? body.words : 0,
+      bodyLinkRatio: body ? Math.round(body.linkRatio * 100) / 100 : null,
       runsOverMerge: texty.filter((r) => r.words >= MIN_MERGE).length,
       linkDense: texty.filter((r) => r.linkRatio > 0.6).length,
       nameList: texty.filter((r) => r.nameList).length,
@@ -543,20 +595,43 @@ function analyse(cfg) {
       headings: texty.filter((r) => r.heading).length,
       wordsUnderHeading: skipped.headingWords,
     };
+    /** What else is in the container, named after the body's own reason. */
+    const siblings = () => {
+      const bits = [];
+      if (stats.linkDense) bits.push(stats.linkDense + " link-dense");
+      if (stats.nameList) bits.push(stats.nameList + " name-list");
+      if (stats.noisy) bits.push(stats.noisy + " symbol-noise");
+      if (stats.zeroSize) bits.push(stats.zeroSize + " zero-size");
+      return bits.length
+        ? " — the other blocks here are " + bits.join(", ") + " of " + texty.length +
+            " (byline, action row, link preview), so no merge reached the floor either"
+        : "";
+    };
     let reason;
     if (skipped.headingWords >= MIN)
       reason =
         skipped.headingWords + "w sit inside " + [...skipped.headingTags].join(" / ") +
         " — visit() treats a heading as a barrier and returns WITHOUT descending, so the text under it is never read";
     else if (texty.length === 0) reason = "no run survived the walk (every block invisible or excluded)";
-    else if (stats.zeroSize === texty.length) reason = "zero-size containers (" + stats.zeroSize + " blocks, rect 0×0)";
-    else if (stats.linkDense >= Math.ceil(texty.length / 2)) reason = "link-dense: " + stats.linkDense + "/" + texty.length + " blocks over the 0.6 link-text ratio";
-    else if (stats.nameList >= Math.ceil(texty.length / 2)) reason = "name-list shape: " + stats.nameList + "/" + texty.length + " blocks";
-    else if (stats.noisy >= Math.ceil(texty.length / 2)) reason = "symbol noise > 0.2 in " + stats.noisy + "/" + texty.length + " blocks";
-    else if (maxWords < MIN)
+    else if (!body) {
+      // Every block in this container was declined on its own merits — now the majority
+      // shape IS the answer, and it is named by the most common one.
+      const tally = {};
+      for (const r of texty) tally[declined(r)] = (tally[declined(r)] ?? 0) + 1;
+      const [what, n] = Object.entries(tally).sort((a, b) => b[1] - a[1])[0];
       reason =
-        "no paragraph reaches " + MIN + " words (longest " + maxWords + "w over " + texty.length +
-        " blocks) and no merge got there" + (stats.headings ? " — " + stats.headings + " heading barrier(s) inside" : "");
+        what === "zero-size"
+          ? "zero-size containers (" + n + " blocks, rect 0×0)"
+          : what === "link-dense"
+            ? "link-dense: " + n + "/" + texty.length + " blocks over the 0.6 link-text ratio, and no block of prose left"
+            : what === "name-list"
+              ? "name-list shape: " + n + "/" + texty.length + " blocks"
+              : "symbol noise > 0.2 in " + n + "/" + texty.length + " blocks";
+    } else if (body.words < MIN)
+      reason =
+        "the body of this container is " + body.words + "w — under the " + MIN + "-word floor (longest block of prose of " +
+        prose.length + ", link ratio " + stats.bodyLinkRatio + ", longest block of any kind " + maxWords + "w)" +
+        siblings() + (stats.headings ? "; " + stats.headings + " heading barrier(s) inside" : "");
     else if (
       T.hasColumnGaps &&
       T.hasColumnGaps(el.textContent || "") &&
@@ -576,7 +651,7 @@ function analyse(cfg) {
       stats.supCite = marks;
       stats.formulas = maths;
       reason =
-        "no unit although the longest block measures " + maxWords + "w by this tool's count — the walker counts less here (" +
+        "no unit although the body of this container measures " + body.words + "w by this tool's count — the walker counts less here (" +
         marks + " sup/cite marks, " + maths + " formulas are skipped mid-sentence), leaving it under the " + MIN + "-word floor";
     }
     if (trunc) reason += "; site truncates: " + trunc;
@@ -754,6 +829,8 @@ function analyse(cfg) {
     merged: units.filter((u) => u.parts.length > 1).length,
     maxParts: units.reduce((m, u) => Math.max(m, u.parts.length), 0),
     wordsJudged: units.reduce((n, u) => n + u.wordCount, 0),
+    wordsJudgedProse,
+    wordsJudgedChrome,
     wordsProse: proseWords,
     wordsChrome: chromeWords,
     posts: posts.length,
@@ -961,7 +1038,7 @@ async function worker() {
     lastSeen.set(host, Date.now());
     rows.push(row);
     done++;
-    const bits = row.reach === "ok" ? `units=${row.units} merged=${row.merged} judged=${row.wordsJudged}/${row.wordsProse} silent=${(row.silent ?? []).length} frag=${(row.fragmented ?? []).length} cross=${(row.crossing ?? []).length}/${row.crossingScopes} chrome=${row.chromeUnits} ${row.collectMs}ms` : (row.error ?? "");
+    const bits = row.reach === "ok" ? `units=${row.units} merged=${row.merged} judged=${row.wordsJudgedProse ?? row.wordsJudged}/${row.wordsProse} silent=${(row.silent ?? []).length} frag=${(row.fragmented ?? []).length} cross=${(row.crossing ?? []).length}/${row.crossingScopes} chrome=${row.chromeUnits} ${row.collectMs}ms` : (row.error ?? "");
     console.log(`[${String(done).padStart(3)}/${entries.length}] ${row.name.padEnd(26)} ${String(row.reach).padEnd(16)} ${bits}`);
   }
 }
@@ -975,7 +1052,17 @@ rows.sort((a, b) => ALL.findIndex((e) => e.name === a.name) - ALL.findIndex((e) 
 // ---- output ---------------------------------------------------------------------------
 
 const jsonPath = out(`coverage-${LABEL}.json`);
-writeFileSync(jsonPath, JSON.stringify({ label: LABEL, at: new Date().toISOString(), entries: entries.length, pages: rows }, null, 1));
+// How the run was made travels with it: `collectMs` and `longestTask` are measured while
+// JOBS pages are open at once, so two runs are only comparable on those when the number
+// matches — a two-core CI runner and a laptop are not the same measurement.
+writeFileSync(
+  jsonPath,
+  JSON.stringify(
+    { label: LABEL, at: new Date().toISOString(), entries: entries.length, jobs: JOBS, scrolls: SCROLLS, navTimeout: NAV_TIMEOUT, pages: rows },
+    null,
+    1,
+  ),
+);
 
 const ok = rows.filter((r) => r.reach === "ok");
 const md = [];
@@ -991,16 +1078,21 @@ md.push(
     "role** — those subtrees are counted separately as chrome words. Each text node is counted once.",
 );
 md.push("");
-md.push("| page | kind | reach | lang | units | merged | judged | prose | cov% | silent | frag | split¶ | cross | scopes | chrome | ms | collect |");
-md.push("| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |");
+md.push(
+  "**cov%** is the prose the walker judged over the prose the page shows — both counted " +
+    "with the same counter and over the same subtrees: a unit found inside page chrome " +
+    "counts in `chromeJudged`, never in cov%.",
+);
+md.push("");
+md.push("| page | kind | reach | lang | units | merged | judged | chromeJudged | prose | cov% | silent | frag | split¶ | cross | scopes | chrome | ms | collect |");
+md.push("| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |");
 for (const r of rows) {
   if (r.reach !== "ok") {
-    md.push(`| ${r.name} | ${r.kind} | **${r.reach}** | | | | | | | | | | | | | ${r.ms ?? ""} | |`);
+    md.push(`| ${r.name} | ${r.kind} | **${r.reach}** | | | | | | | | | | | | | | ${r.ms ?? ""} | |`);
     continue;
   }
-  const cov = r.wordsProse ? Math.round((r.wordsJudged / r.wordsProse) * 100) : 0;
   md.push(
-    `| ${r.name} | ${r.kind} | ok | ${r.lang ?? "–"} | ${r.units} | ${r.merged} | ${r.wordsJudged} | ${r.wordsProse} | ${cov} | ${(r.silent ?? []).length} | ${(r.fragmented ?? []).length} | ${r.splitParagraphs ?? 0} | ${(r.crossing ?? []).length} | ${r.crossingScopes ?? 0} | ${r.chromeUnits ?? 0} | ${r.ms} | ${r.collectMs} |`,
+    `| ${r.name} | ${r.kind} | ok | ${r.lang ?? "–"} | ${r.units} | ${r.merged} | ${r.wordsJudgedProse ?? r.wordsJudged} | ${r.wordsJudgedChrome ?? 0} | ${r.wordsProse} | ${coveragePct(r)} | ${(r.silent ?? []).length} | ${(r.fragmented ?? []).length} | ${r.splitParagraphs ?? 0} | ${(r.crossing ?? []).length} | ${r.crossingScopes ?? 0} | ${r.chromeUnits ?? 0} | ${r.ms} | ${r.collectMs} |`,
   );
 }
 md.push("");
@@ -1015,8 +1107,8 @@ for (const r of rows) {
   }
   md.push(
     `- lang \`${r.lang ?? "–"}\`, ${r.units} units (${r.merged} merged, max ${r.maxParts} parts), ` +
-      `${r.wordsJudged} of ${r.wordsProse} prose words judged (${r.wordsProse ? Math.round((r.wordsJudged / r.wordsProse) * 100) : 0} %), ` +
-      `${r.wordsChrome} words in chrome`,
+      `${r.wordsJudgedProse ?? r.wordsJudged} of ${r.wordsProse} prose words judged (${coveragePct(r)} %), ` +
+      `${r.wordsChrome} words in chrome${r.wordsJudgedChrome ? `, of which ${r.wordsJudgedChrome} were judged` : ""}`,
   );
   md.push(`- analysis set: ${r.setKind}, ${r.setSize} containers, ${r.postsWith50} of them ≥ 50 words`);
   if ((r.silent ?? []).length) {
