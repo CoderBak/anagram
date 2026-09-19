@@ -2070,6 +2070,164 @@ for (const file of fixtureFiles) {
   });
 }
 
+// =====================================================================================
+// PAGE DIAGNOSTICS — "Copy page diagnostics" (lib/diagnostics/).
+//
+// The feature's hard requirement is that NOTHING a person wrote leaves the page. So the
+// fixture is a page made of things that must not travel — a name, an e-mail address, a URL
+// with a token in its query, a data attribute carrying a sentence, an alt, a title, an
+// input value, an inline JSON blob and an HTML comment — and its prose is deliberately
+// nonsense built from consonant clusters that occur in no English text, so the check can
+// be the strict one: not one FOUR-CHARACTER run of any text node on that page may appear
+// anywhere in the report. Natural prose could not be checked that way (a page saying
+// "under" would collide with the report's own "under the 50-word floor") and a weaker
+// check is what lets a leak through.
+// =====================================================================================
+{
+  const dp = await browser.newPage();
+  await dp.setContent("<!doctype html><html lang=\"en\"><body></body></html>");
+  await dp.addScriptTag({ path: BUNDLE });
+  const r = await dp.evaluate(async () => {
+    // Two pages of the same SHAPE and different words. The first holds the secrets; the
+    // second has never seen them. A four-character run of the first page's text that turns
+    // up in BOTH reports came from the report's own vocabulary — "right-clicked" holds
+    // "icke", "examined" holds "exam", the lorem-ipsum filler holds "cons" — and a run that
+    // appears in the first report ALONE can only have come from the page. That control is
+    // what keeps the check at four characters instead of retreating to a length where
+    // nothing collides and nothing is proven.
+    const PAGES = [
+      {
+        vocab: "zqxwkv jhzxvq kzwvqj hxkqvw zqxjhz wkvkzw xvqhxk vqjzqx kzwjhz qvwwkv".split(" "),
+        secrets: {
+          name: "Marla Quillgrove",
+          mail: "marla.quillgrove@zephyrmail.example",
+          url: "https://intranet.example/doc?token=HUNTERWOMBAT42",
+          note: "Sandsurfer briefing notes",
+          alt: "Moonjelly portrait",
+          title: "Klaxonberry tooltip",
+          value: "Vermillionpaste",
+          json: "Tumblewicket",
+          comment: "Grubblesnatch draft",
+        },
+      },
+      {
+        // Same lengths throughout, so the filler — which is generated from word lengths —
+        // comes out identical and every gram of it is accounted for by this control.
+        vocab: "bdfghj mnprst vwxzbd fghjmn prstvw xzbdfg hjmnpr stvwxz bdfghj mnprst".split(" "),
+        secrets: {
+          name: "Tomas Underbridge",
+          mail: "tomas.underbridge@quartzpost.invalid",
+          url: "https://internal.invalid/pg?ticket=BADGERLANTERN7",
+          note: "Waveglider standing order",
+          alt: "Coralfinch engraving",
+          title: "Peppergrind caption",
+          value: "Saffronbucket",
+          json: "Wanderhatch",
+          comment: "Pebblescript memo",
+        },
+      },
+    ];
+    const mount = ({ vocab, secrets }) => {
+      const prose = (n) => Array.from({ length: n }, (_, i) => vocab[i % vocab.length]).join(" ") + ".";
+      document.body.innerHTML =
+        `<!-- ${secrets.comment} -->` +
+        `<script type="application/json">{"owner":"${secrets.json}","by":"${secrets.name}"}</script>` +
+        `<nav class="site-nav"><a href="${secrets.url}">${prose(12)}</a></nav>` +
+        `<main><article class="post" data-note="${secrets.note}" data-testid="postBody">` +
+        `<h2>${prose(4)}</h2>` +
+        `<p title="${secrets.title}">${prose(60)}</p>` +
+        `<p>${prose(60)}</p>` +
+        `<img alt="${secrets.alt}" src="${secrets.url}" width="40" height="40">` +
+        `<form><input value="${secrets.value}"><textarea>${prose(8)}</textarea></form>` +
+        `<address>${secrets.name} &lt;${secrets.mail}&gt;</address>` +
+        `<pre><code>${secrets.json} = "${secrets.value}";\nif (${secrets.json}) { run(); }</code></pre>` +
+        `</article></main>`;
+    };
+    const env = () => ({
+      version: "0.0.0-test",
+      manifestVersion: 3,
+      uiLanguage: "en",
+      messageLocale: "en",
+      analysisScope: "page",
+      mergeShorts: true,
+      displayMode: "all",
+      siteRule: null,
+      globallyEnabled: true,
+      daemon: { state: "up", model: "test-model 1 (calibration none)" },
+      running: true,
+      onceForPage: false,
+      pdf: false,
+      docs: null,
+      counts: { scored: 0, flagged: 0, unsupported: 0, unavailable: 0 },
+      frameGate: { minWidth: 200, minArea: 40000 },
+      clickedFrameId: 0,
+      target: document.querySelector("article"),
+      detectLanguage: async () => null,
+    });
+    /** Every four-character run of letters/digits in every text node now in the page. */
+    const gramsOfPage = () => {
+      const grams = new Set();
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        for (const run of (n.textContent ?? "").match(/[\p{L}\p{Nd}]+/gu) ?? []) {
+          for (let i = 0; i + 4 <= run.length; i++) grams.add(run.slice(i, i + 4).toLowerCase());
+        }
+      }
+      return grams;
+    };
+
+    mount(PAGES[0]);
+    const grams = gramsOfPage();
+    const report = await PW.buildDiagnostics(env());
+    mount(PAGES[1]);
+    const control = (await PW.buildDiagnostics(env())).toLowerCase();
+
+    const lower = report.toLowerCase();
+    const leakedGrams = [...grams].filter((g) => lower.includes(g) && !control.includes(g));
+    const leakedSecrets = Object.values(PAGES[0].secrets).filter(
+      (s) => report.includes(s) || lower.includes(s.toLowerCase()),
+    );
+
+    return {
+      report,
+      bytes: new TextEncoder().encode(report).length,
+      grams: grams.size,
+      leakedGrams: leakedGrams.slice(0, 8).map((g) => `${g} @ …${report.slice(Math.max(0, lower.indexOf(g) - 30), lower.indexOf(g) + 20)}…`),
+      leakedSecrets,
+      hasSections: ["# Anagram page diagnostics", "## Counts", "## Why the rest is silent", "## Frames", "## Structure"].every(
+        (h) => report.includes(h),
+      ),
+      // The shape survives even though the words do not: two paragraphs of sixty words
+      // each are two units, and the capture keeps the elements that made them.
+      structureKeeps: /<article[^>]*class="post"/.test(report) && /<p[^>]*>/.test(report),
+      dropsUrls: !report.includes("href") && !report.includes("intranet"),
+      dropsAlt: !report.includes("alt="),
+      keepsTestId: report.includes('data-testid="postBody"'),
+    };
+  });
+  await dp.close();
+  results.push({
+    name: "diagnostics: not one 4-character run of the page's text appears in the report",
+    ok: r.leakedGrams.length === 0 && r.grams > 50,
+    note: `${r.grams} grams checked, leaked ${JSON.stringify(r.leakedGrams)}`,
+  });
+  results.push({
+    name: "diagnostics: the name, the e-mail, the tokened URL, the data attribute, the alt, the title, the input value, the JSON blob and the comment are all absent",
+    ok: r.leakedSecrets.length === 0,
+    note: JSON.stringify(r.leakedSecrets),
+  });
+  results.push({
+    name: "diagnostics: URLs and alt text are dropped outright, while the markup a fixture needs survives",
+    ok: r.dropsUrls && r.dropsAlt && r.structureKeeps && r.keepsTestId,
+    note: JSON.stringify({ dropsUrls: r.dropsUrls, dropsAlt: r.dropsAlt, structureKeeps: r.structureKeeps, keepsTestId: r.keepsTestId }),
+  });
+  results.push({
+    name: "diagnostics: the report carries its five sections and stays under the 60 kB a chat will take",
+    ok: r.hasSections && r.bytes <= 60_000,
+    note: `${r.bytes} bytes`,
+  });
+}
+
 await browser.close();
 
 let pass = 0;
