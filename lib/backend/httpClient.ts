@@ -8,6 +8,7 @@
 import * as v from "valibot";
 import { BUCKET_COUNT, CONTRACT_VERSION } from "../contract";
 import type { ModelInfo, ScoreBlock, ScoreClient, ScoredBatch, ScoreResult } from "../contract";
+import { parseRetryAfter } from "./retry";
 
 /** Below Chrome's 30 s cutoff for a single fetch() inside an extension service worker. */
 const SCORE_TIMEOUT_MS = 25_000;
@@ -19,6 +20,23 @@ export class ProtocolError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "ProtocolError";
+  }
+}
+
+/**
+ * The daemon answered, with a status rather than a batch. The status travels on the error
+ * because it is what decides whether asking again can help — 503 while the weights load is
+ * worth another try, 400 is the same answer every time (lib/backend/retry.ts) — and so does
+ * `Retry-After` when the daemon sends one.
+ */
+export class DaemonHttpError extends Error {
+  readonly status: number;
+  readonly retryAfterMs: number | null;
+  constructor(status: number, retryAfterMs: number | null) {
+    super(`anagramd HTTP ${status}`);
+    this.name = "DaemonHttpError";
+    this.status = status;
+    this.retryAfterMs = retryAfterMs;
   }
 }
 
@@ -165,7 +183,7 @@ export class HttpScoreClient implements ScoreClient {
         signal: t.signal,
         redirect: NO_REDIRECT,
       });
-      if (!res.ok) throw new Error(`anagramd HTTP ${res.status}`);
+      if (!res.ok) throw new DaemonHttpError(res.status, parseRetryAfter(res.headers.get("retry-after")));
       const parsed = v.safeParse(ScoreResponseSchema, await res.json());
       if (!parsed.success) {
         const issue = parsed.issues[0];

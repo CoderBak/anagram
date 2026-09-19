@@ -30,7 +30,9 @@ function req(texts: string[]): ScoreBatchRequest {
   };
 }
 
-/** A backend that records what it was asked and can be made to fail. */
+/** A backend that records what it was asked and can be made to fail. It fails the way a
+ *  BUSY daemon does, which is the only failure the router tries a second time — so a
+ *  request really is in flight while the clear below happens. */
 function fakeClient() {
   const calls: ScoreBlock[][] = [];
   let failing = false;
@@ -42,7 +44,7 @@ function fakeClient() {
     },
     async scoreBatch(blocks): Promise<ScoredBatch> {
       calls.push(blocks);
-      if (failing) throw new Error("backend down");
+      if (failing) throw Object.assign(new Error("anagramd HTTP 503"), { status: 503, retryAfterMs: null });
       return {
         model: MODEL,
         results: blocks.map((b) => ({ id: b.id, bucket: 3, probs: [0, 0, 0.1, 0.9], score: 1 })),

@@ -34,6 +34,12 @@ function scored(blocks: ScoreBlock[], model: ModelInfo, bucket = 3): ScoredBatch
   };
 }
 
+/** The error a daemon that is merely BUSY produces (lib/backend/httpClient.ts's
+ *  DaemonHttpError shape) — the only kind of failure the router may send again. */
+function busyError(retryAfterMs: number | null = null): Error {
+  return Object.assign(new Error("anagramd HTTP 503"), { status: 503, retryAfterMs });
+}
+
 /** A controllable fake backend: every scoreBatch call is recorded and can be held open.
  *  A held call carries ITS OWN blocks, so releasing one or all of them answers each with
  *  the paragraphs it was actually given. */
@@ -42,11 +48,12 @@ function fakeClient(initial: ModelInfo) {
   const calls: ScoreBlock[][] = [];
   const holds: Array<{ blocks: ScoreBlock[]; settle: (v: ScoredBatch) => void }> = [];
   let mode: "auto" | "hold" | "fail" = "auto";
+  let failure: Error = busyError();
   const client: ScoreClient & {
     calls: ScoreBlock[][];
     setModel(m: ModelInfo): void;
     hold(): void;
-    fail(): void;
+    fail(error?: Error): void;
     release(model?: ModelInfo): void;
     releaseOne(model?: ModelInfo): void;
   } = {
@@ -58,8 +65,9 @@ function fakeClient(initial: ModelInfo) {
     hold: () => {
       mode = "hold";
     },
-    fail: () => {
+    fail: (error = busyError()) => {
       mode = "fail";
+      failure = error;
     },
     /** Answer every held call and let later ones through. */
     release: (model = current) => {
@@ -73,7 +81,7 @@ function fakeClient(initial: ModelInfo) {
     },
     async scoreBatch(blocks) {
       calls.push(blocks);
-      if (mode === "fail") throw new Error("backend down");
+      if (mode === "fail") throw failure;
       if (mode === "hold") {
         return new Promise<ScoredBatch>((res) => {
           holds.push({ blocks, settle: res });
@@ -133,7 +141,7 @@ describe("router provenance", () => {
   it("backend failure yields degraded results that are never cached", async () => {
     const client = fakeClient(A);
     const router = createRouter(client);
-    client.fail();
+    client.fail(); // a busy daemon: the one failure that is worth sending again
     const r = await router.handle(req(["will fail"]));
     expect(r.results[0].degraded).toBe(true);
     client.release();
@@ -231,7 +239,7 @@ describe("router queueing", () => {
   it("a joined request settles degraded when the batch it joined fails", async () => {
     const client = fakeClient(A);
     const router = createRouter(client);
-    client.fail();
+    client.fail(); // busy, so there IS a backoff for the second request to arrive inside
     const first = router.handle(req(["doomed paragraph"]));
     await settle(); // inside the retry backoff, so the join happens mid-flight
     const second = router.handle(req(["doomed paragraph"]));
@@ -248,5 +256,55 @@ describe("router queueing", () => {
     const again = await router.handle(req(["doomed paragraph"]));
     expect(again.results[0].degraded).toBeUndefined(); // nothing degraded was cached
     expect(client.calls.length).toBe(3);
+  });
+});
+
+describe("router retry", () => {
+  it("does not send a batch the daemon refused on its merits", async () => {
+    const client = fakeClient(A);
+    const router = createRouter(client);
+    // A response that failed validation says the same thing every time it is asked for;
+    // sending it again only doubles the load on a daemon already answering.
+    client.fail(Object.assign(new Error("malformed /score response"), { name: "ProtocolError" }));
+    const r = await router.handle(req(["a paragraph the daemon mis-answers"]));
+    expect(r.results[0].degraded).toBe(true);
+    expect(client.calls.length).toBe(1);
+  });
+
+  it("does not send a batch again after a 4xx", async () => {
+    const client = fakeClient(A);
+    const router = createRouter(client);
+    client.fail(Object.assign(new Error("anagramd HTTP 413"), { status: 413, retryAfterMs: null }));
+    await router.handle(req(["too much text for the daemon"]));
+    expect(client.calls.length).toBe(1);
+  });
+
+  it("sends it again when the transport failed", async () => {
+    const client = fakeClient(A);
+    const router = createRouter(client);
+    client.fail(new TypeError("Failed to fetch"));
+    await router.handle(req(["a paragraph nobody could deliver"]));
+    expect(client.calls.length).toBe(2);
+  });
+
+  it("waits as long as a short Retry-After asks", async () => {
+    const client = fakeClient(A);
+    const router = createRouter(client);
+    client.fail(busyError(400));
+    const started = Date.now();
+    await router.handle(req(["one request too many"]));
+    expect(client.calls.length).toBe(2);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(380);
+  });
+
+  it("answers at once rather than holding a slot for a long Retry-After", async () => {
+    const client = fakeClient(A);
+    const router = createRouter(client);
+    client.fail(busyError(30_000)); // "come back in half a minute" — not with a slot held
+    const started = Date.now();
+    const r = await router.handle(req(["one request too many, for a while"]));
+    expect(client.calls.length).toBe(1);
+    expect(r.results[0].degraded).toBe(true);
+    expect(Date.now() - started).toBeLessThan(1000);
   });
 });

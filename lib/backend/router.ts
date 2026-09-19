@@ -3,7 +3,7 @@
 // Ports the reference's getRequests dedup/batch wrapper, ADDING a priority queue with a
 // concurrency cap (p-queue: the content script's lane — viewport / near / background —
 // survives into the worker, so a visible paragraph in any tab is scored before anyone's
-// prefetch) and retry/error-fallback (p-retry).
+// prefetch) and a retry/error-fallback whose policy lives in ./retry.ts.
 //
 // Provenance rules (the part that bit us): the backend identity that keys the caches is
 // snapshotted ONCE per request, every cache/in-flight key is computed from that snapshot
@@ -28,8 +28,8 @@ import type {
 } from "../contract";
 import { BUCKET_COUNT } from "../contract";
 import PQueue from "p-queue";
-import pRetry from "p-retry";
 import { createSwCache } from "./swCache";
+import { retryWaitMs } from "./retry";
 import { createLogger } from "../log";
 
 const log = createLogger("router");
@@ -45,9 +45,10 @@ const log = createLogger("router");
 const BATCH_CHAR_BUDGET = 6000;
 /** Bounded fan-out the reference lacked. */
 const MAX_IN_FLIGHT = 4;
-/** One retry after this backoff (ms), then the neutral fallback. */
+/** At most one retry — and only of a failure ./retry.ts calls transient — then the neutral
+ *  fallback. One is enough: the content script re-asks for an "Unavailable" paragraph on
+ *  its own schedule, and a second wait here holds one of the four slots meanwhile. */
 const RETRIES = 1;
-const RETRY_BACKOFF_MS = 150;
 /** p-queue: higher runs first. */
 const PRIORITY: Record<ScanPriority, number> = { viewport: 2, near: 1, background: 0 };
 
@@ -124,20 +125,26 @@ export function createRouter(client: ScoreClient): BackendRouter {
     }
   }
 
-  /** Score one batch, retry once with backoff; null when the backend failed. */
+  /**
+   * Score one batch; null when the backend failed. A failure that could answer differently
+   * next time — the daemon still loading, one request too many, the transport — is tried
+   * once more after a jittered wait; anything that says "this request is the problem" is
+   * not, because the second answer would be the first one again. The retry re-sends THIS
+   * batch and nothing else, so a late answer still belongs to the text that asked for it.
+   */
   async function scoreBatchSafe(batch: ScoreBlock[]): Promise<{ results: ScoreResult[]; model: ModelInfo } | null> {
-    try {
-      return await pRetry(() => client.scoreBatch(batch), {
-        retries: RETRIES,
-        minTimeout: RETRY_BACKOFF_MS,
-        factor: 1,
-        randomize: false,
-        onFailedAttempt: ({ error, retriesLeft }) =>
-          log.warn(`scoreBatch failed (${retriesLeft} retr${retriesLeft === 1 ? "y" : "ies"} left)`, error),
-      });
-    } catch (e) {
-      log.error("scoreBatch failed after retry, using neutral fallback", e);
-      return null;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await client.scoreBatch(batch);
+      } catch (e) {
+        const wait = attempt < RETRIES ? retryWaitMs(e) : null;
+        if (wait === null) {
+          log.error("scoreBatch failed, using neutral fallback", e);
+          return null;
+        }
+        log.warn(`scoreBatch failed, trying once more in ${wait} ms`, e);
+        await new Promise((r) => setTimeout(r, wait));
+      }
     }
   }
 
