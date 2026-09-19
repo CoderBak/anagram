@@ -170,14 +170,11 @@ export default defineBackground(() => {
           id: "anagram-open-pdf",
           title: t("menuOpenPdf"),
           contexts: ["link"],
-          targetUrlPatterns: [
-            "*://*/*.pdf",
-            "*://*/*.pdf?*",
-            "*://*/*.PDF",
-            "*://*/*.PDF?*",
-            "file:///*.pdf",
-            "file:///*.PDF",
-          ],
+          // http(s) only. A PDF on this computer cannot be read this way at all — the
+          // bytes come from the tab showing the document and a file: page may not
+          // re-read itself — so offering it on such a link would be an offer we cannot
+          // keep. Those open through the reading mode's drop zone.
+          targetUrlPatterns: ["*://*/*.pdf", "*://*/*.pdf?*", "*://*/*.PDF", "*://*/*.PDF?*"],
         });
       }
     });
