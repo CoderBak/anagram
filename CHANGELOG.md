@@ -229,6 +229,13 @@ Notable changes to Anagram, newest first. The format follows
   however much its shadow tree holds, so the whole document counted as empty and
   not one paragraph in the overlay was ever scored. The layer now sits one level
   in, where it always belonged.
+- The canonical scoring text is a **fixed point**: canonicalizing it again changes
+  nothing. An un-rendered LaTeX span was dropped after the quote digraphs were
+  folded, so a span removed from between two quotes ("the constant '$\alpha$' is")
+  left an `''` that only a second pass folded — one paragraph, two cache keys, and
+  a different text sent depending on which of the two the caller had. Everything
+  that welds two characters together now runs before the folds, and the quote fold
+  settles on its own.
 - Text inside an out-of-flow **shadow host** is read. The rule that drops a small
   absolutely or fixed positioned box as a decoration ("[Pg 12]", a corner badge)
   measured `textContent`, which a host reports as empty however much its shadow

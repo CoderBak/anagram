@@ -100,6 +100,24 @@ export function stripInvisibles(s: string): string {
 const RAW_LATEX_RE = /\$[^$\n]*\\[A-Za-z]+[^$\n]*\$/g;
 
 /**
+ * LaTeX quote digraphs — ``` `` ``` and `''` for the double quotes, a lone backtick for an
+ * opening apostrophe — folded until nothing is left to fold. A fold can put two quote
+ * characters side by side that were not neighbours before: a backtick turned into an
+ * apostrophe beside an apostrophe, a pair of typographic quotes flattened, and above all
+ * an un-rendered LaTeX span removed from between them ("the constant '$\alpha$' is"
+ * leaves `''`). One pass then returned a text that was not itself canonical. Every round
+ * either drops a character or turns a backtick into an apostrophe, and none writes a
+ * backtick, so this settles in a round or two.
+ */
+function foldQuotes(s: string): string {
+  for (;;) {
+    const next = s.replace(/``|''/g, '"').replace(/(?<=\s|^)`(?=\S)/g, "'");
+    if (next === s) return next;
+    s = next;
+  }
+}
+
+/**
  * The ONE canonical form of a paragraph for scoring AND for cache keys.
  *
  * Presentation is normalized, content is not: the same sentence rendered by arXiv's
@@ -111,18 +129,25 @@ const RAW_LATEX_RE = /\$[^$\n]*\\[A-Za-z]+[^$\n]*\$/g;
  * and escapes (`\%`) → characters, curly quotes/apostrophes → ASCII, digit ranges
  * `1–5` → `1-5`, whitespace collapsed. No lowercasing, no punctuation stripping — the
  * daemon applies the model's own preprocessing on top of this.
+ *
+ * IT IS A FIXED POINT: c(c(x)) === c(x). The canonical form is the cache key as well
+ * as what the model reads, so a paragraph must not get a second, different key by
+ * being canonicalized again. That is what fixes the ORDER here: every step that can
+ * weld two characters together — dropping an un-rendered LaTeX span, folding a
+ * typographic quote — runs BEFORE the folds that would then have something left to
+ * do, and the quote fold, the one step that can feed itself, runs to a fixed point
+ * of its own.
  */
 export function canonicalForScoring(s: string): string {
-  return stripInvisibles(s.normalize("NFKC"))
+  const folded = stripInvisibles(s.normalize("NFKC"))
     .replace(/\u00A0/g, " ")
-    .replace(/---/g, "—")
-    .replace(/(?<=\S)--(?=\S)/g, "–")
-    .replace(/``|''/g, '"')
-    .replace(/(?<=\s|^)`(?=\S)/g, "'")
     .replace(/\\([%&_#$])/g, "$1")
     .replace(RAW_LATEX_RE, "")
+    .replace(/---/g, "—")
+    .replace(/(?<=\S)--(?=\S)/g, "–")
     .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
-    .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
+    .replace(/[\u201C\u201D\u201E\u201F]/g, '"');
+  return foldQuotes(folded)
     .replace(/(\d)[\u2013\u2010\u2011](\d)/g, "$1-$2")
     .replace(/\s+/g, " ")
     .trim();

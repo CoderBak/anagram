@@ -93,6 +93,10 @@ export interface TextOpts {
   noise?: number;
   /** Per-sentence chance of LaTeX residue. */
   latex?: number;
+  /** Per-sentence chance of a LaTeX span written TIGHT against quotes or dashes —
+   *  `'$\alpha$'`, ``$\tau^{2}$'', `x-$\alpha$-y`. Removing the span welds what stood on
+   *  either side of it together, and what it welds has to be folded in the same pass. */
+  latexTight?: number;
   /** No sentence-ending punctuation anywhere — the "no boundary" case. */
   unpunctuated?: boolean;
   /** Insert one unbroken token of this many characters (a base64 blob, a hash). */
@@ -131,6 +135,11 @@ function sentence(r: Rng, o: TextOpts): string {
   for (let i = 0; i < n; i++) words.push(r.chance(0.08) ? figure(r) : decorate(r, word(r), o));
   if (r.chance(o.latex ?? 0)) {
     words.splice(r.int(0, words.length), 0, r.chance(0.5) ? r.pick(LATEX_BITS) : r.pick(LATEX_SPANS));
+  }
+  if (r.chance(o.latexTight ?? 0)) {
+    const span = r.pick(LATEX_SPANS);
+    const tight = r.pick([`'${span}'`, `\`\`${span}''`, `"${span}"`, `${span}'s`, `x-${span}-y`, `${span}--${span}`]);
+    words.splice(r.int(0, words.length), 0, tight);
   }
   let s = words.join(" ");
   s = s.charAt(0).toUpperCase() + s.slice(1);

@@ -39,6 +39,7 @@ const SHAPES: TextOpts[] = [
   { noise: 0.2, cjk: 0.5, newlines: true },
   { noise: 0.5, parts: 3, targetChars: 600, newlines: true },
   { noise: 0.15, latex: 0.6 },
+  { noise: 0.1, latex: 0.3, latexTight: 0.7, newlines: true },
   { noise: 0.6, unpunctuated: true, targetChars: 120 },
   { noise: 0.25, hugeToken: 300 },
 ];
@@ -100,15 +101,21 @@ describe("canonicalForScoring", () => {
     expect(normalizeText(nbsp)).toBe(normalizeText(straight));
   });
 
-  // KNOWN DEFECT (lib/dom/text.ts, canonicalForScoring — left alone here, that file has
-  // another owner). Un-rendered LaTeX is removed AFTER the digraph folds, so removing a
-  // span can weld two quote characters into a `` or '' that only the NEXT pass folds:
-  // "the constant '$\alpha$' is" canonicalizes to a text that is not itself canonical.
-  // The generators above never write a quote tight against a span, which is why the
-  // fixed-point property passes; this case was built by hand. The fold belongs after the
-  // removal. Flip this test to a plain `it` once that is done.
-  it.fails("is NOT yet a fixed point when removing a LaTeX span welds two quotes together", () => {
-    const once = canonicalForScoring("the constant '$\\alpha$' is");
-    expect(canonicalForScoring(once)).toBe(once);
+  // The case the fixed-point property missed for a long time: an un-rendered LaTeX span is
+  // removed from BETWEEN two quote characters, which leaves them welded into a digraph. The
+  // fold used to run before the removal, so only a second pass turned the '' into a " —
+  // two cache keys for one paragraph. The shapes above now write spans tight against quotes
+  // and dashes; these are the hand-written minimal cases.
+  it("folds what removing a LaTeX span welds together, in the same pass", () => {
+    for (const [text, want] of [
+      ["the constant '$\\alpha$' is", 'the constant " is'],
+      ["the constant ``$\\alpha$'' is", 'the constant "" is'],
+      ["a x-$\\alpha$-y b", "a x–y b"],
+      ["the ‘’ empty quotation", 'the " empty quotation'],
+    ] as const) {
+      const once = canonicalForScoring(text);
+      expect(once).toBe(want);
+      expect(canonicalForScoring(once)).toBe(once);
+    }
   });
 });
