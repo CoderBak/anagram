@@ -165,6 +165,7 @@ async function read(doc: PdfDocument, source: { name: string; url: string | null
   const pageCount = capped ? MAX_PAGES : doc.numPages;
   subtitleEl.textContent = tn("readerPages", doc.numPages);
   originalEl.hidden = source.url === null;
+  if (source.url === null) twinEl.hidden = true;
   dropEl.hidden = true;
   pagesEl.hidden = false;
   pagesEl.classList.add("reading");
@@ -281,10 +282,15 @@ function reset(): void {
   zoomEl.hidden = true;
 }
 
-/** The three ways a handoff can produce nothing, each in the line that already exists. */
+/**
+ * The three ways a handoff can produce nothing, each in the line that already exists.
+ * The drop zone comes with it, since handing the file over is the way past all three —
+ * but not over a document already on screen: a file that was too large to open is no
+ * reason to clutter the one the reader is in the middle of.
+ */
 function fail(failure: HandoffFailure | string): void {
   say(failure === "large" ? t("readerTooLarge") : failure === "type" ? t("readerBadFile") : t("readerFetchFailed"));
-  dropEl.hidden = false;
+  if (current === null) dropEl.hidden = false;
 }
 
 /**
@@ -475,11 +481,28 @@ function wire(src: string | null): void {
   });
 }
 
+/**
+ * Addresses this page may hand its tab back to. `src` only ever comes from our own worker,
+ * and reader.html is not web accessible — but "the tab goes there without anybody clicking
+ * anything" is a sentence that deserves a list, and `javascript:` on an extension page is
+ * what the list is for.
+ */
+const LEAVEABLE = new Set(["http:", "https:", "file:"]);
+
+function documentAddress(raw: string | null): string | null {
+  if (raw === null) return null;
+  try {
+    return LEAVEABLE.has(new URL(raw).protocol) ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
 function main(): void {
   localizePage();
   followSystemTheme();
   const params = new URL(location.href).searchParams;
-  const src = params.get("src");
+  const src = documentAddress(params.get("src"));
   const ticket = params.get("ticket");
   const failure = params.get("err");
   wire(src);

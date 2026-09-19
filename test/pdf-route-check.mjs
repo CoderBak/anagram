@@ -51,7 +51,7 @@ const files = await new Promise((resolve) => {
     }
     // A document that says it is a PDF and goes on for ever: served in megabyte pieces,
     // with NO content-length, so the only thing that can stop it is the reader's own
-    // running total. `oversizedSent` is how the check knows it really stopped.
+    // running total. `oversizedSends` is how the check knows it really stopped.
     if (path === "/huge.pdf") {
       res.writeHead(200, { "content-type": "application/pdf" });
       const piece = Buffer.alloc(1024 * 1024, 0x20);
@@ -529,6 +529,29 @@ await setAutoOpen(false);
     "handoff: a pasted reader address goes back to the PDF, and stays there",
     page.url() === src && reader === 1,
     JSON.stringify({ landed: page.url().slice(-20), visits: visits.length, reader }),
+  );
+  await page.close();
+}
+
+{
+  // …and only to an address the browser would have shown by itself. The reading mode hands
+  // its tab back WITHOUT anybody clicking anything, so the one thing it must never be
+  // talked into is `javascript:` on the extension's own origin.
+  const page = await context.newPage();
+  await page.goto(`${READER}?src=${encodeURIComponent("javascript:window.__ran=1")}`, { waitUntil: "load" }).catch(() => {});
+  await page.waitForTimeout(2500);
+  const state = await page
+    .evaluate(() => ({
+      ran: window.__ran ?? null,
+      url: location.href,
+      drop: !document.getElementById("drop").hidden,
+      original: !document.getElementById("original").hidden,
+    }))
+    .catch((e) => String(e));
+  record(
+    "handoff: a source that is not a document address is not an address to leave for",
+    state.ran === null && state.url === `${READER}?src=javascript%3Awindow.__ran%3D1` && state.drop && !state.original,
+    JSON.stringify(state),
   );
   await page.close();
 }
