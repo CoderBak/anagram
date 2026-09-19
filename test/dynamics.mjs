@@ -85,8 +85,10 @@ const KIND = opt("kind", null);
 const MINUTES = Number(opt("minutes", 1.5)) || 1.5;
 const NAV_TIMEOUT = Number(opt("timeout", 20000)) || 20000;
 const SAMPLE_MS = Number(opt("sample", 2000)) || 2000;
-/** The control run repeats the scroll script for this share of the session budget. */
-const CONTROL_SHARE = Number(opt("control-share", 0.5)) || 0.5;
+/** The control run repeats the scroll script for this share of the session budget. It is 1
+ *  by default: an infinite feed loads what it is scrolled through, so a shorter control
+ *  run would compare our cost on a long page against theirs on a short one. */
+const CONTROL_SHARE = Number(opt("control-share", 1)) || 1;
 const NO_CONTROL = flag("no-control");
 const LIST_ONLY = flag("list");
 const filters = argv.filter((a) => !a.startsWith("--")).map((s) => s.toLowerCase());
@@ -390,27 +392,35 @@ function SAMPLE(cfg) {
   let sameUnitChips = 0;
   let pileUpGroups = 0;
   let pileUpChips = 0;
+  let repeatedTextChips = 0;
   for (const [key, g] of byAnchor) {
     if (g.length < 2) continue;
     const nums = [...new Set(g.map(numOf))];
     const words = [...new Set(g.map(wordsOf))];
-    const sameUnit = nums.length === 1 && words.length === 1 && nums[0] !== "";
+    const sameParent = g.every((x) => x.parentElement === g[0].parentElement);
+    // Chips in DIFFERENT parents that close the same text are the page showing that text
+    // twice (a headline in the river and again in a rail). Two distinct units with one
+    // text get one chip each BY DESIGN — scheduler.ts dedups by unit identity, not text —
+    // so this is not a defect and is counted apart.
+    const kind = !sameParent ? "repeated" : nums.length === 1 && words.length === 1 && nums[0] !== "" ? "sameUnit" : "pileUp";
     dupGroups++;
     dupChips += g.length - 1;
-    if (sameUnit) {
+    if (kind === "sameUnit") {
       sameUnitGroups++;
       sameUnitChips += g.length - 1;
-    } else {
+    } else if (kind === "pileUp") {
       pileUpGroups++;
       pileUpChips += g.length - 1;
+    } else {
+      repeatedTextChips += g.length - 1;
     }
-    if (dupSamples.length < 5)
+    if (dupSamples.length < 6)
       dupSamples.push({
         chips: g.length,
-        sameUnit,
+        kind,
         nums: nums.slice(0, 6),
         words: words.slice(0, 6),
-        sameParent: g.every((x) => x.parentElement === g[0].parentElement),
+        sameParent,
         parent: g[0].parentElement ? g[0].parentElement.nodeName.toLowerCase() : "?",
         hint: key.slice(-60),
       });
@@ -493,6 +503,7 @@ function SAMPLE(cfg) {
     sameUnitChips,
     pileUpGroups,
     pileUpChips,
+    repeatedTextChips,
     dupSamples,
     dupSentences,
     dupSentenceHint,
@@ -862,6 +873,7 @@ function analyse(samples) {
     sameUnitGroupsMax: maxOf("sameUnitGroups"),
     pileUpChipsMax: maxOf("pileUpChips"),
     pileUpGroupsMax: maxOf("pileUpGroups"),
+    repeatedTextChipsMax: maxOf("repeatedTextChips"),
     zeroSizeMax: maxOf("zeroSize"),
     chromeMax: maxOf("chrome"),
     clippedOutMax: maxOf("clippedOut"),
@@ -946,11 +958,12 @@ function watch(page) {
     rec.pageErrors.push(t);
     if (DOM_ERR_RE.test(t)) rec.domErrors.push(t);
   });
+  const t0 = Date.now();
   page.on("console", (m) => {
     const text = m.text();
     const u = m.location()?.url ?? "";
     if (text.startsWith("[anagram:")) {
-      rec.extLogs.push(text.slice(0, 200));
+      rec.extLogs.push(`+${Date.now() - t0}ms ${text.slice(0, 180)}`);
       return;
     }
     if (m.type() !== "error" && m.type() !== "warning") return;
@@ -974,6 +987,7 @@ function countLogs(lines) {
   const bump = (k) => (c[k] = (c[k] ?? 0) + 1);
   for (const l of lines) {
     if (l.includes("url change refresh")) bump("urlChange");
+    else if (l.includes("Readability chunk")) bump("readability");
     else if (l.includes("prefetch: queued")) bump("prefetchPass");
     else if (l.includes("backend changed")) bump("backendChanged");
     else if (l.includes("document replaced")) bump("documentReplaced");
@@ -1131,6 +1145,13 @@ async function visit(entry) {
       fabCount: run.last ? run.last.fabCount : "",
       domElements: run.last ? run.last.domElements : 0,
       logs: countLogs(rec.extLogs),
+      // Kept so an anomaly can be placed in time afterwards: one compact row per sample
+      // (ms since the first, chips, pending, hidden, scroll, the page's own element count
+      // and text hash), and the orchestrator's own lines with the moment each arrived.
+      series: run.samples
+        .filter(Boolean)
+        .map((s, i, a) => [s.wall - a[0].wall, s.n, s.pending, s.hidden, s.scrollY, s.pageEls, s.textHash, s.deep ? 1 : 0]),
+      logLines: rec.extLogs.slice(0, 300),
       extErrors: [...new Set(rec.extErrors)].slice(0, 8),
       pageErrors: [...new Set(rec.pageErrors)].slice(0, 8),
       domErrors: [...new Set(rec.domErrors)].slice(0, 6),
@@ -1221,7 +1242,7 @@ async function visit(entry) {
 // ---- the run ------------------------------------------------------------------------------
 
 console.log(
-  `dynamics: ${entries.length} pages, ${MINUTES} min each${NO_CONTROL ? "" : ` + a ${Math.round(CONTROL_SHARE * 100)}% control run`} → ${OUT_DIR}`,
+  `dynamics: ${entries.length} pages, ${MINUTES} min each${NO_CONTROL ? "" : ` + a ${Math.round(CONTROL_SHARE * 100)} % control run`} → ${OUT_DIR}`,
 );
 const rows = [];
 for (let i = 0; i < entries.length; i++) {
@@ -1336,12 +1357,12 @@ for (const r of rows) {
   if (x.sameUnitChipsMax > 0)
     anomalies.push(
       `**${x.sameUnitChipsMax} chips too many for the SAME unit** (${x.sameUnitGroupsMax} groups whose chips all read the same percentage over the same word count): ` +
-        (x.dupSample ?? []).filter((d) => d.sameUnit).map((d) => `${d.chips}× “${d.nums[0]}” (${d.words[0]} words) after “…${d.hint}”`).join("; "),
+        (x.dupSample ?? []).filter((d) => d.kind === "sameUnit").map((d) => `${d.chips}× “${d.nums[0]}” (${d.words[0]} words) in one \`<${d.parent}>\` after “…${d.hint}”`).join("; "),
     );
   if (x.pileUpChipsMax > 0)
     anomalies.push(
       `**${x.pileUpChipsMax} chips of DISTINCT units piled at one insertion point** (${x.pileUpGroupsMax} anchors): ` +
-        (x.dupSample ?? []).filter((d) => !d.sameUnit).map((d) => `${d.chips} chips (${d.nums.join("/")}) in one \`<${d.parent}>\` after “…${d.hint}”`).join("; "),
+        (x.dupSample ?? []).filter((d) => d.kind === "pileUp").map((d) => `${d.chips} chips (${d.nums.join("/")}) in one \`<${d.parent}>\` after “…${d.hint}”`).join("; "),
     );
   if (x.orphanMax > 0)
     anomalies.push(
@@ -1366,6 +1387,10 @@ for (const r of rows) {
     anomalies.push(
       `**chips drawn outside a clipping box: ${x.clippedOutMax}**` +
         ((x.clipSample ?? []).length ? ` (${x.clipSample.map((s) => `<${s.box}> .${s.cls}`).join(", ")})` : ""),
+    );
+  if (x.repeatedTextChipsMax > 0)
+    anomalies.push(
+      `${x.repeatedTextChipsMax} chips close text that appears more than once on the page, in different parents — one chip per copy, which is by design (noted so it is not read as a duplicate)`,
     );
   if (x.chromeMax > 0) anomalies.push(`chips in page chrome: ${x.chromeMax}`);
   if (x.zeroSizeMax > 0) anomalies.push(`chips with no box at all (0×0, not hidden): ${x.zeroSizeMax}`);
