@@ -31,6 +31,27 @@ Notable changes to Anagram, newest first. The format follows
   still never covers a glyph. Nothing that was scored before stops being scored:
   above the floor every block is read exactly as it was. "Group short neighboring
   paragraphs" turns this off for PDFs as it does for pages.
+- **Anagram installs with access to no site; you grant it.** The manifest used
+  to require `<all_urls>` and to inject the content script into every frame of
+  every page — the one line in an install dialog that asks for everything. It
+  now requires only the local daemon's two loopback patterns
+  (`http://127.0.0.1/*`, `http://localhost/*`), declares no content script at
+  all, and offers every site as an OPTIONAL grant: all of them in one click from
+  the first-run page or the options page, one at a time from the popup's "This
+  site" switch, or none at all — the context menu's *Analyze this page with
+  Anagram*, *Analyze selection* and *Copy page diagnostics* still work on a page
+  nothing was granted for, because opening the popup or a menu gives the
+  extension `activeTab` for that one tab. A page reached that way behaves
+  exactly as a site you have switched off does: present, answering, and
+  analyzing nothing until asked. The registration follows the grant — one
+  dynamically registered content script whose match patterns are the granted
+  origins, re-asserted on install, on browser start, on every grant and on every
+  withdrawal — and both take effect at once: a grant injects the tabs that are
+  already open (no reload), and a withdrawal, from the popup, the options page
+  or `chrome://extensions`, stops every affected tab dead. Granting all sites
+  gives exactly the experience Anagram always had. Firefox has the same model
+  (MV2 carries the two patterns in `optional_permissions`). Per-site rules are
+  untouched by any of it — they are settings, not access.
 
 - **The PDF reading mode shows the real pages.** It used to rebuild a PDF as
   plain `<h2>`/`<p>` on a sheet of its own, which makes the document text-only
