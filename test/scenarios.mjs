@@ -1960,6 +1960,49 @@ async function sweep(page, steps = 6) {
     );
     await p.close();
   }
+
+  // A38b: a box that is NOT clipping when the verdicts land and starts clipping when the
+  // cover image finally arrives — the Goodreads review whose images outlive the scan.
+  {
+    PAGES["/latecover.html"] = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>late cover fixture</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+<h1>A review whose picture arrives last</h1>
+<article id="post"><div id="box" style="max-height:420px;overflow:hidden">
+<img id="cover" alt="" style="display:block;width:100%;height:0;background:#ddd">
+<p id="lp1">${PARA("LATE-ONE")}</p>
+<p id="lp2">${PARA("LATE-TWO")}</p>
+</div></article>
+</body></html>`;
+    const p = await context.newPage();
+    await p.goto(server.url("/latecover.html"), { waitUntil: "load" });
+    await p.waitForFunction((sel) => document.querySelectorAll(`#post ${sel}`).length >= 2, BADGE_SEL, { timeout: 15000 }).catch(() => {});
+    await p.waitForTimeout(1200);
+    const before = await p.evaluate((sel) => {
+      const box = document.getElementById("box");
+      return [...document.querySelectorAll(`#post ${sel}`)].filter((h) => !box.contains(h)).length;
+    }, BADGE_SEL);
+    await p.evaluate(() => (document.getElementById("cover").style.height = "700px"));
+    await p.waitForTimeout(1500);
+    const after = await p.evaluate((sel) => {
+      const box = document.getElementById("box");
+      const hosts = [...document.querySelectorAll(`#post ${sel}`)];
+      const out = hosts.filter((h) => !box.contains(h));
+      const br = box.getBoundingClientRect();
+      return {
+        chips: hosts.length,
+        out: out.length,
+        first: out[0] ? out[0].previousElementSibling === box : false,
+        onScreen: out.every((h) => h.getBoundingClientRect().height > 0 && h.getBoundingClientRect().top >= br.bottom - 1),
+        clips: box.scrollHeight > box.clientHeight + 32,
+      };
+    }, BADGE_SEL);
+    record(
+      "ui",
+      "a box that only starts clipping when its image arrives still puts one chip where it can be seen, and only one",
+      before === 0 && after.chips === 1 && after.out === 1 && after.first && after.onScreen && after.clips,
+      JSON.stringify({ before, after }),
+    );
+    await p.close();
+  }
 }
 
 // =====================================================================================

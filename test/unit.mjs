@@ -1876,11 +1876,11 @@ for (const file of fixtureFiles) {
 //     anchor is out of sight. Every later unit keeps its chip at its OWN anchor, where the
 //     reader finds it the moment the box is opened.
 //   · a hidden chip got a single chance to be rescued: the watcher stopped watching before
-//     it re-checked, so one moment in which the box was not clipping — the reader opening
-//     the post, a reflow between two frames — left the chip out of sight for good. Steam
-//     left 25 chips there, Goodreads 6, the Guardian's live blog 3.
+//     it re-checked, so a box that was not clipping YET (its images and web fonts still on
+//     the way — the Goodreads case) kept its chip out of sight for good. Steam left 25 chips
+//     there, Goodreads 6, the Guardian's live blog 3.
 //
-// Both need a turn of the event loop, so this runs in a page of its own. The markup is the
+// Both need a turn of the event loop, so both run in pages of their own. The markup is the
 // fixture the survey's own findings are written into (test/fixtures/clipped-reviews.html).
 {
   const cr = await browser.newPage();
@@ -2003,6 +2003,57 @@ for (const file of fixtureFiles) {
     name: "the same review chipped in the order the daemon answers, not the order it is written, parks the same unit",
     ok: r.reversed.after.length === 1 && r.reversed.after[0] === r.reversed.want && r.reversed.chips === r.units,
     note: JSON.stringify(r.reversed),
+  });
+}
+
+// A box that is NOT clipping when the chips land and starts clipping seconds later: the
+// Goodreads review whose cover images and web font arrive after the verdicts do. Nothing
+// is hidden at insertion time, so the chips go where their text ends; when the box fills
+// up, the first unit that has gone out of sight parks after it and the second stays where
+// it is, out of sight until the reader opens the review.
+{
+  const lc = await browser.newPage();
+  await lc.setContent("<!doctype html><html><body></body></html>");
+  await lc.addScriptTag({ path: BUNDLE });
+  const r = await lc.evaluate(async () => {
+    const HOST = '[data-anagram="host"]';
+    const WORDS = "the quick brown fox jumps over a lazy dog while rain falls gently on rooftops and children read books near warm windows during long quiet evenings".split(" ");
+    const words = (n) => Array.from({ length: n }, (_, i) => WORDS[i % WORDS.length]).join(" ") + ".";
+    document.body.innerHTML =
+      `<div class="post"><div id="box" style="max-height:400px;overflow:hidden;width:400px">` +
+      `<img id="cover" alt="" style="display:block;width:100%;height:0">` +
+      `<p id="one">${words(60)}</p><p id="two">${words(60)}</p></div></div>`;
+    const box = document.getElementById("box");
+    const layer = (window.PW_LAYER = PW.createBadgeLayer());
+    const units = PW.collectUnits(document.body);
+    const pct = new Map();
+    units.forEach((u, i) => {
+      const score = (i + 1) / 20;
+      pct.set(u.id, `${Math.round(score * 100)}%`);
+      const result = { id: u.id, bucket: 0, probs: [1 - score, score, 0, 0], score };
+      layer.render(u, PW.unitVerdict(u.id, u.text.length, [{ start: 0, end: u.text.length, result }]));
+    });
+    const numOf = (h) => h.shadowRoot.querySelector(".num").textContent;
+    const inside = () => [...box.querySelectorAll(HOST)].map(numOf);
+    const outside = () => [...document.querySelectorAll(HOST)].filter((h) => !box.contains(h)).map(numOf);
+    const before = { inside: inside(), outside: outside(), units: units.length };
+    // The cover image arrives and pushes both paragraphs out of the visible band.
+    document.getElementById("cover").style.height = "600px";
+    await new Promise((done) => setTimeout(done, 450));
+    return {
+      ...before,
+      first: pct.get(units[0]?.id),
+      afterInside: inside(),
+      afterOutside: outside(),
+      chips: document.querySelectorAll(HOST).length,
+    };
+  });
+  await lc.close();
+  results.push({
+    name: "a box that only starts clipping once its images arrive still rescues a chip — one after the box, the rest at their anchors",
+    ok: r.units === 2 && r.outside.length === 0 && r.inside.length === 2 &&
+      r.afterOutside.length === 1 && r.afterOutside[0] === r.first && r.afterInside.length === 1 && r.chips === 2,
+    note: JSON.stringify(r),
   });
 }
 

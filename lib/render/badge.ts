@@ -138,8 +138,14 @@ export function createBadgeLayer(): BadgeLayer {
     if (chip) g.io.unobserve(chip.host);
     g.chips.delete(id);
     groupOfUnit.delete(id);
-    if (g.parked === id) g.parked = null; // the next hidden unit takes the slot when it is next placed
+    const wasParked = g.parked === id;
+    if (wasParked) g.parked = null;
     if (g.chips.size === 0) retire(g);
+    // The chip the reader could see has just left (the site edited that paragraph away, a
+    // feed recycled it): the next paragraph that is out of sight takes the slot, so the
+    // post does not end up collapsed with no verdict under it at all. settle() never
+    // reaches this with a parked chip, so there is no way round for it to call itself.
+    else if (wasParked) settle(g);
   }
 
   /**
@@ -622,7 +628,11 @@ const CLIP_BOX_LEVELS = 6;
  *
  * So: the nearest ancestor that clips its own text is found (at most CLIP_BOX_LEVELS up),
  * and that box then decides where its chips go — at most one of them after it, the rest at
- * their own anchors (see the ClipGroup above).
+ * their own anchors (see the ClipGroup above). A box that merely CAPS its own height is
+ * found too, although it hides nothing yet: Goodreads' review boxes are not clipping when
+ * the chips land, because the cover images and the web font arrive afterwards and push the
+ * text past the cap, and a chip nobody is watching is a chip that stays out of sight for
+ * good (the survey left 25 of them on one Steam page).
  *
  * The one thing the chip may not do is leave its POST, so the box has to lie inside the
  * post the anchor belongs to. Structure INSIDE the clipped text — a quotation, a list, a
@@ -636,7 +646,8 @@ function clippingBoxOf(at: ChildNode): { box: Element } | null {
   let box: Element | null = null;
   try {
     for (let el: Element | null = start, i = 0; el && i < CLIP_BOX_LEVELS; i++, el = el.parentElement) {
-      if (clipsOwnText(el, getComputedStyle(el))) {
+      const cs = getComputedStyle(el);
+      if (clipsOwnText(el, cs) || capsOwnHeight(el, cs)) {
         box = el;
         break;
       }
@@ -651,6 +662,29 @@ function clippingBoxOf(at: ChildNode): { box: Element } | null {
   const anchor = endRectOf(at);
   if (!anchor || (anchor.width === 0 && anchor.height === 0)) return null;
   return { box };
+}
+
+/** Page-level boxes, the ones lib/dom/style.ts also refuses to call clipped: `body` under
+ *  an open modal, an app's own scrolling region, a `<details>` that hides its content by
+ *  other means. A cap on one of those is layout, never a post behind "see more". */
+const NEVER_CAPPED_TAGS = new Set(["HTML", "BODY", "MAIN", "DETAILS"]);
+/** A box as tall as the screen is the page's own, not a preview of a post. */
+const CAP_MAX_VIEWPORT_SHARE = 0.9;
+
+/**
+ * A box that CAPS its own height and hides whatever grows past the cap — it may not be
+ * clipping anything yet. Only a DECLARED cap counts (`max-height`, a line clamp): plain
+ * `overflow: hidden` sits on half the wrappers of a modern page and none of those is a
+ * post behind "see more", while `max-height` with the text still short of it is exactly
+ * the Goodreads review whose images have not arrived.
+ */
+function capsOwnHeight(el: Element, cs: CSSStyleDeclaration): boolean {
+  const overflowY = cs.overflowY;
+  if (overflowY !== "hidden" && overflowY !== "clip") return false;
+  if (NEVER_CAPPED_TAGS.has(el.nodeName) || el.getAttribute("role") === "main") return false;
+  if (cs.maxHeight === "none" && cs.getPropertyValue("-webkit-line-clamp") === "none") return false;
+  const viewport = typeof window !== "undefined" ? window.innerHeight : 0;
+  return viewport === 0 || el.clientHeight < viewport * CAP_MAX_VIEWPORT_SHARE;
 }
 
 /**

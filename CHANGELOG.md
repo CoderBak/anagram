@@ -270,6 +270,14 @@ Notable changes to Anagram, newest first. The format follows
   chip at its own last word: out of sight while the post is collapsed, and
   exactly where it belongs the moment the post is opened. Opening the post brings
   the parked chip home too, and closing it parks the first hidden one again.
+- A chip that goes out of sight is rescued however late it happens. A post is
+  watched for as long as its chips are in it, instead of once: the watcher used
+  to stop watching a chip before it re-checked it, so a single moment in which
+  the box was not clipping — and a Goodreads review box is not clipping at all
+  until its cover images and its web font arrive — left that chip behind the
+  fold for good (25 chips on one Steam page, 6 on Goodreads, 3 on a live blog).
+  A box that caps its own height is now watched from the start, whether or not
+  it is hiding anything yet.
 - Firefox: the idle prefetch lane never ran (a detached `requestIdleCallback` call throws in
   Gecko), so paragraphs below the fold were scored only when scrolled to — it is called on
   `window` now. The manifest's minimum Firefox is 140, the first version in which the chips

@@ -291,8 +291,9 @@ Text on the web is messy; the capture engine is built for it:
   to tell which paragraph each belongs to. Quotations and lists inside the clipped
   text are part of the post, not a boundary, so that one chip still comes out — what
   a chip never leaves is the post itself. Paragraphs still on screen keep their chip
-  in place, and it **follows the text if the page reflows under it** (a review grows
-  as its images arrive), so a chip cannot end up below the fold minutes later.
+  in place, and it **follows the text if the page reflows under it** — a review box
+  is not clipping anything until its cover images and its web font arrive, and the
+  chip is watched for as long as it is in the box, not rescued once and forgotten.
   Opening the post puts every chip back at its own paragraph; closing it parks the
   first hidden one again. Scroll containers, carousels, `<details>` and a page-level
   `overflow:hidden` under an open modal are not clipping, and nothing moves for them.
