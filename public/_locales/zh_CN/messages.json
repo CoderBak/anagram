@@ -26,6 +26,9 @@
   "menuAnalyzePage": {
     "message": "用 Anagram 分析本页"
   },
+  "menuCopyDiagnostics": {
+    "message": "复制页面诊断信息"
+  },
   "menuOpenPdf": {
     "message": "用 Anagram 打开 PDF"
   },

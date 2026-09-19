@@ -23,6 +23,9 @@ export const ACTIONS = {
   ANALYZE_SELECTION: "analyzeSelection",
   /** SW (context menu) → content: analyze this page once, whatever the settings say. */
   ANALYZE_PAGE: "analyzePage",
+  /** SW (context menu) → content (top frame): describe this page for the developer and
+   *  put the description on the clipboard. Answered on a page Anagram is off for too. */
+  COPY_DIAGNOSTICS: "copyDiagnostics",
   /** popup/options/content → SW: is the daemon up (optionally force a fresh probe). */
   GET_BACKEND_STATUS: "getBackendStatus",
   /** popup → content: re-check the daemon now and re-queue "Unavailable" units. */
@@ -175,6 +178,25 @@ export interface AnalyzePageMessage {
   action: typeof ACTIONS.ANALYZE_PAGE;
 }
 
+/**
+ * SW → content (the TOP frame of a tab): build the anonymised page diagnostics and copy
+ * them. `frameId` is the frame the reader opened the menu in — Chrome tells an extension
+ * that much and nothing finer — so a report made in the top frame can say when the click
+ * was somewhere else.
+ */
+export interface CopyDiagnosticsMessage {
+  action: typeof ACTIONS.COPY_DIAGNOSTICS;
+  frameId?: number;
+}
+
+/** content → SW (response to COPY_DIAGNOSTICS): what reached the clipboard, and by which
+ *  of the two routes. The worker flashes the toolbar badge only on `ok`. */
+export interface CopyDiagnosticsReply {
+  ok: boolean;
+  bytes: number;
+  via: "clipboard" | "execCommand" | "none";
+}
+
 /** popup → content: the user pressed Retry — re-check the daemon, re-queue Unavailable units. */
 export interface RetryBackendMessage {
   action: typeof ACTIONS.RETRY_BACKEND;
@@ -222,6 +244,7 @@ export type ControlMessage =
   | PrevFlaggedMessage
   | AnalyzeSelectionMessage
   | AnalyzePageMessage
+  | CopyDiagnosticsMessage
   | RetryBackendMessage
   | CacheClearedMessage;
 

@@ -13,6 +13,7 @@ import { getScoreClient, getDaemonClient } from "../lib/backend/getScoreClient";
 import { ACTIONS } from "../lib/messaging/protocol";
 import type {
   ClearCacheReply,
+  CopyDiagnosticsReply,
   ScoreBatchMessage,
   ScoreBatchReply,
   TopHostReply,
@@ -31,6 +32,17 @@ export default defineBackground(() => {
   }
   const b = browser as unknown as { action?: BadgeApi; browserAction?: BadgeApi };
   const actionApi: BadgeApi | undefined = b.action ?? b.browserAction;
+
+  /** What each tab's badge is showing, so a transient flash can put back exactly that.
+   *  The badge itself is the only other store, and reading it back races the scan that
+   *  may write a new count while the tick is up. */
+  const badgeText = new Map<number, string>();
+  const COUNT_COLOR = "#dc2626";
+  /** The copy confirmation: a tick, in the same green the verdict bands use for "human". */
+  const FLASH_TEXT = "✓";
+  const FLASH_COLOR = "#16a34a";
+  const FLASH_MS = 1500;
+  browser.tabs.onRemoved.addListener((tabId) => badgeText.delete(tabId));
 
   /** The reading-mode URL for a PDF. Not web accessible — only we may navigate to it. */
   const readerUrl = (src: string): string =>
@@ -51,6 +63,14 @@ export default defineBackground(() => {
       browser.contextMenus.create({
         id: "anagram-analyze-page",
         title: t("menuAnalyzePage"),
+        contexts: ["page"],
+      });
+      // A page that shows nothing, described for whoever has to fix it. It sits next to
+      // the entry above because that is where somebody reaches when a page stays silent,
+      // and it answers on a switched-off site as well — "off" is one of the answers.
+      browser.contextMenus.create({
+        id: "anagram-copy-diagnostics",
+        title: t("menuCopyDiagnostics"),
         contexts: ["page"],
       });
       browser.contextMenus.create({
@@ -83,6 +103,40 @@ export default defineBackground(() => {
     void browser.tabs.sendMessage(tabId, { action: ACTIONS.ANALYZE_PAGE }).catch(() => undefined);
   };
 
+  /**
+   * "Copy page diagnostics". Only the TOP frame is asked: the report is the page's, and
+   * its document is the one a clipboard write is measured against. The page answers
+   * whether Anagram is running there or not — the content script is in every frame of
+   * every page regardless — so "nothing shows up" on a switched-off site is answered with
+   * "switched off" instead of with silence.
+   */
+  const copyDiagnostics = (tabId: number, frameId: number): void => {
+    void browser.tabs
+      .sendMessage(tabId, { action: ACTIONS.COPY_DIAGNOSTICS, frameId }, { frameId: 0 })
+      .then((reply) => {
+        if ((reply as CopyDiagnosticsReply | undefined)?.ok) flashBadge(tabId);
+      })
+      .catch(() => undefined);
+  };
+
+  /**
+   * The only feedback this feature has: the toolbar badge shows a tick for a moment and
+   * then goes back to the flagged count. Nothing new is drawn on the page, nothing is said
+   * out loud, and the badge is already where a reader looks for this extension's state.
+   */
+  const flashBadge = (tabId: number): void => {
+    if (!actionApi) return;
+    void actionApi.setBadgeBackgroundColor({ tabId, color: FLASH_COLOR });
+    void actionApi.setBadgeText({ tabId, text: FLASH_TEXT });
+    setTimeout(() => {
+      // Whatever the tab is showing NOW, not what it showed when the tick went up: a scan
+      // that finished during the flash has already sent its count, and that is the number
+      // the reader must be left looking at.
+      void actionApi.setBadgeBackgroundColor({ tabId, color: COUNT_COLOR });
+      void actionApi.setBadgeText({ tabId, text: badgeText.get(tabId) ?? "" });
+    }, FLASH_MS);
+  };
+
   browser.contextMenus.onClicked.addListener((info, tab) => {
     if (info.menuItemId === "anagram-open-pdf") {
       // A linked PDF opens BESIDE the page it was linked from: the reader replaces a tab
@@ -97,6 +151,10 @@ export default defineBackground(() => {
     }
     if (info.menuItemId === "anagram-analyze-page") {
       if (tab?.id != null) analyzePage(tab.id);
+      return;
+    }
+    if (info.menuItemId === "anagram-copy-diagnostics") {
+      if (tab?.id != null) copyDiagnostics(tab.id, info.frameId ?? 0);
       return;
     }
     if (info.menuItemId !== "anagram-analyze-selection" || tab?.id == null) return;
@@ -180,8 +238,10 @@ export default defineBackground(() => {
         const tabId = sender.tab?.id;
         if (tabId != null && actionApi) {
           const flagged = typeof msg.flagged === "number" ? msg.flagged : 0;
-          void actionApi.setBadgeText({ tabId, text: flagged > 0 ? String(flagged) : "" });
-          void actionApi.setBadgeBackgroundColor({ tabId, color: "#dc2626" });
+          const text = flagged > 0 ? String(flagged) : "";
+          badgeText.set(tabId, text);
+          void actionApi.setBadgeText({ tabId, text });
+          void actionApi.setBadgeBackgroundColor({ tabId, color: COUNT_COLOR });
         }
         return;
       }

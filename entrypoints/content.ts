@@ -110,6 +110,27 @@ export default defineContentScript({
       (window.innerWidth >= MIN_FRAME_WIDTH &&
         window.innerWidth * window.innerHeight >= MIN_FRAME_AREA);
 
+    /**
+     * What the reader last opened the context menu on. "Copy page diagnostics" describes
+     * the region they were pointing at, and the menu API hands an extension the FRAME a
+     * click was in and nothing finer — so the page has to remember the element itself.
+     * Held weakly: a feed replaces its DOM constantly and this must never be the reason a
+     * removed post stays in memory.
+     */
+    let menuTarget: WeakRef<Element> | null = null;
+    if (isTop) {
+      window.addEventListener(
+        "contextmenu",
+        (e) => {
+          // composedPath: inside an open shadow root e.target retargets to the outer host,
+          // which would put every click on a web component at the top of the component.
+          const el = e.composedPath()[0];
+          menuTarget = el instanceof Element ? new WeakRef(el) : null;
+        },
+        { capture: true, passive: true },
+      );
+    }
+
     let resizeArmed = false;
     const startWhenGated = (): void => {
       if (!enabled) return;
@@ -270,6 +291,43 @@ export default defineContentScript({
               startWhenGated();
             }
             return;
+
+          case ACTIONS.COPY_DIAGNOSTICS: {
+            // One report per tab, from the frame that owns the page — and answered whether
+            // Anagram is analyzing here or not, because "switched off for this site" is
+            // one of the things the reader is trying to find out. The module is imported
+            // on demand so a page that never asks does not carry it through its boot.
+            if (!isTop) return;
+            void (async () => {
+              try {
+                const { copyPageDiagnostics } = await import("../lib/diagnostics");
+                sendResponse(
+                  await copyPageDiagnostics({
+                    host: effectiveHost,
+                    running: enabled,
+                    onceForPage,
+                    pdf: isPdf,
+                    docs: docs?.kind ?? null,
+                    counts: {
+                      scored: orchestrator.scoredCount(),
+                      flagged: orchestrator.flaggedCount(),
+                      unsupported: orchestrator.unsupportedCount(),
+                      unavailable: orchestrator.unavailableCount(),
+                    },
+                    frameGate: { minWidth: MIN_FRAME_WIDTH, minArea: MIN_FRAME_AREA },
+                    clickedFrameId: msg.frameId ?? 0,
+                    target: menuTarget?.deref() ?? null,
+                  }),
+                );
+              } catch {
+                // A page that tore the extension context down mid-build, or a document
+                // with no body at all: the worker leaves the badge alone and the reader
+                // simply sees nothing happen.
+                sendResponse({ ok: false, bytes: 0, via: "none" });
+              }
+            })();
+            return true; // the answer is asynchronous
+          }
 
           case ACTIONS.GET_TAB_STATE: {
             // tabs.sendMessage broadcasts to every frame — only the TOP frame

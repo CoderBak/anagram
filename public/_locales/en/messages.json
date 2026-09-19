@@ -39,6 +39,10 @@
     "message": "Analyze this page with Anagram",
     "description": "Right-click menu entry on a page; runs once without writing a setting."
   },
+  "menuCopyDiagnostics": {
+    "message": "Copy page diagnostics",
+    "description": "Right-click menu entry on a page; copies an anonymous description of the page's structure and of what Anagram did with it, for a bug report. What it copies is always English."
+  },
   "menuOpenPdf": {
     "message": "Open PDF with Anagram",
     "description": "Right-click menu entry on a link to a PDF."
