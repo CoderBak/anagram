@@ -502,6 +502,25 @@ Notable changes to Anagram, newest first. The format follows
   fail where nothing has been built. Plus `t()` answering a content script whose
   extension context was invalidated out of its own trimmed fallback, and
   returning the key name rather than throwing if it ever has neither.
+- **The two live-site surveys run every Monday** and fail when a site got
+  worse: `.github/workflows/surveys.yml` runs all ~124 coverage pages and the
+  dozen dynamics pages marked `"weekly": true` — one of every shape that list
+  knows, chosen so the whole thing fits in an hour instead of the three the full
+  list needs — keeps both reports and every screenshot as build artifacts for 90
+  days, downloads the last green run's report as the baseline, and runs
+  `test/survey-gate.mjs` over the pair. Its Markdown goes to the run summary and
+  a regression fails the job; the red X on the Actions tab is the whole
+  notification, because nothing here is worth an issue nobody closes. Manual
+  runs pick a tool, a site filter, and the weekly dozen or the whole list. The
+  gate's thresholds are measurements, not guesses: each one carries the
+  run-to-run spread of the same build over the same pages that set it, and every
+  one of them is a comparison, since the question is "did this get worse", not
+  "is this perfect". Three things are never a failure — a site that was
+  unreachable, bot-walled or login-walled in either run (the runners sit in US
+  data centres, where the Chinese half of the list is walled far more often than
+  it is here), a page that served a different body of text, and a defect that was
+  already in the baseline — and the count of each is printed, so a list quietly
+  rotting away is visible even in a week when nothing failed.
 - The two live-site surveys stopped printing numbers that were not true, and
   stopped writing into the repository. Their reports defaulted to `test/`, which
   the header had always said they must never do: a run left

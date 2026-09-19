@@ -1,0 +1,228 @@
+# The live-site surveys, on a schedule.
+#
+# test/coverage.mjs (does the segmenter SEE the text a reader sees, on ~124 real sites)
+# and test/dynamics.mjs (what the whole extension does to a page over a 90-second session,
+# against a control run with no extension) are the two tools that look at the real web.
+# They used to run when someone remembered, which meant a site could break and nobody would
+# know until the next time someone looked. This runs them every Monday morning, compares
+# each report with the last green run's through test/survey-gate.mjs, and FAILS the job
+# when a site got worse. The red X on the Actions tab is the whole notification: nothing is
+# posted, no issue is opened, and the reports are attached to the run for whoever looks.
+#
+# Neither suite asserts anything on its own, and neither belongs in ci.yml: both need the
+# network, both take tens of minutes, and both meet a web that changes underneath them. A
+# page that is unreachable, bot-walled or login-walled is a RESULT, not a failure — and
+# these runners sit in US data centres, so the Chinese half of the coverage list (Zhihu,
+# Bilibili, CSDN, Douban…) is walled here far more often than on a developer's machine,
+# exactly the opposite of the local runs. The gate calls those sites `skipped` and prints
+# how many there were, so a list quietly rotting away is still visible.
+#
+# BEFORE THE FIRST MONDAY. GitHub fires `schedule` only for workflows that exist on the
+# DEFAULT branch, and lists `workflow_dispatch` from there too. This repository's default
+# branch is `main`, which holds nothing but the README (ci.yml lives on `dev` and runs on
+# push, which needs no such thing), so this file has to reach `main` — or `dev` has to
+# become the default — before any of it happens. Every job then checks `dev` out: the
+# schedule may be defined on the default branch, but what it measures is the development
+# line.
+name: surveys
+
+on:
+  schedule:
+    # Monday 04:00 UTC — the quietest hour for the sites, and long before anyone reads it.
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      tool:
+        description: "Which survey to run"
+        type: choice
+        default: both
+        options: [both, coverage, dynamics]
+      filter:
+        description: "Only entries whose name or kind contains this (empty = all of them)"
+        type: string
+        default: ""
+      dynamics_scope:
+        description: "dynamics: the weekly dozen, or the whole list (~3 h)"
+        type: choice
+        default: weekly
+        options: [weekly, all]
+
+# One survey at a time. Two runs of dynamics at once would share this runner's CPU and
+# make every cost number a lie; waiting is free.
+concurrency:
+  group: surveys
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read # gh run list + downloading the previous run's report artifact
+
+jobs:
+  # ---- the segmenter over ~124 real pages, one snapshot each -------------------------
+  coverage:
+    if: github.event_name != 'workflow_dispatch' || inputs.tool != 'dynamics'
+    runs-on: ubuntu-latest
+    # 124 pages at 2 at a time took 12 minutes on a developer's laptop; a two-core runner
+    # on a cold network is slower, and a page may sit on its 20 s navigation timeout twice.
+    timeout-minutes: 45
+    env:
+      ANAGRAM_ARTIFACTS: ${{ github.workspace }}/survey-reports
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Exactly what ci.yml does, so the two workflows fetch the same browser the same way.
+      - name: install Chromium
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then npx playwright install --with-deps chromium; else npx playwright install chromium; fi
+      # No `npm run build` here: coverage.mjs bundles lib/dom/walker.ts itself with esbuild
+      # and never loads the extension. The dynamics job below does need the build.
+      #
+      # The filter goes through the environment, never into the command line the runner
+      # expands: a workflow_dispatch input is text somebody typed.
+      - name: coverage survey
+        env:
+          FILTER: ${{ inputs.filter }}
+        run: node test/coverage.mjs --label weekly --jobs 2 $FILTER
+      - name: how many sites answered at all
+        if: always()
+        run: node test/survey-gate.mjs "$ANAGRAM_ARTIFACTS/coverage-weekly.json" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: |
+            ${{ env.ANAGRAM_ARTIFACTS }}/coverage-weekly.json
+            ${{ env.ANAGRAM_ARTIFACTS }}/coverage-weekly.md
+          if-no-files-found: error
+          retention-days: 90
+      # The baseline is the last run of THIS workflow on dev that went green. After a red
+      # week that stays the last known-good run, which is what we want to compare against:
+      # a regression keeps failing until it is fixed rather than becoming the new normal.
+      - name: find the last green run
+        id: baseline
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # `|| true`: before this workflow has ever run, the API answers 404 for it,
+          # and a missing baseline is not a reason to fail the week's survey.
+          id=$(gh run list --workflow surveys.yml --branch dev --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)
+          echo "run-id=$id" >> "$GITHUB_OUTPUT"
+          if [ -z "$id" ]; then echo "no green run of this workflow yet — nothing to compare with"; fi
+      - name: download the baseline report
+        id: fetch
+        if: always() && steps.baseline.outputs.run-id != ''
+        continue-on-error: true # an expired or missing artifact is not a failure
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-report
+          run-id: ${{ steps.baseline.outputs.run-id }}
+          github-token: ${{ github.token }}
+          path: baseline
+      - name: gate
+        if: always() && steps.fetch.outcome == 'success'
+        run: |
+          set +e
+          node test/survey-gate.mjs baseline/coverage-weekly.json "$ANAGRAM_ARTIFACTS/coverage-weekly.json" --out gate.md
+          code=$?
+          cat gate.md >> "$GITHUB_STEP_SUMMARY"
+          exit $code
+      - name: no baseline
+        if: always() && steps.fetch.outcome != 'success'
+        run: |
+          echo "_No baseline coverage report — this run becomes the baseline for the next one._" >> "$GITHUB_STEP_SUMMARY"
+
+  # ---- the whole extension over a dozen pages, 90 seconds each, twice ----------------
+  dynamics:
+    if: github.event_name != 'workflow_dispatch' || inputs.tool != 'coverage'
+    runs-on: ubuntu-latest
+    # Every page is a 90 s session with the extension plus a 90 s control session without
+    # it, and roughly a minute of loading, profiles and screenshots on top: 35 minutes for
+    # the weekly dozen on a laptop, so 90 covers a slower runner. The whole 30-page list
+    # (manual dispatch, `dynamics_scope: all`) took 83 minutes on that laptop; the timeout
+    # is sized for the weekly run and a manual full run may need it raised.
+    timeout-minutes: 90
+    env:
+      ANAGRAM_ARTIFACTS: ${{ github.workspace }}/survey-reports
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: install Chromium
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then npx playwright install --with-deps chromium; else npx playwright install chromium; fi
+      # dynamics.mjs opens the BUILT extension (output/chrome-mv3) against test/fake-daemon.mjs.
+      - run: npm run build
+      - name: dynamics survey
+        env:
+          FILTER: ${{ inputs.filter }}
+          SCOPE: ${{ (github.event_name == 'workflow_dispatch' && inputs.dynamics_scope == 'all') && '' || '--weekly' }}
+        run: node test/dynamics.mjs --label weekly $SCOPE $FILTER
+      - name: how many pages answered at all
+        if: always()
+        run: node test/survey-gate.mjs "$ANAGRAM_ARTIFACTS/dynamics-weekly.json" >> "$GITHUB_STEP_SUMMARY"
+      # The reports and the screenshots are two artifacts on purpose: the next run
+      # downloads the baseline REPORT, and it should not have to pull a hundred megabytes
+      # of PNGs to do it.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dynamics-report
+          path: |
+            ${{ env.ANAGRAM_ARTIFACTS }}/dynamics-weekly.json
+            ${{ env.ANAGRAM_ARTIFACTS }}/dynamics-weekly.md
+          if-no-files-found: error
+          retention-days: 90
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dynamics-screenshots
+          path: ${{ env.ANAGRAM_ARTIFACTS }}/*.png
+          if-no-files-found: ignore
+          retention-days: 90
+      - name: find the last green run
+        id: baseline
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # `|| true`: before this workflow has ever run, the API answers 404 for it,
+          # and a missing baseline is not a reason to fail the week's survey.
+          id=$(gh run list --workflow surveys.yml --branch dev --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)
+          echo "run-id=$id" >> "$GITHUB_OUTPUT"
+          if [ -z "$id" ]; then echo "no green run of this workflow yet — nothing to compare with"; fi
+      - name: download the baseline report
+        id: fetch
+        if: always() && steps.baseline.outputs.run-id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: dynamics-report
+          run-id: ${{ steps.baseline.outputs.run-id }}
+          github-token: ${{ github.token }}
+          path: baseline
+      - name: gate
+        if: always() && steps.fetch.outcome == 'success'
+        run: |
+          set +e
+          node test/survey-gate.mjs baseline/dynamics-weekly.json "$ANAGRAM_ARTIFACTS/dynamics-weekly.json" --out gate.md
+          code=$?
+          cat gate.md >> "$GITHUB_STEP_SUMMARY"
+          exit $code
+      - name: no baseline
+        if: always() && steps.fetch.outcome != 'success'
+        run: |
+          echo "_No baseline dynamics report — this run becomes the baseline for the next one._" >> "$GITHUB_STEP_SUMMARY"

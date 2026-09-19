@@ -57,6 +57,7 @@
 //   node test/dynamics.mjs                        # the whole list
 //   node test/dynamics.mjs wikipedia bluesky      # only entries whose name/kind matches
 //   node test/dynamics.mjs --minutes 2 --out /tmp/dyn
+//   node test/dynamics.mjs --weekly               # the dozen pages the schedule runs
 //   node test/dynamics.mjs --list                 # what would run
 //   node test/dynamics.mjs --no-control           # skip the extension-less control runs
 //
@@ -103,6 +104,12 @@ const SAMPLE_MS = Number(opt("sample", 2000)) || 2000;
  *  run would compare our cost on a long page against theirs on a short one. */
 const CONTROL_SHARE = Number(opt("control-share", 1)) || 1;
 const NO_CONTROL = flag("no-control");
+/** The dozen pages the weekly schedule runs (`"weekly": true` in dynamics.urls.json): one
+ *  of every shape this list knows — a server-rendered thread, a virtualized feed, a feed
+ *  that prepends, a virtual scroller, an infinite river of cards, a page that rewrites
+ *  itself, two clamped-post shops, a long static control and an SPA. The whole list is
+ *  three hours with the control runs; this is one. */
+const WEEKLY = flag("weekly");
 const LIST_ONLY = flag("list");
 const filters = argv.filter((a) => !a.startsWith("--")).map((s) => s.toLowerCase());
 
@@ -114,6 +121,7 @@ const ALL = JSON.parse(readFileSync(join(__dirname, "dynamics.urls.json"), "utf8
 const entries = ALL.filter(
   (e) =>
     (!KIND || e.kind === KIND) &&
+    (!WEEKLY || e.weekly === true) &&
     (filters.length === 0 ||
       filters.some((f) => e.name.toLowerCase().includes(f) || e.kind.toLowerCase().includes(f))),
 );

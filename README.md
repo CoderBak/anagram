@@ -539,6 +539,29 @@ gutter cut through a column's last word and a caption's second half left
 standing alone. Downloads land outside the repository and `--diff` compares two
 runs; not in CI, and no PDF or its text is ever committed.
 
+The two live-site surveys also run **every Monday**
+(`.github/workflows/surveys.yml`, or Actions → surveys → Run workflow for one
+tool, one site or the whole dynamics list). The schedule runs all ~124 coverage
+pages and the dozen dynamics pages marked `"weekly": true` — one of every shape
+the list knows: a server-rendered thread, a virtualized feed, a feed that
+prepends, a virtual scroller, a river of lazy cards, a page that rewrites
+itself, two clamped-post shops, a long static control and an SPA. Both reports
+are kept as build artifacts for 90 days, and
+`node test/survey-gate.mjs baseline.json current.json` compares the new one with
+the last green run's: per site it asks whether the segmentation collapsed,
+coverage fell, posts started fragmenting or units started crossing, whether
+chips began piling up, flickering, sticking, duplicating a unit or costing five
+times the control run — each with a threshold measured from the run-to-run
+spread of the same build, and none of them absolute, because the gate answers
+"did this get worse", not "is this perfect". A site that was unreachable,
+bot-walled or login-walled in either run is `skipped` and never a failure — the
+runners sit in US data centres, so the Chinese half of the list is walled there
+far more often than here — and a page that served a different body of text is
+reported as drifted rather than judged on ratios measured against two different
+articles. The number of skipped sites is printed either way, so a list quietly
+rotting is visible. A regression fails the job; the red X on the Actions tab is
+the whole notification.
+
 `npm run browser` opens a live Chromium with the extension for manual poking;
 `npm run play` opens a multi-tab playground; `node test/shots.mjs` regenerates
 the README screenshots; `node test/genicons.mjs` regenerates the icon set.
