@@ -732,6 +732,44 @@ describe("reflowPdf — other scripts", () => {
   });
 });
 
+describe("reflowPdf — weight", () => {
+  it("reads a thirty-page two-column paper in a fraction of a second", () => {
+    // The reader re-runs the reflow over everything read so far every time a batch of
+    // pages comes out of pdf.js, on the page's own main thread, so this is the budget
+    // that keeps a long document painting without a stutter. 8000 runs take about 30 ms
+    // warm and about 100 cold; the bound is several times that because a CI machine is
+    // not this machine, and what it is here to catch is a rule that went quadratic.
+    const words = "the quick brown fox jumps over the lazy dog and runs".split(" ");
+    const pages = Array.from({ length: 30 }, (_, p) => {
+      const items: Placed[] = [
+        { text: "Doe et al.", x: 72, y: 40, size: 9, width: 60 },
+        { text: `${p + 1}`, x: 300, y: 750, size: 9, width: 6 },
+      ];
+      for (const x of [72, 320]) {
+        for (let i = 0; i < 45; i++) {
+          // Three runs to the line, as a PDF cut at every font change gives them.
+          const y = 100 + i * 14;
+          // A word of the page's own keeps every line unique, so the furniture rule has
+          // nothing to find and the whole document reaches the paragraph rules.
+          const text = `${words.slice(i % 5, (i % 5) + 4).join(" ")} ${words[(i + p) % words.length]}`;
+          items.push(
+            { text, x, y, width: 80 },
+            { text: `${text} more`, x: x + 84, y, width: 70 },
+            { text: i % 9 === 8 ? "of it." : "of it", x: x + 158, y, width: 42 },
+          );
+        }
+      }
+      return page(p + 1, items);
+    });
+
+    const started = performance.now();
+    const blocks = reflowPdf(pages);
+    const ms = performance.now() - started;
+    expect(blocks.length).toBeGreaterThan(30);
+    expect(ms).toBeLessThan(500);
+  });
+});
+
 describe("recognising a PDF and naming it", () => {
   it("goes by the path, so a query string cannot fool it either way", () => {
     expect(looksLikePdfUrl("https://example.com/papers/2301.10226.pdf")).toBe(true);
