@@ -676,6 +676,13 @@ Notable changes to Anagram, newest first. The format follows
   no-referrer` — used to fall back to its own hostname and keep scoring on a
   site Anagram was turned off on. It now asks the extension's worker, which
   knows the tab's page.
+- `anagram status`, `version` and `doctor` reported the daemon down on any machine
+  with `http_proxy` set. curl has no built-in exception for loopback, so a request
+  for `http://127.0.0.1:8765/health` went to the proxy — which cannot reach a port
+  on this laptop — and, on the way, told that proxy which ports somebody is asking
+  about. The probes this script makes about its own daemon now say `--noproxy
+  127.0.0.1,localhost`; the two real downloads still go through a proxy, because
+  they have to.
 
 ### Tests
 
@@ -871,6 +878,8 @@ Notable changes to Anagram, newest first. The format follows
   TestClient over a stub engine; and both `calibration` and `label_schema` on
   `/health` and `/score`. It runs under `anagramd/.venv` when there is one and skips
   loudly on an interpreter without fastapi.
+- A proxy in the environment does not hide the daemon: a dead `http_proxy` with a
+  live daemon on 127.0.0.1, and `anagram status` still finds it.
 - Five more installer cases (36 → 41), all offline: `anagram model` downloads
   nothing when both files already match their pinned checksums; a checkpoint that
   verifies is renamed into place and the staging directory it came down into is

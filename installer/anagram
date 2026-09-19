@@ -80,6 +80,15 @@ if [ -f "$ANAGRAM_HOME/config" ]; then
   [ -n "$cfg_port" ] && PORT="$cfg_port"
 fi
 HEALTH="http://127.0.0.1:$PORT/health"
+# Every request this script makes to its own daemon carries this. curl honours http_proxy for
+# 127.0.0.1 like any other host — it has no built-in exception for loopback — so on a machine
+# with a proxy configured, `anagram status` would ask a company's proxy about a port on this
+# laptop (and `doctor` would report the daemon down, because the proxy cannot reach it). Two
+# names, not the `*` wildcard curl also accepts: `*` is a glob, and this is deliberately
+# unquoted so that it is one option and nothing at all on a curl too old to know it. The two
+# real downloads do NOT use it — those have to be able to go through a proxy.
+LOOPBACK_ONLY=""
+curl --noproxy 127.0.0.1 --version >/dev/null 2>&1 && LOOPBACK_ONLY="--noproxy 127.0.0.1,localhost"
 
 # A scrubbed environment for the daemon and the downloader: inherited PYTHONPATH & co.
 # cannot hijack them, and every library's side files stay inside the folder.
@@ -111,7 +120,8 @@ remove_ours() {
   rm -rf "$1"
 }
 alive() { [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; }
-healthy() { curl -fsS -m 2 "$HEALTH" >/dev/null 2>&1; }
+# shellcheck disable=SC2086  # LOOPBACK_ONLY is one option or empty — deliberately unquoted
+healthy() { curl $LOOPBACK_ONLY -fsS -m 2 "$HEALTH" >/dev/null 2>&1; }
 short() { printf '%.12s…' "$1"; }
 
 # One scalar out of ONE small JSON object we produced ourselves (/health). Not a parser and
@@ -128,7 +138,7 @@ mtime_of() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || true;
 # that, means the port is free. Nothing is written: the request is answered into /dev/null.
 port_busy() {
   rc=0
-  curl -s -m 2 -o /dev/null "http://127.0.0.1:$PORT/" >/dev/null 2>&1 || rc=$?
+  curl $LOOPBACK_ONLY -s -m 2 -o /dev/null "http://127.0.0.1:$PORT/" >/dev/null 2>&1 || rc=$?
   [ "$rc" -ne 7 ]
 }
 
@@ -146,7 +156,7 @@ pinned() {
 
 cmd_status() {
   if healthy; then
-    clean_env HEALTH_JSON="$(curl -fsS -m 2 "$HEALTH")" "$PY" - <<'PYEOF'
+    clean_env HEALTH_JSON="$(curl $LOOPBACK_ONLY -fsS -m 2 "$HEALTH")" "$PY" - <<'PYEOF'
 import json, os
 d = json.loads(os.environ["HEALTH_JSON"])
 m = d["model"]
@@ -172,7 +182,7 @@ PYEOF
 cmd_version() {
   v="$(head -n 1 "$ANAGRAM_HOME/VERSION" 2>/dev/null | tr -d ' \011\015' || true)"
   [ -n "$v" ] || v="unknown"
-  health="$(curl -fsS -m 2 "$HEALTH" 2>/dev/null || true)"
+  health="$(curl $LOOPBACK_ONLY -fsS -m 2 "$HEALTH" 2>/dev/null || true)"
   if [ -z "$health" ]; then
     printf '%s  ·  daemon not running\n' "$v"
     return 0
@@ -455,7 +465,7 @@ doctor_disk() {
 }
 
 doctor_daemon() {
-  health="$(curl -fsS -m 3 "$HEALTH" 2>/dev/null || true)"
+  health="$(curl $LOOPBACK_ONLY -fsS -m 3 "$HEALTH" 2>/dev/null || true)"
   contract="$(json_str "$health" contract)"
   if [ -n "$contract" ]; then
     lid="$(json_str "$health" lid)"

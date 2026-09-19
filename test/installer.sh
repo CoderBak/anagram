@@ -499,7 +499,26 @@ if [ $rc -ne 0 ] && echo "$out" | grep -q "nothing was replaced" \
   ok "install.sh: a checkpoint that does not verify replaces nothing and stops before any other download"
 else bad "install.sh staged checkpoint" "rc=$rc $(echo "$out" | tail -2)"; fi
 
-# 29. (network) full install under a hostile environment: nothing lands outside the folder
+# 29. a proxy in the environment must not hide the daemon. curl has no loopback exception, so
+#     with http_proxy set, every probe this script makes about 127.0.0.1 went to the proxy —
+#     which cannot reach a port on this machine, so `status` and `doctor` reported the daemon
+#     down (and told a company's proxy which ports somebody is asking about). Dead proxy, live
+#     daemon → still found.
+HP="$T/proxyhome"; make_home "$HP" "$P3"
+if ! listen "$P3" anagramd; then
+  bad "a proxy does not hide the daemon" "no stub daemon on 127.0.0.1:$P3"
+else
+  ppid="$LPID"
+  echo "$ppid" > "$HP/run/anagramd.pid"
+  out="$(HOME="$FAKE_HOME" http_proxy="http://127.0.0.1:9" https_proxy="http://127.0.0.1:9" \
+        HTTP_PROXY="http://127.0.0.1:9" "$HP/bin/anagram" status 2>&1 </dev/null)"; rc=$?
+  if [ $rc -eq 0 ] && echo "$out" | grep -q "running"; then
+    ok "a proxy in the environment does not hide the daemon on 127.0.0.1"
+  else bad "a proxy does not hide the daemon" "rc=$rc $(echo "$out" | tail -1)"; fi
+  stop_listener "$ppid"
+fi
+
+# 30. (network) full install under a hostile environment: nothing lands outside the folder
 if [ -n "${INSTALLER_NET:-}" ]; then
   [ -f "$ROOT/dist/anagram.tar.gz" ] || { bad "network install" "run npm run release first"; }
   H="$T/nethome/.anagram"; mkdir -p "$T/nethome"
