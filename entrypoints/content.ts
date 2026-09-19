@@ -86,8 +86,8 @@ const ALREADY_RUNNING = "__anagramContentScript";
  * This script was put here for ONE action — a context-menu entry, a keyboard command —
  * on a site nothing has been granted for, so it must behave exactly as it does on a site
  * the user has switched off: present, answering, and analyzing nothing until asked. The
- * worker sets the flag just before it injects (lib/access/worker.ts) and takes it away
- * again if that site is later granted, which is why it is read live rather than copied.
+ * worker sets the flag just before it injects (lib/access/worker.ts); it is cleared again
+ * below if that site is later granted, which is why it is read live rather than copied.
  */
 const ON_DEMAND = "__anagramOnDemand";
 

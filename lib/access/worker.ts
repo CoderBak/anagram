@@ -171,7 +171,7 @@ async function ping(tabId: number): Promise<boolean> {
  *
  * Every worker path that talks to a tab's content script goes through here: with a grant
  * the script is already there and this is one message; with none, the action the user just
- * performed — opening the popup, a context-menu click, a keyboard command — has given the
+ * performed — a context-menu click, a keyboard command, opening the popup — has given the
  * extension `activeTab`, which is enough to inject into that one tab and no other. The
  * injected script is an ordinary run: it reads the settings and the site rules like any
  * other page, and it is gone when the tab navigates.
