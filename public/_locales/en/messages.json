@@ -857,6 +857,14 @@
     "message": "Verdicts are kept so revisits never re-score. Clearing them makes the next scan ask the daemon again.",
     "description": "Options help text."
   },
+  "optCacheEntries_one": {
+    "message": "$1 entry",
+    "description": "How many verdicts are cached, beside the clear button. $1 = 1."
+  },
+  "optCacheEntries_other": {
+    "message": "$1 entries",
+    "description": "How many verdicts are cached, beside the clear button. $1 is a formatted number."
+  },
   "optClearCache": {
     "message": "Clear cached verdicts",
     "description": "Options button."

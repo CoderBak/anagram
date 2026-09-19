@@ -1883,9 +1883,18 @@ async function sweep(page, steps = 6) {
 
     const opt = await context.newPage();
     await opt.goto(`chrome-extension://${extId}/options.html`, { waitUntil: "load" });
+    // How many verdicts are on the disk: a number, beside the button that empties them.
+    const countedBefore = await opt
+      .waitForFunction(() => /^[\d,]+ entr(y|ies)$/.test(document.getElementById("cacheCount").textContent ?? ""), null, { timeout: 8000 })
+      .then(() => opt.$eval("#cacheCount", (el) => el.textContent))
+      .catch(() => null);
     await opt.click("#clearCache");
     const said = await opt
       .waitForFunction(() => document.getElementById("clearCache").textContent.includes("Cleared"), null, { timeout: 8000 })
+      .then(() => true)
+      .catch(() => false);
+    const countedAfter = await opt
+      .waitForFunction(() => document.getElementById("cacheCount").textContent === "0 entries", null, { timeout: 8000 })
       .then(() => true)
       .catch(() => false);
     await opt.close();
@@ -1902,6 +1911,12 @@ async function sweep(page, steps = 6) {
         afterClear.requests > fromCache.requests &&
         afterClear.blocks >= fromCache.blocks + 3,
       JSON.stringify({ scored, before, fromCache, said, afterClear }),
+    );
+    record(
+      "ui",
+      "cached verdicts: the options page says how many are stored, and says zero once they are cleared",
+      countedBefore !== null && countedBefore !== "0 entries" && countedAfter,
+      JSON.stringify({ countedBefore, countedAfter }),
     );
     await p.close();
   }

@@ -632,6 +632,12 @@
   "optCachedNote": {
     "message": "结论会被保留，重访时不再重新评分。清除之后，下一次扫描会重新询问评分服务。"
   },
+  "optCacheEntries_one": {
+    "message": "$1 条"
+  },
+  "optCacheEntries_other": {
+    "message": "$1 条"
+  },
   "optClearCache": {
     "message": "清除缓存的结论"
   },

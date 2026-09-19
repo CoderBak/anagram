@@ -28,7 +28,7 @@ import type {
 } from "../contract";
 import { BUCKET_COUNT } from "../contract";
 import PQueue from "p-queue";
-import { createSwCache } from "./swCache";
+import { createSwCache, type SwCache } from "./swCache";
 import { retryWaitMs } from "./retry";
 import { createLogger } from "../log";
 
@@ -52,10 +52,24 @@ const RETRIES = 1;
 /** p-queue: higher runs first. */
 const PRIORITY: Record<ScanPriority, number> = { viewport: 2, near: 1, background: 0 };
 
+/** Where a request came from, as far as the router has to care. */
+export interface RequestOrigin {
+  /**
+   * The tab is a private one. Nothing that exists only because of it may be written to the
+   * disk: it may READ the cache (a hit writes nothing), and what its batches produce lives
+   * in this worker's memory until some ordinary tab asks for the same text — which it
+   * would have produced identically, so from that moment it is no longer the private tab's
+   * trace. `sender.tab.incognito` is where this comes from, in the message handler.
+   */
+  private?: boolean;
+}
+
 export interface BackendRouter {
-  handle(req: ScoreBatchRequest): Promise<ScoreBatchResponse>;
+  handle(req: ScoreBatchRequest, origin?: RequestOrigin): Promise<ScoreBatchResponse>;
   /** Forget every cached verdict (options → "Clear cached verdicts"). */
   clear(): Promise<void>;
+  /** How many verdicts are on the disk (options → the count beside "Clear"). */
+  count(): Promise<number>;
 }
 
 /** Cache-key dimension of a backend identity. */
@@ -94,15 +108,17 @@ interface QueuedBatch {
   started: boolean;
 }
 
-/** One reserved key: the batch that will answer it, its shared promise and its resolver. */
+/** One reserved key: the batch that will answer it, its shared promise and its resolver.
+ *  `persist` is the union over everyone waiting on it: one ordinary tab among the joiners
+ *  is enough for the answer to be written, because that tab asked for it too. */
 interface InFlight {
   batch: QueuedBatch;
   promise: Promise<Produced>;
   resolve: (p: Produced) => void;
+  persist: boolean;
 }
 
-export function createRouter(client: ScoreClient): BackendRouter {
-  const cache = createSwCache();
+export function createRouter(client: ScoreClient, cache: SwCache = createSwCache()): BackendRouter {
   // In-flight dedup across concurrent handle() calls: cache key → the batch answering it.
   const inFlight = new Map<string, InFlight>();
   // Bounded, prioritised fan-out shared by every handle() call in this worker lifetime.
@@ -148,11 +164,13 @@ export function createRouter(client: ScoreClient): BackendRouter {
     }
   }
 
-  async function handle(req: ScoreBatchRequest): Promise<ScoreBatchResponse> {
+  async function handle(req: ScoreBatchRequest, origin: RequestOrigin = {}): Promise<ScoreBatchResponse> {
     // Settle backend discovery, then SNAPSHOT the identity every key in this request uses.
     await client.ready?.();
     const dim = modelDim(client.model());
     const priority = PRIORITY[req.priority] ?? 0;
+    /** May what this request produces be written down? Not for a private tab. */
+    const persist = origin.private !== true;
 
     const resultById = new Map<string, ScoreResult>();
     // Unique key → every block in THIS request that shares it.
@@ -164,7 +182,7 @@ export function createRouter(client: ScoreClient): BackendRouter {
 
     // One memory+storage lookup for the whole request (the persistent layer is async).
     const keys = req.blocks.map((b) => cache.keyOf(b.text, dim));
-    const hits = await cache.getMany(keys);
+    const hits = await cache.getMany(keys, persist);
     req.blocks.forEach((block, i) => {
       const key = keys[i];
       const cached = hits.get(key);
@@ -183,10 +201,11 @@ export function createRouter(client: ScoreClient): BackendRouter {
 
     /** Apply a representative's result to every block sharing its key; cache REAL
      *  results only (a degraded fallback cached once would outlive the outage), under
-     *  the identity that produced them. */
-    const fanOut = (key: string, r: ScoreResult, producedBy: ModelInfo | null): void => {
+     *  the identity that produced them, and only as far as `keep` allows — memory alone
+     *  when nobody but a private tab is waiting for it. */
+    const fanOut = (key: string, r: ScoreResult, producedBy: ModelInfo | null, keep = persist): void => {
       const group = keyToBlocks.get(key) ?? [];
-      if (group.length > 0 && !r.degraded && producedBy) cache.set(group[0].text, r, modelDim(producedBy));
+      if (group.length > 0 && !r.degraded && producedBy) cache.set(group[0].text, r, modelDim(producedBy), keep);
       for (const b of group) resultById.set(b.id, { ...r, id: b.id });
     };
 
@@ -209,6 +228,9 @@ export function createRouter(client: ScoreClient): BackendRouter {
           fanOut(k.key, result, null);
         }),
       );
+      // An ordinary tab joining a private tab's batch is an ordinary tab asking for that
+      // text: the answer may be written down, and the batch settling below is what does it.
+      if (persist) pending.persist = true;
       promote(pending, priority);
     }
 
@@ -238,7 +260,7 @@ export function createRouter(client: ScoreClient): BackendRouter {
         const promise = new Promise<Produced>((res) => {
           resolve = res;
         });
-        const entry: InFlight = { batch: record, promise, resolve };
+        const entry: InFlight = { batch: record, promise, resolve, persist };
         entries.set(k.key, entry);
         inFlight.set(k.key, entry);
       }
@@ -264,8 +286,8 @@ export function createRouter(client: ScoreClient): BackendRouter {
         // Whatever happened, every key settles and leaves the in-flight map.
         for (const k of batch) {
           const r = byId.get(k.block.id) ?? neutral(k.block);
-          fanOut(k.key, r, producedBy);
           const entry = entries.get(k.key);
+          fanOut(k.key, r, producedBy, entry?.persist ?? persist);
           entry?.resolve({ result: r, model: r.degraded ? null : producedBy });
           // Only OUR reservation may go: a later request may already have claimed the key.
           if (inFlight.get(k.key) === entry) inFlight.delete(k.key);
@@ -304,5 +326,5 @@ export function createRouter(client: ScoreClient): BackendRouter {
     return cache.clear();
   }
 
-  return { handle, clear };
+  return { handle, clear, count: () => cache.count() };
 }

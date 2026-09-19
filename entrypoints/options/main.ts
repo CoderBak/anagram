@@ -23,7 +23,7 @@ import { accessSummary, requestAccess, withdrawAccess } from "../../lib/access/g
 import { ACTIONS } from "../../lib/messaging/protocol";
 import { PDF_TAB_SCRIPTS_RUN } from "../../lib/surface";
 import { CONTRACT_VERSION } from "../../lib/contract";
-import type { BackendStatus } from "../../lib/messaging/protocol";
+import type { BackendStatus, CacheCountReply } from "../../lib/messaging/protocol";
 
 const enabledEl = document.getElementById("enabled") as HTMLInputElement;
 const highlightsEl = document.getElementById("highlights") as HTMLInputElement;
@@ -49,6 +49,7 @@ const clearCacheEl = document.getElementById("clearCache") as HTMLButtonElement;
 const accessStateEl = document.getElementById("accessState") as HTMLElement;
 const accessAllEl = document.getElementById("accessAll") as HTMLButtonElement;
 const accessWithdrawEl = document.getElementById("accessWithdraw") as HTMLButtonElement;
+const cacheCountEl = document.getElementById("cacheCount") as HTMLElement;
 
 function bindToggle(
   el: HTMLInputElement,
@@ -300,6 +301,21 @@ void refreshBackend(false);
 // The worker owns the caches (its memory and the IndexedDB store) and passes the word on to
 // every open tab; the button only says that it happened, the way the copy buttons do.
 const CLEAR_LABEL = clearCacheEl.textContent ?? t("optClearCache");
+
+/** How many verdicts are on the disk. A number and its unit, nothing else: it is there to
+ *  be glanced at before clearing, and the row's own text says what they are. */
+async function refreshCacheCount(): Promise<void> {
+  try {
+    const reply = (await browser.runtime.sendMessage({ action: ACTIONS.GET_CACHE_COUNT })) as
+      | CacheCountReply
+      | undefined;
+    const n = reply?.entries ?? 0;
+    cacheCountEl.textContent = tn("optCacheEntries", n, n.toLocaleString());
+  } catch {
+    cacheCountEl.textContent = ""; // no worker to ask — the row still works
+  }
+}
+
 clearCacheEl.addEventListener("click", () => {
   clearCacheEl.disabled = true;
   void browser.runtime
@@ -311,5 +327,7 @@ clearCacheEl.addEventListener("click", () => {
       setTimeout(() => {
         clearCacheEl.textContent = CLEAR_LABEL;
       }, 1500);
+      return refreshCacheCount();
     });
 });
+void refreshCacheCount();

@@ -57,6 +57,8 @@ export const ACTIONS = {
   ACCESS_GRANTED: "accessGranted",
   /** options → SW: forget every cached verdict (memory, worker and IndexedDB). */
   CLEAR_CACHE: "clearCache",
+  /** options → SW: how many verdicts are on the disk right now. */
+  GET_CACHE_COUNT: "getCacheCount",
   /** SW → content: the worker's caches are gone — drop this tab's own layer too. */
   CACHE_CLEARED: "cacheCleared",
 } as const;
@@ -284,6 +286,12 @@ export interface ClearCacheMessage {
 /** SW → options (response to CLEAR_CACHE): the caches are empty. */
 export interface ClearCacheReply {
   ok: boolean;
+}
+
+/** SW → options (response to GET_CACHE_COUNT): verdicts on the disk, the number the
+ *  options page shows beside "Clear". Memory-only verdicts are not among them. */
+export interface CacheCountReply {
+  entries: number;
 }
 
 /**

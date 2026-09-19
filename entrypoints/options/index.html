@@ -20,6 +20,10 @@
       .field > input.url { width: 260px; }
       .field > .btn { flex: none; }
       .row-actions { display: flex; align-items: center; gap: 6px; flex: none; }
+      /* Cached verdicts: how many there are, then the button that empties them. A number,
+         not a sentence — it is there to be glanced at before clearing. */
+      .field > .field-actions { display: flex; flex: none; align-items: center; gap: 10px; }
+      .field-actions .count { color: var(--muted-foreground); font-size: 13px; font-variant-numeric: tabular-nums; }
       .form-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
       .form-row .input { flex: 1 1 200px; }
       .form-row .select { width: 150px; }
@@ -236,7 +240,10 @@
                 <label for="clearCache" data-i18n="optCachedVerdicts">Cached verdicts</label>
                 <p data-i18n="optCachedNote">Verdicts are kept so revisits never re-score. Clearing them makes the next scan ask the daemon again.</p>
               </section>
-              <button type="button" class="btn" data-variant="outline" data-size="sm" id="clearCache" data-i18n="optClearCache">Clear cached verdicts</button>
+              <div class="field-actions">
+                <span id="cacheCount" class="count"></span>
+                <button type="button" class="btn" data-variant="outline" data-size="sm" id="clearCache" data-i18n="optClearCache">Clear cached verdicts</button>
+              </div>
             </div>
           </section>
         </section>

@@ -12,6 +12,7 @@ import { createRouter } from "../lib/backend/router";
 import { getScoreClient, getDaemonClient } from "../lib/backend/getScoreClient";
 import { ACTIONS } from "../lib/messaging/protocol";
 import type {
+  CacheCountReply,
   ClearCacheReply,
   CopyDiagnosticsReply,
   PdfPassOnceReply,
@@ -384,6 +385,15 @@ export default defineBackground(() => {
         return true;
       }
 
+      // The options page asks how many verdicts are on the disk.
+      if (msg.action === ACTIONS.GET_CACHE_COUNT) {
+        router.count().then(
+          (entries) => sendResponse({ entries } satisfies CacheCountReply),
+          () => sendResponse({ entries: 0 } satisfies CacheCountReply),
+        );
+        return true;
+      }
+
       // Per-tab flagged count on the toolbar icon (sent by the TOP frame only).
       if (msg.action === ACTIONS.UPDATE_BADGE) {
         const tabId = sender.tab?.id;
@@ -424,7 +434,8 @@ export default defineBackground(() => {
       if (msg.action !== ACTIONS.SCORE_BATCH || !msg.req) return;
 
       router
-        .handle(msg.req)
+        // A private tab's work leaves nothing on the disk (lib/backend/router.ts).
+        .handle(msg.req, { private: sender.tab?.incognito === true })
         .then((resp) => {
           const up = getDaemonClient().isUp();
           const reply: ScoreBatchReply = { results: resp.results, model: up ? resp.model : undefined, backend: up ? "up" : "down" };
