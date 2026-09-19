@@ -22,6 +22,11 @@
       header.hdr .ver { margin-top: 4px; font-size: 13px; color: var(--muted-foreground); }
       .lede { margin: 0 0 22px; font-size: 16.5px; line-height: 1.55; }
       .lede em { font-style: italic; }
+      /* Chinese has no italic. Asked for one, the browser slants the glyphs itself, and a
+         synthetic oblique on Han characters is a typographic error rather than emphasis —
+         so the two emphasised runs on this page take their quotation marks instead, which
+         the Chinese messages carry. Keyed on <html lang>, which localizePage() sets. */
+      html[lang^="zh"] em { font-style: normal; }
       .stack { display: flex; flex-direction: column; gap: 14px; }
       .card > section { display: flex; flex-direction: column; gap: 10px; }
       .card p { margin: 0; color: var(--muted-foreground); font-size: 14px; line-height: 1.6; }

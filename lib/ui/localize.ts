@@ -23,10 +23,18 @@
 // the whole reason the sentence is one message rather than three fragments.
 import { messageLocale, t, type MessageKey } from "../i18n";
 
+/**
+ * The substitutions that ask the platform to leave the placeholders alone. `getMessage`
+ * fills every $1…$9 it finds, with an EMPTY string when it was given nothing — so a
+ * message whose placeholders stand for elements rather than text has to be handed each
+ * marker back as its own value, and comes out with them intact for applyParts to split on.
+ */
+const MARKERS = ["$1", "$2", "$3", "$4", "$5", "$6", "$7", "$8", "$9"];
+
 /** Rebuild `el` from its message, threading its existing children in at $1…$9. */
 function applyParts(el: HTMLElement, key: MessageKey): void {
   const parts = [...el.children];
-  const message = t(key);
+  const message = t(key, ...MARKERS);
   const out = document.createDocumentFragment();
   let cut = 0;
   for (const m of message.matchAll(/\$([1-9])/g)) {
