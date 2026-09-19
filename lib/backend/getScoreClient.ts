@@ -12,7 +12,7 @@
 import { CONTRACT_VERSION } from "../contract";
 import type { ModelInfo, ScoreBlock, ScoreClient, ScoredBatch } from "../contract";
 import { HttpScoreClient, fetchHealth } from "./httpClient";
-import { settings, DEFAULT_SERVER_URL, isLoopbackUrl } from "../settings/settings";
+import { settings, DEFAULT_SERVER_URL, effectiveServerUrl, isLoopbackUrl } from "../settings/settings";
 import type { BackendStatus } from "../messaging/protocol";
 import { createLogger } from "../log";
 
@@ -47,11 +47,13 @@ export class DaemonClient implements ScoreClient {
   private generation = 0;
 
   constructor() {
+    // `effectiveServerUrl` stands between the setting and every fetch: a URL an older
+    // build accepted and this one no longer can is served by the default instead.
     this.settingsLoaded = settings.serverUrl.getValue().then((url) => {
-      this.serverUrl = url;
+      this.serverUrl = effectiveServerUrl(url);
     });
     settings.serverUrl.watch((url) => {
-      this.serverUrl = url;
+      this.serverUrl = effectiveServerUrl(url);
       this.invalidate();
     });
   }

@@ -24,6 +24,24 @@ describe("DaemonClient", () => {
     await expect(c.scoreBatch([{ id: "a", text: "x", order: 0 }])).rejects.toThrow(/loopback/);
   });
 
+  it("serves a URL this build has narrowed away with the default, and probes only that", async () => {
+    // An address an older build accepted: loopback, but one no `connect-src` can name.
+    await fakeBrowser.storage.local.set({ serverUrl: "http://[::1]:8765" });
+    const asked: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        asked.push(String(url));
+        return new Response(JSON.stringify(HEALTH), { status: 200 });
+      }),
+    );
+    const c = new DaemonClient();
+    const s = await c.status(true);
+    expect(s.active).toBe("server");
+    expect(s.serverUrl).toBe("http://127.0.0.1:8765");
+    expect(asked).toEqual(["http://127.0.0.1:8765/health"]);
+  });
+
   it("caches a failed probe for the down TTL and reports down", async () => {
     const fetchFn = vi.fn(async () => {
       throw new TypeError("connection refused");

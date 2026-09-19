@@ -236,6 +236,12 @@ void renderAccess();
 // --- scoring daemon ------------------------------------------------------------------
 void settings.serverUrl.getValue().then((v) => {
   serverUrlEl.value = v;
+  // A URL an older build stored and this one no longer accepts: the worker is talking to
+  // the default meanwhile, and the field says so the same way a freshly typed bad one does.
+  if (normalizeServerUrl(v) === null) {
+    serverUrlErrorEl.textContent = t("optBadUrl");
+    serverUrlErrorEl.hidden = false;
+  }
 });
 serverUrlEl.addEventListener("change", () => {
   const raw = serverUrlEl.value.trim();

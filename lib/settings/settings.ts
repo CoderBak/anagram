@@ -3,13 +3,61 @@
 // + per-site helpers with always/never mutual exclusion. (spec §4.10)
 import { storage } from "#imports";
 
-export const DEFAULT_SERVER_URL = "http://127.0.0.1:8765";
+export const DEFAULT_SERVER_PORT = "8765";
+export const DEFAULT_SERVER_URL = `http://127.0.0.1:${DEFAULT_SERVER_PORT}`;
+
+/** The two names the daemon answers on, and the only two the manifest's
+ *  `connect-src http://127.0.0.1:* http://localhost:*` can name. */
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost"]);
 
 /**
  * Only a loopback daemon may score page text — "nothing leaves this computer" is
  * enforced here and in the service-worker client, not merely promised.
+ *
+ * The accepted shape is exactly `http://127.0.0.1:<port>` or `http://localhost:<port>`,
+ * port optional. It is this narrow because a content security policy cannot be any wider:
+ * `connect-src` takes a host and a port, never an address RANGE and never an IPv6 literal,
+ * so `http://127.0.0.2:8765` and `http://[::1]:8765` would pass a check here and then be
+ * blocked by the policy the extension ships with — a setting that looks accepted and
+ * scores nothing. https goes for the same reason (the daemon serves plain HTTP on
+ * loopback), and so do credentials, a path, a query and a fragment: `${url}/health` is
+ * how the client addresses the daemon, and none of those produce an address it can use.
  */
 export function isLoopbackUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "http:") return false;
+    if (u.username !== "" || u.password !== "") return false;
+    if (u.search !== "" || u.hash !== "") return false;
+    if (u.pathname !== "/" && u.pathname !== "") return false;
+    return LOOPBACK_HOSTS.has(u.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Trim + strip trailing slashes, and complete a missing port with the daemon's own, so a
+ * stored URL always says which port it means ("http://localhost" is somebody reaching for
+ * the daemon, not for a web server on port 80). Null when the result is not one of the two
+ * loopback addresses above — the options page shows the field as invalid and keeps the
+ * previous setting.
+ */
+export function normalizeServerUrl(raw: string): string | null {
+  const url = raw.trim().replace(/\/+$/, "");
+  if (!url || !isLoopbackUrl(url)) return null;
+  const u = new URL(url);
+  // `new URL` erases a port that is the protocol's own, so `http://127.0.0.1:80` and
+  // `http://127.0.0.1` both come back with none — only the text they were typed as tells
+  // "port 80, deliberately" from "no port at all".
+  const port = u.port !== "" ? u.port : /:\d+$/.test(url) ? "80" : DEFAULT_SERVER_PORT;
+  return `http://${u.hostname.toLowerCase()}:${port}`;
+}
+
+/** What builds before the narrowing accepted: http OR https, `localhost`, `::1` and the
+ *  whole 127/8 range. Kept to tell a setting this build has narrowed from one that was
+ *  never allowed — see `effectiveServerUrl`. */
+function wasLoopbackUrl(raw: string): boolean {
   try {
     const u = new URL(raw);
     if (u.protocol !== "http:" && u.protocol !== "https:") return false;
@@ -20,10 +68,18 @@ export function isLoopbackUrl(raw: string): boolean {
   }
 }
 
-/** Trim + strip trailing slashes; null when not a loopback http(s) URL. */
-export function normalizeServerUrl(raw: string): string | null {
-  const url = raw.trim().replace(/\/+$/, "");
-  return url && isLoopbackUrl(url) ? url : null;
+/**
+ * The URL the client actually talks to. A setting an older build accepted and this one no
+ * longer does — `https://localhost:8765`, `http://[::1]:8765`, `http://127.0.0.2:8765` —
+ * still means "the daemon on this computer", so the default answers for it rather than
+ * leaving the reader with an extension that scores nothing after an update. The stored
+ * value is left alone: the options page shows what they typed, marked invalid, so it is
+ * theirs to correct rather than ours to overwrite. An address that was never allowed is
+ * NOT quietly replaced — it is refused, loudly, where it always was.
+ */
+export function effectiveServerUrl(stored: string): string {
+  if (isLoopbackUrl(stored)) return stored;
+  return wasLoopbackUrl(stored) ? DEFAULT_SERVER_URL : stored;
 }
 
 /**
