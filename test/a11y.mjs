@@ -1070,6 +1070,12 @@ async function tabWalk(page, { max = 60, startFromTop = true } = {}) {
   const stops = [];
   for (let i = 0; i < max; i++) {
     await page.keyboard.press("Tab");
+    // Focus landing in the ball brings it out of its idle tuck (half off the edge) with a
+    // transition. Measured mid-flight, the counter's 24x24 box still hangs outside the
+    // viewport and "hits nothing" — which is what the Windows runner reported for the
+    // reader page, the one extension page that has a ball and takes long enough to load
+    // for the ball to have tucked. Let it arrive before anything about it is measured.
+    if (await page.evaluate(() => document.activeElement?.id === "anagram-fab")) await still(page);
     // Identity, not a selector, decides when the walk has wrapped: two rows of the same
     // verdict band have the same path, and a name-based check would stop at the second.
     const stop = await page.evaluate((n) => {
