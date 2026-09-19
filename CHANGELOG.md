@@ -9,6 +9,19 @@ Notable changes to Anagram, newest first. The format follows
 
 ### Added
 
+- The first-run page opens with a live **setup strip**: three rows — extension,
+  scoring daemon, ready — each a status dot and a few words, so the one thing a
+  new install is actually missing is the first thing on the page instead of a
+  sentence in the footer. The daemon row says which way it is wrong and hands
+  over the single command that fixes it in a copyable pill: `anagram start` when
+  nothing answers (with the install one-liner underneath, for a computer where
+  the daemon was never installed), `anagram update` when a daemon of another
+  contract answers, and a link to the options page when the configured URL is not
+  a local address. Running, it shows the model and device. The page re-checks
+  every three seconds while the daemon is down — start it in a terminal and the
+  rows follow within seconds, no reload — slows to a minute once it is up, and
+  never polls a hidden tab. The colour never carries the meaning on its own: the
+  dot only repeats what the words beside it say.
 - `anagram doctor`: one command that says what is wrong with an installation
   instead of the single "Daemon not running" every failure used to look like. It
   checks, in order, the folder (marker, no symlinks, every sub-folder), the
