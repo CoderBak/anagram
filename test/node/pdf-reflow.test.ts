@@ -153,6 +153,35 @@ describe("reflowPdf — lists", () => {
   });
 });
 
+describe("reflowPdf — drop caps", () => {
+  const WRAPPED = ["he opening paragraph of a chapter", "begins with a raised initial letter", "that the typesetter set three lines"];
+  const FULL = ["deep, and the text wraps around it", "from the fourth line onward here."];
+
+  it("puts a sunk initial back at the head of the paragraph it opens", () => {
+    const blocks = reflowPdf([
+      page(1, [
+        // Three lines deep, so its baseline is two lines BELOW the line it belongs to.
+        { text: "T", x: 72, y: 110 + 2 * PITCH - 6, size: 33, font: "display", width: 22 },
+        ...WRAPPED.map((text, i) => ({ text, x: 98, y: 110 + i * PITCH, width: 380 })),
+        ...FULL.map((text, i) => ({ text, x: 72, y: 110 + (i + 3) * PITCH, width: 406 })),
+      ]),
+    ]);
+    expect(texts(blocks)).toEqual([`T${[...WRAPPED, ...FULL].join(" ")}`]);
+  });
+
+  it("leaves a lone letter in display type where it is", () => {
+    // One line beside it is a letter set large, not a drop cap: nothing is sunk into.
+    const blocks = reflowPdf([
+      page(1, [
+        { text: "A", x: 72, y: 100, size: 33, font: "display", width: 22 },
+        { text: "single line beside it", x: 98, y: 100, width: 120 },
+        ...column(["and a paragraph well below,", "set on its own further down."], 200),
+      ]),
+    ]);
+    expect(blocks[0].text).toBe("A single line beside it");
+  });
+});
+
 describe("reflowPdf — hyphenation", () => {
   /**
    * A word broken over two lines. Both lines fill the measure, because that is the only

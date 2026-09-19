@@ -66,6 +66,14 @@ export interface ReflowBlock {
 
 /** Two runs share a line while their baselines are within this much of the larger size. */
 const BASELINE_TOL = 0.55;
+/** A single letter set this much larger than the body is a drop cap, not a word. */
+const DROP_CAP_SIZE = 1.8;
+/** The text beside a drop cap begins within this many ems of its right-hand edge. */
+const DROP_CAP_GAP = 1.5;
+/** A drop cap is cut to the top of its first line, to within this share of the body size. */
+const DROP_CAP_ALIGN = 0.7;
+/** …and is sunk at least this many lines deep, which is what makes it a drop cap. */
+const DROP_CAP_LINES = 2;
 /** A gap wider than this share of the font size is a word space, not kerning. */
 const SPACE_GAP = 0.2;
 /** Below this many lines a page is a title page — not enough of a layout to read. */
@@ -200,6 +208,8 @@ interface Line {
   /** 0 = the only or the left column, 1 = the right column, -1 = spans the gutter. */
   col: number;
   items: PdfTextItem[];
+  /** The line is set beside a drop cap, so its left edge says nothing about paragraphs. */
+  wrapped?: boolean;
 }
 
 /** Runs worth reading: something other than whitespace, and set the normal way round. */
@@ -251,7 +261,10 @@ function makeLine(page: number, items: PdfTextItem[]): Line {
  * to instead of opening one of their own.
  */
 function groupIntoLines(page: PdfPageText): Line[] {
-  const items = readableItems(page).sort((a, b) => a.y - b.y || a.x - b.x);
+  const readable = readableItems(page).sort((a, b) => a.y - b.y || a.x - b.x);
+  const bodySize = characterSize(readable);
+  const caps = readable.filter((it) => isDropCap(it, bodySize));
+  const items = caps.length === 0 ? readable : readable.filter((it) => !caps.includes(it));
   const rows: PdfTextItem[][] = [];
   let current: PdfTextItem[] = [];
   let base = 0;
@@ -274,7 +287,60 @@ function groupIntoLines(page: PdfPageText): Line[] {
     }
   }
   if (current.length > 0) rows.push(current);
-  return rows.map((r) => makeLine(page.page, r)).filter((l) => l.text !== "");
+  const lines = rows.map((r) => makeLine(page.page, r)).filter((l) => l.text !== "");
+  // A letter that is merely large — a one-letter label, a display initial with a single
+  // line beside it — goes back on the line it shares a baseline with, judged by THAT
+  // line's size rather than its own, which is the whole of what went wrong before.
+  for (const cap of caps) {
+    if (attachDropCap(cap, lines, bodySize)) continue;
+    const home = lines.findIndex((l) => Math.abs(l.y - cap.y) <= l.size * BASELINE_TOL);
+    if (home < 0) lines.push(makeLine(page.page, [cap]));
+    else lines[home] = { ...makeLine(page.page, [...lines[home].items, cap]), wrapped: lines[home].wrapped };
+  }
+  return caps.length === 0 ? lines : lines.sort((a, b) => a.y - b.y || a.x0 - b.x0);
+}
+
+/** The size most of a page's CHARACTERS are set in — its body size, before any lines. */
+function characterSize(items: PdfTextItem[]): number {
+  const weighted: number[] = [];
+  for (const it of items) {
+    for (let i = Math.max(1, Math.round(it.str.trim().length / 4)); i > 0; i--) {
+      weighted.push(it.height);
+    }
+  }
+  return median(weighted);
+}
+
+/**
+ * A drop cap: the oversized initial a chapter opens with, sunk two or three lines into
+ * the paragraph. Its baseline is a line or two BELOW the line it belongs to, so left
+ * where it is it drags every line it was printed beside into one row — its own size sets
+ * the tolerance — and the paragraph comes back with its first letter somewhere in the
+ * middle of it, the lines beside it out of order and a word space missing.
+ */
+function isDropCap(it: PdfTextItem, bodySize: number): boolean {
+  return bodySize > 0 && it.height >= bodySize * DROP_CAP_SIZE && /^\p{L}$/u.test(it.str.trim());
+}
+
+/**
+ * Put a drop cap back on the line it opens: the one cut to the same TOP as the cap and
+ * beginning just to its right. The lines under that one, beside the cap, are marked as
+ * wrapped — their left edge is the cap's doing and says nothing about paragraphs.
+ */
+function attachDropCap(cap: PdfTextItem, lines: Line[], bodySize: number): boolean {
+  const top = cap.y - cap.height;
+  const right = cap.x + cap.width;
+  const beside = lines.filter(
+    (l) => l.x0 >= right && l.x0 <= right + bodySize * DROP_CAP_GAP && l.y > top && l.y <= cap.y,
+  );
+  if (beside.length < DROP_CAP_LINES) return false;
+  const first = beside.reduce((a, b) => (a.y <= b.y ? a : b));
+  if (Math.abs(first.y - first.size - top) > bodySize * DROP_CAP_ALIGN) return false;
+  first.text = cap.str.trim() + first.text;
+  first.x0 = Math.min(first.x0, cap.x);
+  first.items = [cap, ...first.items];
+  for (const line of beside) if (line !== first) line.wrapped = true;
+  return true;
 }
 
 // ---- columns --------------------------------------------------------------------------
@@ -916,6 +982,7 @@ function paragraphsOf(lines: Line[], vocab: Vocabulary, front: boolean): Draft[]
       const hanging = LIST_MARKER.test(prev.text);
       const indented =
         !hanging &&
+        !line.wrapped &&
         line.x0 > leftEdge + line.size * INDENT &&
         prev.x0 <= leftEdge + prev.size * INDENT;
       const item = LIST_MARKER.test(line.text);
