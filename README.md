@@ -176,19 +176,29 @@ prints PASS/FAIL per sample and exits non-zero if any of them is wrong.
   in place, chips and all, after an edit. Prefer a separate page? "Open as page"
   keeps the classic reading-view flow (also the automatic fallback if the in-tab
   fetch fails).
-- **PDFs, reflowed and analyzed.** The browser's PDF viewer shows an image, not
-  text, so Anagram opens the file in a **reading mode of its own**: pdf.js reads
-  the text layer, the paragraphs are rebuilt in reading order (any number of
-  columns, running heads and a paper's title block kept out, lists and footnotes
-  held apart, broken words mended), and the ordinary pipeline runs on the
-  result — same chips, same marks, same panel, same report, which names the PDF
-  and not the reader page. Three ways in: **"Analyze PDF"** on the ball of a PDF
-  tab, **"Read this PDF"** in the popup, and **"Open PDF with Anagram"** on any
-  link to one — or turn on **"Open PDFs in Anagram"** in the options and every
-  PDF tab opens there by itself (off by default; Back still leaves it, and
-  "Open original" still shows the file). Open the reader with nothing loaded and
-  it takes a file from your computer by drop or picker. The bytes never leave
-  the browser.
+- **PDFs, shown as they are and annotated.** The browser's PDF viewer shows an
+  image, not text, so Anagram opens the file in a **reading mode of its own** —
+  and that mode shows **the real pages**, drawn by pdf.js: the figures, the
+  mathematics, the fonts, the columns, exactly as the file was authored, on a
+  neutral surface that follows light and dark while the pages stay as printed.
+  A selectable text layer sits over every page (so Ctrl/Cmd+F works across the
+  whole document), and the marks and chips lie over the document's own glyphs.
+  The paragraph reconstruction is still there and is now **invisible**: it
+  decides what the model reads as one paragraph (any number of columns, running
+  heads and a paper's title block kept out, lists and footnotes held apart,
+  broken words mended, a paragraph sewn back together across a page break) and
+  where that paragraph ends on the page, so its chip lands in the white space
+  after its last line — in its own column, never over the other one's text.
+  Everything else is the ordinary pipeline: same chips, same marks, same panel,
+  same report, which names the PDF and not the reader page. Zoom is fit-width by
+  default, with −/+ and Cmd/Ctrl +/−/0. A scanned PDF with no text layer is
+  still shown; there is simply nothing to score. Three ways in: **"Analyze
+  PDF"** on the ball of a PDF tab, **"Read this PDF"** in the popup, and **"Open
+  PDF with Anagram"** on any link to one — or turn on **"Open PDFs in Anagram"**
+  in the options and every PDF tab opens there by itself (off by default; Back
+  still leaves it, and "Open original" still shows the file). Open the reader
+  with nothing loaded and it takes a file from your computer by drop or picker.
+  The bytes never leave the browser.
 - **An arXiv paper opens as the paper, not as its PDF.** arXiv publishes an HTML
   rendering of most papers beside the PDF, and real markup — paragraphs,
   headings, formulas that say they are formulas — beats anything that can be
@@ -614,15 +624,25 @@ Results render as inline shadow-DOM chips
 and Highlight-API marks placed by Floating UI (`lib/render/`); the Google Docs
 overlay (`lib/docsOverlay.ts`) sanitizes the fetched document with DOMPurify
 and reuses the same pipeline inside a shadow-root reader. PDFs get a reading
-mode of their own: the extension page `entrypoints/reader/` fetches the file,
-pdf.js extracts each page's text runs (`lib/pdf/extract.ts`), a pure reflow
-rebuilds the paragraphs from their geometry (`lib/pdf/reflow.ts`) and the page
-starts the same orchestrator directly, so an extension page gets the chips, the
-marks, the ball and the panel a web page gets. Readability, DOMPurify and
-pdf.js are **on-demand vendor chunks** (`scripts/vendor.mjs` →
-`public/vendor/`, loaded by `lib/lazy.ts`), so the content script that runs on
-every page stays small — pdf.js and its 1.2 MB worker are fetched only when a
-PDF is opened. The surface↔backend contract (`lib/contract.ts`, v2.1)
+mode of their own: the extension page `entrypoints/reader/` fetches the file and
+shows its **real pages** — a canvas per page drawn lazily by pdf.js and released
+again once the reader is well past it, under a text layer built eagerly for every
+page and left in the DOM for the life of the document (`viewer.ts`). Zoom is one
+CSS variable (`--scale-factor`), so no span is ever rebuilt. A pure reflow
+rebuilds the paragraphs from their geometry and says which run of which page
+every stretch of each one came from (`lib/pdf/reflow.ts`); `lib/pdf/units.ts`
+turns those into ordinary `Unit`s over the text layer's own nodes, and the page
+starts the same orchestrator directly. Four small hooks carry the difference and
+nothing else does: `OrchestratorOptions.collect` (units from the document, not
+from a DOM walk), `Unit.textFixed` (its text is the reconstruction, and its parts
+are pieces of a page rather than voices), `createBadgeLayer({ place })` (a chip in
+the page's own coordinates) and `setRangeLocator` (marks over the glyphs each
+window was read from). Readability, DOMPurify and pdf.js are **on-demand vendor
+chunks** (`scripts/vendor.mjs` → `public/vendor/`, loaded by `lib/lazy.ts`), so
+the content script that runs on every page stays small — pdf.js, its 1.2 MB
+worker and the data a faithful drawing needs (CMaps for CJK, the standard
+fourteen fonts, the JPEG2000 and JBIG2 decoders) are fetched only when a PDF is
+opened. The surface↔backend contract (`lib/contract.ts`, v2.1)
 is exactly the daemon's IO: `{bucket, probs[4], score, lang}` per paragraph, or
 `unsupported` for non-English text.
 
@@ -635,7 +655,7 @@ is exactly the daemon's IO: `{bucket, probs[4], score, lang}` per paragraph, or
 | Language identification | fastText `lid.176` | `anagramd/serve.py` |
 | Main-content extraction | @mozilla/readability (on demand) | `lib/dom/mainContent.ts` |
 | HTML sanitizing (Docs reading mode) | DOMPurify (on demand) | `lib/docsOverlay.ts` |
-| PDF text extraction (PDF reading mode) | pdf.js / pdfjs-dist (on demand) | `lib/pdf/extract.ts` |
+| PDF rendering + text extraction (PDF reading mode) | pdf.js / pdfjs-dist (on demand) | `lib/pdf/extract.ts`, `entrypoints/reader/viewer.ts` |
 | Popover placement | @floating-ui/dom | `lib/render/badge.ts`, `selectionCard.ts`, `fab.ts` |
 | CSS colour parsing + luminance | culori | `lib/render/theme.ts` |
 | Persistent score cache | idb (IndexedDB) | `lib/backend/swCache.ts` |

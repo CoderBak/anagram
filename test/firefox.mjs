@@ -42,7 +42,7 @@ import {
   sweep,
   waitFor,
 } from "./firefox-harness.mjs";
-import { PDF_HEADING, PDF_PARAS, PDF_HEAD, TEST_PDF, servePdfs } from "./pdf-fixture.mjs";
+import { PDF_HEADING, PDF_HEAD, TEST_PDF, servePdfs } from "./pdf-fixture.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const QUICK = process.argv.includes("--quick");
@@ -465,7 +465,7 @@ let pdfResources = [];
   const arrived = await waitForExtensionPage(p, readerUrl, 25000)
     .then(() => true)
     .catch(() => false);
-  const rendered = arrived && (await waitFor(p, () => document.querySelectorAll("#paper > p").length >= 3, { timeout: 30000 }));
+  const rendered = arrived && (await waitFor(p, () => document.querySelectorAll(".page .textLayer span").length >= 20, { timeout: 30000 }));
   const scored = rendered &&
     (await waitFor(p, (sel) => {
       const pills = [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill"));
@@ -473,15 +473,28 @@ let pdfResources = [];
     }, { timeout: 30000, arg: BADGE_SEL }));
   const pdf = arrived
     ? await p.evaluate((sel) => {
-        const paper = document.getElementById("paper");
-        const blocks = [...(paper?.children ?? [])]
-          .filter((el) => el.tagName === "H2" || el.tagName === "P")
-          .map((el) => ({ tag: el.tagName, text: el.textContent.replace(/\s+/g, " ").trim() }));
+        const chips = [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill"));
+        const spans = [...document.querySelectorAll(".textLayer span")];
+        const rects = spans.map((s) => s.getBoundingClientRect());
+        let marks = 0;
+        for (const h of CSS.highlights?.values() ?? []) marks += h.size;
         return {
-          blocks,
-          text: (paper?.textContent ?? "").replace(/\s+/g, " "),
-          pagemarks: [...(paper?.querySelectorAll(".pagemark") ?? [])].map((el) => el.textContent),
-          chips: [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill")).length,
+          pages: document.querySelectorAll(".page").length,
+          // Gecko draws into the same canvases: a page with pixels is the whole point.
+          drawn: [...document.querySelectorAll(".page canvas")].filter((c) => c.width > 0).length,
+          spans: spans.length,
+          text: spans.map((s) => s.textContent).join(" ").replace(/\s+/g, " "),
+          chips: chips.length,
+          chipsPlaced: chips.every((h) => {
+            const r = h.getBoundingClientRect();
+            const box = h.closest(".page").getBoundingClientRect();
+            return (
+              r.left >= box.left - 1 && r.right <= box.right + 1 &&
+              r.top >= box.top - 1 && r.bottom <= box.bottom + 1 &&
+              !rects.some((s) => s.width > 0 && r.left < s.right - 0.5 && s.left + 0.5 < r.right && r.top < s.bottom - 0.5 && s.top + 0.5 < r.bottom)
+            );
+          }),
+          marks,
           notice: document.getElementById("notice")?.textContent ?? "",
           title: document.title,
           // What Resource Timing reports on a privileged document — nothing of the page's
@@ -493,21 +506,24 @@ let pdfResources = [];
   console.log("PDF READER:", JSON.stringify(pdf).slice(0, 400));
   pdfResources = pdf?.resources ?? [];
   check(
-    "PDF reader: the document is rebuilt into paragraphs in reading order",
+    "PDF reader: Gecko draws the real pages and builds a text layer over each of them",
     !!pdf &&
-      pdf.blocks.length === 4 &&
-      pdf.blocks[0].tag === "H2" &&
-      pdf.blocks[0].text === PDF_HEADING &&
-      pdf.blocks[1].text === PDF_PARAS[0].join(" ") &&
-      pdf.blocks[2].text.endsWith("in one sitting.") &&
-      !pdf.text.includes(PDF_HEAD) &&
-      pdf.pagemarks.join("") === "— 2 —",
-    JSON.stringify({ notice: pdf?.notice, blocks: pdf?.blocks.map((b) => `${b.tag}:${b.text.slice(0, 24)}`) }),
+      pdf.pages === 2 &&
+      pdf.drawn === 2 &&
+      pdf.spans >= 29 &&
+      pdf.text.includes(PDF_HEADING) &&
+      pdf.text.includes(PDF_HEAD),
+    JSON.stringify({ pages: pdf?.pages, drawn: pdf?.drawn, spans: pdf?.spans, notice: pdf?.notice }),
   );
   check(
-    "PDF reader: the ordinary pipeline scores the rebuilt paragraphs — chips, no errors",
-    !!scored && pdf?.chips === 3 && pdf?.title === "doc.pdf" && readerErrors.length === 0,
-    JSON.stringify({ chips: pdf?.chips, title: pdf?.title, errors: readerErrors.slice(0, 3) }),
+    "PDF reader: the ordinary pipeline scores the reconstruction — chips on the page, marks, no errors",
+    !!scored &&
+      pdf?.chips === 3 &&
+      pdf?.chipsPlaced === true &&
+      (pdf?.marks ?? 0) >= 20 &&
+      pdf?.title === "doc.pdf" &&
+      readerErrors.length === 0,
+    JSON.stringify({ chips: pdf?.chips, placed: pdf?.chipsPlaced, marks: pdf?.marks, errors: readerErrors.slice(0, 3) }),
   );
   await p.close();
 }

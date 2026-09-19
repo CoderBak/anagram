@@ -25,6 +25,12 @@
 //    and one per observer tick — where reading every woken box first and writing to all of
 //    them afterwards costs 229.
 //
+// E) The PDF reader on a thirty-page two-column paper: it shows the REAL pages, so what
+//    it costs is its own shape — time to the first page drawn, time to every page's text
+//    layer (they are all built up front, which is what makes the units and browser find
+//    work over the whole document), the long tasks that building them costs, and the
+//    canvases still holding a bitmap after a scroll to the end and back.
+//
 //   node test/perf.mjs
 import { launchExtension, launchPlain, serveHtml, BADGE_SEL } from "./harness.mjs";
 import { startFakeDaemon } from "./fake-daemon.mjs";
@@ -311,6 +317,75 @@ checks.push(
     `${cardsExt.withOne} of ${cardsExt.boxes} boxes with one chip under them, ${cardsExt.withMore} with more`,
   ],
 );
+
+// ---- E) the PDF reader: a thirty-page two-column paper --------------------------------
+// The reader shows the real pages, so what it costs is a different shape from a web page's.
+// Four things are bounded. TIME TO FIRST PAGE: the reader is a blank tab until pdf.js has
+// drawn something, so this is what a reader experiences as "it opened". TIME TO ALL TEXT
+// LAYERS: every page's text is built up front and left in the DOM, because that is what
+// makes the units, the panel and browser find work over the whole document — the budget
+// says it is affordable. LONG TASKS while that happens, because building it is our work
+// and must not freeze the page under the reader. And CANVASES after scrolling to the end
+// and back, which is the only thing that grows without a bound if the pixels are not let
+// go: sixty A4 bitmaps at 2× are a third of a gigabyte.
+const PDF_PAGES = 30;
+/** Pages within the render margin, plus the two a scroll can leave half-drawn behind it. */
+const MAX_LIVE_CANVASES = 8;
+{
+  const { servePdfs, buildTwoColumnPdf } = await import("./pdf-fixture.mjs");
+  const daemonE = await startFakeDaemon();
+  const pdfs = await servePdfs({ "/paper.pdf": buildTwoColumnPdf(PDF_PAGES) });
+  const { context: ctxE, extId } = await launchExtension({ backendUrl: daemonE.url, viewport: { width: 1200, height: 900 } });
+  const reader = await ctxE.newPage();
+  await reader.addInitScript(() => {
+    window.__longTasks = [];
+    new PerformanceObserver((list) => {
+      for (const e of list.getEntries()) window.__longTasks.push(Math.round(e.duration));
+    }).observe({ entryTypes: ["longtask"] });
+  });
+  const startedAt = Date.now();
+  await reader.goto(`chrome-extension://${extId}/reader.html?src=${encodeURIComponent(pdfs.url("/paper.pdf"))}`, {
+    waitUntil: "domcontentloaded",
+  });
+  await reader.waitForFunction(() => [...document.querySelectorAll(".page canvas")].some((c) => c.width > 0), null, { timeout: 30000 });
+  const firstPageMs = Date.now() - startedAt;
+  await reader.waitForSelector("#pages:not(.reading)", { timeout: 60000 });
+  const allTextMs = Date.now() - startedAt;
+  const building = await reader.evaluate(() => Math.max(0, ...window.__longTasks));
+
+  // To the end of the document and back — the canvases in between must not be kept.
+  await reader.evaluate(async () => {
+    const pages = [...document.querySelectorAll(".page")];
+    for (const el of pages) {
+      el.scrollIntoView();
+      await new Promise((r) => setTimeout(r, 40));
+    }
+    for (const el of [...pages].reverse()) {
+      el.scrollIntoView();
+      await new Promise((r) => setTimeout(r, 40));
+    }
+  });
+  await reader.waitForTimeout(1500);
+  const held = await reader.evaluate(() => ({
+    pages: document.querySelectorAll(".page").length,
+    spans: document.querySelectorAll(".textLayer span").length,
+    live: [...document.querySelectorAll(".page canvas")].filter((c) => c.width > 0 && c.height > 0).length,
+  }));
+  await ctxE.close();
+  await pdfs.close();
+  await daemonE.close();
+
+  checks.push(
+    [`PDF reader: first page drawn < 6000ms (${PDF_PAGES} pages)`, firstPageMs < 6000, `${firstPageMs}ms`],
+    ["PDF reader: every page's text layer present < 30000ms", allTextMs < 30000, `${allTextMs}ms, ${held.spans} spans over ${held.pages} pages`],
+    ["PDF reader: worst long task while the text layers are built < 1000ms", building < 1000, `${building}ms`],
+    [
+      `PDF reader: canvases bounded after scrolling to the end and back (<= ${MAX_LIVE_CANVASES})`,
+      held.live > 0 && held.live <= MAX_LIVE_CANVASES,
+      `${held.live} of ${held.pages} pages still hold a bitmap`,
+    ],
+  );
+}
 
 console.log(`page: ${N} paragraphs`);
 for (const [name, ok, note] of checks) console.log(`${ok ? "PASS" : "FAIL"}  ${name}  —  ${note}`);

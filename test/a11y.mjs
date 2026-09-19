@@ -777,7 +777,9 @@ const PAGE_SPECS = [
     url: () => `${extUrl("reader.html")}?src=${encodeURIComponent(pdfUrl)}`,
     viewport: { width: 1100, height: 900 },
     async prepare(page) {
-      await page.waitForSelector("#paper > p", { timeout: 25000 }).catch(() => {});
+      // The pages themselves, drawn by pdf.js: the canvas is presentational and the text
+      // layer over it is the accessible text, so the scan has something to read.
+      await page.waitForSelector("#pages:not(.reading)", { timeout: 25000 }).catch(() => {});
       await chipsSettled(page, 1);
       await still(page);
     },
