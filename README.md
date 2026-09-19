@@ -219,14 +219,9 @@ prints PASS/FAIL per sample and exits non-zero if any of them is wrong.
   still leaves it, and "Open original" still shows the file). Open the reader
   with nothing loaded and it takes a file from your computer by drop or picker.
   The bytes never leave the browser.
-- **An arXiv paper opens as the paper, not as its PDF.** arXiv publishes an HTML
-  rendering of most papers beside the PDF, and real markup — paragraphs,
-  headings, formulas that say they are formulas — beats anything that can be
-  rebuilt from glyph positions. So every way of opening an arXiv PDF above goes
-  to `arxiv.org/html/<id>` instead, at the version the PDF named, whenever that
-  page exists; a paper that was never converted gets the reading mode exactly as
-  before. arxiv.org is the only site ever asked, only about the paper you are
-  opening, and only for the first few kilobytes of it.
+  Opening a PDF opens **that** PDF: Anagram asks no site anything first, and
+  there is no address it could send you to instead of the document you were
+  looking at.
 
 ## The model
 
@@ -733,7 +728,25 @@ manifest.
 
 ## Privacy
 
-Nothing leaves your computer, and that is enforced rather than promised: the
+**Anagram contacts no remote server, ever, and the browser is what stops it.**
+The manifest declares a Content-Security-Policy whose `connect-src` is the
+extension's own origin, the two loopback spellings the daemon-URL setting
+accepts, and `file:` — so `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource`
+and `sendBeacon` from any extension page or from the service worker can reach
+the local daemon and nothing else, whatever the code asks for. No telemetry, no
+analytics, no error reporting, no update check, no remote font. Only three files
+of the extension are web accessible at all, at an address Chrome rotates per
+session and gives only to our own content script, so a page cannot detect
+Anagram by loading one either.
+
+Everything Anagram touches is written down, file by file and key by key, in
+**[`docs/footprint.md`](docs/footprint.md)** — every network call site with its
+purpose and destination, every address written into the source, every stored
+key, what a cached verdict holds, and what each permission is for.
+`test/node/footprint.test.ts` checks that page against the sources on every test
+run, so a call added and not written down fails the build.
+
+The rest is enforced the same way: the
 daemon URL setting accepts only `http://127.0.0.1:<port>` and
 `http://localhost:<port>` — the two addresses a content security policy can
 name, so nothing can be configured that the manifest would not allow anyway —
@@ -759,10 +772,3 @@ quiet download. Fetching happens in exactly two places — the installer, and
 `anagram model` — and each verifies what arrives against a checksum pinned in
 `install.sh` before it is renamed into place, so an interrupted download is never
 something the daemon can load.
-
-Anagram contacts exactly one remote server, and only for one thing: when you ask
-to open an **arXiv** PDF, it asks arxiv.org whether that paper's HTML rendering
-exists, so it can send you there instead of reconstructing the PDF. That request
-carries no cookies, is for the first four kilobytes of a page you were about to
-open anyway, is remembered so a paper is asked about once, and gives up after
-2.5 seconds — and nothing else, on any site, ever goes anywhere.

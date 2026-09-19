@@ -317,6 +317,14 @@ Notable changes to Anagram, newest first. The format follows
   (`CollectOptions.onShortText`), which is the only moment the answer exists —
   nothing is read twice for this. The line is drawn, never announced: the
   panel's live region still belongs to the flagged count alone.
+- **`docs/footprint.md`** — the page somebody auditing this extension reads: every
+  network call site in `lib/` and `entrypoints/` with its purpose and its
+  destination, every `http(s)://` literal written into the source, every
+  `chrome.storage.local` key, what a row of the IndexedDB score cache holds and
+  what bounds it, what is written outside the browser, and what each permission
+  is for. `test/node/footprint.test.ts` reads that page and checks it against
+  the sources on every `vitest` run, in both directions: a network call nobody
+  wrote down fails it, and so does a line whose call site has gone.
 
 ### Changed
 
@@ -621,6 +629,46 @@ Notable changes to Anagram, newest first. The format follows
   the probabilities). Additive: `calibration` is what contract 2.x clients read and
   it is unchanged, so an installed daemon and a new extension, or the reverse, go
   on working.
+
+- **The extension can no longer reach the internet, and the browser is what
+  stops it.** `wxt.config.ts` now declares a Content-Security-Policy for the
+  extension's pages and its service worker whose `connect-src` is `'self'`, the
+  two loopback spellings the daemon-URL setting accepts, and `file:` — so
+  `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource` and `sendBeacon` can
+  reach the local daemon and nothing else, whatever the code asks for and
+  whatever host permission the extension holds. The rest of the policy is a
+  tightening of Chrome's default: `default-src 'self'`, `object-src 'self'`,
+  `img-src 'self' data: blob:`, `font-src 'self' data:`, `worker-src 'self'`,
+  `frame-src 'none'`, `form-action 'none'`, `base-uri 'none'`. `style-src`
+  keeps `'unsafe-inline'`, which the four extension pages need for their own
+  `<style>` block and which Chrome's default allows anyway. Firefox takes the
+  same policy as an MV2 string and enforces it identically.
+- **`script-src` carries `'wasm-unsafe-eval'`, and it turns out to have been
+  load-bearing all along.** pdf.js ships its JPEG 2000 and JBIG2 decoders as
+  WebAssembly and `scripts/vendor.mjs` deliberately leaves out the library's
+  no-WebAssembly fallbacks, so with no policy declared — which is how this
+  extension shipped until now — Chrome refused to compile either decoder and a
+  PDF page made of a JPEG 2000 or JBIG2 image drew **completely blank, with
+  nothing logged anywhere**. Measured, not reasoned about: `test/pdf-codecs-check.mjs`
+  opens one document of each kind in the packaged extension and reads the
+  canvas back.
+- **`web_accessible_resources` is three files instead of three megabytes.** It
+  declared `vendor/*` for `<all_urls>`, which since the PDF view landed had been
+  offering every website on the internet pdf.js, its worker, the CMaps, the
+  standard fourteen fonts and the WebAssembly decoders — none of which a web page
+  has any use for, all of which let a page detect that this extension is
+  installed. Only the three chunks a content script really `import()`s are
+  declared now (Readability, DOMPurify, the diagnostics chunk), and with
+  `use_dynamic_url`, so Chrome serves even those at a per-session address given
+  only to our own content script. The reader is an extension page and needs
+  nothing web accessible at all.
+- **Anagram makes no remote request, at all.** It made exactly one: the service
+  worker asked arxiv.org whether a paper had an HTML rendering, so that an arXiv
+  PDF could open as the paper rather than as its PDF. The probe, its cache and
+  the automatic re-routing are gone, and "Open in Anagram" on any PDF now opens
+  **that** PDF — which is also the document you were looking at. `htmlTwinOf()`
+  stays in `lib/pdf/source.ts`: it says which address an arXiv paper's HTML
+  would have, for a link somebody may follow themselves.
 
 ### Fixed
 
@@ -1034,6 +1082,25 @@ Notable changes to Anagram, newest first. The format follows
   does not verify leaves the folder alone and stays aside so the next attempt
   resumes; and the same for `install.sh`, which stops there rather than going on
   to fetch the language model.
+
+- `test/csp-check.mjs` — the policy, in both browsers. Every surface is opened
+  for real (popup, options, onboarding, the reader empty and with a PDF in it,
+  and an ordinary page with its chips and its panel) while
+  `securitypolicyviolation` and the console are listened to, and any violation
+  fails; then a page and the service worker are made to reach for a remote host
+  over `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource` and `sendBeacon`,
+  and every one has to be refused while the daemon still answers. 15 checks on
+  Chrome, 8 more on Firefox (which report SKIP where there is no Firefox to
+  drive). Not in CI yet.
+- `test/pdf-codecs-check.mjs` — a JPEG 2000 document and a JBIG2 document opened
+  in the packaged extension, with the canvas read back to prove the image drew.
+  The two codestreams are carried as base64 rather than as binary fixtures, and
+  were generated on this machine with Pillow/OpenJPEG and jbig2enc. 5 checks;
+  not in CI yet.
+- `test/node/footprint.test.ts` — 16 checks that hold `docs/footprint.md` and the
+  sources to each other, plus the shipping manifest's exact policy, its
+  `connect-src` list and its `web_accessible_resources` (those skip when the
+  build on disk is older than `wxt.config.ts`).
 
 ## [0.3.2] — 2026-09-18
 
