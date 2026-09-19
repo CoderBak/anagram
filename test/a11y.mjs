@@ -74,44 +74,12 @@ const BASELINE = [
 
   // ---- the extension pages -------------------------------------------------------------
   {
-    where: "popup [light]",
-    rule: "color-contrast",
-    target: '4 nodes: .hint-line kbd (the "Alt + Shift + P / L" key hints)',
-    why: "Basecoat's .kbd is #737373 on #f5f5f5 = 4.34:1 (needs 4.5). Light scheme only; the dark popup passes.",
-  },
-  {
-    where: "options (two site rules, add-rule error) [light]",
-    rule: "color-contrast",
-    target: "18 nodes: <code> spans (including the new Advanced field's) and .shortcuts .kbd",
-    why: "The same #737373-on-#f5f5f5 pair, here on every inline <code> (the daemon commands and URLs a user has to read to fix a broken install) and on the shortcut keys.",
-  },
-  {
-    where: "options (two site rules, add-rule error) [dark]",
-    rule: "color-contrast",
-    target: ".mode-on (the per-site rules table's \u201cAlways on\u201d cell)",
-    why: "oklch(0.55 0.15 150) = #05893e on the dark card #171717 = 3.97:1. The green is picked for a light background and never re-picked for dark. entrypoints/options/index.html .mode-on.",
-  },
-  {
     where: "options (two site rules, add-rule error) [light]",
     rule: "empty-table-header",
     target: "th:nth-child(3)",
     why: 'The per-site rules table\'s actions column has an empty <th>, so the "Remove" column is announced as nothing.',
   },
   { where: "options (two site rules, add-rule error) [dark]", rule: "empty-table-header", target: "th:nth-child(3)", why: "Same empty <th>, dark scheme." },
-  {
-    where: "onboarding (daemon up) [light]",
-    rule: "color-contrast",
-    target: "10 nodes: .kbd keys and <code>",
-    why: "The same Basecoat .kbd / <code> pair (4.34:1) on the first page a new user ever sees.",
-  },
-  {
-    where: "onboarding (daemon down) [light]",
-    rule: "color-contrast",
-    target: "11 nodes: #install-cmd plus the same .kbd keys and <code>",
-    why:
-      "Same page in its daemon-down state, where the setup strip also prints the install " +
-      "command as a <code> pill — the one line a user has to read to get anywhere.",
-  },
   {
     where: "reader (empty, file picker) [light]",
     rule: "page-has-heading-one",
@@ -613,14 +581,26 @@ function installProbe() {
  * Document.getAnimations() reaches into them.
  */
 async function settleAll(page, timeout = 8000) {
+  // Two frames first: a transition started by a class change this tick does not exist in
+  // getAnimations() until the style is recalculated, and polling before that would answer
+  // "nothing is moving" about a fade that is one frame from starting.
+  await frames(page);
   await page
     .waitForFunction(() => document.getAnimations().every((a) => a.playState !== "running"), null, { timeout })
     .catch(() => {});
   await page.waitForTimeout(250);
 }
 
+/** Let the page recalculate style and paint twice. */
+function frames(page) {
+  return page
+    .evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
+    .catch(() => {});
+}
+
 /** Wait until nothing in our shadow UI is moving, so a scan reads settled colours. */
 async function still(page, hostSel = "#anagram-fab") {
+  await frames(page);
   await page
     .waitForFunction(
       (sel) => {
@@ -635,13 +615,28 @@ async function still(page, hostSel = "#anagram-fab") {
   await page.waitForTimeout(150);
 }
 
-/** Bring the ball out of its idle tuck (half off the edge, 62% opacity) and settle. */
+/**
+ * Bring the ball out of its idle tuck (half off the edge, 62% opacity) and wait for the
+ * fade to finish. The opacity is checked explicitly, not just the animation list: a colour
+ * read at 0.97 opacity gives axe #fef8f8 on #dd2d2d and a 4.45:1 "failure" of a pair that
+ * is 4.83:1 the moment the fade lands.
+ */
 async function untuck(page) {
   await page.evaluate(() => {
     const stack = document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".stack");
     stack?.dispatchEvent(new PointerEvent("pointerenter", { bubbles: false }));
   });
   await still(page);
+  await page
+    .waitForFunction(
+      () => {
+        const wrap = document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".fabwrap");
+        return !wrap || getComputedStyle(wrap).opacity === "1";
+      },
+      null,
+      { timeout: 4000 },
+    )
+    .catch(() => {});
 }
 
 // =====================================================================================

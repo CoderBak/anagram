@@ -26,6 +26,9 @@
       .form-note { margin: 6px 0 0; font-size: 12.5px; color: var(--muted-foreground); }
       .empty { margin: 0; padding: 2px 0; color: var(--muted-foreground); font-size: 13px; }
       .mode-on { color: oklch(0.55 0.15 150); font-weight: 500; }
+      /* The same green on the dark card is 3.97:1 — it was picked for a white surface
+         and never re-picked. Lighter in dark mode, same hue. */
+      html.dark .mode-on { color: oklch(0.76 0.15 150); }
       .mode-off { color: var(--muted-foreground); }
       .shortcuts { display: grid; grid-template-columns: max-content 1fr; gap: 8px 14px; align-items: center; }
       .shortcuts .keys { display: inline-flex; align-items: center; gap: 3px; }
@@ -42,6 +45,10 @@
       .privacy { margin: 0; color: var(--muted-foreground); font-size: 13px; }
       footer.foot { margin-top: 24px; font-size: 12.5px; line-height: 1.6; color: var(--muted-foreground); }
       code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; background: var(--muted); padding: 1px 5px; border-radius: 5px; }
+      /* Inline commands and key hints are what someone reads while fixing a broken
+         install, and the muted foreground on the muted surface is 4.34:1 — under the
+         4.5:1 WCAG 1.4.3 asks of body text. They take the page's own foreground. */
+      code, .kbd { color: var(--foreground); }
       /* Hit areas, not paint. WCAG 2.5.8 (target size, minimum) measures the region that
          ACCEPTS the pointer, so these controls keep the size Basecoat draws them at and an
          invisible box centred on each brings it to 24x24. */
