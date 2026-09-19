@@ -106,6 +106,53 @@ describe("reflowPdf — single column", () => {
   });
 });
 
+describe("reflowPdf — lists", () => {
+  const LEAD = ["The procedure has three steps, each", "of which is described below."];
+
+  it("gives every item of a bulleted list a block of its own", () => {
+    const items = [
+      "• Collect the documents from the source.",
+      "• Extract the text runs from every page.",
+      "• Rebuild the paragraphs from geometry.",
+    ];
+    const blocks = reflowPdf([
+      page(1, [
+        ...column(LEAD, 100),
+        ...items.map((text, i) => ({ text, x: 90, y: 100 + (i + 3) * PITCH, width: 400 })),
+      ]),
+    ]);
+    expect(texts(blocks)).toEqual([LEAD.join(" "), ...items]);
+  });
+
+  it("keeps an item that runs over two lines whole, hanging indent and all", () => {
+    const blocks = reflowPdf([
+      page(1, [
+        ...column(LEAD, 100),
+        { text: "• Collect the documents from the source, of", x: 90, y: 100 + 3 * PITCH, width: 400 },
+        { text: "which there are more than one would think.", x: 102, y: 100 + 4 * PITCH, width: 388 },
+        { text: "• Extract the text runs from every page.", x: 90, y: 100 + 5 * PITCH, width: 400 },
+      ]),
+    ]);
+    expect(texts(blocks)).toEqual([
+      LEAD.join(" "),
+      "• Collect the documents from the source, of which there are more than one would think.",
+      "• Extract the text runs from every page.",
+    ]);
+  });
+
+  it("separates numbered items and the entries of a reference list", () => {
+    const numbered = ["1. Collect the documents.", "2. Extract the text runs.", "3. Rebuild the paragraphs."];
+    const refs = ["[1] Doe, J. A paper about papers. 2021.", "[2] Smith, J. Another one. 2022."];
+    const blocks = reflowPdf([
+      page(1, [
+        ...numbered.map((text, i) => ({ text, x: 90, y: 100 + i * PITCH, width: 400 })),
+        ...refs.map((text, i) => ({ text, x: 90, y: 100 + (i + 4) * PITCH, width: 400 })),
+      ]),
+    ]);
+    expect(texts(blocks)).toEqual([...numbered, ...refs]);
+  });
+});
+
 describe("reflowPdf — hyphenation", () => {
   /**
    * A word broken over two lines. Both lines fill the measure, because that is the only

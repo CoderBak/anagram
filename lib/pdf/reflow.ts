@@ -134,6 +134,14 @@ const HEADING_MAX_WORDS = 20;
 const DISPLAY_FONT_SHARE = 0.06;
 /** "2", "3.1", "IV." — how a printed section announces itself. */
 const SECTION_NUMBER = /^(?:\d+(?:\.\d+)*\.?|[IVXLC]+\.)\s+\p{Lu}/u;
+/**
+ * How an item of a list announces itself: a bullet, a number, a letter in brackets, a
+ * reference's [7]. Each item is a block of its own — welding a list into one paragraph
+ * gives the scorer a run of unrelated half-sentences, and every item after the first has
+ * its own verdict to earn. The marker must be followed by a space, which is what keeps
+ * "3.1" (a section) and "(2020)" (a citation opening a line) out of it.
+ */
+const LIST_MARKER = /^(?:[•▪◦‣·∙*–—]|\(?\d{1,3}[.)]|\[\d{1,3}\]|\(\p{L}\))\s/u;
 
 // ---- small helpers --------------------------------------------------------------------
 
@@ -855,15 +863,28 @@ function paragraphsOf(lines: Line[], vocab: Vocabulary, front: boolean): Draft[]
     if (i > 0 && !/[-‐­]$/.test(lines[i - 1].text)) {
       const prev = lines[i - 1];
       const gap = line.y - prev.y;
+      // A list item's second line is ranged under its text, past the marker, and that
+      // hanging indent is not a new paragraph — it is the same item still being read.
+      const hanging = LIST_MARKER.test(prev.text);
       const indented =
-        line.x0 > leftEdge + line.size * INDENT && prev.x0 <= leftEdge + prev.size * INDENT;
+        !hanging &&
+        line.x0 > leftEdge + line.size * INDENT &&
+        prev.x0 <= leftEdge + prev.size * INDENT;
+      const item = LIST_MARKER.test(line.text);
       const resized = Math.abs(line.size - prev.size) > Math.max(line.size, prev.size) * 0.15;
       const shortBefore = prev.x1 < rightEdge - prev.size * SHORT_LINE;
       const startsFresh = /^[\p{Lu}\p{Lt}\d"“'‘([]/u.test(line.text);
       // In the front matter every line is its own item — a name, an address, a label —
       // unless it is flush with the line above it and so a continuation of it.
       const moved = front && Math.abs(line.x0 - prev.x0) > line.size * FLUSH_TOL;
-      if (gap > pitch * PARA_GAP || indented || resized || moved || (shortBefore && startsFresh)) {
+      if (
+        gap > pitch * PARA_GAP ||
+        indented ||
+        item ||
+        resized ||
+        moved ||
+        (shortBefore && startsFresh)
+      ) {
         flush();
       }
     }
