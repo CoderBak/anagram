@@ -229,6 +229,15 @@ Notable changes to Anagram, newest first. The format follows
   however much its shadow tree holds, so the whole document counted as empty and
   not one paragraph in the overlay was ever scored. The layer now sits one level
   in, where it always belonged.
+- Comments on 博客园 (cnblogs) are read. The site wraps its comment LIST in boxes
+  whose class and id carry `comment_form`, the token that marks WordPress' reply
+  form, and every comment on the page went out with it. A box carrying that token
+  is the reply form only when it holds something to type in and is not a list of
+  comments.
+- A `<form>` with fields to fill in is chrome. A paragraph of consent text among
+  the fields of a job application got a chip of its own on a Greenhouse board.
+  The page's own shell is not one — ASP.NET wraps whole sites in a single
+  `<form>` — and prose beside a search box is untouched.
 - A mailing-list quotation is scored without its **quote markers**. Prose in a
   `<pre>` is read now, and the `>` at the head of every quoted line went to the
   model with it — the frame a mail client draws the quotation with, which nobody

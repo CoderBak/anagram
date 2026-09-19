@@ -925,6 +925,25 @@ const results = await page.evaluate(() => {
   u = collect(`<div class="sharedwith">${words(60)}</div>`);
   check("token boundary: 'sharedwith' (no delimiter) KEPT", u.length === 1);
   {
+    // The reply FORM is chrome; the comments are not. 博客园 wraps its comment LIST in boxes
+    // carrying the same token, and a Greenhouse job application sets consent text among its
+    // fields.
+    u = collect(`<div class="comment-form"><p class="comment-notes">${words(60)}</p><textarea></textarea></div>`);
+    check("a reply form is still chrome", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+    u = collect(`<div id="comment_form_container">${Array.from({ length: 3 }, (_, i) => `<div class="feedbackItem">${words(60)}</div>`).join("")}</div>`);
+    check("a comment LIST carrying the same token is read (博客园)", u.length === 3, JSON.stringify(u.map(x => [x.parts, x.words])));
+    u = collect(`<div class="comment_form_wrap">${Array.from({ length: 3 }, () => `<div class="feedbackItem">${words(60)}</div>`).join("")}<div class="comment_form"><p>${words(60)}</p><textarea></textarea></div></div>`);
+    check("…even where the reply form stands inside the same box, which is chrome by itself", u.length === 3, JSON.stringify(u.map(x => [x.parts, x.words])));
+    u = collect(`<div class="comment_form_list"><p>${words(60)}</p></div>`);
+    check("a box carrying the token with nothing to type in is not a form", u.length === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
+    u = collect(`<article><p>${words(60)}</p></article><form><p>CONSENT ${words(60)}</p><input type="email"><button type="submit">Apply</button></form>`);
+    check("a <form> with fields to fill in is chrome, legal paragraph and all", u.length === 1 && !u[0].text.includes("CONSENT"), JSON.stringify(u.map(x => [x.parts, x.words])));
+    u = collect(`<main><form><input type="search"></form><p>${words(60)}</p></main>`);
+    check("…while the prose around a search box inside <main> is untouched", u.length === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
+    u = collect(`<form id="form1"><input type="text"><main><p>${words(60)}</p></main></form>`);
+    check("…and a page wrapped in one <form> (ASP.NET WebForms) is not a sign-up box", u.length === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
+  }
+  {
     // Regression: Wikipedia Vector-2022 body classes ("…-toc-pinned-…") must
     // never classify a page-level container as chrome.
     const b = document.createElement("body");

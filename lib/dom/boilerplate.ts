@@ -40,14 +40,16 @@ const SECTIONING_SELECTOR =
 const SHELL_ELEMENT_SHARE = 0.5;
 
 /**
- * Is this the application's own root rather than something inside the page? Mastodon's
+ * Is this the page's own shell rather than something inside it? Mastodon's
  * web client is `<body> → <div id="mastodon" class="notranslate app-holder"> → … →
  * <main> → … → <article>`: taking that attribute at face value made every status on
  * every Mastodon instance unreachable (16 silent `<article>`s on a profile, 12 on
  * /explore, no unit anywhere). On a shell the attribute says "do not machine-translate
- * this application"; on the small things it says "this is not prose".
+ * this application"; on the small things it says "this is not prose". The <form> rule
+ * below asks the same question for the same reason: ASP.NET WebForms wraps a whole site in
+ * one `<form runat="server">`, and a page is not a sign-up box.
  */
-function isTranslationShell(el: Element): boolean {
+function isShell(el: Element): boolean {
   if (el.querySelector(SECTIONING_SELECTOR) !== null) return true;
   const body = el.ownerDocument?.body ?? null;
   if (!body || el === body || !body.contains(el)) return false;
@@ -65,7 +67,7 @@ function isTranslationShell(el: Element): boolean {
 export function isNoTranslate(el: Element): boolean {
   if (el.getAttribute("translate") !== "no" && !el.classList.contains("notranslate")) return false;
   if (PAGE_LEVEL_TAGS.has(el.nodeName.toUpperCase()) || el.getAttribute("role") === "main") return false;
-  return !isTranslationShell(el);
+  return !isShell(el);
 }
 
 /**
@@ -103,8 +105,6 @@ const CHROME_TOKEN_PATTERNS: string[] = [
   // auth / search chrome — compound so "how to register" prose sections survive
   "(?:login|log[-_]?in|signin|sign[-_]?in|signup|sign[-_]?up|register)[-_]?(?:form|box|modal|panel|prompt|banner|wall|overlay|popup)",
   "search[-_]?(?:box|form|bar|field)",
-  // reply forms (the form, not the comments — WP's #respond convention)
-  "comment[-_]?form", "respond",
   "rss", "print[-_]?only",
 ];
 
@@ -112,6 +112,52 @@ const CHROME_TOKEN_RE = new RegExp(
   `(?:^|[\\s_-])(?:${CHROME_TOKEN_PATTERNS.join("|")})(?:[\\s_-]|$)`,
   "i",
 );
+
+/**
+ * The reply FORM is chrome; the comments are not — they are exactly the user-generated text
+ * a detector must read. WordPress' `#respond` convention gave these two tokens their
+ * meaning, but 博客园 (cnblogs) wraps its comment LIST in boxes that carry `comment_form`
+ * as well, and every comment on the page went with them. So the token alone no longer
+ * decides: see `isReplyForm`.
+ */
+const REPLY_FORM_TOKEN_RE = /(?:^|[\s_-])(?:comment[-_]?form|respond)(?:[\s_-]|$)/i;
+
+/** Controls a reader types into or chooses from — what makes a box a form to fill in.
+ *  Hidden inputs are bookkeeping (a CSRF token sits in every kind of box). */
+const FORM_CONTROL_SELECTOR = "textarea,select,input:not([type=hidden])";
+
+/** Boxes of one kind side by side that make a LIST rather than the fields of a form. */
+const LIST_ITEM_MIN = 3;
+/** Under this a box is a label, a button or a field, never somebody's comment. */
+const LIST_ITEM_MIN_CHARS = 20;
+
+/**
+ * Does this box hold a LIST — several sibling boxes of one tag and one class, each with text
+ * in it? Every comment comes off one template, while the fields of a reply form each carry
+ * their own class (`comment-form-author`, `comment-form-email`, `comment-form-url`), so this
+ * never matches the form it is meant to spare. Two levels, because the list usually sits in
+ * a wrapper of its own inside the box that carries the token.
+ */
+function holdsAList(el: Element, depth = 2): boolean {
+  const kinds = new Map<string, number>();
+  for (const child of el.children) {
+    if ((child.textContent ?? "").trim().length >= LIST_ITEM_MIN_CHARS) {
+      const kind = `${child.nodeName}.${child.getAttribute("class") ?? ""}`;
+      const seen = (kinds.get(kind) ?? 0) + 1;
+      if (seen >= LIST_ITEM_MIN) return true;
+      kinds.set(kind, seen);
+    }
+    if (depth > 1 && holdsAList(child, depth - 1)) return true;
+  }
+  return false;
+}
+
+/** A box carrying a reply-form token is the form itself only when there is something in it
+ *  to type in, and when it is not the list of comments (or the box around both). */
+function isReplyForm(el: Element): boolean {
+  if (el.querySelector(`${FORM_CONTROL_SELECTOR},form`) === null) return false;
+  return !holdsAList(el);
+}
 
 /**
  * True if this element is page chrome whose subtree should not be scored.
@@ -140,12 +186,20 @@ export function isBoilerplate(el: Element): boolean {
   // (pull quotes duplicate body text and would double-badge the same sentence).
   if (tag === "ASIDE") return true;
 
+  // A <form> with something to fill in is a widget, whatever prose stands between its
+  // fields: a Greenhouse job application sets a paragraph of consent text among them and
+  // got a unit of its own, a newsletter box sets its pitch there. Never the page's own
+  // shell (ASP.NET wraps whole sites in one <form>), and the walk keeps handling
+  // contenteditable and <textarea> wherever they stand.
+  if (tag === "FORM" && el.querySelector(FORM_CONTROL_SELECTOR) !== null && !isShell(el)) return true;
+
   // Strong class/id tokens (cookie banners, paywalls, ads, share bars, …).
   const cls = el.getAttribute("class");
   const id = (el as HTMLElement).id;
   if (cls || id) {
     const hay = `${id ?? ""} ${cls ?? ""}`.slice(0, 256);
     if (CHROME_TOKEN_RE.test(hay)) return true;
+    if (REPLY_FORM_TOKEN_RE.test(hay) && isReplyForm(el)) return true;
   }
 
   return false;
