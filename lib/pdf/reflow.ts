@@ -51,12 +51,38 @@ export interface PdfPageText {
   items: PdfTextItem[];
 }
 
-/** A block of reading-order text: what the reader renders as <h2> or <p>. */
+/**
+ * Where one stretch of a block's text was set on the page.
+ *
+ * `item` is an index into THAT page's `items`, which is also the index of the text
+ * layer's span for the run: pdf.js pushes exactly one span per item that carries a
+ * `str`, in order, and lib/pdf/extract.ts keeps exactly those items (lib/pdf/units.ts
+ * relies on the correspondence). Characters no run covers are the reflow's own — the
+ * space it puts between two lines, the space between two runs of a line — and characters
+ * of an item no run mentions were dropped: a running head, a page number, the hyphen a
+ * line break left behind.
+ */
+export interface SourceRun {
+  /** 1-based page number, the way the reader prints it. */
+  page: number;
+  /** Index into that page's `items`. */
+  item: number;
+  /** Offset in the BLOCK's text where the stretch begins. */
+  at: number;
+  /** How many characters of the block's text it covers. */
+  length: number;
+  /** Offset inside the item's own `str` of the first of those characters. */
+  from: number;
+}
+
+/** A block of reading-order text: one paragraph as the model reads it. */
 export interface ReflowBlock {
   kind: "heading" | "paragraph";
   text: string;
   /** The page the block starts on. */
   page: number;
+  /** Where every stretch of `text` came from, in reading order. */
+  runs: SourceRun[];
 }
 
 // ---- tuning ---------------------------------------------------------------------------
@@ -208,6 +234,133 @@ const CJK_SPACE_GAP = 1;
 /** Sentence-final punctuation, including the CJK and quoted-close forms. */
 const SENTENCE_END = /[.!?。！？…](["'”’)\]]|\s)*$/u;
 
+// ---- provenance -------------------------------------------------------------------------
+// The reader shows the REAL pages and lays its marks over the document's own glyphs, so
+// every piece of reconstructed text has to remember where it was set. The reconstruction
+// itself is unchanged: the same lines, the same paragraphs, the same mended hyphens — the
+// text is simply built alongside an ordered list of the stretches it came from, and every
+// step that ADDS a character (a word space, a joining space) or DROPS one (a hyphen, a
+// running head) leaves that visible as a gap in the coverage rather than as a guess.
+
+/** Text under construction together with where every stretch of it was set. */
+interface Traced {
+  text: string;
+  runs: SourceRun[];
+}
+
+/** Which item of its page a run came from — built once per document by reflowPdf. */
+type ItemIndex = ReadonlyMap<PdfTextItem, number>;
+
+function traced(): Traced {
+  return { text: "", runs: [] };
+}
+
+/**
+ * Add one run, merged into the one before it where the two are neighbours on the page as
+ * well as in the text. pdf.js cuts a line into a run per font change and per positioning
+ * operator, so without this a paragraph would carry one entry per glyph group; with it, a
+ * line set in one face is one entry.
+ */
+function pushRun(runs: SourceRun[], r: SourceRun): void {
+  if (r.length <= 0 || r.item < 0) return;
+  const last = runs[runs.length - 1];
+  if (
+    last &&
+    last.page === r.page &&
+    last.item === r.item &&
+    last.at + last.length === r.at &&
+    last.from + last.length === r.from
+  ) {
+    last.length += r.length;
+    return;
+  }
+  runs.push(r);
+}
+
+/** Append a stretch of one item's own string — `from`/`length` index into `str`. */
+function addFrom(
+  t: Traced,
+  page: number,
+  item: number,
+  str: string,
+  from: number,
+  length: number,
+): void {
+  if (length <= 0) return;
+  pushRun(t.runs, { page, item, at: t.text.length, length, from });
+  t.text += str.slice(from, from + length);
+}
+
+/** Append the whole of one item's string. */
+function addItem(t: Traced, page: number, item: number, str: string): void {
+  addFrom(t, page, item, str, 0, str.length);
+}
+
+/** Append text the reflow itself put there: the space between two runs or two lines. */
+function addPlain(t: Traced, str: string): void {
+  t.text += str;
+}
+
+/** Append `b` to `a`, moving b's runs to their new place in a's text. `b` is left alone. */
+function addTraced(a: Traced, b: Traced): void {
+  const base = a.text.length;
+  for (const r of b.runs) pushRun(a.runs, { ...r, at: r.at + base });
+  a.text += b.text;
+}
+
+/** Drop the final character — the hyphen a line break left behind. */
+function dropLastChar(t: Traced): void {
+  t.text = t.text.slice(0, -1);
+  const last = t.runs[t.runs.length - 1];
+  if (!last || last.at + last.length <= t.text.length) return;
+  last.length -= 1;
+  if (last.length === 0) t.runs.pop();
+}
+
+/**
+ * The `.replace(/\s+/g, " ").trim()` the reflow applies to a line and to a block, with the
+ * provenance kept in step: a collapsed whitespace run keeps the home of the FIRST of its
+ * characters, exactly as lib/dom/locate.ts maps a collapsed run in the DOM, so the two
+ * ways of reaching a character agree. Returns `t` itself where there was nothing to do,
+ * which is nearly every block — its lines were collapsed already.
+ */
+function collapse(t: Traced): Traced {
+  const text = t.text.replace(/\s+/g, " ").trim();
+  if (text === t.text) return t;
+  // Which character of the original each character of the collapsed text comes from.
+  const home: number[] = [];
+  let gap = -1;
+  for (let i = 0; i < t.text.length; i++) {
+    if (/\s/.test(t.text[i])) {
+      if (home.length > 0 && gap < 0) gap = i;
+      continue;
+    }
+    if (gap >= 0) {
+      home.push(gap);
+      gap = -1;
+    }
+    home.push(i);
+  }
+  const page = new Int32Array(t.text.length).fill(-1);
+  const item = new Int32Array(t.text.length);
+  const off = new Int32Array(t.text.length);
+  for (const r of t.runs) {
+    for (let k = 0; k < r.length; k++) {
+      page[r.at + k] = r.page;
+      item[r.at + k] = r.item;
+      off[r.at + k] = r.from + k;
+    }
+  }
+  const out = traced();
+  out.text = text;
+  for (let i = 0; i < home.length; i++) {
+    const h = home[i];
+    if (page[h] < 0) continue;
+    pushRun(out.runs, { page: page[h], item: item[h], at: i, length: 1, from: off[h] });
+  }
+  return out;
+}
+
 // ---- lines ----------------------------------------------------------------------------
 
 /** One reconstructed line of text. `items` survive because columns are split per run. */
@@ -221,6 +374,8 @@ interface Line {
   size: number;
   font: string;
   text: string;
+  /** Where every stretch of `text` was set — offsets into `text`. */
+  runs: SourceRun[];
   /** 0 = the only or the left column, 1 = the right column, -1 = spans the gutter. */
   col: number;
   items: PdfTextItem[];
@@ -238,25 +393,27 @@ function readableItems(page: PdfPageText): PdfTextItem[] {
  * one — supplies the baseline, the size and the font, so a superscript marker or a
  * footnote number cannot make a body line look small or start it half a line high.
  */
-function makeLine(page: number, items: PdfTextItem[]): Line {
+function makeLine(page: number, items: PdfTextItem[], index: ItemIndex): Line {
   const sorted = [...items].sort((a, b) => a.x - b.x);
   let dominant = sorted[0];
   for (const it of sorted) if (it.width > dominant.width) dominant = it;
 
-  let text = "";
+  const t = traced();
   let prevRight = Number.NEGATIVE_INFINITY;
   for (const it of sorted) {
     const gap = it.x - prevRight;
     const size = Math.max(it.height, dominant.height);
-    const solid = CJK.test(text.slice(-1)) && CJK.test(it.str.slice(0, 1));
+    const solid = CJK.test(t.text.slice(-1)) && CJK.test(it.str.slice(0, 1));
     const needsSpace =
-      text !== "" &&
+      t.text !== "" &&
       gap > size * (solid ? CJK_SPACE_GAP : SPACE_GAP) &&
-      !/\s$/.test(text) &&
+      !/\s$/.test(t.text) &&
       !/^\s/.test(it.str);
-    text += (needsSpace ? " " : "") + it.str;
+    if (needsSpace) addPlain(t, " ");
+    addItem(t, page, index.get(it) ?? -1, it.str);
     prevRight = it.x + it.width;
   }
+  const line = collapse(t);
 
   return {
     page,
@@ -265,7 +422,8 @@ function makeLine(page: number, items: PdfTextItem[]): Line {
     x1: Math.max(...sorted.map((i) => i.x + i.width)),
     size: dominant.height,
     font: dominant.fontName ?? "",
-    text: text.replace(/\s+/g, " ").trim(),
+    text: line.text,
+    runs: line.runs,
     col: 0,
     items: sorted,
   };
@@ -276,7 +434,7 @@ function makeLine(page: number, items: PdfTextItem[]): Line {
  * of the two runs, which is what makes sub- and superscripts join the line they belong
  * to instead of opening one of their own.
  */
-function groupIntoLines(page: PdfPageText): Line[] {
+function groupIntoLines(page: PdfPageText, index: ItemIndex): Line[] {
   const readable = readableItems(page).sort((a, b) => a.y - b.y || a.x - b.x);
   const bodySize = characterSize(readable);
   const caps = readable.filter((it) => isDropCap(it, bodySize));
@@ -303,19 +461,19 @@ function groupIntoLines(page: PdfPageText): Line[] {
     }
   }
   if (current.length > 0) rows.push(current);
-  const lines = rows.map((r) => makeLine(page.page, r)).filter((l) => l.text !== "");
+  const lines = rows.map((r) => makeLine(page.page, r, index)).filter((l) => l.text !== "");
   for (const cap of caps) {
-    if (attachDropCap(cap, lines, bodySize)) continue;
+    if (attachDropCap(cap, lines, bodySize, index)) continue;
     // A letter that is merely large — a one-letter label, a display initial with a single
     // line beside it — goes back on the line it shares a baseline with, judged by THAT
     // line's size rather than its own, which is the whole of what went wrong before.
     const home = lines.findIndex((l) => Math.abs(l.y - cap.y) <= l.size * BASELINE_TOL);
     if (home < 0) {
-      lines.push(makeLine(page.page, [cap]));
+      lines.push(makeLine(page.page, [cap], index));
       continue;
     }
     const line = lines[home];
-    lines[home] = { ...makeLine(page.page, [...line.items, cap]), wrapped: line.wrapped };
+    lines[home] = { ...makeLine(page.page, [...line.items, cap], index), wrapped: line.wrapped };
   }
   return caps.length === 0 ? lines : lines.sort((a, b) => a.y - b.y || a.x0 - b.x0);
 }
@@ -347,7 +505,12 @@ function isDropCap(it: PdfTextItem, bodySize: number): boolean {
  * beginning just to its right. The lines under that one, beside the cap, are marked as
  * wrapped — their left edge is the cap's doing and says nothing about paragraphs.
  */
-function attachDropCap(cap: PdfTextItem, lines: Line[], bodySize: number): boolean {
+function attachDropCap(
+  cap: PdfTextItem,
+  lines: Line[],
+  bodySize: number,
+  index: ItemIndex,
+): boolean {
   const top = cap.y - cap.height;
   const right = cap.x + cap.width;
   const beside = lines.filter(
@@ -356,7 +519,12 @@ function attachDropCap(cap: PdfTextItem, lines: Line[], bodySize: number): boole
   if (beside.length < DROP_CAP_LINES) return false;
   const first = beside.reduce((a, b) => (a.y <= b.y ? a : b));
   if (Math.abs(first.y - first.size - top) > bodySize * DROP_CAP_ALIGN) return false;
-  first.text = cap.str.trim() + first.text;
+  const letter = cap.str.trim();
+  const opened = traced();
+  addFrom(opened, first.page, index.get(cap) ?? -1, cap.str, cap.str.indexOf(letter), letter.length);
+  addTraced(opened, { text: first.text, runs: first.runs });
+  first.text = opened.text;
+  first.runs = opened.runs;
   first.x0 = Math.min(first.x0, cap.x);
   first.items = [cap, ...first.items];
   for (const line of beside) if (line !== first) line.wrapped = true;
@@ -535,7 +703,7 @@ function columnOf(it: PdfTextItem, gutters: number[]): number {
  * in the middle. A line with a run that actually straddles a gutter is the real thing —
  * a title, a spanning header — and stays whole.
  */
-function splitColumns(lines: Line[], gutters: number[]): Line[] {
+function splitColumns(lines: Line[], gutters: number[], index: ItemIndex): Line[] {
   const out: Line[] = [];
   for (const line of lines) {
     const parts = new Map<number, PdfTextItem[]>();
@@ -559,7 +727,9 @@ function splitColumns(lines: Line[], gutters: number[]): Line[] {
       out.push({ ...line, col: cols[0] ?? 0 });
       continue;
     }
-    for (const col of cols) out.push({ ...makeLine(line.page, parts.get(col) ?? []), col });
+    for (const col of cols) {
+      out.push({ ...makeLine(line.page, parts.get(col) ?? [], index), col });
+    }
   }
   return out;
 }
@@ -857,16 +1027,23 @@ interface Break {
   short?: boolean;
 }
 
-/** Append `next` to a paragraph that already reads `text`, mending the break. */
-function appendLine(text: string, next: string, vocab: Vocabulary, br: Break = {}): string {
-  if (text === "") return next;
+/** Append `next` to a paragraph that already reads `t.text`, mending the break. */
+function appendLine(t: Traced, next: Traced, vocab: Vocabulary, br: Break = {}): void {
+  if (t.text === "") {
+    addTraced(t, next);
+    return;
+  }
   // The whole token is captured, hyphens and all, so "state-of-the-" arrives at the
   // test below as "state-of-the" and is refused for carrying a hyphen of its own.
-  const hyphen = /(\S+)[-‐­]$/u.exec(text);
-  if (hyphen && !br.short && dehyphenates(hyphen[1], next, vocab)) return text.slice(0, -1) + next;
-  if (hyphen) return text + next; // a real hyphen: no space swallowed the break
-  if (CJK.test(text.slice(-1)) && CJK.test(next.slice(0, 1))) return text + next;
-  return text + " " + next;
+  const hyphen = /(\S+)[-‐­]$/u.exec(t.text);
+  if (hyphen && !br.short && dehyphenates(hyphen[1], next.text, vocab)) {
+    dropLastChar(t);
+  } else if (!hyphen && !(CJK.test(t.text.slice(-1)) && CJK.test(next.text.slice(0, 1)))) {
+    // Neither a real hyphen (which swallowed no space) nor CJK (which is set solid):
+    // the line break stood for a word space, and the space is ours.
+    addPlain(t, " ");
+  }
+  addTraced(t, next);
 }
 
 // ---- blocks ---------------------------------------------------------------------------
@@ -875,6 +1052,8 @@ function appendLine(text: string, next: string, vocab: Vocabulary, br: Break = {
 interface Draft {
   kind: "heading" | "paragraph";
   text: string;
+  /** Where every stretch of `text` was set — offsets into `text`. */
+  runs: SourceRun[];
   page: number;
   /** Identifies the page+column the block was set in — the unit a join crosses. */
   segment: string;
@@ -973,21 +1152,22 @@ function paragraphsOf(lines: Line[], vocab: Vocabulary, front: boolean): Draft[]
   let group: Line[] = [];
   const flush = (): void => {
     if (group.length === 0) return;
-    let text = "";
+    let t = traced();
     let previous: Line | null = null;
     for (const l of group) {
       const short = previous !== null && previous.x1 < rightEdge - measure * HYPHEN_MEASURE;
-      text = appendLine(text, l.text, vocab, { short });
+      appendLine(t, { text: l.text, runs: l.runs }, vocab, { short });
       previous = l;
     }
-    text = text.replace(/\s+/g, " ").trim();
-    if (text !== "") {
+    t = collapse(t);
+    if (t.text !== "") {
       const last = group[group.length - 1];
       let widest = group[0];
       for (const l of group) if (l.x1 - l.x0 > widest.x1 - widest.x0) widest = l;
       out.push({
         kind: "paragraph",
-        text,
+        text: t.text,
+        runs: t.runs,
         page: group[0].page,
         segment: `${group[0].page}:${group[0].col}${front ? ":front" : ""}`,
         size: median(group.map((l) => l.size)),
@@ -1057,7 +1237,10 @@ function joinAcrossSegments(drafts: Draft[], vocab: Vocabulary): Draft[] {
     const reaching = held <= ASIDE_MAX && continuesInto(open, d) ? open : null;
     const prev = continuesInto(last, d) ? last : reaching;
     if (prev) {
-      prev.text = appendLine(prev.text, d.text, vocab);
+      const joined: Traced = { text: prev.text, runs: prev.runs };
+      appendLine(joined, { text: d.text, runs: d.runs }, vocab);
+      prev.text = joined.text;
+      prev.runs = joined.runs;
       prev.endsShort = d.endsShort;
       prev.segment = d.segment;
       if (!prev.aside) held = 0;
@@ -1147,12 +1330,18 @@ function classifyFrontMatter(front: Draft[], bodySize: number): void {
 export function reflowPdf(pages: PdfPageText[]): ReflowBlock[] {
   if (pages.length === 0) return [];
 
+  // Every run of glyphs is known by its place in its page's `items`, which is the place
+  // of its span in the text layer — the one thing that lets a reconstructed paragraph be
+  // found again on the page it was printed on.
+  const index = new Map<PdfTextItem, number>();
+  for (const p of pages) p.items.forEach((it, i) => index.set(it, i));
+
   const perPage = pages.map((p) => {
-    const lines = groupIntoLines(p);
+    const lines = groupIntoLines(p, index);
     const gutters = findGutters(lines, p.width);
     return gutters.length === 0
       ? lines
-      : orderColumns(splitColumns(lines, gutters), gutters.length + 1);
+      : orderColumns(splitColumns(lines, gutters, index), gutters.length + 1);
   });
 
   const drop = findMarginLines(perPage, pages);
@@ -1190,5 +1379,10 @@ export function reflowPdf(pages: PdfPageText[]): ReflowBlock[] {
   classifyHeadings(drafts, bodySize, displayFonts);
   markAsides(drafts, bodySize);
 
-  return joinAcrossSegments(drafts, vocab).map(({ kind, text, page }) => ({ kind, text, page }));
+  return joinAcrossSegments(drafts, vocab).map(({ kind, text, page, runs }) => ({
+    kind,
+    text,
+    page,
+    runs,
+  }));
 }

@@ -6,7 +6,7 @@
 // lines the way a typesetter would — a left margin, a constant pitch, a measure — so a
 // test reads as the page it describes.
 import { describe, expect, it } from "vitest";
-import { reflowPdf, type PdfPageText, type PdfTextItem } from "../../lib/pdf/reflow";
+import { reflowPdf, type PdfPageText, type PdfTextItem, type SourceRun } from "../../lib/pdf/reflow";
 import { looksLikePdfUrl, pdfNameFromUrl, readerQuery } from "../../lib/pdf/source";
 
 const WIDTH = 612;
@@ -312,7 +312,7 @@ describe("reflowPdf — two columns", () => {
 
   it("reads a full-width line before the columns it sits above", () => {
     const blocks = reflowPdf([twoColumnPage(1, LEFT, RIGHT, "A Title Across The Page")]);
-    expect(blocks[0]).toEqual({ kind: "heading", text: "A Title Across The Page", page: 1 });
+    expect(blocks[0]).toMatchObject({ kind: "heading", text: "A Title Across The Page", page: 1 });
     expect(texts(blocks.slice(1))).toEqual([LEFT.join(" "), RIGHT.join(" ")]);
   });
 
@@ -456,7 +456,7 @@ describe("reflowPdf — front matter", () => {
 
   it("keeps the authors, their affiliations and their addresses out of the prose", () => {
     const blocks = reflowPdf([firstPage()]);
-    expect(blocks).toEqual([
+    expect(blocks).toMatchObject([
       { kind: "heading", text: "A Study of Paragraph Reconstruction", page: 1 },
       { kind: "paragraph", text: "Jane Doe John Smith", page: 1 },
       { kind: "paragraph", text: "University of Somewhere Institute of Elsewhere", page: 1 },
@@ -478,7 +478,7 @@ describe("reflowPdf — front matter", () => {
         ),
       ]),
     ]);
-    expect(blocks[1]).toEqual({ kind: "paragraph", text: "jane@example.edu", page: 1 });
+    expect(blocks[1]).toMatchObject({ kind: "paragraph", text: "jane@example.edu", page: 1 });
     expect(blocks[2].text).toBe(
       "the text of the paper opens here and runs on over several lines of prose set flush to the left margin of the page, as prose is.",
     );
@@ -494,8 +494,8 @@ describe("reflowPdf — front matter", () => {
         ...body.map((text, i) => ({ text, x: 100, y: 210 + i * PITCH, width: 410 })),
       ]),
     ]);
-    expect(blocks[1]).toEqual({ kind: "paragraph", text: "Jane Doe and John Smith", page: 1 });
-    expect(blocks[2]).toEqual({ kind: "heading", text: "1 Introduction", page: 1 });
+    expect(blocks[1]).toMatchObject({ kind: "paragraph", text: "Jane Doe and John Smith", page: 1 });
+    expect(blocks[2]).toMatchObject({ kind: "heading", text: "1 Introduction", page: 1 });
     expect(blocks[3].text).toBe(body.join(" "));
   });
 
@@ -511,7 +511,7 @@ describe("reflowPdf — front matter", () => {
       page(1, column(["a first page of ordinary prose.", "It fills the page with lines."], 100)),
       page(2, [heading, ...body.map((text, i) => ({ text, x: 100, y: 140 + i * PITCH, width: 410 }))]),
     ]);
-    expect(blocks[1]).toEqual({ kind: "heading", text: heading.text, page: 2 });
+    expect(blocks[1]).toMatchObject({ kind: "heading", text: heading.text, page: 2 });
     expect(blocks[2].text).toBe(body.join(" "));
   });
 });
@@ -689,7 +689,7 @@ describe("reflowPdf — headings", () => {
         ...column(["the section body follows", "immediately underneath it."], 100 + 24),
       ]),
     ]);
-    expect(blocks[0]).toEqual({ kind: "heading", text: "Results", page: 1 });
+    expect(blocks[0]).toMatchObject({ kind: "heading", text: "Results", page: 1 });
     expect(blocks[1].kind).toBe("paragraph");
   });
 
@@ -814,6 +814,164 @@ describe("reflowPdf — weight", () => {
     }
     expect(blocks.length).toBeGreaterThan(30);
     expect(ms).toBeLessThan(500);
+  });
+});
+
+describe("reflowPdf — provenance", () => {
+  /**
+   * The one invariant the whole PDF view rests on: every run of a block names a real item
+   * of a real page, and the characters it claims ARE the characters that item set. Runs
+   * are in reading order and never overlap, so a lookup from an offset in the block's text
+   * to a place on the page is a walk down the list.
+   */
+  function verify(pages: PdfPageText[], blocks: { text: string; runs: SourceRun[] }[]): void {
+    for (const block of blocks) {
+      let end = 0;
+      for (const r of block.runs) {
+        expect(r.at).toBeGreaterThanOrEqual(end);
+        expect(r.length).toBeGreaterThan(0);
+        end = r.at + r.length;
+        expect(end).toBeLessThanOrEqual(block.text.length);
+        const page = pages.find((p) => p.page === r.page);
+        expect(page).toBeDefined();
+        const item = page!.items[r.item];
+        expect(item).toBeDefined();
+        expect(item.str.slice(r.from, r.from + r.length)).toBe(
+          block.text.slice(r.at, r.at + r.length),
+        );
+      }
+    }
+  }
+
+  /** The offsets of `text` no run covers — what the reflow itself put there. */
+  function invented(block: { text: string; runs: SourceRun[] }): string {
+    const covered = new Set<number>();
+    for (const r of block.runs) for (let i = 0; i < r.length; i++) covered.add(r.at + i);
+    let out = "";
+    for (let i = 0; i < block.text.length; i++) if (!covered.has(i)) out += block.text[i];
+    return out;
+  }
+
+  it("says which item of which page every stretch of a paragraph came from", () => {
+    const pages = [page(1, column(["a paragraph set over", "two lines of its own"], 100))];
+    const blocks = reflowPdf(pages);
+    verify(pages, blocks);
+    expect(blocks[0].runs.map((r) => ({ page: r.page, item: r.item, at: r.at }))).toEqual([
+      { page: 1, item: 0, at: 0 },
+      { page: 1, item: 1, at: 21 },
+    ]);
+    // The space between the two lines is the reflow's, and belongs to neither of them.
+    expect(invented(blocks[0])).toBe(" ");
+  });
+
+  it("covers a line's own runs one after another, with the word spaces left over", () => {
+    const pages = [
+      page(1, [
+        { text: "the", x: 72, y: 100 },
+        { text: "quick", x: 72 + 4 * CHAR, y: 100 },
+        { text: "brown fox jumps over the lazy dog", x: 72 + 10 * CHAR, y: 100 },
+      ]),
+    ];
+    const blocks = reflowPdf(pages);
+    verify(pages, blocks);
+    expect(blocks[0].text).toBe("the quick brown fox jumps over the lazy dog");
+    expect(blocks[0].runs.map((r) => r.item)).toEqual([0, 1, 2]);
+    expect(invented(blocks[0])).toBe("  ");
+  });
+
+  it("leaves the running head and the page number out of every block's runs", () => {
+    const pages = [1, 2, 3].map((n) =>
+      page(n, [
+        { text: "A Quarterly Report", y: 40, size: 9 },
+        { text: `${n}`, x: 300, y: 760, size: 9 },
+        ...column(["the body of the report", "runs on down the page"], 120),
+      ]),
+    );
+    const blocks = reflowPdf(pages);
+    verify(pages, blocks);
+    const used = new Set(blocks.flatMap((b) => b.runs.map((r) => `${r.page}:${r.item}`)));
+    for (const n of [1, 2, 3]) {
+      expect(used.has(`${n}:0`)).toBe(false); // the running head
+      expect(used.has(`${n}:1`)).toBe(false); // the page number
+    }
+  });
+
+  it("leads a mended word back to both halves, and the hyphen back to nothing", () => {
+    const pages = [
+      page(1, [
+        { text: "the reconstruction is straightfor-", y: 100, width: 455 },
+        { text: "ward once the lines are grouped", y: 100 + PITCH, width: 460 },
+      ]),
+    ];
+    const blocks = reflowPdf(pages);
+    verify(pages, blocks);
+    expect(blocks[0].text).toBe("the reconstruction is straightforward once the lines are grouped");
+    // Nothing was invented: the two halves meet with no space between them.
+    expect(invented(blocks[0])).toBe("");
+    const at = blocks[0].text.indexOf("ward");
+    const run = blocks[0].runs.find((r) => r.at === at);
+    expect(run).toMatchObject({ page: 1, item: 1, from: 0 });
+  });
+
+  it("carries both pages of a paragraph the page break interrupted", () => {
+    const pages = [
+      page(1, column(["a sentence that simply runs", "on past the foot of the page and"], 100)),
+      page(2, column(["goes on being the same sentence", "until it finally stops."], 100)),
+    ];
+    const blocks = reflowPdf(pages);
+    verify(pages, blocks);
+    expect(blocks).toHaveLength(1);
+    expect([...new Set(blocks[0].runs.map((r) => r.page))]).toEqual([1, 2]);
+  });
+
+  it("keeps a drop cap's letter at the head of the paragraph it opens", () => {
+    const wrapped = ["he opening paragraph of a chapter", "begins with a raised initial letter", "that the typesetter set three lines"];
+    const pages = [
+      page(1, [
+        { text: "T", x: 72, y: 110 + 2 * PITCH - 6, size: 33, font: "display", width: 22 },
+        ...wrapped.map((text, i) => ({ text, x: 98, y: 110 + i * PITCH, width: 380 })),
+        { text: "deep, and the text wraps around it", x: 72, y: 110 + 3 * PITCH, width: 406 },
+      ]),
+    ];
+    const blocks = reflowPdf(pages);
+    verify(pages, blocks);
+    expect(blocks[0].text.startsWith("The opening")).toBe(true);
+    expect(blocks[0].runs[0]).toMatchObject({ page: 1, item: 0, at: 0, length: 1, from: 0 });
+  });
+
+  it("reads a two-column page's runs in reading order, column by column", () => {
+    const left = ["the left column holds", "these six lines and", "they belong together", "as one paragraph of", "prose that has to be", "read on its own."];
+    const right = ["The right column holds", "six lines of its own,", "which must not be", "interleaved with the", "ones beside them on", "the printed page."];
+    // Placed the way a typesetter's output places them: a line of the left column, then
+    // the line beside it in the right one, all the way down. Reading order is not the
+    // order the runs were written in, which is the whole reason a block needs to say
+    // which runs it is made of rather than a first and a last.
+    const placed = column(left, 120, 72, 200).flatMap((l, i) => [l, column(right, 120, 320, 200)[i]]);
+    const pages = [page(1, placed)];
+    const blocks = reflowPdf(pages);
+    verify(pages, blocks);
+    expect(blocks[0].runs.map((r) => r.item)).toEqual([0, 2, 4, 6, 8, 10]);
+    expect(blocks[1].runs.map((r) => r.item)).toEqual([1, 3, 5, 7, 9, 11]);
+  });
+
+  it("holds the invariant on every page the other suites exercise", () => {
+    const mixed: PdfPageText[] = [
+      page(1, [
+        { text: "A Study of Paragraph Reconstruction", x: 150, y: 80, size: 18, width: 300 },
+        { text: "Jane Doe", x: 250, y: 110 },
+        { text: "jane@example.edu", x: 240, y: 130 },
+        { text: "Abstract", x: 285, y: 160 },
+        ...column(["we describe a method for", "putting paragraphs back"], 190),
+      ]),
+      page(2, [
+        { text: "A Study of Paragraph Reconstruction", y: 40, size: 9 },
+        { text: "2", x: 300, y: 760, size: 9 },
+        { text: "1 Introduction", y: 100, size: 13 },
+        ...column(["the introduction follows", "the abstract as usual"], 130),
+        { text: "Figure 1: a caption under a figure", y: 400, size: 9 },
+      ]),
+    ];
+    verify(mixed, reflowPdf(mixed));
   });
 });
 
