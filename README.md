@@ -59,8 +59,11 @@ relocates the folder; `ANAGRAM_SKIP_MODEL=1` defers the 1.4 GB download to
 npm install
 npm run build                      # Chrome → output/chrome-mv3/   (load unpacked, see below)
 
-# 2. the model (gated on Hugging Face: accept the CC BY-NC-SA terms once, then)
+# 2. the two models (the daemon downloads nothing itself — it loads what is on disk)
+#    the checkpoint is gated on Hugging Face: accept the CC BY-NC-SA terms once, then
 hf download pangram/editlens_roberta-large --local-dir ../models/editlens_roberta-large
+curl -fsSL -o ../models/lid.176.ftz \
+  https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz   # fastText, 1 MB
 
 # 3. the scoring daemon (own venv from the lockfile; torch + transformers + fastapi + fasttext)
 cd anagramd && uv sync --frozen && cd ..     # → anagramd/.venv
@@ -653,7 +656,7 @@ is exactly the daemon's IO: `{bucket, probs[4], score, lang}` per paragraph, or
 | Concern | Library | Where |
 | --- | --- | --- |
 | HTTP API, validation, OpenAPI docs | FastAPI + uvicorn + pydantic | `anagramd/serve.py` |
-| Model download | huggingface_hub | `anagramd/serve.py` |
+| Model download (install/update only, never while serving) | huggingface_hub, curl | `install.sh`, `installer/anagram` |
 | Language identification | fastText `lid.176` | `anagramd/serve.py` |
 | Main-content extraction | @mozilla/readability (on demand) | `lib/dom/mainContent.ts` |
 | HTML sanitizing (Docs reading mode) | DOMPurify (on demand) | `lib/docsOverlay.ts` |
@@ -674,7 +677,8 @@ Nothing leaves your computer, and that is enforced rather than promised: the
 daemon URL setting accepts loopback addresses only and the extension refuses to
 follow a redirect off either endpoint (a 307 from whatever is listening on that
 port would have forwarded the page text somewhere unvetted), the daemon binds
-`127.0.0.1` unless told otherwise, refuses any non-loopback `Host` header (DNS
+`127.0.0.1` or `localhost` — the two names a browser's CSP can express, and the
+only two it answers to — unless told otherwise, refuses any other `Host` header (DNS
 rebinding), sets no CORS headers (web pages cannot read it; the extension uses
 host permissions), requires `POST /score` to be declared `application/json` —
 which forces a CORS preflight a web page cannot pass — and refuses any `Origin`
@@ -685,6 +689,14 @@ declared length, so a chunked POST is cut off mid-stream. The batch envelope
 carries only a hostname + language hint by design, and the persistent cache
 stores hashes and bucket probabilities, never text. The Google Docs reading mode
 fetches the document same-origin with your own cookies.
+
+The daemon itself reaches no network at all: it switches the Hugging Face client
+offline before importing it and loads the two model files from disk, so a missing
+or half-written one is an error naming the command that fetches it rather than a
+quiet download. Fetching happens in exactly two places — the installer, and
+`anagram model` — and each verifies what arrives against a checksum pinned in
+`install.sh` before it is renamed into place, so an interrupted download is never
+something the daemon can load.
 
 Anagram contacts exactly one remote server, and only for one thing: when you ask
 to open an **arXiv** PDF, it asks arxiv.org whether that paper's HTML rendering

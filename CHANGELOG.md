@@ -442,6 +442,45 @@ Notable changes to Anagram, newest first. The format follows
   only the replies were recognised — a comment that fits one model window was
   cut in two, shorter ones got nothing. Hidden elements, popovers, buttons, form
   controls and closed menus are no longer counted as text around a byline.
+- **The daemon no longer downloads anything, and cannot.** It used to fetch both
+  models on first start: the checkpoint through `huggingface_hub`, under whatever
+  Hugging Face token it found on the machine, and the fastText language model with
+  a bare `urlretrieve` — no checksum, no staging, so an interrupted start left a
+  truncated `.ftz` that the next start loaded as though it were real. Both are
+  gone. Serving reads what is on disk, and a missing file is an error naming the
+  command that fetches it (`anagram doctor` reports both files and their
+  checksums). `HF_HUB_OFFLINE`, `TRANSFORMERS_OFFLINE`, `HF_HUB_DISABLE_TELEMETRY`
+  and `HF_HUB_DISABLE_IMPLICIT_TOKEN` are set at the top of `serve.py`, above every
+  import, because the Hub client reads them once when it is imported and ignores a
+  value set afterwards — so a file that goes missing under a running daemon is a
+  loud local error rather than a quiet re-download.
+- Downloading is two explicit commands, and both are staged. `install.sh` and
+  `anagram model` fetch into a name beside the file they replace, check it against
+  the checksum pinned in `install.sh`, and rename it into place only if it matches:
+  an interrupted or tampered download is never something the daemon can load, and a
+  re-run resumes instead of starting the 1.4 GB again. `anagram model` now verifies
+  the checkpoint it downloaded (it did not before), skips a file that is already
+  there and already correct, and re-fetches one whose checksum has drifted.
+- The daemon answers to exactly the two names the extension can be pointed at.
+  `127.0.0.1` and `localhost` are all a browser's content-security policy can
+  express, but `--host` took any loopback address, so a daemon on `127.0.0.2` or
+  `[::1]` bound happily and then refused every request with 400 from its own Host
+  allow-list. `--host` now takes those two and refuses the rest with a message
+  (`--allow-remote` is still the deliberate way out, and says what it costs), and
+  one list feeds both the Host allow-list and the Origin guard's own origins, so
+  they cannot drift apart.
+- The version the extension keys its cache by now covers everything that can change
+  a verdict, not only the weights, the tokenizer files, the window, the dtype and
+  whether the gate is on. Added: the **sha256 of the fastText model itself** — it
+  decides whether a paragraph is scored at all — the languages it lets through, the
+  bucket labels and their schema, and a hash of the preprocessing source, so an
+  edit to `clean_text` cannot go on sharing cache entries with the version before
+  it because nobody remembered to bump `PIPELINE_REV` by hand.
+- Responses carry `label_schema` beside `calibration` — the same string under the
+  name that describes it (these are the bucket edges, not a fitted calibration of
+  the probabilities). Additive: `calibration` is what contract 2.x clients read and
+  it is unchanged, so an installed daemon and a new extension, or the reverse, go
+  on working.
 
 ### Fixed
 
@@ -818,6 +857,25 @@ Notable changes to Anagram, newest first. The format follows
   Firefox the idle prefetch lane is dead: `window.requestIdleCallback` is read into
   a variable and called unbound, which Gecko rejects, so only what is scrolled into
   view is ever scored. Both are reported by the suite, not worked around.
+- `npm run test:daemon` — 49 checks on what the daemon promises about itself, none
+  of which need the 1.4 GB checkpoint or a port: that importing `serve.py` sets the
+  Hub's offline flags (overruling an inherited `HF_HUB_OFFLINE=0`) and that neither
+  `transformers` nor `huggingface_hub` is imported before they are set; that no name
+  that fetches anything survives in its code (tokenized, so the comments explaining
+  the removal are not mistaken for it); that a missing model file exits with the
+  command that fetches it while a guard fails the test on any socket at all; that
+  the served version moves when the language model, the gate, the window, the
+  dtype, the tokenizer, the weights or the preprocessing does, one at a time; the
+  `Host`, `Origin` and `--host` names against each other through FastAPI's
+  TestClient over a stub engine; and both `calibration` and `label_schema` on
+  `/health` and `/score`. It runs under `anagramd/.venv` when there is one and skips
+  loudly on an interpreter without fastapi.
+- Four more installer cases (36 → 40), all offline: `anagram model` downloads
+  nothing when both files already match their pinned checksums; a checkpoint that
+  verifies is renamed into place and the staging directory it came down into is
+  gone; one that does not verify leaves the folder alone and stays aside so the
+  next attempt resumes; and the same for `install.sh`, which stops there rather
+  than going on to fetch the language model.
 
 ## [0.3.2] — 2026-09-18
 

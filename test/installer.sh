@@ -186,6 +186,17 @@ make_home() { # dir port
 case "\${1:-}" in
   -) cat > /dev/null                                  # the probe arrives on stdin
      if [ -n "\${HEALTH_JSON:-}" ]; then echo "running · stub daemon"; exit 0; fi
+     # "python - <dir> <repo> <revision>" is the checkpoint download. Stand in for
+     # snapshot_download: write the same bytes the folder's pinned checksum was taken from,
+     # or, with the TAMPER marker in place, something else — the difference between a
+     # download that verifies and one that must never reach models/.
+     if [ -n "\${2:-}" ]; then
+       mkdir -p "\$2"
+       if [ -f "$h/TAMPER" ]; then printf 'half a download, cut off here\n' > "\$2/model.safetensors"
+       else printf 'these are not 1.4 GB of weights\n' > "\$2/model.safetensors"; fi
+       printf '{"architectures": ["RobertaForSequenceClassification"], "num_labels": 4}\n' > "\$2/config.json"
+       exit 0
+     fi
      echo "version 3.12.13"
      for m in torch transformers fastapi uvicorn fasttext emoji huggingface_hub; do echo "import \$m ok"; done
      exit 0 ;;
@@ -420,7 +431,67 @@ if [ "$before_out" = "$(snapshot "$T/outside")" ] && [ "$before_fake" = "$(snaps
   ok "update: the new app/ and extension/ landed, and nothing outside the folder moved"
 else bad "offline update side effects" "app=$(cat "$HU/app/serve.py" 2>/dev/null)"; fi
 
-# 24. (network) full install under a hostile environment: nothing lands outside the folder
+# 24. `anagram model` on a folder whose two models both match their pinned checksums downloads
+#     nothing at all — the command that reaches the internet only does so when it must.
+HM="$T/model-cli"; make_home "$HM" "$P2"
+before="$(snapshot "$HM")"
+out="$(HOME="$FAKE_HOME" ANAGRAM_HF_TOKEN=stub "$HM/bin/anagram" model 2>&1 </dev/null)"; rc=$?
+if [ $rc -eq 0 ] && echo "$out" | grep -q "nothing to download" && [ "$before" = "$(snapshot "$HM")" ]; then
+  ok "anagram model: both models already verified → nothing downloaded, nothing touched"
+else bad "anagram model (already verified)" "rc=$rc $(echo "$out" | tail -1)"; fi
+
+# 25. a checkpoint that arrives whole and matches the pinned checksum is renamed into place,
+#     and the staging directory it came down into is gone afterwards.
+rm -f "$HM/models/editlens_roberta-large/model.safetensors"
+out="$(HOME="$FAKE_HOME" ANAGRAM_HF_TOKEN=stub "$HM/bin/anagram" model 2>&1 </dev/null)"; rc=$?
+incoming="$HM/models/.incoming-editlens_roberta-large"
+if [ $rc -eq 0 ] && [ -f "$HM/models/editlens_roberta-large/model.safetensors" ] \
+   && [ "$(sha_of "$HM/models/editlens_roberta-large/model.safetensors")" = "$(sed -n 's/^WEIGHTS_SHA256="\([0-9a-f]*\)".*/\1/p' "$HM/app/install.sh")" ] \
+   && [ ! -e "$incoming" ] && echo "$out" | grep -q "verified"; then
+  ok "anagram model: a checkpoint that verifies is renamed into place, staging directory gone"
+else bad "anagram model (verified download)" "rc=$rc incoming=$([ -e "$incoming" ] && echo left) $(echo "$out" | tail -1)"; fi
+
+# 26. a download that does NOT match the pinned checksum is never promoted: the checkpoint that
+#     was already there is untouched, the bad bytes stay in the staging directory (so a re-run
+#     resumes rather than starting the 1.4 GB again), and the command fails.
+: > "$HM/TAMPER"                                  # the stub python now writes a cut-off file
+# The checkpoint on disk no longer matches, which is what sends the command back to the Hub.
+printf 'the checkpoint that was already here\n' > "$HM/models/editlens_roberta-large/model.safetensors"
+good="$(sha_of "$HM/models/editlens_roberta-large/model.safetensors")"
+out="$(HOME="$FAKE_HOME" ANAGRAM_HF_TOKEN=stub "$HM/bin/anagram" model 2>&1 </dev/null)"; rc=$?
+if [ $rc -ne 0 ] && echo "$out" | grep -q "nothing was replaced" \
+   && [ "$(sha_of "$HM/models/editlens_roberta-large/model.safetensors")" = "$good" ] \
+   && [ -f "$incoming/model.safetensors" ]; then
+  ok "anagram model: an interrupted download is refused, kept aside, and never loadable"
+else bad "anagram model (bad checksum)" "rc=$rc $(echo "$out" | tail -1)"; fi
+rm -f "$HM/TAMPER"; rm -rf "$incoming"
+
+# 27. the same in install.sh: its checkpoint step downloads into a staging directory, verifies
+#     it there, and leaves the folder exactly as it was when the bytes are not the pinned ones.
+#     Offline throughout — the release comes off file://, uv is already at the pinned version,
+#     venv/bin/python is a stub that stands in for the download, and the run dies before the
+#     language model (the only other thing this step would fetch) is ever asked for.
+HM2="$T/model-install"; mkdir -p "$HM2/bin" "$HM2/venv/bin" "$HM2/models/editlens_roberta-large"
+echo "Anagram installation folder." > "$HM2/.anagram-home"
+printf '#!/bin/sh\necho "uv %s"\nexit 0\n' "$UVV" > "$HM2/bin/uv"; chmod +x "$HM2/bin/uv"
+cat > "$HM2/venv/bin/python" <<'STUB'
+#!/bin/sh
+cat > /dev/null
+if [ -n "${2:-}" ]; then mkdir -p "$2"; printf 'half a download, cut off here\n' > "$2/model.safetensors"; fi
+exit 0
+STUB
+chmod +x "$HM2/venv/bin/python"
+printf 'the checkpoint that was already here\n' > "$HM2/models/editlens_roberta-large/model.safetensors"
+good="$(sha_of "$HM2/models/editlens_roberta-large/model.safetensors")"
+out="$(HOME="$FAKE_HOME" ANAGRAM_HOME="$HM2" ANAGRAM_RELEASE_URL="file://$RELDIR" ANAGRAM_HF_TOKEN=stub sh "$ROOT/install.sh" 2>&1)"; rc=$?
+if [ $rc -ne 0 ] && echo "$out" | grep -q "nothing was replaced" \
+   && [ "$(sha_of "$HM2/models/editlens_roberta-large/model.safetensors")" = "$good" ] \
+   && [ ! -e "$HM2/models/lid.176.ftz" ] \
+   && [ -f "$HM2/models/.incoming-editlens_roberta-large/model.safetensors" ]; then
+  ok "install.sh: a checkpoint that does not verify replaces nothing and stops before any other download"
+else bad "install.sh staged checkpoint" "rc=$rc $(echo "$out" | tail -2)"; fi
+
+# 28. (network) full install under a hostile environment: nothing lands outside the folder
 if [ -n "${INSTALLER_NET:-}" ]; then
   [ -f "$ROOT/dist/anagram.tar.gz" ] || { bad "network install" "run npm run release first"; }
   H="$T/nethome/.anagram"; mkdir -p "$T/nethome"
