@@ -9,6 +9,57 @@ Notable changes to Anagram, newest first. The format follows
 
 ### Added
 
+- **Copy page diagnostics** — a right-click entry, next to "Analyze this page
+  with Anagram", for the page where nothing shows up. It puts a short
+  description on the clipboard: the extension version, the browser, both
+  languages, the page's HOSTNAME (never its path, query or fragment), the
+  document language, the viewport, the scope and merge settings, the daemon's
+  state, whether the page carries a framework hydration marker, and the
+  subframes by origin and size; the counts (units, multi-part units, windows,
+  chips, flagged, unavailable, unsupported) and how many words were judged out
+  of the page's visible prose; the largest stretches of prose that got nothing,
+  each with the reason — under the 50-word floor with its word count,
+  link-dense with the ratio, page chrome with the class token that matched, a
+  heading label, hidden or clipped, inside a `<pre>` of machine text,
+  contenteditable, `aria-hidden`, another language with the one detected, or a
+  unit nobody drew; and the structure of the region that was right-clicked.
+
+  The reasons are not a second copy of the rules: the walk's own
+  `isExcludedByAncestry` decides whether a stretch was refused at all, the
+  shipped `isBoilerplate` is probed one class token at a time to say which
+  branch of it fired, and the link ratio, the symbol-noise and name-list tests
+  and the word floors are the ones the product runs. A copy would drift within
+  a release and the report would then explain a page by a walk that no longer
+  happens.
+
+  Nothing a person wrote leaves the page. Every word in the captured structure
+  becomes filler of the same length, script and capitalisation — so it counts,
+  breaks and merges exactly as the original does and a fixture rebuilt from it
+  reproduces the bug — while URLs, alt text, titles, input values, `datetime`
+  values, free-form `aria-*` values, comments and inline scripts are dropped
+  outright and only a whitelist of attributes survives. `test/unit.mjs` proves
+  it the hard way: a page of planted secrets whose prose is consonant clusters
+  no English text contains, and not one four-character run of any of its text
+  nodes may appear in the report, measured against a control report of the same
+  page with different words so the report's own vocabulary cannot mask a leak.
+
+  The interface is one menu entry and no new pixel on the page: the toolbar
+  badge shows a tick for a second and a half and then the flagged count again.
+  It answers on a site Anagram is switched off for — "DISABLED for this site by
+  rule `<host>`" is one of the things people are trying to find out — and it is
+  in English whatever the interface is in, because it is written for whoever
+  has to fix the site. The report is capped at 60 kB so it can be pasted into a
+  chat, and says when it was cut.
+
+  Underneath, it is an on-demand chunk (`public/vendor/diagnostics.min.mjs`,
+  46 kB, built from the tree before every build and on install, never
+  committed) rather than twenty kilobytes added to the content script that runs
+  on every page — which grows by 2.9 kB, the menu entry and the glue. The
+  manifest gains `clipboardWrite`: the copy happens when the worker's message
+  reaches the page, which is no gesture handler, and Firefox refuses a content
+  script both clipboard routes outside one. Neither browser shows a warning
+  for it.
+
 - **Simplified Chinese**, following the browser's UI language. There is no
   setting and no picker: a browser running in `zh`, `zh-CN`, `zh-Hans*` or
   `zh-SG` gets `_locales/zh_CN`, everything else falls back to `_locales/en`,

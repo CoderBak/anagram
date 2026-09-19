@@ -137,6 +137,20 @@ prints PASS/FAIL per sample and exits non-zero if any of them is wrong.
 - **Analyze one page on a site you keep Anagram off for**: right-click →
   *Analyze this page with Anagram*. It runs in that tab only, frames included,
   until you leave the page — no setting and no site rule is written.
+- **A page where nothing shows up?** Right-click → *Copy page diagnostics*.
+  The toolbar badge blinks a tick and the clipboard holds a short description
+  of what happened: the version, browser and settings; how many units, chips
+  and words were judged out of the page's visible prose; the largest stretches
+  of text that got nothing, each with the reason the segmenter really had
+  (under the 50-word floor with its word count, link-dense with the ratio,
+  page chrome with the class token that matched, a heading label, hidden,
+  inside a code block, another language with the one detected, a unit nobody
+  drew); the subframes; and the structure of the part of the page you clicked
+  in — **anonymised**: every word replaced by filler of the same shape, so it
+  segments the way the original did, with URLs, alt text, titles and values
+  dropped. Nothing you or anybody else wrote is in it. It is English whatever
+  the interface is in, because it is for whoever fixes the site, and it works
+  on a site Anagram is switched off for — it says so.
 - **Popup + options page**: per-site rules (with an add-rule form) that cover a
   whole site — a rule written on `example.com` holds on `news.example.com` too,
   the most specific rule wins and `www.` makes no difference — marking
