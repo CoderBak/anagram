@@ -32,10 +32,11 @@ of them to be refused while the daemon still answers.
 
 Two things the policy does **not** cover, stated so the picture is complete:
 
-- **Content scripts** run under the *page's* policy, not this one. The only network call
-  in a content script is the same-origin re-read of the Google Doc the tab is already
-  showing (below) — but a future one would not be stopped by the CSP, which is why the
-  inventory below is enforced by a test rather than left to the policy alone.
+- **Content scripts** run under the *page's* policy, not this one. Two of the call sites
+  below are in one: the same-origin re-read of the Google Doc the tab is already showing,
+  and the `import()` of our own vendored chunks. A third one added tomorrow would not be
+  stopped by the CSP, which is why the inventory below is enforced by a test rather than
+  left to the policy alone.
 - **The daemon URL** is a setting, and a setting can be edited. `lib/settings/settings.ts`
   refuses anything but `http(s)://localhost`, `::1` or `127.x.y.z`, and the CSP refuses
   anything but the two spellings it can express — so the two have to agree before a request

@@ -117,11 +117,13 @@ function englishFallback() {
  *                 test/pdf-codecs-check.mjs opens one of each in the packaged extension.
  *                 It permits no eval and no remote script; it is the narrowest keyword
  *                 there is for "may compile the bytes we ship".
- *   style-src     'unsafe-inline' is needed and is not idle: all four extension pages
- *                 carry their layout in an inline <style> block, and pdf.js's text layer
- *                 sets per-span positions. It is also what Chrome's DEFAULT extension
- *                 policy allows, so this is no loosening — everything else here is a
- *                 tightening of that default.
+ *   style-src     'unsafe-inline' is needed, and it was measured rather than assumed: with
+ *                 it taken out, all four extension pages report a style-src-elem refusal
+ *                 for the <style> block each of them carries its layout in, and the reader
+ *                 showing a PDF reports three — its own plus the ones pdf.js adds while it
+ *                 draws. Nothing in that is a script. It is also exactly what Chrome's
+ *                 DEFAULT extension policy allows, so this is no loosening; everything
+ *                 else here is a tightening of that default.
  *   img/font      data: and blob: are what a document drawn from bytes needs; neither can
  *                 name a remote host.
  *   frame/form    'none' both: nothing here embeds anything and nothing here posts a form.
