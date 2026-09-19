@@ -98,13 +98,16 @@ const extUrl = (path) => `chrome-extension://${extId}/${path}`;
  * Open one surface, let it settle, and hand back everything that was refused on it.
  * `after` is where a surface that needs driving (the panel) is driven.
  */
-async function surface(name, url, { settle = 3000, after } = {}) {
+async function surface(name, url, { settle = 3000, prepare, after } = {}) {
   const page = await context.newPage();
   const console_ = [];
   page.on("console", (m) => console_.push(m.text()));
   page.on("pageerror", (e) => console_.push(String(e)));
   await page.addInitScript(WATCH);
   await page.goto(url, { waitUntil: "load" }).catch(() => {});
+  // A surface that has to be given something before it is anything — the reading mode is
+  // handed a document rather than fetching one — does it here, before the settle.
+  if (prepare) await prepare(page);
   await page.waitForTimeout(settle);
   const extra = after ? await after(page) : "";
   const violations = await page.evaluate(() => window.__csp ?? []).catch(() => []);
@@ -123,11 +126,24 @@ await surface("the options page", extUrl("options.html"), { settle: 2000 });
 await surface("the onboarding page", extUrl("onboarding.html"), { settle: 2000 });
 await surface("the reader with no document", extUrl("reader.html"), { settle: 2000 });
 
+// THE WHOLE HANDOFF, under the policy: the tab shows the PDF, the ball's chip hands it to
+// the worker, and the tab becomes the reading mode. The re-read the content script makes is
+// governed by the PAGE's policy and not this one — which is the point of doing it there —
+// so this is where a `connect-src` that broke the reading mode would show itself.
 const readerState = await surface(
   "the reader with a PDF loaded",
-  `${extUrl("reader.html")}?src=${encodeURIComponent(files.url("/doc.pdf"))}`,
+  files.url("/doc.pdf"),
   {
     settle: 6000,
+    prepare: async (page) => {
+      await page
+        .waitForFunction(() => !!document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".action"), null, { timeout: 20000 })
+        .catch(() => {});
+      await page
+        .evaluate(() => document.getElementById("anagram-fab").shadowRoot.querySelector(".action").click())
+        .catch(() => {});
+      await page.waitForURL(/reader\.html/, { timeout: 20000 }).catch(() => {});
+    },
     after: (page) =>
       page
         .evaluate((sel) => ({
@@ -351,13 +367,14 @@ if (!CHROME_ONLY) {
     record("Firefox: the extension installs with this policy", true, "");
 
     /** Open an extension page, and report what it rendered and what it threw. */
-    async function fxSurface(name, url, { settle = 3000, expect: want }) {
+    async function fxSurface(name, url, { settle = 3000, prepare, expect: want }) {
       const page = await browser.newPage();
       const lines = [];
       page.on("console", (m) => lines.push(m.text()));
       page.on("pageerror", (e) => lines.push(String(e)));
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: 2500 }).catch(() => {});
       await ff.waitForExtensionPage(page, url).catch(() => {});
+      if (prepare) await prepare(page);
       await ff.sleep(settle);
       const seen = await page.evaluate(want.probe).catch(() => null);
       const complaints = lines.filter((l) => isCspLine(l) || /Error/.test(l));
@@ -381,11 +398,25 @@ if (!CHROME_ONLY) {
       settle: 2000,
       expect: { probe: () => !document.getElementById("drop")?.hidden, ok: (v) => v === true },
     });
+    // Firefox's PDF viewer is a privileged page no content script reaches, so there is no
+    // tab to be handed a document by: the drop zone is the whole way in there, and it is
+    // what this checks under the policy.
     await fxSurface(
       "the reader with a PDF loaded",
-      `${fxUrl("reader.html")}?src=${encodeURIComponent(files.url("/doc.pdf"))}`,
+      fxUrl("reader.html"),
       {
         settle: 8000,
+        prepare: (page) =>
+          page
+            .evaluate((b64) => {
+              const bin = atob(b64);
+              const bytes = new Uint8Array(bin.length);
+              for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+              const dt = new DataTransfer();
+              dt.items.add(new File([bytes], "doc.pdf", { type: "application/pdf" }));
+              document.dispatchEvent(new DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true }));
+            }, TEST_PDF.toString("base64"))
+            .catch(() => undefined),
         expect: {
           probe: () => ({
             pages: document.querySelectorAll(".page").length,

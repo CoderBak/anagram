@@ -942,7 +942,7 @@ Notable changes to Anagram, newest first. The format follows
   length over the cap refused before the body is touched, a body that never ends
   cut off at the cap with the rest never read — and the worker's ticket store
   (bound to the tab it was read for, spendable once, dropped on a timer, released
-  with the tab). `test/pdf-route-check.mjs` grew in a real
+  with the tab). `test/pdf-route-check.mjs` is 27 checks in a real
   browser: the document that arrives through the tab hashes the same as the one
   dropped straight on the reader, the oversized one is proved to have stopped by
   what the SERVER was asked for, a pasted reader address goes back to the PDF and

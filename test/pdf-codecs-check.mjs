@@ -17,7 +17,6 @@
 // what this measures.
 //
 //   node test/pdf-codecs-check.mjs
-import http from "node:http";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { withFakeDaemon, requireBuild, EXT } from "./harness.mjs";
@@ -105,22 +104,6 @@ const DOCUMENTS = {
   "/jbig2.pdf": imagePdf("/JBIG2Decode", JBIG2, { colorSpace: "/DeviceGray", bpc: 1 }),
 };
 
-const files = await new Promise((resolve) => {
-  const server = http.createServer((req, res) => {
-    const body = DOCUMENTS[req.url.split("?")[0]];
-    if (!body) return void res.writeHead(404).end();
-    res.writeHead(200, { "content-type": "application/pdf", "content-length": body.length });
-    res.end(body);
-  });
-  server.listen(0, "127.0.0.1", () => {
-    const port = server.address().port;
-    resolve({
-      url: (path) => `http://localhost:${port}${path}`,
-      close: () => new Promise((r) => server.close(() => r())),
-    });
-  });
-});
-
 // ---- what the manifest says -------------------------------------------------------------
 
 const manifest = JSON.parse(readFileSync(join(EXT, "manifest.json"), "utf8"));
@@ -142,7 +125,7 @@ const READER = `chrome-extension://${extId}/reader.html`;
  * this exists to catch, so the measure is the share of pixels that are NOT white — a page
  * whose image never decoded is white from corner to corner.
  */
-async function draw(path) {
+async function draw(name) {
   const page = await context.newPage();
   const problems = [];
   page.on("console", (m) => {
@@ -155,7 +138,11 @@ async function draw(path) {
       window.__csp.push(`${e.violatedDirective} ${e.blockedURI}`),
     );
   });
-  await page.goto(`${READER}?src=${encodeURIComponent(files.url(path))}`, { waitUntil: "load" });
+  // The document is HANDED to the reader, as a file off the disk would be: the reading
+  // mode fetches nothing (lib/pdf/handoff.ts), and what this suite is about is what pdf.js
+  // may compile once the bytes are in front of it, not how they got there.
+  await page.goto(READER, { waitUntil: "load" });
+  await page.setInputFiles("#file", { name, mimeType: "application/pdf", buffer: DOCUMENTS[`/${name}`] });
   await page.waitForSelector(".page canvas", { timeout: 20000 }).catch(() => {});
   // The canvas is drawn when its page comes near the viewport, and the drawing itself is
   // a round trip to the pdf.js worker. Poll rather than guess at a delay.
@@ -184,7 +171,7 @@ async function draw(path) {
   return { ink, problems, csp };
 }
 
-const jpx = await draw("/jpx.pdf");
+const jpx = await draw("jpx.pdf");
 record(
   "a JPEG 2000 image (JPXDecode) really decodes — the page is not blank, and it is red",
   jpx.ink.share > 0.5 && jpx.ink.red > 0.4,
@@ -196,7 +183,7 @@ record(
   JSON.stringify([...jpx.csp, ...jpx.problems].slice(0, 3)),
 );
 
-const jbig2 = await draw("/jbig2.pdf");
+const jbig2 = await draw("jbig2.pdf");
 record(
   "a JBIG2 image (JBIG2Decode) really decodes — the page is not blank",
   jbig2.ink.share > 0.2,
@@ -210,7 +197,6 @@ record(
 
 await context.close();
 await daemon.close();
-await files.close();
 
 // ---- summary ----------------------------------------------------------------------------
 
