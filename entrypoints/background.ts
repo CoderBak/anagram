@@ -20,6 +20,7 @@ import type {
   UpdateBadgeMessage,
 } from "../lib/messaging/protocol";
 import { READER_PAGE, readerQuery } from "../lib/pdf/source";
+import { createTwinResolver } from "../lib/pdf/route";
 import { t } from "../lib/i18n";
 
 export default defineBackground(() => {
@@ -71,6 +72,22 @@ export default defineBackground(() => {
   /** The reading-mode URL for a PDF. Not web accessible — only we may navigate to it. */
   const readerUrl = (src: string): string =>
     browser.runtime.getURL(READER_PAGE as PublicPath) + readerQuery(src);
+
+  /**
+   * Where "open this PDF with Anagram" really goes. An arXiv paper has an HTML rendering
+   * of its own — paragraphs, headings and formulas as themselves — and the ordinary page
+   * walker reads that better than anything lib/pdf/reflow.ts can rebuild out of glyph
+   * positions, so the paper's own page wins whenever arXiv has built one. Everything else,
+   * and every paper that was never converted, goes to the reading mode exactly as before.
+   *
+   * It is resolved HERE, in the worker, and nowhere else: the ball's chip, the popup's
+   * button, the context menu and the automatic route all come through this one function,
+   * so they cannot disagree about where a PDF opens. Only arxiv.org is ever asked, and
+   * only about a paper somebody is opening at that moment — see lib/pdf/route.ts.
+   */
+  const resolveTwin = createTwinResolver({ fetch: (...args) => fetch(...args) });
+  const destinationFor = async (src: string): Promise<string> =>
+    (await resolveTwin(src)) ?? readerUrl(src);
 
   // Context menus; recreated idempotently on install/update. The PDF entry is offered on
   // LINKS to a .pdf, which is where a reader decides to open one — the tab that is
@@ -170,10 +187,8 @@ export default defineBackground(() => {
       // A linked PDF opens BESIDE the page it was linked from: the reader replaces a tab
       // only when that tab was already the PDF.
       if (info.linkUrl) {
-        void browser.tabs.create({
-          url: readerUrl(info.linkUrl),
-          index: tab ? tab.index + 1 : undefined,
-        });
+        const index = tab ? tab.index + 1 : undefined;
+        void destinationFor(info.linkUrl).then((url) => browser.tabs.create({ url, index }));
       }
       return;
     }
@@ -246,12 +261,14 @@ export default defineBackground(() => {
       };
       if (!msg) return;
 
-      // Show the PDF reading mode IN PLACE of the PDF. The tab and the URL come off the
-      // sender for a content script, and from the popup when it is the popup asking.
+      // Open this PDF the Anagram way, IN PLACE of the PDF. The tab and the URL come off
+      // the sender for a content script, and from the popup when it is the popup asking.
       if (msg.action === ACTIONS.OPEN_PDF_READER) {
         const tabId = msg.tabId ?? sender.tab?.id;
         const src = msg.url ?? sender.tab?.url;
-        if (tabId != null && src) void browser.tabs.update(tabId, { url: readerUrl(src) });
+        if (tabId != null && src) {
+          void destinationFor(src).then((url) => browser.tabs.update(tabId, { url }));
+        }
         return;
       }
 
