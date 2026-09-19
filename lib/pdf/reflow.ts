@@ -112,6 +112,14 @@ const MARGIN_BOTTOM = 0.88;
 const RUNNING_MIN_SHARE = 0.5;
 /** …and on at least this many, so a two-page document still loses its header. */
 const RUNNING_MIN_PAGES = 2;
+/**
+ * A bound book runs two different heads: the author's name on the left-hand pages and
+ * the title on the right-hand ones, so each of them appears on only half the document.
+ * A head that keeps to one parity is judged against the pages of THAT parity, but it has
+ * to have repeated this many times first — twice is what a section heading landing high
+ * on two odd pages also does.
+ */
+const RUNNING_MIN_PARITY_PAGES = 3;
 /** A vertical gap wider than this many line pitches starts a new paragraph. */
 const PARA_GAP = 1.45;
 /** A first-line indent of at least this much of the font size starts a paragraph. */
@@ -613,10 +621,18 @@ function findMarginLines(perPage: Line[][], pages: PdfPageText[]): Set<Line> {
     if (bucket) bucket.push(c);
     else byKey.set(key, [c]);
   }
+  const evens = pages.filter((p) => p.page % 2 === 0).length;
   for (const bucket of byKey.values()) {
     const onPages = new Set(bucket.map((c) => c.line.page));
     if (onPages.size < RUNNING_MIN_PAGES) continue;
-    if (onPages.size < pages.length * RUNNING_MIN_SHARE) continue;
+    const parities = new Set([...onPages].map((n) => n % 2));
+    const against =
+      parities.size === 1 && onPages.size >= RUNNING_MIN_PARITY_PAGES
+        ? parities.has(0)
+          ? evens
+          : pages.length - evens
+        : pages.length;
+    if (onPages.size < against * RUNNING_MIN_SHARE) continue;
     // Same text at the same height: a header that moves is a heading, not furniture.
     const mid = median(bucket.map((c) => c.rel));
     for (const c of bucket) if (Math.abs(c.rel - mid) <= 0.02) drop.add(c.line);

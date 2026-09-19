@@ -450,6 +450,17 @@ describe("reflowPdf — furniture", () => {
     expect(texts(blocks)).toEqual([body(1).join(" "), body(2).join(" ")]);
   });
 
+  it("drops the two heads of a bound book, each of which is on half the pages", () => {
+    const bound = (n: number): PdfPageText =>
+      page(n, [
+        { text: n % 2 === 0 ? "Doe et al." : "A Study of Paragraph Reconstruction", y: 40, size: 9, width: 140 },
+        ...column(body(n), 120),
+        { text: `Page ${n} of 9`, x: 280, y: 750, size: 9, width: 50 },
+      ]);
+    const blocks = reflowPdf([1, 2, 3, 4, 5, 6, 7, 8, 9].map(bound));
+    expect(texts(blocks)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => body(n).join(" ")));
+  });
+
   it("keeps a heading that only looks like a running head because it sits high", () => {
     const titles = ["Introduction", "Methods", "Results"];
     const heading = (n: number): PdfPageText =>
