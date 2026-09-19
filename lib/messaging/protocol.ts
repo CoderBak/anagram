@@ -25,6 +25,12 @@ export const ACTIONS = {
   GET_BACKEND_STATUS: "getBackendStatus",
   /** popup → content: re-check the daemon now and re-queue "Unavailable" units. */
   RETRY_BACKEND: "retryBackend",
+  /**
+   * content (a PDF tab) / popup → SW: open the PDF reading mode. A content script may
+   * not navigate its tab to an extension page — the reader is deliberately not web
+   * accessible — so the worker performs the tabs.update for it.
+   */
+  OPEN_PDF_READER: "openPdfReader",
 } as const;
 
 export type ActionName = (typeof ACTIONS)[keyof typeof ACTIONS];
@@ -94,6 +100,8 @@ export interface GetTabStateMessage {
 export interface TabState {
   enabled: boolean;
   hostname: string;
+  /** The tab is a PDF the browser's own viewer is showing — the popup offers the reader. */
+  pdf?: boolean;
   scored: number;
   /** Units flagged heavily edited / AI-generated (popup stat line). */
   flagged: number;
@@ -157,6 +165,17 @@ export interface RetryBackendMessage {
   action: typeof ACTIONS.RETRY_BACKEND;
 }
 
+/**
+ * content/popup → SW: show the PDF reading mode for `url` in tab `tabId`. A content
+ * script sends neither — the worker reads both off the sender — while the popup, whose
+ * sender is no tab, names them.
+ */
+export interface OpenPdfReaderMessage {
+  action: typeof ACTIONS.OPEN_PDF_READER;
+  url?: string;
+  tabId?: number;
+}
+
 /** Union of all control messages the content script may receive. */
 export type ControlMessage =
   | RescanMessage
@@ -175,4 +194,5 @@ export type BackgroundMessage =
   | ScoreBatchMessage
   | UpdateBadgeMessage
   | GetBackendStatusMessage
-  | GetTopHostMessage;
+  | GetTopHostMessage
+  | OpenPdfReaderMessage;

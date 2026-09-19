@@ -65,6 +65,11 @@ export default defineContentScript({
     // Google Docs (top frame only): the editor is a canvas (no DOM text) — the
     // FAB's action opens our in-tab analyzed reading overlay instead.
     const docs = isTop ? detectDocsPage(location) : null;
+    // A PDF tab: Chrome wraps the plugin in an outer HTML document that content scripts
+    // do run in, and that document holds a single <embed> and no text at all. So there
+    // is nothing to scan here — the walk finds nothing and costs nothing — and the whole
+    // feature is the ball's action chip, which hands the file to our reader page.
+    const isPdf = isTop && !docs && document.contentType === "application/pdf";
     const orchestrator = createOrchestrator(ctx, {
       mountFab: isTop,
       lockScope: docs?.kind === "editor" ? "page" : undefined,
@@ -178,6 +183,16 @@ export default defineContentScript({
       }
     }
 
+    if (isPdf) {
+      // The worker navigates the tab: an extension page the content script could reach
+      // by itself would have to be web accessible, and the reader must not be.
+      orchestrator.setFabAction(
+        "Analyze PDF",
+        () => void browser.runtime.sendMessage({ action: ACTIONS.OPEN_PDF_READER }).catch(() => undefined),
+        { attention: true }, // nothing on this page can be scored — point at the way out
+      );
+    }
+
     browser.runtime.onMessage.addListener(
       (
         message: unknown,
@@ -210,6 +225,7 @@ export default defineContentScript({
             const state: TabState = {
               enabled,
               hostname: location.hostname,
+              pdf: isPdf,
               scored: orchestrator.scoredCount(),
               flagged: orchestrator.flaggedCount(),
               unsupported: orchestrator.unsupportedCount(),

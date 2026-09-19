@@ -7,6 +7,7 @@
 // RETRY_BACKEND) are addressed straight to the active tab's content script via
 // tabs.sendMessage, so they do not pass through here.
 import { defineBackground, browser } from "#imports";
+import type { PublicPath } from "wxt/browser";
 import { createRouter } from "../lib/backend/router";
 import { getScoreClient, getDaemonClient } from "../lib/backend/getScoreClient";
 import { ACTIONS } from "../lib/messaging/protocol";
@@ -16,6 +17,7 @@ import type {
   TopHostReply,
   UpdateBadgeMessage,
 } from "../lib/messaging/protocol";
+import { READER_PAGE, readerQuery } from "../lib/pdf/source";
 
 export default defineBackground(() => {
   const router = createRouter(getScoreClient());
@@ -28,13 +30,32 @@ export default defineBackground(() => {
   const b = browser as unknown as { action?: BadgeApi; browserAction?: BadgeApi };
   const actionApi: BadgeApi | undefined = b.action ?? b.browserAction;
 
-  // "Analyze selection" context menu; recreate idempotently on install/update.
+  /** The reading-mode URL for a PDF. Not web accessible — only we may navigate to it. */
+  const readerUrl = (src: string): string =>
+    browser.runtime.getURL(READER_PAGE as PublicPath) + readerQuery(src);
+
+  // Context menus; recreated idempotently on install/update. The PDF entry is offered on
+  // LINKS to a .pdf, which is where a reader decides to open one — the tab that is
+  // already showing a PDF is served by the ball's own action chip and by the popup.
   browser.runtime.onInstalled.addListener((details) => {
     void browser.contextMenus.removeAll().then(() => {
       browser.contextMenus.create({
         id: "anagram-analyze-selection",
         title: "Analyze selection with Anagram",
         contexts: ["selection"],
+      });
+      browser.contextMenus.create({
+        id: "anagram-open-pdf",
+        title: "Open PDF with Anagram",
+        contexts: ["link"],
+        targetUrlPatterns: [
+          "*://*/*.pdf",
+          "*://*/*.pdf?*",
+          "*://*/*.PDF",
+          "*://*/*.PDF?*",
+          "file:///*.pdf",
+          "file:///*.PDF",
+        ],
       });
     });
     if (details.reason === "install") {
@@ -43,6 +64,17 @@ export default defineBackground(() => {
   });
 
   browser.contextMenus.onClicked.addListener((info, tab) => {
+    if (info.menuItemId === "anagram-open-pdf") {
+      // A linked PDF opens BESIDE the page it was linked from: the reader replaces a tab
+      // only when that tab was already the PDF.
+      if (info.linkUrl) {
+        void browser.tabs.create({
+          url: readerUrl(info.linkUrl),
+          index: tab ? tab.index + 1 : undefined,
+        });
+      }
+      return;
+    }
     if (info.menuItemId !== "anagram-analyze-selection" || tab?.id == null) return;
     // Target the frame the selection lives in.
     void browser.tabs
@@ -80,8 +112,19 @@ export default defineBackground(() => {
         req?: ScoreBatchMessage["req"];
         flagged?: UpdateBadgeMessage["flagged"];
         probe?: boolean;
+        url?: string;
+        tabId?: number;
       };
       if (!msg) return;
+
+      // Show the PDF reading mode IN PLACE of the PDF. The tab and the URL come off the
+      // sender for a content script, and from the popup when it is the popup asking.
+      if (msg.action === ACTIONS.OPEN_PDF_READER) {
+        const tabId = msg.tabId ?? sender.tab?.id;
+        const src = msg.url ?? sender.tab?.url;
+        if (tabId != null && src) void browser.tabs.update(tabId, { url: readerUrl(src) });
+        return;
+      }
 
       // Per-tab flagged count on the toolbar icon (sent by the TOP frame only).
       if (msg.action === ACTIONS.UPDATE_BADGE) {

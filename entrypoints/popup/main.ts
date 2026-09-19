@@ -13,12 +13,14 @@ import {
 } from "../../lib/settings/settings";
 import { ACTIONS } from "../../lib/messaging/protocol";
 import type { BackendStatus, ControlMessage, TabState } from "../../lib/messaging/protocol";
+import { looksLikePdfUrl } from "../../lib/pdf/source";
 
 const enabledEl = document.getElementById("enabled") as HTMLInputElement;
 const siteEl = document.getElementById("siteEnabled") as HTMLInputElement;
 const siteHostEl = document.getElementById("siteHost") as HTMLElement;
 const highlightsEl = document.getElementById("highlights") as HTMLInputElement;
 const markStyleEl = document.getElementById("markStyle") as HTMLSelectElement;
+const readPdfEl = document.getElementById("readPdf") as HTMLButtonElement;
 const rescanEl = document.getElementById("rescan") as HTMLButtonElement;
 const statusEl = document.getElementById("status") as HTMLElement;
 const gearEl = document.getElementById("gear") as HTMLButtonElement;
@@ -146,6 +148,7 @@ async function refreshStatus(tabId: number | undefined): Promise<void> {
       action: ACTIONS.GET_TAB_STATE,
     })) as TabState | undefined;
     if (!state) throw new Error("no state");
+    if (state.pdf) readPdfEl.hidden = false;
     if (state.enabled) showCounts(state);
     else setStatusText("Detection is off for this page.");
   } catch {
@@ -196,6 +199,18 @@ async function init(): Promise<void> {
 
   bindSeg(displayModeEls, (v) => void settings.displayMode.setValue(v as "all" | "flagged"));
   bindSeg(scopeEls, (v) => void settings.analysisScope.setValue(v as "page" | "main"));
+
+  // Chrome's PDF tab answers GET_TAB_STATE with pdf:true; Firefox's built-in viewer runs
+  // no content script at all, so there the tab URL is the only evidence there is.
+  if (looksLikePdfUrl(tab?.url)) readPdfEl.hidden = false;
+  readPdfEl.addEventListener("click", () => {
+    void browser.runtime.sendMessage({
+      action: ACTIONS.OPEN_PDF_READER,
+      url: tab?.url,
+      tabId: tab?.id,
+    });
+    window.close();
+  });
 
   rescanEl.addEventListener("click", () => {
     sendToTab(tab?.id, { action: ACTIONS.RESCAN });
