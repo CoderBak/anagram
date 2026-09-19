@@ -2283,6 +2283,7 @@ ${KEY_TAGS.map((t, i) => `<p id="z${i + 1}">${KEY_PARA(t)}</p>`).join("\n")}
           lang: sr?.querySelector(".stack")?.lang ?? "",
           title: sr?.querySelector(".phead h2")?.textContent ?? "",
           filters: [...(sr?.querySelectorAll(".fchip") ?? [])].map((b) => b.textContent),
+          cov: sr?.querySelector(".pcov")?.textContent ?? "",
           copy: sr?.querySelector(".pcopy")?.textContent ?? "",
           off: sr?.querySelector(".psiteoff")?.textContent ?? "",
         };
@@ -2323,6 +2324,9 @@ ${KEY_TAGS.map((t, i) => `<p id="z${i + 1}">${KEY_PARA(t)}</p>`).join("\n")}
           panel.lang === "zh-CN" &&
           panel.title === "存疑段落（4）" &&
           panel.filters.includes("全部 4") &&
+          // The coverage line is translated too — "已读 N", and nothing else on a page
+          // where every paragraph was read.
+          /^已读 \d+$/.test(panel.cov) &&
           panel.copy === "复制报告" &&
           panel.off === "在 localhost 关闭" &&
           copied === "已复制 ✓" &&
