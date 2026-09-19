@@ -917,6 +917,16 @@ let fixturePage = null;
     }, BADGE_SEL);
     await still(page, "#a11y-sel-card");
     await axeScan(page, "selection card", "#a11y-sel-card");
+    const role = await page.evaluate(() => {
+      const card = document.getElementById("a11y-sel-card").shadowRoot.querySelector(".card");
+      return { role: card.getAttribute("role"), text: (card.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 50) };
+    });
+    record(
+      "live",
+      "selection card: the result lands in a polite status region, so it is announced",
+      role.role === "status" && role.text.length > 0,
+      JSON.stringify(role),
+    );
     await selectionCardCodeChecks(page);
   } else {
     record("axe", "selection card", null, "the card never rendered");
@@ -931,6 +941,7 @@ const keyboard = await openPage(server.url("/keyboard.html"));
 await chipsSettled(keyboard, 4);
 await settleAll(keyboard);
 await fabReady(keyboard, "keyboard fixture");
+await liveRegionChecks(keyboard);
 await keyboardWalkthrough(keyboard);
 await panelCodeChecks(keyboard);
 await keyboard.close();
@@ -1143,6 +1154,69 @@ function judgeStops(where, stops) {
 /** Name / focus ring / hit target for every keyboard-reachable control on a page. */
 async function pageCodeChecks(page, where) {
   judgeStops(where, await tabWalk(page, { max: 80 }));
+}
+
+/**
+ * The three things a screen reader would otherwise never be told. Automation can only go
+ * as far as reading what the live region says after the event — whether a real screen
+ * reader speaks it is for a human with VoiceOver.
+ */
+async function liveRegionChecks(page) {
+  const live = () =>
+    page.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".live")?.textContent ?? null);
+  const shape = await page.evaluate(() => {
+    const el = document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".live");
+    if (!el) return null;
+    const cs = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    return {
+      role: el.getAttribute("role"),
+      polite: el.getAttribute("aria-live"),
+      hiddenToEyes: r.width <= 1 && r.height <= 1,
+      // display:none would take it out of the accessibility tree along with the pixels.
+      rendered: cs.display !== "none" && cs.visibility !== "hidden",
+    };
+  });
+  record(
+    "live",
+    "the ball carries one polite live region, clipped rather than hidden",
+    !!shape && shape.role === "status" && shape.polite === "polite" && shape.hiddenToEyes && shape.rendered,
+    JSON.stringify(shape),
+  );
+
+  // The count settles over several seconds; the announcement waits for it to hold still.
+  await page.waitForTimeout(2500);
+  const said = await live();
+  const counter = await page.evaluate(
+    () => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.textContent ?? null,
+  );
+  record(
+    "live",
+    "the settled flagged count is said once, and matches the counter",
+    typeof said === "string" && new RegExp(`^${counter} flagged paragraphs? on this page$`).test(said),
+    JSON.stringify({ said, counter }),
+  );
+
+  // Copy report confirms itself by swapping a label — invisible to a screen reader.
+  await page.evaluate(() => {
+    const sr = document.getElementById("anagram-fab").shadowRoot;
+    sr.querySelector(".count").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await still(page);
+  await page.evaluate(() => document.getElementById("anagram-fab").shadowRoot.querySelector(".pcopy")?.click());
+  await page.waitForTimeout(500);
+  const copied = await live();
+  const label = await page.evaluate(
+    () => document.getElementById("anagram-fab").shadowRoot.querySelector(".pcopy")?.textContent ?? null,
+  );
+  record(
+    "live",
+    '"Copy report" says so out loud, not only by changing its own label',
+    /copied/i.test(copied ?? "") && /Copied/.test(label ?? ""),
+    JSON.stringify({ copied, label }),
+  );
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(250);
 }
 
 /** The keyboard route the chips deliberately do not provide: ball → counter → panel. */

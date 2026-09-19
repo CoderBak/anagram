@@ -58,6 +58,8 @@ export interface Fab {
 
 const BALL = 42; // ball diameter (px) — layout math + clamping use this
 const TUCK_AFTER_MS = 3500;
+/** How long the flagged count has to hold still before it is worth saying out loud. */
+const COUNT_ANNOUNCE_MS = 1500;
 const PANEL_MAX_HEIGHT = 360; // matches .panel max-height; placePanel lowers it in short windows
 const PANEL_MIN_HEIGHT = 140; // header + filter row + two entries
 /** aria-controls / aria-labelledby targets, resolved inside our own shadow root. */
@@ -379,6 +381,23 @@ const FAB_CSS = `
 .fab.off .mark { filter: grayscale(0.5); }
 .fab.off + .count, .fabwrap.off .count { opacity: 0.5; }
 
+/* The only thing here that is not drawn: a polite live region. The counter changes
+   silently as scoring lands, and the panel's Copy report confirms itself by swapping a
+   label — both are invisible events to a screen reader, and neither is worth a word of
+   visible chrome. Clipped rather than display:none, which would take it out of the
+   accessibility tree along with the pixels. */
+.live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 /* ---- dark surfaces ---------------------------------------------------------------
    The chip's detail card has had a dark variant since v4; the panel had none, so on a
    dark page the one piece of chrome a keyboard reader lives in was a white rectangle.
@@ -499,6 +518,36 @@ export function createFab(opts: {
   let backendDown = false;
   let side: Side = "right";
   let tuckTimer: ReturnType<typeof setTimeout> | null = null;
+  let liveEl: HTMLElement | null = null;
+  let liveTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The last count actually said out loud, so a re-render never repeats itself. */
+  let announcedCount = -1;
+
+  /** Say something once, politely. Empty first so an identical message is still new. */
+  function announce(text: string): void {
+    if (!liveEl) return;
+    liveEl.textContent = "";
+    const el = liveEl;
+    setTimeout(() => {
+      if (el.isConnected) el.textContent = text;
+    }, 60);
+  }
+
+  /**
+   * A page settles on its flagged count over several seconds, one batch at a time. Saying
+   * each increment would be a stream of interruptions, so the announcement waits until the
+   * number has stopped moving, and only then, and only if it moved somewhere worth
+   * mentioning. A zero, and the daemon-down "!", stay silent: nothing was found.
+   */
+  function announceCount(flagged: number): void {
+    if (liveTimer !== null) clearTimeout(liveTimer);
+    liveTimer = setTimeout(() => {
+      liveTimer = null;
+      if (backendDown || flagged <= 0 || flagged === announcedCount) return;
+      announcedCount = flagged;
+      announce(`${flagged} flagged paragraph${flagged === 1 ? "" : "s"} on this page`);
+    }, COUNT_ANNOUNCE_MS);
+  }
 
   function applyState(): void {
     if (!fabEl) return;
@@ -710,6 +759,11 @@ export function createFab(opts: {
     // A button pulls focus off the page when clicked; a span never did. Keep it that way.
     countEl.addEventListener("mousedown", (e) => e.preventDefault());
 
+    liveEl = document.createElement("span");
+    liveEl.className = "live";
+    liveEl.setAttribute("role", "status");
+    liveEl.setAttribute("aria-live", "polite");
+
     panelEl = document.createElement("div");
     panelEl.className = "panel";
     panelEl.id = PANEL_ID;
@@ -747,7 +801,7 @@ export function createFab(opts: {
     // The panel is absolutely positioned, so its place among the stack's children costs
     // no layout — and last is where Tab wants it: ball, counter, then what the counter
     // opened.
-    stack.append(actionEl, wrap, panelEl);
+    stack.append(actionEl, wrap, panelEl, liveEl);
     // Tapping anywhere outside the FAB closes the panel; Escape too.
     document.addEventListener("pointerdown", onOutsidePointer, true);
     document.addEventListener("keydown", onKeydown, true);
@@ -803,6 +857,7 @@ export function createFab(opts: {
       return;
     }
     countEl.textContent = String(flagged);
+    announceCount(flagged);
     countEl.title = "Show flagged paragraphs";
     countEl.setAttribute(
       "aria-label",
@@ -929,6 +984,7 @@ export function createFab(opts: {
         const done = () => {
           copy.textContent = "Copied ✓";
           copy.classList.add("done");
+          announce("Report copied to the clipboard");
           setTimeout(() => {
             copy.textContent = "Copy report";
             copy.classList.remove("done");
@@ -1045,6 +1101,10 @@ export function createFab(opts: {
 
   function unmount(): void {
     cancelTuckTimer();
+    if (liveTimer !== null) {
+      clearTimeout(liveTimer);
+      liveTimer = null;
+    }
     document.removeEventListener("pointerdown", onOutsidePointer, true);
     document.removeEventListener("keydown", onKeydown, true);
     document.removeEventListener("fullscreenchange", onFullscreenChange);
@@ -1060,6 +1120,7 @@ export function createFab(opts: {
     actionEl = null;
     countEl = null;
     panelEl = null;
+    liveEl = null;
   }
 
   return { mount, setActive, setBackendDown, setCount, setAction, openPanel, unmount };

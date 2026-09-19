@@ -162,6 +162,11 @@ export async function analyzeSelection(): Promise<void> {
   shadow.adoptedStyleSheets = [sheet()];
   const card = document.createElement("div");
   card.className = "card";
+  // The card appears without taking focus and without a sound: a reader who asked for
+  // this from the context menu would never learn the verdict had landed. role="status"
+  // is the polite version — the card is announced when its contents change, and it is
+  // appended empty so the first render counts as a change.
+  card.setAttribute("role", "status");
   // ONE delegated listener, bound before anything is rendered: the ✕ has to close the
   // card in every state — including the whole wait for a stalled daemon, which is where
   // it used to be dead — and it has to survive the innerHTML re-renders below, each of
