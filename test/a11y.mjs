@@ -58,46 +58,23 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PRINT_JSON = process.argv.includes("--json");
 
 // =====================================================================================
-// BASELINE — the accessibility debt that already existed when this suite was written.
+// BASELINE — accessibility debt that is known and not yet paid.
 // =====================================================================================
-// An entry is matched on `<where> :: <rule id>` and carries the nodes that fired on the
-// day it was written, so the list reads as the debt it is. It is deliberately NOT matched
-// per node: axe's targets on the extension pages are nth-child paths ("region@.card:nth-
-// child(5)"), and three other branches are editing those pages this week — a button added
-// to the popup would renumber every target and turn the whole list red without a single
-// new accessibility problem. A rule that was not firing here before IS new, and fails.
-// Node counts are printed on every run (`known: R rules / N nodes`) so growth inside a
-// known rule is still visible, and an axe entry that stops firing is a FAIL of its own so
-// the list shrinks as the debt is paid instead of fossilising.
-const BASELINE = [
-  // ---- our own injected UI ------------------------------------------------------------
+// Both lists are EMPTY, and that is the point: every finding this suite made on the day
+// it was written has since been fixed, so any violation it reports now is a regression.
+//
+// If something has to go back on a list, an axe entry is matched on `<where> :: <rule id>`
+// and a code-level entry on `<check> :: <where> :: <the element's own selector>` — the
+// tail of the path, since everything above it renumbers the moment a page is edited.
+// Never match axe per node: its targets on the extension pages are nth-child paths, and a
+// button added to the popup would renumber every one of them and turn the list red without
+// a single new accessibility problem. Node counts are printed on every run
+// (`known: R rules / N nodes`), so growth inside a known rule stays visible, and an axe
+// entry that stops firing FAILS the run — which is how the last of these were found and
+// deleted rather than left to fossilise.
+const BASELINE = [];
 
-  // ---- the extension pages -------------------------------------------------------------
-  {
-    where: "options (two site rules, add-rule error) [light]",
-    rule: "empty-table-header",
-    target: "th:nth-child(3)",
-    why: 'The per-site rules table\'s actions column has an empty <th>, so the "Remove" column is announced as nothing.',
-  },
-  { where: "options (two site rules, add-rule error) [dark]", rule: "empty-table-header", target: "th:nth-child(3)", why: "Same empty <th>, dark scheme." },
-  {
-    where: "reader (empty, file picker) [light]",
-    rule: "page-has-heading-one",
-    target: "html",
-    why: 'The PDF reader\'s document title is a <div class="t">, not an <h1>, so the page a whole PDF is read in has no heading to land on.',
-  },
-  { where: "reader (empty, file picker) [dark]", rule: "page-has-heading-one", target: "html", why: "Same, dark scheme." },
-  { where: "reader (PDF loaded) [light]", rule: "page-has-heading-one", target: "html", why: "Same with a document rendered — the PDF's own heading becomes an <h2> under no <h1>." },
-  { where: "reader (PDF loaded) [dark]", rule: "page-has-heading-one", target: "html", why: "Same, dark scheme." },
-];
-
-// The same idea for the checks axe cannot make (names, focus rings, hit targets, contrast).
-// The key is `<check> :: <where> :: <the element's own selector>` — the tail of the path,
-// because everything above it renumbers when a page is edited.
-const CODE_BASELINE = [
-  // Empty, and meant to stay that way: every name, focus ring, hit target and computed
-  // contrast this suite measures now passes. An entry here is a debt, not a setting.
-];
+const CODE_BASELINE = [];
 
 // Deliberate decisions, listed apart from the debts above so the two are never confused.
 const EXEMPTIONS = [

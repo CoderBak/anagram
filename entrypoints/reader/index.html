@@ -22,7 +22,7 @@
         font: 700 13px/1 ui-sans-serif, system-ui, sans-serif;
       }
       header.bar .titles { flex: 1 1 auto; min-width: 0; }
-      header.bar .t { font-size: 14px; font-weight: 600; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      header.bar .t { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       header.bar .s { font-size: 11.5px; line-height: 1.3; color: var(--muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       header.bar .btn { flex: 0 0 auto; }
 
@@ -71,7 +71,7 @@
     <header class="bar" data-anagram="host">
       <span class="mark" aria-hidden="true">A</span>
       <div class="titles">
-        <div class="t" id="title">Anagram reader</div>
+        <h1 class="t" id="title">Anagram reader</h1>
         <div class="s" id="subtitle"></div>
       </div>
       <button id="original" class="btn" data-variant="outline" data-size="sm" type="button" hidden>Open original</button>

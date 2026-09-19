@@ -82,9 +82,19 @@ async function renderSites(): Promise<void> {
   const table = document.createElement("table");
   table.className = "table";
   const head = table.createTHead().insertRow();
-  for (const h of ["Site", "Rule", ""]) {
+  for (const h of ["Site", "Rule", "Actions"]) {
     const th = document.createElement("th");
-    th.textContent = h;
+    // The last column holds only Remove buttons, so printing "Actions" over them would be
+    // noise — but a header cell with nothing in it is a column with no name at all to a
+    // screen reader, which is how the table used to read.
+    if (h === "Actions") {
+      const label = document.createElement("span");
+      label.className = "vh";
+      label.textContent = h;
+      th.appendChild(label);
+    } else {
+      th.textContent = h;
+    }
     head.appendChild(th);
   }
   const body = table.createTBody();

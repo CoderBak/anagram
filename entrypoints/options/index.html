@@ -49,6 +49,11 @@
          install, and the muted foreground on the muted surface is 4.34:1 — under the
          4.5:1 WCAG 1.4.3 asks of body text. They take the page's own foreground. */
       code, .kbd { color: var(--foreground); }
+      /* Out of the page, still in the accessibility tree. */
+      .vh {
+        position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+        overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+      }
       /* Hit areas, not paint. WCAG 2.5.8 (target size, minimum) measures the region that
          ACCEPTS the pointer, so these controls keep the size Basecoat draws them at and an
          invisible box centred on each brings it to 24x24. */
