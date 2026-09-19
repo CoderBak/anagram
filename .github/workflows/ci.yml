@@ -61,3 +61,53 @@ jobs:
           path: test-results/ci
           if-no-files-found: ignore
           retention-days: 7
+
+  # The Firefox MV2 build, in a real Firefox. Playwright cannot load an extension into
+  # Firefox, so this suite drives it through puppeteer-core over WebDriver BiDi (no
+  # geckodriver) — see test/firefox-harness.mjs. Linux only: the runner image already
+  # ships a Firefox, and the suite is about the engine, not the platform's text metrics.
+  firefox:
+    name: firefox (ubuntu-latest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: test
+    env:
+      ANAGRAM_ARTIFACTS: ${{ github.workspace }}/test-results/firefox
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Which Firefox. The extension's manifest says 128+, but the suite needs more than
+      # that: BiDi only learned webExtension.install in 135, and everything the extension
+      # renders needs 140 (a content script cannot adopt a constructed stylesheet into a
+      # shadow root before Gecko 140). So: use the runner image's own Firefox when it is
+      # 140 or newer, otherwise fetch a Mozilla build into ~/.cache/puppeteer, which is
+      # where test/firefox-harness.mjs looks next. Both versions are printed either way.
+      - name: resolve Firefox (>= 140, printed)
+        run: |
+          set -e
+          MAJOR=0
+          if command -v firefox >/dev/null 2>&1; then
+            echo "runner image: $(firefox --version)"
+            MAJOR=$(firefox --version | grep -oE '[0-9]+' | head -1)
+          else
+            echo "runner image: no firefox on PATH"
+          fi
+          if [ "$MAJOR" -lt 140 ]; then
+            echo "runner Firefox is $MAJOR (< 140) — fetching a Mozilla build"
+            npx --yes @puppeteer/browsers install firefox@stable --path "$HOME/.cache/puppeteer"
+            "$HOME"/.cache/puppeteer/firefox/*/firefox/firefox --version 2>/dev/null || true
+          fi
+      - run: npm run build:firefox
+      # xvfb is NOT used: the suite is headless by construction and has no HEADED mode.
+      - run: npm run test:firefox
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots-firefox
+          path: test-results/firefox
+          if-no-files-found: ignore
+          retention-days: 7

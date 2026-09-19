@@ -234,6 +234,32 @@ Notable changes to Anagram, newest first. The format follows
   LaTeX span can weld two quote characters into a digraph that only a second
   canonicalization pass folds, so the canonical form of `'$\alpha$'` is not yet
   a fixed point.
+- `npm run test:firefox` runs the Firefox MV2 build in a real Firefox — 31 checks,
+  the first time that build has been opened in a browser at all. Playwright cannot
+  load an extension into Firefox, so the new `test/firefox-harness.mjs` drives
+  headless Firefox through `puppeteer-core` over WebDriver BiDi (no geckodriver):
+  `webExtension.install` installs the unpacked `output/firefox-mv2` temporarily, and
+  the profile pref `extensions.webextensions.uuids` fixes the internal origin so the
+  suite can open `moz-extension://…/options.html` and write settings the way the
+  Chromium harness does. It covers the MV2 seam (background page, `browserAction`
+  instead of `action`, the toolbar badge), chips and merges across the self-test
+  page, the language gate, underlines where `CSS.highlights` exists, the ball,
+  panel, toggle and hover card, the dynamic paths including a pushState swap, the
+  popup/options/onboarding pages, the daemon down-and-back cycle, and console
+  errors — then prints every Firefox-vs-Chromium difference it found. Firefox is
+  never installed system-wide: `npx @puppeteer/browsers install firefox@stable`
+  caches a Mozilla build in `~/.cache/puppeteer`. The suite is headless with no
+  `HEADED` escape hatch, and strips puppeteer's macOS `--foreground` argument so
+  the process stays `BackgroundOnly`. CI runs it on `ubuntu-latest` after the
+  Chromium jobs.
+- Two Firefox-only defects the Chromium suites cannot see are now caught. Below
+  Firefox 140 nothing renders at all — `shadow.adoptedStyleSheets = [sheet()]` from
+  a content script throws *"Accessing from Xray wrapper is not supported."*, so
+  chips, the ball and the selection card die on their first render, rather than
+  degrading to chips without underlines as the README promised. And on every
+  Firefox the idle prefetch lane is dead: `window.requestIdleCallback` is read into
+  a variable and called unbound, which Gecko rejects, so only what is scrolled into
+  view is ever scored. Both are reported by the suite, not worked around.
 
 ## [0.3.2] — 2026-09-18
 

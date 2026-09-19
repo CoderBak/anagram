@@ -346,10 +346,20 @@ npm run build:firefox  # Firefox → output/firefox-mv2/  (web-ext lint: 0 error
 **Chrome:** `chrome://extensions` → Developer mode → **Load unpacked** →
 `output/chrome-mv3`.
 
-**Firefox (128+):** `about:debugging` → This Firefox → **Load Temporary
-Add-on…** → `output/firefox-mv2/manifest.json`. (Underlines need Firefox 140+;
-older versions degrade gracefully to chips-only. `npm run zip:firefox` builds
-the AMO-submittable zip.)
+**Firefox:** `about:debugging` → This Firefox → **Load Temporary Add-on…** →
+`output/firefox-mv2/manifest.json`. (`npm run zip:firefox` builds the
+AMO-submittable zip.)
+
+> **Firefox 140 or newer.** The manifest still declares
+> `strict_min_version: 128.0` and this paragraph used to promise that older
+> versions "degrade gracefully to chips-only". They do not: `npm run test:firefox`
+> against Firefox 139 shows nothing rendering at all, because a content script
+> could not assign a constructed stylesheet to a shadow root
+> (`shadow.adoptedStyleSheets = [sheet()]`) before Gecko 140 — it throws
+> *"Accessing from Xray wrapper is not supported."* and every chip, the floating
+> ball and the selection card die on their first render. Firefox 140 is also
+> where the CSS Custom Highlight API arrived, so 140 is the real floor for both
+> the chips and the underlines.
 
 Browse anywhere with prose. The ball sits bottom-right; the toolbar popup and
 the options page hold the switches. Keep `npm run serve` running in a terminal —
@@ -357,7 +367,7 @@ see [`anagramd/README.md`](anagramd/README.md) for the API and its hardening.
 
 ## Testing
 
-Eight suites. The browser suites that must not depend on the model point the
+Nine suites. The browser suites that must not depend on the model point the
 extension at `test/fake-daemon.mjs`, a test-only Node server that speaks the
 daemon's contract with text-seeded, deterministic verdicts (nothing of it ships).
 
@@ -365,6 +375,9 @@ daemon's contract with text-seeded, deterministic verdicts (nothing of it ships)
 extensions) with a throwaway profile, so a run takes no focus, shows no Dock icon
 and never touches your own Chrome. `HEADED=1 npm run test:e2e` brings the window
 back when you want to watch; only `npm run browser` / `npm run play` always do.
+The Firefox suite is headless with no way back: macOS reports its process as
+`type="BackgroundOnly"`, and puppeteer's `--foreground` default argument — which
+would make Firefox a foreground application — is stripped in the harness.
 
 | Suite | Command | Checks | What it covers |
 | --- | --- | --- | --- |
@@ -372,6 +385,7 @@ back when you want to watch; only `npm run browser` / `npm run play` always do.
 | Unit | `npm run test:unit` | 440 | walker/assembler/extraction (voice scopes and which short paragraphs may be scored together — thirty-three fixtures modelled on real post, thread, feed, answer, article, forum, review, RFC and mail-archive markup; posts that declare themselves and posts recognised by their structure — what counts as a byline and what is a control beside it, a lone reply, the opening post of a thread, lines of verse, a flat chat, one author's list and table, the cost of a hundred comments — a post read whole, a stretch of short paragraphs divided into model-sized groups, no orphan next to a full paragraph of its own voice, an article left per paragraph, and re-scans driven the way the orchestrator drives them; what the walk reaches: heading containers, notranslate application shells, boxes that clip their own text and where their chip goes — a quotation inside the clipped text, a box that is the post itself, a page that reflows under a chip — prose in `<pre>` against code, configuration, diffs, logs and e-mail quotations — math, citation marks, hidden copies, out-of-flow markers, accordions, author lists), window planning (balance, sentence and CJK boundaries, a merged unit cut between two paragraphs, the no-boundary and at-budget cases, the cap, the regex fallback), the mapping from a window back to text nodes (inline markup, collapsed whitespace, merged parts, a skipped formula, a DOM that changed), aggregation arithmetic, per-window marks and the card's window row, canonical scoring text, band mapping, Readability-guided scope — in a real Chromium page (~5s) |
 | E2E | `npm run test:e2e` | 33 | full extension on a 20-section fixture page against the fake daemon — including that non-English text never reaches it, that a post of mixed paragraphs sits under one ×N chip and is one chip again after it is opened in place, and that a three-window paragraph reaches it whole: three consecutive blocks, none past the token window, one chip, each window marked in its own band |
 | Scenarios | `npm run test:scenarios` | 45 + 13 | UI edge cases (hover card, panel filters, FAB snap/tuck, top-layer, KaTeX, vertical text, CSS Color 4 backgrounds, late shadow-root content, a post clipped to three lines whose chip sits under the visible text before and after “see more”, mutation storms, on-demand Readability chunk, self-rewriting page, main-content scope honoured from the very first scan, the selection card's ✕ while the daemon is still thinking, a long selection analyzed whole in windows, the copied report's bare percentages and legend and its line for a paragraph scored in windows, dense text the daemon had to cut re-read in two halves, daemon down → Unavailable → daemon back → auto re-queue) + keyboard-only triage (focusable counter, Enter/Esc focus hand-off, accessible names, the three commands driven from the service worker) and a no-referrer cross-origin frame obeying the top page's site rule, the Google Docs reading overlay re-reading its document in place (new paragraphs chipped, the old ones gone, one bar, a failed re-read leaving the snapshot alone) + 13 live sites (bot-check interstitials count as skips) (`-- --local` skips the live sweep) |
+| Firefox | `npm run test:firefox` | 31 | the **Firefox MV2 build in a real Firefox** — the only suite that is not Chromium. Playwright cannot load an extension into Firefox, so it drives headless Firefox through `puppeteer-core` over WebDriver BiDi (no geckodriver): `webExtension.install` puts the unpacked `output/firefox-mv2` in temporarily, and the profile pref `extensions.webextensions.uuids` fixes the internal origin so `moz-extension://…/options.html` is addressable. Covers the MV2 shape (background **page**, `browserAction` instead of `action`, and that `browserAction.setBadgeText` really applies a flagged count), chips across the self-test page (long paragraph = one chip, BR-split and short siblings merged, pure-CJK "unsupported" and no non-English text reaching the daemon), underlines when `CSS.highlights` exists (SKIP below Firefox 140), the ball + panel + toggle + hover card inside the viewport, the dynamic paths (tab reveal, `<details>`, removal, rapid insertion, a pushState route swap given ~6 s because Firefox may have no Navigation API), the popup / options / onboarding pages with a setting written in one reaching an open tab live, daemon down → "Unavailable" + "!" → daemon back → auto re-queue (`-- --quick` skips it), and no console errors. Ends with a **FIREFOX vs CHROMIUM** block naming every behavioural difference it found. Needs Firefox **135+** to run at all (BiDi learned `webExtension.install` after the extension's own 128 floor) and **140+** to pass; it is never installed system-wide — `npx @puppeteer/browsers install firefox@stable` drops a Mozilla build in `~/.cache/puppeteer`, or point `ANAGRAM_FIREFOX` at a binary |
 | Server | `npm run test:server` | 39 | **the real model**: spawns `anagramd`, checks the API on human/AI/Chinese samples (the last one must come back unsupported via fastText), the request limits and the body cap counted on the bytes that arrive (a 2.1 MB chunked POST with no `Content-Length` is still 413), `application/json`-only on `/score`, the `Origin` allow-list (extensions and the daemon's own pass; `null` and a web origin are 403), the Host allow-list, the absence of CORS grants, and a model version that digests the whole pipeline, then drives the built extension — real verdicts on every English chip, the 4-bucket card, the "zh" unsupported chip, the popup's model line |
 | Docs flow | `node test/docs-flow.mjs <public doc URL>` | 12 | in-tab overlay + classic page flow on a real public Google Doc — the original demo doc was deleted from Drive, so without a URL (or `ANAGRAM_DOC_URL`) the suite reports SKIP |
 | Matrix | `npm run test:matrix` | 136 | the UI fixtures under **17 device profiles** — 360 px phones to a 3440 px ultrawide, pixel ratios 1 / 1.25 / 1.5 / 2 / 3 (Windows display scaling), classic layout-eating scrollbars, a 420 px-tall window, dark scheme, forced colours, reduced motion, touch, zh-CN and Arabic UI locales — asserting what must hold on every one: all chips reach a verdict, showing them adds no side-scroll and grows no paragraph by more than a line, no chip leaves its block, the detail card (hover, or tap on touch) and the panel open fully inside the viewport, the ball stays on top, the options and onboarding pages fit the width, no console errors. A screenshot per profile lands in the artifacts folder. `node test/matrix.mjs phone dark` runs a subset |
