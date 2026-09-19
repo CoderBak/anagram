@@ -20,12 +20,13 @@ the model; the rest come back as `unsupported: true` with the detected language 
 extension can say "Unsupported language" instead of showing a meaningless percentage.
 
 Stack: FastAPI (request/response validation via pydantic, OpenAPI docs at /docs) served by
-uvicorn; the model runs under torch on MPS/CUDA in fp16 (CPU fp32); weights are fetched with
-huggingface_hub (pinned revision) when the model directory is missing.
+uvicorn; the model runs under torch on MPS/CUDA in fp16 (CPU fp32); both model files are read
+from disk — serving downloads nothing, ever (see "Offline", below).
 
 Hardening (the daemon is a local service, but a local service is still a service):
-    - binds 127.0.0.1 only unless --allow-remote is given explicitly
-    - Host header allow-list (loopback names only) — defeats DNS-rebinding
+    - binds 127.0.0.1 or localhost — the only two names the extension can be pointed at —
+      unless --allow-remote is given explicitly
+    - Host header allow-list (the same two names) — defeats DNS-rebinding
     - no CORS headers: the extension talks to it with host permissions, web pages cannot read it
     - POST /score must be application/json, and a request that carries an Origin must carry an
       extension one (or our own) — together those keep a web page from reaching /score at all
@@ -35,8 +36,15 @@ Hardening (the daemon is a local service, but a local service is still a service
     - the language gate FAILS CLOSED: no fastText model → the daemon refuses to start
       (unless --no-language-gate is passed on purpose)
     - the model version the extension keys its caches by identifies the whole pipeline —
-      weights, tokenizer/config files, window, dtype, gate — so no two configurations that
-      can disagree about a paragraph ever share a cache entry
+      weights, tokenizer/config files, window, dtype, the language model's own digest,
+      the preprocessing source — so no two configurations that can disagree about a
+      paragraph ever share a cache entry
+
+Offline: serving reaches no network at all. The Hub clients are switched off in the
+environment before they are imported (below), and neither model is ever fetched at run time —
+a missing file is an error naming the command that fetches it. Downloading is an explicit
+command (`anagram model`, or install.sh) which pins a checksum and stages the file before it
+replaces the one in use, so a half-written file can never be loaded.
 
 Endpoints
     GET  /health   → model / device / bucket / language info (the extension polls this)
@@ -56,9 +64,22 @@ anywhere — the daemon binds to localhost and the extension only ever talks to 
 """
 from __future__ import annotations
 
+import os
+
+# Switch the Hub clients off BEFORE anything can import them: huggingface_hub and transformers
+# read these variables once, at their own import time, and a value set afterwards is ignored.
+# The daemon downloads nothing itself, so this is belt and braces — but it is the belt that
+# matters: without it a tokenizer file that went missing, or a config the loader decides is
+# stale, is silently re-fetched from the internet under whatever token happens to be on the
+# machine. With it, the same situation is a loud local error, which is what "runs on your
+# machine" has to mean. Set, not defaulted: an inherited HF_HUB_OFFLINE=0 does not get a vote.
+for _offline_var in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "HF_DATASETS_OFFLINE",
+                     "HF_HUB_DISABLE_TELEMETRY", "HF_HUB_DISABLE_IMPLICIT_TOKEN"):
+    os.environ[_offline_var] = "1"
+
 import argparse
 import hashlib
-import ipaddress
+import inspect
 import json
 import logging
 import re
@@ -88,11 +109,18 @@ PIPELINE_REV = "pre1"
 PIPELINE_FILES = ("config.json", "tokenizer.json", "tokenizer_config.json", "vocab.json",
                   "merges.txt", "special_tokens_map.json")
 # The bucket edges EditLens used (cosine distance 0.03 / 0.15) — a description of the
-# classes, not a calibration of the probabilities.
+# classes, not a calibration of the probabilities. The wire contract has always carried this
+# string as `calibration`, which is the wrong word for it; responses now carry the same value
+# under `label_schema` as well, and `calibration` stays for every 2.x client already written
+# against it.
 CALIBRATION = "editlens-4bucket-cosine(0.03,0.15)"
+LABEL_SCHEMA = CALIBRATION
 BUCKET_LABELS = ["human", "lightly-edited", "heavily-edited", "ai-generated"]
 DEFAULT_MODEL_DIR = Path(__file__).resolve().parents[2] / "models" / "editlens_roberta-large"
 SUPPORTED_LANGUAGES = ["en"]
+# Where the language model comes from. The daemon never fetches it — this is here so the error
+# it prints when the file is missing can say where the installer got it (install.sh pins the
+# checksum of what arrives from this URL).
 LID_URL = "https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz"
 DEFAULT_LID_PATH = DEFAULT_MODEL_DIR.parent / "lid.176.ftz"
 
@@ -153,29 +181,40 @@ class LanguageId:
     instead of quietly scoring every language with an English-only model. Only
     `--no-language-gate` (explicit, logged, reported by /health as `lid: null`) turns
     it off.
+
+    A missing model file is an error, not a download. Fetching it used to happen here, on
+    the first start, with none of the guarantees the installer gives it — no checksum, no
+    staging, and an interruption leaving a truncated .ftz that the NEXT start would load as
+    if it were the real thing. It is the installer's job (`anagram model`); this says so.
+
+    The model's digest is part of what the daemon serves as its version: this file decides
+    which paragraphs are scored at all, so two daemons holding different ones must not share
+    the extension's cache entries.
     """
 
     def __init__(self, path: Path):
         self.model = None
         self.name = None
+        self.digest = None
         try:
             import fasttext  # noqa: F401
         except Exception as e:  # pragma: no cover
             sys.exit(f"fasttext is not importable ({e}) — the language gate cannot run.\n"
                      f"  pip install fasttext, or pass --no-language-gate to score every language (not advised)")
         if not path.exists():
-            try:
-                import urllib.request
-                log.info("downloading fastText lid.176 (~1 MB) to %s", path)
-                path.parent.mkdir(parents=True, exist_ok=True)
-                urllib.request.urlretrieve(LID_URL, path)
-            except Exception as e:
-                sys.exit(f"could not fetch {LID_URL} ({e}) — the language gate cannot run.\n"
-                         f"  place lid.176.ftz at {path}, or pass --no-language-gate (not advised)")
+            sys.exit(f"the fastText language model is missing: {path}\n"
+                     f"  the daemon never downloads it — fetch it with the command that verifies it:\n"
+                     f"    anagram model                                    (an installed folder)\n"
+                     f"    curl -fsSL -o {path} \\\n"
+                     f"      {LID_URL}    (from source, ~1 MB)\n"
+                     f"  `anagram doctor` reports this file and its checksum; --no-language-gate scores every "
+                     f"language with an English-only model instead (not advised)")
         import fasttext
+        self.digest = hashlib.sha256(path.read_bytes()).hexdigest()
         self.model = fasttext.load_model(str(path))
         self.name = "fasttext-lid.176"
-        log.info("language gate: fastText lid.176 loaded; supported = %s", SUPPORTED_LANGUAGES)
+        log.info("language gate: fastText lid.176 loaded (sha256 %s…); supported = %s",
+                 self.digest[:12], SUPPORTED_LANGUAGES)
 
     @classmethod
     def disabled(cls) -> "LanguageId":
@@ -183,6 +222,7 @@ class LanguageId:
         obj = cls.__new__(cls)
         obj.model = None
         obj.name = None
+        obj.digest = None
         log.warning("language gate DISABLED by --no-language-gate — non-English text WILL be scored")
         return obj
 
@@ -203,24 +243,23 @@ class LanguageId:
 # --- model ---------------------------------------------------------------------------------------
 
 
-def ensure_model(model_dir: Path) -> None:
-    """Fetch the weights with huggingface_hub when the directory has no checkpoint.
+def require_model(model_dir: Path) -> None:
+    """The checkpoint has to be on disk already: starting the daemon downloads nothing.
 
-    The repo is gated (CC BY-NC-SA — accept the terms on the model page once); the Hub
-    client picks up the token from `hf auth login` / HF_TOKEN. Resumable, checksum-verified,
-    pinned to HF_REVISION.
+    This used to call snapshot_download when the directory was empty, which meant a daemon
+    could pull 1.4 GB off the internet under whatever Hugging Face token it found on the
+    machine, at the moment somebody expected it to start. Fetching is now an explicit
+    command that pins the checksum and stages the file (`anagram model`, or install.sh);
+    all that is left here is to say which one to run.
     """
     if (model_dir / "config.json").exists():
         return
-    log.info("no checkpoint at %s — downloading %s@%s via huggingface_hub", model_dir, HF_REPO, HF_REVISION[:12])
-    try:
-        from huggingface_hub import snapshot_download
-
-        snapshot_download(HF_REPO, revision=HF_REVISION, local_dir=str(model_dir))
-    except Exception as e:
-        sys.exit(f"could not download {HF_REPO} into {model_dir}: {e}\n"
-                 f"  accept the model terms at https://huggingface.co/{HF_REPO}, run `hf auth login`, then\n"
-                 f"  hf download {HF_REPO} --revision {HF_REVISION} --local-dir {model_dir}")
+    sys.exit(f"no EditLens checkpoint in {model_dir} (config.json is missing)\n"
+             f"  the daemon never downloads it — fetch it with the command that verifies it:\n"
+             f"    anagram model                                    (an installed folder)\n"
+             f"    hf download {HF_REPO} --revision {HF_REVISION} --local-dir {model_dir}\n"
+             f"  the weights are gated: accept the terms at https://huggingface.co/{HF_REPO} once.\n"
+             f"  `anagram doctor` reports this checkpoint and its checksum")
 
 
 def weights_digest(model_dir: Path) -> tuple[str, str] | None:
@@ -255,16 +294,62 @@ def weights_digest(model_dir: Path) -> tuple[str, str] | None:
     return (weights.name, digest)
 
 
-def pipeline_version(model_dir: Path, max_length: int, dtype: str, language_gate: bool) -> str:
+def preprocess_digest() -> str:
+    """SHA-256 (12 hex) of the preprocessing source itself.
+
+    `clean_text` and the functions under it decide what the model actually reads — lowercasing,
+    the boilerplate first line, the emoji pass. Editing any of them moves the answers, and the
+    only thing that used to record it was somebody remembering to bump PIPELINE_REV by hand.
+    Hashing the source removes the remembering. A build that cannot show its own source (frozen,
+    zipped) falls back to the constant rather than inventing a digest.
+    """
+    try:
+        source = "".join(inspect.getsource(fn) for fn in
+                         (_normalize_whitespace, _remove_think_tag, _remove_ai_header, clean_text))
+    except (OSError, TypeError):  # pragma: no cover — source unavailable
+        return "src-unavailable"
+    return hashlib.sha256((source + repr(_BOILERPLATE_STARTS)).encode()).hexdigest()[:12]
+
+
+def pipeline_manifest(model_dir: Path, max_length: int, dtype: str, lid: LanguageId) -> dict:
+    """Everything except the weights that can change what a paragraph comes back as.
+
+    Kept as a plain dict, and hashed by pipeline_version below, so that "what is the served
+    version made of" is one readable list rather than something to reconstruct from a digest.
+    """
+    return {
+        # The small files that decide how text reaches the weights (kilobytes — hashed on every
+        # start, unlike the 1.4 GB checkpoint).
+        "files": {name: hashlib.sha256((model_dir / name).read_bytes()).hexdigest()
+                  for name in PIPELINE_FILES if (model_dir / name).is_file()},
+        "max_length": max_length,
+        "dtype": dtype,
+        # The gate decides whether a block is scored at all, so a different language model is
+        # as much a different pipeline as different weights are.
+        "language_gate": lid.enabled,
+        "lid": {"name": lid.name, "sha256": lid.digest} if lid.enabled else None,
+        "languages": SUPPORTED_LANGUAGES,
+        # What the numbers are taken to mean: the buckets and where their edges came from.
+        "labels": BUCKET_LABELS,
+        "label_schema": LABEL_SCHEMA,
+        "preprocess": preprocess_digest(),
+        "rev": PIPELINE_REV,
+    }
+
+
+def pipeline_version(model_dir: Path, max_length: int, dtype: str, lid: LanguageId) -> str:
     """`sha256:<12 hex of the weights>-p<8 hex of the rest>-<pipeline rev>`.
 
     The extension keys every cached verdict by this string, so it has to change whenever the
     same paragraph could come back with a different number — and the weights are only one of
-    the inputs. A swapped tokenizer or config, another --max-length, fp32 instead of fp16, or
-    a language gate turned off all move the answers while model.safetensors stays byte-for-byte
-    identical. The second digest therefore covers a canonical JSON manifest: the SHA-256 of
-    every small pipeline file that exists (kilobytes — hashed on every start, unlike the
-    weights) plus the settings that reach the model. The weights digest keeps the front of the
+    the inputs. A swapped tokenizer or config, another --max-length, fp32 instead of fp16, an
+    edited preprocessing step, a language gate turned off — or a DIFFERENT language model,
+    which decides whether a paragraph is scored at all rather than how — all move the answers
+    while model.safetensors stays byte-for-byte identical. The second digest therefore covers a
+    canonical JSON manifest: the SHA-256 of every small pipeline file that exists (kilobytes —
+    hashed on every start, unlike the weights), the gate down to the digest of its own model
+    and the languages it lets through, the preprocessing source, the labels the buckets stand
+    for, and the settings that reach the model. The weights digest keeps the front of the
     string because it is the expensive one and the one a human recognizes.
     """
     found = weights_digest(model_dir)
@@ -272,15 +357,8 @@ def pipeline_version(model_dir: Path, max_length: int, dtype: str, language_gate
         log.warning("weights %s have sha256 %s…, not the verified %s… — verdicts may differ from the "
                     "benchmarked checkpoint (cache keys stay distinct)", found[0], found[1][:12],
                     EXPECTED_WEIGHTS_SHA256[:12])
-    manifest = {
-        "files": {name: hashlib.sha256((model_dir / name).read_bytes()).hexdigest()
-                  for name in PIPELINE_FILES if (model_dir / name).is_file()},
-        "max_length": max_length,
-        "dtype": dtype,
-        "language_gate": language_gate,
-        "rev": PIPELINE_REV,
-    }
-    blob = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+    blob = json.dumps(pipeline_manifest(model_dir, max_length, dtype, lid),
+                      sort_keys=True, separators=(",", ":")).encode()
     head = f"sha256:{found[1][:12]}" if found else "unknown"
     return f"{head}-p{hashlib.sha256(blob).hexdigest()[:8]}-{PIPELINE_REV}"
 
@@ -305,7 +383,7 @@ class EditLens:
         self.last_run_ms = 0.0
         self.last_wait_ms = 0.0
 
-        ensure_model(model_dir)
+        require_model(model_dir)
 
         self.device = self._pick_device(device)
         # fp16 on the GPU is numerically indistinguishable here (probs agree to 3-4 decimals) and
@@ -315,7 +393,7 @@ class EditLens:
         self.dtype = torch.float16 if dtype == "fp16" and self.device != "cpu" else torch.float32
         self.dtype_name = str(self.dtype).replace("torch.", "")
         # Only now is everything that can move a verdict decided.
-        self.version = pipeline_version(model_dir, max_length, self.dtype_name, lid.enabled)
+        self.version = pipeline_version(model_dir, max_length, self.dtype_name, lid)
         t0 = time.time()
         self.tok = AutoTokenizer.from_pretrained(str(model_dir))
         self.model = self._load(AutoModelForSequenceClassification, model_dir)
@@ -394,7 +472,8 @@ class EditLens:
         return {
             "ok": True,
             "contract": CONTRACT_VERSION,
-            "model": {"id": MODEL_ID, "ver": self.version, "calibration": CALIBRATION},
+            "model": {"id": MODEL_ID, "ver": self.version, "calibration": CALIBRATION,
+                      "label_schema": LABEL_SCHEMA},
             "n_buckets": self.n_buckets,
             "buckets": BUCKET_LABELS[: self.n_buckets],
             "languages": SUPPORTED_LANGUAGES,
@@ -457,6 +536,10 @@ class ModelInfo(BaseModel):
     id: str
     ver: str
     calibration: str
+    # The same string under the name that describes it. Additive on purpose: `calibration` is
+    # what contract 2.x clients read, and a response model that did not declare this would
+    # quietly drop it from /score while /health kept it.
+    label_schema: str | None = None
 
 
 class ScoreResponse(BaseModel):
@@ -583,6 +666,17 @@ class OriginGuard:
 def unsupported_result(block_id: str, n_buckets: int, lang: str, prob: float) -> dict:
     return {"id": block_id, "bucket": 0, "probs": [1 / n_buckets] * n_buckets, "score": 0.0,
             "tokens": 0, "truncated": False, "lang": lang, "lang_prob": round(prob, 3), "unsupported": True}
+
+
+def allowed_hosts_for(host: str) -> list[str]:
+    """Every name this daemon answers to, given the one it was told to bind.
+
+    ONE list, because it feeds two things that have to agree: the Host allow-list and the
+    Origin guard's idea of our own origin. Normally it is exactly the two loopback names the
+    extension can be pointed at; an --allow-remote host joins them (it still has to be
+    reachable as 127.0.0.1 from this machine, and /docs still has to work).
+    """
+    return list(LOOPBACK_HOSTS) if host in LOOPBACK_HOSTS else [host, *LOOPBACK_HOSTS]
 
 
 def make_app(engine: EditLens, allowed_hosts: list[str], port: int):
@@ -745,9 +839,10 @@ def bounded_int(lo: int, hi: int):
 def main() -> None:
     ap = argparse.ArgumentParser(description="Anagram local scoring daemon (EditLens roberta-large)")
     ap.add_argument("--model-dir", type=Path, default=DEFAULT_MODEL_DIR)
-    ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--host", default="127.0.0.1", metavar="{" + "|".join(LOOPBACK_HOSTS) + "}",
+                    help="the name to bind, answer Host headers for, and accept as our own Origin")
     ap.add_argument("--allow-remote", action="store_true",
-                    help="permit a non-loopback --host (page text then leaves this machine — not advised)")
+                    help="permit a --host other than those two (page text may then leave this machine — not advised)")
     ap.add_argument("--port", type=bounded_int(1, 65535), default=8765)
     ap.add_argument("--device", default="auto", choices=["auto", "mps", "cuda", "cpu"])
     ap.add_argument("--dtype", default="auto", choices=["auto", "fp32", "fp16"],
@@ -755,20 +850,24 @@ def main() -> None:
     ap.add_argument("--max-length", type=bounded_int(8, 512), default=512, help="roberta-large caps at 512")
     ap.add_argument("--batch-size", type=bounded_int(1, 256), default=32)
     ap.add_argument("--lid-model", type=Path, default=DEFAULT_LID_PATH,
-                    help="fastText lid.176.ftz path (downloaded on first run if missing)")
+                    help="fastText lid.176.ftz path (must exist: `anagram model` fetches it, never the daemon)")
     ap.add_argument("--no-language-gate", action="store_true", help="score every block regardless of language")
     ap.add_argument("--selftest", action="store_true",
                     help="score the sample paragraphs, check what they should say, exit non-zero if not")
     args = ap.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s", datefmt="%H:%M:%S")
-    try:
-        loopback = ipaddress.ip_address(args.host).is_loopback
-    except ValueError:
-        loopback = args.host == "localhost"
-    if not loopback and not args.allow_remote:
-        sys.exit(f"--host {args.host} is not a loopback address; pass --allow-remote if you really "
-                 "want page text to leave this machine")
+    # Exactly two names, everywhere: what we bind, what the Host allow-list answers to, what the
+    # Origin guard counts as our own. They are the two the extension can be pointed at, because
+    # a browser's content-security policy can name a host and a port and nothing cleverer — so a
+    # daemon listening on 127.0.0.2 or [::1] would answer nothing the product can send it, while
+    # each extra name is another Host a rebinding page may guess. Other loopback addresses are
+    # refused with the rest: --allow-remote is the one way through, and it says what it costs.
+    if args.host not in LOOPBACK_HOSTS and not args.allow_remote:
+        sys.exit(f"--host {args.host} is not one of {' or '.join(LOOPBACK_HOSTS)}.\n"
+                 f"  those are the only two addresses the extension can be pointed at (a browser's CSP\n"
+                 f"  cannot name another), so nothing it sends would arrive here.\n"
+                 f"  pass --allow-remote to bind it anyway — page text may then leave this machine")
     # The gate is loaded first: it is part of what the served model version identifies.
     lid = LanguageId.disabled() if args.no_language_gate else LanguageId(args.lid_model)
     engine = EditLens(args.model_dir, args.device, args.max_length, args.batch_size, args.dtype, lid)
@@ -781,8 +880,7 @@ def main() -> None:
 
     import uvicorn
 
-    allowed_hosts = list(LOOPBACK_HOSTS) if loopback else [args.host, *LOOPBACK_HOSTS]
-    app = make_app(engine, allowed_hosts, args.port)
+    app = make_app(engine, allowed_hosts_for(args.host), args.port)
     log.info("listening on http://%s:%d  (GET /health, POST /score, GET /docs) — model %s",
              args.host, args.port, engine.version)
     # Our own per-request log line above replaces uvicorn's access log.

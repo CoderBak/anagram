@@ -19,8 +19,10 @@
 #   - the target must be an absolute, plain directory (no symlink, no "..", not / or $HOME)
 #   - an existing non-empty target must carry the marker, or it is refused untouched
 #   - all of that is checked BEFORE anything is downloaded
-#   - nothing is ever removed outside the validated folder; existing app/ and extension/
-#     are replaced by a staged swap, never by a bare rm -rf on a shared name
+#   - nothing is ever removed outside the validated folder; existing app/, extension/ and the
+#     checkpoint are replaced by a staged swap, never by a bare rm -rf on a shared name
+#   - a download is verified where it lands, beside the file it will replace, and only a file
+#     that matches its pinned checksum is ever renamed into place
 #   - every file that replaces one already in the folder is written beside it and renamed
 #     over it: `anagram update` runs this script, and the command, the uv binary or the
 #     model may be in use while they are replaced
@@ -213,14 +215,27 @@ if [ -z "${ANAGRAM_SKIP_MODEL:-}" ]; then
     fi
     [ -n "$TOKEN" ] || die "no Hugging Face token — set ANAGRAM_HF_TOKEN=… or ANAGRAM_SKIP_MODEL=1 (then run: anagram model)"
     say "Downloading the EditLens checkpoint (1.4 GB, resumable)"
+    # Staged, like everything else that replaces a file in use: the download lands in a
+    # directory beside the real one and is checked there, so a run interrupted halfway — or a
+    # file that is not the pinned one — is never at the name the daemon loads from. The staging
+    # directory keeps the same name between attempts, which is what lets a re-run resume
+    # instead of starting the 1.4 GB again.
+    INCOMING="$ANAGRAM_HOME/models/.incoming-editlens_roberta-large"
+    [ -L "$INCOMING" ] && die "'$INCOMING' is a symbolic link — refusing to write through it"
+    mkdir -p "$INCOMING"
     clean_env HF_HOME="$ANAGRAM_HOME/hf" HF_TOKEN="$TOKEN" HF_HUB_DISABLE_TELEMETRY=1 PYTHONNOUSERSITE=1 PYTHONSAFEPATH=1 \
-      "$PY" - "$MODEL_DIR" "$HF_REPO" "$HF_REVISION" <<'PYEOF'
+      "$PY" - "$INCOMING" "$HF_REPO" "$HF_REVISION" <<'PYEOF'
 import sys
 from huggingface_hub import snapshot_download
 snapshot_download(sys.argv[2], revision=sys.argv[3], local_dir=sys.argv[1], allow_patterns=["*.json", "*.txt", "*.safetensors", "README.md"])
 PYEOF
-    [ "$(sha256_of "$MODEL_DIR/model.safetensors")" = "$WEIGHTS_SHA256" ] || die "downloaded weights do not match the verified checksum"
+    [ "$(sha256_of "$INCOMING/model.safetensors" 2>/dev/null || true)" = "$WEIGHTS_SHA256" ] \
+      || die "the downloaded weights are not the pinned checkpoint — they stay in $INCOMING and nothing was replaced (re-run to resume the download)"
     note "checksum verified"
+    [ -L "$MODEL_DIR" ] && die "'$MODEL_DIR' is a symbolic link — refusing to replace it"
+    if [ -e "$MODEL_DIR" ]; then remove_ours "$MODEL_DIR.old"; mv "$MODEL_DIR" "$MODEL_DIR.old"; fi
+    mv "$INCOMING" "$MODEL_DIR"
+    remove_ours "$MODEL_DIR.old"
   fi
   if [ ! -f "$ANAGRAM_HOME/models/lid.176.ftz" ] || [ "$(sha256_of "$ANAGRAM_HOME/models/lid.176.ftz")" != "$LID_SHA256" ]; then
     say "Downloading the fastText language model (1 MB)"
