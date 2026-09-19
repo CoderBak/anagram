@@ -538,6 +538,39 @@ describe("reflowPdf — other scripts", () => {
     expect(blocks[0].text).toBe("这是一个测试段落，用来检查中文的换行是否会插入空格。");
   });
 
+  it("joins CJK runs on one line without inventing a word space", () => {
+    // pdf.js cuts a line of CJK into runs wherever the font changes; the gaps between
+    // them are kerning, and a space in the middle of a sentence is damage.
+    const blocks = reflowPdf([
+      page(1, [
+        { text: "这是一个", x: 72, y: 100, width: 44 },
+        { text: "测试段落", x: 119, y: 100, width: 44 },
+        { text: "，用来检查换行。", x: 166, y: 100, width: 88 },
+      ]),
+    ]);
+    expect(blocks[0].text).toBe("这是一个测试段落，用来检查换行。");
+  });
+
+  it("keeps a space where CJK text is set a whole ideograph apart", () => {
+    const blocks = reflowPdf([
+      page(1, [
+        { text: "第一列", x: 72, y: 100, width: 33 },
+        { text: "第二列", x: 160, y: 100, width: 33 },
+      ]),
+    ]);
+    expect(blocks[0].text).toBe("第一列 第二列");
+  });
+
+  it("joins a CJK paragraph that continues on the next page", () => {
+    const blocks = reflowPdf([
+      page(1, [{ text: "这一段落在第一页的末尾结束，但是句子", x: 72, y: 700, width: 400 }]),
+      page(2, [{ text: "还没有写完，它在下一页继续写下去。", x: 72, y: 100, width: 400 }]),
+    ]);
+    expect(texts(blocks)).toEqual([
+      "这一段落在第一页的末尾结束，但是句子还没有写完，它在下一页继续写下去。",
+    ]);
+  });
+
   it("reads a right-to-left page without failing", () => {
     const blocks = reflowPdf([
       page(1, [

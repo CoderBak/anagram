@@ -145,6 +145,14 @@ function percentile(values: number[], p: number): number {
 /** CJK and friends set text without word spaces — joining their lines must not add one. */
 const CJK = /[⺀-〿぀-ヿ㐀-䶿一-鿿豈-﫿＀-￯]/;
 
+/**
+ * …and the same holds WITHIN a line. CJK is set solid and pdf.js cuts its runs wherever
+ * the font or the positioning changes, so a small gap between two ideographs is kerning,
+ * never a word space — a space in CJK is a whole ideograph wide. Only a gap that wide is
+ * a deliberate separation (a table cell, a column of a form) and keeps its space.
+ */
+const CJK_SPACE_GAP = 1;
+
 /** Sentence-final punctuation, including the CJK and quoted-close forms. */
 const SENTENCE_END = /[.!?。！？…](["'”’)\]]|\s)*$/u;
 
@@ -185,9 +193,11 @@ function makeLine(page: number, items: PdfTextItem[]): Line {
   let prevRight = Number.NEGATIVE_INFINITY;
   for (const it of sorted) {
     const gap = it.x - prevRight;
+    const size = Math.max(it.height, dominant.height);
+    const solid = CJK.test(text.slice(-1)) && CJK.test(it.str.slice(0, 1));
     const needsSpace =
       text !== "" &&
-      gap > Math.max(it.height, dominant.height) * SPACE_GAP &&
+      gap > size * (solid ? CJK_SPACE_GAP : SPACE_GAP) &&
       !/\s$/.test(text) &&
       !/^\s/.test(it.str);
     text += (needsSpace ? " " : "") + it.str;
@@ -865,7 +875,10 @@ function joinAcrossSegments(drafts: Draft[], vocab: Vocabulary): Draft[] {
       prev.segment !== d.segment &&
       !prev.endsShort &&
       !SENTENCE_END.test(prev.text) &&
-      /^\p{Ll}/u.test(d.text);
+      // Lower case is what a continuation looks like in a cased script. CJK has no case,
+      // so an ideograph opening the block is the most its script can say, and the tests
+      // above — a full last line and no sentence end — carry the decision there.
+      (/^\p{Ll}/u.test(d.text) || CJK.test(d.text.slice(0, 1)));
     if (continues) {
       prev.text = appendLine(prev.text, d.text, vocab);
       prev.endsShort = d.endsShort;
