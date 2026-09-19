@@ -18,6 +18,7 @@
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
+import http from "node:http";
 import { launchExtension, serveHtml, artifact, BADGE_SEL } from "./harness.mjs";
 import { startFakeDaemon } from "./fake-daemon.mjs";
 import { PDF_HEAD, PDF_HEADING, PDF_PARAS, TEST_PDF, servePdfs } from "./pdf-fixture.mjs";
@@ -1825,6 +1826,80 @@ async function sweep(page, steps = 6) {
     );
     await p.close();
     await sw.evaluate(() => new Promise((res) => chrome.storage.local.set({ enabled: true, siteOverrides: {} }, res)));
+  }
+
+  // A38: a mailing-list quotation keeps its chip when the page moves around it. The "> "
+  // markers of a quoted run are not part of the text the unit carries (lib/dom/text.ts), so
+  // the orchestrator has to recompute that text the same way (partTextOf). Rebuilding it
+  // from the nodes alone brought the markers back, `currentTextOf(unit) !== unit.text` was
+  // true for ever, and ANY mutation whose scan root touches the <pre> — a paragraph
+  // appended to the page, an empty <span>, a class toggled — threw the unit away, removed
+  // its chip and read it again; only the per-tab cache kept the daemon out of it.
+  {
+    PAGES["/mailing-list.html"] = readFileSync(join(__dirname, "fixtures", "mailing-list.html"), "utf8");
+    const p = await context.newPage();
+    await p.goto(server.url("/mailing-list.html"), { waitUntil: "load" });
+    const settled = await p
+      .waitForFunction(
+        (sel) => {
+          const pills = [...document.querySelectorAll(sel)].map((h) => h.shadowRoot?.querySelector(".pill")).filter(Boolean);
+          return pills.length === 3 && !pills.some((x) => x.classList.contains("pending"));
+        },
+        BADGE_SEL,
+        { timeout: 15000 },
+      )
+      .then(() => true)
+      .catch(() => false);
+    // Every chip host is tagged, and the one belonging to the QUOTED unit is marked: it is
+    // inserted right after the last quoted line, inside the <pre>.
+    const before = await p.evaluate((sel) => {
+      const hosts = [...document.querySelectorAll(sel)];
+      hosts.forEach((h, i) => { h.__anagramTag = i; });
+      const quoted = hosts.find((h) => (h.previousSibling?.textContent ?? "").includes("year it was typed"));
+      if (quoted) quoted.__quoted = true;
+      return { hosts: hosts.length, found: !!quoted, pills: hosts.map((h) => h.shadowRoot?.querySelector(".num")?.textContent ?? "") };
+    }, BADGE_SEL);
+    const timesAsked = () => daemon.stats.texts.filter((t) => t.includes("maintained by four people")).length;
+    const askedBefore = timesAsked();
+    // What the daemon was actually given: the quotation without its markers, while the page
+    // still holds them — the difference this whole check is about.
+    const sent = daemon.stats.texts.find((t) => t.includes("maintained by four people")) ?? "";
+    const onPage = await p.evaluate(() => document.querySelector("pre").textContent.includes("> Right, so a package"));
+    // Three mutations, not one character of the unit changed by any of them.
+    await p.evaluate(() => {
+      const pre = document.querySelector("pre");
+      const note = document.createElement("p");
+      note.textContent = "Archive index"; // a label: too short to be scored, and never merged
+      document.body.appendChild(note);
+      pre.appendChild(document.createElement("span"));
+      pre.classList.toggle("touched");
+    });
+    await p.waitForTimeout(2500);
+    const after = await p.evaluate((sel) => {
+      const hosts = [...document.querySelectorAll(sel)];
+      const quoted = hosts.find((h) => h.__quoted);
+      return {
+        hosts: hosts.length,
+        tagged: hosts.filter((h) => typeof h.__anagramTag === "number").length,
+        quotedAlive: !!quoted && quoted.isConnected,
+        pills: hosts.map((h) => h.shadowRoot?.querySelector(".num")?.textContent ?? ""),
+      };
+    }, BADGE_SEL);
+    record(
+      "ui",
+      "a quoted mail unit survives a mutation beside it: same chip node, no re-read, no new request",
+      settled &&
+        before.found &&
+        onPage &&
+        !sent.includes(">") &&
+        after.quotedAlive &&
+        after.hosts === before.hosts &&
+        after.tagged === after.hosts &&
+        JSON.stringify(after.pills) === JSON.stringify(before.pills) &&
+        timesAsked() === askedBefore,
+      JSON.stringify({ settled, before, after, askedBefore, askedAfter: timesAsked(), markersSent: sent.includes(">"), onPage }),
+    );
+    await p.close();
   }
 }
 

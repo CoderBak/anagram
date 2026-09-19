@@ -27,10 +27,10 @@ interface PartMap {
   offset: number[];
 }
 
-/** The walker's `stripQuoteMarkers(extractPartText(nodes)).replace(/\s+/g, " ").trim()`,
+/** The walker's `unitPartText(extractPartText(nodes), part.preserved)` (lib/dom/text.ts),
  *  remembering where each surviving character came from. The quote markers of a mailing-list
- *  message are not in the unit's text (lib/dom/text.ts), so they are not in this map either
- *  — the two have to drop the same characters or nothing lines up. */
+ *  message are not in the unit's text, so they are not in this map either — the two have to
+ *  drop the same characters or nothing lines up. */
 function mapPart(part: UnitPart): PartMap {
   const nodes = part.nodes;
   const marker = part.preserved ? quoteMarkerMask(extractPartText(nodes)) : null;

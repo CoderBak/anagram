@@ -23,7 +23,7 @@ import { SURFACE } from "../surface";
 import { collectUnits } from "../dom/walker";
 import { findMainContent, useReadability } from "../dom/mainContent";
 import { loadReadability } from "../lazy";
-import { extractPartText, MAX_UNIT_TEXT_CHARS } from "../dom/text";
+import { partTextOf, MAX_UNIT_TEXT_CHARS } from "../dom/text";
 import { createObservers, type Observers } from "./observers";
 import { createScheduler, type Scheduler } from "./scheduler";
 import { createScoreCache, type ScoreCache } from "./cache";
@@ -397,7 +397,7 @@ export function createOrchestrator(
   /** The unit's CURRENT text, recomputed the same way the walker built it. */
   function currentTextOf(unit: Unit): string {
     return unit.parts
-      .map((p) => extractPartText(p.nodes).replace(/\s+/g, " ").trim())
+      .map(partTextOf)
       .join("\n\n")
       .slice(0, MAX_UNIT_TEXT_CHARS);
   }

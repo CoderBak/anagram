@@ -262,7 +262,12 @@ Notable changes to Anagram, newest first. The format follows
   model with it — the frame a mail client draws the quotation with, which nobody
   wrote. The markers are stripped from the text of a quoted run, and from nowhere
   else: a `>` at the start of ordinary prose is a shell prompt or a quotation
-  somebody typed. The underline still covers the quoted lines exactly.
+  somebody typed. The underline still covers the quoted lines exactly, and the
+  chip stays where it is when the page moves around it: the text a unit carries
+  has ONE definition now, which the walker writes, the orchestrator recomputes to
+  tell whether a unit changed, and the locator maps offsets in — and the boundary
+  between a quotation and the reply around it is drawn on a re-scan too, not only
+  on the first one.
 - The canonical scoring text is a **fixed point**: canonicalizing it again changes
   nothing. An un-rendered LaTeX span was dropped after the quote digraphs were
   folded, so a span removed from between two quotes ("the constant '$\alpha$' is")

@@ -400,8 +400,29 @@ const QUOTE_MARKER_RE = /^[ \t]*(?:>[ \t]*)*>[ \t]?/gm;
  * depth (lists.debian.org, lore.kernel.org), and from nowhere else: a `>` at the start of
  * ordinary prose is a shell prompt or a quotation somebody typed, and ours to leave alone.
  */
-export function stripQuoteMarkers(raw: string): string {
+function stripQuoteMarkers(raw: string): string {
   return runQuoteDepth(raw) === 0 ? raw : raw.replace(QUOTE_MARKER_RE, "");
+}
+
+/**
+ * From a run's RAW text to the text a unit carries: the `>` markers of a quoted mail run
+ * out — they are the quotation's frame, not its words — and every whitespace run collapsed.
+ * THREE places read one paragraph this way and they must agree character for character: the
+ * walker writes it (walker.ts, `read`), the orchestrator recomputes it to ask whether a
+ * unit's text changed (`currentTextOf`), and lib/dom/locate.ts maps offsets in it back to
+ * the page. It lives here so there is one definition to agree with.
+ */
+export function unitPartText(raw: string, preserved: boolean): string {
+  return (preserved ? stripQuoteMarkers(raw) : raw).replace(/\s+/g, " ").trim();
+}
+
+/**
+ * The same for a part that is already in a unit. The orchestrator asks this to learn
+ * whether a unit's text CHANGED; rebuilding it any other way left a quoted unit never
+ * equal to itself, so every mutation near it threw the unit away and read it again.
+ */
+export function partTextOf(part: UnitPart): string {
+  return unitPartText(extractPartText(part.nodes), part.preserved === true);
 }
 
 /**

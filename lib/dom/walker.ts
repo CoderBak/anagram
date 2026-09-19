@@ -64,7 +64,7 @@ import {
   wordShape,
   quoteDepth,
   runQuoteDepth,
-  stripQuoteMarkers,
+  unitPartText,
   MIN_UNIT_WORDS,
   MIN_MERGE_WORDS,
   MIN_SENTENCE_WORDS,
@@ -259,10 +259,10 @@ export function collectUnits(
     const { nodes, container, preserved, formulas } = found;
     if (!rects.get(container)) return null; // zero-size container → invisible text
     const raw = extractPartText(nodes);
-    // The `>` markers of a quoted mail line are the quotation's frame, not its words
-    // (stripQuoteMarkers); `raw` keeps them, because the depth and the column-gap tests
-    // read them.
-    const text = (preserved ? stripQuoteMarkers(raw) : raw).replace(/\s+/g, " ").trim();
+    // One definition of a part's text (lib/dom/text.ts), because the orchestrator recomputes
+    // it to tell whether a unit changed and the locator maps offsets in it back to the page.
+    // `raw` keeps the `>` markers, because the depth and the column-gap tests read them.
+    const text = unitPartText(raw, preserved);
     if (!text) return null;
     return {
       nodes,
@@ -280,20 +280,25 @@ export function collectUnits(
 
   function processRun(nodes: Text[], container: Element, preserved: boolean, formulas: number): void {
     const found: Found = { nodes, container, preserved, formulas };
+    // A change of e-mail quote depth is a change of voice: the reply of a
+    // lists.debian.org message never merges with the lines it quotes, nor those with
+    // the quotation nested inside them. It is raised for an OWNED run as well, BEFORE the
+    // claim filter is asked: on a re-scan the quotation is usually the part a live unit
+    // owns while the "alice wrote:" line above it is new, and a barrier that only new runs
+    // could raise let the assembler read the two as one voice — which asked for the
+    // quotation back (`retake`) and re-read the whole message on every mutation near it.
+    // It costs the first line of the run, not its text: an owned run is not read.
+    const depth = preserved ? firstLineQuoteDepth(nodes) : 0;
+    if (depth !== quoteLevel) {
+      quoteLevel = depth;
+      asm.barrier(container);
+    }
     if (opts.claimFilter && opts.claimFilter(nodes) === "skip") {
       asm.owned(found); // a live unit's part: read only if something new turns up beside it
       return;
     }
     const run = read(found, false);
     if (!run) return;
-    // A change of e-mail quote depth is a change of voice: the reply of a
-    // lists.debian.org message never merges with the lines it quotes, nor those with
-    // the quotation nested inside them.
-    const depth = run.preserved ? runQuoteDepth(run.raw) : 0;
-    if (depth !== quoteLevel) {
-      quoteLevel = depth;
-      asm.barrier(run.container);
-    }
     asm.run(run);
   }
 
@@ -702,6 +707,17 @@ export function isProsePre(el: Element): boolean {
 //
 // Depth, markers and stripping live in lib/dom/text.ts: the walk reads them here, and the
 // map back from an offset to the page has to drop exactly the same characters.
+
+/** The quote depth a run speaks in, taken from its first line with text in it without
+ *  joining the run's text — the barrier around a run a live unit owns has to be raised
+ *  without reading it (see processRun). */
+function firstLineQuoteDepth(nodes: Text[]): number {
+  for (const n of nodes) {
+    if (n.data.trim() === "") continue;
+    return runQuoteDepth(n.data);
+  }
+  return 0;
+}
 
 /** Offset of the first line whose quote depth differs from the line before it, or -1.
  *  Blank lines carry no depth of their own and never break the comparison. The text of
