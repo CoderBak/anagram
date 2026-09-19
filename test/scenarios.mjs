@@ -1232,6 +1232,109 @@ async function sweep(page, steps = 6) {
       JSON.stringify(r),
     );
   }
+
+  // A29: the Google Docs reading overlay refreshes in place. The overlay shows a
+  // snapshot of the document, so its Refresh button reads the static view again and
+  // swaps the paper's content: the old paragraphs leave with their chips, the new ones
+  // arrive and are analyzed, and none of the overlay's own chrome is rebuilt. A failed
+  // re-read must leave the snapshot on screen and give the button back. docs.google.com
+  // is served locally here — a real document needs an account, and nothing in this
+  // check is about Google's own markup.
+  {
+    const DOC = "ANAGRAMREFRESHFIXTURE";
+    const EDITOR = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Refresh fixture - Google Docs</title></head>
+<body><canvas width="600" height="400"></canvas></body></html>`;
+    const mobilebasic = (v) =>
+      `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Refresh fixture v${v} - Google Docs</title>
+<style>.doc-content p { margin: 0 0 14px; }</style></head><body><div class="doc-content">
+<p>${PARA(`DOCVERSION${v}ONE`)}</p><p>${PARA(`DOCVERSION${v}TWO`)}</p></div></body></html>`;
+    let version = 1;
+    let broken = false;
+    await context.route("https://docs.google.com/**", (route) => {
+      const isStatic = route.request().url().includes("/mobilebasic");
+      if (isStatic && broken) return route.fulfill({ status: 500, contentType: "text/html", body: "no" });
+      route.fulfill({
+        status: 200,
+        contentType: "text/html; charset=utf-8",
+        body: isStatic ? mobilebasic(version) : EDITOR,
+      });
+    });
+
+    const readOverlay = (page) =>
+      page.evaluate((sel) => {
+        const sr = document.getElementById("anagram-docs-overlay")?.shadowRoot;
+        const paper = sr?.querySelector(".paper");
+        const refresh = sr?.querySelector("#anagram-ovl-refresh");
+        return {
+          hosts: document.querySelectorAll("#anagram-docs-overlay").length,
+          bars: sr ? sr.querySelectorAll(".bar").length : 0,
+          // The bar and the notice carry the marker attribute too — only the paper's
+          // own hosts are chips.
+          chips: paper ? paper.querySelectorAll(sel).length : 0,
+          v1: !!paper?.textContent.includes("DOCVERSION1"),
+          v2: !!paper?.textContent.includes("DOCVERSION2"),
+          title: sr?.querySelector(".bar .t")?.textContent ?? "",
+          refreshable: refresh ? !refresh.disabled : false,
+        };
+      }, BADGE_SEL);
+    const chipped = (page, marker) =>
+      page.waitForFunction(
+        ([sel, want]) => {
+          const paper = document.getElementById("anagram-docs-overlay")?.shadowRoot?.querySelector(".paper");
+          return !!paper && paper.textContent.includes(want) && paper.querySelectorAll(sel).length >= 2;
+        },
+        [BADGE_SEL, marker],
+        { timeout: 25000 },
+      ).then(() => true).catch(() => false);
+
+    const doc = await context.newPage();
+    await doc.goto(`https://docs.google.com/document/d/${DOC}/edit`, { waitUntil: "load" });
+    const clickFab = () =>
+      doc.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector("#anagram-action")?.click());
+    await doc
+      .waitForFunction(
+        () => document.getElementById("anagram-fab")?.shadowRoot?.querySelector("#anagram-action")?.textContent === "Analyze document",
+        null,
+        { timeout: 20000 },
+      )
+      .catch(() => {});
+    await clickFab();
+    const opened = await chipped(doc, "DOCVERSION1");
+    const before = await readOverlay(doc);
+
+    version = 2;
+    await doc.evaluate(() =>
+      document.getElementById("anagram-docs-overlay")?.shadowRoot?.querySelector("#anagram-ovl-refresh")?.click(),
+    );
+    const swapped = await chipped(doc, "DOCVERSION2");
+    await doc.waitForTimeout(1500);
+    const after = await readOverlay(doc);
+
+    broken = true;
+    await doc.evaluate(() =>
+      document.getElementById("anagram-docs-overlay")?.shadowRoot?.querySelector("#anagram-ovl-refresh")?.click(),
+    );
+    await doc.waitForTimeout(2500);
+    const failed = await readOverlay(doc);
+    await doc.screenshot({ path: artifact("scn-docs-refresh.png") }).catch(() => {});
+    await doc.close();
+    await context.unroute("https://docs.google.com/**");
+
+    record(
+      "ui",
+      "the Docs reading overlay re-reads the document in place",
+      opened && swapped && before.v1 && before.chips === 2 &&
+        after.v2 && !after.v1 && after.chips === 2 && after.hosts === 1 && after.bars === 1 &&
+        after.title.includes("v2") && after.refreshable,
+      JSON.stringify({ before, after }),
+    );
+    record(
+      "ui",
+      "a failed re-read leaves the snapshot on screen",
+      failed.v2 && !failed.v1 && failed.chips === 2 && failed.hosts === 1 && failed.refreshable,
+      JSON.stringify(failed),
+    );
+  }
 }
 
 // =====================================================================================

@@ -29,6 +29,11 @@ Notable changes to Anagram, newest first. The format follows
   deterministic suites are proven to need no network. The lab keeps running, but
   that container publishes no port, so there is nothing to view while it does; it
   is removed when the run ends, fails or is interrupted.
+- The Google Docs reading mode can be refreshed. Its bar has a "Refresh" button
+  that reads the document again and swaps the page in place: the paragraphs that
+  were there leave with their chips, the current text is analyzed, and the
+  reading position is kept unless the document got shorter. The overlay is still
+  a snapshot — it just no longer has to be closed and reopened after an edit.
 - The triage panel is reachable without a mouse. The ball's counter is a real
   button that says what it is ("3 flagged paragraphs — show list"), Enter opens
   the panel and moves the keyboard into it, Escape closes it and hands focus
@@ -155,6 +160,12 @@ Notable changes to Anagram, newest first. The format follows
   reported success and left anagramd holding the port — and `restart` then found
   it answering and kept the old process alive. The daemon now replaces that shell
   (`exec`), so the pid in `run/anagramd.pid` is the process that serves.
+- The Google Docs reading mode is analyzed again. Its full-screen layer was
+  positioned on the element that carries the document, and the walk drops a small
+  out-of-flow box as a decoration — a shadow host reports no text of its own,
+  however much its shadow tree holds, so the whole document counted as empty and
+  not one paragraph in the overlay was ever scored. The layer now sits one level
+  in, where it always belonged.
 
 - Chinese, Japanese or Arabic text that names a brand in Latin letters is read
   like any other. One capitalised word — "OpenAI" in a Chinese sentence — made
