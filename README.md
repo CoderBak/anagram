@@ -150,7 +150,10 @@ prints PASS/FAIL per sample and exits non-zero if any of them is wrong.
   segments the way the original did, with URLs, alt text, titles and values
   dropped. Nothing you or anybody else wrote is in it. It is English whatever
   the interface is in, because it is for whoever fixes the site, and it works
-  on a site Anagram is switched off for — it says so.
+  on a site Anagram is switched off for — it says so. The badge shows "!"
+  instead of a tick if nothing reached the clipboard. On Firefox the first use
+  asks once for permission to write to the clipboard (Chrome asks for none);
+  say yes and it never asks again.
 - **Popup + options page**: per-site rules (with an add-rule form) that cover a
   whole site — a rule written on `example.com` holds on `news.example.com` too,
   the most specific rule wins and `www.` makes no difference — marking

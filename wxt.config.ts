@@ -94,14 +94,19 @@ export default defineConfig({
       // what it falls back to, which is also what every __MSG_* below is written in.
       default_locale: "en",
       description: "__MSG_extDescription__",
-      // clipboardWrite is what "Copy page diagnostics" needs: the copy happens when the
-      // worker's context-menu message reaches the page, which is not a gesture handler, and
-      // Firefox refuses both clipboard routes to a content script outside one. Chrome is
-      // happy with a focused document, but the permission makes the execCommand fallback
-      // work there too. Neither browser shows the user a warning for it.
-      permissions: ["storage", "activeTab", "contextMenus", "clipboardWrite"],
+      permissions: ["storage", "activeTab", "contextMenus"],
       ...(browser === "firefox"
         ? {
+            // "Copy page diagnostics" copies when the worker's menu message reaches the
+            // page, which is no longer a user-input handler, and Firefox refuses a content
+            // script both clipboard routes outside one. OPTIONAL, never required: a
+            // clipboard permission is a warning at install time ("Input data to the
+            // clipboard"; Chrome words it "Modify data you copy and paste"), and a menu
+            // entry most readers will never open must not cost every reader that. The
+            // worker asks for it inside the click itself, once (entrypoints/background.ts).
+            // Chrome needs no permission at all: the async clipboard API answers a content
+            // script whose tab is focused, which the click has just made it.
+            optional_permissions: ["clipboardWrite"],
             browser_specific_settings: {
               gecko: {
                 id: "anagram@coderbak.dev",

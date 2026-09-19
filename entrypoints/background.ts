@@ -38,12 +38,35 @@ export default defineBackground(() => {
    *  may write a new count while the tick is up. */
   const badgeText = new Map<number, string>();
   const COUNT_COLOR = "#dc2626";
-  /** The copy confirmation: a tick, on the green the chips already use for "human" —
-   *  the badge's red is the chips' "AI generated" red for the same reason. */
-  const FLASH_TEXT = "✓";
-  const FLASH_COLOR = "#1a7f37";
+  /** The copy said yes: a tick, on the green the chips already use for "human" — the
+   *  badge's red is the chips' "AI generated" red for the same reason. */
+  const FLASH_OK = { text: "✓", color: "#1a7f37" };
+  /** And when nothing reached the clipboard, the same gesture says so instead of lying. */
+  const FLASH_FAIL = { text: "!", color: COUNT_COLOR };
   const FLASH_MS = 1500;
   browser.tabs.onRemoved.addListener((tabId) => badgeText.delete(tabId));
+
+  /**
+   * Firefox only: `clipboardWrite` is declared OPTIONAL (see wxt.config.ts), so it has to
+   * be asked for, and Firefox honours `permissions.request()` only from inside a
+   * user-input handler — a context-menu click is one, but only until the first `await`.
+   * So the answer is remembered here instead: the worker asks the browser once on wake,
+   * and a reader who has already granted it is never prompted again. `null` means "not
+   * known yet", which only costs a request that Firefox resolves without a prompt when
+   * the permission is in fact already there.
+   */
+  const CLIPBOARD_OPTIONAL = (
+    (browser.runtime.getManifest() as { optional_permissions?: string[] }).optional_permissions ?? []
+  ).includes("clipboardWrite");
+  let clipboardGranted: boolean | null = null;
+  if (CLIPBOARD_OPTIONAL) {
+    void browser.permissions?.contains({ permissions: ["clipboardWrite"] }).then(
+      (has) => {
+        clipboardGranted = has;
+      },
+      () => undefined,
+    );
+  }
 
   /** The reading-mode URL for a PDF. Not web accessible — only we may navigate to it. */
   const readerUrl = (src: string): string =>
@@ -115,9 +138,12 @@ export default defineBackground(() => {
     void browser.tabs
       .sendMessage(tabId, { action: ACTIONS.COPY_DIAGNOSTICS, frameId }, { frameId: 0 })
       .then((reply) => {
-        if ((reply as CopyDiagnosticsReply | undefined)?.ok) flashBadge(tabId);
+        // The tick is for the clipboard, not for the report: a page that built one and
+        // could not copy it has to say so, or the reader pastes the last thing they cut.
+        const r = reply as CopyDiagnosticsReply | undefined;
+        flashBadge(tabId, r?.ok === true && r.via !== "none");
       })
-      .catch(() => undefined);
+      .catch(() => flashBadge(tabId, false));
   };
 
   /**
@@ -125,10 +151,11 @@ export default defineBackground(() => {
    * then goes back to the flagged count. Nothing new is drawn on the page, nothing is said
    * out loud, and the badge is already where a reader looks for this extension's state.
    */
-  const flashBadge = (tabId: number): void => {
+  const flashBadge = (tabId: number, copied: boolean): void => {
     if (!actionApi) return;
-    void actionApi.setBadgeBackgroundColor({ tabId, color: FLASH_COLOR });
-    void actionApi.setBadgeText({ tabId, text: FLASH_TEXT });
+    const flash = copied ? FLASH_OK : FLASH_FAIL;
+    void actionApi.setBadgeBackgroundColor({ tabId, color: flash.color });
+    void actionApi.setBadgeText({ tabId, text: flash.text });
     setTimeout(() => {
       // Whatever the tab is showing NOW, not what it showed when the tick went up: a scan
       // that finished during the flash has already sent its count, and that is the number
@@ -155,7 +182,26 @@ export default defineBackground(() => {
       return;
     }
     if (info.menuItemId === "anagram-copy-diagnostics") {
-      if (tab?.id != null) copyDiagnostics(tab.id, info.frameId ?? 0);
+      if (tab?.id == null) return;
+      const tabId = tab.id;
+      const frameId = info.frameId ?? 0;
+      if (!CLIPBOARD_OPTIONAL || clipboardGranted === true) {
+        copyDiagnostics(tabId, frameId);
+        return;
+      }
+      // FIRST USE ON FIREFOX. The request is made here, synchronously, because this
+      // listener still counts as the user input that opened the menu and nothing after an
+      // await would. Granted once, it sticks, and `clipboardGranted` spares every later
+      // use even the question. Declined, the badge says so and nothing else happens —
+      // there is no second place for this feature to nag from.
+      void browser.permissions.request({ permissions: ["clipboardWrite"] }).then(
+        (granted) => {
+          clipboardGranted = granted;
+          if (granted) copyDiagnostics(tabId, frameId);
+          else flashBadge(tabId, false);
+        },
+        () => flashBadge(tabId, false),
+      );
       return;
     }
     if (info.menuItemId !== "anagram-analyze-selection" || tab?.id == null) return;

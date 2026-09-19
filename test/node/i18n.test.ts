@@ -379,6 +379,7 @@ describe("the English each bundle carries", () => {
         "localeTag",
         "menuAnalyzePage",
         "menuAnalyzeSelection",
+        "menuCopyDiagnostics",
         "menuOpenPdf",
       ]);
     });

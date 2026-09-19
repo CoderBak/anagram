@@ -54,11 +54,22 @@ Notable changes to Anagram, newest first. The format follows
   Underneath, it is an on-demand chunk (`public/vendor/diagnostics.min.mjs`,
   46 kB, built from the tree before every build and on install, never
   committed) rather than twenty kilobytes added to the content script that runs
-  on every page — which grows by 2.9 kB, the menu entry and the glue. The
-  manifest gains `clipboardWrite`: the copy happens when the worker's message
-  reaches the page, which is no gesture handler, and Firefox refuses a content
-  script both clipboard routes outside one. Neither browser shows a warning
-  for it.
+  on every page — which grows by 2.9 kB, the menu entry and the glue.
+
+  It asks for no new permission on Chrome: the copy happens when the worker's
+  menu message reaches the page, which is no longer a user-input handler, and
+  that is all the async clipboard API wants of a content script whose tab is
+  focused — which the click has just made it. Firefox refuses a content script
+  both clipboard routes outside a user-input handler, so the Firefox manifest
+  declares `clipboardWrite` **optional** and the worker asks for it from inside
+  the menu click itself, once; granted, it sticks and is never asked for again.
+  It is not a required permission because a clipboard permission is a sentence
+  in the install dialog ("Input data to the clipboard"; Chrome words it "Modify
+  data you copy and paste") and, added to a published extension, it disables it
+  until every user re-accepts — too much for a menu entry most readers will
+  never open. Declined, or refused for any other reason, nothing is copied and
+  the badge flashes "!" instead of "✓" rather than leaving the reader to paste
+  whatever they cut last.
 
 - **Simplified Chinese**, following the browser's UI language. There is no
   setting and no picker: a browser running in `zh`, `zh-CN`, `zh-Hans*` or

@@ -69,11 +69,12 @@ function uiLanguage(): string {
 
 /**
  * Copy with the execCommand fallback, the way the chip's own "Copy" action does
- * (lib/render/badge.ts). The async API is tried first because it is the one that works
- * without a live user gesture — a context-menu click focuses the tab, which is what Chrome
- * asks of it — and the hidden textarea covers the browsers that want a gesture instead
- * (Firefox without `clipboardWrite`), a permission this feature deliberately does not ask
- * for.
+ * (lib/render/badge.ts). The async API is tried first because it is the one that answers
+ * without a live user gesture: a context-menu click focuses the tab, which is all Chrome
+ * asks of it, and no clipboard permission is declared there. Firefox wants the gesture
+ * that is already over by the time this runs, so the worker asks it for the OPTIONAL
+ * `clipboardWrite` inside the click itself; without that both routes below refuse, and
+ * "none" is what the badge is told.
  */
 async function copyText(text: string): Promise<CopyResult["via"]> {
   try {
