@@ -240,6 +240,81 @@ describe("reflowPdf — two columns", () => {
     expect(blocks).toHaveLength(1);
     expect(blocks[0].text).toBe(lines.join(" "));
   });
+
+  it("reads a page whose second column stops half way as two columns still", () => {
+    const left = Array.from({ length: 12 }, (_, i) => `left line ${i} of the page.`);
+    const right = Array.from({ length: 6 }, (_, i) => `Right line ${i} of it.`);
+    const blocks = reflowPdf([
+      page(1, [...column(left, 120, 72, 200), ...column(right, 120, 320, 200)]),
+    ]);
+    expect(texts(blocks)).toEqual([left.join(" "), right.join(" ")]);
+  });
+});
+
+describe("reflowPdf — three columns", () => {
+  /** Three measures of 150 points with a 21-point gutter between them. */
+  const XS = [60, 231, 402];
+  const MEASURE = 150;
+  const across = (columns: string[][], top: number): Placed[] =>
+    columns.flatMap((lines, i) => column(lines, top, XS[i], MEASURE));
+
+  const COLS = [
+    ["the first column of", "a three column page", "holds these lines", "and they belong", "together as one", "paragraph of prose."],
+    ["The middle column is", "separate from both", "of its neighbours", "and has to be read", "second of the three", "in the final order."],
+    ["The third column ends", "the page and must be", "read last of all the", "three rather than", "woven into either of", "the ones beside it."],
+  ];
+  const joined = COLS.map((lines) => lines.join(" "));
+
+  it("reads three columns one after another, not line by line across the page", () => {
+    const blocks = reflowPdf([page(1, across(COLS, 120))]);
+    expect(texts(blocks)).toEqual(joined);
+  });
+
+  it("reads full-width matter in its place between the columns it separates", () => {
+    const abstract = ["a full width abstract opens the page and", "runs the whole measure before the columns", "below it begin, as a paper's first page does."];
+    const caption = "Figure 1: a figure spanning the full width of the page.";
+    const below = COLS.map((lines) => lines.slice(0, 5).map((t) => `${t} again`));
+    const blocks = reflowPdf([
+      page(1, [
+        ...column(abstract, 100, 60, 492),
+        ...across(COLS, 170),
+        { text: caption, x: 60, y: 270, size: 9, font: "caption", width: 492 },
+        ...across(below, 300),
+      ]),
+    ]);
+    expect(texts(blocks)).toEqual([
+      abstract.join(" "),
+      ...joined,
+      caption,
+      ...below.map((lines) => lines.join(" ")),
+    ]);
+  });
+
+  it("does not take a table's column gaps for gutters", () => {
+    const rows = ["one", "two", "three", "four", "five"].map((n, i) => [
+      { text: `row ${n} left`, x: 72, y: 100 + i * PITCH, width: 100 },
+      { text: `row ${n} middle`, x: 220, y: 100 + i * PITCH, width: 100 },
+      { text: `row ${n} right`, x: 380, y: 100 + i * PITCH, width: 100 },
+    ]);
+    const prose = Array.from({ length: 10 }, (_, i) => `prose line ${i} under the table`);
+    const blocks = reflowPdf([page(1, [...rows.flat(), ...column(prose, 220, 72, 240)])]);
+    expect(blocks[0].text).toContain("row one left row one middle row one right");
+    expect(texts(blocks)).toContain(prose.join(" "));
+  });
+
+  it("does not take the wide word spaces of justified text for a gutter", () => {
+    // Every line is set with one space stretched wider than the type, near the middle of
+    // the measure but never in the same place twice — which is what justification does,
+    // and what a gutter never does.
+    const gaps = [246, 292, 264, 338, 310, 274, 324, 254, 300, 346, 282, 316];
+    const items = gaps.flatMap((gap, i) => [
+      { text: `the first half of justified line ${i}`, x: 72, y: 100 + i * PITCH, width: gap - 72 },
+      { text: "and the second half of it here", x: gap + 16, y: 100 + i * PITCH, width: 532 - gap - 16 },
+    ]);
+    const blocks = reflowPdf([page(1, items)]);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].text).toContain("the first half of justified line 0 and the second half of it here");
+  });
 });
 
 describe("reflowPdf — furniture", () => {

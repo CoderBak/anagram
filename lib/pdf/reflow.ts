@@ -70,12 +70,29 @@ const BASELINE_TOL = 0.55;
 const SPACE_GAP = 0.2;
 /** Below this many lines a page is a title page — not enough of a layout to read. */
 const MIN_LINES_FOR_COLUMNS = 6;
-/** At most this share of a page's lines may cross the gutter of a two-column page. */
-const GUTTER_CROSS_MAX = 0.12;
-/** Each column of a two-column page holds at least this share of the page's lines. */
-const COLUMN_MIN_SHARE = 0.25;
+/**
+ * A column holds at least this share of an even split of the page's runs — half of a
+ * 1/N share. At two columns that is the 0.25 the two-column rule always used; at three
+ * it is 0.167, which a table's stray gap or a ragged indent never reaches.
+ */
+const COLUMN_EVEN_SHARE = 0.5;
 /** A gutter narrower than this share of the page width is just word spacing. */
 const GUTTER_MIN_WIDTH = 0.015;
+/**
+ * A gutter runs the height of the page. Cut the page's text into horizontal bands and a
+ * real gutter is clear, with text on BOTH sides of it, in at least this share of the
+ * bands that hold any text at all — which a table's column gaps (a few bands deep) and
+ * the ragged indent of a list (text on one side only) never manage. Below half rather
+ * than above, because a full-width title, abstract, spanning table or figure legitimately
+ * covers the gutter for a third of the page and the columns below it are still columns.
+ */
+const GUTTER_BAND_SHARE = 0.45;
+/** How many horizontal bands that test cuts a page into. */
+const GUTTER_BANDS = 12;
+/** How finely the page is scanned across for run-free columns of white. */
+const GUTTER_CELLS = 400;
+/** More columns than a newspaper prints: past this the page is a grid, not a text page. */
+const MAX_COLUMNS = 5;
 /**
  * The margin bands, as a share of the page height. They are not symmetric because the
  * furniture is not: a running head sits just under the top edge, while a page number
@@ -217,8 +234,15 @@ function groupIntoLines(page: PdfPageText): Line[] {
 
 // ---- columns --------------------------------------------------------------------------
 
+/** A candidate gutter: a band of white, and the share of the page's height it divides. */
+interface Band {
+  from: number;
+  to: number;
+  divides: number;
+}
+
 /**
- * Where does this page's gutter run, if it has one?
+ * Where do this page's gutters run, if it has any?
  *
  * The test is made on RUNS, not on lines: two columns printed level with each other
  * share a baseline, so at this point nearly every line of a two-column page already
@@ -226,98 +250,172 @@ function groupIntoLines(page: PdfPageText): Line[] {
  * "all of them" on exactly the pages that have a gutter. A run is different — it is a
  * piece of one column — so a gutter is a vertical band no run covers.
  *
- * Two guards keep single-column pages out. The band has to be wider than the text's own
- * type size, which a chance alignment of word spaces down a justified page never is; and
- * each side has to carry a real share of the page's runs.
+ * The page is cut into horizontal bands and scanned across into narrow cells. A cell
+ * DIVIDES a band when no run covers it there and runs stand on both sides of it within
+ * that band; a gutter is a run of neighbouring cells, wider than the type, that divide
+ * most of the bands holding text. Asking it band by band rather than page-wide is what
+ * tells a gutter from everything that looks like one: a table's column gaps divide only
+ * the bands the table occupies, a ragged list's indent has text on one side only, and a
+ * wide word space in justified text would have to fall in the same place in every line
+ * of half the page. A spanning title costs the gutter only the bands it covers.
+ *
+ * Three columns are as ordinary as two — newspapers, posters, reference sections — so
+ * the bands that divide best are taken in turn until the columns they would leave stop
+ * carrying a real share of the page's runs, rather than one gutter being sought in the
+ * middle of the page.
  */
-function findGutter(lines: Line[], pageWidth: number): number | null {
-  if (lines.length < MIN_LINES_FOR_COLUMNS) return null;
+function findGutters(lines: Line[], pageWidth: number): number[] {
+  if (lines.length < MIN_LINES_FOR_COLUMNS) return [];
   const items = lines.flatMap((l) => l.items);
   const left = Math.min(...lines.map((l) => l.x0));
   const right = Math.max(...lines.map((l) => l.x1));
   const span = right - left;
-  if (span < pageWidth * 0.4) return null;
+  if (span < pageWidth * 0.4) return [];
   const size = median(lines.map((l) => l.size));
   const minWidth = Math.max(pageWidth * GUTTER_MIN_WIDTH, size * 1.2);
 
-  const step = Math.max(1, span / 200);
-  let best: { at: number; score: number } | null = null;
-  for (let s = left + span * 0.3; s <= left + span * 0.7; s += step) {
-    let crossing = 0;
-    let leftEdge = Number.NEGATIVE_INFINITY;
-    let rightEdge = Number.POSITIVE_INFINITY;
-    let lft = 0;
-    let rgt = 0;
-    for (const it of items) {
-      const end = it.x + it.width;
-      if (it.x < s && end > s) crossing++;
-      else if (end <= s) {
-        lft++;
-        leftEdge = Math.max(leftEdge, end);
-      } else {
-        rgt++;
-        rightEdge = Math.min(rightEdge, it.x);
+  const cell = span / GUTTER_CELLS;
+  const top = Math.min(...items.map((it) => it.y));
+  const depth = (Math.max(...items.map((it) => it.y)) - top) / GUTTER_BANDS || 1;
+  // Which cells each band's runs cover, accumulated as differences so one pass over the
+  // runs is enough however finely the page is scanned.
+  const covers = Array.from({ length: GUTTER_BANDS }, () => new Float64Array(GUTTER_CELLS + 1));
+  for (const it of items) {
+    const band = Math.min(GUTTER_BANDS - 1, Math.max(0, Math.floor((it.y - top) / depth)));
+    const from = Math.min(GUTTER_CELLS - 1, Math.max(0, Math.floor((it.x - left) / cell)));
+    const to = Math.min(GUTTER_CELLS - 1, Math.ceil((it.x + it.width - left) / cell) - 1);
+    if (to < from) continue;
+    covers[band][from] += 1;
+    covers[band][to + 1] -= 1;
+  }
+
+  const divides = new Int32Array(GUTTER_CELLS);
+  let withText = 0;
+  for (const band of covers) {
+    const covered = new Uint8Array(GUTTER_CELLS);
+    let first = -1;
+    let last = -1;
+    let depthCount = 0;
+    for (let c = 0; c < GUTTER_CELLS; c++) {
+      depthCount += band[c];
+      if (depthCount > 0) {
+        covered[c] = 1;
+        if (first < 0) first = c;
+        last = c;
       }
     }
-    if (crossing > items.length * GUTTER_CROSS_MAX) continue;
-    if (lft < items.length * COLUMN_MIN_SHARE || rgt < items.length * COLUMN_MIN_SHARE) continue;
-    const width = rightEdge - leftEdge;
-    if (width < minWidth) continue;
-    const score = width - crossing * size;
-    if (!best || score > best.score) best = { at: leftEdge + width / 2, score };
+    if (first < 0) continue; // a band of the page with no text in it at all
+    withText++;
+    for (let c = first + 1; c < last; c++) if (!covered[c]) divides[c] += 1;
   }
-  return best?.at ?? null;
+  if (withText === 0) return [];
+
+  const bands: Band[] = [];
+  let open = -1;
+  let sum = 0;
+  for (let c = 0; c <= GUTTER_CELLS; c++) {
+    const share = c < GUTTER_CELLS ? divides[c] / withText : 0;
+    if (share >= GUTTER_BAND_SHARE) {
+      if (open < 0) {
+        open = c;
+        sum = 0;
+      }
+      sum += share;
+      continue;
+    }
+    if (open >= 0) {
+      const from = left + open * cell;
+      const to = left + c * cell;
+      if (to - from >= minWidth) bands.push({ from, to, divides: sum / (c - open) });
+      open = -1;
+    }
+  }
+
+  // The bands that divide best first, each kept only while every column it would leave
+  // behind still carries its share of the runs.
+  bands.sort((a, b) => b.divides - a.divides || b.to - b.from - (a.to - a.from));
+  const chosen: number[] = [];
+  for (const band of bands) {
+    if (chosen.length >= MAX_COLUMNS - 1) break;
+    const next = [...chosen, (band.from + band.to) / 2].sort((a, b) => a - b);
+    if (columnsHold(items, next)) chosen.splice(0, chosen.length, ...next);
+  }
+  return chosen;
+}
+
+/** Would these gutters leave every column with a real share of the page's runs? */
+function columnsHold(items: PdfTextItem[], gutters: number[]): boolean {
+  const counts = new Array<number>(gutters.length + 1).fill(0);
+  for (const it of items) {
+    const col = columnOf(it.x, it.x + it.width, gutters);
+    if (col >= 0) counts[col]++;
+  }
+  const floor = (items.length * COLUMN_EVEN_SHARE) / counts.length;
+  return counts.every((n) => n >= floor);
+}
+
+/** Which column a run sits in, or -1 when it straddles a gutter and belongs to none. */
+function columnOf(x0: number, x1: number, gutters: number[]): number {
+  let col = 0;
+  for (const g of gutters) {
+    if (x0 < g && x1 > g) return -1;
+    if (x0 >= g) col++;
+  }
+  return col;
 }
 
 /**
- * Tag each line with its column, splitting the ones that only LOOK full-width: two
- * columns printed level with each other share a baseline, so they arrive as one line
- * with a hole in the middle. A line with a run that actually straddles the gutter is
- * the real thing — a title, a spanning header — and stays whole.
+ * Tag each line with its column, splitting the ones that only LOOK full-width: columns
+ * printed level with each other share a baseline, so they arrive as one line with holes
+ * in the middle. A line with a run that actually straddles a gutter is the real thing —
+ * a title, a spanning header — and stays whole.
  */
-function splitColumns(lines: Line[], gutter: number): Line[] {
+function splitColumns(lines: Line[], gutters: number[]): Line[] {
   const out: Line[] = [];
   for (const line of lines) {
-    if (line.x1 <= gutter) {
-      out.push({ ...line, col: 0 });
-      continue;
+    const parts = new Map<number, PdfTextItem[]>();
+    let spans = false;
+    for (const it of line.items) {
+      const col = columnOf(it.x, it.x + it.width, gutters);
+      if (col < 0) {
+        spans = true;
+        break;
+      }
+      const part = parts.get(col);
+      if (part) part.push(it);
+      else parts.set(col, [it]);
     }
-    if (line.x0 >= gutter) {
-      out.push({ ...line, col: 1 });
-      continue;
-    }
-    const straddles = line.items.some((it) => it.x < gutter && it.x + it.width > gutter);
-    const lft = line.items.filter((it) => it.x + it.width <= gutter);
-    const rgt = line.items.filter((it) => it.x >= gutter);
-    if (straddles || lft.length === 0 || rgt.length === 0) {
+    if (spans) {
       out.push({ ...line, col: -1 });
       continue;
     }
-    out.push({ ...makeLine(line.page, lft), col: 0 }, { ...makeLine(line.page, rgt), col: 1 });
+    const cols = [...parts.keys()].sort((a, b) => a - b);
+    if (cols.length <= 1) {
+      out.push({ ...line, col: cols[0] ?? 0 });
+      continue;
+    }
+    for (const col of cols) out.push({ ...makeLine(line.page, parts.get(col) ?? []), col });
   }
   return out;
 }
 
 /**
- * Reading order for a two-column page: a full-width line closes whatever both columns
- * have collected and is read in place, so a paper's title and abstract come before its
- * columns and a spanning table separates the columns above it from the ones below.
+ * Reading order for a page in columns: a full-width line closes whatever every column
+ * has collected and is read in place, so a paper's title and abstract come before its
+ * columns and a spanning figure separates the columns above it from the ones below.
  */
-function orderColumns(lines: Line[]): Line[] {
+function orderColumns(lines: Line[], columns: number): Line[] {
   const out: Line[] = [];
-  let lft: Line[] = [];
-  let rgt: Line[] = [];
+  let held: Line[][] = Array.from({ length: columns }, () => []);
   const flush = (): void => {
-    out.push(...lft, ...rgt);
-    lft = [];
-    rgt = [];
+    for (const column of held) out.push(...column);
+    held = Array.from({ length: columns }, () => []);
   };
   for (const line of lines) {
-    if (line.col === -1) {
+    if (line.col < 0 || line.col >= columns) {
       flush();
-      out.push(line);
-    } else if (line.col === 0) lft.push(line);
-    else rgt.push(line);
+      out.push({ ...line, col: -1 });
+    } else held[line.col].push(line);
   }
   flush();
   return out;
@@ -655,8 +753,10 @@ export function reflowPdf(pages: PdfPageText[]): ReflowBlock[] {
 
   const perPage = pages.map((p) => {
     const lines = groupIntoLines(p);
-    const gutter = findGutter(lines, p.width);
-    return gutter === null ? lines : orderColumns(splitColumns(lines, gutter));
+    const gutters = findGutters(lines, p.width);
+    return gutters.length === 0
+      ? lines
+      : orderColumns(splitColumns(lines, gutters), gutters.length + 1);
   });
 
   const drop = findMarginLines(perPage, pages);
