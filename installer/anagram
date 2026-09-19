@@ -199,6 +199,7 @@ cmd_start() {
   # stop, restart and update signal is the process that holds the port, with no wrapper
   # shell in between. nohup keeps it alive when the terminal goes away; its output is
   # already redirected, so it writes no nohup.out anywhere.
+  # shellcheck disable=SC2209  # the literal word "exec", not the output of a command
   ( CLEAN_EXEC=exec
     clean_env HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
       nohup "$PY" "$APP" --model-dir "$MODEL_DIR" --lid-model "$LID" --host 127.0.0.1 --port "$PORT"
