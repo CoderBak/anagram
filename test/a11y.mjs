@@ -122,7 +122,7 @@ const BASELINE = [
   {
     where: "options (two site rules, add-rule error) [light]",
     rule: "color-contrast",
-    target: "17 nodes: <code> spans and .shortcuts .kbd",
+    target: "18 nodes: <code> spans (including the new Advanced field's) and .shortcuts .kbd",
     why: "The same #737373-on-#f5f5f5 pair, here on every inline <code> (the daemon commands and URLs a user has to read to fix a broken install) and on the shortcut keys.",
   },
   {
@@ -148,25 +148,32 @@ const BASELINE = [
   {
     where: "options (two site rules, add-rule error) [light]",
     rule: "region",
-    target: "18 nodes: every .card and the table rows",
+    target: "20 nodes: every .card, the table rows and the new Advanced field",
     why: "Consequence of the missing <main>: none of the page's content sits in a landmark, so a screen-reader user cannot navigate it by region.",
   },
-  { where: "options (two site rules, add-rule error) [dark]", rule: "region", target: "18 nodes", why: "Same, dark scheme." },
+  { where: "options (two site rules, add-rule error) [dark]", rule: "region", target: "20 nodes", why: "Same, dark scheme." },
   {
     where: "onboarding (daemon up) [light]",
     rule: "color-contrast",
     target: "10 nodes: .kbd keys and <code>",
     why: "The same Basecoat .kbd / <code> pair (4.34:1) on the first page a new user ever sees.",
   },
-  { where: "onboarding (daemon down) [light]", rule: "color-contrast", target: "10 nodes: .kbd keys and <code>", why: "Same page, daemon-down state." },
+  {
+    where: "onboarding (daemon down) [light]",
+    rule: "color-contrast",
+    target: "11 nodes: #install-cmd plus the same .kbd keys and <code>",
+    why:
+      "Same page in its daemon-down state, where the setup strip also prints the install " +
+      "command as a <code> pill — the one line a user has to read to get anywhere.",
+  },
   { where: "onboarding (daemon up) [light]", rule: "landmark-one-main", target: "html", why: "The onboarding page has no <main> either." },
   { where: "onboarding (daemon up) [dark]", rule: "landmark-one-main", target: "html", why: "Same, dark scheme." },
   { where: "onboarding (daemon down) [light]", rule: "landmark-one-main", target: "html", why: "Same, daemon-down state." },
   { where: "onboarding (daemon down) [dark]", rule: "landmark-one-main", target: "html", why: "Same, daemon-down state, dark scheme." },
-  { where: "onboarding (daemon up) [light]", rule: "region", target: "8 nodes: .lede and every .card", why: "Consequence of the missing <main>." },
-  { where: "onboarding (daemon up) [dark]", rule: "region", target: "8 nodes", why: "Same, dark scheme." },
-  { where: "onboarding (daemon down) [light]", rule: "region", target: "8 nodes", why: "Same, daemon-down state." },
-  { where: "onboarding (daemon down) [dark]", rule: "region", target: "8 nodes", why: "Same, daemon-down state, dark scheme." },
+  { where: "onboarding (daemon up) [light]", rule: "region", target: "9 nodes: .lede, the setup strip's card header and every other .card", why: "Consequence of the missing <main>." },
+  { where: "onboarding (daemon up) [dark]", rule: "region", target: "9 nodes", why: "Same, dark scheme." },
+  { where: "onboarding (daemon down) [light]", rule: "region", target: "10 nodes (the install line joins them)", why: "Same, daemon-down state." },
+  { where: "onboarding (daemon down) [dark]", rule: "region", target: "10 nodes", why: "Same, daemon-down state, dark scheme." },
   {
     where: "reader (empty, file picker) [light]",
     rule: "page-has-heading-one",
@@ -191,7 +198,7 @@ const CODE_BASELINE = [
   { check: "target", where: "selection card", item: "button.close", why: "The selection card's close button is 13.2x16 — the smallest target in the product. lib/render/selectionCard.ts .close." },
   { check: "target", where: "popup", item: "input#enabled", why: "Basecoat's switch renders 24x14 (also #highlights, and #siteEnabled when the walk reaches it). Height is 10 px short." },
   { check: "target", where: "popup", item: "input#highlights", why: "Same switch control." },
-  { check: "target", where: "popup", item: "button", why: "The segmented display-mode / scope tabs are 23.1 px tall — under by a pixel, and only because the tablist is 30 px with 2 px padding." },
+  { check: "target", where: "popup", item: "button", why: "The segmented display-mode / scope tabs are 23.1 px tall — under by a pixel, and only because the tablist is 30 px with 2 px padding. Two nodes." },
   { check: "target", where: "options (two site rules, add-rule error)", item: "input#enabled", why: "Basecoat's full-size switch is 32x18.4 on the options page (also #mergeShorts, #highlights, #debug)." },
   { check: "target", where: "options (two site rules, add-rule error)", item: "input#mergeShorts", why: "Same switch control." },
   { check: "target", where: "options (two site rules, add-rule error)", item: "input#highlights", why: "Same switch control." },
@@ -544,6 +551,41 @@ function installProbe() {
     return { w: Math.round(r.width * 10) / 10, h: Math.round(r.height * 10) / 10 };
   };
 
+  /**
+   * WCAG 2.5.8 measures the region that ACCEPTS THE POINTER, not the painted box: a
+   * control drawn smaller than 24x24 still passes if an invisible hit area (a positioned
+   * pseudo-element with a negative inset) brings it up. So the honest test is to ask the
+   * document what is actually under the corners and the centre of a 24x24 box on the
+   * control. elementFromPoint retargets to the shadow host from outside, so the question
+   * is put to the element's own root.
+   */
+  P.hit24 = (el) => {
+    const r = el.getBoundingClientRect();
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    // 11.99, not 11.5: the corners have to be the corners of a 24 px box. Sampling half a
+    // pixel in would pass a control drawn 23.1 px tall, which is exactly the case this
+    // check exists to catch.
+    const E = 11.99;
+    const pts = [
+      [cx - E, cy - E],
+      [cx + E, cy - E],
+      [cx - E, cy + E],
+      [cx + E, cy + E],
+      [cx, cy],
+    ];
+    const root = el.getRootNode();
+    const at = (x, y) => (root.elementFromPoint ? root.elementFromPoint(x, y) : document.elementFromPoint(x, y));
+    const misses = [];
+    for (const [x, y] of pts) {
+      const hit = at(x, y);
+      if (!hit || (hit !== el && !el.contains(hit))) {
+        misses.push(hit ? hit.tagName.toLowerCase() + (hit.classList.length ? "." + hit.classList[0] : "") : "nothing");
+      }
+    }
+    return { ok: misses.length === 0, misses: [...new Set(misses)] };
+  };
+
   // ---- colour ---------------------------------------------------------------------
   const parse = (str) => {
     const m = String(str).match(/rgba?\(([^)]+)\)/);
@@ -810,6 +852,11 @@ const PAGE_SPECS = [
     url: () => extUrl("onboarding.html"),
     viewport: { width: 1100, height: 900 },
     async prepare(page) {
+      // The setup strip is live: scanning it mid-probe would judge "checking…", not the
+      // state the reader ends up looking at.
+      await page
+        .waitForFunction(() => document.getElementById("row-daemon")?.dataset.state !== "idle", null, { timeout: 15000 })
+        .catch(() => {});
       await page.waitForFunction(() => (document.getElementById("backend-note")?.textContent ?? "") !== "", null, { timeout: 8000 }).catch(() => {});
     },
   },
@@ -1009,8 +1056,14 @@ for (const scheme of ["light", "dark"]) {
   await page
     .waitForFunction(() => /not running|Unavailable|update it/.test(document.getElementById("backend-note")?.textContent ?? ""), null, { timeout: 15000 })
     .catch(() => {});
+  await page
+    .waitForFunction(() => document.getElementById("row-daemon")?.dataset.state === "bad", null, { timeout: 15000 })
+    .catch(() => {});
   await settle(page, scheme);
   await axeScan(page, `onboarding (daemon down) [${scheme}]`);
+  // The setup strip's Copy pills, its "Open options" link and the install command exist
+  // ONLY while the daemon is down, so this is the only pass that can see them.
+  if (scheme === "light") await pageCodeChecks(page, "onboarding (daemon down)");
   await page.close();
 }
 {
@@ -1074,6 +1127,7 @@ async function tabWalk(page, { max = 60, startFromTop = true } = {}) {
         tabindex: el.getAttribute("tabindex"),
         name: window.__a11y.name(el),
         rect: window.__a11y.rect(el),
+        hit: window.__a11y.hit24(el),
         focused: window.__a11y.focusStyle(el),
       };
     }, i);
@@ -1114,15 +1168,31 @@ function judgeStops(where, stops) {
     stops.length,
     stops.filter((s) => !s.ring).map((s) => ({ key: tail(s.path), detail: `${tail(s.path)} (no computed change on :focus-visible)`, path: s.path })),
   );
+  // Painted smaller than 24x24 is not a failure on its own — an invisible hit area counts.
+  const drawnSmall = stops.filter((s) => s.rect.w < 24 || s.rect.h < 24);
   recordFindings(
     "target",
     where,
-    "every control is at least 24x24 CSS px (WCAG 2.2 target size, minimum)",
+    "every control accepts a pointer over at least 24x24 CSS px (WCAG 2.2 target size, minimum)",
     stops.length,
-    stops
-      .filter((s) => s.rect.w < 24 || s.rect.h < 24)
-      .map((s) => ({ key: tail(s.path), detail: `${tail(s.path)} ${s.rect.w}x${s.rect.h}`, path: s.path, ...s.rect })),
+    drawnSmall
+      .filter((s) => !s.hit.ok)
+      .map((s) => ({
+        key: tail(s.path),
+        detail: `${tail(s.path)} drawn ${s.rect.w}x${s.rect.h}, 24x24 box hits ${s.hit.misses.join("/")}`,
+        path: s.path,
+        ...s.rect,
+      })),
   );
+  const rescued = drawnSmall.filter((s) => s.hit.ok);
+  if (rescued.length) {
+    record(
+      "target",
+      `${where}: controls drawn under 24x24 that reach it through a hit area`,
+      true,
+      rescued.map((s) => `${tail(s.path)} ${s.rect.w}x${s.rect.h}`).join(", "),
+    );
+  }
 }
 
 /** Name / focus ring / hit target for every keyboard-reachable control on a page. */
@@ -1363,6 +1433,7 @@ async function selectionCardCodeChecks(page) {
     return {
       name: window.__a11y.name(close),
       rect: window.__a11y.rect(close),
+      hit: window.__a11y.hit24(close),
       path: window.__a11y.path(close),
     };
   });
@@ -1378,9 +1449,9 @@ async function selectionCardCodeChecks(page) {
   recordFindings(
     "target",
     "selection card",
-    "the close button is at least 24x24 CSS px",
+    "the close button accepts a pointer over at least 24x24 CSS px",
     1,
-    info.rect.w >= 24 && info.rect.h >= 24 ? [] : [{ key: tail(info.path), detail: `${tail(info.path)} ${info.rect.w}x${info.rect.h}` }],
+    info.hit.ok ? [] : [{ key: tail(info.path), detail: `${tail(info.path)} drawn ${info.rect.w}x${info.rect.h}, 24x24 box hits ${info.hit.misses.join("/")}` }],
   );
   await ourTextContrast(page, "selection card", "#a11y-sel-card");
 }
