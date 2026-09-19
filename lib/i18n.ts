@@ -10,9 +10,17 @@
 // and the vitest suites import lib/ straight into Node. Neither has `browser.i18n`, and
 // neither should have to gain one — so every lookup falls back to the English message
 // compiled in here, and those suites keep reading exactly the English they always did.
-// The same fallback covers a key the platform has no answer for (getMessage returns "").
-// Only the messages travel in the bundle: wxt.config.ts strips the translator
-// descriptions out of this import, which is most of the file's weight.
+// The same fallback covers a key the platform has no answer for (getMessage returns "")
+// and a content script whose extension context was invalidated (getMessage throws).
+//
+// Only what a bundle can show travels in it: wxt.config.ts answers this import per build
+// with the translator descriptions stripped and the messages that build's own entry can
+// never name left out — the content script carries no options, onboarding or popup
+// string, the background worker carries its menu titles. Everything else (the esbuild
+// bundle, vitest) still reads the whole file. A key that is nonetheless missing here is
+// no crash: the extension's own _locales/ is always complete, so the platform answers
+// it, and where there is no platform the key name comes back rather than nothing.
+// See scripts/i18nSubset.ts.
 //
 // Placeholders are the WebExtension positional kind — $1, $2 — and nothing else, so the
 // substitution below and the platform's own agree to the character. A message never
@@ -53,7 +61,10 @@ export function t(key: MessageKey, ...subs: (string | number)[]): string {
   } catch {
     /* an extension context that has just been invalidated — the English still works */
   }
-  return fill(EN[key].message, list);
+  // Undefined only where this bundle was built without the key AND there is no platform
+  // to ask: the key name is a legible last resort, and never a thrown TypeError.
+  const own: { message: string } | undefined = EN[key];
+  return own ? fill(own.message, list) : key;
 }
 
 /**

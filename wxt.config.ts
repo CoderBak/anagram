@@ -2,24 +2,53 @@ import { defineConfig } from "wxt";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  entryFilesOf,
+  keysUsedBy,
+  reachableSources,
+  subsetMessages,
+  unscanned,
+} from "./scripts/i18nSubset";
 
 /**
  * lib/i18n.ts imports the English messages so every lookup has a fallback where there is
- * no extension API (the esbuild unit bundle, vitest). What it needs from that file is the
- * messages; what makes the file big is the `description` on each one, which exists for
- * translators and is dead weight in six bundles — the content script pays it on every
- * page. This strips them on the way in, leaving the shape `{ key: { message } }` the
- * module reads either way.
+ * no extension API (the esbuild unit bundle, vitest) or no longer one (a content script
+ * whose extension context was invalidated). Two things about that file are dead weight in
+ * a bundle: the `description` on each message, which exists for translators, and — by far
+ * the larger — every message this particular bundle could never show. The content script
+ * runs on every web page and cannot open the options page, the onboarding page or the
+ * popup; the background worker only ever names its menu entries.
+ *
+ * So the import is answered per BUILD. WXT builds the background, each content script and
+ * the extension pages as separate Vite builds, and each one is handed the messages that
+ * the source files ITS entry can reach actually name — see scripts/i18nSubset.ts for how
+ * that set is derived and for the two assertions that make it safe. The shape is
+ * `{ key: { message } }` either way, which is what the module reads.
+ *
+ * A build with no entry we recognise — or any other consumer, `vitest` and the esbuild
+ * unit bundle among them — still gets the whole English file, only leaner.
  */
+const ROOT = fileURLToPath(new URL(".", import.meta.url)).replace(/[/\\]$/, "");
 const EN_MESSAGES = fileURLToPath(new URL("./public/_locales/en/messages.json", import.meta.url));
 const EN_MESSAGES_ID = "\0anagram:en-messages";
 
-function stripMessageDescriptions() {
+function englishFallback() {
+  let entries: string[] | undefined;
+  let scanned: string[] = [];
+  const loaded = new Set<string>();
   return {
-    name: "anagram:messages-without-descriptions",
+    name: "anagram:english-fallback",
     // Before the bundler's own JSON handling, which would otherwise parse the module we
     // return here as JSON: the import is answered with a module id of our own instead.
     enforce: "pre" as const,
+    configResolved(config: Parameters<typeof entryFilesOf>[0]) {
+      entries = entryFilesOf(config);
+      scanned = entries ? reachableSources(entries, ROOT) : [];
+    },
+    transform(_code: string, id: string) {
+      loaded.add(id);
+      return null;
+    },
     resolveId(source: string, importer: string | undefined) {
       if (!importer || !source.endsWith("_locales/en/messages.json")) return;
       return resolve(dirname(importer), source) === EN_MESSAGES ? EN_MESSAGES_ID : undefined;
@@ -27,9 +56,26 @@ function stripMessageDescriptions() {
     load(id: string) {
       if (id !== EN_MESSAGES_ID) return;
       const raw = JSON.parse(readFileSync(EN_MESSAGES, "utf8")) as Record<string, { message: string }>;
-      const lean: Record<string, { message: string }> = {};
-      for (const [key, entry] of Object.entries(raw)) lean[key] = { message: entry.message };
-      return `export default ${JSON.stringify(lean)};`;
+      if (!entries) return `export default ${JSON.stringify(subsetMessages(raw, Object.keys(raw)))};`;
+      const { keys, unknownKeys } = keysUsedBy(scanned, raw);
+      if (unknownKeys.length > 0) {
+        throw new Error(
+          `i18n: ${entries.join(", ")} asks for a message that is not in _locales/en/messages.json:\n  ${unknownKeys.join("\n  ")}`,
+        );
+      }
+      return `export default ${JSON.stringify(subsetMessages(raw, keys))};`;
+    },
+    // The scan follows our own imports; this is the bundler saying which files it really
+    // pulled in. A source file in the build that the scan never read could be naming a
+    // message we just left out, so it fails the build instead.
+    buildEnd() {
+      if (!entries) return;
+      const missed = unscanned(loaded, ROOT, scanned);
+      if (missed.length > 0) {
+        throw new Error(
+          `i18n: the build of ${entries.join(", ")} reached source files the message scan did not, so its English fallback may be missing keys. Teach scripts/i18nSubset.ts how they are imported:\n  ${missed.join("\n  ")}`,
+        );
+      }
     },
   };
 }
@@ -39,7 +85,7 @@ function stripMessageDescriptions() {
 export default defineConfig({
   // Build into ./output (not WXT's default ./.output) so it's visible in Finder.
   outDir: "output",
-  vite: () => ({ plugins: [stripMessageDescriptions()] }),
+  vite: () => ({ plugins: [englishFallback()] }),
   manifest: ({ browser }) => {
     const productName = browser === "firefox" ? "Anagram for Firefox" : "Anagram for Chrome";
     return {
