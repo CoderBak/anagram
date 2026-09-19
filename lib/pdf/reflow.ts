@@ -381,9 +381,12 @@ function findMarginLines(perPage: Line[][], pages: PdfPageText[]): Set<Line> {
 
 /**
  * Prefixes English keeps hyphenated even when a line break lands right after them.
- * Deliberately short: every entry here is a word we then fail to rejoin when it really
- * was a syllable break, so only the cases where the hyphen is almost always real belong.
- * The document's own vocabulary (see `compoundStems`) carries far more weight than this.
+ * Deliberately short, and the test for an entry is strict: no common word may have a
+ * syllable break immediately after it. "follow" fails that test ("follow-ing"), and so
+ * does "long" ("long-est") and "in" ("in-formation") — which is exactly why "in-depth",
+ * "follow-up" and "long-term" cannot be rescued by a list at all, and are left to the
+ * document's own vocabulary below. Every entry here is a word we then fail to rejoin
+ * when it really was a syllable break, so the list stays this short on purpose.
  */
 const KEEP_HYPHEN = new Set([
   "self",
@@ -401,57 +404,95 @@ const KEEP_HYPHEN = new Set([
 ]);
 
 /** Hyphens that are NOT at a line end: the document telling us its own compounds. */
-const INLINE_COMPOUND = /(\p{L}{2,})-(?=\p{L}{2,})/gu;
+const INLINE_COMPOUND = /(\p{L}{2,})-(\p{L}{2,})/gu;
+
+/** Whole words, for the fused spellings a document that writes "nonlinear" attests. */
+const WORD = /\p{L}{3,}/gu;
 
 /**
- * The compounds this document writes with a hyphen where no line break forced it.
- * "third-party" spelled out mid-line on one page is the best possible evidence that
- * "third-" at the end of a line on another page is not a syllable break — better than
- * any list we could ship, because it is this document's own usage.
+ * A line that stops this much of its column's measure short of the right edge was not
+ * broken by the typesetter: a hyphenation break happens because the rest of the word did
+ * not fit, so it leaves the line all but full. A quarter of the measure standing empty
+ * means the hyphen is the word's own.
  */
-function compoundStems(texts: string[]): Set<string> {
-  const stems = new Set<string>();
+const HYPHEN_MEASURE = 0.25;
+
+/**
+ * What the document says about its own compounds — the only dictionary available, and a
+ * better one than any list we could ship, because it is this document's usage.
+ */
+interface Vocabulary {
+  /** Compounds written WITH a hyphen where no line break forced it: "third-party". */
+  hyphenated: Set<string>;
+  /** Their first elements: "third", for the compound met only in its broken form. */
+  heads: Set<string>;
+  /** Every word written as one: "nonlinear" attests the mend of "non-/linear". */
+  fused: Set<string>;
+}
+
+/** Collect the evidence once per document — it is read at every broken line. */
+function vocabularyOf(texts: string[]): Vocabulary {
+  const vocab: Vocabulary = { hyphenated: new Set(), heads: new Set(), fused: new Set() };
   for (const text of texts) {
-    for (const m of text.matchAll(INLINE_COMPOUND)) stems.add(m[1].toLowerCase());
+    const lower = text.toLowerCase();
+    for (const m of lower.matchAll(INLINE_COMPOUND)) {
+      vocab.hyphenated.add(`${m[1]}-${m[2]}`);
+      vocab.heads.add(m[1]);
+    }
+    for (const m of lower.matchAll(WORD)) vocab.fused.add(m[0]);
   }
-  return stems;
+  return vocab;
 }
 
 /**
  * Was the hyphen at the end of a line put there by the typesetter (drop it) or is it
  * part of the word (keep it)? Nothing short of a dictionary can answer that for every
- * case — "state-of-the-art" broken after "state-" is genuinely ambiguous — so the rule
- * is conservative and stated plainly. The hyphen goes only when all of this holds:
+ * case, so the rule weighs only the evidence the document itself supplies, in this order:
  *
- *   - the next line resumes in lower case (so "Anglo-/Saxon" keeps its hyphen);
- *   - the stem is two letters or more, so "e-/mail" and "x-/ray" keep theirs;
- *   - the stem is not an acronym in capitals ("US-/based", "AI-/generated");
- *   - neither the stem nor the continuation's first token carries a second hyphen,
- *     which is what saves "state-of-the-/art" and "state-/of-the-art";
- *   - the stem is not one of the modifiers above;
- *   - and the document does not spell that compound out somewhere no line break forced
- *     it to, which is the evidence `compoundStems` collects.
+ *   (a) the document writes "in-depth" somewhere no line break forced it to  → keep;
+ *       it writes "straightforward" as one word somewhere                    → join.
+ *       This is the strongest signal there is and it outranks everything below.
+ *   (b) the stem carries a hyphen of its own ("state-of-the-/art")           → keep,
+ *       and so does the continuation ("state-/of-the-art").
+ *   (c) the continuation opens in upper case or with a digit ("Anglo-/Saxon",
+ *       "COVID-/19"), or the stem is an acronym ("AI-/generated"), or the stem is a
+ *       single letter ("e-/mail", "x-/ray")                                  → keep.
+ *   (d) the stem is one of the modifiers above                               → keep.
+ *   (e) lower case broken to lower case, with nothing said against it        → join,
+ *       which is what a line break in running text nearly always is.
  *
- * Everything else keeps its hyphen. The cost of the rule is visible and accepted: a
- * compound split after a modifier neither the list nor the document names comes back
- * fused.
+ * The cost of (e) is visible and accepted: a compound the document never spells out and
+ * no rule above catches — "in-/depth" in a document that writes it exactly once, broken
+ * — comes back fused. Spending a kept hyphen on every unattested compound instead would
+ * leave far more real words ("straightfor-ward") broken, which reads worse to a scorer.
  */
-function dehyphenates(stem: string, head: string, compounds: Set<string>): boolean {
+function dehyphenates(stem: string, head: string, vocab: Vocabulary): boolean {
   if (!/^\p{Ll}/u.test(head)) return false;
   if (!/^\p{L}{2,}$/u.test(stem)) return false;
   if (stem === stem.toUpperCase()) return false;
-  if (head.split(/\s/)[0].includes("-")) return false;
+  const next = /^\p{L}+(?:-\p{L}+)*/u.exec(head)?.[0] ?? "";
+  if (next.includes("-")) return false;
   const lower = stem.toLowerCase();
-  return !KEEP_HYPHEN.has(lower) && !compounds.has(lower);
+  const tail = next.toLowerCase();
+  if (vocab.hyphenated.has(`${lower}-${tail}`)) return false;
+  if (vocab.fused.has(lower + tail)) return true;
+  if (vocab.heads.has(lower)) return false;
+  return !KEEP_HYPHEN.has(lower);
+}
+
+/** How a line ended, for the two decisions that need more than the text itself. */
+interface Break {
+  /** The line stopped so far short of its measure that no break was forced on it. */
+  short?: boolean;
 }
 
 /** Append `next` to a paragraph that already reads `text`, mending the break. */
-function appendLine(text: string, next: string, compounds: Set<string>): string {
+function appendLine(text: string, next: string, vocab: Vocabulary, br: Break = {}): string {
   if (text === "") return next;
   // The whole token is captured, hyphens and all, so "state-of-the-" arrives at the
   // test below as "state-of-the" and is refused for carrying a hyphen of its own.
   const hyphen = /(\S+)[-‐­]$/u.exec(text);
-  if (hyphen && dehyphenates(hyphen[1], next, compounds)) return text.slice(0, -1) + next;
+  if (hyphen && !br.short && dehyphenates(hyphen[1], next, vocab)) return text.slice(0, -1) + next;
   if (hyphen) return text + next; // a real hyphen: no space swallowed the break
   if (CJK.test(text.slice(-1)) && CJK.test(next.slice(0, 1))) return text + next;
   return text + " " + next;
@@ -498,7 +539,7 @@ function segments(lines: Line[]): Line[][] {
  * paragraph conventions printed text uses — blank line, and indent — without needing
  * to know which one the document chose.
  */
-function paragraphsOf(lines: Line[], compounds: Set<string>): Draft[] {
+function paragraphsOf(lines: Line[], vocab: Vocabulary): Draft[] {
   const pitches: number[] = [];
   for (let i = 1; i < lines.length; i++) {
     const d = lines[i].y - lines[i - 1].y;
@@ -507,13 +548,19 @@ function paragraphsOf(lines: Line[], compounds: Set<string>): Draft[] {
   const pitch = median(pitches) || median(lines.map((l) => l.size)) * 1.2 || 1;
   const leftEdge = percentile(lines.map((l) => l.x0), 0.15);
   const rightEdge = percentile(lines.map((l) => l.x1), 0.85);
+  const measure = Math.max(rightEdge - leftEdge, 1);
 
   const out: Draft[] = [];
   let group: Line[] = [];
   const flush = (): void => {
     if (group.length === 0) return;
     let text = "";
-    for (const l of group) text = appendLine(text, l.text, compounds);
+    let previous: Line | null = null;
+    for (const l of group) {
+      const short = previous !== null && previous.x1 < rightEdge - measure * HYPHEN_MEASURE;
+      text = appendLine(text, l.text, vocab, { short });
+      previous = l;
+    }
     text = text.replace(/\s+/g, " ").trim();
     if (text !== "") {
       const last = group[group.length - 1];
@@ -557,7 +604,7 @@ function paragraphsOf(lines: Line[], compounds: Set<string>): Draft[] {
  * continues never ends in sentence punctuation and never resumes in upper case, and a
  * broken word at the boundary is mended exactly as one inside a paragraph is.
  */
-function joinAcrossSegments(drafts: Draft[], compounds: Set<string>): Draft[] {
+function joinAcrossSegments(drafts: Draft[], vocab: Vocabulary): Draft[] {
   const out: Draft[] = [];
   for (const d of drafts) {
     const prev = out[out.length - 1];
@@ -570,7 +617,7 @@ function joinAcrossSegments(drafts: Draft[], compounds: Set<string>): Draft[] {
       !SENTENCE_END.test(prev.text) &&
       /^\p{Ll}/u.test(d.text);
     if (continues) {
-      prev.text = appendLine(prev.text, d.text, compounds);
+      prev.text = appendLine(prev.text, d.text, vocab);
       prev.endsShort = d.endsShort;
       continue;
     }
@@ -641,9 +688,9 @@ export function reflowPdf(pages: PdfPageText[]): ReflowBlock[] {
 
   // Heading classification comes BEFORE the cross-segment join, so a section title at
   // the top of a column can never be swallowed by the paragraph that ended above it.
-  const compounds = compoundStems(lines.map((l) => l.text));
-  const drafts = segments(lines).flatMap((s) => paragraphsOf(s, compounds));
+  const vocab = vocabularyOf(lines.map((l) => l.text));
+  const drafts = segments(lines).flatMap((s) => paragraphsOf(s, vocab));
   classifyHeadings(drafts, bodySize, displayFonts);
 
-  return joinAcrossSegments(drafts, compounds).map(({ kind, text, page }) => ({ kind, text, page }));
+  return joinAcrossSegments(drafts, vocab).map(({ kind, text, page }) => ({ kind, text, page }));
 }

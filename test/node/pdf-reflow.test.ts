@@ -107,10 +107,14 @@ describe("reflowPdf — single column", () => {
 });
 
 describe("reflowPdf — hyphenation", () => {
+  /**
+   * A word broken over two lines. Both lines fill the measure, because that is the only
+   * way a typesetter's break happens: the rest of the word did not fit.
+   */
   const broken = (first: string, second: string): string =>
     reflowPdf([
       page(1, [
-        { text: first, y: 100, width: 300 },
+        { text: first, y: 100, width: 455 },
         { text: second, y: 100 + PITCH, width: 460 },
       ]),
     ])[0].text;
@@ -127,6 +131,12 @@ describe("reflowPdf — hyphenation", () => {
     );
   });
 
+  it("keeps the hyphen when the continuation carries the rest of the compound", () => {
+    expect(broken("a genuine state-", "of-the-art result stands here")).toContain(
+      "state-of-the-art",
+    );
+  });
+
   it("keeps the hyphen when the compound is spelled out elsewhere in the document", () => {
     const blocks = reflowPdf([
       page(1, [
@@ -138,13 +148,59 @@ describe("reflowPdf — hyphenation", () => {
     expect(blocks[0].text).toContain("a third-party audit");
   });
 
-  it("keeps the hyphen of an acronym compound and before a capital", () => {
+  it("keeps the hyphen of a compound the document spells out only much later", () => {
+    const blocks = reflowPdf([
+      page(1, column(["we report an in-", "depth reading of the corpus"], 100)),
+      page(2, column(["the in-depth reading is set out", "in the appendix that follows."], 100)),
+    ]);
+    expect(blocks[0].text).toContain("an in-depth reading");
+  });
+
+  it("mends a compound the document writes as one word elsewhere, list or no list", () => {
+    const blocks = reflowPdf([
+      page(1, [
+        { text: "a nonlinear response was measured", y: 100, width: 460 },
+        { text: "throughout, and the non-", y: 100 + PITCH, width: 460 },
+        { text: "linear term dominates the fit", y: 100 + 2 * PITCH, width: 460 },
+      ]),
+    ]);
+    expect(blocks[0].text).toContain("the nonlinear term");
+  });
+
+  it("keeps the hyphen of an acronym compound and before a capital or a digit", () => {
     expect(broken("the results are AI-", "generated throughout the text")).toContain("AI-generated");
     expect(broken("a study of Anglo-", "Saxon place names in England")).toContain("Anglo-Saxon");
+    expect(broken("we report the type-", "1 error rate for each run")).toContain("type-1");
   });
 
   it("keeps the hyphen after a one-letter stem", () => {
     expect(broken("he sent an e-", "mail about it the next day")).toContain("e-mail");
+  });
+
+  it("keeps the hyphen after a modifier that is never a syllable break", () => {
+    expect(broken("the model is trained self-", "supervised on raw text alone")).toContain(
+      "self-supervised",
+    );
+  });
+
+  it("keeps the hyphen of a line that stopped far short of its measure", () => {
+    const blocks = reflowPdf([
+      page(1, [
+        { text: "the committee took a long-", y: 100, width: 200 },
+        { text: "term view of the whole matter", y: 100 + PITCH, width: 460 },
+        { text: "and reported in the spring of", y: 100 + 2 * PITCH, width: 460 },
+      ]),
+    ]);
+    expect(blocks[0].text).toContain("a long-term view");
+  });
+
+  it("fuses a compound the document never spells out — the one cost of the rule", () => {
+    // Accepted and documented in lib/pdf/reflow.ts: with no attestation anywhere in the
+    // document and lower case on both sides of the break, the hyphen goes. Spending a
+    // kept hyphen on every such word would leave far more real words broken.
+    expect(broken("a thorough and highly in-", "depth analysis of the corpus")).toContain(
+      "indepth",
+    );
   });
 });
 
