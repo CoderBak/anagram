@@ -332,6 +332,92 @@ describe("reflowPdf — three columns", () => {
   });
 });
 
+describe("reflowPdf — front matter", () => {
+  const ABSTRACT = [
+    "We describe a method for rebuilding the",
+    "paragraphs of a PDF from the geometry of",
+    "its text runs, and evaluate it on a corpus",
+    "of scholarly papers set in one, two and",
+    "three columns throughout their pages.",
+  ];
+  /** A paper's first page: a centred title block over a flush-left abstract. */
+  const firstPage = (): PdfPageText =>
+    page(1, [
+      { text: "A Study of Paragraph Reconstruction", x: 130, y: 100, size: 17, font: "title", width: 350 },
+      { text: "Jane Doe", x: 180, y: 140, size: 12, width: 60 },
+      { text: "John Smith", x: 330, y: 140, size: 12, width: 70 },
+      { text: "University of Somewhere", x: 150, y: 158, size: 10, width: 120 },
+      { text: "Institute of Elsewhere", x: 320, y: 158, size: 10, width: 110 },
+      { text: "jane@example.edu", x: 170, y: 176, size: 10, width: 90 },
+      { text: "john@elsewhere.ac.uk", x: 320, y: 176, size: 10, width: 100 },
+      { text: "Abstract", x: 285, y: 210, size: 11, font: "display", width: 50 },
+      // The abstract opens from a first-line indent, as an abstract usually does.
+      { text: ABSTRACT[0], x: 114, y: 234, width: 396 },
+      ...ABSTRACT.slice(1).map((text, i) => ({ text, x: 100, y: 234 + (i + 1) * PITCH, width: 410 })),
+    ]);
+
+  it("keeps the authors, their affiliations and their addresses out of the prose", () => {
+    const blocks = reflowPdf([firstPage()]);
+    expect(blocks).toEqual([
+      { kind: "heading", text: "A Study of Paragraph Reconstruction", page: 1 },
+      { kind: "paragraph", text: "Jane Doe John Smith", page: 1 },
+      { kind: "paragraph", text: "University of Somewhere Institute of Elsewhere", page: 1 },
+      { kind: "paragraph", text: "jane@example.edu john@elsewhere.ac.uk", page: 1 },
+      { kind: "heading", text: "Abstract", page: 1 },
+      { kind: "paragraph", text: ABSTRACT.join(" "), page: 1 },
+    ]);
+  });
+
+  it("never joins the front matter to the text that follows it", () => {
+    // The e-mail line ends in no punctuation and the abstract opens in lower case: every
+    // test a cross-segment join makes would say "join these", and it must still not.
+    const blocks = reflowPdf([
+      page(1, [
+        { text: "A Study of Paragraph Reconstruction", x: 130, y: 100, size: 17, font: "title", width: 350 },
+        { text: "jane@example.edu", x: 170, y: 140, size: 11, width: 90 },
+        ...["the text of the paper opens here", "and runs on over several lines", "of prose set flush to the left", "margin of the page, as prose is."].map(
+          (text, i) => ({ text, x: 100, y: 170 + i * PITCH, width: 410 }),
+        ),
+      ]),
+    ]);
+    expect(blocks[1]).toEqual({ kind: "paragraph", text: "jane@example.edu", page: 1 });
+    expect(blocks[2].text).toBe(
+      "the text of the paper opens here and runs on over several lines of prose set flush to the left margin of the page, as prose is.",
+    );
+  });
+
+  it("stops the front matter at a numbered section heading when there is no abstract", () => {
+    const body = ["The paragraphs of a PDF have to be", "rebuilt from the geometry of its runs,", "and this is how the work is done here.", "Every rule has a reason behind it."];
+    const blocks = reflowPdf([
+      page(1, [
+        { text: "A Study of Paragraph Reconstruction", x: 130, y: 100, size: 17, font: "title", width: 350 },
+        { text: "Jane Doe and John Smith", x: 200, y: 140, size: 12, width: 190 },
+        { text: "1 Introduction", x: 100, y: 180, size: 12, font: "display", width: 90 },
+        ...body.map((text, i) => ({ text, x: 100, y: 210 + i * PITCH, width: 410 })),
+      ]),
+    ]);
+    expect(blocks[1]).toEqual({ kind: "paragraph", text: "Jane Doe and John Smith", page: 1 });
+    expect(blocks[2]).toEqual({ kind: "heading", text: "1 Introduction", page: 1 });
+    expect(blocks[3].text).toBe(body.join(" "));
+  });
+
+  it("finds no front matter on a first page that opens with prose", () => {
+    const lines = ["The report opens with prose and has", "no title page of any kind at all, so", "nothing here is front matter and the", "text reads exactly as it is printed.", "A second paragraph follows below it."];
+    expect(texts(reflowPdf([page(1, column(lines, 100))]))).toEqual([lines.join(" ")]);
+  });
+
+  it("leaves the second page's title block alone — front matter is a first-page thing", () => {
+    const heading = { text: "A Centred Heading On Page Two", x: 180, y: 100, size: 17, font: "title", width: 240 };
+    const body = ["the section under it runs on for", "several lines of ordinary prose", "set flush to the left margin here."];
+    const blocks = reflowPdf([
+      page(1, column(["a first page of ordinary prose.", "It fills the page with lines."], 100)),
+      page(2, [heading, ...body.map((text, i) => ({ text, x: 100, y: 140 + i * PITCH, width: 410 }))]),
+    ]);
+    expect(blocks[1]).toEqual({ kind: "heading", text: heading.text, page: 2 });
+    expect(blocks[2].text).toBe(body.join(" "));
+  });
+});
+
 describe("reflowPdf — furniture", () => {
   const body = (n: number): string[] => [
     `page ${n} opens with a line`,

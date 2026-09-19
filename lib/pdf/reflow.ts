@@ -462,6 +462,104 @@ function orderColumns(lines: Line[], columns: number): Line[] {
   return out;
 }
 
+// ---- front matter -----------------------------------------------------------------------
+
+/** An e-mail address or a URL: not something a paragraph of prose has in it. */
+const CONTACT = /\S+@\S+|https?:\/\/|www\./;
+/** The front matter never reaches past this share of the first page. */
+const FRONT_MATTER_MAX_Y = 0.5;
+/** …nor past this many lines, however centred the page under them goes on being. */
+const FRONT_MATTER_MAX_LINES = 24;
+/**
+ * Two lines starting within this much of the font size of each other are flush. Tight,
+ * because prose really is set to the same left edge to the point: what it has to survive
+ * is the odd centred author line landing by chance under the one above it.
+ */
+const FLUSH_TOL = 0.15;
+/** …and this many lines in a row have to be flush before the prose is believed. */
+const FLUSH_RUN = 3;
+/**
+ * A paragraph's first line is indented by a few ems at most. A centred line sits far
+ * further in than that, which is how the line that opens the abstract is told from the
+ * centred label above it.
+ */
+const FIRST_LINE_INDENT_MAX = 4;
+/** A label closing the front matter ("Abstract", "Summary") is at most this many words. */
+const FRONT_MATTER_LABEL_WORDS = 3;
+
+/**
+ * The block between the first page's title and the document's first prose: the authors,
+ * their affiliations and e-mail addresses, the word "Abstract". It is short, unpunctuated
+ * and set in the wrong size to be body text, which is exactly why the heading rule takes
+ * it and why a paragraph rule welds it to the abstract underneath.
+ *
+ * It starts at the title, which is the largest line in the top half of the first page —
+ * anything above the title (a licence note, a journal's stamp) is the publisher talking
+ * and reads as ordinary text. Every line under it is set on its own measure — centred, or
+ * ranged under one of several columns of authors — so no two lines of it in a row start
+ * in the same place. Body text is the opposite: flush left, line after line, justified or
+ * ragged, in every language and every script. That one difference is the whole rule, and
+ * it needs no keyword. The block ends at the first pair of flush lines, at the first
+ * numbered section heading, or half way down the page, whichever comes first.
+ *
+ * Naming it buys two things: it is a segment of its own, so the authors can never be
+ * welded to the abstract, and its blocks are not headings — except the title, and a short
+ * label closing the block, because neither of those is what goes wrong. Everything in it
+ * is short enough that the walker's 50-word floor leaves it unscored, which is right: an
+ * author list is not prose and has no business carrying a verdict.
+ */
+function frontMatterOf(lines: Line[], pageHeight: number, bodySize: number): Set<Line> {
+  const front = new Set<Line>();
+  const limit = Math.min(lines.length, FRONT_MATTER_MAX_LINES);
+  let title = -1;
+  let largest = 0;
+  for (let i = 0; i < limit; i++) {
+    if (lines[i].y > pageHeight * FRONT_MATTER_MAX_Y) break;
+    if (lines[i].size > largest) {
+      largest = lines[i].size;
+      title = i;
+    }
+  }
+  if (title < 0 || largest < bodySize * HEADING_SIZE) return front;
+
+  for (let i = title; i < limit; i++) {
+    const line = lines[i];
+    if (line.y > pageHeight * FRONT_MATTER_MAX_Y) break;
+    if (i > title && SECTION_NUMBER.test(line.text)) break;
+    if (isProse(lines, i)) break;
+    front.add(line);
+  }
+  return front;
+}
+
+/**
+ * Does the document's text start here? Three lines in a row set to the same left edge:
+ * one coincidence of centring is common, three in a row is a paragraph. The line that
+ * opens such a block from a first-line indent belongs to it, which is what keeps the
+ * first line of an indented abstract out of the front matter and with its own paragraph.
+ */
+function isProse(lines: Line[], at: number): boolean {
+  if (isFlushRun(lines, at)) return true;
+  const line = lines[at];
+  const first = lines[at + 1];
+  if (line === undefined || first === undefined || !isFlushRun(lines, at + 1)) return false;
+  const indent = line.x0 - first.x0;
+  return indent > 0 && indent <= line.size * FIRST_LINE_INDENT_MAX;
+}
+
+/** Are the lines from here on set to the same left edge, line after line? */
+function isFlushRun(lines: Line[], at: number): boolean {
+  for (let i = at; i < at + FLUSH_RUN - 1; i++) {
+    const line = lines[i];
+    const next = lines[i + 1];
+    if (line === undefined || next === undefined) return false;
+    if (Math.abs(next.x0 - line.x0) > line.size * FLUSH_TOL) return false;
+    // A column of e-mail addresses is a list of authors, not a paragraph.
+    if (CONTACT.test(line.text) || CONTACT.test(next.text)) return false;
+  }
+  return true;
+}
+
 // ---- running headers, footers and page numbers ----------------------------------------
 
 /** "Page 3 of 12", "— 3 —", "iv", "3." — a page number in any of its usual costumes. */
@@ -650,15 +748,20 @@ interface Draft {
   font: string;
   /** The block's last line stopped short of the column's right edge. */
   endsShort: boolean;
+  /** The block is part of the first page's front matter, and reads as none of the rest. */
+  front: boolean;
 }
 
-/** A maximal run of consecutive lines set in the same column of the same page. */
-function segments(lines: Line[]): Line[][] {
+/**
+ * A maximal run of consecutive lines set in the same column of the same page — and the
+ * front matter is a column of its own, so nothing of it can share a block with the text.
+ */
+function segments(lines: Line[], front: Set<Line>): Line[][] {
   const out: Line[][] = [];
   let current: Line[] = [];
   let key = "";
   for (const line of lines) {
-    const k = `${line.page}:${line.col}`;
+    const k = `${line.page}:${line.col}:${front.has(line) ? "front" : ""}`;
     if (k !== key && current.length > 0) {
       out.push(current);
       current = [];
@@ -678,7 +781,7 @@ function segments(lines: Line[]): Line[][] {
  * paragraph conventions printed text uses — blank line, and indent — without needing
  * to know which one the document chose.
  */
-function paragraphsOf(lines: Line[], vocab: Vocabulary): Draft[] {
+function paragraphsOf(lines: Line[], vocab: Vocabulary, front: boolean): Draft[] {
   const pitches: number[] = [];
   for (let i = 1; i < lines.length; i++) {
     const d = lines[i].y - lines[i - 1].y;
@@ -709,10 +812,11 @@ function paragraphsOf(lines: Line[], vocab: Vocabulary): Draft[] {
         kind: "paragraph",
         text,
         page: group[0].page,
-        segment: `${group[0].page}:${group[0].col}`,
+        segment: `${group[0].page}:${group[0].col}${front ? ":front" : ""}`,
         size: median(group.map((l) => l.size)),
         font: widest.font,
         endsShort: last.x1 < rightEdge - last.size * SHORT_LINE,
+        front,
       });
     }
     group = [];
@@ -730,7 +834,12 @@ function paragraphsOf(lines: Line[], vocab: Vocabulary): Draft[] {
       const resized = Math.abs(line.size - prev.size) > Math.max(line.size, prev.size) * 0.15;
       const shortBefore = prev.x1 < rightEdge - prev.size * SHORT_LINE;
       const startsFresh = /^[\p{Lu}\p{Lt}\d"“'‘([]/u.test(line.text);
-      if (gap > pitch * PARA_GAP || indented || resized || (shortBefore && startsFresh)) flush();
+      // In the front matter every line is its own item — a name, an address, a label —
+      // unless it is flush with the line above it and so a continuation of it.
+      const moved = front && Math.abs(line.x0 - prev.x0) > line.size * FLUSH_TOL;
+      if (gap > pitch * PARA_GAP || indented || resized || moved || (shortBefore && startsFresh)) {
+        flush();
+      }
     }
     group.push(line);
   }
@@ -751,6 +860,8 @@ function joinAcrossSegments(drafts: Draft[], vocab: Vocabulary): Draft[] {
       prev &&
       prev.kind === "paragraph" &&
       d.kind === "paragraph" &&
+      !prev.front &&
+      !d.front &&
       prev.segment !== d.segment &&
       !prev.endsShort &&
       !SENTENCE_END.test(prev.text) &&
@@ -774,12 +885,34 @@ function joinAcrossSegments(drafts: Draft[], vocab: Vocabulary): Draft[] {
  */
 function classifyHeadings(drafts: Draft[], bodySize: number, displayFonts: Set<string>): void {
   for (const d of drafts) {
+    if (d.front) continue;
     if (d.text.split(/\s+/).length > HEADING_MAX_WORDS) continue;
     const display = displayFonts.has(d.font) || SECTION_NUMBER.test(d.text);
     if (d.size >= bodySize * HEADING_SIZE || (display && !SENTENCE_END.test(d.text))) {
       d.kind = "heading";
     }
   }
+  classifyFrontMatter(drafts.filter((d) => d.front), bodySize);
+}
+
+/**
+ * The front matter keeps two headings and no more: the title, which is the largest thing
+ * on the page and the one heading a reader would agree with, and a short label closing
+ * the block ("Abstract", "Summary"), which announces the text under it. The authors, the
+ * affiliations and the addresses between them are blocks of their own — not headings,
+ * because a heading is a topic boundary to the walker, and not prose, because nothing
+ * joins them to the paragraph below.
+ */
+function classifyFrontMatter(front: Draft[], bodySize: number): void {
+  if (front.length === 0) return;
+  const largest = Math.max(...front.map((d) => d.size));
+  front.forEach((d, i) => {
+    const words = d.text.split(/\s+/).length;
+    const title = d.size === largest && d.size >= bodySize * HEADING_SIZE;
+    const label =
+      i === front.length - 1 && words <= FRONT_MATTER_LABEL_WORDS && !CONTACT.test(d.text);
+    d.kind = (title && words <= HEADING_MAX_WORDS) || label ? "heading" : "paragraph";
+  });
 }
 
 // ---- the entry point ------------------------------------------------------------------
@@ -830,7 +963,8 @@ export function reflowPdf(pages: PdfPageText[]): ReflowBlock[] {
   // Heading classification comes BEFORE the cross-segment join, so a section title at
   // the top of a column can never be swallowed by the paragraph that ended above it.
   const vocab = vocabularyOf(lines.map((l) => l.text));
-  const drafts = segments(lines).flatMap((s) => paragraphsOf(s, vocab));
+  const front = frontMatterOf(perPage[0].filter((l) => !drop.has(l)), pages[0].height, bodySize);
+  const drafts = segments(lines, front).flatMap((s) => paragraphsOf(s, vocab, front.has(s[0])));
   classifyHeadings(drafts, bodySize, displayFonts);
 
   return joinAcrossSegments(drafts, vocab).map(({ kind, text, page }) => ({ kind, text, page }));
