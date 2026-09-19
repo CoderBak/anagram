@@ -884,6 +884,7 @@ export function createOrchestrator(
   });
 
   function handleDirty(nodes: Node[], removed: Node[]): void {
+    const startedAt = performance.now();
     const seedQueue = new Set<Element>();
 
     // 0) Direct hits: dirty/removed TEXT nodes owned by a live unit. This catches
@@ -918,11 +919,16 @@ export function createOrchestrator(
     //    Stale-claim invalidations during scanning queue further rounds.
     //    Under "main" scope, roots outside the detected region are not scanned.
     const scanned = new Set<Element>();
-    let queue: Element[] = dedupeRoots([...roots, ...seedQueue])
-      .filter(inScope)
-      // A root ABOVE the scope region (body-level swap) scans the region, not
-      // the whole subtree — out-of-scope content must not sneak in from above.
-      .map((r) => (scopeRoot && r !== scopeRoot && r.contains(scopeRoot) ? scopeRoot : r));
+    // A root ABOVE the scope region (body-level swap) scans the region, not the whole
+    // subtree — out-of-scope content must not sneak in from above. Applied again after
+    // the bound, because merging roots upward can climb past the region too.
+    const clampToScope = (r: Element): Element =>
+      scopeRoot && r !== scopeRoot && r.contains(scopeRoot) ? scopeRoot : r;
+    let queue: Element[] = boundRoots(
+      dedupeRoots([...roots, ...seedQueue]).filter(inScope).map(clampToScope),
+    ).map(clampToScope);
+    // What the burst itself was reduced to, before the rounds that stale claims add.
+    const planned = queue.length;
     for (let round = 0; round < 4 && queue.length > 0; round++) {
       const extra = new Set<Element>();
       const filter = makeClaimFilter(extra);
@@ -934,6 +940,15 @@ export function createOrchestrator(
       queue = [...extra].filter((r) => !scanned.has(r));
     }
     updateFab();
+    // What a page costs us over time is the sum of THIS line: how many walks a mutation
+    // burst turned into — the ones it PLANNED (bounded by MAX_SCAN_ROOTS) and the ones
+    // stale claims added afterwards — and how long they took. A number that climbs with
+    // the page is the whole-container re-walk the scan-root rule exists to avoid.
+    log.log(
+      "dirty scan:", nodes.length, "dirty,", removed.length, "removed,",
+      planned, "planned,", scanned.size, "roots,",
+      Math.round(performance.now() - startedAt), "ms",
+    );
   }
 
   // --- URL / SPA navigation ------------------------------------------------------------
@@ -1246,9 +1261,34 @@ function dedupeRoots(all: Element[]): Element[] {
 }
 
 /**
- * Map a batch of dirty nodes to the elements to re-walk: climb one level above each
- * dirty node (so a freshly inserted block is found from its parent), then drop any
- * root contained by another to avoid redundant overlapping scans.
+ * How many separate walks one mutation burst may become. EVERY walk pays a price over the
+ * whole document, not over its root: lib/dom/scope.ts surveys the page for bylines once
+ * per walk, and the computed styles and boxes it resolves are cached per walk. So narrow
+ * roots are cheaper only while there are FEW of them. Measured on dev.to, which re-renders
+ * its Preact islands continuously rather than only appending: a drain there carries some
+ * 200 dirty nodes, walking 200 roots cost 1.4-2.0 s of main thread every time, and ONE
+ * walk of the container they share costs about 40 ms on the same page. A walk of an
+ * 11 000-element page is worth roughly ten byline surveys of it, so past ten roots a burst
+ * is cheaper merged than kept apart.
+ */
+const MAX_SCAN_ROOTS = 10;
+
+/**
+ * Map a batch of dirty nodes to the elements to re-walk: climb one level above each dirty
+ * node, then drop any root contained by another to avoid redundant overlapping scans.
+ *
+ * The climb is there because GROUPING NEEDS SIBLINGS: "one voice, one verdict" merges the
+ * short paragraphs of a post, so a paragraph inserted into a comment is only read
+ * correctly together with the ones already beside it, and an edited text node needs the
+ * block it lives in.
+ *
+ * What was missing is a bound on how many walks that becomes, and it was most of what this
+ * extension cost a live page. A node that arrives as a whole post can be walked by itself
+ * — nothing outside a post takes part in what its text becomes — but that was measured and
+ * is NOT worth having: it saves a fifth of the scanning on a feed that only ever appends,
+ * and costs a whole-document byline survey on every mutation of a page that does not (0.71
+ * s of scripting on a Wikipedia article became 1.18 s, against 0.77 s with the plain
+ * climb). The bound, which needs no survey at all, is where the win is.
  */
 function computeScanRoots(nodes: Node[]): Element[] {
   const roots = new Set<Element>();
@@ -1258,6 +1298,21 @@ function computeScanRoots(nodes: Node[]): Element[] {
     if (!base || !base.isConnected) continue;
     roots.add(base.parentElement ?? base);
   }
-  const all = [...roots];
-  return all.filter((r) => !all.some((o) => o !== r && o.contains(r)));
+  return dedupeRoots([...roots]);
+}
+
+/**
+ * Keep a burst to at most MAX_SCAN_ROOTS walks by merging its roots upward. One level at
+ * a time rather than straight to the common ancestor, so a comment thread and a sidebar
+ * ticker that both changed stay two walks for as long as they can instead of becoming one
+ * walk of the whole page. It always terminates: every round moves each root that still
+ * has a parent one level up, and the climb ends at the scan base.
+ */
+function boundRoots(roots: Element[]): Element[] {
+  const top = document.body ?? document.documentElement;
+  let all = roots;
+  while (all.length > MAX_SCAN_ROOTS && all.some((r) => r !== top && r.parentElement !== null)) {
+    all = dedupeRoots(all.map((r) => (r === top ? r : (r.parentElement ?? r))));
+  }
+  return all;
 }

@@ -149,6 +149,17 @@ Notable changes to Anagram, newest first. The format follows
   padding instead. The open panel also sits 4 px further from the ball, because
   the counter bubble overhangs it and the panel used to lie across the top of the
   one control that opens it.
+- A page that does not hold still costs a fraction of what it did. Every re-scan
+  pays a price over the whole document — the byline survey that decides who wrote
+  what runs once per walk — so a mutation burst is now bounded to at most ten
+  walks, its roots merged upward one level at a time until it fits. On dev.to,
+  which re-renders its Preact islands continuously, a 60-second session spent 33 s
+  scanning in 4 528 walks and froze the main thread for up to 2.0 s at a time; it
+  now spends 3.3 s in 64 walks with a worst task of 137 ms. Over a scripted
+  90-second session the same page went from 22.9 s of scripting to 3.0 s, and
+  YouTube from 14.3 s to 3.9 s — less than the page's own — while both pages let
+  the reader scroll the full 58 screens the browser manages without us instead of
+  44 and 49.
 
 - `anagram update` restarts a daemon that was running. The installer replaces
   `app/` underneath it, so until now the old code kept serving until somebody
@@ -483,6 +494,19 @@ Notable changes to Anagram, newest first. The format follows
   under a collapsed review and five at their own paragraphs, all six back in
   place when it is opened, parked again when it is closed, and one more page on
   which a box only starts clipping once its image arrives.
+- The incremental scanner has an equivalence net under it. One generator builds
+  the same page two ways — step by step under a watching extension (posts
+  appended in batches, a paragraph inserted into a live post, text edited in
+  place, a block wrapped and unwrapped) and all at once before the content script
+  ever runs — and the scenario asserts the chips end up identical: same places,
+  same numbers, and since the fake daemon's verdict is a pure function of the
+  text, a different number means a different text or a different grouping. A
+  second check holds the scan-root bound: one burst, however many nodes it
+  touched, becomes at most ten walks.
+- `test/perf.mjs` budgets a page that does not hold still: 150 posts re-rendering
+  themselves eight times over, 450 dirty nodes a burst. Unbounded that costs
+  4.5 s of long tasks with single bursts over 600 ms; the budget is 3 s total and
+  500 ms for the worst task.
 - The pure text machinery is checked against properties rather than examples. A
   seeded generator (no new dependency) builds words, CJK, emoji, invisibles,
   non-breaking spaces, LaTeX residue, curly quotes, en-dashed figure ranges,

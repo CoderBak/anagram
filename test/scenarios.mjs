@@ -2173,6 +2173,142 @@ ${KEY_TAGS.map((t, i) => `<p id="z${i + 1}">${KEY_PARA(t)}</p>`).join("\n")}
   }
 }
 
+// ---- incremental scanning: the same page, built step by step or all at once -----------
+// The safety net under lib/capture/orchestrator.ts's scan-root rule. A page that grows
+// and changes under the reader must end up with exactly the chips a single fresh scan of
+// its FINAL DOM produces — same places, same numbers (the fake daemon's verdict is a pure
+// function of the text, so a number that differs means the text or the grouping differs).
+// One generator builds both pages: `?all` applies every step before the content script
+// ever runs, the other applies them one at a time while the extension watches.
+{
+  const INC_STEPS = 6;
+  const INC_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>incremental fixture</title>
+<style>body{max-width:720px;margin:24px auto;font:15px/1.6 system-ui}.post{border-top:1px solid #ddd;padding:12px 0}
+.row{display:flex;gap:8px;align-items:center;font-size:13px}img.avatar{width:22px;height:22px}</style></head><body>
+<main id="feed"></main>
+<article id="essay" data-home="essay"><h1>An essay with short paragraphs</h1></article>
+<script>
+const VOCAB="the quick brown fox jumps over a lazy dog while rain falls gently on rooftops and children read books near warm windows during long quiet evenings a timetable moved off paper and nobody noticed until the trains ran on time".split(" ");
+const words=(seed,n)=>Array.from({length:n},(_,i)=>VOCAB[(seed*37+i*11)%VOCAB.length]).join(" ");
+const para=(seed,n)=>"Item "+seed+": "+words(seed,n)+".";
+let seq=0;
+function post(){
+  const i=seq++;
+  const d=document.createElement("div");
+  d.className="post";d.id="post-"+i;d.setAttribute("data-home","post-"+i);
+  d.innerHTML='<div class="row"><a href="/user/u'+i+'"><img class="avatar" src="data:image/gif;base64,R0lGODlhAQABAAAAACw="></a>'+
+    '<a href="/user/u'+i+'">Author '+i+'</a><time datetime="2026-09-1'+(i%9)+'T10:00:00Z">'+(i%23)+'h ago</time></div>'+
+    '<p class="body">'+para(i,24)+'</p><p class="body">'+para(i+100,26)+'</p><p class="body">'+para(i+200,22)+'</p>';
+  document.getElementById("feed").appendChild(d);
+  return d;
+}
+const essay=document.getElementById("essay");
+const add=(id,seed,n)=>{const p=document.createElement("p");p.id=id;p.textContent=para(seed,n);essay.appendChild(p);return p;};
+for(let k=0;k<2;k++)post();
+add("e1",900,30);add("e2",901,28);add("e3",902,26);add("e4",903,31);
+const STEPS=[
+  ()=>{for(let k=0;k<3;k++)post();},                                     // a batch of posts
+  ()=>{for(let k=0;k<3;k++)post();},                                     // another batch
+  ()=>{const p=document.createElement("p");p.className="body";p.textContent=para(300,25);
+       document.getElementById("post-1").appendChild(p);},               // a paragraph into a live post
+  ()=>{document.querySelector("#post-0 p.body").firstChild.data=para(400,27);}, // text edited in place
+  ()=>{const p=document.getElementById("e2");const w=document.createElement("div");
+       w.className="wrapped";p.replaceWith(w);w.appendChild(p);},        // wrap
+  ()=>{const w=document.querySelector("#essay .wrapped");if(w&&w.firstElementChild!==document.getElementById("e2"))return;
+       const p=document.getElementById("e3");const w2=document.createElement("div");p.replaceWith(w2);w2.appendChild(p);
+       w2.replaceWith(p);},                                             // wrap and unwrap again
+];
+window.__step=(i)=>STEPS[i]();
+if(location.search.includes("all"))for(const s of STEPS)s();
+</script></body></html>`;
+  PAGES["/incremental.html"] = INC_PAGE;
+
+  /** Every chip as "where it sits : what it says" — stable across runs, and different the
+   *  moment a unit's text or its grouping differs. */
+  const chipSig = (p) =>
+    p.evaluate(
+      (sel) =>
+        [...document.querySelectorAll(sel)]
+          .map((h) => `${h.closest("[data-home]")?.getAttribute("data-home") ?? "page"}:${h.shadowRoot?.querySelector(".num")?.textContent?.trim() ?? "?"}`)
+          .join(" | "),
+      BADGE_SEL,
+    );
+  const chipsSettled = (p, timeout = 20000) =>
+    p
+      .waitForFunction(
+        (sel) => {
+          const hosts = [...document.querySelectorAll(sel)];
+          return hosts.length > 0 && hosts.every((h) => !h.shadowRoot?.querySelector(".pill.pending"));
+        },
+        BADGE_SEL,
+        { timeout },
+      )
+      .then(() => true)
+      .catch(() => false);
+
+  const grown = await context.newPage();
+  await grown.goto(server.url("/incremental.html"), { waitUntil: "load" });
+  await chipsSettled(grown);
+  for (let i = 0; i < INC_STEPS; i++) {
+    await grown.evaluate((n) => window.__step(n), i);
+    await grown.waitForTimeout(1400); // past the observer's debounce and max wait
+  }
+  await chipsSettled(grown);
+  await grown.waitForTimeout(1200);
+  const incremental = await chipSig(grown);
+  await grown.close();
+
+  const whole = await context.newPage();
+  await whole.goto(server.url("/incremental.html?all"), { waitUntil: "load" });
+  await chipsSettled(whole);
+  await whole.waitForTimeout(1200);
+  const fresh = await chipSig(whole);
+  await whole.close();
+
+  record(
+    "ui",
+    "a page built step by step ends up with the chips one fresh scan of its final DOM gives",
+    fresh.length > 0 && incremental === fresh,
+    incremental === fresh ? `${fresh.split(" | ").length} chips` : `incremental ${incremental}\n   fresh       ${fresh}`,
+  );
+
+  // The scan-root bound: one burst may become at most MAX_SCAN_ROOTS walks, however many
+  // nodes it touched. Without it a page that re-renders its islands (dev.to) turned ~200
+  // dirty nodes into ~200 walks, each paying a whole-document byline survey.
+  await sw.evaluate(() => new Promise((res) => chrome.storage.local.set({ debug: true }, res)));
+  const noisy = await context.newPage();
+  const drains = [];
+  noisy.on("console", (m) => {
+    const hit = /dirty scan: (\d+) dirty, \d+ removed, (\d+) planned, (\d+) roots,/.exec(m.text());
+    if (hit) drains.push({ dirty: +hit[1], planned: +hit[2], roots: +hit[3] });
+  });
+  await noisy.goto(server.url("/incremental.html"), { waitUntil: "load" });
+  await chipsSettled(noisy);
+  await noisy.evaluate(() => {
+    // 120 separate parents touched in one burst — what an island re-render looks like.
+    for (const p of document.querySelectorAll("#feed p.body, #essay p")) {
+      const span = document.createElement("span");
+      span.textContent = " and then some more of it.";
+      p.appendChild(span);
+    }
+    for (let k = 0; k < 60; k++) {
+      const d = document.createElement("div");
+      d.textContent = "row " + k;
+      document.getElementById("essay").appendChild(d);
+    }
+  });
+  await noisy.waitForTimeout(2500);
+  await noisy.close();
+  await sw.evaluate(() => new Promise((res) => chrome.storage.local.set({ debug: false }, res)));
+  const burst = drains.filter((d) => d.dirty > 10);
+  record(
+    "ui",
+    "a mutation burst is bounded to at most ten walks, whatever it touched",
+    burst.length > 0 && burst.every((d) => d.planned <= 10),
+    JSON.stringify(drains.slice(-6)),
+  );
+}
+
 // =====================================================================================
 // PHASE B — live sites (soft: unreachable → SKIP; loaded-but-wrong → FAIL)
 // =====================================================================================
