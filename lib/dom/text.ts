@@ -41,6 +41,17 @@ export interface Unit {
   container: Element;
   /** Claim flag: a result has rendered for this unit. */
   isScored: boolean;
+  /**
+   * The unit's text is the DOCUMENT's, not the page's, and cannot be read back off the
+   * nodes. The PDF reader is where this happens (lib/pdf/units.ts): a paragraph there has
+   * had its hyphens mended, its running heads dropped and its two halves sewn across a
+   * page break, so concatenating the spans it covers gives something else entirely. Two
+   * things follow. The orchestrator must not recompute the text to ask whether it changed
+   * — it would never match, and every dirty pass would retire the unit. And the PARTS are
+   * pieces of a page rather than the paragraphs of one voice, so a unit of three parts is
+   * still ONE paragraph and the chip must not read "×3".
+   */
+  textFixed?: true;
 }
 
 // ---- thresholds -------------------------------------------------------------------

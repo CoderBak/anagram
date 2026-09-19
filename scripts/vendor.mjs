@@ -16,7 +16,7 @@
 import { build } from "esbuild";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { copyFileSync, mkdirSync, statSync } from "node:fs";
+import { copyFileSync, cpSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = join(ROOT, "public", "vendor");
@@ -40,6 +40,33 @@ const chunks = {
 const copies = {
   "pdfjs.min.mjs": "pdfjs-dist/build/pdf.min.mjs",
   "pdf.worker.mjs": "pdfjs-dist/build/pdf.worker.min.mjs",
+};
+
+// The DATA pdf.js reaches for while it draws a page. None of it is code we call: the
+// library fetches these by URL from the options lib/pdf/extract.ts hands it, and without
+// them whole classes of document come out wrong rather than merely unstyled — a Japanese
+// paper with no glyphs at all (its CMaps are predefined, not embedded), a report set in
+// "Times" with no font file in it, a scanned form whose pages are JPEG2000 or JBIG2
+// images. Copied verbatim like the library itself, and committed for the same reason:
+// they are a published artefact of a pinned version, not something generated from our own
+// source. Two folders are left out on purpose — `wasm/` carries quickjs (the PDF-scripting
+// sandbox, which we never enable) and the `*_nowasm_fallback.js` builds (only reached when
+// a wasm module fails to instantiate), so the decoders are named file by file instead.
+const trees = {
+  cmaps: { from: "pdfjs-dist/cmaps" },
+  "standard_fonts": { from: "pdfjs-dist/standard_fonts" },
+  iccs: { from: "pdfjs-dist/iccs" },
+  wasm: {
+    from: "pdfjs-dist/wasm",
+    only: [
+      "openjpeg.wasm",
+      "jbig2.wasm",
+      "LICENSE_OPENJPEG",
+      "LICENSE_JBIG2",
+      "LICENSE_PDFJS_OPENJPEG",
+      "LICENSE_PDFJS_JBIG2",
+    ],
+  },
 };
 
 for (const [file, contents] of Object.entries(chunks)) {
@@ -73,4 +100,22 @@ console.log(`vendor/diagnostics.min.mjs  ${(statSync(join(OUT, "diagnostics.min.
 for (const [file, from] of Object.entries(copies)) {
   copyFileSync(join(ROOT, "node_modules", from), join(OUT, file));
   console.log(`vendor/${file}  ${(statSync(join(OUT, file)).size / 1024).toFixed(1)} kB`);
+}
+
+for (const [name, { from, only }] of Object.entries(trees)) {
+  const src = join(ROOT, "node_modules", from);
+  const dest = join(OUT, name);
+  // Replaced outright rather than merged: a file the library stopped shipping must not
+  // live on here because it once did.
+  rmSync(dest, { recursive: true, force: true });
+  mkdirSync(dest, { recursive: true });
+  const files = only ?? readdirSync(src);
+  let bytes = 0;
+  for (const file of files) {
+    // A named file that has gone is a version bump we have not read: fail the build
+    // rather than ship a viewer that silently cannot decode a scan.
+    cpSync(join(src, file), join(dest, file), { recursive: true });
+    bytes += statSync(join(dest, file)).size;
+  }
+  console.log(`vendor/${name}/  ${files.length} files, ${(bytes / 1024).toFixed(1)} kB`);
 }

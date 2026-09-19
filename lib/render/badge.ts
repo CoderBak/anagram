@@ -64,7 +64,20 @@ function badgeSheet(): CSSStyleSheet {
   return _sheet;
 }
 
-export function createBadgeLayer(): BadgeLayer {
+export interface BadgeLayerOptions {
+  /**
+   * Put a chip somewhere the page's own flow cannot: the surface places the host itself
+   * and says so by returning true. The PDF reader supplies this — a page there is an
+   * absolutely positioned text layer over a drawing, where "after the last text node" is
+   * a place with no meaning, and a chip belongs in the white space at the end of the
+   * paragraph's last line, in the page's own coordinates. Everything else about the chip
+   * — its look, its card, its theme, its flash — is unchanged, and the default path (a
+   * chip in the flow after the last run) is untouched.
+   */
+  place?: (unit: Unit, host: HTMLElement) => boolean;
+}
+
+export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
   installOutsideCloser();
   const hosts = new Map<string, HTMLElement>();
   // Dark-context verdict per container (invalidated via resetTheme on Rescan).
@@ -302,6 +315,15 @@ export function createBadgeLayer(): BadgeLayer {
     let host = hosts.get(unit.id);
     if (!host || !host.isConnected) {
       host?.remove();
+      if (options.place) {
+        const own = buildHost();
+        if (!options.place(unit, own)) return null;
+        hosts.set(unit.id, own);
+        host = own;
+        host.classList.toggle("pg-hidden", !visible);
+        host.classList.toggle("pg-dark", darkFor(unit.container, darkCache));
+        return host;
+      }
       const placement = insertionPoint(unit);
       if (!placement) return null; // unit detached mid-flight — purge will collect it
       host = buildHost();
@@ -339,8 +361,10 @@ export function createBadgeLayer(): BadgeLayer {
     pill.className = `pill band-${b}`;
     // The bare number ("38%") — what it means is in the card and the intro, not on
     // every line. A merged unit says so up front ("38% ×3"): one verdict covering N
-    // short paragraphs must never masquerade as a single-paragraph judgment.
-    const xn = unit.parts.length > 1 ? ` ×${unit.parts.length}` : "";
+    // short paragraphs must never masquerade as a single-paragraph judgment. A unit whose
+    // text the DOCUMENT fixed is the other way round: its parts are the pieces a page
+    // break or a column cut one paragraph into, and it is one paragraph (Unit.textFixed).
+    const xn = unit.parts.length > 1 && !unit.textFixed ? ` ×${unit.parts.length}` : "";
     // Unsupported language → the detected code ("zh"), never a number.
     num.textContent =
       (b === "unknown" ? "?" : b === "unsupported" ? (result.lang ?? "n/a") : `${pct}%`) + xn;
@@ -426,7 +450,7 @@ export function createBadgeLayer(): BadgeLayer {
     const row = (k: string, v: string, cls = "") =>
       `<div class="row${cls}"><span class="k">${k}</span><span class="v">${v}</span></div>`;
     const partsRow =
-      unit.parts.length > 1
+      unit.parts.length > 1 && !unit.textFixed
         ? row(t("cardPartsTogether"), `${unit.parts.length}`)
         : "";
 

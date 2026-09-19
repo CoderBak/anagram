@@ -836,6 +836,15 @@
   "readerOpenOriginal": {
     "message": "打开原文件"
   },
+  "readerZoomOut": {
+    "message": "缩小"
+  },
+  "readerZoomIn": {
+    "message": "放大"
+  },
+  "readerFitWidth": {
+    "message": "适应宽度"
+  },
   "readerDrop": {
     "message": "把 PDF 拖到这里"
   },

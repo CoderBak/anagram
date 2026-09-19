@@ -5,8 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title data-i18n="readerTitle">Anagram reader</title>
     <style>
-      /* Layout only — colours, type and controls come from Basecoat (Vega). The page
-         mirrors the Google Docs reading overlay: a thin bar, then paper. */
+      /* Layout only — colours, type and controls come from Basecoat (Vega). The pages
+         themselves are NOT styled: a PDF page looks as it was authored, on a neutral
+         surface that follows the system theme. Only the chrome around them is themed. */
       body { margin: 0; background: var(--muted); color: var(--foreground); font-size: 15px; line-height: 1.5; }
 
       header.bar {
@@ -26,27 +27,81 @@
       header.bar .s { font-size: 11.5px; line-height: 1.3; color: var(--muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       header.bar .btn { flex: 0 0 auto; }
 
-      main { padding: 24px 16px 120px; }
-      .paper {
-        max-width: 720px; margin: 0 auto; box-sizing: border-box;
-        background: var(--card); color: var(--card-foreground);
-        border: 1px solid var(--border); border-radius: 8px;
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-        padding: 48px 56px 56px;
-        font-size: 16.5px; line-height: 1.75;
-        overflow-wrap: break-word;
+      /* Zoom. Three targets of 24 px or more, the middle one reading the percentage and
+         going back to fit-width — the whole of the viewer's chrome. */
+      .zoom { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; }
+      .zoom button {
+        min-width: 26px; height: 26px; padding: 0 6px;
+        display: inline-flex; align-items: center; justify-content: center;
+        background: transparent; color: var(--foreground);
+        border: 1px solid var(--border); border-radius: 6px;
+        font: 500 12px/1 ui-sans-serif, system-ui, sans-serif; cursor: pointer;
       }
-      .paper p { margin: 0 0 1.1em; }
-      .paper h2 { margin: 1.8em 0 0.7em; font-size: 19px; font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
-      .paper > :first-child { margin-top: 0; }
-      .paper .pagemark {
-        margin: 2em 0; text-align: center;
-        font: 500 11px/1 ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.1em;
-        color: var(--muted-foreground);
-      }
+      .zoom button:hover { background: var(--muted); }
+      .zoom button:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+      .zoom .level { min-width: 48px; font-variant-numeric: tabular-nums; }
 
+      main { padding: 16px 0 120px; }
       .notice { max-width: 720px; margin: 0 auto 14px; font-size: 12.5px; color: var(--muted-foreground); text-align: center; }
       .notice:empty { display: none; }
+
+      /* The pages. The stack is centred and the page boxes size themselves from
+         --total-scale-factor, so zoom is one variable and no element is rebuilt. */
+      .pages {
+        --scale-factor: 1;
+        display: flex; flex-direction: column; align-items: center; gap: 16px;
+        padding: 0 16px;
+      }
+      .pages[hidden] { display: none; }
+      .page {
+        --user-unit: 1;
+        --total-scale-factor: calc(var(--scale-factor) * var(--user-unit));
+        --scale-round-x: 1px;
+        --scale-round-y: 1px;
+        position: relative; direction: ltr;
+        /* White because paper is white — in dark mode too. Inverting a document is
+           changing what the reader sees, which is the one thing this must never do. */
+        background: #fff;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+      }
+      .page > canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+      /* Chips live over the text layer in the page's own coordinates; the layer itself
+         takes the pointer, so selecting the document's text still works around them. */
+      .chipLayer { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+      .chipLayer > span { position: absolute; pointer-events: auto; }
+
+      /* ---- pdf.js text layer -------------------------------------------------------
+         Copied from pdfjs-dist/web/pdf_viewer.css (Copyright 2014 Mozilla Foundation,
+         Apache-2.0) — only the rules that place and scale the transparent spans. */
+      .textLayer {
+        position: absolute; text-align: initial; inset: 0;
+        overflow: clip; opacity: 1; line-height: 1;
+        -webkit-text-size-adjust: none; text-size-adjust: none;
+        forced-color-adjust: none; transform-origin: 0 0;
+        caret-color: CanvasText; z-index: 1;
+        --min-font-size: 1;
+        --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+        --min-font-size-inv: calc(1 / var(--min-font-size));
+      }
+      .textLayer :is(span, br) {
+        color: transparent; position: absolute; white-space: pre; cursor: text;
+        transform-origin: 0% 0%;
+      }
+      .textLayer > :not(.markedContent), .textLayer .markedContent span:not(.markedContent) {
+        z-index: 1;
+        --font-height: 0;
+        font-size: calc(var(--text-scale-factor) * var(--font-height));
+        --scale-x: 1;
+        --rotate: 0deg;
+        transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+      }
+      .textLayer .markedContent { display: contents; }
+      .textLayer span[role="img"] { user-select: none; cursor: default; }
+      .textLayer ::selection { background: rgba(0, 0, 255, 0.25); background: color-mix(in srgb, AccentColor, transparent 75%); }
+      .textLayer br::selection { background: transparent; }
+      /* pdf.js measures glyph widths in a canvas it appends to <body>. */
+      .hiddenCanvasElement { position: absolute; top: 0; left: 0; width: 0; height: 0; display: none; }
+      /* ---- end of the pdf.js rules ------------------------------------------------- */
 
       .drop {
         max-width: 720px; margin: 0 auto; box-sizing: border-box;
@@ -60,8 +115,8 @@
       .drop p { margin: 0; font-size: 14px; }
 
       @media (max-width: 760px) {
-        main { padding: 12px 8px 100px; }
-        .paper { padding: 26px 20px 34px; font-size: 16px; }
+        main { padding: 10px 0 100px; }
+        .pages { padding: 0 8px; }
         header.bar { padding: 9px 12px; gap: 9px; }
       }
       @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
@@ -74,6 +129,11 @@
         <h1 class="t" id="title" data-i18n="readerTitle">Anagram reader</h1>
         <div class="s" id="subtitle"></div>
       </div>
+      <div class="zoom" id="zoom" hidden>
+        <button id="zoomOut" type="button" data-i18n-aria-label="readerZoomOut" aria-label="Zoom out">−</button>
+        <button id="zoomLevel" class="level" type="button" data-i18n-aria-label="readerFitWidth" aria-label="Fit to width">100%</button>
+        <button id="zoomIn" type="button" data-i18n-aria-label="readerZoomIn" aria-label="Zoom in">+</button>
+      </div>
       <button id="original" class="btn" data-variant="outline" data-size="sm" type="button" hidden data-i18n="readerOpenOriginal">Open original</button>
     </header>
 
@@ -84,7 +144,7 @@
         <button id="choose" class="btn" data-variant="outline" data-size="sm" type="button" data-i18n="readerChoose">Choose a file</button>
         <input id="file" type="file" accept="application/pdf,.pdf" hidden />
       </section>
-      <article class="paper" id="paper" hidden></article>
+      <div class="pages" id="pages" hidden></div>
     </main>
 
     <script type="module" src="./main.ts"></script>

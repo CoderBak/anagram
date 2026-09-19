@@ -1,11 +1,17 @@
 // entrypoints/reader/main.ts — the PDF reading mode.
 //
-// Browsers hand a PDF to a built-in viewer that exposes no DOM text, so there is
-// nothing for the walker to walk. The answer is the same one Google Docs gets
-// (lib/docsOverlay.ts): rebuild the document as ordinary HTML on a page of our own and
-// run the NORMAL pipeline over it — same chips, same underlines, same ball, same panel,
-// same report. pdf.js supplies the text runs, lib/pdf/reflow.ts puts the paragraphs back
-// together, and this file is only the page: fetch, render, and start the orchestrator.
+// Browsers hand a PDF to a built-in viewer that exposes no DOM text, so there is nothing
+// for the walker to walk. The answer is a page of our own that shows THE REAL PAGES —
+// drawn by pdf.js, with their figures, mathematics, fonts and layout intact — and runs the
+// NORMAL pipeline over them: same chips, same underlines, same ball, same panel, same
+// report. Anagram annotates the original; it never replaces or reformats it.
+//
+// Three pieces meet here and none of them knows about the others:
+//   entrypoints/reader/viewer.ts draws the pages and owns the zoom;
+//   lib/pdf/reflow.ts rebuilds the paragraphs and says where each of them was set;
+//   lib/pdf/units.ts turns those into ordinary Units over the text layer's own nodes.
+// The reconstruction is INVISIBLE. Its only jobs are to decide what the model reads as one
+// paragraph and where that paragraph ends on the page.
 //
 // Content scripts are not injected into extension pages, so the orchestrator is created
 // here directly. Everything it needs works from an extension page: runtime messaging to
@@ -20,10 +26,14 @@ import { createOrchestrator, type Orchestrator } from "../../lib/capture/orchest
 import { enabledForSite } from "../../lib/settings/settings";
 import { ACTIONS } from "../../lib/messaging/protocol";
 import type { ControlMessage, TabState } from "../../lib/messaging/protocol";
-import { MARK_ATTR } from "../../lib/types";
+import type { Unit } from "../../lib/types";
+import { setRangeLocator } from "../../lib/render/highlight";
 import { openPdf, PdfOpenError, type PdfDocument } from "../../lib/pdf/extract";
-import { reflowPdf, type PdfPageText, type ReflowBlock } from "../../lib/pdf/reflow";
+import { reflowPdf, type PdfPageText } from "../../lib/pdf/reflow";
+import { createPdfUnitSource, type PdfUnitSource } from "../../lib/pdf/units";
 import { pdfNameFromUrl } from "../../lib/pdf/source";
+import { createViewer, type PageView, type Viewer } from "./viewer";
+import { placeChip } from "./chips";
 import { createLogger } from "../../lib/log";
 
 const log = createLogger("reader");
@@ -33,13 +43,11 @@ const MAX_BYTES = 100 * 1024 * 1024;
 /** Beyond this many pages the reader stops and says so; nothing here is worth a freeze. */
 const MAX_PAGES = 300;
 /**
- * Pages extracted before the first paint. Large enough that running heads have repeated
- * often enough to be recognised (so the opening pages are not rendered with furniture in
- * them), small enough that a book is on screen in well under a second.
+ * Pages read before the paragraphs are rebuilt for the first time. Large enough that
+ * running heads have repeated often enough to be recognised (so the opening pages are not
+ * scored with furniture in them), small enough that a book is being read in under a second.
  */
 const FIRST_BATCH = 24;
-/** Blocks appended per idle slice — a long document arrives without ever blocking. */
-const RENDER_SLICE = 25;
 
 const titleEl = document.getElementById("title") as HTMLElement;
 const subtitleEl = document.getElementById("subtitle") as HTMLElement;
@@ -48,13 +56,20 @@ const noticeEl = document.getElementById("notice") as HTMLElement;
 const dropEl = document.getElementById("drop") as HTMLElement;
 const chooseEl = document.getElementById("choose") as HTMLButtonElement;
 const fileEl = document.getElementById("file") as HTMLInputElement;
-const paperEl = document.getElementById("paper") as HTMLElement;
+const pagesEl = document.getElementById("pages") as HTMLElement;
+const zoomEl = document.getElementById("zoom") as HTMLElement;
+const zoomInEl = document.getElementById("zoomIn") as HTMLButtonElement;
+const zoomOutEl = document.getElementById("zoomOut") as HTMLButtonElement;
+const zoomLevelEl = document.getElementById("zoomLevel") as HTMLButtonElement;
 
 let orchestrator: Orchestrator | null = null;
-/** The blocks currently on the paper, so a later flush can reconcile against them. */
-let rendered: { block: ReflowBlock; el: HTMLElement }[] = [];
-/** Bumped by every new document so a slow render of the previous one stops painting. */
+let viewer: Viewer | null = null;
+/** The document on screen. It stays open: every canvas drawn is a question to its worker. */
+let current: PdfDocument | null = null;
+/** Bumped by every new document so a slow read of the previous one stops painting. */
 let generation = 0;
+/** The document's paragraphs have been handed out already in this task (see collect). */
+let answered = false;
 
 function say(text: string): void {
   noticeEl.textContent = text;
@@ -63,83 +78,51 @@ function say(text: string): void {
 function idle(run: () => void): void {
   const ric = (window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number })
     .requestIdleCallback;
-  if (typeof ric === "function") ric(run, { timeout: 500 });
+  if (typeof ric === "function") ric.call(window, run, { timeout: 500 });
   else setTimeout(run, 0);
 }
 
-// ---- rendering ------------------------------------------------------------------------
-
-/**
- * One block as an element. Text is set with textContent and never as markup: the file is
- * untrusted, and the only thing the reader takes from it is words.
- */
-function elementFor(block: ReflowBlock): HTMLElement {
-  const el = document.createElement(block.kind === "heading" ? "h2" : "p");
-  el.textContent = block.text;
-  return el;
-}
-
-/** The "— 3 —" rule between pages. Marked as ours, so it is never a scored paragraph. */
-function pageMark(page: number): HTMLElement {
-  const el = document.createElement("div");
-  el.className = "pagemark";
-  el.setAttribute(MARK_ATTR, "host");
-  el.textContent = `— ${page} —`;
-  return el;
-}
-
-/**
- * Put `blocks` on the paper, reconciling with what is already there. Re-running the
- * reflow over more pages can extend the last paragraph (it continued onto a page we had
- * not read yet) or reclassify a block, so blocks that changed have their element updated
- * — the orchestrator then re-scores those and only those — and the rest are left alone,
- * chips and all. Appending happens in idle slices so a 300-page book never blocks.
- */
-function paint(blocks: ReflowBlock[], seq: number): void {
-  for (let i = 0; i < rendered.length && i < blocks.length; i++) {
-    const was = rendered[i].block;
-    const now = blocks[i];
-    if (was.text === now.text && was.kind === now.kind) continue;
-    const el = elementFor(now);
-    rendered[i].el.replaceWith(el);
-    rendered[i] = { block: now, el };
-  }
-  for (const extra of rendered.slice(blocks.length)) extra.el.remove();
-  rendered = rendered.slice(0, blocks.length);
-
-  const append = (): void => {
-    if (seq !== generation) return;
-    const until = Math.min(rendered.length + RENDER_SLICE, blocks.length);
-    const frag = document.createDocumentFragment();
-    for (let i = rendered.length; i < until; i++) {
-      const block = blocks[i];
-      const previous = i > 0 ? blocks[i - 1].page : block.page;
-      if (block.page > previous) frag.append(pageMark(block.page));
-      const el = elementFor(block);
-      frag.append(el);
-      rendered.push({ block, el });
-    }
-    paperEl.append(frag);
-    if (rendered.length < blocks.length) idle(append);
-  };
-  append();
-}
+/** Give the browser the main thread back between two pages. */
+const breathe = (): Promise<void> => new Promise((r) => idle(() => r()));
 
 // ---- reading a document ----------------------------------------------------------------
 
-/** Start (or restart) the pipeline over the paper. */
-async function startPipeline(reportUrl: string): Promise<void> {
+/**
+ * Start (or restart) the pipeline over the document. The units come from the
+ * reconstruction rather than from a DOM walk, the marks from the runs each paragraph was
+ * set in, and the chips from the white space at the end of its last line — three hooks,
+ * and the rest of the pipeline never learns that this is a PDF at all.
+ */
+async function startPipeline(reportUrl: string, source: PdfUnitSource, view: Viewer): Promise<void> {
   orchestrator?.stop();
-  orchestrator = createOrchestrator(null, { mountFab: true, reportUrl });
+  setRangeLocator((unit, spans) => source.ranges(unit, spans));
+  orchestrator = createOrchestrator(null, {
+    mountFab: true,
+    reportUrl,
+    // A PDF's units come from the DOCUMENT, not from a subtree, so the first answer of a
+    // mutation burst is the whole answer: the orchestrator asks once per scan root and
+    // rebuilding the document's paragraphs ten times over would say the same thing ten
+    // times. The rest of the task is answered with nothing; the next task starts fresh.
+    collect: (_root, claimFilter) => {
+      if (answered) return [];
+      answered = true;
+      queueMicrotask(() => {
+        answered = false;
+      });
+      return source.collect(claimFilter);
+    },
+    placeBadge: (unit: Unit, host: HTMLElement) => placeChip(view, unit, host),
+  });
   // A reader who turned Anagram off everywhere did not ask for this page to be scored.
   if (await enabledForSite(location.hostname)) orchestrator.start();
 }
 
 /**
- * Read a document end to end: extract, reflow, render. The first pages are painted as
- * soon as they are out, and the rest join as they are extracted — the reflow is re-run
- * over everything read so far each time, because running heads and paragraphs that
- * continue across a page break can only be judged with the neighbouring pages in hand.
+ * Read a document end to end: page by page, each one shown as soon as it is out and its
+ * text layer built before the next is asked for. The reflow is re-run over everything read
+ * so far at each batch boundary, because running heads and paragraphs that continue across
+ * a page break can only be judged with the neighbouring pages in hand — and a paragraph
+ * that comes back unchanged keeps the unit, the chip and the verdict it already had.
  */
 async function read(doc: PdfDocument, source: { name: string; url: string | null }): Promise<void> {
   const seq = ++generation;
@@ -154,36 +137,61 @@ async function read(doc: PdfDocument, source: { name: string; url: string | null
   subtitleEl.textContent = tn("readerPages", doc.numPages);
   originalEl.hidden = source.url === null;
   dropEl.hidden = true;
-  paperEl.hidden = false;
-  paperEl.replaceChildren();
-  rendered = [];
+  pagesEl.hidden = false;
+  pagesEl.classList.add("reading");
+  zoomEl.hidden = false;
   say(capped ? t("readerCapped", MAX_PAGES) : "");
 
-  const pages: PdfPageText[] = [];
+  const view = createViewer(pagesEl);
+  viewer = view;
+  view.onScale((s) => {
+    zoomLevelEl.textContent = `${Math.round(s * 100)}%`;
+  });
+  const unitSource = createPdfUnitSource();
+
+  const texts: PdfPageText[] = [];
   let started = false;
+  let fitted = false;
   for (let n = 1; n <= pageCount; n++) {
     if (seq !== generation) return;
+    let added: PageView | null = null;
     try {
-      pages.push(await doc.page(n));
+      const page = await doc.page(n);
+      added = await view.add(page);
+      texts.push(page.text);
     } catch (e) {
       log.warn("page", n, "could not be read", e);
     }
-    const last = n === pageCount;
-    if (!last && (n < FIRST_BATCH || n % FIRST_BATCH !== 0)) continue;
-
-    const blocks = reflowPdf(pages);
-    paint(blocks, seq);
-    if (!started && blocks.length > 0) {
-      started = true;
-      await startPipeline(source.url ?? name);
+    if (seq !== generation) return;
+    if (added) {
+      unitSource.setPage(n, { layer: added.layer, spans: added.spans });
+      // The first page decides the zoom, so the document is at its reading size from the
+      // moment anything of it is on screen.
+      if (!fitted) {
+        fitted = true;
+        view.fitWidth();
+      }
     }
+
+    const last = n === pageCount;
+    if (!last && (n < FIRST_BATCH || n % FIRST_BATCH !== 0)) {
+      await breathe();
+      continue;
+    }
+    unitSource.setBlocks(reflowPdf(texts));
+    if (!started && texts.some((p) => p.items.length > 0)) {
+      started = true;
+      await startPipeline(source.url ?? name, unitSource, view);
+    }
+    await breathe();
   }
   if (seq !== generation) return;
-
-  if (rendered.length === 0) {
-    say(t("readerNoText"));
-    paperEl.hidden = true;
-  }
+  // The document is read to the end, and that is a state worth saying out loud: it is how
+  // a reader (and a test) knows the paragraph count will not change again, and the class
+  // change is also the mutation that has the pipeline take in whatever the LAST reflow
+  // added — the pages arriving under it are what does that for every batch before it.
+  pagesEl.classList.remove("reading");
+  if (!started) say(t("readerNoText"));
 }
 
 /** Open bytes we already hold. Everything that can go wrong ends in one short line. */
@@ -193,6 +201,7 @@ async function open(bytes: Uint8Array, source: { name: string; url: string | nul
     return;
   }
   say("");
+  reset();
   let doc: PdfDocument;
   try {
     doc = await openPdf(bytes);
@@ -202,11 +211,26 @@ async function open(bytes: Uint8Array, source: { name: string; url: string | nul
     dropEl.hidden = false;
     return;
   }
-  try {
-    await read(doc, source);
-  } finally {
-    doc.close();
-  }
+  // The document stays OPEN for as long as its pages are on screen: a canvas is drawn
+  // when the reader scrolls to it and again at every zoom, and both ask the worker. It is
+  // closed when another document replaces it (reset, below).
+  current = doc;
+  await read(doc, source);
+}
+
+/** Take down whatever the previous document left on screen. */
+function reset(): void {
+  generation++;
+  orchestrator?.stop();
+  orchestrator = null;
+  setRangeLocator(null);
+  viewer?.destroy();
+  viewer = null;
+  current?.close();
+  current = null;
+  pagesEl.hidden = true;
+  pagesEl.classList.remove("reading");
+  zoomEl.hidden = true;
 }
 
 /**
@@ -264,6 +288,19 @@ function wire(src: string | null): void {
   fileEl.addEventListener("change", () => {
     const file = fileEl.files?.[0];
     if (file) void openFromFile(file);
+  });
+  zoomInEl.addEventListener("click", () => viewer?.step(1));
+  zoomOutEl.addEventListener("click", () => viewer?.step(-1));
+  zoomLevelEl.addEventListener("click", () => viewer?.fitWidth());
+  // The browser's own zoom keys, answered by the document rather than by the window: a
+  // PDF's "bigger" means a bigger page, not a bigger user interface.
+  window.addEventListener("keydown", (e) => {
+    if (!viewer || !(e.metaKey || e.ctrlKey) || e.altKey) return;
+    if (e.key === "+" || e.key === "=") viewer.step(1);
+    else if (e.key === "-" || e.key === "_") viewer.step(-1);
+    else if (e.key === "0") viewer.fitWidth();
+    else return;
+    e.preventDefault();
   });
   // Dropping onto a document that is already loaded replaces it — the same gesture
   // either way, so there is nothing to learn.

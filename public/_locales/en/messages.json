@@ -1131,6 +1131,18 @@
     "message": "Open original",
     "description": "Reader button: leave for the PDF itself."
   },
+  "readerZoomOut": {
+    "message": "Zoom out",
+    "description": "Reader zoom control, next to the percentage."
+  },
+  "readerZoomIn": {
+    "message": "Zoom in",
+    "description": "Reader zoom control, next to the percentage."
+  },
+  "readerFitWidth": {
+    "message": "Fit to width",
+    "description": "Reader zoom control: the percentage itself, which fits the page to the window again."
+  },
   "readerDrop": {
     "message": "Drop a PDF here",
     "description": "Reader drop zone."

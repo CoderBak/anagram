@@ -20,7 +20,7 @@ import type { Unit, Lane } from "../types";
 import type { ModelInfo, ScoreBlock, ScoreResult, ScoreBatchRequest } from "../contract";
 import { CONTRACT_VERSION } from "../contract";
 import { SURFACE } from "../surface";
-import { collectUnits } from "../dom/walker";
+import { collectUnits, type CollectOptions } from "../dom/walker";
 import { findMainContent, useReadability } from "../dom/mainContent";
 import { loadReadability } from "../lazy";
 import { partTextOf, MAX_UNIT_TEXT_CHARS } from "../dom/text";
@@ -31,7 +31,7 @@ import { readInWindows, unitVerdict, type UnitVerdict } from "./windows";
 import { detectUnsupported, unsupportedResult } from "./langGate";
 import { requestScores, contextAlive, lastModel } from "../messaging/client";
 import { modelDim } from "../backend/router";
-import { createBadgeLayer, type BadgeLayer } from "../render/badge";
+import { createBadgeLayer, type BadgeLayer, type BadgeLayerOptions } from "../render/badge";
 import {
   setHighlight,
   clearHighlight,
@@ -185,6 +185,27 @@ export interface OrchestratorOptions {
    * watch cannot always do — writing "off" where "off" is already stored changes nothing.
    */
   onSiteOff?: () => void;
+  /**
+   * Where the units come from, when they do not come from a DOM walk. The PDF reader
+   * supplies this: a PDF's paragraphs are the document's own reconstruction, decided by
+   * geometry rather than by markup, and only the reader knows which span of which page
+   * each one was set in (lib/pdf/units.ts). Everything downstream is unchanged — the
+   * units it returns are ordinary units and are scheduled, marked and chipped as such —
+   * and it is asked exactly where collectUnits would have been, with the same ownership
+   * filter, so a re-scan leaves live units alone in exactly the same way.
+   */
+  collect?: (
+    root: ParentNode,
+    claimFilter: (nodes: Text[]) => "take" | "skip",
+    opts: CollectOptions,
+  ) => Unit[];
+  /**
+   * Where a unit's chip goes, for a surface on which "after the last text node" means
+   * nothing. The badge layer's own rule is the page's flow; a PDF page is a drawing with
+   * an absolutely positioned text layer over it, so the reader places the host itself
+   * (see BadgeLayerOptions.place). Left out everywhere else, which is every other surface.
+   */
+  placeBadge?: BadgeLayerOptions["place"];
 }
 
 export function createOrchestrator(
@@ -195,7 +216,7 @@ export function createOrchestrator(
 ): Orchestrator {
   const mountFab = opts.mountFab ?? true;
   const cache: ScoreCache = createScoreCache();
-  const badges: BadgeLayer = createBadgeLayer();
+  const badges: BadgeLayer = createBadgeLayer({ place: opts.placeBadge });
 
   let unitsById = new Map<string, Unit>();
   /** One verdict per analyzed unit — the aggregate everything counts by, plus its windows. */
@@ -444,8 +465,10 @@ export function createOrchestrator(
 
   // --- ownership / invalidation ----------------------------------------------------
 
-  /** The unit's CURRENT text, recomputed the same way the walker built it. */
+  /** The unit's CURRENT text, recomputed the same way the walker built it — except where
+   *  the unit says its text is the document's and not the page's (see Unit.textFixed). */
   function currentTextOf(unit: Unit): string {
+    if (unit.textFixed) return unit.text;
     return unit.parts
       .map(partTextOf)
       .join("\n\n")
@@ -516,7 +539,14 @@ export function createOrchestrator(
 
   /** One walk under `root`: shadow roots it descends into become observer targets. */
   function collect(root: ParentNode, claimFilter: (nodes: Text[]) => "take" | "skip"): Unit[] {
-    return collectUnits(root, { claimFilter, mergeShorts, onShadowRoot: observers.observeRoot });
+    const options: CollectOptions = {
+      claimFilter,
+      mergeShorts,
+      onShadowRoot: observers.observeRoot,
+    };
+    return opts.collect
+      ? opts.collect(root, claimFilter, options)
+      : collectUnits(root, options);
   }
 
   /** Register freshly collected units: claim their nodes, observe, index. */

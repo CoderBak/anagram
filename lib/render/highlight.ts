@@ -174,6 +174,27 @@ export function refreshHighlightTheme(): void {
   applyCss();
 }
 
+/**
+ * How a surface that is NOT the page's own DOM finds a stretch of a unit's text on
+ * screen. The PDF reader installs one: there a paragraph was reconstructed from glyphs at
+ * coordinates, so locateSpans — which re-derives the text from the nodes and insists it
+ * matches — can never answer, and "everything between the first node and the last" would
+ * sweep up whatever the reconstruction left out (a running head, the other column). The
+ * reader knows which run of which page every character came from and hands back ranges
+ * over exactly those glyphs. Null from it falls back to the whole unit, as always.
+ */
+export type RangeLocator = (
+  unit: Unit,
+  spans: ReadonlyArray<{ start: number; end: number }>,
+) => Range[][] | null;
+
+let _locator: RangeLocator | null = null;
+
+/** Install (or, with null, remove) the locator above. One per document. */
+export function setRangeLocator(locator: RangeLocator | null): void {
+  _locator = locator;
+}
+
 /** One range per part, first text node to last — the whole unit, as it was scanned. */
 function wholeParts(unit: Unit): Range[] {
   const ranges: Range[] = [];
@@ -215,8 +236,16 @@ export function setHighlight(unit: Unit, verdict: UnitVerdict): void {
 
   const marks: Array<{ band: Band; ranges: Range[] }> = [];
   const onePass = verdict.windows.length === 1 && verdict.unreadChars === 0;
-  const located = onePass ? null : locateSpans(unit.parts, unit.text, verdict.windows);
-  if (located) {
+  // With a locator even a ONE-PASS unit is placed span by span: on a surface whose text is
+  // not what its nodes say, the whole-parts shortcut would cover more than was read.
+  const located = _locator
+    ? _locator(unit, onePass ? [{ start: 0, end: unit.text.length }] : verdict.windows)
+    : onePass
+      ? null
+      : locateSpans(unit.parts, unit.text, verdict.windows);
+  if (located && _locator && onePass) {
+    marks.push({ band: b, ranges: located[0] ?? [] });
+  } else if (located) {
     verdict.windows.forEach((w, i) => {
       if (isScoredWindow(w)) marks.push({ band: band(w.result), ranges: located[i] });
     });
