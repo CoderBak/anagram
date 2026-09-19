@@ -28,7 +28,16 @@
 //                DUPLICATES (two chips closing the same text: same preceding 100
 //                characters), orphans (a chip whose preceding text is gone), chips stuck
 //                "analyzing…" past 10 s, chips in page chrome, chips out of sight inside
-//                a box that clips its own text;
+//                a box that clips its own text. Two of those readings are read against
+//                what the extension MEANS to do, and both are new since the first run:
+//                a chip out of sight in a collapsed post is expected of every paragraph
+//                but the first hidden one, whose chip is parked under the box for all of
+//                them (lib/render/badge.ts), so only a hidden chip with NOTHING parked
+//                after its box counts as a defect; and a chip in a part of the page the
+//                browser is not rendering yet (`content-visibility: auto` below the fold)
+//                measures 0×0 although it draws perfectly once scrolled to, so
+//                checkVisibility separates the two rather than the page being scrolled,
+//                which would spoil the flicker comparison;
 //   STABILITY  — FLICKER: chips that appeared or vanished between two samples whose page
 //                text was byte-identical; RESENDS: paragraphs the daemon was asked about
 //                more than once (the L1 + service-worker caches should make this zero);
@@ -326,14 +335,53 @@ function SAMPLE(cfg) {
     return null;
   };
 
+  /** Is a chip PARKED right after this box — the one chip the placement layer leaves under
+   *  a collapsed post (lib/render/badge.ts)? Looked for in the box's next few siblings,
+   *  because a site may keep its own "see more" control beside the box. */
+  const parkedAfter = (box) => {
+    let n = 0;
+    for (let el = box.nextElementSibling; el && n < 3; el = el.nextElementSibling, n++) {
+      if (el.matches('[data-anagram="host"]')) return true;
+    }
+    return false;
+  };
+  /**
+   * Why does this chip measure 0×0? Three different answers, and only the last is ours:
+   *
+   *   "unrendered"  the browser is SKIPPING that part of the page (`content-visibility:
+   *                 auto` far from the viewport). The chip draws perfectly once it is
+   *                 scrolled to; checkVisibility says so without the page being scrolled,
+   *                 and scrolling here would spoil the flicker comparison in this sample.
+   *   "pageHidden"  the PAGE hides that subtree (a closed tab panel on kotlinlang.org, a
+   *                 collapsed accordion). The text the chip judges is not on the screen
+   *                 either, so chip and text appear together when the reader opens it.
+   *   "defect"      neither: a chip with no box where its own text is being read.
+   */
+  const zeroReason = (el) => {
+    try {
+      if (el.checkVisibility() && !el.checkVisibility({ contentVisibilityAuto: true })) return "unrendered";
+      for (let e = el; e; e = e.parentElement) {
+        const s = getComputedStyle(e);
+        if (s.display === "none" || s.visibility === "hidden") return "pageHidden";
+      }
+    } catch {
+      /* fall through: an element we cannot read is a defect we cannot excuse */
+    }
+    return "defect";
+  };
+
   const byAnchor = new Map();
   let zeroSize = 0;
+  let zeroSkipped = 0;
+  let zeroPageHidden = 0;
   let chrome = 0;
   let clippedOut = 0;
+  let clipByDesign = 0;
   let orphan = 0;
   const dupSamples = [];
   const chromeSamples = [];
   const clipSamples = [];
+  const zeroSamples = [];
   const orphanSamples = [];
 
   for (let i = 0; i < hosts.length; i++) {
@@ -342,7 +390,32 @@ function SAMPLE(cfg) {
     const r = h.getBoundingClientRect();
     row.w = Math.round(r.width);
     row.h = Math.round(r.height);
-    if (!row.hidden && r.width === 0 && r.height === 0) zeroSize++;
+    if (!row.hidden && r.width === 0 && r.height === 0) {
+      const why = zeroReason(h);
+      if (why === "unrendered") zeroSkipped++;
+      else if (why === "pageHidden") zeroPageHidden++;
+      else {
+        zeroSize++;
+        if (zeroSamples.length < 4) {
+          const chain = [];
+          for (let el = h, n = 0; el && n < 6; el = el.parentElement, n++) {
+            const s = getComputedStyle(el);
+            const b = el.getBoundingClientRect();
+            chain.push(`${el.nodeName.toLowerCase()}:${s.display}/${s.contentVisibility}/${Math.round(b.width)}×${Math.round(b.height)}`);
+          }
+          zeroSamples.push({
+            chain: chain.join(" < "),
+            rects: h.getClientRects().length,
+            offsetParent: !!h.offsetParent,
+            slotted: !!h.assignedSlot,
+            inDoc: h.getRootNode() === document,
+            scrollY: Math.round(window.scrollY),
+            innerH: window.innerHeight,
+            text: preceding(h).slice(-40),
+          });
+        }
+      }
+    }
     const parent = h.parentElement;
     if (parent && parent.closest(CHROME_SEL)) {
       chrome++;
@@ -365,9 +438,18 @@ function SAMPLE(cfg) {
       if (box) {
         const br = box.getBoundingClientRect();
         if (r.top > br.bottom - 1 || r.bottom < br.top + 1 || r.left > br.right - 1) {
-          clippedOut++;
-          if (clipSamples.length < 4)
-            clipSamples.push({ box: box.nodeName.toLowerCase(), cls: (box.className || "").toString().slice(0, 40) });
+          // A chip out of sight inside a collapsed post is EXPECTED of every unit but the
+          // first hidden one, whose chip is parked after the box for all of them: that is
+          // the rule in lib/render/badge.ts, and it is what keeps a clamped review from
+          // showing a row of a dozen numbers under one box. What is still a defect is a
+          // chip out of sight with NOTHING parked after its box — nobody can see any
+          // verdict for that post.
+          if (parkedAfter(box)) clipByDesign++;
+          else {
+            clippedOut++;
+            if (clipSamples.length < 4)
+              clipSamples.push({ box: box.nodeName.toLowerCase(), cls: (box.className || "").toString().slice(0, 40) });
+          }
         }
       }
     }
@@ -491,9 +573,13 @@ function SAMPLE(cfg) {
     ...base,
     deep: true,
     zeroSize,
+    zeroSkipped,
+    zeroPageHidden,
+    zeroSamples,
     chrome,
     chromeSamples,
     clippedOut,
+    clipByDesign,
     clipSamples,
     orphan,
     orphanSamples,
@@ -880,8 +966,11 @@ function analyse(samples) {
     pileUpGroupsMax: maxOf("pileUpGroups"),
     repeatedTextChipsMax: maxOf("repeatedTextChips"),
     zeroSizeMax: maxOf("zeroSize"),
+    zeroSkippedMax: maxOf("zeroSkipped"),
+    zeroPageHiddenMax: maxOf("zeroPageHidden"),
     chromeMax: maxOf("chrome"),
     clippedOutMax: maxOf("clippedOut"),
+    clipByDesignMax: maxOf("clipByDesign"),
     orphanMax: maxOf("orphan"),
     detachedMax: maxOf("detached"),
     hlDetachedMax: maxOf("hlDetached"),
@@ -891,6 +980,7 @@ function analyse(samples) {
     dupTextNodesMax: maxOf("dupTextNodes"),
     dupSample: deep.map((s) => s.dupSamples).find((x) => x && x.length) ?? null,
     clipSample: deep.map((s) => s.clipSamples).find((x) => x && x.length) ?? null,
+    zeroSample: deep.map((s) => s.zeroSamples).find((x) => x && x.length) ?? null,
     orphanSample: deep.map((s) => s.orphanSamples).find((x) => x && x.length) ?? null,
     dupSentenceHint: deep.map((s) => s.dupSentenceHint).find(Boolean) ?? "",
     dupTextNodeHint: deep.map((s) => s.dupTextNodeHint).find(Boolean) ?? "",
@@ -1291,8 +1381,14 @@ md.push(
     "*flick* = chips that vanished / appeared between two samples in which the page's own text, " +
     "the scroll position and the viewport were all unchanged. *stuck* = chips left \"analyzing…\" " +
     "for more than 10 s. *orph* = connected chips with less than 15 characters of text before " +
-    "them (the unit they judge is gone). *clip* = chips drawn outside a box that clips its own " +
-    "text. *resend* = blocks the daemon was asked about more than once (the L1 and service-worker " +
+    "them (the unit they judge is gone). *clip* = chips out of sight inside a box that clips its " +
+    "own text with NO chip parked after that box — a post whose verdict nobody can see. A later " +
+    "paragraph of a collapsed post is out of sight by design, since one chip stands under the box " +
+    "for all of them, and those are counted apart and named per page. *0px* = chips with no box at " +
+    "all, leaving out the ones the browser is merely not rendering yet (a chip far below the fold " +
+    "inside `content-visibility: auto` measures 0×0 and draws properly the moment it is reached) " +
+    "and the ones inside a subtree the PAGE hides, whose text is hidden with them. " +
+    "*resend* = blocks the daemon was asked about more than once (the L1 and service-worker " +
     "caches should make this 0). *task/min* = long tasks per minute, extension vs. control. " +
     "*Δtext* = the main region's own text changed between the first sample and the last " +
     "(`=` unchanged, `≠` changed) — meaningful only on pages marked static.",
@@ -1390,15 +1486,31 @@ for (const r of rows) {
     );
   if (x.clippedOutMax > 0)
     anomalies.push(
-      `**chips drawn outside a clipping box: ${x.clippedOutMax}**` +
+      `**chips out of sight in a clipping box with nothing parked after it: ${x.clippedOutMax}**` +
         ((x.clipSample ?? []).length ? ` (${x.clipSample.map((s) => `<${s.box}> .${s.cls}`).join(", ")})` : ""),
+    );
+  if (x.clipByDesignMax > 0)
+    anomalies.push(
+      `${x.clipByDesignMax} chips out of sight inside a collapsed post whose first hidden paragraph IS parked under it — by design, and there the moment the post is opened`,
     );
   if (x.repeatedTextChipsMax > 0)
     anomalies.push(
       `${x.repeatedTextChipsMax} chips close text that appears more than once on the page, in different parents — one chip per copy, which is by design (noted so it is not read as a duplicate)`,
     );
   if (x.chromeMax > 0) anomalies.push(`chips in page chrome: ${x.chromeMax}`);
-  if (x.zeroSizeMax > 0) anomalies.push(`chips with no box at all (0×0, not hidden): ${x.zeroSizeMax}`);
+  if (x.zeroSizeMax > 0)
+    anomalies.push(
+      `chips with no box at all (0×0, not hidden, not merely unrendered): ${x.zeroSizeMax}` +
+        ((x.zeroSample ?? []).length ? ` — ${x.zeroSample.map((s) => `\`${s.chain}\` (${s.rects} rects, offsetParent ${s.offsetParent}, scrollY ${s.scrollY}, after “…${s.text}”)`).join("; ")}` : ""),
+    );
+  if (x.zeroSkippedMax > 0)
+    anomalies.push(
+      `${x.zeroSkippedMax} chips measured 0×0 only because the browser was skipping that part of the page (\`content-visibility: auto\` below the fold) — they draw when scrolled to, so this is the measurement, not the chip`,
+    );
+  if (x.zeroPageHiddenMax > 0)
+    anomalies.push(
+      `${x.zeroPageHiddenMax} chips measured 0×0 inside a subtree the PAGE hides (a closed tab panel, a collapsed accordion) — the text they judge is hidden with them and comes back with them`,
+    );
   if (x.detachedMax > 0)
     anomalies.push(`hosts detached but still reachable: ${x.detachedMax} (suggestive of a retained badge, not proof — GC may simply not have run)`);
   if (x.hlDetachedMax > 0) anomalies.push(`**highlight ranges over detached nodes: ${x.hlDetachedMax}**`);

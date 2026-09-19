@@ -479,7 +479,10 @@ static page as the control) it runs a scripted 60–120 s session against the fa
 daemon — scroll down screen by screen, back to the top, click the view-only
 controls the entry names, follow one in-site link and come back, resize, toggle
 the ball — sampling every 2 s, and reports chips that duplicate, pile up at one
-anchor, flicker, blink or stay "analyzing…", paragraphs sent to the daemon twice,
+anchor, flicker, blink, stay "analyzing…" or end up out of sight in a collapsed
+post with no chip parked under it (a later paragraph of such a post is hidden by
+design and counted apart, as is a chip that measures 0×0 only because the browser
+is not rendering that part of the page yet), paragraphs sent to the daemon twice,
 whether the page's own text survived us, and the cost in long tasks, layout and
 heap **against a control run of the same page with no extension**.
 

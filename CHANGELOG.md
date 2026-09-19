@@ -438,6 +438,25 @@ Notable changes to Anagram, newest first. The format follows
   day it was written has been fixed, so anything it reports from here is a
   regression — and an entry that stops firing fails the run, which is how the
   last of them were found and deleted rather than left to fossilise.
+- `test/dynamics.mjs` reads two of its own columns against what the extension
+  means to do. A chip out of sight inside a collapsed post is now only a defect
+  when NOTHING is parked under that post — a later paragraph of a clamped review
+  is hidden by design, since one chip stands under the box for all of them — and
+  those are counted and named apart. And a chip measuring 0×0 is read for what it
+  is: every one of the 26 the survey found on theverge.com and the 9 on
+  kotlinlang.org turned out to sit in a subtree the PAGE hides — a code tab that
+  is not the selected one, a view the site had just swapped out — with the text
+  they judge hidden alongside them, and a chip in a part of the page the browser
+  has not rendered yet (`content-visibility: auto` below the fold) measures the
+  same. Both are counted apart from a chip that really has no box, and
+  `checkVisibility` separates them without scrolling the page, which would have
+  spoiled the flicker comparison run in the same sample. The clipped
+  review the survey found the pile-up on is now a fixture
+  (`test/fixtures/clipped-reviews.html`), driven by the unit suite through the
+  badge layer and by the scenarios suite through the whole extension: one chip
+  under a collapsed review and five at their own paragraphs, all six back in
+  place when it is opened, parked again when it is closed, and one more page on
+  which a box only starts clipping once its image arrives.
 - The pure text machinery is checked against properties rather than examples. A
   seeded generator (no new dependency) builds words, CJK, emoji, invisibles,
   non-breaking spaces, LaTeX residue, curly quotes, en-dashed figure ranges,
