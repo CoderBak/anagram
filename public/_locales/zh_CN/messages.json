@@ -1,0 +1,863 @@
+{
+  "localeTag": {
+    "message": "zh-CN"
+  },
+  "copied": {
+    "message": "已复制 ✓"
+  },
+  "extDescription": {
+    "message": "逐段标注文本的 AI 编辑程度。"
+  },
+  "cmdToggleOverlay": {
+    "message": "显示/隐藏 Anagram 标记"
+  },
+  "cmdOpenPanel": {
+    "message": "打开存疑段落列表"
+  },
+  "cmdNextFlagged": {
+    "message": "跳到下一个存疑段落"
+  },
+  "cmdPrevFlagged": {
+    "message": "跳到上一个存疑段落"
+  },
+  "menuAnalyzeSelection": {
+    "message": "用 Anagram 分析所选文本"
+  },
+  "menuAnalyzePage": {
+    "message": "用 Anagram 分析本页"
+  },
+  "menuOpenPdf": {
+    "message": "用 Anagram 打开 PDF"
+  },
+  "bandHuman": {
+    "message": "人工撰写"
+  },
+  "bandLight": {
+    "message": "轻度 AI 编辑"
+  },
+  "bandHeavy": {
+    "message": "重度 AI 编辑"
+  },
+  "bandAi": {
+    "message": "AI 生成"
+  },
+  "bandUnavailable": {
+    "message": "暂不可用"
+  },
+  "bandUnsupported": {
+    "message": "语言不支持"
+  },
+  "langUnknown": {
+    "message": "未知"
+  },
+  "cardPending": {
+    "message": "正在分析该段落…"
+  },
+  "cardScaleTitle": {
+    "message": "AI 编辑程度（EditLens 标度）"
+  },
+  "cardPartsTogether": {
+    "message": "合并分析的段落"
+  },
+  "cardWords": {
+    "message": "词数"
+  },
+  "cardWindows": {
+    "message": "分 $1 个窗口评分"
+  },
+  "cardScored": {
+    "message": "评分范围"
+  },
+  "cardFirstWords": {
+    "message": "前 $1 词"
+  },
+  "cardWindowsCut": {
+    "message": "被截断的窗口"
+  },
+  "cardOfCount": {
+    "message": "$1 / $2"
+  },
+  "cardWindowsSkipped": {
+    "message": "非英文窗口"
+  },
+  "cardFormulas": {
+    "message": "略过的公式"
+  },
+  "cardDetectedLang": {
+    "message": "检测到的语言"
+  },
+  "cardCopyText": {
+    "message": "复制原文"
+  },
+  "cardFootUnavailable": {
+    "message": "本地评分服务没有响应。服务启动后会自动重试。"
+  },
+  "cardFootUnsupported": {
+    "message": "EditLens 只在英文文本上训练，因此没有为该段落评分。"
+  },
+  "cardFootEstimate": {
+    "message": "这个数字是 EditLens 的估计，衡量文本距离纯人工写作有多远、离完全 AI 生成有多近，既不是 AI 撰写词语的占比，也不是证据。"
+  },
+  "coverageOpeningParagraph": {
+    "message": "只对该段落的开头评了分。"
+  },
+  "coverageOpeningSelection": {
+    "message": "只对所选文本的开头评了分。"
+  },
+  "coverageTooDense": {
+    "message": "其中一部分对模型的窗口来说太密集，没有读取。"
+  },
+  "coverageOtherLanguages": {
+    "message": "其他语言的窗口未计入。"
+  },
+  "coverageAveraged": {
+    "message": "长度超出模型一次能读的范围，因此分 $1 个连续窗口读取，再按长度加权平均。"
+  },
+  "selTooShort": {
+    "message": "太短，无法判断"
+  },
+  "selWordsSelected": {
+    "message": "选中词数"
+  },
+  "selNeeded": {
+    "message": "可靠判断所需"
+  },
+  "selFootTooShort": {
+    "message": "低于证据下限时结果并不可靠，请多选一些文本。"
+  },
+  "selAnalyzing": {
+    "message": "正在分析…"
+  },
+  "selWordsAnalyzed": {
+    "message": "已分析词数"
+  },
+  "selFirst": {
+    "message": "前 $1"
+  },
+  "selClose": {
+    "message": "关闭"
+  },
+  "selFootDaemonDown": {
+    "message": "本地评分服务未运行，请运行 $1 后重试。"
+  },
+  "selFootNoAnswer": {
+    "message": "评分后端没有响应，请重试。"
+  },
+  "selFootUnavailable": {
+    "message": "本地评分服务没有响应，请重试。"
+  },
+  "selFootUnsupported": {
+    "message": "EditLens 只在英文文本上训练，因此没有为所选文本评分。"
+  },
+  "fabHide": {
+    "message": "隐藏 AI 检测"
+  },
+  "fabShow": {
+    "message": "显示 AI 检测"
+  },
+  "fabHideAria": {
+    "message": "隐藏 AI 检测标记"
+  },
+  "fabShowAria": {
+    "message": "显示 AI 检测标记"
+  },
+  "countTitle": {
+    "message": "查看存疑段落"
+  },
+  "countDownTitle": {
+    "message": "本地评分服务未运行，点击查看详情"
+  },
+  "countDownAria": {
+    "message": "本地评分服务未运行 · 详情"
+  },
+  "countAria_one": {
+    "message": "$1 个存疑段落，查看列表"
+  },
+  "countAria_other": {
+    "message": "$1 个存疑段落，查看列表"
+  },
+  "panelAnnounceCount_one": {
+    "message": "本页有 $1 个存疑段落"
+  },
+  "panelAnnounceCount_other": {
+    "message": "本页有 $1 个存疑段落"
+  },
+  "panelDaemonDown": {
+    "message": "本地评分服务未运行。请运行“anagram start”，新段落会等它响应。"
+  },
+  "panelRetry": {
+    "message": "重试"
+  },
+  "panelTitle": {
+    "message": "存疑段落"
+  },
+  "panelTitleCount": {
+    "message": "存疑段落（$1）"
+  },
+  "panelCopyReport": {
+    "message": "复制报告"
+  },
+  "panelAnnounceCopied": {
+    "message": "报告已复制到剪贴板"
+  },
+  "panelFilterAll": {
+    "message": "全部 $1"
+  },
+  "panelFilterAi": {
+    "message": "AI $1"
+  },
+  "panelFilterHeavy": {
+    "message": "重度 AI 编辑 $1"
+  },
+  "panelEmpty": {
+    "message": "本页没有存疑段落。"
+  },
+  "panelItemAria": {
+    "message": "$1，$2%：$3"
+  },
+  "panelTurnOffHere": {
+    "message": "在此页关闭"
+  },
+  "panelTurnOffOn": {
+    "message": "在 $1 关闭"
+  },
+  "panelTurnOffTitle": {
+    "message": "会写入一条站点规则，随时可在工具栏弹窗中重新开启"
+  },
+  "actionAnalyzeDocument": {
+    "message": "分析文档"
+  },
+  "actionLoadingDocument": {
+    "message": "正在载入文档…"
+  },
+  "actionCloseReading": {
+    "message": "退出阅读模式"
+  },
+  "actionBackToEditor": {
+    "message": "返回编辑器"
+  },
+  "actionAnalyzePdf": {
+    "message": "分析 PDF"
+  },
+  "docsUntitled": {
+    "message": "Google 文档"
+  },
+  "docsSubtitle": {
+    "message": "Anagram 阅读模式 · 逐段分析 · 编辑器原封不动"
+  },
+  "docsRefresh": {
+    "message": "刷新"
+  },
+  "docsRefreshTitle": {
+    "message": "重新读取文档，包含打开之后的修改"
+  },
+  "docsOpenAsPage": {
+    "message": "作为页面打开"
+  },
+  "docsOpenAsPageTitle": {
+    "message": "把分析后的阅读视图作为独立页面打开"
+  },
+  "docsBack": {
+    "message": "返回编辑器 · Esc"
+  },
+  "docsSnapshotNotice": {
+    "message": "文档的静态快照，点“刷新”可重新读取。"
+  },
+  "reportTitle": {
+    "message": "Anagram 报告：$1"
+  },
+  "reportPage": {
+    "message": "页面：$1"
+  },
+  "reportGenerated": {
+    "message": "生成时间：$1"
+  },
+  "reportAnalyzed_one": {
+    "message": "已分析：$1 个单元"
+  },
+  "reportAnalyzed_other": {
+    "message": "已分析：$1 个单元"
+  },
+  "reportFlagged": {
+    "message": "存疑：$1"
+  },
+  "reportUnavailable": {
+    "message": "不可用：$1"
+  },
+  "reportSkipped": {
+    "message": "略过（语言不支持）：$1"
+  },
+  "reportEstimate": {
+    "message": "每个百分比都是 EditLens 的估计，衡量该文本距离纯人工写作有多远、离完全 AI 生成有多近，既不是 AI 撰写词语的占比，也不是证据。"
+  },
+  "reportNothingFlagged": {
+    "message": "没有段落被判为重度 AI 编辑或 AI 生成。"
+  },
+  "reportFlaggedHeading": {
+    "message": "存疑段落（$1）"
+  },
+  "reportWords": {
+    "message": "$1 词"
+  },
+  "reportWindows": {
+    "message": "；分 $1 个窗口评分：$2"
+  },
+  "reportUnread": {
+    "message": "；段落末尾未被读取"
+  },
+  "reportModel": {
+    "message": "评分来自本地 anagramd 服务上的 $1（$2）—— EditLens 对 AI 编辑程度的估计，不是证据。"
+  },
+  "reportNoModel": {
+    "message": "分析本页时没有评分服务响应。"
+  },
+  "popupTitle": {
+    "message": "Anagram"
+  },
+  "popupSubtitle": {
+    "message": "AI 文本检测"
+  },
+  "popupAllSettings": {
+    "message": "全部设置"
+  },
+  "popupDetection": {
+    "message": "检测"
+  },
+  "popupAllWebsites": {
+    "message": "所有网站"
+  },
+  "popupThisSite": {
+    "message": "当前站点"
+  },
+  "popupOn": {
+    "message": "适用于 $1"
+  },
+  "popupSiteUnavailable": {
+    "message": "此处不可用"
+  },
+  "popupDisplay": {
+    "message": "外观"
+  },
+  "popupShow": {
+    "message": "显示"
+  },
+  "popupAllChips": {
+    "message": "全部标记"
+  },
+  "popupFlaggedOnly": {
+    "message": "仅存疑"
+  },
+  "popupMarkText": {
+    "message": "标记正文"
+  },
+  "popupMarkingStyle": {
+    "message": "标记样式"
+  },
+  "styleBoth": {
+    "message": "下划线 + 底色"
+  },
+  "styleUnderline": {
+    "message": "下划线"
+  },
+  "styleTint": {
+    "message": "底色"
+  },
+  "popupAnalysis": {
+    "message": "分析"
+  },
+  "popupScope": {
+    "message": "范围"
+  },
+  "popupScopeTitle": {
+    "message": "正文 = 仅文章主体（Readability）"
+  },
+  "popupWholePage": {
+    "message": "整页"
+  },
+  "popupMainContent": {
+    "message": "正文"
+  },
+  "popupReadPdf": {
+    "message": "阅读此 PDF"
+  },
+  "popupRescan": {
+    "message": "重新扫描"
+  },
+  "popupHintToggle": {
+    "message": "$1+$2+$3 显示或隐藏标记"
+  },
+  "popupHintList": {
+    "message": "$1+$2+$3 列出存疑段落 · $4/$5 逐个跳转"
+  },
+  "popupFlaggedCount": {
+    "message": "$1 个存疑"
+  },
+  "popupAnalyzed_one": {
+    "message": "已分析 $1 个段落 · "
+  },
+  "popupAnalyzed_other": {
+    "message": "已分析 $1 个段落 · "
+  },
+  "popupNotEnglish": {
+    "message": " · $1 个非英文"
+  },
+  "popupUnavailable": {
+    "message": " · $1 个不可用"
+  },
+  "popupNoTab": {
+    "message": "没有活动的标签页。"
+  },
+  "popupOff": {
+    "message": "本页已关闭检测。"
+  },
+  "popupUnsupportedPage": {
+    "message": "本页无法使用。"
+  },
+  "popupRescanning": {
+    "message": "正在重新扫描…"
+  },
+  "popupModel": {
+    "message": "模型："
+  },
+  "popupLocal": {
+    "message": " · 本地"
+  },
+  "popupDaemonMismatch": {
+    "message": "服务版本不匹配"
+  },
+  "popupDaemonDown": {
+    "message": "服务未运行"
+  },
+  "popupRetry": {
+    "message": "重试"
+  },
+  "popupRunUpdate": {
+    "message": "，请运行 anagram update "
+  },
+  "popupRunStart": {
+    "message": "，请运行 anagram start "
+  },
+  "optionsTitle": {
+    "message": "Anagram for Chrome — 选项"
+  },
+  "optionsHeading": {
+    "message": "Anagram for Chrome"
+  },
+  "optDetection": {
+    "message": "检测"
+  },
+  "optDetectionNote": {
+    "message": "分析哪些内容，以及段落如何分组。"
+  },
+  "optEnabled": {
+    "message": "在所有网站启用"
+  },
+  "optEnabledNote": {
+    "message": "下方的站点规则会覆盖这个默认值。改动对新打开的页面和已打开的标签页都生效。"
+  },
+  "optScope": {
+    "message": "分析范围"
+  },
+  "optScopeNote": {
+    "message": "“仅正文”只分析文章主体——与 Firefox 阅读视图同样的方式（Mozilla Readability）——并略过其外的评论和侧栏。找不到明确的正文区域时回退到整页。"
+  },
+  "optScopeWholePage": {
+    "message": "整页"
+  },
+  "optScopeMain": {
+    "message": "仅正文"
+  },
+  "optMerge": {
+    "message": "合并相邻的短段落"
+  },
+  "optMergeNote": {
+    "message": "短帖子或评论会作为整体分析；低于 50 词证据下限的段落，会与同一篇文章里相邻的段落合在一起分析，标签上显示 ×N；绝不跨帖子、评论或引文。关闭后：每段单独分析，短段落直接略过。"
+  },
+  "optDisplay": {
+    "message": "外观"
+  },
+  "optDisplayNote": {
+    "message": "结论在页面上如何呈现。"
+  },
+  "optHighlights": {
+    "message": "标记已分析的段落"
+  },
+  "optHighlightsNote": {
+    "message": "按结论给每个段落着色——绿色 = 人工撰写，黄色 = 轻度 AI 编辑，橙色 = 重度 AI 编辑，红色 = AI 生成。不论开关，段落后的标签都会保留。"
+  },
+  "optMarkStyle": {
+    "message": "标记样式"
+  },
+  "optMarkStyleNote": {
+    "message": "已分析的段落在原处如何标出。上面的“标记已分析的段落”仍是总开关。"
+  },
+  "optStyleBoth": {
+    "message": "下划线 + 底色"
+  },
+  "optStyleUnderline": {
+    "message": "仅下划线"
+  },
+  "optStyleTint": {
+    "message": "仅底色"
+  },
+  "optDisplayMode": {
+    "message": "显示内容"
+  },
+  "optDisplayModeNote": {
+    "message": "无论选哪项，每个段落都会被分析。“仅存疑”让页面保持安静，只标出重度 AI 编辑和 AI 生成的结论。"
+  },
+  "optModeAll": {
+    "message": "全部标记"
+  },
+  "optModeFlagged": {
+    "message": "仅存疑"
+  },
+  "optDaemon": {
+    "message": "本地评分服务"
+  },
+  "optDaemonNote": {
+    "message": "结论来自本机的 $1 服务（EditLens roberta-large，运行在这台电脑上）。用 $2 启动它（从源码目录则用 $3）。它没有运行时，段落显示为“暂不可用”，并会自动重试。没有其他后端。"
+  },
+  "optDaemonUrl": {
+    "message": "服务地址"
+  },
+  "optDaemonUrlNote": {
+    "message": "$1 监听的地址。只允许本地地址——页面文本绝不会离开这台电脑。默认 $2。"
+  },
+  "optStatus": {
+    "message": "状态"
+  },
+  "optChecking": {
+    "message": "检查中…"
+  },
+  "optCheckNow": {
+    "message": "立即检查"
+  },
+  "optRules": {
+    "message": "站点规则"
+  },
+  "optRulesNote": {
+    "message": "始终开启 / 始终关闭的覆盖规则。一条规则同样覆盖该站点的子域名，最具体的规则优先。"
+  },
+  "optHostname": {
+    "message": "主机名"
+  },
+  "optRuleField": {
+    "message": "规则"
+  },
+  "optAlwaysOn": {
+    "message": "始终开启"
+  },
+  "optAlwaysOff": {
+    "message": "始终关闭"
+  },
+  "optAdd": {
+    "message": "添加"
+  },
+  "optNoRules": {
+    "message": "还没有站点规则。用工具栏弹窗里的“当前站点”开关添加一条。"
+  },
+  "optColSite": {
+    "message": "站点"
+  },
+  "optColRule": {
+    "message": "规则"
+  },
+  "optColActions": {
+    "message": "操作"
+  },
+  "optRemove": {
+    "message": "移除"
+  },
+  "optBadHost": {
+    "message": "请输入形如 example.com 的主机名。"
+  },
+  "optAlreadyCovered": {
+    "message": "已被 $1 覆盖。"
+  },
+  "optBadUrl": {
+    "message": "只允许本地地址（http://127.0.0.1:… 或 http://localhost:…）。"
+  },
+  "optConnected": {
+    "message": "已连接 · $1（$2），设备 $3，地址 $4。"
+  },
+  "optContractMismatch": {
+    "message": "在 $1 找到了服务，但它使用 contract $2，而本扩展需要 $3.x——请运行：~/.anagram/bin/anagram update。"
+  },
+  "optNotRunning": {
+    "message": "$1 上没有服务在运行——在它响应之前，段落都会显示为“暂不可用”。"
+  },
+  "optNotRunningReason": {
+    "message": "$1 上没有服务在运行——在它响应之前，段落都会显示为“暂不可用”（$2）。"
+  },
+  "optSummaryMismatch": {
+    "message": "服务版本不匹配"
+  },
+  "optSummaryDown": {
+    "message": "服务未运行"
+  },
+  "optNoWorker": {
+    "message": "无法连接到扩展的 service worker。"
+  },
+  "optAdvanced": {
+    "message": "高级"
+  },
+  "optDebug": {
+    "message": "调试日志"
+  },
+  "optDebugNote": {
+    "message": "输出内容脚本的详细控制台日志（命名空间 $1）。"
+  },
+  "optCachedVerdicts": {
+    "message": "缓存的结论"
+  },
+  "optCachedNote": {
+    "message": "结论会被保留，重访时不再重新评分。清除之后，下一次扫描会重新询问评分服务。"
+  },
+  "optClearCache": {
+    "message": "清除缓存的结论"
+  },
+  "optCleared": {
+    "message": "已清除 ✓"
+  },
+  "optAbout": {
+    "message": "关于与快捷键"
+  },
+  "optShortcutToggle": {
+    "message": "在当前页面显示或隐藏 Anagram 的标记。"
+  },
+  "optShortcutList": {
+    "message": "打开存疑段落列表，并把键盘焦点放进去。"
+  },
+  "optShortcutNext": {
+    "message": "跳到下一个存疑段落。"
+  },
+  "optShortcutPrev": {
+    "message": "跳到上一个存疑段落。"
+  },
+  "optRightClick": {
+    "message": "右键"
+  },
+  "optShortcutSelection": {
+    "message": "选择“用 Anagram 分析所选文本”，只为选中的文字评分。"
+  },
+  "optShortcutPage": {
+    "message": "选择“用 Anagram 分析本页”，对一个已关闭的页面分析一次。"
+  },
+  "optRebind": {
+    "message": "这些都可以在浏览器的扩展快捷键设置里改（Chrome：$1）。"
+  },
+  "optPrivacy": {
+    "message": "没有任何内容离开这台电脑——评分在本机的 $1 服务里进行。服务地址只允许本地地址。"
+  },
+  "optVerdictColors": {
+    "message": "结论配色"
+  },
+  "optFooter": {
+    "message": "标签上的数字是 EditLens 的估计，衡量一个段落处在纯人工写作（0%）与完全 AI 生成（100%）之间的什么位置，既不是 AI 撰写词语的占比，也不是证据。检测按段落进行——短帖子按整帖——证据下限为 50 词；更短的相邻段落会合并分析。"
+  },
+  "modelLine": {
+    "message": "模型：pangram/editlens_roberta-large（CC BY-NC-SA 4.0，非商业用途）。"
+  },
+  "onbTitle": {
+    "message": "欢迎使用 Anagram"
+  },
+  "onbLede": {
+    "message": "浏览时 Anagram 回答一个问题：$1。每个被分析的段落后面都会出现一个小 $2，上面是一个数字——模型对 $3 的估计——再配上相应的下划线：人工写的地方安静，AI 参与越多越明显。"
+  },
+  "onbLedeQuestion": {
+    "message": "“这段里有多少是 AI 写的？”"
+  },
+  "onbLedeChip": {
+    "message": "标签"
+  },
+  "onbLedeExtent": {
+    "message": "AI 编辑程度"
+  },
+  "onbSetup": {
+    "message": "准备"
+  },
+  "onbExtension": {
+    "message": "扩展"
+  },
+  "onbInstalled": {
+    "message": "已安装"
+  },
+  "onbDaemon": {
+    "message": "本地评分服务"
+  },
+  "onbChecking": {
+    "message": "检查中…"
+  },
+  "onbRunning": {
+    "message": "运行中"
+  },
+  "onbMismatch": {
+    "message": "版本不匹配"
+  },
+  "onbNotLocal": {
+    "message": "不是本地地址"
+  },
+  "onbNotRunning": {
+    "message": "未运行"
+  },
+  "onbCopy": {
+    "message": "复制"
+  },
+  "onbOpenOptions": {
+    "message": "打开选项"
+  },
+  "onbReady": {
+    "message": "就绪"
+  },
+  "onbWaiting": {
+    "message": "正在等待本地评分服务。"
+  },
+  "onbGo": {
+    "message": "打开任意一篇文章——每段后面都会出现一个标签。"
+  },
+  "onbNotInstalled": {
+    "message": "还没装？$1"
+  },
+  "onbHowItReads": {
+    "message": "它怎么读"
+  },
+  "onbVerdicts": {
+    "message": "看懂结论"
+  },
+  "onbVerdictsBody": {
+    "message": "模型（$1，ICLR 2026）判断一个段落处在纯人工写作（0%）与完全 AI 生成（100%）之间的什么位置。这个数字 $2，而是模型对 AI 编辑整体上改动了多少的估计。把鼠标移到标签上（或点一下）可以看到完整读数：结论背后的四路概率分布和词数。EditLens 只读英文：其他语言的标签是灰色的，显示检测到的语言代码而不是数字。每个数字都只是 $3。不足约 50 词的片段只有与相邻段落合并后才会评分，短帖子按整帖评分——标签上的 $4 表示它覆盖了这么多段落。"
+  },
+  "onbNotShare": {
+    "message": "不是 AI 撰写词语的占比"
+  },
+  "onbEstimate": {
+    "message": "估计，不是证据"
+  },
+  "onbBall": {
+    "message": "悬浮球"
+  },
+  "onbBallBody": {
+    "message": "它待在每个页面的右下角。$1 一下可以立刻显示或隐藏全部标记。可以把它 $2 到任何地方——松手会吸附到最近的边缘，闲置时半隐到边上，鼠标移过去又回来。它红色的 $3 打开存疑列表：按结论筛选、逐个跳到存疑段落、$4，或者在这个站点关掉 Anagram——都在这个面板里。"
+  },
+  "onbClick": {
+    "message": "点"
+  },
+  "onbDrag": {
+    "message": "拖"
+  },
+  "onbCounter": {
+    "message": "计数"
+  },
+  "onbPower": {
+    "message": "进阶用法"
+  },
+  "onbPowerSelection": {
+    "message": "$1——选中文字，右键，完成。文本框和编辑器里同样有效。"
+  },
+  "onbSelectionName": {
+    "message": "分析所选文本"
+  },
+  "onbPowerToggle": {
+    "message": "$1+$2+$3——在当前页面开关 Anagram。"
+  },
+  "onbPowerWalk": {
+    "message": "$1+$2+$3——打开存疑段落列表，键盘焦点已经在里面。$4+$5+$6 和 $7+$8+$9 不用碰鼠标就能跳到下一个和上一个存疑段落。"
+  },
+  "onbPowerFlagged": {
+    "message": "$1——在弹窗里切到 $2，安静的页面就保持原样，只有被标出的地方才有标记。"
+  },
+  "onbFlaggedName": {
+    "message": "仅存疑"
+  },
+  "onbFlaggedPath": {
+    "message": "显示 → 仅存疑"
+  },
+  "onbDocs": {
+    "message": "Google Docs"
+  },
+  "onbDocsBody": {
+    "message": "Docs 是编辑器，不是页面——所以 Anagram 自带一个阅读界面。点悬浮球上的 $1，$2 会直接在当前标签页打开，文档的每一段都已分析。不跳转，也绝不碰你的文件。按 $3 或 $4 立刻返回——想要独立标签页就用 $5。"
+  },
+  "onbReadingMode": {
+    "message": "阅读模式"
+  },
+  "onbPdfs": {
+    "message": "PDF"
+  },
+  "onbPdfBody": {
+    "message": "在浏览器眼里 PDF 是一张图，所以 Anagram 把它重建成页面。点悬浮球上的 $1、弹窗里的 $2，或者右键一个 PDF 链接选择 $3。段落会按阅读顺序还原——分栏也一样——并像其他页面一样得到标签。文件始终留在你的电脑上。"
+  },
+  "onbPrivacy": {
+    "message": "隐私"
+  },
+  "onbPrivacyBody": {
+    "message": "没有任何内容离开这台电脑。评分在本机的 $1 服务里进行；按设计，请求只带上 $2——绝不包含完整网址。"
+  },
+  "onbHostnameHint": {
+    "message": "主机名和语言提示"
+  },
+  "onbYours": {
+    "message": "调成你的样子"
+  },
+  "onbYoursBody": {
+    "message": "$1 和 $2 里是其余的设置：挑一种标记样式（$3 或浅浅的 $4），选择分析范围（$5 或 $6），以及查看本地评分服务的状态。"
+  },
+  "onbStyleUnderline": {
+    "message": "下划线"
+  },
+  "onbStyleTint": {
+    "message": "底色"
+  },
+  "onbScopePage": {
+    "message": "整页"
+  },
+  "onbScopeMain": {
+    "message": "仅正文"
+  },
+  "onbPopupName": {
+    "message": "弹窗"
+  },
+  "onbOptionsName": {
+    "message": "选项页"
+  },
+  "readerTitle": {
+    "message": "Anagram 阅读器"
+  },
+  "readerOpenOriginal": {
+    "message": "打开原文件"
+  },
+  "readerDrop": {
+    "message": "把 PDF 拖到这里"
+  },
+  "readerChoose": {
+    "message": "选择文件"
+  },
+  "readerPages_one": {
+    "message": "$1 页"
+  },
+  "readerPages_other": {
+    "message": "$1 页"
+  },
+  "readerCapped": {
+    "message": "只读取前 $1 页。"
+  },
+  "readerLoading": {
+    "message": "载入中…"
+  },
+  "readerNoText": {
+    "message": "这个 PDF 没有文本层。"
+  },
+  "readerTooLarge": {
+    "message": "这个 PDF 太大，无法在这里阅读。"
+  },
+  "readerEncrypted": {
+    "message": "这个 PDF 有密码保护。"
+  },
+  "readerBadFile": {
+    "message": "这个文件无法作为 PDF 读取。"
+  },
+  "readerFetchFailed": {
+    "message": "这个 PDF 无法载入。可以直接把文件拖进来。"
+  }
+}
