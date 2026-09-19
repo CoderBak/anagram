@@ -38,9 +38,10 @@ export default defineBackground(() => {
    *  may write a new count while the tick is up. */
   const badgeText = new Map<number, string>();
   const COUNT_COLOR = "#dc2626";
-  /** The copy confirmation: a tick, in the same green the verdict bands use for "human". */
+  /** The copy confirmation: a tick, on the green the chips already use for "human" —
+   *  the badge's red is the chips' "AI generated" red for the same reason. */
   const FLASH_TEXT = "✓";
-  const FLASH_COLOR = "#16a34a";
+  const FLASH_COLOR = "#1a7f37";
   const FLASH_MS = 1500;
   browser.tabs.onRemoved.addListener((tabId) => badgeText.delete(tabId));
 
