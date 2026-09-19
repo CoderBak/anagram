@@ -1025,6 +1025,25 @@ const results = await page.evaluate(() => {
   check("absolutely positioned page-number span does not split the paragraph", u.length === 1 && u[0].parts === 1 && !u[0].text.includes("[Pg"), JSON.stringify(u.map(x => [x.parts, x.words])));
   u = collect(`<p>${words(30)}<div style="position:absolute;left:0">${words(20)}</div> ${words(30)}</p>`);
   check("a large out-of-flow box still behaves as its own block", u.length >= 1 && u.every(x => !x.text.includes(words(20).slice(0, 20)) || x.words >= 20), JSON.stringify(u.map(x => [x.parts, x.words])));
+  {
+    // A shadow host reports none of its shadow tree in textContent, so a fixed host with a
+    // whole document inside read as an empty decoration (Google Docs' reading overlay).
+    sandbox.innerHTML = `<div id="ovl" style="position:fixed;inset:0"></div>`;
+    sandbox.querySelector("#ovl").attachShadow({ mode: "open" }).innerHTML = `<p>${words(60)}</p><p>${words(55)}</p>`;
+    const inside = PW.collectUnits(sandbox).map((x) => ({ parts: x.parts.length, words: x.wordCount }));
+    check("a fixed-position shadow host holding a document is walked", inside.length === 2 && inside[0].words === 60, JSON.stringify(inside));
+    sandbox.innerHTML = `<div style="position:fixed;inset:0"><div id="deep"></div></div>`;
+    sandbox.querySelector("#deep").attachShadow({ mode: "open" }).innerHTML = `<p>${words(60)}</p>`;
+    const nested = PW.collectUnits(sandbox).map((x) => ({ parts: x.parts.length, words: x.wordCount }));
+    check("a fixed box whose text hangs in a shadow tree below it is walked", nested.length === 1 && nested[0].words === 60, JSON.stringify(nested));
+    sandbox.innerHTML = `<p>${words(30)}<span style="position:fixed;right:0">Page 12</span> ${words(30)}</p>`;
+    const label = PW.collectUnits(sandbox).map((x) => ({ parts: x.parts.length, text: x.text }));
+    check("a small out-of-flow label is still skipped", label.length === 1 && label[0].parts === 1 && !label[0].text.includes("Page 12"), JSON.stringify(label.map(x => x.parts)));
+    sandbox.innerHTML = `<p>${words(30)}<span id="badge" style="position:fixed;right:0"></span> ${words(30)}</p>`;
+    sandbox.querySelector("#badge").attachShadow({ mode: "open" }).innerHTML = `<b>Page 12</b>`;
+    const small = PW.collectUnits(sandbox).map((x) => ({ parts: x.parts.length, text: x.text }));
+    check("a small out-of-flow shadow host with a label inside is still skipped", small.length === 1 && small[0].parts === 1 && !small[0].text.includes("Page 12"), JSON.stringify(small.map(x => [x.parts, x.text.slice(-20)])));
+  }
   u = collect(`<div role="tablist"><div role="tab">Section 1</div><div role="tabpanel"><p>${words(60)}</p></div></div>`);
   check("role=tablist accordion content is scored; the tab label is chrome", u.length === 1 && !u[0].text.includes("Section 1"), JSON.stringify(u.map(x => [x.parts, x.words])));
   {

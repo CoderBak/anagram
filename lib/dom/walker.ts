@@ -339,8 +339,9 @@ export function collectUnits(
     // sit in the middle of a paragraph's markup but not in its sentence. (Chromium
     // blockifies them, so without this they closed the run — Gutenberg paragraphs were
     // scored in two pieces.) Large out-of-flow boxes (tooltips, positioned columns)
-    // keep behaving as their own blocks.
-    if (cs && isOutOfFlow(cs) && (el.textContent ?? "").trim().length <= SMALL_OUT_OF_FLOW_CHARS) return;
+    // keep behaving as their own blocks, and what makes a box large is the text it
+    // COMPOSES, shadow trees included (composedTextLength).
+    if (cs && isOutOfFlow(cs) && composedTextLength(el, SMALL_OUT_OF_FLOW_CHARS) <= SMALL_OUT_OF_FLOW_CHARS) return;
 
     // Exclusions: never descend, never score. Whether they BREAK the sentence
     // depends on layout — inline exclusions (icons, <img>, MathJax spans, sr-only,
@@ -491,6 +492,37 @@ export function collectUnits(
   visit(startEl, { container: startEl, hidden: false, preserves: false });
   closeRun();
   return asm.finish();
+}
+
+/**
+ * How much text a box really SHOWS, measured over the composed tree and counted only as
+ * far as `limit` — past it the exact number decides nothing. `textContent` is the answer
+ * for ordinary markup, but a shadow host reports none of its shadow tree in it however
+ * much that tree holds: Google Docs' reading overlay is one `position:fixed` host with a
+ * whole document inside, and the small-out-of-flow rule read it as an empty decoration and
+ * skipped it whole (lib/docsOverlay.ts gives its host `position:relative` to be seen at
+ * all). Slots resolve to what is assigned to them, so light children are counted where
+ * they render rather than twice or not at all.
+ */
+function composedTextLength(root: Element | ShadowRoot, limit: number): number {
+  // The light tree, in one native call and exactly as this rule always measured it.
+  let total = (root.textContent ?? "").trim().length;
+  if (total > limit) return total;
+  // Then the shadow trees: the element's own first — that is the Docs overlay — and the
+  // ones hanging inside it. What a slot renders is the host's light children, already
+  // counted above, so only a shadow tree's own text is added to them.
+  const own = root instanceof Element ? root.shadowRoot : null;
+  if (own !== null) {
+    total += composedTextLength(own, limit - total);
+    if (total > limit) return total;
+  }
+  for (const el of root.querySelectorAll("*")) {
+    const sr = el.shadowRoot;
+    if (sr === null) continue;
+    total += composedTextLength(sr, limit - total);
+    if (total > limit) break;
+  }
+  return total;
 }
 
 /** Composed-tree children: shadow root replaces light children; slots resolve. */

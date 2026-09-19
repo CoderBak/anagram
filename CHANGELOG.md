@@ -229,6 +229,12 @@ Notable changes to Anagram, newest first. The format follows
   however much its shadow tree holds, so the whole document counted as empty and
   not one paragraph in the overlay was ever scored. The layer now sits one level
   in, where it always belonged.
+- Text inside an out-of-flow **shadow host** is read. The rule that drops a small
+  absolutely or fixed positioned box as a decoration ("[Pg 12]", a corner badge)
+  measured `textContent`, which a host reports as empty however much its shadow
+  tree holds — so a fixed host with a whole document inside was skipped whole. It
+  measures the composed text now, shadow trees and slots included, and a short
+  label in a shadow tree is still a decoration.
 
 - Chinese, Japanese or Arabic text that names a brand in Latin letters is read
   like any other. One capitalised word — "OpenAI" in a Chinese sentence — made
