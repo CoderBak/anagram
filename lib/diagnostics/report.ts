@@ -24,31 +24,12 @@ import { findMainContent } from "../dom/mainContent";
 import { MIN_MERGE_WORDS } from "../dom/text";
 import { captureRegion, pathOf } from "./anonymise";
 import { surveyPage, type SilentStretch } from "./silence";
+import { HYDRATION_MARKERS } from "./vocabulary";
 
 /** What a chat window will take without complaint, and what a reviewer will read. */
 export const MAX_BYTES = 60_000;
 /** How many silent stretches are worth naming. Past this the answer repeats itself. */
 export const MAX_SILENT = 15;
-
-/**
- * Frameworks whose pages are still being hydrated when the document is "ready". The
- * orchestrator owns the authoritative list and gates its insertions on it; this mirror
- * exists so the report can say whether that gate was in play at all, which is the
- * difference between "the chips came late" and "the chips never came".
- */
-const HYDRATION_MARKERS: [string, string][] = [
-  ["#__next", "Next.js (pages router)"],
-  ["script#__NEXT_DATA__", "Next.js (__NEXT_DATA__)"],
-  ['script[src*="/_next/"]', "Next.js (app router)"],
-  ["#__docusaurus", "Docusaurus"],
-  ["#___gatsby", "Gatsby"],
-  ["#__nuxt", "Nuxt"],
-  ["[data-server-rendered]", "Vue SSR / Nuxt 2"],
-  ["[data-reactroot]", "React 17 or earlier"],
-  ["astro-island", "Astro"],
-  ["[data-sveltekit-preload-data]", "SvelteKit"],
-  ["[ng-server-context]", "Angular Universal"],
-];
 
 /** What the daemon is doing, reduced to the four answers that change what to do next. */
 export interface DaemonFacts {

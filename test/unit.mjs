@@ -2205,6 +2205,7 @@ for (const file of fixtureFiles) {
       {
         vocab: "zqxwkv jhzxvq kzwvqj hxkqvw zqxjhz wkvkzw xvqhxk vqjzqx kzwjhz qvwwkv".split(" "),
         secrets: {
+          handle: "quillgrove",
           name: "Marla Quillgrove",
           mail: "marla.quillgrove@zephyrmail.example",
           url: "https://intranet.example/doc?token=HUNTERWOMBAT42",
@@ -2221,6 +2222,7 @@ for (const file of fixtureFiles) {
         // comes out identical and every gram of it is accounted for by this control.
         vocab: "bdfghj mnprst vwxzbd fghjmn prstvw xzbdfg hjmnpr stvwxz bdfghj mnprst".split(" "),
         secrets: {
+          handle: "underbridge",
           name: "Tomas Underbridge",
           mail: "tomas.underbridge@quartzpost.invalid",
           url: "https://internal.invalid/pg?ticket=BADGERLANTERN7",
@@ -2243,6 +2245,9 @@ for (const file of fixtureFiles) {
         `<h2>${prose(4)}</h2>` +
         `<p title="${secrets.title}">${prose(60)}</p>` +
         `<p>${prose(60)}</p>` +
+        // A person's name in all three of the places an identifier can carry one.
+        `<div class="byline author-${secrets.handle}" id="thread-${secrets.handle}" ` +
+        `data-testid="${secrets.handle}Panel"><span>${prose(3)}</span></div>` +
         `<img alt="${secrets.alt}" src="${secrets.url}" width="40" height="40">` +
         `<form><input value="${secrets.value}"><textarea>${prose(8)}</textarea></form>` +
         `<address>${secrets.name} &lt;${secrets.mail}&gt;</address>` +
@@ -2309,6 +2314,12 @@ for (const file of fixtureFiles) {
       dropsUrls: !report.includes("href") && !report.includes("intranet"),
       dropsAlt: !report.includes("alt="),
       keepsTestId: report.includes('data-testid="postBody"'),
+      // The planted name is gone from class, id and test id, and what is left is its
+      // SHAPE — ten letters — beside the structural words the report is allowed to say.
+      keepsShape:
+        /class="byline author-x10"/.test(report) &&
+        /id="thread-x10"/.test(report) &&
+        /data-testid="x10Panel"/.test(report),
     };
   });
   await dp.close();
@@ -2326,6 +2337,11 @@ for (const file of fixtureFiles) {
     name: "diagnostics: URLs and alt text are dropped outright, while the markup a fixture needs survives",
     ok: r.dropsUrls && r.dropsAlt && r.structureKeeps && r.keepsTestId,
     note: JSON.stringify({ dropsUrls: r.dropsUrls, dropsAlt: r.dropsAlt, structureKeeps: r.structureKeeps, keepsTestId: r.keepsTestId }),
+  });
+  results.push({
+    name: "diagnostics: a name in a class, an id or a test id is replaced by its shape, and the structural words survive",
+    ok: r.keepsShape,
+    note: (r.report.match(/class="byline[^"]*"|id="thread[^"]*"|data-testid="[^"]*Panel"/g) ?? []).join(" ") || "no trace of the planted element",
   });
   results.push({
     name: "diagnostics: the report carries its five sections and stays under the 60 kB a chat will take",

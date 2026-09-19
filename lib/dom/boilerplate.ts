@@ -75,7 +75,7 @@ export function isNoTranslate(el: Element): boolean {
  * WHOLE TOKEN (delimited by ^ $ or [-_ ]) so "subscription-article" style names
  * don't trip it. Grouped by origin:
  */
-const CHROME_TOKEN_PATTERNS: string[] = [
+export const CHROME_TOKEN_PATTERNS: string[] = [
   // consent / paywall / promo (original set)
   "cookies?", "consent", "gdpr", "paywall", "subscribe", "subscription",
   "newsletter", "advert", "advertisement", "adsense", "sponsor", "sponsored",
@@ -120,14 +120,14 @@ const CHROME_TOKEN_RE = new RegExp(
  * chrome — not a chip on any conversation. Such a name is dropped before the tokens are
  * looked for, so whatever else the element is called still counts.
  */
-const SKIP_DESTINATION_RE = /\S*skip[-_]?(?:link|to|nav)\S*[-_](?:target|destination|anchor)\S*/gi;
+export const SKIP_DESTINATION_RE = /\S*skip[-_]?(?:link|to|nav)\S*[-_](?:target|destination|anchor)\S*/gi;
 
 /**
  * The element calls ITSELF the page's main content — as a whole class token or as its id,
  * never as part of a longer name ("main-content-share" is a share bar). That is a <main>
  * written as a <div>, and like <main> it is never chrome on the strength of a token.
  */
-const MAIN_CONTENT_NAME_RE = /^(?:main[-_]?content|content[-_]?main|primary[-_]?content|page[-_]?content)$/i;
+export const MAIN_CONTENT_NAME_RE = /^(?:main[-_]?content|content[-_]?main|primary[-_]?content|page[-_]?content)$/i;
 
 /**
  * The reply FORM is chrome; the comments are not — they are exactly the user-generated text
@@ -136,7 +136,7 @@ const MAIN_CONTENT_NAME_RE = /^(?:main[-_]?content|content[-_]?main|primary[-_]?
  * as well, and every comment on the page went with them. So the token alone no longer
  * decides: see `isReplyForm`.
  */
-const REPLY_FORM_TOKEN_RE = /(?:^|[\s_-])(?:comment[-_]?form|respond)(?:[\s_-]|$)/i;
+export const REPLY_FORM_TOKEN_RE = /(?:^|[\s_-])(?:comment[-_]?form|respond)(?:[\s_-]|$)/i;
 
 /** Controls a reader types into or chooses from — what makes a box a form to fill in.
  *  Hidden inputs are bookkeeping (a CSRF token sits in every kind of box). */

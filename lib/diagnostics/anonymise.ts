@@ -13,11 +13,13 @@
 //
 // Where the two differ, this file is the stricter one: URLs are dropped rather than
 // replaced, an image is reduced to its box, `datetime` and `aria-label` are reported as
-// PRESENT with no value, and class/id/testid tokens keep only word-shaped atoms (a hashed
-// atom such as "css-175oi2r" says nothing about the markup and might say something about
-// the reader). Anything not on the list below never reaches the output at all — that is
-// what makes the privacy check in test/unit.mjs provable rather than hopeful.
+// PRESENT with no value, and class/id/testid tokens keep only the atoms our own code has a
+// word for (a hashed atom such as "css-175oi2r" says nothing about the markup, and
+// `author-marla-quillgrove` says something about a person). Anything not on the list below
+// never reaches the output at all — that is what makes the privacy check in test/unit.mjs
+// provable rather than hopeful.
 import { tagOf } from "../dom/tags";
+import { isKnownAtom } from "./vocabulary";
 
 /** Filler alphabets. Latin words become lorem-ipsum letters, Han text becomes Han, so a
  *  rebuilt fixture still exercises the CJK paths (no spaces between words, a different
@@ -49,19 +51,39 @@ const KEEP_TOKEN_ATTRS = ["data-testid", "itemprop"];
 const ARIA_ENUM_RE =
   /^(?:true|false|mixed|undefined|none|inherit|off|polite|assertive|page|step|location|date|time|vertical|horizontal|ascending|descending|other|grammar|spelling|list|tree|grid|dialog|menu|both|inline|all|copy|move|link|execute|popup|additions|removals|text|\d+)$/i;
 
-/** Word-shaped class/id atoms: letters, dashes and underscores. A token with digits or
- *  hashes in it ("css-175oi2r", "sc-1f2a3b") is generated and carries no meaning; six of
- *  them are more than enough to recognise a container by. */
-const WORDY_RE = /^[A-Za-z][A-Za-z_-]*$/;
+/** Word-shaped class/id tokens: letters, dashes and underscores, and a leading separator
+ *  is allowed because framework roots are called things like `__next`. A token with digits
+ *  or hashes in it ("css-175oi2r", "sc-1f2a3b", "user-84523") is generated or numbered and
+ *  says nothing about the markup — it is dropped whole; six tokens are more than enough to
+ *  recognise a container by. */
+const WORDY_RE = /^[-_]*[A-Za-z][A-Za-z_-]*$/;
 const MAX_WORDY_TOKENS = 6;
 
-/** Keep only the word-shaped atoms of a class list, id or test id. */
+/** One atom of a token: a run of letters, camelCase counted as a boundary. */
+const ATOM_RE = /[A-Z]?[a-z]+|[A-Z]+(?![a-z])/g;
+
+/**
+ * Keep the word-shaped tokens of a class list, id or test id, and inside each one keep only
+ * the atoms that are in the vocabulary we ship (./vocabulary.ts). Everything else becomes a
+ * placeholder of its own length, so `author-marla-quillgrove` reads `author-x5-x10`: the
+ * structure a fixture is rebuilt from survives, and the name — a person's, a company's, an
+ * internal project's — does not. Separators and capitalisation are kept as they were,
+ * because `postBody` and `post-body` are different markup and both are worth seeing.
+ */
 export function wordy(value: string | null | undefined): string {
   if (!value) return "";
   return String(value)
     .split(/\s+/)
     .filter((token) => WORDY_RE.test(token))
     .slice(0, MAX_WORDY_TOKENS)
+    .map((token) =>
+      token.replace(ATOM_RE, (atom) => {
+        if (isKnownAtom(atom)) return atom;
+        // The shape of what was dropped: how many letters, and whether it began a word.
+        const placeholder = `x${atom.length}`;
+        return /^[A-Z]/.test(atom) ? placeholder.toUpperCase() : placeholder;
+      }),
+    )
     .join(" ");
 }
 
