@@ -37,8 +37,10 @@ export function readerQuery(src: string): string {
 // below is a list of recognisers so a second source (ar5iv, PMC, bioRxiv `.full`) is one
 // more function and nothing else.
 //
-// This only says WHICH address would be the twin. Whether it exists is a question for the
-// network, and the service worker asks it — see lib/pdf/route.ts.
+// This only says WHICH address would be the twin. Whether that page was ever built is a
+// question only the network could answer, and the extension does not ask it: nothing here
+// reaches the internet. The address is offered to the reader as a link they may follow
+// themselves, and a PDF always opens as the PDF they were looking at.
 
 /**
  * The arXiv hosts whose `/pdf/` addresses name a paper. The two mirrors are the same
@@ -69,8 +71,8 @@ const TWIN_RULES: ((u: URL) => string | null)[] = [arxivTwin];
 
 /**
  * The HTML rendering of the document this PDF URL points at, or null when the URL names
- * no source we know. A twin is a claim about the ADDRESS only: the caller still has to
- * find out whether that page was ever built.
+ * no source we know. A twin is a claim about the ADDRESS only, and nothing here finds out
+ * whether that page was ever built — the reader does, by following the link or not.
  */
 export function htmlTwinOf(url: string): string | null {
   let u: URL;

@@ -23,7 +23,7 @@ import type {
 } from "../lib/messaging/protocol";
 import { ensureInjected, installAccess } from "../lib/access/worker";
 import { READER_PAGE, readerQuery } from "../lib/pdf/source";
-import { createTwinResolver, shouldAutoOpen } from "../lib/pdf/route";
+import { shouldAutoOpen } from "../lib/pdf/route";
 import { settings } from "../lib/settings/settings";
 import { t } from "../lib/i18n";
 
@@ -79,25 +79,14 @@ export default defineBackground(() => {
     );
   }
 
-  /** The reading-mode URL for a PDF. Not web accessible — only we may navigate to it. */
+  /**
+   * Where "open this PDF with Anagram" goes: the reading mode, showing THAT PDF. The
+   * ball's chip, the popup's button, the context menu and the automatic route all come
+   * through this one function, so they cannot disagree — and none of them asks the network
+   * anything first. The reader page is not web accessible, so only we may navigate to it.
+   */
   const readerUrl = (src: string): string =>
     browser.runtime.getURL(READER_PAGE as PublicPath) + readerQuery(src);
-
-  /**
-   * Where "open this PDF with Anagram" really goes. An arXiv paper has an HTML rendering
-   * of its own — paragraphs, headings and formulas as themselves — and the ordinary page
-   * walker reads that better than anything lib/pdf/reflow.ts can rebuild out of glyph
-   * positions, so the paper's own page wins whenever arXiv has built one. Everything else,
-   * and every paper that was never converted, goes to the reading mode exactly as before.
-   *
-   * It is resolved HERE, in the worker, and nowhere else: the ball's chip, the popup's
-   * button, the context menu and the automatic route all come through this one function,
-   * so they cannot disagree about where a PDF opens. Only arxiv.org is ever asked, and
-   * only about a paper somebody is opening at that moment — see lib/pdf/route.ts.
-   */
-  const resolveTwin = createTwinResolver({ fetch: (...args) => fetch(...args) });
-  const destinationFor = async (src: string): Promise<string> =>
-    (await resolveTwin(src)) ?? readerUrl(src);
 
   /**
    * Tabs allowed to show one PDF WITHOUT the reading mode opening over it: the reader's
@@ -228,7 +217,7 @@ export default defineBackground(() => {
       // only when that tab was already the PDF.
       if (info.linkUrl) {
         const index = tab ? tab.index + 1 : undefined;
-        void destinationFor(info.linkUrl).then((url) => browser.tabs.create({ url, index }));
+        void browser.tabs.create({ url: readerUrl(info.linkUrl), index });
       }
       return;
     }
@@ -319,7 +308,7 @@ export default defineBackground(() => {
         const tabId = msg.tabId ?? sender.tab?.id;
         const src = msg.url ?? sender.tab?.url;
         if (tabId != null && src) {
-          void destinationFor(src).then((url) => browser.tabs.update(tabId, { url }));
+          void browser.tabs.update(tabId, { url: readerUrl(src) });
         }
         return;
       }
@@ -345,7 +334,7 @@ export default defineBackground(() => {
             pass,
           });
           if (!open) return;
-          await browser.tabs.update(tabId, { url: await destinationFor(src) });
+          await browser.tabs.update(tabId, { url: readerUrl(src) });
         })();
         return;
       }
