@@ -2,9 +2,10 @@
 //
 // Content scripts are bundled as one IIFE that runs on every page, so libraries a
 // feature needs only sometimes (Readability for the main-content scope, DOMPurify for
-// the Google Docs reading mode) are kept out of it. scripts/vendor.mjs prebuilds them
-// as minified ESM files under public/vendor/ (web-accessible resources) and this
-// helper imports one by its extension URL the first time it is needed, once per frame.
+// the Google Docs reading mode, pdf.js for the PDF reader) are kept out of it.
+// scripts/vendor.mjs prebuilds them as minified ESM files under public/vendor/
+// (web-accessible resources) and this helper imports one by its extension URL the first
+// time it is needed, once per frame.
 import { browser } from "#imports";
 import type { PublicPath } from "wxt/browser";
 
@@ -30,3 +31,8 @@ export const loadReadability = (): Promise<ReadabilityModule> =>
 
 export const loadPurify = (): Promise<{ default: import("dompurify").DOMPurify }> =>
   lazyVendor("purify.min.mjs");
+
+/** The slice of pdf.js the reader uses: open a document, read a page's text runs. */
+export type PdfJsModule = Pick<typeof import("pdfjs-dist"), "getDocument" | "GlobalWorkerOptions" | "Util">;
+
+export const loadPdfjs = (): Promise<PdfJsModule> => lazyVendor<PdfJsModule>("pdfjs.min.mjs");

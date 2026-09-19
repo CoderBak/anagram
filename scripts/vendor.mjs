@@ -1,14 +1,16 @@
 // scripts/vendor.mjs — prebuild the on-demand vendor chunks into public/vendor/.
 //
-// Readability (main-content scope) and DOMPurify (Google Docs reading mode) are only
-// needed on demand, so they are NOT bundled into the content script that runs on every
-// page. They are built here as minified ESM files, shipped as web-accessible resources,
-// and loaded with a dynamic import() of their extension URL (lib/lazy.ts) the first
-// time a feature needs them. Runs on postinstall and before every build.
+// Readability (main-content scope), DOMPurify (Google Docs reading mode) and pdf.js
+// (the PDF reader) are only needed on demand, so they are NOT bundled into the content
+// script that runs on every page. They are built here as minified ESM files, shipped as
+// web-accessible resources, and loaded with a dynamic import() of their extension URL
+// (lib/lazy.ts) the first time a feature needs them. Runs on postinstall and before
+// every build, for both the Chrome and the Firefox target — public/ is copied verbatim
+// into each output, so one prebuild serves both.
 import { build } from "esbuild";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { mkdirSync, statSync } from "node:fs";
+import { copyFileSync, mkdirSync, statSync } from "node:fs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = join(ROOT, "public", "vendor");
@@ -24,6 +26,16 @@ const chunks = {
   "purify.min.mjs": `export { default } from "dompurify";`,
 };
 
+// pdf.js ships its own minified ESM builds, and the worker has to stay a SEPARATE file:
+// pdf.js starts it with `new Worker(workerSrc, { type: "module" })`, so it must exist at
+// an extension URL of its own. Both are copied verbatim rather than rebuilt — bundling
+// Mozilla's output again buys nothing and risks breaking a library that ships exactly
+// the artefacts it wants to be loaded.
+const copies = {
+  "pdfjs.min.mjs": "pdfjs-dist/build/pdf.min.mjs",
+  "pdf.worker.mjs": "pdfjs-dist/build/pdf.worker.min.mjs",
+};
+
 for (const [file, contents] of Object.entries(chunks)) {
   await build({
     stdin: { contents, resolveDir: ROOT, loader: "js" },
@@ -34,5 +46,10 @@ for (const [file, contents] of Object.entries(chunks)) {
     outfile: join(OUT, file),
     logLevel: "error",
   });
+  console.log(`vendor/${file}  ${(statSync(join(OUT, file)).size / 1024).toFixed(1)} kB`);
+}
+
+for (const [file, from] of Object.entries(copies)) {
+  copyFileSync(join(ROOT, "node_modules", from), join(OUT, file));
   console.log(`vendor/${file}  ${(statSync(join(OUT, file)).size / 1024).toFixed(1)} kB`);
 }
