@@ -50,6 +50,15 @@ Notable changes to Anagram, newest first. The format follows
   alone and the command says so.
 - `anagram version` prints in one line whether the running daemon is the installed
   build, and says "restart to run the updated daemon" when it is not.
+- A per-site rule covers the whole site. Turning Anagram off on `www.zhihu.com`
+  used to leave it on for `zhuanlan.zhihu.com`, and `x.com` and `www.x.com` were
+  two unrelated rules. A rule is now looked up on the exact hostname first and
+  then on each parent domain — the most specific rule wins, a leading `www.`
+  counts as absent on both sides, and rules already saved keep working whichever
+  spelling they carry. The climb stops before a bare public suffix (`co.uk`,
+  `com.cn`, `github.io` and the like), and IP addresses and `localhost` match
+  exactly. The options page's add-rule form takes a pasted address
+  (`https://www.Example.com/path` → `example.com`).
 - A paragraph longer than the model reads in one pass is scored completely. It
   used to be judged by its opening — roughly the first 380 words — while the chip
   and the underline spoke for all of it. It is now cut at sentence boundaries into

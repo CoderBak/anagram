@@ -6,7 +6,15 @@
 import { browser } from "#imports";
 import "../../lib/ui/basecoat-vega.cdn.min.css";
 import { followSystemTheme } from "../../lib/ui/theme";
-import { settings, clearSiteOverride, setSiteOverride, normalizeServerUrl, DEFAULT_SERVER_URL } from "../../lib/settings/settings";
+import {
+  settings,
+  clearSiteOverride,
+  setSiteOverride,
+  effectiveRule,
+  normalizeRuleHost,
+  normalizeServerUrl,
+  DEFAULT_SERVER_URL,
+} from "../../lib/settings/settings";
 import { ACTIONS } from "../../lib/messaging/protocol";
 import { CONTRACT_VERSION } from "../../lib/contract";
 import type { BackendStatus } from "../../lib/messaging/protocol";
@@ -24,6 +32,7 @@ const addRuleEl = document.getElementById("addRule") as HTMLFormElement;
 const addHostEl = document.getElementById("addHost") as HTMLInputElement;
 const addModeEl = document.getElementById("addMode") as HTMLSelectElement;
 const addErrorEl = document.getElementById("addError") as HTMLElement;
+const addNoteEl = document.getElementById("addNote") as HTMLElement;
 const serverUrlEl = document.getElementById("serverUrl") as HTMLInputElement;
 const serverUrlErrorEl = document.getElementById("serverUrlError") as HTMLElement;
 const backendStatusEl = document.getElementById("backendStatus") as HTMLElement;
@@ -102,16 +111,17 @@ async function renderSites(): Promise<void> {
 }
 
 /**
- * Normalize pasted site input to a bare hostname: trim, lowercase, and strip any
- * protocol/credentials/port/path ("https://x.com/foo" → "x.com"). Returns null
- * when nothing usable remains.
+ * Normalize pasted site input to the hostname a rule is keyed on: trim, lowercase,
+ * strip any protocol/credentials/port/path and the leading "www."
+ * ("https://www.Example.com/path" → "example.com"). Returns null when nothing usable
+ * remains.
  */
 function normalizeHost(raw: string): string | null {
   const trimmed = raw.trim().toLowerCase();
   if (trimmed === "") return null;
   const candidate = trimmed.includes("://") ? trimmed : `https://${trimmed}`;
   try {
-    const host = new URL(candidate).hostname.replace(/\.+$/, "");
+    const host = normalizeRuleHost(new URL(candidate).hostname);
     return host === "" ? null : host;
   } catch {
     return null;
@@ -127,15 +137,26 @@ addRuleEl.addEventListener("submit", (e) => {
     return;
   }
   addErrorEl.hidden = true;
+  addNoteEl.hidden = true;
   const mode: "on" | "off" = addModeEl.value === "off" ? "off" : "on";
-  // The siteOverrides watch below re-renders the table once the write lands.
-  void setSiteOverride(host, mode).then(() => {
+  // A rule already covering this host from a parent domain is why the new row can
+  // leave the page behaving exactly as it did — say which one, or the user is left
+  // wondering whether the rule took.
+  void effectiveRule(host).then((covering) => {
+    if (covering && covering.host !== host && covering.mode === mode) {
+      addNoteEl.textContent = `Already covered by ${covering.host}.`;
+      addNoteEl.hidden = false;
+    }
+    // The siteOverrides watch below re-renders the table once the write lands.
+    return setSiteOverride(host, mode);
+  }).then(() => {
     addHostEl.value = "";
     addHostEl.focus();
   });
 });
 addHostEl.addEventListener("input", () => {
   addErrorEl.hidden = true;
+  addNoteEl.hidden = true;
 });
 
 followSystemTheme();

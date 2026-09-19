@@ -23,6 +23,7 @@
       .form-row .input { flex: 1 1 200px; }
       .form-row .select { width: 150px; }
       .form-error { margin: 6px 0 0; font-size: 12.5px; color: var(--destructive); }
+      .form-note { margin: 6px 0 0; font-size: 12.5px; color: var(--muted-foreground); }
       .empty { margin: 0; padding: 2px 0; color: var(--muted-foreground); font-size: 13px; }
       .mode-on { color: oklch(0.55 0.15 150); font-weight: 500; }
       .mode-off { color: var(--muted-foreground); }
@@ -160,7 +161,8 @@
         <section class="card" data-size="sm">
           <header>
             <h2>Per-site rules</h2>
-            <p>Always-on / always-off overrides for specific hostnames.</p>
+            <p>Always-on / always-off overrides. A rule covers the site's subdomains too, and the
+              most specific rule wins.</p>
           </header>
           <section>
             <div id="sites"></div>
@@ -173,6 +175,7 @@
               </select>
               <button type="submit" class="btn">Add</button>
               <p class="form-error" id="addError" hidden></p>
+              <p class="form-note" id="addNote" hidden></p>
             </form>
           </section>
         </section>
