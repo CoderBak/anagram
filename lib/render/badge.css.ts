@@ -314,6 +314,10 @@ export const BADGE_CSS: string = `
   .pill { animation: none; transition: none; }
   .pill.pending .dot { animation: none; opacity: 0.6; }
   .pill.pg-flash { animation: none; outline: 2px solid var(--dot, #a3a3a3); outline-offset: 2px; }
-  .card { transition: none; }
+  /* [popover] as well: the .card[popover] rule above outranks a bare .card, so the plain
+     rule turned nothing off for the card that is actually shown — every hover card still
+     faded in for a reader who had asked for no motion. (No backticks in here: this whole
+     sheet is a template literal.) */
+  .card, .card[popover] { transition: none; }
 }
 ` + DIST_CSS;

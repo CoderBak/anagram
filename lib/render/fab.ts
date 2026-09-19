@@ -456,7 +456,10 @@ const FAB_CSS = `
 
 @media (prefers-reduced-motion: reduce) {
   .action.attn { animation: none; }
-  .fabwrap, .panel, .stack.snapping { transition: none; }
+  /* .chip and .label were left out: the ball's hover colour fade and the label sliding
+     out of the edge of the screen are small, but they are motion, and a reader who asked
+     for less of it asked for all of it. */
+  .chip, .label, .fabwrap, .panel, .stack.snapping { transition: none; }
 }
 @media print { .stack { display: none !important; } }
 `;

@@ -592,6 +592,16 @@ async function still(page, hostSel = "#anagram-fab") {
   await page.waitForTimeout(150);
 }
 
+/** The ball has to be there before anything can be asked about it. */
+async function fabReady(page, where) {
+  const ok = await page
+    .waitForFunction(() => !!document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count"), null, { timeout: 15000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!ok) record("axe", `${where}: the ball mounted`, false, "no #anagram-fab on the page");
+  return ok;
+}
+
 /**
  * Bring the ball out of its idle tuck (half off the edge, 62% opacity) and wait for the
  * fade to finish. The opacity is checked explicitly, not just the animation list: a colour
@@ -806,6 +816,7 @@ let fixturePage = null;
 
   // The ball at rest. Untuck first: a tucked ball sits half off the edge at 62% opacity,
   // and every colour read through it would be a blend of our surface and the page.
+  await fabReady(page, "ui fixtures");
   await untuck(page);
   const closed = await axeScan(page, "ball (panel closed)", "#anagram-fab");
 
@@ -821,9 +832,10 @@ let fixturePage = null;
 
   // Panel open, with flagged rows and — both bands being present here — the filter chips.
   const panelState = await page.evaluate(() => {
-    const sr = document.getElementById("anagram-fab").shadowRoot;
-    sr.querySelector(".count").dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    const panel = sr.querySelector(".panel");
+    const sr = document.getElementById("anagram-fab")?.shadowRoot;
+    sr?.querySelector(".count").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    const panel = sr?.querySelector(".panel");
+    if (!panel) return { open: false, items: 0, filters: [] };
     return {
       open: panel.classList.contains("open"),
       items: panel.querySelectorAll(".pitem").length,
@@ -918,6 +930,7 @@ let fixturePage = null;
 const keyboard = await openPage(server.url("/keyboard.html"));
 await chipsSettled(keyboard, 4);
 await settleAll(keyboard);
+await fabReady(keyboard, "keyboard fixture");
 await keyboardWalkthrough(keyboard);
 await panelCodeChecks(keyboard);
 await keyboard.close();
@@ -941,15 +954,17 @@ if (fixturePage) await fixturePage.close();
   const page = await openPage(server.url("/dark.html"));
   await chipsSettled(page, 4);
   await settleAll(page);
+  await fabReady(page, "dark fixture");
   await untuck(page);
   await page.evaluate(() => {
-    const sr = document.getElementById("anagram-fab").shadowRoot;
-    sr.querySelector(".count").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    const sr = document.getElementById("anagram-fab")?.shadowRoot;
+    sr?.querySelector(".count").dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
   await still(page);
   const state = await page.evaluate(() => {
     const host = document.getElementById("anagram-fab");
-    const panel = host.shadowRoot.querySelector(".panel");
+    const panel = host?.shadowRoot?.querySelector(".panel");
+    if (!panel) return { dark: false, open: false, surface: null, items: 0 };
     return {
       dark: host.classList.contains("pg-dark"),
       open: panel.classList.contains("open"),
@@ -1390,6 +1405,7 @@ async function selectionCardCodeChecks(page) {
 async function reducedMotionCheck() {
   const page = await openPage(server.url("/keyboard.html"), { media: { reducedMotion: "reduce" } });
   await chipsSettled(page, 4);
+  await fabReady(page, "reduced motion");
   await untuck(page);
   const moving = await page.evaluate(
     (sel) => {
@@ -1401,6 +1417,38 @@ async function reducedMotionCheck() {
     },
     BADGE_SEL,
   );
+  // Not a synthetic hover — that proves nothing, because a hover that fails to land
+  // reports "no animations" too. Ask the cascade instead: under reduced motion no node of
+  // ours may be left with a non-zero transition or animation duration to run AT ALL, on
+  // hover, on a class flip or on a popover opening.
+  const declared = await page.evaluate(
+    (sel) => {
+      const out = [];
+      const look = (root) => {
+        for (const el of root.querySelectorAll("*")) {
+          const cs = getComputedStyle(el);
+          const dur = (n) => (cs[n] || "").split(",").some((v) => parseFloat(v) > 0);
+          if (dur("transitionDuration")) out.push({ path: window.__a11y.path(el), what: `transition ${cs.transitionProperty} ${cs.transitionDuration}` });
+          if (cs.animationName !== "none" && dur("animationDuration")) out.push({ path: window.__a11y.path(el), what: `animation ${cs.animationName} ${cs.animationDuration}` });
+        }
+      };
+      const fab = document.getElementById("anagram-fab");
+      if (fab?.shadowRoot) look(fab.shadowRoot);
+      for (const h of document.querySelectorAll(sel)) if (h.shadowRoot) look(h.shadowRoot);
+      return out;
+    },
+    BADGE_SEL,
+  );
+  report.motion.push({ declared });
+  record(
+    "motion",
+    "prefers-reduced-motion: nothing of ours has a transition or animation left to run",
+    declared.length === 0,
+    declared.length
+      ? [...new Set(declared.map((d) => `${d.path.split(" > ").pop()} ${d.what}`))].join("; ")
+      : "every declared duration is 0s",
+  );
+
   // The jump-target pulse is the one animation a keyboard user triggers on purpose.
   await page.evaluate((sel) => {
     const host = document.querySelector(sel);
