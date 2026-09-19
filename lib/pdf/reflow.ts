@@ -1,0 +1,649 @@
+// lib/pdf/reflow.ts — turning a PDF's text runs back into paragraphs.
+//
+// A PDF has no paragraphs. It has glyph runs placed at coordinates, and every
+// paragraph the reader sees is an inference from geometry: which runs share a
+// baseline, which baselines belong to the same column, where one block of text
+// ends and the next begins. This is where the quality of the whole PDF feature is
+// decided, so it lives here — pure, free of the DOM and of pdf.js types, and
+// covered by test/node/pdf-reflow.test.ts with synthetic pages.
+//
+// COORDINATES. Everything is in page units with the origin at the page's TOP-LEFT
+// and y growing DOWNWARD (lib/pdf/extract.ts flips pdf.js's bottom-up space), so
+// "the top margin" is simply a small y and lines sort by y ascending.
+//
+// WHAT IT DOES NOT DO. Footnotes, reference lists, tables and formula fragments
+// are left as the paragraphs and lines they look like. Being clever there means
+// guessing, and the walker's own filters (name lists, symbol noise, link density,
+// the 50-word floor) already skip most of it — a table row never reaches the
+// daemon anyway. Ligatures are kept exactly as the PDF gives them; the scorer's
+// canonical form folds ﬁ/ﬂ itself.
+
+/** One run of glyphs as the extractor hands it over. */
+export interface PdfTextItem {
+  /** The run's text, exactly as the PDF encodes it. */
+  str: string;
+  /** Left edge of the run. */
+  x: number;
+  /** The run's baseline, measured DOWN from the top of the page. */
+  y: number;
+  /** Advance width of the run. */
+  width: number;
+  /** Rendered glyph height (the effective font size). */
+  height: number;
+  /** The extractor's opaque id for the font this run is set in ("g_d0_f3"). */
+  fontName?: string;
+  /** The PDF marked a line break after this run. Advisory: many producers lie. */
+  hasEOL?: boolean;
+  /**
+   * The run is not horizontal left-to-right. arXiv stamps every page 1 with a
+   * 90°-rotated identifier down the left margin, which lands on top of the body
+   * text once you look at x/width alone — rotated runs are dropped outright.
+   */
+  rotated?: boolean;
+}
+
+/** One page's runs plus the page box they were placed in. */
+export interface PdfPageText {
+  /** 1-based page number, the way the reader prints it. */
+  page: number;
+  width: number;
+  height: number;
+  items: PdfTextItem[];
+}
+
+/** A block of reading-order text: what the reader renders as <h2> or <p>. */
+export interface ReflowBlock {
+  kind: "heading" | "paragraph";
+  text: string;
+  /** The page the block starts on. */
+  page: number;
+}
+
+// ---- tuning ---------------------------------------------------------------------------
+// Every constant below is a RATIO of something the page itself supplies (its own font
+// size, its own line pitch, its own width), never an absolute point value: the same
+// rules have to hold for a 6-point footnote and a 40-point slide.
+
+/** Two runs share a line while their baselines are within this much of the larger size. */
+const BASELINE_TOL = 0.55;
+/** A gap wider than this share of the font size is a word space, not kerning. */
+const SPACE_GAP = 0.2;
+/** Below this many lines a page is a title page — not enough of a layout to read. */
+const MIN_LINES_FOR_COLUMNS = 6;
+/** At most this share of a page's lines may cross the gutter of a two-column page. */
+const GUTTER_CROSS_MAX = 0.12;
+/** Each column of a two-column page holds at least this share of the page's lines. */
+const COLUMN_MIN_SHARE = 0.25;
+/** A gutter narrower than this share of the page width is just word spacing. */
+const GUTTER_MIN_WIDTH = 0.015;
+/**
+ * The margin bands, as a share of the page height. They are not symmetric because the
+ * furniture is not: a running head sits just under the top edge, while a page number
+ * sits ON the one-inch bottom margin, at 0.90 of the height, which the last line of a
+ * densely set page can come within a few points of.
+ */
+const MARGIN_TOP = 0.09;
+const MARGIN_BOTTOM = 0.88;
+/** A repeating margin line must appear on at least this share of the pages. */
+const RUNNING_MIN_SHARE = 0.5;
+/** …and on at least this many, so a two-page document still loses its header. */
+const RUNNING_MIN_PAGES = 2;
+/** A vertical gap wider than this many line pitches starts a new paragraph. */
+const PARA_GAP = 1.45;
+/** A first-line indent of at least this much of the font size starts a paragraph. */
+const INDENT = 0.5;
+/** A line ending this far short of the column's right edge is a last line. */
+const SHORT_LINE = 2;
+/** Type this much larger than the document's body size reads as a heading. */
+const HEADING_SIZE = 1.12;
+/** A heading is short; anything longer is a paragraph set in display type. */
+const HEADING_MAX_WORDS = 20;
+/** A face carrying less than this share of the document's text is a display face. */
+const DISPLAY_FONT_SHARE = 0.06;
+/** "2", "3.1", "IV." — how a printed section announces itself. */
+const SECTION_NUMBER = /^(?:\d+(?:\.\d+)*\.?|[IVXLC]+\.)\s+\p{Lu}/u;
+
+// ---- small helpers --------------------------------------------------------------------
+
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const s = [...values].sort((a, b) => a - b);
+  const mid = s.length >> 1;
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
+function percentile(values: number[], p: number): number {
+  if (values.length === 0) return 0;
+  const s = [...values].sort((a, b) => a - b);
+  return s[Math.min(s.length - 1, Math.max(0, Math.round((s.length - 1) * p)))];
+}
+
+/** CJK and friends set text without word spaces — joining their lines must not add one. */
+const CJK = /[⺀-〿぀-ヿ㐀-䶿一-鿿豈-﫿＀-￯]/;
+
+/** Sentence-final punctuation, including the CJK and quoted-close forms. */
+const SENTENCE_END = /[.!?。！？…](["'”’)\]]|\s)*$/u;
+
+// ---- lines ----------------------------------------------------------------------------
+
+/** One reconstructed line of text. `items` survive because columns are split per run. */
+interface Line {
+  page: number;
+  /** Baseline of the line's dominant run, from the top of the page. */
+  y: number;
+  x0: number;
+  x1: number;
+  /** The dominant run's glyph height — a superscript never decides a line's size. */
+  size: number;
+  font: string;
+  text: string;
+  /** 0 = the only or the left column, 1 = the right column, -1 = spans the gutter. */
+  col: number;
+  items: PdfTextItem[];
+}
+
+/** Runs worth reading: something other than whitespace, and set the normal way round. */
+function readableItems(page: PdfPageText): PdfTextItem[] {
+  return page.items.filter((it) => !it.rotated && it.str.trim() !== "");
+}
+
+/**
+ * Build one line from the runs that share its baseline. The DOMINANT run — the widest
+ * one — supplies the baseline, the size and the font, so a superscript marker or a
+ * footnote number cannot make a body line look small or start it half a line high.
+ */
+function makeLine(page: number, items: PdfTextItem[]): Line {
+  const sorted = [...items].sort((a, b) => a.x - b.x);
+  let dominant = sorted[0];
+  for (const it of sorted) if (it.width > dominant.width) dominant = it;
+
+  let text = "";
+  let prevRight = Number.NEGATIVE_INFINITY;
+  for (const it of sorted) {
+    const gap = it.x - prevRight;
+    const needsSpace =
+      text !== "" &&
+      gap > Math.max(it.height, dominant.height) * SPACE_GAP &&
+      !/\s$/.test(text) &&
+      !/^\s/.test(it.str);
+    text += (needsSpace ? " " : "") + it.str;
+    prevRight = it.x + it.width;
+  }
+
+  return {
+    page,
+    y: dominant.y,
+    x0: Math.min(...sorted.map((i) => i.x)),
+    x1: Math.max(...sorted.map((i) => i.x + i.width)),
+    size: dominant.height,
+    font: dominant.fontName ?? "",
+    text: text.replace(/\s+/g, " ").trim(),
+    col: 0,
+    items: sorted,
+  };
+}
+
+/**
+ * Group a page's runs into lines by baseline. The tolerance is relative to the taller
+ * of the two runs, which is what makes sub- and superscripts join the line they belong
+ * to instead of opening one of their own.
+ */
+function groupIntoLines(page: PdfPageText): Line[] {
+  const items = readableItems(page).sort((a, b) => a.y - b.y || a.x - b.x);
+  const rows: PdfTextItem[][] = [];
+  let current: PdfTextItem[] = [];
+  let base = 0;
+  let size = 0;
+  for (const it of items) {
+    if (current.length === 0) {
+      current = [it];
+      base = it.y;
+      size = it.height;
+      continue;
+    }
+    if (it.y - base <= Math.max(size, it.height) * BASELINE_TOL) {
+      current.push(it);
+      size = Math.max(size, it.height);
+    } else {
+      rows.push(current);
+      current = [it];
+      base = it.y;
+      size = it.height;
+    }
+  }
+  if (current.length > 0) rows.push(current);
+  return rows.map((r) => makeLine(page.page, r)).filter((l) => l.text !== "");
+}
+
+// ---- columns --------------------------------------------------------------------------
+
+/**
+ * Where does this page's gutter run, if it has one?
+ *
+ * The test is made on RUNS, not on lines: two columns printed level with each other
+ * share a baseline, so at this point nearly every line of a two-column page already
+ * spans the full width and asking which lines cross a candidate split would answer
+ * "all of them" on exactly the pages that have a gutter. A run is different — it is a
+ * piece of one column — so a gutter is a vertical band no run covers.
+ *
+ * Two guards keep single-column pages out. The band has to be wider than the text's own
+ * type size, which a chance alignment of word spaces down a justified page never is; and
+ * each side has to carry a real share of the page's runs.
+ */
+function findGutter(lines: Line[], pageWidth: number): number | null {
+  if (lines.length < MIN_LINES_FOR_COLUMNS) return null;
+  const items = lines.flatMap((l) => l.items);
+  const left = Math.min(...lines.map((l) => l.x0));
+  const right = Math.max(...lines.map((l) => l.x1));
+  const span = right - left;
+  if (span < pageWidth * 0.4) return null;
+  const size = median(lines.map((l) => l.size));
+  const minWidth = Math.max(pageWidth * GUTTER_MIN_WIDTH, size * 1.2);
+
+  const step = Math.max(1, span / 200);
+  let best: { at: number; score: number } | null = null;
+  for (let s = left + span * 0.3; s <= left + span * 0.7; s += step) {
+    let crossing = 0;
+    let leftEdge = Number.NEGATIVE_INFINITY;
+    let rightEdge = Number.POSITIVE_INFINITY;
+    let lft = 0;
+    let rgt = 0;
+    for (const it of items) {
+      const end = it.x + it.width;
+      if (it.x < s && end > s) crossing++;
+      else if (end <= s) {
+        lft++;
+        leftEdge = Math.max(leftEdge, end);
+      } else {
+        rgt++;
+        rightEdge = Math.min(rightEdge, it.x);
+      }
+    }
+    if (crossing > items.length * GUTTER_CROSS_MAX) continue;
+    if (lft < items.length * COLUMN_MIN_SHARE || rgt < items.length * COLUMN_MIN_SHARE) continue;
+    const width = rightEdge - leftEdge;
+    if (width < minWidth) continue;
+    const score = width - crossing * size;
+    if (!best || score > best.score) best = { at: leftEdge + width / 2, score };
+  }
+  return best?.at ?? null;
+}
+
+/**
+ * Tag each line with its column, splitting the ones that only LOOK full-width: two
+ * columns printed level with each other share a baseline, so they arrive as one line
+ * with a hole in the middle. A line with a run that actually straddles the gutter is
+ * the real thing — a title, a spanning header — and stays whole.
+ */
+function splitColumns(lines: Line[], gutter: number): Line[] {
+  const out: Line[] = [];
+  for (const line of lines) {
+    if (line.x1 <= gutter) {
+      out.push({ ...line, col: 0 });
+      continue;
+    }
+    if (line.x0 >= gutter) {
+      out.push({ ...line, col: 1 });
+      continue;
+    }
+    const straddles = line.items.some((it) => it.x < gutter && it.x + it.width > gutter);
+    const lft = line.items.filter((it) => it.x + it.width <= gutter);
+    const rgt = line.items.filter((it) => it.x >= gutter);
+    if (straddles || lft.length === 0 || rgt.length === 0) {
+      out.push({ ...line, col: -1 });
+      continue;
+    }
+    out.push({ ...makeLine(line.page, lft), col: 0 }, { ...makeLine(line.page, rgt), col: 1 });
+  }
+  return out;
+}
+
+/**
+ * Reading order for a two-column page: a full-width line closes whatever both columns
+ * have collected and is read in place, so a paper's title and abstract come before its
+ * columns and a spanning table separates the columns above it from the ones below.
+ */
+function orderColumns(lines: Line[]): Line[] {
+  const out: Line[] = [];
+  let lft: Line[] = [];
+  let rgt: Line[] = [];
+  const flush = (): void => {
+    out.push(...lft, ...rgt);
+    lft = [];
+    rgt = [];
+  };
+  for (const line of lines) {
+    if (line.col === -1) {
+      flush();
+      out.push(line);
+    } else if (line.col === 0) lft.push(line);
+    else rgt.push(line);
+  }
+  flush();
+  return out;
+}
+
+// ---- running headers, footers and page numbers ----------------------------------------
+
+/** "Page 3 of 12", "— 3 —", "iv", "3." — a page number in any of its usual costumes. */
+const PAGE_NUMBER = /^[\s\-–—|·•[\]()]*(?:page\s*)?(?:\d{1,5}|[ivxlcdm]{1,7})(?:\s*(?:of|\/)\s*\d{1,5})?[.\s\-–—|·•[\]()]*$/i;
+
+/** Digits vary from page to page; everything else about a running header does not. */
+function runningKey(line: Line): string {
+  return line.text.toLowerCase().replace(/\d+/g, "#").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * The lines to leave out: page numbers and running heads. A bare number in a margin
+ * band goes on its own evidence; anything else has to prove itself by REPEATING at the
+ * same height on most of the document's pages, which is the one thing a real first or
+ * last paragraph never does.
+ */
+function findMarginLines(perPage: Line[][], pages: PdfPageText[]): Set<Line> {
+  const drop = new Set<Line>();
+  const candidates: { line: Line; band: "top" | "bottom"; rel: number }[] = [];
+
+  perPage.forEach((lines, i) => {
+    const height = pages[i].height || 1;
+    for (const line of lines) {
+      const rel = line.y / height;
+      const band = rel <= MARGIN_TOP ? "top" : rel >= MARGIN_BOTTOM ? "bottom" : null;
+      if (!band) continue;
+      if (PAGE_NUMBER.test(line.text)) {
+        drop.add(line);
+        continue;
+      }
+      // A margin line that is a whole sentence is body text that happens to sit high
+      // or low on the page — a running head is a label, not prose.
+      if (line.text.split(/\s+/).length <= 14) candidates.push({ line, band, rel });
+    }
+  });
+
+  const byKey = new Map<string, typeof candidates>();
+  for (const c of candidates) {
+    const key = `${c.band}|${runningKey(c.line)}`;
+    const bucket = byKey.get(key);
+    if (bucket) bucket.push(c);
+    else byKey.set(key, [c]);
+  }
+  for (const bucket of byKey.values()) {
+    const onPages = new Set(bucket.map((c) => c.line.page));
+    if (onPages.size < RUNNING_MIN_PAGES) continue;
+    if (onPages.size < pages.length * RUNNING_MIN_SHARE) continue;
+    // Same text at the same height: a header that moves is a heading, not furniture.
+    const mid = median(bucket.map((c) => c.rel));
+    for (const c of bucket) if (Math.abs(c.rel - mid) <= 0.02) drop.add(c.line);
+  }
+  return drop;
+}
+
+// ---- hyphenation ----------------------------------------------------------------------
+
+/**
+ * Prefixes English keeps hyphenated even when a line break lands right after them.
+ * Deliberately short: every entry here is a word we then fail to rejoin when it really
+ * was a syllable break, so only the cases where the hyphen is almost always real belong.
+ * The document's own vocabulary (see `compoundStems`) carries far more weight than this.
+ */
+const KEEP_HYPHEN = new Set([
+  "self",
+  "non",
+  "semi",
+  "quasi",
+  "pseudo",
+  "anti",
+  "multi",
+  "cross",
+  "co",
+  "ex",
+  "well",
+  "so",
+]);
+
+/** Hyphens that are NOT at a line end: the document telling us its own compounds. */
+const INLINE_COMPOUND = /(\p{L}{2,})-(?=\p{L}{2,})/gu;
+
+/**
+ * The compounds this document writes with a hyphen where no line break forced it.
+ * "third-party" spelled out mid-line on one page is the best possible evidence that
+ * "third-" at the end of a line on another page is not a syllable break — better than
+ * any list we could ship, because it is this document's own usage.
+ */
+function compoundStems(texts: string[]): Set<string> {
+  const stems = new Set<string>();
+  for (const text of texts) {
+    for (const m of text.matchAll(INLINE_COMPOUND)) stems.add(m[1].toLowerCase());
+  }
+  return stems;
+}
+
+/**
+ * Was the hyphen at the end of a line put there by the typesetter (drop it) or is it
+ * part of the word (keep it)? Nothing short of a dictionary can answer that for every
+ * case — "state-of-the-art" broken after "state-" is genuinely ambiguous — so the rule
+ * is conservative and stated plainly. The hyphen goes only when all of this holds:
+ *
+ *   - the next line resumes in lower case (so "Anglo-/Saxon" keeps its hyphen);
+ *   - the stem is two letters or more, so "e-/mail" and "x-/ray" keep theirs;
+ *   - the stem is not an acronym in capitals ("US-/based", "AI-/generated");
+ *   - neither the stem nor the continuation's first token carries a second hyphen,
+ *     which is what saves "state-of-the-/art" and "state-/of-the-art";
+ *   - the stem is not one of the modifiers above;
+ *   - and the document does not spell that compound out somewhere no line break forced
+ *     it to, which is the evidence `compoundStems` collects.
+ *
+ * Everything else keeps its hyphen. The cost of the rule is visible and accepted: a
+ * compound split after a modifier neither the list nor the document names comes back
+ * fused.
+ */
+function dehyphenates(stem: string, head: string, compounds: Set<string>): boolean {
+  if (!/^\p{Ll}/u.test(head)) return false;
+  if (!/^\p{L}{2,}$/u.test(stem)) return false;
+  if (stem === stem.toUpperCase()) return false;
+  if (head.split(/\s/)[0].includes("-")) return false;
+  const lower = stem.toLowerCase();
+  return !KEEP_HYPHEN.has(lower) && !compounds.has(lower);
+}
+
+/** Append `next` to a paragraph that already reads `text`, mending the break. */
+function appendLine(text: string, next: string, compounds: Set<string>): string {
+  if (text === "") return next;
+  // The whole token is captured, hyphens and all, so "state-of-the-" arrives at the
+  // test below as "state-of-the" and is refused for carrying a hyphen of its own.
+  const hyphen = /(\S+)[-‐­]$/u.exec(text);
+  if (hyphen && dehyphenates(hyphen[1], next, compounds)) return text.slice(0, -1) + next;
+  if (hyphen) return text + next; // a real hyphen: no space swallowed the break
+  if (CJK.test(text.slice(-1)) && CJK.test(next.slice(0, 1))) return text + next;
+  return text + " " + next;
+}
+
+// ---- blocks ---------------------------------------------------------------------------
+
+/** A block still knowing which run of lines it came from, so joins can be judged. */
+interface Draft {
+  kind: "heading" | "paragraph";
+  text: string;
+  page: number;
+  /** Identifies the page+column the block was set in — the unit a join crosses. */
+  segment: string;
+  size: number;
+  font: string;
+  /** The block's last line stopped short of the column's right edge. */
+  endsShort: boolean;
+}
+
+/** A maximal run of consecutive lines set in the same column of the same page. */
+function segments(lines: Line[]): Line[][] {
+  const out: Line[][] = [];
+  let current: Line[] = [];
+  let key = "";
+  for (const line of lines) {
+    const k = `${line.page}:${line.col}`;
+    if (k !== key && current.length > 0) {
+      out.push(current);
+      current = [];
+    }
+    key = k;
+    current.push(line);
+  }
+  if (current.length > 0) out.push(current);
+  return out;
+}
+
+/**
+ * Cut one column's lines into paragraphs. Four signals, any one of which is enough:
+ * a vertical gap wider than the column's own line pitch, a first-line indent where the
+ * line before was flush, a change of type size, and a last line that stopped short
+ * followed by a line that starts like a new sentence. Together they cover both of the
+ * paragraph conventions printed text uses — blank line, and indent — without needing
+ * to know which one the document chose.
+ */
+function paragraphsOf(lines: Line[], compounds: Set<string>): Draft[] {
+  const pitches: number[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const d = lines[i].y - lines[i - 1].y;
+    if (d > 0) pitches.push(d);
+  }
+  const pitch = median(pitches) || median(lines.map((l) => l.size)) * 1.2 || 1;
+  const leftEdge = percentile(lines.map((l) => l.x0), 0.15);
+  const rightEdge = percentile(lines.map((l) => l.x1), 0.85);
+
+  const out: Draft[] = [];
+  let group: Line[] = [];
+  const flush = (): void => {
+    if (group.length === 0) return;
+    let text = "";
+    for (const l of group) text = appendLine(text, l.text, compounds);
+    text = text.replace(/\s+/g, " ").trim();
+    if (text !== "") {
+      const last = group[group.length - 1];
+      let widest = group[0];
+      for (const l of group) if (l.x1 - l.x0 > widest.x1 - widest.x0) widest = l;
+      out.push({
+        kind: "paragraph",
+        text,
+        page: group[0].page,
+        segment: `${group[0].page}:${group[0].col}`,
+        size: median(group.map((l) => l.size)),
+        font: widest.font,
+        endsShort: last.x1 < rightEdge - last.size * SHORT_LINE,
+      });
+    }
+    group = [];
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // A line that ends mid-word is never a paragraph's last line, whatever else the
+    // geometry says — the hyphen is the typesetter telling us so.
+    if (i > 0 && !/[-‐­]$/.test(lines[i - 1].text)) {
+      const prev = lines[i - 1];
+      const gap = line.y - prev.y;
+      const indented =
+        line.x0 > leftEdge + line.size * INDENT && prev.x0 <= leftEdge + prev.size * INDENT;
+      const resized = Math.abs(line.size - prev.size) > Math.max(line.size, prev.size) * 0.15;
+      const shortBefore = prev.x1 < rightEdge - prev.size * SHORT_LINE;
+      const startsFresh = /^[\p{Lu}\p{Lt}\d"“'‘([]/u.test(line.text);
+      if (gap > pitch * PARA_GAP || indented || resized || (shortBefore && startsFresh)) flush();
+    }
+    group.push(line);
+  }
+  flush();
+  return out;
+}
+
+/**
+ * Sew a paragraph back together across a column or page break. A paragraph that really
+ * continues never ends in sentence punctuation and never resumes in upper case, and a
+ * broken word at the boundary is mended exactly as one inside a paragraph is.
+ */
+function joinAcrossSegments(drafts: Draft[], compounds: Set<string>): Draft[] {
+  const out: Draft[] = [];
+  for (const d of drafts) {
+    const prev = out[out.length - 1];
+    const continues =
+      prev &&
+      prev.kind === "paragraph" &&
+      d.kind === "paragraph" &&
+      prev.segment !== d.segment &&
+      !prev.endsShort &&
+      !SENTENCE_END.test(prev.text) &&
+      /^\p{Ll}/u.test(d.text);
+    if (continues) {
+      prev.text = appendLine(prev.text, d.text, compounds);
+      prev.endsShort = d.endsShort;
+      continue;
+    }
+    out.push({ ...d });
+  }
+  return out;
+}
+
+/**
+ * Headings are the one structural distinction worth drawing: the walker never scores a
+ * heading and treats it as a topic boundary, so getting them right keeps two unrelated
+ * sections out of the same verdict. Three kinds of evidence, all requiring a short
+ * block: type larger than the document's body, a face the document barely uses
+ * elsewhere, and a printed section number at the front.
+ */
+function classifyHeadings(drafts: Draft[], bodySize: number, displayFonts: Set<string>): void {
+  for (const d of drafts) {
+    if (d.text.split(/\s+/).length > HEADING_MAX_WORDS) continue;
+    const display = displayFonts.has(d.font) || SECTION_NUMBER.test(d.text);
+    if (d.size >= bodySize * HEADING_SIZE || (display && !SENTENCE_END.test(d.text))) {
+      d.kind = "heading";
+    }
+  }
+}
+
+// ---- the entry point ------------------------------------------------------------------
+
+/**
+ * Rebuild a document's paragraphs from its pages' text runs. Pages may be a prefix of
+ * the document (the reader extracts progressively); running-head detection then works
+ * from what it has, which is why the reader only renders once it holds several pages.
+ */
+export function reflowPdf(pages: PdfPageText[]): ReflowBlock[] {
+  if (pages.length === 0) return [];
+
+  const perPage = pages.map((p) => {
+    const lines = groupIntoLines(p);
+    const gutter = findGutter(lines, p.width);
+    return gutter === null ? lines : orderColumns(splitColumns(lines, gutter));
+  });
+
+  const drop = findMarginLines(perPage, pages);
+  const lines = perPage.flat().filter((l) => !drop.has(l));
+  if (lines.length === 0) return [];
+
+  // The body size is the size most CHARACTERS are set in, not the size most lines are:
+  // a page of footnotes must not redefine what "normal" means for the document.
+  const weighted: number[] = [];
+  for (const l of lines) {
+    const weight = Math.max(1, Math.round(l.text.length / 8));
+    for (let i = 0; i < weight; i++) weighted.push(l.size);
+  }
+  const bodySize = median(weighted);
+
+  // A face carrying almost none of the document's text is a display face — the bold
+  // used for section titles, the small caps of a running head that escaped the margin
+  // rule. It is the only way to tell a bold heading from body text at the same size.
+  const charsByFont = new Map<string, number>();
+  let totalChars = 0;
+  for (const l of lines) {
+    charsByFont.set(l.font, (charsByFont.get(l.font) ?? 0) + l.text.length);
+    totalChars += l.text.length;
+  }
+  const displayFonts = new Set<string>();
+  for (const [font, chars] of charsByFont) {
+    if (font !== "" && chars < totalChars * DISPLAY_FONT_SHARE) displayFonts.add(font);
+  }
+
+  // Heading classification comes BEFORE the cross-segment join, so a section title at
+  // the top of a column can never be swallowed by the paragraph that ended above it.
+  const compounds = compoundStems(lines.map((l) => l.text));
+  const drafts = segments(lines).flatMap((s) => paragraphsOf(s, compounds));
+  classifyHeadings(drafts, bodySize, displayFonts);
+
+  return joinAcrossSegments(drafts, compounds).map(({ kind, text, page }) => ({ kind, text, page }));
+}
