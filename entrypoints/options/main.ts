@@ -7,7 +7,7 @@ import { browser } from "#imports";
 import "../../lib/ui/basecoat-vega.cdn.min.css";
 import { followSystemTheme } from "../../lib/ui/theme";
 import { localizePage } from "../../lib/ui/localize";
-import { t } from "../../lib/i18n";
+import { t, tn } from "../../lib/i18n";
 import {
   settings,
   clearSiteOverride,
