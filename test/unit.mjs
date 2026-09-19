@@ -507,6 +507,35 @@ const results = await page.evaluate(() => {
     check("X: a 288-word post in six blank-line paragraphs is ONE unit (it was four: 51, 65, 51, 75 words, 46 unjudged)", u.length === 1 && u[0].parts === 6 && u[0].words === 288 && u[0].text.length <= PW.WINDOW_CHARS, `${shape(u)} ${u[0]?.text.length}`);
   }
   {
+    // ONE grouping rule, two roads to it. The walker reads a page and decides what stands
+    // beside what; the arithmetic underneath it — the floor, the window, the even division,
+    // the orphan rule — is source-free (lib/plan/group.ts) and is what the PDF reader calls
+    // with no DOM anywhere (lib/pdf/units.ts). The same paragraphs, expressed as <p>s and as
+    // bare word/character counts, must come out grouped the same way; if they ever did not,
+    // a paper and a web page would be read by two different rules.
+    const asPlan = (ns) => ns.map((n) => ({ words: n, chars: words(n).length }));
+    const planShape = (ns) =>
+      JSON.stringify(PW.groupBlocks(asPlan(ns)).map((g) => [g.length, g.reduce((sum, i) => sum + ns[i], 0)]));
+    const walkShape = (ns) => shape(collect(ns.map((n) => `<p>${words(n)}</p>`).join("")));
+    for (const ns of [
+      [20, 20, 20],
+      [20, 60, 20],
+      [60, 20],
+      [13, 57],
+      [60, 20, 60],
+      [39, 121, 226, 120],
+      [62, 108, 118, 82, 40],
+      [25, 25, 25, 80, 25, 25],
+      [250, 25, 25],
+      Array.from({ length: 12 }, () => 45),
+      Array.from({ length: 50 }, () => 20),
+    ]) {
+      const label = ns.length > 6 ? `${ns.length}×${ns[0]} words` : `[${ns}]`;
+      check(`the walker and the source-free rule group ${label} the same way`, walkShape(ns) === planShape(ns),
+        `walker ${walkShape(ns)} · plan ${planShape(ns)}`);
+    }
+  }
+  {
     // Papers and articles: a unit per full paragraph, in an <article> and on the bare page alike.
     const body = [120, 80, 200, 95, 150, 110].map((n, i) => `<p>PARA${i} ${sent(n - 1)}</p>`).join("");
     const bare = collect(`<h1>Title</h1>${body}`);

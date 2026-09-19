@@ -24,6 +24,9 @@ export {
   MIN_SENTENCE_WORDS,
   MIN_LINE_WORDS,
 } from "../lib/dom/text";
+// The grouping rules themselves, source-free: test/unit.mjs checks that the walker and
+// they agree on the same sequence of paragraphs (lib/plan/group.ts, lib/pdf/units.ts).
+export { groupBlocks, modelSized, groupChars, groupWords, clearsFloor, fitsWindow } from "../lib/plan/group";
 export { isBoilerplate, isNoTranslate } from "../lib/dom/boilerplate";
 export { clipsOwnText } from "../lib/dom/style";
 export { WATCHED_ATTRS } from "../lib/capture/observers";

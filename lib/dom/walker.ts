@@ -62,17 +62,21 @@ import {
   endsLikeProse,
   endsInColon,
   wordShape,
+  shortRole,
   quoteDepth,
   runQuoteDepth,
   unitPartText,
   MIN_UNIT_WORDS,
-  MIN_MERGE_WORDS,
-  MIN_SENTENCE_WORDS,
   MIN_LINE_WORDS,
   MAX_UNIT_TEXT_CHARS,
 } from "./text";
 import { type Scopes, createScopes } from "./scope";
 import { WINDOW_CHARS } from "../capture/windows";
+// The arithmetic of grouping — the floor, the window, the even division, the orphan rule
+// — is not the walk's own: a PDF's paragraphs are grouped by exactly these rules without
+// a DOM anywhere (lib/plan/group.ts, lib/pdf/units.ts). What stays here is what only a
+// walk can say: which runs stand beside each other, and in whose voice.
+import { clearsFloor, fitsWindow, groupWords, modelSized, orphanHome } from "../plan/group";
 import { MARK_ATTR } from "../types";
 
 /**
@@ -125,6 +129,8 @@ interface Run {
   /** Run came from preserved-whitespace context (column-gap check applies). */
   preserved: boolean;
   words: number;
+  /** `text.length`, so a Run is a `Sized` block the grouping rules can measure. */
+  chars: number;
   linkRatio: number;
   /** Formulas skipped inside this run. */
   formulas: number;
@@ -271,6 +277,7 @@ export function collectUnits(
       raw,
       preserved,
       words: countWords(text),
+      chars: text.length,
       linkRatio: linkTextRatio(nodes),
       formulas,
       index: 0,
@@ -835,67 +842,6 @@ function wholePost(root: Element): Element {
   return all.replace(/\s+/g, " ").length <= WHOLE_POST_CHARS ? scope : root;
 }
 
-/** Length of the text these runs become as one unit: their texts, "\n\n" between them. */
-function joinedChars(runs: Run[]): number {
-  return runs.reduce((n, r) => n + r.text.length, 0) + 2 * Math.max(0, runs.length - 1);
-}
-
-function wordsOf(runs: Run[]): number {
-  return runs.reduce((n, r) => n + r.words, 0);
-}
-
-/** `runs` in `n` consecutive pieces, each as near to an even share of the characters as the
- *  joints between two runs allow. */
-function evenPieces(runs: Run[], n: number): Run[][] {
-  const total = joinedChars(runs);
-  const pieces: Run[][] = [];
-  let piece: Run[] = [];
-  let seen = 0;
-  for (const r of runs) {
-    const next = seen + r.text.length + 2;
-    const share = ((pieces.length + 1) * total) / n;
-    if (piece.length > 0 && pieces.length < n - 1 && Math.abs(seen - share) <= Math.abs(next - share)) {
-      pieces.push(piece);
-      piece = [];
-    }
-    piece.push(r);
-    seen = next;
-  }
-  pieces.push(piece);
-  return pieces;
-}
-
-/**
- * A stretch of short runs of one voice as the units it becomes. Closing a group the
- * moment it reached fifty words cut a 1767-word Zhihu answer of 49 paragraphs into 20
- * chips and a 288-word X post into four; reading the whole stretch as ONE unit would put
- * a single number on a thousand words, and what makes a chip worth having on a long text
- * is that it is fine-grained. So the stretch is divided into groups of at most one model
- * window (WINDOW_CHARS, some 300 words — about the mean length of the texts the model was
- * trained on, and what it judges in a single reading): ceil(total / window) of them, cut
- * between two paragraphs, as even as the paragraphs allow, so there is no small tail
- * group. Every group keeps the evidence floor; only where that cannot be had inside a
- * window (words of thirty letters) is a group longer, and read in windows like any long
- * paragraph.
- */
-function modelSized(runs: Run[]): Run[][] {
-  if (joinedChars(runs) <= WINDOW_CHARS) return [runs];
-  const floor = (pieces: Run[][]): boolean => pieces.every((p) => wordsOf(p) >= MIN_UNIT_WORDS);
-  const first = Math.ceil(joinedChars(runs) / WINDOW_CHARS);
-  let best: Run[][] | null = null;
-  for (let n = first; n <= runs.length; n++) {
-    const pieces = evenPieces(runs, n);
-    if (!floor(pieces)) break;
-    best = pieces;
-    if (pieces.every((p) => joinedChars(p) <= WINDOW_CHARS)) break; // else a joint fell badly: one more
-  }
-  for (let n = first - 1; !best && n > 1; n--) {
-    const pieces = evenPieces(runs, n);
-    if (floor(pieces)) best = pieces;
-  }
-  return best ?? [runs];
-}
-
 /**
  * The prose of a post, divided by where it stands: a run belongs with the first earlier
  * run it is `compatible` with. A LinkedIn card sets the author's headline ("VP, Chief
@@ -983,7 +929,7 @@ function createAssembler(
       id: "",
       parts,
       text,
-      wordCount: wordsOf(runs),
+      wordCount: groupWords(runs),
       formulas: runs.reduce((n, r) => n + r.formulas, 0),
       order: 0,
       topElement: runs[0].container,
@@ -1033,15 +979,19 @@ function createAssembler(
     const g = f.group;
     f.group = [];
     let lead: Run[] = [];
-    if (g.length > 0 && wordsOf(g) >= MIN_UNIT_WORDS) {
+    if (g.length > 0 && clearsFloor(g)) {
       for (const runs of modelSized(g)) out(f, runs);
     } else if (g.length > 0) {
       const beside = (a: Run, b: Run): boolean => together(f, a.container, b.container);
-      if (f.prev && beside(f.prev[f.prev.length - 1], g[0]) && joinedChars([...f.prev, ...g]) <= WINDOW_CHARS) {
-        f.prev.push(...g);
-      } else if (following && beside(g[g.length - 1], following) && joinedChars([...g, following]) <= WINDOW_CHARS) {
-        lead = g;
-      }
+      // Whether the paragraph on that side is in the same place is the walk's to answer;
+      // the window bound and the order of preference are the shared rule's (plan/group).
+      const home = orphanHome(g, f.prev, following, (side) =>
+        side === "before"
+          ? beside((f.prev as Run[])[(f.prev as Run[]).length - 1], g[0])
+          : beside(g[g.length - 1], following as Run),
+      );
+      if (home === "before") (f.prev as Run[]).push(...g);
+      else if (home === "after") lead = g;
       // else: below the evidence floor with nobody of its voice to join — dropped (by policy).
     }
     if (f.prev) out(f, f.prev);
@@ -1089,8 +1039,8 @@ function createAssembler(
   function conclude(f: Frame): void {
     close(f);
     if (f.scope === null) return;
-    if (!f.partial && wordsOf(f.prose) >= MIN_UNIT_WORDS && joinedChars(f.prose) <= WINDOW_CHARS) {
-      for (const runs of standingTogether(f.prose, (a, b) => together(f, a, b))) if (wordsOf(runs) >= MIN_UNIT_WORDS) release(runs);
+    if (!f.partial && clearsFloor(f.prose) && fitsWindow(f.prose)) {
+      for (const runs of standingTogether(f.prose, (a, b) => together(f, a, b))) if (clearsFloor(runs)) release(runs);
     } else {
       // A post that has just outgrown the window while a unit still owns ALL of what it was
       // (an answer streamed paragraph by paragraph does this once): its paragraphs are
@@ -1100,8 +1050,8 @@ function createAssembler(
         !f.partial &&
         owned.length > 1 &&
         owned.length < f.prose.length &&
-        wordsOf(owned) >= MIN_UNIT_WORDS &&
-        joinedChars(owned) <= WINDOW_CHARS &&
+        clearsFloor(owned) &&
+        fitsWindow(owned) &&
         retake(owned.flatMap((r) => r.nodes))
       ) {
         for (const r of owned) r.claimed = false;
@@ -1286,20 +1236,15 @@ function createAssembler(
       return;
     }
 
-    // A block of its own is PROSE when it reads like a sentence ("I agree completely.",
-    // or the lead-in "Can also be written as:" before a code sample) or is long enough
-    // to be one without the full stop (most bullet items). Either way it must be running
-    // text: "Alice Moreau, Ph.D." and "SIGN UP TODAY!" are not, and neither is "alice:".
+    // What a block of its own IS, by its text alone (lib/dom/text.ts, shortRole): prose
+    // that takes part in merging, a punctuated aside too small to be evidence, or a label.
     const shape = wordShape(r.text);
-    const prose =
-      shape.running &&
-      (((punctuated || endsInColon(r.text)) && shape.letterWords >= MIN_SENTENCE_WORDS) ||
-        shape.letterWords >= MIN_MERGE_WORDS);
+    const role = shortRole(r.text, shape);
     // What the text stood beside last: the open group, else the full paragraph before it.
     const last = f.group.length > 0 ? f.group[f.group.length - 1] : f.prev ? f.prev[f.prev.length - 1] : null;
     // Reads on without a stop at its end: a line of verse, if it is text at all.
     const unstopped = !punctuated && !endsInColon(r.text);
-    if (prose) {
+    if (role === "prose") {
       const lines = f.lines;
       f.lines = [];
       f.pending = null;
@@ -1312,7 +1257,7 @@ function createAssembler(
 
     // "Yes." / "Me too!" / "Hodges 1983, p. 208." — punctuated, but too little to be
     // evidence or to mean anything about who is speaking: skipped without consequence.
-    if (punctuated) return;
+    if (role === "aside") return;
 
     // A LABEL: an unpunctuated handful of words in a block of its own — a username, a
     // timestamp, "Reply · Share", a pseudo-heading made of a div. On the bare page —

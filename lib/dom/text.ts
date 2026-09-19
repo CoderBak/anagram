@@ -49,9 +49,25 @@ export interface Unit {
    * things follow. The orchestrator must not recompute the text to ask whether it changed
    * — it would never match, and every dirty pass would retire the unit. And the PARTS are
    * pieces of a page rather than the paragraphs of one voice, so a unit of three parts is
-   * still ONE paragraph and the chip must not read "×3".
+   * still ONE paragraph unless the unit says otherwise (`paragraphs`).
    */
   textFixed?: true;
+  /**
+   * How many of the document's PARAGRAPHS this unit reads, where the parts do not say so.
+   * A PDF's parts are the pieces a page break or a column cut one paragraph into, so a
+   * unit built there states this outright: 1 for a paragraph however many pages it crosses,
+   * N for N short paragraphs read together (lib/pdf/units.ts). Left out by the walker,
+   * whose parts ARE the paragraphs.
+   */
+  paragraphs?: number;
+}
+
+/**
+ * How many paragraphs a unit reads — what the chip counts when it says "×3" and what the
+ * card names. One per part, unless the unit stated it itself.
+ */
+export function unitParagraphs(unit: Unit): number {
+  return unit.paragraphs ?? (unit.textFixed ? 1 : unit.parts.length);
 }
 
 // ---- thresholds -------------------------------------------------------------------
@@ -320,6 +336,36 @@ export function wordShape(text: string): WordShape {
   // capitalised brand used to make it "punctuated but not prose", and a 223-word post on X
   // was judged by 135 of its words. Most words caseless → running text.
   return { letterWords, running: lowerStart || casedWords * 2 < letterWords };
+}
+
+/** What a short run turns out to BE (shortRole). */
+export type ShortRole =
+  /** A sentence, or long enough to be one without the full stop: it takes part in merging. */
+  | "prose"
+  /** Punctuated, but too little to be evidence or to mean anything about who is speaking
+   *  ("Yes.", "Me too!", "Hodges 1983, p. 208."): passed over without consequence. */
+  | "aside"
+  /** An unpunctuated handful of words in a block of its own: a username, a timestamp,
+   *  "Reply · Share", a pseudo-heading made of a div. */
+  | "label";
+
+/**
+ * What a run under the evidence floor is, by its text alone. A block of its own is PROSE
+ * when it reads like a sentence ("I agree completely.", or the lead-in "Can also be
+ * written as:" before a code sample) or is long enough to be one without the full stop
+ * (most bullet items). Either way it must be running text: "Alice Moreau, Ph.D." and
+ * "SIGN UP TODAY!" are not, and neither is "alice:".
+ *
+ * The caller passes the shape when it has already measured it — the walker reads it again
+ * for its own tests, and wordShape segments the text.
+ */
+export function shortRole(text: string, shape: WordShape = wordShape(text)): ShortRole {
+  const prose =
+    shape.running &&
+    (((endsLikeProse(text) || endsInColon(text)) && shape.letterWords >= MIN_SENTENCE_WORDS) ||
+      shape.letterWords >= MIN_MERGE_WORDS);
+  if (prose) return "prose";
+  return endsLikeProse(text) ? "aside" : "label";
 }
 
 /** Separator-looking runs ("* * *", "———"): punctuation/symbols only, no digits. */
