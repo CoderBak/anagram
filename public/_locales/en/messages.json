@@ -625,6 +625,14 @@
     "message": "Per-site rules below override this default. Toggling applies to new page loads and open tabs.",
     "description": "Options switch help text."
   },
+  "optAutoOpenPdfs": {
+    "message": "Open PDFs in Anagram",
+    "description": "Options switch label."
+  },
+  "optAutoOpenPdfsNote": {
+    "message": "PDF tabs open in the reading mode.",
+    "description": "Options switch help text."
+  },
   "optScope": {
     "message": "Analysis scope",
     "description": "Options select label."

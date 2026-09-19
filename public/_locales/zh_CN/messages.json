@@ -458,6 +458,12 @@
   "optEnabledNote": {
     "message": "下方的站点规则会覆盖这个默认值。改动对新打开的页面和已打开的标签页都生效。"
   },
+  "optAutoOpenPdfs": {
+    "message": "用 Anagram 打开 PDF"
+  },
+  "optAutoOpenPdfsNote": {
+    "message": "在阅读模式中打开 PDF 标签页。"
+  },
   "optScope": {
     "message": "分析范围"
   },

@@ -58,6 +58,21 @@ async function resolveFrameHost(): Promise<string> {
   return location.hostname;
 }
 
+/**
+ * How this document was reached — "navigate", "reload", "back_forward" or "prerender".
+ * It decides one thing: the reading mode REPLACES the tab, so the PDF stays in history,
+ * and a reader who presses Back to get out of it lands on the PDF again. Opening the
+ * reading mode a second time there would take the Back button away from them entirely.
+ */
+function navigationType(): string {
+  try {
+    const [nav] = performance.getEntriesByType("navigation") as PerformanceNavigationTiming[];
+    return nav?.type ?? "navigate";
+  } catch {
+    return "navigate"; // no navigation timing at all — treat it as an ordinary visit
+  }
+}
+
 export default defineContentScript({
   matches: ["<all_urls>"],
   runAt: "document_end",
@@ -248,6 +263,18 @@ export default defineContentScript({
         () => void browser.runtime.sendMessage({ action: ACTIONS.OPEN_PDF_READER }).catch(() => undefined),
         { attention: true }, // nothing on this page can be scored — point at the way out
       );
+      // And "Open PDFs in Anagram", which is the same journey without the click. What this
+      // page knows is reported; the worker decides (lib/pdf/route.ts), because the setting,
+      // the one-shot pass out of the reader and the back/forward rule all live there.
+      void browser.runtime
+        .sendMessage({
+          action: ACTIONS.PDF_TAB_OPENED,
+          url: location.href,
+          contentType: document.contentType,
+          protocol: location.protocol,
+          navigationType: navigationType(),
+        })
+        .catch(() => undefined);
     }
 
     browser.runtime.onMessage.addListener(

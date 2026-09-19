@@ -240,9 +240,25 @@ async function openFromFile(file: File): Promise<void> {
 
 // ---- the page ---------------------------------------------------------------------------
 
+/**
+ * Leave for the PDF itself — the button in the bar, and the way out of every line below
+ * that says the file could not be read. With "Open PDFs in Anagram" on, the tab we are
+ * about to send there would be sent straight back here, so the worker is asked first to
+ * let this one load through, and only then does the tab go.
+ */
+async function openOriginal(src: string): Promise<void> {
+  try {
+    await browser.runtime.sendMessage({ action: ACTIONS.PDF_PASS_ONCE, url: src });
+  } catch {
+    // The worker did not answer. The navigation still happens: at worst the reading mode
+    // opens again, which is where the reader already is.
+  }
+  location.href = src;
+}
+
 function wire(src: string | null): void {
   originalEl.addEventListener("click", () => {
-    if (src) location.href = src;
+    if (src) void openOriginal(src);
   });
   chooseEl.addEventListener("click", () => fileEl.click());
   fileEl.addEventListener("change", () => {

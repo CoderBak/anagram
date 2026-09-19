@@ -18,6 +18,7 @@ import {
   DEFAULT_SERVER_URL,
 } from "../../lib/settings/settings";
 import { ACTIONS } from "../../lib/messaging/protocol";
+import { PDF_TAB_SCRIPTS_RUN } from "../../lib/surface";
 import { CONTRACT_VERSION } from "../../lib/contract";
 import type { BackendStatus } from "../../lib/messaging/protocol";
 
@@ -27,6 +28,8 @@ const markStyleEl = document.getElementById("markStyle") as HTMLSelectElement;
 const displayModeEl = document.getElementById("displayMode") as HTMLSelectElement;
 const analysisScopeEl = document.getElementById("analysisScope") as HTMLSelectElement;
 const mergeShortsEl = document.getElementById("mergeShorts") as HTMLInputElement;
+const autoOpenPdfsEl = document.getElementById("autoOpenPdfs") as HTMLInputElement;
+const autoOpenPdfsFieldEl = document.getElementById("autoOpenPdfsField") as HTMLElement;
 const debugEl = document.getElementById("debug") as HTMLInputElement;
 const sitesEl = document.getElementById("sites") as HTMLElement;
 const versionEl = document.getElementById("version") as HTMLElement;
@@ -177,6 +180,14 @@ bindToggle(enabledEl, settings.enabled);
 bindToggle(highlightsEl, settings.showHighlights);
 bindToggle(debugEl, settings.debug);
 bindToggle(mergeShortsEl, settings.mergeShorts);
+// "Open PDFs in Anagram" needs a content script inside the PDF tab to notice the PDF and
+// ask the worker to move the tab. Chrome wraps its viewer in an ordinary HTML document
+// where our script runs; Firefox's is a privileged page where no content script runs at
+// all, and there is no other way in that this extension's permissions can pay for (see
+// the note in lib/pdf/route.ts). A switch that could not do anything is worse than no
+// switch, so on Firefox there is none — the ball, the popup and the menu still open a PDF.
+if (PDF_TAB_SCRIPTS_RUN) bindToggle(autoOpenPdfsEl, settings.autoOpenPdfs);
+else autoOpenPdfsFieldEl.remove();
 bindSelect(displayModeEl, settings.displayMode);
 bindSelect(markStyleEl, settings.markStyle);
 bindSelect(analysisScopeEl, settings.analysisScope);

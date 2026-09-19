@@ -24,3 +24,12 @@ const target = buildTarget();
 /** Origin tag every scoring request carries (contract §surface). */
 export const SURFACE: ScoreBatchRequest["surface"] =
   target === "firefox" ? "firefox-ext" : target === "safari" ? "safari-ext" : "chrome-ext";
+
+/**
+ * Does a content script run inside the browser's own PDF viewer? Chrome wraps the plugin
+ * in an ordinary HTML document that content scripts ARE injected into — that outer
+ * document is where the ball's "Analyze PDF" chip comes from. Firefox shows PDFs in its
+ * built-in pdf.js viewer, a privileged page no content script reaches, so nothing that
+ * has to start from the PDF tab itself can exist there.
+ */
+export const PDF_TAB_SCRIPTS_RUN = target !== "firefox";

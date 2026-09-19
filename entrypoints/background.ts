@@ -14,13 +14,15 @@ import { ACTIONS } from "../lib/messaging/protocol";
 import type {
   ClearCacheReply,
   CopyDiagnosticsReply,
+  PdfPassOnceReply,
   ScoreBatchMessage,
   ScoreBatchReply,
   TopHostReply,
   UpdateBadgeMessage,
 } from "../lib/messaging/protocol";
 import { READER_PAGE, readerQuery } from "../lib/pdf/source";
-import { createTwinResolver } from "../lib/pdf/route";
+import { createTwinResolver, shouldAutoOpen } from "../lib/pdf/route";
+import { settings } from "../lib/settings/settings";
 import { t } from "../lib/i18n";
 
 export default defineBackground(() => {
@@ -45,7 +47,10 @@ export default defineBackground(() => {
   /** And when nothing reached the clipboard, the same gesture says so instead of lying. */
   const FLASH_FAIL = { text: "!", color: COUNT_COLOR };
   const FLASH_MS = 1500;
-  browser.tabs.onRemoved.addListener((tabId) => badgeText.delete(tabId));
+  browser.tabs.onRemoved.addListener((tabId) => {
+    badgeText.delete(tabId);
+    dropPass(tabId);
+  });
 
   /**
    * Firefox only: `clipboardWrite` is declared OPTIONAL (see wxt.config.ts), so it has to
@@ -88,6 +93,30 @@ export default defineBackground(() => {
   const resolveTwin = createTwinResolver({ fetch: (...args) => fetch(...args) });
   const destinationFor = async (src: string): Promise<string> =>
     (await resolveTwin(src)) ?? readerUrl(src);
+
+  /**
+   * Tabs allowed to show one PDF WITHOUT the reading mode opening over it: the reader's
+   * "Open original", and the same way out of every line that says the file could not be
+   * read. Per tab, one shot, and only in this worker's memory — a worker that was evicted
+   * never held a pass, which is the same as not having one.
+   */
+  const passes = new Map<number, string>();
+  /**
+   * A pass is for ONE navigation, so a tab that goes anywhere else loses it. The listener
+   * exists only while a pass does: an MV3 worker is woken by every listener it registers,
+   * and being woken for every tab in the browser is not a price to pay for an empty map.
+   */
+  const forgetPassOnMove = (tabId: number, change: { url?: string }): void => {
+    if (change.url !== undefined && change.url !== passes.get(tabId)) dropPass(tabId);
+  };
+  function dropPass(tabId: number): void {
+    if (!passes.delete(tabId)) return;
+    if (passes.size === 0) browser.tabs.onUpdated.removeListener(forgetPassOnMove);
+  }
+  function holdPass(tabId: number, url: string): void {
+    if (passes.size === 0) browser.tabs.onUpdated.addListener(forgetPassOnMove);
+    passes.set(tabId, url);
+  }
 
   // Context menus; recreated idempotently on install/update. The PDF entry is offered on
   // LINKS to a .pdf, which is where a reader decides to open one — the tab that is
@@ -258,6 +287,9 @@ export default defineBackground(() => {
         probe?: boolean;
         url?: string;
         tabId?: number;
+        contentType?: string;
+        protocol?: string;
+        navigationType?: string;
       };
       if (!msg) return;
 
@@ -270,6 +302,42 @@ export default defineBackground(() => {
           void destinationFor(src).then((url) => browser.tabs.update(tabId, { url }));
         }
         return;
+      }
+
+      // "Open PDFs in Anagram": a tab showing a PDF has told us what it is looking at.
+      // The tab moved is the SENDER's — never the active one, because a PDF opened in a
+      // background tab by a middle click reports from there and must move itself.
+      if (msg.action === ACTIONS.PDF_TAB_OPENED) {
+        const tabId = sender.tab?.id;
+        const src = msg.url;
+        if (tabId == null || !src) return;
+        void (async () => {
+          // The pass is spent on the load it was written for, whatever is decided next.
+          const pass = passes.get(tabId) === src;
+          if (pass) dropPass(tabId);
+          const open = shouldAutoOpen({
+            // Read now, not at startup: the switch has to take effect on the next PDF.
+            setting: await settings.autoOpenPdfs.getValue(),
+            contentType: msg.contentType ?? "",
+            protocol: msg.protocol ?? "",
+            navigationType: msg.navigationType ?? "",
+            frame: sender.frameId ?? 0,
+            pass,
+          });
+          if (!open) return;
+          await browser.tabs.update(tabId, { url: await destinationFor(src) });
+        })();
+        return;
+      }
+
+      // The reader is leaving for the PDF itself. It waits for this answer before it
+      // navigates, or the tab could arrive back at the PDF before the pass is written.
+      if (msg.action === ACTIONS.PDF_PASS_ONCE) {
+        const tabId = sender.tab?.id;
+        if (tabId != null && msg.url) holdPass(tabId, msg.url);
+        const reply: PdfPassOnceReply = { ok: tabId != null };
+        sendResponse(reply);
+        return; // synchronous response
       }
 
       // The options page asked for the cached verdicts to go. The worker's own layers are

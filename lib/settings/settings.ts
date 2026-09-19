@@ -35,6 +35,10 @@ export const settings = {
   // The paragraph underline is part of the core product; on by default (orchestrator
   // respects live changes to this setting).
   showHighlights: storage.defineItem<boolean>("local:showHighlights", { fallback: true }),
+  // A PDF tab turns itself into the reading mode. OFF by default: replacing the browser's
+  // own viewer on every PDF is not something to do to somebody who did not ask for it —
+  // the ball's chip, the popup button and the context menu are still there for one file.
+  autoOpenPdfs: storage.defineItem<boolean>("local:autoOpenPdfs", { fallback: false }),
   debug: storage.defineItem<boolean>("local:debug", { fallback: false }),
   // What to paint: every analyzed unit, or only flagged (heavily edited / AI-generated) ones.
   // Everything is still ANALYZED either way — this filters rendering only.

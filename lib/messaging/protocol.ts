@@ -36,6 +36,19 @@ export const ACTIONS = {
    * accessible — so the worker performs the tabs.update for it.
    */
   OPEN_PDF_READER: "openPdfReader",
+  /**
+   * content (a PDF tab, top frame) → SW: this tab is showing a PDF, reached this way.
+   * The worker decides whether "Open PDFs in Anagram" applies (lib/pdf/route.ts) — the
+   * setting, the back/forward rule and the one-shot pass below all live there, so there
+   * is one answer and not three.
+   */
+  PDF_TAB_OPENED: "pdfTabOpened",
+  /**
+   * reader → SW: let THIS tab load THIS PDF once without the reading mode opening over
+   * it. "Open original" and the way out of the reader's failure lines would otherwise
+   * bounce straight back here while the setting is on.
+   */
+  PDF_PASS_ONCE: "pdfPassOnce",
   /** options → SW: forget every cached verdict (memory, worker and IndexedDB). */
   CLEAR_CACHE: "clearCache",
   /** SW → content: the worker's caches are gone — drop this tab's own layer too. */
@@ -211,6 +224,30 @@ export interface OpenPdfReaderMessage {
   action: typeof ACTIONS.OPEN_PDF_READER;
   url?: string;
   tabId?: number;
+}
+
+/**
+ * content (a PDF tab) → SW: everything the automatic route is decided from except the
+ * setting and the pass, which only the worker holds. The tab and the frame come off the
+ * sender, so a page cannot ask for somebody else's tab to be moved.
+ */
+export interface PdfTabOpenedMessage {
+  action: typeof ACTIONS.PDF_TAB_OPENED;
+  url: string;
+  contentType: string;
+  protocol: string;
+  navigationType: string;
+}
+
+/** reader → SW: let this tab's next load of `url` through without the reading mode. */
+export interface PdfPassOnceMessage {
+  action: typeof ACTIONS.PDF_PASS_ONCE;
+  url: string;
+}
+
+/** SW → reader (response to PDF_PASS_ONCE): the pass is held, it is safe to navigate. */
+export interface PdfPassOnceReply {
+  ok: boolean;
 }
 
 /** options → SW: empty every score cache the worker owns, then tell the tabs. */
