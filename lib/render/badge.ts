@@ -271,7 +271,11 @@ export function createBadgeLayer(): BadgeLayer {
       row("Words", `${unit.wordCount}`) +
       coverageRows +
       formulaRow +
-      `<div class="actions"><button type="button" class="act copy">Copy text</button></div>` +
+      // tabindex="-1": the chip host is aria-hidden on purpose (see the header), so a
+      // focusable button inside it would be a tab stop that announces nothing at all —
+      // one per pinned card. This action is a pointer affordance; the keyboard route to
+      // the same text is "Copy report" in the triage panel, which is properly exposed.
+      `<div class="actions"><button type="button" tabindex="-1" class="act copy">Copy text</button></div>` +
       `<div class="foot">${foot}</div>` +
       `<span class="caret"></span>`;
 

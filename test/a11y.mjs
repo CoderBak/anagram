@@ -91,16 +91,6 @@ const BASELINE = [
   },
   {
     where: "chip detail card (pinned open)",
-    rule: "aria-hidden-focus",
-    target: "#a11y-card-host",
-    why:
-      'A PINNED card puts a real <button class="act copy"> inside the aria-hidden chip host: ' +
-      "a tab stop that announces nothing. The chips being aria-hidden is the deliberate " +
-      "decision (see EXEMPTIONS); their card becoming focusable while hidden is not. " +
-      "lib/render/badge.ts renderCard.",
-  },
-  {
-    where: "chip detail card (pinned open)",
     rule: "color-contrast",
     target: "#a11y-card-host >>> .foot",
     why: "The card's footnote is #8a8a8a on #ffffff at 10 px = 3.45:1 — the sentence that says the number is an estimate, not proof. lib/render/badge.css.ts .card .foot.",
