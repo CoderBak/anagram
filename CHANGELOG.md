@@ -384,9 +384,11 @@ Notable changes to Anagram, newest first. The format follows
 - **`markStyle` is two honest choices.** "Underline + tint", "underline only" and
   "tint only" all meant "mark every paragraph, all the time"; the setting is now
   `quiet` (the default — the rules above) and `always` (every unit marked, as
-  before minus the waves). A profile holding one of the three old values reads
-  as `always`, so an old profile still opens and this build writes nothing an
-  older one cannot read. `showHighlights` is still the master switch, and
+  before minus the waves). A profile holding an old CHOICE ("underline only",
+  "tint only") reads as `always`; one holding the old DEFAULT ("underline + tint")
+  reads as the new default, `quiet` — otherwise the people who never asked for
+  anything would be the only ones not to get it. Nothing is migrated, so an old
+  profile still opens and this build writes nothing an older one cannot read. `showHighlights` is still the master switch, and
   `displayMode: "flagged"` still means what it meant.
 - **The store description says what the extension does.** `package.json`, both
   locales and the README tagline claimed "per-paragraph AI-generated-text

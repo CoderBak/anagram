@@ -93,17 +93,18 @@ export type MarkStyle = "quiet" | "always";
 /**
  * The mark styles this profile may hold. "quiet" and "always" are what the extension
  * offers now; "both", "underline" and "tint" were the three ways the old always-on marks
- * could be drawn, and every one of them meant "mark every paragraph, all the time" —
- * which is exactly "always".
+ * could be drawn. Two of them were CHOICES — somebody picked "underline" or "tint" over
+ * what they were given, and what they picked was a page that is always marked, so they
+ * read as "always". "both" was the DEFAULT, and a stored "both" says only that the
+ * default was never left (or was come back to): it reads as the default there is now,
+ * or the people who never asked for anything would be the only ones not to get it.
  */
 export type StoredMarkStyle = MarkStyle | "both" | "underline" | "tint";
 
 /** The stored value as the renderer understands it. Anything unrecognised — a profile
  *  from a build that has not happened yet — reads as the default. */
 export function normalizeMarkStyle(stored: StoredMarkStyle | undefined | null): MarkStyle {
-  if (stored === "always" || stored === "both" || stored === "underline" || stored === "tint") {
-    return "always";
-  }
+  if (stored === "always" || stored === "underline" || stored === "tint") return "always";
   return "quiet";
 }
 
