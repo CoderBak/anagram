@@ -227,7 +227,7 @@ describe("the shipping manifest", () => {
   /** The exact policy, which docs/footprint.md quotes and test/csp-check.mjs exercises. */
   const CSP =
     "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; " +
-    "connect-src 'self' http://127.0.0.1:* http://localhost:* file:; " +
+    "connect-src 'self' http://127.0.0.1:* http://localhost:*; " +
     "img-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; " +
     "worker-src 'self'; frame-src 'none'; form-action 'none'; base-uri 'none'";
 
@@ -242,11 +242,11 @@ describe("the shipping manifest", () => {
     expect(quoted.replace(/\s+/g, " ").trim()).toBe(CSP.replace(/\s+/g, " "));
   });
 
-  it.skipIf(!ready)("lets connect-src reach nothing but itself, loopback and a local file", () => {
+  it.skipIf(!ready)("lets connect-src reach nothing but itself and loopback", () => {
     const policy = (manifest().content_security_policy as { extension_pages: string })
       .extension_pages;
     const connect = /connect-src ([^;]+)/.exec(policy)?.[1].trim().split(/\s+/) ?? [];
-    expect(connect).toEqual(["'self'", "http://127.0.0.1:*", "http://localhost:*", "file:"]);
+    expect(connect).toEqual(["'self'", "http://127.0.0.1:*", "http://localhost:*"]);
   });
 
   it.skipIf(!ready)("makes only the three content-script chunks web accessible", () => {

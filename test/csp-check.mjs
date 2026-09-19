@@ -262,10 +262,11 @@ record(
 
 /**
  * THE ONE THING THIS POLICY COSTS, stated so it cannot be discovered by surprise: the
- * reader page can no longer fetch a PDF from the site it is on. That is the intended
- * consequence — a remote origin is a remote origin, whoever asks — and it is why the bytes
- * of a PDF being read have to be handed over by the tab that already has them rather than
- * fetched again. `file:` is allowed, so a PDF on this computer still opens by itself.
+ * reader page can no longer fetch a PDF at all — not from the site it is on, and not from
+ * this computer either. That is the intended consequence: a remote origin is a remote
+ * origin whoever asks, and it is why the bytes of a PDF being read are handed over by the
+ * tab that already has them (lib/pdf/handoff.ts) rather than fetched again. A PDF on this
+ * computer comes in through the reading mode's drop zone instead.
  */
 record(
   "Chrome: the reader cannot re-fetch a PDF from a remote origin (the bytes must come from the tab)",

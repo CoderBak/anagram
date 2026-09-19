@@ -751,10 +751,11 @@ manifest.
 
 **Anagram contacts no remote server, ever, and the browser is what stops it.**
 The manifest declares a Content-Security-Policy whose `connect-src` is the
-extension's own origin, the two loopback spellings the daemon-URL setting
-accepts, and `file:` — so `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource`
-and `sendBeacon` from any extension page or from the service worker can reach
-the local daemon and nothing else, whatever the code asks for. No telemetry, no
+extension's own origin and the two loopback spellings the daemon-URL setting
+accepts — that is the whole list, with no remote origin and no `file:` in it —
+so `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource` and `sendBeacon` from
+any extension page or from the service worker can reach the local daemon and
+nothing else, whatever the code asks for. No telemetry, no
 analytics, no error reporting, no update check, no remote font. Only three files
 of the extension are web accessible at all, at an address Chrome rotates per
 session and gives only to our own content script, so a page cannot detect

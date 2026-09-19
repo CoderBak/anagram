@@ -17,7 +17,7 @@ declares a Content-Security-Policy for the extension's own pages and its service
 
 ```
 default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; object-src 'self';
-connect-src 'self' http://127.0.0.1:* http://localhost:* file:;
+connect-src 'self' http://127.0.0.1:* http://localhost:*;
 img-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline';
 worker-src 'self'; frame-src 'none'; form-action 'none'; base-uri 'none'
 ```
@@ -49,17 +49,35 @@ Two things the policy does **not** cover, stated so the picture is complete:
 | `lib/backend/httpClient.ts` | `fetch(` | `GET /health` — is the daemon up? | the loopback daemon |
 | `lib/backend/httpClient.ts` | `fetch(` | `POST /score` — the paragraphs to be scored | the loopback daemon |
 | `lib/docsOverlay.ts` | `fetch(` | re-reads the Google Doc the tab is already showing, in its `mobilebasic` rendering, because a Docs canvas has no text in the DOM to read | the same origin as the tab, with the reader's own cookies |
-| `entrypoints/reader/main.ts` | `fetch(` | the bytes of the PDF the reading mode was opened for | under the policy above: the loopback fixtures and `file:` only — a PDF on a remote site has to be handed over by the tab that already has it |
+| `lib/pdf/handoff.ts` | `fetch(` | re-reads, from the content script in a PDF tab, the document that tab is already showing, so the reading mode can be handed its bytes instead of fetching them | the same URL the tab is already showing, same-origin, normally answered from the HTTP cache |
 | `lib/lazy.ts` | `import(` | loads one of the vendored chunks that ship inside the extension (Readability, DOMPurify, the diagnostics chunk, pdf.js) | `chrome-extension://<this extension>/vendor/…` |
 
 Nothing else in `lib/` or `entrypoints/` calls a network API. There is no `XMLHttpRequest`,
 no `WebSocket`, no `EventSource`, no `sendBeacon`, no `importScripts`, no telemetry, no
 analytics, no error reporting, no update check, no remote font and no remote stylesheet.
 
-Until 2026-09-20 there was one more: the service worker asked `arxiv.org` whether a paper
-had an HTML rendering, so that an arXiv PDF could open as the paper instead of as its PDF.
-It was the extension's only remote request and it has been removed along with the automatic
-re-routing that depended on it. "Open in Anagram" on a PDF now opens that PDF.
+Until 2026-09-20 there were two more, and both are gone.
+
+The service worker asked `arxiv.org` whether a paper had an HTML rendering, so that an
+arXiv PDF could open as the paper instead of as its PDF. It was the extension's only remote
+request. "Open in Anagram" on a PDF now opens that PDF.
+
+And the reading mode fetched its own `?src=` — an extension page asking the open web for a
+document, with the reader's cookies. **How a remote PDF's bytes reach the reading mode
+now:** the tab that is showing the PDF re-reads its own document (`lib/pdf/handoff.ts`,
+the row above) — same URL, same origin, same cookies, `cache: "force-cache"`, so the
+browser's own cache normally answers and nothing goes out at all — and streams it to the
+service worker a chunk at a time, stopping at 50 MB and refusing anything whose first bytes
+are not `%PDF-`. The worker holds those bytes under a one-time ticket, bound to that one
+tab, and navigates the tab to the reading mode, which pulls them and frees the ticket. The
+`?src=` in the reading mode's address is a NAME from then on — the title, "Open original",
+the HTML link — and nothing of ours ever fetches it. `connect-src` above is what makes that
+a rule rather than a promise: the reading mode could not fetch a remote address if it tried.
+
+A PDF on this computer (`file://`) cannot come in that way: nothing declares access to the
+file scheme, and a page on it may not re-read itself in any case. Such a PDF is opened by
+dropping it on the reading mode, which is a file the reader hands over rather than one
+anything here went and got.
 
 ### Every address written in the source
 
@@ -69,7 +87,16 @@ stylesheets included, since an `@import` or a webfont is a remote host as much a
 
 | File | URL | Why |
 | --- | --- | --- |
-| `lib/settings/settings.ts` | `http://127.0.0.1:8765` | the default daemon address |
+| `lib/settings/settings.ts` | `http://127.0.0.1` | the default daemon address, whose port is interpolated; and, with and without a port, the examples in the comment that explains what the validator accepts |
+| `lib/settings/settings.ts` | `http://localhost` | the second spelling the validator accepts, in that same comment |
+| `lib/settings/settings.ts` | `http://127.0.0.2:8765` | an example in that comment of a loopback address the validator REFUSES |
+| `lib/settings/settings.ts` | `http://[::1]:8765` | the same, for the IPv6 spelling |
+| `lib/settings/settings.ts` | `https://localhost:8765` | the same, for a scheme that is not `http:` |
+| `lib/settings/settings.ts` | `http://$` | the accepted URL rebuilt from its own parsed host and port, so only the two shapes above can come out |
+| `lib/access/patterns.ts` | `http://127.0.0.1/*` | the daemon's host, as a match pattern: the host access the extension asks for at install |
+| `lib/access/patterns.ts` | `http://localhost/*` | the same, second spelling |
+| `lib/access/patterns.ts` | `https://*/*` | the OPTIONAL site access the reader may grant, and which the extension installs without |
+| `lib/access/patterns.ts` | `http://*/*` | the same, for plain http |
 | `entrypoints/options/index.html` | `http://127.0.0.1:8765` | the same address, as the field's placeholder |
 | `lib/pdf/source.ts` | `https://arxiv.org/html/` | builds the address of an arXiv paper's HTML rendering. Nothing fetches it; it is offered as a link somebody may follow |
 | `lib/docs.ts` | `https://docs.google.com/document/d/` | builds the address of the document the tab is on |
@@ -147,9 +174,11 @@ extension leaves `~/.anagram`; removing that directory removes the daemon entire
 | `storage` | the settings above |
 | `activeTab` | the popup and the keyboard commands act on the tab in front of the reader |
 | `contextMenus` | the four right-click entries |
-| `scripting` | runs the content script in a tab the reader has just granted access to |
-| host access | the loopback daemon, plus the sites the reader grants — see the popup's per-site switch |
+| `scripting` | registers the content script for the origins the reader has granted, and injects it into one tab for a single action where they have granted nothing |
+| host access | `http://127.0.0.1/*` and `http://localhost/*` — the loopback daemon, and nothing else at install |
+| optional host access | `https://*/*` and `http://*/*` — the sites the reader grants, one at a time or all at once; see the popup's per-site switch |
 | `clipboardWrite` (Firefox only, **optional**) | "Copy page diagnostics". Asked for at the moment it is used, never at install |
 
-The manifest's permission block is the `access` agent's to write; the table above describes
-the state it is moving to, and `test/node/permissions.test.ts` is where it is pinned.
+That is the whole manifest block — `storage, activeTab, contextMenus, scripting`, two
+loopback hosts, two optional patterns — and `test/node/permissions.test.ts` reads the built
+manifest and pins it.

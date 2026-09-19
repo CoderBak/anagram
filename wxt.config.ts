@@ -105,12 +105,12 @@ function englishFallback() {
  *                 the two loopback spellings here are exactly the two the daemon-URL
  *                 setting accepts (lib/settings/settings.ts). `'self'` is the extension's
  *                 own origin, which is how the reader page reads the pdf.js worker's data.
- *                 `file:` is there so that the PDF view can still open a PDF from this
- *                 computer where the reader ticked "Allow access to file URLs"; a file on
- *                 disk is not a place data can be sent to, so it costs the promise nothing.
- *                 What this list deliberately does NOT contain is any remote origin —
- *                 including the one the tab is on, which is why the bytes of a PDF being
- *                 read have to come from the tab that already has them.
+ *                 That is the whole list: no remote origin, and no `file:` either. Not the
+ *                 origin the tab is on — which is why the bytes of a PDF being read are
+ *                 handed over by the tab that already has them (lib/pdf/handoff.ts) rather
+ *                 than fetched again — and not a local file, because nothing here declares
+ *                 access to the file scheme any more and a PDF from this computer comes in
+ *                 through the reading mode's drop zone, as a file the user handed over.
  *   script-src    'self' plus 'wasm-unsafe-eval', which is what lets pdf.js instantiate
  *                 the JPEG2000 and JBIG2 decoders it ships as WebAssembly. Without it a
  *                 scanned page in either format comes out blank — measured, not assumed:
@@ -136,7 +136,7 @@ const CSP = [
   "default-src 'self'",
   "script-src 'self' 'wasm-unsafe-eval'",
   "object-src 'self'",
-  "connect-src 'self' http://127.0.0.1:* http://localhost:* file:",
+  "connect-src 'self' http://127.0.0.1:* http://localhost:*",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
   "style-src 'self' 'unsafe-inline'",
