@@ -29,6 +29,14 @@ The local daemon should be running (`~/.anagram/bin/anagram start`) or every chi
    list, and `chrome://extensions` should show no "Read and change your data" warning
    beyond `127.0.0.1` and `localhost`.
 
+1b. **One page, with nothing granted.**
+   On that same article, open the popup. The status line reads "Detection is off for this
+   page." and the button under it reads **Analyze this page**. Press it.
+   Expected: the popup closes, **no permission prompt appears**, and the article gets chips
+   and the ball. Reload the page: it is bare again, and `chrome://extensions` → *Details →
+   Site access* still lists no site. (Right-click → *Analyze this page with Anagram* does
+   the same thing.)
+
 2. **The popup switch asks for this site, and the page answers without a reload.**
    On that same article, open the popup. "This site" is **off**; the line under it names the
    host. Turn it **on**.

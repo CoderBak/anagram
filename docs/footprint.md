@@ -38,9 +38,10 @@ Two things the policy does **not** cover, stated so the picture is complete:
   stopped by the CSP, which is why the inventory below is enforced by a test rather than
   left to the policy alone.
 - **The daemon URL** is a setting, and a setting can be edited. `lib/settings/settings.ts`
-  refuses anything but `http(s)://localhost`, `::1` or `127.x.y.z`, and the CSP refuses
-  anything but the two spellings it can express — so the two have to agree before a request
-  leaves at all.
+  refuses anything but `http://127.0.0.1:<port>` and `http://localhost:<port>` — no https,
+  no IPv6, no other `127.x.y.z`, no path or credentials — which are exactly the two spellings
+  the CSP can express, so the setting and the policy have to agree before a request leaves
+  at all.
 
 ### Every call site
 

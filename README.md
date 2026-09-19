@@ -743,7 +743,7 @@ line at a time. This is the whole list:
 | --- | --- |
 | `storage` | Your settings and per-site rules, on this computer. |
 | `activeTab` | The one-off actions on a site you have granted nothing for: *Analyze this page*, *Analyze selection*, *Copy page diagnostics*, the keyboard commands. Lasts for that one tab, until you leave the page. |
-| `contextMenus` | The three right-click entries. |
+| `contextMenus` | The four right-click entries (analyze selection, analyze this page, copy page diagnostics, open PDF with Anagram). |
 | `scripting` | Registers the content script for the sites you grant, and injects it for the one-off actions above. |
 | `http://127.0.0.1/*`, `http://localhost/*` (required) | The local `anagramd` daemon that scores paragraphs. It is the only thing the extension may reach. |
 | `https://*/*`, `http://*/*` (**optional**) | The sites Anagram reads. Grant them all in one click from the first-run page or the options page, grant one site at a time from the popup's "This site" switch, or grant none. Take them back whenever you like — from the options page, or `chrome://extensions` → *Site access*. |

@@ -7,7 +7,7 @@
 // v2.0 (EditLens): the detector is a 4-way classifier over the EXTENT of AI editing
 // (Thai et al., ICLR 2026 — pangram/editlens_roberta-large). A result carries the
 // full bucket distribution plus its probability-weighted score; the UI derives
-// verdict bands from the bucket and shows the score as "% AI".
+// verdict bands from the bucket and shows the score as a 0–1 number (".93").
 
 export const CONTRACT_VERSION = "2.1";
 
@@ -42,7 +42,7 @@ export interface ScoreResult {
   bucket: number;
   /** Softmax probability per bucket, length BUCKET_COUNT, sums to 1. */
   probs: number[];
-  /** Extent of AI editing in [0,1]: Σ probs[i]·i / (BUCKET_COUNT−1). Shown as "% AI". */
+  /** Extent of AI editing in [0,1]: Σ probs[i]·i / (BUCKET_COUNT−1). Shown as ".93". */
   score: number;
   /** Tokens the model actually saw (after truncation to its window). */
   tokens?: number;
@@ -89,7 +89,7 @@ export interface ScoreBatchRequest {
   priority: ScanPriority;
   /** Page language hint (best-effort; "und" if unknown). */
   lang: string;
-  /** eTLD+1 domain hint only — never a full URL / PII. */
+  /** The page's hostname, as a hint only — never a full URL / PII. */
   domain: string;
   blocks: ScoreBlock[];
 }
