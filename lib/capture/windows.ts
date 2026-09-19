@@ -51,13 +51,17 @@ export const WINDOW_CHARS = 1800;
 export const MIN_WINDOW_CHARS = 600;
 
 /**
- * Most windows read per text: 14 400 characters, some 2 300 words. A single "paragraph"
- * beyond that is a text dump (a transcript in one <div>, a licence, a minified page),
- * the aggregate over 2 300 words no longer moves with more, and each further window is
- * another forward pass (up to about 120 ms each on our M4 benchmark). What lies past the
- * last window is reported as not read and gets no mark.
+ * Most windows read per text: enough for the longest text a unit may hold
+ * (MAX_UNIT_TEXT_CHARS in lib/dom/text.ts — 200 000 characters, some 32 000 words), so a
+ * paragraph found on a page is always read to its end. There used to be a COST cap of
+ * eight windows here (2 300 words); it was dropped because a forward pass is around a
+ * tenth of a second on the hardware this runs on, and half-read long paragraphs were the
+ * price. What remains is only the bound a selection can still reach — a whole page
+ * selected at once — and what lies past it is reported as not read and gets no mark.
+ * The windows of a long text never travel as one request: the router cuts what it sends
+ * at BATCH_CHAR_BUDGET, so each request stays a few windows long whatever the text.
  */
-export const MAX_WINDOWS = 8;
+export const MAX_WINDOWS = 112;
 
 /** Most characters of one text that are ever sent — the scheduler's cost of a unit. */
 export const MAX_READ_CHARS = MAX_WINDOWS * WINDOW_CHARS;

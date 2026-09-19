@@ -83,8 +83,16 @@ export const MIN_SENTENCE_WORDS = 3;
  */
 export const MIN_LINE_WORDS = 4;
 
-/** Hard storage cap for a single unit's text (pathological single-node dumps). */
-export const MAX_UNIT_TEXT_CHARS = 20_000;
+/**
+ * The most text one unit holds: some 32 000 words. This is a guard against a single node
+ * that is not writing at all — a log, a data dump, a minified page in one <div> — and
+ * NOT a limit on how much of a paragraph gets read: everything up to here is read, window
+ * by window (lib/capture/windows.ts keeps MAX_READ_CHARS at or above this). It stood at
+ * 20 000 with an eight-window reading cap on top, and a 4 220-word answer Gemini wrote as
+ * ONE paragraph was judged on its first half only; the model is fast enough on the
+ * machines this runs on that cost is no reason to stop early.
+ */
+export const MAX_UNIT_TEXT_CHARS = 200_000;
 
 
 // ---- extraction / normalization ---------------------------------------------------

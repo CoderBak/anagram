@@ -1191,10 +1191,11 @@ const results = await page.evaluate(() => {
     check("…and between two parts even where a sentence end INSIDE a part lies nearer to the even split",
       tSpans.length === 4 && contiguous(trios, tSpans) && tSpans.slice(1).every((s) => trios.slice(s.start - 2, s.start) === "\n\n" && /^Line \d+ opens/.test(trios.slice(s.start))) && lens(tSpans).every((n) => n <= W && n >= PW.MIN_WINDOW_CHARS), JSON.stringify(lens(tSpans)));
 
-    const dump = prose(250).slice(0, 20000);
+    // Longer than anything a page hands over: only a selection can reach the bound now.
+    const dump = (prose(250) + " ").repeat(Math.ceil((PW.MAX_READ_CHARS + 6000) / prose(250).length) + 1).slice(0, PW.MAX_READ_CHARS + 5000);
     const dSpans = PW.planWindows(dump);
     const readEnd = dSpans[dSpans.length - 1].end;
-    check("past the window cap the rest is left unread, and the reading stops at a sentence end",
+    check("past the bound a selection can reach, the rest is left unread and the reading stops at a sentence end",
       dSpans.length === PW.MAX_WINDOWS && contiguous(dump, dSpans, readEnd) && readEnd <= PW.MAX_READ_CHARS && readEnd > PW.MAX_READ_CHARS - W && dump.slice(0, readEnd).trim().endsWith(".") && lens(dSpans).every((n) => n <= W && n >= PW.MIN_WINDOW_CHARS), JSON.stringify([readEnd, lens(dSpans)]));
 
     const [h1, h2] = PW.halve(long, spans[1]);

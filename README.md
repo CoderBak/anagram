@@ -251,8 +251,10 @@ Honest limits: a 512-token window. A longer paragraph is read completely, in
 consecutive sentence-bounded windows of at most 1800 characters, and the chip
 shows the length-weighted average of the windows' probabilities — an aggregation
 EditLens was not evaluated with, and no window sees the sentences before or
-after it. Eight windows (some 2 300 words) is the most one paragraph gets; past
-that the card says only the opening was scored and the rest stays unmarked.
+after it. There is no cost cap on a paragraph: however long it is, every window of
+it is read (a 4 000-word paragraph is some fourteen windows, a second or two on an
+M-series Mac). Only a single node past 200 000 characters — a log or a data dump,
+not writing — is cut there, and the card then says the end was not read.
 Accuracy drops out-of-domain and on models unseen in training — Pangram's
 [release post for the open models](https://www.pangram.com/blog/introducing-open-pangram)
 reports, for this released `roberta-large` checkpoint, ternary macro-F1 **0.881**

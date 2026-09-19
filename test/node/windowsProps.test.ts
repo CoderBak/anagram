@@ -17,6 +17,7 @@ import {
   type TextSpan,
 } from "../../lib/capture/windows";
 import { makeText, rng, seeds, type Rng, type TextOpts } from "./random";
+import { MAX_UNIT_TEXT_CHARS } from "../../lib/dom/text";
 
 function forSeeds(count: number, check: (r: Rng, seed: number) => void): void {
   for (const seed of seeds(count)) {
@@ -34,7 +35,9 @@ function shape(r: Rng): TextOpts {
     r.int(1, WINDOW_CHARS),
     r.int(WINDOW_CHARS - 40, WINDOW_CHARS + 40),
     r.int(WINDOW_CHARS, 6 * WINDOW_CHARS),
-    r.int(MAX_READ_CHARS - 2000, MAX_READ_CHARS + 6000),
+    // Long, but not the bound itself (that has a test of its own, below): the bound is
+    // 200 000 characters and a few hundred texts of that size would take minutes.
+    r.int(8 * WINDOW_CHARS, 16 * WINDOW_CHARS),
   ]);
   return r.pick<TextOpts>([
     { targetChars, newlines: true },
@@ -98,7 +101,9 @@ describe("planWindows", () => {
   });
 
   it("honours the cap and reports what it did not read", () => {
-    forSeeds(200, (r) => {
+    // Texts this long are 200 000 characters each since the cost cap went: a dozen prove
+    // the bound as well as two hundred did, in a fraction of the time.
+    forSeeds(12, (r) => {
       const text = makeText(r, { targetChars: r.int(MAX_READ_CHARS, MAX_READ_CHARS + 20_000), newlines: true });
       const spans = planWindows(text);
       checkPlan(text, spans);
@@ -124,3 +129,16 @@ function planned(r: Rng): [string, TextSpan[]] {
   const text = makeText(r, shape(r));
   return [text, planWindows(text)];
 }
+
+describe("the two bounds on a long text", () => {
+  it("reads everything a unit may hold", () => {
+    // MAX_UNIT_TEXT_CHARS (lib/dom/text.ts) guards against a dump in one node;
+    // MAX_READ_CHARS is what the window planner will read. Were the second ever the
+    // smaller, a paragraph found on a page would be half-read again — the very thing the
+    // eight-window cost cap did to a 4 220-word answer.
+    expect(MAX_READ_CHARS).toBeGreaterThanOrEqual(MAX_UNIT_TEXT_CHARS);
+    const text = "A sentence of plain words that ends here. ".repeat(Math.ceil(MAX_UNIT_TEXT_CHARS / 42)).slice(0, MAX_UNIT_TEXT_CHARS);
+    const spans = planWindows(text);
+    expect(spans[spans.length - 1].end).toBe(text.length);
+  });
+});

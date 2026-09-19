@@ -360,9 +360,12 @@ Notable changes to Anagram, newest first. The format follows
 - Dense text — figures, URLs, names — that overflows the model's window despite
   the character budget is read again in two halves instead of being cut. Should a
   half still overflow, the card says part of the text was not read.
-- One paragraph gets at most eight windows (some 2 300 words). Past that the card
-  says only the opening was scored, and the rest is left unmarked instead of
-  being underlined in a colour nobody measured.
+- A paragraph is read to its end, however long. The cost cap of eight windows
+  (some 2 300 words) is gone — a forward pass is about a tenth of a second on the
+  hardware this runs on, and a 4 220-word answer Gemini wrote as one paragraph was
+  being judged on its first half. The only bound left is 200 000 characters for a
+  single unit (a log or a data dump in one node, not writing); past it the card
+  says the end was not read, and that part stays unmarked.
 - One voice, one verdict. A group of short paragraphs no longer closes the moment
   it reaches fifty words — a status written as twelve short paragraphs got three
   arbitrary chips (×4, ×4, ×4), a 49-paragraph answer twenty. The stretch is now
