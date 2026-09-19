@@ -19,6 +19,7 @@
       .field > select { width: 250px; }
       .field > input.url { width: 260px; }
       .field > .btn { flex: none; }
+      .row-actions { display: flex; align-items: center; gap: 6px; flex: none; }
       .form-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
       .form-row .input { flex: 1 1 200px; }
       .form-row .select { width: 150px; }
@@ -81,6 +82,18 @@
             <p data-i18n="optDetectionNote">What gets analyzed, and how paragraphs are grouped.</p>
           </header>
           <section>
+            <div class="field" data-orientation="horizontal">
+              <section>
+                <label id="accessLabel" data-i18n="accessLabel">Site access</label>
+                <p id="accessState">…</p>
+              </section>
+              <span class="row-actions">
+                <button type="button" class="btn" data-variant="outline" data-size="sm" id="accessAll"
+                  data-i18n="accessAllowAll" aria-describedby="accessLabel">Allow on all sites</button>
+                <button type="button" class="btn" data-variant="ghost" data-size="sm" id="accessWithdraw" hidden
+                  data-i18n="accessWithdraw" aria-describedby="accessLabel">Withdraw</button>
+              </span>
+            </div>
             <div class="field" data-orientation="horizontal">
               <section>
                 <label for="enabled" data-i18n="optEnabled">Enable on all sites</label>

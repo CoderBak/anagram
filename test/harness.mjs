@@ -17,13 +17,16 @@
 import { chromium } from "playwright";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import http from "node:http";
 import { startFakeDaemon } from "./fake-daemon.mjs";
+import { ensureTestBuild, TEST_OUT } from "./test-build.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-export const EXT = join(__dirname, "..", "output", "chrome-mv3");
+/** The TEST variant, not the shipping build: a suite cannot click a permission prompt,
+ *  so it loads the build where the site patterns are already granted. See test-build.mjs. */
+export const EXT = join(TEST_OUT, "chrome-mv3");
 /** Badge hosts share data-anagram="host" with the FAB host — exclude the FAB by id. */
 export const BADGE_SEL = '[data-anagram="host"]:not(#anagram-fab)';
 
@@ -39,10 +42,7 @@ export function artifact(name) {
 }
 
 export function requireBuild() {
-  if (!existsSync(join(EXT, "manifest.json"))) {
-    console.error("Build the extension first:  npm run build");
-    process.exit(2);
-  }
+  ensureTestBuild("chrome-mv3");
 }
 
 /** Serve in-memory HTML pages over http so the <all_urls> content script runs. */
@@ -95,7 +95,29 @@ export async function launchExtension({
   if (!sw) sw = await context.waitForEvent("serviceworker", { timeout: 15000 }).catch(() => null);
   const extId = sw ? new URL(sw.url()).host : null;
   if (backendUrl && extId) await setServerUrl(context, extId, backendUrl);
+  if (sw) await waitForRegistration(sw);
   return { context, sw, extId };
+}
+
+/**
+ * The content script is REGISTERED AT RUNTIME (lib/access/worker.ts), so a page opened in
+ * the first moments of a launch could load before the worker has registered it and get no
+ * content script at all. The suites wait for the registration instead of racing it.
+ */
+async function waitForRegistration(sw, timeoutMs = 10000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const ready = await sw
+      .evaluate(async () => {
+        const scripts = await chrome.scripting.getRegisteredContentScripts();
+        return scripts.some((s) => s.id === "anagram-content");
+      })
+      .catch(() => false);
+    if (ready) return true;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  console.warn("the content script was not registered within 10s — pages may run without it");
+  return false;
 }
 
 /**

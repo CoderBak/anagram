@@ -33,11 +33,13 @@ import { existsSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { execFileSync } from "node:child_process";
 import { startFakeDaemon } from "./fake-daemon.mjs";
+import { ensureTestBuild, TEST_OUT } from "./test-build.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-/** The Firefox MV2 build (npm run build:firefox), NOT the Chromium one. */
-export const EXT = join(__dirname, "..", "output", "firefox-mv2");
+/** The Firefox MV2 build, NOT the Chromium one — and the TEST variant of it, because a
+ *  permission prompt is no more clickable here than in Chromium (see test-build.mjs). */
+export const EXT = join(TEST_OUT, "firefox-mv2");
 /** browser_specific_settings.gecko.id in wxt.config.ts. */
 export const GECKO_ID = "anagram@coderbak.dev";
 /** Seeded into the profile so moz-extension:// URLs are knowable before the install. */
@@ -57,10 +59,7 @@ export const BADGE_SEL = '[data-anagram="host"]:not(#anagram-fab)';
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export function requireFirefoxBuild() {
-  if (!existsSync(join(EXT, "manifest.json"))) {
-    console.error("Build the Firefox extension first:  npm run build:firefox");
-    process.exit(2);
-  }
+  ensureTestBuild("firefox-mv2");
 }
 
 function systemFirefoxCandidates() {

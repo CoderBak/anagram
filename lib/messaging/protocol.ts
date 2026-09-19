@@ -49,6 +49,12 @@ export const ACTIONS = {
    * bounce straight back here while the setting is on.
    */
   PDF_PASS_ONCE: "pdfPassOnce",
+  /** SW → content: are you there? The worker's probe before it injects the content
+   *  script into a tab it has only `activeTab` for (lib/access/worker.ts). */
+  PING: "ping",
+  /** SW → content: this site has just been granted, so a script that was put here for one
+   *  action stops being a one-off and follows the settings like any other page. */
+  ACCESS_GRANTED: "accessGranted",
   /** options → SW: forget every cached verdict (memory, worker and IndexedDB). */
   CLEAR_CACHE: "clearCache",
   /** SW → content: the worker's caches are gone — drop this tab's own layer too. */
@@ -250,6 +256,26 @@ export interface PdfPassOnceReply {
   ok: boolean;
 }
 
+/** SW → content: is a content script already listening in this tab? */
+export interface PingMessage {
+  action: typeof ACTIONS.PING;
+}
+
+/** content → SW (response to PING). Anything other than an answer means "not there". */
+export interface PingReply {
+  ok: true;
+}
+
+/**
+ * SW → content: the user has granted this site. A page the worker had injected for one
+ * action only — a diagnostics report, a selection — was behaving as it does on a switched
+ * off site; from here it follows the settings, and starts if they say so. Pages that were
+ * injected fresh by the grant never see this: they boot that way already.
+ */
+export interface AccessGrantedMessage {
+  action: typeof ACTIONS.ACCESS_GRANTED;
+}
+
 /** options → SW: empty every score cache the worker owns, then tell the tabs. */
 export interface ClearCacheMessage {
   action: typeof ACTIONS.CLEAR_CACHE;
@@ -283,7 +309,9 @@ export type ControlMessage =
   | AnalyzePageMessage
   | CopyDiagnosticsMessage
   | RetryBackendMessage
-  | CacheClearedMessage;
+  | CacheClearedMessage
+  | PingMessage
+  | AccessGrantedMessage;
 
 /** Union of all messages the service worker may receive. */
 export type BackgroundMessage =

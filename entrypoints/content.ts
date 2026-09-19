@@ -20,7 +20,7 @@ import { createDocsOverlay } from "../lib/docsOverlay";
 import { analyzeSelection } from "../lib/render/selectionCard";
 import { t } from "../lib/i18n";
 import { ACTIONS } from "../lib/messaging/protocol";
-import type { ControlMessage, TabState, TopHostReply } from "../lib/messaging/protocol";
+import type { ControlMessage, PingReply, TabState, TopHostReply } from "../lib/messaging/protocol";
 
 /** Min frame viewport for a subframe to be worth scanning (ad slots are smaller). */
 const MIN_FRAME_AREA = 40_000; // e.g. 400×100
@@ -73,11 +73,36 @@ function navigationType(): string {
   }
 }
 
+/**
+ * This document already has a content script. The worker injects into tabs of a newly
+ * granted origin and into a tab it has only `activeTab` for (lib/access/worker.ts), and
+ * either can land on a page the registration has already reached — a second orchestrator
+ * on the same document would mean two balls and two chips per paragraph. The flag lives
+ * in the isolated world, which every injection of this extension shares.
+ */
+const ALREADY_RUNNING = "__anagramContentScript";
+
+/**
+ * This script was put here for ONE action — a context-menu entry, a keyboard command —
+ * on a site nothing has been granted for, so it must behave exactly as it does on a site
+ * the user has switched off: present, answering, and analyzing nothing until asked. The
+ * worker sets the flag just before it injects (lib/access/worker.ts) and takes it away
+ * again if that site is later granted, which is why it is read live rather than copied.
+ */
+const ON_DEMAND = "__anagramOnDemand";
+
 export default defineContentScript({
+  // Registered at RUNTIME, not in the manifest: Anagram installs with access to no site
+  // and the registration follows what the user grants (lib/access/worker.ts). `matches`
+  // is what this script may ever run on, not what it is declared on.
+  registration: "runtime",
   matches: ["<all_urls>"],
   runAt: "document_end",
   allFrames: true,
   async main(ctx) {
+    const world = window as unknown as Record<string, boolean>;
+    if (world[ALREADY_RUNNING]) return;
+    world[ALREADY_RUNNING] = true;
     const isTop = window.self === window.top;
     // Google Docs (top frame only): the editor is a canvas (no DOM text) — the
     // FAB's action opens our in-tab analyzed reading overlay instead.
@@ -108,7 +133,12 @@ export default defineContentScript({
     // case that used to let an embed ignore its host page's rule), then the frame itself.
     const effectiveHost = isTop ? location.hostname : await resolveFrameHost();
 
-    let enabled = await enabledForSite(effectiveHost);
+    /** What the settings say for this page — "off" while this is a one-action injection
+     *  into a site with no grant, whatever the rules say about the host. */
+    const siteEnabled = async (): Promise<boolean> =>
+      world[ON_DEMAND] ? false : enabledForSite(effectiveHost);
+
+    let enabled = await siteEnabled();
     /**
      * The user asked for THIS page from the context menu although the settings say no.
      * The run belongs to the page, not to the settings: it lasts until the tab navigates
@@ -172,7 +202,7 @@ export default defineContentScript({
     const applyEnabled = async (): Promise<void> => {
       let v: boolean;
       try {
-        v = await enabledForSite(effectiveHost);
+        v = await siteEnabled();
         if (!v && onceForPage) {
           // A one-shot run was asked for on this page, so a change elsewhere — another
           // site's rule, the global default — must not silently stop it. Only this site
@@ -287,6 +317,23 @@ export default defineContentScript({
         if (!msg || typeof msg !== "object" || !("action" in msg)) return;
 
         switch (msg.action) {
+          case ACTIONS.PING: {
+            // The worker's probe before it injects (lib/access/worker.ts). Answered by
+            // the top frame only, which is the frame it asks.
+            if (!isTop) return;
+            const reply: PingReply = { ok: true };
+            sendResponse(reply);
+            return; // synchronous response
+          }
+
+          case ACTIONS.ACCESS_GRANTED:
+            // The site this page is on has just been granted. The flag the worker set
+            // before it injected is gone, so the settings decide from here — and this is
+            // the only nudge a page that is already open ever gets.
+            world[ON_DEMAND] = false;
+            void applyEnabled();
+            return;
+
           case ACTIONS.RESCAN:
             // Rescan must never force-start a disabled page or bypass the gate.
             if (enabled && frameGateOk()) orchestrator.rescan();

@@ -20,6 +20,7 @@ import type {
   TopHostReply,
   UpdateBadgeMessage,
 } from "../lib/messaging/protocol";
+import { ensureInjected, installAccess } from "../lib/access/worker";
 import { READER_PAGE, readerQuery } from "../lib/pdf/source";
 import { createTwinResolver, shouldAutoOpen } from "../lib/pdf/route";
 import { settings } from "../lib/settings/settings";
@@ -27,6 +28,9 @@ import { t } from "../lib/i18n";
 
 export default defineBackground(() => {
   const router = createRouter(getScoreClient());
+  // Site access is optional: the content script is registered for the origins the user has
+  // granted and injected on demand where only activeTab applies (lib/access/worker.ts).
+  installAccess();
   // Chrome MV3 exposes `action`; Firefox MV2 exposes `browserAction`. We only
   // need the two badge setters, so type just those.
   interface BadgeApi {
@@ -170,19 +174,25 @@ export default defineBackground(() => {
    * setting or site rule being written.
    */
   const analyzePage = (tabId: number): void => {
-    void browser.tabs.sendMessage(tabId, { action: ACTIONS.ANALYZE_PAGE }).catch(() => undefined);
+    // The menu click carries `activeTab`, so this works on a site the user has granted
+    // nothing for: ensureInjected puts the script there for this one page.
+    void ensureInjected(tabId).then(() =>
+      browser.tabs.sendMessage(tabId, { action: ACTIONS.ANALYZE_PAGE }).catch(() => undefined),
+    );
   };
 
   /**
    * "Copy page diagnostics". Only the TOP frame is asked: the report is the page's, and
    * its document is the one a clipboard write is measured against. The page answers
-   * whether Anagram is running there or not — the content script is in every frame of
-   * every page regardless — so "nothing shows up" on a switched-off site is answered with
-   * "switched off" instead of with silence.
+   * whether Anagram is running there or not — the script is put into the page for this
+   * one report if it is not there already — so "nothing shows up" on a switched-off site,
+   * or on one nothing was ever granted for, is answered instead of met with silence.
    */
   const copyDiagnostics = (tabId: number, frameId: number): void => {
-    void browser.tabs
-      .sendMessage(tabId, { action: ACTIONS.COPY_DIAGNOSTICS, frameId }, { frameId: 0 })
+    void ensureInjected(tabId)
+      .then(() =>
+        browser.tabs.sendMessage(tabId, { action: ACTIONS.COPY_DIAGNOSTICS, frameId }, { frameId: 0 }),
+      )
       .then((reply) => {
         // The tick is for the clipboard, not for the report: a page that built one and
         // could not copy it has to say so, or the reader pastes the last thing they cut.
@@ -249,10 +259,15 @@ export default defineBackground(() => {
       return;
     }
     if (info.menuItemId !== "anagram-analyze-selection" || tab?.id == null) return;
-    // Target the frame the selection lives in.
-    void browser.tabs
-      .sendMessage(tab.id, { action: ACTIONS.ANALYZE_SELECTION }, { frameId: info.frameId ?? 0 })
-      .catch(() => undefined);
+    // Target the frame the selection lives in — after making sure there is a script in
+    // the tab to receive it at all, which on an ungranted site the click itself allows.
+    const tabId = tab.id;
+    const frameId = info.frameId ?? 0;
+    void ensureInjected(tabId).then(() =>
+      browser.tabs
+        .sendMessage(tabId, { action: ACTIONS.ANALYZE_SELECTION }, { frameId })
+        .catch(() => undefined),
+    );
   });
 
   // Keyboard commands, forwarded to the active tab. The message reaches every frame;
@@ -268,9 +283,13 @@ export default defineBackground(() => {
     const action = COMMAND_ACTIONS[command];
     if (!action) return;
     void browser.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
-      if (tab?.id != null) {
-        void browser.tabs.sendMessage(tab.id, { action }).catch(() => undefined);
-      }
+      if (tab?.id == null) return;
+      const tabId = tab.id;
+      // A command grants `activeTab`, so the overlay toggle answers on a page the user
+      // has granted nothing for as well.
+      void ensureInjected(tabId).then(() =>
+        browser.tabs.sendMessage(tabId, { action }).catch(() => undefined),
+      );
     });
   });
 

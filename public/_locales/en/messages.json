@@ -1198,5 +1198,33 @@
   "readerFetchFailed": {
     "message": "This PDF could not be loaded. Drop the file here instead.",
     "description": "Reader notice when the fetch failed."
+  },
+  "accessLabel": {
+    "message": "Site access",
+    "description": "Row label on the first-run page and the options page: which sites Anagram may read."
+  },
+  "accessAll": {
+    "message": "all sites",
+    "description": "Site-access state: every site is granted."
+  },
+  "accessNone": {
+    "message": "no sites",
+    "description": "Site-access state: nothing is granted, so Anagram reads nothing."
+  },
+  "accessSites_one": {
+    "message": "$1 site",
+    "description": "Site-access state: one site granted. $1 = 1."
+  },
+  "accessSites_other": {
+    "message": "$1 sites",
+    "description": "Site-access state: how many sites are granted. $1 = count."
+  },
+  "accessAllowAll": {
+    "message": "Allow on all sites",
+    "description": "Button that asks the browser for access to every site."
+  },
+  "accessWithdraw": {
+    "message": "Withdraw",
+    "description": "Options button that gives back every granted site."
   }
 }

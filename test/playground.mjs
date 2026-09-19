@@ -9,15 +9,12 @@
 import { chromium } from "playwright";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import http from "node:http";
+import { ensureTestBuild } from "./test-build.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const EXT = join(__dirname, "..", "output", "chrome-mv3");
-if (!existsSync(join(EXT, "manifest.json"))) {
-  console.error("Build first: npm run build");
-  process.exit(2);
-}
+const EXT = ensureTestBuild("chrome-mv3"); // the suites' build — see test/test-build.mjs
 
 // Serve both fixture pages over http so the content script injects.
 const pages = {

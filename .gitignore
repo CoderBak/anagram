@@ -1,5 +1,7 @@
 .wxt/
 output/
+# The suites' build: the same code with the site patterns already granted (test/test-build.mjs).
+output-test/
 node_modules/
 # Generated from lib/diagnostics/ before every build and on install (scripts/vendor.mjs).
 # The other vendor chunks are copies of published libraries and are committed; this one is

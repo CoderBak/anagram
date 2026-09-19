@@ -10,17 +10,13 @@
 import { chromium } from "playwright";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import http from "node:http";
+import { ensureTestBuild } from "./test-build.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const EXT = join(__dirname, "..", "output", "chrome-mv3");
+const EXT = ensureTestBuild("chrome-mv3"); // the suites' build — see test/test-build.mjs
 const SELFTEST = join(__dirname, "selftest.html");
-
-if (!existsSync(join(EXT, "manifest.json"))) {
-  console.error("Build the extension first:  npm run build");
-  process.exit(2);
-}
 
 // Serve the self-contained self-test page over http so the <all_urls> content script runs.
 const html = readFileSync(SELFTEST, "utf8");

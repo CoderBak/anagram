@@ -8,10 +8,10 @@
 //
 //   node test/server.mjs            (ANAGRAMD_PORT to override 8765)
 import { spawn } from "node:child_process";
-import { launchExtension, BADGE_SEL, EXT } from "./harness.mjs";
+import { launchExtension, BADGE_SEL, requireBuild } from "./harness.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import http from "node:http";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -19,10 +19,7 @@ const ROOT = join(__dirname, "..");
 const PORT = Number(process.env.ANAGRAMD_PORT || 8765);
 const BASE = `http://127.0.0.1:${PORT}`;
 
-if (!existsSync(join(EXT, "manifest.json"))) {
-  console.error("Build first: npm run build");
-  process.exit(2);
-}
+requireBuild();
 
 const checks = [];
 const check = (name, ok, note = "") => {

@@ -10,7 +10,9 @@ import { browser } from "#imports";
 import "../../lib/ui/basecoat-vega.cdn.min.css";
 import { followSystemTheme } from "../../lib/ui/theme";
 import { localizePage } from "../../lib/ui/localize";
-import { t } from "../../lib/i18n";
+import { t, tn } from "../../lib/i18n";
+import { ALL_SITES } from "../../lib/access/patterns";
+import { accessSummary, requestAccess } from "../../lib/access/grant";
 import { ACTIONS } from "../../lib/messaging/protocol";
 import type { BackendStatus } from "../../lib/messaging/protocol";
 
@@ -33,6 +35,9 @@ const daemonDetail = document.getElementById("daemon-detail")!;
 const daemonCmd = document.getElementById("daemon-cmd")!;
 const daemonCmdText = document.getElementById("daemon-cmd-text")!;
 const daemonLink = document.getElementById("daemon-link")!;
+const accessRow = document.getElementById("row-access")!;
+const accessState = document.getElementById("access-state")!;
+const accessGrant = document.getElementById("access-grant") as HTMLButtonElement;
 const readyRow = document.getElementById("row-ready")!;
 const readyText = document.getElementById("ready-text")!;
 const install = document.getElementById("install")!;
@@ -100,6 +105,31 @@ function render(s: BackendStatus | undefined): boolean {
   install.hidden = !notInstalled;
   return up;
 }
+
+/**
+ * The site-access row. A fresh install reads nothing until this is answered, so the row is
+ * a state and one button: the browser's own prompt is the explanation, and the button is
+ * gone once every site is granted. Somebody who would rather grant sites one at a time
+ * does that from the popup on each site, and this row then counts them.
+ */
+async function renderAccess(): Promise<void> {
+  const { all, sites } = await accessSummary();
+  accessRow.dataset.state = all || sites.length > 0 ? "ok" : "idle";
+  accessState.textContent = all
+    ? t("accessAll")
+    : sites.length > 0
+      ? tn("accessSites", sites.length)
+      : t("accessNone");
+  accessGrant.hidden = all;
+}
+// The request is the first thing the click does: the browsers honour it only inside the
+// user's gesture. The worker registers the content script and injects the open tabs.
+accessGrant.addEventListener("click", () => {
+  void requestAccess(ALL_SITES).then(renderAccess);
+});
+browser.permissions.onAdded.addListener(() => void renderAccess());
+browser.permissions.onRemoved.addListener(() => void renderAccess());
+void renderAccess();
 
 let timer: ReturnType<typeof setTimeout> | undefined;
 let inFlight = false;

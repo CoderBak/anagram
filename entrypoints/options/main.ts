@@ -7,7 +7,7 @@ import { browser } from "#imports";
 import "../../lib/ui/basecoat-vega.cdn.min.css";
 import { followSystemTheme } from "../../lib/ui/theme";
 import { localizePage } from "../../lib/ui/localize";
-import { t } from "../../lib/i18n";
+import { t, tn } from "../../lib/i18n";
 import {
   settings,
   clearSiteOverride,
@@ -18,6 +18,8 @@ import {
   normalizeServerUrl,
   DEFAULT_SERVER_URL,
 } from "../../lib/settings/settings";
+import { ALL_SITES } from "../../lib/access/patterns";
+import { accessSummary, requestAccess, withdrawAccess } from "../../lib/access/grant";
 import { ACTIONS } from "../../lib/messaging/protocol";
 import { PDF_TAB_SCRIPTS_RUN } from "../../lib/surface";
 import { CONTRACT_VERSION } from "../../lib/contract";
@@ -44,6 +46,9 @@ const serverUrlErrorEl = document.getElementById("serverUrlError") as HTMLElemen
 const backendStatusEl = document.getElementById("backendStatus") as HTMLElement;
 const checkBackendEl = document.getElementById("checkBackend") as HTMLButtonElement;
 const clearCacheEl = document.getElementById("clearCache") as HTMLButtonElement;
+const accessStateEl = document.getElementById("accessState") as HTMLElement;
+const accessAllEl = document.getElementById("accessAll") as HTMLButtonElement;
+const accessWithdrawEl = document.getElementById("accessWithdraw") as HTMLButtonElement;
 
 function bindToggle(
   el: HTMLInputElement,
@@ -201,6 +206,32 @@ void renderSites();
 settings.siteOverrides.watch(() => void renderSites());
 const version = browser.runtime.getManifest().version;
 versionEl.textContent = `v${version} · contract ${CONTRACT_VERSION}`;
+
+// --- site access -----------------------------------------------------------------------
+// Anagram installs able to read no site at all; this row says how much has been granted
+// since and is the one place to take it back. Withdrawing leaves the per-site rules below
+// alone — they are settings, not access, and they are what a later grant comes back to.
+async function renderAccess(): Promise<void> {
+  const { all, sites } = await accessSummary();
+  accessStateEl.textContent = all
+    ? t("accessAll")
+    : sites.length > 0
+      ? tn("accessSites", sites.length)
+      : t("accessNone");
+  accessAllEl.hidden = all;
+  accessWithdrawEl.hidden = !all && sites.length === 0;
+}
+// The request has to be the first thing the click does: the browsers honour it only as
+// part of the user's gesture. Taking access back needs no gesture.
+accessAllEl.addEventListener("click", () => {
+  void requestAccess(ALL_SITES).then(renderAccess);
+});
+accessWithdrawEl.addEventListener("click", () => {
+  void withdrawAccess().then(renderAccess);
+});
+browser.permissions.onAdded.addListener(() => void renderAccess());
+browser.permissions.onRemoved.addListener(() => void renderAccess());
+void renderAccess();
 
 // --- scoring daemon ------------------------------------------------------------------
 void settings.serverUrl.getValue().then((v) => {

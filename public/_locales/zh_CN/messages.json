@@ -886,5 +886,26 @@
   },
   "readerFetchFailed": {
     "message": "这个 PDF 无法载入。可以直接把文件拖进来。"
+  },
+  "accessLabel": {
+    "message": "网站访问权限"
+  },
+  "accessAll": {
+    "message": "所有网站"
+  },
+  "accessNone": {
+    "message": "尚未授权"
+  },
+  "accessSites_one": {
+    "message": "$1 个网站"
+  },
+  "accessSites_other": {
+    "message": "$1 个网站"
+  },
+  "accessAllowAll": {
+    "message": "允许所有网站"
+  },
+  "accessWithdraw": {
+    "message": "撤销"
   }
 }

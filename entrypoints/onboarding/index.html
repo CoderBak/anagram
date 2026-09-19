@@ -136,6 +136,14 @@
                     <a class="btn" data-variant="outline" data-size="xs" id="daemon-link" href="/options.html" hidden data-i18n="onbOpenOptions">Open options</a>
                   </span>
                 </div>
+                <div class="srow" id="row-access" data-state="idle">
+                  <span class="sname"><span class="sdot"></span><span class="slabel" data-i18n="accessLabel">Site access</span></span>
+                  <span class="sbody">
+                    <span class="sval" id="access-state" data-i18n="onbChecking">checking&hellip;</span>
+                    <button type="button" class="btn" data-variant="outline" data-size="xs" id="access-grant"
+                      hidden data-i18n="accessAllowAll">Allow on all sites</button>
+                  </span>
+                </div>
                 <div class="srow" id="row-ready" data-state="idle">
                   <span class="sname"><span class="sdot"></span><span class="slabel" data-i18n="onbReady">Ready</span></span>
                   <span class="sbody"><span class="sready" id="ready-text" data-i18n="onbWaiting">Waiting for the scoring daemon.</span></span>

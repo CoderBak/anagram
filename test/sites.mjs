@@ -4,18 +4,11 @@
 // v2 note: the page DOM carries no marker attributes any more; a unit's anchor is
 // the badge host's parentElement (the host is inline, inside the scored block).
 import { launchExtension, artifact } from "./harness.mjs";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
-import { existsSync } from "node:fs";
+import { ensureTestBuild } from "./test-build.mjs";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const EXT = join(__dirname, "..", "output", "chrome-mv3");
 const BADGE_SEL = '[data-anagram="host"]:not(#anagram-fab)';
 
-if (!existsSync(join(EXT, "manifest.json"))) {
-  console.error("Build first: npm run build");
-  process.exit(2);
-}
+ensureTestBuild("chrome-mv3"); // the suites' build — see test/test-build.mjs
 
 const SITES = [
   ["hf-paper", "https://huggingface.co/papers/2606.12385"],

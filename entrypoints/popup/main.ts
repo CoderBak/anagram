@@ -15,9 +15,12 @@ import {
   effectiveRule,
   normalizeMarkStyle,
   setSiteOverride,
+  type SiteRule,
 } from "../../lib/settings/settings";
 import type { MarkStyle } from "../../lib/settings/settings";
 import { siteLine, switchWrite } from "./siteSwitch";
+import { sitePattern } from "../../lib/access/patterns";
+import { hasAccess, requestAccess } from "../../lib/access/grant";
 import { ACTIONS } from "../../lib/messaging/protocol";
 import type { BackendStatus, ControlMessage, TabState } from "../../lib/messaging/protocol";
 import { looksLikePdfUrl } from "../../lib/pdf/source";
@@ -146,27 +149,52 @@ async function refreshBackend(tabId: number | undefined, probe = false): Promise
 }
 
 /**
+ * What "This site" is showing, kept here because the switch has to act INSIDE the click
+ * that flipped it: asking the browser for a site is only allowed as part of the user's
+ * gesture, and nothing may be awaited first. So the rule that decides this page, the
+ * global default and whether this site is granted at all are read whenever the popup
+ * paints, and the handler works from them.
+ */
+let siteRule: SiteRule | null = null;
+let globalDefault = true;
+let granted = false;
+/** The origin pattern to ask for, or null on a page no extension may be granted. */
+let sitePat: string | null = null;
+
+/** What the settings alone say about this site, access aside. */
+const ruleSaysOn = (): boolean => (siteRule ? siteRule.mode === "on" : globalDefault);
+
+/**
  * Paint "This site" from the rule that actually decides this page: the switch shows that
  * rule's state (or the global default when no rule covers the host), and the line under it
- * names the site the rule belongs to — "on zhihu.com" on a zhuanlan.zhihu.com tab.
+ * names the site the rule belongs to — "on zhihu.com" on a zhuanlan.zhihu.com tab. Access
+ * comes first, though: a site Anagram may not read is a site Anagram is off for.
  */
 async function refreshSite(host: string): Promise<void> {
-  const globalDefault = await settings.enabled.getValue();
+  globalDefault = await settings.enabled.getValue();
+  granted = await hasAccess(sitePat);
   if (!host) {
-    siteEl.checked = globalDefault;
+    siteEl.checked = false;
     siteHostEl.textContent = t("popupSiteUnavailable");
     siteHostEl.title = "";
     return;
   }
-  const rule = await effectiveRule(host);
-  siteEl.checked = rule ? rule.mode === "on" : globalDefault;
-  siteHostEl.textContent = siteLine(host, rule);
+  siteRule = await effectiveRule(host);
+  siteEl.checked = granted && ruleSaysOn();
+  siteHostEl.textContent = siteLine(host, siteRule);
   siteHostEl.title = host;
 }
 
 async function refreshStatus(tabId: number | undefined): Promise<void> {
   if (tabId == null) {
     setStatusText(t("popupNoTab"));
+    return;
+  }
+  // An ordinary page nothing has been granted for has no content script to ask, and it is
+  // not an unsupported page either: Anagram is simply off here, which the switch above
+  // says and this line agrees with.
+  if (sitePat && !granted) {
+    setStatusText(t("popupOff"));
     return;
   }
   try {
@@ -187,13 +215,16 @@ async function init(): Promise<void> {
   followSystemTheme();
   const tab = await activeTab();
   const host = hostOf(tab?.url);
+  sitePat = sitePattern(tab?.url);
 
   enabledEl.checked = await settings.enabled.getValue();
   highlightsEl.checked = await settings.showHighlights.getValue();
   markStyleEl.value = normalizeMarkStyle(await settings.markStyle.getValue());
   checkSeg(displayModeEls, await settings.displayMode.getValue());
   checkSeg(scopeEls, await settings.analysisScope.getValue());
-  siteEl.disabled = !host;
+  // A page no extension may be granted — a browser page, the web store, a file — has
+  // nothing this switch could do.
+  siteEl.disabled = !host || sitePat === null;
   await refreshSite(host);
 
   enabledEl.addEventListener("change", async () => {
@@ -203,20 +234,33 @@ async function init(): Promise<void> {
     setTimeout(() => void refreshStatus(tab?.id), 400);
   });
 
-  siteEl.addEventListener("change", async () => {
+  siteEl.addEventListener("change", () => {
     if (!host) return;
     const want = siteEl.checked;
-    const write = switchWrite(
-      host,
-      await effectiveRule(host),
-      await settings.enabled.getValue(),
-      want,
-    );
-    if (write.kind === "clear") await clearSiteOverride(write.host);
-    else await setSiteOverride(write.host, write.mode);
-    await refreshSite(host); // the line now names wherever the rule ended up
-    sendToTab(tab?.id, { action: ACTIONS.SET_ENABLED, value: want });
-    setTimeout(() => void refreshStatus(tab?.id), 400);
+    // The rules first, and only where they disagree with the switch: a site that is off
+    // merely for want of access must not collect a rule saying what the default already
+    // says. Nothing is awaited here — see refreshSite.
+    let written: Promise<void> = Promise.resolve();
+    if (want !== ruleSaysOn()) {
+      const write = switchWrite(host, siteRule, globalDefault, want);
+      written = write.kind === "clear" ? clearSiteOverride(write.host) : setSiteOverride(write.host, write.mode);
+    }
+    if (want && sitePat && !granted) {
+      // Turning it on for a site Anagram may not read is asking for the site. The prompt
+      // is the browser's and the explanation is the browser's; Chrome closes the popup to
+      // show it, so everything that follows a yes happens in the worker — the content
+      // script is registered and the open tabs are injected there (lib/access/worker.ts).
+      void requestAccess([sitePat]).then((ok) => {
+        if (ok) granted = true;
+        void refreshSite(host); // only reached where the popup survives the prompt
+      });
+      return;
+    }
+    void written.then(async () => {
+      await refreshSite(host); // the line now names wherever the rule ended up
+      sendToTab(tab?.id, { action: ACTIONS.SET_ENABLED, value: want });
+      setTimeout(() => void refreshStatus(tab?.id), 400);
+    });
   });
 
   highlightsEl.addEventListener("change", () => {
