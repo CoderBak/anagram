@@ -393,6 +393,15 @@ describe("reflowPdf — three columns", () => {
     expect(texts(blocks)).toContain(prose.join(" "));
   });
 
+  // A table that fills a page on its own — three columns of cells, nothing else on the
+  // page — is read down its columns rather than across its rows: the gaps between its
+  // cells are clear, with text on both sides, in every band of the page, which is the
+  // definition of a gutter and is indistinguishable from one by geometry alone. Seen on
+  // page 14 of RFC 9110 (the table of obsoleted documents). Telling the two apart needs
+  // something the reflow does not have — the ruled lines, which are graphics, not text —
+  // and the cost is small: a table row is not prose and the walker never scores one.
+  it.todo("reads a page that is nothing but a wide table across its rows");
+
   it("does not take the wide word spaces of justified text for a gutter", () => {
     // Every line is set with one space stretched wider than the type, near the middle of
     // the measure but never in the same place twice — which is what justification does,
@@ -573,6 +582,24 @@ describe("reflowPdf — footnotes and captions", () => {
       [...LEFT, ...RIGHT].join(" "),
       "1 The footnote sits under a rule at the foot of the column, in smaller type.",
     ]);
+  });
+
+  it("keeps a caption's own second half with the caption, not with the paragraph", () => {
+    // Both are on offer at the top of the second column — the caption above it and the
+    // paragraph the caption interrupted — and the type says which one it belongs to.
+    const blocks = reflowPdf([
+      page(1, [
+        ...column(LEFT, 120, 72, 200),
+        { text: "Figure 1: the layout of a page, and the", x: 72, y: 120 + 7 * PITCH, size: 9, width: 200 },
+        { text: "way its columns are read, with ques-", x: 72, y: 120 + 8 * PITCH, size: 9, width: 200 },
+        { text: "tions and answers about it.", x: 320, y: 120, size: 9, width: 140 },
+        ...column(RIGHT, 120 + 2 * PITCH, 320, 200),
+      ]),
+    ]);
+    expect(texts(blocks)).toContain(
+      "Figure 1: the layout of a page, and the way its columns are read, with questions and answers about it.",
+    );
+    expect(texts(blocks)).toContain([...LEFT, ...RIGHT].join(" "));
   });
 
   it("reaches past a figure caption on the next page", () => {

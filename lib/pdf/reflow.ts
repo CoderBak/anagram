@@ -134,6 +134,12 @@ const PARA_GAP = 1.45;
 const INDENT = 0.5;
 /** A line ending this far short of the column's right edge is a last line. */
 const SHORT_LINE = 2;
+/**
+ * Type differing by this much is a different kind of text: a new block within a column,
+ * and, across a column or a page break, a block that is not the continuation of the one
+ * the break interrupted — a caption's second half is set in caption type, not body type.
+ */
+const SIZE_CHANGE = 0.15;
 /** Type this much larger than the document's body size reads as a heading. */
 const HEADING_SIZE = 1.12;
 /** A heading is short; anything longer is a paragraph set in display type. */
@@ -986,7 +992,8 @@ function paragraphsOf(lines: Line[], vocab: Vocabulary, front: boolean): Draft[]
         line.x0 > leftEdge + line.size * INDENT &&
         prev.x0 <= leftEdge + prev.size * INDENT;
       const item = LIST_MARKER.test(line.text);
-      const resized = Math.abs(line.size - prev.size) > Math.max(line.size, prev.size) * 0.15;
+      const resized =
+        Math.abs(line.size - prev.size) > Math.max(line.size, prev.size) * SIZE_CHANGE;
       const shortBefore = prev.x1 < rightEdge - prev.size * SHORT_LINE;
       const startsFresh = /^[\p{Lu}\p{Lt}\d"“'‘([]/u.test(line.text);
       // In the front matter every line is its own item — a name, an address, a label —
@@ -1016,43 +1023,55 @@ function paragraphsOf(lines: Line[], vocab: Vocabulary, front: boolean): Draft[]
  */
 function joinAcrossSegments(drafts: Draft[], vocab: Vocabulary): Draft[] {
   const out: Draft[] = [];
-  /** The last block that was part of the text, and the asides emitted since it. */
+  /** The last block of the running text, and the asides emitted since it. */
   let open: Draft | null = null;
   let held = 0;
   for (const d of drafts) {
-    if (d.aside) {
-      out.push({ ...d });
-      held++;
-      continue;
-    }
-    const prev = open;
-    const continues =
-      prev &&
-      held <= ASIDE_MAX &&
-      prev.kind === "paragraph" &&
-      d.kind === "paragraph" &&
-      !prev.front &&
-      !d.front &&
-      prev.segment !== d.segment &&
-      !prev.endsShort &&
-      !SENTENCE_END.test(prev.text) &&
-      // Lower case is what a continuation looks like in a cased script. CJK has no case,
-      // so an ideograph opening the block is the most its script can say, and the tests
-      // above — a full last line and no sentence end — carry the decision there.
-      (/^\p{Ll}/u.test(d.text) || CJK.test(d.text.slice(0, 1)));
-    if (continues) {
+    // The nearest block has the first claim: a caption or a footnote that runs out of its
+    // own column is continued by what follows it in the next one, and only a block that
+    // is NOT its continuation reaches back past it to the paragraph the page interrupted.
+    const last = out[out.length - 1] ?? null;
+    const prev = continuesInto(last, d) ? last : held <= ASIDE_MAX && continuesInto(open, d) ? open : null;
+    if (prev) {
       prev.text = appendLine(prev.text, d.text, vocab);
       prev.endsShort = d.endsShort;
       prev.segment = d.segment;
-      held = 0;
+      if (!prev.aside) held = 0;
       continue;
     }
     const copy = { ...d };
     out.push(copy);
-    open = copy;
-    held = 0;
+    if (copy.aside) held++;
+    else {
+      open = copy;
+      held = 0;
+    }
   }
   return out;
+}
+
+/**
+ * Is `d` the rest of `prev`? A paragraph that really continues never ends in sentence
+ * punctuation, never stopped short of its measure, never resumes in upper case — and is
+ * set in the same type, which is what tells the second half of a caption from the second
+ * half of the paragraph the caption interrupted when both are on offer.
+ */
+function continuesInto(prev: Draft | null, d: Draft): prev is Draft {
+  return (
+    prev !== null &&
+    prev.kind === "paragraph" &&
+    d.kind === "paragraph" &&
+    !prev.front &&
+    !d.front &&
+    prev.segment !== d.segment &&
+    !prev.endsShort &&
+    !SENTENCE_END.test(prev.text) &&
+    Math.abs(prev.size - d.size) <= Math.max(prev.size, d.size) * SIZE_CHANGE &&
+    // Lower case is what a continuation looks like in a cased script. CJK has no case, so
+    // an ideograph opening the block is the most its script can say, and the tests above
+    // — a full last line and no sentence end — carry the decision there.
+    (/^\p{Ll}/u.test(d.text) || CJK.test(d.text.slice(0, 1)))
+  );
 }
 
 /**
