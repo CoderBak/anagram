@@ -341,7 +341,7 @@ const FAB_CSS = `
   white-space: nowrap;
   color: #404040;
 }
-.panel .pempty { padding: 10px 8px; color: #8a8a8a; }
+.panel .pempty { padding: 10px 8px; color: #737373; }
 .panel .pfoot {
   display: flex;
   justify-content: flex-end;
@@ -351,7 +351,7 @@ const FAB_CSS = `
 }
 .panel .psiteoff {
   font: 500 10px/1.2 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  color: #8a8a8a;
+  color: #737373;
   border: none;
   background: none;
   cursor: pointer;

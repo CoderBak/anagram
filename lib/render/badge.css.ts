@@ -256,7 +256,7 @@ export const BADGE_CSS: string = `
   margin-top: 7px;
   padding-top: 6px;
   border-top: 1px solid #f0f0f0;
-  color: #8a8a8a;
+  color: #737373;
   font-size: 10px;
   line-height: 1.4;
 }

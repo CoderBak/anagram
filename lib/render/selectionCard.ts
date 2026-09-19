@@ -48,10 +48,10 @@ const CARD_CSS = `
 .row .v { font-variant-numeric: tabular-nums; }
 .row.wins .k { flex: none; }
 .row.wins .v { text-align: right; }
-.foot { margin-top: 6px; padding-top: 6px; border-top: 1px solid #f0f0f0; color: #8a8a8a; font-size: 10px; }
+.foot { margin-top: 6px; padding-top: 6px; border-top: 1px solid #f0f0f0; color: #737373; font-size: 10px; }
 .close {
   position: absolute; top: 6px; right: 8px;
-  border: none; background: none; font: 700 12px/1 system-ui; color: #8a8a8a; cursor: pointer; padding: 2px;
+  border: none; background: none; font: 700 12px/1 system-ui; color: #737373; cursor: pointer; padding: 2px;
 }
 .close:hover { color: #252525; }
 .spin { color: #737373; }

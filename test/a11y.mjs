@@ -71,36 +71,6 @@ const PRINT_JSON = process.argv.includes("--json");
 // the list shrinks as the debt is paid instead of fossilising.
 const BASELINE = [
   // ---- our own injected UI ------------------------------------------------------------
-  {
-    where: "ball (panel open, flagged rows)",
-    rule: "color-contrast",
-    target: "#anagram-fab >>> .psiteoff",
-    why: '"Turn off on <host>" is #8a8a8a on #ffffff at 10 px = 3.45:1 (needs 4.5). The panel\'s only destructive control is the hardest thing in it to read. lib/render/fab.ts .psiteoff.',
-  },
-  {
-    where: "ball (panel open, verdict filters)",
-    rule: "color-contrast",
-    target: "#anagram-fab >>> .psiteoff",
-    why: "The same .psiteoff colour, seen again with the verdict filters present.",
-  },
-  {
-    where: "ball (panel open, daemon-down notice)",
-    rule: "color-contrast",
-    target: "#anagram-fab >>> .pempty , #anagram-fab >>> .psiteoff",
-    why: '.pempty ("Nothing flagged on this page.") is #8a8a8a on #ffffff = 3.45:1, plus the same .psiteoff. The empty state is what a reader sees when the daemon is down — the one moment the panel is only text.',
-  },
-  {
-    where: "chip detail card (pinned open)",
-    rule: "color-contrast",
-    target: "#a11y-card-host >>> .foot",
-    why: "The card's footnote is #8a8a8a on #ffffff at 10 px = 3.45:1 — the sentence that says the number is an estimate, not proof. lib/render/badge.css.ts .card .foot.",
-  },
-  {
-    where: "selection card",
-    rule: "color-contrast",
-    target: "#a11y-sel-card >>> .foot",
-    why: "Same #8a8a8a footnote colour in the selection card. lib/render/selectionCard.ts CARD_CSS .foot.",
-  },
 
   // ---- the extension pages -------------------------------------------------------------
   {
@@ -203,11 +173,6 @@ const CODE_BASELINE = [
   },
 
   // ---- colour contrast (computed from the resolved colours, not axe's) -----------------
-  { check: "contrast", where: "panel (flagged)", item: "button.psiteoff", why: "#8a8a8a on #ffffff = 3.45:1 at 10 px (needs 4.5)." },
-  { check: "contrast", where: "panel (daemon down)", item: "button.psiteoff", why: "Same colour, daemon-down state." },
-  { check: "contrast", where: "panel (daemon down)", item: "div.pempty", why: '"Nothing flagged on this page." is #8a8a8a on #ffffff = 3.45:1 at 12 px.' },
-  { check: "contrast", where: "selection card", item: "div.foot", why: "The card's footnote is #8a8a8a on #ffffff = 3.45:1 at 10 px." },
-  { check: "contrast", where: "selection card", item: "button.close", why: "The \u2715 glyph is #8a8a8a on #ffffff = 3.45:1 — it is text, and it is the control." },
 ];
 
 // Deliberate decisions, listed apart from the debts above so the two are never confused.
