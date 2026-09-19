@@ -294,14 +294,18 @@ function groupIntoLines(page: PdfPageText): Line[] {
   }
   if (current.length > 0) rows.push(current);
   const lines = rows.map((r) => makeLine(page.page, r)).filter((l) => l.text !== "");
-  // A letter that is merely large — a one-letter label, a display initial with a single
-  // line beside it — goes back on the line it shares a baseline with, judged by THAT
-  // line's size rather than its own, which is the whole of what went wrong before.
   for (const cap of caps) {
     if (attachDropCap(cap, lines, bodySize)) continue;
+    // A letter that is merely large — a one-letter label, a display initial with a single
+    // line beside it — goes back on the line it shares a baseline with, judged by THAT
+    // line's size rather than its own, which is the whole of what went wrong before.
     const home = lines.findIndex((l) => Math.abs(l.y - cap.y) <= l.size * BASELINE_TOL);
-    if (home < 0) lines.push(makeLine(page.page, [cap]));
-    else lines[home] = { ...makeLine(page.page, [...lines[home].items, cap]), wrapped: lines[home].wrapped };
+    if (home < 0) {
+      lines.push(makeLine(page.page, [cap]));
+      continue;
+    }
+    const line = lines[home];
+    lines[home] = { ...makeLine(page.page, [...line.items, cap]), wrapped: line.wrapped };
   }
   return caps.length === 0 ? lines : lines.sort((a, b) => a.y - b.y || a.x0 - b.x0);
 }
@@ -413,10 +417,10 @@ function findGutters(lines: Line[], pageWidth: number): number[] {
     const covered = new Uint8Array(GUTTER_CELLS);
     let first = -1;
     let last = -1;
-    let depthCount = 0;
+    let covering = 0;
     for (let c = 0; c < GUTTER_CELLS; c++) {
-      depthCount += band[c];
-      if (depthCount > 0) {
+      covering += band[c];
+      if (covering > 0) {
         covered[c] = 1;
         if (first < 0) first = c;
         last = c;
@@ -1033,7 +1037,8 @@ function joinAcrossSegments(drafts: Draft[], vocab: Vocabulary): Draft[] {
     // own column is continued by what follows it in the next one, and only a block that
     // is NOT its continuation reaches back past it to the paragraph the page interrupted.
     const last = out[out.length - 1] ?? null;
-    const prev = continuesInto(last, d) ? last : held <= ASIDE_MAX && continuesInto(open, d) ? open : null;
+    const reaching = held <= ASIDE_MAX && continuesInto(open, d) ? open : null;
+    const prev = continuesInto(last, d) ? last : reaching;
     if (prev) {
       prev.text = appendLine(prev.text, d.text, vocab);
       prev.endsShort = d.endsShort;
