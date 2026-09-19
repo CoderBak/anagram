@@ -202,6 +202,20 @@ const FAB_CSS = `
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
   cursor: pointer; /* opens the flagged-paragraphs panel */
 }
+/* Hit area, not paint. WCAG 2.5.8 (target size, minimum) measures the region that
+   ACCEPTS the pointer, so the bubble stays the 18 px badge it is drawn as and an
+   invisible 24x24 box centred on it does the accepting. It sits above the ball in the
+   paint order already, being the later positioned sibling, so the overlap resolves to
+   the counter — which is what a reader aiming at the counter wants. */
+.count::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 24px;
+  height: 24px;
+  transform: translate(-50%, -50%);
+}
 .count:hover { filter: brightness(1.08); }
 .count.zero { background: #737373; }
 .count.down { background: #737373; }
@@ -268,7 +282,7 @@ const FAB_CSS = `
   border: 1px solid transparent;
   background: #171717;
   border-radius: 6px;
-  padding: 5px 9px;
+  padding: 6px 9px; /* 6, not 5: 24 px tall — WCAG 2.5.8 target size, minimum */
   cursor: pointer;
 }
 .panel .pcopy:hover { background: #333333; }
@@ -297,7 +311,7 @@ const FAB_CSS = `
   border: 1px solid #e5e5e5;
   background: #ffffff;
   border-radius: 6px;
-  padding: 4px 9px;
+  padding: 6px 9px; /* 6, not 4: 24 px tall — WCAG 2.5.8 target size, minimum */
   cursor: pointer;
 }
 .panel .fchip:hover { background: #f5f5f5; color: #252525; }
@@ -355,7 +369,7 @@ const FAB_CSS = `
   border: none;
   background: none;
   cursor: pointer;
-  padding: 3px 4px;
+  padding: 6px 4px; /* 6, not 3: 24 px tall — WCAG 2.5.8 target size, minimum */
 }
 .panel .psiteoff:hover { color: #b42318; text-decoration: underline; }
 
@@ -800,7 +814,10 @@ export function createFab(opts: {
       placement: side === "left" ? "top-start" : "top-end",
       strategy: "absolute",
       middleware: [
-        offset(8),
+        // 12, not 8: the counter bubble overhangs the ball by 6 px and carries a 24x24
+        // hit area of its own, so an 8 px gap left the panel lying over the top of the
+        // one control that opens it.
+        offset(12),
         flip({ padding: 8 }),
         shift({ padding: 8 }),
         size({

@@ -149,24 +149,8 @@ const BASELINE = [
 // The key is `<check> :: <where> :: <the element's own selector>` — the tail of the path,
 // because everything above it renumbers when a page is edited.
 const CODE_BASELINE = [
-  // ---- hit targets (WCAG 2.2 2.5.8, minimum 24x24 CSS px) -----------------------------
-  { check: "target", where: "ball + panel", item: "button.count", why: "The flagged counter is 18x18 — the single most important control we own, and the smallest. lib/render/fab.ts .count." },
-  { check: "target", where: "reader (PDF loaded)", item: "button.count", why: "The same counter, seen on the reader page." },
-  { check: "target", where: "ball + panel", item: "button.psiteoff", why: '"Turn off on <host>" is 18 px tall (110x18). lib/render/fab.ts .psiteoff.' },
-  { check: "target", where: "ball + panel", item: "button.pcopy", why: '"Copy report" is 22.5 px tall. lib/render/fab.ts .pcopy padding 5px 9px at 10.5px/1.' },
-  { check: "target", where: "ball + panel", item: "button.fchip", why: "The three verdict filter chips are 20.5 px tall (three nodes). lib/render/fab.ts .fchip padding 4px 9px." },
-  { check: "target", where: "selection card", item: "button.close", why: "The selection card's close button is 13.2x16 — the smallest target in the product. lib/render/selectionCard.ts .close." },
-  { check: "target", where: "popup", item: "input#enabled", why: "Basecoat's switch renders 24x14 (also #highlights, and #siteEnabled when the walk reaches it). Height is 10 px short." },
-  { check: "target", where: "popup", item: "input#highlights", why: "Same switch control." },
-  { check: "target", where: "popup", item: "button", why: "The segmented display-mode / scope tabs are 23.1 px tall — under by a pixel, and only because the tablist is 30 px with 2 px padding. Two nodes." },
-  { check: "target", where: "options (two site rules, add-rule error)", item: "input#enabled", why: "Basecoat's full-size switch is 32x18.4 on the options page (also #mergeShorts, #highlights, #debug)." },
-  { check: "target", where: "options (two site rules, add-rule error)", item: "input#mergeShorts", why: "Same switch control." },
-  { check: "target", where: "options (two site rules, add-rule error)", item: "input#highlights", why: "Same switch control." },
-  { check: "target", where: "options (two site rules, add-rule error)", item: "input#debug", why: "Same switch control." },
-
-  // ---- accessible names ----------------------------------------------------------------
-
-  // ---- colour contrast (computed from the resolved colours, not axe's) -----------------
+  // Empty, and meant to stay that way: every name, focus ring, hit target and computed
+  // contrast this suite measures now passes. An entry here is a debt, not a setting.
 ];
 
 // Deliberate decisions, listed apart from the debts above so the two are never confused.
@@ -509,7 +493,18 @@ function installProbe() {
    * is put to the element's own root.
    */
   P.hit24 = (el) => {
-    const r = el.getBoundingClientRect();
+    let r = el.getBoundingClientRect();
+    // A control the browser left flush against the fold has a 24x24 box that falls off
+    // the viewport, and elementFromPoint answers null for that — "hits nothing", which is
+    // the tool's problem, not the page's. Centre it first, then measure.
+    const off = (rect) =>
+      rect.top < 12 || rect.left < 12 || rect.bottom > window.innerHeight - 12 || rect.right > window.innerWidth - 12;
+    if (off(r)) {
+      // behavior:"instant" on purpose: the pages set scroll-behavior:smooth, and a rect
+      // read in the middle of a smooth scroll is a rect of nowhere.
+      el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+      r = el.getBoundingClientRect();
+    }
     const cx = r.left + r.width / 2;
     const cy = r.top + r.height / 2;
     // 11.99, not 11.5: the corners have to be the corners of a 24 px box. Sampling half a

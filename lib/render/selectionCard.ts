@@ -53,6 +53,17 @@ const CARD_CSS = `
   position: absolute; top: 6px; right: 8px;
   border: none; background: none; font: 700 12px/1 system-ui; color: #737373; cursor: pointer; padding: 2px;
 }
+/* Hit area, not paint: the glyph stays a 13x16 mark in the corner and an invisible
+   24x24 box accepts the pointer (WCAG 2.5.8, target size minimum). */
+.close::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 24px;
+  height: 24px;
+  transform: translate(-50%, -50%);
+}
 .close:hover { color: #252525; }
 .spin { color: #737373; }
 
