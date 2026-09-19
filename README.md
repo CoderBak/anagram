@@ -386,6 +386,16 @@ a typo is a type error, and `test/node/i18n.test.ts` fails on a key that is in
 one file and not the other, a placeholder that moved, an empty message, a message
 nobody uses and a key nobody wrote.
 
+English is also compiled *into* the bundles, because `lib/` runs where there is no
+extension API (the esbuild unit bundle, vitest) and where there is no longer one
+(a content script whose extension context was invalidated). Each bundle carries
+only the English it can actually show: the build scans the source files its own
+entrypoint can reach and compiles in the messages they name — the content script
+holds no options, onboarding, popup or reader string, and the background worker
+holds its three menu titles. Nothing to do when adding a `t()` call; if the build
+cannot see how a file was imported, or the key is not in `en/messages.json`, it
+says so and stops. See `scripts/i18nSubset.ts`.
+
 ```bash
 ANAGRAM_UI_LANG=zh-CN node test/pages.mjs <outDir>   # the pages, in Chinese
 ```

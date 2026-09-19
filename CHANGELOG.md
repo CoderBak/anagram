@@ -134,6 +134,25 @@ Notable changes to Anagram, newest first. The format follows
 
 ### Changed
 
+- Every bundle now carries only the English it can actually show, and the content
+  script is **13 kB smaller** for it (197 → 184 kB raw, 67 → 63 kB gzipped); the
+  background worker is **18 kB smaller** (74 → 55 kB raw), and the shared page
+  chunk 1.7 kB. Nothing a user sees changes. The English messages travel in the
+  code because `lib/` also runs where there is no extension API (the esbuild unit
+  bundle, vitest) and where there is no longer one — a content script whose
+  extension context has just been invalidated gets nothing from the platform —
+  but the whole file went into all six bundles, so every web page paid for the
+  options page's 71 strings and the onboarding page's 54, which a content script
+  can never show. WXT builds the background, the content script and the extension
+  pages separately, so each build is now answered with the messages the source
+  files ITS entrypoint can reach actually name: 96 of 287 for the content script,
+  four for the worker. The set comes from the source, never from the key's
+  prefix, so a key held in a table (the verdict labels) or picked out of a `const`
+  array is found as surely as a `t("…")` call; and two build assertions keep it
+  honest — a key no message file has fails the build, and so does a source file
+  the bundler pulled in that the scan did not read. In a real extension the
+  platform still answers from the complete `_locales/`, so the trimmed fallback
+  is only ever what stands in for it.
 - The triage panel adapts to a dark page. The chips and the detail card have done
   so since v4; the panel had not, so the one piece of chrome a keyboard reader
   lives in was a white rectangle in the middle of a dark article. It uses the same
@@ -472,6 +491,17 @@ Notable changes to Anagram, newest first. The format follows
 
 ### Tests
 
+- Twelve cases over the per-surface English fallback, in `test/node/i18n.test.ts`:
+  the scan that decides a bundle's keys (WXT's two build shapes; our imports
+  followed to the files that name messages and not to the English file itself; a
+  key held only in a table; a plural expanded from the base `tn()` is given; a
+  misspelt key reported; a module the bundler reached that the scan did not), and
+  the last build on disk (each of the three bundles carrying every key its own
+  sources can name, no `opt*`/`onb*`/`popup*`/`reader*` string in the content
+  script, and the worker down to its three menu titles) — those skip rather than
+  fail where nothing has been built. Plus `t()` answering a content script whose
+  extension context was invalidated out of its own trimmed fallback, and
+  returning the key name rather than throwing if it ever has neither.
 - An automated accessibility suite: `npm run test:a11y`. It runs **axe-core**
   (WCAG 2.1 A + AA, with axe's best-practice rules reported on a line of their
   own) over the popup, options, onboarding and PDF reader pages in light and
