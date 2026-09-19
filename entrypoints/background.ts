@@ -335,10 +335,13 @@ export default defineBackground(() => {
       if (!msg) return;
 
       // The popup's "Analyze this page": the context-menu entry by another door. Only an
-      // extension page of our own may name a tab — a content script's sender IS a tab,
-      // and it has no business starting a run in somebody else's.
+      // extension page of our own may name a tab. A content script's message comes from
+      // the web page's address, and a page has no business starting a run in somebody
+      // else's tab; `sender.tab` cannot tell the two apart, because one of our own pages
+      // opened in a tab has one too.
       if (msg.action === ACTIONS.ANALYZE_TAB) {
-        if (!sender.tab && typeof msg.tabId === "number") analyzePage(msg.tabId);
+        const ours = sender.url?.startsWith(browser.runtime.getURL("/" as PublicPath)) === true;
+        if (ours && typeof msg.tabId === "number") analyzePage(msg.tabId);
         return;
       }
 
