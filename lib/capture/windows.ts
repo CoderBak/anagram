@@ -206,7 +206,7 @@ export interface UnitVerdict {
   id: string;
   /**
    * The ONE verdict the chip, the flagged state, the panel, the toolbar count and the
-   * report follow, in wire shape so band()/scorePct()/the distribution readout take it
+   * report follow, in wire shape so band()/formatScore()/the distribution readout take it
    * as they take any result. For a one-window unit it is the daemon's result itself.
    */
   result: ScoreResult;
