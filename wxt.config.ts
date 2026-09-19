@@ -94,7 +94,12 @@ export default defineConfig({
       // what it falls back to, which is also what every __MSG_* below is written in.
       default_locale: "en",
       description: "__MSG_extDescription__",
-      permissions: ["storage", "activeTab", "contextMenus"],
+      // clipboardWrite is what "Copy page diagnostics" needs: the copy happens when the
+      // worker's context-menu message reaches the page, which is not a gesture handler, and
+      // Firefox refuses both clipboard routes to a content script outside one. Chrome is
+      // happy with a focused document, but the permission makes the execCommand fallback
+      // work there too. Neither browser shows the user a warning for it.
+      permissions: ["storage", "activeTab", "contextMenus", "clipboardWrite"],
       ...(browser === "firefox"
         ? {
             browser_specific_settings: {

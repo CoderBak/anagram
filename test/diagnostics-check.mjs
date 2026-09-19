@@ -22,6 +22,7 @@
 // the message it sends, to the frame it sends it to.
 //
 //   node test/diagnostics-check.mjs
+//   node test/diagnostics-check.mjs --firefox      # …and the Firefox copy path as well
 //   DIAG_PRINT=1 node test/diagnostics-check.mjs   # also print the report it read back
 //
 // The printed form is the point of the whole feature — what somebody pastes — so it is
@@ -325,11 +326,62 @@ async function openAndCopy(path, { settle = 4000 } = {}) {
   await sw.evaluate(() => new Promise((res) => chrome.storage.local.set({ siteOverrides: {} }, res)));
 }
 
-// ---- summary --------------------------------------------------------------------------------
-
 await context.close();
 await server.close();
 await daemon.close();
+
+// ---- D: Firefox (opt-in) -------------------------------------------------------------------
+//
+// The copy is the one part of this that is not the same on both browsers. It happens when
+// the worker's message reaches the page, which is NOT a gesture handler, and Firefox
+// refuses a content script both clipboard routes outside one — that is what the
+// `clipboardWrite` permission is in the manifest for, and this is what proves it. Opt-in
+// because it wants a downloaded Firefox; `node test/diagnostics-check.mjs --firefox`.
+
+if (process.argv.includes("--firefox")) {
+  const ff = await import("./firefox-harness.mjs");
+  const ffServer = await serveHtml({ "/diag.html": PAGE, "/frame.html": FRAME });
+  const { daemon: ffDaemon, browser, extUrl } = await ff.withFakeDaemon();
+  const page = await browser.newPage();
+  await page.goto(ffServer.url("/diag.html"), { waitUntil: "load" });
+  await ff.sleep(4000);
+  // The worker is a background PAGE in MV2 and BiDi will not drive it; the options page
+  // has the same tabs API and sends the same message to the same frame.
+  const driver = await ff.openExtensionPage(browser, extUrl("options.html"));
+  await page.bringToFront().catch(() => {});
+  await ff.sleep(400);
+  const reply = await driver.evaluate(async (needle) => {
+    const tabs = await browser.tabs.query({});
+    const tab = tabs.find((t) => (t.url || "").includes(needle));
+    if (!tab) return { error: "tab not found" };
+    try {
+      return await browser.tabs.sendMessage(tab.id, { action: "copyDiagnostics", frameId: 0 }, { frameId: 0 });
+    } catch (e) {
+      return { error: String(e) };
+    }
+  }, "/diag.html");
+  const text = await page.evaluate(() => navigator.clipboard.readText().then((t) => t, () => null));
+  record(
+    "Firefox: the on-demand chunk loads from moz-extension: and the report reaches the clipboard",
+    reply?.ok === true && reply.via === "clipboard" && /^# Anagram page diagnostics/.test(text ?? ""),
+    JSON.stringify(reply),
+  );
+  record(
+    "Firefox: the report knows it is MV2 and which browser it came from",
+    /- Anagram [\d.]+ \(MV2\) · Firefox [\d.]+ ·/.test(text ?? ""),
+    (text ?? "").split("\n")[2] ?? "",
+  );
+  record(
+    "Firefox: the same privacy bar holds",
+    Object.values(SECRETS).every((s) => !(text ?? "").includes(s)),
+    "",
+  );
+  await browser.close();
+  await ffServer.close();
+  await ffDaemon.close();
+}
+
+// ---- summary --------------------------------------------------------------------------------
 
 console.log("\n=== PAGE DIAGNOSTICS ===");
 for (const r of results) console.log(`${r.status.padEnd(4)}  ${r.name}${r.note && r.status !== "PASS" ? `  —  ${r.note}` : ""}`);
