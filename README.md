@@ -157,7 +157,9 @@ prints PASS/FAIL per sample and exits non-zero if any of them is wrong.
   drew); the subframes; and the structure of the part of the page you clicked
   in — **anonymised**: every word replaced by filler of the same shape, so it
   segments the way the original did, with URLs, alt text, titles and values
-  dropped. Nothing you or anybody else wrote is in it. It is English whatever
+  dropped, and class and id names kept only where they are words Anagram's own
+  detectors use (`author-marla-quillgrove` reads `author-x5-x10` — the shape
+  stays, the name does not). Nothing you or anybody else wrote is in it. It is English whatever
   the interface is in, because it is for whoever fixes the site, and it works
   on a site Anagram is switched off for — it says so. The badge shows "!"
   instead of a tick if nothing reached the clipboard. On Firefox the first use
@@ -383,8 +385,14 @@ Text on the web is messy; the capture engine is built for it:
   dtype and the language-gate state, not the weights alone — pruned oldest-first
   through an index) — so revisits and worker restarts never re-score, and no two
   configurations that could disagree about a paragraph ever share an entry. All
-  three go at once with **"Clear cached verdicts"** (options → Advanced); the
-  pages keep what they are showing and ask again on their next scan.
+  three go at once with **"Clear cached verdicts"** (options → Advanced), which
+  says how many verdicts are stored beside the button; the pages keep what they
+  are showing and ask again on their next scan. Nothing is kept longer than
+  **30 days** (counted from when it was written — a revisit does not restart the
+  clock), and nothing scored for a **private window** is ever written to disk: it
+  may read the cache, what it produces stays in the worker's memory, and only an
+  ordinary tab asking for the same text — which would have produced the same
+  verdict itself — puts it there.
 - **Everything, everywhere:** open shadow DOM and slots, same- and cross-origin
   iframes (webmail readers, embedded posts — ad slots are size-gated out; a
   frame follows the **top page's** site rule, asking the worker whose tab it
@@ -646,8 +654,10 @@ An optional precision scope narrows collection to the main-content region
 worker, which dedups, caches (53-bit content hashes, keys carrying the producing
 model's version — the daemon's digest of its whole scoring pipeline — memory +
 IndexedDB via `idb`) and calls the local `anagramd` daemon over HTTP, redirects
-refused, through a prioritised, bounded queue with one retry (`p-queue`,
-`p-retry`); every response is validated (`valibot`) before it can become a chip,
+refused, through a prioritised, bounded queue (`p-queue`) that tries a batch a
+second time only when the first failure could answer differently — busy,
+timed out, no transport — after a jittered wait (`lib/backend/retry.ts`);
+every response is validated (`valibot`) before it can become a chip,
 and failures become never-cached degraded results (`lib/backend/`). Confidently
 non-English paragraphs are settled locally first (`browser.i18n.detectLanguage`).
 Results render as inline shadow-DOM chips
@@ -689,7 +699,8 @@ is exactly the daemon's IO: `{bucket, probs[4], score, lang}` per paragraph, or
 | Popover placement | @floating-ui/dom | `lib/render/badge.ts`, `selectionCard.ts`, `fab.ts` |
 | CSS colour parsing + luminance | culori | `lib/render/theme.ts` |
 | Persistent score cache | idb (IndexedDB) | `lib/backend/swCache.ts` |
-| Prioritised queue + retry | p-queue, p-retry | `lib/backend/router.ts` |
+| Prioritised queue | p-queue | `lib/backend/router.ts` |
+| Which failures are worth a second attempt | — | `lib/backend/retry.ts` |
 | Wire validation | valibot | `lib/backend/httpClient.ts` |
 | Local language pre-gate | `browser.i18n.detectLanguage` (built-in CLD) | `lib/capture/langGate.ts` |
 | Daemon request limits + Host / Origin allow-lists | pydantic, Starlette TrustedHost | `anagramd/serve.py` |
@@ -723,8 +734,10 @@ manifest.
 ## Privacy
 
 Nothing leaves your computer, and that is enforced rather than promised: the
-daemon URL setting accepts loopback addresses only and the extension refuses to
-follow a redirect off either endpoint (a 307 from whatever is listening on that
+daemon URL setting accepts only `http://127.0.0.1:<port>` and
+`http://localhost:<port>` — the two addresses a content security policy can
+name, so nothing can be configured that the manifest would not allow anyway —
+and the extension refuses to follow a redirect off either endpoint (a 307 from whatever is listening on that
 port would have forwarded the page text somewhere unvetted), the daemon binds
 `127.0.0.1` or `localhost` — the two names a browser's CSP can express, and the
 only two it answers to — unless told otherwise, refuses any other `Host` header (DNS
