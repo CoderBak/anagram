@@ -67,10 +67,15 @@ Notable changes to Anagram, newest first. The format follows
   a snapshot — it just no longer has to be closed and reopened after an edit.
 - PDFs are read and analyzed. The browser's viewer hands extensions an image and
   no text, so Anagram opens the file in a reading mode of its own: pdf.js reads
-  the text layer, the paragraphs are rebuilt from the page geometry — columns
-  read column by column, running heads and page numbers left out, words the
-  typesetter broke put back together, paragraphs sewn across page and column
-  breaks — and the ordinary pipeline runs on the result, with the same chips,
+  the text layer, the paragraphs are rebuilt from the page geometry — any number
+  of columns read one after another, running heads and page numbers left out
+  (including the two alternating heads of a bound book), a paper's title block
+  read as front matter rather than as headings welded to its abstract, every item
+  of a list kept apart, footnotes and captions held out of the flow so the
+  paragraph they interrupt can be sewn back together across the break, words the
+  typesetter broke put back together against the document's own spelling of them,
+  a drop cap put back at the head of the paragraph it opens, and CJK set solid —
+  and the ordinary pipeline runs on the result, with the same chips,
   marks, ball, panel and report. The report names the PDF, not the reader page.
   Three ways in: "Analyze PDF" on the ball of a PDF tab, "Read this PDF" in the
   popup, and "Open PDF with Anagram" on a link to one; a reader opened with
