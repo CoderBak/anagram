@@ -114,6 +114,16 @@
             </div>
             <div class="field" data-orientation="horizontal">
               <section>
+                <label id="openReaderLabel" data-i18n="optOpenReader">Read a PDF from this computer</label>
+                <p data-i18n="optOpenReaderNote">Opens the reading mode; drop the file there.</p>
+              </section>
+              <span class="row-actions">
+                <button type="button" class="btn" data-variant="outline" data-size="sm" id="openReader"
+                  data-i18n="optOpenReaderBtn" aria-describedby="openReaderLabel">Open</button>
+              </span>
+            </div>
+            <div class="field" data-orientation="horizontal">
+              <section>
                 <label for="analysisScope" data-i18n="optScope">Analysis scope</label>
                 <p data-i18n="optScopeNote">Main content only analyzes the article region — found the way Firefox Reader View does
                   (Mozilla Readability) — and skips comments/sidebars outside it. Falls back to whole page when

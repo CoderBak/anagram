@@ -4,6 +4,8 @@
 // buttons). All rendering is DOM construction — never innerHTML with stored
 // strings (hostnames are user data).
 import { browser } from "#imports";
+import type { PublicPath } from "wxt/browser";
+import { READER_PAGE } from "../../lib/pdf/source";
 import "../../lib/ui/basecoat-vega.cdn.min.css";
 import { followSystemTheme } from "../../lib/ui/theme";
 import { localizePage } from "../../lib/ui/localize";
@@ -195,6 +197,13 @@ bindToggle(mergeShortsEl, settings.mergeShorts);
 // switch, so on Firefox there is none — the ball, the popup and the menu still open a PDF.
 if (PDF_TAB_SCRIPTS_RUN) bindToggle(autoOpenPdfsEl, settings.autoOpenPdfs);
 else autoOpenPdfsFieldEl.remove();
+// A PDF on this computer has no tab that could hand its bytes over (the extension asks for
+// no access to the file scheme, and a file: page may not re-read itself), and Firefox has
+// no such tab for any PDF — so the reading mode's own drop zone is the way in, and this is
+// the door to it.
+(document.getElementById("openReader") as HTMLButtonElement).addEventListener("click", () => {
+  void browser.tabs.create({ url: browser.runtime.getURL(READER_PAGE as PublicPath) });
+});
 bindSelect(displayModeEl, settings.displayMode);
 // An old profile holds one of the three styles the quiet marks replaced; the control has
 // to show what that value means now rather than land on no option at all.

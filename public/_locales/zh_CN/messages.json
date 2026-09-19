@@ -479,6 +479,15 @@
   "optAutoOpenPdfsNote": {
     "message": "在阅读模式中打开 PDF 标签页。"
   },
+  "optOpenReader": {
+    "message": "阅读这台电脑上的 PDF"
+  },
+  "optOpenReaderNote": {
+    "message": "打开阅读模式，把文件拖进去即可。"
+  },
+  "optOpenReaderBtn": {
+    "message": "打开"
+  },
   "optScope": {
     "message": "分析范围"
   },
@@ -817,7 +826,7 @@
     "message": "PDF"
   },
   "onbPdfBody": {
-    "message": "PDF 保持它原本的页面：Anagram 按原样画出每一页——图、公式、分栏都在——再把标签和标记叠在上面。点悬浮球上的$1、弹窗里的$2，或者右键一个 PDF 链接选择$3。较短的段落会像普通网页一样合并阅读，加密的文件会先询问密码，文件始终留在你的电脑上。"
+    "message": "PDF 保持它原本的页面：Anagram 按原样画出每一页——图、公式、分栏都在——再把标签和标记叠在上面。点悬浮球上的$1、弹窗里的$2，或者右键一个 PDF 链接选择$3。较短的段落会像普通网页一样合并阅读，加密的文件会先询问密码，文件始终留在你的电脑上。已经在这台电脑上的 PDF，可以从选项页打开阅读模式，再把文件拖进去。"
   },
   "onbPrivacy": {
     "message": "隐私"

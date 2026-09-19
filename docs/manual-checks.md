@@ -125,10 +125,10 @@ The local daemon should be running (`~/.anagram/bin/anagram start`) or every chi
     Open a `file:///…/something.pdf`.
     Expected: nothing from Anagram, whatever the grants and whatever "Allow access to file
     URLs" says — the extension declares no access to the file scheme, and a page on it may
-    not re-read itself in any case. The way in is the reading mode's own drop zone: open
-    the reader with no document (the popup on an ordinary page → *Read this PDF* is not
-    offered; use the reader tab left over from check 11, or drop the file onto it) and
-    drop the PDF on it. It opens and is scored.
+    not re-read itself in any case. The way in is the reading mode's own drop zone:
+    Options → Detection → **Read a PDF from this computer** → *Open*, then drop the PDF on
+    the page that opens (or use its file picker). It opens and is scored. This is also the
+    only way to read a PDF in Firefox, where no tab can hand a PDF over.
 
 13. **Firefox.**
     Repeat 1, 2, 3 and 4 in Firefox. The prompts are Firefox's own; the popup stays open

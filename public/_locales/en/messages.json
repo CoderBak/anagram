@@ -653,6 +653,18 @@
     "message": "PDF tabs open in the reading mode.",
     "description": "Options switch help text."
   },
+  "optOpenReader": {
+    "message": "Read a PDF from this computer",
+    "description": "Options row label: opens the PDF reading mode with no document, for a local file."
+  },
+  "optOpenReaderNote": {
+    "message": "Opens the reading mode; drop the file there.",
+    "description": "Options row note under 'Read a PDF from this computer'."
+  },
+  "optOpenReaderBtn": {
+    "message": "Open",
+    "description": "Options button: open the PDF reading mode in a new tab."
+  },
   "optScope": {
     "message": "Analysis scope",
     "description": "Options select label."
@@ -1103,7 +1115,7 @@
     "description": "First-run card heading."
   },
   "onbPdfBody": {
-    "message": "A PDF keeps its own pages: Anagram draws them exactly as they are — figures, formulas, columns — and lays the chips and marks over them. Click $1 on the floating ball, $2 in the popup, or right-click a link to one and choose $3. Short paragraphs are read together as on any page, a password-protected file asks for its password, and the file stays on your computer.",
+    "message": "A PDF keeps its own pages: Anagram draws them exactly as they are — figures, formulas, columns — and lays the chips and marks over them. Click $1 on the floating ball, $2 in the popup, or right-click a link to one and choose $3. Short paragraphs are read together as on any page, a password-protected file asks for its password, and the file stays on your computer. For a PDF that is already on your computer, open the reading mode from the options page and drop the file in.",
     "description": "First-run card body. $1-$3 are runs from the page (actionAnalyzePdf, popupReadPdf, menuOpenPdf)."
   },
   "onbPrivacy": {

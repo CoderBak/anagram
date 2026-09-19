@@ -9,6 +9,11 @@ Notable changes to Anagram, newest first. The format follows
 
 ### Added
 
+- **A door to the reading mode for a PDF on your computer.** Options → Detection → *Read
+  a PDF from this computer* opens the PDF view with no document, where a file can be
+  dropped or picked. It was reachable only from a PDF tab before — and a `file:` tab can
+  no longer hand itself over (the extension asks for no access to the file scheme), while
+  Firefox never had a tab that could. The first-run page says so too.
 - **The store paperwork, written from the code.** `docs/store-listing.md` is every field
   the Chrome Web Store dashboard asks for, ready to paste and each answer tied to a file a
   reviewer could open: the single-purpose statement, the short description (which is the
