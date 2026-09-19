@@ -935,6 +935,42 @@ for (const [label, url] of [
 }
 if (fixturePage) await fixturePage.close();
 
+// The panel on a dark page. It has a dark variant of its own (the chip card's, same
+// probe), so the surface every colour in it is judged against is a different one.
+{
+  const page = await openPage(server.url("/dark.html"));
+  await chipsSettled(page, 4);
+  await settleAll(page);
+  await untuck(page);
+  await page.evaluate(() => {
+    const sr = document.getElementById("anagram-fab").shadowRoot;
+    sr.querySelector(".count").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await still(page);
+  const state = await page.evaluate(() => {
+    const host = document.getElementById("anagram-fab");
+    const panel = host.shadowRoot.querySelector(".panel");
+    return {
+      dark: host.classList.contains("pg-dark"),
+      open: panel.classList.contains("open"),
+      surface: getComputedStyle(panel).backgroundColor,
+      items: panel.querySelectorAll(".pitem").length,
+    };
+  });
+  record(
+    "contrast",
+    "the triage panel takes the page's dark surface (the same probe the chips use)",
+    state.dark && state.open && state.surface === "rgb(23, 23, 23)" && state.items > 0,
+    JSON.stringify(state),
+  );
+  await axeScan(page, "ball (panel open, dark page)", "#anagram-fab");
+  await ourTextContrast(page, "panel (dark page)", "#anagram-fab");
+  // A near-black focus ring on a near-black panel is no ring at all.
+  const stops = await tabWalk(page, { max: 40 });
+  judgeStops("ball + panel (dark page)", stops.filter((s) => s.path.includes("#anagram-fab")));
+  await page.close();
+}
+
 // prefers-reduced-motion and forced colours: both are page-level emulations, so each gets
 // its own page rather than being toggled under a rendered one.
 await reducedMotionCheck();

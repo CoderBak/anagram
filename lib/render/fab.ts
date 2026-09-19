@@ -21,6 +21,7 @@ import { computePosition, flip, offset, shift, size } from "@floating-ui/dom";
 import { MARK_ATTR } from "../types";
 import { settings, setSiteOverride } from "../settings/settings";
 import { BAND_LABEL, type Band } from "./band";
+import { isDarkPage } from "./theme";
 
 export interface PanelEntry {
   id: string;
@@ -378,6 +379,38 @@ const FAB_CSS = `
 .fab.off .mark { filter: grayscale(0.5); }
 .fab.off + .count, .fabwrap.off .count { opacity: 0.5; }
 
+/* ---- dark surfaces ---------------------------------------------------------------
+   The chip's detail card has had a dark variant since v4; the panel had none, so on a
+   dark page the one piece of chrome a keyboard reader lives in was a white rectangle.
+   Same trigger as the card (the shared theme probe, isDarkPage), same surface, ink and
+   border values as lib/render/badge.css.ts — no new hue, nothing rounder. The verdict
+   dots keep their colours, exactly as the card's do. */
+:host(.pg-dark) .panel {
+  border-color: rgba(255, 255, 255, 0.10);
+  background: #171717;
+  color: #fafafa;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  color-scheme: dark; /* the list scrolls — its scrollbar belongs to this surface */
+}
+:host(.pg-dark) .panel .phead { color: #a3a3a3; }
+/* The primary button inverts, the way a primary button does in dark mode. */
+:host(.pg-dark) .panel .pcopy { color: #171717; background: #fafafa; }
+:host(.pg-dark) .panel .pcopy:hover { background: #e5e5e5; }
+:host(.pg-dark) .panel .pcopy.done { color: #4ecb71; border-color: rgba(78, 203, 113, 0.4); background: rgba(78, 203, 113, 0.12); }
+:host(.pg-dark) .panel .pnotice { background: rgba(255, 255, 255, 0.06); color: #d4d4d4; }
+:host(.pg-dark) .panel .fchip { color: #a3a3a3; border-color: rgba(255, 255, 255, 0.15); background: rgba(255, 255, 255, 0.06); }
+:host(.pg-dark) .panel .fchip:hover { background: rgba(255, 255, 255, 0.12); color: #fafafa; }
+:host(.pg-dark) .panel .fchip[aria-pressed="true"] { color: #171717; border-color: transparent; background: #fafafa; }
+:host(.pg-dark) .panel .pitem:hover { background: rgba(255, 255, 255, 0.08); }
+:host(.pg-dark) .panel .pitem.band-ai .ppct { color: #ff7b81; }
+:host(.pg-dark) .panel .pitem.band-heavy .ppct { color: #ff9a57; }
+:host(.pg-dark) .panel .pitem.band-light .ppct { color: #e6c84c; }
+:host(.pg-dark) .panel .ptext { color: #d4d4d4; }
+:host(.pg-dark) .panel .pempty { color: #8a8a8a; }
+:host(.pg-dark) .panel .pfoot { border-top-color: rgba(255, 255, 255, 0.08); }
+:host(.pg-dark) .panel .psiteoff { color: #8a8a8a; }
+:host(.pg-dark) .panel .psiteoff:hover { color: #ff7b81; }
+
 /* ---- keyboard focus -------------------------------------------------------------
    One ring for every control here: the primary near-black token, two pixels, held off
    the surface so the counter's white hairline still reads. No glow, no accent colour —
@@ -396,6 +429,15 @@ const FAB_CSS = `
 /* The list scrolls inside the panel: an offset ring on the first/last row would be
    clipped by it, so those sit on the row itself. */
 .panel .pitem:focus-visible { outline-offset: -2px; }
+
+/* A near-black ring is invisible on a near-black panel. */
+:host(.pg-dark) .panel .pcopy:focus-visible,
+:host(.pg-dark) .panel .fchip:focus-visible,
+:host(.pg-dark) .panel .pitem:focus-visible,
+:host(.pg-dark) .panel .psiteoff:focus-visible,
+:host(.pg-dark) .panel .phead h2:focus-visible {
+  outline-color: #fafafa;
+}
 
 /* Forced colours override our palette wholesale; name the system focus colour so the
    ring survives the substitution instead of landing on a forced border colour. */
@@ -619,6 +661,8 @@ export function createFab(opts: {
     host = document.createElement("div");
     host.setAttribute(MARK_ATTR, "host");
     host.id = "anagram-fab";
+    // Same signal the chips and the selection card use — one theme probe, not two.
+    host.classList.toggle("pg-dark", isDarkPage());
     const shadow = host.attachShadow({ mode: "open" });
     shadow.adoptedStyleSheets = [sheet()];
 
@@ -778,6 +822,9 @@ export function createFab(opts: {
 
   function openPanel(focus = false): void {
     if (!panelEl || !host?.isConnected) return;
+    // Re-read the page's theme: a site's own dark-mode switch can have been thrown since
+    // the ball mounted, and the panel is the part that would be wrong about it.
+    host.classList.toggle("pg-dark", isDarkPage());
     cancelTuck();
     renderPanel();
     panelEl.classList.add("open");
