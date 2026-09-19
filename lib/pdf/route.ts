@@ -11,9 +11,9 @@
 // the file the reader was looking at, never a substitute fetched from somewhere else.
 // Until 2026-09-20 this file also asked arxiv.org whether a paper had an HTML rendering
 // and sent the reader there instead; that was the extension's one remote request and it
-// is gone. lib/pdf/source.ts still knows the address of an arXiv paper's HTML
-// (`htmlTwinOf`), which the reader offers as a link the reader may follow themselves —
-// a plain navigation, made by a person, not a probe made behind their back.
+// is gone. lib/pdf/source.ts still knows what an arXiv paper's HTML address WOULD be
+// (`htmlTwinOf`) — a link somebody may follow for themselves is a plain navigation, and
+// nothing like a question asked of a repository behind their back.
 
 /** What the worker knows about a tab that has just shown it a PDF. */
 export interface AutoOpenFacts {

@@ -62,7 +62,9 @@ re-routing that depended on it. "Open in Anagram" on a PDF now opens that PDF.
 
 ### Every address written in the source
 
-`lib/` and `entrypoints/` hold these `http://` and `https://` literals and no others.
+`lib/` and `entrypoints/` hold these `http://` and `https://` literals and no others —
+stylesheets included, since an `@import` or a webfont is a remote host as much as a
+`fetch` is.
 
 | File | URL | Why |
 | --- | --- | --- |
@@ -72,6 +74,8 @@ re-routing that depended on it. "Open in Anagram" on a PDF now opens that PDF.
 | `lib/docs.ts` | `https://docs.google.com/document/d/` | builds the address of the document the tab is on |
 | `lib/docsOverlay.ts` | `https://docs.google.com/document/d/` | the same address, for the same-origin read above |
 | `entrypoints/onboarding/index.html` | `https://github.com/CoderBak/anagram/releases/latest/download/install.sh` | shown as text in the install command a reader copies; nothing fetches it |
+| `lib/ui/basecoat-vega.cdn.min.css` | `http://www.w3.org/2000/svg` | the SVG namespace, inside `url("data:image/svg+xml,…")` icons. A namespace is a name, not an address: nothing fetches it |
+| `lib/ui/basecoat-vega.cdn.min.css` | `https://tailwindcss.com` | the licence banner of the vendored Basecoat (Vega) stylesheet |
 | `lib/diagnostics/anonymise.ts` | `https://schema.org/Article` | an example in a comment about `itemtype` vocabularies |
 | `entrypoints/options/main.ts` | `https://www.Example.com/path` | an example in a comment about parsing a hostname out of what was typed |
 | `entrypoints/options/main.ts` | `https://` | the scheme prepended to a bare hostname before `new URL()` parses it |

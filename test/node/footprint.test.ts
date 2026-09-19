@@ -24,7 +24,9 @@ function shippedSources(): string[] {
     for (const name of readdirSync(dir)) {
       const path = join(dir, name);
       if (statSync(path).isDirectory()) walk(path);
-      else if (/\.(ts|html)$/.test(name)) out.push(relative(ROOT, path).split(sep).join("/"));
+      // .css is in the list because a stylesheet can name a remote host too — an @import,
+      // a webfont, a background image — and a vendored one is exactly where nobody looks.
+      else if (/\.(ts|html|css)$/.test(name)) out.push(relative(ROOT, path).split(sep).join("/"));
     }
   };
   for (const dir of ["lib", "entrypoints"]) walk(join(ROOT, dir));
