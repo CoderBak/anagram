@@ -334,6 +334,18 @@ Notable changes to Anagram, newest first. The format follows
   own last line decides whether that chip is one of the hidden ones. Scoring is
   unchanged, and so is everything a reader can see: a page-tall box, a scroll
   container and a box that trims a line still move nothing.
+- Anagram no longer puts a React hydration error in a page's console. On a page
+  rendered by a server and hydrated in the browser, the first chips landed in the
+  server's markup before React had checked it, and React logged its recoverable
+  #418 and rendered that part of the page again — jestjs.io in three runs of
+  three, nextjs.org in two, and never on the same page without us. Nothing
+  visible broke, and nothing about the analysis changes: scoring starts as early
+  as it ever did. Only the INSERTION waits, and only on a page carrying one of the
+  markers those frameworks leave behind (`#__next`, `#__docusaurus`, `#___gatsby`,
+  `#__nuxt`, `[data-reactroot]`, `astro-island` and a few more), where it waits
+  for the page to finish loading plus one idle moment, and at most 2.5 seconds in
+  any case. Every other page — every article, every wiki, every forum — is chipped
+  exactly as early as before.
 - Firefox: the idle prefetch lane never ran (a detached `requestIdleCallback` call throws in
   Gecko), so paragraphs below the fold were scored only when scrolled to — it is called on
   `window` now. The manifest's minimum Firefox is 140, the first version in which the chips
@@ -516,6 +528,10 @@ Notable changes to Anagram, newest first. The format follows
   themselves eight times over, 450 dirty nodes a burst. Unbounded that costs
   4.5 s of long tasks with single bursts over 600 ms; the budget is 3 s total and
   500 ms for the worst task.
+- Two scenario checks hold the insertion gate: a fixture with a hydration marker
+  and a slow image gets no chip into its tree before the page has loaded (and
+  still gets its chips), while the same fixture without the marker is chipped
+  long before `load`, as it always was.
 - `test/perf.mjs` also budgets a VIRTUALIZED feed — 50 posts in, the oldest 50
   out, forty times over, 2 000 posts through a DOM that never holds more than 50 —
   and reads the heap through CDP after a forced collection. What survives must be

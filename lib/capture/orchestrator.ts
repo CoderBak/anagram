@@ -72,6 +72,41 @@ const DOWN_POLL_MS = 5000;
 /** How long the first collect waits for the Readability chunk under "main" scope. */
 const READABILITY_BOOT_MS = 1500;
 
+/**
+ * Pages that are rendered on a server and HYDRATED in the browser check the markup they
+ * were served against what the framework renders now, and a chip host inserted into that
+ * tree before the check makes React log its recoverable #418 and render the subtree again
+ * (jestjs.io in three runs of three, nextjs.org in two — never on the same page without
+ * us). Nothing visible broke, but we are not going to be the reason a page's console has
+ * errors in it. These are the roots and payload scripts such a page carries, read once
+ * from our own world: whether React has FINISHED hydrating is only legible from the main
+ * world, through the `__reactFiber$…` keys it hangs on the nodes it owns, and injecting a
+ * script into somebody's page to look is not something a reading tool should do. So the
+ * gate is a timing one, and the list is kept short on purpose — every entry costs every
+ * page one selector match, and a page not on it keeps exactly today's behaviour.
+ */
+const HYDRATION_MARKERS = [
+  "#__next", // Next.js pages router
+  "script#__NEXT_DATA__",
+  'script[src*="/_next/"]', // Next.js app router: no #__next, but every page loads these
+  "#__docusaurus",
+  "#___gatsby",
+  "#__nuxt",
+  "[data-server-rendered]", // Nuxt 2 and Vue SSR
+  "[data-reactroot]", // React 17 and earlier
+  "astro-island",
+  "[data-sveltekit-preload-data]",
+  "[ng-server-context]", // Angular Universal
+].join(",");
+/** Idle is what hydration finishing looks like from outside: the framework has run and
+ *  given the main thread back. Requested with a timeout so a page that never idles still
+ *  reaches the gate. */
+const HYDRATION_IDLE_MS = 1200;
+/** And in any case chips appear within this long of the run starting. A live page (a
+ *  ticker, a video, a feed still loading images) may never be idle, and a reader who can
+ *  see the text is owed the numbers. */
+const HYDRATION_MAX_MS = 2500;
+
 function navigationApi(): EventTarget | null {
   const n = (window as unknown as { navigation?: EventTarget }).navigation;
   return n && typeof n.addEventListener === "function" ? n : null;
@@ -199,6 +234,16 @@ export function createOrchestrator(
   let urlTimer: ReturnType<typeof setInterval> | null = null;
   /** A route change's refresh, waiting out the burst it arrived in. */
   let urlRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The page's own tree may be touched: it carries no hydration marker, or the framework
+   *  that owns it has had its turn (see HYDRATION_MARKERS). */
+  let safeToInsert = false;
+  /** Insertions held back until it is. */
+  const heldInsertions: (() => void)[] = [];
+  /** What the gate has armed to open itself with, so a teardown can take it all back. */
+  let gateCap: ReturnType<typeof setTimeout> | null = null;
+  let gateFallback: ReturnType<typeof setTimeout> | null = null;
+  let gateIdle: number | null = null;
+  let gateLoad: (() => void) | null = null;
   /** The daemon stopped answering: dispatch is paused until a probe succeeds. */
   let backendDown = false;
   let downTimer: ReturnType<typeof setInterval> | null = null;
@@ -587,11 +632,16 @@ export function createOrchestrator(
         for (const unitId of new Set(misses.map((b) => owners.get(b.id)))) {
           const unit = unitId ? unitsById.get(unitId) : undefined;
           if (!unit) continue;
-          try {
-            badges.renderPending(unit);
-          } catch {
-            /* detached mid-flight — purge will collect it */
-          }
+          // A pending chip is an insertion like any other: on a page that has still to
+          // hydrate it waits with the rest (see whenSafeToInsert).
+          whenSafeToInsert(() => {
+            if (!unitsById.has(unit.id) || verdictsById.has(unit.id)) return; // gone, or answered
+            try {
+              badges.renderPending(unit);
+            } catch {
+              /* detached mid-flight — purge will collect it */
+            }
+          });
         }
       }
       // Dedup the REQUEST by text: score each unique text once, then fan the result
@@ -777,6 +827,21 @@ export function createOrchestrator(
       scoredIds.add(v.id);
       unit.isScored = true;
       observers.dropUnit(unit); // analyzed — stop viewport tracking
+    }
+    // A verdict is KNOWN the moment it arrives; PAINTING it touches the page, and on a
+    // page that has still to hydrate that waits (see whenSafeToInsert). Scoring early
+    // costs the page nothing, so the latency is bought back either way.
+    whenSafeToInsert(() => paint(verdicts));
+    updateFab();
+  }
+
+  /** Put the verdicts on the page. Re-entrant: what it paints is decided when it runs, not
+   *  when it was queued, so a unit invalidated or re-answered while the insertion gate was
+   *  closed is simply skipped. */
+  function paint(verdicts: UnitVerdict[]): void {
+    for (const v of verdicts) {
+      const unit = unitsById.get(v.id);
+      if (!unit || verdictsById.get(v.id) !== v) continue; // gone, or already superseded
       if (!visibleUnderMode(v)) continue; // analyzed but not painted (flagged-only)
       try {
         badges.render(unit, v);
@@ -885,7 +950,11 @@ export function createOrchestrator(
       // document.open()/write() swapped <html> under us (challenge pages, legacy
       // SPAs): every element we held is detached — start over on the new tree.
       log.log("document replaced — restarting");
-      if (started) rescan();
+      if (!started) return;
+      // The tree we were allowed to touch is not there any more, and what was waiting to
+      // be drawn into it describes nothing: the NEW document decides the gate again.
+      resetInsertionGate();
+      rescan();
     },
   });
 
@@ -955,6 +1024,94 @@ export function createOrchestrator(
       planned, "planned,", scanned.size, "roots,",
       Math.round(performance.now() - startedAt), "ms",
     );
+  }
+
+  // --- the insertion gate --------------------------------------------------------------
+
+  /**
+   * Run `insert` now, or once the page's own tree is safe to touch. Everything that puts a
+   * node into the PAGE goes through here — chips, pending chips, the underline styles.
+   * Scoring does not: reading the page and asking the daemon change nothing, so a
+   * hydrating page pays no latency for this, only the paint waits.
+   */
+  function whenSafeToInsert(insert: () => void): void {
+    if (safeToInsert) {
+      insert();
+      return;
+    }
+    heldInsertions.push(insert);
+  }
+
+  function openInsertionGate(): void {
+    if (safeToInsert) return;
+    disarmInsertionGate(); // whichever of the three ways in got here, the others are done
+    safeToInsert = true;
+    log.log("insertion gate open,", heldInsertions.length, "held");
+    for (const insert of heldInsertions.splice(0)) {
+      try {
+        insert();
+      } catch (e) {
+        log.warn("held insertion failed", e);
+      }
+    }
+  }
+
+  /**
+   * Decide when that is. A page with no hydration marker — nearly every page, every static
+   * article, every fixture — is safe at once, and its time-to-first-chip does not move. A
+   * page with one waits for `readyState === "complete"` and one idle period after it,
+   * capped at HYDRATION_MAX_MS.
+   */
+  function watchInsertionGate(): void {
+    if (safeToInsert || gateCap !== null || gateLoad !== null) return; // open, or already waiting
+    if (!document.querySelector(HYDRATION_MARKERS)) {
+      openInsertionGate();
+      return;
+    }
+    gateCap = setTimeout(openInsertionGate, HYDRATION_MAX_MS);
+    const afterIdle = (): void => {
+      gateLoad = null;
+      const ric = (window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number })
+        .requestIdleCallback;
+      // Called ON window: Gecko's binding rejects a detached call (see schedulePrefetch).
+      if (typeof ric === "function") gateIdle = ric.call(window, openInsertionGate, { timeout: HYDRATION_IDLE_MS });
+      else gateFallback = setTimeout(openInsertionGate, 200);
+    };
+    gateLoad = afterIdle;
+    if (document.readyState === "complete") afterIdle();
+    else window.addEventListener("load", afterIdle, { once: true });
+  }
+
+  /** Take back every timer, idle callback and listener the gate armed. */
+  function disarmInsertionGate(): void {
+    if (gateCap !== null) {
+      clearTimeout(gateCap);
+      gateCap = null;
+    }
+    if (gateFallback !== null) {
+      clearTimeout(gateFallback);
+      gateFallback = null;
+    }
+    if (gateIdle !== null) {
+      const cic = (window as Window & { cancelIdleCallback?: (h: number) => void }).cancelIdleCallback;
+      if (typeof cic === "function") cic.call(window, gateIdle);
+      gateIdle = null;
+    }
+    if (gateLoad !== null) {
+      window.removeEventListener("load", gateLoad);
+      gateLoad = null;
+    }
+  }
+
+  /**
+   * The run is over, or the document it was about has been replaced. Nothing that was
+   * waiting to be drawn is wanted any more, nothing stays armed to draw it later, and the
+   * next start() asks the tree it finds THEN whether it may be touched.
+   */
+  function resetInsertionGate(): void {
+    disarmInsertionGate();
+    heldInsertions.length = 0;
+    safeToInsert = false;
   }
 
   // --- URL / SPA navigation ------------------------------------------------------------
@@ -1031,7 +1188,11 @@ export function createOrchestrator(
     visible = true;
     lastHref = location.href;
 
-    registerHighlightStyles();
+    watchInsertionGate();
+    // The underline rules are a <style> in the page's own head, so they wait with the
+    // chips they paint; the ball is ours and goes up at once, outside anything a
+    // framework hydrates.
+    whenSafeToInsert(registerHighlightStyles);
     if (mountFab) {
       fab.mount();
       fab.setActive(true);
@@ -1205,6 +1366,9 @@ export function createOrchestrator(
     if (!started) return;
     started = false;
     booted = false;
+    // Whatever was waiting for the page to be safe to touch is not wanted any more: the
+    // run is over and everything it drew is about to be taken down.
+    resetInsertionGate();
     observers.stop();
     scheduler.stop();
     stopDownPolling();
@@ -1241,7 +1405,9 @@ export function createOrchestrator(
     for (const unit of [...unitsById.values()]) observers.dropUnit(unit);
     clearAllResults();
     cache.clear(); // a rescan must re-derive every verdict from the current backend
-    registerHighlightStyles(); // no-op unless the document was replaced under us
+    heldInsertions.length = 0; // they paint units this rescan has just dropped
+    watchInsertionGate(); // no-op unless the gate was reset with the document
+    whenSafeToInsert(registerHighlightStyles); // no-op unless the document was replaced under us
     badges.resetTheme(); // the site theme may have toggled since the last scan
     refreshHighlightTheme();
     resolveScopeRoot();

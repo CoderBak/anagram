@@ -2173,7 +2173,7 @@ ${KEY_TAGS.map((t, i) => `<p id="z${i + 1}">${KEY_PARA(t)}</p>`).join("\n")}
   }
 }
 
-// ---- incremental scanning: the same page, built step by step or all at once -----------
+// ---- A41: incremental scanning — the same page, built step by step or all at once -----
 // The safety net under lib/capture/orchestrator.ts's scan-root rule. A page that grows
 // and changes under the reader must end up with exactly the chips a single fresh scan of
 // its FINAL DOM produces — same places, same numbers (the fake daemon's verdict is a pure
@@ -2272,7 +2272,7 @@ if(location.search.includes("all"))for(const s of STEPS)s();
     incremental === fresh ? `${fresh.split(" | ").length} chips` : `incremental ${incremental}\n   fresh       ${fresh}`,
   );
 
-  // The scan-root bound: one burst may become at most MAX_SCAN_ROOTS walks, however many
+  // A42: the scan-root bound. One burst may become at most MAX_SCAN_ROOTS walks, however many
   // nodes it touched. Without it a page that re-renders its islands (dev.to) turned ~200
   // dirty nodes into ~200 walks, each paying a whole-document byline survey.
   await sw.evaluate(() => new Promise((res) => chrome.storage.local.set({ debug: true }, res)));
@@ -2307,7 +2307,7 @@ if(location.search.includes("all"))for(const s of STEPS)s();
     JSON.stringify(drains.slice(-6)),
   );
 
-  // A URL rewritten while the reader scrolls is not a route change. Discourse rewrites the
+  // A43: a URL rewritten while the reader scrolls is not a route change. Discourse rewrites the
   // address with the post number on every scroll step — 51 whole-document re-walks in a
   // 90-second session — while a pushed entry still gets its refresh.
   const routed = await context.newPage();
@@ -2339,6 +2339,144 @@ if(location.search.includes("all"))for(const s of STEPS)s();
     afterRewrites === 0 && chipsAfter === chipsBefore && afterRoute - afterRewrites === 1,
     JSON.stringify({ afterRewrites, afterRoute, chipsKept: chipsAfter === chipsBefore }),
   );
+
+  // ---- A44-A46: the insertion gate — nothing enters a tree that has still to hydrate ---
+  // Both pages carry an image the server holds back, so `load` is late enough for the
+  // question to mean something: without a hydration marker the chips are in the page long
+  // before it, with one they wait for it and the idle period after it.
+  const GIF = Buffer.from("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7", "base64");
+  const slow = http.createServer((_req, res) => {
+    setTimeout(() => {
+      res.writeHead(200, { "content-type": "image/gif", "content-length": GIF.length });
+      res.end(GIF);
+    }, 900); // the page's own `load` waits for this
+  });
+  await new Promise((r) => slow.listen(0, "127.0.0.1", r));
+  const slowGif = `http://localhost:${slow.address().port}/slow.gif`;
+  const HYDRATING = (marked) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${marked ? "hydrating" : "plain"} page</title></head>
+<body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+${marked ? '<div id="__docusaurus">' : "<div id=\"plain\">"}
+<p id="h1">${PARA("HYDRATE-ONE")}</p><p id="h2">${PARA("HYDRATE-TWO")}</p></div>
+<img src="${slowGif}" width="1" height="1" alt="">
+<script>
+// What a framework sees in its own tree at the moment it would hydrate.
+window.__loadAt=null;window.__seenAtLoad=null;
+addEventListener("load",()=>{window.__loadAt=performance.now();
+  window.__seenAtLoad=document.querySelectorAll('#__docusaurus [data-anagram], #plain [data-anagram]').length;});
+</script></body></html>`;
+  PAGES["/hydrating.html"] = HYDRATING(true);
+  PAGES["/plainpage.html"] = HYDRATING(false);
+
+  const firstHostWatcher = () => {
+    window.__firstHostAt = null;
+    new MutationObserver((recs) => {
+      if (window.__firstHostAt !== null) return;
+      for (const rec of recs) {
+        for (const n of rec.addedNodes) {
+          // The ball is ours and lives outside anything a framework hydrates; what this
+          // watches for is a CHIP entering the page's own tree.
+          if (n.nodeType === 1 && n.getAttribute?.("data-anagram") === "host" && n.id !== "anagram-fab") {
+            window.__firstHostAt = performance.now();
+            return;
+          }
+        }
+      }
+    }).observe(document, { childList: true, subtree: true }); // `document`: at document_start there is no <html> yet
+  };
+
+  const openPage = async (path) => {
+    const p = await context.newPage();
+    const held = [];
+    p.on("console", (m) => {
+      const hit = /insertion gate open, (\d+) held/.exec(m.text());
+      if (hit) held.push(+hit[1]);
+    });
+    await p.addInitScript(firstHostWatcher);
+    await p.goto(server.url(path), { waitUntil: "load" });
+    await chipsSettled(p);
+    const t = await p.evaluate(() => ({
+      loadAt: window.__loadAt,
+      firstHostAt: window.__firstHostAt,
+      seenAtLoad: window.__seenAtLoad,
+    }));
+    const shown = await p.evaluate(
+      (sel) => [...document.querySelectorAll(sel)].map((h) => h.shadowRoot?.querySelector(".num")?.textContent?.trim() ?? "?"),
+      BADGE_SEL,
+    );
+    await p.close();
+    return { ...t, chips: shown.length, shown, held: held[0] ?? null };
+  };
+
+  await sw.evaluate(() => new Promise((res) => chrome.storage.local.set({ debug: true }, res)));
+  const marked = await openPage("/hydrating.html");
+  const plain = await openPage("/plainpage.html");
+
+  record(
+    "ui",
+    "a page that has still to hydrate gets no chip until it has, and still gets its chips",
+    // The verdicts land while the gate is shut — the daemon answers in milliseconds and the
+    // image holds `load` back — so this also says that a chip held back and then released
+    // arrives as its VERDICT and never as a pending chip nobody comes back to.
+    marked.chips === 2 &&
+      marked.shown.every((n) => /^\d+%$/.test(n)) &&
+      marked.seenAtLoad === 0 &&
+      marked.held > 0 &&
+      marked.firstHostAt > marked.loadAt,
+    JSON.stringify(marked),
+  );
+  record(
+    "ui",
+    "a page with no hydration marker is chipped as early as ever",
+    plain.chips >= 2 && plain.held === 0 && plain.firstHostAt !== null && plain.firstHostAt < plain.loadAt,
+    JSON.stringify(plain),
+  );
+
+  // Torn down while the chips were still waiting: nothing may be drawn into the page
+  // afterwards, nothing may stay armed to draw it, and the next run starts clean.
+  const torn = await context.newPage();
+  const gateLines = [];
+  torn.on("console", (m) => {
+    if (m.text().includes("insertion gate open")) gateLines.push(m.text().slice(-40));
+  });
+  await torn.addInitScript(firstHostWatcher);
+  await torn.goto(server.url("/hydrating.html"), { waitUntil: "domcontentloaded" });
+  await torn.waitForTimeout(500); // scored by now; `load` is still waiting on the image
+  await torn.bringToFront();
+  const tellTab = async (msg) => {
+    await sw.evaluate(async (m) => {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      try {
+        await chrome.tabs.sendMessage(tab.id, m);
+      } catch {
+        /* the content script answers nothing to these */
+      }
+    }, msg);
+  };
+  await tellTab({ action: "teardown" });
+  await torn.waitForTimeout(4000); // past `load` AND past the gate's own 2.5 s cap
+  const afterTeardown = await torn.evaluate(
+    (sel) => ({ chips: document.querySelectorAll(sel).length, firstHostAt: window.__firstHostAt }),
+    BADGE_SEL,
+  );
+  const gatesWhileOff = gateLines.length;
+  await tellTab({ action: "setEnabled", value: true });
+  const cameBack = await chipsSettled(torn);
+  const chipsBack = await torn.evaluate((sel) => document.querySelectorAll(sel).length, BADGE_SEL);
+  await torn.close();
+  await sw.evaluate(() => new Promise((res) => chrome.storage.local.set({ debug: false }, res)));
+
+  record(
+    "ui",
+    "torn down while chips waited for hydration: none is drawn afterwards, nothing stays armed, the next run starts clean",
+    afterTeardown.chips === 0 &&
+      afterTeardown.firstHostAt === null &&
+      gatesWhileOff === 0 &&
+      cameBack &&
+      chipsBack >= 2 &&
+      gateLines.length === 1,
+    JSON.stringify({ ...afterTeardown, gatesWhileOff, chipsBack, gates: gateLines.length }),
+  );
+  await new Promise((r) => slow.close(() => r()));
 }
 
 // =====================================================================================
