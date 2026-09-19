@@ -87,15 +87,42 @@ The local daemon should be running (`~/.anagram/bin/anagram start`) or every chi
    Then quit the browser entirely and start it again: still chips (the registration is
    persisted, and re-asserted on `runtime.onStartup`).
 
-10. **A PDF tab.**
+10. **A PDF tab, with the site granted.**
     With all sites granted, open a PDF (e.g. `https://arxiv.org/pdf/1706.03762`).
     Expected: the ball offers *Analyze PDF* as before, and "Open PDFs in Anagram" works if
-    it is switched on. With **no** grant, a PDF tab shows nothing and the popup's *Read
-    this PDF* button still opens the reading mode — but the reading mode cannot fetch a
-    remote PDF the extension has no access to, and says the file could not be read. Grant
-    the site (or all sites) and it works. See "Known gaps" in the branch report.
+    it is switched on. Both hand the tab to the reading mode showing that same PDF.
 
-11. **Firefox.**
+11. **A PDF tab with NO grant — the one case no suite can drive.**
+    The reading mode is handed its bytes by the tab that is showing the PDF
+    (`lib/pdf/handoff.ts`), so on a site you have granted nothing there is no content
+    script to ask — and the click you make is what gives the extension `activeTab` to put
+    one there for that one tab. A real click on real browser chrome is the whole point, so
+    this cannot be automated; `test/node/pdf-handoff.test.ts` pins the order (inject, then
+    ask) and this is the rest of it.
+
+    Withdraw every grant (`about:addons` / `chrome://extensions`, or the options page's
+    *Withdraw*). Open `https://arxiv.org/pdf/1706.03762`.
+    Expected: no ball, no chips — the page is not being read.
+    Now open the popup and press *Read this PDF*.
+    Expected: the tab becomes the reading mode, showing the real pages of that same PDF,
+    with chips on them. Nothing was granted and nothing was prompted for: the paper was
+    read out of the tab that already had it.
+    Then, from a page with links to PDFs, right-click one and choose *Open PDF with
+    Anagram*: a new tab opens on the PDF and turns itself into the reading mode.
+    And the automatic route stays quiet: with "Open PDFs in Anagram" on and no grant, a
+    PDF tab you simply navigate to is left alone — no click, no `activeTab`, nothing to
+    ask. That is the intended difference between a PDF you asked for and one you opened.
+
+12. **A PDF on this computer stays in the browser's viewer.**
+    Open a `file:///…/something.pdf`.
+    Expected: nothing from Anagram, whatever the grants and whatever "Allow access to file
+    URLs" says — the extension declares no access to the file scheme, and a page on it may
+    not re-read itself in any case. The way in is the reading mode's own drop zone: open
+    the reader with no document (the popup on an ordinary page → *Read this PDF* is not
+    offered; use the reader tab left over from check 11, or drop the file onto it) and
+    drop the PDF on it. It opens and is scored.
+
+13. **Firefox.**
     Repeat 1, 2, 3 and 4 in Firefox. The prompts are Firefox's own; the popup stays open
     while the prompt is up (unlike Chrome). `about:addons` → Anagram → *Permissions* has
     the "Access your data for all websites" switch, which is check 4's equivalent.

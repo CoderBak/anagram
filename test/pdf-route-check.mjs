@@ -140,7 +140,16 @@ context.on("request", (request) => {
 // rather than quietly succeed against the live repository.
 const asked = [];
 await context.route("**arxiv.org/**", async (route) => {
-  asked.push({ url: route.request().url(), kind: route.request().resourceType() });
+  // WHO asked, as well as what for. A service worker's request has no frame and Playwright
+  // throws rather than saying so, which is itself the answer worth recording: nothing that
+  // reaches arxiv.org may come from the extension's own side of the world.
+  let from;
+  try {
+    from = route.request().frame()?.url() ?? "(no frame)";
+  } catch {
+    from = "service worker";
+  }
+  asked.push({ url: route.request().url(), kind: route.request().resourceType(), from });
   return route.fulfill({ status: 200, contentType: "application/pdf", body: TEST_PDF });
 });
 
@@ -666,9 +675,9 @@ await setAutoOpen(false);
 
 {
   // Every request the whole run made, checked against the only places anything may go: the
-  // fixtures and the fake daemon, both on loopback. arxiv.org appears here only where a TAB
-  // navigated to a paper the run opened on purpose, never as something the extension asked
-  // for on its own — so a request to it that is not a `document` is a probe that came back.
+  // fixtures and the fake daemon, both on loopback. arxiv.org appears here only because the
+  // run opened papers there on purpose, and never as something the extension asked for on
+  // its own account.
   const stray = requested.filter((url) => {
     if (!/^https?:/.test(url)) return false; // chrome-extension:, file:, data:
     const { hostname } = new URL(url);
@@ -679,10 +688,19 @@ await setAutoOpen(false);
     stray.length === 0,
     JSON.stringify(stray.slice(0, 5)),
   );
+  // Two shapes are allowed and no third. A TAB NAVIGATING to a paper is the reader opening
+  // it. And the PDF tab RE-READING ITS OWN ADDRESS is the handoff: the content script in
+  // that tab asking for the document the tab is already showing, from the tab's own origin
+  // and with the tab's own cookies (lib/pdf/handoff.ts). Anything else — a request from the
+  // service worker, from an extension page, or for an address other than the one that frame
+  // is on — is the extension asking arxiv.org something, which is what this suite is for.
+  const unexplained = asked.filter(
+    (a) => a.kind !== "document" && !(a.kind === "fetch" && a.from === a.url),
+  );
   record(
-    "privacy: every arxiv.org request was a tab going to a paper, not the extension asking",
-    asked.every((a) => a.kind === "document"),
-    JSON.stringify(asked.filter((a) => a.kind !== "document").slice(0, 5)),
+    "privacy: arxiv.org was only ever the tab going to a paper, or that tab re-reading it",
+    unexplained.length === 0,
+    JSON.stringify(unexplained.slice(0, 5)),
   );
 }
 

@@ -6,8 +6,10 @@
 // here goes near a network), and the worker's ticket store. The fourth — two ports and a
 // tab navigation — is checked in a real browser by test/pdf-route-check.mjs.
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { fakeBrowser } from "wxt/testing";
 import {
   base64Bytes,
+  createPdfHandoff,
   createTicketStore,
   fromBase64,
   hasPdfMagic,
@@ -195,5 +197,74 @@ describe("the worker's ticket store", () => {
     store.forget(7);
     expect(store.size()).toBe(1);
     expect(store.take(other, 8)?.bytes).toBe(1);
+  });
+});
+
+// ---- the wiring the browser suites cannot reach ------------------------------------------------
+//
+// Site access is optional, and the one case that matters most here — a PDF on a site the
+// user has granted NOTHING, opened from the popup or the context menu — cannot be driven
+// by a suite: `activeTab` is granted by a real click on real browser chrome, and the
+// browser suites load a build where every site is granted instead (test/test-build.mjs).
+// So what is pinned here is the ORDER: the tab is never asked for bytes before something
+// has been done about putting a content script in it. docs/manual-checks.md has the rest.
+
+describe("asking a tab with no content script in it", () => {
+  it("tries to inject before it asks, and says so when nobody answers", async () => {
+    const calls: string[] = [];
+    const updated: { tabId: number; url: string }[] = [];
+    const handoff = createPdfHandoff({
+      readerUrl: (src) => `chrome-extension://x/reader.html?src=${encodeURIComponent(src)}`,
+      ensureInjected: async (tabId) => {
+        calls.push(`inject ${tabId}`);
+        return true;
+      },
+    });
+    const tabs = fakeBrowser.tabs;
+    vi.spyOn(tabs, "connect").mockImplementation(((tabId: number) => {
+      calls.push(`connect ${tabId}`);
+      throw new Error("no receiving end");
+    }) as never);
+    vi.spyOn(tabs, "update").mockImplementation((async (tabId: number, props: { url: string }) => {
+      updated.push({ tabId, url: props.url });
+      return {} as never;
+    }) as never);
+
+    await handoff.open(7, "https://example.test/a.pdf", { auto: false });
+    expect(calls).toEqual(["inject 7", "connect 7"]);
+    // An explicit click is answered: the reading mode opens and says what happened.
+    expect(updated).toHaveLength(1);
+    expect(updated[0].url).toMatch(/&err=read$/);
+
+    // The automatic route is not a click, so a tab it cannot read is left exactly as it is.
+    updated.length = 0;
+    await handoff.open(8, "https://example.test/b.pdf", { auto: true });
+    expect(updated).toEqual([]);
+  });
+
+  it("reads a tab once, however many things ask at the same moment", async () => {
+    const calls: number[] = [];
+    const handoff = createPdfHandoff({
+      readerUrl: (src) => `chrome-extension://x/reader.html?src=${encodeURIComponent(src)}`,
+      // Slow on purpose: the second caller arrives while the first is still injecting,
+      // which is exactly what happens when a click injects a script that then announces
+      // the tab and sets the automatic route going too.
+      ensureInjected: async (tabId) => {
+        calls.push(tabId);
+        await new Promise((r) => setTimeout(r, 10));
+        return true;
+      },
+    });
+    const tabs = fakeBrowser.tabs;
+    vi.spyOn(tabs, "connect").mockImplementation((() => {
+      throw new Error("no receiving end");
+    }) as never);
+    vi.spyOn(tabs, "update").mockImplementation((async () => ({}) as never) as never);
+
+    await Promise.all([
+      handoff.open(9, "https://example.test/c.pdf", { auto: false }),
+      handoff.open(9, "https://example.test/c.pdf", { auto: true }),
+    ]);
+    expect(calls).toEqual([9]);
   });
 });
