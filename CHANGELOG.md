@@ -726,6 +726,15 @@ Notable changes to Anagram, newest first. The format follows
 
 ### Fixed
 
+- **The English first-run and options pages had stopped matching the product.** An
+  English UI leaves a page's markup untouched, so what `entrypoints/*/index.html`
+  says is what an English reader sees — and nothing held it to the messages. After
+  the score became `.93` and the marks went quiet, both pages still said "0% …
+  100%" and "a matching underline, quiet on human text", and the first-run page
+  still described the PDF view as a rebuilt page. `test/node/pageCopy.test.ts` now
+  reads every page the way the localiser does and fails when the two disagree. The
+  first-run page's **Ready** row also waits for site access as well as for the
+  daemon: on a fresh install "open any article" was not yet true.
 - Gemini conversations were silent. Gemini wraps every conversation in
   `<div id="xap-skip-link-target" class="main-content">`; the page-chrome filter
   read that id — the place a "Skip to content" link LANDS — as the skip link
