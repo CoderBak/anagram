@@ -1,6 +1,6 @@
 {
   "name": "anagram-extension",
-  "description": "Anagram for Chrome \u2014 per-paragraph AI-generated-text confidence badges.",
+  "description": "Anagram for Chrome — per-paragraph AI-generated-text confidence badges.",
   "private": true,
   "version": "0.3.2",
   "type": "module",
@@ -43,6 +43,7 @@
     "idb": "^8.0.3",
     "p-queue": "^9.3.3",
     "p-retry": "^8.0.1",
+    "pdfjs-dist": "^5.7.284",
     "playwright": "^1.61.1",
     "puppeteer-core": "^25.11.0",
     "typescript": "^5.9.3",
