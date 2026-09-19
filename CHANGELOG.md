@@ -516,6 +516,12 @@ Notable changes to Anagram, newest first. The format follows
   themselves eight times over, 450 dirty nodes a burst. Unbounded that costs
   4.5 s of long tasks with single bursts over 600 ms; the budget is 3 s total and
   500 ms for the worst task.
+- `test/perf.mjs` also budgets a VIRTUALIZED feed — 50 posts in, the oldest 50
+  out, forty times over, 2 000 posts through a DOM that never holds more than 50 —
+  and reads the heap through CDP after a forced collection. What survives must be
+  what the DOM holds: the growth is 0.8 MB, there is one chip per post on screen
+  and none for a post that has gone, and no highlight range points at a node that
+  left the page.
 - The pure text machinery is checked against properties rather than examples. A
   seeded generator (no new dependency) builds words, CJK, emoji, invisibles,
   non-breaking spaces, LaTeX residue, curly quotes, en-dashed figure ranges,
