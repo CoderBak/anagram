@@ -2373,7 +2373,7 @@ ${KEY_TAGS.map((t, i) => `<p id="z${i + 1}">${KEY_PARA(t)}</p>`).join("\n")}
           menus[2] === "用 Anagram 打开 PDF" &&
           menus[3] === "打开存疑段落列表" &&
           popupText.lang === "zh-CN" &&
-          popupText.subtitle === "AI 文本检测" &&
+          popupText.subtitle === "本机评出的 AI 编辑程度" &&
           popupText.gear === "全部设置" &&
           popupText.rescan === "重新扫描" &&
           popupText.hint === "Alt+Shift+P 显示或隐藏标记" &&

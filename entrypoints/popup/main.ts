@@ -19,8 +19,8 @@ import {
 } from "../../lib/settings/settings";
 import type { MarkStyle } from "../../lib/settings/settings";
 import { siteLine, switchWrite } from "./siteSwitch";
-import { sitePattern } from "../../lib/access/patterns";
-import { hasAccess, requestAccess } from "../../lib/access/grant";
+import { ALL_SITES, sitePattern } from "../../lib/access/patterns";
+import { accessSummary, hasAccess, requestAccess } from "../../lib/access/grant";
 import { ACTIONS } from "../../lib/messaging/protocol";
 import type { BackendStatus, ControlMessage, TabState } from "../../lib/messaging/protocol";
 import { looksLikePdfUrl } from "../../lib/pdf/source";
@@ -159,6 +159,8 @@ async function refreshBackend(tabId: number | undefined, probe = false): Promise
 let siteRule: SiteRule | null = null;
 let globalDefault = true;
 let granted = false;
+/** Every site is granted — what "All websites" needs before it can mean what it says. */
+let allGranted = false;
 /** The origin pattern to ask for, or null on a page no extension may be granted. */
 let sitePat: string | null = null;
 
@@ -174,6 +176,11 @@ const ruleSaysOn = (): boolean => (siteRule ? siteRule.mode === "on" : globalDef
 async function refreshSite(host: string): Promise<void> {
   globalDefault = await settings.enabled.getValue();
   granted = await hasAccess(sitePat);
+  allGranted = (await accessSummary()).all;
+  // "All websites" is painted from the same two facts as "This site": the setting AND the
+  // access. A fresh install has the setting on and may read nothing, and a switch that
+  // said ON there would be describing an extension that does not exist yet.
+  enabledEl.checked = globalDefault && allGranted;
   if (!host) {
     siteEl.checked = false;
     siteHostEl.textContent = t("popupSiteUnavailable");
@@ -218,7 +225,6 @@ async function init(): Promise<void> {
   const host = hostOf(tab?.url);
   sitePat = sitePattern(tab?.url);
 
-  enabledEl.checked = await settings.enabled.getValue();
   highlightsEl.checked = await settings.showHighlights.getValue();
   markStyleEl.value = normalizeMarkStyle(await settings.markStyle.getValue());
   checkSeg(displayModeEls, await settings.displayMode.getValue());
@@ -229,7 +235,16 @@ async function init(): Promise<void> {
   await refreshSite(host);
 
   enabledEl.addEventListener("change", async () => {
-    await settings.enabled.setValue(enabledEl.checked);
+    const want = enabledEl.checked;
+    // Turning it on while Anagram may not read every site is asking for every site — and
+    // the asking has to be the first thing this click does, with nothing awaited before
+    // it (see refreshSite). Chrome closes the popup to show its prompt, so what follows a
+    // yes happens in the worker: it registers the content script and injects the open
+    // tabs (lib/access/worker.ts). The setting is written either way; a no leaves it on
+    // and the switch, painted from both, goes back to off.
+    const asked = want && !allGranted ? requestAccess([...ALL_SITES]) : null;
+    await settings.enabled.setValue(want);
+    if (asked) await asked;
     await refreshSite(host); // a host with no rule of its own follows the new default
     sendToTab(tab?.id, { action: ACTIONS.SET_ENABLED, value: siteEl.checked });
     setTimeout(() => void refreshStatus(tab?.id), 400);

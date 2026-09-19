@@ -726,6 +726,13 @@ Notable changes to Anagram, newest first. The format follows
 
 ### Fixed
 
+- **The popup's "All websites" switch said ON on an extension that could read nothing.**
+  It was painted from the setting alone, and a fresh install has the setting on and
+  access to no site. It is now painted from both, like "This site": on means the
+  setting is on AND every site is granted, and turning it on where they are not is what
+  asks the browser for them — inside the click, as the browser requires. The popup's
+  subtitle no longer calls Anagram an "AI text detector", which is the claim the new
+  description stopped making.
 - **The English first-run and options pages had stopped matching the product.** An
   English UI leaves a page's markup untouched, so what `entrypoints/*/index.html`
   says is what an English reader sees — and nothing held it to the messages. After

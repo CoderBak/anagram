@@ -457,7 +457,7 @@
     "description": "Popup document title."
   },
   "popupSubtitle": {
-    "message": "AI text detector",
+    "message": "AI-editing scores, on your computer",
     "description": "Popup header line under the name."
   },
   "popupAllSettings": {
