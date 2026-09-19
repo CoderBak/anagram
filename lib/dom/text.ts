@@ -14,6 +14,10 @@ export interface UnitPart {
   nodes: Text[];
   /** Nearest block-laid-out ancestor of the run — render/measure anchor. */
   container: Element;
+  /** The run came from preserved-whitespace text (a mailing-list message, a plain-text
+   *  document). Only there is a leading `>` a quote marker rather than prose, so only
+   *  there do the text and the offset map leave one out (stripQuoteMarkers). */
+  preserved?: boolean;
 }
 
 /** A scoreable segment (≥1 visual paragraph). */
@@ -353,6 +357,66 @@ export function looksLikeNameList(text: string): boolean {
   for (const t of tokens) if (/^[("]?\p{Lu}[\p{L}'’\-.]*[,;.)]?$/u.test(t)) capitalised++;
   const commas = (text.match(/,/g) ?? []).length;
   return capitalised / tokens.length >= 0.6 && commas >= tokens.length / 8;
+}
+
+// ---- e-mail quotations ---------------------------------------------------------------
+
+/**
+ * Quote depth of a line: "> " once, ">> " twice. In a mailing-list message the quoted
+ * lines are somebody ELSE's words and the reply around them is the author's, so the two
+ * never belong to one unit — the same boundary a <blockquote> draws in HTML.
+ */
+export function quoteDepth(line: string): number {
+  let depth = 0;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === ">") {
+      depth++;
+      continue;
+    }
+    if (ch === " " || ch === "\t") continue;
+    break;
+  }
+  return depth;
+}
+
+/** Quote depth a run speaks in: that of its first line with text in it. */
+export function runQuoteDepth(raw: string): number {
+  for (const line of raw.split("\n")) {
+    if (line.trim() !== "") return quoteDepth(line);
+  }
+  return 0;
+}
+
+/** The markers at the start of a quoted line: any indent, the `>`s (`>>`, `> >`) and one
+ *  space after the last of them. What follows keeps its own indentation. */
+const QUOTE_MARKER_RE = /^[ \t]*(?:>[ \t]*)*>[ \t]?/gm;
+
+/**
+ * The `>` a mail client puts in front of every quoted line is how it DRAWS the quotation —
+ * the indent a <blockquote> draws in HTML — and not a word of it. Scoring the markers sent
+ * the model a text with a `>` at the head of every line, which is nothing anybody wrote.
+ * They are stripped from the text of a preserved-whitespace run that speaks at a quote
+ * depth (lists.debian.org, lore.kernel.org), and from nowhere else: a `>` at the start of
+ * ordinary prose is a shell prompt or a quotation somebody typed, and ours to leave alone.
+ */
+export function stripQuoteMarkers(raw: string): string {
+  return runQuoteDepth(raw) === 0 ? raw : raw.replace(QUOTE_MARKER_RE, "");
+}
+
+/**
+ * The same markers as a flag per character of `raw`, for the map that leads from an offset
+ * in a unit's text back to the page (lib/dom/locate.ts): the two must drop exactly the same
+ * characters, or the text and the page disagree and every window falls back to marking the
+ * whole unit. Null where there is no quotation at all — nearly always.
+ */
+export function quoteMarkerMask(raw: string): boolean[] | null {
+  if (runQuoteDepth(raw) === 0) return null;
+  const mask = new Array<boolean>(raw.length).fill(false);
+  for (const m of raw.matchAll(QUOTE_MARKER_RE)) {
+    for (let i = m.index; i < m.index + m[0].length; i++) mask[i] = true;
+  }
+  return mask;
 }
 
 // ---- link density ------------------------------------------------------------------

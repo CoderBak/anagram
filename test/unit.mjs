@@ -1728,7 +1728,7 @@ const EXPECTED = {
   "listicle": [1, 1],
   "listicle-divsoup": [2, 1],
   "lobsters-comment": [3, 1],
-  "mailing-list": [2, 0],
+  "mailing-list": [3, 0],
   "mastodon-shell": [2, 1],
   "news-article": [1, 1],
   "permalink-single": [2, 1],
@@ -1798,6 +1798,51 @@ for (const file of fixtureFiles) {
   results.push({ name: `fixture ${name}: no name / time / action row inside a unit`, ok: r.chrome.length === 0, note: r.chrome.join(" | ") });
   results.push({ name: `fixture ${name}: covered exactly where expected (${r.annotated} annotated blocks)`, ok: r.annotated > 0 && r.wrong.length === 0, note: r.wrong.join(" | ") });
   results.push({ name: `fixture ${name}: ${wantUnits} units, ${wantMerged} of them multi-part`, ok: r.units === wantUnits && r.merged === wantMerged, note: `${r.units} units, ${r.merged} multi-part` });
+}
+
+// ---- a mailing-list quotation: the markers are the frame, not the words -------------------
+// The "> " a mail client puts in front of every quoted line is how it draws a quotation, so
+// it is no part of what the model reads. The parts stay node-based, so the offset map that
+// leads from a window back to the page has to drop exactly the same characters — otherwise
+// every window falls back to marking the whole unit.
+{
+  const ml = await browser.newPage();
+  await ml.goto(pathToFileURL(join(FIXTURES, "mailing-list.html")).href);
+  await ml.addScriptTag({ path: BUNDLE });
+  const r = await ml.evaluate(() => {
+    const collapse = (t) => t.replace(/\s+/g, " ").trim();
+    const units = PW.collectUnits(document.body);
+    const quoted = units.find((u) => u.text.includes("maintained by four people"));
+    const reply = units.find((u) => u.text.includes("I agree that the history"));
+    const ranges = quoted ? PW.locateSpans(quoted.parts, quoted.text, PW.planWindows(quoted.text)) : null;
+    return {
+      units: units.length,
+      quoted: quoted ? quoted.text : null,
+      reply: reply ? reply.text : null,
+      raw: quoted ? quoted.parts.map((p) => p.nodes.map((n) => n.data).join("")).join("") : "",
+      located: ranges ? ranges.map((rs) => rs.map((x) => collapse(x.toString()))) : null,
+    };
+  });
+  await ml.close();
+  // The ranges run over the page, markers and all — what must line up is the text they cover
+  // once the markers are taken out of it again.
+  const marked = r.located && r.located.flat().join(" ");
+  const rebuilt = marked && marked.replace(/>/g, " ").replace(/\s+/g, " ").trim();
+  results.push({
+    name: "mailing-list: the quoted lines are scored without their \"> \" markers",
+    ok: !!r.quoted && !r.quoted.includes(">") && r.quoted.startsWith("Right, so a package") && r.raw.includes(">"),
+    note: JSON.stringify(r.quoted && r.quoted.slice(0, 60)),
+  });
+  results.push({
+    name: "mailing-list: the reply under the quotation is untouched",
+    ok: !!r.reply && !r.reply.includes(">") && r.reply.startsWith("I agree that the history is the better record"),
+    note: JSON.stringify(r.reply && r.reply.slice(0, 60)),
+  });
+  results.push({
+    name: "mailing-list: windows of the quoted unit still resolve to ranges over the quoted lines",
+    ok: !!marked && r.located.every((rs) => rs.length > 0) && marked.includes("version control history gives us") && rebuilt === r.quoted,
+    note: JSON.stringify(r.located && r.located.map((rs) => rs.map((x) => x.slice(0, 30)))),
+  });
 }
 
 await browser.close();

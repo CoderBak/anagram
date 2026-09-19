@@ -9,7 +9,7 @@
 //
 // Nothing here touches the page: ranges start and end INSIDE text nodes, no node is
 // split and nothing is wrapped.
-import type { UnitPart } from "./text";
+import { extractPartText, quoteMarkerMask, type UnitPart } from "./text";
 
 /** A stretch of a unit's text: offsets into `unit.text`, end exclusive. */
 interface Span {
@@ -27,17 +27,24 @@ interface PartMap {
   offset: number[];
 }
 
-/** The walker's `extractPartText(nodes).replace(/\s+/g, " ").trim()`, remembering where
- *  each surviving character came from. */
-function mapPart(nodes: Text[]): PartMap {
+/** The walker's `stripQuoteMarkers(extractPartText(nodes)).replace(/\s+/g, " ").trim()`,
+ *  remembering where each surviving character came from. The quote markers of a mailing-list
+ *  message are not in the unit's text (lib/dom/text.ts), so they are not in this map either
+ *  — the two have to drop the same characters or nothing lines up. */
+function mapPart(part: UnitPart): PartMap {
+  const nodes = part.nodes;
+  const marker = part.preserved ? quoteMarkerMask(extractPartText(nodes)) : null;
   const chars: string[] = [];
   const node: number[] = [];
   const offset: number[] = [];
   /** A whitespace run waiting to see whether a word follows it (else it is the trim). */
   let gap: { n: number; o: number } | null = null;
+  /** Offset in the joined text of the part — what the marker flags are counted in. */
+  let at = 0;
   for (let n = 0; n < nodes.length; n++) {
     const data = nodes[n].data;
-    for (let o = 0; o < data.length; o++) {
+    for (let o = 0; o < data.length; o++, at++) {
+      if (marker !== null && marker[at]) continue;
       if (/\s/.test(data[o])) {
         if (chars.length > 0 && !gap) gap = { n, o };
         continue;
@@ -72,7 +79,7 @@ export function locateSpans(parts: UnitPart[], text: string, spans: Span[]): Ran
   let matched = 0; // how much of `text` the parts have accounted for
   for (const part of parts) {
     if (base >= text.length) break; // the unit's storage cap fell before this part
-    const map = mapPart(part.nodes);
+    const map = mapPart(part);
     // Only the part that storage cap cuts through may hold more than `text` does.
     const expected = text.slice(base, base + map.text.length);
     if (expected.length === 0 || !map.text.startsWith(expected)) return null;

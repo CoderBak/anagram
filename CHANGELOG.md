@@ -229,6 +229,12 @@ Notable changes to Anagram, newest first. The format follows
   however much its shadow tree holds, so the whole document counted as empty and
   not one paragraph in the overlay was ever scored. The layer now sits one level
   in, where it always belonged.
+- A mailing-list quotation is scored without its **quote markers**. Prose in a
+  `<pre>` is read now, and the `>` at the head of every quoted line went to the
+  model with it — the frame a mail client draws the quotation with, which nobody
+  wrote. The markers are stripped from the text of a quoted run, and from nowhere
+  else: a `>` at the start of ordinary prose is a shell prompt or a quotation
+  somebody typed. The underline still covers the quoted lines exactly.
 - The canonical scoring text is a **fixed point**: canonicalizing it again changes
   nothing. An un-rendered LaTeX span was dropped after the quote digraphs were
   folded, so a span removed from between two quotes ("the constant '$\alpha$' is")

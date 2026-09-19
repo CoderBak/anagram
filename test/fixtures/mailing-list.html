@@ -8,9 +8,11 @@
   lore — and a patch comes as a <pre> of its own. Every <pre> used to be excluded, so a
   whole archive read as nothing.
 
-  Two things are being checked here: the reply is read, and the lines the author QUOTES
+  Three things are being checked here: the reply is read, the lines the author QUOTES
   are somebody else's words — a change of quote depth ends the group, whether the marker
-  sits inside a text node (the first message) or in a span of its own (the second).
+  sits inside a text node (the first message) or in a span of its own (the second) — and
+  the "&gt; " markers themselves are not part of the text that is scored. The first
+  quotation is long enough to be a unit of its own, which is what carries that last check.
 
   Annotation: see x-timeline.html.
 -->
@@ -35,7 +37,10 @@
 &gt; Right, so a package that has been maintained by four people over
 &gt; eleven years ends up with a list of years that nobody can check
 &gt; against anything, and the only honest answer is the range that the
-&gt; version control history gives us.
+&gt; version control history gives us. Every other answer I have seen
+&gt; proposed in this thread either asks the maintainer to remember what
+&gt; happened before they took the package over, or asks the reader to
+&gt; trust a number that nobody has checked since the year it was typed.
 
 I agree that the history is the better record, but it is not the record
 the licence asks for, and the two of them disagree in exactly the cases

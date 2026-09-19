@@ -62,6 +62,9 @@ import {
   endsLikeProse,
   endsInColon,
   wordShape,
+  quoteDepth,
+  runQuoteDepth,
+  stripQuoteMarkers,
   MIN_UNIT_WORDS,
   MIN_MERGE_WORDS,
   MIN_SENTENCE_WORDS,
@@ -256,7 +259,10 @@ export function collectUnits(
     const { nodes, container, preserved, formulas } = found;
     if (!rects.get(container)) return null; // zero-size container → invisible text
     const raw = extractPartText(nodes);
-    const text = raw.replace(/\s+/g, " ").trim();
+    // The `>` markers of a quoted mail line are the quotation's frame, not its words
+    // (stripQuoteMarkers); `raw` keeps them, because the depth and the column-gap tests
+    // read them.
+    const text = (preserved ? stripQuoteMarkers(raw) : raw).replace(/\s+/g, " ").trim();
     if (!text) return null;
     return {
       nodes,
@@ -689,25 +695,9 @@ function isProsePre(el: Element): boolean {
 }
 
 // ---- e-mail quotations ---------------------------------------------------------------
-
-/**
- * Quote depth of a line: "> " once, ">> " twice. In a mailing-list message the quoted
- * lines are somebody ELSE's words and the reply around them is the author's, so the two
- * never belong to one unit — the same boundary a <blockquote> draws in HTML.
- */
-function quoteDepth(line: string): number {
-  let depth = 0;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === ">") {
-      depth++;
-      continue;
-    }
-    if (ch === " " || ch === "\t") continue;
-    break;
-  }
-  return depth;
-}
+//
+// Depth, markers and stripping live in lib/dom/text.ts: the walk reads them here, and the
+// map back from an offset to the page has to drop exactly the same characters.
 
 /** Offset of the first line whose quote depth differs from the line before it, or -1.
  *  Blank lines carry no depth of their own and never break the comparison. The text of
@@ -728,14 +718,6 @@ function nextQuoteBoundary(s: string): number {
     lineStart = i + 1;
   }
   return -1;
-}
-
-/** Quote depth a run speaks in: that of its first line with text in it. */
-function runQuoteDepth(raw: string): number {
-  for (const line of raw.split("\n")) {
-    if (line.trim() !== "") return quoteDepth(line);
-  }
-  return 0;
 }
 
 // ---- unit assembly ---------------------------------------------------------------
@@ -968,7 +950,7 @@ function createAssembler(
   }
 
   function emit(runs: Run[]): void {
-    const parts: UnitPart[] = runs.map((r) => ({ nodes: r.nodes, container: r.container }));
+    const parts: UnitPart[] = runs.map((r) => ({ nodes: r.nodes, container: r.container, preserved: r.preserved }));
     const text = runs.map((r) => r.text).join("\n\n").slice(0, MAX_UNIT_TEXT_CHARS);
     const unit: Unit = {
       id: "",
