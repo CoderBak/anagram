@@ -209,7 +209,12 @@ async function read(doc: PdfDocument, source: { name: string; url: string | null
       await breathe();
       continue;
     }
+    // Marked, because this is the one piece of the reader whose cost grows with the
+    // document: it runs over EVERYTHING read so far, once per batch. test/perf.mjs reads
+    // these entries and holds the total and the worst single run to a budget.
+    const startedAt = performance.now();
     unitSource.setBlocks(reflowPdf(texts));
+    performance.measure("anagram-reflow", { start: startedAt });
     if (!started && texts.some((p) => p.items.length > 0)) {
       started = true;
       await startPipeline(source.url ?? name, unitSource, view);
@@ -291,7 +296,11 @@ function fail(failure: HandoffFailure | string): void {
 async function openFromTicket(ticket: string, src: string): Promise<void> {
   const load = beginLoad();
   say(t("readerLoading"));
+  // Marked for the same reason the reflow is: this is where a large document's bytes
+  // cross the last hop, and it is the number to look at if opening one ever feels slow.
+  const startedAt = performance.now();
   const held = await claimPdfBytes(ticket, load.signal);
+  performance.measure("anagram-handoff", { start: startedAt });
   if (!load.owns()) return;
   // The ticket is spent, and a spent one in the address bar only invites a reload that
   // cannot work. What stays is the document's own address, which is all `src` is for.

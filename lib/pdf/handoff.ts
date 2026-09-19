@@ -34,21 +34,25 @@ export const PDF_BYTES_PORT = "anagram-pdf-bytes";
 export const PDF_CLAIM_PORT = "anagram-pdf-claim";
 
 /**
- * Raw bytes per relayed chunk. Measured on a 50 MB PDF (see the report in CHANGELOG):
- * the whole relay is dominated by the base64 encode/decode rather than by the message
- * count, so anything from 64 KiB to 1 MiB performs the same. A quarter of a megabyte is
- * ~200 messages for a 50 MB file — small enough that one message is never a long task,
- * large enough that the per-message overhead disappears.
+ * Raw bytes per relayed chunk. Measured on a 45 MB document (Chromium 141, this machine,
+ * 2026-09-20) at 64 KiB, 256 KiB and 1 MiB: the tab's leg is 727–740 ms and the reader's
+ * 110–170 ms whichever it is, because the cost is the base64 encode and decode and not the
+ * number of messages. A quarter of a megabyte is ~180 messages for a file that size —
+ * small enough that no single one is a long task, large enough that the per-message
+ * overhead has disappeared.
  */
 export const CHUNK_BYTES = 256 * 1024;
 
 /**
- * The cap on the TAB path, which is lower than the reader's own 100 MiB cap on a file
- * picked off the disk. A file dropped on the reader makes one hop and one copy; a
- * document coming through here exists as base64 in the worker AND as bytes in the reader
- * at the same moment, so 50 MiB is about 120 MB of live memory across two processes at
- * the worst instant. A PDF above that is a scan or a book of images — a document with
- * very little text in it, which is the one kind this extension has nothing to say about.
+ * The cap on the TAB path, lower than the reader's own 100 MiB cap on a file picked off
+ * the disk, because a file from the disk makes one hop and one copy and a document coming
+ * through here does not. Measured at 45 MB: the reader page peaks at 126 MB — the decoded
+ * document, plus the base64 of it as garbage the collector has not caught up with — and
+ * the worker holds another ~60 MB of base64 until the reader has pulled it. 50 MiB puts
+ * the worst instant around 200 MB across the two, which is a lot to ask for a PDF and far
+ * too little to be in any danger. Above that a PDF is a scan or a book of images: a
+ * document with almost no text in it, which is the one kind this extension has nothing to
+ * say about anyway.
  */
 export const MAX_HANDOFF_BYTES = 50 * 1024 * 1024;
 

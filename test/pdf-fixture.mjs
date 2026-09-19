@@ -7,6 +7,7 @@
 // it: test/scenarios.mjs in Chromium and test/firefox.mjs in Firefox, and they must read
 // the SAME document — a second copy of this would drift the moment one of them changed.
 import http from "node:http";
+import { createHash } from "node:crypto";
 
 // The document is built to exercise the reflow rules that matter: a running head and a
 // page number on both pages (dropped), a heading in larger type, a paragraph whose last
@@ -56,15 +57,85 @@ export const PDF_PARAS = [
 /** Lay rows out as a column of 11 pt lines from `top` downward (PDF y grows upward). */
 export const pdfColumn = (rows, top) => rows.map((text, i) => ({ x: 72, y: top - i * 14, size: 11, text }));
 
+// ---- encryption ---------------------------------------------------------------------------
+//
+// A password-protected PDF, written here for the same reason the plain one is: qpdf is not
+// on this machine and a binary fixture in the repository would be opaque. This is the
+// standard security handler at its oldest and simplest — /V 1 /R 2, a 40-bit RC4 key — which
+// is what "encrypted PDF" meant for fifteen years and what pdf.js still opens. RC4 is a
+// stream cipher, so an encrypted content stream is exactly as long as the plain one and the
+// /Length written above it needs no adjusting.
+//
+// Algorithms 2, 3, 4 and 1 of the PDF specification's §7.6.3, in that order. Nothing here
+// is a security claim: it is a lock a test needs a key for.
+
+/** The specification's padding string, appended to every password and truncated to 32. */
+const PAD = Buffer.from([
+  0x28, 0xbf, 0x4e, 0x5e, 0x4e, 0x75, 0x8a, 0x41, 0x64, 0x00, 0x4e, 0x56, 0xff, 0xfa, 0x01, 0x08,
+  0x2e, 0x2e, 0x00, 0xb6, 0xd0, 0x68, 0x3e, 0x80, 0x2f, 0x0c, 0xa9, 0xfe, 0x64, 0x53, 0x69, 0x7a,
+]);
+/** A fixed file ID, so the same password always produces the same bytes. */
+const FILE_ID = Buffer.from("anagram-test-pdf", "latin1");
+/** Everything permitted; the reserved high bits are what makes it -1 rather than 0. */
+const PERMISSIONS = -1;
+
+const md5 = (buf) => createHash("md5").update(buf).digest();
+const padPassword = (password) => Buffer.concat([Buffer.from(password, "latin1"), PAD]).subarray(0, 32);
+
+/** RC4. Node's OpenSSL dropped it years ago, and it is fifteen lines. */
+function rc4(key, data) {
+  const s = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) s[i] = i;
+  let j = 0;
+  for (let i = 0; i < 256; i++) {
+    j = (j + s[i] + key[i % key.length]) & 255;
+    [s[i], s[j]] = [s[j], s[i]];
+  }
+  const out = Buffer.alloc(data.length);
+  let i = 0;
+  j = 0;
+  for (let n = 0; n < data.length; n++) {
+    i = (i + 1) & 255;
+    j = (j + s[i]) & 255;
+    [s[i], s[j]] = [s[j], s[i]];
+    out[n] = data[n] ^ s[(s[i] + s[j]) & 255];
+  }
+  return out;
+}
+
+/** The /Encrypt dictionary's own entries, and the key every object is encrypted under. */
+function standardSecurity(password) {
+  const owner = rc4(md5(padPassword(password)).subarray(0, 5), padPassword(password));
+  const p = Buffer.alloc(4);
+  p.writeInt32LE(PERMISSIONS);
+  const key = md5(Buffer.concat([padPassword(password), owner, p, FILE_ID])).subarray(0, 5);
+  return { owner, user: rc4(key, PAD), key };
+}
+
+/** The per-object key: the file key salted with the object and generation numbers. */
+function objectKey(key, objectNumber) {
+  const salt = Buffer.from([objectNumber & 255, (objectNumber >> 8) & 255, (objectNumber >> 16) & 255, 0, 0]);
+  return md5(Buffer.concat([key, salt])).subarray(0, Math.min(key.length + 5, 16));
+}
+
 /**
  * A PDF from pages of placed lines. Objects are written in order, their byte offsets
  * collected for the cross-reference table, and the whole thing encoded as latin1 so that
  * the /Length of each content stream is the byte count the parser will find.
+ *
+ * With `password`, the content streams are encrypted and the trailer carries /Encrypt and
+ * /ID — the document is then unreadable until somebody types that password.
+ *
+ * `padBytes` adds a stream object nothing refers to, which is how a file of a stated SIZE
+ * is written without giving pdf.js anything more to parse: the size caps and the relay are
+ * about bytes on the wire, and a fifty-megabyte document made of real pages would take
+ * minutes to open for a measurement that has nothing to do with its pages.
  */
-export function buildPdf(pages) {
+export function buildPdf(pages, { password = null, padBytes = 0 } = {}) {
   const esc = (s) => s.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
   const objects = [];
   const add = (body) => objects.push(body) && objects.length;
+  const security = password === null ? null : standardSecurity(password);
 
   const catalog = add(null);
   const pageTree = add(null);
@@ -73,13 +144,17 @@ export function buildPdf(pages) {
 
   const pageIds = [];
   for (const lines of pages) {
-    const stream =
+    const plain =
       "BT\n" +
       lines
         .map((l) => `/${l.bold ? "F2" : "F1"} ${l.size} Tf\n1 0 0 1 ${l.x} ${l.y} Tm\n(${esc(l.text)}) Tj`)
         .join("\n") +
       "\nET\n";
-    const contents = add(`<< /Length ${Buffer.byteLength(stream, "latin1")} >>\nstream\n${stream}endstream`);
+    const contents = objects.length + 1; // the object number this stream is about to take
+    const body = security
+      ? rc4(objectKey(security.key, contents), Buffer.from(plain, "latin1")).toString("latin1")
+      : plain;
+    add(`<< /Length ${Buffer.byteLength(plain, "latin1")} >>\nstream\n${body}endstream`);
     pageIds.push(
       add(
         `<< /Type /Page /Parent ${pageTree} 0 R /MediaBox [0 0 612 792] ` +
@@ -89,6 +164,15 @@ export function buildPdf(pages) {
   }
   objects[catalog - 1] = `<< /Type /Catalog /Pages ${pageTree} 0 R >>`;
   objects[pageTree - 1] = `<< /Type /Pages /Kids [${pageIds.map((n) => `${n} 0 R`).join(" ")}] /Count ${pageIds.length} >>`;
+  if (padBytes > 0) add(`<< /Length ${padBytes} >>\nstream\n${"\n".repeat(padBytes)}endstream`);
+  // The /Encrypt dictionary is itself never encrypted, which is why it comes last: its
+  // object number takes part in nothing.
+  const encrypt = security
+    ? add(
+        `<< /Filter /Standard /V 1 /R 2 /Length 40 ` +
+          `/O <${security.owner.toString("hex")}> /U <${security.user.toString("hex")}> /P ${PERMISSIONS} >>`,
+      )
+    : null;
 
   let pdf = "%PDF-1.4\n";
   const offsets = [];
@@ -99,7 +183,11 @@ export function buildPdf(pages) {
   const startxref = Buffer.byteLength(pdf, "latin1");
   pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
   for (const off of offsets) pdf += `${String(off).padStart(10, "0")} 00000 n \n`;
-  pdf += `trailer\n<< /Size ${objects.length + 1} /Root ${catalog} 0 R >>\nstartxref\n${startxref}\n%%EOF\n`;
+  const id = FILE_ID.toString("hex");
+  pdf +=
+    `trailer\n<< /Size ${objects.length + 1} /Root ${catalog} 0 R` +
+    (encrypt ? ` /Encrypt ${encrypt} 0 R /ID [<${id}> <${id}>]` : "") +
+    ` >>\nstartxref\n${startxref}\n%%EOF\n`;
   return Buffer.from(pdf, "latin1");
 }
 
@@ -170,6 +258,14 @@ export const GROUPED_PDF = buildPdf([
     ...pdfColumn(GROUPED_PARAS[4], 418),
   ],
 ]);
+
+/** The password the locked fixture below is locked with. */
+export const PDF_PASSWORD = "anagram";
+/** The same document, behind a password: the reader has to ask for it and be answered. */
+export const LOCKED_PDF = buildPdf(
+  [[{ x: 72, y: 700, size: 16, bold: true, text: PDF_HEADING }, ...pdfColumn(PDF_PARAS[0], 670)]],
+  { password: PDF_PASSWORD },
+);
 
 /**
  * A long two-column paper. Two suites need a document that does not fit on one screen:
