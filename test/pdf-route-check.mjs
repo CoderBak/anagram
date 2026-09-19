@@ -24,7 +24,7 @@ import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { withFakeDaemon, requireBuild, BADGE_SEL } from "./harness.mjs";
-import { TEST_PDF } from "./pdf-fixture.mjs";
+import { TEST_PDF, LOCKED_PDF, PDF_PASSWORD, openPdfInReader } from "./pdf-fixture.mjs";
 
 requireBuild();
 
@@ -34,6 +34,12 @@ const record = (name, ok, note = "") =>
 
 // ---- the fixtures ---------------------------------------------------------------------
 
+/** How big the "too large" fixture below really is — comfortably over the 50 MiB cap. */
+const OVERSIZED = 70 * 1024 * 1024;
+/** How much of it each request took before letting go. The tab's own load reads all of
+ *  it; the content script's re-read must stop at the cap, which is what this shows. */
+const oversizedSends = [];
+
 /** Serve the PDFs. `/paper.pdf` stands in for a PDF with no twin at all. */
 const files = await new Promise((resolve) => {
   const server = http.createServer((req, res) => {
@@ -41,6 +47,43 @@ const files = await new Promise((resolve) => {
     if (path === "/ordinary.html") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end("<!doctype html><html lang=en><body><p>an ordinary page</p></body></html>");
+      return;
+    }
+    // A document that says it is a PDF and goes on for ever: served in megabyte pieces,
+    // with NO content-length, so the only thing that can stop it is the reader's own
+    // running total. `oversizedSent` is how the check knows it really stopped.
+    if (path === "/huge.pdf") {
+      res.writeHead(200, { "content-type": "application/pdf" });
+      const piece = Buffer.alloc(1024 * 1024, 0x20);
+      Buffer.from("%PDF-1.7\n", "latin1").copy(piece);
+      const slot = oversizedSends.push(0) - 1;
+      let open = true;
+      res.on("close", () => {
+        open = false;
+      });
+      const pump = () => {
+        while (open && oversizedSends[slot] < OVERSIZED) {
+          oversizedSends[slot] += piece.length;
+          if (!res.write(piece)) {
+            res.once("drain", pump);
+            return;
+          }
+        }
+        if (open) res.end();
+      };
+      pump();
+      return;
+    }
+    // A sign-in page served under a .pdf address, which is what a paper behind a library
+    // login really answers with. Nothing but the first bytes can tell the two apart.
+    if (path === "/notreally.pdf") {
+      res.writeHead(200, { "content-type": "application/pdf" });
+      res.end("<!doctype html><html lang=en><body><p>Please sign in to read this paper.</p></body></html>");
+      return;
+    }
+    if (path === "/locked.pdf") {
+      res.writeHead(200, { "content-type": "application/pdf", "content-length": LOCKED_PDF.length });
+      res.end(LOCKED_PDF);
       return;
     }
     if (!path.endsWith(".pdf")) {
@@ -68,7 +111,29 @@ const { daemon, context, sw, extId } = await withFakeDaemon();
 // Every address the extension asks for, so the checks below can say what was contacted and
 // how often.
 const requested = [];
-context.on("request", (request) => requested.push(request.url()));
+/** …and what the READER PAGE asked for, which after this change must be nothing at all. */
+const fromReader = [];
+context.on("request", (request) => {
+  requested.push(request.url());
+  // A service worker's requests have no frame at all, and Playwright throws rather than
+  // saying so — which is itself the answer: they did not come from the reading mode.
+  let from = "";
+  try {
+    from = request.frame()?.url() ?? "";
+  } catch {
+    return;
+  }
+  // A NAVIGATION is not a fetch: the reading mode handing its tab back to the document is
+  // the whole point of the dead-ticket rule. What must never appear is a subresource — a
+  // fetch, an XHR, an image, a font — from the reading mode to anywhere but ourselves.
+  if (
+    from.includes("/reader.html") &&
+    request.resourceType() !== "document" &&
+    !request.url().startsWith("chrome-extension://")
+  ) {
+    fromReader.push(`${request.resourceType()} ${request.url().slice(0, 100)}`);
+  }
+});
 
 // arxiv.org answers here and nowhere else, so an arXiv paper can be opened without the
 // real site being touched — and so that a probe, if one ever came back, would be recorded
@@ -129,7 +194,7 @@ async function visit(url, { settle = 4000 } = {}) {
     "the ball's chip on a paper's PDF opens THAT PDF in the reading mode",
     before.chip === "Analyze PDF" &&
       page.url().startsWith(`${READER}?src=`) &&
-      decodeURIComponent(page.url().split("src=")[1]) === "https://arxiv.org/pdf/2402.17764",
+      new URL(page.url()).searchParams.get("src") === "https://arxiv.org/pdf/2402.17764",
     JSON.stringify({ chip: before.chip, landed: page.url().slice(0, 100) }),
   );
   await page.close();
@@ -150,7 +215,7 @@ async function visit(url, { settle = 4000 } = {}) {
   await page.waitForTimeout(3000);
   record(
     "the popup's button takes the same route, and the version in the address is kept",
-    decodeURIComponent(page.url().split("src=")[1] ?? "") === "https://arxiv.org/pdf/2402.17764v1",
+    new URL(page.url()).searchParams.get("src") === "https://arxiv.org/pdf/2402.17764v1",
     page.url().slice(0, 100),
   );
   await page.close();
@@ -282,30 +347,38 @@ await setAutoOpen(true);
 }
 
 {
-  // A reload of the reading mode is the reader's own URL reloading — it stays the reader.
+  // A reload of the reading mode. The ticket it opened with is spent, so the page has no
+  // bytes and does not fetch any: it goes back to the document, and the automatic route
+  // brings it here again with a fresh handoff. One round trip, and no ping-pong.
   const page = await visit(files.url("/reload.pdf"));
   await page.reload({ waitUntil: "load" }).catch(() => {});
-  await page.waitForTimeout(2500);
+  await page.waitForTimeout(6000);
+  const reloaded = await page
+    .evaluate(() => ({ pages: document.querySelectorAll(".page").length, url: location.href }))
+    .catch(() => ({ pages: 0, url: null }));
   record(
-    "on: reloading an automatically opened reading mode stays in the reading mode",
-    page.url().startsWith(`${READER}?src=`),
-    page.url().slice(0, 80),
+    "on: reloading an automatically opened reading mode comes back to it, with the document",
+    page.url().startsWith(`${READER}?src=`) && reloaded.pages === 2,
+    JSON.stringify({ url: page.url().slice(0, 70), pages: reloaded.pages }),
   );
   await page.close();
 }
 
 {
-  // A local PDF. Whether this can work at all is decided by one tick in chrome://extensions
-  // ("Allow access to file URLs"), which governs BOTH the content script on a file: page
-  // and the reader's own fetch of it — so where the first happens the second does too.
+  // A LOCAL PDF, which the reading mode can no longer open at all — for two reasons now,
+  // either of which would be enough on its own.
   //
-  // SINCE OPTIONAL SITE ACCESS: the manifest no longer declares `file:///*` at all (it
-  // asks for the daemon's two loopback hosts and offers the two http(s) patterns), and
-  // that tick grants nothing an extension has not declared. So this SKIPs, and a local
-  // PDF is read by dropping the file into the reading mode. Add `file:///*` to
-  // host_permissions — it grants nothing by itself, the tick still gates it — and this
-  // check comes back to life.
-  const allowed = await sw
+  // Since optional site access, the manifest declares no `file:///*` at all (it asks for
+  // the daemon's two loopback hosts and offers the two http(s) patterns), and the tick in
+  // chrome://extensions grants nothing an extension has not declared — so no content
+  // script runs on a file: page. And since the reading mode is handed its bytes by the tab
+  // showing the document, even a script that DID run there could not help: a page on the
+  // file scheme may not re-read itself, `fetch` and XMLHttpRequest both refused (verified
+  // in Chromium 141 on 2026-09-20).
+  //
+  // So the tab is left exactly as it was: the local PDF, in the browser's own viewer,
+  // which is what the reader would be looking at anyway. The drop zone is the way in.
+  const declared = await sw
     .evaluate(
       async () =>
         (await chrome.extension.isAllowedFileSchemeAccess()) &&
@@ -314,17 +387,10 @@ await setAutoOpen(true);
     .catch(() => false);
   const page = await visit(`file://${LOCAL_PDF}`);
   await page.waitForTimeout(2000);
-  const read = await page
-    .evaluate(() => ({
-      pages: document.querySelectorAll(".page").length,
-      spans: document.querySelectorAll(".textLayer span").length,
-      notice: document.getElementById("notice")?.textContent ?? null,
-    }))
-    .catch(() => ({ pages: 0, spans: 0, notice: null }));
   record(
-    "on: a local PDF opens and is really read, where file access is allowed at all",
-    allowed ? page.url().startsWith(`${READER}?src=file`) && read.pages === 2 && read.spans >= 29 : null,
-    JSON.stringify({ allowed, url: page.url().slice(0, 60), ...read }),
+    "on: a local PDF is left alone — nothing here can read it, so nothing pretends to",
+    page.url() === `file://${LOCAL_PDF}`,
+    JSON.stringify({ fileAccessDeclared: declared, url: page.url().slice(-40) }),
   );
   await page.close();
 }
@@ -334,7 +400,7 @@ await setAutoOpen(true);
   const page = await visit("https://arxiv.org/pdf/2402.17764");
   record(
     "on: an arXiv PDF tab goes to the reading mode showing that same PDF",
-    decodeURIComponent(page.url().split("src=")[1] ?? "") === "https://arxiv.org/pdf/2402.17764",
+    new URL(page.url()).searchParams.get("src") === "https://arxiv.org/pdf/2402.17764",
     page.url().slice(0, 100),
   );
   await page.close();
@@ -355,7 +421,225 @@ await setAutoOpen(false);
   await page.close();
 }
 
-// ---- E: what left the machine ------------------------------------------------------------------
+// ---- E: the handoff — where the bytes come from, and what stops them --------------------------
+//
+// The reading mode fetches nothing. The tab that is showing the PDF re-reads it, the worker
+// holds it under a one-time ticket, and only then does the tab become the reader. Each of
+// the ways that can go wrong gets a check, because each of them used to be a defect: an
+// unbounded buffer, a load nobody owned, and a page on the extension's own origin asking
+// the open web for a document.
+
+await setAutoOpen(false);
+
+{
+  // THE HAPPY PATH, byte for byte. The reader's own copy is hashed in the page and
+  // compared with the file this suite served — a relay that dropped, duplicated or
+  // reordered a chunk would still very likely render, and would still be wrong.
+  const page = await openPdfInReader(context, files.url("/exact.pdf"));
+  await page.waitForSelector("#pages:not(.reading)", { timeout: 25000 }).catch(() => {});
+  const digest = await page
+    .evaluate(async () => {
+      // The document is gone from the page by now (pdf.js transfers the buffer to its
+      // worker), so what is hashed is the text layer — every glyph of every page, in
+      // order, which is the only thing the bytes were wanted for.
+      const text = [...document.querySelectorAll(".textLayer span")].map((s) => s.textContent).join("");
+      const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+      return { hash: [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join(""), chars: text.length };
+    })
+    .catch(() => ({ hash: null, chars: 0 }));
+  // …and the same document dropped straight onto the reader as a FILE, which is the one
+  // path that never went near the relay. Two routes, one document: if they agree, every
+  // byte survived the trip.
+  const dropped = await context.newPage();
+  await dropped.goto(READER, { waitUntil: "load" });
+  await dropped.setInputFiles("#file", { name: "exact.pdf", mimeType: "application/pdf", buffer: TEST_PDF });
+  await dropped.waitForSelector("#pages:not(.reading)", { timeout: 25000 }).catch(() => {});
+  const direct = await dropped
+    .evaluate(async () => {
+      const text = [...document.querySelectorAll(".textLayer span")].map((s) => s.textContent).join("");
+      const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+      return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    })
+    .catch(() => null);
+  record(
+    "handoff: the document that arrives through the tab is the document, byte for byte",
+    digest.hash !== null && digest.hash === direct && digest.chars > 500,
+    JSON.stringify({ relayed: digest.hash?.slice(0, 16), direct: direct?.slice(0, 16), chars: digest.chars }),
+  );
+  // The ticket is spent as soon as it is claimed: the address it arrived on no longer
+  // carries one, and nothing of the document is left in the worker.
+  record(
+    "handoff: the ticket is spent — the address keeps only the document's own name",
+    page.url() === `${READER}?src=${encodeURIComponent(files.url("/exact.pdf"))}`,
+    page.url().slice(0, 90),
+  );
+  await dropped.close();
+  await page.close();
+}
+
+{
+  // A DOCUMENT THAT NEVER ENDS. No content-length, so the only thing that can stop it is
+  // the running total — and it has to stop long before the end, or the cap is a cap on
+  // what has already been bought.
+  const page = await openPdfInReader(context, files.url("/huge.pdf"), { timeout: 40000 });
+  await page.waitForTimeout(3000);
+  const state = await page
+    .evaluate(() => ({ notice: document.getElementById("notice")?.textContent ?? null, drop: !document.getElementById("drop").hidden }))
+    .catch(() => ({ notice: null, drop: false }));
+  const megabytes = oversizedSends.map((n) => Math.round(n / 1048576));
+  record(
+    "handoff: an oversized document is stopped at the cap, not after it",
+    state.notice === "This PDF is too large to read here." &&
+      state.drop &&
+      megabytes.some((n) => n >= 40 && n <= 60),
+    JSON.stringify({ ...state, megabytesPerRequest: megabytes }),
+  );
+  await page.close();
+}
+
+{
+  // A SIGN-IN PAGE UNDER A .pdf ADDRESS, served as application/pdf. Only the first bytes
+  // can tell them apart, and handing this to pdf.js would say "could not be read" about a
+  // file that is not a PDF at all.
+  const page = await openPdfInReader(context, files.url("/notreally.pdf"), { timeout: 40000 });
+  await page.waitForTimeout(2500);
+  const notice = await page.evaluate(() => document.getElementById("notice")?.textContent ?? null).catch(() => null);
+  record(
+    "handoff: a page that is not a PDF is refused on its first bytes, not on its content type",
+    notice === "This file could not be read as a PDF.",
+    String(notice),
+  );
+  await page.close();
+}
+
+{
+  // A DEAD TICKET: the address pasted into a fresh tab, with nothing behind it. The reading
+  // mode does not fetch, so it goes back to the document — once. A second landing on the
+  // same source is a handoff that keeps failing, and the tab must not ping-pong.
+  const src = files.url("/pasted.pdf");
+  const page = await context.newPage();
+  const visits = [];
+  page.on("framenavigated", (f) => {
+    if (f === page.mainFrame()) visits.push(f.url());
+  });
+  await page.goto(`${READER}?src=${encodeURIComponent(src)}`, { waitUntil: "load" }).catch(() => {});
+  await page.waitForTimeout(5000);
+  const reader = visits.filter((u) => u.startsWith(READER)).length;
+  record(
+    "handoff: a pasted reader address goes back to the PDF, and stays there",
+    page.url() === src && reader === 1,
+    JSON.stringify({ landed: page.url().slice(-20), visits: visits.length, reader }),
+  );
+  await page.close();
+}
+
+{
+  // The same, with the switch ON: the ordinary route picks the tab back up and this time
+  // there really are bytes. Still no ping-pong — the reader is reached once more, not
+  // over and over.
+  await setAutoOpen(true);
+  const src = files.url("/pasted-on.pdf");
+  const page = await context.newPage();
+  const visits = [];
+  page.on("framenavigated", (f) => {
+    if (f === page.mainFrame()) visits.push(f.url());
+  });
+  await page.goto(`${READER}?src=${encodeURIComponent(src)}`, { waitUntil: "load" }).catch(() => {});
+  await page.waitForTimeout(8000);
+  const pages = await page.evaluate(() => document.querySelectorAll(".page").length).catch(() => 0);
+  // The tab goes to the PDF exactly ONCE. Twice would be the ping-pong this rule exists
+  // to prevent; the reader's own address appears more than once only because spending a
+  // ticket rewrites it in place.
+  record(
+    "handoff: with the switch on, the way back brings the document — and settles",
+    page.url().startsWith(`${READER}?src=`) && pages === 2 && visits.filter((u) => u === src).length === 1,
+    JSON.stringify({ url: page.url().slice(0, 60), pages, visits: visits.map((u) => (u === src ? "pdf" : "reader")) }),
+  );
+  await page.close();
+  await setAutoOpen(false);
+}
+
+{
+  // AN ENCRYPTED PDF. The reading mode used to say "this is password-protected" and stop;
+  // now it asks, in the bar, and a wrong answer marks the field and empties it.
+  const page = await openPdfInReader(context, files.url("/locked.pdf"), { timeout: 40000 });
+  await page.waitForSelector("#password:not([hidden])", { timeout: 25000 }).catch(() => {});
+  const asked = await page
+    .evaluate(() => ({
+      shown: !document.getElementById("password").hidden,
+      invalid: document.getElementById("passwordInput").getAttribute("aria-invalid"),
+      focused: document.activeElement?.id ?? null,
+      notice: document.getElementById("notice").textContent,
+    }))
+    .catch(() => ({ shown: false }));
+  await page.fill("#passwordInput", "not the password");
+  await page.press("#passwordInput", "Enter");
+  await page.waitForFunction(() => document.getElementById("passwordInput").getAttribute("aria-invalid") === "true", null, { timeout: 15000 }).catch(() => {});
+  const refused = await page
+    .evaluate(() => ({
+      invalid: document.getElementById("passwordInput").getAttribute("aria-invalid"),
+      value: document.getElementById("passwordInput").value,
+      pages: document.querySelectorAll(".page").length,
+    }))
+    .catch(() => ({}));
+  await page.fill("#passwordInput", PDF_PASSWORD);
+  await page.press("#passwordInput", "Enter");
+  await page.waitForSelector("#pages:not(.reading)", { timeout: 25000 }).catch(() => {});
+  const opened = await page
+    .evaluate(() => ({
+      shown: !document.getElementById("password").hidden,
+      pages: document.querySelectorAll(".page").length,
+      spans: document.querySelectorAll(".textLayer span").length,
+    }))
+    .catch(() => ({}));
+  record(
+    "password: the reader asks in the bar, with nothing to read yet and the field ready",
+    asked.shown === true && asked.invalid === null && asked.focused === "passwordInput" && asked.notice === "",
+    JSON.stringify(asked),
+  );
+  record(
+    "password: a wrong one marks the field, empties it, and shows nothing of the document",
+    refused.invalid === "true" && refused.value === "" && refused.pages === 0,
+    JSON.stringify(refused),
+  );
+  record(
+    "password: the right one opens it, and the field goes away",
+    opened.shown === false && opened.pages === 1 && opened.spans >= 9,
+    JSON.stringify(opened),
+  );
+  await page.close();
+}
+
+{
+  // THE ARXIV LINK. A quiet link in the bar, to the page this paper also exists as. It is
+  // a link and nothing else: no probe, no request, until somebody clicks it.
+  // Opened on the line that says the document could not be read, because that is the one
+  // state where the bar is up and the page is going nowhere — a reader address with no
+  // bytes behind it otherwise hands the tab straight back to the PDF, as it should.
+  const before = asked.length;
+  const page = await context.newPage();
+  await page
+    .goto(`${READER}?src=${encodeURIComponent("https://arxiv.org/pdf/2402.17764")}&err=read`, { waitUntil: "load" })
+    .catch(() => {});
+  await page.waitForTimeout(1200);
+  const link = await page
+    .evaluate(() => {
+      const a = document.getElementById("twin");
+      return { hidden: a.hidden, href: a.getAttribute("href"), label: a.textContent };
+    })
+    .catch(() => ({ hidden: true }));
+  record(
+    "arXiv: the reader offers the paper's HTML page as a link, having asked nobody about it",
+    link.hidden === false &&
+      link.href === "https://arxiv.org/html/2402.17764" &&
+      link.label === "HTML" &&
+      asked.length === before,
+    JSON.stringify({ ...link, newRequests: asked.length - before }),
+  );
+  await page.close();
+}
+
+// ---- F: what left the machine ------------------------------------------------------------------
 
 {
   // Every request the whole run made, checked against the only places anything may go: the
@@ -376,6 +660,19 @@ await setAutoOpen(false);
     "privacy: every arxiv.org request was a tab going to a paper, not the extension asking",
     asked.every((a) => a.kind === "document"),
     JSON.stringify(asked.filter((a) => a.kind !== "document").slice(0, 5)),
+  );
+}
+
+{
+  // AND THE ONE THAT MATTERS MOST: while a remote PDF was being opened, did the READER
+  // PAGE itself ask for anything outside the extension? Playwright reports the frame each
+  // request came from, so this is watched at the browser level rather than taken on
+  // trust from the page — the old code's `fetch(src, {credentials:"include"})` would be
+  // sitting in this list.
+  record(
+    "privacy: the reading mode itself requested nothing beyond the extension's own files",
+    fromReader.length === 0,
+    JSON.stringify(fromReader.slice(0, 5)),
   );
 }
 
