@@ -332,10 +332,10 @@ const PDF_PAGES = 30;
 /** Pages within the render margin, plus the two a scroll can leave half-drawn behind it. */
 const MAX_LIVE_CANVASES = 8;
 {
-  const { servePdfs, buildTwoColumnPdf } = await import("./pdf-fixture.mjs");
+  const { servePdfs, buildTwoColumnPdf, handOverPdf } = await import("./pdf-fixture.mjs");
   const daemonE = await startFakeDaemon();
   const pdfs = await servePdfs({ "/paper.pdf": buildTwoColumnPdf(PDF_PAGES) });
-  const { context: ctxE, extId } = await launchExtension({ backendUrl: daemonE.url, viewport: { width: 1200, height: 900 } });
+  const { context: ctxE } = await launchExtension({ backendUrl: daemonE.url, viewport: { width: 1200, height: 900 } });
   const reader = await ctxE.newPage();
   await reader.addInitScript(() => {
     window.__longTasks = [];
@@ -343,15 +343,30 @@ const MAX_LIVE_CANVASES = 8;
       for (const e of list.getEntries()) window.__longTasks.push(Math.round(e.duration));
     }).observe({ entryTypes: ["longtask"] });
   });
+  // The tab shows the PDF and the ball hands it over — the reading mode is given bytes,
+  // it never fetches an address (lib/pdf/handoff.ts). The clock starts at the click,
+  // which is the moment a reader is waiting from.
+  await reader.goto(pdfs.url("/paper.pdf"), { waitUntil: "load" }).catch(() => {});
+  await reader
+    .waitForFunction(() => !!document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".action"), null, { timeout: 30000 })
+    .catch(() => {});
   const startedAt = Date.now();
-  await reader.goto(`chrome-extension://${extId}/reader.html?src=${encodeURIComponent(pdfs.url("/paper.pdf"))}`, {
-    waitUntil: "domcontentloaded",
-  });
+  await handOverPdf(reader, { timeout: 30000 });
   await reader.waitForFunction(() => [...document.querySelectorAll(".page canvas")].some((c) => c.width > 0), null, { timeout: 30000 });
   const firstPageMs = Date.now() - startedAt;
   await reader.waitForSelector("#pages:not(.reading)", { timeout: 60000 });
   const allTextMs = Date.now() - startedAt;
   const building = await reader.evaluate(() => Math.max(0, ...window.__longTasks));
+  // The two costs that grow with the document: the whole relay, and the reflow, which is
+  // re-run over everything read so far at every batch boundary.
+  const marks = await reader.evaluate(() => {
+    const runs = performance.getEntriesByName("anagram-reflow").map((e) => e.duration);
+    return {
+      handoffMs: Math.round(performance.getEntriesByName("anagram-handoff")[0]?.duration ?? 0),
+      reflowMs: Math.round(runs.reduce((a, b) => a + b, 0)),
+      worstReflowMs: Math.round(Math.max(0, ...runs)),
+    };
+  });
 
   // To the end of the document and back — the canvases in between must not be kept.
   await reader.evaluate(async () => {
@@ -384,6 +399,12 @@ const MAX_LIVE_CANVASES = 8;
       held.live > 0 && held.live <= MAX_LIVE_CANVASES,
       `${held.live} of ${held.pages} pages still hold a bitmap`,
     ],
+    // MEASURED on 300 pages, which is the reader's own cap: 647 ms in total and 83 ms for
+    // the worst single run. Thirty pages is a tenth of that and the budget is generous,
+    // so what this catches is the reflow becoming quadratic in something new.
+    ["PDF reader: the whole reflow < 400ms", marks.reflowMs < 400, `${marks.reflowMs}ms total, worst run ${marks.worstReflowMs}ms`],
+    ["PDF reader: no single reflow is a frozen second < 200ms", marks.worstReflowMs < 200, `${marks.worstReflowMs}ms`],
+    ["PDF reader: the bytes cross the last hop < 500ms", marks.handoffMs < 500, `${marks.handoffMs}ms`],
   );
 }
 

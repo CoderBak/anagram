@@ -21,7 +21,18 @@ import { readFileSync } from "node:fs";
 import http from "node:http";
 import { launchExtension, serveHtml, artifact, uiLanguage, uiLanguageOf, BADGE_SEL } from "./harness.mjs";
 import { startFakeDaemon } from "./fake-daemon.mjs";
-import { GROUPED_PARAS, GROUPED_UNIT_TEXT, PDF_HEAD, PDF_HEADING, PDF_PARAS, TEST_PDF, servePdfs } from "./pdf-fixture.mjs";
+import {
+  GROUPED_PARAS,
+  GROUPED_UNIT_TEXT,
+  PDF_HEAD,
+  PDF_HEADING,
+  PDF_PARAS,
+  TEST_PDF,
+  TALL_PDF,
+  servePdfs,
+  openPdfInReader,
+  handOverPdf,
+} from "./pdf-fixture.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LOCAL_ONLY = process.argv.includes("--local");
@@ -1355,7 +1366,8 @@ async function sweep(page, steps = 6) {
   // panel, the same copied report. The reconstruction is invisible and is only asserted
   // through what it decides: what reaches the daemon, and where a chip lands.
   const extId = sw ? new URL(sw.url()).host : null;
-  const readerUrl = (src) => `chrome-extension://${extId}/reader.html?src=${encodeURIComponent(src)}`;
+  /** Open a PDF the only way a remote one opens now: the tab shows it, the ball hands it over. */
+  const openReader = (path) => openPdfInReader(context, fileUrl(path));
 
   /** Everything about the reader page that a check below reads, in one pass. */
   const readReader = (p) =>
@@ -1407,10 +1419,15 @@ async function sweep(page, steps = 6) {
     const p = await context.newPage();
     const extErrors = [];
     p.on("console", (m) => {
-      if (m.type() === "error") extErrors.push(m.text().slice(0, 140));
+      // Only what OUR page said. The tab starts on the PDF itself, and the browser's own
+      // viewer asking the fixture server for a favicon it does not serve is not our news.
+      if (m.type() === "error" && (m.location()?.url ?? "").startsWith("chrome-extension://")) {
+        extErrors.push(m.text().slice(0, 140));
+      }
     });
     const seen = daemon.stats.texts.length; // what THIS document sends, not the whole run
-    await p.goto(readerUrl(fileUrl("/doc.pdf")), { waitUntil: "load" });
+    await p.goto(fileUrl("/doc.pdf"), { waitUntil: "load" }).catch(() => {});
+    await handOverPdf(p);
     await p.waitForSelector("#pages:not(.reading)", { timeout: 20000 }).catch(() => {});
     await sweep(p, 4);
     // The reader's own chrome (the bar, the notice, the pages) carries the same
@@ -1530,9 +1547,8 @@ async function sweep(page, steps = 6) {
   // supplying the barriers — so the three under the first heading are one unit and the two
   // under the second, 48 words with nothing of their section to join, are read by nobody.
   if (extId) {
-    const p = await context.newPage();
     const seen = daemon.stats.texts.length;
-    await p.goto(readerUrl(fileUrl("/grouped.pdf")), { waitUntil: "load" });
+    const p = await openReader("/grouped.pdf");
     await p.waitForSelector("#pages:not(.reading)", { timeout: 20000 }).catch(() => {});
     await sweep(p, 4);
     await p
@@ -1574,8 +1590,7 @@ async function sweep(page, steps = 6) {
   // the panel and jump-to-flagged address a paragraph thirty pages down — while only the
   // pages near the viewport carry pixels. A jump then brings the page AND its picture.
   if (extId) {
-    const p = await context.newPage();
-    await p.goto(readerUrl(fileUrl("/tall.pdf")), { waitUntil: "load" });
+    const p = await openReader("/tall.pdf");
     await p.waitForSelector("#pages:not(.reading)", { timeout: 40000 }).catch(() => {});
     await p.waitForTimeout(1500);
     const far = await p.evaluate(() => {
@@ -1620,8 +1635,7 @@ async function sweep(page, steps = 6) {
   // which is now SHOWN rather than refused: its pages are the faithful thing to render.
   if (extId) {
     const stateFor = async (path) => {
-      const p = await context.newPage();
-      await p.goto(readerUrl(fileUrl(path)), { waitUntil: "load" });
+      const p = await openReader(path);
       const state = await p
         .waitForFunction(() => {
           const n = document.getElementById("notice").textContent.trim();
@@ -1685,7 +1699,7 @@ async function sweep(page, steps = 6) {
         chip.label === "Analyze PDF" &&
         chip.onTop === true &&
         landed.startsWith(`chrome-extension://${extId}/reader.html?src=`) &&
-        decodeURIComponent(landed.split("src=")[1]) === fileUrl("/doc.pdf"),
+        new URL(landed).searchParams.get("src") === fileUrl("/doc.pdf"),
       JSON.stringify({ chip, landed: landed.slice(0, 70) }),
     );
     await p.close();
@@ -1719,6 +1733,42 @@ async function sweep(page, steps = 6) {
       JSON.stringify({ empty, loaded }),
     );
     await p.close();
+  }
+
+  // A34b: TWO documents, one after the other, in both completion orders. The second one
+  // the reader is given owns the view from the moment it is given — a thirty-page book
+  // that was still parsing when a two-page note replaced it must not come back and take
+  // the pages, the title or an error line with it. This is the defect the audit found:
+  // nothing used to own a load and nothing could be cancelled.
+  if (extId) {
+    const race = async (first, second) => {
+      const p = await context.newPage();
+      await p.goto(`chrome-extension://${extId}/reader.html`, { waitUntil: "load" });
+      await p.setInputFiles("#file", first);
+      await p.setInputFiles("#file", second);
+      // Long enough that the LOSER would certainly have finished by now.
+      await p.waitForTimeout(12000);
+      const state = await p.evaluate(() => ({
+        title: document.title,
+        pages: document.querySelectorAll(".page").length,
+        notice: document.getElementById("notice").textContent,
+        reading: document.getElementById("pages").classList.contains("reading"),
+      }));
+      await p.close();
+      return state;
+    };
+    const big = { name: "book.pdf", mimeType: "application/pdf", buffer: TALL_PDF };
+    const small = { name: "note.pdf", mimeType: "application/pdf", buffer: TEST_PDF };
+    // The one that matters: the slow one was asked for FIRST, so it finishes LAST.
+    const slowFirst = await race(big, small);
+    const slowSecond = await race(small, big);
+    record(
+      "ui",
+      "PDF reader: the document asked for last is the one on screen, whichever finishes first",
+      slowFirst.title === "note.pdf" && slowFirst.pages === 2 && slowFirst.notice === "" &&
+        slowSecond.title === "book.pdf" && slowSecond.pages === 30 && slowSecond.notice === "",
+      JSON.stringify({ slowFirst, slowSecond }),
+    );
   }
 
   // A33–A36: the first-run page's setup strip. A fresh install shows nothing on a real

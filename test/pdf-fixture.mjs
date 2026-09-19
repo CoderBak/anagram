@@ -350,6 +350,12 @@ export async function servePdfs(
 export async function openPdfInReader(context, url, { timeout = 25000 } = {}) {
   const page = await context.newPage();
   await page.goto(url, { waitUntil: "load" }).catch(() => {});
+  await handOverPdf(page, { timeout });
+  return page;
+}
+
+/** The same, for a tab already sitting on a PDF: press the ball's chip and wait. */
+export async function handOverPdf(page, { timeout = 25000 } = {}) {
   await page
     .waitForFunction(
       () => !!document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".action"),

@@ -49,10 +49,10 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import http from "node:http";
 import { launchExtension, serveHtml, artifact, BADGE_SEL, requireBuild } from "./harness.mjs";
 import { startFakeDaemon } from "./fake-daemon.mjs";
 import { SMALL_PDF } from "./a11y-pdf.mjs";
+import { LOCKED_PDF } from "./pdf-fixture.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PRINT_JSON = process.argv.includes("--json");
@@ -665,14 +665,6 @@ const server = await serveHtml({
   "/selection.html": SEL_HTML,
   "/dark.html": DARK_HTML,
 });
-// The reader fetches BYTES; serveHtml answers everything as text/html, which a PDF is not.
-const fileServer = http.createServer((req, res) => {
-  if (req.url.split("?")[0] !== "/doc.pdf") return void res.writeHead(404).end();
-  res.writeHead(200, { "content-type": "application/pdf", "content-length": SMALL_PDF.length });
-  res.end(SMALL_PDF);
-});
-await new Promise((r) => fileServer.listen(0, "127.0.0.1", r));
-const pdfUrl = `http://localhost:${fileServer.address().port}/doc.pdf`;
 
 let daemon = await startFakeDaemon();
 const { context, sw } = await launchExtension({ backendUrl: daemon.url });
@@ -773,14 +765,30 @@ const PAGE_SPECS = [
     },
   },
   {
+    // The reading mode is HANDED its bytes now and fetches nothing, so the way to put a
+    // document in front of the scan is the file picker — which is also the only way a
+    // local PDF gets here at all (lib/pdf/handoff.ts).
     name: "reader (PDF loaded)",
-    url: () => `${extUrl("reader.html")}?src=${encodeURIComponent(pdfUrl)}`,
+    url: () => extUrl("reader.html"),
     viewport: { width: 1100, height: 900 },
     async prepare(page) {
+      await page.setInputFiles("#file", { name: "doc.pdf", mimeType: "application/pdf", buffer: SMALL_PDF });
       // The pages themselves, drawn by pdf.js: the canvas is presentational and the text
       // layer over it is the accessible text, so the scan has something to read.
       await page.waitForSelector("#pages:not(.reading)", { timeout: 25000 }).catch(() => {});
       await chipsSettled(page, 1);
+      await still(page);
+    },
+  },
+  {
+    // An encrypted document: one field in the bar and no sentence of explanation, which
+    // is precisely the case where a label that only exists as a placeholder would fail.
+    name: "reader (password asked)",
+    url: () => extUrl("reader.html"),
+    viewport: { width: 1100, height: 900 },
+    async prepare(page) {
+      await page.setInputFiles("#file", { name: "locked.pdf", mimeType: "application/pdf", buffer: LOCKED_PDF });
+      await page.waitForSelector("#password:not([hidden])", { timeout: 25000 }).catch(() => {});
       await still(page);
     },
   },
@@ -1601,7 +1609,6 @@ async function forcedColorsCheck() {
 // =====================================================================================
 await context.close();
 await server.close();
-await new Promise((r) => fileServer.close(() => r()));
 if (daemon) await daemon.close();
 
 // A baseline entry that no longer fires is debt that was paid — say so, loudly, so the

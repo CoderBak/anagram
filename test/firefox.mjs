@@ -42,7 +42,7 @@ import {
   sweep,
   waitFor,
 } from "./firefox-harness.mjs";
-import { PDF_HEADING, PDF_HEAD, TEST_PDF, servePdfs } from "./pdf-fixture.mjs";
+import { PDF_HEADING, PDF_HEAD, TEST_PDF } from "./pdf-fixture.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const QUICK = process.argv.includes("--quick");
@@ -452,12 +452,36 @@ check(
 // moz-extension: document — three things Firefox could do differently, and the suite that
 // would notice is this one. The PDF is the one test/scenarios.mjs opens in Chromium
 // (test/pdf-fixture.mjs), served over http as application/pdf.
-const pdfFiles = await servePdfs();
 const readerErrors = [];
+
+/**
+ * Put a PDF into the reading mode the only way Firefox has: a real drop. BiDi cannot
+ * carry a file to an input, so the bytes travel as base64 and become a File in the page.
+ */
+const dropPdf = (page, buffer, name) =>
+  page
+    .evaluate(
+      ([b64, fileName]) => {
+        const bin = atob(b64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const dt = new DataTransfer();
+        dt.items.add(new File([bytes], fileName, { type: "application/pdf" }));
+        document.dispatchEvent(new DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true }));
+        return true;
+      },
+      [buffer.toString("base64"), name],
+    )
+    .catch(() => false);
 /** What Resource Timing reported on the reader page — evidence for a finding below. */
 let pdfResources = [];
 {
-  const readerUrl = extUrl(`reader.html?src=${encodeURIComponent(pdfFiles.url("/doc.pdf"))}`);
+  // A DROPPED FILE, not a `?src=` address. The reading mode is handed its bytes by the tab
+  // that is showing the PDF (lib/pdf/handoff.ts), and Firefox's viewer is a privileged
+  // page no content script reaches — so on Firefox there IS no such tab, no remote PDF is
+  // ever offered, and the drop zone is the whole feature. What this suite is for is the
+  // rest of it: pdf.js, a module worker and the orchestrator on a moz-extension: document.
+  const readerUrl = extUrl("reader.html");
   const p = await browser.newPage();
   p.on("pageerror", (e) => readerErrors.push("pageerror: " + String(e).slice(0, 200)));
   p.on("console", (m) => {
@@ -467,6 +491,7 @@ let pdfResources = [];
   const arrived = await waitForExtensionPage(p, readerUrl, 25000)
     .then(() => true)
     .catch(() => false);
+  if (arrived) await dropPdf(p, TEST_PDF, "doc.pdf");
   const rendered = arrived && (await waitFor(p, () => document.querySelectorAll(".page .textLayer span").length >= 20, { timeout: 30000 }));
   const scored = rendered &&
     (await waitFor(p, (sel) => {
@@ -544,25 +569,20 @@ let pdfResources = [];
   const arrived = await waitForExtensionPage(p, readerUrl, 25000)
     .then(() => true)
     .catch(() => false);
-  const dropped = arrived &&
-    (await p
-      .evaluate((b64) => {
-        const W = window.Worker;
-        window.__workers = [];
-        window.Worker = function (url, opts) {
-          window.__workers.push(`${String(url)}|${(opts && opts.type) || "classic"}`);
-          return new W(url, opts);
-        };
-        window.Worker.prototype = W.prototype;
-        const bin = atob(b64);
-        const bytes = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-        const dt = new DataTransfer();
-        dt.items.add(new File([bytes], "dropped.pdf", { type: "application/pdf" }));
-        document.dispatchEvent(new DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true }));
-        return true;
-      }, TEST_PDF.toString("base64"))
-      .catch(() => false));
+  if (arrived) {
+    // The constructor is wrapped BEFORE the drop, because the worker is created while the
+    // document is being opened and there is no other way to see it from here.
+    await p.evaluate(() => {
+      const W = window.Worker;
+      window.__workers = [];
+      window.Worker = function (url, opts) {
+        window.__workers.push(`${String(url)}|${(opts && opts.type) || "classic"}`);
+        return new W(url, opts);
+      };
+      window.Worker.prototype = W.prototype;
+    });
+  }
+  const dropped = arrived && (await dropPdf(p, TEST_PDF, "dropped.pdf"));
   const read = dropped && (await waitFor(p, () => document.querySelectorAll(".page .textLayer span").length >= 20, { timeout: 30000 }));
   const workers = arrived ? await p.evaluate(() => window.__workers ?? null).catch(() => null) : null;
   check(
@@ -722,8 +742,8 @@ console.log(
 );
 console.log(
   "NOTE · a moz-extension: document reports NO Resource Timing entry for its own subresources in\n" +
-    "  Firefox: on the PDF reader page, `performance.getEntriesByType(\"resource\")` lists only the\n" +
-    "  cross-origin PDF that was fetched, never the on-demand pdf.js chunk or its worker\n" +
+    "  Firefox: on the PDF reader page, `performance.getEntriesByType(\"resource\")` lists nothing at all —\n" +
+    "  not the on-demand pdf.js chunk and not its worker\n" +
     `  (this run: ${JSON.stringify(pdfResources)}). Chromium lists both. BiDi also runs no preload\n` +
     "  script on a privileged document (`evaluateOnNewDocument` installs and never fires) and\n" +
     "  surfaces no dedicated workers (`page.workers()` is empty), so the suite watches the Worker\n" +
@@ -741,6 +761,5 @@ console.log("\n" + (fail === 0 ? "✅ ALL CHECKS PASSED" : "❌ SOME CHECKS FAIL
 
 await browser.close();
 await server.close();
-await pdfFiles.close();
 await daemon.close().catch(() => {});
 process.exit(fail === 0 ? 0 : 1);
