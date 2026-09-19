@@ -212,16 +212,37 @@ prints PASS/FAIL per sample and exits non-zero if any of them is wrong.
   Everything else is the ordinary pipeline: same chips, same marks, same panel,
   same report, which names the PDF and not the reader page. Zoom is fit-width by
   default, with −/+ and Cmd/Ctrl +/−/0. A scanned PDF with no text layer is
-  still shown; there is simply nothing to score. Three ways in: **"Analyze
-  PDF"** on the ball of a PDF tab, **"Read this PDF"** in the popup, and **"Open
-  PDF with Anagram"** on any link to one — or turn on **"Open PDFs in Anagram"**
-  in the options and every PDF tab opens there by itself (off by default; Back
-  still leaves it, and "Open original" still shows the file). Open the reader
-  with nothing loaded and it takes a file from your computer by drop or picker.
-  The bytes never leave the browser.
+  still shown; there is simply nothing to score. A **password-protected** PDF
+  asks for its password in the bar — one field, Enter to try it — and the
+  password is never stored, never logged and never in the diagnostics. Three
+  ways in: **"Analyze PDF"** on the ball of a PDF tab, **"Read this PDF"** in
+  the popup, and **"Open PDF with Anagram"** on any link to one — or turn on
+  **"Open PDFs in Anagram"** in the options and every PDF tab opens there by
+  itself (off by default; Back still leaves it, and "Open original" still shows
+  the file). Open the reader with nothing loaded and it takes a file from your
+  computer by drop or picker. The bytes never leave the browser.
   Opening a PDF opens **that** PDF: Anagram asks no site anything first, and
   there is no address it could send you to instead of the document you were
-  looking at.
+  looking at. Where the paper also exists as a real HTML page — an arXiv paper
+  does — the bar carries a quiet **HTML** link to it. It is a link: nothing is
+  asked of anybody until you follow it.
+
+  **Where the bytes come from.** The reading mode never fetches anything: it
+  cannot, and that is the point (see *What leaves your computer*). The tab that
+  is showing the PDF re-reads its own document — same address, same cookies,
+  normally straight out of the browser cache — and hands the bytes over through
+  the extension's worker under a one-time ticket. On a site you have not granted
+  there is no content script to ask, so the click you just made is what lets
+  Anagram put one in that one tab, for that one document. Two consequences worth
+  knowing. **Local files** (`file://`) cannot be read this way at all — Anagram
+  declares no access to the file scheme, and a page on it may not re-read itself
+  either — so a local PDF stays in the browser's own viewer and the way into the
+  reading mode is the drop zone or the picker. **Firefox** shows PDFs in a
+  privileged viewer that no extension code can run in, so there is no tab to read
+  from: on Firefox the reading mode takes dropped and picked files only, and none
+  of the three ways in above is offered. A document larger than 50 MB is refused
+  on this path (100 MB from the picker); reading stops at the cap rather than
+  after it.
 
 ## The model
 
@@ -520,8 +541,8 @@ would make Firefox a foreground application — is stripped in the harness.
 | Server | `npm run test:server` | 39 | **the real model**: spawns `anagramd`, checks the API on human/AI/Chinese samples (the last one must come back unsupported via fastText), the request limits and the body cap counted on the bytes that arrive (a 2.1 MB chunked POST with no `Content-Length` is still 413), `application/json`-only on `/score`, the `Origin` allow-list (extensions and the daemon's own pass; `null` and a web origin are 403), the Host allow-list, the absence of CORS grants, and a model version that digests the whole pipeline, then drives the built extension — real verdicts on every English chip, the 4-bucket card, the "zh" unsupported chip, the popup's model line |
 | Docs flow | `node test/docs-flow.mjs <public doc URL>` | 12 | in-tab overlay + classic page flow on a real public Google Doc — the original demo doc was deleted from Drive, so without a URL (or `ANAGRAM_DOC_URL`) the suite reports SKIP |
 | Matrix | `npm run test:matrix` | 136 | the UI fixtures under **17 device profiles** — 360 px phones to a 3440 px ultrawide, pixel ratios 1 / 1.25 / 1.5 / 2 / 3 (Windows display scaling), classic layout-eating scrollbars, a 420 px-tall window, dark scheme, forced colours, reduced motion, touch, zh-CN and Arabic UI locales — asserting what must hold on every one: all chips reach a verdict, showing them adds no side-scroll and grows no paragraph by more than a line, no chip leaves its block, the detail card (hover, or tap on touch) and the panel open fully inside the viewport, the ball stays on top, the options, onboarding and PDF reader pages fit the width, no console errors. A screenshot per profile lands in the artifacts folder. `node test/matrix.mjs phone dark` runs a subset |
-| Accessibility | `npm run test:a11y` | 100 | **axe-core** (WCAG 2.1 A + AA, best-practice rules on a line of their own) on the popup, options, onboarding and PDF reader pages in **light and dark** — options with two site rules and the add-rule error showing, onboarding with the daemon up and stopped (its setup strip's Copy pills and install line only exist in the second), the reader empty and with a PDF the suite writes itself — and then, scoped to OUR nodes only, on the ball with the panel closed, open with flagged rows, open with both verdict filters, open on a **dark page**, on a pinned chip card, the selection card and the daemon-down notice (axe descends into the open shadow roots; the suite proves it did by naming a node it could only have reached through one). Plus everything axe cannot do, asserted in code: Tab reaches the ball then the counter, Enter opens the panel as a named dialog and hands focus over, Tab walks its controls in DOM order with no positive tabindex, Escape closes it and gives focus back; an accessible name (a real word, not a glyph) and a visible `:focus-visible` change for every control; a **24x24 CSS-px target measured the way a pointer measures it** — `elementFromPoint` at the corners and centre of a 24 px box, put to the element's own root, so a control drawn smaller that carries an invisible hit area passes and one that does not fails; colour contrast computed from the RESOLVED colours for the chip number, card verdict, panel percentages and counter in light and dark — axe cannot always see through a top-layer popover in a shadow root, and nothing is measured until `document.getAnimations()` goes quiet, since a chip mid-`background-color` transition reads as a phantom failure; under `prefers-reduced-motion` **no node of ours may be left with a duration to run at all** (asked of the cascade, not of a synthetic hover, which proves nothing when it fails to land); forced colours keep a chip boundary and the verdict dot; and the three live regions are read back after the events they announce. Its **baseline is empty** — everything it found on the day it was written has been fixed — so any violation is a regression, and a baseline entry that stops firing fails the run. Deliberate exemptions (the chips are `aria-hidden` and unfocusable on purpose) are listed apart. JSON report in the artifacts folder |
-| Perf | `npm run test:perf` | 14 | five pathological documents, each budgeted against what it already costs — the fifth is the PDF reader on a thirty-page two-column paper (first page drawn, every page's text layer, the long tasks that costs, and the canvases still held after a scroll to the end and back). A 3000-paragraph article: first badge <4 s (measured ~0.2 s), no long task >1 s, scoring keeps up with the scroll. A feed that re-renders 450 paragraphs eight times over: bounded long tasks. The same feed virtualized, 2000 posts through a 50-post DOM: heap growth <8 MB after a forced GC, chips bounded by the DOM, no highlight range over a node that left it. And sixty clamped review cards whose pictures arrive as you reach them — the shape that makes chip placement measure the page: the browser's own **LayoutCount** against the same page with no extension, at most 1.6 layouts per chip (measured 1.28; settling each box on its own cost 2.46), with one chip under every box and never two |
+| Accessibility | `npm run test:a11y` | 107 | **axe-core** (WCAG 2.1 A + AA, best-practice rules on a line of their own) on the popup, options, onboarding and PDF reader pages in **light and dark** — options with two site rules and the add-rule error showing, onboarding with the daemon up and stopped (its setup strip's Copy pills and install line only exist in the second), the reader empty and with a PDF the suite writes itself — and then, scoped to OUR nodes only, on the ball with the panel closed, open with flagged rows, open with both verdict filters, open on a **dark page**, on a pinned chip card, the selection card and the daemon-down notice (axe descends into the open shadow roots; the suite proves it did by naming a node it could only have reached through one). Plus everything axe cannot do, asserted in code: Tab reaches the ball then the counter, Enter opens the panel as a named dialog and hands focus over, Tab walks its controls in DOM order with no positive tabindex, Escape closes it and gives focus back; an accessible name (a real word, not a glyph) and a visible `:focus-visible` change for every control; a **24x24 CSS-px target measured the way a pointer measures it** — `elementFromPoint` at the corners and centre of a 24 px box, put to the element's own root, so a control drawn smaller that carries an invisible hit area passes and one that does not fails; colour contrast computed from the RESOLVED colours for the chip number, card verdict, panel percentages and counter in light and dark — axe cannot always see through a top-layer popover in a shadow root, and nothing is measured until `document.getAnimations()` goes quiet, since a chip mid-`background-color` transition reads as a phantom failure; under `prefers-reduced-motion` **no node of ours may be left with a duration to run at all** (asked of the cascade, not of a synthetic hover, which proves nothing when it fails to land); forced colours keep a chip boundary and the verdict dot; and the three live regions are read back after the events they announce. Its **baseline is empty** — everything it found on the day it was written has been fixed — so any violation is a regression, and a baseline entry that stops firing fails the run. Deliberate exemptions (the chips are `aria-hidden` and unfocusable on purpose) are listed apart. JSON report in the artifacts folder |
+| Perf | `npm run test:perf` | 17 | five pathological documents, each budgeted against what it already costs — the fifth is the PDF reader on a thirty-page two-column paper (first page drawn, every page's text layer, the long tasks that costs, and the canvases still held after a scroll to the end and back). A 3000-paragraph article: first badge <4 s (measured ~0.2 s), no long task >1 s, scoring keeps up with the scroll. A feed that re-renders 450 paragraphs eight times over: bounded long tasks. The same feed virtualized, 2000 posts through a 50-post DOM: heap growth <8 MB after a forced GC, chips bounded by the DOM, no highlight range over a node that left it. And sixty clamped review cards whose pictures arrive as you reach them — the shape that makes chip placement measure the page: the browser's own **LayoutCount** against the same page with no extension, at most 1.6 layouts per chip (measured 1.28; settling each box on its own cost 2.46), with one chip under every box and never two |
 
 ### The lab: a screen of its own
 
@@ -763,7 +784,11 @@ and the 2 MB body cap counts the bytes that actually arrive rather than the
 declared length, so a chunked POST is cut off mid-stream. The batch envelope
 carries only a hostname + language hint by design, and the persistent cache
 stores hashes and bucket probabilities, never text. The Google Docs reading mode
-fetches the document same-origin with your own cookies.
+fetches the document same-origin with your own cookies, and the PDF reading mode
+fetches nothing at all: the tab that is showing a PDF re-reads its own document
+(same address, same cookies, normally out of the browser cache) and hands the
+bytes to the reading mode through the extension's worker, so no page of ours
+ever asks the web for anything.
 
 The daemon itself reaches no network at all: it switches the Hugging Face client
 offline before importing it and loads the two model files from disk, so a missing

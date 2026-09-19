@@ -326,6 +326,18 @@ Notable changes to Anagram, newest first. The format follows
   the sources on every `vitest` run, in both directions: a network call nobody
   wrote down fails it, and so does a line whose call site has gone.
 
+- **A password-protected PDF now opens.** The reading mode used to say "this PDF
+  is password-protected" and stop. It asks instead: one field in the bar, Enter
+  to try it, a refused password marking the field and emptying it, and nothing
+  said that the lock has not already said. The password is never stored, never
+  logged and never in the page diagnostics — it travels from the field to pdf.js
+  and no further.
+
+- **An arXiv paper's HTML page is offered as a link in the reading mode.** A
+  quiet `HTML` beside "Open original", for the papers arXiv has converted. It is
+  a link and nothing else: no probe, no request, nothing asked of anybody until
+  it is clicked.
+
 ### Changed
 
 - **A release waits for the whole test matrix.** The release workflow used to run the type check and
@@ -670,6 +682,48 @@ Notable changes to Anagram, newest first. The format follows
   stays in `lib/pdf/source.ts`: it says which address an arXiv paper's HTML
   would have, for a link somebody may follow themselves.
 
+- **The PDF reading mode no longer fetches anything.** It used to fetch its own
+  `?src=` from the extension's origin with the reader's cookies — a page of ours
+  asking the open web for a document, which is precisely the request this
+  extension must not be able to make. The bytes now come from the tab you are
+  looking at: the PDF tab re-reads its own document (same address, same cookies,
+  normally answered out of the browser's cache without touching the network),
+  streams it to the extension's worker a chunk at a time, and the worker holds it
+  under a one-time ticket and turns that same tab into the reading mode. The
+  address keeps `?src=` only as a NAME — the title, "Open original", the HTML
+  link — and nothing of ours ever fetches it.
+
+  Three things follow, and two of them are losses worth stating plainly.
+  A **local PDF** (`file://`) can no longer be opened from its tab: a page on the
+  file scheme is not permitted to re-read itself (both `fetch` and
+  `XMLHttpRequest` are refused, whatever the extension is allowed), so a local
+  PDF is now left in the browser's own viewer and the drop zone or the file
+  picker is the way into the reading mode. On **Firefox**, whose PDF viewer is a
+  privileged page no extension code runs in, there is no tab to read from at all:
+  the "Read this PDF" button and the "Open PDF with Anagram" menu entry are no
+  longer offered there, and the reading mode takes dropped and picked files only.
+  And a **reader address with no bytes behind it** — pasted, reloaded, or opened
+  after the worker was evicted — hands the tab back to the document rather than
+  fetching it, once, so it can never ping-pong; with "Open PDFs in Anagram" on,
+  the ordinary route brings it straight back with real bytes.
+
+  Measured on this machine (Chromium 141): a 45 MB document takes 735 ms to read
+  out of the tab and relay to the worker and 110 ms to reach the reading mode,
+  peaking at 126 MB in the reader page and settling back to 4 MB. Chunk size
+  makes no difference between 64 KiB and 1 MiB, because the cost is the base64
+  the browser's JSON messaging forces, so it is 256 KiB. The cap on this path is
+  50 MB, against 100 MB for a file you hand the reader yourself.
+
+- **Loading a PDF is bounded, owned and cancellable.** Three defects an audit
+  found, all of them the same shape: the 100 MB cap was checked only after the
+  whole file had been bought (a file's size is now read before its bytes, and a
+  document arriving over the wire is cut off AT the cap rather than after it);
+  a slow older load could finish after a newer one and take the view, the title
+  or an error line from it (every way in now takes a load id and an abort at its
+  first line, ownership is re-checked after every await, and a superseded load
+  destroys its pdf.js loading task and worker instead of finishing into the
+  void); and nothing could be cancelled at all.
+
 ### Fixed
 
 - Gemini conversations were silent. Gemini wraps every conversation in
@@ -880,6 +934,28 @@ Notable changes to Anagram, newest first. The format follows
   clearing a unit while it is active leaves nothing behind in either set. Every
   suite that expected `<n>%` on a chip, in a card, in a panel row's accessible
   name or in the copied report now expects the 0-1 number instead.
+
+- The PDF handoff, at three levels. `test/node/pdf-handoff.test.ts` (16 cases)
+  pins the bytes-as-JSON encoding both hops use, what counts as a PDF (the header
+  anywhere in the first kilobyte, and a sign-in page that says it is one refused),
+  the read out of a tab over an injected `fetch` — every byte in order, a stated
+  length over the cap refused before the body is touched, a body that never ends
+  cut off at the cap with the rest never read — and the worker's ticket store
+  (bound to the tab it was read for, spendable once, dropped on a timer, released
+  with the tab). `test/pdf-route-check.mjs` grew in a real
+  browser: the document that arrives through the tab hashes the same as the one
+  dropped straight on the reader, the oversized one is proved to have stopped by
+  what the SERVER was asked for, a pasted reader address goes back to the PDF and
+  stays, the password is asked for and refused and accepted, and — watched at the
+  browser level — the reading mode requests no subresource outside the extension
+  while a remote PDF is opened. And in `test/scenarios.mjs`, two documents given
+  to the reader one after the other in both completion orders.
+
+- The reflow and the last hop of the handoff carry user-timing marks and a perf
+  budget. Measured on a 300-page book, which is the reader's own page cap: the
+  reflow runs 13 times over everything read so far, 647 ms in total, 83 ms for
+  the worst single run, and the worst main-thread task anywhere in the read is
+  82-126 ms. Nothing was changed as a result.
 
 - Twelve cases over the per-surface English fallback, in `test/node/i18n.test.ts`:
   the scan that decides a bundle's keys (WXT's two build shapes; our imports

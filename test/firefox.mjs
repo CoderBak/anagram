@@ -595,6 +595,32 @@ let pdfResources = [];
   await p.close();
 }
 
+// ── 10c) and what Firefox must NOT offer ───────────────────────────────────────────
+// The reading mode is handed its bytes by the tab showing the PDF, and Firefox's viewer
+// is a privileged page no content script reaches — so there is nobody to ask, and an
+// offer that cannot be kept must not be made. "Open PDF with Anagram" is registered only
+// where a PDF tab admits a content script; a duplicate id is how the browser tells us
+// whether it is there, since nothing can list the menu.
+{
+  const absent = await optionsPage
+    .evaluate(
+      () =>
+        new Promise((resolve) => {
+          browser.contextMenus.create({ id: "anagram-open-pdf", title: "probe", contexts: ["link"] }, () => {
+            const clash = !!browser.runtime.lastError;
+            Promise.resolve(browser.contextMenus.remove("anagram-open-pdf")).catch(() => undefined);
+            resolve(!clash);
+          });
+        }),
+    )
+    .catch((e) => String(e));
+  check(
+    "no remote PDF entry point on Firefox: 'Open PDF with Anagram' is never registered",
+    absent === true,
+    String(absent),
+  );
+}
+
 // ── 11) screenshot ─────────────────────────────────────────────────────────────────
 const shot = artifact("firefox-screenshot.png");
 await page.evaluate(() => window.scrollTo(0, 0));
