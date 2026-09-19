@@ -347,7 +347,20 @@ await setAutoOpen(true);
   // A local PDF. Whether this can work at all is decided by one tick in chrome://extensions
   // ("Allow access to file URLs"), which governs BOTH the content script on a file: page
   // and the reader's own fetch of it — so where the first happens the second does too.
-  const allowed = await sw.evaluate(() => chrome.extension.isAllowedFileSchemeAccess()).catch(() => false);
+  //
+  // SINCE OPTIONAL SITE ACCESS: the manifest no longer declares `file:///*` at all (it
+  // asks for the daemon's two loopback hosts and offers the two http(s) patterns), and
+  // that tick grants nothing an extension has not declared. So this SKIPs, and a local
+  // PDF is read by dropping the file into the reading mode. Add `file:///*` to
+  // host_permissions — it grants nothing by itself, the tick still gates it — and this
+  // check comes back to life.
+  const allowed = await sw
+    .evaluate(
+      async () =>
+        (await chrome.extension.isAllowedFileSchemeAccess()) &&
+        (await chrome.permissions.contains({ origins: ["file:///*"] })),
+    )
+    .catch(() => false);
   const page = await visit(`file://${LOCAL_PDF}`);
   await page.waitForTimeout(2000);
   const read = await page

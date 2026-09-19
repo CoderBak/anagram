@@ -141,10 +141,17 @@ async function stopWithdrawnTabs(): Promise<void> {
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
-/** Runs in the page's isolated world, ahead of the script itself — see ON_DEMAND in
- *  entrypoints/content.ts. Injected as a function, so it carries no bundled code. */
+/**
+ * Runs in the page's isolated world, ahead of the script itself — see ON_DEMAND in
+ * entrypoints/content.ts. Injected as a function, so it carries no bundled code.
+ *
+ * A page that already holds a running script is left alone: the probe can miss one that
+ * has not added its message listener yet (its main() is still reading the settings), and
+ * marking THAT page would quietly stop an ordinary run on a site the user has granted.
+ */
 function markOnDemand(): void {
-  (window as unknown as Record<string, boolean>).__anagramOnDemand = true;
+  const world = window as unknown as Record<string, boolean>;
+  if (!world.__anagramContentScript) world.__anagramOnDemand = true;
 }
 
 /** Is a content script listening in this tab? Only the top frame is asked. */
