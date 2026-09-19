@@ -621,6 +621,50 @@ Notable changes to Anagram, newest first. The format follows
   the probabilities). Additive: `calibration` is what contract 2.x clients read and
   it is unchanged, so an installed daemon and a new extension, or the reverse, go
   on working.
+- **A private window leaves nothing on the disk.** Nothing looked at
+  `sender.tab.incognito`, so a paragraph read in a private window was hashed
+  into the same IndexedDB store as any other. It holds no text — a 53-bit hash
+  and four probabilities — but a row is still a trace of something somebody read
+  privately. The rule now: nothing that exists ONLY because of a private tab is
+  ever written down. Such a tab may READ the cache (a hit writes nothing, not
+  even a timestamp), and what its batches produce stays in the service worker's
+  memory until an ordinary tab asks for the same text, which would have produced
+  the identical verdict itself; a batch a private and an ordinary tab both wait
+  for is written, because the ordinary one asked for it.
+- **Cached verdicts are kept 30 days, and the options page says how many there
+  are.** The store was bounded by entry count alone, so a verdict from a year ago
+  was still there. The clock starts when a row is written and a revisit does not
+  restart it — refreshing a row on a lookup would make reading write to the disk,
+  which is exactly what a private tab may not do. The sweep runs on the first use
+  of the cache in a worker's life and on the prune that already happens every 500
+  writes. Beside "Clear cached verdicts" there is now a number (`1,284 entries`),
+  re-read after clearing.
+- **The daemon URL can only be what the policy can express.** The setting used to
+  accept http and https, `localhost`, `::1` and any `127.x.y.z`; a content
+  security policy can name neither an address range nor an IPv6 literal, so half
+  of those would have been accepted here and then blocked at the fetch. It is now
+  exactly `http://127.0.0.1:<port>` or `http://localhost:<port>`, port optional
+  and completed with the daemon's own, and credentials, a path, a query or a
+  fragment are refused with it — `${url}/health` can do nothing with any of them.
+  A setting an older build stored is served by the default rather than leaving
+  somebody with an extension that scores nothing, and the options page marks the
+  field invalid so correcting it stays theirs.
+- **A failed batch is only sent again when a second attempt could answer
+  differently** — a busy daemon (429, 502, 503, 504), a dead transport, our own
+  25-second cut-off — after a jittered wait, honouring `Retry-After` up to five
+  seconds. A 4xx, a response that failed validation and a contract mismatch are
+  answered "Unavailable" at once: they would have come back identical, at twice
+  the load on a daemon that is already saying no.
+- **"Copy page diagnostics" now says only words we can point at.** It kept any
+  alphabetic part of a class, an id or a test id, and an identifier is written by
+  the page's author — `div.author-marla-quillgrove`. An atom survives only if it
+  is in a vocabulary the build ships: the tokens our own detectors test for
+  (derived from the chrome, main-content, reply-form and skip-destination
+  patterns, so a token added there turns up in the report by itself), the
+  framework markers the hydration gate looks for, and a list of structural
+  English. Everything else becomes a placeholder of its own length, so that class
+  reads `author-x5-x10` — the shape a fixture is rebuilt from survives and the
+  name does not.
 
 ### Fixed
 
