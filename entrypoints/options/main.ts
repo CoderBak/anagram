@@ -7,7 +7,7 @@ import { browser } from "#imports";
 import "../../lib/ui/basecoat-vega.cdn.min.css";
 import { followSystemTheme } from "../../lib/ui/theme";
 import { localizePage } from "../../lib/ui/localize";
-import { t, tn } from "../../lib/i18n";
+import { t } from "../../lib/i18n";
 import {
   settings,
   clearSiteOverride,
@@ -310,7 +310,9 @@ async function refreshCacheCount(): Promise<void> {
       | CacheCountReply
       | undefined;
     const n = reply?.entries ?? 0;
-    cacheCountEl.textContent = tn("optCacheEntries", n, n.toLocaleString());
+    // The number is grouped for the reader's locale before it goes in ("1,284"), so the
+    // plural is chosen here: tn() would substitute the bare count as $1.
+    cacheCountEl.textContent = t(n === 1 ? "optCacheEntries_one" : "optCacheEntries_other", n.toLocaleString());
   } catch {
     cacheCountEl.textContent = ""; // no worker to ask — the row still works
   }
