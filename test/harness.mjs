@@ -45,7 +45,7 @@ export function requireBuild() {
   ensureTestBuild("chrome-mv3");
 }
 
-/** Serve in-memory HTML pages over http so the <all_urls> content script runs. */
+/** Serve in-memory HTML pages over http so the registered content script runs. */
 export async function serveHtml(pages, fallback = Object.keys(pages)[0]) {
   const server = http.createServer((req, res) => {
     const path = req.url.split("?")[0];

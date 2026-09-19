@@ -18,7 +18,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const EXT = ensureTestBuild("chrome-mv3"); // the suites' build — see test/test-build.mjs
 const SELFTEST = join(__dirname, "selftest.html");
 
-// Serve the self-contained self-test page over http so the <all_urls> content script runs.
+// Serve the self-contained self-test page over http so the content script runs.
 const html = readFileSync(SELFTEST, "utf8");
 const server = http.createServer((_req, res) => {
   res.writeHead(200, { "content-type": "text/html; charset=utf-8" });

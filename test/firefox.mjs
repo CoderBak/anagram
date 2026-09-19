@@ -7,7 +7,7 @@
 //
 // It runs against the same two things every other browser suite uses: the test-only fake
 // daemon (test/fake-daemon.mjs, deterministic verdicts, no model) and the self-test page
-// (test/selftest.html) served over http so the <all_urls> content script injects. What it
+// (test/selftest.html) served over http so the registered content script injects. What it
 // asserts is what is DIFFERENT about Firefox, on top of "the product still works":
 //
 //   * MV2: a background PAGE, not a service worker, and browserAction instead of action;

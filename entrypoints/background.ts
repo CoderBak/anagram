@@ -399,7 +399,8 @@ export default defineBackground(() => {
 
       // A subframe asking whose page it sits in. Site rules are keyed on the TOP
       // hostname, which a cross-origin frame cannot read and a no-referrer embed cannot
-      // guess — but the sender carries the tab's own URL (<all_urls> host permission).
+      // guess — but the sender carries the tab's own URL, which is ours to read wherever
+      // a content script of ours is running at all.
       if (msg.action === ACTIONS.GET_TOP_HOST) {
         let host = "";
         try {

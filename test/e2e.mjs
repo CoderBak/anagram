@@ -2,7 +2,7 @@
 //
 // Loads the built unpacked extension into a persistent Chromium context pointed at the
 // test-only fake daemon (deterministic verdicts, no model needed), serves the
-// self-test page over http (so the <all_urls> content script injects), scrolls the
+// self-test page over http (so the registered content script injects), scrolls the
 // whole page (scoring is viewport-first BY DESIGN), then asserts the v2 behaviours:
 // long paragraphs badge once and underline to the end (the HF regression), a paragraph
 // longer than the model reads in one pass is scored completely — in windows, one chip,

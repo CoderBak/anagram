@@ -236,11 +236,11 @@ function reset(): void {
 }
 
 /**
- * Fetch the PDF the reader was opened for. The <all_urls> host permission makes the
+ * Fetch the PDF the reader was opened for. A host the user has GRANTED Anagram makes the
  * cross-origin request possible and `credentials: "include"` carries the reader's own
- * cookies, so a paper behind a library login loads exactly as it does in a tab. A
- * file:// URL only works where the user ticked "Allow access to file URLs"; where they
- * did not, the fetch simply fails and the drop zone is the way in.
+ * cookies, so a paper behind a library login loads exactly as it does in a tab. Where
+ * that site was never granted — and for a file:// URL, which nothing declares any more —
+ * the fetch simply fails and the drop zone is the way in.
  */
 async function openFromUrl(src: string): Promise<void> {
   say(t("readerLoading"));
