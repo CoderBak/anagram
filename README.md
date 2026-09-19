@@ -40,8 +40,13 @@ sudo, no Homebrew, no system Python, no shell-profile edits, no launch agent. Th
 ```
 
 and load the extension: `chrome://extensions` → Developer mode → **Load unpacked** →
-`~/.anagram/extension`. `anagram status | stop | logs | selftest | update` do what
-they say; `anagram uninstall` deletes the folder, which is the only thing the
+`~/.anagram/extension`. `anagram status | stop | logs | selftest` do what they say;
+`anagram doctor` checks the folder, the private Python and its packages, both model
+files against the checksums the installer pinned, the free space and the port, and
+prints one line per check with the command that fixes what is wrong (it only reads —
+nothing is written, moved or removed); `anagram update` re-runs the installer and
+restarts the daemon if one was running, so the code in memory is the code on disk;
+`anagram uninstall` deletes the folder, which is the only thing the
 installer ever created. The checkpoint is gated on Hugging Face (CC BY-NC-SA): the
 installer asks for a read token unless `ANAGRAM_HF_TOKEN` is set; `ANAGRAM_HOME`
 relocates the folder; `ANAGRAM_SKIP_MODEL=1` defers the 1.4 GB download to
@@ -380,6 +385,7 @@ npm run lab -- up          # build (first time: a few minutes) and start; prints
 npm run lab -- view        # open the viewer — put this window on a desktop of its own
 npm run lab -- test        # sync, build and run node + unit + e2e + scenarios + matrix ON that screen
 npm run lab -- test matrix --headless
+npm run lab -- test --offline   # the same, in a throwaway container with no network at all
 npm run lab -- show --size 390x844 --dark https://en.wikipedia.org/wiki/Alan_Turing
 npm run lab -- show --real # score with the real daemon running on the Mac instead of the fake
 npm run lab -- hide        # close what show opened
@@ -395,6 +401,13 @@ binaries never land in your `node_modules`), CPU and memory are capped
 display. The Chromium build is the one the repo's Playwright version pins; when
 Playwright's CDN cannot be reached the image takes it from npmmirror's copy
 (`PLAYWRIGHT_DOWNLOAD_HOST` overrides).
+
+`test --offline` proves the deterministic suites need no network: it runs them —
+sync and build included — in a **throwaway container started with `--network none`**,
+which has the same read-only repository and writable `test-results/lab`, its own
+screen, and nothing but loopback. The lab you may be watching keeps running, but the
+offline container publishes no port, so **there is nothing to view while it runs**;
+it is removed when the run ends, fails or is interrupted.
 
 Platforms: the lab is Linux; macOS is covered by the headless runs on your machine;
 CI runs everything (matrix included) on Linux **and Windows** on every push, plus

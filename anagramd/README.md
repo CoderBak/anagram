@@ -22,6 +22,12 @@ With the daemon up, the extension picks it up within seconds (it re-probes `/hea
 every 5 s while down); the popup names the model. Without it, paragraphs show as
 Unavailable and are re-queued automatically when it answers.
 
+The above is the from-source setup. In an *installed* folder (`~/.anagram`, from
+`install.sh`) this daemon is started and stopped by `~/.anagram/bin/anagram start|stop`,
+and `anagram doctor` says which of the folder, the private Python, the model files or
+the port is the reason it will not come up — including a daemon whose `/health` reports
+a contract major the installed extension does not speak.
+
 If the model directory is missing, the daemon downloads the checkpoint itself through
 `huggingface_hub`, pinned to the verified Hub revision (accept the terms on the model
 page and `hf auth login` once). The served model version identifies the whole scoring

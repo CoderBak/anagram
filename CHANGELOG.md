@@ -9,6 +9,26 @@ Notable changes to Anagram, newest first. The format follows
 
 ### Added
 
+- `anagram doctor`: one command that says what is wrong with an installation
+  instead of the single "Daemon not running" every failure used to look like. It
+  checks, in order, the folder (marker, no symlinks, every sub-folder), the
+  installed version against the version in `extension/manifest.json` (a mismatch
+  is a half-finished update), the private Python and the daemon's imports in one
+  invocation, `model.safetensors` and `lid.176.ftz` against the checksums the
+  installer pinned, the free disk space, and the port — our daemon answering
+  (model, version, device, language gate, contract), a stale pid file, or another
+  program holding the port — plus the log's last lines when the daemon is not
+  answering. One `ok`/`FAIL`/`warn` line per check with the command that fixes it,
+  no colour when stdout is not a terminal, non-zero exit if anything FAILED. It
+  changes nothing: no file is created, written, moved or removed, no process is
+  started or signalled, and the Python probe runs under the scrubbed environment
+  with no network and no bytecode written.
+- `npm run lab -- test … --offline` runs the suites in a throwaway container
+  started with `--network none` — the same read-only repository, the same writable
+  `test-results/lab`, its own screen, and nothing but loopback — so the
+  deterministic suites are proven to need no network. The lab keeps running, but
+  that container publishes no port, so there is nothing to view while it does; it
+  is removed when the run ends, fails or is interrupted.
 - The triage panel is reachable without a mouse. The ball's counter is a real
   button that says what it is ("3 flagged paragraphs — show list"), Enter opens
   the panel and moves the keyboard into it, Escape closes it and hands focus
@@ -23,6 +43,13 @@ Notable changes to Anagram, newest first. The format follows
 
 ### Changed
 
+- `anagram update` restarts a daemon that was running. The installer replaces
+  `app/` underneath it, so until now the old code kept serving until somebody
+  restarted it by hand. The daemon is restarted only when it was ours and
+  answering before the update; if the installer fails the running daemon is left
+  alone and the command says so.
+- `anagram version` prints in one line whether the running daemon is the installed
+  build, and says "restart to run the updated daemon" when it is not.
 - A paragraph longer than the model reads in one pass is scored completely. It
   used to be judged by its opening — roughly the first 380 words — while the chip
   and the underline spoke for all of it. It is now cut at sentence boundaries into
