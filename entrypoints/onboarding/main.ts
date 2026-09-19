@@ -1,42 +1,144 @@
 // entrypoints/onboarding/main.ts — first-run welcome page.
+//
+// The page's one moving part is the setup strip at the top: three status rows that say,
+// in a few words each, whether anything is actually going to happen. A new install sees
+// nothing on real pages until the separately-installed daemon is started, so that row —
+// and the one command that fixes it — is the first thing on the page, live, rather than
+// a sentence in a footer. Each row is a dot AND words: the colour never carries the
+// meaning alone.
 import { browser } from "#imports";
 import "../../lib/ui/basecoat-vega.cdn.min.css";
 import { followSystemTheme } from "../../lib/ui/theme";
-
-followSystemTheme();
-const manifest = browser.runtime.getManifest();
-document.getElementById("version")!.textContent = `v${manifest.version}`;
 import { ACTIONS } from "../../lib/messaging/protocol";
 import type { BackendStatus } from "../../lib/messaging/protocol";
-import { CONTRACT_VERSION } from "../../lib/contract";
 
-const note = document.getElementById("backend-note")!;
-void (async () => {
-  let s: BackendStatus | undefined;
+followSystemTheme();
+const version = browser.runtime.getManifest().version;
+document.getElementById("version")!.textContent = `v${version}`;
+document.getElementById("ext-version")!.textContent = `v${version}`;
+
+const START_CMD = "~/.anagram/bin/anagram start";
+const UPDATE_CMD = "~/.anagram/bin/anagram update";
+/** While the daemon is down the page re-asks often (a user who just ran the command
+ *  should not have to reload); once it is up, one slow re-check is enough. */
+const POLL_DOWN_MS = 3_000;
+const POLL_UP_MS = 60_000;
+
+const daemonRow = document.getElementById("row-daemon")!;
+const daemonState = document.getElementById("daemon-state")!;
+const daemonDetail = document.getElementById("daemon-detail")!;
+const daemonCmd = document.getElementById("daemon-cmd")!;
+const daemonCmdText = document.getElementById("daemon-cmd-text")!;
+const daemonLink = document.getElementById("daemon-link")!;
+const readyRow = document.getElementById("row-ready")!;
+const readyText = document.getElementById("ready-text")!;
+const install = document.getElementById("install")!;
+
+/** Copy on an extension page: the Clipboard API is always there, so no textarea dance. */
+function wireCopy(buttonId: string, text: () => string): void {
+  const button = document.getElementById(buttonId) as HTMLButtonElement;
+  button.addEventListener("click", () => {
+    void navigator.clipboard.writeText(text()).then(
+      () => {
+        button.textContent = "Copied ✓";
+        setTimeout(() => {
+          button.textContent = "Copy";
+        }, 1400);
+      },
+      () => {
+        /* nothing to fall back to, and nothing to say — the command is on screen */
+      },
+    );
+  });
+}
+const installCmd = document.getElementById("install-cmd")!;
+wireCopy("daemon-copy", () => daemonCmdText.textContent ?? "");
+wireCopy("install-copy", () => installCmd.textContent ?? "");
+
+/** Paint the two live rows from one status answer. Returns whether the daemon is up. */
+function render(s: BackendStatus | undefined): boolean {
+  const up = s?.active === "server" && s.model != null;
+  // Everything optional goes away first, so a row never keeps a stale detail beside a
+  // fresh verdict; the elements themselves are reused, so nothing is rebuilt.
+  daemonDetail.hidden = true;
+  daemonCmd.hidden = true;
+  daemonLink.hidden = true;
+  let notInstalled = false;
+
+  if (s && s.active === "server" && s.model) {
+    daemonRow.dataset.state = "ok";
+    daemonState.textContent = "running";
+    daemonDetail.textContent = `${s.model.id} · ${s.server.device ?? "cpu"}`;
+    daemonDetail.hidden = false;
+  } else if (s?.server.reason === "contract") {
+    // Something IS listening, of another generation: the fix is an update, not a start.
+    daemonRow.dataset.state = "bad";
+    daemonState.textContent = "version mismatch";
+    daemonCmdText.textContent = UPDATE_CMD;
+    daemonCmd.hidden = false;
+  } else if (s?.server.reason === "loopback") {
+    // The configured URL is not local, so no probe was ever made — only the options
+    // page can put that right.
+    daemonRow.dataset.state = "bad";
+    daemonState.textContent = "not a local address";
+    daemonLink.hidden = false;
+  } else {
+    // Nothing answered — the same row whether the daemon was never installed or merely
+    // is not started, so the install one-liner rides along under the card.
+    daemonRow.dataset.state = "bad";
+    daemonState.textContent = "not running";
+    daemonCmdText.textContent = START_CMD;
+    daemonCmd.hidden = false;
+    notInstalled = true;
+  }
+
+  readyRow.dataset.state = up ? "ok" : "idle";
+  readyText.textContent = up
+    ? "Open any article — a chip appears after each paragraph."
+    : "Waiting for the scoring daemon.";
+  install.hidden = !notInstalled;
+  return up;
+}
+
+let timer: ReturnType<typeof setTimeout> | undefined;
+let inFlight = false;
+
+function schedule(ms: number): void {
+  if (timer !== undefined) clearTimeout(timer);
+  timer = setTimeout(() => void tick(), ms);
+}
+
+async function tick(): Promise<void> {
+  if (inFlight) return; // the call in progress will schedule the next one
+  inFlight = true;
+  let up = false;
   try {
-    s = (await browser.runtime.sendMessage({
-      action: ACTIONS.GET_BACKEND_STATUS,
-      probe: true,
-    })) as BackendStatus | undefined;
-  } catch {
-    /* the service worker did not answer — fall through to the not-running note */
+    let s: BackendStatus | undefined;
+    try {
+      // `probe: true` — the cached verdict is up to 5 s old when the daemon is down,
+      // which is most of the interval we poll on.
+      s = (await browser.runtime.sendMessage({
+        action: ACTIONS.GET_BACKEND_STATUS,
+        probe: true,
+      })) as BackendStatus | undefined;
+    } catch {
+      /* the service worker did not answer — same advice as a daemon that is not there */
+    }
+    up = render(s);
+  } finally {
+    inFlight = false;
   }
-  if (s?.active === "server" && s.model) {
-    note.textContent =
-      `Scoring daemon: ${s.model.id} running locally via anagramd (${s.server.device ?? "cpu"}). ` +
-      "Nothing leaves this computer.";
-    return;
+  // A hidden tab is never polled: the visibilitychange handler re-checks on return.
+  if (document.visibilityState === "visible") schedule(up ? POLL_UP_MS : POLL_DOWN_MS);
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    void tick();
+  } else if (timer !== undefined) {
+    clearTimeout(timer);
+    timer = undefined;
   }
-  if (s?.server.reason === "contract") {
-    // A daemon is there, just of another generation: point at the update, not the start.
-    note.textContent =
-      `A scoring daemon answers at ${s.serverUrl}, but it speaks contract ${s.server.contract ?? "?"} ` +
-      `and this extension needs ${CONTRACT_VERSION.split(".")[0]}.x, so paragraphs will show as ` +
-      "Unavailable until you update it: ~/.anagram/bin/anagram update.";
-    return;
-  }
-  note.textContent =
-    "The local scoring daemon (anagramd) is not running, so paragraphs will show as Unavailable " +
-    "until you start it: ~/.anagram/bin/anagram start (or `npm run serve` from a source checkout) — it is " +
-    "picked up automatically. Scores come from pangram/editlens_roberta-large; nothing leaves this computer.";
-})();
+});
+
+void tick();

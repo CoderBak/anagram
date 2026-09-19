@@ -57,6 +57,37 @@
       .kbd { vertical-align: middle; }
       footer.foot { margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--border); font-size: 13px; line-height: 1.6; color: var(--muted-foreground); }
       code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; background: var(--muted); padding: 1px 5px; border-radius: 5px; }
+
+      /* Setup strip: three live rows, each a dot plus a few words. The dot never carries
+         the meaning on its own — the words beside it say the same thing. */
+      .setup { display: flex; flex-direction: column; gap: 11px; }
+      .srow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 12px; }
+      .sname { display: flex; align-items: baseline; gap: 9px; flex: 0 0 auto; min-width: 126px; }
+      .slabel { font-weight: 500; }
+      /* Wide: the body sits beside the label. Narrow: 200px will not fit next to it, so it
+         wraps onto its own line instead of squeezing the command out of the card. */
+      .sbody { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; flex: 1 1 200px; min-width: 0; }
+      .sdot { width: 9px; height: 9px; border-radius: 50%; flex: none; align-self: center; background: var(--d-none); }
+      .srow[data-state="ok"] .sdot { background: var(--d-human); }
+      .srow[data-state="bad"] .sdot { background: var(--destructive); }
+      .sval { font-weight: 600; color: var(--muted-foreground); }
+      .srow[data-state="ok"] .sval { color: var(--c-human); }
+      .srow[data-state="bad"] .sval { color: var(--destructive); }
+      .sdetail { color: var(--muted-foreground); font-size: 13.5px; overflow-wrap: anywhere; }
+      .sready { color: var(--muted-foreground); }
+      .srow[data-state="ok"] .sready { color: var(--foreground); }
+      .cmd { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; }
+      .cmd code { overflow-wrap: anywhere; }
+      .cmd .btn { min-width: 74px; }
+      a.btn { text-decoration: none; }
+      .install { margin: 9px 2px 0; font-size: 13px; line-height: 1.9; color: var(--muted-foreground); }
+      /* Too narrow for a second column: stack each row and indent the words under the
+         label, so the list still reads as a list (a 360 px window is the floor). */
+      @media (max-width: 480px) {
+        .srow { display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; }
+        .sname { min-width: 0; }
+        .sbody { padding-left: 18px; }
+      }
     </style>
   </head>
   <body>
@@ -74,6 +105,37 @@
         quiet on human text, louder as AI involvement grows.</p>
 
       <div class="stack">
+        <div>
+          <section class="card" data-size="sm">
+            <header><h2>Setup</h2></header>
+            <section>
+              <div class="setup" id="setup" aria-live="polite">
+                <div class="srow" id="row-ext" data-state="ok">
+                  <span class="sname"><span class="sdot"></span><span class="slabel">Extension</span></span>
+                  <span class="sbody"><span class="sval">installed</span><span class="sdetail" id="ext-version"></span></span>
+                </div>
+                <div class="srow" id="row-daemon" data-state="idle">
+                  <span class="sname"><span class="sdot"></span><span class="slabel">Scoring daemon</span></span>
+                  <span class="sbody">
+                    <span class="sval" id="daemon-state">checking&hellip;</span>
+                    <span class="sdetail" id="daemon-detail" hidden></span>
+                    <span class="cmd" id="daemon-cmd" hidden><code id="daemon-cmd-text"></code><button
+                      type="button" class="btn" data-variant="outline" data-size="xs" id="daemon-copy">Copy</button></span>
+                    <a class="btn" data-variant="outline" data-size="xs" id="daemon-link" href="/options.html" hidden>Open options</a>
+                  </span>
+                </div>
+                <div class="srow" id="row-ready" data-state="idle">
+                  <span class="sname"><span class="sdot"></span><span class="slabel">Ready</span></span>
+                  <span class="sbody"><span class="sready" id="ready-text">Waiting for the scoring daemon.</span></span>
+                </div>
+              </div>
+            </section>
+          </section>
+          <p class="install" id="install" hidden>Not installed yet? <span class="cmd"><code
+            id="install-cmd">curl -fsSL https://github.com/CoderBak/anagram/releases/latest/download/install.sh | sh</code><button
+            type="button" class="btn" data-variant="outline" data-size="xs" id="install-copy">Copy</button></span></p>
+        </div>
+
         <section class="card" data-size="sm" aria-label="How Anagram reads a page">
           <header><h2>How it reads</h2></header>
           <section>
@@ -192,7 +254,7 @@
         </section>
       </div>
 
-      <footer class="foot" id="backend-note"></footer>
+      <footer class="foot">Model: pangram/editlens_roberta-large (CC BY-NC-SA 4.0, non-commercial).</footer>
     </div>
     <script type="module" src="./main.ts"></script>
   </body>
