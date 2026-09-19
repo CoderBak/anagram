@@ -161,6 +161,15 @@ Notable changes to Anagram, newest first. The format follows
   the reader scroll the full 58 screens the browser manages without us instead of
   44 and 49.
 
+- A URL rewritten while you scroll no longer re-reads the page. Discourse rewrites
+  the address with the number of the post in view on every scroll step, and each
+  one was answered with a whole-document walk — 71 of them in a 60-second session
+  on one topic, now 3. A rewrite of the current entry that leaves every live
+  paragraph where it was and the main region unchanged is answered by the purge
+  alone; a pushed entry or a traversal still gets the full refresh, and a burst of
+  them gets one. Nothing is missed by this: real DOM swaps are the mutation
+  observer's job, and the survey found no route change it failed to see.
+
 - `anagram update` restarts a daemon that was running. The installer replaces
   `app/` underneath it, so until now the old code kept serving until somebody
   restarted it by hand. The daemon is restarted only when it was ours and

@@ -63,6 +63,10 @@ const PREFETCH_PASS = 300;
 // Where it is missing (Firefox before it shipped the API; it is there in 156) a slow URL
 // poll covers pushState instead.
 const URL_POLL_MS = 2500;
+/** A route change is answered once, not once per entry: frameworks that push and then
+ *  correct the address (a redirect, a canonical slug, a query the router rewrites) fire
+ *  several changes in a row, and one walk answers all of them. */
+const URL_REFRESH_DEBOUNCE_MS = 300;
 /** While the daemon is down: how often the content script asks the worker to re-probe. */
 const DOWN_POLL_MS = 5000;
 /** How long the first collect waits for the Readability chunk under "main" scope. */
@@ -193,6 +197,8 @@ export function createOrchestrator(
   let l1Dim: string | null = null;
   let lastHref = location.href;
   let urlTimer: ReturnType<typeof setInterval> | null = null;
+  /** A route change's refresh, waiting out the burst it arrived in. */
+  let urlRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   /** The daemon stopped answering: dispatch is paused until a probe succeeds. */
   let backendDown = false;
   let downTimer: ReturnType<typeof setInterval> | null = null;
@@ -953,17 +959,49 @@ export function createOrchestrator(
 
   // --- URL / SPA navigation ------------------------------------------------------------
 
-  function onUrlMaybeChanged(): void {
+  /**
+   * A same-document URL change. Two of them are not the same thing:
+   *
+   * A REWRITE of the current entry (replaceState; the Navigation API calls it "replace")
+   * is usually not a navigation at all — Discourse rewrites the address with the number of
+   * the post you are looking at on every scroll step, which answered a 90-second session
+   * with 51 whole-document re-walks and 1 058 layouts where the page itself did 725. The
+   * page did not change: the MutationObserver is what covers real DOM changes, and it
+   * never missed one in the survey. So a rewrite that left every live unit connected and
+   * the main region where it was is answered by the purge and the scope re-resolve alone.
+   *
+   * Anything else — a pushed entry, a traversal, a popstate, a hash change, the slow poll
+   * that stands in where the Navigation API is missing — is a real route change and gets
+   * the full refresh, debounced so that a burst of them is one walk.
+   */
+  function onUrlMaybeChanged(kind: "rewrite" | "route"): void {
     if (!started || location.href === lastHref) return;
     lastHref = location.href;
-    // Incremental refresh: purge what's gone, pick up what's new. Still-valid
-    // badges stay put (no flicker); MutationObserver covers the DOM swap itself.
+    const live = unitsById.size;
+    const region = scopeRoot;
     purgeDisconnected();
     resolveScopeRoot(); // the route's main region may be a different element now
-    const base = scanBase();
-    if (base) ingestUnits(collect(base, makeClaimFilter()));
-    updateFab();
-    log.log("url change refresh", location.href);
+    if (kind === "rewrite" && unitsById.size === live && scopeRoot === region) {
+      updateFab();
+      return;
+    }
+    scheduleUrlRefresh();
+  }
+
+  /** Purge what's gone, pick up what's new. Still-valid badges stay put (no flicker);
+   *  MutationObserver covers the DOM swap itself. */
+  function scheduleUrlRefresh(): void {
+    if (urlRefreshTimer !== null) clearTimeout(urlRefreshTimer);
+    urlRefreshTimer = setTimeout(() => {
+      urlRefreshTimer = null;
+      if (!started) return;
+      purgeDisconnected();
+      resolveScopeRoot();
+      const base = scanBase();
+      if (base) ingestUnits(collect(base, makeClaimFilter()));
+      updateFab();
+      log.log("url change refresh", location.href);
+    }, URL_REFRESH_DEBOUNCE_MS);
   }
 
   // --- visibility (instant, no re-detection) -------------------------------------------
@@ -1103,21 +1141,34 @@ export function createOrchestrator(
     }
   }
 
+  const onRouteChanged = (): void => onUrlMaybeChanged("route");
+  /** `currententrychange` carries the navigation that caused it — "push", "replace",
+   *  "reload", "traverse" — or nothing at all when the entry was merely updated
+   *  (navigation.updateCurrentEntry), which is a rewrite by another name. */
+  const onEntryChanged = (e: Event): void => {
+    const how = (e as Event & { navigationType?: string | null }).navigationType;
+    onUrlMaybeChanged(how === "replace" || how === undefined || how === null ? "rewrite" : "route");
+  };
+
   function watchUrl(): void {
-    window.addEventListener("popstate", onUrlMaybeChanged);
-    window.addEventListener("hashchange", onUrlMaybeChanged);
+    window.addEventListener("popstate", onRouteChanged);
+    window.addEventListener("hashchange", onRouteChanged);
     const nav = navigationApi();
-    if (nav) nav.addEventListener("currententrychange", onUrlMaybeChanged);
-    else urlTimer = setInterval(onUrlMaybeChanged, URL_POLL_MS);
+    if (nav) nav.addEventListener("currententrychange", onEntryChanged);
+    else urlTimer = setInterval(onRouteChanged, URL_POLL_MS);
   }
 
   function unwatchUrl(): void {
-    window.removeEventListener("popstate", onUrlMaybeChanged);
-    window.removeEventListener("hashchange", onUrlMaybeChanged);
-    navigationApi()?.removeEventListener("currententrychange", onUrlMaybeChanged);
+    window.removeEventListener("popstate", onRouteChanged);
+    window.removeEventListener("hashchange", onRouteChanged);
+    navigationApi()?.removeEventListener("currententrychange", onEntryChanged);
     if (urlTimer !== null) {
       clearInterval(urlTimer);
       urlTimer = null;
+    }
+    if (urlRefreshTimer !== null) {
+      clearTimeout(urlRefreshTimer);
+      urlRefreshTimer = null;
     }
   }
 

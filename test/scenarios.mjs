@@ -2299,13 +2299,45 @@ if(location.search.includes("all"))for(const s of STEPS)s();
   });
   await noisy.waitForTimeout(2500);
   await noisy.close();
-  await sw.evaluate(() => new Promise((res) => chrome.storage.local.set({ debug: false }, res)));
   const burst = drains.filter((d) => d.dirty > 10);
   record(
     "ui",
     "a mutation burst is bounded to at most ten walks, whatever it touched",
     burst.length > 0 && burst.every((d) => d.planned <= 10),
     JSON.stringify(drains.slice(-6)),
+  );
+
+  // A URL rewritten while the reader scrolls is not a route change. Discourse rewrites the
+  // address with the post number on every scroll step — 51 whole-document re-walks in a
+  // 90-second session — while a pushed entry still gets its refresh.
+  const routed = await context.newPage();
+  const refreshes = [];
+  routed.on("console", (m) => {
+    if (m.text().includes("url change refresh")) refreshes.push(m.text().slice(-60));
+  });
+  await routed.goto(server.url("/incremental.html"), { waitUntil: "load" });
+  await chipsSettled(routed);
+  const chipsBefore = await chipSig(routed);
+  await routed.evaluate(() => {
+    for (let i = 0; i < 20; i++) history.replaceState(null, "", `?post=${i}`);
+  });
+  await routed.waitForTimeout(2000);
+  const afterRewrites = refreshes.length;
+  const chipsAfter = await chipSig(routed);
+  // A real route change: a pushed entry AND the content it brings.
+  await routed.evaluate(() => {
+    history.pushState(null, "", "/incremental.html?route=2");
+    for (let i = 0; i < 3; i++) history.replaceState(null, "", `/incremental.html?route=2&t=${i}`);
+  });
+  await routed.waitForTimeout(2000);
+  const afterRoute = refreshes.length;
+  await routed.close();
+  await sw.evaluate(() => new Promise((res) => chrome.storage.local.set({ debug: false }, res)));
+  record(
+    "ui",
+    "twenty URL rewrites cost no re-walk and no chip; a pushed entry is refreshed once",
+    afterRewrites === 0 && chipsAfter === chipsBefore && afterRoute - afterRewrites === 1,
+    JSON.stringify({ afterRewrites, afterRoute, chipsKept: chipsAfter === chipsBefore }),
   );
 }
 
