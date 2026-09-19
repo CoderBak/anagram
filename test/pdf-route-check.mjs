@@ -242,18 +242,23 @@ await setAutoOpen(true);
 
 {
   const page = await visit(files.url("/doc.pdf"));
+  await page.waitForSelector("#pages:not(.reading)", { timeout: 20000 }).catch(() => {});
   await page.waitForTimeout(2500);
+  // The reading mode shows the document's own PAGES, so what proves it read them is the
+  // text layer over them and the chips on it, not a rebuilt paragraph element.
   const reading = await page
     .evaluate((sel) => ({
-      paragraphs: document.querySelectorAll("#paper p").length,
+      pages: document.querySelectorAll(".page").length,
+      spans: document.querySelectorAll(".textLayer span").length,
       chips: document.querySelectorAll(sel).length,
       title: document.getElementById("title").textContent,
     }), BADGE_SEL)
-    .catch(() => ({ paragraphs: 0, chips: 0, title: null }));
+    .catch(() => ({ pages: 0, spans: 0, chips: 0, title: null }));
   record(
-    "on: the same PDF lands in the reading mode, with paragraphs and chips",
+    "on: the same PDF lands in the reading mode, with its pages and chips",
     page.url() === `${READER}?src=${encodeURIComponent(files.url("/doc.pdf"))}` &&
-      reading.paragraphs === 3 &&
+      reading.pages === 2 &&
+      reading.spans >= 29 &&
       reading.chips > 0,
     JSON.stringify({ url: page.url().slice(0, 60), ...reading }),
   );
@@ -346,11 +351,15 @@ await setAutoOpen(true);
   const page = await visit(`file://${LOCAL_PDF}`);
   await page.waitForTimeout(2000);
   const read = await page
-    .evaluate(() => ({ paragraphs: document.querySelectorAll("#paper p").length, notice: document.getElementById("notice")?.textContent ?? null }))
-    .catch(() => ({ paragraphs: 0, notice: null }));
+    .evaluate(() => ({
+      pages: document.querySelectorAll(".page").length,
+      spans: document.querySelectorAll(".textLayer span").length,
+      notice: document.getElementById("notice")?.textContent ?? null,
+    }))
+    .catch(() => ({ pages: 0, spans: 0, notice: null }));
   record(
     "on: a local PDF opens and is really read, where file access is allowed at all",
-    allowed ? page.url().startsWith(`${READER}?src=file`) && read.paragraphs === 3 : null,
+    allowed ? page.url().startsWith(`${READER}?src=file`) && read.pages === 2 && read.spans >= 29 : null,
     JSON.stringify({ allowed, url: page.url().slice(0, 60), ...read }),
   );
   await page.close();

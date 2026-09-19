@@ -9,6 +9,37 @@ Notable changes to Anagram, newest first. The format follows
 
 ### Added
 
+- **The PDF reading mode shows the real pages.** It used to rebuild a PDF as
+  plain `<h2>`/`<p>` on a sheet of its own, which makes the document text-only
+  and breaks its format — figures, mathematics, columns, fonts, all gone.
+  Anagram annotates the original; it never replaces or reformats it. So the
+  reader is now a small pdf.js viewer: the pages themselves, drawn faithfully,
+  on a neutral surface that follows light and dark while the paper stays white
+  as printed. Each page's canvas is drawn when the reader comes near it and its
+  memory is given back once they are well past, so a 300-page book stays
+  bounded; the text layer over every page is built up front and left in the DOM,
+  so Ctrl/Cmd+F finds text anywhere in the document. Zoom is fit-width by
+  default with −/+, the percentage (which fits again) and Cmd/Ctrl +/−/0 — and
+  it is one CSS variable, so no span and no chip is ever rebuilt by it.
+
+  The paragraph reconstruction stays and becomes **invisible**. It still decides
+  what the model reads as one paragraph — columns in reading order, running
+  heads and page numbers out, lists and footnotes apart, broken words mended, a
+  paragraph sewn back together across a page break — and it now also says which
+  run of which page every stretch of that text was set in. That is what puts the
+  marks on the document's own glyphs and the chip in the white space after the
+  paragraph's last line, inside its own column, never over the other column's
+  text. Everything else is unchanged: the same chips, the same hover card, the
+  same panel, the same jump-to-flagged, the same copied report naming the PDF.
+
+  A scanned PDF with no text layer is now **shown** rather than refused — that
+  is the faithful thing to do — with the same one-line notice; there is simply
+  nothing in it to score. Encrypted, oversized and corrupt files answer exactly
+  as before. Drawing a page faithfully needs data pdf.js fetches while it works,
+  so the CMaps (CJK), the standard fourteen fonts and the JPEG2000/JBIG2 image
+  decoders are vendored beside it: the extension grows from 2.6 MB to 4.9 MB,
+  none of which the content script on an ordinary page ever loads.
+
 - **An arXiv paper opens as the paper.** arXiv publishes an HTML rendering
   (LaTeXML) of most papers at `arxiv.org/html/<id>` beside the PDF, and that
   markup has real paragraphs, real headings and formulas that say they are

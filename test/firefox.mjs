@@ -561,7 +561,7 @@ let pdfResources = [];
         return true;
       }, TEST_PDF.toString("base64"))
       .catch(() => false));
-  const read = dropped && (await waitFor(p, () => document.querySelectorAll("#paper > p").length >= 3, { timeout: 30000 }));
+  const read = dropped && (await waitFor(p, () => document.querySelectorAll(".page .textLayer span").length >= 20, { timeout: 30000 }));
   const workers = arrived ? await p.evaluate(() => window.__workers ?? null).catch(() => null) : null;
   check(
     "PDF reader: a dropped file is read, and pdf.js parses it in a MODULE WORKER from moz-extension://",
