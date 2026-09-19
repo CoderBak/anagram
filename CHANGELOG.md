@@ -155,6 +155,10 @@ Notable changes to Anagram, newest first. The format follows
 
 ### Fixed
 
+- Firefox: the idle prefetch lane never ran (a detached `requestIdleCallback` call throws in
+  Gecko), so paragraphs below the fold were scored only when scrolled to — it is called on
+  `window` now. The manifest's minimum Firefox is 140, the first version in which the chips
+  can render at all.
 - `anagram stop` really stops the daemon. `start` recorded the pid of the shell
   that wrapped it rather than the daemon's own, so `stop` killed the wrapper,
   reported success and left anagramd holding the port — and `restart` then found

@@ -16,8 +16,10 @@ export default defineConfig({
             browser_specific_settings: {
               gecko: {
                 id: "anagram@coderbak.dev",
-                // Intl.Segmenter 125, zoom 126; underlines feature-detect (140+).
-                strict_min_version: "128.0",
+                // 140 is the real floor: before it a content script cannot give a shadow root a
+                // constructed stylesheet ("Accessing from Xray wrapper is not supported"), so no
+                // chip, ball or card renders at all; 140 is also where CSS.highlights arrived.
+                strict_min_version: "140.0",
                 // AMO's data-collection disclosure: nothing is collected or transmitted.
                 data_collection_permissions: { required: ["none"] },
               },

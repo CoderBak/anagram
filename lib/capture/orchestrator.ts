@@ -59,7 +59,8 @@ const PREFETCH_PASS = 300;
 // The Navigation API (window.navigation, Chrome 102+) fires `currententrychange` for
 // every same-document navigation — pushState/replaceState included — and is reachable
 // from the content script's isolated world, so no MAIN-world history patch is needed.
-// Where it is missing (Firefox) a slow URL poll covers pushState instead.
+// Where it is missing (Firefox before it shipped the API; it is there in 156) a slow URL
+// poll covers pushState instead.
 const URL_POLL_MS = 2500;
 /** While the daemon is down: how often the content script asks the worker to re-probe. */
 const DOWN_POLL_MS = 5000;
@@ -485,7 +486,10 @@ export function createOrchestrator(
     };
     const ric = (window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number })
       .requestIdleCallback;
-    if (typeof ric === "function") ric(run, { timeout: 1500 });
+    // Called ON window: Gecko's binding rejects a detached call ("called on an object that
+    // does not implement interface Window") — Chromium tolerates it, which is how the
+    // whole idle lane stayed dead on Firefox without any Chromium suite noticing.
+    if (typeof ric === "function") ric.call(window, run, { timeout: 1500 });
     else setTimeout(run, 400);
   }
 
