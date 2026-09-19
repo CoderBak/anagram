@@ -6,6 +6,8 @@
 import { browser } from "#imports";
 import "../../lib/ui/basecoat-vega.cdn.min.css";
 import { followSystemTheme } from "../../lib/ui/theme";
+import { localizePage } from "../../lib/ui/localize";
+import { t } from "../../lib/i18n";
 import {
   settings,
   clearSiteOverride,
@@ -71,8 +73,7 @@ async function renderSites(): Promise<void> {
   if (hosts.length === 0) {
     const empty = document.createElement("p");
     empty.className = "empty";
-    empty.textContent =
-      "No per-site rules yet. Use the toolbar popup's “This site” toggle to add one.";
+    empty.textContent = t("optNoRules");
     sitesEl.appendChild(empty);
     return;
   }
@@ -82,18 +83,18 @@ async function renderSites(): Promise<void> {
   const table = document.createElement("table");
   table.className = "table";
   const head = table.createTHead().insertRow();
-  for (const h of ["Site", "Rule", "Actions"]) {
+  for (const key of ["optColSite", "optColRule", "optColActions"] as const) {
     const th = document.createElement("th");
     // The last column holds only Remove buttons, so printing "Actions" over them would be
     // noise — but a header cell with nothing in it is a column with no name at all to a
     // screen reader, which is how the table used to read.
-    if (h === "Actions") {
+    if (key === "optColActions") {
       const label = document.createElement("span");
       label.className = "vh";
-      label.textContent = h;
+      label.textContent = t(key);
       th.appendChild(label);
     } else {
-      th.textContent = h;
+      th.textContent = t(key);
     }
     head.appendChild(th);
   }
@@ -103,7 +104,7 @@ async function renderSites(): Promise<void> {
     const row = body.insertRow();
     row.insertCell().textContent = host;
     const modeCell = row.insertCell();
-    modeCell.textContent = mode === "on" ? "Always on" : "Always off";
+    modeCell.textContent = mode === "on" ? t("optAlwaysOn") : t("optAlwaysOff");
     modeCell.className = `mode-${mode}`;
     const actions = row.insertCell();
     const remove = document.createElement("button");
@@ -111,7 +112,7 @@ async function renderSites(): Promise<void> {
     remove.className = "btn";
     remove.dataset.variant = "ghost";
     remove.dataset.size = "xs";
-    remove.textContent = "Remove";
+    remove.textContent = t("optRemove");
     remove.addEventListener("click", () => {
       void clearSiteOverride(host).then(renderSites);
     });
@@ -143,7 +144,7 @@ addRuleEl.addEventListener("submit", (e) => {
   e.preventDefault();
   const host = normalizeHost(addHostEl.value);
   if (host === null) {
-    addErrorEl.textContent = "Enter a hostname like example.com.";
+    addErrorEl.textContent = t("optBadHost");
     addErrorEl.hidden = false;
     return;
   }
@@ -155,7 +156,7 @@ addRuleEl.addEventListener("submit", (e) => {
   // wondering whether the rule took.
   void effectiveRule(host).then((covering) => {
     if (covering && covering.host !== host && covering.mode === mode) {
-      addNoteEl.textContent = `Already covered by ${covering.host}.`;
+      addNoteEl.textContent = t("optAlreadyCovered", covering.host);
       addNoteEl.hidden = false;
     }
     // The siteOverrides watch below re-renders the table once the write lands.
@@ -170,6 +171,7 @@ addHostEl.addEventListener("input", () => {
   addNoteEl.hidden = true;
 });
 
+localizePage();
 followSystemTheme();
 bindToggle(enabledEl, settings.enabled);
 bindToggle(highlightsEl, settings.showHighlights);
@@ -192,7 +194,7 @@ serverUrlEl.addEventListener("change", () => {
   const v = raw === "" ? DEFAULT_SERVER_URL : normalizeServerUrl(raw);
   if (v === null) {
     // Loopback only: page text must never leave this computer.
-    serverUrlErrorEl.textContent = "Only a local address is allowed (http://127.0.0.1:… or http://localhost:…).";
+    serverUrlErrorEl.textContent = t("optBadUrl");
     serverUrlErrorEl.hidden = false;
     void settings.serverUrl.getValue().then((prev) => {
       serverUrlEl.value = prev;
@@ -209,7 +211,7 @@ serverUrlEl.addEventListener("input", () => {
 
 /** Ask the service worker whether the daemon answers; `probe` forces a fresh /health check. */
 async function refreshBackend(probe: boolean): Promise<void> {
-  backendStatusEl.textContent = "Checking…";
+  backendStatusEl.textContent = t("optChecking");
   try {
     const s = (await browser.runtime.sendMessage({
       action: ACTIONS.GET_BACKEND_STATUS,
@@ -218,23 +220,23 @@ async function refreshBackend(probe: boolean): Promise<void> {
     if (!s) throw new Error("no status");
     if (s.active === "server" && s.model) {
       backendStatusEl.textContent =
-        `Connected — ${s.model.id} (${s.model.ver}) on ${s.server.device ?? "?"} at ${s.serverUrl}.`;
+        t("optConnected", s.model.id, s.model.ver, s.server.device ?? "?", s.serverUrl);
     } else if (s.server.reason === "contract") {
       // Something IS listening; the fix is an update, not a start.
       backendStatusEl.textContent =
-        `Found a daemon at ${s.serverUrl}, but it speaks contract ${s.server.contract ?? "?"} and this ` +
-        `extension needs ${CONTRACT_VERSION.split(".")[0]}.x — run: ~/.anagram/bin/anagram update.`;
+        t("optContractMismatch", s.serverUrl, s.server.contract ?? "?", CONTRACT_VERSION.split(".")[0]);
     } else {
       backendStatusEl.textContent =
-        `Not running at ${s.serverUrl} — paragraphs show as Unavailable until it answers` +
-        (s.server.reason === "loopback" && s.server.error ? ` (${s.server.error}).` : ".");
+        s.server.reason === "loopback" && s.server.error
+          ? t("optNotRunningReason", s.serverUrl, s.server.error)
+          : t("optNotRunning", s.serverUrl);
     }
     // The header summary must not contradict the status line above it.
     const summary =
-      s.active === "server" && s.model ? s.model.id : s.server.reason === "contract" ? "daemon version mismatch" : "daemon not running";
+      s.active === "server" && s.model ? s.model.id : s.server.reason === "contract" ? t("optSummaryMismatch") : t("optSummaryDown");
     versionEl.textContent = `v${version} · contract ${CONTRACT_VERSION} · ${summary}`;
   } catch {
-    backendStatusEl.textContent = "Could not reach the extension’s service worker.";
+    backendStatusEl.textContent = t("optNoWorker");
   }
 }
 checkBackendEl.addEventListener("click", () => void refreshBackend(true));
@@ -243,7 +245,7 @@ void refreshBackend(false);
 // --- cached verdicts -------------------------------------------------------------------
 // The worker owns the caches (its memory and the IndexedDB store) and passes the word on to
 // every open tab; the button only says that it happened, the way the copy buttons do.
-const CLEAR_LABEL = clearCacheEl.textContent ?? "Clear cached verdicts";
+const CLEAR_LABEL = clearCacheEl.textContent ?? t("optClearCache");
 clearCacheEl.addEventListener("click", () => {
   clearCacheEl.disabled = true;
   void browser.runtime
@@ -251,7 +253,7 @@ clearCacheEl.addEventListener("click", () => {
     .catch(() => undefined)
     .then(() => {
       clearCacheEl.disabled = false;
-      clearCacheEl.textContent = "Cleared ✓";
+      clearCacheEl.textContent = t("optCleared");
       setTimeout(() => {
         clearCacheEl.textContent = CLEAR_LABEL;
       }, 1500);

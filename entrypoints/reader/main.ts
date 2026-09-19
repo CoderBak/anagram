@@ -14,6 +14,8 @@
 import { browser } from "#imports";
 import "../../lib/ui/basecoat-vega.cdn.min.css";
 import { followSystemTheme } from "../../lib/ui/theme";
+import { localizePage } from "../../lib/ui/localize";
+import { t, tn } from "../../lib/i18n";
 import { createOrchestrator, type Orchestrator } from "../../lib/capture/orchestrator";
 import { enabledForSite } from "../../lib/settings/settings";
 import { ACTIONS } from "../../lib/messaging/protocol";
@@ -149,13 +151,13 @@ async function read(doc: PdfDocument, source: { name: string; url: string | null
   titleEl.title = name;
   const capped = doc.numPages > MAX_PAGES;
   const pageCount = capped ? MAX_PAGES : doc.numPages;
-  subtitleEl.textContent = `${doc.numPages} page${doc.numPages === 1 ? "" : "s"}`;
+  subtitleEl.textContent = tn("readerPages", doc.numPages);
   originalEl.hidden = source.url === null;
   dropEl.hidden = true;
   paperEl.hidden = false;
   paperEl.replaceChildren();
   rendered = [];
-  say(capped ? `Reading the first ${MAX_PAGES} pages.` : "");
+  say(capped ? t("readerCapped", MAX_PAGES) : "");
 
   const pages: PdfPageText[] = [];
   let started = false;
@@ -179,7 +181,7 @@ async function read(doc: PdfDocument, source: { name: string; url: string | null
   if (seq !== generation) return;
 
   if (rendered.length === 0) {
-    say("This PDF has no text layer.");
+    say(t("readerNoText"));
     paperEl.hidden = true;
   }
 }
@@ -187,7 +189,7 @@ async function read(doc: PdfDocument, source: { name: string; url: string | null
 /** Open bytes we already hold. Everything that can go wrong ends in one short line. */
 async function open(bytes: Uint8Array, source: { name: string; url: string | null }): Promise<void> {
   if (bytes.byteLength > MAX_BYTES) {
-    say("This PDF is too large to read here.");
+    say(t("readerTooLarge"));
     return;
   }
   say("");
@@ -196,11 +198,7 @@ async function open(bytes: Uint8Array, source: { name: string; url: string | nul
     doc = await openPdf(bytes);
   } catch (e) {
     const failure = e instanceof PdfOpenError ? e.failure : "failed";
-    say(
-      failure === "password"
-        ? "This PDF is password-protected."
-        : "This file could not be read as a PDF.",
-    );
+    say(failure === "password" ? t("readerEncrypted") : t("readerBadFile"));
     dropEl.hidden = false;
     return;
   }
@@ -219,7 +217,7 @@ async function open(bytes: Uint8Array, source: { name: string; url: string | nul
  * did not, the fetch simply fails and the drop zone is the way in.
  */
 async function openFromUrl(src: string): Promise<void> {
-  say("Loading…");
+  say(t("readerLoading"));
   titleEl.textContent = pdfNameFromUrl(src);
   originalEl.hidden = false;
   try {
@@ -229,7 +227,7 @@ async function openFromUrl(src: string): Promise<void> {
     await open(bytes, { name: pdfNameFromUrl(src), url: src });
   } catch (e) {
     log.warn("could not fetch", src, e);
-    say("This PDF could not be loaded. Drop the file here instead.");
+    say(t("readerFetchFailed"));
     dropEl.hidden = false;
   }
 }
@@ -267,6 +265,7 @@ function wire(src: string | null): void {
 }
 
 function main(): void {
+  localizePage();
   followSystemTheme();
   const src = new URL(location.href).searchParams.get("src");
   wire(src);

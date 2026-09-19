@@ -41,7 +41,8 @@ import {
   refreshHighlightTheme,
 } from "../render/highlight";
 import { createFab, type Fab } from "../render/fab";
-import { band, BAND_LABEL, BUCKET_BANDS, isFlagged, scorePct } from "../render/band";
+import { t, tn } from "../i18n";
+import { band, bandLabel, BUCKET_BANDS, isFlagged, scorePct } from "../render/band";
 import { windowReadout } from "../render/coverage";
 import { settings } from "../settings/settings";
 import { createLogger } from "../log";
@@ -281,10 +282,10 @@ export function createOrchestrator(
       .sort((a, b) => a.unit.order - b.unit.order);
 
     const lines: string[] = [];
-    lines.push(`# Anagram report — ${document.title || location.hostname}`);
+    lines.push(`# ${t("reportTitle", document.title || location.hostname)}`);
     lines.push("");
-    lines.push(`- Page: ${opts.reportUrl ?? location.href}`);
-    lines.push(`- Generated: ${new Date().toLocaleString()}`);
+    lines.push(`- ${t("reportPage", opts.reportUrl ?? location.href)}`);
+    lines.push(`- ${t("reportGenerated", new Date().toLocaleString())}`);
     // "Analyzed" is real verdicts only. A paragraph the language gate refused and one
     // the daemon never answered for were both counted as analyzed before, which made
     // an outage look like a clean sweep.
@@ -296,28 +297,29 @@ export function createOrchestrator(
     }
     const analyzed = verdictsById.size - skipped - unavailable;
     lines.push(
-      `- Analyzed: ${analyzed} unit${analyzed === 1 ? "" : "s"} · Flagged: ${flagged.length}` +
-        (unavailable > 0 ? ` · Unavailable: ${unavailable}` : "") +
-        (skipped > 0 ? ` · Skipped (unsupported language): ${skipped}` : ""),
+      "- " +
+        [
+          tn("reportAnalyzed", analyzed),
+          t("reportFlagged", flagged.length),
+          ...(unavailable > 0 ? [t("reportUnavailable", unavailable)] : []),
+          ...(skipped > 0 ? [t("reportSkipped", skipped)] : []),
+        ].join(" · "),
     );
     lines.push("");
     // Every surface of the product says the number is an EXTENT of editing; the report
     // used to print it as "62% AI", which reads as a share of AI-written words. It now
     // carries the plain percentage and the card footer's own sentence to read it by.
-    lines.push(
-      "Each percentage is EditLens's estimate of how far that text sits from untouched " +
-        "human writing toward fully AI-generated — not a share of words, not proof.",
-    );
+    lines.push(t("reportEstimate"));
     lines.push("");
     if (flagged.length === 0) {
-      lines.push("No paragraphs were flagged as heavily edited or AI-generated.");
+      lines.push(t("reportNothingFlagged"));
     } else {
-      lines.push(`## Flagged paragraphs (${flagged.length})`);
+      lines.push(`## ${t("reportFlaggedHeading", flagged.length)}`);
       lines.push("");
       flagged.forEach(({ unit, v, r }, i) => {
         const pct = scorePct(r);
         const dist = r.probs
-          .map((p, i) => `${BAND_LABEL[BUCKET_BANDS[i]]} ${Math.round(p * 100)}%`)
+          .map((p, i) => `${bandLabel(BUCKET_BANDS[i])} ${Math.round(p * 100)}%`)
           .join(" · ");
         const snippet = unit.text.replace(/\s+/g, " ").slice(0, 220);
         const ellipsis = unit.text.length > 220 ? "…" : "";
@@ -325,22 +327,19 @@ export function createOrchestrator(
         // report without the page in front of them needs the parts it was made from.
         const read = windowReadout(v);
         const windows = read
-          ? `; scored in ${read.count} windows: ${read.pcts.join(" · ")}` +
-            (v.unreadChars > 0 ? "; the end of the paragraph was not read" : "")
+          ? t("reportWindows", read.count, read.pcts.join(" · ")) +
+            (v.unreadChars > 0 ? t("reportUnread") : "")
           : "";
         lines.push(
-          `${i + 1}. **${BAND_LABEL[band(r)]} · ${pct}%** ` +
-            `(${dist}; ${unit.wordCount} words${windows})`,
+          `${i + 1}. **${bandLabel(band(r))} · ${pct}%** ` +
+            `(${dist}; ${t("reportWords", unit.wordCount)}${windows})`,
         );
         lines.push(`   > ${snippet}${ellipsis}`);
       });
     }
     lines.push("");
     const m = lastModel();
-    const backend = m
-      ? `Scores from ${m.id} (${m.ver}) via the local anagramd daemon — EditLens estimates ` +
-        "of AI-editing extent, not proof."
-      : "No scoring daemon answered while this page was analyzed.";
+    const backend = m ? t("reportModel", m.id, m.ver) : t("reportNoModel");
     lines.push("---", backend);
     return lines.join("\n");
   }

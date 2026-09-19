@@ -2,6 +2,7 @@
 // selection card and the copied report share. A unit that went through the model in one
 // pass has nothing to add here; everything below is about the long ones.
 import { isScoredWindow, type UnitVerdict } from "../capture/windows";
+import { t } from "../i18n";
 import { scorePct } from "./band";
 
 export interface WindowReadout {
@@ -41,14 +42,11 @@ export function windowPcts(read: WindowReadout): string {
 export function coverageNote(v: UnitVerdict, what: "paragraph" | "selection"): string {
   const read = windowReadout(v);
   return (
-    (v.unreadChars > 0 ? `Only the opening of this ${what} was scored. ` : "") +
-    (read && read.cutShort > 0
-      ? "Part of it is too dense for the model's window and was not read. "
+    (v.unreadChars > 0
+      ? t(what === "selection" ? "coverageOpeningSelection" : "coverageOpeningParagraph")
       : "") +
-    (read && read.skipped > 0 ? "Windows in another language were left out. " : "") +
-    (read
-      ? `Longer than the model reads in one pass, so it was read in ${read.count} consecutive windows ` +
-        "and their results were averaged by length. "
-      : "")
+    (read && read.cutShort > 0 ? t("coverageTooDense") : "") +
+    (read && read.skipped > 0 ? t("coverageOtherLanguages") : "") +
+    (read ? t("coverageAveraged", read.count) : "")
   );
 }

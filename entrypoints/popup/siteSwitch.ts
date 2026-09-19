@@ -7,6 +7,7 @@
 // flipping it must not leave a rule behind that says the opposite of what the switch now
 // shows. The decision is a pure function so every combination is provable without a browser.
 import { normalizeRuleHost, type SiteMode, type SiteRule } from "../../lib/settings/settings";
+import { t } from "../../lib/i18n";
 
 /** Is this host decided by a rule stored on one of its PARENT domains? A rule stored under
  *  the same site (`x.com` vs `www.x.com`) is the host's own, not an inherited one. */
@@ -17,7 +18,7 @@ export function isInherited(host: string, rule: SiteRule | null): boolean {
 /** The small line under "This site": the site the rule belongs to — this host, unless a
  *  parent domain's rule is what decides it. */
 export function siteLine(host: string, rule: SiteRule | null): string {
-  return `on ${isInherited(host, rule) ? rule!.host : host}`;
+  return t("popupOn", isInherited(host, rule) ? rule!.host : host);
 }
 
 /** What flipping the switch does to the stored rules. */

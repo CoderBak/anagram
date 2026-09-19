@@ -9,9 +9,12 @@
 import { browser } from "#imports";
 import "../../lib/ui/basecoat-vega.cdn.min.css";
 import { followSystemTheme } from "../../lib/ui/theme";
+import { localizePage } from "../../lib/ui/localize";
+import { t } from "../../lib/i18n";
 import { ACTIONS } from "../../lib/messaging/protocol";
 import type { BackendStatus } from "../../lib/messaging/protocol";
 
+localizePage();
 followSystemTheme();
 const version = browser.runtime.getManifest().version;
 document.getElementById("version")!.textContent = `v${version}`;
@@ -40,9 +43,9 @@ function wireCopy(buttonId: string, text: () => string): void {
   button.addEventListener("click", () => {
     void navigator.clipboard.writeText(text()).then(
       () => {
-        button.textContent = "Copied ✓";
+        button.textContent = t("copied");
         setTimeout(() => {
-          button.textContent = "Copy";
+          button.textContent = t("onbCopy");
         }, 1400);
       },
       () => {
@@ -67,35 +70,33 @@ function render(s: BackendStatus | undefined): boolean {
 
   if (s && s.active === "server" && s.model) {
     daemonRow.dataset.state = "ok";
-    daemonState.textContent = "running";
+    daemonState.textContent = t("onbRunning");
     daemonDetail.textContent = `${s.model.id} · ${s.server.device ?? "cpu"}`;
     daemonDetail.hidden = false;
   } else if (s?.server.reason === "contract") {
     // Something IS listening, of another generation: the fix is an update, not a start.
     daemonRow.dataset.state = "bad";
-    daemonState.textContent = "version mismatch";
+    daemonState.textContent = t("onbMismatch");
     daemonCmdText.textContent = UPDATE_CMD;
     daemonCmd.hidden = false;
   } else if (s?.server.reason === "loopback") {
     // The configured URL is not local, so no probe was ever made — only the options
     // page can put that right.
     daemonRow.dataset.state = "bad";
-    daemonState.textContent = "not a local address";
+    daemonState.textContent = t("onbNotLocal");
     daemonLink.hidden = false;
   } else {
     // Nothing answered — the same row whether the daemon was never installed or merely
     // is not started, so the install one-liner rides along under the card.
     daemonRow.dataset.state = "bad";
-    daemonState.textContent = "not running";
+    daemonState.textContent = t("onbNotRunning");
     daemonCmdText.textContent = START_CMD;
     daemonCmd.hidden = false;
     notInstalled = true;
   }
 
   readyRow.dataset.state = up ? "ok" : "idle";
-  readyText.textContent = up
-    ? "Open any article — a chip appears after each paragraph."
-    : "Waiting for the scoring daemon.";
+  readyText.textContent = up ? t("onbGo") : t("onbWaiting");
   install.hidden = !notInstalled;
   return up;
 }

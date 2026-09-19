@@ -13,7 +13,8 @@ import { CONTRACT_VERSION } from "../contract";
 import { isScoredWindow, readInWindows, unitVerdict } from "../capture/windows";
 import { requestScores, type ScoreReply } from "../messaging/client";
 import { SURFACE } from "../surface";
-import { band, BAND_LABEL, isNoVerdict, languageName, scorePct, type Band } from "./band";
+import { messageLocale, t } from "../i18n";
+import { band, bandLabel, isNoVerdict, languageName, scorePct, type Band } from "./band";
 import { coverageNote, windowPcts, windowReadout } from "./coverage";
 import { DIST_CSS, distributionHtml } from "./dist";
 import { countWords, MIN_UNIT_WORDS } from "../dom/text";
@@ -162,6 +163,9 @@ export async function analyzeSelection(): Promise<void> {
   shadow.adoptedStyleSheets = [sheet()];
   const card = document.createElement("div");
   card.className = "card";
+  // Our chrome, in the UI's language — not the page's. Said on the element so screen
+  // readers and the CJK font fallback both get it right.
+  card.lang = messageLocale();
   // The card appears without taking focus and without a sound: a reader who asked for
   // this from the context menu would never learn the verdict had landed. role="status"
   // is the polite version — the card is announced when its contents change, and it is
@@ -198,21 +202,21 @@ export async function analyzeSelection(): Promise<void> {
   const words = countWords(text);
   // aria-label, not just title: a button's own text wins the accessible-name
   // computation, so without it the control announces as the glyph "✕".
-  const closeBtn = `<button class="close" type="button" aria-label="Close" title="Close">✕</button>`;
+  const closeBtn = `<button class="close" type="button" aria-label="${t("selClose")}" title="${t("selClose")}">✕</button>`;
 
   if (words < MIN_UNIT_WORDS) {
     card.innerHTML =
       closeBtn +
-      `<div class="head"><span class="verdict band-unknown">Too short to judge</span><span class="big">—</span></div>` +
-      row("Words selected", String(words)) +
-      row("Needed for a reliable read", `${MIN_UNIT_WORDS}+`) +
-      `<div class="foot">Detection is unreliable below the evidence floor — select a longer passage.</div>`;
+      `<div class="head"><span class="verdict band-unknown">${t("selTooShort")}</span><span class="big">—</span></div>` +
+      row(t("selWordsSelected"), String(words)) +
+      row(t("selNeeded"), `${MIN_UNIT_WORDS}+`) +
+      `<div class="foot">${t("selFootTooShort")}</div>`;
     place();
   } else {
     card.innerHTML =
       closeBtn +
-      `<div class="head"><span class="verdict band-unknown spin">Analyzing…</span><span class="big"></span></div>` +
-      row("Words selected", String(words));
+      `<div class="head"><span class="verdict band-unknown spin">${t("selAnalyzing")}</span><span class="big"></span></div>` +
+      row(t("selWordsSelected"), String(words));
     place();
     // The selection's windows travel in ONE request, straight to the worker: no page
     // cache and no local language gate stand between a selection and the daemon.
@@ -238,11 +242,12 @@ export async function analyzeSelection(): Promise<void> {
     if (!verdict || verdict.result.degraded) {
       card.innerHTML =
         closeBtn +
-        `<div class="head"><span class="verdict band-unknown">Unavailable</span><span class="big">—</span></div>` +
+        `<div class="head"><span class="verdict band-unknown">${bandLabel("unknown")}</span><span class="big">—</span></div>` +
         `<div class="foot">${
           backend === "down"
-            ? "The scoring daemon is not running — run <code>anagram start</code> and try again."
-            : "The scoring backend did not respond — try again."
+            // The one element a message here ever gets: ours, static, built right beside it.
+            ? t("selFootDaemonDown", "<code>anagram start</code>")
+            : t("selFootNoAnswer")
         }</div>`;
     } else {
       const r = verdict.result;
@@ -257,22 +262,21 @@ export async function analyzeSelection(): Promise<void> {
         : words;
       card.innerHTML =
         closeBtn +
-        `<div class="head"><span class="verdict band-${b}">${BAND_LABEL[b]}</span>` +
-        `<span class="big" title="Extent of AI editing (EditLens scale)">${isNoVerdict(b) ? "—" : pct + "%"}</span></div>` +
+        `<div class="head"><span class="verdict band-${b}">${bandLabel(b)}</span>` +
+        `<span class="big" title="${t("cardScaleTitle")}">${isNoVerdict(b) ? "—" : pct + "%"}</span></div>` +
         (isNoVerdict(b) ? "" : distributionHtml(r, b)) +
-        (b === "unsupported" ? row("Detected language", `${languageName(r.lang)} · ${Math.round((r.lang_prob ?? 0) * 100)}%`) : "") +
-        row("Words selected", String(words)) +
-        (readout ? row("Words analyzed", verdict.unreadChars > 0 ? `first ${analyzed}` : String(analyzed)) : "") +
-        (readout ? row(`Scored in ${readout.count} windows`, windowPcts(readout), " wins") : "") +
-        (readout && readout.cutShort > 0 ? row("Windows cut short", `${readout.cutShort} of ${readout.count}`) : "") +
-        (readout && readout.skipped > 0 ? row("Windows not in English", `${readout.skipped} of ${readout.count}`) : "") +
+        (b === "unsupported" ? row(t("cardDetectedLang"), `${languageName(r.lang)} · ${Math.round((r.lang_prob ?? 0) * 100)}%`) : "") +
+        row(t("selWordsSelected"), String(words)) +
+        (readout ? row(t("selWordsAnalyzed"), verdict.unreadChars > 0 ? t("selFirst", analyzed) : String(analyzed)) : "") +
+        (readout ? row(t("cardWindows", readout.count), windowPcts(readout), " wins") : "") +
+        (readout && readout.cutShort > 0 ? row(t("cardWindowsCut"), t("cardOfCount", readout.cutShort, readout.count)) : "") +
+        (readout && readout.skipped > 0 ? row(t("cardWindowsSkipped"), t("cardOfCount", readout.skipped, readout.count)) : "") +
         `<div class="foot">${
           b === "unknown"
-            ? "The scoring daemon did not answer — try again."
+            ? t("selFootUnavailable")
             : b === "unsupported"
-              ? "EditLens is trained on English text only, so this selection was not scored."
-              : coverageNote(verdict, "selection") +
-                "The number is EditLens's estimate of how far this text sits from untouched human writing toward fully AI-generated — not a share of words, not proof."
+              ? t("selFootUnsupported")
+              : coverageNote(verdict, "selection") + t("cardFootEstimate")
         }</div>`;
     }
     place();

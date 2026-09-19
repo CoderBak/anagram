@@ -19,6 +19,7 @@ import type {
   UpdateBadgeMessage,
 } from "../lib/messaging/protocol";
 import { READER_PAGE, readerQuery } from "../lib/pdf/source";
+import { t } from "../lib/i18n";
 
 export default defineBackground(() => {
   const router = createRouter(getScoreClient());
@@ -42,19 +43,19 @@ export default defineBackground(() => {
     void browser.contextMenus.removeAll().then(() => {
       browser.contextMenus.create({
         id: "anagram-analyze-selection",
-        title: "Analyze selection with Anagram",
+        title: t("menuAnalyzeSelection"),
         contexts: ["selection"],
       });
       // The way into a page Anagram is switched off for, without switching it on: this
       // runs once in the tab and writes nothing.
       browser.contextMenus.create({
         id: "anagram-analyze-page",
-        title: "Analyze this page with Anagram",
+        title: t("menuAnalyzePage"),
         contexts: ["page"],
       });
       browser.contextMenus.create({
         id: "anagram-open-pdf",
-        title: "Open PDF with Anagram",
+        title: t("menuOpenPdf"),
         contexts: ["link"],
         targetUrlPatterns: [
           "*://*/*.pdf",

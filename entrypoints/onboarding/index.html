@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Welcome to Anagram</title>
+    <title data-i18n="onbTitle">Welcome to Anagram</title>
     <style>
       /* Layout + the in-page chip demo; colours, type and controls come from Basecoat (Vega). */
       :root {
@@ -99,49 +99,49 @@
       <header class="hdr">
         <img src="/icons/icon-128.png" alt="" />
         <div>
-          <h1>Welcome to Anagram</h1>
+          <h1 data-i18n="onbTitle">Welcome to Anagram</h1>
           <div class="ver" id="version"></div>
         </div>
       </header>
-      <p class="lede">Anagram answers <em>&ldquo;how much of this did an AI write?&rdquo;</em> as you
-        browse: every analyzed paragraph gets a small <strong>chip</strong> with a number &mdash; the
-        model's estimate of the <strong>extent of AI editing</strong> &mdash; and a matching underline,
+      <p class="lede" data-i18n-html="onbLede">Anagram answers <em data-i18n="onbLedeQuestion">&ldquo;how much of this did an AI write?&rdquo;</em> as you
+        browse: every analyzed paragraph gets a small <strong data-i18n="onbLedeChip">chip</strong> with a number &mdash; the
+        model's estimate of the <strong data-i18n="onbLedeExtent">extent of AI editing</strong> &mdash; and a matching underline,
         quiet on human text, louder as AI involvement grows.</p>
 
       <div class="stack">
         <div>
           <section class="card" data-size="sm">
-            <header><h2>Setup</h2></header>
+            <header><h2 data-i18n="onbSetup">Setup</h2></header>
             <section>
               <div class="setup" id="setup" aria-live="polite">
                 <div class="srow" id="row-ext" data-state="ok">
-                  <span class="sname"><span class="sdot"></span><span class="slabel">Extension</span></span>
-                  <span class="sbody"><span class="sval">installed</span><span class="sdetail" id="ext-version"></span></span>
+                  <span class="sname"><span class="sdot"></span><span class="slabel" data-i18n="onbExtension">Extension</span></span>
+                  <span class="sbody"><span class="sval" data-i18n="onbInstalled">installed</span><span class="sdetail" id="ext-version"></span></span>
                 </div>
                 <div class="srow" id="row-daemon" data-state="idle">
-                  <span class="sname"><span class="sdot"></span><span class="slabel">Scoring daemon</span></span>
+                  <span class="sname"><span class="sdot"></span><span class="slabel" data-i18n="onbDaemon">Scoring daemon</span></span>
                   <span class="sbody">
-                    <span class="sval" id="daemon-state">checking&hellip;</span>
+                    <span class="sval" id="daemon-state" data-i18n="onbChecking">checking&hellip;</span>
                     <span class="sdetail" id="daemon-detail" hidden></span>
                     <span class="cmd" id="daemon-cmd" hidden><code id="daemon-cmd-text"></code><button
-                      type="button" class="btn" data-variant="outline" data-size="xs" id="daemon-copy">Copy</button></span>
-                    <a class="btn" data-variant="outline" data-size="xs" id="daemon-link" href="/options.html" hidden>Open options</a>
+                      type="button" class="btn" data-variant="outline" data-size="xs" id="daemon-copy" data-i18n="onbCopy">Copy</button></span>
+                    <a class="btn" data-variant="outline" data-size="xs" id="daemon-link" href="/options.html" hidden data-i18n="onbOpenOptions">Open options</a>
                   </span>
                 </div>
                 <div class="srow" id="row-ready" data-state="idle">
-                  <span class="sname"><span class="sdot"></span><span class="slabel">Ready</span></span>
-                  <span class="sbody"><span class="sready" id="ready-text">Waiting for the scoring daemon.</span></span>
+                  <span class="sname"><span class="sdot"></span><span class="slabel" data-i18n="onbReady">Ready</span></span>
+                  <span class="sbody"><span class="sready" id="ready-text" data-i18n="onbWaiting">Waiting for the scoring daemon.</span></span>
                 </div>
               </div>
             </section>
           </section>
-          <p class="install" id="install" hidden>Not installed yet? <span class="cmd"><code
+          <p class="install" id="install" hidden data-i18n-html="onbNotInstalled">Not installed yet? <span class="cmd"><code
             id="install-cmd">curl -fsSL https://github.com/CoderBak/anagram/releases/latest/download/install.sh | sh</code><button
-            type="button" class="btn" data-variant="outline" data-size="xs" id="install-copy">Copy</button></span></p>
+            type="button" class="btn" data-variant="outline" data-size="xs" id="install-copy" data-i18n="onbCopy">Copy</button></span></p>
         </div>
 
-        <section class="card" data-size="sm" aria-label="How Anagram reads a page">
-          <header><h2>How it reads</h2></header>
+        <section class="card" data-size="sm" aria-label="How Anagram reads a page" data-i18n-aria-label="onbHowItReads">
+          <header><h2 data-i18n="onbHowItReads">How it reads</h2></header>
           <section>
             <div class="demo">
               <div class="demo-line">
@@ -161,23 +161,23 @@
         </section>
 
         <section class="card" data-size="sm">
-          <header><h2>Reading the verdicts</h2></header>
+          <header><h2 data-i18n="onbVerdicts">Reading the verdicts</h2></header>
           <section>
             <div class="bands">
-              <span class="badge b-human" data-variant="outline"><span class="dot"></span>Human</span>
-              <span class="badge b-light" data-variant="outline"><span class="dot"></span>Lightly edited</span>
-              <span class="badge b-heavy" data-variant="outline"><span class="dot"></span>Heavily edited</span>
-              <span class="badge b-ai" data-variant="outline"><span class="dot"></span>AI-generated</span>
-              <span class="badge b-none" data-variant="outline"><span class="dot"></span>Unavailable</span>
-              <span class="badge b-lang" data-variant="outline"><span class="dot"></span>Unsupported language</span>
+              <span class="badge b-human" data-variant="outline"><span class="dot"></span><span data-i18n="bandHuman">Human</span></span>
+              <span class="badge b-light" data-variant="outline"><span class="dot"></span><span data-i18n="bandLight">Lightly edited</span></span>
+              <span class="badge b-heavy" data-variant="outline"><span class="dot"></span><span data-i18n="bandHeavy">Heavily edited</span></span>
+              <span class="badge b-ai" data-variant="outline"><span class="dot"></span><span data-i18n="bandAi">AI-generated</span></span>
+              <span class="badge b-none" data-variant="outline"><span class="dot"></span><span data-i18n="bandUnavailable">Unavailable</span></span>
+              <span class="badge b-lang" data-variant="outline"><span class="dot"></span><span data-i18n="bandUnsupported">Unsupported language</span></span>
             </div>
-            <p>The model (<strong>EditLens</strong>, ICLR 2026) rates how far a paragraph sits
+            <p data-i18n-html="onbVerdictsBody">The model (<strong>EditLens</strong>, ICLR 2026) rates how far a paragraph sits
               between untouched human writing (0%) and fully AI-generated text (100%). The number is
-              <strong>not a share of words</strong> written by AI &mdash; it is the model's estimate of
+              <strong data-i18n="onbNotShare">not a share of words</strong> written by AI &mdash; it is the model's estimate of
               how much AI editing changed the text as a whole. Hover (or tap) a chip for the full
               readout: the four-way probability split behind the verdict and the word count. EditLens
               reads English only: other languages get a gray chip with the detected language code
-              instead of a number. Every number is an <strong>estimate, not proof</strong>. Snippets
+              instead of a number. Every number is an <strong data-i18n="onbEstimate">estimate, not proof</strong>. Snippets
               under ~50 words are only scored when grouped with neighbors, and a short post is
               scored as a whole &mdash; a <strong>&times;2</strong> on a chip means it covers that
               many paragraphs.</p>
@@ -185,80 +185,80 @@
         </section>
 
         <section class="card" data-size="sm">
-          <header><h2>The floating ball</h2></header>
+          <header><h2 data-i18n="onbBall">The floating ball</h2></header>
           <section>
-            <p>Lives bottom-right on every page. <strong>Click</strong> it to show or hide all marks
-              instantly. <strong>Drag</strong> it anywhere &mdash; it snaps to the nearest edge and
-              tucks itself half-away when idle; hover brings it back. Its red <strong>counter</strong>
+            <p data-i18n-html="onbBallBody">Lives bottom-right on every page. <strong data-i18n="onbClick">Click</strong> it to show or hide all marks
+              instantly. <strong data-i18n="onbDrag">Drag</strong> it anywhere &mdash; it snaps to the nearest edge and
+              tucks itself half-away when idle; hover brings it back. Its red <strong data-i18n="onbCounter">counter</strong>
               opens the triage panel: filter by verdict, jump to each flagged paragraph,
-              <strong>Copy report</strong>, or turn Anagram off for this site &mdash; all inside the
+              <strong data-i18n="panelCopyReport">Copy report</strong>, or turn Anagram off for this site &mdash; all inside the
               panel.</p>
           </section>
         </section>
 
         <section class="card" data-size="sm">
-          <header><h2>Power moves</h2></header>
+          <header><h2 data-i18n="onbPower">Power moves</h2></header>
           <section>
             <ul>
-              <li><strong>Analyze selection</strong> &mdash; select text, right-click, done. Works
+              <li data-i18n-html="onbPowerSelection"><strong data-i18n="onbSelectionName">Analyze selection</strong> &mdash; select text, right-click, done. Works
                 inside text boxes and editors too.</li>
-              <li><kbd class="kbd">Alt</kbd>+<kbd class="kbd">Shift</kbd>+<kbd class="kbd">P</kbd>
+              <li data-i18n-html="onbPowerToggle"><kbd class="kbd">Alt</kbd>+<kbd class="kbd">Shift</kbd>+<kbd class="kbd">P</kbd>
                 &mdash; toggle Anagram on the current page.</li>
-              <li><kbd class="kbd">Alt</kbd>+<kbd class="kbd">Shift</kbd>+<kbd class="kbd">L</kbd>
+              <li data-i18n-html="onbPowerWalk"><kbd class="kbd">Alt</kbd>+<kbd class="kbd">Shift</kbd>+<kbd class="kbd">L</kbd>
                 &mdash; open the flagged-paragraphs list, keyboard already inside it.
                 <kbd class="kbd">Alt</kbd>+<kbd class="kbd">Shift</kbd>+<kbd class="kbd">J</kbd> and
                 <kbd class="kbd">Alt</kbd>+<kbd class="kbd">Shift</kbd>+<kbd class="kbd">K</kbd> walk
                 to the next and previous flagged paragraph without touching the mouse.</li>
-              <li><strong>Flagged only</strong> &mdash; switch <em>Show &rarr; Flagged only</em> in the
+              <li data-i18n-html="onbPowerFlagged"><strong data-i18n="onbFlaggedName">Flagged only</strong> &mdash; switch <em data-i18n="onbFlaggedPath">Show &rarr; Flagged only</em> in the
                 popup and calm pages stay untouched; marks appear only where something was flagged.</li>
             </ul>
           </section>
         </section>
 
         <section class="card" data-size="sm">
-          <header><h2>Google Docs</h2></header>
+          <header><h2 data-i18n="onbDocs">Google Docs</h2></header>
           <section>
-            <p>Docs is an editor, not a page &mdash; so Anagram brings its own reading surface. Click
-              <strong>Analyze document</strong> on the floating ball and a <strong>reading mode</strong>
+            <p data-i18n-html="onbDocsBody">Docs is an editor, not a page &mdash; so Anagram brings its own reading surface. Click
+              <strong data-i18n="actionAnalyzeDocument">Analyze document</strong> on the floating ball and a <strong data-i18n="onbReadingMode">reading mode</strong>
               opens right in the tab, with every paragraph of the document analyzed. No navigation, and
-              your file is never touched. Press <kbd class="kbd">Esc</kbd> or <strong>Back to
-              editor</strong> to return instantly &mdash; or use <strong>Open as page</strong> if you
+              your file is never touched. Press <kbd class="kbd">Esc</kbd> or <strong data-i18n="actionBackToEditor">Back to
+              editor</strong> to return instantly &mdash; or use <strong data-i18n="docsOpenAsPage">Open as page</strong> if you
               prefer a separate tab.</p>
           </section>
         </section>
 
         <section class="card" data-size="sm">
-          <header><h2>PDFs</h2></header>
+          <header><h2 data-i18n="onbPdfs">PDFs</h2></header>
           <section>
-            <p>A PDF is a picture to the browser, so Anagram rebuilds it as a page. Click
-              <strong>Analyze PDF</strong> on the floating ball, <strong>Read this PDF</strong> in
-              the popup, or right-click a link to one and choose <strong>Open PDF with
+            <p data-i18n-html="onbPdfBody">A PDF is a picture to the browser, so Anagram rebuilds it as a page. Click
+              <strong data-i18n="actionAnalyzePdf">Analyze PDF</strong> on the floating ball, <strong data-i18n="popupReadPdf">Read this PDF</strong> in
+              the popup, or right-click a link to one and choose <strong data-i18n="menuOpenPdf">Open PDF with
               Anagram</strong>. Paragraphs come back in reading order &mdash; columns and all
               &mdash; and get the same chips as any other page. The file stays on your computer.</p>
           </section>
         </section>
 
         <section class="card" data-size="sm">
-          <header><h2>Privacy</h2></header>
+          <header><h2 data-i18n="onbPrivacy">Privacy</h2></header>
           <section>
-            <p>Nothing leaves your computer. Scoring runs in the local <code>anagramd</code> daemon on
-              this computer; requests carry only a <strong>hostname and language hint</strong> by design
+            <p data-i18n-html="onbPrivacyBody">Nothing leaves your computer. Scoring runs in the local <code>anagramd</code> daemon on
+              this computer; requests carry only a <strong data-i18n="onbHostnameHint">hostname and language hint</strong> by design
               &mdash; never full URLs.</p>
           </section>
         </section>
 
         <section class="card" data-size="sm">
-          <header><h2>Make it yours</h2></header>
+          <header><h2 data-i18n="onbYours">Make it yours</h2></header>
           <section>
-            <p>The <strong>popup</strong> and <strong>options page</strong> hold the rest: pick a
-              marking style (<strong>underline</strong> or a soft <strong>tint</strong>), choose the
-              analysis scope (<strong>whole page</strong> or <strong>main content only</strong>), and
+            <p data-i18n-html="onbYoursBody">The <strong data-i18n="onbPopupName">popup</strong> and <strong data-i18n="onbOptionsName">options page</strong> hold the rest: pick a
+              marking style (<strong data-i18n="onbStyleUnderline">underline</strong> or a soft <strong data-i18n="onbStyleTint">tint</strong>), choose the
+              analysis scope (<strong data-i18n="onbScopePage">whole page</strong> or <strong data-i18n="onbScopeMain">main content only</strong>), and
               check the local scoring daemon's status.</p>
           </section>
         </section>
       </div>
 
-      <footer class="foot">Model: pangram/editlens_roberta-large (CC BY-NC-SA 4.0, non-commercial).</footer>
+      <footer class="foot" data-i18n="modelLine">Model: pangram/editlens_roberta-large (CC BY-NC-SA 4.0, non-commercial).</footer>
     </main>
     <script type="module" src="./main.ts"></script>
   </body>

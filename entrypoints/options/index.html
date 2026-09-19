@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Anagram for Chrome — Options</title>
+    <title data-i18n="optionsTitle">Anagram for Chrome — Options</title>
     <style>
       /* Layout only — colours, type and controls come from Basecoat (Vega). */
       body { margin: 0; background: var(--background); color: var(--foreground); font-size: 14px; line-height: 1.5; }
@@ -69,7 +69,7 @@
       <header class="hdr">
         <img src="/icons/icon-128.png" alt="" />
         <div>
-          <h1>Anagram for Chrome</h1>
+          <h1 data-i18n="optionsHeading">Anagram for Chrome</h1>
           <div class="ver" id="version"></div>
         </div>
       </header>
@@ -77,33 +77,33 @@
       <div class="stack">
         <section class="card" data-size="sm">
           <header>
-            <h2>Detection</h2>
-            <p>What gets analyzed, and how paragraphs are grouped.</p>
+            <h2 data-i18n="optDetection">Detection</h2>
+            <p data-i18n="optDetectionNote">What gets analyzed, and how paragraphs are grouped.</p>
           </header>
           <section>
             <div class="field" data-orientation="horizontal">
               <section>
-                <label for="enabled">Enable on all sites</label>
-                <p>Per-site rules below override this default. Toggling applies to new page loads and open tabs.</p>
+                <label for="enabled" data-i18n="optEnabled">Enable on all sites</label>
+                <p data-i18n="optEnabledNote">Per-site rules below override this default. Toggling applies to new page loads and open tabs.</p>
               </section>
               <input id="enabled" type="checkbox" role="switch" />
             </div>
             <div class="field" data-orientation="horizontal">
               <section>
-                <label for="analysisScope">Analysis scope</label>
-                <p>Main content only analyzes the article region — found the way Firefox Reader View does
+                <label for="analysisScope" data-i18n="optScope">Analysis scope</label>
+                <p data-i18n="optScopeNote">Main content only analyzes the article region — found the way Firefox Reader View does
                   (Mozilla Readability) — and skips comments/sidebars outside it. Falls back to whole page when
                   no clear region exists.</p>
               </section>
               <select id="analysisScope">
-                <option value="page">Whole page</option>
-                <option value="main">Main content only</option>
+                <option value="page" data-i18n="optScopeWholePage">Whole page</option>
+                <option value="main" data-i18n="optScopeMain">Main content only</option>
               </select>
             </div>
             <div class="field" data-orientation="horizontal">
               <section>
-                <label for="mergeShorts">Group short neighboring paragraphs</label>
-                <p>A short post or comment is analyzed as a whole, and paragraphs under the 50-word
+                <label for="mergeShorts" data-i18n="optMerge">Group short neighboring paragraphs</label>
+                <p data-i18n="optMergeNote">A short post or comment is analyzed as a whole, and paragraphs under the 50-word
                   evidence floor together with their neighbors in the same article — the chip shows ×N;
                   never across posts, comments or quotations. Off: every paragraph by itself, short ones
                   skipped entirely.</p>
@@ -115,36 +115,36 @@
 
         <section class="card" data-size="sm">
           <header>
-            <h2>Display</h2>
-            <p>How verdicts are drawn on the page.</p>
+            <h2 data-i18n="optDisplay">Display</h2>
+            <p data-i18n="optDisplayNote">How verdicts are drawn on the page.</p>
           </header>
           <section>
             <div class="field" data-orientation="horizontal">
               <section>
-                <label for="highlights">Mark analyzed paragraphs</label>
-                <p>Colors each paragraph by verdict — green = human, yellow = lightly edited, orange = heavily edited, red = AI-generated. Badges stay either way.</p>
+                <label for="highlights" data-i18n="optHighlights">Mark analyzed paragraphs</label>
+                <p data-i18n="optHighlightsNote">Colors each paragraph by verdict — green = human, yellow = lightly edited, orange = heavily edited, red = AI-generated. Badges stay either way.</p>
               </section>
               <input id="highlights" type="checkbox" role="switch" />
             </div>
             <div class="field" data-orientation="horizontal">
               <section>
-                <label for="markStyle">Mark style</label>
-                <p>How analyzed paragraphs are marked in place. “Mark analyzed paragraphs” above stays the master on/off.</p>
+                <label for="markStyle" data-i18n="optMarkStyle">Mark style</label>
+                <p data-i18n="optMarkStyleNote">How analyzed paragraphs are marked in place. “Mark analyzed paragraphs” above stays the master on/off.</p>
               </section>
               <select id="markStyle">
-                <option value="both">Underline + tint</option>
-                <option value="underline">Underline only</option>
-                <option value="tint">Tint only</option>
+                <option value="both" data-i18n="optStyleBoth">Underline + tint</option>
+                <option value="underline" data-i18n="optStyleUnderline">Underline only</option>
+                <option value="tint" data-i18n="optStyleTint">Tint only</option>
               </select>
             </div>
             <div class="field" data-orientation="horizontal">
               <section>
-                <label for="displayMode">What to show</label>
-                <p>Every paragraph is analyzed either way. “Flagged only” keeps pages calm and marks just heavily-edited and AI-generated verdicts.</p>
+                <label for="displayMode" data-i18n="optDisplayMode">What to show</label>
+                <p data-i18n="optDisplayModeNote">Every paragraph is analyzed either way. “Flagged only” keeps pages calm and marks just heavily-edited and AI-generated verdicts.</p>
               </section>
               <select id="displayMode">
-                <option value="all">All chips</option>
-                <option value="flagged">Flagged only</option>
+                <option value="all" data-i18n="optModeAll">All chips</option>
+                <option value="flagged" data-i18n="optModeFlagged">Flagged only</option>
               </select>
             </div>
           </section>
@@ -152,8 +152,8 @@
 
         <section class="card" data-size="sm">
           <header>
-            <h2>Scoring daemon</h2>
-            <p>Verdicts come from the local <code>anagramd</code> daemon (EditLens roberta-large, running on this
+            <h2 data-i18n="optDaemon">Scoring daemon</h2>
+            <p data-i18n-html="optDaemonNote">Verdicts come from the local <code>anagramd</code> daemon (EditLens roberta-large, running on this
               computer). Start it with <code>~/.anagram/bin/anagram start</code> (or <code>npm run serve</code> from a
               source checkout). When it is not running, paragraphs show as Unavailable and are retried
               automatically. There is no other backend.</p>
@@ -161,8 +161,8 @@
           <section>
             <div class="field" data-orientation="horizontal">
               <section>
-                <label for="serverUrl">Daemon URL</label>
-                <p>Where <code>anagramd</code> listens. Local addresses only — page text never leaves this computer.
+                <label for="serverUrl" data-i18n="optDaemonUrl">Daemon URL</label>
+                <p data-i18n-html="optDaemonUrlNote">Where <code>anagramd</code> listens. Local addresses only — page text never leaves this computer.
                   Default <code>http://127.0.0.1:8765</code>.</p>
                 <p class="form-error" id="serverUrlError" hidden></p>
               </section>
@@ -170,30 +170,30 @@
             </div>
             <div class="field" data-orientation="horizontal">
               <section>
-                <label for="checkBackend">Status</label>
-                <p id="backendStatus">Checking…</p>
+                <label for="checkBackend" data-i18n="optStatus">Status</label>
+                <p id="backendStatus" data-i18n="optChecking">Checking…</p>
               </section>
-              <button type="button" class="btn" data-variant="outline" data-size="sm" id="checkBackend">Check now</button>
+              <button type="button" class="btn" data-variant="outline" data-size="sm" id="checkBackend" data-i18n="optCheckNow">Check now</button>
             </div>
           </section>
         </section>
 
         <section class="card" data-size="sm">
           <header>
-            <h2>Per-site rules</h2>
-            <p>Always-on / always-off overrides. A rule covers the site's subdomains too, and the
+            <h2 data-i18n="optRules">Per-site rules</h2>
+            <p data-i18n="optRulesNote">Always-on / always-off overrides. A rule covers the site's subdomains too, and the
               most specific rule wins.</p>
           </header>
           <section>
             <div id="sites"></div>
             <form class="form-row" id="addRule">
               <input id="addHost" class="input" type="text" placeholder="example.com" aria-label="Hostname"
-                autocomplete="off" spellcheck="false" />
-              <select id="addMode" class="select" aria-label="Rule">
-                <option value="on">Always on</option>
-                <option value="off">Always off</option>
+                data-i18n-aria-label="optHostname" autocomplete="off" spellcheck="false" />
+              <select id="addMode" class="select" aria-label="Rule" data-i18n-aria-label="optRuleField">
+                <option value="on" data-i18n="optAlwaysOn">Always on</option>
+                <option value="off" data-i18n="optAlwaysOff">Always off</option>
               </select>
-              <button type="submit" class="btn">Add</button>
+              <button type="submit" class="btn" data-i18n="optAdd">Add</button>
               <p class="form-error" id="addError" hidden></p>
               <p class="form-note" id="addNote" hidden></p>
             </form>
@@ -202,66 +202,66 @@
 
         <section class="card" data-size="sm">
           <header>
-            <h2>Advanced</h2>
+            <h2 data-i18n="optAdvanced">Advanced</h2>
           </header>
           <section>
             <div class="field" data-orientation="horizontal">
               <section>
-                <label for="debug">Debug logging</label>
-                <p>Verbose console logs from the content script (namespaced <code>[anagram:*]</code>).</p>
+                <label for="debug" data-i18n="optDebug">Debug logging</label>
+                <p data-i18n-html="optDebugNote">Verbose console logs from the content script (namespaced <code>[anagram:*]</code>).</p>
               </section>
               <input id="debug" type="checkbox" role="switch" />
             </div>
             <div class="field" data-orientation="horizontal">
               <section>
-                <label for="clearCache">Cached verdicts</label>
-                <p>Verdicts are kept so revisits never re-score. Clearing them makes the next scan ask the daemon again.</p>
+                <label for="clearCache" data-i18n="optCachedVerdicts">Cached verdicts</label>
+                <p data-i18n="optCachedNote">Verdicts are kept so revisits never re-score. Clearing them makes the next scan ask the daemon again.</p>
               </section>
-              <button type="button" class="btn" data-variant="outline" data-size="sm" id="clearCache">Clear cached verdicts</button>
+              <button type="button" class="btn" data-variant="outline" data-size="sm" id="clearCache" data-i18n="optClearCache">Clear cached verdicts</button>
             </div>
           </section>
         </section>
 
         <section class="card" data-size="sm">
           <header>
-            <h2>About &amp; shortcuts</h2>
+            <h2 data-i18n="optAbout">About &amp; shortcuts</h2>
           </header>
           <section>
             <div class="shortcuts">
               <span class="keys"><kbd class="kbd">Alt</kbd><span class="plus">+</span><kbd class="kbd">Shift</kbd><span class="plus">+</span><kbd class="kbd">P</kbd></span>
-              <span class="what">Show or hide the Anagram overlay on the current page.</span>
+              <span class="what" data-i18n="optShortcutToggle">Show or hide the Anagram overlay on the current page.</span>
               <span class="keys"><kbd class="kbd">Alt</kbd><span class="plus">+</span><kbd class="kbd">Shift</kbd><span class="plus">+</span><kbd class="kbd">L</kbd></span>
-              <span class="what">Open the flagged-paragraphs list and put the keyboard in it.</span>
+              <span class="what" data-i18n="optShortcutList">Open the flagged-paragraphs list and put the keyboard in it.</span>
               <span class="keys"><kbd class="kbd">Alt</kbd><span class="plus">+</span><kbd class="kbd">Shift</kbd><span class="plus">+</span><kbd class="kbd">J</kbd></span>
-              <span class="what">Jump to the next flagged paragraph.</span>
+              <span class="what" data-i18n="optShortcutNext">Jump to the next flagged paragraph.</span>
               <span class="keys"><kbd class="kbd">Alt</kbd><span class="plus">+</span><kbd class="kbd">Shift</kbd><span class="plus">+</span><kbd class="kbd">K</kbd></span>
-              <span class="what">Jump to the previous flagged paragraph.</span>
-              <span class="keys"><kbd class="kbd">Right-click</kbd></span>
-              <span class="what">Choose “Analyze selection with Anagram” to score just the highlighted text.</span>
-              <span class="keys"><kbd class="kbd">Right-click</kbd></span>
-              <span class="what">Choose “Analyze this page with Anagram” to analyze a switched-off page once.</span>
+              <span class="what" data-i18n="optShortcutPrev">Jump to the previous flagged paragraph.</span>
+              <span class="keys"><kbd class="kbd" data-i18n="optRightClick">Right-click</kbd></span>
+              <span class="what" data-i18n="optShortcutSelection">Choose “Analyze selection with Anagram” to score just the highlighted text.</span>
+              <span class="keys"><kbd class="kbd" data-i18n="optRightClick">Right-click</kbd></span>
+              <span class="what" data-i18n="optShortcutPage">Choose “Analyze this page with Anagram” to analyze a switched-off page once.</span>
             </div>
-            <p class="privacy">Rebind any of these in your browser's extension shortcuts (Chrome: <code>chrome://extensions/shortcuts</code>).</p>
-            <p class="privacy">Nothing leaves your computer — scoring runs in the local <code>anagramd</code> daemon on this computer. The daemon URL is restricted to local addresses.</p>
-            <h3 class="mini">Verdict colors</h3>
+            <p class="privacy" data-i18n-html="optRebind">Rebind any of these in your browser's extension shortcuts (Chrome: <code>chrome://extensions/shortcuts</code>).</p>
+            <p class="privacy" data-i18n-html="optPrivacy">Nothing leaves your computer — scoring runs in the local <code>anagramd</code> daemon on this computer. The daemon URL is restricted to local addresses.</p>
+            <h3 class="mini" data-i18n="optVerdictColors">Verdict colors</h3>
             <div class="legend">
-              <span class="badge" data-variant="outline"><span class="dot dot-human"></span>Human</span>
-              <span class="badge" data-variant="outline"><span class="dot dot-light"></span>Lightly edited</span>
-              <span class="badge" data-variant="outline"><span class="dot dot-heavy"></span>Heavily edited</span>
-              <span class="badge" data-variant="outline"><span class="dot dot-ai"></span>AI-generated</span>
-              <span class="badge" data-variant="outline"><span class="dot dot-none"></span>Unavailable</span>
-              <span class="badge" data-variant="outline"><span class="dot dot-lang"></span>Unsupported language</span>
+              <span class="badge" data-variant="outline"><span class="dot dot-human"></span><span data-i18n="bandHuman">Human</span></span>
+              <span class="badge" data-variant="outline"><span class="dot dot-light"></span><span data-i18n="bandLight">Lightly edited</span></span>
+              <span class="badge" data-variant="outline"><span class="dot dot-heavy"></span><span data-i18n="bandHeavy">Heavily edited</span></span>
+              <span class="badge" data-variant="outline"><span class="dot dot-ai"></span><span data-i18n="bandAi">AI-generated</span></span>
+              <span class="badge" data-variant="outline"><span class="dot dot-none"></span><span data-i18n="bandUnavailable">Unavailable</span></span>
+              <span class="badge" data-variant="outline"><span class="dot dot-lang"></span><span data-i18n="bandUnsupported">Unsupported language</span></span>
             </div>
           </section>
         </section>
       </div>
 
       <footer class="foot">
-        A chip's number is EditLens's estimate of how far a paragraph sits between untouched human writing
+        <span data-i18n="optFooter">A chip's number is EditLens's estimate of how far a paragraph sits between untouched human writing
         (0%) and fully AI-generated text (100%) — not a share of words, not proof. Detection runs per
         paragraph — per post for a short post — with a 50-word evidence floor; shorter neighboring
-        paragraphs are analyzed together.
-        Model: pangram/editlens_roberta-large (CC BY-NC-SA 4.0, non-commercial).
+        paragraphs are analyzed together.</span>
+        <span data-i18n="modelLine">Model: pangram/editlens_roberta-large (CC BY-NC-SA 4.0, non-commercial).</span>
       </footer>
     </main>
     <script type="module" src="./main.ts"></script>

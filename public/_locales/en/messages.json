@@ -1,0 +1,1166 @@
+{
+  "localeTag": {
+    "message": "en",
+    "description": "BCP 47 tag of THIS message file. Read back through t() so the UI can set <html lang> and the shadow roots' lang without guessing what the browser resolved."
+  },
+
+  "copied": {
+    "message": "Copied ✓",
+    "description": "Confirmation shown on any copy button for a moment — the chip card, the triage panel and the first-run page share it."
+  },
+
+  "extDescription": {
+    "message": "Per-paragraph AI-generated-text confidence badges.",
+    "description": "Store listing description. The name stays 'Anagram'."
+  },
+
+  "cmdToggleOverlay": {
+    "message": "Show/hide Anagram badges",
+    "description": "Keyboard command, Alt+Shift+P."
+  },
+  "cmdOpenPanel": {
+    "message": "Open the flagged-paragraphs list",
+    "description": "Keyboard command, Alt+Shift+L."
+  },
+  "cmdNextFlagged": {
+    "message": "Go to the next flagged paragraph",
+    "description": "Keyboard command, Alt+Shift+J."
+  },
+  "cmdPrevFlagged": {
+    "message": "Go to the previous flagged paragraph",
+    "description": "Keyboard command, Alt+Shift+K."
+  },
+
+  "menuAnalyzeSelection": {
+    "message": "Analyze selection with Anagram",
+    "description": "Right-click menu entry on a text selection."
+  },
+  "menuAnalyzePage": {
+    "message": "Analyze this page with Anagram",
+    "description": "Right-click menu entry on a page; runs once without writing a setting."
+  },
+  "menuOpenPdf": {
+    "message": "Open PDF with Anagram",
+    "description": "Right-click menu entry on a link to a PDF."
+  },
+
+  "bandHuman": {
+    "message": "Human",
+    "description": "Verdict: untouched human writing. Kept short — it sits on a chip."
+  },
+  "bandLight": {
+    "message": "Lightly edited",
+    "description": "Verdict: lightly AI-edited."
+  },
+  "bandHeavy": {
+    "message": "Heavily edited",
+    "description": "Verdict: heavily AI-edited."
+  },
+  "bandAi": {
+    "message": "AI-generated",
+    "description": "Verdict: fully AI-generated."
+  },
+  "bandUnavailable": {
+    "message": "Unavailable",
+    "description": "No verdict: the daemon did not answer."
+  },
+  "bandUnsupported": {
+    "message": "Unsupported language",
+    "description": "No verdict: the model reads English only."
+  },
+  "langUnknown": {
+    "message": "unknown",
+    "description": "Detected-language value when no language code came back."
+  },
+
+  "cardPending": {
+    "message": "Analyzing this paragraph…",
+    "description": "Chip card while the batch is in flight."
+  },
+  "cardScaleTitle": {
+    "message": "Extent of AI editing (EditLens scale)",
+    "description": "Tooltip on the big percentage in a card."
+  },
+  "cardPartsTogether": {
+    "message": "Paragraphs analyzed together",
+    "description": "Card row label: how many paragraphs this one verdict covers."
+  },
+  "cardWords": {
+    "message": "Words",
+    "description": "Card row label: word count of the unit."
+  },
+  "cardWindows": {
+    "message": "Scored in $1 windows",
+    "description": "Card row label for a long text read in several windows. $1 = window count (2+)."
+  },
+  "cardScored": {
+    "message": "Scored",
+    "description": "Card row label: how much of the text reached the model."
+  },
+  "cardFirstWords": {
+    "message": "first $1 words",
+    "description": "Card row value paired with cardScored. $1 = word count."
+  },
+  "cardWindowsCut": {
+    "message": "Windows cut short",
+    "description": "Card row label: windows the model still had to truncate."
+  },
+  "cardOfCount": {
+    "message": "$1 of $2",
+    "description": "Card row value: a count out of a total."
+  },
+  "cardWindowsSkipped": {
+    "message": "Windows not in English",
+    "description": "Card row label: windows the language gate refused."
+  },
+  "cardFormulas": {
+    "message": "Formulas omitted",
+    "description": "Card row label: maths left out of the scored text."
+  },
+  "cardDetectedLang": {
+    "message": "Detected language",
+    "description": "Card row label on an unsupported-language verdict."
+  },
+  "cardCopyText": {
+    "message": "Copy text",
+    "description": "Card action: copy the paragraph's text."
+  },
+  "cardFootUnavailable": {
+    "message": "The scoring daemon did not answer. Retried automatically once it is running.",
+    "description": "Chip card footnote when the daemon is down."
+  },
+  "cardFootUnsupported": {
+    "message": "EditLens is trained on English text only, so this paragraph was not scored.",
+    "description": "Chip card footnote for a non-English paragraph."
+  },
+  "cardFootEstimate": {
+    "message": "The number is EditLens's estimate of how far this text sits from untouched human writing toward fully AI-generated — not a share of words, not proof.",
+    "description": "Chip card footnote: what the percentage means. The same claim appears in the report and the options footer."
+  },
+
+  "coverageOpeningParagraph": {
+    "message": "Only the opening of this paragraph was scored. ",
+    "description": "Card footnote sentence; the trailing space joins it to the next sentence."
+  },
+  "coverageOpeningSelection": {
+    "message": "Only the opening of this selection was scored. ",
+    "description": "Card footnote sentence; the trailing space joins it to the next sentence."
+  },
+  "coverageTooDense": {
+    "message": "Part of it is too dense for the model's window and was not read. ",
+    "description": "Card footnote sentence; the trailing space joins it to the next sentence."
+  },
+  "coverageOtherLanguages": {
+    "message": "Windows in another language were left out. ",
+    "description": "Card footnote sentence; the trailing space joins it to the next sentence."
+  },
+  "coverageAveraged": {
+    "message": "Longer than the model reads in one pass, so it was read in $1 consecutive windows and their results were averaged by length. ",
+    "description": "Card footnote sentence. $1 = window count. The trailing space joins it to the next sentence."
+  },
+
+  "selTooShort": {
+    "message": "Too short to judge",
+    "description": "Selection card verdict below the evidence floor."
+  },
+  "selWordsSelected": {
+    "message": "Words selected",
+    "description": "Selection card row label."
+  },
+  "selNeeded": {
+    "message": "Needed for a reliable read",
+    "description": "Selection card row label: the evidence floor."
+  },
+  "selFootTooShort": {
+    "message": "Detection is unreliable below the evidence floor — select a longer passage.",
+    "description": "Selection card footnote below the evidence floor."
+  },
+  "selAnalyzing": {
+    "message": "Analyzing…",
+    "description": "Selection card while the request is in flight."
+  },
+  "selWordsAnalyzed": {
+    "message": "Words analyzed",
+    "description": "Selection card row label."
+  },
+  "selFirst": {
+    "message": "first $1",
+    "description": "Selection card row value when only the opening was read. $1 = word count."
+  },
+  "selClose": {
+    "message": "Close",
+    "description": "Accessible name of the selection card's ✕ button."
+  },
+  "selFootDaemonDown": {
+    "message": "The scoring daemon is not running — run $1 and try again.",
+    "description": "Selection card footnote. $1 is the command, set in code and never translated."
+  },
+  "selFootNoAnswer": {
+    "message": "The scoring backend did not respond — try again.",
+    "description": "Selection card footnote when the request failed with the daemon up."
+  },
+  "selFootUnavailable": {
+    "message": "The scoring daemon did not answer — try again.",
+    "description": "Selection card footnote on a degraded verdict."
+  },
+  "selFootUnsupported": {
+    "message": "EditLens is trained on English text only, so this selection was not scored.",
+    "description": "Selection card footnote for non-English text."
+  },
+
+  "fabHide": {
+    "message": "Hide AI detection",
+    "description": "Floating ball tooltip while the overlay is shown."
+  },
+  "fabShow": {
+    "message": "Show AI detection",
+    "description": "Floating ball tooltip while the overlay is hidden."
+  },
+  "fabHideAria": {
+    "message": "Hide AI detection marks",
+    "description": "Floating ball accessible name while the overlay is shown."
+  },
+  "fabShowAria": {
+    "message": "Show AI detection marks",
+    "description": "Floating ball accessible name while the overlay is hidden."
+  },
+  "countTitle": {
+    "message": "Show flagged paragraphs",
+    "description": "Tooltip on the counter bubble that opens the triage panel."
+  },
+  "countDownTitle": {
+    "message": "Scoring daemon not running — click for details",
+    "description": "Tooltip on the counter bubble while the daemon is down."
+  },
+  "countDownAria": {
+    "message": "Scoring daemon not running — details",
+    "description": "Accessible name of the counter bubble while the daemon is down."
+  },
+  "countAria_one": {
+    "message": "$1 flagged paragraph — show list",
+    "description": "Accessible name of the counter bubble. $1 = 1."
+  },
+  "countAria_other": {
+    "message": "$1 flagged paragraphs — show list",
+    "description": "Accessible name of the counter bubble. $1 = flagged count."
+  },
+  "panelAnnounceCount_one": {
+    "message": "$1 flagged paragraph on this page",
+    "description": "Spoken once the count settles. $1 = 1."
+  },
+  "panelAnnounceCount_other": {
+    "message": "$1 flagged paragraphs on this page",
+    "description": "Spoken once the count settles. $1 = flagged count."
+  },
+  "panelDaemonDown": {
+    "message": "Scoring daemon not running. Run “anagram start” — new paragraphs wait until it answers.",
+    "description": "Notice at the top of the triage panel. The command itself is never translated."
+  },
+  "panelRetry": {
+    "message": "Retry",
+    "description": "Panel action beside the daemon-down notice."
+  },
+  "panelTitle": {
+    "message": "Flagged paragraphs",
+    "description": "Triage panel heading with nothing flagged."
+  },
+  "panelTitleCount": {
+    "message": "Flagged paragraphs ($1)",
+    "description": "Triage panel heading. $1 = flagged count."
+  },
+  "panelCopyReport": {
+    "message": "Copy report",
+    "description": "Panel action: copy the page's verdicts as text."
+  },
+  "panelAnnounceCopied": {
+    "message": "Report copied to the clipboard",
+    "description": "Spoken after Copy report."
+  },
+  "panelFilterAll": {
+    "message": "All $1",
+    "description": "Panel filter chip. $1 = count of all flagged paragraphs."
+  },
+  "panelFilterAi": {
+    "message": "AI $1",
+    "description": "Panel filter chip for AI-generated. $1 = count."
+  },
+  "panelFilterHeavy": {
+    "message": "Heavily edited $1",
+    "description": "Panel filter chip for heavily edited. $1 = count."
+  },
+  "panelEmpty": {
+    "message": "Nothing flagged on this page.",
+    "description": "Panel empty state."
+  },
+  "panelItemAria": {
+    "message": "$1, $2%: $3",
+    "description": "Accessible name of a panel row. $1 = verdict, $2 = percentage, $3 = snippet."
+  },
+  "panelTurnOffHere": {
+    "message": "Turn off here",
+    "description": "Panel footer on our own pages, which have no hostname worth printing."
+  },
+  "panelTurnOffOn": {
+    "message": "Turn off on $1",
+    "description": "Panel footer kill switch. $1 = hostname."
+  },
+  "panelTurnOffTitle": {
+    "message": "Adds a per-site rule — re-enable any time from the toolbar popup",
+    "description": "Tooltip on the panel's kill switch."
+  },
+
+  "actionAnalyzeDocument": {
+    "message": "Analyze document",
+    "description": "Ball action chip in the Google Docs editor."
+  },
+  "actionLoadingDocument": {
+    "message": "Loading document…",
+    "description": "Ball action chip while the Docs reading overlay is fetched."
+  },
+  "actionCloseReading": {
+    "message": "Close reading mode",
+    "description": "Ball action chip while the Docs reading overlay is open."
+  },
+  "actionBackToEditor": {
+    "message": "Back to editor",
+    "description": "Ball action chip on the static Docs view."
+  },
+  "actionAnalyzePdf": {
+    "message": "Analyze PDF",
+    "description": "Ball action chip on a PDF tab."
+  },
+
+  "docsUntitled": {
+    "message": "Google Docs document",
+    "description": "Reading overlay title for a document with no title of its own."
+  },
+  "docsSubtitle": {
+    "message": "Anagram reading mode — every paragraph analyzed · editor untouched behind",
+    "description": "Subtitle in the Docs reading overlay's bar."
+  },
+  "docsRefresh": {
+    "message": "Refresh",
+    "description": "Docs overlay button: read the document again."
+  },
+  "docsRefreshTitle": {
+    "message": "Read the document again, with the edits made since it opened",
+    "description": "Tooltip on the Docs overlay's Refresh."
+  },
+  "docsOpenAsPage": {
+    "message": "Open as page",
+    "description": "Docs overlay button: open the reading view in its own tab."
+  },
+  "docsOpenAsPageTitle": {
+    "message": "Open the analyzed reading view as its own page",
+    "description": "Tooltip on the Docs overlay's Open as page."
+  },
+  "docsBack": {
+    "message": "Back to editor · Esc",
+    "description": "Docs overlay button: close the overlay. Esc is the key, untranslated."
+  },
+  "docsSnapshotNotice": {
+    "message": "Static snapshot of the document — Refresh reads it again.",
+    "description": "Line above the paper in the Docs reading overlay."
+  },
+
+  "reportTitle": {
+    "message": "Anagram report — $1",
+    "description": "Report heading. $1 = page title or hostname."
+  },
+  "reportPage": {
+    "message": "Page: $1",
+    "description": "Report line. $1 = URL."
+  },
+  "reportGenerated": {
+    "message": "Generated: $1",
+    "description": "Report line. $1 = local date and time."
+  },
+  "reportAnalyzed_one": {
+    "message": "Analyzed: $1 unit",
+    "description": "Report summary. $1 = 1."
+  },
+  "reportAnalyzed_other": {
+    "message": "Analyzed: $1 units",
+    "description": "Report summary. $1 = number of units with a real verdict."
+  },
+  "reportFlagged": {
+    "message": "Flagged: $1",
+    "description": "Report summary. $1 = flagged count."
+  },
+  "reportUnavailable": {
+    "message": "Unavailable: $1",
+    "description": "Report summary. $1 = units the daemon never answered for."
+  },
+  "reportSkipped": {
+    "message": "Skipped (unsupported language): $1",
+    "description": "Report summary. $1 = units the language gate refused."
+  },
+  "reportEstimate": {
+    "message": "Each percentage is EditLens's estimate of how far that text sits from untouched human writing toward fully AI-generated — not a share of words, not proof.",
+    "description": "Report preamble: what the percentages mean."
+  },
+  "reportNothingFlagged": {
+    "message": "No paragraphs were flagged as heavily edited or AI-generated.",
+    "description": "Report body when nothing was flagged."
+  },
+  "reportFlaggedHeading": {
+    "message": "Flagged paragraphs ($1)",
+    "description": "Report section heading. $1 = flagged count."
+  },
+  "reportWords": {
+    "message": "$1 words",
+    "description": "Report entry detail. $1 = word count."
+  },
+  "reportWindows": {
+    "message": "; scored in $1 windows: $2",
+    "description": "Report entry detail for a long paragraph. $1 = window count, $2 = each window's percentage."
+  },
+  "reportUnread": {
+    "message": "; the end of the paragraph was not read",
+    "description": "Report entry detail appended when the text outran the window cap."
+  },
+  "reportModel": {
+    "message": "Scores from $1 ($2) via the local anagramd daemon — EditLens estimates of AI-editing extent, not proof.",
+    "description": "Report footer. $1 = model id, $2 = model version. Both are identifiers, never translated."
+  },
+  "reportNoModel": {
+    "message": "No scoring daemon answered while this page was analyzed.",
+    "description": "Report footer when nothing scored."
+  },
+
+  "popupTitle": {
+    "message": "Anagram",
+    "description": "Popup document title."
+  },
+  "popupSubtitle": {
+    "message": "AI text detector",
+    "description": "Popup header line under the name."
+  },
+  "popupAllSettings": {
+    "message": "All settings",
+    "description": "Popup gear button: opens the options page."
+  },
+  "popupDetection": {
+    "message": "Detection",
+    "description": "Popup group heading."
+  },
+  "popupAllWebsites": {
+    "message": "All websites",
+    "description": "Popup switch: the global default."
+  },
+  "popupThisSite": {
+    "message": "This site",
+    "description": "Popup switch: the rule for the open page."
+  },
+  "popupOn": {
+    "message": "on $1",
+    "description": "Line under 'This site' naming the site the deciding rule belongs to. $1 = hostname."
+  },
+  "popupSiteUnavailable": {
+    "message": "unavailable here",
+    "description": "Line under 'This site' on a page with no hostname."
+  },
+  "popupDisplay": {
+    "message": "Display",
+    "description": "Popup group heading."
+  },
+  "popupShow": {
+    "message": "Show",
+    "description": "Popup label for the all/flagged segmented control."
+  },
+  "popupAllChips": {
+    "message": "All chips",
+    "description": "Popup segment: mark every analyzed paragraph."
+  },
+  "popupFlaggedOnly": {
+    "message": "Flagged only",
+    "description": "Popup segment: mark only heavily edited and AI-generated."
+  },
+  "popupMarkText": {
+    "message": "Mark text",
+    "description": "Popup switch: underline/tint the paragraphs themselves."
+  },
+  "popupMarkingStyle": {
+    "message": "Marking style",
+    "description": "Popup label for the marking-style select."
+  },
+  "styleBoth": {
+    "message": "Underline + tint",
+    "description": "Marking style option."
+  },
+  "styleUnderline": {
+    "message": "Underline",
+    "description": "Marking style option (popup, where the row is narrow)."
+  },
+  "styleTint": {
+    "message": "Tint",
+    "description": "Marking style option (popup, where the row is narrow)."
+  },
+  "popupAnalysis": {
+    "message": "Analysis",
+    "description": "Popup group heading."
+  },
+  "popupScope": {
+    "message": "Scope",
+    "description": "Popup label for the page/main segmented control."
+  },
+  "popupScopeTitle": {
+    "message": "Main content = the article body only (Readability)",
+    "description": "Tooltip on the popup's scope control."
+  },
+  "popupWholePage": {
+    "message": "Whole page",
+    "description": "Scope segment."
+  },
+  "popupMainContent": {
+    "message": "Main content",
+    "description": "Scope segment."
+  },
+  "popupReadPdf": {
+    "message": "Read this PDF",
+    "description": "Popup button on a PDF tab."
+  },
+  "popupRescan": {
+    "message": "Rescan page",
+    "description": "Popup button: drop everything and scan again."
+  },
+  "popupHintToggle": {
+    "message": "$1+$2+$3 toggles the overlay",
+    "description": "Popup key hint. $1-$3 are <kbd> elements from the page (Alt, Shift, P)."
+  },
+  "popupHintList": {
+    "message": "$1+$2+$3 lists flagged · $4/$5 walk it",
+    "description": "Popup key hint. $1-$5 are <kbd> elements from the page (Alt, Shift, L, J, K)."
+  },
+  "popupFlaggedCount": {
+    "message": "$1 flagged",
+    "description": "Popup status: the part drawn in the flagged colour. $1 = count."
+  },
+  "popupAnalyzed_one": {
+    "message": "$1 paragraph analyzed · ",
+    "description": "Popup status. $1 = 1. The trailing separator joins it to the flagged count."
+  },
+  "popupAnalyzed_other": {
+    "message": "$1 paragraphs analyzed · ",
+    "description": "Popup status. $1 = count. The trailing separator joins it to the flagged count."
+  },
+  "popupNotEnglish": {
+    "message": " · $1 not English",
+    "description": "Popup status tail. $1 = paragraphs the language gate refused."
+  },
+  "popupUnavailable": {
+    "message": " · $1 unavailable",
+    "description": "Popup status tail. $1 = paragraphs the daemon never answered for."
+  },
+  "popupNoTab": {
+    "message": "No active tab.",
+    "description": "Popup status when there is no tab to ask."
+  },
+  "popupOff": {
+    "message": "Detection is off for this page.",
+    "description": "Popup status when a rule switches this page off."
+  },
+  "popupUnsupportedPage": {
+    "message": "Not available on this page.",
+    "description": "Popup status where no content script runs."
+  },
+  "popupRescanning": {
+    "message": "Rescanning…",
+    "description": "Popup status right after Rescan."
+  },
+  "popupModel": {
+    "message": "Model: ",
+    "description": "Popup backend line, before the model id. Keep any spacing the language needs."
+  },
+  "popupLocal": {
+    "message": " · local",
+    "description": "Popup backend line, after the model id."
+  },
+  "popupDaemonMismatch": {
+    "message": "Daemon version mismatch",
+    "description": "Popup backend line: a daemon answered, of the wrong generation."
+  },
+  "popupDaemonDown": {
+    "message": "Daemon not running",
+    "description": "Popup backend line: nothing answered."
+  },
+  "popupRetry": {
+    "message": "Retry",
+    "description": "Popup button beside the backend line."
+  },
+  "popupRunUpdate": {
+    "message": " — run: anagram update ",
+    "description": "Popup backend line advice. The command is never translated; keep the spacing."
+  },
+  "popupRunStart": {
+    "message": " — run: anagram start ",
+    "description": "Popup backend line advice. The command is never translated; keep the spacing."
+  },
+
+  "optionsTitle": {
+    "message": "Anagram for Chrome — Options",
+    "description": "Options document title."
+  },
+  "optionsHeading": {
+    "message": "Anagram for Chrome",
+    "description": "Options page heading."
+  },
+  "optDetection": {
+    "message": "Detection",
+    "description": "Options card heading."
+  },
+  "optDetectionNote": {
+    "message": "What gets analyzed, and how paragraphs are grouped.",
+    "description": "Options card subtitle."
+  },
+  "optEnabled": {
+    "message": "Enable on all sites",
+    "description": "Options switch label."
+  },
+  "optEnabledNote": {
+    "message": "Per-site rules below override this default. Toggling applies to new page loads and open tabs.",
+    "description": "Options switch help text."
+  },
+  "optScope": {
+    "message": "Analysis scope",
+    "description": "Options select label."
+  },
+  "optScopeNote": {
+    "message": "Main content only analyzes the article region — found the way Firefox Reader View does (Mozilla Readability) — and skips comments/sidebars outside it. Falls back to whole page when no clear region exists.",
+    "description": "Options select help text."
+  },
+  "optScopeWholePage": {
+    "message": "Whole page",
+    "description": "Analysis scope option."
+  },
+  "optScopeMain": {
+    "message": "Main content only",
+    "description": "Analysis scope option."
+  },
+  "optMerge": {
+    "message": "Group short neighboring paragraphs",
+    "description": "Options switch label."
+  },
+  "optMergeNote": {
+    "message": "A short post or comment is analyzed as a whole, and paragraphs under the 50-word evidence floor together with their neighbors in the same article — the chip shows ×N; never across posts, comments or quotations. Off: every paragraph by itself, short ones skipped entirely.",
+    "description": "Options switch help text."
+  },
+  "optDisplay": {
+    "message": "Display",
+    "description": "Options card heading."
+  },
+  "optDisplayNote": {
+    "message": "How verdicts are drawn on the page.",
+    "description": "Options card subtitle."
+  },
+  "optHighlights": {
+    "message": "Mark analyzed paragraphs",
+    "description": "Options switch label."
+  },
+  "optHighlightsNote": {
+    "message": "Colors each paragraph by verdict — green = human, yellow = lightly edited, orange = heavily edited, red = AI-generated. Badges stay either way.",
+    "description": "Options switch help text."
+  },
+  "optMarkStyle": {
+    "message": "Mark style",
+    "description": "Options select label."
+  },
+  "optMarkStyleNote": {
+    "message": "How analyzed paragraphs are marked in place. “Mark analyzed paragraphs” above stays the master on/off.",
+    "description": "Options select help text."
+  },
+  "optStyleBoth": {
+    "message": "Underline + tint",
+    "description": "Mark style option."
+  },
+  "optStyleUnderline": {
+    "message": "Underline only",
+    "description": "Mark style option."
+  },
+  "optStyleTint": {
+    "message": "Tint only",
+    "description": "Mark style option."
+  },
+  "optDisplayMode": {
+    "message": "What to show",
+    "description": "Options select label."
+  },
+  "optDisplayModeNote": {
+    "message": "Every paragraph is analyzed either way. “Flagged only” keeps pages calm and marks just heavily-edited and AI-generated verdicts.",
+    "description": "Options select help text."
+  },
+  "optModeAll": {
+    "message": "All chips",
+    "description": "Display mode option."
+  },
+  "optModeFlagged": {
+    "message": "Flagged only",
+    "description": "Display mode option."
+  },
+  "optDaemon": {
+    "message": "Scoring daemon",
+    "description": "Options card heading."
+  },
+  "optDaemonNote": {
+    "message": "Verdicts come from the local $1 daemon (EditLens roberta-large, running on this computer). Start it with $2 (or $3 from a source checkout). When it is not running, paragraphs show as Unavailable and are retried automatically. There is no other backend.",
+    "description": "Options card subtitle. $1-$3 are <code> elements from the page holding commands, never translated."
+  },
+  "optDaemonUrl": {
+    "message": "Daemon URL",
+    "description": "Options input label."
+  },
+  "optDaemonUrlNote": {
+    "message": "Where $1 listens. Local addresses only — page text never leaves this computer. Default $2.",
+    "description": "Options input help text. $1 and $2 are <code> elements from the page, never translated."
+  },
+  "optStatus": {
+    "message": "Status",
+    "description": "Options label above the daemon status line."
+  },
+  "optChecking": {
+    "message": "Checking…",
+    "description": "Daemon status while the probe is in flight."
+  },
+  "optCheckNow": {
+    "message": "Check now",
+    "description": "Options button: probe the daemon again."
+  },
+  "optRules": {
+    "message": "Per-site rules",
+    "description": "Options card heading."
+  },
+  "optRulesNote": {
+    "message": "Always-on / always-off overrides. A rule covers the site's subdomains too, and the most specific rule wins.",
+    "description": "Options card subtitle."
+  },
+  "optHostname": {
+    "message": "Hostname",
+    "description": "Accessible name of the add-rule host field."
+  },
+  "optRuleField": {
+    "message": "Rule",
+    "description": "Accessible name of the add-rule mode select."
+  },
+  "optAlwaysOn": {
+    "message": "Always on",
+    "description": "Per-site rule mode."
+  },
+  "optAlwaysOff": {
+    "message": "Always off",
+    "description": "Per-site rule mode."
+  },
+  "optAdd": {
+    "message": "Add",
+    "description": "Options button: add the per-site rule."
+  },
+  "optNoRules": {
+    "message": "No per-site rules yet. Use the toolbar popup's “This site” toggle to add one.",
+    "description": "Empty state of the per-site rules table."
+  },
+  "optColSite": {
+    "message": "Site",
+    "description": "Rules table column header."
+  },
+  "optColRule": {
+    "message": "Rule",
+    "description": "Rules table column header."
+  },
+  "optColActions": {
+    "message": "Actions",
+    "description": "Rules table column header, visually hidden above the Remove buttons."
+  },
+  "optRemove": {
+    "message": "Remove",
+    "description": "Rules table row action."
+  },
+  "optBadHost": {
+    "message": "Enter a hostname like example.com.",
+    "description": "Add-rule error."
+  },
+  "optAlreadyCovered": {
+    "message": "Already covered by $1.",
+    "description": "Add-rule note. $1 = the parent domain whose rule already says the same."
+  },
+  "optBadUrl": {
+    "message": "Only a local address is allowed (http://127.0.0.1:… or http://localhost:…).",
+    "description": "Daemon URL error. The example addresses are never translated."
+  },
+  "optConnected": {
+    "message": "Connected — $1 ($2) on $3 at $4.",
+    "description": "Daemon status. $1 = model id, $2 = model version, $3 = device, $4 = URL."
+  },
+  "optContractMismatch": {
+    "message": "Found a daemon at $1, but it speaks contract $2 and this extension needs $3.x — run: ~/.anagram/bin/anagram update.",
+    "description": "Daemon status. $1 = URL, $2 = its contract, $3 = the major this build needs. The command is never translated."
+  },
+  "optNotRunning": {
+    "message": "Not running at $1 — paragraphs show as Unavailable until it answers.",
+    "description": "Daemon status. $1 = URL."
+  },
+  "optNotRunningReason": {
+    "message": "Not running at $1 — paragraphs show as Unavailable until it answers ($2).",
+    "description": "Daemon status with the reason the probe never left. $1 = URL, $2 = error."
+  },
+  "optSummaryMismatch": {
+    "message": "daemon version mismatch",
+    "description": "Tail of the version line under the options heading."
+  },
+  "optSummaryDown": {
+    "message": "daemon not running",
+    "description": "Tail of the version line under the options heading."
+  },
+  "optNoWorker": {
+    "message": "Could not reach the extension’s service worker.",
+    "description": "Daemon status when the extension itself did not answer."
+  },
+  "optAdvanced": {
+    "message": "Advanced",
+    "description": "Options card heading."
+  },
+  "optDebug": {
+    "message": "Debug logging",
+    "description": "Options switch label."
+  },
+  "optDebugNote": {
+    "message": "Verbose console logs from the content script (namespaced $1).",
+    "description": "Options switch help text. $1 is a <code> element from the page, never translated."
+  },
+  "optCachedVerdicts": {
+    "message": "Cached verdicts",
+    "description": "Options label above the clear-cache button."
+  },
+  "optCachedNote": {
+    "message": "Verdicts are kept so revisits never re-score. Clearing them makes the next scan ask the daemon again.",
+    "description": "Options help text."
+  },
+  "optClearCache": {
+    "message": "Clear cached verdicts",
+    "description": "Options button."
+  },
+  "optCleared": {
+    "message": "Cleared ✓",
+    "description": "Confirmation shown on the clear-cache button for a moment."
+  },
+  "optAbout": {
+    "message": "About & shortcuts",
+    "description": "Options card heading."
+  },
+  "optShortcutToggle": {
+    "message": "Show or hide the Anagram overlay on the current page.",
+    "description": "Shortcut description."
+  },
+  "optShortcutList": {
+    "message": "Open the flagged-paragraphs list and put the keyboard in it.",
+    "description": "Shortcut description."
+  },
+  "optShortcutNext": {
+    "message": "Jump to the next flagged paragraph.",
+    "description": "Shortcut description."
+  },
+  "optShortcutPrev": {
+    "message": "Jump to the previous flagged paragraph.",
+    "description": "Shortcut description."
+  },
+  "optRightClick": {
+    "message": "Right-click",
+    "description": "Shown as a key in the shortcuts grid."
+  },
+  "optShortcutSelection": {
+    "message": "Choose “Analyze selection with Anagram” to score just the highlighted text.",
+    "description": "Shortcut description; the quoted words are the menu entry menuAnalyzeSelection."
+  },
+  "optShortcutPage": {
+    "message": "Choose “Analyze this page with Anagram” to analyze a switched-off page once.",
+    "description": "Shortcut description; the quoted words are the menu entry menuAnalyzePage."
+  },
+  "optRebind": {
+    "message": "Rebind any of these in your browser's extension shortcuts (Chrome: $1).",
+    "description": "Options note. $1 is a <code> element from the page holding a URL, never translated."
+  },
+  "optPrivacy": {
+    "message": "Nothing leaves your computer — scoring runs in the local $1 daemon on this computer. The daemon URL is restricted to local addresses.",
+    "description": "Options note. $1 is a <code> element from the page, never translated."
+  },
+  "optVerdictColors": {
+    "message": "Verdict colors",
+    "description": "Options sub-heading above the colour legend."
+  },
+  "optFooter": {
+    "message": "A chip's number is EditLens's estimate of how far a paragraph sits between untouched human writing (0%) and fully AI-generated text (100%) — not a share of words, not proof. Detection runs per paragraph — per post for a short post — with a 50-word evidence floor; shorter neighboring paragraphs are analyzed together.",
+    "description": "Options page footer."
+  },
+  "modelLine": {
+    "message": "Model: pangram/editlens_roberta-large (CC BY-NC-SA 4.0, non-commercial).",
+    "description": "Model credit in the options and first-run footers. The model id and licence are never translated."
+  },
+
+  "onbTitle": {
+    "message": "Welcome to Anagram",
+    "description": "First-run page title and heading."
+  },
+  "onbLede": {
+    "message": "Anagram answers $1 as you browse: every analyzed paragraph gets a small $2 with a number — the model's estimate of the $3 — and a matching underline, quiet on human text, louder as AI involvement grows.",
+    "description": "First-run opening paragraph. $1-$3 are emphasised runs from the page (onbLedeQuestion, onbLedeChip, onbLedeExtent)."
+  },
+  "onbLedeQuestion": {
+    "message": "“how much of this did an AI write?”",
+    "description": "The question Anagram answers, set in italics."
+  },
+  "onbLedeChip": {
+    "message": "chip",
+    "description": "Name of the little badge after each paragraph. Users read this word; 'chip' is not used elsewhere in the UI."
+  },
+  "onbLedeExtent": {
+    "message": "extent of AI editing",
+    "description": "What the number measures."
+  },
+  "onbSetup": {
+    "message": "Setup",
+    "description": "First-run card heading over the live status strip."
+  },
+  "onbExtension": {
+    "message": "Extension",
+    "description": "Setup row label."
+  },
+  "onbInstalled": {
+    "message": "installed",
+    "description": "Setup row value: the extension is here."
+  },
+  "onbDaemon": {
+    "message": "Scoring daemon",
+    "description": "Setup row label."
+  },
+  "onbChecking": {
+    "message": "checking…",
+    "description": "Setup row value while the probe is in flight."
+  },
+  "onbRunning": {
+    "message": "running",
+    "description": "Setup row value: the daemon answered."
+  },
+  "onbMismatch": {
+    "message": "version mismatch",
+    "description": "Setup row value: a daemon of another generation answered."
+  },
+  "onbNotLocal": {
+    "message": "not a local address",
+    "description": "Setup row value: the configured URL is not loopback, so nothing was probed."
+  },
+  "onbNotRunning": {
+    "message": "not running",
+    "description": "Setup row value: nothing answered."
+  },
+  "onbCopy": {
+    "message": "Copy",
+    "description": "Button beside a command on the first-run page."
+  },
+  "onbOpenOptions": {
+    "message": "Open options",
+    "description": "Link on the first-run page when only the options page can fix the daemon URL."
+  },
+  "onbReady": {
+    "message": "Ready",
+    "description": "Setup row label."
+  },
+  "onbWaiting": {
+    "message": "Waiting for the scoring daemon.",
+    "description": "Setup row value while nothing can be scored yet."
+  },
+  "onbGo": {
+    "message": "Open any article — a chip appears after each paragraph.",
+    "description": "Setup row value once everything is running."
+  },
+  "onbNotInstalled": {
+    "message": "Not installed yet? $1",
+    "description": "First-run install line. $1 is the install command with its Copy button, from the page."
+  },
+  "onbHowItReads": {
+    "message": "How it reads",
+    "description": "First-run card heading over the sample chips."
+  },
+  "onbVerdicts": {
+    "message": "Reading the verdicts",
+    "description": "First-run card heading."
+  },
+  "onbVerdictsBody": {
+    "message": "The model ($1, ICLR 2026) rates how far a paragraph sits between untouched human writing (0%) and fully AI-generated text (100%). The number is $2 written by AI — it is the model's estimate of how much AI editing changed the text as a whole. Hover (or tap) a chip for the full readout: the four-way probability split behind the verdict and the word count. EditLens reads English only: other languages get a gray chip with the detected language code instead of a number. Every number is an $3. Snippets under ~50 words are only scored when grouped with neighbors, and a short post is scored as a whole — a $4 on a chip means it covers that many paragraphs.",
+    "description": "First-run card body. $1-$4 are emphasised runs from the page (the model name, onbNotShare, onbEstimate, and the ×2 example)."
+  },
+  "onbNotShare": {
+    "message": "not a share of words",
+    "description": "Emphasised run inside onbVerdictsBody."
+  },
+  "onbEstimate": {
+    "message": "estimate, not proof",
+    "description": "Emphasised run inside onbVerdictsBody."
+  },
+  "onbBall": {
+    "message": "The floating ball",
+    "description": "First-run card heading."
+  },
+  "onbBallBody": {
+    "message": "Lives bottom-right on every page. $1 it to show or hide all marks instantly. $2 it anywhere — it snaps to the nearest edge and tucks itself half-away when idle; hover brings it back. Its red $3 opens the triage panel: filter by verdict, jump to each flagged paragraph, $4, or turn Anagram off for this site — all inside the panel.",
+    "description": "First-run card body. $1-$4 are emphasised runs from the page (onbClick, onbDrag, onbCounter, panelCopyReport)."
+  },
+  "onbClick": {
+    "message": "Click",
+    "description": "Emphasised run inside onbBallBody."
+  },
+  "onbDrag": {
+    "message": "Drag",
+    "description": "Emphasised run inside onbBallBody."
+  },
+  "onbCounter": {
+    "message": "counter",
+    "description": "Emphasised run inside onbBallBody: the red bubble on the ball."
+  },
+  "onbPower": {
+    "message": "Power moves",
+    "description": "First-run card heading."
+  },
+  "onbPowerSelection": {
+    "message": "$1 — select text, right-click, done. Works inside text boxes and editors too.",
+    "description": "First-run list item. $1 is the emphasised run onbSelectionName."
+  },
+  "onbSelectionName": {
+    "message": "Analyze selection",
+    "description": "Emphasised run naming the right-click action."
+  },
+  "onbPowerToggle": {
+    "message": "$1+$2+$3 — toggle Anagram on the current page.",
+    "description": "First-run list item. $1-$3 are <kbd> elements from the page."
+  },
+  "onbPowerWalk": {
+    "message": "$1+$2+$3 — open the flagged-paragraphs list, keyboard already inside it. $4+$5+$6 and $7+$8+$9 walk to the next and previous flagged paragraph without touching the mouse.",
+    "description": "First-run list item. $1-$9 are <kbd> elements from the page."
+  },
+  "onbPowerFlagged": {
+    "message": "$1 — switch $2 in the popup and calm pages stay untouched; marks appear only where something was flagged.",
+    "description": "First-run list item. $1 and $2 are emphasised runs from the page (onbFlaggedName and the Show → Flagged only path)."
+  },
+  "onbFlaggedName": {
+    "message": "Flagged only",
+    "description": "Emphasised run naming the display mode; same words as the popup segment."
+  },
+  "onbFlaggedPath": {
+    "message": "Show → Flagged only",
+    "description": "The popup control path named in onbPowerFlagged; both halves are popup labels."
+  },
+  "onbDocs": {
+    "message": "Google Docs",
+    "description": "First-run card heading."
+  },
+  "onbDocsBody": {
+    "message": "Docs is an editor, not a page — so Anagram brings its own reading surface. Click $1 on the floating ball and a $2 opens right in the tab, with every paragraph of the document analyzed. No navigation, and your file is never touched. Press $3 or $4 to return instantly — or use $5 if you prefer a separate tab.",
+    "description": "First-run card body. $1-$5 are runs from the page (actionAnalyzeDocument, onbReadingMode, an Esc <kbd>, actionBackToEditor, docsOpenAsPage)."
+  },
+  "onbReadingMode": {
+    "message": "reading mode",
+    "description": "Emphasised run inside onbDocsBody."
+  },
+  "onbPdfs": {
+    "message": "PDFs",
+    "description": "First-run card heading."
+  },
+  "onbPdfBody": {
+    "message": "A PDF is a picture to the browser, so Anagram rebuilds it as a page. Click $1 on the floating ball, $2 in the popup, or right-click a link to one and choose $3. Paragraphs come back in reading order — columns and all — and get the same chips as any other page. The file stays on your computer.",
+    "description": "First-run card body. $1-$3 are runs from the page (actionAnalyzePdf, popupReadPdf, menuOpenPdf)."
+  },
+  "onbPrivacy": {
+    "message": "Privacy",
+    "description": "First-run card heading."
+  },
+  "onbPrivacyBody": {
+    "message": "Nothing leaves your computer. Scoring runs in the local $1 daemon on this computer; requests carry only a $2 by design — never full URLs.",
+    "description": "First-run card body. $1 is a <code> element from the page; $2 is the emphasised run onbHostnameHint."
+  },
+  "onbHostnameHint": {
+    "message": "hostname and language hint",
+    "description": "Emphasised run inside onbPrivacyBody: everything a request carries besides the text."
+  },
+  "onbYours": {
+    "message": "Make it yours",
+    "description": "First-run card heading."
+  },
+  "onbYoursBody": {
+    "message": "The $1 and $2 hold the rest: pick a marking style ($3 or a soft $4), choose the analysis scope ($5 or $6), and check the local scoring daemon's status.",
+    "description": "First-run card body. $1-$6 are emphasised runs from the page (onbPopupName, onbOptionsName, styleUnderline, styleTint, optScopeWholePage, optScopeMain)."
+  },
+  "onbStyleUnderline": {
+    "message": "underline",
+    "description": "Marking style named mid-sentence in onbYoursBody, so lower case."
+  },
+  "onbStyleTint": {
+    "message": "tint",
+    "description": "Marking style named mid-sentence in onbYoursBody, so lower case."
+  },
+  "onbScopePage": {
+    "message": "whole page",
+    "description": "Analysis scope named mid-sentence in onbYoursBody, so lower case."
+  },
+  "onbScopeMain": {
+    "message": "main content only",
+    "description": "Analysis scope named mid-sentence in onbYoursBody, so lower case."
+  },
+  "onbPopupName": {
+    "message": "popup",
+    "description": "Emphasised run: the toolbar popup."
+  },
+  "onbOptionsName": {
+    "message": "options page",
+    "description": "Emphasised run: the extension's settings page."
+  },
+
+  "readerTitle": {
+    "message": "Anagram reader",
+    "description": "PDF reading-mode page title and its bar heading before a file is open."
+  },
+  "readerOpenOriginal": {
+    "message": "Open original",
+    "description": "Reader button: leave for the PDF itself."
+  },
+  "readerDrop": {
+    "message": "Drop a PDF here",
+    "description": "Reader drop zone."
+  },
+  "readerChoose": {
+    "message": "Choose a file",
+    "description": "Reader drop-zone button."
+  },
+  "readerPages_one": {
+    "message": "$1 page",
+    "description": "Reader subtitle. $1 = 1."
+  },
+  "readerPages_other": {
+    "message": "$1 pages",
+    "description": "Reader subtitle. $1 = page count."
+  },
+  "readerCapped": {
+    "message": "Reading the first $1 pages.",
+    "description": "Reader notice on a document past the page cap. $1 = the cap."
+  },
+  "readerLoading": {
+    "message": "Loading…",
+    "description": "Reader notice while the file is fetched."
+  },
+  "readerNoText": {
+    "message": "This PDF has no text layer.",
+    "description": "Reader notice: a scan, nothing to read."
+  },
+  "readerTooLarge": {
+    "message": "This PDF is too large to read here.",
+    "description": "Reader notice past the size cap."
+  },
+  "readerEncrypted": {
+    "message": "This PDF is password-protected.",
+    "description": "Reader notice."
+  },
+  "readerBadFile": {
+    "message": "This file could not be read as a PDF.",
+    "description": "Reader notice."
+  },
+  "readerFetchFailed": {
+    "message": "This PDF could not be loaded. Drop the file here instead.",
+    "description": "Reader notice when the fetch failed."
+  }
+}

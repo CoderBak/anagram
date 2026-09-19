@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Anagram reader</title>
+    <title data-i18n="readerTitle">Anagram reader</title>
     <style>
       /* Layout only — colours, type and controls come from Basecoat (Vega). The page
          mirrors the Google Docs reading overlay: a thin bar, then paper. */
@@ -71,17 +71,17 @@
     <header class="bar" data-anagram="host">
       <span class="mark" aria-hidden="true">A</span>
       <div class="titles">
-        <h1 class="t" id="title">Anagram reader</h1>
+        <h1 class="t" id="title" data-i18n="readerTitle">Anagram reader</h1>
         <div class="s" id="subtitle"></div>
       </div>
-      <button id="original" class="btn" data-variant="outline" data-size="sm" type="button" hidden>Open original</button>
+      <button id="original" class="btn" data-variant="outline" data-size="sm" type="button" hidden data-i18n="readerOpenOriginal">Open original</button>
     </header>
 
     <main>
       <p class="notice" id="notice" data-anagram="host"></p>
       <section class="drop" id="drop" data-anagram="host" hidden>
-        <p>Drop a PDF here</p>
-        <button id="choose" class="btn" data-variant="outline" data-size="sm" type="button">Choose a file</button>
+        <p data-i18n="readerDrop">Drop a PDF here</p>
+        <button id="choose" class="btn" data-variant="outline" data-size="sm" type="button" data-i18n="readerChoose">Choose a file</button>
         <input id="file" type="file" accept="application/pdf,.pdf" hidden />
       </section>
       <article class="paper" id="paper" hidden></article>

@@ -32,7 +32,8 @@ import { arrow, autoUpdate, computePosition, flip, offset, shift } from "@floati
 import type { Unit } from "../types";
 import { MARK_ATTR } from "../types";
 import type { UnitVerdict } from "../capture/windows";
-import { band, BAND_LABEL, isNoVerdict, languageName, scorePct, type Band } from "./band";
+import { messageLocale, t } from "../i18n";
+import { band, bandLabel, isNoVerdict, languageName, scorePct, type Band } from "./band";
 import { countWords, hasLetters } from "../dom/text";
 import { coverageNote, windowPcts, windowReadout } from "./coverage";
 import { distributionHtml } from "./dist";
@@ -263,7 +264,7 @@ export function createBadgeLayer(): BadgeLayer {
     pill.className = "pill band-unknown pending";
     (root.querySelector(".num") as HTMLElement).textContent = "···";
     (root.querySelector(".card") as HTMLElement).innerHTML =
-      `<div class="foot" style="margin:0;padding:0;border:0">Analyzing this paragraph…</div>`;
+      `<div class="foot" style="margin:0;padding:0;border:0">${t("cardPending")}</div>`;
   }
 
   function buildHost(): HTMLElement {
@@ -300,6 +301,10 @@ export function createBadgeLayer(): BadgeLayer {
 
     const pill = document.createElement("span");
     pill.className = "pill";
+    // The chip and its card are ours, not the page's: they are in the UI's language,
+    // whatever the article around them is written in. Screen readers and the CJK font
+    // fallback both need that said on the elements themselves.
+    pill.lang = messageLocale();
     const dot = document.createElement("span");
     dot.className = "dot";
     const num = document.createElement("span");
@@ -308,6 +313,7 @@ export function createBadgeLayer(): BadgeLayer {
 
     const card = document.createElement("div");
     card.className = "card";
+    card.lang = pill.lang;
     // Top layer where available (Chrome 114+, Firefox 125+): immune to clipping.
     if ("showPopover" in card) card.setAttribute("popover", "manual");
 
@@ -327,7 +333,7 @@ export function createBadgeLayer(): BadgeLayer {
       `<div class="row${cls}"><span class="k">${k}</span><span class="v">${v}</span></div>`;
     const partsRow =
       unit.parts.length > 1
-        ? row("Paragraphs analyzed together", `${unit.parts.length}`)
+        ? row(t("cardPartsTogether"), `${unit.parts.length}`)
         : "";
 
     // The model's whole 4-way distribution is the honest part of the readout. Skip
@@ -341,40 +347,38 @@ export function createBadgeLayer(): BadgeLayer {
     const last = verdict.windows[verdict.windows.length - 1];
     const coverageRows = isNoVerdict(b)
       ? ""
-      : (read ? row(`Scored in ${read.count} windows`, windowPcts(read), " wins") : "") +
+      : (read ? row(t("cardWindows", read.count), windowPcts(read), " wins") : "") +
         (verdict.unreadChars > 0 && last
-          ? row("Scored", `first ${countWords(unit.text.slice(0, last.end))} words`)
+          ? row(t("cardScored"), t("cardFirstWords", countWords(unit.text.slice(0, last.end))))
           : "") +
-        (read && read.cutShort > 0 ? row("Windows cut short", `${read.cutShort} of ${read.count}`) : "") +
-        (read && read.skipped > 0 ? row("Windows not in English", `${read.skipped} of ${read.count}`) : "");
+        (read && read.cutShort > 0 ? row(t("cardWindowsCut"), t("cardOfCount", read.cutShort, read.count)) : "") +
+        (read && read.skipped > 0 ? row(t("cardWindowsSkipped"), t("cardOfCount", read.skipped, read.count)) : "");
     // Formula-heavy prose was scored with holes where the math was — say so.
-    const formulaRow = !isNoVerdict(b) && unit.formulas > 0 ? row("Formulas omitted", `${unit.formulas}`) : "";
+    const formulaRow = !isNoVerdict(b) && unit.formulas > 0 ? row(t("cardFormulas"), `${unit.formulas}`) : "";
     const langRow =
       b === "unsupported"
-        ? row("Detected language", `${languageName(result.lang)} · ${Math.round((result.lang_prob ?? 0) * 100)}%`)
+        ? row(t("cardDetectedLang"), `${languageName(result.lang)} · ${Math.round((result.lang_prob ?? 0) * 100)}%`)
         : "";
     const foot =
       b === "unknown"
-        ? "The scoring daemon did not answer. Retried automatically once it is running."
+        ? t("cardFootUnavailable")
         : b === "unsupported"
-          ? "EditLens is trained on English text only, so this paragraph was not scored."
-          : coverageNote(verdict, "paragraph") +
-            "The number is EditLens's estimate of how far this text sits from untouched " +
-            "human writing toward fully AI-generated — not a share of words, not proof.";
+          ? t("cardFootUnsupported")
+          : coverageNote(verdict, "paragraph") + t("cardFootEstimate");
     card.innerHTML =
-      `<div class="head"><span class="verdict band-${b}">${BAND_LABEL[b]}</span>` +
-      `<span class="big" title="Extent of AI editing (EditLens scale)">${isNoVerdict(b) ? "—" : pct + "%"}</span></div>` +
+      `<div class="head"><span class="verdict band-${b}">${bandLabel(b)}</span>` +
+      `<span class="big" title="${t("cardScaleTitle")}">${isNoVerdict(b) ? "—" : pct + "%"}</span></div>` +
       dist +
       langRow +
       partsRow +
-      row("Words", `${unit.wordCount}`) +
+      row(t("cardWords"), `${unit.wordCount}`) +
       coverageRows +
       formulaRow +
       // tabindex="-1": the chip host is aria-hidden on purpose (see the header), so a
       // focusable button inside it would be a tab stop that announces nothing at all —
       // one per pinned card. This action is a pointer affordance; the keyboard route to
       // the same text is "Copy report" in the triage panel, which is properly exposed.
-      `<div class="actions"><button type="button" tabindex="-1" class="act copy">Copy text</button></div>` +
+      `<div class="actions"><button type="button" tabindex="-1" class="act copy">${t("cardCopyText")}</button></div>` +
       `<div class="foot">${foot}</div>` +
       `<span class="caret"></span>`;
 
@@ -431,7 +435,7 @@ export function createBadgeLayer(): BadgeLayer {
 function copyText(text: string, button: HTMLElement): void {
   const done = () => {
     const prev = button.textContent;
-    button.textContent = "Copied ✓";
+    button.textContent = t("copied");
     button.classList.add("done");
     setTimeout(() => {
       button.textContent = prev;

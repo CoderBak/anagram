@@ -2,7 +2,7 @@
 // the selection card: a stacked bar (one segment per bucket, width = probability)
 // plus a row per bucket, the predicted one emphasised.
 import type { ScoreResult } from "../contract";
-import { BAND_LABEL, BUCKET_BANDS, type Band } from "./band";
+import { bandLabel, BUCKET_BANDS, type Band } from "./band";
 
 export function distributionHtml(r: ScoreResult, predicted: Band): string {
   const segs = r.probs
@@ -13,7 +13,7 @@ export function distributionHtml(r: ScoreResult, predicted: Band): string {
       const b = BUCKET_BANDS[i];
       return (
         `<div class="drow${b === predicted ? " top" : ""}"><span class="ddot band-${b}"></span>` +
-        `<span class="dk">${BAND_LABEL[b]}</span><span class="dv">${Math.round(p * 100)}%</span></div>`
+        `<span class="dk">${bandLabel(b)}</span><span class="dv">${Math.round(p * 100)}%</span></div>`
       );
     })
     .join("");

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Anagram</title>
+    <title data-i18n="popupTitle">Anagram</title>
     <style>
       /* Layout only — colours, type and controls come from Basecoat (Vega). */
       html { width: 300px; }
@@ -59,9 +59,10 @@
       <img class="logo" src="/icons/icon-48.png" alt="" />
       <div class="brand">
         <h1>Anagram</h1>
-        <p>AI text detector</p>
+        <p data-i18n="popupSubtitle">AI text detector</p>
       </div>
-      <button id="gear" class="btn" data-variant="ghost" data-size="icon-sm" type="button" title="All settings" aria-label="All settings">
+      <button id="gear" class="btn" data-variant="ghost" data-size="icon-sm" type="button" title="All settings" aria-label="All settings"
+        data-i18n-title="popupAllSettings" data-i18n-aria-label="popupAllSettings">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="12" cy="12" r="3" />
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.08a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.08a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.08a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
@@ -71,14 +72,14 @@
 
     <main>
       <section class="grp">
-        <h2>Detection</h2>
+        <h2 data-i18n="popupDetection">Detection</h2>
         <div class="field" data-orientation="horizontal">
-          <label for="enabled">All websites</label>
+          <label for="enabled" data-i18n="popupAllWebsites">All websites</label>
           <input id="enabled" type="checkbox" role="switch" data-size="sm" />
         </div>
         <div class="field" data-orientation="horizontal">
           <section>
-            <label for="siteEnabled">This site</label>
+            <label for="siteEnabled" data-i18n="popupThisSite">This site</label>
             <p id="siteHost">…</p>
           </section>
           <input id="siteEnabled" type="checkbox" role="switch" data-size="sm" />
@@ -86,38 +87,38 @@
       </section>
 
       <section class="grp">
-        <h2>Display</h2>
+        <h2 data-i18n="popupDisplay">Display</h2>
         <div class="field" data-orientation="horizontal">
-          <label id="displayModeLbl">Show</label>
+          <label id="displayModeLbl" data-i18n="popupShow">Show</label>
           <div class="tabs">
             <nav role="tablist" aria-orientation="horizontal" aria-labelledby="displayModeLbl" data-seg="displayMode">
-              <button type="button" role="tab" data-value="all" aria-selected="true">All chips</button>
-              <button type="button" role="tab" data-value="flagged" aria-selected="false">Flagged only</button>
+              <button type="button" role="tab" data-value="all" aria-selected="true" data-i18n="popupAllChips">All chips</button>
+              <button type="button" role="tab" data-value="flagged" aria-selected="false" data-i18n="popupFlaggedOnly">Flagged only</button>
             </nav>
           </div>
         </div>
         <div class="field" data-orientation="horizontal">
-          <label for="highlights">Mark text</label>
+          <label for="highlights" data-i18n="popupMarkText">Mark text</label>
           <input id="highlights" type="checkbox" role="switch" data-size="sm" />
         </div>
         <div class="field" data-orientation="horizontal">
-          <label for="markStyle">Marking style</label>
+          <label for="markStyle" data-i18n="popupMarkingStyle">Marking style</label>
           <select id="markStyle">
-            <option value="both">Underline + tint</option>
-            <option value="underline">Underline</option>
-            <option value="tint">Tint</option>
+            <option value="both" data-i18n="styleBoth">Underline + tint</option>
+            <option value="underline" data-i18n="styleUnderline">Underline</option>
+            <option value="tint" data-i18n="styleTint">Tint</option>
           </select>
         </div>
       </section>
 
       <section class="grp">
-        <h2>Analysis</h2>
+        <h2 data-i18n="popupAnalysis">Analysis</h2>
         <div class="field" data-orientation="horizontal">
-          <label id="scopeLbl">Scope</label>
-          <div class="tabs" title="Main content = the article body only (Readability)">
+          <label id="scopeLbl" data-i18n="popupScope">Scope</label>
+          <div class="tabs" title="Main content = the article body only (Readability)" data-i18n-title="popupScopeTitle">
             <nav role="tablist" aria-orientation="horizontal" aria-labelledby="scopeLbl" data-seg="analysisScope">
-              <button type="button" role="tab" data-value="page" aria-selected="true">Whole page</button>
-              <button type="button" role="tab" data-value="main" aria-selected="false">Main content</button>
+              <button type="button" role="tab" data-value="page" aria-selected="true" data-i18n="popupWholePage">Whole page</button>
+              <button type="button" role="tab" data-value="main" aria-selected="false" data-i18n="popupMainContent">Main content</button>
             </nav>
           </div>
         </div>
@@ -126,10 +127,10 @@
       <section class="grp">
         <div class="status" id="status">…</div>
         <div class="backend" id="backend"></div>
-        <button id="readPdf" class="btn w-full" data-size="sm" type="button" hidden>Read this PDF</button>
-        <button id="rescan" class="btn w-full" data-variant="outline" data-size="sm" type="button">Rescan page</button>
-        <p class="hint-line"><kbd class="kbd">Alt</kbd>+<kbd class="kbd">Shift</kbd>+<kbd class="kbd">P</kbd> toggles the overlay</p>
-        <p class="hint-line"><kbd class="kbd">Alt</kbd>+<kbd class="kbd">Shift</kbd>+<kbd class="kbd">L</kbd> lists flagged &middot; <kbd class="kbd">J</kbd>/<kbd class="kbd">K</kbd> walk it</p>
+        <button id="readPdf" class="btn w-full" data-size="sm" type="button" hidden data-i18n="popupReadPdf">Read this PDF</button>
+        <button id="rescan" class="btn w-full" data-variant="outline" data-size="sm" type="button" data-i18n="popupRescan">Rescan page</button>
+        <p class="hint-line" data-i18n-html="popupHintToggle"><kbd class="kbd">Alt</kbd>+<kbd class="kbd">Shift</kbd>+<kbd class="kbd">P</kbd> toggles the overlay</p>
+        <p class="hint-line" data-i18n-html="popupHintList"><kbd class="kbd">Alt</kbd>+<kbd class="kbd">Shift</kbd>+<kbd class="kbd">L</kbd> lists flagged &middot; <kbd class="kbd">J</kbd>/<kbd class="kbd">K</kbd> walk it</p>
       </section>
     </main>
 

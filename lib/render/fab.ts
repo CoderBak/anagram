@@ -20,7 +20,8 @@
 import { computePosition, flip, offset, shift, size } from "@floating-ui/dom";
 import { MARK_ATTR } from "../types";
 import { settings, setSiteOverride } from "../settings/settings";
-import { BAND_LABEL, type Band } from "./band";
+import { messageLocale, t, tn } from "../i18n";
+import { bandLabel, type Band } from "./band";
 import { isDarkPage } from "./theme";
 
 export interface PanelEntry {
@@ -545,7 +546,7 @@ export function createFab(opts: {
       liveTimer = null;
       if (backendDown || flagged <= 0 || flagged === announcedCount) return;
       announcedCount = flagged;
-      announce(`${flagged} flagged paragraph${flagged === 1 ? "" : "s"} on this page`);
+      announce(tn("panelAnnounceCount", flagged));
     }, COUNT_ANNOUNCE_MS);
   }
 
@@ -553,9 +554,9 @@ export function createFab(opts: {
     if (!fabEl) return;
     fabEl.classList.toggle("off", !active);
     fabEl.parentElement?.classList.toggle("off", !active);
-    fabEl.title = active ? "Hide AI detection" : "Show AI detection";
+    fabEl.title = active ? t("fabHide") : t("fabShow");
     // The ball's own content is a one-letter mark: without a label it announces as "A".
-    fabEl.setAttribute("aria-label", active ? "Hide AI detection marks" : "Show AI detection marks");
+    fabEl.setAttribute("aria-label", active ? t("fabHideAria") : t("fabShowAria"));
     if (actionEl) {
       actionEl.classList.toggle("show", actionLabel !== null);
       actionEl.classList.toggle("attn", actionLabel !== null && actionAttention);
@@ -720,6 +721,9 @@ export function createFab(opts: {
 
     const stack = document.createElement("div");
     stack.className = "stack side-right";
+    // Our chrome is in the UI's language whatever the page around it is in — said on the
+    // element so screen readers and the CJK font fallback both get it right.
+    stack.lang = messageLocale();
     stackEl = stack;
 
     actionEl = document.createElement("button");
@@ -746,7 +750,7 @@ export function createFab(opts: {
     countEl.className = "count zero";
     countEl.type = "button";
     countEl.textContent = "0";
-    countEl.title = "Show flagged paragraphs";
+    countEl.title = t("countTitle");
     countEl.setAttribute("aria-expanded", "false");
     countEl.setAttribute("aria-controls", PANEL_ID);
     countEl.addEventListener("click", (e) => {
@@ -852,17 +856,14 @@ export function createFab(opts: {
     countEl.classList.toggle("down", backendDown);
     if (backendDown) {
       countEl.textContent = "!";
-      countEl.title = "Scoring daemon not running — click for details";
-      countEl.setAttribute("aria-label", "Scoring daemon not running — details");
+      countEl.title = t("countDownTitle");
+      countEl.setAttribute("aria-label", t("countDownAria"));
       return;
     }
     countEl.textContent = String(flagged);
     announceCount(flagged);
-    countEl.title = "Show flagged paragraphs";
-    countEl.setAttribute(
-      "aria-label",
-      `${flagged} flagged paragraph${flagged === 1 ? "" : "s"} — show list`,
-    );
+    countEl.title = t("countTitle");
+    countEl.setAttribute("aria-label", tn("countAria", flagged));
     countEl.classList.toggle("zero", flagged === 0);
   }
 
@@ -953,11 +954,11 @@ export function createFab(opts: {
       const notice = document.createElement("div");
       notice.className = "pnotice";
       const text = document.createElement("span");
-      text.textContent = "Scoring daemon not running. Run \u201canagram start\u201d \u2014 new paragraphs wait until it answers.";
+      text.textContent = t("panelDaemonDown");
       const retry = document.createElement("button");
       retry.type = "button";
       retry.className = "fchip";
-      retry.textContent = "Retry";
+      retry.textContent = t("panelRetry");
       retry.addEventListener("click", (e) => {
         e.stopPropagation();
         opts.onRetry?.();
@@ -971,22 +972,22 @@ export function createFab(opts: {
     const title = document.createElement("h2");
     title.id = PANEL_TITLE_ID; // the dialog's accessible name
     title.tabIndex = -1; // where keyboard focus lands when there is no result to land on
-    title.textContent = all.length ? `Flagged paragraphs (${all.length})` : "Flagged paragraphs";
+    title.textContent = all.length ? t("panelTitleCount", all.length) : t("panelTitle");
     head.appendChild(title);
     if (opts.panel && all.length > 0) {
       const copy = document.createElement("button");
       copy.type = "button";
       copy.className = "pcopy";
-      copy.textContent = "Copy report";
+      copy.textContent = t("panelCopyReport");
       copy.addEventListener("click", (e) => {
         e.stopPropagation();
         const report = opts.panel!.buildReport();
         const done = () => {
-          copy.textContent = "Copied ✓";
+          copy.textContent = t("copied");
           copy.classList.add("done");
-          announce("Report copied to the clipboard");
+          announce(t("panelAnnounceCopied"));
           setTimeout(() => {
-            copy.textContent = "Copy report";
+            copy.textContent = t("panelCopyReport");
             copy.classList.remove("done");
           }, 1600);
         };
@@ -1028,9 +1029,9 @@ export function createFab(opts: {
         return b;
       };
       filters.append(
-        mk("all", `All ${all.length}`),
-        mk("ai", `AI ${counts.ai}`),
-        mk("heavy", `Heavily edited ${counts.heavy}`),
+        mk("all", t("panelFilterAll", all.length)),
+        mk("ai", t("panelFilterAi", counts.ai)),
+        mk("heavy", t("panelFilterHeavy", counts.heavy)),
       );
       panelEl.appendChild(filters);
     }
@@ -1040,7 +1041,7 @@ export function createFab(opts: {
     if (entries.length === 0) {
       const empty = document.createElement("div");
       empty.className = "pempty";
-      empty.textContent = "Nothing flagged on this page.";
+      empty.textContent = t("panelEmpty");
       list.appendChild(empty);
     }
     for (const entry of entries) {
@@ -1057,7 +1058,7 @@ export function createFab(opts: {
       text.textContent = entry.snippet;
       // Read out as a verdict, not as a loose number next to a sentence fragment: the
       // dot and the colour that carry the band visually say nothing out loud.
-      item.setAttribute("aria-label", `${BAND_LABEL[entry.band]}, ${entry.pct}%: ${entry.snippet}`);
+      item.setAttribute("aria-label", t("panelItemAria", bandLabel(entry.band), entry.pct, entry.snippet));
       item.append(dot, pct, text);
       item.addEventListener("click", () => {
         closePanel();
@@ -1076,8 +1077,8 @@ export function createFab(opts: {
     const off = document.createElement("button");
     off.type = "button";
     off.className = "psiteoff";
-    off.textContent = ownPage ? "Turn off here" : `Turn off on ${location.hostname}`;
-    off.title = "Adds a per-site rule — re-enable any time from the toolbar popup";
+    off.textContent = ownPage ? t("panelTurnOffHere") : t("panelTurnOffOn", location.hostname);
+    off.title = t("panelTurnOffTitle");
     off.addEventListener("click", (e) => {
       e.stopPropagation();
       closePanel();

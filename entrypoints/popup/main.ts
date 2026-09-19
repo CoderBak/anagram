@@ -7,6 +7,8 @@
 import { browser } from "#imports";
 import "../../lib/ui/basecoat-vega.cdn.min.css";
 import { followSystemTheme } from "../../lib/ui/theme";
+import { localizePage } from "../../lib/ui/localize";
+import { t, tn } from "../../lib/i18n";
 import {
   settings,
   clearSiteOverride,
@@ -89,17 +91,17 @@ function setStatusText(text: string): void {
 
 function showCounts(state: TabState): void {
   const flaggedEl = document.createElement("span");
-  flaggedEl.textContent = `${state.flagged} flagged`;
+  flaggedEl.textContent = t("popupFlaggedCount", state.flagged);
   if (state.flagged > 0) flaggedEl.classList.add("flagged");
   // A paragraph the daemon never answered for was not analyzed, and neither was one
   // the language gate refused — both are counted apart from the analyzed number.
   const unavailable = state.unavailable ?? 0;
   const analyzed = state.scored - (state.unsupported ?? 0) - unavailable;
   statusEl.replaceChildren(
-    document.createTextNode(`${analyzed} paragraph${analyzed === 1 ? "" : "s"} analyzed · `),
+    document.createTextNode(tn("popupAnalyzed", analyzed)),
     flaggedEl,
-    document.createTextNode(state.unsupported ? ` · ${state.unsupported} not English` : ""),
-    document.createTextNode(unavailable ? ` · ${unavailable} unavailable` : ""),
+    document.createTextNode(state.unsupported ? t("popupNotEnglish", state.unsupported) : ""),
+    document.createTextNode(unavailable ? t("popupUnavailable", unavailable) : ""),
   );
 }
 
@@ -115,18 +117,18 @@ async function refreshBackend(tabId: number | undefined, probe = false): Promise
     backendEl.classList.toggle("down", s.active !== "server");
     if (s.active === "server" && s.model) {
       b.textContent = s.model.id;
-      backendEl.replaceChildren("Model: ", b, ` · local${s.server.device ? " · " + s.server.device : ""}`);
+      backendEl.replaceChildren(t("popupModel"), b, t("popupLocal") + (s.server.device ? " · " + s.server.device : ""));
     } else {
       // A daemon that answers with another contract major is there — it needs updating,
       // and telling the user to start it would send them down the wrong path.
       const mismatch = s.server.reason === "contract";
-      b.textContent = mismatch ? "Daemon version mismatch" : "Daemon not running";
+      b.textContent = mismatch ? t("popupDaemonMismatch") : t("popupDaemonDown");
       const retry = document.createElement("button");
       retry.type = "button";
       retry.className = "btn";
       retry.dataset.variant = "outline";
       retry.dataset.size = "xs";
-      retry.textContent = "Retry";
+      retry.textContent = t("popupRetry");
       retry.addEventListener("click", () => {
         retry.disabled = true;
         void refreshBackend(tabId, true).then(() => {
@@ -134,7 +136,7 @@ async function refreshBackend(tabId: number | undefined, probe = false): Promise
           setTimeout(() => void refreshStatus(tabId), 800);
         });
       });
-      backendEl.replaceChildren(b, mismatch ? " — run: anagram update " : " — run: anagram start ", retry);
+      backendEl.replaceChildren(b, mismatch ? t("popupRunUpdate") : t("popupRunStart"), retry);
     }
   } catch {
     backendEl.textContent = "";
@@ -150,7 +152,7 @@ async function refreshSite(host: string): Promise<void> {
   const globalDefault = await settings.enabled.getValue();
   if (!host) {
     siteEl.checked = globalDefault;
-    siteHostEl.textContent = "unavailable here";
+    siteHostEl.textContent = t("popupSiteUnavailable");
     siteHostEl.title = "";
     return;
   }
@@ -162,7 +164,7 @@ async function refreshSite(host: string): Promise<void> {
 
 async function refreshStatus(tabId: number | undefined): Promise<void> {
   if (tabId == null) {
-    setStatusText("No active tab.");
+    setStatusText(t("popupNoTab"));
     return;
   }
   try {
@@ -172,13 +174,14 @@ async function refreshStatus(tabId: number | undefined): Promise<void> {
     if (!state) throw new Error("no state");
     if (state.pdf) readPdfEl.hidden = false;
     if (state.enabled) showCounts(state);
-    else setStatusText("Detection is off for this page.");
+    else setStatusText(t("popupOff"));
   } catch {
-    setStatusText("Not available on this page.");
+    setStatusText(t("popupUnsupportedPage"));
   }
 }
 
 async function init(): Promise<void> {
+  localizePage();
   followSystemTheme();
   const tab = await activeTab();
   const host = hostOf(tab?.url);
@@ -242,7 +245,7 @@ async function init(): Promise<void> {
 
   rescanEl.addEventListener("click", () => {
     sendToTab(tab?.id, { action: ACTIONS.RESCAN });
-    setStatusText("Rescanning…");
+    setStatusText(t("popupRescanning"));
     setTimeout(() => void refreshStatus(tab?.id), 1500);
   });
 

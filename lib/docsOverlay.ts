@@ -25,6 +25,7 @@
 // fails, and the "Open as page" button in the bar for users who want a real tab.
 import type { DOMPurify as Purifier } from "dompurify";
 import { loadPurify } from "./lazy";
+import { messageLocale, t } from "./i18n";
 import { MARK_ATTR } from "./types";
 import { adoptHighlightStyles } from "./render/highlight";
 
@@ -312,6 +313,9 @@ export function createDocsOverlay(opts: DocsOverlayOptions): DocsOverlay {
 
     const ovl = document.createElement("div");
     ovl.className = "ovl";
+    // The BAR is ours and speaks the UI's language; the paper below it is the user's
+    // document, which keeps whatever language its own markup declares.
+    ovl.lang = messageLocale();
     scroller = ovl; // the overlay itself scrolls — a refresh keeps its position
 
     const bar = document.createElement("header");
@@ -326,23 +330,23 @@ export function createDocsOverlay(opts: DocsOverlayOptions): DocsOverlay {
     titles.className = "titles";
     titleEl = document.createElement("div");
     titleEl.className = "t";
-    titleEl.textContent = doc.title || "Google Docs document";
+    titleEl.textContent = doc.title || t("docsUntitled");
     const s = document.createElement("div");
     s.className = "s";
-    s.textContent = "Anagram reading mode — every paragraph analyzed · editor untouched behind";
+    s.textContent = t("docsSubtitle");
     titles.append(titleEl, s);
 
     refreshBtn = document.createElement("button");
     refreshBtn.type = "button";
     refreshBtn.id = "anagram-ovl-refresh";
-    refreshBtn.textContent = "Refresh";
-    refreshBtn.title = "Read the document again, with the edits made since it opened";
+    refreshBtn.textContent = t("docsRefresh");
+    refreshBtn.title = t("docsRefreshTitle");
     refreshBtn.addEventListener("click", () => void refresh());
 
     const openPage = document.createElement("button");
     openPage.type = "button";
-    openPage.textContent = "Open as page";
-    openPage.title = "Open the analyzed reading view as its own page";
+    openPage.textContent = t("docsOpenAsPage");
+    openPage.title = t("docsOpenAsPageTitle");
     openPage.addEventListener("click", () => {
       close();
       opts.onOpenAsPage?.();
@@ -352,7 +356,7 @@ export function createDocsOverlay(opts: DocsOverlayOptions): DocsOverlay {
     closeBtn.type = "button";
     closeBtn.className = "primary";
     closeBtn.id = "anagram-ovl-close";
-    closeBtn.textContent = "Back to editor · Esc";
+    closeBtn.textContent = t("docsBack");
     closeBtn.addEventListener("click", close);
 
     bar.append(mark, titles, refreshBtn, openPage, closeBtn);
@@ -362,7 +366,7 @@ export function createDocsOverlay(opts: DocsOverlayOptions): DocsOverlay {
     const notice = document.createElement("div");
     notice.className = "notice";
     notice.setAttribute(MARK_ATTR, "host");
-    notice.textContent = "Static snapshot of the document — Refresh reads it again.";
+    notice.textContent = t("docsSnapshotNotice");
     paper = document.createElement("main");
     paper.className = "paper";
     paper.append(...doc.content.childNodes);

@@ -18,6 +18,7 @@ import {
 } from "../lib/docs";
 import { createDocsOverlay } from "../lib/docsOverlay";
 import { analyzeSelection } from "../lib/render/selectionCard";
+import { t } from "../lib/i18n";
 import { ACTIONS } from "../lib/messaging/protocol";
 import type { ControlMessage, TabState, TopHostReply } from "../lib/messaging/protocol";
 
@@ -182,7 +183,7 @@ export default defineContentScript({
         });
 
         const openOverlay = async (): Promise<void> => {
-          orchestrator.setFabAction("Loading document…");
+          orchestrator.setFabAction(t("actionLoadingDocument"));
           const ok = await overlay.open();
           if (!ok) {
             // Same-origin fetch failed (offline, consent wall) — the navigation
@@ -190,12 +191,12 @@ export default defineContentScript({
             goToReadingPage();
             return;
           }
-          orchestrator.setFabAction("Close reading mode", () => overlay.close());
+          orchestrator.setFabAction(t("actionCloseReading"), () => overlay.close());
         };
 
         function setEditorAction(): void {
           orchestrator.setFabAction(
-            "Analyze document",
+            t("actionAnalyzeDocument"),
             () => void openOverlay(),
             { attention: true }, // the main toggle is useless on canvas — point here
           );
@@ -205,7 +206,7 @@ export default defineContentScript({
         // Organic /mobilebasic visit via our marker: apply reading typography and
         // offer the way back to the exact editor tab.
         if (isReadingMarked(location)) applyDocsReadingStyle();
-        orchestrator.setFabAction("Back to editor", () => {
+        orchestrator.setFabAction(t("actionBackToEditor"), () => {
           let target = editorUrl(docs.id);
           try {
             const saved = sessionStorage.getItem(DOCS_RETURN_KEY);
@@ -222,7 +223,7 @@ export default defineContentScript({
       // The worker navigates the tab: an extension page the content script could reach
       // by itself would have to be web accessible, and the reader must not be.
       orchestrator.setFabAction(
-        "Analyze PDF",
+        t("actionAnalyzePdf"),
         () => void browser.runtime.sendMessage({ action: ACTIONS.OPEN_PDF_READER }).catch(() => undefined),
         { attention: true }, // nothing on this page can be scored — point at the way out
       );
