@@ -1090,8 +1090,12 @@ Notable changes to Anagram, newest first. The format follows
   fails; then a page and the service worker are made to reach for a remote host
   over `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource` and `sendBeacon`,
   and every one has to be refused while the daemon still answers. 15 checks on
-  Chrome, 8 more on Firefox (which report SKIP where there is no Firefox to
-  drive). Not in CI yet.
+  Chrome, 9 more on Firefox — which measures slightly different things, because
+  WebDriver BiDi cannot put a listener into a `moz-extension:` document before
+  it loads: there it is what each page rendered, plus an inline `<script>` that
+  must not run and a remote host and WebSocket that must be refused while the
+  daemon answers. The Firefox half reports SKIP where there is no Firefox to
+  drive. Not in CI yet.
 - `test/pdf-codecs-check.mjs` — a JPEG 2000 document and a JBIG2 document opened
   in the packaged extension, with the canvas read back to prove the image drew.
   The two codestreams are carried as base64 rather than as binary fixtures, and

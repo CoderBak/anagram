@@ -15,7 +15,11 @@
 //
 // Both browsers, because their policies are written differently (MV3 keys it under
 // `extension_pages`, MV2 is a bare string) and Firefox validates the string at install.
-// The Firefox half reports SKIP, never FAIL, where there is no Firefox to drive.
+// The Firefox half measures slightly different things — WebDriver BiDi cannot put a
+// listener into a moz-extension: document before it loads, so there it is what each page
+// RENDERED plus what the policy refuses when a page reaches for it; the note above that
+// section says exactly what is and is not covered. It reports SKIP, never FAIL, where
+// there is no Firefox to drive.
 //
 //   node test/csp-check.mjs
 //   node test/csp-check.mjs --chrome-only
@@ -319,9 +323,18 @@ await daemon.close();
 
 // ---- Firefox ---------------------------------------------------------------------------------
 //
-// Firefox validates an MV2 policy string when the extension is installed and simply drops
-// a directive it does not accept, so "the pages load with nothing refused" is only half
-// the answer here: what the browser really applied is read back as well.
+// Firefox validates an MV2 policy string when the extension is installed and drops a
+// directive it will not accept, so what matters here is what the browser APPLIED rather
+// than what the manifest asked for — and that is read back by making the pages break the
+// policy on purpose.
+//
+// WHAT CANNOT BE MEASURED HERE. `evaluateOnNewDocument` does not reach a moz-extension:
+// document over WebDriver BiDi (the same privilege that makes `page.goto` time out on one
+// — see test/firefox-harness.mjs), so a listener cannot be in place before such a page
+// loads and a violation DURING its load cannot be collected the way it is on Chrome. What
+// is collected instead is everything observable after the fact: uncaught errors, whether
+// the page really rendered, and whether the policy is live when the page reaches for
+// something it may not have. An ordinary web page takes the Chrome treatment unchanged.
 
 if (!CHROME_ONLY) {
   let launched = null;
@@ -333,40 +346,59 @@ if (!CHROME_ONLY) {
 
   if (launched) {
     const { browser, extUrl: fxUrl, daemon: fxDaemon } = launched;
+    // A policy Firefox refuses outright is an extension that will not install at all.
     record("Firefox: the extension installs with this policy", true, "");
 
-    async function fxSurface(name, url, settle = 3000) {
+    /** Open an extension page, and report what it rendered and what it threw. */
+    async function fxSurface(name, url, { settle = 3000, expect: want }) {
       const page = await browser.newPage();
       const lines = [];
       page.on("console", (m) => lines.push(m.text()));
       page.on("pageerror", (e) => lines.push(String(e)));
-      await page.evaluateOnNewDocument(WATCH);
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: 2500 }).catch(() => {});
       await ff.waitForExtensionPage(page, url).catch(() => {});
       await ff.sleep(settle);
-      const violations = await page.evaluate(() => window.__csp ?? []).catch(() => []);
-      const complaints = lines.filter(isCspLine);
+      const seen = await page.evaluate(want.probe).catch(() => null);
+      const complaints = lines.filter((l) => isCspLine(l) || /Error/.test(l));
       await page.close().catch(() => {});
       record(
-        `Firefox: ${name} loads with nothing refused`,
-        violations.length === 0 && complaints.length === 0,
-        JSON.stringify([...violations, ...complaints].slice(0, 3)),
+        `Firefox: ${name} renders under this policy, with nothing thrown`,
+        want.ok(seen) && complaints.length === 0,
+        JSON.stringify({ seen, complaints: complaints.slice(0, 2) }),
       );
     }
 
-    await fxSurface("the popup", fxUrl("popup.html"), 2000);
-    await fxSurface("the options page", fxUrl("options.html"), 2000);
-    await fxSurface("the onboarding page", fxUrl("onboarding.html"), 2000);
-    await fxSurface("the reader with no document", fxUrl("reader.html"), 2000);
+    // Each page is asked for something only a page that really built itself can answer.
+    const controls = {
+      probe: () => document.querySelectorAll("button, input, select, a").length,
+      ok: (n) => n > 0,
+    };
+    await fxSurface("the popup", fxUrl("popup.html"), { settle: 2000, expect: controls });
+    await fxSurface("the options page", fxUrl("options.html"), { settle: 2000, expect: controls });
+    await fxSurface("the onboarding page", fxUrl("onboarding.html"), { settle: 2000, expect: controls });
+    await fxSurface("the reader with no document", fxUrl("reader.html"), {
+      settle: 2000,
+      expect: { probe: () => !document.getElementById("drop")?.hidden, ok: (v) => v === true },
+    });
     await fxSurface(
       "the reader with a PDF loaded",
       `${fxUrl("reader.html")}?src=${encodeURIComponent(files.url("/doc.pdf"))}`,
-      7000,
+      {
+        settle: 8000,
+        expect: {
+          probe: () => ({
+            pages: document.querySelectorAll(".page").length,
+            spans: document.querySelectorAll(".textLayer span").length,
+          }),
+          // pdf.js drew its pages, which means its module worker loaded, its CMaps and
+          // fonts were fetched and its WebAssembly compiled — all under this policy.
+          ok: (v) => v !== null && v.pages === 2 && v.spans >= 29,
+        },
+      },
     );
 
-    // An ordinary page, with the chips and the panel. The content script is not under the
-    // extension's policy at all — it is under the PAGE's — so this is the half that would
-    // catch a policy written as if it were.
+    // An ordinary web page: the content script is under the PAGE's policy, not this one,
+    // and here a listener CAN be in place before the document loads.
     const page = await browser.newPage();
     const lines = [];
     page.on("console", (m) => lines.push(m.text()));
@@ -382,35 +414,56 @@ if (!CHROME_ONLY) {
       chipped && violations.length === 0 && lines.filter(isCspLine).length === 0,
       JSON.stringify({ chipped, violations: violations.slice(0, 3) }),
     );
+    await page.close().catch(() => {});
 
-    // What Firefox APPLIED, not what the manifest asked for: an extension page is made to
-    // reach for a remote host, exactly as on Chrome.
-    const options = await browser.newPage();
-    await options.evaluateOnNewDocument(WATCH);
-    await options
-      .goto(fxUrl("options.html"), { waitUntil: "domcontentloaded", timeout: 2500 })
-      .catch(() => {});
-    await ff.waitForExtensionPage(options, fxUrl("options.html"));
-    const fxReach = await options.evaluate(async () => ({
-      remote: await fetch("https://example.com/").then(() => "reached", (e) => `refused (${e.name})`),
-    }));
-    const fxLoopback = await options.evaluate(
-      (u) => fetch(`${u}/health`).then(() => "reached", (e) => `refused (${e.name})`),
-      fxDaemon.url,
-    );
-    // …and it was the POLICY that refused it, not a server that happened not to answer:
-    // the page's own violation events name the directive that stopped it.
-    const fxWhy = await options.evaluate(() => window.__csp ?? []).catch(() => []);
+    // And what Firefox really APPLIED, asked of an extension page by breaking the policy.
+    const options = await ff.openExtensionPage(browser, fxUrl("options.html"));
+    const applied = await options.evaluate(async (daemonUrl) => {
+      const out = {};
+      // script-src: an inline script must not run. This is the directive Firefox is most
+      // likely to rewrite, so it is the one worth reading back.
+      try {
+        const s = document.createElement("script");
+        s.textContent = "window.__inline = 1;";
+        document.head.append(s);
+        out.inlineScript = window.__inline === 1 ? "RAN" : "refused";
+      } catch (e) {
+        out.inlineScript = `refused (${e.name})`;
+      }
+      out.remote = await fetch("https://example.com/").then(
+        () => "reached",
+        (e) => `refused (${e.name})`,
+      );
+      out.websocket = await new Promise((res) => {
+        try {
+          const ws = new WebSocket("wss://example.com/socket");
+          ws.onerror = () => res("refused");
+          ws.onopen = () => res("OPENED");
+          setTimeout(() => res("refused (no answer)"), 2500);
+        } catch (e) {
+          res(`refused (${e.name})`);
+        }
+      });
+      out.loopback = await fetch(`${daemonUrl}/health`).then(
+        () => "reached",
+        (e) => `refused (${e.name})`,
+      );
+      return out;
+    }, fxDaemon.url);
     record(
-      "Firefox: a remote host is refused by connect-src while the local daemon still answers",
-      fxReach.remote.startsWith("refused") &&
-        fxLoopback === "reached" &&
-        fxWhy.some((v) => v.startsWith("connect-src")),
-      JSON.stringify({ ...fxReach, loopback: fxLoopback, why: fxWhy.slice(0, 2) }),
+      "Firefox: script-src is live — an inline script on an extension page does not run",
+      applied.inlineScript.startsWith("refused"),
+      JSON.stringify(applied),
+    );
+    record(
+      "Firefox: connect-src is live — a remote host and a WebSocket are refused while the daemon answers",
+      applied.remote.startsWith("refused") &&
+        applied.websocket.startsWith("refused") &&
+        applied.loopback === "reached",
+      JSON.stringify(applied),
     );
 
     await options.close().catch(() => {});
-    await page.close().catch(() => {});
     await browser.close().catch(() => {});
     await fxDaemon.close();
   }
