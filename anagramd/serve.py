@@ -301,7 +301,7 @@ def preprocess_digest() -> str:
     the boilerplate first line, the emoji pass. Editing any of them moves the answers, and the
     only thing that used to record it was somebody remembering to bump PIPELINE_REV by hand.
     Hashing the source removes the remembering. A build that cannot show its own source (frozen,
-    zipped) falls back to the constant rather than inventing a digest.
+    zipped) says so instead of inventing a digest — PIPELINE_REV is then all there is again.
     """
     try:
         source = "".join(inspect.getsource(fn) for fn in
@@ -673,8 +673,8 @@ def allowed_hosts_for(host: str) -> list[str]:
 
     ONE list, because it feeds two things that have to agree: the Host allow-list and the
     Origin guard's idea of our own origin. Normally it is exactly the two loopback names the
-    extension can be pointed at; an --allow-remote host joins them (it still has to be
-    reachable as 127.0.0.1 from this machine, and /docs still has to work).
+    extension can be pointed at; an --allow-remote host joins them rather than replacing them,
+    so a daemon serving the network still answers to 127.0.0.1 for whoever is sitting at it.
     """
     return list(LOOPBACK_HOSTS) if host in LOOPBACK_HOSTS else [host, *LOOPBACK_HOSTS]
 

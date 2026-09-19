@@ -202,9 +202,13 @@ mkdir -p "$ANAGRAM_HOME/cache"
 
 # ---------------------------------------------------------------- 4. models (checksum-verified)
 MODEL_DIR="$ANAGRAM_HOME/models/editlens_roberta-large"
+INCOMING="$ANAGRAM_HOME/models/.incoming-editlens_roberta-large"
 if [ -z "${ANAGRAM_SKIP_MODEL:-}" ]; then
   if [ -f "$MODEL_DIR/model.safetensors" ] && [ "$(sha256_of "$MODEL_DIR/model.safetensors")" = "$WEIGHTS_SHA256" ]; then
     say "EditLens checkpoint already present and verified"
+    # Half a download is worth keeping only while it can still be resumed into the checkpoint
+    # that is now already here. 1.4 GB of nothing otherwise.
+    [ -e "$INCOMING" ] && remove_ours "$INCOMING"
   else
     TOKEN="${ANAGRAM_HF_TOKEN:-}"
     [ -z "$TOKEN" ] && [ "$DEFAULT_HF_TOKEN" != "__ANAGRAM_HF_TOKEN__" ] && TOKEN="$DEFAULT_HF_TOKEN"
@@ -220,7 +224,6 @@ if [ -z "${ANAGRAM_SKIP_MODEL:-}" ]; then
     # file that is not the pinned one — is never at the name the daemon loads from. The staging
     # directory keeps the same name between attempts, which is what lets a re-run resume
     # instead of starting the 1.4 GB again.
-    INCOMING="$ANAGRAM_HOME/models/.incoming-editlens_roberta-large"
     [ -L "$INCOMING" ] && die "'$INCOMING' is a symbolic link — refusing to write through it"
     mkdir -p "$INCOMING"
     clean_env HF_HOME="$ANAGRAM_HOME/hf" HF_TOKEN="$TOKEN" HF_HUB_DISABLE_TELEMETRY=1 PYTHONNOUSERSITE=1 PYTHONSAFEPATH=1 \

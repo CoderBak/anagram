@@ -460,7 +460,8 @@ Notable changes to Anagram, newest first. The format follows
   an interrupted or tampered download is never something the daemon can load, and a
   re-run resumes instead of starting the 1.4 GB again. `anagram model` now verifies
   the checkpoint it downloaded (it did not before), skips a file that is already
-  there and already correct, and re-fetches one whose checksum has drifted.
+  there and already correct, and re-fetches one whose checksum has drifted. A
+  staging directory is kept only while it can still be resumed.
 - The daemon answers to exactly the two names the extension can be pointed at.
   `127.0.0.1` and `localhost` are all a browser's content-security policy can
   express, but `--host` took any loopback address, so a daemon on `127.0.0.2` or
@@ -870,12 +871,13 @@ Notable changes to Anagram, newest first. The format follows
   TestClient over a stub engine; and both `calibration` and `label_schema` on
   `/health` and `/score`. It runs under `anagramd/.venv` when there is one and skips
   loudly on an interpreter without fastapi.
-- Four more installer cases (36 → 40), all offline: `anagram model` downloads
+- Five more installer cases (36 → 41), all offline: `anagram model` downloads
   nothing when both files already match their pinned checksums; a checkpoint that
   verifies is renamed into place and the staging directory it came down into is
-  gone; one that does not verify leaves the folder alone and stays aside so the
-  next attempt resumes; and the same for `install.sh`, which stops there rather
-  than going on to fetch the language model.
+  gone; a staging directory that can no longer be resumed is cleaned up; one that
+  does not verify leaves the folder alone and stays aside so the next attempt
+  resumes; and the same for `install.sh`, which stops there rather than going on
+  to fetch the language model.
 
 ## [0.3.2] — 2026-09-18
 

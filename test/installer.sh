@@ -451,7 +451,15 @@ if [ $rc -eq 0 ] && [ -f "$HM/models/editlens_roberta-large/model.safetensors" ]
   ok "anagram model: a checkpoint that verifies is renamed into place, staging directory gone"
 else bad "anagram model (verified download)" "rc=$rc incoming=$([ -e "$incoming" ] && echo left) $(echo "$out" | tail -1)"; fi
 
-# 26. a download that does NOT match the pinned checksum is never promoted: the checkpoint that
+# 26. a staging directory from a download that never finished is worth keeping only while it
+#     can still be resumed — once the checkpoint is here and verified it is 1.4 GB of nothing.
+mkdir -p "$incoming"; printf 'the half that arrived\n' > "$incoming/model.safetensors"
+out="$(HOME="$FAKE_HOME" ANAGRAM_HF_TOKEN=stub "$HM/bin/anagram" model 2>&1 </dev/null)"; rc=$?
+if [ $rc -eq 0 ] && [ ! -e "$incoming" ] && echo "$out" | grep -q "nothing to download"; then
+  ok "anagram model: a staging directory that can no longer be resumed is cleaned up"
+else bad "stale staging directory" "rc=$rc $(echo "$out" | tail -1)"; fi
+
+# 27. a download that does NOT match the pinned checksum is never promoted: the checkpoint that
 #     was already there is untouched, the bad bytes stay in the staging directory (so a re-run
 #     resumes rather than starting the 1.4 GB again), and the command fails.
 : > "$HM/TAMPER"                                  # the stub python now writes a cut-off file
@@ -466,7 +474,7 @@ if [ $rc -ne 0 ] && echo "$out" | grep -q "nothing was replaced" \
 else bad "anagram model (bad checksum)" "rc=$rc $(echo "$out" | tail -1)"; fi
 rm -f "$HM/TAMPER"; rm -rf "$incoming"
 
-# 27. the same in install.sh: its checkpoint step downloads into a staging directory, verifies
+# 28. the same in install.sh: its checkpoint step downloads into a staging directory, verifies
 #     it there, and leaves the folder exactly as it was when the bytes are not the pinned ones.
 #     Offline throughout — the release comes off file://, uv is already at the pinned version,
 #     venv/bin/python is a stub that stands in for the download, and the run dies before the
@@ -491,7 +499,7 @@ if [ $rc -ne 0 ] && echo "$out" | grep -q "nothing was replaced" \
   ok "install.sh: a checkpoint that does not verify replaces nothing and stops before any other download"
 else bad "install.sh staged checkpoint" "rc=$rc $(echo "$out" | tail -2)"; fi
 
-# 28. (network) full install under a hostile environment: nothing lands outside the folder
+# 29. (network) full install under a hostile environment: nothing lands outside the folder
 if [ -n "${INSTALLER_NET:-}" ]; then
   [ -f "$ROOT/dist/anagram.tar.gz" ] || { bad "network install" "run npm run release first"; }
   H="$T/nethome/.anagram"; mkdir -p "$T/nethome"

@@ -255,6 +255,10 @@ cmd_model() {
   [ -f "$MODEL_DIR/model.safetensors" ] && [ "$(sha256_of "$MODEL_DIR/model.safetensors")" = "$want" ] && have_model=1
   have_lid=0
   [ -f "$LID" ] && [ "$(sha256_of "$LID")" = "$want_lid" ] && have_lid=1
+  incoming="$ANAGRAM_HOME/models/.incoming-editlens_roberta-large"
+  # Half a download is worth keeping only while it can still be resumed. Once the checkpoint
+  # is here and verified it is 1.4 GB of nothing.
+  [ "$have_model" -eq 1 ] && [ -e "$incoming" ] && remove_ours "$incoming"
   if [ "$have_model" -eq 1 ] && [ "$have_lid" -eq 1 ]; then
     say "both models are already here and match the pinned checksums — nothing to download"
     return 0
@@ -270,7 +274,6 @@ cmd_model() {
       printf 'token: '; read -r TOKEN
     fi
     [ -n "$TOKEN" ] || die "set ANAGRAM_HF_TOKEN=… or run interactively"
-    incoming="$ANAGRAM_HOME/models/.incoming-editlens_roberta-large"
     [ -L "$incoming" ] && die "'$incoming' is a symbolic link — refusing to write through it"
     mkdir -p "$incoming"
     say "Downloading the EditLens checkpoint into $incoming (1.4 GB, resumable)"
