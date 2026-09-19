@@ -838,9 +838,14 @@ function analyse(samples) {
     for (const id of before) if (!ids.has(id)) flickerGone++;
     for (const id of ids) if (!before.has(id)) flickerNew++;
   }
-  // Chips still pending when the run ended have been pending at least this long.
-  const now = live.length ? live[live.length - 1].wall : 0;
-  for (const [id, from] of pendingFrom) if (now - from > 10_000) stuck.add(id);
+  // Chips still pending when the run ended have been pending at least this long — but
+  // only those still ON the page. A chip that went away with the post it judged (a feed
+  // recycling its rows, a login wall replacing the document) is not stuck, it is gone,
+  // and counting it made Tumblr report six "stuck" chips that had lived 1.2 s.
+  const last = live.length ? live[live.length - 1] : null;
+  const stillThere = new Set(last ? last.hosts.filter((h) => h.pending).map((h) => h.id) : []);
+  const now = last ? last.wall : 0;
+  for (const [id, from] of pendingFrom) if (stillThere.has(id) && now - from > 10_000) stuck.add(id);
   // The sharpest form: the SAME host element was gone from a sample and came back later.
   // A chip that is removed and re-inserted is a chip the reader saw blink.
   let flickerReappear = 0;
