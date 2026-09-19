@@ -8,7 +8,13 @@ on:
     tags: ["v*"]
 
 jobs:
+  # Nothing is published that the whole matrix has not passed: the same suites as every push,
+  # on Linux, Windows and macOS, and the Firefox build in a real Firefox.
+  gate:
+    uses: ./.github/workflows/ci.yml
+
   release:
+    needs: gate
     runs-on: ubuntu-latest
     permissions:
       contents: write

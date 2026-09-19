@@ -6,11 +6,17 @@
 # on demand (Actions → ci → Run workflow); day to day macOS is covered locally, headless.
 # Live-site scenarios and the perf benchmark stay local — they depend on network and
 # machine speed. Screenshots of every matrix profile are kept as build artifacts.
+#
+# A release calls this workflow as its gate (`workflow_call`, see release.yml), which is why a
+# pushed tag does not start it a second time: `push` is held to branches, and the tag's run —
+# macOS leg included — is the one the release waits for.
 name: ci
 on:
   push:
+    branches: ["**"]
   pull_request:
   workflow_dispatch:
+  workflow_call:
 
 concurrency:
   group: ci-${{ github.ref }}
