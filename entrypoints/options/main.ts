@@ -37,6 +37,7 @@ const serverUrlEl = document.getElementById("serverUrl") as HTMLInputElement;
 const serverUrlErrorEl = document.getElementById("serverUrlError") as HTMLElement;
 const backendStatusEl = document.getElementById("backendStatus") as HTMLElement;
 const checkBackendEl = document.getElementById("checkBackend") as HTMLButtonElement;
+const clearCacheEl = document.getElementById("clearCache") as HTMLButtonElement;
 
 function bindToggle(
   el: HTMLInputElement,
@@ -228,3 +229,21 @@ async function refreshBackend(probe: boolean): Promise<void> {
 }
 checkBackendEl.addEventListener("click", () => void refreshBackend(true));
 void refreshBackend(false);
+
+// --- cached verdicts -------------------------------------------------------------------
+// The worker owns the caches (its memory and the IndexedDB store) and passes the word on to
+// every open tab; the button only says that it happened, the way the copy buttons do.
+const CLEAR_LABEL = clearCacheEl.textContent ?? "Clear cached verdicts";
+clearCacheEl.addEventListener("click", () => {
+  clearCacheEl.disabled = true;
+  void browser.runtime
+    .sendMessage({ action: ACTIONS.CLEAR_CACHE })
+    .catch(() => undefined)
+    .then(() => {
+      clearCacheEl.disabled = false;
+      clearCacheEl.textContent = "Cleared ✓";
+      setTimeout(() => {
+        clearCacheEl.textContent = CLEAR_LABEL;
+      }, 1500);
+    });
+});

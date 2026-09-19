@@ -333,6 +333,10 @@ browser.runtime.onMessage.addListener(
         live?.retryBackend();
         return;
 
+      case ACTIONS.CACHE_CLEARED:
+        live?.forgetCached();
+        return;
+
       case ACTIONS.TEARDOWN:
         live?.stop();
         return;

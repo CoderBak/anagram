@@ -1773,6 +1773,83 @@ async function sweep(page, steps = 6) {
     );
     await p.close();
   }
+
+  // ---- A37: the three small controls ---------------------------------------------------
+  // Both checks read the fake daemon's counters, so they share one fixture shape: three
+  // paragraphs nothing else in this run has scored, on a page of their own.
+  const CONTROLS_PAGE = (tag) =>
+    `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${tag} fixture</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+<p id="p1">${PARA(`${tag}-ONE`)}</p>
+<p id="p2">${PARA(`${tag}-TWO`)}</p>
+<p id="p3">${PARA(`${tag}-THREE`)}</p>
+</body></html>`;
+  /** Three finished chips on the page, or false if they never arrive. */
+  const threeChips = (p) =>
+    p
+      .waitForFunction(
+        (sel) => {
+          const pills = [...document.querySelectorAll(sel)].map((h) => h.shadowRoot?.querySelector(".pill")).filter(Boolean);
+          return pills.length === 3 && !pills.some((x) => x.classList.contains("pending"));
+        },
+        BADGE_SEL,
+        { timeout: 15000 },
+      )
+      .then(() => true)
+      .catch(() => false);
+  /** What the daemon has been asked for so far. */
+  const asked = () => ({ requests: daemon.stats.requests, blocks: daemon.stats.blocks });
+  /** Exactly what the popup's Rescan does: the worker messages the active tab. */
+  const rescan = async (p) => {
+    await p.bringToFront();
+    await sw.evaluate(async () => {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      try {
+        await chrome.tabs.sendMessage(tab.id, { action: "rescan" });
+      } catch {
+        /* the content script answers nothing to this one */
+      }
+    });
+    await threeChips(p);
+    await p.waitForTimeout(800);
+  };
+
+  // A37a: "Clear cached verdicts" (options → Advanced). A rescan of an unchanged page is
+  // normally answered from the worker's cache and the daemon never hears about it; once the
+  // caches are cleared the very same rescan has to reach the daemon again.
+  if (extId) {
+    PAGES["/cached.html"] = CONTROLS_PAGE("CACHED");
+    const p = await context.newPage();
+    await p.goto(server.url("/cached.html"), { waitUntil: "load" });
+    const scored = await threeChips(p);
+    await p.waitForTimeout(800);
+    const before = asked();
+    await rescan(p);
+    const fromCache = asked();
+
+    const opt = await context.newPage();
+    await opt.goto(`chrome-extension://${extId}/options.html`, { waitUntil: "load" });
+    await opt.click("#clearCache");
+    const said = await opt
+      .waitForFunction(() => document.getElementById("clearCache").textContent.includes("Cleared"), null, { timeout: 8000 })
+      .then(() => true)
+      .catch(() => false);
+    await opt.close();
+
+    await rescan(p);
+    const afterClear = asked();
+    record(
+      "ui",
+      "cached verdicts: a rescan is answered from the worker cache, and asks the daemon again once cleared",
+      scored &&
+        fromCache.requests === before.requests &&
+        fromCache.blocks === before.blocks &&
+        said &&
+        afterClear.requests > fromCache.requests &&
+        afterClear.blocks >= fromCache.blocks + 3,
+      JSON.stringify({ scored, before, fromCache, said, afterClear }),
+    );
+    await p.close();
+  }
 }
 
 // =====================================================================================

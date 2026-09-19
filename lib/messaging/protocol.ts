@@ -31,6 +31,10 @@ export const ACTIONS = {
    * accessible — so the worker performs the tabs.update for it.
    */
   OPEN_PDF_READER: "openPdfReader",
+  /** options → SW: forget every cached verdict (memory, worker and IndexedDB). */
+  CLEAR_CACHE: "clearCache",
+  /** SW → content: the worker's caches are gone — drop this tab's own layer too. */
+  CACHE_CLEARED: "cacheCleared",
 } as const;
 
 export type ActionName = (typeof ACTIONS)[keyof typeof ACTIONS];
@@ -176,6 +180,25 @@ export interface OpenPdfReaderMessage {
   tabId?: number;
 }
 
+/** options → SW: empty every score cache the worker owns, then tell the tabs. */
+export interface ClearCacheMessage {
+  action: typeof ACTIONS.CLEAR_CACHE;
+}
+
+/** SW → options (response to CLEAR_CACHE): the caches are empty. */
+export interface ClearCacheReply {
+  ok: boolean;
+}
+
+/**
+ * SW → content: the worker's caches were cleared, so this tab's per-tab layer must go as
+ * well or it would answer the next scan from a verdict nobody can check any more. Nothing
+ * is rescanned or repainted: what is on the page stays until the next scan asks again.
+ */
+export interface CacheClearedMessage {
+  action: typeof ACTIONS.CACHE_CLEARED;
+}
+
 /** Union of all control messages the content script may receive. */
 export type ControlMessage =
   | RescanMessage
@@ -187,7 +210,8 @@ export type ControlMessage =
   | NextFlaggedMessage
   | PrevFlaggedMessage
   | AnalyzeSelectionMessage
-  | RetryBackendMessage;
+  | RetryBackendMessage
+  | CacheClearedMessage;
 
 /** Union of all messages the service worker may receive. */
 export type BackgroundMessage =
@@ -195,4 +219,5 @@ export type BackgroundMessage =
   | UpdateBadgeMessage
   | GetBackendStatusMessage
   | GetTopHostMessage
-  | OpenPdfReaderMessage;
+  | OpenPdfReaderMessage
+  | ClearCacheMessage;

@@ -9,6 +9,12 @@ Notable changes to Anagram, newest first. The format follows
 
 ### Added
 
+- "Clear cached verdicts" (options → Advanced). Verdicts are cached three ways —
+  per tab, in the service worker's memory and in IndexedDB — and there was no way
+  to empty them: a paragraph the daemon answered for once was never asked about
+  again. The button clears all three, in every open tab as well, and confirms on
+  itself. Nothing is rescanned or repainted — what is on a page stays until its
+  next scan, which asks the daemon again.
 - The first-run page opens with a live **setup strip**: three rows — extension,
   scoring daemon, ready — each a status dot and a few words, so the one thing a
   new install is actually missing is the first thing on the page instead of a

@@ -53,6 +53,8 @@ const PRIORITY: Record<ScanPriority, number> = { viewport: 2, near: 1, backgroun
 
 export interface BackendRouter {
   handle(req: ScoreBatchRequest): Promise<ScoreBatchResponse>;
+  /** Forget every cached verdict (options → "Clear cached verdicts"). */
+  clear(): Promise<void>;
 }
 
 /** Cache-key dimension of a backend identity. */
@@ -285,5 +287,15 @@ export function createRouter(client: ScoreClient): BackendRouter {
     };
   }
 
-  return { handle };
+  /**
+   * Empty both cache layers. Requests already in flight are deliberately left alone: they
+   * settle and answer their callers exactly as they would have, and the verdict each brings
+   * back is the daemon's current answer, so caching it is right even though it lands after
+   * the clear.
+   */
+  function clear(): Promise<void> {
+    return cache.clear();
+  }
+
+  return { handle, clear };
 }

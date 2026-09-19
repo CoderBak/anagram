@@ -29,6 +29,9 @@ export interface SwCache {
   getMany(keys: string[]): Promise<Map<string, ScoreResult>>;
   /** Store a REAL result under the identity that produced it. */
   set(text: string, r: ScoreResult, dim: string): void;
+  /** Forget every verdict: the memory layer, the writes still waiting for their flush, and
+   *  the persistent store (options → "Clear cached verdicts"). */
+  clear(): Promise<void>;
 }
 
 /** Compact stored row (short field names — tens of thousands of these live in the store). */
@@ -115,6 +118,21 @@ function db(): Promise<IDBPDatabase<ScoreDB> | null> {
   return _db;
 }
 
+/**
+ * Empty the persistent store. Kept apart from the cache itself so the memory layer can be
+ * cleared where there is no IndexedDB at all — a test environment, or a browser that
+ * refuses one — and so a store that will not open never keeps the rest from being cleared.
+ */
+async function clearStore(): Promise<void> {
+  try {
+    const d = await db();
+    if (!d) return; // memory-only session: there is nothing persistent to empty
+    await d.clear(STORE);
+  } catch (e) {
+    log.warn("persistent cache clear failed", e);
+  }
+}
+
 /** One-time removal of rows the previous storage.local-backed cache left behind. */
 async function sweepLegacyStore(): Promise<void> {
   try {
@@ -135,6 +153,9 @@ export function createSwCache(): SwCache {
   const pendingWrites = new Map<string, Stored>();
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   let writesSincePrune = 0;
+  /** Bumped by clear(): a flush that took its batch before the clear must not put those
+   *  rows back into the store that was just emptied. */
+  let generation = 0;
 
   const keyOf = (text: string, dim: string): string =>
     `${dim}:${cyrb53(normalizeText(text)).toString(36)}`;
@@ -200,9 +221,10 @@ export function createSwCache(): SwCache {
     flushTimer = null;
     if (pendingWrites.size === 0) return;
     const batch = [...pendingWrites.values()];
+    const seq = generation;
     pendingWrites.clear();
     const d = await db();
-    if (!d) return;
+    if (!d || seq !== generation) return;
     try {
       const tx = d.transaction(STORE, "readwrite");
       for (const row of batch) void tx.store.put(row);
@@ -215,6 +237,22 @@ export function createSwCache(): SwCache {
     } catch (e) {
       log.warn("persistent cache write failed", e);
     }
+  }
+
+  /**
+   * Forget everything. Both layers go at once, pending writes included — they describe the
+   * verdicts being dropped — so the next lookup for any paragraph reaches the daemon again.
+   */
+  async function clear(): Promise<void> {
+    generation++;
+    memory.clear();
+    pendingWrites.clear();
+    if (flushTimer !== null) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+    writesSincePrune = 0;
+    await clearStore();
   }
 
   /** Keep the store bounded: walk the timestamp index and drop the oldest rows. */
@@ -233,5 +271,5 @@ export function createSwCache(): SwCache {
     log.log("pruned", total - PRUNE_TO, "cached scores");
   }
 
-  return { keyOf, getMany, set };
+  return { keyOf, getMany, set, clear };
 }

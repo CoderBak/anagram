@@ -2,7 +2,7 @@
 // Registers a SINGLE runtime.onMessage listener SYNCHRONOUSLY at top level (MV3 wakes the
 // worker by re-running this registration). It routes SCORE_BATCH → router.handle, answers
 // GET_BACKEND_STATUS (is the daemon up?) and GET_TOP_HOST (which page is this frame in?),
-// and mirrors the per-tab flagged count onto the
+// empties the score caches on CLEAR_CACHE and mirrors the per-tab flagged count onto the
 // toolbar icon (UPDATE_BADGE). Popup control actions (RESCAN / SET_ENABLED / GET_TAB_STATE /
 // RETRY_BACKEND) are addressed straight to the active tab's content script via
 // tabs.sendMessage, so they do not pass through here.
@@ -12,6 +12,7 @@ import { createRouter } from "../lib/backend/router";
 import { getScoreClient, getDaemonClient } from "../lib/backend/getScoreClient";
 import { ACTIONS } from "../lib/messaging/protocol";
 import type {
+  ClearCacheReply,
   ScoreBatchMessage,
   ScoreBatchReply,
   TopHostReply,
@@ -124,6 +125,31 @@ export default defineBackground(() => {
         const src = msg.url ?? sender.tab?.url;
         if (tabId != null && src) void browser.tabs.update(tabId, { url: readerUrl(src) });
         return;
+      }
+
+      // The options page asked for the cached verdicts to go. The worker's own layers are
+      // emptied first — memory, pending writes and the IndexedDB store — and then every
+      // open tab is told to drop its per-tab layer, so the next scan anywhere asks the
+      // daemon again. A tab with no content script (chrome:// pages, the web store) has
+      // nothing to drop and its rejection is swallowed.
+      if (msg.action === ACTIONS.CLEAR_CACHE) {
+        void (async () => {
+          try {
+            await router.clear();
+            for (const tab of await browser.tabs.query({})) {
+              if (tab.id == null) continue;
+              void browser.tabs
+                .sendMessage(tab.id, { action: ACTIONS.CACHE_CLEARED })
+                .catch(() => undefined);
+            }
+          } catch {
+            /* the store would not open, or tabs could not be listed — the memory layer
+               is empty either way, and the page says so */
+          }
+          const reply: ClearCacheReply = { ok: true };
+          sendResponse(reply);
+        })();
+        return true;
       }
 
       // Per-tab flagged count on the toolbar icon (sent by the TOP frame only).

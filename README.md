@@ -138,7 +138,8 @@ prints PASS/FAIL per sample and exits non-zero if any of them is wrong.
   whole site — a rule written on `example.com` holds on `news.example.com` too,
   the most specific rule wins and `www.` makes no difference — marking
   style, scope, display mode, live analyzed/flagged stats, the live backend, a
-  scoring-backend section (daemon URL / status check), Rescan; a first-run page
+  scoring-backend section (daemon URL / status check), Rescan, "Clear cached
+  verdicts"; a first-run page
   explains the verdicts and opens with a **live setup strip** — extension,
   scoring daemon, ready — that re-checks itself every few seconds while the
   daemon is down and hands over the one command that fixes it (`anagram start`,
@@ -312,7 +313,9 @@ Text on the web is messy; the capture engine is built for it:
   digests the weights, the tokenizer and config files, the window length, the
   dtype and the language-gate state, not the weights alone — pruned oldest-first
   through an index) — so revisits and worker restarts never re-score, and no two
-  configurations that could disagree about a paragraph ever share an entry.
+  configurations that could disagree about a paragraph ever share an entry. All
+  three go at once with **"Clear cached verdicts"** (options → Advanced); the
+  pages keep what they are showing and ask again on their next scan.
 - **Everything, everywhere:** open shadow DOM and slots, same- and cross-origin
   iframes (webmail readers, embedded posts — ad slots are size-gated out; a
   frame follows the **top page's** site rule, asking the worker whose tab it

@@ -261,6 +261,12 @@ export default defineContentScript({
             if (enabled) orchestrator.retryBackend();
             return;
 
+          case ACTIONS.CACHE_CLEARED:
+            // Every frame drops its own layer, running or not: a frame that starts later
+            // must not serve verdicts the user has just thrown away.
+            orchestrator.forgetCached();
+            return;
+
           case ACTIONS.TEARDOWN:
             enabled = false;
             orchestrator.stop();

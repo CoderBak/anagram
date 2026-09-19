@@ -93,6 +93,9 @@ export interface Orchestrator {
   setFabAction(label: string | null, onAction?: () => void, opts?: { attention?: boolean }): void;
   /** Popup/panel "Retry": re-probe the daemon now; re-queue every "Unavailable" unit. */
   retryBackend(): void;
+  /** Drop the per-tab verdict cache and leave the page exactly as it is (options →
+   *  "Clear cached verdicts"): the next scan or Rescan asks the backend again. */
+  forgetCached(): void;
   /** Keyboard command: open the triage panel and hand it the focus. */
   openPanel(): void;
   /** Keyboard command: scroll to the next (1) / previous (-1) flagged paragraph. */
@@ -737,6 +740,15 @@ export function createOrchestrator(
   }
 
   /**
+   * The worker's caches were cleared, so this layer — which answers before them — has to go
+   * too. Nothing is re-scanned or repainted: the verdicts on the page were real when they
+   * were made, and the user cleared the caches to affect what happens NEXT.
+   */
+  function forgetCached(): void {
+    cache.clear();
+  }
+
+  /**
    * Scheduler render(): id-keyed badge paint + per-window underline. A unit invalidated
    * while its batch was in flight is gone from unitsById (a changed paragraph comes back
    * as a NEW unit with a new id), so a verdict whose window offsets describe the old text
@@ -1206,6 +1218,7 @@ export function createOrchestrator(
     unavailableCount,
     setFabAction,
     retryBackend,
+    forgetCached,
     openPanel,
     jumpFlagged,
   };
