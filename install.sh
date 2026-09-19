@@ -21,6 +21,9 @@
 #   - all of that is checked BEFORE anything is downloaded
 #   - nothing is ever removed outside the validated folder; existing app/ and extension/
 #     are replaced by a staged swap, never by a bare rm -rf on a shared name
+#   - every file that replaces one already in the folder is written beside it and renamed
+#     over it: `anagram update` runs this script, and the command, the uv binary or the
+#     model may be in use while they are replaced
 #   - every child process (uv, python) runs with a scrubbed environment: inherited
 #     UV_*, PYTHON*, XDG_*, CARGO_* and friends cannot redirect writes or imports
 #
@@ -97,6 +100,23 @@ remove_ours() {
   rm -rf "$1"
 }
 
+# Put a file in its place INSIDE the validated folder: write it beside its name and rename
+# it over the old one. `anagram update` runs this installer, so what is being replaced may be
+# the very script that is executing (bin/anagram), a binary a running process holds open
+# (bin/uv) or a file the CLI is reading (VERSION, the model). Copying onto the original
+# truncates it under its reader; a rename swaps the name in one step and leaves whoever has
+# the old file open reading it to the end. The temporary sits in the destination's own
+# folder, so the rename never crosses a filesystem — and never goes through a symlink.
+install_ours() { # src dest [mode]
+  case "$2" in "$ANAGRAM_HOME"/*) ;; *) die "internal error: refusing to write '$2' (outside $ANAGRAM_HOME)";; esac
+  [ -L "$2" ] && die "internal error: refusing to write through symlink '$2'"
+  [ -L "$2.new" ] && die "internal error: refusing to write through symlink '$2.new'"
+  rm -f "$2.new"
+  cp "$1" "$2.new"
+  if [ -n "${3:-}" ]; then chmod "$3" "$2.new"; fi
+  mv "$2.new" "$2"
+}
+
 # A scrubbed environment for child processes: only what they need, nothing inherited.
 # Proxies and CA settings pass through so corporate networks keep working.
 clean_env() {
@@ -154,8 +174,9 @@ for sub in app extension; do
   remove_ours "$ANAGRAM_HOME/$sub.old"
 done
 remove_ours "$STAGE"
-cp "$REL/bin/anagram" "$ANAGRAM_HOME/bin/anagram" && chmod +x "$ANAGRAM_HOME/bin/anagram"
-printf '%s\n' "$VERSION" > "$ANAGRAM_HOME/VERSION"
+install_ours "$REL/bin/anagram" "$ANAGRAM_HOME/bin/anagram" 755
+printf '%s\n' "$VERSION" > "$TMP/VERSION"
+install_ours "$TMP/VERSION" "$ANAGRAM_HOME/VERSION"
 
 # ---------------------------------------------------------------- 2. uv (pinned release binary, checksum-verified)
 if [ ! -x "$ANAGRAM_HOME/bin/uv" ] || [ "$(clean_env "$ANAGRAM_HOME/bin/uv" --version 2>/dev/null | cut -d' ' -f2)" != "$UV_VERSION" ]; then
@@ -163,7 +184,7 @@ if [ ! -x "$ANAGRAM_HOME/bin/uv" ] || [ "$(clean_env "$ANAGRAM_HOME/bin/uv" --ve
   curl -fsSL --retry 3 -o "$TMP/uv.tar.gz" "https://github.com/astral-sh/uv/releases/download/$UV_VERSION/uv-$UV_TARGET.tar.gz"
   [ "$(sha256_of "$TMP/uv.tar.gz")" = "$UV_SHA" ] || die "checksum mismatch for uv-$UV_TARGET.tar.gz"
   tar -xzf "$TMP/uv.tar.gz" -C "$TMP" "uv-$UV_TARGET/uv"
-  mv "$TMP/uv-$UV_TARGET/uv" "$ANAGRAM_HOME/bin/uv" && chmod +x "$ANAGRAM_HOME/bin/uv"
+  install_ours "$TMP/uv-$UV_TARGET/uv" "$ANAGRAM_HOME/bin/uv" 755
 fi
 
 # ---------------------------------------------------------------- 3. private Python + locked packages
@@ -205,7 +226,7 @@ PYEOF
     say "Downloading the fastText language model (1 MB)"
     curl -fsSL --retry 3 -o "$TMP/lid.176.ftz" "$LID_URL"
     [ "$(sha256_of "$TMP/lid.176.ftz")" = "$LID_SHA256" ] || die "checksum mismatch for lid.176.ftz"
-    mv "$TMP/lid.176.ftz" "$ANAGRAM_HOME/models/lid.176.ftz"
+    install_ours "$TMP/lid.176.ftz" "$ANAGRAM_HOME/models/lid.176.ftz"
   fi
 fi
 

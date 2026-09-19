@@ -3,7 +3,8 @@
 # not a real Anagram folder. Each case plants sentinel files where a careless implementation
 # would delete or write, runs the real scripts, and checks the sentinels survived.
 #
-#   sh test/installer.sh                 # offline cases (no downloads: every refusal happens first)
+#   sh test/installer.sh                 # offline cases (no downloads: every refusal happens
+#                                        #   first, and the one install runs off a local tarball)
 #   INSTALLER_NET=1 sh test/installer.sh # + a full install under a hostile environment (needs
 #                                        #   dist/ from `npm run release` and network)
 set -u
@@ -381,7 +382,45 @@ if [ $rc -ne 0 ] && echo "$out" | grep -q "refusing to use it" && [ ! -f "$H9/ap
   ok "update refuses a symlinked ANAGRAM_HOME before running any installer"
 else bad "update symlinked home" "rc=$rc $(echo "$out" | tail -1)"; fi
 
-# 23. (network) full install under a hostile environment: nothing lands outside the folder
+# 23. an update over an existing folder replaces the command by RENAME, not in place.
+#     `anagram update` runs the installer, so bin/anagram is the very script executing while
+#     it is replaced — a copy onto it truncates it under the shell still reading it. A hard
+#     link stands in for that open file: after a rename it still reads the OLD bytes, after a
+#     copy it would read the new ones. No network anywhere: the release is a tarball this
+#     test builds and hands over file://, uv is already there at the pinned version so that
+#     step is skipped, venv/bin/python is a stub, and the model is skipped.
+UVV="$(grep '^UV_VERSION=' "$ROOT/install.sh" | cut -d'"' -f2)"
+RELDIR="$T/rel"; mkdir -p "$RELDIR/src/anagram/app" "$RELDIR/src/anagram/extension" "$RELDIR/src/anagram/bin"
+echo "9.9.10" > "$RELDIR/src/anagram/VERSION"
+echo "new app" > "$RELDIR/src/anagram/app/serve.py"
+echo "new extension" > "$RELDIR/src/anagram/extension/manifest.json"
+printf '#!/bin/sh\necho NEW CLI\n' > "$RELDIR/src/anagram/bin/anagram"; chmod +x "$RELDIR/src/anagram/bin/anagram"
+cp "$ROOT/install.sh" "$RELDIR/src/anagram/install.sh"
+( cd "$RELDIR/src" && tar -czf "$RELDIR/anagram.tar.gz" anagram )
+sha_of "$RELDIR/anagram.tar.gz" > "$RELDIR/anagram.tar.gz.sha256"
+
+HU="$T/update-home"; mkdir -p "$HU/bin" "$HU/venv/bin" "$HU/app" "$HU/extension"
+echo "Anagram installation folder." > "$HU/.anagram-home"
+printf '#!/bin/sh\necho OLD CLI\n' > "$HU/bin/anagram"; chmod +x "$HU/bin/anagram"
+echo "9.9.9" > "$HU/VERSION"
+printf '#!/bin/sh\necho "uv %s"\nexit 0\n' "$UVV" > "$HU/bin/uv"; chmod +x "$HU/bin/uv"
+printf '#!/bin/sh\nexit 0\n' > "$HU/venv/bin/python"; chmod +x "$HU/venv/bin/python"
+ln "$HU/bin/anagram" "$T/held-cli"          # the file the running command has open
+ln "$HU/VERSION" "$T/held-version"
+before_out="$(snapshot "$T/outside")"; before_fake="$(snapshot "$FAKE_HOME")"
+out="$(HOME="$FAKE_HOME" ANAGRAM_HOME="$HU" ANAGRAM_RELEASE_URL="file://$RELDIR" ANAGRAM_SKIP_MODEL=1 sh "$ROOT/install.sh" 2>&1)"; rc=$?
+leftover="$(find "$HU" -name '*.new' 2>/dev/null | tr '\n' ' ')"
+if [ $rc -eq 0 ] && grep -q "NEW CLI" "$HU/bin/anagram" && [ -x "$HU/bin/anagram" ] && grep -q "OLD CLI" "$T/held-cli"; then
+  ok "update: the command is renamed over, so a running anagram keeps reading the old file"
+else bad "atomic bin/anagram" "rc=$rc held=$(head -2 "$T/held-cli" | tail -1) $(echo "$out" | tail -1)"; fi
+if [ "$(cat "$HU/VERSION")" = "9.9.10" ] && [ "$(cat "$T/held-version")" = "9.9.9" ] && [ -z "$leftover" ]; then
+  ok "update: VERSION is renamed over too, and no .new file is left behind"
+else bad "atomic VERSION" "VERSION=$(cat "$HU/VERSION") held=$(cat "$T/held-version") leftover='$leftover'"; fi
+if [ "$before_out" = "$(snapshot "$T/outside")" ] && [ "$before_fake" = "$(snapshot "$FAKE_HOME")" ] && [ "$(cat "$HU/app/serve.py")" = "new app" ]; then
+  ok "update: the new app/ and extension/ landed, and nothing outside the folder moved"
+else bad "offline update side effects" "app=$(cat "$HU/app/serve.py" 2>/dev/null)"; fi
+
+# 24. (network) full install under a hostile environment: nothing lands outside the folder
 if [ -n "${INSTALLER_NET:-}" ]; then
   [ -f "$ROOT/dist/anagram.tar.gz" ] || { bad "network install" "run npm run release first"; }
   H="$T/nethome/.anagram"; mkdir -p "$T/nethome"

@@ -229,6 +229,13 @@ Notable changes to Anagram, newest first. The format follows
   however much its shadow tree holds, so the whole document counted as empty and
   not one paragraph in the overlay was ever scored. The layer now sits one level
   in, where it always belonged.
+- The installer replaces the running command instead of overwriting it. `anagram
+  update` runs the installer, and the installer copied the new `bin/anagram` onto
+  the script that was executing — a truncate-and-rewrite under the shell still
+  reading it. Every file it puts in place is now written beside its name inside
+  the folder and renamed over the old one, which is atomic and leaves whoever has
+  the old file open reading it: the command, the `uv` binary, `VERSION` and the
+  language model.
 - Comments on 博客园 (cnblogs) are read. The site wraps its comment LIST in boxes
   whose class and id carry `comment_form`, the token that marks WordPress' reply
   form, and every comment on the page went out with it. A box carrying that token
