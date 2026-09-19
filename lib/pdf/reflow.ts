@@ -94,6 +94,13 @@ const GUTTER_CELLS = 400;
 /** More columns than a newspaper prints: past this the page is a grid, not a text page. */
 const MAX_COLUMNS = 5;
 /**
+ * A run has to cross a gutter by half its own type size on BOTH sides before it counts
+ * as spanning it. A justified column's last word can end a point or two into the white
+ * the gutter finder measured, and treating that as a spanning line would put the whole
+ * line — both columns of it — back into one piece of reading order.
+ */
+const STRADDLE_TOL = 0.5;
+/**
  * The margin bands, as a share of the page height. They are not symmetric because the
  * furniture is not: a running head sits just under the top edge, while a page number
  * sits ON the one-inch bottom margin, at 0.90 of the height, which the last line of a
@@ -234,10 +241,11 @@ function groupIntoLines(page: PdfPageText): Line[] {
 
 // ---- columns --------------------------------------------------------------------------
 
-/** A candidate gutter: a band of white, and the share of the page's height it divides. */
+/** A candidate gutter: where it runs, and the share of the page's height it divides. */
 interface Band {
-  from: number;
-  to: number;
+  /** The middle of the best-divided part of the band — where the columns are cut. */
+  at: number;
+  width: number;
   divides: number;
 }
 
@@ -312,54 +320,87 @@ function findGutters(lines: Line[], pageWidth: number): number[] {
 
   const bands: Band[] = [];
   let open = -1;
-  let sum = 0;
   for (let c = 0; c <= GUTTER_CELLS; c++) {
     const share = c < GUTTER_CELLS ? divides[c] / withText : 0;
     if (share >= GUTTER_BAND_SHARE) {
-      if (open < 0) {
-        open = c;
-        sum = 0;
-      }
-      sum += share;
+      if (open < 0) open = c;
       continue;
     }
     if (open >= 0) {
-      const from = left + open * cell;
-      const to = left + c * cell;
-      if (to - from >= minWidth) bands.push({ from, to, divides: sum / (c - open) });
+      if ((c - open) * cell >= minWidth) bands.push(bandOf(divides, open, c, left, cell, withText));
       open = -1;
     }
   }
 
   // The bands that divide best first, each kept only while every column it would leave
   // behind still carries its share of the runs.
-  bands.sort((a, b) => b.divides - a.divides || b.to - b.from - (a.to - a.from));
+  bands.sort((a, b) => b.divides - a.divides || b.width - a.width);
   const chosen: number[] = [];
   for (const band of bands) {
     if (chosen.length >= MAX_COLUMNS - 1) break;
-    const next = [...chosen, (band.from + band.to) / 2].sort((a, b) => a - b);
+    const next = [...chosen, band.at].sort((a, b) => a - b);
     if (columnsHold(items, next)) chosen.splice(0, chosen.length, ...next);
   }
   return chosen;
+}
+
+/**
+ * Where inside a band of white the columns are actually cut. Not its middle: a justified
+ * column's lines end at slightly different places, so the left half of the band is white
+ * only in the bands whose lines ran short, and a cut there falls inside the longest
+ * lines' last word. The cut goes through the part of the band that divides the MOST of
+ * the page — the white every line leaves — which is the gutter proper.
+ */
+function bandOf(
+  divides: Int32Array,
+  from: number,
+  to: number,
+  left: number,
+  cell: number,
+  withText: number,
+): Band {
+  let best = 0;
+  for (let c = from; c < to; c++) best = Math.max(best, divides[c]);
+  let start = from;
+  let run = 0;
+  let longest = 0;
+  for (let c = from; c <= to; c++) {
+    if (c < to && divides[c] === best) {
+      run += 1;
+      continue;
+    }
+    if (run > longest) {
+      longest = run;
+      start = c - run;
+    }
+    run = 0;
+  }
+  return {
+    at: left + (start + longest / 2) * cell,
+    width: (to - from) * cell,
+    divides: best / withText,
+  };
 }
 
 /** Would these gutters leave every column with a real share of the page's runs? */
 function columnsHold(items: PdfTextItem[], gutters: number[]): boolean {
   const counts = new Array<number>(gutters.length + 1).fill(0);
   for (const it of items) {
-    const col = columnOf(it.x, it.x + it.width, gutters);
+    const col = columnOf(it, gutters);
     if (col >= 0) counts[col]++;
   }
   const floor = (items.length * COLUMN_EVEN_SHARE) / counts.length;
   return counts.every((n) => n >= floor);
 }
 
-/** Which column a run sits in, or -1 when it straddles a gutter and belongs to none. */
-function columnOf(x0: number, x1: number, gutters: number[]): number {
+/** Which column a run sits in, or -1 when it spans a gutter and belongs to none. */
+function columnOf(it: PdfTextItem, gutters: number[]): number {
+  const tol = it.height * STRADDLE_TOL;
+  const x1 = it.x + it.width;
   let col = 0;
   for (const g of gutters) {
-    if (x0 < g && x1 > g) return -1;
-    if (x0 >= g) col++;
+    if (it.x < g - tol && x1 > g + tol) return -1;
+    if ((it.x + x1) / 2 >= g) col++;
   }
   return col;
 }
@@ -376,7 +417,7 @@ function splitColumns(lines: Line[], gutters: number[]): Line[] {
     const parts = new Map<number, PdfTextItem[]>();
     let spans = false;
     for (const it of line.items) {
-      const col = columnOf(it.x, it.x + it.width, gutters);
+      const col = columnOf(it, gutters);
       if (col < 0) {
         spans = true;
         break;

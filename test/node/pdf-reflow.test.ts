@@ -241,6 +241,21 @@ describe("reflowPdf — two columns", () => {
     expect(blocks[0].text).toBe(lines.join(" "));
   });
 
+  it("cuts the columns where every line leaves white, not in the middle of the gap", () => {
+    // A justified column's lines stop at slightly different places, so the left half of
+    // the white between the columns is clear only on the lines that ran short. Cutting
+    // there would fall inside the longest lines' last word and make them spanning lines.
+    const left = Array.from({ length: 10 }, (_, i) => `left line number ${i} of this page.`);
+    const right = Array.from({ length: 10 }, (_, i) => `Right line number ${i} of the page.`);
+    const blocks = reflowPdf([
+      page(1, [
+        ...column(left, 120, 72, 200).map((p, i) => (i % 3 === 0 ? { ...p, width: 218 } : p)),
+        ...column(right, 120, 306, 218),
+      ]),
+    ]);
+    expect(texts(blocks)).toEqual([left.join(" "), right.join(" ")]);
+  });
+
   it("reads a page whose second column stops half way as two columns still", () => {
     const left = Array.from({ length: 12 }, (_, i) => `left line ${i} of the page.`);
     const right = Array.from({ length: 6 }, (_, i) => `Right line ${i} of it.`);
