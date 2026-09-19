@@ -767,10 +767,12 @@ const WORD = /\p{L}{3,}/gu;
 /**
  * A line that stops this much of its column's measure short of the right edge was not
  * broken by the typesetter: a hyphenation break happens because the rest of the word did
- * not fit, so it leaves the line all but full. A quarter of the measure standing empty
- * means the hyphen is the word's own.
+ * not fit, so it leaves the line all but full. Half the measure standing empty means the
+ * line ended for some other reason — a heading, a table cell, a line of an address — and
+ * the hyphen is the word's own. Half rather than less: a line set ragged right, with a
+ * long word broken to keep the rag even, can legitimately end a good way short.
  */
-const HYPHEN_MEASURE = 0.25;
+const HYPHEN_MEASURE = 0.5;
 
 /**
  * What the document says about its own compounds — the only dictionary available, and a
