@@ -229,6 +229,12 @@ Notable changes to Anagram, newest first. The format follows
   however much its shadow tree holds, so the whole document counted as empty and
   not one paragraph in the overlay was ever scored. The layer now sits one level
   in, where it always belonged.
+- `npm run bump -- --check` also checks the **contract major**. The extension's
+  `CONTRACT_VERSION`, the daemon's copy of it and the `CONTRACT_MAJOR` the shipped
+  CLI compares a daemon against are three declarations of one thing, and nothing
+  held them together: a CLI left behind on an older major would have called a
+  healthy daemon broken. The check is read-only and names every file when they
+  disagree.
 - The installer replaces the running command instead of overwriting it. `anagram
   update` runs the installer, and the installer copied the new `bin/anagram` onto
   the script that was executing — a truncate-and-rewrite under the shell still
