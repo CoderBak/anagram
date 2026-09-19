@@ -167,7 +167,17 @@ const SECTION_NUMBER = /^(?:\d+(?:\.\d+)*\.?|[IVXLC]+\.)\s+\p{Lu}/u;
  * its own verdict to earn. The marker must be followed by a space, which is what keeps
  * "3.1" (a section) and "(2020)" (a citation opening a line) out of it.
  */
-const LIST_MARKER = /^(?:[•▪◦‣·∙*–—]|\(?\d{1,3}[.)]|\[\d{1,3}\]|\(\p{L}\))\s/u;
+const LIST_MARKER = /^(?:[•▪◦‣·∙*]|\(?\d{1,3}[.)]|\[\d{1,3}\]|\(\p{L}\))\s/u;
+/**
+ * A dash opening a line is a list item only where the line above it FINISHED something —
+ * the lead-in's colon, the previous item's semicolon or full stop. Anywhere else it is a
+ * parenthesis, and the line break happened to fall in front of it: "many sources / – via
+ * responses to a request for information – were consulted", which is one sentence and
+ * must not be cut into three.
+ */
+const DASH_ITEM = /^[–—-]\s/;
+/** What the line above a dashed item ends with: the lead-in, or the item before it. */
+const ITEM_BEFORE = /[:;](["'”’)\]]|\s)*$/u;
 
 // ---- small helpers --------------------------------------------------------------------
 
@@ -951,6 +961,13 @@ function paragraphsOf(lines: Line[], vocab: Vocabulary, front: boolean): Draft[]
   const leftEdge = percentile(lines.map((l) => l.x0), 0.15);
   const rightEdge = percentile(lines.map((l) => l.x1), 0.85);
   const measure = Math.max(rightEdge - leftEdge, 1);
+  /** Which lines open a list item — decided once, because a dash asks about the line above. */
+  const opens = lines.map((line, i) => {
+    if (LIST_MARKER.test(line.text)) return true;
+    if (!DASH_ITEM.test(line.text)) return false;
+    const before = i > 0 ? lines[i - 1].text : "";
+    return i === 0 || SENTENCE_END.test(before) || ITEM_BEFORE.test(before);
+  });
 
   const out: Draft[] = [];
   let group: Line[] = [];
@@ -991,13 +1008,13 @@ function paragraphsOf(lines: Line[], vocab: Vocabulary, front: boolean): Draft[]
       const gap = line.y - prev.y;
       // A list item's second line is ranged under its text, past the marker, and that
       // hanging indent is not a new paragraph — it is the same item still being read.
-      const hanging = LIST_MARKER.test(prev.text);
+      const hanging = opens[i - 1];
       const indented =
         !hanging &&
         !line.wrapped &&
         line.x0 > leftEdge + line.size * INDENT &&
         prev.x0 <= leftEdge + prev.size * INDENT;
-      const item = LIST_MARKER.test(line.text);
+      const item = opens[i];
       const resized =
         Math.abs(line.size - prev.size) > Math.max(line.size, prev.size) * SIZE_CHANGE;
       const shortBefore = prev.x1 < rightEdge - prev.size * SHORT_LINE;

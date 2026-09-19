@@ -140,6 +140,19 @@ describe("reflowPdf — lists", () => {
     ]);
   });
 
+  it("separates dashed items under their lead-in, and leaves a dashed aside alone", () => {
+    const dashed = ["– collect the documents;", "– extract the text runs;", "– rebuild the paragraphs."];
+    const aside = ["The procedure has three steps, each of which", "– as the appendix sets out at some length –", "is described below in its own words here."];
+    const blocks = reflowPdf([
+      page(1, [
+        { text: "The procedure has three steps:", x: 90, y: 100, width: 400 },
+        ...dashed.map((text, i) => ({ text, x: 90, y: 100 + (i + 1) * PITCH, width: 400 })),
+        ...aside.map((text, i) => ({ text, x: 90, y: 100 + (i + 6) * PITCH, width: 400 })),
+      ]),
+    ]);
+    expect(texts(blocks)).toEqual(["The procedure has three steps:", ...dashed, aside.join(" ")]);
+  });
+
   it("separates numbered items and the entries of a reference list", () => {
     const numbered = ["1. Collect the documents.", "2. Extract the text runs.", "3. Rebuild the paragraphs."];
     const refs = ["[1] Doe, J. A paper about papers. 2021.", "[2] Smith, J. Another one. 2022."];
