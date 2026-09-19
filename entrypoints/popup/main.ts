@@ -13,8 +13,10 @@ import {
   settings,
   clearSiteOverride,
   effectiveRule,
+  normalizeMarkStyle,
   setSiteOverride,
 } from "../../lib/settings/settings";
+import type { MarkStyle } from "../../lib/settings/settings";
 import { siteLine, switchWrite } from "./siteSwitch";
 import { ACTIONS } from "../../lib/messaging/protocol";
 import type { BackendStatus, ControlMessage, TabState } from "../../lib/messaging/protocol";
@@ -188,7 +190,7 @@ async function init(): Promise<void> {
 
   enabledEl.checked = await settings.enabled.getValue();
   highlightsEl.checked = await settings.showHighlights.getValue();
-  markStyleEl.value = await settings.markStyle.getValue();
+  markStyleEl.value = normalizeMarkStyle(await settings.markStyle.getValue());
   checkSeg(displayModeEls, await settings.displayMode.getValue());
   checkSeg(scopeEls, await settings.analysisScope.getValue());
   siteEl.disabled = !host;
@@ -223,9 +225,7 @@ async function init(): Promise<void> {
   });
 
   markStyleEl.addEventListener("change", () => {
-    void settings.markStyle.setValue(
-      markStyleEl.value as "both" | "underline" | "tint",
-    );
+    void settings.markStyle.setValue(markStyleEl.value as MarkStyle);
   });
 
   bindSeg(displayModeEls, (v) => void settings.displayMode.setValue(v as "all" | "flagged"));

@@ -129,19 +129,18 @@
             <div class="field" data-orientation="horizontal">
               <section>
                 <label for="highlights" data-i18n="optHighlights">Mark analyzed paragraphs</label>
-                <p data-i18n="optHighlightsNote">Colors each paragraph by verdict — green = human, yellow = lightly edited, orange = heavily edited, red = AI-generated. Badges stay either way.</p>
+                <p data-i18n="optHighlightsNote">Draws the verdict on the text itself — a thin line under what was flagged, and a paragraph's full extent while its chip is hovered. Chips stay either way.</p>
               </section>
               <input id="highlights" type="checkbox" role="switch" />
             </div>
             <div class="field" data-orientation="horizontal">
               <section>
                 <label for="markStyle" data-i18n="optMarkStyle">Mark style</label>
-                <p data-i18n="optMarkStyleNote">How analyzed paragraphs are marked in place. “Mark analyzed paragraphs” above stays the master on/off.</p>
+                <p data-i18n="optMarkStyleNote">Quiet leaves the page as its author wrote it: a thin line under heavily-edited and AI-generated text only. Hovering a chip shows that paragraph's full extent either way. “Mark analyzed paragraphs” above stays the master on/off.</p>
               </section>
               <select id="markStyle">
-                <option value="both" data-i18n="optStyleBoth">Underline + tint</option>
-                <option value="underline" data-i18n="optStyleUnderline">Underline only</option>
-                <option value="tint" data-i18n="optStyleTint">Tint only</option>
+                <option value="quiet" data-i18n="optStyleQuiet">Flagged text only</option>
+                <option value="always" data-i18n="optStyleAlways">Every analyzed paragraph</option>
               </select>
             </div>
             <div class="field" data-orientation="horizontal">

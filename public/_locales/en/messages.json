@@ -10,7 +10,7 @@
   },
 
   "extDescription": {
-    "message": "Per-paragraph AI-generated-text confidence badges.",
+    "message": "Shows how heavily each paragraph looks AI-edited. Scored on your own computer.",
     "description": "Store listing description. The name stays 'Anagram'."
   },
 
@@ -82,8 +82,8 @@
     "description": "Chip card while the batch is in flight."
   },
   "cardScaleTitle": {
-    "message": "Extent of AI editing (EditLens scale)",
-    "description": "Tooltip on the big percentage in a card."
+    "message": "Extent of AI editing, 0 to 1 (EditLens scale)",
+    "description": "Tooltip on the big number in a card."
   },
   "cardPartsTogether": {
     "message": "Paragraphs analyzed together",
@@ -296,9 +296,29 @@
     "message": "Nothing flagged on this page.",
     "description": "Panel empty state."
   },
+  "panelCovRead": {
+    "message": "$1 read",
+    "description": "Coverage line in the triage panel: units the model gave a verdict for. One word after the number — the line is five of these joined by middots."
+  },
+  "panelCovShort": {
+    "message": "$1 short",
+    "description": "Coverage line: prose the walk found and left unread, under the 50-word evidence floor with no neighbour of its own voice to join."
+  },
+  "panelCovNotEnglish": {
+    "message": "$1 not English",
+    "description": "Coverage line: units the language gate refused. Shown only when there are any."
+  },
+  "panelCovPending": {
+    "message": "$1 pending",
+    "description": "Coverage line: units still waiting for the daemon. Shown only when there are any."
+  },
+  "panelCovUnavailable": {
+    "message": "$1 unavailable",
+    "description": "Coverage line: units the daemon never answered for. Shown only when there are any."
+  },
   "panelItemAria": {
-    "message": "$1, $2%: $3",
-    "description": "Accessible name of a panel row. $1 = verdict, $2 = percentage, $3 = snippet."
+    "message": "$1, $2: $3",
+    "description": "Accessible name of a panel row: verdict, the score with its leading zero (a screen reader reads a bare \".93\" badly), snippet."
   },
   "panelTurnOffHere": {
     "message": "Turn off here",
@@ -400,7 +420,7 @@
     "description": "Report summary. $1 = units the language gate refused."
   },
   "reportEstimate": {
-    "message": "Each percentage is EditLens's estimate of how far that text sits from untouched human writing toward fully AI-generated — not a share of words, not proof.",
+    "message": "Each number is EditLens's estimate, on a scale of 0 to 1, of how far that text sits from untouched human writing toward fully AI-generated — not a share of words, not proof.",
     "description": "Report preamble: what the percentages mean."
   },
   "reportNothingFlagged": {
@@ -488,17 +508,13 @@
     "message": "Marking style",
     "description": "Popup label for the marking-style select."
   },
-  "styleBoth": {
-    "message": "Underline + tint",
-    "description": "Marking style option."
+  "styleQuiet": {
+    "message": "Flagged text only",
+    "description": "Popup mark style option: the quiet marks (the default)."
   },
-  "styleUnderline": {
-    "message": "Underline",
-    "description": "Marking style option (popup, where the row is narrow)."
-  },
-  "styleTint": {
-    "message": "Tint",
-    "description": "Marking style option (popup, where the row is narrow)."
+  "styleAlways": {
+    "message": "Every paragraph",
+    "description": "Popup mark style option: mark every analyzed paragraph."
   },
   "popupAnalysis": {
     "message": "Analysis",
@@ -670,7 +686,7 @@
     "description": "Options switch label."
   },
   "optHighlightsNote": {
-    "message": "Colors each paragraph by verdict — green = human, yellow = lightly edited, orange = heavily edited, red = AI-generated. Badges stay either way.",
+    "message": "Draws the verdict on the text itself — a thin line under what was flagged, and a paragraph's full extent while its chip is hovered. Chips stay either way.",
     "description": "Options switch help text."
   },
   "optMarkStyle": {
@@ -678,20 +694,16 @@
     "description": "Options select label."
   },
   "optMarkStyleNote": {
-    "message": "How analyzed paragraphs are marked in place. “Mark analyzed paragraphs” above stays the master on/off.",
+    "message": "Quiet leaves the page as its author wrote it: a thin line under heavily-edited and AI-generated text only. Hovering a chip shows that paragraph's full extent either way. “Mark analyzed paragraphs” above stays the master on/off.",
     "description": "Options select help text."
   },
-  "optStyleBoth": {
-    "message": "Underline + tint",
-    "description": "Mark style option."
+  "optStyleQuiet": {
+    "message": "Flagged text only",
+    "description": "Mark style option: the quiet marks (the default)."
   },
-  "optStyleUnderline": {
-    "message": "Underline only",
-    "description": "Mark style option."
-  },
-  "optStyleTint": {
-    "message": "Tint only",
-    "description": "Mark style option."
+  "optStyleAlways": {
+    "message": "Every analyzed paragraph",
+    "description": "Mark style option: mark every analyzed paragraph, all the time."
   },
   "optDisplayMode": {
     "message": "What to show",
@@ -898,7 +910,7 @@
     "description": "Options sub-heading above the colour legend."
   },
   "optFooter": {
-    "message": "A chip's number is EditLens's estimate of how far a paragraph sits between untouched human writing (0%) and fully AI-generated text (100%) — not a share of words, not proof. Detection runs per paragraph — per post for a short post — with a 50-word evidence floor; shorter neighboring paragraphs are analyzed together.",
+    "message": "A chip's number is EditLens's estimate of how far a paragraph sits between untouched human writing (.00) and fully AI-generated text (1.0) — not a share of words, not proof. Detection runs per paragraph — per post for a short post — with a 50-word evidence floor; shorter neighboring paragraphs are analyzed together.",
     "description": "Options page footer."
   },
   "modelLine": {
@@ -911,7 +923,7 @@
     "description": "First-run page title and heading."
   },
   "onbLede": {
-    "message": "Anagram answers $1 as you browse: every analyzed paragraph gets a small $2 with a number — the model's estimate of the $3 — and a matching underline, quiet on human text, louder as AI involvement grows.",
+    "message": "Anagram answers $1 as you browse: every analyzed paragraph gets a small $2 with a number — the model's estimate of the $3 — and the page itself is left as it was, except for a thin line under the text that was flagged.",
     "description": "First-run opening paragraph. $1-$3 are emphasised runs from the page (onbLedeQuestion, onbLedeChip, onbLedeExtent)."
   },
   "onbLedeQuestion": {
@@ -995,7 +1007,7 @@
     "description": "First-run card heading."
   },
   "onbVerdictsBody": {
-    "message": "The model ($1, ICLR 2026) rates how far a paragraph sits between untouched human writing (0%) and fully AI-generated text (100%). The number is $2 written by AI — it is the model's estimate of how much AI editing changed the text as a whole. Hover (or tap) a chip for the full readout: the four-way probability split behind the verdict and the word count. EditLens reads English only: other languages get a gray chip with the detected language code instead of a number. Every number is an $3. Snippets under ~50 words are only scored when grouped with neighbors, and a short post is scored as a whole — a $4 on a chip means it covers that many paragraphs.",
+    "message": "The model ($1, ICLR 2026) rates how far a paragraph sits between untouched human writing (.00) and fully AI-generated text (1.0). The number is $2 written by AI — it is the model's estimate of how much AI editing changed the text as a whole. Hover (or tap) a chip for the full readout: the four-way probability split behind the verdict and the word count. EditLens reads English only: other languages get a gray chip with the detected language code instead of a number. Every number is an $3. Snippets under ~50 words are only scored when grouped with neighbors, and a short post is scored as a whole — a $4 on a chip means it covers that many paragraphs.",
     "description": "First-run card body. $1-$4 are emphasised runs from the page (the model name, onbNotShare, onbEstimate, and the ×2 example)."
   },
   "onbNotShare": {
@@ -1098,13 +1110,13 @@
     "message": "The $1 and $2 hold the rest: pick a marking style ($3 or a soft $4), choose the analysis scope ($5 or $6), and check the local scoring daemon's status.",
     "description": "First-run card body. $1-$6 are emphasised runs from the page (onbPopupName, onbOptionsName, styleUnderline, styleTint, optScopeWholePage, optScopeMain)."
   },
-  "onbStyleUnderline": {
-    "message": "underline",
-    "description": "Marking style named mid-sentence in onbYoursBody, so lower case."
+  "onbStyleQuiet": {
+    "message": "flagged text only",
+    "description": "Inline emphasis in onbYoursBody — one of the two mark styles."
   },
-  "onbStyleTint": {
-    "message": "tint",
-    "description": "Marking style named mid-sentence in onbYoursBody, so lower case."
+  "onbStyleAlways": {
+    "message": "every analyzed paragraph",
+    "description": "Inline emphasis in onbYoursBody — the other mark style."
   },
   "onbScopePage": {
     "message": "whole page",

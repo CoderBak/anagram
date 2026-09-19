@@ -35,13 +35,15 @@
       .card ul li + li { margin-top: 5px; }
       .card ul strong { color: var(--foreground); font-weight: 600; }
 
-      /* The demo: three fragments marked and chipped exactly like the in-page overlay. */
+      /* The demo: three fragments marked and chipped exactly like the in-page overlay —
+         which at rest means nothing at all under human and lightly-edited text, and a
+         thin solid rule under the two flagged bands. */
       .demo { padding: 4px 0 2px; font-family: Georgia, "Iowan Old Style", "Times New Roman", serif; font-size: 16.5px; line-height: 1.8; }
       .demo-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 8px; }
-      .frag { text-decoration-line: underline; text-decoration-thickness: 1.5px; text-underline-offset: 3px; border-radius: 3px; padding: 0 2px; }
-      .u-human { background: rgba(26, 127, 55, 0.07); text-decoration-color: rgba(26, 127, 55, 0.5); }
-      .u-light { background: rgba(212, 160, 23, 0.12); text-decoration-color: rgba(212, 160, 23, 0.75); }
-      .u-ai { background: rgba(220, 38, 38, 0.14); text-decoration-style: wavy; text-decoration-color: rgba(220, 38, 38, 0.9); text-underline-offset: 2px; }
+      .frag { padding: 0 2px; }
+      .u-flagged { text-decoration-line: underline; text-decoration-style: solid; text-decoration-skip-ink: none; text-underline-offset: 3px; }
+      .u-heavy { text-decoration-thickness: 1px; text-decoration-color: rgba(232, 89, 12, 0.85); }
+      .u-ai { text-decoration-thickness: 2px; text-decoration-color: rgba(220, 38, 38, 0.9); }
       .chip {
         display: inline-flex; align-items: center; gap: 0.42em; padding: 0.3em 0.6em 0.3em 0.5em;
         border-radius: 6px; border: 1px solid var(--border); background: var(--card);
@@ -52,6 +54,7 @@
       .chip .cdot { width: 0.56em; height: 0.56em; border-radius: 50%; }
       .c-human { color: var(--c-human); } .c-human .cdot { background: var(--d-human); box-shadow: 0 0 0 3px rgba(26, 127, 55, 0.18); }
       .c-light { color: var(--c-light); } .c-light .cdot { background: var(--d-light); box-shadow: 0 0 0 3px rgba(212, 160, 23, 0.22); }
+      .c-heavy { color: var(--c-heavy); } .c-heavy .cdot { background: var(--d-heavy); box-shadow: 0 0 0 3px rgba(232, 89, 12, 0.18); }
       .c-ai { color: var(--c-ai); } .c-ai .cdot { background: var(--d-ai); box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18); }
 
       .bands { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -150,16 +153,20 @@
           <section>
             <div class="demo">
               <div class="demo-line">
-                <span class="frag u-human">The quick brown fox jumps over the lazy dog.</span>
-                <span class="chip c-human"><span class="cdot"></span>4%</span>
+                <span class="frag">The quick brown fox jumps over the lazy dog.</span>
+                <span class="chip c-human"><span class="cdot"></span>.04</span>
               </div>
               <div class="demo-line">
-                <span class="frag u-light">moreover, this underscores a broader point&hellip;</span>
-                <span class="chip c-light"><span class="cdot"></span>38% &times;2</span>
+                <span class="frag">moreover, this underscores a broader point&hellip;</span>
+                <span class="chip c-light"><span class="cdot"></span>.38 &times;2</span>
               </div>
               <div class="demo-line">
-                <span class="frag u-ai">Delving into the rich tapestry of interconnected factors&hellip;</span>
-                <span class="chip c-ai"><span class="cdot"></span>96%</span>
+                <span class="frag u-flagged u-heavy">The kitchen window faced a brick wall six feet away&hellip;</span>
+                <span class="chip c-heavy"><span class="cdot"></span>.71</span>
+              </div>
+              <div class="demo-line">
+                <span class="frag u-flagged u-ai">Delving into the rich tapestry of interconnected factors&hellip;</span>
+                <span class="chip c-ai"><span class="cdot"></span>.96</span>
               </div>
             </div>
           </section>
@@ -256,7 +263,7 @@
           <header><h2 data-i18n="onbYours">Make it yours</h2></header>
           <section>
             <p data-i18n-html="onbYoursBody">The <strong data-i18n="onbPopupName">popup</strong> and <strong data-i18n="onbOptionsName">options page</strong> hold the rest: pick a
-              marking style (<strong data-i18n="onbStyleUnderline">underline</strong> or a soft <strong data-i18n="onbStyleTint">tint</strong>), choose the
+              marking style (<strong data-i18n="onbStyleQuiet">flagged text only</strong> or <strong data-i18n="onbStyleAlways">every analyzed paragraph</strong>), choose the
               analysis scope (<strong data-i18n="onbScopePage">whole page</strong> or <strong data-i18n="onbScopeMain">main content only</strong>), and
               check the local scoring daemon's status.</p>
           </section>

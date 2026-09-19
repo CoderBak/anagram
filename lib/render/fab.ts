@@ -22,19 +22,43 @@ import { MARK_ATTR } from "../types";
 import { settings, setSiteOverride } from "../settings/settings";
 import { messageLocale, t, tn } from "../i18n";
 import { bandLabel, type Band } from "./band";
+import { formatScore, spokenScore } from "./score";
 import { isDarkPage } from "./theme";
 
 export interface PanelEntry {
   id: string;
-  pct: number;
+  /** The unit's own score, 0–1 — formatted here, never upstream. */
+  score: number;
   band: Band;
   snippet: string;
   order: number;
 }
 
+/**
+ * How much of the page was read, in numbers. "0 flagged" is the answer a reader most
+ * often gets, and on its own it reads as "all clear" — when it can equally mean that
+ * nothing on the page was long enough to judge, or that none of it was English.
+ */
+export interface PanelCounts {
+  /** Units with a real verdict behind them. */
+  read: number;
+  /** Prose the walker found and left unread: under the 50-word evidence floor, with no
+   *  neighbour of its own voice to join. Zero — and left off the line — in strict
+   *  per-paragraph mode, where the walk never decides what a short run was. */
+  short: number;
+  /** Units the language gate refused — EditLens reads English only. */
+  notEnglish: number;
+  /** Units still waiting for the daemon. */
+  pending: number;
+  /** Units the daemon never answered for. */
+  unavailable: number;
+}
+
 export interface PanelHooks {
   /** Current flagged units, document order. Called each time the panel opens. */
   entries(): PanelEntry[];
+  /** The coverage line's numbers, read at the same moment. */
+  counts(): PanelCounts;
   /** Scroll to a unit and flash its chip. */
   onJump(id: string): void;
   /** Markdown report of the page's verdicts (for the Copy report button). */
@@ -341,17 +365,17 @@ const FAB_CSS = `
 .panel .pitem.band-ai .pdot { background: #dc2626; }
 .panel .pitem.band-heavy .pdot { background: #e8590c; }
 .panel .pitem.band-light .pdot { background: #d4a017; }
-.panel .ppct {
+.panel .pscore {
   flex: 0 0 auto;
-  min-width: 38px;
+  min-width: 26px; /* ".93" and "1.0" — the widest row number there is */
   text-align: right;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   font-size: 11px;
 }
-.panel .pitem.band-ai .ppct { color: #b42318; }
-.panel .pitem.band-heavy .ppct { color: #a13d00; }
-.panel .pitem.band-light .ppct { color: #7a5b00; }
+.panel .pitem.band-ai .pscore { color: #b42318; }
+.panel .pitem.band-heavy .pscore { color: #a13d00; }
+.panel .pitem.band-light .pscore { color: #7a5b00; }
 .panel .ptext {
   flex: 1 1 auto;
   overflow: hidden;
@@ -360,6 +384,16 @@ const FAB_CSS = `
   color: #404040;
 }
 .panel .pempty { padding: 10px 8px; color: #737373; }
+/* How much of the page was read: numbers with one-word labels, under the title, in the
+   same muted ink as the title itself. No sentence and no icon — it is there to keep
+   "0 flagged" from reading as "all clear", not to explain itself. */
+.panel .pcov {
+  padding: 0 8px 6px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #737373;
+  font-variant-numeric: tabular-nums;
+}
 .panel .pfoot {
   display: flex;
   justify-content: flex-end;
@@ -422,11 +456,12 @@ const FAB_CSS = `
 :host(.pg-dark) .panel .fchip:hover { background: rgba(255, 255, 255, 0.12); color: #fafafa; }
 :host(.pg-dark) .panel .fchip[aria-pressed="true"] { color: #171717; border-color: transparent; background: #fafafa; }
 :host(.pg-dark) .panel .pitem:hover { background: rgba(255, 255, 255, 0.08); }
-:host(.pg-dark) .panel .pitem.band-ai .ppct { color: #ff7b81; }
-:host(.pg-dark) .panel .pitem.band-heavy .ppct { color: #ff9a57; }
-:host(.pg-dark) .panel .pitem.band-light .ppct { color: #e6c84c; }
+:host(.pg-dark) .panel .pitem.band-ai .pscore { color: #ff7b81; }
+:host(.pg-dark) .panel .pitem.band-heavy .pscore { color: #ff9a57; }
+:host(.pg-dark) .panel .pitem.band-light .pscore { color: #e6c84c; }
 :host(.pg-dark) .panel .ptext { color: #d4d4d4; }
 :host(.pg-dark) .panel .pempty { color: #8a8a8a; }
+:host(.pg-dark) .panel .pcov { color: #8a8a8a; }
 :host(.pg-dark) .panel .pfoot { border-top-color: rgba(255, 255, 255, 0.08); }
 :host(.pg-dark) .panel .psiteoff { color: #8a8a8a; }
 :host(.pg-dark) .panel .psiteoff:hover { color: #ff7b81; }
@@ -1010,6 +1045,24 @@ export function createFab(opts: {
     }
     panelEl.appendChild(head);
 
+    // The coverage line. It is drawn, never announced: the live region below belongs to
+    // the flagged count and to the Copy button, and a reader who asked for one number
+    // does not want five of them read out again every time a batch lands.
+    const coverage = opts.panel?.counts();
+    if (coverage) {
+      const parts = [
+        t("panelCovRead", coverage.read),
+        ...(coverage.short > 0 ? [t("panelCovShort", coverage.short)] : []),
+        ...(coverage.notEnglish > 0 ? [t("panelCovNotEnglish", coverage.notEnglish)] : []),
+        ...(coverage.pending > 0 ? [t("panelCovPending", coverage.pending)] : []),
+        ...(coverage.unavailable > 0 ? [t("panelCovUnavailable", coverage.unavailable)] : []),
+      ];
+      const cov = document.createElement("div");
+      cov.className = "pcov";
+      cov.textContent = parts.join(" · ");
+      panelEl.appendChild(cov);
+    }
+
     // Verdict filters — only when both bands are present (a one-band page needs
     // no chrome for it).
     if (counts.ai > 0 && counts.heavy > 0) {
@@ -1050,16 +1103,17 @@ export function createFab(opts: {
       item.className = `pitem band-${entry.band}`;
       const dot = document.createElement("span");
       dot.className = "pdot";
-      const pct = document.createElement("span");
-      pct.className = "ppct";
-      pct.textContent = `${entry.pct}%`;
+      const score = document.createElement("span");
+      score.className = "pscore";
+      score.textContent = formatScore(entry.score);
       const text = document.createElement("span");
       text.className = "ptext";
       text.textContent = entry.snippet;
       // Read out as a verdict, not as a loose number next to a sentence fragment: the
       // dot and the colour that carry the band visually say nothing out loud.
-      item.setAttribute("aria-label", t("panelItemAria", bandLabel(entry.band), entry.pct, entry.snippet));
-      item.append(dot, pct, text);
+      // ".93" is read out badly — an aria-label says the number with its leading zero.
+      item.setAttribute("aria-label", t("panelItemAria", bandLabel(entry.band), spokenScore(entry.score), entry.snippet));
+      item.append(dot, score, text);
       item.addEventListener("click", () => {
         closePanel();
         opts.panel?.onJump(entry.id);

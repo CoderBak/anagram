@@ -32,7 +32,8 @@ export { clipsOwnText } from "../lib/dom/style";
 export { WATCHED_ATTRS } from "../lib/capture/observers";
 export { findMainContent, useReadability } from "../lib/dom/mainContent";
 export { detectDocsPage, readingViewUrl, editorUrl } from "../lib/docs";
-export { band, isFlagged, scorePct } from "../lib/render/band";
+export { band, isFlagged } from "../lib/render/band";
+export { formatScore, spokenScore } from "../lib/render/score";
 export { createBadgeLayer } from "../lib/render/badge";
 export { locateSpans } from "../lib/dom/locate";
 export {
@@ -51,4 +52,4 @@ export { windowReadout, coverageNote } from "../lib/render/coverage";
 // in an ordinary page, and read every character they produce.
 export { buildDiagnostics } from "../lib/diagnostics/report";
 export { captureRegion } from "../lib/diagnostics/anonymise";
-export { setHighlight, clearHighlight } from "../lib/render/highlight";
+export { setHighlight, clearHighlight, setActiveUnit, setMarkStyle, registerHighlightStyles } from "../lib/render/highlight";

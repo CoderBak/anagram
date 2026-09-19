@@ -6,7 +6,7 @@
     "message": "已复制 ✓"
   },
   "extDescription": {
-    "message": "逐段标注文本的 AI 编辑程度。"
+    "message": "显示每个段落经 AI 编辑的程度，全部在本机评分。"
   },
   "cmdToggleOverlay": {
     "message": "显示/隐藏 Anagram 标记"
@@ -57,7 +57,7 @@
     "message": "正在分析该段落…"
   },
   "cardScaleTitle": {
-    "message": "AI 编辑程度（EditLens 标度）"
+    "message": "AI 编辑程度，0 到 1（EditLens 标度）"
   },
   "cardPartsTogether": {
     "message": "合并分析的段落"
@@ -215,8 +215,23 @@
   "panelEmpty": {
     "message": "本页没有存疑段落。"
   },
+  "panelCovRead": {
+    "message": "已读 $1"
+  },
+  "panelCovShort": {
+    "message": "过短 $1"
+  },
+  "panelCovNotEnglish": {
+    "message": "非英文 $1"
+  },
+  "panelCovPending": {
+    "message": "等待中 $1"
+  },
+  "panelCovUnavailable": {
+    "message": "暂不可用 $1"
+  },
   "panelItemAria": {
-    "message": "$1，$2%：$3"
+    "message": "$1，$2：$3"
   },
   "panelTurnOffHere": {
     "message": "在此页关闭"
@@ -291,7 +306,7 @@
     "message": "略过（语言不支持）：$1"
   },
   "reportEstimate": {
-    "message": "每个百分比都是 EditLens 的估计，衡量该文本距离纯人工写作有多远、离完全 AI 生成有多近，既不是 AI 撰写词语的占比，也不是证据。"
+    "message": "每个数字都是 EditLens 在 0 到 1 的标度上给出的估计，衡量该文本距离纯人工写作有多远、离完全 AI 生成有多近，既不是 AI 撰写词语的占比，也不是证据。"
   },
   "reportNothingFlagged": {
     "message": "没有段落被判为重度 AI 编辑或 AI 生成。"
@@ -356,14 +371,11 @@
   "popupMarkingStyle": {
     "message": "标记样式"
   },
-  "styleBoth": {
-    "message": "下划线 + 底色"
+  "styleQuiet": {
+    "message": "仅存疑文字"
   },
-  "styleUnderline": {
-    "message": "下划线"
-  },
-  "styleTint": {
-    "message": "底色"
+  "styleAlways": {
+    "message": "每个段落"
   },
   "popupAnalysis": {
     "message": "分析"
@@ -492,22 +504,19 @@
     "message": "标记已分析的段落"
   },
   "optHighlightsNote": {
-    "message": "按结论给每个段落着色——绿色 = 人工撰写，黄色 = 轻度 AI 编辑，橙色 = 重度 AI 编辑，红色 = AI 生成。不论开关，段落后的标签都会保留。"
+    "message": "把结论画在正文上——在存疑的文字下画一条细线；把鼠标移到某个标签上时，显示该段落读到的完整范围。无论开关如何，标签都会显示。"
   },
   "optMarkStyle": {
     "message": "标记样式"
   },
   "optMarkStyleNote": {
-    "message": "已分析的段落在原处如何标出。上面的“标记已分析的段落”仍是总开关。"
+    "message": "安静模式让页面保持作者写的样子：只在重度 AI 编辑和 AI 生成的文字下画一条细线。无论选哪种，把鼠标移到标签上都会显示该段落读到的完整范围。上面的“标记已分析的段落”仍是总开关。"
   },
-  "optStyleBoth": {
-    "message": "下划线 + 底色"
+  "optStyleQuiet": {
+    "message": "仅存疑文字"
   },
-  "optStyleUnderline": {
-    "message": "仅下划线"
-  },
-  "optStyleTint": {
-    "message": "仅底色"
+  "optStyleAlways": {
+    "message": "每个已分析的段落"
   },
   "optDisplayMode": {
     "message": "显示内容"
@@ -663,7 +672,7 @@
     "message": "结论配色"
   },
   "optFooter": {
-    "message": "标签上的数字是 EditLens 的估计，衡量一个段落处在纯人工写作（0%）与完全 AI 生成（100%）之间的什么位置，既不是 AI 撰写词语的占比，也不是证据。检测按段落进行——短帖子按整帖——证据下限为 50 词；更短的相邻段落会合并分析。"
+    "message": "标签上的数字是 EditLens 的估计，衡量一个段落处在纯人工写作（.00）与完全 AI 生成（1.0）之间的什么位置，既不是 AI 撰写词语的占比，也不是证据。检测按段落进行——短帖子按整帖——证据下限为 50 词；更短的相邻段落会合并分析。"
   },
   "modelLine": {
     "message": "模型：pangram/editlens_roberta-large（CC BY-NC-SA 4.0，非商业用途）。"
@@ -672,7 +681,7 @@
     "message": "欢迎使用 Anagram"
   },
   "onbLede": {
-    "message": "浏览时 Anagram 一直在回答$1这个问题。每个被分析的段落后面都会出现一个小$2，上面是一个数字——模型对 $3的估计——再配上相应的下划线：人工写的地方安静，AI 参与越多越明显。"
+    "message": "浏览时 Anagram 会回答$1：每个已分析的段落后面会出现一个带数字的小$2——模型对$3的估计——页面本身保持原样，只在存疑的文字下画一条细线。"
   },
   "onbLedeQuestion": {
     "message": "“这段里有多少是 AI 写的？”"
@@ -735,7 +744,7 @@
     "message": "看懂结论"
   },
   "onbVerdictsBody": {
-    "message": "模型（$1，ICLR 2026）判断一个段落处在纯人工写作（0%）与完全 AI 生成（100%）之间的什么位置。这个数字$2，而是模型对 AI 编辑整体上改动了多少的估计。把鼠标移到标签上（或点一下）可以看到完整读数：结论背后的四路概率分布和词数。EditLens 只读英文：其他语言的标签是灰色的，显示检测到的语言代码而不是数字。每个数字都只是$3。不足约 50 词的片段只有与相邻段落合并后才会评分，短帖子按整帖评分——标签上的 $4 表示它覆盖了这么多段落。"
+    "message": "模型（$1，ICLR 2026）判断一个段落处在纯人工写作（.00）与完全 AI 生成（1.0）之间的什么位置。这个数字$2，而是模型对 AI 编辑整体上改动了多少的估计。把鼠标移到标签上（或点一下）可以看到完整读数：结论背后的四路概率分布和词数。EditLens 只读英文：其他语言的标签是灰色的，显示检测到的语言代码而不是数字。每个数字都只是$3。不足约 50 词的片段只有与相邻段落合并后才会评分，短帖子按整帖评分——标签上的 $4 表示它覆盖了这么多段落。"
   },
   "onbNotShare": {
     "message": "不是 AI 撰写词语的占比"
@@ -812,11 +821,11 @@
   "onbYoursBody": {
     "message": "$1和$2里是其余的设置：挑一种标记样式（$3或浅浅的$4），选择分析范围（$5或$6），以及查看本地评分服务的状态。"
   },
-  "onbStyleUnderline": {
-    "message": "下划线"
+  "onbStyleQuiet": {
+    "message": "仅存疑文字"
   },
-  "onbStyleTint": {
-    "message": "底色"
+  "onbStyleAlways": {
+    "message": "每个已分析的段落"
   },
   "onbScopePage": {
     "message": "整页"

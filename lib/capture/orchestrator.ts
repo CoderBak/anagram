@@ -39,12 +39,14 @@ import {
   setHighlightsVisible,
   setMarkStyle,
   refreshHighlightTheme,
+  type MarkStyle,
 } from "../render/highlight";
-import { createFab, type Fab } from "../render/fab";
+import { createFab, type Fab, type PanelCounts } from "../render/fab";
 import { t, tn } from "../i18n";
-import { band, bandLabel, BUCKET_BANDS, isFlagged, scorePct } from "../render/band";
+import { band, bandLabel, BUCKET_BANDS, isFlagged } from "../render/band";
+import { formatScore } from "../render/score";
 import { windowReadout } from "../render/coverage";
-import { settings } from "../settings/settings";
+import { normalizeMarkStyle, settings } from "../settings/settings";
 import { createLogger } from "../log";
 
 const log = createLogger("orchestrator");
@@ -151,7 +153,7 @@ interface SettingsSnapshot {
   showHighlights: boolean;
   displayMode: "all" | "flagged";
   mergeShorts: boolean;
-  markStyle: "both" | "underline" | "tint";
+  markStyle: MarkStyle;
   analysisScope: "page" | "main";
 }
 
@@ -160,7 +162,7 @@ const DEFAULT_SNAPSHOT: SettingsSnapshot = {
   showHighlights: true,
   displayMode: "all",
   mergeShorts: true,
-  markStyle: "both",
+  markStyle: "quiet",
   analysisScope: "page",
 };
 
@@ -219,6 +221,15 @@ export function createOrchestrator(
   const badges: BadgeLayer = createBadgeLayer({ place: opts.placeBadge });
 
   let unitsById = new Map<string, Unit>();
+  /**
+   * Prose the walk found and left unread — under the evidence floor, with nobody of its
+   * voice to join — kept as the FIRST text node of each such stretch. A node, not a
+   * tally: a re-scan of the same subtree reports the same stretches again, and counting
+   * them twice would inflate the panel's "short" the longer a reader stayed on a feed.
+   * Entries leave when the node is taken into a unit (the reader opened a "see more" and
+   * it now has neighbours) or when the DOM lets it go (purgeDisconnected).
+   */
+  const shortTexts = new Set<Text>();
   /** One verdict per analyzed unit — the aggregate everything counts by, plus its windows. */
   let verdictsById = new Map<string, UnitVerdict>();
   let scoredIds = new Set<string>();
@@ -282,12 +293,13 @@ export function createOrchestrator(
           .filter(([id, v]) => isFlagged(v.result) && unitsById.has(id))
           .map(([id, { result: r }]) => ({
             id,
-            pct: scorePct(r),
+            score: r.score,
             band: band(r),
             snippet: unitsById.get(id)!.text.slice(0, 70),
             order: unitsById.get(id)!.order,
           }))
           .sort((a, b) => a.order - b.order),
+      counts: panelCounts,
       onJump: jumpTo,
       buildReport,
     },
@@ -296,6 +308,25 @@ export function createOrchestrator(
     // for once, so it gets to end the run.
     onSiteOff: opts.onSiteOff,
   });
+
+  /**
+   * The coverage line's numbers. "Read" is verdicts the model really gave, so an outage
+   * and a page of Chinese are both counted where they belong rather than passing for
+   * analysis; "short" is what the walk found and left alone (see shortTexts).
+   */
+  function panelCounts(): PanelCounts {
+    let read = 0;
+    let notEnglish = 0;
+    let unavailable = 0;
+    for (const v of verdictsById.values()) {
+      if (v.result.unsupported) notEnglish++;
+      else if (v.result.degraded) unavailable++;
+      else read++;
+    }
+    let pending = 0;
+    for (const id of unitsById.keys()) if (!verdictsById.has(id)) pending++;
+    return { read, short: shortTexts.size, notEnglish, pending, unavailable };
+  }
 
   /** Centre a unit in the viewport and pulse its chip (panel rows and the
    *  next/previous-flagged commands land the same way). */
@@ -380,7 +411,8 @@ export function createOrchestrator(
     lines.push("");
     // Every surface of the product says the number is an EXTENT of editing; the report
     // used to print it as "62% AI", which reads as a share of AI-written words. It now
-    // carries the plain percentage and the card footer's own sentence to read it by.
+    // carries the same 0–1 number the chips do and the card footer's own sentence to
+    // read it by.
     lines.push(t("reportEstimate"));
     lines.push("");
     if (flagged.length === 0) {
@@ -389,7 +421,7 @@ export function createOrchestrator(
       lines.push(`## ${t("reportFlaggedHeading", flagged.length)}`);
       lines.push("");
       flagged.forEach(({ unit, v, r }, i) => {
-        const pct = scorePct(r);
+        const score = formatScore(r.score);
         const dist = r.probs
           .map((p, i) => `${bandLabel(BUCKET_BANDS[i])} ${Math.round(p * 100)}%`)
           .join(" · ");
@@ -399,11 +431,11 @@ export function createOrchestrator(
         // report without the page in front of them needs the parts it was made from.
         const read = windowReadout(v);
         const windows = read
-          ? t("reportWindows", read.count, read.pcts.join(" · ")) +
+          ? t("reportWindows", read.count, read.scores.join(" · ")) +
             (v.unreadChars > 0 ? t("reportUnread") : "")
           : "";
         lines.push(
-          `${i + 1}. **${bandLabel(band(r))} · ${pct}%** ` +
+          `${i + 1}. **${bandLabel(band(r))} · ${score}** ` +
             `(${dist}; ${t("reportWords", unit.wordCount)}${windows})`,
         );
         lines.push(`   > ${snippet}${ellipsis}`);
@@ -493,6 +525,9 @@ export function createOrchestrator(
 
   /** Purge units whose DOM disappeared (SPA swaps, virtualized lists). */
   function purgeDisconnected(rescanQueue?: Set<Element>): void {
+    // Detached text nodes are held by nothing else here — a feed that scrolls for an hour
+    // would otherwise keep every short paragraph it ever showed.
+    for (const node of shortTexts) if (!node.isConnected) shortTexts.delete(node);
     for (const unit of [...unitsById.values()]) {
       const gone =
         !unit.container.isConnected ||
@@ -542,6 +577,9 @@ export function createOrchestrator(
     const options: CollectOptions = {
       claimFilter,
       mergeShorts,
+      onShortText: (nodes) => {
+        if (nodes[0]) shortTexts.add(nodes[0]);
+      },
       onShadowRoot: observers.observeRoot,
     };
     return opts.collect
@@ -555,7 +593,10 @@ export function createOrchestrator(
       if (unitsById.has(u.id)) continue;
       unitsById.set(u.id, u);
       for (const part of u.parts) {
-        for (const n of part.nodes) nodeOwner.set(n, u);
+        for (const n of part.nodes) {
+          nodeOwner.set(n, u);
+          shortTexts.delete(n); // it found neighbours after all — it is read now
+        }
       }
       observers.observeUnit(u);
     }
@@ -1290,7 +1331,7 @@ export function createOrchestrator(
         showHighlights,
         displayMode: mode,
         mergeShorts: merge,
-        markStyle: mark,
+        markStyle: normalizeMarkStyle(mark),
         analysisScope: scope,
       };
     } catch (e) {
@@ -1323,7 +1364,7 @@ export function createOrchestrator(
       unwatchMerge?.();
       unwatchMerge = settings.mergeShorts.watch(applyMergeShorts);
       unwatchMarkStyle?.();
-      unwatchMarkStyle = settings.markStyle.watch(setMarkStyle);
+      unwatchMarkStyle = settings.markStyle.watch((v) => setMarkStyle(normalizeMarkStyle(v)));
       unwatchScope?.();
       unwatchScope = settings.analysisScope.watch(applyScope);
     } catch (e) {
@@ -1389,6 +1430,7 @@ export function createOrchestrator(
     scoredIds = new Set();
     unitsById = new Map();
     verdictsById = new Map();
+    shortTexts.clear();
     nodeOwner = new WeakMap();
   }
 

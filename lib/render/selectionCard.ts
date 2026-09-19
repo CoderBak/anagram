@@ -14,8 +14,9 @@ import { isScoredWindow, readInWindows, unitVerdict } from "../capture/windows";
 import { requestScores, type ScoreReply } from "../messaging/client";
 import { SURFACE } from "../surface";
 import { messageLocale, t } from "../i18n";
-import { band, bandLabel, isNoVerdict, languageName, scorePct, type Band } from "./band";
-import { coverageNote, windowPcts, windowReadout } from "./coverage";
+import { band, bandLabel, isNoVerdict, languageName, type Band } from "./band";
+import { formatScore } from "./score";
+import { coverageNote, windowScores, windowReadout } from "./coverage";
 import { DIST_CSS, distributionHtml } from "./dist";
 import { countWords, MIN_UNIT_WORDS } from "../dom/text";
 import { isDarkPage } from "./theme";
@@ -252,7 +253,7 @@ export async function analyzeSelection(): Promise<void> {
     } else {
       const r = verdict.result;
       const b: Band = band(r);
-      const pct = scorePct(r);
+      const score = formatScore(r.score);
       const readout = isNoVerdict(b) ? null : windowReadout(verdict);
       // Everything selected, unless the selection outgrew the window cap or the language
       // gate refused part of it — then it is the words of the windows that were scored.
@@ -263,12 +264,12 @@ export async function analyzeSelection(): Promise<void> {
       card.innerHTML =
         closeBtn +
         `<div class="head"><span class="verdict band-${b}">${bandLabel(b)}</span>` +
-        `<span class="big" title="${t("cardScaleTitle")}">${isNoVerdict(b) ? "—" : pct + "%"}</span></div>` +
+        `<span class="big" title="${t("cardScaleTitle")}">${isNoVerdict(b) ? "—" : score}</span></div>` +
         (isNoVerdict(b) ? "" : distributionHtml(r, b)) +
         (b === "unsupported" ? row(t("cardDetectedLang"), `${languageName(r.lang)} · ${Math.round((r.lang_prob ?? 0) * 100)}%`) : "") +
         row(t("selWordsSelected"), String(words)) +
         (readout ? row(t("selWordsAnalyzed"), verdict.unreadChars > 0 ? t("selFirst", analyzed) : String(analyzed)) : "") +
-        (readout ? row(t("cardWindows", readout.count), windowPcts(readout), " wins") : "") +
+        (readout ? row(t("cardWindows", readout.count), windowScores(readout), " wins") : "") +
         (readout && readout.cutShort > 0 ? row(t("cardWindowsCut"), t("cardOfCount", readout.cutShort, readout.count)) : "") +
         (readout && readout.skipped > 0 ? row(t("cardWindowsSkipped"), t("cardOfCount", readout.skipped, readout.count)) : "") +
         `<div class="foot">${

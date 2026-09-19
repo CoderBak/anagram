@@ -26,6 +26,31 @@ export function normalizeServerUrl(raw: string): string | null {
   return url && isLoopbackUrl(url) ? url : null;
 }
 
+/**
+ * How analyzed text is marked in place — the same two words lib/render/highlight.ts
+ * draws, spelled out again here rather than imported: this module is loaded by the
+ * background worker, and an import of the renderer would drag its English messages into
+ * that bundle for a type that is erased at compile time anyway.
+ */
+export type MarkStyle = "quiet" | "always";
+
+/**
+ * The mark styles this profile may hold. "quiet" and "always" are what the extension
+ * offers now; "both", "underline" and "tint" were the three ways the old always-on marks
+ * could be drawn, and every one of them meant "mark every paragraph, all the time" —
+ * which is exactly "always".
+ */
+export type StoredMarkStyle = MarkStyle | "both" | "underline" | "tint";
+
+/** The stored value as the renderer understands it. Anything unrecognised — a profile
+ *  from a build that has not happened yet — reads as the default. */
+export function normalizeMarkStyle(stored: StoredMarkStyle | undefined | null): MarkStyle {
+  if (stored === "always" || stored === "both" || stored === "underline" || stored === "tint") {
+    return "always";
+  }
+  return "quiet";
+}
+
 export const settings = {
   // The local anagramd daemon that scores paragraphs (loopback only). There is no
   // other backend: when it does not answer, paragraphs are "Unavailable".
@@ -48,10 +73,13 @@ export const settings = {
   // Group sub-floor paragraphs with neighbors to reach the evidence floor (the
   // chip shows ×N). Off = strict per-paragraph mode; short paragraphs are skipped.
   mergeShorts: storage.defineItem<boolean>("local:mergeShorts", { fallback: true }),
-  // How analyzed text is marked in place. "both" = underline + light tint
-  // (default), or each alone. showHighlights remains the master on/off.
-  markStyle: storage.defineItem<"both" | "underline" | "tint">("local:markStyle", {
-    fallback: "both",
+  // How analyzed text is marked in place — see lib/render/highlight.ts. Old profiles
+  // hold one of the three styles this replaced; they are read through
+  // normalizeMarkStyle() rather than migrated, so a profile written by an older build
+  // still opens in this one (and the other way round). showHighlights stays the master
+  // on/off.
+  markStyle: storage.defineItem<StoredMarkStyle>("local:markStyle", {
+    fallback: "quiet",
   }),
   // What part of the page to analyze. "page" = everything except recognized
   // chrome (default); "main" = only the detected main-content region

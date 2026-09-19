@@ -167,6 +167,16 @@ export interface CollectOptions {
    */
   mergeShorts?: boolean;
   /**
+   * Prose the walk found and decided to leave unread: a stretch of short runs that stayed
+   * under the evidence floor with nobody of its own voice to join. Called with its text
+   * nodes as the assembler gives up on it, which is the only moment the answer exists —
+   * it is not a property of anything `collectUnits` returns, and deriving it afterwards
+   * would mean reading the page a second time. Not called in strict per-paragraph mode
+   * (`mergeShorts: false`), where a short run is dropped before anything has decided
+   * whether it was prose or a timestamp.
+   */
+  onShortText?: (nodes: Text[]) => void;
+  /**
    * Called once per open shadow root the walk descends into. The orchestrator
    * registers a MutationObserver on each: subtree observation of the document
    * never crosses a shadow boundary, so content appended inside a web component
@@ -204,7 +214,7 @@ export function collectUnits(
   const rects = createRectVisibleCache();
   const startEl = rootEl ? wholePost(rootEl) : document.body;
   if (!startEl) return [];
-  const asm = createAssembler(opts.mergeShorts ?? true, startEl, read, (nodes) => opts.claimFilter?.(nodes) !== "skip");
+  const asm = createAssembler(opts.mergeShorts ?? true, startEl, read, (nodes) => opts.claimFilter?.(nodes) !== "skip", opts.onShortText);
 
   // ---- run accumulation ------------------------------------------------------------
 
@@ -901,6 +911,8 @@ function createAssembler(
   read: (found: Found, claimed: boolean) => Run | null,
   /** Ask the claim filter for a whole would-be unit; true = its stale owners are gone. */
   retake: (nodes: Text[]) => boolean,
+  /** Short prose nobody could take (CollectOptions.onShortText). */
+  onShortText?: (nodes: Text[]) => void,
 ): Assembler {
   /** Emitted units with the walk index of their first run — scopes interleave, so
    *  units complete out of document order and are sorted once at the end. */
@@ -992,7 +1004,10 @@ function createAssembler(
       );
       if (home === "before") (f.prev as Run[]).push(...g);
       else if (home === "after") lead = g;
-      // else: below the evidence floor with nobody of its voice to join — dropped (by policy).
+      // else: below the evidence floor with nobody of its voice to join — dropped (by
+      // policy), and counted, because a reader deserves to know a page held text nobody
+      // judged rather than read "0 flagged" as "all clear".
+      else onShortText?.(g.flatMap((r) => r.nodes));
     }
     if (f.prev) out(f, f.prev);
     f.prev = null;
@@ -1040,7 +1055,10 @@ function createAssembler(
     close(f);
     if (f.scope === null) return;
     if (!f.partial && clearsFloor(f.prose) && fitsWindow(f.prose)) {
-      for (const runs of standingTogether(f.prose, (a, b) => together(f, a, b))) if (clearsFloor(runs)) release(runs);
+      for (const runs of standingTogether(f.prose, (a, b) => together(f, a, b))) {
+        if (clearsFloor(runs)) release(runs);
+        else onShortText?.(runs.flatMap((r) => r.nodes));
+      }
     } else {
       // A post that has just outgrown the window while a unit still owns ALL of what it was
       // (an answer streamed paragraph by paragraph does this once): its paragraphs are

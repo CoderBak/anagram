@@ -13,6 +13,7 @@ import {
   clearSiteOverride,
   setSiteOverride,
   effectiveRule,
+  normalizeMarkStyle,
   normalizeRuleHost,
   normalizeServerUrl,
   DEFAULT_SERVER_URL,
@@ -189,7 +190,12 @@ bindToggle(mergeShortsEl, settings.mergeShorts);
 if (PDF_TAB_SCRIPTS_RUN) bindToggle(autoOpenPdfsEl, settings.autoOpenPdfs);
 else autoOpenPdfsFieldEl.remove();
 bindSelect(displayModeEl, settings.displayMode);
-bindSelect(markStyleEl, settings.markStyle);
+// An old profile holds one of the three styles the quiet marks replaced; the control has
+// to show what that value means now rather than land on no option at all.
+bindSelect(markStyleEl, {
+  getValue: async () => normalizeMarkStyle(await settings.markStyle.getValue()),
+  setValue: (v) => settings.markStyle.setValue(v),
+});
 bindSelect(analysisScopeEl, settings.analysisScope);
 void renderSites();
 settings.siteOverrides.watch(() => void renderSites());

@@ -140,8 +140,8 @@ describe("t()", () => {
     withoutExtension();
     expect(t("panelTitleCount", 6)).toBe("Flagged paragraphs (6)");
     expect(t("cardOfCount", 2, 5)).toBe("2 of 5");
-    expect(t("panelItemAria", "AI-generated", 96, "Delving into…")).toBe(
-      "AI-generated, 96%: Delving into…",
+    expect(t("panelItemAria", "AI-generated", "0.96", "Delving into…")).toBe(
+      "AI-generated, 0.96: Delving into…",
     );
   });
 

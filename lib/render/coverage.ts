@@ -3,14 +3,14 @@
 // pass has nothing to add here; everything below is about the long ones.
 import { isScoredWindow, type UnitVerdict } from "../capture/windows";
 import { t } from "../i18n";
-import { scorePct } from "./band";
+import { formatScore } from "./score";
 
 export interface WindowReadout {
   /** Windows the text was read in (2 or more). */
   count: number;
-  /** Each window's own number ("41%"), in reading order; a window the language gate
+  /** Each window's own number (".41"), in reading order; a window the language gate
    *  refused shows its language code instead. */
-  pcts: string[];
+  scores: string[];
   /** Windows the language gate refused: not scored, not in the aggregate, not marked. */
   skipped: number;
   /** Windows the daemon still had to cut after the re-read in halves: part of their text
@@ -23,16 +23,16 @@ export function windowReadout(v: UnitVerdict): WindowReadout | null {
   if (v.windows.length < 2) return null;
   return {
     count: v.windows.length,
-    pcts: v.windows.map((w) => (isScoredWindow(w) ? `${scorePct(w.result)}%` : (w.result.lang ?? "n/a"))),
+    scores: v.windows.map((w) => (isScoredWindow(w) ? formatScore(w.result.score) : (w.result.lang ?? "n/a"))),
     skipped: v.windows.filter((w) => w.result.unsupported).length,
     cutShort: v.windows.filter((w) => isScoredWindow(w) && w.result.truncated).length,
   };
 }
 
-/** A card's "Scored in N windows" value: "41% · 72% · 18%". Up to eight numbers may wrap,
+/** A card's "Scored in N windows" value: ".41 · .72 · .18". Up to eight numbers may wrap,
  *  and the no-break space keeps each separator with the number in front of it. */
-export function windowPcts(read: WindowReadout): string {
-  return read.pcts.join("\u00a0· ");
+export function windowScores(read: WindowReadout): string {
+  return read.scores.join("\u00a0· ");
 }
 
 /**

@@ -27,7 +27,7 @@ const BAND_KEY: Record<Band, MessageKey> = {
   unsupported: "bandUnsupported",
 };
 
-/** Badge text for each band — the model's own vocabulary, never "98% certain". A
+/** Badge text for each band — the model's own vocabulary, never "98 % certain". A
  *  function, not a table: the language is the browser's and is read at paint time. */
 export function bandLabel(b: Band): string {
   return t(BAND_KEY[b]);
@@ -57,9 +57,4 @@ export function isFlaggedBand(b: Band): boolean {
 
 export function isFlagged(r: ScoreResult): boolean {
   return isFlaggedBand(band(r));
-}
-
-/** The chip number: extent of AI editing as a whole percentage. */
-export function scorePct(r: ScoreResult): number {
-  return Math.round(r.score * 100);
 }

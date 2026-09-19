@@ -33,9 +33,11 @@ import type { Unit } from "../types";
 import { MARK_ATTR } from "../types";
 import type { UnitVerdict } from "../capture/windows";
 import { messageLocale, t } from "../i18n";
-import { band, bandLabel, isNoVerdict, languageName, scorePct, type Band } from "./band";
+import { band, bandLabel, isNoVerdict, languageName, type Band } from "./band";
+import { formatScore } from "./score";
+import { clearActiveUnit, setActiveUnit } from "./highlight";
 import { countWords, hasLetters, unitParagraphs } from "../dom/text";
-import { coverageNote, windowPcts, windowReadout } from "./coverage";
+import { coverageNote, windowScores, windowReadout } from "./coverage";
 import { distributionHtml } from "./dist";
 import { BADGE_CSS } from "./badge.css";
 import { isDarkContext } from "./theme";
@@ -316,7 +318,7 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
     if (!host || !host.isConnected) {
       host?.remove();
       if (options.place) {
-        const own = buildHost();
+        const own = buildHost(unit.id);
         if (!options.place(unit, own)) return null;
         hosts.set(unit.id, own);
         host = own;
@@ -326,7 +328,7 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
       }
       const placement = insertionPoint(unit);
       if (!placement) return null; // unit detached mid-flight — purge will collect it
-      host = buildHost();
+      host = buildHost(unit.id);
       hosts.set(unit.id, host);
       if (!placement.clip) {
         leaveGroup(unit.id);
@@ -356,11 +358,11 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
     const root = host.shadowRoot!;
     const pill = root.querySelector(".pill") as HTMLElement;
     const num = root.querySelector(".num") as HTMLElement;
-    const pct = scorePct(result);
+    const score = formatScore(result.score);
 
     pill.className = `pill band-${b}`;
-    // The bare number ("38%") — what it means is in the card and the intro, not on
-    // every line. A merged unit says so up front ("38% ×3"): one verdict covering N
+    // The bare number (".38") — what it means is in the card and the intro, not on
+    // every line. A merged unit says so up front (".38 ×3"): one verdict covering N
     // short paragraphs must never masquerade as a single-paragraph judgment. How many
     // paragraphs that is is the unit's to say (unitParagraphs): in a PDF the parts are the
     // pieces a page break or a column cut ONE paragraph into.
@@ -368,9 +370,9 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
     const xn = paragraphs > 1 ? ` ×${paragraphs}` : "";
     // Unsupported language → the detected code ("zh"), never a number.
     num.textContent =
-      (b === "unknown" ? "?" : b === "unsupported" ? (result.lang ?? "n/a") : `${pct}%`) + xn;
+      (b === "unknown" ? "?" : b === "unsupported" ? (result.lang ?? "n/a") : score) + xn;
 
-    renderCard(root.querySelector(".card") as HTMLElement, unit, verdict, b, pct);
+    renderCard(root.querySelector(".card") as HTMLElement, unit, verdict, b, score);
   }
 
   function renderPending(unit: Unit): void {
@@ -386,7 +388,7 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
       `<div class="foot" style="margin:0;padding:0;border:0">${t("cardPending")}</div>`;
   }
 
-  function buildHost(): HTMLElement {
+  function buildHost(id: string): HTMLElement {
     const host = document.createElement("span");
     host.setAttribute(MARK_ATTR, "host");
     host.setAttribute("aria-hidden", "true");
@@ -408,13 +410,21 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
         showCard(host);
         card.classList.add("open"); // pinned
         _openCardHost = host;
+        setActiveUnit(id);
       }
     });
-    // Hover shows the card; leaving hides it unless it is pinned.
-    host.addEventListener("mouseenter", () => showCard(host));
-    host.addEventListener("mouseleave", () => {
-      if (_openCardHost !== host) hideCard(host);
+    // Hover shows the card and lights up everything this unit was read from; leaving
+    // hides the card and puts the marks back unless the card is pinned.
+    host.addEventListener("mouseenter", () => {
+      showCard(host);
+      setActiveUnit(id);
     });
+    host.addEventListener("mouseleave", () => {
+      if (_openCardHost === host) return;
+      hideCard(host);
+      clearActiveUnit(id);
+    });
+    _hostUnit.set(host, id);
     const shadow = host.attachShadow({ mode: "open" });
     shadow.adoptedStyleSheets = [badgeSheet()];
 
@@ -445,7 +455,7 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
     unit: Unit,
     verdict: UnitVerdict,
     b: Band,
-    pct: number,
+    score: string,
   ): void {
     const result = verdict.result;
     const row = (k: string, v: string, cls = "") =>
@@ -464,7 +474,7 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
     const last = verdict.windows[verdict.windows.length - 1];
     const coverageRows = isNoVerdict(b)
       ? ""
-      : (read ? row(t("cardWindows", read.count), windowPcts(read), " wins") : "") +
+      : (read ? row(t("cardWindows", read.count), windowScores(read), " wins") : "") +
         (verdict.unreadChars > 0 && last
           ? row(t("cardScored"), t("cardFirstWords", countWords(unit.text.slice(0, last.end))))
           : "") +
@@ -484,7 +494,7 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
           : coverageNote(verdict, "paragraph") + t("cardFootEstimate");
     card.innerHTML =
       `<div class="head"><span class="verdict band-${b}">${bandLabel(b)}</span>` +
-      `<span class="big" title="${t("cardScaleTitle")}">${isNoVerdict(b) ? "—" : pct + "%"}</span></div>` +
+      `<span class="big" title="${t("cardScaleTitle")}">${isNoVerdict(b) ? "—" : score}</span></div>` +
       dist +
       langRow +
       partsRow +
@@ -511,6 +521,7 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
     if (!host) return;
     if (host === _openCardHost) _openCardHost = null;
     hideCard(host);
+    clearActiveUnit(id);
     host.remove();
     hosts.delete(id);
     leaveGroup(id);
@@ -531,12 +542,20 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
     pill.classList.remove("pg-flash"); // restart if already flashing
     void (pill as HTMLElement).offsetWidth;
     pill.classList.add("pg-flash");
-    setTimeout(() => pill.classList.remove("pg-flash"), 1600);
+    // A jump landed here: show what was read, the way a hover would, for as long as the
+    // pulse lasts. Whoever pressed the key has no pointer on the chip to hold it open.
+    setActiveUnit(id);
+    setTimeout(() => {
+      pill.classList.remove("pg-flash");
+      const host = hosts.get(id);
+      if (host && host !== _openCardHost && !host.matches(":hover")) clearActiveUnit(id);
+    }, 1600);
   }
 
   function teardownAll(): void {
-    for (const [, host] of hosts) {
+    for (const [id, host] of hosts) {
       hideCard(host);
+      clearActiveUnit(id);
       host.remove();
     }
     hosts.clear();
@@ -579,13 +598,19 @@ function copyText(text: string, button: HTMLElement): void {
 // One pinned card at a time; tapping anywhere else (or Escape) closes it.
 let _openCardHost: HTMLElement | null = null;
 let _outsideCloserInstalled = false;
+/** Which unit a chip host speaks for — closing a pinned card has only the host in hand,
+ *  and the marks it lit up are the unit's. */
+const _hostUnit = new WeakMap<HTMLElement, string>();
 
 function closeOpenCard(): void {
   const host = _openCardHost;
   if (!host) return;
   _openCardHost = null;
   cardOf(host)?.classList.remove("open");
-  if (!host.matches(":hover")) hideCard(host); // still hovered → stays as a hover card
+  if (host.matches(":hover")) return; // still hovered → stays as a hover card, marks and all
+  hideCard(host);
+  const id = _hostUnit.get(host);
+  if (id) clearActiveUnit(id);
 }
 
 function installOutsideCloser(): void {
