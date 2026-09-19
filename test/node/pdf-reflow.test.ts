@@ -802,9 +802,16 @@ describe("reflowPdf — weight", () => {
       return page(p + 1, items);
     });
 
-    const started = performance.now();
-    const blocks = reflowPdf(pages);
-    const ms = performance.now() - started;
+    // The best of three: one run measured 1.2 s on a machine busy with other suites, where
+    // the same code takes 30 ms alone. A rule gone quadratic is slow EVERY time, so the
+    // fastest run still catches it, and a neighbour's load no longer fails the suite.
+    let ms = Infinity;
+    let blocks = reflowPdf(pages);
+    for (let run = 0; run < 3; run++) {
+      const started = performance.now();
+      blocks = reflowPdf(pages);
+      ms = Math.min(ms, performance.now() - started);
+    }
     expect(blocks.length).toBeGreaterThan(30);
     expect(ms).toBeLessThan(500);
   });
