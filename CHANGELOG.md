@@ -9,6 +9,13 @@ Notable changes to Anagram, newest first. The format follows
 
 ### Added
 
+- **"Analyze this page" from the popup, with nothing granted.** On a page Anagram is off
+  for — by a rule, or because no access was ever granted for its site, which is every
+  page on a fresh install — the popup's button reads **Analyze this page** instead of
+  "Rescan page" and runs the page once: no setting written, no permission asked. Opening
+  the popup is what gives the extension `activeTab`, so the popup asks the worker, which
+  injects the content script into that one tab and says what the context-menu entry has
+  always said. A new user can see what Anagram does before granting it a single site.
 - **A PDF's short paragraphs are read, under the same rule a web page's are.** On
   a page a paragraph below the fifty-word evidence floor is not thrown away:
   short neighbours of one voice are read together in window-sized groups (the

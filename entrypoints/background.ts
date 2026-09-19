@@ -334,6 +334,14 @@ export default defineBackground(() => {
       };
       if (!msg) return;
 
+      // The popup's "Analyze this page": the context-menu entry by another door. Only an
+      // extension page of our own may name a tab — a content script's sender IS a tab,
+      // and it has no business starting a run in somebody else's.
+      if (msg.action === ACTIONS.ANALYZE_TAB) {
+        if (!sender.tab && typeof msg.tabId === "number") analyzePage(msg.tabId);
+        return;
+      }
+
       // Open this PDF the Anagram way, IN PLACE of the PDF. The tab and the URL come off
       // the sender for a content script, and from the popup when it is the popup asking.
       if (msg.action === ACTIONS.OPEN_PDF_READER) {

@@ -193,6 +193,16 @@ async function refreshSite(host: string): Promise<void> {
   siteHostEl.title = host;
 }
 
+/**
+ * Anagram is off for this page, so the button under the status offers the one thing that
+ * still makes sense there: analyze it once. On a running page it stays "Rescan page".
+ */
+let pageIsOff = false;
+function setPageOff(off: boolean): void {
+  pageIsOff = off;
+  rescanEl.textContent = off ? t("popupAnalyzeOnce") : t("popupRescan");
+}
+
 async function refreshStatus(tabId: number | undefined): Promise<void> {
   if (tabId == null) {
     setStatusText(t("popupNoTab"));
@@ -203,6 +213,7 @@ async function refreshStatus(tabId: number | undefined): Promise<void> {
   // says and this line agrees with.
   if (sitePat && !granted) {
     setStatusText(t("popupOff"));
+    setPageOff(true);
     return;
   }
   try {
@@ -213,6 +224,7 @@ async function refreshStatus(tabId: number | undefined): Promise<void> {
     if (state.pdf) readPdfEl.hidden = false;
     if (state.enabled) showCounts(state);
     else setStatusText(t("popupOff"));
+    setPageOff(!state.enabled);
   } catch {
     setStatusText(t("popupUnsupportedPage"));
   }
@@ -306,6 +318,14 @@ async function init(): Promise<void> {
   });
 
   rescanEl.addEventListener("click", () => {
+    if (pageIsOff && tab?.id != null) {
+      // A page Anagram is off for — by a rule, or because nothing was ever granted for its
+      // site — is analyzed ONCE, with no setting written and no permission asked: opening
+      // this popup gave the extension `activeTab`, which is all the worker needs.
+      void browser.runtime.sendMessage({ action: ACTIONS.ANALYZE_TAB, tabId: tab.id });
+      window.close(); // the answer is on the page, not in here
+      return;
+    }
     sendToTab(tab?.id, { action: ACTIONS.RESCAN });
     setStatusText(t("popupRescanning"));
     setTimeout(() => void refreshStatus(tab?.id), 1500);

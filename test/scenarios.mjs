@@ -2012,6 +2012,36 @@ async function sweep(page, steps = 6) {
     await sw.evaluate(() => new Promise((res) => chrome.storage.local.set({ enabled: true }, res)));
   }
 
+  // A37d: the same run asked for from the POPUP's button. The popup cannot reach a page
+  // that holds no content script (a site nothing was granted for), so it asks the worker,
+  // which injects with `activeTab` and then says what the menu entry says. Sent here from
+  // an extension page of ours, exactly as the popup sends it.
+  {
+    PAGES["/oneshot-popup.html"] = CONTROLS_PAGE("ONESHOTPOPUP");
+    await sw.evaluate(() => new Promise((res) => chrome.storage.local.set({ enabled: false }, res)));
+    const p = await context.newPage();
+    await p.goto(server.url("/oneshot-popup.html"), { waitUntil: "load" });
+    await p.waitForTimeout(2500);
+    const chips = () => p.evaluate((sel) => [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill")).length, BADGE_SEL);
+    const offAtFirst = await chips();
+    const tabId = await sw.evaluate(async (url) => (await chrome.tabs.query({ url }))[0]?.id ?? null, server.url("/oneshot-popup.html"));
+    const ours = await context.newPage();
+    await ours.goto(`chrome-extension://${new URL(sw.url()).host}/popup.html`, { waitUntil: "load" });
+    await ours.evaluate((id) => chrome.runtime.sendMessage({ action: "analyzeTab", tabId: id }), tabId);
+    await ours.close();
+    await p.bringToFront();
+    const analyzed = await threeChips(p);
+    const stored = await sw.evaluate(() => new Promise((res) => chrome.storage.local.get(["enabled", "siteOverrides"], res)));
+    record(
+      "ui",
+      "analyze this page from the popup's button: the worker starts one run in the named tab, nothing written",
+      offAtFirst === 0 && tabId !== null && analyzed && stored.enabled === false && Object.keys(stored.siteOverrides ?? {}).length === 0,
+      JSON.stringify({ offAtFirst, tabId, analyzed, stored }),
+    );
+    await p.close();
+    await sw.evaluate(() => new Promise((res) => chrome.storage.local.set({ enabled: true }, res)));
+  }
+
   // A37c: the same run on a site whose rule ALREADY says "off" — which is the likeliest
   // page to ask for one. An unrelated rule written while it runs must leave it alone, and
   // the panel's own "Turn off on <host>" must end it although it stores the value that is

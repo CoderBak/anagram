@@ -544,6 +544,10 @@
     "message": "Rescan page",
     "description": "Popup button: drop everything and scan again."
   },
+  "popupAnalyzeOnce": {
+    "message": "Analyze this page",
+    "description": "Popup button on a page Anagram is off for: analyze it once, writing no setting and asking for no permission."
+  },
   "popupHintToggle": {
     "message": "$1+$2+$3 toggles the overlay",
     "description": "Popup key hint. $1-$3 are <kbd> elements from the page (Alt, Shift, P)."

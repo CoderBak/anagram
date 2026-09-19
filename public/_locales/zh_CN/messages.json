@@ -398,6 +398,9 @@
   "popupRescan": {
     "message": "重新扫描"
   },
+  "popupAnalyzeOnce": {
+    "message": "分析本页"
+  },
   "popupHintToggle": {
     "message": "$1+$2+$3 显示或隐藏标记"
   },

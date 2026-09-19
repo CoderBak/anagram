@@ -23,6 +23,10 @@ export const ACTIONS = {
   ANALYZE_SELECTION: "analyzeSelection",
   /** SW (context menu) → content: analyze this page once, whatever the settings say. */
   ANALYZE_PAGE: "analyzePage",
+  /** popup → SW: the same thing, asked from the popup's button. It goes through the worker
+   *  because the page may hold no content script yet: opening the popup gave the extension
+   *  `activeTab`, and only the worker can inject with it (lib/access/worker.ts). */
+  ANALYZE_TAB: "analyzeTab",
   /** SW (context menu) → content (top frame): describe this page for the developer and
    *  put the description on the clipboard. Answered on a page Anagram is off for too. */
   COPY_DIAGNOSTICS: "copyDiagnostics",
@@ -234,6 +238,12 @@ export interface OpenPdfReaderMessage {
   tabId?: number;
 }
 
+/** popup → SW: analyze the page in `tabId` once — see ACTIONS.ANALYZE_TAB. */
+export interface AnalyzeTabMessage {
+  action: typeof ACTIONS.ANALYZE_TAB;
+  tabId: number;
+}
+
 /**
  * content (a PDF tab) → SW: everything the automatic route is decided from except the
  * setting and the pass, which only the worker holds. The tab and the frame come off the
@@ -328,4 +338,5 @@ export type BackgroundMessage =
   | GetBackendStatusMessage
   | GetTopHostMessage
   | OpenPdfReaderMessage
+  | AnalyzeTabMessage
   | ClearCacheMessage;
