@@ -337,6 +337,12 @@ browser.runtime.onMessage.addListener(
         live?.forgetCached();
         return;
 
+      case ACTIONS.ANALYZE_PAGE:
+        // The reader keeps its orchestrator even where a site rule stopped it, and rescan()
+        // starts a stopped one — so this one call covers "analyze it here" and "again".
+        live?.rescan();
+        return;
+
       case ACTIONS.TEARDOWN:
         live?.stop();
         return;

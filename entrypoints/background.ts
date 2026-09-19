@@ -45,6 +45,13 @@ export default defineBackground(() => {
         title: "Analyze selection with Anagram",
         contexts: ["selection"],
       });
+      // The way into a page Anagram is switched off for, without switching it on: this
+      // runs once in the tab and writes nothing.
+      browser.contextMenus.create({
+        id: "anagram-analyze-page",
+        title: "Analyze this page with Anagram",
+        contexts: ["page"],
+      });
       browser.contextMenus.create({
         id: "anagram-open-pdf",
         title: "Open PDF with Anagram",
@@ -64,6 +71,17 @@ export default defineBackground(() => {
     }
   });
 
+  /**
+   * "Analyze this page with Anagram": every frame of the tab is asked to analyze itself
+   * once. The message goes to the whole tab, not one frame, because a page is its frames
+   * too — each of them applies the usual size gate — and the content script decides what
+   * "once" means for it: a running page re-scans, a switched-off one starts without any
+   * setting or site rule being written.
+   */
+  const analyzePage = (tabId: number): void => {
+    void browser.tabs.sendMessage(tabId, { action: ACTIONS.ANALYZE_PAGE }).catch(() => undefined);
+  };
+
   browser.contextMenus.onClicked.addListener((info, tab) => {
     if (info.menuItemId === "anagram-open-pdf") {
       // A linked PDF opens BESIDE the page it was linked from: the reader replaces a tab
@@ -74,6 +92,10 @@ export default defineBackground(() => {
           index: tab ? tab.index + 1 : undefined,
         });
       }
+      return;
+    }
+    if (info.menuItemId === "anagram-analyze-page") {
+      if (tab?.id != null) analyzePage(tab.id);
       return;
     }
     if (info.menuItemId !== "anagram-analyze-selection" || tab?.id == null) return;

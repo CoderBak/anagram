@@ -21,6 +21,8 @@ export const ACTIONS = {
   GET_TOP_HOST: "getTopHost",
   /** SW (context menu) → content: score the current selection, show a card. */
   ANALYZE_SELECTION: "analyzeSelection",
+  /** SW (context menu) → content: analyze this page once, whatever the settings say. */
+  ANALYZE_PAGE: "analyzePage",
   /** popup/options/content → SW: is the daemon up (optionally force a fresh probe). */
   GET_BACKEND_STATUS: "getBackendStatus",
   /** popup → content: re-check the daemon now and re-queue "Unavailable" units. */
@@ -164,6 +166,15 @@ export interface AnalyzeSelectionMessage {
   action: typeof ACTIONS.ANALYZE_SELECTION;
 }
 
+/**
+ * SW → content (every frame of a tab): analyze this page once. A page Anagram is off for
+ * starts scoring for as long as it stays open — no setting and no site rule is written —
+ * and a page it is already on simply re-scans.
+ */
+export interface AnalyzePageMessage {
+  action: typeof ACTIONS.ANALYZE_PAGE;
+}
+
 /** popup → content: the user pressed Retry — re-check the daemon, re-queue Unavailable units. */
 export interface RetryBackendMessage {
   action: typeof ACTIONS.RETRY_BACKEND;
@@ -210,6 +221,7 @@ export type ControlMessage =
   | NextFlaggedMessage
   | PrevFlaggedMessage
   | AnalyzeSelectionMessage
+  | AnalyzePageMessage
   | RetryBackendMessage
   | CacheClearedMessage;
 

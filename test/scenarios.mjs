@@ -1850,6 +1850,47 @@ async function sweep(page, steps = 6) {
     );
     await p.close();
   }
+
+  // A35b: "Analyze this page with Anagram". With Anagram off everywhere the page stays
+  // bare; the menu's action analyzes it once, and because nothing is written, a reload is
+  // bare again and the settings are exactly as they were.
+  {
+    PAGES["/oneshot.html"] = CONTROLS_PAGE("ONESHOT");
+    await sw.evaluate(() => new Promise((res) => chrome.storage.local.set({ enabled: false }, res)));
+    const p = await context.newPage();
+    await p.goto(server.url("/oneshot.html"), { waitUntil: "load" });
+    await p.waitForTimeout(2500);
+    const chips = () => p.evaluate((sel) => [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill")).length, BADGE_SEL);
+    const offAtFirst = await chips();
+    // Exactly what the contextMenus.onClicked listener does for the page entry.
+    await p.bringToFront();
+    await sw.evaluate(async () => {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      try {
+        await chrome.tabs.sendMessage(tab.id, { action: "analyzePage" });
+      } catch {
+        /* the content script answers nothing to this one */
+      }
+    });
+    const analyzed = await threeChips(p);
+    await p.reload({ waitUntil: "load" });
+    await p.waitForTimeout(2500);
+    const afterReload = await chips();
+    const stored = await sw.evaluate(() => new Promise((res) => chrome.storage.local.get(["enabled", "siteOverrides"], res)));
+    record(
+      "ui",
+      "analyze this page: one run on a switched-off site, gone after a reload, nothing written",
+      offAtFirst === 0 &&
+        analyzed &&
+        afterReload === 0 &&
+        stored.enabled === false &&
+        Object.keys(stored.siteOverrides ?? {}).length === 0,
+      JSON.stringify({ offAtFirst, analyzed, afterReload, stored }),
+    );
+    await p.close();
+    // Phase B reads live sites with the shipped default — put it back.
+    await sw.evaluate(() => new Promise((res) => chrome.storage.local.set({ enabled: true }, res)));
+  }
 }
 
 // =====================================================================================

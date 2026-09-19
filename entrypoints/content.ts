@@ -5,7 +5,7 @@
 // frame size so ad slots and tracking pixels never pay for a walk.
 import { defineContentScript, browser } from "#imports";
 import { createOrchestrator } from "../lib/capture/orchestrator";
-import { enabledForSite, settings } from "../lib/settings/settings";
+import { effectiveRule, enabledForSite, settings } from "../lib/settings/settings";
 import {
   detectDocsPage,
   readingViewUrl,
@@ -83,6 +83,13 @@ export default defineContentScript({
     const effectiveHost = isTop ? location.hostname : await resolveFrameHost();
 
     let enabled = await enabledForSite(effectiveHost);
+    /**
+     * The user asked for THIS page from the context menu although the settings say no.
+     * The run belongs to the page, not to the settings: it lasts until the tab navigates
+     * away (a new document runs a new content script) and nothing is stored, so the site
+     * is off again next time. Only an explicit "off" for this very site ends it early.
+     */
+    let onceForPage = false;
 
     const frameGateOk = (): boolean =>
       isTop ||
@@ -116,9 +123,20 @@ export default defineContentScript({
       let v: boolean;
       try {
         v = await enabledForSite(effectiveHost);
+        if (!v && onceForPage) {
+          // A one-shot run was asked for on this page, so a change elsewhere — another
+          // site's rule, the global default — must not silently stop it. Only a rule that
+          // turns THIS site off does, and then the one-shot is over for good.
+          const rule = await effectiveRule(effectiveHost);
+          if (rule?.mode !== "off") return;
+          onceForPage = false;
+        }
       } catch {
         return; // storage gone (extension context invalidated) — keep current state
       }
+      // The settings now ask for what the page is already doing, so the run stands on its
+      // own and follows them from here on.
+      if (v) onceForPage = false;
       if (v === enabled) return;
       enabled = v;
       if (v) startWhenGated();
@@ -214,7 +232,21 @@ export default defineContentScript({
               startWhenGated(); // arms the resize retry for collapsed lazy frames
             } else if (!msg.value && enabled) {
               enabled = false;
+              onceForPage = false; // the user turning this site off outranks the menu
               orchestrator.stop();
+            }
+            return;
+
+          case ACTIONS.ANALYZE_PAGE:
+            // "Analyze this page with Anagram". A page already being analyzed treats it as
+            // a Rescan; a page Anagram is off for starts here and now — the frame gate
+            // still decides for a subframe, and nothing is written to storage.
+            if (enabled) {
+              if (frameGateOk()) orchestrator.rescan();
+            } else {
+              enabled = true;
+              onceForPage = true;
+              startWhenGated();
             }
             return;
 
@@ -269,6 +301,7 @@ export default defineContentScript({
 
           case ACTIONS.TEARDOWN:
             enabled = false;
+            onceForPage = false;
             orchestrator.stop();
             return;
 
