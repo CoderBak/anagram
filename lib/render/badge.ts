@@ -70,48 +70,131 @@ export function createBadgeLayer(): BadgeLayer {
   // Dark-context verdict per container (invalidated via resetTheme on Rescan).
   let darkCache = new WeakMap<Element, boolean>();
   let visible = true;
-  /** One IntersectionObserver per clipping box, rooted AT the box: it reports the moment
-   *  a chip inside it stops being in its visible band. See watchInsideClip. */
-  const clipWatchers = new WeakMap<Element, IntersectionObserver>();
-  const liveWatchers = new Set<IntersectionObserver>();
+  /** Everything the layer knows about one box that clips (or is about to clip) its own
+   *  text, keyed by the box. See settle() for the rule the group exists to keep. */
+  const groups = new WeakMap<Element, ClipGroup>();
+  const liveGroups = new Set<ClipGroup>();
+  /** The group a unit's chip belongs to, so removing a chip frees the box's slot. */
+  const groupOfUnit = new Map<string, ClipGroup>();
 
   /**
-   * A chip left inside a box that clips its own text is in the right place only while the
-   * layout it was measured in holds — and a page does not stand still. On a Goodreads book
-   * page the reviews grow after the chips land, as their images and web fonts arrive: a box
-   * that showed the end of a review at 141 px of 160 px showed it at 228 px seconds later,
-   * with the chip below the fold. An IntersectionObserver ROOTED AT THE BOX reports that
-   * without polling, and the chip is then moved after the box — where it would have gone
-   * at render time. One observer per box, one observation per chip: after the move there
-   * is nothing left to watch.
+   * The chips of ONE box that clips its own text, and the one slot after it.
+   *
+   * A box like Goodreads' `div.TruncatedContent__text` or Steam's
+   * `div.apphub_CardContentMain` shows a few lines of a review and keeps the rest in the
+   * DOM. Every unit of such a review ends out of sight, so inserting each chip after the
+   * box put ALL of them there: a live survey of one book page found 91 chips of distinct
+   * units piled at 16 anchors, twelve in a row at the worst of them, reading 12%/85%/57%
+   * one after another. So a box has exactly ONE slot after it, held by the FIRST unit in
+   * document order whose own anchor is out of sight — the visible lines belong to it, or to
+   * a unit before it that still shows its own chip. Every later unit keeps its chip at its
+   * own anchor, out of sight while the box is collapsed and exactly right the moment the
+   * reader opens it.
    */
-  function watchInsideClip(host: HTMLElement, box: Element): void {
-    let io = clipWatchers.get(box);
-    if (!io) {
-      io = new IntersectionObserver(
-        (entries, self) => {
-          for (const entry of entries) {
-            const chip = entry.target as HTMLElement;
-            if (entry.isIntersecting) continue;
-            // A chip hidden by the toggle has no box at all — that is not a reflow.
-            if (chip.classList.contains("pg-hidden")) continue;
-            self.unobserve(chip);
-            if (!chip.isConnected || !box.isConnected || !box.contains(chip)) continue;
-            // The reader may have opened the post in the meantime; then nothing clips.
-            try {
-              if (!clipsOwnText(box, getComputedStyle(box))) continue;
-            } catch {
-              continue;
-            }
-            box.after(chip);
-          }
-        },
-        { root: box, threshold: 0 },
-      );
-      clipWatchers.set(box, io);
-      liveWatchers.add(io);
+  interface ClipGroup {
+    box: Element;
+    /** unit id → the chip and the node it closes, for every chip anchored in this box. */
+    chips: Map<string, { host: HTMLElement; at: ChildNode }>;
+    /** The unit holding the slot after the box, or null while nothing is out of sight. */
+    parked: string | null;
+    /** Rooted AT the box: it reports a chip crossing the edge of the visible band. */
+    io: IntersectionObserver;
+    /** The box's own height: "see more" and "see less", and a late image or web font. */
+    ro: ResizeObserver;
+  }
+
+  function groupFor(box: Element): ClipGroup {
+    let g = groups.get(box);
+    if (g) return g;
+    const wake = () => settle(g!);
+    g = {
+      box,
+      chips: new Map(),
+      parked: null,
+      io: new IntersectionObserver(wake, { root: box, threshold: 0 }),
+      ro: new ResizeObserver(wake),
+    };
+    g.ro.observe(box);
+    groups.set(box, g);
+    liveGroups.add(g);
+    return g;
+  }
+
+  function retire(g: ClipGroup): void {
+    g.io.disconnect();
+    g.ro.disconnect();
+    for (const id of g.chips.keys()) groupOfUnit.delete(id);
+    g.chips.clear();
+    g.parked = null;
+    groups.delete(g.box);
+    liveGroups.delete(g);
+  }
+
+  /** Forget one chip: its box's slot must never point at a unit that is gone. */
+  function leaveGroup(id: string): void {
+    const g = groupOfUnit.get(id);
+    if (!g) return;
+    const chip = g.chips.get(id);
+    if (chip) g.io.unobserve(chip.host);
+    g.chips.delete(id);
+    groupOfUnit.delete(id);
+    if (g.parked === id) g.parked = null; // the next hidden unit takes the slot when it is next placed
+    if (g.chips.size === 0) retire(g);
+  }
+
+  /**
+   * Put every chip of one box where the rule says it goes.
+   *
+   * A page does not stand still: on a Goodreads book page the reviews grow after the chips
+   * land, as their images and web fonts arrive (a box that showed the end of a review at
+   * 141 px of 160 px showed it at 228 px seconds later), and a reader opens and closes a
+   * post whenever they like. The box's own IntersectionObserver reports a chip crossing the
+   * edge of the visible band and its ResizeObserver reports the box growing or shrinking;
+   * either way the answer is the same — work out from ONE layout who is out of sight, then
+   * move only the chips that are not where they belong. Reading first and writing second
+   * keeps a move from changing the answer for the next chip, and moving nothing when
+   * nothing changed is what keeps a standing page still: a move reflows the box, which
+   * fires these very observers again.
+   */
+  function settle(g: ClipGroup): void {
+    if (!g.box.isConnected) {
+      retire(g);
+      return;
     }
-    io.observe(host);
+    let clipping = false;
+    try {
+      clipping = clipsOwnText(g.box, getComputedStyle(g.box));
+    } catch {
+      clipping = false; // detached mid-flight: nothing is hidden that we could know about
+    }
+    const band = g.box.getBoundingClientRect().bottom - 1;
+    // READ — who has gone out of sight, and which of them comes first in the document.
+    const gone = new Set<string>();
+    let first: { id: string; at: ChildNode } | null = null;
+    for (const [id, chip] of g.chips) {
+      if (!chip.at.isConnected || !g.box.contains(chip.at)) {
+        gone.add(id);
+        continue;
+      }
+      if (!clipping) continue;
+      const end = endRectOf(chip.at);
+      // A node with no box of its own (a collapsed whitespace node, a hidden subtree) says
+      // nothing about where it is drawn; leave such a chip at its anchor.
+      if (!end || (end.width === 0 && end.height === 0) || end.top < band) continue;
+      if (!first || precedes(chip.at, first.at)) first = { id, at: chip.at };
+    }
+    // WRITE — the slot first, then everyone's own anchor.
+    g.parked = first ? first.id : null;
+    for (const [id, chip] of g.chips) {
+      if (gone.has(id)) continue;
+      const target: ChildNode = id === g.parked ? g.box : chip.at;
+      if (chip.host.previousSibling !== target) target.after(chip.host);
+      // A parked chip is no longer a descendant of the root, so the observer has nothing to
+      // say about it; the box's ResizeObserver is what brings it home again.
+      if (id === g.parked) g.io.unobserve(chip.host);
+      else g.io.observe(chip.host);
+    }
+    for (const id of gone) leaveGroup(id);
   }
 
   /** Find or (re)build the chip host for a unit, inserted after its last run. */
@@ -122,9 +205,20 @@ export function createBadgeLayer(): BadgeLayer {
       const placement = insertionPoint(unit);
       if (!placement) return null; // unit detached mid-flight — purge will collect it
       host = buildHost();
-      placement.at.after(host);
       hosts.set(unit.id, host);
-      if (placement.inside) watchInsideClip(host, placement.inside);
+      if (!placement.clip) {
+        leaveGroup(unit.id);
+        placement.at.after(host);
+      } else {
+        // Inside a box that clips its own text the chip is not placed on its own: the box
+        // settles all of its chips together, so that only one of them can sit after it.
+        leaveGroup(unit.id);
+        const g = groupFor(placement.clip.box);
+        g.chips.set(unit.id, { host, at: placement.at });
+        groupOfUnit.set(unit.id, g);
+        placement.at.after(host);
+        settle(g);
+      }
     }
     host.classList.toggle("pg-hidden", !visible);
     host.classList.toggle("pg-dark", darkFor(unit.container, darkCache));
@@ -293,6 +387,7 @@ export function createBadgeLayer(): BadgeLayer {
     hideCard(host);
     host.remove();
     hosts.delete(id);
+    leaveGroup(id);
   }
 
   function setVisible(v: boolean): void {
@@ -319,8 +414,8 @@ export function createBadgeLayer(): BadgeLayer {
       host.remove();
     }
     hosts.clear();
-    for (const io of liveWatchers) io.disconnect();
-    liveWatchers.clear();
+    for (const g of [...liveGroups]) retire(g);
+    groupOfUnit.clear();
     _openCardHost = null;
   }
 
@@ -501,16 +596,14 @@ function insertionPoint(unit: Unit): Placement | null {
     n = p;
   }
   const at = lastDecoratedSibling(n as ChildNode);
-  const clip = clippingBoxOf(at);
-  if (!clip) return { at, inside: null };
-  return clip.visible ? { at, inside: clip.box } : { at: clip.box, inside: null };
+  return { at, clip: clippingBoxOf(at) };
 }
 
-/** Where a chip goes, and — when it stays inside a box that clips its own text — which
- *  box that is, so the layer can watch it (the page may reflow under the chip). */
+/** The node a chip closes and — when that node is inside a box that clips its own text, or
+ *  is about to — which box that is, so the layer settles the box's chips together. */
 interface Placement {
   at: ChildNode;
-  inside: Element | null;
+  clip: { box: Element } | null;
 }
 
 /** The container a chip must never leave: it belongs to the post it judges. */
@@ -528,10 +621,8 @@ const CLIP_BOX_LEVELS = 6;
  * because that word is inside the clipped box where nobody sees it.
  *
  * So: the nearest ancestor that clips its own text is found (at most CLIP_BOX_LEVELS up),
- * and the chip goes after it when the line it would close is out of sight — under the
- * visible lines, and on LinkedIn beside the "…more" control. A unit whose own anchor is
- * still visible keeps its chip where it is, so several units in one box do not all pile
- * up underneath it.
+ * and that box then decides where its chips go — at most one of them after it, the rest at
+ * their own anchors (see the ClipGroup above).
  *
  * The one thing the chip may not do is leave its POST, so the box has to lie inside the
  * post the anchor belongs to. Structure INSIDE the clipped text — a quotation, a list, a
@@ -539,7 +630,7 @@ const CLIP_BOX_LEVELS = 6;
  * left the chips of quoted passages in Goodreads reviews inside the truncated box, out
  * of sight (measured: 2 of 150 chips on one book page).
  */
-function clippingBoxOf(at: ChildNode): { box: Element; visible: boolean } | null {
+function clippingBoxOf(at: ChildNode): { box: Element } | null {
   const start = at.nodeType === Node.ELEMENT_NODE ? (at as Element) : at.parentElement;
   if (!start) return null;
   let box: Element | null = null;
@@ -556,11 +647,25 @@ function clippingBoxOf(at: ChildNode): { box: Element; visible: boolean } | null
   } catch {
     return null;
   }
-  const anchor = endRectOf(at);
   // No box of its own (a collapsed whitespace node): leave the chip where it is.
+  const anchor = endRectOf(at);
   if (!anchor || (anchor.width === 0 && anchor.height === 0)) return null;
-  const rect = box.getBoundingClientRect();
-  return { box, visible: anchor.top < rect.bottom - 1 };
+  return { box };
+}
+
+/**
+ * True when the line `a` closes comes before the line `b` closes — which of two hidden
+ * units owns the one slot after their box is a question about reading order, not about the
+ * order the daemon answered in. Anchors nest: a Goodreads review is one `<span>` of
+ * BR-separated paragraphs, so the last paragraph's anchor is the span ITSELF and holds
+ * every earlier anchor inside it. A container starts before its contents and ENDS after
+ * them, and it is the end that the chip closes.
+ */
+function precedes(a: Node, b: Node): boolean {
+  const rel = a.compareDocumentPosition(b);
+  if (rel & Node.DOCUMENT_POSITION_CONTAINED_BY) return false; // b sits inside a, so a ends later
+  if (rel & Node.DOCUMENT_POSITION_CONTAINS) return true; // a sits inside b, so a ends first
+  return (rel & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
 }
 
 /**

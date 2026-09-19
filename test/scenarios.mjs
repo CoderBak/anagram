@@ -372,7 +372,8 @@ async function sweep(page, steps = 6) {
 
   // A7c: a post the site clips to three lines is scored, and its chip is inserted AFTER
   // the clipping box — under the lines the reader sees, not inside the box where it would
-  // be painted out of sight. Opening the post leaves that chip where it is.
+  // be painted out of sight. Opening the post hides nothing any more, so the chip goes back
+  // to the end of its own text, which is now on the screen.
   {
     const p = await context.newPage();
     await p.goto(server.url("/clipped.html"), { waitUntil: "load" });
@@ -401,16 +402,19 @@ async function sweep(page, steps = 6) {
     const after = await p.evaluate((sel) => {
       const hosts = document.querySelectorAll(`#post ${sel}`);
       const host = hosts[0];
+      const box = document.getElementById("box");
+      const hr = host?.getBoundingClientRect();
       return {
         chips: hosts.length,
-        stillAfterBox: host?.previousElementSibling?.id === "box",
-        expanded: getComputedStyle(document.getElementById("box")).maxHeight === "none",
+        backAtItsText: !!host && box.contains(host),
+        drawn: !!hr && hr.height > 0 && hr.bottom <= box.getBoundingClientRect().bottom + 1,
+        expanded: getComputedStyle(box).maxHeight === "none",
       };
     }, BADGE_SEL);
     const ok =
       !!placed && !placed.insideBox && placed.afterBox && placed.onScreen && !placed.clippedAway &&
-      after.chips === 1 && after.stillAfterBox && after.expanded;
-    record("ui", "a post clipped to three lines is scored and its chip sits under the visible text, before and after 'see more'", ok, JSON.stringify({ placed, after }));
+      after.chips === 1 && after.backAtItsText && after.drawn && after.expanded;
+    record("ui", "a post clipped to three lines is scored and its chip sits under the visible text, then returns to its own last line when the post is opened", ok, JSON.stringify({ placed, after }));
     await p.close();
   }
 
@@ -1898,6 +1902,61 @@ async function sweep(page, steps = 6) {
         JSON.stringify(after.pills) === JSON.stringify(before.pills) &&
         timesAsked() === askedBefore,
       JSON.stringify({ settled, before, after, askedBefore, askedAfter: timesAsked(), markersSent: sent.includes(">"), onPage }),
+    );
+    await p.close();
+  }
+
+  // ---- A39: chips inside a box the site clips to a few lines ---------------------------
+  // The 30-page session survey (test/dynamics.mjs) found the chips themselves stable and
+  // their PLACEMENT wrong in exactly one shape of box: the "see more" review. Every unit of
+  // a clamped review ends out of sight, so every chip was inserted after the box — 91 of
+  // them at 16 anchors on one Goodreads page, twelve in a row at the worst. These two run
+  // the whole extension over that markup, the second over a box that only starts clipping
+  // once a late image arrives (which used to leave the chip out of sight for good).
+
+  // A39a: a long review clipped to 96 px, opened and closed again.
+  {
+    PAGES["/clipped-reviews.html"] = readFileSync(join(__dirname, "fixtures", "clipped-reviews.html"), "utf8");
+    const p = await context.newPage();
+    await p.goto(server.url("/clipped-reviews.html"), { waitUntil: "load" });
+    const read = () =>
+      p.evaluate((sel) => {
+        const box = document.getElementById("nadia-box");
+        const card = box.closest("article");
+        const all = [...card.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".card .head"));
+        const num = (h) => h.shadowRoot.querySelector(".num").textContent;
+        const br = box.getBoundingClientRect();
+        return {
+          after: all.filter((h) => !box.contains(h)).map(num),
+          within: all.filter((h) => box.contains(h)).map(num),
+          // Nothing the reader can see may be drawn with no box at all, and nothing inside
+          // the collapsed review may be drawn over the lines that ARE on screen.
+          undrawn: all.filter((h) => !box.contains(h) && h.getBoundingClientRect().height === 0).length,
+          parkedBelow: all.filter((h) => !box.contains(h)).every((h) => h.getBoundingClientRect().top >= br.top),
+        };
+      }, BADGE_SEL);
+    await p
+      .waitForFunction((sel) => document.querySelectorAll(`#nadia-box ${sel}, article ${sel}`).length >= 6, BADGE_SEL, { timeout: 15000 })
+      .catch(() => {});
+    await p.waitForTimeout(1500);
+    const collapsed = await read();
+    await p.click("#nadia-more");
+    await p.waitForTimeout(1200);
+    const opened = await read();
+    await p.click("#nadia-more");
+    await p.waitForTimeout(1200);
+    const closed = await read();
+    const total = (r) => r.after.length + r.within.length;
+    const ok =
+      collapsed.after.length === 1 && collapsed.within.length === 5 && collapsed.undrawn === 0 && collapsed.parkedBelow &&
+      opened.after.length === 0 && opened.within.length === 6 &&
+      closed.after.length === 1 && closed.after[0] === collapsed.after[0] && closed.within.length === 5 &&
+      total(collapsed) === 6 && total(opened) === 6 && total(closed) === 6;
+    record(
+      "ui",
+      "a review clipped to a few lines: ONE chip under it, the other five at their own paragraphs, all six back in place when it is opened",
+      ok,
+      JSON.stringify({ collapsed, opened, closed }),
     );
     await p.close();
   }

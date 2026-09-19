@@ -283,16 +283,19 @@ Text on the web is messy; the capture engine is built for it:
   Goodreads reviews). That text is one author's post and you can open it, so it is
   scored — you get the verdict at a glance instead of expanding every card. What
   moves is the chip: when a box clips its own text (a line clamp, or a fixed height
-  with more than twice as much text inside), the chip of a paragraph whose last
-  line is out of sight is inserted **after that box**, under the lines you can see,
-  instead of inside it where nobody would find it. Quotations and lists inside the
-  clipped text are part of the post, not a boundary, so their chips come out too —
-  what a chip never leaves is the post itself. Paragraphs still on screen keep their
-  chip in place, and it **follows the text if the page reflows under it** (a review
-  grows as its images arrive), so a chip cannot end up below the fold minutes later.
-  Opening the post leaves every chip where it is. Scroll containers, carousels,
-  `<details>` and a page-level `overflow:hidden` under an open modal are not
-  clipping, and nothing moves for them.
+  with more than twice as much text inside), **one** chip is inserted after that
+  box, under the lines you can see — the chip of the first paragraph whose last line
+  is out of sight. Every later paragraph of the same post keeps its chip at its own
+  last word, which is where you find it the moment you open the post; a long clamped
+  review would otherwise hand you a row of a dozen numbers under one box and no way
+  to tell which paragraph each belongs to. Quotations and lists inside the clipped
+  text are part of the post, not a boundary, so that one chip still comes out — what
+  a chip never leaves is the post itself. Paragraphs still on screen keep their chip
+  in place, and it **follows the text if the page reflows under it** (a review grows
+  as its images arrive), so a chip cannot end up below the fold minutes later.
+  Opening the post puts every chip back at its own paragraph; closing it parks the
+  first hidden one again. Scroll containers, carousels, `<details>` and a page-level
+  `overflow:hidden` under an open modal are not clipping, and nothing moves for them.
 - **Living pages.** Infinite scroll, SPA navigations (pushState included, heard
   instantly through the Navigation API — no history patching, no polling), tab
   panels, accordions, `<details>`, **modal `<dialog>`s (top layer)**, edited and

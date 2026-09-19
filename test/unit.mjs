@@ -1735,6 +1735,7 @@ const EXPECTED = {
   "article-list-table": [6, 5],
   "bilibili-comments": [2, 2],
   "chat-transcript": [2, 1],
+  "clipped-reviews": [8, 1],
   "comments-li": [2, 1],
   "discourse-thread": [2, 2],
   "front-page-cards": [2, 1],
@@ -1861,6 +1862,147 @@ for (const file of fixtureFiles) {
     name: "mailing-list: windows of the quoted unit still resolve to ranges over the quoted lines",
     ok: !!marked && r.located.every((rs) => rs.length > 0) && marked.includes("version control history gives us") && rebuilt === r.quoted,
     note: JSON.stringify(r.located && r.located.map((rs) => rs.map((x) => x.slice(0, 30)))),
+  });
+}
+
+// ---- PLACEMENT: one chip after a clipping box, and a chip that keeps being watched --------
+// Two defects the 30-page session survey (test/dynamics.mjs) measured on live pages, both
+// about where a chip goes when the site clips a post to a few lines:
+//
+//   · EVERY unit of a clamped review was inserted after the box, because every unit's own
+//     anchor is out of sight in it — Goodreads piled 91 chips of distinct units at 16
+//     anchors (twelve in a row at the worst, reading 12%/85%/57%/…), Steam 52, Amazon 4.
+//     At most ONE chip may sit after such a box: the first unit in document order whose own
+//     anchor is out of sight. Every later unit keeps its chip at its OWN anchor, where the
+//     reader finds it the moment the box is opened.
+//   · a hidden chip got a single chance to be rescued: the watcher stopped watching before
+//     it re-checked, so one moment in which the box was not clipping — the reader opening
+//     the post, a reflow between two frames — left the chip out of sight for good. Steam
+//     left 25 chips there, Goodreads 6, the Guardian's live blog 3.
+//
+// Both need a turn of the event loop, so this runs in a page of its own. The markup is the
+// fixture the survey's own findings are written into (test/fixtures/clipped-reviews.html).
+{
+  const cr = await browser.newPage();
+  await cr.goto(pathToFileURL(join(FIXTURES, "clipped-reviews.html")).href);
+  await cr.addScriptTag({ path: BUNDLE });
+  const r = await cr.evaluate(async () => {
+    const HOST = '[data-anagram="host"]';
+    const tick = () => new Promise((done) => setTimeout(done, 350));
+    const box = (id) => document.getElementById(id);
+    const card = (id) => box(id).closest("article");
+    const numOf = (h) => h.shadowRoot.querySelector(".num").textContent;
+    const after = (id) => [...card(id).querySelectorAll(HOST)].filter((h) => !box(id).contains(h)).map(numOf);
+    const within = (id) => [...box(id).querySelectorAll(HOST)].map(numOf);
+    const chips = () => document.querySelectorAll(HOST).length;
+    /** The last line of a unit — the line the chip closes. */
+    const endRect = (u) => {
+      const part = u.parts[u.parts.length - 1];
+      const range = document.createRange();
+      range.selectNodeContents(part.nodes[part.nodes.length - 1]);
+      const rects = range.getClientRects();
+      return rects[rects.length - 1] ?? null;
+    };
+
+    const units = PW.collectUnits(document.body);
+    // A distinct percentage per unit, so every chip says which unit it belongs to.
+    const pct = new Map();
+    const paint = (layer, list) => {
+      for (const u of list) {
+        const i = units.indexOf(u);
+        const score = (i + 1) / 20;
+        pct.set(u.id, `${Math.round(score * 100)}%`);
+        const result = { id: u.id, bucket: 0, probs: [1 - score, score, 0, 0], score };
+        layer.render(u, PW.unitVerdict(u.id, u.text.length, [{ start: 0, end: u.text.length, result }]));
+      }
+    };
+    /** Which unit SHOULD hold the one slot after a box: the first one in document order
+     *  whose last line is below the visible band. Read off the geometry, so the check does
+     *  not depend on the font this machine renders the fixture in. */
+    const wanted = (id) => {
+      const bottom = box(id).getBoundingClientRect().bottom - 1;
+      for (const u of units) {
+        if (!box(id).contains(u.parts[0].nodes[0])) continue;
+        const end = endRect(u);
+        if (end && end.top >= bottom) return pct.get(u.id);
+      }
+      return null;
+    };
+
+    const layer = (window.PW_LAYER = PW.createBadgeLayer());
+    paint(layer, units);
+    await tick();
+    const collapsed = { after: after("nadia-box"), within: within("nadia-box"), want: wanted("nadia-box"), chips: chips() };
+    const guards = { tomas: after("tomas-box"), tomasIn: within("tomas-box"), priya: after("priya-box"), priyaIn: within("priya-box") };
+
+    // The reader opens the review: every chip goes back to its own anchor, where its own
+    // paragraph now ends, and every one of them has a box on the screen.
+    document.getElementById("nadia-more").click();
+    await tick();
+    const opened = {
+      after: after("nadia-box"),
+      within: within("nadia-box"),
+      chips: chips(),
+      invisible: [...box("nadia-box").querySelectorAll(HOST)].filter((h) => h.getBoundingClientRect().height === 0).length,
+    };
+
+    // …and closes it again: the first hidden chip parks a SECOND time (the old watcher gave
+    // a chip one chance and then let it go).
+    document.getElementById("nadia-more").click();
+    await tick();
+    const closed = { after: after("nadia-box"), within: within("nadia-box"), want: wanted("nadia-box"), chips: chips() };
+
+    // A page that stands still moves nothing: moving a chip changes the layout, which is
+    // what the box's own observers report, so a rule that is not stable would loop here.
+    let moves = 0;
+    const mo = new MutationObserver((records) => {
+      for (const rec of records) {
+        for (const n of [...rec.addedNodes, ...rec.removedNodes]) {
+          if (n.nodeType === 1 && n.matches(HOST)) moves++;
+        }
+      }
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
+    await new Promise((done) => setTimeout(done, 900));
+    mo.disconnect();
+
+    // The same page, chipped in REVERSE order — verdicts land in the order the daemon
+    // answers, not in the order the page is written — still parks the same unit.
+    layer.teardownAll();
+    const later = PW.createBadgeLayer();
+    paint(later, [...units].reverse());
+    await tick();
+    const reversed = { after: after("nadia-box"), want: wanted("nadia-box"), chips: chips() };
+    later.teardownAll();
+    return { collapsed, guards, opened, closed, moves, reversed, units: units.length };
+  });
+  await cr.close();
+  results.push({
+    name: "a review the site clips: ONE chip after the box — the first unit whose own last line is out of sight — and the rest at their own anchors",
+    ok: r.collapsed.after.length === 1 && r.collapsed.want !== null && r.collapsed.after[0] === r.collapsed.want &&
+      r.collapsed.within.length === 5 && r.collapsed.chips === r.units,
+    note: JSON.stringify(r.collapsed),
+  });
+  results.push({
+    name: "…the one-unit boxes beside it behave exactly as before: one chip each, after the box",
+    ok: r.guards.tomas.length === 1 && r.guards.tomasIn.length === 0 && r.guards.priya.length === 1 && r.guards.priyaIn.length === 0,
+    note: JSON.stringify(r.guards),
+  });
+  results.push({
+    name: "opening the review brings every chip back to its own paragraph, all of them drawn, and no second chip appears",
+    ok: r.opened.after.length === 0 && r.opened.within.length === 6 && r.opened.invisible === 0 && r.opened.chips === r.units,
+    note: JSON.stringify(r.opened),
+  });
+  results.push({
+    name: "closing it again parks the first hidden chip a second time (a chip is watched for as long as it is in the box)",
+    ok: r.closed.after.length === 1 && r.closed.after[0] === r.closed.want && r.closed.within.length === 5 && r.closed.chips === r.units,
+    note: JSON.stringify(r.closed),
+  });
+  results.push({ name: "a page standing still moves no chip at all", ok: r.moves === 0, note: `${r.moves} host insertions/removals in 900 ms` });
+  results.push({
+    name: "the same review chipped in the order the daemon answers, not the order it is written, parks the same unit",
+    ok: r.reversed.after.length === 1 && r.reversed.after[0] === r.reversed.want && r.reversed.chips === r.units,
+    note: JSON.stringify(r.reversed),
   });
 }
 

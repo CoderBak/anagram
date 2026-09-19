@@ -259,6 +259,17 @@ Notable changes to Anagram, newest first. The format follows
   was outranked by the one that set it, along with the ball's own colour fade and
   its sliding label.
 
+- Only ONE chip is left under a post the site clips to a few lines. Every
+  paragraph of such a post ends out of sight, so every one of their chips was
+  inserted after the box: a 30-page session survey found 91 chips of different
+  paragraphs piled at 16 anchors on one Goodreads book page — twelve in a row at
+  the worst of them, reading 12%/85%/57%/23%/78%/55% with nothing to say which
+  paragraph was which — 52 on a Steam review page and 4 on an Amazon product
+  page. The box now has exactly one slot, held by the first paragraph in reading
+  order whose own last line is out of sight, and every later paragraph keeps its
+  chip at its own last word: out of sight while the post is collapsed, and
+  exactly where it belongs the moment the post is opened. Opening the post brings
+  the parked chip home too, and closing it parks the first hidden one again.
 - Firefox: the idle prefetch lane never ran (a detached `requestIdleCallback` call throws in
   Gecko), so paragraphs below the fold were scored only when scrolled to — it is called on
   `window` now. The manifest's minimum Firefox is 140, the first version in which the chips

@@ -1,0 +1,71 @@
+<!doctype html>
+<!--
+  Review cards whose text the site CLIPS to a few lines, synthetic text.
+
+  Measured by the 30-page session survey (test/dynamics.mjs, 2026-09): on one Goodreads
+  book page 91 chips of DISTINCT units stood piled after 16 anchors — every unit of a long
+  review whose own last line falls below the visible band of `div.TruncatedContent__text`
+  was inserted after that one box, twelve chips in a row at the worst anchor, reading
+  12%/85%/57%/23%/78%/55% one after another. Steam's `div.apphub_CardContentMain` did the
+  same 52 times, Amazon's `div.a-expander-collapsed-height` 4 times.
+
+  The rule now: at most ONE chip sits after a box that clips its own text — the chip of the
+  FIRST unit in document order whose own anchor is out of sight — and every later unit of
+  that box keeps its chip at its OWN anchor, out of sight while the box is collapsed and
+  exactly right the moment the reader opens it (lib/render/badge.ts).
+
+  The class names and the shape of the cards are the ones the survey recorded on those
+  pages; the review text is written for the fixture, and the buttons do here what the
+  sites' own scripts do — drop the height cap and put it back.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: clipped review cards</title>
+<style>
+  body { max-width: 620px; margin: 20px auto; font: 14px/1.5 system-ui, sans-serif; }
+  article { border-bottom: 1px solid #ddd; padding: 12px 0; }
+  .lockup { font-size: 12px; color: #666; }
+  /* Goodreads: the whole review in the DOM, ninety-odd pixels of it on screen */
+  .TruncatedContent__text { max-height: 96px; overflow: hidden; }
+  .TruncatedContent__text--expanded { max-height: none; }
+  /* Steam: the same idea, another class */
+  .apphub_CardContentMain { max-height: 72px; overflow: hidden; }
+  button.more { font: inherit; color: #00635d; background: none; border: 0; padding: 0; }
+</style></head>
+<body>
+<main>
+
+  <!-- 1 · a long review, six paragraphs, 96 px of it on screen: six units in one clipping box -->
+  <article data-voice="nadia">
+    <div class="lockup" data-chrome><a href="#nadia">Nadia Feldman</a> · 412 reviews · 3 days ago</div>
+    <div class="TruncatedContent">
+      <div class="TruncatedContent__text" id="nadia-box" data-expect="unit" data-parts="1+1+1+1+1+1"><span class="Formatted">I finished this one on a night train somewhere north of Lyon and spent the rest of the journey arguing with it in my head, which is the highest compliment I know how to pay a novel. The voice is the whole book, and it talks you into trusting it inside ten pages: the easy jokes about the weather, the way it notices what people do with their hands, the small confessions that cost the narrator nothing at all. Then it spends three hundred more pages showing you exactly how little that trust was ever worth, and I did not mind a single page of it, which is either a compliment to the writing or an indictment of me.<br><br>The middle third is where most readers seem to give up, and having now read four different friends' complaints about it I understand why. Nothing happens for eighty pages except weather, meals, the bus into town on a Thursday, and a slowly growing sense that the narrator is lying about the summer of the fire. That is the part I would defend hardest if anybody asked me to defend it. The book is teaching you how to read its ending, and it cannot do that while anything louder is going on in the room, so it empties the room first and waits for you to notice the quiet.<br><br>What the jacket copy calls a mystery is nothing of the kind, and anybody who comes to it for the fire will leave disappointed by the answer, which arrives in a subordinate clause on page two hundred and sixty and is never mentioned again by anyone. The book is not interested in what happened. It is interested in the thirty years of ordinary Tuesdays that a person builds on top of what happened, and in how much of a life can be spent not saying one sentence out loud to the people who would most like to hear it.<br><br>I keep coming back to the sister, who has perhaps forty lines in the whole novel and is the only person in it who tells the truth without being asked twice. Her scene in the hospital car park is the best three pages here, and it works precisely because the narrator does not understand what he is being told, so the reader is left to do the understanding alone and in a hurry. I have read it four times now and it has not worn out, which is more than I can say for the celebrated opening.<br><br>The prose does have a tic, and once you have seen it you cannot stop seeing it: every chapter ends on a short declarative sentence meant to land like a door closing in another room. Sometimes it does land. By the fourth or fifth time it reads like a writer reaching for an effect the paragraph above had already earned without any help at all, and a good editor would have taken half of them out and left the rest to do twice the work.<br><br>What I cannot forgive is the last chapter, which explains itself twice over as though the author had lost faith in everybody who had come that far with him. Cut the final six pages and this is a book I would press on strangers in bookshops for the next decade. As it stands I will still be thinking about it next winter, arguing with it on some other train in the dark, and that is more than I can say for anything else I have read this year.</span></div>
+      <button type="button" class="more" id="nadia-more" aria-expanded="false" data-chrome
+              onclick="document.getElementById('nadia-box').classList.toggle('TruncatedContent__text--expanded');this.setAttribute('aria-expanded', this.getAttribute('aria-expanded') === 'false' ? 'true' : 'false')">Show more</button>
+    </div>
+  </article>
+
+  <!-- 2 · a short review in the same kind of box: ONE unit, and nothing about it changes -->
+  <article data-voice="tomas">
+    <div class="lockup" data-chrome><a href="#tomas">Tomás Iglesias</a> · 58 reviews · 1 week ago</div>
+    <div class="TruncatedContent">
+      <div class="TruncatedContent__text" id="tomas-box" style="max-height:36px" data-expect="unit" data-parts="1">
+        <span class="Formatted">Read it in two sittings on a rainy weekend and liked it more than I expected to, mostly for the sentences. The plot is a coat rack and everybody in it says roughly the same clever thing in a slightly different order, but the paragraphs about the harbour in November are worth the whole book and I have been quoting them at people ever since.</span>
+      </div>
+      <button type="button" class="more" id="tomas-more" aria-expanded="false" data-chrome
+              onclick="document.getElementById('tomas-box').style.maxHeight = 'none';this.setAttribute('aria-expanded', 'true')">Show more</button>
+    </div>
+  </article>
+
+  <!-- 3 · the same shape on a game page, under another class name: one two-part unit -->
+  <article data-voice="priya">
+    <div class="lockup" data-chrome><a href="#priya">priya_writes</a> · 1,204 hrs on record</div>
+    <div class="apphub_CardContentMain" id="priya-box" data-expect="unit" data-parts="2">
+      <div class="apphub_CardTextContent">Six hundred hours in and I still cannot tell a new player what this game is about without sounding like somebody describing a dream. You dig a hole, you find a reason to dig a deeper one, and somewhere along the way the hole becomes a house and the house becomes the only place you want to be on a Tuesday evening.</div>
+      <div class="apphub_CardTextContent">The honest warning is that the first two hours are terrible and nobody will tell you why they are terrible. Nothing explains itself, the interface hides its best half behind a key you have to be told about, and every friend who bounced off it bounced in exactly that window. Push through one evening and it never asks that of you again.</div>
+    </div>
+    <a class="more" href="#priya" data-chrome>Read more</a>
+  </article>
+
+</main>
+</body></html>
