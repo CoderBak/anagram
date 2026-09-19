@@ -214,6 +214,27 @@ Notable changes to Anagram, newest first. The format follows
   site Anagram was turned off on. It now asks the extension's worker, which
   knows the tab's page.
 
+### Tests
+
+- The pure text machinery is checked against properties rather than examples. A
+  seeded generator (no new dependency) builds words, CJK, emoji, invisibles,
+  non-breaking spaces, LaTeX residue, curly quotes, en-dashed figure ranges,
+  blank lines and unbroken 300-character tokens, and a few hundred cases per
+  property assert what the code documents: the canonical scoring text is a fixed
+  point, never grows beyond what NFKC alone expands it to, carries no edge or
+  double whitespace, drops every invisible and folds soft hyphens, non-breaking
+  spaces and curly quotes to one form; a window plan is consecutive,
+  non-overlapping, covers the read span exactly, stays inside the budget and the
+  minimum, honours the eight-window cap and is deterministic; and the scheduler,
+  driven by seeded programs of enqueues, upgrades, pause/resume, epoch bumps and
+  completions, never has a unit in flight twice, sends a unit once per epoch,
+  serves higher lanes first, drains to zero with a single idle signal and never
+  renders a verdict from a superseded epoch. A failing case prints its seed.
+- One known defect is pinned rather than papered over: removing an un-rendered
+  LaTeX span can weld two quote characters into a digraph that only a second
+  canonicalization pass folds, so the canonical form of `'$\alpha$'` is not yet
+  a fixed point.
+
 ## [0.3.2] — 2026-09-18
 
 ### Fixed
