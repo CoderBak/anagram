@@ -245,10 +245,11 @@ PYEOF
 # our own port on 127.0.0.1). The Python probe runs under the same scrubbed environment as the
 # daemon, with PYTHONDONTWRITEBYTECODE so an import cannot even leave a .pyc behind.
 DOCTOR_FAILED=0
+DOCTOR_WARNED=0
 chk() {
   case "$1" in
     ok)   printf '%sok%s    %-11s %s\n' "$C_G" "$C_0" "$2" "$3" ;;
-    warn) printf '%swarn%s  %-11s %s\n' "$C_Y" "$C_0" "$2" "$3" ;;
+    warn) printf '%swarn%s  %-11s %s\n' "$C_Y" "$C_0" "$2" "$3"; DOCTOR_WARNED=$((DOCTOR_WARNED + 1)) ;;
     *)    printf '%sFAIL%s  %-11s %s\n' "$C_R" "$C_0" "$2" "$3"; DOCTOR_FAILED=$((DOCTOR_FAILED + 1)) ;;
   esac
 }
@@ -439,7 +440,13 @@ cmd_doctor() {
   doctor_daemon
   printf '\n'
   if [ "$DOCTOR_FAILED" -eq 0 ]; then
-    say "nothing wrong found"
+    if [ "$DOCTOR_WARNED" -eq 1 ]; then
+      say "nothing broken — the warn line above is worth a look"
+    elif [ "$DOCTOR_WARNED" -gt 1 ]; then
+      say "nothing broken — the $DOCTOR_WARNED warn lines above are worth a look"
+    else
+      say "nothing wrong found"
+    fi
     return 0
   fi
   printf '%s%d check(s) FAILED%s — the lines above say what to run.\n' "$C_R" "$DOCTOR_FAILED" "$C_0"
