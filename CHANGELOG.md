@@ -270,7 +270,7 @@ Notable changes to Anagram, newest first. The format follows
   publishes only after the same suites as every push have passed on Linux, Windows and macOS, and
   the Firefox build in a real Firefox. CI's `push` trigger is held to branches so that a tag does
   not run the matrix twice. (Day-to-day CI on pushes is switched off in the repository settings
-  until the public release; the gate is unaffected by that.)
+  until the public release — switch it back on before the first tag.)
 - Every bundle now carries only the English it can actually show, and the content
   script is **13 kB smaller** for it (197 → 184 kB raw, 67 → 63 kB gzipped); the
   background worker is **18 kB smaller** (74 → 55 kB raw), and the shared page
