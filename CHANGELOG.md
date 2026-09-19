@@ -278,6 +278,16 @@ Notable changes to Anagram, newest first. The format follows
   fold for good (25 chips on one Steam page, 6 on Goodreads, 3 on a live blog).
   A box that caps its own height is now watched from the start, whether or not
   it is hiding anything yet.
+- A chip is placed by what the reader can see, not by whether the box around it
+  looks like a "see more" post. Placement borrowed the rule that decides whether
+  a clamped post is worth scoring at all, which insists on twice as much text as
+  box; a Steam review card 663 px tall holding 771 px of review is nothing like
+  that, and the 108 px it cut off still held whole paragraphs and the chips that
+  closed them — 25 chips out of sight on one page. The placement layer now asks
+  only whether a box keeps text of its own below its bottom edge, and each chip's
+  own last line decides whether that chip is one of the hidden ones. Scoring is
+  unchanged, and so is everything a reader can see: a page-tall box, a scroll
+  container and a box that trims a line still move nothing.
 - Firefox: the idle prefetch lane never ran (a detached `requestIdleCallback` call throws in
   Gecko), so paragraphs below the fold were scored only when scrolled to — it is called on
   `window` now. The manifest's minimum Firefox is 140, the first version in which the chips

@@ -34,7 +34,6 @@ import { MARK_ATTR } from "../types";
 import type { UnitVerdict } from "../capture/windows";
 import { band, BAND_LABEL, isNoVerdict, languageName, scorePct, type Band } from "./band";
 import { countWords, hasLetters } from "../dom/text";
-import { clipsOwnText } from "../dom/style";
 import { coverageNote, windowPcts, windowReadout } from "./coverage";
 import { distributionHtml } from "./dist";
 import { BADGE_CSS } from "./badge.css";
@@ -169,7 +168,7 @@ export function createBadgeLayer(): BadgeLayer {
     }
     let clipping = false;
     try {
-      clipping = clipsOwnText(g.box, getComputedStyle(g.box));
+      clipping = hidesOwnText(g.box, getComputedStyle(g.box));
     } catch {
       clipping = false; // detached mid-flight: nothing is hidden that we could know about
     }
@@ -626,13 +625,13 @@ const CLIP_BOX_LEVELS = 6;
  * and the reader can open it — but the chip must not be inserted after its last word,
  * because that word is inside the clipped box where nobody sees it.
  *
- * So: the nearest ancestor that clips its own text is found (at most CLIP_BOX_LEVELS up),
- * and that box then decides where its chips go — at most one of them after it, the rest at
- * their own anchors (see the ClipGroup above). A box that merely CAPS its own height is
- * found too, although it hides nothing yet: Goodreads' review boxes are not clipping when
- * the chips land, because the cover images and the web font arrive afterwards and push the
- * text past the cap, and a chip nobody is watching is a chip that stays out of sight for
- * good (the survey left 25 of them on one Steam page).
+ * So: the nearest ancestor that hides text of its own is found (at most CLIP_BOX_LEVELS
+ * up), and that box then decides where its chips go — at most one of them after it, the
+ * rest at their own anchors (see the ClipGroup above). A box that merely CAPS its own
+ * height is found too, although it hides nothing yet: Goodreads' review boxes are not
+ * clipping when the chips land, because the cover images and the web font arrive afterwards
+ * and push the text past the cap, and a chip nobody is watching is a chip that stays out of
+ * sight for good.
  *
  * The one thing the chip may not do is leave its POST, so the box has to lie inside the
  * post the anchor belongs to. Structure INSIDE the clipped text — a quotation, a list, a
@@ -647,7 +646,7 @@ function clippingBoxOf(at: ChildNode): { box: Element } | null {
   try {
     for (let el: Element | null = start, i = 0; el && i < CLIP_BOX_LEVELS; i++, el = el.parentElement) {
       const cs = getComputedStyle(el);
-      if (clipsOwnText(el, cs) || capsOwnHeight(el, cs)) {
+      if (hidesOwnText(el, cs) || capsOwnHeight(el, cs)) {
         box = el;
         break;
       }
@@ -666,25 +665,48 @@ function clippingBoxOf(at: ChildNode): { box: Element } | null {
 
 /** Page-level boxes, the ones lib/dom/style.ts also refuses to call clipped: `body` under
  *  an open modal, an app's own scrolling region, a `<details>` that hides its content by
- *  other means. A cap on one of those is layout, never a post behind "see more". */
-const NEVER_CAPPED_TAGS = new Set(["HTML", "BODY", "MAIN", "DETAILS"]);
-/** A box as tall as the screen is the page's own, not a preview of a post. */
-const CAP_MAX_VIEWPORT_SHARE = 0.9;
+ *  other means. Hidden text in one of those is layout, never a post behind "see more". */
+const NEVER_CLIPPED_TAGS = new Set(["HTML", "BODY", "MAIN", "DETAILS"]);
+/** A box as tall as the screen is the page's own scrolling region, not a preview of a post. */
+const CLIP_MAX_VIEWPORT_SHARE = 0.9;
+/** Less hidden than this is a shadow, a descender or a sticky row — not a line of text. */
+const CLIP_MIN_HIDDEN_PX = 32;
 
 /**
- * A box that CAPS its own height and hides whatever grows past the cap — it may not be
- * clipping anything yet. Only a DECLARED cap counts (`max-height`, a line clamp): plain
- * `overflow: hidden` sits on half the wrappers of a modern page and none of those is a
- * post behind "see more", while `max-height` with the text still short of it is exactly
- * the Goodreads review whose images have not arrived.
+ * Does this box keep text of its own below its bottom edge, where the reader cannot get at
+ * it? That is the only question placement has to answer, and it is NOT the question
+ * lib/dom/style.ts asks: `clipsOwnText` decides whether a box is a post behind "see more"
+ * — worth scoring although only three lines show — and for that it insists on twice as much
+ * content as box. A Steam review card 663 px tall holding 771 px of review fails that test
+ * by a mile, and the 108 px it cuts off still held whole paragraphs and the chips that
+ * close them: the session survey counted 25 such chips out of sight on one page. So this
+ * rule asks only whether something is hidden, and leaves it to each chip's own last line
+ * (settle) to decide whether that chip is one of the hidden things.
+ */
+function hidesOwnText(el: Element, cs: CSSStyleDeclaration): boolean {
+  if (!canHideText(el, cs)) return false;
+  return el.scrollHeight - el.clientHeight >= CLIP_MIN_HIDDEN_PX;
+}
+
+/**
+ * A box that CAPS its own height and will hide whatever grows past the cap — it may not be
+ * hiding anything yet. Only a DECLARED cap counts (`max-height`, a line clamp): plain
+ * `overflow: hidden` sits on half the wrappers of a modern page, while `max-height` with
+ * the text still short of it is exactly the Goodreads review whose images have not arrived.
  */
 function capsOwnHeight(el: Element, cs: CSSStyleDeclaration): boolean {
+  if (!canHideText(el, cs)) return false;
+  return cs.maxHeight !== "none" || cs.getPropertyValue("-webkit-line-clamp") !== "none";
+}
+
+/** The guards both rules share: the box must cut its overflow off, and be a box inside the
+ *  page rather than one of the page's own. */
+function canHideText(el: Element, cs: CSSStyleDeclaration): boolean {
   const overflowY = cs.overflowY;
   if (overflowY !== "hidden" && overflowY !== "clip") return false;
-  if (NEVER_CAPPED_TAGS.has(el.nodeName) || el.getAttribute("role") === "main") return false;
-  if (cs.maxHeight === "none" && cs.getPropertyValue("-webkit-line-clamp") === "none") return false;
+  if (NEVER_CLIPPED_TAGS.has(el.nodeName) || el.getAttribute("role") === "main") return false;
   const viewport = typeof window !== "undefined" ? window.innerHeight : 0;
-  return viewport === 0 || el.clientHeight < viewport * CAP_MAX_VIEWPORT_SHARE;
+  return viewport === 0 || el.clientHeight < viewport * CLIP_MAX_VIEWPORT_SHARE;
 }
 
 /**

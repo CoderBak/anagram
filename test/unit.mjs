@@ -1525,6 +1525,19 @@ const results = await page.evaluate(() => {
       r = chipsFor(`<div id="box" style="${CLIPPED}"><article class="post">${sent(80)}</article></div>`);
       check("guard: a clipping box that holds the whole post keeps the chip in the post", r.hosts.length === 1 && box().contains(r.hosts[0]), `${r.hosts.length} host(s)`);
 
+      // A box that hides a couple of PARAGRAPHS of its own text is not a "see more" box by
+      // the measure in lib/dom/style.ts — a Steam review card 663 px tall holding 771 px of
+      // review has nothing like twice its own height in it — but the reader cannot see what
+      // it cuts off, chips included (the survey found 25 such chips on one Steam page). What
+      // the placement layer asks is only whether something is hidden.
+      r = chipsFor(`<div class="post"><div id="box" style="width:400px;height:150px;overflow:hidden"><p>${sent(60)}</p><p>${sent(60)}</p></div></div>`);
+      {
+        const outside = r.hosts.filter((h) => !box().contains(h));
+        check("a box that hides a paragraph of its own text without hiding half of itself still gets one chip under it (Steam review cards)",
+          outside.length === 1 && outside[0].previousElementSibling === box(),
+          `${outside.length} of ${r.hosts.length} outside`);
+      }
+
       // Nothing moves for an ordinary paragraph, or for the guards above.
       for (const [name, style, text] of [
         ["a plain paragraph", "width:400px", sent(80)],
