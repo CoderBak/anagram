@@ -621,6 +621,7 @@ Notable changes to Anagram, newest first. The format follows
   the probabilities). Additive: `calibration` is what contract 2.x clients read and
   it is unchanged, so an installed daemon and a new extension, or the reverse, go
   on working.
+
 ### Fixed
 
 - Gemini conversations were silent. Gemini wraps every conversation in
