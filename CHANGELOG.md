@@ -9,6 +9,16 @@ Notable changes to Anagram, newest first. The format follows
 
 ### Added
 
+- Three things the interface only ever showed are now also said. The selection
+  card is a polite status region, so a verdict reached from the right-click menu
+  is announced when it lands instead of appearing in silence; the floating ball
+  carries one visually-hidden live region that says the flagged count once it has
+  stopped moving (1.5 s of quiet, only when the number changed and found
+  something — a zero and the daemon-down "!" stay silent, and no increment is ever
+  read out on its own); and the panel's "Copy report", which used to confirm
+  itself only by swapping its own label to "Copied ✓", goes through the same
+  region. None of it adds a word of visible chrome.
+
 - "Analyze this page with Anagram" in the right-click menu. A page on a site
   Anagram is switched off for (or with "All websites" off) could only be analyzed
   by switching the site on and back off again. The menu entry runs the analysis
@@ -97,6 +107,22 @@ Notable changes to Anagram, newest first. The format follows
   flagged paragraph, wrapping around.
 
 ### Changed
+
+- The triage panel adapts to a dark page. The chips and the detail card have done
+  so since v4; the panel had not, so the one piece of chrome a keyboard reader
+  lives in was a white rectangle in the middle of a dark article. It uses the same
+  theme probe and the same surface, ink and border values as the card — no new
+  colour — and its focus ring turns light, since two pixels of near-black on a
+  near-black panel is no ring at all.
+- Every control that was drawn smaller than 24x24 CSS pixels now accepts a
+  pointer over at least that much (WCAG 2.2 target size, minimum) without being
+  redrawn: the ball's counter bubble, the selection card's close glyph, the
+  switches in the popup and on the options page and the popup's segmented tabs
+  keep their exact appearance and gain an invisible hit area. The panel's verdict
+  filters, "Copy report" and "Turn off on <host>" took two or three pixels of
+  padding instead. The open panel also sits 4 px further from the ball, because
+  the counter bubble overhangs it and the panel used to lie across the top of the
+  one control that opens it.
 
 - `anagram update` restarts a daemon that was running. The installer replaces
   `app/` underneath it, so until now the old code kept serving until somebody
@@ -213,6 +239,25 @@ Notable changes to Anagram, newest first. The format follows
   controls and closed menus are no longer counted as text around a byline.
 
 ### Fixed
+
+- Accessibility, throughout, with the suite below now guarding each one. A pinned
+  chip card put a focusable "Copy text" button inside the deliberately
+  aria-hidden chip host, so a keyboard user landed on a control that announces
+  nothing — one per pinned card. The selection card's close button announced as
+  the glyph "✕", because a button's own text wins the name computation and its
+  title was never used. Five pieces of text a reader is meant to read — the
+  panel's "Turn off on <host>" and its empty state, the chip card's and the
+  selection card's footnotes saying the number is an estimate rather than proof —
+  were #8a8a8a on white, 3.45:1 against the 4.5:1 body text needs. Inline `code`
+  and the keyboard hints were 4.34:1 on all three extension pages, which is the
+  text somebody reads while fixing a broken install; the options page wrote
+  "Always on" in a green picked for a white card, 3.97:1 on the dark one. Neither
+  the options page nor the first-run page had a `<main>`, so nothing on either sat
+  in a landmark. The per-site rules table's action column had an empty header. The
+  PDF reading mode had no level-one heading. And every hover card still faded in
+  under `prefers-reduced-motion`, because the rule that turned the transition off
+  was outranked by the one that set it, along with the ball's own colour fade and
+  its sliding label.
 
 - Firefox: the idle prefetch lane never ran (a detached `requestIdleCallback` call throws in
   Gecko), so paragraphs below the fold were scored only when scrolled to — it is called on
@@ -360,7 +405,10 @@ Notable changes to Anagram, newest first. The format follows
   known count every run. Deliberate exemptions (the per-paragraph chips are
   `aria-hidden` and unfocusable on purpose) are listed separately from the
   debts. A JSON report lands in the artifacts folder, and the suite runs on
-  every OS leg in CI.
+  every OS leg in CI. Both baselines are now EMPTY: everything it found on the
+  day it was written has been fixed, so anything it reports from here is a
+  regression — and an entry that stops firing fails the run, which is how the
+  last of them were found and deleted rather than left to fossilise.
 - The pure text machinery is checked against properties rather than examples. A
   seeded generator (no new dependency) builds words, CJK, emoji, invisibles,
   non-breaking spaces, LaTeX residue, curly quotes, en-dashed figure ranges,
