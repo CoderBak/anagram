@@ -18,6 +18,7 @@
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
+import http from "node:http";
 import { launchExtension, serveHtml, artifact, BADGE_SEL } from "./harness.mjs";
 import { startFakeDaemon } from "./fake-daemon.mjs";
 
@@ -129,6 +130,125 @@ const CLIPPED_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"
 </div>
 <p id="plain">${PARA("PLAINPOST")}</p>
 </body></html>`;
+// ---- a real PDF, written out by hand ---------------------------------------------------
+// The PDF checks need a file that is genuinely a PDF — pdf.js parses it, its worker runs,
+// its fonts are resolved — but a binary fixture in the repository would be opaque and a
+// PDF library would be a dependency bought for one test. A PDF set in one of the standard
+// fourteen fonts is a few hundred bytes of text, so the test writes its own.
+//
+// The document is built to exercise the reflow rules that matter: a running head and a
+// page number on both pages (dropped), a heading in larger type, a paragraph whose last
+// line stops short before a capitalised one (a break), a word the typesetter broke with a
+// hyphen (mended), a compound broken after its own hyphen (kept), and a paragraph whose
+// last line on page 1 ends with no punctuation at all (sewn onto page 2).
+const PDF_HEAD = "ANAGRAM TEST DOCUMENT";
+const PDF_HEADING = "Reading a PDF";
+const PDF_PARAS = [
+  [
+    "Anagram rebuilds this document from the text runs the file places on each page, so",
+    "that every paragraph can be read in order and handed to the local scoring daemon in",
+    "exactly the shape a reader would see it, which is the only shape the model has ever",
+    "been asked to judge. The page itself carries no paragraphs at all: it carries glyphs",
+    "at coordinates, and the reconstruction has to infer the rest from the geometry alone,",
+    "which is what the reflow rules in this extension exist to do for two column papers,",
+    "for single column reports written in an office suite, and for slide decks exported",
+    "from a presentation tool by somebody in a hurry on a Friday afternoon in December.",
+    "That is the whole idea.",
+  ],
+  [
+    "Sentences that run past the end of a line are put back together here, and a word the",
+    "typesetter broke across two lines with a hyphen-",
+    "ation mark is joined again, while a genuine compound such as state-of-the-",
+    "art keeps the hyphen it was written with in the first place. This paragraph carries",
+    "on for long enough to clear the fifty word floor that the extension applies to every",
+    "unit it sends to the daemon, and it does not stop at the bottom of this page either,",
+    "because the final line of it ends with no punctuation at all and simply runs on, so",
+  ],
+  [
+    "that the paragraph is sewn back together across the page break by the reading rules",
+    "rather than being left as two halves that neither the walker nor the model would",
+    "recognise as one piece of writing by one person on one afternoon in one sitting.",
+  ],
+  [
+    "Running heads and page numbers are furniture, not writing, and the reader leaves",
+    "them out of the text it renders so that the same line does not turn up at the top of",
+    "every single unit that the extension sends off to be scored by the local daemon on",
+    "this computer, which would be both wasteful and actively misleading to anybody who",
+    // The fake daemon's verdicts are a pure function of the text, and this wording is
+    // the one that lands in a FLAGGED band — the panel and the copied report both need
+    // at least one flagged paragraph to have anything to show.
+    "later reads the copied report and asks where each of these paragraphs came from.",
+  ],
+];
+
+/** Lay rows out as a column of 11 pt lines from `top` downward (PDF y grows upward). */
+const pdfColumn = (rows, top) => rows.map((text, i) => ({ x: 72, y: top - i * 14, size: 11, text }));
+
+/**
+ * A PDF from pages of placed lines. Objects are written in order, their byte offsets
+ * collected for the cross-reference table, and the whole thing encoded as latin1 so that
+ * the /Length of each content stream is the byte count the parser will find.
+ */
+function buildPdf(pages) {
+  const esc = (s) => s.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+  const objects = [];
+  const add = (body) => objects.push(body) && objects.length;
+
+  const catalog = add(null);
+  const pageTree = add(null);
+  const regular = add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>");
+  const bold = add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
+
+  const pageIds = [];
+  for (const lines of pages) {
+    const stream =
+      "BT\n" +
+      lines
+        .map((l) => `/${l.bold ? "F2" : "F1"} ${l.size} Tf\n1 0 0 1 ${l.x} ${l.y} Tm\n(${esc(l.text)}) Tj`)
+        .join("\n") +
+      "\nET\n";
+    const contents = add(`<< /Length ${Buffer.byteLength(stream, "latin1")} >>\nstream\n${stream}endstream`);
+    pageIds.push(
+      add(
+        `<< /Type /Page /Parent ${pageTree} 0 R /MediaBox [0 0 612 792] ` +
+          `/Resources << /Font << /F1 ${regular} 0 R /F2 ${bold} 0 R >> >> /Contents ${contents} 0 R >>`,
+      ),
+    );
+  }
+  objects[catalog - 1] = `<< /Type /Catalog /Pages ${pageTree} 0 R >>`;
+  objects[pageTree - 1] = `<< /Type /Pages /Kids [${pageIds.map((n) => `${n} 0 R`).join(" ")}] /Count ${pageIds.length} >>`;
+
+  let pdf = "%PDF-1.4\n";
+  const offsets = [];
+  objects.forEach((body, i) => {
+    offsets.push(Buffer.byteLength(pdf, "latin1"));
+    pdf += `${i + 1} 0 obj\n${body}\nendobj\n`;
+  });
+  const startxref = Buffer.byteLength(pdf, "latin1");
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (const off of offsets) pdf += `${String(off).padStart(10, "0")} 00000 n \n`;
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root ${catalog} 0 R >>\nstartxref\n${startxref}\n%%EOF\n`;
+  return Buffer.from(pdf, "latin1");
+}
+
+const TEST_PDF = buildPdf([
+  [
+    { x: 72, y: 742, size: 9, text: PDF_HEAD },
+    { x: 300, y: 50, size: 10, text: "1" },
+    { x: 72, y: 700, size: 16, bold: true, text: PDF_HEADING },
+    ...pdfColumn(PDF_PARAS[0], 670),
+    ...pdfColumn(PDF_PARAS[1], 670 - PDF_PARAS[0].length * 14),
+  ],
+  [
+    { x: 72, y: 742, size: 9, text: PDF_HEAD },
+    { x: 300, y: 50, size: 10, text: "2" },
+    ...pdfColumn(PDF_PARAS[2], 700),
+    ...pdfColumn(PDF_PARAS[3], 700 - PDF_PARAS[2].length * 14 - 14),
+  ],
+]);
+/** A valid PDF whose single page places no text at all — a scan, as far as we can tell. */
+const SCANNED_PDF = buildPdf([[]]);
+
 const PAGES = {
   "/ui-fixtures.html": readFileSync(join(__dirname, "ui-fixtures.html"), "utf8"),
   "/clipped.html": CLIPPED_HTML,
@@ -149,6 +269,25 @@ PAGES["/frame-top.html"] = `<!doctype html><html lang="en"><head><meta charset="
 <iframe id="embed" src="${server.base.replace("localhost", "127.0.0.1")}/frame.html" referrerpolicy="no-referrer" width="640" height="320" style="border:1px solid #ccc"></iframe>
 </body></html>`;
 const fixturesUrl = server.url("/ui-fixtures.html");
+
+// The reader fetches BYTES, so the PDFs need a server of their own: serveHtml answers
+// everything as text/html, which a PDF is not.
+const FILES = {
+  "/doc.pdf": TEST_PDF,
+  "/scanned.pdf": SCANNED_PDF,
+  "/broken.pdf": Buffer.from("%PDF-1.7\nthis file claims to be a PDF and is not one\n", "latin1"),
+};
+const fileServer = http.createServer((req, res) => {
+  const body = FILES[req.url.split("?")[0]];
+  if (!body) {
+    res.writeHead(404).end();
+    return;
+  }
+  res.writeHead(200, { "content-type": "application/pdf", "content-length": body.length });
+  res.end(body);
+});
+await new Promise((r) => fileServer.listen(0, "127.0.0.1", r));
+const fileUrl = (path) => `http://localhost:${fileServer.address().port}${path}`;
 
 const { context, sw } = await launchExtension({ backendUrl: daemon.url });
 await context.grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => {});
@@ -1335,6 +1474,197 @@ async function sweep(page, steps = 6) {
       JSON.stringify(failed),
     );
   }
+  // A30–A32: the PDF reading mode. A real PDF (written by buildPdf above) is fetched by
+  // the reader page, rebuilt into paragraphs and run through the ORDINARY pipeline: the
+  // same chips, the same underlines, the same ball and panel, the same copied report.
+  const extId = sw ? new URL(sw.url()).host : null;
+  const readerUrl = (src) => `chrome-extension://${extId}/reader.html?src=${encodeURIComponent(src)}`;
+
+  if (extId) {
+    const p = await context.newPage();
+    const extErrors = [];
+    p.on("console", (m) => {
+      if (m.type() === "error") extErrors.push(m.text().slice(0, 140));
+    });
+    await p.goto(readerUrl(fileUrl("/doc.pdf")), { waitUntil: "load" });
+    await p.waitForSelector("#paper > p", { timeout: 20000 }).catch(() => {});
+    await sweep(p, 4);
+    // The reader's own chrome (the bar, the notice, the page rules) carries the same
+    // data-anagram marker as a badge host, so a chip here is a host with a pill in it.
+    await p
+      .waitForFunction((sel) => {
+        const pills = [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill"));
+        return pills.length > 0 && !pills.some((h) => h.shadowRoot.querySelector(".pill.pending"));
+      }, BADGE_SEL, { timeout: 20000 })
+      .catch(() => {});
+
+    const page = await p.evaluate((sel) => {
+      const paper = document.getElementById("paper");
+      const blocks = [...paper.children]
+        .filter((el) => el.tagName === "H2" || el.tagName === "P")
+        .map((el) => ({ tag: el.tagName, text: el.textContent.replace(/\s+/g, " ").trim() }));
+      let marks = 0;
+      for (const h of CSS.highlights?.values() ?? []) marks += h.size;
+      return {
+        blocks,
+        text: paper.textContent.replace(/\s+/g, " "),
+        pagemarks: [...paper.querySelectorAll(".pagemark")].map((el) => el.textContent),
+        chips: [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill")).length,
+        marks,
+        title: document.title,
+      };
+    }, BADGE_SEL);
+
+    record(
+      "ui",
+      "PDF reader: paragraphs come back in reading order, joined across the page break",
+      page.blocks.length === 4 &&
+        page.blocks[0].tag === "H2" &&
+        page.blocks[0].text === PDF_HEADING &&
+        page.blocks[1].text === PDF_PARAS[0].join(" ") &&
+        page.blocks[3].text === PDF_PARAS[3].join(" ") &&
+        page.blocks[2].text.startsWith("Sentences that run past") &&
+        page.blocks[2].text.endsWith("in one sitting."),
+      JSON.stringify({ blocks: page.blocks.map((b) => `${b.tag}:${b.text.slice(0, 32)}`) }),
+    );
+    record(
+      "ui",
+      "PDF reader: the running head and the page numbers stay out, the page rule stays in",
+      !page.text.includes(PDF_HEAD) && page.pagemarks.join("") === "— 2 —",
+      JSON.stringify({ head: page.text.includes(PDF_HEAD), pagemarks: page.pagemarks }),
+    );
+    record(
+      "ui",
+      "PDF reader: a broken word is mended and a real compound keeps its hyphen",
+      page.text.includes("hyphenation mark is joined") &&
+        !page.text.includes("hyphen- ation") &&
+        page.text.includes("compound such as state-of-the-art keeps"),
+      JSON.stringify({ sample: page.text.slice(page.text.indexOf("typesetter"), page.text.indexOf("typesetter") + 150) }),
+    );
+    record(
+      "ui",
+      "PDF reader: the normal pipeline runs on an extension page — chips, underlines, no errors",
+      page.chips === 3 && page.marks > 0 && page.title === "doc.pdf" && extErrors.length === 0,
+      JSON.stringify({ chips: page.chips, marks: page.marks, title: page.title, errors: extErrors.slice(0, 2) }),
+    );
+
+    // The ball, its panel, and the report — the report must name the PDF, not the
+    // chrome-extension:// address of the page it happens to be rendered on.
+    await p.evaluate(() => navigator.clipboard.writeText("NO REPORT COPIED").catch(() => {}));
+    const panel = await p.evaluate(async () => {
+      const sr = document.getElementById("anagram-fab")?.shadowRoot;
+      sr?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 400));
+      sr?.querySelector(".pcopy")?.click();
+      await new Promise((r) => setTimeout(r, 300));
+      return { open: !!sr?.querySelector(".panel.open"), items: sr?.querySelectorAll(".pitem").length ?? -1 };
+    });
+    const report = await p.evaluate(() => navigator.clipboard.readText().catch(() => null));
+    const flagged = (report ?? "").match(/· Flagged: (\d+)/)?.[1];
+    record(
+      "ui",
+      "PDF reader: the panel lists the flagged paragraphs and Copy report names the PDF",
+      panel.open &&
+        panel.items === Number(flagged) &&
+        typeof report === "string" &&
+        report.startsWith("# Anagram report — doc.pdf") &&
+        report.includes(`- Page: ${fileUrl("/doc.pdf")}`),
+      JSON.stringify({ panel, flagged, head: (report ?? "").slice(0, 60) }),
+    );
+    await p.screenshot({ path: artifact("scn-pdf-reader.png"), fullPage: false }).catch(() => {});
+    await p.close();
+  }
+
+  // A32: the two ways a PDF refuses to be read, each said in one line.
+  if (extId) {
+    const messageFor = async (path) => {
+      const p = await context.newPage();
+      await p.goto(readerUrl(fileUrl(path)), { waitUntil: "load" });
+      const text = await p
+        .waitForFunction(() => document.getElementById("notice").textContent.trim() !== "Loading…" && document.getElementById("notice").textContent.trim() !== "", { timeout: 15000 })
+        .then(() => p.evaluate(() => document.getElementById("notice").textContent))
+        .catch(() => null);
+      await p.close();
+      return text;
+    };
+    const scanned = await messageFor("/scanned.pdf");
+    const broken = await messageFor("/broken.pdf");
+    record(
+      "ui",
+      "PDF reader: a scan and a corrupt file each say so in one short line",
+      scanned === "This PDF has no text layer." && broken === "This file could not be read as a PDF.",
+      JSON.stringify({ scanned, broken }),
+    );
+  }
+
+  // A33: a tab already showing a PDF. Chrome wraps its viewer in an outer document that
+  // content scripts do run in, so the ball is there — and it is the ball that has to be
+  // ABOVE the plugin's own chrome, or nothing about this way in works. The chip asks the
+  // worker to swap the tab for the reader, which a content script cannot do itself.
+  if (extId) {
+    const p = await context.newPage();
+    await p.goto(fileUrl("/doc.pdf"), { waitUntil: "load" }).catch(() => {});
+    await p.waitForTimeout(3000);
+    const chip = await p
+      .evaluate(() => {
+        const host = document.getElementById("anagram-fab");
+        const el = host?.shadowRoot?.querySelector(".action");
+        if (!el) return { contentType: document.contentType, label: null };
+        const r = el.getBoundingClientRect();
+        return {
+          contentType: document.contentType,
+          label: el.textContent,
+          onTop: document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === host,
+        };
+      })
+      .catch(() => null);
+    if (chip?.label) {
+      await p.evaluate(() => document.getElementById("anagram-fab").shadowRoot.querySelector(".action").click());
+      await p.waitForURL(/reader\.html/, { timeout: 10000 }).catch(() => {});
+    }
+    const landed = p.url();
+    record(
+      "ui",
+      "PDF tab: the ball offers Analyze PDF above the viewer, and it swaps the tab for the reader",
+      chip?.contentType === "application/pdf" &&
+        chip.label === "Analyze PDF" &&
+        chip.onTop === true &&
+        landed.startsWith(`chrome-extension://${extId}/reader.html?src=`) &&
+        decodeURIComponent(landed.split("src=")[1]) === fileUrl("/doc.pdf"),
+      JSON.stringify({ chip, landed: landed.slice(0, 70) }),
+    );
+    await p.close();
+  }
+
+  // A34: the drop zone — the reader opened with no source takes a file, and the paper it
+  // renders is scored like any other. This is also the only path a file:// PDF has when
+  // the user has not allowed file access.
+  if (extId) {
+    const p = await context.newPage();
+    await p.goto(`chrome-extension://${extId}/reader.html`, { waitUntil: "load" });
+    const empty = await p.evaluate(() => ({
+      drop: !document.getElementById("drop").hidden,
+      paper: !document.getElementById("paper").hidden,
+    }));
+    await p.setInputFiles("#file", { name: "dropped.pdf", mimeType: "application/pdf", buffer: TEST_PDF });
+    await p.waitForSelector("#paper > p", { timeout: 20000 }).catch(() => {});
+    await p
+      .waitForFunction((sel) => [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill:not(.pending)")).length >= 3, BADGE_SEL, { timeout: 20000 })
+      .catch(() => {});
+    const loaded = await p.evaluate((sel) => ({
+      drop: !document.getElementById("drop").hidden,
+      paragraphs: document.querySelectorAll("#paper > p").length,
+      chips: [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill")).length,
+      title: document.title,
+    }), BADGE_SEL);
+    record(
+      "ui",
+      "PDF reader: with no source it offers a drop zone, and a chosen file is read and scored",
+      empty.drop && !empty.paper && !loaded.drop && loaded.paragraphs === 3 && loaded.chips === 3 && loaded.title === "dropped.pdf",
+      JSON.stringify({ empty, loaded }),
+    );
+    await p.close();
+  }
 }
 
 // =====================================================================================
@@ -1428,6 +1758,7 @@ if (!LOCAL_ONLY) {
 // ---- summary -------------------------------------------------------------------------
 await context.close();
 await server.close();
+await new Promise((r) => fileServer.close(() => r()));
 await daemon.close();
 
 console.log("\n=== SCENARIO RESULTS ===");

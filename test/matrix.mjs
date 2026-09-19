@@ -11,7 +11,7 @@
 //   inside     no chip sticks out of the block it annotates
 //   card       the detail card opens (hover, or tap on touch) fully inside the viewport
 //   ball       the floating ball is inside the viewport and on top; its panel opens inside
-//   pages      the options and onboarding pages fit the width without side-scrolling
+//   pages      the options, onboarding and PDF reader pages fit the width, no side-scroll
 //   errors     the extension logs no console errors
 //
 // Each profile is a fresh browser (pixel ratio and scrollbars are launch-time properties).
@@ -267,7 +267,7 @@ async function attemptProfile(profile) {
     // ---- extension pages ------------------------------------------------------------------
     const extId = new URL(context.serviceWorkers()[0].url()).host;
     const pageNotes = [];
-    for (const p of ["options", "onboarding"]) {
+    for (const p of ["options", "onboarding", "reader"]) {
       const ep = await context.newPage();
       await ep.goto(`chrome-extension://${extId}/${p}.html`);
       await ep.waitForTimeout(500);
