@@ -1346,11 +1346,59 @@ async function sweep(page, steps = 6) {
       JSON.stringify(failed),
     );
   }
-  // A30–A32: the PDF reading mode. A real PDF (written by buildPdf above) is fetched by
-  // the reader page, rebuilt into paragraphs and run through the ORDINARY pipeline: the
-  // same chips, the same underlines, the same ball and panel, the same copied report.
+  // A30–A34: the PDF reading mode. A real PDF (written by buildPdf above) is fetched by
+  // the reader page and shown AS IT IS — the pages themselves, drawn by pdf.js — with the
+  // ORDINARY pipeline over them: the same chips, the same underlines, the same ball and
+  // panel, the same copied report. The reconstruction is invisible and is only asserted
+  // through what it decides: what reaches the daemon, and where a chip lands.
   const extId = sw ? new URL(sw.url()).host : null;
   const readerUrl = (src) => `chrome-extension://${extId}/reader.html?src=${encodeURIComponent(src)}`;
+
+  /** Everything about the reader page that a check below reads, in one pass. */
+  const readReader = (p) =>
+    p.evaluate((sel) => {
+      const chips = [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill"));
+      const spans = [...document.querySelectorAll(".textLayer span")];
+      const rects = spans.map((s) => s.getBoundingClientRect());
+      const placed = chips.map((h) => {
+        const r = h.getBoundingClientRect();
+        const box = h.closest(".page").getBoundingClientRect();
+        return {
+          page: Number(h.closest(".page").dataset.page),
+          inPage:
+            r.left >= box.left - 1 && r.right <= box.right + 1 &&
+            r.top >= box.top - 1 && r.bottom <= box.bottom + 1,
+          // Half a pixel of tolerance: a chip that ends exactly where a span begins is
+          // beside the text, not over it.
+          overText: rects.some(
+            (s) => s.width > 0 && r.left < s.right - 0.5 && s.left + 0.5 < r.right &&
+                   r.top < s.bottom - 0.5 && s.top + 0.5 < r.bottom,
+          ),
+        };
+      });
+      let marks = 0;
+      const marked = [];
+      for (const h of CSS.highlights?.values() ?? []) {
+        marks += h.size;
+        for (const range of h) marked.push(range.toString());
+      }
+      return {
+        pages: document.querySelectorAll(".page").length,
+        spans: spans.length,
+        // The pages that have been DRAWN: a released or never-drawn canvas has no bitmap.
+        drawn: [...document.querySelectorAll(".page canvas")].filter((c) => c.width > 0).length,
+        text: spans.map((s) => s.textContent).join(" "),
+        chips: chips.length,
+        placed,
+        marks,
+        marked,
+        // Identity of each chip host, so a zoom can be shown not to have rebuilt one.
+        hosts: chips.map((h) => (h.dataset.probe ??= String(Math.random()))),
+        scale: Number(getComputedStyle(document.getElementById("pages")).getPropertyValue("--scale-factor")),
+        title: document.title,
+        notice: document.getElementById("notice").textContent,
+      };
+    }, BADGE_SEL);
 
   if (extId) {
     const p = await context.newPage();
@@ -1358,66 +1406,92 @@ async function sweep(page, steps = 6) {
     p.on("console", (m) => {
       if (m.type() === "error") extErrors.push(m.text().slice(0, 140));
     });
+    const seen = daemon.stats.texts.length; // what THIS document sends, not the whole run
     await p.goto(readerUrl(fileUrl("/doc.pdf")), { waitUntil: "load" });
-    await p.waitForSelector("#paper > p", { timeout: 20000 }).catch(() => {});
+    await p.waitForSelector("#pages:not(.reading)", { timeout: 20000 }).catch(() => {});
     await sweep(p, 4);
-    // The reader's own chrome (the bar, the notice, the page rules) carries the same
+    // The reader's own chrome (the bar, the notice, the pages) carries the same
     // data-anagram marker as a badge host, so a chip here is a host with a pill in it.
     await p
       .waitForFunction((sel) => {
         const pills = [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill"));
-        return pills.length > 0 && !pills.some((h) => h.shadowRoot.querySelector(".pill.pending"));
+        return pills.length >= 3 && !pills.some((h) => h.shadowRoot.querySelector(".pill.pending"));
       }, BADGE_SEL, { timeout: 20000 })
       .catch(() => {});
 
-    const page = await p.evaluate((sel) => {
-      const paper = document.getElementById("paper");
-      const blocks = [...paper.children]
-        .filter((el) => el.tagName === "H2" || el.tagName === "P")
-        .map((el) => ({ tag: el.tagName, text: el.textContent.replace(/\s+/g, " ").trim() }));
-      let marks = 0;
-      for (const h of CSS.highlights?.values() ?? []) marks += h.size;
-      return {
-        blocks,
-        text: paper.textContent.replace(/\s+/g, " "),
-        pagemarks: [...paper.querySelectorAll(".pagemark")].map((el) => el.textContent),
-        chips: [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill")).length,
-        marks,
-        title: document.title,
-      };
-    }, BADGE_SEL);
+    const page = await readReader(p);
+    const sent = daemon.stats.texts.slice(seen);
 
     record(
       "ui",
-      "PDF reader: paragraphs come back in reading order, joined across the page break",
-      page.blocks.length === 4 &&
-        page.blocks[0].tag === "H2" &&
-        page.blocks[0].text === PDF_HEADING &&
-        page.blocks[1].text === PDF_PARAS[0].join(" ") &&
-        page.blocks[3].text === PDF_PARAS[3].join(" ") &&
-        page.blocks[2].text.startsWith("Sentences that run past") &&
-        page.blocks[2].text.endsWith("in one sitting."),
-      JSON.stringify({ blocks: page.blocks.map((b) => `${b.tag}:${b.text.slice(0, 32)}`) }),
+      "PDF reader: the paragraphs reach the daemon in reading order, joined across the page break",
+      sent.length === 3 &&
+        sent[0] === PDF_PARAS[0].join(" ") &&
+        sent[2] === PDF_PARAS[3].join(" ") &&
+        sent[1].startsWith("Sentences that run past") &&
+        sent[1].endsWith("in one sitting."),
+      JSON.stringify({ sent: sent.map((t) => t.slice(0, 32)) }),
     );
     record(
       "ui",
-      "PDF reader: the running head and the page numbers stay out, the page rule stays in",
-      !page.text.includes(PDF_HEAD) && page.pagemarks.join("") === "— 2 —",
-      JSON.stringify({ head: page.text.includes(PDF_HEAD), pagemarks: page.pagemarks }),
+      "PDF reader: the running head and the page numbers never leave the page for the daemon",
+      sent.every((t) => !t.includes(PDF_HEAD)) &&
+        sent.every((t) => !/\s[12]\s/.test(t)) &&
+        // …and they are still THERE, because the reader shows the document as it is.
+        page.text.includes(PDF_HEAD),
+      JSON.stringify({ inSent: sent.some((t) => t.includes(PDF_HEAD)), onPage: page.text.includes(PDF_HEAD) }),
     );
     record(
       "ui",
       "PDF reader: a broken word is mended and a real compound keeps its hyphen",
-      page.text.includes("hyphenation mark is joined") &&
-        !page.text.includes("hyphen- ation") &&
-        page.text.includes("compound such as state-of-the-art keeps"),
-      JSON.stringify({ sample: page.text.slice(page.text.indexOf("typesetter"), page.text.indexOf("typesetter") + 150) }),
+      sent.join(" ").includes("hyphenation mark is joined") &&
+        !sent.join(" ").includes("hyphen- ation") &&
+        sent.join(" ").includes("compound such as state-of-the-art keeps"),
+      JSON.stringify({ sample: sent[1]?.slice(60, 210) }),
     );
     record(
       "ui",
-      "PDF reader: the normal pipeline runs on an extension page — chips, underlines, no errors",
-      page.chips === 3 && page.marks > 0 && page.title === "doc.pdf" && extErrors.length === 0,
-      JSON.stringify({ chips: page.chips, marks: page.marks, title: page.title, errors: extErrors.slice(0, 2) }),
+      "PDF reader: the real pages are drawn, with a selectable text layer over every one",
+      page.pages === 2 &&
+        page.drawn === 2 &&
+        page.spans >= 29 &&
+        page.text.includes(PDF_HEADING) &&
+        page.title === "doc.pdf" &&
+        extErrors.length === 0,
+      JSON.stringify({ pages: page.pages, drawn: page.drawn, spans: page.spans, errors: extErrors.slice(0, 2) }),
+    );
+    record(
+      "ui",
+      "PDF reader: one chip per scored paragraph, inside its page and never over the text",
+      page.chips === 3 &&
+        page.placed.every((c) => c.inPage) &&
+        page.placed.every((c) => !c.overText),
+      JSON.stringify({ chips: page.chips, placed: page.placed }),
+    );
+    record(
+      "ui",
+      "PDF reader: the marks lie on the paragraph's own glyphs, not on the whole page",
+      page.marks >= 20 &&
+        page.marked.some((t) => t.startsWith("Anagram rebuilds this document")) &&
+        page.marked.every((t) => !t.includes(PDF_HEAD)),
+      JSON.stringify({ marks: page.marks, first: page.marked[0]?.slice(0, 40) }),
+    );
+
+    // Zoom: one CSS variable, so not a single span or chip host is rebuilt and nothing is
+    // asked of the daemon a second time.
+    const requestsBefore = daemon.stats.requests;
+    await p.evaluate(() => document.getElementById("zoomIn").click());
+    await p.waitForTimeout(1200);
+    const zoomed = await readReader(p);
+    record(
+      "ui",
+      "PDF reader: zoom keeps every chip and every mark, and re-asks nothing",
+      zoomed.scale > page.scale &&
+        JSON.stringify(zoomed.hosts) === JSON.stringify(page.hosts) &&
+        zoomed.marks === page.marks &&
+        zoomed.placed.every((c) => c.inPage && !c.overText) &&
+        daemon.stats.requests === requestsBefore,
+      JSON.stringify({ from: page.scale.toFixed(2), to: zoomed.scale.toFixed(2), same: JSON.stringify(zoomed.hosts) === JSON.stringify(page.hosts) }),
     );
 
     // The ball, its panel, and the report — the report must name the PDF, not the
@@ -1447,24 +1521,84 @@ async function sweep(page, steps = 6) {
     await p.close();
   }
 
-  // A32: the two ways a PDF refuses to be read, each said in one line.
+  // A31: a long document. Every page's TEXT is there from the start — which is what lets
+  // the panel and jump-to-flagged address a paragraph thirty pages down — while only the
+  // pages near the viewport carry pixels. A jump then brings the page AND its picture.
   if (extId) {
-    const messageFor = async (path) => {
-      const p = await context.newPage();
-      await p.goto(readerUrl(fileUrl(path)), { waitUntil: "load" });
-      const text = await p
-        .waitForFunction(() => document.getElementById("notice").textContent.trim() !== "Loading…" && document.getElementById("notice").textContent.trim() !== "", { timeout: 15000 })
-        .then(() => p.evaluate(() => document.getElementById("notice").textContent))
-        .catch(() => null);
-      await p.close();
-      return text;
-    };
-    const scanned = await messageFor("/scanned.pdf");
-    const broken = await messageFor("/broken.pdf");
+    const p = await context.newPage();
+    await p.goto(readerUrl(fileUrl("/tall.pdf")), { waitUntil: "load" });
+    await p.waitForSelector("#pages:not(.reading)", { timeout: 40000 }).catch(() => {});
+    await p.waitForTimeout(1500);
+    const far = await p.evaluate(() => {
+      const last = document.querySelector('.page[data-page="30"]');
+      return {
+        pages: document.querySelectorAll(".page").length,
+        textOnLast: (last?.querySelectorAll(".textLayer span").length ?? 0) > 0,
+        drawn: [...document.querySelectorAll(".page canvas")].filter((c) => c.width > 0).length,
+        lastDrawn: (last?.querySelector("canvas")?.width ?? 0) > 0,
+      };
+    });
+    // Jump to the last flagged paragraph and let the canvas catch up.
+    const jumped = await p.evaluate(async () => {
+      const sr = document.getElementById("anagram-fab")?.shadowRoot;
+      sr?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 300));
+      const rows = [...(sr?.querySelectorAll(".pitem") ?? [])];
+      rows[rows.length - 1]?.click();
+      await new Promise((r) => setTimeout(r, 2500));
+      const on = [...document.querySelectorAll(".page")].find((el) => {
+        const r = el.getBoundingClientRect();
+        return r.bottom > 0 && r.top < innerHeight;
+      });
+      return { rows: rows.length, page: Number(on?.dataset.page ?? 0), drawn: (on?.querySelector("canvas")?.width ?? 0) > 0 };
+    });
     record(
       "ui",
-      "PDF reader: a scan and a corrupt file each say so in one short line",
-      scanned === "This PDF has no text layer." && broken === "This file could not be read as a PDF.",
+      "PDF reader: a page far down the stack has its text long before it has its picture",
+      far.pages === 30 && far.textOnLast && !far.lastDrawn && far.drawn > 0 && far.drawn <= 8,
+      JSON.stringify(far),
+    );
+    record(
+      "ui",
+      "PDF reader: a jump from the panel brings the right page into view and draws it",
+      jumped.rows > 0 && jumped.page > 1 && jumped.drawn,
+      JSON.stringify(jumped),
+    );
+    await p.close();
+  }
+
+  // A32: the two ways a PDF refuses to be read, each said in one line — and the scan,
+  // which is now SHOWN rather than refused: its pages are the faithful thing to render.
+  if (extId) {
+    const stateFor = async (path) => {
+      const p = await context.newPage();
+      await p.goto(readerUrl(fileUrl(path)), { waitUntil: "load" });
+      const state = await p
+        .waitForFunction(() => {
+          const n = document.getElementById("notice").textContent.trim();
+          return n !== "Loading…" && n !== "";
+        }, { timeout: 15000 })
+        .then(() =>
+          p.evaluate(() => ({
+            notice: document.getElementById("notice").textContent,
+            pages: document.querySelectorAll(".page").length,
+            drawn: [...document.querySelectorAll(".page canvas")].filter((c) => c.width > 0).length,
+          })),
+        )
+        .catch(() => null);
+      await p.close();
+      return state;
+    };
+    const scanned = await stateFor("/scanned.pdf");
+    const broken = await stateFor("/broken.pdf");
+    record(
+      "ui",
+      "PDF reader: a scan is still shown and says it has no text; a corrupt file says so instead",
+      scanned?.notice === "This PDF has no text layer." &&
+        scanned.pages === 1 &&
+        scanned.drawn === 1 &&
+        broken?.notice === "This file could not be read as a PDF." &&
+        broken.pages === 0,
       JSON.stringify({ scanned, broken }),
     );
   }
@@ -1508,31 +1642,31 @@ async function sweep(page, steps = 6) {
     await p.close();
   }
 
-  // A34: the drop zone — the reader opened with no source takes a file, and the paper it
-  // renders is scored like any other. This is also the only path a file:// PDF has when
+  // A34: the drop zone — the reader opened with no source takes a file, and the document
+  // it shows is scored like any other. This is also the only path a file:// PDF has when
   // the user has not allowed file access.
   if (extId) {
     const p = await context.newPage();
     await p.goto(`chrome-extension://${extId}/reader.html`, { waitUntil: "load" });
     const empty = await p.evaluate(() => ({
       drop: !document.getElementById("drop").hidden,
-      paper: !document.getElementById("paper").hidden,
+      pages: !document.getElementById("pages").hidden,
     }));
     await p.setInputFiles("#file", { name: "dropped.pdf", mimeType: "application/pdf", buffer: TEST_PDF });
-    await p.waitForSelector("#paper > p", { timeout: 20000 }).catch(() => {});
+    await p.waitForSelector("#pages:not(.reading)", { timeout: 20000 }).catch(() => {});
     await p
       .waitForFunction((sel) => [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill:not(.pending)")).length >= 3, BADGE_SEL, { timeout: 20000 })
       .catch(() => {});
     const loaded = await p.evaluate((sel) => ({
       drop: !document.getElementById("drop").hidden,
-      paragraphs: document.querySelectorAll("#paper > p").length,
+      pages: document.querySelectorAll(".page").length,
       chips: [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill")).length,
       title: document.title,
     }), BADGE_SEL);
     record(
       "ui",
-      "PDF reader: with no source it offers a drop zone, and a chosen file is read and scored",
-      empty.drop && !empty.paper && !loaded.drop && loaded.paragraphs === 3 && loaded.chips === 3 && loaded.title === "dropped.pdf",
+      "PDF reader: with no source it offers a drop zone, and a chosen file is shown and scored",
+      empty.drop && !empty.pages && !loaded.drop && loaded.pages === 2 && loaded.chips === 3 && loaded.title === "dropped.pdf",
       JSON.stringify({ empty, loaded }),
     );
     await p.close();

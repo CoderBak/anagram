@@ -121,6 +121,48 @@ export const TEST_PDF = buildPdf([
 /** A valid PDF whose single page places no text at all — a scan, as far as we can tell. */
 export const SCANNED_PDF = buildPdf([[]]);
 
+/**
+ * A long two-column paper. Two suites need a document that does not fit on one screen:
+ * the scenarios, to prove that a page far down the stack has its TEXT (and so its units,
+ * its chips and the panel's rows) long before it has any pixels, and test/perf.mjs, for
+ * the budgets that only a real stack of pages can state. Every paragraph is eight lines
+ * of eight words, which clears the fifty-word floor, and no line repeats, so nothing but
+ * the running head and the page number is taken for furniture.
+ */
+export function buildTwoColumnPdf(pageCount) {
+  // Short words only: a 200 pt column of 11 pt Helvetica holds about 39 characters, and a
+  // line that overruns its column would close the gutter and turn the page into one that
+  // reads straight across — which is a different test from the one this file is for.
+  const WORDS = "the quick brown fox jumps over a lazy dog rain falls on roofs and children read books near warm rooms long quiet nights before a timetable moved off paper until trains ran on time".split(" ");
+  // A cheap hash of the line's own address, so no two lines of the document are alike:
+  // identical paragraphs are deduplicated on their way to the daemon, and a document of
+  // one repeated paragraph would arrive there as a single block.
+  const word = (n) => WORDS[Math.abs(Math.imul(n, 2654435761) >>> 7) % WORDS.length];
+  const line = (seed) => Array.from({ length: 5 }, (_, i) => word(seed * 31 + i)).join(" ");
+  const LINES = 14; // 70 words a paragraph — well clear of the evidence floor
+  const pages = [];
+  for (let p = 0; p < pageCount; p++) {
+    const items = [
+      { x: 72, y: 742, size: 9, text: PDF_HEAD },
+      { x: 300, y: 50, size: 10, text: `${p + 1}` },
+    ];
+    for (const [c, x] of [[0, 72], [1, 320]]) {
+      for (let para = 0; para < 3; para++) {
+        const id = (p * 6 + c * 3 + para) * 101;
+        for (let i = 0; i < LINES; i++) {
+          const text = i === LINES - 1 ? `${line(id + i)} and so it ends.` : line(id + i);
+          items.push({ x, y: 700 - (para * (LINES + 1) + i) * 14, size: 11, text });
+        }
+      }
+    }
+    pages.push(items);
+  }
+  return buildPdf(pages);
+}
+
+/** Thirty pages of it — enough that most of the stack is nowhere near the viewport. */
+export const TALL_PDF = buildTwoColumnPdf(30);
+
 /** A file that says it is a PDF and is not one — the "cannot be read" line. */
 export const BROKEN_PDF = Buffer.from("%PDF-1.7\nthis file claims to be a PDF and is not one\n", "latin1");
 
@@ -129,7 +171,9 @@ export const BROKEN_PDF = Buffer.from("%PDF-1.7\nthis file claims to be a PDF an
  * need a server that answers `application/pdf` — the suites' page server answers
  * everything as text/html, which a PDF is not.
  */
-export async function servePdfs(files = { "/doc.pdf": TEST_PDF, "/scanned.pdf": SCANNED_PDF, "/broken.pdf": BROKEN_PDF }) {
+export async function servePdfs(
+  files = { "/doc.pdf": TEST_PDF, "/scanned.pdf": SCANNED_PDF, "/broken.pdf": BROKEN_PDF, "/tall.pdf": TALL_PDF },
+) {
   const server = http.createServer((req, res) => {
     const body = files[req.url.split("?")[0]];
     if (!body) {
