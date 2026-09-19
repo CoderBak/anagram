@@ -935,13 +935,16 @@ export function createFab(opts: { onToggle: () => void; onRetry?: () => void; pa
     }
     panelEl.appendChild(list);
 
-    // Footer: per-site kill switch (writes the same rule the popup manages).
+    // Footer: per-site kill switch (writes the same rule the popup manages). On our own
+    // extension pages — the PDF reader — the "site" is an extension id nobody recognises,
+    // so the row names the page instead of printing it.
+    const ownPage = location.protocol === "chrome-extension:" || location.protocol === "moz-extension:";
     const foot = document.createElement("div");
     foot.className = "pfoot";
     const off = document.createElement("button");
     off.type = "button";
     off.className = "psiteoff";
-    off.textContent = `Turn off on ${location.hostname}`;
+    off.textContent = ownPage ? "Turn off here" : `Turn off on ${location.hostname}`;
     off.title = "Adds a per-site rule — re-enable any time from the toolbar popup";
     off.addEventListener("click", (e) => {
       e.stopPropagation();

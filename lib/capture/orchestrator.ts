@@ -130,10 +130,18 @@ export interface OrchestratorOptions {
    * main-region probe cannot see into — "main" would mis-scope to app chrome.
    */
   lockScope?: "page";
+  /**
+   * What the copied report names as the page. The PDF reader is an extension page, so
+   * its own address ("chrome-extension://…/reader.html?src=…") says nothing to whoever
+   * reads the report — it passes the PDF's own URL instead.
+   */
+  reportUrl?: string;
 }
 
 export function createOrchestrator(
-  _ctx: ContentScriptContext,
+  // The context is part of the content-script contract and deliberately unused; the PDF
+  // reader runs the same pipeline from an extension page, where there is no context.
+  _ctx: ContentScriptContext | null,
   opts: OrchestratorOptions = {},
 ): Orchestrator {
   const mountFab = opts.mountFab ?? true;
@@ -262,7 +270,7 @@ export function createOrchestrator(
     const lines: string[] = [];
     lines.push(`# Anagram report — ${document.title || location.hostname}`);
     lines.push("");
-    lines.push(`- Page: ${location.href}`);
+    lines.push(`- Page: ${opts.reportUrl ?? location.href}`);
     lines.push(`- Generated: ${new Date().toLocaleString()}`);
     // "Analyzed" is real verdicts only. A paragraph the language gate refused and one
     // the daemon never answered for were both counted as analyzed before, which made

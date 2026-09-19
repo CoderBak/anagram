@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Anagram reader</title>
+    <style>
+      /* Layout only — colours, type and controls come from Basecoat (Vega). The page
+         mirrors the Google Docs reading overlay: a thin bar, then paper. */
+      body { margin: 0; background: var(--muted); color: var(--foreground); font-size: 15px; line-height: 1.5; }
+
+      header.bar {
+        position: sticky; top: 0; z-index: 2;
+        display: flex; align-items: center; gap: 12px;
+        padding: 10px 16px;
+        background: var(--card); border-bottom: 1px solid var(--border);
+      }
+      header.bar .mark {
+        flex: 0 0 auto; width: 26px; height: 26px; border-radius: 6px;
+        display: inline-flex; align-items: center; justify-content: center;
+        background: var(--foreground); color: var(--background);
+        font: 700 13px/1 ui-sans-serif, system-ui, sans-serif;
+      }
+      header.bar .titles { flex: 1 1 auto; min-width: 0; }
+      header.bar .t { font-size: 14px; font-weight: 600; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      header.bar .s { font-size: 11.5px; line-height: 1.3; color: var(--muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      header.bar .btn { flex: 0 0 auto; }
+
+      main { padding: 24px 16px 120px; }
+      .paper {
+        max-width: 720px; margin: 0 auto; box-sizing: border-box;
+        background: var(--card); color: var(--card-foreground);
+        border: 1px solid var(--border); border-radius: 8px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        padding: 48px 56px 56px;
+        font-size: 16.5px; line-height: 1.75;
+        overflow-wrap: break-word;
+      }
+      .paper p { margin: 0 0 1.1em; }
+      .paper h2 { margin: 1.8em 0 0.7em; font-size: 19px; font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
+      .paper > :first-child { margin-top: 0; }
+      .paper .pagemark {
+        margin: 2em 0; text-align: center;
+        font: 500 11px/1 ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.1em;
+        color: var(--muted-foreground);
+      }
+
+      .notice { max-width: 720px; margin: 0 auto 14px; font-size: 12.5px; color: var(--muted-foreground); text-align: center; }
+      .notice:empty { display: none; }
+
+      .drop {
+        max-width: 720px; margin: 0 auto; box-sizing: border-box;
+        display: flex; flex-direction: column; align-items: center; gap: 12px;
+        padding: 56px 24px; text-align: center;
+        background: var(--card); border: 1px dashed var(--border); border-radius: 8px;
+        color: var(--muted-foreground);
+      }
+      .drop.over { border-color: var(--foreground); color: var(--foreground); }
+      .drop[hidden] { display: none; }
+      .drop p { margin: 0; font-size: 14px; }
+
+      @media (max-width: 760px) {
+        main { padding: 12px 8px 100px; }
+        .paper { padding: 26px 20px 34px; font-size: 16px; }
+        header.bar { padding: 9px 12px; gap: 9px; }
+      }
+      @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+    </style>
+  </head>
+  <body>
+    <header class="bar" data-anagram="host">
+      <span class="mark" aria-hidden="true">A</span>
+      <div class="titles">
+        <div class="t" id="title">Anagram reader</div>
+        <div class="s" id="subtitle"></div>
+      </div>
+      <button id="original" class="btn" data-variant="outline" data-size="sm" type="button" hidden>Open original</button>
+    </header>
+
+    <main>
+      <p class="notice" id="notice" data-anagram="host"></p>
+      <section class="drop" id="drop" data-anagram="host" hidden>
+        <p>Drop a PDF here</p>
+        <button id="choose" class="btn" data-variant="outline" data-size="sm" type="button">Choose a file</button>
+        <input id="file" type="file" accept="application/pdf,.pdf" hidden />
+      </section>
+      <article class="paper" id="paper" hidden></article>
+    </main>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
