@@ -286,6 +286,17 @@ Notable changes to Anagram, newest first. The format follows
   <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>K</kbd> walk to the next and previous
   flagged paragraph, wrapping around.
 
+- **The triage panel says how much of the page was read.** One quiet line of
+  numbers under the title — `18 read · 7 short · 3 not English`, with `pending`
+  and `unavailable` when they are not zero. "0 flagged" on its own reads as "all
+  clear", when it can equally mean that nothing on the page was long enough to
+  judge, or that none of it was English. "Short" is prose the walk found and
+  gave up on: under the 50-word evidence floor with no neighbour of its own
+  voice to join. The walk reports each such stretch as it decides
+  (`CollectOptions.onShortText`), which is the only moment the answer exists —
+  nothing is read twice for this. The line is drawn, never announced: the
+  panel's live region still belongs to the flagged count alone.
+
 ### Changed
 
 - **A release waits for the whole test matrix.** The release workflow used to run the type check and
@@ -294,6 +305,46 @@ Notable changes to Anagram, newest first. The format follows
   the Firefox build in a real Firefox. CI's `push` trigger is held to branches so that a tag does
   not run the matrix twice. (Day-to-day CI on pushes is switched off in the repository settings
   until the public release — switch it back on before the first tag.)
+- **A score is written `.93`, never `63%`.** EditLens answers with an EXTENT of
+  AI editing on a scale of 0 to 1 — an edit distance from a human original — and
+  a per cent sign made every surface of the product read as "63 % sure this is
+  AI", which is the one thing the number does not say. One formatter
+  (`lib/render/score.ts`) now writes it the way a correlation is written: two
+  decimals, no leading zero, no per cent sign, with `1.0` at the top of the
+  scale, in the chip, the chip's card, the selection card, each window's own
+  number, the panel rows, the PDF view's chips and the copied report. Anything
+  SPOKEN — a panel row's accessible name — says the leading zero out loud,
+  because a screen reader reads a bare ".93" badly. Numbers that really are
+  probabilities (the four-bucket distribution, the language gate's confidence)
+  keep their per cent sign and do not go through it. The `×N` suffix is
+  unchanged: `.93 ×4`.
+- **The marks are quiet, and nothing is wavy.** Every read unit used to carry its
+  band's tint and underline all the time, with a WAVY line under the two flagged
+  bands — the spell-checker's "this is wrong" — and a tint over the page's own
+  words changes how the author's text looks, which is the one thing Anagram must
+  never do. At rest the page is now left as it was: nothing under human or
+  lightly-edited text (its chip has already said it was read), and a thin SOLID
+  line under the two flagged bands only, 1 px for heavily edited and 2 px for
+  AI-generated so the two differ by more than hue. Hover a chip, pin its card,
+  or land on it from the panel or the next/previous-flagged keys, and that ONE
+  paragraph shows its whole extent, tint and all, window by window in each
+  window's own band, until you leave — the reader sees exactly what was read and
+  where it changed band, without the page wearing it permanently. Nothing
+  animates (a highlight pseudo-element takes no transition), the dark palette is
+  unchanged, and the PDF view paints through the same module and follows the
+  same rules.
+- **`markStyle` is two honest choices.** "Underline + tint", "underline only" and
+  "tint only" all meant "mark every paragraph, all the time"; the setting is now
+  `quiet` (the default — the rules above) and `always` (every unit marked, as
+  before minus the waves). A profile holding one of the three old values reads
+  as `always`, so an old profile still opens and this build writes nothing an
+  older one cannot read. `showHighlights` is still the master switch, and
+  `displayMode: "flagged"` still means what it meant.
+- **The store description says what the extension does.** `package.json`, both
+  locales and the README tagline claimed "per-paragraph AI-generated-text
+  confidence badges" — a claim EditLens does not make. They now say: shows how
+  heavily each paragraph appears to be AI-edited, scored on your own computer.
+
 - Every bundle now carries only the English it can actually show, and the content
   script is **13 kB smaller** for it (197 → 184 kB raw, 67 → 63 kB gzipped); the
   background worker is **18 kB smaller** (74 → 55 kB raw), and the shared page
@@ -708,6 +759,14 @@ Notable changes to Anagram, newest first. The format follows
   they have to.
 
 ### Tests
+
+- The score's shape and the quiet marks, in `test/unit.mjs`: `formatScore` /
+  `spokenScore` at both ends of the scale, which `::highlight()` rules exist at
+  rest in each mark style, that nothing anywhere is wavy, and that an active
+  unit's ranges move into the active highlight set and back — including that
+  clearing a unit while it is active leaves nothing behind in either set. Every
+  suite that expected `<n>%` on a chip, in a card, in a panel row's accessible
+  name or in the copied report now expects the 0-1 number instead.
 
 - Twelve cases over the per-surface English fallback, in `test/node/i18n.test.ts`:
   the scan that decides a bundle's keys (WXT's two build shapes; our imports

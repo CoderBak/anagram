@@ -6,8 +6,9 @@
 //   chip scales with the text it annotates (clamped 9–12px) and sits on the SAME
 //   BASELINE as the words before it — no vertical fudge factors.
 // - `margin-inline-start` keeps the gap on the correct side in RTL text.
-// - The chip reads the bare number ("38%"); what the number means is explained in
-//   the hover card's footer and on the onboarding page, not repeated on every line.
+// - The chip reads the bare number (".38" on a 0-1 scale — see lib/render/score.ts);
+//   what the number means is explained in the hover card's footer and on the onboarding
+//   page, not repeated on every line.
 // - Visual language follows Basecoat's Vega pack (the extension pages): neutral
 //   greys, hairline borders, 6–8 px radii, one flat shadow, no gradients, no blur,
 //   verdict colour only on the dot / text / marks.

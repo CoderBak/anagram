@@ -28,9 +28,11 @@ interface Box {
 }
 
 /**
- * The chip's footprint in CSS pixels. It is a pill of a dot and at most four characters
- * ("100%") in the shipped style; these are upper bounds, used because the host is measured
- * before its number is written into it and a chip must never be placed optimistically.
+ * The chip's footprint in CSS pixels. It is a pill of a dot and at most six characters
+ * (".93 ×4") in the shipped style; these are upper bounds, used because the host is
+ * measured before its number is written into it and a chip must never be placed
+ * optimistically. Left where it was when the number lost its per cent sign: the bound
+ * only has to be generous, and a chip that fits 54 px fits the narrower text too.
  */
 const CHIP_W = 54;
 /** A unit of several paragraphs says so after the number ("38% ×3"), which is three more
