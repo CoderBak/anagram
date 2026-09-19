@@ -49,6 +49,12 @@ jobs:
       - run: npm run test:e2e
       - name: scenarios (local fixtures)
         run: node test/scenarios.mjs --local
+      # axe-core on the four extension pages and on our injected UI, plus the keyboard,
+      # focus, target-size and contrast checks axe cannot make. Runs on every OS leg:
+      # hit targets and focus rings are measured in CSS pixels from real layout, and
+      # platform font metrics move them.
+      - name: accessibility (axe-core + keyboard / contrast)
+        run: npm run test:a11y
       - name: device matrix
         run: npm run test:matrix
       - name: e2e again with a real window (Xvfb)

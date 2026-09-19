@@ -16,6 +16,7 @@
     "postinstall": "wxt prepare && node scripts/vendor.mjs",
     "test:unit": "node test/unit.mjs",
     "test:scenarios": "node test/scenarios.mjs",
+    "test:a11y": "node test/a11y.mjs",
     "test:perf": "node test/perf.mjs",
     "test:server": "node test/server.mjs",
     "test:verify": "node test/verify-backend.mjs",

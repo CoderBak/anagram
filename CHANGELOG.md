@@ -331,6 +331,36 @@ Notable changes to Anagram, newest first. The format follows
 
 ### Tests
 
+- An automated accessibility suite: `npm run test:a11y`. It runs **axe-core**
+  (WCAG 2.1 A + AA, with axe's best-practice rules reported on a line of their
+  own) over the popup, options, onboarding and PDF reader pages in light and
+  dark — the options page with two site rules and the add-rule error showing,
+  onboarding with the daemon running and stopped, the reader empty and with a
+  PDF the suite writes itself — and then over our own injected UI, scoped to our
+  nodes so the host page's problems are not counted as ours: the ball with the
+  panel closed, open with flagged rows, open with both verdict filters, a
+  pinned chip card, the selection card and the daemon-down notice. axe reaches
+  into the open shadow roots, and the suite proves it did by naming a node it
+  could only have found through one. Extension pages reject an injected inline
+  script under the MV3 page CSP, so the library's source is evaluated through
+  the debugger instead of added as a `<script>`. On top of that, the checks axe
+  cannot make, asserted in code: Tab reaches the ball and then the counter,
+  Enter opens the panel as a named dialog and moves focus into it, Tab walks its
+  controls in DOM order with no positive tabindex, Escape closes it and gives
+  focus back; every control has an accessible name that is a word rather than a
+  glyph, a visible focus indicator and a 24x24 CSS-pixel hit target; colour
+  contrast is computed from the resolved colours for the chip number, the card
+  verdict, the panel percentages and the counter, in light and dark, because axe
+  cannot always see through a top-layer popover inside a shadow root; nothing of
+  ours animates under `prefers-reduced-motion`; and chips keep a visible
+  boundary under forced colours. Because the suite would otherwise be born red,
+  it carries an explicit baseline of the debt that existed the day it was
+  written — 29 axe rules and 19 code-level findings, each with the node and one
+  line on what it costs — and fails only on what is not in it, printing the
+  known count every run. Deliberate exemptions (the per-paragraph chips are
+  `aria-hidden` and unfocusable on purpose) are listed separately from the
+  debts. A JSON report lands in the artifacts folder, and the suite runs on
+  every OS leg in CI.
 - The pure text machinery is checked against properties rather than examples. A
   seeded generator (no new dependency) builds words, CJK, emoji, invisibles,
   non-breaking spaces, LaTeX residue, curly quotes, en-dashed figure ranges,
