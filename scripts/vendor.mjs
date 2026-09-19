@@ -7,6 +7,12 @@
 // (lib/lazy.ts) the first time a feature needs them. Runs on postinstall and before
 // every build, for both the Chrome and the Firefox target — public/ is copied verbatim
 // into each output, so one prebuild serves both.
+//
+// One chunk is OUR OWN code: the page diagnostics (lib/diagnostics/chunk.ts), which carry
+// a copy of the segmentation modules because the report re-runs the walk to explain it.
+// That copy is generated here, on every build and on install, and is NOT committed — a
+// checked-in copy of lib/dom/ would go stale the first time somebody changed a rule and
+// the report would then explain pages by a walk the product no longer performs.
 import { build } from "esbuild";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -48,6 +54,21 @@ for (const [file, contents] of Object.entries(chunks)) {
   });
   console.log(`vendor/${file}  ${(statSync(join(OUT, file)).size / 1024).toFixed(1)} kB`);
 }
+
+// The diagnostics chunk is bundled from the tree the way the content script is. It must
+// import no extension API at all — everything the platform knows is handed to it by
+// lib/diagnostics/index.ts — and esbuild enforces that here: a stray `#imports` has no
+// resolver outside WXT and fails this build rather than the browser.
+await build({
+  entryPoints: [join(ROOT, "lib", "diagnostics", "chunk.ts")],
+  bundle: true,
+  format: "esm",
+  minify: true,
+  target: ["chrome110", "firefox128"],
+  outfile: join(OUT, "diagnostics.min.mjs"),
+  logLevel: "error",
+});
+console.log(`vendor/diagnostics.min.mjs  ${(statSync(join(OUT, "diagnostics.min.mjs")).size / 1024).toFixed(1)} kB`);
 
 for (const [file, from] of Object.entries(copies)) {
   copyFileSync(join(ROOT, "node_modules", from), join(OUT, file));

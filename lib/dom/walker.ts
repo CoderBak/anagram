@@ -549,8 +549,15 @@ function composedChildren(el: Element, onShadowRoot?: (root: ShadowRoot) => void
   return Array.from(el.childNodes);
 }
 
-/** Hard exclusion check up the ancestor chain — guards partial re-scan roots. */
-function isExcludedByAncestry(start: Element): boolean {
+/**
+ * Hard exclusion check up the ancestor chain — guards partial re-scan roots.
+ *
+ * Exported for the page diagnostics (lib/diagnostics/silence.ts), which has to answer
+ * "why did this text get nothing?" with the walk's own verdict rather than a copy of this
+ * list: it asks this first, and only then re-runs the individual predicates to name which
+ * of them fired. Read-only, like every predicate here.
+ */
+export function isExcludedByAncestry(start: Element): boolean {
   const plainTextDoc = document.contentType === "text/plain";
   let el: Element | null = start;
   while (el) {

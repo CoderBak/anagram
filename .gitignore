@@ -1,6 +1,10 @@
 .wxt/
 output/
 node_modules/
+# Generated from lib/diagnostics/ before every build and on install (scripts/vendor.mjs).
+# The other vendor chunks are copies of published libraries and are committed; this one is
+# our own source and would go stale the moment a segmentation rule changed.
+public/vendor/diagnostics.min.mjs
 *.log
 .DS_Store
 

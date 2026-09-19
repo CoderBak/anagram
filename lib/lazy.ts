@@ -32,6 +32,20 @@ export const loadReadability = (): Promise<ReadabilityModule> =>
 export const loadPurify = (): Promise<{ default: import("dompurify").DOMPurify }> =>
   lazyVendor("purify.min.mjs");
 
+/**
+ * The page diagnostics (the "Copy page diagnostics" menu entry). Unlike the three above
+ * this chunk is OUR code — the segmentation modules plus the report builder — kept out of
+ * the content script for the same reason: it is twenty kilobytes that almost every page
+ * would carry and never run. It is rebuilt from source before every build and on install,
+ * so its copy of the walk can never explain a page by yesterday's rules.
+ */
+export interface DiagnosticsModule {
+  buildDiagnostics: (env: import("./diagnostics/report").DiagnosticsEnv) => Promise<string>;
+}
+
+export const loadDiagnostics = (): Promise<DiagnosticsModule> =>
+  lazyVendor<DiagnosticsModule>("diagnostics.min.mjs");
+
 /** The slice of pdf.js the reader uses: open a document, read a page's text runs. */
 export type PdfJsModule = Pick<typeof import("pdfjs-dist"), "getDocument" | "GlobalWorkerOptions" | "Util">;
 
