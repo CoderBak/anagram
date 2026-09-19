@@ -34,6 +34,20 @@ Notable changes to Anagram, newest first. The format follows
   were there leave with their chips, the current text is analyzed, and the
   reading position is kept unless the document got shorter. The overlay is still
   a snapshot — it just no longer has to be closed and reopened after an edit.
+- PDFs are read and analyzed. The browser's viewer hands extensions an image and
+  no text, so Anagram opens the file in a reading mode of its own: pdf.js reads
+  the text layer, the paragraphs are rebuilt from the page geometry — columns
+  read column by column, running heads and page numbers left out, words the
+  typesetter broke put back together, paragraphs sewn across page and column
+  breaks — and the ordinary pipeline runs on the result, with the same chips,
+  marks, ball, panel and report. The report names the PDF, not the reader page.
+  Three ways in: "Analyze PDF" on the ball of a PDF tab, "Read this PDF" in the
+  popup, and "Open PDF with Anagram" on a link to one; a reader opened with
+  nothing loaded takes a file by drop or picker. A scanned PDF says it has no
+  text layer, an encrypted or corrupt one says it cannot be read. The file's
+  bytes never leave the browser, and nothing but paragraph text is ever sent.
+  pdf.js and its worker are on-demand chunks, fetched only when a PDF is opened,
+  so the content script that runs on every page is unchanged in size.
 - The triage panel is reachable without a mouse. The ball's counter is a real
   button that says what it is ("3 flagged paragraphs — show list"), Enter opens
   the panel and moves the keyboard into it, Escape closes it and hands focus
