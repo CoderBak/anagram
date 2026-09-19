@@ -40,7 +40,8 @@ sudo, no Homebrew, no system Python, no shell-profile edits, no launch agent. Th
 ```
 
 and load the extension: `chrome://extensions` → Developer mode → **Load unpacked** →
-`~/.anagram/extension`. `anagram status | stop | logs | selftest` do what they say;
+`~/.anagram/extension`, then allow it on the sites you want from the page that opens (it
+installs able to read none). `anagram status | stop | logs | selftest` do what they say;
 `anagram doctor` checks the folder, the private Python and its packages, both model
 files against the checksums the installer pinned, the free space and the port, and
 prints one line per check with the command that fixes what is wrong (it only reads —
@@ -505,8 +506,11 @@ AMO-submittable zip.)
 > "Accessing from Xray wrapper is not supported"), so no chip, ball or card would
 > render at all; 140 is also where the CSS Custom Highlight API arrived.
 
-Browse anywhere with prose. The ball sits bottom-right; the toolbar popup and
-the options page hold the switches. Keep `npm run serve` running in a terminal —
+A fresh install may read **no site**: the first-run page that opens has an *Allow on
+all sites* button, the popup's "This site" switch grants one site at a time, and the
+popup's **Analyze this page** runs a single page with nothing granted at all (see
+[Permissions](#permissions)). After that, browse anywhere with prose. The ball sits
+bottom-right; the toolbar popup and the options page hold the switches. Keep `npm run serve` running in a terminal —
 see [`anagramd/README.md`](anagramd/README.md) for the API and its hardening.
 
 ## Testing
