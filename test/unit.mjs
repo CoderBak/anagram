@@ -1323,7 +1323,7 @@ const results = await page.evaluate(() => {
     const mixed = PW.unitVerdict("u5", 3000, [{ start: 0, end: 1000, result: ai }, { start: 1000, end: 2000, result: fr }, { start: 2000, end: 3000, result: ai }]);
     const allFr = PW.unitVerdict("u6", 2500, [{ start: 0, end: 1000, result: fr }, { start: 1000, end: 2500, result: { ...fr, lang: "de" } }]);
     check("a window the language gate refused stays out of the mean; all of them refused → Unsupported language",
-      !mixed.result.unsupported && near(mixed.result.score, ai.score) && PW.windowReadout(mixed).skipped === 1 && PW.windowReadout(mixed).pcts.join("|") === "93%|fr|93%" &&
+      !mixed.result.unsupported && near(mixed.result.score, ai.score) && PW.windowReadout(mixed).skipped === 1 && PW.windowReadout(mixed).scores.join("|") === ".93|fr|.93" &&
       allFr.result.unsupported === true && allFr.result.lang === "de", JSON.stringify([mixed.result, allFr.result]));
 
     const dense = PW.unitVerdict("u7", 5000, [{ start: 0, end: 2000, result: human }, { start: 2000, end: 4000, result: { ...ai, truncated: true } }]);
@@ -1361,8 +1361,9 @@ const results = await page.evaluate(() => {
     const cardText = () => sandbox.querySelector('[data-anagram="host"]').shadowRoot.querySelector(".card").textContent;
     const chips = sandbox.querySelectorAll('[data-anagram="host"]').length;
     check("the card says how it was read: 'Scored in 3 windows' with each window's number; ONE chip with the aggregate",
-      chips === 1 && /Scored in 3 windows\s*3%\s*·\s*65%\s*·\s*97%/.test(cardText()) && /averaged by length/.test(cardText()) && !/Only the opening/.test(cardText()) && !/first \d+/.test(cardText()) &&
-      sandbox.querySelector('[data-anagram="host"]').shadowRoot.querySelector(".num").textContent === `${PW.scorePct(verdict.result)}%`, cardText());
+      chips === 1 && /Scored in 3 windows\s*\.03\s*·\s*\.65\s*·\s*\.97/.test(cardText()) && /averaged by length/.test(cardText()) && !/Only the opening/.test(cardText()) && !/first \d+/.test(cardText()) &&
+      sandbox.querySelector('[data-anagram="host"]').shadowRoot.querySelector(".num").textContent === PW.formatScore(verdict.result.score) &&
+      !/%/.test(sandbox.querySelector('[data-anagram="host"]').shadowRoot.querySelector(".num").textContent), cardText());
 
     // Two of three windows read (as under the window cap): the tail is neither marked nor claimed.
     const partial = PW.unitVerdict(unit.id, unit.text.length, verdict.windows.slice(0, 2));
@@ -1396,6 +1397,59 @@ const results = await page.evaluate(() => {
     check("a one-window unit is marked and carded exactly as before", Object.keys(marks).join() === "anagram-ai" && marks["anagram-ai"].length === 1 && marks["anagram-ai"][0] === small.text && !/Scored/.test(cardText()) && !/window/.test(cardText()), cardText());
     PW.clearHighlight(small.id);
     layer.teardownAll();
+  }
+
+  // ---- the quiet marks -----------------------------------------------------------------
+  // At rest the page is nearly untouched and only the flagged bands carry a line; the whole
+  // of ONE unit lights up while the reader is on it. Ranges are registered for every band
+  // whatever the style — what changes is which rules paint and which set of highlight names
+  // a unit's ranges sit in.
+  {
+    PW.registerHighlightStyles();
+    const css = () => document.querySelector('style[data-anagram="style"]').textContent;
+    const ruleFor = (name) => (css().match(new RegExp(`::highlight\\(${name}\\)\\s*\\{([^}]*)\\}`)) ?? [, ""])[1];
+
+    PW.setMarkStyle("quiet");
+    check("quiet: human and lightly-edited text carries no rule at all; the two flagged bands carry a solid line",
+      ruleFor("anagram-human") === "" && ruleFor("anagram-light") === "" &&
+      /text-decoration-style: solid/.test(ruleFor("anagram-heavy")) && /text-decoration-style: solid/.test(ruleFor("anagram-ai")),
+      css());
+    check("…with no tint on the page's own words, and the two bands told apart by weight as well as hue",
+      !/background-color/.test(ruleFor("anagram-heavy")) && !/background-color/.test(ruleFor("anagram-ai")) &&
+      /text-decoration-thickness: 1px/.test(ruleFor("anagram-heavy")) && /text-decoration-thickness: 2px/.test(ruleFor("anagram-ai")),
+      css());
+    check("nothing anywhere is wavy", !/wavy/.test(css()), css());
+    check("the active rules exist for every band, tint and line, so a hover can show the whole of one unit",
+      ["human", "light", "heavy", "ai"].every((b) => /background-color/.test(ruleFor(`anagram-active-${b}`)) && /underline/.test(ruleFor(`anagram-active-${b}`))),
+      css());
+
+    PW.setMarkStyle("always");
+    check("always: every band is marked at rest, tint and line, and still nothing wavy",
+      ["human", "light", "heavy", "ai"].every((b) => /background-color/.test(ruleFor(`anagram-${b}`)) && /underline/.test(ruleFor(`anagram-${b}`))) && !/wavy/.test(css()),
+      css());
+    PW.setMarkStyle("quiet");
+
+    const bandsOf = (el) => {
+      const out = [];
+      for (const [name, hl] of CSS.highlights) for (const r of hl) if (el.contains(r.startContainer)) out.push(name);
+      return out.sort();
+    };
+    sandbox.innerHTML = `<p>${words(60)}</p>`;
+    const [quiet] = PW.collectUnits(sandbox);
+    const quietVerdict = PW.unitVerdict(quiet.id, quiet.text.length, [{ start: 0, end: quiet.text.length, result: res([0.9, 0.1, 0, 0]) }]);
+    PW.setHighlight(quiet, quietVerdict);
+    check("a human unit still registers its range — the chip's hover has to have something to show",
+      bandsOf(sandbox).join() === "anagram-human", JSON.stringify(bandsOf(sandbox)));
+
+    PW.setActiveUnit(quiet.id);
+    check("while the unit is active its range moves to the active set, and only that unit's does",
+      bandsOf(sandbox).join() === "anagram-active-human", JSON.stringify(bandsOf(sandbox)));
+    PW.setActiveUnit(null);
+    check("leaving puts it back at rest", bandsOf(sandbox).join() === "anagram-human", JSON.stringify(bandsOf(sandbox)));
+
+    PW.setActiveUnit(quiet.id);
+    PW.clearHighlight(quiet.id);
+    check("clearing an ACTIVE unit leaves nothing behind in either set", bandsOf(sandbox).length === 0, JSON.stringify(bandsOf(sandbox)));
   }
 
   // ---- what the walk REACHES ---------------------------------------------------------------
@@ -1707,7 +1761,14 @@ const results = await page.evaluate(() => {
   check("band(): degraded fallback → unknown", PW.band(mk(0, [0.25, 0.25, 0.25, 0.25], { degraded: true })) === "unknown");
   check("band(): unsupported language → unsupported, never flagged", PW.band(mk(0, [0.25, 0.25, 0.25, 0.25], { unsupported: true, lang: "zh" })) === "unsupported" && !PW.isFlagged(mk(3, [0, 0, 0, 1], { unsupported: true })));
   check("isFlagged(): heavy + ai only", PW.isFlagged(mk(2, [0, 0.2, 0.6, 0.2])) && PW.isFlagged(mk(3, [0, 0, 0.1, 0.9])) && !PW.isFlagged(mk(1, [0.2, 0.6, 0.2, 0])) && !PW.isFlagged(mk(0, [0.9, 0.1, 0, 0])));
-  check("scorePct(): probability-weighted extent", PW.scorePct(mk(3, [0, 0, 0, 1])) === 100 && PW.scorePct(mk(0, [1, 0, 0, 0])) === 0 && PW.scorePct(mk(1, [0.25, 0.25, 0.25, 0.25])) === 50);
+  // The score is written the way a correlation is — two decimals, no leading zero, no
+  // per cent sign — and only the top of the scale breaks the shape, because ".100" is not
+  // a number. Anything spoken says the leading zero: a screen reader reads ".93" badly.
+  check("formatScore(): two decimals, no leading zero, 1.0 at the top",
+    PW.formatScore(mk(3, [0, 0, 0, 1]).score) === "1.0" && PW.formatScore(mk(0, [1, 0, 0, 0]).score) === ".00" &&
+    PW.formatScore(mk(1, [0.25, 0.25, 0.25, 0.25]).score) === ".50" && PW.formatScore(0.004) === ".00" && PW.formatScore(0.995) === "1.0");
+  check("spokenScore(): the same number with the zero a screen reader needs",
+    PW.spokenScore(0.93) === "0.93" && PW.spokenScore(0) === "0.00" && PW.spokenScore(1) === "1.0");
 
   sandbox.remove();
   return out;
@@ -1963,13 +2024,13 @@ for (const file of fixtureFiles) {
     };
 
     const units = PW.collectUnits(document.body);
-    // A distinct percentage per unit, so every chip says which unit it belongs to.
+    // A distinct score per unit, so every chip says which unit it belongs to.
     const pct = new Map();
     const paint = (layer, list) => {
       for (const u of list) {
         const i = units.indexOf(u);
         const score = (i + 1) / 20;
-        pct.set(u.id, `${Math.round(score * 100)}%`);
+        pct.set(u.id, PW.formatScore(score));
         const result = { id: u.id, bucket: 0, probs: [1 - score, score, 0, 0], score };
         layer.render(u, PW.unitVerdict(u.id, u.text.length, [{ start: 0, end: u.text.length, result }]));
       }
@@ -2087,7 +2148,7 @@ for (const file of fixtureFiles) {
     const pct = new Map();
     units.forEach((u, i) => {
       const score = (i + 1) / 20;
-      pct.set(u.id, `${Math.round(score * 100)}%`);
+      pct.set(u.id, PW.formatScore(score));
       const result = { id: u.id, bucket: 0, probs: [1 - score, score, 0, 0], score };
       layer.render(u, PW.unitVerdict(u.id, u.text.length, [{ start: 0, end: u.text.length, result }]));
     });

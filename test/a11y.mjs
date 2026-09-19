@@ -83,7 +83,7 @@ const EXEMPTIONS = [
     where: "lib/render/badge.ts (buildHost)",
     why:
       "A page can carry hundreds of chips. Exposing them would add hundreds of tab stops " +
-      'and read "38%" into the middle of every sentence. The triage panel behind the ball ' +
+      'and read ".38" into the middle of every sentence. The triage panel behind the ball ' +
       "is the accessible route to the same verdicts, and it is keyboard-operable.",
   },
   {
@@ -1371,17 +1371,17 @@ async function panelCodeChecks(page) {
     1,
     counter.ok ? [] : [{ key: "button.count", detail: `button.count ${counter.fg}/${counter.bg} ${counter.ratio}:1 (needs ${counter.need})` }],
   );
-  const ppct = await page.evaluate(() => {
+  const pscore = await page.evaluate(() => {
     const sr = document.getElementById("anagram-fab").shadowRoot;
-    return [...sr.querySelectorAll(".panel .ppct")].map((el) => window.__a11y.contrast(el));
+    return [...sr.querySelectorAll(".panel .pscore")].map((el) => window.__a11y.contrast(el));
   });
-  for (const c of ppct) report.contrast.push({ where: "panel .ppct", ...c });
+  for (const c of pscore) report.contrast.push({ where: "panel .pscore", ...c });
   recordFindings(
     "contrast",
-    "panel .ppct",
-    `every verdict percentage reads on the panel surface (worst ${ppct.length ? Math.min(...ppct.map((c) => c.ratio)) : "—"}:1)`,
-    ppct.length,
-    ppct.filter((c) => !c.ok).map((c) => ({ key: tail(c.path), detail: `${tail(c.path)} ${c.fg}/${c.bg} ${c.ratio}:1` })),
+    "panel .pscore",
+    `every verdict score reads on the panel surface (worst ${pscore.length ? Math.min(...pscore.map((c) => c.ratio)) : "—"}:1)`,
+    pscore.length,
+    pscore.filter((c) => !c.ok).map((c) => ({ key: tail(c.path), detail: `${tail(c.path)} ${c.fg}/${c.bg} ${c.ratio}:1` })),
   );
   await page.keyboard.press("Escape");
 }

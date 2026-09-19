@@ -367,15 +367,17 @@ const markStyleLive = await (async () => {
   const styleCss = () =>
     page.evaluate(() => document.querySelector('style[data-anagram="style"]')?.textContent ?? "");
   const before = await styleCss();
-  await optionsPage.evaluate(() => browser.storage.local.set({ markStyle: "tint" }));
+  // "always" marks every band at rest, so the resting human rule gains a tint; "quiet"
+  // (the default) leaves human text alone and that rule disappears again.
+  await optionsPage.evaluate(() => browser.storage.local.set({ markStyle: "always" }));
   const flipped = await waitFor(page, () => {
     const css = document.querySelector('style[data-anagram="style"]')?.textContent ?? "";
-    return css.includes("background-color") && !css.includes("text-decoration-line");
+    return /::highlight\(anagram-human\)\s*\{[^}]*background-color/.test(css);
   }, { timeout: 8000 });
-  await optionsPage.evaluate(() => browser.storage.local.set({ markStyle: "both" }));
+  await optionsPage.evaluate(() => browser.storage.local.set({ markStyle: "quiet" }));
   const restored = await waitFor(page, () => {
     const css = document.querySelector('style[data-anagram="style"]')?.textContent ?? "";
-    return css.includes("text-decoration-line");
+    return !/::highlight\(anagram-human\)/.test(css) && /::highlight\(anagram-ai\)/.test(css);
   }, { timeout: 8000 });
   return { hadStyleEl: before.length > 0, flipped, restored };
 })();

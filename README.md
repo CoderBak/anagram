@@ -1,9 +1,9 @@
 # Anagram for Chrome
 
-**See what's AI-written, right on the page.** Anagram is a Chrome extension that
-labels the text you read with a small per-paragraph chip — think Immersive
-Translate, but instead of translating, it answers *"how much of this did an AI
-write?"* — inline, live, on every site.
+**Shows how heavily each paragraph appears to be AI-edited, scored on your own
+computer.** Anagram is a Chrome extension that labels the text you read with a
+small per-paragraph chip — think Immersive Translate, but instead of translating,
+it answers *"how much of this did an AI write?"* — inline, live, on every site.
 
 > **Scoring:** verdicts come from **EditLens** (`pangram/editlens_roberta-large`,
 > Thai, Emi, Masrour & Iyyer, ICLR 2026), a 355M-parameter model that rates the
@@ -83,9 +83,10 @@ prints PASS/FAIL per sample and exits non-zero if any of them is wrong.
 
 ## What you get
 
-- **A chip after every analyzed paragraph** — `38%`, the model's estimate of how
-  far the text sits between untouched human writing and fully AI-generated
-  prose, with a color-coded verdict (green = Human, yellow = Lightly edited,
+- **A chip after every analyzed paragraph** — `.38` on a scale of 0 to 1, the
+  model's estimate of how far the text sits between untouched human writing and
+  fully AI-generated prose (it is an extent of editing, never a percentage of
+  anything), with a color-coded verdict (green = Human, yellow = Lightly edited,
   orange = Heavily edited, red = AI-generated, gray = Unavailable). What the
   number means is spelled out in the hover card and on the first-run page, not
   repeated on every line. Chips scale with the surrounding text, sit on its baseline,
@@ -96,12 +97,17 @@ prints PASS/FAIL per sample and exits non-zero if any of them is wrong.
   with a row per bucket, words analyzed, how a long paragraph was read
   (**"Scored in 3 windows"** with each window's own number), and a
   **Copy text** action — always with an *"estimate, not proof"* caveat.
-- **Verdict marks across what was read** (toggleable) — underline + tint,
-  underline only, or tint only (options), with a dark-tuned palette on dark
-  pages. A paragraph longer than the model reads in one pass is scored in
-  consecutive windows and marked **window by window, each in its own colour**, so
-  a text that turns from human to AI halfway shows where; the chip carries the
-  one aggregate. Marks are screen-only: they never print.
+- **Quiet verdict marks across what was read** (toggleable) — at rest the page is
+  left as its author wrote it: nothing under human or lightly-edited text, and a
+  thin solid line under the two flagged bands only (1 px heavily edited, 2 px
+  AI-generated, so they differ by more than hue). Nothing is wavy and nothing is
+  tinted. **Hover a chip** — or pin its card, or jump to it — and that one
+  paragraph shows its full extent, tint included: a paragraph longer than the
+  model reads in one pass is scored in consecutive windows and lights up **window
+  by window, each in its own colour**, so a text that turns from human to AI
+  halfway shows where. The options page can put the marks back on every
+  paragraph, all the time. Dark-tuned palette on dark pages; screen-only, so
+  marks never print.
 - **A floating ball** like Immersive Translate's: drag it anywhere — it **snaps
   to the nearest edge**, remembers its spot per site, and **tucks itself
   half-away when idle** (hover brings it back). It hides in fullscreen video and
@@ -233,10 +239,12 @@ Gemini 2.5 Flash with 303 editing prompts; the daemon reports the argmax bucket
 and the probability-weighted score (`Σ pᵢ·i / 3`, the reference script's
 `score_pred`), shown as the chip's number.
 
-**What the number is not.** `38%` is *not* "38 % of the words were written by
-AI": the paper explicitly rejects token-level attribution for edited text. It is
-the model's estimate of how far the paragraph sits, as a whole, between untouched
-human writing (0 %) and fully AI-generated text (100 %). Two very different
+**What the number is not.** `.38` is *not* "38 % of the words were written by
+AI", and not a probability that the paragraph is AI: the paper explicitly rejects
+token-level attribution for edited text. It is the model's estimate of how far the
+paragraph sits, as a whole, between untouched human writing (`.00`) and fully
+AI-generated text (`1.0`) — which is why it is written as a number on that scale
+and never as a percentage. Two very different
 distributions can share one number, which is why the card always shows all four
 probabilities.
 

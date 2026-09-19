@@ -105,11 +105,13 @@ try {
   await settle(p, 2);
   // pin the highest-percent badge's card (the money shot: meter + sentences)
   await p.evaluate(() => {
-    let best = null, bestPct = -1;
+    let best = null, bestScore = -1;
     for (const h of document.querySelectorAll('[data-anagram="host"]:not(#anagram-fab)')) {
       const t = h.shadowRoot?.querySelector(".num")?.textContent ?? "";
-      const m = t.match(/(\d+)%/);
-      if (m && +m[1] > bestPct) { bestPct = +m[1]; best = h; }
+      // The chip reads ".93" or "1.0" — parseFloat takes both, and nothing else on a chip
+      // (a language code, the "×3" suffix, "···") parses as a number at all.
+      const score = parseFloat(t);
+      if (Number.isFinite(score) && score > bestScore) { bestScore = score; best = h; }
     }
     best?.click();
   });

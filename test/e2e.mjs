@@ -287,8 +287,11 @@ const windowBlocks = [...new Set(daemon.stats.texts.filter((t) => t.length > 200
   .sort((a, b) => s.windowed.text.indexOf(a) - s.windowed.text.indexOf(b));
 const windowVerdicts = windowBlocks.map((t) => fakeScore(t));
 const expectedBands = [...new Set(windowVerdicts.map((v) => BANDS[v.bucket]))].sort();
-const expectedPcts = windowVerdicts.map((v) => `${Math.round(v.score * 100)}%`);
-console.log(`windowed paragraph: ${s.windowed.text.length} chars → ${windowBlocks.length} blocks of ${windowBlocks.map((t) => t.length).join(" / ")} chars → ${expectedPcts.join(" · ")} (${expectedBands.join(", ")})`);
+// What lib/render/score.ts writes, in four lines, so the expectation is spelled out here
+// rather than imported out of a TypeScript module this suite cannot load.
+const formatScore = (score) => (Math.round(score * 100) >= 100 ? "1.0" : `.${String(Math.round(score * 100)).padStart(2, "0")}`);
+const expectedScores = windowVerdicts.map((v) => formatScore(v.score));
+console.log(`windowed paragraph: ${s.windowed.text.length} chars → ${windowBlocks.length} blocks of ${windowBlocks.map((t) => t.length).join(" / ")} chars → ${expectedScores.join(" · ")} (${expectedBands.join(", ")})`);
 const checks = [
   ["extension loaded (service worker)", !!sw],
   ["badges rendered across the page", s.badgeTotal >= 11],
@@ -298,20 +301,20 @@ const checks = [
   ["LONG paragraph: exactly ONE badge (no 1000-char split)", s.sections.longpara === 1],
   ["LONG paragraph underline reaches the end (HF regression)", s.hl.longtail],
   ["LONG paragraph is still one window: no window row in its card", !/Scored/.test(snapshotCardOf.longpara)],
-  ["WINDOWED paragraph: exactly ONE chip, showing one percentage", s.sections.windowed === 1 && /^\d+%$/.test(s.windowed.chip)],
+  ["WINDOWED paragraph: exactly ONE chip, showing one score and no per cent sign", s.sections.windowed === 1 && /^(\.\d\d|1\.0)$/.test(s.windowed.chip)],
   ["WINDOWED paragraph: the daemon received it whole, as 3 consecutive blocks, none past its token window",
     windowBlocks.length === 3 && windowBlocks.join(" ") === s.windowed.text && windowVerdicts.every((v) => v.truncated === false)],
   ["WINDOWED paragraph: underline reaches the final sentence", s.hl.windowtail],
   ["WINDOWED paragraph: each window is marked in its own band (more than one, as the verdicts differ)",
     expectedBands.length > 1 && JSON.stringify(s.windowed.bands) === JSON.stringify(expectedBands)],
   ["WINDOWED paragraph: the card reads 'Scored in 3 windows' with each window's number, and claims no prefix",
-    s.windowed.card.includes(`Scored in 3 windows${expectedPcts.join("\u00a0· ")}`) && !/Only the opening|first \d+/.test(s.windowed.card)],
+    s.windowed.card.includes(`Scored in 3 windows${expectedScores.join("\u00a0· ")}`) && !/Only the opening|first \d+/.test(s.windowed.card)],
   ["BR-split halves merged into one unit", s.sections.brsplit === 1 && s.hl.br1 && s.hl.br2],
   ["three short siblings merged into one unit", s.sections.mergeshorts === 1 && s.hl.ms1 && s.hl.ms2 && s.hl.ms3],
   ["one-sentence-per-line post: one unit from the first line to the last, without the name row", s.sections.postlines === 1 && s.hl.post1 && s.hl.postN && !s.hl.posterName],
   ["two posts / an author and a quotation are never added up", s.sections.twovoices === 0 && !s.hl.voices],
   ["a post of mixed paragraphs: ONE chip reading ×4, marks on every paragraph, none on the name or 'Show more'",
-    s.sections.postwhole === 1 && /^\d+% ×4$/.test(s.postwholeChip) && s.hl.postwhole && !s.hl.postwholeChrome],
+    s.sections.postwhole === 1 && /^(\.\d\d|1\.0) ×4$/.test(s.postwholeChip) && s.hl.postwhole && !s.hl.postwholeChrome],
   ["…opened in place (text re-rendered, two more paragraphs): still ONE chip, now ×6, marks on all six", postReopened && postReopenedMarks],
   ["inline <code> does not fragment the paragraph", s.sections.inlinecode === 1 && s.hl.icode],
   ["pure-CJK paragraph badged as 'unsupported' (language gate)", s.sections.purecjk === 1 && s.cjkUnsupported],

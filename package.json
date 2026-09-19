@@ -1,6 +1,6 @@
 {
   "name": "anagram-extension",
-  "description": "Anagram for Chrome — per-paragraph AI-generated-text confidence badges.",
+  "description": "Anagram for Chrome — shows how heavily each paragraph appears to be AI-edited, scored on your own computer.",
   "private": true,
   "version": "0.3.2",
   "type": "module",

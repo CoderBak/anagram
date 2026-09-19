@@ -106,10 +106,14 @@ up.chips.forEach((c, i) => {
     return;
   }
   const apiProbs = r.probs.map((p) => Math.round(p * 100));
-  const apiPct = Math.round(r.score * 100);
-  const match = apiProbs.every((p, k) => Math.abs(p - c.probs[k]) <= 1) && Math.abs(apiPct - parseInt(c.num, 10)) <= 1;
+  // The chip writes the score the way lib/render/score.ts does — ".93", "1.0" — so the
+  // daemon's own number is written the same way before the two are compared.
+  const hundredths = Math.round(r.score * 100);
+  const apiScore = hundredths >= 100 ? "1.0" : `.${String(hundredths).padStart(2, "0")}`;
+  const chipScore = c.num.replace(/ ×\d+$/, "");
+  const match = apiProbs.every((p, k) => Math.abs(p - c.probs[k]) <= 1) && Math.abs(hundredths - Math.round(parseFloat(chipScore) * 100)) <= 1;
   allMatch &&= match;
-  console.log(`${c.num.padEnd(12)} ${JSON.stringify(c.probs).padEnd(22)} | ${String(apiPct + "%").padEnd(9)} ${JSON.stringify(apiProbs).padEnd(20)} ${match ? "✓" : "✗"}   "${c.text.slice(0, 40)}…"`);
+  console.log(`${c.num.padEnd(12)} ${JSON.stringify(c.probs).padEnd(22)} | ${apiScore.padEnd(9)} ${JSON.stringify(apiProbs).padEnd(20)} ${match ? "✓" : "✗"}   "${c.text.slice(0, 40)}…"`);
 });
 console.log(allMatch ? "\n✅ every chip equals the daemon's answer for the same paragraph" : "\n❌ mismatch");
 

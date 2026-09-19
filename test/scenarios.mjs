@@ -418,7 +418,7 @@ async function sweep(page, steps = 6) {
     await p.close();
   }
 
-  // A8: copy hygiene — clipboard payload excludes the chip's "% AI" label.
+  // A8: copy hygiene — clipboard payload excludes the chip's number.
   {
     const r = await page.evaluate(async () => {
       const p = document.getElementById("copysrc");
@@ -439,7 +439,7 @@ async function sweep(page, steps = 6) {
       return {
         via: clip !== null ? "clipboard" : "selection",
         hasWords: probe.includes("COPYSRC paragraph exists"),
-        leaked: /\b\d{1,3}%/.test(probe),
+        leaked: /(?:^|\s)(?:\.\d\d|1\.0)(?:\s|$)/.test(probe),
       };
     });
     record("ui", `copy excludes badge text (${r.via})`, r.hasWords && !r.leaked, JSON.stringify(r));
@@ -651,7 +651,7 @@ async function sweep(page, steps = 6) {
       const clip = await page.evaluate(() => navigator.clipboard.readText().catch(() => null));
       ok =
         !!parts && parts.meter && parts.hasCopy &&
-        (clip === null || (clip.includes("COPYSRC paragraph exists") && !/\b\d{1,3}%/.test(clip)));
+        (clip === null || (clip.includes("COPYSRC paragraph exists") && !/(?:^|\s)(?:\.\d\d|1\.0)(?:\s|$)/.test(clip)));
       note = JSON.stringify({ ...parts, clip: clip?.slice(0, 40) });
     }
     record("ui", "hover card: distribution readout + working Copy text action", ok, note);
@@ -947,7 +947,7 @@ async function sweep(page, steps = 6) {
       !!rows &&
       Number(rows["Words selected"]) > 600 &&
       rows["Words analyzed"] === rows["Words selected"] &&
-      /^\d+%\s·\s\d+%\s·\s\d+%$/.test(rows["Scored in 3 windows"] ?? "") &&
+      /^(\.\d\d|1\.0)\s·\s(\.\d\d|1\.0)\s·\s(\.\d\d|1\.0)$/.test(rows["Scored in 3 windows"] ?? "") &&
       !("Model window" in rows) &&
       blocks.length === 3 &&
       blocks.join(" ") === WINDOWED_TEXT;
@@ -955,8 +955,9 @@ async function sweep(page, steps = 6) {
     await p.close();
   }
 
-  // A25: the copied report never says "62% AI" — the number is an estimate of EDITING
-  // EXTENT, not a share of AI-written words — and it carries the legend that says so.
+  // A25: the copied report carries no per cent sign on a score at all — the number is an
+  // estimate of EDITING EXTENT on 0-1, not a share of AI-written words, and not a
+  // probability — and it carries the legend that says so.
   {
     const p = await context.newPage();
     await p.goto(fixturesUrl, { waitUntil: "load" });
@@ -979,8 +980,10 @@ async function sweep(page, steps = 6) {
       typeof report === "string" &&
       report.startsWith("# Anagram report") &&
       !report.includes("% AI") &&
+      // Every flagged entry opens "1. **AI-generated · .96** (…", never with a percentage.
+      report.split(/\r?\n/).filter((l) => /^\d+\. \*\*/.test(l)).every((l) => /^\d+\. \*\*[^*]+ · (\.\d\d|1\.0)\*\*/.test(l)) &&
       report.includes("not a share of words, not proof");
-    record("ui", "copied report: bare percentages plus the legend that explains them", ok, JSON.stringify({ clicked, head: report?.slice(0, 48) }));
+    record("ui", "copied report: bare 0-1 scores plus the legend that explains them", ok, JSON.stringify({ clicked, head: report?.slice(0, 48) }));
     await p.close();
   }
 
@@ -990,7 +993,7 @@ async function sweep(page, steps = 6) {
     const p = await context.newPage();
     await p.goto(server.url("/windows.html"), { waitUntil: "load" });
     const chipped = await p
-      .waitForFunction((sel) => /^\d+%$/.test(document.querySelector(`#wp ${sel}`)?.shadowRoot?.querySelector(".num")?.textContent ?? ""), BADGE_SEL, { timeout: 12000 })
+      .waitForFunction((sel) => /^(\.\d\d|1\.0)$/.test(document.querySelector(`#wp ${sel}`)?.shadowRoot?.querySelector(".num")?.textContent ?? ""), BADGE_SEL, { timeout: 12000 })
       .then(() => true)
       .catch(() => false);
     await p.evaluate(() => navigator.clipboard.writeText("NO REPORT COPIED").catch(() => {}));
@@ -1003,8 +1006,8 @@ async function sweep(page, steps = 6) {
     const report = await p.evaluate(() => navigator.clipboard.readText().catch(() => null));
     // Windows hands the clipboard back with CRLF line ends; the report itself is LF.
     const line = (report ?? "").split(/\r?\n/).find((l) => l.startsWith("1. ")) ?? "";
-    const ok = chipped && /; \d+ words; scored in 3 windows: \d+% · \d+% · \d+%\)$/.test(line) && !line.includes("not read");
-    record("ui", "copied report: a paragraph scored in windows says so, with each window's percentage", ok, JSON.stringify({ chipped, line }));
+    const ok = chipped && /; \d+ words; scored in 3 windows: (\.\d\d|1\.0) · (\.\d\d|1\.0) · (\.\d\d|1\.0)\)$/.test(line) && !line.includes("not read");
+    record("ui", "copied report: a paragraph scored in windows says so, with each window's own number", ok, JSON.stringify({ chipped, line }));
     await p.close();
   }
 
@@ -1121,7 +1124,7 @@ async function sweep(page, steps = 6) {
       "ui",
       "accessible names carry the flagged count and each row's verdict",
       /\b4 flagged paragraphs\b/.test(onCounter.label ?? "") &&
-        /^(Heavily edited|AI-generated), \d{1,3}%: \S/.test(opened.itemLabel ?? ""),
+        /^(Heavily edited|AI-generated), (0\.\d\d|1\.0): \S/.test(opened.itemLabel ?? ""),
       JSON.stringify({ label: onCounter.label, itemLabel: opened.itemLabel?.slice(0, 60) }),
     );
 
@@ -2598,7 +2601,7 @@ addEventListener("load",()=>{window.__loadAt=performance.now();
     // image holds `load` back — so this also says that a chip held back and then released
     // arrives as its VERDICT and never as a pending chip nobody comes back to.
     marked.chips === 2 &&
-      marked.shown.every((n) => /^\d+%$/.test(n)) &&
+      marked.shown.every((n) => /^(\.\d\d|1\.0)$/.test(n)) &&
       marked.seenAtLoad === 0 &&
       marked.held > 0 &&
       marked.firstHostAt > marked.loadAt,
