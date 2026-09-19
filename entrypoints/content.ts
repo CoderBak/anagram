@@ -21,6 +21,7 @@ import { analyzeSelection } from "../lib/render/selectionCard";
 import { t } from "../lib/i18n";
 import { ACTIONS } from "../lib/messaging/protocol";
 import type { ControlMessage, PingReply, TabState, TopHostReply } from "../lib/messaging/protocol";
+import { serveTabPdfBytes } from "../lib/pdf/handoff";
 
 /** Min frame viewport for a subframe to be worth scanning (ad slots are smaller). */
 const MIN_FRAME_AREA = 40_000; // e.g. 400×100
@@ -286,6 +287,11 @@ export default defineContentScript({
     }
 
     if (isPdf) {
+      // The reading mode is HANDED the document's bytes; it fetches nothing itself. This
+      // tab is the only place they can honestly come from — same origin, same cookies,
+      // normally straight out of the HTTP cache — so it answers when the worker asks
+      // (lib/pdf/handoff.ts).
+      serveTabPdfBytes();
       // The worker navigates the tab: an extension page the content script could reach
       // by itself would have to be web accessible, and the reader must not be.
       orchestrator.setFabAction(

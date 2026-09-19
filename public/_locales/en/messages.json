@@ -1234,5 +1234,13 @@
   "accessWithdraw": {
     "message": "Withdraw",
     "description": "Options button that gives back every granted site."
+  },
+  "readerPassword": {
+    "message": "Password",
+    "description": "Reader field, in the bar, for an encrypted PDF's password. Placeholder and label."
+  },
+  "readerHtml": {
+    "message": "HTML",
+    "description": "Reader link: this paper also exists as a real HTML page. The acronym is the same in most languages."
   }
 }

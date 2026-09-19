@@ -913,5 +913,11 @@
   },
   "accessWithdraw": {
     "message": "撤销"
+  },
+  "readerPassword": {
+    "message": "密码"
+  },
+  "readerHtml": {
+    "message": "HTML"
   }
 }

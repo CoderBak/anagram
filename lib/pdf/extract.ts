@@ -24,8 +24,8 @@ import type { PdfPageText, PdfTextItem } from "./reflow";
 /** A rotated run is one whose matrix has any shear/rotation at all, beyond rounding. */
 const ROTATION_EPSILON = 0.02;
 
-/** Why a file could not be opened, in the three ways a reader can act on. */
-export type PdfOpenFailure = "password" | "invalid" | "failed";
+/** Why a file could not be opened, in the ways a reader can act on. */
+export type PdfOpenFailure = "password" | "invalid" | "failed" | "aborted";
 
 export class PdfOpenError extends Error {
   readonly failure: PdfOpenFailure;
@@ -91,39 +91,86 @@ function failureOf(e: unknown): PdfOpenFailure {
   return "failed";
 }
 
+/** Which ask this is: the first one, or the one after a password the file rejected. */
+export type PdfPasswordReason = "need" | "wrong";
+
+/** pdf.js's own codes for the two (PasswordResponses in the library). */
+const INCORRECT_PASSWORD = 2;
+
+export interface PdfOpenOptions {
+  /**
+   * Give up on this document. The loading task, its worker and anything it has already
+   * parsed go with it — which is what makes a superseded load cost nothing, rather than
+   * finishing in the background and arriving after the one that replaced it.
+   */
+  signal?: AbortSignal;
+  /**
+   * An encrypted document: answer with the password, or reject to stop asking. Called
+   * again with "wrong" for as long as the file keeps refusing what it is given.
+   */
+  password?(reason: PdfPasswordReason): Promise<string>;
+}
+
 /**
  * Open a PDF held in memory. `data` is transferred to the worker, so the caller must not
  * keep using the buffer afterwards.
  */
-export async function openPdf(data: Uint8Array): Promise<PdfDocument> {
+export async function openPdf(data: Uint8Array, options: PdfOpenOptions = {}): Promise<PdfDocument> {
   const pdfjs = await loadPdfjs();
   configure(pdfjs);
+  if (options.signal?.aborted) throw new PdfOpenError("aborted");
 
   let doc: Awaited<ReturnType<PdfJsModule["getDocument"]>["promise"]>;
+  const task = pdfjs.getDocument({
+    data,
+    // Everything below is what "faithful" costs. A document whose CMaps are predefined
+    // rather than embedded (nearly every CJK PDF) has no glyphs without cMapUrl; one
+    // that leans on the standard fourteen fonts is set in whatever the browser guesses
+    // without standardFontDataUrl; a scanned report is a page of blanks without the
+    // JPEG2000 and JBIG2 decoders. All three are files we ship (scripts/vendor.mjs).
+    cMapUrl: assets("cmaps"),
+    cMapPacked: true,
+    standardFontDataUrl: assets("standard_fonts"),
+    iccUrl: assets("iccs"),
+    wasmUrl: assets("wasm"),
+    useWasm: true,
+    // The MAIN thread fetches those files and posts the bytes across, rather than the
+    // worker fetching them itself: one code path for Chrome and for Firefox, and no
+    // question about what a privileged worker origin may request.
+    useWorkerFetch: false,
+    // Warnings about a font substitution or an unsupported feature would fill the
+    // console of every PDF opened; errors still come through as rejections.
+    verbosity: 0,
+  });
+
+  // An encrypted document. pdf.js stops in the worker and calls back: hand it a string
+  // and it tries again, hand it an Error and the open rejects. Without a handler it
+  // rejects straight away, which is what the drop zone used to be told.
+  if (options.password) {
+    const ask = options.password;
+    task.onPassword = (update: (answer: string | Error) => void, code: number): void => {
+      void ask(code === INCORRECT_PASSWORD ? "wrong" : "need").then(update, (e: unknown) =>
+        update(e instanceof Error ? e : new Error("no password")),
+      );
+    };
+  }
+
+  // Abort means abort: destroy() tears down the loading task AND its worker, so a
+  // document nobody is waiting for stops parsing instead of finishing into the void.
+  const giveUp = (): void => void task.destroy().catch(() => undefined);
+  options.signal?.addEventListener("abort", giveUp, { once: true });
   try {
-    doc = await pdfjs.getDocument({
-      data,
-      // Everything below is what "faithful" costs. A document whose CMaps are predefined
-      // rather than embedded (nearly every CJK PDF) has no glyphs without cMapUrl; one
-      // that leans on the standard fourteen fonts is set in whatever the browser guesses
-      // without standardFontDataUrl; a scanned report is a page of blanks without the
-      // JPEG2000 and JBIG2 decoders. All three are files we ship (scripts/vendor.mjs).
-      cMapUrl: assets("cmaps"),
-      cMapPacked: true,
-      standardFontDataUrl: assets("standard_fonts"),
-      iccUrl: assets("iccs"),
-      wasmUrl: assets("wasm"),
-      useWasm: true,
-      // The MAIN thread fetches those files and posts the bytes across, rather than the
-      // worker fetching them itself: one code path for Chrome and for Firefox, and no
-      // question about what a privileged worker origin may request.
-      useWorkerFetch: false,
-      // Warnings about a font substitution or an unsupported feature would fill the
-      // console of every PDF opened; errors still come through as rejections.
-      verbosity: 0,
-    }).promise;
+    doc = await task.promise;
   } catch (e) {
-    throw new PdfOpenError(failureOf(e), e);
+    throw new PdfOpenError(options.signal?.aborted ? "aborted" : failureOf(e), e);
+  } finally {
+    options.signal?.removeEventListener("abort", giveUp);
+  }
+  // Destroying the task destroys the document too, so from here on the caller's close()
+  // is the only way out — see the ownership rules in entrypoints/reader/main.ts.
+  if (options.signal?.aborted) {
+    void doc.destroy().catch(() => undefined);
+    throw new PdfOpenError("aborted");
   }
 
   let title: string | null = null;

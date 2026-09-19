@@ -24,6 +24,8 @@ import type {
 import { ensureInjected, installAccess } from "../lib/access/worker";
 import { READER_PAGE, readerQuery } from "../lib/pdf/source";
 import { shouldAutoOpen } from "../lib/pdf/route";
+import { createPdfHandoff } from "../lib/pdf/handoff";
+import { PDF_TAB_SCRIPTS_RUN } from "../lib/surface";
 import { settings } from "../lib/settings/settings";
 import { t } from "../lib/i18n";
 
@@ -55,6 +57,8 @@ export default defineBackground(() => {
   browser.tabs.onRemoved.addListener((tabId) => {
     badgeText.delete(tabId);
     dropPass(tabId);
+    wants.delete(tabId);
+    handoff.forget(tabId);
   });
 
   /**
@@ -87,6 +91,27 @@ export default defineBackground(() => {
    */
   const readerUrl = (src: string): string =>
     browser.runtime.getURL(READER_PAGE as PublicPath) + readerQuery(src);
+
+  /**
+   * The reading mode is HANDED the document's bytes (lib/pdf/handoff.ts): the tab that is
+   * showing the PDF re-reads it, the worker holds it under a one-time ticket, and only
+   * then does the tab become the reader. Nothing on the extension's own origin ever
+   * fetches a remote address — which is what `connect-src` in wxt.config.ts enforces.
+   *
+   * `ensureInjected` is what makes this work with optional site access: on a site with no
+   * grant there is no content script to ask, and the click the user just made — a menu
+   * entry, the popup's button — is what gives us `activeTab` to put one there.
+   */
+  const handoff = createPdfHandoff({ readerUrl, ensureInjected });
+  handoff.serve();
+
+  /**
+   * Tabs that were opened FOR the reading mode — the "Open PDF with Anagram" entry on a
+   * link. The PDF has to load in the tab before its bytes can be read out of it, so the
+   * tab is sent to the PDF and converts itself the moment it reports in, whatever "Open
+   * PDFs in Anagram" is set to. One shot, like a pass.
+   */
+  const wants = new Set<number>();
 
   /**
    * Tabs allowed to show one PDF WITHOUT the reading mode opening over it: the reader's
@@ -137,19 +162,24 @@ export default defineBackground(() => {
         title: t("menuCopyDiagnostics"),
         contexts: ["page"],
       });
-      browser.contextMenus.create({
-        id: "anagram-open-pdf",
-        title: t("menuOpenPdf"),
-        contexts: ["link"],
-        targetUrlPatterns: [
-          "*://*/*.pdf",
-          "*://*/*.pdf?*",
-          "*://*/*.PDF",
-          "*://*/*.PDF?*",
-          "file:///*.pdf",
-          "file:///*.PDF",
-        ],
-      });
+      // Only where a PDF tab admits a content script: the reading mode is handed the
+      // bytes by the tab showing the document, and Firefox's viewer is a privileged page
+      // no content script reaches, so there would be nobody to ask (lib/surface.ts).
+      if (PDF_TAB_SCRIPTS_RUN) {
+        browser.contextMenus.create({
+          id: "anagram-open-pdf",
+          title: t("menuOpenPdf"),
+          contexts: ["link"],
+          targetUrlPatterns: [
+            "*://*/*.pdf",
+            "*://*/*.pdf?*",
+            "*://*/*.PDF",
+            "*://*/*.PDF?*",
+            "file:///*.pdf",
+            "file:///*.PDF",
+          ],
+        });
+      }
     });
     if (details.reason === "install") {
       void browser.tabs.create({ url: browser.runtime.getURL("/onboarding.html") });
@@ -214,10 +244,15 @@ export default defineBackground(() => {
   browser.contextMenus.onClicked.addListener((info, tab) => {
     if (info.menuItemId === "anagram-open-pdf") {
       // A linked PDF opens BESIDE the page it was linked from: the reader replaces a tab
-      // only when that tab was already the PDF.
+      // only when that tab was already the PDF. The new tab is sent to the PDF itself,
+      // because that is the only place its bytes can be read from — and it is marked as
+      // wanting the reading mode, so it converts itself the moment it has loaded.
       if (info.linkUrl) {
+        const src = info.linkUrl;
         const index = tab ? tab.index + 1 : undefined;
-        void browser.tabs.create({ url: readerUrl(info.linkUrl), index });
+        void browser.tabs.create({ url: src, index }).then((opened) => {
+          if (opened.id != null) wants.add(opened.id);
+        });
       }
       return;
     }
@@ -307,9 +342,7 @@ export default defineBackground(() => {
       if (msg.action === ACTIONS.OPEN_PDF_READER) {
         const tabId = msg.tabId ?? sender.tab?.id;
         const src = msg.url ?? sender.tab?.url;
-        if (tabId != null && src) {
-          void browser.tabs.update(tabId, { url: readerUrl(src) });
-        }
+        if (tabId != null && src) void handoff.open(tabId, src, { auto: false });
         return;
       }
 
@@ -324,9 +357,12 @@ export default defineBackground(() => {
           // The pass is spent on the load it was written for, whatever is decided next.
           const pass = passes.get(tabId) === src;
           if (pass) dropPass(tabId);
+          // …and so is a tab opened by the menu entry for exactly this, which is a
+          // reader's explicit "open it with Anagram" and not the automatic route.
+          const wanted = wants.delete(tabId);
           const open = shouldAutoOpen({
             // Read now, not at startup: the switch has to take effect on the next PDF.
-            setting: await settings.autoOpenPdfs.getValue(),
+            setting: wanted || (await settings.autoOpenPdfs.getValue()),
             contentType: msg.contentType ?? "",
             protocol: msg.protocol ?? "",
             navigationType: msg.navigationType ?? "",
@@ -334,7 +370,7 @@ export default defineBackground(() => {
             pass,
           });
           if (!open) return;
-          await browser.tabs.update(tabId, { url: readerUrl(src) });
+          await handoff.open(tabId, src, { auto: !wanted });
         })();
         return;
       }

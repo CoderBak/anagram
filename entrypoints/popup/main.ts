@@ -24,6 +24,7 @@ import { hasAccess, requestAccess } from "../../lib/access/grant";
 import { ACTIONS } from "../../lib/messaging/protocol";
 import type { BackendStatus, ControlMessage, TabState } from "../../lib/messaging/protocol";
 import { looksLikePdfUrl } from "../../lib/pdf/source";
+import { PDF_TAB_SCRIPTS_RUN } from "../../lib/surface";
 
 const enabledEl = document.getElementById("enabled") as HTMLInputElement;
 const siteEl = document.getElementById("siteEnabled") as HTMLInputElement;
@@ -275,9 +276,11 @@ async function init(): Promise<void> {
   bindSeg(displayModeEls, (v) => void settings.displayMode.setValue(v as "all" | "flagged"));
   bindSeg(scopeEls, (v) => void settings.analysisScope.setValue(v as "page" | "main"));
 
-  // Chrome's PDF tab answers GET_TAB_STATE with pdf:true; Firefox's built-in viewer runs
-  // no content script at all, so there the tab URL is the only evidence there is.
-  if (looksLikePdfUrl(tab?.url)) readPdfEl.hidden = false;
+  // Chrome's PDF tab answers GET_TAB_STATE with pdf:true; the tab URL is the fallback
+  // evidence. Not on Firefox: its built-in viewer runs no content script, so there is
+  // nothing there to hand the reading mode the document's bytes (lib/pdf/handoff.ts) and
+  // an offer we cannot keep is worse than no offer.
+  if (PDF_TAB_SCRIPTS_RUN && looksLikePdfUrl(tab?.url)) readPdfEl.hidden = false;
   readPdfEl.addEventListener("click", () => {
     void browser.runtime.sendMessage({
       action: ACTIONS.OPEN_PDF_READER,

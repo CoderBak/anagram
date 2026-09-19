@@ -217,9 +217,9 @@ export const TALL_PDF = buildTwoColumnPdf(30);
 export const BROKEN_PDF = Buffer.from("%PDF-1.7\nthis file claims to be a PDF and is not one\n", "latin1");
 
 /**
- * Serve the PDFs over http. The reader fetches BYTES from a `?src=` address, so these
- * need a server that answers `application/pdf` — the suites' page server answers
- * everything as text/html, which a PDF is not.
+ * Serve the PDFs over http. The tab showing a PDF re-reads it and hands the BYTES to the
+ * reading mode, so these need a server that answers `application/pdf` — the suites' page
+ * server answers everything as text/html, which a PDF is not.
  */
 export async function servePdfs(
   files = {
@@ -242,4 +242,28 @@ export async function servePdfs(
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   const port = server.address().port;
   return { url: (path) => `http://localhost:${port}${path}`, close: () => new Promise((r) => server.close(() => r())) };
+}
+
+/**
+ * Open a PDF the way a reader does, which is now the ONLY way a remote one opens: the tab
+ * shows the document, the ball's chip hands it to the worker, the worker reads the bytes
+ * back out of that tab and turns it into the reading mode. No suite may navigate straight
+ * to `reader.html?src=…` any more — an address with no bytes behind it goes back to the
+ * PDF on purpose (entrypoints/reader/main.ts, leaveForOriginal).
+ */
+export async function openPdfInReader(context, url, { timeout = 25000 } = {}) {
+  const page = await context.newPage();
+  await page.goto(url, { waitUntil: "load" }).catch(() => {});
+  await page
+    .waitForFunction(
+      () => !!document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".action"),
+      null,
+      { timeout },
+    )
+    .catch(() => {});
+  await page
+    .evaluate(() => document.getElementById("anagram-fab").shadowRoot.querySelector(".action").click())
+    .catch(() => {});
+  await page.waitForURL(/reader\.html/, { timeout }).catch(() => {});
+  return page;
 }

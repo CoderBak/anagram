@@ -28,10 +28,11 @@ import { ACTIONS } from "../../lib/messaging/protocol";
 import type { ControlMessage, TabState } from "../../lib/messaging/protocol";
 import type { Unit } from "../../lib/types";
 import { setRangeLocator } from "../../lib/render/highlight";
-import { openPdf, PdfOpenError, type PdfDocument } from "../../lib/pdf/extract";
+import { openPdf, PdfOpenError, type PdfDocument, type PdfPasswordReason } from "../../lib/pdf/extract";
 import { reflowPdf, type PdfPageText } from "../../lib/pdf/reflow";
 import { createPdfUnitSource, type PdfUnitSource } from "../../lib/pdf/units";
-import { pdfNameFromUrl } from "../../lib/pdf/source";
+import { pdfNameFromUrl, htmlTwinOf } from "../../lib/pdf/source";
+import { claimPdfBytes, type HandoffFailure } from "../../lib/pdf/handoff";
 import { createViewer, type PageView, type Viewer } from "./viewer";
 import { placeChip } from "./chips";
 import { createLogger } from "../../lib/log";
@@ -52,6 +53,9 @@ const FIRST_BATCH = 24;
 const titleEl = document.getElementById("title") as HTMLElement;
 const subtitleEl = document.getElementById("subtitle") as HTMLElement;
 const originalEl = document.getElementById("original") as HTMLButtonElement;
+const twinEl = document.getElementById("twin") as HTMLAnchorElement;
+const passwordEl = document.getElementById("password") as HTMLFormElement;
+const passwordInputEl = document.getElementById("passwordInput") as HTMLInputElement;
 const noticeEl = document.getElementById("notice") as HTMLElement;
 const dropEl = document.getElementById("drop") as HTMLElement;
 const chooseEl = document.getElementById("choose") as HTMLButtonElement;
@@ -66,13 +70,37 @@ let orchestrator: Orchestrator | null = null;
 let viewer: Viewer | null = null;
 /** The document on screen. It stays open: every canvas drawn is a question to its worker. */
 let current: PdfDocument | null = null;
-/** Bumped by every new document so a slow read of the previous one stops painting. */
-let generation = 0;
 /** The document's paragraphs have been handed out already in this task (see collect). */
 let answered = false;
 
 function say(text: string): void {
   noticeEl.textContent = text;
+}
+
+// ---- who owns the view -------------------------------------------------------------------
+//
+// Every way into a document — a ticket, the file picker, a drop — takes a Load at its very
+// FIRST line, and that Load is the only thing allowed to touch the view until the next one
+// starts. Ownership is re-checked after every await, because a 300-page book on a slow disk
+// can easily still be arriving when the reader drops a second file on top of it, and the
+// older read must not then take the view, the title or the error line back.
+
+interface Load {
+  /** Still the current one? False from the moment another load begins. */
+  owns(): boolean;
+  /** Aborted when a newer load starts — the pdf.js loading task and its worker go with it. */
+  signal: AbortSignal;
+}
+
+let loads = 0;
+let running: AbortController | null = null;
+
+function beginLoad(): Load {
+  running?.abort();
+  const controller = new AbortController();
+  running = controller;
+  const seq = ++loads;
+  return { owns: () => seq === loads, signal: controller.signal };
 }
 
 function idle(run: () => void): void {
@@ -126,8 +154,7 @@ async function startPipeline(reportUrl: string, source: PdfUnitSource, view: Vie
  * a page break can only be judged with the neighbouring pages in hand — and a paragraph
  * that comes back unchanged keeps the unit, the chip and the verdict it already had.
  */
-async function read(doc: PdfDocument, source: { name: string; url: string | null }): Promise<void> {
-  const seq = ++generation;
+async function read(doc: PdfDocument, source: { name: string; url: string | null }, load: Load): Promise<void> {
   // The tab, and therefore the copied report's heading, is named after the DOCUMENT —
   // the reader page's own address says nothing to whoever reads the report.
   const name = doc.title ?? source.name;
@@ -155,16 +182,18 @@ async function read(doc: PdfDocument, source: { name: string; url: string | null
   let started = false;
   let fitted = false;
   for (let n = 1; n <= pageCount; n++) {
-    if (seq !== generation) return;
+    if (!load.owns()) return;
     let added: PageView | null = null;
     try {
       const page = await doc.page(n);
       added = await view.add(page);
       texts.push(page.text);
     } catch (e) {
+      // A document closed underneath us (a newer load) ends here, quietly.
+      if (!load.owns()) return;
       log.warn("page", n, "could not be read", e);
     }
-    if (seq !== generation) return;
+    if (!load.owns()) return;
     if (added) {
       unitSource.setPage(n, { layer: added.layer, spans: added.spans });
       // The first page decides the zoom, so the document is at its reading size from the
@@ -187,7 +216,7 @@ async function read(doc: PdfDocument, source: { name: string; url: string | null
     }
     await breathe();
   }
-  if (seq !== generation) return;
+  if (!load.owns()) return;
   // The document is read to the end, and that is a state worth saying out loud: it is how
   // a reader (and a test) knows the paragraph count will not change again, and the class
   // change is also the mutation that has the pipeline take in whatever the LAST reflow
@@ -197,32 +226,44 @@ async function read(doc: PdfDocument, source: { name: string; url: string | null
 }
 
 /** Open bytes we already hold. Everything that can go wrong ends in one short line. */
-async function open(bytes: Uint8Array, source: { name: string; url: string | null }): Promise<void> {
+async function open(bytes: Uint8Array, source: { name: string; url: string | null }, load: Load): Promise<void> {
   if (bytes.byteLength > MAX_BYTES) {
-    say(t("readerTooLarge"));
+    fail("large");
     return;
   }
   say("");
   reset();
   let doc: PdfDocument;
   try {
-    doc = await openPdf(bytes);
+    doc = await openPdf(bytes, { signal: load.signal, password: askPassword });
   } catch (e) {
+    // A superseded load says nothing and touches nothing — not even the password field,
+    // which by now may be the NEW load's question waiting for an answer.
+    if (!load.owns()) return;
+    hidePassword();
     const failure = e instanceof PdfOpenError ? e.failure : "failed";
+    // An aborted open is a load somebody replaced on purpose: it says nothing at all.
+    if (failure === "aborted") return;
     say(failure === "password" ? t("readerEncrypted") : t("readerBadFile"));
     dropEl.hidden = false;
     return;
   }
+  if (!load.owns()) {
+    // A newer load arrived while pdf.js was parsing. It already tore the view down; this
+    // document has nowhere to go, so it is closed rather than left holding a worker.
+    doc.close();
+    return;
+  }
+  hidePassword();
   // The document stays OPEN for as long as its pages are on screen: a canvas is drawn
   // when the reader scrolls to it and again at every zoom, and both ask the worker. It is
   // closed when another document replaces it (reset, below).
   current = doc;
-  await read(doc, source);
+  await read(doc, source, load);
 }
 
 /** Take down whatever the previous document left on screen. */
 function reset(): void {
-  generation++;
   orchestrator?.stop();
   orchestrator = null;
   setRangeLocator(null);
@@ -235,33 +276,130 @@ function reset(): void {
   zoomEl.hidden = true;
 }
 
+/** The three ways a handoff can produce nothing, each in the line that already exists. */
+function fail(failure: HandoffFailure | string): void {
+  say(failure === "large" ? t("readerTooLarge") : failure === "type" ? t("readerBadFile") : t("readerFetchFailed"));
+  dropEl.hidden = false;
+}
+
 /**
- * Fetch the PDF the reader was opened for. A host the user has GRANTED Anagram makes the
- * cross-origin request possible and `credentials: "include"` carries the reader's own
- * cookies, so a paper behind a library login loads exactly as it does in a tab. Where
- * that site was never granted — and for a file:// URL, which nothing declares any more —
- * the fetch simply fails and the drop zone is the way in.
+ * Take the bytes the service worker is holding for this tab. NOTHING is fetched here: the
+ * document was re-read by the tab that was showing it and relayed through the worker
+ * (lib/pdf/handoff.ts), so the reading mode never makes a request of its own — which is
+ * what lets the extension be unable to reach anything but the local daemon.
  */
-async function openFromUrl(src: string): Promise<void> {
+async function openFromTicket(ticket: string, src: string): Promise<void> {
+  const load = beginLoad();
   say(t("readerLoading"));
-  titleEl.textContent = pdfNameFromUrl(src);
-  originalEl.hidden = false;
+  const held = await claimPdfBytes(ticket, load.signal);
+  if (!load.owns()) return;
+  // The ticket is spent, and a spent one in the address bar only invites a reload that
+  // cannot work. What stays is the document's own address, which is all `src` is for.
+  forgetTicket(src);
+  if (!held) {
+    leaveForOriginal(src);
+    return;
+  }
+  clearBounce();
+  await open(held.bytes, { name: pdfNameFromUrl(src), url: src }, load);
+}
+
+/** Drop the ticket from the address without touching anything else about it. */
+function forgetTicket(src: string): void {
   try {
-    const resp = await fetch(src, { credentials: "include" });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const bytes = new Uint8Array(await resp.arrayBuffer());
-    await open(bytes, { name: pdfNameFromUrl(src), url: src });
-  } catch (e) {
-    log.warn("could not fetch", src, e);
-    say(t("readerFetchFailed"));
-    dropEl.hidden = false;
+    history.replaceState(null, "", `${location.pathname}?src=${encodeURIComponent(src)}`);
+  } catch {
+    /* an address bar that will not be rewritten changes nothing that matters */
+  }
+}
+
+/**
+ * A reader page with a source and no bytes: the address was pasted, the tab was reloaded,
+ * or the worker was evicted before the ticket could be claimed. There is nothing to fetch
+ * — so the honest answer is the document itself, which is what this tab would be showing
+ * if Anagram were not installed. With "Open PDFs in Anagram" on, the ordinary route brings
+ * it straight back here with real bytes.
+ *
+ * ONCE per source, though. If the same document lands here twice the second time is a
+ * handoff that keeps failing, and a tab that ping-pongs between two addresses is worse
+ * than a quiet line and the drop zone. sessionStorage is the right memory for it: per tab,
+ * and gone when the tab is.
+ */
+const BOUNCE_KEY = "anagram.pdfBounce";
+
+function leaveForOriginal(src: string): void {
+  let last: string | null = null;
+  try {
+    last = sessionStorage.getItem(BOUNCE_KEY);
+  } catch {
+    /* no session storage — one bounce is then all there ever is */
+  }
+  if (last === src) {
+    fail("read");
+    return;
+  }
+  try {
+    sessionStorage.setItem(BOUNCE_KEY, src);
+  } catch {
+    /* as above */
+  }
+  location.replace(src);
+}
+
+function clearBounce(): void {
+  try {
+    sessionStorage.removeItem(BOUNCE_KEY);
+  } catch {
+    /* nothing was written either */
   }
 }
 
 async function openFromFile(file: File): Promise<void> {
+  const load = beginLoad();
   say("");
+  // BEFORE the read, not after it: a two-gigabyte file must not be pulled into memory to
+  // discover that it is too big for this page.
+  if (file.size > MAX_BYTES) {
+    fail("large");
+    return;
+  }
   const bytes = new Uint8Array(await file.arrayBuffer());
-  await open(bytes, { name: file.name, url: null });
+  if (!load.owns()) return;
+  await open(bytes, { name: file.name, url: null }, load);
+}
+
+// ---- an encrypted document ------------------------------------------------------------------
+
+/** Resolves the password pdf.js is waiting for, or rejects when the reader gives up. */
+let pending: { resolve(password: string): void; reject(): void } | null = null;
+
+/**
+ * pdf.js stops on an encrypted file and calls back. The answer is the field in the bar:
+ * type it, press Enter, and it goes straight to the library. A password the file refuses
+ * marks the field invalid and empties it, and nothing else is said — the lock belongs to
+ * the document, and explaining it would be our sentence on somebody else's page.
+ *
+ * It is never stored, never logged and never in the diagnostics: the value exists as an
+ * argument on its way to pdf.js and as the field's own contents until the next keystroke.
+ */
+function askPassword(reason: PdfPasswordReason): Promise<string> {
+  pending?.reject();
+  say("");
+  passwordEl.hidden = false;
+  passwordInputEl.value = "";
+  if (reason === "wrong") passwordInputEl.setAttribute("aria-invalid", "true");
+  else passwordInputEl.removeAttribute("aria-invalid");
+  passwordInputEl.focus();
+  return new Promise<string>((resolve, reject) => {
+    pending = { resolve, reject: () => reject(new Error("no password")) };
+  });
+}
+
+function hidePassword(): void {
+  pending = null;
+  passwordEl.hidden = true;
+  passwordInputEl.value = "";
+  passwordInputEl.removeAttribute("aria-invalid");
 }
 
 // ---- the page ---------------------------------------------------------------------------
@@ -285,6 +423,15 @@ async function openOriginal(src: string): Promise<void> {
 function wire(src: string | null): void {
   originalEl.addEventListener("click", () => {
     if (src) void openOriginal(src);
+  });
+  passwordEl.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const typed = passwordInputEl.value;
+    if (typed === "" || !pending) return;
+    const answer = pending;
+    pending = null;
+    passwordInputEl.value = "";
+    answer.resolve(typed);
   });
   chooseEl.addEventListener("click", () => fileEl.click());
   fileEl.addEventListener("change", () => {
@@ -322,10 +469,28 @@ function wire(src: string | null): void {
 function main(): void {
   localizePage();
   followSystemTheme();
-  const src = new URL(location.href).searchParams.get("src");
+  const params = new URL(location.href).searchParams;
+  const src = params.get("src");
+  const ticket = params.get("ticket");
+  const failure = params.get("err");
   wire(src);
   if (src) {
-    void openFromUrl(src);
+    // `src` is a NAME here, and nothing else: the title, the way back to the document,
+    // and the address of its HTML rendering where one exists. It is never fetched.
+    originalEl.hidden = false;
+    titleEl.textContent = pdfNameFromUrl(src);
+    const twin = htmlTwinOf(src);
+    if (twin) {
+      twinEl.href = twin;
+      twinEl.hidden = false;
+    }
+  }
+  if (src && failure) {
+    fail(failure);
+  } else if (src && ticket) {
+    void openFromTicket(ticket, src);
+  } else if (src) {
+    leaveForOriginal(src);
   } else {
     subtitleEl.textContent = "";
     dropEl.hidden = false;
