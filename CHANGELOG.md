@@ -9,6 +9,22 @@ Notable changes to Anagram, newest first. The format follows
 
 ### Added
 
+- **The store paperwork, written from the code.** `docs/store-listing.md` is every field
+  the Chrome Web Store dashboard asks for, ready to paste and each answer tied to a file a
+  reviewer could open: the single-purpose statement, the short description (which is the
+  manifest's own `extDescription`, kept identical) and a detailed one that says what the
+  number is and — as plainly — what it is not, a justification per permission the SHIPPING
+  manifest declares (`storage`, `activeTab`, `contextMenus`, `scripting`, the two loopback
+  hosts, the two optional site patterns) saying what each is for, where it is used and what
+  is never done with it, "no remote code" with its evidence (the CSP, the vendored chunks,
+  the two pdf.js wasm decoders that ship in the package), the data-usage disclosures in the
+  dashboard's own categories — website content is the one that applies, because Google
+  counts data as handled even when it never leaves the device — and a reviewer's guide to
+  seeing the extension work, and to checking that it reaches nothing, **without** the local
+  daemon, which installs on macOS and Linux only. `PRIVACY.md` is the policy that listing
+  links to. Both are checked against `docs/footprint.md` line by line; neither promises
+  anything the code does not do.
+
 - **"Analyze this page" from the popup, with nothing granted.** On a page Anagram is off
   for — by a rule, or because no access was ever granted for its site, which is every
   page on a fresh install — the popup's button reads **Analyze this page** instead of

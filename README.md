@@ -779,6 +779,16 @@ key, what a cached verdict holds, and what each permission is for.
 `test/node/footprint.test.ts` checks that page against the sources on every test
 run, so a call added and not written down fails the build.
 
+**[`PRIVACY.md`](PRIVACY.md)** says the same thing to a reader rather than to an
+auditor — what is read, where it goes, what is kept and for how long, what is
+never collected, and how to remove all of it — and is the policy a store listing
+links to.
+**[`docs/store-listing.md`](docs/store-listing.md)** is the Chrome Web Store
+paperwork built from that: the single-purpose statement, a justification per
+permission the shipping manifest declares, the "no remote code" answer with its
+evidence, the data-usage disclosures, and a reviewer's guide to checking all of
+it — including without the daemon.
+
 The rest is enforced the same way: the
 daemon URL setting accepts only `http://127.0.0.1:<port>` and
 `http://localhost:<port>` — the two addresses a content security policy can
