@@ -78,8 +78,16 @@ HEALTH="http://127.0.0.1:$PORT/health"
 
 # A scrubbed environment for the daemon and the downloader: inherited PYTHONPATH & co.
 # cannot hijack them, and every library's side files stay inside the folder.
+#
+# CLEAN_EXEC=exec (cmd_start, inside its own subshell) makes it REPLACE that subshell
+# instead of forking a child. That is not a nicety: without it the pid recorded in
+# run/anagramd.pid is a shell wrapping the daemon, `anagram stop` kills the wrapper, the
+# daemon keeps the port — and `restart` then finds it answering and leaves the old code
+# running. /bin/sh on macOS does not elide that fork by itself.
+CLEAN_EXEC=""
 clean_env() {
-  env -i HOME="$HOME" PATH="/usr/bin:/bin:/usr/sbin:/sbin" LANG="${LANG:-C.UTF-8}" \
+  # shellcheck disable=SC2086  # CLEAN_EXEC is "" or "exec" — deliberately unquoted
+  $CLEAN_EXEC env -i HOME="$HOME" PATH="/usr/bin:/bin:/usr/sbin:/sbin" LANG="${LANG:-C.UTF-8}" \
     HF_HOME="$ANAGRAM_HOME/hf" HF_HUB_DISABLE_TELEMETRY=1 XDG_CACHE_HOME="$ANAGRAM_HOME/cache" \
     TOKENIZERS_PARALLELISM=false PYTHONNOUSERSITE=1 PYTHONSAFEPATH=1 \
     ${http_proxy:+http_proxy="$http_proxy"} ${https_proxy:+https_proxy="$https_proxy"} ${no_proxy:+no_proxy="$no_proxy"} \
@@ -187,8 +195,14 @@ cmd_start() {
   if alive; then say "already starting (pid $(cat "$PIDFILE"))"; return 0; fi
   rotate_log
   say "Starting anagramd on 127.0.0.1:$PORT"
-  clean_env HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
-    nohup "$PY" "$APP" --model-dir "$MODEL_DIR" --lid-model "$LID" --host 127.0.0.1 --port "$PORT" >> "$LOG" 2>&1 &
+  # The subshell execs itself into the daemon (see CLEAN_EXEC), so $! IS the daemon: what
+  # stop, restart and update signal is the process that holds the port, with no wrapper
+  # shell in between. nohup keeps it alive when the terminal goes away; its output is
+  # already redirected, so it writes no nohup.out anywhere.
+  ( CLEAN_EXEC=exec
+    clean_env HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
+      nohup "$PY" "$APP" --model-dir "$MODEL_DIR" --lid-model "$LID" --host 127.0.0.1 --port "$PORT"
+  ) >> "$LOG" 2>&1 &
   echo $! > "$PIDFILE"
   i=0
   while [ $i -lt 120 ]; do

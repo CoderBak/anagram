@@ -141,6 +141,12 @@ Notable changes to Anagram, newest first. The format follows
 
 ### Fixed
 
+- `anagram stop` really stops the daemon. `start` recorded the pid of the shell
+  that wrapped it rather than the daemon's own, so `stop` killed the wrapper,
+  reported success and left anagramd holding the port — and `restart` then found
+  it answering and kept the old process alive. The daemon now replaces that shell
+  (`exec`), so the pid in `run/anagramd.pid` is the process that serves.
+
 - Chinese, Japanese or Arabic text that names a brand in Latin letters is read
   like any other. One capitalised word — "OpenAI" in a Chinese sentence — made
   the paragraph look like a title rather than running text, and short paragraphs

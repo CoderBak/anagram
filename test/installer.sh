@@ -305,7 +305,23 @@ if [ $rc -ne 0 ] && echo "$out" | grep -q "refusing to use it"; then
   ok "doctor refuses a symlinked ANAGRAM_HOME"
 else bad "doctor symlinked home" "rc=$rc $(echo "$out" | tail -1)"; fi
 
-# 19. update: the installer succeeded and our daemon was running → it is restarted
+# 19. start records the DAEMON's pid, not a shell wrapping it — otherwise stop (and the
+#     restart inside update) would kill the wrapper and leave the daemon holding the port
+HS="$T/startstop"; make_home "$HS" "$P1"
+out="$(cli "$HS" start)"; rc=$?
+spid="$(cat "$HS/run/anagramd.pid" 2>/dev/null || true)"
+[ -n "$spid" ] && LISTENERS="$LISTENERS $spid"
+if [ $rc -ne 0 ] || ! curl -fsS -m 2 -o /dev/null "http://127.0.0.1:$P1/health"; then
+  bad "start/stop" "start did not bring the stub daemon up: rc=$rc $(echo "$out" | tail -1)"
+else
+  out="$(cli "$HS" stop)"; rc2=$?
+  if [ $rc2 -eq 0 ] && ! kill -0 "$spid" 2>/dev/null \
+     && ! curl -fs -m 2 -o /dev/null "http://127.0.0.1:$P1/health" 2>/dev/null && [ ! -f "$HS/run/anagramd.pid" ]; then
+    ok "start records the daemon's own pid; stop leaves nothing running on the port"
+  else bad "start/stop" "rc=$rc2 pid $spid still alive or port still answering"; fi
+fi
+
+# 20. update: the installer succeeded and our daemon was running → it is restarted
 H7="$T/upd-ok"; make_home "$H7" "$P2"
 cat > "$H7/app/install.sh" <<'SH'
 #!/bin/sh
@@ -313,11 +329,12 @@ cat > "$H7/app/install.sh" <<'SH'
 echo "==> stub installer ran"
 : > "$ANAGRAM_HOME/app/INSTALL_RAN"
 SH
-if ! listen "$P2" anagramd; then
-  bad "update restarts a running daemon" "no stub daemon on 127.0.0.1:$P2"
+cli "$H7" start > /dev/null 2>&1                 # started the way a user starts it
+dpid="$(cat "$H7/run/anagramd.pid" 2>/dev/null || true)"
+[ -n "$dpid" ] && LISTENERS="$LISTENERS $dpid"
+if [ -z "$dpid" ] || ! curl -fsS -m 2 -o /dev/null "http://127.0.0.1:$P2/health"; then
+  bad "update restarts a running daemon" "the stub daemon would not start on 127.0.0.1:$P2"
 else
-  dpid="$LPID"
-  echo "$dpid" > "$H7/run/anagramd.pid"
   out="$(cli "$H7" update)"; rc=$?
   newpid="$(cat "$H7/run/anagramd.pid" 2>/dev/null || true)"
   LISTENERS="$LISTENERS $newpid"
@@ -329,7 +346,7 @@ else
   stop_listener "$newpid"
 fi
 
-# 20. update: the installer failed → the running daemon is left alone
+# 21. update: the installer failed → the running daemon is left alone
 H8="$T/upd-fail"; make_home "$H8" "$P3"
 cat > "$H8/app/install.sh" <<'SH'
 #!/bin/sh
@@ -337,11 +354,12 @@ echo "==> stub installer is about to fail"
 : > "$ANAGRAM_HOME/app/INSTALL_TRIED"
 exit 3
 SH
-if ! listen "$P3" anagramd; then
-  bad "update leaves a running daemon alone" "no stub daemon on 127.0.0.1:$P3"
+cli "$H8" start > /dev/null 2>&1
+dpid="$(cat "$H8/run/anagramd.pid" 2>/dev/null || true)"
+[ -n "$dpid" ] && LISTENERS="$LISTENERS $dpid"
+if [ -z "$dpid" ] || ! curl -fsS -m 2 -o /dev/null "http://127.0.0.1:$P3/health"; then
+  bad "update leaves a running daemon alone" "the stub daemon would not start on 127.0.0.1:$P3"
 else
-  dpid="$LPID"
-  echo "$dpid" > "$H8/run/anagramd.pid"
   out="$(cli "$H8" update)"; rc=$?
   if [ $rc -ne 0 ] && [ -f "$H8/app/INSTALL_TRIED" ] && echo "$out" | grep -q "left alone" \
      && kill -0 "$dpid" 2>/dev/null && curl -fsS -m 2 -o /dev/null "http://127.0.0.1:$P3/health" \
@@ -351,7 +369,7 @@ else
   stop_listener "$dpid"
 fi
 
-# 21. update through a symlinked ANAGRAM_HOME → refused before the installer is run at all
+# 22. update through a symlinked ANAGRAM_HOME → refused before the installer is run at all
 H9="$T/upd-link"; make_home "$H9" "$P4"
 cat > "$H9/app/install.sh" <<'SH'
 #!/bin/sh
@@ -363,7 +381,7 @@ if [ $rc -ne 0 ] && echo "$out" | grep -q "refusing to use it" && [ ! -f "$H9/ap
   ok "update refuses a symlinked ANAGRAM_HOME before running any installer"
 else bad "update symlinked home" "rc=$rc $(echo "$out" | tail -1)"; fi
 
-# 22. (network) full install under a hostile environment: nothing lands outside the folder
+# 23. (network) full install under a hostile environment: nothing lands outside the folder
 if [ -n "${INSTALLER_NET:-}" ]; then
   [ -f "$ROOT/dist/anagram.tar.gz" ] || { bad "network install" "run npm run release first"; }
   H="$T/nethome/.anagram"; mkdir -p "$T/nethome"
