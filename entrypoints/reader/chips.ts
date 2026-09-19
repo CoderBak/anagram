@@ -35,7 +35,7 @@ interface Box {
  * only has to be generous, and a chip that fits 54 px fits the narrower text too.
  */
 const CHIP_W = 54;
-/** A unit of several paragraphs says so after the number ("38% ×3"), which is three more
+/** A unit of several paragraphs says so after the number (".38 ×3"), which is three more
  *  characters — four from ten paragraphs up. A chip is never placed optimistically, so
  *  the widest of those is what is reserved. */
 const CHIP_XN_W = 26;
