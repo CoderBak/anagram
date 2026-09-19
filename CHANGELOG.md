@@ -91,6 +91,15 @@ Notable changes to Anagram, newest first. The format follows
   `com.cn`, `github.io` and the like), and IP addresses and `localhost` match
   exactly. The options page's add-rule form takes a pasted address
   (`https://www.Example.com/path` → `example.com`).
+- The popup's "This site" switch says which rule decides the page. It used to
+  read and write the exact hostname only, so on `zhuanlan.zhihu.com` it showed
+  "on" while a rule on `zhihu.com` kept the page off. The switch now shows the
+  state of the rule that actually applies, the line under it names that rule's
+  site ("on zhihu.com"), and flipping it ends with one rule saying what was
+  asked: the parent's rule is removed when the global default already gives it,
+  and otherwise this exact host gets its own rule, which wins for being more
+  specific. The panel's "Turn off on <host>" still writes a rule for the host
+  it names.
 - A paragraph longer than the model reads in one pass is scored completely. It
   used to be judged by its opening — roughly the first 380 words — while the chip
   and the underline spoke for all of it. It is now cut at sentence boundaries into

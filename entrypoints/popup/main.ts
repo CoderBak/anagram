@@ -1,5 +1,6 @@
 // entrypoints/popup/main.ts — popup logic.
-// Global on/off, per-site on/off (siteOverrides keyed on the active tab's hostname),
+// Global on/off, per-site on/off (the rule that decides the active tab, which a parent
+// domain may own — see ./siteSwitch.ts),
 // display mode / mark-text / marking-style / analysis-scope controls (all applied
 // live via settings watches in the content script), scored + flagged status line
 // (GET_TAB_STATE), Rescan, and a gear to the full options page.
@@ -8,9 +9,11 @@ import "../../lib/ui/basecoat-vega.cdn.min.css";
 import { followSystemTheme } from "../../lib/ui/theme";
 import {
   settings,
-  enabledForSite,
+  clearSiteOverride,
+  effectiveRule,
   setSiteOverride,
 } from "../../lib/settings/settings";
+import { siteLine, switchWrite } from "./siteSwitch";
 import { ACTIONS } from "../../lib/messaging/protocol";
 import type { BackendStatus, ControlMessage, TabState } from "../../lib/messaging/protocol";
 import { looksLikePdfUrl } from "../../lib/pdf/source";
@@ -138,6 +141,25 @@ async function refreshBackend(tabId: number | undefined, probe = false): Promise
   }
 }
 
+/**
+ * Paint "This site" from the rule that actually decides this page: the switch shows that
+ * rule's state (or the global default when no rule covers the host), and the line under it
+ * names the site the rule belongs to — "on zhihu.com" on a zhuanlan.zhihu.com tab.
+ */
+async function refreshSite(host: string): Promise<void> {
+  const globalDefault = await settings.enabled.getValue();
+  if (!host) {
+    siteEl.checked = globalDefault;
+    siteHostEl.textContent = "unavailable here";
+    siteHostEl.title = "";
+    return;
+  }
+  const rule = await effectiveRule(host);
+  siteEl.checked = rule ? rule.mode === "on" : globalDefault;
+  siteHostEl.textContent = siteLine(host, rule);
+  siteHostEl.title = host;
+}
+
 async function refreshStatus(tabId: number | undefined): Promise<void> {
   if (tabId == null) {
     setStatusText("No active tab.");
@@ -166,23 +188,29 @@ async function init(): Promise<void> {
   markStyleEl.value = await settings.markStyle.getValue();
   checkSeg(displayModeEls, await settings.displayMode.getValue());
   checkSeg(scopeEls, await settings.analysisScope.getValue());
-  siteEl.checked = host ? await enabledForSite(host) : enabledEl.checked;
   siteEl.disabled = !host;
-  siteHostEl.textContent = host ? `on ${host}` : "unavailable here";
-  siteHostEl.title = host;
+  await refreshSite(host);
 
   enabledEl.addEventListener("change", async () => {
     await settings.enabled.setValue(enabledEl.checked);
-    const effective = host ? await enabledForSite(host) : enabledEl.checked;
-    siteEl.checked = effective;
-    sendToTab(tab?.id, { action: ACTIONS.SET_ENABLED, value: effective });
+    await refreshSite(host); // a host with no rule of its own follows the new default
+    sendToTab(tab?.id, { action: ACTIONS.SET_ENABLED, value: siteEl.checked });
     setTimeout(() => void refreshStatus(tab?.id), 400);
   });
 
   siteEl.addEventListener("change", async () => {
     if (!host) return;
-    await setSiteOverride(host, siteEl.checked ? "on" : "off");
-    sendToTab(tab?.id, { action: ACTIONS.SET_ENABLED, value: siteEl.checked });
+    const want = siteEl.checked;
+    const write = switchWrite(
+      host,
+      await effectiveRule(host),
+      await settings.enabled.getValue(),
+      want,
+    );
+    if (write.kind === "clear") await clearSiteOverride(write.host);
+    else await setSiteOverride(write.host, write.mode);
+    await refreshSite(host); // the line now names wherever the rule ended up
+    sendToTab(tab?.id, { action: ACTIONS.SET_ENABLED, value: want });
     setTimeout(() => void refreshStatus(tab?.id), 400);
   });
 
