@@ -288,7 +288,9 @@ describe("the English each bundle carries", () => {
       // that this scan missed fails the build rather than losing that file's strings.
       const scanned = [entry("lib", "i18n.ts")];
       const graph = [entry("lib", "i18n.ts"), entry("lib", "render", "band.ts") + "?v=1"];
-      expect(unscanned(graph, ROOT, scanned)).toEqual([entry("lib", "render", "band.ts")]);
+      // The scan speaks in forward slashes on every platform (a Vite module id does, and
+      // node:path on Windows does not), so the expectation is put the same way.
+      expect(unscanned(graph, ROOT, scanned)).toEqual([entry("lib", "render", "band.ts").replace(/\\/g, "/")]);
       // Dependencies and WXT's own generated shims are nobody's messages.
       expect(unscanned([join(ROOT, "node_modules", "x", "i.ts")], ROOT, [])).toEqual([]);
       expect(unscanned([join(ROOT, ".wxt", "i.ts")], ROOT, [])).toEqual([]);
@@ -333,7 +335,18 @@ describe("the English each bundle carries", () => {
       return found;
     };
 
-    const ready = existsSync(OUT);
+    // A build older than what decides its contents says nothing about this tree: a
+    // developer who pulled and ran vitest without rebuilding got two failures here that
+    // were only a stale `output/`. CI builds right before it runs vitest, so there these
+    // always run.
+    const DECIDES = [
+      join(ROOT, "wxt.config.ts"),
+      join(ROOT, "scripts", "i18nSubset.ts"),
+      join(ROOT, "lib", "i18n.ts"),
+      join(ROOT, "public", "_locales", "en", "messages.json"),
+    ];
+    const builtAt = existsSync(join(OUT, "manifest.json")) ? statSync(join(OUT, "manifest.json")).mtimeMs : 0;
+    const ready = builtAt > 0 && DECIDES.every((path) => statSync(path).mtimeMs <= builtAt);
 
     it.skipIf(!ready)("gives each bundle exactly one compiled fallback", () => {
       expect(Object.keys(carriers()).sort()).toEqual(["background", "content", "pages"]);
