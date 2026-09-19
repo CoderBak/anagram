@@ -203,7 +203,39 @@ export async function launchFirefox({ extraPrefs = {}, args = [], viewport = VIE
     throw e;
   }
   const extUrl = (path) => `moz-extension://${EXT_UUID}/${path.replace(/^\//, "")}`;
+  await waitForRegistration(browser, extUrl);
   return { browser, firefox, extId, extUrl };
+}
+
+/**
+ * The content script is REGISTERED AT RUNTIME by the background page (lib/access/worker.ts),
+ * so a page opened in the first moments after the install could load without it. The
+ * registration is read from an extension page, which is the only place this suite can ask
+ * the scripting API from — and a failure here is never fatal: the run goes on and whatever
+ * depended on the script says so itself.
+ */
+async function waitForRegistration(browser, extUrl, timeout = 15000) {
+  const deadline = Date.now() + timeout;
+  let page;
+  try {
+    page = await openExtensionPage(browser, extUrl("options.html"), { timeout: 10000 });
+    while (Date.now() < deadline) {
+      const ready = await page
+        .evaluate(async () => {
+          const scripts = await browser.scripting.getRegisteredContentScripts();
+          return scripts.some((s) => s.id === "anagram-content");
+        })
+        .catch(() => false);
+      if (ready) return true;
+      await sleep(150);
+    }
+    console.warn("the content script was not registered in time — pages may run without it");
+    return false;
+  } catch {
+    return false;
+  } finally {
+    await page?.close().catch(() => {});
+  }
 }
 
 /** `location.href` of a page, or null when the context is gone. */
