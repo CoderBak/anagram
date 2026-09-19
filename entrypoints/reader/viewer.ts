@@ -69,20 +69,16 @@ export interface PageView {
 export interface Viewer {
   /** Add a page at the end. Its canvas draws itself when it comes near the viewport. */
   add(page: PdfPage): Promise<PageView>;
-  view(n: number): PageView | undefined;
   /** The page whose text layer this is — how a chip finds the page it belongs to. */
   pageOf(layer: Element): PageView | undefined;
   /** Current zoom, as a fraction (1 = the page's own size). */
   scale(): number;
-  setScale(scale: number): void;
   /** The scale at which the widest page fills the window, and follow the window from now on. */
   fitWidth(): void;
   /** One stop in (+1) or out (−1) of the zoom ladder. */
   step(direction: 1 | -1): void;
   /** Called whenever the zoom changed, for the percentage in the bar. */
   onScale(fn: (scale: number) => void): void;
-  /** Canvases that currently hold a bitmap — the memory bound the perf suite asserts. */
-  liveCanvases(): number;
   destroy(): void;
 }
 
@@ -254,25 +250,12 @@ export function createViewer(container: HTMLElement): Viewer {
 
   return {
     add,
-    view: (n) => views.get(n),
     pageOf: (layer) => byLayer.get(layer),
     scale: () => scale,
-    setScale: (s) => {
-      fitting = false;
-      apply(s);
-    },
     fitWidth,
     step,
     onScale: (fn) => {
       listener = fn;
-    },
-    liveCanvases: () => {
-      let n = 0;
-      for (const view of views.values()) {
-        const canvas = canvases.get(view.box);
-        if (canvas && canvas.width > 0 && canvas.height > 0) n++;
-      }
-      return n;
     },
     destroy: () => {
       near.disconnect();
