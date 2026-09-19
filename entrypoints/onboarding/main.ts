@@ -100,10 +100,23 @@ function render(s: BackendStatus | undefined): boolean {
     notInstalled = true;
   }
 
-  readyRow.dataset.state = up ? "ok" : "idle";
-  readyText.textContent = up ? t("onbGo") : t("onbWaiting");
+  daemonUp = up;
+  renderReady();
   install.hidden = !notInstalled;
   return up;
+}
+
+/**
+ * The last row is the sum of the ones above it: a running daemon is not "ready" while
+ * Anagram may read no site, because nothing would appear on any page — which is exactly
+ * how a fresh install starts. It says which of the two is still missing.
+ */
+let daemonUp = false;
+let hasAccess = false;
+function renderReady(): void {
+  const ready = daemonUp && hasAccess;
+  readyRow.dataset.state = ready ? "ok" : "idle";
+  readyText.textContent = ready ? t("onbGo") : daemonUp ? t("onbNeedsAccess") : t("onbWaiting");
 }
 
 /**
@@ -121,6 +134,8 @@ async function renderAccess(): Promise<void> {
       ? tn("accessSites", sites.length)
       : t("accessNone");
   accessGrant.hidden = all;
+  hasAccess = all || sites.length > 0;
+  renderReady();
 }
 // The request is the first thing the click does: the browsers honour it only inside the
 // user's gesture. The worker registers the content script and injects the open tabs.

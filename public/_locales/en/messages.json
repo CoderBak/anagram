@@ -998,6 +998,10 @@
     "message": "Waiting for the scoring daemon.",
     "description": "Setup row value while nothing can be scored yet."
   },
+  "onbNeedsAccess": {
+    "message": "Allow sites above — or switch one on from the toolbar popup.",
+    "description": "Setup row value when the daemon is running but Anagram has been granted no site yet."
+  },
   "onbGo": {
     "message": "Open any article — a chip appears after each paragraph.",
     "description": "Setup row value once everything is running."
@@ -1031,7 +1035,7 @@
     "description": "First-run card heading."
   },
   "onbBallBody": {
-    "message": "Lives bottom-right on every page. $1 it to show or hide all marks instantly. $2 it anywhere — it snaps to the nearest edge and tucks itself half-away when idle; hover brings it back. Its red $3 opens the triage panel: filter by verdict, jump to each flagged paragraph, $4, or turn Anagram off for this site — all inside the panel.",
+    "message": "Lives bottom-right on every page Anagram runs on. $1 it to show or hide all marks instantly. $2 it anywhere — it snaps to the nearest edge and tucks itself half-away when idle; hover brings it back. Its red $3 opens the triage panel: filter by verdict, jump to each flagged paragraph, $4, or turn Anagram off for this site — all inside the panel.",
     "description": "First-run card body. $1-$4 are emphasised runs from the page (onbClick, onbDrag, onbCounter, panelCopyReport)."
   },
   "onbClick": {
@@ -1095,7 +1099,7 @@
     "description": "First-run card heading."
   },
   "onbPdfBody": {
-    "message": "A PDF is a picture to the browser, so Anagram rebuilds it as a page. Click $1 on the floating ball, $2 in the popup, or right-click a link to one and choose $3. Paragraphs come back in reading order — columns and all — and get the same chips as any other page. The file stays on your computer.",
+    "message": "A PDF keeps its own pages: Anagram draws them exactly as they are — figures, formulas, columns — and lays the chips and marks over them. Click $1 on the floating ball, $2 in the popup, or right-click a link to one and choose $3. Short paragraphs are read together as on any page, a password-protected file asks for its password, and the file stays on your computer.",
     "description": "First-run card body. $1-$3 are runs from the page (actionAnalyzePdf, popupReadPdf, menuOpenPdf)."
   },
   "onbPrivacy": {
@@ -1103,7 +1107,7 @@
     "description": "First-run card heading."
   },
   "onbPrivacyBody": {
-    "message": "Nothing leaves your computer. Scoring runs in the local $1 daemon on this computer; requests carry only a $2 by design — never full URLs.",
+    "message": "Nothing leaves your computer, and the browser enforces it: the extension's own policy lets it reach the local $1 daemon and nothing else — it cannot connect to the internet at all. It reads only the sites you allow. Requests carry only a $2 by design — never full URLs.",
     "description": "First-run card body. $1 is a <code> element from the page; $2 is the emphasised run onbHostnameHint."
   },
   "onbHostnameHint": {
@@ -1115,7 +1119,7 @@
     "description": "First-run card heading."
   },
   "onbYoursBody": {
-    "message": "The $1 and $2 hold the rest: pick a marking style ($3 or a soft $4), choose the analysis scope ($5 or $6), and check the local scoring daemon's status.",
+    "message": "The $1 and $2 hold the rest: pick a marking style ($3 or $4), choose the analysis scope ($5 or $6), and check the local scoring daemon's status.",
     "description": "First-run card body. $1-$6 are emphasised runs from the page (onbPopupName, onbOptionsName, styleUnderline, styleTint, optScopeWholePage, optScopeMain)."
   },
   "onbStyleQuiet": {

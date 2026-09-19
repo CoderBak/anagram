@@ -113,8 +113,8 @@
       </header>
       <p class="lede" data-i18n-html="onbLede">Anagram answers <em data-i18n="onbLedeQuestion">&ldquo;how much of this did an AI write?&rdquo;</em> as you
         browse: every analyzed paragraph gets a small <strong data-i18n="onbLedeChip">chip</strong> with a number &mdash; the
-        model's estimate of the <strong data-i18n="onbLedeExtent">extent of AI editing</strong> &mdash; and a matching underline,
-        quiet on human text, louder as AI involvement grows.</p>
+        model's estimate of the <strong data-i18n="onbLedeExtent">extent of AI editing</strong> &mdash; and the page itself is left as
+        it was, except for a thin line under the text that was flagged.</p>
 
       <div class="stack">
         <div>
@@ -156,7 +156,7 @@
             type="button" class="btn" data-variant="outline" data-size="xs" id="install-copy" data-i18n="onbCopy">Copy</button></span></p>
         </div>
 
-        <section class="card" data-size="sm" aria-label="How Anagram reads a page" data-i18n-aria-label="onbHowItReads">
+        <section class="card" data-size="sm" aria-label="How it reads" data-i18n-aria-label="onbHowItReads">
           <header><h2 data-i18n="onbHowItReads">How it reads</h2></header>
           <section>
             <div class="demo">
@@ -192,7 +192,7 @@
               <span class="badge b-lang" data-variant="outline"><span class="dot"></span><span data-i18n="bandUnsupported">Unsupported language</span></span>
             </div>
             <p data-i18n-html="onbVerdictsBody">The model (<strong>EditLens</strong>, ICLR 2026) rates how far a paragraph sits
-              between untouched human writing (0%) and fully AI-generated text (100%). The number is
+              between untouched human writing (.00) and fully AI-generated text (1.0). The number is
               <strong data-i18n="onbNotShare">not a share of words</strong> written by AI &mdash; it is the model's estimate of
               how much AI editing changed the text as a whole. Hover (or tap) a chip for the full
               readout: the four-way probability split behind the verdict and the word count. EditLens
@@ -207,7 +207,7 @@
         <section class="card" data-size="sm">
           <header><h2 data-i18n="onbBall">The floating ball</h2></header>
           <section>
-            <p data-i18n-html="onbBallBody">Lives bottom-right on every page. <strong data-i18n="onbClick">Click</strong> it to show or hide all marks
+            <p data-i18n-html="onbBallBody">Lives bottom-right on every page Anagram runs on. <strong data-i18n="onbClick">Click</strong> it to show or hide all marks
               instantly. <strong data-i18n="onbDrag">Drag</strong> it anywhere &mdash; it snaps to the nearest edge and
               tucks itself half-away when idle; hover brings it back. Its red <strong data-i18n="onbCounter">counter</strong>
               opens the triage panel: filter by verdict, jump to each flagged paragraph,
@@ -250,20 +250,22 @@
         <section class="card" data-size="sm">
           <header><h2 data-i18n="onbPdfs">PDFs</h2></header>
           <section>
-            <p data-i18n-html="onbPdfBody">A PDF is a picture to the browser, so Anagram rebuilds it as a page. Click
+            <p data-i18n-html="onbPdfBody">A PDF keeps its own pages: Anagram draws them exactly as they are &mdash;
+              figures, formulas, columns &mdash; and lays the chips and marks over them. Click
               <strong data-i18n="actionAnalyzePdf">Analyze PDF</strong> on the floating ball, <strong data-i18n="popupReadPdf">Read this PDF</strong> in
               the popup, or right-click a link to one and choose <strong data-i18n="menuOpenPdf">Open PDF with
-              Anagram</strong>. Paragraphs come back in reading order &mdash; columns and all
-              &mdash; and get the same chips as any other page. The file stays on your computer.</p>
+              Anagram</strong>. Short paragraphs are read together as on any page, a password-protected
+              file asks for its password, and the file stays on your computer.</p>
           </section>
         </section>
 
         <section class="card" data-size="sm">
           <header><h2 data-i18n="onbPrivacy">Privacy</h2></header>
           <section>
-            <p data-i18n-html="onbPrivacyBody">Nothing leaves your computer. Scoring runs in the local <code>anagramd</code> daemon on
-              this computer; requests carry only a <strong data-i18n="onbHostnameHint">hostname and language hint</strong> by design
-              &mdash; never full URLs.</p>
+            <p data-i18n-html="onbPrivacyBody">Nothing leaves your computer, and the browser enforces it: the extension's own
+              policy lets it reach the local <code>anagramd</code> daemon and nothing else &mdash; it cannot connect to
+              the internet at all. It reads only the sites you allow. Requests carry only a
+              <strong data-i18n="onbHostnameHint">hostname and language hint</strong> by design &mdash; never full URLs.</p>
           </section>
         </section>
 
