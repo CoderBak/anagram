@@ -99,20 +99,6 @@ const BASELINE = [
   },
   { where: "options (two site rules, add-rule error) [dark]", rule: "empty-table-header", target: "th:nth-child(3)", why: "Same empty <th>, dark scheme." },
   {
-    where: "options (two site rules, add-rule error) [light]",
-    rule: "landmark-one-main",
-    target: "html",
-    why: "The options page has no <main>: there is no skip target and no landmark to jump to.",
-  },
-  { where: "options (two site rules, add-rule error) [dark]", rule: "landmark-one-main", target: "html", why: "Same missing <main>, dark scheme." },
-  {
-    where: "options (two site rules, add-rule error) [light]",
-    rule: "region",
-    target: "20 nodes: every .card, the table rows and the new Advanced field",
-    why: "Consequence of the missing <main>: none of the page's content sits in a landmark, so a screen-reader user cannot navigate it by region.",
-  },
-  { where: "options (two site rules, add-rule error) [dark]", rule: "region", target: "20 nodes", why: "Same, dark scheme." },
-  {
     where: "onboarding (daemon up) [light]",
     rule: "color-contrast",
     target: "10 nodes: .kbd keys and <code>",
@@ -126,14 +112,6 @@ const BASELINE = [
       "Same page in its daemon-down state, where the setup strip also prints the install " +
       "command as a <code> pill — the one line a user has to read to get anywhere.",
   },
-  { where: "onboarding (daemon up) [light]", rule: "landmark-one-main", target: "html", why: "The onboarding page has no <main> either." },
-  { where: "onboarding (daemon up) [dark]", rule: "landmark-one-main", target: "html", why: "Same, dark scheme." },
-  { where: "onboarding (daemon down) [light]", rule: "landmark-one-main", target: "html", why: "Same, daemon-down state." },
-  { where: "onboarding (daemon down) [dark]", rule: "landmark-one-main", target: "html", why: "Same, daemon-down state, dark scheme." },
-  { where: "onboarding (daemon up) [light]", rule: "region", target: "9 nodes: .lede, the setup strip's card header and every other .card", why: "Consequence of the missing <main>." },
-  { where: "onboarding (daemon up) [dark]", rule: "region", target: "9 nodes", why: "Same, dark scheme." },
-  { where: "onboarding (daemon down) [light]", rule: "region", target: "10 nodes (the install line joins them)", why: "Same, daemon-down state." },
-  { where: "onboarding (daemon down) [dark]", rule: "region", target: "10 nodes", why: "Same, daemon-down state, dark scheme." },
   {
     where: "reader (empty, file picker) [light]",
     rule: "page-has-heading-one",
