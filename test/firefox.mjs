@@ -17,7 +17,9 @@
 //     what actually happens below 140 is in the FINDINGS block at the end of a run;
 //   * there is no Navigation API in older Firefox, so a pushState route swap is covered
 //     by the orchestrator's 2.5 s URL poll and is given ~6 s here;
-//   * the Popover API (top-layer hover card) has a CSS fallback.
+//   * the Popover API (top-layer hover card) has a CSS fallback;
+//   * the PDF reading mode is the one page where the whole pipeline runs on a
+//     moz-extension: document, and it loads pdf.js and a MODULE WORKER from that origin.
 //
 //   npm run build:firefox && npm run test:firefox
 //   npm run test:firefox -- --quick     # skip the daemon down/up cycle (~25 s)
@@ -32,6 +34,7 @@ import {
   GECKO_ID,
   launchFirefox,
   openExtensionPage,
+  waitForExtensionPage,
   findPageByHref,
   setServerUrl,
   setViewportSafe,
@@ -39,6 +42,7 @@ import {
   sweep,
   waitFor,
 } from "./firefox-harness.mjs";
+import { PDF_HEADING, PDF_PARAS, PDF_HEAD, TEST_PDF, servePdfs } from "./pdf-fixture.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const QUICK = process.argv.includes("--quick");
@@ -439,6 +443,120 @@ check(
   JSON.stringify(badgeApi),
 );
 
+// ── 10b) the PDF reading mode ──────────────────────────────────────────────────────
+// A browser hands a PDF to a viewer that exposes no DOM text, so the reader rebuilds the
+// document on an extension page of its own and runs the ORDINARY pipeline over it. That
+// is the only place where pdf.js, a module worker and the orchestrator all run on a
+// moz-extension: document — three things Firefox could do differently, and the suite that
+// would notice is this one. The PDF is the one test/scenarios.mjs opens in Chromium
+// (test/pdf-fixture.mjs), served over http as application/pdf.
+const pdfFiles = await servePdfs();
+const readerErrors = [];
+/** What Resource Timing reported on the reader page — evidence for a finding below. */
+let pdfResources = [];
+{
+  const readerUrl = extUrl(`reader.html?src=${encodeURIComponent(pdfFiles.url("/doc.pdf"))}`);
+  const p = await browser.newPage();
+  p.on("pageerror", (e) => readerErrors.push("pageerror: " + String(e).slice(0, 200)));
+  p.on("console", (m) => {
+    if (m.type() === "error") readerErrors.push("console.error: " + m.text().slice(0, 200));
+  });
+  await p.goto(readerUrl, { waitUntil: "domcontentloaded", timeout: 2500 }).catch(() => {});
+  const arrived = await waitForExtensionPage(p, readerUrl, 25000)
+    .then(() => true)
+    .catch(() => false);
+  const rendered = arrived && (await waitFor(p, () => document.querySelectorAll("#paper > p").length >= 3, { timeout: 30000 }));
+  const scored = rendered &&
+    (await waitFor(p, (sel) => {
+      const pills = [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill"));
+      return pills.length > 0 && !pills.some((h) => h.shadowRoot.querySelector(".pill.pending"));
+    }, { timeout: 30000, arg: BADGE_SEL }));
+  const pdf = arrived
+    ? await p.evaluate((sel) => {
+        const paper = document.getElementById("paper");
+        const blocks = [...(paper?.children ?? [])]
+          .filter((el) => el.tagName === "H2" || el.tagName === "P")
+          .map((el) => ({ tag: el.tagName, text: el.textContent.replace(/\s+/g, " ").trim() }));
+        return {
+          blocks,
+          text: (paper?.textContent ?? "").replace(/\s+/g, " "),
+          pagemarks: [...(paper?.querySelectorAll(".pagemark") ?? [])].map((el) => el.textContent),
+          chips: [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill")).length,
+          notice: document.getElementById("notice")?.textContent ?? "",
+          title: document.title,
+          // What Resource Timing reports on a privileged document — nothing of the page's
+          // own origin here, which is why the worker is watched by its constructor below.
+          resources: performance.getEntriesByType("resource").map((e) => e.name.split("/").pop()),
+        };
+      }, BADGE_SEL)
+    : null;
+  console.log("PDF READER:", JSON.stringify(pdf).slice(0, 400));
+  pdfResources = pdf?.resources ?? [];
+  check(
+    "PDF reader: the document is rebuilt into paragraphs in reading order",
+    !!pdf &&
+      pdf.blocks.length === 4 &&
+      pdf.blocks[0].tag === "H2" &&
+      pdf.blocks[0].text === PDF_HEADING &&
+      pdf.blocks[1].text === PDF_PARAS[0].join(" ") &&
+      pdf.blocks[2].text.endsWith("in one sitting.") &&
+      !pdf.text.includes(PDF_HEAD) &&
+      pdf.pagemarks.join("") === "— 2 —",
+    JSON.stringify({ notice: pdf?.notice, blocks: pdf?.blocks.map((b) => `${b.tag}:${b.text.slice(0, 24)}`) }),
+  );
+  check(
+    "PDF reader: the ordinary pipeline scores the rebuilt paragraphs — chips, no errors",
+    !!scored && pdf?.chips === 3 && pdf?.title === "doc.pdf" && readerErrors.length === 0,
+    JSON.stringify({ chips: pdf?.chips, title: pdf?.title, errors: readerErrors.slice(0, 3) }),
+  );
+  await p.close();
+}
+
+// Did pdf.js really run its parser in a WORKER? A document that comes out right proves
+// nothing on its own: when the worker cannot be created pdf.js falls back to a "fake
+// worker" on the main thread and parses it anyway. Firefox reports no Resource Timing
+// entry for a moz-extension: subresource and BiDi runs no preload script on a privileged
+// document (see the findings at the end), so the constructor is watched instead — on a
+// reader opened with NO source, which loads nothing until a file arrives.
+{
+  const readerUrl = extUrl("reader.html");
+  const p = await browser.newPage();
+  p.on("pageerror", (e) => readerErrors.push("pageerror: " + String(e).slice(0, 200)));
+  await p.goto(readerUrl, { waitUntil: "domcontentloaded", timeout: 2500 }).catch(() => {});
+  const arrived = await waitForExtensionPage(p, readerUrl, 25000)
+    .then(() => true)
+    .catch(() => false);
+  const dropped = arrived &&
+    (await p
+      .evaluate((b64) => {
+        const W = window.Worker;
+        window.__workers = [];
+        window.Worker = function (url, opts) {
+          window.__workers.push(`${String(url)}|${(opts && opts.type) || "classic"}`);
+          return new W(url, opts);
+        };
+        window.Worker.prototype = W.prototype;
+        const bin = atob(b64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const dt = new DataTransfer();
+        dt.items.add(new File([bytes], "dropped.pdf", { type: "application/pdf" }));
+        document.dispatchEvent(new DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true }));
+        return true;
+      }, TEST_PDF.toString("base64"))
+      .catch(() => false));
+  const read = dropped && (await waitFor(p, () => document.querySelectorAll("#paper > p").length >= 3, { timeout: 30000 }));
+  const workers = arrived ? await p.evaluate(() => window.__workers ?? null).catch(() => null) : null;
+  check(
+    "PDF reader: a dropped file is read, and pdf.js parses it in a MODULE WORKER from moz-extension://",
+    read &&
+      Array.isArray(workers) &&
+      workers.some((w) => w.startsWith(`moz-extension://${EXT_UUID}/vendor/pdf.worker.mjs`) && w.endsWith("|module")),
+    JSON.stringify({ read, workers }),
+  );
+  await p.close();
+}
+
 // ── 11) screenshot ─────────────────────────────────────────────────────────────────
 const shot = artifact("firefox-screenshot.png");
 await page.evaluate(() => window.scrollTo(0, 0));
@@ -585,6 +703,15 @@ console.log(
     "  Firefox falls back to the 2.5 s URL poll; on this build the Navigation API branch is taken.",
 );
 console.log(
+  "NOTE · a moz-extension: document reports NO Resource Timing entry for its own subresources in\n" +
+    "  Firefox: on the PDF reader page, `performance.getEntriesByType(\"resource\")` lists only the\n" +
+    "  cross-origin PDF that was fetched, never the on-demand pdf.js chunk or its worker\n" +
+    `  (this run: ${JSON.stringify(pdfResources)}). Chromium lists both. BiDi also runs no preload\n` +
+    "  script on a privileged document (`evaluateOnNewDocument` installs and never fires) and\n" +
+    "  surfaces no dedicated workers (`page.workers()` is empty), so the suite watches the Worker\n" +
+    "  constructor from inside the page instead.",
+);
+console.log(
   "NOTE · test infrastructure: Firefox's WebDriver BiDi reports neither a URL nor a load event for a\n" +
     "  moz-extension: document (page.url() stays \"about:blank\", page.goto always times out), and it\n" +
     "  refuses script evaluation there unless the browser was started with -remote-allow-system-access.\n" +
@@ -596,5 +723,6 @@ console.log("\n" + (fail === 0 ? "✅ ALL CHECKS PASSED" : "❌ SOME CHECKS FAIL
 
 await browser.close();
 await server.close();
+await pdfFiles.close();
 await daemon.close().catch(() => {});
 process.exit(fail === 0 ? 0 : 1);

@@ -229,6 +229,12 @@ Notable changes to Anagram, newest first. The format follows
   however much its shadow tree holds, so the whole document counted as empty and
   not one paragraph in the overlay was ever scored. The layer now sits one level
   in, where it always belonged.
+- The Firefox suite opens the **PDF reading mode**. It is the one page where pdf.js,
+  a module worker and the whole scoring pipeline run on a `moz-extension:`
+  document, and nothing had ever opened it in Gecko: it reads the same PDF the
+  Chromium scenarios open (now a shared fixture), and it holds — paragraphs in
+  reading order, chips from the ordinary pipeline, a dropped file read, the worker
+  loaded from the extension's own origin, no page errors.
 - `npm run bump -- --check` also checks the **contract major**. The extension's
   `CONTRACT_VERSION`, the daemon's copy of it and the `CONTRACT_MAJOR` the shipped
   CLI compares a daemon against are three declarations of one thing, and nothing
