@@ -27,6 +27,22 @@ interface Manifest {
 }
 
 const CLIPBOARD = ["clipboardWrite", "clipboardRead"];
+/**
+ * "Open PDFs in Anagram" would need these on Firefox, whose PDF viewer is a privileged
+ * page no content script reaches: a blocking `webRequest.onHeadersReceived` on `main_frame`
+ * is the only way to see a `Content-Type: application/pdf` go by. It was built and driven
+ * on Firefox 156 and it does work — `redirectUrl` to `reader.html` is refused with
+ * NS_ERROR_DOM_BAD_URI because the reader is deliberately not web accessible, but
+ * `tabs.update` plus `{cancel: true}` lands the tab in the reader with the paper read.
+ *
+ * It is not shipped, because the OPTIONAL grant cannot be driven: Firefox accepts
+ * `permissions.request` only from a real user-input handler, and WebDriver BiDi can
+ * neither deliver input to a moz-extension: page nor satisfy that check with its own
+ * script-level activation (test/diagnostics-check.mjs documents the same wall for
+ * clipboardWrite). A permission no suite can grant is a feature no suite can prove, so the
+ * switch is absent on Firefox instead — and this pins the manifests to match.
+ */
+const WEB_REQUEST = ["webRequest", "webRequestBlocking"];
 const DECIDES = join(ROOT, "wxt.config.ts");
 
 /** One target's manifest, and whether it is fresh enough to say anything. */
@@ -59,5 +75,12 @@ describe("the permissions each target asks for", () => {
       "activeTab",
       "contextMenus",
     ]);
+  });
+
+  it.skipIf(!chrome.ready || !firefox.ready)("neither target asks for webRequest, required or optional", () => {
+    for (const { manifest } of [chrome, firefox]) {
+      expect((manifest.permissions ?? []).filter((p) => WEB_REQUEST.includes(p))).toEqual([]);
+      expect((manifest.optional_permissions ?? []).filter((p) => WEB_REQUEST.includes(p))).toEqual([]);
+    }
   });
 });

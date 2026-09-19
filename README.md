@@ -157,7 +157,8 @@ prints PASS/FAIL per sample and exits non-zero if any of them is wrong.
 - **Popup + options page**: per-site rules (with an add-rule form) that cover a
   whole site — a rule written on `example.com` holds on `news.example.com` too,
   the most specific rule wins and `www.` makes no difference — marking
-  style, scope, display mode, live analyzed/flagged stats, the live backend, a
+  style, scope, display mode, "Open PDFs in Anagram" (off by default), live
+  analyzed/flagged stats, the live backend, a
   scoring-backend section (daemon URL / status check), Rescan, "Clear cached
   verdicts"; a first-run page
   explains the verdicts and opens with a **live setup strip** — extension,
@@ -183,8 +184,19 @@ prints PASS/FAIL per sample and exits non-zero if any of them is wrong.
   result — same chips, same marks, same panel, same report, which names the PDF
   and not the reader page. Three ways in: **"Analyze PDF"** on the ball of a PDF
   tab, **"Read this PDF"** in the popup, and **"Open PDF with Anagram"** on any
-  link to one. Open the reader with nothing loaded and it takes a file from your
-  computer by drop or picker. The bytes never leave the browser.
+  link to one — or turn on **"Open PDFs in Anagram"** in the options and every
+  PDF tab opens there by itself (off by default; Back still leaves it, and
+  "Open original" still shows the file). Open the reader with nothing loaded and
+  it takes a file from your computer by drop or picker. The bytes never leave
+  the browser.
+- **An arXiv paper opens as the paper, not as its PDF.** arXiv publishes an HTML
+  rendering of most papers beside the PDF, and real markup — paragraphs,
+  headings, formulas that say they are formulas — beats anything that can be
+  rebuilt from glyph positions. So every way of opening an arXiv PDF above goes
+  to `arxiv.org/html/<id>` instead, at the version the PDF named, whenever that
+  page exists; a paper that was never converted gets the reading mode exactly as
+  before. arxiv.org is the only site ever asked, only about the paper you are
+  opening, and only for the first few kilobytes of it.
 
 ## The model
 
@@ -650,5 +662,11 @@ and the 2 MB body cap counts the bytes that actually arrive rather than the
 declared length, so a chunked POST is cut off mid-stream. The batch envelope
 carries only a hostname + language hint by design, and the persistent cache
 stores hashes and bucket probabilities, never text. The Google Docs reading mode
-fetches the document same-origin with your own cookies — Anagram itself contacts
-no remote server.
+fetches the document same-origin with your own cookies.
+
+Anagram contacts exactly one remote server, and only for one thing: when you ask
+to open an **arXiv** PDF, it asks arxiv.org whether that paper's HTML rendering
+exists, so it can send you there instead of reconstructing the PDF. That request
+carries no cookies, is for the first four kilobytes of a page you were about to
+open anyway, is remembered so a paper is asked about once, and gives up after
+2.5 seconds — and nothing else, on any site, ever goes anywhere.

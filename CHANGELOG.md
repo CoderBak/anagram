@@ -9,6 +9,44 @@ Notable changes to Anagram, newest first. The format follows
 
 ### Added
 
+- **An arXiv paper opens as the paper.** arXiv publishes an HTML rendering
+  (LaTeXML) of most papers at `arxiv.org/html/<id>` beside the PDF, and that
+  markup has real paragraphs, real headings and formulas that say they are
+  formulas — strictly better than anything the reading mode can rebuild out of
+  glyph positions. So all three ways into the reading mode — the ball's "Analyze
+  PDF", the popup's "Read this PDF", the context menu's "Open PDF with Anagram"
+  — now open the paper's own page instead, at the version the PDF named, and the
+  ordinary page walker analyzes it like any other page. A paper arXiv never
+  converted gets the reading mode exactly as before.
+
+  Existence is checked rather than assumed: the worker asks arxiv.org for the
+  first 4 kB of the page and accepts it only as a 200/206 `text/html` whose
+  first bytes carry LaTeXML's own marker — today a missing paper is a 404, but a
+  "no HTML here" page served as 200 would otherwise land a reader on an error
+  page. The request is time-boxed to 2.5 s, carries no cookies, and every answer
+  is remembered for the worker's life, so a paper is asked about once. On a
+  timeout, a network error or anything ambiguous the reading mode opens, as
+  before. arxiv.org is the only site ever contacted, only for a paper being
+  opened at that moment; there is no UI for any of this and no setting.
+
+- **"Open PDFs in Anagram"** (options → Detection, **off by default**): a PDF
+  tab opens in the reading mode by itself — or, for an arXiv paper, at the
+  paper's HTML page, since both go through the worker's single route. Chrome
+  only: the content script inside Chrome's PDF tab is what notices the PDF and
+  asks the worker to move the tab, and Firefox's viewer is a privileged page no
+  content script reaches, so the switch is not shown there.
+
+  The ways it could have become a trap, and what it does instead: pressing
+  **Back** out of the reading mode lands on the PDF and stays there (a
+  `back_forward` navigation never auto-opens), **"Open original"** and the way
+  out of every "could not be read" line hand the tab a one-shot pass so it is
+  not sent straight back, a PDF opened in a **background tab** moves that tab
+  and never the one being read, **reloading** the reading mode keeps it, and
+  turning the switch off takes effect on the next PDF with no restart. A
+  `blob:`/`data:` PDF exists only in the tab showing it and is left alone; a PDF
+  served as an attachment never becomes a document and never reaches this at
+  all.
+
 - **Copy page diagnostics** — a right-click entry, next to "Analyze this page
   with Anagram", for the page where nothing shows up. It puts a short
   description on the clipboard: the extension version, the browser, both
