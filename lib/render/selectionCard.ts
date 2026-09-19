@@ -180,7 +180,9 @@ export async function analyzeSelection(): Promise<void> {
   };
 
   const words = countWords(text);
-  const closeBtn = `<button class="close" title="Close">✕</button>`;
+  // aria-label, not just title: a button's own text wins the accessible-name
+  // computation, so without it the control announces as the glyph "✕".
+  const closeBtn = `<button class="close" type="button" aria-label="Close" title="Close">✕</button>`;
 
   if (words < MIN_UNIT_WORDS) {
     card.innerHTML =

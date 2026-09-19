@@ -165,12 +165,6 @@ const CODE_BASELINE = [
   { check: "target", where: "options (two site rules, add-rule error)", item: "input#debug", why: "Same switch control." },
 
   // ---- accessible names ----------------------------------------------------------------
-  {
-    check: "names",
-    where: "selection card",
-    item: "button.close",
-    why: 'The close button\'s name is "\u2715". It carries title="Close", but a button\'s own text wins the name computation, so the control announces as a symbol. One aria-label="Close" fixes it. lib/render/selectionCard.ts closeBtn.',
-  },
 
   // ---- colour contrast (computed from the resolved colours, not axe's) -----------------
 ];
