@@ -17,7 +17,8 @@
 import { chromium } from "playwright";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { existsSync, mkdirSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import http from "node:http";
 import { startFakeDaemon } from "./fake-daemon.mjs";
 
@@ -85,7 +86,8 @@ export async function launchExtension({
     ...contextOptions,
   };
   // The bundled headless shell cannot load extensions; the full build's new headless can.
-  if (headless) opts.channel = "chromium";
+  // A caller that brought its own executable (uiLanguage() on macOS) has already picked one.
+  if (headless && !opts.executablePath) opts.channel = "chromium";
   if (classicScrollbars) opts.ignoreDefaultArgs = ["--hide-scrollbars"];
   for (const k of Object.keys(opts)) if (opts[k] === undefined) delete opts[k];
   const context = await chromium.launchPersistentContext("", opts);
@@ -94,6 +96,64 @@ export async function launchExtension({
   const extId = sw ? new URL(sw.url()).host : null;
   if (backendUrl && extId) await setServerUrl(context, extId, backendUrl);
   return { context, sw, extId };
+}
+
+/**
+ * Launch options that put the BROWSER's UI language at `tag` — the language
+ * `chrome.i18n` follows, and therefore the one the extension is translated into. It is
+ * NOT `navigator.language`, so Playwright's own `locale` option does nothing for it, and
+ * every desktop platform reads it from somewhere else:
+ *
+ *   Linux, Windows  `--lang=<tag>`; Linux also wants LANGUAGE in the environment.
+ *   macOS           Chromium ignores --lang and asks Cocoa, which reads the AppleLanguages
+ *                   user default. That default can be set per process — `-AppleLanguages
+ *                   "(zh-CN)"` in the argument list — but Playwright refuses any argument
+ *                   that does not start with "-" ("Arguments can not specify page to be
+ *                   opened"), so the pair cannot be passed through `args`. It goes through
+ *                   a one-line launcher instead: a shell script standing in for the
+ *                   browser executable, which prepends the pair and drops Playwright's
+ *                   trailing `about:blank` — Chromium would otherwise see `(zh-CN)` as a
+ *                   second startup target and refuse to start headless. The first page
+ *                   then lands on an error page rather than about:blank, which no caller
+ *                   here cares about: every suite opens the pages it wants.
+ *
+ * None of this is guaranteed — a locale the build has no bundle for, a platform nobody
+ * tried — so the caller must READ THE LANGUAGE BACK (`chrome.i18n.getUILanguage()`) and
+ * skip loudly rather than assert against a browser that is still in English.
+ */
+export function uiLanguage(tag) {
+  const posix = tag.replace("-", "_");
+  if (process.platform !== "darwin") {
+    return { args: [`--lang=${tag}`], env: { ...process.env, LANGUAGE: posix } };
+  }
+  const real = chromium.executablePath();
+  const dir = mkdtempSync(join(tmpdir(), "anagram-lang-"));
+  const launcher = join(dir, `chromium-${posix}.sh`);
+  writeFileSync(
+    launcher,
+    [
+      "#!/bin/sh",
+      "# Written by test/harness.mjs — see uiLanguage().",
+      `REAL='${real}'`,
+      "n=$#",
+      "i=0",
+      "while [ $i -lt $n ]; do",
+      '  a="$1"; shift',
+      '  [ "$a" = "about:blank" ] || set -- "$@" "$a"',
+      "  i=$((i+1))",
+      "done",
+      `exec "$REAL" -AppleLanguages '(${tag})' "$@"`,
+      "",
+    ].join("\n"),
+  );
+  chmodSync(launcher, 0o755);
+  return { executablePath: launcher };
+}
+
+/** The language the extension actually came up in, or null when the worker never woke. */
+export async function uiLanguageOf(sw) {
+  if (!sw) return null;
+  return sw.evaluate(() => chrome.i18n.getUILanguage()).catch(() => null);
 }
 
 /** A plain page-only browser (no extension) under the same no-window rule. */

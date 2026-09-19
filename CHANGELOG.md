@@ -9,6 +9,32 @@ Notable changes to Anagram, newest first. The format follows
 
 ### Added
 
+- **Simplified Chinese**, following the browser's UI language. There is no
+  setting and no picker: a browser running in `zh`, `zh-CN`, `zh-Hans*` or
+  `zh-SG` gets `_locales/zh_CN`, everything else falls back to `_locales/en`,
+  and `zh-TW` / `zh-HK` land wherever the platform's own fallback puts them —
+  there is no matching logic of ours for them to disagree with. Everything a
+  user reads is translated: the chip's hover card and its four verdict labels
+  (人工撰写 / 轻度 AI 编辑 / 重度 AI 编辑 / AI 生成), the ball and its triage
+  panel, the selection card, the Google Docs reading bar, the four extension
+  pages, the right-click entries, the keyboard-command descriptions in the
+  manifest, and the **copied report** — it is what you paste to other people, so
+  it is in your language too. Console logs, the daemon's own messages, the model
+  id, the contract strings and the `anagram …` commands are not translated,
+  because none of them is a sentence. Our shadow roots and the extension pages
+  declare the language they are actually in, so screen readers and the CJK font
+  fallback are told the truth on an English page.
+
+  Underneath: `lib/i18n.ts` is the only way any of our code asks for a string,
+  its key union is derived from the English file so a typo is a type error, and
+  `tn(key, n)` covers the `_one`/`_other` pairs English needs where the code used
+  to append an "s". The extension pages keep their English **in the HTML** —
+  nothing flashes, they read correctly with the script off — and name their key
+  in `data-i18n`; a sentence with a `<code>`, a `<kbd>` or an emphasised word in
+  it stays one message with $1…$9 where those elements go, and the substitution
+  can only ever put back an element the page already had, so no message is ever
+  parsed as markup. Adding the next language is one file.
+
 - Three things the interface only ever showed are now also said. The selection
   card is a polite status region, so a verdict reached from the right-click menu
   is announced when it lands instead of appearing in silence; the floating ball

@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
 import http from "node:http";
-import { launchExtension, serveHtml, artifact, BADGE_SEL } from "./harness.mjs";
+import { launchExtension, serveHtml, artifact, uiLanguage, uiLanguageOf, BADGE_SEL } from "./harness.mjs";
 import { startFakeDaemon } from "./fake-daemon.mjs";
 import { PDF_HEAD, PDF_HEADING, PDF_PARAS, TEST_PDF, servePdfs } from "./pdf-fixture.mjs";
 
@@ -2002,6 +2002,174 @@ async function sweep(page, steps = 6) {
       JSON.stringify({ before, after }),
     );
     await p.close();
+  }
+
+  // A40: the whole interface in Simplified Chinese, in a SECOND browser whose UI language
+  // is zh-CN. That is the browser's own language — not `navigator.language`, which is all
+  // Playwright's `locale` option sets — so it is switched at launch, differently on every
+  // platform (test/harness.mjs, uiLanguage()). The page under it stays English: EditLens
+  // reads English, and the point is a Chinese reader looking at an English article.
+  //
+  // Where the language cannot be switched the checks SKIP, loudly, rather than passing
+  // against a browser that is still in English — so getUILanguage() is asked first and is
+  // the thing everything below hangs on.
+  {
+    PAGES["/zh.html"] = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Chinese UI fixture</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+${KEY_TAGS.map((t, i) => `<p id="z${i + 1}">${KEY_PARA(t)}</p>`).join("\n")}
+</body></html>`;
+    const zh = await launchExtension({ backendUrl: daemon.url, ...uiLanguage("zh-CN") });
+    await zh.context.grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => {});
+    const uiLang = await uiLanguageOf(zh.sw);
+    const zhId = zh.sw ? new URL(zh.sw.url()).host : null;
+
+    if (uiLang !== "zh-CN" || !zhId) {
+      record(
+        "i18n",
+        `the interface speaks Chinese when the browser does (${process.platform})`,
+        null,
+        `could not switch the browser UI language: getUILanguage() = ${uiLang}`,
+      );
+    } else {
+      // The worker: the context menus are created with t(), and chrome.contextMenus has no
+      // way to read a title back — so the same lookup the worker made is asked for again.
+      const menus = await zh.sw.evaluate(() =>
+        ["menuAnalyzeSelection", "menuAnalyzePage", "menuOpenPdf", "cmdOpenPanel"].map((k) =>
+          chrome.i18n.getMessage(k),
+        ),
+      );
+
+      // The popup: plain text, an attribute, and a sentence rebuilt around the <kbd> keys
+      // it was written with — the keys have to survive the substitution.
+      const popup = await zh.context.newPage();
+      await popup.goto(`chrome-extension://${zhId}/popup.html`, { waitUntil: "load" });
+      await popup.waitForTimeout(400);
+      const popupText = await popup.evaluate(() => ({
+        lang: document.documentElement.lang,
+        subtitle: document.querySelector("header .brand p")?.textContent ?? "",
+        gear: document.getElementById("gear")?.getAttribute("aria-label") ?? "",
+        rescan: document.getElementById("rescan")?.textContent ?? "",
+        hint: document.querySelector(".hint-line")?.textContent ?? "",
+        keys: [...(document.querySelector(".hint-line")?.querySelectorAll("kbd") ?? [])]
+          .map((k) => k.textContent)
+          .join(""),
+      }));
+      await popup.close();
+
+      const opts = await zh.context.newPage();
+      await opts.goto(`chrome-extension://${zhId}/options.html`, { waitUntil: "load" });
+      await opts.waitForTimeout(400);
+      const optionsText = await opts.evaluate(() => ({
+        lang: document.documentElement.lang,
+        daemonCard: document.querySelectorAll(".card > header h2")[2]?.textContent ?? "",
+        // The <code> commands inside a translated sentence are the page's own elements,
+        // put back where the message asked for them.
+        codes: [...document.querySelectorAll('[data-i18n-html="optDaemonNote"] code')].map((c) => c.textContent),
+      }));
+      await opts.close();
+
+      // The in-page UI: a chip's card, the panel behind the ball, and the report.
+      const p = await zh.context.newPage();
+      await p.goto(server.url("/zh.html"), { waitUntil: "load" });
+      const settled = await p
+        .waitForFunction(
+          (sel) => {
+            const pills = [...document.querySelectorAll(sel)].map((h) => h.shadowRoot?.querySelector(".pill")).filter(Boolean);
+            return pills.length === 4 && !pills.some((x) => x.classList.contains("pending"));
+          },
+          BADGE_SEL,
+          { timeout: 15000 },
+        )
+        .then(() => true)
+        .catch(() => false);
+      const chip = await p.evaluate((sel) => {
+        const root = document.querySelector(sel)?.shadowRoot;
+        return {
+          verdict: root?.querySelector(".card .verdict")?.textContent ?? "",
+          words: root?.querySelector(".card .row .k")?.textContent ?? "",
+          copy: root?.querySelector(".card .act.copy")?.textContent ?? "",
+          // Our own chrome declares its language whatever the article is written in.
+          lang: root?.querySelector(".pill")?.lang ?? "",
+        };
+      }, BADGE_SEL);
+
+      await p.evaluate(() => navigator.clipboard.writeText("NO REPORT COPIED").catch(() => {}));
+      const panel = await p.evaluate(() => {
+        const sr = document.getElementById("anagram-fab")?.shadowRoot;
+        sr?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        return {
+          lang: sr?.querySelector(".stack")?.lang ?? "",
+          title: sr?.querySelector(".phead h2")?.textContent ?? "",
+          filters: [...(sr?.querySelectorAll(".fchip") ?? [])].map((b) => b.textContent),
+          copy: sr?.querySelector(".pcopy")?.textContent ?? "",
+          off: sr?.querySelector(".psiteoff")?.textContent ?? "",
+        };
+      });
+      await p.evaluate(() => {
+        document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".pcopy")?.click();
+      });
+      await p.waitForTimeout(600);
+      const copied = await p.evaluate(
+        () => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".pcopy")?.textContent ?? "",
+      );
+      const report = await p.evaluate(() => navigator.clipboard.readText().catch(() => null));
+      await p.close();
+
+      const seen = { uiLang, menus, popup: popupText, options: optionsText, chip, panel, copied, report: (report ?? "").slice(0, 120) };
+      record(
+        "i18n",
+        "a zh-CN browser gets a Chinese popup, options page, chip card, triage panel, menu entries and report",
+        settled &&
+          menus[0] === "用 Anagram 分析所选文本" &&
+          menus[1] === "用 Anagram 分析本页" &&
+          menus[2] === "用 Anagram 打开 PDF" &&
+          menus[3] === "打开存疑段落列表" &&
+          popupText.lang === "zh-CN" &&
+          popupText.subtitle === "AI 文本检测" &&
+          popupText.gear === "全部设置" &&
+          popupText.rescan === "重新扫描" &&
+          popupText.hint === "Alt+Shift+P 显示或隐藏标记" &&
+          popupText.keys === "AltShiftP" &&
+          optionsText.lang === "zh-CN" &&
+          optionsText.daemonCard === "本地评分服务" &&
+          optionsText.codes[0] === "anagramd" &&
+          optionsText.codes[1] === "~/.anagram/bin/anagram start" &&
+          chip.lang === "zh-CN" &&
+          ["人工撰写", "轻度 AI 编辑", "重度 AI 编辑", "AI 生成"].includes(chip.verdict) &&
+          chip.words === "词数" &&
+          chip.copy === "复制原文" &&
+          panel.lang === "zh-CN" &&
+          panel.title === "存疑段落（4）" &&
+          panel.filters.includes("全部 4") &&
+          panel.copy === "复制报告" &&
+          panel.off === "在 localhost 关闭" &&
+          copied === "已复制 ✓" &&
+          typeof report === "string" &&
+          report.startsWith("# Anagram 报告：") &&
+          report.includes("## 存疑段落（4）") &&
+          report.includes("既不是 AI 撰写词语的占比，也不是证据。"),
+        JSON.stringify(seen),
+      );
+
+      // The English build is untouched by any of it: the same page in the FIRST browser,
+      // whose UI language nothing changed, still says everything in English.
+      const en = await context.newPage();
+      await en.goto(server.url("/zh.html"), { waitUntil: "load" });
+      await en.waitForSelector(BADGE_SEL, { timeout: 15000 }).catch(() => {});
+      await en.waitForTimeout(2000);
+      const enSeen = await en.evaluate((sel) => ({
+        verdict: document.querySelector(sel)?.shadowRoot?.querySelector(".card .verdict")?.textContent ?? "",
+        lang: document.querySelector(sel)?.shadowRoot?.querySelector(".pill")?.lang ?? "",
+      }), BADGE_SEL);
+      await en.close();
+      record(
+        "i18n",
+        "an English browser is unaffected: the same page, the same chip, the English verdict",
+        ["Human", "Lightly edited", "Heavily edited", "AI-generated"].includes(enSeen.verdict) &&
+          enSeen.lang === "en",
+        JSON.stringify(enSeen),
+      );
+    }
+    await zh.context.close();
   }
 }
 
