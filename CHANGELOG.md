@@ -436,6 +436,14 @@ Notable changes to Anagram, newest first. The format follows
 
 ### Fixed
 
+- Gemini conversations were silent. Gemini wraps every conversation in
+  `<div id="xap-skip-link-target" class="main-content">`; the page-chrome filter
+  read that id — the place a "Skip to content" link LANDS — as the skip link
+  itself and discarded everything inside it. A name that says where a skip link
+  lands is no longer a skip link, and an element that calls itself the page's main
+  content (as a whole class name or its id) is, like `<main>`, never chrome on the
+  strength of a name.
+
 - A page of clamped review cards lays itself out half as often. Keeping one chip
   under each collapsed post means measuring the box and the last line of each of
   its paragraphs, and every box was doing that on its own — once per chip as it

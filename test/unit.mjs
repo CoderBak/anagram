@@ -956,6 +956,21 @@ const results = await page.evaluate(() => {
     d.className = "vector-toc-pinned-clientpref-1";
     check("bare 'toc' token dropped (link-density owns TOC boxes)", PW.isBoilerplate(d) === false);
   }
+  {
+    // Gemini wraps every conversation in <div id="xap-skip-link-target" class="main-content">.
+    // The id names where the skip link LANDS; read as the link itself it made the whole app
+    // chrome, and a 4,000-word answer got no chip at all.
+    const mk = (tag, id, cls) => { const e = document.createElement(tag); if (id) e.id = id; if (cls) e.className = cls; return e; };
+    check("a skip link's DESTINATION is not the skip link (Gemini)", PW.isBoilerplate(mk("div", "xap-skip-link-target", "main-content")) === false);
+    check("…nor without the main-content class beside it", PW.isBoilerplate(mk("div", "skip-link-target", "wrapper")) === false && PW.isBoilerplate(mk("div", "", "skip-to-content-target")) === false);
+    check("…while the skip link itself is still chrome", PW.isBoilerplate(mk("a", "", "skip-link")) === true && PW.isBoilerplate(mk("div", "", "skip-to-content")) === true);
+    check("…and another chrome name beside a skip destination still counts", PW.isBoilerplate(mk("div", "skip-link-target", "cookie-banner")) === true);
+    check("an element that calls itself the main content is never chrome by a token", PW.isBoilerplate(mk("div", "", "main-content share")) === false && PW.isBoilerplate(mk("div", "main_content", "social")) === false);
+    check("…but a longer name that merely starts that way is judged as usual", PW.isBoilerplate(mk("div", "", "main-content-share")) === true && PW.isBoilerplate(mk("div", "", "main-content-newsletter")) === true);
+    sandbox.innerHTML = `<chat-app><main class="chat-app"><side-navigation-v2 class="content"><bard-sidenav-container><bard-sidenav-content><div class="content-wrapper"><div id="xap-skip-link-target" class="main-content"><div class="conversation-container message-actions-hover-boundary"><model-response><message-content><div class="markdown markdown-main-panel" aria-live="polite"><p>${words(400)}</p></div></message-content></model-response></div></div></div></bard-sidenav-content></bard-sidenav-container></side-navigation-v2></main></chat-app>`;
+    const u = PW.collectUnits(sandbox);
+    check("Gemini's conversation markup: the answer is read", u.length === 1 && u[0].wordCount >= 400, JSON.stringify(u.map((x) => x.wordCount)));
+  }
 
   // ---- main-content detection ----------------------------------------------------------
   {

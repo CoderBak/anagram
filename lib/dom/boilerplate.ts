@@ -114,6 +114,22 @@ const CHROME_TOKEN_RE = new RegExp(
 );
 
 /**
+ * A name that says where a skip link LANDS, not that it is one. Gemini wraps every
+ * conversation in `<div id="xap-skip-link-target" class="main-content">`; the `skip-link`
+ * token read that id as the "Skip to content" link itself and the whole app was taken for
+ * chrome — not a chip on any conversation. Such a name is dropped before the tokens are
+ * looked for, so whatever else the element is called still counts.
+ */
+const SKIP_DESTINATION_RE = /\S*skip[-_]?(?:link|to|nav)\S*[-_](?:target|destination|anchor)\S*/gi;
+
+/**
+ * The element calls ITSELF the page's main content — as a whole class token or as its id,
+ * never as part of a longer name ("main-content-share" is a share bar). That is a <main>
+ * written as a <div>, and like <main> it is never chrome on the strength of a token.
+ */
+const MAIN_CONTENT_NAME_RE = /^(?:main[-_]?content|content[-_]?main|primary[-_]?content|page[-_]?content)$/i;
+
+/**
  * The reply FORM is chrome; the comments are not — they are exactly the user-generated text
  * a detector must read. WordPress' `#respond` convention gave these two tokens their
  * meaning, but 博客园 (cnblogs) wraps its comment LIST in boxes that carry `comment_form`
@@ -197,7 +213,9 @@ export function isBoilerplate(el: Element): boolean {
   const cls = el.getAttribute("class");
   const id = (el as HTMLElement).id;
   if (cls || id) {
-    const hay = `${id ?? ""} ${cls ?? ""}`.slice(0, 256);
+    const names = `${id ?? ""} ${cls ?? ""}`.slice(0, 256);
+    if (names.split(/\s+/).some((name) => MAIN_CONTENT_NAME_RE.test(name))) return false;
+    const hay = names.replace(SKIP_DESTINATION_RE, " ");
     if (CHROME_TOKEN_RE.test(hay)) return true;
     if (REPLY_FORM_TOKEN_RE.test(hay) && isReplyForm(el)) return true;
   }
