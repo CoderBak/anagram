@@ -1851,7 +1851,7 @@ async function sweep(page, steps = 6) {
     await p.close();
   }
 
-  // A35b: "Analyze this page with Anagram". With Anagram off everywhere the page stays
+  // A37b: "Analyze this page with Anagram". With Anagram off everywhere the page stays
   // bare; the menu's action analyzes it once, and because nothing is written, a reload is
   // bare again and the settings are exactly as they were.
   {
@@ -1890,6 +1890,74 @@ async function sweep(page, steps = 6) {
     await p.close();
     // Phase B reads live sites with the shipped default — put it back.
     await sw.evaluate(() => new Promise((res) => chrome.storage.local.set({ enabled: true }, res)));
+  }
+
+  // A37c: the same run on a site whose rule ALREADY says "off" — which is the likeliest
+  // page to ask for one. An unrelated rule written while it runs must leave it alone, and
+  // the panel's own "Turn off on <host>" must end it although it stores the value that is
+  // already there, so no settings change ever reaches the page.
+  {
+    PAGES["/turnoff.html"] = CONTROLS_PAGE("TURNOFF");
+    const fixtureHost = new URL(server.base).hostname;
+    await sw.evaluate(
+      (h) => new Promise((res) => chrome.storage.local.set({ enabled: true, siteOverrides: { [h]: "off" } }, res)),
+      fixtureHost,
+    );
+    const p = await context.newPage();
+    await p.goto(server.url("/turnoff.html"), { waitUntil: "load" });
+    await p.waitForTimeout(2500);
+    const chips = () => p.evaluate((sel) => [...document.querySelectorAll(sel)].filter((x) => x.shadowRoot?.querySelector(".pill")).length, BADGE_SEL);
+    const offAtFirst = await chips();
+    await p.bringToFront();
+    await sw.evaluate(async () => {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      try {
+        await chrome.tabs.sendMessage(tab.id, { action: "analyzePage" });
+      } catch {
+        /* the content script answers nothing to this one */
+      }
+    });
+    const analyzed = await threeChips(p);
+    // Someone else's rule: the watch fires, this site is still off by the same rule it was
+    // off by when the run started, and the run must not notice.
+    await sw.evaluate(
+      (h) => new Promise((res) => chrome.storage.local.set({ siteOverrides: { [h]: "off", "example.org": "off" } }, res)),
+      fixtureHost,
+    );
+    await p.waitForTimeout(1500);
+    const afterUnrelated = await chips();
+    // The panel's footer, reached the way a keyboard user reaches it.
+    await sw.evaluate(async () => {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      try {
+        await chrome.tabs.sendMessage(tab.id, { action: "openPanel" });
+      } catch {
+        /* the content script answers nothing to this one */
+      }
+    });
+    await p.waitForTimeout(600);
+    const label = await p.evaluate(() => {
+      const el = document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".psiteoff");
+      if (!el) return null;
+      el.click();
+      return el.textContent;
+    });
+    await p.waitForTimeout(1500);
+    const afterTurnOff = await chips();
+    const rules = await sw.evaluate(() => new Promise((res) => chrome.storage.local.get("siteOverrides", (v) => res(v.siteOverrides))));
+    record(
+      "ui",
+      "analyze this page: an already-off site keeps its run through an unrelated rule, and the panel's own switch ends it",
+      offAtFirst === 0 &&
+        analyzed &&
+        afterUnrelated === 3 &&
+        label === `Turn off on ${fixtureHost}` &&
+        afterTurnOff === 0 &&
+        rules?.[fixtureHost] === "off",
+      JSON.stringify({ offAtFirst, analyzed, afterUnrelated, label, afterTurnOff, rules }),
+    );
+    await p.close();
+    await sw.evaluate(() => new Promise((res) => chrome.storage.local.set({ enabled: true, siteOverrides: {} }, res)));
   }
 }
 

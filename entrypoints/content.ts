@@ -6,6 +6,7 @@
 import { defineContentScript, browser } from "#imports";
 import { createOrchestrator } from "../lib/capture/orchestrator";
 import { effectiveRule, enabledForSite, settings } from "../lib/settings/settings";
+import { NO_RULE, oneShotEnds, ruleState, type RuleState } from "../lib/settings/oneShot";
 import {
   detectDocsPage,
   readingViewUrl,
@@ -73,6 +74,15 @@ export default defineContentScript({
     const orchestrator = createOrchestrator(ctx, {
       mountFab: isTop,
       lockScope: docs?.kind === "editor" ? "page" : undefined,
+      // The panel's "Turn off on <host>" writes the rule; this page stops here and now.
+      // It has to, because the write is not always a change: on a site whose rule already
+      // says "off" — where the only way to be looking at the panel is a one-shot run from
+      // the context menu — storage takes the same value again and no watch ever fires.
+      onSiteOff: () => {
+        enabled = false;
+        onceForPage = false;
+        orchestrator.stop();
+      },
     });
 
     // Site rules are keyed on the TOP page's hostname — that is what the popup writes.
@@ -87,9 +97,12 @@ export default defineContentScript({
      * The user asked for THIS page from the context menu although the settings say no.
      * The run belongs to the page, not to the settings: it lasts until the tab navigates
      * away (a new document runs a new content script) and nothing is stored, so the site
-     * is off again next time. Only an explicit "off" for this very site ends it early.
+     * is off again next time. Only turning this very site off ends it early.
      */
     let onceForPage = false;
+    /** What the rules said for this site when that run began — the baseline the watches
+     *  compare against, so an off rule that was already there ends nothing. */
+    let onceBaseline: Promise<RuleState> = Promise.resolve(NO_RULE);
 
     const frameGateOk = (): boolean =>
       isTop ||
@@ -125,10 +138,14 @@ export default defineContentScript({
         v = await enabledForSite(effectiveHost);
         if (!v && onceForPage) {
           // A one-shot run was asked for on this page, so a change elsewhere — another
-          // site's rule, the global default — must not silently stop it. Only a rule that
-          // turns THIS site off does, and then the one-shot is over for good.
-          const rule = await effectiveRule(effectiveHost);
-          if (rule?.mode !== "off") return;
+          // site's rule, the global default — must not silently stop it. Only this site
+          // being turned off DURING the run does, and then it is over for good: the rule
+          // that was already there when it started is the very reason it was asked for.
+          const [started, now] = await Promise.all([
+            onceBaseline,
+            effectiveRule(effectiveHost).then(ruleState),
+          ]);
+          if (!oneShotEnds(started, now)) return;
           onceForPage = false;
         }
       } catch {
@@ -246,6 +263,9 @@ export default defineContentScript({
             } else {
               enabled = true;
               onceForPage = true;
+              // Read the rules as they are NOW: the run is measured against this, so only
+              // a later change to them can end it.
+              onceBaseline = effectiveRule(effectiveHost).then(ruleState, () => NO_RULE);
               startWhenGated();
             }
             return;

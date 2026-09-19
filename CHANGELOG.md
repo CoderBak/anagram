@@ -14,9 +14,13 @@ Notable changes to Anagram, newest first. The format follows
   by switching the site on and back off again. The menu entry runs the analysis
   once in that tab — the top frame and its frames, each still size-gated — and
   writes nothing: no setting, no site rule. It lasts until the tab leaves the
-  page, a later settings change does not stop it, and turning the site off does.
-  On a page Anagram is already on it is a Rescan. The popup keeps telling the
-  truth about such a tab: "This site" stays off, and the counts are there.
+  page: a settings change elsewhere does not stop it, and neither does the rule
+  that was already switching this site off when it started — only turning this
+  site off during the run does, from the popup or from the panel's own "Turn off
+  on <host>", which now ends the page's run whether or not the rule it writes is
+  a change. On a page Anagram is already on it is a Rescan. The popup keeps
+  telling the truth about such a tab: "This site" stays off, and the counts are
+  there.
 - "Clear cached verdicts" (options → Advanced). Verdicts are cached three ways —
   per tab, in the service worker's memory and in IndexedDB — and there was no way
   to empty them: a paragraph the daemon answered for once was never asked about

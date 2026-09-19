@@ -416,7 +416,16 @@ function sheet(): CSSStyleSheet {
 
 type Side = "left" | "right";
 
-export function createFab(opts: { onToggle: () => void; onRetry?: () => void; panel?: PanelHooks }): Fab {
+export function createFab(opts: {
+  onToggle: () => void;
+  onRetry?: () => void;
+  panel?: PanelHooks;
+  /** The footer's per-site kill switch was used. The rule is written here either way;
+   *  this is how the PAGE learns to stop, which the stored rule cannot always tell it:
+   *  a site whose rule already says "off" — the page is being analyzed once from the
+   *  context menu — takes the same value again, and storage fires no change event. */
+  onSiteOff?: () => void;
+}): Fab {
   let host: HTMLElement | null = null;
   let stackEl: HTMLElement | null = null;
   let fabEl: HTMLButtonElement | null = null;
@@ -950,6 +959,7 @@ export function createFab(opts: { onToggle: () => void; onRetry?: () => void; pa
       e.stopPropagation();
       closePanel();
       void setSiteOverride(location.hostname, "off").catch(() => undefined);
+      opts.onSiteOff?.();
     });
     foot.appendChild(off);
     panelEl.appendChild(foot);

@@ -139,6 +139,12 @@ export interface OrchestratorOptions {
    * reads the report — it passes the PDF's own URL instead.
    */
   reportUrl?: string;
+  /**
+   * The panel footer's "Turn off on <host>" was used. The rule is written by the footer
+   * itself; this tells the OWNER of the page's on/off state to stop, which the settings
+   * watch cannot always do — writing "off" where "off" is already stored changes nothing.
+   */
+  onSiteOff?: () => void;
 }
 
 export function createOrchestrator(
@@ -212,6 +218,10 @@ export function createOrchestrator(
       onJump: jumpTo,
       buildReport,
     },
+    // The panel's "Turn off on <host>" writes the rule itself; the content script is what
+    // knows whether this page is running because of the settings or because it was asked
+    // for once, so it gets to end the run.
+    onSiteOff: opts.onSiteOff,
   });
 
   /** Centre a unit in the viewport and pulse its chip (panel rows and the
