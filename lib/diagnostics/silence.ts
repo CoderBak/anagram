@@ -124,6 +124,12 @@ export function surveyPage(opts: { running: boolean; max: number }): PageSurvey 
   const styles = createStyleCache();
   const cs = (el: Element): CSSStyleDeclaration | null => styles.get(el);
   const body = document.body;
+  // The walk is re-run rather than asked for: the orchestrator keeps no public list of its
+  // units, and a report has to describe the page as it is NOW anyway. It costs a second
+  // walk on a page that asked for one, and it is safe to repeat — the only thing a walk
+  // writes is a text-node split at a blank line in preserved-whitespace text, which the
+  // first scan already made. This chunk carries its own copy of the module, so the unit
+  // ids it hands out cannot collide with the ones the live page is rendering.
   const units = body ? collectUnits(body) : [];
   const partContainers = units.map((u) => u.parts.map((p) => p.container));
 
