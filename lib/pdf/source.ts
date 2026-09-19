@@ -39,8 +39,9 @@ export function readerQuery(src: string): string {
 //
 // This only says WHICH address would be the twin. Whether that page was ever built is a
 // question only the network could answer, and the extension does not ask it: nothing here
-// reaches the internet. The address is offered to the reader as a link they may follow
-// themselves, and a PDF always opens as the PDF they were looking at.
+// reaches the internet, and a PDF always opens as the PDF somebody was looking at. Until
+// 2026-09-20 the service worker probed arxiv.org and re-routed the tab on the answer; what
+// the address is for now is a link in the reader's bar, for somebody to follow or not.
 
 /**
  * The arXiv hosts whose `/pdf/` addresses name a paper. The two mirrors are the same
@@ -71,8 +72,8 @@ const TWIN_RULES: ((u: URL) => string | null)[] = [arxivTwin];
 
 /**
  * The HTML rendering of the document this PDF URL points at, or null when the URL names
- * no source we know. A twin is a claim about the ADDRESS only, and nothing here finds out
- * whether that page was ever built — the reader does, by following the link or not.
+ * no source we know. A twin is a claim about the ADDRESS only, and nothing in the
+ * extension finds out whether that page was ever built.
  */
 export function htmlTwinOf(url: string): string | null {
   let u: URL;
