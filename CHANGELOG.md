@@ -286,6 +286,15 @@ Notable changes to Anagram, newest first. The format follows
 
 ### Fixed
 
+- A page of clamped review cards lays itself out half as often. Keeping one chip
+  under each collapsed post means measuring the box and the last line of each of
+  its paragraphs, and every box was doing that on its own — once per chip as it
+  landed, and again on every tick of its observers — so the browser laid the page
+  out again between every pair of measurements: on sixty cards holding 180 chips,
+  443 layouts more than the same page without the extension. A wake now only
+  marks a box dirty; one frame later every dirty box is read, and only then is
+  anything moved. The same page costs 230. What ends up where is unchanged, and
+  `npm run test:perf` now holds it there.
 - Accessibility, throughout, with the suite below now guarding each one. A pinned
   chip card put a focusable "Copy text" button inside the deliberately
   aria-hidden chip host, so a keyboard user landed on a control that announces

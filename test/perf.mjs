@@ -16,8 +16,17 @@
 //    a forced GC at the end: what we still hold must stay proportional to what is in the
 //    DOM, not to everything that ever passed through it.
 //
+// D) A page of clamped review cards — sixty of them, three paragraphs each behind a 150 px
+//    clamp, their pictures arriving as the reader reaches them: the shape of a Steam or
+//    Goodreads review page, and the one shape where a chip's place depends on measuring the
+//    page. Budget: LAYOUTS, counted by the browser, against the same page with no extension.
+//    Measuring one box and moving its chips, then measuring the next, made the page lay
+//    itself out again between every pair — 443 layouts more than the control, one per chip
+//    and one per observer tick — where reading every woken box first and writing to all of
+//    them afterwards costs 229.
+//
 //   node test/perf.mjs
-import { launchExtension, serveHtml, BADGE_SEL } from "./harness.mjs";
+import { launchExtension, launchPlain, serveHtml, BADGE_SEL } from "./harness.mjs";
 import { startFakeDaemon } from "./fake-daemon.mjs";
 
 const N = 3000;
@@ -196,6 +205,111 @@ checks.push(
   [`virtualized feed: heap growth after ${CYCLES * WINDOW_POSTS} posts < 8MB`, heldMB < 8, `${heldMB.toFixed(1)}MB (${(heapBefore / 1048576).toFixed(1)} → ${(heapAfter / 1048576).toFixed(1)})`],
   ["virtualized feed: chips bounded by the posts in the DOM", held.hosts > 0 && held.hosts <= held.posts, `${held.hosts} chips for ${held.posts} posts`],
   ["virtualized feed: no highlight range over a node that left the DOM", held.detached === 0, `${held.detached} of ${held.ranges} ranges`],
+);
+
+// ---- D) clamped review cards: what does keeping one chip under each box cost? ----------
+// Every paragraph of a clamped review ends out of sight, so the layer has to measure the
+// box and the last line of each of its paragraphs to know which single chip belongs under
+// it. The budget is the browser's own LayoutCount against the same page with no extension:
+// a count, not a duration, so it says the same thing on a slow machine as on a fast one.
+const CARDS = 60;
+const CARD_PARAS = 3;
+const SCREENS = 12;
+/** At most this many layouts per chip over the control. One is the chip's own insertion,
+ *  which any placement pays; the rest is the settling. Measured on this fixture: 1.27 with
+ *  the boxes settled together, 2.46 when each box was settled on its own. */
+const LAYOUTS_PER_CHIP = 1.6;
+
+const cardWords = (seed, n) => {
+  const VOCAB = "the quick brown fox jumps over a lazy dog while rain falls gently on rooftops and children read books near warm windows during long quiet evenings a timetable moved off paper and nobody noticed until the trains ran on time".split(" ");
+  return Array.from({ length: n }, (_, i) => VOCAB[(seed * 37 + i * 11) % VOCAB.length]).join(" ");
+};
+const CARDS_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>clamped review cards</title>
+<style>body{max-width:760px;margin:20px auto;font:15px/1.6 system-ui}
+.card{border-top:1px solid #ddd;padding:12px 0}.lockup{font-size:13px;color:#666}
+.clamp{max-height:150px;overflow:hidden}
+img.shot{display:block;width:100%;height:0;background:#e8e8e8}
+.more{font:inherit;border:0;background:none;color:#06c;padding:0}</style></head><body>
+<main>${Array.from({ length: CARDS }, (_, i) =>
+  `<article class="card"><div class="lockup">Reviewer ${i} · 1,204 hrs on record</div><div class="clamp"><img class="shot" alt="">` +
+  Array.from({ length: CARD_PARAS }, (_, k) => `<p>Review ${i}.${k}: ${cardWords(i * 7 + k, 110)}.</p>`).join("") +
+  `</div><button type="button" class="more">Read more</button></article>`).join("\n")}</main>
+<script>
+// The pictures arrive as the reader reaches them, the way a review page loads them: each
+// one grows its own card, which is what moves a chip into or out of a clipped box.
+const io = new IntersectionObserver((entries) => {
+  for (const e of entries) {
+    if (!e.isIntersecting) continue;
+    io.unobserve(e.target);
+    setTimeout(() => { e.target.style.height = "120px"; }, 250);
+  }
+}, { rootMargin: "300px" });
+for (const img of document.querySelectorAll("img.shot")) io.observe(img);
+</script></body></html>`;
+
+/** One pass over the cards page, with the extension or without it, counting the browser's
+ *  own layouts from before the page loads to the end of the scroll. */
+async function cardsPass(withExt) {
+  const daemonD = withExt ? await startFakeDaemon() : null;
+  const serverD = await serveHtml({ "/cards.html": CARDS_HTML });
+  let browser = null;
+  let ctx;
+  if (withExt) {
+    ({ context: ctx } = await launchExtension({ backendUrl: daemonD.url, viewport: { width: 1100, height: 850 } }));
+  } else {
+    browser = await launchPlain({ headless: true });
+    ctx = await browser.newContext({ viewport: { width: 1100, height: 850 } });
+  }
+  const p = await ctx.newPage();
+  const session = await ctx.newCDPSession(p);
+  await session.send("Performance.enable");
+  const read = async () => Object.fromEntries((await session.send("Performance.getMetrics")).metrics.map((m) => [m.name, m.value]));
+  const m0 = await read();
+  await p.goto(serverD.url("/cards.html"), { waitUntil: "load" });
+  if (withExt) await p.waitForSelector(BADGE_SEL, { timeout: 20000 }).catch(() => {});
+  await p.waitForTimeout(3000);
+  for (let i = 0; i < SCREENS; i++) {
+    await p.evaluate(() => window.scrollBy(0, Math.round(window.innerHeight * 0.9)));
+    await p.waitForTimeout(400);
+  }
+  await p.waitForTimeout(2500);
+  const m1 = await read();
+  const seen = await p.evaluate((sel) => {
+    const boxes = [...document.querySelectorAll(".clamp")];
+    const under = (b) => {
+      let n = 0;
+      for (let el = b.nextElementSibling; el && el.matches(sel); el = el.nextElementSibling) n++;
+      return n;
+    };
+    return {
+      chips: [...document.querySelectorAll(sel)].filter((h) => h.id !== "anagram-fab").length,
+      boxes: boxes.length,
+      withOne: boxes.filter((b) => under(b) === 1).length,
+      withMore: boxes.filter((b) => under(b) > 1).length,
+    };
+  }, BADGE_SEL);
+  await ctx.close();
+  await browser?.close();
+  await serverD.close();
+  await daemonD?.close();
+  return { layouts: m1.LayoutCount - m0.LayoutCount, ...seen };
+}
+
+const cardsExt = await cardsPass(true);
+const cardsCtl = await cardsPass(false);
+const extraLayouts = cardsExt.layouts - cardsCtl.layouts;
+const budget = Math.round(cardsExt.chips * LAYOUTS_PER_CHIP);
+checks.push(
+  [
+    `clamped cards: ${cardsExt.chips} chips in ${CARDS} boxes cost < ${budget} layouts over the control`,
+    cardsExt.chips > 0 && extraLayouts < budget,
+    `${extraLayouts} extra layouts (${cardsExt.layouts} vs ${cardsCtl.layouts}), ${(extraLayouts / Math.max(1, cardsExt.chips)).toFixed(2)} per chip`,
+  ],
+  [
+    "clamped cards: exactly one chip under every box, never two",
+    cardsExt.withOne === cardsExt.boxes && cardsExt.withMore === 0,
+    `${cardsExt.withOne} of ${cardsExt.boxes} boxes with one chip under them, ${cardsExt.withMore} with more`,
+  ],
 );
 
 console.log(`page: ${N} paragraphs`);

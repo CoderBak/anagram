@@ -71,11 +71,15 @@ export function createBadgeLayer(): BadgeLayer {
   let darkCache = new WeakMap<Element, boolean>();
   let visible = true;
   /** Everything the layer knows about one box that clips (or is about to clip) its own
-   *  text, keyed by the box. See settle() for the rule the group exists to keep. */
+   *  text, keyed by the box. See planFor() for the rule the group exists to keep. */
   const groups = new WeakMap<Element, ClipGroup>();
   const liveGroups = new Set<ClipGroup>();
   /** The group a unit's chip belongs to, so removing a chip frees the box's slot. */
   const groupOfUnit = new Map<string, ClipGroup>();
+  /** Boxes woken since the last flush, and the frame (or timer) that will answer them. */
+  const dirty = new Set<ClipGroup>();
+  let rafId = 0;
+  let timerId = 0;
 
   /**
    * The chips of ONE box that clips its own text, and the one slot after it.
@@ -101,18 +105,25 @@ export function createBadgeLayer(): BadgeLayer {
     io: IntersectionObserver;
     /** The box's own height: "see more" and "see less", and a late image or web font. */
     ro: ResizeObserver;
+    /** What the box measured when its chips were last placed. A box woken by nothing but
+     *  its own ResizeObserver, measuring what it measured last time, has nothing to say. */
+    sig: string;
+    /** A chip has crossed the box's edge: the anchors have to be read again whatever the
+     *  box itself measures. */
+    crossed: boolean;
   }
 
   function groupFor(box: Element): ClipGroup {
     let g = groups.get(box);
     if (g) return g;
-    const wake = () => settle(g!);
     g = {
       box,
       chips: new Map(),
       parked: null,
-      io: new IntersectionObserver(wake, { root: box, threshold: 0 }),
-      ro: new ResizeObserver(wake),
+      io: new IntersectionObserver(() => wake(g!, true), { root: box, threshold: 0 }),
+      ro: new ResizeObserver(() => wake(g!, false)),
+      sig: "",
+      crossed: false,
     };
     g.ro.observe(box);
     groups.set(box, g);
@@ -128,6 +139,7 @@ export function createBadgeLayer(): BadgeLayer {
     g.parked = null;
     groups.delete(g.box);
     liveGroups.delete(g);
+    dirty.delete(g);
   }
 
   /** Forget one chip: its box's slot must never point at a unit that is gone. */
@@ -143,38 +155,85 @@ export function createBadgeLayer(): BadgeLayer {
     if (g.chips.size === 0) retire(g);
     // The chip the reader could see has just left (the site edited that paragraph away, a
     // feed recycled it): the next paragraph that is out of sight takes the slot, so the
-    // post does not end up collapsed with no verdict under it at all. settle() never
-    // reaches this with a parked chip, so there is no way round for it to call itself.
-    else if (wasParked) settle(g);
+    // post does not end up collapsed with no verdict under it at all.
+    else if (wasParked) wake(g, true);
   }
 
   /**
-   * Put every chip of one box where the rule says it goes.
-   *
    * A page does not stand still: on a Goodreads book page the reviews grow after the chips
    * land, as their images and web fonts arrive (a box that showed the end of a review at
    * 141 px of 160 px showed it at 228 px seconds later), and a reader opens and closes a
-   * post whenever they like. The box's own IntersectionObserver reports a chip crossing the
-   * edge of the visible band and its ResizeObserver reports the box growing or shrinking;
-   * either way the answer is the same — work out from ONE layout who is out of sight, then
-   * move only the chips that are not where they belong. Reading first and writing second
-   * keeps a move from changing the answer for the next chip, and moving nothing when
-   * nothing changed is what keeps a standing page still: a move reflows the box, which
-   * fires these very observers again.
+   * post whenever they like. Each box's IntersectionObserver reports a chip crossing the
+   * edge of its visible band and its ResizeObserver reports the box growing or shrinking.
+   *
+   * Every one of those wakes a box; they are answered TOGETHER, once a frame. Measuring one
+   * box and moving its chips, then measuring the next, makes the browser lay the page out
+   * again between every pair — a page of sixty clamped cards paid 443 layouts more than the
+   * same page without the extension, one per chip and one per observer tick. So a wake only
+   * marks the box dirty, and the flush reads every dirty box first and writes to all of them
+   * afterwards: one layout for the batch, however many boxes are in it.
    */
-  function settle(g: ClipGroup): void {
+  function wake(g: ClipGroup, crossed: boolean): void {
+    if (crossed) g.crossed = true;
+    dirty.add(g);
+    if (rafId || timerId) return;
+    const run = () => {
+      unschedule();
+      flush();
+    };
+    rafId = requestAnimationFrame(run);
+    // A tab in the background is served no frames at all, and a chip still has to be where
+    // it belongs by the time the reader comes back to it.
+    timerId = setTimeout(run, 50) as unknown as number;
+  }
+
+  function unschedule(): void {
+    if (rafId) cancelAnimationFrame(rafId);
+    if (timerId) clearTimeout(timerId);
+    rafId = 0;
+    timerId = 0;
+  }
+
+  function flush(): void {
+    const batch = [...dirty];
+    dirty.clear();
+    const plans: ClipPlan[] = [];
+    for (const g of batch) {
+      const plan = planFor(g); // READS only
+      if (plan) plans.push(plan);
+    }
+    for (const plan of plans) apply(plan); // WRITES only
+  }
+
+  /** Where every chip of one box belongs, worked out from ONE layout. Reads nothing back
+   *  after a write, so the answer for the last chip is as true as the answer for the first. */
+  interface ClipPlan {
+    g: ClipGroup;
+    parked: string | null;
+    gone: Set<string>;
+  }
+
+  function planFor(g: ClipGroup): ClipPlan | null {
     if (!g.box.isConnected) {
       retire(g);
-      return;
+      return null;
     }
     let clipping = false;
+    let sig = "";
     try {
       clipping = hidesOwnText(g.box, getComputedStyle(g.box));
+      sig = `${clipping}|${g.box.clientHeight}|${g.box.scrollHeight}|${g.chips.size}`;
     } catch {
-      clipping = false; // detached mid-flight: nothing is hidden that we could know about
+      return null; // detached mid-flight: nothing is hidden that we could know about
     }
+    // The box measures what it measured when its chips were placed and nothing has crossed
+    // its edge since: reading every anchor again would answer the same question twice. A
+    // ResizeObserver reports its target once as soon as it is observed, and a page of sixty
+    // cards would otherwise pay sixty pointless measurements to be told nothing had changed.
+    if (!g.crossed && sig === g.sig) return null;
+    g.crossed = false;
+    g.sig = sig;
     const band = g.box.getBoundingClientRect().bottom - 1;
-    // READ — who has gone out of sight, and which of them comes first in the document.
     const gone = new Set<string>();
     let first: { id: string; at: ChildNode } | null = null;
     for (const [id, chip] of g.chips) {
@@ -189,18 +248,53 @@ export function createBadgeLayer(): BadgeLayer {
       if (!end || (end.width === 0 && end.height === 0) || end.top < band) continue;
       if (!first || precedes(chip.at, first.at)) first = { id, at: chip.at };
     }
-    // WRITE — the slot first, then everyone's own anchor.
-    g.parked = first ? first.id : null;
+    return { g, parked: first ? first.id : null, gone };
+  }
+
+  function apply(plan: ClipPlan): void {
+    const g = plan.g;
+    g.parked = plan.parked;
     for (const [id, chip] of g.chips) {
-      if (gone.has(id)) continue;
+      if (plan.gone.has(id)) continue;
       const target: ChildNode = id === g.parked ? g.box : chip.at;
-      if (chip.host.previousSibling !== target) target.after(chip.host);
+      if (chip.host.previousSibling !== target) {
+        target.after(chip.host);
+        g.sig = ""; // the box holds different content now: measure it again when next woken
+      }
       // A parked chip is no longer a descendant of the root, so the observer has nothing to
       // say about it; the box's ResizeObserver is what brings it home again.
       if (id === g.parked) g.io.unobserve(chip.host);
       else g.io.observe(chip.host);
     }
-    for (const id of gone) leaveGroup(id);
+    for (const id of plan.gone) leaveGroup(id);
+  }
+
+  /**
+   * Where ONE chip goes, the moment it is built. insertionPoint has just measured both
+   * things the rule needs — whether the box hides text of its own, and whether this chip's
+   * own last line is in the hidden part — so no page geometry is read here at all. Settling
+   * the whole box on every insertion instead cost one measurement per chip (180 chips in 60
+   * cards: 180 whole-box settles, each forcing a layout of its own). Whatever ELSE the
+   * insertion moved is the observers' business, and they answer in one batch.
+   */
+  function placeOne(g: ClipGroup, id: string, hidden: boolean): void {
+    const chip = g.chips.get(id);
+    if (!chip) return;
+    const held = g.parked && g.parked !== id ? g.chips.get(g.parked) : null;
+    if (hidden && (!held || precedes(chip.at, held.at))) {
+      if (held) {
+        // An earlier paragraph takes the slot; the one that held it goes back to its own
+        // last word, which is out of sight until the reader opens the post.
+        held.at.after(held.host);
+        g.io.observe(held.host);
+      }
+      g.parked = id;
+      g.box.after(chip.host);
+      g.io.unobserve(chip.host);
+    } else {
+      g.io.observe(chip.host);
+    }
+    g.sig = ""; // the box holds one more chip than it did: measure it again when next woken
   }
 
   /** Find or (re)build the chip host for a unit, inserted after its last run. */
@@ -216,14 +310,14 @@ export function createBadgeLayer(): BadgeLayer {
         leaveGroup(unit.id);
         placement.at.after(host);
       } else {
-        // Inside a box that clips its own text the chip is not placed on its own: the box
-        // settles all of its chips together, so that only one of them can sit after it.
+        // Inside a box that clips its own text a chip belongs to the box, which owns the one
+        // slot after it and hands it to the first paragraph that is out of sight.
         leaveGroup(unit.id);
         const g = groupFor(placement.clip.box);
         g.chips.set(unit.id, { host, at: placement.at });
         groupOfUnit.set(unit.id, g);
         placement.at.after(host);
-        settle(g);
+        placeOne(g, unit.id, placement.clip.clipping && placement.clip.hidden);
       }
     }
     host.classList.toggle("pg-hidden", !visible);
@@ -423,8 +517,10 @@ export function createBadgeLayer(): BadgeLayer {
       host.remove();
     }
     hosts.clear();
+    unschedule();
     for (const g of [...liveGroups]) retire(g);
     groupOfUnit.clear();
+    dirty.clear();
     _openCardHost = null;
   }
 
@@ -612,7 +708,16 @@ function insertionPoint(unit: Unit): Placement | null {
  *  is about to — which box that is, so the layer settles the box's chips together. */
 interface Placement {
   at: ChildNode;
-  clip: { box: Element } | null;
+  clip: ClipAnchor | null;
+}
+
+/** The box that hides text around this anchor, and what it measured while it was found. */
+interface ClipAnchor {
+  box: Element;
+  /** The box is keeping text of its own out of sight right now, not merely capped. */
+  clipping: boolean;
+  /** This anchor's last line is below the box's visible band. */
+  hidden: boolean;
 }
 
 /** The container a chip must never leave: it belongs to the post it judges. */
@@ -643,15 +748,18 @@ const CLIP_BOX_LEVELS = 6;
  * left the chips of quoted passages in Goodreads reviews inside the truncated box, out
  * of sight (measured: 2 of 150 chips on one book page).
  */
-function clippingBoxOf(at: ChildNode): { box: Element } | null {
+function clippingBoxOf(at: ChildNode): ClipAnchor | null {
   const start = at.nodeType === Node.ELEMENT_NODE ? (at as Element) : at.parentElement;
   if (!start) return null;
   let box: Element | null = null;
+  let clipping = false;
   try {
     for (let el: Element | null = start, i = 0; el && i < CLIP_BOX_LEVELS; i++, el = el.parentElement) {
       const cs = getComputedStyle(el);
-      if (hidesOwnText(el, cs) || capsOwnHeight(el, cs)) {
+      const hides = hidesOwnText(el, cs);
+      if (hides || capsOwnHeight(el, cs)) {
         box = el;
+        clipping = hides;
         break;
       }
     }
@@ -664,7 +772,9 @@ function clippingBoxOf(at: ChildNode): { box: Element } | null {
   // No box of its own (a collapsed whitespace node): leave the chip where it is.
   const anchor = endRectOf(at);
   if (!anchor || (anchor.width === 0 && anchor.height === 0)) return null;
-  return { box };
+  // Everything the layer needs to place THIS chip, measured in the one layout this function
+  // has already forced: no caller has to ask the page about it a second time.
+  return { box, clipping, hidden: anchor.top >= box.getBoundingClientRect().bottom - 1 };
 }
 
 /** Page-level boxes, the ones lib/dom/style.ts also refuses to call clipped: `body` under
