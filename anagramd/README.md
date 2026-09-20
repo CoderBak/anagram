@@ -19,7 +19,7 @@ cd anagramd && uv sync --frozen && cd ..
 # 3. run
 npm run serve            # = sh anagramd/run.sh (uses .venv if present) → http://127.0.0.1:8765
 python3 anagramd/serve.py --selftest   # sanity check: four paragraphs, PASS/FAIL per line, non-zero on failure
-npm run test:daemon      # offline / identity / Host / Origin checks — no model, no port, seconds
+npm run test:daemon      # offline / identity / Host / Origin / CORS checks — no model, no port, seconds
 ```
 
 With the daemon up, the extension picks it up within seconds (it re-probes `/health`
