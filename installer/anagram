@@ -8,6 +8,7 @@
 # nothing starts at login. It listens on 127.0.0.1 only, reads nothing outside this folder and
 # reaches no network at all — `model` and `update` are the only commands here that download
 # anything, and both verify what arrives against a pinned checksum before it replaces a file.
+# `update` re-runs the installer this folder already carries; it never fetches a script to run.
 #
 # Safety: the folder is derived from this script's own real location; an ANAGRAM_HOME from the
 # environment is honoured only if it is a real (non-symlink) Anagram folder carrying the
@@ -546,12 +547,16 @@ cmd_update() {
   if alive && healthy; then was_running=1; fi
   rc=0
   installer="$ANAGRAM_HOME/app/install.sh"
-  if [ -f "$installer" ]; then
-    ANAGRAM_HOME="$ANAGRAM_HOME" sh "$installer" || rc=$?
-  else
-    curl -fsSL https://github.com/CoderBak/anagram/releases/latest/download/install.sh \
-      | ANAGRAM_HOME="$ANAGRAM_HOME" sh || rc=$?
-  fi
+  # The installer this folder was written by, and nothing else. Until 2026-09-20 a missing
+  # copy meant fetching install.sh from the internet and piping it straight into a shell —
+  # a script nobody had read, run with this folder's name in its environment, by a command
+  # the user asked to UPDATE something they already had. The one-line install is the same
+  # download, but the person typing it chose it and can look at it first.
+  [ -f "$installer" ] || die "this installation has no app/install.sh, so there is nothing here to re-run.
+       Re-install with the one line from the README (read it first if you like):
+         curl -fsSL https://github.com/CoderBak/anagram/releases/latest/download/install.sh | sh
+       Prefix it with ANAGRAM_HOME='$ANAGRAM_HOME' to keep this folder. Nothing was changed."
+  ANAGRAM_HOME="$ANAGRAM_HOME" sh "$installer" || rc=$?
   if [ "$rc" -ne 0 ]; then
     if [ "$was_running" -eq 1 ]; then
       die "the installer failed (exit $rc) — the daemon that was running has been left alone, still serving the code it already has"

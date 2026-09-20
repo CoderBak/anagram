@@ -15,19 +15,42 @@ Checkpoints
                     The reference runs this base 4-bit (QLoRA, bitsandbytes); bitsandbytes has no
                     MPS kernels, so here the base is fp16 — the adapter weights are identical.
 
+A DEVELOPER TOOL, and only that: it is not in the release tarball (scripts/release.mjs),
+because the installed venv has none of the three packages it needs — `peft`, `accelerate`
+and `psutil` are the `bench` extra and `uv sync --no-dev` does not install extras — and
+MODELS_DIR below resolves to the models directory beside the repository, which does not
+exist in an installation either. Run it from a checkout, against `../../models/`.
+
 Usage
     .venv/bin/python bench.py                      # both checkpoints, MPS if available
     .venv/bin/python bench.py --models roberta-large
     .venv/bin/python bench.py --json out.json --runs 5
+    .venv/bin/python bench.py --online             # allow the Hub to fetch what is missing
 """
 from __future__ import annotations
+
+import os
+import sys
+
+# The same switch serve.py throws, and for the same reason: huggingface_hub and transformers
+# read these variables once, at their own import time, so it has to happen before anything
+# can import them. It matters more here than there, because the LoRA checkpoint below is
+# measured on meta-llama/Llama-3.2-3B — a base model that a missing local directory would
+# otherwise have this script quietly download, six gigabytes of it, in the middle of a
+# benchmark. Offline, the same situation is a local error naming the file that is missing.
+# --online is read straight from argv because argparse runs far too late to be of use.
+OFFLINE_VARS = ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "HF_DATASETS_OFFLINE",
+                "HF_HUB_DISABLE_TELEMETRY", "HF_HUB_DISABLE_IMPLICIT_TOKEN")
+ONLINE = "--online" in sys.argv
+if not ONLINE:
+    for _offline_var in OFFLINE_VARS:
+        os.environ[_offline_var] = "1"
 
 import argparse
 import gc
 import json
 import resource
 import statistics
-import sys
 import time
 from pathlib import Path
 
@@ -37,6 +60,13 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from serve import BUCKET_LABELS, SELFTEST, clean_text  # noqa: E402
+
+# serve.py throws the same switch when IT is imported, which is after ours, so --online has
+# to undo it again here. This is still early enough to count: transformers and
+# huggingface_hub do not arrive until the first Bench is built, several lines below.
+if ONLINE:
+    for _offline_var in OFFLINE_VARS:
+        os.environ.pop(_offline_var, None)
 
 MODELS_DIR = Path(__file__).resolve().parents[2] / "models"
 CHECKPOINTS = {
@@ -191,6 +221,10 @@ def main() -> None:
     ap.add_argument("--dtype", default="fp16", choices=["fp16", "bf16", "fp32"])
     ap.add_argument("--runs", type=int, default=5)
     ap.add_argument("--json", type=Path, default=None)
+    # Declared so --help lists it and argparse does not reject it; the flag itself was
+    # acted on at the top of this file, long before argparse existed.
+    ap.add_argument("--online", action="store_true",
+                    help="let the Hugging Face client fetch a model that is not on this disk")
     args = ap.parse_args()
 
     device = args.device

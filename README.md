@@ -840,3 +840,10 @@ quiet download. Fetching happens in exactly two places — the installer, and
 `anagram model` — and each verifies what arrives against a checksum pinned in
 `install.sh` before it is renamed into place, so an interrupted download is never
 something the daemon can load.
+
+One of those checksums is weaker than the rest, and it is worth saying which: `uv`'s and
+both model files' are written into `install.sh` itself, but the release tarball's
+`anagram.tar.gz.sha256` is downloaded from the same address as the tarball. It therefore
+catches a truncated or corrupted download and nothing more — whoever could serve you
+another `anagram.tar.gz` could serve the checksum that matches it — so what an install
+finally rests on is that the one-line command above came from a release page you trust.

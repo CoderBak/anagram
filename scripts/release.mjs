@@ -22,7 +22,13 @@ const stage = join(DIST, "stage", "anagram");
 mkdirSync(join(stage, "bin"), { recursive: true });
 mkdirSync(join(stage, "app"), { recursive: true });
 
-for (const f of ["serve.py", "train_head.py", "bench.py", "pyproject.toml", "uv.lock", "requirements.txt", "run.sh", "README.md"]) {
+// bench.py is NOT in this list. It needs three packages from the `bench` extra, which
+// `uv sync --no-dev` never installs, and it looks for its checkpoints beside the
+// REPOSITORY rather than inside the installation — so in a tarball it is a file that
+// cannot be run, whose only other effect was that a developer tool shipped to users.
+// (train_head.py is in the same position today: nothing in serve.py imports it. It is
+// left here for now — that is a separate decision from this one.)
+for (const f of ["serve.py", "train_head.py", "pyproject.toml", "uv.lock", "requirements.txt", "run.sh", "README.md"]) {
   cpSync(join(ROOT, "anagramd", f), join(stage, "app", f));
 }
 cpSync(join(ROOT, "output", "chrome-mv3"), join(stage, "extension"), { recursive: true });

@@ -393,6 +393,22 @@ if [ $rc -ne 0 ] && echo "$out" | grep -q "refusing to use it" && [ ! -f "$H9/ap
   ok "update refuses a symlinked ANAGRAM_HOME before running any installer"
 else bad "update symlinked home" "rc=$rc $(echo "$out" | tail -1)"; fi
 
+# 22b. update with no app/install.sh in the folder → a refusal that names the one-line
+#      install. Until 2026-09-20 this case fetched install.sh from GitHub and piped it into
+#      a shell: an unread script, run with this folder's name in its environment, by a
+#      command the user asked to update something they already had.
+HNI="$T/upd-no-installer"; make_home "$HNI" "$P4"
+cli "$HNI" version > /dev/null 2>&1            # so bin/anagram is in place before the snapshot
+rm -f "$HNI/app/install.sh"
+before="$(snapshot "$HNI")"
+out="$(cli "$HNI" update)"; rc=$?
+if [ $rc -ne 0 ] \
+   && echo "$out" | grep -q "no app/install.sh" \
+   && echo "$out" | grep -q "releases/latest/download/install.sh | sh" \
+   && [ ! -f "$HNI/app/install.sh" ] && [ "$before" = "$(snapshot "$HNI")" ]; then
+  ok "update with no installer in the folder refuses and names the command, fetching nothing"
+else bad "update without app/install.sh" "rc=$rc $(echo "$out" | tail -3)"; fi
+
 # 23. an update over an existing folder replaces the command by RENAME, not in place.
 #     `anagram update` runs the installer, so bin/anagram is the very script executing while
 #     it is replaced — a copy onto it truncates it under the shell still reading it. A hard

@@ -127,6 +127,10 @@ truncated to 512 tokens (`truncated: true` when that happened).
 this machine (`.venv/bin/python bench.py --json out.json`); it also drives the
 `pangram/editlens_Llama-3.2-3B` LoRA adapter merged onto `meta-llama/Llama-3.2-3B`
 (`train_head.py` holds the reference score head). Results for an Apple M4 / 24 GB are
-in `../docs/benchmarks/`. It is a developer tool, run by hand and by nothing else: unlike
-the daemon it does not switch the Hub offline, so a model id it has not got locally is
-fetched from Hugging Face.
+in `../docs/benchmarks/`. It is a developer tool, run by hand and by nothing else, and it
+is not in the release tarball: its three extra packages (`peft`, `accelerate`, `psutil`)
+are the `bench` extra, which the installer does not install, and it looks for its
+checkpoints beside the repository rather than inside an installation. Like the daemon it
+switches the Hub offline before importing it, so a checkpoint that is not on this disk is
+an error naming it rather than a six-gigabyte download in the middle of a benchmark; pass
+`--online` when fetching one is what you meant.

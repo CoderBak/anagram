@@ -368,6 +368,23 @@ Notable changes to Anagram, newest first. The format follows
 
 ### Changed
 
+- **`anagram update` no longer pipes an unread script into a shell, and `bench.py` no
+  longer ships.** When a folder had no `app/install.sh`, `update` fetched `install.sh`
+  from GitHub and piped it straight into `sh` with this folder's name in its environment —
+  an unverified script, run by a command the user asked to update something they already
+  had. It now refuses and prints the one-line install from the README, which is the same
+  download made by somebody who chose it and can read it first (`npm run test:installer`
+  gains the case, 43 checks). Separately, `anagramd/bench.py` is out of the release tarball:
+  it needs three packages from the `bench` extra that the installer never installs and
+  looks for its checkpoints beside the repository, so in an installation it was a file that
+  could not run; the copy in the repository now switches the Hugging Face client offline
+  before importing it, as `serve.py` does, with `--online` to opt out — run on the LoRA
+  spec with a missing local directory it would otherwise have downloaded a 6 GB base model
+  mid-benchmark. The README now also says plainly what the release tarball's `.sha256` is
+  worth: it comes from the same address as the tarball, so it catches corruption and not a
+  compromised host — unlike `uv`'s and both models' checksums, which are pinned inside
+  `install.sh`.
+
 - **A release waits for the whole test matrix.** The release workflow used to run the type check and
   the Node tests and then publish; it now calls the CI workflow as its first job (`gate`) and
   publishes only after the same suites as every push have passed on Linux, Windows and macOS, and
