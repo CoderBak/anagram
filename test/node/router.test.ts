@@ -19,11 +19,8 @@ function req(texts: string[], priority: ScoreBatchRequest["priority"] = "viewpor
   return {
     v: CONTRACT_VERSION,
     session: "s",
-    surface: "chrome-ext",
     priority,
-    lang: "en",
-    domain: "test",
-    blocks: texts.map((text, i) => ({ id: `b${i}`, text, order: i })),
+    blocks: texts.map((text, i) => ({ id: `b${i}`, text })),
   };
 }
 

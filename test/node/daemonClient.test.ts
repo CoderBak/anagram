@@ -21,7 +21,7 @@ describe("DaemonClient", () => {
     expect(s.server.reason).toBe("loopback");
     expect(s.server.error).toMatch(/loopback/);
     expect(fetchFn).not.toHaveBeenCalled();
-    await expect(c.scoreBatch([{ id: "a", text: "x", order: 0 }])).rejects.toThrow(/loopback/);
+    await expect(c.scoreBatch([{ id: "a", text: "x" }])).rejects.toThrow(/loopback/);
   });
 
   it("serves a URL this build has narrowed away with the default, and probes only that", async () => {
@@ -83,7 +83,7 @@ describe("DaemonClient", () => {
     const s = await c.status(true);
     expect(s.active).toBe("server");
     expect(s.model).toEqual(MODEL);
-    const batch = await c.scoreBatch([{ id: "a", text: "x", order: 0 }]);
+    const batch = await c.scoreBatch([{ id: "a", text: "x" }]);
     expect(batch.model.ver).toBe("sha-new");
     expect(c.model().ver).toBe("sha-new"); // provenance moved with the response
   });
@@ -102,7 +102,7 @@ describe("DaemonClient", () => {
     await c.status(true);
     expect(c.isUp()).toBe(true);
     healthy = false;
-    await expect(c.scoreBatch([{ id: "a", text: "x", order: 0 }])).rejects.toThrow();
+    await expect(c.scoreBatch([{ id: "a", text: "x" }])).rejects.toThrow();
     expect(c.isUp()).toBe(false);
   });
 });

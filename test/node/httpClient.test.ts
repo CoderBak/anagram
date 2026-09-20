@@ -60,13 +60,13 @@ describe("redirects", () => {
     expect(health.mock.calls[0][1]?.redirect).toBe("error");
 
     const score = mockFetch({ v: "2.1", model: MODEL, results: [good("a")] });
-    await new HttpScoreClient("http://127.0.0.1:1", MODEL).scoreBatch([{ id: "a", text: "one", order: 0 }]);
+    await new HttpScoreClient("http://127.0.0.1:1", MODEL).scoreBatch([{ id: "a", text: "one" }]);
     expect(score.mock.calls[0][1]?.redirect).toBe("error");
   });
 });
 
 describe("HttpScoreClient.scoreBatch", () => {
-  const blocks = [{ id: "a", text: "one", order: 0 }, { id: "b", text: "two", order: 1 }];
+  const blocks = [{ id: "a", text: "one" }, { id: "b", text: "two", order: 1 }];
   const client = () => new HttpScoreClient("http://127.0.0.1:1", MODEL);
 
   it("returns validated results and the model named in the RESPONSE", async () => {

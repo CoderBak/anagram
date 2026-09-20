@@ -33,10 +33,10 @@ export const loadPurify = (): Promise<{ default: import("dompurify").DOMPurify }
   lazyVendor("purify.min.mjs");
 
 /**
- * The page diagnostics (the "Copy page diagnostics" menu entry). Unlike the three above
- * this chunk is OUR code — the segmentation modules plus the report builder — kept out of
- * the content script for the same reason: it is twenty kilobytes that almost every page
- * would carry and never run. It is rebuilt from source before every build and on install,
+ * The page diagnostics (the "Copy page diagnostics" menu entry). Unlike the vendored
+ * chunks this one is OUR code — the segmentation modules plus the report builder — kept
+ * out of the content script for the same reason: it is twenty kilobytes that almost every
+ * page would carry and never run. It is rebuilt from source before every build and on install,
  * so its copy of the walk can never explain a page by yesterday's rules.
  */
 export interface DiagnosticsModule {

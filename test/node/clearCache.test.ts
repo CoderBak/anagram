@@ -22,11 +22,8 @@ function req(texts: string[]): ScoreBatchRequest {
   return {
     v: CONTRACT_VERSION,
     session: "s",
-    surface: "chrome-ext",
     priority: "viewport",
-    lang: "en",
-    domain: "test",
-    blocks: texts.map((text, i) => ({ id: `b${i}`, text, order: i })),
+    blocks: texts.map((text, i) => ({ id: `b${i}`, text })),
   };
 }
 

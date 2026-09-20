@@ -25,14 +25,6 @@ export interface ScoreBlock {
   id: string;
   /** The canonical form (canonicalForScoring) of the unit's text, or of one window of it. */
   text: string;
-  /** Optional neighbor context (tail of previous block) — reserved; may be "" in M1. */
-  ctx_before?: string;
-  /** Optional neighbor context (head of next block) — reserved; may be "" in M1. */
-  ctx_after?: string;
-  /** Sequence-length bucket hint (64/128/256/512). Optional in M1. */
-  bucket?: number;
-  /** Document order index, for stable sorting/streaming. */
-  order: number;
 }
 
 /** Per-block detection result. EXACTLY the detector's IO contract. */
@@ -84,13 +76,7 @@ export interface ScoreBatchRequest {
   v: typeof CONTRACT_VERSION;
   /** Per-tab scan session id. */
   session: string;
-  /** Origin surface tag. */
-  surface: "chrome-ext" | "firefox-ext" | "safari-ext";
   priority: ScanPriority;
-  /** Page language hint (best-effort; "und" if unknown). */
-  lang: string;
-  /** The page's hostname, as a hint only — never a full URL / PII. */
-  domain: string;
   blocks: ScoreBlock[];
 }
 

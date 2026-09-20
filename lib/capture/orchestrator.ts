@@ -19,7 +19,6 @@ import type { BackendStatus } from "../messaging/protocol";
 import type { Unit, Lane } from "../types";
 import type { ModelInfo, ScoreBlock, ScoreResult, ScoreBatchRequest } from "../contract";
 import { CONTRACT_VERSION } from "../contract";
-import { SURFACE } from "../surface";
 import { collectUnits, type CollectOptions } from "../dom/walker";
 import { findMainContent, useReadability } from "../dom/mainContent";
 import { loadReadability } from "../lazy";
@@ -232,13 +231,11 @@ export function createOrchestrator(
   const shortTexts = new Set<Text>();
   /** One verdict per analyzed unit — the aggregate everything counts by, plus its windows. */
   let verdictsById = new Map<string, UnitVerdict>();
-  let scoredIds = new Set<string>();
   /** Text-node ownership: node → live unit. Recreated on stop/rescan. */
   let nodeOwner = new WeakMap<Text, Unit>();
 
   const session = newSessionId();
   const domain = location.hostname || "und";
-  const lang = document.documentElement.getAttribute("lang") || "und";
 
   let started = false;
   /** True once the settings snapshot has been applied AND the first collect has run. */
@@ -520,7 +517,6 @@ export function createOrchestrator(
     }
     unitsById.delete(unit.id);
     verdictsById.delete(unit.id);
-    scoredIds.delete(unit.id);
   }
 
   /** Purge units whose DOM disappeared (SPA swaps, virtualized lists). */
@@ -731,10 +727,7 @@ export function createOrchestrator(
       const req: ScoreBatchRequest = {
         v: CONTRACT_VERSION,
         session,
-        surface: SURFACE,
         priority: lane,
-        lang,
-        domain,
         blocks: [...repByKey.values()],
       };
       const reply = await requestScores(req);
@@ -857,7 +850,6 @@ export function createOrchestrator(
       badges.remove(id);
       clearHighlight(id);
       verdictsById.delete(id);
-      scoredIds.delete(id);
       unit.isScored = false;
       observers.observeUnit(unit);
       n++;
@@ -895,7 +887,6 @@ export function createOrchestrator(
       const unit = unitsById.get(v.id);
       if (!unit) continue; // invalidated while the batch was in flight
       verdictsById.set(v.id, v);
-      scoredIds.add(v.id);
       unit.isScored = true;
       observers.dropUnit(unit); // analyzed — stop viewport tracking
     }
@@ -1427,7 +1418,6 @@ export function createOrchestrator(
     for (const id of unitsById.keys()) clearHighlight(id);
     badges.teardownAll();
     flaggedCursor = null; // the ids it names are about to stop existing
-    scoredIds = new Set();
     unitsById = new Map();
     verdictsById = new Map();
     shortTexts.clear();
@@ -1490,7 +1480,7 @@ export function createOrchestrator(
   }
 
   function scoredCount(): number {
-    return scoredIds.size;
+    return verdictsById.size;
   }
 
   function flaggedCount(): number {

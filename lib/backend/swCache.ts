@@ -343,7 +343,7 @@ export function createSwCache(store: ScoreStore = indexedDbStore()): SwCache {
         // A normal tab has asked for a verdict a private one produced: it would have
         // produced the same, so from here on it may live on the disk like any other.
         if (persist && memoryOnly.has(k)) queueWrite(k, hit);
-      } else if (!out.has(k)) misses.push(k);
+      } else misses.push(k);
     }
     if (misses.length === 0) return out;
     const rows = await store.get(misses);

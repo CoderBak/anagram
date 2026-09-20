@@ -310,7 +310,6 @@ function slotsFor(owner: Readable, spans: TextSpan[], whole: boolean): Slot[] {
       // A text that fits one window travels under its own id, exactly as it always has.
       id: whole ? owner.id : `${owner.id}:${span.start}-${span.end}`,
       text: blockText(owner.text, span),
-      order: owner.order,
     },
   }));
 }

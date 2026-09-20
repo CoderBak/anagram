@@ -12,7 +12,6 @@ import type { ScoreBatchRequest } from "../contract";
 import { CONTRACT_VERSION } from "../contract";
 import { isScoredWindow, readInWindows, unitVerdict } from "../capture/windows";
 import { requestScores, type ScoreReply } from "../messaging/client";
-import { SURFACE } from "../surface";
 import { messageLocale, t } from "../i18n";
 import { band, bandLabel, isNoVerdict, languageName, type Band } from "./band";
 import { formatScore } from "./score";
@@ -227,10 +226,7 @@ export async function analyzeSelection(): Promise<void> {
       const req: ScoreBatchRequest = {
         v: CONTRACT_VERSION,
         session,
-        surface: SURFACE,
         priority: "viewport",
-        lang: document.documentElement.getAttribute("lang") || "und",
-        domain: location.hostname || "und",
         blocks,
       };
       const reply = await requestScores(req);

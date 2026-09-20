@@ -32,7 +32,7 @@ describe("readInWindows", () => {
     const { calls, scoreBlocks } = recorder();
     const read = await readInWindows([{ id: "u_1", text, order: 7 }], scoreBlocks);
     expect(calls).toHaveLength(1);
-    expect(calls[0]).toEqual([{ id: "u_1", text: canonicalForScoring(text), order: 7 }]);
+    expect(calls[0]).toEqual([{ id: "u_1", text: canonicalForScoring(text) }]);
     expect(read.get("u_1")).toEqual([{ start: 0, end: text.length, result: real(calls[0][0]) }]);
   });
 
