@@ -2042,6 +2042,118 @@ async function sweep(page, steps = 6) {
     await sw.evaluate(() => new Promise((res) => chrome.storage.local.set({ enabled: true }, res)));
   }
 
+  // A37e: the toggle shortcut on a page Anagram is off for. There is no overlay to show
+  // or hide there, and the key used to do nothing whatsoever — on a fresh install, where
+  // no site is granted, that is every page. It now starts the same single run the menu
+  // entry and the popup's button start, and writes nothing either.
+  {
+    PAGES["/oneshot-key.html"] = CONTROLS_PAGE("ONESHOTKEY");
+    await sw.evaluate(() => new Promise((res) => chrome.storage.local.set({ enabled: false }, res)));
+    const p = await context.newPage();
+    await p.goto(server.url("/oneshot-key.html"), { waitUntil: "load" });
+    await p.waitForTimeout(2500);
+    const chips = () => p.evaluate((sel) => [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill")).length, BADGE_SEL);
+    const offAtFirst = await chips();
+    // Exactly what commands.onCommand does for "toggle-overlay": the active tab, every frame.
+    await p.bringToFront();
+    await sw.evaluate(async () => {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      try {
+        await chrome.tabs.sendMessage(tab.id, { action: "toggleOverlay" });
+      } catch {
+        /* the content script answers nothing to this one */
+      }
+    });
+    const analyzed = await threeChips(p);
+    const stored = await sw.evaluate(() => new Promise((res) => chrome.storage.local.get(["enabled", "siteOverrides"], res)));
+    record(
+      "ui",
+      "the toggle shortcut analyzes a switched-off page once instead of doing nothing, and writes nothing",
+      offAtFirst === 0 && analyzed && stored.enabled === false && Object.keys(stored.siteOverrides ?? {}).length === 0,
+      JSON.stringify({ offAtFirst, analyzed, stored }),
+    );
+    await p.close();
+    await sw.evaluate(() => new Promise((res) => chrome.storage.local.set({ enabled: true }, res)));
+  }
+
+  // A37f: the popup leads with ONE action, and it is the right one for the tab under it.
+  // The popup reads the ACTIVE tab, so each state is produced the way the popup meets it:
+  // the fixture is brought to the front and the popup — a background tab of the same
+  // window — is reloaded, which is when it asks which tab is active. (Opened as its own
+  // active tab it sees ITSELF, which is the "nothing can run here" state.)
+  {
+    PAGES["/popup-state.html"] = CONTROLS_PAGE("POPUPSTATE");
+    // The popup decides a PDF tab from the tab's URL; what the tab actually holds is the
+    // reading mode's problem, and a real PDF tab cannot be driven here.
+    PAGES["/popup-state.pdf"] = CONTROLS_PAGE("POPUPPDF");
+    const popupUrl = `chrome-extension://${extId}/popup.html`;
+    const lead = async (fixtureUrl) => {
+      const fixture = fixtureUrl ? await context.newPage() : null;
+      if (fixture) {
+        await fixture.goto(fixtureUrl, { waitUntil: "load" });
+        await fixture.waitForTimeout(2000);
+      }
+      const popup = await context.newPage();
+      await popup.goto(popupUrl, { waitUntil: "load" });
+      if (fixture) {
+        await fixture.bringToFront();
+        await popup.reload({ waitUntil: "load" });
+      }
+      await popup.waitForTimeout(1200);
+      const seen = await popup.evaluate(() => ({
+        status: document.getElementById("status")?.textContent ?? "",
+        button: document.getElementById("action")?.textContent ?? "",
+        // The one filled button, or an outline one where the action is merely available.
+        primary: document.getElementById("action")?.dataset.variant !== "outline",
+        cmd: document.getElementById("cmd")?.hidden === false ? document.getElementById("cmdText")?.textContent : null,
+        buttons: document.querySelectorAll("main .btn:not([data-variant])").length,
+      }));
+      await popup.close();
+      await fixture?.close();
+      return seen;
+    };
+
+    const running = await lead(server.url("/popup-state.html"));
+    await sw.evaluate(() => new Promise((res) => chrome.storage.local.set({ enabled: false }, res)));
+    const off = await lead(server.url("/popup-state.html"));
+    await sw.evaluate(() => new Promise((res) => chrome.storage.local.set({ enabled: true }, res)));
+    const pdf = await lead(server.url("/popup-state.pdf"));
+    const nothing = await lead(null);
+    // A daemon that is not answering: a closed loopback port, never a real daemon.
+    await sw.evaluate(() => new Promise((res) => chrome.storage.local.set({ serverUrl: "http://127.0.0.1:9" }, res)));
+    const down = await lead(server.url("/popup-state.html"));
+    await sw.evaluate((url) => new Promise((res) => chrome.storage.local.set({ serverUrl: url }, res)), daemon.url);
+    // Nothing after this may inherit a "down" verdict: wait until the worker has the
+    // daemon back before the next check asks it for anything.
+    {
+      const probe = await context.newPage();
+      await probe.goto(popupUrl, { waitUntil: "load" });
+      await probe
+        .waitForFunction(
+          async () => (await chrome.runtime.sendMessage({ action: "getBackendStatus", probe: true }))?.active === "server",
+          null,
+          { timeout: 15000 },
+        )
+        .catch(() => {});
+      await probe.close();
+    }
+
+    const seen = { running, off, pdf, nothing, down };
+    record(
+      "ui",
+      "the popup offers one action per state: Rescan, Analyze this page, Read this PDF, Read a PDF file…, Retry",
+      running.button === "Rescan page" && !running.primary && /paragraphs analyzed/.test(running.status) &&
+        off.button === "Analyze this page" && off.primary && off.status === "Detection is off for this page." &&
+        pdf.button === "Read this PDF" && pdf.primary && pdf.status === "" &&
+        nothing.button === "Read a PDF file…" && !nothing.primary && nothing.status === "Not available on this page." &&
+        down.button === "Retry" && down.primary && down.status === "Daemon not running" &&
+        down.cmd === "~/.anagram/bin/anagram start" &&
+        // Never two main events at once: at most one filled button on the whole page.
+        [running, off, pdf, nothing, down].every((s) => s.buttons <= 1),
+      JSON.stringify(seen),
+    );
+  }
+
   // A37c: the same run on a site whose rule ALREADY says "off" — which is the likeliest
   // page to ask for one. An unrelated rule written while it runs must leave it alone, and
   // the panel's own "Turn off on <host>" must end it although it stores the value that is
@@ -2316,20 +2428,20 @@ ${KEY_TAGS.map((t, i) => `<p id="z${i + 1}">${KEY_PARA(t)}</p>`).join("\n")}
         ),
       );
 
-      // The popup: plain text, an attribute, and a sentence rebuilt around the <kbd> keys
-      // it was written with — the keys have to survive the substitution.
+      // The popup: plain text, an attribute, a group heading and the one action button,
+      // whose label is chosen by the page rather than written in the markup. Opened as a
+      // tab it is its own active tab — a page nothing can run on, so the action is the
+      // reading mode with a file from this computer.
       const popup = await zh.context.newPage();
       await popup.goto(`chrome-extension://${zhId}/popup.html`, { waitUntil: "load" });
-      await popup.waitForTimeout(400);
+      await popup.waitForTimeout(800);
       const popupText = await popup.evaluate(() => ({
         lang: document.documentElement.lang,
         subtitle: document.querySelector("header .brand p")?.textContent ?? "",
         gear: document.getElementById("gear")?.getAttribute("aria-label") ?? "",
-        rescan: document.getElementById("rescan")?.textContent ?? "",
-        hint: document.querySelector(".hint-line")?.textContent ?? "",
-        keys: [...(document.querySelector(".hint-line")?.querySelectorAll("kbd") ?? [])]
-          .map((k) => k.textContent)
-          .join(""),
+        where: document.querySelector(".grp > h2")?.textContent ?? "",
+        action: document.getElementById("action")?.textContent ?? "",
+        more: document.querySelector("details.more > summary")?.textContent ?? "",
       }));
       await popup.close();
 
@@ -2405,9 +2517,9 @@ ${KEY_TAGS.map((t, i) => `<p id="z${i + 1}">${KEY_PARA(t)}</p>`).join("\n")}
           popupText.lang === "zh-CN" &&
           popupText.subtitle === "本机评出的 AI 编辑程度" &&
           popupText.gear === "全部设置" &&
-          popupText.rescan === "重新扫描" &&
-          popupText.hint === "Alt+Shift+P 显示或隐藏标记" &&
-          popupText.keys === "AltShiftP" &&
+          popupText.where === "运行范围" &&
+          popupText.action === "阅读本机 PDF…" &&
+          popupText.more === "更多" &&
           optionsText.lang === "zh-CN" &&
           optionsText.daemonCard === "本地评分服务" &&
           optionsText.codes[0] === "anagramd" &&

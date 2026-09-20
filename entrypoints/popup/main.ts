@@ -152,8 +152,10 @@ function paint(): void {
   lead = popupLead(facts);
   const down = lead.status === "daemon";
   statusEl.classList.toggle("down", down);
-  // A daemon that answers with another contract major is there — it needs updating, and
-  // telling the user to start it would send them down the wrong path.
+  // Two ways for the daemon to be no use, and they want opposite commands: nothing is
+  // listening (start it), or a daemon IS there and cannot work with this extension
+  // (update it). Telling somebody to start what is already running sends them down the
+  // wrong path, so anything that means "there but too old" belongs on the update side.
   const mismatch = facts.daemon === "mismatch";
   cmdEl.hidden = !down;
   if (down) cmdTextEl.textContent = mismatch ? UPDATE_CMD : START_CMD;
@@ -207,6 +209,9 @@ async function refreshBackend(probe = false): Promise<void> {
       probe,
     })) as BackendStatus | undefined;
     if (!s) throw new Error("no status");
+    // The one place a `reason` is read: a daemon that answers with another contract major
+    // is there and needs updating. Any further reason that means the same thing joins the
+    // "mismatch" side here, and the block above already says "update", not "start".
     facts.daemon =
       s.active === "server" && s.model ? "up" : s.server.reason === "contract" ? "mismatch" : "down";
     paintModel(s);

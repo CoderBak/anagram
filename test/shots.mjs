@@ -162,7 +162,9 @@ else try {
   await p.waitForTimeout(600);
   await p.evaluate(() => {
     // Standalone-tab popups cannot see a content tab — restore the exact strings
-    // a wikipedia.org tab shows so the shot reflects real use.
+    // a wikipedia.org tab shows so the shot reflects real use. That includes the one
+    // action button, whose label and weight are the page's state: over a running tab it
+    // is "Rescan page", outlined, because the page is already doing what it is there for.
     const site = document.getElementById("siteHost");
     if (site) site.textContent = "on en.wikipedia.org";
     const status = document.getElementById("status");
@@ -171,6 +173,13 @@ else try {
       f.className = "flagged";
       f.textContent = "6 flagged";
       status.replaceChildren(document.createTextNode("23 paragraphs analyzed · "), f);
+      status.hidden = false;
+    }
+    const action = document.getElementById("action");
+    if (action) {
+      action.textContent = "Rescan page";
+      action.dataset.variant = "outline";
+      action.disabled = false;
     }
     const siteToggle = document.getElementById("siteEnabled");
     if (siteToggle) { siteToggle.disabled = false; siteToggle.checked = true; }
