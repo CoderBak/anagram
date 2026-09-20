@@ -11,10 +11,13 @@
 // user-input handler and the copy happens after the message reaches the page. Chrome needs
 // nothing: the async clipboard API answers a content script whose tab is focused.
 //
-// The other half of what a reader is asked for is the SITES, and there the answer is
-// none: Anagram installs able to read nothing at all and the user grants what they want
-// (lib/access/*). So the shipping manifest declares no content script, requires only the
-// local daemon's two loopback patterns, and carries the all-sites pair as OPTIONAL.
+// The other half of what a reader is asked for is the HOSTS, and there the answer is now
+// NONE AT ALL. Anagram installs able to read nothing and the user grants what they want
+// (lib/access/*); the local daemon, which used to be the one required host permission,
+// answers CORS for extension origins instead (anagramd/serve.py), so the extension needs
+// no permission to read it. That leaves an install dialog with no host sentence in it at
+// all. So the shipping manifest declares no content script, requires no host, and carries
+// the all-sites pair as OPTIONAL.
 //
 // These read the last build (CI builds before it runs vitest); with no build on disk — or
 // one older than the file that decides its contents — there is nothing to check and they
@@ -22,7 +25,7 @@
 import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { ALL_SITES, DAEMON_ORIGINS } from "../../lib/access/patterns";
+import { ALL_SITES } from "../../lib/access/patterns";
 
 const ROOT = join(__dirname, "..", "..");
 
@@ -98,20 +101,28 @@ describe("the permissions each target asks for", () => {
   });
 });
 
-describe("the sites each target asks for", () => {
+describe("the hosts each target asks for", () => {
   const chrome = target("chrome-mv3");
   const firefox = target("firefox-mv2");
 
-  it.skipIf(!chrome.ready)("Chrome REQUIRES the local daemon and nothing else", () => {
-    expect(chrome.manifest.host_permissions ?? []).toEqual(DAEMON_ORIGINS);
+  it.skipIf(!chrome.ready)("Chrome REQUIRES no host at all — the key is not even there", () => {
+    // Not an empty array: the key is deleted, so a store reviewer reading the manifest
+    // sees no host line to interpret.
+    expect(chrome.manifest.host_permissions).toBeUndefined();
   });
 
   it.skipIf(!chrome.ready)("…and offers every site as an OPTIONAL grant", () => {
     expect(chrome.manifest.optional_host_permissions ?? []).toEqual(ALL_SITES);
   });
 
-  it.skipIf(!firefox.ready)("Firefox requires the same two, in the list MV2 keeps hosts in", () => {
-    expect((firefox.manifest.permissions ?? []).filter((p) => p.includes("://"))).toEqual(DAEMON_ORIGINS);
+  it.skipIf(!firefox.ready)("Firefox requires no host either, in the list MV2 keeps hosts in", () => {
+    expect((firefox.manifest.permissions ?? []).filter((p) => p.includes("://"))).toEqual([]);
+  });
+
+  it.skipIf(!firefox.ready)("…and offers the same optional pair, the way MV2 spells it", () => {
+    expect((firefox.manifest.optional_permissions ?? []).filter((p) => p.includes("://"))).toEqual(
+      ALL_SITES,
+    );
   });
 
   it.skipIf(!chrome.ready || !firefox.ready)("neither declares a content script at all", () => {
@@ -127,11 +138,13 @@ describe("the sites each target asks for", () => {
     expect(existsSync(join(ROOT, "output", "chrome-mv3", "content-scripts", "content.js"))).toBe(true);
   });
 
-  it.skipIf(!chrome.ready)("asks for no site in the SHIPPING build, whatever the test build does", () => {
+  it.skipIf(!chrome.ready)("asks for nothing at all in the SHIPPING build, whatever the test build does", () => {
     // The suites load output-test/, where the two optional patterns are required instead
     // (test/test-build.mjs). Nothing may leak from that build into this one.
     const required = chrome.manifest.host_permissions ?? [];
-    for (const pattern of [...ALL_SITES, "<all_urls>"]) expect(required).not.toContain(pattern);
+    for (const pattern of [...ALL_SITES, "<all_urls>", "http://127.0.0.1/*", "http://localhost/*"]) {
+      expect(required).not.toContain(pattern);
+    }
   });
 });
 

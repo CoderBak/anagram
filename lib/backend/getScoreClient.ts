@@ -9,9 +9,10 @@
 //
 // Only LOOPBACK URLs are accepted: page text must never leave this machine. A setting
 // that points elsewhere is treated as "no daemon", with the reason in status().
+import { browser } from "#imports";
 import { CONTRACT_VERSION } from "../contract";
 import type { ModelInfo, ScoreBlock, ScoreClient, ScoredBatch } from "../contract";
-import { HttpScoreClient, fetchHealth } from "./httpClient";
+import { HttpScoreClient, daemonIsBehind, fetchHealth } from "./httpClient";
 import { settings, DEFAULT_SERVER_URL, effectiveServerUrl, isLoopbackUrl } from "../settings/settings";
 import type { BackendStatus } from "../messaging/protocol";
 import { createLogger } from "../log";
@@ -24,6 +25,16 @@ const DOWN_TTL_MS = 5_000;
  *  every result produced meanwhile is degraded). */
 const NO_MODEL: ModelInfo = { id: "none", ver: "0", calibration: "none" };
 
+/** This build's own version, which the daemon's is measured against. Asked through a
+ *  try/catch because the same module is bundled for places that have no extension API. */
+function extensionVersion(): string {
+  try {
+    return browser.runtime.getManifest().version;
+  } catch {
+    return "";
+  }
+}
+
 interface Probe {
   ok: boolean;
   at: number;
@@ -32,9 +43,13 @@ interface Probe {
   error?: string;
   /** Why the daemon is unusable, so the UI can advise "start it" or "update it" rather
    *  than guessing from the error string. Absent while it is up. */
-  reason?: "unreachable" | "contract" | "loopback";
+  reason?: "unreachable" | "contract" | "loopback" | "outdated";
   /** The contract a mismatched daemon reported, for the same message. */
   contract?: string;
+  /** The daemon wants updating — either it is too old to answer us at all, or it
+   *  answered and named a release behind our own. Set in both cases, because the pages
+   *  say the same thing about both. */
+  outdated?: boolean;
 }
 
 export class DaemonClient implements ScoreClient {
@@ -93,16 +108,31 @@ export class DaemonClient implements ScoreClient {
           this.http = new HttpScoreClient(url, h.model);
           log.log("anagramd up:", h.model.id, h.model.ver, "on", h.device);
         }
-        this.probe = { ok: true, at: Date.now(), model: h.model, device: h.device };
+        // A daemon behind this extension still scores — the contract is what decides
+        // whether we can talk — but the two are released together, so the pages ask for
+        // the one command that brings it level.
+        const outdated = daemonIsBehind(h.app_version, extensionVersion());
+        this.probe = { ok: true, at: Date.now(), model: h.model, device: h.device, outdated };
       } else {
         if (this.probe.ok) log.warn("anagramd went away — batches will be Unavailable until it is back");
-        // A daemon of another contract major is a different problem from an absent one:
-        // it needs updating, not starting, and the UI says so from `reason`.
+        // Three different problems, three different sentences. Another contract major and
+        // a daemon too old to answer CORS both need updating rather than starting, and the
+        // UI tells them apart from an outage by `reason` alone.
         const error =
           res.reason === "contract"
             ? `anagramd at ${url} speaks contract ${res.contract} — this extension needs ${CONTRACT_VERSION}`
-            : `no healthy anagramd at ${url}`;
-        this.probe = { ok: false, at: Date.now(), model: null, reason: res.reason, contract: res.contract, error };
+            : res.reason === "outdated"
+              ? `something is listening at ${url} but will not answer this extension — it is older than the extension is`
+              : `no healthy anagramd at ${url}`;
+        this.probe = {
+          ok: false,
+          at: Date.now(),
+          model: null,
+          reason: res.reason,
+          contract: res.contract,
+          outdated: res.reason === "outdated",
+          error,
+        };
         this.http = null;
       }
     })().finally(() => {
@@ -159,6 +189,7 @@ export class DaemonClient implements ScoreClient {
         error: this.probe.error,
         reason: this.probe.reason,
         contract: this.probe.contract,
+        outdated: this.probe.outdated,
       },
     };
   }

@@ -43,12 +43,24 @@ Two things the policy does **not** cover, stated so the picture is complete:
   the CSP can express, so the setting and the policy have to agree before a request leaves
   at all.
 
+Since 2026-09-20 the extension holds **no host permission for the daemon either**. It used
+to require `http://127.0.0.1/*` and `http://localhost/*` — not to reach the daemon, which
+`connect-src` allows anyway, but to READ its answers, because the daemon sent no CORS
+headers. The daemon sends them now, for extension origins only (`anagramd/serve.py`), so
+scoring is an ordinary cross-origin request that the daemon chooses to answer. Nothing about
+what the extension can reach changed: `connect-src` is the same list it was, and a web page
+is still refused 403 by the daemon's Origin guard before CORS is ever considered. What
+changed is that installing Anagram now warns about nothing at all — and that a daemon older
+than the extension cannot answer it, which the pages say plainly and fix with
+`~/.anagram/bin/anagram update`.
+
 ### Every call site
 
 | File | Call | What it is for | Where it goes |
 | --- | --- | --- | --- |
 | `lib/backend/httpClient.ts` | `fetch(` | `GET /health` — is the daemon up? | the loopback daemon |
 | `lib/backend/httpClient.ts` | `fetch(` | `POST /score` — the paragraphs to be scored | the loopback daemon |
+| `lib/backend/httpClient.ts` | `fetch(` | `GET /health` again, in `no-cors` mode, only when the one above never came back: is ANYTHING listening there? It sends a bodyless GET with credentials omitted and reads nothing — an opaque response cannot be read — so that it answered at all is the whole result, and it is what tells a closed port from a daemon too old to answer this extension | the same loopback daemon |
 | `lib/docsOverlay.ts` | `fetch(` | re-reads the Google Doc the tab is already showing, in its `mobilebasic` rendering, because a Docs canvas has no text in the DOM to read | the same origin as the tab, with the reader's own cookies |
 | `lib/pdf/handoff.ts` | `fetch(` | re-reads, from the content script in a PDF tab, the document that tab is already showing, so the reading mode can be handed its bytes instead of fetching them | the same URL the tab is already showing, same-origin, normally answered from the HTTP cache |
 | `lib/lazy.ts` | `import(` | loads one of the vendored chunks that ship inside the extension (Readability, DOMPurify, the diagnostics chunk, pdf.js) | `chrome-extension://<this extension>/vendor/…` |
@@ -94,8 +106,7 @@ stylesheets included, since an `@import` or a webfont is a remote host as much a
 | `lib/settings/settings.ts` | `http://[::1]:8765` | the same, for the IPv6 spelling |
 | `lib/settings/settings.ts` | `https://localhost:8765` | the same, for a scheme that is not `http:` |
 | `lib/settings/settings.ts` | `http://$` | the accepted URL rebuilt from its own parsed host and port, so only the two shapes above can come out |
-| `lib/access/patterns.ts` | `http://127.0.0.1/*` | the daemon's host, as a match pattern: the host access the extension asks for at install |
-| `lib/access/patterns.ts` | `http://localhost/*` | the same, second spelling |
+| `lib/access/patterns.ts` | `http://localhost/*` | an example in the comment that explains why a match pattern carries no port. Nothing asks for it: the extension requires no host |
 | `lib/access/patterns.ts` | `https://*/*` | the OPTIONAL site access the reader may grant, and which the extension installs without |
 | `lib/access/patterns.ts` | `http://*/*` | the same, for plain http |
 | `entrypoints/options/index.html` | `http://127.0.0.1:8765` | the same address, as the field's placeholder |
@@ -179,10 +190,12 @@ extension leaves `~/.anagram`; removing that directory removes the daemon entire
 | `activeTab` | the popup and the keyboard commands act on the tab in front of the reader |
 | `contextMenus` | the four right-click entries |
 | `scripting` | registers the content script for the origins the reader has granted, and injects it into one tab for a single action where they have granted nothing |
-| host access | `http://127.0.0.1/*` and `http://localhost/*` — the loopback daemon, and nothing else at install |
+| host access | **none.** The manifest has no `host_permissions` key at all |
 | optional host access | `https://*/*` and `http://*/*` — the sites the reader grants, one at a time or all at once; see the popup's per-site switch |
 | `clipboardWrite` (Firefox only, **optional**) | "Copy page diagnostics". Asked for at the moment it is used, never at install |
 
-That is the whole manifest block — `storage, activeTab, contextMenus, scripting`, two
-loopback hosts, two optional patterns — and `test/node/permissions.test.ts` reads the built
-manifest and pins it.
+That is the whole manifest block — `storage, activeTab, contextMenus, scripting`, no host at
+all, two optional patterns — and `test/node/permissions.test.ts` reads the built manifest and
+pins it. None of those four shows a warning at install, and with no host among them the
+install dialog has nothing to warn about: Anagram arrives able to read no page and to reach
+nothing but the local daemon its policy allows.

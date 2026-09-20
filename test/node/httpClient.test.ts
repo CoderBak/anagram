@@ -1,6 +1,6 @@
 // test/node/httpClient.test.ts — wire validation: nothing malformed becomes a chip.
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { HttpScoreClient, ProtocolError, fetchHealth } from "../../lib/backend/httpClient";
+import { HttpScoreClient, ProtocolError, daemonIsBehind, fetchHealth } from "../../lib/backend/httpClient";
 
 const MODEL = { id: "editlens_roberta-large", ver: "sha-abc", calibration: "buckets" };
 const HEALTH = { ok: true, contract: "2.1", model: MODEL, n_buckets: 4, buckets: ["a", "b", "c", "d"], max_tokens: 512, device: "mps" };
@@ -50,6 +50,75 @@ describe("fetchHealth", () => {
       throw new TypeError("connection refused");
     }));
     expect(await fetchHealth("http://127.0.0.1:1")).toEqual({ ok: false, reason: "unreachable" });
+  });
+});
+
+// The extension holds no host permission for the daemon, so a daemon that sends no CORS
+// headers is listening, healthy and utterly unreadable — the browser reports it exactly as
+// it reports a closed port. Telling the two apart is the difference between "start it" and
+// "update it", and getting it wrong sends somebody down the wrong path.
+describe("a daemon too old to answer this extension", () => {
+  /** Everything fails the way a CORS refusal does, except the `no-cors` question. A real
+   *  opaque response cannot be constructed here (its status is 0, which `new Response`
+   *  refuses), and nothing needs one: the client reads nothing off it, so what is being
+   *  checked is that the promise RESOLVED at all. */
+  function daemonWithoutCors(listening: boolean) {
+    const fn = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.mode === "no-cors" && listening) return new Response(null, { status: 200 });
+      throw new TypeError("Failed to fetch");
+    });
+    vi.stubGlobal("fetch", fn);
+    return fn;
+  }
+
+  it("is 'outdated', not 'unreachable', when something opaque answers", async () => {
+    const fetchFn = daemonWithoutCors(true);
+    expect(await fetchHealth("http://127.0.0.1:1")).toEqual({ ok: false, reason: "outdated" });
+    // Asked once as an ordinary request, then once more in the mode that needs no headers.
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    expect(fetchFn.mock.calls[1][1]?.mode).toBe("no-cors");
+    // `redirect: "error"` is not allowed in no-cors mode; nothing is sent that a redirect
+    // could carry away, and connect-src would refuse to follow one off loopback.
+    expect(fetchFn.mock.calls[1][1]?.redirect).toBeUndefined();
+    expect(fetchFn.mock.calls[1][1]?.credentials).toBe("omit");
+  });
+
+  it("is 'unreachable' when nothing answers that question either", async () => {
+    daemonWithoutCors(false);
+    expect(await fetchHealth("http://127.0.0.1:1")).toEqual({ ok: false, reason: "unreachable" });
+  });
+
+  it("is never confused with a daemon that answered and then talked nonsense", async () => {
+    // It replied, so CORS worked, so it is not old — whatever else is wrong with it. The
+    // opaque question is not even asked.
+    const fn = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.mode === "no-cors") throw new Error("should not be asked");
+      return new Response("<html>nope</html>", { status: 200 });
+    });
+    vi.stubGlobal("fetch", fn);
+    expect(await fetchHealth("http://127.0.0.1:1")).toEqual({ ok: false, reason: "unreachable" });
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("daemonIsBehind", () => {
+  it("is true only when the daemon's release is lower than the extension's", () => {
+    expect(daemonIsBehind("0.3.2", "0.3.3")).toBe(true);
+    expect(daemonIsBehind("0.2.9", "0.10.0")).toBe(true); // compared as numbers, not text
+    expect(daemonIsBehind("0.3.3", "0.3.3")).toBe(false);
+    expect(daemonIsBehind("0.4.0", "0.3.3")).toBe(false); // a daemon ahead of us is fine
+    expect(daemonIsBehind("1.0", "1.0.0")).toBe(false); // a missing part is a zero
+    expect(daemonIsBehind("1.0.1", "1.0")).toBe(false);
+  });
+
+  it("treats a daemon that names no version as old, because every such daemon is", () => {
+    for (const v of [undefined, null, "", "unknown", "0.3.3-dev"]) {
+      expect(daemonIsBehind(v, "0.3.3"), String(v)).toBe(true);
+    }
+  });
+
+  it("never blames the daemon for something odd in our own manifest", () => {
+    expect(daemonIsBehind("0.1.0", "")).toBe(false);
   });
 });
 

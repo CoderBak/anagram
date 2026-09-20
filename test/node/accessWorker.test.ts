@@ -9,7 +9,7 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { fakeBrowser } from "wxt/testing";
 import { ACTIONS } from "../../lib/messaging/protocol";
-import { ALL_SITES, DAEMON_ORIGINS, matchesAny } from "../../lib/access/patterns";
+import { ALL_SITES, matchesAny } from "../../lib/access/patterns";
 import { ensureInjected, installAccess, syncRegistration } from "../../lib/access/worker";
 
 const SCRIPT = "/content-scripts/content.js";
@@ -38,8 +38,10 @@ interface Tab {
   closed?: boolean;
 }
 
-/** Everything the module touches, recorded. */
-function environment(tabs: Tab[] = [], origins: string[] = [...DAEMON_ORIGINS]) {
+/** Everything the module touches, recorded. `origins` starts empty because the
+ *  extension requires no host permission of its own: what the browser reports granted is
+ *  what the user granted. */
+function environment(tabs: Tab[] = [], origins: string[] = []) {
   const registered: { id: string; matches: string[]; js: string[] }[] = [];
   const calls = {
     register: [] as string[][],

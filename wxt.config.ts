@@ -9,7 +9,7 @@ import {
   subsetMessages,
   unscanned,
 } from "./scripts/i18nSubset";
-import { ALL_SITES, DAEMON_ORIGINS } from "./lib/access/patterns";
+import { ALL_SITES } from "./lib/access/patterns";
 
 /**
  * THE TEST BUILD. A permission prompt is native browser UI that no automation can click,
@@ -175,7 +175,10 @@ export default defineConfig({
     // Dev mode (`npm run dev`) is left alone: WXT registers the script itself there.
     "build:manifestGenerated": (wxt, manifest) => {
       if (wxt.config.command === "serve") return;
-      manifest.host_permissions = TEST_GRANT_ALL ? [...DAEMON_ORIGINS, ...ALL_SITES] : [...DAEMON_ORIGINS];
+      // The shipping build asks for no host at all, so the key goes away entirely rather
+      // than being left as an empty array for a store reviewer to wonder about.
+      if (TEST_GRANT_ALL) manifest.host_permissions = [...ALL_SITES];
+      else delete manifest.host_permissions;
       // With no script left to declare, WXT still leaves the empty array behind.
       if (manifest.content_scripts?.length === 0) delete manifest.content_scripts;
     },
@@ -252,11 +255,15 @@ export default defineConfig({
           description: "__MSG_cmdPrevFlagged__",
         },
       },
-      // REQUIRED: the local daemon, which is the only thing this extension may reach at
-      // all. No site is included — Anagram installs able to read nothing, and the user
-      // grants sites afterwards, all at once or one at a time (lib/access/*). The hook
-      // above has the last word on this key.
-      host_permissions: TEST_GRANT_ALL ? [...DAEMON_ORIGINS, ...ALL_SITES] : [...DAEMON_ORIGINS],
+      // NO host permission at all, which is why installing Anagram warns about nothing.
+      // The daemon used to need two — `http://127.0.0.1/*` and `http://localhost/*` —
+      // not to reach it, but to READ its answers, because it sent no CORS headers. It
+      // sends them now, for extension origins only (anagramd/serve.py), so the permission
+      // bought nothing and cost every reader a warning. The price is that a daemon older
+      // than this extension cannot answer it: the pages ask for `anagram update`, which
+      // is the trade the owner chose. Sites are granted afterwards by the user, all at
+      // once or one at a time (lib/access/*). The hook above has the last word here.
+      ...(TEST_GRANT_ALL ? { host_permissions: [...ALL_SITES] } : {}),
       // OPTIONAL (Chrome MV3; Firefox MV2 carries them in optional_permissions above):
       // "all sites", which the onboarding page and the options page ask for in one click.
       ...(TEST_GRANT_ALL ? {} : { optional_host_permissions: [...ALL_SITES] }),

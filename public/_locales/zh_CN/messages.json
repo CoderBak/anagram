@@ -437,6 +437,9 @@
   "popupDaemonMismatch": {
     "message": "服务版本不匹配"
   },
+  "popupDaemonBehind": {
+    "message": "本地评分服务比扩展旧——请运行：~/.anagram/bin/anagram update"
+  },
   "popupDaemonDown": {
     "message": "服务未运行"
   },
@@ -601,6 +604,9 @@
   },
   "optContractMismatch": {
     "message": "在 $1 找到了服务，但它使用 contract $2，而本扩展需要 $3.x——请运行：~/.anagram/bin/anagram update。"
+  },
+  "optOutdated": {
+    "message": "$1 上的本地评分服务版本比本扩展旧——请运行：~/.anagram/bin/anagram update。"
   },
   "optNotRunning": {
     "message": "$1 上没有服务在运行——在它响应之前，段落都会显示为“暂不可用”。"

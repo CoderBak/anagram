@@ -74,12 +74,12 @@ function render(s: BackendStatus | undefined): boolean {
   daemonLink.hidden = true;
   let notInstalled = false;
 
-  if (s && s.active === "server" && s.model) {
+  if (s && s.active === "server" && s.model && !s.server.outdated) {
     daemonRow.dataset.state = "ok";
     daemonState.textContent = t("onbRunning");
     daemonDetail.textContent = `${s.model.id} · ${s.server.device ?? "cpu"}`;
     daemonDetail.hidden = false;
-  } else if (s?.server.reason === "contract") {
+  } else if (s?.server.reason === "contract" || s?.server.outdated) {
     // Something IS listening, of another generation: the fix is an update, not a start.
     daemonRow.dataset.state = "bad";
     daemonState.textContent = t("onbMismatch");

@@ -1,18 +1,15 @@
 // lib/access/patterns.ts — the match patterns Anagram asks for, and what they cover.
 //
-// Anagram installs with access to NO site. The two patterns below that it does require are
-// the local daemon's, because scoring is a fetch to loopback and nothing else may be
-// reached at all; every page the extension reads is granted by the user afterwards, all
+// Anagram asks for NO host at all. Not a site, and — since the daemon answers CORS for
+// extension origins (anagramd/serve.py) — not the loopback daemon either, which used to be
+// the one required host permission and the one line that made the install dialog warn about
+// this extension. Every page the extension reads is granted by the user afterwards, all
 // sites at once or one at a time. Everything here is pure string work so that the rules —
 // which origin a tab belongs to, which of them a content script may be registered on —
 // are provable without a browser (test/node/accessPatterns.test.ts).
 //
 // Match patterns carry no port: `http://localhost/*` is every port on that host, which is
-// exactly what the daemon needs (it is configurable) and what a dev server on
-// `localhost:3000` gets from an all-sites grant.
-
-/** Required. The loopback daemon, and nothing else the extension may reach. */
-export const DAEMON_ORIGINS = ["http://127.0.0.1/*", "http://localhost/*"];
+// what a dev server on `localhost:3000` gets from an all-sites grant.
 
 /** Optional, and what "all sites" means: every http(s) page, granted in one click. */
 export const ALL_SITES = ["https://*/*", "http://*/*"];
@@ -56,12 +53,14 @@ export function isAllSitesPattern(pattern: string): boolean {
 
 /**
  * The origins a content script may be registered on: everything the user has granted,
- * without the daemon's own. The daemon's hosts are required, so leaving them in would put
- * a content script on every page served from `localhost` — including a local dev server
- * the user never granted anything for, and every page the test suites serve.
+ * each of them once. Until 2026-09-20 this also had to subtract the daemon's two loopback
+ * patterns, which were REQUIRED host permissions and therefore in every answer the browser
+ * gave — leaving them in would have put a content script on every page a local dev server
+ * serves, which nobody granted. The extension requires no host now, so what comes back is
+ * what the user chose and nothing else.
  */
 export function browsingOrigins(origins: readonly string[] | undefined): string[] {
-  return [...new Set(origins ?? [])].filter((o) => !DAEMON_ORIGINS.includes(o));
+  return [...new Set(origins ?? [])];
 }
 
 /** Granted access, as the popup, options and onboarding pages talk about it. */

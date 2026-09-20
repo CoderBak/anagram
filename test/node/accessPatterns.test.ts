@@ -7,7 +7,6 @@
 import { describe, expect, it } from "vitest";
 import {
   ALL_SITES,
-  DAEMON_ORIGINS,
   browsingOrigins,
   isAllSitesPattern,
   matchesAny,
@@ -62,18 +61,17 @@ describe("the pattern for one site", () => {
 });
 
 describe("what a content script may be registered on", () => {
-  it("never includes the daemon's own hosts", () => {
-    // They are REQUIRED host permissions — the fetch that scores a paragraph — and a
-    // content script on them would put Anagram on every page a local dev server (and
-    // every test suite) serves, which nobody granted.
-    expect(browsingOrigins(DAEMON_ORIGINS)).toEqual([]);
-    expect(browsingOrigins([...DAEMON_ORIGINS, "https://example.com/*"])).toEqual([
-      "https://example.com/*",
-    ]);
+  it("is exactly what the user granted — the extension requires no host of its own", () => {
+    // The daemon's two loopback patterns used to be REQUIRED, so they came back in every
+    // answer the browser gave and had to be subtracted here or a content script would run
+    // on every page a local dev server serves. Nothing is required now, so nothing is
+    // subtracted: a granted pattern is one the user chose.
+    expect(browsingOrigins([])).toEqual([]);
+    expect(browsingOrigins(["https://example.com/*"])).toEqual(["https://example.com/*"]);
   });
 
   it("is the all-sites pair once that has been granted — localhost included", () => {
-    expect(browsingOrigins([...DAEMON_ORIGINS, ...ALL_SITES])).toEqual(ALL_SITES);
+    expect(browsingOrigins([...ALL_SITES])).toEqual(ALL_SITES);
     expect(matchesAny(ALL_SITES, "http://localhost:57123/selftest.html")).toBe(true);
   });
 
@@ -88,12 +86,12 @@ describe("what a content script may be registered on", () => {
 
 describe("the summary the pages show", () => {
   it("counts granted sites, and says 'all' when the pair is there", () => {
-    expect(summarize(DAEMON_ORIGINS)).toEqual({ all: false, sites: [] });
-    expect(summarize([...DAEMON_ORIGINS, "https://a.com/*", "http://b.org/*"])).toEqual({
+    expect(summarize([])).toEqual({ all: false, sites: [] });
+    expect(summarize(["https://a.com/*", "http://b.org/*"])).toEqual({
       all: false,
       sites: ["https://a.com/*", "http://b.org/*"],
     });
-    expect(summarize([...DAEMON_ORIGINS, ...ALL_SITES, "https://a.com/*"])).toEqual({
+    expect(summarize([...ALL_SITES, "https://a.com/*"])).toEqual({
       all: true,
       sites: ["https://a.com/*"],
     });

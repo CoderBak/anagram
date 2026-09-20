@@ -198,6 +198,12 @@ function paintModel(s: BackendStatus | undefined): void {
     return;
   }
   backendEl.hidden = false;
+  // Scoring, but from a daemon older than this extension: the owner's rule is that the two
+  // are updated together, so the line that names the model asks for that instead.
+  if (s.server.outdated) {
+    backendEl.textContent = t("popupDaemonBehind");
+    return;
+  }
   const b = document.createElement("b");
   b.textContent = s.model.id;
   backendEl.replaceChildren(t("popupModel"), b, t("popupLocal") + (s.server.device ? " · " + s.server.device : ""));
@@ -211,11 +217,14 @@ async function refreshBackend(probe = false): Promise<void> {
       probe,
     })) as BackendStatus | undefined;
     if (!s) throw new Error("no status");
-    // The one place a `reason` is read: a daemon that answers with another contract major
-    // is there and needs updating. Any further reason that means the same thing joins the
-    // "mismatch" side here, and the block above already says "update", not "start".
-    facts.daemon =
-      s.active === "server" && s.model ? "up" : s.server.reason === "contract" ? "mismatch" : "down";
+    // The one place a `reason` is read. A daemon that is THERE but cannot work with this
+    // extension — another contract major, or one too old to answer an extension that asks
+    // for no host permission ("outdated") — needs updating, and telling somebody to start
+    // what is already running sends them down the wrong path. A daemon that is merely OLDER
+    // than the extension still scores, so it is "up" here and the model line asks for the
+    // update instead (paintModel).
+    const there = s.server.reason === "contract" || s.server.reason === "outdated";
+    facts.daemon = s.active === "server" && s.model ? "up" : there ? "mismatch" : "down";
     paintModel(s);
   } catch {
     // No worker to ask at all: say nothing about a model, and leave the page's own state

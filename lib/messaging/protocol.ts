@@ -101,13 +101,21 @@ export interface BackendStatus {
     error?: string;
     /**
      * Why the daemon is not usable, when it is not: nothing answered ("unreachable"),
-     * something answered but speaks another contract major ("contract"), or the
-     * configured URL is not a loopback address ("loopback"). Absent when it is up.
+     * something answered but speaks another contract major ("contract"), something is
+     * listening but is too old to let this extension read a word of it ("outdated"), or
+     * the configured URL is not a loopback address ("loopback"). Absent when it is up.
      * The pages advise "start it" or "update it" from this, never from `error`.
      */
-    reason?: "unreachable" | "contract" | "loopback";
+    reason?: "unreachable" | "contract" | "loopback" | "outdated";
     /** The contract string a mismatched daemon reported, when `reason` is "contract". */
     contract?: string;
+    /**
+     * The daemon should be updated: it is either too old to answer at all (`reason` is
+     * "outdated") or it answered and named a release behind this extension's, in which
+     * case scoring goes on working and this is the only sign. The daemon and the
+     * extension are released together, so the pages ask for `anagram update` on both.
+     */
+    outdated?: boolean;
   };
 }
 

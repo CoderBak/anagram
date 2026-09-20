@@ -87,24 +87,30 @@ const HealthSchema = v.object({
   languages: v.optional(v.array(v.string())),
   lid: v.optional(v.nullable(v.string())),
   dtype: v.optional(v.string()),
+  /** The daemon's own release, which the extension compares with its own. Optional
+   *  because every daemon before 0.3.3 answered without it. */
+  app_version: v.optional(v.nullable(v.pipe(v.string(), v.maxLength(64)))),
 });
 
 export type HealthInfo = v.InferOutput<typeof HealthSchema>;
 
 /**
- * Why a /health probe did not produce a usable daemon. "unreachable" covers every
- * transport-level miss (nothing listening, timeout, non-2xx, not JSON, a body that
- * fails validation); "contract" means something DID answer and named a contract major
- * other than ours. The two need opposite advice — start the daemon vs. update it — so
- * they must not collapse into one "not running".
+ * Why a /health probe did not produce a usable daemon. "unreachable" means nothing is
+ * listening (or it timed out, or it answered something we cannot use); "contract" means
+ * something DID answer and named a contract major other than ours; "outdated" means
+ * something is listening and will not let us read a word of it, which is what a daemon
+ * older than this extension looks like — see `somethingIsListening`. The three need
+ * different advice — start it, update it, update it — so they must not collapse into one
+ * "not running".
  */
-export type HealthFailureReason = "unreachable" | "contract";
+export type HealthFailureReason = "unreachable" | "contract" | "outdated";
 
 export type HealthResult =
   | { ok: true; health: HealthInfo }
   | { ok: false; reason: HealthFailureReason; contract?: string };
 
 const UNREACHABLE: HealthResult = { ok: false, reason: "unreachable" };
+const OUTDATED: HealthResult = { ok: false, reason: "outdated" };
 
 /**
  * Redirects are never followed on either endpoint: the URL we chose is checked to be
@@ -123,15 +129,83 @@ function sameMajor(version: string): boolean {
   return version.split(".")[0] === CONTRACT_VERSION.split(".")[0];
 }
 
+/** A dotted, all-numeric version as its parts, or null for anything else. */
+function numericVersion(version: string | null | undefined): number[] | null {
+  if (typeof version !== "string") return null;
+  const trimmed = version.trim();
+  return /^\d+(\.\d+)*$/.test(trimmed) ? trimmed.split(".").map(Number) : null;
+}
+
+/**
+ * Is the daemon older than the extension asking? They ship as one artifact — one
+ * `npm run bump` sets both — so a reader whose extension updated by itself in the
+ * background is running an extension the daemon has never met, and the honest thing is
+ * to ask them for the one command that puts it right.
+ *
+ * A daemon that reports no version at all is every daemon built before this existed, so
+ * it is behind by definition. A version neither of us can parse is treated the same way,
+ * except when it is OUR version that is odd: nagging a reader about their daemon because
+ * of something strange in our own manifest would be blaming the wrong machine.
+ */
+export function daemonIsBehind(daemonVersion: string | null | undefined, extensionVersion: string): boolean {
+  const daemon = numericVersion(daemonVersion);
+  if (daemon === null) return true;
+  const mine = numericVersion(extensionVersion);
+  if (mine === null) return false;
+  for (let i = 0; i < Math.max(daemon.length, mine.length); i++) {
+    const theirs = daemon[i] ?? 0;
+    const ours = mine[i] ?? 0;
+    if (theirs !== ours) return theirs < ours;
+  }
+  return false;
+}
+
+/**
+ * A last question asked of an address whose ordinary request failed: is ANYTHING there?
+ *
+ * The extension holds no host permission for the daemon, so reading an answer depends on
+ * the daemon sending CORS headers naming our origin. A daemon older than that is
+ * listening, healthy and completely unreadable — the browser hands us the same failure it
+ * gives for a closed port, and the two need opposite advice. So we ask once more in
+ * `no-cors` mode, where the browser requires no headers and gives back an opaque response
+ * it will not let us read. That it resolved at all is the whole answer: something is
+ * there, and it is too old.
+ *
+ * `redirect: "error"` is left off because the Fetch standard forbids anything but "follow"
+ * in `no-cors` mode. Nothing is risked by that: this sends a bodyless GET with credentials
+ * omitted, it reads nothing back, and `connect-src` (wxt.config.ts) would refuse to follow
+ * a redirect off loopback anyway.
+ */
+async function somethingIsListening(baseUrl: string): Promise<boolean> {
+  const t = withTimeout(HEALTH_TIMEOUT_MS);
+  try {
+    await fetch(`${baseUrl.replace(/\/$/, "")}/health`, {
+      signal: t.signal,
+      cache: "no-store",
+      mode: "no-cors",
+      credentials: "omit",
+    });
+    return true;
+  } catch {
+    return false;
+  } finally {
+    t.done();
+  }
+}
+
 /** GET /health — the daemon's identity, or why it cannot be used (see HealthResult). */
 export async function fetchHealth(baseUrl: string): Promise<HealthResult> {
   const t = withTimeout(HEALTH_TIMEOUT_MS);
+  // Whether the daemon answered us at all, as opposed to answering something we could not
+  // make sense of. It decides which question is worth asking below.
+  let answered = false;
   try {
     const res = await fetch(`${baseUrl.replace(/\/$/, "")}/health`, {
       signal: t.signal,
       cache: "no-store",
       redirect: NO_REDIRECT,
     });
+    answered = true;
     if (!res.ok) return UNREACHABLE;
     const body: unknown = await res.json();
     // The contract is read LENIENTLY, straight off the raw JSON and before the schema:
@@ -145,7 +219,10 @@ export async function fetchHealth(baseUrl: string): Promise<HealthResult> {
     if (!parsed.success) return UNREACHABLE;
     return { ok: true, health: parsed.output };
   } catch {
-    return UNREACHABLE;
+    // A daemon that answered and then sent nonsense is reachable, whatever else is wrong
+    // with it. Only a request that never completed can be the old-daemon case.
+    if (answered) return UNREACHABLE;
+    return (await somethingIsListening(baseUrl)) ? OUTDATED : UNREACHABLE;
   } finally {
     t.done();
   }

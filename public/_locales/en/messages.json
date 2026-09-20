@@ -596,6 +596,10 @@
     "message": "Daemon version mismatch",
     "description": "Popup status: a daemon answered, of the wrong generation. The command under it is the one that fixes it."
   },
+  "popupDaemonBehind": {
+    "message": "The daemon is older than this extension — run: ~/.anagram/bin/anagram update",
+    "description": "Popup bottom line when the daemon still scores but reports an older version than the extension."
+  },
   "popupDaemonDown": {
     "message": "Daemon not running",
     "description": "Popup status: nothing answered. The command under it is the one that starts it."
@@ -816,6 +820,10 @@
   "optContractMismatch": {
     "message": "Found a daemon at $1, but it speaks contract $2 and this extension needs $3.x — run: ~/.anagram/bin/anagram update.",
     "description": "Daemon status. $1 = URL, $2 = its contract, $3 = the major this build needs. The command is never translated."
+  },
+  "optOutdated": {
+    "message": "The daemon at $1 is older than this extension — run: ~/.anagram/bin/anagram update.",
+    "description": "Daemon status. $1 = URL. Shown whether the old daemon can still answer or not. The command is never translated."
   },
   "optNotRunning": {
     "message": "Not running at $1 — paragraphs show as Unavailable until it answers.",

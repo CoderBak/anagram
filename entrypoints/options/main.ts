@@ -282,13 +282,17 @@ async function refreshBackend(probe: boolean): Promise<void> {
       probe,
     })) as BackendStatus | undefined;
     if (!s) throw new Error("no status");
-    if (s.active === "server" && s.model) {
+    if (s.active === "server" && s.model && !s.server.outdated) {
       backendStatusEl.textContent =
         t("optConnected", s.model.id, s.model.ver, s.server.device ?? "?", s.serverUrl);
     } else if (s.server.reason === "contract") {
       // Something IS listening; the fix is an update, not a start.
       backendStatusEl.textContent =
         t("optContractMismatch", s.serverUrl, s.server.contract ?? "?", CONTRACT_VERSION.split(".")[0]);
+    } else if (s.server.outdated) {
+      // The same fix for two cases the reader need not tell apart: a daemon older than
+      // this extension, whether it can still answer it or not at all.
+      backendStatusEl.textContent = t("optOutdated", s.serverUrl);
     } else {
       backendStatusEl.textContent =
         s.server.reason === "loopback" && s.server.error
@@ -297,7 +301,11 @@ async function refreshBackend(probe: boolean): Promise<void> {
     }
     // The header summary must not contradict the status line above it.
     const summary =
-      s.active === "server" && s.model ? s.model.id : s.server.reason === "contract" ? t("optSummaryMismatch") : t("optSummaryDown");
+      s.active === "server" && s.model && !s.server.outdated
+        ? s.model.id
+        : s.server.reason === "contract" || s.server.outdated
+          ? t("optSummaryMismatch")
+          : t("optSummaryDown");
     versionEl.textContent = `v${version} · contract ${CONTRACT_VERSION} · ${summary}`;
   } catch {
     backendStatusEl.textContent = t("optNoWorker");

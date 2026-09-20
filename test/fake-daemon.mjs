@@ -9,6 +9,7 @@
 //
 //   node test/fake-daemon.mjs [port]     # standalone (default 8766) for manual poking
 import http from "node:http";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 
@@ -16,6 +17,32 @@ export const CONTRACT = "2.1";
 export const FAKE_MODEL = { id: "fake-editlens", ver: "test", calibration: "none" };
 const BUCKETS = ["human", "lightly-edited", "heavily-edited", "ai-generated"];
 const FLAT = [0.25, 0.25, 0.25, 0.25];
+
+/** The extension's own version. The fake reports it as the daemon's `app_version`, so a
+ *  suite sees a daemon exactly as new as the build under test and nothing asks for an
+ *  update unless the suite asked for an old daemon on purpose. */
+export const EXTENSION_VERSION = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+).version;
+
+/**
+ * The origins anagramd answers CORS for, and nothing else (anagramd/serve.py,
+ * EXTENSION_SCHEMES). The fake mirrors that exactly — the headers AND the refusals —
+ * because the point of a stand-in is that what passes against it passes against the real
+ * one, and since 2026-09-20 the extension holds no host permission for the daemon: if
+ * these headers were wrong it could not read a single answer.
+ */
+const EXTENSION_SCHEMES = ["chrome-extension://", "moz-extension://", "safari-web-extension://"];
+
+/** The request's Origin when it is an extension's, else null. */
+function extensionOrigin(req) {
+  const origin = req.headers.origin;
+  const lower = origin?.trim().toLowerCase();
+  return lower && EXTENSION_SCHEMES.some((s) => lower.startsWith(s)) ? origin : null;
+}
+
+/** No wildcard, no credentials: the caller's own origin, and the Vary that says so. */
+const corsHeaders = (origin) => ({ "access-control-allow-origin": origin, vary: "Origin" });
 
 /** cyrb53 — same 53-bit hash the extension uses for cache keys. */
 export function cyrb53(str, seed = 0) {
@@ -97,18 +124,50 @@ const MAX_RECORDED_TEXTS = 500;
  * a chosen text (null = the ordinary four characters a token), which is how a suite makes
  * a short paragraph DENSE: more tokens than the model's window in fewer characters than
  * the extension's window budget.
+ *
+ * Two knobs stand in for an OLD daemon, the one thing the extension has to tell from an
+ * absent one: `cors: false` answers no CORS header and no preflight, the way every daemon
+ * before 0.3.3 did, and `appVersion` sets (or, as null, omits) the version `/health`
+ * reports.
  */
-export function startFakeDaemon({ port = 0, latency = [60, 160], model = FAKE_MODEL, delayFor = null, tokensFor = null } = {}) {
+export function startFakeDaemon({ port = 0, latency = [60, 160], model = FAKE_MODEL, delayFor = null, tokensFor = null, cors = true, appVersion = EXTENSION_VERSION } = {}) {
   const stats = { requests: 0, blocks: 0, nonEnglishBlocks: 0, texts: [] };
   const server = http.createServer((req, res) => {
+    const ext = cors ? extensionOrigin(req) : null;
     const json = (code, body) => {
-      res.writeHead(code, { "content-type": "application/json" });
+      res.writeHead(code, { "content-type": "application/json", ...(ext ? corsHeaders(ext) : {}) });
       res.end(JSON.stringify(body));
     };
+    // The real daemon's Origin guard: an Origin that is neither an extension's nor its own
+    // is 403 with nothing on it, preflight included, so a web page can never read us.
+    const origin = req.headers.origin;
+    if (origin !== undefined && extensionOrigin(req) === null && origin !== `http://${req.headers.host}`) {
+      res.writeHead(403, { "content-type": "application/json" });
+      return void res.end(JSON.stringify({ detail: `origin ${origin} is not allowed` }));
+    }
+    if (req.method === "OPTIONS") {
+      if (!ext || !req.headers["access-control-request-method"]) {
+        // No CORS, or not a preflight: what a router with no OPTIONS handler answers.
+        res.writeHead(405, { "content-type": "application/json" });
+        return void res.end(JSON.stringify({ detail: "Method Not Allowed" }));
+      }
+      const headers = {
+        ...corsHeaders(ext),
+        "access-control-allow-methods": "GET, POST",
+        "access-control-allow-headers": "content-type",
+        "access-control-max-age": "600",
+      };
+      if ((req.headers["access-control-request-private-network"] ?? "").toLowerCase() === "true") {
+        headers["access-control-allow-private-network"] = "true";
+      }
+      res.writeHead(204, headers);
+      return void res.end();
+    }
     if (req.method === "GET" && req.url === "/health") {
       return json(200, {
         ok: true, contract: CONTRACT, model, n_buckets: 4, buckets: BUCKETS, languages: ["en"],
         lid: "fake-script-heuristic", max_tokens: 512, device: "fake", dtype: "none",
+        ...(appVersion === null ? {} : { app_version: appVersion }),
       });
     }
     if (req.method === "POST" && req.url === "/score") {

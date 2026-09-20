@@ -51,8 +51,12 @@ describe("DaemonClient", () => {
     const s = await c.status(false);
     expect(s.active).toBe("down");
     expect(s.server.reason).toBe("unreachable");
+    // ONE probe is two requests now: the ordinary /health, and — because it never came
+    // back — the `no-cors` question that tells a closed port from a daemon too old to
+    // answer this extension (lib/backend/httpClient.ts). Here both fail, so: unreachable.
+    expect(fetchFn).toHaveBeenCalledTimes(2);
     expect((await c.status(false)).active).toBe("down");
-    expect(fetchFn).toHaveBeenCalledTimes(1); // within the 5 s down TTL
+    expect(fetchFn).toHaveBeenCalledTimes(2); // within the 5 s down TTL, no second probe
     expect(c.isUp()).toBe(false);
     expect(c.model().id).toBe("none");
   });
@@ -86,6 +90,49 @@ describe("DaemonClient", () => {
     const batch = await c.scoreBatch([{ id: "a", text: "x" }]);
     expect(batch.model.ver).toBe("sha-new");
     expect(c.model().ver).toBe("sha-new"); // provenance moved with the response
+  });
+
+  // The daemon and the extension are released together (one `npm run bump` sets both), and
+  // an extension updates by itself in the background while the daemon on disk does not. So
+  // the status carries whether the daemon is behind, and the pages ask for one command.
+  it("says a daemon behind this extension needs updating, while it goes on scoring", async () => {
+    fakeBrowser.runtime.getManifest = () => ({ version: "9.9.9" }) as ReturnType<typeof fakeBrowser.runtime.getManifest>;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ ...HEALTH, app_version: "0.0.1" }), { status: 200 })),
+    );
+    const s = await new DaemonClient().status(true);
+    expect(s.active).toBe("server"); // it works — the contract is what decides that
+    expect(s.server.ok).toBe(true);
+    expect(s.server.outdated).toBe(true);
+    expect(s.server.reason).toBeUndefined();
+  });
+
+  it("says nothing about a daemon level with this extension", async () => {
+    fakeBrowser.runtime.getManifest = () => ({ version: "0.3.3" }) as ReturnType<typeof fakeBrowser.runtime.getManifest>;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ ...HEALTH, app_version: "0.3.3" }), { status: 200 })),
+    );
+    const s = await new DaemonClient().status(true);
+    expect(s.server.outdated).toBe(false);
+  });
+
+  it("reports a daemon too old to answer at all as 'outdated', not as an outage", async () => {
+    // No host permission, so a daemon that sends no CORS headers fails exactly like a
+    // closed port. The opaque follow-up is what separates them, and the advice differs.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.mode === "no-cors") return new Response(null, { status: 200 });
+        throw new TypeError("Failed to fetch");
+      }),
+    );
+    const s = await new DaemonClient().status(true);
+    expect(s.active).toBe("down");
+    expect(s.server.reason).toBe("outdated");
+    expect(s.server.outdated).toBe(true);
+    expect(s.server.error).toMatch(/older than the extension/);
   });
 
   it("marks itself down when a batch fails, so the router reports the outage", async () => {
