@@ -31,7 +31,9 @@ jobs:
         # macOS joins on tags and manual runs only (see the note at the top).
         os: ${{ fromJSON((github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')) && '["ubuntu-latest","windows-latest","macos-latest"]' || '["ubuntu-latest","windows-latest"]') }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    # 45 rather than 30 since the four standalone checks and the daemon's own suite joined
+    # the job: each of the four launches its own browser, and the Windows leg is the slow one.
+    timeout-minutes: 45
     env:
       ANAGRAM_ARTIFACTS: ${{ github.workspace }}/test-results/ci
     steps:
@@ -63,6 +65,36 @@ jobs:
         run: npm run test:a11y
       - name: device matrix
         run: npm run test:matrix
+      # The checks that stand on their own: each answers one question a suite full of other
+      # things would bury, and a release is exactly when you want them answered. They need
+      # what the suites need and nothing more — the test build, the fake daemon, no network
+      # and no model.
+      - name: diagnostics report ("Copy page diagnostics")
+        run: node test/diagnostics-check.mjs
+      # Not on Windows: one case of this builds a local PDF's address as "file://" + a
+      # temporary path, which is an address on POSIX and is not one on Windows, where
+      # C:\…\x.pdf has to be spelt file:///C:/…/x.pdf. Everything else in the check is
+      # platform-independent, so the gate goes away the day that line does.
+      - name: where a PDF opens
+        if: runner.os != 'Windows'
+        run: node test/pdf-route-check.mjs
+      # --chrome-only: the Firefox half of the same check runs in the firefox job below,
+      # which is the only job with a Firefox in it.
+      - name: content-security-policy, live
+        run: node test/csp-check.mjs --chrome-only
+      - name: the two WebAssembly PDF decoders
+        run: node test/pdf-codecs-check.mjs
+      # What anagramd promises about itself, without the 1.4 GB model: it reaches no
+      # network, answers to exactly two names, and its version string digests everything
+      # that could move a verdict. On a bare interpreter the handful of checks that need
+      # fastapi or fasttext SKIP loudly and the rest run (26 pass, 2 skip as of today).
+      #
+      # Not on Windows: test/daemon.sh is a POSIX shell script that runs `python3`, and the
+      # Windows image has neither by that name. What it would check there is the same on
+      # every platform — the daemon itself only installs on macOS and Linux.
+      - name: daemon properties (no model)
+        if: runner.os != 'Windows'
+        run: npm run test:daemon
       - name: e2e again with a real window (Xvfb)
         if: runner.os == 'Linux'
         run: xvfb-run -a env HEADED=1 npm run test:e2e
@@ -81,7 +113,8 @@ jobs:
   firefox:
     name: firefox (ubuntu-latest)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 30 rather than 20 since the policy check (both browsers) joined this job.
+    timeout-minutes: 30
     needs: test
     env:
       ANAGRAM_ARTIFACTS: ${{ github.workspace }}/test-results/firefox
@@ -113,9 +146,18 @@ jobs:
             npx --yes @puppeteer/browsers install firefox@stable --path "$HOME/.cache/puppeteer"
             "$HOME"/.cache/puppeteer/firefox/*/firefox/firefox --version 2>/dev/null || true
           fi
+      # The policy check drives BOTH browsers in one run and has no Firefox-only mode, so
+      # this job needs a Chromium as well. The Chrome half is a few minutes' duplication of
+      # what the test job already did; the Firefox half is the part that exists nowhere
+      # else, and it reports SKIP rather than FAIL if the Firefox above could not be
+      # installed — so the job still fails only on a policy that is really wrong.
+      - name: install Chromium (the policy check runs both browsers)
+        run: npx playwright install --with-deps chromium
       - run: npm run build:firefox
       # xvfb is NOT used: the suite is headless by construction and has no HEADED mode.
       - run: npm run test:firefox
+      - name: content-security-policy, live (both browsers)
+        run: node test/csp-check.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:

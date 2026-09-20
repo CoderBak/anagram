@@ -548,16 +548,26 @@ would make Firefox a foreground application — is stripped in the harness.
 | Accessibility | `npm run test:a11y` | 107 | **axe-core** (WCAG 2.1 A + AA, best-practice rules on a line of their own) on the popup, options, onboarding and PDF reader pages in **light and dark** — options with two site rules and the add-rule error showing, onboarding with the daemon up and stopped (its setup strip's Copy pills and install line only exist in the second), the reader empty, with a PDF the suite writes itself, and asking for an encrypted one's password — and then, scoped to OUR nodes only, on the ball with the panel closed, open with flagged rows, open with both verdict filters, open on a **dark page**, on a pinned chip card, the selection card and the daemon-down notice (axe descends into the open shadow roots; the suite proves it did by naming a node it could only have reached through one). Plus everything axe cannot do, asserted in code: Tab reaches the ball then the counter, Enter opens the panel as a named dialog and hands focus over, Tab walks its controls in DOM order with no positive tabindex, Escape closes it and gives focus back; an accessible name (a real word, not a glyph) and a visible `:focus-visible` change for every control; a **24x24 CSS-px target measured the way a pointer measures it** — `elementFromPoint` at the corners and centre of a 24 px box, put to the element's own root, so a control drawn smaller that carries an invisible hit area passes and one that does not fails; colour contrast computed from the RESOLVED colours for the chip number, card verdict, panel percentages and counter in light and dark — axe cannot always see through a top-layer popover in a shadow root, and nothing is measured until `document.getAnimations()` goes quiet, since a chip mid-`background-color` transition reads as a phantom failure; under `prefers-reduced-motion` **no node of ours may be left with a duration to run at all** (asked of the cascade, not of a synthetic hover, which proves nothing when it fails to land); forced colours keep a chip boundary and the verdict dot; and the three live regions are read back after the events they announce. Its **baseline is empty** — everything it found on the day it was written has been fixed — so any violation is a regression, and a baseline entry that stops firing fails the run. Deliberate exemptions (the chips are `aria-hidden` and unfocusable on purpose) are listed apart. JSON report in the artifacts folder |
 | Perf | `npm run test:perf` | 17 | five pathological documents, each budgeted against what it already costs — the fifth is the PDF reader on a thirty-page two-column paper (first page drawn, every page's text layer, the long tasks that costs, the canvases still held after a scroll to the end and back, the last hop of the byte handoff, and the paragraph reflow both in total and at its worst single run). A 3000-paragraph article: first badge <4 s (measured ~0.2 s), no long task >1 s, scoring keeps up with the scroll. A feed that re-renders 450 paragraphs eight times over: bounded long tasks. The same feed virtualized, 2000 posts through a 50-post DOM: heap growth <8 MB after a forced GC, chips bounded by the DOM, no highlight range over a node that left it. And sixty clamped review cards whose pictures arrive as you reach them — the shape that makes chip placement measure the page: the browser's own **LayoutCount** against the same page with no extension, at most 1.6 layouts per chip (measured 1.28; settling each box on its own cost 2.46), with one chip under every box and never two |
 
-### Three checks that stand on their own
+### Four checks that stand on their own
 
-Not in the table above, and not yet in CI: each one needs a **built** extension and
-answers one question a suite full of other things would bury.
+Not in the table above: each one needs a **built** extension and answers one question a
+suite full of other things would bury. All four run in CI — which is what gates a release —
+on Linux, Windows and (on tags) macOS, except where the note below says otherwise.
 
 | Check | Run | What it settles |
 | --- | --- | --- |
+| The pasted report | `node test/diagnostics-check.mjs` | 27 checks on "Copy page diagnostics" in a real browser: the header (version, browser, languages, hostname and never a path), the counts against what is really on the page, one fixture holding every shape that goes quiet for a different reason with each named by the reason the walk really had, that not a word of the page reaches the clipboard, the size cap, and a site turned off by rule still answering. `--firefox` adds the Firefox copy path |
 | Where a PDF opens | `node test/pdf-route-check.mjs` | 27 checks in a real browser over the whole PDF path: every way in lands on the reading mode showing THAT PDF; "Open PDFs in Anagram" and each of its traps (Back, "Open original", a background tab, a reload, the switch turned off again); and the byte handoff — the document that arrives through the tab hashes the same as one dropped on the reader, an endless one is cut off at the cap (proved by what the SERVER was asked for), a page that merely says it is a PDF is refused on its first bytes, a reader address with no bytes behind it goes back to the PDF and stays, an encrypted document is asked for its password, and — watched at the browser level — the reading mode requests nothing outside the extension while a remote PDF opens |
 | The policy, live | `node test/csp-check.mjs` | 24 checks that the `connect-src` above is really enforced rather than merely written: every extension page loads with nothing refused (the reading mode with a PDF handed to it included), a remote `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource` and `sendBeacon` are all refused from an extension page and from the service worker while the daemon still answers, an inline script does not run, and only the three content-script chunks are reachable from an ordinary web page. Runs the same checks in Firefox where a Firefox is available |
 | The two decoders | `node test/pdf-codecs-check.mjs` | 5 checks that `'wasm-unsafe-eval'` earns its place: a JPEG 2000 and a JBIG2 image, each embedded in a PDF written by the check itself, really decode in the packaged extension — measured as pixels on the canvas, because a page that failed to decode is white rather than broken |
+
+Two exceptions in CI. *Where a PDF opens* is skipped on Windows, because one of its cases
+spells a local file's address `file://` + a temporary path, which is an address on POSIX
+and not on Windows; nothing else in it is platform-dependent. *The policy, live* runs with
+`--chrome-only` on every platform and in full in the Firefox job, which is the one machine
+with a Firefox on it. `npm run test:daemon` — what the daemon promises about itself,
+without the model — runs there too, on Linux and macOS: the Windows image has neither `sh`
+nor a `python3`, and the daemon installs on macOS and Linux only.
 
 ### The lab: a screen of its own
 
@@ -596,8 +606,10 @@ offline container publishes no port, so **there is nothing to view while it runs
 it is removed when the run ends, fails or is interrupted.
 
 Platforms: the lab is Linux; macOS is covered by the headless runs on your machine;
-CI runs everything (matrix included) on Linux **and Windows** on every push, plus
-macOS on tags and manual runs, and keeps the screenshots as build artifacts.
+CI runs everything (the matrix and the four standalone checks included) on Linux **and
+Windows**, plus macOS on tags and manual runs, and keeps the screenshots as build
+artifacts. That workflow is what a release calls as its gate, so a tag runs every check
+there is on every platform before an asset is published.
 
 `npm run test:verify` proves the chips come from the model: it reads each chip's
 probabilities, sends the same paragraph text straight to the daemon's API, and

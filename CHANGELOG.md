@@ -973,6 +973,17 @@ Notable changes to Anagram, newest first. The format follows
 
 ### Tests
 
+- **The release gate runs every check there is.** `.github/workflows/ci.yml` is what
+  `release.yml` calls before it publishes an asset, and four checks that each answer one
+  question a suite would bury were not in it: `test/diagnostics-check.mjs`,
+  `test/pdf-route-check.mjs`, `test/csp-check.mjs` and `test/pdf-codecs-check.mjs`. All
+  four now run on every platform leg, together with `npm run test:daemon` — what anagramd
+  promises about itself without the model, which degrades to the checks a bare interpreter
+  can make. Two of them are gated and the comment beside each says why: the PDF-route check
+  skips Windows (one case spells a local file's address `file://` + a temporary path, which
+  is not how Windows spells one), and the policy check runs `--chrome-only` everywhere and
+  in full in the Firefox job, which is the only machine with a Firefox on it.
+
 - **The two real-daemon suites no longer borrow a daemon they did not start.**
   `test/server.mjs` and `test/verify-backend.mjs` took whatever was answering on 8765,
   which is where an installed Anagram listens: a run meant to exercise the build sent its
