@@ -3,7 +3,7 @@
 // The Chromium suites (test/e2e.mjs, test/scenarios.mjs) drive Playwright; Playwright
 // cannot load an extension into Firefox, so this one drives headless Firefox through
 // puppeteer-core over WebDriver BiDi — see test/firefox-harness.mjs for the launch,
-// the temporary install of output/firefox-mv2, and the fixed moz-extension:// origin.
+// the temporary install of output-test/firefox-mv2, and the fixed moz-extension:// origin.
 //
 // It runs against the same two things every other browser suite uses: the test-only fake
 // daemon (test/fake-daemon.mjs, deterministic verdicts, no model) and the self-test page
@@ -58,7 +58,7 @@ const daemonPort = daemon.port;
 const server = await serveHtml({ "/selftest.html": readFileSync(join(__dirname, "selftest.html"), "utf8") });
 const pageUrl = server.url("/selftest.html");
 
-// ── 2) headless Firefox + a temporary install of output/firefox-mv2 ────────────────
+// ── 2) headless Firefox + a temporary install of output-test/firefox-mv2 ───────────
 const { browser, firefox, extId, extUrl } = await launchFirefox().catch(async (e) => {
   console.error(e.message ?? e);
   await server.close();

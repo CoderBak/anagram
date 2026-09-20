@@ -127,7 +127,7 @@ here leaves this profile or this computer.
 | `debug` | verbose logging |
 | `displayMode` | mark everything, or only flagged paragraphs |
 | `mergeShorts` | group short paragraphs to reach the 50-word floor |
-| `markStyle` | underline, tint, or both |
+| `markStyle` | how a mark is drawn: quiet, or always on (a profile written before this build may still hold one of the three styles those replaced) |
 | `analysisScope` | the whole page, or its main content |
 | `fabPos` | where the reader dragged the ball, per hostname |
 | `scLegacySwept` | a one-shot flag: the pre-IndexedDB score cache has been cleaned out |

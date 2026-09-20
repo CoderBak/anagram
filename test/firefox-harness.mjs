@@ -5,7 +5,7 @@
 // WebDriver BiDi instead — no geckodriver, no system install:
 //
 //   * `browser.installExtension(dir)` is BiDi's `webExtension.install`, a TEMPORARY
-//     install of the UNPACKED output/firefox-mv2 (unsigned is fine for those).
+//     install of the UNPACKED output-test/firefox-mv2 (unsigned is fine for those).
 //   * `extensions.webextensions.uuids` is seeded in the profile, so the extension's
 //     internal origin is a CONSTANT (EXT_UUID) and the suite can address
 //     moz-extension://<uuid>/options.html directly instead of scraping it.

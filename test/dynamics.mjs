@@ -466,8 +466,8 @@ function SAMPLE(cfg) {
       }
     }
   }
-  // A chip states its unit's percentage and its unit's word count, so two chips that read
-  // the SAME number over the SAME number of words are one unit chipped twice, and two that
+  // A chip states its unit's score and its unit's word count, so two chips that read the
+  // SAME number over the SAME number of words are one unit chipped twice, and two that
   // read different ones are two distinct units.
   const numOf = (h) => (h.shadowRoot?.querySelector(".num")?.textContent ?? "").trim();
   const wordsOf = (h) => {
@@ -1531,7 +1531,7 @@ for (const r of rows) {
   const anomalies = [];
   if (x.sameUnitChipsMax > 0)
     anomalies.push(
-      `**${x.sameUnitChipsMax} chips too many for the SAME unit** (${x.sameUnitGroupsMax} groups whose chips all read the same percentage over the same word count): ` +
+      `**${x.sameUnitChipsMax} chips too many for the SAME unit** (${x.sameUnitGroupsMax} groups whose chips all read the same score over the same word count): ` +
         (x.dupSample ?? []).filter((d) => d.kind === "sameUnit").map((d) => `${d.chips}× “${d.nums[0]}” (${d.words[0]} words) in one \`<${d.parent}>\` after “…${d.hint}”`).join("; "),
     );
   if (x.pileUpChipsMax > 0)

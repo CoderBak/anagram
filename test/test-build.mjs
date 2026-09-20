@@ -12,8 +12,8 @@
 // differs. It lives in output-test/, so `npm run build` is always the shipping build and
 // test/node/permissions.test.ts can pin what that one asks for.
 //
-// The variant is built HERE when it is missing or older than the sources, so a runner that
-// only knows `npm run build` (scripts/fullsuite, a developer on a branch) keeps working.
+// The variant is built HERE when it is missing or older than the sources, so a suite run
+// straight from a checkout — or after a `npm run build` and nothing else — keeps working.
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
