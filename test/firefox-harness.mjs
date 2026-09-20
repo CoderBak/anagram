@@ -163,8 +163,13 @@ export async function setViewportSafe(page, viewport = VIEWPORT) {
     .catch(() => false);
 }
 
-export async function launchFirefox({ extraPrefs = {}, args = [], viewport = VIEWPORT } = {}) {
-  requireFirefoxBuild();
+/**
+ * `extDir` names another build to install instead of the test variant — the SHIPPING one,
+ * for test/daemon-cors-check.mjs, which is the only suite that must see the extension with
+ * nothing granted. Everything else takes the default and is built on demand as before.
+ */
+export async function launchFirefox({ extraPrefs = {}, args = [], viewport = VIEWPORT, extDir = null } = {}) {
+  if (!extDir) requireFirefoxBuild();
   const firefox = await resolveFirefox();
   const browser = await launch({
     browser: "firefox",
@@ -191,7 +196,7 @@ export async function launchFirefox({ extraPrefs = {}, args = [], viewport = VIE
   });
   let extId;
   try {
-    extId = await browser.installExtension(EXT);
+    extId = await browser.installExtension(extDir ?? EXT);
   } catch (e) {
     await browser.close().catch(() => {});
     if (String(e).includes("unknown command webExtension.install")) {
@@ -203,7 +208,9 @@ export async function launchFirefox({ extraPrefs = {}, args = [], viewport = VIE
     throw e;
   }
   const extUrl = (path) => `moz-extension://${EXT_UUID}/${path.replace(/^\//, "")}`;
-  await waitForRegistration(browser, extUrl);
+  // Only the test build registers anything: the shipping one has been granted no site, so
+  // there is no content script to wait for and waiting would only print a false alarm.
+  if (!extDir) await waitForRegistration(browser, extUrl);
   return { browser, firefox, extId, extUrl };
 }
 

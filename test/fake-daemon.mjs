@@ -117,7 +117,9 @@ const MAX_RECORDED_TEXTS = 500;
  * Start the fake on 127.0.0.1. `close()` stops it (the extension then sees "connection
  * refused" = daemon down); start again with the same `port` to bring it back.
  *
- * `stats.texts` is what the daemon was actually asked about — a suite proving that some
+ * `stats.preflights` counts the CORS preflights answered — the proof, for a suite driving
+ * the SHIPPING build, that a POST really did go out as a cross-origin request rather than
+ * on a host permission. `stats.texts` is what the daemon was actually asked about — a suite proving that some
  * paragraph never left the page reads it. `delayFor(text)` returns milliseconds to hold
  * a request for, which parks a chosen paragraph in flight (a stalled daemon) while
  * everything else keeps its ordinary latency. `tokensFor(text)` returns a token count for
@@ -131,7 +133,7 @@ const MAX_RECORDED_TEXTS = 500;
  * reports.
  */
 export function startFakeDaemon({ port = 0, latency = [60, 160], model = FAKE_MODEL, delayFor = null, tokensFor = null, cors = true, appVersion = EXTENSION_VERSION } = {}) {
-  const stats = { requests: 0, blocks: 0, nonEnglishBlocks: 0, texts: [] };
+  const stats = { requests: 0, blocks: 0, nonEnglishBlocks: 0, texts: [], preflights: 0 };
   const server = http.createServer((req, res) => {
     const ext = cors ? extensionOrigin(req) : null;
     const json = (code, body) => {
@@ -151,6 +153,7 @@ export function startFakeDaemon({ port = 0, latency = [60, 160], model = FAKE_MO
         res.writeHead(405, { "content-type": "application/json" });
         return void res.end(JSON.stringify({ detail: "Method Not Allowed" }));
       }
+      stats.preflights++;
       const headers = {
         ...corsHeaders(ext),
         "access-control-allow-methods": "GET, POST",
