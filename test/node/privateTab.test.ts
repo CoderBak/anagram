@@ -20,7 +20,6 @@ import type {
 import { CONTRACT_VERSION } from "../../lib/contract";
 
 const MODEL: ModelInfo = { id: "model-a", ver: "1", calibration: "none" };
-const DIM = "model-a@1";
 /** Long enough for the cache's 250 ms write flush to have happened. */
 const flushed = (): Promise<void> => new Promise((r) => setTimeout(r, 400));
 

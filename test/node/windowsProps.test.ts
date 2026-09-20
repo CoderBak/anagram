@@ -87,7 +87,7 @@ describe("planWindows", () => {
 
   it("keeps every window inside the character budget", () => {
     forSeeds(300, (r) => {
-      const [text, spans] = planned(r);
+      const [, spans] = planned(r);
       for (const s of spans) expect(s.end - s.start).toBeLessThanOrEqual(WINDOW_CHARS);
     });
   });

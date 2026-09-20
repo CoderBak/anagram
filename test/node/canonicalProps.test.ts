@@ -9,7 +9,6 @@
 import { describe, expect, it } from "vitest";
 import { canonicalForScoring, normalizeText } from "../../lib/dom/text";
 import {
-  INVISIBLES,
   makeText,
   rng,
   seeds,

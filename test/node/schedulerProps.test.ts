@@ -7,7 +7,7 @@
 // enqueues in three lanes with repeated ids and upgrades, pause/resume, epoch bumps and
 // completions in a random interleaving — run against a model of what the scheduler is
 // supposed to be holding. A failure names the seed to reproduce it.
-import { describe, expect, it } from "vitest";
+import { describe, it } from "vitest";
 import { createScheduler, type Scheduler } from "../../lib/capture/scheduler";
 import type { Lane, Unit } from "../../lib/types";
 import { rng, seeds } from "./random";

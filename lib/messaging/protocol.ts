@@ -17,7 +17,9 @@ export const ACTIONS = {
   NEXT_FLAGGED: "nextFlagged",
   /** SW (keyboard command) → content (top frame): go to the previous flagged paragraph. */
   PREV_FLAGGED: "prevFlagged",
-  /** content (subframe) → SW: the hostname of the TAB's top-level page. */
+  /** content (subframe) → SW: the hostname of the TAB's top-level page. A cross-origin
+   *  frame cannot read it, and `document.referrer` is empty under a no-referrer policy —
+   *  but the worker sees the tab's URL on the sender. */
   GET_TOP_HOST: "getTopHost",
   /** SW (context menu) → content: score the current selection, show a card. */
   ANALYZE_SELECTION: "analyzeSelection",
@@ -37,14 +39,17 @@ export const ACTIONS = {
   /**
    * content (a PDF tab) / popup → SW: open the PDF reading mode. A content script may
    * not navigate its tab to an extension page — the reader is deliberately not web
-   * accessible — so the worker performs the tabs.update for it.
+   * accessible — so the worker performs the tabs.update for it. A content script names
+   * neither the address nor the tab (the worker reads both off the sender); the popup,
+   * whose sender is no tab, names them.
    */
   OPEN_PDF_READER: "openPdfReader",
   /**
    * content (a PDF tab, top frame) → SW: this tab is showing a PDF, reached this way.
    * The worker decides whether "Open PDFs in Anagram" applies (lib/pdf/route.ts) — the
    * setting, the back/forward rule and the one-shot pass below all live there, so there
-   * is one answer and not three.
+   * is one answer and not three. The tab and the frame come off the sender, so a page
+   * cannot ask for somebody else's tab to be moved.
    */
   PDF_TAB_OPENED: "pdfTabOpened",
   /**
@@ -67,8 +72,6 @@ export const ACTIONS = {
   CACHE_CLEARED: "cacheCleared",
 } as const;
 
-export type ActionName = (typeof ACTIONS)[keyof typeof ACTIONS];
-
 /** content → SW: score a batch of blocks. */
 export interface ScoreBatchMessage {
   action: typeof ACTIONS.SCORE_BATCH;
@@ -82,12 +85,6 @@ export interface ScoreBatchReply {
   model?: ModelInfo;
   /** Whether the daemon answered its last probe — "down" makes the content script pause. */
   backend: "up" | "down";
-}
-
-/** popup/options → SW: ask which backend is live. `probe` forces a fresh /health check. */
-export interface GetBackendStatusMessage {
-  action: typeof ACTIONS.GET_BACKEND_STATUS;
-  probe?: boolean;
 }
 
 /** SW → popup/options/content (response to GET_BACKEND_STATUS). */
@@ -175,15 +172,6 @@ export interface PrevFlaggedMessage {
   action: typeof ACTIONS.PREV_FLAGGED;
 }
 
-/**
- * content (subframe) → SW: which hostname does this tab's top-level page have? A
- * cross-origin frame cannot read it, and `document.referrer` is empty under a
- * no-referrer policy — but the worker sees the tab's URL on the sender.
- */
-export interface GetTopHostMessage {
-  action: typeof ACTIONS.GET_TOP_HOST;
-}
-
 /** SW → content (response to GET_TOP_HOST). `host` is "" when the worker cannot tell. */
 export interface TopHostReply {
   host: string;
@@ -227,42 +215,6 @@ export interface RetryBackendMessage {
   action: typeof ACTIONS.RETRY_BACKEND;
 }
 
-/**
- * content/popup → SW: show the PDF reading mode for `url` in tab `tabId`. A content
- * script sends neither — the worker reads both off the sender — while the popup, whose
- * sender is no tab, names them.
- */
-export interface OpenPdfReaderMessage {
-  action: typeof ACTIONS.OPEN_PDF_READER;
-  url?: string;
-  tabId?: number;
-}
-
-/** popup → SW: analyze the page in `tabId` once — see ACTIONS.ANALYZE_TAB. */
-export interface AnalyzeTabMessage {
-  action: typeof ACTIONS.ANALYZE_TAB;
-  tabId: number;
-}
-
-/**
- * content (a PDF tab) → SW: everything the automatic route is decided from except the
- * setting and the pass, which only the worker holds. The tab and the frame come off the
- * sender, so a page cannot ask for somebody else's tab to be moved.
- */
-export interface PdfTabOpenedMessage {
-  action: typeof ACTIONS.PDF_TAB_OPENED;
-  url: string;
-  contentType: string;
-  protocol: string;
-  navigationType: string;
-}
-
-/** reader → SW: let this tab's next load of `url` through without the reading mode. */
-export interface PdfPassOnceMessage {
-  action: typeof ACTIONS.PDF_PASS_ONCE;
-  url: string;
-}
-
 /** SW → reader (response to PDF_PASS_ONCE): the pass is held, it is safe to navigate. */
 export interface PdfPassOnceReply {
   ok: boolean;
@@ -286,11 +238,6 @@ export interface PingReply {
  */
 export interface AccessGrantedMessage {
   action: typeof ACTIONS.ACCESS_GRANTED;
-}
-
-/** options → SW: empty every score cache the worker owns, then tell the tabs. */
-export interface ClearCacheMessage {
-  action: typeof ACTIONS.CLEAR_CACHE;
 }
 
 /** SW → options (response to CLEAR_CACHE): the caches are empty. */
@@ -330,13 +277,3 @@ export type ControlMessage =
   | CacheClearedMessage
   | PingMessage
   | AccessGrantedMessage;
-
-/** Union of all messages the service worker may receive. */
-export type BackgroundMessage =
-  | ScoreBatchMessage
-  | UpdateBadgeMessage
-  | GetBackendStatusMessage
-  | GetTopHostMessage
-  | OpenPdfReaderMessage
-  | AnalyzeTabMessage
-  | ClearCacheMessage;
