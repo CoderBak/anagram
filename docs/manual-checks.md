@@ -84,8 +84,10 @@ The local daemon should be running (`~/.anagram/bin/anagram start`) or every chi
 
 8. **Keyboard commands with no grant.**
    Still with nothing granted: <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> on an article
-   does nothing visible (there is nothing to toggle — the same as on a site you have
-   switched off). After granting the site, it toggles the overlay as always.
+   analyzes that one page — the same single run the popup's *Analyze this page* does, with
+   **no permission prompt**, and gone after a reload (`chrome://extensions` → *Details →
+   Site access* still lists no site). Press it again on the analyzed page and it hides the
+   marks, as it always did. After granting the site, it toggles the overlay as always.
 
 9. **An update keeps the grant, and the script.**
    With all sites granted, press *Reload* on the extension card at `chrome://extensions`

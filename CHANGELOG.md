@@ -407,6 +407,37 @@ Notable changes to Anagram, newest first. The format follows
   compromised host — unlike `uv`'s and both models' checksums, which are pinned inside
   `install.sh`.
 
+- **The popup leads with the page, and one thing to do about it.** Anagram installs able to read
+  no site, so the page the popup opens over is usually one it is doing nothing on — and the popup
+  met that page with seven controls and its only useful button at the very bottom. It now opens
+  with the state of the tab and ONE button that follows from it: **Rescan page** where Anagram is
+  running (the analyzed/flagged counts above it), **Analyze this page** where it is off, by a rule
+  or for want of a grant (the single run that writes nothing and asks for nothing), **Read this
+  PDF** on a PDF tab, **Read a PDF file…** where nothing can run at all — a browser page, the web
+  store, a `file:` tab, a PDF tab on Firefox — and **Retry** while the daemon is silent, with the
+  command that fixes it (`anagram start`, or `anagram update` for a daemon of another contract) in
+  a one-click copyable chip beside it. Never two: "Read this PDF" and "Analyze this page" cannot
+  both be on offer, and only the button that starts something is ever filled in. Which of the five
+  it is, is a pure function (`entrypoints/popup/state.ts`) with a table test over every combination
+  of the facts the popup can know, since four of the five states need a page no test browser can
+  produce. Under the action block the order is what someone reaches for: where it runs (**This
+  site** and its host line first, then **All websites** — their access logic is untouched), then
+  **Show**; mark text, marking style and scope are folded into a closed **More**, all three of them
+  also on the options page; the model line closes it. The two keyboard-hint lines are gone (the
+  options page lists the shortcuts). The popup is shorter in every state — around 390 px where it
+  was 560 — and every control is still keyboard-reachable with a 24×24 target.
+- **The toggle shortcut does something on a page Anagram is off for.**
+  <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> had nothing to toggle there and did nothing at all —
+  which on a fresh install, where no site is granted, is every page. It now starts the same
+  one-shot run the popup's button and the context-menu entry start: the command carries
+  `activeTab`, so the worker can put a content script there, and nothing is written to settings.
+  On a running page it toggles the overlay exactly as before.
+- **The first-run page fits on a screen.** It kept the header, the lede, the live **Setup** strip
+  and the "How it reads" demo — which the verdict legend moved up into, beside the chips it
+  explains — and its seven remaining cards became one **Guide** list of `<details>`, closed, two
+  columns wide, each summary the card's own title. Not a word was removed. The Site access row
+  also says the way that grants nothing, which the page never mentioned: the toolbar icon →
+  *Analyze this page*.
 - **A release waits for the whole test matrix.** The release workflow used to run the type check and
   the Node tests and then publish; it now calls the CI workflow as its first job (`gate`) and
   publishes only after the same suites as every push have passed on Linux, Windows and macOS, and
@@ -1037,6 +1068,17 @@ Notable changes to Anagram, newest first. The format follows
   without the 1.4 GB model and a rule about somebody else's daemon is worth nothing if it
   is only ever checked by hand.
 
+- The popup's state → action mapping, in `test/node/popupState.test.ts`: the five states one by
+  one, the daemon outranking the page whatever the page is, and a sweep of all 144 combinations of
+  the facts asserting that every one has a labelled action, that a filled button only ever starts
+  something and that the counts line appears over "Rescan page" and nowhere else. In
+  `test/scenarios.mjs`, the real popup in each of the five states — the popup reads the ACTIVE
+  tab, so the fixture is brought to the front and the popup, a background tab of the same window,
+  is reloaded, which is when it asks — plus the toggle command on a switched-off page starting one
+  run and writing nothing. The zh-CN check reads the group heading, the action button (whose label
+  is the page's state, not markup) and the "More" summary in place of the key hints that are gone.
+  `test/a11y.mjs` opens the popup's `<details>` before it scans, so the three controls behind it
+  are still judged.
 - The score's shape and the quiet marks, in `test/unit.mjs`: `formatScore` /
   `spokenScore` at both ends of the scale, which `::highlight()` rules exist at
   rest in each mark style, that nothing anywhere is wavy, and that an active
