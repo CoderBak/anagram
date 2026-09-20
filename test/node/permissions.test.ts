@@ -54,8 +54,8 @@ const WEB_REQUEST = ["webRequest", "webRequestBlocking"];
 const DECIDES = join(ROOT, "wxt.config.ts");
 
 /** One target's manifest, and whether it is fresh enough to say anything. */
-function target(dir: string): { ready: boolean; manifest: Manifest } {
-  const path = join(ROOT, "output", dir, "manifest.json");
+function target(dir: string, out = "output"): { ready: boolean; manifest: Manifest } {
+  const path = join(ROOT, out, dir, "manifest.json");
   const builtAt = existsSync(path) ? statSync(path).mtimeMs : 0;
   const ready = builtAt > 0 && statSync(DECIDES).mtimeMs <= builtAt;
   return { ready, manifest: ready ? (JSON.parse(readFileSync(path, "utf8")) as Manifest) : {} };
@@ -132,5 +132,43 @@ describe("the sites each target asks for", () => {
     // (test/test-build.mjs). Nothing may leak from that build into this one.
     const required = chrome.manifest.host_permissions ?? [];
     for (const pattern of [...ALL_SITES, "<all_urls>"]) expect(required).not.toContain(pattern);
+  });
+});
+
+/**
+ * The store package is `npm run zip`, and the only thing standing between it and the TEST
+ * build is an environment variable: `ANAGRAM_TEST_GRANT_ALL=1` moves the whole build to
+ * `output-test/`, and `wxt zip` follows it there. Uploading that would hand every reader
+ * an extension that REQUIRES access to every site they visit — and since the two builds
+ * are otherwise byte-for-byte the same work, nothing about the package would look wrong.
+ *
+ * Two things keep it from happening, and both are checked here: wxt.config.ts refuses to
+ * run `wxt zip` at all with that variable set, and the variant it does build is telling
+ * itself — the site patterns sit in `host_permissions` rather than in the optional list.
+ * So a zip anybody ever has in their hands can be opened and told apart in one look.
+ */
+describe("the test build cannot be mistaken for the store package", () => {
+  const shipping = target("chrome-mv3");
+  const variant = target("chrome-mv3", "output-test");
+
+  it.skipIf(!variant.ready)("the variant REQUIRES the site patterns, and offers none", () => {
+    expect(variant.manifest.host_permissions ?? []).toEqual([...DAEMON_ORIGINS, ...ALL_SITES]);
+    expect(variant.manifest.optional_host_permissions).toBeUndefined();
+  });
+
+  it.skipIf(!variant.ready || !shipping.ready)("so the two manifests can never read alike", () => {
+    // The one key that decides it, read the way a reviewer would read it.
+    const requires = (m: Manifest) => ALL_SITES.every((p) => (m.host_permissions ?? []).includes(p));
+    expect(requires(variant.manifest)).toBe(true);
+    expect(requires(shipping.manifest)).toBe(false);
+  });
+
+  it("`wxt zip` refuses to run with ANAGRAM_TEST_GRANT_ALL set", () => {
+    // The guard lives in wxt.config.ts, which cannot be imported here (it is the build's
+    // own config and would run WXT's plugin machinery), so what is pinned is that the
+    // refusal is still there and still reads both the variable and the zip command.
+    const config = readFileSync(DECIDES, "utf8");
+    expect(config).toMatch(/if \(TEST_GRANT_ALL && process\.argv\.slice\(2\)\.includes\("zip"\)\)/);
+    expect(config).toMatch(/would package the TEST build/);
   });
 });

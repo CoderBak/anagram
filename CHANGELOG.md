@@ -368,6 +368,17 @@ Notable changes to Anagram, newest first. The format follows
 
 ### Changed
 
+- **`npm run zip` refuses to package the test build.** The suites load a variant of the
+  extension where the two optional site patterns are REQUIRED instead
+  (`ANAGRAM_TEST_GRANT_ALL=1`), and that variable also moves the whole build to
+  `output-test/` — which `wxt zip` would have followed, producing a store package that
+  demands access to every site a reader visits and is otherwise identical to the real one.
+  `wxt.config.ts` now refuses the `zip` command outright with that variable set (`wxt
+  build` is untouched, since building the variant is what `scripts/buildTest.mjs` does),
+  and `test/node/permissions.test.ts` gains three cases: the variant's manifest carries the
+  site patterns as required and offers none, the two manifests therefore cannot read alike,
+  and the refusal is still in the config.
+
 - **`anagram update` no longer pipes an unread script into a shell, and `bench.py` no
   longer ships.** When a folder had no `app/install.sh`, `update` fetched `install.sh`
   from GitHub and piped it straight into `sh` with this folder's name in its environment —

@@ -23,6 +23,22 @@ import { ALL_SITES, DAEMON_ORIGINS } from "./lib/access/patterns";
 const TEST_GRANT_ALL = process.env.ANAGRAM_TEST_GRANT_ALL === "1";
 
 /**
+ * `wxt zip` builds the package that is uploaded to the store, and with the variable above
+ * set it would package the TEST build: an extension that REQUIRES access to every site,
+ * which is the one thing this one must never ask a reader for. The two builds differ in a
+ * single manifest key and are otherwise identical, so nothing about the zip would look
+ * wrong — this is the only place the mistake can be caught. `wxt build` is deliberately
+ * left alone: building the variant is exactly what scripts/buildTest.mjs does.
+ */
+if (TEST_GRANT_ALL && process.argv.slice(2).includes("zip")) {
+  throw new Error(
+    "ANAGRAM_TEST_GRANT_ALL=1 is set, and `wxt zip` would package the TEST build — the one " +
+      "that requires access to every site. Unset it and run `npm run zip` again; that always " +
+      "packages the shipping build from output/.",
+  );
+}
+
+/**
  * lib/i18n.ts imports the English messages so every lookup has a fallback where there is
  * no extension API (the esbuild unit bundle, vitest) or no longer one (a content script
  * whose extension context was invalidated). Two things about that file are dead weight in
