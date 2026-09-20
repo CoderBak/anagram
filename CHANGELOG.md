@@ -9,6 +9,17 @@ Notable changes to Anagram, newest first. The format follows
 
 ### Added
 
+- **The listing screenshots, at the size the store takes.** `node test/store-shots.mjs`
+  writes five PNGs at exactly 1280×800 (device pixel ratio 1) into `docs/store/`: an
+  article being read, one flagged chip's card open, the flagged-paragraph panel, a PDF in
+  the reading mode with chips on the real page, and the first-run page. Headless, against
+  the TEST build and the fake daemon — whose verdicts are a pure function of the text, so
+  the same chips carry the same numbers on every run — with the article answered from the
+  test process at a domain of its own, because "Turn off on localhost" in the panel's last
+  line says nothing to anybody. `docs/screenshots/` are 1180×780 and 300×470 and the store
+  accepts neither, which is what `docs/store-listing.md` had open under "Still to be
+  produced".
+
 - **A door to the reading mode for a PDF on your computer.** Options → Detection → *Read
   a PDF from this computer* opens the PDF view with no document, where a file can be
   dropped or picked. It was reachable only from a PDF tab before — and a `file:` tab can
