@@ -165,7 +165,7 @@ describe("the test build cannot be mistaken for the store package", () => {
   const variant = target("chrome-mv3", "output-test");
 
   it.skipIf(!variant.ready)("the variant REQUIRES the site patterns, and offers none", () => {
-    expect(variant.manifest.host_permissions ?? []).toEqual([...DAEMON_ORIGINS, ...ALL_SITES]);
+    expect(variant.manifest.host_permissions ?? []).toEqual([...ALL_SITES]);
     expect(variant.manifest.optional_host_permissions).toBeUndefined();
   });
 
