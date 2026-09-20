@@ -11,7 +11,7 @@
 //
 //   a. does /health get through as an ordinary cross-origin request?
 //   b. does a batch really score, preflight and all?
-//   c. is a daemon that answers NO CORS headers (every daemon before 0.3.3) reported as
+//   c. is a daemon that answers NO CORS headers (every daemon before this change) reported as
 //      "outdated" rather than "unreachable"? Those need opposite advice, and they look
 //      identical to the browser;
 //   d. is nothing listening still "unreachable"?

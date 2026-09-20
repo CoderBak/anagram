@@ -22,12 +22,18 @@ The local daemon should be running (`~/.anagram/bin/anagram start`) or every chi
 
 ---
 
-1. **A fresh install reads nothing.**
-   After loading the extension, open any article (e.g. `https://en.wikipedia.org/wiki/Alan_Turing`).
+1. **A fresh install warns about nothing, and reads nothing.**
+   Watch the install itself: dropping the unpacked folder on `chrome://extensions` must
+   show **no permission warning at all** — not "Read and change your data on
+   127.0.0.1", not anything. Since the daemon answers CORS for extension origins, the
+   extension declares no `host_permissions`, and the four it does declare (`storage`,
+   `activeTab`, `contextMenus`, `scripting`) are all silent ones. On Firefox, the
+   *Load Temporary Add-on* flow and `about:addons` → Anagram → *Permissions* should
+   likewise list nothing required.
+   Then open any article (e.g. `https://en.wikipedia.org/wiki/Alan_Turing`).
    Expected: **no chips, no underlines, no floating ball** — nothing at all. Chrome's
    *Details → Site access* for Anagram should read **"On specific sites"** with an empty
-   list, and `chrome://extensions` should show no "Read and change your data" warning
-   beyond `127.0.0.1` and `localhost`.
+   list.
 
 1b. **One page, with nothing granted.**
    On that same article, open the popup. It opens with "Detection is off for this page."
@@ -141,6 +147,33 @@ The local daemon should be running (`~/.anagram/bin/anagram start`) or every chi
     while the prompt is up (unlike Chrome). `about:addons` → Anagram → *Permissions* has
     the "Access your data for all websites" switch, which is check 4's equivalent.
 
+14. **The REAL daemon, read over CORS.**
+    This is the one thing no suite here can reach: every automated check talks to
+    `test/fake-daemon.mjs`, which mirrors the real daemon's CORS behaviour but is not it,
+    and `npm run test:daemon` exercises the real `serve.py` through FastAPI's TestClient,
+    which is not a browser. Only a real browser against a real `anagramd` closes that gap.
+
+    With the daemon running (`~/.anagram/bin/anagram start`) and the SHIPPING build
+    loaded, grant a site and open an article.
+    Expected: chips with real numbers. The popup's backend line names the model and the
+    device. In DevTools → Network, on the extension's own service worker, `/score` is
+    preceded by an `OPTIONS` preflight that comes back 204 with
+    `Access-Control-Allow-Origin: chrome-extension://<this extension>`.
+    Then, on any ordinary web page, run `fetch("http://127.0.0.1:8765/health")` in the
+    console.
+    Expected: it FAILS — the daemon answers a page 403 with no CORS header at all. The
+    grant is to extensions and to nothing else.
+
+15. **A daemon older than the extension.**
+    Update the extension without updating the daemon (or run an older `anagramd` on the
+    configured port).
+    Expected: if it still speaks contract 2.x, paragraphs go on being scored and the
+    popup, the first-run page and the options page all ask for
+    `~/.anagram/bin/anagram update`. If it is old enough to answer no CORS headers at
+    all, the same three say the daemon needs updating — **not** that it is not running,
+    which is the distinction the no-cors probe in `lib/backend/httpClient.ts` exists to
+    make.
+
 ---
 
 ## What the suites do cover
@@ -151,3 +184,10 @@ pattern building and the worker's registration/injection/teardown against faked
 the shipping manifests ask for. Every browser suite runs against the test build, which is
 the "all sites granted" state — so the ambient experience after check 3 is the one the
 whole suite already measures.
+
+`node test/daemon-cors-check.mjs` is the exception: it loads the SHIPPING build in Chrome
+and in Firefox, with nothing granted, and proves that scoring works with no host permission
+— /health read over CORS, a batch whose preflight the daemon counted, a daemon answering no
+CORS headers reported as needing an update rather than as absent, and a web page unable to
+read the daemon at all. It talks to the fake daemon, which is why checks 14 and 15 above
+are still by hand.

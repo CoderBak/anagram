@@ -88,7 +88,7 @@ const HealthSchema = v.object({
   lid: v.optional(v.nullable(v.string())),
   dtype: v.optional(v.string()),
   /** The daemon's own release, which the extension compares with its own. Optional
-   *  because every daemon before 0.3.3 answered without it. */
+   *  because every daemon built before this field existed answered without it. */
   app_version: v.optional(v.nullable(v.pipe(v.string(), v.maxLength(64)))),
 });
 

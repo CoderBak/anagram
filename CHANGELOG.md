@@ -469,6 +469,29 @@ Notable changes to Anagram, newest first. The format follows
   report state a 0–1 score and not a percentage, `markStyle` holds one of two styles and
   not three, and a tab's `sessionStorage` holds two keys and not one — the PDF reading
   mode's bounce guard was never written down.
+- **Anagram asks for no host permission at all — and the daemon must be updated with it.**
+  The shipping manifest declared `http://127.0.0.1/*` and `http://localhost/*`, the last
+  thing in it that made a browser warn at install, and it was never about reaching the
+  daemon (`connect-src` decides that) but about being allowed to READ its answers: the
+  daemon sent no CORS headers. It sends them now, for extension origins only — the caller's
+  own origin echoed back with `Vary: Origin`, its preflight answered `GET, POST` /
+  `content-type` / ten minutes, plus `Access-Control-Allow-Private-Network` when Chrome's
+  private-network check asks — while a web origin, `null` or anything else gets exactly what
+  it always got, 403 with no CORS header, on the preflight as much as on the request. The
+  CORS layer sits innermost, so a preflight passes the body cap, the Origin guard and the
+  Host allow-list on the way in, as the POST it precedes will. So both shipping manifests
+  now have no host permission at all, `DAEMON_ORIGINS` is gone from `lib/access/patterns.ts`,
+  and installing Anagram warns about nothing. **A daemon older than this release cannot be
+  used by this extension**: it is still listening and still healthy, and it is invisible to
+  the browser — so `/health` carries the daemon's own version now, the extension compares it
+  with its own, and when the daemon is behind (or old enough to answer no CORS headers at
+  all) the popup, the first-run page and the options page say so and name
+  `~/.anagram/bin/anagram update` rather than telling anybody to start something that is
+  already running. Telling those two apart is a single `no-cors` probe: an opaque answer
+  means something IS there. `test/daemon-cors-check.mjs` proves the whole of it on the
+  SHIPPING build in Chrome and Firefox (the ordinary suites load the test build, whose
+  `http://*/*` covers loopback and bypasses CORS entirely), and `npm run test:daemon` pins
+  the daemon's half.
 
 - **A release waits for the whole test matrix.** The release workflow used to run the type check and
   the Node tests and then publish; it now calls the CI workflow as its first job (`gate`) and

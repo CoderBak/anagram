@@ -137,8 +137,8 @@ same annotation to attach to, and they produce the same chips from the same pipe
 
 One paragraph each, for exactly what `output/chrome-mv3/manifest.json` declares:
 `"permissions": ["storage", "activeTab", "contextMenus", "scripting"]`,
-`"host_permissions": ["http://127.0.0.1/*", "http://localhost/*"]`,
-`"optional_host_permissions": ["https://*/*", "http://*/*"]`.
+`"optional_host_permissions": ["https://*/*", "http://*/*"]` — and **no `host_permissions`
+key at all**, which is why installing Anagram shows no permission warning.
 
 **`storage`**
 
@@ -191,20 +191,20 @@ assembled from a string, or evaluated: the file injected is content-scripts/cont
 from inside the package.
 ```
 
-**Host permissions `http://127.0.0.1/*` and `http://localhost/*` (required)**
+**No required host permission — why the extension asks for none**
 
 ```text
-The local scoring service. Anagram sends paragraph text to it over plain HTTP on
-loopback — GET /health to see whether it is running, POST /score to have paragraphs
-scored — in lib/backend/httpClient.ts, and that is the only network destination the
-extension has. A match pattern cannot carry a port, so both spellings of loopback are
-needed to cover whichever port the user configured; the address setting itself accepts
-only http://127.0.0.1[:port] and http://localhost[:port] (lib/settings/settings.ts,
-isLoopbackUrl), and the manifest's Content-Security-Policy limits connect-src to the
-same two hosts, so neither a setting nor a bug can point it elsewhere. The extension
-does NOT run its content script on pages served from localhost: lib/access/patterns.ts
-(browsingOrigins) removes these two patterns from the set a content script may be
-registered on, so a local development server is an ordinary ungranted site.
+Anagram declares no host_permissions. Its only network destination is a scoring service
+the user installed on their own computer, reached over plain HTTP on loopback — GET
+/health to see whether it is running, POST /score to have paragraphs scored — in
+lib/backend/httpClient.ts. Two things keep it there, and neither is a permission: the
+address setting accepts only http://127.0.0.1[:port] and http://localhost[:port]
+(lib/settings/settings.ts, isLoopbackUrl), and the manifest's Content-Security-Policy
+limits connect-src to those same two hosts plus the extension's own origin, so neither
+a setting nor a bug can point it elsewhere. Reading the service's answer needs no
+permission either, because the service answers CORS for extension origins and refuses
+every other origin outright (anagramd/serve.py); a web page cannot read it whatever
+this extension does. The extension therefore installs with access to nothing at all.
 ```
 
 **Optional host permissions `https://*/*` and `http://*/*`**
@@ -352,8 +352,9 @@ curl -fsSL https://github.com/CoderBak/anagram/releases/latest/download/install.
 
 The chips fill in within seconds: a number from `.00` to `1.0` and a colour-coded verdict.
 Hover one for the four probabilities. The daemon is `anagramd/` in the repository, a
-FastAPI server that binds loopback, refuses any other `Host`, sets no CORS headers and
-speaks only to an extension origin or its own.
+FastAPI server that binds loopback, refuses any other `Host`, speaks only to an extension
+origin or its own, and answers CORS headers to extension origins alone — which is why this
+extension needs no host permission to read it, and why a web page still cannot.
 
 ### How to verify it makes no network request
 
@@ -383,6 +384,16 @@ it sends that text to loopback. The two are separate mechanisms, and the second 
 locked down independently by `connect-src`. The site access is also entirely optional and
 absent at install: `optional_host_permissions` in the manifest, requested only inside a
 user's click (`lib/access/grant.ts`), and revocable from `chrome://extensions`.
+
+**Why is there no `http://127.0.0.1/*` host permission if it talks to a local server?**
+Because it does not need one. A host permission is what lets an extension read a response
+the server did not authorise it to read; the scoring service authorises it, by answering
+CORS headers naming the extension's origin — and refusing every other origin with 403
+before the question arises (`anagramd/serve.py`). So the extension requires no host at
+all, the install dialog warns about nothing, and what the extension may CONNECT to is
+still decided by `connect-src`, not by a permission. The trade is that the service must
+be as new as the extension: when it is not, the extension says so and names
+`~/.anagram/bin/anagram update`.
 
 **Why `<all_urls>`-shaped patterns rather than a list of sites?**
 Anagram is not about particular websites — it annotates prose wherever the reader finds

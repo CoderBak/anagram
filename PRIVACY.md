@@ -144,9 +144,19 @@ transmitted; it goes to your clipboard for you to paste where you choose.
 | `activeTab` | One-off actions on the tab in front of you, on a site you granted nothing for. Lasts for that one page. |
 | `contextMenus` | The right-click entries. |
 | `scripting` | Registers the content script for exactly the sites you granted, and injects it for the one-off actions above. Only the extension's own packaged files are injected; no code is downloaded or evaluated. |
-| `http://127.0.0.1/*`, `http://localhost/*` (required) | The local scoring service. The only thing the extension may reach. |
 | `https://*/*`, `http://*/*` (**optional**) | The sites you choose to let Anagram read. Not held at install; asked for inside your click; revocable. |
 | `clipboardWrite` (**optional**, Firefox only) | *Copy page diagnostics*. Asked for the first time you use it. Chrome needs no permission for it. |
+
+**No host permission at all.** Anagram used to require `http://127.0.0.1/*` and
+`http://localhost/*` — not to reach the local scoring service, which the policy above
+allows in any case, but to *read* what it answered, because the service sent no CORS
+headers. It sends them now, and only to extensions (`anagramd/serve.py`), so the permission
+bought nothing and cost you the one sentence your browser had to warn you about at install.
+Nothing the extension can reach changed: `connect-src` is the same list, and a web page is
+still refused outright by the service before the question of reading it arises. The price is
+that the service and the extension must move together — if the extension updates and the
+service does not, the popup says so and names the one command that fixes it,
+`~/.anagram/bin/anagram update`.
 
 ## How to remove everything
 

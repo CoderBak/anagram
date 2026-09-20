@@ -129,7 +129,7 @@ const MAX_RECORDED_TEXTS = 500;
  *
  * Two knobs stand in for an OLD daemon, the one thing the extension has to tell from an
  * absent one: `cors: false` answers no CORS header and no preflight, the way every daemon
- * before 0.3.3 did, and `appVersion` sets (or, as null, omits) the version `/health`
+ * before this change did, and `appVersion` sets (or, as null, omits) the version `/health`
  * reports.
  */
 export function startFakeDaemon({ port = 0, latency = [60, 160], model = FAKE_MODEL, delayFor = null, tokensFor = null, cors = true, appVersion = EXTENSION_VERSION } = {}) {
