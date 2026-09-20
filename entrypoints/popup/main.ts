@@ -180,7 +180,9 @@ function paint(): void {
       statusEl.textContent = "";
       break;
   }
-  statusEl.hidden = statusEl.textContent === "" && lead.status === "none";
+  // On a PDF tab the button says the whole of it; an empty line above it would only be a
+  // gap where a sentence used to be.
+  statusEl.hidden = lead.status === "none";
 
   actionEl.textContent = t(ACTION_LABEL[lead.action]);
   actionEl.disabled = false;
@@ -271,7 +273,12 @@ async function refreshSite(host: string): Promise<void> {
  * being off, which is what the button below then offers to change for this one page.
  */
 async function refreshStatus(tabId: number | undefined): Promise<void> {
-  if (tabId != null && !(facts.pattern && !granted)) {
+  // There is nobody to ask on a site nothing has been granted for, and asking anyway
+  // would only cost the popup a rejection to swallow.
+  const canAsk = tabId != null && !(facts.pattern !== null && !granted);
+  facts.tab = null;
+  counts = null;
+  if (canAsk) {
     try {
       const state = (await browser.tabs.sendMessage(tabId, {
         action: ACTIONS.GET_TAB_STATE,
@@ -284,12 +291,8 @@ async function refreshStatus(tabId: number | undefined): Promise<void> {
       facts.tab = { enabled: state.enabled };
       counts = state.enabled ? state : null;
     } catch {
-      facts.tab = null;
-      counts = null;
+      /* no content script there, or the page tore it down — Anagram is not running */
     }
-  } else {
-    facts.tab = null;
-    counts = null;
   }
   asked = true;
   paint();
