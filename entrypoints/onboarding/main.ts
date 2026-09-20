@@ -38,6 +38,7 @@ const daemonLink = document.getElementById("daemon-link")!;
 const accessRow = document.getElementById("row-access")!;
 const accessState = document.getElementById("access-state")!;
 const accessGrant = document.getElementById("access-grant") as HTMLButtonElement;
+const accessOnce = document.getElementById("access-once")!;
 const readyRow = document.getElementById("row-ready")!;
 const readyText = document.getElementById("ready-text")!;
 const install = document.getElementById("install")!;
@@ -124,6 +125,11 @@ function renderReady(): void {
  * a state and one button: the browser's own prompt is the explanation, and the button is
  * gone once every site is granted. Somebody who would rather grant sites one at a time
  * does that from the popup on each site, and this row then counts them.
+ *
+ * Beside the button, while anything is still to grant, the way that grants nothing at all:
+ * the toolbar icon's "Analyze this page" runs one page on `activeTab`. It is the fastest
+ * way to see what Anagram does, and a reader who never finds it has to decide about every
+ * site they own before they have seen a single chip.
  */
 async function renderAccess(): Promise<void> {
   const { all, sites } = await accessSummary();
@@ -134,6 +140,7 @@ async function renderAccess(): Promise<void> {
       ? tn("accessSites", sites.length)
       : t("accessNone");
   accessGrant.hidden = all;
+  accessOnce.hidden = all;
   hasAccess = all || sites.length > 0;
   renderReady();
 }

@@ -338,8 +338,8 @@
   "popupAllSettings": {
     "message": "全部设置"
   },
-  "popupDetection": {
-    "message": "检测"
+  "popupWhereItRuns": {
+    "message": "运行范围"
   },
   "popupAllWebsites": {
     "message": "所有网站"
@@ -353,9 +353,6 @@
   "popupSiteUnavailable": {
     "message": "此处不可用"
   },
-  "popupDisplay": {
-    "message": "外观"
-  },
   "popupShow": {
     "message": "显示"
   },
@@ -364,6 +361,9 @@
   },
   "popupFlaggedOnly": {
     "message": "仅存疑"
+  },
+  "popupMore": {
+    "message": "更多"
   },
   "popupMarkText": {
     "message": "标记正文"
@@ -376,9 +376,6 @@
   },
   "styleAlways": {
     "message": "每个段落"
-  },
-  "popupAnalysis": {
-    "message": "分析"
   },
   "popupScope": {
     "message": "范围"
@@ -395,17 +392,14 @@
   "popupReadPdf": {
     "message": "阅读此 PDF"
   },
+  "popupOpenReader": {
+    "message": "阅读本机 PDF…"
+  },
   "popupRescan": {
     "message": "重新扫描"
   },
   "popupAnalyzeOnce": {
     "message": "分析本页"
-  },
-  "popupHintToggle": {
-    "message": "$1+$2+$3 显示或隐藏标记"
-  },
-  "popupHintList": {
-    "message": "$1+$2+$3 列出存疑段落 · $4/$5 逐个跳转"
   },
   "popupFlaggedCount": {
     "message": "$1 个存疑"
@@ -448,12 +442,6 @@
   },
   "popupRetry": {
     "message": "重试"
-  },
-  "popupRunUpdate": {
-    "message": "，请运行 anagram update "
-  },
-  "popupRunStart": {
-    "message": "，请运行 anagram start "
   },
   "optionsTitle": {
     "message": "Anagram for Chrome — 选项"
@@ -761,6 +749,12 @@
   },
   "onbHowItReads": {
     "message": "它怎么读"
+  },
+  "onbGuide": {
+    "message": "指南"
+  },
+  "onbAccessOnce": {
+    "message": "或点工具栏图标 → 分析本页，只分析这一页"
   },
   "onbVerdicts": {
     "message": "看懂结论"

@@ -464,9 +464,9 @@
     "message": "All settings",
     "description": "Popup gear button: opens the options page."
   },
-  "popupDetection": {
-    "message": "Detection",
-    "description": "Popup group heading."
+  "popupWhereItRuns": {
+    "message": "Where it runs",
+    "description": "Popup group heading over the two site switches."
   },
   "popupAllWebsites": {
     "message": "All websites",
@@ -484,10 +484,6 @@
     "message": "unavailable here",
     "description": "Line under 'This site' on a page with no hostname."
   },
-  "popupDisplay": {
-    "message": "Display",
-    "description": "Popup group heading."
-  },
   "popupShow": {
     "message": "Show",
     "description": "Popup label for the all/flagged segmented control."
@@ -499,6 +495,10 @@
   "popupFlaggedOnly": {
     "message": "Flagged only",
     "description": "Popup segment: mark only heavily edited and AI-generated."
+  },
+  "popupMore": {
+    "message": "More",
+    "description": "Popup: the summary of the folded-away group holding the three controls that are set once and forgotten."
   },
   "popupMarkText": {
     "message": "Mark text",
@@ -516,13 +516,9 @@
     "message": "Every paragraph",
     "description": "Popup mark style option: mark every analyzed paragraph."
   },
-  "popupAnalysis": {
-    "message": "Analysis",
-    "description": "Popup group heading."
-  },
   "popupScope": {
     "message": "Scope",
-    "description": "Popup label for the page/main segmented control."
+    "description": "Popup label for the scope select."
   },
   "popupScopeTitle": {
     "message": "Main content = the article body only (Readability)",
@@ -530,15 +526,19 @@
   },
   "popupWholePage": {
     "message": "Whole page",
-    "description": "Scope segment."
+    "description": "Scope option."
   },
   "popupMainContent": {
     "message": "Main content",
-    "description": "Scope segment."
+    "description": "Scope option."
   },
   "popupReadPdf": {
     "message": "Read this PDF",
     "description": "Popup button on a PDF tab."
+  },
+  "popupOpenReader": {
+    "message": "Read a PDF file…",
+    "description": "Popup button on a page nothing can run on: opens the reading mode with no document, for a PDF on this computer."
   },
   "popupRescan": {
     "message": "Rescan page",
@@ -547,14 +547,6 @@
   "popupAnalyzeOnce": {
     "message": "Analyze this page",
     "description": "Popup button on a page Anagram is off for: analyze it once, writing no setting and asking for no permission."
-  },
-  "popupHintToggle": {
-    "message": "$1+$2+$3 toggles the overlay",
-    "description": "Popup key hint. $1-$3 are <kbd> elements from the page (Alt, Shift, P)."
-  },
-  "popupHintList": {
-    "message": "$1+$2+$3 lists flagged · $4/$5 walk it",
-    "description": "Popup key hint. $1-$5 are <kbd> elements from the page (Alt, Shift, L, J, K)."
   },
   "popupFlaggedCount": {
     "message": "$1 flagged",
@@ -594,31 +586,23 @@
   },
   "popupModel": {
     "message": "Model: ",
-    "description": "Popup backend line, before the model id. Keep any spacing the language needs."
+    "description": "Popup model line at the foot, before the model id. Keep any spacing the language needs."
   },
   "popupLocal": {
     "message": " · local",
-    "description": "Popup backend line, after the model id."
+    "description": "Popup model line, after the model id."
   },
   "popupDaemonMismatch": {
     "message": "Daemon version mismatch",
-    "description": "Popup backend line: a daemon answered, of the wrong generation."
+    "description": "Popup status: a daemon answered, of the wrong generation. The command under it is the one that fixes it."
   },
   "popupDaemonDown": {
     "message": "Daemon not running",
-    "description": "Popup backend line: nothing answered."
+    "description": "Popup status: nothing answered. The command under it is the one that starts it."
   },
   "popupRetry": {
     "message": "Retry",
-    "description": "Popup button beside the backend line."
-  },
-  "popupRunUpdate": {
-    "message": " — run: anagram update ",
-    "description": "Popup backend line advice. The command is never translated; keep the spacing."
-  },
-  "popupRunStart": {
-    "message": " — run: anagram start ",
-    "description": "Popup backend line advice. The command is never translated; keep the spacing."
+    "description": "Popup button while the daemon is not answering: ask it again."
   },
 
   "optionsTitle": {
@@ -1030,9 +1014,17 @@
     "message": "How it reads",
     "description": "First-run card heading over the sample chips."
   },
+  "onbGuide": {
+    "message": "Guide",
+    "description": "First-run card heading over the folded list: everything the page used to say in eight cards, one title at a time."
+  },
+  "onbAccessOnce": {
+    "message": "or the toolbar icon → Analyze this page, for one page",
+    "description": "First-run setup strip, under Site access: the way to see Anagram work without granting a site."
+  },
   "onbVerdicts": {
     "message": "Reading the verdicts",
-    "description": "First-run card heading."
+    "description": "First-run summary of the guide item about the numbers."
   },
   "onbVerdictsBody": {
     "message": "The model ($1, ICLR 2026) rates how far a paragraph sits between untouched human writing (.00) and fully AI-generated text (1.0). The number is $2 written by AI — it is the model's estimate of how much AI editing changed the text as a whole. Hover (or tap) a chip for the full readout: the four-way probability split behind the verdict and the word count. EditLens reads English only: other languages get a gray chip with the detected language code instead of a number. Every number is an $3. Snippets under ~50 words are only scored when grouped with neighbors, and a short post is scored as a whole — a $4 on a chip means it covers that many paragraphs.",

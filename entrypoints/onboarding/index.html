@@ -15,20 +15,20 @@
         --c-human: #4ecb71; --c-light: #e6c84c; --c-heavy: #ff9a57; --c-ai: #ff7b81; --c-none: #9aa3ad;
       }
       body { margin: 0; background: var(--background); color: var(--foreground); font-size: 15px; line-height: 1.55; }
-      .page { max-width: 720px; margin: 0 auto; padding: 40px 24px 56px; }
-      header.hdr { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; }
-      header.hdr img { width: 56px; height: 56px; border-radius: 14px; }
+      .page { max-width: 760px; margin: 0 auto; padding: 22px 24px 32px; }
+      header.hdr { display: flex; align-items: center; gap: 16px; margin-bottom: 14px; }
+      header.hdr img { width: 48px; height: 48px; border-radius: 12px; }
       header.hdr h1 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
       header.hdr .ver { margin-top: 4px; font-size: 13px; color: var(--muted-foreground); }
-      .lede { margin: 0 0 22px; font-size: 16.5px; line-height: 1.55; }
+      .lede { margin: 0 0 18px; font-size: 16.5px; line-height: 1.55; }
       .lede em { font-style: italic; }
       /* Chinese has no italic. Asked for one, the browser slants the glyphs itself, and a
          synthetic oblique on Han characters is a typographic error rather than emphasis —
          so the two emphasised runs on this page take their quotation marks instead, which
          the Chinese messages carry. Keyed on <html lang>, which localizePage() sets. */
       html[lang^="zh"] em { font-style: normal; }
-      .stack { display: flex; flex-direction: column; gap: 14px; }
-      .card > section { display: flex; flex-direction: column; gap: 10px; }
+      .stack { display: flex; flex-direction: column; gap: 12px; }
+      .card > section { display: flex; flex-direction: column; gap: 9px; }
       .card p { margin: 0; color: var(--muted-foreground); font-size: 14px; line-height: 1.6; }
       .card p strong { color: var(--foreground); font-weight: 600; }
       .card ul { margin: 0; padding-left: 18px; list-style: disc; color: var(--muted-foreground); font-size: 14px; line-height: 1.6; }
@@ -38,7 +38,7 @@
       /* The demo: three fragments marked and chipped exactly like the in-page overlay —
          which at rest means nothing at all under human and lightly-edited text, and a
          thin solid rule under the two flagged bands. */
-      .demo { padding: 4px 0 2px; font-family: Georgia, "Iowan Old Style", "Times New Roman", serif; font-size: 16.5px; line-height: 1.8; }
+      .demo { padding: 2px 0 0; font-family: Georgia, "Iowan Old Style", "Times New Roman", serif; font-size: 16.5px; line-height: 1.62; }
       .demo-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 8px; }
       .frag { padding: 0 2px; }
       .u-flagged { text-decoration-line: underline; text-decoration-style: solid; text-decoration-skip-ink: none; text-underline-offset: 3px; }
@@ -57,22 +57,46 @@
       .c-heavy { color: var(--c-heavy); } .c-heavy .cdot { background: var(--d-heavy); box-shadow: 0 0 0 3px rgba(232, 89, 12, 0.18); }
       .c-ai { color: var(--c-ai); } .c-ai .cdot { background: var(--d-ai); box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18); }
 
-      .bands { display: flex; flex-wrap: wrap; gap: 8px; }
+      .bands { display: flex; flex-wrap: wrap; gap: 7px; }
       .bands .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
       .b-human .dot { background: var(--d-human); } .b-light .dot { background: var(--d-light); }
       .b-heavy .dot { background: var(--d-heavy); } .b-ai .dot { background: var(--d-ai); } .b-none .dot { background: var(--d-none); }
       .b-lang .dot { background: var(--d-none); box-shadow: inset 0 0 0 2px var(--card); }
+      /* The guide: one folded list instead of eight cards, so the page that greets a new
+         install is the setup strip and the demo — everything a first look needs — and the
+         rest is a title away. Closed by default; nothing is hidden, only folded. */
+      .card > section.guide { gap: 0; }
+      .guide > details { border-top: 1px solid var(--border); }
+      .guide > details:first-child { border-top: 0; }
+      /* Wide enough for two: seven titles in one column push the page past a screen,
+         which is the whole thing this list is here to prevent. */
+      @media (min-width: 620px) {
+        .card > section.guide { display: grid; grid-template-columns: 1fr 1fr; column-gap: 26px; align-items: start; }
+        .guide > details:nth-child(-n + 2) { border-top: 0; }
+      }
+      .guide > details > summary {
+        display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 2px 2px;
+        font-size: 14.5px; font-weight: 500; cursor: default; list-style: none;
+      }
+      .guide > details > summary::-webkit-details-marker { display: none; }
+      .guide > details > summary::before {
+        content: ""; flex: none; width: 6px; height: 6px; margin: 0 1px 1px 2px;
+        border-right: 1.5px solid var(--muted-foreground); border-bottom: 1.5px solid var(--muted-foreground);
+        transform: rotate(-45deg); transition: transform 120ms ease;
+      }
+      .guide > details[open] > summary::before { transform: rotate(45deg); margin-bottom: 3px; }
+      .guide > details > :not(summary) { margin: 0 2px 12px; }
       .kbd { vertical-align: middle; }
       /* Inline commands and key hints are what someone reads while fixing a broken
          install, and the muted foreground on the muted surface is 4.34:1 — under the
          4.5:1 WCAG 1.4.3 asks of body text. They take the page's own foreground. */
       code, .kbd { color: var(--foreground); }
-      footer.foot { margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--border); font-size: 13px; line-height: 1.6; color: var(--muted-foreground); }
+      footer.foot { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 13px; line-height: 1.6; color: var(--muted-foreground); }
       code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; background: var(--muted); padding: 1px 5px; border-radius: 5px; }
 
       /* Setup strip: three live rows, each a dot plus a few words. The dot never carries
          the meaning on its own — the words beside it say the same thing. */
-      .setup { display: flex; flex-direction: column; gap: 11px; }
+      .setup { display: flex; flex-direction: column; gap: 9px; }
       .srow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 12px; }
       .sname { display: flex; align-items: baseline; gap: 9px; flex: 0 0 auto; min-width: 126px; }
       .slabel { font-weight: 500; }
@@ -142,6 +166,8 @@
                     <span class="sval" id="access-state" data-i18n="onbChecking">checking&hellip;</span>
                     <button type="button" class="btn" data-variant="outline" data-size="xs" id="access-grant"
                       hidden data-i18n="accessAllowAll">Allow on all sites</button>
+                    <!-- The fastest way to see Anagram work, and it grants nothing at all. -->
+                    <span class="sdetail" id="access-once" hidden data-i18n="onbAccessOnce">or the toolbar icon &rarr; Analyze this page, for one page</span>
                   </span>
                 </div>
                 <div class="srow" id="row-ready" data-state="idle">
@@ -177,12 +203,6 @@
                 <span class="chip c-ai"><span class="cdot"></span>.96</span>
               </div>
             </div>
-          </section>
-        </section>
-
-        <section class="card" data-size="sm">
-          <header><h2 data-i18n="onbVerdicts">Reading the verdicts</h2></header>
-          <section>
             <div class="bands">
               <span class="badge b-human" data-variant="outline"><span class="dot"></span><span data-i18n="bandHuman">Human</span></span>
               <span class="badge b-light" data-variant="outline"><span class="dot"></span><span data-i18n="bandLight">Lightly edited</span></span>
@@ -191,6 +211,14 @@
               <span class="badge b-none" data-variant="outline"><span class="dot"></span><span data-i18n="bandUnavailable">Unavailable</span></span>
               <span class="badge b-lang" data-variant="outline"><span class="dot"></span><span data-i18n="bandUnsupported">Unsupported language</span></span>
             </div>
+          </section>
+        </section>
+
+        <section class="card" data-size="sm">
+          <header><h2 data-i18n="onbGuide">Guide</h2></header>
+          <section class="guide">
+            <details>
+            <summary data-i18n="onbVerdicts">Reading the verdicts</summary>
             <p data-i18n-html="onbVerdictsBody">The model (<strong>EditLens</strong>, ICLR 2026) rates how far a paragraph sits
               between untouched human writing (.00) and fully AI-generated text (1.0). The number is
               <strong data-i18n="onbNotShare">not a share of words</strong> written by AI &mdash; it is the model's estimate of
@@ -201,24 +229,20 @@
               under ~50 words are only scored when grouped with neighbors, and a short post is
               scored as a whole &mdash; a <strong>&times;2</strong> on a chip means it covers that
               many paragraphs.</p>
-          </section>
-        </section>
+            </details>
 
-        <section class="card" data-size="sm">
-          <header><h2 data-i18n="onbBall">The floating ball</h2></header>
-          <section>
+            <details>
+            <summary data-i18n="onbBall">The floating ball</summary>
             <p data-i18n-html="onbBallBody">Lives bottom-right on every page Anagram runs on. <strong data-i18n="onbClick">Click</strong> it to show or hide all marks
               instantly. <strong data-i18n="onbDrag">Drag</strong> it anywhere &mdash; it snaps to the nearest edge and
               tucks itself half-away when idle; hover brings it back. Its red <strong data-i18n="onbCounter">counter</strong>
               opens the triage panel: filter by verdict, jump to each flagged paragraph,
               <strong data-i18n="panelCopyReport">Copy report</strong>, or turn Anagram off for this site &mdash; all inside the
               panel.</p>
-          </section>
-        </section>
+            </details>
 
-        <section class="card" data-size="sm">
-          <header><h2 data-i18n="onbPower">Power moves</h2></header>
-          <section>
+            <details>
+            <summary data-i18n="onbPower">Power moves</summary>
             <ul>
               <li data-i18n-html="onbPowerSelection"><strong data-i18n="onbSelectionName">Analyze selection</strong> &mdash; select text, right-click, done. Works
                 inside text boxes and editors too.</li>
@@ -232,24 +256,20 @@
               <li data-i18n-html="onbPowerFlagged"><strong data-i18n="onbFlaggedName">Flagged only</strong> &mdash; switch <em data-i18n="onbFlaggedPath">Show &rarr; Flagged only</em> in the
                 popup and calm pages stay untouched; marks appear only where something was flagged.</li>
             </ul>
-          </section>
-        </section>
+            </details>
 
-        <section class="card" data-size="sm">
-          <header><h2 data-i18n="onbDocs">Google Docs</h2></header>
-          <section>
+            <details>
+            <summary data-i18n="onbDocs">Google Docs</summary>
             <p data-i18n-html="onbDocsBody">Docs is an editor, not a page &mdash; so Anagram brings its own reading surface. Click
               <strong data-i18n="actionAnalyzeDocument">Analyze document</strong> on the floating ball and a <strong data-i18n="onbReadingMode">reading mode</strong>
               opens right in the tab, with every paragraph of the document analyzed. No navigation, and
               your file is never touched. Press <kbd class="kbd">Esc</kbd> or <strong data-i18n="actionBackToEditor">Back to
               editor</strong> to return instantly &mdash; or use <strong data-i18n="docsOpenAsPage">Open as page</strong> if you
               prefer a separate tab.</p>
-          </section>
-        </section>
+            </details>
 
-        <section class="card" data-size="sm">
-          <header><h2 data-i18n="onbPdfs">PDFs</h2></header>
-          <section>
+            <details>
+            <summary data-i18n="onbPdfs">PDFs</summary>
             <p data-i18n-html="onbPdfBody">A PDF keeps its own pages: Anagram draws them exactly as they are &mdash;
               figures, formulas, columns &mdash; and lays the chips and marks over them. Click
               <strong data-i18n="actionAnalyzePdf">Analyze PDF</strong> on the floating ball, <strong data-i18n="popupReadPdf">Read this PDF</strong> in
@@ -257,26 +277,23 @@
               Anagram</strong>. Short paragraphs are read together as on any page, a password-protected
               file asks for its password, and the file stays on your computer. For a PDF that is
               already on your computer, open the reading mode from the options page and drop the file in.</p>
-          </section>
-        </section>
+            </details>
 
-        <section class="card" data-size="sm">
-          <header><h2 data-i18n="onbPrivacy">Privacy</h2></header>
-          <section>
+            <details>
+            <summary data-i18n="onbPrivacy">Privacy</summary>
             <p data-i18n-html="onbPrivacyBody">Nothing leaves your computer, and the browser enforces it: the extension's own
               policy lets it reach the local <code>anagramd</code> daemon and nothing else &mdash; it cannot connect to
               the internet at all. It reads only the sites you allow. Requests carry only a
               <strong data-i18n="onbHostnameHint">hostname and language hint</strong> by design &mdash; never full URLs.</p>
-          </section>
-        </section>
+            </details>
 
-        <section class="card" data-size="sm">
-          <header><h2 data-i18n="onbYours">Make it yours</h2></header>
-          <section>
+            <details>
+            <summary data-i18n="onbYours">Make it yours</summary>
             <p data-i18n-html="onbYoursBody">The <strong data-i18n="onbPopupName">popup</strong> and <strong data-i18n="onbOptionsName">options page</strong> hold the rest: pick a
               marking style (<strong data-i18n="onbStyleQuiet">flagged text only</strong> or <strong data-i18n="onbStyleAlways">every analyzed paragraph</strong>), choose the
               analysis scope (<strong data-i18n="onbScopePage">whole page</strong> or <strong data-i18n="onbScopeMain">main content only</strong>), and
               check the local scoring daemon's status.</p>
+            </details>
           </section>
         </section>
       </div>

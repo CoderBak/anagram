@@ -729,6 +729,11 @@ const PAGE_SPECS = [
     viewport: { width: 300, height: 620 },
     async prepare(page) {
       await page.waitForTimeout(700);
+      // The three controls that are set once and forgotten live behind a closed
+      // <details>, and a closed one is display:none — which every check below skips.
+      // Open it, or they would quietly stop being judged at all.
+      await page.evaluate(() => document.querySelector("details.more")?.setAttribute("open", ""));
+      await page.waitForTimeout(150);
     },
   },
   {

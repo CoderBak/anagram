@@ -151,6 +151,18 @@ export default defineContentScript({
      *  compare against, so an off rule that was already there ends nothing. */
     let onceBaseline: Promise<RuleState> = Promise.resolve(NO_RULE);
 
+    /** Begin such a run. Nothing is written: the page is analyzed and the site is off
+     *  again next time. Both doors into it — the menu entry / the popup's button, and the
+     *  toggle shortcut pressed where there is nothing to toggle — come through here. */
+    const startOnce = (): void => {
+      enabled = true;
+      onceForPage = true;
+      // Read the rules as they are NOW: the run is measured against this, so only a later
+      // change to them can end it.
+      onceBaseline = effectiveRule(effectiveHost).then(ruleState, () => NO_RULE);
+      startWhenGated();
+    };
+
     const frameGateOk = (): boolean =>
       isTop ||
       (window.innerWidth >= MIN_FRAME_WIDTH &&
@@ -363,12 +375,7 @@ export default defineContentScript({
             if (enabled) {
               if (frameGateOk()) orchestrator.rescan();
             } else {
-              enabled = true;
-              onceForPage = true;
-              // Read the rules as they are NOW: the run is measured against this, so only
-              // a later change to them can end it.
-              onceBaseline = effectiveRule(effectiveHost).then(ruleState, () => NO_RULE);
-              startWhenGated();
+              startOnce();
             }
             return;
 
@@ -427,7 +434,13 @@ export default defineContentScript({
           }
 
           case ACTIONS.TOGGLE_OVERLAY:
-            if (enabled && frameGateOk()) orchestrator.toggle();
+            // The toggle shortcut. On a page Anagram is off for there is no overlay to
+            // show or hide, and the key used to do nothing at all — on a fresh install,
+            // where no site is granted, that is every page. It now does what the popup's
+            // button does there instead: one run, nothing written (the command carries
+            // `activeTab`, so the worker could put a script here in the first place).
+            if (!enabled) startOnce();
+            else if (frameGateOk()) orchestrator.toggle();
             return;
 
           // The remaining keyboard commands are the PAGE's, not a frame's: the panel and

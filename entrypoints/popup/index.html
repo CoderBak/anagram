@@ -15,7 +15,6 @@
       header.hdr p { margin: 1px 0 0; font-size: 11.5px; color: var(--muted-foreground); }
       main { padding: 4px 14px 12px; }
       .grp { padding: 9px 0 8px; border-bottom: 1px solid var(--border); }
-      .grp:last-of-type { border-bottom: 0; }
       .grp > h2 { margin: 0 0 7px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted-foreground); }
       .grp .field { min-height: 30px; }
       .grp .field + .field { margin-top: 5px; }
@@ -24,20 +23,41 @@
       .grp .field > select { width: 150px; height: 30px; font-size: 12px; }
       .tabs > [role="tablist"] { height: 30px; }
       .tabs > [role="tablist"] > [role="tab"] { font-size: 12px; padding: 2px 9px; }
-      .status { font-size: 12px; color: var(--muted-foreground); min-height: 17px; margin: 2px 0 1px; }
+      /* The action block: the page's state, then the one thing to do about it. */
+      .act { padding-top: 11px; }
+      .status { font-size: 12px; color: var(--muted-foreground); margin: 0 0 8px; }
       .status .flagged { color: var(--destructive); font-weight: 600; }
-      .backend { font-size: 11px; color: var(--muted-foreground); min-height: 15px; margin: 0 0 9px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
-      .backend b { color: var(--foreground); font-weight: 600; }
-      .backend.down b { color: var(--destructive); }
+      .status.down { color: var(--destructive); font-weight: 600; }
+      .cmd { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin: -3px 0 9px; }
+      .cmd code { overflow-wrap: anywhere; }
       .w-full { width: 100%; }
-      #readPdf:not([hidden]) + #rescan { margin-top: 6px; }
-      .hint-line { margin: 9px 0 0; font-size: 11px; color: var(--muted-foreground); text-align: center; }
-      .hint-line + .hint-line { margin-top: 4px; }
-      .hint-line .kbd { vertical-align: middle; }
-      /* Inline commands and key hints are what someone reads while fixing a broken
-         install, and the muted foreground on the muted surface is 4.34:1 — under the
-         4.5:1 WCAG 1.4.3 asks of body text. They take the page's own foreground. */
-      code, .kbd { color: var(--foreground); }
+      /* Rarely touched, and all of it lives on the options page too. */
+      details.more { padding: 4px 0 6px; }
+      details.more > summary {
+        display: flex; align-items: center; gap: 5px; min-height: 26px; padding: 2px 0;
+        font-size: 12px; color: var(--muted-foreground); cursor: default; list-style: none;
+      }
+      details.more > summary::-webkit-details-marker { display: none; }
+      details.more > summary::before {
+        content: ""; width: 5px; height: 5px; border-right: 1.5px solid currentColor;
+        border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); margin: 0 2px 1px 3px;
+        transition: transform 120ms ease;
+      }
+      details.more[open] > summary::before { transform: rotate(45deg); margin-bottom: 3px; }
+      details.more > .field:first-of-type { margin-top: 2px; }
+      details.more > .field { min-height: 30px; }
+      details.more > .field + .field { margin-top: 5px; }
+      details.more > .field > label, details.more > .field > section > label { font-size: 13px; font-weight: 450; }
+      details.more > .field > select { width: 150px; height: 30px; font-size: 12px; }
+      /* The rule belongs to the model line, not to the group above it: with no daemon
+         there is no model line, and a separator under the last control would be a line
+         drawn under nothing. */
+      .model { font-size: 11px; color: var(--muted-foreground); margin: 0; padding: 9px 0 0; border-top: 1px solid var(--border); }
+      .model b { color: var(--foreground); font-weight: 600; }
+      /* Inline commands are what someone reads while fixing a broken install, and the
+         muted foreground on the muted surface is 4.34:1 — under the 4.5:1 WCAG 1.4.3 asks
+         of body text. They take the page's own foreground. */
+      code { color: var(--foreground); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; background: var(--muted); padding: 1px 5px; border-radius: 5px; }
       /* Hit areas, not paint. WCAG 2.5.8 (target size, minimum) measures the region that
          ACCEPTS the pointer, so these controls keep the size Basecoat draws them at and an
          invisible box centred on each brings it to 24x24. */
@@ -71,12 +91,17 @@
     </header>
 
     <main>
+      <section class="grp act">
+        <div class="status" id="status">…</div>
+        <div class="cmd" id="cmd" hidden><code id="cmdText"></code><button id="cmdCopy" class="btn"
+          data-variant="outline" data-size="xs" type="button" data-i18n="onbCopy">Copy</button></div>
+        <!-- Label, variant and action are the page's state (./state.ts); until the page
+             has answered there is nothing honest to put on it. -->
+        <button id="action" class="btn w-full" data-variant="outline" data-size="sm" type="button" disabled></button>
+      </section>
+
       <section class="grp">
-        <h2 data-i18n="popupDetection">Detection</h2>
-        <div class="field" data-orientation="horizontal">
-          <label for="enabled" data-i18n="popupAllWebsites">All websites</label>
-          <input id="enabled" type="checkbox" role="switch" data-size="sm" />
-        </div>
+        <h2 data-i18n="popupWhereItRuns">Where it runs</h2>
         <div class="field" data-orientation="horizontal">
           <section>
             <label for="siteEnabled" data-i18n="popupThisSite">This site</label>
@@ -84,10 +109,13 @@
           </section>
           <input id="siteEnabled" type="checkbox" role="switch" data-size="sm" />
         </div>
+        <div class="field" data-orientation="horizontal">
+          <label for="enabled" data-i18n="popupAllWebsites">All websites</label>
+          <input id="enabled" type="checkbox" role="switch" data-size="sm" />
+        </div>
       </section>
 
       <section class="grp">
-        <h2 data-i18n="popupDisplay">Display</h2>
         <div class="field" data-orientation="horizontal">
           <label id="displayModeLbl" data-i18n="popupShow">Show</label>
           <div class="tabs">
@@ -97,6 +125,10 @@
             </nav>
           </div>
         </div>
+      </section>
+
+      <details class="more">
+        <summary data-i18n="popupMore">More</summary>
         <div class="field" data-orientation="horizontal">
           <label for="highlights" data-i18n="popupMarkText">Mark text</label>
           <input id="highlights" type="checkbox" role="switch" data-size="sm" />
@@ -108,29 +140,16 @@
             <option value="always" data-i18n="styleAlways">Every paragraph</option>
           </select>
         </div>
-      </section>
-
-      <section class="grp">
-        <h2 data-i18n="popupAnalysis">Analysis</h2>
         <div class="field" data-orientation="horizontal">
-          <label id="scopeLbl" data-i18n="popupScope">Scope</label>
-          <div class="tabs" title="Main content = the article body only (Readability)" data-i18n-title="popupScopeTitle">
-            <nav role="tablist" aria-orientation="horizontal" aria-labelledby="scopeLbl" data-seg="analysisScope">
-              <button type="button" role="tab" data-value="page" aria-selected="true" data-i18n="popupWholePage">Whole page</button>
-              <button type="button" role="tab" data-value="main" aria-selected="false" data-i18n="popupMainContent">Main content</button>
-            </nav>
-          </div>
+          <label for="analysisScope" data-i18n="popupScope">Scope</label>
+          <select id="analysisScope" title="Main content = the article body only (Readability)" data-i18n-title="popupScopeTitle">
+            <option value="page" data-i18n="popupWholePage">Whole page</option>
+            <option value="main" data-i18n="popupMainContent">Main content</option>
+          </select>
         </div>
-      </section>
+      </details>
 
-      <section class="grp">
-        <div class="status" id="status">…</div>
-        <div class="backend" id="backend"></div>
-        <button id="readPdf" class="btn w-full" data-size="sm" type="button" hidden data-i18n="popupReadPdf">Read this PDF</button>
-        <button id="rescan" class="btn w-full" data-variant="outline" data-size="sm" type="button" data-i18n="popupRescan">Rescan page</button>
-        <p class="hint-line" data-i18n-html="popupHintToggle"><kbd class="kbd">Alt</kbd>+<kbd class="kbd">Shift</kbd>+<kbd class="kbd">P</kbd> toggles the overlay</p>
-        <p class="hint-line" data-i18n-html="popupHintList"><kbd class="kbd">Alt</kbd>+<kbd class="kbd">Shift</kbd>+<kbd class="kbd">L</kbd> lists flagged &middot; <kbd class="kbd">J</kbd>/<kbd class="kbd">K</kbd> walk it</p>
-      </section>
+      <p class="model" id="backend"></p>
     </main>
 
     <script type="module" src="./main.ts"></script>

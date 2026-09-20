@@ -1,10 +1,15 @@
 // entrypoints/popup/main.ts — popup logic.
-// Global on/off, per-site on/off (the rule that decides the active tab, which a parent
-// domain may own — see ./siteSwitch.ts),
-// display mode / mark-text / marking-style / analysis-scope controls (all applied
-// live via settings watches in the content script), scored + flagged status line
-// (GET_TAB_STATE), Rescan, and a gear to the full options page.
+//
+// The popup opens over whatever page the reader is looking at, and Anagram installs with
+// access to no site, so most of those pages are ones it is doing nothing on. The top of
+// the popup is therefore the page's state and ONE button that follows it — rescan, analyze
+// this page once, read this PDF, open a PDF from this computer, retry the daemon
+// (./state.ts decides which). Under it: where Anagram runs (this site, all websites — the
+// rule that decides the active tab may belong to a parent domain, see ./siteSwitch.ts),
+// what it shows, and a folded-away "More" for the three controls that are set once and
+// forgotten. The model line closes the popup; the shortcuts are listed on the options page.
 import { browser } from "#imports";
+import type { PublicPath } from "wxt/browser";
 import "../../lib/ui/basecoat-vega.cdn.min.css";
 import { followSystemTheme } from "../../lib/ui/theme";
 import { localizePage } from "../../lib/ui/localize";
@@ -19,11 +24,12 @@ import {
 } from "../../lib/settings/settings";
 import type { MarkStyle } from "../../lib/settings/settings";
 import { siteLine, switchWrite } from "./siteSwitch";
+import { ACTION_LABEL, popupLead, type PageFacts, type PopupLead } from "./state";
 import { ALL_SITES, sitePattern } from "../../lib/access/patterns";
 import { accessSummary, hasAccess, requestAccess } from "../../lib/access/grant";
 import { ACTIONS } from "../../lib/messaging/protocol";
 import type { BackendStatus, ControlMessage, TabState } from "../../lib/messaging/protocol";
-import { looksLikePdfUrl } from "../../lib/pdf/source";
+import { looksLikePdfUrl, READER_PAGE } from "../../lib/pdf/source";
 import { PDF_TAB_SCRIPTS_RUN } from "../../lib/surface";
 
 const enabledEl = document.getElementById("enabled") as HTMLInputElement;
@@ -31,14 +37,21 @@ const siteEl = document.getElementById("siteEnabled") as HTMLInputElement;
 const siteHostEl = document.getElementById("siteHost") as HTMLElement;
 const highlightsEl = document.getElementById("highlights") as HTMLInputElement;
 const markStyleEl = document.getElementById("markStyle") as HTMLSelectElement;
-const readPdfEl = document.getElementById("readPdf") as HTMLButtonElement;
-const rescanEl = document.getElementById("rescan") as HTMLButtonElement;
+const scopeEl = document.getElementById("analysisScope") as HTMLSelectElement;
+const actionEl = document.getElementById("action") as HTMLButtonElement;
 const statusEl = document.getElementById("status") as HTMLElement;
+const cmdEl = document.getElementById("cmd") as HTMLElement;
+const cmdTextEl = document.getElementById("cmdText") as HTMLElement;
+const cmdCopyEl = document.getElementById("cmdCopy") as HTMLButtonElement;
 const gearEl = document.getElementById("gear") as HTMLButtonElement;
 const backendEl = document.getElementById("backend") as HTMLElement;
-// Segmented controls are Basecoat tab lists (buttons with aria-selected).
+// The one segmented control left is a Basecoat tab list (buttons with aria-selected).
 const displayModeEls = segButtons("displayMode");
-const scopeEls = segButtons("analysisScope");
+
+/** What fixes a daemon that is not answering, and what fixes one of another generation.
+ *  The same two commands the first-run page shows, in the same shape. */
+const START_CMD = "~/.anagram/bin/anagram start";
+const UPDATE_CMD = "~/.anagram/bin/anagram update";
 
 function segButtons(name: string): HTMLButtonElement[] {
   return Array.from(
@@ -91,11 +104,33 @@ function checkSeg(els: HTMLButtonElement[], value: string): void {
   }
 }
 
-function setStatusText(text: string): void {
-  statusEl.textContent = text;
-}
+/**
+ * Everything the action block is painted from, in one place: the tab's own facts arrive
+ * first (they are read straight off the tab), the content script's answer and the daemon's
+ * come back over messages. Each of them repaints, so the block never shows two things at
+ * once — and never a button whose reason has already gone away.
+ */
+const facts: PageFacts = {
+  hasTab: false,
+  pattern: null,
+  pdfTab: false,
+  pdfReadable: PDF_TAB_SCRIPTS_RUN,
+  tab: null,
+  daemon: "up",
+};
+/** The counts, once a running page has reported them — the "counts" status line. */
+let counts: TabState | null = null;
+/** What the button is currently offering, so its click knows what it promised. */
+let lead: PopupLead = popupLead(facts);
+/**
+ * Has the page been asked what it is doing yet? Nothing is painted before it has: the
+ * daemon's answer usually arrives first (it is cached in the worker) and painting on it
+ * alone would offer "Analyze this page" for a moment on a page that is already running.
+ */
+let asked = false;
 
-function showCounts(state: TabState): void {
+/** The counts line: analyzed, flagged, and the two kinds of paragraph that were not read. */
+function countsLine(state: TabState): Node[] {
   const flaggedEl = document.createElement("span");
   flaggedEl.textContent = t("popupFlaggedCount", state.flagged);
   if (state.flagged > 0) flaggedEl.classList.add("flagged");
@@ -103,50 +138,84 @@ function showCounts(state: TabState): void {
   // the language gate refused — both are counted apart from the analyzed number.
   const unavailable = state.unavailable ?? 0;
   const analyzed = state.scored - (state.unsupported ?? 0) - unavailable;
-  statusEl.replaceChildren(
+  return [
     document.createTextNode(tn("popupAnalyzed", analyzed)),
     flaggedEl,
     document.createTextNode(state.unsupported ? t("popupNotEnglish", state.unsupported) : ""),
     document.createTextNode(unavailable ? t("popupUnavailable", unavailable) : ""),
-  );
+  ];
 }
 
-/** Is the local daemon scoring right now? Down → say so, offer Retry. */
-async function refreshBackend(tabId: number | undefined, probe = false): Promise<void> {
+/** The status line and the button, from the facts as they stand. */
+function paint(): void {
+  if (!asked) return;
+  lead = popupLead(facts);
+  const down = lead.status === "daemon";
+  statusEl.classList.toggle("down", down);
+  // A daemon that answers with another contract major is there — it needs updating, and
+  // telling the user to start it would send them down the wrong path.
+  const mismatch = facts.daemon === "mismatch";
+  cmdEl.hidden = !down;
+  if (down) cmdTextEl.textContent = mismatch ? UPDATE_CMD : START_CMD;
+
+  switch (lead.status) {
+    case "counts":
+      statusEl.replaceChildren(...(counts ? countsLine(counts) : [t("popupRescanning")]));
+      break;
+    case "off":
+      statusEl.textContent = t("popupOff");
+      break;
+    case "unsupported":
+      statusEl.textContent = t("popupUnsupportedPage");
+      break;
+    case "noTab":
+      statusEl.textContent = t("popupNoTab");
+      break;
+    case "daemon":
+      statusEl.textContent = mismatch ? t("popupDaemonMismatch") : t("popupDaemonDown");
+      break;
+    case "none":
+      statusEl.textContent = "";
+      break;
+  }
+  statusEl.hidden = statusEl.textContent === "" && lead.status === "none";
+
+  actionEl.textContent = t(ACTION_LABEL[lead.action]);
+  actionEl.disabled = false;
+  if (lead.primary) delete actionEl.dataset.variant;
+  else actionEl.dataset.variant = "outline";
+}
+
+/** The model line at the foot: what is scoring, when anything is. */
+function paintModel(s: BackendStatus | undefined): void {
+  if (!s || s.active !== "server" || !s.model) {
+    backendEl.textContent = ""; // the action block above is already saying it
+    backendEl.hidden = true;
+    return;
+  }
+  backendEl.hidden = false;
+  const b = document.createElement("b");
+  b.textContent = s.model.id;
+  backendEl.replaceChildren(t("popupModel"), b, t("popupLocal") + (s.server.device ? " · " + s.server.device : ""));
+}
+
+/** Is the local daemon scoring right now? Down → the block above says so, and offers Retry. */
+async function refreshBackend(probe = false): Promise<void> {
   try {
     const s = (await browser.runtime.sendMessage({
       action: ACTIONS.GET_BACKEND_STATUS,
       probe,
     })) as BackendStatus | undefined;
     if (!s) throw new Error("no status");
-    const b = document.createElement("b");
-    backendEl.classList.toggle("down", s.active !== "server");
-    if (s.active === "server" && s.model) {
-      b.textContent = s.model.id;
-      backendEl.replaceChildren(t("popupModel"), b, t("popupLocal") + (s.server.device ? " · " + s.server.device : ""));
-    } else {
-      // A daemon that answers with another contract major is there — it needs updating,
-      // and telling the user to start it would send them down the wrong path.
-      const mismatch = s.server.reason === "contract";
-      b.textContent = mismatch ? t("popupDaemonMismatch") : t("popupDaemonDown");
-      const retry = document.createElement("button");
-      retry.type = "button";
-      retry.className = "btn";
-      retry.dataset.variant = "outline";
-      retry.dataset.size = "xs";
-      retry.textContent = t("popupRetry");
-      retry.addEventListener("click", () => {
-        retry.disabled = true;
-        void refreshBackend(tabId, true).then(() => {
-          sendToTab(tabId, { action: ACTIONS.RETRY_BACKEND });
-          setTimeout(() => void refreshStatus(tabId), 800);
-        });
-      });
-      backendEl.replaceChildren(b, mismatch ? t("popupRunUpdate") : t("popupRunStart"), retry);
-    }
+    facts.daemon =
+      s.active === "server" && s.model ? "up" : s.server.reason === "contract" ? "mismatch" : "down";
+    paintModel(s);
   } catch {
-    backendEl.textContent = "";
+    // No worker to ask at all: say nothing about a model, and leave the page's own state
+    // alone rather than blaming the daemon for a failure that is not its.
+    paintModel(undefined);
   }
+  paint();
 }
 
 /**
@@ -161,8 +230,6 @@ let globalDefault = true;
 let granted = false;
 /** Every site is granted — what "All websites" needs before it can mean what it says. */
 let allGranted = false;
-/** The origin pattern to ask for, or null on a page no extension may be granted. */
-let sitePat: string | null = null;
 
 /** What the settings alone say about this site, access aside. */
 const ruleSaysOn = (): boolean => (siteRule ? siteRule.mode === "on" : globalDefault);
@@ -175,7 +242,7 @@ const ruleSaysOn = (): boolean => (siteRule ? siteRule.mode === "on" : globalDef
  */
 async function refreshSite(host: string): Promise<void> {
   globalDefault = await settings.enabled.getValue();
-  granted = await hasAccess(sitePat);
+  granted = await hasAccess(facts.pattern);
   allGranted = (await accessSummary()).all;
   // "All websites" is painted from the same two facts as "This site": the setting AND the
   // access. A fresh install has the setting on and may read nothing, and a switch that
@@ -194,40 +261,38 @@ async function refreshSite(host: string): Promise<void> {
 }
 
 /**
- * Anagram is off for this page, so the button under the status offers the one thing that
- * still makes sense there: analyze it once. On a running page it stays "Rescan page".
+ * Ask the page what it is doing. A site nothing has been granted for holds no content
+ * script to ask — that is not an error and not an unsupported page, it is simply Anagram
+ * being off, which is what the button below then offers to change for this one page.
  */
-let pageIsOff = false;
-function setPageOff(off: boolean): void {
-  pageIsOff = off;
-  rescanEl.textContent = off ? t("popupAnalyzeOnce") : t("popupRescan");
+async function refreshStatus(tabId: number | undefined): Promise<void> {
+  if (tabId != null && !(facts.pattern && !granted)) {
+    try {
+      const state = (await browser.tabs.sendMessage(tabId, {
+        action: ACTIONS.GET_TAB_STATE,
+      })) as TabState | undefined;
+      if (!state) throw new Error("no state");
+      // Chrome's PDF tab answers with pdf:true; its own URL is the other evidence, read
+      // in init(). A `file:` PDF is neither: no content script may read it back for the
+      // reading mode, so it is not offered (facts.pattern is null there).
+      if (state.pdf && facts.pattern) facts.pdfTab = true;
+      facts.tab = { enabled: state.enabled };
+      counts = state.enabled ? state : null;
+    } catch {
+      facts.tab = null;
+      counts = null;
+    }
+  } else {
+    facts.tab = null;
+    counts = null;
+  }
+  asked = true;
+  paint();
 }
 
-async function refreshStatus(tabId: number | undefined): Promise<void> {
-  if (tabId == null) {
-    setStatusText(t("popupNoTab"));
-    return;
-  }
-  // An ordinary page nothing has been granted for has no content script to ask, and it is
-  // not an unsupported page either: Anagram is simply off here, which the switch above
-  // says and this line agrees with.
-  if (sitePat && !granted) {
-    setStatusText(t("popupOff"));
-    setPageOff(true);
-    return;
-  }
-  try {
-    const state = (await browser.tabs.sendMessage(tabId, {
-      action: ACTIONS.GET_TAB_STATE,
-    })) as TabState | undefined;
-    if (!state) throw new Error("no state");
-    if (state.pdf) readPdfEl.hidden = false;
-    if (state.enabled) showCounts(state);
-    else setStatusText(t("popupOff"));
-    setPageOff(!state.enabled);
-  } catch {
-    setStatusText(t("popupUnsupportedPage"));
-  }
+/** The reading mode with no document in it: its empty state is a drop zone and a picker. */
+function openEmptyReader(): void {
+  void browser.tabs.create({ url: browser.runtime.getURL(READER_PAGE as PublicPath) });
 }
 
 async function init(): Promise<void> {
@@ -235,15 +300,19 @@ async function init(): Promise<void> {
   followSystemTheme();
   const tab = await activeTab();
   const host = hostOf(tab?.url);
-  sitePat = sitePattern(tab?.url);
+  facts.hasTab = tab != null;
+  facts.pattern = sitePattern(tab?.url);
+  // Only a PDF served over http(s) can be handed to the reading mode: the bytes come from
+  // the tab showing it, and a `file:` page may not re-read itself (lib/pdf/handoff.ts).
+  facts.pdfTab = facts.pattern !== null && looksLikePdfUrl(tab?.url);
 
   highlightsEl.checked = await settings.showHighlights.getValue();
   markStyleEl.value = normalizeMarkStyle(await settings.markStyle.getValue());
+  scopeEl.value = await settings.analysisScope.getValue();
   checkSeg(displayModeEls, await settings.displayMode.getValue());
-  checkSeg(scopeEls, await settings.analysisScope.getValue());
   // A page no extension may be granted — a browser page, the web store, a file — has
   // nothing this switch could do.
-  siteEl.disabled = !host || sitePat === null;
+  siteEl.disabled = !host || facts.pattern === null;
   await refreshSite(host);
 
   enabledEl.addEventListener("change", async () => {
@@ -273,12 +342,12 @@ async function init(): Promise<void> {
       const write = switchWrite(host, siteRule, globalDefault, want);
       written = write.kind === "clear" ? clearSiteOverride(write.host) : setSiteOverride(write.host, write.mode);
     }
-    if (want && sitePat && !granted) {
+    if (want && facts.pattern && !granted) {
       // Turning it on for a site Anagram may not read is asking for the site. The prompt
       // is the browser's and the explanation is the browser's; Chrome closes the popup to
       // show it, so everything that follows a yes happens in the worker — the content
       // script is registered and the open tabs are injected there (lib/access/worker.ts).
-      void requestAccess([sitePat]).then((ok) => {
+      void requestAccess([facts.pattern]).then((ok) => {
         if (ok) granted = true;
         void refreshSite(host); // only reached where the popup survives the prompt
       });
@@ -300,35 +369,62 @@ async function init(): Promise<void> {
     void settings.markStyle.setValue(markStyleEl.value as MarkStyle);
   });
 
-  bindSeg(displayModeEls, (v) => void settings.displayMode.setValue(v as "all" | "flagged"));
-  bindSeg(scopeEls, (v) => void settings.analysisScope.setValue(v as "page" | "main"));
-
-  // Chrome's PDF tab answers GET_TAB_STATE with pdf:true; the tab URL is the fallback
-  // evidence. Not on Firefox: its built-in viewer runs no content script, so there is
-  // nothing there to hand the reading mode the document's bytes (lib/pdf/handoff.ts) and
-  // an offer we cannot keep is worse than no offer.
-  if (PDF_TAB_SCRIPTS_RUN && looksLikePdfUrl(tab?.url)) readPdfEl.hidden = false;
-  readPdfEl.addEventListener("click", () => {
-    void browser.runtime.sendMessage({
-      action: ACTIONS.OPEN_PDF_READER,
-      url: tab?.url,
-      tabId: tab?.id,
-    });
-    window.close();
+  scopeEl.addEventListener("change", () => {
+    void settings.analysisScope.setValue(scopeEl.value as "page" | "main");
   });
 
-  rescanEl.addEventListener("click", () => {
-    if (pageIsOff && tab?.id != null) {
-      // A page Anagram is off for — by a rule, or because nothing was ever granted for its
-      // site — is analyzed ONCE, with no setting written and no permission asked: opening
-      // this popup gave the extension `activeTab`, which is all the worker needs.
-      void browser.runtime.sendMessage({ action: ACTIONS.ANALYZE_TAB, tabId: tab.id });
-      window.close(); // the answer is on the page, not in here
-      return;
+  bindSeg(displayModeEls, (v) => void settings.displayMode.setValue(v as "all" | "flagged"));
+
+  // Copy on an extension page: the Clipboard API is always there, so no textarea dance.
+  cmdCopyEl.addEventListener("click", () => {
+    void navigator.clipboard.writeText(cmdTextEl.textContent ?? "").then(
+      () => {
+        cmdCopyEl.textContent = t("copied");
+        setTimeout(() => {
+          cmdCopyEl.textContent = t("onbCopy");
+        }, 1400);
+      },
+      () => {
+        /* nothing to fall back to, and nothing to say — the command is on screen */
+      },
+    );
+  });
+
+  actionEl.addEventListener("click", () => {
+    switch (lead.action) {
+      case "analyze":
+        // A page Anagram is off for — by a rule, or because nothing was ever granted for
+        // its site — is analyzed ONCE, with no setting written and no permission asked:
+        // opening this popup gave the extension `activeTab`, which is all the worker needs.
+        if (tab?.id != null) void browser.runtime.sendMessage({ action: ACTIONS.ANALYZE_TAB, tabId: tab.id });
+        window.close(); // the answer is on the page, not in here
+        return;
+      case "readPdf":
+        void browser.runtime.sendMessage({
+          action: ACTIONS.OPEN_PDF_READER,
+          url: tab?.url,
+          tabId: tab?.id,
+        });
+        window.close();
+        return;
+      case "openReader":
+        openEmptyReader();
+        window.close();
+        return;
+      case "retry":
+        actionEl.disabled = true;
+        void refreshBackend(true).then(() => {
+          sendToTab(tab?.id, { action: ACTIONS.RETRY_BACKEND });
+          setTimeout(() => void refreshStatus(tab?.id), 800);
+        });
+        return;
+      case "rescan":
+        sendToTab(tab?.id, { action: ACTIONS.RESCAN });
+        counts = null; // "Rescanning…" until the page reports again
+        paint();
+        setTimeout(() => void refreshStatus(tab?.id), 1500);
+        return;
     }
-    sendToTab(tab?.id, { action: ACTIONS.RESCAN });
-    setStatusText(t("popupRescanning"));
-    setTimeout(() => void refreshStatus(tab?.id), 1500);
   });
 
   gearEl.addEventListener("click", () => {
@@ -336,7 +432,7 @@ async function init(): Promise<void> {
   });
 
   void refreshStatus(tab?.id);
-  void refreshBackend(tab?.id);
+  void refreshBackend();
 }
 
 void init();
