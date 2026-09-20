@@ -6,12 +6,18 @@
 // 2. With anagramd down: reload; the popup must say the daemon is not running and NO
 //    paragraph may carry a verdict (there is no fallback scorer).
 //
-//   node test/verify-backend.mjs                     (ANAGRAMD_PORT to override 8765)
+//   node test/verify-backend.mjs                   a private daemon on a free port
+//   ANAGRAMD_PORT=8801 node test/verify-backend.mjs    a private daemon THERE (busy → error)
+//   ANAGRAMD_REUSE=1 node test/verify-backend.mjs      the daemon already on 8765
 //
-// The extension is pointed at THAT port before any page opens, so a run on a spare port
-// never reads — or stops — the daemon somebody else is using.
+// By default the daemon is this run's OWN, on a port nothing is using — part 2 below STOPS
+// the daemon to prove the extension shows nothing without one, and that is not a thing to
+// do to a daemon somebody else started. Reusing a running one has to be asked for
+// (test/daemon-port.mjs), and then part 2 is skipped and nothing is stopped. The extension
+// is pointed at the chosen port before any page opens either way.
 import { spawn } from "node:child_process";
 import { launchExtension, BADGE_SEL } from "./harness.mjs";
+import { resolveDaemon } from "./daemon-port.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
@@ -19,21 +25,29 @@ import http from "node:http";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
-const PORT = Number(process.env.ANAGRAMD_PORT || 8765);
-const BASE = `http://127.0.0.1:${PORT}`;
 
-const health = () => fetch(`${BASE}/health`, { signal: AbortSignal.timeout(1500) }).then((r) => (r.ok ? r.json() : null), () => null);
+const healthOf = (base) => fetch(`${base}/health`, { signal: AbortSignal.timeout(1500) }).then((r) => (r.ok ? r.json() : null), () => null);
+// A refusal here is a sentence for a person to read, not a stack trace; exit 2 is the
+// code this script already uses for "did not run", as against a mismatch's 1.
+const target = await resolveDaemon(healthOf).catch((e) => {
+  console.error(e.message);
+  process.exit(2);
+});
+const PORT = target.port;
+const BASE = target.base;
+const health = () => healthOf(BASE);
 
-// --- daemon (spawn, capture its log so we can count requests) ---------------------------
+// --- daemon (ours unless we were told to borrow one; its log is where the request count
+//     comes from, which is why a borrowed daemon cannot be counted) ---------------------
 let daemonLog = "";
 let daemon = null;
-if (!(await health())) {
+if (target.start) {
   daemon = spawn("sh", [join(ROOT, "anagramd", "run.sh"), "--port", String(PORT)], { stdio: ["ignore", "pipe", "pipe"] });
   daemon.stdout.on("data", (d) => (daemonLog += d));
   daemon.stderr.on("data", (d) => (daemonLog += d));
   for (let i = 0; i < 120 && !(await health()); i++) await new Promise((r) => setTimeout(r, 1000));
 } else {
-  console.log(`(reusing the anagramd already listening on ${BASE} — this run neither started nor will stop it; request counting unavailable)`);
+  console.log(`(reusing the anagramd already listening on ${BASE} — this run neither started nor will stop it; request counting and the daemon-down half are skipped)`);
 }
 const h = await health();
 if (!h) {

@@ -973,6 +973,20 @@ Notable changes to Anagram, newest first. The format follows
 
 ### Tests
 
+- **The two real-daemon suites no longer borrow a daemon they did not start.**
+  `test/server.mjs` and `test/verify-backend.mjs` took whatever was answering on 8765,
+  which is where an installed Anagram listens: a run meant to exercise the build sent its
+  test paragraphs through somebody's own daemon, and `test:verify` — which stops the
+  daemon to prove the extension shows nothing without one — came within a step of
+  stopping it. Both now start a daemon of their OWN on a port the system picked and stop
+  only that one. Borrowing a running daemon is asked for (`ANAGRAMD_REUSE=1`, with
+  `ANAGRAMD_PORT` to name it); a busy `ANAGRAMD_PORT` without that flag, and a reuse with
+  nothing answering, are refusals that say what to run instead. The decision is a pure
+  function in `test/daemon-port.mjs` with its own vitest table
+  (`test/node/daemonPort.test.ts`, 12 cases), because the suites themselves cannot be run
+  without the 1.4 GB model and a rule about somebody else's daemon is worth nothing if it
+  is only ever checked by hand.
+
 - The score's shape and the quiet marks, in `test/unit.mjs`: `formatScore` /
   `spokenScore` at both ends of the scale, which `::highlight()` rules exist at
   rest in each mark style, that nothing anywhere is wavy, and that an active

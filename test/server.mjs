@@ -1,14 +1,21 @@
 // test/server.mjs — end-to-end against the REAL daemon (local-only; needs the model).
 //
-// Spawns anagramd (or reuses one already listening), then loads the built extension in a
+// Spawns an anagramd of its own, then loads the built extension in a
 // fresh Chromium profile pointed at THAT daemon, and checks that genuine EditLens verdicts
 // flow through: the API answers with sane buckets and refuses what it must refuse, chips
 // render a bare ".93", the hover card shows the 4-bucket distribution with the EditLens footer,
 // and the popup names the model. The daemon is the only scorer there is.
 //
-//   node test/server.mjs            (ANAGRAMD_PORT to override 8765)
+// By default this run starts a daemon OF ITS OWN on a port nothing is using, and stops it
+// again at the end. A daemon that is already running is used only when you ask for it, and
+// is then never stopped here — see test/daemon-port.mjs for the four ways to ask:
+//
+//   node test/server.mjs                          a private daemon on a free port
+//   ANAGRAMD_PORT=8801 node test/server.mjs        a private daemon THERE (busy → error)
+//   ANAGRAMD_REUSE=1 node test/server.mjs          the daemon already on 8765
 import { spawn } from "node:child_process";
 import { launchExtension, BADGE_SEL, requireBuild } from "./harness.mjs";
+import { resolveDaemon } from "./daemon-port.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
@@ -16,8 +23,26 @@ import http from "node:http";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
-const PORT = Number(process.env.ANAGRAMD_PORT || 8765);
-const BASE = `http://127.0.0.1:${PORT}`;
+
+async function healthOf(base) {
+  try {
+    const r = await fetch(`${base}/health`, { signal: AbortSignal.timeout(1500) });
+    return r.ok ? await r.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+// Decided before anything is built or launched, so a run that must not go ahead says why
+// in the first second rather than after a browser has opened. Its refusals are sentences
+// for a person to read, not stack traces, and exit 2 is "did not run" rather than "failed".
+const target = await resolveDaemon(healthOf).catch((e) => {
+  console.error(e.message);
+  process.exit(2);
+});
+const PORT = target.port;
+const BASE = target.base;
+const health = () => healthOf(BASE);
 
 requireBuild();
 
@@ -27,20 +52,12 @@ const check = (name, ok, note = "") => {
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}${note ? "  —  " + note : ""}`);
 };
 
-async function health() {
-  try {
-    const r = await fetch(`${BASE}/health`, { signal: AbortSignal.timeout(1500) });
-    return r.ok ? await r.json() : null;
-  } catch {
-    return null;
-  }
-}
-
-// --- 1. daemon up (spawn if needed) ---------------------------------------------------
+// --- 1. daemon up (ours unless we were told to borrow one) ----------------------------
 let daemon = null;
-let h = await health();
-if (h) {
+let h = null;
+if (!target.start) {
   console.log(`reusing the anagramd already listening on ${BASE} — this run neither started nor will stop it`);
+  h = await health();
 } else {
   console.log(`starting anagramd on ${BASE}…`);
   daemon = spawn("sh", [join(ROOT, "anagramd", "run.sh"), "--port", String(PORT)], {
