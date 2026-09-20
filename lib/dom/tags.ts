@@ -16,7 +16,7 @@ export const NO_SCORE_TAGS = new Set<string>([
   "BUTTON", "METER", "PROGRESS",
   "IMG", "PICTURE", "SOURCE", "TRACK", "VIDEO", "AUDIO", "CANVAS",
   "IFRAME", "FRAME", "OBJECT", "EMBED", "APPLET",
-  "MAP", "AREA", "TEMPLATE", "STYLE", "LINK", "META", "BASE",
+  "MAP", "AREA", "TEMPLATE", "LINK", "META", "BASE",
   "RT", "RP",
 ]);
 

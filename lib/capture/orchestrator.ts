@@ -967,7 +967,7 @@ export function createOrchestrator(
     if (started && mountFab) fab.mount(); // re-mounts if the page wiped the host
     let flagged = 0;
     for (const v of verdictsById.values()) if (isFlagged(v.result)) flagged++;
-    fab.setCount(flagged, verdictsById.size);
+    fab.setCount(flagged);
     notifyToolbarBadge(flagged);
   }
 

@@ -72,7 +72,7 @@ export interface Fab {
   /** The scoring daemon stopped answering (counter shows "!", panel explains + Retry). */
   setBackendDown(down: boolean): void;
   /** Update the flagged-paragraph counter. */
-  setCount(flagged: number, total: number): void;
+  setCount(flagged: number): void;
   /** Show (label + callback) or hide (null) the secondary action chip. */
   setAction(label: string | null, onAction?: () => void, opts?: { attention?: boolean }): void;
   /** Open the triage panel; with `focus`, move keyboard focus into it (the
@@ -745,7 +745,6 @@ export function createFab(opts: {
     // non-null reference would otherwise hide the toggle forever.
     if (host?.isConnected) return;
     host?.remove();
-    host = null;
     host = document.createElement("div");
     host.setAttribute(MARK_ATTR, "host");
     host.id = "anagram-fab";
@@ -865,7 +864,7 @@ export function createFab(opts: {
     }
 
     applyState();
-    setCount(lastFlagged, 0); // restore the counter across re-mounts
+    setCount(lastFlagged); // restore the counter across re-mounts
     onFullscreenChange();
     scheduleTuck();
   }
@@ -885,7 +884,7 @@ export function createFab(opts: {
     applyState();
   }
 
-  function setCount(flagged: number, _total: number): void {
+  function setCount(flagged: number): void {
     lastFlagged = flagged;
     if (!countEl) return;
     countEl.classList.toggle("down", backendDown);
@@ -905,7 +904,7 @@ export function createFab(opts: {
   function setBackendDown(down: boolean): void {
     if (down === backendDown) return;
     backendDown = down;
-    setCount(lastFlagged, 0);
+    setCount(lastFlagged);
     if (panelEl?.classList.contains("open")) renderPanel();
   }
 

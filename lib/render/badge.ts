@@ -745,7 +745,7 @@ function insertionPoint(unit: Unit): Placement | null {
     const p = n.parentElement;
     if (!p || p === lastPart.container) break;
     if (!isInlineFlowElement(p)) break;
-    if (!isLastMeaningfulChild(n, p)) break;
+    if (!isLastMeaningfulChild(n)) break;
     n = p;
   }
   const at = lastDecoratedSibling(n as ChildNode);
@@ -938,7 +938,7 @@ function lastDecoratedSibling(n: ChildNode): ChildNode {
 }
 
 /** True if nothing but whitespace, decorations or our own hosts follows `n`. */
-function isLastMeaningfulChild(n: Node, _parent: Element): boolean {
+function isLastMeaningfulChild(n: Node): boolean {
   for (let sib = n.nextSibling; sib; sib = sib.nextSibling) {
     if (!isTrailingDecoration(sib)) return false;
   }

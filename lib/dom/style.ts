@@ -46,7 +46,7 @@ export function isOutOfFlow(cs: CSSStyleDeclaration): boolean {
 
 /**
  * Layout classification for one element during a walk. "inline" accumulates into the
- * current run; "block" closes it; "contents"/"skip" are transparent / pruned.
+ * current run; "block" closes it; "contents" is transparent and "hidden" is pruned.
  */
 export type FlowClass = "inline" | "block" | "contents" | "hidden";
 

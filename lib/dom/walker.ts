@@ -385,7 +385,7 @@ export function collectUnits(
       isNoTranslate(el) ||
       (el as HTMLElement).isContentEditable ||
       el.getAttribute("aria-hidden") === "true" ||
-      (cs !== null && (cs.opacity === "0" || (cs as any).contentVisibility === "hidden"));
+      (cs !== null && (cs as any).contentVisibility === "hidden");
     if (excluded) {
       if (flow !== "inline" && flow !== "contents") closeRun();
       if (boiler) asm.barrier(el); // page chrome separates sections — no merging across

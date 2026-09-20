@@ -278,14 +278,15 @@ function boilerplateBranch(el: Element): string {
   if (tag === "HEADER" || tag === "FOOTER") return `<${tag.toLowerCase()}> outside an <article>/<main>`;
   if (tag === "FORM") return "a <form> with fields to fill in is a widget";
   const hay = `${el.id} ${el.getAttribute("class") ?? ""}`.slice(0, 256);
+  // One probe per token, as a class. isBoilerplate merges the id and the classes into a
+  // single haystack and runs one regex over it, so asking again as an id can only ever
+  // give the same answer — and by the same token the report cannot say WHICH of the two
+  // the name came from, only that the element carries it.
   for (const token of hay.split(/\s+/)) {
     if (!token) continue;
     probe.className = token;
-    if (isBoilerplate(probe)) return `class token "${token.slice(0, 40)}"`;
+    if (isBoilerplate(probe)) return `name token "${token.slice(0, 40)}"`;
     probe.className = "";
-    probe.id = token;
-    if (isBoilerplate(probe)) return `id token "${token.slice(0, 40)}"`;
-    probe.id = "";
   }
   return "reply-form token beside fields to type in";
 }
@@ -406,7 +407,8 @@ function reasonFor(el: Element, cs: Styler): string {
   try {
     standalone = collectUnits(el);
   } catch {
-    /* a root the walk refuses outright — the tests above have already said why */
+    /* nothing in the walk throws, but this runs inside a report about a page that is
+       already behaving oddly: a host-DOM surprise must not cost the reader the report */
   }
   if (standalone.length > 0) {
     return `the box alone yields ${standalone.length} unit(s) — a page-level barrier or a neighbouring voice suppressed it here`;
