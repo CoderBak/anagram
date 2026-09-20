@@ -831,10 +831,12 @@ and the extension refuses to follow a redirect off either endpoint (a 307 from w
 port would have forwarded the page text somewhere unvetted), the daemon binds
 `127.0.0.1` or `localhost` — the two names a browser's CSP can express, and the
 only two it answers to — unless told otherwise, refuses any other `Host` header (DNS
-rebinding), sets no CORS headers (web pages cannot read it; the extension uses
-host permissions), requires `POST /score` to be declared `application/json` —
-which forces a CORS preflight a web page cannot pass — and refuses any `Origin`
-that is not an extension's or its own, `null` included. Every request is bounded
+rebinding), answers CORS **for extension origins only** — a web page still cannot
+read a byte, and an extension needs no host permission to read one, which is why
+this extension asks for no host at all — requires `POST /score` to be declared
+`application/json` — which forces a CORS preflight a web page cannot pass — and
+refuses any `Origin` that is not an extension's or its own, `null` included, with
+no CORS header on the preflight either. Every request is bounded
 (blocks, characters, unique ids, contract version) before anything is tokenized,
 and the 2 MB body cap counts the bytes that actually arrive rather than the
 declared length, so a chunked POST is cut off mid-stream. The batch envelope

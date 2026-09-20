@@ -27,7 +27,13 @@ Hardening (the daemon is a local service, but a local service is still a service
     - binds 127.0.0.1 or localhost — the only two names the extension can be pointed at —
       unless --allow-remote is given explicitly
     - Host header allow-list (the same two names) — defeats DNS-rebinding
-    - no CORS headers: the extension talks to it with host permissions, web pages cannot read it
+    - CORS for extension origins ONLY — a web page still cannot read a byte. An extension
+      origin gets its own origin echoed back and may therefore read the answer without
+      holding a host permission for us; every other origin, `null` included, gets 403 and
+      no CORS header at all, on the preflight as much as on the request itself. The honest
+      consequence: an extension no longer needs a host permission to talk to this daemon.
+      That is not a door we opened — any extension could already declare one — it is one
+      the extension no longer has to ask its users for.
     - POST /score must be application/json, and a request that carries an Origin must carry an
       extension one (or our own) — together those keep a web page from reaching /score at all
     - request limits: blocks per request, characters per block, unique ids, contract major
@@ -47,7 +53,8 @@ command (`anagram model`, or install.sh) which pins a checksum and stages the fi
 replaces the one in use, so a half-written file can never be loaded.
 
 Endpoints
-    GET  /health   → model / device / bucket / language info (the extension polls this)
+    GET  /health   → model / device / bucket / language / daemon-version info (the extension
+                     polls this, and asks for an update when `app_version` is behind its own)
     POST /score    → {"v": "2.1", "blocks": [{"id": "...", "text": "..."}]}
                    → {"v": "2.1", "model": {...}, "results": [{"id", "bucket", "probs", "score",
                                                                 "lang", "lang_prob", ...}]}
@@ -86,6 +93,7 @@ import re
 import sys
 import threading
 import time
+import tomllib
 from pathlib import Path
 
 import numpy as np
@@ -133,6 +141,34 @@ MAX_BODY_BYTES = 2 * 1024 * 1024
 LOOPBACK_HOSTS = ["127.0.0.1", "localhost"]
 
 log = logging.getLogger("anagramd")
+
+
+def read_app_version() -> str | None:
+    """The daemon's own release version, for /health — read from where it already lives.
+
+    The extension asks people to update the daemon whenever the extension updates, so it
+    has to be able to see which one is running. That must not become a fifth place to keep
+    in step: `scripts/bump.mjs` already writes pyproject.toml (which the release copies
+    next to this file as `app/pyproject.toml`), and the installer already writes
+    `$ANAGRAM_HOME/VERSION` one directory above it. This reads the first, and falls back
+    to the second for a folder assembled without the project file. None of the above — a
+    checkout someone rearranged — reports nothing rather than a guess, and the extension
+    treats "no version" as "too old", which is the safe direction.
+    """
+    here = Path(__file__).resolve().parent
+    try:
+        version = tomllib.loads((here / "pyproject.toml").read_text())["project"]["version"]
+        if isinstance(version, str) and version:
+            return version
+    except (OSError, KeyError, ValueError):
+        pass
+    try:
+        return (here.parent / "VERSION").read_text().strip() or None
+    except OSError:
+        return None
+
+
+APP_VERSION = read_app_version()
 
 
 # --- preprocessing: verbatim port of EditLens scripts/preprocess.py::clean_text ----------------
@@ -472,6 +508,11 @@ class EditLens:
         return {
             "ok": True,
             "contract": CONTRACT_VERSION,
+            # The wire contract, and the daemon's own release. They answer different
+            # questions: the contract says whether we can talk at all, `app_version` says
+            # whether this daemon is as new as the extension asking (additive — 2.x
+            # clients that never look at it are unaffected).
+            "app_version": APP_VERSION,
             "model": {"id": MODEL_ID, "ver": self.version, "calibration": CALIBRATION,
                       "label_schema": LABEL_SCHEMA},
             "n_buckets": self.n_buckets,
@@ -552,6 +593,11 @@ class ScoreResponse(BaseModel):
 
 # --- ASGI guards: refuse a request before FastAPI ever routes or parses it ---------------------------
 
+# The only foreign origins this daemon answers at all. Named once because two things read
+# it: the guard that refuses everybody else, and the CORS headers that let these — and only
+# these — read what they were sent.
+EXTENSION_SCHEMES = ("chrome-extension://", "moz-extension://", "safari-web-extension://")
+
 
 def _header(scope: dict, name: bytes) -> str | None:
     """First value of a header in an ASGI scope (names arrive lowercased, values as bytes)."""
@@ -561,12 +607,45 @@ def _header(scope: dict, name: bytes) -> str | None:
     return None
 
 
-async def _refuse(send, status: int, detail: str) -> None:
-    """Answer straight on the ASGI channel, in FastAPI's own {"detail": …} error shape."""
+def extension_origin(scope: dict | None) -> str | None:
+    """This request's Origin if it is an extension's, else None — the one case we answer CORS for.
+
+    The value is echoed back verbatim rather than rebuilt, because `Access-Control-Allow-Origin`
+    has to match byte for byte what the browser sent. That is safe: a header value arrives
+    through the HTTP parser, which rejects the control characters a header injection would
+    need, and a browser writes this header itself — a page cannot forge one.
+    """
+    origin = _header(scope, b"origin") if scope else None
+    if origin and origin.strip().lower().startswith(EXTENSION_SCHEMES):
+        return origin
+    return None
+
+
+def _cors_headers(origin: str) -> list[tuple[bytes, bytes]]:
+    """What an extension origin is allowed to read. No wildcard, no credentials.
+
+    `Vary: Origin` because the answer genuinely differs by Origin — another caller gets no
+    such header — and a cache that did not know that could hand one caller's answer to
+    another.
+    """
+    return [(b"access-control-allow-origin", origin.encode("latin-1")), (b"vary", b"origin")]
+
+
+async def _refuse(send, status: int, detail: str, scope: dict | None = None) -> None:
+    """Answer straight on the ASGI channel, in FastAPI's own {"detail": …} error shape.
+
+    A refusal aimed at an EXTENSION carries the CORS headers as well, or the caller reads a
+    network error where we sent it a status explaining what it did wrong. Everybody else
+    gets the bare refusal — which is the whole point of the Origin guard, and is why the
+    403 it sends a web page can never pick up a header here: that origin is not an
+    extension's, by definition.
+    """
     body = json.dumps({"detail": detail}).encode()
-    await send({"type": "http.response.start", "status": status,
-                "headers": [(b"content-type", b"application/json"),
-                            (b"content-length", str(len(body)).encode())]})
+    headers = [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())]
+    origin = extension_origin(scope)
+    if origin:
+        headers += _cors_headers(origin)
+    await send({"type": "http.response.start", "status": status, "headers": headers})
     await send({"type": "http.response.body", "body": body})
 
 
@@ -592,7 +671,7 @@ class BodyCap:
             return
         declared = _header(scope, b"content-length")
         if declared and declared.isdigit() and int(declared) > self.max_bytes:
-            await _refuse(send, 413, f"body exceeds {self.max_bytes} bytes")
+            await _refuse(send, 413, f"body exceeds {self.max_bytes} bytes", scope)
             return
         state = {"seen": 0, "over": False}
 
@@ -604,7 +683,7 @@ class BodyCap:
                 state["seen"] += len(message.get("body", b""))
                 if state["seen"] > self.max_bytes:
                     state["over"] = True
-                    await _refuse(send, 413, f"body exceeds {self.max_bytes} bytes")
+                    await _refuse(send, 413, f"body exceeds {self.max_bytes} bytes", scope)
                     return {"type": "http.disconnect"}
             return message
 
@@ -634,9 +713,11 @@ class OriginGuard:
     no Origin at all (curl, the `anagram` CLI, Node) passes as before: those are not browsers,
     and a browser cannot omit the header on a cross-origin request. Sec-Fetch-* is deliberately
     not consulted — we have not verified what browsers put there for extension requests.
-    """
 
-    EXTENSION_SCHEMES = ("chrome-extension://", "moz-extension://", "safari-web-extension://")
+    This runs OUTSIDE the CORS layer, so a refusal written here carries no header that would
+    let the refused page read it — including the refusal of a preflight, which is what stops
+    a page from ever sending the request the preflight was asking about.
+    """
 
     def __init__(self, app, own_origins: tuple[str, ...] = ()):
         self.app = app
@@ -646,18 +727,85 @@ class OriginGuard:
         if scope["type"] == "http":
             origin = _header(scope, b"origin")
             if origin is not None and not self._allowed(origin):
-                await _refuse(send, 403, f"origin {origin} is not allowed")
+                await _refuse(send, 403, f"origin {origin} is not allowed", scope)
                 return
             if scope["method"] == "POST" and scope["path"] == "/score":
                 media = (_header(scope, b"content-type") or "").split(";")[0].strip().lower()
                 if media != "application/json":
-                    await _refuse(send, 415, "POST /score requires content-type: application/json")
+                    await _refuse(send, 415, "POST /score requires content-type: application/json", scope)
                     return
         await self.app(scope, receive, send)
 
     def _allowed(self, origin: str) -> bool:
         origin = origin.strip().lower()
-        return origin in self.own_origins or origin.startswith(self.EXTENSION_SCHEMES)
+        return origin in self.own_origins or origin.startswith(EXTENSION_SCHEMES)
+
+
+class ExtensionCors:
+    """Let an extension read our answers — and only an extension.
+
+    Until now the daemon sent no CORS headers at all, which meant the extension could only
+    read a response because it held a host permission for `http://127.0.0.1/*` and
+    `http://localhost/*`. That permission is the one line in the install dialog that made a
+    browser warn about this extension, for a capability nobody outside it benefits from. So
+    the daemon answers CORS instead, for extension origins and nothing else, and the
+    extension asks for no host at all.
+
+    A web page is no closer to us than it was: the Origin guard above still refuses it 403
+    before this layer is reached, so there is nothing here for it to be granted. What a page
+    would need is a browser that lets it claim an extension's Origin, and no browser does —
+    the header is written by the browser, not by the page.
+
+    Two things happen here:
+      * a PREFLIGHT (OPTIONS carrying `Access-Control-Request-Method`, which is what a
+        `content-type: application/json` POST provokes) is answered 204 with the methods,
+        the one header we accept and a modest max-age, plus
+        `Access-Control-Allow-Private-Network` when Chrome's private-network check asks for
+        it — a request from an extension page to loopback is exactly what that check is
+        about;
+      * every other response picks up the allow-origin pair on its way out.
+
+    It is added FIRST, which puts it INNERMOST: a preflight therefore passes the body cap,
+    the Origin guard and the Host allow-list on the way in, exactly as the POST it precedes
+    will, and is answered here instead of reaching the router (which would 405 it). The
+    guards' own refusals are written by `_refuse`, which adds the same headers when the
+    caller is an extension.
+    """
+
+    ALLOW_METHODS = b"GET, POST"
+    # The only header the extension sends that is not CORS-safelisted. Demanding
+    # application/json is what forces the preflight in the first place (see OriginGuard).
+    ALLOW_HEADERS = b"content-type"
+    # Ten minutes: long enough that a page of paragraphs is one preflight rather than
+    # dozens, short enough that a daemon restarted with other rules is believed quickly.
+    MAX_AGE = b"600"
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send) -> None:
+        origin = extension_origin(scope) if scope["type"] == "http" else None
+        if origin is None:
+            await self.app(scope, receive, send)
+            return
+        headers = _cors_headers(origin)
+
+        if scope["method"] == "OPTIONS" and _header(scope, b"access-control-request-method"):
+            headers += [(b"access-control-allow-methods", self.ALLOW_METHODS),
+                        (b"access-control-allow-headers", self.ALLOW_HEADERS),
+                        (b"access-control-max-age", self.MAX_AGE)]
+            if (_header(scope, b"access-control-request-private-network") or "").lower() == "true":
+                headers.append((b"access-control-allow-private-network", b"true"))
+            await send({"type": "http.response.start", "status": 204, "headers": headers})
+            await send({"type": "http.response.body", "body": b""})
+            return
+
+        async def send_with_cors(message):
+            if message["type"] == "http.response.start":
+                message = {**message, "headers": [*message.get("headers", []), *headers]}
+            await send(message)
+
+        await self.app(scope, receive, send_with_cors)
 
 
 # --- HTTP (FastAPI) --------------------------------------------------------------------------------
@@ -688,9 +836,10 @@ def make_app(engine: EditLens, allowed_hosts: list[str], port: int):
     # Starlette runs the LAST middleware added first, so this reads bottom-up: cap the body
     # before anything can buffer it, then refuse foreign origins and non-JSON posts, then the
     # Host allow-list — a page that resolves its own name to 127.0.0.1 (DNS rebinding) still
-    # sends its own Host header, and is refused. No CORS middleware on purpose: the extension
-    # calls with host permissions (no CORS needed) and web pages get no headers that would let
-    # them read a response.
+    # sends its own Host header, and is refused. CORS comes last, which is to say innermost:
+    # what survives all three guards is from an extension, and that is the only caller told
+    # it may read the answer (class ExtensionCors).
+    app.add_middleware(ExtensionCors)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
     # Our own origin is every name we answer to on our own port — that is what a browser puts
     # in Origin when the /docs page posts back to us.

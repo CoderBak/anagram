@@ -312,6 +312,106 @@ if TestClient is not None:
           scored["v"] == "2.1" and scored["results"][0]["id"] == "a"
           and len(scored["results"][0]["probs"]) == 4, json.dumps(scored["results"][0]))
 
+    # --- CORS: an extension may read the answer, and nobody else ------------------------
+    #
+    # This is what lets the extension ask for NO host permission. The property worth
+    # checking is not "there are headers" but "there are headers for exactly one kind of
+    # caller": an extension origin gets its own origin echoed, everybody else gets the 403
+    # they always got with nothing on it — on the preflight as much as on the request, since
+    # a preflight a page can read is a request it can then send.
+    print("\n-- CORS (extension origins only) --")
+
+    EXT_ORIGIN = "chrome-extension://abcdefghijklmnopabcdefghijklmnop"
+    PREFLIGHT = {"access-control-request-method": "POST", "access-control-request-headers": "content-type"}
+
+    def acao(r) -> str | None:
+        return r.headers.get("access-control-allow-origin")
+
+    for scheme in ("chrome-extension://abcdefghijklmnopabcdefghijklmnop",
+                   "moz-extension://5e0b7a12-3c4d-4f8a-9b16-2d7e8c0f4a31",
+                   "safari-web-extension://A1B2C3D4-0000-0000-0000-000000000000"):
+        r = client.get("/health", headers={"origin": scheme})
+        check(f"GET /health from {scheme.split('://')[0]}:// → 200 with its own origin echoed",
+              r.status_code == 200 and acao(r) == scheme and "origin" in r.headers.get("vary", "").lower(),
+              f"{r.status_code} {acao(r)} vary={r.headers.get('vary')}")
+
+    r = client.post("/score", json=BODY, headers={"origin": EXT_ORIGIN})
+    check("POST /score from an extension origin comes back readable (echoed origin, Vary, no wildcard, "
+          "no credentials)",
+          r.status_code == 200 and acao(r) == EXT_ORIGIN and "origin" in r.headers.get("vary", "").lower()
+          and "access-control-allow-credentials" not in r.headers,
+          f"{r.status_code} {acao(r)}")
+
+    for path in ("/score", "/health"):
+        r = client.options(path, headers={"origin": EXT_ORIGIN, **PREFLIGHT})
+        check(f"the preflight OPTIONS {path} from an extension origin is answered",
+              r.status_code == 204 and acao(r) == EXT_ORIGIN
+              and r.headers.get("access-control-allow-methods") == "GET, POST"
+              and r.headers.get("access-control-allow-headers") == "content-type"
+              and (r.headers.get("access-control-max-age") or "0").isdigit()
+              and int(r.headers.get("access-control-max-age", "0")) > 0,
+              f"{r.status_code} {dict(r.headers)}")
+
+    # Chrome's private-network check: a request from an extension page to loopback is the
+    # case it was invented for, so the daemon says yes — but only when it was asked.
+    r = client.options("/score", headers={"origin": EXT_ORIGIN, **PREFLIGHT,
+                                          "access-control-request-private-network": "true"})
+    check("…and it grants private-network access when the preflight asks for it",
+          r.headers.get("access-control-allow-private-network") == "true", str(dict(r.headers)))
+    r = client.options("/score", headers={"origin": EXT_ORIGIN, **PREFLIGHT})
+    check("…and does not volunteer it when it was not asked",
+          "access-control-allow-private-network" not in r.headers, str(dict(r.headers)))
+
+    for origin in ("https://evil.example", "null", "http://127.0.0.2:8799"):
+        r = client.get("/health", headers={"origin": origin})
+        check(f"GET /health with Origin {origin} → 403 and NO CORS header",
+              r.status_code == 403 and acao(r) is None, f"{r.status_code} {acao(r)}")
+        r = client.options("/score", headers={"origin": origin, **PREFLIGHT})
+        check(f"…and its PREFLIGHT is refused the same way, so the POST is never sent",
+              r.status_code == 403 and acao(r) is None, f"{r.status_code} {acao(r)}")
+
+    r = client.get("/health")
+    check("a request with no Origin at all (curl, the CLI) is answered as before, with no CORS header",
+          r.status_code == 200 and acao(r) is None, f"{r.status_code} {acao(r)}")
+    r = client.get("/health", headers={"origin": f"http://127.0.0.1:{PORT}"})
+    check("our own /docs page is answered without one too — same origin needs no permission",
+          r.status_code == 200 and acao(r) is None, f"{r.status_code} {acao(r)}")
+
+    # A refusal an extension cannot read is a refusal it has to guess at, so the guards'
+    # own answers carry the headers when the caller is an extension.
+    r = client.post("/score", content=json.dumps(BODY),
+                    headers={"content-type": "text/plain", "origin": EXT_ORIGIN})
+    check("a 415 sent TO an extension is readable by it (it says what was wrong, rather than failing opaquely)",
+          r.status_code == 415 and acao(r) == EXT_ORIGIN, f"{r.status_code} {acao(r)}")
+
+    # Order: the preflight goes through the same guards the POST will, so a Host the daemon
+    # does not answer to is refused before CORS is ever considered.
+    r = client.options("/score", headers={"origin": EXT_ORIGIN, "host": f"evil.example:{PORT}", **PREFLIGHT})
+    check("a preflight with a Host we do not answer to is refused first, with no CORS header",
+          r.status_code == 400 and acao(r) is None, f"{r.status_code} {acao(r)}")
+
+    # --- the daemon's own version ---------------------------------------------------------
+    health = client.get("/health").json()
+    check("/health carries the daemon's own version, so the extension can ask for an update when "
+          "it is behind", health.get("app_version") == serve.APP_VERSION and bool(serve.APP_VERSION),
+          str(health.get("app_version")))
+    pyproject = (DAEMON / "pyproject.toml").read_text()
+    check("…and it is the version scripts/bump.mjs already keeps in step, not a new constant",
+          f'version = "{serve.APP_VERSION}"' in pyproject, str(serve.APP_VERSION))
+    check("/score is unaffected — the version is on /health only (contract stays 2.x)",
+          "app_version" not in client.post("/score", json=BODY, headers=JSON_CT).json())
+
+    with tempfile.TemporaryDirectory() as tmp:
+        (Path(tmp) / "VERSION").write_text("9.9.9\n")
+        app_dir = Path(tmp) / "app"
+        app_dir.mkdir()
+        (app_dir / "serve.py").write_text("")
+        r = run_py("import serve, sys; from pathlib import Path\n"
+                   "serve.__file__ = sys.argv[1]\n"
+                   "print('VERSION<<%s>>' % serve.read_app_version())", str(app_dir / "serve.py"))
+        check("an installed folder with no pyproject.toml falls back to the VERSION the installer wrote",
+              "VERSION<<9.9.9>>" in r.stdout, r.stdout.strip() or r.stderr.strip()[-200:])
+
     # --allow-remote is the one way to another name, and it widens BOTH lists at once.
     remote = serve.allowed_hosts_for("192.168.1.10")
     app2 = serve.make_app(stub_engine(), remote, PORT)

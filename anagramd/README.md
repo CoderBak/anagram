@@ -73,8 +73,15 @@ an interactive OpenAPI UI lives at `http://127.0.0.1:8765/docs`.
 
 | Route | Body | Returns |
 | --- | --- | --- |
-| `GET /health` | – | `{ok, model:{id,ver,calibration,label_schema}, n_buckets, buckets, languages, lid, max_tokens, limits, device}` |
+| `GET /health` | – | `{ok, app_version, model:{id,ver,calibration,label_schema}, n_buckets, buckets, languages, lid, max_tokens, limits, device}` |
 | `POST /score` | `{v:"2.1", blocks:[{id,text}]}` | `{v, model, results:[{id,bucket,probs,score,tokens,truncated,lang,lang_prob,unsupported?}]}` |
+
+`app_version` on `/health` is the daemon's own release (`pyproject.toml` next to `serve.py`,
+which `scripts/bump.mjs` keeps in step with the extension, or the installed folder's
+`VERSION` one directory up). The extension compares it with its own and asks the user to run
+`~/.anagram/bin/anagram update` when the daemon is behind — the two ship as one artifact, so
+they are meant to move together. It is additive: contract 2.x clients that never look at it
+are unaffected.
 
 **Hardening.** Binds `127.0.0.1` or `localhost` and answers to those two names and no others:
 they are the only two a browser's content-security policy can express, so they are all the
@@ -83,13 +90,21 @@ could try. `--host` takes exactly those two (`127.0.0.2`, `[::1]` and the rest a
 a message); `--allow-remote` is the one way to another address, and says what it costs. One
 list feeds the `Host` allow-list and the `Origin` guard's idea of our own origin, so the two
 cannot drift apart. Any other `Host` header (DNS rebinding) is 400.
-It sends no CORS headers, so a web page cannot read a response, and two rules keep a
-page from reaching `/score` in the first place: `POST /score` must be declared
+It answers CORS **for extension origins only — a web page still cannot read a byte**, and two
+rules keep a page from reaching `/score` in the first place: `POST /score` must be declared
 `application/json` (parameters such as `; charset=utf-8` are fine, anything else or
-nothing is 415), which forces a CORS preflight that then fails for want of CORS headers;
-and a request that carries an `Origin` must carry an extension one
-(`chrome-extension://`, `moz-extension://`, `safari-web-extension://`) or the daemon's own
-(so `/docs` → "Try it out" keeps working) — everything else, `null` included, is 403.
+nothing is 415), which forces a CORS preflight; and a request that carries an `Origin` must
+carry an extension one (`chrome-extension://`, `moz-extension://`, `safari-web-extension://`)
+or the daemon's own (so `/docs` → "Try it out" keeps working) — everything else, `null`
+included, is 403 with no CORS header, on the preflight as much as on the request, which is
+what stops the POST from ever being sent. An extension origin gets that exact origin back in
+`Access-Control-Allow-Origin` with `Vary: Origin` — no wildcard, no credentials — and its
+preflight is answered `GET, POST` / `content-type` / a ten-minute `Max-Age`, plus
+`Access-Control-Allow-Private-Network` when Chrome's private-network check asks for it.
+The honest consequence: **an extension no longer needs a host permission to talk to this
+daemon**, which is the point — the Anagram extension now installs asking for no host at all.
+That is not a new door: any extension could already open one by declaring the permission,
+and a web page's way in is no wider than it was.
 A request with no `Origin` at all (curl, the `anagram` CLI, Node) is accepted as before.
 Every request is then validated before anything is tokenized: `v` must be contract `2.x`,
 ≤ 256 blocks, ≤ 16 000 characters per block, ids unique and ≤ 64 characters. The 2 MB body
