@@ -438,6 +438,16 @@ Notable changes to Anagram, newest first. The format follows
   columns wide, each summary the card's own title. Not a word was removed. The Site access row
   also says the way that grants nothing, which the page never mentioned: the toolbar icon →
   *Analyze this page*.
+- **Work whose result was thrown away.** The ball's counter took a `total` it never read,
+  so every badge update computed one to hand over; `isLastMeaningfulChild` took a parent
+  it never looked at; the ball's mount nulled a reference it overwrote on the next line;
+  `NO_SCORE_TAGS` listed `STYLE` twice; the walker tested `opacity: 0` twenty lines after
+  `isVisuallyHidden` had already returned on exactly that; and the silence report probed
+  every name token twice, once as a class and once as an id, although `isBoilerplate`
+  merges the id and the classes into one haystack and cannot tell them apart (checked
+  against the real regexes over 337,895 tokens: zero disagreements). That reason line now
+  says `name token`, which is all a probe can honestly know. No behaviour changes.
+
 - **The request the daemon is sent is the request the code describes.** `lib/contract.ts`
   called itself "EXACTLY the detector's IO contract" while declaring seven fields the
   detector has never had — anagramd's wire types are `{id, text}` and `{v, session,
