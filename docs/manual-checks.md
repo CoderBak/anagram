@@ -30,12 +30,13 @@ The local daemon should be running (`~/.anagram/bin/anagram start`) or every chi
    beyond `127.0.0.1` and `localhost`.
 
 1b. **One page, with nothing granted.**
-   On that same article, open the popup. The status line reads "Detection is off for this
-   page." and the button under it reads **Analyze this page**. Press it.
+   On that same article, open the popup. It opens with "Detection is off for this page."
+   and, right under it, one filled button reading **Analyze this page** — and no second
+   filled button anywhere. Press it.
    Expected: the popup closes, **no permission prompt appears**, and the article gets chips
    and the ball. Reload the page: it is bare again, and `chrome://extensions` → *Details →
-   Site access* still lists no site. (Right-click → *Analyze this page with Anagram* does
-   the same thing.)
+   Site access* still lists no site. (Right-click → *Analyze this page with Anagram* and
+   <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> do the same thing.)
 
 2. **The popup switch asks for this site, and the page answers without a reload.**
    On that same article, open the popup. "This site" is **off**; the line under it names the
@@ -127,10 +128,13 @@ The local daemon should be running (`~/.anagram/bin/anagram start`) or every chi
     Open a `file:///…/something.pdf`.
     Expected: nothing from Anagram, whatever the grants and whatever "Allow access to file
     URLs" says — the extension declares no access to the file scheme, and a page on it may
-    not re-read itself in any case. The way in is the reading mode's own drop zone:
-    Options → Detection → **Read a PDF from this computer** → *Open*, then drop the PDF on
-    the page that opens (or use its file picker). It opens and is scored. This is also the
-    only way to read a PDF in Firefox, where no tab can hand a PDF over.
+    not re-read itself in any case. The way in is the reading mode's own drop zone, and
+    the popup offers it on that very tab: its one button reads **Read a PDF file…** (it
+    says "Not available on this page." above it). Press it, then drop the PDF on the page
+    that opens, or use its file picker; it is shown and scored. Options → Detection →
+    **Read a PDF from this computer** → *Open* is the same door. This is also the only way
+    to read a PDF in Firefox, where no tab can hand a PDF over — and there the popup says
+    the same thing on a PDF tab on the web.
 
 13. **Firefox.**
     Repeat 1, 2, 3 and 4 in Firefox. The prompts are Firefox's own; the popup stays open

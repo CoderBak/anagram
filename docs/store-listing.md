@@ -335,8 +335,8 @@ is visible without it, and is enough to judge what the extension does:
    Take it back from the same places, or from *Site access*; open tabs stop at once.
 4. **Open any article.** Chips appear after the paragraphs, in gray, reading
    *Unavailable*. Hovering one says: "The scoring daemon did not answer. Retried
-   automatically once it is running." The popup's backend line says *Daemon not running*
-   and offers a Retry, and the triage panel carries the same notice. That is the whole
+   automatically once it is running." The popup leads with *Daemon not running*, the
+   command that starts it and a Retry, and the triage panel carries the same notice. That is the whole
    failure mode: nothing is invented, nothing is cached, and everything is retried when
    the service answers.
 5. **Try it on a page nothing was granted for.** Right-click → *Analyze this page with
