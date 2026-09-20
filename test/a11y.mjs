@@ -1369,7 +1369,7 @@ async function panelCodeChecks(page) {
   record("keyboard", "ball + panel: the walk reached our controls at all", ours.length > 2, `${ours.length} stops`);
   judgeStops("ball + panel", ours);
 
-  // The counter and the panel's percentages, computed from the resolved colours: axe
+  // The counter and the panel's scores, computed from the resolved colours: axe
   // reads these through a top-layer popover inside a shadow root and can get them wrong.
   await ourTextContrast(page, "panel (flagged)", "#anagram-fab");
   const counter = await page.evaluate(() => {

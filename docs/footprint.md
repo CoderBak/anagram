@@ -149,11 +149,14 @@ The persistent score cache, in one object store (`scores`). A row is:
 bounded: 20 000 rows, pruned back to 15 000 oldest-first, with 5 000 in front of it in the
 worker's memory. "Clear cached verdicts" in the options page empties all three layers.
 
-### `sessionStorage`, on the Google Doc's own page
+### `sessionStorage`
 
-One key, written by the content script into the tab it is running in, so that "Back to
-editor" can return to the exact document view the reader came from. It lives in that tab
-and dies with it.
+Two keys, each written into the tab it belongs to, each gone when that tab is.
+
+| Key | Where | What it holds |
+| --- | --- | --- |
+| `anagram-docs-return` | the Google Doc's own page, written by the content script | the editor address, so "Back to editor" returns to the exact document view the reader came from |
+| `anagram.pdfBounce` | the reading mode's own page | the one PDF address this tab has already been sent back to, so a handoff that keeps failing cannot ping-pong the tab between two addresses |
 
 ### Nothing else
 

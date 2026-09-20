@@ -103,11 +103,13 @@ language code and the time the row was written.
   may read the cache, but what it produces stays in the worker's memory and goes when the
   worker does.
 
-### One key in the page's own session storage, on Google Docs
+### Two keys in a tab's own session storage
 
 When you open the Google Docs reading mode, one key is written into that tab's
-`sessionStorage` so that "Back to editor" returns you to the exact view you came from. It
-lives in that tab and dies with it.
+`sessionStorage` so that "Back to editor" returns you to the exact view you came from.
+The PDF reading mode writes one of its own, holding the address of a PDF it has already
+sent you back to, so a file it cannot read cannot bounce the tab back and forth. Each
+lives in its tab and dies with it.
 
 ### Nothing else
 

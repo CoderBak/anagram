@@ -438,6 +438,28 @@ Notable changes to Anagram, newest first. The format follows
   columns wide, each summary the card's own title. Not a word was removed. The Site access row
   also says the way that grants nothing, which the page never mentioned: the toolbar icon →
   *Analyze this page*.
+- **The request the daemon is sent is the request the code describes.** `lib/contract.ts`
+  called itself "EXACTLY the detector's IO contract" while declaring seven fields the
+  detector has never had — anagramd's wire types are `{id, text}` and `{v, session,
+  blocks}`, and `lib/backend/httpClient.ts` has rebuilt the body from those alone since
+  the first commit. `ScoreBlock.ctx_before`, `.ctx_after` and `.bucket` were never written
+  by anything; `.order` was written and never read; and every batch computed a
+  `surface` tag, a `lang` and a `domain` — the page's hostname — onto an object the next
+  function rebuilt without them. Nothing leaked (the body was always rebuilt), but an
+  auditor reading the contract had to follow the client to learn that, so the fields are
+  gone and `lib/surface.ts` keeps only `PDF_TAB_SCRIPTS_RUN`. With them went two pieces of
+  bookkeeping that could not do anything either: the orchestrator's `scoredIds`, a Set
+  mutated in lockstep with `verdictsById` on all five paths that touch either and read
+  only for its size, and a duplicate-key guard in the worker's cache that could not fire
+  and would not have helped if it had. The protocol module also lost `ActionName` and a
+  `BackgroundMessage` union nothing imported, which named seven of the actions the worker
+  handles and not the other four. No behaviour changes; the content script is 414 bytes
+  smaller. Four documented claims that had stopped being true were corrected with it: the
+  reading mode does not fetch the file (it is handed the bytes), the panel and the copied
+  report state a 0–1 score and not a percentage, `markStyle` holds one of two styles and
+  not three, and a tab's `sessionStorage` holds two keys and not one — the PDF reading
+  mode's bounce guard was never written down.
+
 - **A release waits for the whole test matrix.** The release workflow used to run the type check and
   the Node tests and then publish; it now calls the CI workflow as its first job (`gate`) and
   publishes only after the same suites as every push have passed on Linux, Windows and macOS, and

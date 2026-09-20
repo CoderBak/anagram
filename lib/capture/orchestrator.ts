@@ -424,7 +424,7 @@ export function createOrchestrator(
           .join(" · ");
         const snippet = unit.text.replace(/\s+/g, " ").slice(0, 220);
         const ellipsis = unit.text.length > 220 ? "…" : "";
-        // A long paragraph's percentage is an average over windows; whoever reads the
+        // A long paragraph's score is an average over windows; whoever reads the
         // report without the page in front of them needs the parts it was made from.
         const read = windowReadout(v);
         const windows = read
