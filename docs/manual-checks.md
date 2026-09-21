@@ -1,9 +1,9 @@
 # Manual checks — native setup, lifecycle and website access
 
-Use this checklist before publishing a matching browser/native release. **0.4.0 is prepared
-locally; its release assets have not been published and the store listing has not been
-submitted.** Windows x64 is implemented but still needs real Windows/CI and manual release
-QA. A passing macOS browser fixture does not validate the Windows installer or worker.
+Use this checklist to validate the matching [0.4.0 browser/native release](https://github.com/CoderBak/anagram/releases/tag/v0.4.0).
+**The browser store listing has not been submitted.** Automated CI does not replace manual
+Windows installation, update and removal checks. A passing macOS browser fixture does not
+validate the Windows installer or worker.
 
 Start with the [English guide](user-guide.en.md) or [简体中文指南](user-guide.zh-CN.md).
 [PRIVACY.md](../PRIVACY.md) and [footprint](footprint.md) describe the data and file boundaries.

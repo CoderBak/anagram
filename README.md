@@ -9,6 +9,9 @@ and Simplified Chinese interfaces. Predictions are estimates, not proof of autho
 
 ## Installation
 
+[Download version 0.4.0](https://github.com/CoderBak/anagram/releases/tag/v0.4.0) ·
+Use the Chrome or Firefox browser ZIP; the setup page installs the matching native component.
+
 1. Install the extension from its published browser listing, or extract a Chrome release
    ZIP to a permanent folder and select it through `chrome://extensions` → Developer mode
    → **Load unpacked**. Firefox uses its separate build.
@@ -23,9 +26,8 @@ and Simplified Chinese interfaces. Predictions are estimates, not proof of autho
 5. Grant website access where you want automatic annotation, or use **Analyze this page**
    for a single page without a persistent site grant.
 
-The modelkit is already public. Matching extension and native-component release assets
-must also be published before distributing a release-enabled extension. Local builds
-are not published by `npm run release`.
+Browser ZIPs, native components and installers are distributed together in the GitHub
+release. `npm run release` prepares these files locally; it does not publish them.
 
 All inference and component management use **Native Messaging over stdin/stdout**.
 There is no HTTP inference server, port setting or alternate developer transport.
