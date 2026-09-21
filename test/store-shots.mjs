@@ -7,10 +7,10 @@
 //
 //   node test/store-shots.mjs
 //
-// Local and deterministic from end to end: the TEST build, the fake daemon — whose
+// Local and deterministic from end to end: the TEST build, the fake fixture — whose
 // verdicts are a pure function of the paragraph text, so the same chips carry the same
 // numbers on every run — and fixtures from test/fixtures and test/pdf-fixture.mjs. No
-// real daemon is contacted, no site on the internet is opened, and nothing here runs a
+// real fixture is contacted, no site on the internet is opened, and nothing here runs a
 // browser with a window.
 //
 // The five, in the order a reader would meet them:
@@ -27,7 +27,7 @@
 // body text was written to exercise the walker rather than to be read — plausible at a
 // glance, odd if a reviewer stops on a sentence. Swapping ARTICLE_HTML for a page of real
 // prose is a content decision for whoever fills in the listing, not a code one.
-import { withFakeDaemon, sweep, BADGE_SEL } from "./harness.mjs";
+import { withFakeNative, sweep, BADGE_SEL } from "./harness.mjs";
 import { servePdfs, openPdfInReader } from "./pdf-fixture.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -64,7 +64,7 @@ async function settle(page, { chips = 1 } = {}) {
   await page.waitForTimeout(400);
 }
 
-const { context, extId, daemon } = await withFakeDaemon({ viewport: VIEWPORT, deviceScaleFactor: 1 });
+const { context, extId, fixture } = await withFakeNative({ viewport: VIEWPORT, deviceScaleFactor: 1 });
 
 // ---- 1-3: an article, its card, its panel -------------------------------------------------
 //
@@ -164,7 +164,7 @@ await context.route("https://estuary-press.example/**", (route) =>
 
 // ---- 5: the first-run page ----------------------------------------------------------------
 //
-// What a new install opens. Its three rows follow the daemon live, and the fake one is
+// What a new install opens. Its three rows follow the fixture live, and the fake one is
 // running here, so it is photographed in the state a working install is in.
 if (!extId) console.log("SKIP 5-first-run: no extension id");
 else {
@@ -179,5 +179,5 @@ else {
 }
 
 await context.close();
-await daemon.close();
-console.log(`\ndone — docs/store/ (1280x800, dpr 1). ${daemon.stats.requests} scoring requests went to the fake daemon.`);
+await fixture.close();
+console.log(`\ndone — docs/store/ (1280x800, dpr 1). ${fixture.stats.requests} scoring requests went to the fake fixture.`);

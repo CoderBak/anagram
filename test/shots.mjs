@@ -1,7 +1,7 @@
 // test/shots.mjs — regenerate the README screenshots (docs/screenshots/).
 // Live-site shots (Wikipedia, HF, Google Docs) need network; the dark-mode and
 // popup shots are fully local.  node test/shots.mjs
-// Requires `npm run serve` on http://127.0.0.1:8765 (developer HTTP transport).
+// Uses the isolated native fixture; verdicts are deterministic UI test data, not model results.
 import { launchExtension } from "./harness.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -76,7 +76,7 @@ await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const darkUrl = `http://localhost:${server.address().port}/dark.html`;
 const mixedUrl = `http://localhost:${server.address().port}/mixed.html`;
 
-const { context, extId } = await launchExtension({ backendUrl: "http://127.0.0.1:8765", viewport: { width: 1180, height: 780 } });
+const { context, extId } = await launchExtension({ viewport: { width: 1180, height: 780 } });
 
 async function settle(page, sweeps = 6) {
   await page.waitForSelector('[data-anagram="host"]', { timeout: 15000 }).catch(() => {});

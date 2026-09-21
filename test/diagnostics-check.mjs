@@ -6,7 +6,7 @@
 // exactly what a paste is worth:
 //
 //   the header   — version, browser, languages, HOSTNAME (never a path or a query), scope,
-//                  merge, daemon state, frames;
+//                  merge, fixture state, frames;
 //   the counts   — units, chips, coverage — against what is really on the page;
 //   the silence  — one fixture holding every shape that goes quiet for a different reason
 //                  (an article that IS scored, a feed of sub-floor posts, a link list, a
@@ -27,7 +27,7 @@
 //
 // The printed form is the point of the whole feature — what somebody pastes — so it is
 // worth looking at whenever the wording or the fixture changes.
-import { withFakeDaemon, serveHtml, requireBuild } from "./harness.mjs";
+import { withFakeNative, serveHtml, requireBuild } from "./harness.mjs";
 
 requireBuild();
 
@@ -107,7 +107,7 @@ const FRAME = `<!doctype html><html lang="en"><body><p>${words(60, 21)}</p></bod
 // ---- run --------------------------------------------------------------------------------
 
 const server = await serveHtml({ "/diag.html": PAGE, "/frame.html": FRAME });
-const { daemon, context, sw } = await withFakeDaemon({ viewport: { width: 1200, height: 900 } });
+const { fixture, context, sw } = await withFakeNative({ viewport: { width: 1200, height: 900 } });
 await context.grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => {});
 
 /** Exactly what contextMenus.onClicked does for the diagnostics entry, plus the answer. */
@@ -157,7 +157,7 @@ async function openAndCopy(path, { settle = 4000 } = {}) {
   );
   record("header: document language, viewport, element count, hydration marker", has("document language `en`") && has(/viewport \d+×\d+/) && has(`${dom.elements} elements`) && has("hydration marker: none"), "");
   record("header: scope, merge and display settings", has("scope `page` · merge short paragraphs on · show `all`"), "");
-  record("header: the state and the daemon", has("state: running") && has("daemon: up ·"), (text ?? "").split("\n").find((l) => l.startsWith("- daemon")) ?? "");
+  record("header: the state and the fixture", has("state: running") && has("daemon: up ·"), (text ?? "").split("\n").find((l) => l.startsWith("- daemon")) ?? "");
 
   // --- counts ---
   const counts = (text ?? "").match(/- units (\d+) \((\d+) multi-part\) · windows (\d+) · chips on the page (\d+)/);
@@ -331,7 +331,7 @@ async function openAndCopy(path, { settle = 4000 } = {}) {
 
 await context.close();
 await server.close();
-await daemon.close();
+await fixture.close();
 
 // ---- D: Firefox (opt-in) -------------------------------------------------------------------
 //
@@ -362,7 +362,7 @@ await daemon.close();
 if (process.argv.includes("--firefox")) {
   const ff = await import("./firefox-harness.mjs");
   const ffServer = await serveHtml({ "/diag.html": PAGE, "/frame.html": FRAME });
-  const { daemon: ffDaemon, browser, extUrl } = await ff.withFakeDaemon({
+  const { fixture: ffFixture, browser, extUrl } = await ff.withFakeNative({
     // No doorhanger may ever appear and block the run; BiDi could not dismiss one.
     extraPrefs: { "extensions.webextOptionalPermissionPrompts": false },
   });
@@ -447,7 +447,7 @@ if (process.argv.includes("--firefox")) {
   );
   await browser.close();
   await ffServer.close();
-  await ffDaemon.close();
+  await ffFixture.close();
 }
 
 // ---- summary --------------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 // test/coverage.mjs — does the segmenter SEE the text a reader sees, on real websites?
 //
-// test/survey.mjs watches the whole extension (chips, bands, the daemon). This is the
-// layer below it: no extension, no daemon, no fixtures — just lib/dom/walker.ts, bundled
+// test/survey.mjs watches the whole extension (chips, bands, the fixture). This is the
+// layer below it: no extension, no scoring host, no fixtures — just lib/dom/walker.ts, bundled
 // out of the tree exactly as test/unit.mjs bundles it, injected into a live page and asked
 // one question per page: WHICH text got a unit, and which did not. The list of pages lives
 // in test/coverage.urls.json (name / kind / url / post selector / note) and is meant to be

@@ -33,7 +33,7 @@
 //
 //   node test/perf.mjs
 import { launchExtension, launchPlain, serveHtml, BADGE_SEL } from "./harness.mjs";
-import { startFakeDaemon } from "./fake-daemon.mjs";
+import { createNativeFixture } from "./fake-native.mjs";
 
 const N = 3000;
 
@@ -47,10 +47,10 @@ let body = "";
 for (let i = 0; i < N; i++) body += `<p>${words(i)}</p>\n`;
 const html = `<!doctype html><body style="max-width:720px;margin:30px auto;font:15px/1.6 system-ui">${body}</body>`;
 
-const daemon = await startFakeDaemon();
+const fixture = await createNativeFixture();
 const server = await serveHtml({ "/perf.html": html });
 
-const { context } = await launchExtension({ backendUrl: daemon.url, viewport: { width: 1100, height: 850 } });
+const { context } = await launchExtension({ nativeFixture: fixture, viewport: { width: 1100, height: 850 } });
 const page = await context.newPage();
 await page.addInitScript(() => {
   window.__longTasks = [];
@@ -77,7 +77,7 @@ const stats = await page.evaluate((sel) => ({
 }), BADGE_SEL);
 await context.close();
 await server.close();
-await daemon.close();
+await fixture.close();
 
 const checks = [
   ["first badge < 4000ms", firstBadgeMs < 4000, `${firstBadgeMs}ms`],
@@ -120,9 +120,9 @@ window.__cycle=(n)=>{for(let k=0;k<n;k++)post();while(feed.children.length>n)fee
 </script></body></html>`;
 const FEED_HTML = feedHtml(POSTS);
 
-const daemonB = await startFakeDaemon();
+const fixtureB = await createNativeFixture();
 const serverB = await serveHtml({ "/feed.html": FEED_HTML });
-const { context: ctxB } = await launchExtension({ backendUrl: daemonB.url, viewport: { width: 1100, height: 850 } });
+const { context: ctxB } = await launchExtension({ nativeFixture: fixtureB, viewport: { width: 1100, height: 850 } });
 const feedPage = await ctxB.newPage();
 await feedPage.addInitScript(() => {
   window.__longTasks = [];
@@ -145,7 +145,7 @@ const burst = await feedPage.evaluate(() => ({
 }));
 await ctxB.close();
 await serverB.close();
-await daemonB.close();
+await fixtureB.close();
 
 // Measured on this fixture: bounded, the eight bursts cost ~0.2 s of long tasks with the
 // worst under 150 ms; one walk per dirty node cost 8 s with single bursts over 1 s.
@@ -162,9 +162,9 @@ checks.push(
 const CYCLES = 40;
 const WINDOW_POSTS = 50;
 
-const daemonC = await startFakeDaemon();
+const fixtureC = await createNativeFixture();
 const serverC = await serveHtml({ "/virt.html": feedHtml(WINDOW_POSTS) });
-const { context: ctxC } = await launchExtension({ backendUrl: daemonC.url, viewport: { width: 1100, height: 850 } });
+const { context: ctxC } = await launchExtension({ nativeFixture: fixtureC, viewport: { width: 1100, height: 850 } });
 const virtPage = await ctxC.newPage();
 const cdp = await virtPage.context().newCDPSession(virtPage);
 await cdp.send("HeapProfiler.enable");
@@ -202,7 +202,7 @@ const held = await virtPage.evaluate((sel) => {
 }, BADGE_SEL);
 await ctxC.close();
 await serverC.close();
-await daemonC.close();
+await fixtureC.close();
 
 const heldMB = (heapAfter - heapBefore) / 1048576;
 // Measured on this fixture: 0.8 MB of growth after 2000 posts have passed through, hosts
@@ -256,12 +256,12 @@ for (const img of document.querySelectorAll("img.shot")) io.observe(img);
 /** One pass over the cards page, with the extension or without it, counting the browser's
  *  own layouts from before the page loads to the end of the scroll. */
 async function cardsPass(withExt) {
-  const daemonD = withExt ? await startFakeDaemon() : null;
+  const fixtureD = withExt ? await createNativeFixture() : null;
   const serverD = await serveHtml({ "/cards.html": CARDS_HTML });
   let browser = null;
   let ctx;
   if (withExt) {
-    ({ context: ctx } = await launchExtension({ backendUrl: daemonD.url, viewport: { width: 1100, height: 850 } }));
+    ({ context: ctx } = await launchExtension({ nativeFixture: fixtureD, viewport: { width: 1100, height: 850 } }));
   } else {
     browser = await launchPlain({ headless: true });
     ctx = await browser.newContext({ viewport: { width: 1100, height: 850 } });
@@ -297,7 +297,7 @@ async function cardsPass(withExt) {
   await ctx.close();
   await browser?.close();
   await serverD.close();
-  await daemonD?.close();
+  await fixtureD?.close();
   return { layouts: m1.LayoutCount - m0.LayoutCount, ...seen };
 }
 
@@ -333,9 +333,9 @@ const PDF_PAGES = 30;
 const MAX_LIVE_CANVASES = 8;
 {
   const { servePdfs, buildTwoColumnPdf, handOverPdf } = await import("./pdf-fixture.mjs");
-  const daemonE = await startFakeDaemon();
+  const fixtureE = await createNativeFixture();
   const pdfs = await servePdfs({ "/paper.pdf": buildTwoColumnPdf(PDF_PAGES) });
-  const { context: ctxE } = await launchExtension({ backendUrl: daemonE.url, viewport: { width: 1200, height: 900 } });
+  const { context: ctxE } = await launchExtension({ nativeFixture: fixtureE, viewport: { width: 1200, height: 900 } });
   const reader = await ctxE.newPage();
   await reader.addInitScript(() => {
     window.__longTasks = [];
@@ -388,7 +388,7 @@ const MAX_LIVE_CANVASES = 8;
   }));
   await ctxE.close();
   await pdfs.close();
-  await daemonE.close();
+  await fixtureE.close();
 
   checks.push(
     [`PDF reader: first page drawn < 6000ms (${PDF_PAGES} pages)`, firstPageMs < 6000, `${firstPageMs}ms`],

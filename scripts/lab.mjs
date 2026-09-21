@@ -9,7 +9,7 @@
 //                                        network at all, to prove the suites need none; that
 //                                        container publishes no port, so the viewer shows
 //                                        nothing while it runs (the lab itself keeps running)
-//   npm run lab -- show [url…] [--size 390x844] [--dark] [--dpr 2] [--real]
+//   npm run lab -- show [url…] [--size 390x844] [--dark] [--dpr 2]
 //                                        leave a browser with the extension open on the lab's screen
 //   npm run lab -- hide                  close what `show` opened
 //   npm run lab -- shot [name]           save a picture of the lab's screen to test-results/lab/
@@ -278,7 +278,7 @@ function test() {
 }
 
 function hide() {
-  exec("pkill -f test/lab/show.mjs 2>/dev/null; pkill -f 'socat TCP-LISTEN:8765' 2>/dev/null; true", { show: false });
+  exec("pkill -f test/lab/show.mjs 2>/dev/null; true", { show: false });
 }
 
 function show() {

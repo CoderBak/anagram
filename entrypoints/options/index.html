@@ -49,19 +49,11 @@
       .dot-ai { background: #dc2626; }
       .dot-none { background: #a3a3a3; }
       .dot-lang { background: #a3a3a3; box-shadow: inset 0 0 0 2px var(--card); }
-      #developerBackend { font-size:13px; }
-      #developerBackend summary { min-height:28px; cursor:pointer; }
-      #developerBackend .field { margin-top:12px; }
-      #developerHttp { display:flex; flex-direction:column; gap:10px; margin-top:12px; }
-      #developerHttp[hidden] { display:none; }
-      #developerHttp input { max-width:100%; }
       .mini { margin: 4px 0 0; font-size: 12px; font-weight: 600; color: var(--muted-foreground); text-transform: uppercase; letter-spacing: 0.06em; }
       .privacy { margin: 0; color: var(--muted-foreground); font-size: 13px; }
       footer.foot { margin-top: 24px; font-size: 12.5px; line-height: 1.6; color: var(--muted-foreground); }
       code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; background: var(--muted); padding: 1px 5px; border-radius: 5px; }
-      /* Inline commands and key hints are what someone reads while fixing a broken
-         install, and the muted foreground on the muted surface is 4.34:1 — under the
-         4.5:1 WCAG 1.4.3 asks of body text. They take the page's own foreground. */
+      /* Keep code and key hints readable on muted surfaces. */
       code, .kbd { color: var(--foreground); }
       /* Out of the page, still in the accessibility tree. */
       .vh {
@@ -93,25 +85,6 @@
           <header><h2 data-i18n="componentTitle">Local engine</h2></header>
           <section>
             <div id="componentSettings"></div>
-            <details id="developerBackend">
-              <summary data-i18n="componentDeveloper">Developer connection</summary>
-              <div class="field" data-orientation="horizontal">
-                <section><label for="backendTransport" data-i18n="componentTransport">Connection</label></section>
-                <select id="backendTransport">
-                  <option value="native" data-i18n="componentNativeTransport">Native component (recommended)</option>
-                  <option value="http" data-i18n="componentHttpTransport">Manual local HTTP (development)</option>
-                </select>
-              </div>
-              <section id="developerHttp" hidden>
-                <p data-i18n="componentHttpNote">For source development only. The browser does not start or manage this server.</p>
-                <label for="serverUrl" data-i18n="optDaemonUrl">Local HTTP URL</label>
-                <input id="serverUrl" class="input url" type="url" placeholder="http://127.0.0.1:8765" spellcheck="false" />
-                <p class="form-error" id="serverUrlError" hidden></p>
-                <p id="backendStatus" data-i18n="optChecking">Checking…</p>
-                <button type="button" class="btn" data-variant="outline" data-size="sm" id="checkBackend" data-i18n="optCheckNow">Check now</button>
-                <div id="legacyRuntimeSettings"></div>
-              </section>
-            </details>
           </section>
         </section>
 
@@ -255,7 +228,7 @@
             <div class="field" data-orientation="horizontal">
               <section>
                 <label for="clearCache" data-i18n="optCachedVerdicts">Cached verdicts</label>
-                <p data-i18n="optCachedNote">Verdicts are kept so revisits never re-score. Clearing them makes the next scan ask the daemon again.</p>
+                <p data-i18n="optCachedNote">Verdicts are kept so revisits never re-score. Clearing them makes the next scan ask the local engine again.</p>
               </section>
               <div class="field-actions">
                 <span id="cacheCount" class="count"></span>

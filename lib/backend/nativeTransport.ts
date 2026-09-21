@@ -21,7 +21,13 @@ export class NativeTransport {
   private sequence = 0;
   private retryAt = 0;
   private prefix = Math.random().toString(36).slice(2);
+  private disconnectListeners = new Set<() => void>();
   constructor(private readonly connect: () => NativePort = () => browser.runtime.connectNative(NATIVE_HOST)) {}
+
+  onDisconnect(listener: () => void): () => void {
+    this.disconnectListeners.add(listener);
+    return () => this.disconnectListeners.delete(listener);
+  }
 
   private connectPort(): NativePort {
     if (this.port) return this.port;
@@ -57,6 +63,7 @@ export class NativeTransport {
       this.port = null;
       this.retryAt = Date.now() + 1500;
       this.rejectAll(new NativeTransportError("native_unavailable", message?.slice(0, 2000) ?? "Local component disconnected"));
+      this.notifyDisconnect();
     });
     return port;
   }
@@ -90,10 +97,14 @@ export class NativeTransport {
     for (const request of this.pending.values()) { request.cleanup(); request.reject(error); }
     this.pending.clear();
   }
+  private notifyDisconnect(): void {
+    for (const listener of this.disconnectListeners) listener();
+  }
   close(code = "native_unavailable", message = "Local connection restarted"): void {
     const port = this.port;
     this.port = null;
     this.rejectAll(new NativeTransportError(code, message));
+    this.notifyDisconnect();
     try { port?.disconnect(); } catch { /* already disconnected */ }
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "anagram-extension",
-  "description": "Anagram for Chrome — shows how heavily each paragraph appears to be AI-edited, scored on your own computer.",
+  "description": "Local AI-editing estimates for Chrome and Firefox, powered by EditLens.",
   "private": true,
   "version": "0.4.0",
   "type": "module",
@@ -19,22 +19,19 @@
     "test:scenarios": "node test/scenarios.mjs",
     "test:a11y": "node test/a11y.mjs",
     "test:perf": "node test/perf.mjs",
-    "test:server": "node test/server.mjs",
-    "test:verify": "node test/verify-backend.mjs",
     "zip:firefox": "node scripts/vendor.mjs && wxt zip -b firefox",
     "play": "node test/playground.mjs",
-    "serve": "sh anagramd/run.sh",
     "vendor:basecoat": "cp node_modules/basecoat-css/dist/basecoat-vega.cdn.min.css lib/ui/basecoat-vega.cdn.min.css",
     "vendor:lazy": "node scripts/vendor.mjs",
     "test:node": "vitest run",
     "bump": "node scripts/bump.mjs",
     "release": "node scripts/release.mjs",
     "test:installer": "sh test/installer.sh",
-    "test:daemon": "sh test/daemon.sh",
     "test:runtime": "npm run build && node test/runtime.mjs",
     "test:native": "npm run build && node test/native-browser.mjs",
     "test:matrix": "node test/matrix.mjs",
-    "lab": "node scripts/lab.mjs"
+    "lab": "node scripts/lab.mjs",
+    "test:backend": "sh test/backend.sh"
   },
   "devDependencies": {
     "@floating-ui/dom": "^1.8.0",

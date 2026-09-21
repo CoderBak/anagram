@@ -32,9 +32,9 @@ export const ACTIONS = {
   /** SW (context menu) → content (top frame): describe this page for the developer and
    *  put the description on the clipboard. Answered on a page Anagram is off for too. */
   COPY_DIAGNOSTICS: "copyDiagnostics",
-  /** popup/options/content → SW: is the daemon up (optionally force a fresh probe). */
+  /** popup/options/content → SW: is the local engine ready (optionally force a fresh probe). */
   GET_BACKEND_STATUS: "getBackendStatus",
-  /** popup → content: re-check the daemon now and re-queue "Unavailable" units. */
+  /** popup → content: re-check the local engine now and re-queue "Unavailable" units. */
   RETRY_BACKEND: "retryBackend",
   /**
    * content (a PDF tab) / popup → SW: open the PDF reading mode. A content script may
@@ -83,41 +83,27 @@ export interface ScoreBatchReply {
   results: ScoreResult[];
   /** Backend that produced this batch (report footer, popup). */
   model?: ModelInfo;
-  /** Whether the daemon answered its last probe — "down" makes the content script pause. */
+  /** Whether the local engine answered its last probe — "down" makes the content script pause. */
   backend: "up" | "down";
 }
 
 /** SW → popup/options/content (response to GET_BACKEND_STATUS). */
 export interface BackendStatus {
-  serverUrl: string;
-  /** "server" when the daemon answered its last probe; "down" otherwise. */
+  /** "server" when the local engine answered its last probe; "down" otherwise. */
   active: "server" | "down";
-  /** The daemon's model when up; null when down. */
+  /** The local engine's model when up; null when down. */
   model: ModelInfo | null;
   server: {
-    transport?: "native" | "http";
     code?: string;
     ok: boolean;
     checkedAt: number;
     device?: string;
     dtype?: string;
     error?: string;
-    /**
-     * Why the daemon is not usable, when it is not: nothing answered ("unreachable"),
-     * something answered but speaks another contract major ("contract"), something is
-     * listening but is too old to let this extension read a word of it ("outdated"), or
-     * the configured URL is not a loopback address ("loopback"). Absent when it is up.
-     * The UI uses this reason for setup/update guidance, never the raw `error` string.
-     */
-    reason?: "unreachable" | "contract" | "loopback" | "outdated";
-    /** The contract string a mismatched daemon reported, when `reason` is "contract". */
+    /** Health unavailable or incompatible; native error details are in code/error. */
+    reason?: "unreachable" | "contract";
     contract?: string;
-    /**
-     * The daemon should be updated: it is either too old to answer at all (`reason` is
-     * "outdated") or it answered and named a release behind this extension's, in which
-     * case scoring goes on working. Settings offers native component updates; manual
-     * HTTP development keeps its separate version guidance.
-     */
+    /** A compatible component reports an older release than this extension. */
     outdated?: boolean;
   };
 }
@@ -221,7 +207,7 @@ export interface CopyDiagnosticsReply {
   via: "clipboard" | "execCommand" | "none";
 }
 
-/** popup → content: the user pressed Retry — re-check the daemon, re-queue Unavailable units. */
+/** popup → content: the user pressed Retry — re-check the local engine, re-queue Unavailable units. */
 export interface RetryBackendMessage {
   action: typeof ACTIONS.RETRY_BACKEND;
 }

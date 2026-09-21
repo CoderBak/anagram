@@ -62,10 +62,7 @@ describe("the pattern for one site", () => {
 
 describe("what a content script may be registered on", () => {
   it("is exactly what the user granted — the extension requires no host of its own", () => {
-    // The daemon's two loopback patterns used to be REQUIRED, so they came back in every
-    // answer the browser gave and had to be subtracted here or a content script would run
-    // on every page a local dev server serves. Nothing is required now, so nothing is
-    // subtracted: a granted pattern is one the user chose.
+    // Explicitly granted local website patterns are browsing access too.
     expect(browsingOrigins([])).toEqual([]);
     expect(browsingOrigins(["https://example.com/*"])).toEqual(["https://example.com/*"]);
   });

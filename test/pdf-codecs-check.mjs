@@ -19,7 +19,7 @@
 //   node test/pdf-codecs-check.mjs
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { withFakeDaemon, requireBuild, EXT } from "./harness.mjs";
+import { withFakeNative, requireBuild, EXT } from "./harness.mjs";
 
 requireBuild();
 
@@ -117,7 +117,7 @@ record(
 
 // ---- the browser ---------------------------------------------------------------------------
 
-const { daemon, context, extId } = await withFakeDaemon();
+const { fixture, context, extId } = await withFakeNative();
 const READER = `chrome-extension://${extId}/reader.html`;
 
 /**
@@ -196,7 +196,7 @@ record(
 );
 
 await context.close();
-await daemon.close();
+await fixture.close();
 
 // ---- summary ----------------------------------------------------------------------------
 

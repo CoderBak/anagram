@@ -24,7 +24,7 @@ DAEMON = Path(__file__).resolve().parents[1] / "anagramd"
 class Client:
     def __init__(self, python, home, log):
         self.process = subprocess.Popen([str(python), "-I", "-u", str(home / "app/native_host.py"), "--home", str(home)],
-                                        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log)
+                                        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log, cwd=home)
         self.sequence = 0
 
     def read_exact(self, size, timeout=30):
@@ -89,7 +89,7 @@ def main():
         (home / ".native-component.json").write_text(json.dumps(
             {"schema_version": 1, "host": "dev.coderbak.anagram", "home": str(home)}))
         for name in ("native_host.py", "native_component.py", "download_modelkit.py", "modelkit.json",
-                     "runtime_controller.py", "runtime_adapters.py", "scoring.py", "serve.py", "pyproject.toml"):
+                     "runtime_controller.py", "runtime_adapters.py", "scoring.py", "engine.py", "pyproject.toml"):
             shutil.copyfile(DAEMON / name, home / "app" / name)
         for entry in pin["files"]:
             source = args.model_dir / entry["path"]
@@ -109,7 +109,7 @@ def main():
         class FixtureClient(Client):
             def __init__(self, python, home, log):
                 self.process = subprocess.Popen([str(python), "-I", "-u", str(fixture), "--home", str(home)],
-                                                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log)
+                                                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log, cwd=home)
                 self.sequence = 0
         with (home / "native-smoke.log").open("wb") as log:
             client = None

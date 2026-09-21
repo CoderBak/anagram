@@ -84,7 +84,7 @@ matching assets; source/integration fixtures are a separate kind of evidence.
    engine** is chosen. Open another browser/profile against the same component home while
    the first owns it. The second shows that another browser is using the component, rather
    than treating it as missing installation or starting a second model/download. Disconnect
-   the owner and retry. A running legacy HTTP process can also hold the component busy.
+   the owner and retry.
 
 7. **Component and extension updates have separate controls.**
    **Update local component** performs an explicit native update and reconnects to the new
@@ -272,24 +272,6 @@ they do not replace manual review of the packaged installation and permission pr
     while the prompt is up (unlike Chrome). `about:addons` → Anagram → *Permissions* has
     the "Access your data for all websites" switch, which is check 4's equivalent.
 
-## Developer-only HTTP compatibility
-
-The normal setup above uses Native Messaging. This section applies only when deliberately
-selecting **Developer connection → manual HTTP** in Settings and running a developer HTTP
-backend yourself. Keep the browser's native connection stopped/disconnected if it would
-compete for the same model/home. Do not add this server setup to normal onboarding.
-
-1. With a real compatible HTTP backend and the shipping manifest, score an article.
-   Inspect the extension worker's `/score` preflight and extension-origin CORS reply.
-   A web page trying to read the same `/health` endpoint must be refused. No required
-   localhost host grant should appear; the URL remains loopback-only and redirects are refused.
-2. Test an unavailable server, a server missing CORS and an older compatible contract.
-   The UI should distinguish unavailable/incompatible capability and offer the appropriate
-   Settings/update guidance without claiming normal native installation is absent solely
-   because this explicitly selected developer service failed.
-3. Return to Native Messaging in Settings and confirm there is one native connection,
-   the correct component status, and no leftover manual-HTTP polling in the visible setup UI.
-
 ## What the suites cover, and what remains manual
 
 - `test/node/accessPatterns.test.ts`, `accessWorker.test.ts` and `permissions.test.ts`
@@ -303,13 +285,9 @@ compete for the same model/home. Do not add this server setup to normal onboardi
   and scheduled-uninstall retention. Its POSIX test launcher and fixture model status do
   **not** test Windows installation/maintenance, real downloads, benchmark accuracy or
   end-to-end removal of a production installation. Screenshots are in `test-results/native/`.
-- `node test/runtime.mjs` tests the shared benchmark/results UI against the explicitly
-  selected developer HTTP fixture: readiness, selection/apply, rerun/cancel, missing memory,
+- `node test/runtime.mjs` tests the shared benchmark/results UI against the
+  native component fixture: readiness, selection/apply, rerun/cancel, missing memory,
   light/dark accessibility and narrow layout. Fixture numbers are not measured performance.
-- `node test/daemon-cors-check.mjs` exercises shipping Chrome/Firefox builds with a fake
-  HTTP backend and no host grants. Real backend API/model tests provide separate evidence;
-  neither a fake CORS response nor a FastAPI test client alone proves the whole browser-to-
-  real-HTTP path. Use the developer-only checks above when changing that compatibility path.
 
 Record actual outcomes for each target OS/browser. The packaged permission dialogs,
 release-hosted one-time command, restart behavior in durable installations, real Windows

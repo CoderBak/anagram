@@ -6,7 +6,7 @@
 // the temporary install of output-test/firefox-mv2, and the fixed moz-extension:// origin.
 //
 // It runs against the same two things every other browser suite uses: the test-only fake
-// daemon (test/fake-daemon.mjs, deterministic verdicts, no model) and the self-test page
+// fixture (test/fake-native.mjs, deterministic verdicts, no model) and the self-test page
 // (test/selftest.html) served over http so the registered content script injects. What it
 // asserts is what is DIFFERENT about Firefox, on top of "the product still works":
 //
@@ -22,12 +22,12 @@
 //     moz-extension: document, and it loads pdf.js and a MODULE WORKER from that origin.
 //
 //   npm run build:firefox && npm run test:firefox
-//   npm run test:firefox -- --quick     # skip the daemon down/up cycle (~25 s)
+//   npm run test:firefox -- --quick     # skip the fixture down/up cycle (~25 s)
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
 import { serveHtml, artifact } from "./harness.mjs";
-import { startFakeDaemon } from "./fake-daemon.mjs";
+import { createNativeFixture } from "./fake-native.mjs";
 import {
   BADGE_SEL,
   EXT_UUID,
@@ -36,7 +36,6 @@ import {
   openExtensionPage,
   waitForExtensionPage,
   findPageByHref,
-  setServerUrl,
   setViewportSafe,
   sleep,
   sweep,
@@ -52,21 +51,20 @@ const results = [];
 const check = (name, ok, note = "") => results.push({ name, state: ok ? "PASS" : "FAIL", note });
 const skip = (name, why) => results.push({ name, state: "SKIP", note: why });
 
-// ── 1) fake daemon + the self-test page over http ──────────────────────────────────
-let daemon = await startFakeDaemon();
-const daemonPort = daemon.port;
+// ── 1) fake fixture + the self-test page over http ──────────────────────────────────
+let fixture = await createNativeFixture();
 const server = await serveHtml({ "/selftest.html": readFileSync(join(__dirname, "selftest.html"), "utf8") });
 const pageUrl = server.url("/selftest.html");
 
 // ── 2) headless Firefox + a temporary install of output-test/firefox-mv2 ───────────
-const { browser, firefox, extId, extUrl } = await launchFirefox().catch(async (e) => {
+const { browser, firefox, extId, extUrl } = await launchFirefox({ nativeFixture: fixture }).catch(async (e) => {
   console.error(e.message ?? e);
   await server.close();
-  await daemon.close();
+  await fixture.close();
   process.exit(2);
 });
 console.log(`Firefox ${firefox.version} (${firefox.source})\n  ${firefox.executablePath}`);
-console.log(`serving self-test at ${pageUrl} · fake daemon at ${daemon.url}`);
+console.log(`serving self-test at ${pageUrl} · fake fixture at ${fixture.label}`);
 console.log(`installed ${extId} → moz-extension://${EXT_UUID}/`);
 check("extension installs temporarily (BiDi webExtension.install)", extId === GECKO_ID, extId);
 
@@ -75,7 +73,7 @@ check("extension installs temporarily (BiDi webExtension.install)", extId === GE
 const onboarding = await findPageByHref(browser, "onboarding.html", { timeout: 20000 });
 
 // ── 3) options page: the background page answers, and the version string shows ─────
-await setServerUrl(browser, extUrl, daemon.url);
+
 const optionsPage = await openExtensionPage(browser, extUrl("options.html"));
 const extPageErrors = [];
 for (const [label, p] of [["options", optionsPage], ["onboarding", onboarding.page]]) {
@@ -90,7 +88,7 @@ await sleep(1200);
 const versionText = await optionsPage.evaluate(() => document.getElementById("version")?.textContent ?? "");
 check(
   "options page renders and shows the version (background page reachable)",
-  /^v\d+\.\d+\.\d+ · contract \d/.test(versionText),
+  /^v\d+\.\d+\.\d+ · Ready to analyze$/.test(versionText),
   versionText,
 );
 
@@ -99,7 +97,7 @@ const backendStatus = await optionsPage
   .catch((e) => ({ error: String(e).slice(0, 120) }));
 check(
   "MV2 background page answers runtime.sendMessage (GET_BACKEND_STATUS)",
-  !!backendStatus && backendStatus.active === "server" && backendStatus.server?.ok === true && backendStatus.serverUrl === daemon.url,
+  !!backendStatus && backendStatus.active === "server" && backendStatus.server?.ok === true && backendStatus.model?.id === "fake-editlens",
   JSON.stringify(backendStatus).slice(0, 180),
 );
 
@@ -198,9 +196,9 @@ check(
   JSON.stringify({ chips: snapshot.sections.purecjk, unsupported: snapshot.cjkUnsupported }),
 );
 check(
-  "non-English text never reaches the daemon (browser.i18n.detectLanguage gate)",
-  daemon.stats.blocks > 5 && daemon.stats.nonEnglishBlocks === 0,
-  `${daemon.stats.blocks} blocks, ${daemon.stats.nonEnglishBlocks} non-English`,
+  "non-English text never reaches the fixture (browser.i18n.detectLanguage gate)",
+  fixture.stats.blocks > 5 && fixture.stats.nonEnglishBlocks === 0,
+  `${fixture.stats.blocks} blocks, ${fixture.stats.nonEnglishBlocks} non-English`,
 );
 
 // ── 5) underlines: CSS Custom Highlight API is Firefox 140+ ────────────────────────
@@ -644,9 +642,9 @@ const prefetched = await (async () => {
   return n;
 })();
 
-// ── 12) daemon down → "Unavailable" + "!" counter; daemon back → re-queued ─────────
+// ── 12) fixture down → "Unavailable" + "!" counter; fixture back → re-queued ─────────
 if (QUICK) {
-  skip("daemon down → Unavailable chip + '!' counter; daemon back → re-queued", "--quick");
+  skip("fixture down → Unavailable chip + '!' counter; fixture back → re-queued", "--quick");
 } else {
   const p = await browser.newPage();
   await setViewportSafe(p);
@@ -657,7 +655,7 @@ if (QUICK) {
       const el = document.createElement("p");
       el.id = pid;
       el.textContent =
-        `${pid.toUpperCase()} paragraph is appended while the scoring daemon is stopped, so ` +
+        `${pid.toUpperCase()} paragraph is appended while the scoring fixture is stopped, so ` +
         "the extension must not invent a verdict for it: the batch that hits the dead socket renders as " +
         "Unavailable and later paragraphs wait without any chip, until a health probe succeeds again and " +
         "every waiting or unavailable unit is queued once more without a reload or a manual rescan.";
@@ -680,7 +678,7 @@ if (QUICK) {
   const counter = () =>
     p.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.textContent ?? null);
 
-  await daemon.close(); // connection refused from here on
+  await fixture.close(); // connection refused from here on
   await addPara("down1");
   const gotDown1 = await settledIn("down1", 12000);
   const band1 = await bandOf("down1");
@@ -689,12 +687,12 @@ if (QUICK) {
   const down2Chips = await p.evaluate((sel) => document.querySelectorAll(`#down2 ${sel}`).length, BADGE_SEL);
   const counterDown = await counter();
   check(
-    "daemon down: in-flight batch renders 'Unavailable', later paragraphs get no chip, counter shows '!'",
+    "fixture down: in-flight batch renders 'Unavailable', later paragraphs get no chip, counter shows '!'",
     gotDown1 && band1 === "band-unknown" && down2Chips === 0 && counterDown === "!",
     JSON.stringify({ band1, down2Chips, counterDown }),
   );
 
-  daemon = await startFakeDaemon({ port: daemonPort }); // same URL the extension holds
+  await fixture.resume();
   const back1 = await waitFor(p, ({ sel, pid }) => document.querySelectorAll(`#${pid} ${sel}`).length >= 1, {
     timeout: 25000,
     arg: { sel: BADGE_SEL, pid: "down2" },
@@ -705,7 +703,7 @@ if (QUICK) {
   }, { timeout: 25000, arg: { sel: BADGE_SEL, pid: "down1" } });
   const counterUp = await counter();
   check(
-    "daemon back: waiting and 'Unavailable' units are re-queued automatically",
+    "fixture back: waiting and 'Unavailable' units are re-queued automatically",
     back1 && back2 && counterUp !== "!",
     JSON.stringify({ back1, back2, counterUp }),
   );
@@ -787,5 +785,5 @@ console.log("\n" + (fail === 0 ? "✅ ALL CHECKS PASSED" : "❌ SOME CHECKS FAIL
 
 await browser.close();
 await server.close();
-await daemon.close().catch(() => {});
+await fixture.close().catch(() => {});
 process.exit(fail === 0 ? 0 : 1);

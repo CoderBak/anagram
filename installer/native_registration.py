@@ -287,6 +287,7 @@ def safe_tree(home):
 
 
 def prepare(home):
+    """Upgrade migration only: stop a verified process from the removed HTTP component."""
     home = owned_home(home, require_owner=True)
     pidfile = safe_path(home / "run/anagramd.pid", home)
     if not pidfile.exists():

@@ -1,7 +1,7 @@
 // test/e2e.mjs — Playwright end-to-end test for the Anagram MV3 extension (v2).
 //
 // Loads the built unpacked extension into a persistent Chromium context pointed at the
-// test-only fake daemon (deterministic verdicts, no model needed), serves the
+// test-only fake fixture (deterministic verdicts, no model needed), serves the
 // self-test page over http (so the registered content script injects), scrolls the
 // whole page (scoring is viewport-first BY DESIGN), then asserts the v2 behaviours:
 // long paragraphs badge once and underline to the end (the HF regression), a paragraph
@@ -12,7 +12,7 @@
 // paragraphs (X markup) sits under ONE chip reading ×N and is one chip again after it is
 // opened in place, inline code
 // does not fragment prose, pure-CJK text is settled by the local language gate
-// instead of being scored (the daemon never sees it), hidden tabs and <details>
+// instead of being scored (the fixture never sees it), hidden tabs and <details>
 // get badges when revealed, pushState swaps re-badge and purge, removals purge,
 // never-score zones stay clean, and the page DOM carries no marker attributes.
 //
@@ -22,18 +22,18 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
 import { launchExtension, serveHtml, artifact, BADGE_SEL } from "./harness.mjs";
-import { startFakeDaemon, fakeScore } from "./fake-daemon.mjs";
+import { createNativeFixture, fakeScore } from "./fake-native.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// 1) the fake daemon + a tiny static server for the self-contained self-test page.
-const daemon = await startFakeDaemon();
+// 1) the fake fixture + a tiny static server for the self-contained self-test page.
+const fixture = await createNativeFixture();
 const server = await serveHtml({ "/selftest.html": readFileSync(join(__dirname, "selftest.html"), "utf8") });
 const url = server.url("/selftest.html");
-console.log("serving self-test at", url, "· fake daemon at", daemon.url);
+console.log("serving self-test at", url, "· fake fixture at", fixture.label);
 
 // 2) launch a persistent context with the unpacked extension pointed at the fake.
-const { context, sw } = await launchExtension({ backendUrl: daemon.url, viewport: { width: 1280, height: 720 } });
+const { context, sw } = await launchExtension({ nativeFixture: fixture, viewport: { width: 1280, height: 720 } });
 console.log("extension service worker:", sw ? sw.url() : "NOT FOUND");
 
 // 4) open the page; capture content-script console errors.
@@ -123,9 +123,9 @@ const snapshot = await page.evaluate((sel) => {
     postwholeChip: document.querySelector(`#postwhole ${sel}`)?.shadowRoot?.querySelector(".num")?.textContent ?? "",
     // The Chinese paragraph never reaches a backend at all: the content script's local
     // language gate settles it and renders an "unsupported language" chip with no number
-    // and no mark. The fake daemon is asserted below to have seen no non-English block.
+    // and no mark. The fake fixture is asserted below to have seen no non-English block.
     cjkUnsupported: !!document.querySelector(`#purecjk ${sel}`)?.shadowRoot?.querySelector(".pill.band-unsupported"),
-    // The paragraph scored in windows: its own text (what the daemon's blocks must add up
+    // The paragraph scored in windows: its own text (what the fixture's blocks must add up
     // to), the chip and card it got, and the band of every range laid over it.
     windowed: (() => {
       const p = document.querySelector("#windowed p");
@@ -279,11 +279,11 @@ console.log("screenshot:", shot);
 
 // 15) checks + summary.
 const s = snapshot;
-// What the daemon was asked about the windowed paragraph: every block that is a piece of
+// What the fixture was asked about the windowed paragraph: every block that is a piece of
 // it, in reading order. The fake's verdict is a pure function of the text, so the bands
 // the page must show are known here without asking the page.
 const BANDS = ["human", "light", "heavy", "ai"];
-const windowBlocks = [...new Set(daemon.stats.texts.filter((t) => t.length > 200 && s.windowed.text.includes(t)))]
+const windowBlocks = [...new Set(fixture.stats.texts.filter((t) => t.length > 200 && s.windowed.text.includes(t)))]
   .sort((a, b) => s.windowed.text.indexOf(a) - s.windowed.text.indexOf(b));
 const windowVerdicts = windowBlocks.map((t) => fakeScore(t));
 const expectedBands = [...new Set(windowVerdicts.map((v) => BANDS[v.bucket]))].sort();
@@ -302,7 +302,7 @@ const checks = [
   ["LONG paragraph underline reaches the end (HF regression)", s.hl.longtail],
   ["LONG paragraph is still one window: no window row in its card", !/Scored/.test(snapshotCardOf.longpara)],
   ["WINDOWED paragraph: exactly ONE chip, showing one score and no per cent sign", s.sections.windowed === 1 && /^(\.\d\d|1\.0)$/.test(s.windowed.chip)],
-  ["WINDOWED paragraph: the daemon received it whole, as 3 consecutive blocks, none past its token window",
+  ["WINDOWED paragraph: the fixture received it whole, as 3 consecutive blocks, none past its token window",
     windowBlocks.length === 3 && windowBlocks.join(" ") === s.windowed.text && windowVerdicts.every((v) => v.truncated === false)],
   ["WINDOWED paragraph: underline reaches the final sentence", s.hl.windowtail],
   ["WINDOWED paragraph: each window is marked in its own band (more than one, as the verdicts differ)",
@@ -329,9 +329,9 @@ const checks = [
   ["rapid insert: every added paragraph badged", afterAdd === beforeAdd + RAPID],
   ["toggle hides + re-shows badges", hiddenN === 0 && reshownN === shownN && shownN > 0],
   ["no console errors", consoleErrors.length === 0],
-  ["non-English text is gated locally (the daemon received none)", daemon.stats.blocks > 5 && daemon.stats.nonEnglishBlocks === 0],
+  ["non-English text is gated locally (the fixture received none)", fixture.stats.blocks > 5 && fixture.stats.nonEnglishBlocks === 0],
 ];
-console.log(`fake daemon saw ${daemon.stats.requests} requests / ${daemon.stats.blocks} blocks (${daemon.stats.nonEnglishBlocks} non-English)`);
+console.log(`fake fixture saw ${fixture.stats.requests} requests / ${fixture.stats.blocks} blocks (${fixture.stats.nonEnglishBlocks} non-English)`);
 console.log("\n=== CHECKS ===");
 for (const [name, ok] of checks) console.log(`${ok ? "PASS" : "FAIL"}  ${name}`);
 if (consoleErrors.length) {
@@ -343,5 +343,5 @@ console.log("\n" + (pass ? "✅ ALL CHECKS PASSED" : "❌ SOME CHECKS FAILED"));
 
 await context.close();
 await server.close();
-await daemon.close();
+await fixture.close();
 process.exit(pass ? 0 : 1);

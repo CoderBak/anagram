@@ -25,7 +25,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { launchExtension, serveHtml, artifact, sweep, BADGE_SEL } from "./harness.mjs";
-import { startFakeDaemon } from "./fake-daemon.mjs";
+import { createNativeFixture } from "./fake-native.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const vp = (width, height) => ({ width, height });
@@ -62,7 +62,7 @@ if (!selected.length) {
 }
 const JOBS = Math.max(1, Number(process.env.MATRIX_JOBS) || 2);
 
-const daemon = await startFakeDaemon();
+const fixture = await createNativeFixture();
 const server = await serveHtml({ "/ui-fixtures.html": readFileSync(join(__dirname, "ui-fixtures.html"), "utf8") });
 const url = server.url("/ui-fixtures.html");
 
@@ -126,7 +126,7 @@ async function attemptProfile(profile) {
   const t0 = Date.now();
   let context;
   try {
-    ({ context } = await launchExtension({ backendUrl: daemon.url, ...launch }));
+    ({ context } = await launchExtension({ nativeFixture: fixture, ...launch }));
     const page = await context.newPage();
     const errors = [];
     page.on("console", (m) => {
@@ -319,5 +319,5 @@ console.log(`\n${total - failures.length} pass / ${failures.length} fail across 
 console.log(failures.length ? "❌ MATRIX FAILED" : "✅ MATRIX GREEN");
 
 await server.close();
-await daemon.close();
+await fixture.close();
 process.exit(failures.length ? 1 : 0);

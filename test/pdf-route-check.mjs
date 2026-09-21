@@ -23,7 +23,7 @@ import http from "node:http";
 import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { withFakeDaemon, requireBuild, BADGE_SEL } from "./harness.mjs";
+import { withFakeNative, requireBuild, BADGE_SEL } from "./harness.mjs";
 import { TEST_PDF, LOCKED_PDF, PDF_PASSWORD, openPdfInReader } from "./pdf-fixture.mjs";
 
 requireBuild();
@@ -106,7 +106,7 @@ const files = await new Promise((resolve) => {
 const LOCAL_PDF = join(tmpdir(), "anagram-pdf-route.pdf");
 writeFileSync(LOCAL_PDF, TEST_PDF);
 
-const { daemon, context, sw, extId } = await withFakeDaemon();
+const { fixture, context, sw, extId } = await withFakeNative();
 
 // Every address the extension asks for, so the checks below can say what was contacted and
 // how often.
@@ -378,7 +378,7 @@ await setAutoOpen(true);
   // either of which would be enough on its own.
   //
   // Since optional site access, the manifest declares no `file:///*` at all (it asks for
-  // the daemon's two loopback hosts and offers the two http(s) patterns), and the tick in
+  // the fixture's two loopback hosts and offers the two http(s) patterns), and the tick in
   // chrome://extensions grants nothing an extension has not declared — so no content
   // script runs on a file: page. And since the reading mode is handed its bytes by the tab
   // showing the document, even a script that DID run there could not help: a page on the
@@ -675,7 +675,7 @@ await setAutoOpen(false);
 
 {
   // Every request the whole run made, checked against the only places anything may go: the
-  // fixtures and the fake daemon, both on loopback. arxiv.org appears here only because the
+  // fixtures and the fake fixture, both on loopback. arxiv.org appears here only because the
   // run opened papers there on purpose, and never as something the extension asked for on
   // its own account.
   const stray = requested.filter((url) => {
@@ -684,7 +684,7 @@ await setAutoOpen(false);
     return hostname !== "localhost" && hostname !== "127.0.0.1" && hostname !== "arxiv.org";
   });
   record(
-    "privacy: nothing but the fixtures and the daemon is ever contacted",
+    "privacy: nothing but the fixtures and the fixture is ever contacted",
     stray.length === 0,
     JSON.stringify(stray.slice(0, 5)),
   );
@@ -718,7 +718,7 @@ await setAutoOpen(false);
 }
 
 await context.close();
-await daemon.close();
+await fixture.close();
 await files.close();
 
 // ---- summary ------------------------------------------------------------------------------------

@@ -33,7 +33,7 @@ export const MAX_SILENT = 15;
 
 /** What the daemon is doing, reduced to the four answers that change what to do next. */
 export interface DaemonFacts {
-  state: "up" | "down" | "contract" | "loopback" | "unknown";
+  state: "up" | "down" | "contract" | "unknown";
   /** Model identity when it is up — it decides the verdicts and belongs in a bug report. */
   model?: string;
   device?: string;
@@ -102,8 +102,6 @@ function daemonLine(daemon: DaemonFacts): string {
       return `daemon: up · ${daemon.model ?? "no model reported"}${daemon.device ? ` on ${daemon.device}` : ""}`;
     case "contract":
       return `daemon: CONTRACT MISMATCH — it speaks ${daemon.contract ?? "?"}, this build speaks another major`;
-    case "loopback":
-      return "daemon: refused — the configured URL is not a loopback address";
     case "down":
       return "daemon: down (nothing answered the last probe)";
     default:

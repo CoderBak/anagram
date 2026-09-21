@@ -1,7 +1,7 @@
 // lib/access/patterns.ts — the match patterns Anagram asks for, and what they cover.
 //
-// Website access is optional. Native Messaging needs no host pattern, and developer HTTP
-// reads loopback replies through CORS. Persistent website grants come from the user, all
+// Website access is optional. Native Messaging needs no host pattern.
+// Persistent website grants come from the user, all
 // sites at once or one at a time; activeTab also permits one-off analysis. The required
 // nativeMessaging permission is separate from these patterns. The origin and registration
 // rules are pure string work, tested without a browser in test/node/accessPatterns.test.ts.

@@ -530,15 +530,6 @@
   "optModeFlagged": {
     "message": "仅存疑"
   },
-  "optDaemonUrl": {
-    "message": "本地 HTTP 地址"
-  },
-  "optChecking": {
-    "message": "检查中…"
-  },
-  "optCheckNow": {
-    "message": "立即检查"
-  },
   "optRules": {
     "message": "站点规则"
   },
@@ -580,33 +571,6 @@
   },
   "optAlreadyCovered": {
     "message": "已被 $1 覆盖。"
-  },
-  "optBadUrl": {
-    "message": "只允许本地地址（http://127.0.0.1:… 或 http://localhost:…）。"
-  },
-  "optConnected": {
-    "message": "已连接 · $1（$2），设备 $3，地址 $4。"
-  },
-  "optContractMismatch": {
-    "message": "在 $1 找到了服务，但它使用 contract $2，而本扩展需要 $3.x——请运行：~/.anagram/bin/anagram update。"
-  },
-  "optOutdated": {
-    "message": "$1 上的本地评分服务版本比本扩展旧——请运行：~/.anagram/bin/anagram update。"
-  },
-  "optNotRunning": {
-    "message": "$1 上没有服务在运行——在它响应之前，段落都会显示为“暂不可用”。"
-  },
-  "optNotRunningReason": {
-    "message": "$1 上没有服务在运行——在它响应之前，段落都会显示为“暂不可用”（$2）。"
-  },
-  "optSummaryMismatch": {
-    "message": "服务版本不匹配"
-  },
-  "optSummaryDown": {
-    "message": "服务未运行"
-  },
-  "optNoWorker": {
-    "message": "无法连接到扩展的 service worker。"
   },
   "optAdvanced": {
     "message": "高级"
@@ -1019,9 +983,6 @@
   "runtimeExperimental": {
     "message": "实验性"
   },
-  "runtimeLegacy": {
-    "message": "当前不支持运行配置选择。请在设置中更新本地组件以启用性能比较。"
-  },
   "runtimeInvalid": {
     "message": "本地组件返回了不兼容的设置响应。请在设置中更新组件或重试连接。"
   },
@@ -1255,21 +1216,6 @@
   },
   "componentUpgradeNote": {
     "message": "商店安装的扩展由浏览器更新。ZIP 安装请用新版 ZIP 内容替换已解压的扩展并重新加载。使用上方按钮更新本地组件。"
-  },
-  "componentDeveloper": {
-    "message": "开发者连接"
-  },
-  "componentTransport": {
-    "message": "连接方式"
-  },
-  "componentNativeTransport": {
-    "message": "原生组件（推荐）"
-  },
-  "componentHttpTransport": {
-    "message": "手动本地 HTTP（开发用）"
-  },
-  "componentHttpNote": {
-    "message": "仅供源码开发使用。浏览器不会启动或管理此服务器。"
   },
   "componentReadyManual": {
     "message": "已就绪。可从工具栏选择“分析此页面”以临时访问，也可选择在上方授权网站。"

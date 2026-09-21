@@ -165,7 +165,7 @@ jobs:
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then npx playwright install --with-deps chromium; else npx playwright install chromium; fi
       # Prepare the shipping build. dynamics.mjs uses the harness's separate
-      # output-test/chrome-mv3 variant against test/fake-daemon.mjs.
+      # output-test/chrome-mv3 variant against the native scoring fixture.
       - run: npm run build
       - name: dynamics survey
         env:

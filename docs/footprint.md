@@ -12,65 +12,40 @@ the code cannot drift apart without somebody noticing.
 
 ## Network
 
-**Web requests from Anagram's pages and worker are restricted to itself and loopback.**
+**Extension pages and the worker can request only packaged resources.**
 `wxt.config.ts` declares their Content-Security-Policy:
 
 ```
 default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; object-src 'self';
-connect-src 'self' http://127.0.0.1:* http://localhost:*;
+connect-src 'self';
 img-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline';
 worker-src 'self'; frame-src 'none'; form-action 'none'; base-uri 'none'
 ```
 
-`connect-src` is the line that matters. `fetch`, `XMLHttpRequest`, `WebSocket`,
-`EventSource` and `sendBeacon` from an extension page or from the service worker can reach
-the extension's own origin, the loopback daemon and a file on this computer — nothing else,
-whatever the code asks for and whatever host permission the extension holds. That is
-measured rather than asserted: `test/csp-check.mjs` makes a page and the worker reach for
-`https://example.com` over all five APIs, in Chrome and in Firefox, and requires every one
-of them to be refused while the daemon still answers.
+The policy blocks network connections from extension pages and the worker, including
+loopback requests. `test/csp-check.mjs` exercises remote and loopback refusals in a browser
+while native scoring and the packaged PDF reader remain usable.
 
-The following limits are important when interpreting that policy:
+**Native Messaging is the only scoring and component-management connection.** The fixed
+host `dev.coderbak.anagram` exchanges bounded JSON frames over one multiplexed stdio port.
+Only Anagram's top-level onboarding and Options pages may request lifecycle operations
+through the background bridge. Content scripts cannot download, update or delete native
+files. No URL or alternative transport setting can change this connection. Retired
+`serverUrl` and `backendTransport` values are ignored and removed on worker initialization.
 
-- **Content scripts** run under the *page's* policy, not this one. Two of the call sites
-  below are in one: the same-origin re-read of the Google Doc the tab is already showing,
-  and the `import()` of our own vendored chunks. A third one added tomorrow would not be
-  stopped by the CSP, which is why the inventory below is enforced by a test rather than
-  left to the policy alone.
-- **The daemon URL** is a setting, and a setting can be edited. `lib/settings/settings.ts`
-  refuses anything but `http://127.0.0.1:<port>` and `http://localhost:<port>` — no https,
-  no IPv6, no other `127.x.y.z`, no path or credentials — which are exactly the two spellings
-  the CSP can express, so the setting and the policy have to agree before a request leaves
-  at all.
-- **Native Messaging** is the default scoring and component-management channel. It is
-  not governed by `connect-src`. The fixed host `dev.coderbak.anagram` launches a private
-  Python process and exchanges bounded JSON frames over stdio. Only Anagram's top-level
-  onboarding and Options pages may request lifecycle operations through the background
-  bridge; content scripts cannot download, update or delete files. The native component's
-  network and disk access are described below. HTTP is an explicit developer option.
+Native Messaging is outside `connect-src`; the local program has the user's normal OS
+privileges. Its separate setup downloads and disk use are described below. Browser CSP is
+not a sandbox for that process.
 
-The following CORS history concerns the optional developer HTTP transport.
-Since 2026-09-20 the extension holds **no host permission for the daemon either**. It used
-to require `http://127.0.0.1/*` and `http://localhost/*` — not to reach the daemon, which
-`connect-src` allows anyway, but to READ its answers, because the daemon sent no CORS
-headers. The daemon sends them now, for extension origins only (`anagramd/serve.py`), so
-scoring is an ordinary cross-origin request that the daemon chooses to answer. Nothing about
-what the extension can reach changed: `connect-src` is the same list it was, and a web page
-is still refused 403 by the daemon's Origin guard before CORS is ever considered. What
-changed is that no loopback host permission is needed — not that installation is free of
-permission warnings: `nativeMessaging` has its own warning. A daemon older than the
-extension cannot answer it, which the pages say plainly and fix with
-`~/.anagram/bin/anagram update`.
+Content scripts can re-read the same-origin PDF or Google Doc their tab already shows.
+Those requests use the tab's origin and cookies, and are not inference uploads. Local PDF
+files enter through the reader's file picker or drop zone; no file-scheme grant is required.
 
 ### Every call site
 
 | File | Call | What it is for | Where it goes |
 | --- | --- | --- | --- |
 | `lib/backend/nativeTransport.ts` | `connectNative(` | scoring and fixed local component operations over a single multiplexed port | the installed local host `dev.coderbak.anagram`, not an internet endpoint |
-| `lib/backend/httpClient.ts` | `fetch(` | `GET /health` — is the daemon up? | the loopback daemon |
-| `lib/backend/httpClient.ts` | `fetch(` | `POST /score` — the paragraphs to be scored | the loopback daemon |
-| `lib/backend/runtimeClient.ts` | `fetch(` | `GET /runtime` — setup progress and saved performance results; `POST /runtime/config`, `/runtime/benchmark` and `/runtime/cancel` — explicit device selection and comparison controls; credentials omitted, redirects refused | the same loopback daemon |
-| `lib/backend/httpClient.ts` | `fetch(` | `GET /health` again, in `no-cors` mode, only when the one above never came back: is ANYTHING listening there? It sends a bodyless GET with credentials omitted and reads nothing — an opaque response cannot be read — so that it answered at all is the whole result, and it is what tells a closed port from a daemon too old to answer this extension | the same loopback daemon |
 | `lib/docsOverlay.ts` | `fetch(` | re-reads the Google Doc the tab is already showing, in its `mobilebasic` rendering, because a Docs canvas has no text in the DOM to read | the same origin as the tab, with the reader's own cookies |
 | `lib/pdf/handoff.ts` | `fetch(` | re-reads, from the content script in a PDF tab, the document that tab is already showing, so the reading mode can be handed its bytes instead of fetching them | the same URL the tab is already showing, same-origin, normally answered from the HTTP cache |
 | `lib/lazy.ts` | `import(` | loads one of the vendored chunks that ship inside the extension (Readability, DOMPurify, the diagnostics chunk, pdf.js) | `chrome-extension://<this extension>/vendor/…` |
@@ -79,28 +54,10 @@ Nothing else in `lib/` or `entrypoints/` calls a network API. There is no `XMLHt
 no `WebSocket`, no `EventSource`, no `sendBeacon`, no `importScripts`, no telemetry, no
 analytics, no error reporting, no update check, no remote font and no remote stylesheet.
 
-Until 2026-09-20 there were two more, and both are gone.
-
-The service worker asked `arxiv.org` whether a paper had an HTML rendering, so that an
-arXiv PDF could open as the paper instead of as its PDF. It was the extension's only remote
-request. "Open in Anagram" on a PDF now opens that PDF.
-
-And the reading mode fetched its own `?src=` — an extension page asking the open web for a
-document, with the reader's cookies. **How a remote PDF's bytes reach the reading mode
-now:** the tab that is showing the PDF re-reads its own document (`lib/pdf/handoff.ts`,
-the row above) — same URL, same origin, same cookies, `cache: "force-cache"`, so the
-browser's own cache normally answers and nothing goes out at all — and streams it to the
-service worker a chunk at a time, stopping at 50 MB and refusing anything whose first bytes
-are not `%PDF-`. The worker holds those bytes under a one-time ticket, bound to that one
-tab, and navigates the tab to the reading mode, which pulls them and frees the ticket. The
-`?src=` in the reading mode's address is a NAME from then on — the title, "Open original",
-the HTML link — and nothing of ours ever fetches it. `connect-src` above is what makes that
-a rule rather than a promise: the reading mode could not fetch a remote address if it tried.
-
-A PDF on this computer (`file://`) cannot come in that way: nothing declares access to the
-file scheme, and a page on it may not re-read itself in any case. Such a PDF is opened by
-dropping it on the reading mode, which is a file the reader hands over rather than one
-anything here went and got.
+A remote PDF is re-read by its current tab with `cache: "force-cache"`, capped at 50 MB,
+and checked for the `%PDF-` signature. The worker holds its chunks under a one-time ticket
+bound to that tab; the reader claims them and the ticket is freed. The reader's `?src=`
+value is used for labels and navigation, never fetched from the extension origin.
 
 ### Every address written in the source
 
@@ -110,16 +67,9 @@ stylesheets included, since an `@import` or a webfont is a remote host as much a
 
 | File | URL | Why |
 | --- | --- | --- |
-| `lib/settings/settings.ts` | `http://127.0.0.1` | the default daemon address, whose port is interpolated; and, with and without a port, the examples in the comment that explains what the validator accepts |
-| `lib/settings/settings.ts` | `http://localhost` | the second spelling the validator accepts, in that same comment |
-| `lib/settings/settings.ts` | `http://127.0.0.2:8765` | an example in that comment of a loopback address the validator REFUSES |
-| `lib/settings/settings.ts` | `http://[::1]:8765` | the same, for the IPv6 spelling |
-| `lib/settings/settings.ts` | `https://localhost:8765` | the same, for a scheme that is not `http:` |
-| `lib/settings/settings.ts` | `http://$` | the accepted URL rebuilt from its own parsed host and port, so only the two shapes above can come out |
 | `lib/access/patterns.ts` | `http://localhost/*` | an example in the comment that explains why a match pattern carries no port. Nothing asks for it: the extension requires no host |
 | `lib/access/patterns.ts` | `https://*/*` | the OPTIONAL site access the reader may grant, and which the extension installs without |
 | `lib/access/patterns.ts` | `http://*/*` | the same, for plain http |
-| `entrypoints/options/index.html` | `http://127.0.0.1:8765` | the same address, as the field's placeholder |
 | `lib/pdf/source.ts` | `https://arxiv.org/html/` | builds the address of an arXiv paper's HTML rendering. Nothing fetches it; it is offered as a link somebody may follow |
 | `lib/docs.ts` | `https://docs.google.com/document/d/` | builds the address of the document the tab is on |
 | `lib/docsOverlay.ts` | `https://docs.google.com/document/d/` | the same address, for the same-origin read above |
@@ -132,21 +82,20 @@ stylesheets included, since an `@import` or a webfont is a remote host as much a
 
 ## Storage
 
-The daemon also keeps `runtime.json` under its own installation folder. It stores the
+The native component also keeps `runtime.json` under its own installation folder. It stores the
 chosen device/runtime/precision, a local hardware and model fingerprint, and benchmark
 timings and memory measurements. Benchmark inputs are built-in sample prose; this file
 contains no browsing text and is never uploaded. Restarting reuses a valid saved choice.
 
 ### `chrome.storage.local`
 
-Settings only — every one of them something the reader set — and one housekeeping flag.
-Nothing is written to `storage.sync`, `storage.session` or `storage.managed`, so nothing
-here leaves this profile or this computer.
+Reading preferences, an update notification and a cache housekeeping flag.
+Nothing is written to `storage.sync`, `storage.session` or `storage.managed`. Retired
+connection keys are deleted without reading their values; this does not change reading
+preferences or site grants. No setting is synced to another computer.
 
 | Key | What it holds |
 | --- | --- |
-| `serverUrl` | the daemon's address; loopback only |
-| `backendTransport` | native by default; HTTP is a developer-only connection option |
 | `extensionUpdatePending` | version of a browser extension update waiting for the user to reload |
 | `enabled` | the master switch |
 | `siteOverrides` | per-site on/off rules, as hostnames the reader chose |
@@ -168,7 +117,7 @@ The persistent score cache, in one object store (`scores`). A row is:
 | --- | --- |
 | `key` | `"<model id>@<version>:<hash>"` — a 53-bit hash (`lib/hash.ts`) of the NORMALIZED paragraph text, never the text |
 | `b`, `p`, `s` | the verdict: bucket, the four probabilities, the score |
-| `k`, `x` | token count, and whether the daemon truncated the paragraph |
+| `k`, `x` | token count, and whether the model truncated the paragraph |
 | `l`, `lp` | the language the local pre-gate detected, and its confidence |
 | `u` | set when the result is "unavailable" rather than a verdict |
 | `t` | when the row was written, so the oldest can be pruned |

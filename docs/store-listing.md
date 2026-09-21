@@ -173,8 +173,7 @@ host access does not mean installation has no permission warning.
 **`storage`**
 
 ```text
-Stores settings in chrome.storage.local: the native/developer-HTTP transport choice,
-the developer loopback address, master and per-site switches, marking/display/scope
+Stores settings in chrome.storage.local: master and per-site switches, marking/display/scope
 preferences, short-paragraph grouping, PDF routing, debug logging and floating-ball
 positions. It also records a cache-migration flag and an extension-update version awaiting
 explicit reload. lib/settings/settings.ts and entrypoints/background.ts contain the
@@ -246,14 +245,11 @@ cleanup; the extension uses its own `runtime.uninstallSelf` only after verified 
 **No required host permission — why the extension asks for none**
 
 ```text
-Native Messaging is the normal inference connection, so no localhost or website host
-permission is needed to reach the local component. The extension installs with access to
-no website; website access is an independent optional grant. For source development only,
-Settings can select a manually managed HTTP backend. That option accepts only loopback
-addresses, refuses redirects and reads replies through extension-origin CORS. The
-extension's connect-src policy permits its own origin and loopback web requests; it does
-not govern the native host. lib/settings/settings.ts, runtimeClient.ts, httpClient.ts,
-and wxt.config.ts implement that developer boundary.
+Native Messaging is the only inference connection. The extension installs with no
+website access; persistent website access is an independent optional grant. Extension
+pages and the worker use connect-src 'self', with no localhost network exception.
+The native component does not listen on a network port. Browser CSP does not govern
+its separate model and update downloads.
 ```
 
 **Optional host permissions `https://*/*` and `http://*/*`**
@@ -291,8 +287,8 @@ installation/update mechanism. The evidence for the browser package:
   `script-src 'self' 'wasm-unsafe-eval'`, so no remote script and no `eval` can run at
   all. There is no `eval(`, no `new Function`, no `importScripts` and no `document.write`
   anywhere in `lib/` or `entrypoints/`.
-- `connect-src 'self' http://127.0.0.1:* http://localhost:*` limits extension-page and
-  worker web requests. `node test/csp-check.mjs` tests those browser APIs. It makes no
+- `connect-src 'self'` blocks remote and loopback web requests from extension pages and
+  the worker. `node test/csp-check.mjs` tests those browser APIs. It makes no
   claim about the native process or the separately disclosed same-origin tab re-reads.
 - **WebAssembly**: `'wasm-unsafe-eval'` is in the policy for two files that ship inside
   the package — `vendor/wasm/openjpeg.wasm` and `vendor/wasm/jbig2.wasm`, pdf.js's
@@ -343,10 +339,9 @@ web requests, not the native program's OS/network access.
 No page text is persisted. The IndexedDB anagram-scores cache holds a model identity,
 53-bit hash of normalized text and numeric verdict metadata for at most 30 days; it never
 holds the text itself. Clear cached verdicts in Settings empties it. Private/incognito
-results are not written to disk. Scoring requests also carry a scan id, browser kind,
-page hostname, language hint and priority, never a full page URL, path or query
-(lib/contract.ts, ScoreBatchRequest). A developer-only loopback HTTP transport remains
-available with the same scoring payload.
+results are not written to disk. Native scoring requests contain the contract version,
+block IDs and text. The internal page-to-worker envelope is not forwarded to the native
+component; it does not receive page URLs, hostnames, cookies or browsing history.
 ```
 
 ### The three certifications
@@ -431,10 +426,10 @@ Do not use fixture scores or timings as evidence of real-model performance.
 ### Verify the data boundary
 
 - Read [footprint](footprint.md) and [PRIVACY.md](../PRIVACY.md): native scoring/management,
-  developer HTTP, same-origin PDF/Docs re-reads, storage and public native downloads are
+  same-origin PDF/Docs re-reads, storage and public native downloads are
   separate entries.
 - Inspect extension-page/worker Network requests and Native Messaging frames. Scoring uses
-  the native pipe by default; an absence of `/score` HTTP requests is expected. Page text is
+  the native pipe; there must be no HTTP scoring requests. Page text is
   handled in memory, and lifecycle frames contain fixed operations rather than commands.
 - Observe the native process's network activity separately during install/download/update.
   Those requests fetch model/runtime/release files and must not contain browsing text,
@@ -455,10 +450,9 @@ click and can be withdrawn. Native Messaging is required because local inference
 core function, not a future or optional feature.
 
 **Why no required localhost host permission?**
-The normal native connection does not use HTTP. The explicit developer HTTP option reads
-loopback responses using extension-origin CORS, with URL validation and redirects refused.
-That option does not turn localhost into a required host grant. Neither its CORS checks nor
-extension `connect-src` sandbox the native program.
+Inference uses Native Messaging exclusively. There is no HTTP inference server or
+localhost request exception in connect-src. The native program retains ordinary user
+OS privileges for loading models and downloading installation/update files.
 
 **Why `<all_urls>`-shaped patterns rather than a list of sites?**
 Anagram is not about particular websites — it annotates prose wherever the reader finds

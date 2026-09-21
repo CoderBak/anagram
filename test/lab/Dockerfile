@@ -1,6 +1,6 @@
 # test/lab/Dockerfile — the Anagram test lab: a Linux box with its own screen.
 #
-# Everything a test run opens (Chromium windows, the extension, the fake daemon) lives on a
+# Everything a test run opens (Chromium windows, the extension, the test native host) lives on a
 # virtual X display INSIDE this container. Nothing is launched on the Mac, so nothing can
 # take focus, move the pointer or land in the Dock. The display is published as one web page
 # (noVNC) that you park on a desktop of its own and glance at when you want to.
@@ -16,7 +16,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       tigervnc-standalone-server tigervnc-tools novnc websockify fluxbox \
-      rsync socat procps curl ca-certificates scrot x11-utils x11-xserver-utils xdotool \
+      rsync procps curl ca-certificates scrot x11-utils x11-xserver-utils xdotool \
  && rm -rf /var/lib/apt/lists/*
 
 # The browser: exactly the Chromium build the repo's Playwright version drives, plus the

@@ -7,8 +7,8 @@
 // re-render text we split, lazy comment sections, "show more" expansions, SPA route
 // changes, a live blog rewriting itself under the reader.
 //
-// Per page it opens the BUILT extension against test/fake-daemon.mjs (deterministic
-// verdicts, no model, and — the point — a recording daemon: every paragraph it was asked
+// Per page it opens the BUILT extension against test/fake-native.mjs (deterministic
+// verdicts, no model, and — the point — a recording fixture: every paragraph it was asked
 // about is kept, so "we scored that one twice" is a fact, not a guess), runs a scripted
 // 60–120 s session (scroll down screen by screen, back to the top, click the view-only
 // controls the entry names, follow one in-site link and come back, resize once, toggle
@@ -20,7 +20,7 @@
 // Everything is observed through what it leaves in the page: chip hosts
 // (`span[data-anagram="host"]`, open shadow root → `.pill` / `.num` / `.card`), the
 // ranges in `CSS.highlights`, `#anagram-fab`, the `[anagram:*]` console lines the debug
-// setting unlocks, and the fake daemon's own record of what it was asked.
+// setting unlocks, and the fake fixture's own record of what it was asked.
 //
 // What it records, per page:
 //
@@ -39,7 +39,7 @@
 //                checkVisibility separates the two rather than the page being scrolled,
 //                which would spoil the flicker comparison;
 //   STABILITY  — FLICKER: chips that appeared or vanished between two samples whose page
-//                text was byte-identical; RESENDS: paragraphs the daemon was asked about
+//                text was byte-identical; RESENDS: paragraphs the fixture was asked about
 //                more than once (the L1 + service-worker caches should make this zero);
 //                requests and blocks per minute; how far scoring lags the scroll;
 //   INTEGRITY  — did the PAGE break? a hash of the main region's own text before/after on
@@ -66,8 +66,8 @@
 // this used to default to. The folder is printed at the start of every run.
 // Headless always; logged-out always (throwaway profile, no cookies); one page of a site
 // at a time. A wall, a bot check or a timeout is a RESULT, not a failure.
-import { withFakeDaemon, launchPlain, BADGE_SEL, requireBuild } from "./harness.mjs";
-import { cyrb53 } from "./fake-daemon.mjs";
+import { withFakeNative, launchPlain, BADGE_SEL, requireBuild } from "./harness.mjs";
+import { cyrb53 } from "./fake-native.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
@@ -766,7 +766,7 @@ async function clickAct(page, act, note) {
  * One page, one run. `withExt` false is the control: the same script, no extension, no
  * ball toggle and no navigation, so the site's own long tasks and DOM errors are known.
  */
-async function runSession({ page, entry, budgetMs, withExt, daemon, drain, shotMid, onBeforeNav }) {
+async function runSession({ page, entry, budgetMs, withExt, fixture, drain, shotMid, onBeforeNav }) {
   const notes = [];
   const samples = [];
   const region = entry.region ?? null;
@@ -776,10 +776,10 @@ async function runSession({ page, entry, budgetMs, withExt, daemon, drain, shotM
     const s = await page.evaluate(SAMPLE, { deep, region }).catch(() => null);
     if (!s) return null;
     s.wall = Date.now();
-    if (daemon) {
+    if (fixture) {
       drain();
-      s.req = daemon.stats.requests;
-      s.blk = daemon.stats.blocks;
+      s.req = fixture.stats.requests;
+      s.blk = fixture.stats.blocks;
     }
     samples.push(s);
     return s;
@@ -1213,12 +1213,12 @@ async function visit(entry) {
   const row = { name: entry.name, kind: entry.kind, url: entry.url, note: entry.note ?? null, static: !!entry.static };
 
   // --- the extension run -----------------------------------------------------------------
-  // A fresh daemon AND a fresh throwaway profile per page: the L1 cache, the service
+  // A fresh fixture AND a fresh throwaway profile per page: the L1 cache, the service
   // worker's IndexedDB cache and the recorded texts must all belong to this page alone.
   let ctx = null;
   let ext = null;
   try {
-    ext = await withFakeDaemon({ viewport: VIEWPORT, userAgent: UA, locale: "en-US", timezoneId: "Asia/Shanghai" });
+    ext = await withFakeNative({ viewport: VIEWPORT, userAgent: UA, locale: "en-US", timezoneId: "Asia/Shanghai" });
     ctx = ext.context;
     const extId = ext.sw ? new URL(ext.sw.url()).host : null;
     if (extId) {
@@ -1241,7 +1241,7 @@ async function visit(entry) {
 
     const seenTexts = new Map();
     const drain = () => {
-      const batch = ext.daemon.stats.texts.splice(0);
+      const batch = ext.fixture.drainTexts();
       for (const t of batch) {
         const k = cyrb53(t);
         const e = seenTexts.get(k);
@@ -1257,7 +1257,7 @@ async function visit(entry) {
       row.error = navRes.error;
       row.ms = Date.now() - started;
       await ctx.close().catch(() => {});
-      await ext.daemon.close().catch(() => {});
+      await ext.fixture.close().catch(() => {});
       return row;
     }
     await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
@@ -1266,7 +1266,7 @@ async function visit(entry) {
       row.finalUrl = page.url().slice(0, 200);
       row.ms = Date.now() - started;
       await ctx.close().catch(() => {});
-      await ext.daemon.close().catch(() => {});
+      await ext.fixture.close().catch(() => {});
       return row;
     }
 
@@ -1283,7 +1283,7 @@ async function visit(entry) {
       entry,
       budgetMs: BUDGET_MS,
       withExt: true,
-      daemon: ext.daemon,
+      fixture: ext.fixture,
       drain,
       shotMid,
       onBeforeNav: async () => {
@@ -1328,9 +1328,9 @@ async function visit(entry) {
       textCharsEnd: run.last ? run.last.textChars : 0,
     };
     const dupTexts = [...seenTexts.values()].filter((v) => v.n > 1);
-    row.ext.daemon = {
-      requests: ext.daemon.stats.requests,
-      blocks: ext.daemon.stats.blocks,
+    row.ext.fixture = {
+      requests: ext.fixture.stats.requests,
+      blocks: ext.fixture.stats.blocks,
       uniqueTexts: seenTexts.size,
       resentTexts: dupTexts.length,
       resentBlocks: dupTexts.reduce((n, v) => n + v.n - 1, 0),
@@ -1339,12 +1339,12 @@ async function visit(entry) {
     };
     await ctx.close().catch(() => {});
     ctx = null;
-    await ext.daemon.close().catch(() => {});
+    await ext.fixture.close().catch(() => {});
   } catch (e) {
     row.reach = row.reach ?? "blocked";
     row.error = String(e).split("\n")[0].slice(0, 200);
     if (ctx) await ctx.close().catch(() => {});
-    if (ext) await ext.daemon.close().catch(() => {});
+    if (ext) await ext.fixture.close().catch(() => {});
   }
 
   // --- the control run: same page, same script, no extension -------------------------------
@@ -1372,7 +1372,7 @@ async function visit(entry) {
           entry,
           budgetMs: Math.round(BUDGET_MS * CONTROL_SHARE),
           withExt: false,
-          daemon: null,
+          fixture: null,
           drain: () => {},
         });
         const ms = Date.now() - t0;
@@ -1423,7 +1423,7 @@ for (let i = 0; i < entries.length; i++) {
   const x = row.ext;
   const bits =
     row.reach === "ok" && x
-      ? `chips=${x.hostsAtEnd}/${x.hostsMax} dup=${x.dupChipsMax} flick=${x.flickerGone}/${x.flickerNew} stuck=${x.stuckPending} orph=${x.orphanMax} resend=${x.daemon.resentBlocks} req/m=${x.reqPerMin} task=${x.tasksPerMin}/min vs ${row.control?.tasksPerMin ?? "–"} domErr=${x.domErrors.length}/${row.control?.domErrors?.length ?? "–"}`
+      ? `chips=${x.hostsAtEnd}/${x.hostsMax} dup=${x.dupChipsMax} flick=${x.flickerGone}/${x.flickerNew} stuck=${x.stuckPending} orph=${x.orphanMax} resend=${x.fixture.resentBlocks} req/m=${x.reqPerMin} task=${x.tasksPerMin}/min vs ${row.control?.tasksPerMin ?? "–"} domErr=${x.domErrors.length}/${row.control?.domErrors?.length ?? "–"}`
       : (row.error ?? "");
   console.log(`[${String(i + 1).padStart(2)}/${entries.length}] ${row.name.padEnd(20)} ${String(row.reach).padEnd(16)} ${bits}`);
 }
@@ -1462,7 +1462,7 @@ md.push(
     "all, leaving out the ones the browser is merely not rendering yet (a chip far below the fold " +
     "inside `content-visibility: auto` measures 0×0 and draws properly the moment it is reached) " +
     "and the ones inside a subtree the PAGE hides, whose text is hidden with them. " +
-    "*resend* = blocks the daemon was asked about more than once (the L1 and service-worker " +
+    "*resend* = blocks the fixture was asked about more than once (the L1 and service-worker " +
     "caches should make this 0). *task/min* = long tasks per minute, extension vs. control. " +
     "*Δtext* = the main region's own text changed between the first sample and the last " +
     "(`=` unchanged, `≠` changed) — meaningful only on pages marked static.",
@@ -1483,7 +1483,7 @@ for (const r of rows) {
   md.push(
     `| ${r.name} | ${r.kind} | ok | ${x.hostsAtEnd}/${x.hostsMax} | ${x.sameUnitChipsMax} | ${x.pileUpChipsMax} | ${x.flickerGone} | ${x.flickerReappear} | ` +
       `${x.stuckPending} | ${x.orphanMax} | ${x.clippedOutMax} | ${x.chromeMax} | ${x.zeroSizeMax} | ${x.detachedMax} | ` +
-      `${x.hlDetachedMax} | ${x.daemon.resentBlocks} | ${x.reqPerMin ?? "–"} | ${x.tasksPerMin}:${c.tasksPerMin ?? "–"} | ` +
+      `${x.hlDetachedMax} | ${x.fixture.resentBlocks} | ${x.reqPerMin ?? "–"} | ${x.tasksPerMin}:${c.tasksPerMin ?? "–"} | ` +
       `${x.heapStartMB ?? "–"}→${x.heapEndMB ?? "–"} | ${same(x.textHashStart, x.textHashEnd)}:${same(c.textHashStart, c.textHashEnd)} | ` +
       `${x.domErrors.length}:${c.domErrors ? c.domErrors.length : "–"} |`,
   );
@@ -1507,7 +1507,7 @@ for (const r of rows) {
       `${x.quietPairs} of the ${x.samples - 1} sample pairs were "quiet" (same text, scroll and viewport) — flicker can only be seen in those`,
   );
   md.push(
-    `- daemon: ${x.daemon.requests} requests / ${x.daemon.blocks} blocks, ${x.daemon.uniqueTexts} distinct texts, ` +
+    `- fixture: ${x.fixture.requests} requests / ${x.fixture.blocks} blocks, ${x.fixture.uniqueTexts} distinct texts, ` +
       `${x.reqPerMin ?? "–"} req/min, ${x.blkPerMin ?? "–"} blocks/min`,
   );
   md.push(
@@ -1557,10 +1557,10 @@ for (const r of rows) {
   if (x.flickerReappear > 0)
     anomalies.push(`**${x.flickerReappear} chip hosts left the DOM and came back** — the same element, removed and re-inserted (the reader sees it blink)`);
   if (x.stuckPending > 0) anomalies.push(`**stuck “analyzing…”: ${x.stuckPending} chips** past 10 s`);
-  if (x.daemon.resentBlocks > 0)
+  if (x.fixture.resentBlocks > 0)
     anomalies.push(
-      `**repeated scoring: ${x.daemon.resentBlocks} blocks re-sent** (${x.daemon.resentTexts} texts, worst one sent ${x.daemon.worstRepeat}×): ` +
-        x.daemon.resentSamples.map((s) => `${s.n}× ${s.len}ch “${s.hint}…”`).join("; "),
+      `**repeated scoring: ${x.fixture.resentBlocks} blocks re-sent** (${x.fixture.resentTexts} texts, worst one sent ${x.fixture.worstRepeat}×): ` +
+        x.fixture.resentSamples.map((s) => `${s.n}× ${s.len}ch “${s.hint}…”`).join("; "),
     );
   if (x.clippedOutMax > 0)
     anomalies.push(
@@ -1643,7 +1643,7 @@ console.log(
     `flicker ${ok.reduce((n, r) => n + r.ext.flickerGone + r.ext.flickerNew, 0)}, ` +
     `stuck ${ok.reduce((n, r) => n + r.ext.stuckPending, 0)}, ` +
     `orphans ${ok.reduce((n, r) => n + r.ext.orphanMax, 0)}, ` +
-    `re-sent blocks ${ok.reduce((n, r) => n + r.ext.daemon.resentBlocks, 0)}, ` +
+    `re-sent blocks ${ok.reduce((n, r) => n + r.ext.fixture.resentBlocks, 0)}, ` +
     `DOM errors ${ok.reduce((n, r) => n + r.ext.domErrors.length, 0)} (control ${ok.reduce((n, r) => n + (r.control?.domErrors?.length ?? 0), 0)})`,
 );
 console.log(`→ ${jsonPath}`);

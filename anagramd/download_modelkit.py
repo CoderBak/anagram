@@ -14,11 +14,6 @@ import re
 import shutil
 import sys
 
-# Set before importing the Hub, which reads these at import time. Explicit token=False
-# below is also required: neither a saved credential nor HF_TOKEN may authenticate this.
-os.environ["HF_HUB_DISABLE_IMPLICIT_TOKEN"] = "1"
-os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
-
 PIN = Path(__file__).with_name("modelkit.json")
 LID_URL = "https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz"
 LID_ENTRY = {"path": "lid.176.ftz", "size_bytes": 938013,
@@ -124,7 +119,7 @@ def download_asset(url: str, target: Path, entry: dict, *, cancel=None,
 
 def install_streaming(model_dir: Path, pin: dict, *, cancel=None,
                       progress=lambda _received, _total, _file: None, opener=None) -> None:
-    """Native-host variant of install: progress and cooperative pause, no stdout.
+    """Install pinned files with progress and cooperative pause; no stdout.
 
     Existing verified installed/staged files are reused. The staged tree commits
     only after every pinned variant passes verification. Hub tokens and offline
@@ -253,133 +248,23 @@ def reuse(source: Path, target: Path) -> None:
         shutil.copyfile(source, target)
 
 
-def install(model_dir: Path, pin: dict, download=None, cached=None) -> None:
-    model_dir = model_dir.absolute()
-    if model_dir in (Path(model_dir.anchor), Path.home()):
-        raise ValueError("Choose a dedicated model directory")
-    if model_dir.parent.is_symlink():
-        raise ValueError(f"{model_dir.parent} is a symbolic link — refusing to use it")
-    model_dir.parent.mkdir(parents=True, exist_ok=True)
-    incoming = model_dir.with_name(".incoming-" + model_dir.name)
-    backup = model_dir.with_name(model_dir.name + ".old")
-    for folder in (model_dir, incoming, backup):
-        plain_tree(folder)
-    if not incoming.exists() and not backup.exists() and not invalid_files(model_dir, pin):
-        print("All modelkit files already verified — nothing to download", flush=True)
-        return
-
-    from filelock import FileLock
-
-    lock_path = model_dir.with_name("." + model_dir.name + ".download.lock")
-    if lock_path.is_symlink():
-        raise ValueError(f"{lock_path} is a symbolic link — refusing to use it")
-    with FileLock(str(lock_path), timeout=0):
-        # Recheck after taking the lock, before any mutation.
-        for folder in (model_dir, incoming, backup):
-            plain_tree(folder)
-        # Recover an interruption between renames, while holding the writer lock.
-        if backup.exists() and not model_dir.exists():
-            backup.rename(model_dir)
-        invalid = set(invalid_files(model_dir, pin))
-        if not invalid:
-            for folder in (incoming, backup):
-                if folder.exists():
-                    shutil.rmtree(folder)
-            print("All modelkit files already verified — nothing to download", flush=True)
-            return
-        if download is None or cached is None:
-            from huggingface_hub import hf_hub_download, try_to_load_from_cache
-            download = download or hf_hub_download
-            cached = cached or try_to_load_from_cache
-        incoming.mkdir(exist_ok=True)
-        cache_sources = {}
-        corrupt_cache = set()
-        needed = []
-        for entry in pin["files"]:
-            name = entry["path"]
-            if name not in invalid or matches(incoming / name, entry):
-                continue
-            cache_path = cached(pin["repository"], name, revision=pin["revision"])
-            source = Path(cache_path).resolve() if isinstance(cache_path, str) else None
-            if source is not None and matches(source, entry):
-                cache_sources[name] = source
-                if source.stat().st_dev != incoming.stat().st_dev:
-                    needed.append(entry["size_bytes"])
-            else:
-                needed.append(entry["size_bytes"])
-                if source is not None:
-                    corrupt_cache.add(name)
-        # Missing bytes plus one temporary file and a margin; same-filesystem
-        # verified cached/installed files can be hardlinked without duplicating GBs.
-        required = sum(needed) + max(needed, default=0) + 64 * 1024 * 1024
-        if shutil.disk_usage(model_dir.parent).free < required:
-            raise ValueError(f"Not enough free disk space: allow {required / 1e9:.2f} GB for missing model files and temporary downloads (packages need additional space)")
-        total = sum(e["size_bytes"] for e in pin["files"])
-        print(f"EditLens by Pangram and the EditLens authors — {pin.get('license', 'CC-BY-NC-SA-4.0')}; noncommercial use only.", flush=True)
-        print(f"Public modelkit {pin['revision'][:12]}: {total / 1e9:.2f} GB total; verified files are reused.", flush=True)
-        for entry in pin["files"]:
-            name = entry["path"]
-            target = incoming / name
-            if matches(target, entry):
-                print("Verified staged file: " + name, flush=True)
-                continue
-            if name not in invalid:
-                reuse(model_dir / name, target)
-            else:
-                # Cache snapshots may link to blobs. Resolve only this read source;
-                # installed and staging trees still reject all symbolic links.
-                source = cache_sources.get(name)
-                if source is not None:
-                    reuse(source, target)
-                else:
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    target.unlink(missing_ok=True)
-                    print(f"Downloading {name} ({entry['size_bytes'] / 1e6:.1f} MB)", flush=True)
-                    download(repo_id=pin["repository"], filename=name, revision=pin["revision"],
-                             local_dir=str(incoming), token=False,
-                             force_download=name in corrupt_cache)
-            if not matches(target, entry):
-                raise ValueError(f"Checksum mismatch for {name}; staged bytes remain in {incoming} and nothing was replaced")
-        if invalid_files(incoming, pin):
-            raise ValueError("Modelkit verification failed; nothing was replaced")
-        # Download metadata is not part of the model and is no longer needed after a
-        # completed verification. Interrupted downloads keep it for resumable retries.
-        if (incoming / ".cache").exists():
-            shutil.rmtree(incoming / ".cache")
-        if backup.exists():
-            shutil.rmtree(backup)
-        if model_dir.exists():
-            model_dir.rename(backup)
-        try:
-            incoming.rename(model_dir)
-        except BaseException:
-            if backup.exists() and not model_dir.exists():
-                backup.rename(model_dir)
-            raise
-        if backup.exists():
-            shutil.rmtree(backup)
-        print("Modelkit verified and installed; LICENSE and NOTICE are included.", flush=True)
-
-
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description="Verify local pinned model files without downloading or changing them")
     parser.add_argument("--model-dir", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, default=PIN,
                         help="Pinned local manifest (defaults to the copy shipped with Anagram)")
-    parser.add_argument("--check", action="store_true", help="Only verify local files; no network or changes")
+    parser.add_argument("--lid-model", type=Path, help="Also verify this local fastText model")
     args = parser.parse_args()
     try:
         pin = load_pin(args.manifest)
-        if args.check:
-            invalid = invalid_files(args.model_dir, pin)
-            if invalid:
-                print("Missing or invalid modelkit files: " + ", ".join(invalid), file=sys.stderr)
-                return 1
-            print(f"All {len(pin['files'])} pinned modelkit files verified")
-        else:
-            install(args.model_dir, pin)
+        invalid = invalid_files(args.model_dir, pin)
+        if invalid:
+            raise ValueError("Missing or invalid modelkit files: " + ", ".join(invalid))
+        if args.lid_model and not matches(args.lid_model, LID_ENTRY):
+            raise ValueError("Missing or invalid language model: " + str(args.lid_model))
+        print(f"All {len(pin['files'])} pinned modelkit files verified")
     except Exception as exc:
-        print("Modelkit installation failed: " + str(exc), file=sys.stderr)
+        print("Model verification failed: " + str(exc), file=sys.stderr)
         return 1
     return 0
 

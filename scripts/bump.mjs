@@ -1,26 +1,5 @@
-// scripts/bump.mjs — set ONE version across the five files that carry it.
-//
-//   node scripts/bump.mjs 0.3.2     rewrite all five and print what changed
-//   node scripts/bump.mjs --check   verify all five already agree, and that the three sides
-//                                   speak one contract major (exit 1 if not)
-//
-// The extension, the daemon and the installer ship as one artifact, so they must never
-// disagree about which version that is — and they did: package-lock.json and
-// anagramd/uv.lock sat two releases behind package.json before this existed. The edits
-// are deliberately narrow (one field, one line) so the rest of every file — key order,
-// indentation, comments, the trailing newline — comes out byte-for-byte unchanged.
-//
-//   package.json               "version"
-//   package-lock.json          "version" and packages[""].version
-//   anagramd/pyproject.toml    [project] version
-//   anagramd/uv.lock           the version of the [[package]] named "anagramd"
-//   install.sh                 INSTALLER_VERSION=
-//
-// --check also reads the CONTRACT the three sides speak. It is not a version this script
-// sets — it changes when the wire changes, not when a release goes out — but it is carried
-// in three places, and a disagreement is the same kind of drift: the installed CLI's
-// `anagram doctor` compares the daemon's contract against its own CONTRACT_MAJOR, so a CLI
-// left behind on an older major calls a healthy daemon broken.
+// Keep release versions aligned; --check also verifies the native scoring contract.
+// Usage: node scripts/bump.mjs <x.y.z> | --check
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -83,24 +62,18 @@ const FIELDS = [
   packageLock,
   lineField("anagramd/pyproject.toml", "[project] version", /^(version\s*=\s*")([^"]*)(")/m),
   // Every locked dependency in uv.lock has a version line too; only the one directly
-  // under the daemon's own name may be touched.
+  // under the component's own name may be touched.
   lineField("anagramd/uv.lock", '[[package]] name = "anagramd"', /^(name = "anagramd"\nversion = ")([^"]*)(")/m),
   lineField("install.sh", "INSTALLER_VERSION", /^(INSTALLER_VERSION=")([^"]*)(")/m),
 ];
 
-/**
- * Where the contract lives. lib/contract.ts is the source of truth and anagramd/serve.py
- * carries the same string; the shipped CLI carries only the major, because that is all
- * `doctor` compares. Only the MAJOR has to agree — a minor is an addition the other side
- * may not know about yet, which is what the version is for.
- */
+// Contract changes are checked, never inferred from a release version.
 const CONTRACTS = [
   { file: "lib/contract.ts", what: "CONTRACT_VERSION", re: /^export const CONTRACT_VERSION = "([^"]*)";/m },
-  { file: "anagramd/serve.py", what: "CONTRACT_VERSION", re: /^CONTRACT_VERSION = "([^"]*)"/m },
-  { file: "installer/anagram", what: "CONTRACT_MAJOR", re: /^CONTRACT_MAJOR="([^"]*)"/m },
+  { file: "anagramd/engine.py", what: "CONTRACT_VERSION", re: /^CONTRACT_VERSION = "([^"]*)"/m },
 ];
 
-/** Read the three declarations. --check only, and read-only: this script never sets them. */
+/** Read the browser and native engine contract versions. */
 function readContracts() {
   return CONTRACTS.map((c) => {
     const version = readFileSync(join(ROOT, c.file), "utf8").match(c.re)?.[1] ?? null;
@@ -132,7 +105,7 @@ if (arg === "--check") {
   const majors = [...new Set(contracts.map((c) => c.major))];
   if (majors.length !== 1)
     fail(`the contract majors disagree: ${contracts.map((c) => `${c.file} says ${c.version}`).join(", ")}`);
-  console.log(`\nall five agree on ${versions[0]}, and all three speak contract ${majors[0]}.x`);
+  console.log(`\nall five agree on ${versions[0]}, and both speak contract ${majors[0]}.x`);
   process.exit(0);
 }
 

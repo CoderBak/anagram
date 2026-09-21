@@ -1,6 +1,8 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fakeBrowser } from "wxt/testing";
+import { NATIVE_MESSAGE } from "../../lib/backend/nativeProtocol";
 import {
-  canApplyRuntime, parseRuntime, requestHttpRuntime as requestRuntime, runtimeBusy, runtimePollMs, runtimeReady,
+  canApplyRuntime, parseRuntime, requestRuntime, runtimeBusy, runtimePollMs, runtimeReady,
   type RuntimeSnapshot,
 } from "../../lib/backend/runtimeClient";
 
@@ -15,11 +17,12 @@ const snapshot = (patch: Partial<RuntimeSnapshot> = {}): RuntimeSnapshot => ({
 
 const result = (batch_size: number) => ({ candidate_id: "torch:cpu:fp32", status: "ok" as const, batch_size, samples: 4, latency_ms: 40, throughput_per_s: 30, load_ms: 1000, warmup_ms: 300, peak_rss_bytes: 1024 });
 function respond(body: unknown, status = 200) {
-  const fetcher = vi.fn(async () => new Response(JSON.stringify(body), { status }));
-  vi.stubGlobal("fetch", fetcher);
-  return fetcher;
+  return vi.spyOn(fakeBrowser.runtime, "sendMessage").mockResolvedValue(status < 400
+    ? {v:1,id:"fixture",ok:true,status,data:body}
+    : {v:1,id:"fixture",ok:false,status,error:{code:"busy",message:"Benchmark already running"}});
 }
-afterEach(() => vi.unstubAllGlobals());
+beforeEach(() => fakeBrowser.reset());
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("runtime contract validation", () => {
   it("accepts two workloads for one candidate and preserves unavailable accelerator memory", () => {
@@ -71,31 +74,36 @@ describe("runtime readiness and explicit choice", () => {
   });
 });
 
-describe("runtime requests", () => {
-  it("reading setup is GET only; automatic benchmarking belongs to the daemon", async () => {
-    const fetcher = respond(snapshot());
-    expect((await requestRuntime("http://127.0.0.1:8765")).kind).toBe("ok");
-    expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher).toHaveBeenCalledWith("http://127.0.0.1:8765/runtime", expect.objectContaining({ method: "GET", redirect: "error", cache: "no-store" }));
+describe("native runtime requests", () => {
+  it("reads status without starting the automatic benchmark", async () => {
+    const send = respond(snapshot());
+    expect((await requestRuntime()).kind).toBe("ok");
+    expect(send).toHaveBeenCalledExactlyOnceWith({action:NATIVE_MESSAGE,op:"runtime",payload:{}});
   });
   it.each([
-    ["benchmark", undefined, { budget_s: 30 }],
-    ["cancel", undefined, {}],
-    ["config", "torch:cpu:fp32", { id: "torch:cpu:fp32" }],
-  ] as const)("sends only the documented %s action", async (action, id, body) => {
-    const fetcher = respond(snapshot(), 202);
-    await requestRuntime("http://localhost:8765", action, id);
-    expect(fetcher).toHaveBeenCalledWith(`http://localhost:8765/runtime/${action}`, expect.objectContaining({ method: "POST", body: JSON.stringify(body) }));
+    ["benchmark",undefined,{budget_s:30}], ["cancel",undefined,{}], ["config","torch:cpu:fp32",{id:"torch:cpu:fp32"}],
+  ] as const)("sends only the documented %s operation", async (action,id,payload) => {
+    const send = respond(snapshot(),202); await requestRuntime(action,id);
+    expect(send).toHaveBeenCalledExactlyOnceWith({action:NATIVE_MESSAGE,op:`runtime.${action}`,payload});
   });
-  it("refuses a remote address before fetching", async () => {
-    const fetcher = respond(snapshot());
-    expect((await requestRuntime("https://example.com")).kind).toBe("invalid");
-    expect(fetcher).not.toHaveBeenCalled();
+  it("rejects missing or overlong configuration IDs before invoking the bridge", async () => {
+    const send = respond(snapshot());
+    expect((await requestRuntime("config")).kind).toBe("invalid");
+    expect((await requestRuntime("config","x".repeat(121))).kind).toBe("invalid");
+    expect(send).not.toHaveBeenCalled();
   });
-  it("identifies legacy daemons and action conflicts", async () => {
-    respond({}, 404);
-    expect((await requestRuntime("http://localhost:8765")).kind).toBe("unsupported");
-    respond({ detail: "Benchmark already running" }, 409);
-    expect(await requestRuntime("http://localhost:8765", "benchmark")).toEqual({ kind: "rejected", message: "Benchmark already running" });
+  it("reports native conflicts and malformed snapshots", async () => {
+    respond({},409);
+    expect(await requestRuntime("benchmark")).toEqual({kind:"rejected",message:"Benchmark already running"});
+    vi.restoreAllMocks(); respond({}); expect((await requestRuntime()).kind).toBe("invalid");
+  });
+  it("ignores stale HTTP settings and never fetches", async () => {
+    await fakeBrowser.storage.local.set({backendTransport:"http",serverUrl:"https://example.com"});
+    const fetcher = vi.fn(); vi.stubGlobal("fetch",fetcher); const send = respond(snapshot());
+    expect((await requestRuntime()).kind).toBe("ok"); expect(send).toHaveBeenCalledOnce(); expect(fetcher).not.toHaveBeenCalled();
+  });
+  it("does not dispatch a cancelled request", async () => {
+    const send = respond(snapshot()); const controller = new AbortController(); controller.abort();
+    expect((await requestRuntime(undefined,undefined,controller.signal)).kind).toBe("unavailable"); expect(send).not.toHaveBeenCalled();
   });
 });

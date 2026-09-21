@@ -1,54 +1,13 @@
 #!/bin/sh
-# Anagram native component installer — private runtime plus exact user-level browser registration.
-#
-# Use the browser-specific installation command shown by Anagram setup.
-#
-# What it does (no sudo, no shell-profile edits, no system Python, no Homebrew):
-#   $ANAGRAM_HOME (default ~/.anagram)
-#     .anagram-home   the marker: every destructive step below requires it
-#     bin/anagram     the command: start · stop · status · logs · update · uninstall
-#     bin/uv          uv 0.11.18, a static binary from its GitHub release, checksum-verified
-#     python/         a uv-managed CPython (pinned), private to Anagram
-#     venv/           the daemon's packages from the committed uv.lock (hash-verified)
-#     app/            the scoring daemon (anagramd) at the installed release
-#     extension/      the built extension, ready for Chrome's "Load unpacked"
-#     models/         models are downloaded later from the extension, with pinned checksums
-#     hf/ cache/ logs/ run/   Hugging Face cache, uv cache, daemon logs, pid file
-#
-# Safety rules, in order of appearance:
-#   - the target must be an absolute, plain directory (no symlink, no "..", not / or $HOME)
-#   - an existing non-empty target must carry the marker, or it is refused untouched
-#   - all of that is checked BEFORE anything is downloaded
-#   - only exact owned native-host registrations are written outside the folder
-#   - existing app/, extension/ and the
-#     checkpoint are replaced by a staged swap, never by a bare rm -rf on a shared name
-#   - a download is verified where it lands, beside the file it will replace, and only a file
-#     that matches its pinned checksum is ever renamed into place
-#   - every file that replaces one already in the folder is written beside it and renamed
-#     over it: `anagram update` runs this script, and the command, the uv binary or the
-#     model may be in use while they are replaced
-#   - every child process (uv, python) runs with a scrubbed environment: inherited
-#     UV_*, PYTHON*, XDG_*, CARGO_* and friends cannot redirect writes or imports
-#
-# Options (environment):
-#   ANAGRAM_HOME=…          install somewhere else (default ~/.anagram)
-#   ANAGRAM_RELEASE_URL=…   where the release assets live (default: the latest GitHub release)
-#   ANAGRAM_BROWSER=chrome|firefox  register this browser only
-#   ANAGRAM_EXTENSION_ID=…  exact Chrome ID (32 a-p) or anagram@coderbak.dev for Firefox
-#   ANAGRAM_LANG=en|zh_CN   installation progress language
-#   ANAGRAM_DOWNLOAD_MODELS=1  optional terminal download; default is browser-managed setup
-#   ANAGRAM_SKIP_MODEL=1    compatibility override: always defer models to the browser
-#
-# Re-running updates in place. Uninstall removes the folder and exact owned native registrations.
+# Install a private native runtime and register the exact browser extension ID.
+# ANAGRAM_HOME, ANAGRAM_BROWSER, ANAGRAM_EXTENSION_ID and ANAGRAM_LANG come from setup.
+# Model download and engine lifecycle are browser-managed.
 set -eu
 
 INSTALLER_VERSION="0.4.0"
 UV_VERSION="0.11.18"
 PYTHON_VERSION="${ANAGRAM_PYTHON:-3.12.13}"
 RELEASE_URL="${ANAGRAM_RELEASE_URL:-https://github.com/CoderBak/anagram/releases/latest/download}"
-WEIGHTS_SHA256="869f33df7928c447bbd150d3b5192b4ea90b1cbd2ee4aad97f5d51d59dfc8cfb"
-LID_URL="https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz"
-LID_SHA256="8f3472cfe8738a7b6099e8e999c3cbfae0dcd15696aac7d7738a8039db603e83"
 MARKER=".anagram-home"
 BROWSER="${ANAGRAM_BROWSER:-}"
 EXTENSION_ID="${ANAGRAM_EXTENSION_ID:-}"
@@ -104,7 +63,7 @@ case "$BROWSER" in
   *) die "Use the installation command from Anagram setup (ANAGRAM_BROWSER=chrome|firefox and exact extension ID) / 请使用扩展设置页中的安装命令" ;;
 esac
 
-mkdir -p "$ANAGRAM_HOME/bin" "$ANAGRAM_HOME/models" "$ANAGRAM_HOME/logs" "$ANAGRAM_HOME/run" "$ANAGRAM_HOME/cache" "$ANAGRAM_HOME/hf"
+mkdir -p "$ANAGRAM_HOME/bin" "$ANAGRAM_HOME/models" "$ANAGRAM_HOME/run" "$ANAGRAM_HOME/cache" "$ANAGRAM_HOME/hf"
 [ -f "$ANAGRAM_HOME/$MARKER" ] || printf 'Anagram installation folder. Safe to delete with: bin/anagram uninstall\n' > "$ANAGRAM_HOME/$MARKER"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/anagram-install.XXXXXX")"
 SWAPPED=""
@@ -135,13 +94,7 @@ remove_ours() {
   rm -rf "$1"
 }
 
-# Put a file in its place INSIDE the validated folder: write it beside its name and rename
-# it over the old one. `anagram update` runs this installer, so what is being replaced may be
-# the very script that is executing (bin/anagram), a binary a running process holds open
-# (bin/uv) or a file the CLI is reading (VERSION, the model). Copying onto the original
-# truncates it under its reader; a rename swaps the name in one step and leaves whoever has
-# the old file open reading it to the end. The temporary sits in the destination's own
-# folder, so the rename never crosses a filesystem — and never goes through a symlink.
+# Rename beside the destination so running commands keep reading their old file.
 install_ours() { # src dest [mode]
   case "$2" in "$ANAGRAM_HOME"/*) ;; *) die "internal error: refusing to write '$2' (outside $ANAGRAM_HOME)";; esac
   [ -L "$2" ] && die "internal error: refusing to write through symlink '$2'"
@@ -270,24 +223,8 @@ clean_env PYTHONNOUSERSITE=1 PYTHONSAFEPATH=1 "$PY" "$ANAGRAM_HOME/app/native_re
 INSTALL_COMPLETE=1
 for sub in $SWAPPED; do remove_ours "$ANAGRAM_HOME/$sub.old"; done
 
-# ---------------------------------------------------------------- 5. optional terminal model download (browser manages it by default)
-MODEL_DIR="$ANAGRAM_HOME/models/editlens_roberta-large"
-if [ "${ANAGRAM_DOWNLOAD_MODELS:-}" = 1 ] && [ -z "${ANAGRAM_SKIP_MODEL:-}" ]; then
-  note "EditLens by Pangram and the EditLens authors: CC BY-NC-SA 4.0, noncommercial use only."
-  note "Downloading the public modelkit (4.07 GB total); LICENSE and NOTICE are included."
-  clean_env HF_HOME="$ANAGRAM_HOME/hf" HF_HUB_DISABLE_TELEMETRY=1 HF_HUB_DISABLE_IMPLICIT_TOKEN=1 \
-    PYTHONNOUSERSITE=1 PYTHONSAFEPATH=1 "$PY" "$ANAGRAM_HOME/app/download_modelkit.py" --model-dir "$MODEL_DIR"
-  if [ ! -f "$ANAGRAM_HOME/models/lid.176.ftz" ] || [ "$(sha256_of "$ANAGRAM_HOME/models/lid.176.ftz")" != "$LID_SHA256" ]; then
-    say "Downloading the fastText language model (1 MB)"
-    curl -fsSL --retry 3 -o "$TMP/lid.176.ftz" "$LID_URL"
-    [ "$(sha256_of "$TMP/lid.176.ftz")" = "$LID_SHA256" ] || die "checksum mismatch for lid.176.ftz"
-    install_ours "$TMP/lid.176.ftz" "$ANAGRAM_HOME/models/lid.176.ftz"
-  fi
-fi
-
-# ---------------------------------------------------------------- 6. config + done
-[ -f "$ANAGRAM_HOME/config" ] || printf 'PORT=8765\n' > "$ANAGRAM_HOME/config"
+# Installation complete.
 say "$(tr_msg 'Installed Anagram local component' 'Anagram 本地组件安装完成') $VERSION: $ANAGRAM_HOME"
 note "$(tr_msg 'Return to the extension and reconnect. Downloads, comparison, and model selection continue there.' '请返回扩展并重新连接，在扩展中继续下载模型、性能测试和选择配置。')"
 note "$(tr_msg 'EditLens models: CC BY-NC-SA 4.0, noncommercial use. The first model download is 4.07 GB plus temporary space.' 'EditLens 模型采用 CC BY-NC-SA 4.0 许可，仅限非商业用途。首次模型下载约 4.07 GB，另需临时空间。')"
-note "$(tr_msg 'No HTTP server, login startup, system Python, or PATH changes were installed.' '未自动启动 HTTP 服务，未添加开机自启，也未修改系统 Python 或 PATH。')"
+note "$(tr_msg 'The browser manages the component; no login startup, system Python, or PATH changes were installed.' '本地组件由浏览器管理，未添加开机自启，也未修改系统 Python 或 PATH。')"

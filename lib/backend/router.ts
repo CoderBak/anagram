@@ -35,7 +35,7 @@ import { createLogger } from "../log";
 const log = createLogger("router");
 
 /** Per-request character budget. Batching buys much less than one would hope: it mostly
- *  amortises the per-request overhead (HTTP round trip, tokenizer, language id) rather
+ *  amortises the per-request overhead (native framing, tokenizer, language id) rather
  *  than the forward pass, which is already compute-bound. On our own benchmark
  *  (docs/benchmarks/editlens-m4-24gb-2026-09-14.json, roberta-large) 60-word paragraphs go
  *  32.9 → 51.1 → 52.5 per second at batch 1 / 8 / 32 — about 1.5× and flat after 8 — while

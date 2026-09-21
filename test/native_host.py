@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import queue
+import shutil
 import struct
 import subprocess
 import sys
@@ -145,6 +146,31 @@ class FramingTests(unittest.TestCase):
         result = subprocess.run([sys.executable, "-I", "-c", code, str(DAEMON)], capture_output=True, text=True, check=True)
         self.assertEqual(result.stdout.strip(), "[]")
 
+    def test_host_contains_relative_dependency_files_in_owned_home(self):
+        code = """
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import native_host, native_component
+class Component:
+    def __init__(self, home): self.home = Path(home).resolve()
+    def start(self): Path('dependency-session').write_text('fixture')
+    def handle(self, op, payload): return 200, {'cwd': str(Path.cwd())}
+    def close(self): pass
+native_component.NativeComponent = Component
+sys.argv = ['native_host.py', '--home', sys.argv[2]]
+native_host.main()
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            launch, home = Path(directory) / "launch", Path(directory) / "owned"
+            launch.mkdir()
+            home.mkdir()
+            result = subprocess.run([sys.executable, "-I", "-c", code, str(DAEMON), str(home)],
+                                    input=frame(request()), capture_output=True, cwd=launch, check=True)
+            self.assertEqual(replies(result.stdout)[0]["data"]["cwd"], str(home.resolve()))
+            self.assertTrue((home / "dependency-session").is_file())
+            self.assertEqual(list(launch.iterdir()), [])
+
     def test_browser_launch_arguments_are_metadata_only(self):
         chrome = host.parse_args(["--home", "/tmp/owned", "chrome-extension://example/", "--parent-window=123"])
         self.assertEqual((chrome.caller, chrome.addon_id, chrome.parent_window), ("chrome-extension://example/", None, "123"))
@@ -237,6 +263,36 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(self.downloads, 0)
         component.close()
         self.make().close()
+
+    @unittest.skipIf(os.name == "nt", "POSIX maintenance command")
+    def test_terminal_maintenance_respects_native_lock_and_confirmation(self):
+        (self.home / ".anagram-home").write_text("owned")
+        app = self.home / "app"
+        app.mkdir()
+        for name in ("native_component.py", "runtime_controller.py", "download_modelkit.py", "modelkit.json"):
+            shutil.copyfile(DAEMON / name, app / name)
+        (app / "native_registration.py").write_text(
+            "import pathlib,sys\npathlib.Path(sys.argv[-1], 'helper-called').write_text(sys.argv[1])\n")
+        (self.home / "bin").mkdir()
+        command = self.home / "bin/anagram"
+        shutil.copyfile(DAEMON.parent / "installer/anagram", command)
+        command.chmod(0o700)
+        (self.home / "venv/bin").mkdir(parents=True)
+        (self.home / "venv/bin/python").symlink_to(sys.executable)
+        component = self.make()
+        env = {**os.environ, "HOME": str(self.temp.name)}
+        busy = subprocess.run([str(command), "update"], env=env, capture_output=True, text=True)
+        self.assertNotEqual(busy.returncode, 0)
+        self.assertIn("Another browser", busy.stderr)
+        self.assertFalse((self.home / "helper-called").exists())
+        component.close()
+        confirmed = subprocess.run([str(command), "update"], env=env, capture_output=True, text=True)
+        self.assertEqual(confirmed.returncode, 0, confirmed.stderr)
+        self.assertEqual((self.home / "helper-called").read_text(), "update")
+        denied = subprocess.run([str(command), "uninstall"], env=env, stdin=subprocess.DEVNULL,
+                                capture_output=True, text=True)
+        self.assertNotEqual(denied.returncode, 0)
+        self.assertEqual((self.home / "helper-called").read_text(), "update")
 
     def test_download_pause_and_explicit_resume_survive_reconnect(self):
         entered = threading.Event()

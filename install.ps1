@@ -79,7 +79,7 @@ if (Test-Path -LiteralPath $ComponentHome) {
 }
 foreach ($name in @('app','bin','models','venv','python','cache','hf','logs','run','native','tools','venv.next','venv.old','.anagram-home','.native-component.json','native-registration.json')) { Assert-Plain (Join-Path $ComponentHome $name) $ComponentHome }
 $null = New-Item -ItemType Directory -Path $ComponentHome -Force
-foreach ($name in @('bin','models','cache','hf','logs','run')) { $null = New-Item -ItemType Directory -Path (Join-Path $ComponentHome $name) -Force }
+foreach ($name in @('bin','models','cache','hf','run')) { $null = New-Item -ItemType Directory -Path (Join-Path $ComponentHome $name) -Force }
 if (-not (Test-Path -LiteralPath $marker)) { Set-Content -LiteralPath $marker -Value 'Anagram installation folder.' -Encoding ASCII }
 $temporary = Join-Path ([IO.Path]::GetTempPath()) ('anagram-install-' + [Guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $temporary

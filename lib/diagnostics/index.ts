@@ -52,7 +52,7 @@ async function daemonFacts(): Promise<DaemonFacts> {
   }
   const reason = status.server.reason;
   return {
-    state: reason === "contract" ? "contract" : reason === "loopback" ? "loopback" : "down",
+    state: reason === "contract" ? "contract" : "down",
     contract: status.server.contract,
   };
 }

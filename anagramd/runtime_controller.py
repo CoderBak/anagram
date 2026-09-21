@@ -1,8 +1,8 @@
 """Background lifecycle and bounded, cooperative local runtime comparisons.
 
 Measurements cover text cleaning, tokenization, forward and postprocessing of
-fixed ~120-word English samples, not language identification or HTTP transport.
-The HTTP control plane never waits for a model load or forward pass. Native
+fixed ~120-word English samples, not language identification or browser transport.
+Native status and control requests never wait for a model load or forward pass. Native
 loads/forwards cannot safely be interrupted in a Python thread: cancellation
 takes effect at their next boundary. The budget covers measured forwards only;
 discovery, loading, warmup and restoring a saved selection take additional time.
@@ -255,7 +255,7 @@ class RuntimeController:
         self._benchmark_work(30, refresh=False)
 
     def _valid_report(self, report):
-        """Validate every persisted field before it can enter /runtime.
+        """Validate every persisted field before it can enter a runtime snapshot.
 
         Numeric checks exclude booleans and non-finite JSON extensions. Candidate
         references and workload counts are validated against this discovery, not
@@ -368,7 +368,7 @@ class RuntimeController:
             self._ensure_idle()
             candidate = self._find(candidate_id)
             if candidate is None or not candidate.available:
-                raise ValueError("choose an available runtime candidate from /runtime")
+                raise ValueError("choose an available runtime candidate in Settings")
             self.state = "loading"
             self.error = None
             self.benchmark["phase"] = "loading"
@@ -402,7 +402,7 @@ class RuntimeController:
         with self.lock:
             if (self.state != "ready" or self.engine is None or self.needs_selection
                     or self.active_id != self.selected_id):
-                raise RuntimeUnavailable("runtime is not ready; open /runtime to finish setup")
+                raise RuntimeUnavailable("runtime is not ready; open Anagram Settings to finish setup")
             engine = self.engine
             self.leases += 1
         try:

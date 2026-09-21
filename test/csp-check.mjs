@@ -1,12 +1,12 @@
 // test/csp-check.mjs — the Content-Security-Policy, in both browsers.
 //
-// wxt.config.ts declares a policy that is meant to make "this extension cannot reach the
-// internet" a thing the BROWSER enforces rather than a thing the README says. A policy
-// like that has two ways to be wrong, and this checks for both:
+// Extension-page/worker web requests are restricted to packaged resources. Native
+// inference uses the separate browser pipe; its OS privileges are outside this policy.
+// This checks both ways the browser policy could be wrong:
 //
 //   too loose  — the point of the exercise. So a page and the service worker are made to
 //                reach for a remote host, a WebSocket and a beacon, and every one of them
-//                has to be refused, while the loopback daemon still answers;
+//                has to be refused, including loopback, while native scoring works;
 //   too tight  — the way a policy quietly breaks a product. So every surface the extension
 //                has is opened for real — popup, options, onboarding, the reader empty and
 //                with a PDF in it, and an ordinary web page with the chips and the panel on
@@ -26,7 +26,7 @@
 import http from "node:http";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { withFakeDaemon, requireBuild, EXT, BADGE_SEL } from "./harness.mjs";
+import { withFakeNative, requireBuild, EXT, BADGE_SEL } from "./harness.mjs";
 import { TEST_PDF } from "./pdf-fixture.mjs";
 import * as ff from "./firefox-harness.mjs";
 
@@ -50,8 +50,13 @@ const ARTICLE =
     .map((n) => `<p>${PARA} This is paragraph number ${n} of it.</p>`)
     .join("")}</article></body></html>`;
 
+let prohibitedLoopbackRequests = 0;
 const files = await new Promise((resolve) => {
   const server = http.createServer((req, res) => {
+    // If CSP were loosened, CORS would allow the probe. A refusal must come from
+    // the extension policy, not an unreadable response from this fixture.
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    if (req.url.startsWith("/csp-loopback")) prohibitedLoopbackRequests++;
     if (req.url.split("?")[0] === "/doc.pdf") {
       res.writeHead(200, { "content-type": "application/pdf", "content-length": TEST_PDF.length });
       return void res.end(TEST_PDF);
@@ -91,7 +96,7 @@ record("Chrome: the built manifest declares a policy for its own pages", chromeC
 
 // ---- Chrome ---------------------------------------------------------------------------------
 
-const { daemon, context, sw, extId } = await withFakeDaemon();
+const { fixture, context, sw, extId } = await withFakeNative();
 const extUrl = (path) => `chrome-extension://${extId}/${path}`;
 
 /**
@@ -205,16 +210,13 @@ const fromPage = (url) =>
 const fromWorker = (url) =>
   sw.evaluate((u) => fetch(u).then(() => "reached", (e) => `refused (${e.name})`), url);
 
-record(
-  "Chrome: an extension page still reaches the local daemon",
-  (await fromPage(`${daemon.url}/health`)) === "reached",
-  daemon.url,
-);
-record(
-  "Chrome: the service worker still reaches the local daemon",
-  (await fromWorker(`${daemon.url}/health`)) === "reached",
-  daemon.url,
-);
+const localUrl = files.url("/csp-loopback");
+record("Chrome: an extension page cannot fetch loopback", (await fromPage(localUrl)).startsWith("refused"));
+record("Chrome: the service worker cannot fetch loopback", (await fromWorker(localUrl)).startsWith("refused"));
+record("Chrome: numeric loopback is also blocked", (await fromWorker(localUrl.replace("localhost", "127.0.0.1"))).startsWith("refused"));
+record("Chrome: blocked loopback probes send no request", prohibitedLoopbackRequests === 0);
+const nativeStatus = await driver.evaluate(() => chrome.runtime.sendMessage({action:"getBackendStatus",probe:true}));
+record("Chrome: native scoring remains ready without web requests", nativeStatus?.server.ok === true && nativeStatus?.active === "server");
 
 const remote = {
   "an extension page → https://arxiv.org": await fromPage("https://arxiv.org/html/2402.17764"),
@@ -336,7 +338,7 @@ const narrow = JSON.parse(readFileSync(join(EXT, "manifest.json"), "utf8")).web_
 }
 
 await context.close();
-await daemon.close();
+await fixture.close();
 
 // ---- Firefox ---------------------------------------------------------------------------------
 //
@@ -356,13 +358,13 @@ await daemon.close();
 if (!CHROME_ONLY) {
   let launched = null;
   try {
-    launched = await ff.withFakeDaemon();
+    launched = await ff.withFakeNative();
   } catch (e) {
     record("Firefox: the extension installs with this policy", null, String(e).split("\n")[0]);
   }
 
   if (launched) {
-    const { browser, extUrl: fxUrl, daemon: fxDaemon } = launched;
+    const { browser, extUrl: fxUrl, fixture: fxFixture } = launched;
     // A policy Firefox refuses outright is an extension that will not install at all.
     record("Firefox: the extension installs with this policy", true, "");
 
@@ -450,7 +452,7 @@ if (!CHROME_ONLY) {
 
     // And what Firefox really APPLIED, asked of an extension page by breaking the policy.
     const options = await ff.openExtensionPage(browser, fxUrl("options.html"));
-    const applied = await options.evaluate(async (daemonUrl) => {
+    const applied = await options.evaluate(async (loopbackUrl) => {
       const out = {};
       // script-src: an inline script must not run. This is the directive Firefox is most
       // likely to rewrite, so it is the one worth reading back.
@@ -476,28 +478,31 @@ if (!CHROME_ONLY) {
           res(`refused (${e.name})`);
         }
       });
-      out.loopback = await fetch(`${daemonUrl}/health`).then(
+      out.loopback = await fetch(loopbackUrl).then(
         () => "reached",
         (e) => `refused (${e.name})`,
       );
       return out;
-    }, fxDaemon.url);
+    }, files.url("/csp-loopback"));
     record(
       "Firefox: script-src is live — an inline script on an extension page does not run",
       applied.inlineScript.startsWith("refused"),
       JSON.stringify(applied),
     );
     record(
-      "Firefox: connect-src is live — a remote host and a WebSocket are refused while the daemon answers",
+      "Firefox: connect-src is live — remote, loopback and WebSocket requests are refused",
       applied.remote.startsWith("refused") &&
         applied.websocket.startsWith("refused") &&
-        applied.loopback === "reached",
+        applied.loopback.startsWith("refused"),
       JSON.stringify(applied),
     );
+    record("Firefox: blocked loopback probes send no request", prohibitedLoopbackRequests === 0);
+    const nativeStatus = await options.evaluate(() => browser.runtime.sendMessage({action:"getBackendStatus",probe:true}));
+    record("Firefox: native scoring remains ready without web requests", nativeStatus?.server.ok === true && nativeStatus?.active === "server");
 
     await options.close().catch(() => {});
     await browser.close().catch(() => {});
-    await fxDaemon.close();
+    await fxFixture.close();
   }
 }
 

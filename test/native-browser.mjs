@@ -1,6 +1,7 @@
 // A real browser -> real native stdio pipe, with deterministic test-only component
 // replies. Production Native Messaging registrations and the user's HOME are untouched.
 import assert from "node:assert/strict";
+import { blockNativeHostInProfile } from "./native-test-host.mjs";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -66,6 +67,7 @@ while True:
   let context;
   try {
     const localized = uiLanguage(language);
+    blockNativeHostInProfile(profile);
     context = await chromium.launchPersistentContext(profile, {
       headless: true, channel: "chromium", viewport: { width: 1200, height: 1000 },
       ...localized, args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`,

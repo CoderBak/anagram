@@ -20,7 +20,7 @@ import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
 import http from "node:http";
 import { launchExtension, serveHtml, artifact, uiLanguage, uiLanguageOf, BADGE_SEL } from "./harness.mjs";
-import { startFakeDaemon } from "./fake-daemon.mjs";
+import { createNativeFixture } from "./fake-native.mjs";
 import {
   GROUPED_PARAS,
   GROUPED_UNIT_TEXT,
@@ -41,10 +41,10 @@ const results = []; // { phase, name, status: PASS|FAIL|SKIP, note }
 const record = (phase, name, ok, note = "") =>
   results.push({ phase, name, status: ok === null ? "SKIP" : ok ? "PASS" : "FAIL", note });
 
-// ---- fake daemon (deterministic verdicts) + server for the fixture page -------------
+// ---- fake fixture (deterministic verdicts) + server for the fixture page -------------
 // Texts carrying the stall marker are answered only after STALL_MS — long enough to
 // hold a selection card in its "Analyzing…" state while the test acts on it. Every
-// other request keeps the daemon's ordinary latency.
+// other request keeps the fixture's ordinary latency.
 const STALL_MARKER = "SLOWPOKE";
 const STALL_MS = 4000;
 // Texts carrying a density marker are LONGER to the fake's model than their characters
@@ -52,12 +52,11 @@ const STALL_MS = 4000;
 // the 512-token window, each half of it fits), SOLIDPACK overflows whatever its length.
 const DENSE_MARKER = "DENSEPACK";
 const SOLID_MARKER = "SOLIDPACK";
-const DAEMON_OPTS = {
-  delayFor: (text) => (text.includes(STALL_MARKER) ? STALL_MS : null),
-  tokensFor: (text) => (text.includes(SOLID_MARKER) ? 600 : text.includes(DENSE_MARKER) ? Math.ceil(text.length / 2) : null),
+const FIXTURE_OPTS = {
+  rules: [{contains: STALL_MARKER, delayMs: STALL_MS}, {contains: SOLID_MARKER, tokens: 600}, {contains: DENSE_MARKER, charsPerToken: 2}],
 };
-let daemon = await startFakeDaemon(DAEMON_OPTS);
-const daemonPort = daemon.port;
+let fixture = await createNativeFixture(FIXTURE_OPTS);
+
 const PARA = (tag) => `${tag} paragraph is long enough to be scored on its own because it carries well over fifty ordinary English words describing nothing in particular except the fact that a self-rewriting page must still end up with chips after it replaces its own document element, which is what legacy challenge pages and some old single-page frameworks do.`;
 const REWRITE_HTML = `<!doctype html><html><head><meta charset="utf-8"><title>rewrite fixture</title></head><body>
 <p>Interstitial: checking your browser, please wait…</p>
@@ -70,9 +69,9 @@ const REWRITE_HTML = `<!doctype html><html><head><meta charset="utf-8"><title>re
 </script></body></html>`;
 // Scope fixture: an article region both the text-mass probe and Readability land on,
 // plus a long paragraph OUTSIDE it carrying a marker word. Under "Main content only"
-// that paragraph must never be chipped and its text must never reach the daemon.
+// that paragraph must never be chipped and its text must never reach the fixture.
 const SCOPE_MARKER = "ZORBLAX";
-const OUTSIDE_PARA = `${SCOPE_MARKER} sits in a block outside the article region, and it is deliberately long enough to clear the evidence floor on its own, with well over sixty ordinary English words in it, so that nothing except the analysis scope can explain its absence: if the first scan ran under the default whole-page setting, this sentence would have been dispatched to the scoring daemon long before the stored setting ever arrived.`;
+const OUTSIDE_PARA = `${SCOPE_MARKER} sits in a block outside the article region, and it is deliberately long enough to clear the evidence floor on its own, with well over sixty ordinary English words in it, so that nothing except the analysis scope can explain its absence: if the first scan ran under the default whole-page setting, this sentence would have been dispatched to the scoring fixture long before the stored setting ever arrived.`;
 const SCOPE_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>scope fixture</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
 <main id="article"><h1>The article region</h1>
 <p id="s1">${PARA("SCOPED-ONE")}</p>
@@ -83,13 +82,13 @@ const SCOPE_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><
 // Stall fixture: the marker text sits in a <textarea>, which passive capture never
 // scores — so the only request it can ever produce is the selection card's own, and
 // no cached verdict can rob that card of its "Analyzing…" state.
-const STALL_TEXT = `${STALL_MARKER} is the marker word this selection carries so the fake daemon knows to hold its answer back for a few seconds, which is exactly the state the close button used to be dead in: the request is in flight, the card says it is analyzing, and the one listener that could dismiss it had not been attached yet, because attaching it was the last statement of the function.`;
+const STALL_TEXT = `${STALL_MARKER} is the marker word this selection carries so the fake fixture knows to hold its answer back for a few seconds, which is exactly the state the close button used to be dead in: the request is in flight, the card says it is analyzing, and the one listener that could dismiss it had not been attached yet, because attaching it was the last statement of the function.`;
 const STALL_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>stall fixture</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
-<h1>Selection while the daemon stalls</h1>
+<h1>Selection while the fixture stalls</h1>
 <textarea id="draft" style="width:100%;height:150px">${STALL_TEXT}</textarea>
 </body></html>`;
 // Keyboard fixture: four paragraphs whose seeded verdicts all land in a FLAGGED band
-// (fake-daemon's fakeScore is a pure function of the text — these markers were chosen
+// (fake-fixture's fakeScore is a pure function of the text — these markers were chosen
 // for it), spread far enough apart that "the next one" is a real scroll. Nothing else
 // on the page carries words, so no short run can merge into a paragraph and change the
 // text the verdict is seeded from. The 900 px lead-in puts every paragraph BELOW the
@@ -168,9 +167,9 @@ const fixturesUrl = server.url("/ui-fixtures.html");
 const fileServer = await servePdfs();
 const fileUrl = fileServer.url;
 
-const { context, sw } = await launchExtension({ backendUrl: daemon.url });
+const { context, sw } = await launchExtension({ nativeFixture: fixture });
 await context.grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => {});
-console.log("extension SW:", sw ? "loaded" : "NOT loaded", "· fake daemon at", daemon.url);
+console.log("extension SW:", sw ? "loaded" : "NOT loaded", "· fake fixture at", fixture.label);
 
 async function sweep(page, steps = 6) {
   await page
@@ -783,8 +782,8 @@ async function sweep(page, steps = 6) {
     await p.close();
   }
 
-  // A21: the daemon goes away → the batch in flight renders "Unavailable", nothing new
-  // is dispatched, the ball's counter shows "!"; the daemon comes back → everything is
+  // A21: the fixture goes away → the batch in flight renders "Unavailable", nothing new
+  // is dispatched, the ball's counter shows "!"; the fixture comes back → everything is
   // re-queued automatically (no reload, no Rescan).
   {
     const p = await context.newPage();
@@ -794,7 +793,7 @@ async function sweep(page, steps = 6) {
       p.evaluate((pid) => {
         const el = document.createElement("p");
         el.id = pid;
-        el.textContent = `${pid.toUpperCase()} paragraph is appended while the scoring daemon is stopped, so ` +
+        el.textContent = `${pid.toUpperCase()} paragraph is appended while the scoring fixture is stopped, so ` +
           "the extension must not invent a verdict for it: the batch that hits the dead socket renders as " +
           "Unavailable and later paragraphs wait without any chip, until a health probe succeeds again and " +
           "every waiting or unavailable unit is queued once more without a reload or a manual rescan.";
@@ -812,7 +811,7 @@ async function sweep(page, steps = 6) {
     const bandOf = (id) => p.evaluate(({ sel, pid }) => [...(document.querySelector(`#${pid} ${sel}`)?.shadowRoot?.querySelector(".pill")?.classList ?? [])].find((c) => c.startsWith("band-")) ?? null, { sel: BADGE_SEL, pid: id });
     const bubble = () => p.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.textContent ?? null);
 
-    await daemon.close(); // connection refused from here on
+    await fixture.close(); // connection refused from here on
     await addPara("down1");
     const gotDown1 = (await badgeIn("down1", 8000)) && (await settledIn("down1", 8000));
     const band1 = await bandOf("down1");
@@ -820,22 +819,22 @@ async function sweep(page, steps = 6) {
     await p.waitForTimeout(2000);
     const down2Chips = await p.evaluate((sel) => document.querySelectorAll(`#down2 ${sel}`).length, BADGE_SEL);
     const bubbleDown = await bubble();
-    record("ui", "daemon down: in-flight batch renders Unavailable, later paragraphs get no chip, counter shows !", gotDown1 && band1 === "band-unknown" && down2Chips === 0 && bubbleDown === "!", JSON.stringify({ band1, down2Chips, bubbleDown }));
+    record("ui", "fixture down: in-flight batch renders Unavailable, later paragraphs get no chip, counter shows !", gotDown1 && band1 === "band-unknown" && down2Chips === 0 && bubbleDown === "!", JSON.stringify({ band1, down2Chips, bubbleDown }));
 
-    daemon = await startFakeDaemon({ port: daemonPort, ...DAEMON_OPTS }); // same URL as the extension setting
+    await fixture.resume(); // same native registration
     const back1 = await badgeIn("down2", 20000);
     const back2 = await p.waitForFunction(({ sel, pid }) => {
       const pill = document.querySelector(`#${pid} ${sel}`)?.shadowRoot?.querySelector(".pill");
       return !!pill && !pill.classList.contains("band-unknown") && !pill.classList.contains("pending");
     }, { sel: BADGE_SEL, pid: "down1" }, { timeout: 20000 }).then(() => true).catch(() => false);
     const bubbleUp = await bubble();
-    record("ui", "daemon back: waiting + Unavailable units re-queued automatically", back1 && back2 && bubbleUp !== "!", JSON.stringify({ back1, back2, bubbleUp }));
+    record("ui", "fixture back: waiting + Unavailable units re-queued automatically", back1 && back2 && bubbleUp !== "!", JSON.stringify({ back1, back2, bubbleUp }));
     await p.close();
   }
 
   // A23: the FIRST scan already obeys the stored scope. With "Main content only" chosen
   // before the page opens, the paragraph outside the article must never be chipped —
-  // and its text must never reach the daemon, not even during the few hundred
+  // and its text must never reach the fixture, not even during the few hundred
   // milliseconds the settings read used to leave the page scanning whole-page defaults.
   {
     const extId = sw ? new URL(sw.url()).host : null;
@@ -853,7 +852,7 @@ async function sweep(page, steps = 6) {
         inMain: await p.evaluate((sel) => document.querySelectorAll(`main ${sel}`).length, BADGE_SEL),
         outside: await p.evaluate((sel) => document.querySelectorAll(`#offmain ${sel}`).length, BADGE_SEL),
         // Read BEFORE the setting is restored — restoring re-scans the page whole.
-        leaked: daemon.stats.texts.some((t) => t.includes(SCOPE_MARKER)),
+        leaked: fixture.stats.texts.some((t) => t.includes(SCOPE_MARKER)),
       };
       await opt.evaluate(() => new Promise((res) => chrome.storage.local.set({ analysisScope: "page" }, res)));
       await p.close();
@@ -863,7 +862,7 @@ async function sweep(page, steps = 6) {
   }
 
   // A24: the selection card's ✕ closes it WHILE the request is in flight. The listener
-  // used to be attached after the await, so for as long as the daemon took (up to 25 s)
+  // used to be attached after the await, so for as long as the fixture took (up to 25 s)
   // the button did nothing.
   {
     const p = await context.newPage();
@@ -912,7 +911,7 @@ async function sweep(page, steps = 6) {
     const elapsed = Date.now() - t0;
     record(
       "ui",
-      "selection card: ✕ closes it while the daemon is still thinking",
+      "selection card: ✕ closes it while the fixture is still thinking",
       analyzing && clicked && gone && elapsed < STALL_MS,
       JSON.stringify({ analyzing, clicked, gone, elapsed }),
     );
@@ -922,7 +921,7 @@ async function sweep(page, steps = 6) {
   // A24b: a selection longer than the model reads in one pass is read COMPLETELY — in
   // windows, all in one request — so "Words analyzed" is the selection again, not the
   // "first N" of it. Runs before anything else has scored this text, so the blocks the
-  // daemon saw are this card's own.
+  // fixture saw are this card's own.
   {
     const p = await context.newPage();
     await p.goto(server.url("/longsel.html"), { waitUntil: "load" });
@@ -952,7 +951,7 @@ async function sweep(page, steps = 6) {
       )
       .then((h) => h.jsonValue())
       .catch(() => null);
-    const blocks = [...new Set(daemon.stats.texts.filter((t) => t.length > 200 && WINDOWED_TEXT.includes(t)))]
+    const blocks = [...new Set(fixture.stats.texts.filter((t) => t.length > 200 && WINDOWED_TEXT.includes(t)))]
       .sort((a, b) => WINDOWED_TEXT.indexOf(a) - WINDOWED_TEXT.indexOf(b));
     const ok =
       !!rows &&
@@ -1023,7 +1022,7 @@ async function sweep(page, steps = 6) {
   }
 
   // A25c: a paragraph inside the character budget that still overflows the model's window
-  // (figures, URLs, names) is not left half-read: the daemon's `truncated` answer sends both
+  // (figures, URLs, names) is not left half-read: the fixture's `truncated` answer sends both
   // halves back for a second reading. When even a half overflows, the card says so.
   {
     const p = await context.newPage();
@@ -1047,7 +1046,7 @@ async function sweep(page, steps = 6) {
       .then((h) => h.jsonValue())
       .catch(() => null);
     const text = DENSE_PARA(DENSE_MARKER);
-    const sent = [...new Set(daemon.stats.texts.filter((t) => t.includes(DENSE_MARKER)))];
+    const sent = [...new Set(fixture.stats.texts.filter((t) => t.includes(DENSE_MARKER)))];
     const halves = sent.filter((t) => t !== text);
     const ok =
       !!cards &&
@@ -1059,7 +1058,7 @@ async function sweep(page, steps = 6) {
       halves.sort((a, b) => text.indexOf(a) - text.indexOf(b)).join(" ") === text &&
       cards.solid.rows["Windows cut short"] === "2 of 2" &&
       /too dense for the model's window and was not read/.test(cards.solid.foot);
-    record("ui", "dense text: a paragraph the daemon had to cut is re-read in two halves; one still cut says so", ok, JSON.stringify({ cards: cards && { dense: cards.dense.rows, solid: cards.solid.rows }, sent: sent.map((t) => t.length) }));
+    record("ui", "dense text: a paragraph the fixture had to cut is re-read in two halves; one still cut says so", ok, JSON.stringify({ cards: cards && { dense: cards.dense.rows, solid: cards.solid.rows }, sent: sent.map((t) => t.length) }));
     await p.close();
   }
 
@@ -1364,7 +1363,7 @@ async function sweep(page, steps = 6) {
   // the reader page and shown AS IT IS — the pages themselves, drawn by pdf.js — with the
   // ORDINARY pipeline over them: the same chips, the same underlines, the same ball and
   // panel, the same copied report. The reconstruction is invisible and is only asserted
-  // through what it decides: what reaches the daemon, and where a chip lands.
+  // through what it decides: what reaches the fixture, and where a chip lands.
   const extId = sw ? new URL(sw.url()).host : null;
   /** Open a PDF the only way a remote one opens now: the tab shows it, the ball hands it over. */
   const openReader = (path) => openPdfInReader(context, fileUrl(path));
@@ -1425,7 +1424,7 @@ async function sweep(page, steps = 6) {
         extErrors.push(m.text().slice(0, 140));
       }
     });
-    const seen = daemon.stats.texts.length; // what THIS document sends, not the whole run
+    const seen = fixture.stats.texts.length; // what THIS document sends, not the whole run
     await p.goto(fileUrl("/doc.pdf"), { waitUntil: "load" }).catch(() => {});
     await handOverPdf(p);
     await p.waitForSelector("#pages:not(.reading)", { timeout: 20000 }).catch(() => {});
@@ -1440,11 +1439,11 @@ async function sweep(page, steps = 6) {
       .catch(() => {});
 
     const page = await readReader(p);
-    const sent = daemon.stats.texts.slice(seen);
+    const sent = fixture.stats.texts.slice(seen);
 
     record(
       "ui",
-      "PDF reader: the paragraphs reach the daemon in reading order, joined across the page break",
+      "PDF reader: the paragraphs reach the fixture in reading order, joined across the page break",
       sent.length === 3 &&
         sent[0] === PDF_PARAS[0].join(" ") &&
         sent[2] === PDF_PARAS[3].join(" ") &&
@@ -1454,7 +1453,7 @@ async function sweep(page, steps = 6) {
     );
     record(
       "ui",
-      "PDF reader: the running head and the page numbers never leave the page for the daemon",
+      "PDF reader: the running head and the page numbers never leave the page for the fixture",
       sent.every((t) => !t.includes(PDF_HEAD)) &&
         sent.every((t) => !/\s[12]\s/.test(t)) &&
         // …and they are still THERE, because the reader shows the document as it is.
@@ -1498,8 +1497,8 @@ async function sweep(page, steps = 6) {
     );
 
     // Zoom: one CSS variable, so not a single span or chip host is rebuilt and nothing is
-    // asked of the daemon a second time.
-    const requestsBefore = daemon.stats.requests;
+    // asked of the fixture a second time.
+    const requestsBefore = fixture.stats.requests;
     await p.evaluate(() => document.getElementById("zoomIn").click());
     await p.waitForTimeout(1200);
     const zoomed = await readReader(p);
@@ -1510,7 +1509,7 @@ async function sweep(page, steps = 6) {
         JSON.stringify(zoomed.hosts) === JSON.stringify(page.hosts) &&
         zoomed.marks === page.marks &&
         zoomed.placed.every((c) => c.inPage && !c.overText) &&
-        daemon.stats.requests === requestsBefore,
+        fixture.stats.requests === requestsBefore,
       JSON.stringify({ from: page.scale.toFixed(2), to: zoomed.scale.toFixed(2), same: JSON.stringify(zoomed.hosts) === JSON.stringify(page.hosts) }),
     );
 
@@ -1547,7 +1546,7 @@ async function sweep(page, steps = 6) {
   // supplying the barriers — so the three under the first heading are one unit and the two
   // under the second, 48 words with nothing of their section to join, are read by nobody.
   if (extId) {
-    const seen = daemon.stats.texts.length;
+    const seen = fixture.stats.texts.length;
     const p = await openReader("/grouped.pdf");
     await p.waitForSelector("#pages:not(.reading)", { timeout: 20000 }).catch(() => {});
     await sweep(p, 4);
@@ -1558,7 +1557,7 @@ async function sweep(page, steps = 6) {
       }, BADGE_SEL, { timeout: 20000 })
       .catch(() => {});
     const grouped = await readReader(p);
-    const groupedSent = daemon.stats.texts.slice(seen);
+    const groupedSent = fixture.stats.texts.slice(seen);
     const chipNum = await p.evaluate((sel) => {
       const host = [...document.querySelectorAll(sel)].find((h) => h.shadowRoot?.querySelector(".pill"));
       return host?.shadowRoot.querySelector(".num")?.textContent ?? null;
@@ -1771,115 +1770,65 @@ async function sweep(page, steps = 6) {
     );
   }
 
-  // A33–A36: explicit HTTP developer mode still has live setup status, but daily
-  // recovery now points to Settings. Native installation, command copying, and
-  // component management are exercised through real stdio in native-browser.mjs.
+  // A33–A36: first-run status follows the Native Messaging component lifecycle.
+  // Dedicated native-browser.mjs also covers install copying and destructive actions.
   if (extId) {
     const onboardingUrl = `chrome-extension://${extId}/onboarding.html`;
-    const readStrip = (page) =>
-      page.evaluate(() => {
-        const txt = (id) => document.getElementById(id)?.textContent ?? null;
-        const shown = (id) => (document.getElementById(id)?.hidden === false ? true : false);
-        return {
-          ext: document.querySelector("#row-ext .sval")?.textContent ?? null,
-          extVersion: txt("ext-version"),
-          extState: document.getElementById("row-ext")?.dataset.state ?? null,
-          daemon: txt("daemon-state"),
-          daemonState: document.getElementById("row-daemon")?.dataset.state ?? null,
-          detail: shown("daemon-detail") ? txt("daemon-detail") : null,
-          runtime: document.querySelector("#runtimeSettings .runtime-status")?.textContent ?? null,
-          active: document.querySelector('#runtimeSettings tr[data-active="true"]')?.textContent ?? null,
-          fabricatedCommand: /~\/.anagram\/bin\/anagram|curl -fsSL/.test(document.body.innerText),
-          ready: txt("ready-text"),
-          readyState: document.getElementById("row-ready")?.dataset.state ?? null,
-          install: shown("install") ? txt("install-cmd") : null,
-        };
-      });
-    const waitDaemonRow = (page, words, timeout) =>
-      page
-        .waitForFunction((w) => document.getElementById("daemon-state")?.textContent === w, words, { timeout })
-        .then(() => true)
-        .catch(() => false);
-
+    const readStrip = (page) => page.evaluate(() => {
+      const txt = (id) => document.getElementById(id)?.textContent ?? null;
+      return {
+        ext: document.querySelector("#row-ext .sval")?.textContent ?? null,
+        extVersion: txt("ext-version"), extState: document.getElementById("row-ext")?.dataset.state,
+        component: txt("daemon-state"), componentState: document.getElementById("row-daemon")?.dataset.state,
+        runtime: document.querySelector("#runtimeSettings .runtime-status")?.textContent ?? null,
+        active: document.querySelector('#runtimeSettings tr[data-active="true"]')?.textContent ?? null,
+        ready: txt("ready-text"), readyState: document.getElementById("row-ready")?.dataset.state,
+        install: document.getElementById("install")?.hidden === false ? txt("install-cmd") : null,
+        update: [...document.querySelectorAll("button")].some((b) => !b.hidden && b.textContent === "Update local component"),
+        error: document.querySelector(".component-error")?.textContent ?? null,
+      };
+    });
+    const waitComponent = (page, words, timeout = 15000) => page.waitForFunction(
+      (w) => document.getElementById("daemon-state")?.textContent === w, words, { timeout },
+    ).then(() => true).catch(() => false);
     const p = await context.newPage();
     await p.goto(onboardingUrl, { waitUntil: "load" });
-    const sawRunning = await waitDaemonRow(p, "Ready to analyze", 15000);
+    const sawRunning = await waitComponent(p, "Ready to analyze");
     const up = await readStrip(p);
-    record(
-      "ui",
-      "HTTP first-run page: the strip and runtime panel show the installed extension and active configuration as ready",
-      sawRunning &&
-        up.ext === "installed" && /^v\d/.test(up.extVersion ?? "") && up.extState === "ok" &&
-        up.daemonState === "ok" && up.runtime === "Ready to analyze" && up.active?.includes("Test CPU · FP32") &&
-        up.detail === null && !up.fabricatedCommand &&
-        up.readyState === "ok" && up.ready === "Open any article — a chip appears after each paragraph." &&
-        up.install === null,
-      JSON.stringify(up),
-    );
-
-    // An unavailable developer server must leave Ready unset and direct the reader to
-    // Settings, without fabricating an installation or start command for this mode.
-    await daemon.close();
-    await p.goto(onboardingUrl, { waitUntil: "load" });
-    const unavailable = "The local engine is not responding. Check its setup progress in Settings.";
-    const sawDown = await waitDaemonRow(p, unavailable, 15000);
+    record("ui", "native first-run page shows the extension and active configuration as ready",
+      sawRunning && up.ext === "installed" && /^v\d/.test(up.extVersion ?? "") && up.extState === "ok" &&
+      up.componentState === "ok" && up.runtime === "Ready to analyze" && up.active?.includes("Test CPU · FP32") &&
+      up.readyState === "ok" && up.ready === "Open any article — a chip appears after each paragraph." && up.install === null,
+      JSON.stringify(up));
+    await fixture.close();
+    await p.reload({ waitUntil: "load" });
+    const sawDown = await waitComponent(p, "Local component not connected");
     const down = await readStrip(p);
-    record(
-      "ui",
-      "HTTP first-run page: an unavailable engine points to Settings without a terminal command or false Ready state",
-      sawDown &&
-        down.daemonState === "bad" && down.runtime === unavailable && down.detail === null &&
-        down.readyState === "idle" && down.ready === "Install and connect the local component to finish setup." &&
-        down.active === null && down.install === null && !down.fabricatedCommand,
-      JSON.stringify(down),
-    );
-
-    // The page must notice recovery without a reload.
-    daemon = await startFakeDaemon({ port: daemonPort, ...DAEMON_OPTS });
-    const cameBack = await waitDaemonRow(p, "Ready to analyze", 12000);
+    record("ui", "native first-run page offers a scoped installer and does not claim Ready when disconnected",
+      sawDown && down.componentState === "bad" && down.readyState === "idle" &&
+      down.ready === "Install and connect the local component to finish setup." &&
+      down.install?.includes(extId) && down.install.includes("/releases/download/v") && down.active === null,
+      JSON.stringify(down));
+    await fixture.resume();
+    const cameBack = await waitComponent(p, "Ready to analyze");
     const back = await readStrip(p);
-    record(
-      "ui",
-      "HTTP first-run page: the engine comes back and the rows follow it without a reload",
-      cameBack && back.daemonState === "ok" && back.runtime === "Ready to analyze" &&
-        back.active?.includes("Test CPU · FP32") && !back.fabricatedCommand && back.readyState === "ok" && back.install === null,
-      JSON.stringify(back),
-    );
-
-    // A daemon of another generation answers health but lacks runtime selection. Its
-    // actionable update guidance belongs in Settings, with no shell command invented.
-    const stub = http.createServer((req, res) => {
-      res.writeHead(req.url === "/health" ? 200 : 404, {
-        "content-type": "application/json", "access-control-allow-origin": `chrome-extension://${extId}`,
-      });
-      res.end(JSON.stringify({ ok: true, contract: "3.0" }));
-    });
-    await new Promise((r) => stub.listen(0, "127.0.0.1", r));
-    const stubUrl = `http://127.0.0.1:${stub.address().port}`;
-    await p.evaluate((url) => new Promise((res) => chrome.storage.local.set({ serverUrl: url, backendTransport: "http" }, res)), stubUrl);
-    await p.goto(onboardingUrl, { waitUntil: "load" });
-    const legacy = "Runtime selection is unavailable. Update the local component in Settings to enable comparisons.";
-    const sawMismatch = await p.waitForFunction(
-      (text) => document.querySelector("#runtimeSettings .runtime-status")?.textContent === text,
-      legacy, { timeout: 15000 },
-    ).then(() => true).catch(() => false);
+    record("ui", "native first-run status follows component recovery without a reload",
+      cameBack && back.componentState === "ok" && back.active?.includes("Test CPU · FP32") &&
+      back.readyState === "ok" && back.install === null, JSON.stringify(back));
+    const healthy = fixture.state().component;
+    fixture.setState({ component: { ...healthy, state: "error", error: { code: "incompatible", message: "Fixture component requires update" } } });
+    const sawMismatch = await waitComponent(p, "Local setup needs attention");
     const mismatch = await readStrip(p);
-    // Back to the fake daemon before anything else runs on this context.
-    await p.evaluate((url) => new Promise((res) => chrome.storage.local.set({ serverUrl: url, backendTransport: "http" }, res)), daemon.url);
-    await new Promise((r) => stub.close(r));
-    const restored = await waitDaemonRow(p, "Ready to analyze", 15000);
-    record(
-      "ui",
-      "HTTP first-run page: an incompatible daemon gives actionable Settings update guidance",
-      sawMismatch && mismatch.daemonState === "bad" && mismatch.runtime === legacy && !mismatch.fabricatedCommand &&
-        mismatch.install === null && mismatch.readyState === "idle" && restored,
-      JSON.stringify({ ...mismatch, restored }),
-    );
+    fixture.setState({ component: healthy });
+    const restored = await waitComponent(p, "Ready to analyze");
+    record("ui", "a component compatibility error leaves setup incomplete and offers an update action",
+      sawMismatch && mismatch.componentState === "bad" && mismatch.update && mismatch.error &&
+      mismatch.install === null && mismatch.readyState === "idle" && restored, JSON.stringify({ ...mismatch, restored }));
     await p.close();
   }
 
   // ---- A37: the three small controls ---------------------------------------------------
-  // Both checks read the fake daemon's counters, so they share one fixture shape: three
+  // Both checks read the fake fixture's counters, so they share one fixture shape: three
   // paragraphs nothing else in this run has scored, on a page of their own.
   const CONTROLS_PAGE = (tag) =>
     `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${tag} fixture</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
@@ -1900,8 +1849,8 @@ async function sweep(page, steps = 6) {
       )
       .then(() => true)
       .catch(() => false);
-  /** What the daemon has been asked for so far. */
-  const asked = () => ({ requests: daemon.stats.requests, blocks: daemon.stats.blocks });
+  /** What the fixture has been asked for so far. */
+  const asked = () => ({ requests: fixture.stats.requests, blocks: fixture.stats.blocks });
   /** Exactly what the popup's Rescan does: the worker messages the active tab. */
   const rescan = async (p) => {
     await p.bringToFront();
@@ -1918,8 +1867,8 @@ async function sweep(page, steps = 6) {
   };
 
   // A37a: "Clear cached verdicts" (options → Advanced). A rescan of an unchanged page is
-  // normally answered from the worker's cache and the daemon never hears about it; once the
-  // caches are cleared the very same rescan has to reach the daemon again.
+  // normally answered from the worker's cache and the fixture never hears about it; once the
+  // caches are cleared the very same rescan has to reach the fixture again.
   if (extId) {
     PAGES["/cached.html"] = CONTROLS_PAGE("CACHED");
     const p = await context.newPage();
@@ -1952,7 +1901,7 @@ async function sweep(page, steps = 6) {
     const afterClear = asked();
     record(
       "ui",
-      "cached verdicts: a rescan is answered from the worker cache, and asks the daemon again once cleared",
+      "cached verdicts: a rescan is answered from the worker cache, and asks the fixture again once cleared",
       scored &&
         fromCache.requests === before.requests &&
         fromCache.blocks === before.blocks &&
@@ -2094,6 +2043,11 @@ async function sweep(page, steps = 6) {
       }
       const popup = await context.newPage();
       await popup.goto(popupUrl, { waitUntil: "load" });
+      // An idle native disconnect must invalidate the old Ready result even when
+      // every paragraph is cached. Observe the ordinary status path, without probing.
+      const disconnected = openSettings ? await popup.evaluate(async () =>
+        (await chrome.runtime.sendMessage({ action: "getBackendStatus", probe: false }))?.active === "down",
+      ) : undefined;
       if (fixture) {
         await fixture.bringToFront();
         await popup.reload({ waitUntil: "load" });
@@ -2109,6 +2063,7 @@ async function sweep(page, steps = 6) {
         buttons: document.querySelectorAll("main .btn:not([data-variant])").length,
       }));
       if (openSettings) {
+        seen.nativeDisconnected = disconnected;
         await popup.click("#action");
         // Settings runs in its own extension page, so native setup has a trusted
         // top-level sender. openOptionsPage may reuse an existing Settings tab.
@@ -2136,12 +2091,12 @@ async function sweep(page, steps = 6) {
     await sw.evaluate(() => new Promise((res) => chrome.storage.local.set({ enabled: true }, res)));
     const pdf = await lead(server.url("/popup-state.pdf"));
     const nothing = await lead(null);
-    // A daemon that is not answering: a closed loopback port, never a real daemon.
-    await sw.evaluate(() => new Promise((res) => chrome.storage.local.set({ serverUrl: "http://127.0.0.1:9", backendTransport: "http" }, res)));
+    // Break the native pipe, then recover through the same registration.
+    await fixture.close();
     const down = await lead(server.url("/popup-state.html"), true);
-    await sw.evaluate((url) => new Promise((res) => chrome.storage.local.set({ serverUrl: url, backendTransport: "http" }, res)), daemon.url);
+    await fixture.resume();
     // Nothing after this may inherit a "down" verdict: wait until the worker has the
-    // daemon back before the next check asks it for anything.
+    // fixture back before the next check asks it for anything.
     {
       const probe = await context.newPage();
       await probe.goto(popupUrl, { waitUntil: "load" });
@@ -2163,7 +2118,7 @@ async function sweep(page, steps = 6) {
         off.button === "Analyze this page" && off.primary && off.status === "Detection is off for this page." &&
         pdf.button === "Read this PDF" && pdf.primary && pdf.status === "" &&
         nothing.button === "Read a PDF file…" && !nothing.primary && nothing.status === "Not available on this page." &&
-        down.button === "Open setup and Settings" && down.primary && down.status === "Local engine is not ready" &&
+        down.nativeDisconnected && down.button === "Open setup and Settings" && down.primary && down.status === "Local engine is not ready" &&
         down.hint === "Open Settings for setup progress, model downloads, and local engine controls." &&
         !down.fabricatedCommand && down.settingsUrl === `chrome-extension://${extId}/options.html` && down.settingsOpen &&
         // Never two main events at once: at most one filled button on the whole page.
@@ -2246,7 +2201,7 @@ async function sweep(page, steps = 6) {
   // from the nodes alone brought the markers back, `currentTextOf(unit) !== unit.text` was
   // true for ever, and ANY mutation whose scan root touches the <pre> — a paragraph
   // appended to the page, an empty <span>, a class toggled — threw the unit away, removed
-  // its chip and read it again; only the per-tab cache kept the daemon out of it.
+  // its chip and read it again; only the per-tab cache kept the fixture out of it.
   {
     PAGES["/mailing-list.html"] = readFileSync(join(__dirname, "fixtures", "mailing-list.html"), "utf8");
     const p = await context.newPage();
@@ -2271,11 +2226,11 @@ async function sweep(page, steps = 6) {
       if (quoted) quoted.__quoted = true;
       return { hosts: hosts.length, found: !!quoted, pills: hosts.map((h) => h.shadowRoot?.querySelector(".num")?.textContent ?? "") };
     }, BADGE_SEL);
-    const timesAsked = () => daemon.stats.texts.filter((t) => t.includes("maintained by four people")).length;
+    const timesAsked = () => fixture.stats.texts.filter((t) => t.includes("maintained by four people")).length;
     const askedBefore = timesAsked();
-    // What the daemon was actually given: the quotation without its markers, while the page
+    // What the fixture was actually given: the quotation without its markers, while the page
     // still holds them — the difference this whole check is about.
-    const sent = daemon.stats.texts.find((t) => t.includes("maintained by four people")) ?? "";
+    const sent = fixture.stats.texts.find((t) => t.includes("maintained by four people")) ?? "";
     const onPage = await p.evaluate(() => document.querySelector("pre").textContent.includes("> Right, so a package"));
     // Three mutations, not one character of the unit changed by any of them.
     await p.evaluate(() => {
@@ -2425,7 +2380,7 @@ async function sweep(page, steps = 6) {
     PAGES["/zh.html"] = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Chinese UI fixture</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
 ${KEY_TAGS.map((t, i) => `<p id="z${i + 1}">${KEY_PARA(t)}</p>`).join("\n")}
 </body></html>`;
-    const zh = await launchExtension({ backendUrl: daemon.url, ...uiLanguage("zh-CN") });
+    const zh = await launchExtension({ nativeFixture: fixture, ...uiLanguage("zh-CN") });
     await zh.context.grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => {});
     const uiLang = await uiLanguageOf(zh.sw);
     const zhId = zh.sw ? new URL(zh.sw.url()).host : null;
@@ -2469,11 +2424,8 @@ ${KEY_TAGS.map((t, i) => `<p id="z${i + 1}">${KEY_PARA(t)}</p>`).join("\n")}
       const optionsText = await opts.evaluate(() => ({
         lang: document.documentElement.lang,
         componentCard: document.querySelector("#componentCard > header h2")?.textContent ?? "",
-        developer: document.querySelector("#developerBackend > summary")?.textContent ?? "",
-        transport: document.querySelector("#backendTransport")?.value,
-        selectedTransport: document.querySelector("#backendTransport option:checked")?.textContent ?? "",
-        httpNote: document.querySelector('[data-i18n="componentHttpNote"]')?.textContent ?? "",
-        httpVisible: document.getElementById("developerHttp")?.hidden === false && document.getElementById("developerBackend")?.open === true,
+        componentStatus: document.querySelector(".component-status")?.textContent ?? "",
+        update: [...document.querySelectorAll("button")].some((b) => !b.hidden && b.textContent === "更新本地组件"),
         runtimeTitle: document.querySelector("#runtimeSettings h3")?.textContent ?? "",
         fabricatedCommand: /~\/.anagram\/bin\/anagram|curl -fsSL/.test(document.body.innerText),
       }));
@@ -2544,9 +2496,7 @@ ${KEY_TAGS.map((t, i) => `<p id="z${i + 1}">${KEY_PARA(t)}</p>`).join("\n")}
           popupText.more === "更多" &&
           optionsText.lang === "zh-CN" &&
           optionsText.componentCard === "本地分析引擎" &&
-          optionsText.developer === "开发者连接" &&
-          optionsText.transport === "http" && optionsText.selectedTransport === "手动本地 HTTP（开发用）" &&
-          optionsText.httpNote === "仅供源码开发使用。浏览器不会启动或管理此服务器。" && optionsText.httpVisible &&
+          optionsText.componentStatus === "已可开始分析" && optionsText.update &&
           optionsText.runtimeTitle === "选择 Anagram 的运行方式" && !optionsText.fabricatedCommand &&
           chip.lang === "zh-CN" &&
           ["人工撰写", "轻度 AI 编辑", "重度 AI 编辑", "AI 生成"].includes(chip.verdict) &&
@@ -2594,7 +2544,7 @@ ${KEY_TAGS.map((t, i) => `<p id="z${i + 1}">${KEY_PARA(t)}</p>`).join("\n")}
 // ---- A41: incremental scanning — the same page, built step by step or all at once -----
 // The safety net under lib/capture/orchestrator.ts's scan-root rule. A page that grows
 // and changes under the reader must end up with exactly the chips a single fresh scan of
-// its FINAL DOM produces — same places, same numbers (the fake daemon's verdict is a pure
+// its FINAL DOM produces — same places, same numbers (the fake fixture's verdict is a pure
 // function of the text, so a number that differs means the text or the grouping differs).
 // One generator builds both pages: `?all` applies every step before the content script
 // ever runs, the other applies them one at a time while the extension watches.
@@ -2832,7 +2782,7 @@ addEventListener("load",()=>{window.__loadAt=performance.now();
   record(
     "ui",
     "a page that has still to hydrate gets no chip until it has, and still gets its chips",
-    // The verdicts land while the gate is shut — the daemon answers in milliseconds and the
+    // The verdicts land while the gate is shut — the fixture answers in milliseconds and the
     // image holds `load` back — so this also says that a chip held back and then released
     // arrives as its VERDICT and never as a pending chip nobody comes back to.
     marked.chips === 2 &&
@@ -2989,7 +2939,7 @@ if (!LOCAL_ONLY) {
 await context.close();
 await server.close();
 await fileServer.close();
-await daemon.close();
+await fixture.close();
 
 console.log("\n=== SCENARIO RESULTS ===");
 for (const r of results) {

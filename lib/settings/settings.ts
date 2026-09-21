@@ -1,148 +1,42 @@
-// lib/settings/settings.ts
-// The `twpConfig` replacement, thin over WXT `storage`. Provides get/set/watch/onReady
-// + per-site helpers with always/never mutual exclusion. (spec §4.10)
-import { storage } from "#imports";
+// Storage-backed reading preferences and per-site rules.
+import { browser, storage } from "#imports";
 
-export const DEFAULT_SERVER_PORT = "8765";
-export const DEFAULT_SERVER_URL = `http://127.0.0.1:${DEFAULT_SERVER_PORT}`;
-
-/** The two names the daemon answers on, and the only two the manifest's
- *  `connect-src http://127.0.0.1:* http://localhost:*` can name. */
-const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost"]);
-
-/**
- * Only a loopback daemon may score page text — "nothing leaves this computer" is
- * enforced here and in the service-worker client, not merely promised.
- *
- * The accepted shape is exactly `http://127.0.0.1:<port>` or `http://localhost:<port>`,
- * port optional. It is this narrow because a content security policy cannot be any wider:
- * `connect-src` takes a host and a port, never an address RANGE and never an IPv6 literal,
- * so `http://127.0.0.2:8765` and `http://[::1]:8765` would pass a check here and then be
- * blocked by the policy the extension ships with — a setting that looks accepted and
- * scores nothing. https goes for the same reason (the daemon serves plain HTTP on
- * loopback), and so do credentials, a path, a query and a fragment: `${url}/health` is
- * how the client addresses the daemon, and none of those produce an address it can use.
- */
-export function isLoopbackUrl(raw: string): boolean {
-  try {
-    const u = new URL(raw);
-    if (u.protocol !== "http:") return false;
-    if (u.username !== "" || u.password !== "") return false;
-    if (u.search !== "" || u.hash !== "") return false;
-    if (u.pathname !== "/" && u.pathname !== "") return false;
-    return LOOPBACK_HOSTS.has(u.hostname.toLowerCase());
-  } catch {
-    return false;
-  }
+/** Remove retired connection preferences without reading or honoring their values. */
+export async function removeObsoleteConnectionSettings(): Promise<void> {
+  await browser.storage.local.remove(["serverUrl", "backendTransport"]);
 }
 
-/**
- * Trim + strip trailing slashes, and complete a missing port with the daemon's own, so a
- * stored URL always says which port it means ("http://localhost" is somebody reaching for
- * the daemon, not for a web server on port 80). Null when the result is not one of the two
- * loopback addresses above — the options page shows the field as invalid and keeps the
- * previous setting.
- */
-export function normalizeServerUrl(raw: string): string | null {
-  const url = raw.trim().replace(/\/+$/, "");
-  if (!url || !isLoopbackUrl(url)) return null;
-  const u = new URL(url);
-  // `new URL` erases a port that is the protocol's own, so `http://127.0.0.1:80` and
-  // `http://127.0.0.1` both come back with none — only the text they were typed as tells
-  // "port 80, deliberately" from "no port at all".
-  const port = u.port !== "" ? u.port : /:\d+$/.test(url) ? "80" : DEFAULT_SERVER_PORT;
-  return `http://${u.hostname.toLowerCase()}:${port}`;
-}
-
-/** What builds before the narrowing accepted: http OR https, `localhost`, `::1` and the
- *  whole 127/8 range. Kept to tell a setting this build has narrowed from one that was
- *  never allowed — see `effectiveServerUrl`. */
-function wasLoopbackUrl(raw: string): boolean {
-  try {
-    const u = new URL(raw);
-    if (u.protocol !== "http:" && u.protocol !== "https:") return false;
-    const h = u.hostname.replace(/^\[|\]$/g, "").toLowerCase();
-    return h === "localhost" || h === "::1" || /^127\.\d+\.\d+\.\d+$/.test(h);
-  } catch {
-    return false;
-  }
-}
-
-/**
- * The URL the client actually talks to. A setting an older build accepted and this one no
- * longer does — `https://localhost:8765`, `http://[::1]:8765`, `http://127.0.0.2:8765` —
- * still means "the daemon on this computer", so the default answers for it rather than
- * leaving the reader with an extension that scores nothing after an update. The stored
- * value is left alone: the options page shows what they typed, marked invalid, so it is
- * theirs to correct rather than ours to overwrite. An address that was never allowed is
- * NOT quietly replaced — it is refused, loudly, where it always was.
- */
-export function effectiveServerUrl(stored: string): string {
-  if (isLoopbackUrl(stored)) return stored;
-  return wasLoopbackUrl(stored) ? DEFAULT_SERVER_URL : stored;
-}
-
-/**
- * How analyzed text is marked in place — the same two words lib/render/highlight.ts
- * draws, spelled out again here rather than imported: this module is loaded by the
- * background worker, and an import of the renderer would drag its English messages into
- * that bundle for a type that is erased at compile time anyway.
- */
+/** Marking styles shared with the renderer without importing it into the worker. */
 export type MarkStyle = "quiet" | "always";
 
-/**
- * The mark styles this profile may hold. "quiet" and "always" are what the extension
- * offers now; "both", "underline" and "tint" were the three ways the old always-on marks
- * could be drawn. Two of them were CHOICES — somebody picked "underline" or "tint" over
- * what they were given, and what they picked was a page that is always marked, so they
- * read as "always". "both" was the DEFAULT, and a stored "both" says only that the
- * default was never left (or was come back to): it reads as the default there is now,
- * or the people who never asked for anything would be the only ones not to get it.
- */
+/** Preserve explicit legacy styles as "always"; the old default "both" becomes "quiet". */
 export type StoredMarkStyle = MarkStyle | "both" | "underline" | "tint";
 
-/** The stored value as the renderer understands it. Anything unrecognised — a profile
- *  from a build that has not happened yet — reads as the default. */
+/** Unknown stored values use the default. */
 export function normalizeMarkStyle(stored: StoredMarkStyle | undefined | null): MarkStyle {
   if (stored === "always" || stored === "underline" || stored === "tint") return "always";
   return "quiet";
 }
 
 export const settings = {
-  /** Native is the user workflow. HTTP remains an explicit developer/test option. */
-  backendTransport: storage.defineItem<"native" | "http">("local:backendTransport", { fallback: "native" }),
-  // The local anagramd daemon that scores paragraphs (loopback only). There is no
-  // other backend: when it does not answer, paragraphs are "Unavailable".
-  serverUrl: storage.defineItem<string>("local:serverUrl", { fallback: DEFAULT_SERVER_URL }),
   enabled: storage.defineItem<boolean>("local:enabled", { fallback: true }),
   siteOverrides: storage.defineItem<Record<string, "on" | "off">>("local:siteOverrides", { fallback: {} }),
-  // The paragraph underline is part of the core product; on by default (orchestrator
-  // respects live changes to this setting).
+  // Master switch for text marks; applies to open tabs.
   showHighlights: storage.defineItem<boolean>("local:showHighlights", { fallback: true }),
-  // A PDF tab turns itself into the reading mode. OFF by default: replacing the browser's
-  // own viewer on every PDF is not something to do to somebody who did not ask for it —
-  // the ball's chip, the popup button and the context menu are still there for one file.
+  // Replacing the browser's PDF viewer requires opt-in; manual opening stays available.
   autoOpenPdfs: storage.defineItem<boolean>("local:autoOpenPdfs", { fallback: false }),
   debug: storage.defineItem<boolean>("local:debug", { fallback: false }),
-  // What to paint: every analyzed unit, or only flagged (heavily edited / AI-generated) ones.
-  // Everything is still ANALYZED either way — this filters rendering only.
+  // Filters rendering, not analysis: all units or only heavily edited / AI-generated ones.
   displayMode: storage.defineItem<"all" | "flagged">("local:displayMode", {
     fallback: "all",
   }),
-  // Group sub-floor paragraphs with neighbors to reach the evidence floor (the
-  // chip shows ×N). Off = strict per-paragraph mode; short paragraphs are skipped.
+  // Group short neighbors to reach the evidence floor; otherwise skip short paragraphs.
   mergeShorts: storage.defineItem<boolean>("local:mergeShorts", { fallback: true }),
-  // How analyzed text is marked in place — see lib/render/highlight.ts. Old profiles
-  // hold one of the three styles this replaced; they are read through
-  // normalizeMarkStyle() rather than migrated, so a profile written by an older build
-  // still opens in this one (and the other way round). showHighlights stays the master
-  // on/off.
+  // Read legacy values through normalizeMarkStyle(); showHighlights controls visibility.
   markStyle: storage.defineItem<StoredMarkStyle>("local:markStyle", {
     fallback: "quiet",
   }),
-  // What part of the page to analyze. "page" = everything except recognized
-  // chrome (default); "main" = only the detected main-content region
-  // (Readability-guided precision mode — comments/sidebars outside it are skipped).
+  // "main" restricts analysis to the Readability region, excluding outside comments/sidebars.
   analysisScope: storage.defineItem<"page" | "main">("local:analysisScope", {
     fallback: "page",
   }),
@@ -155,14 +49,7 @@ export const settings = {
   }),
 };
 
-// ---- per-site rules -------------------------------------------------------------------
-//
-// A rule is written for a SITE, not for one exact hostname: turning Anagram off on
-// `www.zhihu.com` has to hold on `zhuanlan.zhihu.com` as well, and nobody thinks of
-// `x.com` and `www.x.com` as two places. The STORAGE shape does not change — rules
-// already saved keep working, whichever spelling they carry — only the lookup does:
-// the exact host first, then each parent domain, most specific wins, with a leading
-// `www.` treated as absent on both sides.
+// Per-site rules inherit from parent domains; the most specific wins. Ignore leading www.
 
 /** What a rule says: force scoring on, or force it off. */
 export type SiteMode = "on" | "off";
@@ -174,14 +61,8 @@ export interface SiteRule {
   mode: SiteMode;
 }
 
-/**
- * Two-level suffixes the climb must stop at. A rule on `news.example.co.uk` should
- * reach `example.co.uk`, but a rule stored on `co.uk` would silence every British
- * company at once, and `alice.github.io` and `bob.github.io` belong to different
- * people. This is a GUARD, not the Public Suffix List: shipping the real list (and
- * keeping it fresh) costs far more than it buys here, and a suffix missing from this
- * set only matters if the user went and wrote a rule on that bare suffix themselves.
- */
+/** Stop inheritance at common public/hosting suffixes so unrelated sites stay separate.
+ *  This is a limited guard, not the complete Public Suffix List. */
 const SUFFIX_GUARD = new Set([
   // country second levels
   "co.uk", "org.uk", "ac.uk", "gov.uk", "me.uk", "net.uk", "sch.uk",
@@ -200,17 +81,13 @@ const SUFFIX_GUARD = new Set([
   "blogspot.com", "wordpress.com", "substack.com", "notion.site", "translate.goog",
 ]);
 
-/**
- * The form a hostname is compared in: lowercase, no trailing root dot, no leading
- * `www.`. Rules saved under either spelling therefore mean the same site.
- */
+/** Compare hostnames without case, trailing dots or a leading www. */
 export function normalizeRuleHost(hostname: string): string {
   const h = hostname.trim().toLowerCase().replace(/\.+$/, "");
   return h.startsWith("www.") ? h.slice(4) : h;
 }
 
-/** An address that is not a domain name: it matches exactly and never by parent —
- *  climbing `127.0.0.1` would invent `0.0.1`, and `localhost` has no parent at all. */
+/** Literal addresses and localhost match exactly, without parent-domain inheritance. */
 function isLiteralHost(host: string): boolean {
   return host === "localhost" || host.includes(":") || host.startsWith("[") || /^\d+(?:\.\d+)*$/.test(host);
 }
@@ -225,8 +102,7 @@ function ruleCandidates(host: string): string[] {
     const cut = rest.indexOf(".");
     if (cut < 0) break;
     const parent = rest.slice(cut + 1);
-    // Never a bare public suffix: a name with no dot is a TLD, and the rest are the
-    // usual two-level suffixes above.
+    // Do not inherit rules from a TLD or guarded public suffix.
     if (!parent.includes(".") || SUFFIX_GUARD.has(parent)) break;
     out.push(parent);
     rest = parent;
@@ -254,43 +130,26 @@ function matchRule(overrides: Record<string, SiteMode>, host: string): SiteRule 
   return null;
 }
 
-/**
- * Which per-site rule applies to a host, and under which hostname it is stored — so a
- * caller can name it ("off on example.com") and clear the rule that actually decides
- * rather than one written for a subdomain that was never stored. Null = no rule, the
- * global `enabled` flag decides.
- */
+/** Return the applicable rule and its stored key; null defers to global enabled. */
 export async function effectiveRule(hostname: string): Promise<SiteRule | null> {
   return matchRule(await settings.siteOverrides.getValue(), hostname);
 }
 
-/**
- * Whether scoring is enabled for a given hostname. The per-site rule that covers it
- * ("on"/"off") wins over the global `enabled` flag; otherwise the global flag decides.
- */
+/** A matching per-site rule overrides global enabled. */
 export async function enabledForSite(hostname: string): Promise<boolean> {
   const rule = await effectiveRule(hostname);
   if (rule) return rule.mode === "on";
   return settings.enabled.getValue();
 }
 
-/**
- * Set (or clear) a per-site override. "on" forces scoring on for the host; "off" forces
- * it off. The two are mutually exclusive (setting one replaces the other for that host).
- * The hostname is stored as given: a rule written for a subdomain stays that subdomain's
- * rule, and being more specific it wins over whatever its parent domain says.
- */
+/** Replace this host's rule, preserving its spelling and precedence over parent rules. */
 export async function setSiteOverride(hostname: string, v: SiteMode): Promise<void> {
   const overrides = { ...(await settings.siteOverrides.getValue()) };
   overrides[hostname] = v;
   await settings.siteOverrides.setValue(overrides);
 }
 
-/**
- * Clear the rule stored under exactly this hostname. A host can still be decided by a
- * parent domain's rule afterwards — `effectiveRule` says which one, so a caller can
- * clear that rather than write a no-op for a subdomain nothing was ever stored for.
- */
+/** Remove this exact stored key; a parent rule may still apply afterwards. */
 export async function clearSiteOverride(hostname: string): Promise<void> {
   const overrides = { ...(await settings.siteOverrides.getValue()) };
   if (hostname in overrides) {
@@ -298,4 +157,3 @@ export async function clearSiteOverride(hostname: string): Promise<void> {
     await settings.siteOverrides.setValue(overrides);
   }
 }
-

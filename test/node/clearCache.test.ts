@@ -5,6 +5,7 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { fakeBrowser } from "wxt/testing";
 import { createSwCache } from "../../lib/backend/swCache";
+import { NativeScoreError } from "../../lib/backend/nativeScoreClient";
 import { createRouter } from "../../lib/backend/router";
 import type {
   ModelInfo,
@@ -41,7 +42,7 @@ function fakeClient() {
     },
     async scoreBatch(blocks): Promise<ScoredBatch> {
       calls.push(blocks);
-      if (failing) throw Object.assign(new Error("anagramd HTTP 503"), { status: 503, retryAfterMs: null });
+      if (failing) throw new NativeScoreError(503,"not_ready","Engine loading");
       return {
         model: MODEL,
         results: blocks.map((b) => ({ id: b.id, bucket: 3, probs: [0, 0, 0.1, 0.9], score: 1 })),

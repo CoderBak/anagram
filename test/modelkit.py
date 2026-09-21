@@ -2,6 +2,8 @@
 import contextlib
 import hashlib
 import importlib.util
+import io
+from urllib.parse import unquote
 import json
 from pathlib import Path
 import sys
@@ -54,15 +56,18 @@ class ModelkitTests(unittest.TestCase):
         self.mod = module()
         self.calls = []
 
-    def download(self, **kwargs):
-        self.calls.append(kwargs)
-        self.assertIs(kwargs["token"], False)
-        self.assertEqual(kwargs["revision"], self.pin["revision"])
-        write_files(Path(kwargs["local_dir"]), {kwargs["filename"]: self.contents[kwargs["filename"]]})
+    def opener(self, request, timeout):
+        self.assertFalse(request.has_header("Authorization"))
+        prefix = "https://huggingface.co/fixture/model/resolve/" + self.pin["revision"] + "/"
+        self.assertTrue(request.full_url.startswith(prefix))
+        name = unquote(request.full_url[len(prefix):])
+        self.calls.append(name)
+        response = io.BytesIO(self.contents[name])
+        response.status, response.headers = 200, {}
+        return response
 
     def install(self, **kwargs):
-        self.mod.install(self.target, self.pin, download=kwargs.pop("download", self.download),
-                         cached=kwargs.pop("cached", lambda *a, **k: None), **kwargs)
+        self.mod.install_streaming(self.target, self.pin, opener=kwargs.pop("opener", self.opener), **kwargs)
 
     def test_all_files_anonymous_and_valid_noop(self):
         self.install()
@@ -78,33 +83,35 @@ class ModelkitTests(unittest.TestCase):
         write_files(self.target, {"model.safetensors": self.contents["model.safetensors"]})
         write_files(self.root / ".incoming-model", {"onnx/model.onnx": self.contents["onnx/model.onnx"]})
         self.install()
-        names = {c["filename"] for c in self.calls}
+        names = set(self.calls)
         self.assertNotIn("model.safetensors", names)
         self.assertNotIn("onnx/model.onnx", names)
 
-    def test_verified_hub_symlink_cache_reused(self):
-        blob = self.root / "blob"
-        blob.write_bytes(self.contents["model.safetensors"])
-        cache = self.root / "snapshot"
-        cache.symlink_to(blob)
-        self.install(cached=lambda repo, name, **k: str(cache) if name == "model.safetensors" else None)
-        self.assertNotIn("model.safetensors", {c["filename"] for c in self.calls})
-        self.assertFalse((self.target / "model.safetensors").is_symlink())
-
     def test_tampered_download_preserves_installed_tree(self):
         write_files(self.target, {"model.safetensors": b"old"})
-        def bad(**kwargs):
-            write_files(Path(kwargs["local_dir"]), {kwargs["filename"]: b"bad"})
-        with self.assertRaisesRegex(ValueError, "nothing was replaced"):
-            self.install(download=bad)
+        def bad(request, timeout):
+            response = io.BytesIO(b"bad")
+            response.status, response.headers = 200, {}
+            return response
+        with self.assertRaisesRegex(ValueError, "Checksum or size mismatch"):
+            self.install(opener=bad)
         self.assertEqual((self.target / "model.safetensors").read_bytes(), b"old")
-        self.assertTrue((self.root / ".incoming-model" / "model.safetensors").exists())
+        self.assertFalse((self.root / ".incoming-model" / "model.safetensors").exists())
 
-    def test_corrupt_cached_blob_forces_fresh_download(self):
-        blob = self.root / "blob"
-        blob.write_bytes(b"bad")
-        self.install(cached=lambda *a, **k: str(blob))
-        self.assertTrue(all(c["force_download"] for c in self.calls))
+    def test_corrupt_staged_file_is_downloaded_again(self):
+        write_files(self.root / ".incoming-model", {"model.safetensors": b"bad"})
+        self.install()
+        self.assertIn("model.safetensors", self.calls)
+        self.assertEqual(self.mod.invalid_files(self.target, self.pin), [])
+
+    def test_cli_only_checks_local_files_without_mutation(self):
+        write_files(self.target, self.contents)
+        manifest = self.root / "pin.json"
+        manifest.write_text(json.dumps(self.pin))
+        before = {p: p.stat().st_mtime_ns for p in self.root.rglob("*")}
+        with patch.object(sys, "argv", [str(SOURCE), "--model-dir", str(self.target), "--manifest", str(manifest)]), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(self.mod.main(), 0)
+        self.assertEqual(before, {p: p.stat().st_mtime_ns for p in self.root.rglob("*")})
 
     def test_recovery_after_interrupted_promotion(self):
         write_files(self.root / "model.old", self.contents)
@@ -117,7 +124,7 @@ class ModelkitTests(unittest.TestCase):
         outside.mkdir()
         (outside / "keep").write_text("keep")
         self.target.symlink_to(outside)
-        with self.assertRaisesRegex(ValueError, "symbolic link"):
+        with self.assertRaisesRegex(ValueError, "symlink|symbolic link"):
             self.install()
         self.assertEqual((outside / "keep").read_text(), "keep")
         for name in ("../escape", "/escape", "onnx/../escape", "onnx\\escape", ".cache/escape"):
@@ -141,7 +148,7 @@ class ModelkitTests(unittest.TestCase):
         parent = self.root / "models"
         parent.symlink_to(outside)
         self.target = parent / "model"
-        with self.assertRaisesRegex(ValueError, "symbolic link"):
+        with self.assertRaisesRegex(ValueError, "symlink|symbolic link"):
             self.install()
         self.assertEqual(list(outside.iterdir()), [])
 
@@ -153,25 +160,6 @@ class ModelkitTests(unittest.TestCase):
         self.assertEqual(sum(e["size_bytes"] for e in pin["files"]), 4073892651)
 
 
-def fixture():
-    source = Path(sys.argv[2])
-    app = source.parent
-    contents = {name: value.encode() for name, value in json.loads((app / "fixture.json").read_text()).items()}
-    def download(**kwargs):
-        assert kwargs["token"] is False
-        value = contents[kwargs["filename"]]
-        if (app.parent / "TAMPER").exists():
-            value = b"half a download, cut off here\n"
-        write_files(Path(kwargs["local_dir"]), {kwargs["filename"]: value})
-    sys.modules["huggingface_hub"] = types.SimpleNamespace(
-        hf_hub_download=download, try_to_load_from_cache=lambda *a, **k: None)
-    loaded = module(source)
-    sys.argv = [str(source)] + sys.argv[3:]
-    raise SystemExit(loaded.main())
-
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "--fixture":
-        fixture()
-    else:
-        unittest.main()
+    unittest.main()

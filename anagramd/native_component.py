@@ -367,7 +367,7 @@ class NativeComponent:
             with self._runtime().use_engine() as engine:
                 return 200, engine.info()
         if op == "score":
-            from serve import ScoreRequest, ScoreResponse, score_with_engine
+            from engine import ScoreRequest, ScoreResponse, score_with_engine
             from pydantic import ValidationError
             try:
                 request = ScoreRequest.model_validate(payload)

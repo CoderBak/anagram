@@ -205,13 +205,7 @@ async function refreshBackend(probe = false): Promise<void> {
       probe,
     })) as BackendStatus | undefined;
     if (!s) throw new Error("no status");
-    // The one place a `reason` is read. A daemon that is THERE but cannot work with this
-    // extension — another contract major, or one too old to answer an extension that asks
-    // for no host permission ("outdated") — needs updating, and telling somebody to start
-    // what is already running sends them down the wrong path. A daemon that is merely OLDER
-    // than the extension still scores, so it is "up" here and the model line asks for the
-    // update instead (paintModel).
-    const there = s.server.reason === "contract" || s.server.reason === "outdated";
+    const there = s.server.reason === "contract";
     facts.daemon = s.active === "server" && s.model ? "up" : there ? "mismatch" : "down";
     paintModel(s);
   } catch {

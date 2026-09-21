@@ -242,8 +242,7 @@ export async function analyzeSelection(): Promise<void> {
         `<div class="head"><span class="verdict band-unknown">${bandLabel("unknown")}</span><span class="big">—</span></div>` +
         `<div class="foot">${
           backend === "down"
-            // The one element a message here ever gets: ours, static, built right beside it.
-            ? t("selFootDaemonDown", "<code>anagram start</code>")
+            ? t("selFootDaemonDown")
             : t("selFootNoAnswer")
         }</div>`;
     } else {

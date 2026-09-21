@@ -47,7 +47,7 @@ const dynPage = (over: Record<string, unknown> = {}, ext: Record<string, unknown
     stuckPending: 0,
     clippedOutMax: 0,
     orphanMax: 0,
-    daemon: { resentBlocks: 0 },
+    fixture: { resentBlocks: 0 },
     pageErrors: [],
     domErrors: [],
     cdp: { scriptDuration: 0.5 },
@@ -167,7 +167,7 @@ describe("survey gate — dynamics", () => {
     for (const [what, ext] of [
       ["piled", { pileUpChipsMax: 1 }],
       ["2× unit", { sameUnitChipsMax: 1 }],
-      ["resend", { daemon: { resentBlocks: 1 } }],
+      ["resend", { fixture: { resentBlocks: 1 } }],
     ] as const) {
       const r = compare(dyn([dynPage()]), dyn([dynPage({}, ext)]));
       expect(statusOf(r).status, what).toBe("regression");

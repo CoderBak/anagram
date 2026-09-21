@@ -29,10 +29,11 @@ import { launch } from "puppeteer-core";
 import { getInstalledBrowsers } from "@puppeteer/browsers";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { existsSync } from "node:fs";
-import { homedir, platform } from "node:os";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { homedir, platform, tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
-import { startFakeDaemon } from "./fake-daemon.mjs";
+import { createNativeFixture, HOST_NAME } from "./fake-native.mjs";
+import { registerTestHost, attachTestPort, copyForTestPort } from "./native-test-host.mjs";
 import { ensureTestBuild, TEST_OUT } from "./test-build.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -45,14 +46,14 @@ export const GECKO_ID = "anagram@coderbak.dev";
 /** Seeded into the profile so moz-extension:// URLs are knowable before the install. */
 export const EXT_UUID = "5e0b7a12-3c4d-4f8a-9b16-2d7e8c0f4a31";
 /** Lowest Firefox the PRODUCT allows (manifest strict_min_version). */
-export const MIN_FIREFOX = 128;
+export const MIN_FIREFOX = 140;
 /**
  * Lowest Firefox this SUITE can drive. Higher than the product's minimum on purpose:
  * WebDriver BiDi only learned `webExtension.install` in Firefox 135, so there is no way
  * to get the extension into an older build without geckodriver. Verified here: Firefox
  * 128.0esr answers `unknown command webExtension.install`.
  */
-export const MIN_DRIVER_FIREFOX = 135;
+export const MIN_DRIVER_FIREFOX = 140;
 /** Badge hosts share data-anagram="host" with the FAB host — exclude the FAB by id. */
 export const BADGE_SEL = '[data-anagram="host"]:not(#anagram-fab)';
 
@@ -163,18 +164,23 @@ export async function setViewportSafe(page, viewport = VIEWPORT) {
     .catch(() => false);
 }
 
-/**
- * `extDir` names another build to install instead of the test variant — the SHIPPING one,
- * for test/daemon-cors-check.mjs, which is the only suite that must see the extension with
- * nothing granted. Everything else takes the default and is built on demand as before.
- */
-export async function launchFirefox({ extraPrefs = {}, args = [], viewport = VIEWPORT, extDir = null } = {}) {
+/** `extDir` selects a shipping build; the default test build pregrants fixture pages. */
+export async function launchFirefox({ nativeFixture, extraPrefs = {}, args = [], viewport = VIEWPORT, extDir = null } = {}) {
   if (!extDir) requireFirefoxBuild();
   const firefox = await resolveFirefox();
+  const fixture = nativeFixture ?? await createNativeFixture();
+  const home = mkdtempSync(join(tmpdir(), "anagram-firefox-"));
+  // Linux native-host lookup honors HOME. macOS uses the real Application Support
+  // directory and Windows uses HKCU, so those platforms use a test-only port relay.
+  const testPort = process.platform !== "linux";
+  const extension = testPort ? copyForTestPort(extDir ?? EXT, home) : extDir ?? EXT;
+  if (!testPort) registerTestHost(join(home, ".mozilla/native-messaging-hosts", `${HOST_NAME}.json`), fixture, "firefox", GECKO_ID);
   const browser = await launch({
     browser: "firefox",
     protocol: "webDriverBiDi",
     executablePath: firefox.executablePath,
+    userDataDir: join(home, "profile"),
+    env: { ...process.env, HOME: home, XDG_CONFIG_HOME: join(home, ".config") },
     headless: true, // never negotiable — see the note at the top
     // puppeteer adds --foreground on macOS; it makes Firefox a foreground application.
     ignoreDefaultArgs: ["--foreground"],
@@ -196,7 +202,7 @@ export async function launchFirefox({ extraPrefs = {}, args = [], viewport = VIE
   });
   let extId;
   try {
-    extId = await browser.installExtension(extDir ?? EXT);
+    extId = await browser.installExtension(extension);
   } catch (e) {
     await browser.close().catch(() => {});
     if (String(e).includes("unknown command webExtension.install")) {
@@ -208,10 +214,18 @@ export async function launchFirefox({ extraPrefs = {}, args = [], viewport = VIE
     throw e;
   }
   const extUrl = (path) => `moz-extension://${EXT_UUID}/${path.replace(/^\//, "")}`;
+  let detach;
+  if (testPort) {
+    // This carrier stays open: its closures implement the test port on the isolated
+    // background page. The actual scoring process still speaks framed stdio.
+    const carrier = await openExtensionPage(browser, extUrl("options.html"));
+    detach = await attachTestPort(carrier, fixture);
+  }
+  browser.once("disconnected", () => { detach?.(); rmSync(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); if (!nativeFixture) fixture.dispose(); });
   // Only the test build registers anything: the shipping one has been granted no site, so
   // there is no content script to wait for and waiting would only print a false alarm.
   if (!extDir) await waitForRegistration(browser, extUrl);
-  return { browser, firefox, extId, extUrl };
+  return { browser, firefox, extId, extUrl, fixture };
 }
 
 /**
@@ -289,22 +303,11 @@ export async function findPageByHref(browser, needle, { timeout = 20000 } = {}) 
   return { page: null, href: null };
 }
 
-/**
- * Point the extension at a daemon URL, exactly as the Chromium harness's setServerUrl
- * does: through an extension page's own storage, BEFORE any content page opens.
- */
-export async function setServerUrl(browser, extUrl, url) {
-  const page = await openExtensionPage(browser, extUrl("options.html"));
-  await page.evaluate((u) => browser.storage.local.set({ serverUrl: u, backendTransport: "http" }), url);
-  await page.close();
-}
-
-/** Fake daemon + headless Firefox with the extension pointed at it. */
-export async function withFakeDaemon(launchOpts = {}, daemonOpts = {}) {
-  const daemon = await startFakeDaemon(daemonOpts);
-  const ff = await launchFirefox(launchOpts);
-  await setServerUrl(ff.browser, ff.extUrl, daemon.url);
-  return { daemon, ...ff };
+/** Deterministic native host + headless Firefox in an isolated profile. */
+export async function withFakeNative(launchOpts = {}, fixtureOpts = {}) {
+  const fixture = await createNativeFixture(fixtureOpts);
+  const ff = await launchFirefox({ ...launchOpts, nativeFixture: fixture });
+  return { fixture, ...ff };
 }
 
 /** Scroll through the page so viewport-first scoring dispatches everything. */

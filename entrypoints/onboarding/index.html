@@ -87,9 +87,7 @@
       .guide > details[open] > summary::before { transform: rotate(45deg); margin-bottom: 3px; }
       .guide > details > :not(summary) { margin: 0 2px 12px; }
       .kbd { vertical-align: middle; }
-      /* Inline commands and key hints are what someone reads while fixing a broken
-         install, and the muted foreground on the muted surface is 4.34:1 — under the
-         4.5:1 WCAG 1.4.3 asks of body text. They take the page's own foreground. */
+      /* Keep code and key hints readable on muted surfaces. */
       code, .kbd { color: var(--foreground); }
       footer.foot { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 13px; line-height: 1.6; color: var(--muted-foreground); }
       code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; background: var(--muted); padding: 1px 5px; border-radius: 5px; }
@@ -100,8 +98,7 @@
       .srow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 12px; }
       .sname { display: flex; align-items: baseline; gap: 9px; flex: 0 0 auto; min-width: 126px; }
       .slabel { font-weight: 500; }
-      /* Wide: the body sits beside the label. Narrow: 200px will not fit next to it, so it
-         wraps onto its own line instead of squeezing the command out of the card. */
+      /* Wrap setup details below their label on narrow screens. */
       .sbody { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; flex: 1 1 200px; min-width: 0; }
       .sdot { width: 9px; height: 9px; border-radius: 50%; flex: none; align-self: center; background: var(--d-none); }
       .srow[data-state="ok"] .sdot { background: var(--d-human); }
@@ -281,7 +278,7 @@
             <p data-i18n-html="onbYoursBody">The <strong data-i18n="onbPopupName">popup</strong> and <strong data-i18n="onbOptionsName">options page</strong> hold the rest: pick a
               marking style (<strong data-i18n="onbStyleQuiet">flagged text only</strong> or <strong data-i18n="onbStyleAlways">every analyzed paragraph</strong>), choose the
               analysis scope (<strong data-i18n="onbScopePage">whole page</strong> or <strong data-i18n="onbScopeMain">main content only</strong>), and
-              check the local scoring daemon's status.</p>
+              check the local engine's status.</p>
             </details>
           </section>
         </section>

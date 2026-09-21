@@ -6,15 +6,13 @@
 // for logged-in sites, load output/chrome-mv3 into your own Chrome instead.
 //
 //   npm run play
-import { chromium } from "playwright";
+import { launchExtension } from "./harness.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
 import http from "node:http";
-import { ensureTestBuild } from "./test-build.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const EXT = ensureTestBuild("chrome-mv3"); // the suites' build — see test/test-build.mjs
 
 // Serve both fixture pages over http so the content script injects.
 const pages = {
@@ -37,17 +35,10 @@ const TABS = [
   "https://www.rfc-editor.org/rfc/rfc768.txt",
 ];
 
-const context = await chromium.launchPersistentContext("", {
-  headless: false,
-  viewport: null,
-  args: [
-    `--disable-extensions-except=${EXT}`,
-    `--load-extension=${EXT}`,
-    "--no-first-run",
-    "--no-default-browser-check",
-    "--start-maximized",
-  ],
+const { context } = await launchExtension({
+  headless: false, viewport: null, args: ["--start-maximized"],
 });
+console.log("Scores use the isolated deterministic Native Messaging fixture, not model weights.");
 await context.grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => {});
 
 const first = context.pages()[0] ?? (await context.newPage());
@@ -67,5 +58,6 @@ await new Promise((resolve) => {
   process.on("SIGINT", resolve);
   process.on("SIGTERM", resolve);
 });
+await context.close().catch(() => {});
 server.close();
 process.exit(0);

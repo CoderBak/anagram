@@ -219,9 +219,15 @@ def main():
     component, error = None, None
     try:
         component = NativeComponent(args.home)
+        # Contain dependency diagnostics created relative to cwd before any
+        # background runtime import (including ORT's fallback session file).
+        os.chdir(component.home)
     except ComponentError as exc:
         error = exc
     except Exception as exc:
+        if component is not None:
+            component.close()
+            component = None
         error = ComponentError("not_installed", str(exc), 503)
     try:
         run_host(sys.stdin.buffer, output, component, error)

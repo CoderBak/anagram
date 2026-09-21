@@ -1,7 +1,7 @@
 # Anagram — Privacy Policy
 
 Last updated: 2026-09-21. Applies to the Anagram browser extension for Chrome and for
-Firefox, and to the `anagramd` scoring service that runs on your own computer.
+Firefox, and to the local component that runs on your own computer.
 
 **The short version.** Anagram reads the text of pages you have allowed it to read, sends
 that text to a program running on your own computer to be scored, and shows the score next
@@ -40,18 +40,17 @@ bookmarks, your history or the contents of other tabs.
 
 ## Where it goes
 
-To **the Anagram local component on your computer**, normally through the browser's
+To **the Anagram local component on your computer**, through the browser's
 Native Messaging pipe. The browser starts the registered `dev.coderbak.anagram` host;
 its registration permits your exact extension ID. The extension's management bridge
 accepts only its own top-level setup and Settings pages and a fixed list of operations,
 not arbitrary file paths or shell commands. Page text is used in memory for inference.
 
-A developer option retains HTTP on `http://127.0.0.1:<port>` or
-`http://localhost:<port>`, with redirects refused and extension-origin CORS checks.
-The extension's web requests are restricted by:
+There is no HTTP inference endpoint or alternate developer transport. The extension's
+web requests are restricted by:
 
 ```
-connect-src 'self' http://127.0.0.1:* http://localhost:*
+connect-src 'self'
 ```
 
 This policy does not constrain native programs. Native model downloads and user-requested
@@ -62,7 +61,7 @@ benchmark results or saved runtime choice. Same-origin re-reads of the open Goog
 PDF are made with the browser's normal cookies; the extension never reads those cookies.
 
 The scoring wire request carries the contract version, paragraph IDs and text
-(`lib/backend/nativeScoreClient.ts`, or `httpClient.ts` in developer mode). It does not
+(`lib/backend/nativeScoreClient.ts`). It does not
 include the page's full URL, cookies, browser history or account credentials. The richer
 internal page-to-background scan envelope is not forwarded as the native scoring payload.
 
@@ -77,8 +76,7 @@ user's ordinary OS privileges; browser CSP is not an OS sandbox for it.
 These are the things you set, in `chrome.storage.local` — nothing is written to
 `storage.sync`, so nothing here leaves this browser profile or this computer:
 
-`backendTransport` (native, or developer HTTP), `extensionUpdatePending` (a browser
-update awaiting reload), `serverUrl` (the developer loopback address), `enabled` (the master switch), `siteOverrides` (the
+`extensionUpdatePending` (a browser update awaiting reload), `enabled` (the master switch), `siteOverrides` (the
 per-site on/off rules you wrote, as hostnames), `showHighlights`, `autoOpenPdfs`, `debug`,
 `displayMode`, `mergeShorts`, `markStyle`, `analysisScope`, `fabPos` (where you dragged
 the floating ball, per hostname), and `scLegacySwept` (a one-shot housekeeping flag).

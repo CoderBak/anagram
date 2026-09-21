@@ -1,6 +1,5 @@
 // One panel shared by first-run setup and Options. Mounting only reads status; the backend
 // owns the automatic first-run benchmark, and later runs require a button click.
-import { settings } from "../settings/settings";
 import { t, type MessageKey } from "../i18n";
 import {
   requestRuntime, runtimeReady, runtimeBusy, runtimePollMs, canApplyRuntime,
@@ -147,7 +146,7 @@ export function mountRuntimeSettings(host: HTMLElement, onUpdate?: (reply: Runti
   function paint(reply: RuntimeReply): void {
     if (reply.kind !== "ok") {
       snapshot = undefined;
-      summary.textContent = t(reply.kind === "unsupported" ? "runtimeLegacy" : reply.kind === "invalid" ? "runtimeInvalid" : "runtimeUnreachable");
+      summary.textContent = t(reply.kind === "invalid" ? "runtimeInvalid" : "runtimeUnreachable");
       timing.hidden = active.hidden = tableWrap.hidden = quality.hidden = true;
       note.hidden = true;
       error.textContent = actionError; error.hidden = !actionError;
@@ -194,9 +193,7 @@ export function mountRuntimeSettings(host: HTMLElement, onUpdate?: (reply: Runti
     const requestedId = choice;
     const ac = new AbortController(); controller = ac;
     try {
-      const url = await settings.serverUrl.getValue();
-      if (seq !== generation || ac.signal.aborted) return;
-      const reply = await requestRuntime(url, action, action === "config" ? requestedId ?? undefined : undefined, ac.signal);
+      const reply = await requestRuntime(action, action === "config" ? requestedId ?? undefined : undefined, ac.signal);
       if (seq !== generation || ac.signal.aborted || destroyed) return;
       if (reply.kind === "rejected") {
         if (action === "cancel") cancelRequested = false;
@@ -229,16 +226,9 @@ export function mountRuntimeSettings(host: HTMLElement, onUpdate?: (reply: Runti
     else { if (timer !== undefined) clearTimeout(timer); controller?.abort(); }
   };
   document.addEventListener("visibilitychange", visibility);
-  const unwatch = settings.serverUrl.watch(() => {
-    generation++; controller?.abort(); snapshot = undefined; choice = null; tableSignature = ""; cancelRequested = false;
-    summary.textContent = t("runtimeChecking");
-    tableWrap.hidden = timing.hidden = active.hidden = true; buttons();
-    onUpdate?.({ kind: "unavailable" });
-    if (!pending) run();
-  });
   buttons(); void poll();
   return {
     refresh: () => run(),
-    destroy() { destroyed = true; generation++; controller?.abort(); if (timer !== undefined) clearTimeout(timer); unwatch(); document.removeEventListener("visibilitychange", visibility); },
+    destroy() { destroyed = true; generation++; controller?.abort(); if (timer !== undefined) clearTimeout(timer); document.removeEventListener("visibilitychange", visibility); },
   };
 }

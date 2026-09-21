@@ -1,16 +1,7 @@
-// test/abs-vs-html.mjs — same abstract, two renderings: does the pipeline send the model the
-// same bytes? For each arXiv id, the abstract is extracted from the /abs page and from the
-// HTML rendering with the extension's own walker, its canonical scoring form
-// (canonicalForScoring) is scored by the daemon, and the two are compared. The extension
-// itself sends an abstract longer than one window as several blocks cut from that same text;
-// here each abstract stays ONE block, because the question is whether the two renderings
-// agree, not how a long one is read. Residual gaps are content differences
-// (paper versions, arXiv's URL rewriting, paragraph segmentation) or the model's own
-// sensitivity — not extraction. Needs `npm run serve` and a fresh test/.unit-bundle.js
-// (`npm run test:unit` builds it).
-//
-//   node test/abs-vs-html.mjs                 # 12 recent cs.CL papers + 2212.10001
-//   node test/abs-vs-html.mjs 2212.10001 2609.12191
+// Same arXiv abstract in /abs and /html: compare the exact extraction and canonical
+// scoring payloads. This checks extraction parity; it does not load or score a model.
+// Requires test/.unit-bundle.js from npm run test:unit.
+//   node test/abs-vs-html.mjs [arxiv-id ...]
 import { launchPlain } from "./harness.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -49,18 +40,12 @@ for (const id of ids) {
   rows.push({ id, absRaw, htmlRaw, absCanon, htmlCanon });
 }
 await browser.close();
-const blocks = rows.flatMap((r) => [["absRaw", r.absRaw], ["htmlRaw", r.htmlRaw], ["absCanon", r.absCanon], ["htmlCanon", r.htmlCanon]].map(([k, text]) => ({ id: `${r.id}:${k}`, text })));
-const res = await fetch("http://127.0.0.1:8765/score", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ v: "2.1", blocks }) }).then((r) => r.json());
-const S = Object.fromEntries(res.results.map((x) => [x.id, x]));
-const pct = (x) => Math.round(x.score * 100);
-let dRaw = 0, dCanon = 0, agreeRaw = 0, agreeCanon = 0, sameText = 0;
-console.log("NOTE: raw = the new walker's unit text (markers already skipped); canon = its canonical form, which is what the extension SENDS (whole, or cut into windows)");
-console.log("paper       abs raw  html raw  | abs sent   html sent  | payloads identical?");
-for (const r of rows) {
-  const a = S[`${r.id}:absRaw`], h = S[`${r.id}:htmlRaw`], ac = S[`${r.id}:absCanon`], hc = S[`${r.id}:htmlCanon`];
-  dRaw += Math.abs(pct(a) - pct(h)); dCanon += Math.abs(pct(ac) - pct(hc));
-  agreeRaw += a.bucket === h.bucket; agreeCanon += ac.bucket === hc.bucket; sameText += r.absCanon === r.htmlCanon;
-  console.log(`${r.id}  ${String(pct(a)).padStart(4)}% b${a.bucket}  ${String(pct(h)).padStart(4)}% b${h.bucket}   |  ${String(pct(ac)).padStart(4)}% b${ac.bucket}   ${String(pct(hc)).padStart(4)}% b${hc.bucket}    | ${r.absCanon === r.htmlCanon ? "yes" : "no: " + firstDiff(r.absCanon, r.htmlCanon)}`);
+let sameRaw = 0, sameCanonical = 0;
+console.log("paper        raw identical?  canonical payload identical?");
+for (const row of rows) {
+  sameRaw += row.absRaw === row.htmlRaw;
+  sameCanonical += row.absCanon === row.htmlCanon;
+  console.log(`${row.id}  ${row.absRaw === row.htmlRaw ? "yes" : "no"}  ${row.absCanon === row.htmlCanon ? "yes" : "no: " + firstDiff(row.absCanon, row.htmlCanon)}`);
 }
 function firstDiff(a, b) { let i = 0; while (i < a.length && a[i] === b[i]) i++; return JSON.stringify(a.slice(Math.max(0, i - 15), i + 20)) + " vs " + JSON.stringify(b.slice(Math.max(0, i - 15), i + 20)); }
-console.log(`\n${rows.length} papers · mean |Δ| raw ${(dRaw / rows.length).toFixed(1)} pts, canon ${(dCanon / rows.length).toFixed(1)} pts · same verdict raw ${agreeRaw}/${rows.length}, canon ${agreeCanon}/${rows.length} · identical payload after canon ${sameText}/${rows.length}`);
+console.log(`${rows.length} papers · identical raw ${sameRaw}/${rows.length} · identical canonical payload ${sameCanonical}/${rows.length}`);

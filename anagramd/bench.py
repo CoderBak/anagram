@@ -6,7 +6,7 @@ Loads each checkpoint the way the reference `scripts/inference.py` does, then me
     latency     one paragraph at a time (the interactive path: a chip appearing on scroll)
     throughput  batches of 8 / 32 paragraphs at several paragraph lengths (the prefetch path)
     footprint   peak process RSS and peak MPS/CUDA driver memory during the run
-    sanity      buckets on the daemon's selftest samples (human / AI / lightly edited)
+    sanity      buckets on the fixed sanity samples (human / AI / lightly edited)
 
 Checkpoints
     roberta-large   pangram/editlens_roberta-large — full weights (RobertaForSequenceClassification)
@@ -32,7 +32,7 @@ from __future__ import annotations
 import os
 import sys
 
-# The same switch serve.py throws, and for the same reason: huggingface_hub and transformers
+# The same switch engine.py throws, and for the same reason: huggingface_hub and transformers
 # read these variables once, at their own import time, so it has to happen before anything
 # can import them. It matters more here than there, because the LoRA checkpoint below is
 # measured on meta-llama/Llama-3.2-3B — a base model that a missing local directory would
@@ -59,9 +59,28 @@ import psutil
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from serve import BUCKET_LABELS, SELFTEST, clean_text  # noqa: E402
+from engine import BUCKET_LABELS, clean_text  # noqa: E402
 
-# serve.py throws the same switch when IT is imported, which is after ours, so --online has
+SELFTEST = [
+    ("human", "I got the call around six, right when the rice was starting to catch on the bottom of the pan. "
+              "My brother never rings on weeknights, so I turned the burner off and sat on the floor to listen. "
+              "He talked for twenty minutes about a dog he was thinking of adopting and never mentioned the "
+              "thing we both knew he had rung to say. Afterwards the rice was ruined and I ate it anyway."),
+    ("ai", "In today's rapidly evolving digital landscape, effective communication has become more crucial "
+           "than ever. By leveraging cutting-edge technologies and fostering a culture of collaboration, "
+           "organizations can unlock unprecedented opportunities for growth. This comprehensive approach "
+           "not only enhances productivity but also empowers teams to navigate complex challenges with "
+           "confidence and agility, ultimately driving sustainable success in an increasingly competitive world."),
+    ("edited", "I received the call at around six o'clock, just as the rice began to stick to the bottom of "
+               "the pan. Since my brother rarely calls on weeknights, I switched off the burner and sat on the "
+               "floor to listen. He spoke for twenty minutes about a dog he was considering adopting, never "
+               "mentioning what we both knew he had actually called to discuss. Afterwards, the rice was "
+               "ruined, but I ate it regardless."),
+    ("zh", "这是一个完全用中文写成的段落。模型只在英文数据上训练过，所以这段文字不应该被打分，"
+           "而应该被标记为不支持的语言。检测器应该能够识别出这一点，并且不要给出一个看起来很可信的百分比。"),
+]
+
+# engine.py throws the same switch when IT is imported, which is after ours, so --online has
 # to undo it again here. This is still early enough to count: transformers and
 # huggingface_hub do not arrive until the first Bench is built, several lines below.
 if ONLINE:
@@ -259,7 +278,7 @@ def main() -> None:
         print(f"   {r['params_M']} M params · {r['disk_GB']} GB on disk · loaded in {r['load_s']} s · "
               f"RSS +{r['rss_growth_on_load_GB']} GB · accelerator {r['accel_mem_after_load_GB']} GB")
 
-        # sanity: the daemon's selftest samples
+        # sanity: the fixed sanity samples
         texts = [t for _, t in SELFTEST if not t.startswith("这")]
         probs, _ = b.score(texts)
         r["sanity"] = [

@@ -60,7 +60,7 @@ export type RuntimeCandidate = RuntimeSnapshot["candidates"][number];
 export type RuntimeResult = RuntimeSnapshot["benchmark"]["results"][number];
 export type RuntimeReply =
   | { kind: "ok"; snapshot: RuntimeSnapshot }
-  | { kind: "unavailable" | "unsupported" | "invalid" | "rejected"; message?: string };
+  | { kind: "unavailable" | "invalid" | "rejected"; message?: string };
 export type RuntimeAction = "benchmark" | "cancel" | "config";
 
 export function runtimeReady(s: RuntimeSnapshot): boolean {

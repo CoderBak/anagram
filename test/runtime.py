@@ -13,7 +13,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "anagramd"))
-import serve
+import engine as engine_api
 from runtime_controller import Candidate, RuntimeBusy, RuntimeController, RuntimeUnavailable, error_text
 from runtime_adapters import OnnxEditLens, artifact_files, digest, runtime_version
 
@@ -417,45 +417,31 @@ class LifecycleTests(unittest.TestCase):
         self.finish(restarted)
         self.assertEqual(len(restarted.snapshot()["error"]), 2000)
 
-    def test_missing_lid_or_model_keeps_controls_alive_and_allows_retry(self):
-        from fastapi.testclient import TestClient
+    def test_missing_models_keep_runtime_controls_recoverable(self):
         controller, _ = self.make()
         def fail():
-            raise SystemExit("missing language model; run anagram model")
+            raise RuntimeError("missing language model")
         controller.discover = fail
-        with TestClient(serve.make_app(None, ["localhost"], 8765, controller),
-                        base_url="http://localhost:8765") as client:
-            self.finish(controller)
-            self.assertEqual(client.get("/runtime").status_code, 200)
-            self.assertEqual(client.get("/runtime").json()["state"], "error")
-            self.assertEqual(client.get("/health").status_code, 503)
-            self.assertEqual(client.post("/score", json={"v": "2.1", "blocks": []}).status_code, 503)
-            controller.discover = lambda: ([FP32], "fixed")
-            self.assertEqual(client.post("/runtime/benchmark", json={}).status_code, 202)
-            self.finish(controller)
-            self.assertEqual(client.get("/runtime").json()["state"], "awaiting_selection")
+        controller.start()
+        self.finish(controller)
+        self.assertEqual(controller.snapshot()["state"], "error")
+        with self.assertRaises(RuntimeUnavailable):
+            with controller.use_engine():
+                pass
+        controller.discover = lambda: ([FP32], "fixed")
+        controller.request_benchmark()
+        self.finish(controller)
+        self.assertEqual(controller.snapshot()["state"], "awaiting_selection")
 
-    def test_runtime_post_guards_and_whitelist(self):
-        from fastapi.testclient import TestClient
+    def test_runtime_budgets_and_candidate_ids_are_validated(self):
         controller, _ = self.make()
         self.setup_complete(controller)
-        with TestClient(serve.make_app(None, ["localhost"], 8765, controller),
-                        base_url="http://localhost:8765") as client:
-            for route, body in (("benchmark", {}), ("cancel", {}), ("config", {"id": FP32.id})):
-                path = f"/runtime/{route}"
-                self.assertEqual(client.post(path, content=json.dumps(body)).status_code, 415)
-                self.assertEqual(client.post(path, json=body, headers={"origin": "https://evil.test"}).status_code, 403)
-                self.assertEqual(client.post(path, json=body, headers={"host": "evil.test"}).status_code, 400)
-            for value in (9, 31, True, 10.5):
-                self.assertEqual(client.post("/runtime/benchmark", json={"budget_s": value}).status_code, 422)
-            self.assertEqual(client.post("/runtime/config", json={"id": "unknown"}).status_code, 422)
-            self.assertEqual(client.post("/runtime/config", json={"id": "../../model"}).status_code, 422)
-            response = client.post("/runtime/config", json={"id": FP32.id},
-                                   headers={"origin": "chrome-extension://test"})
-            self.assertEqual(response.status_code, 202)
-            self.assertEqual(response.headers["access-control-allow-origin"], "chrome-extension://test")
-            self.finish(controller)
-            self.assertEqual(client.get("/health").status_code, 200)
+        for value in (9, 31, True, 10.5):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                controller.request_benchmark(value)
+        for value in ("unknown", "../../model"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                controller.request_selection(value)
 
 
 class ProvenanceTests(unittest.TestCase):
@@ -466,15 +452,16 @@ class ProvenanceTests(unittest.TestCase):
             (path / "config.json").write_text("{}")
             for name in ("model.onnx", "model_fp16.onnx", "model_int8.onnx"):
                 (path / "onnx" / name).write_bytes(name.encode())
-            engine = SimpleNamespace(max_length=512, dtype_name="int8", lid=serve.LanguageId.disabled())
-            first = runtime_version(engine, INT8, path, serve, {"provider": "CPUExecutionProvider"})
+            engine = SimpleNamespace(max_length=512, dtype_name="int8",
+                                     lid=SimpleNamespace(enabled=False, name=None, digest=None))
+            first = runtime_version(engine, INT8, path, engine_api, {"provider": "CPUExecutionProvider"})
             (path / "onnx/model_int8.onnx").write_bytes(b"changed int8 weights")
-            second = runtime_version(engine, INT8, path, serve, {"provider": "CPUExecutionProvider"})
+            second = runtime_version(engine, INT8, path, engine_api, {"provider": "CPUExecutionProvider"})
             self.assertNotEqual(first, second)
             (path / "onnx/tensors.data").write_bytes(b"external tensor data")
-            third = runtime_version(engine, INT8, path, serve, {"provider": "CPUExecutionProvider"})
+            third = runtime_version(engine, INT8, path, engine_api, {"provider": "CPUExecutionProvider"})
             self.assertNotEqual(second, third)
-            self.assertNotEqual(third, runtime_version(engine, INT8, path, serve, {"provider": "OtherProvider"}))
+            self.assertNotEqual(third, runtime_version(engine, INT8, path, engine_api, {"provider": "OtherProvider"}))
             self.assertEqual({p.name for p in artifact_files(path, INT8)}, {"model_int8.onnx", "tensors.data"})
             self.assertEqual(digest(path / "config.json"), digest(path / "config.json"))
 
@@ -492,12 +479,12 @@ class ScoringParityTests(unittest.TestCase):
             AutoModelForSequenceClassification=SimpleNamespace(from_pretrained=lambda *a, **k: Model()),
             AutoTokenizer=SimpleNamespace(from_pretrained=lambda *a, **k: object()))
         with patch.dict(sys.modules, {"torch": fake_torch, "transformers": fake_transformers}), \
-                patch.object(serve, "require_model"), patch.object(serve, "pipeline_version", return_value="test"):
+                patch.object(engine_api, "require_model"), patch.object(engine_api, "pipeline_version", return_value="test"):
             for device in ("cpu", "mps", "cuda:0"):
-                engine = serve.EditLens(Path("unused"), device, 512, 8, "auto", None, warmup=False)
+                engine = engine_api.EditLens(Path("unused"), device, 512, 8, "auto", None, warmup=False)
                 self.assertEqual(engine.dtype_name, "float32")
             with self.assertRaisesRegex(ValueError, "CPU FP16"):
-                serve.EditLens(Path("unused"), "cpu", 512, 8, "fp16", None, warmup=False)
+                engine_api.EditLens(Path("unused"), "cpu", 512, 8, "fp16", None, warmup=False)
 
     def test_torch_and_onnx_share_cleaning_truncation_order_and_four_logits(self):
         # The session stub verifies the real ONNX adapter feed and shared
@@ -534,9 +521,9 @@ class ScoringParityTests(unittest.TestCase):
 
         self_test = self
         onnx = OnnxEditLens.__new__(OnnxEditLens)
-        onnx.api, onnx.session = serve, Session()
+        onnx.api, onnx.session = engine_api, Session()
         onnx.input_names = {"input_ids", "attention_mask", "token_type_ids"}
-        direct = serve.EditLens.__new__(serve.EditLens)
+        direct = engine_api.EditLens.__new__(engine_api.EditLens)
         for engine in (onnx, direct):
             engine.tok, engine.emoji = Tokenizer(), emoji
             engine.max_length, engine.batch_size, engine.n_buckets = 8, 2, 4

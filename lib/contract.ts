@@ -1,5 +1,5 @@
 // lib/contract.ts
-// The versioned surface↔backend contract shared by Native Messaging and developer HTTP.
+// The versioned surface↔backend contract carried by Native Messaging.
 // Model inference runs in the local component; transport adapters and test fixtures
 // exchange the same scoring payloads.
 //
@@ -41,7 +41,7 @@ export interface ScoreResult {
    *  extension sizes its blocks so that this is rare, and re-reads a block that comes back
    *  cut as two halves. */
   truncated?: boolean;
-  /** Detected language (fastText lid.176 label, e.g. "en") — set by the daemon, and
+  /** Detected language (fastText lid.176 label, e.g. "en") — set by the local engine, and
    *  absent when it could not tell. */
   lang?: string;
   /** Confidence of `lang`, in [0,1]. */
@@ -98,9 +98,8 @@ export interface ScoredBatch {
 }
 
 /**
- * The backend seam. NativeScoreClient is the default; developer HTTP uses HttpScoreClient
- * through DaemonClient. getScoreClient.ts selects the transport. Neither has an
- * in-extension inference fallback: failed batches become degraded results.
+ * The backend seam. NativeScoreClient sends batches to the local component. Failed
+ * batches become degraded results; no browser-side inference fallback exists.
  */
 export interface ScoreClient {
   /** Score a batch of blocks. Returns one ScoreResult per input block (by id). */

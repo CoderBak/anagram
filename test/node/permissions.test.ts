@@ -1,27 +1,6 @@
-// test/node/permissions.test.ts — what the two manifests ask the user for.
-//
-// A permission is a sentence in the install dialog, and one of them is a trap: any
-// clipboard permission makes Chrome say "Modify data you copy and paste" and Firefox
-// "Input data to the clipboard" — and a store update that ADDS a warning permission
-// disables the extension until every user re-accepts it. "Copy page diagnostics" is a
-// menu entry most readers will never open, so it may not cost them that.
-//
-// What it may do is ask Firefox for `clipboardWrite` OPTIONALLY, from inside the menu
-// click, because Firefox refuses a content script both clipboard routes outside a
-// user-input handler and the copy happens after the message reaches the page. Chrome needs
-// nothing: the async clipboard API answers a content script whose tab is focused.
-//
-// The other half of what a reader is asked for is the HOSTS, and there the answer is now
-// NONE AT ALL. Anagram installs able to read nothing and the user grants what they want
-// (lib/access/*); the local daemon, which used to be the one required host permission,
-// answers CORS for extension origins instead (anagramd/serve.py), so the extension needs
-// no permission to read it. That leaves an install dialog with no host sentence in it at
-// all. So the shipping manifest declares no content script, requires no host, and carries
-// the all-sites pair as OPTIONAL.
-//
-// These read the last build (CI builds before it runs vitest); with no build on disk — or
-// one older than the file that decides its contents — there is nothing to check and they
-// skip rather than fail.
+// Shipping builds require Native Messaging and request website access separately.
+// Firefox clipboard access is optional; Chrome needs no clipboard permission.
+// Manifest assertions require a build newer than wxt.config.ts.
 import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -38,21 +17,7 @@ interface Manifest {
 }
 
 const CLIPBOARD = ["clipboardWrite", "clipboardRead"];
-/**
- * "Open PDFs in Anagram" would need these on Firefox, whose PDF viewer is a privileged
- * page no content script reaches: a blocking `webRequest.onHeadersReceived` on `main_frame`
- * is the only way to see a `Content-Type: application/pdf` go by. It was built and driven
- * on Firefox 156 and it does work — `redirectUrl` to `reader.html` is refused with
- * NS_ERROR_DOM_BAD_URI because the reader is deliberately not web accessible, but
- * `tabs.update` plus `{cancel: true}` lands the tab in the reader with the paper read.
- *
- * It is not shipped, because the OPTIONAL grant cannot be driven: Firefox accepts
- * `permissions.request` only from a real user-input handler, and WebDriver BiDi can
- * neither deliver input to a moz-extension: page nor satisfy that check with its own
- * script-level activation (test/diagnostics-check.mjs documents the same wall for
- * clipboardWrite). A permission no suite can grant is a feature no suite can prove, so the
- * switch is absent on Firefox instead — and this pins the manifests to match.
- */
+// PDF reading must not introduce request interception permissions.
 const WEB_REQUEST = ["webRequest", "webRequestBlocking"];
 const DECIDES = join(ROOT, "wxt.config.ts");
 

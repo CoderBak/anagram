@@ -11,25 +11,11 @@ import {
 } from "./scripts/i18nSubset";
 import { ALL_SITES } from "./lib/access/patterns";
 
-/**
- * THE TEST BUILD. A permission prompt is native browser UI that no automation can click,
- * and `activeTab` cannot be granted synthetically, so a suite driving the shipping build
- * would be looking at an extension with access to nothing. With this set, the two optional
- * patterns are REQUIRED instead — and that is the only difference: the same runtime
- * registration runs and simply finds everything granted. It goes to its own output
- * directory (`output-test/`), so `npm run build` is always the shipping build.
- * See test/harness.mjs, which builds it, and scripts/buildTest.mjs.
- */
+// Page-reading tests pregrant website access in a separate output-test directory.
+// Shipping installs keep website access optional.
 const TEST_GRANT_ALL = process.env.ANAGRAM_TEST_GRANT_ALL === "1";
 
-/**
- * `wxt zip` builds the package that is uploaded to the store, and with the variable above
- * set it would package the TEST build: an extension that REQUIRES access to every site,
- * which is the one thing this one must never ask a reader for. The two builds differ in a
- * single manifest key and are otherwise identical, so nothing about the zip would look
- * wrong — this is the only place the mistake can be caught. `wxt build` is deliberately
- * left alone: building the variant is exactly what scripts/buildTest.mjs does.
- */
+// Never package the variant that requires access to every website.
 if (TEST_GRANT_ALL && process.argv.slice(2).includes("zip")) {
   throw new Error(
     "ANAGRAM_TEST_GRANT_ALL=1 is set, and `wxt zip` would package the TEST build — the one " +
@@ -38,24 +24,8 @@ if (TEST_GRANT_ALL && process.argv.slice(2).includes("zip")) {
   );
 }
 
-/**
- * lib/i18n.ts imports the English messages so every lookup has a fallback where there is
- * no extension API (the esbuild unit bundle, vitest) or no longer one (a content script
- * whose extension context was invalidated). Two things about that file are dead weight in
- * a bundle: the `description` on each message, which exists for translators, and — by far
- * the larger — every message this particular bundle could never show. The content script
- * runs on every web page and cannot open the options page, the onboarding page or the
- * popup; the background worker only ever names its menu entries.
- *
- * So the import is answered per BUILD. WXT builds the background, each content script and
- * the extension pages as separate Vite builds, and each one is handed the messages that
- * the source files ITS entry can reach actually name — see scripts/i18nSubset.ts for how
- * that set is derived and for the two assertions that make it safe. The shape is
- * `{ key: { message } }` either way, which is what the module reads.
- *
- * A build with no entry we recognise — or any other consumer, `vitest` and the esbuild
- * unit bundle among them — still gets the whole English file, only leaner.
- */
+// Each bundle gets only the English fallback messages its source graph can use.
+// Fail on unknown message keys or unscanned bundled modules; tests keep all messages.
 const ROOT = fileURLToPath(new URL(".", import.meta.url)).replace(/[/\\]$/, "");
 const EN_MESSAGES = fileURLToPath(new URL("./public/_locales/en/messages.json", import.meta.url));
 const EN_MESSAGES_ID = "\0anagram:en-messages";
@@ -108,51 +78,15 @@ function englishFallback() {
   };
 }
 
-/**
- * The Content-Security-Policy of the extension's own pages and its service worker — the
- * one place where "this extension cannot reach the internet" stops being a promise and
- * becomes something the browser enforces. docs/footprint.md is the page that explains it
- * to somebody auditing the extension; this is the policy itself, directive by directive.
- *
- *   connect-src   THE ENFORCEMENT. The worker does all the scoring traffic and every
- *                 extension page shares this policy, so `fetch`, XHR, WebSocket,
- *                 EventSource and sendBeacon can reach the local daemon and nothing else.
- *                 CSP host sources cannot express IPv6 or the whole 127.0.0.0/8 block, so
- *                 the two loopback spellings here are exactly the two the daemon-URL
- *                 setting accepts (lib/settings/settings.ts). `'self'` is the extension's
- *                 own origin, which is how the reader page reads the pdf.js worker's data.
- *                 That is the whole list: no remote origin, and no `file:` either. Not the
- *                 origin the tab is on — which is why the bytes of a PDF being read are
- *                 handed over by the tab that already has them (lib/pdf/handoff.ts) rather
- *                 than fetched again — and not a local file, because nothing here declares
- *                 access to the file scheme any more and a PDF from this computer comes in
- *                 through the reading mode's drop zone, as a file the user handed over.
- *   script-src    'self' plus 'wasm-unsafe-eval', which is what lets pdf.js instantiate
- *                 the JPEG2000 and JBIG2 decoders it ships as WebAssembly. Without it a
- *                 scanned page in either format comes out blank — measured, not assumed:
- *                 test/pdf-codecs-check.mjs opens one of each in the packaged extension.
- *                 It permits no eval and no remote script; it is the narrowest keyword
- *                 there is for "may compile the bytes we ship".
- *   style-src     'unsafe-inline' is needed, and it was measured rather than assumed: with
- *                 it taken out, all four extension pages report a style-src-elem refusal
- *                 for the <style> block each of them carries its layout in, and the reader
- *                 showing a PDF reports three — its own plus the ones pdf.js adds while it
- *                 draws. Nothing in that is a script. It is also exactly what Chrome's
- *                 DEFAULT extension policy allows, so this is no loosening; everything
- *                 else here is a tightening of that default.
- *   img/font      data: and blob: are what a document drawn from bytes needs; neither can
- *                 name a remote host.
- *   frame/form    'none' both: nothing here embeds anything and nothing here posts a form.
- *   base-uri      'none' so an injected <base> cannot re-point a relative URL.
- *
- * Firefox (MV2) takes the same policy as a single string. `object-src 'self'` is spelt out
- * rather than left to default-src because both browsers validate its presence.
- */
+// Extension-page/worker requests reach packaged resources only. PDF and Docs bytes
+// arrive through their original tabs. Native setup downloads run outside browser CSP.
+// Packaged pdf.js image decoders need wasm-unsafe-eval; inline page styles need
+// unsafe-inline. Neither directive permits remotely hosted scripts.
 const CSP = [
   "default-src 'self'",
   "script-src 'self' 'wasm-unsafe-eval'",
   "object-src 'self'",
-  "connect-src 'self' http://127.0.0.1:* http://localhost:*",
+  "connect-src 'self'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
   "style-src 'self' 'unsafe-inline'",
@@ -178,14 +112,10 @@ export default defineConfig({
   },
   vite: () => ({ plugins: [englishFallback()] }),
   hooks: {
-    // The content script is registered at runtime (entrypoints/content.ts), and WXT adds
-    // such a script's `matches` to host_permissions — which is the one thing this
-    // extension must not ask for. What it asks for is decided below, and only below.
-    // Dev mode (`npm run dev`) is left alone: WXT registers the script itself there.
+    // Production content scripts are registered only after a grant or user action.
+    // Remove WXT's inferred hosts; its dev server manages its own registration.
     "build:manifestGenerated": (wxt, manifest) => {
       if (wxt.config.command === "serve") return;
-      // The shipping build asks for no host at all, so the key goes away entirely rather
-      // than being left as an empty array for a store reviewer to wonder about.
       if (TEST_GRANT_ALL) manifest.host_permissions = [...ALL_SITES];
       else delete manifest.host_permissions;
       // With no script left to declare, WXT still leaves the empty array behind.
@@ -200,30 +130,14 @@ export default defineConfig({
       // what it falls back to, which is also what every __MSG_* below is written in.
       default_locale: "en",
       description: "__MSG_extDescription__",
-      // `scripting` is what registers the content script at runtime and injects it into a
-      // tab the user has just asked about; `activeTab` is what makes that injection legal
-      // on a site nothing has been granted for. Neither shows a warning at install time.
-      // Local inference is a core feature, so nativeMessaging is REQUIRED on both
-      // browsers. The browser launches the registered host when inference is needed.
+      // Native Messaging provides local inference; activeTab/scripting provide opt-in reading.
       permissions: ["storage", "activeTab", "contextMenus", "scripting", "nativeMessaging"],
       // See CSP above. MV3 keys it under `extension_pages`; MV2 is the bare string.
       content_security_policy: browser === "firefox" ? CSP : { extension_pages: CSP },
       ...(browser === "firefox"
         ? {
-            // "Copy page diagnostics" copies when the worker's menu message reaches the
-            // page, which is no longer a user-input handler, and Firefox refuses a content
-            // script both clipboard routes outside one. OPTIONAL, never required: a
-            // clipboard permission is a warning at install time ("Input data to the
-            // clipboard"; Chrome words it "Modify data you copy and paste"), and a menu
-            // entry most readers will never open must not cost every reader that. The
-            // worker asks for it inside the click itself, once (entrypoints/background.ts).
-            // Chrome needs no permission at all: the async clipboard API answers a content
-            // script whose tab is focused, which the click has just made it.
-            //
-            // MV2 has no `optional_host_permissions`: the two site patterns are optional
-            // permissions like any other here. In the test build they are required
-            // instead, so they are left out of this list and WXT folds host_permissions
-            // into `permissions` for MV2.
+            // Firefox clipboard copying asks permission only when the menu is used.
+            // MV2 carries optional website patterns in the same list.
             optional_permissions: TEST_GRANT_ALL ? ["clipboardWrite"] : ["clipboardWrite", ...ALL_SITES],
             browser_specific_settings: {
               gecko: {
@@ -238,16 +152,7 @@ export default defineConfig({
             },
           }
         : {}),
-      // Keyboard commands. Chrome accepts at most FOUR suggested keys per extension, so
-      // these four are the whole budget; everything else is rebindable at
-      // chrome://extensions/shortcuts (about:addons on Firefox).
-      //
-      // All four are Alt+Shift+<letter>, a range no browser claims on macOS (its own
-      // shortcuts are Command-based) and where the Windows/Linux exceptions are known and
-      // avoided: Alt+Shift+T is Chrome's toolbar focus, Alt+Shift+B its bookmarks bar,
-      // Alt+Shift+I its feedback form. P is the product's own letter; L is the LIST the
-      // counter opens; J/K walk down/up the way every list-with-a-cursor has since vi —
-      // and the pair sits under the right hand on QWERTY, next to each other.
+      // Chrome permits four suggested shortcuts. Avoid its Alt+Shift+T/B/I bindings.
       commands: {
         "toggle-overlay": {
           suggested_key: { default: "Alt+Shift+P" },
@@ -266,45 +171,13 @@ export default defineConfig({
           description: "__MSG_cmdPrevFlagged__",
         },
       },
-      // NO required host permission. nativeMessaging has a separate install warning.
-      // The daemon used to need two — `http://127.0.0.1/*` and `http://localhost/*` —
-      // not to reach it, but to READ its answers, because it sent no CORS headers. It
-      // sends them now, for extension origins only (anagramd/serve.py), so the permission
-      // bought nothing and cost every reader a warning. The price is that a daemon older
-      // than this extension cannot answer it: the pages ask for `anagram update`, which
-      // is the trade the owner chose. Sites are granted afterwards by the user, all at
-      // once or one at a time (lib/access/*). The hook above has the last word here.
+      // Website access is optional; nativeMessaging has its own install warning.
       ...(TEST_GRANT_ALL ? { host_permissions: [...ALL_SITES] } : {}),
       // OPTIONAL (Chrome MV3; Firefox MV2 carries them in optional_permissions above):
       // "all sites", which the onboarding page and the options page ask for in one click.
       ...(TEST_GRANT_ALL ? {} : { optional_host_permissions: [...ALL_SITES] }),
-      /**
-       * Exactly the three chunks a CONTENT SCRIPT imports by URL, and nothing else.
-       *
-       * A content script's `import()` of an extension URL is a load performed in the web
-       * page's context, so the file has to be declared here; an extension page is under no
-       * such rule, which is what decides this list. Readability is loaded by the
-       * main-content scope (lib/capture/orchestrator.ts), DOMPurify by the Google Docs
-       * reading mode (lib/docsOverlay.ts) and the diagnostics chunk by the "Copy page
-       * diagnostics" menu entry (lib/diagnostics/index.ts) — all three from
-       * lib/lazy.ts, all three built by scripts/vendor.mjs.
-       *
-       * The rest of public/vendor/ is the PDF reader's: pdf.js, its worker, the CMaps, the
-       * standard fourteen fonts, the colour profiles and the two WebAssembly decoders. The
-       * reader is an extension page and fetches them as its own origin, so `vendor/*` —
-       * which is what was declared until 2026-09-20 — was handing every website on the
-       * internet three megabytes of files it has no use for, and handing any page that
-       * cared a reliable way to detect that this extension is installed.
-       *
-       * `use_dynamic_url` closes the rest of that: Chrome then serves these three at an
-       * address that is rotated per session and handed only to our own content script, so
-       * a page cannot fetch them by guessing the extension id either. It was adopted
-       * because the lazy imports go on working with it — the diagnostics chunk through
-       * test/diagnostics-check.mjs, Readability through the main-content scenarios,
-       * DOMPurify through the same lib/lazy.ts call these two prove. Firefox MV2 takes a
-       * plain list of paths and ignores the key, which costs nothing: MV2 has no such
-       * mechanism to begin with.
-       */
+      // Only content-script imports are web accessible. Reader assets stay private;
+      // Chrome rotates these chunk URLs per session to prevent stable-ID probing.
       web_accessible_resources: [
         {
           resources: [

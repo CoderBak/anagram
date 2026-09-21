@@ -11,6 +11,8 @@ import type {
   ScoredBatch,
 } from "../../lib/contract";
 import { CONTRACT_VERSION } from "../../lib/contract";
+import { NativeScoreError } from "../../lib/backend/nativeScoreClient";
+import { NativeTransportError } from "../../lib/backend/nativeTransport";
 
 const A: ModelInfo = { id: "model-a", ver: "1", calibration: "none" };
 const B: ModelInfo = { id: "model-b", ver: "1", calibration: "none" };
@@ -31,10 +33,8 @@ function scored(blocks: ScoreBlock[], model: ModelInfo, bucket = 3): ScoredBatch
   };
 }
 
-/** The error a daemon that is merely BUSY produces (lib/backend/httpClient.ts's
- *  DaemonHttpError shape) — the only kind of failure the router may send again. */
-function busyError(retryAfterMs: number | null = null): Error {
-  return Object.assign(new Error("anagramd HTTP 503"), { status: 503, retryAfterMs });
+function busyError(): Error {
+  return new NativeScoreError(409, "busy", "Local queue full");
 }
 
 /** A controllable fake backend: every scoreBatch call is recorded and can be held open.
@@ -271,7 +271,7 @@ describe("router retry", () => {
   it("does not send a batch again after a 4xx", async () => {
     const client = fakeClient(A);
     const router = createRouter(client);
-    client.fail(Object.assign(new Error("anagramd HTTP 413"), { status: 413, retryAfterMs: null }));
+    client.fail(new NativeScoreError(413, "request_too_large", "Too much text"));
     await router.handle(req(["too much text for the daemon"]));
     expect(client.calls.length).toBe(1);
   });
@@ -279,29 +279,17 @@ describe("router retry", () => {
   it("sends it again when the transport failed", async () => {
     const client = fakeClient(A);
     const router = createRouter(client);
-    client.fail(new TypeError("Failed to fetch"));
+    client.fail(new NativeTransportError("native_unavailable", "Disconnected"));
     await router.handle(req(["a paragraph nobody could deliver"]));
     expect(client.calls.length).toBe(2);
   });
 
-  it("waits as long as a short Retry-After asks", async () => {
+  it("does not retry a cancelled native request", async () => {
     const client = fakeClient(A);
     const router = createRouter(client);
-    client.fail(busyError(400));
-    const started = Date.now();
-    await router.handle(req(["one request too many"]));
-    expect(client.calls.length).toBe(2);
-    expect(Date.now() - started).toBeGreaterThanOrEqual(380);
-  });
-
-  it("answers at once rather than holding a slot for a long Retry-After", async () => {
-    const client = fakeClient(A);
-    const router = createRouter(client);
-    client.fail(busyError(30_000)); // "come back in half a minute" — not with a slot held
-    const started = Date.now();
-    const r = await router.handle(req(["one request too many, for a while"]));
-    expect(client.calls.length).toBe(1);
-    expect(r.results[0].degraded).toBe(true);
-    expect(Date.now() - started).toBeLessThan(1000);
+    client.fail(new NativeTransportError("cancelled", "Cancelled"));
+    const result = await router.handle(req(["cancelled work"]));
+    expect(client.calls).toHaveLength(1);
+    expect(result.results[0].degraded).toBe(true);
   });
 });

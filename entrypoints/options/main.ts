@@ -17,17 +17,12 @@ import {
   effectiveRule,
   normalizeMarkStyle,
   normalizeRuleHost,
-  normalizeServerUrl,
-  DEFAULT_SERVER_URL,
 } from "../../lib/settings/settings";
 import { ALL_SITES } from "../../lib/access/patterns";
 import { accessSummary, requestAccess, withdrawAccess } from "../../lib/access/grant";
 import { ACTIONS } from "../../lib/messaging/protocol";
 import { PDF_TAB_SCRIPTS_RUN } from "../../lib/surface";
-import { CONTRACT_VERSION } from "../../lib/contract";
-import type { BackendStatus, CacheCountReply } from "../../lib/messaging/protocol";
-import { mountRuntimeSettings, runtimeStateLabel } from "../../lib/ui/runtimeSettings";
-import { runtimeReady, type RuntimeSnapshot } from "../../lib/backend/runtimeClient";
+import type { CacheCountReply } from "../../lib/messaging/protocol";
 import { mountComponentSettings, componentConnectionLabel } from "../../lib/ui/componentSettings";
 
 const enabledEl = document.getElementById("enabled") as HTMLInputElement;
@@ -46,20 +41,11 @@ const addHostEl = document.getElementById("addHost") as HTMLInputElement;
 const addModeEl = document.getElementById("addMode") as HTMLSelectElement;
 const addErrorEl = document.getElementById("addError") as HTMLElement;
 const addNoteEl = document.getElementById("addNote") as HTMLElement;
-const serverUrlEl = document.getElementById("serverUrl") as HTMLInputElement;
-const serverUrlErrorEl = document.getElementById("serverUrlError") as HTMLElement;
-const backendStatusEl = document.getElementById("backendStatus") as HTMLElement;
-const checkBackendEl = document.getElementById("checkBackend") as HTMLButtonElement;
 const clearCacheEl = document.getElementById("clearCache") as HTMLButtonElement;
 const accessStateEl = document.getElementById("accessState") as HTMLElement;
 const accessAllEl = document.getElementById("accessAll") as HTMLButtonElement;
 const accessWithdrawEl = document.getElementById("accessWithdraw") as HTMLButtonElement;
 const cacheCountEl = document.getElementById("cacheCount") as HTMLElement;
-let runtimeSnapshot: RuntimeSnapshot | undefined;
-let transport: "native" | "http" = "native";
-let componentPanel: ReturnType<typeof mountComponentSettings> | undefined;
-let httpRuntimePanel: ReturnType<typeof mountRuntimeSettings> | undefined;
-const transportEl = document.getElementById("backendTransport") as HTMLSelectElement;
 
 function bindToggle(
   el: HTMLInputElement,
@@ -251,110 +237,9 @@ browser.permissions.onAdded.addListener(() => void renderAccess());
 browser.permissions.onRemoved.addListener(() => void renderAccess());
 void renderAccess();
 
-// --- scoring daemon ------------------------------------------------------------------
-void settings.serverUrl.getValue().then((v) => {
-  serverUrlEl.value = v;
-  // A URL an older build stored and this one no longer accepts: the worker is talking to
-  // the default meanwhile, and the field says so the same way a freshly typed bad one does.
-  if (normalizeServerUrl(v) === null) {
-    serverUrlErrorEl.textContent = t("optBadUrl");
-    serverUrlErrorEl.hidden = false;
-  }
+mountComponentSettings(document.getElementById("componentSettings")!, (reply) => {
+  versionEl.textContent = `v${version} · ${componentConnectionLabel(reply)}`;
 });
-serverUrlEl.addEventListener("change", () => {
-  const raw = serverUrlEl.value.trim();
-  const v = raw === "" ? DEFAULT_SERVER_URL : normalizeServerUrl(raw);
-  if (v === null) {
-    // Loopback only: page text must never leave this computer.
-    serverUrlErrorEl.textContent = t("optBadUrl");
-    serverUrlErrorEl.hidden = false;
-    void settings.serverUrl.getValue().then((prev) => {
-      serverUrlEl.value = prev;
-    });
-    return;
-  }
-  serverUrlErrorEl.hidden = true;
-  serverUrlEl.value = v;
-  void settings.serverUrl.setValue(v).then(() => refreshBackend(true));
-});
-serverUrlEl.addEventListener("input", () => {
-  serverUrlErrorEl.hidden = true;
-});
-
-/** Ask the service worker whether the daemon answers; `probe` forces a fresh /health check. */
-async function refreshBackend(probe: boolean): Promise<void> {
-  if (transport !== "http") return;
-  backendStatusEl.textContent = t("optChecking");
-  try {
-    const s = (await browser.runtime.sendMessage({
-      action: ACTIONS.GET_BACKEND_STATUS,
-      probe,
-    })) as BackendStatus | undefined;
-    if (!s) throw new Error("no status");
-    if (runtimeSnapshot && (!runtimeReady(runtimeSnapshot) || s.active !== "server" || !s.model)) {
-      backendStatusEl.textContent = runtimeStateLabel(runtimeSnapshot);
-    } else if (s.active === "server" && s.model && !s.server.outdated) {
-      backendStatusEl.textContent =
-        t("optConnected", s.model.id, s.model.ver, `${s.server.device ?? "?"}${s.server.dtype ? ` · ${s.server.dtype}` : ""}`, s.serverUrl);
-    } else if (s.server.reason === "contract") {
-      // Something IS listening; the fix is an update, not a start.
-      backendStatusEl.textContent =
-        t("optContractMismatch", s.serverUrl, s.server.contract ?? "?", CONTRACT_VERSION.split(".")[0]);
-    } else if (s.server.outdated) {
-      // The same fix for two cases the reader need not tell apart: a daemon older than
-      // this extension, whether it can still answer it or not at all.
-      backendStatusEl.textContent = t("optOutdated", s.serverUrl);
-    } else {
-      backendStatusEl.textContent =
-        s.server.reason === "loopback" && s.server.error
-          ? t("optNotRunningReason", s.serverUrl, s.server.error)
-          : t("optNotRunning", s.serverUrl);
-    }
-    // The header summary must not contradict the status line above it.
-    const summary =
-      runtimeSnapshot && (!runtimeReady(runtimeSnapshot) || s.active !== "server" || !s.model) ? runtimeStateLabel(runtimeSnapshot) : s.active === "server" && s.model && !s.server.outdated
-        ? s.model.id
-        : s.server.reason === "contract" || s.server.outdated
-          ? t("optSummaryMismatch")
-          : t("optSummaryDown");
-    versionEl.textContent = `v${version} · contract ${CONTRACT_VERSION} · ${summary}`;
-  } catch {
-    backendStatusEl.textContent = runtimeSnapshot ? runtimeStateLabel(runtimeSnapshot) : t("optNoWorker");
-  }
-}
-checkBackendEl.addEventListener("click", () => void refreshBackend(true));
-let transportGeneration = 0;
-async function renderTransport(): Promise<void> {
-  const generation = ++transportGeneration;
-  const next = await settings.backendTransport.getValue();
-  if (generation !== transportGeneration) return;
-  transport = next;
-  transportEl.value = next;
-  componentPanel?.destroy(); componentPanel = undefined;
-  httpRuntimePanel?.destroy(); httpRuntimePanel = undefined;
-  const componentHost = document.getElementById("componentSettings")!;
-  const httpHost = document.getElementById("legacyRuntimeSettings") ?? document.getElementById("runtimeSettings")!;
-  componentHost.replaceChildren(); httpHost.replaceChildren();
-  componentHost.hidden = next !== "native";
-  document.getElementById("developerHttp")!.hidden = next !== "http";
-  httpHost.id = next === "http" ? "runtimeSettings" : "legacyRuntimeSettings";
-  runtimeSnapshot = undefined;
-  if (next === "native") {
-    componentPanel = mountComponentSettings(componentHost, (reply) => {
-      versionEl.textContent = `v${version} · ${componentConnectionLabel(reply)}`;
-    });
-  } else {
-    (document.getElementById("developerBackend") as HTMLDetailsElement).open = true;
-    httpRuntimePanel = mountRuntimeSettings(httpHost, (reply) => {
-      runtimeSnapshot = reply.kind === "ok" ? reply.snapshot : undefined;
-      void refreshBackend(true);
-    });
-    void refreshBackend(true);
-  }
-}
-transportEl.addEventListener("change", () => { void settings.backendTransport.setValue(transportEl.value === "http" ? "http" : "native"); });
-settings.backendTransport.watch(() => void renderTransport());
-void renderTransport();
 
 // --- cached verdicts -------------------------------------------------------------------
 // The worker owns the caches (its memory and the IndexedDB store) and passes the word on to

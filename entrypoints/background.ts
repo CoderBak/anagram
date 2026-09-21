@@ -9,7 +9,7 @@
 import { defineBackground, browser } from "#imports";
 import type { PublicPath } from "wxt/browser";
 import { createRouter } from "../lib/backend/router";
-import { getScoreClient, getDaemonClient } from "../lib/backend/getScoreClient";
+import { getScoreClient } from "../lib/backend/getScoreClient";
 import { ACTIONS } from "../lib/messaging/protocol";
 import type {
   CacheCountReply,
@@ -26,13 +26,14 @@ import { READER_PAGE, readerQuery } from "../lib/pdf/source";
 import { shouldAutoOpen } from "../lib/pdf/route";
 import { createPdfHandoff } from "../lib/pdf/handoff";
 import { PDF_TAB_SCRIPTS_RUN } from "../lib/surface";
-import { settings } from "../lib/settings/settings";
+import { settings, removeObsoleteConnectionSettings } from "../lib/settings/settings";
 import { t } from "../lib/i18n";
 import { handleNativePageMessage } from "../lib/backend/nativeBridge";
 import { NATIVE_MESSAGE, NATIVE_UNINSTALL } from "../lib/backend/nativeProtocol";
 const EXTENSION_UPDATE_KEY = "extensionUpdatePending";
 
 export default defineBackground(() => {
+  void removeObsoleteConnectionSettings().catch(() => undefined);
   // A native port can keep this worker alive. Preserve an available extension
   // update for Settings rather than interrupting analysis with an automatic reload.
   browser.runtime.onUpdateAvailable.addListener((details) => {
@@ -347,7 +348,7 @@ export default defineBackground(() => {
 
       if (msg.action === NATIVE_MESSAGE || msg.action === NATIVE_UNINSTALL) {
         void handleNativePageMessage(message, sender, {
-          invalidate: () => getDaemonClient().invalidate(),
+          invalidate: () => getScoreClient().invalidate(),
           clear: () => router.clear(),
         }).then(sendResponse, () => sendResponse(undefined));
         return true;
@@ -477,7 +478,7 @@ export default defineBackground(() => {
 
       // Popup/options/content: is the daemon up (optionally a forced re-probe).
       if (msg.action === ACTIONS.GET_BACKEND_STATUS) {
-        getDaemonClient()
+        getScoreClient()
           .status(msg.probe === true)
           .then((s) => sendResponse(s), () => sendResponse(undefined));
         return true;
@@ -489,12 +490,12 @@ export default defineBackground(() => {
         // A private tab's work leaves nothing on the disk (lib/backend/router.ts).
         .handle(msg.req, { private: sender.tab?.incognito === true })
         .then((resp) => {
-          const up = getDaemonClient().isUp();
+          const up = getScoreClient().isUp();
           const reply: ScoreBatchReply = { results: resp.results, model: up ? resp.model : undefined, backend: up ? "up" : "down" };
           sendResponse(reply);
         })
         .catch(() => {
-          const reply: ScoreBatchReply = { results: [], backend: getDaemonClient().isUp() ? "up" : "down" };
+          const reply: ScoreBatchReply = { results: [], backend: getScoreClient().isUp() ? "up" : "down" };
           sendResponse(reply);
         });
 

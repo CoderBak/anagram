@@ -71,7 +71,7 @@ export const T = {
 
   // --- dynamics ---------------------------------------------------------------------
   /** Chips for one unit twice, chips of different units piled at one insertion point, and
-   *  paragraphs sent to the daemon twice: all three were 0 on every page of every run
+   *  paragraphs sent to the fixture twice: all three were 0 on every page of every run
    *  except where a real defect sat, and there they were stable run to run (goodreads
    *  piled 91/91, steam 52/52/52/49). Any rise above the baseline counts. */
   ZERO_TOLERANCE: 0,
@@ -271,7 +271,7 @@ function dynamicsSite(name, b, c) {
   const counts = [
     [y.sameUnitChipsMax ?? 0, x.sameUnitChipsMax ?? 0, "chips for one unit twice"],
     [y.pileUpChipsMax ?? 0, x.pileUpChipsMax ?? 0, "chips of different units piled at one insertion point"],
-    [y.daemon?.resentBlocks ?? 0, x.daemon?.resentBlocks ?? 0, "paragraphs sent to the daemon twice"],
+    [y.fixture?.resentBlocks ?? y.daemon?.resentBlocks ?? 0, x.fixture?.resentBlocks ?? x.daemon?.resentBlocks ?? 0, "paragraphs sent to the fixture twice"],
   ];
   for (const [before, now, what] of counts) {
     if (rose(before, now)) bad.push(`${what} ${before} → ${now}`);

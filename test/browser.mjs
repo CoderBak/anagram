@@ -7,15 +7,13 @@
 //   node test/browser.mjs        (or: npm run browser)
 //
 // Stop it by closing the Chromium window, or Ctrl+C in this terminal.
-import { chromium } from "playwright";
+import { launchExtension } from "./harness.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
 import http from "node:http";
-import { ensureTestBuild } from "./test-build.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const EXT = ensureTestBuild("chrome-mv3"); // the suites' build — see test/test-build.mjs
 const SELFTEST = join(__dirname, "selftest.html");
 
 // Serve the self-contained self-test page over http so the content script runs.
@@ -28,20 +26,11 @@ await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const { port } = server.address();
 const selftestUrl = `http://localhost:${port}/selftest.html`;
 
-// A FRESH temp profile each launch. A persistent profile caches the old unpacked
-// extension (so rebuilds don't show up) and causes profile-lock races on rapid relaunch —
-// both bit us. Empty string → Playwright makes a throwaway profile, loading the latest build.
-const context = await chromium.launchPersistentContext("", {
-  headless: false,
-  viewport: null, // use the real OS window size, not a fixed viewport
-  args: [
-    `--disable-extensions-except=${EXT}`,
-    `--load-extension=${EXT}`,
-    "--no-first-run",
-    "--no-default-browser-check",
-    "--start-maximized",
-  ],
+// The shared harness gives this session a fresh profile and a private native fixture.
+const { context } = await launchExtension({
+  headless: false, viewport: null, args: ["--start-maximized"],
 });
+console.log("Scores use the isolated deterministic Native Messaging fixture, not model weights.");
 
 const page = context.pages()[0] ?? (await context.newPage());
 await page.goto(selftestUrl).catch(() => {});
@@ -68,5 +57,6 @@ await new Promise((resolve) => {
   process.on("SIGINT", resolve);
   process.on("SIGTERM", resolve);
 });
+await context.close().catch(() => {});
 server.close();
 process.exit(0);

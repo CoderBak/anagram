@@ -6,14 +6,11 @@
 //     --size 390x844       page size (default: a maximised window)
 //     --dark               prefers-color-scheme: dark
 //     --dpr 2              device pixel ratio of the page
-//     --real               score with the REAL daemon running on the Mac (anagram start)
-//                          instead of the deterministic fake
+// Scores come from the deterministic Native Messaging fixture, not model weights.
 import { readFileSync } from "node:fs";
-import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { launchExtension, serveHtml } from "../harness.mjs";
-import { startFakeDaemon } from "../fake-daemon.mjs";
 
 const TEST = join(dirname(fileURLToPath(import.meta.url)), "..");
 const argv = process.argv.slice(2);
@@ -25,7 +22,7 @@ const take = (name, value = false) => {
 const size = take("size", true)?.match(/^(\d+)x(\d+)$/);
 const dark = take("dark") !== undefined;
 const dpr = Number(take("dpr", true) ?? 0) || undefined;
-const real = take("real") !== undefined;
+if (argv.some((arg) => arg.startsWith("--"))) throw new Error(`Unknown option: ${argv.find((arg) => arg.startsWith("--"))}`);
 
 const fixtures = await serveHtml({
   "/selftest.html": readFileSync(join(TEST, "selftest.html"), "utf8"),
@@ -33,20 +30,9 @@ const fixtures = await serveHtml({
 });
 const urls = argv.length ? argv : [fixtures.url("/ui-fixtures.html"), fixtures.url("/selftest.html")];
 
-// The extension only talks to a loopback daemon. --real bridges the container's own
-// 127.0.0.1:8765 to the daemon on the Mac; otherwise the fake daemon answers.
-let backendUrl, bridge;
-if (real) {
-  bridge = spawn("socat", ["TCP-LISTEN:8765,bind=127.0.0.1,reuseaddr,fork", "TCP:host.docker.internal:8765"], { stdio: "ignore" });
-  const up = await fetch("http://127.0.0.1:8765/health", { signal: AbortSignal.timeout(3000) }).then((r) => r.ok, () => false);
-  console.log(up ? "show: scoring with the REAL daemon on the Mac" : "show: the daemon on the Mac is not answering (anagram start) — chips will read Unavailable until it does");
-} else {
-  backendUrl = (await startFakeDaemon()).url;
-  console.log("show: scoring with the fake daemon (deterministic, not the model)");
-}
+console.log("show: deterministic Native Messaging fixture (not model inference)");
 
 const { context } = await launchExtension({
-  backendUrl,
   headless: false,
   viewport: size ? { width: +size[1], height: +size[2] } : null,
   deviceScaleFactor: size ? dpr : undefined,
@@ -68,6 +54,5 @@ await new Promise((resolve) => {
   process.on("SIGINT", resolve);
   process.on("SIGTERM", resolve);
 });
-bridge?.kill();
 await context.close().catch(() => {});
 process.exit(0);

@@ -8,8 +8,8 @@
 //   <button data-i18n-title="popupAllSettings" data-i18n-aria-label="popupAllSettings">
 //
 // `data-i18n-placeholder` does the same for an input's placeholder. No field carries one
-// today — both of ours hold a literal example ("example.com", a loopback URL), which is
-// the same in every language — but a translatable placeholder is one attribute away.
+// today — the site field holds "example.com" in every language — but a translatable
+// placeholder is one attribute away.
 //
 // A sentence with markup in it — a <code> command, a <kbd> key, an emphasised word —
 // keeps the markup in the page and names a key whose message has $1…$9 where those

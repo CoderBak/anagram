@@ -1228,7 +1228,7 @@ const results = await page.evaluate(() => {
       dSpans.length === PW.MAX_WINDOWS && contiguous(dump, dSpans, readEnd) && readEnd <= PW.MAX_READ_CHARS && readEnd > PW.MAX_READ_CHARS - W && dump.slice(0, readEnd).trim().endsWith(".") && lens(dSpans).every((n) => n <= W && n >= PW.MIN_WINDOW_CHARS), JSON.stringify([readEnd, lens(dSpans)]));
 
     const [h1, h2] = PW.halve(long, spans[1]);
-    check("a window the daemon had to cut is halved at a sentence boundary near its middle",
+    check("a window the fixture had to cut is halved at a sentence boundary near its middle",
       h1.start === spans[1].start && h1.end === h2.start && h2.end === spans[1].end && /^Sentence number/.test(long.slice(h2.start)) && Math.abs((h1.end - h1.start) - (h2.end - h2.start)) <= 90, JSON.stringify([h1, h2]));
 
     check("sentenceStarts: inside the text only, each on the first letter of a sentence",
@@ -1314,7 +1314,7 @@ const results = await page.evaluate(() => {
     check("…which may be a bucket no single window chose (human + heavily edited → lightly edited overall)", mid.result.bucket === 1 && near(mid.result.score, 1 / 3), JSON.stringify(mid.result));
 
     const single = PW.unitVerdict("u3", 900, [{ start: 0, end: 900, result: human }]);
-    check("one window: the unit's verdict IS the daemon's result, number for number", single.result.probs === human.probs && single.result.score === human.score && single.result.id === "u3" && single.windows.length === 1);
+    check("one window: the unit's verdict IS the fixture's result, number for number", single.result.probs === human.probs && single.result.score === human.score && single.result.id === "u3" && single.windows.length === 1);
 
     const down = PW.unitVerdict("u4", 4000, [{ start: 0, end: 2000, result: ai }, { start: 2000, end: 4000, result: res([0.25, 0.25, 0.25, 0.25], { degraded: true }) }]);
     check("one degraded window makes the whole unit Unavailable — never flagged on half an answer", down.result.degraded === true && PW.band(down.result) === "unknown" && !PW.isFlagged(down.result));
@@ -1672,7 +1672,7 @@ const results = await page.evaluate(() => {
         sql: "SELECT u.id, u.name, count(o.id) AS orders\n  FROM users u\n  LEFT JOIN orders o ON o.user_id = u.id\n WHERE u.status <> 'deleted'\n GROUP BY u.id, u.name\n HAVING count(o.id) > 3\n ORDER BY orders DESC\n LIMIT 50;",
         diff: "--- a/one/two.txt\n+++ b/one/two.txt\n@@ -12,7 +12,9 @@ Required properties:\n-  - control: optional, see below\n+  - control: required unless the second supply is absent\n+    as the example below shows\n \n Optional properties:\n   - label: a readable name",
         "stack trace": 'Traceback (most recent call last):\n  File "/usr/lib/python3.12/runpy.py", line 198, in _run_module\n    return _run_code(code, main_globals, None,\n  File "/srv/app/main.py", line 42, in <module>\n    app.run(host="0.0.0.0", port=8000)\nRuntimeError: address already in use',
-        log: "2026-09-18T09:14:02.113Z INFO  [worker-3] GET /api/units 200 12ms\n2026-09-18T09:14:02.884Z WARN  [worker-1] cache miss key=u_3f\n2026-09-18T09:14:03.002Z ERROR [worker-7] daemon timeout after 20000ms\n2026-09-18T09:14:03.551Z INFO  [worker-3] POST /score 200 233ms batch=8",
+        log: "2026-09-18T09:14:02.113Z INFO  [worker-3] GET /api/units 200 12ms\n2026-09-18T09:14:02.884Z WARN  [worker-1] cache miss key=u_3f\n2026-09-18T09:14:03.002Z ERROR [worker-7] fixture timeout after 20000ms\n2026-09-18T09:14:03.551Z INFO  [worker-3] native score completed 233ms batch=8",
         "ASCII table": "+---------+--------+---------+\n| profile | chips  | ms      |\n+---------+--------+---------+\n| phone   |     12 |     840 |\n| laptop  |     12 |     610 |\n+---------+--------+---------+",
         "table of contents": "Table of Contents\n\n   1   Introduction ..................................3\n   1.1    Purpose....................................3\n   1.2    Terminology ...............................4\n   2   Notes ........................................5\n   3   Security Considerations ......................9",
       };
@@ -2085,7 +2085,7 @@ for (const file of fixtureFiles) {
     await new Promise((done) => setTimeout(done, 900));
     mo.disconnect();
 
-    // The same page, chipped in REVERSE order — verdicts land in the order the daemon
+    // The same page, chipped in REVERSE order — verdicts land in the order the fixture
     // answers, not in the order the page is written — still parks the same unit.
     layer.teardownAll();
     const later = PW.createBadgeLayer();
@@ -2119,7 +2119,7 @@ for (const file of fixtureFiles) {
   });
   results.push({ name: "a page standing still moves no chip at all", ok: r.moves === 0, note: `${r.moves} host insertions/removals in 900 ms` });
   results.push({
-    name: "the same review chipped in the order the daemon answers, not the order it is written, parks the same unit",
+    name: "the same review chipped in the order the fixture answers, not the order it is written, parks the same unit",
     ok: r.reversed.after.length === 1 && r.reversed.after[0] === r.reversed.want && r.reversed.chips === r.units,
     note: JSON.stringify(r.reversed),
   });

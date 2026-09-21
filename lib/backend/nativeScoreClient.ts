@@ -1,8 +1,8 @@
 import { browser } from "#imports";
 import { CONTRACT_VERSION, type ModelInfo, type ScoreBlock, type ScoreClient, type ScoredBatch } from "../contract";
 import type { BackendStatus } from "../messaging/protocol";
-import { daemonIsBehind, parseHealth, parseScoreResponse } from "./httpClient";
-import { NATIVE_HOST, type NativeOperation, type NativePayload, type NativeReply } from "./nativeProtocol";
+import { componentIsBehind, parseHealth, parseScoreResponse } from "./scoreProtocol";
+import { type NativeOperation, type NativePayload, type NativeReply } from "./nativeProtocol";
 import { nativeTransport } from "./nativeTransport";
 
 const NONE: ModelInfo = {id:"none", ver:"0", calibration:"none"};
@@ -16,13 +16,13 @@ export class NativeScoreError extends Error {
   }
 }
 export class NativeScoreClient implements ScoreClient {
-  private current: BackendStatus = {serverUrl:`native:${NATIVE_HOST}`, active:"down", model:null,
-    server:{ok:false, checkedAt:0, reason:"unreachable", transport:"native"}};
+  private current: BackendStatus = { active:"down", model:null,
+    server:{ok:false, checkedAt:0, reason:"unreachable"}};
   private probing: Promise<void> | undefined;
   private generation = 0;
   constructor(private readonly request: Request = (op, payload) => nativeTransport().request(op, payload)) {}
   invalidate(): void { this.generation++; this.current = {...this.current, active:"down", model:null,
-    server:{ok:false,checkedAt:0,transport:"native",reason:"unreachable"}}; this.probing = undefined; }
+    server:{ok:false,checkedAt:0,reason:"unreachable"}}; this.probing = undefined; }
   isUp(): boolean { return this.current.server.ok; }
   model(): ModelInfo { return this.current.model ?? NONE; }
   async ready(): Promise<void> { await this.probe(); }
@@ -37,18 +37,18 @@ export class NativeScoreClient implements ScoreClient {
         const result = reply.ok ? parseHealth(reply.data) : null;
         if (result?.ok) {
           const h = result.health;
-          this.current = {serverUrl:`native:${NATIVE_HOST}`,active:"server",model:h.model,
-            server:{ok:true,checkedAt:Date.now(),device:h.device,dtype:h.dtype,transport:"native",
-              outdated:daemonIsBehind(h.app_version,extensionVersion())}};
+          this.current = {active:"server",model:h.model,
+            server:{ok:true,checkedAt:Date.now(),device:h.device,dtype:h.dtype,
+              outdated:componentIsBehind(h.app_version,extensionVersion())}};
         } else {
-          this.current = {serverUrl:`native:${NATIVE_HOST}`,active:"down",model:null,
-            server:{ok:false,checkedAt:Date.now(),transport:"native",reason:result && !result.ok ? result.reason : "unreachable",
+          this.current = {active:"down",model:null,
+            server:{ok:false,checkedAt:Date.now(),reason:result && !result.ok ? result.reason : "unreachable",
               contract:result && !result.ok ? result.contract : undefined,code:reply.error?.code,error:reply.error?.message}};
         }
       } catch {
         if (generation !== this.generation) return;
-        this.current = {serverUrl:`native:${NATIVE_HOST}`,active:"down",model:null,
-          server:{ok:false,checkedAt:Date.now(),transport:"native",reason:"unreachable",code:"native_unavailable"}};
+        this.current = {active:"down",model:null,
+          server:{ok:false,checkedAt:Date.now(),reason:"unreachable",code:"native_unavailable"}};
       }
     })();
     this.probing = pending;

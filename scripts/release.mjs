@@ -1,5 +1,5 @@
 // scripts/release.mjs — build the release assets the installer consumes:
-//   dist/anagram.tar.gz          app/ (daemon + uv.lock) · extension/ (chrome-mv3) · bin/anagram · install.sh · VERSION
+//   dist/anagram.tar.gz          native app + locked runtime, browser builds and installer
 //   dist/anagram.tar.gz.sha256 · dist/anagram.zip + checksum (Windows component bundle)
 //   dist/anagram-{chrome,firefox}-<ver>.zip + checksums   browser packages
 //   dist/install.sh · dist/install.ps1 + checksums   native component installers
@@ -27,7 +27,7 @@ mkdirSync(join(stage, "app"), { recursive: true });
 
 // Install runtime files only. The manual research benchmark and its score head
 // stay in the repository; dependencies come from pyproject.toml and uv.lock.
-for (const f of ["serve.py", "scoring.py", "runtime_controller.py", "runtime_adapters.py", "native_host.py", "native_component.py", "download_modelkit.py", "modelkit.json", "pyproject.toml", "uv.lock", "run.sh", "README.md"]) {
+for (const f of ["engine.py", "scoring.py", "runtime_controller.py", "runtime_adapters.py", "native_host.py", "native_component.py", "download_modelkit.py", "modelkit.json", "pyproject.toml", "uv.lock", "README.md"]) {
   cpSync(join(ROOT, "anagramd", f), join(stage, "app", f));
 }
 cpSync(join(ROOT, "output", "chrome-mv3"), join(stage, "extension"), { recursive: true });

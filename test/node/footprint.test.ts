@@ -117,12 +117,11 @@ describe("the network inventory in docs/footprint.md", () => {
     }
   });
 
-  it("keeps scoring and runtime controls in the two loopback clients", () => {
-    // Scoring and setup have separate typed clients, both restricted to loopback.
-    // A third client must be an explicit change to this inventory.
-    const daemon = rows.filter((r) => r[3].includes("loopback daemon")).map((r) => r[0]);
-    expect([...new Set(daemon)]).toEqual(["lib/backend/httpClient.ts", "lib/backend/runtimeClient.ts"]);
+  it("uses one native connection and fetches only the existing PDF/Docs tab content", () => {
+    expect(rows.filter((r) => r[1] === "connectNative(").map((r) => r[0])).toEqual(["lib/backend/nativeTransport.ts"]);
+    expect(rows.filter((r) => r[1] === "fetch(").map((r) => r[0]).sort()).toEqual(["lib/docsOverlay.ts", "lib/pdf/handoff.ts"]);
   });
+
 });
 
 // ---- the addresses written into the source ----------------------------------------------------
@@ -155,14 +154,9 @@ describe("the addresses in docs/footprint.md", () => {
     expect(stale.sort()).toEqual([]);
   });
 
-  it("names no remote host that anything actually fetches", () => {
-    // Every remote address here is either built for a link somebody clicks, or an example
-    // in a comment. The one origin the code may really reach is loopback.
-    for (const row of rows) {
-      const remote = !/^https?:\/\/(127\.0\.0\.1|localhost)/.test(row[1]);
-      if (remote) expect(row[2].length, `${row[0]} ${row[1]}`).toBeGreaterThan(10);
-    }
-    expect(rows.some((r) => r[1].startsWith("http://127.0.0.1"))).toBe(true);
+  it("explains the purpose of every address literal", () => {
+    for (const row of rows) expect(row[2].length, `${row[0]} ${row[1]}`).toBeGreaterThan(10);
+
   });
 });
 
@@ -228,7 +222,7 @@ describe("the shipping manifest", () => {
   /** The exact policy, which docs/footprint.md quotes and test/csp-check.mjs exercises. */
   const CSP =
     "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; " +
-    "connect-src 'self' http://127.0.0.1:* http://localhost:*; " +
+    "connect-src 'self'; " +
     "img-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; " +
     "worker-src 'self'; frame-src 'none'; form-action 'none'; base-uri 'none'";
 
@@ -243,11 +237,11 @@ describe("the shipping manifest", () => {
     expect(quoted.replace(/\s+/g, " ").trim()).toBe(CSP.replace(/\s+/g, " "));
   });
 
-  it.skipIf(!ready)("lets connect-src reach nothing but itself and loopback", () => {
+  it.skipIf(!ready)("lets connect-src reach packaged resources only", () => {
     const policy = (manifest().content_security_policy as { extension_pages: string })
       .extension_pages;
     const connect = /connect-src ([^;]+)/.exec(policy)?.[1].trim().split(/\s+/) ?? [];
-    expect(connect).toEqual(["'self'", "http://127.0.0.1:*", "http://localhost:*"]);
+    expect(connect).toEqual(["'self'"]);
   });
 
   it.skipIf(!ready)("makes only the three content-script chunks web accessible", () => {

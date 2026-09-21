@@ -189,7 +189,7 @@
   },
   "selFootDaemonDown": {
     "message": "The local engine is not ready. Open Anagram Settings to finish setup or resume it.",
-    "description": "Selection card footnote. $1 is the command, set in code and never translated."
+    "description": "Selection card footnote when the local engine is unavailable or setup is unfinished."
   },
   "selFootNoAnswer": {
     "message": "The scoring backend did not respond — try again.",
@@ -249,7 +249,7 @@
   },
   "panelDaemonDown": {
     "message": "The local engine is not ready. Open Anagram Settings; new paragraphs wait until it is ready.",
-    "description": "Notice at the top of the triage panel. The command itself is never translated."
+    "description": "Notice at the top of the triage panel while the local engine is not ready."
   },
   "panelRetry": {
     "message": "Retry",
@@ -707,18 +707,6 @@
     "message": "Flagged only",
     "description": "Display mode option."
   },
-  "optDaemonUrl": {
-    "message": "Local HTTP URL",
-    "description": "Options input label."
-  },
-  "optChecking": {
-    "message": "Checking…",
-    "description": "Daemon status while the probe is in flight."
-  },
-  "optCheckNow": {
-    "message": "Check now",
-    "description": "Options button: probe the daemon again."
-  },
   "optRules": {
     "message": "Per-site rules",
     "description": "Options card heading."
@@ -775,42 +763,6 @@
     "message": "Already covered by $1.",
     "description": "Add-rule note. $1 = the parent domain whose rule already says the same."
   },
-  "optBadUrl": {
-    "message": "Only a local address is allowed (http://127.0.0.1:… or http://localhost:…).",
-    "description": "Daemon URL error. The example addresses are never translated."
-  },
-  "optConnected": {
-    "message": "Connected — $1 ($2) on $3 at $4.",
-    "description": "Daemon status. $1 = model id, $2 = model version, $3 = device, $4 = URL."
-  },
-  "optContractMismatch": {
-    "message": "Found a daemon at $1, but it speaks contract $2 and this extension needs $3.x — run: ~/.anagram/bin/anagram update.",
-    "description": "Daemon status. $1 = URL, $2 = its contract, $3 = the major this build needs. The command is never translated."
-  },
-  "optOutdated": {
-    "message": "The daemon at $1 is older than this extension — run: ~/.anagram/bin/anagram update.",
-    "description": "Daemon status. $1 = URL. Shown whether the old daemon can still answer or not. The command is never translated."
-  },
-  "optNotRunning": {
-    "message": "Not running at $1 — paragraphs show as Unavailable until it answers.",
-    "description": "Daemon status. $1 = URL."
-  },
-  "optNotRunningReason": {
-    "message": "Not running at $1 — paragraphs show as Unavailable until it answers ($2).",
-    "description": "Daemon status with the reason the probe never left. $1 = URL, $2 = error."
-  },
-  "optSummaryMismatch": {
-    "message": "daemon version mismatch",
-    "description": "Tail of the version line under the options heading."
-  },
-  "optSummaryDown": {
-    "message": "daemon not running",
-    "description": "Tail of the version line under the options heading."
-  },
-  "optNoWorker": {
-    "message": "Could not reach the extension’s service worker.",
-    "description": "Daemon status when the extension itself did not answer."
-  },
   "optAdvanced": {
     "message": "Advanced",
     "description": "Options card heading."
@@ -828,7 +780,7 @@
     "description": "Options label above the clear-cache button."
   },
   "optCachedNote": {
-    "message": "Verdicts are kept so revisits never re-score. Clearing them makes the next scan ask the daemon again.",
+    "message": "Verdicts are kept so revisits never re-score. Clearing them makes the next scan ask the local engine again.",
     "description": "Options help text."
   },
   "optCacheEntries_one": {
@@ -1068,7 +1020,7 @@
     "description": "First-run card heading."
   },
   "onbYoursBody": {
-    "message": "The $1 and $2 hold the rest: pick a marking style ($3 or $4), choose the analysis scope ($5 or $6), and check the local scoring daemon's status.",
+    "message": "The $1 and $2 hold the rest: pick a marking style ($3 or $4), choose the analysis scope ($5 or $6), and check the local engine's status.",
     "description": "First-run card body. $1-$6 are emphasised runs from the page (onbPopupName, onbOptionsName, styleUnderline, styleTint, optScopeWholePage, optScopeMain)."
   },
   "onbStyleQuiet": {
@@ -1358,10 +1310,6 @@
   "runtimeExperimental": {
     "message": "Experimental",
     "description": "Shared local runtime setup panel on onboarding and Options: experimental."
-  },
-  "runtimeLegacy": {
-    "message": "Runtime selection is unavailable. Update the local component in Settings to enable comparisons.",
-    "description": "Shared local runtime setup panel on onboarding and Options: legacy."
   },
   "runtimeInvalid": {
     "message": "The local component returned an incompatible setup response. Update it or retry the connection in Settings.",
@@ -1674,26 +1622,6 @@
   "componentUpgradeNote": {
     "message": "Browser-store extensions update through the browser. For a ZIP installation, replace the unpacked extension with the new ZIP’s contents and reload it. Update the local component with the button above.",
     "description": "Native component lifecycle UI: UpgradeNote."
-  },
-  "componentDeveloper": {
-    "message": "Developer connection",
-    "description": "Native component lifecycle UI: Developer."
-  },
-  "componentTransport": {
-    "message": "Connection",
-    "description": "Native component lifecycle UI: Transport."
-  },
-  "componentNativeTransport": {
-    "message": "Native component (recommended)",
-    "description": "Native component lifecycle UI: NativeTransport."
-  },
-  "componentHttpTransport": {
-    "message": "Manual local HTTP (development)",
-    "description": "Native component lifecycle UI: HttpTransport."
-  },
-  "componentHttpNote": {
-    "message": "For source development only. The browser does not start or manage this server.",
-    "description": "Native component lifecycle UI: HttpNote."
   },
   "componentReadyManual": {
     "message": "Ready. Use the toolbar’s Analyze this page for one-time access, or optionally allow sites above.",

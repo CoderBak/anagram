@@ -1,6 +1,6 @@
 // test/a11y.mjs — the automated accessibility suite.
 //
-//   npm run test:a11y            # everything (headless, fake daemon, no window)
+//   npm run test:a11y            # everything (headless, fake fixture, no window)
 //   node test/a11y.mjs --json    # print the machine report to stdout as well
 //
 // WHAT IT CHECKS, in three parts:
@@ -9,11 +9,11 @@
 //     four extension pages — popup, options, onboarding, the PDF reader — each in LIGHT
 //     and DARK, and each in the state that actually has something to get wrong: the
 //     options page with two site rules and the add-rule error showing, onboarding with
-//     the daemon up and with it stopped, the reader empty (file picker) and with a PDF
+//     the fixture up and with it stopped, the reader empty (file picker) and with a PDF
 //     rendered.
 //  2. axe again, SCOPED TO OUR OWN NODES, on the UI we inject into other people's pages:
 //     the ball with its panel closed and open (flagged rows + the verdict filters), a
-//     chip's detail card, the selection card, and the panel's daemon-down notice. The
+//     chip's detail card, the selection card, and the panel's fixture-down notice. The
 //     page's own accessibility is not ours; axe is therefore given our shadow host as its
 //     context, and the suite asserts that it really descended into the shadow root rather
 //     than quietly checking nothing.
@@ -50,7 +50,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { launchExtension, serveHtml, artifact, BADGE_SEL, requireBuild } from "./harness.mjs";
-import { startFakeDaemon } from "./fake-daemon.mjs";
+import { createNativeFixture } from "./fake-native.mjs";
 import { SMALL_PDF } from "./a11y-pdf.mjs";
 import { LOCKED_PDF } from "./pdf-fixture.mjs";
 
@@ -634,8 +634,8 @@ const PARA = (tag) =>
   "English words describing nothing in particular except the fact that a reader who never touches a mouse " +
   "must still be able to reach every verdict this extension produces, which is what the floating ball, its " +
   "counter and the triage panel behind them exist for on a page like this one.";
-// The fake daemon's verdicts are a pure function of the text, so the tags below are chosen
-// (with test/fake-daemon.mjs's own fakeScore) to land three paragraphs in each FLAGGED
+// The fake fixture's verdicts are a pure function of the text, so the tags below are chosen
+// (with test/fake-native.mjs's own fakeScore) to land three paragraphs in each FLAGGED
 // band and two outside them: the panel then has rows, a Copy report button AND the verdict
 // filter chips, which only appear when both flagged bands are present.
 const AI_TAGS = ["FLAG-2", "FLAG-6", "FLAG-11"];
@@ -666,11 +666,11 @@ const server = await serveHtml({
   "/dark.html": DARK_HTML,
 });
 
-let daemon = await startFakeDaemon();
-const { context, sw } = await launchExtension({ backendUrl: daemon.url });
+let fixture = await createNativeFixture();
+const { context, sw } = await launchExtension({ nativeFixture: fixture });
 await context.grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => {});
 const extId = sw ? new URL(sw.url()).host : null;
-console.log("extension SW:", sw ? "loaded" : "NOT loaded", "· fake daemon at", daemon.url);
+console.log("extension SW:", sw ? "loaded" : "NOT loaded", "· fake fixture at", fixture.label);
 if (!extId) {
   console.error("no extension id — the service worker never started");
   process.exit(2);
@@ -749,7 +749,7 @@ const PAGE_SPECS = [
     },
   },
   {
-    name: "onboarding (daemon up)",
+    name: "onboarding (fixture up)",
     url: () => extUrl("onboarding.html"),
     viewport: { width: 1100, height: 900 },
     async prepare(page) {
@@ -1018,10 +1018,10 @@ await reducedMotionCheck();
 await forcedColorsCheck();
 
 // =====================================================================================
-// PART 4 — daemon down (onboarding's other state, and the panel's notice)
+// PART 4 — fixture down (onboarding's other state, and the panel's notice)
 // =====================================================================================
-await daemon.close();
-daemon = null;
+await fixture.close();
+fixture = null;
 for (const scheme of ["light", "dark"]) {
   const page = await openPage(extUrl("onboarding.html"), { scheme, viewport: { width: 1100, height: 900 } });
   await page
@@ -1031,10 +1031,10 @@ for (const scheme of ["light", "dark"]) {
     .waitForFunction(() => document.getElementById("row-daemon")?.dataset.state === "bad", null, { timeout: 15000 })
     .catch(() => {});
   await settle(page, scheme);
-  await axeScan(page, `onboarding (daemon down) [${scheme}]`);
+  await axeScan(page, `onboarding (fixture down) [${scheme}]`);
   // The setup strip's Copy pills, its "Open options" link and the install command exist
-  // ONLY while the daemon is down, so this is the only pass that can see them.
-  if (scheme === "light") await pageCodeChecks(page, "onboarding (daemon down)");
+  // ONLY while the fixture is down, so this is the only pass that can see them.
+  if (scheme === "light") await pageCodeChecks(page, "onboarding (fixture down)");
   await page.close();
 }
 {
@@ -1053,11 +1053,11 @@ for (const scheme of ["light", "dark"]) {
     const notice = await page.evaluate(
       () => document.getElementById("anagram-fab").shadowRoot.querySelector(".panel .pnotice")?.textContent ?? null,
     );
-    record("axe", "daemon-down notice renders in the panel (the state axe is run on)", !!notice, (notice ?? "").slice(0, 60));
-    await axeScan(page, "ball (panel open, daemon-down notice)", "#anagram-fab");
-    await ourTextContrast(page, "panel (daemon down)", "#anagram-fab");
+    record("axe", "fixture-down notice renders in the panel (the state axe is run on)", !!notice, (notice ?? "").slice(0, 60));
+    await axeScan(page, "ball (panel open, fixture-down notice)", "#anagram-fab");
+    await ourTextContrast(page, "panel (fixture down)", "#anagram-fab");
   } else {
-    record("axe", "ball (panel open, daemon-down notice)", null, "the counter never went to !");
+    record("axe", "ball (panel open, fixture-down notice)", null, "the counter never went to !");
   }
   await page.close();
 }
@@ -1614,7 +1614,7 @@ async function forcedColorsCheck() {
 // =====================================================================================
 await context.close();
 await server.close();
-if (daemon) await daemon.close();
+if (fixture) await fixture.close();
 
 // A baseline entry that no longer fires is debt that was paid — say so, loudly, so the
 // list shrinks instead of fossilising.

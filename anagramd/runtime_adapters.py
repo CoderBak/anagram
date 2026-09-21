@@ -1,7 +1,7 @@
 """Offline Torch/ONNX adapters and hardware inventory for the runtime controller.
 
 Imports of model libraries are deliberately inside background discovery/loading.
-Only the fixed artifact names below can be selected through the HTTP API.
+Only the fixed artifact names below can be selected through native runtime controls.
 """
 from __future__ import annotations
 
@@ -100,7 +100,7 @@ def artifact_stamp(files):
 def runtime_version(engine, candidate, model_dir, api, options):
     files = artifact_files(model_dir, candidate)
     if not files:
-        raise ValueError("No local model weights; run anagram model")
+        raise ValueError("No local model weights; download models in Anagram Settings")
     weights = {str(p.relative_to(model_dir)): digest(p) for p in files}
     weight_hash = hashlib.sha256(json.dumps(weights, sort_keys=True).encode()).hexdigest()
     manifest = api.pipeline_manifest(model_dir, engine.max_length, engine.dtype_name, engine.lid)
@@ -110,7 +110,7 @@ def runtime_version(engine, candidate, model_dir, api, options):
                            "versions": {name: package_version(name) for name in
                                         ("torch", "transformers", "onnxruntime", "numpy")},
                            "implementation": {name: digest(Path(__file__).with_name(name))
-                                              for name in ("serve.py", "runtime_adapters.py", "scoring.py")}}
+                                              for name in ("engine.py", "runtime_adapters.py", "scoring.py")}}
     tail = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
     return f"sha256:{weight_hash[:12]}-p{tail[:8]}-runtime1"
 
@@ -211,9 +211,9 @@ class OnnxEditLens:
 
 
 def create_controller(model_dir: Path, config_path: Path, lid_path: Path,
-                      max_length=512, batch_size=32, no_language_gate=False, *, api=None):
+                      max_length=512, batch_size=32, *, api=None):
     if api is None:
-        import serve as api
+        import engine as api
     model_dir, lid_path = Path(model_dir), Path(lid_path)
     gate = None
     environment = None
@@ -240,7 +240,7 @@ def create_controller(model_dir: Path, config_path: Path, lid_path: Path,
         except Exception as exc:
             ort_error = error_text(exc)
         environment = execution_environment(torch_module)
-        common_missing = None if (model_dir / "config.json").is_file() else "Model configuration is missing; run anagram model"
+        common_missing = None if (model_dir / "config.json").is_file() else "Model configuration is missing; download models in Anagram Settings"
 
         def add(runtime, device, device_label, precision, unavailable=None):
             candidate = Candidate(id=f"{runtime}:{device}:{precision}",
@@ -251,7 +251,7 @@ def create_controller(model_dir: Path, config_path: Path, lid_path: Path,
             if not reason:
                 files = artifact_files(model_dir, candidate)
                 if not files or any(not p.is_file() for p in files):
-                    reason = "Model artifact is missing; run anagram model"
+                    reason = "Model artifact is missing; download models in Anagram Settings"
             if reason:
                 candidate = Candidate(**{**candidate.__dict__, "available": False, "reason": reason})
             candidates.append(candidate)
@@ -274,7 +274,7 @@ def create_controller(model_dir: Path, config_path: Path, lid_path: Path,
         # falls back to CPU on CUDA, so do not offer it as a GPU INT8 candidate.
         # Gate construction is background work too. Preserve control-plane access
         # if its dependency/file is absent; a later benchmark retries discovery.
-        gate = api.LanguageId.disabled() if no_language_gate else api.LanguageId(lid_path)
+        gate = api.LanguageId(lid_path)
         inventory = {"candidates": [c.__dict__ for c in candidates],
                      "machine": [environment, cuda_devices, mps],
                      "versions": {n: package_version(n) for n in ("torch", "transformers", "onnxruntime", "numpy")},

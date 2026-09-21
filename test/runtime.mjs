@@ -1,11 +1,11 @@
 // First-run/runtime settings in the SHIPPING browser build, with no host grants.
-// Uses deterministic measurements: real model timing is a separate daemon smoke check.
+// Uses deterministic measurements: real model timing is a separate native-real smoke check.
 import assert from "node:assert/strict";
-import http from "node:http";
 import { readFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { chromium } from "playwright";
+import { launchExtension } from "./harness.mjs";
+import { createNativeFixture } from "./fake-native.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const EXT = join(ROOT, "output/chrome-mv3");
@@ -29,82 +29,38 @@ let state = {
   benchmark: { status: "running", budget_s: 30, elapsed_s: 3, measurement_s: 1,
     phase: "measuring", current_id: candidates[0].id, completed: 0, total: 6, results: [] },
 };
-const mutations = [];
-const model = { id: "editlens_roberta-large", ver: "test-fp32", calibration: "editlens" };
-const server = http.createServer(async (req, res) => {
-  const origin = req.headers.origin;
-  if (origin && !origin.startsWith("chrome-extension://")) {
-    res.writeHead(403); res.end(); return;
-  }
-  const headers = { "content-type": "application/json", ...(origin ? { "access-control-allow-origin": origin, vary: "Origin" } : {}) };
-  if (req.method === "OPTIONS") {
-    res.writeHead(204, { ...headers, "access-control-allow-methods": "GET, POST", "access-control-allow-headers": "content-type", "access-control-allow-private-network": "true" });
-    res.end(); return;
-  }
-  if (req.url === "/health") {
-    const ready = state.state === "ready";
-    const candidate = candidates.find((c) => c.id === state.active_id);
-    res.writeHead(ready ? 200 : 503, headers);
-    res.end(JSON.stringify(ready ? { ok: true, contract: "2.1", model,
-      n_buckets: 4, buckets: ["human", "light", "heavy", "ai"], max_tokens: 512,
-      device: candidate.device, dtype: candidate.precision, app_version: manifest.version } : { detail: "Choose a configuration" }));
-    return;
-  }
-  if (req.method === "POST" && req.url.startsWith("/runtime/")) {
-    let body = "";
-    for await (const chunk of req) body += chunk;
-    const data = JSON.parse(body);
-    mutations.push({ path: req.url, data });
-    if (req.url === "/runtime/config") {
-      assert.ok(candidates.some((c) => c.id === data.id));
-      state = { ...state, state: "ready", active_id: data.id, selected_id: data.id, needs_selection: false };
-    } else if (req.url === "/runtime/benchmark") {
-      assert.equal(data.budget_s, 30);
-      state = { ...state, state: "benchmarking", active_id: null,
-        benchmark: { ...state.benchmark, status: "running", phase: "measuring", results: [], completed: 0 } };
-    } else if (req.url === "/runtime/cancel") {
-      state = { ...state, state: state.selected_id ? "ready" : "awaiting_selection", active_id: state.selected_id,
-        benchmark: { ...state.benchmark, status: "cancelled", current_id: null, phase: "idle" } };
-    } else {
-      res.writeHead(404, headers); res.end("{}"); return;
-    }
-    res.writeHead(202, headers); res.end(JSON.stringify(state)); return;
-  }
-  res.writeHead(req.url === "/runtime" ? 200 : 404, headers);
-  res.end(JSON.stringify(req.url === "/runtime" ? state : {}));
-});
-await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-const base = `http://127.0.0.1:${server.address().port}`;
+const fixture = await createNativeFixture();
+const setRuntime = (runtime) => fixture.setState({ component: { ...fixture.state().component, state: runtime.state, runtime } });
+setRuntime(state);
+const mutations = () => fixture.requests().filter((r) => r.op.startsWith("runtime."));
 let context;
 try {
-  context = await chromium.launchPersistentContext("", {
-    headless: true, channel: "chromium", viewport: { width: 1200, height: 900 },
-    args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`, "--no-first-run", "--no-default-browser-check"],
-  });
-  const worker = context.serviceWorkers()[0] ?? await context.waitForEvent("serviceworker");
-  const id = new URL(worker.url()).host;
-  await worker.evaluate((serverUrl) => chrome.storage.local.set({ serverUrl, backendTransport: "http" }), base);
+  const launched = await launchExtension({ nativeFixture: fixture, extDir: EXT, viewport: { width: 1200, height: 900 } });
+  context = launched.context;
+  const worker = launched.sw, id = launched.extId;
   const page = await context.newPage();
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(`chrome-extension://${id}/onboarding.html`);
   const panel = page.locator("#runtimeSettings");
   await panel.getByRole("button", { name: "Cancel benchmark", exact: true }).waitFor();
-  assert.equal(mutations.length, 0, "Opening onboarding must not launch another benchmark");
-  assert.equal(await page.locator("#install").isHidden(), true, "A running setup daemon is already installed");
+  assert.equal(mutations().length, 0, "Opening onboarding must not launch another benchmark");
+  assert.equal(await page.locator("#install").isHidden(), true, "A running local component is already installed");
   assert.notEqual(await page.locator("#row-ready").getAttribute("data-state"), "ok");
-  console.log("PASS first-run setup is visible over CORS, without auto-applying or starting a duplicate benchmark");
+  console.log("PASS first-run setup is visible over native messaging, without auto-applying or starting a duplicate benchmark");
 
   state = { ...state, state: "awaiting_selection", recommended_id: candidates[0].id,
     benchmark: { ...state.benchmark, status: "completed", phase: "awaiting_selection", current_id: null, completed: 6, results } };
+  setRuntime(state);
   await panel.getByRole("radio", { name: /Apple GPU/ }).waitFor();
   await panel.getByRole("button", { name: "Use selected configuration", exact: true }).waitFor({ state: "visible" });
-  assert.equal(mutations.length, 0, "Benchmark completion must wait for the user's choice");
+  assert.equal(mutations().length, 0, "Benchmark completion must wait for the user's choice");
   await panel.getByRole("radio", { name: /Apple GPU/ }).check();
   await panel.getByRole("button", { name: "Use selected configuration", exact: true }).click();
   await page.waitForFunction(() => document.querySelector("#row-daemon")?.getAttribute("data-state") === "ok");
+  state = fixture.state().component.runtime;
   assert.equal(state.selected_id, candidates[1].id);
-  assert.equal(mutations.filter((m) => m.path === "/runtime/config").length, 1);
+  assert.equal(mutations().filter((m) => m.op === "runtime.config").length, 1);
   console.log("PASS user selects FP16 explicitly and the applied configuration becomes active");
 
   await page.goto(`chrome-extension://${id}/options.html`);
@@ -113,12 +69,14 @@ try {
   await panel.getByRole("button", { name: "Run benchmark again", exact: true }).click();
   await panel.getByRole("button", { name: "Cancel benchmark", exact: true }).click();
   await panel.getByRole("button", { name: "Run benchmark again", exact: true }).waitFor();
+  state = fixture.state().component.runtime;
   assert.equal(state.active_id, candidates[1].id);
-  assert.equal(mutations.filter((m) => m.path === "/runtime/config").length, 1);
+  assert.equal(mutations().filter((m) => m.op === "runtime.config").length, 1);
   console.log("PASS settings restores the selection, and a cancelled rerun keeps it");
 
   state = { ...state, benchmark: { ...state.benchmark, status: "completed", phase: "ready", completed: 6,
     measurement_s: 29.8, elapsed_s: 51.2, results } };
+  setRuntime(state);
   await panel.getByRole("button", { name: "Refresh status", exact: true }).click();
   await page.waitForFunction(() => document.querySelector("#runtimeSettings table")?.textContent?.includes("42.5 ms"));
   const ramRow = panel.getByRole("row").filter({ hasText: "CPU · FP32" });
@@ -152,5 +110,5 @@ try {
   console.log("PASS accessible workload metrics render without page errors or extra browser permissions");
 } finally {
   await context?.close();
-  await new Promise((resolve) => server.close(resolve));
+  fixture.dispose();
 }

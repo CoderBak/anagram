@@ -1,9 +1,7 @@
 // test/harness.mjs — shared launch helpers for the Playwright suites.
 //
-// launchExtension() opens a fresh-profile Chromium with the built extension and, when
-// given a backend URL, writes it into the extension's settings BEFORE any page opens
-// (the service worker watches the setting and re-probes). withFakeDaemon() pairs that
-// with test/fake-daemon.mjs for suites that must not depend on the real model.
+// launchExtension() opens a fresh Chromium profile with an isolated deterministic
+// Native Messaging fixture. No HTTP inference server or user registration is involved.
 //
 // ISOLATION. Every suite runs HEADLESS unless a window is asked for: Chromium's new
 // headless mode loads MV3 extensions (Playwright's "chromium" channel), so a test run
@@ -17,10 +15,11 @@
 import { chromium } from "playwright";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import http from "node:http";
-import { startFakeDaemon } from "./fake-daemon.mjs";
+import { createNativeFixture, HOST_NAME } from "./fake-native.mjs";
+import { registerTestHost, attachTestPort, copyForTestPort, blockNativeHostInProfile } from "./native-test-host.mjs";
 import { ensureTestBuild, TEST_OUT } from "./test-build.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -71,18 +70,24 @@ const ENV_ARGS = (process.env.ANAGRAM_CHROMIUM_ARGS ?? "").split(/\s+/).filter(B
  * locale, timezoneId, reducedMotion, forcedColors, hasTouch, userAgent.
  */
 export async function launchExtension({
-  backendUrl,
+  nativeFixture,
+  extDir,
+  testPort = process.platform === "win32",
   headless = !HEADED,
   viewport = { width: 1280, height: 850 },
   args = [],
   classicScrollbars = false,
   ...contextOptions
 } = {}) {
-  requireBuild();
+  if (!extDir) requireBuild();
+  const fixture = nativeFixture ?? await createNativeFixture();
+  const profile = mkdtempSync(join(tmpdir(), "anagram-browser-"));
+  const extension = testPort ? copyForTestPort(extDir ?? EXT, profile) : extDir ?? EXT;
+  if (!testPort) blockNativeHostInProfile(profile);
   const opts = {
     headless,
     viewport,
-    args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`, "--no-first-run", "--no-default-browser-check", ...ENV_ARGS, ...args],
+    args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, "--no-first-run", "--no-default-browser-check", ...ENV_ARGS, ...args],
     ...contextOptions,
   };
   // The bundled headless shell cannot load extensions; the full build's new headless can.
@@ -90,13 +95,29 @@ export async function launchExtension({
   if (headless && !opts.executablePath) opts.channel = "chromium";
   if (classicScrollbars) opts.ignoreDefaultArgs = ["--hide-scrollbars"];
   for (const k of Object.keys(opts)) if (opts[k] === undefined) delete opts[k];
-  const context = await chromium.launchPersistentContext("", opts);
+  const context = await chromium.launchPersistentContext(profile, opts);
   let [sw] = context.serviceWorkers();
   if (!sw) sw = await context.waitForEvent("serviceworker", { timeout: 15000 }).catch(() => null);
   const extId = sw ? new URL(sw.url()).host : null;
-  if (backendUrl && extId) await setServerUrl(context, extId, backendUrl);
-  if (sw) await waitForRegistration(sw);
-  return { context, sw, extId };
+  let detach;
+  if (sw && extId) {
+    if (testPort) detach = await attachTestPort(sw, fixture);
+    else registerTestHost(join(profile, "NativeMessagingHosts", HOST_NAME + ".json"), fixture, "chrome", extId);
+    if (!extDir) await waitForRegistration(sw);
+    if (fixture.state().enabled && fixture.state().component.state === "ready") {
+      const probe = await context.newPage();
+      await probe.goto(`chrome-extension://${extId}/options.html`);
+      const deadline = Date.now() + 15000;
+      while (Date.now() < deadline) {
+        const up = await probe.evaluate(async () => (await chrome.runtime.sendMessage({action:"getBackendStatus",probe:true}))?.active === "server").catch(() => false);
+        if (up) break;
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+      await probe.close();
+    }
+  }
+  context.on("close", () => { detach?.(); rmSync(profile, {recursive:true,force:true,maxRetries:10,retryDelay:100}); if (!nativeFixture) fixture.dispose(); });
+  return { context, sw, extId, fixture };
 }
 
 /**
@@ -183,19 +204,11 @@ export function launchPlain(options = {}) {
   return chromium.launch({ headless: !HEADED, args: ENV_ARGS, ...options });
 }
 
-/** Point the extension at a daemon URL (written through an extension page's storage). */
-export async function setServerUrl(context, extId, url) {
-  const page = await context.newPage();
-  await page.goto(`chrome-extension://${extId}/options.html`);
-  await page.evaluate((u) => new Promise((res) => chrome.storage.local.set({ serverUrl: u, backendTransport: "http" }, res)), url);
-  await page.close();
-}
-
-/** Fake daemon + extension pointed at it. */
-export async function withFakeDaemon(launchOpts = {}, daemonOpts = {}) {
-  const daemon = await startFakeDaemon(daemonOpts);
-  const ext = await launchExtension({ ...launchOpts, backendUrl: daemon.url });
-  return { daemon, ...ext };
+/** Explicit handle for suites that inspect scoring requests or simulate component loss. */
+export async function withFakeNative(launchOpts = {}, fixtureOpts = {}) {
+  const fixture = await createNativeFixture(fixtureOpts);
+  const ext = await launchExtension({ ...launchOpts, nativeFixture: fixture });
+  return { fixture, ...ext };
 }
 
 /** Scroll through the page so viewport-first scoring dispatches everything. */

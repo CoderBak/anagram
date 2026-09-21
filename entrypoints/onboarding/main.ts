@@ -7,9 +7,6 @@ import { t, tn } from "../../lib/i18n";
 import { ALL_SITES } from "../../lib/access/patterns";
 import { accessSummary, requestAccess } from "../../lib/access/grant";
 import { mountComponentSettings, componentConnectionLabel, componentReady } from "../../lib/ui/componentSettings";
-import { settings } from "../../lib/settings/settings";
-import { mountRuntimeSettings, runtimeStateLabel } from "../../lib/ui/runtimeSettings";
-import { runtimeReady } from "../../lib/backend/runtimeClient";
 
 localizePage();
 followSystemTheme();
@@ -46,31 +43,12 @@ accessGrant.addEventListener("click", () => { void requestAccess(ALL_SITES).then
 browser.permissions.onAdded.addListener(() => void renderAccess());
 browser.permissions.onRemoved.addListener(() => void renderAccess());
 void renderAccess();
-let panel: ReturnType<typeof mountComponentSettings> | undefined;
-let generation = 0;
-async function connect(): Promise<void> {
-  const current = ++generation;
-  const transport = await settings.backendTransport.getValue();
-  if (current !== generation) return;
-  panel?.destroy();
-  const host = document.getElementById("componentSettings")!; host.replaceChildren();
-  if (transport === "http") {
-    const runtime = document.createElement("div"); runtime.id = "runtimeSettings"; host.append(runtime);
-    panel = mountRuntimeSettings(runtime, (reply) => {
-      connected = reply.kind === "ok"; ready = reply.kind === "ok" && runtimeReady(reply.snapshot);
-      componentRow.dataset.state = ready ? "ok" : connected ? "idle" : "bad";
-      componentState.textContent = reply.kind === "ok" ? runtimeStateLabel(reply.snapshot) : t("runtimeUnreachable");
-      componentDetail.hidden = true; renderReady();
-    });
-  } else panel = mountComponentSettings(host, (reply) => {
-    connected = reply.kind === "ok";
-    ready = reply.kind === "ok" && componentReady(reply.snapshot);
-    componentRow.dataset.state = ready ? "ok" : reply.kind === "ok" && reply.snapshot.state !== "error" ? "idle" : "bad";
-    componentState.textContent = componentConnectionLabel(reply);
-    componentDetail.hidden = reply.kind !== "ok";
-    componentDetail.textContent = reply.kind === "ok" && reply.snapshot.version ? `v${reply.snapshot.version}` : "";
-    renderReady();
-  });
-}
-settings.backendTransport.watch(() => void connect());
-void connect();
+mountComponentSettings(document.getElementById("componentSettings")!, (reply) => {
+  connected = reply.kind === "ok";
+  ready = reply.kind === "ok" && componentReady(reply.snapshot);
+  componentRow.dataset.state = ready ? "ok" : reply.kind === "ok" && reply.snapshot.state !== "error" ? "idle" : "bad";
+  componentState.textContent = componentConnectionLabel(reply);
+  componentDetail.hidden = reply.kind !== "ok";
+  componentDetail.textContent = reply.kind === "ok" && reply.snapshot.version ? `v${reply.snapshot.version}` : "";
+  renderReady();
+});
