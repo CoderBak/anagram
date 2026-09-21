@@ -10,6 +10,7 @@ import "./runtimeSettings.css";
 export function runtimeStateLabel(s: RuntimeSnapshot): string {
   if (runtimeBusy(s)) return t(s.benchmark.status === "running" || s.state === "benchmarking" ? "runtimeBenchmarking" : s.selected_id ? "runtimeLoading" : "runtimePreparing");
   if (s.state === "error") return t("runtimeFailed");
+  if (s.state === "idle") return t("componentIdle");
   return t(runtimeReady(s) ? "runtimeReady" : "runtimeChoose");
 }
 
@@ -30,6 +31,7 @@ function metric(value: number | null | undefined, unit: "ms" | "rate" | "bytes")
 const phaseKeys: Record<string, MessageKey> = {
   discovery: "runtimePhaseDiscovery", awaiting_selection: "runtimeChoose", ready: "runtimeReady", error: "runtimePhaseFailed",
   loading: "runtimePhaseLoad", load: "runtimePhaseLoad", warmup: "runtimePhaseWarmup",
+  initialization: "runtimePhaseInitialize", hashing: "runtimePhaseVerify",
   warming: "runtimePhaseWarmup", measuring: "runtimePhaseMeasure", measurement: "runtimePhaseMeasure",
   complete: "runtimePhaseComplete", completed: "runtimePhaseComplete", cancelled: "runtimePhaseCancelled",
   failed: "runtimePhaseFailed", idle: "runtimePhaseIdle",
@@ -65,8 +67,8 @@ export function mountRuntimeSettings(host: HTMLElement, onUpdate?: (reply: Runti
   const cancel = button("runtimeCancel");
   const refresh = button("runtimeRefresh");
   actions.append(apply, rerun, cancel, refresh);
-  const quality = element("p", t("runtimeQualityNote"));
-  host.replaceChildren(title, summary, note, timing, active, error, errorDetails, tableWrap, actions, quality);
+  const measurementNote = element("p", t("runtimeMeasurementNote"));
+  host.replaceChildren(title, summary, note, timing, active, error, errorDetails, tableWrap, actions, measurementNote);
 
   let snapshot: RuntimeSnapshot | undefined;
   let choice: string | null = null;
@@ -91,13 +93,13 @@ export function mountRuntimeSettings(host: HTMLElement, onUpdate?: (reply: Runti
   }
 
   function buildTable(s: RuntimeSnapshot): void {
-    const signature = JSON.stringify([s.candidates, s.benchmark.results, s.active_id, s.selected_id, s.recommended_id, runtimeBusy(s)]);
+    const signature = JSON.stringify([s.candidates, s.benchmark.results, s.active_id, s.selected_id, s.recommended_id, s.fastest_id, runtimeBusy(s)]);
     if (signature === tableSignature) return; // retain focus and radio state during progress ticks
     tableSignature = signature;
     const table = element("table");
     table.append(element("caption", t("runtimeResults")));
     const heading = element("tr");
-    for (const key of ["runtimeConfiguration", "runtimeLatency", "runtimeThroughput", "runtimeResources", "runtimeQuality"] as const) {
+    for (const key of ["runtimeConfiguration", "runtimeLatency", "runtimeThroughput", "runtimeResources"] as const) {
       const th = element("th", t(key)); th.scope = "col"; heading.append(th);
     }
     const head = element("thead"); head.append(heading); table.append(head);
@@ -111,7 +113,7 @@ export function mountRuntimeSettings(host: HTMLElement, onUpdate?: (reply: Runti
       input.addEventListener("change", () => { choice = c.id; actionError = actionDetail = ""; error.hidden = errorDetails.hidden = true; buttons(); });
       const name = element("span", c.label);
       name.append(element("span", `${c.device} · ${c.runtime} · ${c.precision}`, "runtime-detail"));
-      const tags = [c.id === s.active_id ? t("runtimeActive") : "", c.id === s.selected_id && c.id !== s.active_id ? t("runtimeSelected") : "", c.id === s.recommended_id ? t("runtimeRecommended") : ""].filter(Boolean);
+      const tags = [c.id === s.active_id ? t("runtimeActive") : "", c.id === s.selected_id && c.id !== s.active_id ? t("runtimeSelected") : "", c.id === s.recommended_id ? t("runtimeRecommended") : "", c.id === s.fastest_id ? t("runtimeFastest") : "", c.experimental ? t("runtimeExperimental") : ""].filter(Boolean);
       if (tags.length) name.append(element("span", tags.join(" · "), "runtime-detail"));
       if (!c.available) name.append(element("span", c.reason || t("runtimeUnavailable"), "runtime-detail"));
       const results = s.benchmark.results.filter((r) => r.candidate_id === c.id);
@@ -126,19 +128,25 @@ export function mountRuntimeSettings(host: HTMLElement, onUpdate?: (reply: Runti
         return values.length ? Math.max(...values) : undefined;
       };
       const latency = element("td", metric(single?.latency_ms, "ms"), "runtime-metric");
-      if (single) latency.append(element("span", t("runtimeLoadWarmup", metric(single.load_ms, "ms"), metric(single.warmup_ms, "ms")), "runtime-detail"));
+      if (single) {
+        latency.append(element("span", t("runtimeLoadWarmup", metric(single.load_ms, "ms"), metric(single.warmup_ms, "ms")), "runtime-detail"));
+        latency.append(element("span", t("runtimeInitialization", metric(single.initialization_ms, "ms"), metric(single.hash_ms, "ms")), "runtime-detail"));
+        latency.append(element("span", t("runtimeSamples", single.samples ?? 0), "runtime-detail"));
+        if (single.measurement_quality === "insufficient") latency.append(element("span", t("runtimeInsufficient"), "runtime-detail"));
+      }
       const throughput = element("td", metric(batched?.throughput_per_s, "rate"), "runtime-metric");
       if (batched) throughput.append(element("span", t("runtimeBatch", batched.batch_size ?? 8, batched.samples ?? 0), "runtime-detail"));
+      if (batched?.measurement_quality === "insufficient") throughput.append(element("span", t("runtimeInsufficient"), "runtime-detail"));
       const resources = element("td", undefined, "runtime-metric");
-      for (const [key, value] of [["runtimeRam", maximum("peak_rss_bytes")], ["runtimeAccelerator", maximum("accelerator_bytes")]] as const) {
+      const acceleratorLabel = good.some((r) => r.accelerator_kind === "mps_driver_including_cache") ? "runtimeMpsMemory" : "runtimeAccelerator";
+      for (const [key, value] of [["runtimeRam", maximum("peak_rss_bytes")], [acceleratorLabel, maximum("accelerator_bytes")]] as const) {
         const resource = element("div", undefined, "runtime-resource");
         resource.append(element("span", t(key), "runtime-detail"), element("span", metric(value, "bytes")));
         resources.append(resource);
       }
       row.append(latency, throughput, resources);
-      const q = element("td", t("runtimeNotEvaluated"));
-      if (c.experimental || /int8/i.test(c.precision)) q.append(element("span", t("runtimeExperimental"), "runtime-detail"));
-      row.append(q); body.append(row);
+      if (single) resources.append(element("span", t("runtimeMemoryBaseline", metric(single.baseline_rss_bytes, "bytes"), metric(single.loaded_rss_bytes, "bytes")), "runtime-detail"));
+      body.append(row);
     }
     table.append(body); tableWrap.replaceChildren(table);
   }
@@ -147,7 +155,7 @@ export function mountRuntimeSettings(host: HTMLElement, onUpdate?: (reply: Runti
     if (reply.kind !== "ok") {
       snapshot = undefined;
       summary.textContent = t(reply.kind === "invalid" ? "runtimeInvalid" : "runtimeUnreachable");
-      timing.hidden = active.hidden = tableWrap.hidden = quality.hidden = true;
+      timing.hidden = active.hidden = tableWrap.hidden = measurementNote.hidden = true;
       note.hidden = true;
       error.textContent = actionError; error.hidden = !actionError;
       errorDetailText.textContent = actionDetail; errorDetails.hidden = !actionDetail;
@@ -177,7 +185,8 @@ export function mountRuntimeSettings(host: HTMLElement, onUpdate?: (reply: Runti
     error.textContent = actionError || (s.error ? t("runtimeTestFailed") : s.benchmark.status === "cancelled" ? t("runtimeCancelled") : s.benchmark.status === "failed" ? t("runtimeTestFailed") : "");
     error.hidden = !error.textContent;
     errorDetailText.textContent = actionDetail || s.error || ""; errorDetails.hidden = !errorDetailText.textContent;
-    tableWrap.hidden = s.candidates.length === 0; quality.hidden = false;
+    tableWrap.hidden = s.candidates.length === 0; measurementNote.hidden = false;
+    measurementNote.textContent = t(s.benchmark.report_version === 2 ? "runtimeMeasurementNote" : "runtimeLegacyMeasurementNote");
     buildTable(s); buttons(); onUpdate?.(reply);
   }
 

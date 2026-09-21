@@ -44,6 +44,7 @@ export const ACTIONS = {
    * whose sender is no tab, names them.
    */
   OPEN_PDF_READER: "openPdfReader",
+  GET_PDF_STATUS: "GET_PDF_STATUS",
   /**
    * content (a PDF tab, top frame) → SW: this tab is showing a PDF, reached this way.
    * The worker decides whether "Open PDFs in Anagram" applies (lib/pdf/route.ts) — the
@@ -66,6 +67,8 @@ export const ACTIONS = {
   ACCESS_GRANTED: "accessGranted",
   /** options → SW: forget every cached verdict (memory, worker and IndexedDB). */
   CLEAR_CACHE: "clearCache",
+  /** options → SW: change verdict persistence and report deletion failures. */
+  SET_CACHE_MODE: "setCacheMode",
   /** options → SW: how many verdicts are on the disk right now. */
   GET_CACHE_COUNT: "getCacheCount",
   /** SW → content: the worker's caches are gone — drop this tab's own layer too. */
@@ -89,8 +92,8 @@ export interface ScoreBatchReply {
 
 /** SW → popup/options/content (response to GET_BACKEND_STATUS). */
 export interface BackendStatus {
-  /** "server" when the local engine answered its last probe; "down" otherwise. */
-  active: "server" | "down";
+  /** Idle is reachable and wakes for scoring; health checks alone never load it. */
+  active: "server" | "idle" | "down";
   /** The local engine's model when up; null when down. */
   model: ModelInfo | null;
   server: {
@@ -240,12 +243,14 @@ export interface AccessGrantedMessage {
 /** SW → options (response to CLEAR_CACHE): the caches are empty. */
 export interface ClearCacheReply {
   ok: boolean;
+  error?: string;
 }
 
 /** SW → options (response to GET_CACHE_COUNT): verdicts on the disk, the number the
  *  options page shows beside "Clear". Memory-only verdicts are not among them. */
 export interface CacheCountReply {
-  entries: number;
+  entries: number | null;
+  error?: string;
 }
 
 /**

@@ -81,6 +81,13 @@ def main():
     parser.add_argument("--report", type=Path)
     args = parser.parse_args()
     pin = json.loads((DAEMON / "modelkit.json").read_text())
+    probe = subprocess.run([str(args.python), "-I", "-B", "-c",
+                            "import sys,json;from pathlib import Path;sys.path.insert(0,sys.argv[1]);"
+                            "from model_plan import build_plan,discover_hardware;"
+                            "from download_modelkit import load_pin,PIN;"
+                            "print(json.dumps(build_plan(load_pin(PIN),discover_hardware())))", str(DAEMON)],
+                           capture_output=True, text=True, check=True, timeout=60)
+    expected_plan = json.loads(probe.stdout)
     report = {}
     with tempfile.TemporaryDirectory(prefix="anagram-native-smoke-") as temporary:
         home = Path(temporary).resolve() / "owned"
@@ -88,10 +95,12 @@ def main():
         (home / "models/editlens_roberta-large").mkdir(parents=True)
         (home / ".native-component.json").write_text(json.dumps(
             {"schema_version": 1, "host": "dev.coderbak.anagram", "home": str(home)}))
-        for name in ("native_host.py", "native_component.py", "download_modelkit.py", "modelkit.json",
-                     "runtime_controller.py", "runtime_adapters.py", "scoring.py", "engine.py", "pyproject.toml"):
+        for name in ("native_host.py", "native_component.py", "download_modelkit.py", "model_plan.py", "modelkit.json",
+                     "runtime_controller.py", "runtime_adapters.py", "benchmark_worker.py", "scoring.py", "engine.py", "safe_files.py", "pyproject.toml"):
             shutil.copyfile(DAEMON / name, home / "app" / name)
         for entry in pin["files"]:
+            if entry["path"] not in expected_plan["selected_paths"]:
+                continue
             source = args.model_dir / entry["path"]
             assert source.is_file() and source.stat().st_size == entry["size_bytes"], str(source)
             target = home / "models/editlens_roberta-large" / entry["path"]
@@ -128,10 +137,24 @@ def main():
                     peer.close()
                 pending = client.until({"awaiting_selection"})
                 report["setup_wall_s"] = round(time.monotonic() - t0, 3)
+                report["download_plan"] = pending["download"].get("plan")
+                assert report["download_plan"]["profile"] == "recommended"
+                assert set(report["download_plan"]["files"]) == set(expected_plan["selected_paths"]) | {"lid.176.ftz"}
+                for entry in pin["files"]:
+                    if entry["path"] not in expected_plan["selected_paths"]:
+                        assert not (home / "models/editlens_roberta-large" / entry["path"]).exists()
                 report["benchmark"] = pending["runtime"]["benchmark"]
+                benchmark = report["benchmark"]
+                assert benchmark["report_version"] == 2 and benchmark["status"] == "completed", benchmark
+                rows = benchmark["results"]
+                assert len(rows) == benchmark["total"] and rows, benchmark
+                assert all(row["status"] == "ok" for row in rows), rows
+                assert all(row["rss_scope"] == "isolated_process" and row["samples"] > 0 for row in rows), rows
+                assert all(row["initialization_ms"] >= 0 and row["hash_ms"] >= 0 for row in rows), rows
                 assert pending["runtime"]["active_id"] is None
                 candidates = pending["runtime"]["candidates"]
-                desired = next((c["id"] for c in candidates if c["id"] == "torch:mps:fp32" and c["available"]), "torch:cpu:fp32")
+                desired = next((c["id"] for c in candidates if c["id"] == "torch:mps:fp32" and c["available"]),
+                               pending["runtime"]["recommended_id"])
                 selected = client.request("runtime.config", {"id": desired})
                 assert selected["ok"] and selected["status"] == 202, selected
                 client.until({"ready"})

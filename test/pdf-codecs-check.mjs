@@ -1,12 +1,8 @@
 // test/pdf-codecs-check.mjs — can the PDF view really decode a JPEG2000 or JBIG2 image?
 //
-// pdf.js ships those two decoders as WebAssembly and nothing else: scripts/vendor.mjs
-// deliberately leaves out the library's `*_nowasm_fallback.js` builds, and
-// lib/pdf/extract.ts asks for `useWasm: true`. An extension page may only compile
-// WebAssembly when its policy says so, and until 2026-09-20 this extension declared no
-// policy at all — so the question "does a scanned page actually draw?" had never been
-// answered. It is answered here, against the PACKAGED extension, because the only place
-// the answer can come from is a browser that has really loaded the manifest.
+// The packaged upstream viewer uses PDF.js's WebAssembly image decoders. Exercise
+// both in the shipping extension so its actual CSP and local assets apply.
+// Run `npm run build` first; this script does not replace shared build output.
 //
 // The two documents are built from codestreams generated on 2026-09-20 with the tools on
 // the machine — Pillow 11.1.0 / OpenJPEG 2.5.3 for the JPEG2000 tile, jbig2enc for the
@@ -18,10 +14,12 @@
 //
 //   node test/pdf-codecs-check.mjs
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { withFakeNative, requireBuild, EXT } from "./harness.mjs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { launchExtension } from "./harness.mjs";
 
-requireBuild();
+// Use the existing shipping package; this test needs no website grants or test build.
+const EXT = join(dirname(fileURLToPath(import.meta.url)), "../output/chrome-mv3");
 
 const results = [];
 const record = (name, ok, note = "") =>
@@ -117,7 +115,7 @@ record(
 
 // ---- the browser ---------------------------------------------------------------------------
 
-const { fixture, context, extId } = await withFakeNative();
+const { context, extId } = await launchExtension({ extDir: EXT });
 const READER = `chrome-extension://${extId}/reader.html`;
 
 /**
@@ -138,19 +136,19 @@ async function draw(name) {
       window.__csp.push(`${e.violatedDirective} ${e.blockedURI}`),
     );
   });
-  // The document is HANDED to the reader, as a file off the disk would be: the reading
-  // mode fetches nothing (lib/pdf/handoff.ts), and what this suite is about is what pdf.js
-  // may compile once the bytes are in front of it, not how they got there.
+  // Supply local File bytes so this tests packaged decoding rather than source loading.
   await page.goto(READER, { waitUntil: "load" });
+  await page.waitForSelector("#drop:not([hidden])");
   await page.setInputFiles("#file", { name, mimeType: "application/pdf", buffer: DOCUMENTS[`/${name}`] });
-  await page.waitForSelector(".page canvas", { timeout: 20000 }).catch(() => {});
   // The canvas is drawn when its page comes near the viewport, and the drawing itself is
   // a round trip to the pdf.js worker. Poll rather than guess at a delay.
   const ink = await page
     .waitForFunction(
       () => {
-        const canvas = document.querySelector(".page canvas");
-        if (!canvas || canvas.width === 0) return false;
+        const view = window.PDFViewerApplication?.pdfViewer.getPageView(0);
+        const canvas = document.querySelector("#viewer .page canvas");
+        // A white canvas exists before decoding finishes. Wait for upstream FINISHED.
+        if (view?.renderingState !== 3 || !canvas || canvas.width === 0) return false;
         const data = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
         let dark = 0;
         let red = 0;
@@ -162,7 +160,7 @@ async function draw(name) {
         const total = data.length / 4;
         return { share: dark / total, red: red / total, total };
       },
-      { timeout: 20000, polling: 400 },
+      null, { timeout: 20000, polling: 400 },
     )
     .then((h) => h.jsonValue())
     .catch(() => ({ share: 0, red: 0, total: 0 }));
@@ -196,7 +194,6 @@ record(
 );
 
 await context.close();
-await fixture.close();
 
 // ---- summary ----------------------------------------------------------------------------
 

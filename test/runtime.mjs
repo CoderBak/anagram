@@ -17,16 +17,19 @@ const candidates = [
   { id: "onnx-cpu-int8", label: "CPU · INT8", device: "cpu", runtime: "onnx", precision: "int8", experimental: true, available: true },
 ];
 const results = candidates.flatMap((candidate, index) => [1, 8].map((batch_size) => ({
-  candidate_id: candidate.id, status: "ok", load_ms: 2400, warmup_ms: 120,
+  candidate_id: candidate.id, status: "ok", load_ms: 2400, initialization_ms: 85, hash_ms: 17, warmup_ms: 120,
   latency_ms: batch_size === 1 ? 42.5 - index * 10 : 160 - index * 30,
   throughput_per_s: batch_size === 1 ? 23.5 + index * 10 : 50 + index * 25,
+  baseline_rss_bytes: 120_000_000, loaded_rss_bytes: 1_700_000_000, rss_scope: "isolated_process", rss_sample_interval_ms: 50,
+  measurement_quality: candidate.precision === "int8" ? "insufficient" : "sufficient",
+  accelerator_kind: candidate.device === "mps" ? "mps_driver_including_cache" : null,
   peak_rss_bytes: 2_000_000_000, accelerator_bytes: candidate.device === "mps" ? 800_000_000 : null,
   samples: 20, batch_size, tokens_per_text: 128, duration_s: 1.5,
 })));
 let state = {
   schema_version: 1, state: "benchmarking", active_id: null, selected_id: null,
-  recommended_id: null, needs_selection: true, candidates, error: null,
-  benchmark: { status: "running", budget_s: 30, elapsed_s: 3, measurement_s: 1,
+  recommended_id: null, fastest_id: null, needs_selection: true, candidates, error: null,
+  benchmark: { report_version: 2, environment: {platform:"deterministic Mac fixture"}, status: "running", budget_s: 30, elapsed_s: 3, measurement_s: 1,
     phase: "measuring", current_id: candidates[0].id, completed: 0, total: 6, results: [] },
 };
 const fixture = await createNativeFixture();
@@ -49,7 +52,7 @@ try {
   assert.notEqual(await page.locator("#row-ready").getAttribute("data-state"), "ok");
   console.log("PASS first-run setup is visible over native messaging, without auto-applying or starting a duplicate benchmark");
 
-  state = { ...state, state: "awaiting_selection", recommended_id: candidates[0].id,
+  state = { ...state, state: "awaiting_selection", recommended_id: candidates[0].id, fastest_id: candidates[1].id,
     benchmark: { ...state.benchmark, status: "completed", phase: "awaiting_selection", current_id: null, completed: 6, results } };
   setRuntime(state);
   await panel.getByRole("radio", { name: /Apple GPU/ }).waitFor();
@@ -84,6 +87,21 @@ try {
   assert.ok((await ramRow.getByRole("cell").nth(1).innerText()).includes("42.5 ms"), "Interactive latency must come from batch 1");
   assert.ok((await ramRow.getByRole("cell").nth(2).innerText()).startsWith("50 texts/s"), "Throughput must come from batch 8");
   assert.ok((await ramRow.getByRole("cell").nth(3).innerText()).includes("Not available"), "Unavailable GPU memory must not appear as zero");
+  assert.ok((await ramRow.innerText()).includes("Recommended · FP32"));
+  const gpuRow = panel.getByRole("row").filter({ hasText: "Apple GPU · FP16" });
+  assert.ok((await gpuRow.innerText()).includes("Fastest measured"));
+  assert.ok((await gpuRow.innerText()).includes("GPU driver memory (includes cache)"));
+  assert.ok((await ramRow.innerText()).includes("Before libraries"));
+  assert.ok((await ramRow.innerText()).includes("Initialize 85 ms · verify files 17 ms"));
+  assert.ok((await panel.innerText()).includes("Few samples — rerun before comparing"));
+  assert.ok((await panel.innerText()).includes("Each configuration runs in its own process"));
+  setRuntime({ ...state, benchmark: { ...state.benchmark, report_version: undefined } });
+  await panel.getByRole("button", { name: "Refresh status", exact: true }).click();
+  await panel.getByText(/These results use the older benchmark method/).waitFor();
+  assert.ok(!(await panel.innerText()).includes("Each configuration runs in its own process"), "Old native components must not receive new-method claims");
+  setRuntime(state);
+  await panel.getByRole("button", { name: "Refresh status", exact: true }).click();
+  await panel.getByText(/Each configuration runs in its own process/).waitFor();
   assert.equal(await worker.evaluate(async () => (await chrome.permissions.getAll()).origins?.length ?? 0), 0);
   assert.deepEqual(errors, []);
   await page.evaluate(readFileSync(join(ROOT, "node_modules/axe-core/axe.min.js"), "utf8"));

@@ -27,7 +27,7 @@ mkdirSync(join(stage, "app"), { recursive: true });
 
 // Install runtime files only. The manual research benchmark and its score head
 // stay in the repository; dependencies come from pyproject.toml and uv.lock.
-for (const f of ["engine.py", "scoring.py", "runtime_controller.py", "runtime_adapters.py", "native_host.py", "native_component.py", "download_modelkit.py", "modelkit.json", "pyproject.toml", "uv.lock", "README.md"]) {
+for (const f of ["engine.py", "scoring.py", "safe_files.py", "runtime_controller.py", "runtime_adapters.py", "benchmark_worker.py", "native_host.py", "native_component.py", "download_modelkit.py", "model_plan.py", "modelkit.json", "pyproject.toml", "uv.lock", "README.md"]) {
   cpSync(join(ROOT, "anagramd", f), join(stage, "app", f));
 }
 cpSync(join(ROOT, "output", "chrome-mv3"), join(stage, "extension"), { recursive: true });
@@ -59,4 +59,5 @@ for (const name of ["anagram.zip", "install.sh", "install.ps1", `anagram-chrome-
   writeFileSync(join(DIST, name + ".sha256"), `${digest}  ${name}\n`);
 }
 rmSync(join(DIST, "stage"), { recursive: true, force: true });
+execFileSync("python3", [join(ROOT, "scripts", "verify-release.py"), ...["chrome", "firefox"].map((browser) => join(DIST, `anagram-${browser}-${version}.zip`))], {stdio: "inherit"});
 console.log(`release ${version}: native component archives, installers and Chrome/Firefox ZIPs with checksums in dist/ (${sha.slice(0, 12)}…)`);

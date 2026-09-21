@@ -64,6 +64,8 @@ export interface PdfUnitSource {
   setBlocks(blocks: ReflowBlock[]): void;
   /** A page's text layer is built and its spans are known. */
   setPage(n: number, page: PdfPageSpans): void;
+  /** Retire a recycled upstream text layer. */
+  removePage(n: number): void;
   /**
    * The document's units, as `OrchestratorOptions.collect` asks for them: everything a
    * live unit already owns exactly is left alone, and the rest comes back fresh.
@@ -156,6 +158,30 @@ export function groupsOf(blocks: readonly ReflowBlock[], mergeShorts = true): nu
   return mergeShorts ? groupBlocks(plan) : soloGroups(plan);
 }
 
+/** Search highlights split PDF.js item spans into nested text nodes. */
+function descendantText(element: Element): Text[] {
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  const out: Text[] = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) out.push(node as Text);
+  return out;
+}
+
+export function itemRanges(element: Element, start: number, end: number): Range[] | null {
+  const out: Range[] = [];
+  let offset = 0;
+  for (const node of descendantText(element)) {
+    const next = offset + node.length;
+    if (start < next && end > offset) {
+      const range = new Range();
+      range.setStart(node, Math.max(0, start - offset));
+      range.setEnd(node, Math.min(node.length, end - offset));
+      out.push(range);
+    }
+    offset = next;
+  }
+  return start >= 0 && end <= offset && start < end ? out : null;
+}
+
 let _seq = 0;
 
 export function createPdfUnitSource(): PdfUnitSource {
@@ -178,11 +204,14 @@ export function createPdfUnitSource(): PdfUnitSource {
     built = null;
   }
 
-  /** The text node of one source run, or null where the page has no span for it. */
-  function nodeOf(run: SourceRun): Text | null {
+  function removePage(n: number): void {
+    pages.delete(n);
+    built = null;
+  }
+
+  function nodesOf(run: SourceRun): Text[] {
     const span = pages.get(run.page)?.spans[run.item];
-    const node = span?.firstChild;
-    return node && node.nodeType === Node.TEXT_NODE ? (node as Text) : null;
+    return span?.isConnected ? descendantText(span) : [];
   }
 
   /**
@@ -211,28 +240,29 @@ export function createPdfUnitSource(): PdfUnitSource {
     const parts: UnitPart[] = [];
     const runs: SourceRun[] = [];
     const nodes: Text[] = [];
+    let missing = false;
     members.forEach((block, i) => {
       const base = starts[i];
       let open: { part: UnitPart; page: number; item: number } | null = null;
       for (const run of block.runs) {
         const at = base + run.at;
         if (at + run.length > text.length) break; // past the storage cap
-        const node = nodeOf(run);
+        const itemNodes = nodesOf(run);
         const layer = pages.get(run.page)?.layer;
-        if (!node || !layer) continue;
+        if (!itemNodes.length || !layer?.isConnected) { missing = true; continue; }
         if (open === null || open.page !== run.page || run.item < open.item) {
           const part: UnitPart = { nodes: [], container: layer };
           parts.push(part);
           open = { part, page: run.page, item: run.item };
         }
         // Two runs of one item (a collapsed space cut the stretch in two) share its node.
-        if (open.part.nodes[open.part.nodes.length - 1] !== node) open.part.nodes.push(node);
+        for (const node of itemNodes) if (!open.part.nodes.includes(node)) open.part.nodes.push(node);
         open.item = run.item;
         runs.push({ ...run, at });
-        nodes.push(node);
+        nodes.push(...itemNodes);
       }
     });
-    if (parts.length === 0) return null;
+    if (missing || parts.length === 0) return null;
 
     const first = parts[0].nodes[0];
     const lastPart = parts[parts.length - 1];
@@ -250,7 +280,7 @@ export function createPdfUnitSource(): PdfUnitSource {
   }
 
   function rebuild(mergeShorts: boolean): Blueprint[] {
-    if (built && merged === mergeShorts) return built;
+    if (built && merged === mergeShorts && built.every((b) => b.nodes.every((n) => n.isConnected))) return built;
     merged = mergeShorts;
     const plan = planOf(blocks);
     const groups = mergeShorts ? groupBlocks(plan) : soloGroups(plan);
@@ -285,6 +315,9 @@ export function createPdfUnitSource(): PdfUnitSource {
 
   function collect(claim: (nodes: Text[]) => "take" | "skip", mergeShorts = true): Unit[] {
     const out: Unit[] = [];
+    for (const [id, blueprint] of placed) {
+      if (blueprint.nodes.some((node) => !node.isConnected)) placed.delete(id);
+    }
     for (const candidate of rebuild(mergeShorts)) {
       // The walker's protocol, run by hand: a part a live unit owns EXACTLY is skipped,
       // and a paragraph all of whose parts are skipped IS that live unit and is not
@@ -313,18 +346,15 @@ export function createPdfUnitSource(): PdfUnitSource {
         const from = Math.max(start, run.at);
         const to = Math.min(end, run.at + run.length);
         if (from >= to) continue;
-        try {
-          const range = new Range();
-          range.setStart(home.nodes[i], run.from + (from - run.at));
-          range.setEnd(home.nodes[i], run.from + (to - run.at));
-          out[k].push(range);
-        } catch {
-          return null; // the page went away under us — the caller marks the whole unit
-        }
+        const element = pages.get(run.page)?.spans[run.item];
+        if (!element?.isConnected) return null;
+        const resolved = itemRanges(element, run.from + from - run.at, run.from + to - run.at);
+        if (!resolved) return null;
+        out[k].push(...resolved);
       }
     }
     return out;
   }
 
-  return { setBlocks, setPage, collect, ranges };
+  return { setBlocks, setPage, removePage, collect, ranges };
 }

@@ -55,6 +55,7 @@ function environment(tabs: Tab[] = [], origins: string[] = []) {
   const onInstalled = event<[{ reason: string }]>();
   const onStartup = event<[]>();
   const onTabRemoved = event<[number]>();
+  const onTabUpdated = event<[number,{status?:string}]>();
 
   const permissions = {
     getAll: async () => ({ permissions: [], origins: [...origins] }),
@@ -101,7 +102,7 @@ function environment(tabs: Tab[] = [], origins: string[] = []) {
         func: files === undefined,
       });
       if (files) tab.script = true;
-      return [{ result: null }];
+      return [{frameId:0,documentId:`doc-${tab.id}`,result:files ? null : {session:crypto.randomUUID(),url:tab.url ?? "https://one-shot.test/"}}];
     },
   };
   const tabsApi = {
@@ -116,6 +117,7 @@ function environment(tabs: Tab[] = [], origins: string[] = []) {
       return message.action === ACTIONS.PING ? { ok: true } : undefined;
     },
     onRemoved: onTabRemoved,
+    onUpdated: onTabUpdated,
   };
 
   Object.assign(fakeBrowser as unknown as Record<string, unknown>, {
@@ -126,6 +128,7 @@ function environment(tabs: Tab[] = [], origins: string[] = []) {
   Object.assign((fakeBrowser as unknown as { runtime: Record<string, unknown> }).runtime, {
     onInstalled,
     onStartup,
+    onConnect: event<[unknown]>(),
   });
 
   return {
@@ -328,7 +331,7 @@ describe("ensureInjected", () => {
   it("says yes without injecting anything when the script is already there", async () => {
     const env = environment([{ id: 1, url: "https://a.com/", script: true }]);
     expect(await ensureInjected(1)).toBe(true);
-    expect(env.calls.injected).toEqual([]);
+    expect(env.calls.injected).toEqual([{tabId:1,allFrames:true,func:true}]);
   });
 
   it("marks the page as a one-off BEFORE the script arrives, then waits for it to answer", async () => {

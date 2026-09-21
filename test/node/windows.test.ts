@@ -103,3 +103,13 @@ describe("readInWindows", () => {
     expect(unitVerdict("u_a", long.length, windows).result.degraded).toBe(true);
   });
 });
+
+it("keeps original source spans when canonical ranges, repeated escapes and joined accents contract", async () => {
+  const raw = (`Original 1–2–3 costs \\\\% and A\u200b\u0301 remains mapped to its source. ` + prose(8)).repeat(5);
+  const spans = planWindows(raw), {calls, scoreBlocks} = recorder();
+  const windows = (await readInWindows([{id:"mapped",text:raw,order:0}],scoreBlocks)).get("mapped")!;
+  expect(windows.map(({start,end}) => [start,end])).toEqual(spans.map(({start,end}) => [start,end]));
+  expect(windows.map(({start,end}) => raw.slice(start,end)).join("")).toBe(raw);
+  expect(calls.flat().map(({text}) => text)).toEqual(spans.map((span) => canonicalForScoring(raw.slice(span.start,span.end))));
+  expect(calls.flat().some(({text}) => text.includes("1-2-3 costs % and Á"))).toBe(true);
+});

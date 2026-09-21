@@ -10,23 +10,25 @@ import { defineBackground, browser } from "#imports";
 import type { PublicPath } from "wxt/browser";
 import { createRouter } from "../lib/backend/router";
 import { getScoreClient } from "../lib/backend/getScoreClient";
+import { createCacheModeController } from "../lib/backend/cacheMode";
 import { ACTIONS } from "../lib/messaging/protocol";
 import type {
   CacheCountReply,
   ClearCacheReply,
   CopyDiagnosticsReply,
   PdfPassOnceReply,
-  ScoreBatchMessage,
   ScoreBatchReply,
   TopHostReply,
-  UpdateBadgeMessage,
 } from "../lib/messaging/protocol";
 import { ensureInjected, installAccess } from "../lib/access/worker";
+import { documentAuthority } from "../lib/access/authority";
+import { invalidateAndNotify } from "../lib/access/cacheControls";
+import { callerRole, parseWorkerMessage, permitsMessage, type AccessSender } from "../lib/access/messages";
 import { READER_PAGE, readerQuery } from "../lib/pdf/source";
-import { shouldAutoOpen } from "../lib/pdf/route";
+import { createPdfNavigation } from "../lib/pdf/navigation";
 import { createPdfHandoff } from "../lib/pdf/handoff";
 import { PDF_TAB_SCRIPTS_RUN } from "../lib/surface";
-import { settings, removeObsoleteConnectionSettings } from "../lib/settings/settings";
+import { settings, cacheModeStorage, removeObsoleteConnectionSettings } from "../lib/settings/settings";
 import { t } from "../lib/i18n";
 import { handleNativePageMessage } from "../lib/backend/nativeBridge";
 import { NATIVE_MESSAGE, NATIVE_UNINSTALL } from "../lib/backend/nativeProtocol";
@@ -40,6 +42,11 @@ export default defineBackground(() => {
     void browser.storage.local.set({ [EXTENSION_UPDATE_KEY]: details.version });
   });
   const router = createRouter(getScoreClient());
+  const cacheModes=createCacheModeController((mode)=>invalidateAndNotify(()=>router.setCacheMode(mode)),cacheModeStorage);
+  // Do not dispatch scoring until persisted privacy preferences have been applied.
+  const cacheModeReady=cacheModes.restore();
+  void cacheModeReady.catch(()=>console.warn("Anagram could not clear stored verdicts; disk writes remain disabled"));
+  cacheModeStorage.watch(()=>{void cacheModes.restore().catch(()=>console.warn("Anagram cache mode change failed"));});
   // Site access is optional: the content script is registered for the origins the user has
   // granted and injected on demand where only activeTab applies (lib/access/worker.ts).
   installAccess();
@@ -65,7 +72,7 @@ export default defineBackground(() => {
   const FLASH_MS = 1500;
   browser.tabs.onRemoved.addListener((tabId) => {
     badgeText.delete(tabId);
-    dropPass(tabId);
+    pdfNavigation.forget(tabId);
     wants.delete(tabId);
     handoff.forget(tabId);
   });
@@ -101,50 +108,11 @@ export default defineBackground(() => {
   const readerUrl = (src: string): string =>
     browser.runtime.getURL(READER_PAGE as PublicPath) + readerQuery(src);
 
-  /**
-   * The reading mode is HANDED the document's bytes (lib/pdf/handoff.ts): the tab that is
-   * showing the PDF re-reads it, the worker holds it under a one-time ticket, and only
-   * then does the tab become the reader. Nothing on the extension's own origin ever
-   * fetches a remote address — which is what `connect-src` in wxt.config.ts enforces.
-   *
-   * `ensureInjected` is what makes this work with optional site access: on a site with no
-   * grant there is no content script to ask, and the click the user just made — a menu
-   * entry, the popup's button — is what gives us `activeTab` to put one there.
-   */
   const handoff = createPdfHandoff({ readerUrl, ensureInjected });
   handoff.serve();
-
-  /**
-   * Tabs that were opened FOR the reading mode — the "Open PDF with Anagram" entry on a
-   * link. The PDF has to load in the tab before its bytes can be read out of it, so the
-   * tab is sent to the PDF and converts itself the moment it reports in, whatever "Open
-   * PDFs in Anagram" is set to. One shot, like a pass.
-   */
+  const pdfNavigation = createPdfNavigation({setting: () => settings.autoOpenPdfs.getValue(), open: handoff.open});
+  pdfNavigation.serve();
   const wants = new Set<number>();
-
-  /**
-   * Tabs allowed to show one PDF WITHOUT the reading mode opening over it: the reader's
-   * "Open original", and the same way out of every line that says the file could not be
-   * read. Per tab, one shot, and only in this worker's memory — a worker that was evicted
-   * never held a pass, which is the same as not having one.
-   */
-  const passes = new Map<number, string>();
-  /**
-   * A pass is for ONE navigation, so a tab that goes anywhere else loses it. The listener
-   * exists only while a pass does: an MV3 worker is woken by every listener it registers,
-   * and being woken for every tab in the browser is not a price to pay for an empty map.
-   */
-  const forgetPassOnMove = (tabId: number, change: { url?: string }): void => {
-    if (change.url !== undefined && change.url !== passes.get(tabId)) dropPass(tabId);
-  };
-  function dropPass(tabId: number): void {
-    if (!passes.delete(tabId)) return;
-    if (passes.size === 0) browser.tabs.onUpdated.removeListener(forgetPassOnMove);
-  }
-  function holdPass(tabId: number, url: string): void {
-    if (passes.size === 0) browser.tabs.onUpdated.addListener(forgetPassOnMove);
-    passes.set(tabId, url);
-  }
 
   // Context menus; recreated idempotently on install/update. The PDF entry is offered on
   // LINKS to a .pdf, which is where a reader decides to open one — the tab that is
@@ -327,179 +295,87 @@ export default defineBackground(() => {
     });
   });
 
-  browser.runtime.onMessage.addListener(
-    (
-      message: unknown,
-      sender,
-      sendResponse: (response?: unknown) => void,
-    ): boolean | undefined => {
-      const msg = message as {
-        action?: string;
-        req?: ScoreBatchMessage["req"];
-        flagged?: UpdateBadgeMessage["flagged"];
-        probe?: boolean;
-        url?: string;
-        tabId?: number;
-        contentType?: string;
-        protocol?: string;
-        navigationType?: string;
-      };
-      if (!msg) return;
-
-      if (msg.action === NATIVE_MESSAGE || msg.action === NATIVE_UNINSTALL) {
-        void handleNativePageMessage(message, sender, {
-          invalidate: () => getScoreClient().invalidate(),
-          clear: () => router.clear(),
-        }).then(sendResponse, () => sendResponse(undefined));
-        return true;
+  async function handleMessage(message: unknown, sender: AccessSender): Promise<unknown> {
+    const raw=message as {action?:unknown}|null;
+    if (raw?.action === NATIVE_MESSAGE || raw?.action === NATIVE_UNINSTALL) {
+      return handleNativePageMessage(message,sender,{invalidate:()=>getScoreClient().invalidate(),clear:()=>invalidateAndNotify(()=>router.clear())});
+    }
+    const msg=parseWorkerMessage(message);
+    if (!msg) return {ok:false,error:"invalid_request"};
+    const role=callerRole(sender,browser.runtime.id,browser.runtime.getURL("/"));
+    if (!role || !permitsMessage(role,msg,sender)) return {ok:false,error:"forbidden"};
+    const needsDocument=role === "content" || role === "reader" || role === "paste";
+    const document=needsDocument ? await documentAuthority.authorize(sender,"session" in msg ? msg.session : undefined) : null;
+    if (needsDocument && (!document || document.signal.aborted)) return {ok:false,error:"forbidden"};
+    switch(msg.action) {
+      case ACTIONS.ANALYZE_TAB:
+        analyzePage(msg.tabId); return {ok:true};
+      case ACTIONS.OPEN_PDF_READER: {
+        const tabId=role === "popup" ? msg.tabId! : sender.tab!.id!;
+        const src=role === "popup" ? msg.url! : sender.url!;
+        return handoff.open(tabId,src,{auto:false});
       }
-
-      // The popup's "Analyze this page": the context-menu entry by another door. Only an
-      // extension page of our own may name a tab. A content script's message comes from
-      // the web page's address, and a page has no business starting a run in somebody
-      // else's tab; `sender.tab` cannot tell the two apart, because one of our own pages
-      // opened in a tab has one too.
-      if (msg.action === ACTIONS.ANALYZE_TAB) {
-        const ours = sender.url?.startsWith(browser.runtime.getURL("/" as PublicPath)) === true;
-        if (ours && typeof msg.tabId === "number") analyzePage(msg.tabId);
-        return;
+      case ACTIONS.GET_PDF_STATUS:
+        return pdfNavigation.status(msg.tabId);
+      case ACTIONS.PDF_TAB_OPENED: {
+        const tabId=sender.tab!.id!;
+        if(document!.signal.aborted)return {ok:false,error:"forbidden"};
+        await pdfNavigation.contentPdf(tabId,sender.url!,msg.navigationType,wants.delete(tabId));
+        return {ok:true};
       }
-
-      // Open this PDF the Anagram way, IN PLACE of the PDF. The tab and the URL come off
-      // the sender for a content script, and from the popup when it is the popup asking.
-      if (msg.action === ACTIONS.OPEN_PDF_READER) {
-        const tabId = msg.tabId ?? sender.tab?.id;
-        const src = msg.url ?? sender.tab?.url;
-        if (tabId != null && src) void handoff.open(tabId, src, { auto: false });
-        return;
+      case ACTIONS.PDF_PASS_ONCE: {
+        const src=new URL(sender.url!).searchParams.get("src");
+        if(src !== msg.url)return {ok:false} satisfies PdfPassOnceReply;
+        pdfNavigation.pass(sender.tab!.id!,msg.url); return {ok:true} satisfies PdfPassOnceReply;
       }
-
-      // "Open PDFs in Anagram": a tab showing a PDF has told us what it is looking at.
-      // The tab moved is the SENDER's — never the active one, because a PDF opened in a
-      // background tab by a middle click reports from there and must move itself.
-      if (msg.action === ACTIONS.PDF_TAB_OPENED) {
-        const tabId = sender.tab?.id;
-        const src = msg.url;
-        if (tabId == null || !src) return;
-        void (async () => {
-          // The pass is spent on the load it was written for, whatever is decided next.
-          const pass = passes.get(tabId) === src;
-          if (pass) dropPass(tabId);
-          // …and so is a tab opened by the menu entry for exactly this, which is a
-          // reader's explicit "open it with Anagram" and not the automatic route.
-          const wanted = wants.delete(tabId);
-          const open = shouldAutoOpen({
-            // Read now, not at startup: the switch has to take effect on the next PDF.
-            setting: wanted || (await settings.autoOpenPdfs.getValue()),
-            contentType: msg.contentType ?? "",
-            protocol: msg.protocol ?? "",
-            navigationType: msg.navigationType ?? "",
-            frame: sender.frameId ?? 0,
-            pass,
-          });
-          if (!open) return;
-          await handoff.open(tabId, src, { auto: !wanted });
-        })();
-        return;
-      }
-
-      // The reader is leaving for the PDF itself. It waits for this answer before it
-      // navigates, or the tab could arrive back at the PDF before the pass is written.
-      if (msg.action === ACTIONS.PDF_PASS_ONCE) {
-        const tabId = sender.tab?.id;
-        if (tabId != null && msg.url) holdPass(tabId, msg.url);
-        const reply: PdfPassOnceReply = { ok: tabId != null };
-        sendResponse(reply);
-        return; // synchronous response
-      }
-
-      // The options page asked for the cached verdicts to go. The worker's own layers are
-      // emptied first — memory, pending writes and the IndexedDB store — and then every
-      // open tab is told to drop its per-tab layer, so the next scan anywhere asks the
-      // daemon again. A tab with no content script (chrome:// pages, the web store) has
-      // nothing to drop and its rejection is swallowed.
-      if (msg.action === ACTIONS.CLEAR_CACHE) {
-        void (async () => {
-          try {
-            await router.clear();
-            for (const tab of await browser.tabs.query({})) {
-              if (tab.id == null) continue;
-              void browser.tabs
-                .sendMessage(tab.id, { action: ACTIONS.CACHE_CLEARED })
-                .catch(() => undefined);
-            }
-          } catch {
-            /* the store would not open, or tabs could not be listed — the memory layer
-               is empty either way, and the page says so */
-          }
-          const reply: ClearCacheReply = { ok: true };
-          sendResponse(reply);
-        })();
-        return true;
-      }
-
-      // The options page asks how many verdicts are on the disk.
-      if (msg.action === ACTIONS.GET_CACHE_COUNT) {
-        router.count().then(
-          (entries) => sendResponse({ entries } satisfies CacheCountReply),
-          () => sendResponse({ entries: 0 } satisfies CacheCountReply),
-        );
-        return true;
-      }
-
-      // Per-tab flagged count on the toolbar icon (sent by the TOP frame only).
-      if (msg.action === ACTIONS.UPDATE_BADGE) {
-        const tabId = sender.tab?.id;
-        if (tabId != null && actionApi) {
-          const flagged = typeof msg.flagged === "number" ? msg.flagged : 0;
-          const text = flagged > 0 ? String(flagged) : "";
-          badgeText.set(tabId, text);
-          void actionApi.setBadgeText({ tabId, text });
-          void actionApi.setBadgeBackgroundColor({ tabId, color: COUNT_COLOR });
-        }
-        return;
-      }
-
-      // A subframe asking whose page it sits in. Site rules are keyed on the TOP
-      // hostname, which a cross-origin frame cannot read and a no-referrer embed cannot
-      // guess — but the sender carries the tab's own URL, which is ours to read wherever
-      // a content script of ours is running at all.
-      if (msg.action === ACTIONS.GET_TOP_HOST) {
-        let host = "";
+      case ACTIONS.SET_CACHE_MODE:
         try {
-          if (sender.tab?.url) host = new URL(sender.tab.url).hostname;
+          await cacheModeReady.catch(()=>undefined);
+          const mode=await cacheModes.change(msg.mode);
+          return {ok:true,mode};
         } catch {
-          /* about:blank and friends have no hostname — the frame keeps its fallbacks */
+          return {ok:false,mode:cacheModes.mode(),error:"cache_mode_failed"};
         }
-        const reply: TopHostReply = { host };
-        sendResponse(reply);
-        return; // synchronous response
+      case ACTIONS.CLEAR_CACHE:
+        try {
+          await invalidateAndNotify(()=>router.clear());
+          return {ok:true} satisfies ClearCacheReply;
+        } catch {return {ok:false,error:"clear_failed"} satisfies ClearCacheReply;}
+      case ACTIONS.GET_CACHE_COUNT:
+        try {return {entries:await router.count()} satisfies CacheCountReply;}
+        catch {return {entries:null,error:"count_failed"} satisfies CacheCountReply;}
+      case ACTIONS.UPDATE_BADGE: {
+        const tabId=sender.tab!.id!;
+        if(actionApi) {
+          const text=msg.flagged>0 ? String(msg.flagged) : "";
+          badgeText.set(tabId,text);
+          void actionApi.setBadgeText({tabId,text});
+          void actionApi.setBadgeBackgroundColor({tabId,color:COUNT_COLOR});
+        }
+        return {ok:true};
       }
-
-      // Popup/options/content: is the daemon up (optionally a forced re-probe).
-      if (msg.action === ACTIONS.GET_BACKEND_STATUS) {
-        getScoreClient()
-          .status(msg.probe === true)
-          .then((s) => sendResponse(s), () => sendResponse(undefined));
-        return true;
+      case ACTIONS.GET_TOP_HOST: {
+        let host="";
+        try {host=new URL(sender.tab?.url ?? "").hostname;}catch {/* no readable top URL */}
+        return {host} satisfies TopHostReply;
       }
-
-      if (msg.action !== ACTIONS.SCORE_BATCH || !msg.req) return;
-
-      router
-        // A private tab's work leaves nothing on the disk (lib/backend/router.ts).
-        .handle(msg.req, { private: sender.tab?.incognito === true })
-        .then((resp) => {
-          const up = getScoreClient().isUp();
-          const reply: ScoreBatchReply = { results: resp.results, model: up ? resp.model : undefined, backend: up ? "up" : "down" };
-          sendResponse(reply);
-        })
-        .catch(() => {
-          const reply: ScoreBatchReply = { results: [], backend: getScoreClient().isUp() ? "up" : "down" };
-          sendResponse(reply);
-        });
-
-      return true; // keep the channel open for the async sendResponse
-    },
-  );
+      case ACTIONS.GET_BACKEND_STATUS:
+        return getScoreClient().status(msg.probe===true);
+      case ACTIONS.SCORE_BATCH: {
+        try {
+          await cacheModeReady.catch(()=>undefined);
+          const resp=await router.handle(msg.req,{private:sender.tab?.incognito===true,documentKey:document!.documentKey,signal:document!.signal});
+          if(document!.signal.aborted)return {ok:false,error:"forbidden"};
+          const hasModel=resp.model.id !== "none";
+          // Known cached verdicts remain usable while the native model is unloaded.
+          const up=getScoreClient().isUp() || (hasModel && resp.results.some((result)=>!result.degraded));
+          return {results:resp.results,model:up && hasModel ? resp.model : undefined,backend:up ? "up" : "down"} satisfies ScoreBatchReply;
+        } catch {return {results:[],backend:getScoreClient().isUp() ? "up" : "down"} satisfies ScoreBatchReply;}
+      }
+    }
+  }
+  browser.runtime.onMessage.addListener((message:unknown,sender,sendResponse) => {
+    void handleMessage(message,sender).then(sendResponse,()=>sendResponse({ok:false,error:"request_failed"}));
+    return true;
+  });
 });

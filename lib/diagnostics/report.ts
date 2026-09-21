@@ -33,7 +33,7 @@ export const MAX_SILENT = 15;
 
 /** What the daemon is doing, reduced to the four answers that change what to do next. */
 export interface DaemonFacts {
-  state: "up" | "down" | "contract" | "unknown";
+  state: "up" | "idle" | "down" | "contract" | "unknown";
   /** Model identity when it is up — it decides the verdicts and belongs in a bug report. */
   model?: string;
   device?: string;
@@ -100,6 +100,8 @@ function daemonLine(daemon: DaemonFacts): string {
   switch (daemon.state) {
     case "up":
       return `daemon: up · ${daemon.model ?? "no model reported"}${daemon.device ? ` on ${daemon.device}` : ""}`;
+    case "idle":
+      return "daemon: idle (model unloaded; scoring wakes it automatically)";
     case "contract":
       return `daemon: CONTRACT MISMATCH — it speaks ${daemon.contract ?? "?"}, this build speaks another major`;
     case "down":
@@ -305,7 +307,7 @@ async function reasonOf(stretch: SilentStretch, env: DiagnosticsEnv): Promise<st
   if (detected) {
     return `a unit was made and nothing drawn — the local language gate settled it as "${detected.lang}" (${detected.prob}); EditLens reads English`;
   }
-  if (env.daemon.state !== "up" && env.daemon.state !== "unknown") {
+  if (env.daemon.state === "down" || env.daemon.state === "contract") {
     return 'a unit was made and nothing drawn — the daemon did not answer, so the verdict is "Unavailable"';
   }
   if (env.displayMode === "flagged") {

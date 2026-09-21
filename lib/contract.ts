@@ -103,9 +103,11 @@ export interface ScoredBatch {
  */
 export interface ScoreClient {
   /** Score a batch of blocks. Returns one ScoreResult per input block (by id). */
-  scoreBatch(blocks: ScoreBlock[]): Promise<ScoredBatch>;
+  scoreBatch(blocks: ScoreBlock[], signal?: AbortSignal): Promise<ScoredBatch>;
   /** Best-known identity of the backend that will answer the next scoreBatch (sync). */
   model(): ModelInfo;
+  /** Runtime/disconnect generation, including changes that retain the same model label. */
+  revision?(): number;
   /** Optional: settle backend discovery before model() is consulted for cache keys. */
   ready?(): Promise<void>;
 }

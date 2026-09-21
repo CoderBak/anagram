@@ -22,10 +22,18 @@ const ResultSchema = v.object({
   status: v.picklist(["ok", "error"]),
   error: v.optional(v.nullable(Text)),
   load_ms: Metric,
+  initialization_ms: Metric,
+  hash_ms: Metric,
   warmup_ms: Metric,
   latency_ms: Metric,
   throughput_per_s: Metric,
   peak_rss_bytes: Metric,
+  baseline_rss_bytes: Metric,
+  loaded_rss_bytes: Metric,
+  rss_scope: v.optional(v.literal("isolated_process")),
+  rss_sample_interval_ms: Metric,
+  accelerator_kind: v.optional(v.nullable(v.picklist(["mps_driver_including_cache", "cuda_allocator_peak"]))),
+  measurement_quality: v.optional(v.picklist(["sufficient", "insufficient"])),
   accelerator_bytes: Metric,
   samples: v.optional(v.nullable(Count)),
   batch_size: v.optional(v.nullable(Count)),
@@ -35,13 +43,16 @@ const ResultSchema = v.object({
 
 export const RuntimeSchema = v.object({
   schema_version: v.literal(1),
-  state: v.picklist(["loading", "benchmarking", "awaiting_selection", "ready", "error"]),
+  state: v.picklist(["loading", "benchmarking", "awaiting_selection", "ready", "idle", "error"]),
   active_id: v.nullable(Id),
   selected_id: v.nullable(Id),
   recommended_id: v.nullable(Id),
+  fastest_id: v.optional(v.nullable(Id)),
   needs_selection: v.boolean(),
   candidates: v.pipe(v.array(CandidateSchema), v.maxLength(64)),
   benchmark: v.object({
+    report_version: v.optional(v.literal(2)),
+    environment: v.optional(v.nullable(v.record(Text, v.unknown()))),
     status: v.picklist(["idle", "running", "completed", "cancelled", "failed"]),
     budget_s: NumberValue,
     elapsed_s: NumberValue,
@@ -87,8 +98,7 @@ export function parseRuntime(body: unknown): RuntimeSnapshot | null {
   const s = parsed.output;
   const ids = new Set(s.candidates.map((c) => c.id));
   if (ids.size !== s.candidates.length) return null;
-  if ([s.active_id, s.selected_id, s.recommended_id, s.benchmark.current_id].some((id) => id !== null && !ids.has(id))) return null;
+  if ([s.active_id, s.selected_id, s.recommended_id, s.fastest_id, s.benchmark.current_id].some((id) => id != null && !ids.has(id))) return null;
   if (s.benchmark.results.some((r) => !ids.has(r.candidate_id))) return null;
   return s;
 }
-

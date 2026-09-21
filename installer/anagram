@@ -64,7 +64,9 @@ try:
 except ComponentError as exc:
     sys.exit(exc.message)
 try:
-    subprocess.run([sys.executable, "-I", str(home / "app/native_registration.py"), sys.argv[2], "--home", str(home)], check=True)
+    fd = lock.maintenance_fd()
+    subprocess.run([sys.executable, "-I", str(home / "app/native_registration.py"), sys.argv[2],
+                    "--lock-fd", str(fd), "--home", str(home)], pass_fds=(fd,), check=True)
 finally:
     lock.close()
 PYEOF
@@ -74,8 +76,25 @@ case "${1:-}" in
   doctor)
     [ -x "$PY" ] || die "Private Python is missing; reinstall the component"
     [ -f "$ANAGRAM_HOME/app/native_host.py" ] && [ -f "$ANAGRAM_HOME/app/engine.py" ] || die "Native engine files are missing; reinstall the component"
-    clean_env PYTHONDONTWRITEBYTECODE=1 "$PY" "$ANAGRAM_HOME/app/download_modelkit.py" --model-dir "$MODEL_DIR" --lid-model "$LID"
-    say "Local model files verified. Open Anagram Settings for engine and download status."
+    clean_env PYTHONDONTWRITEBYTECODE=1 "$PY" -I - "$ANAGRAM_HOME" <<'PYEOF'
+import os, runpy, sys
+from pathlib import Path
+home = Path(sys.argv[1]).resolve()
+sys.path.insert(0, str(home / 'app'))
+from native_component import HomeLock, validate_home
+from native_host import configure_environment
+lock = HomeLock(validate_home(home))
+try:
+    os.chdir(home)
+    configure_environment(home)
+    script = home / 'app/download_modelkit.py'
+    sys.argv = [str(script), '--model-dir', str(home / 'models/editlens_roberta-large'),
+                '--lid-model', str(home / 'models/lid.176.ftz'), '--profile', 'installed']
+    runpy.run_path(str(script), run_name='__main__')
+finally:
+    lock.close()
+PYEOF
+    say "Installed model plan verified. Open Anagram Settings for preparation status and optional expanded comparison models."
     ;;
   version) [ -f "$ANAGRAM_HOME/VERSION" ] || die "Installed version is missing"; cat "$ANAGRAM_HOME/VERSION" ;;
   path) printf '%s\n' "$ANAGRAM_HOME/extension" ;;

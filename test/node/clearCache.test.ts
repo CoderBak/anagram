@@ -1,9 +1,7 @@
 // test/node/clearCache.test.ts — "Clear cached verdicts" at the layer that owns the caches.
-// There is no IndexedDB in this environment, which is exactly the memory-only case the
-// cache is built for: the store is emptied by a function of its own (clearStore) that
-// returns quietly when no store opened, so everything below is the memory path.
 import { describe, expect, it, beforeEach } from "vitest";
 import { fakeBrowser } from "wxt/testing";
+import { fakeScoreStore } from "./scoreStore";
 import { createSwCache } from "../../lib/backend/swCache";
 import { NativeScoreError } from "../../lib/backend/nativeScoreClient";
 import { createRouter } from "../../lib/backend/router";
@@ -56,7 +54,7 @@ beforeEach(() => fakeBrowser.reset());
 
 describe("clearing the cached verdicts", () => {
   it("empties the memory layer, pending writes included", async () => {
-    const cache = createSwCache();
+    const cache = createSwCache(fakeScoreStore());
     const key = cache.keyOf("a paragraph the daemon answered for", DIM);
     cache.set("a paragraph the daemon answered for", { id: "x", bucket: 2, probs: [0, 0, 1, 0], score: 0.67 }, DIM);
     expect((await cache.getMany([key])).has(key)).toBe(true);
@@ -69,7 +67,7 @@ describe("clearing the cached verdicts", () => {
 
   it("sends a paragraph to the backend again after a clear", async () => {
     const client = fakeClient();
-    const router = createRouter(client);
+    const router = createRouter(client, createSwCache(fakeScoreStore()));
     await router.handle(req(["one paragraph, scored once"]));
     expect(client.calls.length).toBe(1);
     await router.handle(req(["one paragraph, scored once"]));
@@ -81,7 +79,7 @@ describe("clearing the cached verdicts", () => {
 
   it("lets a request in flight over the clear settle, and caches nothing degraded", async () => {
     const client = fakeClient();
-    const router = createRouter(client);
+    const router = createRouter(client, createSwCache(fakeScoreStore()));
     client.fail(true);
     const inFlight = router.handle(req(["a paragraph nobody can score right now"]));
     await router.clear(); // mid-flight: the request must still answer its caller

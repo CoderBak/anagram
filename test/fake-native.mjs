@@ -154,11 +154,17 @@ async function serveNative(stateFile, logFile) {
     appendFileSync(logFile, JSON.stringify({ ...request, pid: process.pid }) + "\n");
     const component = s.component;
     if (request.op === "health") {
+      if (component.state === "idle") return failed(request, 503, "engine_idle", "Fixture engine unloaded while idle");
       if (component.state !== "ready") return failed(request, 503, "not_ready", "Fixture engine not ready");
       return ok(request, { ok: true, contract: s.contract, model: s.model, n_buckets: 4, buckets: BUCKETS,
         languages: ["en"], lid: "fake-script-heuristic", max_tokens: 512, device: "fake", dtype: "none", app_version: s.appVersion });
     }
     if (request.op === "score") {
+      if (component.state === "idle") {
+        component.state = "ready";
+        if (component.runtime) Object.assign(component.runtime, {state:"ready",active_id:component.runtime.selected_id});
+        atomicWrite(stateFile, s);
+      }
       if (component.state !== "ready") return failed(request, 503, "not_ready", "Fixture engine not ready");
       const blocks = request.payload?.blocks ?? [];
       let delay = s.latency[0] + Math.random() * (s.latency[1] - s.latency[0]);
@@ -191,7 +197,15 @@ async function serveNative(stateFile, logFile) {
     if (request.op === "engine.stop") component.state = "stopped";
     else if (request.op === "engine.resume") component.state = component.runtime?.state ?? "needs_models";
     else if (request.op === "models.pause") { component.state = "paused"; component.download.status = "paused"; }
-    else if (request.op === "models.download") { component.state = "downloading"; component.download.status = "running"; }
+    else if (request.op === "models.download") {
+      component.state = "downloading"; component.download.status = "running";
+      if (request.payload.profile) {
+        // Real discovery is controlled by the suite; explicit profiles start without a known size.
+        delete component.download.plan;
+        Object.assign(component.download, {phase:"detecting",bytes_received:0,total_bytes:0,file:null,error:null});
+        s.modelProfile = request.payload.profile;
+      }
+    }
     else if (request.op === "component.update") component.operation = { name: "update", status: "completed", receipt: "fixture-update" };
     else if (request.op !== "status") return failed(request, 400, "unsupported", "Unsupported fixture operation");
     if (request.op !== "status") atomicWrite(stateFile, s); return ok(request, component);

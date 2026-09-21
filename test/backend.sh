@@ -8,4 +8,5 @@ else PY="python3"; fi
 # Do not write bytecode into the application tree.
 PYTHONDONTWRITEBYTECODE=1 "$PY" "$ROOT/test/engine.py" "$@"
 PYTHONDONTWRITEBYTECODE=1 "$PY" "$ROOT/test/runtime.py" "$@"
+PYTHONDONTWRITEBYTECODE=1 "$PY" "$ROOT/test/model_plan.py" "$@"
 PYTHONDONTWRITEBYTECODE=1 exec "$PY" "$ROOT/test/native_host.py" "$@"

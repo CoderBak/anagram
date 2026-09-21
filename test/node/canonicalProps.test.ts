@@ -7,11 +7,11 @@
 // invisibles, NBSP, LaTeX residue, curly quotes, digit ranges, newlines — instead of the
 // handful of examples a fixture can carry. A failure names the seed to reproduce it.
 import { describe, expect, it } from "vitest";
+import fc from "fast-check";
 import { canonicalForScoring, normalizeText } from "../../lib/dom/text";
 import {
   makeText,
   rng,
-  seeds,
   withCurlyQuotes,
   withNbsp,
   withSoftHyphens,
@@ -23,13 +23,9 @@ import {
 const INVISIBLE_RE = /[​-‏­﻿‪-‮⁠-⁤⁦-⁩]/;
 
 function forSeeds(count: number, check: (r: Rng, seed: number) => void): void {
-  for (const seed of seeds(count)) {
-    try {
-      check(rng(seed), seed);
-    } catch (e) {
-      throw new Error(`seed ${seed}: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
+  fc.assert(fc.property(fc.integer({ min: 0, max: 0xffffffff }), (seed) => {
+    check(rng(seed), seed);
+  }), { numRuns: count, seed: 0xA6A6 });
 }
 
 /** The shapes the canonical form has to survive, drawn one per case. */
@@ -51,6 +47,19 @@ describe("canonicalForScoring", () => {
       const once = canonicalForScoring(text);
       expect(canonicalForScoring(once)).toBe(once);
     });
+    fc.assert(fc.property(fc.array(fc.constantFrom("1", "2", "3", "–", "‑", "\\", "%", "&", "$", "'", "`",
+      "\u200b", "A", "\u0301", "\u1100", "\u1161", " ", "\n", "\\alpha", "𠮷"), { maxLength: 100 }), (parts) => {
+      const once = canonicalForScoring(parts.join(""));
+      expect(canonicalForScoring(once)).toBe(once);
+    }), { numRuns: 1000, seed: 0xCACE });
+  });
+
+  it("normalizes every adjacent numeric range and every escaped punctuation run once", () => {
+    expect(canonicalForScoring("1–2–3‑4‐5")).toBe("1-2-3-4-5");
+    for (let count = 1; count <= 8; count++) {
+      for (const punctuation of "%&_#$") expect(canonicalForScoring("\\".repeat(count) + punctuation)).toBe(punctuation);
+    }
+    expect(canonicalForScoring("A\u200b\u0301")).toBe("Á");
   });
 
   it("never grows beyond what NFKC alone expands it to", () => {

@@ -8,8 +8,9 @@
 // reach the persistent layer at all, not how it keeps them.
 import { describe, expect, it, beforeEach } from "vitest";
 import { fakeBrowser } from "wxt/testing";
-import { createSwCache, type ScoreStore, type Stored } from "../../lib/backend/swCache";
+import { createSwCache } from "../../lib/backend/swCache";
 import { createRouter } from "../../lib/backend/router";
+import { fakeScoreStore as fakeStore } from "./scoreStore";
 import type {
   ModelInfo,
   ScoreBatchRequest,
@@ -24,43 +25,6 @@ const MODEL: ModelInfo = { id: "model-a", ver: "1", calibration: "none" };
 const flushed = (): Promise<void> => new Promise((r) => setTimeout(r, 400));
 
 /** The persistent layer as a plain map, so a test can see exactly what was written. */
-function fakeStore() {
-  const rows = new Map<string, Stored>();
-  const store: ScoreStore & { rows: Map<string, Stored>; cutoffs: number[] } = {
-    rows,
-    cutoffs: [],
-    async get(keys) {
-      return keys.map((k) => rows.get(k));
-    },
-    async put(batch) {
-      for (const row of batch) rows.set(row.key, row);
-    },
-    async clear() {
-      rows.clear();
-    },
-    async count() {
-      return rows.size;
-    },
-    async dropOlderThan(cutoff) {
-      store.cutoffs.push(cutoff);
-      let dropped = 0;
-      for (const [k, row] of rows) {
-        if (row.t < cutoff) {
-          rows.delete(k);
-          dropped++;
-        }
-      }
-      return dropped;
-    },
-    async dropOldest(max, keep) {
-      if (rows.size <= max) return 0;
-      const oldest = [...rows.values()].sort((a, b) => a.t - b.t).slice(0, rows.size - keep);
-      for (const row of oldest) rows.delete(row.key);
-      return oldest.length;
-    },
-  };
-  return store;
-}
 
 function req(texts: string[]): ScoreBatchRequest {
   return {
@@ -180,4 +144,17 @@ describe("a private tab leaves nothing on the disk", () => {
     await flushed();
     expect(store.rows.size).toBe(1); // the ordinary tab's row, as it would have been
   });
+});
+
+it("does not persist private work after its only public subscriber cancels", async () => {
+  const store = fakeStore(), client = fakeClient(), router = createRouter(client, createSwCache(store));
+  client.hold();
+  const secret = router.handle(req(["shared until navigation"]), { private: true, documentKey: "private" });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  const controller = new AbortController();
+  const publicWork = router.handle(req(["shared until navigation"]), { documentKey: "public", signal: controller.signal });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  controller.abort(); expect((await publicWork).results[0].degraded).toBe(true);
+  client.release(); expect((await secret).results[0].degraded).toBeUndefined();
+  await flushed(); expect(store.rows.size).toBe(0); expect(client.calls).toHaveLength(1);
 });

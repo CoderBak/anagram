@@ -319,18 +319,13 @@ checks.push(
 );
 
 // ---- E) the PDF reader: a thirty-page two-column paper --------------------------------
-// The reader shows the real pages, so what it costs is a different shape from a web page's.
-// Four things are bounded. TIME TO FIRST PAGE: the reader is a blank tab until pdf.js has
-// drawn something, so this is what a reader experiences as "it opened". TIME TO ALL TEXT
-// LAYERS: every page's text is built up front and left in the DOM, because that is what
-// makes the units, the panel and browser find work over the whole document — the budget
-// says it is affordable. LONG TASKS while that happens, because building it is our work
-// and must not freeze the page under the reader. And CANVASES after scrolling to the end
-// and back, which is the only thing that grows without a bound if the pixels are not let
-// go: sixty A4 bitmaps at 2× are a third of a gigabyte.
+// Measure first rendered page/text, initial visible-page analysis, and retained canvases.
+// Whole-document extraction is no longer performed at open; these numbers must not be
+// interpreted as the time or coverage for analyzing all thirty pages.
 const PDF_PAGES = 30;
-/** Pages within the render margin, plus the two a scroll can leave half-drawn behind it. */
-const MAX_LIVE_CANVASES = 8;
+// PDF.js 5.7.284 keeps max(10, 2 * visiblePages + 1) page views. At this fixed viewport
+// fewer than five pages are visible, so its ten-view cache is the relevant bound.
+const MAX_LIVE_CANVASES = 10;
 {
   const { servePdfs, buildTwoColumnPdf, handOverPdf } = await import("./pdf-fixture.mjs");
   const fixtureE = await createNativeFixture();
@@ -343,22 +338,22 @@ const MAX_LIVE_CANVASES = 8;
       for (const e of list.getEntries()) window.__longTasks.push(Math.round(e.duration));
     }).observe({ entryTypes: ["longtask"] });
   });
-  // The tab shows the PDF and the ball hands it over — the reading mode is given bytes,
-  // it never fetches an address (lib/pdf/handoff.ts). The clock starts at the click,
-  // which is the moment a reader is waiting from.
+  // Include the authorized source handoff in the time from the user's click.
   await reader.goto(pdfs.url("/paper.pdf"), { waitUntil: "load" }).catch(() => {});
   await reader
     .waitForFunction(() => !!document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".action"), null, { timeout: 30000 })
     .catch(() => {});
   const startedAt = Date.now();
   await handOverPdf(reader, { timeout: 30000 });
-  await reader.waitForFunction(() => [...document.querySelectorAll(".page canvas")].some((c) => c.width > 0), null, { timeout: 30000 });
+  await reader.waitForFunction(() => window.PDFViewerApplication?.pdfViewer.getPageView(0)?.renderingState === 3, null, { timeout: 30000 });
   const firstPageMs = Date.now() - startedAt;
-  await reader.waitForSelector("#pages:not(.reading)", { timeout: 60000 });
-  const allTextMs = Date.now() - startedAt;
+  await reader.waitForSelector("#viewer .textLayer span", { timeout: 30000 });
+  const firstTextMs = Date.now() - startedAt;
+  const initialLayers = await reader.locator("#viewer .textLayer").count();
+  // Wait for one real mapped analysis pass before sampling its cost.
+  await reader.waitForFunction(() => performance.getEntriesByName("anagram-reflow").length > 0);
   const building = await reader.evaluate(() => Math.max(0, ...window.__longTasks));
-  // The two costs that grow with the document: the whole relay, and the reflow, which is
-  // re-run over everything read so far at every batch boundary.
+  // These reflow samples cover only the initially rendered pages, before the sweep.
   const marks = await reader.evaluate(() => {
     const runs = performance.getEntriesByName("anagram-reflow").map((e) => e.duration);
     return {
@@ -392,18 +387,16 @@ const MAX_LIVE_CANVASES = 8;
 
   checks.push(
     [`PDF reader: first page drawn < 6000ms (${PDF_PAGES} pages)`, firstPageMs < 6000, `${firstPageMs}ms`],
-    ["PDF reader: every page's text layer present < 30000ms", allTextMs < 30000, `${allTextMs}ms, ${held.spans} spans over ${held.pages} pages`],
-    ["PDF reader: worst long task while the text layers are built < 1000ms", building < 1000, `${building}ms`],
+    ["PDF reader: first visible text layer present < 6000ms", firstTextMs < 6000, `${firstTextMs}ms`],
+    ["PDF reader: opening does not build text layers for the entire document", initialLayers > 0 && initialLayers < PDF_PAGES, `${initialLayers} of ${PDF_PAGES} pages initially materialized`],
+    ["PDF reader: worst long task during initial visible-page rendering < 1000ms", building < 1000, `${building}ms`],
     [
       `PDF reader: canvases bounded after scrolling to the end and back (<= ${MAX_LIVE_CANVASES})`,
       held.live > 0 && held.live <= MAX_LIVE_CANVASES,
       `${held.live} of ${held.pages} pages still hold a bitmap`,
     ],
-    // MEASURED on 300 pages, which is the reader's own cap: 647 ms in total and 83 ms for
-    // the worst single run. Thirty pages is a tenth of that and the budget is generous,
-    // so what this catches is the reflow becoming quadratic in something new.
-    ["PDF reader: the whole reflow < 400ms", marks.reflowMs < 400, `${marks.reflowMs}ms total, worst run ${marks.worstReflowMs}ms`],
-    ["PDF reader: no single reflow is a frozen second < 200ms", marks.worstReflowMs < 200, `${marks.worstReflowMs}ms`],
+    ["PDF reader: initial rendered-page reflow < 400ms", marks.reflowMs < 400, `${marks.reflowMs}ms total, worst run ${marks.worstReflowMs}ms`],
+    ["PDF reader: each initial rendered-page reflow < 200ms", marks.worstReflowMs < 200, `${marks.worstReflowMs}ms`],
     ["PDF reader: the bytes cross the last hop < 500ms", marks.handoffMs < 500, `${marks.handoffMs}ms`],
   );
 }

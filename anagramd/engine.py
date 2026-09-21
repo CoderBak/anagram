@@ -29,6 +29,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from scoring import score_texts
+from safe_files import atomic_json, read_json
 
 CONTRACT_VERSION = "2.1"
 CONTRACT_MAJOR = CONTRACT_VERSION.split(".")[0]
@@ -173,7 +174,7 @@ def weights_digest(model_dir: Path) -> tuple[str, str] | None:
     st = weights.stat()
     memo = model_dir / ".anagram-weights-sha256.json"
     try:
-        cached = json.loads(memo.read_text())
+        cached = read_json(memo, max_bytes=16384)
         if (
             cached.get("file") == weights.name
             and cached.get("size") == st.st_size
@@ -188,17 +189,13 @@ def weights_digest(model_dir: Path) -> tuple[str, str] | None:
             h.update(chunk)
     digest = h.hexdigest()
     try:
-        memo.write_text(
-            json.dumps(
-                {
-                    "file": weights.name,
-                    "size": st.st_size,
-                    "mtime": st.st_mtime,
-                    "sha256": digest,
-                }
-            )
-        )
-    except OSError:
+        atomic_json(memo, {
+            "file": weights.name,
+            "size": st.st_size,
+            "mtime": st.st_mtime,
+            "sha256": digest,
+        })
+    except (OSError, ValueError):
         pass
     return (weights.name, digest)
 
@@ -279,6 +276,7 @@ class EditLens:
         lid: LanguageId,
         *,
         warmup: bool = True,
+        compute_version: bool = True,
     ):
         import emoji
         import torch
@@ -304,7 +302,7 @@ class EditLens:
             )
         self.dtype = torch.float16 if dtype == "fp16" else torch.float32
         self.dtype_name = str(self.dtype).replace("torch.", "")
-        self.version = pipeline_version(model_dir, max_length, self.dtype_name, lid)
+        self.version = pipeline_version(model_dir, max_length, self.dtype_name, lid) if compute_version else None
         t0 = time.time()
         self.tok = AutoTokenizer.from_pretrained(
             str(model_dir), local_files_only=True, trust_remote_code=False

@@ -1,0 +1,99 @@
+{
+  "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+  "python": "3.13.0 | packaged by Anaconda, Inc. | (main, Oct  7 2024, 16:25:56) [Clang 14.0.6 ]",
+  "method": "One fresh process per stage; process RSS sampled every 20 ms. No filesystem-cache flush. Conversion checks are engineering parity, not accuracy evaluation.",
+  "stages": [
+    {
+      "stage": "export",
+      "seconds": 7.533,
+      "peak_sampled_rss_bytes": 4814684160,
+      "exit_code": 0
+    },
+    {
+      "stage": "fp16",
+      "seconds": 6.875,
+      "peak_sampled_rss_bytes": 4267098112,
+      "exit_code": 0
+    },
+    {
+      "stage": "int8",
+      "seconds": 8.429,
+      "peak_sampled_rss_bytes": 4818042880,
+      "exit_code": 0
+    },
+    {
+      "stage": "verify-fp32",
+      "seconds": 4.259,
+      "peak_sampled_rss_bytes": 2286338048,
+      "exit_code": 0
+    },
+    {
+      "stage": "verify-fp16",
+      "seconds": 6.719,
+      "peak_sampled_rss_bytes": 1371652096,
+      "exit_code": 0
+    },
+    {
+      "stage": "verify-int8",
+      "seconds": 2.849,
+      "peak_sampled_rss_bytes": 1125859328,
+      "exit_code": 1
+    }
+  ],
+  "generated_bytes": 2647510105,
+  "hardware": {
+    "chip": "Apple M4",
+    "ram_bytes": 25769803776,
+    "cpu_cores": 10
+  },
+  "source_revision": "f93e1ace74528cfb48f337ab2fe946fb71a728cb",
+  "modelkit_revision": "f7cb4b06e5067ecdb66c566c7982a413f86f569f",
+  "source_sha256": "869f33df7928c447bbd150d3b5192b4ea90b1cbd2ee4aad97f5d51d59dfc8cfb",
+  "conversion_seconds": 22.837,
+  "validation_seconds": 13.827000000000002,
+  "parity": {
+    "fp32": {
+      "samples": 24,
+      "passed": true,
+      "argmax_disagreements": 0,
+      "max_absolute_probability_difference": 4.016848888621638e-06,
+      "acceptance_probability_tolerance": 0.0001
+    },
+    "fp16": {
+      "samples": 24,
+      "passed": true,
+      "argmax_disagreements": 0,
+      "max_absolute_probability_difference": 0.002673388096724183,
+      "acceptance_probability_tolerance": 0.01
+    },
+    "int8": {
+      "samples": 24,
+      "passed": false,
+      "argmax_disagreements": 1,
+      "max_absolute_probability_difference": 0.121022168586576,
+      "acceptance_probability_tolerance": 0.05
+    }
+  },
+  "artifacts": [
+    {
+      "path": "onnx/model.onnx",
+      "size_bytes": 1421900913,
+      "sha256": "ddd1173f2ef517ad499965e5029fae8099a8054a2bc76d8134e5889cc4ed1b3e",
+      "identical_to_published": true
+    },
+    {
+      "path": "onnx/model_fp16.onnx",
+      "size_bytes": 711340748,
+      "sha256": "a0da0f46c5026489c37137b5f455e092e09ac48eafd031bec6f05433c5c2ec01",
+      "identical_to_published": true
+    },
+    {
+      "path": "onnx/model_int8.onnx",
+      "size_bytes": 514268444,
+      "sha256": "bc1b9cb5a7a63fb7c5b67de3556e9e43cb4537bd6ce6bae3e6ad7cfce9552d23",
+      "identical_to_published": true
+    }
+  ],
+  "generated_models_retained": false,
+  "limitations": "One conversion per stage; OS file cache was warm. Existing converter and synthetic parity fixtures, no quality/calibration claims. INT8 failure is the previously documented published-artifact outcome. Does not establish installation cost on other machines."
+}

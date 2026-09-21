@@ -17,11 +17,12 @@ import threading
 import time
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 DAEMON = Path(__file__).resolve().parents[1] / "anagramd"
 sys.path.insert(0, str(DAEMON))
 import native_host as host
-from native_component import ComponentError, HOST_NAME, NativeComponent
+from native_component import ComponentError, HOST_NAME, HomeLock, NativeComponent, STATE_DEFAULT
 from download_modelkit import DownloadPaused, download_asset, install_streaming, invalid_files
 from runtime_controller import Candidate, RuntimeController
 
@@ -148,14 +149,19 @@ class FramingTests(unittest.TestCase):
 
     def test_host_contains_relative_dependency_files_in_owned_home(self):
         code = """
-import sys
+import sys, os, tempfile
 from pathlib import Path
 sys.path.insert(0, sys.argv[1])
 import native_host, native_component
 class Component:
     def __init__(self, home): self.home = Path(home).resolve()
     def start(self): Path('dependency-session').write_text('fixture')
-    def handle(self, op, payload): return 200, {'cwd': str(Path.cwd())}
+    def handle(self, op, payload):
+        return 200, {'cwd': str(Path.cwd()), 'tmp': tempfile.gettempdir(),
+                     'home': os.environ.get('HOME'), 'token': os.environ.get('HF_TOKEN'),
+                     'cache': {name: os.environ.get(name) for name in
+                               ('HF_HOME','HF_HUB_CACHE','HF_TOKEN_PATH','TORCH_HOME','XDG_CACHE_HOME','TMPDIR')},
+                     'offline': os.environ.get('HF_HUB_OFFLINE')}
     def close(self): pass
 native_component.NativeComponent = Component
 sys.argv = ['native_host.py', '--home', sys.argv[2]]
@@ -166,10 +172,28 @@ native_host.main()
             launch.mkdir()
             home.mkdir()
             result = subprocess.run([sys.executable, "-I", "-c", code, str(DAEMON), str(home)],
-                                    input=frame(request()), capture_output=True, cwd=launch, check=True)
-            self.assertEqual(replies(result.stdout)[0]["data"]["cwd"], str(home.resolve()))
+                                    input=frame(request()), capture_output=True, cwd=launch, check=True,
+                                    env={**os.environ, "HF_HOME": str(launch), "TORCH_HOME": str(launch),
+                                         "TMPDIR": str(launch), "HF_TOKEN": "fixture-secret", "HF_HUB_OFFLINE": "0"})
+            data = replies(result.stdout)[0]["data"]
+            self.assertEqual(data["cwd"], str(home.resolve()))
+            self.assertEqual(data["tmp"], str(home.resolve() / "cache/tmp"))
+            self.assertEqual(data["home"], os.environ.get("HOME"))
+            self.assertIsNone(data["token"])
+            self.assertEqual(data["offline"], "1")
+            self.assertTrue(all(Path(value).is_relative_to(home.resolve()) for value in data["cache"].values()))
             self.assertTrue((home / "dependency-session").is_file())
             self.assertEqual(list(launch.iterdir()), [])
+
+    def test_host_cache_links_are_rejected_before_environment_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home, outside = Path(directory) / "owned", Path(directory) / "outside"
+            home.mkdir()
+            outside.mkdir()
+            (home / "cache").symlink_to(outside, target_is_directory=True)
+            with patch.dict(os.environ, {}), self.assertRaisesRegex(ValueError, "owned directory"):
+                host.configure_environment(home)
+            self.assertEqual(list(outside.iterdir()), [])
 
     def test_browser_launch_arguments_are_metadata_only(self):
         chrome = host.parse_args(["--home", "/tmp/owned", "chrome-extension://example/", "--parent-window=123"])
@@ -225,10 +249,15 @@ class LifecycleTests(unittest.TestCase):
                                  lambda _: FixtureEngine(), max_runs=1, memory=lambda: 100)
 
     def make(self, **kwargs):
+        def plan(profile):
+            return {"profile": profile, "devices": ["Fixture CPU"],
+                    "candidate_ids": ["torch:cpu:fp32"],
+                    "selected_paths": ["fixture"], "total_bytes": 8}
         component = NativeComponent(self.home, pin=self.pin,
                                     downloader=kwargs.pop("downloader", self.download),
-                                    verifier=lambda: (self.home / "models/fixture").is_file(),
-                                    controller_factory=self.factory, **kwargs)
+                                    verifier=kwargs.pop("verifier", lambda: (self.home / "models/fixture").is_file()),
+                                    controller_factory=self.factory,
+                                    planner=kwargs.pop("planner", plan), **kwargs)
         self.components.append(component)
         return component
 
@@ -264,12 +293,127 @@ class LifecycleTests(unittest.TestCase):
         component.close()
         self.make().close()
 
+    @unittest.skipUnless(os.name == "posix", "POSIX inherited flock")
+    def test_maintenance_child_retains_lock_after_owner_closes_its_descriptor(self):
+        lock = HomeLock(self.home)
+        fd = lock.maintenance_fd()
+        child = subprocess.Popen([sys.executable, "-I", "-c",
+                                  "import sys; print('ready',flush=True); sys.stdin.read(1)"],
+                                 pass_fds=(fd,), stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        try:
+            self.assertEqual(child.stdout.readline(), b"ready\n")
+            lock.close()
+            with self.assertRaises(ComponentError) as error:
+                HomeLock(self.home)
+            self.assertEqual(error.exception.code, "busy")
+            child.communicate(b"x", timeout=3)
+            replacement = HomeLock(self.home)
+            replacement.close()
+        finally:
+            lock.close()
+            if child.poll() is None:
+                child.kill()
+            child.wait()
+            child.stdin.close()
+            child.stdout.close()
+
+    @unittest.skipUnless(os.name == "posix", "POSIX helper process groups")
+    def test_helper_timeout_stops_installer_descendants_before_lock_is_released(self):
+        lock = HomeLock(self.home)
+        fd = lock.maintenance_fd()
+        marker = self.home / "descendant-ready"
+        child_code = "import pathlib,signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); pathlib.Path(%r).touch(); time.sleep(60)" % str(marker)
+        helper_code = ("import subprocess,sys,time,pathlib; subprocess.Popen([sys.executable,'-I','-c',%r],pass_fds=(%d,)); "
+                       "\nwhile not pathlib.Path(%r).exists(): time.sleep(.005)\nprint('ready',flush=True)\ntime.sleep(60)"
+                       % (child_code, fd, str(marker)))
+        helper = subprocess.Popen([sys.executable, "-I", "-c", helper_code], pass_fds=(fd,),
+                                  start_new_session=True, stdout=subprocess.PIPE)
+        try:
+            self.assertEqual(helper.stdout.readline(), b"ready\n")
+            NativeComponent._terminate_helper(helper)
+            self.assertIsNotNone(helper.poll())
+            lock.close()
+            deadline = time.monotonic() + 2
+            while True:
+                try:
+                    replacement = HomeLock(self.home)
+                    replacement.close()
+                    break
+                except ComponentError:
+                    if time.monotonic() > deadline:
+                        self.fail("installer descendant still holds the inherited lock")
+                    time.sleep(.01)
+        finally:
+            lock.close()
+            if helper.poll() is None:
+                NativeComponent._terminate_helper(helper)
+
+    def test_installer_gate_prevents_native_start_and_releases_acquired_lock(self):
+        installing = self.home / ".installer-lock"
+        for kind in ("directory", "dangling_symlink"):
+            if kind == "directory":
+                installing.mkdir()
+            else:
+                installing.symlink_to(self.home / "absent")
+            with self.assertRaises(ComponentError) as caught:
+                HomeLock(self.home)
+            self.assertEqual(caught.exception.code, "busy")
+            installing.rmdir() if kind == "directory" else installing.unlink()
+        # Installer can begin between the first check and flock acquisition.
+        original = Path.exists
+        seen = 0
+        def exists(path):
+            nonlocal seen
+            if path == installing:
+                seen += 1
+                if seen == 2:
+                    installing.mkdir()
+            return original(path)
+        with patch.object(Path, "exists", exists), self.assertRaises(ComponentError) as caught:
+            HomeLock(self.home)
+        self.assertEqual(caught.exception.code, "busy")
+        installing.rmdir()
+        replacement = HomeLock(self.home)
+        replacement.close()
+
+    def test_settings_replace_links_without_touching_their_targets(self):
+        component = self.make()
+        outside = Path(self.temp.name) / "outside-state"
+        temp = component.state_path.with_suffix(".json.tmp")
+        for kind in ("symlink", "hardlink"):
+            outside.write_text("keep")
+            if kind == "symlink":
+                temp.symlink_to(outside)
+            else:
+                os.link(outside, temp)
+            component._save_settings()
+            self.assertEqual(outside.read_text(), "keep")
+            temp.unlink()
+        component.state_path.unlink()
+        os.link(outside, component.state_path)
+        component._save_settings()
+        self.assertEqual(outside.read_text(), "keep")
+        component.state_path.unlink()
+        component.state_path.symlink_to(outside)
+        with self.assertRaises(ComponentError):
+            component._read_settings()
+        with self.assertRaises(ComponentError):
+            component._save_settings()
+        self.assertEqual(outside.read_text(), "keep")
+
+    def test_home_is_revalidated_after_lock_acquisition(self):
+        with patch("native_component.validate_home", side_effect=ComponentError("not_installed", "removed")):
+            with self.assertRaises(ComponentError):
+                HomeLock(self.home)
+        replacement = HomeLock(self.home)
+        replacement.close()
+
     @unittest.skipIf(os.name == "nt", "POSIX maintenance command")
     def test_terminal_maintenance_respects_native_lock_and_confirmation(self):
         (self.home / ".anagram-home").write_text("owned")
         app = self.home / "app"
         app.mkdir()
-        for name in ("native_component.py", "runtime_controller.py", "download_modelkit.py", "modelkit.json"):
+        for name in ("native_component.py", "runtime_controller.py", "download_modelkit.py", "model_plan.py", "safe_files.py", "modelkit.json"):
             shutil.copyfile(DAEMON / name, app / name)
         (app / "native_registration.py").write_text(
             "import pathlib,sys\npathlib.Path(sys.argv[-1], 'helper-called').write_text(sys.argv[1])\n")
@@ -357,6 +501,287 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(restarted.status()["state"], "ready")
         self.assertEqual(self.downloads, 1)
 
+    def test_idle_settings_persist_and_only_score_wakes_unloaded_engine(self):
+        component = self.make()
+        self.first_run(component)
+        self.assertEqual(component.status()["settings"], {"idle_unload_s": 300})
+        for value in (True, -1, 1, 59, 86401, 60.5, "300"):
+            with self.subTest(value=value), self.assertRaises(ComponentError):
+                component.handle("engine.settings", {"idle_unload_s": value})
+        component.handle("engine.settings", {"idle_unload_s": 60})
+        component.handle("runtime.config", {"id": "torch:cpu:fp32"})
+        self.finish(component)
+        controller = component.controller
+        activity = controller.last_activity
+        component.handle("health", {})
+        component.status()
+        self.assertEqual(controller.last_activity, activity)
+        controller.last_activity -= 61
+        self.assertTrue(controller.unload_if_idle())
+        self.finish(component)
+        self.assertEqual(component.status()["state"], "idle")
+        for _ in range(3):
+            with self.assertRaises(ComponentError) as error:
+                component.handle("health", {})
+            self.assertEqual(error.exception.code, "engine_idle")
+            component.handle("runtime", {})
+            self.assertEqual(component.status()["state"], "idle")
+        score = {"v": "2.1", "blocks": [{"id": "a", "text": "a paragraph"}]}
+        response = host.dispatch(component, request("score", payload=score))
+        self.assertEqual(response["status"], 200)
+        self.finish(component)
+        self.assertEqual(component.status()["state"], "ready")
+        self.assertEqual(component.handle("score", score)[0], 200)
+        component.handle("engine.stop", {})
+        self.finish(component)
+        response = host.dispatch(component, request("score", payload=score))
+        self.assertEqual(response["status"], 503)
+        self.assertIsNone(component.controller)
+        component.close()
+        restarted = self.make()
+        restarted.start()
+        self.finish(restarted)
+        self.assertEqual(restarted.status()["settings"], {"idle_unload_s": 60})
+        self.assertEqual(restarted.status()["state"], "stopped")
+
+    def test_idle_score_wait_does_not_block_status_and_stop_rejects_it(self):
+        component = self.make()
+        self.first_run(component)
+        component.handle("runtime.config", {"id": "torch:cpu:fp32"})
+        self.finish(component)
+        controller = component.controller
+        controller.last_activity -= 301
+        controller.unload_if_idle()
+        self.finish(component)
+        entered, release = threading.Event(), threading.Event()
+        factory = controller.factory
+        def loading(candidate):
+            entered.set()
+            release.wait(3)
+            return factory(candidate)
+        controller.factory = loading
+        replies = []
+        score = {"v": "2.1", "blocks": [{"id": "a", "text": "a paragraph"}]}
+        thread = threading.Thread(target=lambda: replies.append(host.dispatch(component, request("score", payload=score))))
+        thread.start()
+        self.assertTrue(entered.wait(1))
+        self.assertEqual(component.status()["state"], "loading")
+        self.assertEqual(replies, [])
+        component.handle("engine.stop", {})
+        thread.join(1)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(replies[0]["status"], 503)
+        release.set()
+        self.finish(component)
+        self.assertEqual(component.status()["state"], "stopped")
+
+    def test_legacy_component_settings_receive_default_idle_timeout(self):
+        component = self.make()
+        self.first_run(component)
+        component.close()
+        saved = json.loads((self.home / "component-state.json").read_text())
+        saved.pop("idle_unload_s")
+        (self.home / "component-state.json").write_text(json.dumps(saved))
+        restarted = self.make()
+        self.assertEqual(restarted.settings["idle_unload_s"], 300)
+        self.assertFalse(restarted.settings["engine_stopped"])
+
+    def test_device_planning_precedes_download_and_status_stays_responsive(self):
+        entered, release = threading.Event(), threading.Event()
+        calls = []
+        def plan(profile):
+            calls.append(("plan", profile))
+            entered.set()
+            release.wait(3)
+            return {"profile": profile, "devices": ["Fixture GPU"],
+                    "candidate_ids": ["torch:cpu:fp32"], "selected_paths": ["fixture"],
+                    "total_bytes": 8, "expanded_bytes": 16}
+        def download(cancel, progress):
+            calls.append(("download", component.plan["profile"]))
+            self.download(cancel, progress)
+        component = self.make(planner=plan, downloader=download)
+        component.start()
+        try:
+            self.assertTrue(entered.wait(2))
+            status = component.handle("status", {})[1]
+            self.assertEqual(status["download"]["phase"], "detecting")
+            self.assertEqual(status["download"]["total_bytes"], 0)
+            self.assertEqual(self.downloads, 0)
+        finally:
+            release.set()
+        self.finish(component)
+        self.assertEqual(calls, [("plan", "recommended"), ("download", "recommended")])
+        self.assertEqual(component.status()["download"]["plan"]["files"], ["fixture", "lid.176.ftz"])
+
+    def test_download_profile_is_explicit_validated_and_persists_across_restart(self):
+        component = self.make()
+        self.first_run(component)
+        for payload in ({"profile": "all"}, {"profile": None}, {"profile": True},
+                        {"profile": []}, {"profile": "expanded", "url": "https://example.com"}):
+            with self.subTest(payload=payload), self.assertRaises(ComponentError):
+                component.handle("models.download", payload)
+        component.handle("models.download", {"profile": "expanded"})
+        self.finish(component)
+        self.assertEqual(component.status()["download"]["plan"]["profile"], "expanded")
+        component.close()
+        restarted = self.make()
+        self.first_run(restarted)
+        self.assertEqual(restarted.status()["download"]["plan"]["profile"], "expanded")
+        restarted.handle("models.download", {"profile": "recommended"})
+        self.finish(restarted)
+        self.assertEqual(restarted.status()["download"]["plan"]["profile"], "recommended")
+
+    def test_pause_while_detecting_never_starts_a_download(self):
+        entered, release = threading.Event(), threading.Event()
+        def plan(profile):
+            entered.set()
+            release.wait(3)
+            return {"profile": profile, "devices": [], "selected_paths": ["fixture"], "total_bytes": 8}
+        component = self.make(planner=plan)
+        component.start()
+        try:
+            self.assertTrue(entered.wait(2))
+            component.handle("models.pause", {})
+        finally:
+            release.set()
+        self.finish(component)
+        self.assertEqual(self.downloads, 0)
+        self.assertEqual(component.status()["state"], "paused")
+
+    def test_legacy_profile_migrates_without_downloading_at_construction(self):
+        component = self.make()
+        self.first_run(component)
+        component.close()
+        path = self.home / "component-state.json"
+        saved = json.loads(path.read_text())
+        saved.pop("model_profile")
+        path.write_text(json.dumps(saved))
+        restarted = self.make()
+        self.assertTrue(restarted.legacy_profile)
+        self.assertEqual(restarted.settings["model_profile"], "recommended")
+        self.assertEqual(self.downloads, 1)
+
+    def legacy_int8_preferences(self):
+        saved = {**STATE_DEFAULT, "initialized": True, "download_pending": True}
+        saved.pop("model_profile")
+        path = self.home / "component-state.json"
+        path.write_text(json.dumps(saved))
+        (self.home / "runtime.json").write_text(json.dumps({
+            "schema_version": 1, "selected_id": "onnx:cpu:int8",
+        }))
+        return path
+
+    @staticmethod
+    def migration_plan(_pin, _hardware, profile="recommended"):
+        return {"schema_version": 1, "profile": profile, "devices": ["Fixture CPU"],
+                "candidate_ids": ["torch:cpu:fp32"] + (["onnx:cpu:int8"] if profile == "expanded" else []),
+                "selected_paths": ["fixture"], "total_bytes": 8}
+
+    def test_legacy_int8_pause_during_probe_preserves_migration_across_restart(self):
+        path = self.legacy_int8_preferences()
+        entered, release = threading.Event(), threading.Event()
+        def discover():
+            entered.set()
+            self.assertTrue(release.wait(3))
+            return {"fixture": True}
+        with patch("model_plan.discover_hardware", side_effect=discover) as probe, \
+                patch("model_plan.build_plan", side_effect=self.migration_plan):
+            component = self.make(planner=None)  # exercise the real migration coordinator
+            component.start()
+            try:
+                self.assertTrue(entered.wait(2))
+                component.handle("models.pause", {})
+                paused = json.loads(path.read_text())
+                self.assertTrue(paused["download_paused"])
+                self.assertNotIn("model_profile", paused)
+            finally:
+                release.set()
+            self.finish(component)
+            self.assertEqual(component.status()["state"], "paused")
+            self.assertTrue(component.legacy_profile)
+            self.assertIsNone(component.plan)
+            self.assertEqual(self.downloads, 0)
+            component.close()
+
+            restarted = self.make(planner=None)
+            self.assertTrue(restarted.legacy_profile)
+            restarted.start()
+            self.finish(restarted)
+            self.assertEqual(restarted.status()["state"], "paused")
+            self.assertEqual(probe.call_count, 1)  # no discovery or download before explicit resume
+            restarted.handle("models.download", {})
+            self.finish(restarted)
+            self.assertEqual(probe.call_count, 2)
+            self.assertEqual(self.downloads, 1)
+            self.assertFalse(restarted.legacy_profile)
+            self.assertEqual(restarted.plan["profile"], "expanded")
+            self.assertIn("onnx:cpu:int8", restarted.plan["candidate_ids"])
+            self.assertEqual(restarted.status()["download"]["plan"]["profile"], "expanded")
+            self.assertEqual(json.loads(path.read_text())["model_profile"], "expanded")
+
+    def test_legacy_plan_save_failure_rolls_back_and_can_retry_migration(self):
+        path = self.legacy_int8_preferences()
+        original = path.read_bytes()
+        with patch("model_plan.discover_hardware", return_value={"fixture": True}), \
+                patch("model_plan.build_plan", side_effect=self.migration_plan):
+            component = self.make(planner=None)
+            with patch.object(component, "_save_settings", side_effect=OSError("disk full")):
+                with self.assertRaisesRegex(OSError, "disk full"):
+                    component._ensure_plan()
+            self.assertTrue(component.legacy_profile)
+            self.assertEqual(component.settings["model_profile"], "recommended")
+            self.assertIsNone(component.plan)
+            self.assertNotIn("plan", component.download)
+            self.assertEqual(path.read_bytes(), original)
+            self.assertEqual(self.downloads, 0)
+            component._ensure_plan()
+            self.assertFalse(component.legacy_profile)
+            self.assertEqual(component.plan["profile"], "expanded")
+            self.assertEqual(json.loads(path.read_text())["model_profile"], "expanded")
+            self.assertEqual(self.downloads, 0)
+
+    def test_selected_download_verification_expansion_and_restart_use_the_same_plan(self):
+        from urllib.parse import unquote
+        contents = {"model.safetensors": b"source", "onnx/model.onnx": b"fp32",
+                    "onnx/model_int8.onnx": b"int8", "config.json": b"config", "LICENSE": b"license"}
+        entries = [{"path": name, "size_bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+                   for name, data in contents.items()]
+        self.pin = {"schema_version": 1, "repository": "fixture/model", "revision": "a" * 40, "files": entries}
+        lid = {"path": "lid.176.ftz", "size_bytes": 3, "sha256": hashlib.sha256(b"lid").hexdigest()}
+        def planner(profile):
+            selected = entries if profile == "expanded" else [e for e in entries if not e["path"].startswith("onnx/")]
+            return {"profile": profile, "devices": ["CPU", "MPS"],
+                    "candidate_ids": ["torch:cpu:fp32"], "selected_paths": [e["path"] for e in selected],
+                    "total_bytes": sum(e["size_bytes"] for e in selected)}
+        requests = []
+        def open_fixture(request, timeout):
+            name = unquote(request.full_url.split(self.pin["revision"] + "/", 1)[-1])
+            data = b"lid" if request.full_url.endswith("/lid.176.ftz") else contents[name]
+            requests.append("lid.176.ftz" if data == b"lid" else name)
+            result = io.BytesIO(data)
+            result.status, result.headers = 200, {}
+            return result
+        with patch("native_component.LID_ENTRY", lid), patch("download_modelkit._https_open", open_fixture):
+            component = self.make(downloader=None, verifier=None, planner=planner)
+            self.first_run(component)
+            self.assertEqual(set(requests), {"model.safetensors", "config.json", "LICENSE", "lid.176.ftz"})
+            self.assertFalse((component.model_dir / "onnx").exists())
+            self.assertEqual(component.status()["download"]["total_bytes"], 22)
+            component.close()
+            requests.clear()
+            restarted = self.make(downloader=None, verifier=None, planner=planner)
+            self.first_run(restarted)
+            self.assertEqual(requests, [])
+            restarted.handle("models.download", {"profile": "expanded"})
+            self.finish(restarted)
+            self.assertEqual(set(requests), {"onnx/model.onnx", "onnx/model_int8.onnx"})
+            requests.clear()
+            restarted.handle("models.download", {"profile": "recommended"})
+            self.finish(restarted)
+            self.assertEqual(requests, [])
+            self.assertTrue((restarted.model_dir / "onnx/model_int8.onnx").is_file())
+            self.assertEqual(restarted.status()["download"]["plan"]["profile"], "recommended")
+
     def test_delete_requires_confirmation_and_never_redownloads_on_reopen(self):
         component = self.make()
         self.first_run(component)
@@ -405,6 +830,28 @@ class LifecycleTests(unittest.TestCase):
         self.finish(component)
         self.assertEqual(component.status()["state"], "error")
         self.assertEqual((outside / "value").read_text(), "safe")
+
+    def test_models_root_link_cannot_redirect_deletion(self):
+        component = self.make()
+        self.first_run(component)
+        outside = Path(self.temp.name) / "outside-models"
+        (self.home / "models").rename(outside)
+        (self.home / "models").symlink_to(outside, target_is_directory=True)
+        component.handle("models.delete", {"confirm": True})
+        self.finish(component)
+        self.assertEqual(component.status()["state"], "error")
+        self.assertEqual((outside / "fixture").read_bytes(), b"fixture!")
+
+    def test_deleting_owned_hardlink_preserves_external_file(self):
+        component = self.make()
+        self.first_run(component)
+        outside = Path(self.temp.name) / "outside-keep"
+        outside.write_bytes(b"keep")
+        os.link(outside, self.home / "models/linked-file")
+        component.handle("models.delete", {"confirm": True})
+        self.finish(component)
+        self.assertEqual(component.status()["state"], "needs_models")
+        self.assertEqual(outside.read_bytes(), b"keep")
 
     def test_maintenance_only_completes_after_helper_success(self):
         entered, release = threading.Event(), threading.Event()
@@ -506,7 +953,7 @@ class DownloadTests(unittest.TestCase):
         self.assertFalse((self.root / "weights.part").exists())
 
     def test_streaming_install_commits_only_verified_files_and_reuses(self):
-        pin = {"repository": "fixture/model", "revision": "a" * 40, "files": [self.entry]}
+        pin = {"schema_version": 1, "repository": "fixture/model", "revision": "a" * 40, "files": [self.entry]}
         target = self.root / "model"
         progress = []
         install_streaming(target, pin, opener=self.opener, progress=lambda *x: progress.append(x))

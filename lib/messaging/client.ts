@@ -1,3 +1,4 @@
+import { documentSessionId, sendDocumentMessage } from "../access/session";
 // lib/messaging/client.ts — content→SW client.
 import { browser } from "#imports";
 import type { ModelInfo, ScoreBatchRequest, ScoreResult } from "../contract";
@@ -18,15 +19,10 @@ export function contextAlive(): boolean {
   }
 }
 
-let _lastModel: ModelInfo | null = null;
-
-/** Backend that answered the most recent batch in this frame (null before the first). */
-export function lastModel(): ModelInfo | null {
-  return _lastModel;
-}
-
 export interface ScoreReply {
   results: ScoreResult[];
+  /** Snapshot belonging to these results, never another concurrent request's model. */
+  model?: ModelInfo;
   /** "down": the daemon is not answering; "unreachable": the worker itself did not answer. */
   backend: "up" | "down" | "unreachable";
 }
@@ -41,15 +37,20 @@ export interface ScoreReply {
  */
 export async function requestScores(req: ScoreBatchRequest): Promise<ScoreReply> {
   const message: ScoreBatchMessage = { action: ACTIONS.SCORE_BATCH, req };
+  const session = documentSessionId();
   for (let attempt = 0; ; attempt++) {
+    if (session !== documentSessionId()) return { results: [], backend: "unreachable" };
     try {
-      const reply = (await browser.runtime.sendMessage(message)) as
+      const reply = (await sendDocumentMessage(message)) as
         | ScoreBatchReply
         | undefined;
-      if (reply?.model && reply.backend === "up") _lastModel = reply.model;
-      return { results: reply?.results ?? [], backend: reply?.backend ?? "unreachable" };
+      const model = reply?.model && reply.backend === "up" ? { ...reply.model } : undefined;
+      // A real verdict without its producer cannot be safely cached or combined.
+      if (!model && reply?.results?.some((result) => !result.degraded))
+        return { results: [], backend: "unreachable" };
+      return { results: reply?.results ?? [], backend: reply?.backend ?? "unreachable", ...(model ? {model} : {}) };
     } catch {
-      if (attempt >= 1) return { results: [], backend: "unreachable" };
+      if (attempt >= 1 || session !== documentSessionId()) return { results: [], backend: "unreachable" };
       await new Promise((r) => setTimeout(r, 300));
     }
   }

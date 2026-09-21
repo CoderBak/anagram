@@ -1,5 +1,9 @@
 // Storage-backed reading preferences and per-site rules.
 import { browser, storage } from "#imports";
+import type { ScoreCacheMode } from "../cachePolicy";
+export type { ScoreCacheMode } from "../cachePolicy";
+
+export const cacheModeStorage = storage.defineItem<ScoreCacheMode>("local:cacheMode", { fallback: "persistent" });
 
 /** Remove retired connection preferences without reading or honoring their values. */
 export async function removeObsoleteConnectionSettings(): Promise<void> {
@@ -26,6 +30,8 @@ export const settings = {
   // Replacing the browser's PDF viewer requires opt-in; manual opening stays available.
   autoOpenPdfs: storage.defineItem<boolean>("local:autoOpenPdfs", { fallback: false }),
   debug: storage.defineItem<boolean>("local:debug", { fallback: false }),
+  reportIncludeText: storage.defineItem<boolean>("local:reportIncludeText", { fallback: false }),
+  reportIncludeUrl: storage.defineItem<boolean>("local:reportIncludeUrl", { fallback: false }),
   // Filters rendering, not analysis: all units or only heavily edited / AI-generated ones.
   displayMode: storage.defineItem<"all" | "flagged">("local:displayMode", {
     fallback: "all",

@@ -1,3 +1,4 @@
+import { sendDocumentMessage } from "../access/session";
 // lib/diagnostics/index.ts — the content script's half of "Copy page diagnostics".
 //
 // Everything that needs an extension API happens here — the manifest, the settings, the
@@ -36,13 +37,14 @@ export interface CopyResult {
 async function daemonFacts(): Promise<DaemonFacts> {
   let status: BackendStatus | undefined;
   try {
-    status = (await browser.runtime.sendMessage({ action: ACTIONS.GET_BACKEND_STATUS })) as
+    status = (await sendDocumentMessage({ action: ACTIONS.GET_BACKEND_STATUS })) as
       | BackendStatus
       | undefined;
   } catch {
     /* the worker is gone, or the extension context was invalidated */
   }
   if (!status) return { state: "unknown" };
+  if (status.active === "idle") return {state: "idle"};
   if (status.active === "server") {
     return {
       state: "up",

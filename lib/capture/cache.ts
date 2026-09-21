@@ -10,8 +10,9 @@
 // verdict from a previous backend can never be served as the current one. The
 // service-worker cache behind it is model-keyed and answers a cleared L1 in a few ms.
 import type { ScoreResult } from "../contract";
-import { normalizeText } from "../dom/text";
+import { normalizeText, SCORING_NORMALIZATION_VERSION } from "../dom/text";
 import { cyrb53 } from "../hash";
+import { SCORE_CACHE_MAX_AGE_MS } from "../cachePolicy";
 
 /** Cap of the layer. A tab lives as long as the reader keeps it open and an infinite feed
  *  scrolls past far more paragraphs than it ever shows again, so the map is bounded and
@@ -29,10 +30,10 @@ export interface ScoreCache {
 }
 
 export function createScoreCache(): ScoreCache {
-  const l1 = new Map<string, ScoreResult>();
+  const l1 = new Map<string, { result: ScoreResult; at: number }>();
 
   function keyOf(text: string): string {
-    return cyrb53(normalizeText(text)).toString(36);
+    return `n${SCORING_NORMALIZATION_VERSION}:${cyrb53(normalizeText(text)).toString(36)}`;
   }
 
   return {
@@ -41,15 +42,17 @@ export function createScoreCache(): ScoreCache {
       const key = keyOf(text);
       const hit = l1.get(key);
       if (!hit) return undefined;
+      if (Date.now() - hit.at >= SCORE_CACHE_MAX_AGE_MS) { l1.delete(key); return undefined; }
       // Re-insert so Map iteration order stays least-recently-used first.
       l1.delete(key);
       l1.set(key, hit);
-      return hit;
+      return hit.result;
     },
     set(text: string, r: ScoreResult): void {
+      if (r.degraded) return;
       const key = keyOf(text);
       l1.delete(key);
-      l1.set(key, r);
+      l1.set(key, { result: r, at: Date.now() });
       while (l1.size > L1_MAX_ENTRIES) {
         const oldest = l1.keys().next();
         if (oldest.done) break;

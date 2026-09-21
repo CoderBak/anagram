@@ -72,6 +72,12 @@ describe("what a content script may be registered on", () => {
     expect(matchesAny(ALL_SITES, "http://localhost:57123/selftest.html")).toBe(true);
   });
 
+  it("keeps local file access separate from website grants and content registration", () => {
+    expect(browsingOrigins(["file:///*", "https://a.test/*"])).toEqual(["https://a.test/*"]);
+    expect(summarize(["file:///*"])).toEqual({all: false, sites: []});
+    expect(browsingOrigins(["<all_urls>"])).toEqual(ALL_SITES);
+  });
+
   it("says nothing twice", () => {
     expect(browsingOrigins(["https://a.com/*", "https://a.com/*"])).toEqual(["https://a.com/*"]);
   });

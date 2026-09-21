@@ -1,0 +1,2752 @@
+[
+  {
+    "cat": "Session",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 222224,
+    "ts": 2,
+    "ph": "X",
+    "name": "model_loading_uri",
+    "args": {}
+  },
+  {
+    "cat": "Session",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 232374847,
+    "ts": 222261,
+    "ph": "X",
+    "name": "session_initialization",
+    "args": {}
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 26,
+    "ts": 232599190,
+    "ph": "X",
+    "name": "/wrapped/roberta/embeddings/Equal_kernel_time",
+    "args": {
+      "mem_in_use_peak": "300",
+      "mem_requested_in_use_delta": "128",
+      "mem_bytes_in_use": "300",
+      "mem_arena_held_delta": "1048576",
+      "parameter_size": "8",
+      "op_name": "Equal",
+      "mem_in_use_delta": "256",
+      "node_index": "0",
+      "output_type_shape": [
+        {
+          "bool": [
+            1,
+            128
+          ]
+        }
+      ],
+      "activation_size": "1024",
+      "mem_arena_held": "1048620",
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      },
+      "mem_bytes_requested_in_use": "172",
+      "input_type_shape": [
+        {
+          "int64": [
+            1,
+            128
+          ]
+        },
+        {
+          "int64": []
+        }
+      ],
+      "provider": "CPUExecutionProvider",
+      "output_size": "128"
+    }
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 4,
+    "ts": 232599219,
+    "ph": "X",
+    "name": "/wrapped/roberta/embeddings/Not_kernel_time",
+    "args": {
+      "mem_requested_in_use_delta": "128",
+      "mem_bytes_requested_in_use": "300",
+      "mem_arena_held_delta": "0",
+      "mem_arena_held": "1048620",
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      },
+      "mem_in_use_delta": "256",
+      "activation_size": "128",
+      "provider": "CPUExecutionProvider",
+      "node_index": "1",
+      "op_name": "Not",
+      "output_size": "128",
+      "mem_in_use_peak": "556",
+      "parameter_size": "0",
+      "output_type_shape": [
+        {
+          "bool": [
+            1,
+            128
+          ]
+        }
+      ],
+      "input_type_shape": [
+        {
+          "bool": [
+            1,
+            128
+          ]
+        }
+      ],
+      "mem_bytes_in_use": "556"
+    }
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 1022,
+    "ts": 232599224,
+    "ph": "X",
+    "name": "CoreMLExecutionProvider_12179529392240628727_CoreML_12179529392240628727_0_0_kernel_time",
+    "args": {
+      "mem_arena_held": "1048620",
+      "input_type_shape": [
+        {
+          "int64": [
+            1,
+            128
+          ]
+        },
+        {
+          "int64": [
+            1,
+            128
+          ]
+        },
+        {
+          "bool": [
+            1,
+            128
+          ]
+        }
+      ],
+      "activation_size": "2176",
+      "node_index": "1435",
+      "mem_in_use_peak": "263212",
+      "op_name": "12179529392240628727_CoreML_12179529392240628727_0",
+      "mem_requested_in_use_delta": "262656",
+      "output_size": "262784",
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      },
+      "mem_bytes_requested_in_use": "262956",
+      "provider": "CoreMLExecutionProvider",
+      "mem_in_use_delta": "262656",
+      "mem_arena_held_delta": "0",
+      "output_type_shape": [
+        {
+          "float16": [
+            1,
+            128,
+            1024
+          ]
+        },
+        {
+          "bool": [
+            1,
+            128
+          ]
+        },
+        {
+          "int32": [
+            1,
+            128
+          ]
+        }
+      ],
+      "mem_bytes_in_use": "263212",
+      "parameter_size": "0"
+    }
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 5,
+    "ts": 232600250,
+    "ph": "X",
+    "name": "/wrapped/roberta/Flatten_kernel_time",
+    "args": {
+      "mem_in_use_peak": "263212",
+      "node_index": "67",
+      "mem_requested_in_use_delta": "0",
+      "mem_in_use_delta": "0",
+      "parameter_size": "0",
+      "mem_bytes_requested_in_use": "262828",
+      "activation_size": "128",
+      "mem_arena_held_delta": "0",
+      "output_type_shape": [
+        {
+          "bool": [
+            128,
+            1
+          ]
+        }
+      ],
+      "provider": "CPUExecutionProvider",
+      "mem_arena_held": "1048620",
+      "op_name": "Flatten",
+      "input_type_shape": [
+        {
+          "bool": [
+            1,
+            128
+          ]
+        }
+      ],
+      "output_size": "128",
+      "mem_bytes_in_use": "262956",
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      }
+    }
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 6,
+    "ts": 232600256,
+    "ph": "X",
+    "name": "/wrapped/roberta/Gather_4_kernel_time",
+    "args": {
+      "mem_in_use_delta": "256",
+      "mem_arena_held_delta": "0",
+      "op_name": "Gather",
+      "input_type_shape": [
+        {
+          "bool": [
+            128,
+            1
+          ]
+        },
+        {
+          "int64": [
+            1,
+            1,
+            1,
+            128
+          ]
+        }
+      ],
+      "mem_arena_held": "1048620",
+      "parameter_size": "1024",
+      "node_index": "70",
+      "activation_size": "128",
+      "mem_in_use_peak": "263212",
+      "output_type_shape": [
+        {
+          "bool": [
+            1,
+            1,
+            1,
+            128,
+            1
+          ]
+        }
+      ],
+      "mem_bytes_requested_in_use": "262956",
+      "mem_bytes_in_use": "263212",
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      },
+      "provider": "CPUExecutionProvider",
+      "output_size": "128",
+      "mem_requested_in_use_delta": "128"
+    }
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 4,
+    "ts": 232600264,
+    "ph": "X",
+    "name": "/wrapped/roberta/Reshape_new_reshape_kernel_time",
+    "args": {
+      "mem_in_use_delta": "0",
+      "input_type_shape": [
+        {
+          "bool": [
+            1,
+            1,
+            1,
+            128,
+            1
+          ]
+        },
+        {
+          "int64": [
+            4
+          ]
+        }
+      ],
+      "parameter_size": "32",
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      },
+      "mem_arena_held": "1048620",
+      "op_name": "Reshape",
+      "node_index": "1434",
+      "mem_bytes_requested_in_use": "262828",
+      "mem_requested_in_use_delta": "0",
+      "output_type_shape": [
+        {
+          "bool": [
+            1,
+            1,
+            1,
+            128
+          ]
+        }
+      ],
+      "output_size": "128",
+      "activation_size": "128",
+      "provider": "CPUExecutionProvider",
+      "mem_bytes_in_use": "262956",
+      "mem_in_use_peak": "263212",
+      "mem_arena_held_delta": "0"
+    }
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 4,
+    "ts": 232600269,
+    "ph": "X",
+    "name": "/wrapped/roberta/embeddings/CumSum_kernel_time",
+    "args": {
+      "activation_size": "512",
+      "output_type_shape": [
+        {
+          "int32": [
+            1,
+            128
+          ]
+        }
+      ],
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      },
+      "mem_in_use_delta": "512",
+      "parameter_size": "4",
+      "output_size": "512",
+      "node_index": "3",
+      "mem_bytes_requested_in_use": "263340",
+      "mem_bytes_in_use": "263468",
+      "input_type_shape": [
+        {
+          "int32": [
+            1,
+            128
+          ]
+        },
+        {
+          "int32": []
+        }
+      ],
+      "mem_in_use_peak": "263468",
+      "op_name": "CumSum",
+      "provider": "CPUExecutionProvider",
+      "mem_arena_held": "1048620",
+      "mem_requested_in_use_delta": "512",
+      "mem_arena_held_delta": "0"
+    }
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 4,
+    "ts": 232600274,
+    "ph": "X",
+    "name": "/wrapped/roberta/embeddings/Mul_kernel_time",
+    "args": {
+      "op_name": "Mul",
+      "mem_arena_held_delta": "0",
+      "mem_in_use_delta": "512",
+      "output_size": "512",
+      "parameter_size": "0",
+      "provider": "CPUExecutionProvider",
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      },
+      "mem_requested_in_use_delta": "512",
+      "mem_bytes_requested_in_use": "263852",
+      "node_index": "4",
+      "mem_arena_held": "1048620",
+      "input_type_shape": [
+        {
+          "int32": [
+            1,
+            128
+          ]
+        },
+        {
+          "int32": [
+            1,
+            128
+          ]
+        }
+      ],
+      "output_type_shape": [
+        {
+          "int32": [
+            1,
+            128
+          ]
+        }
+      ],
+      "mem_bytes_in_use": "263980",
+      "activation_size": "1024",
+      "mem_in_use_peak": "263980"
+    }
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 527,
+    "ts": 232600280,
+    "ph": "X",
+    "name": "CoreMLExecutionProvider_12179529392240628727_CoreML_12179529392240628727_1_1_kernel_time",
+    "args": {
+      "input_type_shape": [
+        {
+          "int32": [
+            1,
+            128
+          ]
+        },
+        {
+          "bool": [
+            1,
+            1,
+            1,
+            128
+          ]
+        }
+      ],
+      "op_name": "12179529392240628727_CoreML_12179529392240628727_1",
+      "provider": "CoreMLExecutionProvider",
+      "activation_size": "640",
+      "parameter_size": "0",
+      "output_size": "295936",
+      "mem_arena_held": "1048620",
+      "mem_bytes_in_use": "558892",
+      "node_index": "1436",
+      "mem_arena_held_delta": "0",
+      "mem_in_use_peak": "558892",
+      "mem_bytes_requested_in_use": "558764",
+      "output_type_shape": [
+        {
+          "int64": [
+            1,
+            128
+          ]
+        },
+        {
+          "float16": [
+            1,
+            1,
+            128,
+            128
+          ]
+        },
+        {
+          "float16": [
+            1,
+            128,
+            1024
+          ]
+        }
+      ],
+      "mem_in_use_delta": "295936",
+      "mem_requested_in_use_delta": "295936",
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      }
+    }
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 6,
+    "ts": 232600811,
+    "ph": "X",
+    "name": "/wrapped/roberta/embeddings/GatherElements_kernel_time",
+    "args": {
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      },
+      "mem_bytes_requested_in_use": "559148",
+      "mem_requested_in_use_delta": "1024",
+      "mem_in_use_peak": "559148",
+      "output_type_shape": [
+        {
+          "int64": [
+            1,
+            128
+          ]
+        }
+      ],
+      "activation_size": "1024",
+      "output_size": "1024",
+      "op_name": "GatherElements",
+      "parameter_size": "4112",
+      "mem_arena_held_delta": "0",
+      "mem_in_use_delta": "1024",
+      "node_index": "22",
+      "provider": "CPUExecutionProvider",
+      "input_type_shape": [
+        {
+          "int64": [
+            1,
+            514
+          ]
+        },
+        {
+          "int64": [
+            1,
+            128
+          ]
+        }
+      ],
+      "mem_bytes_in_use": "559148",
+      "mem_arena_held": "1048620"
+    }
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 19122,
+    "ts": 232600818,
+    "ph": "X",
+    "name": "CoreMLExecutionProvider_12179529392240628727_CoreML_12179529392240628727_2_2_kernel_time",
+    "args": {
+      "output_type_shape": [
+        {
+          "float": [
+            1,
+            4
+          ]
+        }
+      ],
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      },
+      "mem_arena_held_delta": "0",
+      "parameter_size": "0",
+      "mem_in_use_delta": "256",
+      "output_size": "16",
+      "op_name": "12179529392240628727_CoreML_12179529392240628727_2",
+      "mem_in_use_peak": "559148",
+      "provider": "CoreMLExecutionProvider",
+      "node_index": "1437",
+      "mem_requested_in_use_delta": "16",
+      "mem_arena_held": "1048620",
+      "input_type_shape": [
+        {
+          "int64": [
+            1,
+            128
+          ]
+        },
+        {
+          "float16": [
+            1,
+            128,
+            1024
+          ]
+        },
+        {
+          "float16": [
+            1,
+            128,
+            1024
+          ]
+        },
+        {
+          "float16": [
+            1,
+            1,
+            128,
+            128
+          ]
+        }
+      ],
+      "activation_size": "558080",
+      "mem_bytes_requested_in_use": "558140",
+      "mem_bytes_in_use": "558380"
+    }
+  },
+  {
+    "cat": "Session",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 20761,
+    "ts": 232599187,
+    "ph": "X",
+    "name": "SequentialExecutor::Execute",
+    "args": {}
+  },
+  {
+    "cat": "Session",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 20776,
+    "ts": 232599177,
+    "ph": "X",
+    "name": "model_run",
+    "args": {}
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 17,
+    "ts": 232620190,
+    "ph": "X",
+    "name": "/wrapped/roberta/embeddings/Equal_kernel_time",
+    "args": {
+      "mem_requested_in_use_delta": "0",
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      },
+      "activation_size": "1024",
+      "mem_arena_held": "1048620",
+      "mem_in_use_peak": "1048620",
+      "parameter_size": "8",
+      "mem_in_use_delta": "0",
+      "node_index": "0",
+      "provider": "CPUExecutionProvider",
+      "op_name": "Equal",
+      "input_type_shape": [
+        {
+          "int64": [
+            1,
+            128
+          ]
+        },
+        {
+          "int64": []
+        }
+      ],
+      "output_size": "128",
+      "mem_bytes_in_use": "1048620",
+      "mem_bytes_requested_in_use": "560172",
+      "output_type_shape": [
+        {
+          "bool": [
+            1,
+            128
+          ]
+        }
+      ],
+      "mem_arena_held_delta": "0"
+    }
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 12,
+    "ts": 232620211,
+    "ph": "X",
+    "name": "/wrapped/roberta/embeddings/Not_kernel_time",
+    "args": {
+      "activation_size": "128",
+      "mem_bytes_in_use": "1048620",
+      "provider": "CPUExecutionProvider",
+      "mem_in_use_peak": "1048620",
+      "output_size": "128",
+      "op_name": "Not",
+      "parameter_size": "0",
+      "mem_bytes_requested_in_use": "560172",
+      "output_type_shape": [
+        {
+          "bool": [
+            1,
+            128
+          ]
+        }
+      ],
+      "input_type_shape": [
+        {
+          "bool": [
+            1,
+            128
+          ]
+        }
+      ],
+      "mem_arena_held_delta": "0",
+      "mem_in_use_delta": "0",
+      "mem_arena_held": "1048620",
+      "node_index": "1",
+      "mem_requested_in_use_delta": "0",
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      }
+    }
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 283,
+    "ts": 232620225,
+    "ph": "X",
+    "name": "CoreMLExecutionProvider_12179529392240628727_CoreML_12179529392240628727_0_0_kernel_time",
+    "args": {
+      "mem_requested_in_use_delta": "0",
+      "op_name": "12179529392240628727_CoreML_12179529392240628727_0",
+      "node_index": "1435",
+      "output_type_shape": [
+        {
+          "float16": [
+            1,
+            128,
+            1024
+          ]
+        },
+        {
+          "bool": [
+            1,
+            128
+          ]
+        },
+        {
+          "int32": [
+            1,
+            128
+          ]
+        }
+      ],
+      "parameter_size": "0",
+      "activation_size": "2176",
+      "mem_arena_held_delta": "0",
+      "provider": "CoreMLExecutionProvider",
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      },
+      "mem_in_use_delta": "0",
+      "mem_arena_held": "1048620",
+      "input_type_shape": [
+        {
+          "int64": [
+            1,
+            128
+          ]
+        },
+        {
+          "int64": [
+            1,
+            128
+          ]
+        },
+        {
+          "bool": [
+            1,
+            128
+          ]
+        }
+      ],
+      "mem_bytes_requested_in_use": "560172",
+      "mem_in_use_peak": "1048620",
+      "output_size": "262784",
+      "mem_bytes_in_use": "1048620"
+    }
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 9,
+    "ts": 232620511,
+    "ph": "X",
+    "name": "/wrapped/roberta/Flatten_kernel_time",
+    "args": {
+      "input_type_shape": [
+        {
+          "bool": [
+            1,
+            128
+          ]
+        }
+      ],
+      "parameter_size": "0",
+      "output_size": "128",
+      "mem_in_use_delta": "0",
+      "mem_requested_in_use_delta": "0",
+      "mem_bytes_requested_in_use": "560172",
+      "node_index": "67",
+      "mem_arena_held": "1048620",
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      },
+      "mem_arena_held_delta": "0",
+      "output_type_shape": [
+        {
+          "bool": [
+            128,
+            1
+          ]
+        }
+      ],
+      "activation_size": "128",
+      "provider": "CPUExecutionProvider",
+      "op_name": "Flatten",
+      "mem_in_use_peak": "1048620",
+      "mem_bytes_in_use": "1048620"
+    }
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 8,
+    "ts": 232620522,
+    "ph": "X",
+    "name": "/wrapped/roberta/Gather_4_kernel_time",
+    "args": {
+      "mem_arena_held": "1048620",
+      "provider": "CPUExecutionProvider",
+      "output_size": "128",
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      },
+      "node_index": "70",
+      "output_type_shape": [
+        {
+          "bool": [
+            1,
+            1,
+            1,
+            128,
+            1
+          ]
+        }
+      ],
+      "mem_in_use_delta": "0",
+      "parameter_size": "1024",
+      "activation_size": "128",
+      "mem_requested_in_use_delta": "0",
+      "mem_arena_held_delta": "0",
+      "input_type_shape": [
+        {
+          "bool": [
+            128,
+            1
+          ]
+        },
+        {
+          "int64": [
+            1,
+            1,
+            1,
+            128
+          ]
+        }
+      ],
+      "mem_bytes_requested_in_use": "560172",
+      "mem_bytes_in_use": "1048620",
+      "op_name": "Gather",
+      "mem_in_use_peak": "1048620"
+    }
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 5,
+    "ts": 232620531,
+    "ph": "X",
+    "name": "/wrapped/roberta/Reshape_new_reshape_kernel_time",
+    "args": {
+      "provider": "CPUExecutionProvider",
+      "mem_in_use_delta": "0",
+      "parameter_size": "32",
+      "output_type_shape": [
+        {
+          "bool": [
+            1,
+            1,
+            1,
+            128
+          ]
+        }
+      ],
+      "activation_size": "128",
+      "mem_requested_in_use_delta": "0",
+      "mem_in_use_peak": "1048620",
+      "mem_arena_held_delta": "0",
+      "output_size": "128",
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      },
+      "input_type_shape": [
+        {
+          "bool": [
+            1,
+            1,
+            1,
+            128,
+            1
+          ]
+        },
+        {
+          "int64": [
+            4
+          ]
+        }
+      ],
+      "op_name": "Reshape",
+      "mem_bytes_requested_in_use": "560172",
+      "mem_arena_held": "1048620",
+      "node_index": "1434",
+      "mem_bytes_in_use": "1048620"
+    }
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 5,
+    "ts": 232620538,
+    "ph": "X",
+    "name": "/wrapped/roberta/embeddings/CumSum_kernel_time",
+    "args": {
+      "mem_bytes_requested_in_use": "560172",
+      "output_size": "512",
+      "activation_size": "512",
+      "mem_arena_held_delta": "0",
+      "node_index": "3",
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      },
+      "mem_in_use_peak": "1048620",
+      "mem_bytes_in_use": "1048620",
+      "mem_arena_held": "1048620",
+      "mem_requested_in_use_delta": "0",
+      "parameter_size": "4",
+      "output_type_shape": [
+        {
+          "int32": [
+            1,
+            128
+          ]
+        }
+      ],
+      "provider": "CPUExecutionProvider",
+      "op_name": "CumSum",
+      "mem_in_use_delta": "0",
+      "input_type_shape": [
+        {
+          "int32": [
+            1,
+            128
+          ]
+        },
+        {
+          "int32": []
+        }
+      ]
+    }
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 4,
+    "ts": 232620544,
+    "ph": "X",
+    "name": "/wrapped/roberta/embeddings/Mul_kernel_time",
+    "args": {
+      "node_index": "4",
+      "mem_in_use_delta": "0",
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      },
+      "mem_arena_held": "1048620",
+      "activation_size": "1024",
+      "parameter_size": "0",
+      "input_type_shape": [
+        {
+          "int32": [
+            1,
+            128
+          ]
+        },
+        {
+          "int32": [
+            1,
+            128
+          ]
+        }
+      ],
+      "mem_arena_held_delta": "0",
+      "output_type_shape": [
+        {
+          "int32": [
+            1,
+            128
+          ]
+        }
+      ],
+      "output_size": "512",
+      "mem_requested_in_use_delta": "0",
+      "mem_in_use_peak": "1048620",
+      "mem_bytes_in_use": "1048620",
+      "provider": "CPUExecutionProvider",
+      "op_name": "Mul",
+      "mem_bytes_requested_in_use": "560172"
+    }
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 129,
+    "ts": 232620550,
+    "ph": "X",
+    "name": "CoreMLExecutionProvider_12179529392240628727_CoreML_12179529392240628727_1_1_kernel_time",
+    "args": {
+      "parameter_size": "0",
+      "provider": "CoreMLExecutionProvider",
+      "mem_in_use_peak": "1048620",
+      "mem_arena_held": "1048620",
+      "input_type_shape": [
+        {
+          "int32": [
+            1,
+            128
+          ]
+        },
+        {
+          "bool": [
+            1,
+            1,
+            1,
+            128
+          ]
+        }
+      ],
+      "mem_in_use_delta": "0",
+      "op_name": "12179529392240628727_CoreML_12179529392240628727_1",
+      "mem_bytes_requested_in_use": "560172",
+      "output_type_shape": [
+        {
+          "int64": [
+            1,
+            128
+          ]
+        },
+        {
+          "float16": [
+            1,
+            1,
+            128,
+            128
+          ]
+        },
+        {
+          "float16": [
+            1,
+            128,
+            1024
+          ]
+        }
+      ],
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      },
+      "mem_arena_held_delta": "0",
+      "activation_size": "640",
+      "mem_requested_in_use_delta": "0",
+      "node_index": "1436",
+      "mem_bytes_in_use": "1048620",
+      "output_size": "295936"
+    }
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 6,
+    "ts": 232620681,
+    "ph": "X",
+    "name": "/wrapped/roberta/embeddings/GatherElements_kernel_time",
+    "args": {
+      "mem_in_use_peak": "1048620",
+      "output_type_shape": [
+        {
+          "int64": [
+            1,
+            128
+          ]
+        }
+      ],
+      "op_name": "GatherElements",
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      },
+      "provider": "CPUExecutionProvider",
+      "node_index": "22",
+      "mem_requested_in_use_delta": "0",
+      "mem_bytes_requested_in_use": "560172",
+      "mem_bytes_in_use": "1048620",
+      "mem_arena_held_delta": "0",
+      "mem_in_use_delta": "0",
+      "input_type_shape": [
+        {
+          "int64": [
+            1,
+            514
+          ]
+        },
+        {
+          "int64": [
+            1,
+            128
+          ]
+        }
+      ],
+      "mem_arena_held": "1048620",
+      "output_size": "1024",
+      "parameter_size": "4112",
+      "activation_size": "1024"
+    }
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 12364,
+    "ts": 232620688,
+    "ph": "X",
+    "name": "CoreMLExecutionProvider_12179529392240628727_CoreML_12179529392240628727_2_2_kernel_time",
+    "args": {
+      "input_type_shape": [
+        {
+          "int64": [
+            1,
+            128
+          ]
+        },
+        {
+          "float16": [
+            1,
+            128,
+            1024
+          ]
+        },
+        {
+          "float16": [
+            1,
+            128,
+            1024
+          ]
+        },
+        {
+          "float16": [
+            1,
+            1,
+            128,
+            128
+          ]
+        }
+      ],
+      "provider": "CoreMLExecutionProvider",
+      "mem_arena_held": "3145772",
+      "mem_bytes_in_use": "1048876",
+      "mem_in_use_peak": "1048876",
+      "activation_size": "558080",
+      "parameter_size": "0",
+      "mem_in_use_delta": "256",
+      "mem_arena_held_delta": "2097152",
+      "mem_requested_in_use_delta": "16",
+      "op_name": "12179529392240628727_CoreML_12179529392240628727_2",
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      },
+      "output_size": "16",
+      "node_index": "1437",
+      "mem_bytes_requested_in_use": "560188",
+      "output_type_shape": [
+        {
+          "float": [
+            1,
+            4
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "cat": "Session",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 12865,
+    "ts": 232620189,
+    "ph": "X",
+    "name": "SequentialExecutor::Execute",
+    "args": {}
+  },
+  {
+    "cat": "Session",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 12877,
+    "ts": 232620179,
+    "ph": "X",
+    "name": "model_run",
+    "args": {}
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 6,
+    "ts": 232633085,
+    "ph": "X",
+    "name": "/wrapped/roberta/embeddings/Equal_kernel_time",
+    "args": {
+      "provider": "CPUExecutionProvider",
+      "mem_bytes_in_use": "1048620",
+      "parameter_size": "8",
+      "mem_in_use_peak": "1048876",
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      },
+      "mem_requested_in_use_delta": "0",
+      "mem_arena_held": "3145772",
+      "activation_size": "1024",
+      "input_type_shape": [
+        {
+          "int64": [
+            1,
+            128
+          ]
+        },
+        {
+          "int64": []
+        }
+      ],
+      "node_index": "0",
+      "op_name": "Equal",
+      "mem_in_use_delta": "0",
+      "output_size": "128",
+      "output_type_shape": [
+        {
+          "bool": [
+            1,
+            128
+          ]
+        }
+      ],
+      "mem_bytes_requested_in_use": "560172",
+      "mem_arena_held_delta": "0"
+    }
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 4,
+    "ts": 232633093,
+    "ph": "X",
+    "name": "/wrapped/roberta/embeddings/Not_kernel_time",
+    "args": {
+      "op_name": "Not",
+      "output_type_shape": [
+        {
+          "bool": [
+            1,
+            128
+          ]
+        }
+      ],
+      "mem_arena_held_delta": "0",
+      "input_type_shape": [
+        {
+          "bool": [
+            1,
+            128
+          ]
+        }
+      ],
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      },
+      "provider": "CPUExecutionProvider",
+      "output_size": "128",
+      "mem_arena_held": "3145772",
+      "activation_size": "128",
+      "parameter_size": "0",
+      "mem_bytes_requested_in_use": "560172",
+      "node_index": "1",
+      "mem_in_use_delta": "0",
+      "mem_requested_in_use_delta": "0",
+      "mem_bytes_in_use": "1048620",
+      "mem_in_use_peak": "1048876"
+    }
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 133,
+    "ts": 232633098,
+    "ph": "X",
+    "name": "CoreMLExecutionProvider_12179529392240628727_CoreML_12179529392240628727_0_0_kernel_time",
+    "args": {
+      "output_type_shape": [
+        {
+          "float16": [
+            1,
+            128,
+            1024
+          ]
+        },
+        {
+          "bool": [
+            1,
+            128
+          ]
+        },
+        {
+          "int32": [
+            1,
+            128
+          ]
+        }
+      ],
+      "mem_bytes_requested_in_use": "560172",
+      "op_name": "12179529392240628727_CoreML_12179529392240628727_0",
+      "parameter_size": "0",
+      "output_size": "262784",
+      "mem_in_use_peak": "1048876",
+      "mem_arena_held_delta": "0",
+      "activation_size": "2176",
+      "input_type_shape": [
+        {
+          "int64": [
+            1,
+            128
+          ]
+        },
+        {
+          "int64": [
+            1,
+            128
+          ]
+        },
+        {
+          "bool": [
+            1,
+            128
+          ]
+        }
+      ],
+      "provider": "CoreMLExecutionProvider",
+      "node_index": "1435",
+      "mem_requested_in_use_delta": "0",
+      "mem_in_use_delta": "0",
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      },
+      "mem_bytes_in_use": "1048620",
+      "mem_arena_held": "3145772"
+    }
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 3,
+    "ts": 232633232,
+    "ph": "X",
+    "name": "/wrapped/roberta/Flatten_kernel_time",
+    "args": {
+      "output_type_shape": [
+        {
+          "bool": [
+            128,
+            1
+          ]
+        }
+      ],
+      "activation_size": "128",
+      "node_index": "67",
+      "provider": "CPUExecutionProvider",
+      "mem_requested_in_use_delta": "0",
+      "op_name": "Flatten",
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      },
+      "mem_in_use_delta": "0",
+      "parameter_size": "0",
+      "output_size": "128",
+      "input_type_shape": [
+        {
+          "bool": [
+            1,
+            128
+          ]
+        }
+      ],
+      "mem_arena_held_delta": "0",
+      "mem_bytes_in_use": "1048620",
+      "mem_bytes_requested_in_use": "560172",
+      "mem_arena_held": "3145772",
+      "mem_in_use_peak": "1048876"
+    }
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 5,
+    "ts": 232633237,
+    "ph": "X",
+    "name": "/wrapped/roberta/Gather_4_kernel_time",
+    "args": {
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      },
+      "mem_in_use_delta": "0",
+      "activation_size": "128",
+      "mem_arena_held_delta": "0",
+      "mem_bytes_requested_in_use": "560172",
+      "op_name": "Gather",
+      "parameter_size": "1024",
+      "output_size": "128",
+      "mem_arena_held": "3145772",
+      "mem_bytes_in_use": "1048620",
+      "input_type_shape": [
+        {
+          "bool": [
+            128,
+            1
+          ]
+        },
+        {
+          "int64": [
+            1,
+            1,
+            1,
+            128
+          ]
+        }
+      ],
+      "mem_in_use_peak": "1048876",
+      "provider": "CPUExecutionProvider",
+      "mem_requested_in_use_delta": "0",
+      "node_index": "70",
+      "output_type_shape": [
+        {
+          "bool": [
+            1,
+            1,
+            1,
+            128,
+            1
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 4,
+    "ts": 232633244,
+    "ph": "X",
+    "name": "/wrapped/roberta/Reshape_new_reshape_kernel_time",
+    "args": {
+      "provider": "CPUExecutionProvider",
+      "mem_arena_held": "3145772",
+      "mem_in_use_peak": "1048876",
+      "mem_arena_held_delta": "0",
+      "mem_bytes_requested_in_use": "560172",
+      "mem_requested_in_use_delta": "0",
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      },
+      "mem_bytes_in_use": "1048620",
+      "output_type_shape": [
+        {
+          "bool": [
+            1,
+            1,
+            1,
+            128
+          ]
+        }
+      ],
+      "activation_size": "128",
+      "input_type_shape": [
+        {
+          "bool": [
+            1,
+            1,
+            1,
+            128,
+            1
+          ]
+        },
+        {
+          "int64": [
+            4
+          ]
+        }
+      ],
+      "op_name": "Reshape",
+      "parameter_size": "32",
+      "mem_in_use_delta": "0",
+      "node_index": "1434",
+      "output_size": "128"
+    }
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 3,
+    "ts": 232633249,
+    "ph": "X",
+    "name": "/wrapped/roberta/embeddings/CumSum_kernel_time",
+    "args": {
+      "node_index": "3",
+      "output_size": "512",
+      "op_name": "CumSum",
+      "activation_size": "512",
+      "provider": "CPUExecutionProvider",
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      },
+      "parameter_size": "4",
+      "mem_in_use_delta": "0",
+      "mem_requested_in_use_delta": "0",
+      "mem_arena_held_delta": "0",
+      "mem_in_use_peak": "1048876",
+      "mem_bytes_requested_in_use": "560172",
+      "mem_bytes_in_use": "1048620",
+      "input_type_shape": [
+        {
+          "int32": [
+            1,
+            128
+          ]
+        },
+        {
+          "int32": []
+        }
+      ],
+      "mem_arena_held": "3145772",
+      "output_type_shape": [
+        {
+          "int32": [
+            1,
+            128
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 4,
+    "ts": 232633253,
+    "ph": "X",
+    "name": "/wrapped/roberta/embeddings/Mul_kernel_time",
+    "args": {
+      "input_type_shape": [
+        {
+          "int32": [
+            1,
+            128
+          ]
+        },
+        {
+          "int32": [
+            1,
+            128
+          ]
+        }
+      ],
+      "mem_in_use_delta": "0",
+      "parameter_size": "0",
+      "mem_in_use_peak": "1048876",
+      "activation_size": "1024",
+      "node_index": "4",
+      "mem_requested_in_use_delta": "0",
+      "provider": "CPUExecutionProvider",
+      "mem_arena_held_delta": "0",
+      "op_name": "Mul",
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      },
+      "mem_arena_held": "3145772",
+      "mem_bytes_in_use": "1048620",
+      "output_size": "512",
+      "mem_bytes_requested_in_use": "560172",
+      "output_type_shape": [
+        {
+          "int32": [
+            1,
+            128
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 85,
+    "ts": 232633259,
+    "ph": "X",
+    "name": "CoreMLExecutionProvider_12179529392240628727_CoreML_12179529392240628727_1_1_kernel_time",
+    "args": {
+      "op_name": "12179529392240628727_CoreML_12179529392240628727_1",
+      "mem_requested_in_use_delta": "0",
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      },
+      "node_index": "1436",
+      "activation_size": "640",
+      "mem_in_use_delta": "0",
+      "mem_in_use_peak": "1048876",
+      "mem_bytes_requested_in_use": "560172",
+      "mem_bytes_in_use": "1048620",
+      "input_type_shape": [
+        {
+          "int32": [
+            1,
+            128
+          ]
+        },
+        {
+          "bool": [
+            1,
+            1,
+            1,
+            128
+          ]
+        }
+      ],
+      "mem_arena_held": "3145772",
+      "output_size": "295936",
+      "output_type_shape": [
+        {
+          "int64": [
+            1,
+            128
+          ]
+        },
+        {
+          "float16": [
+            1,
+            1,
+            128,
+            128
+          ]
+        },
+        {
+          "float16": [
+            1,
+            128,
+            1024
+          ]
+        }
+      ],
+      "provider": "CoreMLExecutionProvider",
+      "parameter_size": "0",
+      "mem_arena_held_delta": "0"
+    }
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 4,
+    "ts": 232633345,
+    "ph": "X",
+    "name": "/wrapped/roberta/embeddings/GatherElements_kernel_time",
+    "args": {
+      "mem_in_use_delta": "0",
+      "mem_arena_held": "3145772",
+      "output_type_shape": [
+        {
+          "int64": [
+            1,
+            128
+          ]
+        }
+      ],
+      "mem_in_use_peak": "1048876",
+      "output_size": "1024",
+      "op_name": "GatherElements",
+      "input_type_shape": [
+        {
+          "int64": [
+            1,
+            514
+          ]
+        },
+        {
+          "int64": [
+            1,
+            128
+          ]
+        }
+      ],
+      "parameter_size": "4112",
+      "mem_requested_in_use_delta": "0",
+      "provider": "CPUExecutionProvider",
+      "mem_bytes_requested_in_use": "560172",
+      "activation_size": "1024",
+      "node_index": "22",
+      "mem_bytes_in_use": "1048620",
+      "mem_arena_held_delta": "0",
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      }
+    }
+  },
+  {
+    "cat": "Node",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 11012,
+    "ts": 232633350,
+    "ph": "X",
+    "name": "CoreMLExecutionProvider_12179529392240628727_CoreML_12179529392240628727_2_2_kernel_time",
+    "args": {
+      "parameter_size": "0",
+      "activation_size": "558080",
+      "op_name": "12179529392240628727_CoreML_12179529392240628727_2",
+      "thread_scheduling_stats": {
+        "main_thread": {
+          "thread_pool_name": "session-1-intra-op",
+          "thread_id": "0x2086c7dc0",
+          "block_size": [],
+          "core": -1,
+          "Distribution": 0,
+          "DistributionEnqueue": 0,
+          "Run": 0,
+          "Wait": 0,
+          "WaitRevoke": 0
+        },
+        "sub_threads": {
+          "0x16d367000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d3f3000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d47f000": {
+            "num_run": 0,
+            "core": -1
+          },
+          "0x16d50b000": {
+            "num_run": 0,
+            "core": -1
+          }
+        }
+      },
+      "mem_bytes_in_use": "1048876",
+      "mem_arena_held_delta": "0",
+      "mem_bytes_requested_in_use": "560188",
+      "provider": "CoreMLExecutionProvider",
+      "mem_in_use_delta": "256",
+      "node_index": "1437",
+      "mem_arena_held": "3145772",
+      "mem_requested_in_use_delta": "16",
+      "input_type_shape": [
+        {
+          "int64": [
+            1,
+            128
+          ]
+        },
+        {
+          "float16": [
+            1,
+            128,
+            1024
+          ]
+        },
+        {
+          "float16": [
+            1,
+            128,
+            1024
+          ]
+        },
+        {
+          "float16": [
+            1,
+            1,
+            128,
+            128
+          ]
+        }
+      ],
+      "output_size": "16",
+      "mem_in_use_peak": "1048876",
+      "output_type_shape": [
+        {
+          "float": [
+            1,
+            4
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "cat": "Session",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 11279,
+    "ts": 232633085,
+    "ph": "X",
+    "name": "SequentialExecutor::Execute",
+    "args": {}
+  },
+  {
+    "cat": "Session",
+    "pid": 5723,
+    "tid": 11749097,
+    "dur": 11291,
+    "ts": 232633074,
+    "ph": "X",
+    "name": "model_run",
+    "args": {}
+  }
+]

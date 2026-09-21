@@ -8,10 +8,11 @@
 // each window's own number in the card), so "Words analyzed" is the selection again.
 import { computePosition, flip, offset, shift } from "@floating-ui/dom";
 import { MARK_ATTR } from "../types";
-import type { ScoreBatchRequest } from "../contract";
+import type { ModelInfo, ScoreBatchRequest } from "../contract";
 import { CONTRACT_VERSION } from "../contract";
 import { isScoredWindow, readInWindows, unitVerdict } from "../capture/windows";
 import { requestScores, type ScoreReply } from "../messaging/client";
+import { modelDim } from "../backend/router";
 import { messageLocale, t } from "../i18n";
 import { band, bandLabel, isNoVerdict, languageName, type Band } from "./band";
 import { formatScore } from "./score";
@@ -221,6 +222,8 @@ export async function analyzeSelection(): Promise<void> {
     // The selection's windows travel in ONE request, straight to the worker: no page
     // cache and no local language gate stand between a selection and the daemon.
     let backend = "up" as ScoreReply["backend"];
+    let producing: ModelInfo | null = null;
+    let incompatible = false;
     const session = "sel_" + Math.random().toString(36).slice(2, 10);
     const read = await readInWindows([{ id: "sel", text, order: 0 }], async (blocks) => {
       const req: ScoreBatchRequest = {
@@ -231,10 +234,15 @@ export async function analyzeSelection(): Promise<void> {
       };
       const reply = await requestScores(req);
       backend = reply.backend;
+      if (!reply.model || (producing && modelDim(producing) !== modelDim(reply.model))) {
+        incompatible = true;
+        return new Map();
+      }
+      producing = reply.model;
       return new Map(reply.results.map((r) => [r.id, r] as const));
     });
     if (!_host || _host !== host) return; // dismissed while in flight
-    const windows = read.get("sel");
+    const windows = incompatible ? undefined : read.get("sel");
     const verdict = windows ? unitVerdict("sel", text.length, windows) : null;
     if (!verdict || verdict.result.degraded) {
       card.innerHTML =

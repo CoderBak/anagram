@@ -62,7 +62,9 @@ export interface PanelHooks {
   /** Scroll to a unit and flash its chip. */
   onJump(id: string): void;
   /** Markdown report of the page's verdicts (for the Copy report button). */
-  buildReport(): string;
+  buildReport(): string | Promise<string>;
+  /** Explicit coverage limits for a virtualized document surface. */
+  scopeNote?(): string;
 }
 
 export interface Fab {
@@ -1013,9 +1015,12 @@ export function createFab(opts: {
       copy.type = "button";
       copy.className = "pcopy";
       copy.textContent = t("panelCopyReport");
-      copy.addEventListener("click", (e) => {
+      copy.addEventListener("click", async (e) => {
         e.stopPropagation();
-        const report = opts.panel!.buildReport();
+        copy.disabled = true;
+        let report: string;
+        try { report = await opts.panel!.buildReport(); }
+        catch { copy.disabled = false; announce(t("reportCopyFailed")); return; }
         const done = () => {
           copy.textContent = t("copied");
           copy.classList.add("done");
@@ -1033,12 +1038,12 @@ export function createFab(opts: {
           document.body.appendChild(ta);
           ta.select();
           try {
-            document.execCommand("copy");
-            done();
+            if (document.execCommand("copy")) done();
+            else announce(t("reportCopyFailed"));
           } finally {
             ta.remove();
           }
-        });
+        }).finally(() => { copy.disabled = false; });
       });
       head.appendChild(copy);
     }
@@ -1060,6 +1065,14 @@ export function createFab(opts: {
       cov.className = "pcov";
       cov.textContent = parts.join(" · ");
       panelEl.appendChild(cov);
+    }
+
+    const scopeNote = opts.panel?.scopeNote?.();
+    if (scopeNote) {
+      const scope = document.createElement("div");
+      scope.className = "pcov pscope";
+      scope.textContent = scopeNote;
+      panelEl.appendChild(scope);
     }
 
     // Verdict filters — only when both bands are present (a one-band page needs

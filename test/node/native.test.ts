@@ -113,6 +113,13 @@ describe("privileged native operation boundary", () => {
     expect(validPageRequest("runtime.benchmark",{budget_s:30})).toBe(true);
     expect(validPageRequest("runtime.benchmark",{budget_s:Infinity})).toBe(false);
   });
+  it("allows only explicit bounded download profiles, while empty payload resumes", () => {
+    for (const payload of [{}, {profile:"recommended"}, {profile:"expanded"}])
+      expect(validPageRequest("models.download",payload)).toBe(true);
+    for (const payload of [{profile:"all"}, {profile:null}, {profile:"expanded",url:"https://example.com"},
+      {profile:"expanded",path:"/tmp/models"}, {files:["model.safetensors"]}, null, []])
+      expect(validPageRequest("models.download",payload)).toBe(false);
+  });
   it("the actual bridge rejects a content-script mutation without touching the component", async () => {
     const controls = {invalidate:vi.fn(),clear:vi.fn()};
     const reply = await handleNativePageMessage({action:NATIVE_MESSAGE,op:"models.delete",payload:{confirm:true}},
@@ -180,5 +187,64 @@ describe("component status validation", () => {
     expect(parseComponent({...status,schema_version:2})).toBeNull();
     expect(parseNativeReply({v:1,id:"x",ok:false,status:500})).toBeNull();
     expect(parseNativeReply({v:1,id:"x",ok:true,status:500,data:{}})).toBeNull();
+  });
+  it("accepts old components and device plans during detection, verification and reuse", () => {
+    expect(parseComponent(status)?.download.plan).toBeUndefined();
+    expect(parseComponent({...status,state:"downloading",download:{...status.download,status:"running",phase:"detecting",total_bytes:0}})?.download.phase).toBe("detecting");
+    const plan = {profile:"recommended",devices:["Apple GPU (MPS)","CPU (arm64)"],files:["model.safetensors","lid.176.bin"],total_bytes:100,expanded_bytes:250};
+    const parsed = parseComponent({...status,download:{...status.download,phase:"verifying",bytes_received:100,plan}});
+    expect(parsed?.download.plan).toEqual(plan);
+    expect(parsed?.download.bytes_received).toBe(100); // Reused verified files count toward preparation.
+  });
+  it("rejects malformed or unbounded plans instead of presenting false progress", () => {
+    const plan = {profile:"recommended",devices:["CPU"],files:["model.onnx"],total_bytes:100};
+    for (const bad of [null, {...plan,profile:"all"}, {...plan,total_bytes:-1}, {...plan,expanded_bytes:Infinity},
+      {...plan,devices:Array(65).fill("CPU")}, {...plan,files:Array(129).fill("model.onnx")}, {...plan,files:["x".repeat(2001)]}])
+      expect(parseComponent({...status,download:{...status.download,plan:bad}})).toBeNull();
+    expect(parseComponent({...status,download:{...status.download,phase:"converting"}})).toBeNull();
+  });
+});
+
+describe("native scoring lifecycle generation", () => {
+  it("allows an idle engine to receive score without waking it through health", async () => {
+    const idle = {v:1,id:"health",ok:false,status:503,error:{code:"engine_idle",message:"Unloaded"}};
+    const loading = {v:1,id:"score",ok:false,status:503,error:{code:"not_ready",message:"Loading"}};
+    const request = vi.fn().mockResolvedValueOnce(idle).mockResolvedValueOnce(loading)
+      .mockResolvedValueOnce(reply({v:"2.1",model:MODEL,results:[result]}));
+    const client = new NativeScoreClient(request);
+    await client.ready(); const generation = client.revision();
+    expect(client.isUp()).toBe(false);
+    expect(await client.status(false)).toMatchObject({active:"idle",model:null,server:{ok:false,code:"engine_idle"}});
+    const controller = new AbortController();
+    await expect(client.scoreBatch([{id:"block",text:"sample"}], controller.signal)).rejects.toMatchObject({code:"not_ready"});
+    expect(client.revision()).toBe(generation);
+    const batch = await client.scoreBatch([{id:"block",text:"sample"}], controller.signal);
+    expect(batch.model).toEqual(MODEL);
+    expect(await client.status(false)).toMatchObject({active:"server",model:MODEL,server:{ok:true}});
+    expect(request.mock.calls.map(([operation]) => operation)).toEqual(["health", "score", "score"]);
+    expect(request.mock.calls[1][2]).toBe(controller.signal);
+  });
+
+  it("does not auto-wake an explicitly stopped component", async () => {
+    const request = vi.fn().mockResolvedValue({v:1,id:"health",ok:false,status:503,error:{code:"not_ready",message:"Stopped"}});
+    const client = new NativeScoreClient(request);
+    await expect(client.scoreBatch([{id:"block",text:"sample"}])).rejects.toThrow(/not ready/);
+    expect(request.mock.calls.map(([operation]) => operation)).toEqual(["health"]);
+  });
+
+  it("rejects a late score after invalidate and advances on calibration changes", async () => {
+    const { deferred } = await import("./scoreStore");
+    const held = deferred<ReturnType<typeof reply>>();
+    const request = vi.fn().mockResolvedValueOnce(reply(HEALTH)).mockReturnValueOnce(held.promise)
+      .mockResolvedValueOnce(reply(HEALTH)).mockResolvedValueOnce(reply({...HEALTH,model:{...MODEL,calibration:"new"}}));
+    const client = new NativeScoreClient(request);
+    await client.ready(); const work = client.scoreBatch([{id:"block",text:"sample"}]);
+    await Promise.resolve(); client.invalidate();
+    held.resolve(reply({v:"2.1",model:MODEL,results:[result]}));
+    await expect(work).rejects.toMatchObject({code:"cancelled"});
+    await client.ready(); const generation = client.revision();
+    await client.status(true); expect(client.revision()).toBe(generation + 1);
+    const model = client.model(); model.calibration = "mutated";
+    expect(client.model().calibration).toBe("new");
   });
 });

@@ -4,6 +4,7 @@
 // so the worker cache is memory-only here and getMany() reports its memory layer exactly.
 import { describe, expect, it, beforeEach } from "vitest";
 import { fakeBrowser } from "wxt/testing";
+import { fakeScoreStore } from "./scoreStore";
 import { createSwCache, MEMORY_MAX_ENTRIES } from "../../lib/backend/swCache";
 import { createScoreCache, L1_MAX_ENTRIES } from "../../lib/capture/cache";
 import type { ScoreResult } from "../../lib/contract";
@@ -18,7 +19,7 @@ beforeEach(() => fakeBrowser.reset());
 
 describe("bounded score caches", () => {
   it("the worker cache evicts the oldest entry past its cap and a hit refreshes recency", async () => {
-    const cache = createSwCache();
+    const cache = createSwCache(fakeScoreStore());
     for (let i = 0; i < MEMORY_MAX_ENTRIES; i++) cache.set(`paragraph ${i}`, result(3), DIM);
     const key = (i: number): string => cache.keyOf(`paragraph ${i}`, DIM);
 

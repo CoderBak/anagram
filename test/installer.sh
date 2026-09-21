@@ -53,6 +53,32 @@ if [ $rc -ne 0 ] && echo "$out" | grep -q "symbolic link" && intact "$T/victim2"
 out="$(ANAGRAM_HOME="$T/fresh" run_install)"; rc=$?
 if [ $rc -ne 0 ] && echo "$out" | grep -q "Downloading the Anagram release" && [ -f "$T/fresh/.anagram-home" ]; then ok "fresh folder: validated, marker written, download attempted"; else bad "fresh folder" "rc=$rc $(echo "$out" | tail -1)"; fi
 
+# Fixed leaf paths must not redirect writes, including failure rollback.
+for leaf in .anagram-home VERSION bin/anagram bin/anagram.new bin/uv bin/uv.new .native-host.lock; do
+  guarded="$T/leaf-$(echo "$leaf" | tr / _)"
+  mkdir -p "$guarded/bin"
+  echo owned > "$guarded/.anagram-home"
+  victim="$T/victim-$(echo "$leaf" | tr / _)"
+  printf 'personal data must survive\n' > "$victim"
+  rm -f "$guarded/$leaf"
+  ln -s "$victim" "$guarded/$leaf"
+  out="$(ANAGRAM_HOME="$guarded" run_install)"; rc=$?
+  if [ $rc -ne 0 ] && ! echo "$out" | grep -q 'Downloading' && [ "$(cat "$victim")" = 'personal data must survive' ]; then
+    ok "symlinked $leaf rejected before writing or rollback"
+  else bad "symlinked leaf $leaf" "rc=$rc $out"; fi
+done
+
+# A competing installer must not clean up files it did not create.
+busy="$T/busy-installer"
+mkdir -p "$busy/.installer-lock" "$busy/app"
+echo owned > "$busy/.anagram-home"
+echo keep > "$busy/app/KEEP"
+before_busy="$(snapshot "$busy")"
+out="$(ANAGRAM_HOME="$busy" run_install)"; rc=$?
+if [ $rc -ne 0 ] && echo "$out" | grep -q 'another installer' && [ "$before_busy" = "$(snapshot "$busy")" ]; then
+  ok "competing installer leaves the entire existing component unchanged"
+else bad "installer lock" "rc=$rc $out"; fi
+
 # 6. anagram uninstall on a folder without the marker → refused
 plant "$T/proj2"
 out="$(cli "$T/proj2" uninstall -y)"; rc=$?
@@ -101,6 +127,26 @@ STUB
   chmod +x "$h/venv/bin/python"
   cp "$ROOT/installer/anagram" "$h/bin/anagram" && chmod +x "$h/bin/anagram"
 }
+
+# An active host's OS lock must block a direct installer before downloads/swaps.
+HLOCK="$T/active-host"; make_home "$HLOCK"
+out="$("$PY3" - "$ROOT" "$FAKE_HOME" "$HLOCK" <<'PYLOCK'
+import fcntl, json, os, subprocess, sys
+from pathlib import Path
+root, user, target = map(Path, sys.argv[1:])
+(target / '.native-component.json').write_text(json.dumps({'schema_version': 1, 'host': 'dev.coderbak.anagram', 'home': str(target.resolve())}))
+with (target / '.native-host.lock').open('w') as lock:
+    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    run = subprocess.run(['sh', str(root / 'install.sh')], env={**os.environ, 'HOME': str(user), 'ANAGRAM_HOME': str(target), 'ANAGRAM_RELEASE_URL': 'file:///nonexistent/anagram-release'}, text=True, capture_output=True)
+    assert run.returncode != 0 and 'Anagram is running' in run.stderr, (run.returncode, run.stdout, run.stderr)
+    assert not (target / '.installer-lock').exists()
+    assert (target / 'VERSION').read_text().strip() == '9.9.9'
+    assert not (target / 'app.old').exists()
+print('host lock preserved')
+PYLOCK
+)"; rc=$?
+if [ $rc -eq 0 ]; then ok "active native host blocks direct reinstall without changing files";
+else bad "native host installer lock" "$out"; fi
 
 plant "$T/outside"
 # Hardlinks prove release replacement is atomic; the local archive avoids network access.

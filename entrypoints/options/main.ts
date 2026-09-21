@@ -12,6 +12,7 @@ import { localizePage } from "../../lib/ui/localize";
 import { t, tn } from "../../lib/i18n";
 import {
   settings,
+  cacheModeStorage,
   clearSiteOverride,
   setSiteOverride,
   effectiveRule,
@@ -21,9 +22,10 @@ import {
 import { ALL_SITES } from "../../lib/access/patterns";
 import { accessSummary, requestAccess, withdrawAccess } from "../../lib/access/grant";
 import { ACTIONS } from "../../lib/messaging/protocol";
-import { PDF_TAB_SCRIPTS_RUN } from "../../lib/surface";
+import { getFileAccess, needsManualFileSettings, openFileAccessSettings, requestFileAccess } from "../../lib/pdf/fileAccess";
 import type { CacheCountReply } from "../../lib/messaging/protocol";
 import { mountComponentSettings, componentConnectionLabel } from "../../lib/ui/componentSettings";
+import { bindConfirmedToggle } from "../../lib/ui/confirmedToggle";
 
 const enabledEl = document.getElementById("enabled") as HTMLInputElement;
 const highlightsEl = document.getElementById("highlights") as HTMLInputElement;
@@ -32,7 +34,6 @@ const displayModeEl = document.getElementById("displayMode") as HTMLSelectElemen
 const analysisScopeEl = document.getElementById("analysisScope") as HTMLSelectElement;
 const mergeShortsEl = document.getElementById("mergeShorts") as HTMLInputElement;
 const autoOpenPdfsEl = document.getElementById("autoOpenPdfs") as HTMLInputElement;
-const autoOpenPdfsFieldEl = document.getElementById("autoOpenPdfsField") as HTMLElement;
 const debugEl = document.getElementById("debug") as HTMLInputElement;
 const sitesEl = document.getElementById("sites") as HTMLElement;
 const versionEl = document.getElementById("version") as HTMLElement;
@@ -183,18 +184,68 @@ bindToggle(enabledEl, settings.enabled);
 bindToggle(highlightsEl, settings.showHighlights);
 bindToggle(debugEl, settings.debug);
 bindToggle(mergeShortsEl, settings.mergeShorts);
-// "Open PDFs in Anagram" needs a content script inside the PDF tab to notice the PDF and
-// ask the worker to move the tab. Chrome wraps its viewer in an ordinary HTML document
-// where our script runs; Firefox's is a privileged page where no content script runs at
-// all, and there is no other way in that this extension's permissions can pay for (see
-// the note in lib/pdf/route.ts). A switch that could not do anything is worse than no
-// switch, so on Firefox there is none — the ball, the popup and the menu still open a PDF.
-if (PDF_TAB_SCRIPTS_RUN) bindToggle(autoOpenPdfsEl, settings.autoOpenPdfs);
-else autoOpenPdfsFieldEl.remove();
-// A PDF on this computer has no tab that could hand its bytes over (the extension asks for
-// no access to the file scheme, and a file: page may not re-read itself), and Firefox has
-// no such tab for any PDF — so the reading mode's own drop zone is the way in, and this is
-// the door to it.
+for (const key of ["reportIncludeText", "reportIncludeUrl"] as const) {
+  const input = document.getElementById(key) as HTMLInputElement;
+  const failure = document.createElement("p");
+  failure.id = `${key}Error`;
+  failure.setAttribute("role", "alert");
+  failure.hidden = true;
+  input.setAttribute("aria-describedby", failure.id);
+  input.parentElement!.after(failure);
+  bindConfirmedToggle(input, settings[key], (failed) => {
+    failure.textContent = failed ? t("optReportSaveFailed") : "";
+    failure.hidden = !failed;
+  });
+}
+const pdfSettingsError = document.getElementById("pdfSettingsError") as HTMLElement;
+const fileAccessState = document.getElementById("fileAccessState") as HTMLElement;
+const fileAccessEnable = document.getElementById("fileAccessEnable") as HTMLButtonElement;
+const fileAccessManage = document.getElementById("fileAccessManage") as HTMLButtonElement;
+const fileAccessInstructions = document.getElementById("fileAccessInstructions") as HTMLElement;
+const fileSettingsLabel = needsManualFileSettings() ? "optFileAccessSteps" : "optFileAccessManage";
+fileAccessManage.textContent = t(fileSettingsLabel);
+async function showFileSettings(): Promise<void> {
+  if (!await openFileAccessSettings()) {
+    fileAccessInstructions.textContent = t("optFileAccessFirefoxInstructions");
+    fileAccessInstructions.hidden = false;
+    fileAccessInstructions.focus();
+  }
+}
+function pdfError(failed: boolean): void {
+  pdfSettingsError.textContent = failed ? t("optPdfSettingsFailed") : "";
+  pdfSettingsError.hidden = !failed;
+}
+bindConfirmedToggle(autoOpenPdfsEl, settings.autoOpenPdfs, pdfError);
+let fileRefresh = 0;
+async function refreshFileAccess(): Promise<void> {
+  const generation = ++fileRefresh;
+  const { granted, allowed } = await getFileAccess();
+  if (generation !== fileRefresh) return;
+  fileAccessState.textContent = t(granted && allowed ? "optFileAccessReady" : granted ? "optFileAccessBrowserRequired" : "optFileAccessNotGranted");
+  fileAccessEnable.hidden = granted && allowed;
+  fileAccessEnable.textContent = t(granted ? fileSettingsLabel : "optFileAccessEnable");
+}
+fileAccessEnable.addEventListener("click", () => {
+  // Permission requests must retain the user's activation.
+  const granted = requestFileAccess();
+  fileAccessEnable.disabled = true;
+  void granted.then(async (accepted) => {
+    if (!accepted) { pdfError(true); return; }
+    pdfError(false);
+    const access = await getFileAccess();
+    if (!access.allowed) await showFileSettings();
+  }).catch(() => pdfError(true)).finally(() => {
+    fileAccessEnable.disabled = false;
+    void refreshFileAccess();
+  });
+});
+fileAccessManage.addEventListener("click", () => {
+  void showFileSettings().catch(() => pdfError(true));
+});
+window.addEventListener("focus", () => void refreshFileAccess());
+browser.permissions.onAdded.addListener(() => void refreshFileAccess());
+browser.permissions.onRemoved.addListener(() => void refreshFileAccess());
+void refreshFileAccess();
 (document.getElementById("openReader") as HTMLButtonElement).addEventListener("click", () => {
   void browser.tabs.create({ url: browser.runtime.getURL(READER_PAGE as PublicPath) });
 });
@@ -241,10 +292,29 @@ mountComponentSettings(document.getElementById("componentSettings")!, (reply) =>
   versionEl.textContent = `v${version} · ${componentConnectionLabel(reply)}`;
 });
 
-// --- cached verdicts -------------------------------------------------------------------
-// The worker owns the caches (its memory and the IndexedDB store) and passes the word on to
-// every open tab; the button only says that it happened, the way the copy buttons do.
 const CLEAR_LABEL = clearCacheEl.textContent ?? t("optClearCache");
+const cacheStatus = document.getElementById("cacheStatus")!;
+const cacheMode = document.getElementById("cacheMode") as HTMLSelectElement;
+void cacheModeStorage.getValue().then((mode) => { cacheMode.value = mode; }, () => {
+  cacheStatus.textContent = t("optCacheModeFailed");
+});
+cacheModeStorage.watch((mode) => { cacheMode.value = mode; });
+cacheMode.addEventListener("change", () => {
+  const mode = cacheMode.value;
+  let confirmedMode: "persistent" | "session" | undefined;
+  cacheMode.disabled = true;
+  void browser.runtime.sendMessage({action: "setCacheMode", mode}).then((reply) => {
+    if (reply?.mode === "persistent" || reply?.mode === "session") confirmedMode = reply.mode;
+    cacheStatus.textContent = t(reply?.ok === true ? "optCacheModeSaved" : "optCacheModeFailed");
+  }, () => { cacheStatus.textContent = t("optCacheModeFailed"); }).finally(() => {
+    cacheMode.disabled = false;
+    if (confirmedMode) cacheMode.value = confirmedMode;
+    else void cacheModeStorage.getValue().then((mode) => { cacheMode.value = mode; }, () => {
+      cacheStatus.textContent = t("optCacheModeFailed");
+    });
+    void refreshCacheCount();
+  });
+});
 
 /** How many verdicts are on the disk. A number and its unit, nothing else: it is there to
  *  be glanced at before clearing, and the row's own text says what they are. */
@@ -253,7 +323,8 @@ async function refreshCacheCount(): Promise<void> {
     const reply = (await browser.runtime.sendMessage({ action: ACTIONS.GET_CACHE_COUNT })) as
       | CacheCountReply
       | undefined;
-    const n = reply?.entries ?? 0;
+    const n = reply?.entries;
+    if (typeof n !== "number") { cacheCountEl.textContent = t("runtimeNotAvailable"); return; }
     // The number is grouped for the reader's locale before it goes in ("1,284"), so the
     // plural is chosen here: tn() would substitute the bare count as $1.
     cacheCountEl.textContent = t(n === 1 ? "optCacheEntries_one" : "optCacheEntries_other", n.toLocaleString());
@@ -266,14 +337,11 @@ clearCacheEl.addEventListener("click", () => {
   clearCacheEl.disabled = true;
   void browser.runtime
     .sendMessage({ action: ACTIONS.CLEAR_CACHE })
-    .catch(() => undefined)
-    .then(() => {
-      clearCacheEl.disabled = false;
-      clearCacheEl.textContent = t("optCleared");
-      setTimeout(() => {
-        clearCacheEl.textContent = CLEAR_LABEL;
-      }, 1500);
+    .then((reply) => {
+      if (reply?.ok !== true) throw new Error("clear_failed");
+      cacheStatus.textContent = t("optCleared");
       return refreshCacheCount();
-    });
+    }).catch(() => { cacheStatus.textContent = t("optCacheClearFailed"); })
+    .finally(() => { clearCacheEl.disabled = false; clearCacheEl.textContent = CLEAR_LABEL; });
 });
 void refreshCacheCount();

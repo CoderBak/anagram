@@ -17,8 +17,9 @@ interface Manifest {
 }
 
 const CLIPBOARD = ["clipboardWrite", "clipboardRead"];
-// PDF reading must not introduce request interception permissions.
-const WEB_REQUEST = ["webRequest", "webRequestBlocking"];
+// PDF detection observes navigation and response types without blocking requests.
+const REQUIRED = ["storage", "activeTab", "contextMenus", "scripting", "nativeMessaging", "webNavigation", "webRequest"];
+const OPTIONAL_HOSTS = [...ALL_SITES, "file:///*"];
 const DECIDES = join(ROOT, "wxt.config.ts");
 
 /** One target's manifest, and whether it is fresh enough to say anything. */
@@ -34,13 +35,7 @@ describe("the permissions each target asks for", () => {
   const firefox = target("firefox-mv2");
 
   it.skipIf(!chrome.ready)("Chrome asks for no clipboard permission at all, required or optional", () => {
-    expect(chrome.manifest.permissions ?? []).toEqual([
-      "storage",
-      "activeTab",
-      "contextMenus",
-      "scripting",
-      "nativeMessaging",
-    ]);
+    expect(chrome.manifest.permissions ?? []).toEqual(REQUIRED);
     expect((chrome.manifest.optional_permissions ?? []).filter((p) => CLIPBOARD.includes(p))).toEqual([]);
   });
 
@@ -48,15 +43,15 @@ describe("the permissions each target asks for", () => {
     expect((firefox.manifest.permissions ?? []).filter((p) => CLIPBOARD.includes(p))).toEqual([]);
     // MV2 has no optional_host_permissions, so the site patterns are optional permissions
     // beside it — the same offer, spelt the way this manifest version spells it.
-    expect(firefox.manifest.optional_permissions ?? []).toEqual(["clipboardWrite", ...ALL_SITES]);
+    expect(firefox.manifest.optional_permissions ?? []).toEqual(["clipboardWrite", ...OPTIONAL_HOSTS]);
   });
 
   it.skipIf(!firefox.ready)("…and asks for nothing else on top of what Chrome asks for", () => {
     // MV2 carries host permissions in the same list, so they are taken out here: what is
-    // left is what a reader reads, and it has to stay the same five entries everywhere.
+    // left is what a reader reads, and it has to stay the same entries everywhere.
     expect(
       (firefox.manifest.permissions ?? []).filter((p) => !p.includes("://") && p !== "<all_urls>"),
-    ).toEqual(["storage", "activeTab", "contextMenus", "scripting", "nativeMessaging"]);
+    ).toEqual(REQUIRED);
   });
 
   it.skipIf(!chrome.ready || !firefox.ready)("native messaging is required, never an optional grant", () => {
@@ -66,10 +61,13 @@ describe("the permissions each target asks for", () => {
     }
   });
 
-  it.skipIf(!chrome.ready || !firefox.ready)("neither target asks for webRequest, required or optional", () => {
+  it.skipIf(!chrome.ready || !firefox.ready)("observes PDF requests without blocking, debugger, or broad tabs permissions", () => {
     for (const { manifest } of [chrome, firefox]) {
-      expect((manifest.permissions ?? []).filter((p) => WEB_REQUEST.includes(p))).toEqual([]);
-      expect((manifest.optional_permissions ?? []).filter((p) => WEB_REQUEST.includes(p))).toEqual([]);
+      expect(manifest.permissions).toContain("webRequest");
+      expect(manifest.permissions).toContain("webNavigation");
+      for (const name of ["webRequestBlocking", "debugger", "tabs", "downloads", "management"]) {
+        expect([...(manifest.permissions ?? []), ...(manifest.optional_permissions ?? [])]).not.toContain(name);
+      }
     }
   });
 });
@@ -85,16 +83,16 @@ describe("the hosts each target asks for", () => {
   });
 
   it.skipIf(!chrome.ready)("…and offers every site as an OPTIONAL grant", () => {
-    expect(chrome.manifest.optional_host_permissions ?? []).toEqual(ALL_SITES);
+    expect(chrome.manifest.optional_host_permissions ?? []).toEqual(OPTIONAL_HOSTS);
   });
 
   it.skipIf(!firefox.ready)("Firefox requires no host either, in the list MV2 keeps hosts in", () => {
     expect((firefox.manifest.permissions ?? []).filter((p) => p.includes("://"))).toEqual([]);
   });
 
-  it.skipIf(!firefox.ready)("…and offers the same optional pair, the way MV2 spells it", () => {
+  it.skipIf(!firefox.ready)("…and offers the same optional websites and file access, the way MV2 spells it", () => {
     expect((firefox.manifest.optional_permissions ?? []).filter((p) => p.includes("://"))).toEqual(
-      ALL_SITES,
+      OPTIONAL_HOSTS,
     );
   });
 
@@ -137,9 +135,9 @@ describe("the test build cannot be mistaken for the store package", () => {
   const shipping = target("chrome-mv3");
   const variant = target("chrome-mv3", "output-test");
 
-  it.skipIf(!variant.ready)("the variant REQUIRES the site patterns, and offers none", () => {
+  it.skipIf(!variant.ready)("the variant REQUIRES website patterns while files remain optional", () => {
     expect(variant.manifest.host_permissions ?? []).toEqual([...ALL_SITES]);
-    expect(variant.manifest.optional_host_permissions).toBeUndefined();
+    expect(variant.manifest.optional_host_permissions).toEqual(["file:///*"]);
   });
 
   it.skipIf(!variant.ready || !shipping.ready)("so the two manifests can never read alike", () => {

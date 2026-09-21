@@ -1,58 +1,19 @@
-// lib/pdf/handoff.ts — how a PDF's bytes reach the reading mode.
-//
-// Extension pages cannot fetch remote documents under their connect-src policy. The reader
-// therefore receives bytes from the existing tab rather than fetching its own `?src=`.
-// This browser policy does not govern the native component's separate setup downloads.
-//
-// So nothing is fetched from here. The bytes come from THE TAB THE READER IS LOOKING AT.
-// Chrome wraps its PDF viewer in an ordinary document that content scripts do run in, so
-// that content script re-reads the document its own tab is showing — same origin, same
-// cookies, normally answered out of the HTTP cache without touching the network at all —
-// and hands the bytes over. Three hops, each one chunked so no copy of a large file has
-// to exist twice at once:
-//
-//   the PDF tab  --PDF_BYTES_PORT-->  the service worker  --PDF_CLAIM_PORT-->  the reader
-//
-// The worker holds the chunks under a one-time ticket, navigates that same tab to
-// `reader.html?src=…&ticket=…`, and frees them the moment the reader has pulled them or
-// the ticket goes stale. `src` is left in the address only as a NAME — the title, "Open
-// original", the HTML link — and is never fetched by anything on the extension's origin.
-//
-// WHY BASE64. Chrome serialises extension messages as JSON: a Uint8Array posted across a
-// port arrives as `{"0":37,"1":80,…}`, which is thirty times the size and no longer a
-// buffer. Base64 costs a third more than the bytes and is the same code on both browsers.
-//
-// Firefox has no such tab: its viewer is a privileged page no content script reaches (see
-// lib/surface.ts). There, nothing offers to open a REMOTE PDF at all, and the reading
-// mode is what a file dropped on it makes of it.
+// Chromium reads its current PDF tab; Firefox and local files use a private, ticketed loader.
 import { browser } from "#imports";
+import * as v from "valibot";
+import { claimSourceBytes, createSourceBroker, type PdfOpenResult } from "./sourceTransfer";
+import { PDF_TAB_SCRIPTS_RUN } from "../surface";
+import { matchesAny } from "../access/patterns";
 
 /** The PDF tab → the worker: the document this tab is showing, in chunks. */
 export const PDF_BYTES_PORT = "anagram-pdf-bytes";
 /** The reader → the worker: the bytes held under this ticket. */
 export const PDF_CLAIM_PORT = "anagram-pdf-claim";
 
-/**
- * Raw bytes per relayed chunk. Measured on a 45 MB document (Chromium 141, this machine,
- * 2026-09-20) at 64 KiB, 256 KiB and 1 MiB: the tab's leg is 727–740 ms and the reader's
- * 110–170 ms whichever it is, because the cost is the base64 encode and decode and not the
- * number of messages. A quarter of a megabyte is ~180 messages for a file that size —
- * small enough that no single one is a long task, large enough that the per-message
- * overhead has disappeared.
- */
+/** Raw bytes per acknowledged chunk; only one chunk may be in flight per transfer. */
 export const CHUNK_BYTES = 256 * 1024;
 
-/**
- * The cap on the TAB path, lower than the reader's own 100 MiB cap on a file picked off
- * the disk, because a file from the disk makes one hop and one copy and a document coming
- * through here does not. Measured at 45 MB: the reader page peaks at 126 MB — the decoded
- * document, plus the base64 of it as garbage the collector has not caught up with — and
- * the worker holds another ~60 MB of base64 until the reader has pulled it. 50 MiB puts
- * the worst instant around 200 MB across the two, which is a lot to ask for a PDF and far
- * too little to be in any danger. Above that a PDF is a scan or a book of images: a
- * document with almost no text in it, which is the one kind this extension has nothing to
- * say about anyway.
- */
+/** Per-document relay cap, below the reader's 100 MiB direct-file limit. */
 export const MAX_HANDOFF_BYTES = 50 * 1024 * 1024;
 
 /** How long held bytes wait for their reader before they are dropped. */
@@ -88,6 +49,8 @@ export function toBase64(bytes: Uint8Array): string {
 
 /** Decode `text` into `into` at `at`, and say how many bytes that was. */
 export function fromBase64(text: string, into: Uint8Array, at: number): number {
+  const size=text === "" ? 0 : validatedChunkBytes(text);
+  if(size === null || !Number.isInteger(at) || at < 0 || at+size > into.length) throw new Error("Invalid PDF chunk");
   const binary = atob(text);
   for (let i = 0; i < binary.length; i++) into[at + i] = binary.charCodeAt(i);
   return binary.length;
@@ -129,16 +92,19 @@ export type StreamResult = { ok: true; bytes: number } | { ok: false; failure: H
  */
 export async function streamPdfBytes(
   url: string,
-  send: (chunk: string) => void,
+  send: (chunk: string) => unknown | Promise<unknown>,
   opts: { cap: number; signal?: AbortSignal },
 ): Promise<StreamResult> {
   let response: Response;
   try {
-    response = await fetch(url, { credentials: "include", cache: "force-cache", signal: opts.signal });
+    response = await fetch(url, { credentials: "include", cache: "force-cache", signal: opts.signal, redirect: "error" });
   } catch {
     return { ok: false, failure: "read" };
   }
-  if (!response.ok || !response.body) return { ok: false, failure: "read" };
+  if (!response.ok || !response.body) {
+    await response.body?.cancel().catch(() => undefined);
+    return { ok: false, failure: "read" };
+  }
   // A server that states a length over the cap is answered before a byte of it is read.
   const stated = Number(response.headers.get("content-length"));
   if (Number.isFinite(stated) && stated > opts.cap) {
@@ -152,13 +118,13 @@ export async function streamPdfBytes(
   let total = 0;
   let checked = false;
   /** Hand over what is in `pending`, checking the first one for the header. */
-  const flush = (): HandoffFailure | null => {
+  const flush = async (): Promise<HandoffFailure | null> => {
     if (held === 0) return checked ? null : "type";
     if (!checked) {
       checked = true;
       if (!hasPdfMagic(pending.subarray(0, held))) return "type";
     }
-    send(toBase64(pending.subarray(0, held)));
+    await send(toBase64(pending.subarray(0, held)));
     held = 0;
     return null;
   };
@@ -182,17 +148,17 @@ export async function streamPdfBytes(
         if (held === CHUNK_BYTES) {
           // flush() copies out of the buffer, so the same one is filled again: one
           // quarter-megabyte allocation for a document of any size.
-          const bad = flush();
+          const bad = await flush();
           if (bad) return await stop(bad);
         }
       }
     }
+    const bad = await flush();
+    if (bad) return await stop(bad);
+    return { ok: true, bytes: total };
   } catch {
-    return { ok: false, failure: "read" };
+    return await stop("read");
   }
-  const bad = flush();
-  if (bad) return { ok: false, failure: bad };
-  return { ok: true, bytes: total };
 }
 
 /**
@@ -203,315 +169,246 @@ export async function streamPdfBytes(
 export function serveTabPdfBytes(): void {
   browser.runtime.onConnect.addListener((port) => {
     if (port.name !== PDF_BYTES_PORT) return;
-    const stopped = new AbortController();
-    port.onDisconnect.addListener(() => stopped.abort());
-    /** A port the worker has already let go throws rather than queueing. */
-    const post = (message: unknown): boolean => {
-      try {
-        port.postMessage(message);
-        return true;
-      } catch {
-        stopped.abort();
-        return false;
-      }
-    };
+    if(port.sender?.id !== browser.runtime.id){port.disconnect();return;}
+    const stopped=new AbortController();
+    let started=false,seq=0,ack:((ok:boolean)=>void)|undefined;
+    port.onDisconnect.addListener(()=>{stopped.abort();ack?.(false);});
+    const post=(message:unknown) => {try{port.postMessage(message);return true;}catch{stopped.abort();return false;}};
     port.onMessage.addListener((message) => {
-      const ask = message as { want?: string; cap?: number };
-      // The tab may have moved on since the worker decided to ask. Only the document
-      // this page is REALLY showing is ever read.
-      if (ask.want !== location.href) {
-        post({ failure: "read" });
-        return;
+      if(started) {
+        if(!isAck(message,seq)){stopped.abort();ack?.(false);return;}
+        const done=ack;ack=undefined;done?.(true);return;
       }
-      void streamPdfBytes(location.href, (chunk) => post({ chunk }), {
-        cap: ask.cap ?? MAX_HANDOFF_BYTES,
-        signal: stopped.signal,
-      }).then((result) => {
-        post(result.ok ? { done: true, bytes: result.bytes } : { failure: result.failure });
-      });
+      const ask=v.safeParse(v.strictObject({want:v.string(),cap:v.pipe(v.number(),v.integer(),v.minValue(1),v.maxValue(MAX_HANDOFF_BYTES))}),message);
+      if(!ask.success || ask.output.want !== location.href){post({failure:"read"});return;}
+      started=true;
+      void streamPdfBytes(location.href,async(chunk)=>{
+        const accepted=new Promise<boolean>((resolve)=>{ack=resolve;});
+        if(!post({chunk,seq:seq++}) || !await accepted)throw new Error("PDF receiver closed");
+      },{cap:ask.output.cap,signal:stopped.signal}).then((result)=>post(result.ok ? {done:true,bytes:result.bytes} : {failure:result.failure}),()=>post({failure:"read"}));
     });
   });
 }
 
-// ---- the worker: hold the bytes under a ticket ------------------------------------------------
-
-/** A document waiting for the reader that was opened for it. */
-interface Held {
-  tabId: number;
-  chunks: string[];
-  bytes: number;
-  timer: ReturnType<typeof setTimeout>;
+export const MAX_HANDOFF_TOTAL_BYTES = 64 * 1024 * 1024;
+export const MAX_HANDOFF_TRANSFERS = 2;
+const ChunkSchema=v.strictObject({chunk:v.pipe(v.string(),v.maxLength(Math.ceil(CHUNK_BYTES/3)*4)),seq:v.pipe(v.number(),v.integer(),v.minValue(0))});
+const DoneSchema=v.strictObject({done:v.literal(true),bytes:v.pipe(v.number(),v.integer(),v.minValue(1),v.maxValue(MAX_HANDOFF_BYTES))});
+const FailureSchema=v.strictObject({failure:v.picklist(["large","type","read"])});
+const TicketSchema=v.pipe(v.string(),v.regex(/^[a-f0-9]{32}$/));
+function isAck(value:unknown,next:number):boolean {
+  return v.safeParse(v.strictObject({ack:v.literal(next)}),value).success;
 }
-
-/** 128 bits of randomness as hex — a ticket nobody can guess and nobody reuses. */
+export function validatedChunkBytes(value:unknown):number|null {
+  if(typeof value!=="string" || !value.length || value.length>Math.ceil(CHUNK_BYTES/3)*4 || value.length%4!==0 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value))return null;
+  const size=base64Bytes(value);return size>0 && size<=CHUNK_BYTES ? size : null;
+}
+export interface ByteLease {grow(bytes:number):boolean;release():void}
+export function createHandoffBudget(limit=MAX_HANDOFF_TOTAL_BYTES,concurrency=MAX_HANDOFF_TRANSFERS) {
+  let bytes=0,active=0;
+  return {
+    lease():ByteLease {
+      let held=0,released=false;
+      return {grow(n){if(released || !Number.isSafeInteger(n) || n<0 || bytes+n>limit)return false;held+=n;bytes+=n;return true;},
+        release(){if(!released){released=true;bytes-=held;held=0;}}};
+    },
+    start(): (()=>void)|null {if(active>=concurrency)return null;active++;let done=false;return ()=>{if(!done){done=true;active--;}};},
+    bytes:()=>bytes,active:()=>active,
+  };
+}
+interface Held {tabId:number;chunks:string[];bytes:number;timer:ReturnType<typeof setTimeout>;release():void}
 export function newTicket(): string {
-  const raw = new Uint8Array(16);
-  crypto.getRandomValues(raw);
-  return [...raw].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const raw = new Uint8Array(16);crypto.getRandomValues(raw);
+  return [...raw].map((b)=>b.toString(16).padStart(2,"0")).join("");
 }
-
 export interface TicketStore {
-  hold(tabId: number, chunks: string[], bytes: number): string;
-  /** The bytes for this ticket, IF the tab claiming them is the one they were read for. */
-  take(ticket: string, tabId: number | undefined): Held | null;
-  /** Everything held for a tab that has gone away. */
-  forget(tabId: number): void;
-  size(): number;
+  hold(tabId:number,chunks:string[],bytes:number,lease?:ByteLease):string|null;
+  take(ticket:string,tabId:number|undefined):Held|null;
+  forget(tabId:number):void;
+  size():number;
 }
-
-export function createTicketStore(ttlMs = TICKET_TTL_MS): TicketStore {
-  const held = new Map<string, Held>();
-  const drop = (ticket: string): void => {
-    const entry = held.get(ticket);
-    if (!entry) return;
-    clearTimeout(entry.timer);
-    held.delete(ticket);
-  };
+export function createTicketStore(ttlMs=TICKET_TTL_MS,budget=createHandoffBudget()):TicketStore {
+  const held=new Map<string,Held>();
+  const drop=(ticket:string,release=true)=>{const entry=held.get(ticket);if(!entry)return;clearTimeout(entry.timer);held.delete(ticket);if(release)entry.release();};
   return {
-    hold(tabId, chunks, bytes) {
-      const ticket = newTicket();
-      // A reader that never arrives — the tab was closed mid-navigation, the worker was
-      // woken for something else — must not leave fifty megabytes behind it.
-      const timer = setTimeout(() => drop(ticket), ttlMs);
-      held.set(ticket, { tabId, chunks, bytes, timer });
-      return ticket;
+    hold(tabId,chunks,bytes,lease){
+      if(!Number.isInteger(tabId) || tabId<0 || !Number.isSafeInteger(bytes) || bytes<1 || bytes>MAX_HANDOFF_BYTES)return null;
+      const sizes=chunks.map(validatedChunkBytes);if(sizes.some((n)=>n===null) || sizes.reduce<number>((a,n)=>a+(n??0),0)!==bytes)return null;
+      const owned=lease ?? budget.lease();if(!lease && !owned.grow(bytes)){owned.release();return null;}
+      const ticket=newTicket(),timer=setTimeout(()=>drop(ticket),ttlMs);
+      held.set(ticket,{tabId,chunks,bytes,timer,release:()=>owned.release()});return ticket;
     },
-    take(ticket, tabId) {
-      const entry = held.get(ticket);
-      if (!entry) return null;
-      // The ticket was written for ONE tab: the one the worker navigated. A ticket that
-      // leaked somewhere else still opens nothing.
-      if (tabId !== undefined && tabId !== entry.tabId) return null;
-      drop(ticket);
-      return entry;
-    },
-    forget(tabId) {
-      for (const [ticket, entry] of held) if (entry.tabId === tabId) drop(ticket);
-    },
-    size: () => held.size,
+    take(ticket,tabId){const entry=held.get(ticket);if(!entry || tabId===undefined || tabId!==entry.tabId)return null;drop(ticket,false);return entry;},
+    forget(tabId){for(const [ticket,entry]of held)if(entry.tabId===tabId)drop(ticket);},
+    size:()=>held.size,
   };
 }
-
-export type ReadResult =
-  | { ok: true; chunks: string[]; bytes: number }
-  | { ok: false; failure: HandoffFailure };
-
-/**
- * Ask `tabId` for the document it is showing. The tab does the reading; this only counts
- * what arrives, so a content script that went wrong cannot make the worker hold more than
- * the cap, and a tab that stops answering ends at the deadline rather than never.
- */
-export async function readPdfFromTab(
-  tabId: number,
-  src: string,
-  opts: { cap?: number; timeoutMs?: number } = {},
-): Promise<ReadResult> {
-  const cap = opts.cap ?? MAX_HANDOFF_BYTES;
-  let port: ReturnType<typeof browser.tabs.connect>;
-  try {
-    port = browser.tabs.connect(tabId, { name: PDF_BYTES_PORT, frameId: 0 });
-  } catch {
-    return { ok: false, failure: "read" };
-  }
-  return await new Promise<ReadResult>((resolve) => {
-    const chunks: string[] = [];
-    let bytes = 0;
-    let settled = false;
-    const finish = (result: ReadResult): void => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      try {
-        port.disconnect();
-      } catch {
-        /* already gone */
+export type ReadResult={ok:true;chunks:string[];bytes:number}|{ok:false;failure:HandoffFailure};
+export async function readPdfFromTab(tabId:number,src:string,opts:{cap?:number;timeoutMs?:number;signal?:AbortSignal;lease?:ByteLease}={}):Promise<ReadResult> {
+  const cap=Math.min(opts.cap ?? MAX_HANDOFF_BYTES,MAX_HANDOFF_BYTES);
+  if(opts.signal?.aborted)return {ok:false,failure:"read"};
+  let port:ReturnType<typeof browser.tabs.connect>;
+  try{port=browser.tabs.connect(tabId,{name:PDF_BYTES_PORT,frameId:0});}catch{return {ok:false,failure:"read"};}
+  return new Promise((resolve)=>{
+    const chunks:string[]=[];let bytes=0,settled=false;
+    const abort=()=>finish({ok:false,failure:"read"});
+    const finish=(result:ReadResult)=>{if(settled)return;settled=true;clearTimeout(timer);opts.signal?.removeEventListener("abort",abort);try{port.disconnect();}catch{}resolve(result);};
+    const timer=setTimeout(abort,opts.timeoutMs ?? READ_TIMEOUT_MS);
+    opts.signal?.addEventListener("abort",abort,{once:true});
+    port.onMessage.addListener((value)=>{
+      if(settled)return;
+      const chunk=v.safeParse(ChunkSchema,value);
+      if(chunk.success){
+        const m=chunk.output,n=validatedChunkBytes(m.chunk);
+        if(n===null || m.seq!==chunks.length){finish({ok:false,failure:"read"});return;}
+        if(bytes+n>cap || (opts.lease && !opts.lease.grow(n))){finish({ok:false,failure:"large"});return;}
+        if(chunks.length===0){const head=new Uint8Array(n);fromBase64(m.chunk,head,0);if(!hasPdfMagic(head)){finish({ok:false,failure:"type"});return;}}
+        bytes+=n;chunks.push(m.chunk);
+        try{port.postMessage({ack:chunks.length});}catch{abort();}return;
       }
-      resolve(result);
-    };
-    const timer = setTimeout(() => finish({ ok: false, failure: "read" }), opts.timeoutMs ?? READ_TIMEOUT_MS);
-    port.onMessage.addListener((message) => {
-      const m = message as { chunk?: string; done?: boolean; bytes?: number; failure?: HandoffFailure };
-      if (typeof m.chunk === "string") {
-        bytes += base64Bytes(m.chunk);
-        if (bytes > cap) {
-          finish({ ok: false, failure: "large" });
-          return;
-        }
-        chunks.push(m.chunk);
-        return;
-      }
-      if (m.done) finish({ ok: true, chunks, bytes });
-      else finish({ ok: false, failure: m.failure ?? "read" });
+      const done=v.safeParse(DoneSchema,value);
+      if(done.success){finish(done.output.bytes===bytes && bytes>0 ? {ok:true,chunks,bytes} : {ok:false,failure:"read"});return;}
+      const failure=v.safeParse(FailureSchema,value);finish({ok:false,failure:failure.success ? failure.output.failure : "read"});
     });
-    // No content script on the other end, or the tab navigated away mid-read.
-    port.onDisconnect.addListener(() => finish({ ok: false, failure: "read" }));
-    try {
-      port.postMessage({ want: src, cap });
-    } catch {
-      finish({ ok: false, failure: "read" });
-    }
+    port.onDisconnect.addListener(abort);
+    try{port.postMessage({want:src,cap});}catch{abort();}
   });
 }
-
-export interface HandoffDeps {
-  /** `reader.html?src=…` for a document — the worker's own, so this file builds no URL. */
-  readerUrl(src: string): string;
-  /**
-   * Make sure the tab really has our content script before it is asked for bytes. Site
-   * access is optional (lib/access/worker.ts): on a site with no grant there is nobody to
-   * answer the port, and the click that started this is what gives us `activeTab` to put
-   * a script there for this one tab.
-   */
-  ensureInjected?(tabId: number): Promise<boolean>;
-}
-
-export interface PdfHandoff {
-  /** Register the reader's claim port. Called at the worker's top level, as MV3 needs. */
-  serve(): void;
-  /** Read the PDF `tabId` is showing and turn that tab into the reading mode. */
-  open(tabId: number, src: string, opts: { auto: boolean }): Promise<void>;
-  /** A tab has gone: whatever was held for it goes with it. */
-  forget(tabId: number): void;
-}
-
-export function createPdfHandoff(deps: HandoffDeps): PdfHandoff {
-  const store = createTicketStore();
-  /**
-   * Tabs whose document is being read right now. Two things can ask for the same tab in
-   * the same second and used to get two reads of the same file: injecting a content script
-   * into a PDF tab for an explicit "open it with Anagram" makes that script announce the
-   * tab, which is the automatic route's cue as well. Whoever asked first is answered.
-   */
-  const reading = new Set<number>();
-
+export interface HandoffDeps {readerUrl(src:string):string;ensureInjected?(tabId:number):Promise<boolean>}
+export interface PdfHandoff {serve():void;open(tabId:number,src:string,opts:{auto:boolean}):Promise<PdfOpenResult>;forget(tabId:number):void}
+export function createPdfHandoff(deps:HandoffDeps):PdfHandoff {
+  const budget=createHandoffBudget(),store=createTicketStore(TICKET_TTL_MS,budget);
+  const sourceBroker=createSourceBroker(deps.readerUrl);
+  const tickets=new Map<string,{tabId:number;source:string;reader:string;navigating:boolean;loadingSeen:boolean;complete:boolean;documentId?:string;stop?:()=>void}>();
+  const discard=(key:string)=>{const meta=tickets.get(key);if(!meta)return;tickets.delete(key);meta.stop?.();store.take(key,meta.tabId)?.release();};
+  const reading=new Map<number,AbortController>(),sources=new Map<number,string>(),epochs=new Map<number,number>();
+  const forget=(tabId:number)=>{sourceBroker.forget(tabId);reading.get(tabId)?.abort();store.forget(tabId);for(const [key,meta]of tickets)if(meta.tabId===tabId)discard(key);epochs.delete(tabId);};
   return {
-    serve() {
-      browser.runtime.onConnect.addListener((port) => {
-        if (port.name !== PDF_CLAIM_PORT) return;
-        const tabId = port.sender?.tab?.id;
-        port.onMessage.addListener((message) => {
-          const ticket = (message as { ticket?: string }).ticket;
-          const entry = typeof ticket === "string" ? store.take(ticket, tabId) : null;
+    serve(){
+      sourceBroker.serve();
+      browser.permissions.onRemoved.addListener((removed)=>{
+        for(const [tabId,src]of sources)if(matchesAny(removed.origins??[],src))reading.get(tabId)?.abort();
+        for(const [key,meta]of tickets)if(matchesAny(removed.origins??[],meta.source))discard(key);
+      });
+      browser.webNavigation.onBeforeNavigate.addListener((details)=>{
+        if(details.frameId!==0)return;
+        for(const [key,meta]of tickets)if(meta.tabId===details.tabId){
+          if(!meta.navigating || details.url!==meta.reader)discard(key);
+        }
+      });
+      browser.webNavigation.onCommitted.addListener((details)=>{
+        if(details.frameId!==0)return;
+        for(const [key,meta]of tickets)if(meta.tabId===details.tabId){
+          const documentId=(details as {documentId?:string}).documentId;
+          if(details.url!==meta.reader || (meta.documentId && documentId && meta.documentId!==documentId))discard(key);
+          else{meta.navigating=false;meta.documentId??=documentId;}
+        }
+      });
+      browser.tabs.onUpdated.addListener((tabId,change)=>{
+        if(change.status==="loading"){epochs.set(tabId,(epochs.get(tabId)??0)+1);reading.get(tabId)?.abort();}
+        for(const [key,meta]of tickets)if(meta.tabId===tabId && !meta.stop){
+          if(change.status==="loading"){
+            if(meta.complete || (change.url && change.url!==meta.reader))discard(key);
+            else meta.loadingSeen=true;
+          }else if(change.status==="complete" && meta.loadingSeen)meta.complete=true;
+        }
+      });
+      browser.runtime.onConnect.addListener((port)=>{
+        if(port.name!==PDF_CLAIM_PORT)return;
+        const sender=port.sender,tabId=sender?.tab?.id;
+        const expected=browser.runtime.getURL("/reader.html");
+        let senderUrl:URL|undefined;try{senderUrl=new URL(sender?.url ?? "");}catch{}
+        if(sender?.id!==browser.runtime.id || (sender.documentLifecycle && sender.documentLifecycle!=="active") || !Number.isInteger(tabId) || sender?.frameId!==0 || !senderUrl || senderUrl.href.split(/[?#]/)[0]!==expected){port.disconnect();return;}
+        let entry:Held|null=null,next=0,finished=false,checking=false,claimedKey:string|undefined;
+        const endTransfer=budget.start();if(!endTransfer){port.disconnect();return;}
+        const finish=()=>{if(finished)return;finished=true;clearTimeout(timer);if(claimedKey){tickets.delete(claimedKey);store.take(claimedKey,tabId)?.release();}entry?.release();endTransfer();try{port.disconnect();}catch{}};
+        const timer=setTimeout(finish,CLAIM_TIMEOUT_MS);
+        port.onDisconnect.addListener(finish);
+        port.onMessage.addListener((value)=>{
+          if(finished)return;
+          if(checking){finish();return;}
           try {
-            if (!entry) {
-              port.postMessage({ gone: true });
+            if(!entry){
+              const ask=v.safeParse(v.strictObject({ticket:TicketSchema}),value);
+              if(!ask.success || senderUrl!.searchParams.get("ticket")!==ask.output.ticket){finish();return;}
+              const key=ask.output.ticket,meta=tickets.get(key);
+              if(!meta || meta.tabId!==tabId || meta.reader!==senderUrl!.href || meta.stop || (meta.documentId && sender?.documentId && meta.documentId!==sender.documentId)){port.postMessage({gone:true});finish();return;}
+              checking=true;claimedKey=key;meta.stop=finish;meta.navigating=false;meta.documentId??=sender?.documentId;
+              void (async()=>{
+                const tab=await browser.tabs.get(tabId!);
+                const frame=await browser.webNavigation.getFrame({tabId:tabId!,frameId:0}).catch(()=>null);
+                const documentId=(frame as {documentId?:string}|null)?.documentId;
+                if(finished || tickets.get(key)!==meta || (tab.url && tab.url!==meta.reader) || (tab.pendingUrl && tab.pendingUrl!==meta.reader) ||
+                   (frame && frame.url!==meta.reader) || (documentId && sender?.documentId && documentId!==sender.documentId)){finish();return;}
+                entry=store.take(key,tabId);checking=false;
+                if(!entry){port.postMessage({gone:true});finish();return;}
+                port.postMessage({bytes:entry.bytes});
+              })().catch(finish);
               return;
             }
-            port.postMessage({ bytes: entry.bytes });
-            for (const chunk of entry.chunks) port.postMessage({ chunk });
-            port.postMessage({ done: true });
-          } catch {
-            /* the reader closed mid-hand-over; the ticket is spent either way */
-          }
+            if(!isAck(value,next)){finish();return;}
+            if(next===entry.chunks.length){port.postMessage({done:true});finish();return;}
+            const seq=next++;port.postMessage({chunk:entry.chunks[seq],seq});
+          }catch{finish();}
         });
       });
     },
-
-    async open(tabId, src, { auto }) {
-      if (reading.has(tabId)) return;
-      reading.add(tabId);
+    async open(tabId,src,{auto}){
+      if(src.startsWith("file:") || !PDF_TAB_SCRIPTS_RUN){return sourceBroker.open(tabId,src);}
+      if(reading.has(tabId))return {ok:false,error:"busy"};
+      const endTransfer=budget.start();if(!endTransfer)return {ok:false,error:"busy"};
+      const abort=new AbortController(),lease=budget.lease();reading.set(tabId,abort);sources.set(tabId,src);
+      const epoch=epochs.get(tabId)??0;
+      const stillHere=async()=>{
+        if(abort.signal.aborted || (epochs.get(tabId)??0)!==epoch)return false;
+        try{const tab=await browser.tabs.get(tabId);return !abort.signal.aborted && (epochs.get(tabId)??0)===epoch && tab.url===src && (!tab.pendingUrl || tab.pendingUrl===src);}catch{return false;}
+      };
+      let transferred=false;
       try {
-        await read(tabId, src, auto);
-      } finally {
-        reading.delete(tabId);
-      }
-    },
-
-    forget: (tabId) => store.forget(tabId),
+        if(!await stillHere())return {ok:false,error:"forbidden"};
+        if(deps.ensureInjected)await deps.ensureInjected(tabId).catch(()=>false);
+        if(!await stillHere())return {ok:false,error:"forbidden"};
+        const got=await readPdfFromTab(tabId,src,{signal:abort.signal,lease});
+        if(!await stillHere())return {ok:false,error:"forbidden"};
+        if(!got.ok){if(!auto)await browser.tabs.update(tabId,{url:`${deps.readerUrl(src)}&err=${got.failure}`}).catch(()=>undefined);return {ok:false,error:"read"};}
+        const ticket=store.hold(tabId,got.chunks,got.bytes,lease);
+        if(!ticket)return {ok:false,error:"busy"};
+        transferred=true;
+        const reader=`${deps.readerUrl(src)}&ticket=${ticket}`;
+        tickets.set(ticket,{tabId,source:src,reader,navigating:true,loadingSeen:false,complete:false});
+        // The byte store owns expiry; mirror it for source/navigation authorization.
+        setTimeout(()=>discard(ticket),TICKET_TTL_MS);
+        try{await browser.tabs.update(tabId,{url:reader});return {ok:true};}
+        catch{discard(ticket);return {ok:false,error:"read"};}
+      }finally{if(!transferred)lease.release();reading.delete(tabId);sources.delete(tabId);endTransfer();}
+    },forget,
   };
-
-  /** The read itself, so `open` is only about who is allowed to start one. */
-  async function read(tabId: number, src: string, auto: boolean): Promise<void> {
-    // Site access is optional, so a tab may hold no content script at all. The click that
-    // brought us here carries `activeTab`, which is enough to put one there — and a script
-    // that arrives that way analyzes nothing, but it still answers this. Its answer is not
-    // waited on: lib/access/worker.ts says a page it could not inject into may be
-    // listening on its own account, and a tab with nobody on the other end disconnects the
-    // port at once anyway.
-    if (deps.ensureInjected) await deps.ensureInjected(tabId).catch(() => false);
-    const got = await readPdfFromTab(tabId, src);
-    if (!got.ok) {
-      // The AUTOMATIC route leaves the tab exactly as it was. A PDF we could not read
-      // is still the PDF the reader asked for, and swapping it for a page that says so
-      // would be changing what they see in order to apologise for not helping.
-      // An explicit click has to be answered, so the reading mode opens and says it.
-      if (!auto) {
-        await browser.tabs
-          .update(tabId, { url: `${deps.readerUrl(src)}&err=${got.failure}` })
-          .catch(() => undefined);
-      }
-      return;
-    }
-    const ticket = store.hold(tabId, got.chunks, got.bytes);
-    try {
-      await browser.tabs.update(tabId, { url: `${deps.readerUrl(src)}&ticket=${ticket}` });
-    } catch {
-      // The tab closed between the read and the navigation: free the bytes now rather
-      // than leaving them to the timer.
-      store.take(ticket, tabId);
-    }
-  }
 }
-
-// ---- the reader: pull the bytes it was opened for -----------------------------------------------
-
-export interface ClaimedPdf {
-  bytes: Uint8Array;
-}
-
-/**
- * Collect the document held under `ticket`. Null means there is nothing there — a worker
- * that restarted, a reloaded tab, a pasted address — and the reader answers that by going
- * back to the document itself rather than by fetching anything.
- */
-export async function claimPdfBytes(ticket: string, signal?: AbortSignal): Promise<ClaimedPdf | null> {
-  let port: ReturnType<typeof browser.runtime.connect>;
-  try {
-    port = browser.runtime.connect({ name: PDF_CLAIM_PORT });
-  } catch {
-    return null;
-  }
-  return await new Promise<ClaimedPdf | null>((resolve) => {
-    let out: Uint8Array | null = null;
-    let at = 0;
-    let settled = false;
-    const finish = (result: ClaimedPdf | null): void => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      signal?.removeEventListener("abort", onAbort);
-      try {
-        port.disconnect();
-      } catch {
-        /* already gone */
+export interface ClaimedPdf {bytes:Uint8Array}
+export async function claimPdfBytes(ticket:string,signal?:AbortSignal):Promise<ClaimedPdf|null> {
+  if(ticket.startsWith("s-"))return claimSourceBytes(ticket,signal);
+  if(signal?.aborted || !v.safeParse(TicketSchema,ticket).success)return null;
+  let port:ReturnType<typeof browser.runtime.connect>;
+  try{port=browser.runtime.connect({name:PDF_CLAIM_PORT});}catch{return null;}
+  return new Promise((resolve)=>{
+    let out:Uint8Array|null=null,at=0,seq=0,settled=false;
+    const abort=()=>finish(null);
+    const finish=(result:ClaimedPdf|null)=>{if(settled)return;settled=true;clearTimeout(timer);signal?.removeEventListener("abort",abort);try{port.disconnect();}catch{}resolve(result);};
+    const timer=setTimeout(abort,CLAIM_TIMEOUT_MS);signal?.addEventListener("abort",abort,{once:true});
+    const post=(value:unknown)=>{try{port.postMessage(value);}catch{abort();}};
+    port.onDisconnect.addListener(abort);
+    port.onMessage.addListener((value)=>{
+      if(settled)return;
+      if(!out){const header=v.safeParse(v.strictObject({bytes:v.pipe(v.number(),v.integer(),v.minValue(1),v.maxValue(MAX_HANDOFF_BYTES))}),value);
+        if(!header.success){abort();return;}out=new Uint8Array(header.output.bytes);post({ack:0});return;}
+      const chunk=v.safeParse(ChunkSchema,value);
+      if(chunk.success){
+        const m=chunk.output,n=validatedChunkBytes(m.chunk);
+        if(n===null || m.seq!==seq || at+n>out.length){abort();return;}
+        try{at+=fromBase64(m.chunk,out,at);}catch{abort();return;}seq++;post({ack:seq});return;
       }
-      resolve(result);
-    };
-    const onAbort = (): void => finish(null);
-    const timer = setTimeout(() => finish(null), CLAIM_TIMEOUT_MS);
-    signal?.addEventListener("abort", onAbort, { once: true });
-    port.onMessage.addListener((message) => {
-      const m = message as { bytes?: number; chunk?: string; done?: boolean; gone?: boolean };
-      if (m.gone) {
-        finish(null);
-        return;
-      }
-      if (typeof m.bytes === "number") {
-        // One allocation for the whole document: the size is known before the first chunk.
-        out = new Uint8Array(m.bytes);
-        return;
-      }
-      if (typeof m.chunk === "string" && out) {
-        at += fromBase64(m.chunk, out, at);
-        return;
-      }
-      if (m.done) finish(out && at === out.byteLength ? { bytes: out } : null);
+      if(v.safeParse(v.strictObject({done:v.literal(true)}),value).success && at===out.length && hasPdfMagic(out))finish({bytes:out});else abort();
     });
-    port.onDisconnect.addListener(() => finish(null));
-    try {
-      port.postMessage({ ticket });
-    } catch {
-      finish(null);
-    }
+    post({ticket});
   });
 }

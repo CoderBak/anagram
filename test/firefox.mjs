@@ -425,21 +425,20 @@ check(
 
 // ── 10) the MV2 toolbar badge path (browserAction.setBadgeText) ────────────────────
 const badgeApi = await optionsPage
-  .evaluate(async () => {
-    const tab = await browser.tabs.getCurrent();
-    const before = await browser.browserAction.getBadgeText({ tabId: tab.id });
-    await browser.runtime.sendMessage({ action: "updateBadge", flagged: 7 });
-    await new Promise((r) => setTimeout(r, 600));
-    const after = await browser.browserAction.getBadgeText({ tabId: tab.id });
-    await browser.runtime.sendMessage({ action: "updateBadge", flagged: 0 });
-    await new Promise((r) => setTimeout(r, 600));
-    const cleared = await browser.browserAction.getBadgeText({ tabId: tab.id });
-    return { before, after, cleared };
-  })
+  .evaluate(async (url) => {
+    const own = await browser.tabs.getCurrent();
+    const before = await browser.browserAction.getBadgeText({ tabId: own.id });
+    const rejected = await browser.runtime.sendMessage({ action: "updateBadge", flagged: 7 });
+    const after = await browser.browserAction.getBadgeText({ tabId: own.id });
+    const [tab] = await browser.tabs.query({ url });
+    const state = await browser.tabs.sendMessage(tab.id, { action: "getTabState" }, { frameId: 0 });
+    const actual = await browser.browserAction.getBadgeText({ tabId: tab.id });
+    return { before, after, rejected, actual, expected: state.flagged > 0 ? String(state.flagged) : "" };
+  }, pageUrl)
   .catch((e) => ({ error: String(e).slice(0, 200) }));
 check(
-  "MV2 toolbar badge: browserAction.setBadgeText applies the flagged count",
-  badgeApi.after === "7" && badgeApi.cleared === "",
+  "MV2 toolbar badge follows the actual content frame and rejects Settings spoofing",
+  badgeApi.rejected?.ok === false && badgeApi.before === badgeApi.after && badgeApi.actual === badgeApi.expected,
   JSON.stringify(badgeApi),
 );
 
@@ -449,15 +448,16 @@ check(
 // is the only place where pdf.js, a module worker and the orchestrator all run on a
 // moz-extension: document — three things Firefox could do differently, and the suite that
 // would notice is this one. The PDF is the one test/scenarios.mjs opens in Chromium
-// (test/pdf-fixture.mjs), served over http as application/pdf.
+// (test/pdf-fixture.mjs), supplied here as local File bytes.
 const readerErrors = [];
 
 /**
- * Put a PDF into the reading mode the only way Firefox has: a real drop. BiDi cannot
- * carry a file to an input, so the bytes travel as base64 and become a File in the page.
+ * Exercise the document drop handler. BiDi cannot operate the native picker, so the
+ * bytes travel as base64 and become a File in the extension page.
  */
-const dropPdf = (page, buffer, name) =>
-  page
+const dropPdf = async (page, buffer, name) => {
+  if (!await waitFor(page, () => document.getElementById("drop")?.hidden === false, { timeout: 25000 })) return false;
+  return page
     .evaluate(
       ([b64, fileName]) => {
         const bin = atob(b64);
@@ -471,14 +471,22 @@ const dropPdf = (page, buffer, name) =>
       [buffer.toString("base64"), name],
     )
     .catch(() => false);
+};
+const renderPdfPages = async (page) => {
+  if (!await waitFor(page, () => !!window.PDFViewerApplication?.pdfDocument, { timeout: 30000 })) return false;
+  const count = await page.evaluate(() => window.PDFViewerApplication.pdfDocument.numPages);
+  for (const number of [...Array.from({ length: count }, (_, i) => i + 1), 1]) {
+    await page.evaluate((n) => { window.PDFViewerApplication.page = n; }, number);
+    if (!await waitFor(page, (n) => window.PDFViewerApplication.pdfViewer.getPageView(n - 1)?.renderingState === 3 &&
+      !!document.querySelector(`#viewer .page[data-page-number="${n}"] .textLayer span`), { timeout: 30000, arg: number })) return false;
+  }
+  return true;
+};
 /** What Resource Timing reported on the reader page — evidence for a finding below. */
 let pdfResources = [];
 {
-  // A DROPPED FILE, not a `?src=` address. The reading mode is handed its bytes by the tab
-  // that is showing the PDF (lib/pdf/handoff.ts), and Firefox's viewer is a privileged
-  // page no content script reaches — so on Firefox there IS no such tab, no remote PDF is
-  // ever offered, and the drop zone is the whole feature. What this suite is for is the
-  // rest of it: pdf.js, a module worker and the orchestrator on a moz-extension: document.
+  // File/drop rendering is independent of source grants. Authorized online loading
+  // through the popup/private loader is covered by pdf-source-firefox.mjs.
   const readerUrl = extUrl("reader.html");
   const p = await browser.newPage();
   p.on("pageerror", (e) => readerErrors.push("pageerror: " + String(e).slice(0, 200)));
@@ -490,7 +498,7 @@ let pdfResources = [];
     .then(() => true)
     .catch(() => false);
   if (arrived) await dropPdf(p, TEST_PDF, "doc.pdf");
-  const rendered = arrived && (await waitFor(p, () => document.querySelectorAll(".page .textLayer span").length >= 20, { timeout: 30000 }));
+  const rendered = arrived && (await renderPdfPages(p));
   const scored = rendered &&
     (await waitFor(p, (sel) => {
       const pills = [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill"));
@@ -535,7 +543,7 @@ let pdfResources = [];
     !!pdf &&
       pdf.pages === 2 &&
       pdf.drawn === 2 &&
-      pdf.spans >= 29 &&
+      pdf.spans > 0 &&
       pdf.text.includes(PDF_HEADING) &&
       pdf.text.includes(PDF_HEAD),
     JSON.stringify({ pages: pdf?.pages, drawn: pdf?.drawn, spans: pdf?.spans, notice: pdf?.notice }),
@@ -581,7 +589,7 @@ let pdfResources = [];
     });
   }
   const dropped = arrived && (await dropPdf(p, TEST_PDF, "dropped.pdf"));
-  const read = dropped && (await waitFor(p, () => document.querySelectorAll(".page .textLayer span").length >= 20, { timeout: 30000 }));
+  const read = dropped && (await renderPdfPages(p));
   const workers = arrived ? await p.evaluate(() => window.__workers ?? null).catch(() => null) : null;
   check(
     "PDF reader: a dropped file is read, and pdf.js parses it in a MODULE WORKER from moz-extension://",
@@ -593,12 +601,9 @@ let pdfResources = [];
   await p.close();
 }
 
-// ── 10c) and what Firefox must NOT offer ───────────────────────────────────────────
-// The reading mode is handed its bytes by the tab showing the PDF, and Firefox's viewer
-// is a privileged page no content script reaches — so there is nobody to ask, and an
-// offer that cannot be kept must not be made. "Open PDF with Anagram" is registered only
-// where a PDF tab admits a content script; a duplicate id is how the browser tells us
-// whether it is there, since nothing can list the menu.
+// ── 10c) Firefox has a popup entry, but no content-script-dependent link menu ────────
+// The popup/private loader handles authorized remote PDFs. The link context menu still
+// uses the Chrome tab-script route, so it remains absent in Firefox. Probe its exact ID.
 {
   const absent = await optionsPage
     .evaluate(
@@ -606,14 +611,14 @@ let pdfResources = [];
         new Promise((resolve) => {
           browser.contextMenus.create({ id: "anagram-open-pdf", title: "probe", contexts: ["link"] }, () => {
             const clash = !!browser.runtime.lastError;
-            Promise.resolve(browser.contextMenus.remove("anagram-open-pdf")).catch(() => undefined);
+            if (!clash) Promise.resolve(browser.contextMenus.remove("anagram-open-pdf")).catch(() => undefined);
             resolve(!clash);
           });
         }),
     )
     .catch((e) => String(e));
   check(
-    "no remote PDF entry point on Firefox: 'Open PDF with Anagram' is never registered",
+    "Firefox uses the popup PDF entry rather than the Chrome tab-script link menu",
     absent === true,
     String(absent),
   );

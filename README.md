@@ -9,7 +9,7 @@ and Simplified Chinese interfaces. Predictions are estimates, not proof of autho
 
 ## Installation
 
-[Download version 0.4.1](https://github.com/CoderBak/anagram/releases/tag/v0.4.1) ·
+[Download version 0.5.0](https://github.com/CoderBak/anagram/releases/tag/v0.5.0) ·
 Use the Chrome or Firefox browser ZIP; the setup page installs the matching native component.
 
 1. Install the extension from its published browser listing, or extract a Chrome release
@@ -18,11 +18,13 @@ Use the Chrome or Firefox browser ZIP; the setup page installs the matching nati
 2. Follow the setup page. Run its OS-specific installation command once to install the
    local component and register the exact extension ID. No administrator privileges or
    daily terminal session are required.
-3. Keep setup open while the component downloads and verifies the public modelkit
-   (about **4.07 GB**, plus runtime and temporary download space).
+3. Keep setup open while the component detects usable devices and prepares the recommended
+   model set (usually **1.43 GB**, including language detection; runtime and temporary space
+   are additional). Settings shows the selected files, exact total and reused-file progress.
 4. Review the device comparison and explicitly choose a configuration. The initial
    benchmark has a **30-second total measurement budget**; loading and warmup take extra
-   time. FP32 is recommended, FP16 is optional, and INT8 remains experimental.
+   time. FP32 is recommended; supported GPUs can also compare FP16 from shared weights.
+   **Download expanded comparison models** adds compatible runtimes and experimental CPU INT8.
 5. Grant website access where you want automatic annotation, or use **Analyze this page**
    for a single page without a persistent site grant.
 
@@ -128,9 +130,12 @@ deduplicates and prioritizes requests, then sends text blocks through one Native
 connection. The local component validates operations, manages model files and runtime state,
 and performs inference. Replies are correlated to their originating requests.
 
-Extension pages and the worker use `connect-src 'self'`; scoring has no network endpoint.
-The native component separately downloads public models and updates. Browser CSP does not
-sandbox that program, which runs with the user's OS permissions.
+Scoring has no network endpoint. Ordinary extension pages use `connect-src 'self'`; the
+manifest allows original-document connections for an isolated, authorized PDF loader.
+Original PDF/Google Docs reads can use the network. The native component separately
+downloads models, dependencies and requested updates. Browser CSP does not sandbox that
+program, which runs with the user's OS permissions. See the repeatable
+[network privacy checks](docs/network-privacy.md).
 
 Page text is used in memory. The score cache stores hashes and numeric verdicts, expires
 after 30 days and can be cleared in Settings. Private-window results are not persisted.

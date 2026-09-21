@@ -32,6 +32,7 @@ export type PopupStatus =
   | "noTab"
   /** the local engine is unavailable — show its state and the Settings action */
   | "daemon"
+  | "fileAccess"
   /** the button says everything there is to say */
   | "none";
 
@@ -42,12 +43,9 @@ export interface PageFacts {
   /** The origin pattern access could be asked for, or null on a page no extension may
    *  ever run on: a browser page, the web store, a `file:` URL (lib/access/patterns.ts). */
   pattern: string | null;
-  /** The tab is showing a PDF — its URL says so, or the content script in Chrome's
-   *  viewer wrapper reported it. Only ever set for a page `pattern` covers, because the
-   *  reading mode is handed the bytes BY that tab and cannot read a local file this way. */
+  /** The URL, observed response, or Chrome's outer wrapper identifies a PDF. */
   pdfTab: boolean;
-  /** Can a PDF tab be handed over in this browser? Firefox's viewer is a privileged page
-   *  no content script reaches, so there is nobody there to hand anything (lib/surface.ts). */
+  /** False for a local file without file URL authorization; the picker still works. */
   pdfReadable: boolean;
   /** What the content script answered, or null when nothing answered — which is the
    *  ordinary case on a site nothing has been granted for. */
@@ -73,26 +71,15 @@ export const ACTION_LABEL: Record<PopupAction, MessageKey> = {
   retry: "componentOpenSetup",
 };
 
-/**
- * The one action this tab deserves. In order:
- *
- * The daemon comes first — while it is silent every paragraph anywhere comes back
- * Unavailable, so starting a scan would only spend the reader's time proving it. A PDF tab
- * comes before the on/off state because the tab itself holds no text to score: the verdicts
- * appear in the reading mode, which is what the button opens. Then the ordinary pages: a
- * running one offers another look, and one Anagram is off for — switched off, or never
- * granted, which is every page on a fresh install — offers the single run that needs no
- * permission at all. What is left is a page nothing can run on, and the only thing left to
- * offer there is the reading mode with a PDF from this computer in it.
- */
+/** Reading a PDF remains available while the model is stopped or not installed. */
 export function popupLead(f: PageFacts): PopupLead {
-  if (f.daemon !== "up") return { action: "retry", primary: true, status: "daemon" };
-  if (!f.hasTab) return { action: "openReader", primary: false, status: "noTab" };
-  if (f.pdfTab) {
+  if (f.hasTab && f.pdfTab) {
     return f.pdfReadable
       ? { action: "readPdf", primary: true, status: "none" }
-      : { action: "openReader", primary: false, status: "unsupported" };
+      : { action: "openReader", primary: false, status: "fileAccess" };
   }
+  if (f.daemon !== "up") return { action: "retry", primary: true, status: "daemon" };
+  if (!f.hasTab) return { action: "openReader", primary: false, status: "noTab" };
   if (f.tab?.enabled === true) return { action: "rescan", primary: false, status: "counts" };
   if (f.pattern !== null) return { action: "analyze", primary: true, status: "off" };
   return { action: "openReader", primary: false, status: "unsupported" };

@@ -24,6 +24,7 @@ import { ACTIONS } from "../messaging/protocol";
 import type { PingReply } from "../messaging/protocol";
 import { browsingOrigins, matchesAny } from "./patterns";
 import { createLogger } from "../log";
+import { documentAuthority } from "./authority";
 
 const log = createLogger("access");
 
@@ -38,14 +39,6 @@ const CONTENT_SCRIPT = "/content-scripts/content.js";
  *  main() has read its settings and added its message listener. */
 const PING_TRIES = 15;
 const PING_GAP_MS = 100;
-
-/**
- * Tabs a one-off action injected into with `activeTab` and no grant at all. They are not
- * covered by any origin the worker can see, so the teardown pass below would stop them
- * the next time some OTHER site's access is withdrawn. Worker memory only: a worker that
- * was evicted has no such tabs, which costs at most one interrupted one-off run.
- */
-const oneShotTabs = new Set<number>();
 
 /** Serialises every sync: two events in the same tick would otherwise both register. */
 let chain: Promise<void> = Promise.resolve();
@@ -113,7 +106,6 @@ async function injectGranted(origins: string[]): Promise<void> {
   await Promise.all(
     tabs.map(async (tab) => {
       if (tab.id == null) return;
-      oneShotTabs.delete(tab.id);
       await browser.scripting
         .executeScript({ target: { tabId: tab.id, allFrames: true }, files: [CONTENT_SCRIPT] })
         .catch(() => undefined); // a tab that navigated away, or a page nobody may inject
@@ -133,7 +125,7 @@ async function stopWithdrawnTabs(): Promise<void> {
   const matches = await grantedMatches();
   const tabs = await browser.tabs.query({}).catch(() => []);
   for (const tab of tabs) {
-    if (tab.id == null || oneShotTabs.has(tab.id)) continue;
+    if (tab.id == null || documentAuthority.hasOnce(tab.id)) continue;
     if (tab.url && matchesAny(matches, tab.url)) continue;
     void browser.tabs.sendMessage(tab.id, { action: ACTIONS.TEARDOWN }).catch(() => undefined);
   }
@@ -149,9 +141,11 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
  * has not added its message listener yet (its main() is still reading the settings), and
  * marking THAT page would quietly stop an ordinary run on a site the user has granted.
  */
-function markOnDemand(): void {
-  const world = window as unknown as Record<string, boolean>;
+function markOnDemand(): {session:string;url:string} {
+  const world = window as unknown as Record<string, unknown>;
   if (!world.__anagramContentScript) world.__anagramOnDemand = true;
+  if (typeof world.__anagramDocumentSession !== "string") world.__anagramDocumentSession = crypto.randomUUID();
+  return {session:world.__anagramDocumentSession as string,url:location.href};
 }
 
 /** Is a content script listening in this tab? Only the top frame is asked. */
@@ -181,13 +175,19 @@ async function ping(tabId: number): Promise<boolean> {
  * listening on its own account.
  */
 export async function ensureInjected(tabId: number): Promise<boolean> {
-  if (await ping(tabId)) return true;
   // The flag first, in the same isolated world the content script will read it from: a
   // script that arrives this way analyzes nothing until the action asks it to, exactly as
   // it behaves on a site the user has switched off.
-  await browser.scripting
+  const identities = await browser.scripting
     .executeScript({ target: { tabId, allFrames: true }, func: markOnDemand })
-    .catch(() => undefined);
+    .catch(() => browser.scripting.executeScript({target:{tabId},func:markOnDemand}).catch(()=>[]));
+  const matches = await grantedMatches().catch(()=>[]);
+  for (const identity of identities) {
+    const value=identity.result;
+    if (value && !matchesAny(matches,value.url)) documentAuthority.grantOnce({tabId,frameId:identity.frameId,
+      documentId:identity.documentId,session:value.session,url:value.url});
+  }
+  if (await ping(tabId)) return true;
   const injected = await browser.scripting
     .executeScript({ target: { tabId, allFrames: true }, files: [CONTENT_SCRIPT] })
     // activeTab covers the frames of the tab it was granted for, but a page that refuses
@@ -196,7 +196,6 @@ export async function ensureInjected(tabId: number): Promise<boolean> {
       browser.scripting.executeScript({ target: { tabId }, files: [CONTENT_SCRIPT] }).catch(() => null),
     );
   if (injected === null) return false;
-  oneShotTabs.add(tabId);
   for (let i = 0; i < PING_TRIES; i++) {
     if (await ping(tabId)) return true;
     await sleep(PING_GAP_MS);
@@ -214,14 +213,18 @@ export function installAccess(): void {
     const origins = browsingOrigins(added.origins);
     void syncRegistration().then(() => injectGranted(origins));
   });
-  browser.permissions.onRemoved.addListener(() => {
+  browser.permissions.onRemoved.addListener((removed) => {
+    // Abort affected documents synchronously; registration changes can await the browser.
+    documentAuthority.revoke(browsingOrigins(removed.origins));
     void syncRegistration().then(stopWithdrawnTabs);
   });
   // An update wipes dynamic registrations; a browser restart brings back the persisted
   // one, which is re-asserted anyway in case a grant changed while the browser was shut.
   browser.runtime.onInstalled.addListener(() => void syncRegistration());
   browser.runtime.onStartup?.addListener(() => void syncRegistration());
-  browser.tabs.onRemoved.addListener((tabId) => oneShotTabs.delete(tabId));
+  browser.tabs.onRemoved.addListener((tabId) => documentAuthority.forget(tabId));
+  browser.tabs.onUpdated.addListener((tabId,change) => { if(change.status === "loading") documentAuthority.forget(tabId); });
+  documentAuthority.install();
   // And once per worker life: the grant may have landed while this worker was evicted.
   void syncRegistration();
 }

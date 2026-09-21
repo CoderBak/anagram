@@ -4,8 +4,8 @@
 // Why persistent: an MV3 service worker is killed after ~30 s idle, so a memory-only
 // cache evaporates constantly and every tab re-scores paragraphs the model already
 // judged. The model is deterministic, so a hash of the normalized text plus the model
-// identity ("id@ver") is a complete key — stored rows hold buckets and probabilities
-// only, never text. A different daemon model or checkpoint changes the key dimension, so
+// identity and normalization version define the key — stored rows hold buckets and probabilities
+// only, never text. A different model, checkpoint or calibration changes the key dimension, so
 // stale verdicts are never served across models.
 //
 // Why IndexedDB rather than storage.local: rows are read in one transaction instead of
@@ -21,15 +21,16 @@
 import { browser } from "#imports";
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 import type { ScoreResult } from "../contract";
-import { normalizeText } from "../dom/text";
+import { normalizeText, SCORING_NORMALIZATION_VERSION } from "../dom/text";
 import { cyrb53 } from "../hash";
+import { SCORE_CACHE_MAX_AGE_MS, type ScoreCacheMode } from "../cachePolicy";
 import { createLogger } from "../log";
 
 const log = createLogger("swcache");
 
 export interface SwCache {
-  /** Sync key: `<dim>:<hash of normalizeText(text)>` — `dim` is the backend identity
-   *  ("id@ver") the caller snapshotted for this request (router.ts modelDim). */
+  /** Sync key: `<normalization version>:<dim>:<hash of normalizeText(text)>`;
+   * `dim` is the complete backend identity snapshotted by router.ts modelDim. */
   keyOf(text: string, dim: string): string;
   /**
    * Resolve many keys at once: memory first, then one IndexedDB transaction for the misses.
@@ -39,17 +40,20 @@ export interface SwCache {
   getMany(keys: string[], persist?: boolean): Promise<Map<string, ScoreResult>>;
   /** Store a REAL result under the identity that produced it. `persist` false keeps it in
    *  memory alone: it exists only because of a private tab. */
-  set(text: string, r: ScoreResult, dim: string, persist?: boolean): void;
+  set(text: string, r: ScoreResult, dim: string, persist?: boolean, epoch?: number): void;
   /** Forget every verdict: the memory layer, the writes still waiting for their flush, and
    *  the persistent store (options → "Clear cached verdicts"). */
   clear(): Promise<void>;
+  /** Current invalidation epoch; writes from an earlier epoch are discarded. */
+  epoch(): number;
+  setMode(mode: ScoreCacheMode): Promise<void>;
   /** How many verdicts are on the disk — the number the options page shows. */
   count(): Promise<number>;
 }
 
 /** Compact stored row (short field names — tens of thousands of these live in the store). */
 export interface Stored {
-  /** Cache key ("model@ver:hash") — the object store's keyPath. */
+  /** Versioned normalized-text/model cache key — the object store's keyPath. */
   key: string;
   b: number;
   p: number[];
@@ -88,18 +92,18 @@ const FLUSH_MS = 250;
  * only version of the rule that can hold: refreshing a row on every hit would mean a
  * lookup writes to the disk, and a lookup from a private tab must write nothing at all.
  */
-const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+const MAX_AGE_MS = SCORE_CACHE_MAX_AGE_MS;
 /** Key prefix of the pre-IndexedDB storage.local cache; swept once on first open. */
 const LEGACY_PREFIX = "sc:";
 const LEGACY_SWEPT_FLAG = "scLegacySwept";
 
-function toStored(key: string, r: ScoreResult): Stored {
+function toStored(key: string, r: ScoreResult, at = Date.now()): Stored {
   const s: Stored = {
     key,
     b: r.bucket,
     p: r.probs.map((p) => Math.round(p * 1000) / 1000),
     s: Math.round(r.score * 1000) / 1000,
-    t: Date.now(),
+    t: at,
   };
   if (typeof r.tokens === "number") s.k = r.tokens;
   if (r.truncated) s.x = 1;
@@ -180,9 +184,8 @@ async function dropFromOldest(
 }
 
 /**
- * The real store. Every operation answers quietly when there is no database at all — a
- * browser that refuses one, a private window in a browser that keeps extensions out of
- * IndexedDB — so a missing store never keeps the memory layer from working.
+ * The real store. Reads may fall back to memory when storage is unavailable. Mutations
+ * and counts reject on failure: an unavailable database is not proof of deletion.
  */
 export function indexedDbStore(): ScoreStore {
   return {
@@ -201,32 +204,20 @@ export function indexedDbStore(): ScoreStore {
     },
     async put(rows) {
       const d = await db();
-      if (!d) return;
-      try {
-        const tx = d.transaction(STORE, "readwrite");
-        for (const row of rows) void tx.store.put(row);
-        await tx.done;
-      } catch (e) {
-        log.warn("persistent cache write failed", e);
-      }
+      if (!d) throw new Error("Persistent score cache is unavailable");
+      const tx = d.transaction(STORE, "readwrite");
+      for (const row of rows) void tx.store.put(row);
+      await tx.done;
     },
     async clear() {
-      try {
-        const d = await db();
-        if (!d) return; // memory-only session: there is nothing persistent to empty
-        await d.clear(STORE);
-      } catch (e) {
-        log.warn("persistent cache clear failed", e);
-      }
+      const d = await db();
+      if (!d) throw new Error("Persistent score cache could not be opened; deletion was not verified");
+      await d.clear(STORE);
     },
     async count() {
-      try {
-        const d = await db();
-        return d ? await d.count(STORE) : 0;
-      } catch (e) {
-        log.warn("persistent cache count failed", e);
-        return 0;
-      }
+      const d = await db();
+      if (!d) throw new Error("Persistent score cache is unavailable");
+      return d.count(STORE);
     },
     async dropOlderThan(cutoff) {
       try {
@@ -269,141 +260,153 @@ async function sweepLegacyStore(): Promise<void> {
 }
 
 export function createSwCache(store: ScoreStore = indexedDbStore()): SwCache {
-  const memory = new Map<string, ScoreResult>();
-  const pendingWrites = new Map<string, Stored>();
-  /**
-   * Verdicts that are in memory and on no disk: they exist only because a private tab
-   * asked for them. A normal tab asking for the same text later moves one across — it
-   * would have produced the identical verdict itself, so persisting it then reveals
-   * nothing about the private window that happened to get there first.
-   */
+  const memory = new Map<string, { result: ScoreResult; at: number }>();
   const memoryOnly = new Set<string>();
+  const pendingWrites = new Map<string, Stored>();
+  let mode: ScoreCacheMode = "persistent";
+  let generation = 0;
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   let writesSincePrune = 0;
-  /** Bumped by clear(): a flush that took its batch before the clear must not put those
-   *  rows back into the store that was just emptied. */
-  let generation = 0;
-  /** The thirty-day sweep, once per worker lifetime. */
-  let expired: Promise<void> | null = null;
-
-  const keyOf = (text: string, dim: string): string =>
-    `${dim}:${cyrb53(normalizeText(text)).toString(36)}`;
-
-  /**
-   * Drop what has aged out. This runs on the first thing the cache is asked to do rather
-   * than when the worker starts: an MV3 worker is woken by a badge message as readily as
-   * by a batch, and opening a database for one is a cost with nothing behind it.
-   */
-  function expireOnce(): void {
-    expired ??= store
-      .dropOlderThan(Date.now() - MAX_AGE_MS)
-      .then((dropped) => {
-        if (dropped > 0) log.log("dropped", dropped, "verdicts older than 30 days");
-      })
-      .catch(() => undefined);
+  let expired = false;
+  let diskBlocked = false;
+  let clearing: Promise<void> | undefined;
+  // Every persistent mutation joins one chain. A clear is after already-started writes
+  // and before new writes, so an old flush never needs a destructive follow-up clear.
+  let writeTail: Promise<void> = Promise.resolve();
+  function mutate(task: () => Promise<void>): Promise<void> {
+    const operation = writeTail.then(task);
+    writeTail = operation.catch(() => undefined);
+    return operation;
   }
+  const keyOf = (text: string, dim: string): string =>
+    `n${SCORING_NORMALIZATION_VERSION}:${dim}:${cyrb53(normalizeText(text)).toString(36)}`;
+  const current = (seq: number): boolean => seq === generation;
+  const fresh = (at: number): boolean => Number.isFinite(at) && Date.now() - at < MAX_AGE_MS;
 
-  /** Read the memory layer, moving a hit to the young end: Map iteration order is the
-   *  recency order the eviction below walks. */
-  function recall(key: string): ScoreResult | undefined {
-    const hit = memory.get(key);
-    if (!hit) return undefined;
+  function expireOnce(): void {
+    if (expired || mode !== "persistent" || diskBlocked) return;
+    expired = true;
+    const seq = generation;
+    void mutate(async () => {
+      if (current(seq) && mode === "persistent" && !diskBlocked)
+        await store.dropOlderThan(Date.now() - MAX_AGE_MS);
+    }).catch((error) => log.warn("persistent expiration failed", error));
+  }
+  function remember(key: string, result: ScoreResult, at: number): void {
     memory.delete(key);
+    memory.set(key, { result, at });
+    while (memory.size > MEMORY_MAX_ENTRIES) {
+      const oldest = memory.keys().next().value!;
+      memory.delete(oldest); memoryOnly.delete(oldest); pendingWrites.delete(oldest);
+    }
+  }
+  function recall(key: string): { result: ScoreResult; at: number } | undefined {
+    const hit = memory.get(key);
+    if (!hit) return;
+    memory.delete(key);
+    if (!fresh(hit.at)) { memoryOnly.delete(key); pendingWrites.delete(key); return; }
     memory.set(key, hit);
     return hit;
   }
-
-  /** Write the memory layer and drop the least recently used entries over the cap. */
-  function remember(key: string, r: ScoreResult): void {
-    memory.delete(key);
-    memory.set(key, r);
-    while (memory.size > MEMORY_MAX_ENTRIES) {
-      const oldest = memory.keys().next();
-      if (oldest.done) break;
-      memory.delete(oldest.value);
-      memoryOnly.delete(oldest.value);
-    }
+  function queueWrite(key: string, result: ScoreResult, at: number): void {
+    if (mode !== "persistent") return;
+    pendingWrites.set(key, toStored(key, result, at));
+    if (flushTimer === null) flushTimer = setTimeout(() => {
+      void flush().catch((error) => log.warn("persistent cache write failed", error));
+    }, FLUSH_MS);
   }
-
-  /** Queue a row for the disk. The only path to the persistent store there is. */
-  function queueWrite(key: string, r: ScoreResult): void {
-    memoryOnly.delete(key);
-    pendingWrites.set(key, toStored(key, r));
-    if (flushTimer === null) flushTimer = setTimeout(flush, FLUSH_MS);
-  }
-
   async function getMany(keys: string[], persist = true): Promise<Map<string, ScoreResult>> {
-    expireOnce();
-    const out = new Map<string, ScoreResult>();
-    const misses: string[] = [];
-    for (const k of keys) {
-      const hit = recall(k);
+    const seq = generation;
+    // Private/session reads do not trigger pruning or any other persistent mutation.
+    if (persist) expireOnce();
+    const out = new Map<string, ScoreResult>(), misses: string[] = [];
+    for (const key of keys) {
+      const hit = recall(key);
       if (hit) {
-        out.set(k, hit);
-        // A normal tab has asked for a verdict a private one produced: it would have
-        // produced the same, so from here on it may live on the disk like any other.
-        if (persist && memoryOnly.has(k)) queueWrite(k, hit);
-      } else misses.push(k);
+        out.set(key, hit.result);
+        if (persist && memoryOnly.has(key)) queueWrite(key, hit.result, hit.at);
+      } else misses.push(key);
     }
-    if (misses.length === 0) return out;
+    if (!misses.length || mode === "session") return out;
+    // A read begun after clear must wait for its deletion, even if an older put is slow.
+    await writeTail;
+    if (!current(seq)) return new Map();
+    if (diskBlocked) return out;
     const rows = await store.get(misses);
-    rows.forEach((row, i) => {
-      const r = fromStored(row);
-      if (r) {
-        remember(misses[i], r);
-        out.set(misses[i], r);
-      }
+    if (!current(seq) || mode !== "persistent") return new Map();
+    rows.forEach((row, index) => {
+      if (!row || row.key !== misses[index] || !fresh(row.t)) return;
+      const result = fromStored(row);
+      if (!result) return;
+      remember(row.key, result, row.t);
+      memoryOnly.delete(row.key);
+      out.set(row.key, result);
     });
     return out;
   }
-
-  function set(text: string, r: ScoreResult, dim: string, persist = true): void {
-    if (r.degraded) return; // fallbacks must never outlive the outage
-    expireOnce();
-    const k = keyOf(text, dim);
-    remember(k, r);
-    if (persist) queueWrite(k, r);
-    else if (!pendingWrites.has(k)) memoryOnly.add(k);
+  function set(text: string, result: ScoreResult, dim: string, persist = true, seq = generation): void {
+    if (result.degraded || !current(seq)) return;
+    if (persist) expireOnce();
+    const key = keyOf(text, dim), at = Date.now();
+    remember(key, result, at);
+    memoryOnly.add(key);
+    if (persist) queueWrite(key, result, at);
   }
-
   async function flush(): Promise<void> {
     flushTimer = null;
-    if (pendingWrites.size === 0) return;
-    const batch = [...pendingWrites.values()];
-    const seq = generation;
+    const seq = generation, batch = [...pendingWrites.values()];
     pendingWrites.clear();
-    await store.put(batch);
-    if (seq !== generation) {
-      // A clear landed while this batch was in the air. These rows describe verdicts it
-      // asked to be dropped, so they go with them rather than reappearing behind it.
-      await store.clear();
-      return;
-    }
-    writesSincePrune += batch.length;
-    if (writesSincePrune >= PRUNE_EVERY_WRITES) {
-      writesSincePrune = 0;
-      const stale = await store.dropOlderThan(Date.now() - MAX_AGE_MS);
-      const over = await store.dropOldest(MAX_ENTRIES, PRUNE_TO);
-      if (stale + over > 0) log.log("pruned", stale + over, "cached scores");
-    }
+    if (!batch.length) return;
+    await mutate(async () => {
+      if (!current(seq) || mode !== "persistent" || diskBlocked) return;
+      await store.put(batch);
+      if (!current(seq)) return; // the queued clear owns deletion of these old writes
+      for (const row of batch) if (memory.get(row.key)?.at === row.t) memoryOnly.delete(row.key);
+      writesSincePrune += batch.length;
+      if (writesSincePrune >= PRUNE_EVERY_WRITES) {
+        writesSincePrune = 0;
+        await store.dropOlderThan(Date.now() - MAX_AGE_MS);
+        if (current(seq)) await store.dropOldest(MAX_ENTRIES, PRUNE_TO);
+      }
+    });
   }
-
-  /**
-   * Forget everything. Both layers go at once, pending writes included — they describe the
-   * verdicts being dropped — so the next lookup for any paragraph reaches the daemon again.
-   */
-  async function clear(): Promise<void> {
+  function invalidate(): number {
     generation++;
-    memory.clear();
-    memoryOnly.clear();
-    pendingWrites.clear();
-    if (flushTimer !== null) {
-      clearTimeout(flushTimer);
-      flushTimer = null;
-    }
-    writesSincePrune = 0;
-    await store.clear();
+    memory.clear(); memoryOnly.clear(); pendingWrites.clear();
+    if (flushTimer !== null) clearTimeout(flushTimer);
+    flushTimer = null; writesSincePrune = 0;
+    return generation;
   }
-
-  return { keyOf, getMany, set, clear, count: () => store.count() };
+  function clear(): Promise<void> {
+    const seq = invalidate();
+    diskBlocked = true;
+    const operation = mutate(async () => {
+      await store.clear(); // failure is reported; old disk rows remain blocked from reads
+      if (current(seq)) diskBlocked = false;
+    });
+    clearing = operation;
+    const done = () => { if (clearing === operation) clearing = undefined; };
+    void operation.then(done, done);
+    return operation;
+  }
+  function setMode(next: ScoreCacheMode): Promise<void> {
+    if (next === mode) {
+      if (clearing) return clearing;
+      if (!diskBlocked) return Promise.resolve();
+    }
+    // Disable disk activity synchronously, before waiting for old writes/deletion.
+    mode = next;
+    return clear();
+  }
+  async function count(): Promise<number> {
+    if (mode === "session") {
+      if (clearing) await clearing;
+      if (diskBlocked) throw new Error("Persistent cache deletion has not been verified");
+      for (const key of [...memory.keys()]) recall(key);
+      return memory.size;
+    }
+    await writeTail;
+    return store.count();
+  }
+  return { keyOf, getMany, set, clear, epoch: () => generation, setMode, count };
 }

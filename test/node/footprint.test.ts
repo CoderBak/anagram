@@ -117,9 +117,9 @@ describe("the network inventory in docs/footprint.md", () => {
     }
   });
 
-  it("uses one native connection and fetches only the existing PDF/Docs tab content", () => {
+  it("uses one native connection and limits fetch call sites to original-document readers", () => {
     expect(rows.filter((r) => r[1] === "connectNative(").map((r) => r[0])).toEqual(["lib/backend/nativeTransport.ts"]);
-    expect(rows.filter((r) => r[1] === "fetch(").map((r) => r[0]).sort()).toEqual(["lib/docsOverlay.ts", "lib/pdf/handoff.ts"]);
+    expect(rows.filter((r) => r[1] === "fetch(").map((r) => r[0]).sort()).toEqual(["lib/docsOverlay.ts", "lib/pdf/handoff.ts", "lib/pdf/loader.ts"]);
   });
 
 });
@@ -203,7 +203,7 @@ describe("the storage inventory in docs/footprint.md", () => {
     // that what goes into a row is derived from the text and is not the text.
     const cache = read("lib/backend/swCache.ts");
     expect(cache).toMatch(/keyOf\(text: string, dim: string\): string/);
-    expect(DOC).toContain("No page text is ever stored.");
+    expect(DOC).toContain("No raw page text is stored in the score cache.");
   });
 });
 
@@ -222,9 +222,9 @@ describe("the shipping manifest", () => {
   /** The exact policy, which docs/footprint.md quotes and test/csp-check.mjs exercises. */
   const CSP =
     "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; " +
-    "connect-src 'self'; " +
+    "connect-src 'self' http: https: file:; " +
     "img-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; " +
-    "worker-src 'self'; frame-src 'none'; form-action 'none'; base-uri 'none'";
+    "worker-src 'self'; frame-src 'self'; form-action 'none'; base-uri 'none'";
 
   it.skipIf(!ready)("carries that exact Content-Security-Policy", () => {
     expect((manifest().content_security_policy as { extension_pages: string }).extension_pages).toBe(
@@ -237,11 +237,12 @@ describe("the shipping manifest", () => {
     expect(quoted.replace(/\s+/g, " ").trim()).toBe(CSP.replace(/\s+/g, " "));
   });
 
-  it.skipIf(!ready)("lets connect-src reach packaged resources only", () => {
-    const policy = (manifest().content_security_policy as { extension_pages: string })
-      .extension_pages;
-    const connect = /connect-src ([^;]+)/.exec(policy)?.[1].trim().split(/\s+/) ?? [];
-    expect(connect).toEqual(["'self'"]);
+  it.skipIf(!ready)("keeps ordinary UI connections local while isolating source reads in the PDF loader", () => {
+    for (const page of ["popup", "options", "onboarding", "reader", "paste"]) {
+      const html = readFileSync(join(OUT, `${page}.html`), "utf8");
+      expect(html, page).toMatch(/<meta[^>]+http-equiv=["']Content-Security-Policy["'][^>]+content="connect-src 'self'"/i);
+    }
+    expect(existsSync(join(OUT, "pdf-loader.html"))).toBe(true);
   });
 
   it.skipIf(!ready)("makes only the three content-script chunks web accessible", () => {

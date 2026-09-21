@@ -1,330 +1,253 @@
-// lib/backend/router.ts — SW-side dedup/batch/retry wrapper around the ScoreClient.
-//
-// Ports the reference's getRequests dedup/batch wrapper, ADDING a priority queue with a
-// concurrency cap (p-queue: the content script's lane — viewport / near / background —
-// survives into the worker, so a visible paragraph in any tab is scored before anyone's
-// prefetch) and a retry/error-fallback whose policy lives in ./retry.ts.
-//
-// Provenance rules (the part that bit us): the backend identity that keys the caches is
-// snapshotted ONCE per request, every cache/in-flight key is computed from that snapshot
-// before any await, and a result is cached under the model that actually PRODUCED it
-// (returned with the batch) — never under whatever `client.model()` happens to say after
-// the fetch. A shared in-flight promise therefore carries its producer along with the
-// result, so a request that only JOINED reports the identity that answered it. Every
-// in-flight deferred is settled in `finally`, so a joined request can never hang when the
-// backend changes mid-flight.
-//
-// In-flight keys are reserved before the work reaches the queue, not when it starts: with
-// a concurrency cap most batches WAIT first, and a batch nobody can see is a batch someone
-// else will start a second time.
-import type {
-  ModelInfo,
-  ScanPriority,
-  ScoreClient,
-  ScoreBlock,
-  ScoreResult,
-  ScoreBatchRequest,
-  ScoreBatchResponse,
-} from "../contract";
+// Service-worker score scheduling: bounded admission, document cancellation, shared
+// inference, and complete model provenance. Browser authority supplies document keys.
+import type { ModelInfo, ScanPriority, ScoreClient, ScoreBlock, ScoreResult,
+  ScoreBatchRequest, ScoreBatchResponse } from "../contract";
 import { BUCKET_COUNT } from "../contract";
-import PQueue from "p-queue";
+import { canonicalForScoring } from "../dom/text";
+import type { ScoreCacheMode } from "../cachePolicy";
 import { createSwCache, type SwCache } from "./swCache";
 import { retryWaitMs } from "./retry";
 import { createLogger } from "../log";
 
 const log = createLogger("router");
-
-/** Per-request character budget. Batching buys much less than one would hope: it mostly
- *  amortises the per-request overhead (native framing, tokenizer, language id) rather
- *  than the forward pass, which is already compute-bound. On our own benchmark
- *  (docs/benchmarks/editlens-m4-24gb-2026-09-14.json, roberta-large) 60-word paragraphs go
- *  32.9 → 51.1 → 52.5 per second at batch 1 / 8 / 32 — about 1.5× and flat after 8 — while
- *  400-word ones stay at 8.2 → 8.4 → 8.2, i.e. nothing at all. So requests are re-packed
- *  here to keep the overhead off the short paragraphs, not to chase throughput (the content
- *  script already sends viewport-first batches; this only merges what arrives together). */
 const BATCH_CHAR_BUDGET = 6000;
-/** Bounded fan-out the reference lacked. */
 const MAX_IN_FLIGHT = 4;
-/** At most one retry — and only of a failure ./retry.ts calls transient — then the neutral
- *  fallback. One is enough: the content script re-asks for an "Unavailable" paragraph on
- *  its own schedule, and a second wait here holds one of the four slots meanwhile. */
-const RETRIES = 1;
-/** p-queue: higher runs first. */
+const MAX_DOCUMENT_IN_FLIGHT = 2;
 const PRIORITY: Record<ScanPriority, number> = { viewport: 2, near: 1, background: 0 };
+/** Admission includes requests waiting on cache/discovery and deduplicated subscribers,
+ * so a slow store or many identical requests cannot bypass the memory bounds. */
+export const ROUTER_LIMITS = Object.freeze({
+  requests: 256, blocks: 1024, chars: 1_000_000,
+  documentRequests: 16, documentBlocks: 256, documentChars: 250_000,
+});
 
-/** Where a request came from, as far as the router has to care. */
 export interface RequestOrigin {
-  /**
-   * The tab is a private one. Nothing that exists only because of it may be written to the
-   * disk: it may READ the cache (a hit writes nothing), and what its batches produce lives
-   * in this worker's memory until some ordinary tab asks for the same text — which it
-   * would have produced identically, so from that moment it is no longer the private tab's
-   * trace. `sender.tab.incognito` is where this comes from, in the message handler.
-   */
+  /** Private-only work may read existing disk rows but never writes persistent data. */
   private?: boolean;
+  /** Trusted document identity; independent of a page-supplied scan/session id. */
+  documentKey?: string;
+  signal?: AbortSignal;
 }
-
 export interface BackendRouter {
   handle(req: ScoreBatchRequest, origin?: RequestOrigin): Promise<ScoreBatchResponse>;
-  /** Forget every cached verdict (options → "Clear cached verdicts"). */
+  cancelDocument(documentKey: string): void;
   clear(): Promise<void>;
-  /** How many verdicts are on the disk (options → the count beside "Clear"). */
+  setCacheMode(mode: ScoreCacheMode): Promise<void>;
   count(): Promise<number>;
 }
-
-/** Cache-key dimension of a backend identity. */
-export function modelDim(m: ModelInfo): string {
-  return `${m.id}@${m.ver}`;
-}
-
-/** Neutral "unavailable" result so a badge can still render and no awaiter hangs. */
+/** JSON avoids delimiter collisions and includes calibration, not just model/version. */
+export function modelDim(m: ModelInfo): string { return JSON.stringify([m.id, m.ver, m.calibration]); }
+const snapshot = (m: ModelInfo): ModelInfo => ({ id: m.id, ver: m.ver, calibration: m.calibration });
 function neutral(block: ScoreBlock): ScoreResult {
-  return {
-    id: block.id,
-    bucket: 0,
-    probs: new Array<number>(BUCKET_COUNT).fill(1 / BUCKET_COUNT),
-    score: 0,
-    degraded: true, // fallback, not a model output — never cached
-  };
+  return { id: block.id, bucket: 0, probs: new Array<number>(BUCKET_COUNT).fill(1 / BUCKET_COUNT),
+    score: 0, degraded: true };
 }
-
-interface Keyed {
-  block: ScoreBlock;
-  key: string;
+interface Produced { result: ScoreResult; model: ModelInfo | null }
+interface Reader {
+  document: string; persist: boolean; active: boolean; entries: Set<Entry>;
+  cancelled: Promise<undefined>; cancel(): void;
 }
-
-/** What a shared in-flight promise resolves: the result AND the identity that produced it,
- *  null when the result is the neutral fallback, which has no producer. */
-interface Produced {
-  result: ScoreResult;
-  model: ModelInfo | null;
+interface Entry {
+  key: string; block: ScoreBlock; batch: Batch; readers: Set<Reader>;
+  promise: Promise<Produced>; resolve(value: Produced): void;
 }
-
-/** A batch handed to the queue, shared by every key it owns. `id` is p-queue's handle for
- *  reprioritising it and `started` says whether that is still possible. */
-interface QueuedBatch {
-  id: string;
-  priority: number;
-  started: boolean;
+interface Batch {
+  priority: number; queuedAt: number; owner?: string;
+  entries: Entry[]; controller: AbortController; epoch: number; cacheEpoch: number;
+  revision: number | undefined;
 }
-
-/** One reserved key: the batch that will answer it, its shared promise and its resolver.
- *  `persist` is the union over everyone waiting on it: one ordinary tab among the joiners
- *  is enough for the answer to be written, because that tab asked for it too. */
-interface InFlight {
-  batch: QueuedBatch;
-  promise: Promise<Produced>;
-  resolve: (p: Produced) => void;
-  persist: boolean;
-}
+interface Usage { requests: number; blocks: number; chars: number }
 
 export function createRouter(client: ScoreClient, cache: SwCache = createSwCache()): BackendRouter {
-  // In-flight dedup across concurrent handle() calls: cache key → the batch answering it.
-  const inFlight = new Map<string, InFlight>();
-  // Bounded, prioritised fan-out shared by every handle() call in this worker lifetime.
-  const queue = new PQueue({ concurrency: MAX_IN_FLIGHT });
-  let nextBatchId = 0;
+  const inFlight = new Map<string, Entry>();
+  const readers = new Set<Reader>();
+  const waiting: Batch[] = [];
+  const documentUsage = new Map<string, Usage>();
+  const runningByDocument = new Map<string, number>();
+  const lastServed = new Map<string, number>();
+  const total: Usage = { requests: 0, blocks: 0, chars: 0 };
+  let epoch = 0, serial = 0, turn = 0, running = 0;
+  let cacheMode: ScoreCacheMode = "persistent";
+  const revisionMatches = (revision: number | undefined): boolean =>
+    revision === undefined || client.revision?.() === revision;
 
-  /** Raise a waiting batch's priority when a more urgent request joins it: the joiner is
-   *  blocked on that batch, so leaving it behind a queue of prefetches would make a visible
-   *  paragraph wait for work nobody is looking at. A batch the queue has already dispatched
-   *  cannot be reordered — p-queue's setPriority throws for an id it no longer holds — hence
-   *  both the `started` check and the catch around it. */
-  function promote(entry: InFlight, priority: number): void {
-    const { batch } = entry;
-    if (batch.started || priority <= batch.priority) return;
-    try {
-      queue.setPriority(batch.id, priority);
-      batch.priority = priority;
-    } catch (e) {
-      log.warn("could not reprioritise a queued batch", e);
+  function settle(entry: Entry, value: Produced): void {
+    if (inFlight.get(entry.key) === entry) inFlight.delete(entry.key);
+    entry.resolve(value);
+  }
+  function detach(reader: Reader): void {
+    const batches = new Set<Batch>();
+    for (const entry of reader.entries) {
+      entry.readers.delete(reader);
+      batches.add(entry.batch);
+      if (!entry.readers.size) settle(entry, { result: neutral(entry.block), model: null });
+    }
+    reader.entries.clear();
+    for (const batch of batches) if (batch.entries.every((entry) => !entry.readers.size)) {
+      batch.controller.abort();
+      const index = waiting.indexOf(batch);
+      if (index >= 0) waiting.splice(index, 1);
+    }
+    pump();
+  }
+  function cancelDocument(documentKey: string): void {
+    for (const reader of readers) if (reader.document === documentKey) reader.cancel();
+  }
+  function invalidate(): void {
+    epoch++;
+    for (const reader of readers) reader.cancel();
+  }
+  async function score(batch: Batch, blocks: ScoreBlock[]) {
+    for (let attempt = 0; ; attempt++) {
+      if (batch.controller.signal.aborted || batch.epoch !== epoch || !revisionMatches(batch.revision)) return null;
+      try { return await client.scoreBatch(blocks, batch.controller.signal); }
+      catch (error) {
+        if (batch.controller.signal.aborted) return null;
+        const wait = attempt < 1 ? retryWaitMs(error) : null;
+        if (wait === null) { log.warn("score failed; returning unavailable", error); return null; }
+        await new Promise<void>((resolve) => {
+          const signal = batch.controller.signal;
+          const done = () => { clearTimeout(timer); signal.removeEventListener("abort", done); resolve(); };
+          const timer = setTimeout(done, wait);
+          signal.addEventListener("abort", done, { once: true });
+          if (signal.aborted) done();
+        });
+      }
     }
   }
-
-  /**
-   * Score one batch; null when the backend failed. A failure that could answer differently
-   * next time — the daemon still loading, one request too many, the transport — is tried
-   * once more after a jittered wait; anything that says "this request is the problem" is
-   * not, because the second answer would be the first one again. The retry re-sends THIS
-   * batch and nothing else, so a late answer still belongs to the text that asked for it.
-   */
-  async function scoreBatchSafe(batch: ScoreBlock[]): Promise<{ results: ScoreResult[]; model: ModelInfo } | null> {
-    for (let attempt = 0; ; attempt++) {
-      try {
-        return await client.scoreBatch(batch);
-      } catch (e) {
-        const wait = attempt < RETRIES ? retryWaitMs(e) : null;
-        if (wait === null) {
-          log.error("scoreBatch failed, using neutral fallback", e);
-          return null;
+  async function run(batch: Batch): Promise<void> {
+    const live = batch.entries.filter((entry) => entry.readers.size);
+    let produced: Awaited<ReturnType<typeof score>> = null;
+    try { if (live.length) produced = await score(batch, live.map((entry) => entry.block)); }
+    catch (error) { log.warn("batch failed", error); }
+    finally {
+      const valid = batch.epoch === epoch && batch.cacheEpoch === cache.epoch() &&
+        revisionMatches(batch.revision) && !batch.controller.signal.aborted;
+      const model = valid && produced ? snapshot(produced.model) : null;
+      const results = new Map(valid && produced ? produced.results.map((r) => [r.id, r]) : []);
+      for (const entry of batch.entries) {
+        const result = entry.readers.size ? results.get(entry.block.id) ?? neutral(entry.block) : neutral(entry.block);
+        if (model && !result.degraded && entry.readers.size) {
+          const persist = [...entry.readers].some((reader) => reader.active && reader.persist);
+          cache.set(entry.block.text, result, modelDim(model), persist, batch.cacheEpoch);
         }
-        log.warn(`scoreBatch failed, trying once more in ${wait} ms`, e);
-        await new Promise((r) => setTimeout(r, wait));
+        settle(entry, { result, model: result.degraded ? null : model });
       }
+      running--;
+      const owner = batch.owner!;
+      const remaining = (runningByDocument.get(owner) ?? 1) - 1;
+      if (remaining) runningByDocument.set(owner, remaining); else runningByDocument.delete(owner);
+      if (!documentUsage.has(owner)) lastServed.delete(owner);
+      pump();
+    }
+  }
+  function pump(): void {
+    while (running < MAX_IN_FLIGHT) {
+      let chosen = -1, chosenOwner = "", bestPriority = -Infinity, bestTurn = Infinity;
+      for (let i = 0; i < waiting.length; i++) {
+        const batch = waiting[i];
+        const owners = new Set(batch.entries.flatMap((entry) => [...entry.readers].map((reader) => reader.document)));
+        const owner = [...owners].filter((doc) => (runningByDocument.get(doc) ?? 0) < MAX_DOCUMENT_IN_FLIGHT)
+          .sort((a, b) => (lastServed.get(a) ?? 0) - (lastServed.get(b) ?? 0))[0];
+        if (!owner) continue;
+        // Aging prevents a sustained stream of viewport work starving old background work.
+        const priority = batch.priority + Math.floor((Date.now() - batch.queuedAt) / 1000);
+        const served = lastServed.get(owner) ?? 0;
+        if (priority > bestPriority || (priority === bestPriority && served < bestTurn)) {
+          chosen = i; chosenOwner = owner; bestPriority = priority; bestTurn = served;
+        }
+      }
+      if (chosen < 0) return;
+      const batch = waiting.splice(chosen, 1)[0];
+      batch.owner = chosenOwner;
+      lastServed.set(chosenOwner, ++turn);
+      runningByDocument.set(chosenOwner, (runningByDocument.get(chosenOwner) ?? 0) + 1);
+      running++;
+      void run(batch);
     }
   }
 
   async function handle(req: ScoreBatchRequest, origin: RequestOrigin = {}): Promise<ScoreBatchResponse> {
-    // Settle backend discovery, then SNAPSHOT the identity every key in this request uses.
-    await client.ready?.();
-    const dim = modelDim(client.model());
-    const priority = PRIORITY[req.priority] ?? 0;
-    /** May what this request produces be written down? Not for a private tab. */
-    const persist = origin.private !== true;
-
-    const resultById = new Map<string, ScoreResult>();
-    // Unique key → every block in THIS request that shares it.
-    const keyToBlocks = new Map<string, ScoreBlock[]>();
-    // Representative block per not-yet-known key that we must fetch fresh.
-    const toFetch: Keyed[] = [];
-    /** The model that produced the first fresh batch (or the snapshot when all were cached). */
-    let producing: ModelInfo | null = null;
-
-    // One memory+storage lookup for the whole request (the persistent layer is async).
-    const keys = req.blocks.map((b) => cache.keyOf(b.text, dim));
-    const hits = await cache.getMany(keys, persist);
-    req.blocks.forEach((block, i) => {
-      const key = keys[i];
-      const cached = hits.get(key);
-      if (cached) {
-        resultById.set(block.id, { ...cached, id: block.id });
-        return;
-      }
-      let group = keyToBlocks.get(key);
-      if (!group) {
-        group = [];
-        keyToBlocks.set(key, group);
-        toFetch.push({ block, key }); // first occurrence is the representative
-      }
-      group.push(block);
-    });
-
-    /** Apply a representative's result to every block sharing its key; cache REAL
-     *  results only (a degraded fallback cached once would outlive the outage), under
-     *  the identity that produced them, and only as far as `keep` allows — memory alone
-     *  when nobody but a private tab is waiting for it. */
-    const fanOut = (key: string, r: ScoreResult, producedBy: ModelInfo | null, keep = persist): void => {
-      const group = keyToBlocks.get(key) ?? [];
-      if (group.length > 0 && !r.degraded && producedBy) cache.set(group[0].text, r, modelDim(producedBy), keep);
-      for (const b of group) resultById.set(b.id, { ...r, id: b.id });
-    };
-
-    // Collapse against requests already in flight; the rest need a fresh fetch. From here
-    // to the registration below nothing may await: a gap is a window in which two callers
-    // both find the map empty and both start the same inference.
-    const needFetch: Keyed[] = [];
-    const joined: Array<Promise<void>> = [];
-    for (const k of toFetch) {
-      const pending = inFlight.get(k.key);
-      if (!pending) {
-        needFetch.push(k);
-        continue;
-      }
-      // A joined result was cached by its own batch; here it only needs fanning out, and
-      // its provenance is that batch's producer — our snapshot may already be stale.
-      joined.push(
-        pending.promise.then(({ result, model }) => {
-          producing ??= model;
-          fanOut(k.key, result, null);
-        }),
-      );
-      // An ordinary tab joining a private tab's batch is an ordinary tab asking for that
-      // text: the answer may be written down, and the batch settling below is what does it.
-      if (persist) pending.persist = true;
-      promote(pending, priority);
-    }
-
-    // Char-budget micro-batching of the representatives we must fetch.
-    const batches: Keyed[][] = [];
-    let current: Keyed[] = [];
-    let size = 0;
-    for (const k of needFetch) {
-      if (current.length > 0 && size + k.block.text.length > BATCH_CHAR_BUDGET) {
-        batches.push(current);
-        current = [];
-        size = 0;
-      }
-      current.push(k);
-      size += k.block.text.length;
-    }
-    if (current.length > 0) batches.push(current);
-
-    // Reserve every key of every batch BEFORE the queue sees the work: with a concurrency
-    // cap a batch usually waits for a slot first, and while it waits a second caller asking
-    // for the same text must join it rather than start its own inference.
-    const reserved = batches.map((batch) => {
-      const record: QueuedBatch = { id: `q${nextBatchId++}`, priority, started: false };
-      const entries = new Map<string, InFlight>();
-      for (const k of batch) {
-        let resolve!: (p: Produced) => void;
-        const promise = new Promise<Produced>((res) => {
-          resolve = res;
-        });
-        const entry: InFlight = { batch: record, promise, resolve, persist };
-        entries.set(k.key, entry);
-        inFlight.set(k.key, entry);
-      }
-      return { batch, record, entries };
-    });
-
-    const runBatch = async (
-      batch: Keyed[],
-      record: QueuedBatch,
-      entries: Map<string, InFlight>,
-    ): Promise<void> => {
-      record.started = true; // the queue has dispatched it; reordering is no longer possible
-      let byId = new Map<string, ScoreResult>();
-      let producedBy: ModelInfo | null = null;
-      try {
-        const scored = await scoreBatchSafe(batch.map((k) => k.block));
-        if (scored) {
-          byId = new Map(scored.results.map((r) => [r.id, r] as const));
-          producedBy = scored.model;
-          producing ??= scored.model;
+    let model = snapshot(client.model());
+    const response = (results = req.blocks.map(neutral)): ScoreBatchResponse =>
+      ({ v: req.v, session: req.session, model, partial: false, results });
+    const document = origin.documentKey ?? `anonymous:${++serial}`;
+    const usage = documentUsage.get(document) ?? { requests: 0, blocks: 0, chars: 0 };
+    const chars = req.blocks.reduce((sum, block) => sum + block.text.length, 0), blocks = req.blocks.length;
+    if (origin.signal?.aborted || !blocks || total.requests >= ROUTER_LIMITS.requests ||
+      total.blocks + blocks > ROUTER_LIMITS.blocks || total.chars + chars > ROUTER_LIMITS.chars ||
+      usage.requests >= ROUTER_LIMITS.documentRequests || usage.blocks + blocks > ROUTER_LIMITS.documentBlocks ||
+      usage.chars + chars > ROUTER_LIMITS.documentChars) return response();
+    total.requests++; total.blocks += blocks; total.chars += chars;
+    usage.requests++; usage.blocks += blocks; usage.chars += chars; documentUsage.set(document, usage);
+    let cancel!: () => void;
+    const reader: Reader = { document, persist: origin.private !== true, active: true, entries: new Set(),
+      cancelled: new Promise<undefined>((resolve) => { cancel = () => resolve(undefined); }),
+      cancel() { if (!reader.active) return; reader.active = false; cancel(); detach(reader); } };
+    readers.add(reader);
+    origin.signal?.addEventListener("abort", reader.cancel, { once: true });
+    const requestEpoch = epoch, cacheEpoch = cache.epoch();
+    const alive = () => reader.active && requestEpoch === epoch && cacheEpoch === cache.epoch();
+    try {
+      await Promise.race([client.ready?.(), reader.cancelled]);
+      if (!alive()) return response();
+      model = snapshot(client.model());
+      const revision = client.revision?.(), dim = modelDim(model);
+      // The cache and the actual payload use precisely the same canonical bytes.
+      const canonical = req.blocks.map((block) => ({ ...block, text: canonicalForScoring(block.text) }));
+      const keys = canonical.map((block) => cache.keyOf(block.text, dim));
+      const hits = await Promise.race([cache.getMany(keys, reader.persist), reader.cancelled]);
+      if (!alive() || !hits || !revisionMatches(revision)) return response();
+      const results = new Map<string, ScoreResult>();
+      const producers = new Map<string, ModelInfo>();
+      const groups = new Map<string, ScoreBlock[]>();
+      canonical.forEach((block, index) => {
+        const key = keys[index], hit = hits.get(key);
+        if (hit) { results.set(block.id, { ...hit, id: block.id }); producers.set(dim, model); }
+        else { const group = groups.get(key) ?? []; group.push(block); groups.set(key, group); }
+      });
+      const promises: Promise<void>[] = [];
+      const batches: Batch[] = [];
+      let batch: Batch | undefined, size = 0;
+      for (const [cacheKey, group] of groups) {
+        const key = `${revision ?? "none"}:${cacheKey}`;
+        let entry = inFlight.get(key);
+        if (!entry) {
+          if (!batch || (size && size + group[0].text.length > BATCH_CHAR_BUDGET)) {
+            batch = { priority: PRIORITY[req.priority] ?? 0, queuedAt: Date.now(),
+              entries: [], controller: new AbortController(), epoch: requestEpoch, cacheEpoch, revision };
+            batches.push(batch); size = 0;
+          }
+          let resolve!: (value: Produced) => void;
+          const promise = new Promise<Produced>((done) => { resolve = done; });
+          entry = { key, block: group[0], batch, readers: new Set(), promise, resolve };
+          batch.entries.push(entry); size += group[0].text.length; inFlight.set(key, entry);
         }
-      } finally {
-        // Whatever happened, every key settles and leaves the in-flight map.
-        for (const k of batch) {
-          const r = byId.get(k.block.id) ?? neutral(k.block);
-          const entry = entries.get(k.key);
-          fanOut(k.key, r, producedBy, entry?.persist ?? persist);
-          entry?.resolve({ result: r, model: r.degraded ? null : producedBy });
-          // Only OUR reservation may go: a later request may already have claimed the key.
-          if (inFlight.get(k.key) === entry) inFlight.delete(k.key);
-        }
+        entry.readers.add(reader); reader.entries.add(entry);
+        entry.batch.priority = Math.max(entry.batch.priority, PRIORITY[req.priority] ?? 0);
+        promises.push(entry.promise.then(({ result, model: producer }) => {
+          if (!alive()) return;
+          if (producer) producers.set(modelDim(producer), snapshot(producer));
+          for (const block of group) results.set(block.id, { ...result, id: block.id });
+        }));
       }
-    };
-
-    // The reservations are in place, so the priority queue may now run the fetches whenever
-    // it likes; `id` is what lets a later, more urgent joiner move one of them forward.
-    await Promise.all([
-      ...reserved.map(({ batch, record, entries }) =>
-        queue.add(() => runBatch(batch, record, entries), { priority, id: record.id }),
-      ),
-      ...joined,
-    ]);
-
-    // Assemble in original request order; neutral fallback for any gap.
-    const results = req.blocks.map((b) => resultById.get(b.id) ?? neutral(b));
-
-    return {
-      v: req.v,
-      session: req.session,
-      model: producing ?? client.model(),
-      partial: false,
-      results,
-    };
+      waiting.push(...batches); pump();
+      await Promise.race([Promise.all(promises), reader.cancelled]);
+      if (!alive() || !revisionMatches(revision) || producers.size > 1) return response();
+      // Cached and fresh results may never be labelled with one arbitrarily chosen model.
+      model = producers.values().next().value ?? model;
+      return response(req.blocks.map((block) => results.get(block.id) ?? neutral(block)));
+    } catch (error) { log.warn("request failed; returning unavailable", error); return response(); }
+    finally {
+      origin.signal?.removeEventListener("abort", reader.cancel);
+      reader.active = false; detach(reader); readers.delete(reader);
+      total.requests--; total.blocks -= blocks; total.chars -= chars;
+      usage.requests--; usage.blocks -= blocks; usage.chars -= chars;
+      if (!usage.requests) { documentUsage.delete(document); if (!runningByDocument.has(document)) lastServed.delete(document); }
+    }
   }
-
-  /**
-   * Empty both cache layers. Requests already in flight are deliberately left alone: they
-   * settle and answer their callers exactly as they would have, and the verdict each brings
-   * back is the daemon's current answer, so caching it is right even though it lands after
-   * the clear.
-   */
-  function clear(): Promise<void> {
-    return cache.clear();
-  }
-
-  return { handle, clear, count: () => cache.count() };
+  return { handle, cancelDocument,
+    clear() { invalidate(); return cache.clear(); },
+    setCacheMode(mode) { if (mode !== cacheMode) { cacheMode = mode; invalidate(); } return cache.setMode(mode); },
+    count: () => cache.count() };
 }

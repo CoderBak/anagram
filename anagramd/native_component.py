@@ -10,7 +10,9 @@ import json
 import os
 from pathlib import Path
 import secrets
+import signal
 import shutil
+import stat
 import subprocess
 import sys
 import threading
@@ -20,11 +22,13 @@ import tomllib
 from download_modelkit import (PIN, LID_ENTRY, LID_URL, DownloadPaused, download_asset,
                                install_streaming, invalid_files, load_pin, matches, plain_tree)
 from runtime_controller import RuntimeBusy, RuntimeUnavailable, error_text
+from safe_files import atomic_json, is_link, read_json, regular_stat
 
 HOST_NAME = "dev.coderbak.anagram"
 STATE_DEFAULT = {"schema_version": 1, "initialized": False, "download_pending": False,
                  "download_paused": False, "download_failed": False,
-                 "engine_stopped": False, "models_deleted": False}
+                 "engine_stopped": False, "models_deleted": False, "idle_unload_s": 300,
+                 "model_profile": "recommended"}
 
 
 class ComponentError(Exception):
@@ -36,14 +40,14 @@ class ComponentError(Exception):
 
 def validate_home(home: Path) -> Path:
     home = Path(home).absolute()
-    if home.is_symlink() or home.resolve() in (Path(home.anchor), Path.home().resolve()):
+    if is_link(home) or home.resolve() in (Path(home.anchor), Path.home().resolve()):
         raise ComponentError("invalid_request", "The component needs its own non-symlink installation directory", 422)
     home = home.resolve()
     marker = home / ".native-component.json"
-    if marker.is_symlink() or not marker.is_file():
+    if is_link(marker) or not marker.is_file():
         raise ComponentError("not_installed", "The owned native component marker is missing", 503)
     try:
-        data = json.loads(marker.read_text())
+        data = read_json(marker, max_bytes=16384)
     except (OSError, ValueError) as exc:
         raise ComponentError("not_installed", "The native component marker is invalid", 503) from exc
     if (not isinstance(data, dict) or type(data.get("schema_version")) is not int
@@ -55,18 +59,71 @@ def validate_home(home: Path) -> Path:
 class HomeLock:
     """Exclusive OS lock; a second browser receives busy instead of racing files."""
     def __init__(self, home):
-        from filelock import FileLock, Timeout
+        def check_installer():
+            installing = home / ".installer-lock"
+            if installing.exists() or is_link(installing):
+                raise ComponentError("busy", "Anagram installation is in progress; retry after it finishes", 409)
+
+        check_installer()
         path = home / ".native-host.lock"
-        if path.is_symlink():
+        if is_link(path):
             raise ComponentError("invalid_request", "Native host lock is a symbolic link", 422)
-        self.lock = FileLock(str(path), timeout=0)
+        if path.exists() and regular_stat(path).st_nlink != 1:
+            raise ComponentError("invalid_request", "Native host lock is a hardlink", 422)
+        self.path = path
+        self.fd = None
+        self.lock = None
+        if os.name == "posix":
+            import fcntl
+            fd = os.open(path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+            try:
+                held = os.fstat(fd)
+                if not stat.S_ISREG(held.st_mode) or held.st_nlink != 1:
+                    raise ComponentError("invalid_request", "Native host lock is not a private regular file", 422)
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                self.fd = fd
+            except BlockingIOError as exc:
+                os.close(fd)
+                raise ComponentError("busy", "Another browser is using this Anagram component; close its connection first", 409) from exc
+            except BaseException:
+                os.close(fd)
+                raise
+        else:
+            from filelock import FileLock, Timeout
+            self.lock = FileLock(str(path), timeout=0, thread_local=False)
+            try:
+                self.lock.acquire()
+            except Timeout as exc:
+                raise ComponentError("busy", "Another browser is using this Anagram component; close its connection first", 409) from exc
         try:
-            self.lock.acquire()
-        except Timeout as exc:
-            raise ComponentError("busy", "Another browser is using this Anagram component; close its connection first", 409) from exc
+            check_installer()
+            validate_home(home)
+        except Exception:
+            self.close()
+            raise
+
+    def maintenance_fd(self):
+        """Share this exact POSIX lock description with the fixed helper chain."""
+        if os.name != "posix":
+            raise ComponentError("unsupported", "Inherited maintenance descriptors require POSIX", 503)
+        import fcntl
+        fd = self.fd
+        if type(fd) is not int or fd < 0:
+            raise ComponentError("busy", "The component maintenance lock is not held", 409)
+        held, current = os.fstat(fd), self.path.lstat()
+        if (not stat.S_ISREG(current.st_mode) or (held.st_dev, held.st_ino) != (current.st_dev, current.st_ino)):
+            raise ComponentError("busy", "The component maintenance lock file changed", 409)
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return fd
 
     def close(self):
-        self.lock.release()
+        if self.fd is not None:
+            fd, self.fd = self.fd, None
+            # flock belongs to the shared open-file description. Explicit
+            # LOCK_UN here would revoke a maintenance child's inherited lock.
+            os.close(fd)
+        elif self.lock is not None:
+            self.lock.release()
 
 
 def installed_version(home):
@@ -82,7 +139,7 @@ def installed_version(home):
 
 class NativeComponent:
     def __init__(self, home, *, pin=None, downloader=None, verifier=None,
-                 controller_factory=None, helper=None, stop_timeout=30):
+                 controller_factory=None, helper=None, planner=None, stop_timeout=30, score_wait_timeout=25):
         self.home = validate_home(Path(home))
         self.home_lock = HomeLock(self.home)
         self.lock = threading.RLock()
@@ -94,32 +151,45 @@ class NativeComponent:
         self.controller = None
         self.runtime_draining = False
         self.stop_timeout = stop_timeout
+        self.score_wait_timeout = score_wait_timeout
         self.model_dir = self.home / "models/editlens_roberta-large"
         self.lid_path = self.home / "models/lid.176.ftz"
         self.state_path = self.home / "component-state.json"
         self.version = installed_version(self.home)
         self.pin = pin if pin is not None else load_pin(PIN)
-        self.downloader = downloader or self._download_all
+        self.downloader = downloader or self._download_models
         self.verifier = verifier or self._verify_models
+        self.planner = planner or self._build_model_plan
+        self.plan = None
+        self.hardware = None
+        self.legacy_profile = False
         self.controller_factory = controller_factory or self._make_controller
         self.helper = helper or self._run_helper
         self.state = "starting"
         self.error = None
         self.operation = None
         self.storage_bytes = 0
-        total = sum(entry["size_bytes"] for entry in self.pin["files"]) + LID_ENTRY["size_bytes"]
-        self.download = {"status": "idle", "bytes_received": 0, "total_bytes": total,
-                         "file": None, "error": None}
+        self.download = {"status": "idle", "bytes_received": 0, "total_bytes": 0,
+                         "file": None, "error": None, "phase": "detecting"}
         self.settings = self._read_settings()
 
     def _read_settings(self):
-        if self.state_path.is_symlink():
+        if is_link(self.state_path):
             raise ComponentError("invalid_request", "Component state is a symbolic link", 422)
         try:
-            saved = json.loads(self.state_path.read_text())
+            saved = read_json(self.state_path, max_bytes=65536)
+            if isinstance(saved, dict) and "idle_unload_s" not in saved:
+                saved["idle_unload_s"] = STATE_DEFAULT["idle_unload_s"]
+            if isinstance(saved, dict) and "model_profile" not in saved:
+                self.legacy_profile = True
+                saved["model_profile"] = "recommended"
             if (not isinstance(saved, dict) or set(saved) != set(STATE_DEFAULT)
                     or type(saved["schema_version"]) is not int or saved["schema_version"] != 1
-                    or any(type(saved[key]) is not bool for key in STATE_DEFAULT if key != "schema_version")):
+                    or type(saved["idle_unload_s"]) is not int
+                    or (saved["idle_unload_s"] != 0 and not 60 <= saved["idle_unload_s"] <= 86400)
+                    or saved["model_profile"] not in ("recommended", "expanded")
+                    or any(type(saved[key]) is not bool for key in STATE_DEFAULT
+                           if key not in ("schema_version", "idle_unload_s", "model_profile"))):
                 raise ValueError("invalid component state")
             return saved
         except FileNotFoundError:
@@ -130,16 +200,14 @@ class NativeComponent:
             return {**STATE_DEFAULT, "initialized": True, "engine_stopped": True, "download_paused": True}
 
     def _save_settings(self):
-        if self.state_path.is_symlink():
+        if is_link(self.state_path):
             raise ComponentError("invalid_request", "Component state is a symbolic link", 422)
-        temp = self.state_path.with_suffix(".json.tmp")
-        if temp.is_symlink():
-            raise ComponentError("invalid_request", "Component state staging path is a symbolic link", 422)
-        with temp.open("w", encoding="utf-8") as stream:
-            json.dump(self.settings, stream, allow_nan=False)
-            stream.flush()
-            os.fsync(stream.fileno())
-        temp.replace(self.state_path)
+        saved = dict(self.settings)
+        if self.legacy_profile:
+            # Until device discovery commits the migrated choice, preserve the
+            # legacy marker across pauses, disconnects and unrelated settings.
+            saved.pop("model_profile")
+        atomic_json(self.state_path, saved)
 
     def start(self):
         with self.lock:
@@ -175,7 +243,8 @@ class NativeComponent:
                             pass
             finally:
                 self._refresh_storage()
-        self.thread = threading.Thread(target=run, name="anagram-component", daemon=True)
+        self.thread = threading.Thread(target=run, name="anagram-component",
+                                       daemon=code not in ("update_failed", "uninstall_failed"))
         self.thread.start()
 
     def _ensure_idle(self):
@@ -220,23 +289,73 @@ class NativeComponent:
             pending = self.settings["download_pending"]
         if pending:
             self._download_work()
-        elif self.verifier():
-            with self.lock:
-                self.download.update(status="completed", bytes_received=self.download["total_bytes"])
-            self._start_runtime()
         else:
-            with self.lock:
-                self.state = "needs_models"
+            self._ensure_plan()
+            if self.verifier():
+                with self.lock:
+                    self.download.update(status="completed", phase="complete", bytes_received=self.download["total_bytes"])
+                self._start_runtime()
+            else:
+                with self.lock:
+                    self.state = "needs_models"
+
+    def _build_model_plan(self, profile):
+        from model_plan import build_plan, discover_hardware
+        if self.hardware is None:
+            self.hardware = discover_hardware()
+        plan = build_plan(self.pin, self.hardware, profile)
+        expanded = build_plan(self.pin, self.hardware, "expanded")
+        if self.legacy_profile:
+            # Retain access to an explicitly selected legacy runtime on upgrade.
+            # New installations and explicit profile changes never opt into INT8.
+            path = self.home / "runtime.json"
+            if is_link(path):
+                raise ComponentError("invalid_request", "Runtime preferences are a symbolic link", 422)
+            try:
+                saved = read_json(path)
+                selected = saved.get("selected_id") if isinstance(saved, dict) else None
+            except (OSError, ValueError):
+                selected = None
+            if selected in expanded["candidate_ids"] and selected not in plan["candidate_ids"]:
+                plan = expanded
+        plan["expanded_bytes"] = expanded["total_bytes"] + LID_ENTRY["size_bytes"]
+        return plan
+
+    def _ensure_plan(self):
+        if self.plan is not None:
+            return
+        with self.lock:
+            self.download.update(phase="detecting", file=None, total_bytes=0, bytes_received=0)
+            profile = self.settings["model_profile"]
+        plan = self.planner(profile)
+        if self.cancel_download.is_set():
+            raise DownloadPaused()
+        total = plan["total_bytes"] + LID_ENTRY["size_bytes"]
+        with self.lock:
+            previous_profile, legacy = self.settings["model_profile"], self.legacy_profile
+            self.settings["model_profile"] = plan["profile"]
+            self.legacy_profile = False
+            try:
+                self._save_settings()
+            except Exception:
+                self.settings["model_profile"], self.legacy_profile = previous_profile, legacy
+                raise
+            self.plan = plan
+            self.download.update(phase="verifying", total_bytes=total, plan={
+                "profile": plan["profile"], "devices": plan.get("devices", []),
+                "files": [*plan["selected_paths"], "lid.176.ftz"], "total_bytes": total,
+                "expanded_bytes": plan.get("expanded_bytes", total),
+            })
 
     def _verify_models(self):
         plain_tree(self.home / "models")
-        return not invalid_files(self.model_dir, self.pin) and matches(self.lid_path, LID_ENTRY)
+        return not invalid_files(self.model_dir, self.pin, selected_paths=self.plan["selected_paths"]) and matches(self.lid_path, LID_ENTRY)
 
-    def _download_all(self, cancel, progress):
+    def _download_models(self, cancel, progress):
         plain_tree(self.home / "models")
-        model_total = sum(entry["size_bytes"] for entry in self.pin["files"])
+        model_total = self.plan["total_bytes"]
         total = model_total + LID_ENTRY["size_bytes"]
-        install_streaming(self.model_dir, self.pin, cancel=cancel,
+        install_streaming(self.model_dir, self.pin, selected_paths=self.plan["selected_paths"], cancel=cancel,
                           progress=lambda got, _total, name: progress(got, total, name))
         download_asset(LID_URL, self.lid_path, LID_ENTRY, cancel=cancel,
                        progress=lambda got: progress(model_total + got, total, "lid.176.ftz"))
@@ -245,7 +364,7 @@ class NativeComponent:
     def _progress(self, received, total, name):
         with self.lock:
             self.download.update(bytes_received=max(0, min(int(received), int(total))),
-                                 total_bytes=max(0, int(total)), file=name)
+                                 total_bytes=max(0, int(total)), file=name, phase="downloading")
 
     def _download_work(self):
         self._stop_runtime()
@@ -253,9 +372,12 @@ class NativeComponent:
             self.state = "downloading"
             self.download.update(status="running", error=None)
             self.error = None
+        self._ensure_plan()
         self.downloader(self.cancel_download, self._progress)
         if self.cancel_download.is_set():
             raise DownloadPaused()
+        with self.lock:
+            self.download.update(phase="verifying", file=None)
         if not self.verifier():
             raise ComponentError("download_failed", "Downloaded model files did not pass verification", 500)
         with self.lock:
@@ -263,12 +385,12 @@ class NativeComponent:
                 raise DownloadPaused()
             self.settings.update(download_pending=False, download_paused=False, download_failed=False)
             self._save_settings()
-            self.download.update(status="completed", bytes_received=self.download["total_bytes"], file=None)
+            self.download.update(status="completed", phase="complete", bytes_received=self.download["total_bytes"], file=None)
         self._start_runtime()
 
     def _make_controller(self):
         from runtime_adapters import create_controller
-        return create_controller(self.model_dir, self.home / "runtime.json", self.lid_path)
+        return create_controller(self.model_dir, self.home / "runtime.json", self.lid_path, plan=self.plan)
 
     def _start_runtime(self):
         with self.lock:
@@ -281,6 +403,7 @@ class NativeComponent:
                 controller.close()
                 return
             self.controller = controller
+            controller.set_idle_unload(self.settings["idle_unload_s"])
             self.runtime_draining = False
             self.state = "loading"
         controller.start()
@@ -339,6 +462,7 @@ class NativeComponent:
             return {"schema_version": 1, "version": self.version, "home": str(self.home),
                     "state": state, "download": copy.deepcopy(self.download), "runtime": runtime,
                     "storage": {"models_bytes": self.storage_bytes}, "error": error,
+                    "settings": {"idle_unload_s": self.settings["idle_unload_s"]},
                     "operation": copy.deepcopy(self.operation)}
 
     def _runtime(self):
@@ -364,7 +488,10 @@ class NativeComponent:
             return 200, self.status()
         if op == "health":
             self._payload(payload)
-            with self._runtime().use_engine() as engine:
+            controller = self._runtime()
+            if controller.snapshot()["state"] == "idle":
+                raise ComponentError("engine_idle", "The engine was unloaded while idle; scoring will reload it", 503)
+            with controller.use_engine(activity=False) as engine:
                 return 200, engine.info()
         if op == "score":
             from engine import ScoreRequest, ScoreResponse, score_with_engine
@@ -373,7 +500,9 @@ class NativeComponent:
                 request = ScoreRequest.model_validate(payload)
             except ValidationError as exc:
                 raise ComponentError("invalid_request", "Invalid score request", 422) from exc
-            with self._runtime().use_engine() as engine:
+            controller = self._runtime()
+            controller.wake_and_wait(timeout=self.score_wait_timeout)
+            with controller.use_engine() as engine:
                 response = score_with_engine(request, engine)
                 return 200, ScoreResponse.model_validate(response).model_dump(exclude_none=True)
         if op == "runtime":
@@ -400,11 +529,32 @@ class NativeComponent:
                 self._save_settings()
                 self.cancel_download.set()
                 return 202, self.status()
+        if op == "engine.settings":
+            self._payload(payload, ("idle_unload_s",), ("idle_unload_s",))
+            seconds = payload["idle_unload_s"]
+            if type(seconds) is not int or (seconds != 0 and not 60 <= seconds <= 86400):
+                raise ComponentError("invalid_request", "idle_unload_s must be 0 or an integer from 60 to 86400", 422)
+            with self.lock:
+                self._ensure_idle()
+                previous = self.settings["idle_unload_s"]
+                self.settings["idle_unload_s"] = seconds
+                try:
+                    self._save_settings()
+                except Exception:
+                    self.settings["idle_unload_s"] = previous
+                    raise
+                if self.controller is not None:
+                    self.controller.set_idle_unload(seconds)
+                return 200, self.status()
         if op in ("models.delete", "component.uninstall"):
             self._payload(payload, ("confirm",), ("confirm",))
             if payload["confirm"] is not True:
                 raise ComponentError("invalid_request", "Explicit confirmation is required", 422)
-        elif op in ("models.download", "engine.stop", "engine.resume", "component.update"):
+        elif op == "models.download":
+            self._payload(payload, ("profile",))
+            if "profile" in payload and payload["profile"] not in ("recommended", "expanded"):
+                raise ComponentError("invalid_request", "Unknown model download profile", 422)
+        elif op in ("engine.stop", "engine.resume", "component.update"):
             self._payload(payload)
         else:
             raise ComponentError("invalid_request", "Unknown native operation", 422)
@@ -412,18 +562,25 @@ class NativeComponent:
             self._ensure_idle()
             self.error = None
             if op == "models.download":
+                if "profile" in payload:
+                    self.settings["model_profile"] = payload["profile"]
+                    self.legacy_profile = False
                 self.settings.update(initialized=True, download_pending=True, download_paused=False,
                                      download_failed=False, models_deleted=False, engine_stopped=False)
                 self._save_settings()
                 self.cancel_download.clear()
+                self.plan = None
+                self.hardware = None
                 self.state = "downloading"
-                self.download["status"] = "running"
+                self.download.update(status="running", phase="detecting", total_bytes=0, bytes_received=0, file=None)
+                self.download.pop("plan", None)
                 self.operation = None
                 self._launch(self._download_work, "download_failed")
             elif op == "engine.stop":
                 self.settings["engine_stopped"] = True
                 self._save_settings()
                 self.state = "loading"
+                self.runtime_draining = self.controller is not None
                 def stop():
                     self._stop_runtime()
                     with self.lock:
@@ -433,9 +590,12 @@ class NativeComponent:
                 self.settings.update(initialized=True, engine_stopped=False)
                 self._save_settings()
                 self.state = "loading"
+                self.runtime_draining = self.controller is not None
                 self.operation = None
                 def resume():
                     self._stop_runtime()
+                    self.cancel_download.clear()
+                    self._ensure_plan()
                     if not self.verifier():
                         with self.lock:
                             self.state = "needs_models"
@@ -450,6 +610,7 @@ class NativeComponent:
                         "component.uninstall": "uninstall"}[op]
                 self.operation = {"name": name, "status": "running", "receipt": None}
                 self.state = {"delete_models": "loading", "update": "updating", "uninstall": "uninstalling"}[name]
+                self.runtime_draining = self.controller is not None
                 self._launch(lambda: self._maintenance(name), name + "_failed")
             return 202, self.status()
 
@@ -458,7 +619,7 @@ class NativeComponent:
         if name == "delete_models":
             plain_tree(self.home / "models")
             runtime_path = self.home / "runtime.json"
-            if runtime_path.is_symlink():
+            if is_link(runtime_path):
                 raise ComponentError("invalid_request", "Runtime preferences are a symbolic link", 422)
             if (self.home / "models").exists():
                 shutil.rmtree(self.home / "models")
@@ -494,20 +655,54 @@ class NativeComponent:
         env = {key: value for key, value in os.environ.items()
                if key not in {"PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP"}}
         env.update(PYTHONNOUSERSITE="1", PYTHONSAFEPATH="1")
-        result = subprocess.run([sys.executable, "-I", str(helper), name, "--home", str(self.home)],
-                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=sys.stderr,
-                                env=env, timeout=1200, check=False)
-        if result.returncode != 0:
+        command = [sys.executable, "-I", str(helper), name]
+        options = {}
+        if os.name == "posix":
+            fd = self.home_lock.maintenance_fd()
+            command += ["--lock-fd", str(fd)]
+            options.update(pass_fds=(fd,), start_new_session=True)
+        command += ["--home", str(self.home)]
+        process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                   stderr=sys.stderr, env=env, **options)
+        try:
+            output, _ = process.communicate(timeout=1200)
+        except BaseException:
+            self._terminate_helper(process)
+            raise
+        if process.returncode != 0:
             raise ComponentError(name + "_failed", "The component maintenance helper failed; check its diagnostics", 500)
-        if len(result.stdout) > 65536:
+        if len(output) > 65536:
             raise ComponentError(name + "_failed", "Invalid component helper response", 500)
         try:
-            reply = json.loads(result.stdout)
+            reply = json.loads(output)
             if not isinstance(reply, dict):
                 raise ValueError()
             return reply
         except (ValueError, UnicodeDecodeError) as exc:
             raise ComponentError(name + "_failed", "Invalid component helper response", 500) from exc
+
+    @staticmethod
+    def _terminate_helper(process):
+        if os.name == "posix":
+            # This session was created exclusively for our trusted helper. Stop
+            # its installer descendants as well as the direct Python child.
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                pass
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        elif process.poll() is None:
+            process.kill()
+        process.wait()
+        if process.stdout:
+            process.stdout.close()
 
     def close(self):
         with self.lock:

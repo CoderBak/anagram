@@ -32,4 +32,14 @@ describe("native component UI lifecycle", () => {
     expect(componentBusy(s)).toBe(true);
     expect(componentStateLabel(s)).toBe("Deleting model files…");
   });
+  it("identifies preparation phases even before the selected size is known", () => {
+    for (const [phase,label] of [["detecting","Detecting usable devices…"], ["verifying","Verifying model files…"],
+      ["downloading","Downloading model files…"], ["complete","Model files prepared"]] as const) {
+      const s = snapshot({state:"downloading",download:{status:"running",phase,bytes_received:0,total_bytes:0,file:null,error:null}});
+      expect(componentStateLabel(s)).toBe(label);
+      expect(componentBusy(s)).toBe(true);
+      expect(componentReady(s)).toBe(false);
+    }
+    expect(componentStateLabel(snapshot({state:"paused",download:{status:"paused",phase:"verifying",bytes_received:50,total_bytes:100,file:null,error:null}}))).toBe("Model download paused");
+  });
 });

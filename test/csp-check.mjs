@@ -1,10 +1,11 @@
 // test/csp-check.mjs — the Content-Security-Policy, in both browsers.
 //
-// Extension-page/worker web requests are restricted to packaged resources. Native
+// Ordinary UI pages restrict connections to packaged resources. The isolated PDF loader
+// may read an authorized document source. Native
 // inference uses the separate browser pipe; its OS privileges are outside this policy.
 // This checks both ways the browser policy could be wrong:
 //
-//   too loose  — the point of the exercise. So a page and the service worker are made to
+//   too loose  — the point of the exercise. Ordinary UI pages are made to
 //                reach for a remote host, a WebSocket and a beacon, and every one of them
 //                has to be refused, including loopback, while native scoring works;
 //   too tight  — the way a policy quietly breaks a product. So every surface the extension
@@ -151,17 +152,18 @@ const readerState = await surface(
     },
     after: (page) =>
       page
-        .evaluate((sel) => ({
-          pages: document.querySelectorAll(".page").length,
-          spans: document.querySelectorAll(".textLayer span").length,
-          chips: document.querySelectorAll(sel).length,
-        }), BADGE_SEL)
-        .catch(() => ({ pages: 0, spans: 0, chips: 0 })),
+        .evaluate(() => ({
+          pages: window.PDFViewerApplication?.pdfDocument?.numPages ?? 0,
+          rendered: [...document.querySelectorAll("#viewer .page canvas")].some(canvas => canvas.width > 0 && canvas.height > 0),
+          text: document.querySelector("#viewer .textLayer")?.textContent.includes("Anagram rebuilds this document") ?? false,
+          chips: [...document.querySelectorAll('.anagramPdfChips [data-anagram="host"]')].filter(host => host.shadowRoot?.querySelector(".pill")).length,
+        }))
+        .catch(() => ({ pages: 0, rendered: false, text: false, chips: 0 })),
   },
 );
 record(
   "Chrome: and that reader really drew its pages, its text layer and its chips",
-  readerState.pages === 2 && readerState.spans >= 29 && readerState.chips > 0,
+  readerState.pages === 2 && readerState.rendered && readerState.text && readerState.chips > 0,
   JSON.stringify(readerState),
 );
 
@@ -196,7 +198,7 @@ record(
 // ---- Chrome: what connect-src actually permits ------------------------------------------------
 //
 // The policy is only worth having if it refuses things, so this asks for them. An extension
-// page and the service worker are the two places that could talk to the world.
+// page has a stricter meta policy than the private source loader.
 
 const driver = await context.newPage();
 await driver.addInitScript(WATCH);
@@ -207,13 +209,10 @@ const fromPage = (url) =>
     (u) => fetch(u).then(() => "reached", (e) => `refused (${e.name})`),
     url,
   );
-const fromWorker = (url) =>
-  sw.evaluate((u) => fetch(u).then(() => "reached", (e) => `refused (${e.name})`), url);
 
 const localUrl = files.url("/csp-loopback");
 record("Chrome: an extension page cannot fetch loopback", (await fromPage(localUrl)).startsWith("refused"));
-record("Chrome: the service worker cannot fetch loopback", (await fromWorker(localUrl)).startsWith("refused"));
-record("Chrome: numeric loopback is also blocked", (await fromWorker(localUrl.replace("localhost", "127.0.0.1"))).startsWith("refused"));
+record("Chrome: numeric loopback is also blocked", (await fromPage(localUrl.replace("localhost", "127.0.0.1"))).startsWith("refused"));
 record("Chrome: blocked loopback probes send no request", prohibitedLoopbackRequests === 0);
 const nativeStatus = await driver.evaluate(() => chrome.runtime.sendMessage({action:"getBackendStatus",probe:true}));
 record("Chrome: native scoring remains ready without web requests", nativeStatus?.server.ok === true && nativeStatus?.active === "server");
@@ -221,11 +220,10 @@ record("Chrome: native scoring remains ready without web requests", nativeStatus
 const remote = {
   "an extension page → https://arxiv.org": await fromPage("https://arxiv.org/html/2402.17764"),
   "an extension page → https://example.com": await fromPage("https://example.com/"),
-  "the service worker → https://example.com": await fromWorker("https://example.com/"),
-  "the service worker → http://example.com": await fromWorker("http://example.com/"),
+  "an extension page → http://example.com": await fromPage("http://example.com/"),
 };
 record(
-  "Chrome: neither a page nor the worker can reach ANY remote host",
+  "Chrome: ordinary UI pages cannot connect to remote hosts",
   Object.values(remote).every((r) => r.startsWith("refused")),
   JSON.stringify(remote),
 );
@@ -278,18 +276,12 @@ record(
   JSON.stringify(other),
 );
 
-/**
- * THE ONE THING THIS POLICY COSTS, stated so it cannot be discovered by surprise: the
- * reader page can no longer fetch a PDF at all — not from the site it is on, and not from
- * this computer either. That is the intended consequence: a remote origin is a remote
- * origin whoever asks, and it is why the bytes of a PDF being read are handed over by the
- * tab that already has them (lib/pdf/handoff.ts) rather than fetched again. A PDF on this
- * computer comes in through the reading mode's drop zone instead.
- */
+// The full viewer cannot fetch an arbitrary source itself. Authorized file/Firefox
+// source reads go through the separate private loader and its one-use broker ticket.
 record(
-  "Chrome: the reader cannot re-fetch a PDF from a remote origin (the bytes must come from the tab)",
+  "Chrome: ordinary UI cannot fetch an arbitrary PDF source",
   (await fromPage("https://example.com/paper.pdf")).startsWith("refused"),
-  "intended: see docs/footprint.md",
+  "Source-ticket authorization is covered by the PDF loader tests.",
 );
 
 // web_accessible_resources, asked from where it matters: an ordinary web page. Until
@@ -400,33 +392,33 @@ if (!CHROME_ONLY) {
       settle: 2000,
       expect: { probe: () => !document.getElementById("drop")?.hidden, ok: (v) => v === true },
     });
-    // Firefox's PDF viewer is a privileged page no content script reaches, so there is no
-    // tab to be handed a document by: the drop zone is the whole way in there, and it is
-    // what this checks under the policy.
+    // File/drop remains available without source permissions. Automatic Firefox source
+    // loading has its own authorization tests; this checks the offline bytes path.
     await fxSurface(
       "the reader with a PDF loaded",
       fxUrl("reader.html"),
       {
         settle: 8000,
-        prepare: (page) =>
-          page
-            .evaluate((b64) => {
+        prepare: async (page) => {
+          await page.waitForFunction(() => window.PDFViewerApplication?.initialized && !document.getElementById("drop")?.hidden);
+          await page.evaluate((b64) => {
               const bin = atob(b64);
               const bytes = new Uint8Array(bin.length);
               for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
               const dt = new DataTransfer();
               dt.items.add(new File([bytes], "doc.pdf", { type: "application/pdf" }));
               document.dispatchEvent(new DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true }));
-            }, TEST_PDF.toString("base64"))
-            .catch(() => undefined),
+            }, TEST_PDF.toString("base64"));
+        },
         expect: {
           probe: () => ({
-            pages: document.querySelectorAll(".page").length,
-            spans: document.querySelectorAll(".textLayer span").length,
+            pages: window.PDFViewerApplication?.pdfDocument?.numPages ?? 0,
+            rendered: [...document.querySelectorAll("#viewer .page canvas")].some(canvas => canvas.width > 0 && canvas.height > 0),
+            text: document.querySelector("#viewer .textLayer")?.textContent.includes("Anagram rebuilds this document") ?? false,
           }),
-          // pdf.js drew its pages, which means its module worker loaded, its CMaps and
-          // fonts were fetched and its WebAssembly compiled — all under this policy.
-          ok: (v) => v !== null && v.pages === 2 && v.spans >= 29,
+          // The complete viewer renders only nearby pages. Assert the real document,
+          // painted pixels and fixture text rather than eager whole-document span count.
+          ok: (v) => v !== null && v.pages === 2 && v.rendered && v.text,
         },
       },
     );

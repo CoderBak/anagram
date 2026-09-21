@@ -3,6 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Content-Security-Policy" content="connect-src 'self'" />
     <title data-i18n="popupTitle">Anagram</title>
     <style>
       /* Layout only — colours, type and controls come from Basecoat (Vega). */
@@ -92,19 +93,21 @@
         <!-- Label, variant and action are the page's state (./state.ts); until the page
              has answered there is nothing honest to put on it. -->
         <button id="action" class="btn w-full" data-variant="outline" data-size="sm" type="button" disabled></button>
+        <button id="localFileSettings" class="btn w-full" data-variant="ghost" data-size="sm" type="button" hidden data-i18n="popupFileAccessSettings">Local file settings</button>
+        <a href="/paste.html" target="_blank" rel="noopener" class="btn w-full" data-variant="ghost" data-size="sm" data-i18n="pasteTitle">Analyze text</a>
       </section>
 
       <section class="grp">
         <h2 data-i18n="popupWhereItRuns">Where it runs</h2>
         <div class="field" data-orientation="horizontal">
           <section>
-            <label for="siteEnabled" data-i18n="popupThisSite">This site</label>
+            <label for="siteEnabled" data-i18n="popupThisSite">Auto-analyze this site</label>
             <p id="siteHost">…</p>
           </section>
           <input id="siteEnabled" type="checkbox" role="switch" data-size="sm" />
         </div>
         <div class="field" data-orientation="horizontal">
-          <label for="enabled" data-i18n="popupAllWebsites">All websites</label>
+          <label for="enabled" data-i18n="popupAllWebsites">Default on granted sites</label>
           <input id="enabled" type="checkbox" role="switch" data-size="sm" />
         </div>
       </section>

@@ -3,8 +3,9 @@
 # ANAGRAM_HOME, ANAGRAM_BROWSER, ANAGRAM_EXTENSION_ID and ANAGRAM_LANG come from setup.
 # Model download and engine lifecycle are browser-managed.
 set -eu
+umask 077
 
-INSTALLER_VERSION="0.4.1"
+INSTALLER_VERSION="0.5.0"
 UV_VERSION="0.11.18"
 PYTHON_VERSION="${ANAGRAM_PYTHON:-3.12.13}"
 RELEASE_URL="${ANAGRAM_RELEASE_URL:-https://github.com/CoderBak/anagram/releases/latest/download}"
@@ -49,6 +50,11 @@ if [ -e "$ANAGRAM_HOME" ]; then
     die "'$ANAGRAM_HOME' exists, is not empty, and is not an Anagram folder (no $MARKER) — refusing to touch it. Move it aside or set ANAGRAM_HOME to a new folder."
   fi
 fi
+# Check fixed file destinations before backups or rollback can touch them.
+for sub in "$MARKER" VERSION bin/anagram bin/anagram.new bin/uv bin/uv.new .native-host.lock .native-component.json native-registration.json; do
+  [ ! -L "$ANAGRAM_HOME/$sub" ] || die "symbolic link in installation: $sub"
+  [ ! -e "$ANAGRAM_HOME/$sub" ] || [ -f "$ANAGRAM_HOME/$sub" ] || die "installation file is not regular: $sub"
+done
 # Inside the validated folder, the paths we replace or write must be plain directories too.
 for sub in app extension bin models venv python hf cache logs run tools; do
   [ -L "$ANAGRAM_HOME/$sub" ] && die "'$ANAGRAM_HOME/$sub' is a symbolic link — refusing to write through it"
@@ -64,27 +70,36 @@ case "$BROWSER" in
   *) die "Use the installation command from Anagram setup (ANAGRAM_BROWSER=chrome|firefox and exact extension ID) / 请使用扩展设置页中的安装命令" ;;
 esac
 
-mkdir -p "$ANAGRAM_HOME/bin" "$ANAGRAM_HOME/models" "$ANAGRAM_HOME/run" "$ANAGRAM_HOME/cache" "$ANAGRAM_HOME/hf"
-[ -f "$ANAGRAM_HOME/$MARKER" ] || printf 'Anagram installation folder. Safe to delete with: bin/anagram uninstall\n' > "$ANAGRAM_HOME/$MARKER"
-TMP="$(mktemp -d "${TMPDIR:-/tmp}/anagram-install.XXXXXX")"
+TMP=""
+INSTALL_LOCK=""
 SWAPPED=""
 INSTALL_COMPLETE=0
 COMMAND_WRITTEN=0
 VERSION_WRITTEN=0
+CREATED_VENV=0
+STAGE=""
 cleanup() {
-  if [ "$INSTALL_COMPLETE" -eq 0 ]; then
+  if [ "$INSTALL_COMPLETE" -eq 0 ] && [ -n "$INSTALL_LOCK" ]; then
     for sub in $SWAPPED; do
       [ -L "$ANAGRAM_HOME/$sub" ] && continue
       rm -rf "$ANAGRAM_HOME/$sub"
       [ ! -d "$ANAGRAM_HOME/$sub.old" ] || mv "$ANAGRAM_HOME/$sub.old" "$ANAGRAM_HOME/$sub"
     done
-    if [ -f "$TMP/command.backup" ]; then cp "$TMP/command.backup" "$ANAGRAM_HOME/bin/anagram.new"; chmod 755 "$ANAGRAM_HOME/bin/anagram.new"; mv "$ANAGRAM_HOME/bin/anagram.new" "$ANAGRAM_HOME/bin/anagram";
-    elif [ "$COMMAND_WRITTEN" -eq 1 ]; then rm -f "$ANAGRAM_HOME/bin/anagram"; fi
-    if [ -f "$TMP/version.backup" ]; then cp "$TMP/version.backup" "$ANAGRAM_HOME/VERSION";
-    elif [ "$VERSION_WRITTEN" -eq 1 ]; then rm -f "$ANAGRAM_HOME/VERSION"; fi
-    [ -L "$ANAGRAM_HOME/venv.next" ] || rm -rf "$ANAGRAM_HOME/venv.next"
+    if [ "$COMMAND_WRITTEN" -eq 1 ]; then
+      if [ -f "$TMP/command.backup" ]; then install_ours "$TMP/command.backup" "$ANAGRAM_HOME/bin/anagram" 755;
+      else rm -f "$ANAGRAM_HOME/bin/anagram"; fi
+    fi
+    if [ "$VERSION_WRITTEN" -eq 1 ]; then
+      if [ -f "$TMP/version.backup" ]; then install_ours "$TMP/version.backup" "$ANAGRAM_HOME/VERSION";
+      else rm -f "$ANAGRAM_HOME/VERSION"; fi
+    fi
+    if [ "$CREATED_VENV" -eq 1 ] && [ ! -L "$ANAGRAM_HOME/venv.next" ]; then
+      rm -rf "$ANAGRAM_HOME/venv.next"
+    fi
   fi
-  rm -rf "$TMP"
+  [ -z "$STAGE" ] || remove_ours "$STAGE"
+  [ -z "$TMP" ] || rm -rf "$TMP"
+  [ -z "$INSTALL_LOCK" ] || rmdir "$INSTALL_LOCK"
 }
 trap cleanup EXIT
 
@@ -99,11 +114,11 @@ remove_ours() {
 install_ours() { # src dest [mode]
   case "$2" in "$ANAGRAM_HOME"/*) ;; *) die "internal error: refusing to write '$2' (outside $ANAGRAM_HOME)";; esac
   [ -L "$2" ] && die "internal error: refusing to write through symlink '$2'"
-  [ -L "$2.new" ] && die "internal error: refusing to write through symlink '$2.new'"
-  rm -f "$2.new"
-  cp "$1" "$2.new"
-  if [ -n "${3:-}" ]; then chmod "$3" "$2.new"; fi
-  mv "$2.new" "$2"
+  [ ! -e "$2" ] || [ -f "$2" ] || die "internal error: destination is not a regular file: $2"
+  replacement="$(mktemp "${2%/*}/.anagram-replace.XXXXXX")"
+  if ! cp "$1" "$replacement"; then rm -f "$replacement"; return 1; fi
+  if [ -n "${3:-}" ]; then chmod "$3" "$replacement"; fi
+  mv -f "$replacement" "$2"
 }
 
 # A scrubbed environment for child processes: only what they need, nothing inherited.
@@ -147,10 +162,56 @@ case "$OS/$ARCH" in
   *) die "unsupported platform: $OS $ARCH (macOS 14+ Apple Silicon or glibc Linux x86_64/arm64)" ;;
 esac
 
+# One installer at a time, including first install before private Python exists.
+mkdir -p "$ANAGRAM_HOME"
+if ! mkdir "$ANAGRAM_HOME/.installer-lock" 2>/dev/null; then
+  die "another installer is active, or a previous interrupted installation left $ANAGRAM_HOME/.installer-lock; close it before retrying"
+fi
+INSTALL_LOCK="$ANAGRAM_HOME/.installer-lock"
+# Another installer may have finished between the initial checks and this lock.
+for sub in app extension bin models venv python hf cache logs run tools "$MARKER" VERSION bin/anagram bin/anagram.new bin/uv bin/uv.new .native-host.lock .native-component.json native-registration.json; do
+  [ ! -L "$ANAGRAM_HOME/$sub" ] || die "symbolic link in installation: $sub"
+done
+for sub in app.old extension.old venv.old venv.next; do
+  [ ! -e "$ANAGRAM_HOME/$sub" ] && [ ! -L "$ANAGRAM_HOME/$sub" ] || die "unfinished or unsafe staging path: $ANAGRAM_HOME/$sub"
+done
+if [ -e "$ANAGRAM_HOME/.native-component.json" ] || [ -e "$ANAGRAM_HOME/.native-host.lock" ]; then
+  [ -x "$ANAGRAM_HOME/venv/bin/python" ] || die "the existing component has no private Python; repair or remove it before installing"
+  if [ -n "${ANAGRAM_MAINTENANCE_FD:-}" ]; then
+    install_fd="$ANAGRAM_MAINTENANCE_FD"
+  else
+    # flock is attached to this open-file description, shared with the Python child.
+    exec 9<> "$ANAGRAM_HOME/.native-host.lock"
+    install_fd=9
+  fi
+  clean_env "$ANAGRAM_HOME/venv/bin/python" -I - "$ANAGRAM_HOME" "$install_fd" <<'PYLOCK'
+import fcntl, json, os, stat, sys
+from pathlib import Path
+home, fd = Path(sys.argv[1]), int(sys.argv[2])
+path = home / '.native-host.lock'
+if fd < 3 or path.is_symlink():
+    sys.exit('Invalid native maintenance lock')
+opened, current = os.fstat(fd), path.lstat()
+if not all(stat.S_ISREG(info.st_mode) and info.st_nlink == 1 for info in (opened, current)) or (opened.st_dev, opened.st_ino) != (current.st_dev, current.st_ino):
+    sys.exit('Native maintenance lock path changed')
+try:
+    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+except BlockingIOError:
+    sys.exit('Anagram is running. Stop/disconnect the local component in Settings before reinstalling.')
+marker = home / '.native-component.json'
+if marker.is_symlink() or json.loads(marker.read_text()) != {'schema_version': 1, 'host': 'dev.coderbak.anagram', 'home': str(home.resolve())}:
+    sys.exit('Component ownership marker does not match this directory')
+# Do not LOCK_UN: the parent shell still owns the same open-file description.
+PYLOCK
+fi
+mkdir -p "$ANAGRAM_HOME/bin" "$ANAGRAM_HOME/models" "$ANAGRAM_HOME/run" "$ANAGRAM_HOME/cache" "$ANAGRAM_HOME/hf"
+[ -f "$ANAGRAM_HOME/$MARKER" ] || printf 'Anagram installation folder. Safe to delete with: bin/anagram uninstall\n' > "$ANAGRAM_HOME/$MARKER"
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/anagram-install.XXXXXX")"
+
 # ---------------------------------------------------------------- 1. release tarball
 step 1 "$(tr_msg 'Downloading the Anagram release' '正在下载 Anagram 安装包')"
-curl -fL --retry 3 -o "$TMP/anagram.tar.gz" "$RELEASE_URL/anagram.tar.gz"
-curl -fsSL --retry 3 -o "$TMP/anagram.tar.gz.sha256" "$RELEASE_URL/anagram.tar.gz.sha256"
+curl -q -fL --retry 3 -o "$TMP/anagram.tar.gz" "$RELEASE_URL/anagram.tar.gz"
+curl -q -fsSL --retry 3 -o "$TMP/anagram.tar.gz.sha256" "$RELEASE_URL/anagram.tar.gz.sha256"
 expected="$(cut -c1-64 "$TMP/anagram.tar.gz.sha256")"
 actual="$(sha256_of "$TMP/anagram.tar.gz")"
 [ "$expected" = "$actual" ] || die "checksum mismatch for anagram.tar.gz (expected $expected, got $actual)"
@@ -168,8 +229,7 @@ REL="$TMP/x/anagram"
 VERSION="$(cat "$REL/VERSION")"
 note "version $VERSION"
 # Staged swap: the new trees are placed beside the old ones, then renamed into place.
-STAGE="$ANAGRAM_HOME/.staging.$$"
-remove_ours "$STAGE"; mkdir -p "$STAGE"
+STAGE="$(mktemp -d "$ANAGRAM_HOME/.staging.XXXXXX")"
 cp -R "$REL/app" "$STAGE/app"
 if [ "$BROWSER" = firefox ] && [ -d "$REL/extension-firefox" ]; then
   cp -R "$REL/extension-firefox" "$STAGE/extension"
@@ -184,6 +244,7 @@ for sub in app extension; do
   mv "$STAGE/$sub" "$ANAGRAM_HOME/$sub"
 done
 remove_ours "$STAGE"
+STAGE=""
 [ ! -f "$ANAGRAM_HOME/bin/anagram" ] || cp "$ANAGRAM_HOME/bin/anagram" "$TMP/command.backup"
 [ ! -f "$ANAGRAM_HOME/VERSION" ] || cp "$ANAGRAM_HOME/VERSION" "$TMP/version.backup"
 install_ours "$REL/bin/anagram" "$ANAGRAM_HOME/bin/anagram" 755
@@ -196,7 +257,7 @@ VERSION_WRITTEN=1
 step 2 "$(tr_msg 'Preparing the package manager' '正在准备依赖管理器')"
 if [ ! -x "$ANAGRAM_HOME/bin/uv" ] || [ "$(clean_env "$ANAGRAM_HOME/bin/uv" --version 2>/dev/null | cut -d' ' -f2)" != "$UV_VERSION" ]; then
   note "$(tr_msg 'Downloading uv' '正在下载 uv') $UV_VERSION"
-  curl -fL --retry 3 -o "$TMP/uv.tar.gz" "https://github.com/astral-sh/uv/releases/download/$UV_VERSION/uv-$UV_TARGET.tar.gz"
+  curl -q -fL --retry 3 -o "$TMP/uv.tar.gz" "https://github.com/astral-sh/uv/releases/download/$UV_VERSION/uv-$UV_TARGET.tar.gz"
   [ "$(sha256_of "$TMP/uv.tar.gz")" = "$UV_SHA" ] || die "checksum mismatch for uv-$UV_TARGET.tar.gz"
   tar -xzf "$TMP/uv.tar.gz" -C "$TMP" "uv-$UV_TARGET/uv"
   install_ours "$TMP/uv-$UV_TARGET/uv" "$ANAGRAM_HOME/bin/uv" 755
@@ -210,7 +271,12 @@ run_uv python install "$PYTHON_VERSION"
 step 4 "$(tr_msg 'Installing locked runtime packages' '正在安装版本锁定的运行依赖')"
 note "$(tr_msg 'Downloading and installing PyTorch, ONNX Runtime and other dependencies; progress appears below.' '正在下载并安装 PyTorch、ONNX Runtime 等依赖；具体进度显示在下方。')"
 note "$(tr_msg 'Model weights will be downloaded later in the extension.' '模型权重稍后在扩展中下载。')"
-( cd "$ANAGRAM_HOME/app" && run_uv sync --frozen --no-dev --python "$PYTHON_VERSION" )
+CREATED_VENV=1
+if [ "$OS" = Darwin ]; then
+  ( cd "$ANAGRAM_HOME/app" && run_uv sync --frozen --no-dev --no-build --python "$PYTHON_VERSION" )
+else
+  ( cd "$ANAGRAM_HOME/app" && run_uv sync --frozen --no-dev --python "$PYTHON_VERSION" )
+fi
 [ -x "$ANAGRAM_HOME/venv.next/bin/python" ] || die "staged virtual environment was not created"
 # Python discovers its venv relative to the executable. The component invokes this
 # interpreter directly, never the generated console scripts with staging shebangs.
@@ -234,5 +300,5 @@ for sub in $SWAPPED; do remove_ours "$ANAGRAM_HOME/$sub.old"; done
 # Installation complete.
 say "$(tr_msg 'Installed Anagram local component' 'Anagram 本地组件安装完成') $VERSION: $ANAGRAM_HOME"
 note "$(tr_msg 'Return to the extension and reconnect. Downloads, comparison, and model selection continue there.' '请返回扩展并重新连接，在扩展中继续下载模型、性能测试和选择配置。')"
-note "$(tr_msg 'EditLens models: CC BY-NC-SA 4.0, noncommercial use. The first model download is 4.07 GB plus temporary space.' 'EditLens 模型采用 CC BY-NC-SA 4.0 许可，仅限非商业用途。首次模型下载约 4.07 GB，另需临时空间。')"
+note "$(tr_msg 'EditLens models: CC BY-NC-SA 4.0, noncommercial use. Device-selected recommended model files usually total 1.43 GB; runtime and temporary space are additional. Extra comparison models are optional in Settings.' 'EditLens 模型采用 CC BY-NC-SA 4.0 许可，仅限非商业用途。按设备选择的推荐模型文件通常共约 1.43 GB，运行环境和临时空间另计。额外比较模型可在设置中按需下载。')"
 note "$(tr_msg 'The browser manages the component; no login startup, system Python, or PATH changes were installed.' '本地组件由浏览器管理，未添加开机自启，也未修改系统 Python 或 PATH。')"

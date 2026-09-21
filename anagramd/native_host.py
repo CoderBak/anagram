@@ -24,7 +24,7 @@ MAX_RESPONSE_BYTES = 1024 * 1024 - 1024
 MAX_PENDING_SCORES = 8
 OPS = {"status", "health", "score", "runtime", "runtime.benchmark", "runtime.config",
        "runtime.cancel", "models.download", "models.pause", "models.delete",
-       "engine.stop", "engine.resume", "component.update", "component.uninstall"}
+       "engine.stop", "engine.resume", "engine.settings", "component.update", "component.uninstall"}
 IDENTIFIER = re.compile(r"^[A-Za-z0-9_.:-]{1,96}$")
 
 
@@ -211,6 +211,48 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 
+def configure_environment(home):
+    """Set dependency paths in this process before lazy runtime imports.
+
+    A launcher's earlier preparation subprocess cannot set its parent's env.
+    These explicit library settings contain known caches; they are not an OS
+    sandbox and leave the user's real HOME unchanged.
+    """
+    import tempfile
+    from safe_files import is_link, regular_stat
+
+    directories = {
+        "HF_HOME": "hf", "HF_HUB_CACHE": "hf/hub", "HUGGINGFACE_HUB_CACHE": "hf/hub",
+        "HF_DATASETS_CACHE": "hf/datasets", "HF_ASSETS_CACHE": "hf/assets",
+        "TRANSFORMERS_CACHE": "hf/transformers", "XDG_CACHE_HOME": "cache",
+        "TORCH_HOME": "cache/torch", "TORCHINDUCTOR_CACHE_DIR": "cache/torch/inductor",
+        "TORCH_EXTENSIONS_DIR": "cache/torch/extensions",
+        "TRITON_CACHE_DIR": "cache/triton", "CUDA_CACHE_PATH": "cache/cuda",
+        "MPLCONFIGDIR": "cache/matplotlib", "NUMBA_CACHE_DIR": "cache/numba",
+        "TMPDIR": "cache/tmp", "TMP": "cache/tmp", "TEMP": "cache/tmp",
+    }
+    for relative in dict.fromkeys(directories.values()):
+        path = home
+        for part in Path(relative).parts:
+            path = path / part
+            if is_link(path) or (path.exists() and not path.is_dir()):
+                raise ValueError(f"Dependency cache must be an owned directory: {path}")
+            path.mkdir(exist_ok=True, mode=0o700)
+    token = home / "hf/token"
+    if is_link(token) or (token.exists() and regular_stat(token).st_nlink != 1):
+        raise ValueError("Dependency token path must not be linked")
+    for name, relative in directories.items():
+        os.environ[name] = str(home / relative)
+    os.environ["HF_TOKEN_PATH"] = str(token)
+    for name in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_HUB_TOKEN"):
+        os.environ.pop(name, None)
+    for name in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "HF_DATASETS_OFFLINE",
+                 "HF_HUB_DISABLE_TELEMETRY", "HF_HUB_DISABLE_IMPLICIT_TOKEN"):
+        os.environ[name] = "1"
+    # tempfile may have cached the launcher's directory before configuration.
+    tempfile.tempdir = None
+
+
 def main():
     output = protected_stdout()
     args = parse_args()
@@ -219,6 +261,7 @@ def main():
     component, error = None, None
     try:
         component = NativeComponent(args.home)
+        configure_environment(component.home)
         # Contain dependency diagnostics created relative to cwd before any
         # background runtime import (including ORT's fallback session file).
         os.chdir(component.home)

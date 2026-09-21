@@ -1,0 +1,36 @@
+/* Keep upstream layout/styles intact; this layer only owns Anagram controls and marks. */
+:root { --anagram-reader-fg: #202124; --anagram-reader-muted: #374151; --anagram-reader-bg: #fff; --anagram-reader-border: #b8bcc4; }
+@media (prefers-color-scheme: dark) { :root { --anagram-reader-fg: #f3f4f6; --anagram-reader-muted: #e5e7eb; --anagram-reader-bg: #242629; --anagram-reader-border: #6d7178; } }
+#anagramReaderStatus {
+  position: fixed;
+  inset: 64px 16px auto;
+  z-index: 100;
+  pointer-events: none;
+  color: var(--anagram-reader-fg);
+  font: 14px/1.5 system-ui, sans-serif;
+  text-align: center;
+}
+#anagramReaderStatus p { margin: 0; }
+#anagramReaderStatus #notice:not([hidden]), #drop:not([hidden]) {
+  display: inline-block;
+  padding: 12px 18px;
+  border: 1px solid var(--anagram-reader-border);
+  border-radius: 8px;
+  background: var(--anagram-reader-bg);
+  box-shadow: 0 2px 10px #0002;
+  pointer-events: auto;
+}
+#drop:not([hidden]) { display: block; max-width: 32rem; margin: 12vh auto 0; }
+#choose { margin: 16px 0 4px; padding: 8px 16px; cursor: pointer; }
+#anagramAnalyze, #original { width: auto; flex: none; padding-inline: 8px; }
+#anagramAnalyze { min-width: 72px; }
+#original { max-width: 120px; }
+#anagramAnalyze::before, #original::before { display: none; }
+#anagramAnalyze > span, #original > span { margin-inline-start: 0; }
+.anagramPdfChips { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
+.anagramPdfChips > span { position: absolute; transform: translateY(-50%); pointer-events: auto; }
+@media (max-width: 700px) { #original { width: 32px; } #original > span { font-size: 0; } #original::after { content: "↗"; font-size: 18px; } #anagramAnalyze { min-width: 38px; } }
+@media print { #anagramReaderStatus, .anagramPdfChips { display: none !important; } }
+
+#analysisScope:not([hidden]) { position: fixed; left: 12px; bottom: 8px; z-index: 5; margin: 0; padding: 4px 8px; max-width: min(650px, calc(100vw - 108px)); box-sizing: border-box; font: 12px/1.4 system-ui, sans-serif; color: var(--anagram-reader-muted); background: var(--anagram-reader-bg); border-radius: 4px; pointer-events: none; }
+@media print { #analysisScope { display: none !important; } }

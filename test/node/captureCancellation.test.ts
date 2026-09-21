@@ -1,0 +1,160 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fakeBrowser } from "wxt/testing";
+import type { ScoreBatchRequest } from "../../lib/contract";
+import type { Unit, Lane } from "../../lib/types";
+import type { ScoreCache } from "../../lib/capture/cache";
+import type { UnitVerdict } from "../../lib/capture/windows";
+import { createOrchestrator } from "../../lib/capture/orchestrator";
+import { deferred } from "./scoreStore";
+
+const calls = vi.hoisted(() => ({
+  detect: vi.fn(), request: vi.fn(), remove: vi.fn(),
+  caches: [] as ScoreCache[],
+  sends: [] as ((units: Unit[], lane: Lane) => Promise<UnitVerdict[]>)[],
+  reports: [] as (() => Promise<string>)[],
+}));
+vi.mock("../../lib/capture/langGate", async (original) => ({
+  ...await original<typeof import("../../lib/capture/langGate")>(), detectUnsupported: calls.detect,
+}));
+vi.mock("../../lib/messaging/client", () => ({
+  requestScores: calls.request, contextAlive: () => true,
+}));
+vi.mock("../../lib/access/session", () => ({sendDocumentMessage: async () => undefined}));
+vi.mock("../../lib/capture/cache", async (original) => {
+  const actual = await original<typeof import("../../lib/capture/cache")>();
+  return { ...actual, createScoreCache: () => {
+    const cache = actual.createScoreCache(); calls.caches.push(cache); return cache;
+  } };
+});
+vi.mock("../../lib/capture/scheduler", () => ({createScheduler: (options: {send: typeof calls.sends[number]}) => {
+  calls.sends.push(options.send);
+  return {enqueue() {}, bumpEpoch() {}, stop() {}, pause() {}, resume() {}, pendingCount: () => 0};
+}}));
+vi.mock("../../lib/capture/observers", () => ({createObservers: () => ({
+  start() {}, stop() {}, observeUnit() {}, dropUnit() {},
+})}));
+vi.mock("../../lib/render/badge", () => ({createBadgeLayer: () => ({
+  remove: calls.remove, teardownAll() {}, resetTheme() {},
+})}));
+vi.mock("../../lib/render/fab", () => ({createFab: (options: {panel: {buildReport: () => Promise<string>}}) => {
+  calls.reports.push(options.panel.buildReport);
+  return {setCount() {}, setBackendDown() {}, unmount() {}};
+}}));
+vi.mock("../../lib/render/highlight", () => ({
+  setHighlight() {}, clearHighlight() {}, registerHighlightStyles() {}, setHighlightsVisible() {},
+  setMarkStyle() {}, refreshHighlightTheme() {},
+}));
+vi.mock("../../lib/dom/walker", () => ({collectUnits: () => []}));
+vi.mock("../../lib/dom/mainContent", () => ({findMainContent: () => null, useReadability() {}}));
+vi.mock("../../lib/settings/settings", () => {
+  const setting = (value: unknown) => ({getValue: async () => value, watch: () => () => {}});
+  return {normalizeMarkStyle: (value: unknown) => value, settings: {
+    debug: setting(false),
+    showHighlights: setting(false), displayMode: setting("all"), mergeShorts: setting(true),
+    markStyle: setting("quiet"), analysisScope: setting("page"),
+    reportIncludeText: setting(false), reportIncludeUrl: setting(false),
+  }};
+});
+
+const MODEL = {id: "model", ver: "1", calibration: "none"};
+const text = "This paragraph has enough words for the real window planner to ask for a verdict about its text. ".repeat(3);
+const unit = {id: "unit", text, order: 0} as Unit;
+beforeEach(() => {
+  fakeBrowser.reset();
+  vi.spyOn(fakeBrowser.runtime, "getManifest").mockReturnValue({manifest_version: 3, version: "0.4.1", name: "Anagram"});
+  vi.clearAllMocks(); calls.caches.length = 0; calls.sends.length = 0; calls.reports.length = 0;
+  calls.detect.mockReset(); calls.request.mockReset();
+  calls.detect.mockResolvedValue(null);
+  calls.request.mockImplementation(async (req: ScoreBatchRequest) => ({backend: "up", model: MODEL, results: req.blocks.map((block) => ({
+    id: block.id, bucket: 3, score: 1, probs: [0, 0, 0, 1],
+  }))}));
+  vi.stubGlobal("location", {hostname: "example.test", href: "https://example.test/article"});
+  const window = Object.assign(new EventTarget(), {
+    navigation: new EventTarget(), requestIdleCallback: (run: () => void) => {queueMicrotask(run); return 1;},
+  });
+  vi.stubGlobal("window", window);
+  vi.stubGlobal("document", {body: {}, querySelector: () => null});
+});
+afterEach(() => {vi.unstubAllGlobals();});
+
+async function page() {
+  const controller = createOrchestrator(null, {mountFab: false});
+  controller.start();
+  // Settings resolve before the real orchestrator completes its first empty collect.
+  for (let i = 0; i < 10; i++) await Promise.resolve();
+  return {controller, send: calls.sends[0], cache: calls.caches[0]};
+}
+
+describe("capture cancellation across language detection and replies", () => {
+  it.each([null, {lang: "zh", prob: .99}])("clear retires a delayed language gate (%j)", async (language) => {
+    const gate = deferred<typeof language>(); calls.detect.mockReturnValueOnce(gate.promise);
+    const {controller, send, cache} = await page();
+    try {
+      const old = send([unit], "viewport");
+      controller.forgetCached(); gate.resolve(language);
+      expect(await old).toEqual([]);
+      expect(calls.request).not.toHaveBeenCalled(); expect(cache.size()).toBe(0);
+      expect(await send([unit], "viewport")).toHaveLength(1);
+      expect(calls.request).toHaveBeenCalledTimes(1); expect(cache.size()).toBe(1);
+    } finally {controller.stop();}
+  });
+
+  it("clear rejects a late successful score and its truncation follow-up", async () => {
+    const reply = deferred<unknown>(), sent = deferred<ScoreBatchRequest>();
+    calls.request.mockImplementationOnce((req: ScoreBatchRequest) => {sent.resolve(req); return reply.promise;});
+    const {controller, send, cache} = await page();
+    try {
+      const old = send([unit], "viewport"), req = await sent.promise;
+      controller.forgetCached();
+      reply.resolve({backend: "up", model: MODEL, results: req.blocks.map((block) => ({
+        id: block.id, bucket: 3, score: 1, probs: [0, 0, 0, 1], truncated: true,
+      }))});
+      expect(await old).toEqual([]); expect(cache.size()).toBe(0);
+      expect(calls.request).toHaveBeenCalledTimes(1);
+    } finally {controller.stop();}
+  });
+
+  it.each(["stop", "rescan"] as const)("%s retires pre-existing work without replacing document authority", async (action) => {
+    const gate = deferred<null>(); calls.detect.mockReturnValueOnce(gate.promise);
+    const {controller, send, cache} = await page();
+    try {
+      const old = send([unit], "viewport"); controller[action](); gate.resolve(null);
+      expect(await old).toEqual([]); expect(cache.size()).toBe(0);
+      expect(calls.request).not.toHaveBeenCalled();
+    } finally {controller.stop();}
+  });
+
+  it("reports the producer carried by the batch reply", async () => {
+    const {controller, send} = await page();
+    try {
+      expect(await send([unit], "viewport")).toHaveLength(1);
+      const report = await calls.reports[0]();
+      expect(report).toContain("model");
+    } finally {controller.stop();}
+  });
+
+  it("drops the old scan when this reply changes model", async () => {
+    const {controller, send, cache} = await page();
+    try {
+      await send([unit], "viewport"); expect(cache.size()).toBe(1);
+      const next = {...unit, id: "next", text: text + "New evidence from another paragraph."};
+      calls.request.mockImplementationOnce(async (req: ScoreBatchRequest) => ({backend: "up",
+        model: {id: "replacement-model", ver: "2", calibration: "new"},
+        results: req.blocks.map((block) => ({id: block.id, bucket: 3, score: 1, probs: [0, 0, 0, 1]})),
+      }));
+      expect(await send([next], "viewport")).toEqual([]);
+      expect(cache.size()).toBe(0);
+      expect(await calls.reports[0]()).toContain("replacement-model");
+    } finally {controller.stop();}
+  });
+  it("keeps a virtual document coverage limit in reports even when source metadata is private", async () => {
+    const {controller: original} = await page();
+    const controller = createOrchestrator(null, {reportScopeNote: () => "PDF scope: 2 of 30 rendered pages; incomplete document."});
+    try {
+      const report = await calls.reports.at(-1)!();
+      expect(report).toContain("PDF scope: 2 of 30 rendered pages; incomplete document.");
+      expect(report).not.toContain("https://");
+    } finally {controller.stop(); original.stop();}
+  });
+
+});

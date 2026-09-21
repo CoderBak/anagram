@@ -48,12 +48,11 @@ describe("what the popup leads with", () => {
       primary: true,
       status: "none",
     });
-    // Firefox's viewer is a privileged page no content script reaches, so there is nobody
-    // to hand the bytes over: the file has to come in through the reader's own drop zone.
+    // A local PDF without file URL access still has a single-file picker fallback.
     expect(lead({ pdfTab: true, pdfReadable: false })).toEqual({
       action: "openReader",
       primary: false,
-      status: "unsupported",
+      status: "fileAccess",
     });
   });
 
@@ -72,10 +71,10 @@ describe("what the popup leads with", () => {
     });
   });
 
-  it("puts the daemon first, whatever the page is", () => {
+  it("offers setup on ordinary pages when the engine is unavailable", () => {
     // Nothing anywhere can be scored while it is silent, so every page offers the same
     // one thing — and the status line beside it carries the command that fixes it.
-    for (const over of [{}, { tab: null }, { pdfTab: true }, { pattern: null }, { hasTab: false }]) {
+    for (const over of [{}, { tab: null }, { pattern: null }, { hasTab: false }]) {
       expect(lead({ ...over, daemon: "down" })).toEqual({
         action: "retry",
         primary: true,
@@ -86,6 +85,13 @@ describe("what the popup leads with", () => {
         primary: true,
         status: "daemon",
       });
+    }
+  });
+
+  it("keeps PDF reading available before engine setup and with the engine stopped", () => {
+    for (const daemon of ["down", "mismatch"] as const) {
+      expect(lead({ pdfTab: true, daemon })).toEqual({ action: "readPdf", primary: true, status: "none" });
+      expect(lead({ pdfTab: true, pdfReadable: false, daemon })).toEqual({ action: "openReader", primary: false, status: "fileAccess" });
     }
   });
 

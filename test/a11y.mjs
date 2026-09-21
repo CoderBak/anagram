@@ -770,30 +770,29 @@ const PAGE_SPECS = [
     },
   },
   {
-    // The reading mode is HANDED its bytes now and fetches nothing, so the way to put a
-    // document in front of the scan is the file picker — which is also the only way a
-    // local PDF gets here at all (lib/pdf/handoff.ts).
+    // A chosen file exercises the full packaged viewer without a source-site grant.
     name: "reader (PDF loaded)",
     url: () => extUrl("reader.html"),
     viewport: { width: 1100, height: 900 },
     async prepare(page) {
+      await page.waitForSelector("#drop:not([hidden])");
       await page.setInputFiles("#file", { name: "doc.pdf", mimeType: "application/pdf", buffer: SMALL_PDF });
       // The pages themselves, drawn by pdf.js: the canvas is presentational and the text
       // layer over it is the accessible text, so the scan has something to read.
-      await page.waitForSelector("#pages:not(.reading)", { timeout: 25000 }).catch(() => {});
+      await page.waitForSelector("#viewer .textLayer span", { timeout: 25000 });
       await chipsSettled(page, 1);
       await still(page);
     },
   },
   {
-    // An encrypted document: one field in the bar and no sentence of explanation, which
-    // is precisely the case where a label that only exists as a placeholder would fail.
+    // Scan the upstream modal and its labeled password field while it is open.
     name: "reader (password asked)",
     url: () => extUrl("reader.html"),
     viewport: { width: 1100, height: 900 },
     async prepare(page) {
+      await page.waitForSelector("#drop:not([hidden])");
       await page.setInputFiles("#file", { name: "locked.pdf", mimeType: "application/pdf", buffer: LOCKED_PDF });
-      await page.waitForSelector("#password:not([hidden])", { timeout: 25000 }).catch(() => {});
+      await page.waitForSelector("#passwordDialog[open]", { timeout: 25000 }).catch(() => {});
       await still(page);
     },
   },

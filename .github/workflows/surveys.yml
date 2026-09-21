@@ -68,10 +68,10 @@ jobs:
     env:
       ANAGRAM_ARTIFACTS: ${{ github.workspace }}/survey-reports
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: dev
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
@@ -93,7 +93,7 @@ jobs:
       - name: how many sites answered at all
         if: always()
         run: node test/survey-gate.mjs "$ANAGRAM_ARTIFACTS/coverage-weekly.json" >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: coverage-report
@@ -120,7 +120,7 @@ jobs:
         id: fetch
         if: always() && steps.baseline.outputs.run-id != ''
         continue-on-error: true # an expired or missing artifact is not a failure
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: coverage-report
           run-id: ${{ steps.baseline.outputs.run-id }}
@@ -152,10 +152,10 @@ jobs:
     env:
       ANAGRAM_ARTIFACTS: ${{ github.workspace }}/survey-reports
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: dev
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
@@ -178,7 +178,7 @@ jobs:
       # The reports and the screenshots are two artifacts on purpose: the next run
       # downloads the baseline REPORT, and it should not have to pull a hundred megabytes
       # of PNGs to do it.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: dynamics-report
@@ -187,7 +187,7 @@ jobs:
             ${{ env.ANAGRAM_ARTIFACTS }}/dynamics-weekly.md
           if-no-files-found: error
           retention-days: 90
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: dynamics-screenshots
@@ -209,7 +209,7 @@ jobs:
         id: fetch
         if: always() && steps.baseline.outputs.run-id != ''
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: dynamics-report
           run-id: ${{ steps.baseline.outputs.run-id }}

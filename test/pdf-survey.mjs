@@ -96,7 +96,7 @@ const ROTATION_EPSILON = 0.02;
 async function extract(pdfjs, doc, n) {
   const p = await doc.getPage(n);
   const viewport = p.getViewport({ scale: 1 });
-  const content = await p.getTextContent();
+  const content = await p.getTextContent({ includeMarkedContent: true, disableNormalization: true });
   const items = [];
   for (const it of content.items) {
     if (!("str" in it)) continue;

@@ -14,10 +14,9 @@
 .runtime-settings th,.runtime-settings td { text-align:start; vertical-align:top; padding:9px 7px; border-bottom:1px solid var(--border); }
 .runtime-settings th { font-weight:600; }
 .runtime-settings th:nth-child(1) { width:30%; }
-.runtime-settings th:nth-child(2) { width:16%; }
-.runtime-settings th:nth-child(3) { width:18%; }
-.runtime-settings th:nth-child(4) { width:22%; }
-.runtime-settings th:nth-child(5) { width:14%; }
+.runtime-settings th:nth-child(2) { width:22%; }
+.runtime-settings th:nth-child(3) { width:20%; }
+.runtime-settings th:nth-child(4) { width:28%; }
 .runtime-settings td.runtime-metric { font-variant-numeric:tabular-nums; }
 .runtime-settings label { display:flex; gap:7px; align-items:flex-start; min-height:24px; cursor:pointer; }
 .runtime-settings label > span { min-width:0; overflow-wrap:anywhere; }

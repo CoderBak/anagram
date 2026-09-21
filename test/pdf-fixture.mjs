@@ -340,13 +340,7 @@ export async function servePdfs(
   return { url: (path) => `http://localhost:${port}${path}`, close: () => new Promise((r) => server.close(() => r())) };
 }
 
-/**
- * Open a PDF the way a reader does, which is now the ONLY way a remote one opens: the tab
- * shows the document, the ball's chip hands it to the worker, the worker reads the bytes
- * back out of that tab and turns it into the reading mode. No suite may navigate straight
- * to `reader.html?src=…` any more — an address with no bytes behind it goes back to the
- * PDF on purpose (entrypoints/reader/main.ts, leaveForOriginal).
- */
+/** Open through the authorized tab handoff; a reader `src` query never fetches bytes. */
 export async function openPdfInReader(context, url, { timeout = 25000 } = {}) {
   const page = await context.newPage();
   await page.goto(url, { waitUntil: "load" }).catch(() => {});
@@ -356,6 +350,7 @@ export async function openPdfInReader(context, url, { timeout = 25000 } = {}) {
 
 /** The same, for a tab already sitting on a PDF: press the ball's chip and wait. */
 export async function handOverPdf(page, { timeout = 25000 } = {}) {
+  if (new URL(page.url()).pathname === "/reader.html") return page;
   await page
     .waitForFunction(
       () => !!document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".action"),

@@ -1,3 +1,4 @@
+import { sendDocumentMessage } from "../access/session";
 // lib/capture/orchestrator.ts — ties walker + observers + scheduler + cache +
 // messaging + renderer + the floating toggle into the live capture→annotate loop.
 //
@@ -12,8 +13,7 @@
 // re-collected or gone. SPA navigations (pushState included — the Navigation API's
 // currententrychange, plus popstate/hashchange) refresh incrementally without
 // flickering still-valid badges. The popup Rescan button remains the full teardown+rescan.
-import { browser } from "#imports";
-import type { ContentScriptContext } from "#imports";
+import { browser, type ContentScriptContext } from "#imports";
 import { ACTIONS } from "../messaging/protocol";
 import type { BackendStatus } from "../messaging/protocol";
 import type { Unit, Lane } from "../types";
@@ -28,7 +28,7 @@ import { createScheduler, type Scheduler } from "./scheduler";
 import { createScoreCache, type ScoreCache } from "./cache";
 import { readInWindows, unitVerdict, type UnitVerdict } from "./windows";
 import { detectUnsupported, unsupportedResult } from "./langGate";
-import { requestScores, contextAlive, lastModel } from "../messaging/client";
+import { requestScores, contextAlive } from "../messaging/client";
 import { modelDim } from "../backend/router";
 import { createBadgeLayer, type BadgeLayer, type BadgeLayerOptions } from "../render/badge";
 import {
@@ -180,6 +180,8 @@ export interface OrchestratorOptions {
    * reads the report — it passes the PDF's own URL instead.
    */
   reportUrl?: string;
+  /** Reader-specific coverage shown beside panel counts and in copied reports. */
+  reportScopeNote?: () => string;
   /**
    * The panel footer's "Turn off on <host>" was used. The rule is written by the footer
    * itself; this tells the OWNER of the page's on/off state to stop, which the settings
@@ -242,6 +244,8 @@ export function createOrchestrator(
   let booted = false;
   /** Boot generation: a stop()+start() pair must not let the older boot finish. */
   let bootSeq = 0;
+  /** Retire page work across awaits too, before it can refill L1 or send old text. */
+  let captureGeneration = 0;
   /** The Readability chunk is in the main-content detector's hands. */
   let readabilityLoaded = false;
   let visible = true;
@@ -259,6 +263,7 @@ export function createOrchestrator(
   let lastBadgeSent = -1;
   /** Backend identity the L1 cache currently belongs to (from the last reply). */
   let l1Dim: string | null = null;
+  let l1Model: ModelInfo | null = null;
   let lastHref = location.href;
   let urlTimer: ReturnType<typeof setInterval> | null = null;
   /** A route change's refresh, waiting out the burst it arrived in. */
@@ -299,6 +304,7 @@ export function createOrchestrator(
       counts: panelCounts,
       onJump: jumpTo,
       buildReport,
+      scopeNote: opts.reportScopeNote,
     },
     // The panel's "Turn off on <host>" writes the rule itself; the content script is what
     // knows whether this page is running because of the settings or because it was asked
@@ -375,17 +381,22 @@ export function createOrchestrator(
   }
 
   /** Markdown summary of this page's verdicts — the triage panel's Copy report. */
-  function buildReport(): string {
+  async function buildReport(): Promise<string> {
+    const [includeText, includeUrl] = await Promise.all([settings.reportIncludeText.getValue(), settings.reportIncludeUrl.getValue()]);
+    const status = await sendDocumentMessage({action: ACTIONS.GET_BACKEND_STATUS}).catch(() => undefined) as BackendStatus | undefined;
     const flagged = [...verdictsById.entries()]
       .filter(([id, v]) => isFlagged(v.result) && unitsById.has(id))
       .map(([id, v]) => ({ unit: unitsById.get(id)!, v, r: v.result }))
       .sort((a, b) => a.unit.order - b.unit.order);
 
     const lines: string[] = [];
-    lines.push(`# ${t("reportTitle", document.title || location.hostname)}`);
+    lines.push(`# ${includeUrl ? t("reportTitle", document.title || location.hostname) : t("reportPrivateTitle")}`);
     lines.push("");
-    lines.push(`- ${t("reportPage", opts.reportUrl ?? location.href)}`);
+    if (includeUrl) lines.push(`- ${t("reportPage", opts.reportUrl ?? location.href)}`);
+    const scopeNote = opts.reportScopeNote?.();
+    if (scopeNote) lines.push(`- ${scopeNote}`);
     lines.push(`- ${t("reportGenerated", new Date().toLocaleString())}`);
+    lines.push(`- Anagram ${browser.runtime.getManifest().version} · contract ${CONTRACT_VERSION}`);
     // "Analyzed" is real verdicts only. A paragraph the language gate refused and one
     // the daemon never answered for were both counted as analyzed before, which made
     // an outage look like a clean sweep.
@@ -403,13 +414,11 @@ export function createOrchestrator(
           t("reportFlagged", flagged.length),
           ...(unavailable > 0 ? [t("reportUnavailable", unavailable)] : []),
           ...(skipped > 0 ? [t("reportSkipped", skipped)] : []),
+          t("reportShort", shortTexts.size),
+          t("reportPending", Math.max(0, unitsById.size - verdictsById.size)),
         ].join(" · "),
     );
     lines.push("");
-    // Every surface of the product says the number is an EXTENT of editing; the report
-    // used to print it as "62% AI", which reads as a share of AI-written words. It now
-    // carries the same 0–1 number the chips do and the card footer's own sentence to
-    // read it by.
     lines.push(t("reportEstimate"));
     lines.push("");
     if (flagged.length === 0) {
@@ -435,13 +444,15 @@ export function createOrchestrator(
           `${i + 1}. **${bandLabel(band(r))} · ${score}** ` +
             `(${dist}; ${t("reportWords", unit.wordCount)}${windows})`,
         );
-        lines.push(`   > ${snippet}${ellipsis}`);
+        if (includeText) lines.push(`   > ${snippet}${ellipsis}`);
       });
     }
     lines.push("");
-    const m = lastModel();
+    const m = l1Model;
     const backend = m ? t("reportModel", m.id, m.ver) : t("reportNoModel");
     lines.push("---", backend);
+    if (m) lines.push(t("reportRuntime", m.calibration));
+    if (m && status?.model && modelDim(status.model) === modelDim(m)) lines.push(t("reportDevice", status.server.device ?? "?", status.server.dtype ?? "?"));
     return lines.join("\n");
   }
 
@@ -641,7 +652,14 @@ export function createOrchestrator(
    * What aggregation does with a failed or a non-English window is unitVerdict()'s rule.
    */
   async function send(units: Unit[], lane: Lane): Promise<UnitVerdict[]> {
-    const read = await readInWindows(units, (blocks, owners) => scoreBlocks(blocks, owners, lane));
+    const generation = captureGeneration;
+    const read = await readInWindows(units, (blocks, owners) => scoreBlocks(blocks, owners, lane, generation));
+    if (generation !== captureGeneration) {
+      // Clearing a cache leaves existing verdicts visible, but an abandoned batch
+      // must not leave its unfinished chips behind or paint a late result.
+      for (const unit of units) if (!verdictsById.has(unit.id)) badges.remove(unit.id);
+      return [];
+    }
     const out: UnitVerdict[] = [];
     for (const unit of units) {
       const windows = read.get(unit.id);
@@ -667,7 +685,10 @@ export function createOrchestrator(
     blocks: ScoreBlock[],
     owners: ReadonlyMap<string, string>,
     lane: Lane,
+    generation: number,
   ): Promise<Map<string, ScoreResult>> {
+    const current = () => generation === captureGeneration;
+    if (!current()) return new Map();
     const out = new Map<string, ScoreResult>();
     const misses: ScoreBlock[] = [];
 
@@ -680,6 +701,7 @@ export function createOrchestrator(
     // Confidently non-English paragraphs are settled here (browser CLD) — the daemon's
     // fastText gate would refuse them anyway, so they never cost a round trip.
     const gate = await Promise.all(candidates.map((b) => detectUnsupported(b.text)));
+    if (!current()) return new Map();
     candidates.forEach((b, i) => {
       const g = gate[i];
       if (g) {
@@ -702,7 +724,7 @@ export function createOrchestrator(
           // A pending chip is an insertion like any other: on a page that has still to
           // hydrate it waits with the rest (see whenSafeToInsert).
           whenSafeToInsert(() => {
-            if (!unitsById.has(unit.id) || verdictsById.has(unit.id)) return; // gone, or answered
+            if (!current() || !unitsById.has(unit.id) || verdictsById.has(unit.id)) return; // gone, or answered
             try {
               badges.renderPending(unit);
             } catch {
@@ -731,12 +753,14 @@ export function createOrchestrator(
         blocks: [...repByKey.values()],
       };
       const reply = await requestScores(req);
+      if (!current()) return new Map();
       const fresh = reply.results;
       if (reply.backend === "down") enterDown();
       else if (reply.backend === "up") leaveDown();
       // The reply names the backend that produced it — adopt it, dropping whatever the
       // previous one left behind (both cached and already painted).
-      adoptBackend(lastModel());
+      adoptBackend(reply.model ?? null);
+      if (!current()) return new Map(); // adoption may have retired this scan
       const byId = new Map(fresh.map((r) => [r.id, r] as const));
       for (const [k, rep] of repByKey) {
         const r = byId.get(rep.id);
@@ -760,6 +784,7 @@ export function createOrchestrator(
   function freeze(): void {
     if (frozen) return;
     frozen = true;
+    captureGeneration++;
     try {
       observers.stop();
       scheduler.stop();
@@ -802,15 +827,17 @@ export function createOrchestrator(
   }
 
   async function checkBackend(force: boolean): Promise<void> {
+    const generation = captureGeneration;
     if (!contextAlive()) {
       freeze();
       return;
     }
     try {
-      const s = (await browser.runtime.sendMessage({ action: ACTIONS.GET_BACKEND_STATUS, probe: force })) as
+      const s = (await sendDocumentMessage({ action: ACTIONS.GET_BACKEND_STATUS, probe: force })) as
         | BackendStatus
         | undefined;
-      if (s?.active === "server") {
+      if (generation !== captureGeneration) return;
+      if (s?.active === "server" || s?.active === "idle") {
         leaveDown();
         // The daemon may have come back as a DIFFERENT model. A page whose paragraphs
         // are all cache hits sends no request at all, so the probe is the only place
@@ -834,9 +861,10 @@ export function createOrchestrator(
     if (dim === l1Dim) return;
     const previous = l1Dim;
     l1Dim = dim;
+    l1Model = { ...m };
     if (previous === null) return; // first answer in this frame — nothing to drop
     log.log("backend changed", previous, "→", dim, "— dropping", cache.size(), "L1 entries");
-    cache.clear();
+    forgetCached();
     if (started) rescan();
   }
 
@@ -873,6 +901,7 @@ export function createOrchestrator(
    * were made, and the user cleared the caches to affect what happens NEXT.
    */
   function forgetCached(): void {
+    captureGeneration++;
     cache.clear();
   }
 
@@ -975,8 +1004,7 @@ export function createOrchestrator(
   function notifyToolbarBadge(flagged: number): void {
     if (!mountFab || flagged === lastBadgeSent) return;
     lastBadgeSent = flagged;
-    void browser.runtime
-      .sendMessage({ action: ACTIONS.UPDATE_BADGE, flagged })
+    void sendDocumentMessage({ action: ACTIONS.UPDATE_BADGE, flagged })
       .catch(() => undefined);
   }
 
@@ -1426,6 +1454,7 @@ export function createOrchestrator(
 
   function stop(): void {
     if (!started) return;
+    captureGeneration++;
     started = false;
     booted = false;
     // Whatever was waiting for the page to be safe to touch is not wanted any more: the
@@ -1463,6 +1492,7 @@ export function createOrchestrator(
     // here would do it under the defaults — which is the very thing boot() avoids. The
     // boot's own collect, moments away, is the rescan.
     if (!booted) return;
+    captureGeneration++;
     scheduler.bumpEpoch();
     for (const unit of [...unitsById.values()]) observers.dropUnit(unit);
     clearAllResults();

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="connect-src 'self'" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title data-i18n="pasteTitle">Analyze text</title>
+    <style>
+      body { margin:0; background:var(--background); color:var(--foreground); font:14px/1.6 system-ui,sans-serif; }
+      main { max-width:820px; margin:auto; padding:32px 24px; }
+      h1 { font-size:24px; font-weight:600; }
+      textarea { width:100%; min-height:240px; resize:vertical; margin:8px 0 16px; padding:12px; border:1px solid var(--border); border-radius:8px; }
+      .actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+      label { display:block; }
+      #file { max-width:100%; }
+      #results { margin-top:20px; }
+      #results li { margin:12px 0; padding:10px; border:1px solid var(--border); border-radius:8px; }
+      #results p { margin:4px 0; }
+      #estimate,#intro { color:var(--muted-foreground); }
+      [hidden] { display:none!important; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1 data-i18n="pasteTitle">Analyze text</h1>
+      <p id="intro" data-i18n="pasteIntro">Paste English prose or choose a UTF-8 text file. Analysis runs locally and requires no website access. Short paragraphs are read together; long text uses the same windowing as webpages.</p>
+      <label for="file" data-i18n="pasteFile">Open text file</label>
+      <input id="file" type="file" accept=".txt,text/plain" />
+      <label for="text" data-i18n="pasteInput">Text to analyze</label>
+      <textarea id="text" maxlength="200000" spellcheck="false"></textarea>
+      <div class="actions">
+        <button class="btn" id="analyze" type="button" data-i18n="pasteAnalyze">Analyze</button>
+        <button class="btn" data-variant="outline" id="clear" type="button" data-i18n="pasteClear">Clear text and results</button>
+        <button class="btn" data-variant="ghost" id="settings" type="button" data-i18n="pasteOpenSettings">Open Settings</button>
+      </div>
+      <p id="status" role="status" aria-live="polite"></p>
+      <section id="results" hidden>
+        <h2 id="summary"></h2>
+        <p id="coverage"></p>
+        <p id="estimate" data-i18n="reportEstimate">The score is (p1 + 2p2 + 3p3) / 3 for the four EditLens classes. It summarizes the class distribution; it is not the fraction of AI-written words, a measured edit distance, or proof of authorship.</p>
+        <label><input id="includeText" type="checkbox" /> <span data-i18n="pasteExportText">Include original text in report</span></label>
+        <button class="btn" data-variant="outline" id="copy" type="button" data-i18n="panelCopyReport">Copy report</button>
+        <ol id="windows"></ol>
+      </section>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

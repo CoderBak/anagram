@@ -1,3 +1,4 @@
+import { sendDocumentMessage } from "../lib/access/session";
 // entrypoints/content.ts — main content script.
 // Runs in EVERY frame (allFrames): the top frame gets the full experience (FAB,
 // Docs actions, popup state); subframes run a chrome-less pipeline so framed
@@ -44,7 +45,7 @@ async function resolveFrameHost(): Promise<string> {
   }
   try {
     const reply = (await Promise.race([
-      browser.runtime.sendMessage({ action: ACTIONS.GET_TOP_HOST }),
+      sendDocumentMessage({ action: ACTIONS.GET_TOP_HOST }),
       new Promise<undefined>((r) => setTimeout(() => r(undefined), TOP_HOST_TIMEOUT_MS)),
     ])) as TopHostReply | undefined;
     if (reply?.host) return reply.host;
@@ -299,23 +300,19 @@ export default defineContentScript({
     }
 
     if (isPdf) {
-      // The reading mode is HANDED the document's bytes; it fetches nothing itself. This
-      // tab is the only place they can honestly come from — same origin, same cookies,
-      // normally straight out of the HTTP cache — so it answers when the worker asks
-      // (lib/pdf/handoff.ts).
+      // Chromium remote PDFs can relay their own current URL with same-origin cookies.
       serveTabPdfBytes();
       // The worker navigates the tab: an extension page the content script could reach
       // by itself would have to be web accessible, and the reader must not be.
       orchestrator.setFabAction(
         t("actionAnalyzePdf"),
-        () => void browser.runtime.sendMessage({ action: ACTIONS.OPEN_PDF_READER }).catch(() => undefined),
+        () => void sendDocumentMessage({ action: ACTIONS.OPEN_PDF_READER }).catch(() => undefined),
         { attention: true }, // nothing on this page can be scored — point at the way out
       );
       // And "Open PDFs in Anagram", which is the same journey without the click. What this
       // page knows is reported; the worker decides (lib/pdf/route.ts), because the setting,
       // the one-shot pass out of the reader and the back/forward rule all live there.
-      void browser.runtime
-        .sendMessage({
+      void sendDocumentMessage({
           action: ACTIONS.PDF_TAB_OPENED,
           url: location.href,
           contentType: document.contentType,

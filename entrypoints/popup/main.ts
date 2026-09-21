@@ -31,6 +31,7 @@ import { ACTIONS } from "../../lib/messaging/protocol";
 import type { BackendStatus, ControlMessage, TabState } from "../../lib/messaging/protocol";
 import { looksLikePdfUrl, READER_PAGE } from "../../lib/pdf/source";
 import { PDF_TAB_SCRIPTS_RUN } from "../../lib/surface";
+import { getFileAccess } from "../../lib/pdf/fileAccess";
 
 const enabledEl = document.getElementById("enabled") as HTMLInputElement;
 const siteEl = document.getElementById("siteEnabled") as HTMLInputElement;
@@ -107,7 +108,7 @@ const facts: PageFacts = {
   hasTab: false,
   pattern: null,
   pdfTab: false,
-  pdfReadable: PDF_TAB_SCRIPTS_RUN,
+  pdfReadable: true,
   tab: null,
   daemon: "up",
 };
@@ -143,6 +144,7 @@ function countsLine(state: TabState): Node[] {
 function paint(): void {
   if (!asked) return;
   lead = popupLead(facts);
+  (document.getElementById("localFileSettings") as HTMLButtonElement).hidden = lead.status !== "fileAccess";
   const down = lead.status === "daemon";
   statusEl.classList.toggle("down", down);
   const mismatch = facts.daemon === "mismatch";
@@ -164,6 +166,9 @@ function paint(): void {
     case "daemon":
       statusEl.textContent = mismatch ? t("popupDaemonMismatch") : t("popupDaemonDown");
       break;
+    case "fileAccess":
+      statusEl.textContent = t("popupFileAccessNeeded");
+      break;
     case "none":
       statusEl.textContent = "";
       break;
@@ -180,6 +185,9 @@ function paint(): void {
 
 /** The model line at the foot: what is scoring, when anything is. */
 function paintModel(s: BackendStatus | undefined): void {
+  if (s?.active === "idle") {
+    backendEl.textContent = t("componentIdle"); backendEl.hidden = false; return;
+  }
   if (!s || s.active !== "server" || !s.model) {
     backendEl.textContent = ""; // the action block above is already saying it
     backendEl.hidden = true;
@@ -206,7 +214,7 @@ async function refreshBackend(probe = false): Promise<void> {
     })) as BackendStatus | undefined;
     if (!s) throw new Error("no status");
     const there = s.server.reason === "contract";
-    facts.daemon = s.active === "server" && s.model ? "up" : there ? "mismatch" : "down";
+    facts.daemon = (s.active === "server" && s.model) || s.active === "idle" ? "up" : there ? "mismatch" : "down";
     paintModel(s);
   } catch {
     // No worker to ask at all: say nothing about a model, and leave the page's own state
@@ -275,9 +283,7 @@ async function refreshStatus(tabId: number | undefined): Promise<void> {
         action: ACTIONS.GET_TAB_STATE,
       })) as TabState | undefined;
       if (!state) throw new Error("no state");
-      // Chrome's PDF tab answers with pdf:true; its own URL is the other evidence, read
-      // in init(). A `file:` PDF is neither: no content script may read it back for the
-      // reading mode, so it is not offered (facts.pattern is null there).
+      // A response MIME type also identifies PDFs whose URL has no filename extension.
       if (state.pdf && facts.pattern) facts.pdfTab = true;
       facts.tab = { enabled: state.enabled };
       counts = state.enabled ? state : null;
@@ -301,9 +307,16 @@ async function init(): Promise<void> {
   const host = hostOf(tab?.url);
   facts.hasTab = tab != null;
   facts.pattern = sitePattern(tab?.url);
-  // Only a PDF served over http(s) can be handed to the reading mode: the bytes come from
-  // the tab showing it, and a `file:` page may not re-read itself (lib/pdf/handoff.ts).
-  facts.pdfTab = facts.pattern !== null && looksLikePdfUrl(tab?.url);
+  const localFile = tab?.url?.startsWith("file://") === true;
+  facts.pdfTab = (facts.pattern !== null || localFile) && looksLikePdfUrl(tab?.url);
+  if (localFile) {
+    const access = await getFileAccess();
+    facts.pdfReadable = access.granted && access.allowed;
+  }
+  if (tab?.id != null && !facts.pdfTab) {
+    const pdf = await browser.runtime.sendMessage({ action: ACTIONS.GET_PDF_STATUS, tabId: tab.id }).catch(() => undefined) as { pdf?: boolean } | undefined;
+    if (pdf?.pdf === true) facts.pdfTab = true;
+  }
 
   highlightsEl.checked = await settings.showHighlights.getValue();
   markStyleEl.value = normalizeMarkStyle(await settings.markStyle.getValue());
@@ -384,12 +397,21 @@ async function init(): Promise<void> {
         window.close(); // the answer is on the page, not in here
         return;
       case "readPdf":
-        void browser.runtime.sendMessage({
-          action: ACTIONS.OPEN_PDF_READER,
-          url: tab?.url,
-          tabId: tab?.id,
-        });
-        window.close();
+        // Firefox cannot read the privileged built-in viewer; its loader needs a host grant.
+        const permission = !PDF_TAB_SCRIPTS_RUN && facts.pattern && !granted
+          ? requestAccess([facts.pattern]) : Promise.resolve(true);
+        void permission.then(async (accepted) => {
+          if (!accepted) {
+            statusEl.hidden = false; statusEl.textContent = t("popupPdfOpenFailed"); return;
+          }
+          const result = await browser.runtime.sendMessage({ action: ACTIONS.OPEN_PDF_READER, url: tab?.url, tabId: tab?.id });
+          if (result?.ok !== true) {
+            statusEl.hidden = false;
+            statusEl.textContent = t(result?.error === "busy" ? "popupPdfBusy" : "popupPdfOpenFailed");
+            return;
+          }
+          window.close();
+        }).catch(() => { statusEl.hidden = false; statusEl.textContent = t("optPdfSettingsFailed"); });
         return;
       case "openReader":
         openEmptyReader();
@@ -410,6 +432,9 @@ async function init(): Promise<void> {
 
   gearEl.addEventListener("click", () => {
     void browser.runtime.openOptionsPage();
+  });
+  (document.getElementById("localFileSettings") as HTMLButtonElement).addEventListener("click", () => {
+    void browser.tabs.create({ url: browser.runtime.getURL("/options.html") + "#local-pdfs" });
   });
 
   void refreshStatus(tab?.id);

@@ -7,6 +7,7 @@ callers; all diagnostics here go to stderr.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -142,9 +143,11 @@ def atomic_write(path, value, mode=0o600):
         Path(temporary).unlink(missing_ok=True)
 
 
-def inventory(home, user_home, platform):
+def inventory(home, user_home, platform, *, required=False):
     path = home / INVENTORY
     if not path.exists():
+        if required:
+            raise ValueError("Native registration inventory is missing; cleanup cannot verify owned registrations")
         return {"schema_version": 1, "host": HOST, "home": str(home),
                 "user_home": str(user_home), "platform": platform, "registrations": []}
     value = json.loads(path.read_text(encoding="utf-8"))
@@ -239,7 +242,7 @@ def unregister(home, *, user_home=None, platform=None, registry=None):
     home = owned_home(Path(home), require_owner=True)
     user_home = Path(user_home or Path.home()).resolve()
     platform = platform or sys.platform
-    value = inventory(home, user_home, platform)
+    value = inventory(home, user_home, platform, required=True)
     # Preflight every path/key before deleting any registration.
     for entry in value["registrations"]:
         target = Path(entry["manifest"])
@@ -289,6 +292,9 @@ def safe_tree(home):
 def prepare(home):
     """Upgrade migration only: stop a verified process from the removed HTTP component."""
     home = owned_home(home, require_owner=True)
+    installing = home / ".installer-lock"
+    if installing.exists() or installing.is_symlink():
+        raise ValueError("Component installation is in progress; retry after the installer finishes")
     pidfile = safe_path(home / "run/anagramd.pid", home)
     if not pidfile.exists():
         return
@@ -313,7 +319,7 @@ def prepare(home):
 
 
 def schedule_windows(home, operation):
-    data = inventory(home, Path.home().resolve(), sys.platform)
+    data = inventory(home, Path.home().resolve(), sys.platform, required=True)
     language = data["registrations"][0]["language"] if data["registrations"] else "en"
     worker = safe_path(home / "app/maintenance.ps1", home)
     # The verified payload is copied outside the tree it will remove. No message
@@ -332,37 +338,80 @@ def schedule_windows(home, operation):
             "message": "Finish this operation in the separate Windows progress window. It has not completed yet."}
 
 
-def update(home, worker=False):
+@contextmanager
+def maintenance_lock(home, inherited_fd=None):
+    """Hold the existing native-home flock across the complete POSIX helper chain.
+
+    A borrowed descriptor shares the parent's open-file description: never LOCK_UN
+    it. Closing one descriptor leaves every surviving child copy locked. Windows
+    maintenance is guarded by the fixed PowerShell worker's byte-range lock.
+    """
+    if os.name == "nt":
+        if inherited_fd is not None:
+            raise ValueError("Inherited maintenance descriptors are POSIX-only")
+        yield None
+        return
+    import fcntl
+    path = safe_path(home / ".native-host.lock", home)
+    owned = inherited_fd is None
+    fd = os.open(path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600) if owned else inherited_fd
+    try:
+        if type(fd) is not int or fd < 3:
+            raise ValueError("Invalid maintenance lock descriptor")
+        actual, expected = os.fstat(fd), path.lstat()
+        if (not stat.S_ISREG(actual.st_mode) or not stat.S_ISREG(expected.st_mode)
+                or (actual.st_dev, actual.st_ino) != (expected.st_dev, expected.st_ino)):
+            raise ValueError("Maintenance descriptor is not the owned native lock")
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        owned_home(home, require_owner=True)  # ownership may have changed before locking
+        yield fd
+    finally:
+        if owned:
+            os.close(fd)  # never explicitly unlock an open description inherited by children
+
+
+def update(home, worker=False, lock_fd=None):
     home = owned_home(home, require_owner=True)
     if sys.platform == "win32" and not worker:
         return schedule_windows(home, "update")
-    data = inventory(home, Path.home().resolve(), sys.platform)
-    if not data["registrations"]:
-        raise ValueError("No owned browser registration to update")
-    entry = data["registrations"][0]
-    env = {k: v for k, v in os.environ.items() if k in (
-        "HOME", "USERPROFILE", "LOCALAPPDATA", "APPDATA", "SystemRoot", "WINDIR", "TEMP", "TMP", "LANG",
-        "http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "no_proxy", "NO_PROXY", "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE")}
-    env.update(ANAGRAM_HOME=str(home), ANAGRAM_BROWSER=entry["browser"], ANAGRAM_EXTENSION_ID=entry["extension_id"], ANAGRAM_LANG=entry["language"])
-    env["PATH"] = os.pathsep.join([str(Path(os.environ.get("SystemRoot", "C:/Windows")) / "System32")]) if sys.platform == "win32" else "/usr/bin:/bin:/usr/sbin:/sbin"
-    if sys.platform == "win32":
-        installer = safe_path(home / "app/install.ps1", home)
-        powershell = Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe"
-        command = [str(powershell), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(installer)]
-    else:
+    with maintenance_lock(home, lock_fd) as fd:
+        data = inventory(home, Path.home().resolve(), sys.platform, required=True)
+        if not data["registrations"]:
+            raise ValueError("No owned browser registration to update")
+        entry = data["registrations"][0]
+        if sys.platform == "win32":
+            installer = safe_path(home / "app/install.ps1", home)
+            if not installer.is_file():
+                raise ValueError("Installed component update script is missing")
+            # The fixed PowerShell worker invokes this script in its own process,
+            # lending the real locked FileStream instead of an environment bypass.
+            return {"status": "prepared", "installer": str(installer), "browser": entry["browser"],
+                    "extension_id": entry["extension_id"], "language": entry["language"]}
+        env = {k: v for k, v in os.environ.items() if k in (
+            "HOME", "USERPROFILE", "LOCALAPPDATA", "APPDATA", "SystemRoot", "WINDIR", "TEMP", "TMP", "LANG",
+            "http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "no_proxy", "NO_PROXY", "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE")}
+        env.update(ANAGRAM_HOME=str(home), ANAGRAM_BROWSER=entry["browser"], ANAGRAM_EXTENSION_ID=entry["extension_id"], ANAGRAM_LANG=entry["language"])
+        if fd is not None:
+            env["ANAGRAM_MAINTENANCE_FD"] = str(fd)
+        env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
         installer = safe_path(home / "app/install.sh", home)
         command = ["/bin/sh", str(installer)]
-    subprocess.run(command, env=env, stdout=sys.stderr, stderr=sys.stderr, check=True)
+        kwargs = {"pass_fds": (fd,)} if fd is not None else {}
+        subprocess.run(command, env=env, stdout=sys.stderr, stderr=sys.stderr, check=True, **kwargs)
     return {"status": "completed"}
 
 
-def uninstall(home):
+def uninstall(home, lock_fd=None):
     home = owned_home(home, require_owner=True)
     if sys.platform == "win32":
         return schedule_windows(home, "uninstall")
-    safe_tree(home)
-    unregister(home)
-    shutil.rmtree(home)
+    with maintenance_lock(home, lock_fd):
+        safe_tree(home)
+        unregister(home)
+        # Retire the startup authority before rmtree can unlink/recreate the lock
+        # path; no new host may authorize itself against a half-removed component.
+        (home / OWNER).unlink()
+        shutil.rmtree(home)
     return {"status": "completed"}
 
 
@@ -374,6 +423,7 @@ def main():
     parser.add_argument("--extension-id")
     parser.add_argument("--language", default="en", choices=["en", "zh_CN"])
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--lock-fd", type=int, help=argparse.SUPPRESS)
     args = parser.parse_args()
     try:
         if args.operation == "register":
@@ -381,9 +431,9 @@ def main():
         elif args.operation == "unregister":
             unregister(args.home)
         elif args.operation == "update":
-            print(json.dumps(update(args.home, args.worker)))
+            print(json.dumps(update(args.home, args.worker, args.lock_fd)))
         elif args.operation == "uninstall":
-            print(json.dumps(uninstall(args.home)))
+            print(json.dumps(uninstall(args.home, args.lock_fd)))
         elif args.operation == "prepare":
             prepare(args.home)
             return 0

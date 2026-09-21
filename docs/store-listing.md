@@ -1,6 +1,6 @@
 # The Chrome Web Store submission
 
-**0.4.0 submission draft — not submitted or published.** Native Messaging is implemented
+**0.5.0 submission draft — not submitted or published.** Native Messaging is implemented
 and is the normal scoring/setup path. Matching native component archives, version-pinned
 installers and browser packages must be published together before reviewers can use the
 installation command. Windows x64 has an implementation, but still needs real Windows/CI
@@ -13,7 +13,7 @@ pasted, and every answer tied to a file a reviewer could open. It is the paperwo
 touches, this one is what the dashboard is told about it. Where the two could disagree,
 the footprint page wins — it is the one a test reads on every `vitest` run.
 
-Implementation facts below describe the 0.4.0 shipping configuration; verify the final
+Implementation facts below describe the 0.5.0 shipping configuration; verify the final
 release artifacts before uploading. `npm run build` writes
 `output/chrome-mv3/manifest.json`. Use `npm run release` to prepare the matching release
 assets, including the browser ZIP; a local `npm run zip` alone is not the complete release. The test
@@ -86,11 +86,15 @@ FIRST SETUP
 The store extension and ZIP both open the same setup page. It detects your OS and shows
 one version-matched installation command with your exact extension ID. Run it once in
 Terminal or PowerShell. After connection, close the terminal and manage everything in
-Settings: model downloads (about 4.07 GB, plus runtime and temporary space), pause/resume,
+Settings: device-selected model preparation (usually 1.43 GB including language detection, plus runtime and temporary space), pause/resume,
 benchmarking, device and precision choice, updates, and cleanup. The model is available
 without an account; its CC BY-NC-SA 4.0 attribution and noncommercial terms still apply.
 
-The first benchmark starts automatically after download. About 30 seconds is the shared
+Settings shows detected devices, selected files and preparation bytes, including reused
+verified files. Extra compatible models and experimental CPU INT8 are available through
+an explicit expanded-comparison download. Returning to recommended keeps existing extras.
+
+The first benchmark starts automatically after preparation. About 30 seconds is the shared
 measurement budget; loading and warmup take extra time. Review the results and explicitly
 apply a configuration. FP32 is recommended; FP16 is optional and INT8 is experimental.
 These measurements compare speed and memory, not detection quality. The browser reuses a
@@ -139,7 +143,7 @@ see the links on this listing.
 | --- | --- |
 | Category | Developer's choice; "Productivity → Tools" fits an annotation utility better than "Education". |
 | Language | English (United States). Simplified Chinese is shipped as a UI locale, but the listing text above is English. |
-| Screenshots | The existing five files in `docs/store/` are 1280×800 (`1-article` through `5-first-run`), but are **not current 0.4.0 submission assets**. In particular, the first-run and popup images predate native setup. Refresh them using the shipping UI and a disclosed fixture, verify all visible copy, and do not present fixture timing/memory values as measured model performance. `test/store-shots.mjs` is the existing capture harness and may need its setup fixture updated. README images in `docs/screenshots/` have different dimensions and are not substitutes. |
+| Screenshots | The existing five files in `docs/store/` are 1280×800 (`1-article` through `5-first-run`), but are **not current 0.5.0 submission assets**. In particular, the first-run and popup images predate native setup. Refresh them using the shipping UI and a disclosed fixture, verify all visible copy, and do not present fixture timing/memory values as measured model performance. `test/store-shots.mjs` is the existing capture harness and may need its setup fixture updated. README images in `docs/screenshots/` have different dimensions and are not substitutes. |
 | Small promo tile (440×280) | `<< owner to fill in >>` — not in the repository. |
 | Official URL / homepage | `<< owner to fill in >>` |
 | Support URL | `<< owner to fill in >>` — the repository's issue tracker is the contact the privacy policy names. |
@@ -165,8 +169,8 @@ same annotation to attach to, and they produce the same chips from the same pipe
 ### Permission justifications
 
 One paragraph each, for exactly what `output/chrome-mv3/manifest.json` declares:
-`"permissions": ["storage", "activeTab", "contextMenus", "scripting", "nativeMessaging"]`,
-`"optional_host_permissions": ["https://*/*", "http://*/*"]` — and **no `host_permissions`
+`"permissions": ["storage", "activeTab", "contextMenus", "scripting", "nativeMessaging", "webNavigation", "webRequest"]`,
+`"optional_host_permissions": ["https://*/*", "http://*/*", "file:///*"]` — and **no `host_permissions`
 key at all**. The native permission carries its own install warning; absence of required
 host access does not mean installation has no permission warning.
 
@@ -247,9 +251,29 @@ cleanup; the extension uses its own `runtime.uninstallSelf` only after verified 
 ```text
 Native Messaging is the only inference connection. The extension installs with no
 website access; persistent website access is an independent optional grant. Extension
-pages and the worker use connect-src 'self', with no localhost network exception.
-The native component does not listen on a network port. Browser CSP does not govern
-its separate model and update downloads.
+pages add connect-src 'self', while the manifest permits HTTP(S) and local-file sources
+for a private PDF loader. That loader validates a one-use ticket for the exact authorized
+document and narrows its connection policy. The native component does not listen on a
+network port. Browser CSP does not govern its separate model and update downloads.
+```
+
+**`webNavigation` and `webRequest`**
+
+```text
+Observes top-level navigation and available response metadata to recognize PDF documents,
+including browser PDF surfaces where content-script detection is unavailable. Navigation
+events can expose a current tab address before a site grant; reading/opening the document
+still requires authorization. Current-tab state is kept in memory, not a persisted history
+log. It does not modify network requests or send navigation data to inference.
+```
+
+**Optional host permission `file:///*`**
+
+```text
+Allows an explicitly authorized local PDF tab to open in Anagram. Browser-level file
+access controls also apply. The private loader validates the source ticket and local
+file URL; it is not a native arbitrary-file-read API. File selection/drop remains an
+alternative without a general local-file grant.
 ```
 
 **Optional host permissions `https://*/*` and `http://*/*`**
@@ -263,7 +287,7 @@ click the user made — "Allow on all sites" on the first-run or options page, o
 used to read the text of paragraphs, to draw the chips next to them, and for nothing
 else: no form is read automatically, no keystroke is recorded, and no cookie is read or
 written by the extension. Explicit selection analysis can include text selected in an
-editable field. The PDF/Google Docs same-origin re-reads are disclosed separately below.
+editable field. Original PDF/Google Docs reads are disclosed separately below.
 Page changes are the extension’s annotation controls and marks. The user can take every
 grant back from the options page or from chrome://extensions → Site access, and open tabs stop immediately.
 ```
@@ -287,9 +311,11 @@ installation/update mechanism. The evidence for the browser package:
   `script-src 'self' 'wasm-unsafe-eval'`, so no remote script and no `eval` can run at
   all. There is no `eval(`, no `new Function`, no `importScripts` and no `document.write`
   anywhere in `lib/` or `entrypoints/`.
-- `connect-src 'self'` blocks remote and loopback web requests from extension pages and
-  the worker. `node test/csp-check.mjs` tests those browser APIs. It makes no
-  claim about the native process or the separately disclosed same-origin tab re-reads.
+- The manifest allows original PDF source connections; ordinary extension pages add a
+  stricter `connect-src 'self'` policy, and the private loader narrows access to its
+  authorized source. `node test/csp-check.mjs` checks browser policy behavior separately
+  from the document-ticket tests. None of these policies sandboxes the native process
+  or prevents the original webpage from loading its own resources.
 - **WebAssembly**: `'wasm-unsafe-eval'` is in the policy for two files that ship inside
   the package — `vendor/wasm/openjpeg.wasm` and `vendor/wasm/jbig2.wasm`, pdf.js's
   JPEG 2000 and JBIG2 image decoders. Without them a scanned PDF page in either format
@@ -312,11 +338,11 @@ not from what it *transmits*.
 | Personally identifiable information | **No** | No account, identity profile or dedicated identifying field is collected. Arbitrary page prose can contain names or other personal information and is handled as Website content. |
 | Health information | **No** | Not read as such. Page text on a health site is handled as website content, below, and nothing marks it out. |
 | Financial and payment information | **No** | Same. No payment flow, no form reading, no transaction data. |
-| Authentication information | **No** | No credential is read. No cookie is read or written by the extension (`docs/footprint.md`, "Nothing else"). The two same-origin re-reads described below travel with the tab's own cookies because the browser attaches them; the extension never sees them. |
+| Authentication information | **No** | The extension does not use the browser cookies API. Original-document requests can include cookies attached by the browser without exposing them to the scoring payload. A password typed to unlock a PDF is processed locally by PDF.js and is not stored or uploaded. |
 | Personal communications | **No** *(see the note)* | Anagram does not single out messages, mailboxes or chats, and stores none. It annotates prose on whatever site the user granted, which on a webmail or forum page is that page's text — handled as website content. See the note under this table. |
 | Location | **No** | No geolocation API or location lookup. Native download hosts receive the ordinary source IP of installation/update requests; browsing content is not included. |
-| Web history | **No** | No list of visited pages is built or kept. The extension reads the current tab's URL in memory to decide which per-site rule applies, and to know whether a tab is one it may still read (`lib/access/worker.ts`). Two settings hold hostnames, and both are ones the user put there themselves: `siteOverrides` (rules the user wrote) and `fabPos` (where the user dragged the ball). Nothing records a visit, a page title or a time. |
-| User activity | **No** | Nothing about the user's behaviour is recorded or sent. Scroll position and hover are observed only to decide which paragraph to score next and which card to open; neither is stored anywhere, and there is no click, mouse-position or keystroke logging of any kind. |
+| Web history | **Review current dashboard wording before submission** | No general visited-page log is kept. Site preferences hold hostnames; the packaged PDF viewer separately keeps up to 20 local document fingerprints and view state in `pdfjs.history`. It does not upload them. Disclose this local document history instead of claiming no document history exists. |
+| User activity | **Review current dashboard wording before submission** | No interaction analytics is uploaded. Reading interactions drive local scoring/UI; PDF.js additionally saves local page/zoom/scroll/sidebar state and viewer preferences. Do not claim that scroll position is never stored. |
 | **Website content** | **YES** | This is the one. On a site the user granted, the extension reads the text of the page's paragraphs, sends that text to the local component through Native Messaging, and draws the result next to the paragraph. It also reads a PDF the user opened in the reading mode, and a Google Doc the user asked to have analyzed. See the paragraph below for the exact handling. |
 
 Note on **Personal communications**: the honest boundary is that Anagram handles whatever
@@ -335,6 +361,11 @@ Browsing text is not uploaded. Model/runtime installation and explicit component
 make separate public download requests carrying ordinary network metadata, not page text,
 page hostnames, benchmark results or saved runtime choices. Browser CSP restricts extension
 web requests, not the native program's OS/network access.
+
+Opening a PDF or Google Doc can fetch its original document again with normal browser
+credentials. Displaying a Google Doc can also load images/style resources belonging to
+that document. Local files are read only through user selection or an authorized file
+route. These source requests are separate from local inference.
 
 No page text is persisted. The IndexedDB anagram-scores cache holds a model identity,
 53-bit hash of normalized text and numeric verdict metadata for at most 30 days; it never
@@ -371,7 +402,7 @@ files and an explicitly applied runtime choice.
 ### Release prerequisites
 
 Do not send an unpublished development package to reviewers with a nonworking installation
-command. Publish the matching `v0.4.0` native archives, checksums and `install.sh` /
+command. Publish the matching `v0.5.0` native archives, checksums and `install.sh` /
 `install.ps1` assets first, and distribute the matching browser package. Ordinary source
 builds intentionally show an unpublished-installer notice with Copy disabled. Windows x64
 release approval also needs Windows execution/CI and manual QA; macOS tests do not provide
@@ -382,8 +413,8 @@ that evidence. See the [English](user-guide.en.md) and [中文](user-guide.zh-CN
 1. Install the shipping extension in a clean profile. The same full-page onboarding opens
    for store and ZIP installations. Chrome's required Native Messaging warning is separate
    from optional website access; no website is initially granted.
-2. Read the setup size disclosure (about 4.07 GB of model files, plus runtime/temporary
-   space). Use **View installation script**, then **Copy installation command**. Run the
+2. Read the setup size disclosure (usually 1.43 GB for the recommended set including language detection,
+   plus runtime/temporary space). Use **View installation script**, then **Copy installation command**. Run the
    page's command once in Terminal on macOS/Linux or PowerShell on Windows. It contains
    this extension's actual ID and version-pinned release URLs; do not substitute a generic
    command or somebody else's unpacked ID. Firefox authorizes `anagram@coderbak.dev`.
@@ -425,8 +456,9 @@ Do not use fixture scores or timings as evidence of real-model performance.
 
 ### Verify the data boundary
 
-- Read [footprint](footprint.md) and [PRIVACY.md](../PRIVACY.md): native scoring/management,
-  same-origin PDF/Docs re-reads, storage and public native downloads are
+- Read [footprint](footprint.md), [network verification](network-privacy.md) and
+  [PRIVACY.md](../PRIVACY.md): native scoring/management,
+  authorized PDF/Docs original-source reads, storage and public native downloads are
   separate entries.
 - Inspect extension-page/worker Network requests and Native Messaging frames. Scoring uses
   the native pipe; there must be no HTTP scoring requests. Page text is
@@ -450,8 +482,9 @@ click and can be withdrawn. Native Messaging is required because local inference
 core function, not a future or optional feature.
 
 **Why no required localhost host permission?**
-Inference uses Native Messaging exclusively. There is no HTTP inference server or
-localhost request exception in connect-src. The native program retains ordinary user
+Inference uses Native Messaging exclusively. There is no HTTP inference server; the
+manifest's HTTP allowance serves authorized original PDFs, not a scoring backend.
+The native program retains ordinary user
 OS privileges for loading models and downloading installation/update files.
 
 **Why `<all_urls>`-shaped patterns rather than a list of sites?**
@@ -472,18 +505,16 @@ one-off `activeTab` actions. No code is fetched or evaluated.
 Two places, both same-origin re-reads of the document already in front of the user, and
 both are in the inventory:
 
-- `lib/pdf/handoff.ts` — the PDF reading mode may not fetch anything (`connect-src` does
-  not allow a remote origin, and that is deliberate). So the tab that is *already
-  displaying the PDF* re-reads its own document — same URL, same origin, same cookies,
-  `cache: "force-cache"`, so the browser's cache normally answers and nothing leaves the
-  machine — and streams the bytes to the service worker, which hands them to the reading
-  mode under a one-time ticket bound to that tab. It stops at 50 MB and refuses anything
-  whose first bytes are not `%PDF-`. The `?src=` in the reader's address is a name from
-  then on — the title, the "Open original" link — and nothing fetches it.
+- `lib/pdf/handoff.ts` — Chrome's online PDF tab can re-read its own document with normal
+  credentials and `cache: "force-cache"`, then stream bytes through a bounded, one-time
+  ticket. Cache preference does not guarantee no network request. Firefox and local-file
+  routes use a private loader for the exact authorized source. The reader's `?src=` alone
+  cannot authorize a read; the generic viewer receives bytes, not an arbitrary URL.
 - `lib/docsOverlay.ts` — a Google Doc's editor is a canvas with no text in the DOM to
   read, so the reading mode fetches the same document's own `mobilebasic` rendering,
   same-origin with the tab's own cookies, and analyzes that. The document is never
-  modified; the overlay closes with Esc.
+  modified; the overlay closes with Esc. Images and CSS references in that original
+  document can produce additional resource requests when it is displayed.
 
 **What is `use_dynamic_url` doing on the web-accessible resources?**
 Three files are web-accessible because a *content script* importing an extension URL
@@ -522,7 +553,7 @@ probability that the text is AI. Every card carries an "estimate, not proof" cav
 | Item | State |
 | --- | --- |
 | Privacy policy at a public URL | `PRIVACY.md` is written; the hosting address is `<< owner to fill in >>` |
-| Listing screenshots at 1280×800 or 640×400 | **Refresh required for 0.4.0.** Existing `docs/store/*.png` and capture fixtures predate native onboarding. Verify current popup/setup copy, label any fixture benchmark values honestly, and use readable prose rather than walker-test filler. |
+| Listing screenshots at 1280×800 or 640×400 | **Refresh required for 0.5.0.** Existing `docs/store/*.png` and capture fixtures predate native onboarding. Verify current popup/setup copy, label any fixture benchmark values honestly, and use readable prose rather than walker-test filler. |
 | Small promo tile 440×280 | `<< owner to fill in >>` |
 | Official URL / homepage | `<< owner to fill in >>` |
 | Support URL | `<< owner to fill in >>` |

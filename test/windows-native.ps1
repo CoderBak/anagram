@@ -6,6 +6,7 @@ foreach ($file in @('install.ps1','installer\maintenance.ps1')) {
   $null=[Management.Automation.Language.Parser]::ParseFile((Join-Path $root $file),[ref]$tokens,[ref]$errors)
   if ($errors.Count) { throw ($errors | Out-String) }
 }
+& (Join-Path $PSScriptRoot 'windows-installer.ps1')
 $temporary=Join-Path ([IO.Path]::GetTempPath()) ('anagram-native-test-' + [Guid]::NewGuid().ToString('N'))
 $component=Join-Path $temporary 'component with spaces'
 $process=$null

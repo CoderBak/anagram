@@ -7,12 +7,16 @@ import { installationCommand } from "./installationCommand";
 import "./componentSettings.css";
 
 export type ComponentReply = Awaited<ReturnType<typeof requestComponent>>;
-type Operation = "models.download" | "models.pause" | "models.delete" | "engine.stop" | "engine.resume" | "component.update" | "component.uninstall";
+type Operation = "models.download" | "models.pause" | "models.delete" | "engine.stop" | "engine.resume" | "engine.settings" | "component.update" | "component.uninstall";
 const stateKeys: Record<ComponentSnapshot["state"], MessageKey> = {
   starting: "componentStarting", needs_models: "componentNeedsModels", downloading: "componentDownloading",
   paused: "componentPaused", loading: "componentLoading", benchmarking: "runtimeBenchmarking",
-  awaiting_selection: "runtimeChoose", ready: "runtimeReady", stopped: "componentStopped",
+  awaiting_selection: "runtimeChoose", ready: "runtimeReady", idle: "componentIdle", stopped: "componentStopped",
   updating: "componentUpdating", uninstalling: "componentUninstalling", error: "componentNeedsAttention",
+};
+const preparationKeys: Record<NonNullable<ComponentSnapshot["download"]["phase"]>, MessageKey> = {
+  detecting: "componentDetectingDevices", verifying: "componentVerifyingModels",
+  downloading: "componentDownloading", complete: "componentModelsPrepared",
 };
 
 export function componentStateLabel(s: ComponentSnapshot): string {
@@ -20,6 +24,7 @@ export function componentStateLabel(s: ComponentSnapshot): string {
   if (s.operation?.name === "uninstall" && s.operation.status === "scheduled") return t("componentCleanupScheduled");
   if (s.operation?.name === "update" && s.operation.status === "scheduled") return t("componentUpdateScheduled");
   if (s.operation?.status === "running") return t(s.operation.name === "delete_models" ? "componentDeleting" : s.operation.name === "uninstall" ? "componentUninstalling" : "componentUpdating");
+  if (s.state === "downloading" && s.download.phase) return t(preparationKeys[s.download.phase]);
   return t(stateKeys[s.state]);
 }
 
@@ -28,7 +33,8 @@ export function componentConnectionLabel(reply: ComponentReply): string {
 }
 
 export function componentReady(s: ComponentSnapshot): boolean {
-  return s.state === "ready" && !componentBusy(s) && s.runtime !== null && runtimeReady(s.runtime);
+  return !componentBusy(s) && s.runtime !== null &&
+    ((s.state === "ready" && runtimeReady(s.runtime)) || (s.state === "idle" && !s.runtime.needs_selection && s.runtime.selected_id !== null));
 }
 
 export function componentBusy(s: ComponentSnapshot): boolean {
@@ -79,11 +85,34 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
 
   const metadata = element("p", undefined, "component-path");
   const storage = element("p");
+  const idleField = element("div", undefined, "field"); idleField.hidden = true;
+  const idleLabel = element("label", t("componentIdleSetting")); idleLabel.htmlFor = "idleUnload";
+  const idleSelect = element("select"); idleSelect.id = "idleUnload";
+  for (const seconds of [300, 60, 900, 0]) {
+    const option = element("option", seconds ? t("componentIdleMinutes", seconds / 60) : t("componentIdleNever"));
+    option.value = String(seconds); idleSelect.append(option);
+  }
+  idleSelect.addEventListener("change", () => run("engine.settings"));
+  idleField.append(idleLabel, idleSelect, element("p", t("componentIdleNote")));
   const download = element("div", undefined, "component-download");
   const downloadText = element("p"); downloadText.setAttribute("role", "status");
   const progress = element("progress"); progress.setAttribute("aria-label", t("componentDownloadProgress"));
   const file = element("p", undefined, "component-file");
-  download.append(downloadText, progress, file);
+  download.append(downloadText, progress, file, element("p", t("componentPreparationNote")));
+  const plan = element("section", undefined, "component-plan"); plan.id = "downloadPlan"; plan.hidden = true;
+  const planTitle = element("h3");
+  const planDevices = element("p");
+  const planSize = element("p");
+  const planFiles = element("details", undefined, "component-details");
+  const filesList = element("ul", undefined, "component-file");
+  planFiles.append(element("summary", t("componentPlanFiles")), filesList);
+  const expandedSize = element("p");
+  const planActions = element("div", undefined, "component-actions");
+  const expanded = makeButton("componentExpandedDownload", () => run("models.download", "expanded"));
+  const recommended = makeButton("componentRecommendedDownload", () => run("models.download", "recommended"));
+  planActions.append(expanded, recommended);
+  plan.append(planTitle, planDevices, planSize, planFiles, expandedSize,
+    element("p", t("componentExpandedNote")), planActions, element("p", t("componentRecommendedNote")));
   const error = element("p", undefined, "component-error"); error.setAttribute("role", "alert"); error.hidden = true;
   const details = element("details", undefined, "component-details"); details.hidden = true;
   const detailsText = element("pre"); details.append(element("summary", t("componentTechnicalDetails")), detailsText);
@@ -115,7 +144,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     if (op && snapshot && !pending && !componentBusy(snapshot)) run(op);
   });
   dialogActions.append(cancelConfirm, acceptConfirm); dialog.append(dialogTitle, dialogText, dialogActions);
-  host.replaceChildren(summary, note, extensionUpdate, install, metadata, storage, download, error, details, actions, runtimeHost, upgradeNote, dialog);
+  host.replaceChildren(summary, note, extensionUpdate, install, metadata, storage, plan, download, error, details, actions, idleField, runtimeHost, upgradeNote, dialog);
 
   let snapshot: ComponentSnapshot | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -168,10 +197,15 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     getModels.hidden = !s || terminal || !(s.state === "needs_models" || s.state === "paused" || s.download.status === "failed");
     getModels.textContent = t(s?.download.status === "paused" ? "componentResumeDownload" : s?.download.status === "failed" ? "componentRetryDownload" : "componentDownloadModels");
     pause.hidden = !s || s.download.status !== "running";
-    stop.hidden = !s || terminal || !["loading", "benchmarking", "awaiting_selection", "ready"].includes(s.state);
-    resume.hidden = !s || terminal || !(s.state === "stopped" || s.state === "error");
+    stop.hidden = !s || terminal || !["loading", "benchmarking", "awaiting_selection", "ready", "idle"].includes(s.state);
+    resume.hidden = !s || terminal || !(s.state === "stopped" || s.state === "idle" || s.state === "error");
+    idleSelect.disabled = pending || busy || !s;
     update.hidden = removeModels.hidden = uninstall.hidden = !s || terminal;
     getModels.disabled = update.disabled = uninstall.disabled = pending || busy;
+    expanded.hidden = !s?.download.plan || terminal || s.download.plan.profile === "expanded" ||
+      (s.download.plan.expanded_bytes !== undefined && s.download.plan.expanded_bytes <= s.download.plan.total_bytes);
+    recommended.hidden = !s?.download.plan || terminal;
+    expanded.disabled = recommended.disabled = pending || busy;
     removeModels.disabled = pending || busy || !s || s.storage.models_bytes === 0;
     pause.disabled = pending || pausing;
     stop.disabled = resume.disabled = pending || s?.error?.code === "busy" || s?.operation?.status === "running" || s?.operation?.status === "scheduled";
@@ -180,7 +214,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   }
 
   function showRuntime(s?: ComponentSnapshot): void {
-    const show = !!s?.runtime && ["loading", "benchmarking", "awaiting_selection", "ready", "error"].includes(s.state) && !completedUninstallReceipt;
+    const show = !!s?.runtime && ["loading", "benchmarking", "awaiting_selection", "ready", "idle", "error"].includes(s.state) && !completedUninstallReceipt;
     runtimeHost.hidden = !show;
     if (show && !runtimePanel) runtimePanel = mountRuntimeSettings(runtimeHost);
     else if (!show && runtimePanel) { runtimePanel.destroy(); runtimePanel = undefined; runtimeHost.replaceChildren(); }
@@ -193,7 +227,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
       summary.textContent = t(scheduledCleanup ? "componentCleanupScheduled" : scheduledUpdate ? "componentUpdateScheduled" : awaitingUninstall ? "componentWaitingCleanup" : awaitingUpdate ? "componentReconnecting" : inUse ? "componentInUse" : reply.kind === "invalid" ? "componentIncompatible" : everConnected ? "componentDisconnected" : "componentNotConnected");
       note.textContent = t(scheduledCleanup ? "componentSystemCleanupNote" : scheduledUpdate ? "componentSystemUpdateNote" : awaitingUninstall ? "componentCleanupUnconfirmed" : inUse ? "componentInUseNote" : everConnected ? "componentReconnectNote" : "componentConnectionNote");
       install.hidden = everConnected || awaitingUninstall || inUse;
-      metadata.hidden = storage.hidden = download.hidden = upgradeNote.hidden = true;
+      metadata.hidden = storage.hidden = plan.hidden = download.hidden = upgradeNote.hidden = idleField.hidden = true;
       error.textContent = actionError; error.hidden = !actionError;
       detailsText.textContent = actionDetail || reply.message || ""; details.hidden = !detailsText.textContent;
       showRuntime(); buttons(); onUpdate?.(reply); return;
@@ -212,8 +246,28 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     install.hidden = true; metadata.hidden = storage.hidden = upgradeNote.hidden = false;
     metadata.textContent = t("componentLocation", s.version ?? t("componentUnknownVersion"), s.home);
     storage.textContent = t("componentStorage", bytes(s.storage.models_bytes));
+    const preparation = s.download.plan;
+    plan.hidden = !preparation || !!completedUninstallReceipt;
+    if (preparation) {
+      planTitle.textContent = t(preparation.profile === "recommended" ? "componentRecommendedPlan" : "componentExpandedPlan");
+      planDevices.textContent = t("componentPlanDevices", preparation.devices.join(" · ") || t("runtimeNotAvailable"));
+      planSize.textContent = t("componentPlanSize", bytes(preparation.total_bytes));
+      filesList.replaceChildren(...preparation.files.map((name) => element("li", name)));
+      expandedSize.hidden = preparation.expanded_bytes === undefined || preparation.profile === "expanded";
+      expandedSize.textContent = preparation.expanded_bytes === undefined ? "" : t("componentExpandedSize", bytes(preparation.expanded_bytes));
+    }
+    idleField.hidden = !s.settings || !!completedUninstallReceipt;
+    if (s.settings) {
+      const value = String(s.settings.idle_unload_s);
+      if (![...idleSelect.options].some((o) => o.value === value)) {
+        const option = element("option", t("componentIdleMinutes", s.settings.idle_unload_s / 60)); option.value = value; idleSelect.append(option);
+      }
+      idleSelect.value = value;
+    }
     download.hidden = !["running", "paused", "failed"].includes(s.download.status);
-    downloadText.textContent = s.download.total_bytes ? t("componentDownloadBytes", bytes(s.download.bytes_received), bytes(s.download.total_bytes)) : t("componentDownloadedBytes", bytes(s.download.bytes_received));
+    downloadText.textContent = s.download.total_bytes ? t("componentDownloadBytes", bytes(s.download.bytes_received), bytes(s.download.total_bytes)) :
+      s.download.phase === "detecting" ? t("componentDetectingDevices") : t("componentDownloadedBytes", bytes(s.download.bytes_received));
+    if (s.download.phase && s.download.total_bytes > 0) downloadText.textContent = `${t(preparationKeys[s.download.phase])} · ${downloadText.textContent}`;
     if (s.download.total_bytes && s.download.total_bytes > 0) { progress.max = s.download.total_bytes; progress.value = Math.min(s.download.bytes_received, s.download.total_bytes); }
     else progress.removeAttribute("value");
     file.textContent = s.download.file ?? ""; file.hidden = !s.download.file;
@@ -246,12 +300,13 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     }
   }
 
-  async function poll(op?: Operation): Promise<void> {
+  async function poll(op?: Operation, profile?: "recommended" | "expanded"): Promise<void> {
     if (destroyed || pending || (!op && document.visibilityState !== "visible")) return;
     pending = true; buttons();
     const ac = new AbortController(); controller = ac;
     try {
-      const reply = await requestComponent(op ?? "status", op === "models.delete" || op === "component.uninstall" ? { confirm: true } : undefined, ac.signal);
+      const payload = op === "models.download" && profile ? {profile} : op === "engine.settings" ? {idle_unload_s: Number(idleSelect.value)} : op === "models.delete" || op === "component.uninstall" ? {confirm: true} : undefined;
+      const reply = await requestComponent(op ?? "status", payload, ac.signal);
       if (destroyed || ac.signal.aborted) return;
       if (reply.kind === "rejected" && op) {
         pausing = false; awaitingUpdate = awaitingUninstall = false;
@@ -265,13 +320,13 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     finally { pending = false; controller = undefined; buttons(); schedule(); }
   }
 
-  function run(op?: Operation): void {
+  function run(op?: Operation, profile?: "recommended" | "expanded"): void {
     if (pending || destroyed) return;
     if (timer !== undefined) clearTimeout(timer);
     actionError = actionDetail = "";
     if (op === "component.uninstall") awaitingUninstall = true;
     if (op === "component.update") awaitingUpdate = true;
-    void poll(op);
+    void poll(op, profile);
   }
   const visibility = (): void => {
     if (document.visibilityState === "visible") run();

@@ -17,8 +17,10 @@ import { build } from "esbuild";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { copyFileSync, cpSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import { vendorPdfViewer } from "./pdfjsViewer.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+vendorPdfViewer(ROOT);
 const OUT = join(ROOT, "public", "vendor");
 mkdirSync(OUT, { recursive: true });
 
@@ -43,7 +45,7 @@ const copies = {
 };
 
 // The DATA pdf.js reaches for while it draws a page. None of it is code we call: the
-// library fetches these by URL from the options lib/pdf/extract.ts hands it, and without
+// library fetches these by URL from the packaged asset URLs in entrypoints/reader/viewer.ts, and without
 // them whole classes of document come out wrong rather than merely unstyled — a Japanese
 // paper with no glyphs at all (its CMaps are predefined, not embedded), a report set in
 // "Times" with no font file in it, a scanned form whose pages are JPEG2000 or JBIG2

@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import json
 import copy
+import os
+import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,7 +18,8 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "anagramd"))
 import engine as engine_api
 from runtime_controller import Candidate, RuntimeBusy, RuntimeController, RuntimeUnavailable, error_text
-from runtime_adapters import OnnxEditLens, artifact_files, digest, runtime_version
+from runtime_adapters import OnnxEditLens, artifact_files, digest, runtime_version, load_candidate
+from benchmark_worker import SubprocessBenchmark
 
 
 class Clock:
@@ -126,6 +130,61 @@ class LifecycleTests(unittest.TestCase):
         self.finish(controller)
         self.assertEqual(controller.snapshot()["state"], "ready")
 
+    def test_persist_never_truncates_preexisting_temporary_links(self):
+        controller, _ = self.make()
+        outside = self.path.parent / "outside.txt"
+        old_temp = self.path.with_suffix(".json.tmp")
+        for kind in ("symlink", "hardlink"):
+            outside.write_text("keep")
+            if kind == "symlink":
+                old_temp.symlink_to(outside)
+            else:
+                os.link(outside, old_temp)
+            controller._persist()
+            self.assertEqual(outside.read_text(), "keep")
+            self.assertFalse(self.path.is_symlink())
+            self.assertEqual(json.loads(self.path.read_text())["schema_version"], 1)
+            old_temp.unlink()
+
+    def test_config_hardlink_is_replaced_but_symlink_is_never_read_or_written(self):
+        controller, _ = self.make()
+        outside = self.path.parent / "outside.json"
+        outside.write_text('{"schema_version":1,"selected_id":"external"}')
+        original = outside.read_text()
+        self.path.symlink_to(outside)
+        self.assertIsNone(controller._read_saved())
+        with self.assertRaisesRegex(ValueError, "symbolic link"):
+            controller._persist()
+        self.path.unlink()
+        os.link(outside, self.path)
+        controller._persist()
+        self.assertEqual(outside.read_text(), original)
+        self.assertNotEqual(self.path.stat().st_ino, outside.stat().st_ino)
+
+    def test_oversized_runtime_configuration_is_rejected(self):
+        controller, _ = self.make()
+        self.path.write_text(" " * (1024 * 1024 + 1))
+        self.assertIsNone(controller._read_saved())
+        self.assertIn("oversized", controller.error)
+
+    def test_weight_memo_links_never_overwrite_external_files(self):
+        model = self.path.parent / "model"
+        model.mkdir()
+        (model / "model.safetensors").write_bytes(b"tiny-weights")
+        memo = model / ".anagram-weights-sha256.json"
+        outside = self.path.parent / "outside-memo.txt"
+        for kind in ("symlink", "hardlink"):
+            outside.write_text("keep")
+            if kind == "symlink":
+                memo.symlink_to(outside)
+            else:
+                os.link(outside, memo)
+            name, digest = engine_api.weights_digest(model)
+            self.assertEqual(name, "model.safetensors")
+            self.assertEqual(len(digest), 64)
+            self.assertEqual(outside.read_text(), "keep")
+            memo.unlink()
+
     def test_first_run_measures_shared_budget_then_requires_explicit_selection(self):
         controller, factory = self.make()
         self.setup_complete(controller)
@@ -155,6 +214,116 @@ class LifecycleTests(unittest.TestCase):
         controller, _ = self.make((FP32, FP16, INT8), factory=factory)
         self.setup_complete(controller)
         self.assertEqual(controller.snapshot()["recommended_id"], FP32.id)
+        self.assertIn(controller.snapshot()["fastest_id"], (FP16.id, INT8.id))
+
+    def test_short_measurements_are_labeled_and_old_reports_are_not_reused(self):
+        controller, _ = self.make()
+        controller.max_runs = 1
+        self.setup_complete(controller)
+        self.assertTrue(all(row["measurement_quality"] == "insufficient"
+                            for row in controller.snapshot()["benchmark"]["results"]))
+        old = json.loads(self.path.read_text())
+        old["benchmark"].pop("report_version")
+        self.path.write_text(json.dumps(old))
+        controller.close()
+        fresh, factory = self.make()
+        self.setup_complete(fresh)
+        self.assertEqual(factory.loaded, [FP32.id, FP16.id])
+
+    def test_idle_only_counts_score_activity_and_retains_selection(self):
+        controller, factory = self.make()
+        self.setup_complete(controller)
+        self.select(controller)
+        controller.set_idle_unload(60)
+        factory.clock.advance(59)
+        controller.snapshot()
+        with controller.use_engine(activity=False):
+            pass
+        self.assertFalse(controller.unload_if_idle())
+        factory.clock.advance(2)
+        self.assertTrue(controller.unload_if_idle())
+        self.finish(controller)
+        snapshot = controller.snapshot()
+        self.assertEqual(snapshot["state"], "idle")
+        self.assertEqual(snapshot["selected_id"], FP32.id)
+        self.assertIsNone(snapshot["active_id"])
+        self.assertFalse(snapshot["needs_selection"])
+        self.assertEqual(factory.resident, 0)
+        for _ in range(5):
+            controller.snapshot()
+        self.assertEqual(factory.resident, 0)
+        self.assertTrue(controller.wake())
+        self.finish(controller)
+        self.assertEqual(controller.snapshot()["active_id"], FP32.id)
+        factory.clock.advance(50)
+        with controller.use_engine():
+            factory.clock.advance(100)
+            self.assertFalse(controller.unload_if_idle())
+        self.assertFalse(controller.unload_if_idle())
+        factory.clock.advance(61)
+        controller.set_idle_unload(0)
+        self.assertFalse(controller.unload_if_idle())
+
+    def test_idle_never_interrupts_benchmark_or_load(self):
+        controller, factory = self.make()
+        self.setup_complete(controller)
+        self.select(controller)
+        controller.set_idle_unload(60)
+        entered, release = threading.Event(), threading.Event()
+        factory.on_score = lambda *_: (entered.set(), release.wait(2))
+        controller.request_benchmark(10)
+        self.assertTrue(entered.wait(2))
+        factory.clock.advance(120)
+        self.assertFalse(controller.unload_if_idle())
+        release.set()
+        self.finish(controller)
+
+    def test_idle_wake_rejects_changed_model_version(self):
+        controller, factory = self.make()
+        self.setup_complete(controller)
+        self.select(controller)
+        controller.set_idle_unload(60)
+        factory.clock.advance(61)
+        controller.unload_if_idle()
+        self.finish(controller)
+        factory.version = "replaced"
+        controller.wake()
+        self.finish(controller)
+        self.assertEqual(controller.snapshot()["state"], "error")
+        self.assertEqual(factory.resident, 0)
+
+    def test_idle_score_wait_is_bounded_and_close_wakes_waiters(self):
+        controller, factory = self.make()
+        self.setup_complete(controller)
+        self.select(controller)
+        controller.set_idle_unload(60)
+        factory.clock.advance(61)
+        controller.unload_if_idle()
+        self.finish(controller)
+        entered, release = threading.Event(), threading.Event()
+        factory.on_score = lambda *_: (entered.set(), release.wait(2))
+        controller.wake()
+        self.assertTrue(entered.wait(1))
+        with self.assertRaises(RuntimeUnavailable):
+            controller.wake_and_wait(timeout=.01)
+        results, waiting = [], threading.Event()
+        def score_waiter():
+            waiting.set()
+            try:
+                controller.wake_and_wait(timeout=2)
+                results.append("ready")
+            except RuntimeUnavailable:
+                results.append("stopped")
+        waiter = threading.Thread(target=score_waiter)
+        waiter.start()
+        self.assertTrue(waiting.wait(1))
+        controller.close()
+        waiter.join(1)
+        self.assertFalse(waiter.is_alive())
+        self.assertEqual(results, ["stopped"])
+        release.set()
+        self.finish(controller)
+        self.assertEqual(factory.resident, 0)
 
     def test_selection_persists_and_restart_loads_only_saved_candidate(self):
         controller, factory = self.make()
@@ -338,6 +507,9 @@ class LifecycleTests(unittest.TestCase):
                 controller.request_benchmark()
             controller.close()
             self.assertFalse(engine.closed)
+            with self.assertRaises(RuntimeUnavailable):
+                with controller.use_engine():
+                    self.fail("closing runtime accepted another scoring lease")
         self.assertEqual(factory.resident, 0)
 
     def test_damaged_config_is_recoverable(self):
@@ -464,6 +636,127 @@ class ProvenanceTests(unittest.TestCase):
             self.assertNotEqual(third, runtime_version(engine, INT8, path, engine_api, {"provider": "OtherProvider"}))
             self.assertEqual({p.name for p in artifact_files(path, INT8)}, {"model_int8.onnx", "tensors.data"})
             self.assertEqual(digest(path / "config.json"), digest(path / "config.json"))
+
+
+class IsolatedBenchmarkTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.home = Path(self.temp.name)
+        self.worker = Path(__file__).resolve().parents[1] / "anagramd/benchmark_worker.py"
+        self.fixture = self.home / "fixture.py"
+        self.fixture.write_text('''
+import os, pathlib, runpy, sys, time, types
+pathlib.Path("workers").open("a").write(str(os.getpid()) + "\\n")
+class Engine:
+    def score(self, texts):
+        time.sleep(0.002)
+        return [{"tokens": 140} for _ in texts]
+    def synchronize(self): pass
+    def accelerator_bytes(self): return None
+    def close(self): pass
+def load(*args, **kwargs):
+    kwargs["phase"]("hashing")
+    kwargs["phase"]("loading")
+    print("fixture native-library diagnostic", flush=True)
+    return Engine(), {"hash_ms": 7, "load_ms": 9}
+sys.modules["engine"] = types.SimpleNamespace(LanguageId=lambda _: object())
+sys.modules["torch"] = types.SimpleNamespace()
+sys.modules["emoji"] = types.SimpleNamespace()
+sys.modules["transformers"] = types.SimpleNamespace(AutoTokenizer=object, AutoModelForSequenceClassification=object)
+sys.modules["onnxruntime"] = types.SimpleNamespace()
+sys.modules["runtime_adapters"] = types.SimpleNamespace(execution_environment=lambda _: {}, load_candidate=load)
+runpy.run_path(sys.argv[1], run_name="__main__")
+''')
+
+    def runner(self, **kwargs):
+        return SubprocessBenchmark(self.home, self.home / "lid", self.home,
+                                   command=[sys.executable, "-I", str(self.fixture), str(self.worker)], **kwargs)
+
+    def test_each_candidate_has_a_fresh_process_and_distinct_resource_stages(self):
+        controller = RuntimeController(self.home / "runtime.json", lambda: ([FP32, FP16], "isolated"),
+                                       lambda _: self.fail("benchmark loaded in host"),
+                                       benchmark_runner=self.runner(), max_runs=3)
+        self.addCleanup(controller.close)
+        controller.start()
+        controller.thread.join(5)
+        self.assertFalse(controller.thread.is_alive())
+        snapshot = controller.snapshot()
+        self.assertEqual(snapshot["state"], "awaiting_selection", snapshot)
+        self.assertTrue(controller._valid_report(snapshot["benchmark"]))
+        self.assertEqual(snapshot["benchmark"]["completed"], 4)
+        pids = [int(value) for value in (self.home / "workers").read_text().splitlines()]
+        self.assertEqual(len(set(pids)), 2)
+        self.assertNotIn(os.getpid(), pids)
+        for row in snapshot["benchmark"]["results"]:
+            self.assertEqual(row["rss_scope"], "isolated_process")
+            self.assertEqual(row["hash_ms"], 7)
+            self.assertEqual(row["load_ms"], 9)
+            self.assertGreater(row["initialization_ms"], 0)
+            self.assertEqual(row["measurement_quality"], "sufficient")
+            self.assertEqual(row["samples"], 3)
+            self.assertTrue(row["baseline_rss_bytes"] is None or row["baseline_rss_bytes"] > 0)
+            self.assertTrue(row["loaded_rss_bytes"] is None or row["loaded_rss_bytes"] > 0)
+
+    def test_cancel_and_timeout_terminate_only_the_owned_worker(self):
+        self.fixture.write_text('''
+import json, sys, time
+json.loads(sys.stdin.readline())
+print(json.dumps({"type":"phase", "phase":"measurement"}), flush=True)
+time.sleep(60)
+''')
+        entered = threading.Event()
+        runner = self.runner(timeout_s=3)
+        original_popen, children = subprocess.Popen, []
+        def popen(*args, **kwargs):
+            process = original_popen(*args, **kwargs)
+            children.append(process)
+            return process
+        def running(*args):
+            receive = args[-1]
+            def observed(message):
+                receive(message)
+                entered.set()
+            runner(*args[:-1], observed)
+        controller = RuntimeController(self.home / "runtime.json", lambda: ([FP32], "cancel"),
+                                       lambda _: self.fail("benchmark loaded in host"), benchmark_runner=running)
+        self.addCleanup(controller.close)
+        with patch("benchmark_worker.subprocess.Popen", side_effect=popen):
+            controller.start()
+            self.assertTrue(entered.wait(2))
+            controller.cancel()
+            controller.thread.join(3)
+            self.assertFalse(controller.thread.is_alive())
+            self.assertEqual(controller.snapshot()["benchmark"]["status"], "cancelled")
+            self.assertIsNotNone(children[-1].poll())
+            runner.timeout_s = 0.15
+            with self.assertRaises(TimeoutError):
+                runner(FP32, 10, 2, 3, threading.Event(), lambda _: None)
+            self.assertIsNotNone(children[-1].poll())
+        self.assertEqual(len(children), 2)
+        self.assertNotIn(os.getpid(), [child.pid for child in children])
+
+    def test_hashing_time_is_excluded_from_model_load(self):
+        clock = Clock()
+        weights = self.home / "model.safetensors"
+        weights.write_bytes(b"fixture")
+        class Engine:
+            def __init__(self, *args, **kwargs):
+                self.compute_version = kwargs["compute_version"]
+                clock.advance(11)
+            def synchronize(self):
+                clock.advance(2)
+            def close(self): pass
+        api = SimpleNamespace(EditLens=Engine, PIPELINE_FILES=[])
+        phases = []
+        with patch("runtime_adapters.digest", side_effect=lambda _: clock.advance(5)), \
+                patch("runtime_adapters.runtime_version", side_effect=lambda *_: (clock.advance(3), "version")[1]):
+            engine, timings = load_candidate(self.home, FP32, 512, 32, None, api, {},
+                                             phase=phases.append, clock=clock)
+        self.assertFalse(engine.compute_version)
+        self.assertEqual(engine.version, "version")
+        self.assertEqual(timings, {"hash_ms": 8000, "load_ms": 13000})
+        self.assertEqual(phases, ["hashing", "loading", "hashing"])
 
 
 class ScoringParityTests(unittest.TestCase):

@@ -1,16 +1,6 @@
-// lib/render/score.ts — the one place a score becomes text.
-//
-// EditLens answers on 0–1: how far a text sits from untouched human writing toward fully
-// AI-generated. That is an EXTENT of editing — an edit distance from a human original —
-// and writing it "63%" made every surface of the product read as "63 % sure this is AI",
-// which is the one thing the number does not say. So it is written the way a correlation
-// or a batting average is: two decimals, no leading zero, no percent sign. ".93".
-//
-// The top of the scale is the exception: ".100" is not a number and "1.00" claims a
-// precision the rounding has not got, so a score that rounds to one reads "1.0".
-//
-// Numbers that really ARE probabilities — the four-bucket distribution in the card, the
-// language gate's confidence — keep their "%" and never come through here.
+// The score is the normalized expected class index: (p1 + 2*p2 + 3*p3) / 3.
+// It is neither a measured edit distance nor a calibrated probability of AI authorship.
+// Render without a percent sign; the four-class distribution remains available separately.
 
 /** Anything outside 0–1 (and NaN) is a bug upstream; paint something rather than "NaN". */
 function clamp(score: number): number {

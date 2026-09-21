@@ -78,20 +78,21 @@ function englishFallback() {
   };
 }
 
-// Extension-page/worker requests reach packaged resources only. PDF and Docs bytes
-// arrive through their original tabs. Native setup downloads run outside browser CSP.
+// The private PDF loader reads only document-bound, authorized source tickets.
+// Other UI pages add connect-src 'self' in a meta policy; the viewer only opens bytes.
+// Native setup downloads run outside browser CSP.
 // Packaged pdf.js image decoders need wasm-unsafe-eval; inline page styles need
 // unsafe-inline. Neither directive permits remotely hosted scripts.
 const CSP = [
   "default-src 'self'",
   "script-src 'self' 'wasm-unsafe-eval'",
   "object-src 'self'",
-  "connect-src 'self'",
+  "connect-src 'self' http: https: file:",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
   "style-src 'self' 'unsafe-inline'",
   "worker-src 'self'",
-  "frame-src 'none'",
+  "frame-src 'self'",
   "form-action 'none'",
   "base-uri 'none'",
 ].join("; ");
@@ -106,7 +107,7 @@ export default defineConfig({
     // output/ and node_modules itself, but does not apply our .gitignore.
     excludeSources: [
       "dist/**", "output-test/**", "test-results/**",
-      "**/__pycache__/**", "**/*.pyc", "**/*.log",
+      "**/__pycache__/**", "**/*.pyc", "**/*.log", "**/*.ses",
       "test/*.png", "test/matrix.json", "test/survey.json", "test/a11y.json",
     ],
   },
@@ -131,14 +132,14 @@ export default defineConfig({
       default_locale: "en",
       description: "__MSG_extDescription__",
       // Native Messaging provides local inference; activeTab/scripting provide opt-in reading.
-      permissions: ["storage", "activeTab", "contextMenus", "scripting", "nativeMessaging"],
+      permissions: ["storage", "activeTab", "contextMenus", "scripting", "nativeMessaging", "webNavigation", "webRequest"],
       // See CSP above. MV3 keys it under `extension_pages`; MV2 is the bare string.
       content_security_policy: browser === "firefox" ? CSP : { extension_pages: CSP },
       ...(browser === "firefox"
         ? {
             // Firefox clipboard copying asks permission only when the menu is used.
             // MV2 carries optional website patterns in the same list.
-            optional_permissions: TEST_GRANT_ALL ? ["clipboardWrite"] : ["clipboardWrite", ...ALL_SITES],
+            optional_permissions: TEST_GRANT_ALL ? ["clipboardWrite", "file:///*"] : ["clipboardWrite", ...ALL_SITES, "file:///*"],
             browser_specific_settings: {
               gecko: {
                 id: "anagram@coderbak.dev",
@@ -175,7 +176,7 @@ export default defineConfig({
       ...(TEST_GRANT_ALL ? { host_permissions: [...ALL_SITES] } : {}),
       // OPTIONAL (Chrome MV3; Firefox MV2 carries them in optional_permissions above):
       // "all sites", which the onboarding page and the options page ask for in one click.
-      ...(TEST_GRANT_ALL ? {} : { optional_host_permissions: [...ALL_SITES] }),
+      optional_host_permissions: TEST_GRANT_ALL ? ["file:///*"] : [...ALL_SITES, "file:///*"],
       // Only content-script imports are web accessible. Reader assets stay private;
       // Chrome rotates these chunk URLs per session to prevent stable-ID probing.
       web_accessible_resources: [

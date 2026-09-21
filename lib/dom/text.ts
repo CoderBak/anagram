@@ -156,6 +156,9 @@ function foldQuotes(s: string): string {
   }
 }
 
+/** Bump when scoring normalization changes; caches from older rules must never match. */
+export const SCORING_NORMALIZATION_VERSION = "2";
+
 /**
  * The ONE canonical form of a paragraph for scoring AND for cache keys.
  *
@@ -174,22 +177,29 @@ function foldQuotes(s: string): string {
  * being canonicalized again. That is what fixes the ORDER here: every step that can
  * weld two characters together — dropping an un-rendered LaTeX span, folding a
  * typographic quote — runs BEFORE the folds that would then have something left to
- * do, and the quote fold, the one step that can feed itself, runs to a fixed point
- * of its own.
+ * do. Residue removal can also join combining marks or another escape, so the
+ * contracting pipeline repeats until these newly adjacent forms are stable.
  */
 export function canonicalForScoring(s: string): string {
-  const folded = stripInvisibles(s.normalize("NFKC"))
-    .replace(/\u00A0/g, " ")
-    .replace(/\\([%&_#$])/g, "$1")
-    .replace(RAW_LATEX_RE, "")
-    .replace(/---/g, "—")
-    .replace(/(?<=\S)--(?=\S)/g, "–")
-    .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
-    .replace(/[\u201C\u201D\u201E\u201F]/g, '"');
-  return foldQuotes(folded)
-    .replace(/(\d)[\u2013\u2010\u2011](\d)/g, "$1-$2")
-    .replace(/\s+/g, " ")
-    .trim();
+  // Removing residue can join combining marks, escapes or punctuation. Repeat the
+  // contracting folds so those newly adjacent characters settle in this same call.
+  // All adjacent backslashes before an escaped %&_#$ denote presentation residue.
+  for (;;) {
+    const folded = stripInvisibles(s.normalize("NFKC"))
+      .replace(/\u00A0/g, " ")
+      .replace(/\\+([%&_#$])/g, "$1")
+      .replace(RAW_LATEX_RE, "")
+      .replace(/---/g, "—")
+      .replace(/(?<=\S)--(?=\S)/g, "–")
+      .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
+      .replace(/[\u201C\u201D\u201E\u201F]/g, '"');
+    const next = foldQuotes(folded)
+      .replace(/(?<=\d)[\u2013\u2010\u2011](?=\d)/g, "-")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (next === s) return next;
+    s = next;
+  }
 }
 
 /**

@@ -46,11 +46,7 @@ export interface DiagnosticsModule {
 export const loadDiagnostics = (): Promise<DiagnosticsModule> =>
   lazyVendor<DiagnosticsModule>("diagnostics.min.mjs");
 
-/**
- * The slice of pdf.js the reader uses: open a document, draw a page, build its text layer,
- * and read the runs the reflow works from. Nothing else of the library is touched — no
- * viewer component, no annotation or editor layers, no scripting.
- */
+/** Engine API used alongside the separately packaged full upstream viewer. */
 export type PdfJsModule = Pick<
   typeof import("pdfjs-dist"),
   "getDocument" | "GlobalWorkerOptions" | "Util" | "TextLayer"

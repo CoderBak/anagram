@@ -2,9 +2,9 @@
 
 Measurements cover text cleaning, tokenization, forward and postprocessing of
 fixed ~120-word English samples, not language identification or browser transport.
-Native status and control requests never wait for a model load or forward pass. Native
-loads/forwards cannot safely be interrupted in a Python thread: cancellation
-takes effect at their next boundary. The budget covers measured forwards only;
+Native status and control requests never wait for a model load or forward pass.
+Production comparisons use a disposable process per candidate; cancellation
+terminates only that worker. Selected-engine loads remain cooperative. The budget covers measured forwards only;
 discovery, loading, warmup and restoring a saved selection take additional time.
 """
 from __future__ import annotations
@@ -12,13 +12,13 @@ from __future__ import annotations
 import copy
 import json
 import math
-import os
 import statistics
 import threading
 import time
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from safe_files import atomic_json, read_json
 
 
 @dataclass(frozen=True)
@@ -87,8 +87,11 @@ def paragraph(words: int = 120, seed: int = 0) -> str:
 def process_rss() -> int | None:
     try:
         import psutil
+    except ImportError:
+        return None
+    try:
         return psutil.Process().memory_info().rss
-    except (ImportError, OSError):
+    except (psutil.Error, OSError):
         return None
 
 
@@ -120,19 +123,29 @@ class MemorySampler:
 
 
 def empty_benchmark(budget=30):
-    return {"status": "idle", "budget_s": budget, "elapsed_s": 0.0,
+    return {"report_version": 2, "environment": None,
+            "status": "idle", "budget_s": budget, "elapsed_s": 0.0,
             "measurement_s": 0.0, "phase": "discovery", "current_id": None,
             "completed": 0, "total": 0, "results": []}
 
 
 class RuntimeController:
     def __init__(self, config_path: Path, discover, factory, *, clock=time.perf_counter,
-                 memory=process_rss, max_runs: int = 20):
+                 memory=process_rss, max_runs: int = 20, benchmark_runner=None,
+                 idle_unload_s=0):
         self.config_path = Path(config_path)
         self.discover = discover  # -> (list[Candidate], provenance context string)
         self.factory = factory    # -> a loaded engine; no warmup in the factory
         self.clock, self.memory, self.max_runs = clock, memory, max_runs
+        self.benchmark_runner = benchmark_runner
+        self.environment = None
+        self.idle_unload_s = idle_unload_s
+        self.last_activity = None
+        self.idle_stop = threading.Event()
+        self.idle_thread = None
         self.lock = threading.RLock()
+        self.ready_condition = threading.Condition(self.lock)
+        self.idle_wake_thread = None
         self.cancel_event = threading.Event()
         self.thread = None
         self.started = False
@@ -146,6 +159,7 @@ class RuntimeController:
         self.selected_version = None
         self.active_id = None
         self.recommended_id = None
+        self.fastest_id = None
         self.needs_selection = True
         self.error = None
         self.benchmark = empty_benchmark()
@@ -159,6 +173,7 @@ class RuntimeController:
             return {"schema_version": 1, "state": self.state,
                     "active_id": self.active_id, "selected_id": self.selected_id,
                     "recommended_id": self.recommended_id,
+                    "fastest_id": self.fastest_id,
                     "needs_selection": self.needs_selection,
                     "candidates": [asdict(candidate) for candidate in self.candidates],
                     "benchmark": benchmark, "error": self.error}
@@ -169,12 +184,71 @@ class RuntimeController:
                 return
             self.started = True
             self._launch(self._bootstrap)
+            self.idle_thread = threading.Thread(target=self._idle_watch, name="anagram-idle", daemon=True)
+            self.idle_thread.start()
+
+    def set_idle_unload(self, seconds):
+        if type(seconds) is not int or (seconds != 0 and not 60 <= seconds <= 86400):
+            raise ValueError("idle_unload_s must be 0 or an integer from 60 to 86400")
+        with self.lock:
+            self.idle_unload_s = seconds
+
+    def _idle_watch(self):
+        while not self.idle_stop.wait(1):
+            self.unload_if_idle()
+
+    def unload_if_idle(self):
+        with self.lock:
+            if (self.closed or not self.idle_unload_s or self.state != "ready" or self.leases
+                    or self.last_activity is None or self.clock() - self.last_activity < self.idle_unload_s
+                    or (self.thread is not None and self.thread.is_alive())):
+                return False
+            engine, self.engine = self.engine, None
+            self.active_id = None
+            self.state = "loading"
+            def unload():
+                self._close_engine(engine)
+                with self.lock:
+                    self.state = "idle"
+            self._launch(unload)
+            return True
+
+    def wake(self):
+        with self.lock:
+            if self.state != "idle":
+                return False
+            self._ensure_idle()
+            candidate = self._find(self.selected_id)
+            if candidate is None or self.needs_selection:
+                raise RuntimeUnavailable("Select a runtime before resuming")
+            self.state = "loading"
+            expected = self.selected_version
+            def resume():
+                if not self._activate(candidate, expected_version=expected):
+                    raise RuntimeUnavailable("Runtime files changed; rerun the comparison")
+            self._launch(resume)
+            self.idle_wake_thread = self.thread
+            return True
+
+    def wake_and_wait(self, timeout=25):
+        """Only score workers wait; status/health remain passive and responsive."""
+        with self.ready_condition:
+            self.wake()
+            target = self.idle_wake_thread
+            if self.state != "loading" or target is None or self.thread is not target:
+                return
+            self.ready_condition.wait_for(
+                lambda: self.closed or self.cancel_event.is_set() or self.thread is not target or self.state != "loading",
+                timeout=timeout)
+            if (self.closed or self.cancel_event.is_set() or self.thread is not target or self.state != "ready"):
+                raise RuntimeUnavailable("The idle engine is still loading or was stopped; retry when it is ready")
 
     def _launch(self, work):
         self.cancel_event.clear()
         self.thread = threading.Thread(target=self._run, args=(work,),
                                        name="anagram-runtime", daemon=True)
         self.thread.start()
+        self.ready_condition.notify_all()
 
     def _run(self, work):
         try:
@@ -196,6 +270,9 @@ class RuntimeController:
                 if self.benchmark["status"] == "running":
                     self._finish_benchmark("failed")
                 self.benchmark["phase"] = "error"
+        finally:
+            with self.ready_condition:
+                self.ready_condition.notify_all()
 
     def _check_cancel(self):
         if self.cancel_event.is_set() or self.closed:
@@ -203,7 +280,7 @@ class RuntimeController:
 
     def _read_saved(self):
         try:
-            saved = json.loads(self.config_path.read_text())
+            saved = read_json(self.config_path)
             if (not isinstance(saved, dict) or type(saved.get("schema_version")) is not int
                     or saved["schema_version"] != 1):
                 raise ValueError("unsupported runtime configuration")
@@ -275,11 +352,20 @@ class RuntimeController:
 
         if not isinstance(report, dict) or set(report) != set(empty_benchmark()):
             return False
-        if (report["status"] not in ("completed", "cancelled", "failed", "idle")
+        if (type(report["report_version"]) is not int or report["report_version"] != 2
+                or report["status"] not in ("completed", "cancelled", "failed", "idle")
                 or type(report["budget_s"]) is not int or not 10 <= report["budget_s"] <= 30
                 or not number(report["elapsed_s"]) or not number(report["measurement_s"])
                 or not text(report["phase"])):
             return False
+        if report["environment"] is not None:
+            if not isinstance(report["environment"], dict):
+                return False
+            try:
+                if len(json.dumps(report["environment"], allow_nan=False)) > 16000:
+                    return False
+            except (TypeError, ValueError, RecursionError):
+                return False
         known_ids = {candidate.id for candidate in self.candidates}
         current = report["current_id"]
         if current is not None and (not isinstance(current, str) or current not in known_ids):
@@ -293,9 +379,12 @@ class RuntimeController:
         if report["status"] == "completed" and completed != total:
             return False
         metrics = {"load_ms", "warmup_ms", "latency_ms", "throughput_per_s", "peak_rss_bytes",
-                   "accelerator_bytes", "tokens_per_text", "duration_s"}
+                   "accelerator_bytes", "tokens_per_text", "duration_s", "initialization_ms", "hash_ms",
+                   "baseline_rss_bytes", "loaded_rss_bytes", "rss_sample_interval_ms"}
         required = {"candidate_id", "status", "load_ms", "warmup_ms", "latency_ms",
-                    "throughput_per_s", "peak_rss_bytes", "samples", "batch_size", "duration_s"}
+                    "throughput_per_s", "peak_rss_bytes", "samples", "batch_size", "duration_s",
+                    "initialization_ms", "hash_ms", "baseline_rss_bytes", "loaded_rss_bytes",
+                    "rss_scope", "rss_sample_interval_ms", "accelerator_kind", "measurement_quality"}
         allowed = required | metrics | {"error"}
         workloads = set()
         for row in results:
@@ -306,6 +395,10 @@ class RuntimeController:
                     or row["status"] not in ("ok", "error")
                     or type(row["batch_size"]) is not int or row["batch_size"] not in (1, 8)
                     or type(row["samples"]) is not int or not 0 <= row["samples"] <= 1_000_000
+                    or row["rss_scope"] not in ("isolated_process", "in_process")
+                    or row["rss_sample_interval_ms"] != 50
+                    or row["accelerator_kind"] not in (None, "mps_driver_including_cache", "cuda_allocator_peak")
+                    or row["measurement_quality"] != ("sufficient" if row["samples"] >= 3 else "insufficient")
                     or (row.get("error") is not None and not text(row["error"]))):
                 return False
             if any(value is not None and not number(value)
@@ -325,7 +418,8 @@ class RuntimeController:
     def _refresh(self):
         with self.lock:
             self.benchmark["phase"] = "discovery"
-        candidates, context = self.discover()
+        discovery = self.discover()
+        candidates, context = discovery[:2]
         if len({c.id for c in candidates}) != len(candidates):
             raise ValueError("duplicate runtime candidate identifiers")
         with self.lock:
@@ -335,7 +429,9 @@ class RuntimeController:
                 self.selected_version = None
                 self.needs_selection = True
                 self.recommended_id = None
+                self.fastest_id = None
             self.context = context
+            self.environment = discovery[2] if len(discovery) > 2 else None
 
     def _find(self, candidate_id):
         return next((c for c in self.candidates if c.id == candidate_id), None)
@@ -395,21 +491,26 @@ class RuntimeController:
             if self.state not in {"loading", "benchmarking"}:
                 raise RuntimeBusy("there is no running runtime operation to cancel")
             self.cancel_event.set()
+            self.ready_condition.notify_all()
             return self.snapshot()
 
     @contextmanager
-    def use_engine(self):
+    def use_engine(self, *, activity=True):
         with self.lock:
-            if (self.state != "ready" or self.engine is None or self.needs_selection
+            if (self.closed or self.state != "ready" or self.engine is None or self.needs_selection
                     or self.active_id != self.selected_id):
                 raise RuntimeUnavailable("runtime is not ready; open Anagram Settings to finish setup")
             engine = self.engine
             self.leases += 1
+            if activity:
+                self.last_activity = self.clock()
         try:
             yield engine
         finally:
             with self.lock:
                 self.leases -= 1
+                if activity:
+                    self.last_activity = self.clock()
                 retired = None
                 if self.closed and self.leases == 0:
                     retired, self.engine = self.engine, None
@@ -422,16 +523,7 @@ class RuntimeController:
                      "selected_id": self.selected_id,
                      "selected_version": selected_version if selected_version is not None else self.selected_version,
                      "benchmark": copy.deepcopy(self.benchmark)}
-        self.config_path.parent.mkdir(parents=True, exist_ok=True)
-        temp = self.config_path.with_name(self.config_path.name + ".tmp")
-        try:
-            with temp.open("w", encoding="utf-8") as f:
-                json.dump(saved, f, allow_nan=False, indent=2)
-                f.flush()
-                os.fsync(f.fileno())
-            os.replace(temp, self.config_path)
-        finally:
-            temp.unlink(missing_ok=True)
+        atomic_json(self.config_path, saved)
 
     @staticmethod
     def _close_engine(engine):
@@ -477,6 +569,7 @@ class RuntimeController:
                 self.active_id = candidate.id
                 self.needs_selection = False
                 self.state = "ready"
+                self.last_activity = self.clock()
                 self.error = None
                 self.benchmark["phase"] = "ready"
                 self.benchmark["current_id"] = None
@@ -494,17 +587,23 @@ class RuntimeController:
     def _recommend(self):
         # Only measured FP32 candidates may be recommended. Lower precision is an
         # explicit choice, and speed samples are never labeled accuracy evaluations.
-        rows = [r for r in self.benchmark["results"] if r.get("status") == "ok"
+        measured = [r for r in self.benchmark["results"] if r.get("status") == "ok"
                 and r.get("batch_size") == 1 and self._find(r.get("candidate_id"))
-                and self._find(r["candidate_id"]).precision == "fp32"
                 and self._find(r["candidate_id"]).available]
+        self.fastest_id = min(measured, key=lambda r: r["latency_ms"])["candidate_id"] if measured else None
+        rows = [r for r in measured if self._find(r["candidate_id"]).precision == "fp32"]
         self.recommended_id = min(rows, key=lambda r: r["latency_ms"])["candidate_id"] if rows else None
 
     def _error_row(self, candidate, batch, error, load_ms=0):
         return {"candidate_id": candidate.id, "status": "error", "error": error_text(error),
                 "load_ms": round(load_ms, 2), "warmup_ms": None, "latency_ms": None,
                 "throughput_per_s": None, "peak_rss_bytes": None, "samples": 0,
-                "batch_size": batch, "duration_s": 0.0}
+                "batch_size": batch, "duration_s": 0.0,
+                "initialization_ms": None, "hash_ms": None,
+                "baseline_rss_bytes": None, "loaded_rss_bytes": None,
+                "rss_scope": "isolated_process" if self.benchmark_runner else "in_process",
+                "rss_sample_interval_ms": 50, "accelerator_kind": None,
+                "measurement_quality": "insufficient"}
 
     def _append(self, row):
         with self.lock:
@@ -522,12 +621,16 @@ class RuntimeController:
         candidates = [c for c in self.candidates if c.available]
         with self.lock:
             self.benchmark["total"] = len(candidates) * 2
+            self.benchmark["environment"] = self.environment
         if not candidates:
             raise ValueError("No available runtime. Install the model files and a supported runtime, then rerun the comparison.")
         cancelled = False
         try:
             for candidate in candidates:
                 self._check_cancel()
+                if self.benchmark_runner is not None:
+                    self._isolated_candidate(candidate, budget)
+                    continue
                 engine = None
                 with self.lock:
                     self.benchmark.update(phase="loading", current_id=candidate.id)
@@ -571,21 +674,23 @@ class RuntimeController:
 
     def _measure(self, engine, candidate, batch, load_ms, budget):
         texts = [paragraph(seed=i * 3) for i in range(batch)]
-        with self.lock:
-            self.benchmark["phase"] = "warmup"
+        self._phase("warmup")
         reset_peak = getattr(engine, "reset_accelerator_peak", None)
-        if reset_peak:
-            reset_peak()
         warm_start = self.clock()
         engine.score(texts)
         engine.synchronize()
         warmup_ms = (self.clock() - warm_start) * 1000
         self._check_cancel()
+        if reset_peak:
+            try:
+                reset_peak()
+            except Exception:
+                pass
         with self.lock:
             remaining = max(0.0, budget - self.benchmark["measurement_s"])
             workloads = max(1, self.benchmark["total"] - self.benchmark["completed"])
             allowance = remaining / workloads
-            self.benchmark["phase"] = "measurement"
+        self._phase("measurement")
         if allowance <= 0:
             return self._error_row(candidate, batch, "measurement budget exhausted", load_ms)
         durations, consumed, tokens, accelerator = [], 0.0, None, None
@@ -602,12 +707,14 @@ class RuntimeController:
                 finally:
                     # Failed forwards consume the same shared measurement budget.
                     duration = max(0.000001, self.clock() - t0)
-                    with self.lock:
-                        self.benchmark["measurement_s"] += duration
+                    self._measurement(duration)
                 durations.append(duration)
                 consumed += duration
                 tokens = sum(row["tokens"] for row in result) / batch
-                value = engine.accelerator_bytes()
+                try:
+                    value = engine.accelerator_bytes()
+                except Exception:
+                    value = None  # unavailable counters must not fail a valid forward
                 if value is not None:
                     accelerator = max(accelerator or 0, value)
                 memory.sample()
@@ -617,15 +724,63 @@ class RuntimeController:
                "warmup_ms": round(warmup_ms, 2), "latency_ms": round(median * 1000, 3),
                "throughput_per_s": round(batch / median, 3), "peak_rss_bytes": memory.peak,
                "samples": len(durations), "batch_size": batch,
-               "tokens_per_text": round(tokens, 1), "duration_s": round(consumed, 6)}
+               "tokens_per_text": round(tokens, 1), "duration_s": round(consumed, 6),
+               "initialization_ms": None, "hash_ms": None,
+               "baseline_rss_bytes": None, "loaded_rss_bytes": None,
+               "rss_scope": "in_process", "rss_sample_interval_ms": 50,
+               "accelerator_kind": ("mps_driver_including_cache" if candidate.device == "mps"
+                                    else "cuda_allocator_peak" if candidate.runtime == "torch" and candidate.device.startswith("cuda")
+                                    else None),
+               "measurement_quality": "sufficient" if len(durations) >= 3 else "insufficient"}
         if accelerator is not None:
             row["accelerator_bytes"] = accelerator
         return row
 
+    def _phase(self, phase):
+        with self.lock:
+            self.benchmark["phase"] = phase
+
+    def _measurement(self, seconds):
+        with self.lock:
+            self.benchmark["measurement_s"] += seconds
+
+    def _isolated_candidate(self, candidate, budget):
+        with self.lock:
+            self.benchmark.update(phase="initialization", current_id=candidate.id)
+            remaining = max(0.0, budget - self.benchmark["measurement_s"])
+            workloads = self.benchmark["total"] - self.benchmark["completed"]
+        received = set()
+        def receive(message):
+            kind = message["type"]
+            if kind == "phase":
+                self._phase(message["phase"])
+            elif kind == "measurement":
+                self._measurement(message["seconds"])
+            elif kind == "row":
+                row = message["row"]
+                if row["candidate_id"] != candidate.id or row["batch_size"] in received:
+                    raise ValueError("Invalid benchmark worker workload")
+                received.add(row["batch_size"])
+                self._append(row)
+        try:
+            self.benchmark_runner(candidate, remaining, workloads, self.max_runs,
+                                  self.cancel_event, receive)
+            self._check_cancel()
+            if received != {1, 8}:
+                raise ValueError("Benchmark worker exited before completing both workloads")
+        except Cancelled:
+            raise
+        except Exception as exc:
+            for batch in (1, 8):
+                if batch not in received:
+                    self._append(self._error_row(candidate, batch, exc))
+
     def close(self):
         with self.lock:
             self.closed = True
+            self.idle_stop.set()
             self.cancel_event.set()
+            self.ready_condition.notify_all()
             if self.leases == 0 and self.state == "ready":
                 engine, self.engine = self.engine, None
                 self.active_id = None

@@ -33,7 +33,7 @@ matching assets; source/integration fixtures are a separate kind of evidence.
 1. **Store and ZIP open the same landing page.**
    Check a clean install from each distribution route once available. The ZIP contains the
    browser extension only: extract it into a permanent folder, then load that folder.
-   No website is granted. Setup shows the model footprint (about **4.07 GB**, plus runtime
+   No website is granted. Setup shows the recommended model footprint (usually **1.43 GB** including language detection, plus runtime
    and temporary space), **View installation script**, and one OS-specific install command.
    The command uses the current extension's exact ID, browser, language and version-pinned
    release URLs. Confirm these against the native registration; do not paste an ID copied
@@ -51,8 +51,11 @@ matching assets; source/integration fixtures are a separate kind of evidence.
    Linux x64/ARM64 and Windows x64; Windows ARM64 and custom browser profiles need separate support.
 
 3. **The component owns automatic first download and persistent pauses.**
-   A new component automatically downloads all required model variants. Observe file and
-   byte progress; valid existing files are reused after verification. Opening both Setup
+   A new component detects usable devices and prepares only the recommended model set.
+   Check the selected devices/files/total; initial detection has no known total and
+   verification is separate from downloading. Prepared bytes include reused verified files.
+   Explicit expanded comparison adds compatible variants and experimental CPU INT8;
+   switching back to recommended retains already-downloaded extras. Opening both Setup
    and Settings must not start duplicate downloads or native hosts. Pause and wait for the
    download worker to settle; pause is cooperative, so a still-running read may finish.
    Close/reopen the browser and check that the deliberate pause persists. Resume from
@@ -65,8 +68,10 @@ matching assets; source/integration fixtures are a separate kind of evidence.
    promise for the entire operation. Inputs are built-in examples, not current page text.
    Results show device/runtime/precision, single-text latency, batch throughput in texts/s,
    sampled process RAM and accelerator memory where available. Missing metrics say unavailable,
-   not zero; sampled memory is not a guaranteed whole-device peak. Quality remains not
-   evaluated, and INT8 remains experimental. An FP32 recommendation may be preselected,
+   not zero; sampled memory is not a guaranteed whole-device peak. Each configuration
+   uses a separate process; process RAM and Apple GPU driver memory must not be added.
+   The quality column is absent and INT8 remains experimental. Few-sample results are
+   marked, and measured fastest is separate from the FP32 recommendation. An FP32 recommendation may be preselected,
    but the engine is not ready until the user clicks **Use selected configuration** and the
    selected model is actually active. Site access is optional; its absence cannot block this.
 
@@ -74,8 +79,8 @@ matching assets; source/integration fixtures are a separate kind of evidence.
    Apply an available configuration and restart the browser. A compatible saved choice
    loads without rerunning the first benchmark. Change device/precision manually; distinguish
    the pending choice from the actually active configuration while loading. Rerun a benchmark
-   and cancel it during loading or measurement. Cancellation may wait for native work to
-   return; the UI must not promise immediate completion. A rerun must not silently replace
+   and cancel it during loading or measurement. The comparison worker is terminated;
+   restoring a saved configuration can still take time. A rerun must not silently replace
    the saved configuration. Incompatible/missing models or a corrupt saved report need an
    explicit recoverable state, not stale ready status or invented results.
 
@@ -255,22 +260,45 @@ they do not replace manual review of the packaged installation and permission pr
     PDF tab you simply navigate to is left alone — no click, no `activeTab`, nothing to
     ask. That is the intended difference between a PDF you asked for and one you opened.
 
-12. **A PDF on this computer stays in the browser's viewer.**
-    Open a `file:///…/something.pdf`.
-    Expected: nothing from Anagram, whatever the grants and whatever "Allow access to file
-    URLs" says — the extension declares no access to the file scheme, and a page on it may
-    not re-read itself in any case. The way in is the reading mode's own drop zone, and
-    the popup offers it on that very tab: its one button reads **Read a PDF file…** (it
-    says "Not available on this page." above it). Press it, then drop the PDF on the page
-    that opens, or use its file picker; it is shown and scored. Options → Detection →
-    **Read a PDF from this computer** → *Open* is the same door. This is also the only way
-    to read a PDF in Firefox, where no tab can hand a PDF over — and there the popup says
-    the same thing on a PDF tab on the web.
+12. **A local PDF: permission denied, granted, then revoked.**
+    Open a `file:///…/something.pdf` with local-file access absent. Automatic opening
+    must leave it alone. The reader's file picker/drop zone must still open and score
+    a deliberately chosen PDF without a general file grant.
+
+    Grant `file:///*` through the extension's local-file action and, on Chrome, enable
+    **Allow access to file URLs** on the extension card. Check Firefox's applicable
+    file-access control as well. With **Open PDFs in Anagram** on, reopen the local PDF:
+    the intended result is the packaged viewer displaying that exact document, followed
+    by local scores. Turn the setting off and confirm a new navigation stays in the
+    browser viewer. Revoke file access and repeat: no silent re-grant or arbitrary file
+    read. Try a missing file and an oversized PDF; failures must be actionable and must
+    not loop between the source and reader. Remote-host `file://` URLs are refused.
+
+    These are release checks to run on each supported browser/version, not a claim that
+    all file-permission/browser-viewer combinations have already been validated.
 
 13. **Firefox.**
     Repeat 1, 2, 3 and 4 in Firefox. The prompts are Firefox's own; the popup stays open
     while the prompt is up (unlike Chrome). `about:addons` → Anagram → *Permissions* has
     the "Access your data for all websites" switch, which is check 4's equivalent.
+
+    For an online PDF with its website granted, test the explicit reader action and
+    automatic opening separately. Firefox's privileged built-in viewer cannot supply a
+    content-script relay; Anagram's private loader reads the authorized exact source.
+    Withdraw website access and confirm no automatic takeover. Check a signed-in source,
+    a redirecting PDF URL, a POST-only document and a source without a `.pdf` suffix:
+    either show the right document or an honest failure/file-picker path, never unrelated
+    content. The loader must not follow a redirect to a new URL. The full reader's find,
+    page navigation, print/save and Anagram highlights should work together. Inspect the
+    loader network log separately from the reader; viewer assets must remain local.
+
+14. **Fresh inference without internet access.**
+    Complete model setup first, then disconnect the computer and analyze new supported
+    English text (at least 50 words) and a local PDF. Avoid previously cached text, or
+    clear cached verdicts. Repeat after idle model unloading. The original online
+    document may need the network; that is separate from inference. Record the release,
+    browser and OS, and use the [network verification guide](network-privacy.md) when
+    checking attempted connections as well as successful offline operation.
 
 ## What the suites cover, and what remains manual
 

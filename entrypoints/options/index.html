@@ -3,6 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Content-Security-Policy" content="connect-src 'self'" />
     <!-- Management is restricted to our top-level pages; keep Settings out of an
          embedded chrome://extensions iframe and give the comparison table space. -->
     <meta name="manifest.open_in_tab" content="true" />
@@ -51,6 +52,17 @@
       .dot-lang { background: #a3a3a3; box-shadow: inset 0 0 0 2px var(--card); }
       .mini { margin: 4px 0 0; font-size: 12px; font-weight: 600; color: var(--muted-foreground); text-transform: uppercase; letter-spacing: 0.06em; }
       .privacy { margin: 0; color: var(--muted-foreground); font-size: 13px; }
+      .pdf-access { align-items: flex-start; }
+      .pdf-access .row-actions { flex-wrap: wrap; justify-content: flex-end; max-width: 210px; }
+      .pdf-access button { white-space: normal; height: auto; min-height: 32px; }
+      .privacy-details { font-size: 13px; }
+      .privacy-details summary { cursor: pointer; font-weight: 600; }
+      .privacy-details p, .privacy-details ol { margin: 10px 0 0; }
+      @media (max-width: 520px) {
+        .field.pdf-access { flex-direction: column; align-items: stretch; }
+        .pdf-access > section { width: 100%; }
+        .pdf-access .row-actions { max-width: none; justify-content: flex-start; }
+      }
       footer.foot { margin-top: 24px; font-size: 12.5px; line-height: 1.6; color: var(--muted-foreground); }
       code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; background: var(--muted); padding: 1px 5px; border-radius: 5px; }
       /* Keep code and key hints readable on muted surfaces. */
@@ -108,22 +120,37 @@
             </div>
             <div class="field" data-orientation="horizontal">
               <section>
-                <label for="enabled" data-i18n="optEnabled">Enable on all sites</label>
-                <p data-i18n="optEnabledNote">Per-site rules below override this default. Toggling applies to new page loads and open tabs.</p>
+                <label for="enabled" data-i18n="optEnabled">Auto-analyze granted sites by default</label>
+                <p data-i18n="optEnabledNote">Applies only to granted sites. Per-site rules below can override it. Turning this off does not revoke website access; use Manage website access to remove grants.</p>
               </section>
               <input id="enabled" type="checkbox" role="switch" />
             </div>
             <div class="field" data-orientation="horizontal" id="autoOpenPdfsField">
               <section>
-                <label for="autoOpenPdfs" data-i18n="optAutoOpenPdfs">Open PDFs in Anagram</label>
-                <p data-i18n="optAutoOpenPdfsNote">PDF tabs open in the reading mode.</p>
+                <label for="autoOpenPdfs" data-i18n="optAutoOpenPdfs">Automatically open PDFs in Anagram</label>
+                <p data-i18n="optAutoOpenPdfsNote">Use the full PDF reader on granted websites and authorized local files. Applies to newly opened PDFs; existing tabs stay where they are.</p>
               </section>
               <input id="autoOpenPdfs" type="checkbox" role="switch" />
             </div>
+            <p id="pdfSettingsError" class="form-error" role="alert" hidden></p>
+            <div class="field pdf-access" data-orientation="horizontal" id="local-pdfs">
+              <section>
+                <label id="fileAccessLabel" data-i18n="optFileAccess">Local PDF access</label>
+                <p id="fileAccessState" role="status" aria-live="polite">…</p>
+                <p data-i18n="optFileAccessNote">File URL access is optional and broader than selecting one file. Without it, choose or drop a PDF in the reader.</p>
+              </section>
+              <span class="row-actions">
+                <button type="button" class="btn" data-variant="outline" data-size="sm" id="fileAccessEnable"
+                  data-i18n="optFileAccessEnable" aria-describedby="fileAccessLabel">Enable local PDFs</button>
+                <button type="button" class="btn" data-variant="ghost" data-size="sm" id="fileAccessManage"
+                  data-i18n="optFileAccessManage" aria-describedby="fileAccessLabel">Browser settings</button>
+              </span>
+            </div>
+            <p id="fileAccessInstructions" class="form-note" tabindex="-1" role="status" hidden></p>
             <div class="field" data-orientation="horizontal">
               <section>
                 <label id="openReaderLabel" data-i18n="optOpenReader">Read a PDF from this computer</label>
-                <p data-i18n="optOpenReaderNote">Opens the reading mode; drop the file there.</p>
+                <p data-i18n="optOpenReaderNote">Choose or drop a PDF in the reader. No file URL access is needed.</p>
               </section>
               <span class="row-actions">
                 <button type="button" class="btn" data-variant="outline" data-size="sm" id="openReader"
@@ -133,9 +160,7 @@
             <div class="field" data-orientation="horizontal">
               <section>
                 <label for="analysisScope" data-i18n="optScope">Analysis scope</label>
-                <p data-i18n="optScopeNote">Main content only analyzes the article region — found the way Firefox Reader View does
-                  (Mozilla Readability) — and skips comments/sidebars outside it. Falls back to whole page when
-                  no clear region exists.</p>
+                <p data-i18n="optScopeNote">Main content only analyzes the article region — found the way Firefox Reader View does (Mozilla Readability) — and skips comments/sidebars outside it. Falls back to whole page when no clear region exists.</p>
               </section>
               <select id="analysisScope">
                 <option value="page" data-i18n="optScopeWholePage">Whole page</option>
@@ -145,10 +170,7 @@
             <div class="field" data-orientation="horizontal">
               <section>
                 <label for="mergeShorts" data-i18n="optMerge">Group short neighboring paragraphs</label>
-                <p data-i18n="optMergeNote">A short post or comment is analyzed as a whole, and paragraphs under the 50-word
-                  evidence floor together with their neighbors in the same article — the chip shows ×N;
-                  never across posts, comments or quotations. Off: every paragraph by itself, short ones
-                  skipped entirely.</p>
+                <p data-i18n="optMergeNote">A short post or comment is analyzed as a whole, and paragraphs under the 50-word evidence floor together with their neighbors in the same article — the chip shows ×N; never across posts, comments or quotations. Off: every paragraph by itself, short ones skipped entirely.</p>
               </section>
               <input id="mergeShorts" type="checkbox" role="switch" />
             </div>
@@ -194,8 +216,7 @@
         <section class="card" data-size="sm">
           <header>
             <h2 data-i18n="optRules">Per-site rules</h2>
-            <p data-i18n="optRulesNote">Always-on / always-off overrides. A rule covers the site's subdomains too, and the
-              most specific rule wins.</p>
+            <p data-i18n="optRulesNote">Always-on / always-off overrides. A rule covers the site's subdomains too, and the most specific rule wins.</p>
           </header>
           <section>
             <div id="sites"></div>
@@ -218,6 +239,7 @@
             <h2 data-i18n="optAdvanced">Advanced</h2>
           </header>
           <section>
+            <a href="/paste.html" target="_blank" rel="noopener" class="btn" data-variant="outline" data-size="sm" data-i18n="pasteTitle">Analyze text</a>
             <div class="field" data-orientation="horizontal">
               <section>
                 <label for="debug" data-i18n="optDebug">Debug logging</label>
@@ -228,12 +250,31 @@
             <div class="field" data-orientation="horizontal">
               <section>
                 <label for="clearCache" data-i18n="optCachedVerdicts">Cached verdicts</label>
-                <p data-i18n="optCachedNote">Verdicts are kept so revisits never re-score. Clearing them makes the next scan ask the local engine again.</p>
+                <p data-i18n="optCachedNote">Scores are reused for up to 30 days, or kept only in memory. Clearing also prevents earlier pending requests from saving their results.</p>
               </section>
               <div class="field-actions">
                 <span id="cacheCount" class="count"></span>
                 <button type="button" class="btn" data-variant="outline" data-size="sm" id="clearCache" data-i18n="optClearCache">Clear cached verdicts</button>
               </div>
+            </div>
+            <div class="field" data-orientation="horizontal">
+              <section>
+                <label for="cacheMode" data-i18n="optCacheMode">Score cache</label>
+                <p data-i18n="optCacheModeNote">Memory-only mode deletes saved scores and keeps new scores in memory. Closing the browser or restarting its background worker can clear memory.</p>
+              </section>
+              <select id="cacheMode">
+                <option value="persistent" data-i18n="optCachePersistent">On this device · up to 30 days</option>
+                <option value="session" data-i18n="optCacheSession">Memory only</option>
+              </select>
+            </div>
+            <p id="cacheStatus" role="status"></p>
+            <div class="field" data-orientation="horizontal">
+              <section><label for="reportIncludeText" data-i18n="optReportText">Include passage text in copied reports</label><p data-i18n="optReportPrivacy">Reports include scores and technical context. Page titles, URLs and text are excluded unless enabled here.</p></section>
+              <input id="reportIncludeText" type="checkbox" role="switch" />
+            </div>
+            <div class="field" data-orientation="horizontal">
+              <label for="reportIncludeUrl" data-i18n="optReportUrl">Include page title and URL in copied reports</label>
+              <input id="reportIncludeUrl" type="checkbox" role="switch" />
             </div>
           </section>
         </section>
@@ -259,6 +300,17 @@
             </div>
             <p class="privacy" data-i18n-html="optRebind">Rebind any of these in your browser's extension shortcuts (Chrome: <code>chrome://extensions/shortcuts</code>).</p>
             <p class="privacy" data-i18n-html="optPrivacy">Scoring runs in the <strong data-i18n="componentTitle">Local engine</strong> on this computer. The browser connects to it directly; page text is not sent to an online service.</p>
+            <details class="privacy-details">
+              <summary data-i18n="optNetworkPrivacy">Network access and how to verify it</summary>
+              <p data-i18n="optNetworkLocal">Text analysis runs on this computer. Anagram has no analytics or cloud scoring service.</p>
+              <p data-i18n="optNetworkDownloads">Installation, model downloads and requested component updates use the internet. Your browser may also check for extension updates.</p>
+              <p data-i18n="optNetworkDocuments">Opening an online PDF or Google Doc may fetch the original document again. A document’s images or links may also use the network. This is separate from uploading text for analysis.</p>
+              <ol>
+                <li data-i18n="optOfflineStep1">Finish local-engine setup and the model download.</li>
+                <li data-i18n="optOfflineStep2">Disconnect from the internet, then open the reader and choose a PDF from this computer.</li>
+                <li data-i18n="optOfflineStep3">The PDF and analysis should still work. This verifies offline operation; it is not an audit of all possible network activity.</li>
+              </ol>
+            </details>
             <h3 class="mini" data-i18n="optVerdictColors">Verdict colors</h3>
             <div class="legend">
               <span class="badge" data-variant="outline"><span class="dot dot-human"></span><span data-i18n="bandHuman">Human</span></span>
@@ -273,10 +325,7 @@
       </div>
 
       <footer class="foot">
-        <span data-i18n="optFooter">A chip's number is EditLens's estimate of how far a paragraph sits between untouched human writing
-        (.00) and fully AI-generated text (1.0) — not a share of words, not proof. Detection runs per
-        paragraph — per post for a short post — with a 50-word evidence floor; shorter neighboring
-        paragraphs are analyzed together.</span>
+        <span data-i18n="optFooter">A chip's number is EditLens's estimate of how far a paragraph sits between untouched human writing (.00) and fully AI-generated text (1.0) — not a share of words, not proof. Detection runs per paragraph — per post for a short post — with a 50-word evidence floor; shorter neighboring paragraphs are analyzed together.</span>
         <span data-i18n="modelLine">Model: pangram/editlens_roberta-large (CC BY-NC-SA 4.0, non-commercial).</span>
       </footer>
     </main>

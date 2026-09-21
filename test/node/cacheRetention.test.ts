@@ -6,7 +6,8 @@
 // the cursor walk that carries it out.
 import { describe, expect, it, beforeEach } from "vitest";
 import { fakeBrowser } from "wxt/testing";
-import { createSwCache, type ScoreStore, type Stored } from "../../lib/backend/swCache";
+import { createSwCache } from "../../lib/backend/swCache";
+import { fakeScoreStore as fakeStore } from "./scoreStore";
 import type { ScoreResult } from "../../lib/contract";
 
 const DIM = "model-a@1";
@@ -17,42 +18,6 @@ function result(bucket = 3): ScoreResult {
   return { id: "", bucket, probs: [0, 0, 0.1, 0.9], score: bucket / 3 };
 }
 
-function fakeStore() {
-  const rows = new Map<string, Stored>();
-  const store: ScoreStore & { rows: Map<string, Stored>; cutoffs: number[]; overflows: number } = {
-    rows,
-    cutoffs: [],
-    overflows: 0,
-    async get(keys) {
-      return keys.map((k) => rows.get(k));
-    },
-    async put(batch) {
-      for (const row of batch) rows.set(row.key, row);
-    },
-    async clear() {
-      rows.clear();
-    },
-    async count() {
-      return rows.size;
-    },
-    async dropOlderThan(cutoff) {
-      store.cutoffs.push(cutoff);
-      let dropped = 0;
-      for (const [k, row] of rows) {
-        if (row.t < cutoff) {
-          rows.delete(k);
-          dropped++;
-        }
-      }
-      return dropped;
-    },
-    async dropOldest() {
-      store.overflows++;
-      return 0;
-    },
-  };
-  return store;
-}
 
 beforeEach(() => fakeBrowser.reset());
 
@@ -75,8 +40,7 @@ describe("how long a verdict is kept", () => {
     expect(Date.now() - store.cutoffs[0]).toBeLessThan(31 * DAY);
     await cache.getMany([recent]);
     expect(store.cutoffs.length).toBe(1);
-    // The row was read in the same breath as it was expired; both answers are legitimate,
-    // so what is asserted is only that the recent one came back.
+    expect(hits.has(old)).toBe(false); // expired rows are never returned, even before pruning
     expect(hits.has(recent)).toBe(true);
   });
 

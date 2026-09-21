@@ -18,7 +18,8 @@ from pathlib import Path
 
 import numpy as np
 
-from runtime_controller import Candidate, RuntimeController, error_text
+from runtime_controller import Candidate, RuntimeController
+from model_plan import candidate_catalog, candidate_spec, discover_hardware
 from scoring import score_texts
 
 ONNX_FILES = {"fp32": "model.onnx", "fp16": "model_fp16.onnx", "int8": "model_int8.onnx"}
@@ -60,7 +61,7 @@ def execution_environment(torch_module=None):
         result.update(torch_threads=torch_module.get_num_threads(),
                       torch_interop_threads=torch_module.get_num_interop_threads(),
                       cuda_runtime=torch_module.version.cuda, hip_runtime=torch_module.version.hip,
-                      cuda_driver=cuda_driver_version() if torch_module.cuda.is_available() else None)
+                      cuda_driver=cuda_driver_version() if torch_module.cuda.is_available() and not torch_module.version.hip else None)
     return result
 
 
@@ -95,6 +96,49 @@ def artifact_files(model_dir: Path, candidate: Candidate):
 
 def artifact_stamp(files):
     return [(str(p), p.stat().st_size, p.stat().st_mtime_ns, p.stat().st_ctime_ns) for p in files]
+
+
+def load_candidate(model_dir, candidate, max_length, batch_size, gate, api, environment,
+                   *, phase=lambda value: None, clock=time.perf_counter):
+    """Hash and load separately; no partially identified engine escapes this call."""
+    files = [*artifact_files(model_dir, candidate),
+             *[model_dir / name for name in api.PIPELINE_FILES if (model_dir / name).is_file()]]
+    before = artifact_stamp(files)
+    phase("hashing")
+    started = clock()
+    for path in files:
+        digest(path)
+    hash_ms = (clock() - started) * 1000
+    engine = None
+    try:
+        phase("loading")
+        started = clock()
+        if candidate.runtime == "torch":
+            engine = api.EditLens.__new__(api.EditLens)
+            engine.__init__(model_dir, candidate.device, max_length, batch_size,
+                            candidate.precision, gate, warmup=False, compute_version=False)
+            options = {"device": candidate.device, "environment": environment}
+        else:
+            engine = OnnxEditLens.__new__(OnnxEditLens)
+            engine.__init__(model_dir, candidate, max_length, batch_size, gate, api)
+            options = {**engine.options, "environment": environment}
+        engine.synchronize()
+        load_ms = (clock() - started) * 1000
+        phase("hashing")
+        started = clock()
+        engine.version = runtime_version(engine, candidate, model_dir, api, options)
+        if artifact_stamp(files) != before:
+            raise ValueError("Model artifacts changed during loading; rerun after downloading finishes")
+        hash_ms += (clock() - started) * 1000
+        return engine, {"hash_ms": round(hash_ms, 2), "load_ms": round(load_ms, 2)}
+    except BaseException:
+        if engine is not None:
+            try:
+                engine.close()
+            except Exception:
+                pass
+        gc.collect()
+        raise
 
 
 def runtime_version(engine, candidate, model_dir, api, options):
@@ -157,7 +201,7 @@ class OnnxEditLens:
         self.session = ort.InferenceSession(str(graph), sess_options=session_options, providers=requested)
         # ORT can fall back to CPU when an EP fails to initialize. Never label that
         # session as a successfully selected accelerator. Graph partition fallback
-        # within a successfully initialized CoreML/CUDA provider remains possible.
+        # within a successfully initialized CUDA provider remains possible.
         if not self.session.get_providers() or self.session.get_providers()[0] != provider:
             self.session = None
             raise ValueError(f"{provider} could not initialize; choose the CPU candidate explicitly")
@@ -173,13 +217,12 @@ class OnnxEditLens:
 
     @staticmethod
     def provider_options(candidate):
-        if candidate.device.startswith("cuda:"):
+        if candidate.device.startswith("cuda:") and candidate.precision in {"fp32", "fp16"}:
             return {"provider": "CUDAExecutionProvider",
                     "provider_options": {"device_id": int(candidate.device.split(":")[1])}}
-        if candidate.device == "coreml":
-            return {"provider": "CoreMLExecutionProvider",
-                    "provider_options": {"MLComputeUnits": "ALL"}}
-        return {"provider": "CPUExecutionProvider", "provider_options": {}}
+        if candidate.device == "cpu" and candidate.precision in {"fp32", "int8"}:
+            return {"provider": "CPUExecutionProvider", "provider_options": {}}
+        raise ValueError("Unsupported ONNX device/precision combination")
 
     def _logits(self, ids):
         enc = self.tok.pad({"input_ids": ids}, padding=True, return_tensors="np")
@@ -211,43 +254,32 @@ class OnnxEditLens:
 
 
 def create_controller(model_dir: Path, config_path: Path, lid_path: Path,
-                      max_length=512, batch_size=32, *, api=None):
+                      max_length=512, batch_size=32, *, api=None, plan=None):
     if api is None:
         import engine as api
     model_dir, lid_path = Path(model_dir), Path(lid_path)
     gate = None
     environment = None
+    planned_ids = None
+    if plan is not None:
+        ids = plan.get("candidate_ids")
+        if (plan.get("schema_version") != 1 or not isinstance(ids, list) or not ids
+                or not all(isinstance(value, str) for value in ids) or len(set(ids)) != len(ids)):
+            raise ValueError("Invalid runtime candidate scope in model plan")
+        planned_ids = tuple(ids)
 
     def discover():
         nonlocal gate, environment
         candidates = []
-        torch_error = ort_error = None
-        cuda_devices, mps, providers = [], False, []
-        torch_module = None
-        try:
-            import torch
-            torch_module = torch
-            mps = torch.backends.mps.is_available()
-            if torch.cuda.is_available():
-                cuda_devices = [(i, torch.cuda.get_device_name(i)) for i in range(torch.cuda.device_count())]
-        except Exception as exc:
-            torch_error = error_text(exc)
-        try:
-            import onnxruntime as ort
-            if hasattr(ort, "disable_telemetry_events"):
-                ort.disable_telemetry_events()
-            providers = ort.get_available_providers()
-        except Exception as exc:
-            ort_error = error_text(exc)
-        environment = execution_environment(torch_module)
+        hardware = discover_hardware()
+        environment = execution_environment(sys.modules.get("torch"))
         common_missing = None if (model_dir / "config.json").is_file() else "Model configuration is missing; download models in Anagram Settings"
 
-        def add(runtime, device, device_label, precision, unavailable=None):
-            candidate = Candidate(id=f"{runtime}:{device}:{precision}",
-                                  label=f"{device_label} · {'PyTorch' if runtime == 'torch' else 'ONNX Runtime'} · {precision.upper()}",
-                                  device=device, runtime=runtime, precision=precision,
-                                  experimental=precision == "int8")
-            reason = common_missing or unavailable
+        specs = ([candidate_spec(value, hardware) for value in planned_ids]
+                 if planned_ids is not None else candidate_catalog(hardware))
+        for spec in specs:
+            candidate = Candidate(**{key: value for key, value in spec.items() if key != "device_label"})
+            reason = common_missing or candidate.reason
             if not reason:
                 files = artifact_files(model_dir, candidate)
                 if not files or any(not p.is_file() for p in files):
@@ -255,65 +287,27 @@ def create_controller(model_dir: Path, config_path: Path, lid_path: Path,
             if reason:
                 candidate = Candidate(**{**candidate.__dict__, "available": False, "reason": reason})
             candidates.append(candidate)
-
-        cpu_label = f"CPU ({platform.machine()})"
-        add("torch", "cpu", cpu_label, "fp32", torch_error)
-        for device, label in ([("mps", "Apple GPU (MPS)")] if mps else []) + [
-                (f"cuda:{index}", name) for index, name in cuda_devices]:
-            for precision in ("fp32", "fp16"):
-                add("torch", device, label, precision, torch_error)
-        for precision in ONNX_FILES:
-            add("onnx", "cpu", cpu_label, precision,
-                ort_error or (None if "CPUExecutionProvider" in providers else "CPUExecutionProvider is unavailable"))
-        if "CUDAExecutionProvider" in providers:
-            for index, name in cuda_devices:
-                for precision in ("fp32", "fp16"):
-                    add("onnx", f"cuda:{index}", name, precision)
-        # CoreML's cold graph compilation is unsuitable for this quick first-run
-        # comparison. MPS covers Apple GPUs. Dynamic INT8 MatMulInteger commonly
-        # falls back to CPU on CUDA, so do not offer it as a GPU INT8 candidate.
         # Gate construction is background work too. Preserve control-plane access
         # if its dependency/file is absent; a later benchmark retries discovery.
         gate = api.LanguageId(lid_path)
         inventory = {"candidates": [c.__dict__ for c in candidates],
-                     "machine": [environment, cuda_devices, mps],
+                     "machine": [environment, hardware],
+                     "planned_candidates": planned_ids,
                      "versions": {n: package_version(n) for n in ("torch", "transformers", "onnxruntime", "numpy")},
                      "pipeline": api.pipeline_manifest(model_dir, max_length, "catalog", gate),
                      "batch_size": batch_size,
                      "artifacts": {c.id: artifact_stamp(artifact_files(model_dir, c)) for c in candidates if c.available},
                      "implementation": {name: digest(Path(__file__).with_name(name)) for name in
-                                        ("runtime_adapters.py", "runtime_controller.py", "scoring.py")}}
+                                        ("runtime_adapters.py", "runtime_controller.py", "benchmark_worker.py", "model_plan.py", "scoring.py")}}
         context = hashlib.sha256(json.dumps(inventory, sort_keys=True).encode()).hexdigest()
-        return candidates, context
+        return candidates, context, environment
 
     def factory(candidate):
         if gate is None:
             raise ValueError("Language gate has not initialized; rerun the comparison")
-        files = [*artifact_files(model_dir, candidate),
-                 *[model_dir / name for name in api.PIPELINE_FILES if (model_dir / name).is_file()]]
-        before = artifact_stamp(files)
-        engine = None
-        try:
-            if candidate.runtime == "torch":
-                engine = api.EditLens.__new__(api.EditLens)
-                engine.__init__(model_dir, candidate.device, max_length, batch_size,
-                                candidate.precision, gate, warmup=False)
-                options = {"device": candidate.device, "environment": environment}
-            else:
-                engine = OnnxEditLens.__new__(OnnxEditLens)
-                engine.__init__(model_dir, candidate, max_length, batch_size, gate, api)
-                options = {**engine.options, "environment": environment}
-            engine.version = runtime_version(engine, candidate, model_dir, api, options)
-            if artifact_stamp(files) != before:
-                raise ValueError("Model artifacts changed during loading; rerun after downloading finishes")
-            return engine
-        except BaseException:
-            if engine is not None:
-                try:
-                    engine.close()
-                except Exception:
-                    pass  # preserve the original, actionable load failure
-            gc.collect()
-            raise
+        return load_candidate(model_dir, candidate, max_length, batch_size, gate, api, environment)[0]
 
-    return RuntimeController(config_path, discover, factory)
+    from benchmark_worker import SubprocessBenchmark
+    runner = SubprocessBenchmark(model_dir, lid_path, config_path.parent,
+                                 max_length=max_length, batch_size=batch_size)
+    return RuntimeController(config_path, discover, factory, benchmark_runner=runner)

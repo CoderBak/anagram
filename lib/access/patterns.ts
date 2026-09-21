@@ -54,7 +54,9 @@ export function isAllSitesPattern(pattern: string): boolean {
  * each of them once. No required host patterns need to be subtracted from this list.
  */
 export function browsingOrigins(origins: readonly string[] | undefined): string[] {
-  return [...new Set(origins ?? [])];
+  return [...new Set((origins ?? []).flatMap((origin) =>
+    origin === "<all_urls>" ? ALL_SITES : /^(?:https?|\*):\/\//.test(origin) ? [origin] : [],
+  ))];
 }
 
 /** Granted access, as the popup, options and onboarding pages talk about it. */

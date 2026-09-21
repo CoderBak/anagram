@@ -5,10 +5,21 @@ import { RuntimeSchema, parseRuntime } from "./runtimeProtocol";
 import { NATIVE_MESSAGE, NATIVE_UNINSTALL, parseNativeReply, type NativeReply, type ComponentOperation, type NativePayload } from "./nativeProtocol";
 const Text = v.pipe(v.string(), v.maxLength(2000));
 const Count = v.pipe(v.number(), v.finite(), v.minValue(0));
+const DownloadPlan = v.object({
+  profile: v.picklist(["recommended", "expanded"]),
+  devices: v.pipe(v.array(Text), v.maxLength(64)),
+  files: v.pipe(v.array(Text), v.maxLength(128)),
+  total_bytes: Count,
+  expanded_bytes: v.optional(Count),
+});
 export const ComponentSchema = v.object({
   schema_version: v.literal(1), version: v.nullable(Text), home: Text,
-  state: v.picklist(["starting", "needs_models", "downloading", "paused", "loading", "benchmarking", "awaiting_selection", "ready", "stopped", "updating", "uninstalling", "error"]),
-  download: v.object({status: v.picklist(["idle", "running", "paused", "completed", "failed"]), bytes_received: Count, total_bytes: Count, file: v.nullable(Text), error: v.nullable(Text)}),
+  state: v.picklist(["starting", "needs_models", "downloading", "paused", "loading", "benchmarking", "awaiting_selection", "ready", "idle", "stopped", "updating", "uninstalling", "error"]),
+  settings: v.optional(v.object({idle_unload_s: v.pipe(Count, v.integer(), v.maxValue(86400))})),
+  download: v.object({status: v.picklist(["idle", "running", "paused", "completed", "failed"]), bytes_received: Count, total_bytes: Count, file: v.nullable(Text), error: v.nullable(Text),
+    phase: v.optional(v.picklist(["detecting", "verifying", "downloading", "complete"])),
+    plan: v.optional(DownloadPlan),
+  }),
   runtime: v.nullable(RuntimeSchema), storage: v.object({models_bytes: Count}),
   error: v.nullable(v.object({code: Text, message: Text})),
   operation: v.nullable(v.object({name: v.picklist(["update", "uninstall", "delete_models"]), status: v.picklist(["running", "completed", "failed", "scheduled"]), receipt: v.nullable(Text)})),

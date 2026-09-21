@@ -6,7 +6,7 @@ export const MAX_NATIVE_BYTES = 1_000_000;
 
 export const PAGE_OPERATIONS = [
   "status", "runtime", "runtime.benchmark", "runtime.config", "runtime.cancel",
-  "models.download", "models.pause", "models.delete", "engine.stop", "engine.resume",
+  "models.download", "models.pause", "models.delete", "engine.stop", "engine.resume", "engine.settings",
   "component.update", "component.uninstall",
 ] as const;
 export type ComponentOperation = typeof PAGE_OPERATIONS[number];
@@ -50,8 +50,12 @@ export function trustedNativePage(sender: {id?: string; url?: string; frameId?: 
 export function validPageRequest(op: unknown, payload: unknown): op is ComponentOperation {
   if (typeof op !== "string" || !PAGE_OPERATIONS.includes(op as ComponentOperation) || !isRecord(payload)) return false;
   const keys = Object.keys(payload);
+  if (op === "models.download") return keys.length === 0 || (keys.length === 1 &&
+    (payload.profile === "recommended" || payload.profile === "expanded"));
   if (op === "models.delete" || op === "component.uninstall") return keys.length === 1 && payload.confirm === true;
   if (op === "runtime.config") return keys.length === 1 && typeof payload.id === "string" && payload.id.length > 0 && payload.id.length <= 120;
   if (op === "runtime.benchmark") return keys.length === 1 && Number.isInteger(payload.budget_s) && (payload.budget_s as number) >= 10 && (payload.budget_s as number) <= 30;
+  if (op === "engine.settings") return keys.length === 1 && Number.isInteger(payload.idle_unload_s) &&
+    (payload.idle_unload_s === 0 || (Number(payload.idle_unload_s) >= 60 && Number(payload.idle_unload_s) <= 86400));
   return keys.length === 0;
 }

@@ -2,6 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="connect-src 'self'" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title data-i18n="onbTitle">Welcome to Anagram</title>
     <style>
@@ -128,7 +129,7 @@
           <div class="ver" id="version"></div>
         </div>
       </header>
-      <p class="lede" data-i18n-html="onbLede">Anagram answers <em data-i18n="onbLedeQuestion">&ldquo;how much of this did an AI write?&rdquo;</em> as you
+      <p class="lede" data-i18n-html="onbLede">Anagram answers <em data-i18n="onbLedeQuestion">“how much of this did an AI write?”</em> as you
         browse: every analyzed paragraph gets a small <strong data-i18n="onbLedeChip">chip</strong> with a number &mdash; the
         model's estimate of the <strong data-i18n="onbLedeExtent">extent of AI editing</strong> &mdash; and the page itself is left as
         it was, except for a thin line under the text that was flagged.</p>
@@ -146,18 +147,18 @@
                 <div class="srow" id="row-daemon" data-state="idle">
                   <span class="sname"><span class="sdot"></span><span class="slabel" data-i18n="onbDaemon">Local component</span></span>
                   <span class="sbody">
-                    <span class="sval" id="daemon-state" data-i18n="onbChecking">checking&hellip;</span>
+                    <span class="sval" id="daemon-state" data-i18n="onbChecking">checking…</span>
                     <span class="sdetail" id="daemon-detail" hidden></span>
                   </span>
                 </div>
                 <div class="srow" id="row-access" data-state="idle">
                   <span class="sname"><span class="sdot"></span><span class="slabel" data-i18n="accessLabel">Site access</span></span>
                   <span class="sbody">
-                    <span class="sval" id="access-state" data-i18n="onbChecking">checking&hellip;</span>
+                    <span class="sval" id="access-state" data-i18n="onbChecking">checking…</span>
                     <button type="button" class="btn" data-variant="outline" data-size="xs" id="access-grant"
                       hidden data-i18n="accessAllowAll">Allow on all sites</button>
                     <!-- The fastest way to see Anagram work, and it grants nothing at all. -->
-                    <span class="sdetail" id="access-once" hidden data-i18n="onbAccessOnce">or the toolbar icon &rarr; Analyze this page, for one page</span>
+                    <span class="sdetail" id="access-once" hidden data-i18n="onbAccessOnce">or the toolbar icon → Analyze this page, for one page</span>
                   </span>
                 </div>
                 <div class="srow" id="row-ready" data-state="idle">
@@ -210,8 +211,7 @@
             <summary data-i18n="onbVerdicts">Reading the verdicts</summary>
             <p data-i18n-html="onbVerdictsBody">The model (<strong>EditLens</strong>, ICLR 2026) rates how far a paragraph sits
               between untouched human writing (.00) and fully AI-generated text (1.0). The number is
-              <strong data-i18n="onbNotShare">not a share of words</strong> written by AI &mdash; it is the model's estimate of
-              how much AI editing changed the text as a whole. Hover (or tap) a chip for the full
+              <strong data-i18n="onbNotShare">not a share of words</strong> written by AI &mdash; it is the weighted average of the four editing classes, scaled to 0–1, not a measured edit distance or a probability of AI authorship. Hover (or tap) a chip for the full
               readout: the four-way probability split behind the verdict and the word count. EditLens
               reads English only: other languages get a gray chip with the detected language code
               instead of a number. Every number is an <strong data-i18n="onbEstimate">estimate, not proof</strong>. Snippets
@@ -242,7 +242,7 @@
                 <kbd class="kbd">Alt</kbd>+<kbd class="kbd">Shift</kbd>+<kbd class="kbd">J</kbd> and
                 <kbd class="kbd">Alt</kbd>+<kbd class="kbd">Shift</kbd>+<kbd class="kbd">K</kbd> walk
                 to the next and previous flagged paragraph without touching the mouse.</li>
-              <li data-i18n-html="onbPowerFlagged"><strong data-i18n="onbFlaggedName">Flagged only</strong> &mdash; switch <em data-i18n="onbFlaggedPath">Show &rarr; Flagged only</em> in the
+              <li data-i18n-html="onbPowerFlagged"><strong data-i18n="onbFlaggedName">Flagged only</strong> &mdash; switch <em data-i18n="onbFlaggedPath">Show → Flagged only</em> in the
                 popup and calm pages stay untouched; marks appear only where something was flagged.</li>
             </ul>
             </details>
@@ -252,8 +252,7 @@
             <p data-i18n-html="onbDocsBody">Docs is an editor, not a page &mdash; so Anagram brings its own reading surface. Click
               <strong data-i18n="actionAnalyzeDocument">Analyze document</strong> on the floating ball and a <strong data-i18n="onbReadingMode">reading mode</strong>
               opens right in the tab, with every paragraph of the document analyzed. No navigation, and
-              your file is never touched. Press <kbd class="kbd">Esc</kbd> or <strong data-i18n="actionBackToEditor">Back to
-              editor</strong> to return instantly &mdash; or use <strong data-i18n="docsOpenAsPage">Open as page</strong> if you
+              your file is never touched. Press <kbd class="kbd">Esc</kbd> or <strong data-i18n="actionBackToEditor">Back to editor</strong> to return instantly &mdash; or use <strong data-i18n="docsOpenAsPage">Open as page</strong> if you
               prefer a separate tab.</p>
             </details>
 
@@ -262,8 +261,7 @@
             <p data-i18n-html="onbPdfBody">A PDF keeps its own pages: Anagram draws them exactly as they are &mdash;
               figures, formulas, columns &mdash; and lays the chips and marks over them. Click
               <strong data-i18n="actionAnalyzePdf">Analyze PDF</strong> on the floating ball, <strong data-i18n="popupReadPdf">Read this PDF</strong> in
-              the popup, or right-click a link to one and choose <strong data-i18n="menuOpenPdf">Open PDF with
-              Anagram</strong>. Short paragraphs are read together as on any page, a password-protected
+              the popup, or right-click a link to one and choose <strong data-i18n="menuOpenPdf">Open PDF with Anagram</strong>. Short paragraphs are read together as on any page, a password-protected
               file asks for its password, and the file stays on your computer. For a PDF that is
               already on your computer, open the reading mode from the options page and drop the file in.</p>
             </details>

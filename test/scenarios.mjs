@@ -21,6 +21,7 @@ import { readFileSync } from "node:fs";
 import http from "node:http";
 import { launchExtension, serveHtml, artifact, uiLanguage, uiLanguageOf, BADGE_SEL } from "./harness.mjs";
 import { createNativeFixture } from "./fake-native.mjs";
+import { docsReadingHtml } from "./fixtures/docs-reading.mjs";
 import {
   GROUPED_PARAS,
   GROUPED_UNIT_TEXT,
@@ -1268,10 +1269,7 @@ async function sweep(page, steps = 6) {
     const DOC = "ANAGRAMREFRESHFIXTURE";
     const EDITOR = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Refresh fixture - Google Docs</title></head>
 <body><canvas width="600" height="400"></canvas></body></html>`;
-    const mobilebasic = (v) =>
-      `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Refresh fixture v${v} - Google Docs</title>
-<style>.doc-content p { margin: 0 0 14px; }</style></head><body><div class="doc-content">
-<p>${PARA(`DOCVERSION${v}ONE`)}</p><p>${PARA(`DOCVERSION${v}TWO`)}</p></div></body></html>`;
+    const mobilebasic = (v) => docsReadingHtml([PARA(`DOCVERSION${v}ONE`), PARA(`DOCVERSION${v}TWO`)], v);
     let version = 1;
     let broken = false;
     await context.route("https://docs.google.com/**", (route) => {
@@ -1359,14 +1357,32 @@ async function sweep(page, steps = 6) {
       JSON.stringify(failed),
     );
   }
-  // A30–A34: the PDF reading mode. A real PDF (written by buildPdf above) is fetched by
-  // the reader page and shown AS IT IS — the pages themselves, drawn by pdf.js — with the
+  // A30–A34: a real PDF is handed to the full PDF.js viewer and shown as-is, with the
   // ORDINARY pipeline over them: the same chips, the same underlines, the same ball and
   // panel, the same copied report. The reconstruction is invisible and is only asserted
   // through what it decides: what reaches the fixture, and where a chip lands.
   const extId = sw ? new URL(sw.url()).host : null;
-  /** Open a PDF the only way a remote one opens now: the tab shows it, the ball hands it over. */
+  /** Use the normal source-tab handoff, including the source permission/ticket checks. */
   const openReader = (path) => openPdfInReader(context, fileUrl(path));
+  const readerReady = (page) => page.waitForFunction(
+    () => !!window.PDFViewerApplication?.pdfDocument && !!document.querySelector("#viewer .textLayer span"),
+    null, { timeout: 30000 },
+  );
+  // The upstream viewer scrolls its own container and materializes nearby text layers.
+  const visitPdfPage = async (page, number) => {
+    await page.locator("#pageNumber").fill(String(number));
+    await page.locator("#pageNumber").press("Enter");
+    await page.waitForFunction((n) => window.PDFViewerApplication.page === n &&
+      window.PDFViewerApplication.pdfViewer.getPageView(n - 1)?.renderingState === 3 &&
+      !!document.querySelector(`#viewer .page[data-page-number="${n}"] .textLayer span`),
+      number, { timeout: 30000 });
+  };
+  const visitShortPdf = async (page) => {
+    await readerReady(page);
+    const count = await page.evaluate(() => window.PDFViewerApplication.pdfDocument.numPages);
+    for (let number = 1; number <= count; number++) await visitPdfPage(page, number);
+    await visitPdfPage(page, 1);
+  };
 
   /** Everything about the reader page that a check below reads, in one pass. */
   const readReader = (p) =>
@@ -1378,7 +1394,7 @@ async function sweep(page, steps = 6) {
         const r = h.getBoundingClientRect();
         const box = h.closest(".page").getBoundingClientRect();
         return {
-          page: Number(h.closest(".page").dataset.page),
+          page: Number(h.closest(".page").dataset.pageNumber),
           inPage:
             r.left >= box.left - 1 && r.right <= box.right + 1 &&
             r.top >= box.top - 1 && r.bottom <= box.bottom + 1,
@@ -1397,7 +1413,7 @@ async function sweep(page, steps = 6) {
         for (const range of h) marked.push(range.toString());
       }
       return {
-        pages: document.querySelectorAll(".page").length,
+        pages: window.PDFViewerApplication.pdfDocument.numPages,
         spans: spans.length,
         // The pages that have been DRAWN: a released or never-drawn canvas has no bitmap.
         drawn: [...document.querySelectorAll(".page canvas")].filter((c) => c.width > 0).length,
@@ -1406,9 +1422,7 @@ async function sweep(page, steps = 6) {
         placed,
         marks,
         marked,
-        // Identity of each chip host, so a zoom can be shown not to have rebuilt one.
-        hosts: chips.map((h) => (h.dataset.probe ??= String(Math.random()))),
-        scale: Number(getComputedStyle(document.getElementById("pages")).getPropertyValue("--scale-factor")),
+        scale: window.PDFViewerApplication.pdfViewer.currentScale,
         title: document.title,
         notice: document.getElementById("notice").textContent,
       };
@@ -1427,8 +1441,7 @@ async function sweep(page, steps = 6) {
     const seen = fixture.stats.texts.length; // what THIS document sends, not the whole run
     await p.goto(fileUrl("/doc.pdf"), { waitUntil: "load" }).catch(() => {});
     await handOverPdf(p);
-    await p.waitForSelector("#pages:not(.reading)", { timeout: 20000 }).catch(() => {});
-    await sweep(p, 4);
+    await visitShortPdf(p);
     // The reader's own chrome (the bar, the notice, the pages) carries the same
     // data-anagram marker as a badge host, so a chip here is a host with a pill in it.
     await p
@@ -1440,15 +1453,18 @@ async function sweep(page, steps = 6) {
 
     const page = await readReader(p);
     const sent = fixture.stats.texts.slice(seen);
+    const first = PDF_PARAS[0].join(" "), last = PDF_PARAS[3].join(" ");
+    const continuation = PDF_PARAS[1].join(" ").replace("hyphen- ation", "hyphenation").replace("state-of-the- art", "state-of-the-art");
+    const tail = PDF_PARAS[2].join(" ");
+    // A rendered page may be scored before its neighbor arrives. Only these exact
+    // source-derived units are valid; the final map must include the joined paragraph.
+    const allowed = new Set([first, continuation, tail, `${continuation} ${tail}`, last]);
 
     record(
       "ui",
-      "PDF reader: the paragraphs reach the fixture in reading order, joined across the page break",
-      sent.length === 3 &&
-        sent[0] === PDF_PARAS[0].join(" ") &&
-        sent[2] === PDF_PARAS[3].join(" ") &&
-        sent[1].startsWith("Sentences that run past") &&
-        sent[1].endsWith("in one sitting."),
+      "PDF reader: rendered paragraphs reach the fixture and adjacent pages join without invented text",
+      sent.includes(first) && sent.includes(last) && sent.includes(`${continuation} ${tail}`) &&
+        sent.every((text) => allowed.has(text)),
       JSON.stringify({ sent: sent.map((t) => t.slice(0, 32)) }),
     );
     record(
@@ -1473,7 +1489,8 @@ async function sweep(page, steps = 6) {
       "PDF reader: the real pages are drawn, with a selectable text layer over every one",
       page.pages === 2 &&
         page.drawn === 2 &&
-        page.spans >= 29 &&
+        page.spans > 0 &&
+        PDF_PARAS.every((lines) => page.text.includes(lines[0])) &&
         page.text.includes(PDF_HEADING) &&
         page.title === "doc.pdf" &&
         extErrors.length === 0,
@@ -1496,21 +1513,21 @@ async function sweep(page, steps = 6) {
       JSON.stringify({ marks: page.marks, first: page.marked[0]?.slice(0, 40) }),
     );
 
-    // Zoom: one CSS variable, so not a single span or chip host is rebuilt and nothing is
-    // asked of the fixture a second time.
+    // Upstream may replace text nodes on zoom. Anagram must restore mapping and use cached scores.
     const requestsBefore = fixture.stats.requests;
-    await p.evaluate(() => document.getElementById("zoomIn").click());
-    await p.waitForTimeout(1200);
+    await p.locator("#zoomInButton").click();
+    await visitShortPdf(p);
+    await p.waitForFunction((sel) => [...document.querySelectorAll(sel)].filter((host) =>
+      host.shadowRoot?.querySelector(".pill:not(.pending)")).length === 3, BADGE_SEL, { timeout: 15000 });
     const zoomed = await readReader(p);
     record(
       "ui",
-      "PDF reader: zoom keeps every chip and every mark, and re-asks nothing",
-      zoomed.scale > page.scale &&
-        JSON.stringify(zoomed.hosts) === JSON.stringify(page.hosts) &&
+      "PDF reader: zoom restores chips and mapped marks without requesting the same scores again",
+      zoomed.scale > page.scale && zoomed.chips === page.chips &&
         zoomed.marks === page.marks &&
         zoomed.placed.every((c) => c.inPage && !c.overText) &&
         fixture.stats.requests === requestsBefore,
-      JSON.stringify({ from: page.scale.toFixed(2), to: zoomed.scale.toFixed(2), same: JSON.stringify(zoomed.hosts) === JSON.stringify(page.hosts) }),
+      JSON.stringify({ from: page.scale.toFixed(2), to: zoomed.scale.toFixed(2), chips: zoomed.chips, marks: zoomed.marks }),
     );
 
     // The ball, its panel, and the report — the report must name the PDF, not the
@@ -1533,7 +1550,8 @@ async function sweep(page, steps = 6) {
         panel.items === Number(flagged) &&
         typeof report === "string" &&
         report.startsWith("# Anagram report — doc.pdf") &&
-        report.includes(`- Page: ${fileUrl("/doc.pdf")}`),
+        report.includes(`- Page: ${fileUrl("/doc.pdf")}`) &&
+        report.includes("not a complete document assessment"),
       JSON.stringify({ panel, flagged, head: (report ?? "").slice(0, 60) }),
     );
     await p.screenshot({ path: artifact("scn-pdf-reader.png"), fullPage: false }).catch(() => {});
@@ -1548,8 +1566,7 @@ async function sweep(page, steps = 6) {
   if (extId) {
     const seen = fixture.stats.texts.length;
     const p = await openReader("/grouped.pdf");
-    await p.waitForSelector("#pages:not(.reading)", { timeout: 20000 }).catch(() => {});
-    await sweep(p, 4);
+    await visitShortPdf(p);
     await p
       .waitForFunction((sel) => {
         const pills = [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill"));
@@ -1585,47 +1602,41 @@ async function sweep(page, steps = 6) {
     await p.close();
   }
 
-  // A31: a long document. Every page's TEXT is there from the start — which is what lets
-  // the panel and jump-to-flagged address a paragraph thirty pages down — while only the
-  // pages near the viewport carry pixels. A jump then brings the page AND its picture.
+  // A31: upstream materializes text and pixels near the viewport. Navigating to a
+  // distant page must render it, and returning must restore recycled source mapping.
   if (extId) {
     const p = await openReader("/tall.pdf");
-    await p.waitForSelector("#pages:not(.reading)", { timeout: 40000 }).catch(() => {});
-    await p.waitForTimeout(1500);
+    await readerReady(p);
     const far = await p.evaluate(() => {
-      const last = document.querySelector('.page[data-page="30"]');
+      const last = document.querySelector('#viewer .page[data-page-number="30"]');
       return {
-        pages: document.querySelectorAll(".page").length,
-        textOnLast: (last?.querySelectorAll(".textLayer span").length ?? 0) > 0,
-        drawn: [...document.querySelectorAll(".page canvas")].filter((c) => c.width > 0).length,
+        pages: window.PDFViewerApplication.pdfDocument.numPages,
+        textOnLast: !!last?.querySelector(".textLayer span"),
+        drawn: [...document.querySelectorAll("#viewer .page canvas")].filter((c) => c.width > 0).length,
         lastDrawn: (last?.querySelector("canvas")?.width ?? 0) > 0,
       };
     });
-    // Jump to the last flagged paragraph and let the canvas catch up.
-    const jumped = await p.evaluate(async () => {
-      const sr = document.getElementById("anagram-fab")?.shadowRoot;
-      sr?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await new Promise((r) => setTimeout(r, 300));
-      const rows = [...(sr?.querySelectorAll(".pitem") ?? [])];
-      rows[rows.length - 1]?.click();
-      await new Promise((r) => setTimeout(r, 2500));
-      const on = [...document.querySelectorAll(".page")].find((el) => {
-        const r = el.getBoundingClientRect();
-        return r.bottom > 0 && r.top < innerHeight;
-      });
-      return { rows: rows.length, page: Number(on?.dataset.page ?? 0), drawn: (on?.querySelector("canvas")?.width ?? 0) > 0 };
-    });
+    await visitPdfPage(p, 30);
+    const last = await p.evaluate(() => ({
+      page: window.PDFViewerApplication.page,
+      text: document.querySelector('#viewer .page[data-page-number="30"] .textLayer')?.textContent,
+    }));
+    await visitPdfPage(p, 1);
+    await p.waitForFunction(() => [...document.querySelectorAll('.anagramPdfChips [data-anagram="host"]')]
+      .some((el) => el.closest('.page')?.dataset.pageNumber === "1" && el.shadowRoot?.querySelector('.pill:not(.pending)')),
+      null, { timeout: 20000 });
+    const returned = await readReader(p);
     record(
       "ui",
-      "PDF reader: a page far down the stack has its text long before it has its picture",
-      far.pages === 30 && far.textOnLast && !far.lastDrawn && far.drawn > 0 && far.drawn <= 8,
+      "PDF reader: distant pages do not eagerly allocate text layers or canvases",
+      far.pages === 30 && !far.textOnLast && !far.lastDrawn && far.drawn > 0 && far.drawn <= 10,
       JSON.stringify(far),
     );
     record(
       "ui",
-      "PDF reader: a jump from the panel brings the right page into view and draws it",
-      jumped.rows > 0 && jumped.page > 1 && jumped.drawn,
-      JSON.stringify(jumped),
+      "PDF reader: page navigation renders distant text and restores annotations on return",
+      last.page === 30 && !!last.text && returned.placed.some((chip) => chip.page === 1) && returned.marks > 0,
+      JSON.stringify({ last: last.page, restoredChips: returned.chips, restoredMarks: returned.marks }),
     );
     await p.close();
   }
@@ -1639,7 +1650,7 @@ async function sweep(page, steps = 6) {
         .waitForFunction(() => {
           const n = document.getElementById("notice").textContent.trim();
           return n !== "Loading…" && n !== "";
-        }, { timeout: 15000 })
+        }, null, { timeout: 15000 })
         .then(() =>
           p.evaluate(() => ({
             notice: document.getElementById("notice").textContent,
@@ -1710,12 +1721,13 @@ async function sweep(page, steps = 6) {
   if (extId) {
     const p = await context.newPage();
     await p.goto(`chrome-extension://${extId}/reader.html`, { waitUntil: "load" });
+    await p.waitForSelector("#drop:not([hidden])");
     const empty = await p.evaluate(() => ({
       drop: !document.getElementById("drop").hidden,
-      pages: !document.getElementById("pages").hidden,
+      pages: !!window.PDFViewerApplication.pdfDocument,
     }));
     await p.setInputFiles("#file", { name: "dropped.pdf", mimeType: "application/pdf", buffer: TEST_PDF });
-    await p.waitForSelector("#pages:not(.reading)", { timeout: 20000 }).catch(() => {});
+    await visitShortPdf(p);
     await p
       .waitForFunction((sel) => [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill:not(.pending)")).length >= 3, BADGE_SEL, { timeout: 20000 })
       .catch(() => {});
@@ -1743,6 +1755,7 @@ async function sweep(page, steps = 6) {
     const race = async (first, second) => {
       const p = await context.newPage();
       await p.goto(`chrome-extension://${extId}/reader.html`, { waitUntil: "load" });
+      await p.waitForSelector("#drop:not([hidden])");
       await p.setInputFiles("#file", first);
       await p.setInputFiles("#file", second);
       // Long enough that the LOSER would certainly have finished by now.
@@ -1751,7 +1764,7 @@ async function sweep(page, steps = 6) {
         title: document.title,
         pages: document.querySelectorAll(".page").length,
         notice: document.getElementById("notice").textContent,
-        reading: document.getElementById("pages").classList.contains("reading"),
+        reading: !window.PDFViewerApplication.pdfDocument,
       }));
       await p.close();
       return state;

@@ -1,0 +1,2 @@
+# Preserve the byte-for-byte, hash-verified upstream distribution.
+vendor/pdfjs/** linguist-vendored -whitespace -text

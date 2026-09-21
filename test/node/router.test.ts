@@ -1,5 +1,5 @@
 // test/node/router.test.ts — provenance and settlement invariants of the SW router.
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, vi } from "vitest";
 import { fakeBrowser } from "wxt/testing";
 import { createRouter } from "../../lib/backend/router";
 import type {
@@ -292,4 +292,188 @@ describe("router retry", () => {
     expect(client.calls).toHaveLength(1);
     expect(result.results[0].degraded).toBe(true);
   });
+});
+
+describe("router invalidation, bounded admission and fairness", () => {
+  it("uses identical canonical bytes for inference and dedup keys", async () => {
+    const client = fakeClient(A), router = createRouter(client);
+    const first = await router.handle(req(["range 1–2–3 costs \\\\%"]));
+    await router.handle(req(["range 1-2-3 costs %"]));
+    expect(first.results[0].degraded).toBeUndefined();
+    expect(client.calls).toHaveLength(1);
+    expect(client.calls[0][0].text).toBe("range 1-2-3 costs %");
+  });
+
+  it("separates calibration and snapshots a mutable model object", async () => {
+    const mutable = { ...A }, client = fakeClient(mutable), router = createRouter(client);
+    await router.handle(req(["same"]));
+    mutable.calibration = "recalibrated";
+    const answer = await router.handle(req(["same"]));
+    expect(client.calls).toHaveLength(2);
+    mutable.calibration = "changed after response";
+    expect(answer.model.calibration).toBe("recalibrated");
+  });
+
+  it("never labels cached A and freshly produced B results as one model", async () => {
+    const client = fakeClient(A), router = createRouter(client);
+    await router.handle(req(["cached"]));
+    client.hold();
+    const work = router.handle(req(["cached", "fresh"]));
+    await settle(); client.release(B);
+    expect((await work).results.every((result) => result.degraded)).toBe(true);
+  });
+
+  it("never merges two micro-batches from different model snapshots", async () => {
+    const client = fakeClient(A), router = createRouter(client);
+    client.hold();
+    const work = router.handle(req(["a".repeat(6000), "b".repeat(6000)]));
+    await settle(); expect(client.calls).toHaveLength(2);
+    client.releaseOne(A); client.releaseOne(B);
+    expect((await work).results.every((result) => result.degraded)).toBe(true);
+  });
+
+  it("discards a late result after the runtime generation changes, even with the same model name", async () => {
+    const client = fakeClient(A), router = createRouter(client);
+    let generation = 1; client.revision = () => generation;
+    client.hold(); const work = router.handle(req(["same runtime label"]));
+    await settle(); generation++; client.release(A);
+    expect((await work).results[0].degraded).toBe(true);
+    await router.handle(req(["same runtime label"]));
+    expect(client.calls).toHaveLength(2);
+  });
+
+  it("clears held successful inference and refuses its late cache write", async () => {
+    const { createSwCache } = await import("../../lib/backend/swCache");
+    const { fakeScoreStore } = await import("./scoreStore");
+    const store = fakeScoreStore(), cache = createSwCache(store);
+    const client = fakeClient(A), router = createRouter(client, cache);
+    client.hold(); const work = router.handle(req(["old successful work"]));
+    await settle(); await router.clear();
+    expect((await work).results[0].degraded).toBe(true);
+    client.release(); await settle();
+    expect((await cache.getMany([cache.keyOf("old successful work", JSON.stringify([A.id, A.ver, A.calibration]))])).size).toBe(0);
+    await router.handle(req(["old successful work"]));
+    expect(client.calls).toHaveLength(2);
+  });
+
+  it("cancels before discovery settles and never starts the obsolete work", async () => {
+    const { deferred } = await import("./scoreStore");
+    const ready = deferred<void>(), client = fakeClient(A), router = createRouter(client);
+    client.ready = () => ready.promise;
+    const controller = new AbortController();
+    const work = router.handle(req(["abandoned page"]), { documentKey: "doc", signal: controller.signal });
+    controller.abort(); expect((await work).results[0].degraded).toBe(true);
+    ready.resolve(); await settle(); expect(client.calls).toHaveLength(0);
+  });
+
+  it("keeps a shared batch alive for another document when its first reader cancels", async () => {
+    const client = fakeClient(A), router = createRouter(client);
+    client.hold();
+    const first = router.handle(req(["shared"]), { documentKey: "first" });
+    await settle();
+    const second = router.handle(req(["shared"]), { documentKey: "second" });
+    await settle(); router.cancelDocument("first");
+    expect((await first).results[0].degraded).toBe(true);
+    client.release(); expect((await second).results[0].degraded).toBeUndefined();
+    expect(client.calls).toHaveLength(1);
+  });
+
+  it("leaves slots for other documents and rotates equal-priority queued work", async () => {
+    const client = fakeClient(A), router = createRouter(client);
+    client.hold();
+    const many = Array.from({ length: 6 }, (_, index) => router.handle(req([`one ${index}`]), { documentKey: "one" }));
+    await settle(); expect(client.calls).toHaveLength(2);
+    const other = router.handle(req(["two"]), { documentKey: "two" });
+    await settle(); expect(client.calls[2][0].text).toBe("two");
+    client.release(); await Promise.all([...many, other]);
+  });
+
+  it("rejects per-document and global queued payload overflow before scoring", async () => {
+    const { ROUTER_LIMITS } = await import("../../lib/backend/router");
+    const client = fakeClient(A), router = createRouter(client);
+    client.hold();
+    const huge = await router.handle(req(["x".repeat(ROUTER_LIMITS.documentChars + 1)]), { documentKey: "one" });
+    expect(huge.results[0].degraded).toBe(true); expect(client.calls).toHaveLength(0);
+    const active = Array.from({ length: 4 }, (_, index) => router.handle(req([String(index).repeat(250_000)]), { documentKey: `doc${index}` }));
+    await settle();
+    expect((await router.handle(req(["overflow"]), { documentKey: "extra" })).results[0].degraded).toBe(true);
+    expect(client.calls).toHaveLength(4);
+    client.release(); await Promise.all(active);
+    expect((await router.handle(req(["quota released"]), { documentKey: "extra" })).results[0].degraded).toBeUndefined();
+  });
+});
+
+it("clear cancels discovery and delayed cache lookups before they can reserve work", async () => {
+  const { deferred, fakeScoreStore } = await import("./scoreStore");
+  const { createSwCache } = await import("../../lib/backend/swCache");
+  const store = fakeScoreStore(), cache = createSwCache(store), client = fakeClient(A);
+  const router = createRouter(client, cache), ready = deferred<void>();
+  client.ready = () => ready.promise;
+  const beforeReady = router.handle(req(["before ready"]));
+  await router.clear(); ready.resolve();
+  expect((await beforeReady).results[0].degraded).toBe(true);
+  client.ready = undefined;
+  const started = deferred<void>(), read = deferred<Array<undefined>>();
+  store.get = async () => { started.resolve(); return read.promise; };
+  const beforeRead = router.handle(req(["before read"]));
+  await started.promise; await router.clear(); read.resolve([undefined]);
+  expect((await beforeRead).results[0].degraded).toBe(true);
+  expect(client.calls).toHaveLength(0);
+});
+
+it("limits queued item counts, reclaims cancelled capacity, and never sends abandoned queued work", async () => {
+  const { ROUTER_LIMITS } = await import("../../lib/backend/router");
+  const client = fakeClient(A), router = createRouter(client);
+  client.hold();
+  const over = await router.handle(req(Array.from({length: ROUTER_LIMITS.documentBlocks + 1}, (_, index) => `row ${index}`)), {documentKey:"too many"});
+  expect(over.results.every((result) => result.degraded)).toBe(true);
+  const held = Array.from({length:4}, (_, index) => router.handle(req([`held ${index}`]), {documentKey:`held ${index}`}));
+  await settle();
+  const queued = router.handle(req(["cancelled queued"]), {documentKey:"cancel me"});
+  await settle(); router.cancelDocument("cancel me");
+  expect((await queued).results[0].degraded).toBe(true);
+  client.release(); await Promise.all(held);
+  expect(client.calls.flat().some((block) => block.text === "cancelled queued")).toBe(false);
+});
+
+it("aborts the underlying transport when the last reader leaves, but not while another remains", async () => {
+  const { deferred } = await import("./scoreStore");
+  const completion = deferred<ScoredBatch>();
+  let signal: AbortSignal | undefined;
+  const client: ScoreClient = {model:()=>A, scoreBatch: async (_blocks, value) => {signal = value; return completion.promise;}};
+  const router = createRouter(client);
+  const first = router.handle(req(["shared cancellation"]), {documentKey:"one"});
+  await settle();
+  const second = router.handle(req(["shared cancellation"]), {documentKey:"two"});
+  await settle(); router.cancelDocument("one"); await first;
+  expect(signal?.aborted).toBe(false);
+  router.cancelDocument("two"); await second; expect(signal?.aborted).toBe(true);
+  completion.resolve(scored([{id:"b0",text:"shared cancellation"}], A));
+});
+
+
+it("ages waiting background work ahead of a later stream of viewport requests", async () => {
+  let now = Date.now(); const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+  const client = fakeClient(A), router = createRouter(client);
+  client.hold();
+  try {
+    const held = Array.from({length:4}, (_, index) => router.handle(req([`held aging ${index}`], "background")));
+    await settle();
+    const old = router.handle(req(["old background"], "background")); await settle();
+    now += 3000;
+    const recent = router.handle(req(["new viewport"], "viewport")); await settle();
+    client.releaseOne(); await settle();
+    expect(client.calls[4][0].text).toBe("old background");
+    client.release(); await Promise.all([...held, old, recent]);
+  } finally { client.release(); clock.mockRestore(); }
+});
+
+it("bounds all queued block references even when requests contain short text", async () => {
+  const client = fakeClient(A), router = createRouter(client);
+  client.hold();
+  const held = Array.from({length:4}, (_, doc) => router.handle(req(Array.from({length:256}, (_, index)=>`d${doc} b${index}`)),{documentKey:`bounded ${doc}`}));
+  await settle();
+  const extra = await router.handle(req(["one more"]),{documentKey:"other"});
+  expect(extra.results[0].degraded).toBe(true); expect(client.calls).toHaveLength(4);
+  client.release(); await Promise.all(held);
 });

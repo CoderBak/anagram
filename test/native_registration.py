@@ -2,6 +2,9 @@
 import importlib.util
 import json
 import os
+import shlex
+import signal
+import time
 from pathlib import Path
 import subprocess
 import sys
@@ -135,6 +138,38 @@ class RegistrationTests(unittest.TestCase):
         d=json.loads(marker.read_text());d['home']=str(self.user);marker.write_text(json.dumps(d))
         with self.assertRaisesRegex(ValueError,'ownership'): self.unregister()
 
+    def test_missing_inventory_preserves_home_and_registration(self):
+        entry = self.register(platform=sys.platform)
+        manifest = Path(entry['manifest'])
+        before = manifest.read_bytes()
+        (self.home / reg.INVENTORY).unlink()
+        with patch.object(reg.Path, 'home', return_value=self.user):
+            for operation in (reg.unregister, reg.update, reg.uninstall):
+                with self.subTest(operation=operation.__name__):
+                    with self.assertRaisesRegex(ValueError, 'inventory is missing'):
+                        operation(self.home)
+                    self.assertEqual(manifest.read_bytes(), before)
+                    self.assertTrue((self.home / reg.OWNER).is_file())
+                    self.assertTrue((self.home / 'app/native_host.py').is_file())
+
+    def test_windows_worker_receives_a_fixed_update_plan_without_spawning(self):
+        self.register(platform='win32', language='zh_CN')
+        installer = self.home / 'app/install.ps1'
+        installer.write_text('# inert audit fixture')
+        with patch.object(reg.Path, 'home', return_value=self.user), patch.object(reg.sys, 'platform', 'win32'), \
+                patch.object(reg, 'maintenance_lock') as lock, patch.object(reg.subprocess, 'run') as run:
+            lock.return_value.__enter__.return_value = None
+            plan = reg.update(self.home, worker=True)
+        self.assertEqual(plan, {'status':'prepared', 'installer':str(installer), 'browser':'chrome',
+                               'extension_id':ID, 'language':'zh_CN'})
+        run.assert_not_called()
+
+    def test_prepare_refuses_an_installer_in_progress(self):
+        self.register(platform=sys.platform)
+        (self.home / '.installer-lock').mkdir()
+        with self.assertRaisesRegex(ValueError, 'installation is in progress'):
+            reg.prepare(self.home)
+
     def test_migration_stops_only_the_verified_legacy_process(self):
         self.register()
         pidfile = self.home / 'run/anagramd.pid'
@@ -178,6 +213,135 @@ class RegistrationTests(unittest.TestCase):
         (self.home/'nested').symlink_to(outside,target_is_directory=True)
         with patch.object(reg.Path,'home',return_value=self.user): reg.uninstall(self.home)
         self.assertEqual((outside/'keep').read_text(),'keep')
+
+
+@unittest.skipIf(os.name != "posix", "POSIX inherited flock chain; Windows uses the fixed job worker")
+class MaintenanceLockTests(unittest.TestCase):
+    register = RegistrationTests.register
+
+    def setUp(self):
+        RegistrationTests.setUp(self)
+        sys.path.insert(0, str(SOURCE.parents[1] / "anagramd"))
+        from native_component import HomeLock, ComponentError
+        self.HomeLock, self.ComponentError = HomeLock, ComponentError
+        self.register(platform=sys.platform)
+
+    def test_inherited_descriptor_is_validated_and_never_unlocked_by_helper(self):
+        lock = self.HomeLock(self.home)
+        try:
+            fd = lock.maintenance_fd()
+            with reg.maintenance_lock(self.home, fd) as borrowed:
+                self.assertEqual(borrowed, fd)
+            with self.assertRaises(self.ComponentError): self.HomeLock(self.home)
+            other = os.open(self.home / "other", os.O_RDWR | os.O_CREAT, 0o600)
+            try:
+                with self.assertRaisesRegex(ValueError, "not the owned"):
+                    with reg.maintenance_lock(self.home, other): pass
+            finally: os.close(other)
+        finally: lock.close()
+        self.HomeLock(self.home).close()
+
+    def test_uninstall_revokes_startup_marker_before_tree_deletion(self):
+        remove = reg.shutil.rmtree
+        def checked(path):
+            self.assertFalse((self.home / reg.OWNER).exists())
+            with self.assertRaises(self.ComponentError): self.HomeLock(self.home)
+            return remove(path)
+        with patch.object(reg.Path, "home", return_value=self.user), patch.object(reg.shutil, "rmtree", side_effect=checked):
+            reg.uninstall(self.home)
+        self.assertFalse(self.home.exists())
+
+    def test_shell_retains_child_acquired_flock_after_python_exits(self):
+        # The direct installer can use the existing private Python to flock an FD
+        # opened by its parent shell. The lock must outlive that short-lived Python.
+        acquire = """
+import fcntl, os, pathlib, stat, sys
+actual = os.fstat(9)
+expected = (pathlib.Path(sys.argv[1]) / '.native-host.lock').lstat()
+assert stat.S_ISREG(actual.st_mode) and stat.S_ISREG(expected.st_mode)
+assert (actual.st_dev, actual.st_ino) == (expected.st_dev, expected.st_ino)
+fcntl.flock(9, fcntl.LOCK_EX | fcntl.LOCK_NB)
+"""
+        script = 'set -eu\nexec 9<>"$1/.native-host.lock"\n"$2" -I -c "$3" "$1"\nprintf "locked\\n"\nread -r release\n'
+        process = subprocess.Popen(['/bin/sh', '-c', script, 'installer-lock-test', str(self.home), sys.executable, acquire],
+                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            self.assertEqual(process.stdout.readline(), 'locked\n')
+            with self.assertRaises(self.ComponentError): self.HomeLock(self.home)
+            process.communicate('release\n', timeout=3)
+            self.assertEqual(process.returncode, 0)
+            self.HomeLock(self.home).close()
+        finally:
+            if process.poll() is None: process.kill()
+            process.communicate(timeout=3)
+
+    def test_update_passes_only_verified_descriptor_to_installer(self):
+        lock = self.HomeLock(self.home)
+        try:
+            fd = lock.maintenance_fd()
+            with patch.object(reg.Path, 'home', return_value=self.user), patch.object(reg.subprocess, 'run') as run:
+                reg.update(self.home, lock_fd=fd)
+            kwargs = run.call_args.kwargs
+            self.assertEqual(kwargs['env']['ANAGRAM_MAINTENANCE_FD'], str(fd))
+            self.assertEqual(kwargs['pass_fds'], (fd,))
+            with self.assertRaises(self.ComponentError): self.HomeLock(self.home)
+        finally:
+            lock.close()
+
+    def test_installer_grandchild_keeps_lock_after_owner_and_helper_are_killed(self):
+        # Exercise real Python -> helper -> /bin/sh -> fake installer, with no
+        # network, browser registrations outside this temporary user, or models.
+        child = """
+import os, pathlib, sys, time
+home=pathlib.Path(sys.argv[1])
+(home/"installer.pid").write_text(str(os.getpid()))
+deadline=time.monotonic()+10
+while not (home/"finish").exists():
+    if time.monotonic()>deadline: raise SystemExit(2)
+    time.sleep(.01)
+(home/"installer-finished").write_text("done")
+"""
+        (self.home / "app/install.sh").write_text("#!/bin/sh\nexec " + shlex.quote(sys.executable) + " -c " + shlex.quote(child) + ' "$ANAGRAM_HOME"\n')
+        owner = """
+import pathlib, subprocess, sys, time
+sys.path.insert(0, sys.argv[1])
+from native_component import HomeLock
+home=pathlib.Path(sys.argv[2]); lock=HomeLock(home); fd=lock.maintenance_fd()
+helper=subprocess.Popen([sys.executable,"-I",sys.argv[3],"update","--lock-fd",str(fd),"--home",str(home)],pass_fds=(fd,),stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+(home/"helper.pid").write_text(str(helper.pid))
+time.sleep(15)
+"""
+        process = subprocess.Popen([sys.executable, "-c", owner, str(SOURCE.parents[1] / "anagramd"), str(self.home), str(SOURCE)],
+                                   env={**os.environ,"HOME":str(self.user)}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        descendants = []
+        try:
+            deadline = time.monotonic() + 5
+            while not (self.home / "installer.pid").exists() and time.monotonic() < deadline:
+                self.assertIsNone(process.poll()); time.sleep(.01)
+            self.assertTrue((self.home / "installer.pid").exists())
+            helper = int((self.home / "helper.pid").read_text())
+            installer = int((self.home / "installer.pid").read_text())
+            descendants = [helper, installer]
+            process.kill(); process.wait(timeout=2)
+            with self.assertRaises(self.ComponentError): self.HomeLock(self.home)
+            os.kill(helper, signal.SIGKILL)
+            with self.assertRaises(self.ComponentError): self.HomeLock(self.home)
+            (self.home / "finish").write_text("finish")
+            deadline = time.monotonic() + 3
+            while time.monotonic() < deadline:
+                try:
+                    lock = self.HomeLock(self.home)
+                    lock.close()
+                    break
+                except self.ComponentError: time.sleep(.01)
+            else: self.fail("lock remained held after the installer finished")
+            self.assertTrue((self.home / "installer-finished").exists())
+        finally:
+            if process.poll() is None: process.kill()
+            process.wait(timeout=2)
+            for pid in descendants:
+                try: os.kill(pid, signal.SIGTERM)
+                except ProcessLookupError: pass
 
 
 if __name__ == '__main__': unittest.main()

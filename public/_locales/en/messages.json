@@ -408,7 +408,7 @@
     "description": "Report summary. $1 = units the language gate refused."
   },
   "reportEstimate": {
-    "message": "Each number is EditLens's estimate, on a scale of 0 to 1, of how far that text sits from untouched human writing toward fully AI-generated — not a share of words, not proof.",
+    "message": "The score is (p1 + 2p2 + 3p3) / 3 for the four EditLens classes. It summarizes the class distribution; it is not the fraction of AI-written words, a measured edit distance, or proof of authorship.",
     "description": "Report preamble: what the percentages mean."
   },
   "reportNothingFlagged": {
@@ -456,11 +456,11 @@
     "description": "Popup group heading over the two site switches."
   },
   "popupAllWebsites": {
-    "message": "All websites",
+    "message": "Default on granted sites",
     "description": "Popup switch: the global default."
   },
   "popupThisSite": {
-    "message": "This site",
+    "message": "Auto-analyze this site",
     "description": "Popup switch: the rule for the open page."
   },
   "popupOn": {
@@ -608,19 +608,19 @@
     "description": "Options card subtitle."
   },
   "optEnabled": {
-    "message": "Enable on all sites",
+    "message": "Auto-analyze granted sites by default",
     "description": "Options switch label."
   },
   "optEnabledNote": {
-    "message": "Per-site rules below override this default. Toggling applies to new page loads and open tabs.",
+    "message": "Applies only to granted sites. Per-site rules below can override it. Turning this off does not revoke website access; use Manage website access to remove grants.",
     "description": "Options switch help text."
   },
   "optAutoOpenPdfs": {
-    "message": "Open PDFs in Anagram",
+    "message": "Automatically open PDFs in Anagram",
     "description": "Options switch label."
   },
   "optAutoOpenPdfsNote": {
-    "message": "PDF tabs open in the reading mode.",
+    "message": "Use the full PDF reader on granted websites and authorized local files. Applies to newly opened PDFs; existing tabs stay where they are.",
     "description": "Options switch help text."
   },
   "optOpenReader": {
@@ -628,7 +628,7 @@
     "description": "Options row label: opens the PDF reading mode with no document, for a local file."
   },
   "optOpenReaderNote": {
-    "message": "Opens the reading mode; drop the file there.",
+    "message": "Choose or drop a PDF in the reader. No file URL access is needed.",
     "description": "Options row note under 'Read a PDF from this computer'."
   },
   "optOpenReaderBtn": {
@@ -780,7 +780,7 @@
     "description": "Options label above the clear-cache button."
   },
   "optCachedNote": {
-    "message": "Verdicts are kept so revisits never re-score. Clearing them makes the next scan ask the local engine again.",
+    "message": "Scores are reused for up to 30 days, or kept only in memory. Clearing also prevents earlier pending requests from saving their results.",
     "description": "Options help text."
   },
   "optCacheEntries_one": {
@@ -920,7 +920,7 @@
     "description": "First-run summary of the guide item about the numbers."
   },
   "onbVerdictsBody": {
-    "message": "The model ($1, ICLR 2026) rates how far a paragraph sits between untouched human writing (.00) and fully AI-generated text (1.0). The number is $2 written by AI — it is the model's estimate of how much AI editing changed the text as a whole. Hover (or tap) a chip for the full readout: the four-way probability split behind the verdict and the word count. EditLens reads English only: other languages get a gray chip with the detected language code instead of a number. Every number is an $3. Snippets under ~50 words are only scored when grouped with neighbors, and a short post is scored as a whole — a $4 on a chip means it covers that many paragraphs.",
+    "message": "The model ($1, ICLR 2026) rates how far a paragraph sits between untouched human writing (.00) and fully AI-generated text (1.0). The number is $2 written by AI — it is the weighted average of the four editing classes, scaled to 0–1, not a measured edit distance or a probability of AI authorship. Hover (or tap) a chip for the full readout: the four-way probability split behind the verdict and the word count. EditLens reads English only: other languages get a gray chip with the detected language code instead of a number. Every number is an $3. Snippets under ~50 words are only scored when grouped with neighbors, and a short post is scored as a whole — a $4 on a chip means it covers that many paragraphs.",
     "description": "First-run card body. $1-$4 are emphasised runs from the page (the model name, onbNotShare, onbEstimate, and the ×2 example)."
   },
   "onbNotShare": {
@@ -1047,25 +1047,9 @@
     "message": "options page",
     "description": "Emphasised run: the extension's settings page."
   },
-  "readerTitle": {
-    "message": "Anagram reader",
-    "description": "PDF reading-mode page title and its bar heading before a file is open."
-  },
   "readerOpenOriginal": {
     "message": "Open original",
     "description": "Reader button: leave for the PDF itself."
-  },
-  "readerZoomOut": {
-    "message": "Zoom out",
-    "description": "Reader zoom control, next to the percentage."
-  },
-  "readerZoomIn": {
-    "message": "Zoom in",
-    "description": "Reader zoom control, next to the percentage."
-  },
-  "readerFitWidth": {
-    "message": "Fit to width",
-    "description": "Reader zoom control: the percentage itself, which fits the page to the window again."
   },
   "readerDrop": {
     "message": "Drop a PDF here",
@@ -1074,18 +1058,6 @@
   "readerChoose": {
     "message": "Choose a file",
     "description": "Reader drop-zone button."
-  },
-  "readerPages_one": {
-    "message": "$1 page",
-    "description": "Reader subtitle. $1 = 1."
-  },
-  "readerPages_other": {
-    "message": "$1 pages",
-    "description": "Reader subtitle. $1 = page count."
-  },
-  "readerCapped": {
-    "message": "Reading the first $1 pages.",
-    "description": "Reader notice on a document past the page cap. $1 = the cap."
   },
   "readerLoading": {
     "message": "Loading…",
@@ -1098,10 +1070,6 @@
   "readerTooLarge": {
     "message": "This PDF is too large to read here.",
     "description": "Reader notice past the size cap."
-  },
-  "readerEncrypted": {
-    "message": "This PDF is password-protected.",
-    "description": "Reader notice."
   },
   "readerBadFile": {
     "message": "This file could not be read as a PDF.",
@@ -1139,14 +1107,6 @@
     "message": "Withdraw",
     "description": "Options button that gives back every granted site."
   },
-  "readerPassword": {
-    "message": "Password",
-    "description": "Reader field, in the bar, for an encrypted PDF's password. Placeholder and label."
-  },
-  "readerHtml": {
-    "message": "HTML",
-    "description": "Reader link: this paper also exists as a real HTML page. The acronym is the same in most languages."
-  },
   "runtimeTitle": {
     "message": "Choose how Anagram runs",
     "description": "Shared local runtime setup panel on onboarding and Options: title."
@@ -1178,10 +1138,6 @@
   "runtimeRefresh": {
     "message": "Refresh status",
     "description": "Shared local runtime setup panel on onboarding and Options: refresh."
-  },
-  "runtimeQualityNote": {
-    "message": "FP32 is recommended. These measurements compare speed and memory, not detection quality. Quality has not been evaluated here; INT8 is experimental. RAM shows the largest process sample during measurement; loading and warmup peaks are not measured. RAM and accelerator memory may overlap on shared-memory devices.",
-    "description": "Benchmark caveat. Keep FP32 and INT8 literal. Process RAM is sampled during measurement only; performance is measured, detection quality is not; accelerator and system RAM may be shared."
   },
   "runtimeBenchmarking": {
     "message": "Testing configurations…",
@@ -1260,7 +1216,7 @@
     "description": "Measured batch throughput: $1 is the localized number of texts processed per second."
   },
   "runtimeRam": {
-    "message": "Process RAM (sampled)",
+    "message": "Process RAM peak (sampled)",
     "description": "Largest observed process resident-memory sample during measurement, not exact peak or whole-device RAM."
   },
   "runtimeResources": {
@@ -1271,10 +1227,6 @@
     "message": "Accelerator memory",
     "description": "Shared local runtime setup panel on onboarding and Options: accelerator."
   },
-  "runtimeQuality": {
-    "message": "Detection quality",
-    "description": "Shared local runtime setup panel on onboarding and Options: quality."
-  },
   "runtimeActive": {
     "message": "Active",
     "description": "Shared local runtime setup panel on onboarding and Options: active."
@@ -1284,7 +1236,7 @@
     "description": "Shared local runtime setup panel on onboarding and Options: selected."
   },
   "runtimeRecommended": {
-    "message": "Recommended",
+    "message": "Recommended · FP32",
     "description": "Annotation for the daemon-recommended configuration, not necessarily the fastest measured configuration."
   },
   "runtimeUnavailable": {
@@ -1302,10 +1254,6 @@
   "runtimeBatch": {
     "message": "Batch $1 · $2 samples",
     "description": "Benchmark workload details: $1 texts per batch, $2 measured samples."
-  },
-  "runtimeNotEvaluated": {
-    "message": "Not evaluated",
-    "description": "Shared local runtime setup panel on onboarding and Options: not evaluated."
   },
   "runtimeExperimental": {
     "message": "Experimental",
@@ -1376,7 +1324,7 @@
     "description": "Native component lifecycle UI: InstallIntro."
   },
   "componentInitialDownload": {
-    "message": "First setup downloads about 4.07 GB of model files, plus the local runtime. Allow extra disk space during installation. Model downloads and the first benchmark start automatically after connection.",
+    "message": "First setup detects usable devices and prepares a recommended model set, usually about 1.43 GB including language detection files. The local runtime and temporary installation space are additional. Preparation and the first benchmark start automatically; extra comparison models are optional in Settings.",
     "description": "Native component lifecycle UI: InitialDownload."
   },
   "componentTerminal": {
@@ -1476,15 +1424,15 @@
     "description": "Native component lifecycle UI: Incompatible."
   },
   "componentDownloadProgress": {
-    "message": "Model download progress",
+    "message": "Model preparation progress",
     "description": "Native component lifecycle UI: DownloadProgress."
   },
   "componentDownloadBytes": {
-    "message": "$1 of $2 downloaded",
+    "message": "$1 of $2 prepared",
     "description": "Native component lifecycle UI: DownloadBytes."
   },
   "componentDownloadedBytes": {
-    "message": "$1 downloaded",
+    "message": "$1 prepared",
     "description": "Native component lifecycle UI: DownloadedBytes."
   },
   "componentLocation": {
@@ -1662,5 +1610,345 @@
   "componentInUseNote": {
     "message": "This can happen when Anagram is connected from another browser. Close the other Anagram connection, then retry here; reinstalling is not needed.",
     "description": "Native host lock conflict, distinct from a missing installation."
+  },
+  "runtimeMeasurementNote": {
+    "message": "Each configuration runs in its own process. FP32 is the conservative recommendation; fastest means the lowest measured single-text latency. Timing excludes setup, loading and warmup. RAM is sampled every 50 ms during inference and is not total system usage. On Apple Silicon, process RAM and GPU driver memory overlap; do not add them.",
+    "description": "Runtime comparison measurement label or explanation."
+  },
+  "runtimeLegacyMeasurementNote": {
+    "message": "These results use the older benchmark method. Update the local component and run the benchmark again for isolated measurements and comparable memory figures.",
+    "description": "Shown when the connected native component does not identify the revised benchmark method."
+  },
+  "optReportSaveFailed": {
+    "message": "Could not read or save this preference. The last confirmed setting remains in effect; please retry before copying a report.",
+    "description": "Report privacy preference storage failure; the switch reverts or stays disabled."
+  },
+  "runtimeFastest": {
+    "message": "Fastest measured",
+    "description": "Runtime comparison measurement label or explanation."
+  },
+  "runtimeMpsMemory": {
+    "message": "GPU driver memory (includes cache)",
+    "description": "Runtime comparison measurement label or explanation."
+  },
+  "runtimeInitialization": {
+    "message": "Initialize $1 · verify files $2",
+    "description": "Runtime comparison measurement label or explanation."
+  },
+  "runtimeMemoryBaseline": {
+    "message": "Before libraries $1 · loaded $2",
+    "description": "Runtime comparison measurement label or explanation."
+  },
+  "runtimeSamples": {
+    "message": "$1 single-text samples",
+    "description": "Runtime comparison measurement label or explanation."
+  },
+  "runtimeInsufficient": {
+    "message": "Few samples — rerun before comparing",
+    "description": "Runtime comparison measurement label or explanation."
+  },
+  "componentIdle": {
+    "message": "Model unloaded while idle · resumes when needed",
+    "description": "Local engine idle-memory preference or state."
+  },
+  "componentIdleSetting": {
+    "message": "Unload model after inactivity",
+    "description": "Local engine idle-memory preference or state."
+  },
+  "componentIdleMinutes": {
+    "message": "$1 minutes",
+    "description": "Local engine idle-memory preference or state."
+  },
+  "componentIdleNever": {
+    "message": "Keep loaded",
+    "description": "Local engine idle-memory preference or state."
+  },
+  "componentIdleNote": {
+    "message": "Releases model memory after no scoring requests. The next analysis reloads it automatically. Stop engine stays stopped until you resume it.",
+    "description": "Local engine idle-memory preference or state."
+  },
+  "optCacheMode": {
+    "message": "Score cache",
+    "description": "Report privacy preference, export metadata, or cache status shown in settings."
+  },
+  "optCacheModeNote": {
+    "message": "Memory-only mode deletes saved scores and keeps new scores in memory. Closing the browser or restarting its background worker can clear memory.",
+    "description": "Report privacy preference, export metadata, or cache status shown in settings."
+  },
+  "optCachePersistent": {
+    "message": "On this device · up to 30 days",
+    "description": "Report privacy preference, export metadata, or cache status shown in settings."
+  },
+  "optCacheSession": {
+    "message": "Memory only",
+    "description": "Report privacy preference, export metadata, or cache status shown in settings."
+  },
+  "optCacheModeSaved": {
+    "message": "Cache preference saved.",
+    "description": "Report privacy preference, export metadata, or cache status shown in settings."
+  },
+  "optCacheModeFailed": {
+    "message": "Could not fully save or apply this setting. Retry changing the mode and clearing saved scores; restarting may restore the last saved mode.",
+    "description": "Report privacy preference, export metadata, or cache status shown in settings."
+  },
+  "optCacheClearFailed": {
+    "message": "Could not confirm deletion of all saved scores. Please retry.",
+    "description": "Report privacy preference, export metadata, or cache status shown in settings."
+  },
+  "optReportText": {
+    "message": "Include passage text in copied reports",
+    "description": "Report privacy preference, export metadata, or cache status shown in settings."
+  },
+  "optReportUrl": {
+    "message": "Include page title and URL in copied reports",
+    "description": "Report privacy preference, export metadata, or cache status shown in settings."
+  },
+  "optReportPrivacy": {
+    "message": "Reports include scores and technical context. Page titles, URLs and text are excluded unless enabled here.",
+    "description": "Report privacy preference, export metadata, or cache status shown in settings."
+  },
+  "reportPrivateTitle": {
+    "message": "Anagram analysis report",
+    "description": "Report privacy preference, export metadata, or cache status shown in settings."
+  },
+  "reportShort": {
+    "message": "Too short: $1",
+    "description": "Report privacy preference, export metadata, or cache status shown in settings."
+  },
+  "reportPending": {
+    "message": "Not yet analyzed: $1",
+    "description": "Report privacy preference, export metadata, or cache status shown in settings."
+  },
+  "reportRuntime": {
+    "message": "Calibration / preprocessing identity: $1",
+    "description": "Report privacy preference, export metadata, or cache status shown in settings."
+  },
+  "reportCopyFailed": {
+    "message": "Could not copy the report.",
+    "description": "Report privacy preference, export metadata, or cache status shown in settings."
+  },
+  "pasteTitle": {
+    "message": "Analyze text",
+    "description": "Text analysis page action, status, or limit."
+  },
+  "pasteIntro": {
+    "message": "Paste English prose or choose a UTF-8 text file. Analysis runs locally and requires no website access. Short paragraphs are read together; long text uses the same windowing as webpages.",
+    "description": "Text analysis page action, status, or limit."
+  },
+  "pasteInput": {
+    "message": "Text to analyze",
+    "description": "Text analysis page action, status, or limit."
+  },
+  "pasteFile": {
+    "message": "Open text file",
+    "description": "Text analysis page action, status, or limit."
+  },
+  "pasteAnalyze": {
+    "message": "Analyze",
+    "description": "Text analysis page action, status, or limit."
+  },
+  "pasteClear": {
+    "message": "Clear text and results",
+    "description": "Text analysis page action, status, or limit."
+  },
+  "pasteBusy": {
+    "message": "Analyzing locally…",
+    "description": "Text analysis page action, status, or limit."
+  },
+  "pasteShort": {
+    "message": "Please provide at least $1 words of English prose.",
+    "description": "Text analysis page action, status, or limit."
+  },
+  "pasteTooLarge": {
+    "message": "Text must be no more than 200,000 characters (file limit: 1 MiB).",
+    "description": "Text analysis page action, status, or limit."
+  },
+  "pasteFailed": {
+    "message": "Analysis did not complete. Check the local engine in Settings and try again.",
+    "description": "Text analysis page action, status, or limit."
+  },
+  "pasteCoverage": {
+    "message": "$1 of $2 windows analyzed · $3 unsupported · $4 unavailable · $5 truncated",
+    "description": "Text analysis page action, status, or limit."
+  },
+  "pasteFileFailed": {
+    "message": "Could not read this file as UTF-8 text.",
+    "description": "Text analysis page action, status, or limit."
+  },
+  "pasteExportText": {
+    "message": "Include original text in report",
+    "description": "Text analysis page action, status, or limit."
+  },
+  "pasteOpenSettings": {
+    "message": "Open Settings",
+    "description": "Text analysis page action, status, or limit."
+  },
+  "reportDevice": {
+    "message": "Device: $1 · precision: $2",
+    "description": "Report privacy preference, export metadata, or cache status shown in settings."
+  },
+  "runtimePhaseInitialize": {
+    "message": "Initializing libraries",
+    "description": "Benchmark phase: importing runtime libraries before model loading."
+  },
+  "runtimePhaseVerify": {
+    "message": "Verifying model files",
+    "description": "Benchmark phase: hashing the local model and pipeline files."
+  },
+  "componentDetectingDevices": {
+    "message": "Detecting usable devices…",
+    "description": "Device-aware local model preparation."
+  },
+  "componentVerifyingModels": {
+    "message": "Verifying model files…",
+    "description": "Device-aware local model preparation."
+  },
+  "componentModelsPrepared": {
+    "message": "Model files prepared",
+    "description": "Device-aware local model preparation."
+  },
+  "componentPreparationNote": {
+    "message": "Prepared bytes include verified files already on this computer; this is not a count of network traffic. Pause takes effect after the current operation finishes.",
+    "description": "Device-aware local model preparation."
+  },
+  "componentRecommendedPlan": {
+    "message": "Recommended model set",
+    "description": "Device-aware local model preparation."
+  },
+  "componentExpandedPlan": {
+    "message": "Expanded comparison set",
+    "description": "Device-aware local model preparation."
+  },
+  "componentPlanDevices": {
+    "message": "Detected devices: $1",
+    "description": "Device-aware local model preparation."
+  },
+  "componentPlanSize": {
+    "message": "Selected files: $1 total, including language detection.",
+    "description": "Device-aware local model preparation."
+  },
+  "componentPlanFiles": {
+    "message": "Files in this plan",
+    "description": "Device-aware local model preparation."
+  },
+  "componentExpandedSize": {
+    "message": "Expanded plan: $1 total. Verified files are reused; only missing files are downloaded.",
+    "description": "Device-aware local model preparation."
+  },
+  "componentExpandedDownload": {
+    "message": "Download expanded comparison models",
+    "description": "Device-aware local model preparation."
+  },
+  "componentRecommendedDownload": {
+    "message": "Rescan devices and prepare recommended models",
+    "description": "Device-aware local model preparation."
+  },
+  "componentExpandedNote": {
+    "message": "Expanded comparison adds compatible runtimes and experimental CPU INT8. It needs more disk space and does not establish detection quality. CPU ONNX FP16, CoreML and MLX are not included.",
+    "description": "Device-aware local model preparation."
+  },
+  "componentRecommendedNote": {
+    "message": "Returning to the recommended set keeps any extra files already downloaded. Use Delete model files to remove them all. Choose the scoring configuration separately below.",
+    "description": "Device-aware local model preparation."
+  },
+  "optFileAccess": {
+    "description": "PDF reading, local file access, or network privacy guidance.",
+    "message": "Local PDF access"
+  },
+  "optFileAccessNote": {
+    "description": "PDF reading, local file access, or network privacy guidance.",
+    "message": "File URL access is optional and broader than selecting one file. Without it, choose or drop a PDF in the reader."
+  },
+  "optFileAccessEnable": {
+    "description": "PDF reading, local file access, or network privacy guidance.",
+    "message": "Enable local PDFs"
+  },
+  "optFileAccessManage": {
+    "description": "PDF reading, local file access, or network privacy guidance.",
+    "message": "Browser settings"
+  },
+  "optFileAccessReady": {
+    "description": "PDF reading, local file access, or network privacy guidance.",
+    "message": "Authorized. Local PDFs can open automatically when the switch above is on."
+  },
+  "optFileAccessBrowserRequired": {
+    "description": "PDF reading, local file access, or network privacy guidance.",
+    "message": "One more step: enable local file access in this extension’s browser settings, then reopen the PDF."
+  },
+  "optFileAccessNotGranted": {
+    "description": "PDF reading, local file access, or network privacy guidance.",
+    "message": "Not authorized. PDFs opened from this computer stay in the browser’s reader."
+  },
+  "optPdfSettingsFailed": {
+    "description": "PDF reading, local file access, or network privacy guidance.",
+    "message": "The change was not completed. Check the browser permission and try again."
+  },
+  "popupFileAccessNeeded": {
+    "description": "PDF reading, local file access, or network privacy guidance.",
+    "message": "To open this PDF directly, allow local file access in Settings. You can also choose the file in the reader."
+  },
+  "popupFileAccessSettings": {
+    "description": "PDF reading, local file access, or network privacy guidance.",
+    "message": "Local file settings"
+  },
+  "optNetworkPrivacy": {
+    "description": "PDF reading, local file access, or network privacy guidance.",
+    "message": "Network access and how to verify it"
+  },
+  "optNetworkLocal": {
+    "description": "PDF reading, local file access, or network privacy guidance.",
+    "message": "Text analysis runs on this computer. Anagram has no analytics or cloud scoring service."
+  },
+  "optNetworkDownloads": {
+    "description": "PDF reading, local file access, or network privacy guidance.",
+    "message": "Installation, model downloads and requested component updates use the internet. Your browser may also check for extension updates."
+  },
+  "optNetworkDocuments": {
+    "description": "PDF reading, local file access, or network privacy guidance.",
+    "message": "Opening an online PDF or Google Doc may fetch the original document again. A document’s images or links may also use the network. This is separate from uploading text for analysis."
+  },
+  "optOfflineStep1": {
+    "description": "PDF reading, local file access, or network privacy guidance.",
+    "message": "Finish local-engine setup and the model download."
+  },
+  "optOfflineStep2": {
+    "description": "PDF reading, local file access, or network privacy guidance.",
+    "message": "Disconnect from the internet, then open the reader and choose a PDF from this computer."
+  },
+  "optOfflineStep3": {
+    "description": "PDF reading, local file access, or network privacy guidance.",
+    "message": "The PDF and analysis should still work. This verifies offline operation; it is not an audit of all possible network activity."
+  },
+  "readerAnalysisCapped": {
+    "description": "PDF reading, local file access, or network privacy guidance.",
+    "message": "Only the first $1 pages are analyzed; all pages remain readable."
+  },
+  "optFileAccessSteps": {
+    "message": "Show permission steps",
+    "description": "Firefox local file access instructions; the browser prevents opening about:addons from an extension."
+  },
+  "optFileAccessFirefoxInstructions": {
+    "message": "Type about:addons in Firefox’s address bar. Open Anagram → Permissions and data, then allow access to local files. Return here and reopen the PDF. You can also choose one file in the reader without this permission.",
+    "description": "Firefox local file access instructions; the browser prevents opening about:addons from an extension."
+  },
+  "readerReloadRequired": {
+    "message": "This tab no longer holds the PDF data. Open the original and choose Anagram again, or choose a local file.",
+    "description": "PDF source loading and recovery status."
+  },
+  "popupPdfBusy": {
+    "message": "Another PDF is loading. Keep this document open and try again in a moment.",
+    "description": "PDF source loading and recovery status."
+  },
+  "popupPdfOpenFailed": {
+    "message": "This PDF could not be opened. Check website or local file access in Settings, or choose the file in the reader.",
+    "description": "PDF source loading and recovery status."
+  },
+  "readerAnalysisScope": {
+    "message": "Analysis covers $1 of $2 pages currently loaded for analysis. Scroll to load more; recycled pages leave this panel.",
+    "description": "PDF analysis coverage: $1 is the currently loaded page count, $2 is the total page count."
+  },
+  "readerReportScope": {
+    "message": "PDF analysis scope: $1 currently loaded pages of $2. This is not a complete document assessment.",
+    "description": "PDF analysis coverage: $1 is the currently loaded page count, $2 is the total page count."
   }
 }
