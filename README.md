@@ -25,33 +25,43 @@ it answers *"how much of this did an AI write?"* — inline, live, on every site
 | --- | --- |
 | ![Popup: the page's state and one action, then where Anagram runs](docs/screenshots/popup.png) | ![Flagged-paragraph panel with verdict filters](docs/screenshots/triage-panel.png) |
 
-## Install (one line, one folder)
+## Install and first setup
 
-```bash
-curl -fsSL https://github.com/CoderBak/anagram/releases/latest/download/install.sh | sh
-```
+User guides: **[English](docs/user-guide.en.md) · [简体中文](docs/user-guide.zh-CN.md)**.
+The interface follows your browser's English or Simplified Chinese language.
 
-That puts **everything** — a private Python, the daemon and its packages, the EditLens
-checkpoint, the built extension — under `~/.anagram/` and touches nothing else: no
-sudo, no Homebrew, no system Python, no shell-profile edits, no launch agent. Then:
+Install the extension first: extract the Chrome ZIP to a permanent directory, then use
+`chrome://extensions` → Developer mode → **Load unpacked**, or install from the Chrome
+Web Store when a listing is available. Both open the same setup page. It detects your OS
+and shows a version-pinned installation command with your exact extension ID. Run that
+command once in Terminal or PowerShell to install the private local component and register
+Native Messaging. Ordinary source builds identify themselves as unpublished; their copy
+button is disabled until matching release assets have been published.
 
-```bash
-~/.anagram/bin/anagram start       # the scoring daemon, 127.0.0.1:8765, stays until you stop it
-```
+After installation the browser starts the component automatically. The setup page shows
+model download progress, then a benchmark with a **30-second total measurement budget**;
+loading and warmup take additional time. Compare batch-one latency, batch-eight throughput
+and sampled memory use, then explicitly choose a device and precision. Recommendations
+stay within FP32; FP16 is optional and INT8 is experimental. Settings can pause/resume
+downloads, stop/start inference, rerun the benchmark, change configuration, update the
+component, delete models or request complete uninstall. No terminal stays open for daily
+use. Restarting the browser/computer reuses your saved choice; an intentional stop or
+pause remains in effect until you resume it.
 
-and load the extension: `chrome://extensions` → Developer mode → **Load unpacked** →
-`~/.anagram/extension`, then allow it on the sites you want from the page that opens (it
-installs able to read none). `anagram status | stop | logs | selftest` do what they say;
-`anagram doctor` checks the folder, the private Python and its packages, both model
-files against the checksums the installer pinned, the free space and the port, and
-prints one line per check with the command that fixes what is wrong (it only reads —
-nothing is written, moved or removed); `anagram update` re-runs the installer and
-restarts the daemon if one was running, so the code in memory is the code on disk;
-`anagram uninstall` deletes the folder, which is the only thing the
-installer ever created. The checkpoint is gated on Hugging Face (CC BY-NC-SA): the
-installer asks for a read token unless `ANAGRAM_HF_TOKEN` is set; `ANAGRAM_HOME`
-relocates the folder; `ANAGRAM_SKIP_MODEL=1` defers the 1.4 GB download to
-`anagram model`. Footprint about 2 GB, install time a few minutes, mostly the download.
+The public [modelkit](https://huggingface.co/CoderBak/editlens_roberta_modelkit) contains
+the original checkpoint and FP32/FP16/INT8 ONNX variants, about **4.07 GB**, plus runtime
+and temporary download space. It is derived from Pangram's EditLens under the original
+**CC BY-NC-SA 4.0** license and attribution. No Hugging Face login is required; the
+noncommercial conditions still apply. Files are verified against pinned hashes.
+
+Local files default to `~/.anagram` on macOS/Linux or `%LOCALAPPDATA%\Anagram` on Windows,
+plus a small browser native-host registration. Browser storage and a manually unpacked ZIP
+remain in their own locations. Use **Uninstall Anagram completely** before removing the
+extension to clean the component and models; clicking the browser's Remove alone cannot
+clean native files. Windows cleanup uses a separate visible window and asks you to remove
+the extension after it confirms completion. See the guides and [footprint](docs/footprint.md)
+for exact paths, upgrades and limitations. The 0.4.0 work is local and is not a published
+release or store listing yet.
 
 ## Quick start from source
 
@@ -60,29 +70,28 @@ relocates the folder; `ANAGRAM_SKIP_MODEL=1` defers the 1.4 GB download to
 npm install
 npm run build                      # Chrome → output/chrome-mv3/   (load unpacked, see below)
 
-# 2. the two models (the daemon downloads nothing itself — it loads what is on disk)
-#    the checkpoint is gated on Hugging Face: accept the CC BY-NC-SA terms once, then
-hf download pangram/editlens_roberta-large --local-dir ../models/editlens_roberta-large
+# 2. the private runtime and pinned public modelkit (CC BY-NC-SA 4.0)
+cd anagramd && uv sync --frozen && cd ..     # → anagramd/.venv
+anagramd/.venv/bin/python anagramd/download_modelkit.py --model-dir ../models/editlens_roberta-large
 curl -fsSL -o ../models/lid.176.ftz \
   https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz   # fastText, 1 MB
 
-# 3. the scoring daemon (own venv from the lockfile; torch + transformers + fastapi + fasttext)
-cd anagramd && uv sync --frozen && cd ..     # → anagramd/.venv
-npm run serve                      # http://127.0.0.1:8765 — GET /health, POST /score
+# 3. first start: automatic benchmark, then choose in onboarding or Settings
+npm run serve                      # http://127.0.0.1:8765 — /runtime, /health, /score
 ```
 
 `npm run release` builds what the installer consumes (`dist/anagram.tar.gz` + checksum,
 `dist/install.sh`, the store zip); pushing a `v*` tag publishes them as a GitHub Release.
 
-The extension probes the daemon's `/health` and picks it up within seconds of it
-starting; the popup names the model that is scoring at its foot, and while nothing
-answers it leads with *Daemon not running*, the start command in a one-click
-copyable chip and a **Retry** — or, when something on that port answers with
-another contract version, *Daemon version mismatch* and the update command
-instead. Options → *Scoring daemon* holds the URL,
-which is restricted to loopback addresses. `sh anagramd/run.sh --selftest` scores
-four sample paragraphs (one of them Chinese, which must come back unsupported),
-prints PASS/FAIL per sample and exits non-zero if any of them is wrong.
+The source commands above run the **developer HTTP transport**. In Options, expand
+**Developer connection**, select HTTP and use the loopback URL. The normal transport is
+Native Messaging and does not open a listening HTTP port. For isolated installer checks,
+see `test/installer.sh`; the tests do not change your browser's real registrations.
+
+`npm run release` produces browser ZIPs, native component archives, version-matched
+installers and checksums under `dist/`. It enables release installation commands in the
+packaged extension but does not publish anything. Publish matching assets before distributing
+that package. `sh anagramd/run.sh --selftest` remains available for developer diagnostics.
 
 ## What you get
 
@@ -181,16 +190,11 @@ prints PASS/FAIL per sample and exits non-zero if any of them is wrong.
   an add-rule form) that cover a whole site — a rule written on `example.com`
   holds on `news.example.com` too, the most specific rule wins and `www.` makes
   no difference — "Open PDFs in Anagram" (off by default), the keyboard
-  shortcuts, a scoring-backend section (daemon URL / status check) and "Clear
-  cached verdicts". A first-run page
-  explains the verdicts and opens with a **live setup strip** — extension,
-  scoring daemon, site access, ready — that re-checks itself every few seconds
-  while the daemon is down and hands over the one command that fixes it
-  (`anagram start`, `anagram update`, or the install one-liner) in a copyable
-  pill; everything else on it is a closed **Guide** list, so the page a new
-  install meets is one screen. A daemon that
-  answers but speaks another contract version is reported as a **version
-  mismatch** ("run `anagram update`"), not as "not running".
+  shortcuts, local component management, device and precision selection, benchmark
+  results and rerun controls, and "Clear cached verdicts". A bilingual first-run page
+  provides the one-time installer, live download/setup progress and an explicit
+  configuration choice before scoring. A missing component or incompatible version leads
+  to Settings with an actionable status; day-to-day start/stop/update needs no shell command.
 - **Google Docs support, in place.** The editor is a canvas, so the ball offers
   **"Analyze document"**: a **reading mode opens right in the tab** — the
   document fetched same-origin, rendered as a clean paper view with every
@@ -550,15 +554,16 @@ would make Firefox a foreground application — is stripped in the harness.
 
 | Suite | Command | Checks | What it covers |
 | --- | --- | --- | --- |
+| Native browser setup | `npm run test:native` | EN + ZH | Shipping Chrome build, no site grants, temporary native-host registration and a real stdio process: exact version/ID installation command, shared host between setup and Settings, pause/resume, light/dark accessibility, narrow layout, cancel-first destructive confirmations, scheduled cleanup retaining the extension, and a completed receipt triggering actual self-uninstall. Component responses are deterministic fixtures; `test/native-real.py` separately tests the real model. |
 | Node | `npm run test:node` | 388 | vitest + `wxt/testing`: the grouping rules a page and a PDF share (every group over the evidence floor and inside one model window, no group across a barrier, a caption or a column break, order kept, nothing read twice, nothing droppable dropped — over a few hundred seeded sequences of blocks) and what a PDF's reconstruction makes of them (three short paragraphs under a heading read as one unit, nothing across the heading, strict per-paragraph mode reading none of them), PDF paragraph reconstruction on synthetic pages (one, two and three columns with full-width matter between them, and the tables, ragged indents and justified word spaces that are not gutters; front matter; indents; hyphenation branch by branch; running heads including a bound book's alternating pair; lists; footnotes and captions reached past; drop caps; headings; paragraphs continuing across a page or a column; CJK set solid; a rotated margin stamp; and the weight of a thirty-page paper), reading a long text in windows (every window in one call, a text that fits sent exactly as before, a window the daemon cut re-read in halves once, no verdict on a partial answer, one failed window → Unavailable), router invariants (keys snapshotted per request, keys reserved before the queue so a waiting batch absorbs later requests, a joined request reports the identity that actually answered it, results cached under the producing model, priority order and promotion), LRU eviction in both in-memory caches, scheduler idle/pause/upgrade and a long unit priced by all of its windows, wire validation (including that no redirect can carry a request away), the daemon client (loopback only, down TTL, another contract major reported as a version mismatch rather than an outage), per-site rules (a rule covering every subdomain of its site, the most specific one winning, `www.` folded away on both sides, the public-suffix guard, IP addresses and localhost matched exactly), what the popup's "This site" switch writes for every combination of an inherited rule and the global default, clearing the cached verdicts (both layers emptied, a paragraph sent to the daemon again afterwards, a request in flight over the clear still settling and nothing degraded cached), and which settings change ends a one-shot “Analyze this page” run (an off rule that was already there ends nothing; this site turned off during the run, or a more specific off rule, ends it); plus property runs over a few hundred seeded texts each (a seeded PRNG, no dependency) — the canonical scoring text is a fixed point, never grows beyond NFKC, has no edge or double whitespace, drops every invisible and folds soft hyphens / NBSP / curly quotes; window plans are consecutive, gapless, inside the budget and the minimum, capped and deterministic; and seeded scheduler programs (enqueue, upgrade, pause/resume, epoch bump, completion) never put a unit in flight twice, send it once per epoch, serve higher lanes first, drain to one idle signal and never render a superseded epoch; plus the two message files against each other and against the tree (same keys, same placeholders, no empty message, a description on every English one, both halves of every plural, no message nothing uses, no key nothing wrote) and `t()` itself — English with no extension API, its own $1…$9 substitution, the singular only for one, the platform preferred when it answers and fallen back on when it returns "" or throws; and the PDF handoff's rules (the bytes-as-JSON encoding both hops use, the `%PDF-` header taken anywhere in the first kilobyte and a sign-in page refused, a read out of a tab over an injected `fetch` that hands over every byte in order, refuses a stated length over the cap before touching the body and cuts an endless one off AT the cap, and a ticket store bound to the tab it was read for, spendable once and dropped on a timer), optional site access (the origin pattern for a tab — ports dropped, IDN in punycode, IPv6 and `file:`/`chrome:`/the store refused; the daemon's own loopback hosts never carrying a content script; and the worker's registration against faked permissions/scripting/tabs APIs: a grant registering on exactly those origins and injecting the tabs already open, a withdrawal unregistering and stopping every tab we may no longer read but not one running on `activeTab` alone, install/startup/wake re-asserting, doubled events changing nothing), what each shipping manifest asks for (no host permission at all, the all-sites pair optional, no content script declared), -Security-Policy, its `connect-src` list and its `web_accessible_resources` (those |
 | Unit | `npm run test:unit` | 499 | walker/assembler/extraction (voice scopes and which short paragraphs may be scored together — thirty-four fixtures modelled on real post, thread, feed, answer, article, forum, review, RFC and mail-archive markup; posts that declare themselves and posts recognised by their structure — what counts as a byline and what is a control beside it, a lone reply, the opening post of a thread, lines of verse, a flat chat, one author's list and table, the cost of a hundred comments — a post read whole, a stretch of short paragraphs divided into model-sized groups, no orphan next to a full paragraph of its own voice, an article left per paragraph, and re-scans driven the way the orchestrator drives them; what the walk reaches: heading containers, notranslate application shells, boxes that clip their own text and where their chip goes — one chip under a clipped review and the other five at their own paragraphs, opened, closed and chipped in the order a daemon answers, a box that only starts clipping once its images arrive, a quotation inside the clipped text, a box that is the post itself, a page that reflows under a chip — prose in `<pre>` against code, configuration, diffs, logs and e-mail quotations — math, citation marks, hidden copies, out-of-flow markers, accordions, author lists), window planning (balance, sentence and CJK boundaries, a merged unit cut between two paragraphs, the no-boundary and at-budget cases, the cap, the regex fallback), the mapping from a window back to text nodes (inline markup, collapsed whitespace, merged parts, a skipped formula, a DOM that changed), aggregation arithmetic, per-window marks and the card's window row, canonical scoring text, band mapping, Readability-guided scope — in a real Chromium page (~5s) |
 | E2E | `npm run test:e2e` | 33 | full extension on a 20-section fixture page against the fake daemon — including that non-English text never reaches it, that a post of mixed paragraphs sits under one ×N chip and is one chip again after it is opened in place, and that a three-window paragraph reaches it whole: three consecutive blocks, none past the token window, one chip, each window marked in its own band |
-| Scenarios | `npm run test:scenarios` | 84 + 13 | UI edge cases (the PDF reading mode driven from PDFs the suite writes itself — the real pages drawn with a text layer over each, the paragraphs reaching the daemon in order with the running head still on the page and the hyphen mended, three short paragraphs under a heading reaching it as ONE unit under one ×3 chip with marks on all three and nothing grouped across the heading, a chip inside every page and over no glyph, marks on the paragraph's own letters, a zoom that rebuilds nothing and re-asks nothing, a thirty-page paper whose last page has its text long before its picture and a panel jump that brings both, the panel and a report that names the PDF; a scan shown with the no-text-layer line and the broken-file line; the ball's "Analyze PDF" on a PDF tab — hover card, panel filters, FAB snap/tuck, top-layer, KaTeX, vertical text, CSS Color 4 backgrounds, late shadow-root content, a post clipped to three lines whose chip sits under the visible text and returns to its own last line when the post is opened, a six-paragraph review clipped to a few lines that keeps ONE chip under the box and the rest at their paragraphs, a box that only starts clipping when its image arrives, mutation storms, on-demand Readability chunk, self-rewriting page, main-content scope honoured from the very first scan, the selection card's ✕ while the daemon is still thinking, a long selection analyzed whole in windows, the copied report's bare 0-1 scores and legend and its line for a paragraph scored in windows, dense text the daemon had to cut re-read in two halves, daemon down → Unavailable → daemon back → auto re-queue, a quoted mailing-list message keeping its chip through a mutation beside it, and the whole interface in Simplified Chinese — a SECOND browser launched with its UI language set to zh-CN, asserting the popup, the options page, a chip's card, the panel's title / filters / Copy report, the context-menu titles (read back through `chrome.i18n` in the worker, since `chrome.contextMenus` has none) and the copied report, with the first browser's English left untouched; where the platform will not switch the browser's language the check SKIPs loudly rather than passing against an English browser) + keyboard-only triage (focusable counter, Enter/Esc focus hand-off, accessible names, the three commands driven from the service worker) and a no-referrer cross-origin frame obeying the top page's site rule, the Google Docs reading overlay re-reading its document in place (new paragraphs chipped, the old ones gone, one bar, a failed re-read leaving the snapshot alone), the first-run page's setup strip (daemon running with its model and device; stopped → the start command, the install one-liner and a Copy button that puts exactly the command on the clipboard; started again → the rows follow without a reload; a contract-mismatched daemon → the update command), and the three small controls (a rescan answered from the worker cache and the daemon asked again once the verdicts are cleared; “Analyze this page” running once on a switched-off site, gone after a reload, with nothing written; the same run on an already-off site surviving an unrelated rule and ended by the panel's own “Turn off on …”), and what a page COSTS over time: one page built two ways — step by step under a watching extension (posts appended in batches, a paragraph inserted into a live post, text edited in place, a block wrapped and unwrapped) and all at once before the content script runs — ending with identical chips in identical places with identical numbers; a burst of 130 dirty nodes becoming at most ten walks; twenty `replaceState` rewrites costing no re-walk and no chip while a pushed entry is still refreshed once; and the insertion gate — a page carrying a hydration marker gets no chip into its tree before it has loaded (and gets them straight after, as verdicts, never as chips left analyzing), the same page without the marker is chipped long before `load` as it always was, and a run torn down while its chips are still held draws none of them afterwards, leaves no timer armed, and starts clean when it is switched back on + 13 live sites (bot-check interstitials count as skips) (`-- --local` skips the live sweep) |
+| Scenarios | `npm run test:scenarios` | 84 + 13 | UI edge cases (the PDF reading mode driven from PDFs the suite writes itself — the real pages drawn with a text layer over each, the paragraphs reaching the daemon in order with the running head still on the page and the hyphen mended, three short paragraphs under a heading reaching it as ONE unit under one ×3 chip with marks on all three and nothing grouped across the heading, a chip inside every page and over no glyph, marks on the paragraph's own letters, a zoom that rebuilds nothing and re-asks nothing, a thirty-page paper whose last page has its text long before its picture and a panel jump that brings both, the panel and a report that names the PDF; a scan shown with the no-text-layer line and the broken-file line; the ball's "Analyze PDF" on a PDF tab — hover card, panel filters, FAB snap/tuck, top-layer, KaTeX, vertical text, CSS Color 4 backgrounds, late shadow-root content, a post clipped to three lines whose chip sits under the visible text and returns to its own last line when the post is opened, a six-paragraph review clipped to a few lines that keeps ONE chip under the box and the rest at their paragraphs, a box that only starts clipping when its image arrives, mutation storms, on-demand Readability chunk, self-rewriting page, main-content scope honoured from the very first scan, the selection card's ✕ while the daemon is still thinking, a long selection analyzed whole in windows, the copied report's bare 0-1 scores and legend and its line for a paragraph scored in windows, dense text the daemon had to cut re-read in two halves, daemon down → Unavailable → daemon back → auto re-queue, a quoted mailing-list message keeping its chip through a mutation beside it, and the whole interface in Simplified Chinese — a SECOND browser launched with its UI language set to zh-CN, asserting the popup, the options page, a chip's card, the panel's title / filters / Copy report, the context-menu titles (read back through `chrome.i18n` in the worker, since `chrome.contextMenus` has none) and the copied report, with the first browser's English left untouched; where the platform will not switch the browser's language the check SKIPs loudly rather than passing against an English browser) + keyboard-only triage (focusable counter, Enter/Esc focus hand-off, accessible names, the three commands driven from the service worker) and a no-referrer cross-origin frame obeying the top page's site rule, the Google Docs reading overlay re-reading its document in place (new paragraphs chipped, the old ones gone, one bar, a failed re-read leaving the snapshot alone), the first-run page's developer HTTP state (ready, unavailable and recovery without a page reload; native installation and lifecycle are tested separately in `test/native-browser.mjs`), and the three small controls (a rescan answered from the worker cache and the daemon asked again once the verdicts are cleared; “Analyze this page” running once on a switched-off site, gone after a reload, with nothing written; the same run on an already-off site surviving an unrelated rule and ended by the panel's own “Turn off on …”), and what a page COSTS over time: one page built two ways — step by step under a watching extension (posts appended in batches, a paragraph inserted into a live post, text edited in place, a block wrapped and unwrapped) and all at once before the content script runs — ending with identical chips in identical places with identical numbers; a burst of 130 dirty nodes becoming at most ten walks; twenty `replaceState` rewrites costing no re-walk and no chip while a pushed entry is still refreshed once; and the insertion gate — a page carrying a hydration marker gets no chip into its tree before it has loaded (and gets them straight after, as verdicts, never as chips left analyzing), the same page without the marker is chipped long before `load` as it always was, and a run torn down while its chips are still held draws none of them afterwards, leaves no timer armed, and starts clean when it is switched back on + 13 live sites (bot-check interstitials count as skips) (`-- --local` skips the live sweep) |
 | Firefox | `npm run test:firefox` | 35 | the **Firefox MV2 build in a real Firefox** — the only suite that is not Chromium. Playwright cannot load an extension into Firefox, so it drives headless Firefox through `puppeteer-core` over WebDriver BiDi (no geckodriver): `webExtension.install` puts the unpacked `output/firefox-mv2` in temporarily, and the profile pref `extensions.webextensions.uuids` fixes the internal origin so `moz-extension://…/options.html` is addressable. Covers the MV2 shape (background **page**, `browserAction` instead of `action`, and that `browserAction.setBadgeText` really applies a flagged count), chips across the self-test page (long paragraph = one chip, BR-split and short siblings merged, pure-CJK "unsupported" and no non-English text reaching the daemon), underlines when `CSS.highlights` exists (SKIP below Firefox 140), the ball + panel + toggle + hover card inside the viewport, the dynamic paths (tab reveal, `<details>`, removal, rapid insertion, a pushState route swap given ~6 s because Firefox may have no Navigation API), the popup / options / onboarding pages with a setting written in one reaching an open tab live, the PDF reading mode (Gecko drawing the real pages with a text layer over each, chips placed on them by the ordinary pipeline and marks on the glyphs, a dropped file read, and pdf.js parsing it in a module worker loaded from `moz-extension://` — watched at the Worker constructor, because Firefox reports no Resource Timing entry for a privileged page's own subresources), daemon down → "Unavailable" + "!" → daemon back → auto re-queue (`-- --quick` skips it), and no console errors. Ends with a **FIREFOX vs CHROMIUM** block naming every behavioural difference it found. Needs Firefox **135+** to run at all (that is when BiDi learned `webExtension.install`) and **140+** to pass; it is never installed system-wide — `npx @puppeteer/browsers install firefox@stable` drops a Mozilla build in `~/.cache/puppeteer`, or point `ANAGRAM_FIREFOX` at a binary |
 | Server | `npm run test:server` | 39 | **the real model**: spawns an `anagramd` of its own on a free port (`ANAGRAMD_REUSE=1` to test against the one you already have running instead — it is then never stopped; `ANAGRAMD_PORT` names the port either way and refuses a busy one), checks the API on human/AI/Chinese samples (the last one must come back unsupported via fastText), the request limits and the body cap counted on the bytes that arrive (a 2.1 MB chunked POST with no `Content-Length` is still 413), `application/json`-only on `/score`, the `Origin` allow-list (extensions and the daemon's own pass; `null` and a web origin are 403), the Host allow-list, the absence of any CORS grant to a web origin, and a model version that digests the whole pipeline, then drives the built extension — real verdicts on every English chip, the 4-bucket card, the "zh" unsupported chip, the popup's model line |
 | Docs flow | `node test/docs-flow.mjs <public doc URL>` | 12 | in-tab overlay + classic page flow on a real public Google Doc — the original demo doc was deleted from Drive, so without a URL (or `ANAGRAM_DOC_URL`) the suite reports SKIP |
 | Matrix | `npm run test:matrix` | 136 | the UI fixtures under **17 device profiles** — 360 px phones to a 3440 px ultrawide, pixel ratios 1 / 1.25 / 1.5 / 2 / 3 (Windows display scaling), classic layout-eating scrollbars, a 420 px-tall window, dark scheme, forced colours, reduced motion, touch, zh-CN and Arabic UI locales — asserting what must hold on every one: all chips reach a verdict, showing them adds no side-scroll and grows no paragraph by more than a line, no chip leaves its block, the detail card (hover, or tap on touch) and the panel open fully inside the viewport, the ball stays on top, the options, onboarding and PDF reader pages fit the width, no console errors. A screenshot per profile lands in the artifacts folder. `node test/matrix.mjs phone dark` runs a subset |
-| Accessibility | `npm run test:a11y` | 107 | **axe-core** (WCAG 2.1 A + AA, best-practice rules on a line of their own) on the popup, options, onboarding and PDF reader pages in **light and dark** — options with two site rules and the add-rule error showing, onboarding with the daemon up and stopped (its setup strip's Copy pills and install line only exist in the second), the reader empty, with a PDF the suite writes itself, and asking for an encrypted one's password — and then, scoped to OUR nodes only, on the ball with the panel closed, open with flagged rows, open with both verdict filters, open on a **dark page**, on a pinned chip card, the selection card and the daemon-down notice (axe descends into the open shadow roots; the suite proves it did by naming a node it could only have reached through one). Plus everything axe cannot do, asserted in code: Tab reaches the ball then the counter, Enter opens the panel as a named dialog and hands focus over, Tab walks its controls in DOM order with no positive tabindex, Escape closes it and gives focus back; an accessible name (a real word, not a glyph) and a visible `:focus-visible` change for every control; a **24x24 CSS-px target measured the way a pointer measures it** — `elementFromPoint` at the corners and centre of a 24 px box, put to the element's own root, so a control drawn smaller that carries an invisible hit area passes and one that does not fails; colour contrast computed from the RESOLVED colours for the chip number, card verdict, panel scores and counter in light and dark — axe cannot always see through a top-layer popover in a shadow root, and nothing is measured until `document.getAnimations()` goes quiet, since a chip mid-`background-color` transition reads as a phantom failure; under `prefers-reduced-motion` **no node of ours may be left with a duration to run at all** (asked of the cascade, not of a synthetic hover, which proves nothing when it fails to land); forced colours keep a chip boundary and the verdict dot; and the three live regions are read back after the events they announce. Its **baseline is empty** — everything it found on the day it was written has been fixed — so any violation is a regression, and a baseline entry that stops firing fails the run. Deliberate exemptions (the chips are `aria-hidden` and unfocusable on purpose) are listed apart. JSON report in the artifacts folder |
+| Accessibility | `npm run test:a11y` | 107 | **axe-core** (WCAG 2.1 A + AA, best-practice rules on a line of their own) on the popup, options, onboarding and PDF reader pages in **light and dark** — options with two site rules and the add-rule error showing, onboarding with the developer daemon up and stopped (the native installer and lifecycle have their own EN/ZH accessibility checks), the reader empty, with a PDF the suite writes itself, and asking for an encrypted one's password — and then, scoped to OUR nodes only, on the ball with the panel closed, open with flagged rows, open with both verdict filters, open on a **dark page**, on a pinned chip card, the selection card and the daemon-down notice (axe descends into the open shadow roots; the suite proves it did by naming a node it could only have reached through one). Plus everything axe cannot do, asserted in code: Tab reaches the ball then the counter, Enter opens the panel as a named dialog and hands focus over, Tab walks its controls in DOM order with no positive tabindex, Escape closes it and gives focus back; an accessible name (a real word, not a glyph) and a visible `:focus-visible` change for every control; a **24x24 CSS-px target measured the way a pointer measures it** — `elementFromPoint` at the corners and centre of a 24 px box, put to the element's own root, so a control drawn smaller that carries an invisible hit area passes and one that does not fails; colour contrast computed from the RESOLVED colours for the chip number, card verdict, panel scores and counter in light and dark — axe cannot always see through a top-layer popover in a shadow root, and nothing is measured until `document.getAnimations()` goes quiet, since a chip mid-`background-color` transition reads as a phantom failure; under `prefers-reduced-motion` **no node of ours may be left with a duration to run at all** (asked of the cascade, not of a synthetic hover, which proves nothing when it fails to land); forced colours keep a chip boundary and the verdict dot; and the three live regions are read back after the events they announce. Its **baseline is empty** — everything it found on the day it was written has been fixed — so any violation is a regression, and a baseline entry that stops firing fails the run. Deliberate exemptions (the chips are `aria-hidden` and unfocusable on purpose) are listed apart. JSON report in the artifacts folder |
 | Perf | `npm run test:perf` | 17 | five pathological documents, each budgeted against what it already costs — the fifth is the PDF reader on a thirty-page two-column paper (first page drawn, every page's text layer, the long tasks that costs, the canvases still held after a scroll to the end and back, the last hop of the byte handoff, and the paragraph reflow both in total and at its worst single run). A 3000-paragraph article: first badge <4 s (measured ~0.2 s), no long task >1 s, scoring keeps up with the scroll. A feed that re-renders 450 paragraphs eight times over: bounded long tasks. The same feed virtualized, 2000 posts through a 50-post DOM: heap growth <8 MB after a forced GC, chips bounded by the DOM, no highlight range over a node that left it. And sixty clamped review cards whose pictures arrive as you reach them — the shape that makes chip placement measure the page: the browser's own **LayoutCount** against the same page with no extension, at most 1.6 layouts per chip (measured 1.28; settling each box on its own cost 2.46), with one chip under every box and never two |
 
 ### Four checks that stand on their own
@@ -581,7 +586,7 @@ and not on Windows; nothing else in it is platform-dependent. *The policy, live*
 `--chrome-only` on every platform and in full in the Firefox job, which is the one machine
 with a Firefox on it. `npm run test:daemon` — what the daemon promises about itself,
 without the model — runs there too, on Linux and macOS: the Windows image has neither `sh`
-nor a `python3`, and the daemon installs on macOS and Linux only.
+nor a `python3` under that command. The Windows native installer/launcher has separate CI checks; actual Windows release QA is still required.
 
 ### The lab: a screen of its own
 
@@ -715,8 +720,8 @@ An optional precision scope narrows collection to the main-content region
 3-lane priority scheduler (viewport / near / idle prefetch) to the MV3 service
 worker, which dedups, caches (53-bit content hashes, keys carrying the producing
 model's version — the daemon's digest of its whole scoring pipeline — memory +
-IndexedDB via `idb`) and calls the local `anagramd` daemon over HTTP, redirects
-refused, through a prioritised, bounded queue (`p-queue`) that tries a batch a
+IndexedDB via `idb`) and calls the local `anagramd` component through one multiplexed
+Native Messaging port (loopback HTTP remains a developer option), through a prioritised, bounded queue (`p-queue`) that tries a batch a
 second time only when the first failure could answer differently — busy,
 timed out, no transport — after a jittered wait (`lib/backend/retry.ts`);
 every response is validated (`valibot`) before it can become a chip,
@@ -753,7 +758,8 @@ is exactly the daemon's IO: `{bucket, probs[4], score, lang}` per paragraph, or
 | Concern | Library | Where |
 | --- | --- | --- |
 | HTTP API, validation, OpenAPI docs | FastAPI + uvicorn + pydantic | `anagramd/serve.py` |
-| Model download (install/update only, never while serving) | huggingface_hub, curl | `install.sh`, `installer/anagram` |
+| Verified model download and pause/resume | Python downloader and pinned model manifest | `anagramd/download_modelkit.py`, `anagramd/native_component.py` |
+| Local inference and device selection | PyTorch, ONNX Runtime | `anagramd/runtime_adapters.py`, `anagramd/runtime_controller.py` |
 | Language identification | fastText `lid.176` | `anagramd/serve.py` |
 | Main-content extraction | @mozilla/readability (on demand) | `lib/dom/mainContent.ts` |
 | HTML sanitizing (Docs reading mode) | DOMPurify (on demand) | `lib/docsOverlay.ts` |
@@ -771,8 +777,8 @@ is exactly the daemon's IO: `{bucket, probs[4], score, lang}` per paragraph, or
 
 ## Permissions
 
-Anagram installs able to read **no site at all**, and asks for what it needs one
-line at a time. This is the whole list:
+Anagram installs able to read **no site at all**. Core capabilities are required;
+website access is granted separately. This is the whole list:
 
 | What it asks for | What it is for |
 | --- | --- |
@@ -780,25 +786,20 @@ line at a time. This is the whole list:
 | `activeTab` | The one-off actions on a site you have granted nothing for: *Analyze this page*, *Analyze selection*, *Copy page diagnostics*, the keyboard commands. Lasts for that one tab, until you leave the page. |
 | `contextMenus` | The four right-click entries (analyze selection, analyze this page, copy page diagnostics, open PDF with Anagram). |
 | `scripting` | Registers the content script for the sites you grant, and injects it for the one-off actions above. |
+| `nativeMessaging` (**required**) | Launches the installed local component for scoring, model setup, runtime choice, updates and cleanup. |
 | `https://*/*`, `http://*/*` (**optional**) | The sites Anagram reads. Grant them all in one click from the first-run page or the options page, grant one site at a time from the popup's "This site" switch, or grant none. Take them back whenever you like — from the options page, or `chrome://extensions` → *Site access*. |
 | `clipboardWrite` (**optional**, Firefox only) | *Copy page diagnostics*, asked for the first time you use it. Chrome needs no permission for it. |
 
-**No host permission at all**, which is why installing Anagram warns about
-nothing. The local `anagramd` daemon is still the only thing the extension may
-reach — `connect-src` sees to that — but reaching it no longer needs a
-permission: the daemon answers CORS headers to extension origins, and refuses
-every other origin outright, so the two loopback patterns bought nothing and
-cost every reader a warning. The price is that the daemon has to be as new as
-the extension. **Update the daemon whenever the extension updates:**
+There is **no required host permission**, but `nativeMessaging` adds Chrome's
+"Communicate with cooperating native applications" warning. Local inference is
+the core scoring path, so this permission is required, not an optional feature.
 
-```sh
-~/.anagram/bin/anagram update
-```
-
-An extension that has outrun its daemon says so in the popup, on the first-run
-page and in the options page, and names that command. A daemon from before this
-change — one that answers no CORS headers at all — cannot be used by this
-extension at all: it is reported as needing an update, not as being down.
+The installed host is `dev.coderbak.anagram`, restricted to your exact extension ID.
+Lifecycle operations are accepted only from our top-level setup and Options pages through
+a fixed, validated operation list. Native Messaging is outside browser CSP; the native
+program's file and network access is separately documented in [footprint](docs/footprint.md).
+HTTP development mode keeps the existing loopback-only URL, no redirects and extension-origin
+CORS restrictions. No required website, downloads or management permission is added.
 
 A grant and a withdrawal both take effect on the tabs you already have open, with
 no reload. Withdrawing site access does not touch your per-site rules.
@@ -811,7 +812,10 @@ manifest.
 
 ## Privacy
 
-**Anagram contacts no remote server, ever, and the browser is what stops it.**
+**Page text is scored locally and is never sent to a remote inference service.**
+Native model installation and explicit component updates do download files; they do not
+include browsing text. The following CSP constrains extension web requests, not the native
+component or same-origin document re-reads performed by content scripts.
 The manifest declares a Content-Security-Policy whose `connect-src` is the
 extension's own origin and the two loopback spellings the daemon-URL setting
 accepts — that is the whole list, with no remote origin and no `file:` in it —
@@ -856,8 +860,7 @@ refuses any `Origin` that is not an extension's or its own, `null` included, wit
 no CORS header on the preflight either. Every request is bounded
 (blocks, characters, unique ids, contract version) before anything is tokenized,
 and the 2 MB body cap counts the bytes that actually arrive rather than the
-declared length, so a chunked POST is cut off mid-stream. The batch envelope
-carries only a hostname + language hint by design, and the persistent cache
+declared length, so a chunked POST is cut off mid-stream. The scoring wire payload carries the contract version and paragraph IDs/text; the persistent cache
 stores hashes and bucket probabilities, never text. The Google Docs reading mode
 fetches the document same-origin with your own cookies, and the PDF reading mode
 fetches nothing at all: the tab that is showing a PDF re-reads its own document
@@ -865,16 +868,16 @@ fetches nothing at all: the tab that is showing a PDF re-reads its own document
 bytes to the reading mode through the extension's worker, so no page of ours
 ever asks the web for anything.
 
-The daemon itself reaches no network at all: it switches the Hugging Face client
-offline before importing it and loads the two model files from disk, so a missing
-or half-written one is an error naming the command that fetches it rather than a
-quiet download. Fetching happens in exactly two places — the installer, and
-`anagram model` — and each verifies what arrives against a checksum pinned in
-`install.sh` before it is renamed into place, so an interrupted download is never
-something the daemon can load.
+Inference loads verified local model files with Hugging Face offline mode. The native
+component downloads the pinned modelkit at first setup and on an explicit resume/download
+action, and downloads component releases on an explicit update action. It verifies files
+before committing them, so an interrupted partial file cannot become an inference model.
+These native downloads and the one-time dependency installer are outside extension CSP;
+see [footprint](docs/footprint.md) for destinations and disk locations.
 
 One of those checksums is weaker than the rest, and it is worth saying which: `uv`'s and
-both model files' are written into `install.sh` itself, but the release tarball's
+the language model's are written into `install.sh` itself, and the modelkit hashes are
+shipped in `app/modelkit.json`, but the release tarball's
 `anagram.tar.gz.sha256` is downloaded from the same address as the tarball. It therefore
 catches a truncated or corrupted download and nothing more — whoever could serve you
 another `anagram.tar.gz` could serve the checksum that matches it — so what an install

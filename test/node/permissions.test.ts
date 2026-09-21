@@ -74,6 +74,7 @@ describe("the permissions each target asks for", () => {
       "activeTab",
       "contextMenus",
       "scripting",
+      "nativeMessaging",
     ]);
     expect((chrome.manifest.optional_permissions ?? []).filter((p) => CLIPBOARD.includes(p))).toEqual([]);
   });
@@ -87,10 +88,17 @@ describe("the permissions each target asks for", () => {
 
   it.skipIf(!firefox.ready)("…and asks for nothing else on top of what Chrome asks for", () => {
     // MV2 carries host permissions in the same list, so they are taken out here: what is
-    // left is what a reader reads, and it has to stay the same four entries everywhere.
+    // left is what a reader reads, and it has to stay the same five entries everywhere.
     expect(
       (firefox.manifest.permissions ?? []).filter((p) => !p.includes("://") && p !== "<all_urls>"),
-    ).toEqual(["storage", "activeTab", "contextMenus", "scripting"]);
+    ).toEqual(["storage", "activeTab", "contextMenus", "scripting", "nativeMessaging"]);
+  });
+
+  it.skipIf(!chrome.ready || !firefox.ready)("native messaging is required, never an optional grant", () => {
+    for (const { manifest } of [chrome, firefox]) {
+      expect(manifest.permissions).toContain("nativeMessaging");
+      expect(manifest.optional_permissions ?? []).not.toContain("nativeMessaging");
+    }
   });
 
   it.skipIf(!chrome.ready || !firefox.ready)("neither target asks for webRequest, required or optional", () => {

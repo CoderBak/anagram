@@ -16,6 +16,8 @@ import { HttpScoreClient, daemonIsBehind, fetchHealth } from "./httpClient";
 import { settings, DEFAULT_SERVER_URL, effectiveServerUrl, isLoopbackUrl } from "../settings/settings";
 import type { BackendStatus } from "../messaging/protocol";
 import { createLogger } from "../log";
+import { NativeScoreClient } from "./nativeScoreClient";
+import { nativeTransport } from "./nativeTransport";
 
 const log = createLogger("backend");
 const UP_TTL_MS = 60_000;
@@ -40,6 +42,7 @@ interface Probe {
   at: number;
   model: ModelInfo | null;
   device?: string;
+  dtype?: string;
   error?: string;
   /** Why the daemon is unusable, so the UI can advise "start it" or "update it" rather
    *  than guessing from the error string. Absent while it is up. */
@@ -73,7 +76,7 @@ export class DaemonClient implements ScoreClient {
     });
   }
 
-  private invalidate(): void {
+  invalidate(): void {
     this.generation++;
     this.probe = { ok: false, at: 0, model: null };
     this.http = null;
@@ -112,7 +115,7 @@ export class DaemonClient implements ScoreClient {
         // whether we can talk — but the two are released together, so the pages ask for
         // the one command that brings it level.
         const outdated = daemonIsBehind(h.app_version, extensionVersion());
-        this.probe = { ok: true, at: Date.now(), model: h.model, device: h.device, outdated };
+        this.probe = { ok: true, at: Date.now(), model: h.model, device: h.device, dtype: h.dtype, outdated };
       } else {
         if (this.probe.ok) log.warn("anagramd went away — batches will be Unavailable until it is back");
         // Three different problems, three different sentences. Another contract major and
@@ -186,6 +189,7 @@ export class DaemonClient implements ScoreClient {
         ok: this.probe.ok,
         checkedAt: this.probe.at,
         device: this.probe.device,
+        dtype: this.probe.dtype,
         error: this.probe.error,
         reason: this.probe.reason,
         contract: this.probe.contract,
@@ -195,11 +199,32 @@ export class DaemonClient implements ScoreClient {
   }
 }
 
-let _client: DaemonClient | null = null;
+class LocalClient implements ScoreClient {
+  private native = new NativeScoreClient();
+  private http: DaemonClient | undefined;
+  private transport: "native" | "http" = "native";
+  private loaded = settings.backendTransport.getValue().then((value) => { this.transport = value === "http" ? "http" : "native"; });
+  constructor() {
+    settings.backendTransport.watch((value) => {
+      this.transport = value === "http" ? "http" : "native";
+      this.invalidate();
+      if (this.transport === "http") nativeTransport().close();
+    });
+  }
+  private client(): DaemonClient | NativeScoreClient { return this.transport === "http" ? this.http ??= new DaemonClient() : this.native; }
+  invalidate(): void { this.native.invalidate(); this.http?.invalidate(); }
+  async ready(): Promise<void> { await this.loaded; await this.client().ready(); }
+  async scoreBatch(blocks: ScoreBlock[]): Promise<ScoredBatch> { await this.loaded; return this.client().scoreBatch(blocks); }
+  model(): ModelInfo { return this.client().model(); }
+  isUp(): boolean { return this.client().isUp(); }
+  async status(force: boolean): Promise<BackendStatus> { await this.loaded; return this.client().status(force); }
+}
+
+let _client: LocalClient | null = null;
 
 /** The daemon client (one per service-worker lifetime). */
-export function getDaemonClient(): DaemonClient {
-  if (!_client) _client = new DaemonClient();
+export function getDaemonClient(): LocalClient {
+  if (!_client) _client = new LocalClient();
   return _client;
 }
 

@@ -1,59 +1,108 @@
-# anagramd — local scoring daemon
+# anagramd — local scoring component
 
-The extension never runs a model in the browser. It talks over HTTP to this small
-daemon, which loads **`pangram/editlens_roberta-large`** (EditLens, ICLR 2026,
+The extension never runs a model in the browser. It uses browser Native Messaging
+to start this local component, which loads **`pangram/editlens_roberta-large`** (EditLens, ICLR 2026,
 CC BY-NC-SA 4.0 — non-commercial) and scores paragraphs on your machine.
-Nothing leaves localhost — and the daemon is hardened like a service, not a script
-(see below). It is the only scorer: without it the extension shows *Unavailable*.
+Paragraphs and predictions stay on the machine. The default browser connection
+uses framed stdin/stdout, with no listening TCP port. The optional HTTP daemon
+remains available for development and diagnostics.
+
+Install using the command on the extension's first-run page. The installer creates
+the private Python environment and registers `dev.coderbak.anagram` for the browser.
+The browser then starts `native_host.py --home INSTALLATION_DIRECTORY` automatically.
+On the first connection it downloads and verifies all pinned model variants
+(4.07 GB total) and the small language model, benchmarks this device, and waits for
+an explicit runtime choice. No Hugging Face account or token is required.
+
+Settings provides download pause/resume, model deletion, engine stop/resume,
+benchmark reruns, runtime selection, and component update/removal. Pausing, stopping,
+deleting models, and failed downloads are remembered: reconnecting does not override
+those choices. Interrupted, unpaused downloads can resume verified partial files.
+Stopping the engine releases its model after any current inference/load finishes.
+
+**One browser connection per installation.** The native host holds an exclusive
+installation lock for its lifetime. Another browser receives error code `busy`
+(409), without starting downloads or loading another model. Close the first
+browser's connection before connecting from another browser. Tabs in one browser
+share the extension background's single connection.
+
+Updates and removal report completion only after the trusted installer helper
+confirms it. Windows uses a visible maintenance worker that waits for the host to
+exit; its acknowledgement is `scheduled`, not `completed`. The extension therefore
+does not claim completed removal or remove itself on that acknowledgement.
+
+## Source development and optional HTTP daemon
 
 ```sh
-# 1. the two model files — the daemon downloads NOTHING itself (see "Offline", below)
-#    weights (gated on Hugging Face — accept the terms once, then):
-hf download pangram/editlens_roberta-large --local-dir ../models/editlens_roberta-large
-#    fastText lid.176, ~1 MB (sha256 8f3472cfe873…, pinned in install.sh):
-curl -fsSL -o ../models/lid.176.ftz https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz
+# From the extension repository: install locked dependencies into anagramd/.venv.
+(cd anagramd && uv sync --frozen)
 
-# 2. deps from the lockfile (torch, transformers, fastapi, uvicorn, emoji, fasttext) into anagramd/.venv:
-cd anagramd && uv sync --frozen && cd ..
+# Public, anonymous, pinned modelkit: original weights + FP32/FP16/INT8 ONNX,
+# shared tokenizer, validation reports and author/license notices (4.07 GB total).
+anagramd/.venv/bin/python anagramd/download_modelkit.py --model-dir ../models/editlens_roberta-large
 
-# 3. run
-npm run serve            # = sh anagramd/run.sh (uses .venv if present) → http://127.0.0.1:8765
-python3 anagramd/serve.py --selftest   # sanity check: four paragraphs, PASS/FAIL per line, non-zero on failure
-npm run test:daemon      # offline / identity / Host / Origin / CORS checks — no model, no port, seconds
+# fastText language model (~1 MB); verify the pinned digest before promoting it.
+curl -fsSL -o ../models/lid.176.ftz.part https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz
+anagramd/.venv/bin/python -c 'import hashlib,pathlib; p=pathlib.Path("../models/lid.176.ftz.part"); assert hashlib.sha256(p.read_bytes()).hexdigest()=="8f3472cfe8738a7b6099e8e999c3cbfae0dcd15696aac7d7738a8039db603e83"; p.replace(p.with_suffix(""))'
+
+npm run serve
+npm run test:daemon       # offline contract/security tests without model downloads
 ```
 
-With the daemon up, the extension picks it up within seconds (it re-probes `/health`
-every 5 s while down); the popup names the model. Without it, paragraphs show as
-Unavailable and are re-queued automatically when it answers.
+On first HTTP start the daemon exposes `/runtime` while it discovers runtimes and benchmarks
+this device. Review `/runtime`, then post a candidate ID to `/runtime/config` to choose a
+configuration. `/health` returns 503 until that configuration is ready to score.
+An existing saved selection is reused on later starts; `--runtime-config PATH` selects its
+JSON file (by default `runtime.json` beside the model directory).
 
-The above is the from-source setup. In an *installed* folder (`~/.anagram`, from
-`install.sh`) this daemon is started and stopped by `~/.anagram/bin/anagram start|stop`,
-and `anagram doctor` says which of the folder, the private Python, the model files or
-the port is the reason it will not come up — including a daemon whose `/health` reports
-a contract major the installed extension does not speak.
+The source workflow above uses Python 3.12 or 3.13. The committed lock currently provides
+macOS 14+ Apple Silicon and Linux glibc 2.28+ x86_64/aarch64 wheels for PyTorch and ONNX
+Runtime. It does not provide an Intel macOS or musl Linux installation. The default ONNX
+Runtime package supplies CPU and platform-dependent providers; CUDA availability must be
+checked at runtime rather than inferred from the presence of a GPU.
+
+In an installed folder (`~/.anagram`, from `install.sh`), the browser owns the native
+host lifetime. The legacy `~/.anagram/bin/anagram start|stop|status` commands control
+the optional HTTP daemon. Its launcher passes
+`--runtime-config ~/.anagram/runtime.json`, and `start` succeeds when the runtime control
+server is listening, including while benchmarking or waiting for your choice. CLI `status`
+explains those states; it does not report them as ready to score. `anagram doctor` verifies
+all pinned modelkit files and the language model without changing them. Use browser
+Settings for normal model repair and lifecycle operations. Do not run the HTTP daemon
+and native host against the same installation concurrently; migration stops the owned
+legacy process, and the native host refuses a live legacy PID.
 
 ## Offline
 
-Serving reaches no network, and the daemon is built so that it cannot: `HF_HUB_OFFLINE`,
-`TRANSFORMERS_OFFLINE`, `HF_HUB_DISABLE_TELEMETRY` and `HF_HUB_DISABLE_IMPLICIT_TOKEN` are
-set at the top of `serve.py`, above every import, because `huggingface_hub` and
-`transformers` read them once when they are imported and ignore a value set later. Neither
-model file is ever fetched at run time: a missing one is an error naming the command that
-fetches it (`anagram model`, or the `hf download` / `curl` lines above), and `anagram doctor`
-reports both files and their checksums. The daemon used to download them on first start —
-the checkpoint under whatever Hugging Face token it found, the language model with a bare
-`urlretrieve` that left a truncated `.ftz` behind if it was interrupted, which the next start
-would load as though it were real.
+Inference uses local files only. The component sets `HF_HUB_OFFLINE`, `TRANSFORMERS_OFFLINE`,
+`HF_HUB_DISABLE_TELEMETRY` and `HF_HUB_DISABLE_IMPLICIT_TOKEN` before importing model
+libraries, and disables ONNX Runtime telemetry. Model loading and benchmarking never
+fetch files. The native lifecycle controller separately downloads pinned artifacts on
+the first connection or when the user requests a download/repair. HTTP startup never
+downloads models.
 
-Downloading is two explicit commands, `install.sh` and `anagram model`. Both land the file in
-a staging name beside the one it replaces, check it against the checksum pinned in
-`install.sh`, and rename it into place only if it matches — so an interrupted or tampered
-download is never something the daemon can load, and re-running resumes rather than starting
-the 1.4 GB again.
+`download_modelkit.py` pins public repository `CoderBak/editlens_roberta_modelkit` to commit
+`f7cb4b06e5067ecdb66c566c7982a413f86f569f` and verifies every file's size and SHA-256 against
+`modelkit.json`. The native downloader uses anonymous HTTPS; the developer Hub downloader
+uses `token=False`. Files arrive in a sibling staging
+directory and are promoted only after complete verification, preserving an existing model
+on download failure. The native path reuses verified installed/staged files and resumes
+partial bytes with HTTP Range requests; ignored ranges safely restart that file. Pause
+takes effect between reads, verification phases, or files, rather than interrupting an
+in-flight filesystem or network call. The developer CLI can also reuse Hub-cached files.
+Allow 4.07 GB for the modelkit,
+additional space for dependencies, and temporary download space. `--check` verifies local
+files without networking or changes. The model directory includes LICENSE, NOTICE and the
+unchanged upstream model card. The INT8 variant remains experimental and is not eligible
+for automatic selection based on its upstream numerical smoke-check failure.
 
 ## The served version
 
-The served model version identifies the whole scoring pipeline, not just the weights:
+The served model version identifies the whole scoring pipeline, not just the weights.
+Runtime-managed engines use `sha256:<weights digest>-p<pipeline digest>-runtime1`, with
+the selected ONNX graph/external data or original weights, device, actual precision,
+runtime/provider options, relevant package versions and implementation in the fingerprint.
+The legacy direct engine uses
 `sha256:<12 hex of model.safetensors>-p<8 hex>-pre1`, e.g. `sha256:869f33df7928-p1512a764-pre1`.
 The weights digest is memoized next to the checkpoint (startup warns when it is not the
 verified one); the second digest covers a canonical manifest of everything else that can move
@@ -66,7 +115,43 @@ on sharing cache entries with the version before it. The extension keys every ca
 by this string, so no two configurations that can disagree about a paragraph ever share a
 cache entry.
 
-## API
+## Native Messaging API
+
+Requests use a 32-bit native-byte-order byte length followed by UTF-8 JSON:
+`{v:1,id:"request-id",op:"status",payload:{}}`. Replies correlate by `id` and have
+`{v:1,id,ok:true,status:200,data:...}` or
+`{v:1,id,ok:false,status:409,error:{code:"busy",message:"..."}}`.
+Requests are capped at 2 MiB and replies below 1 MiB; diagnostics go to stderr.
+Only fixed operations and their validated payloads are accepted. There is no arbitrary
+filesystem path, shell command, or remote URL operation.
+
+| Operation | Payload | Result |
+| --- | --- | --- |
+| `status` | `{}` | Component state, download progress, runtime snapshot, storage bytes, error, operation receipt |
+| `health`, `score` | HTTP-equivalent payload below | Same health/scoring contract as HTTP |
+| `runtime` | `{}` | Runtime snapshot |
+| `runtime.benchmark` | `{budget_s?:10..30}` | Start comparison; 202 |
+| `runtime.config` | `{id}` | Load and save a discovered candidate; 202 |
+| `runtime.cancel` | `{}` | Request cancellation; 202 |
+| `models.download`, `models.pause` | `{}` | Start/resume or pause pinned download; 202 |
+| `models.delete` | `{confirm:true}` | Stop engine and delete owned models; 202 |
+| `engine.stop`, `engine.resume` | `{}` | Release/reload selected engine; 202 |
+| `component.update` | `{}` | Invoke trusted installed updater; 202 |
+| `component.uninstall` | `{confirm:true}` | Remove owned component and registrations; 202 |
+
+`status` remains responsive before heavy model imports and during inference, downloads,
+or maintenance. `health` and `score` return `not_ready` (503) until the explicitly
+selected runtime is active. Progress and lifecycle jobs are asynchronous: a 202 means
+accepted, not finished. The `operation` field is null or contains `name`, `status`
+(`running`, `completed`, `failed`, `scheduled`) and a completion `receipt`. Only a
+completed uninstall receipt authorizes the extension's final self-removal flow.
+
+The browser's registered Native Messaging manifest restricts allowed extension IDs.
+The host validates its installation ownership marker and holds an OS file lock, and
+maintenance helpers operate only on the owned installation and registered manifests.
+Model deletion waits for active scoring leases; symbolic-link model trees are refused.
+
+## Optional HTTP API
 
 Served by FastAPI + uvicorn; request and response bodies are validated with pydantic, and
 an interactive OpenAPI UI lives at `http://127.0.0.1:8765/docs`.
@@ -74,6 +159,10 @@ an interactive OpenAPI UI lives at `http://127.0.0.1:8765/docs`.
 | Route | Body | Returns |
 | --- | --- | --- |
 | `GET /health` | – | `{ok, app_version, model:{id,ver,calibration,label_schema}, n_buckets, buckets, languages, lid, max_tokens, limits, device}` |
+| `GET /runtime` | – | Runtime state, candidates, benchmark progress/results and saved/active selection; available before scoring is ready |
+| `POST /runtime/benchmark` | `{budget_s?}` | Start a bounded local comparison (202) |
+| `POST /runtime/cancel` | `{}` | Request benchmark cancellation (202) |
+| `POST /runtime/config` | `{id}` | Validate, load and save a candidate selected by the user (202) |
 | `POST /score` | `{v:"2.1", blocks:[{id,text}]}` | `{v, model, results:[{id,bucket,probs,score,tokens,truncated,lang,lang_prob,unsupported?}]}` |
 
 `app_version` on `/health` is the daemon's own release (`pyproject.toml` next to `serve.py`,
@@ -114,12 +203,13 @@ chunked body cannot walk past it either. The limits are reported by `/health`.
 **Language gate.** EditLens is English-only (model card `language: en`; every dataset
 source in the paper is English). The daemon runs every block through fastText's
 [`lid.176`](https://fasttext.cc/docs/en/language-identification.html) language
-identifier first (`../models/lid.176.ftz`, ~1 MB — fetched by the installer, never by the
-daemon); only blocks whose top label is `en` reach the model. Others come back as
+identifier first (`../models/lid.176.ftz`, ~1 MB — fetched and verified by the lifecycle
+downloader); only blocks whose top label is `en` reach the model. Others come back as
 `{unsupported: true, lang: "zh", lang_prob: 0.99}` with placeholder buckets, and the
 extension shows an "Unsupported language" chip instead of a number. `/health`
 reports `languages` and `lid`. The gate **fails closed**: if fastText or its model
-cannot be loaded the daemon refuses to start; `--no-language-gate` turns it off
+cannot be loaded scoring remains unavailable while lifecycle controls report the error;
+the developer HTTP option `--no-language-gate` turns it off
 explicitly (logged, `lid: null` in `/health` — not advised). The extension also
 pre-gates confidently non-English paragraphs with the browser's own detector, so
 most of them never arrive here.
@@ -138,13 +228,28 @@ truncated to 512 tokens (`truncated: true` when that happened).
 
 ## Benchmarks
 
+The runtime chooser's quick comparison uses a total measurement budget of 30 seconds
+across valid candidates, with batch sizes 1 and 8 and fixed roughly 120-word English
+samples. Load and warmup time are reported separately and add to wall time. Latency
+includes cleaning, tokenization, model inference and score postprocessing; it excludes
+the language gate and browser/transport overhead. Results show typical latency,
+throughput and observed process memory; they are device-comparison measurements,
+not accuracy estimates or percentile guarantees. FP32 is eligible for recommendation;
+FP16 remains an explicit option and INT8 is explicitly experimental.
+
+Model-free native tests run with `anagramd/.venv/bin/python test/native_host.py`.
+`test/native-real.py` is an explicit subprocess smoke test accepting existing model and
+Python paths; it uses a throwaway owned home, hardlinked weights and a network-blocking
+test fixture, without registering a browser host or changing the user's installation.
+
 `bench.py` measures load time, memory and throughput of the EditLens checkpoints on
 this machine (`.venv/bin/python bench.py --json out.json`); it also drives the
 `pangram/editlens_Llama-3.2-3B` LoRA adapter merged onto `meta-llama/Llama-3.2-3B`
 (`train_head.py` holds the reference score head). Results for an Apple M4 / 24 GB are
 in `../docs/benchmarks/`. It is a developer tool, run by hand and by nothing else, and it
-is not in the release tarball: its three extra packages (`peft`, `accelerate`, `psutil`)
-are the `bench` extra, which the installer does not install, and it looks for its
+is not in the release tarball: its extra packages (`peft`, `accelerate`)
+are the `bench` extra, which the installer does not install; `psutil` also supports the
+first-run benchmark and is a base dependency, and it looks for its
 checkpoints beside the repository rather than inside an installation. Like the daemon it
 switches the Hub offline before importing it, so a checkpoint that is not on this disk is
 an error naming it rather than a six-gigabyte download in the middle of a benchmark; pass

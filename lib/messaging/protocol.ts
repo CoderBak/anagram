@@ -95,9 +95,12 @@ export interface BackendStatus {
   /** The daemon's model when up; null when down. */
   model: ModelInfo | null;
   server: {
+    transport?: "native" | "http";
+    code?: string;
     ok: boolean;
     checkedAt: number;
     device?: string;
+    dtype?: string;
     error?: string;
     /**
      * Why the daemon is not usable, when it is not: nothing answered ("unreachable"),

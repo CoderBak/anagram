@@ -1,0 +1,21 @@
+.component-settings { display:flex; flex-direction:column; gap:12px; min-width:0; }
+.component-settings p { margin:0; font-size:13px; line-height:1.55; color:var(--muted-foreground); }
+.component-settings h3 { margin:0; font-size:15px; font-weight:600; }
+.component-settings .component-status { color:var(--foreground); font-weight:600; }
+.component-settings .component-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.component-settings .component-install { display:flex; flex-direction:column; gap:10px; }
+.component-settings .component-command { margin:0; padding:12px; background:var(--muted); color:var(--foreground); border:1px solid var(--border); border-radius:8px; font:12px/1.7 ui-monospace,monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
+.component-settings .component-command code { padding:0; background:transparent; font:inherit; }
+.component-settings .component-notice { color:var(--foreground); border-left:3px solid var(--border); padding-left:10px; }
+.component-settings .component-update { display:flex; flex-direction:column; align-items:flex-start; gap:8px; padding:12px; border:1px solid var(--border); border-radius:8px; }
+.component-settings .component-error { color:var(--destructive); }
+.component-settings .component-download { display:flex; flex-direction:column; gap:5px; }
+.component-settings progress { width:100%; height:12px; accent-color:var(--primary); }
+.component-settings .component-path,.component-settings .component-file { overflow-wrap:anywhere; }
+.component-settings .component-details { font-size:12px; color:var(--muted-foreground); }
+.component-settings .component-details summary { cursor:pointer; min-height:24px; }
+.component-settings .component-details pre { white-space:pre-wrap; overflow-wrap:anywhere; margin:6px 0 0; }
+.component-settings .component-dialog { max-width:min(480px,calc(100vw - 32px)); padding:24px; border:1px solid var(--border); border-radius:12px; color:var(--foreground); background:var(--card); }
+.component-settings .component-dialog::backdrop { background:rgb(0 0 0 / .4); }
+.component-settings .component-dialog p { margin:12px 0 18px; }
+.component-settings[hidden],.component-settings [hidden] { display:none !important; }

@@ -12,4 +12,6 @@ if [ -n "${ANAGRAMD_PYTHON:-}" ]; then PY="$ANAGRAMD_PYTHON"
 elif [ -x "$ROOT/anagramd/.venv/bin/python" ]; then PY="$ROOT/anagramd/.venv/bin/python"
 else PY="python3"; fi
 # No .pyc anywhere: the suite imports serve.py from a tree that may not be ours to write in.
-PYTHONDONTWRITEBYTECODE=1 exec "$PY" "$ROOT/test/daemon.py" "$@"
+PYTHONDONTWRITEBYTECODE=1 "$PY" "$ROOT/test/daemon.py" "$@"
+PYTHONDONTWRITEBYTECODE=1 "$PY" "$ROOT/test/runtime_daemon.py" "$@"
+PYTHONDONTWRITEBYTECODE=1 exec "$PY" "$ROOT/test/native_host.py" "$@"

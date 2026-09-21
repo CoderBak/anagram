@@ -109,6 +109,8 @@ export function normalizeMarkStyle(stored: StoredMarkStyle | undefined | null): 
 }
 
 export const settings = {
+  /** Native is the user workflow. HTTP remains an explicit developer/test option. */
+  backendTransport: storage.defineItem<"native" | "http">("local:backendTransport", { fallback: "native" }),
   // The local anagramd daemon that scores paragraphs (loopback only). There is no
   // other backend: when it does not answer, paragraphs are "Unavailable".
   serverUrl: storage.defineItem<string>("local:serverUrl", { fallback: DEFAULT_SERVER_URL }),

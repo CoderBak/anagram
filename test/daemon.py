@@ -427,12 +427,14 @@ print("\n-- --host --")
 
 
 def serve_args(*args: str) -> tuple[int, str]:
-    """serve.py's argument handling only. It is pointed at model paths that do not exist, so it
-    always exits early — and WHICH complaint it exits with is how we tell a host it accepted
-    from one it refused, without loading a model or binding a port."""
+    """Use explicit selftest mode for argument checks, without starting HTTP.
+
+    Normal serving now keeps the control plane alive when models are missing;
+    selftest still exits at the missing language model after validating --host.
+    """
     env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
     r = subprocess.run([sys.executable, str(DAEMON / "serve.py"),
-                        "--model-dir", "/nonexistent/model", "--lid-model", "/nonexistent/lid.ftz", *args],
+                        "--selftest", "--model-dir", "/nonexistent/model", "--lid-model", "/nonexistent/lid.ftz", *args],
                        capture_output=True, text=True, timeout=300, env=env)
     return r.returncode, (r.stdout + r.stderr).strip()
 

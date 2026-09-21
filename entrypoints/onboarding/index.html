@@ -151,13 +151,10 @@
                   <span class="sbody"><span class="sval" data-i18n="onbInstalled">installed</span><span class="sdetail" id="ext-version"></span></span>
                 </div>
                 <div class="srow" id="row-daemon" data-state="idle">
-                  <span class="sname"><span class="sdot"></span><span class="slabel" data-i18n="onbDaemon">Scoring daemon</span></span>
+                  <span class="sname"><span class="sdot"></span><span class="slabel" data-i18n="onbDaemon">Local component</span></span>
                   <span class="sbody">
                     <span class="sval" id="daemon-state" data-i18n="onbChecking">checking&hellip;</span>
                     <span class="sdetail" id="daemon-detail" hidden></span>
-                    <span class="cmd" id="daemon-cmd" hidden><code id="daemon-cmd-text"></code><button
-                      type="button" class="btn" data-variant="outline" data-size="xs" id="daemon-copy" data-i18n="onbCopy">Copy</button></span>
-                    <a class="btn" data-variant="outline" data-size="xs" id="daemon-link" href="/options.html" hidden data-i18n="onbOpenOptions">Open options</a>
                   </span>
                 </div>
                 <div class="srow" id="row-access" data-state="idle">
@@ -172,14 +169,13 @@
                 </div>
                 <div class="srow" id="row-ready" data-state="idle">
                   <span class="sname"><span class="sdot"></span><span class="slabel" data-i18n="onbReady">Ready</span></span>
-                  <span class="sbody"><span class="sready" id="ready-text" data-i18n="onbWaiting">Waiting for the scoring daemon.</span></span>
+                  <span class="sbody"><span class="sready" id="ready-text" data-i18n="onbWaiting">Waiting for local setup.</span></span>
                 </div>
               </div>
+              <div id="componentSettings"></div>
             </section>
           </section>
-          <p class="install" id="install" hidden data-i18n-html="onbNotInstalled">Not installed yet? <span class="cmd"><code
-            id="install-cmd">curl -fsSL https://github.com/CoderBak/anagram/releases/latest/download/install.sh | sh</code><button
-            type="button" class="btn" data-variant="outline" data-size="xs" id="install-copy" data-i18n="onbCopy">Copy</button></span></p>
+
         </div>
 
         <section class="card" data-size="sm" aria-label="How it reads" data-i18n-aria-label="onbHowItReads">
@@ -281,10 +277,7 @@
 
             <details>
             <summary data-i18n="onbPrivacy">Privacy</summary>
-            <p data-i18n-html="onbPrivacyBody">Nothing leaves your computer, and the browser enforces it: the extension's own
-              policy lets it reach the local <code>anagramd</code> daemon and nothing else &mdash; it cannot connect to
-              the internet at all. It reads only the sites you allow. Requests carry only a
-              <strong data-i18n="onbHostnameHint">hostname and language hint</strong> by design &mdash; never full URLs.</p>
+            <p data-i18n-html="onbPrivacyBody">Scoring runs in the <strong data-i18n="componentTitle">Local engine</strong> on your computer. Model downloads are separate from analysis; page text is not sent to an online service. Website access is optional, and analysis requests use a <strong data-i18n="onbHostnameHint">hostname and language hint</strong>, never a full URL.</p>
             </details>
 
             <details>

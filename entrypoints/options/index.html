@@ -3,6 +3,9 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Management is restricted to our top-level pages; keep Settings out of an
+         embedded chrome://extensions iframe and give the comparison table space. -->
+    <meta name="manifest.open_in_tab" content="true" />
     <title data-i18n="optionsTitle">Anagram for Chrome — Options</title>
     <style>
       /* Layout only — colours, type and controls come from Basecoat (Vega). */
@@ -46,6 +49,12 @@
       .dot-ai { background: #dc2626; }
       .dot-none { background: #a3a3a3; }
       .dot-lang { background: #a3a3a3; box-shadow: inset 0 0 0 2px var(--card); }
+      #developerBackend { font-size:13px; }
+      #developerBackend summary { min-height:28px; cursor:pointer; }
+      #developerBackend .field { margin-top:12px; }
+      #developerHttp { display:flex; flex-direction:column; gap:10px; margin-top:12px; }
+      #developerHttp[hidden] { display:none; }
+      #developerHttp input { max-width:100%; }
       .mini { margin: 4px 0 0; font-size: 12px; font-weight: 600; color: var(--muted-foreground); text-transform: uppercase; letter-spacing: 0.06em; }
       .privacy { margin: 0; color: var(--muted-foreground); font-size: 13px; }
       footer.foot { margin-top: 24px; font-size: 12.5px; line-height: 1.6; color: var(--muted-foreground); }
@@ -80,6 +89,32 @@
       </header>
 
       <div class="stack">
+        <section class="card" data-size="sm" id="componentCard">
+          <header><h2 data-i18n="componentTitle">Local engine</h2></header>
+          <section>
+            <div id="componentSettings"></div>
+            <details id="developerBackend">
+              <summary data-i18n="componentDeveloper">Developer connection</summary>
+              <div class="field" data-orientation="horizontal">
+                <section><label for="backendTransport" data-i18n="componentTransport">Connection</label></section>
+                <select id="backendTransport">
+                  <option value="native" data-i18n="componentNativeTransport">Native component (recommended)</option>
+                  <option value="http" data-i18n="componentHttpTransport">Manual local HTTP (development)</option>
+                </select>
+              </div>
+              <section id="developerHttp" hidden>
+                <p data-i18n="componentHttpNote">For source development only. The browser does not start or manage this server.</p>
+                <label for="serverUrl" data-i18n="optDaemonUrl">Local HTTP URL</label>
+                <input id="serverUrl" class="input url" type="url" placeholder="http://127.0.0.1:8765" spellcheck="false" />
+                <p class="form-error" id="serverUrlError" hidden></p>
+                <p id="backendStatus" data-i18n="optChecking">Checking…</p>
+                <button type="button" class="btn" data-variant="outline" data-size="sm" id="checkBackend" data-i18n="optCheckNow">Check now</button>
+                <div id="legacyRuntimeSettings"></div>
+              </section>
+            </details>
+          </section>
+        </section>
+
         <section class="card" data-size="sm">
           <header>
             <h2 data-i18n="optDetection">Detection</h2>
@@ -185,34 +220,6 @@
 
         <section class="card" data-size="sm">
           <header>
-            <h2 data-i18n="optDaemon">Scoring daemon</h2>
-            <p data-i18n-html="optDaemonNote">Verdicts come from the local <code>anagramd</code> daemon (EditLens roberta-large, running on this
-              computer). Start it with <code>~/.anagram/bin/anagram start</code> (or <code>npm run serve</code> from a
-              source checkout). When it is not running, paragraphs show as Unavailable and are retried
-              automatically. There is no other backend.</p>
-          </header>
-          <section>
-            <div class="field" data-orientation="horizontal">
-              <section>
-                <label for="serverUrl" data-i18n="optDaemonUrl">Daemon URL</label>
-                <p data-i18n-html="optDaemonUrlNote">Where <code>anagramd</code> listens. Local addresses only — page text never leaves this computer.
-                  Default <code>http://127.0.0.1:8765</code>.</p>
-                <p class="form-error" id="serverUrlError" hidden></p>
-              </section>
-              <input id="serverUrl" class="url" type="url" placeholder="http://127.0.0.1:8765" spellcheck="false" />
-            </div>
-            <div class="field" data-orientation="horizontal">
-              <section>
-                <label for="checkBackend" data-i18n="optStatus">Status</label>
-                <p id="backendStatus" data-i18n="optChecking">Checking…</p>
-              </section>
-              <button type="button" class="btn" data-variant="outline" data-size="sm" id="checkBackend" data-i18n="optCheckNow">Check now</button>
-            </div>
-          </section>
-        </section>
-
-        <section class="card" data-size="sm">
-          <header>
             <h2 data-i18n="optRules">Per-site rules</h2>
             <p data-i18n="optRulesNote">Always-on / always-off overrides. A rule covers the site's subdomains too, and the
               most specific rule wins.</p>
@@ -278,7 +285,7 @@
               <span class="what" data-i18n="optShortcutPage">Choose “Analyze this page with Anagram” to analyze a switched-off page once.</span>
             </div>
             <p class="privacy" data-i18n-html="optRebind">Rebind any of these in your browser's extension shortcuts (Chrome: <code>chrome://extensions/shortcuts</code>).</p>
-            <p class="privacy" data-i18n-html="optPrivacy">Nothing leaves your computer — scoring runs in the local <code>anagramd</code> daemon on this computer. The daemon URL is restricted to local addresses.</p>
+            <p class="privacy" data-i18n-html="optPrivacy">Scoring runs in the <strong data-i18n="componentTitle">Local engine</strong> on this computer. The browser connects to it directly; page text is not sent to an online service.</p>
             <h3 class="mini" data-i18n="optVerdictColors">Verdict colors</h3>
             <div class="legend">
               <span class="badge" data-variant="outline"><span class="dot dot-human"></span><span data-i18n="bandHuman">Human</span></span>

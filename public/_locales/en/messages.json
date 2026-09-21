@@ -3,17 +3,14 @@
     "message": "en",
     "description": "BCP 47 tag of THIS message file. Read back through t() so the UI can set <html lang> and the shadow roots' lang without guessing what the browser resolved."
   },
-
   "copied": {
     "message": "Copied ✓",
     "description": "Confirmation shown on any copy button for a moment — the chip card, the triage panel and the first-run page share it."
   },
-
   "extDescription": {
     "message": "Shows how heavily each paragraph looks AI-edited. Scored on your own computer.",
     "description": "Store listing description. The name stays 'Anagram'."
   },
-
   "cmdToggleOverlay": {
     "message": "Show/hide Anagram badges",
     "description": "Keyboard command, Alt+Shift+P."
@@ -30,7 +27,6 @@
     "message": "Go to the previous flagged paragraph",
     "description": "Keyboard command, Alt+Shift+K."
   },
-
   "menuAnalyzeSelection": {
     "message": "Analyze selection with Anagram",
     "description": "Right-click menu entry on a text selection."
@@ -47,7 +43,6 @@
     "message": "Open PDF with Anagram",
     "description": "Right-click menu entry on a link to a PDF."
   },
-
   "bandHuman": {
     "message": "Human",
     "description": "Verdict: untouched human writing. Kept short — it sits on a chip."
@@ -76,7 +71,6 @@
     "message": "unknown",
     "description": "Detected-language value when no language code came back."
   },
-
   "cardPending": {
     "message": "Analyzing this paragraph…",
     "description": "Chip card while the batch is in flight."
@@ -141,7 +135,6 @@
     "message": "The number is EditLens's estimate of how far this text sits from untouched human writing toward fully AI-generated — not a share of words, not proof.",
     "description": "Chip card footnote: what the percentage means. The same claim appears in the report and the options footer."
   },
-
   "coverageOpeningParagraph": {
     "message": "Only the opening of this paragraph was scored. ",
     "description": "Card footnote sentence; the trailing space joins it to the next sentence."
@@ -162,7 +155,6 @@
     "message": "Longer than the model reads in one pass, so it was read in $1 consecutive windows and their results were averaged by length. ",
     "description": "Card footnote sentence. $1 = window count. The trailing space joins it to the next sentence."
   },
-
   "selTooShort": {
     "message": "Too short to judge",
     "description": "Selection card verdict below the evidence floor."
@@ -196,7 +188,7 @@
     "description": "Accessible name of the selection card's ✕ button."
   },
   "selFootDaemonDown": {
-    "message": "The scoring daemon is not running — run $1 and try again.",
+    "message": "The local engine is not ready. Open Anagram Settings to finish setup or resume it.",
     "description": "Selection card footnote. $1 is the command, set in code and never translated."
   },
   "selFootNoAnswer": {
@@ -211,7 +203,6 @@
     "message": "EditLens is trained on English text only, so this selection was not scored.",
     "description": "Selection card footnote for non-English text."
   },
-
   "fabHide": {
     "message": "Hide AI detection",
     "description": "Floating ball tooltip while the overlay is shown."
@@ -257,7 +248,7 @@
     "description": "Spoken once the count settles. $1 = flagged count."
   },
   "panelDaemonDown": {
-    "message": "Scoring daemon not running. Run “anagram start” — new paragraphs wait until it answers.",
+    "message": "The local engine is not ready. Open Anagram Settings; new paragraphs wait until it is ready.",
     "description": "Notice at the top of the triage panel. The command itself is never translated."
   },
   "panelRetry": {
@@ -332,7 +323,6 @@
     "message": "Adds a per-site rule — re-enable any time from the toolbar popup",
     "description": "Tooltip on the panel's kill switch."
   },
-
   "actionAnalyzeDocument": {
     "message": "Analyze document",
     "description": "Ball action chip in the Google Docs editor."
@@ -353,7 +343,6 @@
     "message": "Analyze PDF",
     "description": "Ball action chip on a PDF tab."
   },
-
   "docsUntitled": {
     "message": "Google Docs document",
     "description": "Reading overlay title for a document with no title of its own."
@@ -386,7 +375,6 @@
     "message": "Static snapshot of the document — Refresh reads it again.",
     "description": "Line above the paper in the Docs reading overlay."
   },
-
   "reportTitle": {
     "message": "Anagram report — $1",
     "description": "Report heading. $1 = page title or hostname."
@@ -451,7 +439,6 @@
     "message": "No scoring daemon answered while this page was analyzed.",
     "description": "Report footer when nothing scored."
   },
-
   "popupTitle": {
     "message": "Anagram",
     "description": "Popup document title."
@@ -593,22 +580,21 @@
     "description": "Popup model line, after the model id."
   },
   "popupDaemonMismatch": {
-    "message": "Daemon version mismatch",
+    "message": "Local component needs an update",
     "description": "Popup status: a daemon answered, of the wrong generation. The command under it is the one that fixes it."
   },
   "popupDaemonBehind": {
-    "message": "The daemon is older than this extension — run: ~/.anagram/bin/anagram update",
+    "message": "A local component update is available in Settings.",
     "description": "Popup bottom line when the daemon still scores but reports an older version than the extension."
   },
   "popupDaemonDown": {
-    "message": "Daemon not running",
+    "message": "Local engine is not ready",
     "description": "Popup status: nothing answered. The command under it is the one that starts it."
   },
   "popupRetry": {
-    "message": "Retry",
+    "message": "Open setup and Settings",
     "description": "Popup button while the daemon is not answering: ask it again."
   },
-
   "optionsTitle": {
     "message": "Anagram for Chrome — Options",
     "description": "Options document title."
@@ -725,25 +711,13 @@
     "message": "Flagged only",
     "description": "Display mode option."
   },
-  "optDaemon": {
-    "message": "Scoring daemon",
-    "description": "Options card heading."
-  },
   "optDaemonNote": {
     "message": "Verdicts come from the local $1 daemon (EditLens roberta-large, running on this computer). Start it with $2 (or $3 from a source checkout). When it is not running, paragraphs show as Unavailable and are retried automatically. There is no other backend.",
     "description": "Options card subtitle. $1-$3 are <code> elements from the page holding commands, never translated."
   },
   "optDaemonUrl": {
-    "message": "Daemon URL",
+    "message": "Local HTTP URL",
     "description": "Options input label."
-  },
-  "optDaemonUrlNote": {
-    "message": "Where $1 listens. Local addresses only — page text never leaves this computer. Default $2.",
-    "description": "Options input help text. $1 and $2 are <code> elements from the page, never translated."
-  },
-  "optStatus": {
-    "message": "Status",
-    "description": "Options label above the daemon status line."
   },
   "optChecking": {
     "message": "Checking…",
@@ -918,7 +892,7 @@
     "description": "Options note. $1 is a <code> element from the page holding a URL, never translated."
   },
   "optPrivacy": {
-    "message": "Nothing leaves your computer — scoring runs in the local $1 daemon on this computer. The daemon URL is restricted to local addresses.",
+    "message": "Scoring runs in the $1 on this computer. The browser connects to it directly; page text is not sent to an online service.",
     "description": "Options note. $1 is a <code> element from the page, never translated."
   },
   "optVerdictColors": {
@@ -933,7 +907,6 @@
     "message": "Model: pangram/editlens_roberta-large (CC BY-NC-SA 4.0, non-commercial).",
     "description": "Model credit in the options and first-run footers. The model id and licence are never translated."
   },
-
   "onbTitle": {
     "message": "Welcome to Anagram",
     "description": "First-run page title and heading."
@@ -967,56 +940,24 @@
     "description": "Setup row value: the extension is here."
   },
   "onbDaemon": {
-    "message": "Scoring daemon",
+    "message": "Local component",
     "description": "Setup row label."
   },
   "onbChecking": {
     "message": "checking…",
     "description": "Setup row value while the probe is in flight."
   },
-  "onbRunning": {
-    "message": "running",
-    "description": "Setup row value: the daemon answered."
-  },
-  "onbMismatch": {
-    "message": "version mismatch",
-    "description": "Setup row value: a daemon of another generation answered."
-  },
-  "onbNotLocal": {
-    "message": "not a local address",
-    "description": "Setup row value: the configured URL is not loopback, so nothing was probed."
-  },
-  "onbNotRunning": {
-    "message": "not running",
-    "description": "Setup row value: nothing answered."
-  },
-  "onbCopy": {
-    "message": "Copy",
-    "description": "Button beside a command on the first-run page."
-  },
-  "onbOpenOptions": {
-    "message": "Open options",
-    "description": "Link on the first-run page when only the options page can fix the daemon URL."
-  },
   "onbReady": {
     "message": "Ready",
     "description": "Setup row label."
   },
   "onbWaiting": {
-    "message": "Waiting for the scoring daemon.",
+    "message": "Waiting for local setup.",
     "description": "Setup row value while nothing can be scored yet."
-  },
-  "onbNeedsAccess": {
-    "message": "Allow sites above — or switch one on from the toolbar popup.",
-    "description": "Setup row value when the daemon is running but Anagram has been granted no site yet."
   },
   "onbGo": {
     "message": "Open any article — a chip appears after each paragraph.",
     "description": "Setup row value once everything is running."
-  },
-  "onbNotInstalled": {
-    "message": "Not installed yet? $1",
-    "description": "First-run install line. $1 is the install command with its Copy button, from the page."
   },
   "onbHowItReads": {
     "message": "How it reads",
@@ -1123,7 +1064,7 @@
     "description": "First-run card heading."
   },
   "onbPrivacyBody": {
-    "message": "Nothing leaves your computer, and the browser enforces it: the extension's own policy lets it reach the local $1 daemon and nothing else — it cannot connect to the internet at all. It reads only the sites you allow. Requests carry only a $2 by design — never full URLs.",
+    "message": "Scoring runs in the $1 on your computer. Model downloads are separate from analysis; page text is not sent to an online service. Website access is optional, and analysis requests use a $2, never a full URL.",
     "description": "First-run card body. $1 is a <code> element from the page; $2 is the emphasised run onbHostnameHint."
   },
   "onbHostnameHint": {
@@ -1162,7 +1103,6 @@
     "message": "options page",
     "description": "Emphasised run: the extension's settings page."
   },
-
   "readerTitle": {
     "message": "Anagram reader",
     "description": "PDF reading-mode page title and its bar heading before a file is open."
@@ -1262,5 +1202,545 @@
   "readerHtml": {
     "message": "HTML",
     "description": "Reader link: this paper also exists as a real HTML page. The acronym is the same in most languages."
+  },
+  "runtimeTitle": {
+    "message": "Choose how Anagram runs",
+    "description": "Shared local runtime setup panel on onboarding and Options: title."
+  },
+  "runtimeChecking": {
+    "message": "Checking local setup…",
+    "description": "Shared local runtime setup panel on onboarding and Options: checking."
+  },
+  "runtimeFirstRun": {
+    "message": "After model downloads finish, the first benchmark starts automatically. It shares about 30 seconds of measurement time across configurations; model loading and warmup take additional time. Review the results, then choose a configuration.",
+    "description": "First-run explanation. The measurement budget is shared across configurations; loading and warmup are additional. The daemon initiates the first run."
+  },
+  "runtimeRerunNote": {
+    "message": "You can change configuration or run the benchmark again. A new benchmark keeps your saved choice; it never selects the fastest result for you. Loading and warmup are separate from the measurement budget.",
+    "description": "Shared local runtime setup panel on onboarding and Options: rerun note."
+  },
+  "runtimeApply": {
+    "message": "Use selected configuration",
+    "description": "Shared local runtime setup panel on onboarding and Options: apply."
+  },
+  "runtimeRerun": {
+    "message": "Run benchmark again",
+    "description": "Shared local runtime setup panel on onboarding and Options: rerun."
+  },
+  "runtimeCancel": {
+    "message": "Cancel benchmark",
+    "description": "Shared local runtime setup panel on onboarding and Options: cancel."
+  },
+  "runtimeRefresh": {
+    "message": "Refresh status",
+    "description": "Shared local runtime setup panel on onboarding and Options: refresh."
+  },
+  "runtimeQualityNote": {
+    "message": "FP32 is recommended. These measurements compare speed and memory, not detection quality. Quality has not been evaluated here; INT8 is experimental. RAM shows the largest process sample during measurement; loading and warmup peaks are not measured. RAM and accelerator memory may overlap on shared-memory devices.",
+    "description": "Benchmark caveat. Keep FP32 and INT8 literal. Process RAM is sampled during measurement only; performance is measured, detection quality is not; accelerator and system RAM may be shared."
+  },
+  "runtimeBenchmarking": {
+    "message": "Testing configurations…",
+    "description": "Shared local runtime setup panel on onboarding and Options: benchmarking."
+  },
+  "runtimeLoading": {
+    "message": "Loading selected model…",
+    "description": "Shared local runtime setup panel on onboarding and Options: loading."
+  },
+  "runtimeFailed": {
+    "message": "Setup needs attention",
+    "description": "Shared local runtime setup panel on onboarding and Options: failed."
+  },
+  "runtimeReady": {
+    "message": "Ready to analyze",
+    "description": "Shared local runtime setup panel on onboarding and Options: ready."
+  },
+  "runtimeChoose": {
+    "message": "Choose a configuration to finish setup",
+    "description": "Shared local runtime setup panel on onboarding and Options: choose."
+  },
+  "runtimeNotAvailable": {
+    "message": "Not available",
+    "description": "Shared local runtime setup panel on onboarding and Options: not available."
+  },
+  "runtimePhaseDiscovery": {
+    "message": "Checking devices",
+    "description": "Shared local runtime setup panel on onboarding and Options: phase discovery."
+  },
+  "runtimePhaseLoad": {
+    "message": "Loading model",
+    "description": "Shared local runtime setup panel on onboarding and Options: phase load."
+  },
+  "runtimePhaseWarmup": {
+    "message": "Warming up",
+    "description": "Shared local runtime setup panel on onboarding and Options: phase warmup."
+  },
+  "runtimePhaseMeasure": {
+    "message": "Measuring",
+    "description": "Shared local runtime setup panel on onboarding and Options: phase measure."
+  },
+  "runtimePhaseComplete": {
+    "message": "Measurement complete",
+    "description": "Shared local runtime setup panel on onboarding and Options: phase complete."
+  },
+  "runtimePhaseCancelled": {
+    "message": "Cancelled",
+    "description": "Shared local runtime setup panel on onboarding and Options: phase cancelled."
+  },
+  "runtimePhaseFailed": {
+    "message": "Test failed",
+    "description": "Shared local runtime setup panel on onboarding and Options: phase failed."
+  },
+  "runtimePhaseIdle": {
+    "message": "Waiting",
+    "description": "Shared local runtime setup panel on onboarding and Options: phase idle."
+  },
+  "runtimeResults": {
+    "message": "Measured on this computer",
+    "description": "Shared local runtime setup panel on onboarding and Options: results."
+  },
+  "runtimeConfiguration": {
+    "message": "Configuration",
+    "description": "Shared local runtime setup panel on onboarding and Options: configuration."
+  },
+  "runtimeLatency": {
+    "message": "Typical latency",
+    "description": "Shared local runtime setup panel on onboarding and Options: latency."
+  },
+  "runtimeThroughput": {
+    "message": "Batch throughput",
+    "description": "Shared local runtime setup panel on onboarding and Options: throughput."
+  },
+  "runtimeRate": {
+    "message": "$1 texts/s",
+    "description": "Measured batch throughput: $1 is the localized number of texts processed per second."
+  },
+  "runtimeRam": {
+    "message": "Process RAM (sampled)",
+    "description": "Largest observed process resident-memory sample during measurement, not exact peak or whole-device RAM."
+  },
+  "runtimeResources": {
+    "message": "Resources",
+    "description": "Runtime comparison table heading for peak system and accelerator memory."
+  },
+  "runtimeAccelerator": {
+    "message": "Accelerator memory",
+    "description": "Shared local runtime setup panel on onboarding and Options: accelerator."
+  },
+  "runtimeQuality": {
+    "message": "Detection quality",
+    "description": "Shared local runtime setup panel on onboarding and Options: quality."
+  },
+  "runtimeActive": {
+    "message": "Active",
+    "description": "Shared local runtime setup panel on onboarding and Options: active."
+  },
+  "runtimeSelected": {
+    "message": "Selected, not active yet",
+    "description": "Shared local runtime setup panel on onboarding and Options: selected."
+  },
+  "runtimeRecommended": {
+    "message": "Recommended",
+    "description": "Annotation for the daemon-recommended configuration, not necessarily the fastest measured configuration."
+  },
+  "runtimeUnavailable": {
+    "message": "Unavailable on this device",
+    "description": "Shared local runtime setup panel on onboarding and Options: unavailable."
+  },
+  "runtimeTestFailed": {
+    "message": "The benchmark could not finish. You can retry or choose an available configuration.",
+    "description": "Shared local runtime setup panel on onboarding and Options: test failed."
+  },
+  "runtimeLoadWarmup": {
+    "message": "Load $1 · warmup $2",
+    "description": "Times beside a benchmark result: $1 model load duration and $2 warmup duration, each already formatted with ms."
+  },
+  "runtimeBatch": {
+    "message": "Batch $1 · $2 samples",
+    "description": "Benchmark workload details: $1 texts per batch, $2 measured samples."
+  },
+  "runtimeNotEvaluated": {
+    "message": "Not evaluated",
+    "description": "Shared local runtime setup panel on onboarding and Options: not evaluated."
+  },
+  "runtimeExperimental": {
+    "message": "Experimental",
+    "description": "Shared local runtime setup panel on onboarding and Options: experimental."
+  },
+  "runtimeLegacy": {
+    "message": "Runtime selection is unavailable. Update the local component in Settings to enable comparisons.",
+    "description": "Shared local runtime setup panel on onboarding and Options: legacy."
+  },
+  "runtimeInvalid": {
+    "message": "The local component returned an incompatible setup response. Update it or retry the connection in Settings.",
+    "description": "Shared local runtime setup panel on onboarding and Options: invalid."
+  },
+  "runtimeUnreachable": {
+    "message": "The local engine is not responding. Check its setup progress in Settings.",
+    "description": "Shared local runtime setup panel on onboarding and Options: unreachable."
+  },
+  "runtimeProgress": {
+    "message": "$1 · $2 of $3 tests finished · measurement $4 / $5 s · elapsed $6 s",
+    "description": "Benchmark progress: $1 phase, $2 completed workloads, $3 total workloads, $4 actual measurement seconds, $5 measurement budget seconds, $6 total elapsed seconds. This is not a completion percentage or countdown."
+  },
+  "runtimeUsing": {
+    "message": "Currently using: $1.",
+    "description": "Active configuration status. $1 is the device/runtime/precision configuration label."
+  },
+  "runtimeNoActive": {
+    "message": "No selected model is active yet.",
+    "description": "Shared local runtime setup panel on onboarding and Options: no active."
+  },
+  "runtimePending": {
+    "message": "Waiting to activate: $1.",
+    "description": "Saved choice that is still loading. $1 is the configuration label."
+  },
+  "runtimeCancelled": {
+    "message": "Benchmark cancelled. Completed results and your saved choice are kept. Cancellation waits for the current model operation to finish.",
+    "description": "Shared local runtime setup panel on onboarding and Options: cancelled."
+  },
+  "runtimeActionFailed": {
+    "message": "The change was not accepted. Refresh the status and try again.",
+    "description": "Shared local runtime setup panel on onboarding and Options: action failed."
+  },
+  "runtimeSetupPending": {
+    "message": "Finish local model setup below before analyzing pages.",
+    "description": "Shared local runtime setup panel on onboarding and Options: setup pending."
+  },
+  "runtimeCancelling": {
+    "message": "Stopping after the current model operation…",
+    "description": "Cooperative cancellation is requested, but a native model operation may still be running. Do not translate this as already cancelled."
+  },
+  "runtimePreparing": {
+    "message": "Preparing local models…",
+    "description": "Setup status before a runtime has been selected; discovery or first-run model preparation is underway."
+  },
+  "componentTitle": {
+    "message": "Local engine",
+    "description": "Native component lifecycle UI: Title."
+  },
+  "componentConnecting": {
+    "message": "Connecting to the local component…",
+    "description": "Native component lifecycle UI: Connecting."
+  },
+  "componentNotConnected": {
+    "message": "Local component not connected",
+    "description": "Native component lifecycle UI: NotConnected."
+  },
+  "componentConnectionNote": {
+    "message": "The browser starts the installed component automatically. If this is your first setup, install it once below.",
+    "description": "Native component lifecycle UI: ConnectionNote."
+  },
+  "componentInstallIntro": {
+    "message": "Install the local component once for this browser. Both the browser-store version and the ZIP contain only the extension.",
+    "description": "Native component lifecycle UI: InstallIntro."
+  },
+  "componentInitialDownload": {
+    "message": "First setup downloads about 4.07 GB of model files, plus the local runtime. Allow extra disk space during installation. Model downloads and the first benchmark start automatically after connection.",
+    "description": "Native component lifecycle UI: InitialDownload."
+  },
+  "componentTerminal": {
+    "message": "Open Terminal, paste this command, and press Return:",
+    "description": "Native component lifecycle UI: Terminal."
+  },
+  "componentPowerShell": {
+    "message": "Open PowerShell, paste this command, and press Enter:",
+    "description": "Native component lifecycle UI: PowerShell."
+  },
+  "componentCopyInstall": {
+    "message": "Copy installation command",
+    "description": "Native component lifecycle UI: CopyInstall."
+  },
+  "componentViewScript": {
+    "message": "View installation script",
+    "description": "Native component lifecycle UI: ViewScript."
+  },
+  "componentUnreleased": {
+    "message": "Development build: this version’s installer has not been published. The version-pinned command is shown for review; wait for the matching release before running it.",
+    "description": "Native component lifecycle UI: Unreleased."
+  },
+  "componentAfterInstall": {
+    "message": "Keep this page open. Once it connects, you can close the terminal; manage downloads, devices, updates, and removal here from then on.",
+    "description": "Native component lifecycle UI: AfterInstall."
+  },
+  "componentCopyFailed": {
+    "message": "Copying failed. Select the command and copy it manually.",
+    "description": "Native component lifecycle UI: CopyFailed."
+  },
+  "componentUnsupportedPlatform": {
+    "message": "An installation command is available for macOS, Linux, and Windows with a supported extension ID. Open this page in your installed extension.",
+    "description": "Native component lifecycle UI: UnsupportedPlatform."
+  },
+  "componentStarting": {
+    "message": "Starting the local component…",
+    "description": "Native component lifecycle UI: Starting."
+  },
+  "componentNeedsModels": {
+    "message": "Model files are needed",
+    "description": "Native component lifecycle UI: NeedsModels."
+  },
+  "componentDownloading": {
+    "message": "Downloading model files…",
+    "description": "Native component lifecycle UI: Downloading."
+  },
+  "componentPaused": {
+    "message": "Model download paused",
+    "description": "Native component lifecycle UI: Paused."
+  },
+  "componentLoading": {
+    "message": "Loading the local engine…",
+    "description": "Native component lifecycle UI: Loading."
+  },
+  "componentStopped": {
+    "message": "Local engine stopped",
+    "description": "Native component lifecycle UI: Stopped."
+  },
+  "componentUpdating": {
+    "message": "Updating the local component…",
+    "description": "Native component lifecycle UI: Updating."
+  },
+  "componentUninstalling": {
+    "message": "Removing the local component…",
+    "description": "Native component lifecycle UI: Uninstalling."
+  },
+  "componentDeleting": {
+    "message": "Deleting model files…",
+    "description": "Native component lifecycle UI: Deleting."
+  },
+  "componentNeedsAttention": {
+    "message": "Local setup needs attention",
+    "description": "Native component lifecycle UI: NeedsAttention."
+  },
+  "componentConnected": {
+    "message": "Local component connected",
+    "description": "Native component lifecycle UI: Connected."
+  },
+  "componentConnectedNote": {
+    "message": "You can close the terminal. The browser manages the local component; progress continues while this page is closed.",
+    "description": "Native component lifecycle UI: ConnectedNote."
+  },
+  "componentDisconnected": {
+    "message": "Local connection interrupted",
+    "description": "Native component lifecycle UI: Disconnected."
+  },
+  "componentReconnectNote": {
+    "message": "The browser will retry the connection. If it keeps failing, reopen this page after checking the installation.",
+    "description": "Native component lifecycle UI: ReconnectNote."
+  },
+  "componentReconnecting": {
+    "message": "Reconnecting after the update…",
+    "description": "Native component lifecycle UI: Reconnecting."
+  },
+  "componentIncompatible": {
+    "message": "The local component needs an update",
+    "description": "Native component lifecycle UI: Incompatible."
+  },
+  "componentDownloadProgress": {
+    "message": "Model download progress",
+    "description": "Native component lifecycle UI: DownloadProgress."
+  },
+  "componentDownloadBytes": {
+    "message": "$1 of $2 downloaded",
+    "description": "Native component lifecycle UI: DownloadBytes."
+  },
+  "componentDownloadedBytes": {
+    "message": "$1 downloaded",
+    "description": "Native component lifecycle UI: DownloadedBytes."
+  },
+  "componentLocation": {
+    "message": "Component $1 · $2",
+    "description": "Native component lifecycle UI: Location."
+  },
+  "componentUnknownVersion": {
+    "message": "version unknown",
+    "description": "Native component lifecycle UI: UnknownVersion."
+  },
+  "componentStorage": {
+    "message": "Model files on disk: $1",
+    "description": "Native component lifecycle UI: Storage."
+  },
+  "componentDownloadModels": {
+    "message": "Download models",
+    "description": "Native component lifecycle UI: DownloadModels."
+  },
+  "componentResumeDownload": {
+    "message": "Resume download",
+    "description": "Native component lifecycle UI: ResumeDownload."
+  },
+  "componentRetryDownload": {
+    "message": "Retry download",
+    "description": "Native component lifecycle UI: RetryDownload."
+  },
+  "componentPauseDownload": {
+    "message": "Pause download",
+    "description": "Native component lifecycle UI: PauseDownload."
+  },
+  "componentPausing": {
+    "message": "Pausing after the current download operation…",
+    "description": "Native component lifecycle UI: Pausing."
+  },
+  "componentStop": {
+    "message": "Stop engine",
+    "description": "Native component lifecycle UI: Stop."
+  },
+  "componentResume": {
+    "message": "Start engine",
+    "description": "Native component lifecycle UI: Resume."
+  },
+  "componentUpdate": {
+    "message": "Update local component",
+    "description": "Native component lifecycle UI: Update."
+  },
+  "componentDeleteModels": {
+    "message": "Delete model files",
+    "description": "Native component lifecycle UI: DeleteModels."
+  },
+  "componentUninstall": {
+    "message": "Uninstall Anagram completely",
+    "description": "Native component lifecycle UI: Uninstall."
+  },
+  "componentRetryConnection": {
+    "message": "Retry connection",
+    "description": "Native component lifecycle UI: RetryConnection."
+  },
+  "componentTechnicalDetails": {
+    "message": "Technical details",
+    "description": "Native component lifecycle UI: TechnicalDetails."
+  },
+  "componentDownloadFailed": {
+    "message": "The download did not finish. Resume or retry when your connection and disk space are ready.",
+    "description": "Native component lifecycle UI: DownloadFailed."
+  },
+  "componentOperationFailed": {
+    "message": "The local operation failed. Review the details and retry the appropriate action.",
+    "description": "Native component lifecycle UI: OperationFailed."
+  },
+  "componentActionRejected": {
+    "message": "The component could not start this action. Wait for the current operation or review the details, then retry.",
+    "description": "Native component lifecycle UI: ActionRejected."
+  },
+  "componentActionUnconfirmed": {
+    "message": "The connection ended before this action was confirmed. Check the status before trying again.",
+    "description": "Native component lifecycle UI: ActionUnconfirmed."
+  },
+  "componentDeleteTitle": {
+    "message": "Delete downloaded models?",
+    "description": "Native component lifecycle UI: DeleteTitle."
+  },
+  "componentDeleteConfirm": {
+    "message": "Stop the engine and delete $1 of model files from $2? The local component and extension stay installed. You can download the models again later.",
+    "description": "Native component lifecycle UI: DeleteConfirm."
+  },
+  "componentUninstallTitle": {
+    "message": "Remove Anagram and its local files?",
+    "description": "Native component lifecycle UI: UninstallTitle."
+  },
+  "componentUninstallConfirm": {
+    "message": "Stop the engine, remove the local component and browser registration at $2, including $1 of model files, then remove this extension? Other browser profiles using this component will also lose access to it.",
+    "description": "Native component lifecycle UI: UninstallConfirm."
+  },
+  "componentKeepFiles": {
+    "message": "Cancel",
+    "description": "Native component lifecycle UI: KeepFiles."
+  },
+  "componentConfirm": {
+    "message": "Confirm",
+    "description": "Native component lifecycle UI: Confirm."
+  },
+  "componentWaitingCleanup": {
+    "message": "Waiting for cleanup confirmation…",
+    "description": "Native component lifecycle UI: WaitingCleanup."
+  },
+  "componentCleanupUnconfirmed": {
+    "message": "The connection closing does not confirm removal. Keep the extension installed until cleanup succeeds.",
+    "description": "Native component lifecycle UI: CleanupUnconfirmed."
+  },
+  "componentCleanupScheduled": {
+    "message": "Cleanup is running in a system window",
+    "description": "Native component lifecycle UI: CleanupScheduled."
+  },
+  "componentSystemCleanupNote": {
+    "message": "Follow the result in the system window. After it confirms successful cleanup, remove this extension from your browser’s extension manager. A closed connection alone does not confirm success.",
+    "description": "Native component lifecycle UI: SystemCleanupNote."
+  },
+  "componentCleanupDone": {
+    "message": "Local files and registration removed",
+    "description": "Native component lifecycle UI: CleanupDone."
+  },
+  "componentRemovingExtension": {
+    "message": "Local cleanup is confirmed. Removing the browser extension…",
+    "description": "Native component lifecycle UI: RemovingExtension."
+  },
+  "componentRemoveExtension": {
+    "message": "Remove browser extension",
+    "description": "Native component lifecycle UI: RemoveExtension."
+  },
+  "componentExtensionRemovalFailed": {
+    "message": "Local cleanup succeeded, but extension removal was not confirmed. Use the button to retry, or remove Anagram in your browser’s extension manager.",
+    "description": "Native component lifecycle UI: ExtensionRemovalFailed."
+  },
+  "componentUpgradeNote": {
+    "message": "Browser-store extensions update through the browser. For a ZIP installation, replace the unpacked extension with the new ZIP’s contents and reload it. Update the local component with the button above.",
+    "description": "Native component lifecycle UI: UpgradeNote."
+  },
+  "componentDeveloper": {
+    "message": "Developer connection",
+    "description": "Native component lifecycle UI: Developer."
+  },
+  "componentTransport": {
+    "message": "Connection",
+    "description": "Native component lifecycle UI: Transport."
+  },
+  "componentNativeTransport": {
+    "message": "Native component (recommended)",
+    "description": "Native component lifecycle UI: NativeTransport."
+  },
+  "componentHttpTransport": {
+    "message": "Manual local HTTP (development)",
+    "description": "Native component lifecycle UI: HttpTransport."
+  },
+  "componentHttpNote": {
+    "message": "For source development only. The browser does not start or manage this server.",
+    "description": "Native component lifecycle UI: HttpNote."
+  },
+  "componentReadyManual": {
+    "message": "Ready. Use the toolbar’s Analyze this page for one-time access, or optionally allow sites above.",
+    "description": "Native component lifecycle UI: ReadyManual."
+  },
+  "componentInstallWaiting": {
+    "message": "Install and connect the local component to finish setup.",
+    "description": "Native component lifecycle UI: InstallWaiting."
+  },
+  "componentOpenSetup": {
+    "message": "Open setup and Settings",
+    "description": "Native component lifecycle UI: OpenSetup."
+  },
+  "componentOpenSettingsHint": {
+    "message": "Open Settings for setup progress, model downloads, and local engine controls.",
+    "description": "Native component lifecycle UI: OpenSettingsHint."
+  },
+  "componentUpdateScheduled": {
+    "message": "Update is running in a system window",
+    "description": "Native component or browser extension update UI: componentUpdateScheduled."
+  },
+  "componentSystemUpdateNote": {
+    "message": "Keep the system progress window open until it reports the result. The browser will reconnect to the updated component after it finishes.",
+    "description": "Native component or browser extension update UI: componentSystemUpdateNote."
+  },
+  "componentReloadExtension": {
+    "message": "Reload extension",
+    "description": "Native component or browser extension update UI: componentReloadExtension."
+  },
+  "componentExtensionUpdate": {
+    "message": "Extension version $1 is ready. Reload to install it; this restarts the extension and temporarily disconnects the local engine.",
+    "description": "Native component or browser extension update UI: componentExtensionUpdate."
+  },
+  "componentInUse": {
+    "message": "Another Anagram instance is using the local component",
+    "description": "Native host lock conflict, distinct from a missing installation."
+  },
+  "componentInUseNote": {
+    "message": "This can happen when Anagram is connected from another browser. Close the other Anagram connection, then retry here; reinstalling is not needed.",
+    "description": "Native host lock conflict, distinct from a missing installation."
   }
 }

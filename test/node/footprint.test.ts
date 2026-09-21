@@ -72,6 +72,7 @@ function tableUnder(heading: string): string[][] {
  * `import(url)` is a load by address.
  */
 const NETWORK_APIS: { name: string; find: RegExp }[] = [
+  { name: "connectNative(", find: /\bconnectNative\s*\(/g },
   { name: "fetch(", find: /(?<![\w$])fetch\s*\(/g },
   { name: "XMLHttpRequest", find: /\bXMLHttpRequest\b/g },
   { name: "WebSocket", find: /\bWebSocket\b/g },
@@ -116,11 +117,11 @@ describe("the network inventory in docs/footprint.md", () => {
     }
   });
 
-  it("keeps the daemon client the only thing that talks to the daemon", () => {
-    // The one call site whose destination is a server. If a second file ever grows one,
-    // the row above will be new and this says which shape it has to have.
+  it("keeps scoring and runtime controls in the two loopback clients", () => {
+    // Scoring and setup have separate typed clients, both restricted to loopback.
+    // A third client must be an explicit change to this inventory.
     const daemon = rows.filter((r) => r[3].includes("loopback daemon")).map((r) => r[0]);
-    expect([...new Set(daemon)]).toEqual(["lib/backend/httpClient.ts"]);
+    expect([...new Set(daemon)]).toEqual(["lib/backend/httpClient.ts", "lib/backend/runtimeClient.ts"]);
   });
 });
 

@@ -1,13 +1,13 @@
 # Anagram — Privacy Policy
 
-Last updated: 2026-09-20. Applies to the Anagram browser extension for Chrome and for
+Last updated: 2026-09-21. Applies to the Anagram browser extension for Chrome and for
 Firefox, and to the `anagramd` scoring service that runs on your own computer.
 
 **The short version.** Anagram reads the text of pages you have allowed it to read, sends
 that text to a program running on your own computer to be scored, and shows the score next
-to the paragraph. Nothing is sent anywhere else — the extension is prevented by the
-browser from reaching the internet at all. There is no account, no sign-in and no
-telemetry, and no text is ever stored.
+to the paragraph. Browsing text stays on your computer. There is no account, sign-in or
+telemetry, and page text is not persisted. Installing models and updating the local
+component downloads public files; those requests do not carry your browsing text.
 
 Every claim on this page is checkable in the source. The full inventory — every network
 call site, every address written into the code, every stored key — is
@@ -40,38 +40,35 @@ bookmarks, your history or the contents of other tabs.
 
 ## Where it goes
 
-To one place: **a scoring service listening on your own computer**, at
-`http://127.0.0.1:<port>` or `http://localhost:<port>`. Paragraph text is sent there to be
-scored and the verdict comes back. That request never leaves your machine.
+To **the Anagram local component on your computer**, normally through the browser's
+Native Messaging pipe. The browser starts the registered `dev.coderbak.anagram` host;
+its registration permits your exact extension ID. The extension's management bridge
+accepts only its own top-level setup and Settings pages and a fixed list of operations,
+not arbitrary file paths or shell commands. Page text is used in memory for inference.
 
-This is not a promise you have to take on trust — **the browser enforces it.** The
-extension's manifest declares a Content-Security-Policy whose `connect-src` is the
-extension's own origin plus those two loopback hosts, and nothing else:
+A developer option retains HTTP on `http://127.0.0.1:<port>` or
+`http://localhost:<port>`, with redirects refused and extension-origin CORS checks.
+The extension's web requests are restricted by:
 
 ```
 connect-src 'self' http://127.0.0.1:* http://localhost:*
 ```
 
-So `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource` and `sendBeacon` from any page of
-the extension or from its background worker can reach the local service and nothing else,
-whatever the code asks for. `node test/csp-check.mjs` proves it in a real browser: it tries
-all five APIs against a remote address, from an extension page and from the worker, and
-requires every attempt to be refused while the local service still answers.
+This policy does not constrain native programs. Native model downloads and user-requested
+component updates contact Hugging Face and its file CDN, the fastText download host,
+GitHub releases and runtime/package distribution hosts. They transmit ordinary download
+metadata, such as the IP address seen by those hosts, but no page text, page hostname,
+benchmark results or saved runtime choice. Same-origin re-reads of the open Google Doc or
+PDF are made with the browser's normal cookies; the extension never reads those cookies.
 
-The address is a setting, and the setting is constrained the same way: it accepts only
-`http://127.0.0.1[:port]` and `http://localhost[:port]` — no HTTPS, no other host, no
-credentials, no path (`lib/settings/settings.ts`, `isLoopbackUrl`). The extension also
-refuses to follow a redirect away from that endpoint.
+The scoring wire request carries the contract version, paragraph IDs and text
+(`lib/backend/nativeScoreClient.ts`, or `httpClient.ts` in developer mode). It does not
+include the page's full URL, cookies, browser history or account credentials. The richer
+internal page-to-background scan envelope is not forwarded as the native scoring payload.
 
-What the extension sends alongside the paragraph text is an id for the current scan, which
-browser it is (`chrome-ext` / `firefox-ext`), the page's hostname (for example
-`en.wikipedia.org` — never the full URL, never a path or a query), a language hint and a
-priority (`lib/contract.ts`, `ScoreBatchRequest`; the hostname comes from
-`location.hostname` in `lib/capture/orchestrator.ts`).
-
-The scoring service reaches no network of its own: it loads its model files from disk and
-refuses to start without them. The model is downloaded once by the separate installer,
-never by the extension.
+Inference uses verified files from disk with Hugging Face offline mode. Model downloading
+is a separate operation managed through the extension. The native program runs with the
+user's ordinary OS privileges; browser CSP is not an OS sandbox for it.
 
 ## What is stored
 
@@ -80,7 +77,8 @@ never by the extension.
 These are the things you set, in `chrome.storage.local` — nothing is written to
 `storage.sync`, so nothing here leaves this browser profile or this computer:
 
-`serverUrl` (the loopback address), `enabled` (the master switch), `siteOverrides` (the
+`backendTransport` (native, or developer HTTP), `extensionUpdatePending` (a browser
+update awaiting reload), `serverUrl` (the developer loopback address), `enabled` (the master switch), `siteOverrides` (the
 per-site on/off rules you wrote, as hostnames), `showHighlights`, `autoOpenPdfs`, `debug`,
 `displayMode`, `mergeShorts`, `markStyle`, `analysisScope`, `fabPos` (where you dragged
 the floating ball, per hostname), and `scLegacySwept` (a one-shot housekeeping flag).
@@ -111,14 +109,22 @@ The PDF reading mode writes one of its own, holding the address of a PDF it has 
 sent you back to, so a file it cannot read cannot bounce the tab back and forth. Each
 lives in its tab and dies with it.
 
-### Nothing else
+### The local component
 
-No cookies. No `localStorage`. No Cache Storage. No downloaded files. Nothing at all
-outside the browser, except the scoring service's own folder described below.
+The default root is `~/.anagram` on macOS/Linux or `%LOCALAPPDATA%\Anagram` on Windows.
+It contains the private runtime, application, model weights and incomplete downloads,
+saved device/precision choice, benchmark timings and resource measurements, component
+preferences, ownership/registration records, and operational state. Built-in benchmark
+samples contain no browsing text. These measurements are never uploaded. Browser host
+registration also creates a small manifest in its user-level NativeMessagingHosts folder,
+or a manifest and HKCU registry pointer on Windows. Exact paths are listed in
+[footprint](docs/footprint.md). No system Python, login service or shell-profile edit is
+required. Normal installer temporary files and OS/browser logs may also exist.
 
 ### The clipboard, when you ask
 
-Three actions copy something to your clipboard and nowhere else: *Copy text* on a chip's
+User-initiated actions copy to your clipboard and nowhere else: the installation
+command, *Copy text* on a chip's
 card, *Copy report* in the triage panel, and *Copy page diagnostics*. The diagnostics
 report is deliberately **anonymised** — every word of page text is replaced by filler of
 the same shape, and URLs, alt text, titles and field values are dropped — so that it
@@ -128,18 +134,21 @@ transmitted; it goes to your clipboard for you to paste where you choose.
 ## What is never collected
 
 - **No account, no sign-in, no identifier.** Anagram has no notion of a user.
-- **No telemetry, no analytics, no error or crash reporting, no update check.** Not
-  disabled by a setting — impossible, because the extension cannot reach a remote host.
+- **No telemetry, analytics or remote error reporting.** The browser manages extension
+  updates; the local component updates only when requested. Model setup downloads public
+  files without uploading browsing data.
 - **No page text, ever stored**, by the extension or by the scoring service.
 - **No remote fonts, no remote stylesheets, no remote scripts, no advertising, no
   trackers.** Everything the extension runs is inside the package.
-- **Nothing is sold, shared or transferred to anyone.** There is no third party to
-  transfer anything to.
+- **Browsing content and model results are never sold or transferred to third parties.**
+  Public download hosts receive normal network request metadata during installation or
+  updates, as described above.
 
 ## Permissions, and what each is for
 
 | Permission | What it is for |
 | --- | --- |
+| `nativeMessaging` (**required**) | Starts and communicates with the local component for inference, setup, runtime choice and explicit update/cleanup actions. |
 | `storage` | The settings listed above, on this computer. |
 | `activeTab` | One-off actions on the tab in front of you, on a site you granted nothing for. Lasts for that one page. |
 | `contextMenus` | The right-click entries. |
@@ -147,26 +156,25 @@ transmitted; it goes to your clipboard for you to paste where you choose.
 | `https://*/*`, `http://*/*` (**optional**) | The sites you choose to let Anagram read. Not held at install; asked for inside your click; revocable. |
 | `clipboardWrite` (**optional**, Firefox only) | *Copy page diagnostics*. Asked for the first time you use it. Chrome needs no permission for it. |
 
-**No host permission at all.** Anagram used to require `http://127.0.0.1/*` and
-`http://localhost/*` — not to reach the local scoring service, which the policy above
-allows in any case, but to *read* what it answered, because the service sent no CORS
-headers. It sends them now, and only to extensions (`anagramd/serve.py`), so the permission
-bought nothing and cost you the one sentence your browser had to warn you about at install.
-Nothing the extension can reach changed: `connect-src` is the same list, and a web page is
-still refused outright by the service before the question of reading it arises. The price is
-that the service and the extension must move together — if the extension updates and the
-service does not, the popup says so and names the one command that fixes it,
-`~/.anagram/bin/anagram update`.
+There is **no required website access**. Native Messaging has its own browser permission
+warning. No downloads, management, history, cookies or required tabs permission is added.
 
 ## How to remove everything
 
-- **The extension**: remove it from `chrome://extensions` (or `about:addons` on Firefox).
-  The browser deletes its storage and its IndexedDB cache with it. To clear the cache
-  without uninstalling, use Options → Advanced → *Clear cached verdicts*.
-- **The scoring service**: run `~/.anagram/bin/anagram uninstall`. That deletes
-  `~/.anagram`, which is the only thing the installer ever created — no system files, no
-  launch agent, no shell-profile edits. Uninstalling the extension does not remove it, and
-  removing it does not remove the extension.
+Use Settings → **Uninstall Anagram completely** before removing the extension. On
+macOS/Linux it removes owned model/runtime files and exact native registrations, then
+requests browser self-uninstall only after cleanup is confirmed. On Windows a visible
+cleanup window waits for open files to be released; after it confirms success, remove the
+extension manually. A scheduled operation or disconnected host is never reported as a
+completed cleanup.
+
+If you remove the extension directly through Chrome/Firefox, its local browser storage
+and IndexedDB are removed, but the native component and models remain: browsers do not
+provide a native uninstall hook. Reinstall the same extension to reach cleanup, or use
+the component's documented manual uninstall. **Delete model files** in Settings frees
+weights without removing the component; a later download requires your action. Manually
+downloaded ZIPs and the user-chosen unpacked extension folder are not deleted automatically.
+OS/browser logs and filesystem backups are outside this cleanup promise.
 
 ## Children
 

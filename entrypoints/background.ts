@@ -28,8 +28,16 @@ import { createPdfHandoff } from "../lib/pdf/handoff";
 import { PDF_TAB_SCRIPTS_RUN } from "../lib/surface";
 import { settings } from "../lib/settings/settings";
 import { t } from "../lib/i18n";
+import { handleNativePageMessage } from "../lib/backend/nativeBridge";
+import { NATIVE_MESSAGE, NATIVE_UNINSTALL } from "../lib/backend/nativeProtocol";
+const EXTENSION_UPDATE_KEY = "extensionUpdatePending";
 
 export default defineBackground(() => {
+  // A native port can keep this worker alive. Preserve an available extension
+  // update for Settings rather than interrupting analysis with an automatic reload.
+  browser.runtime.onUpdateAvailable.addListener((details) => {
+    void browser.storage.local.set({ [EXTENSION_UPDATE_KEY]: details.version });
+  });
   const router = createRouter(getScoreClient());
   // Site access is optional: the content script is registered for the origins the user has
   // granted and injected on demand where only activeTab applies (lib/access/worker.ts).
@@ -141,6 +149,9 @@ export default defineBackground(() => {
   // LINKS to a .pdf, which is where a reader decides to open one — the tab that is
   // already showing a PDF is served by the ball's own action chip and by the popup.
   browser.runtime.onInstalled.addListener((details) => {
+    if (details.reason === "install" || details.reason === "update") {
+      void browser.storage.local.remove(EXTENSION_UPDATE_KEY);
+    }
     void browser.contextMenus.removeAll().then(() => {
       browser.contextMenus.create({
         id: "anagram-analyze-selection",
@@ -333,6 +344,14 @@ export default defineBackground(() => {
         navigationType?: string;
       };
       if (!msg) return;
+
+      if (msg.action === NATIVE_MESSAGE || msg.action === NATIVE_UNINSTALL) {
+        void handleNativePageMessage(message, sender, {
+          invalidate: () => getDaemonClient().invalidate(),
+          clear: () => router.clear(),
+        }).then(sendResponse, () => sendResponse(undefined));
+        return true;
+      }
 
       // The popup's "Analyze this page": the context-menu entry by another door. Only an
       // extension page of our own may name a tab. A content script's message comes from

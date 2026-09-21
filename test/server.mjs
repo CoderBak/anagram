@@ -16,6 +16,7 @@
 import { spawn } from "node:child_process";
 import { launchExtension, BADGE_SEL, requireBuild } from "./harness.mjs";
 import { resolveDaemon } from "./daemon-port.mjs";
+import { finishTestSetup, testRuntimeConfig } from "./runtime-ready.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
@@ -54,20 +55,21 @@ const check = (name, ok, note = "") => {
 
 // --- 1. daemon up (ours unless we were told to borrow one) ----------------------------
 let daemon = null;
+const runtimeConfig = target.start ? testRuntimeConfig() : null;
+process.on("exit", () => runtimeConfig?.cleanup());
 let h = null;
 if (!target.start) {
   console.log(`reusing the anagramd already listening on ${BASE} — this run neither started nor will stop it`);
   h = await health();
 } else {
   console.log(`starting anagramd on ${BASE}…`);
-  daemon = spawn("sh", [join(ROOT, "anagramd", "run.sh"), "--port", String(PORT)], {
+  daemon = spawn("sh", [join(ROOT, "anagramd", "run.sh"), "--port", String(PORT), "--runtime-config", runtimeConfig.path], {
     stdio: ["ignore", "inherit", "inherit"],
   });
-  const t0 = Date.now();
-  while (!h && Date.now() - t0 < 180_000) {
-    await new Promise((r) => setTimeout(r, 1000));
-    h = await health();
-  }
+  h = await finishTestSetup(BASE, health).catch((error) => {
+    daemon.kill("SIGTERM");
+    throw error;
+  });
 }
 check("daemon /health answers with the EditLens model", h?.ok && h.model?.id === "editlens_roberta-large", JSON.stringify(h?.model));
 check("daemon reports 4 buckets and contract 2.x", h?.n_buckets === 4 && String(h?.contract).startsWith("2."), `${h?.n_buckets} · ${h?.contract} · ${h?.device}`);

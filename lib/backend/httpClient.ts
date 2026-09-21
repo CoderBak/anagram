@@ -208,16 +208,7 @@ export async function fetchHealth(baseUrl: string): Promise<HealthResult> {
     answered = true;
     if (!res.ok) return UNREACHABLE;
     const body: unknown = await res.json();
-    // The contract is read LENIENTLY, straight off the raw JSON and before the schema:
-    // a daemon of another major may well have changed the shape of /health too, and we
-    // still want to say "wrong version" rather than "not running" about it.
-    const reported = (body as { contract?: unknown } | null)?.contract;
-    if (typeof reported === "string" && !sameMajor(reported)) {
-      return { ok: false, reason: "contract", contract: reported };
-    }
-    const parsed = v.safeParse(HealthSchema, body);
-    if (!parsed.success) return UNREACHABLE;
-    return { ok: true, health: parsed.output };
+    return parseHealth(body);
   } catch {
     // A daemon that answered and then sent nonsense is reachable, whatever else is wrong
     // with it. Only a request that never completed can be the old-daemon case.
@@ -226,6 +217,20 @@ export async function fetchHealth(baseUrl: string): Promise<HealthResult> {
   } finally {
     t.done();
   }
+}
+
+/** Same validated health contract for HTTP and Native Messaging. */
+export function parseHealth(body: unknown): HealthResult {
+  // The contract is read LENIENTLY, straight off the raw JSON and before the schema:
+  // a daemon of another major may well have changed the shape of /health too, and we
+  // still want to say "wrong version" rather than "not running" about it.
+  const reported = (body as { contract?: unknown } | null)?.contract;
+  if (typeof reported === "string" && !sameMajor(reported)) {
+    return { ok: false, reason: "contract", contract: reported };
+  }
+  const parsed = v.safeParse(HealthSchema, body);
+  if (!parsed.success) return UNREACHABLE;
+  return { ok: true, health: parsed.output };
 }
 
 /** Trim a validated result to the contract's optional-field conventions. */
@@ -261,24 +266,29 @@ export class HttpScoreClient implements ScoreClient {
         redirect: NO_REDIRECT,
       });
       if (!res.ok) throw new DaemonHttpError(res.status, parseRetryAfter(res.headers.get("retry-after")));
-      const parsed = v.safeParse(ScoreResponseSchema, await res.json());
-      if (!parsed.success) {
-        const issue = parsed.issues[0];
-        throw new ProtocolError(`malformed /score response: ${v.getDotPath(issue) ?? "?"} ${issue.message}`);
-      }
-      if (!sameMajor(parsed.output.v)) throw new ProtocolError(`contract ${parsed.output.v} ≠ ${CONTRACT_VERSION}`);
-      const wanted = new Set(blocks.map((b) => b.id));
-      const results: ScoreResult[] = [];
-      const seen = new Set<string>();
-      for (const r of parsed.output.results) {
-        if (!wanted.has(r.id) || seen.has(r.id)) continue; // stray or duplicate id — ignored
-        seen.add(r.id);
-        results.push(toResult(r));
-      }
-      if (results.length === 0 && blocks.length > 0) throw new ProtocolError("no result matched a requested block");
-      return { results, model: parsed.output.model };
+      return parseScoreResponse(await res.json(), blocks);
     } finally {
       t.done();
     }
   }
+}
+
+/** Validate identity, probabilities and requested block IDs on either transport. */
+export function parseScoreResponse(body: unknown, blocks: ScoreBlock[]): ScoredBatch {
+  const parsed = v.safeParse(ScoreResponseSchema, body);
+  if (!parsed.success) {
+    const issue = parsed.issues[0];
+    throw new ProtocolError(`malformed /score response: ${v.getDotPath(issue) ?? "?"} ${issue.message}`);
+  }
+  if (!sameMajor(parsed.output.v)) throw new ProtocolError(`contract ${parsed.output.v} ≠ ${CONTRACT_VERSION}`);
+  const wanted = new Set(blocks.map((b) => b.id));
+  const results: ScoreResult[] = [];
+  const seen = new Set<string>();
+  for (const r of parsed.output.results) {
+    if (!wanted.has(r.id) || seen.has(r.id)) continue; // stray or duplicate id — ignored
+    seen.add(r.id);
+    results.push(toResult(r));
+  }
+  if (results.length === 0 && blocks.length > 0) throw new ProtocolError("no result matched a requested block");
+  return { results, model: parsed.output.model };
 }

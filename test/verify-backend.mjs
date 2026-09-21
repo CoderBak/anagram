@@ -18,6 +18,7 @@
 import { spawn } from "node:child_process";
 import { launchExtension, BADGE_SEL } from "./harness.mjs";
 import { resolveDaemon } from "./daemon-port.mjs";
+import { finishTestSetup, testRuntimeConfig } from "./runtime-ready.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
@@ -41,11 +42,16 @@ const health = () => healthOf(BASE);
 //     comes from, which is why a borrowed daemon cannot be counted) ---------------------
 let daemonLog = "";
 let daemon = null;
+const runtimeConfig = target.start ? testRuntimeConfig() : null;
+process.on("exit", () => runtimeConfig?.cleanup());
 if (target.start) {
-  daemon = spawn("sh", [join(ROOT, "anagramd", "run.sh"), "--port", String(PORT)], { stdio: ["ignore", "pipe", "pipe"] });
+  daemon = spawn("sh", [join(ROOT, "anagramd", "run.sh"), "--port", String(PORT), "--runtime-config", runtimeConfig.path], { stdio: ["ignore", "pipe", "pipe"] });
   daemon.stdout.on("data", (d) => (daemonLog += d));
   daemon.stderr.on("data", (d) => (daemonLog += d));
-  for (let i = 0; i < 120 && !(await health()); i++) await new Promise((r) => setTimeout(r, 1000));
+  await finishTestSetup(BASE, health).catch((error) => {
+    daemon.kill("SIGTERM");
+    throw error;
+  });
 } else {
   console.log(`(reusing the anagramd already listening on ${BASE} — this run neither started nor will stop it; request counting and the daemon-down half are skipped)`);
 }

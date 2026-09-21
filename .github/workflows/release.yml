@@ -1,7 +1,6 @@
 # Release: on a version tag, build the extension and the daemon bundle and attach them to a
-# GitHub Release. The installer's one-liner points at .../releases/latest/download/install.sh.
-# The Hugging Face token for the gated checkpoint comes from the ANAGRAM_HF_TOKEN repository
-# secret and is substituted into install.sh at this step only — it is never committed.
+# GitHub Release. First-run commands name the exact matching version's installer assets.
+# Modelkit downloads use a pinned public revision without any Hugging Face credential.
 name: release
 on:
   push:
@@ -28,12 +27,18 @@ jobs:
       - run: npm run typecheck
       - run: npm run test:node
       - run: node scripts/release.mjs
-        env:
-          ANAGRAM_HF_TOKEN: ${{ secrets.ANAGRAM_HF_TOKEN }}
       - uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/anagram.tar.gz
             dist/anagram.tar.gz.sha256
+            dist/anagram.zip
+            dist/anagram.zip.sha256
             dist/install.sh
+            dist/install.sh.sha256
+            dist/install.ps1
+            dist/install.ps1.sha256
             dist/anagram-chrome-*.zip
+            dist/anagram-chrome-*.zip.sha256
+            dist/anagram-firefox-*.zip
+            dist/anagram-firefox-*.zip.sha256

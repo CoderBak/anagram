@@ -41,17 +41,10 @@ const scopeEl = document.getElementById("analysisScope") as HTMLSelectElement;
 const actionEl = document.getElementById("action") as HTMLButtonElement;
 const statusEl = document.getElementById("status") as HTMLElement;
 const cmdEl = document.getElementById("cmd") as HTMLElement;
-const cmdTextEl = document.getElementById("cmdText") as HTMLElement;
-const cmdCopyEl = document.getElementById("cmdCopy") as HTMLButtonElement;
 const gearEl = document.getElementById("gear") as HTMLButtonElement;
 const backendEl = document.getElementById("backend") as HTMLElement;
 // The one segmented control left is a Basecoat tab list (buttons with aria-selected).
 const displayModeEls = segButtons("displayMode");
-
-/** What fixes a daemon that is not answering, and what fixes one of another generation.
- *  The same two commands the first-run page shows, in the same shape. */
-const START_CMD = "~/.anagram/bin/anagram start";
-const UPDATE_CMD = "~/.anagram/bin/anagram update";
 
 function segButtons(name: string): HTMLButtonElement[] {
   return Array.from(
@@ -152,13 +145,8 @@ function paint(): void {
   lead = popupLead(facts);
   const down = lead.status === "daemon";
   statusEl.classList.toggle("down", down);
-  // Two ways for the daemon to be no use, and they want opposite commands: nothing is
-  // listening (start it), or a daemon IS there and cannot work with this extension
-  // (update it). Telling somebody to start what is already running sends them down the
-  // wrong path, so anything that means "there but too old" belongs on the update side.
   const mismatch = facts.daemon === "mismatch";
   cmdEl.hidden = !down;
-  if (down) cmdTextEl.textContent = mismatch ? UPDATE_CMD : START_CMD;
 
   switch (lead.status) {
     case "counts":
@@ -184,7 +172,7 @@ function paint(): void {
   // gap where a sentence used to be.
   statusEl.hidden = lead.status === "none";
 
-  actionEl.textContent = t(ACTION_LABEL[lead.action]);
+  actionEl.textContent = t(lead.action === "retry" ? "componentOpenSetup" : ACTION_LABEL[lead.action]);
   actionEl.disabled = false;
   if (lead.primary) delete actionEl.dataset.variant;
   else actionEl.dataset.variant = "outline";
@@ -392,21 +380,6 @@ async function init(): Promise<void> {
 
   bindSeg(displayModeEls, (v) => void settings.displayMode.setValue(v as "all" | "flagged"));
 
-  // Copy on an extension page: the Clipboard API is always there, so no textarea dance.
-  cmdCopyEl.addEventListener("click", () => {
-    void navigator.clipboard.writeText(cmdTextEl.textContent ?? "").then(
-      () => {
-        cmdCopyEl.textContent = t("copied");
-        setTimeout(() => {
-          cmdCopyEl.textContent = t("onbCopy");
-        }, 1400);
-      },
-      () => {
-        /* nothing to fall back to, and nothing to say — the command is on screen */
-      },
-    );
-  });
-
   actionEl.addEventListener("click", () => {
     switch (lead.action) {
       case "analyze":
@@ -429,11 +402,8 @@ async function init(): Promise<void> {
         window.close();
         return;
       case "retry":
-        actionEl.disabled = true;
-        void refreshBackend(true).then(() => {
-          sendToTab(tab?.id, { action: ACTIONS.RETRY_BACKEND });
-          setTimeout(() => void refreshStatus(tab?.id), 800);
-        });
+        void browser.runtime.openOptionsPage();
+        window.close();
         return;
       case "rescan":
         sendToTab(tab?.id, { action: ACTIONS.RESCAN });

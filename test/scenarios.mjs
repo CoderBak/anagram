@@ -1771,12 +1771,9 @@ async function sweep(page, steps = 6) {
     );
   }
 
-  // A33–A36: the first-run page's setup strip. A fresh install shows nothing on a real
-  // page until the SEPARATELY installed daemon is started, so the onboarding page leads
-  // with three live status rows — extension, daemon, ready — and, for each way the
-  // daemon can be wrong, the one command that fixes it in a copyable pill. The rows must
-  // follow the daemon WITHOUT a reload: the page stays open while the user runs that
-  // command in a terminal.
+  // A33–A36: explicit HTTP developer mode still has live setup status, but daily
+  // recovery now points to Settings. Native installation, command copying, and
+  // component management are exercised through real stdio in native-browser.mjs.
   if (extId) {
     const onboardingUrl = `chrome-extension://${extId}/onboarding.html`;
     const readStrip = (page) =>
@@ -1790,8 +1787,9 @@ async function sweep(page, steps = 6) {
           daemon: txt("daemon-state"),
           daemonState: document.getElementById("row-daemon")?.dataset.state ?? null,
           detail: shown("daemon-detail") ? txt("daemon-detail") : null,
-          cmd: shown("daemon-cmd") ? txt("daemon-cmd-text") : null,
-          link: shown("daemon-link") ? document.getElementById("daemon-link").getAttribute("href") : null,
+          runtime: document.querySelector("#runtimeSettings .runtime-status")?.textContent ?? null,
+          active: document.querySelector('#runtimeSettings tr[data-active="true"]')?.textContent ?? null,
+          fabricatedCommand: /~\/.anagram\/bin\/anagram|curl -fsSL/.test(document.body.innerText),
           ready: txt("ready-text"),
           readyState: document.getElementById("row-ready")?.dataset.state ?? null,
           install: shown("install") ? txt("install-cmd") : null,
@@ -1805,74 +1803,75 @@ async function sweep(page, steps = 6) {
 
     const p = await context.newPage();
     await p.goto(onboardingUrl, { waitUntil: "load" });
-    const sawRunning = await waitDaemonRow(p, "running", 15000);
+    const sawRunning = await waitDaemonRow(p, "Ready to analyze", 15000);
     const up = await readStrip(p);
     record(
       "ui",
-      "first-run page: the strip shows the extension, the daemon with its model and device, and Ready",
+      "HTTP first-run page: the strip and runtime panel show the installed extension and active configuration as ready",
       sawRunning &&
         up.ext === "installed" && /^v\d/.test(up.extVersion ?? "") && up.extState === "ok" &&
-        up.daemonState === "ok" && up.detail === "fake-editlens · fake" && up.cmd === null &&
+        up.daemonState === "ok" && up.runtime === "Ready to analyze" && up.active?.includes("Test CPU · FP32") &&
+        up.detail === null && !up.fabricatedCommand &&
         up.readyState === "ok" && up.ready === "Open any article — a chip appears after each paragraph." &&
         up.install === null,
       JSON.stringify(up),
     );
 
-    // The daemon goes away and the page is opened fresh: one command, one copy button,
-    // and — because a daemon that was never installed cannot be started either — the
-    // install one-liner underneath.
+    // An unavailable developer server must leave Ready unset and direct the reader to
+    // Settings, without fabricating an installation or start command for this mode.
     await daemon.close();
     await p.goto(onboardingUrl, { waitUntil: "load" });
-    const sawDown = await waitDaemonRow(p, "not running", 15000);
+    const unavailable = "The local engine is not responding. Check its setup progress in Settings.";
+    const sawDown = await waitDaemonRow(p, unavailable, 15000);
     const down = await readStrip(p);
-    await p.bringToFront();
-    await p.evaluate(() => navigator.clipboard.writeText("NOTHING COPIED").catch(() => {}));
-    await p.click("#daemon-copy");
-    const clip = await p.evaluate(() => navigator.clipboard.readText().catch(() => null));
-    const copiedLabel = await p.evaluate(() => document.getElementById("daemon-copy").textContent);
     record(
       "ui",
-      "first-run page: no daemon → the start command, the install one-liner, and Copy puts exactly the command on the clipboard",
+      "HTTP first-run page: an unavailable engine points to Settings without a terminal command or false Ready state",
       sawDown &&
-        down.daemonState === "bad" && down.cmd === "~/.anagram/bin/anagram start" && down.detail === null &&
-        down.readyState === "idle" && down.ready === "Waiting for the scoring daemon." &&
-        down.install === "curl -fsSL https://github.com/CoderBak/anagram/releases/latest/download/install.sh | sh" &&
-        clip === "~/.anagram/bin/anagram start" && copiedLabel === "Copied ✓",
-      JSON.stringify({ ...down, clip, copiedLabel }),
+        down.daemonState === "bad" && down.runtime === unavailable && down.detail === null &&
+        down.readyState === "idle" && down.ready === "Install and connect the local component to finish setup." &&
+        down.active === null && down.install === null && !down.fabricatedCommand,
+      JSON.stringify(down),
     );
 
-    // Started in a terminal with the page still open: the strip has to notice by itself.
+    // The page must notice recovery without a reload.
     daemon = await startFakeDaemon({ port: daemonPort, ...DAEMON_OPTS });
-    const cameBack = await waitDaemonRow(p, "running", 12000);
+    const cameBack = await waitDaemonRow(p, "Ready to analyze", 12000);
     const back = await readStrip(p);
     record(
       "ui",
-      "first-run page: the daemon comes back and the rows follow it without a reload",
-      cameBack && back.daemonState === "ok" && back.detail === "fake-editlens · fake" &&
-        back.cmd === null && back.readyState === "ok" && back.install === null,
+      "HTTP first-run page: the engine comes back and the rows follow it without a reload",
+      cameBack && back.daemonState === "ok" && back.runtime === "Ready to analyze" &&
+        back.active?.includes("Test CPU · FP32") && !back.fabricatedCommand && back.readyState === "ok" && back.install === null,
       JSON.stringify(back),
     );
 
-    // A daemon of another generation IS answering: the fix is an update, not a start,
-    // and the install one-liner has no business being on screen.
+    // A daemon of another generation answers health but lacks runtime selection. Its
+    // actionable update guidance belongs in Settings, with no shell command invented.
     const stub = http.createServer((req, res) => {
-      res.writeHead(req.url === "/health" ? 200 : 404, { "content-type": "application/json" });
+      res.writeHead(req.url === "/health" ? 200 : 404, {
+        "content-type": "application/json", "access-control-allow-origin": `chrome-extension://${extId}`,
+      });
       res.end(JSON.stringify({ ok: true, contract: "3.0" }));
     });
     await new Promise((r) => stub.listen(0, "127.0.0.1", r));
     const stubUrl = `http://127.0.0.1:${stub.address().port}`;
-    await p.evaluate((url) => new Promise((res) => chrome.storage.local.set({ serverUrl: url }, res)), stubUrl);
+    await p.evaluate((url) => new Promise((res) => chrome.storage.local.set({ serverUrl: url, backendTransport: "http" }, res)), stubUrl);
     await p.goto(onboardingUrl, { waitUntil: "load" });
-    const sawMismatch = await waitDaemonRow(p, "version mismatch", 15000);
+    const legacy = "Runtime selection is unavailable. Update the local component in Settings to enable comparisons.";
+    const sawMismatch = await p.waitForFunction(
+      (text) => document.querySelector("#runtimeSettings .runtime-status")?.textContent === text,
+      legacy, { timeout: 15000 },
+    ).then(() => true).catch(() => false);
     const mismatch = await readStrip(p);
     // Back to the fake daemon before anything else runs on this context.
-    await p.evaluate((url) => new Promise((res) => chrome.storage.local.set({ serverUrl: url }, res)), daemon.url);
+    await p.evaluate((url) => new Promise((res) => chrome.storage.local.set({ serverUrl: url, backendTransport: "http" }, res)), daemon.url);
     await new Promise((r) => stub.close(r));
-    const restored = await waitDaemonRow(p, "running", 15000);
+    const restored = await waitDaemonRow(p, "Ready to analyze", 15000);
     record(
       "ui",
-      "first-run page: a daemon of another contract asks to be updated, not started",
-      sawMismatch && mismatch.daemonState === "bad" && mismatch.cmd === "~/.anagram/bin/anagram update" &&
+      "HTTP first-run page: an incompatible daemon gives actionable Settings update guidance",
+      sawMismatch && mismatch.daemonState === "bad" && mismatch.runtime === legacy && !mismatch.fabricatedCommand &&
         mismatch.install === null && mismatch.readyState === "idle" && restored,
       JSON.stringify({ ...mismatch, restored }),
     );
@@ -2087,7 +2086,7 @@ async function sweep(page, steps = 6) {
     // reading mode's problem, and a real PDF tab cannot be driven here.
     PAGES["/popup-state.pdf"] = CONTROLS_PAGE("POPUPPDF");
     const popupUrl = `chrome-extension://${extId}/popup.html`;
-    const lead = async (fixtureUrl) => {
+    const lead = async (fixtureUrl, openSettings = false) => {
       const fixture = fixtureUrl ? await context.newPage() : null;
       if (fixture) {
         await fixture.goto(fixtureUrl, { waitUntil: "load" });
@@ -2105,10 +2104,28 @@ async function sweep(page, steps = 6) {
         button: document.getElementById("action")?.textContent ?? "",
         // The one filled button, or an outline one where the action is merely available.
         primary: document.getElementById("action")?.dataset.variant !== "outline",
-        cmd: document.getElementById("cmd")?.hidden === false ? document.getElementById("cmdText")?.textContent : null,
+        hint: document.getElementById("cmd")?.hidden === false ? document.getElementById("cmd")?.textContent : null,
+        fabricatedCommand: /~\/.anagram\/bin\/anagram|curl -fsSL/.test(document.body.innerText),
         buttons: document.querySelectorAll("main .btn:not([data-variant])").length,
       }));
-      await popup.close();
+      if (openSettings) {
+        await popup.click("#action");
+        // Settings runs in its own extension page, so native setup has a trusted
+        // top-level sender. openOptionsPage may reuse an existing Settings tab.
+        const settingsUrl = `chrome-extension://${extId}/options.html`;
+        let options;
+        const deadline = Date.now() + 15000;
+        while (Date.now() < deadline) {
+          options = context.pages().find((page) => page.url() === settingsUrl);
+          if (options) break;
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        seen.settingsUrl = options?.url() ?? null;
+        seen.settingsOpen = options ? await options.locator("#componentCard > header h2")
+          .waitFor({ state: "visible", timeout: 5000 }).then(() => true).catch(() => false) : false;
+        await options?.close();
+      }
+      if (!popup.isClosed()) await popup.close();
       await fixture?.close();
       return seen;
     };
@@ -2120,9 +2137,9 @@ async function sweep(page, steps = 6) {
     const pdf = await lead(server.url("/popup-state.pdf"));
     const nothing = await lead(null);
     // A daemon that is not answering: a closed loopback port, never a real daemon.
-    await sw.evaluate(() => new Promise((res) => chrome.storage.local.set({ serverUrl: "http://127.0.0.1:9" }, res)));
-    const down = await lead(server.url("/popup-state.html"));
-    await sw.evaluate((url) => new Promise((res) => chrome.storage.local.set({ serverUrl: url }, res)), daemon.url);
+    await sw.evaluate(() => new Promise((res) => chrome.storage.local.set({ serverUrl: "http://127.0.0.1:9", backendTransport: "http" }, res)));
+    const down = await lead(server.url("/popup-state.html"), true);
+    await sw.evaluate((url) => new Promise((res) => chrome.storage.local.set({ serverUrl: url, backendTransport: "http" }, res)), daemon.url);
     // Nothing after this may inherit a "down" verdict: wait until the worker has the
     // daemon back before the next check asks it for anything.
     {
@@ -2141,13 +2158,14 @@ async function sweep(page, steps = 6) {
     const seen = { running, off, pdf, nothing, down };
     record(
       "ui",
-      "the popup offers one action per state: Rescan, Analyze this page, Read this PDF, Read a PDF file…, Retry",
+      "the popup offers one action per state, and an unavailable engine opens Settings without a terminal command",
       running.button === "Rescan page" && !running.primary && /paragraphs analyzed/.test(running.status) &&
         off.button === "Analyze this page" && off.primary && off.status === "Detection is off for this page." &&
         pdf.button === "Read this PDF" && pdf.primary && pdf.status === "" &&
         nothing.button === "Read a PDF file…" && !nothing.primary && nothing.status === "Not available on this page." &&
-        down.button === "Retry" && down.primary && down.status === "Daemon not running" &&
-        down.cmd === "~/.anagram/bin/anagram start" &&
+        down.button === "Open setup and Settings" && down.primary && down.status === "Local engine is not ready" &&
+        down.hint === "Open Settings for setup progress, model downloads, and local engine controls." &&
+        !down.fabricatedCommand && down.settingsUrl === `chrome-extension://${extId}/options.html` && down.settingsOpen &&
         // Never two main events at once: at most one filled button on the whole page.
         [running, off, pdf, nothing, down].every((s) => s.buttons <= 1),
       JSON.stringify(seen),
@@ -2450,10 +2468,14 @@ ${KEY_TAGS.map((t, i) => `<p id="z${i + 1}">${KEY_PARA(t)}</p>`).join("\n")}
       await opts.waitForTimeout(400);
       const optionsText = await opts.evaluate(() => ({
         lang: document.documentElement.lang,
-        daemonCard: document.querySelectorAll(".card > header h2")[2]?.textContent ?? "",
-        // The <code> commands inside a translated sentence are the page's own elements,
-        // put back where the message asked for them.
-        codes: [...document.querySelectorAll('[data-i18n-html="optDaemonNote"] code')].map((c) => c.textContent),
+        componentCard: document.querySelector("#componentCard > header h2")?.textContent ?? "",
+        developer: document.querySelector("#developerBackend > summary")?.textContent ?? "",
+        transport: document.querySelector("#backendTransport")?.value,
+        selectedTransport: document.querySelector("#backendTransport option:checked")?.textContent ?? "",
+        httpNote: document.querySelector('[data-i18n="componentHttpNote"]')?.textContent ?? "",
+        httpVisible: document.getElementById("developerHttp")?.hidden === false && document.getElementById("developerBackend")?.open === true,
+        runtimeTitle: document.querySelector("#runtimeSettings h3")?.textContent ?? "",
+        obsoleteCommands: document.querySelectorAll('[data-i18n-html="optDaemonNote"] code').length,
       }));
       await opts.close();
 
@@ -2521,9 +2543,11 @@ ${KEY_TAGS.map((t, i) => `<p id="z${i + 1}">${KEY_PARA(t)}</p>`).join("\n")}
           popupText.action === "阅读本机 PDF…" &&
           popupText.more === "更多" &&
           optionsText.lang === "zh-CN" &&
-          optionsText.daemonCard === "本地评分服务" &&
-          optionsText.codes[0] === "anagramd" &&
-          optionsText.codes[1] === "~/.anagram/bin/anagram start" &&
+          optionsText.componentCard === "本地分析引擎" &&
+          optionsText.developer === "开发者连接" &&
+          optionsText.transport === "http" && optionsText.selectedTransport === "手动本地 HTTP（开发用）" &&
+          optionsText.httpNote === "仅供源码开发使用。浏览器不会启动或管理此服务器。" && optionsText.httpVisible &&
+          optionsText.runtimeTitle === "选择 Anagram 的运行方式" && optionsText.obsoleteCommands === 0 &&
           chip.lang === "zh-CN" &&
           ["人工撰写", "轻度 AI 编辑", "重度 AI 编辑", "AI 生成"].includes(chip.verdict) &&
           chip.words === "词数" &&

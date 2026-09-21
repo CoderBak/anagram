@@ -50,7 +50,28 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: npm run test:node
+      - name: first-run runtime selection (shipping build, no host grants)
+        run: node test/runtime.mjs
       - run: npm run test:unit
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: native and daemon test dependencies (no model runtimes)
+        run: python -m pip install 'numpy>=1.26' 'pydantic>=2' 'fastapi>=0.115' httpx emoji filelock psutil
+      - name: isolated native registration safety (no real browser registration)
+        run: python test/native_registration.py
+      - name: native browser setup (EN/ZH, isolated profiles, real stdio)
+        if: runner.os != 'Windows'
+        run: node test/native-browser.mjs
+      - name: Windows native launcher and PowerShell syntax
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: ./test/windows-native.ps1
+      - name: Windows fastText wheel and pinned language model smoke
+        if: runner.os == 'Windows'
+        run: |
+          python -m pip install --only-binary=:all: fasttext-wheel==0.9.2
+          python test/windows_fasttext.py
       - name: installer safety (offline cases)
         if: runner.os != 'Windows'
         run: npm run test:installer
@@ -84,14 +105,12 @@ jobs:
         run: node test/csp-check.mjs --chrome-only
       - name: the two WebAssembly PDF decoders
         run: node test/pdf-codecs-check.mjs
-      # What anagramd promises about itself, without the 1.4 GB model: it reaches no
-      # network, answers to exactly two names, and its version string digests everything
-      # that could move a verdict. On a bare interpreter the handful of checks that need
-      # fastapi or fasttext SKIP loudly and the rest run (26 pass, 2 skip as of today).
+      # What anagramd promises about itself: offline serving, loopback guards,
+      # scoring provenance, first-run comparison and explicit saved selection.
       #
       # Not on Windows: test/daemon.sh is a POSIX shell script that runs `python3`, and the
       # Windows image has neither by that name. What it would check there is the same on
-      # every platform — the daemon itself only installs on macOS and Linux.
+      # every platform; Windows native framing and language inference have dedicated checks above.
       - name: daemon properties (no model)
         if: runner.os != 'Windows'
         run: npm run test:daemon

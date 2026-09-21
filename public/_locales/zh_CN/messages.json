@@ -141,7 +141,7 @@
     "message": "关闭"
   },
   "selFootDaemonDown": {
-    "message": "本地评分服务未运行，请运行 $1 后重试。"
+    "message": "本地引擎尚未就绪。请打开 Anagram 设置以完成设置或恢复运行。"
   },
   "selFootNoAnswer": {
     "message": "评分后端没有响应，请重试。"
@@ -186,7 +186,7 @@
     "message": "本页有 $1 个存疑段落"
   },
   "panelDaemonDown": {
-    "message": "本地评分服务未运行。请运行“anagram start”，新段落会等它响应。"
+    "message": "本地引擎尚未就绪。请打开 Anagram 设置；新段落将等待引擎就绪后再分析。"
   },
   "panelRetry": {
     "message": "重试"
@@ -435,16 +435,16 @@
     "message": " · 本地"
   },
   "popupDaemonMismatch": {
-    "message": "服务版本不匹配"
+    "message": "本地组件需要更新"
   },
   "popupDaemonBehind": {
-    "message": "本地评分服务比扩展旧——请运行：~/.anagram/bin/anagram update"
+    "message": "可在设置中更新本地组件。"
   },
   "popupDaemonDown": {
-    "message": "服务未运行"
+    "message": "本地引擎尚未就绪"
   },
   "popupRetry": {
-    "message": "重试"
+    "message": "打开设置与管理"
   },
   "optionsTitle": {
     "message": "Anagram for Chrome — 选项"
@@ -533,20 +533,11 @@
   "optModeFlagged": {
     "message": "仅存疑"
   },
-  "optDaemon": {
-    "message": "本地评分服务"
-  },
   "optDaemonNote": {
     "message": "结论来自本机的 $1 服务（EditLens roberta-large，运行在这台电脑上）。用 $2 启动它（从源码目录则用 $3）。它没有运行时，段落显示为“暂不可用”，并会自动重试。没有其他后端。"
   },
   "optDaemonUrl": {
-    "message": "服务地址"
-  },
-  "optDaemonUrlNote": {
-    "message": "$1 监听的地址。只允许本地地址——页面文本绝不会离开这台电脑。默认 $2。"
-  },
-  "optStatus": {
-    "message": "状态"
+    "message": "本地 HTTP 地址"
   },
   "optChecking": {
     "message": "检查中…"
@@ -678,7 +669,7 @@
     "message": "这些都可以在浏览器的扩展快捷键设置里改（Chrome：$1）。"
   },
   "optPrivacy": {
-    "message": "没有任何内容离开这台电脑——评分在本机的 $1 服务里进行。服务地址只允许本地地址。"
+    "message": "检测在这台电脑上的 $1 中运行。浏览器会直接连接，页面文本不会发送到在线服务。"
   },
   "optVerdictColors": {
     "message": "结论配色"
@@ -714,44 +705,19 @@
     "message": "已安装"
   },
   "onbDaemon": {
-    "message": "本地评分服务"
+    "message": "本地组件"
   },
   "onbChecking": {
     "message": "检查中…"
-  },
-  "onbRunning": {
-    "message": "运行中"
-  },
-  "onbMismatch": {
-    "message": "版本不匹配"
-  },
-  "onbNotLocal": {
-    "message": "不是本地地址"
-  },
-  "onbNotRunning": {
-    "message": "未运行"
-  },
-  "onbCopy": {
-    "message": "复制"
-  },
-  "onbOpenOptions": {
-    "message": "打开选项"
   },
   "onbReady": {
     "message": "就绪"
   },
   "onbWaiting": {
-    "message": "正在等待本地评分服务。"
-  },
-  "onbNeedsAccess": {
-    "message": "在上面允许网站，或在工具栏弹窗里为某个网站打开开关。",
-    "description": "Setup row value when the daemon is running but Anagram has been granted no site yet."
+    "message": "正在等待本地设置。"
   },
   "onbGo": {
     "message": "打开任意一篇文章——每段后面都会出现一个标签。"
-  },
-  "onbNotInstalled": {
-    "message": "还没装？$1"
   },
   "onbHowItReads": {
     "message": "它怎么读"
@@ -832,7 +798,7 @@
     "message": "隐私"
   },
   "onbPrivacyBody": {
-    "message": "没有任何内容离开这台电脑，而且由浏览器强制保证：扩展自身的安全策略只允许它连接本机的 $1 服务，别的一概不行——它根本无法连接互联网。它只读取你允许的网站。按设计，请求只带上$2——绝不包含完整网址。"
+    "message": "检测在你电脑上的 $1 中运行。模型下载与分析相互独立，页面文本不会发送到在线服务。网站访问权限为可选；分析请求只使用 $2，不包含完整网址。"
   },
   "onbHostnameHint": {
     "message": "主机名和语言提示"
@@ -935,5 +901,410 @@
   },
   "readerHtml": {
     "message": "HTML"
+  },
+  "runtimeTitle": {
+    "message": "选择 Anagram 的运行方式"
+  },
+  "runtimeChecking": {
+    "message": "正在检查本地设置…"
+  },
+  "runtimeFirstRun": {
+    "message": "模型下载完成后会自动开始首次性能测试。所有配置共享约 30 秒测量时间，模型加载和预热另需时间。查看结果后，请选择运行配置。"
+  },
+  "runtimeRerunNote": {
+    "message": "你可以更改配置或重新测试。重新测试会保留已保存的选择，不会自动切换到最快的配置。加载和预热不计入测量时间预算。"
+  },
+  "runtimeApply": {
+    "message": "使用所选配置"
+  },
+  "runtimeRerun": {
+    "message": "重新运行性能测试"
+  },
+  "runtimeCancel": {
+    "message": "取消性能测试"
+  },
+  "runtimeRefresh": {
+    "message": "刷新状态"
+  },
+  "runtimeQualityNote": {
+    "message": "推荐使用 FP32。这里的测量只比较速度和内存，不代表检测质量。此处尚未评估质量；INT8 为实验选项。RAM 显示测量阶段采样到的最大进程占用，未测量加载和预热阶段的峰值。共享内存设备的 RAM 和加速器内存可能重叠。"
+  },
+  "runtimeBenchmarking": {
+    "message": "正在测试运行配置…"
+  },
+  "runtimeLoading": {
+    "message": "正在加载所选模型…"
+  },
+  "runtimeFailed": {
+    "message": "设置需要处理"
+  },
+  "runtimeReady": {
+    "message": "已可开始分析"
+  },
+  "runtimeChoose": {
+    "message": "请选择运行配置以完成设置"
+  },
+  "runtimeNotAvailable": {
+    "message": "暂无数据"
+  },
+  "runtimePhaseDiscovery": {
+    "message": "正在检查设备"
+  },
+  "runtimePhaseLoad": {
+    "message": "正在加载模型"
+  },
+  "runtimePhaseWarmup": {
+    "message": "正在预热"
+  },
+  "runtimePhaseMeasure": {
+    "message": "正在测量"
+  },
+  "runtimePhaseComplete": {
+    "message": "测量完成"
+  },
+  "runtimePhaseCancelled": {
+    "message": "已取消"
+  },
+  "runtimePhaseFailed": {
+    "message": "测试失败"
+  },
+  "runtimePhaseIdle": {
+    "message": "等待中"
+  },
+  "runtimeResults": {
+    "message": "在此电脑上测得的结果"
+  },
+  "runtimeConfiguration": {
+    "message": "运行配置"
+  },
+  "runtimeLatency": {
+    "message": "典型延迟"
+  },
+  "runtimeThroughput": {
+    "message": "批处理吞吐量"
+  },
+  "runtimeRate": {
+    "message": "$1 段文本/秒"
+  },
+  "runtimeRam": {
+    "message": "进程 RAM（采样值）"
+  },
+  "runtimeResources": {
+    "message": "资源占用"
+  },
+  "runtimeAccelerator": {
+    "message": "加速器内存"
+  },
+  "runtimeQuality": {
+    "message": "检测质量"
+  },
+  "runtimeActive": {
+    "message": "正在使用"
+  },
+  "runtimeSelected": {
+    "message": "已选择，尚未启用"
+  },
+  "runtimeRecommended": {
+    "message": "推荐"
+  },
+  "runtimeUnavailable": {
+    "message": "此设备不可用"
+  },
+  "runtimeTestFailed": {
+    "message": "性能测试未能完成。你可以重试，或选择可用的配置。"
+  },
+  "runtimeLoadWarmup": {
+    "message": "加载 $1 · 预热 $2"
+  },
+  "runtimeBatch": {
+    "message": "批量 $1 · $2 个样本"
+  },
+  "runtimeNotEvaluated": {
+    "message": "未评估"
+  },
+  "runtimeExperimental": {
+    "message": "实验性"
+  },
+  "runtimeLegacy": {
+    "message": "当前不支持运行配置选择。请在设置中更新本地组件以启用性能比较。"
+  },
+  "runtimeInvalid": {
+    "message": "本地组件返回了不兼容的设置响应。请在设置中更新组件或重试连接。"
+  },
+  "runtimeUnreachable": {
+    "message": "本地引擎未响应。请在设置中检查进度。"
+  },
+  "runtimeProgress": {
+    "message": " $1 · 已完成 $2 / $3 项测试 · 测量 $4 / $5 秒 · 已用时 $6 秒"
+  },
+  "runtimeUsing": {
+    "message": "当前使用：$1。"
+  },
+  "runtimeNoActive": {
+    "message": "尚未启用所选模型。"
+  },
+  "runtimePending": {
+    "message": "等待启用：$1。"
+  },
+  "runtimeCancelled": {
+    "message": "性能测试已取消。已完成的结果及已保存的选择会保留。取消操作需要等待当前模型操作结束。"
+  },
+  "runtimeActionFailed": {
+    "message": "更改未被接受。请刷新状态后重试。"
+  },
+  "runtimeSetupPending": {
+    "message": "分析网页前，请先完成下方的本地模型设置。"
+  },
+  "runtimeCancelling": {
+    "message": "正在等待当前模型操作完成后停止…"
+  },
+  "runtimePreparing": {
+    "message": "正在准备本地模型…"
+  },
+  "componentTitle": {
+    "message": "本地分析引擎"
+  },
+  "componentConnecting": {
+    "message": "正在连接本地组件…"
+  },
+  "componentNotConnected": {
+    "message": "尚未连接本地组件"
+  },
+  "componentConnectionNote": {
+    "message": "浏览器会自动启动已安装的组件。首次设置时，请先按下方说明安装一次。"
+  },
+  "componentInstallIntro": {
+    "message": "请为此浏览器安装一次本地组件。浏览器商店版本和 ZIP 包均只包含扩展。"
+  },
+  "componentInitialDownload": {
+    "message": "首次设置需下载约 4.07 GB 模型文件，以及本地运行环境；安装时请预留额外磁盘空间。连接成功后会自动下载模型并进行首次性能测试。"
+  },
+  "componentTerminal": {
+    "message": "打开终端，粘贴此命令并按回车："
+  },
+  "componentPowerShell": {
+    "message": "打开 PowerShell，粘贴此命令并按回车："
+  },
+  "componentCopyInstall": {
+    "message": "复制安装命令"
+  },
+  "componentViewScript": {
+    "message": "查看安装脚本"
+  },
+  "componentUnreleased": {
+    "message": "开发构建：此版本的安装程序尚未发布。下方固定版本命令仅供审阅；请等对应版本发布后再运行。"
+  },
+  "componentAfterInstall": {
+    "message": "请保持此页面打开。连接成功后即可关闭终端；之后在扩展内管理下载、设备、更新和卸载。"
+  },
+  "componentCopyFailed": {
+    "message": "复制失败。请选中命令后手动复制。"
+  },
+  "componentUnsupportedPlatform": {
+    "message": "安装命令支持 macOS、Linux 和 Windows，并需要有效的扩展 ID。请从已安装的扩展中打开此页面。"
+  },
+  "componentStarting": {
+    "message": "正在启动本地组件…"
+  },
+  "componentNeedsModels": {
+    "message": "需要模型文件"
+  },
+  "componentDownloading": {
+    "message": "正在下载模型文件…"
+  },
+  "componentPaused": {
+    "message": "模型下载已暂停"
+  },
+  "componentLoading": {
+    "message": "正在加载本地引擎…"
+  },
+  "componentStopped": {
+    "message": "本地引擎已停止"
+  },
+  "componentUpdating": {
+    "message": "正在更新本地组件…"
+  },
+  "componentUninstalling": {
+    "message": "正在移除本地组件…"
+  },
+  "componentDeleting": {
+    "message": "正在删除模型文件…"
+  },
+  "componentNeedsAttention": {
+    "message": "本地设置需要处理"
+  },
+  "componentConnected": {
+    "message": "已连接本地组件"
+  },
+  "componentConnectedNote": {
+    "message": "可以关闭终端了。浏览器会管理本地组件；关闭此页面后，任务仍会继续。"
+  },
+  "componentDisconnected": {
+    "message": "本地连接已中断"
+  },
+  "componentReconnectNote": {
+    "message": "浏览器会重试连接。若持续失败，请检查安装后重新打开此页面。"
+  },
+  "componentReconnecting": {
+    "message": "更新后正在重新连接…"
+  },
+  "componentIncompatible": {
+    "message": "本地组件需要更新"
+  },
+  "componentDownloadProgress": {
+    "message": "模型下载进度"
+  },
+  "componentDownloadBytes": {
+    "message": "已下载 $1，共 $2"
+  },
+  "componentDownloadedBytes": {
+    "message": "已下载 $1"
+  },
+  "componentLocation": {
+    "message": "组件版本 $1 · $2"
+  },
+  "componentUnknownVersion": {
+    "message": "版本未知"
+  },
+  "componentStorage": {
+    "message": "模型文件磁盘占用：$1"
+  },
+  "componentDownloadModels": {
+    "message": "下载模型"
+  },
+  "componentResumeDownload": {
+    "message": "继续下载"
+  },
+  "componentRetryDownload": {
+    "message": "重试下载"
+  },
+  "componentPauseDownload": {
+    "message": "暂停下载"
+  },
+  "componentPausing": {
+    "message": "将在当前下载操作结束后暂停…"
+  },
+  "componentStop": {
+    "message": "停止引擎"
+  },
+  "componentResume": {
+    "message": "启动引擎"
+  },
+  "componentUpdate": {
+    "message": "更新本地组件"
+  },
+  "componentDeleteModels": {
+    "message": "删除模型文件"
+  },
+  "componentUninstall": {
+    "message": "完整卸载 Anagram"
+  },
+  "componentRetryConnection": {
+    "message": "重试连接"
+  },
+  "componentTechnicalDetails": {
+    "message": "技术详情"
+  },
+  "componentDownloadFailed": {
+    "message": "下载未完成。请确认网络连接和磁盘空间后继续或重试。"
+  },
+  "componentOperationFailed": {
+    "message": "本地操作失败。请查看详情并重试相应操作。"
+  },
+  "componentActionRejected": {
+    "message": "组件无法开始此操作。请等待当前任务结束或查看详情，然后重试。"
+  },
+  "componentActionUnconfirmed": {
+    "message": "连接在操作得到确认前中断。请先检查状态，再决定是否重试。"
+  },
+  "componentDeleteTitle": {
+    "message": "删除已下载的模型？"
+  },
+  "componentDeleteConfirm": {
+    "message": "是否停止引擎，并从 $2 删除 $1 模型文件？本地组件和扩展将保留，之后可重新下载模型。"
+  },
+  "componentUninstallTitle": {
+    "message": "移除 Anagram 及其本地文件？"
+  },
+  "componentUninstallConfirm": {
+    "message": "是否停止引擎，移除 $2 中的本地组件及浏览器注册信息（包括 $1 模型文件），然后移除此扩展？使用同一组件的其他浏览器配置也将无法再访问它。"
+  },
+  "componentKeepFiles": {
+    "message": "取消"
+  },
+  "componentConfirm": {
+    "message": "确认"
+  },
+  "componentWaitingCleanup": {
+    "message": "正在等待清理结果确认…"
+  },
+  "componentCleanupUnconfirmed": {
+    "message": "连接关闭不代表卸载成功。请在清理成功前保留此扩展。"
+  },
+  "componentCleanupScheduled": {
+    "message": "清理正在系统窗口中进行"
+  },
+  "componentSystemCleanupNote": {
+    "message": "请查看系统窗口中的最终结果。确认清理成功后，再从浏览器的扩展管理器中移除此扩展。仅连接关闭并不代表成功。"
+  },
+  "componentCleanupDone": {
+    "message": "本地文件和注册信息已移除"
+  },
+  "componentRemovingExtension": {
+    "message": "已确认本地清理成功。正在移除浏览器扩展…"
+  },
+  "componentRemoveExtension": {
+    "message": "移除浏览器扩展"
+  },
+  "componentExtensionRemovalFailed": {
+    "message": "本地清理已成功，但扩展移除尚未确认。请使用按钮重试，或在浏览器扩展管理器中移除 Anagram。"
+  },
+  "componentUpgradeNote": {
+    "message": "商店安装的扩展由浏览器更新。ZIP 安装请用新版 ZIP 内容替换已解压的扩展并重新加载。使用上方按钮更新本地组件。"
+  },
+  "componentDeveloper": {
+    "message": "开发者连接"
+  },
+  "componentTransport": {
+    "message": "连接方式"
+  },
+  "componentNativeTransport": {
+    "message": "原生组件（推荐）"
+  },
+  "componentHttpTransport": {
+    "message": "手动本地 HTTP（开发用）"
+  },
+  "componentHttpNote": {
+    "message": "仅供源码开发使用。浏览器不会启动或管理此服务器。"
+  },
+  "componentReadyManual": {
+    "message": "已就绪。可从工具栏选择“分析此页面”以临时访问，也可选择在上方授权网站。"
+  },
+  "componentInstallWaiting": {
+    "message": "安装并连接本地组件以完成设置。"
+  },
+  "componentOpenSetup": {
+    "message": "打开设置与管理"
+  },
+  "componentOpenSettingsHint": {
+    "message": "打开设置页面，查看安装进度、模型下载和本地引擎控制。"
+  },
+  "componentUpdateScheduled": {
+    "message": "更新正在系统窗口中进行"
+  },
+  "componentSystemUpdateNote": {
+    "message": "请保持系统进度窗口打开，直到显示最终结果。更新完成后，浏览器会重新连接本地组件。"
+  },
+  "componentReloadExtension": {
+    "message": "重新加载扩展"
+  },
+  "componentExtensionUpdate": {
+    "message": "扩展版本 $1 已就绪。重新加载即可安装；扩展将重启，并暂时断开与本地引擎的连接。"
+  },
+  "componentInUse": {
+    "message": "另一个 Anagram 实例正在使用本地组件"
+  },
+  "componentInUseNote": {
+    "message": "这可能是因为另一个浏览器中的 Anagram 已连接。请关闭另一处 Anagram 连接后在此重试，无需重新安装。"
   }
 }

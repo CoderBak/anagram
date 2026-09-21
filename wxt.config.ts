@@ -194,7 +194,9 @@ export default defineConfig({
       // `scripting` is what registers the content script at runtime and injects it into a
       // tab the user has just asked about; `activeTab` is what makes that injection legal
       // on a site nothing has been granted for. Neither shows a warning at install time.
-      permissions: ["storage", "activeTab", "contextMenus", "scripting"],
+      // Local inference is a core feature, so nativeMessaging is REQUIRED on both
+      // browsers. The browser launches the registered host when inference is needed.
+      permissions: ["storage", "activeTab", "contextMenus", "scripting", "nativeMessaging"],
       // See CSP above. MV3 keys it under `extension_pages`; MV2 is the bare string.
       content_security_policy: browser === "firefox" ? CSP : { extension_pages: CSP },
       ...(browser === "firefox"
@@ -255,7 +257,7 @@ export default defineConfig({
           description: "__MSG_cmdPrevFlagged__",
         },
       },
-      // NO host permission at all, which is why installing Anagram warns about nothing.
+      // NO required host permission. nativeMessaging has a separate install warning.
       // The daemon used to need two — `http://127.0.0.1/*` and `http://localhost/*` —
       // not to reach it, but to READ its answers, because it sent no CORS headers. It
       // sends them now, for extension origins only (anagramd/serve.py), so the permission

@@ -26,6 +26,9 @@ import { ACTIONS } from "../../lib/messaging/protocol";
 import { PDF_TAB_SCRIPTS_RUN } from "../../lib/surface";
 import { CONTRACT_VERSION } from "../../lib/contract";
 import type { BackendStatus, CacheCountReply } from "../../lib/messaging/protocol";
+import { mountRuntimeSettings, runtimeStateLabel } from "../../lib/ui/runtimeSettings";
+import { runtimeReady, type RuntimeSnapshot } from "../../lib/backend/runtimeClient";
+import { mountComponentSettings, componentConnectionLabel } from "../../lib/ui/componentSettings";
 
 const enabledEl = document.getElementById("enabled") as HTMLInputElement;
 const highlightsEl = document.getElementById("highlights") as HTMLInputElement;
@@ -52,6 +55,11 @@ const accessStateEl = document.getElementById("accessState") as HTMLElement;
 const accessAllEl = document.getElementById("accessAll") as HTMLButtonElement;
 const accessWithdrawEl = document.getElementById("accessWithdraw") as HTMLButtonElement;
 const cacheCountEl = document.getElementById("cacheCount") as HTMLElement;
+let runtimeSnapshot: RuntimeSnapshot | undefined;
+let transport: "native" | "http" = "native";
+let componentPanel: ReturnType<typeof mountComponentSettings> | undefined;
+let httpRuntimePanel: ReturnType<typeof mountRuntimeSettings> | undefined;
+const transportEl = document.getElementById("backendTransport") as HTMLSelectElement;
 
 function bindToggle(
   el: HTMLInputElement,
@@ -215,7 +223,7 @@ bindSelect(analysisScopeEl, settings.analysisScope);
 void renderSites();
 settings.siteOverrides.watch(() => void renderSites());
 const version = browser.runtime.getManifest().version;
-versionEl.textContent = `v${version} · contract ${CONTRACT_VERSION}`;
+versionEl.textContent = `v${version}`;
 
 // --- site access -----------------------------------------------------------------------
 // Anagram installs able to read no site at all; this row says how much has been granted
@@ -275,6 +283,7 @@ serverUrlEl.addEventListener("input", () => {
 
 /** Ask the service worker whether the daemon answers; `probe` forces a fresh /health check. */
 async function refreshBackend(probe: boolean): Promise<void> {
+  if (transport !== "http") return;
   backendStatusEl.textContent = t("optChecking");
   try {
     const s = (await browser.runtime.sendMessage({
@@ -282,9 +291,11 @@ async function refreshBackend(probe: boolean): Promise<void> {
       probe,
     })) as BackendStatus | undefined;
     if (!s) throw new Error("no status");
-    if (s.active === "server" && s.model && !s.server.outdated) {
+    if (runtimeSnapshot && (!runtimeReady(runtimeSnapshot) || s.active !== "server" || !s.model)) {
+      backendStatusEl.textContent = runtimeStateLabel(runtimeSnapshot);
+    } else if (s.active === "server" && s.model && !s.server.outdated) {
       backendStatusEl.textContent =
-        t("optConnected", s.model.id, s.model.ver, s.server.device ?? "?", s.serverUrl);
+        t("optConnected", s.model.id, s.model.ver, `${s.server.device ?? "?"}${s.server.dtype ? ` · ${s.server.dtype}` : ""}`, s.serverUrl);
     } else if (s.server.reason === "contract") {
       // Something IS listening; the fix is an update, not a start.
       backendStatusEl.textContent =
@@ -301,18 +312,49 @@ async function refreshBackend(probe: boolean): Promise<void> {
     }
     // The header summary must not contradict the status line above it.
     const summary =
-      s.active === "server" && s.model && !s.server.outdated
+      runtimeSnapshot && (!runtimeReady(runtimeSnapshot) || s.active !== "server" || !s.model) ? runtimeStateLabel(runtimeSnapshot) : s.active === "server" && s.model && !s.server.outdated
         ? s.model.id
         : s.server.reason === "contract" || s.server.outdated
           ? t("optSummaryMismatch")
           : t("optSummaryDown");
     versionEl.textContent = `v${version} · contract ${CONTRACT_VERSION} · ${summary}`;
   } catch {
-    backendStatusEl.textContent = t("optNoWorker");
+    backendStatusEl.textContent = runtimeSnapshot ? runtimeStateLabel(runtimeSnapshot) : t("optNoWorker");
   }
 }
 checkBackendEl.addEventListener("click", () => void refreshBackend(true));
-void refreshBackend(false);
+let transportGeneration = 0;
+async function renderTransport(): Promise<void> {
+  const generation = ++transportGeneration;
+  const next = await settings.backendTransport.getValue();
+  if (generation !== transportGeneration) return;
+  transport = next;
+  transportEl.value = next;
+  componentPanel?.destroy(); componentPanel = undefined;
+  httpRuntimePanel?.destroy(); httpRuntimePanel = undefined;
+  const componentHost = document.getElementById("componentSettings")!;
+  const httpHost = document.getElementById("legacyRuntimeSettings") ?? document.getElementById("runtimeSettings")!;
+  componentHost.replaceChildren(); httpHost.replaceChildren();
+  componentHost.hidden = next !== "native";
+  document.getElementById("developerHttp")!.hidden = next !== "http";
+  httpHost.id = next === "http" ? "runtimeSettings" : "legacyRuntimeSettings";
+  runtimeSnapshot = undefined;
+  if (next === "native") {
+    componentPanel = mountComponentSettings(componentHost, (reply) => {
+      versionEl.textContent = `v${version} · ${componentConnectionLabel(reply)}`;
+    });
+  } else {
+    (document.getElementById("developerBackend") as HTMLDetailsElement).open = true;
+    httpRuntimePanel = mountRuntimeSettings(httpHost, (reply) => {
+      runtimeSnapshot = reply.kind === "ok" ? reply.snapshot : undefined;
+      void refreshBackend(true);
+    });
+    void refreshBackend(true);
+  }
+}
+transportEl.addEventListener("change", () => { void settings.backendTransport.setValue(transportEl.value === "http" ? "http" : "native"); });
+settings.backendTransport.watch(() => void renderTransport());
+void renderTransport();
 
 // --- cached verdicts -------------------------------------------------------------------
 // The worker owns the caches (its memory and the IndexedDB store) and passes the word on to

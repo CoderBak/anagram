@@ -8,6 +8,7 @@
 #   INSTALLER_NET=1 sh test/installer.sh # + a full install under a hostile environment (needs
 #                                        #   dist/ from `npm run release` and network)
 set -u
+export ANAGRAM_BROWSER=firefox ANAGRAM_EXTENSION_ID=anagram@coderbak.dev ANAGRAM_LANG=en
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 T="$(mktemp -d "${TMPDIR:-/tmp}/anagram-installer-test.XXXXXX")"
 LISTENERS=""                                # throwaway servers this script started
@@ -99,6 +100,7 @@ const body = JSON.stringify({ ok: true, contract, model: { id: "editlens_roberta
   n_buckets: 4, languages: ["en"], lid: "fasttext-lid.176", device: "cpu", dtype: "float32", uptime_s: Number(uptime), scored_blocks: 7 });
 http.createServer((req, res) => {
   if (mode === "anagramd" && req.url === "/health") { res.writeHead(200, { "content-type": "application/json" }); res.end(body); }
+  else if (["loading", "benchmarking", "awaiting_selection", "error"].includes(mode) && req.url === "/runtime") { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ schema_version: 1, state: mode })); }
   else { res.writeHead(404, { "content-type": "text/plain" }); res.end("not anagramd\n"); }
 }).listen(Number(port), "127.0.0.1");
 JS
@@ -112,8 +114,9 @@ body = json.dumps({"ok": True, "contract": contract,
                    "dtype": "float32", "uptime_s": float(uptime), "scored_blocks": 7}).encode()
 class H(BaseHTTPRequestHandler):
     def do_GET(self):
-        payload = body if (mode == "anagramd" and self.path == "/health") else b"not anagramd\n"
-        self.send_response(200 if payload is body else 404)
+        pending = mode in ("loading", "benchmarking", "awaiting_selection", "error") and self.path == "/runtime"
+        payload = json.dumps({"schema_version": 1, "state": mode}).encode() if pending else body if (mode == "anagramd" and self.path == "/health") else b"not anagramd\n"
+        self.send_response(200 if pending or payload is body else 404)
         self.send_header("content-type", "application/json" if payload is body else "text/plain")
         self.send_header("content-length", str(len(payload)))
         self.end_headers()
@@ -180,31 +183,45 @@ make_home() { # dir port
     echo "LID_SHA256=\"$(sha_of "$h/models/lid.176.ftz")\""
   } > "$h/app/install.sh"
   echo "print('serve')" > "$h/app/serve.py"
+  echo "# native host fixture" > "$h/app/native_host.py"
+  cp "$ROOT/installer/native_registration.py" "$h/app/native_registration.py"
+  cp "$ROOT/anagramd/download_modelkit.py" "$h/app/download_modelkit.py"
+  "$PY3" - "$h" <<'PY'
+import hashlib, json, sys
+from pathlib import Path
+h = Path(sys.argv[1])
+root = h / 'models/editlens_roberta-large'
+for name in ('onnx/model.onnx', 'onnx/model_fp16.onnx', 'onnx/model_int8.onnx', 'tokenizer.json', 'LICENSE', 'NOTICE'):
+    p = root / name
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text('fixture ' + name)
+contents = {str(p.relative_to(root)): p.read_text() for p in root.rglob('*') if p.is_file()}
+(h / 'app/fixture.json').write_text(json.dumps(contents))
+(h / 'app/modelkit.json').write_text(json.dumps({'schema_version':1, 'repository':'fixture/model', 'revision':'a'*40, 'files':[
+    {'path':name, 'size_bytes':len(value.encode()), 'sha256':hashlib.sha256(value.encode()).hexdigest()} for name,value in contents.items()]}))
+PY
+  h_real="$(cd "$h" && pwd -P)"
   cat > "$h/venv/bin/python" <<STUB
 #!/bin/sh
 # stub venv/bin/python: imports nothing, opens no socket of its own, reaches no network.
+[ "\${1:-}" = -I ] && shift
 case "\${1:-}" in
+  */native_registration.py) exec "$PY3" "\$@" ;;
+  */download_modelkit.py) exec "$PY3" "$ROOT/test/modelkit.py" --fixture "\$@" ;;
   -) cat > /dev/null                                  # the probe arrives on stdin
      if [ -n "\${HEALTH_JSON:-}" ]; then echo "running · stub daemon"; exit 0; fi
-     # "python - <dir> <repo> <revision>" is the checkpoint download. Stand in for
-     # snapshot_download: write the same bytes the folder's pinned checksum was taken from,
-     # or, with the TAMPER marker in place, something else — the difference between a
-     # download that verifies and one that must never reach models/.
-     if [ -n "\${2:-}" ]; then
-       mkdir -p "\$2"
-       if [ -f "$h/TAMPER" ]; then printf 'half a download, cut off here\n' > "\$2/model.safetensors"
-       else printf 'these are not 1.4 GB of weights\n' > "\$2/model.safetensors"; fi
-       printf '{"architectures": ["RobertaForSequenceClassification"], "num_labels": 4}\n' > "\$2/config.json"
-       exit 0
-     fi
+     if [ -n "\${RUNTIME_JSON:-}" ]; then printf '%s' "\$RUNTIME_JSON" | "$PY3" -c 'import json,sys; d=json.load(sys.stdin); assert d["schema_version"]==1; print(d["state"])'; exit \$?; fi
      echo "version 3.12.13"
      for m in torch transformers fastapi uvicorn fasttext emoji huggingface_hub; do echo "import \$m ok"; done
      exit 0 ;;
 esac
-port=8765                                             # "python app/serve.py … --port N"
-while [ \$# -gt 0 ]; do case "\$1" in --port) port="\$2" ;; esac; shift; done
+port=8765; runtime_config=""                          # "python app/serve.py … --port N"
+while [ \$# -gt 0 ]; do case "\$1" in --port) port="\$2" ;; --runtime-config) runtime_config="\$2" ;; esac; shift; done
+case "\$runtime_config" in "$h/runtime.json"|"$h_real/runtime.json") ;; *) echo 'wrong runtime config path'; exit 2 ;; esac
 echo "stub daemon on \$port"
-exec $LISTEN "\$port" anagramd 2.1 1
+mode=anagramd
+[ -f "$h/RUNTIME_STATE" ] && mode="\$(cat "$h/RUNTIME_STATE")"
+exec $LISTEN "\$port" "\$mode" 2.1 1
 STUB
   chmod +x "$h/venv/bin/python"
   cp "$ROOT/installer/anagram" "$h/bin/anagram" && chmod +x "$h/bin/anagram"
@@ -420,6 +437,8 @@ UVV="$(grep '^UV_VERSION=' "$ROOT/install.sh" | cut -d'"' -f2)"
 RELDIR="$T/rel"; mkdir -p "$RELDIR/src/anagram/app" "$RELDIR/src/anagram/extension" "$RELDIR/src/anagram/bin"
 echo "9.9.10" > "$RELDIR/src/anagram/VERSION"
 echo "new app" > "$RELDIR/src/anagram/app/serve.py"
+echo "# native host fixture" > "$RELDIR/src/anagram/app/native_host.py"
+cp "$ROOT/installer/native_registration.py" "$RELDIR/src/anagram/app/native_registration.py"
 echo "new extension" > "$RELDIR/src/anagram/extension/manifest.json"
 printf '#!/bin/sh\necho NEW CLI\n' > "$RELDIR/src/anagram/bin/anagram"; chmod +x "$RELDIR/src/anagram/bin/anagram"
 cp "$ROOT/install.sh" "$RELDIR/src/anagram/install.sh"
@@ -430,7 +449,7 @@ HU="$T/update-home"; mkdir -p "$HU/bin" "$HU/venv/bin" "$HU/app" "$HU/extension"
 echo "Anagram installation folder." > "$HU/.anagram-home"
 printf '#!/bin/sh\necho OLD CLI\n' > "$HU/bin/anagram"; chmod +x "$HU/bin/anagram"
 echo "9.9.9" > "$HU/VERSION"
-printf '#!/bin/sh\necho "uv %s"\nexit 0\n' "$UVV" > "$HU/bin/uv"; chmod +x "$HU/bin/uv"
+printf '#!/bin/sh\necho "uv %s"\nif [ "$1" = sync ]; then mkdir -p "$UV_PROJECT_ENVIRONMENT/bin"; cp "$(dirname "$0")/../venv/bin/python" "$UV_PROJECT_ENVIRONMENT/bin/python"; fi\nexit 0\n' "$UVV" > "$HU/bin/uv"; chmod +x "$HU/bin/uv"
 printf '#!/bin/sh\nexit 0\n' > "$HU/venv/bin/python"; chmod +x "$HU/venv/bin/python"
 ln "$HU/bin/anagram" "$T/held-cli"          # the file the running command has open
 ln "$HU/VERSION" "$T/held-version"
@@ -451,7 +470,7 @@ else bad "offline update side effects" "app=$(cat "$HU/app/serve.py" 2>/dev/null
 #     nothing at all — the command that reaches the internet only does so when it must.
 HM="$T/model-cli"; make_home "$HM" "$P2"
 before="$(snapshot "$HM")"
-out="$(HOME="$FAKE_HOME" ANAGRAM_HF_TOKEN=stub "$HM/bin/anagram" model 2>&1 </dev/null)"; rc=$?
+out="$(HOME="$FAKE_HOME" "$HM/bin/anagram" model 2>&1 </dev/null)"; rc=$?
 if [ $rc -eq 0 ] && echo "$out" | grep -q "nothing to download" && [ "$before" = "$(snapshot "$HM")" ]; then
   ok "anagram model: both models already verified → nothing downloaded, nothing touched"
 else bad "anagram model (already verified)" "rc=$rc $(echo "$out" | tail -1)"; fi
@@ -459,7 +478,7 @@ else bad "anagram model (already verified)" "rc=$rc $(echo "$out" | tail -1)"; f
 # 25. a checkpoint that arrives whole and matches the pinned checksum is renamed into place,
 #     and the staging directory it came down into is gone afterwards.
 rm -f "$HM/models/editlens_roberta-large/model.safetensors"
-out="$(HOME="$FAKE_HOME" ANAGRAM_HF_TOKEN=stub "$HM/bin/anagram" model 2>&1 </dev/null)"; rc=$?
+out="$(HOME="$FAKE_HOME" "$HM/bin/anagram" model 2>&1 </dev/null)"; rc=$?
 incoming="$HM/models/.incoming-editlens_roberta-large"
 if [ $rc -eq 0 ] && [ -f "$HM/models/editlens_roberta-large/model.safetensors" ] \
    && [ "$(sha_of "$HM/models/editlens_roberta-large/model.safetensors")" = "$(sed -n 's/^WEIGHTS_SHA256="\([0-9a-f]*\)".*/\1/p' "$HM/app/install.sh")" ] \
@@ -468,21 +487,21 @@ if [ $rc -eq 0 ] && [ -f "$HM/models/editlens_roberta-large/model.safetensors" ]
 else bad "anagram model (verified download)" "rc=$rc incoming=$([ -e "$incoming" ] && echo left) $(echo "$out" | tail -1)"; fi
 
 # 26. a staging directory from a download that never finished is worth keeping only while it
-#     can still be resumed — once the checkpoint is here and verified it is 1.4 GB of nothing.
+#     can still be resumed — once the full modelkit is verified it no longer serves a purpose.
 mkdir -p "$incoming"; printf 'the half that arrived\n' > "$incoming/model.safetensors"
-out="$(HOME="$FAKE_HOME" ANAGRAM_HF_TOKEN=stub "$HM/bin/anagram" model 2>&1 </dev/null)"; rc=$?
+out="$(HOME="$FAKE_HOME" "$HM/bin/anagram" model 2>&1 </dev/null)"; rc=$?
 if [ $rc -eq 0 ] && [ ! -e "$incoming" ] && echo "$out" | grep -q "nothing to download"; then
   ok "anagram model: a staging directory that can no longer be resumed is cleaned up"
 else bad "stale staging directory" "rc=$rc $(echo "$out" | tail -1)"; fi
 
 # 27. a download that does NOT match the pinned checksum is never promoted: the checkpoint that
 #     was already there is untouched, the bad bytes stay in the staging directory (so a re-run
-#     resumes rather than starting the 1.4 GB again), and the command fails.
+#     reuses verified complete files on retry), and the command fails.
 : > "$HM/TAMPER"                                  # the stub python now writes a cut-off file
 # The checkpoint on disk no longer matches, which is what sends the command back to the Hub.
 printf 'the checkpoint that was already here\n' > "$HM/models/editlens_roberta-large/model.safetensors"
 good="$(sha_of "$HM/models/editlens_roberta-large/model.safetensors")"
-out="$(HOME="$FAKE_HOME" ANAGRAM_HF_TOKEN=stub "$HM/bin/anagram" model 2>&1 </dev/null)"; rc=$?
+out="$(HOME="$FAKE_HOME" "$HM/bin/anagram" model 2>&1 </dev/null)"; rc=$?
 if [ $rc -ne 0 ] && echo "$out" | grep -q "nothing was replaced" \
    && [ "$(sha_of "$HM/models/editlens_roberta-large/model.safetensors")" = "$good" ] \
    && [ -f "$incoming/model.safetensors" ]; then
@@ -495,25 +514,59 @@ rm -f "$HM/TAMPER"; rm -rf "$incoming"
 #     Offline throughout — the release comes off file://, uv is already at the pinned version,
 #     venv/bin/python is a stub that stands in for the download, and the run dies before the
 #     language model (the only other thing this step would fetch) is ever asked for.
-HM2="$T/model-install"; mkdir -p "$HM2/bin" "$HM2/venv/bin" "$HM2/models/editlens_roberta-large"
-echo "Anagram installation folder." > "$HM2/.anagram-home"
-printf '#!/bin/sh\necho "uv %s"\nexit 0\n' "$UVV" > "$HM2/bin/uv"; chmod +x "$HM2/bin/uv"
-cat > "$HM2/venv/bin/python" <<'STUB'
-#!/bin/sh
-cat > /dev/null
-if [ -n "${2:-}" ]; then mkdir -p "$2"; printf 'half a download, cut off here\n' > "$2/model.safetensors"; fi
-exit 0
-STUB
-chmod +x "$HM2/venv/bin/python"
+HM2="$T/model-install"; make_home "$HM2" "$P2"
+printf '#!/bin/sh\necho "uv %s"\nif [ "$1" = sync ]; then mkdir -p "$UV_PROJECT_ENVIRONMENT/bin"; cp "$(dirname "$0")/../venv/bin/python" "$UV_PROJECT_ENVIRONMENT/bin/python"; fi\nexit 0\n' "$UVV" > "$HM2/bin/uv"; chmod +x "$HM2/bin/uv"
+: > "$HM2/TAMPER"
+cp "$HM2/app/download_modelkit.py" "$HM2/app/modelkit.json" "$HM2/app/fixture.json" "$RELDIR/src/anagram/app/"
+( cd "$RELDIR/src" && tar -czf "$RELDIR/anagram.tar.gz" anagram )
+sha_of "$RELDIR/anagram.tar.gz" > "$RELDIR/anagram.tar.gz.sha256"
+rm -f "$HM2/models/lid.176.ftz"
 printf 'the checkpoint that was already here\n' > "$HM2/models/editlens_roberta-large/model.safetensors"
 good="$(sha_of "$HM2/models/editlens_roberta-large/model.safetensors")"
-out="$(HOME="$FAKE_HOME" ANAGRAM_HOME="$HM2" ANAGRAM_RELEASE_URL="file://$RELDIR" ANAGRAM_HF_TOKEN=stub sh "$ROOT/install.sh" 2>&1)"; rc=$?
+out="$(HOME="$FAKE_HOME" ANAGRAM_HOME="$HM2" ANAGRAM_DOWNLOAD_MODELS=1 ANAGRAM_RELEASE_URL="file://$RELDIR" sh "$ROOT/install.sh" 2>&1)"; rc=$?
 if [ $rc -ne 0 ] && echo "$out" | grep -q "nothing was replaced" \
    && [ "$(sha_of "$HM2/models/editlens_roberta-large/model.safetensors")" = "$good" ] \
    && [ ! -e "$HM2/models/lid.176.ftz" ] \
    && [ -f "$HM2/models/.incoming-editlens_roberta-large/model.safetensors" ]; then
   ok "install.sh: a checkpoint that does not verify replaces nothing and stops before any other download"
 else bad "install.sh staged checkpoint" "rc=$rc $(echo "$out" | tail -2)"; fi
+
+# Default installation registers the host and leaves model/setup work to the browser.
+HFIRST="$T/first-start"; make_home "$HFIRST" "$P3"
+rm -f "$HFIRST/VERSION"
+printf '#!/bin/sh\necho "uv %s"\nif [ "$1" = sync ]; then mkdir -p "$UV_PROJECT_ENVIRONMENT/bin"; cp "$(dirname "$0")/../venv/bin/python" "$UV_PROJECT_ENVIRONMENT/bin/python"; fi\nexit 0\n' "$UVV" > "$HFIRST/bin/uv"; chmod +x "$HFIRST/bin/uv"
+cp "$ROOT/installer/anagram" "$RELDIR/src/anagram/bin/anagram"
+( cd "$RELDIR/src" && tar -czf "$RELDIR/anagram.tar.gz" anagram )
+sha_of "$RELDIR/anagram.tar.gz" > "$RELDIR/anagram.tar.gz.sha256"
+# Clear only the prior fixture's exact owned registration through the real helper.
+HOME="$FAKE_HOME" "$PY3" "$ROOT/installer/native_registration.py" unregister --home "$HM2" >/dev/null 2>&1
+out="$(HOME="$FAKE_HOME" ANAGRAM_HOME="$HFIRST" ANAGRAM_RELEASE_URL="file://$RELDIR" sh "$ROOT/install.sh" 2>&1)"; rc=$?
+if [ $rc -eq 0 ] && [ -f "$HFIRST/.native-component.json" ] && [ ! -f "$HFIRST/run/anagramd.pid" ] && echo "$out" | grep -q "Return to the extension"; then
+  ok "fresh installation registers native host without starting HTTP or downloading models"
+else bad "fresh native install" "rc=$rc $out"; fi
+out="$(HOME="$FAKE_HOME" ANAGRAM_HOME="$HFIRST" ANAGRAM_RELEASE_URL="file://$RELDIR" sh "$ROOT/install.sh" 2>&1)"; rc=$?
+if [ $rc -eq 0 ] && [ ! -f "$HFIRST/run/anagramd.pid" ]; then
+  ok "installer rerun updates exact owned registration without starting a daemon"
+else bad "installer native rerun" "rc=$rc $out"; fi
+HOME="$FAKE_HOME" "$PY3" "$ROOT/installer/native_registration.py" unregister --home "$HFIRST" >/dev/null 2>&1
+# A browser registration conflict must restore the previous app and private env.
+HROLL="$T/rollback-home"; make_home "$HROLL" "$P3"
+printf '#!/bin/sh\necho "uv %s"\nif [ "$1" = sync ]; then mkdir -p "$UV_PROJECT_ENVIRONMENT/bin"; cp "$(dirname "$0")/../venv/bin/python" "$UV_PROJECT_ENVIRONMENT/bin/python"; fi\nexit 0\n' "$UVV" > "$HROLL/bin/uv"; chmod +x "$HROLL/bin/uv"
+case "$(uname -s)" in
+  Darwin) registration="$FAKE_HOME/Library/Application Support/Mozilla/NativeMessagingHosts/dev.coderbak.anagram.json" ;;
+  *) registration="$FAKE_HOME/.mozilla/native-messaging-hosts/dev.coderbak.anagram.json" ;;
+esac
+mkdir -p "$(dirname "$registration")"; printf 'foreign owner\n' > "$registration"
+app_before="$(snapshot "$HROLL/app")"; env_before="$(snapshot "$HROLL/venv")"
+out="$(HOME="$FAKE_HOME" ANAGRAM_HOME="$HROLL" ANAGRAM_RELEASE_URL="file://$RELDIR" sh "$ROOT/install.sh" 2>&1)"; rc=$?
+if [ $rc -ne 0 ] && [ "$app_before" = "$(snapshot "$HROLL/app")" ] && [ "$env_before" = "$(snapshot "$HROLL/venv")" ] \
+   && [ "$(cat "$HROLL/VERSION")" = 9.9.9 ] && [ "$(cat "$registration")" = 'foreign owner' ] && [ ! -e "$HROLL/app.old" ] && [ ! -e "$HROLL/venv.old" ]; then
+  ok "registration conflict rolls back app, version and private environment while preserving foreign registration"
+else bad "native installation rollback" "rc=$rc $out"; fi
+rm -f "$registration"
+if "$PY3" "$ROOT/test/native_registration.py" > "$T/native-tests.log" 2>&1; then
+  ok "native registration containment, exact origins, inventory and rollback tests pass"
+else bad "native registration tests" "$(tail -n 8 "$T/native-tests.log")"; fi
 
 # 29. a proxy in the environment must not hide the daemon. curl has no loopback exception, so
 #     with http_proxy set, every probe this script makes about 127.0.0.1 went to the proxy —
@@ -533,6 +586,26 @@ else
   else bad "a proxy does not hide the daemon" "rc=$rc $(echo "$out" | tail -1)"; fi
   stop_listener "$ppid"
 fi
+
+# Pending first-run setup is a live control server, not a failed installation.
+HR="$T/runtime-home"; make_home "$HR" "$P3"
+echo awaiting_selection > "$HR/RUNTIME_STATE"
+out="$(HOME="$FAKE_HOME" "$HR/bin/anagram" start 2>&1)"; rc=$?
+if [ $rc -eq 0 ] && echo "$out" | grep -q "awaiting configuration"; then
+  ok "start succeeds when runtime is awaiting selection and /health is unavailable"
+else bad "runtime start" "rc=$rc $out"; fi
+out="$(HOME="$FAKE_HOME" "$HR/bin/anagram" status 2>&1)"; rc=$?
+if [ $rc -eq 0 ] && echo "$out" | grep -q "first-run page or Settings"; then
+  ok "status explains the pending first-run choice"
+else bad "runtime status" "rc=$rc $out"; fi
+out="$(HOME="$FAKE_HOME" "$HR/bin/anagram" doctor 2>&1)"; rc=$?
+if [ $rc -eq 0 ] && echo "$out" | grep -q "runtime control is available: awaiting_selection"; then
+  ok "doctor recognizes first-run runtime and does not report a foreign port"
+else bad "runtime doctor" "rc=$rc $out"; fi
+HOME="$FAKE_HOME" "$HR/bin/anagram" stop >/dev/null 2>&1
+if "$PY3" "$ROOT/test/modelkit.py" > "$T/modelkit-tests.log" 2>&1; then
+  ok "all offline modelkit integrity/cache/anonymous-download tests pass"
+else bad "modelkit tests" "$(tail -n 8 "$T/modelkit-tests.log")"; fi
 
 # 30. (network) full install under a hostile environment: nothing lands outside the folder
 if [ -n "${INSTALLER_NET:-}" ]; then

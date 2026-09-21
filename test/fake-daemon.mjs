@@ -173,6 +173,18 @@ export function startFakeDaemon({ port = 0, latency = [60, 160], model = FAKE_MO
         ...(appVersion === null ? {} : { app_version: appVersion }),
       });
     }
+    // Setup pages use the runtime control endpoint even in explicit HTTP developer
+    // mode. This fixture is already ready; it invents no benchmark measurements.
+    if (req.method === "GET" && req.url === "/runtime") {
+      return json(200, {
+        schema_version: 1, state: "ready", active_id: "fake-cpu-fp32", selected_id: "fake-cpu-fp32",
+        recommended_id: null, needs_selection: false, error: null,
+        candidates: [{ id: "fake-cpu-fp32", label: "Test CPU · FP32", device: "cpu", runtime: "torch",
+          precision: "fp32", experimental: false, available: true }],
+        benchmark: { status: "idle", budget_s: 30, elapsed_s: 0, measurement_s: 0,
+          phase: "ready", current_id: null, completed: 0, total: 0, results: [] },
+      });
+    }
     if (req.method === "POST" && req.url === "/score") {
       let body = "";
       req.on("data", (d) => (body += d));

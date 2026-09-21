@@ -187,7 +187,7 @@ export function launchPlain(options = {}) {
 export async function setServerUrl(context, extId, url) {
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extId}/options.html`);
-  await page.evaluate((u) => new Promise((res) => chrome.storage.local.set({ serverUrl: u }, res)), url);
+  await page.evaluate((u) => new Promise((res) => chrome.storage.local.set({ serverUrl: u, backendTransport: "http" }, res)), url);
   await page.close();
 }
 

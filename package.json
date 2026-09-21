@@ -2,7 +2,7 @@
   "name": "anagram-extension",
   "description": "Anagram for Chrome — shows how heavily each paragraph appears to be AI-edited, scored on your own computer.",
   "private": true,
-  "version": "0.3.2",
+  "version": "0.4.0",
   "type": "module",
   "scripts": {
     "dev": "node scripts/vendor.mjs && wxt",
@@ -31,6 +31,8 @@
     "release": "node scripts/release.mjs",
     "test:installer": "sh test/installer.sh",
     "test:daemon": "sh test/daemon.sh",
+    "test:runtime": "npm run build && node test/runtime.mjs",
+    "test:native": "npm run build && node test/native-browser.mjs",
     "test:matrix": "node test/matrix.mjs",
     "lab": "node scripts/lab.mjs"
   },

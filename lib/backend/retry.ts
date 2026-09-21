@@ -46,9 +46,11 @@ export function parseRetryAfter(header: string | null | undefined): number | nul
  */
 export function isTransientFailure(error: unknown): boolean {
   if (error instanceof TypeError) return true;
-  const e = error as { status?: unknown; name?: unknown } | null;
+  const e = error as { status?: unknown; name?: unknown; code?: unknown } | null;
   if (!e) return false;
   if (typeof e.status === "number" && TRANSIENT_STATUS.has(e.status)) return true;
+  if (e.name === "NativeScoreError" && e.status === 409 && e.code === "busy") return true;
+  if (e.name === "NativeTransportError" && ["native_unavailable", "native_timeout", "busy"].includes(String(e.code))) return true;
   return e.name === "AbortError" || e.name === "TimeoutError";
 }
 

@@ -295,7 +295,7 @@ export async function findPageByHref(browser, needle, { timeout = 20000 } = {}) 
  */
 export async function setServerUrl(browser, extUrl, url) {
   const page = await openExtensionPage(browser, extUrl("options.html"));
-  await page.evaluate((u) => browser.storage.local.set({ serverUrl: u }), url);
+  await page.evaluate((u) => browser.storage.local.set({ serverUrl: u, backendTransport: "http" }), url);
   await page.close();
 }
 

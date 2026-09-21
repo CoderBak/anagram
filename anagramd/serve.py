@@ -20,8 +20,9 @@ the model; the rest come back as `unsupported: true` with the detected language 
 extension can say "Unsupported language" instead of showing a meaningless percentage.
 
 Stack: FastAPI (request/response validation via pydantic, OpenAPI docs at /docs) served by
-uvicorn; the model runs under torch on MPS/CUDA in fp16 (CPU fp32); both model files are read
-from disk — serving downloads nothing, ever (see "Offline", below).
+uvicorn; the user chooses a local Torch/ONNX device and precision after a quick
+comparison. Only FP32 is recommended automatically. Model files are read from
+disk — serving downloads nothing, ever (see "Offline", below).
 
 Hardening (the daemon is a local service, but a local service is still a service):
     - binds 127.0.0.1 or localhost — the only two names the extension can be pointed at —
@@ -53,6 +54,8 @@ command (`anagram model`, or install.sh) which pins a checksum and stages the fi
 replaces the one in use, so a half-written file can never be loaded.
 
 Endpoints
+    GET  /runtime  → setup progress, device/precision candidates and measured comparisons
+    POST /runtime/benchmark, /runtime/cancel, /runtime/config → local runtime controls
     GET  /health   → model / device / bucket / language / daemon-version info (the extension
                      polls this, and asks for an update when `app_version` is behind its own)
     POST /score    → {"v": "2.1", "blocks": [{"id": "...", "text": "..."}]}
@@ -94,10 +97,16 @@ import sys
 import threading
 import time
 import tomllib
+from contextlib import asynccontextmanager, nullcontext
 from pathlib import Path
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+# Installed launchers set PYTHONSAFEPATH=1; trust only this application's own
+# directory for its sibling modules, never the caller's working directory.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from scoring import score_texts
 
 CONTRACT_VERSION = "2.1"
 CONTRACT_MAJOR = CONTRACT_VERSION.split(".")[0]
@@ -403,7 +412,7 @@ class EditLens:
     # The language gate is a constructor argument, not something bolted on afterwards: it
     # decides whether a paragraph is scored at all, so the served version has to know about it.
     def __init__(self, model_dir: Path, device: str, max_length: int, batch_size: int, dtype: str,
-                 lid: LanguageId):
+                 lid: LanguageId, *, warmup: bool = True):
         import emoji
         import torch
         from transformers import AutoModelForSequenceClassification, AutoTokenizer
@@ -422,32 +431,33 @@ class EditLens:
         require_model(model_dir)
 
         self.device = self._pick_device(device)
-        # fp16 on the GPU is numerically indistinguishable here (probs agree to 3-4 decimals) and
-        # ~20% faster at batch 16-32; CPU stays fp32 (half precision is slow on CPU kernels).
         if dtype == "auto":
-            dtype = "fp16" if self.device in ("mps", "cuda") else "fp32"
-        self.dtype = torch.float16 if dtype == "fp16" and self.device != "cpu" else torch.float32
+            dtype = "fp32"
+        if dtype == "fp16" and self.device == "cpu":
+            raise ValueError("PyTorch CPU FP16 is not an offered runtime; choose CPU FP32 or an ONNX candidate")
+        self.dtype = torch.float16 if dtype == "fp16" else torch.float32
         self.dtype_name = str(self.dtype).replace("torch.", "")
         # Only now is everything that can move a verdict decided.
         self.version = pipeline_version(model_dir, max_length, self.dtype_name, lid)
         t0 = time.time()
-        self.tok = AutoTokenizer.from_pretrained(str(model_dir))
+        self.tok = AutoTokenizer.from_pretrained(str(model_dir), local_files_only=True, trust_remote_code=False)
         self.model = self._load(AutoModelForSequenceClassification, model_dir)
         self.model.to(self.device).eval()
         self.n_buckets = int(self.model.config.num_labels)
         if self.n_buckets != len(BUCKET_LABELS):
-            log.warning("model has %d labels, extension expects %d", self.n_buckets, len(BUCKET_LABELS))
+            raise ValueError(f"model has {self.n_buckets} labels, expected {len(BUCKET_LABELS)}")
         log.info("loaded %s on %s (%s) in %.1fs — %d buckets, max %d tokens",
                  model_dir.name, self.device, self.dtype_name, time.time() - t0,
                  self.n_buckets, max_length)
-        self._warmup()
+        if warmup:
+            self._warmup()
 
     def _load(self, cls, model_dir: Path):
         """transformers 5 renamed `torch_dtype` to `dtype`; support both."""
         try:
-            return cls.from_pretrained(str(model_dir), dtype=self.dtype)
+            return cls.from_pretrained(str(model_dir), dtype=self.dtype, local_files_only=True, trust_remote_code=False)
         except TypeError:
-            return cls.from_pretrained(str(model_dir), torch_dtype=self.dtype)
+            return cls.from_pretrained(str(model_dir), torch_dtype=self.dtype, local_files_only=True, trust_remote_code=False)
 
     def _pick_device(self, want: str) -> str:
         torch = self.torch
@@ -466,43 +476,40 @@ class EditLens:
 
     def score(self, texts: list[str]) -> list[dict]:
         """Score raw texts; returns one dict per input in the same order."""
-        torch = self.torch
-        cleaned = [clean_text(t, self.emoji) for t in texts]
-        # ONE tokenizer pass: full ids give the pre-truncation length (so the client can see
-        # when a paragraph was cut); the window is applied by slicing, which is exactly what
-        # the tokenizer's own truncation produces ([cls] + tokens[:max-2] + [sep]).
-        all_ids = self.tok(cleaned, add_special_tokens=True, truncation=False)["input_ids"]
-        lengths = [len(ids) for ids in all_ids]
-        eos = self.tok.eos_token_id if self.tok.eos_token_id is not None else self.tok.sep_token_id
-        order = sorted(range(len(cleaned)), key=lambda i: lengths[i])  # length-sorted batching
-        out: list[dict | None] = [None] * len(cleaned)
-        idx = np.arange(self.n_buckets, dtype=np.float64)
+        return score_texts(self, texts, clean_text)
 
-        t_wait = time.time()
-        with self.lock, torch.inference_mode():
-            self.last_wait_ms = (time.time() - t_wait) * 1000  # time spent queued behind another batch
-            t_run = time.time()
-            for start in range(0, len(order), self.batch_size):
-                chunk = order[start:start + self.batch_size]
-                ids = [all_ids[i] if lengths[i] <= self.max_length
-                       else all_ids[i][: self.max_length - 1] + [eos] for i in chunk]
-                enc = self.tok.pad({"input_ids": ids}, padding=True, return_tensors="pt").to(self.device)
-                logits = self.model(**enc).logits.float().cpu().numpy()
-                logits = logits - logits.max(axis=1, keepdims=True)
-                probs = np.exp(logits)
-                probs /= probs.sum(axis=1, keepdims=True)
-                for row, i in enumerate(chunk):
-                    p = probs[row]
-                    out[i] = {
-                        "bucket": int(p.argmax()),
-                        "probs": [round(float(x), 4) for x in p],
-                        "score": round(float((p @ idx) / (self.n_buckets - 1)), 4),
-                        "tokens": min(lengths[i], self.max_length),
-                        "truncated": lengths[i] > self.max_length,
-                    }
-            self.last_run_ms = (time.time() - t_run) * 1000
-        self.scored += len(cleaned)
-        return out  # type: ignore[return-value]
+    def _logits(self, ids):
+        with self.torch.inference_mode():
+            enc = self.tok.pad({"input_ids": ids}, padding=True, return_tensors="pt").to(self.device)
+            return self.model(**enc).logits.float().cpu().numpy()
+
+    def synchronize(self):
+        if self.device == "mps":
+            self.torch.mps.synchronize()
+        elif self.device.startswith("cuda"):
+            self.torch.cuda.synchronize(self.device)
+
+    def accelerator_bytes(self):
+        if self.device == "mps":
+            return self.torch.mps.driver_allocated_memory()
+        if self.device.startswith("cuda"):
+            return self.torch.cuda.max_memory_allocated(self.device)
+        return None
+
+    def reset_accelerator_peak(self):
+        if self.device.startswith("cuda"):
+            self.torch.cuda.reset_peak_memory_stats(self.device)
+
+    def close(self):
+        import gc
+        self.model = None
+        self.tok = None
+        gc.collect()
+        if getattr(self, "device", None) == "mps":
+            self.torch.mps.empty_cache()
+        elif getattr(self, "device", "").startswith("cuda"):
+            with self.torch.cuda.device(self.device):
+                self.torch.cuda.empty_cache()
 
     def info(self) -> dict:
         return {
@@ -589,6 +596,20 @@ class ScoreResponse(BaseModel):
     model: ModelInfo
     partial: bool
     results: list[ScoreResult]
+
+
+class RuntimeBenchmarkRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    budget_s: int = Field(default=30, ge=10, le=30, strict=True)
+
+
+class RuntimeConfigRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_.:-]+$")
+
+
+class RuntimeCancelRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
 
 # --- ASGI guards: refuse a request before FastAPI ever routes or parses it ---------------------------
@@ -729,10 +750,10 @@ class OriginGuard:
             if origin is not None and not self._allowed(origin):
                 await _refuse(send, 403, f"origin {origin} is not allowed", scope)
                 return
-            if scope["method"] == "POST" and scope["path"] == "/score":
+            if scope["method"] == "POST" and (scope["path"] == "/score" or scope["path"].startswith("/runtime/")):
                 media = (_header(scope, b"content-type") or "").split(";")[0].strip().lower()
                 if media != "application/json":
-                    await _refuse(send, 415, "POST /score requires content-type: application/json", scope)
+                    await _refuse(send, 415, f"POST {scope['path']} requires content-type: application/json", scope)
                     return
         await self.app(scope, receive, send)
 
@@ -827,10 +848,63 @@ def allowed_hosts_for(host: str) -> list[str]:
     return list(LOOPBACK_HOSTS) if host in LOOPBACK_HOSTS else [host, *LOOPBACK_HOSTS]
 
 
-def make_app(engine: EditLens, allowed_hosts: list[str], port: int):
-    from fastapi import FastAPI
+def score_with_engine(req: ScoreRequest, engine) -> dict:
+    t0 = time.time()
+    texts, todo, langs, skipped = [], [], {}, {}
+    for b in req.blocks:
+        if not b.text.strip():
+            continue
+        if engine.lid.enabled:
+            lang, prob = engine.lid.detect(b.text)
+            if lang not in SUPPORTED_LANGUAGES:
+                skipped[b.id] = (lang, prob)
+                continue
+            langs[b.id] = (lang, prob)
+        todo.append(b.id)
+        texts.append(b.text)
+    scored = engine.score(texts) if texts else []
+    by_id = dict(zip(todo, scored))
+    results = []
+    for b in req.blocks:
+        if b.id in skipped:
+            results.append(unsupported_result(b.id, engine.n_buckets, *skipped[b.id]))
+            continue
+        r = by_id.get(b.id)
+        if r is None:  # empty text — no model output, mark degraded so it is never cached
+            results.append({"id": b.id, "bucket": 0, "probs": [1 / engine.n_buckets] * engine.n_buckets,
+                            "score": 0.0, "tokens": 0, "truncated": False, "degraded": True})
+        else:
+            out = {"id": b.id, **r}
+            if b.id in langs:
+                out["lang"], out["lang_prob"] = langs[b.id][0], round(langs[b.id][1], 3)
+            results.append(out)
+    ms = (time.time() - t0) * 1000
+    log.info("score %d blocks (%d tok): %.0f ms model, %.0f ms queued, %.0f ms total — buckets %s%s",
+             len(texts), sum(r["tokens"] for r in scored), engine.last_run_ms, engine.last_wait_ms, ms,
+             [r["bucket"] for r in scored],
+             f" — {len(skipped)} unsupported ({', '.join(sorted({v[0] for v in skipped.values()}))})" if skipped else "")
+    return {"v": CONTRACT_VERSION, "session": req.session, "model": engine.info()["model"],
+            "partial": False, "results": results}
+
+
+
+def make_app(engine: EditLens | None, allowed_hosts: list[str], port: int, controller=None):
+    from fastapi import FastAPI, HTTPException
     from fastapi.middleware.trustedhost import TrustedHostMiddleware
-    app = FastAPI(title="anagramd", version=engine.version,
+    from runtime_controller import RuntimeBusy, RuntimeUnavailable
+
+    @asynccontextmanager
+    async def lifespan(_app):
+        if controller is not None:
+            controller.start()
+        try:
+            yield
+        finally:
+            if controller is not None:
+                controller.close()
+
+    app = FastAPI(title="anagramd", version=engine.version if engine else (APP_VERSION or CONTRACT_VERSION),
+                  lifespan=lifespan,
                   description="Local EditLens scoring daemon for the Anagram extension "
                               "(contract " + CONTRACT_VERSION + ").")
     # Starlette runs the LAST middleware added first, so this reads bottom-up: cap the body
@@ -848,48 +922,44 @@ def make_app(engine: EditLens, allowed_hosts: list[str], port: int):
 
     @app.get("/health")
     def health() -> dict:
-        return engine.info()
+        try:
+            with controller.use_engine() if controller is not None else nullcontext(engine) as active:
+                return active.info()
+        except RuntimeUnavailable as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    # Sync `def` → FastAPI runs it in a worker thread; the model lock serializes GPU work
-    # while language-id and JSON handling for other requests proceed concurrently.
+    if controller is not None:
+        @app.get("/runtime")
+        def runtime_status() -> dict:
+            return controller.snapshot()
+
+        def change_runtime(operation):
+            try:
+                return operation()
+            except RuntimeBusy as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        @app.post("/runtime/benchmark", status_code=202)
+        def benchmark_runtime(req: RuntimeBenchmarkRequest) -> dict:
+            return change_runtime(lambda: controller.request_benchmark(req.budget_s))
+
+        @app.post("/runtime/cancel", status_code=202)
+        def cancel_runtime(req: RuntimeCancelRequest) -> dict:
+            return change_runtime(controller.cancel)
+
+        @app.post("/runtime/config", status_code=202)
+        def configure_runtime(req: RuntimeConfigRequest) -> dict:
+            return change_runtime(lambda: controller.request_selection(req.id))
+
     @app.post("/score", response_model=ScoreResponse, response_model_exclude_none=True)
     def score(req: ScoreRequest) -> dict:
-        t0 = time.time()
-        texts, todo, langs, skipped = [], [], {}, {}
-        for b in req.blocks:
-            if not b.text.strip():
-                continue
-            if engine.lid.enabled:
-                lang, prob = engine.lid.detect(b.text)
-                if lang not in SUPPORTED_LANGUAGES:
-                    skipped[b.id] = (lang, prob)
-                    continue
-                langs[b.id] = (lang, prob)
-            todo.append(b.id)
-            texts.append(b.text)
-        scored = engine.score(texts) if texts else []
-        by_id = dict(zip(todo, scored))
-        results = []
-        for b in req.blocks:
-            if b.id in skipped:
-                results.append(unsupported_result(b.id, engine.n_buckets, *skipped[b.id]))
-                continue
-            r = by_id.get(b.id)
-            if r is None:  # empty text — no model output, mark degraded so it is never cached
-                results.append({"id": b.id, "bucket": 0, "probs": [1 / engine.n_buckets] * engine.n_buckets,
-                                "score": 0.0, "tokens": 0, "truncated": False, "degraded": True})
-            else:
-                out = {"id": b.id, **r}
-                if b.id in langs:
-                    out["lang"], out["lang_prob"] = langs[b.id][0], round(langs[b.id][1], 3)
-                results.append(out)
-        ms = (time.time() - t0) * 1000
-        log.info("score %d blocks (%d tok): %.0f ms model, %.0f ms queued, %.0f ms total — buckets %s%s",
-                 len(texts), sum(r["tokens"] for r in scored), engine.last_run_ms, engine.last_wait_ms, ms,
-                 [r["bucket"] for r in scored],
-                 f" — {len(skipped)} unsupported ({', '.join(sorted({v[0] for v in skipped.values()}))})" if skipped else "")
-        return {"v": CONTRACT_VERSION, "session": req.session, "model": engine.info()["model"],
-                "partial": False, "results": results}
+        try:
+            with controller.use_engine() if controller is not None else nullcontext(engine) as active:
+                return score_with_engine(req, active)
+        except RuntimeUnavailable as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     return app
 
@@ -993,11 +1063,14 @@ def main() -> None:
     ap.add_argument("--allow-remote", action="store_true",
                     help="permit a --host other than those two (page text may then leave this machine — not advised)")
     ap.add_argument("--port", type=bounded_int(1, 65535), default=8765)
-    ap.add_argument("--device", default="auto", choices=["auto", "mps", "cuda", "cpu"])
+    ap.add_argument("--device", default="auto", choices=["auto", "mps", "cuda", "cpu"],
+                    help="device for --selftest; normal serving uses the saved /runtime selection")
     ap.add_argument("--dtype", default="auto", choices=["auto", "fp32", "fp16"],
-                    help="auto = fp16 on mps/cuda, fp32 on cpu")
+                    help="--selftest precision; auto = fp32 on every device")
     ap.add_argument("--max-length", type=bounded_int(8, 512), default=512, help="roberta-large caps at 512")
     ap.add_argument("--batch-size", type=bounded_int(1, 256), default=32)
+    ap.add_argument("--runtime-config", type=Path, default=None,
+                    help="saved runtime choice/comparison (default: model directory's parent/runtime.json)")
     ap.add_argument("--lid-model", type=Path, default=DEFAULT_LID_PATH,
                     help="fastText lid.176.ftz path (must exist: `anagram model` fetches it, never the daemon)")
     ap.add_argument("--no-language-gate", action="store_true", help="score every block regardless of language")
@@ -1017,21 +1090,28 @@ def main() -> None:
                  f"  those are the only two addresses the extension can be pointed at (a browser's CSP\n"
                  f"  cannot name another), so nothing it sends would arrive here.\n"
                  f"  pass --allow-remote to bind it anyway — page text may then leave this machine")
-    # The gate is loaded first: it is part of what the served model version identifies.
-    lid = LanguageId.disabled() if args.no_language_gate else LanguageId(args.lid_model)
-    engine = EditLens(args.model_dir, args.device, args.max_length, args.batch_size, args.dtype, lid)
-
     if args.selftest:
+        # Explicit developer selftest keeps its direct device/dtype behavior and
+        # does not read or change the user's runtime selection.
+        lid = LanguageId.disabled() if args.no_language_gate else LanguageId(args.lid_model)
+        engine = EditLens(args.model_dir, args.device, args.max_length, args.batch_size, args.dtype, lid)
         failures = run_selftest(engine)
         if failures:
             sys.exit(f"selftest FAILED: {failures} expectation(s) did not hold")
         return
 
     import uvicorn
+    from runtime_adapters import create_controller
 
-    app = make_app(engine, allowed_hosts_for(args.host), args.port)
-    log.info("listening on http://%s:%d  (GET /health, POST /score, GET /docs) — model %s",
-             args.host, args.port, engine.version)
+    if args.device != "auto" or args.dtype != "auto":
+        log.info("--device/--dtype apply to --selftest; serving uses the explicit choice in /runtime")
+    controller = create_controller(args.model_dir,
+                                   args.runtime_config or args.model_dir.parent / "runtime.json",
+                                   args.lid_model, args.max_length, args.batch_size,
+                                   args.no_language_gate, api=sys.modules[__name__])
+    app = make_app(None, allowed_hosts_for(args.host), args.port, controller=controller)
+    log.info("listening on http://%s:%d  (GET /runtime, GET /health, POST /score, GET /docs)",
+             args.host, args.port)
     # Our own per-request log line above replaces uvicorn's access log.
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning", access_log=False)
 

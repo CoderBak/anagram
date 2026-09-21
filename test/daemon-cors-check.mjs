@@ -122,7 +122,7 @@ record("Chrome: the shipping build loads and its worker wakes", extId !== null, 
 
 const page = await context.newPage();
 await page.goto(`chrome-extension://${extId}/options.html`);
-await page.evaluate((u) => new Promise((res) => chrome.storage.local.set({ serverUrl: u }, res)), daemon.url);
+await page.evaluate((u) => new Promise((res) => chrome.storage.local.set({ serverUrl: u, backendTransport: "http" }, res)), daemon.url);
 
 /** Ask the worker something, from one of the extension's own pages. */
 const ask = (expr) => page.evaluate(`(async () => ${expr})()`);

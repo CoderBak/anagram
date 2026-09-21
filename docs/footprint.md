@@ -12,8 +12,8 @@ the code cannot drift apart without somebody noticing.
 
 ## Network
 
-**Anagram cannot reach the internet, and the browser is what stops it.** `wxt.config.ts`
-declares a Content-Security-Policy for the extension's own pages and its service worker:
+**Web requests from Anagram's pages and worker are restricted to itself and loopback.**
+`wxt.config.ts` declares their Content-Security-Policy:
 
 ```
 default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; object-src 'self';
@@ -30,7 +30,7 @@ measured rather than asserted: `test/csp-check.mjs` makes a page and the worker 
 `https://example.com` over all five APIs, in Chrome and in Firefox, and requires every one
 of them to be refused while the daemon still answers.
 
-Two things the policy does **not** cover, stated so the picture is complete:
+The following limits are important when interpreting that policy:
 
 - **Content scripts** run under the *page's* policy, not this one. Two of the call sites
   below are in one: the same-origin re-read of the Google Doc the tab is already showing,
@@ -42,7 +42,14 @@ Two things the policy does **not** cover, stated so the picture is complete:
   no IPv6, no other `127.x.y.z`, no path or credentials — which are exactly the two spellings
   the CSP can express, so the setting and the policy have to agree before a request leaves
   at all.
+- **Native Messaging** is the default scoring and component-management channel. It is
+  not governed by `connect-src`. The fixed host `dev.coderbak.anagram` launches a private
+  Python process and exchanges bounded JSON frames over stdio. Only Anagram's top-level
+  onboarding and Options pages may request lifecycle operations through the background
+  bridge; content scripts cannot download, update or delete files. The native component's
+  network and disk access are described below. HTTP is an explicit developer option.
 
+The following CORS history concerns the optional developer HTTP transport.
 Since 2026-09-20 the extension holds **no host permission for the daemon either**. It used
 to require `http://127.0.0.1/*` and `http://localhost/*` — not to reach the daemon, which
 `connect-src` allows anyway, but to READ its answers, because the daemon sent no CORS
@@ -50,16 +57,19 @@ headers. The daemon sends them now, for extension origins only (`anagramd/serve.
 scoring is an ordinary cross-origin request that the daemon chooses to answer. Nothing about
 what the extension can reach changed: `connect-src` is the same list it was, and a web page
 is still refused 403 by the daemon's Origin guard before CORS is ever considered. What
-changed is that installing Anagram now warns about nothing at all — and that a daemon older
-than the extension cannot answer it, which the pages say plainly and fix with
+changed is that no loopback host permission is needed — not that installation is free of
+permission warnings: `nativeMessaging` has its own warning. A daemon older than the
+extension cannot answer it, which the pages say plainly and fix with
 `~/.anagram/bin/anagram update`.
 
 ### Every call site
 
 | File | Call | What it is for | Where it goes |
 | --- | --- | --- | --- |
+| `lib/backend/nativeTransport.ts` | `connectNative(` | scoring and fixed local component operations over a single multiplexed port | the installed local host `dev.coderbak.anagram`, not an internet endpoint |
 | `lib/backend/httpClient.ts` | `fetch(` | `GET /health` — is the daemon up? | the loopback daemon |
 | `lib/backend/httpClient.ts` | `fetch(` | `POST /score` — the paragraphs to be scored | the loopback daemon |
+| `lib/backend/runtimeClient.ts` | `fetch(` | `GET /runtime` — setup progress and saved performance results; `POST /runtime/config`, `/runtime/benchmark` and `/runtime/cancel` — explicit device selection and comparison controls; credentials omitted, redirects refused | the same loopback daemon |
 | `lib/backend/httpClient.ts` | `fetch(` | `GET /health` again, in `no-cors` mode, only when the one above never came back: is ANYTHING listening there? It sends a bodyless GET with credentials omitted and reads nothing — an opaque response cannot be read — so that it answered at all is the whole result, and it is what tells a closed port from a daemon too old to answer this extension | the same loopback daemon |
 | `lib/docsOverlay.ts` | `fetch(` | re-reads the Google Doc the tab is already showing, in its `mobilebasic` rendering, because a Docs canvas has no text in the DOM to read | the same origin as the tab, with the reader's own cookies |
 | `lib/pdf/handoff.ts` | `fetch(` | re-reads, from the content script in a PDF tab, the document that tab is already showing, so the reading mode can be handed its bytes instead of fetching them | the same URL the tab is already showing, same-origin, normally answered from the HTTP cache |
@@ -113,7 +123,7 @@ stylesheets included, since an `@import` or a webfont is a remote host as much a
 | `lib/pdf/source.ts` | `https://arxiv.org/html/` | builds the address of an arXiv paper's HTML rendering. Nothing fetches it; it is offered as a link somebody may follow |
 | `lib/docs.ts` | `https://docs.google.com/document/d/` | builds the address of the document the tab is on |
 | `lib/docsOverlay.ts` | `https://docs.google.com/document/d/` | the same address, for the same-origin read above |
-| `entrypoints/onboarding/index.html` | `https://github.com/CoderBak/anagram/releases/latest/download/install.sh` | shown as text in the install command a reader copies; nothing fetches it |
+| `lib/ui/installationCommand.ts` | `https://github.com/CoderBak/anagram/releases/download/v$` | builds a version-pinned script link and the command the user runs once; the extension does not fetch the script |
 | `lib/ui/basecoat-vega.cdn.min.css` | `http://www.w3.org/2000/svg` | the SVG namespace, inside `url("data:image/svg+xml,…")` icons. A namespace is a name, not an address: nothing fetches it |
 | `lib/ui/basecoat-vega.cdn.min.css` | `https://tailwindcss.com` | the licence banner of the vendored Basecoat (Vega) stylesheet |
 | `lib/diagnostics/anonymise.ts` | `https://schema.org/Article` | an example in a comment about `itemtype` vocabularies |
@@ -121,6 +131,11 @@ stylesheets included, since an `@import` or a webfont is a remote host as much a
 | `entrypoints/options/main.ts` | `https://` | the scheme prepended to a bare hostname before `new URL()` parses it |
 
 ## Storage
+
+The daemon also keeps `runtime.json` under its own installation folder. It stores the
+chosen device/runtime/precision, a local hardware and model fingerprint, and benchmark
+timings and memory measurements. Benchmark inputs are built-in sample prose; this file
+contains no browsing text and is never uploaded. Restarting reuses a valid saved choice.
 
 ### `chrome.storage.local`
 
@@ -131,6 +146,8 @@ here leaves this profile or this computer.
 | Key | What it holds |
 | --- | --- |
 | `serverUrl` | the daemon's address; loopback only |
+| `backendTransport` | native by default; HTTP is a developer-only connection option |
+| `extensionUpdatePending` | version of a browser extension update waiting for the user to reload |
 | `enabled` | the master switch |
 | `siteOverrides` | per-site on/off rules, as hostnames the reader chose |
 | `showHighlights` | whether analyzed text is marked in place |
@@ -171,16 +188,52 @@ Two keys, each written into the tab it belongs to, each gone when that tab is.
 
 ### Nothing else
 
-No cookies are read or written. No `localStorage`. No Cache Storage. No files are
-downloaded. No bookmark, history or tab content is read beyond the tab's own URL, which the
-extension needs to know which site rules apply.
+No cookies are read or written through the browser cookies API. No `localStorage` or
+Cache Storage. Model downloads are made by the native component, not the browser downloads
+API. No bookmark or history API is used. Reading the current document requires site access
+or a user-initiated one-off action as described above.
 
 ## On disk, outside the browser
 
-`~/.anagram`, and only that — the daemon's own directory, created by `install.sh`. The
-model is downloaded by the INSTALLER, not by the extension; the extension has no way to
-fetch a model and no way to start, stop or update anything on disk. Uninstalling the
-extension leaves `~/.anagram`; removing that directory removes the daemon entirely.
+The component defaults to `~/.anagram` on macOS/Linux and `%LOCALAPPDATA%\Anagram` on
+Windows. It contains the private Python/runtime packages, executable launcher, application
+code, verified model files and partial downloads, runtime choice and measurements, local
+component preferences, registration inventory, and operational state/receipts. The
+browser launches the component when needed; no login service or shell-profile change is
+installed. The ZIP extension directory remains wherever the user unpacked it.
+
+Registration also needs one browser-owned location outside that directory. With host file
+name `dev.coderbak.anagram.json`, the default user paths are:
+
+- macOS Chrome: `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/`;
+  Firefox: `~/Library/Application Support/Mozilla/NativeMessagingHosts/`.
+- Linux Chrome: `~/.config/google-chrome/NativeMessagingHosts/`;
+  Firefox: `~/.mozilla/native-messaging-hosts/`.
+- Windows: a manifest under the component's `native/` directory, plus its path in
+  `HKCU\Software\Google\Chrome\NativeMessagingHosts\dev.coderbak.anagram` or
+  `HKCU\Software\Mozilla\NativeMessagingHosts\dev.coderbak.anagram`.
+
+Only the exact extension ID is allowed. The installer records the exact registration and
+its hash; cleanup refuses changed or foreign registrations. The component accepts a fixed
+operation list, never caller-supplied filesystem paths, executable names or download URLs.
+This is an application boundary, not an operating-system filesystem sandbox: the local
+program runs with the user's ordinary privileges, outside browser CSP.
+
+First connection downloads the pinned public modelkit and language model, verifies hashes,
+and runs setup. Pause/stop/delete preferences persist across browser restarts. Inference
+loads local files with Hugging Face offline mode. Downloading and explicit component
+updates contact the model/release/dependency hosts; browsing text is never included. The
+installer uses GitHub release assets, Astral Python/uv distributions and package indexes;
+models use Hugging Face (including its file CDN) and Facebook's fastText file host.
+
+Settings can delete models or request complete uninstall. POSIX completion is reported only
+after removing owned registrations and the component root. On Windows a separate visible
+cleanup worker waits for locked processes to exit; scheduling is not completion and the
+user removes the extension after that window confirms success. Direct browser Remove does
+not notify a native cleanup hook, so it leaves the component and model files. User-created
+ZIPs, the manually unpacked extension folder, browser/OS logs and ordinary OS temporary
+files are not promised erased. See the [English](user-guide.en.md) and
+[中文](user-guide.zh-CN.md) lifecycle guides.
 
 ## Permissions
 
@@ -190,12 +243,18 @@ extension leaves `~/.anagram`; removing that directory removes the daemon entire
 | `activeTab` | the popup and the keyboard commands act on the tab in front of the reader |
 | `contextMenus` | the four right-click entries |
 | `scripting` | registers the content script for the origins the reader has granted, and injects it into one tab for a single action where they have granted nothing |
+| `nativeMessaging` (**required**) | launches the registered local component and carries scoring, model download progress, runtime choice, update and cleanup controls |
 | host access | **none.** The manifest has no `host_permissions` key at all |
 | optional host access | `https://*/*` and `http://*/*` — the sites the reader grants, one at a time or all at once; see the popup's per-site switch |
 | `clipboardWrite` (Firefox only, **optional**) | "Copy page diagnostics". Asked for at the moment it is used, never at install |
 
-That is the whole manifest block — `storage, activeTab, contextMenus, scripting`, no host at
-all, two optional patterns — and `test/node/permissions.test.ts` reads the built manifest and
-pins it. None of those four shows a warning at install, and with no host among them the
-install dialog has nothing to warn about: Anagram arrives able to read no page and to reach
-nothing but the local daemon its policy allows.
+The required block is `storage, activeTab, contextMenus, scripting, nativeMessaging`,
+with no required host and two optional site patterns. `test/node/permissions.test.ts`
+checks both built manifests. Chrome describes the native permission as "Communicate
+with cooperating native applications"; it does not grant website access.
+
+No `management`, `downloads`, `tabs`, `webRequest`, `unlimitedStorage`, startup-service or
+required website permission is added. Self-uninstall uses the browser's permission-free
+`management.uninstallSelf` API after verified cleanup. Store submission still requires
+release artifacts, supported-platform QA and accurate disclosures; permission minimization
+does not guarantee a review outcome.
