@@ -1,14 +1,11 @@
-// lib/backend/getScoreClient.ts — the one ScoreClient: the local anagramd daemon.
+// lib/backend/getScoreClient.ts — selects the local scoring transport.
 //
-// There is no scoring fallback. When the daemon does not answer, batches fail, the
-// router hands back degraded results (rendered "Unavailable", never cached) and tells
-// the content script the backend is down; the content script pauses and re-checks
-// through status() until the daemon is back. Health is probed lazily and cached
-// (60 s when up, 5 s when down) so a daemon that comes online mid-session is picked up
-// within seconds without being hammered.
+// Native Messaging is the default. The explicit developer HTTP option uses DaemonClient
+// below and accepts only loopback URLs. Switching to HTTP closes the native connection.
 //
-// Only LOOPBACK URLs are accepted: page text must never leave this machine. A setting
-// that points elsewhere is treated as "no daemon", with the reason in status().
+// Both clients cache health probes. There is no inference fallback: failed batches become
+// "Unavailable" results, which are never cached. The content script pauses and checks
+// status until the local engine is ready again.
 import { browser } from "#imports";
 import { CONTRACT_VERSION } from "../contract";
 import type { ModelInfo, ScoreBlock, ScoreClient, ScoredBatch } from "../contract";
@@ -44,8 +41,8 @@ interface Probe {
   device?: string;
   dtype?: string;
   error?: string;
-  /** Why the daemon is unusable, so the UI can advise "start it" or "update it" rather
-   *  than guessing from the error string. Absent while it is up. */
+  /** Why the developer HTTP backend is unusable, without guessing from an error string.
+   *  Absent while it is up. */
   reason?: "unreachable" | "contract" | "loopback" | "outdated";
   /** The contract a mismatched daemon reported, for the same message. */
   contract?: string;
@@ -111,9 +108,7 @@ export class DaemonClient implements ScoreClient {
           this.http = new HttpScoreClient(url, h.model);
           log.log("anagramd up:", h.model.id, h.model.ver, "on", h.device);
         }
-        // A daemon behind this extension still scores — the contract is what decides
-        // whether we can talk — but the two are released together, so the pages ask for
-        // the one command that brings it level.
+        // A compatible older backend still scores; Settings also flags the version gap.
         const outdated = daemonIsBehind(h.app_version, extensionVersion());
         this.probe = { ok: true, at: Date.now(), model: h.model, device: h.device, dtype: h.dtype, outdated };
       } else {
@@ -222,13 +217,13 @@ class LocalClient implements ScoreClient {
 
 let _client: LocalClient | null = null;
 
-/** The daemon client (one per service-worker lifetime). */
+/** The local scoring client (one per service-worker lifetime). */
 export function getDaemonClient(): LocalClient {
   if (!_client) _client = new LocalClient();
   return _client;
 }
 
-/** The active ScoreClient — always the daemon. */
+/** The active ScoreClient — native by default, HTTP only when explicitly selected. */
 export function getScoreClient(): ScoreClient {
   return getDaemonClient();
 }

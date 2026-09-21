@@ -80,9 +80,6 @@ curl -fsSL -o ../models/lid.176.ftz \
 npm run serve                      # http://127.0.0.1:8765 — /runtime, /health, /score
 ```
 
-`npm run release` builds what the installer consumes (`dist/anagram.tar.gz` + checksum,
-`dist/install.sh`, the store zip); pushing a `v*` tag publishes them as a GitHub Release.
-
 The source commands above run the **developer HTTP transport**. In Options, expand
 **Developer connection**, select HTTP and use the loopback URL. The normal transport is
 Native Messaging and does not open a listening HTTP port. For isolated installer checks,
@@ -90,8 +87,10 @@ see `test/installer.sh`; the tests do not change your browser's real registratio
 
 `npm run release` produces browser ZIPs, native component archives, version-matched
 installers and checksums under `dist/`. It enables release installation commands in the
-packaged extension but does not publish anything. Publish matching assets before distributing
-that package. `sh anagramd/run.sh --selftest` remains available for developer diagnostics.
+packaged extension but does not publish anything. Pushing a `v*` tag runs CI and publishes
+the matching assets as a GitHub Release after the checks pass. Distribute release-enabled
+packages only after their matching assets are published. `sh anagramd/run.sh --selftest`
+remains available for developer diagnostics.
 
 ## What you get
 
@@ -182,7 +181,7 @@ that package. `sh anagramd/run.sh --selftest` remains available for developer di
   tab under it and **one** button that follows from it: *Rescan page* where
   Anagram is running (with the analyzed/flagged counts above it), **Analyze this
   page** where it is off, *Read this PDF* on a PDF tab, *Read a PDF file…* where
-  nothing can run at all, and *Retry* while the daemon is silent. Under that,
+  nothing can run at all, and *Open setup and Settings* while the local engine is not ready. Under that,
   where Anagram runs (this site, all websites) and what it shows; the three
   controls that are set once and forgotten — mark text, marking style, scope —
   are folded into a closed **More**, and the model that is scoring is the last

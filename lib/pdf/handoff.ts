@@ -1,9 +1,8 @@
 // lib/pdf/handoff.ts — how a PDF's bytes reach the reading mode.
 //
-// The reading mode used to fetch its own `?src=`. That is the one thing this extension
-// must not do: it can reach the local daemon on loopback and nothing else, and a page of
-// ours asking the open web for a document — with the reader's cookies, from the
-// extension's own origin — is exactly the shape of request that promise rules out.
+// Extension pages cannot fetch remote documents under their connect-src policy. The reader
+// therefore receives bytes from the existing tab rather than fetching its own `?src=`.
+// This browser policy does not govern the native component's separate setup downloads.
 //
 // So nothing is fetched from here. The bytes come from THE TAB THE READER IS LOOKING AT.
 // Chrome wraps its PDF viewer in an ordinary document that content scripts do run in, so

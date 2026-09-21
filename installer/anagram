@@ -613,8 +613,6 @@ cmd_uninstall() {
 }
 
 case "${1:-}" in
-  native-update) clean_env "$PY" -I "$ANAGRAM_HOME/app/native_registration.py" update --home "$ANAGRAM_HOME" ;;
-  native-uninstall) clean_env "$PY" -I "$ANAGRAM_HOME/app/native_registration.py" uninstall --home "$ANAGRAM_HOME" ;;
   start)    cmd_start ;;
   stop)     cmd_stop ;;
   restart)  cmd_stop || true; cmd_start ;;

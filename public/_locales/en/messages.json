@@ -581,19 +581,15 @@
   },
   "popupDaemonMismatch": {
     "message": "Local component needs an update",
-    "description": "Popup status: a daemon answered, of the wrong generation. The command under it is the one that fixes it."
+    "description": "Popup status when the local component is incompatible. The action opens setup and Settings."
   },
   "popupDaemonBehind": {
     "message": "A local component update is available in Settings.",
-    "description": "Popup bottom line when the daemon still scores but reports an older version than the extension."
+    "description": "Popup model line when a compatible local component reports an older version than the extension."
   },
   "popupDaemonDown": {
     "message": "Local engine is not ready",
-    "description": "Popup status: nothing answered. The command under it is the one that starts it."
-  },
-  "popupRetry": {
-    "message": "Open setup and Settings",
-    "description": "Popup button while the daemon is not answering: ask it again."
+    "description": "Popup status when the local engine is unavailable or setup has not finished."
   },
   "optionsTitle": {
     "message": "Anagram for Chrome — Options",
@@ -710,10 +706,6 @@
   "optModeFlagged": {
     "message": "Flagged only",
     "description": "Display mode option."
-  },
-  "optDaemonNote": {
-    "message": "Verdicts come from the local $1 daemon (EditLens roberta-large, running on this computer). Start it with $2 (or $3 from a source checkout). When it is not running, paragraphs show as Unavailable and are retried automatically. There is no other backend.",
-    "description": "Options card subtitle. $1-$3 are <code> elements from the page holding commands, never translated."
   },
   "optDaemonUrl": {
     "message": "Local HTTP URL",

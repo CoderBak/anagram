@@ -1,4 +1,4 @@
-// One panel shared by first-run setup and Options. Mounting only GETs; the daemon
+// One panel shared by first-run setup and Options. Mounting only reads status; the backend
 // owns the automatic first-run benchmark, and later runs require a button click.
 import { settings } from "../settings/settings";
 import { t, type MessageKey } from "../i18n";

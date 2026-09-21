@@ -443,9 +443,6 @@
   "popupDaemonDown": {
     "message": "本地引擎尚未就绪"
   },
-  "popupRetry": {
-    "message": "打开设置与管理"
-  },
   "optionsTitle": {
     "message": "Anagram for Chrome — 选项"
   },
@@ -532,9 +529,6 @@
   },
   "optModeFlagged": {
     "message": "仅存疑"
-  },
-  "optDaemonNote": {
-    "message": "结论来自本机的 $1 服务（EditLens roberta-large，运行在这台电脑上）。用 $2 启动它（从源码目录则用 $3）。它没有运行时，段落显示为“暂不可用”，并会自动重试。没有其他后端。"
   },
   "optDaemonUrl": {
     "message": "本地 HTTP 地址"

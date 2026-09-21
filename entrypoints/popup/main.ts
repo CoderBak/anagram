@@ -3,7 +3,7 @@
 // The popup opens over whatever page the reader is looking at, and Anagram installs with
 // access to no site, so most of those pages are ones it is doing nothing on. The top of
 // the popup is therefore the page's state and ONE button that follows it — rescan, analyze
-// this page once, read this PDF, open a PDF from this computer, retry the daemon
+// this page once, read this PDF, open a PDF from this computer, or open local setup
 // (./state.ts decides which). Under it: where Anagram runs (this site, all websites — the
 // rule that decides the active tab may belong to a parent domain, see ./siteSwitch.ts),
 // what it shows, and a folded-away "More" for the three controls that are set once and
@@ -172,7 +172,7 @@ function paint(): void {
   // gap where a sentence used to be.
   statusEl.hidden = lead.status === "none";
 
-  actionEl.textContent = t(lead.action === "retry" ? "componentOpenSetup" : ACTION_LABEL[lead.action]);
+  actionEl.textContent = t(ACTION_LABEL[lead.action]);
   actionEl.disabled = false;
   if (lead.primary) delete actionEl.dataset.variant;
   else actionEl.dataset.variant = "outline";
@@ -197,7 +197,7 @@ function paintModel(s: BackendStatus | undefined): void {
   backendEl.replaceChildren(t("popupModel"), b, t("popupLocal") + (s.server.device ? " · " + s.server.device : ""));
 }
 
-/** Is the local daemon scoring right now? Down → the block above says so, and offers Retry. */
+/** Is the local engine ready? If not, the action opens setup and Settings. */
 async function refreshBackend(probe = false): Promise<void> {
   try {
     const s = (await browser.runtime.sendMessage({

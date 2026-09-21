@@ -17,7 +17,7 @@ export type PopupAction =
   | "readPdf"
   /** nothing here can be read — open the reading mode empty, for a file on this computer */
   | "openReader"
-  /** the daemon is silent — ask it again */
+  /** the local engine is unavailable — open setup and Settings */
   | "retry";
 
 /** Which line goes above the button. */
@@ -30,7 +30,7 @@ export type PopupStatus =
   | "unsupported"
   /** there is no active tab */
   | "noTab"
-  /** the daemon is not answering — the line carries the command that fixes it */
+  /** the local engine is unavailable — show its state and the Settings action */
   | "daemon"
   /** the button says everything there is to say */
   | "none";
@@ -70,7 +70,7 @@ export const ACTION_LABEL: Record<PopupAction, MessageKey> = {
   analyze: "popupAnalyzeOnce",
   readPdf: "popupReadPdf",
   openReader: "popupOpenReader",
-  retry: "popupRetry",
+  retry: "componentOpenSetup",
 };
 
 /**

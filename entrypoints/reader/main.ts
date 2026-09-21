@@ -296,8 +296,7 @@ function fail(failure: HandoffFailure | string): void {
 /**
  * Take the bytes the service worker is holding for this tab. NOTHING is fetched here: the
  * document was re-read by the tab that was showing it and relayed through the worker
- * (lib/pdf/handoff.ts), so the reading mode never makes a request of its own — which is
- * what lets the extension be unable to reach anything but the local daemon.
+ * (lib/pdf/handoff.ts), so the reading mode needs no remote-document fetch of its own.
  */
 async function openFromTicket(ticket: string, src: string): Promise<void> {
   const load = beginLoad();

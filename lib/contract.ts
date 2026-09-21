@@ -1,8 +1,7 @@
 // lib/contract.ts
-// The versioned surface↔backend contract: the shapes the extension and the local
-// anagramd daemon (anagramd/serve.py) exchange, and the seam everything above the
-// socket codes against. Scoring only ever happens in that daemon; the test suites
-// stand in for it with test/fake-daemon.mjs, which speaks the same contract.
+// The versioned surface↔backend contract shared by Native Messaging and developer HTTP.
+// Model inference runs in the local component; transport adapters and test fixtures
+// exchange the same scoring payloads.
 //
 // v2.0 (EditLens): the detector is a 4-way classifier over the EXTENT of AI editing
 // (Thai et al., ICLR 2026 — pangram/editlens_roberta-large). A result carries the
@@ -99,11 +98,9 @@ export interface ScoredBatch {
 }
 
 /**
- * The backend seam. One implementation: HttpScoreClient, one POST per batch to the
- * local anagramd daemon (lib/backend/httpClient.ts), wrapped by the DaemonClient that
- * probes its health and owns its status — see lib/backend/getScoreClient.ts. There is
- * no in-extension scoring fallback: when the daemon is down, batches fail and the
- * router hands back degraded results.
+ * The backend seam. NativeScoreClient is the default; developer HTTP uses HttpScoreClient
+ * through DaemonClient. getScoreClient.ts selects the transport. Neither has an
+ * in-extension inference fallback: failed batches become degraded results.
  */
 export interface ScoreClient {
   /** Score a batch of blocks. Returns one ScoreResult per input block (by id). */

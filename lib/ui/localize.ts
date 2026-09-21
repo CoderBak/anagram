@@ -15,7 +15,7 @@
 // keeps the markup in the page and names a key whose message has $1…$9 where those
 // elements go:
 //
-//   <p data-i18n-html="optPrivacy">Nothing leaves … the local <code>anagramd</code> daemon…</p>
+//   <p data-i18n-html="optPrivacy">Scoring runs in the <strong>Local engine</strong> …</p>
 //
 // The parts are the container's OWN element children, in order: the substitution can only
 // ever put back an element the page already had, so no message is ever parsed as markup

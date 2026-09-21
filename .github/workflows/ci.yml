@@ -144,10 +144,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # Which Firefox. The extension's manifest says 128+, but the suite needs more than
-      # that: BiDi only learned webExtension.install in 135, and everything the extension
-      # renders needs 140 (a content script cannot adopt a constructed stylesheet into a
-      # shadow root before Gecko 140). So: use the runner image's own Firefox when it is
+      # Match the extension's Firefox 140+ minimum: content scripts need Gecko 140 to
+      # adopt constructed stylesheets into shadow roots. This also includes BiDi's
+      # webExtension.install support (added in 135). Use the runner's Firefox when it is
       # 140 or newer, otherwise fetch a Mozilla build into ~/.cache/puppeteer, which is
       # where test/firefox-harness.mjs looks next. Both versions are printed either way.
       - name: resolve Firefox (>= 140, printed)

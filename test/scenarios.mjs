@@ -2475,7 +2475,7 @@ ${KEY_TAGS.map((t, i) => `<p id="z${i + 1}">${KEY_PARA(t)}</p>`).join("\n")}
         httpNote: document.querySelector('[data-i18n="componentHttpNote"]')?.textContent ?? "",
         httpVisible: document.getElementById("developerHttp")?.hidden === false && document.getElementById("developerBackend")?.open === true,
         runtimeTitle: document.querySelector("#runtimeSettings h3")?.textContent ?? "",
-        obsoleteCommands: document.querySelectorAll('[data-i18n-html="optDaemonNote"] code').length,
+        fabricatedCommand: /~\/.anagram\/bin\/anagram|curl -fsSL/.test(document.body.innerText),
       }));
       await opts.close();
 
@@ -2547,7 +2547,7 @@ ${KEY_TAGS.map((t, i) => `<p id="z${i + 1}">${KEY_PARA(t)}</p>`).join("\n")}
           optionsText.developer === "开发者连接" &&
           optionsText.transport === "http" && optionsText.selectedTransport === "手动本地 HTTP（开发用）" &&
           optionsText.httpNote === "仅供源码开发使用。浏览器不会启动或管理此服务器。" && optionsText.httpVisible &&
-          optionsText.runtimeTitle === "选择 Anagram 的运行方式" && optionsText.obsoleteCommands === 0 &&
+          optionsText.runtimeTitle === "选择 Anagram 的运行方式" && !optionsText.fabricatedCommand &&
           chip.lang === "zh-CN" &&
           ["人工撰写", "轻度 AI 编辑", "重度 AI 编辑", "AI 生成"].includes(chip.verdict) &&
           chip.words === "词数" &&

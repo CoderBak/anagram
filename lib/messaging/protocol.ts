@@ -107,7 +107,7 @@ export interface BackendStatus {
      * something answered but speaks another contract major ("contract"), something is
      * listening but is too old to let this extension read a word of it ("outdated"), or
      * the configured URL is not a loopback address ("loopback"). Absent when it is up.
-     * The pages advise "start it" or "update it" from this, never from `error`.
+     * The UI uses this reason for setup/update guidance, never the raw `error` string.
      */
     reason?: "unreachable" | "contract" | "loopback" | "outdated";
     /** The contract string a mismatched daemon reported, when `reason` is "contract". */
@@ -115,8 +115,8 @@ export interface BackendStatus {
     /**
      * The daemon should be updated: it is either too old to answer at all (`reason` is
      * "outdated") or it answered and named a release behind this extension's, in which
-     * case scoring goes on working and this is the only sign. The daemon and the
-     * extension are released together, so the pages ask for `anagram update` on both.
+     * case scoring goes on working. Settings offers native component updates; manual
+     * HTTP development keeps its separate version guidance.
      */
     outdated?: boolean;
   };

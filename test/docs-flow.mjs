@@ -7,6 +7,7 @@
 // "Open as page" navigates to /mobilebasic, badges render there, "Back to
 // editor" returns to the same editor URL.
 //   node test/docs-flow.mjs [docUrlBase]      (or ANAGRAM_DOC_URL=…)
+// Requires `npm run serve` on http://127.0.0.1:8765 (developer HTTP transport).
 //
 // Needs a PUBLIC Google Doc ("anyone with the link can view"). The original demo
 // document was deleted from Drive in Sept 2026 (its /mobilebasic now answers 410),
@@ -44,7 +45,7 @@ const check = (name, ok, note = "") => {
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}${note ? `  —  ${note}` : ""}`);
 };
 
-const { context } = await launchExtension({ viewport: { width: 1280, height: 850 } });
+const { context } = await launchExtension({ backendUrl: "http://127.0.0.1:8765", viewport: { width: 1280, height: 850 } });
 const page = await context.newPage();
 const errors = [];
 page.on("console", (m) => {

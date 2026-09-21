@@ -94,8 +94,8 @@
       footer.foot { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 13px; line-height: 1.6; color: var(--muted-foreground); }
       code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; background: var(--muted); padding: 1px 5px; border-radius: 5px; }
 
-      /* Setup strip: three live rows, each a dot plus a few words. The dot never carries
-         the meaning on its own — the words beside it say the same thing. */
+      /* Setup summary: a dot and text for extension, component, access and readiness.
+         The words beside each dot also convey its meaning. */
       .setup { display: flex; flex-direction: column; gap: 9px; }
       .srow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 12px; }
       .sname { display: flex; align-items: baseline; gap: 9px; flex: 0 0 auto; min-width: 126px; }
@@ -112,11 +112,7 @@
       .sdetail { color: var(--muted-foreground); font-size: 13.5px; overflow-wrap: anywhere; }
       .sready { color: var(--muted-foreground); }
       .srow[data-state="ok"] .sready { color: var(--foreground); }
-      .cmd { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; }
-      .cmd code { overflow-wrap: anywhere; }
-      .cmd .btn { min-width: 74px; }
       a.btn { text-decoration: none; }
-      .install { margin: 9px 2px 0; font-size: 13px; line-height: 1.9; color: var(--muted-foreground); }
       /* Too narrow for a second column: stack each row and indent the words under the
          label, so the list still reads as a list (a 360 px window is the floor). */
       @media (max-width: 480px) {

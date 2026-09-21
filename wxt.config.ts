@@ -167,6 +167,15 @@ const CSP = [
 export default defineConfig({
   // Build into ./output (not WXT's default ./.output) so it's visible in Finder.
   outDir: TEST_GRANT_ALL ? "output-test" : "output",
+  zip: {
+    // Keep generated output out of Firefox's review source archive. WXT excludes
+    // output/ and node_modules itself, but does not apply our .gitignore.
+    excludeSources: [
+      "dist/**", "output-test/**", "test-results/**",
+      "**/__pycache__/**", "**/*.pyc", "**/*.log",
+      "test/*.png", "test/matrix.json", "test/survey.json", "test/a11y.json",
+    ],
+  },
   vite: () => ({ plugins: [englishFallback()] }),
   hooks: {
     // The content script is registered at runtime (entrypoints/content.ts), and WXT adds

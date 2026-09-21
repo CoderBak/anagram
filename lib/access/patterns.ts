@@ -1,12 +1,10 @@
 // lib/access/patterns.ts — the match patterns Anagram asks for, and what they cover.
 //
-// Anagram asks for NO host at all. Not a site, and — since the daemon answers CORS for
-// extension origins (anagramd/serve.py) — not the loopback daemon either, which used to be
-// the one required host permission and the one line that made the install dialog warn about
-// this extension. Every page the extension reads is granted by the user afterwards, all
-// sites at once or one at a time. Everything here is pure string work so that the rules —
-// which origin a tab belongs to, which of them a content script may be registered on —
-// are provable without a browser (test/node/accessPatterns.test.ts).
+// Website access is optional. Native Messaging needs no host pattern, and developer HTTP
+// reads loopback replies through CORS. Persistent website grants come from the user, all
+// sites at once or one at a time; activeTab also permits one-off analysis. The required
+// nativeMessaging permission is separate from these patterns. The origin and registration
+// rules are pure string work, tested without a browser in test/node/accessPatterns.test.ts.
 //
 // Match patterns carry no port: `http://localhost/*` is every port on that host, which is
 // what a dev server on `localhost:3000` gets from an all-sites grant.
@@ -53,11 +51,7 @@ export function isAllSitesPattern(pattern: string): boolean {
 
 /**
  * The origins a content script may be registered on: everything the user has granted,
- * each of them once. Until 2026-09-20 this also had to subtract the daemon's two loopback
- * patterns, which were REQUIRED host permissions and therefore in every answer the browser
- * gave — leaving them in would have put a content script on every page a local dev server
- * serves, which nobody granted. The extension requires no host now, so what comes back is
- * what the user chose and nothing else.
+ * each of them once. No required host patterns need to be subtracted from this list.
  */
 export function browsingOrigins(origins: readonly string[] | undefined): string[] {
   return [...new Set(origins ?? [])];

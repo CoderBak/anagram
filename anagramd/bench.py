@@ -16,8 +16,8 @@ Checkpoints
                     MPS kernels, so here the base is fp16 — the adapter weights are identical.
 
 A DEVELOPER TOOL, and only that: it is not in the release tarball (scripts/release.mjs),
-because the installed venv has none of the three packages it needs — `peft`, `accelerate`
-and `psutil` are the `bench` extra and `uv sync --no-dev` does not install extras — and
+because the installed venv omits its `peft` and `accelerate` packages: they are the
+`bench` extra and `uv sync --no-dev` does not install extras. `psutil` is a base dependency.
 MODELS_DIR below resolves to the models directory beside the repository, which does not
 exist in an installation either. Run it from a checkout, against `../../models/`.
 

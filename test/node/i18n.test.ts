@@ -32,8 +32,9 @@ const ZH = load("zh_CN");
 const placeholders = (message: string): string[] =>
   [...new Set(message.match(/\$[1-9]/g) ?? [])].sort();
 
-/** Everything that could possibly name a message key, in one string. */
-function sources(): string {
+/** Product references determine whether a message is used. Tests are optional so their
+ * assertions cannot keep obsolete UI strings alive. */
+function sources(includeTests: boolean): string {
   const out: string[] = [];
   const skip = new Set(["node_modules", "output", ".wxt", ".git", "_locales"]);
   const walk = (dir: string): void => {
@@ -44,11 +45,12 @@ function sources(): string {
       else if (/\.(ts|mjs|html)$/.test(name)) out.push(readFileSync(path, "utf8"));
     }
   };
-  for (const dir of ["lib", "entrypoints", "test"]) walk(join(ROOT, dir));
+  for (const dir of includeTests ? ["lib", "entrypoints", "test"] : ["lib", "entrypoints"]) walk(join(ROOT, dir));
   out.push(readFileSync(join(ROOT, "wxt.config.ts"), "utf8"));
   return out.join("\n");
 }
-const SOURCE = sources();
+const PRODUCT_SOURCE = sources(false);
+const SOURCE = sources(true);
 
 /** `foo` for `foo_one`/`foo_other`, which is the name tn() is called with. */
 const base = (key: string): string => key.replace(/_(one|other)$/, "");
@@ -93,9 +95,9 @@ describe("keys and the code that names them", () => {
   it("has no message nothing uses", () => {
     const unused = Object.keys(EN).filter(
       (key) =>
-        !SOURCE.includes(`"${key}"`) &&
-        !SOURCE.includes(`"${base(key)}"`) &&
-        !SOURCE.includes(`__MSG_${key}__`),
+        !PRODUCT_SOURCE.includes(`"${key}"`) &&
+        !PRODUCT_SOURCE.includes(`"${base(key)}"`) &&
+        !PRODUCT_SOURCE.includes(`__MSG_${key}__`),
     );
     expect(unused).toEqual([]);
   });

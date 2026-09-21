@@ -4,7 +4,8 @@
 // "analyzing…" chips, extension console errors. Screenshots land in test/survey-<name>.png,
 // the raw rows in test/survey.json. Not a pass/fail suite — a magnifying glass: every zero,
 // split or unscored row is worth a look (many are legitimate: teaser-only front pages,
-// captcha walls, pages of short paragraphs). Requires `npm run serve` running.
+// captcha walls, pages of short paragraphs). Requires `npm run serve` running on
+// http://127.0.0.1:8765; this tool explicitly uses developer HTTP transport.
 //
 //   node test/survey.mjs                       # the default site list below
 //   SITES='[["name","https://…"],…]' node test/survey.mjs
@@ -37,7 +38,7 @@ const SITES = process.env.SITES ? JSON.parse(process.env.SITES) : [
   ["code-gitlab", "https://gitlab.com/gitlab-org/gitlab"],
   ["textplain-rfc", "https://www.rfc-editor.org/rfc/rfc2616.txt"],
 ];
-const { context } = await launchExtension({ viewport: { width: 1280, height: 850 } });
+const { context } = await launchExtension({ backendUrl: "http://127.0.0.1:8765", viewport: { width: 1280, height: 850 } });
 const rows = [];
 for (const [name, url] of SITES) {
   const page = await context.newPage();
