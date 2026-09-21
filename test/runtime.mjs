@@ -68,6 +68,7 @@ try {
   assert.equal(await panel.getByRole("radio", { name: /Apple GPU/ }).isChecked(), true);
   await panel.getByRole("button", { name: "Run benchmark again", exact: true }).click();
   await panel.getByRole("button", { name: "Cancel benchmark", exact: true }).click();
+  await panel.getByRole("button", { name: "Cancel benchmark", exact: true }).waitFor({ state: "hidden" });
   await panel.getByRole("button", { name: "Run benchmark again", exact: true }).waitFor();
   state = fixture.state().component.runtime;
   assert.equal(state.active_id, candidates[1].id);
