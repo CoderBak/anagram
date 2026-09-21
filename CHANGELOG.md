@@ -5,6 +5,14 @@ Notable changes to Anagram, newest first. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html). The extension, the
 local component and the installer all carry the same version.
 
+## [0.4.1] — 2026-09-21
+
+### Fixed
+
+- The macOS/Linux installer now shows six numbered stages, download transfer
+  statistics, and uv's Python and dependency installation progress. English and
+  Simplified Chinese prompts explain that model downloads continue in the extension.
+
 ## [0.4.0] — 2026-09-21
 
 ### Added

@@ -9,7 +9,7 @@ and Simplified Chinese interfaces. Predictions are estimates, not proof of autho
 
 ## Installation
 
-[Download version 0.4.0](https://github.com/CoderBak/anagram/releases/tag/v0.4.0) ·
+[Download version 0.4.1](https://github.com/CoderBak/anagram/releases/tag/v0.4.1) ·
 Use the Chrome or Firefox browser ZIP; the setup page installs the matching native component.
 
 1. Install the extension from its published browser listing, or extract a Chrome release

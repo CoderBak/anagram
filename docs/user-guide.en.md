@@ -6,7 +6,7 @@ Anagram's interface follows the browser language (English or Simplified Chinese)
 The local component runs EditLens on your computer. Install it once from the first-run
 page; routine use and management then happen in the extension.
 
-Download the browser package from the [0.4.0 release](https://github.com/CoderBak/anagram/releases/tag/v0.4.0).
+Download the browser package from the [0.4.1 release](https://github.com/CoderBak/anagram/releases/tag/v0.4.1).
 Release packages use the matching published installer and native component. An ordinary
 source build displays an unpublished-build notice instead of a usable copy button.
 

@@ -1,6 +1,6 @@
 # Manual checks — native setup, lifecycle and website access
 
-Use this checklist to validate the matching [0.4.0 browser/native release](https://github.com/CoderBak/anagram/releases/tag/v0.4.0).
+Use this checklist to validate the matching [0.4.1 browser/native release](https://github.com/CoderBak/anagram/releases/tag/v0.4.1).
 **The browser store listing has not been submitted.** Automated CI does not replace manual
 Windows installation, update and removal checks. A passing macOS browser fixture does not
 validate the Windows installer or worker.

@@ -4,7 +4,7 @@
 # Model download and engine lifecycle are browser-managed.
 set -eu
 
-INSTALLER_VERSION="0.4.0"
+INSTALLER_VERSION="0.4.1"
 UV_VERSION="0.11.18"
 PYTHON_VERSION="${ANAGRAM_PYTHON:-3.12.13}"
 RELEASE_URL="${ANAGRAM_RELEASE_URL:-https://github.com/CoderBak/anagram/releases/latest/download}"
@@ -14,6 +14,7 @@ EXTENSION_ID="${ANAGRAM_EXTENSION_ID:-}"
 INSTALL_LANG="${ANAGRAM_LANG:-en}"
 
 say()  { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
+step() { say "[$1/6] $2"; }
 note() { printf '    %s\n' "$*"; }
 die()  { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 tr_msg() { if [ "$INSTALL_LANG" = zh_CN ]; then printf '%s' "$2"; else printf '%s' "$1"; fi; }
@@ -109,6 +110,7 @@ install_ours() { # src dest [mode]
 # Proxies and CA settings pass through so corporate networks keep working.
 clean_env() {
   env -i HOME="$HOME" PATH="/usr/bin:/bin:/usr/sbin:/sbin" TMPDIR="$TMP" LANG="${LANG:-C.UTF-8}" \
+    ${TERM:+TERM="$TERM"} ${COLUMNS:+COLUMNS="$COLUMNS"} \
     ${http_proxy:+http_proxy="$http_proxy"} ${https_proxy:+https_proxy="$https_proxy"} ${no_proxy:+no_proxy="$no_proxy"} \
     ${HTTP_PROXY:+HTTP_PROXY="$HTTP_PROXY"} ${HTTPS_PROXY:+HTTPS_PROXY="$HTTPS_PROXY"} ${NO_PROXY:+NO_PROXY="$NO_PROXY"} \
     ${SSL_CERT_FILE:+SSL_CERT_FILE="$SSL_CERT_FILE"} ${SSL_CERT_DIR:+SSL_CERT_DIR="$SSL_CERT_DIR"} \
@@ -119,7 +121,7 @@ run_uv() {
   clean_env UV_CACHE_DIR="$ANAGRAM_HOME/cache" UV_PYTHON_INSTALL_DIR="$ANAGRAM_HOME/python" \
     UV_PYTHON_BIN_DIR="$ANAGRAM_HOME/python/bin" UV_TOOL_DIR="$ANAGRAM_HOME/tools" UV_TOOL_BIN_DIR="$ANAGRAM_HOME/tools/bin" \
     UV_PROJECT_ENVIRONMENT="$ANAGRAM_HOME/venv.next" UV_PYTHON_PREFERENCE=only-managed UV_NO_CONFIG=1 UV_NO_MODIFY_PATH=1 \
-    UV_NO_PROGRESS=1 XDG_DATA_HOME="$ANAGRAM_HOME/cache/xdg" XDG_CACHE_HOME="$ANAGRAM_HOME/cache/xdg" XDG_CONFIG_HOME="$ANAGRAM_HOME/cache/xdg" \
+    XDG_DATA_HOME="$ANAGRAM_HOME/cache/xdg" XDG_CACHE_HOME="$ANAGRAM_HOME/cache/xdg" XDG_CONFIG_HOME="$ANAGRAM_HOME/cache/xdg" \
     "$ANAGRAM_HOME/bin/uv" "$@"
 }
 
@@ -146,8 +148,8 @@ case "$OS/$ARCH" in
 esac
 
 # ---------------------------------------------------------------- 1. release tarball
-say "$(tr_msg 'Downloading the Anagram release' '正在下载 Anagram 安装包')"
-curl -fsSL --retry 3 -o "$TMP/anagram.tar.gz" "$RELEASE_URL/anagram.tar.gz"
+step 1 "$(tr_msg 'Downloading the Anagram release' '正在下载 Anagram 安装包')"
+curl -fL --retry 3 -o "$TMP/anagram.tar.gz" "$RELEASE_URL/anagram.tar.gz"
 curl -fsSL --retry 3 -o "$TMP/anagram.tar.gz.sha256" "$RELEASE_URL/anagram.tar.gz.sha256"
 expected="$(cut -c1-64 "$TMP/anagram.tar.gz.sha256")"
 actual="$(sha256_of "$TMP/anagram.tar.gz")"
@@ -191,19 +193,24 @@ install_ours "$TMP/VERSION" "$ANAGRAM_HOME/VERSION"
 VERSION_WRITTEN=1
 
 # ---------------------------------------------------------------- 2. uv (pinned release binary, checksum-verified)
+step 2 "$(tr_msg 'Preparing the package manager' '正在准备依赖管理器')"
 if [ ! -x "$ANAGRAM_HOME/bin/uv" ] || [ "$(clean_env "$ANAGRAM_HOME/bin/uv" --version 2>/dev/null | cut -d' ' -f2)" != "$UV_VERSION" ]; then
-  say "Fetching uv $UV_VERSION into $ANAGRAM_HOME/bin (a static binary; no PATH or profile changes)"
-  curl -fsSL --retry 3 -o "$TMP/uv.tar.gz" "https://github.com/astral-sh/uv/releases/download/$UV_VERSION/uv-$UV_TARGET.tar.gz"
+  note "$(tr_msg 'Downloading uv' '正在下载 uv') $UV_VERSION"
+  curl -fL --retry 3 -o "$TMP/uv.tar.gz" "https://github.com/astral-sh/uv/releases/download/$UV_VERSION/uv-$UV_TARGET.tar.gz"
   [ "$(sha256_of "$TMP/uv.tar.gz")" = "$UV_SHA" ] || die "checksum mismatch for uv-$UV_TARGET.tar.gz"
   tar -xzf "$TMP/uv.tar.gz" -C "$TMP" "uv-$UV_TARGET/uv"
   install_ours "$TMP/uv-$UV_TARGET/uv" "$ANAGRAM_HOME/bin/uv" 755
+else
+  note "$(tr_msg 'Using installed uv' '使用已安装的 uv') $UV_VERSION"
 fi
 
 # ---------------------------------------------------------------- 3. private Python + locked packages
-say "$(tr_msg 'Installing private Python' '正在安装独立 Python') $PYTHON_VERSION"
-run_uv python install "$PYTHON_VERSION" --quiet
-say "$(tr_msg 'Installing locked runtime packages' '正在安装版本锁定的运行依赖')"
-( cd "$ANAGRAM_HOME/app" && run_uv sync --frozen --no-dev --python "$PYTHON_VERSION" --quiet )
+step 3 "$(tr_msg 'Installing private Python' '正在安装独立 Python') $PYTHON_VERSION"
+run_uv python install "$PYTHON_VERSION"
+step 4 "$(tr_msg 'Installing locked runtime packages' '正在安装版本锁定的运行依赖')"
+note "$(tr_msg 'Downloading and installing PyTorch, ONNX Runtime and other dependencies; progress appears below.' '正在下载并安装 PyTorch、ONNX Runtime 等依赖；具体进度显示在下方。')"
+note "$(tr_msg 'Model weights will be downloaded later in the extension.' '模型权重稍后在扩展中下载。')"
+( cd "$ANAGRAM_HOME/app" && run_uv sync --frozen --no-dev --python "$PYTHON_VERSION" )
 [ -x "$ANAGRAM_HOME/venv.next/bin/python" ] || die "staged virtual environment was not created"
 # Python discovers its venv relative to the executable. The component invokes this
 # interpreter directly, never the generated console scripts with staging shebangs.
@@ -213,11 +220,12 @@ mv "$ANAGRAM_HOME/venv.next" "$ANAGRAM_HOME/venv"
 PY="$ANAGRAM_HOME/venv/bin/python"
 [ -x "$PY" ] || die "virtual environment was not created"
 # The download cache only serves re-syncs; an update re-fetches anyway. Keep the footprint small.
+step 5 "$(tr_msg 'Cleaning temporary package downloads' '正在清理依赖下载缓存')"
 run_uv cache clean --quiet 2>/dev/null || remove_ours "$ANAGRAM_HOME/cache"
 mkdir -p "$ANAGRAM_HOME/cache"
 
 # ---------------------------------------------------------------- 4. exact user-level native host registration
-say "$(tr_msg 'Registering the local component for this extension only' '正在为当前扩展注册本地组件')"
+step 6 "$(tr_msg 'Registering the local component for this extension only' '正在为当前扩展注册本地组件')"
 clean_env PYTHONNOUSERSITE=1 PYTHONSAFEPATH=1 "$PY" "$ANAGRAM_HOME/app/native_registration.py" register \
   --home "$ANAGRAM_HOME" --browser "$BROWSER" --extension-id "$EXTENSION_ID" --language "$INSTALL_LANG"
 INSTALL_COMPLETE=1

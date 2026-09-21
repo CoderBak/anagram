@@ -5,7 +5,7 @@
 界面随浏览器语言显示英文或简体中文。Anagram 使用电脑上的本地组件运行 EditLens。
 首次安装时按引导运行一次命令，之后日常使用、设备选择和组件管理都在插件内完成。
 
-从 [0.4.0 发行页](https://github.com/CoderBak/anagram/releases/tag/v0.4.0) 下载浏览器插件包。
+从 [0.4.1 发行页](https://github.com/CoderBak/anagram/releases/tag/v0.4.1) 下载浏览器插件包。
 发行包中的安装命令使用配套的安装脚本和本地组件；普通源码构建仍会显示“尚未发布”提示，
 不提供可误导用户的复制按钮。
 
