@@ -29,11 +29,12 @@ import { launch } from "puppeteer-core";
 import { getInstalledBrowsers } from "@puppeteer/browsers";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { homedir, platform, tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { createNativeFixture, HOST_NAME } from "./fake-native.mjs";
-import { registerTestHost, attachTestPort, copyForTestPort } from "./native-test-host.mjs";
+import { registerTestHost, attachTestPort, copyForTestPort, cleanupAfterBrowserClose } from "./native-test-host.mjs";
 import { ensureTestBuild, TEST_OUT } from "./test-build.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -221,7 +222,11 @@ export async function launchFirefox({ nativeFixture, extraPrefs = {}, args = [],
     const carrier = await openExtensionPage(browser, extUrl("options.html"));
     detach = await attachTestPort(carrier, fixture);
   }
-  browser.once("disconnected", () => { detach?.(); rmSync(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); if (!nativeFixture) fixture.dispose(); });
+  cleanupAfterBrowserClose(browser, "disconnected", async () => {
+    detach?.();
+    await rm(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    if (!nativeFixture) fixture.dispose();
+  });
   // Only the test build registers anything: the shipping one has been granted no site, so
   // there is no content script to wait for and waiting would only print a false alarm.
   if (!extDir) await waitForRegistration(browser, extUrl);

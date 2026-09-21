@@ -15,11 +15,12 @@
 import { chromium } from "playwright";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import http from "node:http";
 import { createNativeFixture, HOST_NAME } from "./fake-native.mjs";
-import { registerTestHost, attachTestPort, copyForTestPort, blockNativeHostInProfile } from "./native-test-host.mjs";
+import { registerTestHost, attachTestPort, copyForTestPort, blockNativeHostInProfile, cleanupAfterBrowserClose } from "./native-test-host.mjs";
 import { ensureTestBuild, TEST_OUT } from "./test-build.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -116,7 +117,11 @@ export async function launchExtension({
       await probe.close();
     }
   }
-  context.on("close", () => { detach?.(); rmSync(profile, {recursive:true,force:true,maxRetries:10,retryDelay:100}); if (!nativeFixture) fixture.dispose(); });
+  cleanupAfterBrowserClose(context, "close", async () => {
+    detach?.();
+    await rm(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    if (!nativeFixture) fixture.dispose();
+  });
   return { context, sw, extId, fixture };
 }
 

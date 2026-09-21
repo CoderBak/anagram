@@ -37,6 +37,32 @@ export function blockNativeHostInProfile(profile) {
     allowed_origins: ["chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/"] }));
 }
 
+/** Close/disconnected events fire before the browser's close protocol finishes.
+ * Cleanup must yield to that protocol and be awaited by explicit close callers. */
+export function cleanupAfterBrowserClose(browser, event, cleanup) {
+  const close = browser.close.bind(browser);
+  let closing = false, closePromise, cleanupPromise;
+  const clean = () => cleanupPromise ??= Promise.resolve().then(cleanup);
+  browser.close = (...args) => {
+    if (closePromise) return closePromise;
+    closing = true;
+    closePromise = (async () => {
+      await close(...args);
+      await clean();
+    })();
+    return closePromise;
+  };
+  browser.once(event, () => {
+    if (closing) return;
+    // Unexpected browser exit has no close caller to receive a rejection. Keep the
+    // event callback non-blocking, report the failure and make the suite fail.
+    void clean().catch((error) => {
+      console.error("Browser test cleanup failed:", error);
+      process.exitCode = 1;
+    });
+  });
+}
+
 /** Test-runner-only native API adapter; evaluation target is the isolated background. */
 export async function attachTestPort(target, fixture) {
   await target.evaluate(async () => {
