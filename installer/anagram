@@ -73,6 +73,10 @@ PYEOF
 }
 
 case "${1:-}" in
+  download)
+    [ -x "$PY" ] || die "Private Python is missing; reinstall the component"
+    clean_env "$PY" -I "$ANAGRAM_HOME/app/prepare_models.py" --home "$ANAGRAM_HOME" --language "${ANAGRAM_LANG:-en}"
+    ;;
   doctor)
     [ -x "$PY" ] || die "Private Python is missing; reinstall the component"
     [ -f "$ANAGRAM_HOME/app/native_host.py" ] && [ -f "$ANAGRAM_HOME/app/engine.py" ] || die "Native engine files are missing; reinstall the component"
@@ -110,11 +114,11 @@ PYEOF
     ;;
   *)
     cat <<USAGE
-Usage: anagram doctor | version | path | update | uninstall [-y]
+Usage: anagram download | doctor | version | path | update | uninstall [-y]
 
 The browser starts the local component. Use Anagram Settings to pause downloads,
 stop/resume the engine, change its configuration, or remove models.
-Close the browser's component connection before terminal update or uninstall.
+Close the browser's component connection before terminal download, update or uninstall.
 USAGE
     [ -z "${1:-}" ] || exit 2
     ;;

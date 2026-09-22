@@ -1,5 +1,32 @@
 # Audit follow-up, September 21, 2026
 
+## Unreleased: terminal-first model preparation, September 22
+
+The installers now prepare device-selected model files after committing the private
+runtime and exact browser registration. A failed model transfer leaves that runtime
+installed and prints a download-only retry command. `bin/anagram download` shares
+the browser's pinned staging/verification path, and takes the host lock when run alone.
+Explicit pauses and removed-model preferences survive component updates.
+
+Transfers use the locked Hugging Face library's HTTP retry/range implementation in a
+separate process, with 60-second read timeout, durable guarded partial files, HTTPS-only
+redirects, anonymous requests and final SHA-256 verification. The high-level Hub 1.31
+downloader discards failed temporary files; the wrapper deliberately retains Anagram's
+partial-file ownership instead. This path does not use Xet or a duplicate model cache.
+Worker cancellation and loss of its parent pipe stop transfer without changing the
+inference process's offline settings. Browser errors open their details automatically;
+the most recent failure reason survives reconnection.
+
+Local checks: 44 installer checks, 25 modelkit tests, 9 actual HF transport tests with
+mock HTTP responses, 4 terminal preparation tests, the backend suite, 38 targeted Node
+tests, TypeScript and Chrome build passed. The isolated English/Chinese browser checks
+include visible failure details and retry notices. Live HTTPS checks downloaded and
+hashed two tiny HF files plus the language model; a weight transfer was interrupted at
+1 MiB and resumed to 2 MiB. An isolated terminal run reused verified full model files,
+detected CPU/MPS, saved preparation state and repeated without network or inference.
+No user's installed files were replaced and no GitHub workflow was started. Windows
+installer integration was updated in source but has not been executed on Windows.
+
 Implementation follows the review of `56abeee`. Independent detector-quality research
 is deferred by the project owner. Numerical conversion parity and pipeline correctness
 remain release engineering checks, without stronger accuracy claims.

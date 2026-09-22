@@ -25,6 +25,7 @@ import native_host as host
 from native_component import ComponentError, HOST_NAME, HomeLock, NativeComponent, STATE_DEFAULT
 from download_modelkit import DownloadPaused, download_asset, install_streaming, invalid_files
 from runtime_controller import Candidate, RuntimeController
+from transfer_fixture import transfer_with
 
 
 def frame(value):
@@ -474,6 +475,7 @@ class LifecycleTests(unittest.TestCase):
         self.finish(restarted)
         self.assertEqual(self.downloads, 0)
         self.assertEqual(restarted.status()["state"], "needs_models")
+        self.assertEqual(restarted.status()["error"]["message"], "network unavailable")
         restarted.handle("models.download", {})
         self.finish(restarted)
         self.assertEqual(self.downloads, 1)
@@ -761,7 +763,7 @@ class LifecycleTests(unittest.TestCase):
             result = io.BytesIO(data)
             result.status, result.headers = 200, {}
             return result
-        with patch("native_component.LID_ENTRY", lid), patch("download_modelkit._https_open", open_fixture):
+        with patch("native_component.LID_ENTRY", lid), patch("download_modelkit.transfer_asset", lambda *a, **kw: transfer_with(open_fixture)(*a, **{k:v for k,v in kw.items() if k != "notice"})):
             component = self.make(downloader=None, verifier=None, planner=planner)
             self.first_run(component)
             self.assertEqual(set(requests), {"model.safetensors", "config.json", "LICENSE", "lid.176.ftz"})
@@ -915,7 +917,7 @@ class DownloadTests(unittest.TestCase):
         self.calls = []
 
     def opener(self, request, timeout):
-        self.assertEqual(timeout, 10)
+        self.assertEqual(timeout, 60)
         self.assertFalse(request.has_header("Authorization"))
         start = int(request.get_header("Range", "bytes=0-")[6:-1])
         self.calls.append(start)
@@ -932,13 +934,13 @@ class DownloadTests(unittest.TestCase):
                 cancel.set()
         with self.assertRaises(DownloadPaused):
             download_asset("https://example.test/pinned", target, self.entry, cancel=cancel,
-                           progress=progress, opener=self.opener)
+                           progress=progress, transfer=transfer_with(self.opener))
         self.assertFalse(target.exists())
         part = self.root / "weights.part"
         self.assertGreater(part.stat().st_size, 0)
         offset = part.stat().st_size
         cancel.clear()
-        download_asset("https://example.test/pinned", target, self.entry, cancel=cancel, opener=self.opener)
+        download_asset("https://example.test/pinned", target, self.entry, cancel=cancel, transfer=transfer_with(self.opener))
         self.assertEqual(self.calls, [0, offset])
         self.assertEqual(target.read_bytes(), self.content)
         self.assertFalse(part.exists())
@@ -948,7 +950,7 @@ class DownloadTests(unittest.TestCase):
         target.write_bytes(b"old")
         bad = {**self.entry, "sha256": "0" * 64}
         with self.assertRaisesRegex(ValueError, "Checksum"):
-            download_asset("https://example.test/pinned", target, bad, opener=self.opener)
+            download_asset("https://example.test/pinned", target, bad, transfer=transfer_with(self.opener))
         self.assertEqual(target.read_bytes(), b"old")
         self.assertFalse((self.root / "weights.part").exists())
 
@@ -956,10 +958,10 @@ class DownloadTests(unittest.TestCase):
         pin = {"schema_version": 1, "repository": "fixture/model", "revision": "a" * 40, "files": [self.entry]}
         target = self.root / "model"
         progress = []
-        install_streaming(target, pin, opener=self.opener, progress=lambda *x: progress.append(x))
+        install_streaming(target, pin, transfer=transfer_with(self.opener), progress=lambda *x: progress.append(x))
         self.assertEqual(invalid_files(target, pin), [])
         before = (target / "weights").stat().st_ctime_ns
-        install_streaming(target, pin, opener=self.opener)
+        install_streaming(target, pin, transfer=transfer_with(self.opener))
         self.assertEqual(self.calls, [0])
         self.assertEqual((target / "weights").stat().st_ctime_ns, before)
         self.assertEqual(progress[-1], (len(self.content), len(self.content), None))

@@ -43,14 +43,15 @@ matching assets; source/integration fixtures are a separate kind of evidence.
 2. **Install once; connect without a daily terminal command.**
    On each supported OS, run the page's command in Terminal or PowerShell as an ordinary
    user. Keep Setup open while it retries the connection. The installer creates the private
-   runtime and registers `dev.coderbak.anagram`; the browser then launches the host.
+   runtime, registers `dev.coderbak.anagram`, and downloads/verifies device-selected models
+   in the terminal; the browser launches the host after the installer releases its lock.
    Close the terminal after the command succeeds and continue setup entirely in the page.
    Normal native use must not need a listening HTTP server, a port setting or a manual
    start command. Unsupported OS/architecture or an unpublished build must not offer a
    misleading working-install claim. Initial targets are Apple Silicon macOS, supported
    Linux x64/ARM64 and Windows x64; Windows ARM64 and custom browser profiles need separate support.
 
-3. **The component owns automatic first download and persistent pauses.**
+3. **Terminal preparation and browser retries share one downloader.**
    A new component detects usable devices and prepares only the recommended model set.
    Check the selected devices/files/total; initial detection has no known total and
    verification is separate from downloading. Prepared bytes include reused verified files.
@@ -153,7 +154,7 @@ they do not replace manual review of the packaged installation and permission pr
 
 1. **A fresh install requires native communication, with no website access.**
    Check that both manifests require `storage`, `activeTab`, `contextMenus`, `scripting`
-   and `nativeMessaging`, with no required host patterns. Chrome's native permission
+   plus `nativeMessaging`, `webNavigation` and `webRequest`, with no required host patterns. Chrome's native permission
    warning is "Communicate with cooperating native applications"; no loopback or
    all-sites warning should be caused by required host permissions. Check Firefox's
    required permissions in `about:addons` as well. Unpacked and temporary loading may

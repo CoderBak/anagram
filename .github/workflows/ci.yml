@@ -42,7 +42,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: native component test dependencies (no model runtimes)
-        run: python -m pip install 'numpy>=1.26' 'pydantic>=2' emoji filelock psutil
+        run: python -m pip install 'numpy>=1.26' 'pydantic>=2' emoji filelock psutil 'huggingface_hub==1.31.0'
       - name: isolated native registration safety (no real browser registration)
         run: python test/native_registration.py
       - name: native browser setup (EN/ZH, isolated profiles, real stdio)

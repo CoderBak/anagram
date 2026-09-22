@@ -270,10 +270,11 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     if (s.download.phase && s.download.total_bytes > 0) downloadText.textContent = `${t(preparationKeys[s.download.phase])} · ${downloadText.textContent}`;
     if (s.download.total_bytes && s.download.total_bytes > 0) { progress.max = s.download.total_bytes; progress.value = Math.min(s.download.bytes_received, s.download.total_bytes); }
     else progress.removeAttribute("value");
-    file.textContent = s.download.file ?? ""; file.hidden = !s.download.file;
+    file.textContent = [s.download.file, s.download.detail].filter(Boolean).join(" · "); file.hidden = !file.textContent;
     error.textContent = actionError || (s.error || s.download.error ? t(s.download.status === "failed" ? "componentDownloadFailed" : "componentOperationFailed") : "");
     error.hidden = !error.textContent;
     detailsText.textContent = actionDetail || s.error?.message || s.download.error || ""; details.hidden = !detailsText.textContent;
+    if (s.download.status === "failed") details.open = true;
     showRuntime(s); buttons(); onUpdate?.(reply);
     if (completedUninstallReceipt && attemptedReceipt !== completedUninstallReceipt) void finishUninstall();
   }

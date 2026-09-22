@@ -1,7 +1,7 @@
 #!/bin/sh
 # Install a private native runtime and register the exact browser extension ID.
 # ANAGRAM_HOME, ANAGRAM_BROWSER, ANAGRAM_EXTENSION_ID and ANAGRAM_LANG come from setup.
-# Model download and engine lifecycle are browser-managed.
+# Initial model preparation runs here; the browser owns inference afterwards.
 set -eu
 umask 077
 
@@ -15,7 +15,7 @@ EXTENSION_ID="${ANAGRAM_EXTENSION_ID:-}"
 INSTALL_LANG="${ANAGRAM_LANG:-en}"
 
 say()  { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
-step() { say "[$1/6] $2"; }
+step() { say "[$1/7] $2"; }
 note() { printf '    %s\n' "$*"; }
 die()  { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 tr_msg() { if [ "$INSTALL_LANG" = zh_CN ]; then printf '%s' "$2"; else printf '%s' "$1"; fi; }
@@ -270,7 +270,7 @@ step 3 "$(tr_msg 'Installing private Python' '正在安装独立 Python') $PYTHO
 run_uv python install "$PYTHON_VERSION"
 step 4 "$(tr_msg 'Installing locked runtime packages' '正在安装版本锁定的运行依赖')"
 note "$(tr_msg 'Downloading and installing PyTorch, ONNX Runtime and other dependencies; progress appears below.' '正在下载并安装 PyTorch、ONNX Runtime 等依赖；具体进度显示在下方。')"
-note "$(tr_msg 'Model weights will be downloaded later in the extension.' '模型权重稍后在扩展中下载。')"
+note "$(tr_msg 'Device-selected model weights will download here after registration.' '注册完成后，将在此下载适合本机设备的模型权重。')"
 CREATED_VENV=1
 if [ "$OS" = Darwin ]; then
   ( cd "$ANAGRAM_HOME/app" && run_uv sync --frozen --no-dev --no-build --python "$PYTHON_VERSION" )
@@ -297,8 +297,14 @@ clean_env PYTHONNOUSERSITE=1 PYTHONSAFEPATH=1 "$PY" "$ANAGRAM_HOME/app/native_re
 INSTALL_COMPLETE=1
 for sub in $SWAPPED; do remove_ours "$ANAGRAM_HOME/$sub.old"; done
 
+# The runtime is committed: a network failure must not roll it back or force
+# another dependency installation. Retain the installer lock during preparation.
+step 7 "$(tr_msg 'Preparing model files with Hugging Face' '正在使用 Hugging Face 准备模型文件')"
+clean_env PYTHONNOUSERSITE=1 PYTHONSAFEPATH=1 "$PY" -I "$ANAGRAM_HOME/app/prepare_models.py" \
+  --home "$ANAGRAM_HOME" --installer --language "$INSTALL_LANG"
+
 # Installation complete.
 say "$(tr_msg 'Installed Anagram local component' 'Anagram 本地组件安装完成') $VERSION: $ANAGRAM_HOME"
-note "$(tr_msg 'Return to the extension and reconnect. Downloads, comparison, and model selection continue there.' '请返回扩展并重新连接，在扩展中继续下载模型、性能测试和选择配置。')"
+note "$(tr_msg 'Return to the extension and reconnect to benchmark and select a configuration.' '请返回扩展并重新连接，进行性能测试并选择配置。')"
 note "$(tr_msg 'EditLens models: CC BY-NC-SA 4.0, noncommercial use. Device-selected recommended model files usually total 1.43 GB; runtime and temporary space are additional. Extra comparison models are optional in Settings.' 'EditLens 模型采用 CC BY-NC-SA 4.0 许可，仅限非商业用途。按设备选择的推荐模型文件通常共约 1.43 GB，运行环境和临时空间另计。额外比较模型可在设置中按需下载。')"
 note "$(tr_msg 'The browser manages the component; no login startup, system Python, or PATH changes were installed.' '本地组件由浏览器管理，未添加开机自启，也未修改系统 Python 或 PATH。')"

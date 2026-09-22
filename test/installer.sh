@@ -120,6 +120,7 @@ make_home() { # owned fixture directory
 [ "\${1:-}" = -I ] && shift
 case "\${1:-}" in
   */native_registration.py) exec "$PY3" "\$@" ;;
+  */prepare_models.py) echo 'Fixture model preparation'; [ ! -f "\$3/fail-download-fixture" ]; exit \$? ;;
   -) exec "$PY3" "\$@" ;;
 esac
 exit 2
@@ -183,7 +184,7 @@ if [ "$before_out" = "$(snapshot "$T/outside")" ] && [ "$before_fake" = "$(snaps
   ok "update: the new app/ and extension/ landed, and nothing outside the folder moved"
 else bad "offline update side effects" "app=$(cat "$HU/app/engine.py" 2>/dev/null)"; fi
 
-# Default installation registers the host and leaves model/setup work to the browser.
+# Default installation registers the host, then invokes terminal model preparation.
 HFIRST="$T/first-start"; make_home "$HFIRST"
 rm -f "$HFIRST/VERSION"
 printf '#!/bin/sh\necho "uv %s"\nif [ "$1" = sync ]; then mkdir -p "$UV_PROJECT_ENVIRONMENT/bin"; cp "$(dirname "$0")/../venv/bin/python" "$UV_PROJECT_ENVIRONMENT/bin/python"; fi\nexit 0\n' "$UVV" > "$HFIRST/bin/uv"; chmod +x "$HFIRST/bin/uv"
@@ -193,7 +194,7 @@ sha_of "$RELDIR/anagram.tar.gz" > "$RELDIR/anagram.tar.gz.sha256"
 # Clear only the prior fixture's exact owned registration through the real helper.
 out="$(HOME="$FAKE_HOME" ANAGRAM_HOME="$HFIRST" ANAGRAM_RELEASE_URL="file://$RELDIR" sh "$ROOT/install.sh" 2>&1)"; rc=$?
 if [ $rc -eq 0 ] && [ -f "$HFIRST/.native-component.json" ] && [ ! -f "$HFIRST/config" ] && echo "$out" | grep -q "Return to the extension"; then
-  ok "fresh installation registers native host without a listener config or model download"
+  ok "fresh installation registers native host and invokes terminal preparation without a listener config"
 else bad "fresh native install" "rc=$rc $out"; fi
 out="$(HOME="$FAKE_HOME" ANAGRAM_HOME="$HFIRST" ANAGRAM_RELEASE_URL="file://$RELDIR" sh "$ROOT/install.sh" 2>&1)"; rc=$?
 if [ $rc -eq 0 ] && [ ! -f "$HFIRST/config" ]; then
@@ -215,6 +216,21 @@ if [ $rc -ne 0 ] && [ "$app_before" = "$(snapshot "$HROLL/app")" ] && [ "$env_be
   ok "registration conflict rolls back app, version and private environment while preserving foreign registration"
 else bad "native installation rollback" "rc=$rc $out"; fi
 rm -f "$registration"
+# Model failure occurs after the runtime/registration commit and must not undo it.
+HDOWN="$T/download-failure"; make_home "$HDOWN"
+printf '#!/bin/sh\necho "uv %s"\nif [ "$1" = sync ]; then mkdir -p "$UV_PROJECT_ENVIRONMENT/bin"; cp "$(dirname "$0")/../venv/bin/python" "$UV_PROJECT_ENVIRONMENT/bin/python"; fi\nexit 0\n' "$UVV" > "$HDOWN/bin/uv"; chmod +x "$HDOWN/bin/uv"
+touch "$HDOWN/fail-download-fixture"
+out="$(HOME="$FAKE_HOME" ANAGRAM_HOME="$HDOWN" ANAGRAM_RELEASE_URL="file://$RELDIR" sh "$ROOT/install.sh" 2>&1)"; rc=$?
+if [ $rc -ne 0 ] && [ "$(cat "$HDOWN/VERSION")" = 9.9.10 ] && [ -f "$HDOWN/.native-component.json" ] \
+   && [ -x "$HDOWN/venv/bin/python" ] && [ ! -e "$HDOWN/.installer-lock" ] && echo "$out" | grep -q 'Fixture model preparation'; then
+  ok "model download failure retains committed runtime and registration and releases the installer barrier"
+else bad "download failure after commit" "rc=$rc $out"; fi
+rm "$HDOWN/fail-download-fixture"
+out="$(HOME="$FAKE_HOME" "$HDOWN/bin/anagram" download 2>&1)"; rc=$?
+if [ $rc -eq 0 ] && echo "$out" | grep -q 'Fixture model preparation'; then
+  ok "download-only CLI invokes preparation without reinstalling runtime packages"
+else bad "download-only CLI" "rc=$rc $out"; fi
+HOME="$FAKE_HOME" "$PY3" "$ROOT/installer/native_registration.py" unregister --home "$HDOWN" >/dev/null 2>&1
 if "$PY3" "$ROOT/test/native_registration.py" > "$T/native-tests.log" 2>&1; then
   ok "native registration containment, exact origins, inventory and rollback tests pass"
 else bad "native registration tests" "$(tail -n 8 "$T/native-tests.log")"; fi

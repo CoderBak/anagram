@@ -40,8 +40,12 @@ extension version and exact ID. Paste it into Terminal on macOS/Linux, or PowerS
 Windows. No administrator account or system Python is required.
 
 The installer puts a private runtime and application in the component folder and registers
-the browser host. Keep the first-run page open: it retries the connection. Once installation
-finishes, the terminal can be closed. The component detects usable devices before choosing
+the browser host. The installer then downloads models in the terminal using Hugging Face's
+HTTP transport, with progress, retries and durable partial files. Wait for model verification
+to finish before closing the terminal. Return to setup for benchmarking. If interrupted,
+close the browser's component connection and run `~/.anagram/bin/anagram download`
+(macOS/Linux), or use the download-only Python command printed by the Windows installer.
+This reuses installed dependencies and downloaded bytes. The component detects usable devices before choosing
 files. A working Torch GPU uses shared safetensors for CPU FP32 and GPU FP32/FP16; CPU-only
 systems use ONNX Runtime FP32 when available, otherwise Torch FP32. The recommended set
 usually totals **1.43 GB**, including language detection; runtime dependencies and temporary

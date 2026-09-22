@@ -1324,7 +1324,7 @@
     "description": "Native component lifecycle UI: InstallIntro."
   },
   "componentInitialDownload": {
-    "message": "First setup detects usable devices and prepares a recommended model set, usually about 1.43 GB including language detection files. The local runtime and temporary installation space are additional. Preparation and the first benchmark start automatically; extra comparison models are optional in Settings.",
+    "message": "The installer detects usable devices and downloads a recommended model set in your terminal, usually about 1.43 GB including language detection files. Runtime packages and temporary space are additional. Return here after verification to benchmark and choose a configuration; extra models remain optional.",
     "description": "Native component lifecycle UI: InitialDownload."
   },
   "componentTerminal": {
@@ -1348,7 +1348,7 @@
     "description": "Native component lifecycle UI: Unreleased."
   },
   "componentAfterInstall": {
-    "message": "Keep this page open. Once it connects, you can close the terminal; manage downloads, devices, updates, and removal here from then on.",
+    "message": "Wait for the terminal to report that models are verified before closing it. Then return here and reconnect to benchmark and choose a configuration. If downloading fails, use the download-only resume command printed in the terminal; no reinstall is needed.",
     "description": "Native component lifecycle UI: AfterInstall."
   },
   "componentCopyFailed": {
@@ -1496,7 +1496,7 @@
     "description": "Native component lifecycle UI: TechnicalDetails."
   },
   "componentDownloadFailed": {
-    "message": "The download did not finish. Resume or retry when your connection and disk space are ready.",
+    "message": "Model download stopped. The specific error is shown below. Completed files and resumable partials are retained; retry to continue.",
     "description": "Native component lifecycle UI: DownloadFailed."
   },
   "componentOperationFailed": {

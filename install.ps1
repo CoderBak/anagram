@@ -1,6 +1,6 @@
 ﻿# Anagram native component installer for Windows x64, Windows PowerShell 5.1+.
 # Run the exact browser-specific command shown in Anagram setup. No admin, PATH,
-# login startup, system Python, model download, or HTTP server is required.
+# login startup, system Python, or HTTP server is required.
 [CmdletBinding()]
 param(
   [string]$ExtensionId = $env:ANAGRAM_EXTENSION_ID,
@@ -294,7 +294,9 @@ try {
   Invoke-Private $python @('-I',(Join-Path $ComponentHome 'app\native_registration.py'),'register','--home',$ComponentHome,'--browser',$Browser,'--extension-id',$ExtensionId,'--language',$Language)
   $completed = $true
   foreach ($path in $swapped) { Remove-OwnedTree ($path + '.old') }
-  Say 'Installed. Return to the extension and reconnect to download models and compare configurations.' '安装完成。请返回扩展并重新连接，继续下载模型和比较配置。'
+  Say 'Preparing device-selected model files with Hugging Face…' '正在使用 Hugging Face 下载适合本机设备的模型文件…'
+  Invoke-Private $python @('-I',(Join-Path $ComponentHome 'app\prepare_models.py'),'--home',$ComponentHome,'--installer','--language',$Language)
+  Say 'Installed. Return to the extension and reconnect to benchmark and select a configuration.' '安装完成。请返回扩展并重新连接，进行性能测试并选择配置。'
   Say 'EditLens: CC BY-NC-SA 4.0, noncommercial use. Device-selected recommended model files usually total 1.43 GB; runtime and temporary space are additional. Extra comparison models are optional in Settings.' 'EditLens 采用 CC BY-NC-SA 4.0 许可，仅限非商业用途。按设备选择的推荐模型文件通常共约 1.43 GB，运行环境和临时空间另计。额外比较模型可在设置中按需下载。'
 } finally {
   try {

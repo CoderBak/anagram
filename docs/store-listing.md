@@ -244,7 +244,7 @@ page installs/registers the component; the browser starts it for later use.
 Native Messaging is outside `connect-src`. The host uses ordinary user OS privileges and
 downloads model/runtime/release files as disclosed; it does not upload browsing text.
 No `downloads` or `management` permission is required. Native code owns its downloads and
-cleanup; the extension uses its own `runtime.uninstallSelf` only after verified cleanup.
+cleanup; the extension uses its own `management.uninstallSelf` only after verified cleanup.
 
 **No required host permission — why the extension asks for none**
 
@@ -536,7 +536,7 @@ downloads native application files, not scripts to execute in the browser extens
 
 **Why no `downloads` or `management` permission for setup and removal?**
 The native component performs its own downloads and owned-file cleanup. After verified
-cleanup, the extension can request removal of itself with `runtime.uninstallSelf`; it does
+cleanup, the extension can request removal of itself with `management.uninstallSelf`; it does
 not inspect, modify or remove other extensions. Scheduled Windows cleanup requires the
 user to wait for the system window's final result before removing the extension manually.
 
@@ -558,6 +558,6 @@ probability that the text is AI. Every card carries an "estimate, not proof" cav
 | Official URL / homepage | `<< owner to fill in >>` |
 | Support URL | `<< owner to fill in >>` |
 | Developer account contact email (verified) | `<< owner to fill in >>` |
-| Matching published native assets | **Not published.** Publish the matching installers, native archives and checksums before distributing a release-enabled browser ZIP. |
+| Matching published native assets | **v0.5.0 published.** Terminal-first preparation on `dev` is unreleased; publish matching installers, native archives and checksums with the next authorized release before distributing its browser ZIP. |
 | Windows x64 validation | **Pending real Windows/CI and manual release QA.** Implementation or macOS fixture tests alone do not establish Windows support. |
 | The package | `npm run release` prepares matching assets; review the Chrome ZIP from `output/chrome-mv3`. Never upload `output-test/`. Packaging does not submit a store listing. |

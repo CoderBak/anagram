@@ -13,7 +13,10 @@ from pathlib import Path, PurePosixPath
 import re
 import shutil
 import sys
-from safe_files import is_link, open_partial, regular_stat
+import subprocess
+import threading
+import queue
+from safe_files import is_link, regular_stat
 
 PIN = Path(__file__).with_name("modelkit.json")
 LID_URL = "https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz"
@@ -30,28 +33,62 @@ def _check_pause(cancel):
         raise DownloadPaused("Download paused")
 
 
-def _https_open(request, timeout=10):
-    from urllib.request import HTTPRedirectHandler, build_opener
-    from urllib.parse import urlsplit
-
-    class HTTPSOnly(HTTPRedirectHandler):
-        def redirect_request(self, req, fp, code, msg, headers, newurl):
-            if urlsplit(newurl).scheme != "https":
-                raise ValueError("Refusing a non-HTTPS model download redirect")
-            return super().redirect_request(req, fp, code, msg, headers, newurl)
-
-    return build_opener(HTTPSOnly()).open(request, timeout=timeout)
+def transfer_asset(url, part, size, offset, *, cancel, progress, notice=lambda _text: None):
+    """Run the official transport outside the offline inference interpreter."""
+    process = subprocess.Popen([sys.executable, "-I", str(Path(__file__).with_name("hub_transfer.py"))],
+                               stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+    events = queue.Queue()
+    def read():
+        try:
+            for line in process.stdout:
+                events.put(json.loads(line))
+        except Exception as exc:
+            events.put({"error": str(exc)})
+        finally:
+            events.put(None)
+    reader = threading.Thread(target=read, daemon=True)
+    try:
+        process.stdin.write(json.dumps({"url": url, "part": str(part), "size": size, "offset": offset}) + "\n")
+        process.stdin.flush()  # pipe stays open as the worker's parent-lifetime signal
+        reader.start()
+        error = None
+        while True:
+            _check_pause(cancel)
+            try:
+                event = events.get(timeout=.1)
+            except queue.Empty:
+                continue
+            if event is None:
+                break
+            if "error" in event:
+                error = event["error"]
+            elif "bytes" in event:
+                progress(event["bytes"])
+            elif "message" in event:
+                notice(event["message"])
+        if process.wait() != 0:
+            raise RuntimeError(error or "The Hugging Face download process stopped; retry to resume")
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+        if reader.ident is not None:
+            reader.join(timeout=3)
+        process.stdin.close()
+        process.stdout.close()
 
 
 def download_asset(url: str, target: Path, entry: dict, *, cancel=None,
-                   progress=lambda _bytes: None, opener=None) -> None:
+                   progress=lambda _bytes: None, transfer=None, notice=lambda _text: None) -> None:
     """Anonymous HTTPS download with a resumable .part file and final SHA-256.
 
-    Pause is checked between bounded reads; a pending network read has a 10s
-    timeout. A server ignoring Range safely restarts that file. No partial file
-    replaces a verified installed file. The URL comes only from shipped pins.
+    The official HF transport handles network retries/ranges. Cancellation stops
+    its child process, preserving the partial for a subsequent invocation.
     """
-    from urllib.request import Request
     from urllib.parse import urlsplit
 
     if urlsplit(url).scheme != "https":
@@ -82,38 +119,11 @@ def download_asset(url: str, target: Path, entry: dict, *, cancel=None,
         part.unlink()
         offset = 0
     progress(offset)
-    headers = {"User-Agent": "Anagram-modelkit/1", "Accept-Encoding": "identity"}
-    if offset:
-        headers["Range"] = f"bytes={offset}-"
-    request = Request(url, headers=headers)
-    with (opener or _https_open)(request, timeout=10) as response:
-        status = response.status
-        if status == 206:
-            content_range = response.headers.get("Content-Range", "")
-            match = re.fullmatch(r"bytes (\d+)-(\d+)/(\d+)", content_range)
-            if (not match or int(match[1]) != offset or int(match[3]) != entry["size_bytes"]
-                    or int(match[2]) != entry["size_bytes"] - 1):
-                raise ValueError("Unexpected range response for pinned model file")
-        elif status == 200:
-            offset = 0  # this server ignored Range; truncate instead of appending
-            progress(0)
-        else:
-            raise ValueError(f"Model download returned HTTP {status}")
-        with open_partial(part, offset) as stream:
-            reader = getattr(response, "read1", response.read)
-            while True:
-                _check_pause(cancel)
-                chunk = reader(64 * 1024)
-                if not chunk:
-                    break
-                if offset + len(chunk) > entry["size_bytes"]:
-                    raise ValueError("Download exceeds the pinned file size")
-                stream.write(chunk)
-                offset += len(chunk)
-                progress(offset)
-            stream.flush()
-            os.fsync(stream.fileno())
+    transfer = transfer or (lambda *args, **kwargs: transfer_asset(*args, notice=notice, **kwargs))
+    transfer(url, part, entry["size_bytes"], offset, cancel=cancel, progress=progress)
     _check_pause(cancel)
+    if regular_stat(part).st_size < entry["size_bytes"]:
+        raise RuntimeError(f"Incomplete download of {entry['path']}; partial bytes retained for retry")
     if not matches(part, entry):
         part.unlink(missing_ok=True)
         raise ValueError("Checksum or size mismatch for " + entry["path"])
@@ -121,7 +131,8 @@ def download_asset(url: str, target: Path, entry: dict, *, cancel=None,
 
 
 def install_streaming(model_dir: Path, pin: dict, *, selected_paths=None, cancel=None,
-                      progress=lambda _received, _total, _file: None, opener=None) -> None:
+                      progress=lambda _received, _total, _file: None, transfer=None,
+                      notice=lambda _text: None) -> None:
     """Install pinned files with progress and cooperative pause; no stdout.
 
     None selects the whole pin. Otherwise only the selected files are required;
@@ -185,7 +196,7 @@ def install_streaming(model_dir: Path, pin: dict, *, selected_paths=None, cancel
                     raise ValueError("Not enough free disk space to stage " + name)
                 url = (f"https://huggingface.co/{pin['repository']}/resolve/{pin['revision']}/"
                        + quote(name, safe="/"))
-                download_asset(url, target, entry, cancel=cancel, opener=opener,
+                download_asset(url, target, entry, cancel=cancel, transfer=transfer, notice=notice,
                                progress=lambda count, base=received, name=name: progress(base + count, total, name))
             received += entry["size_bytes"]
             progress(received, total, name)

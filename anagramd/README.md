@@ -5,8 +5,10 @@ Messaging. Requests and replies are length-prefixed JSON on stdin/stdout. There 
 HTTP server, listening port or separately started inference daemon.
 
 The setup-page installer creates a private Python environment and registers
-`dev.coderbak.anagram` for the exact browser extension ID. Normal operation, downloads,
-benchmarks and cleanup are managed in the extension.
+`dev.coderbak.anagram` for the exact browser extension ID. It prepares models in the
+terminal before handing benchmarking and configuration selection back to the extension.
+`bin/anagram download` resumes model preparation without reinstalling dependencies.
+Subsequent downloads, normal operation and cleanup remain available in Settings.
 
 ## Models and runtime selection
 
@@ -45,6 +47,8 @@ weights produce a recoverable error rather than an inference-time download.
 | --- | --- |
 | `native_host.py` | Bounded stdio framing, validated operations and request correlation |
 | `native_component.py` | Model download, native lifecycle and maintenance controls |
+| `prepare_models.py` | Installer and terminal download-only preparation |
+| `hub_transfer.py` | Isolated official HF HTTP retries/ranges, anonymous HTTPS only |
 | `engine.py` | Text validation, preprocessing, language identification and scoring |
 | `runtime_controller.py` | Device selection, benchmark state and saved configuration |
 | `runtime_adapters.py` | PyTorch/ONNX execution and model provenance |
@@ -110,3 +114,11 @@ confirms success. Windows schedules a visible worker until open files are releas
 Use Settings for cleanup. Removing only the extension does not remove the native component.
 Exact paths and lifecycle instructions are in the [user guide](../docs/user-guide.en.md)
 and [footprint](../docs/footprint.md).
+
+The locked Hub 1.31 transport is used via `file_download.http_get`, rather than its
+high-level temporary-file policy, which discards incomplete files between invocations.
+Anagram owns durable `.part` files, safe file handles, SHA-256 verification and atomic
+promotion. This HTTP path does not enable Xet or create a duplicate Hub model cache.
+The transfer worker clears offline mode only in its own process; inference stays offline.
+The pinned transport is regression-tested with HTTPX fixtures; dependency upgrades must
+retain range restart, short-read recovery, authentication and cancellation behavior.

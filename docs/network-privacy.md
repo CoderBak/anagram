@@ -20,7 +20,7 @@ PDF / Google Docs 原文可能联网。网页本身和浏览器的联网也不�
 | Google Docs reading mode | Fetches the open document's `docs.google.com/document/d/…/mobilebasic` view with same-origin credentials. Rendering its sanitized content can also load images and resources referenced by the document's own styles. | Opening or refreshing that document's reading mode. These are original-document resources, not Anagram analytics. DOMPurify is not a network filter. |
 | Online PDF reading | May GET the exact PDF source again, with normal browser credentials and cache behavior. A cache miss or revalidation can reach the original server. | Opening an authorized PDF in the reader. A source request can disclose its URL, request headers and ordinary cookies to that source; it is not a scoring upload. |
 | Local PDF reading | Reads a user-chosen file, or the authorized local `file:///` document. No native arbitrary-file-read command is involved. | On a file selection or authorized local-PDF action. File-access permission does not upload the file. |
-| Model preparation | Anonymous HTTPS GETs to pinned files in `huggingface.co/CoderBak/editlens_roberta_modelkit`, potentially redirected to Hugging Face's file CDN; the small language model comes from `dl.fbaipublicfiles.com`. | Initial setup, an explicitly resumed download, or a user-selected additional model profile. Valid installed files are reused. |
+| Model preparation | Anonymous HTTPS GETs to pinned files in `huggingface.co/CoderBak/editlens_roberta_modelkit`, potentially redirected to Hugging Face's file CDN; the small language model comes from `dl.fbaipublicfiles.com`. | The terminal installation step, an explicitly resumed download, or a user-selected additional model profile. Valid installed files are reused. |
 | Component installation and requested update | GitHub release assets for Anagram and pinned uv; managed Python distribution and locked Python package downloads. The checked-in Python lock currently uses `pypi.org` and `files.pythonhosted.org`. Distribution redirects/CDNs may use other hosts. | The installation command or the component's Update action. Python packages are installed using `uv sync --frozen`; inference does not run a package installer. |
 | Browser extension update | Browser/store-managed update traffic, governed by browser settings and the distribution channel. | Outside the extension's model-inference transport. The native version notice compares local component and extension versions without querying GitHub. |
 | External links | Normal browser navigation to a source document, repository, help page or PDF hyperlink. | When the user follows the link. Such navigation is not a promise that the destination website has no tracking. |
@@ -140,3 +140,8 @@ download browser binaries or dependencies, and test harnesses can use local web 
 Those are not production inference transports. A reproducible report should name the
 source revision, package checksum, operating system, browser, workflow, capture method
 and observed destinations, including unexpected attempts rather than only successes.
+
+Model transfer runs in a separate Python process using the locked Hugging Face HTTP
+transport. It receives only the pinned artifact URL, size and owned partial-file path;
+never browser content. A live parent pipe bounds its lifetime. The transfer uses no
+Hub login or Xet cache. Signed CDN query strings are removed from stored error messages.

@@ -94,6 +94,15 @@ for (const language of ["en", "zh-CN"]) {
     await button("componentRetryConnection").click();
     assert.equal(await planPanel.isHidden(),true,"Older components without a plan remain supported");
     assert.equal(await button("componentResumeDownload").isVisible(),true);
+    const failure = "HTTP 503: fixture connection unavailable; partial bytes retained";
+    set({status:"failed",bytes_received:50,total_bytes:100,file:"model.safetensors",error:failure},"needs_models");
+    await button("componentRetryConnection").click();
+    const failureDetails = panel.locator("details").filter({has:page.locator("pre")});
+    assert.equal(await failureDetails.evaluate((el) => el.open),true,"Failure details open automatically");
+    assert.ok((await failureDetails.innerText()).includes(failure));
+    set({...initial,total_bytes:100,bytes_received:50,file:"model.safetensors",detail:"Retry 1/2 in 1s; 50 bytes retained"});
+    await button("componentRetryConnection").click();
+    assert.ok((await panel.locator(".component-download").innerText()).includes("Retry 1/2"));
     assert.equal(await launched.sw.evaluate(async () => (await chrome.permissions.getAll()).origins?.length ?? 0),0);
     assert.deepEqual(errors,[]);
     console.log(`PASS ${language}: detection, verification/reuse, explicit expanded/rescan, profile-preserving resume, legacy fallback, safe text, a11y and narrow layout`);

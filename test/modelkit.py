@@ -18,6 +18,7 @@ sys.dont_write_bytecode = True
 
 SOURCE = Path(__file__).resolve().parents[1] / "anagramd" / "download_modelkit.py"
 sys.path.insert(0, str(SOURCE.parent))
+from transfer_fixture import transfer_with
 # Tiny fixtures can run without ML dependencies. A stdlib-only run explicitly skips
 # the OS-lock regression; the installed application requires real filelock.
 try:
@@ -72,7 +73,7 @@ class ModelkitTests(unittest.TestCase):
         return response
 
     def install(self, **kwargs):
-        self.mod.install_streaming(self.target, self.pin, opener=kwargs.pop("opener", self.opener), **kwargs)
+        self.mod.install_streaming(self.target, self.pin, transfer=transfer_with(kwargs.pop("opener", self.opener), self.mod.DownloadPaused), **kwargs)
 
     def test_all_files_anonymous_and_valid_noop(self):
         self.install()
@@ -95,7 +96,7 @@ class ModelkitTests(unittest.TestCase):
     def test_tampered_download_preserves_installed_tree(self):
         write_files(self.target, {"model.safetensors": b"old"})
         def bad(request, timeout):
-            response = io.BytesIO(b"bad")
+            response = io.BytesIO(b"corrupt!")
             response.status, response.headers = 200, {}
             return response
         with self.assertRaisesRegex(ValueError, "Checksum or size mismatch"):
@@ -272,7 +273,7 @@ class ModelkitTests(unittest.TestCase):
         old = {"model.safetensors": self.contents["model.safetensors"], "NOTICE": self.contents["NOTICE"]}
         write_files(self.target, old)
         def corrupt(_request, _timeout=None, **_kwargs):
-            response = io.BytesIO(b"bad")
+            response = io.BytesIO(b"evil")
             response.status, response.headers = 200, {}
             return response
         with self.assertRaisesRegex(ValueError, "Checksum or size mismatch"):

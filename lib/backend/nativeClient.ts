@@ -19,6 +19,7 @@ export const ComponentSchema = v.object({
   download: v.object({status: v.picklist(["idle", "running", "paused", "completed", "failed"]), bytes_received: Count, total_bytes: Count, file: v.nullable(Text), error: v.nullable(Text),
     phase: v.optional(v.picklist(["detecting", "verifying", "downloading", "complete"])),
     plan: v.optional(DownloadPlan),
+    detail: v.optional(v.nullable(Text)),
   }),
   runtime: v.nullable(RuntimeSchema), storage: v.object({models_bytes: Count}),
   error: v.nullable(v.object({code: Text, message: Text})),

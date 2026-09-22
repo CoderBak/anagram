@@ -15,7 +15,8 @@ and assume it implements the checkout's new controls.
    Inspect the linked versioned script, then run the displayed command once. It includes
    this extension's ID. No administrator or Hugging Face account is required. The
    browser cannot install a native executable silently.
-3. Return to setup. Check device detection, the selected plan/files/total, and verification.
+3. Check device detection, selected files/total, download progress and SHA-256 verification
+   in the terminal. Wait for completion before closing it, then return to setup.
    Preparation bytes include reused verified files. Pause/resume keeps the plan; optional
    expanded comparison is an explicit action, and returning to recommended keeps extras.
    Available configurations are compared automatically after download, with about

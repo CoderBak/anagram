@@ -210,7 +210,8 @@ is documented explicitly; the scanner of our `lib/`/`entrypoints/` is not suffic
 discover it.
 
 No cookies are read or written through the browser cookies API. No Cache Storage API is
-used by Anagram. Model downloads are made by the native component, not the browser downloads
+used by Anagram. Initial model downloads run in the terminal installer; later downloads use
+the same native transport from Settings. Neither uses the browser downloads
 API. No bookmark or history API is used. Reading the current document requires site access
 or a user-initiated one-off action as described above.
 

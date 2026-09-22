@@ -9,4 +9,6 @@ else PY="python3"; fi
 PYTHONDONTWRITEBYTECODE=1 "$PY" "$ROOT/test/engine.py" "$@"
 PYTHONDONTWRITEBYTECODE=1 "$PY" "$ROOT/test/runtime.py" "$@"
 PYTHONDONTWRITEBYTECODE=1 "$PY" "$ROOT/test/model_plan.py" "$@"
+PYTHONDONTWRITEBYTECODE=1 "$PY" "$ROOT/test/hub-transfer.py" "$@"
+PYTHONDONTWRITEBYTECODE=1 "$PY" "$ROOT/test/prepare-models.py" "$@"
 PYTHONDONTWRITEBYTECODE=1 exec "$PY" "$ROOT/test/native_host.py" "$@"

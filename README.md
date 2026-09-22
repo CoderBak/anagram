@@ -12,15 +12,19 @@ and Simplified Chinese interfaces. Predictions are estimates, not proof of autho
 [Download version 0.5.0](https://github.com/CoderBak/anagram/releases/tag/v0.5.0) ·
 Use the Chrome or Firefox browser ZIP; the setup page installs the matching native component.
 
+The terminal model preparation described below is implemented on `dev` and is not yet
+in the published v0.5.0 assets, which prepare models through browser setup. See the
+[development handoff](docs/DEVELOPMENT.md) for the source/release boundary.
+
 1. Install the extension from its published browser listing, or extract a Chrome release
    ZIP to a permanent folder and select it through `chrome://extensions` → Developer mode
    → **Load unpacked**. Firefox uses its separate build.
 2. Follow the setup page. Run its OS-specific installation command once to install the
-   local component and register the exact extension ID. No administrator privileges or
+   local component, register the exact extension ID, and prepare the model files in the terminal. No administrator privileges or
    daily terminal session are required.
-3. Keep setup open while the component detects usable devices and prepares the recommended
+3. Wait for the terminal installer to detect usable devices and prepare the recommended
    model set (usually **1.43 GB**, including language detection; runtime and temporary space
-   are additional). Settings shows the selected files, exact total and reused-file progress.
+   are additional). The terminal shows the files, destination and download progress. After SHA-256 verification, return to setup. If interrupted, run `~/.anagram/bin/anagram download` after closing the browser connection to resume without reinstalling.
 4. Review the device comparison and explicitly choose a configuration. The initial
    benchmark has a **30-second total measurement budget**; loading and warmup take extra
    time. FP32 is recommended; supported GPUs can also compare FP16 from shared weights.
@@ -82,6 +86,10 @@ Numerical conversion checks are not an independent accuracy evaluation; the INT8
 parity limitations and is marked experimental.
 
 ## Development
+
+Start with the [development handoff](docs/DEVELOPMENT.md) and
+[prioritized roadmap](docs/ROADMAP.md). They record product decisions, current source
+versus release differences, code entry points, verification and remaining work.
 
 ```sh
 npm ci

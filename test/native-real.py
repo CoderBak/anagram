@@ -112,7 +112,7 @@ def main():
         fixture = home / "app/native-smoke-fixture.py"
         fixture.write_text("import sys\nfrom pathlib import Path\nsys.path.insert(0,str(Path(__file__).parent))\n"
                            "import download_modelkit\ndef no_network(*a,**k): raise AssertionError('smoke attempted a download')\n"
-                           "download_modelkit._https_open=no_network\nimport native_host\nnative_host.main()\n")
+                           "download_modelkit.transfer_asset=no_network\nimport native_host\nnative_host.main()\n")
         # A separate fixture launcher changes only the test subprocess; the
         # production host has no download-verification bypass.
         class FixtureClient(Client):

@@ -238,6 +238,7 @@ class NativeComponent:
                         self.download.update(status="failed", error=error_text(exc))
                         self.settings.update(download_pending=False, download_failed=True)
                         try:
+                            atomic_json(self.home / "download-error.json", {"message": error_text(exc)})
                             self._save_settings()
                         except OSError:
                             pass
@@ -284,7 +285,14 @@ class NativeComponent:
             if self.settings["download_failed"]:
                 self.state = "needs_models"
                 self.download["status"] = "failed"
-                self.error = {"code": "download_failed", "message": "Retry the model download to continue setup"}
+                message = "Retry the model download to continue setup"
+                try:
+                    saved = read_json(self.home / "download-error.json", max_bytes=16384)
+                    if isinstance(saved, dict) and isinstance(saved.get("message"), str):
+                        message = error_text(saved["message"])
+                except (OSError, ValueError):
+                    pass
+                self.error = {"code": "download_failed", "message": message}
                 return
             pending = self.settings["download_pending"]
         if pending:
@@ -356,15 +364,19 @@ class NativeComponent:
         model_total = self.plan["total_bytes"]
         total = model_total + LID_ENTRY["size_bytes"]
         install_streaming(self.model_dir, self.pin, selected_paths=self.plan["selected_paths"], cancel=cancel,
-                          progress=lambda got, _total, name: progress(got, total, name))
+                          progress=lambda got, _total, name: progress(got, total, name), notice=self._download_notice)
         download_asset(LID_URL, self.lid_path, LID_ENTRY, cancel=cancel,
-                       progress=lambda got: progress(model_total + got, total, "lid.176.ftz"))
+                       progress=lambda got: progress(model_total + got, total, "lid.176.ftz"), notice=self._download_notice)
         progress(total, total, None)
 
     def _progress(self, received, total, name):
         with self.lock:
             self.download.update(bytes_received=max(0, min(int(received), int(total))),
-                                 total_bytes=max(0, int(total)), file=name, phase="downloading")
+                                 total_bytes=max(0, int(total)), file=name, phase="downloading", detail=None)
+
+    def _download_notice(self, message):
+        with self.lock:
+            self.download["detail"] = error_text(message)
 
     def _download_work(self):
         self._stop_runtime()

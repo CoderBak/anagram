@@ -35,8 +35,11 @@ Firefox 使用专门的 Firefox 构建。开发阶段可以在 `about:debugging`
 命令绑定当前插件版本和准确的插件 ID。macOS/Linux 用户粘贴到终端运行；Windows 用户
 粘贴到 PowerShell。无需管理员权限，也不要求预先安装系统 Python。
 
-安装器放置私有运行环境和程序，并向浏览器注册本地组件。保持设置页打开，它会重试连接。
-命令完成后可以关闭终端。组件先检测可用设备，再选择文件：可用 Torch GPU 使用共享
+安装器放置私有运行环境和程序、注册本地组件，然后在终端使用 Hugging Face 的 HTTP 下载逻辑
+准备模型，显示进度并自动重试。请等到模型校验完成再关闭终端，返回设置页进行 benchmark。
+下载中断后，关闭浏览器中的组件连接，在 macOS/Linux 运行 `~/.anagram/bin/anagram download`；
+Windows 使用安装器打印的仅下载 Python 命令。无需重新安装依赖，已下载字节可继续使用。
+组件先检测可用设备，再选择文件：可用 Torch GPU 使用共享
 safetensors 权重比较 CPU FP32 与 GPU FP32/FP16；仅 CPU 时优先使用可用的 ONNX Runtime FP32，
 否则使用 Torch FP32。推荐模型集通常约 **1.43 GB**（含语言识别），运行依赖和临时空间另计。
 设置页列出设备、文件及精确计划体积。准备进度包含已校验并复用的本机文件，不是网络流量。
