@@ -1,10 +1,15 @@
-# Release: on a version tag, build the extension and the daemon bundle and attach them to a
-# GitHub Release. First-run commands name the exact matching version's installer assets.
-# Modelkit downloads use a pinned public revision without any Hugging Face credential.
+# Release: build the extension and the local engine bundle for a tag and attach them to
+# its GitHub Release. First-run commands name the exact matching version's assets.
 name: release
+# Manual only. Pushing a tag or creating a GitHub release does not start this workflow;
+# releases are built locally with `npm run release` and uploaded by hand. Dispatch this
+# when a full multi-platform gate is wanted for a tag.
 on:
-  push:
-    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag to build, e.g. v0.6.0"
+        required: true
 
 jobs:
   # Nothing is published that the whole matrix has not passed: the same suites as every push,
@@ -19,6 +24,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.tag }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
@@ -29,6 +36,7 @@ jobs:
       - run: node scripts/release.mjs
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
+          tag_name: ${{ inputs.tag }}
           files: |
             dist/anagram.tar.gz
             dist/anagram.tar.gz.sha256

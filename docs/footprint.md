@@ -52,9 +52,9 @@ notice compares versions locally; it does not poll GitHub.
 | `lib/ui/basecoat-vega.cdn.min.css` | `http://www.w3.org/2000/svg` | the SVG namespace inside data-URI icons; a name, not an address |
 | `lib/ui/basecoat-vega.cdn.min.css` | `https://tailwindcss.com` | the licence banner of the vendored Basecoat stylesheet |
 | `lib/diagnostics/anonymise.ts` | `https://schema.org/Article` | an example in a comment about `itemtype` vocabularies |
-| `entrypoints/onboarding/index.html` | `https://github.com/CoderBak/anagram/blob/main/docs/user-guide.en.md` | the user-guide link on the setup page; opened only when clicked |
-| `entrypoints/onboarding/main.ts` | `https://github.com/CoderBak/anagram/blob/main/docs/user-guide.zh-CN.md` | the same link for a Chinese browser |
-| `entrypoints/options/index.html` | `https://github.com/CoderBak/anagram/blob/main/PRIVACY.md` | the privacy-policy link on the settings page; opened only when clicked |
+| `entrypoints/onboarding/index.html` | `https://github.com/CoderBak/anagram/blob/dev/docs/user-guide.en.md` | the user-guide link on the setup page; opened only when clicked |
+| `entrypoints/onboarding/main.ts` | `https://github.com/CoderBak/anagram/blob/dev/docs/user-guide.zh-CN.md` | the same link for a Chinese browser |
+| `entrypoints/options/index.html` | `https://github.com/CoderBak/anagram/blob/dev/PRIVACY.md` | the privacy-policy link on the settings page; opened only when clicked |
 | `entrypoints/options/main.ts` | `https://www.Example.com/path` | an example in a comment about parsing a hostname |
 | `entrypoints/options/main.ts` | `https://` | the scheme prepended to a bare hostname before `new URL()` parses it |
 | `entrypoints/reader/index.html` | `http://www.apache.org/licenses/LICENSE-2.0` | the retained upstream PDF.js license notice in an HTML comment |

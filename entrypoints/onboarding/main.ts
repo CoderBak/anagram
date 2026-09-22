@@ -13,7 +13,7 @@ localizePage();
 followSystemTheme();
 document.getElementById("version")!.textContent = `v${browser.runtime.getManifest().version}`;
 if (messageLocale() === "zh-CN") {
-  (document.getElementById("guide") as HTMLAnchorElement).href = "https://github.com/CoderBak/anagram/blob/main/docs/user-guide.zh-CN.md";
+  (document.getElementById("guide") as HTMLAnchorElement).href = "https://github.com/CoderBak/anagram/blob/dev/docs/user-guide.zh-CN.md";
 }
 const readyBlock = document.getElementById("ready")!;
 const accessGrant = document.getElementById("access-grant") as HTMLButtonElement;

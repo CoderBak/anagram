@@ -1,6 +1,6 @@
 [project]
 name = "anagramd"
-version = "0.5.0"
+version = "0.6.0"
 description = "Local EditLens native component for the Anagram browser extension"
 requires-python = ">=3.12,<3.14"
 license = "MIT"
