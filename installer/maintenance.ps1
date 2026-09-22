@@ -130,7 +130,6 @@ try {
   $result = @{schema_version=1;operation=$Operation;status='completed';time=[DateTime]::UtcNow.ToString('o')}
   Save-Receipt $Receipt $result
   if ($Operation -eq 'update') {
-    Save-Receipt (Join-Path $ComponentHome 'run\maintenance-receipt.json') $result
     Say 'Update complete. Return to Anagram and reconnect.' '更新完成。请返回 Anagram 并重新连接。'
   } else {
     Say 'Local component removed. You can now remove the Anagram browser extension.' '本地组件已移除。现在可以移除 Anagram 浏览器扩展。'

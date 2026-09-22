@@ -1,7 +1,7 @@
 // Chromium reads its current PDF tab; Firefox and local files use a private, ticketed loader.
 import { browser } from "#imports";
 import * as v from "valibot";
-import { claimSourceBytes, createSourceBroker, type PdfOpenResult } from "./sourceTransfer";
+import { claimSourceBytes, createSourceBroker, hasPdfMagic, type PdfOpenResult } from "./sourceTransfer";
 import { PDF_TAB_SCRIPTS_RUN } from "../surface";
 import { matchesAny } from "../access/patterns";
 
@@ -31,9 +31,6 @@ export const CLAIM_TIMEOUT_MS = 15_000;
  */
 export type HandoffFailure = "large" | "type" | "read";
 
-/** How far into the file the `%PDF-` header may sit. pdf.js itself looks this far. */
-const MAGIC_WINDOW = 1024;
-
 /** `String.fromCharCode` takes an argument list, and a long one overflows the stack. */
 const BINARY_STEP = 0x8000;
 
@@ -61,17 +58,6 @@ export function base64Bytes(text: string): number {
   if (text.length === 0) return 0;
   const padding = text.endsWith("==") ? 2 : text.endsWith("=") ? 1 : 0;
   return (text.length / 4) * 3 - padding;
-}
-
-/**
- * Is this the start of a PDF? The content type is not evidence: a login page, an error
- * page and a redirect landing page are all served as whatever the server felt like, and
- * handing one of those to pdf.js is how a reader ends up looking at "could not be read"
- * instead of at the sign-in form that is really in the way.
- */
-export function hasPdfMagic(head: Uint8Array): boolean {
-  const text = new TextDecoder("iso-8859-1").decode(head.subarray(0, MAGIC_WINDOW));
-  return text.includes("%PDF-");
 }
 
 // ---- the tab: re-read the document it is showing --------------------------------------------

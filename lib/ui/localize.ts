@@ -4,8 +4,8 @@
 // script disabled, and a diff of the markup still shows the words. Each element that
 // carries text names its key instead:
 //
-//   <h2 data-i18n="optDetection">Detection</h2>
-//   <button data-i18n-title="popupAllSettings" data-i18n-aria-label="popupAllSettings">
+//   <h2 data-i18n="optMarks">Marks</h2>
+//   <button data-i18n-title="popupSettings" data-i18n-aria-label="popupSettings">
 //
 // `data-i18n-placeholder` does the same for an input's placeholder. No field carries one
 // today — the site field holds "example.com" in every language — but a translatable

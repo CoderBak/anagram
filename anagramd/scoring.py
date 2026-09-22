@@ -50,5 +50,4 @@ def score_texts(engine, texts: list[str], clean_text) -> list[dict]:
                     "truncated": lengths[i] > engine.max_length,
                 }
         engine.last_run_ms = (time.perf_counter() - started) * 1000
-        engine.scored += len(texts)
     return out

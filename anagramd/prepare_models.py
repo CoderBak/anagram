@@ -11,7 +11,7 @@ import time
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 
-def prepare(home, *, installer=False, language="en"):
+def prepare(home, *, installer=False, language="en", profile=None):
     from native_component import HomeLock, STATE_DEFAULT, validate_home
     from native_host import configure_environment
     from download_modelkit import (PIN, LID_ENTRY, LID_URL, load_pin, installed_profile,
@@ -32,7 +32,9 @@ def prepare(home, *, installer=False, language="en"):
         os.chdir(home)
         model_dir = home / "models/editlens_roberta-large"
         state_path = home / "component-state.json"
-        profile = installed_profile(model_dir)
+        # The terminal may prepare the expanded set explicitly; the browser only
+        # ever reuses whichever profile the installation records here.
+        profile = profile or installed_profile(model_dir)
         state = read_json(state_path, max_bytes=65536) if state_path.exists() else dict(STATE_DEFAULT)
         if installer and (state["models_deleted"] or state["download_paused"]):
             print("Keeping your paused download / removed-model preference. Resume from Settings when ready."
@@ -50,7 +52,7 @@ def prepare(home, *, installer=False, language="en"):
         for name in [*plan["selected_paths"], "lid.176.ftz"]:
             print("  " + name, flush=True)
         state.update(initialized=True, download_pending=True, download_failed=False,
-                     download_paused=False, models_deleted=False)
+                     download_paused=False, models_deleted=False, model_profile=profile)
         atomic_json(state_path, state)
         started = time.monotonic()
         last_time, last_name = 0.0, None
@@ -92,18 +94,20 @@ def prepare(home, *, installer=False, language="en"):
             raise SystemExit(130 if isinstance(exc, KeyboardInterrupt) else 1)
         state.update(download_pending=False, download_failed=False, download_paused=False)
         atomic_json(state_path, state)
-        say("Models verified. Return to Anagram to benchmark and select a configuration.",
-            "模型校验完成。请返回 Anagram 进行性能测试并选择配置。")
+        say("Models verified. Return to the browser; Anagram finishes setup automatically.",
+            "模型校验完成。请返回浏览器，Anagram 会自动完成设置。")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--home", type=Path, required=True)
     parser.add_argument("--language", choices=("en", "zh_CN"), default="en")
+    parser.add_argument("--profile", choices=("recommended", "expanded"),
+                        help="Model set to prepare (default: the installed profile, initially recommended)")
     parser.add_argument("--installer", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     try:
-        prepare(args.home, installer=args.installer, language=args.language)
+        prepare(args.home, installer=args.installer, language=args.language, profile=args.profile)
     except Exception as exc:
         from hub_transfer import safe_error
         print(safe_error(exc), file=sys.stderr)

@@ -17,8 +17,17 @@ function disconnect(port?: Port): void { try { port?.disconnect(); } catch {} }
 function page(value: string | undefined, path: "/reader.html" | typeof LOADER_PAGE): boolean {
   return !!value && value.split(/[?#]/)[0] === browser.runtime.getURL(path);
 }
-export function sourceHasMagic(bytes: Uint8Array): boolean {
-  return new TextDecoder("iso-8859-1").decode(bytes.subarray(0, 1024)).includes("%PDF-");
+/** How far into the file the `%PDF-` header may sit. pdf.js itself looks this far. */
+const MAGIC_WINDOW = 1024;
+
+/**
+ * Is this the start of a PDF? The content type is not evidence: a login page, an error
+ * page and a redirect landing page are all served as whatever the server felt like, and
+ * handing one of those to pdf.js is how a reader ends up looking at "could not be read"
+ * instead of at the sign-in form that is really in the way.
+ */
+export function hasPdfMagic(head: Uint8Array): boolean {
+  return new TextDecoder("iso-8859-1").decode(head.subarray(0, MAGIC_WINDOW)).includes("%PDF-");
 }
 interface Transfer {
   tabId: number; source: string; reader: string; navigating: boolean; loadingSeen: boolean; complete: boolean;
@@ -173,7 +182,7 @@ export async function claimSourceBytes(key: string, signal?: AbortSignal): Promi
       if (event.data?.kind !== "anagram-pdf-loaded") return;
       const buffer = event.data.bytes;
       if (!(buffer instanceof ArrayBuffer) || buffer.byteLength < 1 || buffer.byteLength > SOURCE_CAP) { abort(); return; }
-      const bytes = new Uint8Array(buffer); finish(sourceHasMagic(bytes) ? bytes : null);
+      const bytes = new Uint8Array(buffer); finish(hasPdfMagic(bytes) ? bytes : null);
     };
     signal?.addEventListener("abort", abort, {once: true}); window.addEventListener("message", receive);
     port.onDisconnect.addListener(abort);

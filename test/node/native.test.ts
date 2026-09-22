@@ -113,11 +113,10 @@ describe("privileged native operation boundary", () => {
     expect(validPageRequest("runtime.benchmark",{budget_s:30})).toBe(true);
     expect(validPageRequest("runtime.benchmark",{budget_s:Infinity})).toBe(false);
   });
-  it("allows only explicit bounded download profiles, while empty payload resumes", () => {
-    for (const payload of [{}, {profile:"recommended"}, {profile:"expanded"}])
-      expect(validPageRequest("models.download",payload)).toBe(true);
-    for (const payload of [{profile:"all"}, {profile:null}, {profile:"expanded",url:"https://example.com"},
-      {profile:"expanded",path:"/tmp/models"}, {files:["model.safetensors"]}, null, []])
+  it("accepts only an empty download payload: the profile is chosen in the terminal", () => {
+    expect(validPageRequest("models.download",{})).toBe(true);
+    for (const payload of [{profile:"recommended"}, {profile:"expanded"}, {profile:"all"}, {url:"https://example.com"},
+      {path:"/tmp/models"}, {files:["model.safetensors"]}, null, []])
       expect(validPageRequest("models.download",payload)).toBe(false);
   });
   it("the actual bridge rejects a content-script mutation without touching the component", async () => {
@@ -191,15 +190,16 @@ describe("component status validation", () => {
   it("accepts old components and device plans during detection, verification and reuse", () => {
     expect(parseComponent(status)?.download.plan).toBeUndefined();
     expect(parseComponent({...status,state:"downloading",download:{...status.download,status:"running",phase:"detecting",total_bytes:0}})?.download.phase).toBe("detecting");
-    const plan = {profile:"recommended",devices:["Apple GPU (MPS)","CPU (arm64)"],files:["model.safetensors","lid.176.bin"],total_bytes:100,expanded_bytes:250};
-    const parsed = parseComponent({...status,download:{...status.download,phase:"verifying",bytes_received:100,plan}});
+    const plan = {devices:["Apple GPU (MPS)","CPU (arm64)"],total_bytes:100};
+    const parsed = parseComponent({...status,download:{...status.download,phase:"verifying",bytes_received:100,
+      plan:{...plan,profile:"recommended",files:["model.safetensors"],expanded_bytes:250}}}); // older components add profile details
     expect(parsed?.download.plan).toEqual(plan);
     expect(parsed?.download.bytes_received).toBe(100); // Reused verified files count toward preparation.
   });
   it("rejects malformed or unbounded plans instead of presenting false progress", () => {
-    const plan = {profile:"recommended",devices:["CPU"],files:["model.onnx"],total_bytes:100};
-    for (const bad of [null, {...plan,profile:"all"}, {...plan,total_bytes:-1}, {...plan,expanded_bytes:Infinity},
-      {...plan,devices:Array(65).fill("CPU")}, {...plan,files:Array(129).fill("model.onnx")}, {...plan,files:["x".repeat(2001)]}])
+    const plan = {devices:["CPU"],total_bytes:100};
+    for (const bad of [null, {...plan,total_bytes:-1}, {...plan,total_bytes:Infinity}, {devices:["CPU"]},
+      {...plan,devices:Array(65).fill("CPU")}, {...plan,devices:["x".repeat(2001)]}])
       expect(parseComponent({...status,download:{...status.download,plan:bad}})).toBeNull();
     expect(parseComponent({...status,download:{...status.download,phase:"converting"}})).toBeNull();
   });

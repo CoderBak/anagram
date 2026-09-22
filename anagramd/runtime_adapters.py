@@ -50,8 +50,9 @@ def cuda_driver_version():
 
 
 def execution_environment(torch_module=None):
-    # A saved speed comparison is only useful for the hardware/thread/driver
-    # configuration that ran it. Apple accelerator drivers follow the OS build.
+    # A speed comparison is labelled with the hardware/thread/driver configuration
+    # that ran it, so a report from another one reads as stale. Apple accelerator
+    # drivers follow the OS build.
     result = {"system": platform.system(), "machine": platform.machine(),
               "os_build": platform.version(), "cpu_count": os.cpu_count(),
               "cpu_affinity": sorted(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else None,
@@ -172,8 +173,6 @@ class OnnxEditLens:
         self.max_length, self.batch_size = max_length, batch_size
         self.device, self.dtype_name = candidate.device, candidate.precision
         self.lock = threading.Lock()
-        self.scored = 0
-        self.started = time.time()
         self.last_run_ms = self.last_wait_ms = 0.0
         self.n_buckets = len(api.BUCKET_LABELS)
         self.api = api
@@ -274,6 +273,14 @@ def create_controller(model_dir: Path, config_path: Path, lid_path: Path,
         hardware = discover_hardware()
         environment = execution_environment(sys.modules.get("torch"))
         common_missing = None if (model_dir / "config.json").is_file() else "Model configuration is missing; download models in Anagram Settings"
+        # The language gate is part of every candidate. A missing file or
+        # dependency makes candidates unavailable with a download/repair reason
+        # instead of failing discovery; a later download retries it.
+        try:
+            gate = api.LanguageId(lid_path)
+        except Exception as exc:
+            gate = None
+            common_missing = common_missing or str(exc) or "Language model is unavailable; download models in Anagram Settings"
 
         specs = ([candidate_spec(value, hardware) for value in planned_ids]
                  if planned_ids is not None else candidate_catalog(hardware))
@@ -287,14 +294,11 @@ def create_controller(model_dir: Path, config_path: Path, lid_path: Path,
             if reason:
                 candidate = Candidate(**{**candidate.__dict__, "available": False, "reason": reason})
             candidates.append(candidate)
-        # Gate construction is background work too. Preserve control-plane access
-        # if its dependency/file is absent; a later benchmark retries discovery.
-        gate = api.LanguageId(lid_path)
         inventory = {"candidates": [c.__dict__ for c in candidates],
                      "machine": [environment, hardware],
                      "planned_candidates": planned_ids,
                      "versions": {n: package_version(n) for n in ("torch", "transformers", "onnxruntime", "numpy")},
-                     "pipeline": api.pipeline_manifest(model_dir, max_length, "catalog", gate),
+                     "pipeline": api.pipeline_manifest(model_dir, max_length, "catalog", gate) if gate is not None else None,
                      "batch_size": batch_size,
                      "artifacts": {c.id: artifact_stamp(artifact_files(model_dir, c)) for c in candidates if c.available},
                      "implementation": {name: digest(Path(__file__).with_name(name)) for name in
@@ -304,7 +308,7 @@ def create_controller(model_dir: Path, config_path: Path, lid_path: Path,
 
     def factory(candidate):
         if gate is None:
-            raise ValueError("Language gate has not initialized; rerun the comparison")
+            raise ValueError("Language model is unavailable; download models in Anagram Settings")
         return load_candidate(model_dir, candidate, max_length, batch_size, gate, api, environment)[0]
 
     from benchmark_worker import SubprocessBenchmark

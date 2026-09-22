@@ -47,14 +47,6 @@ public static class AnagramNativeLauncher {
         try {
             string home = Directory.GetParent(AppDomain.CurrentDomain.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar)).FullName;
             string homeArgs = "--home " + Quote(home);
-            // Refuse or stop only a verified legacy daemon belonging to this home.
-            using (Process prepare = Process.Start(StartInfo(home, "native_registration.py", "prepare " + homeArgs))) {
-                prepare.StandardInput.Close();
-                Thread errors = Pump(prepare.StandardError.BaseStream, Console.OpenStandardError(), false);
-                Thread output = Pump(prepare.StandardOutput.BaseStream, Console.OpenStandardError(), false);
-                prepare.WaitForExit(); errors.Join(); output.Join();
-                if (prepare.ExitCode != 0) return prepare.ExitCode;
-            }
             foreach (string arg in args) homeArgs += " " + Quote(arg);
             using (Process child = Process.Start(StartInfo(home, "native_host.py", homeArgs))) {
                 // Raw byte streams preserve native messaging length prefixes and UTF-8.

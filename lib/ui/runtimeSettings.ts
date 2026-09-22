@@ -1,17 +1,20 @@
-// One panel shared by first-run setup and Options. Mounting only reads status; the backend
-// owns the automatic first-run benchmark, and later runs require a button click.
-import { t, type MessageKey } from "../i18n";
+// The configuration list under Advanced: one radio row per candidate, Use selected, Run
+// benchmark, Cancel. Mounting only reads status; a benchmark never changes the selection.
+import { t } from "../i18n";
 import {
-  requestRuntime, runtimeReady, runtimeBusy, runtimePollMs, canApplyRuntime,
+  requestRuntime, runtimeBusy, runtimePollMs,
   type RuntimeReply, type RuntimeSnapshot, type RuntimeAction,
 } from "../backend/runtimeClient";
 import "./runtimeSettings.css";
 
-export function runtimeStateLabel(s: RuntimeSnapshot): string {
-  if (runtimeBusy(s)) return t(s.benchmark.status === "running" || s.state === "benchmarking" ? "runtimeBenchmarking" : s.selected_id ? "runtimeLoading" : "runtimePreparing");
-  if (s.state === "error") return t("runtimeFailed");
-  if (s.state === "idle") return t("componentIdle");
-  return t(runtimeReady(s) ? "runtimeReady" : "runtimeChoose");
+/** "812 MB" / "1.4 GB": decimal units, one decimal for gigabytes. */
+export function formatBytes(n: number): string {
+  if (n >= 1e9) return `${(n / 1e9).toLocaleString(undefined, { maximumFractionDigits: 1 })} GB`;
+  return `${Math.round(n / 1e6).toLocaleString()} MB`;
+}
+
+function canApplyRuntime(s: RuntimeSnapshot, id: string | null): boolean {
+  return !runtimeBusy(s) && id !== null && id !== s.selected_id && s.candidates.some((c) => c.id === id && c.available);
 }
 
 function element<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string, cls?: string): HTMLElementTagNameMap[K] {
@@ -21,173 +24,104 @@ function element<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string, c
   return el;
 }
 
-function metric(value: number | null | undefined, unit: "ms" | "rate" | "bytes"): string {
-  if (value == null) return t("runtimeNotAvailable");
-  if (unit === "bytes") return `${(value / 1024 ** 2).toLocaleString(undefined, { maximumFractionDigits: 0 })} MiB`;
-  const amount = value.toLocaleString(undefined, { maximumFractionDigits: unit === "ms" ? 1 : 2 });
-  return unit === "ms" ? `${amount} ms` : t("runtimeRate", amount);
-}
+const number = (value: number | null | undefined, digits: number): string =>
+  value == null ? "–" : value.toLocaleString(undefined, { maximumFractionDigits: digits });
 
-const phaseKeys: Record<string, MessageKey> = {
-  discovery: "runtimePhaseDiscovery", awaiting_selection: "runtimeChoose", ready: "runtimeReady", error: "runtimePhaseFailed",
-  loading: "runtimePhaseLoad", load: "runtimePhaseLoad", warmup: "runtimePhaseWarmup",
-  initialization: "runtimePhaseInitialize", hashing: "runtimePhaseVerify",
-  warming: "runtimePhaseWarmup", measuring: "runtimePhaseMeasure", measurement: "runtimePhaseMeasure",
-  complete: "runtimePhaseComplete", completed: "runtimePhaseComplete", cancelled: "runtimePhaseCancelled",
-  failed: "runtimePhaseFailed", idle: "runtimePhaseIdle",
-};
+/** "42.5 ms · 50 texts/s · 2 GB" for a candidate with at least one finished result. */
+function measuredLine(s: RuntimeSnapshot, id: string): string | null {
+  const good = s.benchmark.results.filter((r) => r.candidate_id === id && r.status === "ok");
+  if (good.length === 0) return null;
+  const single = good.find((r) => r.batch_size === 1) ?? good[0];
+  const batched = good.find((r) => r.batch_size !== 1) ?? good[0];
+  const memory = good.map((r) => r.peak_rss_bytes).filter((n): n is number => n != null);
+  return t("runtimeMeasured", number(single.latency_ms, 1), number(batched.throughput_per_s, 0), memory.length ? formatBytes(Math.max(...memory)) : "–");
+}
 
 export function mountRuntimeSettings(host: HTMLElement, onUpdate?: (reply: RuntimeReply) => void): { refresh(): void; destroy(): void } {
   host.classList.add("runtime-settings");
-  const title = element("h3", t("runtimeTitle"));
-  const summary = element("p", t("runtimeChecking"), "runtime-status");
-  summary.setAttribute("role", "status");
-  const note = element("p", t("runtimeFirstRun"));
-  const timing = element("p");
-  const active = element("p");
-  const error = element("p", "", "runtime-error");
-  error.setAttribute("role", "alert");
+  const title = element("h3", t("runtimeTitle")); title.id = "runtime-title";
+  const list = element("div", undefined, "runtime-list"); list.setAttribute("role", "radiogroup"); list.setAttribute("aria-labelledby", title.id);
+  const status = element("p", "", "runtime-status"); status.setAttribute("role", "status"); status.hidden = true;
+  const error = element("p", "", "runtime-error"); error.setAttribute("role", "alert"); error.hidden = true;
   const errorDetails = element("details", undefined, "runtime-error-details"); errorDetails.hidden = true;
   const errorDetailText = element("pre");
-  errorDetails.append(element("summary", t("componentTechnicalDetails")), errorDetailText);
-  const tableWrap = element("div", undefined, "runtime-table-scroll");
-  tableWrap.tabIndex = 0;
-  tableWrap.setAttribute("role", "region");
-  tableWrap.setAttribute("aria-label", t("runtimeResults"));
+  errorDetails.append(element("summary", t("componentDetails")), errorDetailText);
   const actions = element("div", undefined, "runtime-actions");
-  const button = (key: MessageKey): HTMLButtonElement => {
-    const b = element("button", t(key), "btn");
-    b.type = "button";
-    b.dataset.variant = "outline";
-    b.dataset.size = "sm";
-    return b;
+  const button = (text: string): HTMLButtonElement => {
+    const b = element("button", text, "btn"); b.type = "button"; b.dataset.variant = "outline"; b.dataset.size = "sm"; return b;
   };
-  const apply = button("runtimeApply");
-  const rerun = button("runtimeRerun");
-  const cancel = button("runtimeCancel");
-  const refresh = button("runtimeRefresh");
-  actions.append(apply, rerun, cancel, refresh);
-  const measurementNote = element("p", t("runtimeMeasurementNote"));
-  host.replaceChildren(title, summary, note, timing, active, error, errorDetails, tableWrap, actions, measurementNote);
+  const apply = button(t("runtimeApply"));
+  const benchmark = button(t("runtimeBenchmark"));
+  const cancel = button(t("buttonCancel"));
+  actions.append(apply, benchmark, cancel);
+  host.replaceChildren(title, list, status, error, errorDetails, actions);
 
   let snapshot: RuntimeSnapshot | undefined;
   let choice: string | null = null;
-  let tableSignature = "";
+  let listSignature = "";
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let pending = false;
-  let destroyed = false;
+  let pending = false, destroyed = false, cancelRequested = false;
   let generation = 0;
   let controller: AbortController | undefined;
-  let actionError = "";
-  let actionDetail = "";
-  let cancelRequested = false;
+  let actionError = "", actionDetail = "";
 
   function buttons(): void {
-    const busy = snapshot ? runtimeBusy(snapshot) : false;
+    const running = snapshot?.benchmark.status === "running";
     apply.disabled = pending || !snapshot || !canApplyRuntime(snapshot, choice);
-    rerun.disabled = pending || !snapshot || busy;
-    cancel.disabled = pending || cancelRequested || snapshot?.benchmark.status !== "running";
-    cancel.hidden = snapshot?.benchmark.status !== "running";
-    apply.hidden = rerun.hidden = !snapshot;
-    refresh.disabled = pending;
+    benchmark.disabled = pending || !snapshot || runtimeBusy(snapshot);
+    cancel.hidden = !running;
+    cancel.disabled = pending || cancelRequested;
+    apply.hidden = benchmark.hidden = !snapshot;
   }
 
-  function buildTable(s: RuntimeSnapshot): void {
+  function buildList(s: RuntimeSnapshot): void {
     const signature = JSON.stringify([s.candidates, s.benchmark.results, s.active_id, s.selected_id, s.recommended_id, s.fastest_id, runtimeBusy(s)]);
-    if (signature === tableSignature) return; // retain focus and radio state during progress ticks
-    tableSignature = signature;
-    const table = element("table");
-    table.append(element("caption", t("runtimeResults")));
-    const heading = element("tr");
-    for (const key of ["runtimeConfiguration", "runtimeLatency", "runtimeThroughput", "runtimeResources"] as const) {
-      const th = element("th", t(key)); th.scope = "col"; heading.append(th);
-    }
-    const head = element("thead"); head.append(heading); table.append(head);
-    const body = element("tbody");
+    if (signature === listSignature) return; // keeps focus and the radio choice across progress ticks
+    listSignature = signature;
+    const rows: HTMLElement[] = [];
     for (const c of s.candidates) {
-      const row = element("tr"); row.dataset.active = String(c.id === s.active_id);
-      const cell = element("td");
-      const label = element("label");
+      const row = element("label", undefined, "runtime-row"); row.dataset.active = String(c.id === s.active_id);
       const input = element("input"); input.type = "radio"; input.name = "runtime-candidate"; input.value = c.id;
       input.checked = choice === c.id; input.disabled = !c.available || runtimeBusy(s);
       input.addEventListener("change", () => { choice = c.id; actionError = actionDetail = ""; error.hidden = errorDetails.hidden = true; buttons(); });
-      const name = element("span", c.label);
-      name.append(element("span", `${c.device} · ${c.runtime} · ${c.precision}`, "runtime-detail"));
-      const tags = [c.id === s.active_id ? t("runtimeActive") : "", c.id === s.selected_id && c.id !== s.active_id ? t("runtimeSelected") : "", c.id === s.recommended_id ? t("runtimeRecommended") : "", c.id === s.fastest_id ? t("runtimeFastest") : "", c.experimental ? t("runtimeExperimental") : ""].filter(Boolean);
-      if (tags.length) name.append(element("span", tags.join(" · "), "runtime-detail"));
-      if (!c.available) name.append(element("span", c.reason || t("runtimeUnavailable"), "runtime-detail"));
-      const results = s.benchmark.results.filter((r) => r.candidate_id === c.id);
-      const failed = results.find((r) => r.status === "error");
-      if (failed) name.append(element("span", failed.error || t("runtimeTestFailed"), "runtime-detail"));
-      label.append(input, name); cell.append(label); row.append(cell);
-      const good = results.filter((r) => r.status === "ok");
-      const single = good.find((r) => r.batch_size === 1);
-      const batched = good.find((r) => r.batch_size === 8);
-      const maximum = (key: "peak_rss_bytes" | "accelerator_bytes"): number | undefined => {
-        const values = good.map((r) => r[key]).filter((n): n is number => n != null);
-        return values.length ? Math.max(...values) : undefined;
-      };
-      const latency = element("td", metric(single?.latency_ms, "ms"), "runtime-metric");
-      if (single) {
-        latency.append(element("span", t("runtimeLoadWarmup", metric(single.load_ms, "ms"), metric(single.warmup_ms, "ms")), "runtime-detail"));
-        latency.append(element("span", t("runtimeInitialization", metric(single.initialization_ms, "ms"), metric(single.hash_ms, "ms")), "runtime-detail"));
-        latency.append(element("span", t("runtimeSamples", single.samples ?? 0), "runtime-detail"));
-        if (single.measurement_quality === "insufficient") latency.append(element("span", t("runtimeInsufficient"), "runtime-detail"));
-      }
-      const throughput = element("td", metric(batched?.throughput_per_s, "rate"), "runtime-metric");
-      if (batched) throughput.append(element("span", t("runtimeBatch", batched.batch_size ?? 8, batched.samples ?? 0), "runtime-detail"));
-      if (batched?.measurement_quality === "insufficient") throughput.append(element("span", t("runtimeInsufficient"), "runtime-detail"));
-      const resources = element("td", undefined, "runtime-metric");
-      const acceleratorLabel = good.some((r) => r.accelerator_kind === "mps_driver_including_cache") ? "runtimeMpsMemory" : "runtimeAccelerator";
-      for (const [key, value] of [["runtimeRam", maximum("peak_rss_bytes")], [acceleratorLabel, maximum("accelerator_bytes")]] as const) {
-        const resource = element("div", undefined, "runtime-resource");
-        resource.append(element("span", t(key), "runtime-detail"), element("span", metric(value, "bytes")));
-        resources.append(resource);
-      }
-      row.append(latency, throughput, resources);
-      if (single) resources.append(element("span", t("runtimeMemoryBaseline", metric(single.baseline_rss_bytes, "bytes"), metric(single.loaded_rss_bytes, "bytes")), "runtime-detail"));
-      body.append(row);
+      const body = element("span", undefined, "runtime-body");
+      const name = element("span", c.label, "runtime-name");
+      const tags = [c.id === s.active_id ? t("runtimeActive") : "", c.id === s.recommended_id ? t("runtimeRecommended") : "",
+        c.id === s.fastest_id ? t("runtimeFastest") : "", c.experimental ? t("runtimeExperimental") : ""].filter(Boolean);
+      for (const tag of tags) name.append(element("span", tag, "badge"));
+      body.append(name, element("span", `${c.device} · ${c.runtime} · ${c.precision}`, "runtime-detail"));
+      if (!c.available) body.append(element("span", c.reason || t("runtimeUnavailable"), "runtime-detail"));
+      const failed = s.benchmark.results.find((r) => r.candidate_id === c.id && r.status === "error");
+      if (failed) body.append(element("span", failed.error || t("runtimeFailed"), "runtime-detail runtime-failed"));
+      const measured = measuredLine(s, c.id);
+      if (measured) body.append(element("span", measured, "runtime-detail runtime-measured"));
+      row.append(input, body); rows.push(row);
     }
-    table.append(body); tableWrap.replaceChildren(table);
+    list.replaceChildren(...rows);
   }
 
   function paint(reply: RuntimeReply): void {
     if (reply.kind !== "ok") {
-      snapshot = undefined;
-      summary.textContent = t(reply.kind === "invalid" ? "runtimeInvalid" : "runtimeUnreachable");
-      timing.hidden = active.hidden = tableWrap.hidden = measurementNote.hidden = true;
-      note.hidden = true;
-      error.textContent = actionError; error.hidden = !actionError;
-      errorDetailText.textContent = actionDetail; errorDetails.hidden = !actionDetail;
+      snapshot = undefined; list.hidden = status.hidden = true;
+      error.textContent = actionError || t("componentFailed"); error.hidden = false;
+      errorDetailText.textContent = actionDetail || reply.message || ""; errorDetails.hidden = !errorDetailText.textContent;
       buttons(); onUpdate?.(reply); return;
     }
-    snapshot = reply.snapshot;
-    const s = snapshot;
+    const s = snapshot = reply.snapshot;
     if (s.benchmark.status !== "running") cancelRequested = false;
     if (choice && !s.candidates.some((c) => c.id === choice && c.available)) choice = null;
-    if (choice === null && s.selected_id) choice = s.selected_id;
-    // The recommendation is a draft choice, never a configuration write. A reader must
-    // still press Apply, and later snapshots must never replace their own radio choice.
-    if (choice === null && !runtimeBusy(s) && s.recommended_id && s.candidates.some((c) => c.id === s.recommended_id && c.available)) choice = s.recommended_id;
-    summary.textContent = cancelRequested ? t("runtimeCancelling") : runtimeStateLabel(s);
-    note.hidden = false;
-    note.textContent = t(s.needs_selection ? "runtimeFirstRun" : "runtimeRerunNote");
-    timing.hidden = false;
-    const phase = phaseKeys[s.benchmark.phase] ? t(phaseKeys[s.benchmark.phase]) : s.benchmark.phase;
-    const current = s.candidates.find((c) => c.id === s.benchmark.current_id)?.label;
-    timing.textContent = t("runtimeProgress", phase || t("runtimePhaseIdle"), s.benchmark.completed, s.benchmark.total,
-      s.benchmark.measurement_s.toFixed(1), s.benchmark.budget_s, s.benchmark.elapsed_s.toFixed(1)) + (current ? ` · ${current}` : "");
-    active.hidden = false;
-    const activeLabel = s.candidates.find((c) => c.id === s.active_id)?.label;
-    const selectedLabel = s.candidates.find((c) => c.id === s.selected_id)?.label;
-    active.textContent = activeLabel ? t("runtimeUsing", activeLabel) : t("runtimeNoActive");
-    if (selectedLabel && s.selected_id !== s.active_id) active.textContent += ` ${t("runtimePending", selectedLabel)}`;
-    error.textContent = actionError || (s.error ? t("runtimeTestFailed") : s.benchmark.status === "cancelled" ? t("runtimeCancelled") : s.benchmark.status === "failed" ? t("runtimeTestFailed") : "");
+    if (choice === null) choice = s.selected_id ?? s.recommended_id;
+    const running = s.benchmark.status === "running";
+    status.hidden = !running;
+    if (running) {
+      const current = s.candidates.find((c) => c.id === s.benchmark.current_id)?.label;
+      status.textContent = t("runtimeProgress", s.benchmark.completed, s.benchmark.total) + (current ? ` · ${current}` : "");
+    }
+    error.textContent = actionError || (s.error || s.benchmark.status === "failed" ? t("runtimeFailed") : "");
     error.hidden = !error.textContent;
     errorDetailText.textContent = actionDetail || s.error || ""; errorDetails.hidden = !errorDetailText.textContent;
-    tableWrap.hidden = s.candidates.length === 0; measurementNote.hidden = false;
-    measurementNote.textContent = t(s.benchmark.report_version === 2 ? "runtimeMeasurementNote" : "runtimeLegacyMeasurementNote");
-    buildTable(s); buttons(); onUpdate?.(reply);
+    list.hidden = s.candidates.length === 0;
+    buildList(s); buttons(); onUpdate?.(reply);
   }
 
   function schedule(): void {
@@ -206,11 +140,11 @@ export function mountRuntimeSettings(host: HTMLElement, onUpdate?: (reply: Runti
       if (seq !== generation || ac.signal.aborted || destroyed) return;
       if (reply.kind === "rejected") {
         if (action === "cancel") cancelRequested = false;
-        actionError = t("runtimeActionFailed"); actionDetail = reply.message ?? "";
+        actionError = t("componentFailed"); actionDetail = reply.message ?? "";
         error.textContent = actionError; error.hidden = false;
         errorDetailText.textContent = actionDetail; errorDetails.hidden = !actionDetail;
       } else {
-        if (action && reply.kind !== "ok") { actionError = t("runtimeActionFailed"); cancelRequested = false; }
+        if (action && reply.kind !== "ok") { actionError = t("componentFailed"); cancelRequested = false; }
         paint(reply);
       }
     } catch {
@@ -227,9 +161,8 @@ export function mountRuntimeSettings(host: HTMLElement, onUpdate?: (reply: Runti
     void poll(action);
   }
   apply.addEventListener("click", () => { if (snapshot && canApplyRuntime(snapshot, choice)) run("config"); });
-  rerun.addEventListener("click", () => run("benchmark"));
+  benchmark.addEventListener("click", () => run("benchmark"));
   cancel.addEventListener("click", () => { cancelRequested = true; run("cancel"); });
-  refresh.addEventListener("click", () => run());
   const visibility = (): void => {
     if (document.visibilityState === "visible") run();
     else { if (timer !== undefined) clearTimeout(timer); controller?.abort(); }

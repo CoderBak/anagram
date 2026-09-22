@@ -16,10 +16,6 @@ try {
   & python -m venv (Join-Path $component 'venv')
   if ($LASTEXITCODE -ne 0) { throw 'Temporary private Python creation failed' }
   @'
-import sys
-assert sys.argv[1] == 'prepare' and sys.argv[2] == '--home'
-'@ | Set-Content -LiteralPath (Join-Path $component 'app\native_registration.py') -Encoding UTF8
-  @'
 import json, struct, sys
 assert sys.argv[1]=='--home' and sys.argv[3]=='chrome-extension://abcdefghijklmnopabcdefghijklmnop/'
 n=struct.unpack('<I',sys.stdin.buffer.read(4))[0]

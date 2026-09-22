@@ -989,11 +989,11 @@ async function sweep(page, steps = 6) {
     const ok =
       clicked &&
       typeof report === "string" &&
-      report.startsWith("# Anagram report") &&
+      report.startsWith("# Anagram analysis report") &&
       !report.includes("% AI") &&
       // Every flagged entry opens "1. **AI-generated · .96** (…", never with a percentage.
       report.split(/\r?\n/).filter((l) => /^\d+\. \*\*/.test(l)).every((l) => /^\d+\. \*\*[^*]+ · (\.\d\d|1\.0)\*\*/.test(l)) &&
-      report.includes("not a share of words, not proof");
+      report.includes("not the fraction of AI-written words");
     record("ui", "copied report: bare 0-1 scores plus the legend that explains them", ok, JSON.stringify({ clicked, head: report?.slice(0, 48) }));
     await p.close();
   }
@@ -1545,12 +1545,12 @@ async function sweep(page, steps = 6) {
     const flagged = (report ?? "").match(/· Flagged: (\d+)/)?.[1];
     record(
       "ui",
-      "PDF reader: the panel lists the flagged paragraphs and Copy report names the PDF",
+      "PDF reader: the panel lists the flagged paragraphs and Copy report carries the scope note",
       panel.open &&
         panel.items === Number(flagged) &&
         typeof report === "string" &&
-        report.startsWith("# Anagram report — doc.pdf") &&
-        report.includes(`- Page: ${fileUrl("/doc.pdf")}`) &&
+        // Reports omit titles and URLs unless the user opts in, so the PDF is named by its scope note only.
+        report.startsWith("# Anagram analysis report") &&
         report.includes("not a complete document assessment"),
       JSON.stringify({ panel, flagged, head: (report ?? "").slice(0, 60) }),
     );
@@ -1783,60 +1783,60 @@ async function sweep(page, steps = 6) {
     );
   }
 
-  // A33–A36: first-run status follows the Native Messaging component lifecycle.
+  // A33–A36: the setup page's status card follows the Native Messaging engine lifecycle.
   // Dedicated native-browser.mjs also covers install copying and destructive actions.
   if (extId) {
     const onboardingUrl = `chrome-extension://${extId}/onboarding.html`;
-    const readStrip = (page) => page.evaluate(() => {
-      const txt = (id) => document.getElementById(id)?.textContent ?? null;
+    const readCard = (page) => page.evaluate(() => {
+      const txt = (sel) => document.querySelector(sel)?.textContent ?? null;
+      for (const d of document.querySelectorAll("#manage, #advanced")) d.setAttribute("open", "");
       return {
-        ext: document.querySelector("#row-ext .sval")?.textContent ?? null,
-        extVersion: txt("ext-version"), extState: document.getElementById("row-ext")?.dataset.state,
-        component: txt("daemon-state"), componentState: document.getElementById("row-daemon")?.dataset.state,
-        runtime: document.querySelector("#runtimeSettings .runtime-status")?.textContent ?? null,
-        active: document.querySelector('#runtimeSettings tr[data-active="true"]')?.textContent ?? null,
-        ready: txt("ready-text"), readyState: document.getElementById("row-ready")?.dataset.state,
-        install: document.getElementById("install")?.hidden === false ? txt("install-cmd") : null,
-        update: [...document.querySelectorAll("button")].some((b) => !b.hidden && b.textContent === "Update local component"),
+        status: txt("#componentSettings .component-status"),
+        active: txt('#runtimeSettings .runtime-row[data-active="true"]'),
+        ready: document.getElementById("ready")?.hidden === false,
+        grant: document.getElementById("access-grant")?.hidden === false,
+        go: document.getElementById("go")?.hidden === false,
+        install: document.getElementById("install")?.hidden === false ? txt("#install-cmd") : null,
+        primary: document.getElementById("component-primary")?.hidden === false ? txt("#component-primary") : null,
+        update: [...document.querySelectorAll("button")].some((b) => !b.hidden && b.textContent === "Update engine"),
         error: document.querySelector(".component-error")?.textContent ?? null,
       };
     });
-    const waitComponent = (page, words, timeout = 15000) => page.waitForFunction(
-      (w) => document.getElementById("daemon-state")?.textContent === w, words, { timeout },
+    const waitStatus = (page, words, timeout = 15000) => page.waitForFunction(
+      (w) => document.querySelector("#componentSettings .component-status")?.textContent === w, words, { timeout },
     ).then(() => true).catch(() => false);
     const p = await context.newPage();
     await p.goto(onboardingUrl, { waitUntil: "load" });
-    const sawRunning = await waitComponent(p, "Ready to analyze");
-    const up = await readStrip(p);
-    record("ui", "native first-run page shows the extension and active configuration as ready",
-      sawRunning && up.ext === "installed" && /^v\d/.test(up.extVersion ?? "") && up.extState === "ok" &&
-      up.componentState === "ok" && up.runtime === "Ready to analyze" && up.active?.includes("Test CPU · FP32") &&
-      up.readyState === "ok" && up.ready === "Open any article — a chip appears after each paragraph." && up.install === null,
+    const sawRunning = await waitStatus(p, "Ready");
+    const up = await readCard(p);
+    record("ui", "the setup page says Ready with the active configuration, the site grant and no install command",
+      // The test build already grants every site, so the grant button gives way to the go line.
+      sawRunning && up.status === "Ready" && up.active?.includes("Test CPU · FP32") && up.ready && (up.grant || up.go) &&
+      up.install === null && up.primary === null && up.update && !up.error,
       JSON.stringify(up));
     await fixture.close();
     await p.reload({ waitUntil: "load" });
-    const sawDown = await waitComponent(p, "Local component not connected");
-    const down = await readStrip(p);
-    record("ui", "native first-run page offers a scoped installer and does not claim Ready when disconnected",
-      sawDown && down.componentState === "bad" && down.readyState === "idle" &&
-      down.ready === "Install and connect the local component to finish setup." &&
-      down.install?.includes(extId) && down.install.includes("/releases/download/v") && down.active === null,
+    const sawDown = await waitStatus(p, "Not installed");
+    const down = await readCard(p);
+    record("ui", "the setup page offers a scoped installer and does not claim Ready when disconnected",
+      sawDown && !down.ready && down.install?.includes(extId) && down.install.includes("/releases/download/v") &&
+      down.active === null && down.primary === null,
       JSON.stringify(down));
     await fixture.resume();
-    const cameBack = await waitComponent(p, "Ready to analyze");
-    const back = await readStrip(p);
-    record("ui", "native first-run status follows component recovery without a reload",
-      cameBack && back.componentState === "ok" && back.active?.includes("Test CPU · FP32") &&
-      back.readyState === "ok" && back.install === null, JSON.stringify(back));
+    const cameBack = await waitStatus(p, "Ready");
+    const back = await readCard(p);
+    record("ui", "the setup page follows engine recovery without a reload",
+      cameBack && back.active?.includes("Test CPU · FP32") && back.ready && back.install === null, JSON.stringify(back));
     const healthy = fixture.state().component;
     fixture.setState({ component: { ...healthy, state: "error", error: { code: "incompatible", message: "Fixture component requires update" } } });
-    const sawMismatch = await waitComponent(p, "Local setup needs attention");
-    const mismatch = await readStrip(p);
+    // A ready page polls every 15 s, so the change is seen only on the next tick.
+    const sawMismatch = await waitStatus(p, "Needs attention", 20000);
+    const mismatch = await readCard(p);
     fixture.setState({ component: healthy });
-    const restored = await waitComponent(p, "Ready to analyze");
-    record("ui", "a component compatibility error leaves setup incomplete and offers an update action",
-      sawMismatch && mismatch.componentState === "bad" && mismatch.update && mismatch.error &&
-      mismatch.install === null && mismatch.readyState === "idle" && restored, JSON.stringify({ ...mismatch, restored }));
+    const restored = await waitStatus(p, "Ready");
+    record("ui", "an engine error leaves setup incomplete, shows Retry and the Update engine action",
+      sawMismatch && !mismatch.ready && mismatch.update && mismatch.error && mismatch.primary === "Retry" &&
+      mismatch.install === null && restored, JSON.stringify({ ...mismatch, restored }));
     await p.close();
   }
 
@@ -1901,7 +1901,7 @@ async function sweep(page, steps = 6) {
       .catch(() => null);
     await opt.click("#clearCache");
     const said = await opt
-      .waitForFunction(() => document.getElementById("clearCache").textContent.includes("Cleared"), null, { timeout: 8000 })
+      .waitForFunction(() => document.getElementById("cacheStatus").textContent.includes("Cleared"), null, { timeout: 8000 })
       .then(() => true)
       .catch(() => false);
     const countedAfter = await opt
@@ -2071,7 +2071,7 @@ async function sweep(page, steps = 6) {
         button: document.getElementById("action")?.textContent ?? "",
         // The one filled button, or an outline one where the action is merely available.
         primary: document.getElementById("action")?.dataset.variant !== "outline",
-        hint: document.getElementById("cmd")?.hidden === false ? document.getElementById("cmd")?.textContent : null,
+        engine: document.getElementById("backend")?.hidden === false ? document.getElementById("backend")?.textContent : null,
         fabricatedCommand: /~\/.anagram\/bin\/anagram|curl -fsSL/.test(document.body.innerText),
         buttons: document.querySelectorAll("main .btn:not([data-variant])").length,
       }));
@@ -2126,13 +2126,14 @@ async function sweep(page, steps = 6) {
     const seen = { running, off, pdf, nothing, down };
     record(
       "ui",
-      "the popup offers one action per state, and an unavailable engine opens Settings without a terminal command",
-      running.button === "Rescan page" && !running.primary && /paragraphs analyzed/.test(running.status) &&
-        off.button === "Analyze this page" && off.primary && off.status === "Detection is off for this page." &&
+      "the popup offers one action per state, names the engine's state, and an unavailable engine opens Settings without a terminal command",
+      running.button === "Rescan" && !running.primary && /paragraphs analyzed/.test(running.status) &&
+        running.engine === "Local engine: Ready · fake" &&
+        off.button === "Analyze this page" && off.primary && off.status === "Anagram is off for this page." &&
         pdf.button === "Read this PDF" && pdf.primary && pdf.status === "" &&
         nothing.button === "Read a PDF file…" && !nothing.primary && nothing.status === "Not available on this page." &&
-        down.nativeDisconnected && down.button === "Open setup and Settings" && down.primary && down.status === "Local engine is not ready" &&
-        down.hint === "Open Settings for setup progress, model downloads, and local engine controls." &&
+        down.nativeDisconnected && down.button === "Open Settings" && down.primary && down.status === "Local engine is not ready" &&
+        down.engine === null &&
         !down.fabricatedCommand && down.settingsUrl === `chrome-extension://${extId}/options.html` && down.settingsOpen &&
         // Never two main events at once: at most one filled button on the whole page.
         [running, off, pdf, nothing, down].every((s) => s.buttons <= 1),
@@ -2283,7 +2284,7 @@ async function sweep(page, steps = 6) {
   }
 
   // ---- A39: chips inside a box the site clips to a few lines ---------------------------
-  // The 30-page session survey (test/dynamics.mjs) found the chips themselves stable and
+  // A 30-page session survey (2026-09) found the chips themselves stable and
   // their PLACEMENT wrong in exactly one shape of box: the "see more" review. Every unit of
   // a clamped review ends out of sight, so every chip was inserted after the box — 91 of
   // them at 16 anchors on one Goodreads page, twelve in a row at the worst. These two run
@@ -2423,11 +2424,10 @@ ${KEY_TAGS.map((t, i) => `<p id="z${i + 1}">${KEY_PARA(t)}</p>`).join("\n")}
       await popup.waitForTimeout(800);
       const popupText = await popup.evaluate(() => ({
         lang: document.documentElement.lang,
-        subtitle: document.querySelector("header .brand p")?.textContent ?? "",
         gear: document.getElementById("gear")?.getAttribute("aria-label") ?? "",
-        where: document.querySelector(".grp > h2")?.textContent ?? "",
+        site: document.querySelector('label[for="siteEnabled"]')?.textContent ?? "",
         action: document.getElementById("action")?.textContent ?? "",
-        more: document.querySelector("details.more > summary")?.textContent ?? "",
+        flagged: document.querySelector('[role="tab"][data-value="flagged"]')?.textContent ?? "",
       }));
       await popup.close();
 
@@ -2438,8 +2438,9 @@ ${KEY_TAGS.map((t, i) => `<p id="z${i + 1}">${KEY_PARA(t)}</p>`).join("\n")}
         lang: document.documentElement.lang,
         componentCard: document.querySelector("#componentCard > header h2")?.textContent ?? "",
         componentStatus: document.querySelector(".component-status")?.textContent ?? "",
-        update: [...document.querySelectorAll("button")].some((b) => !b.hidden && b.textContent === "更新本地组件"),
+        update: [...document.querySelectorAll("button")].some((b) => !b.hidden && b.textContent === "更新引擎"),
         runtimeTitle: document.querySelector("#runtimeSettings h3")?.textContent ?? "",
+        marks: document.querySelector('label[for="underline"]')?.textContent ?? "",
         fabricatedCommand: /~\/.anagram\/bin\/anagram|curl -fsSL/.test(document.body.innerText),
       }));
       await opts.close();
@@ -2502,15 +2503,14 @@ ${KEY_TAGS.map((t, i) => `<p id="z${i + 1}">${KEY_PARA(t)}</p>`).join("\n")}
           menus[2] === "用 Anagram 打开 PDF" &&
           menus[3] === "打开存疑段落列表" &&
           popupText.lang === "zh-CN" &&
-          popupText.subtitle === "本机评出的 AI 编辑程度" &&
-          popupText.gear === "全部设置" &&
-          popupText.where === "运行范围" &&
+          popupText.gear === "设置" &&
+          popupText.site === "在此网站运行" &&
           popupText.action === "阅读本机 PDF…" &&
-          popupText.more === "更多" &&
+          popupText.flagged === "仅存疑" &&
           optionsText.lang === "zh-CN" &&
-          optionsText.componentCard === "本地分析引擎" &&
-          optionsText.componentStatus === "已可开始分析" && optionsText.update &&
-          optionsText.runtimeTitle === "选择 Anagram 的运行方式" && !optionsText.fabricatedCommand &&
+          optionsText.componentCard === "本地引擎" &&
+          optionsText.componentStatus === "就绪" && optionsText.update &&
+          optionsText.runtimeTitle === "运行配置" && optionsText.marks === "下划线" && !optionsText.fabricatedCommand &&
           chip.lang === "zh-CN" &&
           ["人工撰写", "轻度 AI 编辑", "重度 AI 编辑", "AI 生成"].includes(chip.verdict) &&
           chip.words === "词数" &&
@@ -2525,9 +2525,9 @@ ${KEY_TAGS.map((t, i) => `<p id="z${i + 1}">${KEY_PARA(t)}</p>`).join("\n")}
           panel.off === "在 localhost 关闭" &&
           copied === "已复制 ✓" &&
           typeof report === "string" &&
-          report.startsWith("# Anagram 报告：") &&
+          report.startsWith("# Anagram 分析报告") &&
           report.includes("## 存疑段落（4）") &&
-          report.includes("既不是 AI 撰写词语的占比，也不是证据。"),
+          report.includes("也不能证明作者身份"),
         JSON.stringify(seen),
       );
 

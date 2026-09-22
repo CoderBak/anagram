@@ -198,7 +198,8 @@ native_host.main()
 
     def test_browser_launch_arguments_are_metadata_only(self):
         chrome = host.parse_args(["--home", "/tmp/owned", "chrome-extension://example/", "--parent-window=123"])
-        self.assertEqual((chrome.caller, chrome.addon_id, chrome.parent_window), ("chrome-extension://example/", None, "123"))
+        self.assertEqual((chrome.caller, chrome.addon_id), ("chrome-extension://example/", None))
+        self.assertFalse(hasattr(chrome, "parent_window"))  # Windows Chrome's handle is ignored, not stored
         firefox = host.parse_args(["--home", "/tmp/owned", "/tmp/native manifest.json", "anagram@example.org"])
         self.assertEqual((firefox.caller, firefox.addon_id), ("/tmp/native manifest.json", "anagram@example.org"))
 
@@ -271,9 +272,12 @@ class LifecycleTests(unittest.TestCase):
             self.assertFalse(component.controller.thread.is_alive())
 
     def first_run(self, component):
+        """Prepared files lead straight to a loaded runtime; no choice is requested."""
         component.start()
         self.finish(component)
-        self.assertEqual(component.status()["state"], "awaiting_selection")
+        status = component.status()
+        self.assertEqual(status["state"], "ready", status)
+        self.assertEqual(status["runtime"]["active_id"], "torch:cpu:fp32")
 
     def test_first_connection_downloads_once_and_models_are_reused(self):
         component = self.make()
@@ -460,7 +464,7 @@ class LifecycleTests(unittest.TestCase):
         restarted.handle("models.download", {})
         self.finish(restarted)
         self.assertEqual(self.downloads, 1)
-        self.assertEqual(restarted.status()["state"], "awaiting_selection")
+        self.assertEqual(restarted.status()["state"], "ready")
 
     def test_failed_download_requires_explicit_retry(self):
         def fail(*_):
@@ -483,9 +487,6 @@ class LifecycleTests(unittest.TestCase):
     def test_engine_stop_persists_and_resume_restores_saved_selection(self):
         component = self.make()
         self.first_run(component)
-        component.handle("runtime.config", {"id": "torch:cpu:fp32"})
-        self.finish(component)
-        self.assertEqual(component.status()["state"], "ready")
         self.assertTrue(component.handle("health", {})[1]["ok"])
         score = component.handle("score", {"v": "2.1", "blocks": [{"id": "a", "text": "a paragraph"}]})[1]
         self.assertEqual(score["results"][0]["bucket"], 0)
@@ -511,8 +512,6 @@ class LifecycleTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ComponentError):
                 component.handle("engine.settings", {"idle_unload_s": value})
         component.handle("engine.settings", {"idle_unload_s": 60})
-        component.handle("runtime.config", {"id": "torch:cpu:fp32"})
-        self.finish(component)
         controller = component.controller
         activity = controller.last_activity
         component.handle("health", {})
@@ -549,8 +548,6 @@ class LifecycleTests(unittest.TestCase):
     def test_idle_score_wait_does_not_block_status_and_stop_rejects_it(self):
         component = self.make()
         self.first_run(component)
-        component.handle("runtime.config", {"id": "torch:cpu:fp32"})
-        self.finish(component)
         controller = component.controller
         controller.last_activity -= 301
         controller.unload_if_idle()
@@ -577,6 +574,58 @@ class LifecycleTests(unittest.TestCase):
         self.finish(component)
         self.assertEqual(component.status()["state"], "stopped")
 
+    def test_engine_stop_lets_an_inflight_score_finish_then_unloads(self):
+        component = self.make(stop_timeout=0.05)
+        self.first_run(component)
+        controller = component.controller
+        entered, release = threading.Event(), threading.Event()
+        closed = []
+        engine = controller.engine
+        engine.close = lambda: closed.append(True)
+        def slow_score():
+            with controller.use_engine():
+                entered.set()
+                release.wait(3)
+        scorer = threading.Thread(target=slow_score)
+        scorer.start()
+        self.assertTrue(entered.wait(2))
+        self.assertEqual(component.handle("engine.stop", {})[0], 202)
+        time.sleep(0.3)  # well past stop_timeout: the stop must wait, not fail
+        self.assertEqual(component.status()["state"], "loading")
+        self.assertTrue(json.loads((self.home / "component-state.json").read_text())["engine_stopped"])
+        self.assertEqual(closed, [])
+        release.set()
+        scorer.join(2)
+        self.finish(component)
+        status = component.status()
+        self.assertEqual(status["state"], "stopped")
+        self.assertIsNone(status["error"])
+        self.assertIsNone(component.controller)
+        self.assertEqual(closed, [True])
+
+    def test_internal_failures_are_host_errors_not_client_errors(self):
+        component = self.make()
+        self.first_run(component)
+        score = {"v": "2.1", "blocks": [{"id": "a", "text": "a paragraph"}]}
+        engine = component.controller.engine
+        engine.score = lambda texts: [{"bucket": "not a bucket", "probs": [1., 0., 0., 0.], "score": 0.,
+                                       "tokens": 8, "truncated": False} for _ in texts]  # fails response validation
+        response = host.dispatch(component, request("score", payload=score))
+        self.assertEqual((response["status"], response["error"]["code"]), (500, "internal_error"))
+        def invalid_logits(_texts):
+            raise ValueError("runtime returned invalid EditLens logits")
+        engine.score = invalid_logits
+        response = host.dispatch(component, request("score", payload=score))
+        self.assertEqual((response["status"], response["error"]["code"]), (500, "internal_error"))
+        self.assertNotIn("logits", response["error"]["message"])
+        # Request validation stays a client error.
+        response = host.dispatch(component, request("score", payload={"v": "9.0", "blocks": []}))
+        self.assertEqual((response["status"], response["error"]["code"]), (422, "invalid_request"))
+        for op, payload in (("runtime.config", {"id": "onnx:cpu:int8"}), ("runtime.benchmark", {"budget_s": 5})):
+            response = host.dispatch(component, request(op, payload=payload))
+            self.assertEqual((response["status"], response["error"]["code"]), (422, "invalid_request"), op)
+        self.assertEqual(component.status()["state"], "ready")
+
     def test_legacy_component_settings_receive_default_idle_timeout(self):
         component = self.make()
         self.first_run(component)
@@ -597,7 +646,7 @@ class LifecycleTests(unittest.TestCase):
             release.wait(3)
             return {"profile": profile, "devices": ["Fixture GPU"],
                     "candidate_ids": ["torch:cpu:fp32"], "selected_paths": ["fixture"],
-                    "total_bytes": 8, "expanded_bytes": 16}
+                    "total_bytes": 8}
         def download(cancel, progress):
             calls.append(("download", component.plan["profile"]))
             self.download(cancel, progress)
@@ -613,25 +662,33 @@ class LifecycleTests(unittest.TestCase):
             release.set()
         self.finish(component)
         self.assertEqual(calls, [("plan", "recommended"), ("download", "recommended")])
-        self.assertEqual(component.status()["download"]["plan"]["files"], ["fixture", "lid.176.ftz"])
+        plan = component.status()["download"]["plan"]
+        self.assertEqual(set(plan), {"devices", "total_bytes"})
+        self.assertEqual(plan["devices"], ["Fixture GPU"])
 
-    def test_download_profile_is_explicit_validated_and_persists_across_restart(self):
-        component = self.make()
+    def test_download_payload_carries_no_profile_and_the_terminal_choice_is_reused(self):
+        calls = []
+        def plan(profile):
+            calls.append(profile)
+            return {"profile": profile, "devices": ["Fixture CPU"], "candidate_ids": ["torch:cpu:fp32"],
+                    "selected_paths": ["fixture"], "total_bytes": 8}
+        component = self.make(planner=plan)
         self.first_run(component)
-        for payload in ({"profile": "all"}, {"profile": None}, {"profile": True},
-                        {"profile": []}, {"profile": "expanded", "url": "https://example.com"}):
+        for payload in ({"profile": "recommended"}, {"profile": "expanded"}, {"profile": None}, {"url": "https://example.com"}):
             with self.subTest(payload=payload), self.assertRaises(ComponentError):
                 component.handle("models.download", payload)
-        component.handle("models.download", {"profile": "expanded"})
-        self.finish(component)
-        self.assertEqual(component.status()["download"]["plan"]["profile"], "expanded")
+        self.assertEqual(calls, ["recommended"])
         component.close()
-        restarted = self.make()
+        # prepare_models.py --profile expanded records the choice in the component state.
+        path = self.home / "component-state.json"
+        path.write_text(json.dumps({**json.loads(path.read_text()), "model_profile": "expanded"}))
+        restarted = self.make(planner=plan)
         self.first_run(restarted)
-        self.assertEqual(restarted.status()["download"]["plan"]["profile"], "expanded")
-        restarted.handle("models.download", {"profile": "recommended"})
+        self.assertEqual(calls, ["recommended", "expanded"])
+        restarted.handle("models.download", {})
         self.finish(restarted)
-        self.assertEqual(restarted.status()["download"]["plan"]["profile"], "recommended")
+        self.assertEqual(calls, ["recommended", "expanded", "expanded"])
+        self.assertEqual(json.loads(path.read_text())["model_profile"], "expanded")
 
     def test_pause_while_detecting_never_starts_a_download(self):
         entered, release = threading.Event(), threading.Event()
@@ -650,97 +707,27 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(self.downloads, 0)
         self.assertEqual(component.status()["state"], "paused")
 
-    def test_legacy_profile_migrates_without_downloading_at_construction(self):
-        component = self.make()
-        self.first_run(component)
-        component.close()
-        path = self.home / "component-state.json"
-        saved = json.loads(path.read_text())
-        saved.pop("model_profile")
-        path.write_text(json.dumps(saved))
-        restarted = self.make()
-        self.assertTrue(restarted.legacy_profile)
-        self.assertEqual(restarted.settings["model_profile"], "recommended")
-        self.assertEqual(self.downloads, 1)
-
-    def legacy_int8_preferences(self):
+    def test_preferences_without_a_profile_default_to_recommended_and_grant_nothing(self):
         saved = {**STATE_DEFAULT, "initialized": True, "download_pending": True}
         saved.pop("model_profile")
         path = self.home / "component-state.json"
         path.write_text(json.dumps(saved))
-        (self.home / "runtime.json").write_text(json.dumps({
-            "schema_version": 1, "selected_id": "onnx:cpu:int8",
-        }))
-        return path
-
-    @staticmethod
-    def migration_plan(_pin, _hardware, profile="recommended"):
-        return {"schema_version": 1, "profile": profile, "devices": ["Fixture CPU"],
-                "candidate_ids": ["torch:cpu:fp32"] + (["onnx:cpu:int8"] if profile == "expanded" else []),
-                "selected_paths": ["fixture"], "total_bytes": 8}
-
-    def test_legacy_int8_pause_during_probe_preserves_migration_across_restart(self):
-        path = self.legacy_int8_preferences()
-        entered, release = threading.Event(), threading.Event()
-        def discover():
-            entered.set()
-            self.assertTrue(release.wait(3))
-            return {"fixture": True}
-        with patch("model_plan.discover_hardware", side_effect=discover) as probe, \
-                patch("model_plan.build_plan", side_effect=self.migration_plan):
-            component = self.make(planner=None)  # exercise the real migration coordinator
-            component.start()
-            try:
-                self.assertTrue(entered.wait(2))
-                component.handle("models.pause", {})
-                paused = json.loads(path.read_text())
-                self.assertTrue(paused["download_paused"])
-                self.assertNotIn("model_profile", paused)
-            finally:
-                release.set()
-            self.finish(component)
-            self.assertEqual(component.status()["state"], "paused")
-            self.assertTrue(component.legacy_profile)
-            self.assertIsNone(component.plan)
-            self.assertEqual(self.downloads, 0)
-            component.close()
-
-            restarted = self.make(planner=None)
-            self.assertTrue(restarted.legacy_profile)
-            restarted.start()
-            self.finish(restarted)
-            self.assertEqual(restarted.status()["state"], "paused")
-            self.assertEqual(probe.call_count, 1)  # no discovery or download before explicit resume
-            restarted.handle("models.download", {})
-            self.finish(restarted)
-            self.assertEqual(probe.call_count, 2)
-            self.assertEqual(self.downloads, 1)
-            self.assertFalse(restarted.legacy_profile)
-            self.assertEqual(restarted.plan["profile"], "expanded")
-            self.assertIn("onnx:cpu:int8", restarted.plan["candidate_ids"])
-            self.assertEqual(restarted.status()["download"]["plan"]["profile"], "expanded")
-            self.assertEqual(json.loads(path.read_text())["model_profile"], "expanded")
-
-    def test_legacy_plan_save_failure_rolls_back_and_can_retry_migration(self):
-        path = self.legacy_int8_preferences()
-        original = path.read_bytes()
+        (self.home / "runtime.json").write_text(json.dumps({"schema_version": 1, "selected_id": "onnx:cpu:int8"}))
+        plans = []
+        def build_plan(_pin, _hardware, profile="recommended"):
+            plans.append(profile)
+            return {"schema_version": 1, "profile": profile, "devices": ["Fixture CPU"],
+                    "candidate_ids": ["torch:cpu:fp32"], "selected_paths": ["fixture"], "total_bytes": 8}
         with patch("model_plan.discover_hardware", return_value={"fixture": True}), \
-                patch("model_plan.build_plan", side_effect=self.migration_plan):
-            component = self.make(planner=None)
-            with patch.object(component, "_save_settings", side_effect=OSError("disk full")):
-                with self.assertRaisesRegex(OSError, "disk full"):
-                    component._ensure_plan()
-            self.assertTrue(component.legacy_profile)
+                patch("model_plan.build_plan", side_effect=build_plan):
+            component = self.make(planner=None)  # the real planner, without any migration
             self.assertEqual(component.settings["model_profile"], "recommended")
-            self.assertIsNone(component.plan)
-            self.assertNotIn("plan", component.download)
-            self.assertEqual(path.read_bytes(), original)
-            self.assertEqual(self.downloads, 0)
-            component._ensure_plan()
-            self.assertFalse(component.legacy_profile)
-            self.assertEqual(component.plan["profile"], "expanded")
-            self.assertEqual(json.loads(path.read_text())["model_profile"], "expanded")
-            self.assertEqual(self.downloads, 0)
+            component.start()
+            self.finish(component)
+        self.assertEqual(plans, ["recommended"])
+        self.assertEqual(self.downloads, 1)
+        self.assertEqual(json.loads(path.read_text())["model_profile"], "recommended")
+        self.assertEqual(component.status()["runtime"]["active_id"], "torch:cpu:fp32")
 
     def test_selected_download_verification_expansion_and_restart_use_the_same_plan(self):
         from urllib.parse import unquote
@@ -774,15 +761,21 @@ class LifecycleTests(unittest.TestCase):
             restarted = self.make(downloader=None, verifier=None, planner=planner)
             self.first_run(restarted)
             self.assertEqual(requests, [])
-            restarted.handle("models.download", {"profile": "expanded"})
-            self.finish(restarted)
+            restarted.close()
+            # The terminal's expanded preparation is recorded in the state and reused.
+            state = self.home / "component-state.json"
+            state.write_text(json.dumps({**json.loads(state.read_text()), "model_profile": "expanded"}))
+            expanded = self.make(downloader=None, verifier=None, planner=planner)
+            expanded.start()
+            self.finish(expanded)
+            self.assertEqual(expanded.status()["state"], "needs_models")  # planned ONNX files are absent
+            expanded.handle("models.download", {})
+            self.finish(expanded)
             self.assertEqual(set(requests), {"onnx/model.onnx", "onnx/model_int8.onnx"})
-            requests.clear()
-            restarted.handle("models.download", {"profile": "recommended"})
-            self.finish(restarted)
-            self.assertEqual(requests, [])
-            self.assertTrue((restarted.model_dir / "onnx/model_int8.onnx").is_file())
-            self.assertEqual(restarted.status()["download"]["plan"]["profile"], "recommended")
+            self.assertEqual(expanded.status()["state"], "ready")
+            self.assertEqual(expanded.plan["profile"], "expanded")
+            self.assertTrue((expanded.model_dir / "onnx/model_int8.onnx").is_file())
+            self.assertEqual(expanded.status()["download"]["total_bytes"], 22 + 4 + 4)
 
     def test_delete_requires_confirmation_and_never_redownloads_on_reopen(self):
         component = self.make()
@@ -810,8 +803,6 @@ class LifecycleTests(unittest.TestCase):
     def test_delete_waits_for_an_inflight_engine_lease(self):
         component = self.make()
         self.first_run(component)
-        component.handle("runtime.config", {"id": "torch:cpu:fp32"})
-        self.finish(component)
         controller = component.controller
         with controller.use_engine():
             component.handle("models.delete", {"confirm": True})
@@ -887,8 +878,6 @@ class LifecycleTests(unittest.TestCase):
     def test_completed_update_reconnects_without_a_settings_status_poll(self):
         component = self.make(helper=lambda _: {"status": "completed"})
         self.first_run(component)
-        component.handle("runtime.config", {"id": "torch:cpu:fp32"})
-        self.finish(component)
         component.handle("component.update", {})
         self.finish(component)
         for op in ("health", "runtime"):

@@ -130,6 +130,9 @@ while True:
     // Move to an idle state to exercise the exact delete confirmation boundary.
     state = JSON.parse(readFileSync(stateFile, "utf8"));
     state.state = "needs_models"; state.download.status = "idle"; save();
+    // Destructive actions live behind the Manage fold.
+    await panel.locator("#manage > summary").waitFor();
+    await panel.locator("#manage > summary").click();
     const remove = panel.getByRole("button", { name: language === "en" ? "Delete model files" : "删除模型文件", exact: true });
     await remove.waitFor(); await remove.click();
     const dialog = page.getByRole("dialog");
@@ -143,8 +146,8 @@ while True:
     await dialog.getByRole("button", { name: language === "en" ? "Delete model files" : "删除模型文件", exact: true }).click();
     await page.waitForFunction(() => !document.querySelector("dialog[open]"));
     assert.equal(requests().filter((r) => r.op === "models.delete").length, 1);
-    await panel.getByRole("button", { name: language === "en" ? "Uninstall Anagram completely" : "完整卸载 Anagram", exact: true }).click();
-    await dialog.getByRole("button", { name: language === "en" ? "Uninstall Anagram completely" : "完整卸载 Anagram", exact: true }).click();
+    await panel.getByRole("button", { name: language === "en" ? "Uninstall Anagram" : "卸载 Anagram", exact: true }).click();
+    await dialog.getByRole("button", { name: language === "en" ? "Uninstall Anagram" : "卸载 Anagram", exact: true }).click();
     await page.waitForFunction(() => !document.querySelector("dialog[open]"));
     await page.waitForFunction(() => document.querySelector("#componentSettings")?.textContent?.match(/system window|系统窗口|清理窗口/i));
     assert.equal(await worker.evaluate(() => chrome.runtime.getManifest().version), manifest.version, "Scheduled cleanup must not uninstall the extension");

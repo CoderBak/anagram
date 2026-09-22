@@ -53,7 +53,6 @@ SUPPORTED_LANGUAGES = ["en"]
 MAX_BLOCKS = 256
 MAX_TEXT_CHARS = 16000
 MAX_ID_CHARS = 64
-MAX_BODY_BYTES = 2 * 1024 * 1024
 log = logging.getLogger("anagramd")
 
 
@@ -121,16 +120,16 @@ class LanguageId:
         self.model = None
         self.name = None
         self.digest = None
+        if not path.exists():
+            raise RuntimeError(
+                f"Language model missing: {path}. Download models in Anagram Settings."
+            )
         try:
             import fasttext
         except Exception as exc:
             raise RuntimeError(
                 "fastText is unavailable; repair the local component installation"
             ) from exc
-        if not path.exists():
-            raise RuntimeError(
-                f"Language model missing: {path}. Download models in Anagram Settings."
-            )
         self.digest = hashlib.sha256(path.read_bytes()).hexdigest()
         self.model = fasttext.load_model(str(path))
         self.name = "fasttext-lid.176"
@@ -288,12 +287,10 @@ class EditLens:
         self.max_length = max_length
         self.batch_size = batch_size
         self.lock = threading.Lock()
-        self.scored = 0
-        self.started = time.time()
         self.last_run_ms = 0.0
         self.last_wait_ms = 0.0
         require_model(model_dir)
-        self.device = self._pick_device(device)
+        self.device = device
         if dtype == "auto":
             dtype = "fp32"
         if dtype == "fp16" and self.device == "cpu":
@@ -342,16 +339,6 @@ class EditLens:
                 local_files_only=True,
                 trust_remote_code=False,
             )
-
-    def _pick_device(self, want: str) -> str:
-        torch = self.torch
-        if want != "auto":
-            return want
-        if torch.backends.mps.is_available():
-            return "mps"
-        if torch.cuda.is_available():
-            return "cuda"
-        return "cpu"
 
     def _warmup(self) -> None:
         t0 = time.time()
@@ -407,22 +394,14 @@ class EditLens:
                 "id": MODEL_ID,
                 "ver": self.version,
                 "calibration": CALIBRATION,
-                "label_schema": LABEL_SCHEMA,
             },
             "n_buckets": self.n_buckets,
             "buckets": BUCKET_LABELS[: self.n_buckets],
             "languages": SUPPORTED_LANGUAGES,
             "lid": self.lid.name if self.lid.enabled else None,
             "max_tokens": self.max_length,
-            "limits": {
-                "max_blocks": MAX_BLOCKS,
-                "max_text_chars": MAX_TEXT_CHARS,
-                "max_body_bytes": MAX_BODY_BYTES,
-            },
             "device": self.device,
             "dtype": self.dtype_name,
-            "uptime_s": round(time.time() - self.started, 1),
-            "scored_blocks": self.scored,
         }
 
 
@@ -435,7 +414,6 @@ class Block(BaseModel):
 class ScoreRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
     v: str = Field(max_length=16)
-    session: str | None = Field(default=None, max_length=64)
     blocks: list[Block] = Field(default_factory=list, max_length=MAX_BLOCKS)
 
     @field_validator("v")
@@ -472,14 +450,11 @@ class ModelInfo(BaseModel):
     id: str
     ver: str
     calibration: str
-    label_schema: str | None = None
 
 
 class ScoreResponse(BaseModel):
     v: str
-    session: str | None
     model: ModelInfo
-    partial: bool
     results: list[ScoreResult]
 
 
@@ -556,8 +531,6 @@ def score_with_engine(req: ScoreRequest, engine) -> dict:
     )
     return {
         "v": CONTRACT_VERSION,
-        "session": req.session,
         "model": engine.info()["model"],
-        "partial": False,
         "results": results,
     }

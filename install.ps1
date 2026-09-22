@@ -296,8 +296,8 @@ try {
   foreach ($path in $swapped) { Remove-OwnedTree ($path + '.old') }
   Say 'Preparing device-selected model files with Hugging Face…' '正在使用 Hugging Face 下载适合本机设备的模型文件…'
   Invoke-Private $python @('-I',(Join-Path $ComponentHome 'app\prepare_models.py'),'--home',$ComponentHome,'--installer','--language',$Language)
-  Say 'Installed. Return to the extension and reconnect to benchmark and select a configuration.' '安装完成。请返回扩展并重新连接，进行性能测试并选择配置。'
-  Say 'EditLens: CC BY-NC-SA 4.0, noncommercial use. Device-selected recommended model files usually total 1.43 GB; runtime and temporary space are additional. Extra comparison models are optional in Settings.' 'EditLens 采用 CC BY-NC-SA 4.0 许可，仅限非商业用途。按设备选择的推荐模型文件通常共约 1.43 GB，运行环境和临时空间另计。额外比较模型可在设置中按需下载。'
+  Say 'Installed. Model files are ready; the browser finishes setup automatically.' '安装完成。模型文件已准备就绪，浏览器将自动完成剩余设置。'
+  Say 'EditLens models are licensed CC BY-NC-SA 4.0, for noncommercial use only.' 'EditLens 模型采用 CC BY-NC-SA 4.0 许可，仅限非商业用途。'
 } finally {
   try {
     if ($installLock -and -not $completed) {

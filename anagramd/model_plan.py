@@ -2,8 +2,8 @@
 
 Importing this module does not import an inference runtime. Discovery exercises
 only a 2x2 matrix operation, not the classifier or network. A successful probe
-establishes a working device/runtime; the later model benchmark can still fail
-for insufficient memory or unsupported classifier operators.
+establishes a working device/runtime; loading the classifier can still fail
+for insufficient memory or unsupported operators.
 """
 from __future__ import annotations
 

@@ -135,29 +135,42 @@ def main():
                     assert peer.request("models.download")["error"]["code"] == "busy"
                 finally:
                     peer.close()
-                pending = client.until({"awaiting_selection"})
+                # Prepared files lead straight to an automatically selected, loaded runtime.
+                ready = client.until({"ready"})
                 report["setup_wall_s"] = round(time.monotonic() - t0, 3)
-                report["download_plan"] = pending["download"].get("plan")
-                assert report["download_plan"]["profile"] == "recommended"
-                assert set(report["download_plan"]["files"]) == set(expected_plan["selected_paths"]) | {"lid.176.ftz"}
+                report["download_plan"] = ready["download"].get("plan")
+                assert set(report["download_plan"]) == {"devices", "total_bytes"}, report["download_plan"]
                 for entry in pin["files"]:
                     if entry["path"] not in expected_plan["selected_paths"]:
                         assert not (home / "models/editlens_roberta-large" / entry["path"]).exists()
-                report["benchmark"] = pending["runtime"]["benchmark"]
+                runtime = ready["runtime"]
+                assert runtime["benchmark"]["status"] == "idle" and runtime["benchmark"]["results"] == [], runtime
+                assert runtime["active_id"] == runtime["selected_id"] == runtime["recommended_id"], runtime
+                candidates = runtime["candidates"]
+                chosen = next(c for c in candidates if c["id"] == runtime["active_id"])
+                assert chosen["precision"] == "fp32" and chosen["available"], chosen
+                assert json.loads((home / "runtime.json").read_text())["selected_id"] == runtime["active_id"]
+                report["auto_selected_id"] = runtime["active_id"]
+                # An explicit comparison measures every candidate elsewhere and keeps the selection.
+                started = client.request("runtime.benchmark", {"budget_s": 10})
+                assert started["ok"] and started["status"] == 202, started
+                measured = client.until({"ready"})
+                report["benchmark"] = measured["runtime"]["benchmark"]
                 benchmark = report["benchmark"]
                 assert benchmark["report_version"] == 2 and benchmark["status"] == "completed", benchmark
+                assert benchmark["stale"] is False, benchmark
                 rows = benchmark["results"]
                 assert len(rows) == benchmark["total"] and rows, benchmark
                 assert all(row["status"] == "ok" for row in rows), rows
                 assert all(row["rss_scope"] == "isolated_process" and row["samples"] > 0 for row in rows), rows
                 assert all(row["initialization_ms"] >= 0 and row["hash_ms"] >= 0 for row in rows), rows
-                assert pending["runtime"]["active_id"] is None
-                candidates = pending["runtime"]["candidates"]
-                desired = next((c["id"] for c in candidates if c["id"] == "torch:mps:fp32" and c["available"]),
-                               pending["runtime"]["recommended_id"])
+                assert measured["runtime"]["active_id"] == runtime["active_id"], measured["runtime"]
+                # An explicit switch is still available.
+                desired = next((c["id"] for c in candidates if c["id"] == "torch:cpu:fp32" and c["available"]
+                                and c["id"] != runtime["active_id"]), runtime["active_id"])
                 selected = client.request("runtime.config", {"id": desired})
                 assert selected["ok"] and selected["status"] == 202, selected
-                client.until({"ready"})
+                assert client.until({"ready"})["runtime"]["active_id"] == desired
                 health = client.request("health")
                 assert health["ok"] and health["data"]["ok"], health
                 version = health["data"]["model"]["ver"]
@@ -182,11 +195,12 @@ def main():
                 client = FixtureClient(args.python, home, log)
                 restored = client.until({"ready"})
                 report["restart_wall_s"] = round(time.monotonic() - restart, 3)
+                assert restored["runtime"]["active_id"] == desired, restored["runtime"]
                 assert restored["runtime"]["benchmark"]["results"] == report["benchmark"]["results"]
                 assert client.request("health")["data"]["model"]["ver"] == version
                 report["checks"] = ["framing", "responsive first status", "exclusive peer busy", "all local pinned files reused",
-                                    "benchmark before selection", "explicit FP32 choice", "score + language gate",
-                                    "engine stop/resume", "restart without rebenchmark", "no network"]
+                                    "automatic FP32 selection", "explicit benchmark keeps selection", "explicit switch",
+                                    "score + language gate", "engine stop/resume", "restart reuses selection", "no network"]
             except BaseException:
                 log.flush()
                 print((home / "native-smoke.log").read_text(errors="replace")[-12000:])

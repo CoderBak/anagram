@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeBrowser } from "wxt/testing";
 import { getScoreClient } from "../../lib/backend/getScoreClient";
 import { nativeTransport } from "../../lib/backend/nativeTransport";
-import { removeObsoleteConnectionSettings } from "../../lib/settings/settings";
 
 const model = {id:"local",ver:"fp32",calibration:"buckets"};
 const health = {ok:true,contract:"2.1",model,n_buckets:4,buckets:["a","b","c","d"],max_tokens:512,device:"cpu",app_version:"0.4.0"};
@@ -49,11 +48,6 @@ describe("native-only scoring and settings migration", () => {
     expect((await client.scoreBatch([{id:"a",text:"One local paragraph"}])).model).toEqual(model);
     expect(request.mock.calls.map(([op])=>op)).toEqual(["health","score"]);
     expect(fetcher).not.toHaveBeenCalled();
-  });
-  it("removes only retired connection keys and can repeat safely", async () => {
-    await fakeBrowser.storage.local.set({backendTransport:"http",serverUrl:"http://localhost:8765",enabled:false,debug:true,siteOverrides:{"example.com":"off"}});
-    await removeObsoleteConnectionSettings(); await removeObsoleteConnectionSettings();
-    expect(await fakeBrowser.storage.local.get()).toEqual({enabled:false,debug:true,siteOverrides:{"example.com":"off"}});
   });
   it("does not fall back to fetch when the native component cannot answer", async () => {
     await fakeBrowser.storage.local.set({backendTransport:"http",serverUrl:"http://localhost:8765"});

@@ -12,7 +12,6 @@ import {
   createPdfHandoff,
   createTicketStore,
   fromBase64,
-  hasPdfMagic,
   newTicket,
   streamPdfBytes,
   toBase64,
@@ -24,6 +23,7 @@ import {
   PDF_CLAIM_PORT,
   MAX_HANDOFF_BYTES,
 } from "../../lib/pdf/handoff";
+import { hasPdfMagic } from "../../lib/pdf/sourceTransfer";
 
 const latin1 = (text: string): Uint8Array => Uint8Array.from(text, (c) => c.charCodeAt(0));
 

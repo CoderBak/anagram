@@ -5,7 +5,6 @@
 set -eu
 umask 077
 
-INSTALLER_VERSION="0.5.0"
 UV_VERSION="0.11.18"
 PYTHON_VERSION="${ANAGRAM_PYTHON:-3.12.13}"
 RELEASE_URL="${ANAGRAM_RELEASE_URL:-https://github.com/CoderBak/anagram/releases/latest/download}"
@@ -272,11 +271,9 @@ step 4 "$(tr_msg 'Installing locked runtime packages' '正在安装版本锁定�
 note "$(tr_msg 'Downloading and installing PyTorch, ONNX Runtime and other dependencies; progress appears below.' '正在下载并安装 PyTorch、ONNX Runtime 等依赖；具体进度显示在下方。')"
 note "$(tr_msg 'Device-selected model weights will download here after registration.' '注册完成后，将在此下载适合本机设备的模型权重。')"
 CREATED_VENV=1
-if [ "$OS" = Darwin ]; then
-  ( cd "$ANAGRAM_HOME/app" && run_uv sync --frozen --no-dev --no-build --python "$PYTHON_VERSION" )
-else
-  ( cd "$ANAGRAM_HOME/app" && run_uv sync --frozen --no-dev --python "$PYTHON_VERSION" )
-fi
+# --no-build everywhere: every locked package resolves to a wheel on each supported
+# platform, so no toolchain is ever required to complete an installation.
+( cd "$ANAGRAM_HOME/app" && run_uv sync --frozen --no-dev --no-build --python "$PYTHON_VERSION" )
 [ -x "$ANAGRAM_HOME/venv.next/bin/python" ] || die "staged virtual environment was not created"
 # Python discovers its venv relative to the executable. The component invokes this
 # interpreter directly, never the generated console scripts with staging shebangs.
@@ -305,6 +302,6 @@ clean_env PYTHONNOUSERSITE=1 PYTHONSAFEPATH=1 "$PY" -I "$ANAGRAM_HOME/app/prepar
 
 # Installation complete.
 say "$(tr_msg 'Installed Anagram local component' 'Anagram 本地组件安装完成') $VERSION: $ANAGRAM_HOME"
-note "$(tr_msg 'Return to the extension and reconnect to benchmark and select a configuration.' '请返回扩展并重新连接，进行性能测试并选择配置。')"
-note "$(tr_msg 'EditLens models: CC BY-NC-SA 4.0, noncommercial use. Device-selected recommended model files usually total 1.43 GB; runtime and temporary space are additional. Extra comparison models are optional in Settings.' 'EditLens 模型采用 CC BY-NC-SA 4.0 许可，仅限非商业用途。按设备选择的推荐模型文件通常共约 1.43 GB，运行环境和临时空间另计。额外比较模型可在设置中按需下载。')"
+note "$(tr_msg 'Model files are ready; the browser finishes setup automatically.' '模型文件已准备就绪，浏览器将自动完成剩余设置。')"
+note "$(tr_msg 'EditLens models are licensed CC BY-NC-SA 4.0, for noncommercial use only.' 'EditLens 模型采用 CC BY-NC-SA 4.0 许可，仅限非商业用途。')"
 note "$(tr_msg 'The browser manages the component; no login startup, system Python, or PATH changes were installed.' '本地组件由浏览器管理，未添加开机自启，也未修改系统 Python 或 PATH。')"

@@ -4,28 +4,24 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta http-equiv="Content-Security-Policy" content="connect-src 'self'" />
-    <!-- Management is restricted to our top-level pages; keep Settings out of an
-         embedded chrome://extensions iframe and give the comparison table space. -->
+    <!-- Engine controls are restricted to our top-level pages: keep Settings out of an
+         embedded chrome://extensions iframe. -->
     <meta name="manifest.open_in_tab" content="true" />
-    <title data-i18n="optionsTitle">Anagram for Chrome — Options</title>
+    <title data-i18n="optionsTitle">Anagram settings</title>
     <style>
       /* Layout only — colours, type and controls come from Basecoat (Vega). */
       body { margin: 0; background: var(--background); color: var(--foreground); font-size: 14px; line-height: 1.5; }
-      .page { max-width: 760px; margin: 0 auto; padding: 32px 24px 56px; }
+      .page { max-width: 720px; margin: 0 auto; padding: 32px 24px 56px; }
       header.hdr { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
       header.hdr img { width: 44px; height: 44px; border-radius: 11px; }
       header.hdr h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.2; }
       header.hdr .ver { margin-top: 3px; font-size: 12px; color: var(--muted-foreground); }
       .stack { display: flex; flex-direction: column; gap: 16px; }
       .card > section { display: flex; flex-direction: column; gap: 14px; }
-      .card > header p { margin: 0; }
       .field > section > p { margin: 0; }
-      .field > select { width: 250px; }
-      .field > input.url { width: 260px; }
+      .field > select { width: 220px; }
       .field > .btn { flex: none; }
-      .row-actions { display: flex; align-items: center; gap: 6px; flex: none; }
-      /* Cached verdicts: how many there are, then the button that empties them. A number,
-         not a sentence — it is there to be glanced at before clearing. */
+      .row-actions { display: flex; align-items: center; gap: 6px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
       .field > .field-actions { display: flex; flex: none; align-items: center; gap: 10px; }
       .field-actions .count { color: var(--muted-foreground); font-size: 13px; font-variant-numeric: tabular-nums; }
       .form-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -35,50 +31,30 @@
       .form-note { margin: 6px 0 0; font-size: 12.5px; color: var(--muted-foreground); }
       .empty { margin: 0; padding: 2px 0; color: var(--muted-foreground); font-size: 13px; }
       .mode-on { color: oklch(0.55 0.15 150); font-weight: 500; }
-      /* The same green on the dark card is 3.97:1 — it was picked for a white surface
-         and never re-picked. Lighter in dark mode, same hue. */
       html.dark .mode-on { color: oklch(0.76 0.15 150); }
       .mode-off { color: var(--muted-foreground); }
-      .shortcuts { display: grid; grid-template-columns: max-content 1fr; gap: 8px 14px; align-items: center; }
+      .tools { display: flex; gap: 8px; flex-wrap: wrap; }
+      .shortcuts { display: grid; grid-template-columns: max-content 1fr; gap: 8px 14px; align-items: center; font-size: 13px; }
       .shortcuts .keys { display: inline-flex; align-items: center; gap: 3px; }
       .shortcuts .plus { color: var(--muted-foreground); font-size: 11px; }
-      .legend { display: flex; flex-wrap: wrap; gap: 8px; }
-      .legend .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
-      .dot-human { background: #1a7f37; }
-      .dot-light { background: #d4a017; }
-      .dot-heavy { background: #e8590c; }
-      .dot-ai { background: #dc2626; }
-      .dot-none { background: #a3a3a3; }
-      .dot-lang { background: #a3a3a3; box-shadow: inset 0 0 0 2px var(--card); }
-      .mini { margin: 4px 0 0; font-size: 12px; font-weight: 600; color: var(--muted-foreground); text-transform: uppercase; letter-spacing: 0.06em; }
-      .privacy { margin: 0; color: var(--muted-foreground); font-size: 13px; }
-      .pdf-access { align-items: flex-start; }
-      .pdf-access .row-actions { flex-wrap: wrap; justify-content: flex-end; max-width: 210px; }
-      .pdf-access button { white-space: normal; height: auto; min-height: 32px; }
-      .privacy-details { font-size: 13px; }
-      .privacy-details summary { cursor: pointer; font-weight: 600; }
-      .privacy-details p, .privacy-details ol { margin: 10px 0 0; }
-      @media (max-width: 520px) {
-        .field.pdf-access { flex-direction: column; align-items: stretch; }
-        .pdf-access > section { width: 100%; }
-        .pdf-access .row-actions { max-width: none; justify-content: flex-start; }
-      }
+      .note { margin: 0; color: var(--muted-foreground); font-size: 13px; }
+      .note a, .link { color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; font-size: 13px; }
+      /* A 24px hit area (WCAG 2.5.8), inline so the box is the link's own. */
+      .link { display: inline-block; align-self: flex-start; min-height: 24px; line-height: 24px; }
       footer.foot { margin-top: 24px; font-size: 12.5px; line-height: 1.6; color: var(--muted-foreground); }
       code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; background: var(--muted); padding: 1px 5px; border-radius: 5px; }
-      /* Keep code and key hints readable on muted surfaces. */
       code, .kbd { color: var(--foreground); }
       /* Out of the page, still in the accessibility tree. */
-      .vh {
-        position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
-        overflow: hidden; clip-path: inset(50%); white-space: nowrap;
-      }
-      /* Hit areas, not paint. WCAG 2.5.8 (target size, minimum) measures the region that
-         ACCEPTS the pointer, so these controls keep the size Basecoat draws them at and an
-         invisible box centred on each brings it to 24x24. */
+      .vh { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+      /* Hit areas, not paint: an invisible 24x24 box centred on each switch. */
       input[type="checkbox"][role="switch"] { position: relative; }
       input[type="checkbox"][role="switch"]::after {
         content: ""; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
         width: 100%; height: 100%; min-width: 24px; min-height: 24px;
+      }
+      @media (max-width: 520px) {
+        .field[data-orientation="horizontal"] { flex-wrap: wrap; }
+        .row-actions { justify-content: flex-start; }
       }
     </style>
   </head>
@@ -87,7 +63,7 @@
       <header class="hdr">
         <img src="/icons/icon-128.png" alt="" />
         <div>
-          <h1 data-i18n="optionsHeading">Anagram for Chrome</h1>
+          <h1 data-i18n="optionsTitle">Anagram settings</h1>
           <div class="ver" id="version"></div>
         </div>
       </header>
@@ -101,10 +77,67 @@
         </section>
 
         <section class="card" data-size="sm">
-          <header>
-            <h2 data-i18n="optDetection">Detection</h2>
-            <p data-i18n="optDetectionNote">What gets analyzed, and how paragraphs are grouped.</p>
-          </header>
+          <header><h2 data-i18n="optMarks">Marks</h2></header>
+          <section>
+            <div class="field" data-orientation="horizontal">
+              <label for="displayMode" data-i18n="optChips">Chips</label>
+              <select id="displayMode">
+                <option value="all" data-i18n="optEveryParagraph">Every paragraph</option>
+                <option value="flagged" data-i18n="popupFlaggedOnly">Flagged only</option>
+              </select>
+            </div>
+            <div class="field" data-orientation="horizontal">
+              <label for="underline" data-i18n="optUnderline">Underline</label>
+              <select id="underline">
+                <option value="flagged" data-i18n="optUnderlineFlagged">Flagged text</option>
+                <option value="all" data-i18n="optEveryParagraph">Every paragraph</option>
+                <option value="off" data-i18n="optUnderlineOff">Off</option>
+              </select>
+            </div>
+          </section>
+        </section>
+
+        <section class="card" data-size="sm">
+          <header><h2 data-i18n="optReading">Reading</h2></header>
+          <section>
+            <div class="field" data-orientation="horizontal">
+              <label for="analysisScope" data-i18n="optScope">Scope</label>
+              <select id="analysisScope">
+                <option value="page" data-i18n="optScopeWholePage">Whole page</option>
+                <option value="main" data-i18n="optScopeMain">Main content only</option>
+              </select>
+            </div>
+            <div class="field" data-orientation="horizontal">
+              <label for="mergeShorts" data-i18n="optMerge">Group short paragraphs</label>
+              <input id="mergeShorts" type="checkbox" role="switch" />
+            </div>
+            <div class="field" data-orientation="horizontal">
+              <label for="autoOpenPdfs" data-i18n="optAutoOpenPdfs">Open PDFs in Anagram</label>
+              <input id="autoOpenPdfs" type="checkbox" role="switch" />
+            </div>
+            <p id="pdfSettingsError" class="form-error" role="alert" hidden></p>
+            <div class="field" data-orientation="horizontal" id="local-pdfs">
+              <section>
+                <label id="fileAccessLabel" data-i18n="optFileAccess">Local PDF access</label>
+                <p id="fileAccessState" role="status" aria-live="polite">…</p>
+              </section>
+              <span class="row-actions">
+                <button type="button" class="btn" data-variant="outline" data-size="sm" id="fileAccessEnable"
+                  data-i18n="optFileAccessEnable" aria-describedby="fileAccessLabel">Allow</button>
+                <button type="button" class="btn" data-variant="ghost" data-size="sm" id="fileAccessManage"
+                  data-i18n="optFileAccessManage" aria-describedby="fileAccessLabel">Browser settings</button>
+              </span>
+            </div>
+            <p id="fileAccessInstructions" class="form-note" tabindex="-1" role="status" hidden></p>
+            <div class="tools">
+              <button type="button" class="btn" data-variant="outline" data-size="sm" id="openReader" data-i18n="optOpenReader">Open PDF reader</button>
+              <a href="/paste.html" target="_blank" rel="noopener" class="btn" data-variant="outline" data-size="sm" data-i18n="pasteTitle">Analyze text</a>
+            </div>
+          </section>
+        </section>
+
+        <section class="card" data-size="sm">
+          <header><h2 data-i18n="optSites">Sites</h2></header>
           <section>
             <div class="field" data-orientation="horizontal">
               <section>
@@ -113,117 +146,20 @@
               </section>
               <span class="row-actions">
                 <button type="button" class="btn" data-variant="outline" data-size="sm" id="accessAll"
-                  data-i18n="accessAllowAll" aria-describedby="accessLabel">Allow on all sites</button>
+                  data-i18n="accessAllowAll" aria-describedby="accessLabel">Allow all sites</button>
                 <button type="button" class="btn" data-variant="ghost" data-size="sm" id="accessWithdraw" hidden
                   data-i18n="accessWithdraw" aria-describedby="accessLabel">Withdraw</button>
               </span>
             </div>
             <div class="field" data-orientation="horizontal">
-              <section>
-                <label for="enabled" data-i18n="optEnabled">Auto-analyze granted sites by default</label>
-                <p data-i18n="optEnabledNote">Applies only to granted sites. Per-site rules below can override it. Turning this off does not revoke website access; use Manage website access to remove grants.</p>
-              </section>
+              <label for="enabled" data-i18n="optEnabled">Run on granted sites by default</label>
               <input id="enabled" type="checkbox" role="switch" />
             </div>
-            <div class="field" data-orientation="horizontal" id="autoOpenPdfsField">
-              <section>
-                <label for="autoOpenPdfs" data-i18n="optAutoOpenPdfs">Automatically open PDFs in Anagram</label>
-                <p data-i18n="optAutoOpenPdfsNote">Use the full PDF reader on granted websites and authorized local files. Applies to newly opened PDFs; existing tabs stay where they are.</p>
-              </section>
-              <input id="autoOpenPdfs" type="checkbox" role="switch" />
-            </div>
-            <p id="pdfSettingsError" class="form-error" role="alert" hidden></p>
-            <div class="field pdf-access" data-orientation="horizontal" id="local-pdfs">
-              <section>
-                <label id="fileAccessLabel" data-i18n="optFileAccess">Local PDF access</label>
-                <p id="fileAccessState" role="status" aria-live="polite">…</p>
-                <p data-i18n="optFileAccessNote">File URL access is optional and broader than selecting one file. Without it, choose or drop a PDF in the reader.</p>
-              </section>
-              <span class="row-actions">
-                <button type="button" class="btn" data-variant="outline" data-size="sm" id="fileAccessEnable"
-                  data-i18n="optFileAccessEnable" aria-describedby="fileAccessLabel">Enable local PDFs</button>
-                <button type="button" class="btn" data-variant="ghost" data-size="sm" id="fileAccessManage"
-                  data-i18n="optFileAccessManage" aria-describedby="fileAccessLabel">Browser settings</button>
-              </span>
-            </div>
-            <p id="fileAccessInstructions" class="form-note" tabindex="-1" role="status" hidden></p>
-            <div class="field" data-orientation="horizontal">
-              <section>
-                <label id="openReaderLabel" data-i18n="optOpenReader">Read a PDF from this computer</label>
-                <p data-i18n="optOpenReaderNote">Choose or drop a PDF in the reader. No file URL access is needed.</p>
-              </section>
-              <span class="row-actions">
-                <button type="button" class="btn" data-variant="outline" data-size="sm" id="openReader"
-                  data-i18n="optOpenReaderBtn" aria-describedby="openReaderLabel">Open</button>
-              </span>
-            </div>
-            <div class="field" data-orientation="horizontal">
-              <section>
-                <label for="analysisScope" data-i18n="optScope">Analysis scope</label>
-                <p data-i18n="optScopeNote">Main content only analyzes the article region — found the way Firefox Reader View does (Mozilla Readability) — and skips comments/sidebars outside it. Falls back to whole page when no clear region exists.</p>
-              </section>
-              <select id="analysisScope">
-                <option value="page" data-i18n="optScopeWholePage">Whole page</option>
-                <option value="main" data-i18n="optScopeMain">Main content only</option>
-              </select>
-            </div>
-            <div class="field" data-orientation="horizontal">
-              <section>
-                <label for="mergeShorts" data-i18n="optMerge">Group short neighboring paragraphs</label>
-                <p data-i18n="optMergeNote">A short post or comment is analyzed as a whole, and paragraphs under the 50-word evidence floor together with their neighbors in the same article — the chip shows ×N; never across posts, comments or quotations. Off: every paragraph by itself, short ones skipped entirely.</p>
-              </section>
-              <input id="mergeShorts" type="checkbox" role="switch" />
-            </div>
-          </section>
-        </section>
-
-        <section class="card" data-size="sm">
-          <header>
-            <h2 data-i18n="optDisplay">Display</h2>
-            <p data-i18n="optDisplayNote">How verdicts are drawn on the page.</p>
-          </header>
-          <section>
-            <div class="field" data-orientation="horizontal">
-              <section>
-                <label for="highlights" data-i18n="optHighlights">Mark analyzed paragraphs</label>
-                <p data-i18n="optHighlightsNote">Draws the verdict on the text itself — a thin line under what was flagged, and a paragraph's full extent while its chip is hovered. Chips stay either way.</p>
-              </section>
-              <input id="highlights" type="checkbox" role="switch" />
-            </div>
-            <div class="field" data-orientation="horizontal">
-              <section>
-                <label for="markStyle" data-i18n="optMarkStyle">Mark style</label>
-                <p data-i18n="optMarkStyleNote">Quiet leaves the page as its author wrote it: a thin line under heavily-edited and AI-generated text only. Hovering a chip shows that paragraph's full extent either way. “Mark analyzed paragraphs” above stays the master on/off.</p>
-              </section>
-              <select id="markStyle">
-                <option value="quiet" data-i18n="optStyleQuiet">Flagged text only</option>
-                <option value="always" data-i18n="optStyleAlways">Every analyzed paragraph</option>
-              </select>
-            </div>
-            <div class="field" data-orientation="horizontal">
-              <section>
-                <label for="displayMode" data-i18n="optDisplayMode">What to show</label>
-                <p data-i18n="optDisplayModeNote">Every paragraph is analyzed either way. “Flagged only” keeps pages calm and marks just heavily-edited and AI-generated verdicts.</p>
-              </section>
-              <select id="displayMode">
-                <option value="all" data-i18n="optModeAll">All chips</option>
-                <option value="flagged" data-i18n="optModeFlagged">Flagged only</option>
-              </select>
-            </div>
-          </section>
-        </section>
-
-        <section class="card" data-size="sm">
-          <header>
-            <h2 data-i18n="optRules">Per-site rules</h2>
-            <p data-i18n="optRulesNote">Always-on / always-off overrides. A rule covers the site's subdomains too, and the most specific rule wins.</p>
-          </header>
-          <section>
             <div id="sites"></div>
             <form class="form-row" id="addRule">
-              <input id="addHost" class="input" type="text" placeholder="example.com" aria-label="Hostname"
-                data-i18n-aria-label="optHostname" autocomplete="off" spellcheck="false" />
-              <select id="addMode" class="select" aria-label="Rule" data-i18n-aria-label="optRuleField">
+              <input id="addHost" class="input" type="text" placeholder="example.com" aria-label="Site"
+                data-i18n-aria-label="optColSite" autocomplete="off" spellcheck="false" />
+              <select id="addMode" class="select" aria-label="Rule" data-i18n-aria-label="optColRule">
                 <option value="on" data-i18n="optAlwaysOn">Always on</option>
                 <option value="off" data-i18n="optAlwaysOff">Always off</option>
               </select>
@@ -235,99 +171,62 @@
         </section>
 
         <section class="card" data-size="sm">
-          <header>
-            <h2 data-i18n="optAdvanced">Advanced</h2>
-          </header>
+          <header><h2 data-i18n="optPrivacy">Privacy</h2></header>
           <section>
-            <a href="/paste.html" target="_blank" rel="noopener" class="btn" data-variant="outline" data-size="sm" data-i18n="pasteTitle">Analyze text</a>
             <div class="field" data-orientation="horizontal">
-              <section>
-                <label for="debug" data-i18n="optDebug">Debug logging</label>
-                <p data-i18n-html="optDebugNote">Verbose console logs from the content script (namespaced <code>[anagram:*]</code>).</p>
-              </section>
-              <input id="debug" type="checkbox" role="switch" />
+              <label for="cacheMode" data-i18n="optCacheMode">Verdict cache</label>
+              <select id="cacheMode">
+                <option value="persistent" data-i18n="optCachePersistent">Keep 30 days</option>
+                <option value="session" data-i18n="optCacheSession">Memory only</option>
+              </select>
             </div>
             <div class="field" data-orientation="horizontal">
-              <section>
-                <label for="clearCache" data-i18n="optCachedVerdicts">Cached verdicts</label>
-                <p data-i18n="optCachedNote">Scores are reused for up to 30 days, or kept only in memory. Clearing also prevents earlier pending requests from saving their results.</p>
-              </section>
+              <label for="clearCache" data-i18n="optClearCache">Clear cached verdicts</label>
               <div class="field-actions">
                 <span id="cacheCount" class="count"></span>
                 <button type="button" class="btn" data-variant="outline" data-size="sm" id="clearCache" data-i18n="optClearCache">Clear cached verdicts</button>
               </div>
             </div>
+            <p id="cacheStatus" class="note" role="status"></p>
             <div class="field" data-orientation="horizontal">
-              <section>
-                <label for="cacheMode" data-i18n="optCacheMode">Score cache</label>
-                <p data-i18n="optCacheModeNote">Memory-only mode deletes saved scores and keeps new scores in memory. Closing the browser or restarting its background worker can clear memory.</p>
-              </section>
-              <select id="cacheMode">
-                <option value="persistent" data-i18n="optCachePersistent">On this device · up to 30 days</option>
-                <option value="session" data-i18n="optCacheSession">Memory only</option>
-              </select>
-            </div>
-            <p id="cacheStatus" role="status"></p>
-            <div class="field" data-orientation="horizontal">
-              <section><label for="reportIncludeText" data-i18n="optReportText">Include passage text in copied reports</label><p data-i18n="optReportPrivacy">Reports include scores and technical context. Page titles, URLs and text are excluded unless enabled here.</p></section>
+              <label for="reportIncludeText" data-i18n="optReportText">Include passage text in copied reports</label>
               <input id="reportIncludeText" type="checkbox" role="switch" />
             </div>
             <div class="field" data-orientation="horizontal">
               <label for="reportIncludeUrl" data-i18n="optReportUrl">Include page title and URL in copied reports</label>
               <input id="reportIncludeUrl" type="checkbox" role="switch" />
             </div>
+            <div class="field" data-orientation="horizontal">
+              <label for="debug" data-i18n="optDebug">Debug logging</label>
+              <input id="debug" type="checkbox" role="switch" />
+            </div>
+            <a class="link" href="https://github.com/CoderBak/anagram/blob/main/PRIVACY.md" target="_blank" rel="noopener noreferrer" data-i18n="optPrivacyPolicy">Privacy policy</a>
           </section>
         </section>
 
         <section class="card" data-size="sm">
-          <header>
-            <h2 data-i18n="optAbout">About &amp; shortcuts</h2>
-          </header>
+          <header><h2 data-i18n="optShortcuts">Shortcuts</h2></header>
           <section>
             <div class="shortcuts">
               <span class="keys"><kbd class="kbd">Alt</kbd><span class="plus">+</span><kbd class="kbd">Shift</kbd><span class="plus">+</span><kbd class="kbd">P</kbd></span>
-              <span class="what" data-i18n="optShortcutToggle">Show or hide the Anagram overlay on the current page.</span>
+              <span data-i18n="cmdToggleOverlay">Show or hide marks on this page</span>
               <span class="keys"><kbd class="kbd">Alt</kbd><span class="plus">+</span><kbd class="kbd">Shift</kbd><span class="plus">+</span><kbd class="kbd">L</kbd></span>
-              <span class="what" data-i18n="optShortcutList">Open the flagged-paragraphs list and put the keyboard in it.</span>
+              <span data-i18n="cmdOpenPanel">Open the flagged-paragraphs list</span>
               <span class="keys"><kbd class="kbd">Alt</kbd><span class="plus">+</span><kbd class="kbd">Shift</kbd><span class="plus">+</span><kbd class="kbd">J</kbd></span>
-              <span class="what" data-i18n="optShortcutNext">Jump to the next flagged paragraph.</span>
+              <span data-i18n="cmdNextFlagged">Go to the next flagged paragraph</span>
               <span class="keys"><kbd class="kbd">Alt</kbd><span class="plus">+</span><kbd class="kbd">Shift</kbd><span class="plus">+</span><kbd class="kbd">K</kbd></span>
-              <span class="what" data-i18n="optShortcutPrev">Jump to the previous flagged paragraph.</span>
+              <span data-i18n="cmdPrevFlagged">Go to the previous flagged paragraph</span>
               <span class="keys"><kbd class="kbd" data-i18n="optRightClick">Right-click</kbd></span>
-              <span class="what" data-i18n="optShortcutSelection">Choose “Analyze selection with Anagram” to score just the highlighted text.</span>
+              <span data-i18n="menuAnalyzeSelection">Analyze selection with Anagram</span>
               <span class="keys"><kbd class="kbd" data-i18n="optRightClick">Right-click</kbd></span>
-              <span class="what" data-i18n="optShortcutPage">Choose “Analyze this page with Anagram” to analyze a switched-off page once.</span>
+              <span data-i18n="menuAnalyzePage">Analyze this page with Anagram</span>
             </div>
-            <p class="privacy" data-i18n-html="optRebind">Rebind any of these in your browser's extension shortcuts (Chrome: <code>chrome://extensions/shortcuts</code>).</p>
-            <p class="privacy" data-i18n-html="optPrivacy">Scoring runs in the <strong data-i18n="componentTitle">Local engine</strong> on this computer. The browser connects to it directly; page text is not sent to an online service.</p>
-            <details class="privacy-details">
-              <summary data-i18n="optNetworkPrivacy">Network access and how to verify it</summary>
-              <p data-i18n="optNetworkLocal">Text analysis runs on this computer. Anagram has no analytics or cloud scoring service.</p>
-              <p data-i18n="optNetworkDownloads">Installation, model downloads and requested component updates use the internet. Your browser may also check for extension updates.</p>
-              <p data-i18n="optNetworkDocuments">Opening an online PDF or Google Doc may fetch the original document again. A document’s images or links may also use the network. This is separate from uploading text for analysis.</p>
-              <ol>
-                <li data-i18n="optOfflineStep1">Finish local-engine setup and the model download.</li>
-                <li data-i18n="optOfflineStep2">Disconnect from the internet, then open the reader and choose a PDF from this computer.</li>
-                <li data-i18n="optOfflineStep3">The PDF and analysis should still work. This verifies offline operation; it is not an audit of all possible network activity.</li>
-              </ol>
-            </details>
-            <h3 class="mini" data-i18n="optVerdictColors">Verdict colors</h3>
-            <div class="legend">
-              <span class="badge" data-variant="outline"><span class="dot dot-human"></span><span data-i18n="bandHuman">Human</span></span>
-              <span class="badge" data-variant="outline"><span class="dot dot-light"></span><span data-i18n="bandLight">Lightly edited</span></span>
-              <span class="badge" data-variant="outline"><span class="dot dot-heavy"></span><span data-i18n="bandHeavy">Heavily edited</span></span>
-              <span class="badge" data-variant="outline"><span class="dot dot-ai"></span><span data-i18n="bandAi">AI-generated</span></span>
-              <span class="badge" data-variant="outline"><span class="dot dot-none"></span><span data-i18n="bandUnavailable">Unavailable</span></span>
-              <span class="badge" data-variant="outline"><span class="dot dot-lang"></span><span data-i18n="bandUnsupported">Unsupported language</span></span>
-            </div>
+            <p class="note" data-i18n-html="optRebind">Change these at <code>chrome://extensions/shortcuts</code>.</p>
           </section>
         </section>
       </div>
 
-      <footer class="foot">
-        <span data-i18n="optFooter">A chip's number is EditLens's estimate of how far a paragraph sits between untouched human writing (.00) and fully AI-generated text (1.0) — not a share of words, not proof. Detection runs per paragraph — per post for a short post — with a 50-word evidence floor; shorter neighboring paragraphs are analyzed together.</span>
-        <span data-i18n="modelLine">Model: pangram/editlens_roberta-large (CC BY-NC-SA 4.0, non-commercial).</span>
-      </footer>
+      <footer class="foot" data-i18n="modelLine">Model: pangram/editlens_roberta-large (CC BY-NC-SA 4.0, non-commercial).</footer>
     </main>
     <script type="module" src="./main.ts"></script>
   </body>

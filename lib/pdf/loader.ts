@@ -1,5 +1,5 @@
 import { safePdfSource, samePdfSource } from "./source";
-import { SOURCE_CAP, sourceHasMagic } from "./sourceTransfer";
+import { SOURCE_CAP, hasPdfMagic } from "./sourceTransfer";
 
 /** The private loader tightens the broad manifest policy before its one authorized read. */
 export function loaderConnectPolicy(source: string): string | null {
@@ -28,7 +28,7 @@ export async function readAuthorizedPdf(source: string, signal: AbortSignal, cap
   } catch (error) { await reader.cancel().catch(() => undefined); throw error; }
   const bytes = new Uint8Array(size); let at = 0;
   for (const chunk of chunks) { bytes.set(chunk, at); at += chunk.byteLength; }
-  if (!sourceHasMagic(bytes)) throw new Error("type");
+  if (!hasPdfMagic(bytes)) throw new Error("type");
   return bytes;
 }
 function readFile(source: string, signal: AbortSignal, cap: number): Promise<Uint8Array> {
@@ -47,7 +47,7 @@ function readFile(source: string, signal: AbortSignal, cap: number): Promise<Uin
       if ((xhr.status !== 0 && xhr.status !== 200) || !samePdfSource(xhr.responseURL || source, source) || !(xhr.response instanceof ArrayBuffer)) { finish("read"); return; }
       const bytes = new Uint8Array(xhr.response);
       if (bytes.byteLength > cap) finish("large");
-      else if (!sourceHasMagic(bytes)) finish("type");
+      else if (!hasPdfMagic(bytes)) finish("type");
       else finish(undefined, bytes);
     };
     signal.addEventListener("abort", abort, {once: true});

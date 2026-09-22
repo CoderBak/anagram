@@ -28,14 +28,13 @@ import { READER_PAGE, readerQuery } from "../lib/pdf/source";
 import { createPdfNavigation } from "../lib/pdf/navigation";
 import { createPdfHandoff } from "../lib/pdf/handoff";
 import { PDF_TAB_SCRIPTS_RUN } from "../lib/surface";
-import { settings, cacheModeStorage, removeObsoleteConnectionSettings } from "../lib/settings/settings";
+import { settings, cacheModeStorage } from "../lib/settings/settings";
 import { t } from "../lib/i18n";
 import { handleNativePageMessage } from "../lib/backend/nativeBridge";
 import { NATIVE_MESSAGE, NATIVE_UNINSTALL } from "../lib/backend/nativeProtocol";
 const EXTENSION_UPDATE_KEY = "extensionUpdatePending";
 
 export default defineBackground(() => {
-  void removeObsoleteConnectionSettings().catch(() => undefined);
   // A native port can keep this worker alive. Preserve an available extension
   // update for Settings rather than interrupting analysis with an automatic reload.
   browser.runtime.onUpdateAvailable.addListener((details) => {

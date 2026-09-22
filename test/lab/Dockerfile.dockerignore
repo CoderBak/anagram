@@ -1,5 +1,0 @@
-# The image needs the two manifests and the entrypoint — nothing else leaves the Mac at build time.
-*
-!package.json
-!package-lock.json
-!test/lab/entrypoint.sh

@@ -399,8 +399,12 @@ class ModelkitTests(unittest.TestCase):
         home.mkdir()
         path = home / "component-state.json"
         self.assertEqual(self.mod.installed_profile(self.target), "recommended")
+        legacy = {"schema_version": 1, "initialized": True, "download_pending": False, "download_paused": False,
+                  "download_failed": False, "engine_stopped": False, "models_deleted": False, "idle_unload_s": 300}
+        path.write_text(json.dumps(legacy))  # preferences that predate the profile field
+        self.assertEqual(self.mod.installed_profile(self.target), "recommended")
         path.write_text('{"schema_version":1}')
-        with self.assertRaisesRegex(ValueError, "reconnect.*migrate"):
+        with self.assertRaises(ValueError):
             self.mod.installed_profile(self.target)
         for data in ('{', '[]', '{"model_profile":"all"}',
                      '{"model_profile":"recommended","model_profile":"expanded"}',

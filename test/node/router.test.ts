@@ -369,10 +369,11 @@ describe("router invalidation, bounded admission and fairness", () => {
   it("keeps a shared batch alive for another document when its first reader cancels", async () => {
     const client = fakeClient(A), router = createRouter(client);
     client.hold();
-    const first = router.handle(req(["shared"]), { documentKey: "first" });
+    const cancel = new AbortController();
+    const first = router.handle(req(["shared"]), { documentKey: "first", signal: cancel.signal });
     await settle();
     const second = router.handle(req(["shared"]), { documentKey: "second" });
-    await settle(); router.cancelDocument("first");
+    await settle(); cancel.abort();
     expect((await first).results[0].degraded).toBe(true);
     client.release(); expect((await second).results[0].degraded).toBeUndefined();
     expect(client.calls).toHaveLength(1);
@@ -429,8 +430,9 @@ it("limits queued item counts, reclaims cancelled capacity, and never sends aban
   expect(over.results.every((result) => result.degraded)).toBe(true);
   const held = Array.from({length:4}, (_, index) => router.handle(req([`held ${index}`]), {documentKey:`held ${index}`}));
   await settle();
-  const queued = router.handle(req(["cancelled queued"]), {documentKey:"cancel me"});
-  await settle(); router.cancelDocument("cancel me");
+  const cancel = new AbortController();
+  const queued = router.handle(req(["cancelled queued"]), {documentKey:"cancel me", signal: cancel.signal});
+  await settle(); cancel.abort();
   expect((await queued).results[0].degraded).toBe(true);
   client.release(); await Promise.all(held);
   expect(client.calls.flat().some((block) => block.text === "cancelled queued")).toBe(false);
@@ -442,12 +444,13 @@ it("aborts the underlying transport when the last reader leaves, but not while a
   let signal: AbortSignal | undefined;
   const client: ScoreClient = {model:()=>A, scoreBatch: async (_blocks, value) => {signal = value; return completion.promise;}};
   const router = createRouter(client);
-  const first = router.handle(req(["shared cancellation"]), {documentKey:"one"});
+  const one = new AbortController(), two = new AbortController();
+  const first = router.handle(req(["shared cancellation"]), {documentKey:"one", signal: one.signal});
   await settle();
-  const second = router.handle(req(["shared cancellation"]), {documentKey:"two"});
-  await settle(); router.cancelDocument("one"); await first;
+  const second = router.handle(req(["shared cancellation"]), {documentKey:"two", signal: two.signal});
+  await settle(); one.abort(); await first;
   expect(signal?.aborted).toBe(false);
-  router.cancelDocument("two"); await second; expect(signal?.aborted).toBe(true);
+  two.abort(); await second; expect(signal?.aborted).toBe(true);
   completion.resolve(scored([{id:"b0",text:"shared cancellation"}], A));
 });
 

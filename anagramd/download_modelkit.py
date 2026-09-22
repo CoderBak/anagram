@@ -351,7 +351,7 @@ def installed_profile(model_dir: Path) -> str:
         return result
     saved = json.loads(data, parse_constant=reject_constant, object_pairs_hook=unique_object)
     if isinstance(saved, dict) and "model_profile" not in saved:
-        raise ValueError("Legacy component preferences: reconnect Anagram once to migrate the selected model profile, then retry verification")
+        saved["model_profile"] = "recommended"  # older preferences predate the field
     flags = {"initialized", "download_pending", "download_paused", "download_failed", "engine_stopped", "models_deleted"}
     if (not isinstance(saved, dict) or set(saved) != flags | {"schema_version", "idle_unload_s", "model_profile"}
             or type(saved["schema_version"]) is not int or saved["schema_version"] != 1

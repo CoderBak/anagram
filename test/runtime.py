@@ -17,7 +17,8 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "anagramd"))
 import engine as engine_api
-from runtime_controller import Candidate, RuntimeBusy, RuntimeController, RuntimeUnavailable, error_text
+from runtime_controller import (Candidate, Cancelled, RuntimeBusy, RuntimeController, RuntimeUnavailable,
+                                auto_candidate, error_text)
 from runtime_adapters import OnnxEditLens, artifact_files, digest, runtime_version, load_candidate
 from benchmark_worker import SubprocessBenchmark
 
@@ -36,6 +37,12 @@ class Clock:
 FP32 = Candidate("torch:cpu:fp32", "CPU", "cpu", "torch", "fp32")
 FP16 = Candidate("onnx:cpu:fp16", "CPU FP16", "cpu", "onnx", "fp16")
 INT8 = Candidate("onnx:cpu:int8", "CPU INT8", "cpu", "onnx", "int8", experimental=True)
+ONNX32 = Candidate("onnx:cpu:fp32", "CPU ONNX", "cpu", "onnx", "fp32")
+MPS = Candidate("torch:mps:fp32", "Apple GPU", "mps", "torch", "fp32")
+MPS16 = Candidate("torch:mps:fp16", "Apple GPU FP16", "mps", "torch", "fp16")
+CUDA1 = Candidate("torch:cuda:1:fp32", "GPU 1", "cuda:1", "torch", "fp32")
+CUDA0 = Candidate("torch:cuda:0:fp32", "GPU 0", "cuda:0", "torch", "fp32")
+ONNX_CUDA = Candidate("onnx:cuda:0:fp32", "GPU 0 ONNX", "cuda:0", "onnx", "fp32")
 
 
 class Factory:
@@ -95,6 +102,41 @@ class FakeEngine:
             self.factory.resident -= 1
 
 
+class InProcessRunner:
+    """Test double for SubprocessBenchmark: the same message protocol, this process."""
+    def __init__(self, factory, clock, memory=lambda: 123456):
+        self.factory, self.clock, self.memory = factory, clock, memory
+
+    def __call__(self, candidate, remaining, workloads, max_runs, cancel, receive):
+        measure = RuntimeController(Path("unused-runtime.json"), None, None,
+                                    clock=self.clock, memory=self.memory, max_runs=max_runs)
+        measure.cancel_event = cancel
+        measure.benchmark["total"] = workloads
+        measure._phase = lambda phase: receive({"type": "phase", "phase": phase})
+        original = measure._measurement
+        def measurement(seconds):
+            original(seconds)
+            receive({"type": "measurement", "seconds": seconds})
+        measure._measurement = measurement
+        measure._phase("initialization")
+        started = self.clock()
+        engine = self.factory(candidate)
+        load_ms = (self.clock() - started) * 1000
+        try:
+            for batch in (1, 8):
+                try:
+                    row = measure._measure(engine, candidate, batch, load_ms, remaining)
+                except Cancelled:
+                    raise
+                except Exception as exc:
+                    row = measure._error_row(candidate, batch, exc, load_ms)
+                row.update(hash_ms=1, initialization_ms=2, baseline_rss_bytes=100, loaded_rss_bytes=200)
+                receive({"type": "row", "row": row})
+                measure.benchmark["completed"] += 1
+        finally:
+            engine.close()
+
+
 class LifecycleTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -112,7 +154,8 @@ class LifecycleTests(unittest.TestCase):
         clock = factory.clock if factory else Clock()
         factory = factory or Factory(clock)
         controller = RuntimeController(self.path, lambda: (list(candidates), context), factory,
-                                       clock=clock, memory=lambda: 123456, max_runs=100)
+                                       clock=clock, memory=lambda: 123456, max_runs=100,
+                                       benchmark_runner=InProcessRunner(factory, clock))
         self.controllers.append(controller)
         return controller, factory
 
@@ -120,15 +163,23 @@ class LifecycleTests(unittest.TestCase):
         controller.thread.join(timeout=3)
         self.assertFalse(controller.thread.is_alive(), "background operation did not finish")
 
-    def setup_complete(self, controller):
+    def setup_complete(self, controller, expected=FP32):
+        """Start and wait: without a saved choice the controller selects and loads by itself."""
         controller.start()
         self.finish(controller)
-        self.assertEqual(controller.snapshot()["state"], "awaiting_selection")
+        snapshot = controller.snapshot()
+        self.assertEqual(snapshot["state"], "ready", snapshot)
+        self.assertEqual(snapshot["active_id"], expected.id)
+        self.assertEqual(snapshot["selected_id"], expected.id)
 
     def select(self, controller, candidate=FP32):
         controller.request_selection(candidate.id)
         self.finish(controller)
         self.assertEqual(controller.snapshot()["state"], "ready")
+
+    def benchmark(self, controller, budget=30):
+        controller.request_benchmark(budget)
+        self.finish(controller)
 
     def test_persist_never_truncates_preexisting_temporary_links(self):
         controller, _ = self.make()
@@ -185,41 +236,93 @@ class LifecycleTests(unittest.TestCase):
             self.assertEqual(outside.read_text(), "keep")
             memo.unlink()
 
-    def test_first_run_measures_shared_budget_then_requires_explicit_selection(self):
-        controller, factory = self.make()
+    def test_first_run_selects_loads_and_persists_without_measuring(self):
+        controller, factory = self.make((FP16, FP32))
         self.setup_complete(controller)
         snapshot = controller.snapshot()
-        self.assertIsNone(snapshot["active_id"])
-        self.assertIsNone(snapshot["selected_id"])
-        self.assertTrue(snapshot["needs_selection"])
         self.assertEqual(snapshot["recommended_id"], FP32.id)
+        self.assertIsNone(snapshot["fastest_id"])
+        self.assertIsNone(snapshot["error"])
+        self.assertNotIn("needs_selection", snapshot)
+        self.assertEqual(snapshot["benchmark"]["status"], "idle")
+        self.assertEqual(snapshot["benchmark"]["results"], [])
+        self.assertFalse(snapshot["benchmark"]["stale"])
+        self.assertEqual(factory.loaded, [FP32.id])  # one load, one warmup, never a comparison
+        self.assertEqual(factory.max_resident, 1)
+        self.assertEqual(factory.peak_resets, [])
+        saved = json.loads(self.path.read_text())
+        self.assertEqual((saved["selected_id"], saved["selected_version"]), (FP32.id, f"v1:{FP32.id}"))
+        with controller.use_engine() as engine:
+            self.assertEqual(engine.candidate, FP32)
+
+    def test_automatic_selection_prefers_devices_in_a_fixed_order_and_never_lower_precision(self):
+        everything = [INT8, MPS16, FP16, FP32, ONNX32, ONNX_CUDA, MPS, CUDA1, CUDA0]
+        expected = [CUDA0, CUDA1, MPS, ONNX_CUDA, ONNX32, FP32]
+        remaining = list(everything)
+        for candidate in expected:
+            self.assertEqual(auto_candidate(remaining), candidate)
+            remaining.remove(candidate)
+        self.assertIsNone(auto_candidate(remaining))  # only FP16/INT8 remain
+        unavailable = Candidate(**{**CUDA0.__dict__, "available": False, "reason": "no driver"})
+        self.assertEqual(auto_candidate([unavailable, MPS16, ONNX32]), ONNX32)
+        controller, factory = self.make((INT8, FP16, ONNX32, FP32))
+        self.setup_complete(controller, ONNX32)
+        self.assertEqual(factory.loaded, [ONNX32.id])
+
+    def test_no_available_candidate_is_a_clear_recoverable_error(self):
+        missing = Candidate(**{**FP32.__dict__, "available": False,
+                               "reason": "Model artifact is missing; download models in Anagram Settings"})
+        controller, factory = self.make((missing, FP16))
+        controller.start()
+        self.finish(controller)
+        snapshot = controller.snapshot()
+        self.assertEqual(snapshot["state"], "error")
+        self.assertIn("download models", snapshot["error"])
+        self.assertIsNone(snapshot["recommended_id"])
+        self.assertEqual(factory.loaded, [])
+        controller.discover = lambda: ([FP32, FP16], "fixed")
+        controller.request_benchmark(10)
+        self.finish(controller)
+        self.assertEqual(controller.snapshot()["state"], "ready")
+        self.assertEqual(controller.snapshot()["active_id"], FP32.id)
+
+    def test_explicit_benchmark_measures_every_candidate_and_keeps_the_selection(self):
+        controller, factory = self.make()
+        self.setup_complete(controller)
+        self.benchmark(controller)
+        snapshot = controller.snapshot()
+        self.assertEqual(snapshot["state"], "ready")
+        self.assertEqual(snapshot["active_id"], FP32.id)
         report = snapshot["benchmark"]
-        self.assertEqual(report["total"], 4)
-        self.assertEqual(report["completed"], 4)
+        self.assertEqual(report["status"], "completed")
+        self.assertEqual((report["total"], report["completed"]), (4, 4))
         self.assertEqual({row["batch_size"] for row in report["results"]}, {1, 8})
         self.assertLessEqual(report["measurement_s"], 31)  # at most one in-flight forward overrun
         self.assertGreaterEqual(report["measurement_s"], 29)
         self.assertGreater(report["elapsed_s"], report["measurement_s"] + 14)
+        self.assertFalse(report["stale"])
         self.assertEqual(factory.max_resident, 1)
-        self.assertEqual(factory.resident, 0)
+        self.assertEqual(factory.resident, 1)
         self.assertEqual(factory.peak_resets, [FP32.id, FP32.id, FP16.id, FP16.id])
-        with self.assertRaises(RuntimeUnavailable):
-            with controller.use_engine():
-                pass
+        self.assertTrue(controller._valid_report(json.loads(self.path.read_text())["benchmark"]))
 
-    def test_fp16_and_experimental_int8_cannot_be_recommended(self):
+    def test_fp16_and_experimental_int8_are_fastest_but_never_recommended_or_selected(self):
         clock = Clock()
         factory = Factory(clock)
         factory.cost = lambda candidate, batch: 1 if candidate.precision == "fp32" else 0.01
         controller, _ = self.make((FP32, FP16, INT8), factory=factory)
         self.setup_complete(controller)
-        self.assertEqual(controller.snapshot()["recommended_id"], FP32.id)
-        self.assertIn(controller.snapshot()["fastest_id"], (FP16.id, INT8.id))
+        self.benchmark(controller)
+        snapshot = controller.snapshot()
+        self.assertEqual(snapshot["recommended_id"], FP32.id)
+        self.assertIn(snapshot["fastest_id"], (FP16.id, INT8.id))
+        self.assertEqual(snapshot["active_id"], FP32.id)
 
-    def test_short_measurements_are_labeled_and_old_reports_are_not_reused(self):
+    def test_short_measurements_are_labeled_and_old_reports_are_dropped_not_rerun(self):
         controller, _ = self.make()
         controller.max_runs = 1
         self.setup_complete(controller)
+        self.benchmark(controller)
         self.assertTrue(all(row["measurement_quality"] == "insufficient"
                             for row in controller.snapshot()["benchmark"]["results"]))
         old = json.loads(self.path.read_text())
@@ -228,7 +331,20 @@ class LifecycleTests(unittest.TestCase):
         controller.close()
         fresh, factory = self.make()
         self.setup_complete(fresh)
-        self.assertEqual(factory.loaded, [FP32.id, FP16.id])
+        self.assertEqual(fresh.snapshot()["benchmark"]["results"], [])
+        self.assertEqual(factory.loaded, [FP32.id])
+
+    def test_saved_report_is_shown_and_labelled_stale_after_a_context_change(self):
+        controller, _ = self.make()
+        self.setup_complete(controller)
+        self.benchmark(controller)
+        controller.close()
+        restarted, factory = self.make(context="new driver")
+        self.setup_complete(restarted)
+        report = restarted.snapshot()["benchmark"]
+        self.assertEqual(report["completed"], 4)
+        self.assertTrue(report["stale"])
+        self.assertEqual(factory.loaded, [FP32.id])
 
     def test_idle_only_counts_score_activity_and_retains_selection(self):
         controller, factory = self.make()
@@ -247,7 +363,6 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(snapshot["state"], "idle")
         self.assertEqual(snapshot["selected_id"], FP32.id)
         self.assertIsNone(snapshot["active_id"])
-        self.assertFalse(snapshot["needs_selection"])
         self.assertEqual(factory.resident, 0)
         for _ in range(5):
             controller.snapshot()
@@ -340,48 +455,72 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(second.loaded, [FP16.id])
         self.assertEqual(factory.max_resident, 1)
 
-    def test_pending_choice_reuses_completed_report_on_restart(self):
+    def test_changed_context_or_engine_version_keeps_the_explicit_choice(self):
         controller, _ = self.make()
         self.setup_complete(controller)
-        controller.close()
-        restarted, factory = self.make()
-        self.setup_complete(restarted)
-        self.assertEqual(factory.loaded, [])
-        self.assertEqual(restarted.snapshot()["benchmark"]["completed"], 4)
-
-    def test_changed_context_or_engine_version_invalidates_saved_choice(self):
-        controller, _ = self.make()
-        self.setup_complete(controller)
-        self.select(controller)
+        self.select(controller, FP16)
         controller.close()
         changed, factory = self.make(context="different hardware or artifacts")
-        self.setup_complete(changed)
-        self.assertIsNone(changed.snapshot()["active_id"])
-        self.select(changed)
+        self.setup_complete(changed, FP16)
+        self.assertEqual(factory.loaded, [FP16.id])
         changed.close()
         v2factory = Factory(Clock())
         v2factory.version = "v2"
-        mismatched, _ = self.make(context="different hardware or artifacts", factory=v2factory)
-        self.setup_complete(mismatched)
-        self.assertIsNone(mismatched.snapshot()["selected_id"])
+        updated, _ = self.make(context="different hardware or artifacts", factory=v2factory)
+        self.setup_complete(updated, FP16)
+        self.assertEqual(json.loads(self.path.read_text())["selected_version"], f"v2:{FP16.id}")
         self.assertEqual(v2factory.max_resident, 1)
 
-    def test_cancel_waits_for_one_inflight_operation_then_stops(self):
+    def test_unavailable_saved_choice_falls_back_to_automatic_selection(self):
+        controller, _ = self.make()
+        self.setup_complete(controller)
+        self.select(controller, FP16)
+        controller.close()
+        gone = Candidate(**{**FP16.__dict__, "available": False, "reason": "ONNX Runtime is unavailable"})
+        restarted, factory = self.make((FP32, gone))
+        self.setup_complete(restarted)
+        self.assertEqual(factory.loaded, [FP32.id])
+        self.assertEqual(json.loads(self.path.read_text())["selected_id"], FP32.id)
+
+    def test_cancelled_first_load_leaves_an_idle_runtime_that_a_score_wakes(self):
         entered, release = threading.Event(), threading.Event()
         controller, factory = self.make()
         factory.on_score = lambda *_: (entered.set(), release.wait(2))
         controller.start()
         self.assertTrue(entered.wait(2))
-        self.assertEqual(controller.cancel()["state"], "benchmarking")
+        self.assertEqual(controller.cancel()["state"], "loading")
         with self.assertRaises(RuntimeBusy):
             controller.request_selection(FP32.id)
         release.set()
         self.finish(controller)
         snapshot = controller.snapshot()
-        self.assertEqual(snapshot["benchmark"]["status"], "cancelled")
-        self.assertEqual(snapshot["state"], "awaiting_selection")
-        self.assertEqual(factory.loaded, [FP32.id])
+        self.assertEqual(snapshot["state"], "idle")
+        self.assertIsNone(snapshot["selected_id"])
+        self.assertFalse(self.path.exists())
         self.assertEqual(factory.resident, 0)
+        factory.on_score = None
+        self.assertTrue(controller.wake())
+        self.finish(controller)
+        self.assertEqual(controller.snapshot()["state"], "ready")
+        self.assertEqual(controller.snapshot()["active_id"], FP32.id)
+
+    def test_cancelled_benchmark_restores_the_selection(self):
+        entered, release = threading.Event(), threading.Event()
+        controller, factory = self.make()
+        self.setup_complete(controller)
+        factory.on_score = lambda *_: (entered.set(), release.wait(2))
+        controller.request_benchmark(10)
+        self.assertTrue(entered.wait(2))
+        self.assertEqual(controller.cancel()["state"], "benchmarking")
+        release.set()
+        factory.on_score = None
+        self.finish(controller)
+        snapshot = controller.snapshot()
+        self.assertEqual(snapshot["benchmark"]["status"], "cancelled")
+        self.assertEqual(snapshot["state"], "ready")
+        self.assertEqual(snapshot["active_id"], FP32.id)
+        self.assertEqual(factory.loaded, [FP32.id, FP32.id, FP32.id])
+        self.assertEqual(factory.resident, 1)
 
     def test_rerun_restores_existing_choice_and_is_single_resident(self):
         controller, factory = self.make()
@@ -395,6 +534,7 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(snapshot["state"], "ready")
         self.assertLessEqual(snapshot["benchmark"]["measurement_s"], 11)
         self.assertEqual(factory.max_resident, 1)
+        self.assertEqual(json.loads(self.path.read_text())["selected_id"], FP16.id)
 
     def test_rerun_initial_response_resets_elapsed_time(self):
         controller, factory = self.make()
@@ -418,7 +558,7 @@ class LifecycleTests(unittest.TestCase):
         controller._persist = persist
         controller.request_benchmark(10)
         self.assertTrue(entered.wait(2))
-        self.assertEqual(controller.snapshot()["state"], "awaiting_selection")
+        self.assertEqual(controller.snapshot()["state"], "benchmarking")
         with self.assertRaises(RuntimeBusy):
             controller.request_selection(FP16.id)
         release.set()
@@ -453,9 +593,14 @@ class LifecycleTests(unittest.TestCase):
         release.set()
         self.finish(controller)
         self.assertEqual(self.path.read_text(), original)
+        self.assertEqual(controller.snapshot()["state"], "idle")
         self.assertEqual(controller.snapshot()["selected_id"], FP32.id)
         self.assertIsNone(controller.snapshot()["active_id"])
         self.assertEqual(factory.resident, 0)
+        factory.on_score = None
+        controller.wake()
+        self.finish(controller)
+        self.assertEqual(controller.snapshot()["active_id"], FP32.id)
 
     def test_cancel_cannot_split_selection_commit_from_ready_state(self):
         controller, _ = self.make()
@@ -487,16 +632,24 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(controller.snapshot()["active_id"], FP16.id)
         self.assertEqual(json.loads(self.path.read_text())["selected_id"], FP16.id)
 
-    def test_changed_files_between_report_and_selection_require_comparison(self):
+    def test_selection_rechecks_availability_but_not_the_context(self):
         controller, factory = self.make()
         self.setup_complete(controller)
+        self.benchmark(controller)
         controller.discover = lambda: ([FP32, FP16], "files replaced")
+        controller.request_selection(FP16.id)
+        self.finish(controller)
+        self.assertEqual(controller.snapshot()["state"], "ready")
+        self.assertEqual(controller.snapshot()["active_id"], FP16.id)
+        self.assertTrue(controller.snapshot()["benchmark"]["stale"])
+        gone = Candidate(**{**FP32.__dict__, "available": False, "reason": "PyTorch import failed"})
+        controller.discover = lambda: ([gone, FP16], "torch removed")
         controller.request_selection(FP32.id)
         self.finish(controller)
         self.assertEqual(controller.snapshot()["state"], "error")
+        self.assertIn("PyTorch import failed", controller.snapshot()["error"])
         self.assertIsNone(controller.snapshot()["active_id"])
-        self.assertEqual(controller.snapshot()["benchmark"]["results"], [])
-        self.assertEqual(factory.loaded, [FP32.id, FP16.id])
+        self.assertEqual(controller.snapshot()["selected_id"], FP16.id)
 
     def test_active_score_lease_blocks_switch_and_shutdown_releases_it(self):
         controller, factory = self.make()
@@ -520,10 +673,10 @@ class LifecycleTests(unittest.TestCase):
         self.assertIsNone(controller.snapshot()["error"])
         self.assertEqual(json.loads(self.path.read_text())["selected_id"], FP32.id)
 
-    def test_corrupt_saved_report_fields_are_discarded_and_rebenchmarked(self):
+    def test_corrupt_saved_report_fields_are_discarded_without_rerunning(self):
         controller, _ = self.make()
         self.setup_complete(controller)
-        self.select(controller)
+        self.benchmark(controller)
         saved = json.loads(self.path.read_text())
         controller.close()
         def row_field(key, value):
@@ -555,6 +708,9 @@ class LifecycleTests(unittest.TestCase):
             "error surrogate": row_field("error", "\ud800"),
             "extra nan field": row_field("extra", float("nan")),
             "duplicate workload": lambda r: r["results"].__setitem__(1, dict(r["results"][0])),
+            "context object": lambda r: r.update(context={}),
+            "context too long": lambda r: r.update(context="x" * 129),
+            "in-process scope": row_field("rss_scope", "in_process"),
         }
         for name, corrupt in corruptions.items():
             with self.subTest(name=name):
@@ -564,21 +720,29 @@ class LifecycleTests(unittest.TestCase):
                 restarted, factory = self.make()
                 self.setup_complete(restarted)
                 snapshot = restarted.snapshot()
-                self.assertEqual(factory.loaded, [FP32.id, FP16.id])
-                self.assertTrue(restarted._valid_report(snapshot["benchmark"]))
-                self.assertIsNone(snapshot["active_id"])
+                self.assertEqual(factory.loaded, [FP32.id])
+                self.assertEqual(snapshot["benchmark"]["results"], [])
+                self.assertTrue(restarted._valid_report(json.loads(self.path.read_text())["benchmark"]))
                 json.dumps(snapshot, allow_nan=False)
                 restarted.close()
 
     def test_long_provider_errors_leave_controls_renderable(self):
-        controller, _ = self.make()
+        controller, factory = self.make()
         def fail(_candidate):
             raise ValueError("🙂" * 2001)
         controller.factory = fail
-        self.setup_complete(controller)
+        controller.start()
+        self.finish(controller)
+        self.assertEqual(controller.snapshot()["state"], "error")
+        self.assertEqual(len(controller.snapshot()["error"].encode("utf-16-le")), 4000)
+        controller.factory = factory
+        self.select(controller)
+        controller.benchmark_runner = InProcessRunner(fail, factory.clock)
+        self.benchmark(controller)
         snapshot = controller.snapshot()
-        self.assertTrue(controller._valid_report(snapshot["benchmark"]))
-        self.assertTrue(all(len(row["error"].encode("utf-16-le")) <= 4000
+        self.assertEqual(snapshot["state"], "ready")
+        self.assertTrue(controller._valid_report(json.loads(self.path.read_text())["benchmark"]))
+        self.assertTrue(all(row["status"] == "error" and len(row["error"].encode("utf-16-le")) <= 4000
                             for row in snapshot["benchmark"]["results"]))
         self.assertEqual(error_text("\ud800"), "?")
         restarted, _ = self.make(context="failed discovery")
@@ -603,7 +767,8 @@ class LifecycleTests(unittest.TestCase):
         controller.discover = lambda: ([FP32], "fixed")
         controller.request_benchmark()
         self.finish(controller)
-        self.assertEqual(controller.snapshot()["state"], "awaiting_selection")
+        self.assertEqual(controller.snapshot()["state"], "ready")
+        self.assertEqual(controller.snapshot()["active_id"], FP32.id)
 
     def test_runtime_budgets_and_candidate_ids_are_validated(self):
         controller, _ = self.make()
@@ -673,17 +838,28 @@ runpy.run_path(sys.argv[1], run_name="__main__")
         return SubprocessBenchmark(self.home, self.home / "lid", self.home,
                                    command=[sys.executable, "-I", str(self.fixture), str(self.worker)], **kwargs)
 
+    def host_factory(self, candidate):
+        # The host loads only the selected engine; measurements never run here.
+        self.host_loads.append(candidate.id)
+        return FakeEngine(Factory(Clock()), candidate)
+
     def test_each_candidate_has_a_fresh_process_and_distinct_resource_stages(self):
+        self.host_loads = []
         controller = RuntimeController(self.home / "runtime.json", lambda: ([FP32, FP16], "isolated"),
-                                       lambda _: self.fail("benchmark loaded in host"),
-                                       benchmark_runner=self.runner(), max_runs=3)
+                                       self.host_factory, benchmark_runner=self.runner(), max_runs=3)
         self.addCleanup(controller.close)
         controller.start()
         controller.thread.join(5)
         self.assertFalse(controller.thread.is_alive())
+        self.assertEqual(controller.snapshot()["state"], "ready")
+        self.assertFalse((self.home / "workers").exists())
+        controller.request_benchmark(10)
+        controller.thread.join(5)
+        self.assertFalse(controller.thread.is_alive())
         snapshot = controller.snapshot()
-        self.assertEqual(snapshot["state"], "awaiting_selection", snapshot)
-        self.assertTrue(controller._valid_report(snapshot["benchmark"]))
+        self.assertEqual(snapshot["state"], "ready", snapshot)
+        self.assertEqual(self.host_loads, [FP32.id, FP32.id])
+        self.assertTrue(controller._valid_report(json.loads((self.home / "runtime.json").read_text())["benchmark"]))
         self.assertEqual(snapshot["benchmark"]["completed"], 4)
         pids = [int(value) for value in (self.home / "workers").read_text().splitlines()]
         self.assertEqual(len(set(pids)), 2)
@@ -718,16 +894,20 @@ time.sleep(60)
                 receive(message)
                 entered.set()
             runner(*args[:-1], observed)
+        self.host_loads = []
         controller = RuntimeController(self.home / "runtime.json", lambda: ([FP32], "cancel"),
-                                       lambda _: self.fail("benchmark loaded in host"), benchmark_runner=running)
+                                       self.host_factory, benchmark_runner=running)
         self.addCleanup(controller.close)
         with patch("benchmark_worker.subprocess.Popen", side_effect=popen):
             controller.start()
+            controller.thread.join(3)
+            controller.request_benchmark(10)
             self.assertTrue(entered.wait(2))
             controller.cancel()
             controller.thread.join(3)
             self.assertFalse(controller.thread.is_alive())
             self.assertEqual(controller.snapshot()["benchmark"]["status"], "cancelled")
+            self.assertEqual(controller.snapshot()["state"], "ready")
             self.assertIsNotNone(children[-1].poll())
             runner.timeout_s = 0.15
             with self.assertRaises(TimeoutError):
@@ -760,7 +940,7 @@ time.sleep(60)
 
 
 class ScoringParityTests(unittest.TestCase):
-    def test_torch_auto_is_fp32_and_cpu_fp16_is_not_silently_coerced(self):
+    def test_torch_device_is_explicit_and_cpu_fp16_is_not_silently_coerced(self):
         class Model:
             config = SimpleNamespace(num_labels=4)
             def to(self, *_):
@@ -774,8 +954,8 @@ class ScoringParityTests(unittest.TestCase):
         with patch.dict(sys.modules, {"torch": fake_torch, "transformers": fake_transformers}), \
                 patch.object(engine_api, "require_model"), patch.object(engine_api, "pipeline_version", return_value="test"):
             for device in ("cpu", "mps", "cuda:0"):
-                engine = engine_api.EditLens(Path("unused"), device, 512, 8, "auto", None, warmup=False)
-                self.assertEqual(engine.dtype_name, "float32")
+                engine = engine_api.EditLens(Path("unused"), device, 512, 8, "fp32", None, warmup=False)
+                self.assertEqual((engine.device, engine.dtype_name), (device, "float32"))
             with self.assertRaisesRegex(ValueError, "CPU FP16"):
                 engine_api.EditLens(Path("unused"), "cpu", 512, 8, "fp16", None, warmup=False)
 
@@ -820,7 +1000,7 @@ class ScoringParityTests(unittest.TestCase):
         for engine in (onnx, direct):
             engine.tok, engine.emoji = Tokenizer(), emoji
             engine.max_length, engine.batch_size, engine.n_buckets = 8, 2, 4
-            engine.lock, engine.scored = threading.Lock(), 0
+            engine.lock = threading.Lock()
         direct._logits = lambda ids: logits(direct.tok.pad({"input_ids": ids})["input_ids"])
         texts = ["Sure, here it is.\nA DIFFERENT paragraph 🙂", "Long " * 20, "short",
                  "discarded reasoning</think> This IS the answer"]

@@ -1,42 +1,35 @@
-// First-run landing page: native setup owns its persisted download/benchmark lifecycle.
+// Setup page: the engine panel reports its own lifecycle; this page adds the site grant
+// once the engine is ready and points at the guide in the reader's language.
 import { browser } from "#imports";
 import "../../lib/ui/basecoat-vega.cdn.min.css";
 import { followSystemTheme } from "../../lib/ui/theme";
 import { localizePage } from "../../lib/ui/localize";
-import { t, tn } from "../../lib/i18n";
+import { messageLocale } from "../../lib/i18n";
 import { ALL_SITES } from "../../lib/access/patterns";
 import { accessSummary, requestAccess } from "../../lib/access/grant";
-import { mountComponentSettings, componentConnectionLabel, componentReady } from "../../lib/ui/componentSettings";
+import { mountComponentSettings, componentReady } from "../../lib/ui/componentSettings";
 
 localizePage();
 followSystemTheme();
-const version = browser.runtime.getManifest().version;
-document.getElementById("version")!.textContent = `v${version}`;
-document.getElementById("ext-version")!.textContent = `v${version}`;
-const componentRow = document.getElementById("row-daemon")!;
-const componentState = document.getElementById("daemon-state")!;
-const componentDetail = document.getElementById("daemon-detail")!;
-const accessRow = document.getElementById("row-access")!;
-const accessState = document.getElementById("access-state")!;
+document.getElementById("version")!.textContent = `v${browser.runtime.getManifest().version}`;
+if (messageLocale() === "zh-CN") {
+  (document.getElementById("guide") as HTMLAnchorElement).href = "https://github.com/CoderBak/anagram/blob/main/docs/user-guide.zh-CN.md";
+}
+const readyBlock = document.getElementById("ready")!;
 const accessGrant = document.getElementById("access-grant") as HTMLButtonElement;
 const accessOnce = document.getElementById("access-once")!;
-const readyRow = document.getElementById("row-ready")!;
-const readyText = document.getElementById("ready-text")!;
-let ready = false, connected = false, hasAccess = false;
+const go = document.getElementById("go")!;
+let ready = false, allSites = false;
 
-function renderReady(): void {
-  readyRow.dataset.state = ready ? "ok" : "idle";
-  readyText.textContent = t(ready ? hasAccess ? "onbGo" : "componentReadyManual" : connected ? "runtimeSetupPending" : "componentInstallWaiting");
+function render(): void {
+  readyBlock.hidden = !ready;
+  accessGrant.hidden = accessOnce.hidden = allSites;
+  go.hidden = !allSites;
 }
 
 async function renderAccess(): Promise<void> {
-  const { all, sites } = await accessSummary();
-  accessRow.dataset.state = all || sites.length > 0 ? "ok" : "idle";
-  accessState.textContent = all ? t("accessAll") : sites.length > 0 ? tn("accessSites", sites.length) : t("accessNone");
-  accessGrant.hidden = all;
-  accessOnce.hidden = all;
-  hasAccess = all || sites.length > 0;
-  renderReady();
+  allSites = (await accessSummary()).all;
+  render();
 }
 // Permission requests remain optional and begin directly inside the user's gesture.
 accessGrant.addEventListener("click", () => { void requestAccess(ALL_SITES).then(renderAccess); });
@@ -44,11 +37,8 @@ browser.permissions.onAdded.addListener(() => void renderAccess());
 browser.permissions.onRemoved.addListener(() => void renderAccess());
 void renderAccess();
 mountComponentSettings(document.getElementById("componentSettings")!, (reply) => {
-  connected = reply.kind === "ok";
   ready = reply.kind === "ok" && componentReady(reply.snapshot);
-  componentRow.dataset.state = ready ? "ok" : reply.kind === "ok" && reply.snapshot.state !== "error" ? "idle" : "bad";
-  componentState.textContent = componentConnectionLabel(reply);
-  componentDetail.hidden = reply.kind !== "ok";
-  componentDetail.textContent = reply.kind === "ok" && reply.snapshot.version ? `v${reply.snapshot.version}` : "";
-  renderReady();
+  render();
 });
+// The next step belongs right under the status line, above the Manage and Advanced folds.
+document.getElementById("manage")?.before(readyBlock);

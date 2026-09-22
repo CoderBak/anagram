@@ -116,9 +116,10 @@ def dispatch(component, request):
         return error_reply(request["id"], "busy", str(exc), 409)
     except RuntimeUnavailable as exc:
         return error_reply(request["id"], "not_ready", str(exc), 503)
-    except ValueError as exc:
-        return error_reply(request["id"], "invalid_request", str(exc), 422)
     except (Exception, SystemExit):
+        # Only request validation is a client error (422, raised as ComponentError
+        # by the component). Anything else, including invalid model output or a
+        # response that fails its own schema, is a host failure.
         logging.exception("Native operation failed: %s", request["op"])
         return error_reply(request["id"], "internal_error", "The local component operation failed", 500)
 
@@ -207,8 +208,9 @@ def parse_args(argv=None):
     # Browser-owned registration manifests authorize the caller.
     parser.add_argument("caller", nargs="?")
     parser.add_argument("addon_id", nargs="?")
-    parser.add_argument("--parent-window", default=None)  # Chrome on Windows; no native UI is opened here
-    return parser.parse_args(argv)
+    # Chrome on Windows appends --parent-window=<handle>; no native UI is opened,
+    # so browser-supplied options are ignored rather than stored.
+    return parser.parse_known_args(argv)[0]
 
 
 def configure_environment(home):

@@ -8,9 +8,6 @@
   "extDescription": {
     "message": "显示每个段落经 AI 编辑的程度，全部在本机评分。"
   },
-  "cmdToggleOverlay": {
-    "message": "显示/隐藏 Anagram 标记"
-  },
   "cmdOpenPanel": {
     "message": "打开存疑段落列表"
   },
@@ -329,461 +326,29 @@
   "reportNoModel": {
     "message": "分析本页时没有评分服务响应。"
   },
-  "popupTitle": {
-    "message": "Anagram"
-  },
-  "popupSubtitle": {
-    "message": "本机评出的 AI 编辑程度"
-  },
-  "popupAllSettings": {
-    "message": "全部设置"
-  },
-  "popupWhereItRuns": {
-    "message": "运行范围"
-  },
-  "popupAllWebsites": {
-    "message": "已授权网站的默认行为"
-  },
-  "popupThisSite": {
-    "message": "此网站自动分析"
-  },
-  "popupOn": {
-    "message": "适用于 $1"
-  },
-  "popupSiteUnavailable": {
-    "message": "此处不可用"
-  },
-  "popupShow": {
-    "message": "显示"
-  },
-  "popupAllChips": {
-    "message": "全部标记"
-  },
-  "popupFlaggedOnly": {
-    "message": "仅存疑"
-  },
-  "popupMore": {
-    "message": "更多"
-  },
-  "popupMarkText": {
-    "message": "标记正文"
-  },
-  "popupMarkingStyle": {
-    "message": "标记样式"
-  },
-  "styleQuiet": {
-    "message": "仅存疑文字"
-  },
-  "styleAlways": {
-    "message": "每个段落"
-  },
-  "popupScope": {
-    "message": "范围"
-  },
-  "popupScopeTitle": {
-    "message": "正文 = 仅文章主体（Readability）"
-  },
-  "popupWholePage": {
-    "message": "整页"
-  },
-  "popupMainContent": {
-    "message": "正文"
-  },
-  "popupReadPdf": {
-    "message": "阅读此 PDF"
-  },
-  "popupOpenReader": {
-    "message": "阅读本机 PDF…"
-  },
-  "popupRescan": {
-    "message": "重新扫描"
-  },
-  "popupAnalyzeOnce": {
-    "message": "分析本页"
-  },
-  "popupFlaggedCount": {
-    "message": "$1 个存疑"
-  },
-  "popupAnalyzed_one": {
-    "message": "已分析 $1 个段落 · "
-  },
-  "popupAnalyzed_other": {
-    "message": "已分析 $1 个段落 · "
-  },
-  "popupNotEnglish": {
-    "message": " · $1 个非英文"
-  },
-  "popupUnavailable": {
-    "message": " · $1 个不可用"
-  },
-  "popupNoTab": {
-    "message": "没有活动的标签页。"
-  },
-  "popupOff": {
-    "message": "本页已关闭检测。"
-  },
-  "popupUnsupportedPage": {
-    "message": "本页无法使用。"
-  },
-  "popupRescanning": {
-    "message": "正在重新扫描…"
-  },
-  "popupModel": {
-    "message": "模型："
-  },
-  "popupLocal": {
-    "message": " · 本地"
-  },
-  "popupDaemonMismatch": {
-    "message": "本地组件需要更新"
-  },
-  "popupDaemonBehind": {
-    "message": "可在设置中更新本地组件。"
-  },
-  "popupDaemonDown": {
-    "message": "本地引擎尚未就绪"
-  },
-  "optionsTitle": {
-    "message": "Anagram for Chrome — 选项"
-  },
-  "optionsHeading": {
-    "message": "Anagram for Chrome"
-  },
-  "optDetection": {
-    "message": "检测"
-  },
-  "optDetectionNote": {
-    "message": "分析哪些内容，以及段落如何分组。"
-  },
-  "optEnabled": {
-    "message": "默认自动分析已授权网站"
-  },
-  "optEnabledNote": {
-    "message": "只作用于已授权网站；下方的网站规则可覆盖此设置。关闭不等于撤回网站权限；请使用“管理网站访问权限”。"
-  },
-  "optAutoOpenPdfs": {
-    "message": "自动使用 Anagram 打开 PDF"
-  },
-  "optAutoOpenPdfsNote": {
-    "message": "在已授权网站和本地文件中使用完整 PDF 阅读器。适用于新打开的 PDF，不会跳转已经打开的标签页。"
-  },
-  "optOpenReader": {
-    "message": "阅读这台电脑上的 PDF"
-  },
-  "optOpenReaderNote": {
-    "message": "在阅读器中选择或拖入 PDF，无需授予文件网址访问权限。"
-  },
-  "optOpenReaderBtn": {
-    "message": "打开"
-  },
-  "optScope": {
-    "message": "分析范围"
-  },
-  "optScopeNote": {
-    "message": "“仅正文”只分析文章主体——与 Firefox 阅读视图同样的方式（Mozilla Readability）——并略过其外的评论和侧栏。找不到明确的正文区域时回退到整页。"
-  },
-  "optScopeWholePage": {
-    "message": "整页"
-  },
-  "optScopeMain": {
-    "message": "仅正文"
-  },
-  "optMerge": {
-    "message": "合并相邻的短段落"
-  },
-  "optMergeNote": {
-    "message": "短帖子或评论会作为整体分析；低于 50 词证据下限的段落，会与同一篇文章里相邻的段落合在一起分析，标签上显示 ×N；绝不跨帖子、评论或引文。关闭后：每段单独分析，短段落直接略过。"
-  },
-  "optDisplay": {
-    "message": "外观"
-  },
-  "optDisplayNote": {
-    "message": "结论在页面上如何呈现。"
-  },
-  "optHighlights": {
-    "message": "标记已分析的段落"
-  },
-  "optHighlightsNote": {
-    "message": "把结论画在正文上——在存疑的文字下画一条细线；把鼠标移到某个标签上时，显示该段落读到的完整范围。无论开关如何，标签都会显示。"
-  },
-  "optMarkStyle": {
-    "message": "标记样式"
-  },
-  "optMarkStyleNote": {
-    "message": "安静模式让页面保持作者写的样子：只在重度 AI 编辑和 AI 生成的文字下画一条细线。无论选哪种，把鼠标移到标签上都会显示该段落读到的完整范围。上面的“标记已分析的段落”仍是总开关。"
-  },
-  "optStyleQuiet": {
-    "message": "仅存疑文字"
-  },
-  "optStyleAlways": {
-    "message": "每个已分析的段落"
-  },
-  "optDisplayMode": {
-    "message": "显示内容"
-  },
-  "optDisplayModeNote": {
-    "message": "无论选哪项，每个段落都会被分析。“仅存疑”让页面保持安静，只标出重度 AI 编辑和 AI 生成的结论。"
-  },
-  "optModeAll": {
-    "message": "全部标记"
-  },
-  "optModeFlagged": {
-    "message": "仅存疑"
-  },
-  "optRules": {
-    "message": "站点规则"
-  },
-  "optRulesNote": {
-    "message": "始终开启 / 始终关闭的覆盖规则。一条规则同样覆盖该站点的子域名，最具体的规则优先。"
-  },
-  "optHostname": {
-    "message": "主机名"
-  },
-  "optRuleField": {
-    "message": "规则"
-  },
-  "optAlwaysOn": {
-    "message": "始终开启"
-  },
-  "optAlwaysOff": {
-    "message": "始终关闭"
-  },
-  "optAdd": {
-    "message": "添加"
-  },
-  "optNoRules": {
-    "message": "还没有站点规则。用工具栏弹窗里的“当前站点”开关添加一条。"
-  },
-  "optColSite": {
-    "message": "站点"
-  },
-  "optColRule": {
-    "message": "规则"
-  },
-  "optColActions": {
-    "message": "操作"
-  },
-  "optRemove": {
-    "message": "移除"
-  },
-  "optBadHost": {
-    "message": "请输入形如 example.com 的主机名。"
-  },
-  "optAlreadyCovered": {
-    "message": "已被 $1 覆盖。"
-  },
-  "optAdvanced": {
-    "message": "高级"
-  },
-  "optDebug": {
-    "message": "调试日志"
-  },
-  "optDebugNote": {
-    "message": "输出内容脚本的详细控制台日志（命名空间 $1）。"
-  },
-  "optCachedVerdicts": {
-    "message": "缓存的结论"
-  },
-  "optCachedNote": {
-    "message": "结果最多复用 30 天，也可仅保存在内存中。清除时，还会阻止此前未完成的请求保存结果。"
-  },
-  "optCacheEntries_one": {
-    "message": "$1 条"
-  },
-  "optCacheEntries_other": {
-    "message": "$1 条"
-  },
-  "optClearCache": {
-    "message": "清除缓存的结论"
-  },
-  "optCleared": {
-    "message": "已清除 ✓"
-  },
-  "optAbout": {
-    "message": "关于与快捷键"
-  },
-  "optShortcutToggle": {
-    "message": "在当前页面显示或隐藏 Anagram 的标记。"
-  },
-  "optShortcutList": {
-    "message": "打开存疑段落列表，并把键盘焦点放进去。"
-  },
-  "optShortcutNext": {
-    "message": "跳到下一个存疑段落。"
-  },
-  "optShortcutPrev": {
-    "message": "跳到上一个存疑段落。"
-  },
-  "optRightClick": {
-    "message": "右键"
-  },
-  "optShortcutSelection": {
-    "message": "选择“用 Anagram 分析所选文本”，只为选中的文字评分。"
-  },
-  "optShortcutPage": {
-    "message": "选择“用 Anagram 分析本页”，对一个已关闭的页面分析一次。"
-  },
-  "optRebind": {
-    "message": "这些都可以在浏览器的扩展快捷键设置里改（Chrome：$1）。"
-  },
-  "optPrivacy": {
-    "message": "检测在这台电脑上的 $1 中运行。浏览器会直接连接，页面文本不会发送到在线服务。"
-  },
-  "optVerdictColors": {
-    "message": "结论配色"
-  },
-  "optFooter": {
-    "message": "标签上的数字是 EditLens 的估计，衡量一个段落处在纯人工写作（.00）与完全 AI 生成（1.0）之间的什么位置，既不是 AI 撰写词语的占比，也不是证据。检测按段落进行——短帖子按整帖——证据下限为 50 词；更短的相邻段落会合并分析。"
-  },
-  "modelLine": {
-    "message": "模型：pangram/editlens_roberta-large（CC BY-NC-SA 4.0，非商业用途）。"
-  },
-  "onbTitle": {
-    "message": "欢迎使用 Anagram"
-  },
-  "onbLede": {
-    "message": "浏览时 Anagram 会回答$1：每个已分析的段落后面会出现一个带数字的小$2——模型对$3的估计——页面本身保持原样，只在存疑的文字下画一条细线。"
-  },
-  "onbLedeQuestion": {
-    "message": "“这段里有多少是 AI 写的？”"
-  },
-  "onbLedeChip": {
-    "message": "标签"
-  },
-  "onbLedeExtent": {
-    "message": "AI 编辑程度"
-  },
-  "onbSetup": {
-    "message": "准备"
-  },
-  "onbExtension": {
-    "message": "扩展"
-  },
-  "onbInstalled": {
-    "message": "已安装"
-  },
-  "onbDaemon": {
-    "message": "本地组件"
-  },
-  "onbChecking": {
-    "message": "检查中…"
-  },
-  "onbReady": {
-    "message": "就绪"
-  },
-  "onbWaiting": {
-    "message": "正在等待本地设置。"
-  },
-  "onbGo": {
-    "message": "打开任意一篇文章——每段后面都会出现一个标签。"
-  },
-  "onbHowItReads": {
-    "message": "它怎么读"
-  },
-  "onbGuide": {
-    "message": "指南"
-  },
-  "onbAccessOnce": {
-    "message": "或点工具栏图标 → 分析本页，只分析这一页"
-  },
-  "onbVerdicts": {
-    "message": "看懂结论"
-  },
-  "onbVerdictsBody": {
-    "message": "模型（$1，ICLR 2026）输出人工、轻度编辑、重度编辑、AI 生成四类预测。分数为类别概率的加权平均，归一化为 0–1；它$2，也不是实际修改距离或 AI 写作概率。悬停或轻点标记可查看四类概率和字数。EditLens 只支持英文，其他语言会显示灰色标记和语言代码。每个分数都是$3。少于约 50 个单词的文本会尝试与相邻段落合并，短帖整体分析；标记中的 $4 表示合并的段落数。"
-  },
-  "onbNotShare": {
-    "message": "不是 AI 撰写词语的占比"
-  },
-  "onbEstimate": {
-    "message": "估计，不是证据"
-  },
-  "onbBall": {
-    "message": "悬浮球"
-  },
-  "onbBallBody": {
-    "message": "它待在 Anagram 运行的每个页面的右下角。$1一下可以立刻显示或隐藏全部标记。可以把它$2到任何地方——松手会吸附到最近的边缘，闲置时半隐到边上，鼠标移过去又回来。它红色的$3打开存疑列表：按结论筛选、逐个跳到存疑段落、$4，或者在这个站点关掉 Anagram——都在这个面板里。"
-  },
-  "onbClick": {
-    "message": "点"
-  },
-  "onbDrag": {
-    "message": "拖"
-  },
-  "onbCounter": {
-    "message": "计数角标"
-  },
-  "onbPower": {
-    "message": "进阶用法"
-  },
-  "onbPowerSelection": {
-    "message": "$1——选中文字，右键，完成。文本框和编辑器里同样有效。"
-  },
-  "onbSelectionName": {
-    "message": "分析所选文本"
-  },
-  "onbPowerToggle": {
-    "message": "$1+$2+$3——在当前页面开关 Anagram。"
-  },
-  "onbPowerWalk": {
-    "message": "$1+$2+$3——打开存疑段落列表，键盘焦点已经在里面。$4+$5+$6 和 $7+$8+$9 不用碰鼠标就能跳到下一个和上一个存疑段落。"
-  },
-  "onbPowerFlagged": {
-    "message": "$1——在弹窗里切到$2，安静的页面就保持原样，只有被标出的地方才有标记。"
-  },
-  "onbFlaggedName": {
-    "message": "仅存疑"
-  },
-  "onbFlaggedPath": {
-    "message": "“显示 → 仅存疑”"
-  },
-  "onbDocs": {
-    "message": "Google Docs"
-  },
-  "onbDocsBody": {
-    "message": "Docs 是编辑器，不是页面——所以 Anagram 自带一个阅读界面。点悬浮球上的$1，$2会直接在当前标签页打开，文档的每一段都已分析。不跳转，也绝不碰你的文件。按 $3 或$4立刻返回——想要独立的标签页，就用$5。"
-  },
-  "onbReadingMode": {
-    "message": "阅读模式"
-  },
-  "onbPdfs": {
-    "message": "PDF"
-  },
-  "onbPdfBody": {
-    "message": "PDF 保持它原本的页面：Anagram 按原样画出每一页——图、公式、分栏都在——再把标签和标记叠在上面。点悬浮球上的$1、弹窗里的$2，或者右键一个 PDF 链接选择$3。较短的段落会像普通网页一样合并阅读，加密的文件会先询问密码，文件始终留在你的电脑上。已经在这台电脑上的 PDF，可以从选项页打开阅读模式，再把文件拖进去。"
-  },
-  "onbPrivacy": {
-    "message": "隐私"
-  },
-  "onbPrivacyBody": {
-    "message": "检测在你电脑上的 $1 中运行。模型下载与分析相互独立，页面文本不会发送到在线服务。网站访问权限为可选；分析请求只使用 $2，不包含完整网址。"
-  },
-  "onbHostnameHint": {
-    "message": "主机名和语言提示"
-  },
-  "onbYours": {
-    "message": "调成你的样子"
-  },
-  "onbYoursBody": {
-    "message": "$1和$2里是其余的设置：挑一种标记样式（$3或$4），选择分析范围（$5或$6），以及查看本地评分服务的状态。"
-  },
-  "onbStyleQuiet": {
-    "message": "仅存疑文字"
-  },
-  "onbStyleAlways": {
-    "message": "每个已分析的段落"
-  },
-  "onbScopePage": {
-    "message": "整页"
-  },
-  "onbScopeMain": {
-    "message": "仅正文"
-  },
-  "onbPopupName": {
-    "message": "弹窗"
-  },
-  "onbOptionsName": {
-    "message": "选项页"
+  "reportPrivateTitle": {
+    "message": "Anagram 分析报告",
+    "description": "Report privacy preference, export metadata, or cache status shown in settings."
+  },
+  "reportShort": {
+    "message": "文本过短：$1",
+    "description": "Report privacy preference, export metadata, or cache status shown in settings."
+  },
+  "reportPending": {
+    "message": "尚未分析：$1",
+    "description": "Report privacy preference, export metadata, or cache status shown in settings."
+  },
+  "reportRuntime": {
+    "message": "校准 / 预处理标识：$1",
+    "description": "Report privacy preference, export metadata, or cache status shown in settings."
+  },
+  "reportCopyFailed": {
+    "message": "无法复制报告。",
+    "description": "Report privacy preference, export metadata, or cache status shown in settings."
+  },
+  "reportDevice": {
+    "message": "计算设备：$1 · 精度：$2",
+    "description": "Report privacy preference, export metadata, or cache status shown in settings."
   },
   "readerOpenOriginal": {
     "message": "打开原文件"
@@ -809,527 +374,24 @@
   "readerFetchFailed": {
     "message": "这个 PDF 无法载入。可以直接把文件拖进来。"
   },
-  "accessLabel": {
-    "message": "网站访问权限"
-  },
-  "accessAll": {
-    "message": "所有网站"
-  },
-  "accessNone": {
-    "message": "尚未授权"
-  },
-  "accessSites_one": {
-    "message": "$1 个网站"
-  },
-  "accessSites_other": {
-    "message": "$1 个网站"
-  },
-  "accessAllowAll": {
-    "message": "允许所有网站"
-  },
-  "accessWithdraw": {
-    "message": "撤销"
-  },
-  "runtimeTitle": {
-    "message": "选择 Anagram 的运行方式"
-  },
-  "runtimeChecking": {
-    "message": "正在检查本地设置…"
-  },
-  "runtimeFirstRun": {
-    "message": "模型下载完成后会自动开始首次性能测试。所有配置共享约 30 秒测量时间，模型加载和预热另需时间。查看结果后，请选择运行配置。"
-  },
-  "runtimeRerunNote": {
-    "message": "你可以更改配置或重新测试。重新测试会保留已保存的选择，不会自动切换到最快的配置。加载和预热不计入测量时间预算。"
-  },
-  "runtimeApply": {
-    "message": "使用所选配置"
-  },
-  "runtimeRerun": {
-    "message": "重新运行性能测试"
-  },
-  "runtimeCancel": {
-    "message": "取消性能测试"
-  },
-  "runtimeRefresh": {
-    "message": "刷新状态"
-  },
-  "runtimeBenchmarking": {
-    "message": "正在测试运行配置…"
-  },
-  "runtimeLoading": {
-    "message": "正在加载所选模型…"
-  },
-  "runtimeFailed": {
-    "message": "设置需要处理"
-  },
-  "runtimeReady": {
-    "message": "已可开始分析"
-  },
-  "runtimeChoose": {
-    "message": "请选择运行配置以完成设置"
-  },
-  "runtimeNotAvailable": {
-    "message": "暂无数据"
-  },
-  "runtimePhaseDiscovery": {
-    "message": "正在检查设备"
-  },
-  "runtimePhaseLoad": {
-    "message": "正在加载模型"
-  },
-  "runtimePhaseWarmup": {
-    "message": "正在预热"
-  },
-  "runtimePhaseMeasure": {
-    "message": "正在测量"
-  },
-  "runtimePhaseComplete": {
-    "message": "测量完成"
-  },
-  "runtimePhaseCancelled": {
-    "message": "已取消"
-  },
-  "runtimePhaseFailed": {
-    "message": "测试失败"
-  },
-  "runtimePhaseIdle": {
-    "message": "等待中"
-  },
-  "runtimeResults": {
-    "message": "在此电脑上测得的结果"
-  },
-  "runtimeConfiguration": {
-    "message": "运行配置"
-  },
-  "runtimeLatency": {
-    "message": "典型延迟"
-  },
-  "runtimeThroughput": {
-    "message": "批处理吞吐量"
-  },
-  "runtimeRate": {
-    "message": "$1 段文本/秒"
-  },
-  "runtimeRam": {
-    "message": "进程内存峰值（采样）"
-  },
-  "runtimeResources": {
-    "message": "资源占用"
-  },
-  "runtimeAccelerator": {
-    "message": "加速器内存"
-  },
-  "runtimeActive": {
-    "message": "正在使用"
-  },
-  "runtimeSelected": {
-    "message": "已选择，尚未启用"
-  },
-  "runtimeRecommended": {
-    "message": "推荐 · FP32"
-  },
-  "runtimeUnavailable": {
-    "message": "此设备不可用"
-  },
-  "runtimeTestFailed": {
-    "message": "性能测试未能完成。你可以重试，或选择可用的配置。"
-  },
-  "runtimeLoadWarmup": {
-    "message": "加载 $1 · 预热 $2"
-  },
-  "runtimeBatch": {
-    "message": "批量 $1 · $2 个样本"
-  },
-  "runtimeExperimental": {
-    "message": "实验性"
-  },
-  "runtimeInvalid": {
-    "message": "本地组件返回了不兼容的设置响应。请在设置中更新组件或重试连接。"
-  },
-  "runtimeUnreachable": {
-    "message": "本地引擎未响应。请在设置中检查进度。"
-  },
-  "runtimeProgress": {
-    "message": " $1 · 已完成 $2 / $3 项测试 · 测量 $4 / $5 秒 · 已用时 $6 秒"
-  },
-  "runtimeUsing": {
-    "message": "当前使用：$1。"
-  },
-  "runtimeNoActive": {
-    "message": "尚未启用所选模型。"
-  },
-  "runtimePending": {
-    "message": "等待启用：$1。"
-  },
-  "runtimeCancelled": {
-    "message": "性能测试已取消。已完成的结果及已保存的选择会保留。取消操作需要等待当前模型操作结束。"
-  },
-  "runtimeActionFailed": {
-    "message": "更改未被接受。请刷新状态后重试。"
-  },
-  "runtimeSetupPending": {
-    "message": "分析网页前，请先完成下方的本地模型设置。"
-  },
-  "runtimeCancelling": {
-    "message": "正在等待当前模型操作完成后停止…"
-  },
-  "runtimePreparing": {
-    "message": "正在准备本地模型…"
-  },
-  "componentTitle": {
-    "message": "本地分析引擎"
-  },
-  "componentConnecting": {
-    "message": "正在连接本地组件…"
-  },
-  "componentNotConnected": {
-    "message": "尚未连接本地组件"
-  },
-  "componentConnectionNote": {
-    "message": "浏览器会自动启动已安装的组件。首次设置时，请先按下方说明安装一次。"
-  },
-  "componentInstallIntro": {
-    "message": "请为此浏览器安装一次本地组件。浏览器商店版本和 ZIP 包均只包含扩展。"
-  },
-  "componentInitialDownload": {
-    "message": "安装脚本会检测可用设备，并在终端下载推荐模型文件，通常约 1.43 GB（含语言识别文件）。运行依赖和临时空间另计。校验完成后返回此处进行性能测试并选择配置；额外模型仍可按需下载。"
-  },
-  "componentTerminal": {
-    "message": "打开终端，粘贴此命令并按回车："
-  },
-  "componentPowerShell": {
-    "message": "打开 PowerShell，粘贴此命令并按回车："
-  },
-  "componentCopyInstall": {
-    "message": "复制安装命令"
-  },
-  "componentViewScript": {
-    "message": "查看安装脚本"
-  },
-  "componentUnreleased": {
-    "message": "开发构建：此版本的安装程序尚未发布。下方固定版本命令仅供审阅；请等对应版本发布后再运行。"
-  },
-  "componentAfterInstall": {
-    "message": "请等待终端提示模型校验完成，再关闭终端并返回此处重新连接，进行性能测试和配置选择。下载失败时，使用终端显示的“仅恢复下载”命令，无需重新安装。"
-  },
-  "componentCopyFailed": {
-    "message": "复制失败。请选中命令后手动复制。"
-  },
-  "componentUnsupportedPlatform": {
-    "message": "安装命令支持 macOS、Linux 和 Windows，并需要有效的扩展 ID。请从已安装的扩展中打开此页面。"
-  },
-  "componentStarting": {
-    "message": "正在启动本地组件…"
-  },
-  "componentNeedsModels": {
-    "message": "需要模型文件"
-  },
-  "componentDownloading": {
-    "message": "正在下载模型文件…"
-  },
-  "componentPaused": {
-    "message": "模型下载已暂停"
-  },
-  "componentLoading": {
-    "message": "正在加载本地引擎…"
-  },
-  "componentStopped": {
-    "message": "本地引擎已停止"
-  },
-  "componentUpdating": {
-    "message": "正在更新本地组件…"
-  },
-  "componentUninstalling": {
-    "message": "正在移除本地组件…"
-  },
-  "componentDeleting": {
-    "message": "正在删除模型文件…"
-  },
-  "componentNeedsAttention": {
-    "message": "本地设置需要处理"
-  },
-  "componentConnected": {
-    "message": "已连接本地组件"
-  },
-  "componentConnectedNote": {
-    "message": "可以关闭终端了。浏览器会管理本地组件；关闭此页面后，任务仍会继续。"
-  },
-  "componentDisconnected": {
-    "message": "本地连接已中断"
-  },
-  "componentReconnectNote": {
-    "message": "浏览器会重试连接。若持续失败，请检查安装后重新打开此页面。"
-  },
-  "componentReconnecting": {
-    "message": "更新后正在重新连接…"
-  },
-  "componentIncompatible": {
-    "message": "本地组件需要更新"
-  },
-  "componentDownloadProgress": {
-    "message": "模型准备进度"
-  },
-  "componentDownloadBytes": {
-    "message": "已准备 $1，共 $2"
-  },
-  "componentDownloadedBytes": {
-    "message": "已准备 $1"
-  },
-  "componentLocation": {
-    "message": "组件版本 $1 · $2"
-  },
-  "componentUnknownVersion": {
-    "message": "版本未知"
-  },
-  "componentStorage": {
-    "message": "模型文件磁盘占用：$1"
-  },
-  "componentDownloadModels": {
-    "message": "下载模型"
-  },
-  "componentResumeDownload": {
-    "message": "继续下载"
-  },
-  "componentRetryDownload": {
-    "message": "重试下载"
-  },
-  "componentPauseDownload": {
-    "message": "暂停下载"
-  },
-  "componentPausing": {
-    "message": "将在当前下载操作结束后暂停…"
-  },
-  "componentStop": {
-    "message": "停止引擎"
-  },
-  "componentResume": {
-    "message": "启动引擎"
-  },
-  "componentUpdate": {
-    "message": "更新本地组件"
-  },
-  "componentDeleteModels": {
-    "message": "删除模型文件"
-  },
-  "componentUninstall": {
-    "message": "完整卸载 Anagram"
-  },
-  "componentRetryConnection": {
-    "message": "重试连接"
-  },
-  "componentTechnicalDetails": {
-    "message": "技术详情"
-  },
-  "componentDownloadFailed": {
-    "message": "模型下载已停止，具体原因显示在下方。已完成文件和可续传的部分文件会保留，重试即可继续。"
-  },
-  "componentOperationFailed": {
-    "message": "本地操作失败。请查看详情并重试相应操作。"
-  },
-  "componentActionRejected": {
-    "message": "组件无法开始此操作。请等待当前任务结束或查看详情，然后重试。"
-  },
-  "componentActionUnconfirmed": {
-    "message": "连接在操作得到确认前中断。请先检查状态，再决定是否重试。"
-  },
-  "componentDeleteTitle": {
-    "message": "删除已下载的模型？"
-  },
-  "componentDeleteConfirm": {
-    "message": "是否停止引擎，并从 $2 删除 $1 模型文件？本地组件和扩展将保留，之后可重新下载模型。"
-  },
-  "componentUninstallTitle": {
-    "message": "移除 Anagram 及其本地文件？"
-  },
-  "componentUninstallConfirm": {
-    "message": "是否停止引擎，移除 $2 中的本地组件及浏览器注册信息（包括 $1 模型文件），然后移除此扩展？使用同一组件的其他浏览器配置也将无法再访问它。"
-  },
-  "componentKeepFiles": {
-    "message": "取消"
-  },
-  "componentConfirm": {
-    "message": "确认"
-  },
-  "componentWaitingCleanup": {
-    "message": "正在等待清理结果确认…"
-  },
-  "componentCleanupUnconfirmed": {
-    "message": "连接关闭不代表卸载成功。请在清理成功前保留此扩展。"
-  },
-  "componentCleanupScheduled": {
-    "message": "清理正在系统窗口中进行"
-  },
-  "componentSystemCleanupNote": {
-    "message": "请查看系统窗口中的最终结果。确认清理成功后，再从浏览器的扩展管理器中移除此扩展。仅连接关闭并不代表成功。"
-  },
-  "componentCleanupDone": {
-    "message": "本地文件和注册信息已移除"
-  },
-  "componentRemovingExtension": {
-    "message": "已确认本地清理成功。正在移除浏览器扩展…"
-  },
-  "componentRemoveExtension": {
-    "message": "移除浏览器扩展"
-  },
-  "componentExtensionRemovalFailed": {
-    "message": "本地清理已成功，但扩展移除尚未确认。请使用按钮重试，或在浏览器扩展管理器中移除 Anagram。"
-  },
-  "componentUpgradeNote": {
-    "message": "商店安装的扩展由浏览器更新。ZIP 安装请用新版 ZIP 内容替换已解压的扩展并重新加载。使用上方按钮更新本地组件。"
-  },
-  "componentReadyManual": {
-    "message": "已就绪。可从工具栏选择“分析此页面”以临时访问，也可选择在上方授权网站。"
-  },
-  "componentInstallWaiting": {
-    "message": "安装并连接本地组件以完成设置。"
-  },
-  "componentOpenSetup": {
-    "message": "打开设置与管理"
-  },
-  "componentOpenSettingsHint": {
-    "message": "打开设置页面，查看安装进度、模型下载和本地引擎控制。"
-  },
-  "componentUpdateScheduled": {
-    "message": "更新正在系统窗口中进行"
-  },
-  "componentSystemUpdateNote": {
-    "message": "请保持系统进度窗口打开，直到显示最终结果。更新完成后，浏览器会重新连接本地组件。"
-  },
-  "componentReloadExtension": {
-    "message": "重新加载扩展"
-  },
-  "componentExtensionUpdate": {
-    "message": "扩展版本 $1 已就绪。重新加载即可安装；扩展将重启，并暂时断开与本地引擎的连接。"
-  },
-  "componentInUse": {
-    "message": "另一个 Anagram 实例正在使用本地组件"
-  },
-  "componentInUseNote": {
-    "message": "这可能是因为另一个浏览器中的 Anagram 已连接。请关闭另一处 Anagram 连接后在此重试，无需重新安装。"
-  },
-  "runtimeMeasurementNote": {
-    "message": "每种配置使用独立进程。FP32 是保守推荐；“实测最快”指单段延迟最低。计时不含初始化、加载和预热。推理期间每 50 ms 采样进程内存，并非整机占用。Apple 芯片的进程内存与 GPU 驱动内存重叠，请勿相加。",
-    "description": "Runtime comparison measurement label or explanation."
-  },
-  "runtimeLegacyMeasurementNote": {
-    "message": "这些结果使用旧版测试方法。请更新本地组件并重新测试，以获得独立进程测量和可比较的内存数据。",
-    "description": "Shown when the connected native component does not identify the revised benchmark method."
-  },
-  "optReportSaveFailed": {
-    "message": "无法读取或保存此设置。上次确认的设置仍然生效，请在复制报告前重试。",
-    "description": "Report privacy preference storage failure; the switch reverts or stays disabled."
-  },
-  "runtimeFastest": {
-    "message": "实测最快",
-    "description": "Runtime comparison measurement label or explanation."
-  },
-  "runtimeMpsMemory": {
-    "message": "GPU 驱动内存（含缓存）",
-    "description": "Runtime comparison measurement label or explanation."
-  },
-  "runtimeInitialization": {
-    "message": "初始化 $1 · 校验文件 $2",
-    "description": "Runtime comparison measurement label or explanation."
-  },
-  "runtimeMemoryBaseline": {
-    "message": "库加载前 $1 · 模型加载后 $2",
-    "description": "Runtime comparison measurement label or explanation."
-  },
-  "runtimeSamples": {
-    "message": "$1 次单段采样",
-    "description": "Runtime comparison measurement label or explanation."
-  },
-  "runtimeInsufficient": {
-    "message": "样本较少，建议重测后比较",
-    "description": "Runtime comparison measurement label or explanation."
-  },
-  "componentIdle": {
-    "message": "空闲时已卸载模型 · 分析时自动恢复",
-    "description": "Local engine idle-memory preference or state."
-  },
-  "componentIdleSetting": {
-    "message": "空闲后卸载模型",
-    "description": "Local engine idle-memory preference or state."
-  },
-  "componentIdleMinutes": {
-    "message": "$1 分钟",
-    "description": "Local engine idle-memory preference or state."
-  },
-  "componentIdleNever": {
-    "message": "保持加载",
-    "description": "Local engine idle-memory preference or state."
-  },
-  "componentIdleNote": {
-    "message": "没有分析请求时释放模型内存，下次分析自动重新加载。手动停止引擎后，需要手动恢复。",
-    "description": "Local engine idle-memory preference or state."
-  },
-  "optCacheMode": {
-    "message": "结果缓存",
-    "description": "Report privacy preference, export metadata, or cache status shown in settings."
-  },
-  "optCacheModeNote": {
-    "message": "仅内存模式会删除已保存的结果，后续结果只保存在内存中。关闭浏览器或后台进程重启时，内存缓存可能清空。",
-    "description": "Report privacy preference, export metadata, or cache status shown in settings."
-  },
-  "optCachePersistent": {
-    "message": "保存在本机 · 最长 30 天",
-    "description": "Report privacy preference, export metadata, or cache status shown in settings."
-  },
-  "optCacheSession": {
-    "message": "仅内存",
-    "description": "Report privacy preference, export metadata, or cache status shown in settings."
-  },
-  "optCacheModeSaved": {
-    "message": "已保存缓存设置。",
-    "description": "Report privacy preference, export metadata, or cache status shown in settings."
-  },
-  "optCacheModeFailed": {
-    "message": "设置未能完整保存或应用。请重试模式切换及清除已存结果；重启后可能恢复上次保存的模式。",
-    "description": "Report privacy preference, export metadata, or cache status shown in settings."
-  },
-  "optCacheClearFailed": {
-    "message": "未能确认所有已保存结果都已删除，请重试。",
-    "description": "Report privacy preference, export metadata, or cache status shown in settings."
-  },
-  "optReportText": {
-    "message": "复制报告时包含段落原文",
-    "description": "Report privacy preference, export metadata, or cache status shown in settings."
-  },
-  "optReportUrl": {
-    "message": "复制报告时包含页面标题和网址",
-    "description": "Report privacy preference, export metadata, or cache status shown in settings."
-  },
-  "optReportPrivacy": {
-    "message": "报告包含分数和技术信息。默认不包含页面标题、网址或原文，可在此单独开启。",
-    "description": "Report privacy preference, export metadata, or cache status shown in settings."
-  },
-  "reportPrivateTitle": {
-    "message": "Anagram 分析报告",
-    "description": "Report privacy preference, export metadata, or cache status shown in settings."
-  },
-  "reportShort": {
-    "message": "文本过短：$1",
-    "description": "Report privacy preference, export metadata, or cache status shown in settings."
-  },
-  "reportPending": {
-    "message": "尚未分析：$1",
-    "description": "Report privacy preference, export metadata, or cache status shown in settings."
-  },
-  "reportRuntime": {
-    "message": "校准 / 预处理标识：$1",
-    "description": "Report privacy preference, export metadata, or cache status shown in settings."
-  },
-  "reportCopyFailed": {
-    "message": "无法复制报告。",
-    "description": "Report privacy preference, export metadata, or cache status shown in settings."
+  "readerAnalysisCapped": {
+    "description": "PDF reading, local file access, or network privacy guidance.",
+    "message": "仅分析前 $1 页；仍可阅读所有页面。"
+  },
+  "readerReloadRequired": {
+    "message": "此标签页已不再持有 PDF 数据。可打开原件后再次选择 Anagram，或选择本地文件。",
+    "description": "PDF source loading and recovery status."
+  },
+  "readerAnalysisScope": {
+    "message": "当前分析范围为 $2 页中的 $1 页。滚动可加载更多页面；已回收页面会移出分析面板。",
+    "description": "PDF analysis coverage: $1 is the currently loaded page count, $2 is the total page count."
+  },
+  "readerReportScope": {
+    "message": "PDF 分析范围：共 $2 页，当前加载 $1 页。本报告不是整份文档的完整评估。",
+    "description": "PDF analysis coverage: $1 is the currently loaded page count, $2 is the total page count."
   },
   "pasteTitle": {
     "message": "分析文本",
-    "description": "Text analysis page action, status, or limit."
-  },
-  "pasteIntro": {
-    "message": "粘贴英文文本，或选择 UTF-8 文本文件。分析在本机运行，无需网站权限。短段落会合并阅读，长文本使用与网页相同的分段机制。",
     "description": "Text analysis page action, status, or limit."
   },
   "pasteInput": {
@@ -1376,162 +438,442 @@
     "message": "报告包含原文",
     "description": "Text analysis page action, status, or limit."
   },
-  "pasteOpenSettings": {
-    "message": "打开设置",
-    "description": "Text analysis page action, status, or limit."
+  "modelLine": {
+    "message": "模型：pangram/editlens_roberta-large（CC BY-NC-SA 4.0，非商业用途）。"
   },
-  "reportDevice": {
-    "message": "计算设备：$1 · 精度：$2",
-    "description": "Report privacy preference, export metadata, or cache status shown in settings."
+  "cmdToggleOverlay": {
+    "message": "显示或隐藏本页的标记"
   },
-  "runtimePhaseInitialize": {
-    "message": "初始化运行库",
-    "description": "Benchmark phase: importing runtime libraries before model loading."
+  "pasteIntro": {
+    "message": "粘贴英文文本或打开文本文件，在本机进行分析。"
   },
-  "runtimePhaseVerify": {
-    "message": "校验模型文件",
-    "description": "Benchmark phase: hashing the local model and pipeline files."
+  "onbTitle": {
+    "message": "设置 Anagram"
   },
-  "componentDetectingDevices": {
-    "message": "正在检测可用设备…"
+  "onbHowItReads": {
+    "message": "效果预览"
+  },
+  "onbOpenSettings": {
+    "message": "打开设置"
+  },
+  "onbUserGuide": {
+    "message": "使用指南"
+  },
+  "onbAccessOnce": {
+    "message": "或在工具栏图标中使用「分析此页」"
+  },
+  "onbGo": {
+    "message": "打开任意文章，每段之后都会出现一枚标签。"
+  },
+  "componentTitle": {
+    "message": "本地引擎"
+  },
+  "componentNotInstalled": {
+    "message": "未安装"
+  },
+  "componentStarting": {
+    "message": "正在启动…"
+  },
+  "componentDownloading": {
+    "message": "正在下载模型…"
   },
   "componentVerifyingModels": {
     "message": "正在校验模型文件…"
   },
-  "componentModelsPrepared": {
-    "message": "模型文件已准备完成"
+  "componentReady": {
+    "message": "就绪"
   },
-  "componentPreparationNote": {
-    "message": "准备进度包含本机已有且校验通过的文件，不代表实际网络下载量。暂停将在当前操作结束后生效。"
+  "componentPaused": {
+    "message": "已暂停"
   },
-  "componentRecommendedPlan": {
-    "message": "推荐模型集"
+  "componentStopped": {
+    "message": "已停止"
   },
-  "componentExpandedPlan": {
-    "message": "扩展比较模型集"
+  "componentUpdating": {
+    "message": "正在更新…"
   },
-  "componentPlanDevices": {
-    "message": "检测到的设备：$1"
+  "componentRemoving": {
+    "message": "正在移除…"
   },
-  "componentPlanSize": {
-    "message": "所选文件共 $1，包含语言识别文件。"
+  "componentNeedsAttention": {
+    "message": "需要处理"
   },
-  "componentPlanFiles": {
-    "message": "此计划包含的文件"
+  "componentInUse": {
+    "message": "正被另一个浏览器使用"
   },
-  "componentExpandedSize": {
-    "message": "扩展计划共 $1。已校验文件会复用，只下载缺失文件。"
+  "componentNeedsModels": {
+    "message": "需要模型文件"
   },
-  "componentExpandedDownload": {
-    "message": "下载扩展比较模型"
+  "componentSystemWindow": {
+    "message": "正在系统窗口中完成"
   },
-  "componentRecommendedDownload": {
-    "message": "重新检测设备并准备推荐模型"
+  "componentCleanupDone": {
+    "message": "本地引擎已移除，正在移除扩展…"
   },
-  "componentExpandedNote": {
-    "message": "扩展比较会增加兼容的运行后端及实验性 CPU INT8，需要更多磁盘空间；性能测试不代表检测质量。此计划不包含 CPU ONNX FP16、CoreML 或 MLX。"
+  "componentRemoveExtension": {
+    "message": "移除扩展"
   },
-  "componentRecommendedNote": {
-    "message": "切回推荐模型集会保留已下载的额外文件；“删除模型文件”会移除全部模型。请在下方单独选择分析配置。"
+  "componentExtensionRemovalFailed": {
+    "message": "无法移除扩展，请在浏览器的扩展管理页中移除。"
   },
-  "optFileAccess": {
-    "description": "PDF reading, local file access, or network privacy guidance.",
-    "message": "本地 PDF 访问"
+  "componentInstallIntro": {
+    "message": "在终端中运行一次这条命令。它会安装本地引擎并下载约 1.4 GB 的模型文件。"
   },
-  "optFileAccessNote": {
-    "description": "PDF reading, local file access, or network privacy guidance.",
-    "message": "文件网址访问是可选权限，范围比单次选择文件更广。不授权也可以在阅读器中选择或拖入 PDF。"
+  "componentInstallIntroWindows": {
+    "message": "在 PowerShell 中运行一次这条命令。它会安装本地引擎并下载约 1.4 GB 的模型文件。"
   },
-  "optFileAccessEnable": {
-    "description": "PDF reading, local file access, or network privacy guidance.",
-    "message": "授权本地 PDF"
+  "componentUnsupportedPlatform": {
+    "message": "此平台没有可用的安装命令。"
   },
-  "optFileAccessManage": {
-    "description": "PDF reading, local file access, or network privacy guidance.",
-    "message": "前往浏览器设置"
+  "componentUnreleased": {
+    "message": "开发版本：尚无对应的发布版本，命令已禁用。"
   },
-  "optFileAccessReady": {
-    "description": "PDF reading, local file access, or network privacy guidance.",
-    "message": "已授权。开启上方开关后，本地 PDF 可自动在 Anagram 中打开。"
+  "componentCopyInstall": {
+    "message": "复制命令"
   },
-  "optFileAccessBrowserRequired": {
-    "description": "PDF reading, local file access, or network privacy guidance.",
-    "message": "还差一步：请在浏览器的扩展设置中允许访问本地文件，然后重新打开 PDF。"
+  "componentViewScript": {
+    "message": "查看脚本"
   },
-  "optFileAccessNotGranted": {
-    "description": "PDF reading, local file access, or network privacy guidance.",
-    "message": "未授权。从电脑打开的 PDF 会保留在浏览器原生阅读器中。"
+  "componentCopyFailed": {
+    "message": "复制失败，请手动选中命令并复制。"
   },
-  "optPdfSettingsFailed": {
-    "description": "PDF reading, local file access, or network privacy guidance.",
-    "message": "未完成更改。请检查浏览器权限后重试。"
+  "componentDownloadBytes": {
+    "message": "$1 / $2"
+  },
+  "componentFailed": {
+    "message": "上一步操作失败。"
+  },
+  "componentDetails": {
+    "message": "详情"
+  },
+  "componentDownloadModels": {
+    "message": "下载模型"
+  },
+  "componentResumeDownload": {
+    "message": "继续下载"
+  },
+  "componentPauseDownload": {
+    "message": "暂停下载"
+  },
+  "componentStop": {
+    "message": "停止引擎"
+  },
+  "componentResume": {
+    "message": "启动引擎"
+  },
+  "componentUpdate": {
+    "message": "更新引擎"
+  },
+  "componentDeleteModels": {
+    "message": "删除模型文件"
+  },
+  "componentUninstall": {
+    "message": "卸载 Anagram"
+  },
+  "componentManage": {
+    "message": "管理"
+  },
+  "componentAdvanced": {
+    "message": "高级"
+  },
+  "componentDeleteConfirm": {
+    "message": "这将从 $2 删除 $1 的模型文件，之后可以重新下载。"
+  },
+  "componentUninstallConfirm": {
+    "message": "这将移除位于 $2 的本地引擎及 $1 的模型文件，然后移除扩展。"
+  },
+  "buttonCancel": {
+    "message": "取消"
+  },
+  "componentStorage": {
+    "message": "磁盘上的模型文件：$1"
+  },
+  "componentIdleSetting": {
+    "message": "空闲多久后卸载模型"
+  },
+  "componentIdleMinutes": {
+    "message": "$1 分钟"
+  },
+  "componentIdleNever": {
+    "message": "从不"
+  },
+  "componentExtensionUpdate": {
+    "message": "扩展版本 $1 已可安装。"
+  },
+  "componentReloadExtension": {
+    "message": "重新加载扩展"
+  },
+  "runtimeTitle": {
+    "message": "运行配置"
+  },
+  "runtimeActive": {
+    "message": "使用中"
+  },
+  "runtimeRecommended": {
+    "message": "推荐"
+  },
+  "runtimeFastest": {
+    "message": "最快"
+  },
+  "runtimeExperimental": {
+    "message": "实验性"
+  },
+  "runtimeUnavailable": {
+    "message": "不可用"
+  },
+  "runtimeMeasured": {
+    "message": "$1 ms · $2 段/秒 · $3"
+  },
+  "runtimeApply": {
+    "message": "使用所选"
+  },
+  "runtimeBenchmark": {
+    "message": "运行基准测试"
+  },
+  "runtimeProgress": {
+    "message": "基准测试中 · 已完成 $1 / $2"
+  },
+  "runtimeBenchmarking": {
+    "message": "正在进行基准测试…"
+  },
+  "runtimeFailed": {
+    "message": "基准测试未能完成。"
+  },
+  "popupTitle": {
+    "message": "Anagram"
+  },
+  "popupSettings": {
+    "message": "设置"
+  },
+  "popupRescan": {
+    "message": "重新扫描"
+  },
+  "popupAnalyzeOnce": {
+    "message": "分析此页"
+  },
+  "popupReadPdf": {
+    "message": "在 Anagram 中阅读"
+  },
+  "popupOpenReader": {
+    "message": "阅读本机 PDF…"
+  },
+  "popupThisSite": {
+    "message": "在此网站运行"
+  },
+  "popupOn": {
+    "message": "适用于 $1"
+  },
+  "popupShow": {
+    "message": "显示"
+  },
+  "popupAllChips": {
+    "message": "全部标签"
+  },
+  "popupFlaggedOnly": {
+    "message": "仅存疑"
+  },
+  "popupFlaggedCount": {
+    "message": "$1 段存疑"
+  },
+  "popupAnalyzed_one": {
+    "message": "已分析 $1 段 · "
+  },
+  "popupAnalyzed_other": {
+    "message": "已分析 $1 段 · "
+  },
+  "popupNotEnglish": {
+    "message": " · $1 段非英文"
+  },
+  "popupUnavailable": {
+    "message": " · $1 段不可用"
+  },
+  "popupOff": {
+    "message": "Anagram 已在此页关闭。"
+  },
+  "popupUnsupportedPage": {
+    "message": "此页不可用。"
   },
   "popupFileAccessNeeded": {
-    "description": "PDF reading, local file access, or network privacy guidance.",
-    "message": "如需直接打开此 PDF，请在设置中允许本地文件访问。也可以在阅读器中选择此文件。"
+    "message": "请在设置中允许访问本地文件，以打开此 PDF。"
   },
   "popupFileAccessSettings": {
-    "description": "PDF reading, local file access, or network privacy guidance.",
     "message": "本地文件设置"
   },
-  "optNetworkPrivacy": {
-    "description": "PDF reading, local file access, or network privacy guidance.",
-    "message": "网络访问与验证方式"
+  "popupPdfOpenFailed": {
+    "message": "无法打开此 PDF。"
   },
-  "optNetworkLocal": {
-    "description": "PDF reading, local file access, or network privacy guidance.",
-    "message": "文本分析在这台电脑上运行。Anagram 不使用行为统计或云端评分服务。"
+  "popupEngine": {
+    "message": "本地引擎：$1"
   },
-  "optNetworkDownloads": {
-    "description": "PDF reading, local file access, or network privacy guidance.",
-    "message": "安装、模型下载和用户请求的本地组件更新需要联网。浏览器也可能自行检查扩展更新。"
+  "popupEngineDown": {
+    "message": "本地引擎未就绪"
   },
-  "optNetworkDocuments": {
-    "description": "PDF reading, local file access, or network privacy guidance.",
-    "message": "打开在线 PDF 或 Google 文档时可能重新获取原文，文档图片或链接也可能产生网络访问。这些行为不涉及将待分析文本上传到评分服务。"
+  "popupEngineOutdated": {
+    "message": "本地引擎需要更新"
   },
-  "optOfflineStep1": {
-    "description": "PDF reading, local file access, or network privacy guidance.",
-    "message": "先完成本地引擎安装和模型下载。"
+  "optionsTitle": {
+    "message": "Anagram 设置"
   },
-  "optOfflineStep2": {
-    "description": "PDF reading, local file access, or network privacy guidance.",
-    "message": "断开网络，然后打开阅读器并选择电脑上的 PDF。"
+  "optMarks": {
+    "message": "标记"
   },
-  "optOfflineStep3": {
-    "description": "PDF reading, local file access, or network privacy guidance.",
-    "message": "阅读和分析仍应正常工作。这能验证离线运行能力，但不能代替对所有网络行为的审计。"
+  "optChips": {
+    "message": "标签"
   },
-  "readerAnalysisCapped": {
-    "description": "PDF reading, local file access, or network privacy guidance.",
-    "message": "仅分析前 $1 页；仍可阅读所有页面。"
+  "optEveryParagraph": {
+    "message": "每一段"
   },
-  "optFileAccessSteps": {
-    "message": "查看授权步骤",
-    "description": "Firefox local file access instructions; the browser prevents opening about:addons from an extension."
+  "optUnderline": {
+    "message": "下划线"
+  },
+  "optUnderlineFlagged": {
+    "message": "存疑文本"
+  },
+  "optUnderlineOff": {
+    "message": "关闭"
+  },
+  "optReading": {
+    "message": "阅读"
+  },
+  "optScope": {
+    "message": "范围"
+  },
+  "optScopeWholePage": {
+    "message": "整个页面"
+  },
+  "optScopeMain": {
+    "message": "仅正文"
+  },
+  "optMerge": {
+    "message": "合并短段落"
+  },
+  "optAutoOpenPdfs": {
+    "message": "在 Anagram 中打开 PDF"
+  },
+  "optFileAccess": {
+    "message": "本地 PDF 访问"
+  },
+  "optFileAccessReady": {
+    "message": "已允许"
+  },
+  "optFileAccessBrowserRequired": {
+    "message": "请在浏览器的扩展设置中开启文件网址访问权限。"
+  },
+  "optFileAccessNotGranted": {
+    "message": "未允许"
+  },
+  "optFileAccessEnable": {
+    "message": "允许"
+  },
+  "optFileAccessManage": {
+    "message": "浏览器设置"
   },
   "optFileAccessFirefoxInstructions": {
-    "message": "在 Firefox 地址栏输入 about:addons，打开 Anagram → 权限和数据，允许访问计算机上的本地文件。返回这里后重新打开 PDF。不授权也可以在阅读器中单独选择文件。",
-    "description": "Firefox local file access instructions; the browser prevents opening about:addons from an extension."
+    "message": "在 Firefox 中打开 about:addons，选择 Anagram → 权限与数据，然后允许访问本地文件。"
   },
-  "readerReloadRequired": {
-    "message": "此标签页已不再持有 PDF 数据。可打开原件后再次选择 Anagram，或选择本地文件。",
-    "description": "PDF source loading and recovery status."
+  "optOpenReader": {
+    "message": "打开 PDF 阅读器"
   },
-  "popupPdfBusy": {
-    "message": "另一个 PDF 正在加载。请保留此文档，稍后再试。",
-    "description": "PDF source loading and recovery status."
+  "optSites": {
+    "message": "网站"
   },
-  "popupPdfOpenFailed": {
-    "message": "未能打开此 PDF。请在设置中检查网站或本地文件访问权限，也可以在阅读器中选择文件。",
-    "description": "PDF source loading and recovery status."
+  "accessLabel": {
+    "message": "网站访问权限"
   },
-  "readerAnalysisScope": {
-    "message": "当前分析范围为 $2 页中的 $1 页。滚动可加载更多页面；已回收页面会移出分析面板。",
-    "description": "PDF analysis coverage: $1 is the currently loaded page count, $2 is the total page count."
+  "accessAll": {
+    "message": "所有网站"
   },
-  "readerReportScope": {
-    "message": "PDF 分析范围：共 $2 页，当前加载 $1 页。本报告不是整份文档的完整评估。",
-    "description": "PDF analysis coverage: $1 is the currently loaded page count, $2 is the total page count."
+  "accessNone": {
+    "message": "无"
+  },
+  "accessSites_one": {
+    "message": "$1 个网站"
+  },
+  "accessSites_other": {
+    "message": "$1 个网站"
+  },
+  "accessAllowAll": {
+    "message": "允许所有网站"
+  },
+  "accessWithdraw": {
+    "message": "撤回"
+  },
+  "optEnabled": {
+    "message": "默认在已授权网站运行"
+  },
+  "optColSite": {
+    "message": "网站"
+  },
+  "optColRule": {
+    "message": "规则"
+  },
+  "optAlwaysOn": {
+    "message": "始终开启"
+  },
+  "optAlwaysOff": {
+    "message": "始终关闭"
+  },
+  "optAdd": {
+    "message": "添加"
+  },
+  "optRemove": {
+    "message": "移除"
+  },
+  "optNoRules": {
+    "message": "还没有网站规则。"
+  },
+  "optBadHost": {
+    "message": "请输入类似 example.com 的主机名。"
+  },
+  "optAlreadyCovered": {
+    "message": "已被 $1 的规则覆盖。"
+  },
+  "optPrivacy": {
+    "message": "隐私"
+  },
+  "optCacheMode": {
+    "message": "结果缓存"
+  },
+  "optCachePersistent": {
+    "message": "保留 30 天"
+  },
+  "optCacheSession": {
+    "message": "仅内存"
+  },
+  "optClearCache": {
+    "message": "清除缓存的结果"
+  },
+  "optCacheEntries_one": {
+    "message": "$1 条"
+  },
+  "optCacheEntries_other": {
+    "message": "$1 条"
+  },
+  "optCleared": {
+    "message": "已清除 ✓"
+  },
+  "optSaveFailed": {
+    "message": "更改未能保存。"
+  },
+  "optReportText": {
+    "message": "复制的报告包含段落原文"
+  },
+  "optReportUrl": {
+    "message": "复制的报告包含页面标题和网址"
+  },
+  "optDebug": {
+    "message": "调试日志"
+  },
+  "optPrivacyPolicy": {
+    "message": "隐私政策"
+  },
+  "optShortcuts": {
+    "message": "快捷键"
+  },
+  "optRightClick": {
+    "message": "右键"
+  },
+  "optRebind": {
+    "message": "可在 $1 修改。"
   }
 }

@@ -17,7 +17,7 @@ export type PopupAction =
   | "readPdf"
   /** nothing here can be read — open the reading mode empty, for a file on this computer */
   | "openReader"
-  /** the local engine is unavailable — open setup and Settings */
+  /** the local engine is unavailable — open Settings */
   | "retry";
 
 /** Which line goes above the button. */
@@ -68,7 +68,7 @@ export const ACTION_LABEL: Record<PopupAction, MessageKey> = {
   analyze: "popupAnalyzeOnce",
   readPdf: "popupReadPdf",
   openReader: "popupOpenReader",
-  retry: "componentOpenSetup",
+  retry: "onbOpenSettings",
 };
 
 /** Reading a PDF remains available while the model is stopped or not installed. */

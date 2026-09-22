@@ -18,8 +18,8 @@
 // first chip fast (small batch), the background prefetch lane can afford a larger one.
 // Batching buys less than one would hope — it amortises the per-request overhead (native
 // framing, tokenizer, language id), not the forward pass, which is already
-// compute-bound: on our own benchmark (docs/benchmarks/editlens-m4-24gb-2026-09-14.json,
-// roberta-large) 60-word paragraphs go 32.9 → 51.1 → 52.5 per second at batch 1 / 8 / 32
+// compute-bound: on our own M4 24GB benchmark (2026-09, roberta-large) 60-word paragraphs
+// go 32.9 → 51.1 → 52.5 per second at batch 1 / 8 / 32
 // (about 1.5×, flat after 8) while 400-word ones stay at 8.2 → 8.4 → 8.2, i.e. gain
 // nothing at all. The background lane is also capped to `maxBackgroundInFlight`
 // concurrent batches so prefetch never starves what the reader can actually see.

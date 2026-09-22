@@ -571,15 +571,17 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
 
 /** Copy with execCommand fallback (Clipboard API can be permission-blocked). */
 function copyText(text: string, button: HTMLElement): void {
-  const done = () => {
+  const flash = (text: string, cls: string) => {
     const prev = button.textContent;
-    button.textContent = t("copied");
-    button.classList.add("done");
+    button.textContent = text;
+    button.classList.add(cls);
     setTimeout(() => {
       button.textContent = prev;
-      button.classList.remove("done");
+      button.classList.remove(cls);
     }, 1400);
   };
+  const done = () => flash(t("copied"), "done");
+  const failed = () => flash(t("reportCopyFailed"), "failed");
   navigator.clipboard.writeText(text).then(done, () => {
     const ta = document.createElement("textarea");
     ta.value = text;
@@ -587,8 +589,8 @@ function copyText(text: string, button: HTMLElement): void {
     document.body.appendChild(ta);
     ta.select();
     try {
-      document.execCommand("copy");
-      done();
+      if (document.execCommand("copy")) done();
+      else failed();
     } finally {
       ta.remove();
     }

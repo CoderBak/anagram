@@ -5,7 +5,7 @@
 // in a `<nav>`, a modal marked the article aria-hidden, the whole column is one heading,
 // the text is Chinese and the model reads English. Rediscovering which of those it is
 // costs an afternoon per site, so this file answers it in the page, in the vocabulary
-// test/coverage.mjs already uses for the same question on 124 real sites.
+// a 124-site survey (2026-09) used for the same question.
 //
 // THE RULE THIS FILE IS BUILT ON: the reason given must be the reason the walk really had.
 // So nothing here decides anything by itself. The walk's own predicates are imported and

@@ -41,18 +41,25 @@ const ResultSchema = v.object({
   duration_s: Metric,
 });
 
+/**
+ * Runtime states. `idle` means no engine is resident and the next score reloads the
+ * saved selection; `error` is recovered with an explicit config or benchmark.
+ * `recommended_id` is what automatic selection picks (always FP32); `fastest_id` is the
+ * quickest candidate measured by the last benchmark and may be lower precision.
+ */
 export const RuntimeSchema = v.object({
   schema_version: v.literal(1),
-  state: v.picklist(["loading", "benchmarking", "awaiting_selection", "ready", "idle", "error"]),
+  state: v.picklist(["loading", "benchmarking", "ready", "idle", "error"]),
   active_id: v.nullable(Id),
   selected_id: v.nullable(Id),
   recommended_id: v.nullable(Id),
   fastest_id: v.optional(v.nullable(Id)),
-  needs_selection: v.boolean(),
   candidates: v.pipe(v.array(CandidateSchema), v.maxLength(64)),
   benchmark: v.object({
     report_version: v.optional(v.literal(2)),
     environment: v.optional(v.nullable(v.record(Text, v.unknown()))),
+    /** True when the report was measured under other hardware, drivers or model files. */
+    stale: v.optional(v.boolean()),
     status: v.picklist(["idle", "running", "completed", "cancelled", "failed"]),
     budget_s: NumberValue,
     elapsed_s: NumberValue,
@@ -75,7 +82,7 @@ export type RuntimeReply =
 export type RuntimeAction = "benchmark" | "cancel" | "config";
 
 export function runtimeReady(s: RuntimeSnapshot): boolean {
-  return s.state === "ready" && !s.needs_selection && s.active_id !== null && s.selected_id === s.active_id;
+  return s.state === "ready" && s.active_id !== null && s.selected_id === s.active_id;
 }
 
 export function runtimeBusy(s: RuntimeSnapshot): boolean {
@@ -85,11 +92,6 @@ export function runtimeBusy(s: RuntimeSnapshot): boolean {
 /** Ready pages ask infrequently; unfinished setup remains live while it is visible. */
 export function runtimePollMs(s?: RuntimeSnapshot): number {
   return s && runtimeReady(s) && !runtimeBusy(s) ? 15_000 : s ? 1_000 : 5_000;
-}
-
-export function canApplyRuntime(s: RuntimeSnapshot, id: string | null): boolean {
-  return !runtimeBusy(s) && id !== null && s.candidates.some((c) => c.id === id && c.available) &&
-    (!runtimeReady(s) || id !== s.selected_id);
 }
 
 export function parseRuntime(body: unknown): RuntimeSnapshot | null {

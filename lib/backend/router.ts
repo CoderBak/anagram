@@ -1,4 +1,4 @@
-// Service-worker score scheduling: bounded admission, document cancellation, shared
+// Service-worker score scheduling: bounded admission, per-request cancellation, shared
 // inference, and complete model provenance. Browser authority supplies document keys.
 import type { ModelInfo, ScanPriority, ScoreClient, ScoreBlock, ScoreResult,
   ScoreBatchRequest, ScoreBatchResponse } from "../contract";
@@ -30,7 +30,6 @@ export interface RequestOrigin {
 }
 export interface BackendRouter {
   handle(req: ScoreBatchRequest, origin?: RequestOrigin): Promise<ScoreBatchResponse>;
-  cancelDocument(documentKey: string): void;
   clear(): Promise<void>;
   setCacheMode(mode: ScoreCacheMode): Promise<void>;
   count(): Promise<number>;
@@ -89,9 +88,6 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
       if (index >= 0) waiting.splice(index, 1);
     }
     pump();
-  }
-  function cancelDocument(documentKey: string): void {
-    for (const reader of readers) if (reader.document === documentKey) reader.cancel();
   }
   function invalidate(): void {
     epoch++;
@@ -170,7 +166,7 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
   async function handle(req: ScoreBatchRequest, origin: RequestOrigin = {}): Promise<ScoreBatchResponse> {
     let model = snapshot(client.model());
     const response = (results = req.blocks.map(neutral)): ScoreBatchResponse =>
-      ({ v: req.v, session: req.session, model, partial: false, results });
+      ({ v: req.v, model, results });
     const document = origin.documentKey ?? `anonymous:${++serial}`;
     const usage = documentUsage.get(document) ?? { requests: 0, blocks: 0, chars: 0 };
     const chars = req.blocks.reduce((sum, block) => sum + block.text.length, 0), blocks = req.blocks.length;
@@ -246,7 +242,7 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
       if (!usage.requests) { documentUsage.delete(document); if (!runningByDocument.has(document)) lastServed.delete(document); }
     }
   }
-  return { handle, cancelDocument,
+  return { handle,
     clear() { invalidate(); return cache.clear(); },
     setCacheMode(mode) { if (mode !== cacheMode) { cacheMode = mode; invalidate(); } return cache.setMode(mode); },
     count: () => cache.count() };

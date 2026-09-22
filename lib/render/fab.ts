@@ -984,6 +984,9 @@ export function createFab(opts: {
       ai: all.filter((e) => e.band === "ai").length,
       heavy: all.filter((e) => e.band === "heavy").length,
     };
+    // The filter chips are only drawn when both bands are present (below). Without them a
+    // filter picked earlier could never be undone, so the list goes back to everything.
+    if (!(counts.ai > 0 && counts.heavy > 0)) panelFilter = "all";
     const entries = panelFilter === "all" ? all : all.filter((e) => e.band === panelFilter);
 
     if (backendDown) {

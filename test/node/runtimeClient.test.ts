@@ -2,16 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeBrowser } from "wxt/testing";
 import { NATIVE_MESSAGE } from "../../lib/backend/nativeProtocol";
 import {
-  canApplyRuntime, parseRuntime, requestRuntime, runtimeBusy, runtimePollMs, runtimeReady,
+  parseRuntime, requestRuntime, runtimeBusy, runtimePollMs, runtimeReady,
   type RuntimeSnapshot,
 } from "../../lib/backend/runtimeClient";
 
 const candidate = (id: string, precision = "fp32") => ({ id, precision, label: id, device: "cpu", runtime: "torch", experimental: false, available: true });
 const snapshot = (patch: Partial<RuntimeSnapshot> = {}): RuntimeSnapshot => ({
-  schema_version: 1, state: "awaiting_selection", active_id: null, selected_id: null,
-  recommended_id: "torch:cpu:fp32", needs_selection: true,
+  schema_version: 1, state: "loading", active_id: null, selected_id: null,
+  recommended_id: "torch:cpu:fp32",
   candidates: [candidate("torch:cpu:fp32"), candidate("torch:cpu:fp16", "fp16")],
-  benchmark: { status: "completed", budget_s: 30, elapsed_s: 62, measurement_s: 30, phase: "awaiting_selection", current_id: null, completed: 2, total: 2, results: [] },
+  benchmark: { status: "completed", budget_s: 30, elapsed_s: 62, measurement_s: 30, phase: "completed", current_id: null, completed: 2, total: 2, results: [] },
   error: null, ...patch,
 });
 
@@ -43,39 +43,40 @@ describe("runtime contract validation", () => {
     () => { const s = snapshot(); s.benchmark.results = [{ ...result(1), latency_ms: -1 }]; return s; },
     () => { const s = snapshot(); s.benchmark.measurement_s = Infinity; return s; },
     () => { const s = snapshot(); s.benchmark.results = [{ ...result(1), candidate_id: "unknown" }]; return s; },
+    () => snapshot({ state: "awaiting_selection" as "loading" }), // retired first-run state of older components
   ])("rejects a malformed response", (body) => expect(parseRuntime(body())).toBeNull());
+  it("keeps the stale label of an old report and drops retired first-run fields", () => {
+    const s = snapshot(); s.benchmark.stale = true;
+    const parsed = parseRuntime({ ...s, needs_selection: true })!;
+    expect(parsed.benchmark.stale).toBe(true);
+    expect("needs_selection" in parsed).toBe(false);
+    expect(parseRuntime(snapshot({ state: "idle", selected_id: "torch:cpu:fp32" }))?.state).toBe("idle");
+  });
 });
 
-describe("runtime readiness and explicit choice", () => {
-  const ready = () => snapshot({ state: "ready", needs_selection: false, selected_id: "torch:cpu:fp32", active_id: "torch:cpu:fp32" });
-  it("does not call completed measurements ready before the user selects", () => {
+describe("runtime readiness", () => {
+  const ready = () => snapshot({ state: "ready", selected_id: "torch:cpu:fp32", active_id: "torch:cpu:fp32" });
+  it("is not ready while the automatic selection is still loading", () => {
     expect(runtimeReady(snapshot())).toBe(false);
-    expect(canApplyRuntime(snapshot(), null)).toBe(false);
-    expect(canApplyRuntime(snapshot(), "torch:cpu:fp16")).toBe(true);
+    expect(runtimeBusy(snapshot())).toBe(true);
+    expect(runtimePollMs(snapshot())).toBe(1000);
   });
   it("requires the selected model to be the active one", () => {
     expect(runtimeReady(ready())).toBe(true);
     expect(runtimeReady({ ...ready(), selected_id: "torch:cpu:fp16" })).toBe(false);
-    expect(runtimeReady({ ...ready(), needs_selection: true })).toBe(false);
+    expect(runtimeReady({ ...ready(), state: "idle", active_id: null })).toBe(false);
   });
-  it("a rerun blocks changes without silently replacing the saved configuration", () => {
+  it("a benchmark is busy and never replaces the saved configuration", () => {
     const s = ready(); s.benchmark.status = "running"; s.state = "benchmarking";
     expect(runtimeBusy(s)).toBe(true);
-    expect(canApplyRuntime(s, "torch:cpu:fp16")).toBe(false);
     expect(s.selected_id).toBe("torch:cpu:fp32");
     expect(runtimePollMs(s)).toBe(1000);
     expect(runtimePollMs(ready())).toBe(15000);
   });
-  it("refuses unavailable candidates and an already-active choice", () => {
-    const s = ready(); s.candidates[1].available = false;
-    expect(canApplyRuntime(s, "torch:cpu:fp16")).toBe(false);
-    expect(canApplyRuntime(s, "torch:cpu:fp32")).toBe(false);
-    expect(canApplyRuntime(s, "unknown")).toBe(false);
-  });
 });
 
 describe("native runtime requests", () => {
-  it("reads status without starting the automatic benchmark", async () => {
+  it("reads status without starting any benchmark", async () => {
     const send = respond(snapshot());
     expect((await requestRuntime()).kind).toBe("ok");
     expect(send).toHaveBeenCalledExactlyOnceWith({action:NATIVE_MESSAGE,op:"runtime",payload:{}});

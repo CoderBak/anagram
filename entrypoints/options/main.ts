@@ -22,14 +22,13 @@ import {
 import { ALL_SITES } from "../../lib/access/patterns";
 import { accessSummary, requestAccess, withdrawAccess } from "../../lib/access/grant";
 import { ACTIONS } from "../../lib/messaging/protocol";
-import { getFileAccess, needsManualFileSettings, openFileAccessSettings, requestFileAccess } from "../../lib/pdf/fileAccess";
+import { getFileAccess, openFileAccessSettings, requestFileAccess } from "../../lib/pdf/fileAccess";
 import type { CacheCountReply } from "../../lib/messaging/protocol";
 import { mountComponentSettings, componentConnectionLabel } from "../../lib/ui/componentSettings";
 import { bindConfirmedToggle } from "../../lib/ui/confirmedToggle";
 
 const enabledEl = document.getElementById("enabled") as HTMLInputElement;
-const highlightsEl = document.getElementById("highlights") as HTMLInputElement;
-const markStyleEl = document.getElementById("markStyle") as HTMLSelectElement;
+const underlineEl = document.getElementById("underline") as HTMLSelectElement;
 const displayModeEl = document.getElementById("displayMode") as HTMLSelectElement;
 const analysisScopeEl = document.getElementById("analysisScope") as HTMLSelectElement;
 const mergeShortsEl = document.getElementById("mergeShorts") as HTMLInputElement;
@@ -90,12 +89,12 @@ async function renderSites(): Promise<void> {
   const table = document.createElement("table");
   table.className = "table";
   const head = table.createTHead().insertRow();
-  for (const key of ["optColSite", "optColRule", "optColActions"] as const) {
+  for (const key of ["optColSite", "optColRule", "optRemove"] as const) {
     const th = document.createElement("th");
-    // The last column holds only Remove buttons, so printing "Actions" over them would be
+    // The last column holds only Remove buttons, so printing a header over them would be
     // noise — but a header cell with nothing in it is a column with no name at all to a
-    // screen reader, which is how the table used to read.
-    if (key === "optColActions") {
+    // screen reader.
+    if (key === "optRemove") {
       const label = document.createElement("span");
       label.className = "vh";
       label.textContent = t(key);
@@ -181,7 +180,6 @@ addHostEl.addEventListener("input", () => {
 localizePage();
 followSystemTheme();
 bindToggle(enabledEl, settings.enabled);
-bindToggle(highlightsEl, settings.showHighlights);
 bindToggle(debugEl, settings.debug);
 bindToggle(mergeShortsEl, settings.mergeShorts);
 for (const key of ["reportIncludeText", "reportIncludeUrl"] as const) {
@@ -193,7 +191,7 @@ for (const key of ["reportIncludeText", "reportIncludeUrl"] as const) {
   input.setAttribute("aria-describedby", failure.id);
   input.parentElement!.after(failure);
   bindConfirmedToggle(input, settings[key], (failed) => {
-    failure.textContent = failed ? t("optReportSaveFailed") : "";
+    failure.textContent = failed ? t("optSaveFailed") : "";
     failure.hidden = !failed;
   });
 }
@@ -202,8 +200,6 @@ const fileAccessState = document.getElementById("fileAccessState") as HTMLElemen
 const fileAccessEnable = document.getElementById("fileAccessEnable") as HTMLButtonElement;
 const fileAccessManage = document.getElementById("fileAccessManage") as HTMLButtonElement;
 const fileAccessInstructions = document.getElementById("fileAccessInstructions") as HTMLElement;
-const fileSettingsLabel = needsManualFileSettings() ? "optFileAccessSteps" : "optFileAccessManage";
-fileAccessManage.textContent = t(fileSettingsLabel);
 async function showFileSettings(): Promise<void> {
   if (!await openFileAccessSettings()) {
     fileAccessInstructions.textContent = t("optFileAccessFirefoxInstructions");
@@ -212,7 +208,7 @@ async function showFileSettings(): Promise<void> {
   }
 }
 function pdfError(failed: boolean): void {
-  pdfSettingsError.textContent = failed ? t("optPdfSettingsFailed") : "";
+  pdfSettingsError.textContent = failed ? t("optSaveFailed") : "";
   pdfSettingsError.hidden = !failed;
 }
 bindConfirmedToggle(autoOpenPdfsEl, settings.autoOpenPdfs, pdfError);
@@ -223,7 +219,7 @@ async function refreshFileAccess(): Promise<void> {
   if (generation !== fileRefresh) return;
   fileAccessState.textContent = t(granted && allowed ? "optFileAccessReady" : granted ? "optFileAccessBrowserRequired" : "optFileAccessNotGranted");
   fileAccessEnable.hidden = granted && allowed;
-  fileAccessEnable.textContent = t(granted ? fileSettingsLabel : "optFileAccessEnable");
+  fileAccessEnable.textContent = t(granted ? "optFileAccessManage" : "optFileAccessEnable");
 }
 fileAccessEnable.addEventListener("click", () => {
   // Permission requests must retain the user's activation.
@@ -250,11 +246,15 @@ void refreshFileAccess();
   void browser.tabs.create({ url: browser.runtime.getURL(READER_PAGE as PublicPath) });
 });
 bindSelect(displayModeEl, settings.displayMode);
-// An old profile holds one of the three styles the quiet marks replaced; the control has
-// to show what that value means now rather than land on no option at all.
-bindSelect(markStyleEl, {
-  getValue: async () => normalizeMarkStyle(await settings.markStyle.getValue()),
-  setValue: (v) => settings.markStyle.setValue(v),
+// One control over the two stored keys: Off is showHighlights=false; the other two keep
+// it on and pick the mark style (an old profile's legacy style reads as "always").
+bindSelect<"flagged" | "all" | "off">(underlineEl, {
+  getValue: async () => !(await settings.showHighlights.getValue()) ? "off"
+    : normalizeMarkStyle(await settings.markStyle.getValue()) === "always" ? "all" : "flagged",
+  setValue: async (v) => {
+    if (v !== "off") await settings.markStyle.setValue(v === "all" ? "always" : "quiet");
+    await settings.showHighlights.setValue(v !== "off");
+  },
 });
 bindSelect(analysisScopeEl, settings.analysisScope);
 void renderSites();
@@ -296,7 +296,7 @@ const CLEAR_LABEL = clearCacheEl.textContent ?? t("optClearCache");
 const cacheStatus = document.getElementById("cacheStatus")!;
 const cacheMode = document.getElementById("cacheMode") as HTMLSelectElement;
 void cacheModeStorage.getValue().then((mode) => { cacheMode.value = mode; }, () => {
-  cacheStatus.textContent = t("optCacheModeFailed");
+  cacheStatus.textContent = t("optSaveFailed");
 });
 cacheModeStorage.watch((mode) => { cacheMode.value = mode; });
 cacheMode.addEventListener("change", () => {
@@ -305,12 +305,12 @@ cacheMode.addEventListener("change", () => {
   cacheMode.disabled = true;
   void browser.runtime.sendMessage({action: "setCacheMode", mode}).then((reply) => {
     if (reply?.mode === "persistent" || reply?.mode === "session") confirmedMode = reply.mode;
-    cacheStatus.textContent = t(reply?.ok === true ? "optCacheModeSaved" : "optCacheModeFailed");
-  }, () => { cacheStatus.textContent = t("optCacheModeFailed"); }).finally(() => {
+    cacheStatus.textContent = reply?.ok === true ? "" : t("optSaveFailed");
+  }, () => { cacheStatus.textContent = t("optSaveFailed"); }).finally(() => {
     cacheMode.disabled = false;
     if (confirmedMode) cacheMode.value = confirmedMode;
     else void cacheModeStorage.getValue().then((mode) => { cacheMode.value = mode; }, () => {
-      cacheStatus.textContent = t("optCacheModeFailed");
+      cacheStatus.textContent = t("optSaveFailed");
     });
     void refreshCacheCount();
   });
@@ -324,7 +324,7 @@ async function refreshCacheCount(): Promise<void> {
       | CacheCountReply
       | undefined;
     const n = reply?.entries;
-    if (typeof n !== "number") { cacheCountEl.textContent = t("runtimeNotAvailable"); return; }
+    if (typeof n !== "number") { cacheCountEl.textContent = ""; return; }
     // The number is grouped for the reader's locale before it goes in ("1,284"), so the
     // plural is chosen here: tn() would substitute the bare count as $1.
     cacheCountEl.textContent = t(n === 1 ? "optCacheEntries_one" : "optCacheEntries_other", n.toLocaleString());
@@ -341,7 +341,7 @@ clearCacheEl.addEventListener("click", () => {
       if (reply?.ok !== true) throw new Error("clear_failed");
       cacheStatus.textContent = t("optCleared");
       return refreshCacheCount();
-    }).catch(() => { cacheStatus.textContent = t("optCacheClearFailed"); })
+    }).catch(() => { cacheStatus.textContent = t("optSaveFailed"); })
     .finally(() => { clearCacheEl.disabled = false; clearCacheEl.textContent = CLEAR_LABEL; });
 });
 void refreshCacheCount();

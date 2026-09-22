@@ -1453,7 +1453,7 @@ const results = await page.evaluate(() => {
   }
 
   // ---- what the walk REACHES ---------------------------------------------------------------
-  // Four defects the 124-site survey (test/coverage.mjs) measured, each about text the walk
+  // Four defects a 124-site survey (2026-09) measured, each about text the walk
   // never got to: a container that merely DECLARES itself a heading, an application shell
   // marked notranslate, a box that clips its own text, and prose typeset in <pre>. Every
   // check below fails on the walker as it was before these rules.
@@ -1985,7 +1985,7 @@ for (const file of fixtureFiles) {
 }
 
 // ---- PLACEMENT: one chip after a clipping box, and a chip that keeps being watched --------
-// Two defects the 30-page session survey (test/dynamics.mjs) measured on live pages, both
+// Two defects a 30-page session survey (2026-09) measured on live pages, both
 // about where a chip goes when the site clips a post to a few lines:
 //
 //   · EVERY unit of a clamped review was inserted after the box, because every unit's own

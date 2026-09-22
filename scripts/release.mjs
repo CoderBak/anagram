@@ -25,8 +25,7 @@ const stage = join(DIST, "stage", "anagram");
 mkdirSync(join(stage, "bin"), { recursive: true });
 mkdirSync(join(stage, "app"), { recursive: true });
 
-// Install runtime files only. The manual research benchmark and its score head
-// stay in the repository; dependencies come from pyproject.toml and uv.lock.
+// Install runtime files only; dependencies come from pyproject.toml and uv.lock.
 for (const f of ["engine.py", "scoring.py", "safe_files.py", "runtime_controller.py", "runtime_adapters.py", "benchmark_worker.py", "native_host.py", "native_component.py", "download_modelkit.py", "hub_transfer.py", "prepare_models.py", "model_plan.py", "modelkit.json", "pyproject.toml", "uv.lock", "README.md"]) {
   cpSync(join(ROOT, "anagramd", f), join(stage, "app", f));
 }

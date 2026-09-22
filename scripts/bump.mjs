@@ -64,7 +64,6 @@ const FIELDS = [
   // Every locked dependency in uv.lock has a version line too; only the one directly
   // under the component's own name may be touched.
   lineField("anagramd/uv.lock", '[[package]] name = "anagramd"', /^(name = "anagramd"\nversion = ")([^"]*)(")/m),
-  lineField("install.sh", "INSTALLER_VERSION", /^(INSTALLER_VERSION=")([^"]*)(")/m),
 ];
 
 // Contract changes are checked, never inferred from a release version.
@@ -82,7 +81,7 @@ function readContracts() {
   });
 }
 
-/** Read all five. A missing field is fatal: bumping four of five is the drift itself. */
+/** Read all four. A missing field is fatal: bumping three of four is the drift itself. */
 function readAll() {
   return FIELDS.map((f) => {
     const text = readFileSync(join(ROOT, f.file), "utf8");
@@ -101,11 +100,11 @@ if (arg === "--check") {
   console.log("");
   for (const c of contracts) console.log(`${c.version.padEnd(10)} ${c.file}  (${c.what})`);
   const versions = [...new Set(found.map((f) => f.version))];
-  if (versions.length !== 1) fail(`the five versions disagree: ${versions.join(", ")}`);
+  if (versions.length !== 1) fail(`the four versions disagree: ${versions.join(", ")}`);
   const majors = [...new Set(contracts.map((c) => c.major))];
   if (majors.length !== 1)
     fail(`the contract majors disagree: ${contracts.map((c) => `${c.file} says ${c.version}`).join(", ")}`);
-  console.log(`\nall five agree on ${versions[0]}, and both speak contract ${majors[0]}.x`);
+  console.log(`\nall four agree on ${versions[0]}, and both speak contract ${majors[0]}.x`);
   process.exit(0);
 }
 

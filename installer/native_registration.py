@@ -203,7 +203,7 @@ def register(home, browser, extension_id, language="en", *, user_home=None, plat
             # A browser invokes this absolute path. No system Python, shell profile,
             # inherited PYTHONPATH, or stdout logging participates in host startup.
             python = shlex.quote(str(home / "venv/bin/python"))
-            script = "#!/bin/sh\n" + python + " -I " + shlex.quote(str(home / "app/native_registration.py")) + " prepare --home " + shlex.quote(str(home)) + " >&2 || exit $?\nexec " + python + " -I -u " + shlex.quote(str(home / "app/native_host.py")) + " --home " + shlex.quote(str(home)) + ' "$@"\n'
+            script = "#!/bin/sh\nexec " + python + " -I -u " + shlex.quote(str(home / "app/native_host.py")) + " --home " + shlex.quote(str(home)) + ' "$@"\n'
             write(launcher, script.encode(), 0o700)
         elif not launcher.is_file():
             raise ValueError("Compiled Windows native launcher is missing")
@@ -275,47 +275,6 @@ def unregister(home, *, user_home=None, platform=None, registry=None):
         for browser, view, previous in reversed(changed_keys):
             registry.write(browser, view, previous)
         raise
-
-
-def safe_tree(home):
-    if os.name != "nt":
-        # POSIX rmtree does not follow nested symbolic links; uv normally creates
-        # interpreter and lib64 links. Removing those links must not remove targets.
-        return
-    for root, dirs, files in os.walk(home):
-        # rmtree unlinks file symlinks (including uv's normal python executable
-        # links). Directory links/reparse points are rejected before cleanup.
-        for name in dirs:
-            safe_path(Path(root) / name, home)
-
-
-def prepare(home):
-    """Upgrade migration only: stop a verified process from the removed HTTP component."""
-    home = owned_home(home, require_owner=True)
-    installing = home / ".installer-lock"
-    if installing.exists() or installing.is_symlink():
-        raise ValueError("Component installation is in progress; retry after the installer finishes")
-    pidfile = safe_path(home / "run/anagramd.pid", home)
-    if not pidfile.exists():
-        return
-    text = pidfile.read_text(encoding="utf-8").strip()
-    if not text.isdigit() or int(text) < 2:
-        raise ValueError("Legacy daemon pid file is invalid; inspect it before continuing")
-    import psutil
-    try:
-        process = psutil.Process(int(text))
-        command = process.cmdline()
-        expected_script = home / "app/serve.py"
-        if len(command) < 2 or Path(command[1]).resolve() != expected_script.resolve():
-            raise ValueError("Legacy pid belongs to another process; refusing to signal it")
-        expected_python = home / ("venv/Scripts/python.exe" if sys.platform == "win32" else "venv/bin/python")
-        if Path(command[0]).resolve() != expected_python.resolve():
-            raise ValueError("Legacy process is not this component's private Python")
-        process.terminate()
-        process.wait(timeout=15)
-    except psutil.NoSuchProcess:
-        pass
-    pidfile.unlink(missing_ok=True)
 
 
 def schedule_windows(home, operation):
@@ -406,7 +365,6 @@ def uninstall(home, lock_fd=None):
     if sys.platform == "win32":
         return schedule_windows(home, "uninstall")
     with maintenance_lock(home, lock_fd):
-        safe_tree(home)
         unregister(home)
         # Retire the startup authority before rmtree can unlink/recreate the lock
         # path; no new host may authorize itself against a half-removed component.
@@ -417,7 +375,7 @@ def uninstall(home, lock_fd=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("operation", choices=["register", "unregister", "update", "uninstall", "prepare"])
+    parser.add_argument("operation", choices=["register", "unregister", "update", "uninstall"])
     parser.add_argument("--home", required=True, type=Path)
     parser.add_argument("--browser", choices=["chrome", "firefox"])
     parser.add_argument("--extension-id")
@@ -434,9 +392,6 @@ def main():
             print(json.dumps(update(args.home, args.worker, args.lock_fd)))
         elif args.operation == "uninstall":
             print(json.dumps(uninstall(args.home, args.lock_fd)))
-        elif args.operation == "prepare":
-            prepare(args.home)
-            return 0
         if args.operation not in ("update", "uninstall"):
             print("Native component " + args.operation + " completed", file=sys.stderr)
         return 0

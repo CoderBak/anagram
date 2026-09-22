@@ -18,7 +18,6 @@
 // `persist` below. And nothing is kept forever: a row is thirty days old at the most,
 // counted from when it was written, because a cache with no end to it is a record of what
 // somebody has been reading.
-import { browser } from "#imports";
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 import type { ScoreResult } from "../contract";
 import { normalizeText, SCORING_NORMALIZATION_VERSION } from "../dom/text";
@@ -93,9 +92,6 @@ const FLUSH_MS = 250;
  * lookup writes to the disk, and a lookup from a private tab must write nothing at all.
  */
 const MAX_AGE_MS = SCORE_CACHE_MAX_AGE_MS;
-/** Key prefix of the pre-IndexedDB storage.local cache; swept once on first open. */
-const LEGACY_PREFIX = "sc:";
-const LEGACY_SWEPT_FLAG = "scLegacySwept";
 
 function toStored(key: string, r: ScoreResult, at = Date.now()): Stored {
   const s: Stored = {
@@ -154,7 +150,6 @@ function db(): Promise<IDBPDatabase<ScoreDB> | null> {
             u.createObjectStore(STORE, { keyPath: "key" }).createIndex("byTime", "t");
           },
         });
-        void sweepLegacyStore();
         return d;
       } catch (e) {
         log.warn("IndexedDB unavailable — score cache is memory-only this session", e);
@@ -242,21 +237,6 @@ export function indexedDbStore(): ScoreStore {
       }
     },
   };
-}
-
-/** One-time removal of rows the previous storage.local-backed cache left behind. */
-async function sweepLegacyStore(): Promise<void> {
-  try {
-    const flag = await browser.storage.local.get(LEGACY_SWEPT_FLAG);
-    if (flag[LEGACY_SWEPT_FLAG]) return;
-    const all = await browser.storage.local.get(null);
-    const stale = Object.keys(all).filter((k) => k.startsWith(LEGACY_PREFIX));
-    if (stale.length > 0) await browser.storage.local.remove(stale);
-    await browser.storage.local.set({ [LEGACY_SWEPT_FLAG]: true });
-    if (stale.length > 0) log.log("swept", stale.length, "legacy cache rows from storage.local");
-  } catch {
-    /* storage unavailable — nothing to sweep */
-  }
 }
 
 export function createSwCache(store: ScoreStore = indexedDbStore()): SwCache {

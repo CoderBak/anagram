@@ -9,7 +9,6 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
-import types
 import unittest
 from unittest.mock import patch
 
@@ -58,7 +57,6 @@ class RegistrationTests(unittest.TestCase):
         self.assertEqual(d['path'], str(self.home / 'bin/anagram-native'))
         script = Path(d['path']).read_text()
         self.assertIn(' -I -u ', script)
-        self.assertIn('prepare --home', script)
         self.assertNotIn('python3 ', script)
         if os.name != 'nt': self.assertEqual(Path(e['manifest']).stat().st_mode & 0o777, 0o600)
         marker = json.loads((self.home / reg.OWNER).read_text())
@@ -163,41 +161,6 @@ class RegistrationTests(unittest.TestCase):
         self.assertEqual(plan, {'status':'prepared', 'installer':str(installer), 'browser':'chrome',
                                'extension_id':ID, 'language':'zh_CN'})
         run.assert_not_called()
-
-    def test_prepare_refuses_an_installer_in_progress(self):
-        self.register(platform=sys.platform)
-        (self.home / '.installer-lock').mkdir()
-        with self.assertRaisesRegex(ValueError, 'installation is in progress'):
-            reg.prepare(self.home)
-
-    def test_migration_stops_only_the_verified_legacy_process(self):
-        self.register()
-        pidfile = self.home / 'run/anagramd.pid'
-        pidfile.write_text('12345')
-        calls = []
-        process = types.SimpleNamespace(
-            cmdline=lambda: [str(self.home / ('venv/Scripts/python.exe' if sys.platform == 'win32' else 'venv/bin/python')),
-                             str(self.home / 'app/serve.py')],
-            terminate=lambda: calls.append('terminate'),
-            wait=lambda timeout: calls.append(('wait', timeout)))
-        psutil = types.SimpleNamespace(Process=lambda pid: process, NoSuchProcess=ProcessLookupError)
-        with patch.dict(sys.modules, {'psutil': psutil}):
-            reg.prepare(self.home)
-        self.assertEqual(calls, ['terminate', ('wait', 15)])
-        self.assertFalse(pidfile.exists())
-
-    def test_migration_preserves_an_unrelated_process_and_pid_file(self):
-        self.register()
-        pidfile = self.home / 'run/anagramd.pid'
-        pidfile.write_text('12345')
-        calls = []
-        process = types.SimpleNamespace(cmdline=lambda: ['/foreign/python', '/foreign/app.py'],
-                                        terminate=lambda: calls.append('terminate'))
-        psutil = types.SimpleNamespace(Process=lambda pid: process, NoSuchProcess=ProcessLookupError)
-        with patch.dict(sys.modules, {'psutil': psutil}), self.assertRaisesRegex(ValueError, 'another process'):
-            reg.prepare(self.home)
-        self.assertEqual(calls, [])
-        self.assertEqual(pidfile.read_text(), '12345')
 
     @unittest.skipIf(os.name == 'nt', 'Windows uses the detached maintenance worker')
     def test_uninstall_removes_only_owned_home_and_manifest(self):

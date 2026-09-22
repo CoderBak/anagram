@@ -23,7 +23,7 @@
   <body>
     <main>
       <h1 data-i18n="pasteTitle">Analyze text</h1>
-      <p id="intro" data-i18n="pasteIntro">Paste English prose or choose a UTF-8 text file. Analysis runs locally and requires no website access. Short paragraphs are read together; long text uses the same windowing as webpages.</p>
+      <p id="intro" data-i18n="pasteIntro">Paste English text or open a text file to analyze it on this computer.</p>
       <label for="file" data-i18n="pasteFile">Open text file</label>
       <input id="file" type="file" accept=".txt,text/plain" />
       <label for="text" data-i18n="pasteInput">Text to analyze</label>
@@ -31,7 +31,7 @@
       <div class="actions">
         <button class="btn" id="analyze" type="button" data-i18n="pasteAnalyze">Analyze</button>
         <button class="btn" data-variant="outline" id="clear" type="button" data-i18n="pasteClear">Clear text and results</button>
-        <button class="btn" data-variant="ghost" id="settings" type="button" data-i18n="pasteOpenSettings">Open Settings</button>
+        <button class="btn" data-variant="ghost" id="settings" type="button" data-i18n="onbOpenSettings">Open Settings</button>
       </div>
       <p id="status" role="status" aria-live="polite"></p>
       <section id="results" hidden>

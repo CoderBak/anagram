@@ -1,11 +1,14 @@
-"""Background lifecycle and bounded, cooperative local runtime comparisons.
+"""Background runtime lifecycle: automatic selection, loading and optional comparisons.
 
+After model files are prepared the controller picks the best available FP32
+configuration itself, loads it, warms it up, persists the choice and becomes
+ready. A saved choice is reused on every later start while its candidate is
+still available. Comparisons only run on explicit request, in a disposable
+process per candidate, and never change the selection.
+
+Native status and control requests never wait for a model load or forward pass.
 Measurements cover text cleaning, tokenization, forward and postprocessing of
 fixed ~120-word English samples, not language identification or browser transport.
-Native status and control requests never wait for a model load or forward pass.
-Production comparisons use a disposable process per candidate; cancellation
-terminates only that worker. Selected-engine loads remain cooperative. The budget covers measured forwards only;
-discovery, loading, warmup and restoring a saved selection take additional time.
 """
 from __future__ import annotations
 
@@ -53,8 +56,36 @@ def error_text(error) -> str:
     return value.encode("utf-16-le", errors="replace")[:4000].decode("utf-16-le", errors="ignore")
 
 
-# Same controlled prose/rotation as bench.py, kept free of its developer-only
-# dependencies. Both workloads use ~120 words; these samples do not measure accuracy.
+def preference_rank(candidate: Candidate):
+    """Automatic selection order; lower sorts first, None is never auto-selected.
+
+    Only FP32 is chosen automatically. FP16 and INT8 remain explicit choices.
+    """
+    if candidate.precision != "fp32":
+        return None
+    device = candidate.device
+    index = int(device.split(":")[1]) if device.startswith("cuda:") and device[5:].isdigit() else 0
+    if candidate.runtime == "torch" and device.startswith("cuda:"):
+        return (0, index)
+    if candidate.runtime == "torch" and device == "mps":
+        return (1, 0)
+    if candidate.runtime == "onnx" and device.startswith("cuda:"):
+        return (2, index)
+    if candidate.runtime == "onnx" and device == "cpu":
+        return (3, 0)
+    if candidate.runtime == "torch" and device == "cpu":
+        return (4, 0)
+    return None
+
+
+def auto_candidate(candidates) -> Candidate | None:
+    """The first available candidate in preference order, or None."""
+    ranked = [(preference_rank(c), position, c) for position, c in enumerate(candidates)
+              if c.available and preference_rank(c) is not None]
+    return min(ranked)[2] if ranked else None
+
+
+# Fixed English samples for warmup and measurements; they do not measure accuracy.
 SENTENCES = (
     "I got the call around six, right when the rice was starting to catch on the bottom of the pan.",
     "My brother never rings on weeknights, so I turned the burner off and sat on the floor to listen.",
@@ -123,21 +154,27 @@ class MemorySampler:
 
 
 def empty_benchmark(budget=30):
-    return {"report_version": 2, "environment": None,
+    return {"report_version": 2, "environment": None, "context": None,
             "status": "idle", "budget_s": budget, "elapsed_s": 0.0,
-            "measurement_s": 0.0, "phase": "discovery", "current_id": None,
+            "measurement_s": 0.0, "phase": "idle", "current_id": None,
             "completed": 0, "total": 0, "results": []}
 
 
 class RuntimeController:
+    """States: loading, benchmarking, ready, idle, error.
+
+    ``idle`` means no engine is resident; the next score request reloads the
+    saved selection (or auto-selects when there is none). ``error`` carries text
+    in ``error`` and recovers through an explicit selection or comparison.
+    """
     def __init__(self, config_path: Path, discover, factory, *, clock=time.perf_counter,
                  memory=process_rss, max_runs: int = 20, benchmark_runner=None,
                  idle_unload_s=0):
         self.config_path = Path(config_path)
-        self.discover = discover  # -> (list[Candidate], provenance context string)
+        self.discover = discover  # -> (list[Candidate], provenance context string[, environment])
         self.factory = factory    # -> a loaded engine; no warmup in the factory
         self.clock, self.memory, self.max_runs = clock, memory, max_runs
-        self.benchmark_runner = benchmark_runner
+        self.benchmark_runner = benchmark_runner  # (candidate, remaining, workloads, max_runs, cancel, receive)
         self.environment = None
         self.idle_unload_s = idle_unload_s
         self.last_activity = None
@@ -160,7 +197,6 @@ class RuntimeController:
         self.active_id = None
         self.recommended_id = None
         self.fastest_id = None
-        self.needs_selection = True
         self.error = None
         self.benchmark = empty_benchmark()
         self.benchmark_started = None
@@ -170,11 +206,12 @@ class RuntimeController:
             benchmark = copy.deepcopy(self.benchmark)
             if benchmark["status"] == "running" and self.benchmark_started is not None:
                 benchmark["elapsed_s"] = round(self.clock() - self.benchmark_started, 3)
+            # A report measured under other artifacts/threads/drivers is shown, but labelled.
+            benchmark["stale"] = bool(benchmark["results"]) and benchmark["context"] != self.context
             return {"schema_version": 1, "state": self.state,
                     "active_id": self.active_id, "selected_id": self.selected_id,
                     "recommended_id": self.recommended_id,
                     "fastest_id": self.fastest_id,
-                    "needs_selection": self.needs_selection,
                     "candidates": [asdict(candidate) for candidate in self.candidates],
                     "benchmark": benchmark, "error": self.error}
 
@@ -218,14 +255,15 @@ class RuntimeController:
             if self.state != "idle":
                 return False
             self._ensure_idle()
-            candidate = self._find(self.selected_id)
-            if candidate is None or self.needs_selection:
-                raise RuntimeUnavailable("Select a runtime before resuming")
+            candidate, expected = self._find(self.selected_id), self.selected_version
+            if candidate is None or not candidate.available:
+                candidate, expected = auto_candidate(self.candidates), None
+            if candidate is None:
+                raise RuntimeUnavailable(self._unavailable_text())
             self.state = "loading"
-            expected = self.selected_version
             def resume():
                 if not self._activate(candidate, expected_version=expected):
-                    raise RuntimeUnavailable("Runtime files changed; rerun the comparison")
+                    raise RuntimeUnavailable("Model files changed while the engine was unloaded; retry or choose a configuration")
             self._launch(resume)
             self.idle_wake_thread = self.thread
             return True
@@ -255,21 +293,20 @@ class RuntimeController:
             work()
         except Cancelled:
             with self.lock:
-                self.state = "awaiting_selection"
-                self.needs_selection = True
+                # No engine is resident; the next score reloads the saved or automatic choice.
+                self.state = "idle"
                 if self.benchmark["status"] == "running":
                     self._finish_benchmark("cancelled")
-                elif self.benchmark["status"] == "idle":
-                    self.benchmark["status"] = "cancelled"
                 self.benchmark["phase"] = "cancelled"
+                self.benchmark["current_id"] = None
         except (Exception, SystemExit) as exc:
             with self.lock:
                 self.state = "error"
                 self.error = error_text(exc)
-                self.needs_selection = True
                 if self.benchmark["status"] == "running":
                     self._finish_benchmark("failed")
                 self.benchmark["phase"] = "error"
+                self.benchmark["current_id"] = None
         finally:
             with self.ready_condition:
                 self.ready_condition.notify_all()
@@ -288,48 +325,45 @@ class RuntimeController:
         except FileNotFoundError:
             return None
         except (OSError, ValueError) as exc:
-            # A damaged file does not prevent the user from running setup again.
+            # A damaged file does not prevent automatic selection from replacing it.
             with self.lock:
                 self.error = error_text(f"Saved runtime configuration could not be read: {exc}")
             return None
 
+    def _unavailable_text(self):
+        reasons = [c.reason for c in self.candidates if not c.available and c.reason]
+        detail = f" ({reasons[0]})" if reasons else ""
+        return "No available runtime" + detail + "; download the model files and use a supported runtime"
+
     def _bootstrap(self):
         self._refresh()
         self._check_cancel()
-        saved = self._read_saved()
-        if saved and saved.get("context") == self.context:
-            report = saved.get("benchmark")
-            valid_report = self._valid_report(report)
-            if valid_report:
-                with self.lock:
-                    self.benchmark = report
-                    self._recommend()
-            else:
-                # Never publish an unvalidated disk object as the wire report,
-                # or the client cannot even render its recovery controls.
-                saved = {}
-                with self.lock:
-                    self.error = "Saved benchmark report was invalid; running a fresh comparison."
-            candidate = self._find(saved.get("selected_id"))
-            if candidate and candidate.available and isinstance(saved.get("selected_version"), str):
-                # Reports are for display only; a successfully loaded engine must also
-                # match the saved content-derived version before it may score.
-                with self.lock:
-                    self.selected_id = candidate.id
-                    self.selected_version = saved["selected_version"]
-                    self.needs_selection = False
-                if self._activate(candidate, expected_version=saved["selected_version"]):
-                    return
-            elif saved.get("selected_id") is None and valid_report and report["status"] in {"completed", "cancelled"}:
-                with self.lock:
-                    self.state = "awaiting_selection"
-                    self.benchmark["phase"] = "awaiting_selection"
-                return
+        saved = self._read_saved() or {}
+        report = saved.get("benchmark")
+        if self._valid_report(report):
+            # Reports are display only; an invalid one is simply not shown.
+            with self.lock:
+                self.benchmark = report
+                self._recommend()
+        candidate = self._find(saved.get("selected_id"))
+        if candidate is not None and candidate.available:
+            # The saved choice survives context and provenance changes; the
+            # loaded engine's version is recorded again for the idle-wake check.
+            with self.lock:
+                self.selected_id = candidate.id
+                self.selected_version = saved.get("selected_version") if isinstance(saved.get("selected_version"), str) else None
+            self._activate(candidate)
+            return
+        self._auto_select()
+
+    def _auto_select(self):
+        candidate = auto_candidate(self.candidates)
+        if candidate is None:
+            raise ValueError(self._unavailable_text())
         with self.lock:
             self.selected_id = None
             self.selected_version = None
-            self.needs_selection = True
-        self._benchmark_work(30, refresh=False)
+        self._activate(candidate)
 
     def _valid_report(self, report):
         """Validate every persisted field before it can enter a runtime snapshot.
@@ -356,7 +390,8 @@ class RuntimeController:
                 or report["status"] not in ("completed", "cancelled", "failed", "idle")
                 or type(report["budget_s"]) is not int or not 10 <= report["budget_s"] <= 30
                 or not number(report["elapsed_s"]) or not number(report["measurement_s"])
-                or not text(report["phase"])):
+                or not text(report["phase"])
+                or (report["context"] is not None and not (isinstance(report["context"], str) and len(report["context"]) <= 128))):
             return False
         if report["environment"] is not None:
             if not isinstance(report["environment"], dict):
@@ -395,7 +430,7 @@ class RuntimeController:
                     or row["status"] not in ("ok", "error")
                     or type(row["batch_size"]) is not int or row["batch_size"] not in (1, 8)
                     or type(row["samples"]) is not int or not 0 <= row["samples"] <= 1_000_000
-                    or row["rss_scope"] not in ("isolated_process", "in_process")
+                    or row["rss_scope"] != "isolated_process"
                     or row["rss_sample_interval_ms"] != 50
                     or row["accelerator_kind"] not in (None, "mps_driver_including_cache", "cuda_allocator_peak")
                     or row["measurement_quality"] != ("sufficient" if row["samples"] >= 3 else "insufficient")
@@ -424,14 +459,9 @@ class RuntimeController:
             raise ValueError("duplicate runtime candidate identifiers")
         with self.lock:
             self.candidates = candidates
-            if self.context is not None and self.context != context:
-                self.selected_id = None
-                self.selected_version = None
-                self.needs_selection = True
-                self.recommended_id = None
-                self.fastest_id = None
             self.context = context
             self.environment = discovery[2] if len(discovery) > 2 else None
+            self._recommend()
 
     def _find(self, candidate_id):
         return next((c for c in self.candidates if c.id == candidate_id), None)
@@ -471,17 +501,13 @@ class RuntimeController:
             self.benchmark["current_id"] = candidate.id
             old_engine, self.engine = self.engine, None
             self.active_id = None
-            expected_context = self.context
             def work():
                 self._close_engine(old_engine)
                 self._refresh()
-                if self.context != expected_context:
-                    with self.lock:
-                        self.benchmark = empty_benchmark()
-                    raise ValueError("Model files or runtime configuration changed; rerun the comparison before selecting")
                 current = self._find(candidate.id)
                 if current is None or not current.available:
-                    raise ValueError("The selected runtime is no longer available; rerun the comparison")
+                    raise ValueError("The selected runtime is no longer available: "
+                                     + (current.reason if current and current.reason else "device or model files changed"))
                 self._activate(current)
             self._launch(work)
             return self.snapshot()
@@ -497,7 +523,7 @@ class RuntimeController:
     @contextmanager
     def use_engine(self, *, activity=True):
         with self.lock:
-            if (self.closed or self.state != "ready" or self.engine is None or self.needs_selection
+            if (self.closed or self.state != "ready" or self.engine is None
                     or self.active_id != self.selected_id):
                 raise RuntimeUnavailable("runtime is not ready; open Anagram Settings to finish setup")
             engine = self.engine
@@ -544,7 +570,7 @@ class RuntimeController:
             self._check_cancel()
             if expected_version is not None and engine.version != expected_version:
                 with self.lock:
-                    self.error = "Model or runtime provenance changed; compare runtimes and select again."
+                    self.error = "Model or runtime provenance changed while the engine was unloaded; retry or choose a configuration."
                 return False
             with self.lock:
                 self.benchmark["phase"] = "warmup"
@@ -567,7 +593,6 @@ class RuntimeController:
                     raise
                 self.engine, engine = engine, None
                 self.active_id = candidate.id
-                self.needs_selection = False
                 self.state = "ready"
                 self.last_activity = self.clock()
                 self.error = None
@@ -585,14 +610,15 @@ class RuntimeController:
         self._recommend()
 
     def _recommend(self):
-        # Only measured FP32 candidates may be recommended. Lower precision is an
-        # explicit choice, and speed samples are never labeled accuracy evaluations.
+        # The recommendation is what automatic selection picks: FP32 only, by
+        # device preference. The fastest measured candidate is a separate label
+        # and may be lower precision; speed samples are never accuracy evaluations.
+        chosen = auto_candidate(self.candidates)
+        self.recommended_id = chosen.id if chosen else None
         measured = [r for r in self.benchmark["results"] if r.get("status") == "ok"
-                and r.get("batch_size") == 1 and self._find(r.get("candidate_id"))
-                and self._find(r["candidate_id"]).available]
+                    and r.get("batch_size") == 1 and self._find(r.get("candidate_id"))
+                    and self._find(r["candidate_id"]).available]
         self.fastest_id = min(measured, key=lambda r: r["latency_ms"])["candidate_id"] if measured else None
-        rows = [r for r in measured if self._find(r["candidate_id"]).precision == "fp32"]
-        self.recommended_id = min(rows, key=lambda r: r["latency_ms"])["candidate_id"] if rows else None
 
     def _error_row(self, candidate, batch, error, load_ms=0):
         return {"candidate_id": candidate.id, "status": "error", "error": error_text(error),
@@ -601,7 +627,7 @@ class RuntimeController:
                 "batch_size": batch, "duration_s": 0.0,
                 "initialization_ms": None, "hash_ms": None,
                 "baseline_rss_bytes": None, "loaded_rss_bytes": None,
-                "rss_scope": "isolated_process" if self.benchmark_runner else "in_process",
+                "rss_scope": "isolated_process",
                 "rss_sample_interval_ms": 50, "accelerator_kind": None,
                 "measurement_quality": "insufficient"}
 
@@ -610,67 +636,43 @@ class RuntimeController:
             self.benchmark["results"].append(row)
             self.benchmark["completed"] += 1
 
-    def _benchmark_work(self, budget, refresh=True):
+    def _benchmark_work(self, budget):
+        if self.benchmark_runner is None:
+            raise ValueError("No benchmark runner is configured")
         with self.lock:
             self.state = "benchmarking"
             self.benchmark = empty_benchmark(budget)
             self.benchmark["status"] = "running"
             self.benchmark_started = self.clock()
-        if refresh:
-            self._refresh()
+        self._refresh()
         candidates = [c for c in self.candidates if c.available]
         with self.lock:
             self.benchmark["total"] = len(candidates) * 2
             self.benchmark["environment"] = self.environment
+            self.benchmark["context"] = self.context
         if not candidates:
-            raise ValueError("No available runtime. Install the model files and a supported runtime, then rerun the comparison.")
+            raise ValueError(self._unavailable_text())
         cancelled = False
         try:
             for candidate in candidates:
                 self._check_cancel()
-                if self.benchmark_runner is not None:
-                    self._isolated_candidate(candidate, budget)
-                    continue
-                engine = None
-                with self.lock:
-                    self.benchmark.update(phase="loading", current_id=candidate.id)
-                load_start = self.clock()
-                try:
-                    engine = self.factory(candidate)
-                    engine.synchronize()
-                    load_ms = (self.clock() - load_start) * 1000
-                    self._check_cancel()
-                    for batch in (1, 8):
-                        self._check_cancel()
-                        try:
-                            row = self._measure(engine, candidate, batch, load_ms, budget)
-                        except Cancelled:
-                            raise
-                        except Exception as exc:
-                            row = self._error_row(candidate, batch, exc, load_ms)
-                        self._append(row)
-                except Cancelled:
-                    raise
-                except (Exception, SystemExit) as exc:
-                    for batch in (1, 8):
-                        self._append(self._error_row(candidate, batch, exc,
-                                                     (self.clock() - load_start) * 1000))
-                finally:
-                    self._close_engine(engine)
+                self._isolated_candidate(candidate, budget)
         except Cancelled:
             cancelled = True
         with self.lock:
             self._finish_benchmark("cancelled" if cancelled else "completed")
-            self.state = "awaiting_selection"
-            self.benchmark["phase"] = "cancelled" if cancelled else "awaiting_selection"
-            self.needs_selection = True
+            self.benchmark["phase"] = "cancelled" if cancelled else "completed"
         self._persist()
-        # An explicit rerun does not change a saved choice. Restore it after the
-        # comparison (including cancellation), unless this is the first setup.
+        if self.closed:
+            raise Cancelled()
+        # A comparison never changes the choice: restore the saved selection
+        # (also after cancellation), or select automatically when there is none.
+        self.cancel_event.clear()
         previous = self._find(self.selected_id)
-        if previous and previous.available and not self.closed:
-            self.cancel_event.clear()
+        if previous is not None and previous.available:
             self._activate(previous)
+        else:
+            self._auto_select()
 
     def _measure(self, engine, candidate, batch, load_ms, budget):
         texts = [paragraph(seed=i * 3) for i in range(batch)]
@@ -727,7 +729,7 @@ class RuntimeController:
                "tokens_per_text": round(tokens, 1), "duration_s": round(consumed, 6),
                "initialization_ms": None, "hash_ms": None,
                "baseline_rss_bytes": None, "loaded_rss_bytes": None,
-               "rss_scope": "in_process", "rss_sample_interval_ms": 50,
+               "rss_scope": "isolated_process", "rss_sample_interval_ms": 50,
                "accelerator_kind": ("mps_driver_including_cache" if candidate.device == "mps"
                                     else "cuda_allocator_peak" if candidate.runtime == "torch" and candidate.device.startswith("cuda")
                                     else None),

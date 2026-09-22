@@ -729,11 +729,6 @@ const PAGE_SPECS = [
     viewport: { width: 300, height: 620 },
     async prepare(page) {
       await page.waitForTimeout(700);
-      // The three controls that are set once and forgotten live behind a closed
-      // <details>, and a closed one is display:none — which every check below skips.
-      // Open it, or they would quietly stop being judged at all.
-      await page.evaluate(() => document.querySelector("details.more")?.setAttribute("open", ""));
-      await page.waitForTimeout(150);
     },
   },
   {
@@ -753,12 +748,14 @@ const PAGE_SPECS = [
     url: () => extUrl("onboarding.html"),
     viewport: { width: 1100, height: 900 },
     async prepare(page) {
-      // The setup strip is live: scanning it mid-probe would judge "checking…", not the
-      // state the reader ends up looking at.
+      // The status card is live: scanning it mid-probe would judge "Starting…", not the
+      // state the reader ends up looking at. The Manage and Advanced folds are closed by
+      // default, and a closed one is display:none — open them so they are judged too.
       await page
-        .waitForFunction(() => document.getElementById("row-daemon")?.dataset.state !== "idle", null, { timeout: 15000 })
+        .waitForFunction(() => document.querySelector("#componentSettings .component-status")?.textContent === "Ready", null, { timeout: 15000 })
         .catch(() => {});
-      await page.waitForFunction(() => (document.getElementById("backend-note")?.textContent ?? "") !== "", null, { timeout: 8000 }).catch(() => {});
+      await page.evaluate(() => { for (const d of document.querySelectorAll("#manage, #advanced")) d.setAttribute("open", ""); });
+      await page.waitForTimeout(300);
     },
   },
   {
@@ -1024,15 +1021,12 @@ fixture = null;
 for (const scheme of ["light", "dark"]) {
   const page = await openPage(extUrl("onboarding.html"), { scheme, viewport: { width: 1100, height: 900 } });
   await page
-    .waitForFunction(() => /not running|Unavailable|update it/.test(document.getElementById("backend-note")?.textContent ?? ""), null, { timeout: 15000 })
-    .catch(() => {});
-  await page
-    .waitForFunction(() => document.getElementById("row-daemon")?.dataset.state === "bad", null, { timeout: 15000 })
+    .waitForFunction(() => document.getElementById("install")?.hidden === false, null, { timeout: 15000 })
     .catch(() => {});
   await settle(page, scheme);
   await axeScan(page, `onboarding (fixture down) [${scheme}]`);
-  // The setup strip's Copy pills, its "Open options" link and the install command exist
-  // ONLY while the fixture is down, so this is the only pass that can see them.
+  // The install command and its Copy / View script buttons exist ONLY while the fixture
+  // is down, so this is the only pass that can see them.
   if (scheme === "light") await pageCodeChecks(page, "onboarding (fixture down)");
   await page.close();
 }

@@ -1,14 +1,9 @@
 // Storage-backed reading preferences and per-site rules.
-import { browser, storage } from "#imports";
+import { storage } from "#imports";
 import type { ScoreCacheMode } from "../cachePolicy";
 export type { ScoreCacheMode } from "../cachePolicy";
 
 export const cacheModeStorage = storage.defineItem<ScoreCacheMode>("local:cacheMode", { fallback: "persistent" });
-
-/** Remove retired connection preferences without reading or honoring their values. */
-export async function removeObsoleteConnectionSettings(): Promise<void> {
-  await browser.storage.local.remove(["serverUrl", "backendTransport"]);
-}
 
 /** Marking styles shared with the renderer without importing it into the worker. */
 export type MarkStyle = "quiet" | "always";

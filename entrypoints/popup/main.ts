@@ -3,11 +3,10 @@
 // The popup opens over whatever page the reader is looking at, and Anagram installs with
 // access to no site, so most of those pages are ones it is doing nothing on. The top of
 // the popup is therefore the page's state and ONE button that follows it — rescan, analyze
-// this page once, read this PDF, open a PDF from this computer, or open local setup
-// (./state.ts decides which). Under it: where Anagram runs (this site, all websites — the
-// rule that decides the active tab may belong to a parent domain, see ./siteSwitch.ts),
-// what it shows, and a folded-away "More" for the three controls that are set once and
-// forgotten. The model line closes the popup; the shortcuts are listed on the options page.
+// this page once, read this PDF, open a PDF from this computer, or open Settings
+// (./state.ts decides which). Under it: the per-site switch (the rule that decides the
+// active tab may belong to a parent domain, see ./siteSwitch.ts), what it shows, and the
+// engine's state. Everything else lives in Settings.
 import { browser } from "#imports";
 import type { PublicPath } from "wxt/browser";
 import "../../lib/ui/basecoat-vega.cdn.min.css";
@@ -18,30 +17,23 @@ import {
   settings,
   clearSiteOverride,
   effectiveRule,
-  normalizeMarkStyle,
   setSiteOverride,
   type SiteRule,
 } from "../../lib/settings/settings";
-import type { MarkStyle } from "../../lib/settings/settings";
 import { siteLine, switchWrite } from "./siteSwitch";
 import { ACTION_LABEL, popupLead, type PageFacts, type PopupLead } from "./state";
-import { ALL_SITES, sitePattern } from "../../lib/access/patterns";
-import { accessSummary, hasAccess, requestAccess } from "../../lib/access/grant";
+import { sitePattern } from "../../lib/access/patterns";
+import { hasAccess, requestAccess } from "../../lib/access/grant";
 import { ACTIONS } from "../../lib/messaging/protocol";
 import type { BackendStatus, ControlMessage, TabState } from "../../lib/messaging/protocol";
 import { looksLikePdfUrl, READER_PAGE } from "../../lib/pdf/source";
 import { PDF_TAB_SCRIPTS_RUN } from "../../lib/surface";
 import { getFileAccess } from "../../lib/pdf/fileAccess";
 
-const enabledEl = document.getElementById("enabled") as HTMLInputElement;
 const siteEl = document.getElementById("siteEnabled") as HTMLInputElement;
 const siteHostEl = document.getElementById("siteHost") as HTMLElement;
-const highlightsEl = document.getElementById("highlights") as HTMLInputElement;
-const markStyleEl = document.getElementById("markStyle") as HTMLSelectElement;
-const scopeEl = document.getElementById("analysisScope") as HTMLSelectElement;
 const actionEl = document.getElementById("action") as HTMLButtonElement;
 const statusEl = document.getElementById("status") as HTMLElement;
-const cmdEl = document.getElementById("cmd") as HTMLElement;
 const gearEl = document.getElementById("gear") as HTMLButtonElement;
 const backendEl = document.getElementById("backend") as HTMLElement;
 // The one segmented control left is a Basecoat tab list (buttons with aria-selected).
@@ -148,11 +140,10 @@ function paint(): void {
   const down = lead.status === "daemon";
   statusEl.classList.toggle("down", down);
   const mismatch = facts.daemon === "mismatch";
-  cmdEl.hidden = !down;
 
   switch (lead.status) {
     case "counts":
-      statusEl.replaceChildren(...(counts ? countsLine(counts) : [t("popupRescanning")]));
+      statusEl.replaceChildren(...(counts ? countsLine(counts) : [t("selAnalyzing")]));
       break;
     case "off":
       statusEl.textContent = t("popupOff");
@@ -161,10 +152,10 @@ function paint(): void {
       statusEl.textContent = t("popupUnsupportedPage");
       break;
     case "noTab":
-      statusEl.textContent = t("popupNoTab");
+      statusEl.textContent = t("popupUnsupportedPage");
       break;
     case "daemon":
-      statusEl.textContent = mismatch ? t("popupDaemonMismatch") : t("popupDaemonDown");
+      statusEl.textContent = t(mismatch ? "popupEngineOutdated" : "popupEngineDown");
       break;
     case "fileAccess":
       statusEl.textContent = t("popupFileAccessNeeded");
@@ -183,26 +174,13 @@ function paint(): void {
   else actionEl.dataset.variant = "outline";
 }
 
-/** The model line at the foot: what is scoring, when anything is. */
+/** The engine line at the foot, when the engine is up (the action block says the rest). */
 function paintModel(s: BackendStatus | undefined): void {
-  if (s?.active === "idle") {
-    backendEl.textContent = t("componentIdle"); backendEl.hidden = false; return;
-  }
-  if (!s || s.active !== "server" || !s.model) {
-    backendEl.textContent = ""; // the action block above is already saying it
-    backendEl.hidden = true;
-    return;
-  }
-  backendEl.hidden = false;
-  // Scoring, but from a daemon older than this extension: the owner's rule is that the two
-  // are updated together, so the line that names the model asks for that instead.
-  if (s.server.outdated) {
-    backendEl.textContent = t("popupDaemonBehind");
-    return;
-  }
-  const b = document.createElement("b");
-  b.textContent = s.model.id;
-  backendEl.replaceChildren(t("popupModel"), b, t("popupLocal") + (s.server.device ? " · " + s.server.device : ""));
+  const up = s?.active === "idle" || (s?.active === "server" && !!s.model);
+  backendEl.hidden = !up;
+  if (!up || !s) { backendEl.textContent = ""; return; }
+  backendEl.textContent = s.server.outdated ? t("popupEngineOutdated")
+    : t("popupEngine", t("componentReady") + (s.server.device ? " · " + s.server.device : ""));
 }
 
 /** Is the local engine ready? If not, the action opens setup and Settings. */
@@ -234,8 +212,6 @@ async function refreshBackend(probe = false): Promise<void> {
 let siteRule: SiteRule | null = null;
 let globalDefault = true;
 let granted = false;
-/** Every site is granted — what "All websites" needs before it can mean what it says. */
-let allGranted = false;
 
 /** What the settings alone say about this site, access aside. */
 const ruleSaysOn = (): boolean => (siteRule ? siteRule.mode === "on" : globalDefault);
@@ -249,14 +225,9 @@ const ruleSaysOn = (): boolean => (siteRule ? siteRule.mode === "on" : globalDef
 async function refreshSite(host: string): Promise<void> {
   globalDefault = await settings.enabled.getValue();
   granted = await hasAccess(facts.pattern);
-  allGranted = (await accessSummary()).all;
-  // "All websites" is painted from the same two facts as "This site": the setting AND the
-  // access. A fresh install has the setting on and may read nothing, and a switch that
-  // said ON there would be describing an extension that does not exist yet.
-  enabledEl.checked = globalDefault && allGranted;
   if (!host) {
     siteEl.checked = false;
-    siteHostEl.textContent = t("popupSiteUnavailable");
+    siteHostEl.textContent = "";
     siteHostEl.title = "";
     return;
   }
@@ -318,30 +289,11 @@ async function init(): Promise<void> {
     if (pdf?.pdf === true) facts.pdfTab = true;
   }
 
-  highlightsEl.checked = await settings.showHighlights.getValue();
-  markStyleEl.value = normalizeMarkStyle(await settings.markStyle.getValue());
-  scopeEl.value = await settings.analysisScope.getValue();
   checkSeg(displayModeEls, await settings.displayMode.getValue());
   // A page no extension may be granted — a browser page, the web store, a file — has
   // nothing this switch could do.
   siteEl.disabled = !host || facts.pattern === null;
   await refreshSite(host);
-
-  enabledEl.addEventListener("change", async () => {
-    const want = enabledEl.checked;
-    // Turning it on while Anagram may not read every site is asking for every site — and
-    // the asking has to be the first thing this click does, with nothing awaited before
-    // it (see refreshSite). Chrome closes the popup to show its prompt, so what follows a
-    // yes happens in the worker: it registers the content script and injects the open
-    // tabs (lib/access/worker.ts). The setting is written either way; a no leaves it on
-    // and the switch, painted from both, goes back to off.
-    const asked = want && !allGranted ? requestAccess([...ALL_SITES]) : null;
-    await settings.enabled.setValue(want);
-    if (asked) await asked;
-    await refreshSite(host); // a host with no rule of its own follows the new default
-    sendToTab(tab?.id, { action: ACTIONS.SET_ENABLED, value: siteEl.checked });
-    setTimeout(() => void refreshStatus(tab?.id), 400);
-  });
 
   siteEl.addEventListener("change", () => {
     if (!host) return;
@@ -372,19 +324,6 @@ async function init(): Promise<void> {
     });
   });
 
-  highlightsEl.addEventListener("change", () => {
-    // The content script watches this setting and re-derives text marks live.
-    void settings.showHighlights.setValue(highlightsEl.checked);
-  });
-
-  markStyleEl.addEventListener("change", () => {
-    void settings.markStyle.setValue(markStyleEl.value as MarkStyle);
-  });
-
-  scopeEl.addEventListener("change", () => {
-    void settings.analysisScope.setValue(scopeEl.value as "page" | "main");
-  });
-
   bindSeg(displayModeEls, (v) => void settings.displayMode.setValue(v as "all" | "flagged"));
 
   actionEl.addEventListener("click", () => {
@@ -407,11 +346,11 @@ async function init(): Promise<void> {
           const result = await browser.runtime.sendMessage({ action: ACTIONS.OPEN_PDF_READER, url: tab?.url, tabId: tab?.id });
           if (result?.ok !== true) {
             statusEl.hidden = false;
-            statusEl.textContent = t(result?.error === "busy" ? "popupPdfBusy" : "popupPdfOpenFailed");
+            statusEl.textContent = t("popupPdfOpenFailed");
             return;
           }
           window.close();
-        }).catch(() => { statusEl.hidden = false; statusEl.textContent = t("optPdfSettingsFailed"); });
+        }).catch(() => { statusEl.hidden = false; statusEl.textContent = t("popupPdfOpenFailed"); });
         return;
       case "openReader":
         openEmptyReader();

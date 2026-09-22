@@ -5,6 +5,45 @@ Notable changes to Anagram, newest first. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html). The extension, the
 local component and the installer all carry the same version.
 
+## [Unreleased]
+
+### Changed
+
+- Setup is automatic. After the terminal installer prepares the model files, the local
+  engine detects the hardware and activates the best FP32 configuration itself. The
+  benchmark and configuration switch moved to an Advanced section in Settings.
+- The setup page, popup and Settings were rewritten with far less copy. One term,
+  "Local engine", replaces "local component" and "daemon".
+- The expanded comparison model set is no longer offered in the extension; the terminal
+  `anagram download --profile expanded` command remains.
+
+### Removed
+
+- Research and survey tooling, screenshot generators, the Docker lab, benchmark reports,
+  the audit record and most of `docs/`. The repository keeps a README, this changelog,
+  the privacy policy, two user guides, the footprint inventory and one development doc.
+- Dead code: 0.3-era settings and cache migrations, the unused installer version string,
+  the legacy pid-file migration that ran on every host start, the unreachable Windows
+  tree helper and unread maintenance receipt.
+
+## [0.5.0] — 2026-09-22
+
+### Added
+
+- The complete packaged PDF.js viewer: search, thumbnails, outline, zoom, rotation,
+  passwords, print and download, with optional automatic takeover of authorized PDFs and
+  local file picking and dropping.
+- Device-aware model downloads with resumable terminal preparation, and isolated
+  per-configuration benchmarks with explicit memory and sample reporting.
+- Paste-text analysis and memory-only score caching.
+
+### Fixed
+
+- Message authorization, permission revocation, canonicalization, cache expiry and model
+  provenance consistency.
+- Installer rollback, runtime configuration persistence, download resumption and
+  maintenance locking. macOS uses a prebuilt language-identification wheel.
+
 ## [0.4.1] — 2026-09-21
 
 ### Fixed

@@ -49,7 +49,7 @@ export const loadDiagnostics = (): Promise<DiagnosticsModule> =>
 /** Engine API used alongside the separately packaged full upstream viewer. */
 export type PdfJsModule = Pick<
   typeof import("pdfjs-dist"),
-  "getDocument" | "GlobalWorkerOptions" | "Util" | "TextLayer"
+  "getDocument" | "GlobalWorkerOptions" | "Util"
 >;
 
 export const loadPdfjs = (): Promise<PdfJsModule> => lazyVendor<PdfJsModule>("pdfjs.min.mjs");

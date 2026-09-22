@@ -162,7 +162,6 @@ class NativeComponent:
         self.planner = planner or self._build_model_plan
         self.plan = None
         self.hardware = None
-        self.legacy_profile = False
         self.controller_factory = controller_factory or self._make_controller
         self.helper = helper or self._run_helper
         self.state = "starting"
@@ -181,8 +180,7 @@ class NativeComponent:
             if isinstance(saved, dict) and "idle_unload_s" not in saved:
                 saved["idle_unload_s"] = STATE_DEFAULT["idle_unload_s"]
             if isinstance(saved, dict) and "model_profile" not in saved:
-                self.legacy_profile = True
-                saved["model_profile"] = "recommended"
+                saved["model_profile"] = STATE_DEFAULT["model_profile"]
             if (not isinstance(saved, dict) or set(saved) != set(STATE_DEFAULT)
                     or type(saved["schema_version"]) is not int or saved["schema_version"] != 1
                     or type(saved["idle_unload_s"]) is not int
@@ -202,12 +200,7 @@ class NativeComponent:
     def _save_settings(self):
         if is_link(self.state_path):
             raise ComponentError("invalid_request", "Component state is a symbolic link", 422)
-        saved = dict(self.settings)
-        if self.legacy_profile:
-            # Until device discovery commits the migrated choice, preserve the
-            # legacy marker across pauses, disconnects and unrelated settings.
-            saved.pop("model_profile")
-        atomic_json(self.state_path, saved)
+        atomic_json(self.state_path, dict(self.settings))
 
     def start(self):
         with self.lock:
@@ -256,20 +249,6 @@ class NativeComponent:
             raise ComponentError("not_ready", "Reconnect the native component after this operation", 503)
 
     def _bootstrap(self):
-        # A legacy daemon does not share the native lock. Refuse it, never delete
-        # its files or signal an unverified PID; the installer owns migration.
-        pidfile = self.home / "run/anagramd.pid"
-        if pidfile.is_file() and not pidfile.is_symlink():
-            try:
-                pid = int(pidfile.read_text().strip())
-                if pid > 0:
-                    import psutil
-                    if psutil.pid_exists(pid):
-                        raise ComponentError("busy", "Stop the legacy Anagram HTTP daemon before using the native component", 409)
-            except (ValueError, ProcessLookupError):
-                pass
-            except PermissionError as exc:
-                raise ComponentError("busy", "The legacy daemon PID could not be verified safely", 409) from exc
         with self.lock:
             first = not self.settings["initialized"]
             if first:
@@ -311,23 +290,7 @@ class NativeComponent:
         from model_plan import build_plan, discover_hardware
         if self.hardware is None:
             self.hardware = discover_hardware()
-        plan = build_plan(self.pin, self.hardware, profile)
-        expanded = build_plan(self.pin, self.hardware, "expanded")
-        if self.legacy_profile:
-            # Retain access to an explicitly selected legacy runtime on upgrade.
-            # New installations and explicit profile changes never opt into INT8.
-            path = self.home / "runtime.json"
-            if is_link(path):
-                raise ComponentError("invalid_request", "Runtime preferences are a symbolic link", 422)
-            try:
-                saved = read_json(path)
-                selected = saved.get("selected_id") if isinstance(saved, dict) else None
-            except (OSError, ValueError):
-                selected = None
-            if selected in expanded["candidate_ids"] and selected not in plan["candidate_ids"]:
-                plan = expanded
-        plan["expanded_bytes"] = expanded["total_bytes"] + LID_ENTRY["size_bytes"]
-        return plan
+        return build_plan(self.pin, self.hardware, profile)
 
     def _ensure_plan(self):
         if self.plan is not None:
@@ -340,20 +303,18 @@ class NativeComponent:
             raise DownloadPaused()
         total = plan["total_bytes"] + LID_ENTRY["size_bytes"]
         with self.lock:
-            previous_profile, legacy = self.settings["model_profile"], self.legacy_profile
+            # The terminal may have prepared an expanded set; the plan reports the
+            # installed profile back so verification covers the same files.
+            previous_profile = self.settings["model_profile"]
             self.settings["model_profile"] = plan["profile"]
-            self.legacy_profile = False
             try:
                 self._save_settings()
             except Exception:
-                self.settings["model_profile"], self.legacy_profile = previous_profile, legacy
+                self.settings["model_profile"] = previous_profile
                 raise
             self.plan = plan
-            self.download.update(phase="verifying", total_bytes=total, plan={
-                "profile": plan["profile"], "devices": plan.get("devices", []),
-                "files": [*plan["selected_paths"], "lid.176.ftz"], "total_bytes": total,
-                "expanded_bytes": plan.get("expanded_bytes", total),
-            })
+            self.download.update(phase="verifying", total_bytes=total,
+                                 plan={"devices": plan.get("devices", []), "total_bytes": total})
 
     def _verify_models(self):
         plain_tree(self.home / "models")
@@ -420,7 +381,12 @@ class NativeComponent:
             self.state = "loading"
         controller.start()
 
-    def _stop_runtime(self):
+    def _stop_runtime(self, *, wait=True):
+        """Close the runtime and drain its work; a closed controller refuses new leases.
+
+        With ``wait`` false the drain is unbounded: an explicit stop lets an
+        in-flight score finish and unloads afterwards instead of failing.
+        """
         with self.lock:
             controller = self.controller
             if controller is not None:
@@ -428,7 +394,7 @@ class NativeComponent:
         if controller is None:
             return
         controller.close()
-        deadline = time.monotonic() + self.stop_timeout
+        deadline = time.monotonic() + self.stop_timeout if wait else None
         while True:
             thread = getattr(controller, "thread", None)
             alive = thread is not None and thread.is_alive()
@@ -436,7 +402,7 @@ class NativeComponent:
                 leased = controller.leases > 0
             if not alive and not leased:
                 break
-            if time.monotonic() >= deadline:
+            if deadline is not None and time.monotonic() >= deadline:
                 raise ComponentError("busy", "The current inference/load is still stopping; retry after it finishes", 409)
             time.sleep(0.05)
         with self.lock:
@@ -470,7 +436,7 @@ class NativeComponent:
             if state == "loading" and runtime is not None and not self.runtime_draining:
                 state = runtime["state"]
                 if state == "error" and error is None:
-                    error = {"code": "not_ready", "message": runtime["error"] or "Choose or retry a local runtime"}
+                    error = {"code": "not_ready", "message": runtime["error"] or "Retry the local runtime or choose a configuration"}
             return {"schema_version": 1, "version": self.version, "home": str(self.home),
                     "state": state, "download": copy.deepcopy(self.download), "runtime": runtime,
                     "storage": {"models_bytes": self.storage_bytes}, "error": error,
@@ -522,14 +488,18 @@ class NativeComponent:
             return 200, self._runtime().snapshot()
         if op in ("runtime.benchmark", "runtime.config", "runtime.cancel"):
             controller = self._runtime()
-            if op == "runtime.benchmark":
-                self._payload(payload, ("budget_s",))
-                return 202, controller.request_benchmark(payload.get("budget_s", 30))
-            if op == "runtime.config":
-                self._payload(payload, ("id",), ("id",))
-                if not isinstance(payload["id"], str) or len(payload["id"]) > 120:
-                    raise ComponentError("invalid_request", "Invalid runtime identifier", 422)
-                return 202, controller.request_selection(payload["id"])
+            # Controller ValueErrors here are request validation, not host failures.
+            try:
+                if op == "runtime.benchmark":
+                    self._payload(payload, ("budget_s",))
+                    return 202, controller.request_benchmark(payload.get("budget_s", 30))
+                if op == "runtime.config":
+                    self._payload(payload, ("id",), ("id",))
+                    if not isinstance(payload["id"], str) or len(payload["id"]) > 120:
+                        raise ComponentError("invalid_request", "Invalid runtime identifier", 422)
+                    return 202, controller.request_selection(payload["id"])
+            except ValueError as exc:
+                raise ComponentError("invalid_request", str(exc), 422) from exc
             self._payload(payload)
             return 202, controller.cancel()
         if op == "models.pause":
@@ -562,11 +532,7 @@ class NativeComponent:
             self._payload(payload, ("confirm",), ("confirm",))
             if payload["confirm"] is not True:
                 raise ComponentError("invalid_request", "Explicit confirmation is required", 422)
-        elif op == "models.download":
-            self._payload(payload, ("profile",))
-            if "profile" in payload and payload["profile"] not in ("recommended", "expanded"):
-                raise ComponentError("invalid_request", "Unknown model download profile", 422)
-        elif op in ("engine.stop", "engine.resume", "component.update"):
+        elif op in ("models.download", "engine.stop", "engine.resume", "component.update"):
             self._payload(payload)
         else:
             raise ComponentError("invalid_request", "Unknown native operation", 422)
@@ -574,9 +540,6 @@ class NativeComponent:
             self._ensure_idle()
             self.error = None
             if op == "models.download":
-                if "profile" in payload:
-                    self.settings["model_profile"] = payload["profile"]
-                    self.legacy_profile = False
                 self.settings.update(initialized=True, download_pending=True, download_paused=False,
                                      download_failed=False, models_deleted=False, engine_stopped=False)
                 self._save_settings()
@@ -594,7 +557,9 @@ class NativeComponent:
                 self.state = "loading"
                 self.runtime_draining = self.controller is not None
                 def stop():
-                    self._stop_runtime()
+                    # The stop is already recorded; an in-flight score finishes
+                    # under its lease and the engine unloads afterwards.
+                    self._stop_runtime(wait=False)
                     with self.lock:
                         self.state = "stopped"
                 self._launch(stop, "not_ready")

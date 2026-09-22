@@ -11,17 +11,12 @@
       body { margin: 0; background: var(--background); color: var(--foreground); font-size: 13px; line-height: 1.45; }
       header.hdr { display: flex; align-items: center; gap: 10px; padding: 12px 14px 10px; border-bottom: 1px solid var(--border); }
       header.hdr img { width: 30px; height: 30px; border-radius: 8px; }
-      header.hdr .brand { flex: 1; min-width: 0; }
-      header.hdr h1 { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.2; letter-spacing: -0.01em; }
-      header.hdr p { margin: 1px 0 0; font-size: 11.5px; color: var(--muted-foreground); }
+      header.hdr h1 { flex: 1; min-width: 0; margin: 0; font-size: 14px; font-weight: 600; line-height: 1.2; letter-spacing: -0.01em; }
       main { padding: 4px 14px 12px; }
       .grp { padding: 9px 0 8px; border-bottom: 1px solid var(--border); }
-      .grp > h2 { margin: 0 0 7px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted-foreground); }
       .grp .field { min-height: 30px; }
-      .grp .field + .field { margin-top: 5px; }
       .grp .field > label, .grp .field > section > label { font-size: 13px; font-weight: 450; }
       .grp .field > section > p { margin: 0; font-size: 11px; color: var(--muted-foreground); }
-      .grp .field > select { width: 150px; height: 30px; font-size: 12px; }
       .tabs > [role="tablist"] { height: 30px; }
       .tabs > [role="tablist"] > [role="tab"] { font-size: 12px; padding: 2px 9px; }
       /* The action block: the page's state, then the one thing to do about it. */
@@ -29,34 +24,10 @@
       .status { font-size: 12px; color: var(--muted-foreground); margin: 0 0 8px; }
       .status .flagged { color: var(--destructive); font-weight: 600; }
       .status.down { color: var(--destructive); font-weight: 600; }
-      .cmd { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin: -3px 0 9px; }
       .w-full { width: 100%; }
-      /* Rarely touched, and all of it lives on the options page too. */
-      details.more { padding: 4px 0 6px; }
-      details.more > summary {
-        display: flex; align-items: center; gap: 5px; min-height: 26px; padding: 2px 0;
-        font-size: 12px; color: var(--muted-foreground); cursor: default; list-style: none;
-      }
-      details.more > summary::-webkit-details-marker { display: none; }
-      details.more > summary::before {
-        content: ""; width: 5px; height: 5px; border-right: 1.5px solid currentColor;
-        border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); margin: 0 2px 1px 3px;
-        transition: transform 120ms ease;
-      }
-      details.more[open] > summary::before { transform: rotate(45deg); margin-bottom: 3px; }
-      details.more > .field:first-of-type { margin-top: 2px; }
-      details.more > .field { min-height: 30px; }
-      details.more > .field + .field { margin-top: 5px; }
-      details.more > .field > label, details.more > .field > section > label { font-size: 13px; font-weight: 450; }
-      details.more > .field > select { width: 150px; height: 30px; font-size: 12px; }
-      /* The rule belongs to the model line, not to the group above it: with no daemon
-         there is no model line, and a separator under the last control would be a line
-         drawn under nothing. */
-      .model { font-size: 11px; color: var(--muted-foreground); margin: 0; padding: 9px 0 0; border-top: 1px solid var(--border); }
-      .model b { color: var(--foreground); font-weight: 600; }
-      /* Hit areas, not paint. WCAG 2.5.8 (target size, minimum) measures the region that
-         ACCEPTS the pointer, so these controls keep the size Basecoat draws them at and an
-         invisible box centred on each brings it to 24x24. */
+      .w-full + .w-full { margin-top: 6px; }
+      .engine { font-size: 11px; color: var(--muted-foreground); margin: 0; padding: 9px 0 0; }
+      /* Hit areas, not paint: an invisible 24x24 box centred on each small control. */
       input[type="checkbox"][role="switch"] { position: relative; }
       input[type="checkbox"][role="switch"]::after {
         content: ""; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -73,12 +44,9 @@
   <body>
     <header class="hdr">
       <img class="logo" src="/icons/icon-48.png" alt="" />
-      <div class="brand">
-        <h1>Anagram</h1>
-        <p data-i18n="popupSubtitle">AI-editing scores, on your computer</p>
-      </div>
-      <button id="gear" class="btn" data-variant="ghost" data-size="icon-sm" type="button" title="All settings" aria-label="All settings"
-        data-i18n-title="popupAllSettings" data-i18n-aria-label="popupAllSettings">
+      <h1>Anagram</h1>
+      <button id="gear" class="btn" data-variant="ghost" data-size="icon-sm" type="button" title="Settings" aria-label="Settings"
+        data-i18n-title="popupSettings" data-i18n-aria-label="popupSettings">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="12" cy="12" r="3" />
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.08a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.08a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.08a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
@@ -89,26 +57,19 @@
     <main>
       <section class="grp act">
         <div class="status" id="status">…</div>
-        <p class="cmd" id="cmd" hidden data-i18n="componentOpenSettingsHint">Open Settings for setup progress, model downloads, and local engine controls.</p>
         <!-- Label, variant and action are the page's state (./state.ts); until the page
              has answered there is nothing honest to put on it. -->
         <button id="action" class="btn w-full" data-variant="outline" data-size="sm" type="button" disabled></button>
         <button id="localFileSettings" class="btn w-full" data-variant="ghost" data-size="sm" type="button" hidden data-i18n="popupFileAccessSettings">Local file settings</button>
-        <a href="/paste.html" target="_blank" rel="noopener" class="btn w-full" data-variant="ghost" data-size="sm" data-i18n="pasteTitle">Analyze text</a>
       </section>
 
       <section class="grp">
-        <h2 data-i18n="popupWhereItRuns">Where it runs</h2>
         <div class="field" data-orientation="horizontal">
           <section>
-            <label for="siteEnabled" data-i18n="popupThisSite">Auto-analyze this site</label>
+            <label for="siteEnabled" data-i18n="popupThisSite">Run on this site</label>
             <p id="siteHost">…</p>
           </section>
           <input id="siteEnabled" type="checkbox" role="switch" data-size="sm" />
-        </div>
-        <div class="field" data-orientation="horizontal">
-          <label for="enabled" data-i18n="popupAllWebsites">Default on granted sites</label>
-          <input id="enabled" type="checkbox" role="switch" data-size="sm" />
         </div>
       </section>
 
@@ -124,29 +85,7 @@
         </div>
       </section>
 
-      <details class="more">
-        <summary data-i18n="popupMore">More</summary>
-        <div class="field" data-orientation="horizontal">
-          <label for="highlights" data-i18n="popupMarkText">Mark text</label>
-          <input id="highlights" type="checkbox" role="switch" data-size="sm" />
-        </div>
-        <div class="field" data-orientation="horizontal">
-          <label for="markStyle" data-i18n="popupMarkingStyle">Marking style</label>
-          <select id="markStyle">
-            <option value="quiet" data-i18n="styleQuiet">Flagged text only</option>
-            <option value="always" data-i18n="styleAlways">Every paragraph</option>
-          </select>
-        </div>
-        <div class="field" data-orientation="horizontal">
-          <label for="analysisScope" data-i18n="popupScope">Scope</label>
-          <select id="analysisScope" title="Main content = the article body only (Readability)" data-i18n-title="popupScopeTitle">
-            <option value="page" data-i18n="popupWholePage">Whole page</option>
-            <option value="main" data-i18n="popupMainContent">Main content</option>
-          </select>
-        </div>
-      </details>
-
-      <p class="model" id="backend"></p>
+      <p class="engine" id="backend" hidden></p>
     </main>
 
     <script type="module" src="./main.ts"></script>

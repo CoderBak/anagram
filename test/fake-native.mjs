@@ -90,7 +90,7 @@ const atomicWrite = (path, value) => {
 };
 export function readyRuntime() {
   return { schema_version: 1, state: "ready", active_id: "fake-cpu-fp32", selected_id: "fake-cpu-fp32",
-    recommended_id: null, needs_selection: false, error: null,
+    recommended_id: "fake-cpu-fp32", fastest_id: null, error: null,
     candidates: [{ id: "fake-cpu-fp32", label: "Test CPU · FP32", device: "cpu", runtime: "torch",
       precision: "fp32", experimental: false, available: true }],
     benchmark: { status: "idle", budget_s: 30, elapsed_s: 0, measurement_s: 0,
@@ -178,18 +178,23 @@ async function serveNative(stateFile, logFile) {
       if (!readState().enabled) process.exit(0);
       return ok(request, { v: CONTRACT, model: s.model, partial: false, results });
     }
+    // The engine picks its own configuration: once the suite marks the download complete,
+    // the fake activates its CPU FP32 candidate and reports ready, as the real host does.
+    if (component.state === "downloading" && component.download.status === "completed") {
+      component.runtime = readyRuntime(); component.state = "ready"; atomicWrite(stateFile, s);
+    }
     if (request.op === "runtime") return component.runtime ? ok(request, component.runtime) : failed(request, 503, "not_ready", "Runtime unavailable");
     if (request.op.startsWith("runtime.")) {
       const runtime = component.runtime;
       if (!runtime) return failed(request, 503, "not_ready", "Runtime unavailable");
       if (request.op === "runtime.config") {
         if (!runtime.candidates.some((c) => c.id === request.payload.id && c.available)) return failed(request, 422, "invalid", "Unknown configuration");
-        Object.assign(runtime, { state: "ready", active_id: request.payload.id, selected_id: request.payload.id, needs_selection: false });
+        Object.assign(runtime, { state: "ready", active_id: request.payload.id, selected_id: request.payload.id });
       } else if (request.op === "runtime.benchmark") {
         Object.assign(runtime, { state: "benchmarking", active_id: null });
         Object.assign(runtime.benchmark, { status: "running", phase: "measuring", results: [], completed: 0 });
       } else if (request.op === "runtime.cancel") {
-        Object.assign(runtime, { state: runtime.selected_id ? "ready" : "awaiting_selection", active_id: runtime.selected_id });
+        Object.assign(runtime, { state: "ready", active_id: runtime.selected_id });
         Object.assign(runtime.benchmark, { status: "cancelled", phase: "idle", current_id: null });
       }
       component.state = runtime.state; atomicWrite(stateFile, s); return ok(request, runtime);
@@ -197,15 +202,7 @@ async function serveNative(stateFile, logFile) {
     if (request.op === "engine.stop") component.state = "stopped";
     else if (request.op === "engine.resume") component.state = component.runtime?.state ?? "needs_models";
     else if (request.op === "models.pause") { component.state = "paused"; component.download.status = "paused"; }
-    else if (request.op === "models.download") {
-      component.state = "downloading"; component.download.status = "running";
-      if (request.payload.profile) {
-        // Real discovery is controlled by the suite; explicit profiles start without a known size.
-        delete component.download.plan;
-        Object.assign(component.download, {phase:"detecting",bytes_received:0,total_bytes:0,file:null,error:null});
-        s.modelProfile = request.payload.profile;
-      }
-    }
+    else if (request.op === "models.download") { component.state = "downloading"; component.download.status = "running"; }
     else if (request.op === "component.update") component.operation = { name: "update", status: "completed", receipt: "fixture-update" };
     else if (request.op !== "status") return failed(request, 400, "unsupported", "Unsupported fixture operation");
     if (request.op !== "status") atomicWrite(stateFile, s); return ok(request, component);

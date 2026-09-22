@@ -79,14 +79,11 @@ export interface ScoreBatchRequest {
   blocks: ScoreBlock[];
 }
 
-/** Batch response: ScoreClient → service worker → content script. Streamable. */
+/** Batch response: ScoreClient → service worker → content script. */
 export interface ScoreBatchResponse {
   v: typeof CONTRACT_VERSION;
-  session: string;
   /** Identifies the backend that produced these results. */
   model: ModelInfo;
-  /** True if more results for this request are still coming (reserved for streaming). */
-  partial: boolean;
   results: ScoreResult[];
 }
 
