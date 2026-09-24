@@ -22,7 +22,7 @@ or measuring candidates is optional. Inference is offline; Pangram's **CC BY-NC-
 | `runtime.cancel` | Cancel the running load or measurement |
 | `models.download`, `models.pause`, `models.delete {confirm}` | Prepare, pause or remove model files |
 | `engine.stop`, `engine.resume`, `engine.settings {idle_unload_s}` | Persistent stop/resume and idle unloading |
-| `component.update`, `component.uninstall {confirm}` | Maintenance through the trusted helper |
+| `component.update {version?}`, `component.uninstall {confirm}` | Maintenance through the trusted helper; an update names the extension's release |
 
 Requests never carry paths, commands or URLs. Validation failures are `422`; host
 failures are `500 internal_error`.

@@ -57,12 +57,36 @@ def validate_home(home: Path) -> Path:
     return home
 
 
+def installer_gone(lock: Path) -> bool:
+    """Did the installer holding `lock` die? install.sh writes its pid there. Only POSIX can
+    ask: os.kill(pid, 0) probes a process there, and terminates it on Windows."""
+    if os.name != "posix" or is_link(lock) or is_link(lock / "pid"):
+        return False
+    try:
+        pid = int((lock / "pid").read_text().strip())
+    except (OSError, ValueError):
+        return False
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return True
+    except OSError:
+        return False
+    return False
+
+
 class HomeLock:
     """Exclusive OS lock; a second browser receives busy instead of racing files."""
     def __init__(self, home):
         def check_installer():
             installing = home / ".installer-lock"
             if installing.exists() or is_link(installing):
+                if installer_gone(installing):
+                    # The next installer, or `anagram update`, recovers the folder it left.
+                    raise ComponentError("busy", "An interrupted installation left Anagram locked; "
+                                         "run `anagram update` or the install command again", 409)
                 raise ComponentError("busy", "Anagram installation is in progress; retry after it finishes", 409)
 
         check_installer()

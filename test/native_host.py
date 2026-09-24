@@ -406,6 +406,21 @@ class LifecycleTests(unittest.TestCase):
                 HomeLock(self.home)
             self.assertEqual(caught.exception.code, "busy")
             installing.rmdir() if kind == "directory" else installing.unlink()
+        # A live installer is waited for; one that died is named, with the way out.
+        installing.mkdir()
+        (installing / "pid").write_text(f"{os.getpid()}\n")
+        with self.assertRaises(ComponentError) as caught:
+            HomeLock(self.home)
+        self.assertIn("in progress", caught.exception.message)
+        gone = subprocess.Popen([sys.executable, "-c", "pass"])
+        gone.wait()
+        (installing / "pid").write_text(f"{gone.pid}\n")
+        with self.assertRaises(ComponentError) as caught:
+            HomeLock(self.home)
+        self.assertEqual(caught.exception.code, "busy")
+        self.assertIn("anagram update", caught.exception.message)
+        (installing / "pid").unlink()
+        installing.rmdir()
         # Installer can begin between the first check and flock acquisition.
         original = Path.exists
         seen = 0
