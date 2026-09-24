@@ -9,7 +9,8 @@ import { deferred } from "./scoreStore";
 
 const calls = vi.hoisted(() => ({
   detect: vi.fn(), request: vi.fn(), remove: vi.fn(), main: vi.fn(),
-  scope: "page" as "page" | "main",
+  message: vi.fn(), cancel: vi.fn(), reobserve: vi.fn(),
+  scope: "page" as "page" | "main", session: "first", units: [] as Unit[],
   caches: [] as ScoreCache[],
   sends: [] as ((units: Unit[], lane: Lane) => Promise<UnitVerdict[]>)[],
   reports: [] as (() => Promise<string>)[],
@@ -20,7 +21,9 @@ vi.mock("../../lib/capture/langGate", async (original) => ({
 vi.mock("../../lib/messaging/client", () => ({
   requestScores: calls.request, contextAlive: () => true,
 }));
-vi.mock("../../lib/access/session", () => ({sendDocumentMessage: async () => undefined}));
+vi.mock("../../lib/access/session", () => ({
+  sendDocumentMessage: calls.message, cancelDocumentSession: calls.cancel, documentSessionId: () => calls.session,
+}));
 vi.mock("../../lib/capture/cache", async (original) => {
   const actual = await original<typeof import("../../lib/capture/cache")>();
   return { ...actual, createScoreCache: () => {
@@ -32,20 +35,20 @@ vi.mock("../../lib/capture/scheduler", () => ({createScheduler: (options: {send:
   return {enqueue() {}, bumpEpoch() {}, stop() {}, pause() {}, resume() {}, pendingCount: () => 0};
 }}));
 vi.mock("../../lib/capture/observers", () => ({createObservers: () => ({
-  start() {}, stop() {}, observeUnit() {}, dropUnit() {},
+  start() {}, stop() {}, observeUnit() {}, observeRoot() {}, dropUnit() {}, reobserve: calls.reobserve,
 })}));
 vi.mock("../../lib/render/badge", () => ({createBadgeLayer: () => ({
   remove: calls.remove, teardownAll() {}, resetTheme() {},
 })}));
 vi.mock("../../lib/render/fab", () => ({createFab: (options: {panel: {buildReport: () => Promise<string>}}) => {
   calls.reports.push(options.panel.buildReport);
-  return {setCount() {}, setBackendDown() {}, unmount() {}};
+  return {setCount() {}, setBackendDown() {}, unmount() {}, mount() {}, setActive() {}};
 }}));
 vi.mock("../../lib/render/highlight", () => ({
   setHighlight() {}, clearHighlight() {}, registerHighlightStyles() {}, setHighlightsVisible() {},
   refreshHighlightTheme() {},
 }));
-vi.mock("../../lib/dom/walker", () => ({collectUnits: () => [], inPageOrder: (units: Unit[]) => [...units]}));
+vi.mock("../../lib/dom/walker", () => ({collectUnits: () => calls.units, inPageOrder: (units: Unit[]) => [...units]}));
 vi.mock("../../lib/dom/mainContent", () => ({findMainContent: calls.main, useReadability() {}}));
 vi.mock("../../lib/lazy", () => ({loadReadability: async () => ({})}));
 vi.mock("../../lib/settings/settings", () => {
@@ -67,6 +70,8 @@ beforeEach(() => {
   vi.clearAllMocks(); calls.caches.length = 0; calls.sends.length = 0; calls.reports.length = 0;
   calls.detect.mockReset(); calls.request.mockReset(); calls.main.mockReset();
   calls.detect.mockResolvedValue(null); calls.main.mockReturnValue(null); calls.scope = "page";
+  calls.message.mockReset(); calls.message.mockResolvedValue(undefined);
+  calls.session = "first"; calls.units = [];
   calls.request.mockImplementation(async (req: ScoreBatchRequest) => ({backend: "up", model: MODEL, results: req.blocks.map((block) => ({
     id: block.id, bucket: 3, score: 1, probs: [0, 0, 0, 1],
   }))}));
@@ -116,7 +121,7 @@ describe("capture cancellation across language detection and replies", () => {
     } finally {controller.stop();}
   });
 
-  it.each(["stop", "rescan"] as const)("%s retires pre-existing work without replacing document authority", async (action) => {
+  it.each(["stop", "rescan"] as const)("%s retires pre-existing work", async (action) => {
     const gate = deferred<null>(); calls.detect.mockReturnValueOnce(gate.promise);
     const {controller, send, cache} = await page();
     try {
@@ -159,6 +164,73 @@ describe("capture cancellation across language detection and replies", () => {
     } finally {controller.stop(); original.stop();}
   });
 
+});
+
+describe("work abandoned by stop, rescan and a cleared cache", () => {
+  const settle = async () => {for (let i = 0; i < 10; i++) await Promise.resolve();};
+  const badged = (flagged: number) => ({action: "updateBadge", flagged});
+
+  it("stop has the worker drop this run's batches, once the toolbar count is cleared", async () => {
+    const badge = deferred<undefined>();
+    calls.message.mockImplementation((m: {action: string}) => m.action === "updateBadge" ? badge.promise : Promise.resolve(undefined));
+    const controller = createOrchestrator(null);
+    controller.start(); await settle();
+    controller.stop(); await settle();
+    // A page analyzed on a one-off grant is authorized by the session it has: the count
+    // has to reach the worker over that one.
+    expect(calls.message).toHaveBeenCalledWith(badged(0));
+    expect(calls.cancel).not.toHaveBeenCalled();
+    badge.resolve(undefined); await settle();
+    expect(calls.cancel).toHaveBeenCalledOnce();
+  });
+
+  it.each(["restarted", "replaced"] as const)("stop leaves a session alone that is in use again (%s)", async (how) => {
+    const badge = deferred<undefined>();
+    calls.message.mockImplementation((m: {action: string}) => m.action === "updateBadge" ? badge.promise : Promise.resolve(undefined));
+    const controller = createOrchestrator(null);
+    try {
+      controller.start(); await settle();
+      controller.stop();
+      if (how === "restarted") controller.start(); else calls.session = "second";
+      badge.resolve(undefined); await settle();
+      expect(calls.cancel).not.toHaveBeenCalled();
+    } finally {controller.stop();}
+  });
+
+  it("rescan keeps the session, so what it asks for again joins the batches the worker is running", async () => {
+    const {controller} = await page();
+    try {
+      controller.rescan(); await settle();
+      expect(calls.cancel).not.toHaveBeenCalled();
+    } finally {controller.stop();}
+  });
+
+  it("a cleared cache puts the units of an abandoned batch back before the observers", async () => {
+    const live = {id: "live", text, order: 0, parts: [], isScored: false} as unknown as Unit;
+    calls.units = [live];
+    const gate = deferred<null>(); calls.detect.mockReturnValueOnce(gate.promise);
+    const {controller, send} = await page();
+    try {
+      const old = send([live], "viewport");
+      controller.forgetCached(); gate.resolve(null);
+      expect(await old).toEqual([]);
+      // The one-shot viewport dispatch was spent on this batch: without a second placement
+      // an on-screen paragraph waits for the idle prefetch's background lane.
+      expect(calls.reobserve).toHaveBeenCalledWith(live);
+      expect(calls.cancel).not.toHaveBeenCalled();
+    } finally {controller.stop();}
+  });
+
+  it("a stopped run puts nothing back", async () => {
+    const live = {id: "live", text, order: 0, parts: [], isScored: false} as unknown as Unit;
+    calls.units = [live];
+    const gate = deferred<null>(); calls.detect.mockReturnValueOnce(gate.promise);
+    const {controller, send} = await page();
+    const old = send([live], "viewport");
+    controller.stop(); gate.resolve(null);
+    expect(await old).toEqual([]);
+    expect(calls.reobserve).not.toHaveBeenCalled();
+  });
 });
 
 describe("requests the worker turns down", () => {

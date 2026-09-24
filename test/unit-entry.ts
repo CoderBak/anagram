@@ -29,7 +29,7 @@ export {
 export { groupBlocks, modelSized, groupChars, groupWords, clearsFloor, fitsWindow } from "../lib/plan/group";
 export { isBoilerplate, isNoTranslate } from "../lib/dom/boilerplate";
 export { clipsOwnText } from "../lib/dom/style";
-export { WATCHED_ATTRS } from "../lib/capture/observers";
+export { WATCHED_ATTRS, createObservers } from "../lib/capture/observers";
 export { findMainContent, useReadability } from "../lib/dom/mainContent";
 export { detectDocsPage, readingViewUrl, editorUrl } from "../lib/docs";
 export { band, isFlagged } from "../lib/render/band";

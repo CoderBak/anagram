@@ -1912,6 +1912,40 @@ const results = await page.evaluate(() => {
   });
 }
 
+// ---- a unit whose batch was abandoned is dispatched again from where it stands ------------
+// The viewport observer lets an element go once it has been seen, so a paragraph on screen
+// is dispatched once. When that batch is abandoned (the caches were cleared under it) the
+// paragraph must be placed again, or it waits for the idle prefetch's background lane.
+{
+  const ob = await browser.newPage();
+  await ob.setContent("<!doctype html><html><body></body></html>");
+  await ob.addScriptTag({ path: BUNDLE });
+  const r = await ob.evaluate(async () => {
+    const WORDS = "the quick brown fox jumps over a lazy dog while rain falls gently on rooftops and children read books near warm windows during long quiet evenings".split(" ");
+    document.body.innerHTML = `<p>${Array.from({ length: 60 }, (_, i) => WORDS[i % WORDS.length]).join(" ")}.</p>`;
+    const [unit] = PW.collectUnits(document.body);
+    const seen = [];
+    const observers = PW.createObservers({ onVisible: () => seen.push("viewport"), onNear: () => seen.push("near"), onDirty() {} });
+    const frames = () => new Promise((done) => setTimeout(done, 200));
+    observers.observeUnit(unit);
+    await frames();
+    const first = seen.join();
+    observers.observeUnit(unit);
+    await frames();
+    const again = seen.join();
+    observers.reobserve(unit);
+    await frames();
+    observers.stop();
+    return { first, again, placed: seen.join() };
+  });
+  results.push({
+    name: "a unit on screen is dispatched once, and in the viewport lane again when it is placed again",
+    ok: r.first.endsWith("viewport") && r.again === r.first && r.placed === `${r.first},${r.first}`,
+    note: JSON.stringify(r),
+  });
+  await ob.close();
+}
+
 // ---- a chip inside a clipped box follows the page when it reflows -------------------------
 // The placement is measured once, when the verdict lands, and the page does not stand still:
 // on a Goodreads book page the reviews grow as their images and web fonts arrive, and a chip

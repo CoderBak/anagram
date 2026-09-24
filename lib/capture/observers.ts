@@ -23,6 +23,9 @@ export interface Observers {
   observeRoot(root: ShadowRoot): void;
   /** Stop tracking one unit (scored, invalidated, or purged). */
   dropUnit(unit: Unit): void;
+  /** Place a unit again as if it had just been found: its batch was abandoned, and the one
+   *  dispatch it gets was spent on it — the viewport observer lets an element go once seen. */
+  reobserve(unit: Unit): void;
   start(): void;
   stop(): void;
 }
@@ -246,6 +249,17 @@ export function createObservers(opts: {
     }
   }
 
+  function reobserve(unit: Unit): void {
+    dispatched.delete(unit.id);
+    const el = unit.topElement;
+    if (!el || !el.isConnected) return;
+    // Observing a target that is already observed reports nothing: let go of it first, so
+    // the observers answer where it is NOW.
+    ioNear.unobserve(el);
+    ioViewport.unobserve(el);
+    observeUnit(unit);
+  }
+
   function observeRoot(root: ShadowRoot): void {
     if (observedRoots.has(root)) return;
     observedRoots.add(root);
@@ -285,5 +299,5 @@ export function createObservers(opts: {
     pendingRoots.clear();
   }
 
-  return { observeUnit, observeRoot, dropUnit, start, stop };
+  return { observeUnit, observeRoot, dropUnit, reobserve, start, stop };
 }

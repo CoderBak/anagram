@@ -1,4 +1,4 @@
-import { sendDocumentMessage } from "../access/session";
+import { cancelDocumentSession, documentSessionId, sendDocumentMessage } from "../access/session";
 // lib/capture/orchestrator.ts — ties walker + observers + scheduler + cache +
 // messaging + renderer + the floating toggle into the live capture→annotate loop.
 //
@@ -115,7 +115,8 @@ function navigationApi(): EventTarget | null {
 export interface Orchestrator {
   /** Begin capture: initial scan + observers + scheduler + floating toggle. Idempotent. */
   start(): void;
-  /** Full teardown: disconnect observers, bump epoch, remove all badges + the toggle. */
+  /** Full teardown: disconnect observers, bump epoch, remove all badges + the toggle, and
+   *  have the worker drop what it was still scoring for this run. */
   stop(): void;
   /** Force a fresh full scan (popup "Rescan"): drop everything, re-collect. */
   rescan(): void;
@@ -660,8 +661,15 @@ export function createOrchestrator(
     const read = await readInWindows(units, (blocks, owners) => scoreBlocks(blocks, owners, lane, generation));
     if (generation !== captureGeneration) {
       // Clearing a cache leaves existing verdicts visible, but an abandoned batch
-      // must not leave its unfinished chips behind or paint a late result.
-      for (const unit of units) if (!verdictsById.has(unit.id)) badges.remove(unit.id);
+      // must not leave its unfinished chips behind or paint a late result. Where only the
+      // caches went, its units are still on the page and have spent the one dispatch the
+      // observers give a unit: they are placed again, so the ones on screen go back in the
+      // viewport lane instead of waiting for the idle prefetch.
+      for (const unit of units) {
+        if (verdictsById.has(unit.id)) continue;
+        badges.remove(unit.id);
+        if (started && !frozen && unitsById.get(unit.id) === unit) observers.reobserve(unit);
+      }
       return [];
     }
     const out: UnitVerdict[] = [];
@@ -914,7 +922,9 @@ export function createOrchestrator(
   /**
    * The worker's caches were cleared, so this layer — which answers before them — has to go
    * too. Nothing is re-scanned or repainted: the verdicts on the page were real when they
-   * were made, and the user cleared the caches to affect what happens NEXT.
+   * were made, and the user cleared the caches to affect what happens NEXT. What was being
+   * scored is asked for again (see send()); the worker gave up its own share of that work
+   * when it cleared, before it said so (router.invalidate in lib/backend/router.ts).
    */
   function forgetCached(): void {
     captureGeneration++;
@@ -1013,15 +1023,16 @@ export function createOrchestrator(
     let flagged = 0;
     for (const v of verdictsById.values()) if (isFlagged(v.result)) flagged++;
     fab.setCount(flagged);
-    notifyToolbarBadge(flagged);
+    void notifyToolbarBadge(flagged);
   }
 
-  /** Per-tab flagged count on the toolbar icon (top frame owns the tab's number). */
-  function notifyToolbarBadge(flagged: number): void {
-    if (!mountFab || flagged === lastBadgeSent) return;
+  /** Per-tab flagged count on the toolbar icon (top frame owns the tab's number). Settles
+   *  once the worker has it, or could not be told. */
+  function notifyToolbarBadge(flagged: number): Promise<void> {
+    if (!mountFab || flagged === lastBadgeSent) return Promise.resolve();
     lastBadgeSent = flagged;
-    void sendDocumentMessage({ action: ACTIONS.UPDATE_BADGE, flagged })
-      .catch(() => undefined);
+    return sendDocumentMessage({ action: ACTIONS.UPDATE_BADGE, flagged })
+      .then(() => undefined, () => undefined);
   }
 
   const scheduler: Scheduler = createScheduler<UnitVerdict>({
@@ -1491,7 +1502,17 @@ export function createOrchestrator(
     unwatchMerge = null;
     unwatchScope?.();
     unwatchScope = null;
-    notifyToolbarBadge(0);
+    // The worker is still at this run's batches, and a new document session is what makes
+    // it drop them. Only once the toolbar count is cleared, and only if nothing has started
+    // again or replaced the session meanwhile: a page analyzed on a one-off grant is
+    // authorized by the session it has, and every way back into it grants the new one
+    // afresh (ensureInjected in lib/access/worker.ts). A rescan keeps its session — its
+    // requests for text that has not changed join the batches the worker is running.
+    const session = documentSessionId();
+    const abandon = (): void => {
+      if (!started && documentSessionId() === session) cancelDocumentSession();
+    };
+    void notifyToolbarBadge(0).then(abandon);
     log.log("stopped");
   }
 
