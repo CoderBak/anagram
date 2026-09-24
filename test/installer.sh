@@ -1,6 +1,8 @@
 #!/bin/sh
 # Offline installer containment, atomic replacement and native registration tests.
 set -u
+# An inherited component home or lock would point the installer and CLI cases at it.
+unset ANAGRAM_HOME ANAGRAM_MAINTENANCE_FD
 export ANAGRAM_BROWSER=firefox ANAGRAM_EXTENSION_ID=anagram@coderbak.dev ANAGRAM_LANG=en
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 T="$(mktemp -d "${TMPDIR:-/tmp}/anagram-installer-test.XXXXXX")"
