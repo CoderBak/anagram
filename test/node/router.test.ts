@@ -307,6 +307,14 @@ describe("router retry", () => {
     expect(ops()).toEqual(["health", "score", "score"]);
   });
 
+  it("answers from the second attempt after the first ran out of time on a live port", async () => {
+    const { client, ops } = nativeClient(() => new NativeTransportError("native_timeout", "Local component did not answer in time"));
+    const r = await createRouter(client).handle(req(["a paragraph queued behind a slow batch"]));
+    expect(r.results[0].degraded).toBeUndefined();
+    expect(client.isUp()).toBe(true);
+    expect(ops()).toEqual(["health", "score", "health", "score"]); // health is read again first
+  });
+
   it("answers from a new port after the old one closed under the batch", async () => {
     vi.useFakeTimers();
     try {

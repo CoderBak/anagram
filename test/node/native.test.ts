@@ -232,6 +232,24 @@ describe("native scoring lifecycle generation", () => {
     expect(request.mock.calls.map(([operation]) => operation)).toEqual(["health"]);
   });
 
+  it("keeps the engine up and the other batches running when one request runs out of time", async () => {
+    const { deferred } = await import("./scoreStore");
+    const held = deferred<ReturnType<typeof reply>>();
+    const request = vi.fn().mockResolvedValueOnce(reply(HEALTH)).mockReturnValueOnce(held.promise)
+      .mockRejectedValueOnce(new NativeTransportError("native_timeout", "Local component did not answer in time"))
+      .mockResolvedValueOnce(reply(HEALTH));
+    const client = new NativeScoreClient(request);
+    await client.ready(); const generation = client.revision();
+    const running = client.scoreBatch([{id:"block",text:"a slow paragraph"}]);
+    await expect(client.scoreBatch([{id:"block",text:"a paragraph queued behind it"}])).rejects.toMatchObject({code:"native_timeout"});
+    expect(client.isUp()).toBe(true); expect(client.revision()).toBe(generation);
+    // Health is asked again rather than assumed, and it says the engine is there.
+    expect(await client.status(false)).toMatchObject({active:"server",server:{ok:true}});
+    held.resolve(reply({v:"2.1",model:MODEL,results:[result]}));
+    expect((await running).model).toEqual(MODEL);
+    expect(request.mock.calls.map(([operation]) => operation)).toEqual(["health", "score", "score", "health"]);
+  });
+
   it("rejects a late score after invalidate and advances on calibration changes", async () => {
     const { deferred } = await import("./scoreStore");
     const held = deferred<ReturnType<typeof reply>>();

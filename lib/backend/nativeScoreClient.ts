@@ -89,7 +89,12 @@ export class NativeScoreClient implements ScoreClient {
       // Nor does a port that closed (it has said so itself, see getScoreClient.ts) or a full
       // local queue change the runtime: nothing sent can answer after its port failed, so
       // the router may send the batch again under the same generation.
-      const transport = error instanceof NativeTransportError && error.code !== "native_timeout";
+      const transport = error instanceof NativeTransportError;
+      // One request that ran out of time on a live port says the host is slow, not gone.
+      // Health is read again before the next batch; the engine is not declared down for
+      // every tab, and the batches still running keep their answers.
+      if (transport && error.code === "native_timeout")
+        this.current = {...this.current, server:{...this.current.server, checkedAt:0}};
       if (!retryable && !transport && !signal?.aborted && generation === this.generation) this.invalidate();
       throw error;
     }
