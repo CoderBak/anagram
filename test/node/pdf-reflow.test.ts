@@ -539,6 +539,26 @@ describe("reflowPdf — front matter", () => {
     expect(blocks[1]).toMatchObject({ kind: "heading", text: heading.text, page: 2 });
     expect(blocks[2].text).toBe(body.join(" "));
   });
+
+  it("finds none on a run of pages that starts past the first page", () => {
+    // Scrolled deep, the reader holds page 7 with page 1 long recycled, and reflows each
+    // run of rendered pages on its own. A chapter opening there — a large centred heading
+    // over a centred epigraph — must read as it does after the page before it, not as a
+    // title with its authors under it.
+    const opening = [
+      { text: "A Centred Chapter Heading", x: 180, y: 100, size: 17, font: "title", width: 240 },
+      { text: "Not everything that counts can be counted,", x: 190, y: 140, size: 10, width: 230 },
+      { text: "and not everything counted counts.", x: 215, y: 154, size: 10, width: 180 },
+      { text: "William Bruce Cameron", x: 300, y: 172, size: 10, width: 110 },
+      ...["the chapter under it runs on for", "several lines of ordinary prose", "set flush to the left margin here."].map(
+        (text, i) => ({ text, x: 100, y: 210 + i * PITCH, width: 410 }),
+      ),
+    ];
+    const alone = reflowPdf([page(7, opening)]);
+    const after = reflowPdf([page(6, column(["the page before it is ordinary prose.", "It fills the page with lines."], 100)), page(7, opening)]);
+    expect(alone).toEqual(after.filter((b) => b.page === 7));
+    expect(alone[1]).toMatchObject({ kind: "paragraph", text: "Not everything that counts can be counted, and not everything counted counts.", apart: false });
+  });
 });
 
 describe("reflowPdf — furniture", () => {

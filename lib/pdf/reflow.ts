@@ -1431,7 +1431,11 @@ export function reflowPdf(pages: PdfPageText[]): ReflowBlock[] {
   // Heading classification comes BEFORE the cross-segment join, so a section title at
   // the top of a column can never be swallowed by the paragraph that ended above it.
   const vocab = vocabularyOf(lines.map((l) => l.text));
-  const front = frontMatterOf(perPage[0].filter((l) => !drop.has(l)), pages[0].height, bodySize);
+  // Only the document's own first page has a title block. The reader reflows each run of
+  // rendered pages on its own, and a run that starts deeper in opens on an ordinary page.
+  const front = pages[0].page === 1
+    ? frontMatterOf(perPage[0].filter((l) => !drop.has(l)), pages[0].height, bodySize)
+    : new Set<Line>();
   const drafts = segments(lines, front).flatMap((s) => paragraphsOf(s, vocab, front.has(s[0])));
   classifyHeadings(drafts, bodySize, displayFonts);
   markAsides(drafts, bodySize);
