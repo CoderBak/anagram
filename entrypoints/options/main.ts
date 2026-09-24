@@ -25,6 +25,10 @@ import { getFileAccess, openFileAccessSettings, requestFileAccess } from "../../
 import type { CacheCountReply } from "../../lib/messaging/protocol";
 import { mountComponentSettings, componentConnectionLabel } from "../../lib/ui/componentSettings";
 import { bindConfirmedToggle } from "../../lib/ui/confirmedToggle";
+import { bindSelect, bindToggle } from "../../lib/ui/boundSetting";
+import { createLogger } from "../../lib/log";
+
+const log = createLogger("options");
 
 const enabledEl = document.getElementById("enabled") as HTMLInputElement;
 const underlineEl = document.getElementById("underline") as HTMLSelectElement;
@@ -45,30 +49,6 @@ const accessStateEl = document.getElementById("accessState") as HTMLElement;
 const accessAllEl = document.getElementById("accessAll") as HTMLButtonElement;
 const accessWithdrawEl = document.getElementById("accessWithdraw") as HTMLButtonElement;
 const cacheCountEl = document.getElementById("cacheCount") as HTMLElement;
-
-function bindToggle(
-  el: HTMLInputElement,
-  item: { getValue(): Promise<boolean>; setValue(v: boolean): Promise<void> },
-): void {
-  void item.getValue().then((v) => {
-    el.checked = v;
-  });
-  el.addEventListener("change", () => {
-    void item.setValue(el.checked);
-  });
-}
-
-function bindSelect<T extends string>(
-  el: HTMLSelectElement,
-  item: { getValue(): Promise<T>; setValue(v: T): Promise<void> },
-): void {
-  void item.getValue().then((v) => {
-    el.value = v;
-  });
-  el.addEventListener("change", () => {
-    void item.setValue(el.value as T);
-  });
-}
 
 async function renderSites(): Promise<void> {
   const overrides = await settings.siteOverrides.getValue();
@@ -119,12 +99,17 @@ async function renderSites(): Promise<void> {
     remove.dataset.size = "xs";
     remove.textContent = t("optRemove");
     remove.addEventListener("click", () => {
-      void clearSiteOverride(host).then(renderSites);
+      // A removal that did not land leaves the row where it is, which is still the truth.
+      void clearSiteOverride(host).then(showSites, (error) => log.error("could not remove a site rule", error));
     });
     actions.appendChild(remove);
   }
   wrap.appendChild(table);
   sitesEl.appendChild(wrap);
+}
+
+function showSites(): void {
+  void renderSites().catch((error) => log.error("could not read the site rules", error));
 }
 
 /**
@@ -169,6 +154,12 @@ addRuleEl.addEventListener("submit", (e) => {
   }).then(() => {
     addHostEl.value = "";
     addHostEl.focus();
+  }, (error) => {
+    // Nothing was stored: keep what was typed, and say so where a bad host is reported.
+    log.error("could not save a site rule", error);
+    addNoteEl.hidden = true;
+    addErrorEl.textContent = t("optSaveFailed");
+    addErrorEl.hidden = false;
   });
 });
 addHostEl.addEventListener("input", () => {
@@ -250,8 +241,8 @@ bindSelect<"all" | "off">(underlineEl, {
   setValue: (v) => settings.showHighlights.setValue(v === "all"),
 });
 bindSelect(analysisScopeEl, settings.analysisScope);
-void renderSites();
-settings.siteOverrides.watch(() => void renderSites());
+showSites();
+settings.siteOverrides.watch(showSites);
 const version = browser.runtime.getManifest().version;
 versionEl.textContent = `v${version}`;
 
@@ -296,7 +287,7 @@ cacheMode.addEventListener("change", () => {
   const mode = cacheMode.value;
   let confirmedMode: "persistent" | "session" | undefined;
   cacheMode.disabled = true;
-  void browser.runtime.sendMessage({action: "setCacheMode", mode}).then((reply) => {
+  void browser.runtime.sendMessage({ action: ACTIONS.SET_CACHE_MODE, mode }).then((reply) => {
     if (reply?.mode === "persistent" || reply?.mode === "session") confirmedMode = reply.mode;
     cacheStatus.textContent = reply?.ok === true ? "" : t("optSaveFailed");
   }, () => { cacheStatus.textContent = t("optSaveFailed"); }).finally(() => {
