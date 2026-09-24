@@ -254,7 +254,10 @@ class RuntimeController:
         with self.lock:
             if self.state != "idle":
                 return False
-            self._ensure_idle()
+            # Idle is only published as a job's last step, so that job's thread
+            # may still be exiting; it holds no engine and no lease.
+            if self.closed:
+                raise RuntimeBusy("runtime is busy; retry after the current operation finishes")
             candidate, expected = self._find(self.selected_id), self.selected_version
             if candidate is None or not candidate.available:
                 candidate, expected = auto_candidate(self.candidates), None

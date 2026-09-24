@@ -363,6 +363,30 @@ class LifecycleTests(unittest.TestCase):
         controller.set_idle_unload(0)
         self.assertFalse(controller.unload_if_idle())
 
+    def test_first_score_after_an_idle_unload_wakes_while_the_unload_thread_exits(self):
+        controller, factory = self.make()
+        self.setup_complete(controller)
+        controller.set_idle_unload(60)
+        factory.clock.advance(61)
+        exiting, run = threading.Event(), controller._run
+        def lingering(work):
+            run(work)
+            exiting.wait(2)  # the unload is complete but its thread has not exited
+        controller._run = lingering
+        try:
+            self.assertTrue(controller.unload_if_idle())
+            unloading = controller.thread
+            del controller._run
+            deadline = time.monotonic() + 2
+            while controller.snapshot()["state"] != "idle" and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertTrue(unloading.is_alive())
+            controller.wake_and_wait(timeout=2)
+        finally:
+            exiting.set()
+        self.assertEqual(controller.snapshot()["state"], "ready")
+        self.assertEqual(factory.resident, 1)
+
     def test_idle_never_interrupts_benchmark_or_load(self):
         controller, factory = self.make()
         self.setup_complete(controller)
