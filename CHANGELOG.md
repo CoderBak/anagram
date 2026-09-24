@@ -27,6 +27,10 @@ local component and the installer all carry the same version.
 - Clicking Copy text in a chip's card no longer moves focus into the chip, which is hidden
   from screen readers; Chrome reported it as "Blocked aria-hidden on an element because
   its descendant retained focus".
+- A page that rewrites text it renders itself no longer ends up with a stale copy of the
+  old text. On X, "Show more" left the expanded post ending in its old preview, which was
+  then scored with it. Anagram now puts back any text node it split as soon as the page
+  writes to it, removes it or moves it, and every one when it leaves the page.
 
 ## [0.6.0] — 2026-09-22
 

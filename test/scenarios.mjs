@@ -2248,7 +2248,9 @@ async function sweep(page, steps = 6) {
     // still holds them — the difference this whole check is about.
     const sent = fixture.stats.texts.find((t) => t.includes("maintained by four people")) ?? "";
     const onPage = await p.evaluate(() => document.querySelector("pre").textContent.includes("> Right, so a package"));
-    // Three mutations, not one character of the unit changed by any of them.
+    // Four mutations, not one character of the unit changed by any of them. The removal is
+    // the one lib/dom/splits.ts reacts to: the <pre>'s text node was cut, with chips between
+    // its pieces, and a cut must stay standing when something else leaves the page.
     await p.evaluate(() => {
       const pre = document.querySelector("pre");
       const note = document.createElement("p");
@@ -2282,6 +2284,53 @@ async function sweep(page, steps = 6) {
         timesAsked() === askedBefore,
       JSON.stringify({ settled, before, after, askedBefore, askedAfter: timesAsked(), markersSent: sent.includes(">"), onPage }),
     );
+    await p.close();
+  }
+
+  // ---- a script that owns a pre-wrap post rewrites it (X's "Show more") ------------------
+  // The walker cuts preserved-whitespace text at its blank lines, and a framework writes to
+  // the one node it created. X's "Show more" wrote the whole post into that node and the
+  // pieces cut off it stayed on screen: the expanded post ended with a stale copy of its
+  // preview, and that copy was scored with it. lib/dom/splits.ts puts the page back.
+  {
+    const P1 = "FWHEAD The keeper's log for that winter runs to nearly four hundred pages, and almost none of it is about the light. It is about weather, mostly, and about the small economies of a household cut off from the mainland.";
+    const P2 = "He wrote in pencil because ink froze in the well, and he wrote every evening without exception, even on the night his youngest was born in the room below the lantern.";
+    const P3 = "FWTAIL The entry for that night is eleven words long, and it gives the wind, the barometer and the hour the glass went before anything else.";
+    const PREVIEW = `${P1}\n\n${P2.slice(0, 60)}`;
+    const FULL = `${P1}\n\n${P2}\n\n${P3}`;
+    PAGES["/framework-post.html"] = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>framework post fixture</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+<div id="post" style="white-space:pre-wrap"></div><button id="more">Show more</button>
+<script>
+  const node = document.createTextNode(${JSON.stringify(PREVIEW)});
+  document.getElementById("post").append(node);
+  document.getElementById("more").addEventListener("click", () => { node.nodeValue = ${JSON.stringify(FULL)}; });
+  window.__dropPost = () => node.remove();
+</script></body></html>`;
+    const p = await context.newPage();
+    await p.goto(server.url("/framework-post.html"), { waitUntil: "load" });
+    const chipped = (sel) => [...document.querySelectorAll(`#post ${sel}`)].some((h) => h.shadowRoot?.querySelector(".pill:not(.pending)"));
+    const settled = await p.waitForFunction(chipped, BADGE_SEL, { timeout: 15000 }).then(() => true).catch(() => false);
+    const cut = await p.evaluate(() => [...document.getElementById("post").childNodes].filter((n) => n.nodeType === Node.TEXT_NODE).length > 1);
+    await p.evaluate(() => document.getElementById("more").click());
+    const exact = await p
+      .waitForFunction((full) => document.getElementById("post").textContent === full, FULL, { timeout: 5000 })
+      .then(() => true)
+      .catch(() => false);
+    // The old chip stays up until the new verdict replaces it, so wait for the request itself.
+    const sentWhole = () => fixture.stats.texts.some((t) => t.includes("FWTAIL") && t.includes("FWHEAD"));
+    for (let i = 0; i < 60 && !sentWhole(); i++) await p.waitForTimeout(250);
+    const rescored = sentWhole() && (await p.waitForFunction(chipped, BADGE_SEL, { timeout: 15000 }).then(() => true).catch(() => false));
+    const shown = await p.evaluate(() => document.getElementById("post").textContent);
+    record(
+      "ui",
+      "a script rewriting the pre-wrap post it owns shows exactly its new text, and the new text is what gets scored",
+      settled && cut && exact && rescored,
+      JSON.stringify({ settled, cut, exact, rescored, tail: shown.slice(-70) }),
+    );
+    await p.evaluate(() => window.__dropPost());
+    await p.waitForTimeout(1500);
+    const after = await p.evaluate((sel) => ({ text: document.getElementById("post").textContent, chips: document.querySelectorAll(`#post ${sel}`).length }), BADGE_SEL);
+    record("ui", "…and removing its node leaves no piece of the post and no chip behind", after.text === "" && after.chips === 0, JSON.stringify(after));
     await p.close();
   }
 

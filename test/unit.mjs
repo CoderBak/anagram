@@ -175,6 +175,83 @@ const results = await page.evaluate(() => {
   const nAfter3 = sandbox.firstElementChild.childNodes.length;
   check("preserved-ws split is idempotent (no node growth on re-walk)", nAfter1 === nAfter3, `${nAfter1} -> ${nAfter3}`);
 
+  // 1b) The page keeps its own text node (lib/dom/splits.ts). A script that renders the page
+  //     writes to the node IT created; on X, "Show more" wrote the whole post into it while
+  //     the pieces the walker had cut off stayed on screen as a stale copy of the preview.
+  {
+    const textNodes = (el) => [...el.childNodes].filter((n) => n.nodeType === Node.TEXT_NODE).length;
+    const watch = () => {
+      const mo = new MutationObserver(() => {});
+      mo.observe(sandbox, { childList: true, subtree: true, characterData: true, characterDataOldValue: true });
+      return () => { const records = mo.takeRecords(); mo.disconnect(); return records; };
+    };
+    const preview = `${words(30)}\n\n${words(12)} and replies`;
+    const full = `${words(30)}\n\n${words(40)}\n\nFWTAIL ${words(20)}`;
+    const setUp = () => {
+      sandbox.innerHTML = `<div style="white-space:pre-wrap"><span id="own"></span></div><div id="elsewhere"></div>`;
+      const node = document.createTextNode(preview);
+      sandbox.querySelector("#own").append(node);
+      return { node, own: sandbox.querySelector("#own") };
+    };
+
+    let { node, own } = setUp();
+    let take = watch();
+    PW.collectUnits(sandbox);
+    PW.repairSplits(take());
+    check("the walker's own cut is left standing: the page's node is cut and reads the same",
+      textNodes(own) > 1 && own.textContent === preview, `${textNodes(own)} nodes`);
+
+    take = watch();
+    node.nodeValue = full; // what a framework does: write the new text into ITS node
+    PW.repairSplits(take());
+    check("a page writing to a node the walker cut shows exactly what it wrote, no stale piece of the old text",
+      own.textContent === full && textNodes(own) === 1 && own.firstChild === node, JSON.stringify(own.textContent.slice(-50)));
+
+    PW.collectUnits(sandbox);
+    take = watch();
+    node.nodeValue = node.data;
+    PW.repairSplits(take());
+    check("…even when it writes back the very text the cut left in it",
+      textNodes(own) === 1 && own.textContent === node.data, `${textNodes(own)} nodes`);
+
+    ({ node, own } = setUp());
+    PW.collectUnits(sandbox);
+    take = watch();
+    node.remove();
+    PW.repairSplits(take());
+    check("a page removing its node takes the pieces with it", own.textContent === "" && textNodes(own) === 0, JSON.stringify(own.textContent.slice(0, 40)));
+
+    ({ node, own } = setUp());
+    PW.collectUnits(sandbox);
+    const chip = document.createElement("span");
+    chip.setAttribute("data-anagram", "host");
+    node.after(chip); // a chip after the first paragraph, between the cut pieces
+    take = watch();
+    sandbox.querySelector("#elsewhere").append(document.createElement("i"));
+    sandbox.querySelector("#elsewhere").firstChild.remove(); // anything removed anywhere on the page
+    PW.repairSplits(take());
+    check("an unrelated removal leaves a cut standing, with our own chip between its pieces",
+      textNodes(own) > 1 && own.textContent === preview && own.contains(chip), `${textNodes(own)} nodes`);
+    chip.remove();
+
+    ({ node, own } = setUp());
+    PW.collectUnits(sandbox);
+    take = watch();
+    sandbox.querySelector("#elsewhere").append(node);
+    PW.repairSplits(take());
+    check("a page moving its node away gets its whole text back in it, and nothing stays behind",
+      node.data === preview && own.textContent === "" && sandbox.querySelector("#elsewhere").textContent === preview,
+      JSON.stringify([own.textContent.slice(0, 30), node.data.slice(-20)]));
+
+    ({ node, own } = setUp());
+    const before = sandbox.innerHTML;
+    PW.collectUnits(sandbox);
+    const wasCut = textNodes(own) > 1;
+    PW.restoreSplits();
+    check("when Anagram leaves a page, every node it cut is whole again",
+      wasCut && sandbox.innerHTML === before && own.firstChild === node && node.data === preview, `${textNodes(own)} nodes`);
+  }
+
   // 2) SVG exclusion fires despite lowercase nodeName; embedded title/style never leak.
   u = collect(`<p>${words(30)} <svg viewBox="0 0 10 10"><title>SVGLEAK</title><style>.q{fill:red}</style><text x="0" y="9">42</text></svg> ${words(25)}</p>`);
   check("inline SVG excluded, title/style text never leaks, sentence intact",

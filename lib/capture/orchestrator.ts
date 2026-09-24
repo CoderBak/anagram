@@ -20,6 +20,7 @@ import type { Unit, Lane } from "../types";
 import type { ModelInfo, ScoreBlock, ScoreResult, ScoreBatchRequest } from "../contract";
 import { CONTRACT_VERSION } from "../contract";
 import { collectUnits, type CollectOptions } from "../dom/walker";
+import { restoreSplits } from "../dom/splits";
 import { findMainContent, useReadability } from "../dom/mainContent";
 import { loadReadability } from "../lazy";
 import { partTextOf, MAX_UNIT_TEXT_CHARS } from "../dom/text";
@@ -1456,6 +1457,9 @@ export function createOrchestrator(
     backendDown = false;
     fab.setBackendDown(false);
     clearAllResults();
+    // Every text node the walker cut gets its text back: a page Anagram has left is the
+    // page its own script wrote.
+    restoreSplits();
     setHighlightsVisible(false);
     fab.unmount();
     unwatchUrl();

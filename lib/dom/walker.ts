@@ -78,6 +78,7 @@ import { WINDOW_CHARS } from "../capture/windows";
 // walk can say: which runs stand beside each other, and in whose voice.
 import { clearsFloor, fitsWindow, groupWords, modelSized, orphanHome } from "../plan/group";
 import { MARK_ATTR } from "../types";
+import { cutText } from "./splits";
 
 /**
  * Formula containers of every renderer in use: raw MathML, MathJax v2/v3, KaTeX,
@@ -466,7 +467,8 @@ export function collectUnits(
    * e-mail quotation starts or ends — a reply written under the quoted lines with no
    * blank line between them is still two voices. The node is split ONCE at each break
    * (idempotent — the resulting chunk nodes contain no further breaks) so parts stay
-   * whole-node spans.
+   * whole-node spans. Every cut is recorded (lib/dom/splits.ts), so the page gets its
+   * node back the moment it writes to it, removes it or moves it.
    */
   function splitPreservedText(tn: Text, ctx: Ctx): void {
     let node: Text = tn;
@@ -475,7 +477,7 @@ export function collectUnits(
       const m = PARA_GAP_RE.exec(s);
       const quoteAt = nextQuoteBoundary(s);
       if (quoteAt > 0 && (m === null || quoteAt < m.index)) {
-        const rest = node.splitText(quoteAt); // the boundary is a line start: never 0
+        const rest = cutText(node, quoteAt); // the boundary is a line start: never 0
         if ((node.textContent ?? "").trim()) pushNode(node, ctx);
         closeRun();
         node = rest;
@@ -486,7 +488,7 @@ export function collectUnits(
         return;
       }
       if (m.index > 0) {
-        const rest = node.splitText(m.index); // node keeps the paragraph text
+        const rest = cutText(node, m.index); // node keeps the paragraph text
         if ((node.textContent ?? "").trim()) pushNode(node, ctx);
         closeRun();
         node = rest; // rest begins with the gap → next iteration hits index 0
@@ -501,7 +503,7 @@ export function collectUnits(
       // gap in its own node, and re-splitting it forever fed an infinite
       // observe→rescan loop with one leaked empty text node per cycle.
       if (end >= s.length) return;
-      node = node.splitText(end);
+      node = cutText(node, end);
     }
   }
 

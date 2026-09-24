@@ -15,6 +15,7 @@
 // - removedNodes are surfaced so the orchestrator can purge dead units.
 import { MARK_ATTR, type Unit } from "../types";
 import { NO_SCORE_TAGS } from "../dom/tags";
+import { repairSplits } from "../dom/splits";
 
 export interface Observers {
   observeUnit(unit: Unit): void;
@@ -69,6 +70,8 @@ export function createObservers(opts: {
     childList: true,
     subtree: true,
     characterData: true,
+    // repairSplits tells the page's own writes from the walker's cuts by the old value.
+    characterDataOldValue: true,
     attributes: true,
     attributeFilter: WATCHED_ATTRS,
   };
@@ -95,6 +98,9 @@ export function createObservers(opts: {
   }
 
   function ingest(records: MutationRecord[]): void {
+    // First put back any page node the walker cut and the page has since changed, so what
+    // follows reads the page as its own script left it.
+    repairSplits(records);
     for (const rec of records) {
       // A childList record on the Document node means <html> itself came or went.
       if (rec.type === "childList" && rec.target.nodeType === Node.DOCUMENT_NODE) {
