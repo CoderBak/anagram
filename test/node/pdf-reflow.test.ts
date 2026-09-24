@@ -94,6 +94,31 @@ describe("reflowPdf — single column", () => {
     ]);
   });
 
+  it("reads an abstract inset on both sides as one paragraph above a full-width body", () => {
+    // A one-column paper sets its abstract narrower than the text under it. Measured against
+    // the body, every abstract line stopped short, so each one that happened to begin with a
+    // capital ("For each task", "Monte Carlo") opened a paragraph mid-sentence (arXiv
+    // 2609.20794, 1312.6114, 1412.6980, 2106.09685).
+    const abstract = [
+      "for each problem the benchmark builds reference posteriors",
+      "For each task, we construct them with established but heavy",
+      "procedures such as rejection sampling and Markov chain",
+      "Monte Carlo, enabling a direct assessment of whether solvers",
+      "recover the full set of solutions rather than one sample.",
+    ];
+    const body = Array.from({ length: 8 }, (_, i) => `the body of the paper runs to the full measure of its column, line ${i}`);
+    const heading = 100 + abstract.length * PITCH + 24;
+    const blocks = reflowPdf([
+      page(1, [
+        ...column(abstract, 100, 108, 396),
+        { text: "1 Introduction", x: 72, y: heading, size: 13, font: "display", width: 90 },
+        ...column(body, heading + 24, 72, 460),
+      ]),
+    ]);
+    expect(blocks[0].text).toBe(abstract.join(" "));
+    expect(blocks[1]).toMatchObject({ kind: "heading", text: "1 Introduction" });
+  });
+
   it("keeps a superscript on the line it was raised from", () => {
     const blocks = reflowPdf([
       page(1, [

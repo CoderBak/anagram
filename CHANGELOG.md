@@ -31,6 +31,9 @@ local component and the installer all carry the same version.
   old text. On X, "Show more" left the expanded post ending in its old preview, which was
   then scored with it. Anagram now puts back any text node it split as soon as the page
   writes to it, removes it or moves it, and every one when it leaves the page.
+- The PDF reader no longer breaks an abstract that is set narrower than the body text into
+  pieces mid-sentence (single-column papers such as arXiv 2609.20794 and LoRA). A line is
+  now measured against the stretch of prose it is set in, not the whole column.
 
 ## [0.6.0] — 2026-09-22
 

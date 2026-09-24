@@ -1153,9 +1153,26 @@ function paragraphsOf(lines: Line[], vocab: Vocabulary, front: boolean): Draft[]
     if (d > 0) pitches.push(d);
   }
   const pitch = median(pitches) || median(lines.map((l) => l.size)) * 1.2 || 1;
-  const leftEdge = percentile(lines.map((l) => l.x0), 0.15);
-  const rightEdge = percentile(lines.map((l) => l.x1), 0.85);
-  const measure = Math.max(rightEdge - leftEdge, 1);
+  // The measure is that of the stretch a line is set in, between two vertical gaps, not of
+  // the whole column: a one-column paper sets its abstract inset on both sides above a
+  // full-width body, and measured against the body every abstract line "stops short".
+  // A stretch too short to have a measure of its own keeps the column's.
+  const stretch: Line[][] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (i === 0 || lines[i].y - lines[i - 1].y > pitch * PARA_GAP) stretch.push([]);
+    stretch[stretch.length - 1].push(lines[i]);
+  }
+  const edgesOf = (of: Line[]) => {
+    const leftEdge = percentile(of.map((l) => l.x0), 0.15);
+    const rightEdge = percentile(of.map((l) => l.x1), 0.85);
+    return { leftEdge, rightEdge, measure: Math.max(rightEdge - leftEdge, 1) };
+  };
+  const column = edgesOf(lines);
+  const edges = new Map<Line, ReturnType<typeof edgesOf>>();
+  for (const s of stretch) {
+    const e = setOnItsOwnMeasure(s) ? edgesOf(s) : column;
+    for (const l of s) edges.set(l, e);
+  }
   /** Which lines open a list item — decided once, because a dash asks about the line above. */
   const opens = lines.map((line, i) => {
     if (LIST_MARKER.test(line.text)) return true;
@@ -1171,6 +1188,7 @@ function paragraphsOf(lines: Line[], vocab: Vocabulary, front: boolean): Draft[]
     let t = traced();
     let previous: Line | null = null;
     for (const l of group) {
+      const { rightEdge, measure } = edges.get(previous ?? l) ?? column;
       const short = previous !== null && previous.x1 < rightEdge - measure * HYPHEN_MEASURE;
       appendLine(t, { text: l.text, runs: l.runs }, vocab, { short });
       previous = l;
@@ -1190,7 +1208,7 @@ function paragraphsOf(lines: Line[], vocab: Vocabulary, front: boolean): Draft[]
         start: segment,
         size: median(group.map((l) => l.size)),
         font: widest.font,
-        endsShort: last.x1 < rightEdge - last.size * SHORT_LINE,
+        endsShort: last.x1 < (edges.get(last) ?? column).rightEdge - last.size * SHORT_LINE,
         front,
       });
     }
@@ -1203,6 +1221,7 @@ function paragraphsOf(lines: Line[], vocab: Vocabulary, front: boolean): Draft[]
     // geometry says — the hyphen is the typesetter telling us so.
     if (i > 0 && !/[-‐­]$/.test(lines[i - 1].text)) {
       const prev = lines[i - 1];
+      const { leftEdge, rightEdge } = edges.get(prev) ?? column;
       const gap = line.y - prev.y;
       // A list item's second line is ranged under its text, past the marker, and that
       // hanging indent is not a new paragraph — it is the same item still being read.
@@ -1235,6 +1254,26 @@ function paragraphsOf(lines: Line[], vocab: Vocabulary, front: boolean): Draft[]
   }
   flush();
   return out;
+}
+
+/**
+ * Is this stretch of lines prose set to a measure of its own — an inset abstract, a block
+ * quote — rather than a table or a figure's labels? Enough lines to have a measure, most
+ * of them starting and ending together, and no line holding a gap between two of its runs
+ * wider than an em, which is what a table's cells always leave and prose never does.
+ */
+function setOnItsOwnMeasure(s: Line[]): boolean {
+  if (s.length < FLUSH_RUN) return false;
+  const left = percentile(s.map((l) => l.x0), 0.15);
+  const right = percentile(s.map((l) => l.x1), 0.85);
+  let flush = 0;
+  for (const l of s) {
+    for (let k = 1; k < l.items.length; k++) {
+      if (l.items[k].x - (l.items[k - 1].x + l.items[k - 1].width) > l.size) return false;
+    }
+    if (Math.abs(l.x0 - left) <= l.size * FLUSH_TOL && l.x1 >= right - l.size * SHORT_LINE) flush++;
+  }
+  return flush * 2 > s.length;
 }
 
 /**
