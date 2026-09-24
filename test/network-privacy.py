@@ -1,7 +1,8 @@
 """Offline source-policy checks; stdlib only, no inference imports or downloads.
 
-These regressions pin our own model-loading policy. They are not a sandbox or
-an audit of the transitive dependencies; see docs/network-privacy.md.
+These regressions pin our own model-loading policy, the "offline mode" that
+PRIVACY.md promises. They are not a sandbox or an audit of the transitive
+dependencies.
 """
 import ast
 from pathlib import Path

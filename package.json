@@ -27,8 +27,12 @@
     "test:installer": "sh test/installer.sh",
     "test:runtime": "npm run build && node test/runtime.mjs",
     "test:native": "npm run build && node test/native-browser.mjs",
+    "test:paste": "npm run build && node test/paste.mjs",
+    "test:pdf-viewer": "npm run build && node test/pdf-viewer.mjs",
+    "test:pdf-install": "npm run build && node test/pdf-install-flow.mjs",
     "test:matrix": "node test/matrix.mjs",
-    "test:backend": "sh test/backend.sh"
+    "test:backend": "sh test/backend.sh",
+    "test:network-privacy": "python3 test/network-privacy.py"
   },
   "devDependencies": {
     "@floating-ui/dom": "^1.8.0",

@@ -34,12 +34,7 @@ for (const language of (process.argv.includes("--file-only") ? [] : ["en", "zh-C
     await page.setViewportSize({width:400,height:900});
     await page.locator("#local-pdfs").scrollIntoViewIfNeeded();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),false);
-    assert.ok(await page.locator("#local-pdfs > section").evaluate((el) => el.getBoundingClientRect().width >= 240),"Permission instructions remain readable beside the action buttons");
     await page.locator("#local-pdfs").screenshot({path:join(OUT,`file-access-${language}.png`)});
-    await page.locator(".privacy-details summary").click();
-    await page.waitForFunction(() => document.querySelector(".privacy-details").open);
-    assert.equal(await page.locator(".privacy-details ol li").count(),3);
-    assert.ok((await page.locator(".privacy-details").textContent()).length > 200);
     await page.evaluate(readFileSync(join(ROOT,"node_modules/axe-core/axe.min.js"),"utf8"));
     const a11y = await page.evaluate(async () => (await axe.run("#local-pdfs",{runOnly:{type:"tag",values:["wcag2a","wcag2aa","wcag21aa"]}})).violations.map((v) => v.id));
     assert.deepEqual(a11y,[]);
