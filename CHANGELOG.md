@@ -12,6 +12,9 @@ local component and the installer all carry the same version.
 - Automatic PDF opening no longer adds its webRequest listener before any site is
   granted. Chrome refused it with "You need to request host permissions in the manifest
   file…" and the listener stayed dead until the worker restarted, even after a grant.
+- Clicking Copy text in a chip's card no longer moves focus into the chip, which is hidden
+  from screen readers; Chrome reported it as "Blocked aria-hidden on an element because
+  its descendant retained focus".
 
 ## [0.6.0] — 2026-09-22
 

@@ -510,6 +510,9 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
       `<span class="caret"></span>`;
 
     const copy = card.querySelector(".act.copy") as HTMLButtonElement;
+    // tabindex="-1" keeps the keyboard out; a press would still focus the button in Chrome,
+    // which then un-hides the host and warns "Blocked aria-hidden on an element…".
+    copy.addEventListener("mousedown", (e) => e.preventDefault());
     copy.addEventListener("click", (e) => {
       e.stopPropagation();
       copyText(unit.text, copy);

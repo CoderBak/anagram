@@ -888,6 +888,11 @@ let fixturePage = null;
   if (cardHost) {
     await still(page, cardHost);
     await axeScan(page, "chip detail card (pinned open)", cardHost);
+    // Unfocusable includes the pointer: focus inside the aria-hidden host is what Chrome
+    // reports as "Blocked aria-hidden on an element because its descendant retained focus".
+    await page.locator(`${cardHost} .act.copy`).click();
+    const focused = await page.evaluate((sel) => document.querySelector(sel).shadowRoot.activeElement?.className ?? null, cardHost);
+    record("keyboard", "chip card: clicking Copy text leaves focus outside the aria-hidden chip", focused === null, focused ?? "");
   } else {
     record("axe", "chip detail card (pinned open)", null, "no flagged chip to pin");
   }
