@@ -9,6 +9,7 @@ import copy
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import signal
 import shutil
@@ -538,8 +539,14 @@ class NativeComponent:
             self._payload(payload, ("confirm",), ("confirm",))
             if payload["confirm"] is not True:
                 raise ComponentError("invalid_request", "Explicit confirmation is required", 422)
-        elif op in ("models.download", "engine.stop", "engine.resume", "component.update"):
+        elif op in ("models.download", "engine.stop", "engine.resume"):
             self._payload(payload)
+        elif op == "component.update":
+            # The extension names its own release so the engine never overtakes it.
+            self._payload(payload, ("version",))
+            if "version" in payload and not (isinstance(payload["version"], str) and re.fullmatch(
+                    r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", payload["version"])):
+                raise ComponentError("invalid_request", "Invalid extension version", 422)
         else:
             raise ComponentError("invalid_request", "Unknown native operation", 422)
         with self.lock:
@@ -594,10 +601,11 @@ class NativeComponent:
                 self.operation = {"name": name, "status": "running", "receipt": None}
                 self.state = {"delete_models": "loading", "update": "updating", "uninstall": "uninstalling"}[name]
                 self.runtime_draining = self.controller is not None
-                self._launch(lambda: self._maintenance(name), name + "_failed")
+                version = payload.get("version")
+                self._launch(lambda: self._maintenance(name, version), name + "_failed")
             return 202, self.status()
 
-    def _maintenance(self, name):
+    def _maintenance(self, name, version=None):
         self._stop_runtime()
         if name == "delete_models":
             plain_tree(self.home / "models")
@@ -614,7 +622,7 @@ class NativeComponent:
                 self.download.update(status="idle", bytes_received=0, file=None, error=None)
                 self.state = "needs_models"
         else:
-            result = self.helper(name)
+            result = self.helper(name, version)
             if result.get("status") == "scheduled":
                 with self.lock:
                     self.operation.update(status="scheduled", receipt=None)
@@ -629,7 +637,7 @@ class NativeComponent:
         with self.lock:
             self.operation.update(status="completed", receipt=secrets.token_hex(16))
 
-    def _run_helper(self, name):
+    def _run_helper(self, name, version=None):
         validate_home(self.home)
         app = self.home / "app"
         helper = app / "native_registration.py"
@@ -639,6 +647,8 @@ class NativeComponent:
                if key not in {"PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP"}}
         env.update(PYTHONNOUSERSITE="1", PYTHONSAFEPATH="1")
         command = [sys.executable, "-I", str(helper), name]
+        if version:
+            command += ["--release", version]
         options = {}
         if os.name == "posix":
             fd = self.home_lock.maintenance_fd()

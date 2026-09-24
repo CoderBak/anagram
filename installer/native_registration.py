@@ -24,6 +24,8 @@ HOST = "dev.coderbak.anagram"
 FIREFOX_ID = "anagram@coderbak.dev"
 INVENTORY = "native-registration.json"
 OWNER = ".native-component.json"
+RELEASES = "https://github.com/CoderBak/anagram/releases"
+RELEASE_VERSION = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)")
 
 
 def safe_path(path: Path, boundary: Path) -> Path:
@@ -277,7 +279,7 @@ def unregister(home, *, user_home=None, platform=None, registry=None):
         raise
 
 
-def schedule_windows(home, operation):
+def schedule_windows(home, operation, release=None):
     data = inventory(home, Path.home().resolve(), sys.platform, required=True)
     language = data["registrations"][0]["language"] if data["registrations"] else "en"
     worker = safe_path(home / "app/maintenance.ps1", home)
@@ -290,7 +292,7 @@ def schedule_windows(home, operation):
     powershell = Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe"
     subprocess.Popen([str(powershell), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(copied),
                       "-Operation", operation, "-ComponentHome", str(home), "-HostPid", str(os.getppid()),
-                      "-Receipt", str(receipt), "-Language", language],
+                      "-Receipt", str(receipt), "-Language", language, *(["-Release", release] if release else [])],
                      creationflags=subprocess.CREATE_NEW_CONSOLE, close_fds=True,
                      stdin=None, stdout=None, stderr=None)
     return {"status": "scheduled", "receipt": str(receipt),
@@ -329,10 +331,13 @@ def maintenance_lock(home, inherited_fd=None):
             os.close(fd)  # never explicitly unlock an open description inherited by children
 
 
-def update(home, worker=False, lock_fd=None):
+def update(home, worker=False, lock_fd=None, release=None):
+    """Install `release` (the requesting extension's version), or the latest release."""
+    if release is not None and not (isinstance(release, str) and RELEASE_VERSION.fullmatch(release)):
+        raise ValueError("Release version must be MAJOR.MINOR.PATCH")
     home = owned_home(home, require_owner=True)
     if sys.platform == "win32" and not worker:
-        return schedule_windows(home, "update")
+        return schedule_windows(home, "update", release)
     with maintenance_lock(home, lock_fd) as fd:
         data = inventory(home, Path.home().resolve(), sys.platform, required=True)
         if not data["registrations"]:
@@ -350,6 +355,8 @@ def update(home, worker=False, lock_fd=None):
             "HOME", "USERPROFILE", "LOCALAPPDATA", "APPDATA", "SystemRoot", "WINDIR", "TEMP", "TMP", "LANG",
             "http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "no_proxy", "NO_PROXY", "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE")}
         env.update(ANAGRAM_HOME=str(home), ANAGRAM_BROWSER=entry["browser"], ANAGRAM_EXTENSION_ID=entry["extension_id"], ANAGRAM_LANG=entry["language"])
+        if release:
+            env["ANAGRAM_RELEASE_URL"] = RELEASES + "/download/v" + release
         if fd is not None:
             env["ANAGRAM_MAINTENANCE_FD"] = str(fd)
         env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
@@ -382,6 +389,7 @@ def main():
     parser.add_argument("--language", default="en", choices=["en", "zh_CN"])
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--lock-fd", type=int, help=argparse.SUPPRESS)
+    parser.add_argument("--release", help=argparse.SUPPRESS)
     args = parser.parse_args()
     try:
         if args.operation == "register":
@@ -389,7 +397,7 @@ def main():
         elif args.operation == "unregister":
             unregister(args.home)
         elif args.operation == "update":
-            print(json.dumps(update(args.home, args.worker, args.lock_fd)))
+            print(json.dumps(update(args.home, args.worker, args.lock_fd, args.release)))
         elif args.operation == "uninstall":
             print(json.dumps(uninstall(args.home, args.lock_fd)))
         if args.operation not in ("update", "uninstall"):

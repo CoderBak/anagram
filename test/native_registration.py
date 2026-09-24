@@ -162,6 +162,19 @@ class RegistrationTests(unittest.TestCase):
                                'extension_id':ID, 'language':'zh_CN'})
         run.assert_not_called()
 
+    def test_windows_update_hands_the_pinned_release_to_the_worker(self):
+        self.register(platform='win32')
+        (self.home / 'app/maintenance.ps1').write_text('# inert audit fixture')
+        job = self.user / 'job'; job.mkdir()
+        with patch.object(reg.Path, 'home', return_value=self.user), patch.object(reg.sys, 'platform', 'win32'), \
+                patch.dict(os.environ, {'SystemRoot': str(self.user)}), patch.object(reg, 'subprocess') as process, \
+                patch.object(reg.tempfile, 'mkdtemp', return_value=str(job)):
+            reg.update(self.home, release='0.6.1')
+            reg.update(self.home)
+        pinned, latest = [call.args[0] for call in process.Popen.call_args_list]
+        self.assertEqual(pinned[pinned.index('-Release') + 1], '0.6.1')
+        self.assertNotIn('-Release', latest)
+
     @unittest.skipIf(os.name == 'nt', 'Windows uses the detached maintenance worker')
     def test_uninstall_removes_only_owned_home_and_manifest(self):
         self.register(platform=sys.platform)
@@ -248,6 +261,25 @@ fcntl.flock(9, fcntl.LOCK_EX | fcntl.LOCK_NB)
             self.assertEqual(kwargs['env']['ANAGRAM_MAINTENANCE_FD'], str(fd))
             self.assertEqual(kwargs['pass_fds'], (fd,))
             with self.assertRaises(self.ComponentError): self.HomeLock(self.home)
+        finally:
+            lock.close()
+
+    def test_update_pins_only_a_strict_release_version(self):
+        lock = self.HomeLock(self.home)
+        try:
+            fd = lock.maintenance_fd()
+            with patch.object(reg.Path, 'home', return_value=self.user), patch.object(reg.subprocess, 'run') as run, \
+                    patch.dict(os.environ, {'ANAGRAM_RELEASE_URL': 'https://example.com/elsewhere'}):
+                reg.update(self.home, lock_fd=fd)
+                self.assertNotIn('ANAGRAM_RELEASE_URL', run.call_args.kwargs['env'])
+                reg.update(self.home, lock_fd=fd, release='0.6.1')
+                self.assertEqual(run.call_args.kwargs['env']['ANAGRAM_RELEASE_URL'],
+                                 'https://github.com/CoderBak/anagram/releases/download/v0.6.1')
+                run.reset_mock()
+                for release in ('v0.6.1', '0.6', '0.6.1-rc.1', '01.6.1', '0.6.1\n', '\u0660.\u0666.\u0661', '0.6.1/../x', 6):
+                    with self.subTest(release=release), self.assertRaisesRegex(ValueError, 'MAJOR.MINOR.PATCH'):
+                        reg.update(self.home, lock_fd=fd, release=release)
+                run.assert_not_called()
         finally:
             lock.close()
 

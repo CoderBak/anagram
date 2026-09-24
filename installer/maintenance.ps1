@@ -4,7 +4,9 @@ param(
   [Parameter(Mandatory=$true)][string]$ComponentHome,
   [Parameter(Mandatory=$true)][int]$HostPid,
   [Parameter(Mandatory=$true)][string]$Receipt,
-  [ValidateSet('en','zh_CN')][string]$Language = 'en'
+  [ValidateSet('en','zh_CN')][string]$Language = 'en',
+  # An update requested by the extension installs the extension's own release.
+  [ValidatePattern('^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$')][string]$Release
 )
 $ErrorActionPreference = 'Stop'
 $homeLock = $null
@@ -109,7 +111,9 @@ try {
     if ((Get-Item -LiteralPath $installer -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Installer is a reparse point' }
     # Stay in this process so the installer can validate and borrow the actual
     # locked FileStream. A flag/environment variable never bypasses its lock.
-    & $installer -ComponentHome $ComponentHome -Browser $plan.browser -ExtensionId $plan.extension_id -Language $plan.language -MaintenanceLock $homeLock
+    $pinned = @{}
+    if ($Release) { $pinned.ReleaseUrl = "https://github.com/CoderBak/anagram/releases/download/v$Release" }
+    & $installer -ComponentHome $ComponentHome -Browser $plan.browser -ExtensionId $plan.extension_id -Language $plan.language -MaintenanceLock $homeLock @pinned
   } else {
     Say 'Removing owned browser registrations and component files…' '正在移除属于 Anagram 的浏览器注册和组件文件…'
     & $python -I $helper unregister --home $ComponentHome

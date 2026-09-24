@@ -957,8 +957,8 @@ class LifecycleTests(unittest.TestCase):
 
     def test_maintenance_only_completes_after_helper_success(self):
         entered, release = threading.Event(), threading.Event()
-        def helper(name):
-            self.assertEqual(name, "uninstall")
+        def helper(name, version):
+            self.assertEqual((name, version), ("uninstall", None))
             entered.set()
             release.wait(3)
             return {"status": "completed"}
@@ -976,7 +976,7 @@ class LifecycleTests(unittest.TestCase):
         self.assertTrue(status["operation"]["receipt"])
 
     def test_scheduled_windows_maintenance_never_mints_completion_receipt(self):
-        component = self.make(helper=lambda _: {"status": "scheduled"})
+        component = self.make(helper=lambda *_: {"status": "scheduled"})
         self.first_run(component)
         component.handle("component.uninstall", {"confirm": True})
         self.finish(component)
@@ -984,8 +984,37 @@ class LifecycleTests(unittest.TestCase):
         self.assertIsNone(component.status()["operation"]["receipt"])
         self.assertTrue(component.exit_requested.is_set())
 
+    def test_update_hands_only_a_strict_extension_version_to_the_helper(self):
+        calls = []
+        component = self.make(helper=lambda *args: calls.append(args) or {"status": "completed"})
+        self.first_run(component)
+        for payload in ({"version": "v0.6.1"}, {"version": "0.6"}, {"version": "0.6.1-rc.1"}, {"version": "01.6.1"},
+                        {"version": "0.6.1\n"}, {"version": "\u0660.\u0666.\u0661"}, {"version": 6}, {"version": None},
+                        {"version": "0.6.1", "url": "https://example.com"}, {"url": "https://example.com"}):
+            with self.subTest(payload=payload), self.assertRaises(ComponentError) as caught:
+                component.handle("component.update", payload)
+            self.assertEqual((caught.exception.code, caught.exception.status), ("invalid_request", 422))
+        component.handle("component.update", {"version": "0.6.1"})
+        self.finish(component)
+        self.assertEqual(calls, [("update", "0.6.1")])
+
+    @unittest.skipIf(os.name == "nt", "POSIX maintenance helper")
+    def test_helper_command_carries_the_pinned_release(self):
+        app = self.home / "app"
+        app.mkdir()
+        (app / "native_registration.py").write_text(
+            "import json,pathlib,sys\npathlib.Path(sys.argv[-1], 'argv.json').write_text(json.dumps(sys.argv[1:]))\n"
+            "print(json.dumps({'status': 'completed'}))\n")
+        component = self.make()
+        self.assertEqual(component._run_helper("update", "0.6.1"), {"status": "completed"})
+        argv = json.loads((self.home / "argv.json").read_text())
+        self.assertEqual(argv[:3], ["update", "--release", "0.6.1"])
+        self.assertEqual(argv[-2:], ["--home", str(self.home.resolve())])
+        component._run_helper("update")
+        self.assertNotIn("--release", json.loads((self.home / "argv.json").read_text()))
+
     def test_completed_update_reconnects_without_a_settings_status_poll(self):
-        component = self.make(helper=lambda _: {"status": "completed"})
+        component = self.make(helper=lambda *_: {"status": "completed"})
         self.first_run(component)
         component.handle("component.update", {})
         self.finish(component)

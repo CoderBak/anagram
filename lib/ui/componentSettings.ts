@@ -284,8 +284,12 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     pending = true; buttons();
     const ac = new AbortController(); controller = ac;
     try {
-      const payload = op === "engine.settings" ? {idle_unload_s: Number(idleSelect.value)} : op === "models.delete" || op === "component.uninstall" ? {confirm: true} : undefined;
-      const reply = await requestComponent(op ?? "status", payload, ac.signal);
+      const payload = op === "engine.settings" ? {idle_unload_s: Number(idleSelect.value)} : op === "models.delete" || op === "component.uninstall" ? {confirm: true}
+        : op === "component.update" ? {version: browser.runtime.getManifest().version} : undefined;
+      let reply = await requestComponent(op ?? "status", payload, ac.signal);
+      // A component older than pinned updates refuses the version; it can only update to the latest release.
+      if (op === "component.update" && reply.kind === "rejected" && reply.code === "invalid_request" && !ac.signal.aborted)
+        reply = await requestComponent(op, undefined, ac.signal);
       if (destroyed || ac.signal.aborted) return;
       if (reply.kind === "rejected" && op) {
         pausing = false; awaitingUpdate = awaitingUninstall = false;

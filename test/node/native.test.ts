@@ -113,6 +113,14 @@ describe("privileged native operation boundary", () => {
     expect(validPageRequest("runtime.benchmark",{budget_s:30})).toBe(true);
     expect(validPageRequest("runtime.benchmark",{budget_s:Infinity})).toBe(false);
   });
+  it("pins an update only to a strict release version", () => {
+    expect(validPageRequest("component.update",{})).toBe(true);
+    expect(validPageRequest("component.update",{version:"0.6.1"})).toBe(true);
+    expect(validPageRequest("component.update",{version:"10.0.12"})).toBe(true);
+    for (const version of ["v0.6.1","0.6","0.6.1.2","0.6.1-rc.1","0.6.1+build","01.6.1","0.6.1 ","0.6.1\n","../0.6.1","",6,null])
+      expect(validPageRequest("component.update",{version})).toBe(false);
+    expect(validPageRequest("component.update",{version:"0.6.1",url:"https://evil.example"})).toBe(false);
+  });
   it("accepts only an empty download payload: the profile is chosen in the terminal", () => {
     expect(validPageRequest("models.download",{})).toBe(true);
     for (const payload of [{profile:"recommended"}, {profile:"expanded"}, {profile:"all"}, {url:"https://example.com"},

@@ -46,11 +46,16 @@ export function trustedNativePage(sender: {id?: string; url?: string; frameId?: 
   } catch { return false; }
 }
 
+/** A release version as `npm run bump` writes it; an update installs that release. */
+const RELEASE_VERSION = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
+
 /** Fixed commands only. No executable names, filesystem paths or download URLs. */
 export function validPageRequest(op: unknown, payload: unknown): op is ComponentOperation {
   if (typeof op !== "string" || !PAGE_OPERATIONS.includes(op as ComponentOperation) || !isRecord(payload)) return false;
   const keys = Object.keys(payload);
   if (op === "models.delete" || op === "component.uninstall") return keys.length === 1 && payload.confirm === true;
+  if (op === "component.update") return keys.length === 0 ||
+    (keys.length === 1 && typeof payload.version === "string" && RELEASE_VERSION.test(payload.version));
   if (op === "runtime.config") return keys.length === 1 && typeof payload.id === "string" && payload.id.length > 0 && payload.id.length <= 120;
   if (op === "runtime.benchmark") return keys.length === 1 && Number.isInteger(payload.budget_s) && (payload.budget_s as number) >= 10 && (payload.budget_s as number) <= 30;
   if (op === "engine.settings") return keys.length === 1 && Number.isInteger(payload.idle_unload_s) &&
