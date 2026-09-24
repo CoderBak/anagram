@@ -24,12 +24,13 @@ import threading
 import time
 import tomllib
 from pathlib import Path
+from typing import Annotated
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from scoring import score_texts
 
-CONTRACT_VERSION = "2.1"
+CONTRACT_VERSION = "2.2"
 CONTRACT_MAJOR = CONTRACT_VERSION.split(".")[0]
 MODEL_ID = "editlens_roberta-large"
 PIPELINE_REV = "pre1"
@@ -47,6 +48,8 @@ BUCKET_LABELS = ["human", "lightly-edited", "heavily-edited", "ai-generated"]
 SUPPORTED_LANGUAGES = ["en"]
 MAX_BLOCKS = 256
 MAX_TEXT_CHARS = 16000
+MAX_TOKEN_TEXTS = 512
+MAX_TOKEN_CHARS = 256000
 MAX_ID_CHARS = 64
 log = logging.getLogger("anagramd")
 
@@ -345,10 +348,9 @@ class Block(BaseModel):
     text: str = Field(default="", max_length=MAX_TEXT_CHARS)
 
 
-class ScoreRequest(BaseModel):
+class ContractRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
     v: str = Field(max_length=16)
-    blocks: list[Block] = Field(default_factory=list, max_length=MAX_BLOCKS)
 
     @field_validator("v")
     @classmethod
@@ -357,6 +359,10 @@ class ScoreRequest(BaseModel):
             raise ValueError(f"contract {v} is not {CONTRACT_MAJOR}.x")
         return v
 
+
+class ScoreRequest(ContractRequest):
+    blocks: list[Block] = Field(default_factory=list, max_length=MAX_BLOCKS)
+
     @model_validator(mode="after")
     def _unique_ids(self) -> "ScoreRequest":
         seen: set[str] = set()
@@ -364,6 +370,18 @@ class ScoreRequest(BaseModel):
             if b.id in seen:
                 raise ValueError(f"duplicate block id {b.id!r}")
             seen.add(b.id)
+        return self
+
+
+class TokensRequest(ContractRequest):
+    texts: list[Annotated[str, Field(max_length=MAX_TEXT_CHARS)]] = Field(
+        default_factory=list, max_length=MAX_TOKEN_TEXTS
+    )
+
+    @model_validator(mode="after")
+    def _total_chars(self) -> "TokensRequest":
+        if sum(len(text) for text in self.texts) > MAX_TOKEN_CHARS:
+            raise ValueError(f"texts exceed {MAX_TOKEN_CHARS} characters in total")
         return self
 
 
@@ -468,3 +486,20 @@ def score_with_engine(req: ScoreRequest, engine) -> dict:
         "model": engine.info()["model"],
         "results": results,
     }
+
+
+def tokens_with_engine(req: TokensRequest, engine) -> dict:
+    """Count each text's tokens after scoring's cleaning, without the two special
+    tokens a pass adds; ``window`` is the text tokens one pass holds.
+
+    Runs beside a forward pass and never takes engine.lock. The warm-up score
+    before an engine turns ready has settled the fast tokenizer's truncation and
+    padding, so a call made like score_texts' own only reads them and encodes
+    under a shared borrow of the Rust tokenizer.
+    """
+    window = engine.max_length - 2
+    cleaned = [clean_text(text, engine.emoji) for text in req.texts]
+    if not cleaned:
+        return {"counts": [], "window": window}
+    ids = engine.tok(cleaned, add_special_tokens=False, truncation=False)["input_ids"]
+    return {"counts": [len(row) for row in ids], "window": window}

@@ -272,7 +272,7 @@ class RuntimeController:
             return True
 
     def wake_and_wait(self, timeout=25):
-        """Only score workers wait; status/health remain passive and responsive."""
+        """Only score and token workers wait; status/health remain passive and responsive."""
         with self.ready_condition:
             self.wake()
             target = self.idle_wake_thread

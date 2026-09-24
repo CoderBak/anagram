@@ -248,5 +248,31 @@ for index, payload in enumerate(bad_requests):
     else:
         check(f"invalid score request {index} is refused before tokenization", False)
 check("contract 2.x score request remains valid", engine_api.ScoreRequest.model_validate({"v":"2.1","blocks":[]}).v == "2.1")
+
+bad_requests = [
+    {"v":"3.0","texts":[]},
+    {"texts":["a"]},
+    {"v":"2.2","texts":"a"},
+    {"v":"2.2","texts":["a", 1]},
+    {"v":"2.2","texts":["a", None]},
+    {"v":"2.2","texts":[["a"]]},
+    {"v":"2.2","texts":["a" * 16001]},
+    {"v":"2.2","texts":["a"] * 513},
+    {"v":"2.2","texts":["a" * 16000] * 16 + ["a"]},
+]
+for index, payload in enumerate(bad_requests):
+    try:
+        engine_api.TokensRequest.model_validate(payload)
+    except ValidationError:
+        check(f"invalid tokens request {index} is refused before tokenization", True)
+    else:
+        check(f"invalid tokens request {index} is refused before tokenization", False)
+check("the largest tokens request is valid",
+      len(engine_api.TokensRequest.model_validate({"v":"2.2","texts":["a" * 500] * 512}).texts) == 512)
+# A fast tokenizer refuses an empty batch; no texts never reach it.
+untokenized = SimpleNamespace(tok=None, emoji=None, max_length=512)
+check("no texts count to nothing without calling the tokenizer",
+      engine_api.tokens_with_engine(engine_api.TokensRequest.model_validate({"v":"2.2","texts":[]}), untokenized)
+      == {"counts": [], "window": 510})
 print(f"\n{passed} passed, {failed} failed, {skipped} skipped")
 sys.exit(bool(failed))

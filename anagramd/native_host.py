@@ -2,7 +2,8 @@
 """Anagram Native Messaging: bounded UTF-8 JSON frames on stdin/stdout only.
 
 The browser owns this process lifetime. Status/control messages stay responsive
-while a bounded score worker performs inference; replies correlate by request id.
+while a bounded score worker performs inference and a bounded token worker counts
+beside it; replies correlate by request id.
 """
 from __future__ import annotations
 
@@ -23,9 +24,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 MAX_REQUEST_BYTES = 2 * 1024 * 1024
 MAX_RESPONSE_BYTES = 1024 * 1024 - 1024
 MAX_PENDING_SCORES = 8
+MAX_PENDING_TOKENS = 8
 # The extension stops waiting for a native reply after 30 s (nativeTransport.ts).
-SCORE_QUEUE_TIMEOUT_S = 30
-OPS = {"status", "health", "score", "runtime", "runtime.benchmark", "runtime.config",
+QUEUE_TIMEOUT_S = 30
+OPS = {"status", "health", "score", "tokens", "runtime", "runtime.benchmark", "runtime.config",
        "runtime.cancel", "models.download", "models.pause", "models.delete",
        "engine.stop", "engine.resume", "engine.settings", "component.update", "component.uninstall"}
 IDENTIFIER = re.compile(r"^[A-Za-z0-9_.:-]{1,96}$")
@@ -130,16 +132,19 @@ def dispatch(component, request):
 def run_host(reader, writer, component=None, startup_error=None):
     output = FrameWriter(writer)
     pending, pending_lock = set(), threading.Lock()
-    capacity = threading.BoundedSemaphore(MAX_PENDING_SCORES)
-    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="anagram-native-score")
+    # Each op waits for the engine on its own worker. Counting tokens never
+    # queues behind a score batch, and neither blocks this reading thread.
+    lanes = {op: (threading.BoundedSemaphore(limit),
+                  ThreadPoolExecutor(max_workers=1, thread_name_prefix=f"anagram-native-{op}"))
+             for op, limit in (("score", MAX_PENDING_SCORES), ("tokens", MAX_PENDING_TOKENS))}
     if component is not None:
         component.start()
 
-    def score_work(request, received):
+    def queued_work(request, received, capacity):
         try:
-            if time.monotonic() - received >= SCORE_QUEUE_TIMEOUT_S:
+            if time.monotonic() - received >= QUEUE_TIMEOUT_S:
                 # The browser has already given up on it; keep the worker for live requests.
-                output.write(error_reply(request["id"], "busy", "The score request waited too long in the queue", 409))
+                output.write(error_reply(request["id"], "busy", f"The {request['op']} request waited too long in the queue", 409))
             else:
                 output.write(dispatch(component, request))
         finally:
@@ -172,13 +177,14 @@ def run_host(reader, writer, component=None, startup_error=None):
             if duplicate:
                 output.write(error_reply(request["id"], "busy", "A request with this identifier is already pending", 409))
                 continue
-            if request["op"] == "score":
+            if request["op"] in lanes:
+                capacity, executor = lanes[request["op"]]
                 if not capacity.acquire(blocking=False):
-                    output.write(error_reply(request["id"], "busy", "Too many pending score requests", 409))
+                    output.write(error_reply(request["id"], "busy", f"Too many pending {request['op']} requests", 409))
                     continue
                 with pending_lock:
                     pending.add(request["id"])
-                executor.submit(score_work, request, time.monotonic())
+                executor.submit(queued_work, request, time.monotonic(), capacity)
             else:
                 response = dispatch(component, request)
                 output.write(response)
@@ -193,7 +199,8 @@ def run_host(reader, writer, component=None, startup_error=None):
     finally:
         if component is not None:
             component.close()
-        executor.shutdown(wait=True, cancel_futures=True)
+        for _, executor in lanes.values():
+            executor.shutdown(wait=True, cancel_futures=True)
 
 
 def protected_stdout():

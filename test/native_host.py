@@ -19,9 +19,12 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
+import emoji
+
 DAEMON = Path(__file__).resolve().parents[1] / "anagramd"
 sys.path.insert(0, str(DAEMON))
 import native_host as host
+from engine import clean_text
 from native_component import ComponentError, HOST_NAME, HomeLock, NativeComponent, STATE_DEFAULT
 from download_modelkit import DownloadPaused, download_asset, install_streaming, invalid_files
 from runtime_controller import Candidate, RuntimeController
@@ -166,7 +169,7 @@ class FramingTests(unittest.TestCase):
                 written.release()
         reader, writer = QueuedReader(), Writer()
         thread = threading.Thread(target=host.run_host, args=(reader, writer, Component()))
-        with patch.object(host, "SCORE_QUEUE_TIMEOUT_S", 0.2):
+        with patch.object(host, "QUEUE_TIMEOUT_S", 0.2):
             thread.start()
             reader.queue.put(frame(request("score", "slow", {"id": "slow"})))
             self.assertTrue(entered.wait(2))
@@ -184,6 +187,54 @@ class FramingTests(unittest.TestCase):
         answers = {r["id"]: r for r in replies(writer.getvalue())}
         self.assertEqual((answers["stale"]["status"], answers["stale"]["error"]["code"]), (409, "busy"))
         self.assertEqual((answers["slow"]["status"], answers["fresh"]["status"]), (200, 200))
+
+    def test_tokens_have_a_bounded_worker_beside_score_and_status(self):
+        scoring, waking, release_score, release_tokens = (threading.Event() for _ in range(4))
+        written = queue.Queue()
+        class Writer(io.BytesIO):
+            def flush(self):
+                written.put(replies(self.getvalue())[-1])
+        class Component:
+            def start(self):
+                pass
+            def close(self):
+                release_score.set()
+                release_tokens.set()
+            def handle(self, op, payload):
+                if op == "score":
+                    scoring.set()
+                    release_score.wait(3)
+                if op == "tokens":
+                    waking.set()  # an idle engine is loading
+                    release_tokens.wait(3)
+                return 200, {"op": op, "operation": None}
+        reader = QueuedReader()
+        thread = threading.Thread(target=host.run_host, args=(reader, Writer(), Component()))
+        thread.start()
+        try:
+            reader.queue.put(frame(request("score", "batch")))
+            self.assertTrue(scoring.wait(2))
+            reader.queue.put(frame(request("tokens", "count")))
+            self.assertTrue(waking.wait(2))  # the score batch does not hold it back
+            reader.queue.put(frame(request("status", "quick")))
+            self.assertEqual(written.get(timeout=2)["id"], "quick")
+            for index in range(host.MAX_PENDING_TOKENS):
+                reader.queue.put(frame(request("tokens", f"queued-{index}")))
+            refused = written.get(timeout=2)
+            self.assertEqual((refused["id"], refused["status"], refused["error"]["code"]),
+                             (f"queued-{host.MAX_PENDING_TOKENS - 1}", 409, "busy"))
+            release_tokens.set()
+            answered = [written.get(timeout=2) for _ in range(host.MAX_PENDING_TOKENS)]
+            self.assertEqual({(r["id"], r["status"]) for r in answered},
+                             {("count", 200)} | {(f"queued-{i}", 200) for i in range(host.MAX_PENDING_TOKENS - 1)})
+            self.assertTrue(written.empty())  # the score batch is still running
+        finally:
+            release_score.set()
+            release_tokens.set()
+        self.assertEqual(written.get(timeout=2)["id"], "batch")
+        reader.queue.put(None)
+        thread.join(3)
+        self.assertFalse(thread.is_alive())
 
     def test_host_import_does_not_import_model_libraries(self):
         code = "import sys;sys.path.insert(0,sys.argv[1]);import native_host;print([n for n in ('torch','transformers','onnxruntime') if n in sys.modules])"
@@ -246,11 +297,21 @@ native_host.main()
         self.assertEqual((firefox.caller, firefox.addon_id), ("/tmp/native manifest.json", "anagram@example.org"))
 
 
+class FixtureTokenizer:
+    """One token per character, so every cleaning step shows in a count."""
+    def __call__(self, texts, add_special_tokens=True, truncation=False):
+        special = [0] if add_special_tokens else []
+        return {"input_ids": [special + [ord(c) for c in text] + special for text in texts]}
+
+
 class FixtureEngine:
     version = "native-test-v1"
     n_buckets = 4
+    max_length = 512
     last_run_ms = last_wait_ms = 0
     lid = SimpleNamespace(enabled=False)
+    def __init__(self):
+        self.tok, self.emoji, self.lock = FixtureTokenizer(), emoji, threading.Lock()
     def score(self, texts):
         return [{"bucket": 0, "probs": [1., 0., 0., 0.], "score": 0., "tokens": 8, "truncated": False}
                 for _ in texts]
@@ -616,6 +677,68 @@ class LifecycleTests(unittest.TestCase):
         self.finish(restarted)
         self.assertEqual(restarted.status()["settings"], {"idle_unload_s": 60})
         self.assertEqual(restarted.status()["state"], "stopped")
+
+    def test_tokens_count_what_the_model_sees_and_wake_an_idle_engine_like_score(self):
+        component = self.make()
+        self.first_run(component)
+        texts = ["A smile 🙂 here", "reasoning</think> The ANSWER", "Sure, here it is:\nThe paragraph.", "  "]
+        status, data = component.handle("tokens", {"v": "2.2", "texts": texts})
+        tok = component.controller.engine.tok
+        expected = [len(tok([clean_text(t, emoji)], add_special_tokens=False)["input_ids"][0]) for t in texts]
+        self.assertEqual((status, data), (200, {"counts": expected, "window": 510}))
+        self.assertGreater(data["counts"][0], len(texts[0]))  # demojized
+        self.assertEqual(data["counts"][1:], [len("the answer"), len("the paragraph."), 0])
+        self.assertEqual(component.handle("tokens", {"v": "2.1", "texts": []}), (200, {"counts": [], "window": 510}))
+        for payload in ({"v": "3.0", "texts": ["a"]}, {"texts": ["a"]}, {"v": "2.2", "texts": [1]},
+                        {"v": "2.2", "texts": ["a" * 16001]}, {"v": "2.2", "texts": ["a"] * 513},
+                        {"v": "2.2", "texts": ["a" * 16000] * 17}):
+            with self.subTest(payload=str(payload)[:40]):
+                response = host.dispatch(component, request("tokens", payload=payload))
+                self.assertEqual((response["status"], response["error"]["code"]), (422, "invalid_request"))
+        controller = component.controller
+        controller.last_activity -= 301
+        self.assertTrue(controller.unload_if_idle())
+        self.finish(component)
+        self.assertEqual(component.status()["state"], "idle")
+        response = host.dispatch(component, request("tokens", payload={"v": "2.2", "texts": ["a paragraph"]}))
+        self.assertEqual((response["status"], response["data"]["counts"]), (200, [11]))
+        self.finish(component)
+        self.assertEqual(component.status()["state"], "ready")
+        component.handle("engine.stop", {})
+        self.finish(component)
+        response = host.dispatch(component, request("tokens", payload={"v": "2.2", "texts": ["a paragraph"]}))
+        self.assertEqual((response["status"], response["error"]["code"]), (503, "not_ready"))
+
+    def test_tokens_answer_while_a_score_batch_holds_the_engine(self):
+        component = self.make()
+        self.first_run(component)
+        engine = component.controller.engine
+        entered, release = threading.Event(), threading.Event()
+        def forward_pass(texts):
+            with engine.lock:
+                entered.set()
+                release.wait(3)
+            return FixtureEngine.score(engine, texts)
+        engine.score = forward_pass
+        written = queue.Queue()
+        class Writer(io.BytesIO):
+            def flush(self):
+                written.put(replies(self.getvalue())[-1])
+        reader = QueuedReader()
+        thread = threading.Thread(target=host.run_host, args=(reader, Writer(), component))
+        thread.start()
+        try:
+            reader.queue.put(frame(request("score", "batch", {"v": "2.2", "blocks": [{"id": "a", "text": "a paragraph"}]})))
+            self.assertTrue(entered.wait(2))
+            reader.queue.put(frame(request("tokens", "count", {"v": "2.2", "texts": ["a paragraph"]})))
+            counted = written.get(timeout=2)
+            self.assertEqual((counted["id"], counted["data"]), ("count", {"counts": [11], "window": 510}))
+        finally:
+            release.set()
+        self.assertEqual(written.get(timeout=2)["id"], "batch")
+        reader.queue.put(None)
+        thread.join(3)
+        self.assertFalse(thread.is_alive())
 
     def test_idle_score_wait_does_not_block_status_and_stop_rejects_it(self):
         component = self.make()

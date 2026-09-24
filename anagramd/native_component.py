@@ -502,16 +502,18 @@ class NativeComponent:
                 raise ComponentError("engine_idle", "The engine was unloaded while idle; scoring will reload it", 503)
             with controller.use_engine(activity=False) as engine:
                 return 200, engine.info()
-        if op == "score":
-            from engine import ScoreRequest, ScoreResponse, score_with_engine
+        if op in ("score", "tokens"):
+            from engine import ScoreRequest, ScoreResponse, TokensRequest, score_with_engine, tokens_with_engine
             from pydantic import ValidationError
             try:
-                request = ScoreRequest.model_validate(payload)
+                request = (ScoreRequest if op == "score" else TokensRequest).model_validate(payload)
             except ValidationError as exc:
-                raise ComponentError("invalid_request", "Invalid score request", 422) from exc
+                raise ComponentError("invalid_request", f"Invalid {op} request", 422) from exc
             controller = self._runtime()
             controller.wake_and_wait(timeout=self.score_wait_timeout)
             with controller.use_engine() as engine:
+                if op == "tokens":
+                    return 200, tokens_with_engine(request, engine)
                 response = score_with_engine(request, engine)
                 return 200, ScoreResponse.model_validate(response).model_dump(exclude_none=True)
         if op == "runtime":
