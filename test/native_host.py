@@ -957,8 +957,8 @@ class LifecycleTests(unittest.TestCase):
 
     def test_maintenance_only_completes_after_helper_success(self):
         entered, release = threading.Event(), threading.Event()
-        def helper(name, version):
-            self.assertEqual((name, version), ("uninstall", None))
+        def helper(name):
+            self.assertEqual(name, "uninstall")
             entered.set()
             release.wait(3)
             return {"status": "completed"}
@@ -976,7 +976,7 @@ class LifecycleTests(unittest.TestCase):
         self.assertTrue(status["operation"]["receipt"])
 
     def test_scheduled_windows_maintenance_never_mints_completion_receipt(self):
-        component = self.make(helper=lambda *_: {"status": "scheduled"})
+        component = self.make(helper=lambda _: {"status": "scheduled"})
         self.first_run(component)
         component.handle("component.uninstall", {"confirm": True})
         self.finish(component)
@@ -1014,7 +1014,7 @@ class LifecycleTests(unittest.TestCase):
         self.assertNotIn("--release", json.loads((self.home / "argv.json").read_text()))
 
     def test_completed_update_reconnects_without_a_settings_status_poll(self):
-        component = self.make(helper=lambda *_: {"status": "completed"})
+        component = self.make(helper=lambda _: {"status": "completed"})
         self.first_run(component)
         component.handle("component.update", {})
         self.finish(component)

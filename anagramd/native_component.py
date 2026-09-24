@@ -622,7 +622,7 @@ class NativeComponent:
                 self.download.update(status="idle", bytes_received=0, file=None, error=None)
                 self.state = "needs_models"
         else:
-            result = self.helper(name, version)
+            result = self.helper(name, version) if version else self.helper(name)
             if result.get("status") == "scheduled":
                 with self.lock:
                     self.operation.update(status="scheduled", receipt=None)
