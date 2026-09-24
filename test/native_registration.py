@@ -10,6 +10,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -83,6 +84,32 @@ class RegistrationTests(unittest.TestCase):
         path.parent.mkdir(parents=True); path.write_text('foreign')
         with self.assertRaisesRegex(ValueError,'different'): self.register()
         self.assertEqual(path.read_text(),'foreign')
+
+    @unittest.skipIf(os.name == 'nt', 'POSIX registration lock')
+    def test_two_homes_racing_for_one_browser_leave_one_owner(self):
+        other = self.user / 'second home'
+        for p in ('app', 'bin', 'run'): (other / p).mkdir(parents=True)
+        (other / '.anagram-home').write_text('owned'); (other / 'app/native_host.py').write_text('# fixture')
+        write, both_checked = reg.atomic_write, threading.Barrier(2, timeout=1)
+        def racing(path, value, mode=0o600):
+            if path.name == reg.HOST + '.json':
+                try: both_checked.wait()  # the first writer waits until the other home has checked as well
+                except threading.BrokenBarrierError: pass
+            return write(path, value, mode)
+        results = {}
+        def register(home):
+            try: results[home] = reg.register(home, 'chrome', ID, 'en', user_home=self.user, platform='linux')
+            except ValueError as exc: results[home] = exc
+        with patch.object(reg, 'atomic_write', side_effect=racing):
+            threads = [threading.Thread(target=register, args=(home,)) for home in (self.home, other)]
+            for thread in threads: thread.start()
+            for thread in threads: thread.join(15)
+        owners = [home for home, result in results.items() if isinstance(result, dict)]
+        self.assertEqual(len(owners), 1, results)
+        loser, = {self.home, other} - set(owners)
+        self.assertRegex(str(results[loser]), 'different')
+        reg.unregister(owners[0], user_home=self.user, platform='linux')
+        self.assertFalse(reg.manifest_path(owners[0], self.user, 'chrome', 'linux').exists())
 
     @unittest.skipIf(os.name == 'nt', 'unprivileged Windows symlinks vary by policy')
     def test_registration_parent_symlink_refused(self):

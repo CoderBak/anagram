@@ -19,6 +19,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 
 HOST = "dev.coderbak.anagram"
 FIREFOX_ID = "anagram@coderbak.dev"
@@ -170,6 +171,39 @@ def inventory(home, user_home, platform, *, required=False):
     return value
 
 
+def lock_registrations(manifest, created):
+    """Lock the NativeMessagingHosts directory that every component home registering
+    this browser shares (POSIX, advisory). Closing the descriptor releases it."""
+    import fcntl
+    directory = manifest.parent
+    missing = directory
+    while not missing.exists():
+        created.add(missing)
+        missing = missing.parent
+    deadline = time.monotonic() + 10
+    while True:
+        fd = None
+        try:
+            directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+            fd = os.open(directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0))
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            # A holder that failed may have removed the directory it created.
+            held, current = os.fstat(fd), directory.lstat()
+            if (held.st_dev, held.st_ino) == (current.st_dev, current.st_ino):
+                return fd
+        except (BlockingIOError, FileNotFoundError):
+            pass
+        except BaseException:
+            if fd is not None:
+                os.close(fd)
+            raise
+        if fd is not None:
+            os.close(fd)
+        if time.monotonic() > deadline:
+            raise ValueError("Another Anagram component is registering with this browser; retry")
+        time.sleep(0.05)
+
+
 def register(home, browser, extension_id, language="en", *, user_home=None, platform=None, registry=None):
     validate_selection(browser, extension_id, language)
     home = owned_home(Path(home))
@@ -183,9 +217,6 @@ def register(home, browser, extension_id, language="en", *, user_home=None, plat
     if not (home / "app/native_host.py").is_file():
         raise ValueError("Native host program is missing from this release")
     old = next((x for x in value["registrations"] if x["browser"] == browser), None)
-    before = target.read_bytes() if target.exists() else None
-    if before is not None and (old is None or hashlib.sha256(before).hexdigest() != old["sha256"]):
-        raise ValueError("A different or modified native registration already exists; refusing to replace it")
     manifest = {"name": HOST, "description": "Anagram local model component", "path": str(launcher), "type": "stdio"}
     manifest["allowed_origins" if browser == "chrome" else "allowed_extensions"] = [
         "chrome-extension://" + extension_id + "/" if browser == "chrome" else extension_id]
@@ -201,7 +232,13 @@ def register(home, browser, extension_id, language="en", *, user_home=None, plat
             parent = parent.parent
         changed_files.append((path, path.read_bytes() if path.exists() else None, path.stat().st_mode & 0o777 if path.exists() else mode))
         atomic_write(path, content, mode)
+    lock = None
     try:
+        if platform != "win32":
+            lock = lock_registrations(target, created_dirs)
+        before = target.read_bytes() if target.exists() else None
+        if before is not None and (old is None or hashlib.sha256(before).hexdigest() != old["sha256"]):
+            raise ValueError("A different or modified native registration already exists; refusing to replace it")
         if platform != "win32":
             # A browser invokes this absolute path. No system Python, shell profile,
             # inherited PYTHONPATH, or stdout logging participates in host startup.
@@ -238,6 +275,9 @@ def register(home, browser, extension_id, language="en", *, user_home=None, plat
             except OSError:
                 pass
         raise
+    finally:
+        if lock is not None:
+            os.close(lock)
     return entry
 
 

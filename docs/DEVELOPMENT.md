@@ -80,8 +80,7 @@ release must ship matching assets.
   and `lib/capture/scheduler.ts`.
 - PDF: replace the 300-page analysis cap with a bounded active-page budget and keep
   results across PDF.js page recycling (`entrypoints/reader/main.ts`, `lib/pdf/units.ts`).
-- Installer recovery: serializing two component homes that race the same browser
-  registration (`installer/native_registration.py`). Windows has no terminal command to
-  finish an interrupted uninstall; reinstalling or deleting the folder does
-  (`installer/maintenance.ps1`).
+- Installer recovery on Windows: two component homes registering one browser race on
+  the HKCU keys (`installer/native_registration.py`), and an interrupted uninstall is
+  finished only by reinstalling or deleting the folder (`installer/maintenance.ps1`).
 - Windows and Linux have not been exercised on real machines.
