@@ -220,7 +220,7 @@ describe("the English each bundle carries", () => {
   const SURFACES = {
     content: [entry("entrypoints", "content.ts")],
     background: [entry("entrypoints", "background.ts")],
-    pages: ["onboarding", "options", "popup", "reader"].map((p) =>
+    pages: ["onboarding", "options", "paste", "popup", "reader"].map((p) =>
       entry("entrypoints", p, "index.html"),
     ),
   };
@@ -235,8 +235,8 @@ describe("the English each bundle carries", () => {
         }),
       ).toEqual(SURFACES.background);
       expect(
-        entryFilesOf({ build: { rollupOptions: { input: { popup: SURFACES.pages[2] } } } }),
-      ).toEqual([SURFACES.pages[2]]);
+        entryFilesOf({ build: { rollupOptions: { input: { popup: SURFACES.pages[3] } } } }),
+      ).toEqual([SURFACES.pages[3]]);
       // Anything else — including the config WXT resolves for no build at all — keeps the
       // whole English file, which is what every non-extension consumer wants.
       expect(entryFilesOf({ build: { lib: false } })).toBeUndefined();
