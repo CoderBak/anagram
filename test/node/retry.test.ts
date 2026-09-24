@@ -3,6 +3,7 @@ import { NativeScoreError } from "../../lib/backend/nativeScoreClient";
 import { NativeTransportError } from "../../lib/backend/nativeTransport";
 import { ProtocolError } from "../../lib/backend/scoreProtocol";
 import { RETRY_BACKOFF_MS, isTransientFailure, retryWaitMs } from "../../lib/backend/retry";
+import { RECONNECT_MS } from "../../lib/backend/nativeTransport";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -22,5 +23,10 @@ describe("native retry policy", () => {
     const error = new NativeScoreError(503,"not_ready","Loading");
     vi.spyOn(Math,"random").mockReturnValue(0); expect(retryWaitMs(error)).toBe(RETRY_BACKOFF_MS);
     vi.spyOn(Math,"random").mockReturnValue(0.999); expect(retryWaitMs(error)).toBe(2*RETRY_BACKOFF_MS);
+  });
+  it("waits for a closed port to open again, and for a health check refused meanwhile", () => {
+    vi.spyOn(Math,"random").mockReturnValue(0);
+    expect(retryWaitMs(new NativeTransportError("native_unavailable","Disconnected"))).toBe(2*RECONNECT_MS + RETRY_BACKOFF_MS);
+    expect(retryWaitMs(new NativeTransportError("busy","Queue full"))).toBe(RETRY_BACKOFF_MS);
   });
 });

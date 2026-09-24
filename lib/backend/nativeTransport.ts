@@ -2,6 +2,9 @@
 import { browser } from "#imports";
 import { MAX_NATIVE_BYTES, NATIVE_HOST, parseNativeReply, type NativeOperation, type NativePayload, type NativeReply } from "./nativeProtocol";
 
+/** A port that closed, or could not open, is not opened again before this. */
+export const RECONNECT_MS = 1500;
+
 export class NativeTransportError extends Error {
   constructor(public readonly code: string, message: string) { super(message); this.name = "NativeTransportError"; }
 }
@@ -34,7 +37,7 @@ export class NativeTransport {
     if (Date.now() < this.retryAt) throw new NativeTransportError("native_unavailable", "Local component is not connected");
     let port: NativePort;
     try { port = this.connect(); }
-    catch { this.retryAt = Date.now() + 1500; throw new NativeTransportError("native_unavailable", "Local component is not installed or cannot start"); }
+    catch { this.retryAt = Date.now() + RECONNECT_MS; throw new NativeTransportError("native_unavailable", "Local component is not installed or cannot start"); }
     this.port = port;
     port.onMessage.addListener((value) => {
       if (this.port !== port) return;
@@ -52,7 +55,7 @@ export class NativeTransport {
         (request.op === "status" || request.op === "health");
       const updated = !reply.ok && reply.error?.code === "component_updated";
       if (startupBusy || updated) {
-        this.retryAt = Date.now() + 1500;
+        this.retryAt = Date.now() + RECONNECT_MS;
         this.close(updated ? "component_updated" : "busy", updated ? "Local component updated; reconnecting" : "Another browser is using the local component");
       }
     });
@@ -61,7 +64,7 @@ export class NativeTransport {
       const message = browser.runtime.lastError?.message ?? port.error?.message;
       if (this.port !== port) return;
       this.port = null;
-      this.retryAt = Date.now() + 1500;
+      this.retryAt = Date.now() + RECONNECT_MS;
       this.rejectAll(new NativeTransportError("native_unavailable", message?.slice(0, 2000) ?? "Local component disconnected"));
       this.notifyDisconnect();
     });

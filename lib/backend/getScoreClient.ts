@@ -8,7 +8,7 @@ export function getScoreClient(): NativeScoreClient {
   if (!client) {
     const created = new NativeScoreClient();
     // Health is valid only while its native connection survives, even when idle.
-    nativeTransport().onDisconnect(() => created.invalidate());
+    nativeTransport().onDisconnect(() => created.disconnected());
     client = created;
   }
   return client;

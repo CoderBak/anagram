@@ -3,7 +3,7 @@ import { CONTRACT_VERSION, type ModelInfo, type ScoreBlock, type ScoreClient, ty
 import type { BackendStatus } from "../messaging/protocol";
 import { componentIsBehind, parseHealth, parseScoreResponse } from "./scoreProtocol";
 import { type NativeOperation, type NativePayload, type NativeReply } from "./nativeProtocol";
-import { nativeTransport } from "./nativeTransport";
+import { nativeTransport, NativeTransportError, RECONNECT_MS } from "./nativeTransport";
 
 const NONE: ModelInfo = {id:"none", ver:"0", calibration:"none"};
 function extensionVersion(): string {
@@ -21,7 +21,11 @@ export class NativeScoreClient implements ScoreClient {
   private probing: Promise<void> | undefined;
   private generation = 0;
   constructor(private readonly request: Request = (op, payload, signal) => nativeTransport().request(op, payload, signal)) {}
-  invalidate(): void { this.generation++; this.current = {...this.current, active:"down", model:null,
+  /** The runtime changed: work in flight belongs to the old one, and health must be read again. */
+  invalidate(): void { this.generation++; this.disconnected(); }
+  /** The port closed. Every request on it was refused, so none can answer late and no
+   *  identity changed: only health is unknown until it is read again. */
+  disconnected(): void { this.current = {...this.current, active:"down", model:null,
     server:{ok:false,checkedAt:0,reason:"unreachable"}}; this.probing = undefined; }
   isUp(): boolean { return this.current.server.ok; }
   model(): ModelInfo { return { ...(this.current.model ?? NONE) }; }
@@ -32,7 +36,7 @@ export class NativeScoreClient implements ScoreClient {
   }
   async ready(): Promise<void> { await this.probe(); }
   private async probe(force = false): Promise<void> {
-    if (!force && Date.now() - this.current.server.checkedAt < (this.isUp() ? 60_000 : 1500)) return;
+    if (!force && Date.now() - this.current.server.checkedAt < (this.isUp() ? 60_000 : RECONNECT_MS)) return;
     if (this.probing) return this.probing;
     const generation = this.generation;
     const pending = (async () => {
@@ -82,7 +86,11 @@ export class NativeScoreClient implements ScoreClient {
       // Loading and idle-wakeup are retryable without changing the model generation.
       // Cancellation belongs to the caller; it must not invalidate other shared work.
       const retryable = error instanceof NativeScoreError && ["not_ready", "busy", "engine_idle", "cancelled"].includes(error.code);
-      if (!retryable && !signal?.aborted && generation === this.generation) this.invalidate();
+      // Nor does a port that closed (it has said so itself, see getScoreClient.ts) or a full
+      // local queue change the runtime: nothing sent can answer after its port failed, so
+      // the router may send the batch again under the same generation.
+      const transport = error instanceof NativeTransportError && error.code !== "native_timeout";
+      if (!retryable && !transport && !signal?.aborted && generation === this.generation) this.invalidate();
       throw error;
     }
   }

@@ -11,7 +11,7 @@ import type {
   ScoredBatch,
 } from "../../lib/contract";
 import { CONTRACT_VERSION } from "../../lib/contract";
-import { NativeScoreError } from "../../lib/backend/nativeScoreClient";
+import { NativeScoreClient, NativeScoreError } from "../../lib/backend/nativeScoreClient";
 import { NativeTransportError } from "../../lib/backend/nativeTransport";
 
 const A: ModelInfo = { id: "model-a", ver: "1", calibration: "none" };
@@ -279,9 +279,45 @@ describe("router retry", () => {
   it("sends it again when the transport failed", async () => {
     const client = fakeClient(A);
     const router = createRouter(client);
-    client.fail(new NativeTransportError("native_unavailable", "Disconnected"));
+    client.fail(new NativeTransportError("busy", "Too many pending requests"));
     await router.handle(req(["a paragraph nobody could deliver"]));
     expect(client.calls.length).toBe(2);
+  });
+
+  /** The real client over a scripted port: its generation is what decides whether a retry
+   *  may still be answered, so a fake that keeps no generation cannot show this. */
+  function nativeClient(fail: (client: NativeScoreClient) => Error) {
+    const health = {ok:true,contract:"2.1",model:A,n_buckets:4,buckets:["a","b","c","d"],max_tokens:512,device:"cpu",dtype:"fp32"};
+    let failures = 1;
+    const request = vi.fn(async (op: string, payload?: Record<string, unknown>) => {
+      if (op === "health") return {v:1 as const,id:"health",ok:true,status:200,data:health};
+      if (failures-- > 0) throw fail(client);
+      const blocks = payload!.blocks as ScoreBlock[];
+      return {v:1 as const,id:"score",ok:true,status:200,data:{v:"2.1",model:A,results:scored(blocks,A).results}};
+    });
+    const client: NativeScoreClient = new NativeScoreClient(request);
+    return { client, ops: () => request.mock.calls.map(([op]) => op) };
+  }
+
+  it("answers from the second attempt after the local queue turned the first away", async () => {
+    const { client, ops } = nativeClient(() => new NativeTransportError("busy", "Too many pending requests"));
+    const r = await createRouter(client).handle(req(["a paragraph the local queue turned away"]));
+    expect(r.results[0].degraded).toBeUndefined();
+    expect(r.model).toEqual(A);
+    expect(ops()).toEqual(["health", "score", "score"]);
+  });
+
+  it("answers from a new port after the old one closed under the batch", async () => {
+    vi.useFakeTimers();
+    try {
+      // The transport rejects what was on the port and then reports the closure.
+      const { client, ops } = nativeClient((client) => { client.disconnected(); return new NativeTransportError("native_unavailable", "Disconnected"); });
+      const work = createRouter(client).handle(req(["a paragraph whose port went away"]));
+      await vi.advanceTimersByTimeAsync(4000);
+      const r = await work;
+      expect(r.results[0].degraded).toBeUndefined();
+      expect(ops()).toEqual(["health", "score", "health", "score"]); // health is read again first
+    } finally { vi.useRealTimers(); }
   });
 
   it("does not retry a cancelled native request", async () => {
