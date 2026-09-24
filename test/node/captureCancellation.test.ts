@@ -8,7 +8,8 @@ import { createOrchestrator } from "../../lib/capture/orchestrator";
 import { deferred } from "./scoreStore";
 
 const calls = vi.hoisted(() => ({
-  detect: vi.fn(), request: vi.fn(), remove: vi.fn(),
+  detect: vi.fn(), request: vi.fn(), remove: vi.fn(), main: vi.fn(),
+  scope: "page" as "page" | "main",
   caches: [] as ScoreCache[],
   sends: [] as ((units: Unit[], lane: Lane) => Promise<UnitVerdict[]>)[],
   reports: [] as (() => Promise<string>)[],
@@ -45,13 +46,14 @@ vi.mock("../../lib/render/highlight", () => ({
   refreshHighlightTheme() {},
 }));
 vi.mock("../../lib/dom/walker", () => ({collectUnits: () => [], inPageOrder: (units: Unit[]) => [...units]}));
-vi.mock("../../lib/dom/mainContent", () => ({findMainContent: () => null, useReadability() {}}));
+vi.mock("../../lib/dom/mainContent", () => ({findMainContent: calls.main, useReadability() {}}));
+vi.mock("../../lib/lazy", () => ({loadReadability: async () => ({})}));
 vi.mock("../../lib/settings/settings", () => {
   const setting = (value: unknown) => ({getValue: async () => value, watch: () => () => {}});
   return {settings: {
     debug: setting(false),
     showHighlights: setting(false), displayMode: setting("all"), mergeShorts: setting(true),
-    analysisScope: setting("page"),
+    analysisScope: {getValue: async () => calls.scope, watch: () => () => {}},
     reportIncludeText: setting(false), reportIncludeUrl: setting(false),
   }};
 });
@@ -63,8 +65,8 @@ beforeEach(() => {
   fakeBrowser.reset();
   vi.spyOn(fakeBrowser.runtime, "getManifest").mockReturnValue({manifest_version: 3, version: "0.4.1", name: "Anagram"});
   vi.clearAllMocks(); calls.caches.length = 0; calls.sends.length = 0; calls.reports.length = 0;
-  calls.detect.mockReset(); calls.request.mockReset();
-  calls.detect.mockResolvedValue(null);
+  calls.detect.mockReset(); calls.request.mockReset(); calls.main.mockReset();
+  calls.detect.mockResolvedValue(null); calls.main.mockReturnValue(null); calls.scope = "page";
   calls.request.mockImplementation(async (req: ScoreBatchRequest) => ({backend: "up", model: MODEL, results: req.blocks.map((block) => ({
     id: block.id, bucket: 3, score: 1, probs: [0, 0, 0, 1],
   }))}));
@@ -157,4 +159,40 @@ describe("capture cancellation across language detection and replies", () => {
     } finally {controller.stop(); original.stop();}
   });
 
+});
+
+describe("same-document URL changes under the main-content scope", () => {
+  it("looks for the main region again only when a route change is collected again", async () => {
+    vi.useFakeTimers();
+    calls.scope = "main";
+    const region = {isConnected: true};
+    calls.main.mockReturnValue(region);
+    const {controller} = await page();
+    const navigation = (window as unknown as {navigation: EventTarget}).navigation;
+    const go = (href: string, navigationType: string) => {
+      location.href = href;
+      navigation.dispatchEvent(Object.assign(new Event("currententrychange"), {navigationType}));
+    };
+    try {
+      for (let i = 0; i < 20; i++) await Promise.resolve();
+      const booted = calls.main.mock.calls.length;
+      expect(booted).toBeGreaterThan(0);
+      // Discourse rewrites the address on every scroll step: nothing to collect, nothing to find.
+      for (let i = 0; i < 20; i++) go(`https://example.test/article?post=${i}`, "replace");
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(calls.main).toHaveBeenCalledTimes(booted);
+      // A pushed entry, and the router correcting it, are one refresh and one search.
+      go("https://example.test/next", "push");
+      for (let i = 0; i < 3; i++) go(`https://example.test/next?t=${i}`, "replace");
+      expect(calls.main).toHaveBeenCalledTimes(booted);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(calls.main).toHaveBeenCalledTimes(booted + 1);
+      // A rewrite that took the region with it is a route change after all.
+      region.isConnected = false;
+      calls.main.mockReturnValue({isConnected: true});
+      go("https://example.test/next?t=9", "replace");
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(calls.main).toHaveBeenCalledTimes(booted + 2);
+    } finally {controller.stop(); vi.useRealTimers();}
+  });
 });

@@ -1219,7 +1219,9 @@ export function createOrchestrator(
    * with 51 whole-document re-walks and 1 058 layouts where the page itself did 725. The
    * page did not change: the MutationObserver is what covers real DOM changes, and it
    * never missed one in the survey. So a rewrite that left every live unit connected and
-   * the main region where it was is answered by the purge and the scope re-resolve alone.
+   * the main region in the document is answered by the purge alone. Looking for the
+   * region again is left to the refresh: under "Main content only" that is Readability
+   * over a clone of the whole document, which a rewrite on every scroll step cannot pay.
    *
    * Anything else — a pushed entry, a traversal, a popstate, a hash change, the slow poll
    * that stands in where the Navigation API is missing — is a real route change and gets
@@ -1229,10 +1231,8 @@ export function createOrchestrator(
     if (!started || location.href === lastHref) return;
     lastHref = location.href;
     const live = unitsById.size;
-    const region = scopeRoot;
     purgeDisconnected();
-    resolveScopeRoot(); // the route's main region may be a different element now
-    if (kind === "rewrite" && unitsById.size === live && scopeRoot === region) {
+    if (kind === "rewrite" && unitsById.size === live && (!scopeRoot || scopeRoot.isConnected)) {
       updateFab();
       return;
     }
@@ -1247,7 +1247,7 @@ export function createOrchestrator(
       urlRefreshTimer = null;
       if (!started) return;
       purgeDisconnected();
-      resolveScopeRoot();
+      resolveScopeRoot(); // the route's main region may be a different element now
       const base = scanBase();
       if (base) ingestUnits(collect(base, makeClaimFilter()));
       updateFab();
