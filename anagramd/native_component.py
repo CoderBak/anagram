@@ -381,11 +381,12 @@ class NativeComponent:
             self.state = "loading"
         controller.start()
 
-    def _stop_runtime(self, *, wait=True):
+    def _stop_runtime(self, *, timeout=None):
         """Close the runtime and drain its work; a closed controller refuses new leases.
 
-        With ``wait`` false the drain is unbounded: an explicit stop lets an
-        in-flight score finish and unloads afterwards instead of failing.
+        Lifecycle jobs drain without a deadline: an in-flight score or an
+        uncancellable load finishes and the job continues instead of failing.
+        Only shutdown passes a ``timeout``.
         """
         with self.lock:
             controller = self.controller
@@ -394,7 +395,7 @@ class NativeComponent:
         if controller is None:
             return
         controller.close()
-        deadline = time.monotonic() + self.stop_timeout if wait else None
+        deadline = time.monotonic() + timeout if timeout is not None else None
         while True:
             thread = getattr(controller, "thread", None)
             alive = thread is not None and thread.is_alive()
@@ -559,7 +560,7 @@ class NativeComponent:
                 def stop():
                     # The stop is already recorded; an in-flight score finishes
                     # under its lease and the engine unloads afterwards.
-                    self._stop_runtime(wait=False)
+                    self._stop_runtime()
                     with self.lock:
                         self.state = "stopped"
                 self._launch(stop, "not_ready")
@@ -689,7 +690,7 @@ class NativeComponent:
         if thread is not None and thread is not threading.current_thread():
             thread.join(timeout=self.stop_timeout + 12)
         try:
-            self._stop_runtime()
+            self._stop_runtime(timeout=self.stop_timeout)
         except ComponentError:
             pass
         # Do not release ownership while an in-process model/job still runs.

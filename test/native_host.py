@@ -800,16 +800,68 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(restarted.status()["state"], "needs_models")
         self.assertEqual(self.downloads, 1)
 
-    def test_delete_waits_for_an_inflight_engine_lease(self):
-        component = self.make()
+    def test_lifecycle_jobs_wait_past_the_stop_timeout_for_an_inflight_score(self):
+        # Deletion goes last: the next component would otherwise need models again.
+        for op, payload, final in (("engine.resume", {}, "ready"), ("models.download", {}, "ready"),
+                                   ("component.update", {}, "stopped"),
+                                   ("component.uninstall", {"confirm": True}, "stopped"),
+                                   ("models.delete", {"confirm": True}, "needs_models")):
+            with self.subTest(op=op):
+                component = self.make(stop_timeout=0.05, helper=lambda _: {"status": "completed"})
+                self.first_run(component)
+                controller = component.controller
+                entered, release = threading.Event(), threading.Event()
+                def slow_score():
+                    with controller.use_engine():
+                        entered.set()
+                        release.wait(3)
+                scorer = threading.Thread(target=slow_score)
+                scorer.start()
+                try:
+                    self.assertTrue(entered.wait(2))
+                    self.assertEqual(component.handle(op, payload)[0], 202)
+                    time.sleep(0.3)  # well past stop_timeout: the job must wait, not fail
+                    status = component.status()
+                    self.assertNotEqual(status["state"], "error", status)
+                    self.assertIsNone(status["error"])
+                    self.assertTrue((self.home / "models").exists())
+                    with self.assertRaises(ComponentError) as caught:
+                        component.handle("engine.stop", {})
+                    self.assertEqual(caught.exception.code, "busy")  # still one lifecycle job at a time
+                finally:
+                    release.set()
+                    scorer.join(2)
+                self.finish(component)
+                status = component.status()
+                self.assertEqual(status["state"], final, status)
+                self.assertIsNone(status["error"])
+                component.close()
+        self.assertFalse((self.home / "models").exists())
+
+    def test_lifecycle_job_waits_for_an_uncancellable_load_past_the_stop_timeout(self):
+        component = self.make(stop_timeout=0.05)
         self.first_run(component)
         controller = component.controller
-        with controller.use_engine():
+        entered, release = threading.Event(), threading.Event()
+        factory = controller.factory
+        def loading(candidate):
+            entered.set()
+            release.wait(3)
+            return factory(candidate)
+        controller.factory = loading
+        try:
+            self.assertEqual(component.handle("runtime.config", {"id": "torch:cpu:fp32"})[0], 202)
+            self.assertTrue(entered.wait(2))
             component.handle("models.delete", {"confirm": True})
-            time.sleep(0.1)
-            self.assertTrue((self.home / "models").exists())
-            self.assertEqual(component.status()["operation"]["status"], "running")
+            time.sleep(0.3)
+            status = component.status()
+            self.assertEqual(status["operation"]["status"], "running", status)
+            self.assertIsNone(status["error"])
+        finally:
+            release.set()
         self.finish(component)
+        self.assertEqual(component.status()["state"], "needs_models")
+        self.assertEqual(component.status()["operation"]["status"], "completed")
         self.assertFalse((self.home / "models").exists())
 
     def test_owned_tree_links_are_not_followed_during_delete(self):
