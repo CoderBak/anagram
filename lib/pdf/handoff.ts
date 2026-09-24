@@ -370,16 +370,17 @@ export function createPdfHandoff(deps:HandoffDeps):PdfHandoff {
     },forget,
   };
 }
-export interface ClaimedPdf {bytes:Uint8Array}
-export async function claimPdfBytes(ticket:string,signal?:AbortSignal):Promise<ClaimedPdf|null> {
+/** The reader's claim: the document, or why there is none. */
+export type ClaimedPdf={bytes:Uint8Array}|{failure:HandoffFailure};
+export async function claimPdfBytes(ticket:string,signal?:AbortSignal):Promise<ClaimedPdf> {
   if(ticket.startsWith("s-"))return claimSourceBytes(ticket,signal);
-  if(signal?.aborted || !v.safeParse(TicketSchema,ticket).success)return null;
+  if(signal?.aborted || !v.safeParse(TicketSchema,ticket).success)return {failure:"read"};
   let port:ReturnType<typeof browser.runtime.connect>;
-  try{port=browser.runtime.connect({name:PDF_CLAIM_PORT});}catch{return null;}
+  try{port=browser.runtime.connect({name:PDF_CLAIM_PORT});}catch{return {failure:"read"};}
   return new Promise((resolve)=>{
     let out:Uint8Array|null=null,at=0,seq=0,settled=false;
-    const abort=()=>finish(null);
-    const finish=(result:ClaimedPdf|null)=>{if(settled)return;settled=true;clearTimeout(timer);signal?.removeEventListener("abort",abort);try{port.disconnect();}catch{}resolve(result);};
+    const abort=()=>finish({failure:"read"});
+    const finish=(result:ClaimedPdf)=>{if(settled)return;settled=true;clearTimeout(timer);signal?.removeEventListener("abort",abort);try{port.disconnect();}catch{}resolve(result);};
     const timer=setTimeout(abort,CLAIM_TIMEOUT_MS);signal?.addEventListener("abort",abort,{once:true});
     const post=(value:unknown)=>{try{port.postMessage(value);}catch{abort();}};
     port.onDisconnect.addListener(abort);

@@ -326,12 +326,12 @@ describe("PDF chunk validation and backpressure",()=>{
   });
   it.each([Infinity,-1,0,1.5,MAX_HANDOFF_BYTES+1])("rejects invalid reader allocation %s",async(bytes)=>{
     const p=mockPort();vi.spyOn(fakeBrowser.runtime,"connect").mockReturnValue(p.port as never);
-    const result=claimPdfBytes("a".repeat(32));p.receive({bytes});expect(await result).toBeNull();
+    const result=claimPdfBytes("a".repeat(32));p.receive({bytes});expect(await result).toEqual({failure:"read"});
   });
   it("does not accept overflow or an incomplete reader payload",async()=>{
     const p=mockPort();vi.spyOn(fakeBrowser.runtime,"connect").mockReturnValue(p.port as never);
     const result=claimPdfBytes("a".repeat(32));p.receive({bytes:5});p.receive({chunk:toBase64(pdfOf(64)),seq:0});
-    expect(await result).toBeNull();
+    expect(await result).toEqual({failure:"read"});
   });
 });
 describe("PDF global resource budget",()=>{

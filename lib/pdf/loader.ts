@@ -1,5 +1,6 @@
 import { safePdfSource, samePdfSource } from "./source";
 import { SOURCE_CAP, hasPdfMagic } from "./sourceTransfer";
+import type { HandoffFailure } from "./handoff";
 
 /** The private loader tightens the broad manifest policy before its one authorized read. */
 export function loaderConnectPolicy(source: string): string | null {
@@ -30,6 +31,11 @@ export async function readAuthorizedPdf(source: string, signal: AbortSignal, cap
   for (const chunk of chunks) { bytes.set(chunk, at); at += chunk.byteLength; }
   if (!hasPdfMagic(bytes)) throw new Error("type");
   return bytes;
+}
+/** Why readAuthorizedPdf produced nothing, from what it threw. */
+export function readFailure(error: unknown): HandoffFailure {
+  const reason = error instanceof Error ? error.message : "";
+  return reason === "large" || reason === "type" ? reason : "read";
 }
 function readFile(source: string, signal: AbortSignal, cap: number): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {

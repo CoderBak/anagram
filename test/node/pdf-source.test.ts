@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeBrowser } from "wxt/testing";
 import { safePdfSource } from "../../lib/pdf/source";
 import { loaderConnectPolicy, readAuthorizedPdf } from "../../lib/pdf/loader";
-import { createSourceBroker, SOURCE_CAP, SOURCE_CLAIM_PORT, SOURCE_LOADER_PORT } from "../../lib/pdf/sourceTransfer";
+import { claimSourceBytes, createSourceBroker, SOURCE_CAP, SOURCE_CLAIM_PORT, SOURCE_LOADER_PORT } from "../../lib/pdf/sourceTransfer";
 import { hasPdfSourceAccess } from "../../lib/pdf/sourceAccess";
 vi.mock("../../lib/pdf/sourceAccess", () => ({hasPdfSourceAccess: vi.fn(async () => true)}));
 const ticks = async () => { for (let i = 0; i < 24; i++) await Promise.resolve(); };
@@ -131,6 +131,54 @@ describe("authorized source reads", () => {
     fetch.mockResolvedValue(new Response("login required"));
     await expect(readAuthorizedPdf("https://example.test/paper", new AbortController().signal)).rejects.toThrow("type");
     await expect(readAuthorizedPdf("https://example.test/paper", AbortSignal.abort())).rejects.toThrow("read");
+  });
+});
+
+describe("why a private source read came back empty", () => {
+  const LOAD = "b".repeat(32), PROOF = "c".repeat(32);
+  /** Run the loader page as the reader's iframe, and return what it posts to its parent. */
+  async function loaderReply(response: Response): Promise<unknown> {
+    vi.resetModules();
+    vi.stubGlobal("location", new URL(`${fakeBrowser.runtime.getURL("/pdf-loader.html")}?ticket=${LOAD}`));
+    const parent = {postMessage: vi.fn()}, frame = Object.assign(new EventTarget(), {parent});
+    vi.stubGlobal("window", frame);
+    vi.stubGlobal("document", {createElement: () => ({}), head: {append: vi.fn()}});
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+    const worker = port(SOURCE_LOADER_PORT, undefined);
+    vi.spyOn(fakeBrowser.runtime, "connect").mockReturnValue(worker.port as never);
+    await import("../../entrypoints/pdf-loader/main");
+    frame.dispatchEvent(Object.assign(new Event("message"), {source: parent, origin: location.origin, data: {kind: "anagram-pdf-loader-authorize", ticket: LOAD, proof: PROOF}}));
+    worker.send({source: "https://example.test/paper", cap: SOURCE_CAP});
+    await vi.waitFor(() => expect(parent.postMessage).toHaveBeenCalledTimes(2));
+    frame.dispatchEvent(new Event("pagehide"));
+    return parent.postMessage.mock.calls[1][0];
+  }
+  /** Claim a source ticket as the reader does, and hand it what the loader posted. */
+  function claim(data: object) {
+    vi.stubGlobal("location", new URL(fakeBrowser.runtime.getURL("/reader.html")));
+    const worker = port(SOURCE_CLAIM_PORT, undefined), page = new EventTarget();
+    const iframe = {hidden: false, src: "", contentWindow: {postMessage: vi.fn()}, remove: vi.fn()};
+    vi.stubGlobal("window", page);
+    vi.stubGlobal("document", {createElement: () => iframe, body: {append: vi.fn()}});
+    vi.spyOn(fakeBrowser.runtime, "connect").mockReturnValue(worker.port as never);
+    const result = claimSourceBytes(`s-${"a".repeat(32)}`);
+    worker.send({load: LOAD, proof: PROOF});
+    page.dispatchEvent(Object.assign(new Event("message"), {source: iframe.contentWindow, origin: location.origin, data}));
+    return result;
+  }
+  it.each([
+    ["large", new Response(bytes, {headers: {"content-length": String(SOURCE_CAP + 1)}})],
+    ["type", new Response("login required")],
+    ["read", new Response(bytes, {status: 403})],
+  ])("carries the reason \"%s\" from the loader to the reader", async (failure, response) => {
+    const reply = await loaderReply(response);
+    expect(reply).toEqual({kind: "anagram-pdf-loaded", ticket: LOAD, error: failure});
+    expect(await claim(reply as object)).toEqual({failure});
+  });
+  it("hands over the document itself, and calls bytes that are no PDF not a PDF", async () => {
+    expect(await claim({kind: "anagram-pdf-loaded", ticket: LOAD, bytes: bytes.slice().buffer})).toEqual({bytes});
+    expect(await claim({kind: "anagram-pdf-loaded", ticket: LOAD, bytes: new TextEncoder().encode("login").buffer})).toEqual({failure: "type"});
+    expect(await claim({kind: "anagram-pdf-loaded", ticket: LOAD, error: "anything else"})).toEqual({failure: "read"});
   });
 });
 

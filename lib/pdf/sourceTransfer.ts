@@ -1,6 +1,7 @@
 import { browser } from "#imports";
 import { safePdfSource, samePdfSource, looksLikePdfUrl } from "./source";
 import { hasPdfSourceAccess } from "./sourceAccess";
+import type { ClaimedPdf, HandoffFailure } from "./handoff";
 
 export const SOURCE_CLAIM_PORT = "anagram-pdf-source-claim";
 export const SOURCE_LOADER_PORT = "anagram-pdf-source-loader";
@@ -9,6 +10,7 @@ export const SOURCE_CAP = 50 * 1024 * 1024;
 export const SOURCE_TIMEOUT = 45_000;
 const SOURCE_TICKET = /^s-[a-f0-9]{32}$/;
 const LOADER_TICKET = /^[a-f0-9]{32}$/;
+const FAILURES: readonly HandoffFailure[] = ["large", "type", "read"];
 export type PdfOpenResult = {ok: true} | {ok: false; error: "busy" | "forbidden" | "read"};
 type Port = ReturnType<typeof browser.runtime.connect>;
 function ticket(): string { return [...crypto.getRandomValues(new Uint8Array(16))].map((byte) => byte.toString(16).padStart(2, "0")).join(""); }
@@ -159,18 +161,18 @@ export function createSourceBroker(readerUrl: (source: string) => string) {
 }
 
 /** Reader-side private iframe. `src` query parameters never enter this protocol. */
-export async function claimSourceBytes(key: string, signal?: AbortSignal): Promise<{bytes: Uint8Array} | null> {
-  if (!SOURCE_TICKET.test(key) || signal?.aborted) return null;
+export async function claimSourceBytes(key: string, signal?: AbortSignal): Promise<ClaimedPdf> {
+  if (!SOURCE_TICKET.test(key) || signal?.aborted) return {failure: "read"};
   let port: Port;
-  try { port = browser.runtime.connect({name: SOURCE_CLAIM_PORT}); } catch { return null; }
+  try { port = browser.runtime.connect({name: SOURCE_CLAIM_PORT}); } catch { return {failure: "read"}; }
   return new Promise((resolve) => {
     let iframe: HTMLIFrameElement | undefined, loaderTicket: string | undefined, parentProof: string | undefined, done = false;
-    const finish = (bytes: Uint8Array | null) => {
+    const finish = (result: ClaimedPdf) => {
       if (done) return; done = true; clearTimeout(timer);
       signal?.removeEventListener("abort", abort); window.removeEventListener("message", receive);
-      iframe?.remove(); disconnect(port); resolve(bytes ? {bytes} : null);
+      iframe?.remove(); disconnect(port); resolve(result);
     };
-    const abort = () => finish(null);
+    const abort = () => finish({failure: "read"});
     const timer = setTimeout(abort, SOURCE_TIMEOUT);
     const receive = (event: MessageEvent) => {
       if (!iframe || event.source !== iframe.contentWindow || event.origin !== location.origin || event.data?.ticket !== loaderTicket) return;
@@ -180,9 +182,11 @@ export async function claimSourceBytes(key: string, signal?: AbortSignal): Promi
         return;
       }
       if (event.data?.kind !== "anagram-pdf-loaded") return;
-      const buffer = event.data.bytes;
+      // A loader with nothing says why, so the reader can say "too large" or "not a PDF".
+      const {bytes: buffer, error} = event.data;
+      if (buffer === undefined) { finish({failure: FAILURES.includes(error) ? error : "read"}); return; }
       if (!(buffer instanceof ArrayBuffer) || buffer.byteLength < 1 || buffer.byteLength > SOURCE_CAP) { abort(); return; }
-      const bytes = new Uint8Array(buffer); finish(hasPdfMagic(bytes) ? bytes : null);
+      const bytes = new Uint8Array(buffer); finish(hasPdfMagic(bytes) ? {bytes} : {failure: "type"});
     };
     signal?.addEventListener("abort", abort, {once: true}); window.addEventListener("message", receive);
     port.onDisconnect.addListener(abort);

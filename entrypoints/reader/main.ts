@@ -176,7 +176,7 @@ async function openTicket(ticket: string, src: string): Promise<void> {
   const url = new URL(location.href); url.searchParams.delete("ticket");
   history.replaceState(null, "", url);
   originalUrl = src; original.hidden = false;
-  if (!held) { failure("read"); return; }
+  if ("failure" in held) { failure(held.failure); return; }
   await openBytes(held.bytes, pdfNameFromUrl(src), src, load);
 }
 function documentAddress(raw: string | null): string | null {
