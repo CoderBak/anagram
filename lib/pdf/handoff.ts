@@ -26,10 +26,11 @@ export const READ_TIMEOUT_MS = 30_000;
 export const CLAIM_TIMEOUT_MS = 15_000;
 
 /**
- * Why a handoff produced nothing, in the three ways the reader can say it out loud:
- * the document is over the cap, it is not a PDF at all, or it could not be read.
+ * Why a handoff produced nothing, in the four ways the reader can say it out loud: the
+ * document is over the cap, it is not a PDF at all, it could not be read, or documents
+ * other tabs are still handing over hold all the memory the relay may use.
  */
-export type HandoffFailure = "large" | "type" | "read";
+export type HandoffFailure = "large" | "type" | "read" | "busy";
 
 /** `String.fromCharCode` takes an argument list, and a long one overflows the stack. */
 const BINARY_STEP = 0x8000;
@@ -202,13 +203,14 @@ export function createHandoffBudget(limit=MAX_HANDOFF_TOTAL_BYTES,concurrency=MA
     bytes:()=>bytes,active:()=>active,
   };
 }
-interface Held {tabId:number;chunks:string[];bytes:number;timer:ReturnType<typeof setTimeout>;release():void}
+// Held as decoded bytes, which is what the budget counts; base64 would be a third more.
+interface Held {tabId:number;chunks:Uint8Array[];bytes:number;timer:ReturnType<typeof setTimeout>;release():void}
 export function newTicket(): string {
   const raw = new Uint8Array(16);crypto.getRandomValues(raw);
   return [...raw].map((b)=>b.toString(16).padStart(2,"0")).join("");
 }
 export interface TicketStore {
-  hold(tabId:number,chunks:string[],bytes:number,lease?:ByteLease):string|null;
+  hold(tabId:number,chunks:Uint8Array[],bytes:number,lease?:ByteLease):string|null;
   take(ticket:string,tabId:number|undefined):Held|null;
   forget(tabId:number):void;
   size():number;
@@ -219,7 +221,7 @@ export function createTicketStore(ttlMs=TICKET_TTL_MS,budget=createHandoffBudget
   return {
     hold(tabId,chunks,bytes,lease){
       if(!Number.isInteger(tabId) || tabId<0 || !Number.isSafeInteger(bytes) || bytes<1 || bytes>MAX_HANDOFF_BYTES)return null;
-      const sizes=chunks.map(validatedChunkBytes);if(sizes.some((n)=>n===null) || sizes.reduce<number>((a,n)=>a+(n??0),0)!==bytes)return null;
+      if(chunks.some((c)=>!(c instanceof Uint8Array) || c.length<1 || c.length>CHUNK_BYTES) || chunks.reduce((a,c)=>a+c.length,0)!==bytes)return null;
       const owned=lease ?? budget.lease();if(!lease && !owned.grow(bytes)){owned.release();return null;}
       const ticket=newTicket(),timer=setTimeout(()=>drop(ticket),ttlMs);
       held.set(ticket,{tabId,chunks,bytes,timer,release:()=>owned.release()});return ticket;
@@ -229,14 +231,14 @@ export function createTicketStore(ttlMs=TICKET_TTL_MS,budget=createHandoffBudget
     size:()=>held.size,
   };
 }
-export type ReadResult={ok:true;chunks:string[];bytes:number}|{ok:false;failure:HandoffFailure};
+export type ReadResult={ok:true;chunks:Uint8Array[];bytes:number}|{ok:false;failure:HandoffFailure};
 export async function readPdfFromTab(tabId:number,src:string,opts:{cap?:number;timeoutMs?:number;signal?:AbortSignal;lease?:ByteLease}={}):Promise<ReadResult> {
   const cap=Math.min(opts.cap ?? MAX_HANDOFF_BYTES,MAX_HANDOFF_BYTES);
   if(opts.signal?.aborted)return {ok:false,failure:"read"};
   let port:ReturnType<typeof browser.tabs.connect>;
   try{port=browser.tabs.connect(tabId,{name:PDF_BYTES_PORT,frameId:0});}catch{return {ok:false,failure:"read"};}
   return new Promise((resolve)=>{
-    const chunks:string[]=[];let bytes=0,settled=false;
+    const chunks:Uint8Array[]=[];let bytes=0,settled=false;
     const abort=()=>finish({ok:false,failure:"read"});
     const finish=(result:ReadResult)=>{if(settled)return;settled=true;clearTimeout(timer);opts.signal?.removeEventListener("abort",abort);try{port.disconnect();}catch{}resolve(result);};
     const timer=setTimeout(abort,opts.timeoutMs ?? READ_TIMEOUT_MS);
@@ -247,9 +249,12 @@ export async function readPdfFromTab(tabId:number,src:string,opts:{cap?:number;t
       if(chunk.success){
         const m=chunk.output,n=validatedChunkBytes(m.chunk);
         if(n===null || m.seq!==chunks.length){finish({ok:false,failure:"read"});return;}
-        if(bytes+n>cap || (opts.lease && !opts.lease.grow(n))){finish({ok:false,failure:"large"});return;}
-        if(chunks.length===0){const head=new Uint8Array(n);fromBase64(m.chunk,head,0);if(!hasPdfMagic(head)){finish({ok:false,failure:"type"});return;}}
-        bytes+=n;chunks.push(m.chunk);
+        if(bytes+n>cap){finish({ok:false,failure:"large"});return;}
+        // Under the cap, the lease can only be refused for what other tabs are holding.
+        if(opts.lease && !opts.lease.grow(n)){finish({ok:false,failure:"busy"});return;}
+        const data=new Uint8Array(n);fromBase64(m.chunk,data,0);
+        if(chunks.length===0 && !hasPdfMagic(data)){finish({ok:false,failure:"type"});return;}
+        bytes+=n;chunks.push(data);
         try{port.postMessage({ack:chunks.length});}catch{abort();}return;
       }
       const done=v.safeParse(DoneSchema,value);
@@ -334,7 +339,7 @@ export function createPdfHandoff(deps:HandoffDeps):PdfHandoff {
             }
             if(!isAck(value,next)){finish();return;}
             if(next===entry.chunks.length){port.postMessage({done:true});finish();return;}
-            const seq=next++;port.postMessage({chunk:entry.chunks[seq],seq});
+            const seq=next++;port.postMessage({chunk:toBase64(entry.chunks[seq]),seq});
           }catch{finish();}
         });
       });

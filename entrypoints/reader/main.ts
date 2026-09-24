@@ -38,7 +38,7 @@ function say(text: string): void {
   notice.hidden = !text;
 }
 function failure(reason: string): void {
-  say(reason === "large" ? t("readerTooLarge") : reason === "type" ? t("readerBadFile") : t("readerFetchFailed"));
+  say(reason === "large" ? t("readerTooLarge") : reason === "type" ? t("readerBadFile") : reason === "busy" ? t("readerBusy") : t("readerFetchFailed"));
   if (!app.pdfDocument) drop.hidden = false;
 }
 function scopeCount(): number { return [...pages.values()].filter(({view}) => view.layer.isConnected).length; }

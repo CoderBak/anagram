@@ -371,6 +371,9 @@
   "readerTooLarge": {
     "message": "这个 PDF 太大，无法在这里阅读。"
   },
+  "readerBusy": {
+    "message": "其他 PDF 仍在打开中。请稍后打开原件，再次选择 Anagram。"
+  },
   "readerBadFile": {
     "message": "这个文件无法作为 PDF 读取。"
   },

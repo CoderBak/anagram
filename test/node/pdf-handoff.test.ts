@@ -184,7 +184,7 @@ describe("reading the document out of the tab", () => {
 describe("the worker's ticket store", () => {
   it("gives the bytes to the tab they were read for, once", () => {
     const store = createTicketStore();
-    const ticket = store.hold(7, ["abcd"], 3);
+    const ticket = store.hold(7, [latin1("abc")], 3);
     expect(store.size()).toBe(1);
     expect(store.take(ticket!, 9)).toBeNull(); // another tab: not its document
     expect(store.take(ticket!, 7)?.bytes).toBe(3);
@@ -201,7 +201,7 @@ describe("the worker's ticket store", () => {
   it("drops a document no reader ever came for", () => {
     vi.useFakeTimers();
     const store = createTicketStore(1000);
-    const ticket = store.hold(7, ["abcd"], 3);
+    const ticket = store.hold(7, [latin1("abc")], 3);
     vi.advanceTimersByTime(1001);
     expect(store.take(ticket!, 7)).toBeNull();
     expect(store.size()).toBe(0);
@@ -209,9 +209,9 @@ describe("the worker's ticket store", () => {
 
   it("lets go of everything a closed tab was holding", () => {
     const store = createTicketStore();
-    store.hold(7, ["YQ=="], 1);
-    store.hold(7, ["Yg=="], 1);
-    const other = store.hold(8, ["Yw=="], 1);
+    store.hold(7, [latin1("a")], 1);
+    store.hold(7, [latin1("b")], 1);
+    const other = store.hold(8, [latin1("c")], 1);
     store.forget(7);
     expect(store.size()).toBe(1);
     expect(store.take(other!, 8)?.bytes).toBe(1);
@@ -338,17 +338,34 @@ describe("PDF global resource budget",()=>{
   it("counts pending tickets and active transfers together, and releases every reservation once",()=>{
     vi.useFakeTimers();const budget=createHandoffBudget(6,2),store=createTicketStore(100,budget);
     const first=budget.start()!,second=budget.start()!;expect(budget.start()).toBeNull();
-    const one=store.hold(1,["YWJj"],3),two=store.hold(2,["ZGVm"],3);
+    const one=store.hold(1,[latin1("abc")],3),two=store.hold(2,[latin1("def")],3);
     expect(one).not.toBeNull();expect(two).not.toBeNull();expect(budget.bytes()).toBe(6);
-    expect(store.hold(3,["YQ=="],1)).toBeNull();
+    expect(store.hold(3,[latin1("a")],1)).toBeNull();
     expect(store.take(one!,undefined)).toBeNull();
     const claimed=store.take(one!,1)!;expect(budget.bytes()).toBe(6);
     claimed.release();claimed.release();expect(budget.bytes()).toBe(3);
     vi.advanceTimersByTime(101);expect(budget.bytes()).toBe(0);
     first();second();expect(budget.active()).toBe(0);
   });
+  it("holds a document in the decoded bytes the budget counts, not in base64 a third larger",async()=>{
+    const budget=createHandoffBudget(),body=pdfOf(CHUNK_BYTES+64);
+    const p=mockPort();vi.spyOn(fakeBrowser.tabs,"connect").mockReturnValue(p.port as never);
+    const result=readPdfFromTab(7,"https://example.test/a.pdf",{lease:budget.lease()});
+    p.receive({chunk:toBase64(body.subarray(0,CHUNK_BYTES)),seq:0});p.receive({chunk:toBase64(body.subarray(CHUNK_BYTES)),seq:1});
+    p.receive({done:true,bytes:body.length});
+    const got=await result;if(!got.ok)throw new Error(got.failure);
+    expect(got.chunks.map((c)=>c.byteLength)).toEqual([CHUNK_BYTES,64]);expect(budget.bytes()).toBe(body.length);
+    expect(Buffer.concat(got.chunks)).toEqual(Buffer.from(body));
+  });
+  it("says a document under the cap is waiting on other tabs, not that it is too large",async()=>{
+    const budget=createHandoffBudget(CHUNK_BYTES*3),other=budget.lease();other.grow(CHUNK_BYTES*2);
+    const p=mockPort();vi.spyOn(fakeBrowser.tabs,"connect").mockReturnValue(p.port as never);
+    const result=readPdfFromTab(7,"https://example.test/a.pdf",{lease:budget.lease()}),body=pdfOf(CHUNK_BYTES*2);
+    p.receive({chunk:toBase64(body.subarray(0,CHUNK_BYTES)),seq:0});p.receive({chunk:toBase64(body.subarray(CHUNK_BYTES)),seq:1});
+    expect(await result).toEqual({ok:false,failure:"busy"});
+  });
   it("rejects malformed ticket contents and mismatched byte totals",()=>{
-    const store=createTicketStore();expect(store.hold(1,["bad"],3)).toBeNull();expect(store.hold(1,["YWJj"],4)).toBeNull();
+    const store=createTicketStore();expect(store.hold(1,["abc" as never],3)).toBeNull();expect(store.hold(1,[new Uint8Array(CHUNK_BYTES+1)],CHUNK_BYTES+1)).toBeNull();expect(store.hold(1,[latin1("abc")],4)).toBeNull();
   });
 });
 describe("PDF sender and navigation binding",()=>{

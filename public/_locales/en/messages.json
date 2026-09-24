@@ -487,6 +487,10 @@
     "message": "This PDF is too large to read here.",
     "description": "Reader notice past the size cap."
   },
+  "readerBusy": {
+    "message": "Other PDFs are still being opened. Open the original and choose Anagram again in a moment.",
+    "description": "Reader notice when PDFs other tabs are handing over hold all the memory the handoff may use."
+  },
   "readerBadFile": {
     "message": "This file could not be read as a PDF.",
     "description": "Reader notice."
