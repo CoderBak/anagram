@@ -8,9 +8,9 @@
 // each window's own number in the card), so "Words analyzed" is the selection again.
 import { computePosition, flip, offset, shift } from "@floating-ui/dom";
 import { MARK_ATTR } from "../types";
-import type { ModelInfo, ScoreBatchRequest } from "../contract";
+import type { ModelInfo, ScoreBatchRequest, ScoreResult } from "../contract";
 import { CONTRACT_VERSION } from "../contract";
-import { isScoredWindow, readInWindows, unitVerdict } from "../capture/windows";
+import { isScoredWindow, readInWindows, requestSlices, unitVerdict } from "../capture/windows";
 import { requestScores, type ScoreReply } from "../messaging/client";
 import { modelDim } from "../backend/router";
 import { messageLocale, t } from "../i18n";
@@ -212,27 +212,33 @@ export async function analyzeSelection(): Promise<void> {
       `<div class="head"><span class="verdict band-unknown spin">${t("selAnalyzing")}</span><span class="big"></span></div>` +
       row(t("selWordsSelected"), String(words));
     place();
-    // The selection's windows travel in ONE request, straight to the worker: no page
-    // cache and no local language gate stand between a selection and the daemon.
+    // The selection's windows go straight to the worker: no page cache and no local
+    // language gate stand between a selection and the engine. A whole page selected can
+    // outgrow what one request may carry, so they travel in the same bounded slices the
+    // page's own batches do (requestSlices), one after another.
     let backend = "up" as ScoreReply["backend"];
     let producing: ModelInfo | null = null;
     let incompatible = false;
     const session = "sel_" + Math.random().toString(36).slice(2, 10);
     const read = await readInWindows([{ id: "sel", text, order: 0 }], async (blocks) => {
-      const req: ScoreBatchRequest = {
-        v: CONTRACT_VERSION,
-        session,
-        priority: "viewport",
-        blocks,
-      };
-      const reply = await requestScores(req);
-      backend = reply.backend;
-      if (!reply.model || (producing && modelDim(producing) !== modelDim(reply.model))) {
-        incompatible = true;
-        return new Map();
+      const answers = new Map<string, ScoreResult>();
+      for (const slice of requestSlices(blocks, (b) => b.text.length)) {
+        const req: ScoreBatchRequest = {
+          v: CONTRACT_VERSION,
+          session,
+          priority: "viewport",
+          blocks: slice,
+        };
+        const reply = await requestScores(req);
+        backend = reply.backend;
+        if (!reply.model || (producing && modelDim(producing) !== modelDim(reply.model))) {
+          incompatible = true;
+          return new Map();
+        }
+        producing = reply.model;
+        for (const r of reply.results) answers.set(r.id, r);
       }
-      producing = reply.model;
-      return new Map(reply.results.map((r) => [r.id, r] as const));
+      return answers;
     });
     if (!_host || _host !== host) return; // dismissed while in flight
     const windows = incompatible ? undefined : read.get("sel");
