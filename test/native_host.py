@@ -448,6 +448,21 @@ class LifecycleTests(unittest.TestCase):
             component._save_settings()
         self.assertEqual(outside.read_text(), "keep")
 
+    def test_startup_failure_after_locking_releases_the_home(self):
+        # The host answers the startup error for its lifetime; the terminal,
+        # installer and a reconnecting host must still be able to take the home.
+        state = self.home / "component-state.json"
+        state.symlink_to(Path(self.temp.name) / "elsewhere.json")
+        with self.assertRaises(ComponentError) as caught:
+            self.make()
+        self.assertEqual(caught.exception.status, 422)
+        HomeLock(self.home).close()
+        state.unlink()
+        with patch("native_component.load_pin", side_effect=ValueError("damaged modelkit pin")), \
+                self.assertRaisesRegex(ValueError, "damaged"):
+            NativeComponent(self.home)
+        HomeLock(self.home).close()
+
     def test_home_is_revalidated_after_lock_acquisition(self):
         with patch("native_component.validate_home", side_effect=ComponentError("not_installed", "removed")):
             with self.assertRaises(ComponentError):

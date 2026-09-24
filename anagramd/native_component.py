@@ -156,7 +156,6 @@ class NativeComponent:
         self.lid_path = self.home / "models/lid.176.ftz"
         self.state_path = self.home / "component-state.json"
         self.version = installed_version(self.home)
-        self.pin = pin if pin is not None else load_pin(PIN)
         self.downloader = downloader or self._download_models
         self.verifier = verifier or self._verify_models
         self.planner = planner or self._build_model_plan
@@ -170,7 +169,13 @@ class NativeComponent:
         self.storage_bytes = 0
         self.download = {"status": "idle", "bytes_received": 0, "total_bytes": 0,
                          "file": None, "error": None, "phase": "detecting"}
-        self.settings = self._read_settings()
+        try:
+            self.pin = pin if pin is not None else load_pin(PIN)
+            self.settings = self._read_settings()
+        except BaseException:
+            # The host keeps answering this startup error; it must not keep the home.
+            self.home_lock.close()
+            raise
 
     def _read_settings(self):
         if is_link(self.state_path):
