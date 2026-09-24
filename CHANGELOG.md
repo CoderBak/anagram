@@ -5,6 +5,14 @@ Notable changes to Anagram, newest first. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html). The extension, the
 local component and the installer all carry the same version.
 
+## [Unreleased]
+
+### Fixed
+
+- Automatic PDF opening no longer adds its webRequest listener before any site is
+  granted. Chrome refused it with "You need to request host permissions in the manifest
+  file…" and the listener stayed dead until the worker restarted, even after a grant.
+
 ## [0.6.0] — 2026-09-22
 
 macOS Chrome release. Firefox, Linux and Windows are built from the same source but

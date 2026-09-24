@@ -1,4 +1,5 @@
 import { browser } from "#imports";
+import { browsingOrigins } from "../access/patterns";
 import { hasPdfSourceAccess } from "./sourceAccess";
 import { isInlinePdfResponse, shouldAutoOpen } from "./route";
 import { looksLikePdfUrl, safePdfSource, samePdfSource } from "./source";
@@ -46,18 +47,28 @@ export function createPdfNavigation(deps: Dependencies) {
         documents.set(details.tabId, {url: details.url, pdf: false, allowedMethod: false, committed: false, opening: false,
           suppressed: !!pass && pass.expires > Date.now() && samePdfSource(pass.url, details.url)});
       });
-      browser.webRequest.onHeadersReceived.addListener((details) => {
-        if (details.tabId < 0 || details.type !== "main_frame" || !safePdfSource(details.url)) return;
-        let entry = documents.get(details.tabId);
-        if (!entry || !samePdfSource(entry.url, details.url)) {
-          entry = {url: details.url, pdf: false, allowedMethod: false, committed: false, suppressed: false, opening: false};
-          documents.set(details.tabId, entry);
-        }
-        entry.pdf = isInlinePdfResponse(details);
-        entry.allowedMethod = details.method === "GET" && entry.pdf;
-        void attempt(details.tabId, entry);
-        return undefined;
-      }, {urls: ["http://*/*", "https://*/*"], types: ["main_frame"]}, ["responseHeaders"]);
+      // Chrome rejects a webRequest listener while the extension holds no host permission
+      // ("You need to request host permissions in the manifest file…") and never retries it.
+      // Site access is optional, so the listener waits for the first http(s) grant.
+      let watching = false;
+      const watchHeaders = (origins: readonly string[] | undefined) => {
+        if (watching || !browsingOrigins(origins).length) return;
+        watching = true;
+        browser.webRequest.onHeadersReceived.addListener((details) => {
+          if (details.tabId < 0 || details.type !== "main_frame" || !safePdfSource(details.url)) return;
+          let entry = documents.get(details.tabId);
+          if (!entry || !samePdfSource(entry.url, details.url)) {
+            entry = {url: details.url, pdf: false, allowedMethod: false, committed: false, suppressed: false, opening: false};
+            documents.set(details.tabId, entry);
+          }
+          entry.pdf = isInlinePdfResponse(details);
+          entry.allowedMethod = details.method === "GET" && entry.pdf;
+          void attempt(details.tabId, entry);
+          return undefined;
+        }, {urls: ["http://*/*", "https://*/*"], types: ["main_frame"]}, ["responseHeaders"]);
+      };
+      browser.permissions.onAdded.addListener((added) => watchHeaders(added.origins));
+      void browser.permissions.getAll().then((granted) => watchHeaders(granted.origins), () => undefined);
       browser.webNavigation.onCommitted.addListener((details) => {
         if (details.frameId !== 0) return;
         let entry = documents.get(details.tabId);
