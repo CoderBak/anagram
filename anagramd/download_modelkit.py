@@ -6,7 +6,6 @@ no account, saved Hugging Face token, or upstream access approval is required.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -16,7 +15,7 @@ import sys
 import subprocess
 import threading
 import queue
-from safe_files import is_link, regular_stat
+from safe_files import is_link, regular_stat, sha256_file
 
 PIN = Path(__file__).with_name("modelkit.json")
 LID_URL = "https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz"
@@ -302,8 +301,10 @@ def plain_tree(root: Path) -> None:
 def matches(path: Path, entry: dict) -> bool:
     if is_link(path) or not path.is_file() or path.stat().st_size != entry["size_bytes"]:
         return False
-    with path.open("rb") as stream:
-        return hashlib.file_digest(stream, "sha256").hexdigest() == entry["sha256"]
+    try:
+        return sha256_file(path, reuse=False) == entry["sha256"]
+    except ValueError:
+        return False  # bytes that changed while being read are not verified
 
 
 def invalid_files(root: Path, pin: dict, selected_paths=None) -> list[str]:

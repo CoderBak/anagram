@@ -1,11 +1,35 @@
 """Small, bounded file operations for the component's owned state and downloads."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
 import stat
 import tempfile
+
+_DIGESTS = {}
+
+
+def sha256_file(path: Path, *, reuse: bool = True) -> str:
+    """SHA-256 of a file, remembered for the exact identity that was read.
+
+    The key is the inode, size and timestamps, which any write changes, so a
+    remembered digest only answers for the bytes that were read. Verification
+    passes ``reuse=False`` and always reads; loading the verified weights
+    afterwards does not read them a second time.
+    """
+    path = Path(path)
+    info = path.stat()
+    key = (str(path.resolve()), info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+    if not reuse or key not in _DIGESTS:
+        with path.open("rb") as stream:
+            value = hashlib.file_digest(stream, "sha256").hexdigest()
+        after = path.stat()
+        if (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns) != key[1:]:
+            raise ValueError(f"Model artifact changed while reading {path.name}; retry after the download finishes")
+        _DIGESTS[key] = value
+    return _DIGESTS[key]
 
 
 def is_link(path: Path) -> bool:

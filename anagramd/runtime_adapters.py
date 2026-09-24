@@ -20,10 +20,10 @@ import numpy as np
 
 from runtime_controller import Candidate, RuntimeController
 from model_plan import candidate_catalog, candidate_spec, discover_hardware
+from safe_files import sha256_file
 from scoring import score_texts
 
 ONNX_FILES = {"fp32": "model.onnx", "fp16": "model_fp16.onnx", "int8": "model_int8.onnx"}
-_DIGESTS = {}
 
 
 def package_version(name):
@@ -67,18 +67,8 @@ def execution_environment(torch_module=None):
 
 
 def digest(path: Path):
-    stat = path.stat()
-    key = (str(path.resolve()), stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
-    if key not in _DIGESTS:
-        h = hashlib.sha256()
-        with path.open("rb") as stream:
-            for chunk in iter(lambda: stream.read(4 << 20), b""):
-                h.update(chunk)
-        after = path.stat()
-        if (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns) != key[1:]:
-            raise ValueError(f"Model artifact changed while reading {path.name}; retry after the download finishes")
-        _DIGESTS[key] = h.hexdigest()
-    return _DIGESTS[key]
+    # Weights the component verified in this process are not read again.
+    return sha256_file(path)
 
 
 def artifact_files(model_dir: Path, candidate: Candidate):

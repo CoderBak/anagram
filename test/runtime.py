@@ -2,6 +2,8 @@
 """Runtime lifecycle, guarded controls and shared scoring checks without EditLens weights."""
 from __future__ import annotations
 
+import hashlib
+import io
 import json
 import copy
 import os
@@ -801,6 +803,35 @@ class ProvenanceTests(unittest.TestCase):
             self.assertNotEqual(third, runtime_version(engine, INT8, path, engine_api, {"provider": "OtherProvider"}))
             self.assertEqual({p.name for p in artifact_files(path, INT8)}, {"model_int8.onnx", "tensors.data"})
             self.assertEqual(digest(path / "config.json"), digest(path / "config.json"))
+
+    def test_verified_weights_are_read_once_and_changed_weights_again(self):
+        from download_modelkit import matches
+        class Engine:
+            max_length, dtype_name = 512, "float32"
+            lid = SimpleNamespace(enabled=False, name=None, digest=None)
+            def __init__(self, *args, **kwargs): pass
+            def synchronize(self): pass
+            def close(self): pass
+        api = SimpleNamespace(EditLens=Engine, PIPELINE_FILES=engine_api.PIPELINE_FILES,
+                              pipeline_manifest=engine_api.pipeline_manifest)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp)
+            weights = path / "model.safetensors"
+            weights.write_bytes(b"verified weights")
+            entry = {"path": weights.name, "size_bytes": weights.stat().st_size,
+                     "sha256": hashlib.sha256(b"verified weights").hexdigest()}
+            reads, real_open = [], io.open
+            def counting_open(file, mode="r", *args, **kwargs):
+                if isinstance(file, Path) and file.name == weights.name and "r" in mode:
+                    reads.append(file)
+                return real_open(file, mode, *args, **kwargs)
+            with patch("io.open", counting_open):
+                self.assertTrue(matches(weights, entry))  # the component's verification
+                first = load_candidate(path, FP32, 512, 32, None, api, {})[0].version
+                self.assertEqual(len(reads), 1)
+                weights.write_bytes(b"replaced weights!")
+                self.assertNotEqual(load_candidate(path, FP32, 512, 32, None, api, {})[0].version, first)
+                self.assertEqual(len(reads), 2)
 
 
 class IsolatedBenchmarkTests(unittest.TestCase):
