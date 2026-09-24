@@ -1534,17 +1534,33 @@ async function sweep(page, steps = 6) {
 
     // The ball, its panel, and the report — the report must name the PDF, not the
     // chrome-extension:// address of the page it happens to be rendered on.
-    await p.evaluate(() => navigator.clipboard.writeText("NO REPORT COPIED").catch(() => {}));
-    const panel = await p.evaluate(async () => {
-      const sr = document.getElementById("anagram-fab")?.shadowRoot;
-      sr?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await new Promise((r) => setTimeout(r, 400));
-      sr?.querySelector(".pcopy")?.click();
-      await new Promise((r) => setTimeout(r, 300));
-      return { open: !!sr?.querySelector(".panel.open"), items: sr?.querySelectorAll(".pitem").length ?? -1 };
-    });
-    const report = await p.evaluate(() => navigator.clipboard.readText().catch(() => null));
-    const flagged = (report ?? "").match(/· Flagged: (\d+)/)?.[1];
+    // PDF.js is still re-rendering pages after the zoom above, and the reader re-reads each
+    // page it re-renders: for a moment that page's paragraphs are waiting for their (cached)
+    // verdicts again. The panel is drawn when it opens and the report when it is copied, so
+    // the two are compared once the reader has settled — the panel reopened each time.
+    let panel = { open: false, items: -1 };
+    let report = null;
+    let flagged;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      await p.evaluate(() => navigator.clipboard.writeText("NO REPORT COPIED").catch(() => {}));
+      panel = await p.evaluate(async () => {
+        const sr = document.getElementById("anagram-fab")?.shadowRoot;
+        const toggle = () => sr?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        if (sr?.querySelector(".panel.open")) {
+          toggle();
+          await new Promise((r) => setTimeout(r, 200));
+        }
+        toggle();
+        await new Promise((r) => setTimeout(r, 400));
+        sr?.querySelector(".pcopy")?.click();
+        await new Promise((r) => setTimeout(r, 300));
+        return { open: !!sr?.querySelector(".panel.open"), items: sr?.querySelectorAll(".pitem").length ?? -1 };
+      });
+      report = await p.evaluate(() => navigator.clipboard.readText().catch(() => null));
+      flagged = (report ?? "").match(/· Flagged: (\d+)/)?.[1];
+      if (panel.items === Number(flagged)) break;
+      await p.waitForTimeout(500);
+    }
     record(
       "ui",
       "PDF reader: the panel lists the flagged paragraphs and Copy report carries the scope note",
@@ -2258,6 +2274,9 @@ async function sweep(page, steps = 6) {
       document.body.appendChild(note);
       pre.appendChild(document.createElement("span"));
       pre.classList.toggle("touched");
+      const gone = document.createElement("i");
+      document.body.appendChild(gone);
+      gone.remove();
     });
     await p.waitForTimeout(2500);
     const after = await p.evaluate((sel) => {
