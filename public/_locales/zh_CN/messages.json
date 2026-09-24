@@ -233,9 +233,6 @@
   "panelItemAria": {
     "message": "$1，$2：$3"
   },
-  "panelTurnOffHere": {
-    "message": "在此页关闭"
-  },
   "panelTurnOffOn": {
     "message": "在 $1 关闭"
   },

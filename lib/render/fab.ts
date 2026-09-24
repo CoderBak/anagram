@@ -524,6 +524,18 @@ function sheet(): CSSStyleSheet {
   return _sheet;
 }
 
+/**
+ * The site the panel footer turns off on our own extension pages, where the page's host
+ * is the extension's id and no site at all. The PDF reader sets the host its document
+ * came from, and null for a file from this computer, where the footer offers no switch.
+ */
+let _ownPageSite: string | null = null;
+
+/** Name (or, with null, clear) that site. One per document. */
+export function setOwnPageSite(host: string | null): void {
+  _ownPageSite = host;
+}
+
 type Side = "left" | "right";
 
 export function createFab(opts: {
@@ -1133,20 +1145,22 @@ export function createFab(opts: {
     panelEl.appendChild(list);
 
     // Footer: per-site kill switch (writes the same rule the popup manages). On our own
-    // extension pages — the PDF reader — the "site" is an extension id nobody recognises,
-    // so the row names the page instead of printing it.
+    // extension pages — the PDF reader — the host is the extension's id, which no rule may
+    // name: the switch turns off the site the page says it is showing, if any.
     const ownPage = location.protocol === "chrome-extension:" || location.protocol === "moz-extension:";
+    const site = ownPage ? _ownPageSite : location.hostname;
+    if (!site) return;
     const foot = document.createElement("div");
     foot.className = "pfoot";
     const off = document.createElement("button");
     off.type = "button";
     off.className = "psiteoff";
-    off.textContent = ownPage ? t("panelTurnOffHere") : t("panelTurnOffOn", location.hostname);
+    off.textContent = t("panelTurnOffOn", site);
     off.title = t("panelTurnOffTitle");
     off.addEventListener("click", (e) => {
       e.stopPropagation();
       closePanel();
-      void setSiteOverride(location.hostname, "off").catch(() => undefined);
+      void setSiteOverride(site, "off").catch(() => undefined);
       opts.onSiteOff?.();
     });
     foot.appendChild(off);

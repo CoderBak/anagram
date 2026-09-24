@@ -2,9 +2,10 @@ import { browser } from "#imports";
 import { cancelDocumentSession, sendDocumentMessage } from "../../lib/access/session";
 import { t } from "../../lib/i18n";
 import { createOrchestrator, type Orchestrator } from "../../lib/capture/orchestrator";
-import { enabledForSite } from "../../lib/settings/settings";
+import { enabledForSite, settings } from "../../lib/settings/settings";
 import { ACTIONS, type ControlMessage, type TabState } from "../../lib/messaging/protocol";
 import { setRangeLocator } from "../../lib/render/highlight";
+import { setOwnPageSite } from "../../lib/render/fab";
 import { extractPageText } from "../../lib/pdf/extract";
 import { reflowPdf, type PdfPageText, type ReflowBlock } from "../../lib/pdf/reflow";
 import { createPdfUnitSource, type PdfUnitSource } from "../../lib/pdf/units";
@@ -27,6 +28,7 @@ let orchestrator: Orchestrator | null = null;
 let source: PdfUnitSource | null = null;
 let reportUrl = "";
 let originalUrl: string | null = null;
+let site: string | null = null;
 let generation = 0;
 let controller: AbortController | null = null;
 let started = false;
@@ -40,6 +42,11 @@ function say(text: string): void {
 function failure(reason: string): void {
   say(reason === "large" ? t("readerTooLarge") : reason === "type" ? t("readerBadFile") : reason === "busy" ? t("readerBusy") : t("readerFetchFailed"));
   if (!app.pdfDocument) drop.hidden = false;
+}
+/** The site a document came from: the host of a web address, none for a local file. */
+function siteOf(url: string | null): string | null {
+  const parsed = url ? safePdfSource(url) : null;
+  return parsed && parsed.protocol !== "file:" ? parsed.hostname : null;
 }
 function scopeCount(): number { return [...pages.values()].filter(({view}) => view.layer.isConnected).length; }
 function updateScope(): void {
@@ -89,8 +96,12 @@ async function startAnalysis(owned: number): Promise<void> {
       return currentSource.collect(claim, options.mergeShorts);
     },
     placeBadge: (unit, host) => placeChip({pageOf: (layer) => [...pages.values()].find(({view}) => view.layer === layer)?.view}, unit, host),
+    // The panel's "Turn off on <site>" wrote the rule for the document's own site.
+    onSiteOff: () => { started = false; orchestrator?.stop(); },
   });
-  const enabled = await enabledForSite(location.hostname);
+  // A web document follows its site's rule, as the page it came from does; a file from
+  // this computer has no site and follows the global switch.
+  const enabled = site ? await enabledForSite(site) : await settings.enabled.getValue();
   if (owned !== generation) return;
   if (enabled || started) { started = true; orchestrator?.start(); }
 }
@@ -135,6 +146,7 @@ function beginLoad(): {owned: number; signal: AbortSignal; closing: Promise<void
   setRangeLocator(null);
   pages.clear(); source = null; scopeLabel.hidden = true;
   originalUrl = null; original.hidden = true;
+  site = null; setOwnPageSite(null);
   say(t("readerLoading")); drop.hidden = true;
   const closing = app.close().catch(() => undefined);
   return {owned, signal: controller.signal, closing};
@@ -146,6 +158,7 @@ async function openBytes(bytes: Uint8Array, name: string, url: string | null, lo
   if (load.owned !== generation) return;
   source = createPdfUnitSource(); reportUrl = url ?? name;
   originalUrl = url; original.hidden = !url;
+  site = siteOf(url); setOwnPageSite(site);
   // Upstream controls the password dialog, rendering, navigation, find and printing.
   try {
     app.setTitleUsingUrl(name);

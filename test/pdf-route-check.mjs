@@ -525,6 +525,64 @@ await setAutoOpen(false);
 }
 
 {
+  // The panel's switch turns off the site the PDF came from. The reader's own host is the
+  // extension's id, which is no site: no rule may name it, and a local file has no switch.
+  const rules = () => sw.evaluate(() => new Promise((r) => chrome.storage.local.get("siteOverrides", (v) => r(v.siteOverrides ?? {}))));
+  // The reader's own toolbar and notices are hosts too; a chip is a pill in a page's chip layer.
+  const PDF_CHIP = '.anagramPdfChips [data-anagram="host"]';
+  const chips = (p) => p.evaluate((sel) => [...document.querySelectorAll(sel)].filter((el) => el.shadowRoot?.querySelector(".pill")).length, PDF_CHIP).catch(() => -1);
+  const panelSwitch = (p) => p.evaluate(() => {
+    const sr = document.getElementById("anagram-fab")?.shadowRoot;
+    sr?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    return { open: !!sr?.querySelector(".phead"), label: sr?.querySelector(".psiteoff")?.textContent ?? null };
+  }).catch(() => ({ open: false, label: null }));
+  const analyzed = (p) => p.waitForFunction((sel) => [...document.querySelectorAll(sel)].some((el) => el.shadowRoot?.querySelector(".pill")), PDF_CHIP, { timeout: 20000 }).catch(() => {});
+
+  const page = await openPdfInReader(context, files.url("/site-off.pdf"));
+  await ready(page);
+  await analyzed(page);
+  const before = await chips(page);
+  const offered = await panelSwitch(page);
+  await page.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".psiteoff")?.click()).catch(() => {});
+  await page.waitForTimeout(1000);
+  const after = await chips(page);
+  const written = await rules();
+  record(
+    "reader: Turn off names the PDF's own site, writes the rule there, and stops the reader",
+    before > 0 && offered.label === "Turn off on localhost" && after === 0 && JSON.stringify(written) === JSON.stringify({ localhost: "off" }),
+    JSON.stringify({ before, offered, after, written }),
+  );
+
+  const next = await visit(files.url("/site-off-next.pdf"), { settle: 2500 });
+  const tabId = await sw.evaluate(async (url) => (await chrome.tabs.query({ url }))[0]?.id ?? null, files.url("/site-off-next.pdf"));
+  await driver.evaluate(([url, id]) => chrome.runtime.sendMessage({ action: "openPdfReader", url, tabId: id }), [files.url("/site-off-next.pdf"), tabId]);
+  await next.waitForURL(/reader\.html/, { timeout: 10000 }).catch(() => {});
+  await ready(next);
+  await next.waitForTimeout(2500);
+  record(
+    "reader: the next PDF from a site turned off opens without being analyzed",
+    next.url().startsWith(`${READER}?src=`) && (await chips(next)) === 0,
+    JSON.stringify({ url: next.url().slice(0, 60), chips: await chips(next) }),
+  );
+  await sw.evaluate(() => new Promise((r) => chrome.storage.local.set({ siteOverrides: {} }, r)));
+
+  const local = await context.newPage();
+  await local.goto(READER, { waitUntil: "load" });
+  await local.setInputFiles("#file", { name: "local.pdf", mimeType: "application/pdf", buffer: TEST_PDF });
+  await ready(local);
+  await analyzed(local);
+  const localSwitch = await panelSwitch(local);
+  record(
+    "reader: a file from this computer has no site, so its panel offers no switch",
+    localSwitch.open && localSwitch.label === null,
+    JSON.stringify(localSwitch),
+  );
+  await local.close();
+  await next.close();
+  await page.close();
+}
+
+{
   const stray = requested.filter((url) => {
     if (!/^https?:/.test(url)) return false; // chrome-extension:, file:, data:
     const { hostname } = new URL(url);

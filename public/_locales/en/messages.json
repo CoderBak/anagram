@@ -311,10 +311,6 @@
     "message": "$1, $2: $3",
     "description": "Accessible name of a panel row: verdict, the score with its leading zero (a screen reader reads a bare \".93\" badly), snippet."
   },
-  "panelTurnOffHere": {
-    "message": "Turn off here",
-    "description": "Panel footer on our own pages, which have no hostname worth printing."
-  },
   "panelTurnOffOn": {
     "message": "Turn off on $1",
     "description": "Panel footer kill switch. $1 = hostname."
