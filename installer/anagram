@@ -75,7 +75,17 @@ PYEOF
 case "${1:-}" in
   download)
     [ -x "$PY" ] || die "Private Python is missing; reinstall the component"
-    clean_env "$PY" -I "$ANAGRAM_HOME/app/prepare_models.py" --home "$ANAGRAM_HOME" --language "${ANAGRAM_LANG:-en}"
+    shift
+    profile=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --profile) [ $# -ge 2 ] || die "--profile needs recommended or expanded"; profile="$2"; shift 2 ;;
+        --profile=*) profile="${1#--profile=}"; shift ;;
+        *) die "unknown download option: $1" ;;
+      esac
+    done
+    case "$profile" in ""|recommended|expanded) ;; *) die "--profile must be recommended or expanded" ;; esac
+    clean_env "$PY" -I "$ANAGRAM_HOME/app/prepare_models.py" --home "$ANAGRAM_HOME" --language "${ANAGRAM_LANG:-en}" ${profile:+--profile "$profile"}
     ;;
   doctor)
     [ -x "$PY" ] || die "Private Python is missing; reinstall the component"
@@ -114,7 +124,7 @@ PYEOF
     ;;
   *)
     cat <<USAGE
-Usage: anagram download | doctor | version | path | update | uninstall [-y]
+Usage: anagram download [--profile recommended|expanded] | doctor | version | path | update | uninstall [-y]
 
 The browser starts the local component. Use Anagram Settings to pause downloads,
 stop/resume the engine, change its configuration, or remove models.

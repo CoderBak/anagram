@@ -122,7 +122,7 @@ make_home() { # owned fixture directory
 [ "\${1:-}" = -I ] && shift
 case "\${1:-}" in
   */native_registration.py) exec "$PY3" "\$@" ;;
-  */prepare_models.py) echo 'Fixture model preparation'; [ ! -f "\$3/fail-download-fixture" ]; exit \$? ;;
+  */prepare_models.py) echo "Fixture model preparation: \$*"; [ ! -f "\$3/fail-download-fixture" ]; exit \$? ;;
   -) exec "$PY3" "\$@" ;;
 esac
 exit 2
@@ -232,6 +232,16 @@ out="$(HOME="$FAKE_HOME" "$HDOWN/bin/anagram" download 2>&1)"; rc=$?
 if [ $rc -eq 0 ] && echo "$out" | grep -q 'Fixture model preparation'; then
   ok "download-only CLI invokes preparation without reinstalling runtime packages"
 else bad "download-only CLI" "rc=$rc $out"; fi
+out="$(HOME="$FAKE_HOME" "$HDOWN/bin/anagram" download --profile expanded 2>&1)"; rc=$?
+if [ $rc -eq 0 ] && echo "$out" | grep -q -- '--profile expanded$'; then
+  ok "download --profile passes the chosen model set to preparation"
+else bad "download --profile" "rc=$rc $out"; fi
+for args in "--profile" "--profile bogus" "--home /nonexistent" "--installer"; do
+  out="$(HOME="$FAKE_HOME" "$HDOWN/bin/anagram" download $args 2>&1)"; rc=$?
+  if [ $rc -ne 0 ] && ! echo "$out" | grep -q 'Fixture model preparation'; then
+    ok "download refuses '$args' before preparation"
+  else bad "download $args" "rc=$rc $out"; fi
+done
 HOME="$FAKE_HOME" "$PY3" "$ROOT/installer/native_registration.py" unregister --home "$HDOWN" >/dev/null 2>&1
 if "$PY3" "$ROOT/test/native_registration.py" > "$T/native-tests.log" 2>&1; then
   ok "native registration containment, exact origins, inventory and rollback tests pass"
