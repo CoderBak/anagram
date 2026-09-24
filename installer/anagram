@@ -51,8 +51,24 @@ clean_env() {
     "$@"
 }
 
+# An installer records its process ID in its lock. The lock of one that died keeps the
+# host out until another installer takes it over and recovers the folder.
+installer_died() {
+  lock="$ANAGRAM_HOME/.installer-lock"
+  [ -d "$lock" ] && [ ! -L "$lock" ] && [ -f "$lock/pid" ] && [ ! -L "$lock/pid" ] || return 1
+  pid="$(cat "$lock/pid")"
+  case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+  ! kill -0 "$pid" 2>/dev/null
+}
+
 maintenance() {
   [ -x "$PY" ] && [ -f "$ANAGRAM_HOME/app/native_registration.py" ] && [ -f "$ANAGRAM_HOME/.native-component.json" ] || die "Native maintenance helper or ownership marker is missing; reinstall the component before retrying"
+  if installer_died; then
+    # No host can hold the lock now. The helper takes it itself; the installer an update
+    # runs recovers the folder, and uninstall removes the leftovers with the rest.
+    clean_env "$PY" -I "$ANAGRAM_HOME/app/native_registration.py" "$1" --home "$ANAGRAM_HOME"
+    return
+  fi
   clean_env "$PY" -I - "$ANAGRAM_HOME" "$1" <<'PYEOF'
 import subprocess, sys
 from pathlib import Path
@@ -76,7 +92,7 @@ PYEOF
 # ownership marker, so no host can start here; only files remain. The helper deletes
 # the markers and this command last, so they are still here to finish the job.
 finish_uninstall() {
-  [ ! -e "$ANAGRAM_HOME/.installer-lock" ] && [ ! -L "$ANAGRAM_HOME/.installer-lock" ] || die "an installer is using $ANAGRAM_HOME; retry after it finishes"
+  { [ ! -e "$ANAGRAM_HOME/.installer-lock" ] && [ ! -L "$ANAGRAM_HOME/.installer-lock" ]; } || installer_died || die "an installer is using $ANAGRAM_HOME; retry after it finishes"
   real="$(cd "$ANAGRAM_HOME" && pwd -P)"
   grep -qxF "  \"home\": \"$real\"" "$ANAGRAM_HOME/.native-uninstall.json" || die "the uninstall marker does not name $real"
   find "$real" -mindepth 1 -maxdepth 1 ! -name .anagram-home ! -name .native-uninstall.json ! -name bin -exec rm -rf {} +
@@ -87,6 +103,7 @@ finish_uninstall() {
 case "${1:-}" in
   download)
     [ -x "$PY" ] || die "Private Python is missing; reinstall the component"
+    ! installer_died || die "an installation was interrupted; repair $ANAGRAM_HOME with: anagram update"
     shift
     profile=""
     while [ $# -gt 0 ]; do
@@ -101,6 +118,7 @@ case "${1:-}" in
     ;;
   doctor)
     [ -x "$PY" ] || die "Private Python is missing; reinstall the component"
+    ! installer_died || die "an installation was interrupted; repair $ANAGRAM_HOME with: anagram update"
     [ -f "$ANAGRAM_HOME/app/native_host.py" ] && [ -f "$ANAGRAM_HOME/app/engine.py" ] || die "Native engine files are missing; reinstall the component"
     clean_env PYTHONDONTWRITEBYTECODE=1 "$PY" -I - "$ANAGRAM_HOME" <<'PYEOF'
 import os, runpy, sys

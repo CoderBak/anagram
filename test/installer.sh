@@ -234,6 +234,76 @@ if [ $rc -ne 0 ] && [ "$app_before" = "$(snapshot "$HROLL/app")" ] && [ "$env_be
   ok "registration conflict rolls back app, version and private environment while preserving foreign registration"
 else bad "native installation rollback" "rc=$rc $out"; fi
 rm -f "$registration"
+# Interrupted installers. dash (/bin/sh on Debian) skips an EXIT trap when a signal kills it.
+SH_UNDER_TEST="$(command -v dash || echo sh)"
+paused_uv() { # home marker: a uv whose sync announces itself, then blocks until killed
+  printf '#!/bin/sh\necho "uv %s"\nif [ "$1" = sync ]; then mkdir -p "$UV_PROJECT_ENVIRONMENT/bin"; : > "%s"; sleep 30; fi\nexit 0\n' "$UVV" "$2" > "$1/bin/uv"; chmod +x "$1/bin/uv"
+}
+interrupt_install() { # home signal: start an update, then signal its whole process group mid-sync
+  "$PY3" - "$SH_UNDER_TEST" "$ROOT/install.sh" "$FAKE_HOME" "$1" "file://$RELDIR" "$1.sync" "$2" <<'PYSIG'
+import os, signal, subprocess, sys, time
+from pathlib import Path
+shell, script, user, home, release, started, sig = sys.argv[1:]
+env = {**os.environ, 'HOME': user, 'ANAGRAM_HOME': home, 'ANAGRAM_RELEASE_URL': release}
+process = subprocess.Popen([shell, script], env=env, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+deadline = time.monotonic() + 20
+while not Path(started).exists():
+    if process.poll() is not None or time.monotonic() > deadline:
+        sys.exit('installer did not reach uv sync')
+    time.sleep(0.05)
+os.killpg(process.pid, getattr(signal, 'SIG' + sig))
+process.wait(20)
+PYSIG
+}
+for sig in TERM INT HUP; do
+  h="$T/signal-$sig"; make_home "$h"; paused_uv "$h" "$h.sync"
+  before="$(snapshot "$h")"
+  out="$(interrupt_install "$h" "$sig" 2>&1)"; rc=$?
+  if [ $rc -eq 0 ] && [ "$before" = "$(snapshot "$h")" ]; then
+    ok "SIG$sig mid-update restores the component and releases the lock under $(basename "$SH_UNDER_TEST")"
+  else bad "SIG$sig mid-update" "rc=$rc $out; left: $(ls -A "$h" | tr '\n' ' ')"; fi
+done
+# SIGKILL or power loss skips every trap. The next installer takes over the dead lock.
+h="$T/killed-installer"; make_home "$h"; paused_uv "$h" "$h.sync"
+before="$(snapshot "$h")"
+interrupt_install "$h" KILL >/dev/null 2>&1
+if [ -f "$h/.installer-lock/pid" ] && [ -d "$h/app.old" ]; then ok "a killed installer leaves its lock and backups behind"
+else bad "killed installer fixture" "left: $(ls -A "$h" | tr '\n' ' ')"; fi
+out="$(HOME="$FAKE_HOME" ANAGRAM_HOME="$h" ANAGRAM_RELEASE_URL="$UNREACHABLE" sh "$ROOT/install.sh" 2>&1)"; rc=$?
+if [ $rc -ne 0 ] && echo "$out" | grep -q 'Recovering from an interrupted installation' && [ "$before" = "$(snapshot "$h")" ]; then
+  ok "the next installer takes over a dead installer's lock and restores what it swapped"
+else bad "dead installer recovery" "rc=$rc $out"; fi
+printf '#!/bin/sh\necho "uv %s"\nif [ "$1" = sync ]; then mkdir -p "$UV_PROJECT_ENVIRONMENT/bin"; cp "$(dirname "$0")/../venv/bin/python" "$UV_PROJECT_ENVIRONMENT/bin/python"; fi\nexit 0\n' "$UVV" > "$h/bin/uv"
+out="$(HOME="$FAKE_HOME" ANAGRAM_HOME="$h" ANAGRAM_RELEASE_URL="file://$RELDIR" sh "$ROOT/install.sh" 2>&1)"; rc=$?
+if [ $rc -eq 0 ] && [ "$(cat "$h/VERSION")" = 9.9.10 ] && [ -z "$(ls -d "$h"/*.old "$h/venv.next" "$h"/.staging.* "$h/.installer-lock" 2>/dev/null)" ]; then
+  ok "after recovery the update completes"
+else bad "update after recovery" "rc=$rc $out"; fi
+HOME="$FAKE_HOME" "$PY3" "$ROOT/installer/native_registration.py" unregister --home "$h" >/dev/null 2>&1
+h="$T/live-installer"; make_home "$h"; mkdir "$h/.installer-lock"; echo $$ > "$h/.installer-lock/pid"
+before="$(snapshot "$h")"
+out="$(HOME="$FAKE_HOME" ANAGRAM_HOME="$h" ANAGRAM_RELEASE_URL="$UNREACHABLE" sh "$ROOT/install.sh" 2>&1)"; rc=$?
+if [ $rc -ne 0 ] && echo "$out" | grep -q "another installer (process $$)" && [ "$before" = "$(snapshot "$h")" ]; then
+  ok "a running installer's lock is never taken over"
+else bad "live installer lock" "rc=$rc $out"; fi
+# With no swap on record the dead installer had committed: keep its trees, drop their backups.
+h="$T/committed-crash"; make_home "$h"; mkdir -p "$h/app.old/half-deleted" "$h/.installer-lock"; echo 99999999 > "$h/.installer-lock/pid"
+out="$(HOME="$FAKE_HOME" ANAGRAM_HOME="$h" ANAGRAM_RELEASE_URL="$UNREACHABLE" sh "$ROOT/install.sh" 2>&1)"; rc=$?
+if [ $rc -ne 0 ] && [ -f "$h/app/engine.py" ] && [ ! -e "$h/app.old" ] && [ ! -e "$h/.installer-lock" ]; then
+  ok "a committed installer's leftover backup is dropped, never promoted"
+else bad "committed installer leftovers" "rc=$rc $out"; fi
+# The CLI names the repair, and update reaches it without the host lock the dead lock blocks.
+h="$T/dead-installer-cli"; make_home "$h"; real="$(cd "$h" && pwd -P)"
+printf '{"schema_version": 1, "host": "dev.coderbak.anagram", "home": "%s"}\n' "$real" > "$h/.native-component.json"
+printf 'import pathlib, sys\npathlib.Path(sys.argv[0]).with_name("called").write_text(" ".join(sys.argv[1:]))\n' > "$h/app/native_registration.py"
+mkdir "$h/.installer-lock"; echo 99999999 > "$h/.installer-lock/pid"
+out="$(HOME="$FAKE_HOME" "$h/bin/anagram" download 2>&1)"; rc=$?
+if [ $rc -ne 0 ] && echo "$out" | grep -q 'anagram update' && ! echo "$out" | grep -q 'Fixture model preparation'; then
+  ok "download names the repair for a dead installer's lock"
+else bad "download with a dead installer lock" "rc=$rc $out"; fi
+out="$(HOME="$FAKE_HOME" "$h/bin/anagram" update 2>&1)"; rc=$?
+if [ $rc -eq 0 ] && [ "$(cat "$h/app/called" 2>/dev/null)" = "update --home $real" ]; then
+  ok "update repairs past a dead installer's lock"
+else bad "update with a dead installer lock" "rc=$rc $out"; fi
 # Model failure occurs after the runtime/registration commit and must not undo it.
 HDOWN="$T/download-failure"; make_home "$HDOWN"
 printf '#!/bin/sh\necho "uv %s"\nif [ "$1" = sync ]; then mkdir -p "$UV_PROJECT_ENVIRONMENT/bin"; cp "$(dirname "$0")/../venv/bin/python" "$UV_PROJECT_ENVIRONMENT/bin/python"; fi\nexit 0\n' "$UVV" > "$HDOWN/bin/uv"; chmod +x "$HDOWN/bin/uv"

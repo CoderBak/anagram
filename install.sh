@@ -58,8 +58,9 @@ done
 for sub in app extension bin models venv python hf cache logs run tools; do
   [ -L "$ANAGRAM_HOME/$sub" ] && die "'$ANAGRAM_HOME/$sub' is a symbolic link — refusing to write through it"
 done
-for sub in app.old extension.old venv.old venv.next; do
-  [ ! -e "$ANAGRAM_HOME/$sub" ] && [ ! -L "$ANAGRAM_HOME/$sub" ] || die "unfinished or unsafe staging path: $ANAGRAM_HOME/$sub"
+# Leftovers of an interrupted installer are recovered under the lock; links never are.
+for sub in app.old extension.old venv.old venv.next .installer-lock; do
+  [ ! -L "$ANAGRAM_HOME/$sub" ] || die "unsafe staging path: $ANAGRAM_HOME/$sub"
 done
 case "$INSTALL_LANG" in en|zh_CN) ;; *) die "ANAGRAM_LANG must be en or zh_CN / 语言须为 en 或 zh_CN" ;; esac
 case "$BROWSER" in
@@ -70,6 +71,7 @@ case "$BROWSER" in
 esac
 
 TMP=""
+LOCK="$ANAGRAM_HOME/.installer-lock"
 INSTALL_LOCK=""
 SWAPPED=""
 INSTALL_COMPLETE=0
@@ -78,6 +80,8 @@ VERSION_WRITTEN=0
 CREATED_VENV=0
 STAGE=""
 cleanup() {
+  # Finish the rollback even when the signal that started it is repeated.
+  trap '' HUP INT TERM
   if [ "$INSTALL_COMPLETE" -eq 0 ] && [ -n "$INSTALL_LOCK" ]; then
     for sub in $SWAPPED; do
       [ -L "$ANAGRAM_HOME/$sub" ] && continue
@@ -85,11 +89,11 @@ cleanup() {
       [ ! -d "$ANAGRAM_HOME/$sub.old" ] || mv "$ANAGRAM_HOME/$sub.old" "$ANAGRAM_HOME/$sub"
     done
     if [ "$COMMAND_WRITTEN" -eq 1 ]; then
-      if [ -f "$TMP/command.backup" ]; then install_ours "$TMP/command.backup" "$ANAGRAM_HOME/bin/anagram" 755;
+      if [ -f "$INSTALL_LOCK/command.backup" ]; then install_ours "$INSTALL_LOCK/command.backup" "$ANAGRAM_HOME/bin/anagram" 755;
       else rm -f "$ANAGRAM_HOME/bin/anagram"; fi
     fi
     if [ "$VERSION_WRITTEN" -eq 1 ]; then
-      if [ -f "$TMP/version.backup" ]; then install_ours "$TMP/version.backup" "$ANAGRAM_HOME/VERSION";
+      if [ -f "$INSTALL_LOCK/version.backup" ]; then install_ours "$INSTALL_LOCK/version.backup" "$ANAGRAM_HOME/VERSION";
       else rm -f "$ANAGRAM_HOME/VERSION"; fi
     fi
     if [ "$CREATED_VENV" -eq 1 ] && [ ! -L "$ANAGRAM_HOME/venv.next" ]; then
@@ -98,9 +102,17 @@ cleanup() {
   fi
   [ -z "$STAGE" ] || remove_ours "$STAGE"
   [ -z "$TMP" ] || rm -rf "$TMP"
-  [ -z "$INSTALL_LOCK" ] || rmdir "$INSTALL_LOCK"
+  if [ -n "$INSTALL_LOCK" ]; then
+    rm -f "$LOCK/swapping" "$LOCK/command.backup" "$LOCK/version.backup" "$LOCK"/pid.*
+    rm -f "$LOCK/pid"
+    rmdir "$LOCK"
+  fi
 }
 trap cleanup EXIT
+# dash skips the EXIT trap when a signal kills it; exit instead, so cleanup runs.
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # Remove something that must be INSIDE the validated folder and must not be a symlink.
 remove_ours() {
@@ -161,12 +173,65 @@ case "$OS/$ARCH" in
   *) die "unsupported platform: $OS $ARCH (macOS 14+ Apple Silicon or glibc Linux x86_64/arm64)" ;;
 esac
 
-# One installer at a time, including first install before private Python exists.
+# One installer at a time, including first install before private Python exists. The
+# lock holds its installer's process ID, so the lock of one that was killed or lost
+# with the machine is taken over, and what it left half-done is recovered.
+acquire_lock() {
+  for attempt in 1 2 3; do
+    if mkdir "$LOCK" 2>/dev/null; then
+      printf '%s\n' "$$" > "$LOCK/pid"
+      return 0
+    fi
+    [ -e "$LOCK" ] || continue
+    [ -d "$LOCK" ] && [ ! -L "$LOCK" ] && [ ! -L "$LOCK/pid" ] || die "unsafe installer lock: $LOCK"
+    owner="$(cat "$LOCK/pid" 2>/dev/null || true)"
+    case "$owner" in
+      '') sleep 1; continue ;;   # being created or released
+      *[!0-9]*) die "unreadable installer lock: $LOCK" ;;
+    esac
+    ! kill -0 "$owner" 2>/dev/null || die "another installer (process $owner) is using $ANAGRAM_HOME; retry after it finishes"
+    # Its installer is gone. Of several claimants only one can move its pid file aside;
+    # one that moved a live claimant's file instead puts it back.
+    mv "$LOCK/pid" "$LOCK/pid.$$" 2>/dev/null || die "another installer is recovering $ANAGRAM_HOME; retry after it finishes"
+    if [ "$(cat "$LOCK/pid.$$")" != "$owner" ]; then
+      mv "$LOCK/pid.$$" "$LOCK/pid"
+      die "another installer is recovering $ANAGRAM_HOME; retry after it finishes"
+    fi
+    printf '%s\n' "$$" > "$LOCK/pid"
+    rm -f "$LOCK/pid.$$"
+    note "$(tr_msg 'Recovering from an interrupted installation' '正在恢复被中断的安装')"
+    return 0
+  done
+  die "another installer is active, or an interrupted older installer left $LOCK. If no Anagram installer is running, remove that folder and retry."
+}
+# A dead installer's lock records whether it was swapping trees: then its old app,
+# extension, environment, command and VERSION come back. Otherwise a tree that exists
+# stays and only its backup goes, so a half-deleted backup is never promoted.
+recover_leftovers() {
+  swapping=0; [ ! -f "$LOCK/swapping" ] || swapping=1
+  for sub in app extension venv; do
+    [ -e "$ANAGRAM_HOME/$sub.old" ] || continue
+    if [ "$swapping" -eq 1 ] || [ ! -e "$ANAGRAM_HOME/$sub" ]; then
+      remove_ours "$ANAGRAM_HOME/$sub"
+      mv "$ANAGRAM_HOME/$sub.old" "$ANAGRAM_HOME/$sub"
+    else
+      remove_ours "$ANAGRAM_HOME/$sub.old"
+    fi
+  done
+  if [ "$swapping" -eq 1 ]; then
+    [ ! -f "$LOCK/command.backup" ] || install_ours "$LOCK/command.backup" "$ANAGRAM_HOME/bin/anagram" 755
+    [ ! -f "$LOCK/version.backup" ] || install_ours "$LOCK/version.backup" "$ANAGRAM_HOME/VERSION"
+  fi
+  for stage in "$ANAGRAM_HOME"/.staging.* "$ANAGRAM_HOME/venv.next"; do
+    if [ -e "$stage" ] || [ -L "$stage" ]; then remove_ours "$stage"; fi
+  done
+  rm -f "$LOCK/swapping" "$LOCK/command.backup" "$LOCK/version.backup"
+}
 mkdir -p "$ANAGRAM_HOME"
-if ! mkdir "$ANAGRAM_HOME/.installer-lock" 2>/dev/null; then
-  die "another installer is active, or a previous interrupted installation left $ANAGRAM_HOME/.installer-lock; close it before retrying"
-fi
-INSTALL_LOCK="$ANAGRAM_HOME/.installer-lock"
+acquire_lock
+# Until recovery succeeds the lock stays behind for the next installer to take over.
+recover_leftovers
+INSTALL_LOCK="$LOCK"
 # Another installer may have finished between the initial checks and this lock.
 for sub in app extension bin models venv python hf cache logs run tools "$MARKER" VERSION bin/anagram bin/anagram.new bin/uv bin/uv.new .native-host.lock .native-component.json native-registration.json; do
   [ ! -L "$ANAGRAM_HOME/$sub" ] || die "symbolic link in installation: $sub"
@@ -236,6 +301,7 @@ else
   cp -R "$REL/extension" "$STAGE/extension"
 fi
 cp "$REL/install.sh" "$STAGE/app/install.sh" 2>/dev/null || true
+: > "$INSTALL_LOCK/swapping"
 for sub in app extension; do
   [ ! -e "$ANAGRAM_HOME/$sub.old" ] || die "unfinished previous update at $ANAGRAM_HOME/$sub.old — restore it before retrying"
   if [ -e "$ANAGRAM_HOME/$sub" ]; then mv "$ANAGRAM_HOME/$sub" "$ANAGRAM_HOME/$sub.old"; fi
@@ -244,8 +310,8 @@ for sub in app extension; do
 done
 remove_ours "$STAGE"
 STAGE=""
-[ ! -f "$ANAGRAM_HOME/bin/anagram" ] || cp "$ANAGRAM_HOME/bin/anagram" "$TMP/command.backup"
-[ ! -f "$ANAGRAM_HOME/VERSION" ] || cp "$ANAGRAM_HOME/VERSION" "$TMP/version.backup"
+[ ! -f "$ANAGRAM_HOME/bin/anagram" ] || cp "$ANAGRAM_HOME/bin/anagram" "$INSTALL_LOCK/command.backup"
+[ ! -f "$ANAGRAM_HOME/VERSION" ] || cp "$ANAGRAM_HOME/VERSION" "$INSTALL_LOCK/version.backup"
 install_ours "$REL/bin/anagram" "$ANAGRAM_HOME/bin/anagram" 755
 COMMAND_WRITTEN=1
 printf '%s\n' "$VERSION" > "$TMP/VERSION"
@@ -291,6 +357,7 @@ mkdir -p "$ANAGRAM_HOME/cache"
 step 6 "$(tr_msg 'Registering the local component for this extension only' '正在为当前扩展注册本地组件')"
 clean_env PYTHONNOUSERSITE=1 PYTHONSAFEPATH=1 "$PY" "$ANAGRAM_HOME/app/native_registration.py" register \
   --home "$ANAGRAM_HOME" --browser "$BROWSER" --extension-id "$EXTENSION_ID" --language "$INSTALL_LANG"
+rm -f "$INSTALL_LOCK/swapping"
 INSTALL_COMPLETE=1
 for sub in $SWAPPED; do remove_ours "$ANAGRAM_HOME/$sub.old"; done
 
