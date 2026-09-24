@@ -107,7 +107,7 @@ def load_candidate(model_dir, candidate, max_length, batch_size, gate, api, envi
         if candidate.runtime == "torch":
             engine = api.EditLens.__new__(api.EditLens)
             engine.__init__(model_dir, candidate.device, max_length, batch_size,
-                            candidate.precision, gate, warmup=False, compute_version=False)
+                            candidate.precision, gate, warmup=False)
             options = {"device": candidate.device, "environment": environment}
         else:
             engine = OnnxEditLens.__new__(OnnxEditLens)

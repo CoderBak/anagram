@@ -13,6 +13,7 @@ import sys
 import tempfile
 import tokenize
 from pathlib import Path
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 DAEMON = ROOT / "anagramd"
@@ -167,31 +168,43 @@ def model_dir(where: Path, weights: bytes = b"a checkpoint", tokenizer: str = '{
     return where
 
 
+from runtime_adapters import runtime_version  # noqa: E402
+from runtime_controller import Candidate  # noqa: E402
+
+TORCH_CPU = Candidate("torch:cpu:fp32", "CPU", "cpu", "torch", "fp32")
+
+
+def version(where: Path, max_length: int, dtype: str, lid) -> str:
+    """The identity the runtime gives a loaded engine."""
+    engine = SimpleNamespace(max_length=max_length, dtype_name=dtype, lid=lid)
+    return runtime_version(engine, TORCH_CPU, where, engine_api, {"device": "cpu"})
+
+
 with tempfile.TemporaryDirectory() as tmp:
     tmp = Path(tmp)
     base_dir = model_dir(tmp / "base")
     lid_a = fake_lid(hashlib.sha256(b"lid A").hexdigest())
     lid_b = fake_lid(hashlib.sha256(b"lid B").hexdigest())
-    base = engine_api.pipeline_version(base_dir, 512, "float16", lid_a)
+    base = version(base_dir, 512, "float16", lid_a)
 
     check("the version still has the shape the extension and native clients expect",
           bool(re.fullmatch(r"sha256:[0-9a-f]{12}-p[0-9a-f]{8}-[a-z0-9]+", base)), base)
     check("the same pipeline hashes to the same version twice",
-          engine_api.pipeline_version(base_dir, 512, "float16", lid_a) == base)
+          version(base_dir, 512, "float16", lid_a) == base)
 
     # One input at a time: each of these on its own has to move the string the extension keys
     # its cache by, because each of them on its own can move a verdict.
     moved = {
         "another language model (same weights, same everything else)":
-            engine_api.pipeline_version(base_dir, 512, "float16", lid_b),
+            version(base_dir, 512, "float16", lid_b),
         "the language gate turned off":
-            engine_api.pipeline_version(base_dir, 512, "float16", fake_lid(None)),
-        "another token limit": engine_api.pipeline_version(base_dir, 256, "float16", lid_a),
-        "another dtype": engine_api.pipeline_version(base_dir, 512, "float32", lid_a),
+            version(base_dir, 512, "float16", fake_lid(None)),
+        "another token limit": version(base_dir, 256, "float16", lid_a),
+        "another dtype": version(base_dir, 512, "float32", lid_a),
         "another tokenizer.json":
-            engine_api.pipeline_version(model_dir(tmp / "tok", tokenizer='{"tok": 2}'), 512, "float16", lid_a),
+            version(model_dir(tmp / "tok", tokenizer='{"tok": 2}'), 512, "float16", lid_a),
         "other weights":
-            engine_api.pipeline_version(model_dir(tmp / "w", weights=b"another checkpoint entirely"), 512, "float16", lid_a),
+            version(model_dir(tmp / "w", weights=b"another checkpoint entirely"), 512, "float16", lid_a),
     }
     for what, version in moved.items():
         check(f"the version changes with {what}", version != base, version)

@@ -17,7 +17,6 @@ for _offline_var in (
     os.environ[_offline_var] = "1"
 import hashlib
 import inspect
-import json
 import logging
 import re
 import sys
@@ -29,14 +28,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from scoring import score_texts
-from safe_files import atomic_json, read_json
 
 CONTRACT_VERSION = "2.1"
 CONTRACT_MAJOR = CONTRACT_VERSION.split(".")[0]
 MODEL_ID = "editlens_roberta-large"
-EXPECTED_WEIGHTS_SHA256 = (
-    "869f33df7928c447bbd150d3b5192b4ea90b1cbd2ee4aad97f5d51d59dfc8cfb"
-)
 PIPELINE_REV = "pre1"
 PIPELINE_FILES = (
     "config.json",
@@ -160,45 +155,6 @@ def require_model(model_dir: Path) -> None:
     )
 
 
-def weights_digest(model_dir: Path) -> tuple[str, str] | None:
-    """(file name, SHA-256) of the checkpoint actually loaded, or None if there is none."""
-    weights = model_dir / "model.safetensors"
-    if not weights.exists():
-        files = sorted((p for p in model_dir.glob("*.safetensors"))) or sorted(
-            model_dir.glob("*.bin")
-        )
-        if not files:
-            return None
-        weights = files[0]
-    st = weights.stat()
-    memo = model_dir / ".anagram-weights-sha256.json"
-    try:
-        cached = read_json(memo, max_bytes=16384)
-        if (
-            cached.get("file") == weights.name
-            and cached.get("size") == st.st_size
-            and (cached.get("mtime") == st.st_mtime)
-        ):
-            return (weights.name, cached["sha256"])
-    except Exception:
-        pass
-    h = hashlib.sha256()
-    with weights.open("rb") as f:
-        for chunk in iter(lambda: f.read(1 << 22), b""):
-            h.update(chunk)
-    digest = h.hexdigest()
-    try:
-        atomic_json(memo, {
-            "file": weights.name,
-            "size": st.st_size,
-            "mtime": st.st_mtime,
-            "sha256": digest,
-        })
-    except (OSError, ValueError):
-        pass
-    return (weights.name, digest)
-
-
 def preprocess_digest() -> str:
     """SHA-256 (12 hex) of the preprocessing source itself."""
     try:
@@ -242,27 +198,6 @@ def pipeline_manifest(
     }
 
 
-def pipeline_version(
-    model_dir: Path, max_length: int, dtype: str, lid: LanguageId
-) -> str:
-    """`sha256:<12 hex of the weights>-p<8 hex of the rest>-<pipeline rev>`."""
-    found = weights_digest(model_dir)
-    if found and EXPECTED_WEIGHTS_SHA256 and (found[1] != EXPECTED_WEIGHTS_SHA256):
-        log.warning(
-            "weights %s have sha256 %s…, not the verified %s… — verdicts may differ from the benchmarked checkpoint (cache keys stay distinct)",
-            found[0],
-            found[1][:12],
-            EXPECTED_WEIGHTS_SHA256[:12],
-        )
-    blob = json.dumps(
-        pipeline_manifest(model_dir, max_length, dtype, lid),
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode()
-    head = f"sha256:{found[1][:12]}" if found else "unknown"
-    return f"{head}-p{hashlib.sha256(blob).hexdigest()[:8]}-{PIPELINE_REV}"
-
-
 class EditLens:
 
     def __init__(
@@ -275,7 +210,6 @@ class EditLens:
         lid: LanguageId,
         *,
         warmup: bool = True,
-        compute_version: bool = True,
     ):
         import emoji
         import torch
@@ -299,7 +233,7 @@ class EditLens:
             )
         self.dtype = torch.float16 if dtype == "fp16" else torch.float32
         self.dtype_name = str(self.dtype).replace("torch.", "")
-        self.version = pipeline_version(model_dir, max_length, self.dtype_name, lid) if compute_version else None
+        self.version = None  # runtime_adapters names the loaded artifacts
         t0 = time.time()
         self.tok = AutoTokenizer.from_pretrained(
             str(model_dir), local_files_only=True, trust_remote_code=False

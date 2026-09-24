@@ -220,24 +220,6 @@ class LifecycleTests(unittest.TestCase):
         self.assertIsNone(controller._read_saved())
         self.assertIn("oversized", controller.error)
 
-    def test_weight_memo_links_never_overwrite_external_files(self):
-        model = self.path.parent / "model"
-        model.mkdir()
-        (model / "model.safetensors").write_bytes(b"tiny-weights")
-        memo = model / ".anagram-weights-sha256.json"
-        outside = self.path.parent / "outside-memo.txt"
-        for kind in ("symlink", "hardlink"):
-            outside.write_text("keep")
-            if kind == "symlink":
-                memo.symlink_to(outside)
-            else:
-                os.link(outside, memo)
-            name, digest = engine_api.weights_digest(model)
-            self.assertEqual(name, "model.safetensors")
-            self.assertEqual(len(digest), 64)
-            self.assertEqual(outside.read_text(), "keep")
-            memo.unlink()
-
     def test_first_run_selects_loads_and_persists_without_measuring(self):
         controller, factory = self.make((FP16, FP32))
         self.setup_complete(controller)
@@ -953,7 +935,6 @@ time.sleep(60)
         weights.write_bytes(b"fixture")
         class Engine:
             def __init__(self, *args, **kwargs):
-                self.compute_version = kwargs["compute_version"]
                 clock.advance(11)
             def synchronize(self):
                 clock.advance(2)
@@ -964,7 +945,6 @@ time.sleep(60)
                 patch("runtime_adapters.runtime_version", side_effect=lambda *_: (clock.advance(3), "version")[1]):
             engine, timings = load_candidate(self.home, FP32, 512, 32, None, api, {},
                                              phase=phases.append, clock=clock)
-        self.assertFalse(engine.compute_version)
         self.assertEqual(engine.version, "version")
         self.assertEqual(timings, {"hash_ms": 8000, "load_ms": 13000})
         self.assertEqual(phases, ["hashing", "loading", "hashing"])
@@ -983,7 +963,7 @@ class ScoringParityTests(unittest.TestCase):
             AutoModelForSequenceClassification=SimpleNamespace(from_pretrained=lambda *a, **k: Model()),
             AutoTokenizer=SimpleNamespace(from_pretrained=lambda *a, **k: object()))
         with patch.dict(sys.modules, {"torch": fake_torch, "transformers": fake_transformers}), \
-                patch.object(engine_api, "require_model"), patch.object(engine_api, "pipeline_version", return_value="test"):
+                patch.object(engine_api, "require_model"):
             for device in ("cpu", "mps", "cuda:0"):
                 engine = engine_api.EditLens(Path("unused"), device, 512, 8, "fp32", None, warmup=False)
                 self.assertEqual((engine.device, engine.dtype_name), (device, "float32"))
