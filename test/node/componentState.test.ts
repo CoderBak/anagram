@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { componentBusy, componentReady, componentStateLabel, componentConnectionLabel } from "../../lib/ui/componentSettings";
+import { componentBusy, componentReady, componentStateLabel, componentConnectionLabel, idleUnloadLabel } from "../../lib/ui/componentSettings";
 import type { ComponentSnapshot } from "../../lib/backend/nativeClient";
 import type { RuntimeSnapshot } from "../../lib/backend/runtimeClient";
 
@@ -59,5 +59,11 @@ describe("native component UI lifecycle", () => {
       expect(componentReady(s)).toBe(false);
     }
     expect(componentStateLabel(snapshot({state:"paused",download:{status:"paused",phase:"verifying",bytes_received:50,total_bytes:100,file:null,error:null}}))).toBe("Paused");
+  });
+  it("counts idle-unload minutes in the singular for one", () => {
+    expect(idleUnloadLabel(60)).toBe("1 minute");
+    expect(idleUnloadLabel(300)).toBe("5 minutes");
+    expect(idleUnloadLabel(90)).toBe("1.5 minutes");
+    expect(idleUnloadLabel(0)).toBe("Never");
   });
 });

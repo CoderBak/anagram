@@ -763,9 +763,13 @@
     "message": "Unload model after",
     "description": "Label of the idle-unload select."
   },
-  "componentIdleMinutes": {
+  "componentIdleMinutes_one": {
+    "message": "$1 minute",
+    "description": "Idle-unload option. $1 = 1."
+  },
+  "componentIdleMinutes_other": {
     "message": "$1 minutes",
-    "description": "Idle-unload option; $1 is a number."
+    "description": "Idle-unload option; $1 is a number of minutes."
   },
   "componentIdleNever": {
     "message": "Never",

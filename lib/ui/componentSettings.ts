@@ -2,7 +2,7 @@
 // progress bar while models download, one contextual button, and two folds (Manage,
 // Advanced). Mounting only reads status; downloads and benchmarks belong to the engine.
 import { browser } from "#imports";
-import { t, messageLocale, type MessageKey } from "../i18n";
+import { t, tn, messageLocale, type MessageKey } from "../i18n";
 import { requestComponent, finishNativeUninstall, type ComponentSnapshot } from "../backend/nativeClient";
 import { runtimeReady } from "../backend/runtimeClient";
 import { mountRuntimeSettings, formatBytes } from "./runtimeSettings";
@@ -28,6 +28,11 @@ export function componentStateLabel(s: ComponentSnapshot): string {
 
 export function componentConnectionLabel(reply: ComponentReply): string {
   return reply.kind === "ok" ? componentStateLabel(reply.snapshot) : t(reply.code === "busy" ? "componentInUse" : "componentNotInstalled");
+}
+
+/** An idle-unload option: "Never", or how many minutes the model stays loaded unused. */
+export function idleUnloadLabel(seconds: number): string {
+  return seconds ? tn("componentIdleMinutes", seconds / 60) : t("componentIdleNever");
 }
 
 export function componentReady(s: ComponentSnapshot): boolean {
@@ -105,7 +110,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   const idleLabel = element("label", t("componentIdleSetting")); idleLabel.htmlFor = "idleUnload";
   const idleSelect = element("select"); idleSelect.id = "idleUnload";
   for (const seconds of [300, 60, 900, 0]) {
-    const option = element("option", seconds ? t("componentIdleMinutes", seconds / 60) : t("componentIdleNever"));
+    const option = element("option", idleUnloadLabel(seconds));
     option.value = String(seconds); idleSelect.append(option);
   }
   idleSelect.addEventListener("change", () => run("engine.settings"));
@@ -238,7 +243,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     if (s.settings) {
       const value = String(s.settings.idle_unload_s);
       if (![...idleSelect.options].some((o) => o.value === value)) {
-        const option = element("option", t("componentIdleMinutes", s.settings.idle_unload_s / 60)); option.value = value; idleSelect.append(option);
+        const option = element("option", idleUnloadLabel(s.settings.idle_unload_s)); option.value = value; idleSelect.append(option);
       }
       idleSelect.value = value;
     }

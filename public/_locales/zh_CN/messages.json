@@ -594,7 +594,10 @@
   "componentIdleSetting": {
     "message": "空闲多久后卸载模型"
   },
-  "componentIdleMinutes": {
+  "componentIdleMinutes_one": {
+    "message": "$1 分钟"
+  },
+  "componentIdleMinutes_other": {
     "message": "$1 分钟"
   },
   "componentIdleNever": {
