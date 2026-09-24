@@ -35,7 +35,7 @@ service anywhere. Work on `dev`; `main` holds the published README only.
 
 ## Checks
 
-Node 22 and Python 3.12 or 3.13. Build before browser suites; the test build grants all
+Node 22 and Python 3.12. Build before browser suites; the test build grants all
 sites and lands in `output-test/`, the shipping build in `output/`.
 
 ```sh
