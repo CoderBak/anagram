@@ -185,16 +185,20 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
     origin.signal?.addEventListener("abort", reader.cancel, { once: true });
     const requestEpoch = epoch, cacheEpoch = cache.epoch();
     const alive = () => reader.active && requestEpoch === epoch && cacheEpoch === cache.epoch();
+    // Cleared caches or a new cache mode leave a request with no answer, not a failed one:
+    // the page asks again instead of painting "Unavailable" for its own clear.
+    const unanswered = (): ScoreBatchResponse =>
+      requestEpoch === epoch && cacheEpoch === cache.epoch() ? response() : { v: req.v, model, results: [] };
     try {
       await Promise.race([client.ready?.(), reader.cancelled]);
-      if (!alive()) return response();
+      if (!alive()) return unanswered();
       model = snapshot(client.model());
       const revision = client.revision?.(), dim = modelDim(model);
       // The cache and the actual payload use precisely the same canonical bytes.
       const canonical = req.blocks.map((block) => ({ ...block, text: canonicalForScoring(block.text) }));
       const keys = canonical.map((block) => cache.keyOf(block.text, dim));
       const hits = await Promise.race([cache.getMany(keys, reader.persist), reader.cancelled]);
-      if (!alive() || !hits || !revisionMatches(revision)) return response();
+      if (!alive() || !hits || !revisionMatches(revision)) return unanswered();
       const results = new Map<string, ScoreResult>();
       const producers = new Map<string, ModelInfo>();
       const groups = new Map<string, ScoreBlock[]>();
@@ -230,7 +234,7 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
       }
       waiting.push(...batches); pump();
       await Promise.race([Promise.all(promises), reader.cancelled]);
-      if (!alive() || !revisionMatches(revision) || producers.size > 1) return response();
+      if (!alive() || !revisionMatches(revision) || producers.size > 1) return unanswered();
       // Cached and fresh results may never be labelled with one arbitrarily chosen model.
       model = producers.values().next().value ?? model;
       return response(req.blocks.map((block) => results.get(block.id) ?? neutral(block)));

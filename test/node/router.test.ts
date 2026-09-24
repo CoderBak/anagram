@@ -349,7 +349,7 @@ describe("router invalidation, bounded admission and fairness", () => {
     const client = fakeClient(A), router = createRouter(client, cache);
     client.hold(); const work = router.handle(req(["old successful work"]));
     await settle(); await router.clear();
-    expect((await work).results[0].degraded).toBe(true);
+    expect((await work).results).toEqual([]); // no answer, so the page asks again
     client.release(); await settle();
     expect((await cache.getMany([cache.keyOf("old successful work", JSON.stringify([A.id, A.ver, A.calibration]))])).size).toBe(0);
     await router.handle(req(["old successful work"]));
@@ -412,13 +412,13 @@ it("clear cancels discovery and delayed cache lookups before they can reserve wo
   client.ready = () => ready.promise;
   const beforeReady = router.handle(req(["before ready"]));
   await router.clear(); ready.resolve();
-  expect((await beforeReady).results[0].degraded).toBe(true);
+  expect((await beforeReady).results).toEqual([]);
   client.ready = undefined;
   const started = deferred<void>(), read = deferred<Array<undefined>>();
   store.get = async () => { started.resolve(); return read.promise; };
   const beforeRead = router.handle(req(["before read"]));
   await started.promise; await router.clear(); read.resolve([undefined]);
-  expect((await beforeRead).results[0].degraded).toBe(true);
+  expect((await beforeRead).results).toEqual([]);
   expect(client.calls).toHaveLength(0);
 });
 

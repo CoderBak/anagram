@@ -77,7 +77,7 @@ describe("clearing the cached verdicts", () => {
     expect(client.calls.length).toBe(2); // the daemon is asked again
   });
 
-  it("lets a request in flight over the clear settle, and caches nothing degraded", async () => {
+  it("answers a request in flight over the clear with nothing, and caches nothing degraded", async () => {
     const client = fakeClient();
     const router = createRouter(client, createSwCache(fakeScoreStore()));
     client.fail(true);
@@ -88,12 +88,26 @@ describe("clearing the cached verdicts", () => {
       new Promise<"timeout">((r) => setTimeout(() => r("timeout"), 2000)),
     ]);
     expect(answered).not.toBe("timeout");
-    expect((answered as { results: { degraded?: boolean }[] }).results[0].degraded).toBe(true);
+    // Not a degraded verdict: the page would paint "Unavailable" for its own clear.
+    expect((answered as { results: unknown[] }).results).toEqual([]);
     // A degraded verdict is never cached — before a clear or after one.
     client.fail(false);
     const calls = client.calls.length;
     const again = await router.handle(req(["a paragraph nobody can score right now"]));
     expect(again.results[0].degraded).toBeUndefined();
     expect(client.calls.length).toBe(calls + 1);
+  });
+
+  it("answers a request in flight over a cache-mode change with nothing as well", async () => {
+    const client = fakeClient();
+    const router = createRouter(client, createSwCache(fakeScoreStore()));
+    client.fail(true);
+    const inFlight = router.handle(req(["a paragraph read while the mode changes"]));
+    await router.setCacheMode("session");
+    expect((await inFlight).results).toEqual([]);
+    const cancel = new AbortController();
+    const abandoned = router.handle(req(["a paragraph its page left"]), { signal: cancel.signal });
+    cancel.abort(); // only a clear or a mode change goes unanswered, not a page's own cancel
+    expect((await abandoned).results[0].degraded).toBe(true);
   });
 });
