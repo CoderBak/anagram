@@ -16,6 +16,8 @@ jobs:
   # on Linux, Windows and macOS, and the Firefox build in a real Firefox.
   gate:
     uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ inputs.tag }}
 
   release:
     needs: gate
