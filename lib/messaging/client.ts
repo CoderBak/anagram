@@ -23,8 +23,15 @@ export interface ScoreReply {
   results: ScoreResult[];
   /** Snapshot belonging to these results, never another concurrent request's model. */
   model?: ModelInfo;
-  /** "down": the daemon is not answering; "unreachable": the worker itself did not answer. */
-  backend: "up" | "down" | "unreachable";
+  /** "down": the daemon is not answering; "unreachable": the worker itself did not answer;
+   *  "refused": the worker turned the request down and would turn it down again. */
+  backend: "up" | "down" | "unreachable" | "refused";
+}
+
+/** What the worker answers a message it will not take (entrypoints/background.ts). */
+interface Refusal {
+  ok: false;
+  error?: string;
 }
 
 /**
@@ -34,24 +41,39 @@ export interface ScoreReply {
  * Transport-level rejections happen in real life (MV3 service-worker cold restart,
  * extension update mid-flight): retry once after a short pause, then return an empty
  * reply so the scheduler completes instead of orphaning the batch on an exception.
+ *
+ * A refusal is not a failure to answer, and asking again on every idle pass is not the
+ * way to meet it. A request the worker found malformed stays malformed. One it did not
+ * authorize may have reached a worker that restarted before this page's port heard of it,
+ * so that one is asked once more, and a second refusal stands.
  */
 export async function requestScores(req: ScoreBatchRequest): Promise<ScoreReply> {
   const message: ScoreBatchMessage = { action: ACTIONS.SCORE_BATCH, req };
   const session = documentSessionId();
   for (let attempt = 0; ; attempt++) {
     if (session !== documentSessionId()) return { results: [], backend: "unreachable" };
+    let failed: ScoreReply["backend"] = "unreachable";
     try {
       const reply = (await sendDocumentMessage(message)) as
         | ScoreBatchReply
+        | Refusal
         | undefined;
-      const model = reply?.model && reply.backend === "up" ? { ...reply.model } : undefined;
-      // A real verdict without its producer cannot be safely cached or combined.
-      if (!model && reply?.results?.some((result) => !result.degraded))
-        return { results: [], backend: "unreachable" };
-      return { results: reply?.results ?? [], backend: reply?.backend ?? "unreachable", ...(model ? {model} : {}) };
+      if (reply && "ok" in reply) {
+        if (reply.error === "invalid_request") return { results: [], backend: "refused" };
+        if (reply.error !== "forbidden") return { results: [], backend: "unreachable" };
+        failed = "refused";
+      } else {
+        const model = reply?.model && reply.backend === "up" ? { ...reply.model } : undefined;
+        // A real verdict without its producer cannot be safely cached or combined.
+        if (!model && reply?.results?.some((result) => !result.degraded))
+          return { results: [], backend: "unreachable" };
+        return { results: reply?.results ?? [], backend: reply?.backend ?? "unreachable", ...(model ? {model} : {}) };
+      }
     } catch {
-      if (attempt >= 1 || session !== documentSessionId()) return { results: [], backend: "unreachable" };
-      await new Promise((r) => setTimeout(r, 300));
+      /* the transport failed: retried below */
     }
+    if (session !== documentSessionId()) return { results: [], backend: "unreachable" };
+    if (attempt >= 1) return { results: [], backend: failed };
+    await new Promise((r) => setTimeout(r, 300));
   }
 }

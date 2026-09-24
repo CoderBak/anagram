@@ -76,6 +76,45 @@ export const MAX_READ_CHARS = MAX_WINDOWS * WINDOW_CHARS;
  */
 export const MAX_BLOCK_CHARS = 4000;
 
+/**
+ * Most blocks and characters one scoring request carries. The worker refuses a request of
+ * more than 256 blocks or 256 000 characters whole (lib/access/messages.ts), and answers
+ * Unavailable past 256 blocks or 250 000 characters of one page's at a time
+ * (lib/backend/router.ts). One unit can pass all of that alone: MAX_WINDOWS windows, each
+ * up to MAX_BLOCK_CHARS once NFKC has expanded it, and twice as many halves when the daemon
+ * cuts them. So what a batch sends goes in requests of this size, one after another, and
+ * the four batches the orchestrator keeps in flight stay inside the page's share together.
+ * At six bytes a character, the most JSON takes to escape one, a request also stays under
+ * the worker's 900 000 encoded bytes.
+ */
+export const REQUEST_BLOCKS = 64;
+export const REQUEST_CHARS = 48_000;
+
+/** `items` in consecutive requests of at most REQUEST_BLOCKS blocks and REQUEST_CHARS
+ *  characters; nearly every batch is one. */
+export function requestSlices<T>(items: readonly T[], chars: (item: T) => number): T[][] {
+  const out: T[][] = [];
+  let slice: T[] = [];
+  let size = 0;
+  for (const item of items) {
+    const n = chars(item);
+    if (slice.length > 0 && (slice.length >= REQUEST_BLOCKS || size + n > REQUEST_CHARS)) {
+      out.push(slice);
+      slice = [];
+      size = 0;
+    }
+    slice.push(item);
+    size += n;
+  }
+  if (slice.length > 0) out.push(slice);
+  return out;
+}
+
+/** A block the daemon gave no verdict for: Unavailable, and never cached. */
+export function unavailableResult(id: string): ScoreResult {
+  return { id, bucket: 0, probs: new Array<number>(BUCKET_COUNT).fill(1 / BUCKET_COUNT), score: 0, degraded: true };
+}
+
 // ---- planning -----------------------------------------------------------------------
 
 /** A stretch of a text: offsets into the string, end exclusive. */
@@ -248,9 +287,7 @@ export function unitVerdict(id: string, textLength: number, windows: WindowVerdi
   const done = (result: ScoreResult): UnitVerdict => ({ id, result, windows, unreadChars });
 
   if (windows.length === 1) return done({ ...windows[0].result, id });
-  if (windows.length === 0 || windows.some((w) => w.result.degraded)) {
-    return done({ id, bucket: 0, probs: new Array<number>(BUCKET_COUNT).fill(1 / BUCKET_COUNT), score: 0, degraded: true });
-  }
+  if (windows.length === 0 || windows.some((w) => w.result.degraded)) return done(unavailableResult(id));
   const scored = windows.filter(isScoredWindow);
   if (scored.length === 0) {
     const longest = windows.reduce((a, b) => (b.end - b.start > a.end - a.start ? b : a));

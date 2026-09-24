@@ -27,7 +27,7 @@ import { partTextOf, MAX_UNIT_TEXT_CHARS } from "../dom/text";
 import { createObservers, type Observers } from "./observers";
 import { createScheduler, type Scheduler } from "./scheduler";
 import { createScoreCache, type ScoreCache } from "./cache";
-import { readInWindows, unitVerdict, type UnitVerdict } from "./windows";
+import { readInWindows, requestSlices, unavailableResult, unitVerdict, type UnitVerdict } from "./windows";
 import { detectUnsupported, unsupportedResult } from "./langGate";
 import { requestScores, contextAlive } from "../messaging/client";
 import { modelDim } from "../backend/router";
@@ -677,8 +677,9 @@ export function createOrchestrator(
   }
 
   /**
-   * Blocks in, results out, by block id: cache-first, local language gate, then one
-   * batched requestScores() for the misses. A block is a whole unit or one window of a
+   * Blocks in, results out, by block id: cache-first, local language gate, then batched
+   * requestScores() for the misses, in slices the worker takes (requestSlices — one, but
+   * for a unit read in dozens of windows). A block is a whole unit or one window of a
    * long one and is treated the same either way — per-window text is what gets cached,
    * gated and deduplicated. So when some windows of a unit are cache hits and others are
    * not, only the missing ones travel; and when one window comes back degraded, its
@@ -750,31 +751,42 @@ export function createOrchestrator(
         idsByKey.get(k)!.push(b.id);
       }
 
-      const req: ScoreBatchRequest = {
-        v: CONTRACT_VERSION,
-        session,
-        priority: lane,
-        blocks: [...repByKey.values()],
-      };
-      const reply = await requestScores(req);
-      if (!current()) return new Map();
-      const fresh = reply.results;
-      if (reply.backend === "down") enterDown();
-      else if (reply.backend === "up") leaveDown();
-      // The reply names the backend that produced it — adopt it, dropping whatever the
-      // previous one left behind (both cached and already painted).
-      adoptBackend(reply.model ?? null);
-      if (!current()) return new Map(); // adoption may have retired this scan
-      const byId = new Map(fresh.map((r) => [r.id, r] as const));
-      for (const [k, rep] of repByKey) {
-        const r = byId.get(rep.id);
-        if (!r) continue;
-        if (!r.degraded) cache.set(rep.text, r); // fallbacks must not outlive the outage
-        for (const id of idsByKey.get(k)!) out.set(id, { ...r, id });
+      for (const slice of requestSlices([...repByKey], ([, rep]) => rep.text.length)) {
+        const req: ScoreBatchRequest = {
+          v: CONTRACT_VERSION,
+          session,
+          priority: lane,
+          blocks: slice.map(([, rep]) => rep),
+        };
+        const reply = await requestScores(req);
+        if (!current()) return new Map();
+        const fresh = reply.results;
+        if (reply.backend === "down") enterDown();
+        else if (reply.backend === "up") leaveDown();
+        // The reply names the backend that produced it — adopt it, dropping whatever the
+        // previous one left behind (both cached and already painted).
+        adoptBackend(reply.model ?? null);
+        if (!current()) return new Map(); // adoption may have retired this scan
+        // Turned down, and it would be turned down again: these are Unavailable now,
+        // instead of units without a verdict that every idle prefetch pass asks for anew.
+        const byId = new Map(
+          reply.backend === "refused"
+            ? req.blocks.map((b) => [b.id, unavailableResult(b.id)] as const)
+            : fresh.map((r) => [r.id, r] as const),
+        );
+        for (const [k, rep] of slice) {
+          const r = byId.get(rep.id);
+          if (!r) continue;
+          if (!r.degraded) cache.set(rep.text, r); // fallbacks must not outlive the outage
+          for (const id of idsByKey.get(k)!) out.set(id, { ...r, id });
+        }
+        // Dead extension context: no future request can ever succeed. Freeze in
+        // place — existing verdicts stay readable, everything else goes quiet.
+        if (fresh.length === 0 && !contextAlive()) {
+          freeze();
+          break;
+        }
       }
-      // Dead extension context: no future request can ever succeed. Freeze in
-      // place — existing verdicts stay readable, everything else goes quiet.
-      if (fresh.length === 0 && !contextAlive()) freeze();
     }
     return out;
   }

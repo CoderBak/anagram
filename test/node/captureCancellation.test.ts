@@ -161,6 +161,41 @@ describe("capture cancellation across language detection and replies", () => {
 
 });
 
+describe("requests the worker turns down", () => {
+  it("makes a refused unit Unavailable instead of leaving it to be asked for again", async () => {
+    calls.request.mockResolvedValue({results: [], backend: "refused"});
+    const {controller, send, cache} = await page();
+    try {
+      const [verdict] = await send([unit], "viewport");
+      expect(verdict?.result.degraded).toBe(true);
+      expect(cache.size()).toBe(0);
+    } finally {controller.stop();}
+  });
+
+  it("never sends a request past the worker's caps, even for a unit NFKC made longer", async () => {
+    // Some 190 000 characters in over a hundred windows, each two thirds longer once "ﬃ"
+    // becomes "ffi": far past the 256 000 characters the worker takes in one request.
+    const text = Array.from({length: 22_000}, (_, i) => `ﬃﬃﬃ${i}`).join(" ");
+    const long = {id: "long", text, order: 1} as Unit;
+    const sizes: {blocks: number; chars: number}[] = [];
+    calls.request.mockImplementation(async (req: ScoreBatchRequest) => {
+      const size = {blocks: req.blocks.length, chars: req.blocks.reduce((n, b) => n + b.text.length, 0)};
+      sizes.push(size);
+      // What lib/access/messages.ts answers to anything larger.
+      if (size.blocks > 256 || size.chars > 256_000) return {results: [], backend: "refused"};
+      return {backend: "up", model: MODEL, results: req.blocks.map((block) => ({id: block.id, bucket: 3, score: 1, probs: [0, 0, 0, 1]}))};
+    });
+    const {controller, send} = await page();
+    try {
+      const [verdict] = await send([long], "background");
+      expect(verdict?.result.degraded).toBeUndefined();
+      expect(verdict?.windows.length).toBeGreaterThan(100);
+      expect(sizes.reduce((n, s) => n + s.chars, 0)).toBeGreaterThan(256_000);
+      expect(sizes.every((s) => s.blocks <= 256 && s.chars <= 256_000)).toBe(true);
+    } finally {controller.stop();}
+  });
+});
+
 describe("same-document URL changes under the main-content scope", () => {
   it("looks for the main region again only when a route change is collected again", async () => {
     vi.useFakeTimers();

@@ -1,7 +1,8 @@
 // test/node/windows.test.ts — reading a long text in windows: what travels, in how many
 // calls, and what comes back when the daemon cuts a window, fails one, or answers nothing.
 import { describe, expect, it } from "vitest";
-import { readInWindows, unitVerdict, planWindows, blockText, WINDOW_CHARS, type ScoreBlocks } from "../../lib/capture/windows";
+import { readInWindows, unitVerdict, planWindows, blockText, requestSlices, WINDOW_CHARS, MAX_BLOCK_CHARS, MAX_WINDOWS, REQUEST_BLOCKS, REQUEST_CHARS, type ScoreBlocks } from "../../lib/capture/windows";
+import { ROUTER_LIMITS } from "../../lib/backend/router";
 import type { ScoreBlock, ScoreResult } from "../../lib/contract";
 import { canonicalForScoring } from "../../lib/dom/text";
 
@@ -112,4 +113,21 @@ it("keeps original source spans when canonical ranges, repeated escapes and join
   expect(windows.map(({start,end}) => raw.slice(start,end)).join("")).toBe(raw);
   expect(calls.flat().map(({text}) => text)).toEqual(spans.map((span) => canonicalForScoring(raw.slice(span.start,span.end))));
   expect(calls.flat().some(({text}) => text.includes("1-2-3 costs % and Á"))).toBe(true);
+});
+
+it("sends the most a batch can hold in requests the worker takes, four of them at once included", () => {
+  // Every window of the longest unit, NFKC-expanded to the block cap, and its halves.
+  const blocks = Array.from({length: MAX_WINDOWS * 2}, (_, i) => ({id: `w${i}`, text: "x".repeat(MAX_BLOCK_CHARS)}));
+  const slices = requestSlices(blocks, (b) => b.text.length);
+  expect(slices.flat()).toEqual(blocks);
+  for (const slice of slices) {
+    expect(slice.length).toBeLessThanOrEqual(REQUEST_BLOCKS);
+    expect(slice.reduce((n, b) => n + b.text.length, 0)).toBeLessThanOrEqual(REQUEST_CHARS);
+  }
+  // lib/access/messages.ts refuses past 256 blocks or 256 000 characters; the router answers
+  // Unavailable past its per-page share, which the orchestrator's four batches split.
+  expect(REQUEST_BLOCKS * 4).toBeLessThanOrEqual(Math.min(256, ROUTER_LIMITS.documentBlocks));
+  expect(REQUEST_CHARS * 4).toBeLessThanOrEqual(Math.min(256_000, ROUTER_LIMITS.documentChars));
+  expect(REQUEST_CHARS * 6 + REQUEST_BLOCKS * 100).toBeLessThanOrEqual(900_000);
+  expect(requestSlices([{id: "one", text: "x".repeat(10)}], (b) => b.text.length)).toHaveLength(1);
 });

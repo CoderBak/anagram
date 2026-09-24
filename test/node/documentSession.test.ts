@@ -136,6 +136,34 @@ describe("document connection lifetime", () => {
     expect(send).toHaveBeenCalledTimes(2);
   });
 
+  it("stops at once when the worker found the request malformed", async () => {
+    const ports = connections();
+    const send = vi.spyOn(fakeBrowser.runtime, "sendMessage").mockResolvedValue({ok: false, error: "invalid_request"});
+    const pending = requestScores(req()); ports[0].acknowledge();
+    await vi.advanceTimersByTimeAsync(1000);
+    await expect(pending).resolves.toEqual({results: [], backend: "refused"});
+    expect(send).toHaveBeenCalledOnce();
+  });
+
+  it("asks once more when the page was not authorized, and a second refusal stands", async () => {
+    const ports = connections();
+    const send = vi.spyOn(fakeBrowser.runtime, "sendMessage").mockResolvedValue({ok: false, error: "forbidden"});
+    const pending = requestScores(req()); ports[0].acknowledge();
+    await vi.advanceTimersByTimeAsync(1000);
+    await expect(pending).resolves.toEqual({results: [], backend: "refused"});
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  it("takes the second answer when the first refusal came from a worker that had just restarted", async () => {
+    const ports = connections();
+    vi.spyOn(fakeBrowser.runtime, "sendMessage")
+      .mockResolvedValueOnce({ok: false, error: "forbidden"})
+      .mockResolvedValueOnce({results: [], backend: "up"});
+    const pending = requestScores(req()); ports[0].acknowledge();
+    await vi.advanceTimersByTimeAsync(300);
+    await expect(pending).resolves.toEqual({results: [], backend: "up"});
+  });
+
   it("reconnects with a fresh nonce after pagehide/BFCache restore", async () => {
     const ports = connections();
     const previous = connectDocument(); ports[0].acknowledge();
