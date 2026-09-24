@@ -19,7 +19,7 @@ import type { BackendStatus } from "../messaging/protocol";
 import type { Unit, Lane } from "../types";
 import type { ModelInfo, ScoreBlock, ScoreResult, ScoreBatchRequest } from "../contract";
 import { CONTRACT_VERSION } from "../contract";
-import { collectUnits, type CollectOptions } from "../dom/walker";
+import { collectUnits, inPageOrder, type CollectOptions } from "../dom/walker";
 import { restoreSplits } from "../dom/splits";
 import { findMainContent, useReadability } from "../dom/mainContent";
 import { loadReadability } from "../lazy";
@@ -282,21 +282,37 @@ export function createOrchestrator(
    *  scroll position" is that very paragraph. */
   let flaggedCursor: string | null = null;
 
+  /**
+   * Units in the order a reader meets them — what the panel lists, the next/previous
+   * commands walk, the report numbers and the prefetch follows. A walked page is asked
+   * where each unit stands (inPageOrder); units that come from `opts.collect` are already
+   * numbered in their document's own order, which only the reader knows.
+   */
+  const readingOrder = (units: readonly Unit[]): Unit[] =>
+    opts.collect ? [...units].sort((a, b) => a.order - b.order) : inPageOrder(units);
+
+  /** Flagged units with their verdicts, in reading order. */
+  function flaggedInOrder(): { unit: Unit; v: UnitVerdict }[] {
+    const units: Unit[] = [];
+    for (const [id, v] of verdictsById) {
+      const unit = unitsById.get(id);
+      if (unit && isFlagged(v.result)) units.push(unit);
+    }
+    return readingOrder(units).map((unit) => ({ unit, v: verdictsById.get(unit.id)! }));
+  }
+
   const fab: Fab = createFab({
     onToggle: () => toggle(),
     onRetry: () => retryBackend(),
     panel: {
       entries: () =>
-        [...verdictsById.entries()]
-          .filter(([id, v]) => isFlagged(v.result) && unitsById.has(id))
-          .map(([id, { result: r }]) => ({
-            id,
-            score: r.score,
-            band: band(r),
-            snippet: unitsById.get(id)!.text.slice(0, 70),
-            order: unitsById.get(id)!.order,
-          }))
-          .sort((a, b) => a.order - b.order),
+        flaggedInOrder().map(({ unit, v: { result: r } }, i) => ({
+          id: unit.id,
+          score: r.score,
+          band: band(r),
+          snippet: unit.text.slice(0, 70),
+          order: i,
+        })),
       counts: panelCounts,
       onJump: jumpTo,
       buildReport,
@@ -339,12 +355,9 @@ export function createOrchestrator(
 
   /** Flagged units still in the DOM, in document order. */
   function flaggedUnits(): Unit[] {
-    const out: Unit[] = [];
-    for (const [id, v] of verdictsById) {
-      const unit = unitsById.get(id);
-      if (unit && isFlagged(v.result) && unit.container.isConnected) out.push(unit);
-    }
-    return out.sort((a, b) => a.order - b.order);
+    return flaggedInOrder()
+      .map(({ unit }) => unit)
+      .filter((unit) => unit.container.isConnected);
   }
 
   function jumpFlagged(dir: 1 | -1): void {
@@ -380,10 +393,7 @@ export function createOrchestrator(
   async function buildReport(): Promise<string> {
     const [includeText, includeUrl] = await Promise.all([settings.reportIncludeText.getValue(), settings.reportIncludeUrl.getValue()]);
     const status = await sendDocumentMessage({action: ACTIONS.GET_BACKEND_STATUS}).catch(() => undefined) as BackendStatus | undefined;
-    const flagged = [...verdictsById.entries()]
-      .filter(([id, v]) => isFlagged(v.result) && unitsById.has(id))
-      .map(([id, v]) => ({ unit: unitsById.get(id)!, v, r: v.result }))
-      .sort((a, b) => a.unit.order - b.unit.order);
+    const flagged = flaggedInOrder().map(({ unit, v }) => ({ unit, v, r: v.result }));
 
     const lines: string[] = [];
     lines.push(`# ${includeUrl ? t("reportTitle", document.title || location.hostname) : t("reportPrivateTitle")}`);
@@ -620,9 +630,7 @@ export function createOrchestrator(
       prefetchScheduled = false;
       if (!started || frozen) return;
       let n = 0;
-      const pending = [...unitsById.values()]
-        .filter((u) => !u.isScored && !verdictsById.has(u.id))
-        .sort((a, b) => a.order - b.order);
+      const pending = readingOrder([...unitsById.values()].filter((u) => !u.isScored && !verdictsById.has(u.id)));
       for (const u of pending) {
         scheduler.enqueue(u, "background");
         if (++n >= PREFETCH_PASS) break;

@@ -323,6 +323,33 @@ const results = await page.evaluate(() => {
     const got = PW.collectUnits(sandbox);
     check("ids are unique and `order` ascends in document order", got.length === 2 && got[0].id !== got[1].id && got[0].order < got[1].order, JSON.stringify(got.map(x => [x.id, x.order])));
   }
+  {
+    // A later walk numbers its units after every earlier one, wherever they are: a post
+    // prepended to a feed, a reply inserted above, text in a shadow tree or a slot. Their
+    // place on the page is asked of the page, across the shadow boundary the walk crosses.
+    sandbox.innerHTML = `<p id="old">OLD ${sent(60)}</p>`;
+    const owned = new Set();
+    const walk = (root) => {
+      const got = PW.collectUnits(root, { claimFilter: (nodes) => (nodes.every((n) => owned.has(n)) ? "skip" : "take") });
+      for (const u of got) for (const p of u.parts) for (const n of p.nodes) owned.add(n);
+      return got;
+    };
+    const units = walk(sandbox);
+    const top = document.createElement("p");
+    top.textContent = `TOP ${sent(60)}`;
+    sandbox.prepend(top);
+    units.push(...walk(sandbox));
+    const host = document.createElement("div");
+    host.attachShadow({ mode: "open" }).innerHTML = `<p>SHADOW ${sent(60)}</p><slot></slot>`;
+    host.innerHTML = `<p>SLOTTED ${sent(60)}</p>`;
+    sandbox.insertBefore(host, document.getElementById("old"));
+    units.push(...walk(sandbox));
+    const found = units.map((x) => x.text.split(" ")[0]);
+    const shown = PW.inPageOrder(units).map((x) => x.text.split(" ")[0]);
+    check("units found by later walks are put where they stand on the page, shadow and slotted text included",
+      found.join() === "OLD,TOP,SHADOW,SLOTTED" && shown.join() === "TOP,SHADOW,SLOTTED,OLD",
+      JSON.stringify({ found, shown }));
+  }
 
   u = collect(`<p>${sent(30)}</p><blockquote><p>${sent(20)}</p><cite><a href="#s">The Source, 1931</a></cite></blockquote><p>${sent(30)}</p>`);
   check("a barrier INSIDE a quotation (its linked <cite>) does not end the author's text around it", u.length === 1 && u[0].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));

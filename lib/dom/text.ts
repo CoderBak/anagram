@@ -33,7 +33,10 @@ export interface Unit {
   /** Formulas (MathML / MathJax / KaTeX / Wikipedia math) skipped inside the unit —
    *  disclosed in the card, because the model scored prose with holes in it. */
   formulas: number;
-  /** Document-order index at collect time (contract ScoreBlock.order). */
+  /** Where the unit comes in its source's order. The walker's is the order units were
+   *  FOUND in — document order within one walk, after every earlier walk's units wherever
+   *  they are — so where its units stand on the page is asked of the page instead
+   *  (inPageOrder in lib/dom/walker.ts). */
   order: number;
   /** First part's container — IntersectionObserver anchor. */
   topElement: Element;

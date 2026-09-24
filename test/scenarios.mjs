@@ -98,6 +98,8 @@ const KEY_PARA = (tag) => `${tag} paragraph is long enough to be scored on its o
 // Four flagged paragraphs under the fake's text-seeded scores, and not all of one word:
 // FLAG-20 reads AI-generated (.97), the other three heavily edited (.66–.74).
 const KEY_TAGS = ["FLAG-1", "FLAG-20", "FLAG-5", "FLAG-7"];
+// A fifth, inserted above them once they are chipped: AI-generated (.90) under the same scores.
+const LATE_TAG = "LATE-0";
 const KEYS_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>keyboard fixture</title></head><body style="max-width:720px;margin:0 auto;font:15px/1.6 system-ui">
 <div style="height:900px"></div>
 ${KEY_TAGS.map((t, i) => `<p id="k${i + 1}">${KEY_PARA(t)}</p>\n<div style="height:700px"></div>`).join("\n")}
@@ -1206,6 +1208,44 @@ async function sweep(page, steps = 6) {
         walk.last === flaggedAt[3] && walk.first === flaggedAt[0] &&
         walk.second === flaggedAt[1] && walk.back === flaggedAt[0],
       JSON.stringify({ flaggedAt, walk }),
+    );
+
+    // A flagged paragraph found AFTER the others — a post a feed prepends, a reply inserted
+    // above — is listed, reported and walked where it stands, not after everything found
+    // before it.
+    await p.evaluate(
+      (html) => document.getElementById("k1").insertAdjacentHTML("beforebegin", html),
+      `<p id="k0">${KEY_PARA(LATE_TAG)}</p>\n<div style="height:700px"></div>`,
+    );
+    const late = await p
+      .waitForFunction((sel) => /^(\.\d\d|1\.0)$/.test(document.querySelector(`#k0 ${sel}`)?.shadowRoot?.querySelector(".num")?.textContent ?? ""), BADGE_SEL, { timeout: 15000 })
+      .then(() => true)
+      .catch(() => false);
+    const pageScores = await p.evaluate(
+      (sel) => ["k0", "k1", "k2", "k3", "k4"].map((id) => document.querySelector(`#${id} ${sel}`)?.shadowRoot?.querySelector(".num")?.textContent?.trim() ?? null),
+      BADGE_SEL,
+    );
+    await p.evaluate(() => navigator.clipboard.writeText("NO REPORT COPIED").catch(() => {}));
+    const listed = await p.evaluate(() => {
+      const sr = document.getElementById("anagram-fab")?.shadowRoot;
+      sr?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      const rows = [...(sr?.querySelectorAll(".panel .pitem") ?? [])].map((r) => /: (\S+) paragraph/.exec(r.getAttribute("aria-label") ?? "")?.[1] ?? null);
+      sr?.querySelector(".pcopy")?.click();
+      return rows;
+    });
+    await p.waitForTimeout(500);
+    await p.keyboard.press("Escape");
+    const report = await p.evaluate(() => navigator.clipboard.readText().catch(() => null));
+    const reported = (report ?? "").split(/\r?\n/).map((l) => /^\d+\. \*\*[^*]+ · (\.\d\d|1\.0)\*\*/.exec(l)?.[1]).filter(Boolean);
+    const lateAt = await p.evaluate((sel) => Math.round(document.querySelector(`#k0 ${sel}`).getBoundingClientRect().top + window.scrollY), BADGE_SEL).catch(() => null);
+    await p.evaluate(() => window.scrollTo(0, 0));
+    const fromTop = await jump("nextFlagged");
+    record(
+      "ui",
+      "a flagged paragraph inserted above the others comes first in the panel, the copied report and the next-flagged walk",
+      late && listed.join() === [LATE_TAG, ...KEY_TAGS].join() &&
+        reported.join() === pageScores.join() && fromTop !== null && fromTop === lateAt,
+      JSON.stringify({ late, listed, reported, pageScores, lateAt, fromTop }),
     );
     await p.screenshot({ path: artifact("scn-keyboard-panel.png") }).catch(() => {});
     await p.close();

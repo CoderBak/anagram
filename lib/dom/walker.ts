@@ -198,6 +198,63 @@ const PARA_GAP_RE = /\n[ \t\r]*\n/;
 let _unitSeq = 0;
 
 /**
+ * Units in the order a reader meets them on the page. `order` cannot say that: it is the
+ * order units were FOUND in, and an incremental walk numbers what it finds after every
+ * unit found before it, so a post a feed prepends, or a reply inserted above, would come
+ * last. So the page is asked, by each unit's first text node, in the composed tree the
+ * walk itself follows: shadow text where its host is, slotted text where its slot is.
+ * Every node on the way is keyed by its place among its siblings, counted once per parent
+ * — compareDocumentPosition cannot see across a shadow boundary, and walks the siblings on
+ * every call, which cost a 6000-post feed 126 ms a sort. Discovery order breaks a tie, and
+ * stands where the page cannot answer: a unit whose nodes have left it.
+ */
+export function inPageOrder(units: readonly Unit[]): Unit[] {
+  const at = siblingIndex();
+  const keys = new Map<Unit, number[] | null>();
+  for (const u of units) {
+    const first = u.parts[0]?.nodes[0];
+    keys.set(u, first?.isConnected ? composedPath(first).map(at) : null);
+  }
+  return [...units].sort((a, b) => {
+    const ka = keys.get(a), kb = keys.get(b);
+    // Where two paths part, both nodes have one parent in the DOM as well: a host's shadow
+    // root, the host whose children a slot shows, or an ordinary element.
+    if (ka && kb) for (let i = 0; i < ka.length && i < kb.length; i++) if (ka[i] !== kb[i]) return ka[i] - kb[i];
+    return a.order - b.order;
+  });
+}
+
+/** A node's place among its DOM siblings, each parent's children counted once. */
+function siblingIndex(): (node: Node) => number {
+  const byParent = new Map<Node, Map<Node, number>>();
+  return (node) => {
+    const parent = node.parentNode;
+    if (!parent) return 0;
+    let index = byParent.get(parent);
+    if (!index) {
+      index = new Map();
+      let i = 0;
+      for (let c = parent.firstChild; c; c = c.nextSibling) index.set(c, i++);
+      byParent.set(parent, index);
+    }
+    return index.get(node) ?? 0;
+  };
+}
+
+/** Root first: every composed-tree ancestor of `node`, and the node. A slotted node hangs
+ *  from its slot, a shadow root's children from its host. */
+function composedPath(node: Node): Node[] {
+  const path: Node[] = [];
+  for (let at: Node | null = node; at; ) {
+    path.push(at);
+    const slot: HTMLSlotElement | null = (at as Element | Text).assignedSlot;
+    const parent: Node | null = slot ?? at.parentNode;
+    at = parent instanceof ShadowRoot ? parent.host : parent;
+  }
+  return path.reverse();
+}
+
+/**
  * TOP-LEVEL — collect scoreable Units under `root` (default: document.body).
  * Safe to call on subtree roots for incremental re-scans; claimed runs are skipped.
  */
