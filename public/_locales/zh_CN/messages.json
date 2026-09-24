@@ -93,7 +93,7 @@
     "message": "复制原文"
   },
   "cardFootUnavailable": {
-    "message": "本地评分服务没有响应。服务启动后会自动重试。"
+    "message": "本地引擎没有响应。引擎启动后会自动重试。"
   },
   "cardFootUnsupported": {
     "message": "EditLens 只在英文文本上训练，因此没有为该段落评分。"
@@ -144,10 +144,10 @@
     "message": "本地引擎尚未就绪。请打开 Anagram 设置以完成设置或恢复运行。"
   },
   "selFootNoAnswer": {
-    "message": "评分后端没有响应，请重试。"
+    "message": "本地引擎没有响应，请重试。"
   },
   "selFootUnavailable": {
-    "message": "本地评分服务没有响应，请重试。"
+    "message": "本地引擎没有响应，请重试。"
   },
   "selFootUnsupported": {
     "message": "EditLens 只在英文文本上训练，因此没有为所选文本评分。"
@@ -168,10 +168,10 @@
     "message": "查看存疑段落"
   },
   "countDownTitle": {
-    "message": "本地评分服务未运行，点击查看详情"
+    "message": "本地引擎未就绪，点击查看详情"
   },
   "countDownAria": {
-    "message": "本地评分服务未运行 · 详情"
+    "message": "本地引擎未就绪 · 详情"
   },
   "countAria_one": {
     "message": "$1 个存疑段落，查看列表"
@@ -324,10 +324,10 @@
     "message": "；段落末尾未被读取"
   },
   "reportModel": {
-    "message": "评分来自本地 anagramd 服务上的 $1（$2）——这是 EditLens 对 AI 编辑程度的估计，不是证据。"
+    "message": "评分来自本地引擎上的 $1（$2）——这是 EditLens 对 AI 编辑程度的估计，不是证据。"
   },
   "reportNoModel": {
-    "message": "分析本页时没有评分服务响应。"
+    "message": "分析本页时本地引擎没有响应。"
   },
   "reportPrivateTitle": {
     "message": "Anagram 分析报告",
@@ -430,7 +430,7 @@
     "description": "Text analysis page action, status, or limit."
   },
   "pasteCoverage": {
-    "message": "已分析 $1/$2 段 · 不支持的语言 $3 段 · 不可用 $4 段 · 截断 $5 段",
+    "message": "已分析 $1/$2 个窗口 · 不支持的语言 $3 个 · 不可用 $4 个 · 截断 $5 个",
     "description": "Text analysis page action, status, or limit."
   },
   "pasteFileFailed": {

@@ -83,6 +83,23 @@ describe("message files", () => {
     }
   });
 
+  it("calls the engine what Settings calls it, in both languages", () => {
+    // "Local engine" / 本地引擎 is the card's own title. A footnote that says "scoring
+    // daemon" or "backend" sends the reader looking for a second thing to fix.
+    for (const [key, entry] of Object.entries(EN)) {
+      expect(entry.message, key).not.toMatch(/\b(daemon|backend)\b/i);
+    }
+    for (const [key, entry] of Object.entries(ZH)) {
+      expect(entry.message, key).not.toMatch(/评分服务|后端|守护进程/);
+    }
+  });
+
+  it("counts windows as 窗口, never as the 段 a paragraph is", () => {
+    for (const [key, entry] of Object.entries(EN)) {
+      if (/\bwindows?\b/i.test(entry.message)) expect(ZH[key].message, key).toContain("窗口");
+    }
+  });
+
   it("gives every plural an _one and an _other", () => {
     for (const key of Object.keys(EN)) {
       if (key.endsWith("_one")) expect(EN, key).toHaveProperty(`${base(key)}_other`);

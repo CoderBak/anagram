@@ -124,8 +124,8 @@
     "description": "Card action: copy the paragraph's text."
   },
   "cardFootUnavailable": {
-    "message": "The scoring daemon did not answer. Retried automatically once it is running.",
-    "description": "Chip card footnote when the daemon is down."
+    "message": "The local engine did not answer. Retried automatically once it is running.",
+    "description": "Chip card footnote when the local engine is down."
   },
   "cardFootUnsupported": {
     "message": "EditLens is trained on English text only, so this paragraph was not scored.",
@@ -192,11 +192,11 @@
     "description": "Selection card footnote when the local engine is unavailable or setup is unfinished."
   },
   "selFootNoAnswer": {
-    "message": "The scoring backend did not respond — try again.",
-    "description": "Selection card footnote when the request failed with the daemon up."
+    "message": "The local engine did not answer — try again.",
+    "description": "Selection card footnote when the request failed with the local engine up."
   },
   "selFootUnavailable": {
-    "message": "The scoring daemon did not answer — try again.",
+    "message": "The local engine did not answer — try again.",
     "description": "Selection card footnote on a degraded verdict."
   },
   "selFootUnsupported": {
@@ -224,12 +224,12 @@
     "description": "Tooltip on the counter bubble that opens the triage panel."
   },
   "countDownTitle": {
-    "message": "Scoring daemon not running — click for details",
-    "description": "Tooltip on the counter bubble while the daemon is down."
+    "message": "Local engine not ready — click for details",
+    "description": "Tooltip on the counter bubble while the local engine is down."
   },
   "countDownAria": {
-    "message": "Scoring daemon not running — details",
-    "description": "Accessible name of the counter bubble while the daemon is down."
+    "message": "Local engine not ready — details",
+    "description": "Accessible name of the counter bubble while the local engine is down."
   },
   "countAria_one": {
     "message": "$1 flagged paragraph — show list",
@@ -432,11 +432,11 @@
     "description": "Report entry detail appended when the text outran the window cap."
   },
   "reportModel": {
-    "message": "Scores from $1 ($2) via the local anagramd daemon — EditLens estimates of AI-editing extent, not proof.",
+    "message": "Scores from $1 ($2) via the local engine — EditLens estimates of AI-editing extent, not proof.",
     "description": "Report footer. $1 = model id, $2 = model version. Both are identifiers, never translated."
   },
   "reportNoModel": {
-    "message": "No scoring daemon answered while this page was analyzed.",
+    "message": "The local engine did not answer while this page was analyzed.",
     "description": "Report footer when nothing scored."
   },
   "reportPrivateTitle": {
@@ -549,7 +549,7 @@
   },
   "pasteCoverage": {
     "message": "$1 of $2 windows analyzed · $3 unsupported · $4 unavailable · $5 truncated",
-    "description": "Text analysis page action, status, or limit."
+    "description": "Coverage line on the text analysis page. Every count is of windows (stretches of text read in one pass), not paragraphs."
   },
   "pasteFileFailed": {
     "message": "Could not read this file as UTF-8 text.",
