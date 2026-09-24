@@ -51,6 +51,20 @@ class Fragmented(io.BytesIO):
         return super().read(min(size, 3))
 
 
+class QueuedReader:
+    """Browser stdin that delivers each frame when the test sends it; None is EOF."""
+    def __init__(self):
+        self.queue, self.buffer = queue.Queue(), b""
+    def read(self, count):
+        while not self.buffer:
+            data = self.queue.get(timeout=3)
+            if data is None:
+                return b""
+            self.buffer += data
+        result, self.buffer = self.buffer[:count], self.buffer[count:]
+        return result
+
+
 class FramingTests(unittest.TestCase):
     def test_utf8_and_fragmented_frames(self):
         value = request("score", payload={"v": "2.1", "blocks": [{"id": "a", "text": "你好 🙂"}]})
@@ -104,17 +118,6 @@ class FramingTests(unittest.TestCase):
         self.assertTrue(component.closed)
 
     def test_status_responds_while_score_is_blocked(self):
-        class Reader:
-            def __init__(self):
-                self.queue, self.buffer = queue.Queue(), b""
-            def read(self, count):
-                while not self.buffer:
-                    data = self.queue.get(timeout=3)
-                    if data is None:
-                        return b""
-                    self.buffer += data
-                result, self.buffer = self.buffer[:count], self.buffer[count:]
-                return result
         class Writer(io.BytesIO):
             def flush(self):
                 answered.set()
@@ -129,7 +132,7 @@ class FramingTests(unittest.TestCase):
                     entered.set()
                     release.wait(3)
                 return 200, {"op": op, "operation": None}
-        reader, writer = Reader(), Writer()
+        reader, writer = QueuedReader(), Writer()
         thread = threading.Thread(target=host.run_host, args=(reader, writer, Component()))
         thread.start()
         reader.queue.put(frame(request("score", "slow")))
@@ -142,6 +145,45 @@ class FramingTests(unittest.TestCase):
         thread.join(3)
         self.assertFalse(thread.is_alive())
         self.assertEqual({r["id"] for r in replies(writer.getvalue())}, {"quick", "slow"})
+
+    def test_score_abandoned_by_the_browser_in_the_queue_is_not_scored(self):
+        entered, release = threading.Event(), threading.Event()
+        scored = []
+        class Component:
+            def start(self):
+                pass
+            def close(self):
+                release.set()
+            def handle(self, op, payload):
+                scored.append(payload["id"])
+                if payload["id"] == "slow":
+                    entered.set()
+                    release.wait(3)
+                return 200, {"op": op}
+        written = threading.Semaphore(0)
+        class Writer(io.BytesIO):
+            def flush(self):
+                written.release()
+        reader, writer = QueuedReader(), Writer()
+        thread = threading.Thread(target=host.run_host, args=(reader, writer, Component()))
+        with patch.object(host, "SCORE_QUEUE_TIMEOUT_S", 0.2):
+            thread.start()
+            reader.queue.put(frame(request("score", "slow", {"id": "slow"})))
+            self.assertTrue(entered.wait(2))
+            reader.queue.put(frame(request("score", "stale", {"id": "stale"})))
+            time.sleep(0.4)  # the browser's timeout passes while "slow" holds the only worker
+            reader.queue.put(frame(request("score", "fresh", {"id": "fresh"})))
+            time.sleep(0.05)
+            release.set()
+            for _ in range(3):
+                self.assertTrue(written.acquire(timeout=3))
+            reader.queue.put(None)
+            thread.join(3)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(scored, ["slow", "fresh"])
+        answers = {r["id"]: r for r in replies(writer.getvalue())}
+        self.assertEqual((answers["stale"]["status"], answers["stale"]["error"]["code"]), (409, "busy"))
+        self.assertEqual((answers["slow"]["status"], answers["fresh"]["status"]), (200, 200))
 
     def test_host_import_does_not_import_model_libraries(self):
         code = "import sys;sys.path.insert(0,sys.argv[1]);import native_host;print([n for n in ('torch','transformers','onnxruntime') if n in sys.modules])"

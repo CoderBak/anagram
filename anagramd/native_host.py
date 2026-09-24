@@ -16,12 +16,15 @@ import re
 import struct
 import sys
 import threading
+import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 MAX_REQUEST_BYTES = 2 * 1024 * 1024
 MAX_RESPONSE_BYTES = 1024 * 1024 - 1024
 MAX_PENDING_SCORES = 8
+# The extension stops waiting for a native reply after 30 s (nativeTransport.ts).
+SCORE_QUEUE_TIMEOUT_S = 30
 OPS = {"status", "health", "score", "runtime", "runtime.benchmark", "runtime.config",
        "runtime.cancel", "models.download", "models.pause", "models.delete",
        "engine.stop", "engine.resume", "engine.settings", "component.update", "component.uninstall"}
@@ -132,9 +135,13 @@ def run_host(reader, writer, component=None, startup_error=None):
     if component is not None:
         component.start()
 
-    def score_work(request):
+    def score_work(request, received):
         try:
-            output.write(dispatch(component, request))
+            if time.monotonic() - received >= SCORE_QUEUE_TIMEOUT_S:
+                # The browser has already given up on it; keep the worker for live requests.
+                output.write(error_reply(request["id"], "busy", "The score request waited too long in the queue", 409))
+            else:
+                output.write(dispatch(component, request))
         finally:
             with pending_lock:
                 pending.discard(request["id"])
@@ -171,7 +178,7 @@ def run_host(reader, writer, component=None, startup_error=None):
                     continue
                 with pending_lock:
                     pending.add(request["id"])
-                executor.submit(score_work, request)
+                executor.submit(score_work, request, time.monotonic())
             else:
                 response = dispatch(component, request)
                 output.write(response)
