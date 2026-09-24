@@ -7,7 +7,7 @@ interface ModeStorage {
 
 /** Serialize runtime and preference changes; an uncommitted change never enables disk writes. */
 export function createCacheModeController(
-  applyMode: (mode: ScoreCacheMode) => Promise<void>,
+  applyMode: (mode: ScoreCacheMode, restored: boolean) => Promise<void>,
   storage: ModeStorage,
 ) {
   let actual: ScoreCacheMode | undefined;
@@ -21,10 +21,13 @@ export function createCacheModeController(
   };
   async function apply(mode: ScoreCacheMode): Promise<void> {
     if (actual === mode && confirmed) return;
+    // A worker's first mode is the one it had before it slept, not a change: nothing it
+    // or a tab holds was made under another mode, so nothing is cleared.
+    const restored = actual === undefined;
     // The cache switches its disk gate synchronously, before deletion can fail.
     actual = mode;
     confirmed = false;
-    await applyMode(mode);
+    await applyMode(mode, restored);
     confirmed = true;
   }
   async function rollback(save: boolean): Promise<void> {

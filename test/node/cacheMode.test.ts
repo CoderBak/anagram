@@ -15,7 +15,7 @@ function setup(initial: ScoreCacheMode = "session") {
     getValue: vi.fn(async () => saved),
     setValue: vi.fn(async (mode: ScoreCacheMode) => { saved = mode; }),
   };
-  const apply = vi.fn((mode: ScoreCacheMode) => cache.setMode(mode));
+  const apply = vi.fn((mode: ScoreCacheMode, restored: boolean) => cache.setMode(mode, restored));
   const modes = createCacheModeController(apply, storage);
   return {store,cache,storage,apply,modes,saved:()=>saved};
 }
@@ -28,6 +28,19 @@ async function assertNoDiskWrites(env: ReturnType<typeof setup>) {
 }
 
 describe("cache-mode preference and runtime coordination", () => {
+  it("wakes in the saved mode without deleting anything, and deletes on a real change", async () => {
+    const env = setup("session"), clear = vi.spyOn(env.store,"clear");
+    await expect(env.modes.restore()).resolves.toBe("session");
+    expect(env.apply).toHaveBeenCalledExactlyOnceWith("session", true);
+    expect(clear).not.toHaveBeenCalled();
+    await assertNoDiskWrites(env);
+    await env.modes.restore(); // a storage notification with nothing new in it
+    expect(env.apply).toHaveBeenCalledOnce();
+    await env.modes.change("persistent");
+    expect(env.apply).toHaveBeenLastCalledWith("persistent", false);
+    expect(clear).toHaveBeenCalledOnce();
+  });
+
   it("stays session-only after failed persistent activation and a later successful ordinary clear", async () => {
     const env = setup(); await env.modes.restore();
     const clear = env.store.clear;

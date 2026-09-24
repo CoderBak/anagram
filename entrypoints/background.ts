@@ -22,7 +22,7 @@ import type {
 } from "../lib/messaging/protocol";
 import { ensureInjected, installAccess } from "../lib/access/worker";
 import { documentAuthority } from "../lib/access/authority";
-import { invalidateAndNotify } from "../lib/access/cacheControls";
+import { applyCacheMode, invalidateAndNotify } from "../lib/access/cacheControls";
 import { callerRole, parseWorkerMessage, permitsMessage, type AccessSender } from "../lib/access/messages";
 import { READER_PAGE, readerQuery } from "../lib/pdf/source";
 import { createPdfNavigation } from "../lib/pdf/navigation";
@@ -41,7 +41,7 @@ export default defineBackground(() => {
     void browser.storage.local.set({ [EXTENSION_UPDATE_KEY]: details.version });
   });
   const router = createRouter(getScoreClient());
-  const cacheModes=createCacheModeController((mode)=>invalidateAndNotify(()=>router.setCacheMode(mode)),cacheModeStorage);
+  const cacheModes=createCacheModeController((mode,restored)=>applyCacheMode(router,mode,restored),cacheModeStorage);
   // Do not dispatch scoring until persisted privacy preferences have been applied.
   const cacheModeReady=cacheModes.restore();
   void cacheModeReady.catch(()=>console.warn("Anagram could not clear stored verdicts; disk writes remain disabled"));

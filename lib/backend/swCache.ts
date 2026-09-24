@@ -45,7 +45,9 @@ export interface SwCache {
   clear(): Promise<void>;
   /** Current invalidation epoch; writes from an earlier epoch are discarded. */
   epoch(): number;
-  setMode(mode: ScoreCacheMode): Promise<void>;
+  /** Switch persistence, deleting what the disk holds. `restored` adopts the mode a worker
+   *  slept in instead, which deletes nothing. */
+  setMode(mode: ScoreCacheMode, restored?: boolean): Promise<void>;
   /** How many verdicts are on the disk — the number the options page shows. */
   count(): Promise<number>;
 }
@@ -369,7 +371,11 @@ export function createSwCache(store: ScoreStore = indexedDbStore()): SwCache {
     void operation.then(done, done);
     return operation;
   }
-  function setMode(next: ScoreCacheMode): Promise<void> {
+  function setMode(next: ScoreCacheMode, restored = false): Promise<void> {
+    // A worker wakes with nothing in memory. Session mode emptied the disk when it was
+    // chosen (a deletion that failed then was reported, and the next clear repeats it), so
+    // waking into it only has to keep the disk gate shut.
+    if (restored) { mode = next; return Promise.resolve(); }
     if (next === mode) {
       if (clearing) return clearing;
       if (!diskBlocked) return Promise.resolve();

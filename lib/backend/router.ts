@@ -31,7 +31,8 @@ export interface RequestOrigin {
 export interface BackendRouter {
   handle(req: ScoreBatchRequest, origin?: RequestOrigin): Promise<ScoreBatchResponse>;
   clear(): Promise<void>;
-  setCacheMode(mode: ScoreCacheMode): Promise<void>;
+  /** `restored`: the mode the worker had before it slept, which invalidates nothing. */
+  setCacheMode(mode: ScoreCacheMode, restored?: boolean): Promise<void>;
   count(): Promise<number>;
 }
 /** JSON avoids delimiter collisions and includes calibration, not just model/version. */
@@ -244,6 +245,9 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
   }
   return { handle,
     clear() { invalidate(); return cache.clear(); },
-    setCacheMode(mode) { if (mode !== cacheMode) { cacheMode = mode; invalidate(); } return cache.setMode(mode); },
+    setCacheMode(mode, restored = false) {
+      if (mode !== cacheMode) { cacheMode = mode; if (!restored) invalidate(); }
+      return cache.setMode(mode, restored);
+    },
     count: () => cache.count() };
 }
