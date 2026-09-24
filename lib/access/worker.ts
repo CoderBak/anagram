@@ -210,6 +210,7 @@ export async function ensureInjected(tabId: number): Promise<boolean> {
  */
 export function installAccess(): void {
   browser.permissions.onAdded.addListener((added) => {
+    documentAuthority.grantsAdded();
     const origins = browsingOrigins(added.origins);
     void syncRegistration().then(() => injectGranted(origins));
   });

@@ -55,6 +55,23 @@ describe("document-scoped authorization",()=>{
     env.authority.revoke(["https://top.test/*"]);finish({origins:["https://top.test/*"],permissions:[]});
     expect(await pending).toBeNull();
   });
+  it("reads the grants once for many messages, and again once a site is granted",async()=>{
+    const env=environment(),source=sender(),port=env.open(source),getAll=vi.mocked(fakeBrowser.permissions.getAll);
+    for(let i=0;i<3;i++)expect(await env.authority.authorize(source,port.session)).not.toBeNull();
+    expect(getAll).toHaveBeenCalledOnce();
+    env.authority.grantsAdded();
+    expect(await env.authority.authorize(source,port.session)).not.toBeNull();
+    expect(getAll).toHaveBeenCalledTimes(2);
+  });
+  it("does not keep grants that were read across a withdrawal",async()=>{
+    const env=environment(),source=sender(),port=env.open(source);
+    let finish!:(value:{origins:string[];permissions:[]})=>void;
+    vi.mocked(fakeBrowser.permissions.getAll).mockImplementationOnce(()=>new Promise((r)=>finish=r));
+    const pending=env.authority.authorize(source,port.session);
+    env.withdraw("https://top.test/*");finish({origins:["https://top.test/*"],permissions:[]});
+    expect(await pending).toBeNull();
+    const reopened=env.open(source);expect(await env.authority.authorize(source,reopened.session)).toBeNull();
+  });
   it("allows trusted pasted text without a tab, but not an arbitrary extension page",async()=>{
     const env=environment([]),paste={id:fakeBrowser.runtime.id,url:fakeBrowser.runtime.getURL("/paste.html")};
     const p=env.open(paste);expect(await env.authority.authorize(paste,p.session)).not.toBeNull();

@@ -98,8 +98,13 @@ function toRegExp(pattern: string): RegExp | null {
   return new RegExp(`^${schemeRe}://${hostRe}(?::\\d+)?${pathRe}$`, "i");
 }
 
-/** Does any of these patterns cover this URL? Unparsable patterns simply never match. */
+/** These patterns as one test, compiled once. Unparsable patterns simply never match. */
+export function matcher(patterns: readonly string[]): (url: string | undefined) => boolean {
+  const compiled = patterns.map(toRegExp).filter((re): re is RegExp => re !== null);
+  return (url) => !!url && compiled.some((re) => re.test(url));
+}
+
+/** Does any of these patterns cover this URL? */
 export function matchesAny(patterns: readonly string[], url: string | undefined): boolean {
-  if (!url) return false;
-  return patterns.some((pattern) => toRegExp(pattern)?.test(url) === true);
+  return matcher(patterns)(url);
 }

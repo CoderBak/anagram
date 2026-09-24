@@ -3,7 +3,7 @@ import { browser } from "#imports";
 import * as v from "valibot";
 import { ACTIONS } from "../messaging/protocol";
 import { callerRole, SESSION_PORT, SessionSchema, type AccessSender } from "./messages";
-import { matchesAny } from "./patterns";
+import { matcher, matchesAny } from "./patterns";
 
 interface Identity {tabId:number;frameId:number;url:string;origin:string;documentId?:string;session:string}
 export interface DocumentAccess extends Identity { documentKey:string; signal:AbortSignal }
@@ -25,8 +25,20 @@ export function createDocumentAuthority() {
     if (teardown && record.tabId >= 0) void browser.tabs.sendMessage(record.tabId,{action:ACTIONS.TEARDOWN},{frameId:record.frameId,...(record.documentId ? {documentId:record.documentId} : {})}).catch(()=>undefined);
     try{record.port.disconnect();}catch{/* already closed */}
   };
+  // The granted origins, read and compiled once and kept until a grant changes: every
+  // content message is checked against them. A read already running when a grant changes
+  // still answers its own caller, whose document revoke() aborts if the change withdrew
+  // it, but it is not kept.
+  let grants:Promise<(url:string)=>boolean> | undefined;
   const granted = async (url:string) => {
-    try {return matchesAny((await browser.permissions.getAll()).origins ?? [],url);} catch {return false;}
+    let read=grants;
+    try {
+      if(!read)read=grants=browser.permissions.getAll().then((all)=>matcher(all.origins ?? []));
+      return (await read)(url);
+    } catch {
+      if(grants===read)grants=undefined; // a failed read is not kept
+      return false;
+    }
   };
   return {
     install() {
@@ -70,7 +82,10 @@ export function createDocumentAuthority() {
       if (!allowed || record.signal.aborted || live.get(key)!==record) return null;
       return record;
     },
+    /** A site was granted: read the grants again. A withdrawal comes through revoke(). */
+    grantsAdded() {grants=undefined;},
     revoke(origins:readonly string[]) {
+      grants=undefined;
       for(const [key,identity] of once) if(matchesAny(origins,identity.url))once.delete(key);
       for(const record of [...live.values()]) if(matchesAny(origins,record.url))retire(record,true);
     },
