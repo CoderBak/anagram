@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeBrowser } from "wxt/testing";
-import { NativeTransport, NativeTransportError, type NativePort } from "../../lib/backend/nativeTransport";
+import { NativeTransport, NativeTransportError, nativeTransport, type NativePort } from "../../lib/backend/nativeTransport";
 import { trustedNativePage, validPageRequest, parseNativeReply } from "../../lib/backend/nativeProtocol";
 import { NativeScoreClient } from "../../lib/backend/nativeScoreClient";
 import { parseComponent } from "../../lib/backend/nativeClient";
 import { handleNativePageMessage } from "../../lib/backend/nativeBridge";
-import { NATIVE_MESSAGE, NATIVE_UNINSTALL } from "../../lib/backend/nativeProtocol";
+import { NATIVE_MESSAGE, NATIVE_UNINSTALL, PAGE_OPERATIONS } from "../../lib/backend/nativeProtocol";
 import { isTransientFailure } from "../../lib/backend/retry";
 
 function port() {
@@ -125,6 +125,20 @@ describe("privileged native operation boundary", () => {
       {id:fakeBrowser.runtime.id,url:"https://example.com"},controls);
     expect(reply).toMatchObject({ok:false,status:403,error:{code:"forbidden"}});
     expect(controls.invalidate).not.toHaveBeenCalled();
+  });
+  it("drops scoring work only after operations that stop, reload or replace the engine", async () => {
+    const sender = {id:fakeBrowser.runtime.id,url:fakeBrowser.runtime.getURL("/options.html")};
+    const request = vi.spyOn(nativeTransport(),"request").mockResolvedValue({v:1,id:"bridge",ok:true,status:200,data:{}});
+    const payloads: Record<string, Record<string, unknown>> = {"runtime.config":{id:"cpu"},"runtime.benchmark":{budget_s:30},
+      "engine.settings":{idle_unload_s:600},"models.delete":{confirm:true},"component.uninstall":{confirm:true}};
+    const invalidated: string[] = [];
+    for (const op of PAGE_OPERATIONS) {
+      const controls = {invalidate:vi.fn(),clear:vi.fn()};
+      await handleNativePageMessage({action:NATIVE_MESSAGE,op,payload:payloads[op] ?? {}},sender,controls);
+      if (controls.invalidate.mock.calls.length) invalidated.push(op);
+    }
+    expect(request).toHaveBeenCalledTimes(PAGE_OPERATIONS.length); // every operation reached the host
+    expect(invalidated).toEqual(PAGE_OPERATIONS.filter((op) => !["status","runtime","models.pause","engine.settings"].includes(op)));
   });
   it("cannot remove the extension using an invented cleanup receipt", async () => {
     const controls = {invalidate:vi.fn(),clear:vi.fn()};
