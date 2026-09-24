@@ -18,6 +18,11 @@ local component and the installer all carry the same version.
   probabilities are split shows a hollow dot, a dashed underline and a line in the card.
 - Underlines are on for every analyzed paragraph or off; the flagged-only mode is gone.
   The card shows where the score sits on the scale instead of a stacked bar.
+- A PDF from the web opens analyzed or not by its own site's rule, as the page it came
+  from would, and the reader's panel turns off that site. A file from this computer
+  follows the global switch.
+- The engine is called "Local engine" (本地引擎) everywhere, including card and selection
+  footnotes, the counter's tooltip and copied reports.
 
 ### Fixed
 
@@ -34,6 +39,60 @@ local component and the installer all carry the same version.
 - The PDF reader no longer breaks an abstract that is set narrower than the body text into
   pieces mid-sentence (single-column papers such as arXiv 2609.20794 and LoRA). A line is
   now measured against the stretch of prose it is set in, not the whole column.
+
+Pages and the background worker:
+- Waking the background worker no longer tells every tab the cache was cleared, which
+  abandoned their scoring in flight and, in memory-only mode, emptied the cache again.
+- Clearing cached verdicts or changing the cache mode no longer paints "Unavailable"
+  chips; the paragraphs are scored again, those on screen first.
+- A native connection that dropped, or one request that timed out, is retried once and no
+  longer marks the local engine down for every tab. Changing the idle timeout or pausing
+  a download no longer throws away scoring in progress.
+- A paragraph the extension cannot send shows as Unavailable instead of being retried
+  forever. Very long paragraphs and whole-page selections go in parts, so they are never
+  refused.
+- Turning Anagram off on a page stops the engine's queued work for it.
+- The triage panel, the copied report and next/previous-flagged follow the page's order,
+  so a post or reply that appears above earlier ones is listed where it stands.
+- Under "Main content only", pages that rewrite their address as you scroll no longer
+  rerun main-content detection on every change.
+- Settings: the one-minute idle option reads "1 minute"; a switch, select or site rule
+  that could not be saved goes back to the stored value, and a failed site-rule add says
+  so. The Chinese text-analysis coverage line counts windows (窗口), not paragraphs.
+
+PDF reader:
+- A page deep in a document is no longer read as a title page, which cut its opening
+  lines into one block each.
+- An oversized PDF picked or dropped into the reader no longer closes the one on screen.
+- A local or Firefox PDF that cannot be opened says why: too large, or not a PDF.
+- A PDF waiting for other tabs' PDFs to be handed over is no longer called too large,
+  and the relay never holds more memory than its budget.
+- The reader's panel no longer saves the extension's own id as a site in Settings.
+
+Local engine:
+- Resuming the engine, downloading or deleting models, updating and uninstalling wait
+  for scoring in progress instead of failing with "busy".
+- The first score after the engine unloads for being idle no longer sometimes fails with
+  "busy", and after a slow batch the engine no longer spends time on requests the
+  extension has already given up on.
+- Starting the engine is faster: the model weights are checksummed once per connection
+  instead of twice.
+- A component that fails to start (for example, a symlinked settings file) no longer
+  blocks the terminal commands and the installer from repairing it.
+
+Installer:
+- Updating the local engine from Settings installs the release that matches the
+  extension, not the latest one.
+- `anagram download --profile recommended|expanded` prepares the chosen model set instead
+  of ignoring the option.
+- An installation interrupted by Ctrl-C, a closed terminal or the update timeout rolls
+  back under dash as well, and the next installer or `anagram update` recovers a folder a
+  killed installer left locked; the engine says so instead of "installation in progress".
+- An interrupted uninstall can be finished with `anagram uninstall -y`.
+- Two component homes registering with the same browser can no longer both claim its
+  native registration.
+- The Windows installer no longer downloads uv again on every run and never builds
+  packages from source (not yet run on Windows).
 
 ## [0.6.0] — 2026-09-22
 

@@ -49,6 +49,11 @@ npm run test:e2e                   # extension against a deterministic fake host
 node test/scenarios.mjs --local
 npm run test:a11y
 npm run test:native                # real stdio host fixture, EN and ZH setup
+npm run test:paste                 # the paste page, windowed readout and report
+npm run test:pdf-viewer            # upstream reader: find, zoom, recycling, file limits
+npm run test:pdf-install           # PDF setup and local-file access flow, EN and ZH
+node test/pdf-route-check.mjs      # PDF routing, handoff caps and privacy
+npm run test:network-privacy       # the offline-mode promise in PRIVACY.md
 ```
 
 Backend and installer tests need a Python venv with the test dependencies only:
