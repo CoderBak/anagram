@@ -240,7 +240,8 @@ try {
   }
   # Fetch/bootstrap before replacing app; preserve previous app until registration succeeds.
   $uv = Join-Path $ComponentHome 'bin\uv.exe'
-  if (-not (Test-Path -LiteralPath $uv) -or (& $uv --version) -ne "uv $UvVersion") {
+  # `uv --version` appends build details ("uv 0.11.18 (abc123 date)"); compare the version field.
+  if (-not (Test-Path -LiteralPath $uv) -or ("$(& $uv --version)" -split ' ')[1] -ne $UvVersion) {
     $uvZip = Join-Path $temporary 'uv.zip'
     Fetch "https://github.com/astral-sh/uv/releases/download/$UvVersion/uv-x86_64-pc-windows-msvc.zip" $uvZip
     if ((Hash $uvZip) -ne $UvHash) { throw 'uv checksum mismatch.' }
@@ -266,7 +267,7 @@ try {
   # Pre-existing staging was refused before any writes. Only this transaction's
   # venv.next may be removed by failure cleanup.
   $createdVenv = $true
-  try { Invoke-Private $uv @('sync','--frozen','--no-dev','--python',$PythonVersion,'--quiet') } finally { Pop-Location }
+  try { Invoke-Private $uv @('sync','--frozen','--no-dev','--no-build','--python',$PythonVersion,'--quiet') } finally { Pop-Location }
   $stagedVenv = Join-Path $ComponentHome 'venv.next'
   if (-not (Test-Path -LiteralPath (Join-Path $stagedVenv 'Scripts\python.exe') -PathType Leaf)) { throw 'Staged private Python was not created.' }
   $venv = Join-Path $ComponentHome 'venv'
