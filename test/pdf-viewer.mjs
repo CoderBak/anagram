@@ -1,7 +1,8 @@
 // Real upstream viewer, offline bytes, and source mapping under find/recycling.
 import assert from "node:assert/strict";
 import {createHash} from "node:crypto";
-import {mkdirSync, readFileSync} from "node:fs";
+import {mkdirSync, mkdtempSync, readFileSync, rmSync, truncateSync, writeFileSync} from "node:fs";
+import {tmpdir} from "node:os";
 import {dirname, join} from "node:path";
 import {fileURLToPath} from "node:url";
 import {build} from "esbuild";
@@ -9,6 +10,7 @@ import {launchExtension} from "./harness.mjs";
 import {TEST_PDF, LOCKED_PDF, PDF_PASSWORD, TALL_PDF} from "./pdf-fixture.mjs";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const artifacts = join(ROOT, "test-results/pdf-viewer"); mkdirSync(artifacts, {recursive:true});
+const scratch = mkdtempSync(join(tmpdir(), "anagram-pdf-viewer-"));
 const {context, extId, fixture} = await launchExtension({extDir:join(ROOT,"output/chrome-mv3")});
 const page = await context.newPage();
 const failures = [], external = [];
@@ -73,6 +75,12 @@ try {
   assert.equal(await page.locator("#viewsManagerAddFilePicker").isVisible(),false);
   await page.locator("#viewsManagerToggleButton").click();
   await page.screenshot({path:join(artifacts,"full-viewer.png")});
+
+  // A file over the direct-file cap is refused before the open document is closed.
+  const oversized = join(scratch, "oversized.pdf"); writeFileSync(oversized, ""); truncateSync(oversized, 101 * 1024 * 1024);
+  await page.locator("#file").setInputFiles(oversized);
+  await page.waitForFunction(() => document.getElementById("notice").textContent === "This PDF is too large to read here.");
+  assert.deepEqual(await page.evaluate(() => ({pages:window.PDFViewerApplication.pdfDocument?.numPages ?? 0, drop:!document.getElementById("drop").hidden})), {pages:2, drop:false});
 
   // Upstream password dialog, including a refused password, remains functional offline.
   await page.locator("#file").setInputFiles(input("locked.pdf",LOCKED_PDF));
@@ -140,4 +148,4 @@ try {
   await page.screenshot({path:join(artifacts,"failure.png")}).catch(()=>{});
   console.error({failures,external,notice:await page.locator("#notice").textContent().catch(()=>null)});
   throw error;
-} finally {await context.close();}
+} finally {await context.close(); rmSync(scratch, {recursive:true, force:true});}

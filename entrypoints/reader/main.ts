@@ -160,8 +160,9 @@ async function openBytes(bytes: Uint8Array, name: string, url: string | null, lo
   }
 }
 async function openFile(file: File): Promise<void> {
-  const load = beginLoad();
+  // Refused before the load begins, so the document already open stays open.
   if (file.size > MAX_BYTES) { failure("large"); return; }
+  const load = beginLoad();
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
     await openBytes(bytes, file.name, null, load);
