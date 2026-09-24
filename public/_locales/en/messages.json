@@ -75,6 +75,10 @@
     "message": "Extent of AI editing, 0 to 1 (EditLens scale)",
     "description": "Tooltip on the big number in a card."
   },
+  "cardUncertain": {
+    "message": "Uncertain: the model is split between $1 ($2%) and $3 ($4%).",
+    "description": "Card line when the four probabilities are spread out. $1/$3 = verdict names (e.g. Lightly edited), $2/$4 = their probabilities as whole numbers."
+  },
   "cardPartsTogether": {
     "message": "Paragraphs analyzed together",
     "description": "Card row label: how many paragraphs this one verdict covers."
@@ -937,11 +941,7 @@
   },
   "optUnderline": {
     "message": "Underline",
-    "description": "Select label: which text is underlined."
-  },
-  "optUnderlineFlagged": {
-    "message": "Flagged text",
-    "description": "Option: underline flagged text only."
+    "description": "Select label: whether every read paragraph is underlined, or none."
   },
   "optUnderlineOff": {
     "message": "Off",

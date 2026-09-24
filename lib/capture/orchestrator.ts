@@ -36,16 +36,14 @@ import {
   clearHighlight,
   registerHighlightStyles,
   setHighlightsVisible,
-  setMarkStyle,
   refreshHighlightTheme,
-  type MarkStyle,
 } from "../render/highlight";
 import { createFab, type Fab, type PanelCounts } from "../render/fab";
 import { t, tn } from "../i18n";
 import { band, bandLabel, BUCKET_BANDS, isFlagged } from "../render/band";
 import { formatScore } from "../render/score";
 import { windowReadout } from "../render/coverage";
-import { normalizeMarkStyle, settings } from "../settings/settings";
+import { settings } from "../settings/settings";
 import { createLogger } from "../log";
 
 const log = createLogger("orchestrator");
@@ -152,7 +150,6 @@ interface SettingsSnapshot {
   showHighlights: boolean;
   displayMode: "all" | "flagged";
   mergeShorts: boolean;
-  markStyle: MarkStyle;
   analysisScope: "page" | "main";
 }
 
@@ -161,7 +158,6 @@ const DEFAULT_SNAPSHOT: SettingsSnapshot = {
   showHighlights: true,
   displayMode: "all",
   mergeShorts: true,
-  markStyle: "quiet",
   analysisScope: "page",
 };
 
@@ -258,7 +254,6 @@ export function createOrchestrator(
   let unwatchHighlights: (() => void) | null = null;
   let unwatchDisplay: (() => void) | null = null;
   let unwatchMerge: (() => void) | null = null;
-  let unwatchMarkStyle: (() => void) | null = null;
   let unwatchScope: (() => void) | null = null;
   let lastBadgeSent = -1;
   /** Backend identity the L1 cache currently belongs to (from the last reply). */
@@ -1339,18 +1334,16 @@ export function createOrchestrator(
   /** One awaited read of every setting the first collect depends on. */
   async function readSettings(): Promise<SettingsSnapshot> {
     try {
-      const [showHighlights, mode, merge, mark, scope] = await Promise.all([
+      const [showHighlights, mode, merge, scope] = await Promise.all([
         settings.showHighlights.getValue(),
         settings.displayMode.getValue(),
         settings.mergeShorts.getValue(),
-        settings.markStyle.getValue(),
         settings.analysisScope.getValue(),
       ]);
       return {
         showHighlights,
         displayMode: mode,
         mergeShorts: merge,
-        markStyle: normalizeMarkStyle(mark),
         analysisScope: scope,
       };
     } catch (e) {
@@ -1368,7 +1361,6 @@ export function createOrchestrator(
     highlightsEnabled = s.showHighlights;
     displayMode = s.displayMode;
     mergeShorts = s.mergeShorts;
-    setMarkStyle(s.markStyle);
     if (!opts.lockScope) analysisScope = s.analysisScope;
     setHighlightsVisible(visible && highlightsEnabled);
   }
@@ -1382,8 +1374,6 @@ export function createOrchestrator(
       unwatchDisplay = settings.displayMode.watch(applyDisplayMode);
       unwatchMerge?.();
       unwatchMerge = settings.mergeShorts.watch(applyMergeShorts);
-      unwatchMarkStyle?.();
-      unwatchMarkStyle = settings.markStyle.watch((v) => setMarkStyle(normalizeMarkStyle(v)));
       unwatchScope?.();
       unwatchScope = settings.analysisScope.watch(applyScope);
     } catch (e) {
@@ -1475,8 +1465,6 @@ export function createOrchestrator(
     unwatchDisplay = null;
     unwatchMerge?.();
     unwatchMerge = null;
-    unwatchMarkStyle?.();
-    unwatchMarkStyle = null;
     unwatchScope?.();
     unwatchScope = null;
     notifyToolbarBadge(0);

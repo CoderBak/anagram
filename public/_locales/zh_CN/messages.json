@@ -56,6 +56,9 @@
   "cardScaleTitle": {
     "message": "AI 编辑程度，0 到 1（EditLens 标度）"
   },
+  "cardUncertain": {
+    "message": "判断不确定：模型在“$1”（$2%）与“$3”（$4%）之间摇摆。"
+  },
   "cardPartsTogether": {
     "message": "合并分析的段落"
   },
@@ -725,9 +728,6 @@
   },
   "optUnderline": {
     "message": "下划线"
-  },
-  "optUnderlineFlagged": {
-    "message": "存疑文本"
   },
   "optUnderlineOff": {
     "message": "关闭"

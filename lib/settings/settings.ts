@@ -5,22 +5,10 @@ export type { ScoreCacheMode } from "../cachePolicy";
 
 export const cacheModeStorage = storage.defineItem<ScoreCacheMode>("local:cacheMode", { fallback: "persistent" });
 
-/** Marking styles shared with the renderer without importing it into the worker. */
-export type MarkStyle = "quiet" | "always";
-
-/** Preserve explicit legacy styles as "always"; the old default "both" becomes "quiet". */
-export type StoredMarkStyle = MarkStyle | "both" | "underline" | "tint";
-
-/** Unknown stored values use the default. */
-export function normalizeMarkStyle(stored: StoredMarkStyle | undefined | null): MarkStyle {
-  if (stored === "always" || stored === "underline" || stored === "tint") return "always";
-  return "quiet";
-}
-
 export const settings = {
   enabled: storage.defineItem<boolean>("local:enabled", { fallback: true }),
   siteOverrides: storage.defineItem<Record<string, "on" | "off">>("local:siteOverrides", { fallback: {} }),
-  // Master switch for text marks; applies to open tabs.
+  // Underlines on every read paragraph, or none; applies to open tabs.
   showHighlights: storage.defineItem<boolean>("local:showHighlights", { fallback: true }),
   // Replacing the browser's PDF viewer requires opt-in; manual opening stays available.
   autoOpenPdfs: storage.defineItem<boolean>("local:autoOpenPdfs", { fallback: false }),
@@ -33,10 +21,6 @@ export const settings = {
   }),
   // Group short neighbors to reach the evidence floor; otherwise skip short paragraphs.
   mergeShorts: storage.defineItem<boolean>("local:mergeShorts", { fallback: true }),
-  // Read legacy values through normalizeMarkStyle(); showHighlights controls visibility.
-  markStyle: storage.defineItem<StoredMarkStyle>("local:markStyle", {
-    fallback: "quiet",
-  }),
   // "main" restricts analysis to the Readability region, excluding outside comments/sidebars.
   analysisScope: storage.defineItem<"page" | "main">("local:analysisScope", {
     fallback: "page",

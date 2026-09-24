@@ -38,7 +38,8 @@ import { formatScore } from "./score";
 import { clearActiveUnit, setActiveUnit } from "./highlight";
 import { countWords, hasLetters, unitParagraphs } from "../dom/text";
 import { coverageNote, windowScores, windowReadout } from "./coverage";
-import { distributionHtml } from "./dist";
+import { distributionHtml, swatchHtml } from "./dist";
+import { isUncertain } from "./scale";
 import { BADGE_CSS } from "./badge.css";
 import { isDarkContext } from "./theme";
 
@@ -360,7 +361,10 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
     const num = root.querySelector(".num") as HTMLElement;
     const score = formatScore(result.score);
 
-    pill.className = `pill band-${b}`;
+    // The dot is the score's own colour (lib/render/scale.ts) — hollow when the verdict is
+    // uncertain; the text stays in ink, whatever the verdict.
+    pill.className = `pill band-${b}${isNoVerdict(b) ? "" : " scored"}${isUncertain(result) ? " unsure" : ""}`;
+    pill.style.setProperty("--s", result.score.toFixed(3));
     // The bare number (".38") — what it means is in the card and the intro, not on
     // every line. A merged unit says so up front (".38 ×3"): one verdict covering N
     // short paragraphs must never masquerade as a single-paragraph judgment. How many
@@ -465,7 +469,7 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
 
     // The model's whole 4-way distribution is the honest part of the readout. Skip
     // it for "unknown" — a flat gray bar reads as data when the message is "no answer".
-    const dist = isNoVerdict(b) ? "" : distributionHtml(result, b);
+    const dist = isNoVerdict(b) ? "" : distributionHtml(result);
     // Coverage, honestly. "Words" is the whole unit. A unit read in one pass says nothing
     // more; one read in windows shows each window's own number, in reading order, next to
     // the aggregate above; and "Scored: first N words" is left for the one case in which
@@ -493,7 +497,7 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
           ? t("cardFootUnsupported")
           : coverageNote(verdict, "paragraph") + t("cardFootEstimate");
     card.innerHTML =
-      `<div class="head"><span class="verdict band-${b}">${bandLabel(b)}</span>` +
+      `<div class="head"><span class="verdict band-${b}">${isNoVerdict(b) ? "" : swatchHtml(result)}${bandLabel(b)}</span>` +
       `<span class="big" title="${t("cardScaleTitle")}">${isNoVerdict(b) ? "—" : score}</span></div>` +
       dist +
       langRow +

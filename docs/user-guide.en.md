@@ -24,8 +24,13 @@ exists for it yet.
 Grant a site with the switch in the popup, or allow all sites from Settings. Without a
 grant, **Analyze this page** in the popup scores the page in front of you once.
 
-- A chip after each paragraph shows the score. Hover it for the four-way breakdown and
-  the word count. Non-English text gets a grey chip with the language code.
+- A chip after each paragraph shows the score. Hover it for where the score sits on the
+  scale, the four-way breakdown and the word count. Non-English text gets a grey chip
+  with the language code.
+- The chip's dot and the underline share one colour scale, pale for human writing and
+  dark red for AI-generated text. The word follows the number: Human below .17, Lightly
+  edited below .50, Heavily edited below .83, AI-generated above. A hollow dot and a
+  dashed underline mean the model's probabilities are split and the verdict is uncertain.
 - Short paragraphs are scored together with their neighbours; a ×2 on a chip means it
   covers two paragraphs.
 - The floating ball shows or hides marks. Its counter opens the list of flagged

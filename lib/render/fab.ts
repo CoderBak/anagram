@@ -24,6 +24,7 @@ import { messageLocale, t, tn } from "../i18n";
 import { bandLabel, type Band } from "./band";
 import { formatScore, spokenScore } from "./score";
 import { isDarkPage } from "./theme";
+import { scaleColorCss } from "./scale";
 
 export interface PanelEntry {
   id: string;
@@ -363,10 +364,8 @@ const FAB_CSS = `
   width: 100%;
 }
 .panel .pitem:hover { background: #f5f5f5; }
-.panel .pdot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; align-self: center; }
-.panel .pitem.band-ai .pdot { background: #dc2626; }
-.panel .pitem.band-heavy .pdot { background: #e8590c; }
-.panel .pitem.band-light .pdot { background: #d4a017; }
+/* The row's score on the one scale (lib/render/scale.ts), read from --s on the row. */
+.panel .pdot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; align-self: center; background: ${scaleColorCss(false)}; }
 .panel .pscore {
   flex: 0 0 auto;
   min-width: 26px; /* ".93" and "1.0" — the widest row number there is */
@@ -375,9 +374,6 @@ const FAB_CSS = `
   font-variant-numeric: tabular-nums;
   font-size: 11px;
 }
-.panel .pitem.band-ai .pscore { color: #b42318; }
-.panel .pitem.band-heavy .pscore { color: #a13d00; }
-.panel .pitem.band-light .pscore { color: #7a5b00; }
 .panel .ptext {
   flex: 1 1 auto;
   overflow: hidden;
@@ -458,9 +454,7 @@ const FAB_CSS = `
 :host(.pg-dark) .panel .fchip:hover { background: rgba(255, 255, 255, 0.12); color: #fafafa; }
 :host(.pg-dark) .panel .fchip[aria-pressed="true"] { color: #171717; border-color: transparent; background: #fafafa; }
 :host(.pg-dark) .panel .pitem:hover { background: rgba(255, 255, 255, 0.08); }
-:host(.pg-dark) .panel .pitem.band-ai .pscore { color: #ff7b81; }
-:host(.pg-dark) .panel .pitem.band-heavy .pscore { color: #ff9a57; }
-:host(.pg-dark) .panel .pitem.band-light .pscore { color: #e6c84c; }
+:host(.pg-dark) .panel .pdot { background: ${scaleColorCss(true)}; }
 :host(.pg-dark) .panel .ptext { color: #d4d4d4; }
 :host(.pg-dark) .panel .pempty { color: #8a8a8a; }
 :host(.pg-dark) .panel .pcov { color: #8a8a8a; }
@@ -1116,6 +1110,7 @@ export function createFab(opts: {
       const item = document.createElement("button");
       item.type = "button";
       item.className = `pitem band-${entry.band}`;
+      item.style.setProperty("--s", entry.score.toFixed(3));
       const dot = document.createElement("span");
       dot.className = "pdot";
       const score = document.createElement("span");

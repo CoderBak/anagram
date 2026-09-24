@@ -7,14 +7,9 @@
     <title data-i18n="onbTitle">Set up Anagram</title>
     <style>
       /* Layout + the in-page chip demo; colours, type and controls come from Basecoat (Vega). */
-      :root {
-        --d-human: #1a7f37; --d-light: #d4a017; --d-heavy: #e8590c; --d-ai: #dc2626; --d-none: #a3a3a3;
-        --c-human: #116a37; --c-light: #7a5b00; --c-heavy: #a13d00; --c-ai: #b42318; --c-none: #525252;
-      }
-      html.dark {
-        --d-human: #4ecb71; --d-light: #e6c84c; --d-heavy: #ff9a57; --d-ai: #ff7b81; --d-none: #9aa3ad;
-        --c-human: #4ecb71; --c-light: #e6c84c; --c-heavy: #ff9a57; --c-ai: #ff7b81; --c-none: #9aa3ad;
-      }
+      :root { --d-none: #a3a3a3; }
+      html.dark { --d-none: #9aa3ad; }
+      /* .sc takes its colour from --s on the one scale; main.ts installs the rule. */
       body { margin: 0; background: var(--background); color: var(--foreground); font-size: 15px; line-height: 1.55; }
       .page { max-width: 720px; margin: 0 auto; padding: 22px 24px 32px; }
       header.hdr { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
@@ -27,13 +22,11 @@
       .ready p { margin: 0; color: var(--muted-foreground); font-size: 14px; }
       .ready .once { color: var(--muted-foreground); font-size: 13.5px; }
 
-      /* The demo: four fragments marked and chipped exactly like the in-page overlay. */
+      /* The demo: four fragments underlined and chipped exactly like the in-page overlay. */
       .demo { padding: 2px 0 0; font-family: Georgia, "Iowan Old Style", "Times New Roman", serif; font-size: 16.5px; line-height: 1.62; }
       .demo-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 8px; }
       .frag { padding: 0 2px; }
-      .u-flagged { text-decoration-line: underline; text-decoration-style: solid; text-decoration-skip-ink: none; text-underline-offset: 3px; }
-      .u-heavy { text-decoration-thickness: 1px; text-decoration-color: rgba(232, 89, 12, 0.85); }
-      .u-ai { text-decoration-thickness: 2px; text-decoration-color: rgba(220, 38, 38, 0.9); }
+      .u { text-decoration: underline solid 1.5px var(--c); text-decoration-skip-ink: none; text-underline-offset: 3px; }
       .chip {
         display: inline-flex; align-items: center; gap: 0.42em; padding: 0.3em 0.6em 0.3em 0.5em;
         border-radius: 6px; border: 1px solid var(--border); background: var(--card);
@@ -41,16 +34,12 @@
         font: 600 11px/1 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
         letter-spacing: 0.01em; white-space: nowrap; vertical-align: middle;
       }
-      .chip .cdot { width: 0.56em; height: 0.56em; border-radius: 50%; }
-      .c-human { color: var(--c-human); } .c-human .cdot { background: var(--d-human); box-shadow: 0 0 0 3px rgba(26, 127, 55, 0.18); }
-      .c-light { color: var(--c-light); } .c-light .cdot { background: var(--d-light); box-shadow: 0 0 0 3px rgba(212, 160, 23, 0.22); }
-      .c-heavy { color: var(--c-heavy); } .c-heavy .cdot { background: var(--d-heavy); box-shadow: 0 0 0 3px rgba(232, 89, 12, 0.18); }
-      .c-ai { color: var(--c-ai); } .c-ai .cdot { background: var(--d-ai); box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18); }
+      .chip { color: var(--foreground); }
+      .chip .cdot { width: 0.56em; height: 0.56em; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 3px color-mix(in oklab, var(--c) 20%, transparent); }
 
       .bands { display: flex; flex-wrap: wrap; gap: 7px; }
       .bands .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
-      .b-human .dot { background: var(--d-human); } .b-light .dot { background: var(--d-light); }
-      .b-heavy .dot { background: var(--d-heavy); } .b-ai .dot { background: var(--d-ai); } .b-none .dot { background: var(--d-none); }
+      .bands .sc .dot { background: var(--c); } .b-none .dot { background: var(--d-none); }
       .b-lang .dot { background: var(--d-none); box-shadow: inset 0 0 0 2px var(--card); }
 
       .links { margin: 4px 0 0; font-size: 14px; color: var(--muted-foreground); }
@@ -86,27 +75,27 @@
           <section>
             <div class="demo">
               <div class="demo-line">
-                <span class="frag">The quick brown fox jumps over the lazy dog.</span>
-                <span class="chip c-human"><span class="cdot"></span>.04</span>
+                <span class="frag u sc" style="--s: .04">The quick brown fox jumps over the lazy dog.</span>
+                <span class="chip sc" style="--s: .04"><span class="cdot"></span>.04</span>
               </div>
               <div class="demo-line">
-                <span class="frag">moreover, this underscores a broader point&hellip;</span>
-                <span class="chip c-light"><span class="cdot"></span>.38 &times;2</span>
+                <span class="frag u sc" style="--s: .38">moreover, this underscores a broader point&hellip;</span>
+                <span class="chip sc" style="--s: .38"><span class="cdot"></span>.38 &times;2</span>
               </div>
               <div class="demo-line">
-                <span class="frag u-flagged u-heavy">The kitchen window faced a brick wall six feet away&hellip;</span>
-                <span class="chip c-heavy"><span class="cdot"></span>.71</span>
+                <span class="frag u sc" style="--s: .71">The kitchen window faced a brick wall six feet away&hellip;</span>
+                <span class="chip sc" style="--s: .71"><span class="cdot"></span>.71</span>
               </div>
               <div class="demo-line">
-                <span class="frag u-flagged u-ai">Delving into the rich tapestry of interconnected factors&hellip;</span>
-                <span class="chip c-ai"><span class="cdot"></span>.96</span>
+                <span class="frag u sc" style="--s: .96">Delving into the rich tapestry of interconnected factors&hellip;</span>
+                <span class="chip sc" style="--s: .96"><span class="cdot"></span>.96</span>
               </div>
             </div>
             <div class="bands">
-              <span class="badge b-human" data-variant="outline"><span class="dot"></span><span data-i18n="bandHuman">Human</span></span>
-              <span class="badge b-light" data-variant="outline"><span class="dot"></span><span data-i18n="bandLight">Lightly edited</span></span>
-              <span class="badge b-heavy" data-variant="outline"><span class="dot"></span><span data-i18n="bandHeavy">Heavily edited</span></span>
-              <span class="badge b-ai" data-variant="outline"><span class="dot"></span><span data-i18n="bandAi">AI-generated</span></span>
+              <span class="badge sc" style="--s: 0" data-variant="outline"><span class="dot"></span><span data-i18n="bandHuman">Human</span></span>
+              <span class="badge sc" style="--s: .333" data-variant="outline"><span class="dot"></span><span data-i18n="bandLight">Lightly edited</span></span>
+              <span class="badge sc" style="--s: .667" data-variant="outline"><span class="dot"></span><span data-i18n="bandHeavy">Heavily edited</span></span>
+              <span class="badge sc" style="--s: 1" data-variant="outline"><span class="dot"></span><span data-i18n="bandAi">AI-generated</span></span>
               <span class="badge b-none" data-variant="outline"><span class="dot"></span><span data-i18n="bandUnavailable">Unavailable</span></span>
               <span class="badge b-lang" data-variant="outline"><span class="dot"></span><span data-i18n="bandUnsupported">Unsupported language</span></span>
             </div>

@@ -42,16 +42,16 @@ vi.mock("../../lib/render/fab", () => ({createFab: (options: {panel: {buildRepor
 }}));
 vi.mock("../../lib/render/highlight", () => ({
   setHighlight() {}, clearHighlight() {}, registerHighlightStyles() {}, setHighlightsVisible() {},
-  setMarkStyle() {}, refreshHighlightTheme() {},
+  refreshHighlightTheme() {},
 }));
 vi.mock("../../lib/dom/walker", () => ({collectUnits: () => []}));
 vi.mock("../../lib/dom/mainContent", () => ({findMainContent: () => null, useReadability() {}}));
 vi.mock("../../lib/settings/settings", () => {
   const setting = (value: unknown) => ({getValue: async () => value, watch: () => () => {}});
-  return {normalizeMarkStyle: (value: unknown) => value, settings: {
+  return {settings: {
     debug: setting(false),
     showHighlights: setting(false), displayMode: setting("all"), mergeShorts: setting(true),
-    markStyle: setting("quiet"), analysisScope: setting("page"),
+    analysisScope: setting("page"),
     reportIncludeText: setting(false), reportIncludeUrl: setting(false),
   }};
 });

@@ -22,118 +22,70 @@
 // window covers (past the window cap) and windows the language gate refused get no mark:
 // a mark claims that the model read what it covers.
 //
-// v5 — QUIET BY DEFAULT. Every read unit used to carry its band's tint and underline all
-// the time, and the two flagged bands carried a WAVY one: that is the spell-checker's
-// "this is wrong", and a tint changes how the page's own words look, which is the one
-// thing Anagram must never do. Nothing is wavy any more, and at rest the page is nearly
-// untouched — only the windows in the two flagged bands carry a thin SOLID underline, no
-// tint, and human and lightly-edited text carries nothing at all (its chip has already
-// said it was read). Heavily-edited and AI-generated are told apart by WEIGHT as well as
-// hue (1 px against 2 px), so a reader who sees no colour still sees two marks.
+// v5 — ONE SCALE. Every read window is underlined in the colour of its own score, on the
+// one-hue ramp of lib/render/scale.ts: human text carries the palest, quietest line and
+// AI-generated text the darkest, so a mostly human page stays calm without anything being
+// left unmarked. The line is solid, never wavy (the spell-checker's "this is wrong"), and
+// the same weight everywhere, so a score on either side of a word's edge does not jump.
+// A paragraph whose verdict is uncertain (scale.ts isUncertain) is underlined DASHED.
+// Underlines are all on or all off (setHighlightsVisible); there is no flagged-only mode.
 //
 // Detail on demand: while a unit is ACTIVE — its chip hovered, its card pinned, or a
-// jump from the panel or the next/previous-flagged command just landed on it — every
-// window of THAT unit shows its band's tint and underline, so the reader sees exactly
-// which text was read and how each window scored. Its ranges move into a second set of
-// highlight names for as long as it lasts (::highlight() rules are global per tree
-// scope, so one unit cannot be styled apart from the others in any other way), and move
-// back when the pointer leaves. Nothing animates: the highlight pseudo-element takes no
-// transition, so there is no motion to hold back under prefers-reduced-motion.
+// jump from the panel or the next/previous-flagged command just landed on it — its
+// windows also carry a tint of their colour, so the reader sees exactly which text was
+// read and how each window scored. Its ranges move into a second set of highlight names
+// for as long as it lasts (::highlight() rules are global per tree scope, so one unit
+// cannot be styled apart from the others in any other way), and move back when the
+// pointer leaves. Nothing animates: the highlight pseudo-element takes no transition, so
+// there is no motion to hold back under prefers-reduced-motion.
 //
-// The `markStyle` setting picks between that and the old always-on marking:
-// "quiet" (default) is the above, "always" marks every unit all the time, solid.
+// ::highlight() rules cannot take a colour per range, so the ramp is sampled in
+// SCALE_STEPS + 1 named steps, each solid or dashed, at rest or active.
 import type { Unit } from "../types";
 import { MARK_ATTR } from "../types";
 import type { UnitVerdict } from "../capture/windows";
 import { isScoredWindow } from "../capture/windows";
 import { locateSpans } from "../dom/locate";
-import { band, isFlaggedBand, isNoVerdict, type Band } from "./band";
+import { band, isNoVerdict } from "./band";
+import { isUncertain, scaleColor, scaleStep, SCALE_STEPS } from "./scale";
 import { isDarkPage } from "./theme";
 
-const HIGHLIGHT_NAME: Record<Band, string> = {
-  human: "anagram-human",
-  light: "anagram-light",
-  heavy: "anagram-heavy",
-  ai: "anagram-ai",
-  unknown: "anagram-unknown",
-  unsupported: "anagram-unsupported",
-};
-
-/** The same bands for the unit the reader is looking at right now (see setActiveUnit). */
-const ACTIVE_NAME: Record<Band, string> = {
-  human: "anagram-active-human",
-  light: "anagram-active-light",
-  heavy: "anagram-active-heavy",
-  ai: "anagram-active-ai",
-  unknown: "anagram-active-unknown",
-  unsupported: "anagram-active-unsupported",
-};
-
-/** Bands that get a mark ("unknown" is painted by nothing). */
-type PaintBand = Exclude<Band, "unknown" | "unsupported">;
-const PAINT_BANDS: readonly PaintBand[] = ["human", "light", "heavy", "ai"];
-
-/** "quiet" = flagged windows only, underlined, until the unit is looked at; "always" =
- *  every unit marked all the time. The stored setting is normalized onto these two in
- *  lib/settings/settings.ts, which spells the union out again rather than import it
- *  (see the note there). */
-export type MarkStyle = "quiet" | "always";
-
-interface BandPaint {
-  bg: string;
-  lineColor: string;
-  /** What tells "heavily edited" from "AI-generated" without relying on hue. */
-  thickness: string;
-  offset: string;
+/** One painted look: a step of the ramp, solid or dashed. */
+interface Mark {
+  step: number;
+  dashed: boolean;
 }
 
-// Per-band tint + underline (matches the badge palette). ::highlight() rules are
-// GLOBAL per tree scope, so the palette can only switch per page — the page-level
-// background verdict picks light or dark.
-const LIGHT: Record<PaintBand, BandPaint> = {
-  human: { bg: "rgba(26, 127, 55, 0.07)", lineColor: "rgba(26, 127, 55, 0.5)", thickness: "1px", offset: "3px" },
-  light: { bg: "rgba(212, 160, 23, 0.12)", lineColor: "rgba(212, 160, 23, 0.75)", thickness: "1px", offset: "3px" },
-  heavy: { bg: "rgba(232, 89, 12, 0.15)", lineColor: "rgba(232, 89, 12, 0.85)", thickness: "1px", offset: "3px" },
-  ai: { bg: "rgba(229, 72, 77, 0.16)", lineColor: "rgba(229, 72, 77, 0.9)", thickness: "2px", offset: "3px" },
-};
+function markName(m: Mark, active: boolean): string {
+  return `anagram-${active ? "a" : "s"}${String(m.step).padStart(2, "0")}${m.dashed ? "-u" : ""}`;
+}
 
-// Dark-page variant: lighter decoration colors, slightly stronger tints so the
-// marks read against dark surfaces without glowing.
-const DARK: Record<PaintBand, BandPaint> = {
-  human: { bg: "rgba(78, 203, 113, 0.10)", lineColor: "rgba(78, 203, 113, 0.55)", thickness: "1px", offset: "3px" },
-  light: { bg: "rgba(230, 200, 76, 0.13)", lineColor: "rgba(230, 200, 76, 0.75)", thickness: "1px", offset: "3px" },
-  heavy: { bg: "rgba(255, 154, 87, 0.15)", lineColor: "rgba(255, 154, 87, 0.85)", thickness: "1px", offset: "3px" },
-  ai: { bg: "rgba(255, 123, 129, 0.16)", lineColor: "rgba(255, 123, 129, 0.9)", thickness: "2px", offset: "3px" },
-};
-
-/** A solid rule under the words, in the band's colour — never wavy, which reads as a
- *  spelling mistake, and never anything that moves the text. */
-function underline(p: BandPaint): string[] {
+/** A rule under the words in the step's colour — never wavy, never anything that moves
+ *  the text. */
+function underline(color: string, dashed: boolean): string[] {
   return [
     "text-decoration-line: underline",
-    "text-decoration-style: solid",
-    `text-decoration-color: ${p.lineColor}`,
-    `text-decoration-thickness: ${p.thickness}`,
-    `text-underline-offset: ${p.offset}`,
+    `text-decoration-style: ${dashed ? "dashed" : "solid"}`,
+    `text-decoration-color: ${color}`,
+    "text-decoration-thickness: 1.5px",
+    "text-underline-offset: 3px",
     // Descenders cut a page's own underlines; ours would look like the page's own if it
     // did not, and a skipped mark is a mark a reader has to hunt for.
     "text-decoration-skip-ink: none",
   ];
 }
 
-function buildCss(dark: boolean, style: MarkStyle): string {
-  const pal = dark ? DARK : LIGHT;
+function buildCss(dark: boolean): string {
   const rules: string[] = [];
   const rule = (name: string, decl: string[]) => rules.push(`::highlight(${name}) { ${decl.join("; ")}; }`);
-  for (const b of PAINT_BANDS) {
-    const p = pal[b];
-    // At rest, quietly: nothing under human or lightly-edited text — the chip has said
-    // the paragraph was read, and the page keeps the look its author gave it.
-    if (style === "always") rule(HIGHLIGHT_NAME[b], [`background-color: ${p.bg}`, ...underline(p)]);
-    else if (isFlaggedBand(b)) rule(HIGHLIGHT_NAME[b], underline(p));
-    // Active: every window of the one unit being looked at, whatever it scored, so the
-    // extent of what was read — and where it changed band — is visible for that moment.
-    rule(ACTIVE_NAME[b], [`background-color: ${p.bg}`, ...underline(p)]);
+  for (let step = 0; step <= SCALE_STEPS; step++) {
+    const score = step / SCALE_STEPS;
+    const line = scaleColor(score, dark);
+    const tint = scaleColor(score, dark, dark ? 0.24 : 0.18);
+    for (const dashed of [false, true]) {
+      rule(markName({ step, dashed }, false), underline(line, dashed));
+      rule(markName({ step, dashed }, true), [`background-color: ${tint}`, ...underline(line, dashed)]);
+    }
   }
   return `@media screen {\n${rules.join("\n")}\n}`;
 }
@@ -142,15 +94,15 @@ function highlightsSupported(): boolean {
   return typeof CSS !== "undefined" && "highlights" in CSS && typeof Highlight !== "undefined";
 }
 
-const _bandHighlights = new Map<string, Highlight>();
-/** The Highlight a band's ranges live in — one set at rest, one for the active unit. */
-function bandHighlight(b: Band, active: boolean): Highlight | null {
+const _highlights = new Map<string, Highlight>();
+/** The Highlight a look's ranges live in — one set at rest, one for the active unit. */
+function markHighlight(m: Mark, active: boolean): Highlight | null {
   if (!highlightsSupported()) return null;
-  const name = active ? ACTIVE_NAME[b] : HIGHLIGHT_NAME[b];
-  let h = _bandHighlights.get(name);
+  const name = markName(m, active);
+  let h = _highlights.get(name);
   if (!h) {
     h = new Highlight();
-    _bandHighlights.set(name, h);
+    _highlights.set(name, h);
   }
   // Chrome empties the HighlightRegistry when a page reopens its document
   // (document.open()/write()); a cached Highlight must be re-registered to paint.
@@ -158,8 +110,8 @@ function bandHighlight(b: Band, active: boolean): Highlight | null {
   return h;
 }
 
-// Ranges added per unit id, with the band they live in, so we can clear them.
-const _byUnit = new Map<string, Array<{ band: Band; range: Range }>>();
+// Ranges added per unit id, with the look they are painted in, so we can clear them.
+const _byUnit = new Map<string, Array<{ mark: Mark; range: Range }>>();
 /** The one unit the reader is on — hovered chip, pinned card, or a jump's target. */
 let _activeUnit: string | null = null;
 
@@ -167,11 +119,10 @@ let _stylesInjected = false;
 let _styleEl: HTMLStyleElement | null = null;
 /** Shared constructable sheet adopted by shadow-root surfaces (Docs overlay). */
 let _shadowSheet: CSSStyleSheet | null = null;
-let _markStyle: MarkStyle = "quiet";
 let _visible = true;
 
 function applyCss(): void {
-  const css = buildCss(isDarkPage(), _markStyle);
+  const css = buildCss(isDarkPage());
   if (_styleEl) _styleEl.textContent = css;
   if (_shadowSheet) _shadowSheet.replaceSync(css);
 }
@@ -197,7 +148,7 @@ export function adoptHighlightStyles(root: ShadowRoot): void {
   if (!highlightsSupported()) return;
   if (!_shadowSheet) {
     _shadowSheet = new CSSStyleSheet();
-    _shadowSheet.replaceSync(buildCss(isDarkPage(), _markStyle));
+    _shadowSheet.replaceSync(buildCss(isDarkPage()));
     _shadowSheet.disabled = !_visible;
   }
   if (!root.adoptedStyleSheets.includes(_shadowSheet)) {
@@ -212,16 +163,9 @@ export function setHighlightsVisible(visible: boolean): void {
   if (_shadowSheet) _shadowSheet.disabled = !visible;
 }
 
-/** Switch between the quiet marks and always-on ones (live from the settings watch). */
-export function setMarkStyle(style: MarkStyle): void {
-  if (style === _markStyle) return;
-  _markStyle = style;
-  applyCss();
-}
-
 /**
- * The unit the reader is on, or null. Its windows carry their tint and underline for as
- * long as it lasts — the "detail on demand" half of the quiet marks. Only one unit is
+ * The unit the reader is on, or null. Its windows carry their tint for as long as it
+ * lasts — the "detail on demand" half of the marks. Only one unit is
  * ever active: showing a second one's extent while the pointer sits on the first would
  * say the two were read together.
  */
@@ -244,8 +188,8 @@ function restate(id: string, active: boolean): void {
   const entries = _byUnit.get(id);
   if (!entries) return;
   for (const e of entries) {
-    bandHighlight(e.band, !active)?.delete(e.range);
-    bandHighlight(e.band, active)?.add(e.range);
+    markHighlight(e.mark, !active)?.delete(e.range);
+    markHighlight(e.mark, active)?.add(e.range);
   }
 }
 
@@ -295,18 +239,16 @@ function wholeParts(unit: Unit): Range[] {
 }
 
 /**
- * Register what was read, window by window, in the colour of its verdict — green
- * (human), yellow (lightly edited), orange (heavily edited), red (AI-generated);
- * "unavailable" and "unsupported" get no mark. Every band's ranges are registered
- * whatever the style: which of them the reader SEES is buildCss's business, and a range
- * that is not painted at rest is the one the active state has to hand the moment the
- * pointer arrives. Detection cannot attribute below what the model read in
- * one pass, so that is the grain of the marks: the whole unit for nearly every
- * paragraph (one window, marked uniformly in the chip's band, no offsets resolved), and
- * window by window for a long one.
+ * Register what was read, window by window, each in the colour of its own score;
+ * "unavailable" and "unsupported" get no mark, and neither do windows that were not
+ * scored. Detection cannot attribute below what the model read in one pass, so that is
+ * the grain of the marks: the whole unit for nearly every paragraph (one window, marked
+ * uniformly in the chip's colour, no offsets resolved), and window by window for a long
+ * one. The dash follows the UNIT's verdict: a paragraph the card calls uncertain is
+ * uncertain wherever the reader looks at it.
  *
  * When a window cannot be found in the page any more (the DOM changed between the scan
- * and the verdict), the unit falls back to whole parts in the AGGREGATE band rather
+ * and the verdict), the unit falls back to whole parts in the AGGREGATE colour rather
  * than showing nothing; the mutation observer is about to retire it anyway.
  */
 export function setHighlight(unit: Unit, verdict: UnitVerdict): void {
@@ -314,10 +256,11 @@ export function setHighlight(unit: Unit, verdict: UnitVerdict): void {
 
   clearHighlight(unit.id);
 
-  const b = band(verdict.result);
-  if (isNoVerdict(b)) return; // no verdict → no mark
+  if (isNoVerdict(band(verdict.result))) return; // no verdict → no mark
+  const dashed = isUncertain(verdict.result);
+  const look = (score: number): Mark => ({ step: scaleStep(score), dashed });
 
-  const marks: Array<{ band: Band; ranges: Range[] }> = [];
+  const marks: Array<{ mark: Mark; ranges: Range[] }> = [];
   const onePass = verdict.windows.length === 1 && verdict.unreadChars === 0;
   // With a locator even a ONE-PASS unit is placed span by span: on a surface whose text is
   // not what its nodes say, the whole-parts shortcut would cover more than was read.
@@ -327,25 +270,25 @@ export function setHighlight(unit: Unit, verdict: UnitVerdict): void {
       ? null
       : locateSpans(unit.parts, unit.text, verdict.windows);
   if (located && _locator && onePass) {
-    marks.push({ band: b, ranges: located[0] ?? [] });
+    marks.push({ mark: look(verdict.result.score), ranges: located[0] ?? [] });
   } else if (located) {
     verdict.windows.forEach((w, i) => {
-      if (isScoredWindow(w)) marks.push({ band: band(w.result), ranges: located[i] });
+      if (isScoredWindow(w)) marks.push({ mark: look(w.result.score), ranges: located[i] });
     });
   } else {
-    marks.push({ band: b, ranges: wholeParts(unit) });
+    marks.push({ mark: look(verdict.result.score), ranges: wholeParts(unit) });
   }
 
   // A unit re-rendered while the pointer is still on its chip (a verdict landing on a
   // hovered paragraph) keeps its marks where the reader can see them.
   const active = _activeUnit === unit.id;
-  const entries: Array<{ band: Band; range: Range }> = [];
-  for (const mark of marks) {
-    const highlight = bandHighlight(mark.band, active);
+  const entries: Array<{ mark: Mark; range: Range }> = [];
+  for (const { mark, ranges } of marks) {
+    const highlight = markHighlight(mark, active);
     if (!highlight) continue;
-    for (const range of mark.ranges) {
+    for (const range of ranges) {
       highlight.add(range);
-      entries.push({ band: mark.band, range });
+      entries.push({ mark, range });
     }
   }
   if (entries.length > 0) _byUnit.set(unit.id, entries);
@@ -359,8 +302,8 @@ export function clearHighlight(id: string): void {
   for (const e of entries) {
     // Which of the two sets a range sits in depends on whether the unit was being looked
     // at when it went; asking both is cheaper than remembering.
-    _bandHighlights.get(HIGHLIGHT_NAME[e.band])?.delete(e.range);
-    _bandHighlights.get(ACTIVE_NAME[e.band])?.delete(e.range);
+    _highlights.get(markName(e.mark, false))?.delete(e.range);
+    _highlights.get(markName(e.mark, true))?.delete(e.range);
   }
   _byUnit.delete(id);
 }

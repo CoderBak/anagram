@@ -361,33 +361,30 @@ check(
 );
 
 // ── 8) a setting written in the options page reaches the open tab live ─────────────
-const markStyleLive = await (async () => {
-  const styleCss = () =>
-    page.evaluate(() => document.querySelector('style[data-anagram="style"]')?.textContent ?? "");
-  const before = await styleCss();
-  // "always" marks every band at rest, so the resting human rule gains a tint; "quiet"
-  // (the default) leaves human text alone and that rule disappears again.
-  await optionsPage.evaluate(() => browser.storage.local.set({ markStyle: "always" }));
-  const flipped = await waitFor(page, () => {
-    const css = document.querySelector('style[data-anagram="style"]')?.textContent ?? "";
-    return /::highlight\(anagram-human\)\s*\{[^}]*background-color/.test(css);
-  }, { timeout: 8000 });
-  await optionsPage.evaluate(() => browser.storage.local.set({ markStyle: "quiet" }));
-  const restored = await waitFor(page, () => {
-    const css = document.querySelector('style[data-anagram="style"]')?.textContent ?? "";
-    return !/::highlight\(anagram-human\)/.test(css) && /::highlight\(anagram-ai\)/.test(css);
-  }, { timeout: 8000 });
-  return { hadStyleEl: before.length > 0, flipped, restored };
+const underlineLive = await (async () => {
+  const styleEl = () =>
+    page.evaluate(() => {
+      const el = document.querySelector('style[data-anagram="style"]');
+      return el ? { disabled: el.disabled, css: el.textContent ?? "" } : null;
+    });
+  const before = await styleEl();
+  // Underlines are all or nothing: switching them off disables the one stylesheet that
+  // paints every mark, and switching them back on restores it, ranges and all.
+  await optionsPage.evaluate(() => browser.storage.local.set({ showHighlights: false }));
+  const off = await waitFor(page, () => document.querySelector('style[data-anagram="style"]')?.disabled === true, { timeout: 8000 });
+  await optionsPage.evaluate(() => browser.storage.local.set({ showHighlights: true }));
+  const on = await waitFor(page, () => document.querySelector('style[data-anagram="style"]')?.disabled === false, { timeout: 8000 });
+  return { hadStyleEl: !!before, paintsTheScale: /::highlight\(anagram-s00\)/.test(before?.css ?? ""), off, on };
 })();
 if (features.highlights) {
   check(
-    "a setting written in the options page reaches an open tab live (markStyle)",
-    markStyleLive.hadStyleEl && markStyleLive.flipped && markStyleLive.restored,
-    JSON.stringify(markStyleLive),
+    "a setting written in the options page reaches an open tab live (underlines off and on)",
+    underlineLive.hadStyleEl && underlineLive.paintsTheScale && underlineLive.off && underlineLive.on,
+    JSON.stringify(underlineLive),
   );
 } else {
   skip(
-    "a setting written in the options page reaches an open tab live (markStyle)",
+    "a setting written in the options page reaches an open tab live (underlines off and on)",
     "no ::highlight() stylesheet is injected without CSS.highlights",
   );
 }

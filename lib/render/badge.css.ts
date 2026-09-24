@@ -10,8 +10,9 @@
 //   what the number means is explained in the hover card's footer and on the onboarding
 //   page, not repeated on every line.
 // - Visual language follows Basecoat's Vega pack (the extension pages): neutral
-//   greys, hairline borders, 6–8 px radii, one flat shadow, no gradients, no blur,
-//   verdict colour only on the dot / text / marks.
+//   greys, hairline borders, 6–8 px radii, one flat shadow, no blur. The verdict's
+//   colour is the score on one continuous scale (lib/render/scale.ts) and lives only on
+//   the dot, the swatches and the marks; every word and number stays in ink.
 // - A chip can render in a PENDING state ("analyzing") the moment its unit is
 //   dispatched, then morphs in place into the verdict — the host is reused, so
 //   the line lays out once, not twice.
@@ -23,6 +24,7 @@
 // but shadow-context !important beats page !important — so the layout-critical
 // host props are declared !important here AND mirrored as inline styles.
 import { DIST_CSS } from "./dist";
+import { scaleColorCss } from "./scale";
 
 export const BADGE_CSS: string = `
 :host {
@@ -100,12 +102,12 @@ export const BADGE_CSS: string = `
   font-variant-numeric: tabular-nums;
 }
 
-.pill.band-human   { --dot: #1a7f37; --ring: rgba(26, 127, 55, 0.16);   color: #116a37; }
-.pill.band-light   { --dot: #d4a017; --ring: rgba(212, 160, 23, 0.20);  color: #7a5b00; }
-.pill.band-heavy   { --dot: #e8590c; --ring: rgba(232, 89, 12, 0.18);   color: #a13d00; }
-.pill.band-ai      { --dot: #dc2626; --ring: rgba(220, 38, 38, 0.18);   color: #b42318; }
-.pill.band-unknown { --dot: #a3a3a3; --ring: rgba(163, 163, 163, 0.16); color: #525252; }
+/* The score's colour, read from --s (set per chip in badge.ts). */
+.pill.scored { --dot: ${scaleColorCss(false)}; --ring: color-mix(in oklab, var(--dot) 20%, transparent); }
+.pill.band-unknown { --dot: #a3a3a3; --ring: rgba(163, 163, 163, 0.16); }
 .pill.band-unsupported { --dot: #a3a3a3; --ring: rgba(163, 163, 163, 0.16); color: #737373; font-weight: 500; }
+/* Uncertain: the same colour as a ring, not a disc. */
+.pill.unsure .dot { background: transparent; box-shadow: inset 0 0 0 0.16em var(--dot), 0 0 0 0.18em var(--ring); }
 
 /* ---- pending ("analyzing") state --------------------------------------------- */
 /* Shown the moment a unit's batch actually goes to the backend; morphs in place
@@ -213,11 +215,7 @@ export const BADGE_CSS: string = `
   gap: 12px;
   margin-bottom: 6px;
 }
-.card .verdict { font-weight: 700; font-size: 12px; }
-.card .verdict.band-human   { color: #116a37; }
-.card .verdict.band-light   { color: #7a5b00; }
-.card .verdict.band-heavy   { color: #a13d00; }
-.card .verdict.band-ai      { color: #b42318; }
+.card .verdict { font-weight: 700; font-size: 12px; color: #252525; }
 .card .verdict.band-unknown { color: #57606a; }
 .card .verdict.band-unsupported { color: #737373; }
 .card .big { font-weight: 700; font-size: 12px; font-variant-numeric: tabular-nums; color: #252525; }
@@ -271,10 +269,7 @@ export const BADGE_CSS: string = `
   color: #a3a3a3;
 }
 :host(.pg-dark:hover) .pill { background: #262626; border-color: rgba(255, 255, 255, 0.2); }
-:host(.pg-dark) .pill.band-human   { color: #4ecb71; }
-:host(.pg-dark) .pill.band-light   { color: #e6c84c; }
-:host(.pg-dark) .pill.band-heavy   { color: #ff9a57; }
-:host(.pg-dark) .pill.band-ai      { color: #ff7b81; }
+:host(.pg-dark) .pill.scored { --dot: ${scaleColorCss(true)}; color: #d4d4d4; }
 :host(.pg-dark) .pill.band-unknown { color: #b9c0c8; }
 :host(.pg-dark) .pill.band-unsupported { color: #a3a3a3; }
 :host(.pg-dark) .card .verdict.band-unsupported { color: #a3a3a3; }
@@ -288,10 +283,8 @@ export const BADGE_CSS: string = `
 :host(.pg-dark) .card .big { color: #fafafa; }
 :host(.pg-dark) .card .row .k { color: #a3a3a3; }
 :host(.pg-dark) .card .row .v { color: #fafafa; }
-:host(.pg-dark) .card .verdict.band-human { color: #4ecb71; }
-:host(.pg-dark) .card .verdict.band-light { color: #e6c84c; }
-:host(.pg-dark) .card .verdict.band-heavy { color: #ff9a57; }
-:host(.pg-dark) .card .verdict.band-ai    { color: #ff7b81; }
+:host(.pg-dark) .card .verdict { color: #fafafa; }
+:host(.pg-dark) .card .verdict.band-unknown { color: #b9c0c8; }
 :host(.pg-dark) .card .act { color: #fafafa; border-color: rgba(255, 255, 255, 0.15); background: rgba(255, 255, 255, 0.06); box-shadow: none; }
 :host(.pg-dark) .card .act:hover { background: rgba(255, 255, 255, 0.12); }
 :host(.pg-dark) .card .foot { border-top-color: rgba(255, 255, 255, 0.08); color: #8a8a8a; }

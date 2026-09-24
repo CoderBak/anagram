@@ -73,7 +73,7 @@ Nothing is written to `storage.sync`, `storage.session` or `storage.managed`.
 | `extensionUpdatePending` | version of a browser extension update waiting for the user to reload |
 | `enabled` | the master switch |
 | `siteOverrides` | per-site on/off rules, as hostnames the user chose |
-| `showHighlights` | whether analyzed text is marked in place |
+| `showHighlights` | whether analyzed text is underlined in place |
 | `autoOpenPdfs` | whether a PDF tab opens in the reader by itself |
 | `debug` | verbose logging |
 | `cacheMode` | persistent scores (up to 30 days) or memory only |
@@ -81,7 +81,6 @@ Nothing is written to `storage.sync`, `storage.session` or `storage.managed`.
 | `reportIncludeUrl` | opt-in to include page titles and URLs in copied reports |
 | `displayMode` | mark everything, or only flagged paragraphs |
 | `mergeShorts` | group short paragraphs to reach the 50-word floor |
-| `markStyle` | how a mark is drawn: quiet, or always on |
 | `analysisScope` | the whole page, or its main content |
 | `fabPos` | where the user dragged the ball, per hostname |
 

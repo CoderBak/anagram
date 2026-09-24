@@ -7,6 +7,18 @@ local component and the installer all carry the same version.
 
 ## [Unreleased]
 
+### Changed
+
+- A verdict's word follows its score. EditLens's four equal buckets meet at 1/6, 1/2
+  and 5/6, and the word is the bucket whose range holds the score instead of the most
+  likely bucket, which could contradict the number next to it and flip on a one-point
+  change.
+- Chips, underlines, the panel and the cards colour every verdict on one continuous
+  scale, pale for human writing and dark red for AI-generated text. A verdict whose
+  probabilities are split shows a hollow dot, a dashed underline and a line in the card.
+- Underlines are on for every analyzed paragraph or off; the flagged-only mode is gone.
+  The card shows where the score sits on the scale instead of a stacked bar.
+
 ### Fixed
 
 - Automatic PDF opening no longer adds its webRequest listener before any site is

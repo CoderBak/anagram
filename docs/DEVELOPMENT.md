@@ -13,7 +13,7 @@ service anywhere. Work on `dev`; `main` holds the published README only.
 | Background: authorization, site access, message ACL | `entrypoints/background.ts`, `lib/access/`, `lib/messaging/protocol.ts` |
 | Scoring router and cache | `lib/backend/router.ts`, `lib/backend/swCache.ts`, `lib/backend/nativeTransport.ts` |
 | Page capture and scheduling | `entrypoints/content.ts`, `lib/capture/orchestrator.ts`, `lib/capture/scheduler.ts`, `lib/dom/walker.ts` |
-| In-page rendering | `lib/render/badge.ts` (chips, card), `lib/render/fab.ts` (ball, panel), `lib/render/highlight.ts` |
+| In-page rendering | `lib/render/scale.ts` (score to word, colour, doubt), `lib/render/badge.ts` (chips, card), `lib/render/fab.ts` (ball, panel), `lib/render/highlight.ts` |
 | Setup, popup, settings | `entrypoints/onboarding/`, `entrypoints/popup/`, `entrypoints/options/`, `lib/ui/componentSettings.ts` |
 | PDF reader | `entrypoints/reader/`, `lib/pdf/reflow.ts`, `lib/pdf/handoff.ts`, `vendor/pdfjs/` |
 | Native host: protocol, ownership, lifecycle | `anagramd/native_host.py`, `anagramd/native_component.py` |

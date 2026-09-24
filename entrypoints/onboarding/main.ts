@@ -8,9 +8,14 @@ import { messageLocale } from "../../lib/i18n";
 import { ALL_SITES } from "../../lib/access/patterns";
 import { accessSummary, requestAccess } from "../../lib/access/grant";
 import { mountComponentSettings, componentReady } from "../../lib/ui/componentSettings";
+import { scaleColorCss } from "../../lib/render/scale";
 
 localizePage();
 followSystemTheme();
+// The demo's colours come from the same scale as the chips and marks on the page.
+const scaleRule = document.createElement("style");
+scaleRule.textContent = `.sc { --c: ${scaleColorCss(false)}; } html.dark .sc { --c: ${scaleColorCss(true)}; }`;
+document.head.append(scaleRule);
 document.getElementById("version")!.textContent = `v${browser.runtime.getManifest().version}`;
 if (messageLocale() === "zh-CN") {
   (document.getElementById("guide") as HTMLAnchorElement).href = "https://github.com/CoderBak/anagram/blob/dev/docs/user-guide.zh-CN.md";

@@ -1350,9 +1350,15 @@ const results = await page.evaluate(() => {
     ]);
     PW.setHighlight(unit, verdict);
     let marks = bandsOver(sandbox);
-    check("marks are per window: each window's text is underlined in ITS band, to the last sentence",
-      spans.length === 3 && Object.keys(marks).sort().join() === "anagram-ai,anagram-heavy,anagram-human" &&
-      marks["anagram-human"][0] === unit.text.slice(spans[0].start, spans[0].end).trim() && marks["anagram-heavy"][0] === unit.text.slice(spans[1].start, spans[1].end).trim() && marks["anagram-ai"][0].endsWith("TAILMARK sentence closes the paragraph."),
+    // The name a mark is registered under: its step on the scale, dashed when the UNIT's
+    // verdict is uncertain (three windows this far apart make it so).
+    const unsure = PW.isUncertain(verdict.result);
+    const nameFor = (score, active = false) =>
+      `anagram-${active ? "a" : "s"}${String(PW.scaleStep(score)).padStart(2, "0")}${unsure ? "-u" : ""}`;
+    const [n0, n1, n2] = verdict.windows.map((w) => nameFor(w.result.score));
+    check("marks are per window: each window's text is underlined in the colour of ITS score, to the last sentence",
+      spans.length === 3 && unsure && new Set([n0, n1, n2]).size === 3 && Object.keys(marks).sort().join() === [n0, n1, n2].sort().join() &&
+      marks[n0][0] === unit.text.slice(spans[0].start, spans[0].end).trim() && marks[n1][0] === unit.text.slice(spans[1].start, spans[1].end).trim() && marks[n2][0].endsWith("TAILMARK sentence closes the paragraph."),
       JSON.stringify(Object.fromEntries(Object.entries(marks).map(([k, v]) => [k, v.map((t) => t.slice(-30))]))));
     check("…without touching the page", sandbox.innerHTML === htmlBefore);
 
@@ -1376,14 +1382,17 @@ const results = await page.evaluate(() => {
     const gated = PW.unitVerdict(unit.id, unit.text.length, [verdict.windows[0], { ...spans[1], result: res([0.25, 0.25, 0.25, 0.25], { unsupported: true, lang: "fr", score: 0 }) }, verdict.windows[2]]);
     PW.setHighlight(unit, gated);
     marks = bandsOver(sandbox);
-    check("a window the language gate refused is not marked", Object.keys(marks).sort().join() === "anagram-ai,anagram-human" && Object.values(marks).flat().length === 2, JSON.stringify(Object.keys(marks)));
+    const gatedName = (score) => `anagram-s${String(PW.scaleStep(score)).padStart(2, "0")}${PW.isUncertain(gated.result) ? "-u" : ""}`;
+    check("a window the language gate refused is not marked",
+      Object.keys(marks).sort().join() === [gatedName(verdict.windows[0].result.score), gatedName(verdict.windows[2].result.score)].sort().join() && Object.values(marks).flat().length === 2,
+      JSON.stringify(Object.keys(marks)));
 
     // The DOM moves on while the verdict is in flight: whole parts, aggregate band.
     unit.parts[0].nodes[0].data = "Edited " + unit.parts[0].nodes[0].data;
     PW.setHighlight(unit, verdict);
     marks = bandsOver(sandbox);
-    const aggregate = `anagram-${PW.band(verdict.result)}`;
-    check("a window that cannot be found falls back to the whole part in the aggregate band, never to nothing",
+    const aggregate = nameFor(verdict.result.score);
+    check("a window that cannot be found falls back to the whole part in the aggregate colour, never to nothing",
       Object.keys(marks).join() === aggregate && marks[aggregate].length === 1 && marks[aggregate][0].startsWith("Edited Sentence number 0") && marks[aggregate][0].endsWith("closes the paragraph."), JSON.stringify(Object.keys(marks)));
 
     // The common case stays what it was: one whole-part range, no offsets resolved.
@@ -1394,62 +1403,63 @@ const results = await page.evaluate(() => {
     PW.setHighlight(small, smallVerdict);
     layer.render(small, smallVerdict);
     marks = bandsOver(sandbox);
-    check("a one-window unit is marked and carded exactly as before", Object.keys(marks).join() === "anagram-ai" && marks["anagram-ai"].length === 1 && marks["anagram-ai"][0] === small.text && !/Scored/.test(cardText()) && !/window/.test(cardText()), cardText());
+    const smallName = `anagram-s${String(PW.scaleStep(smallVerdict.result.score)).padStart(2, "0")}`;
+    check("a one-window unit is marked and carded exactly as before, solid (its verdict is not uncertain)",
+      !PW.isUncertain(smallVerdict.result) && Object.keys(marks).join() === smallName && marks[smallName].length === 1 && marks[smallName][0] === small.text && !/Scored/.test(cardText()) && !/window/.test(cardText()),
+      cardText());
     PW.clearHighlight(small.id);
     layer.teardownAll();
   }
 
-  // ---- the quiet marks -----------------------------------------------------------------
-  // At rest the page is nearly untouched and only the flagged bands carry a line; the whole
-  // of ONE unit lights up while the reader is on it. Ranges are registered for every band
-  // whatever the style — what changes is which rules paint and which set of highlight names
-  // a unit's ranges sit in.
+  // ---- one scale ----------------------------------------------------------------------
+  // Every read unit is underlined at rest, in the colour of its score, and the whole of ONE
+  // unit takes a tint while the reader is on it. There is one rule per step of the scale,
+  // solid or dashed, at rest or active.
   {
     PW.registerHighlightStyles();
     const css = () => document.querySelector('style[data-anagram="style"]').textContent;
     const ruleFor = (name) => (css().match(new RegExp(`::highlight\\(${name}\\)\\s*\\{([^}]*)\\}`)) ?? [, ""])[1];
+    const step = (n) => String(n).padStart(2, "0");
+    const all = Array.from({ length: PW.SCALE_STEPS + 1 }, (_, n) => step(n));
+    const colour = (rule) => (rule.match(/text-decoration-color: ([^;]+)/) ?? [, ""])[1];
 
-    PW.setMarkStyle("quiet");
-    check("quiet: human and lightly-edited text carries no rule at all; the two flagged bands carry a solid line",
-      ruleFor("anagram-human") === "" && ruleFor("anagram-light") === "" &&
-      /text-decoration-style: solid/.test(ruleFor("anagram-heavy")) && /text-decoration-style: solid/.test(ruleFor("anagram-ai")),
-      css());
-    check("…with no tint on the page's own words, and the two bands told apart by weight as well as hue",
-      !/background-color/.test(ruleFor("anagram-heavy")) && !/background-color/.test(ruleFor("anagram-ai")) &&
-      /text-decoration-thickness: 1px/.test(ruleFor("anagram-heavy")) && /text-decoration-thickness: 2px/.test(ruleFor("anagram-ai")),
-      css());
-    check("nothing anywhere is wavy", !/wavy/.test(css()), css());
-    check("the active rules exist for every band, tint and line, so a hover can show the whole of one unit",
-      ["human", "light", "heavy", "ai"].every((b) => /background-color/.test(ruleFor(`anagram-active-${b}`)) && /underline/.test(ruleFor(`anagram-active-${b}`))),
-      css());
+    check("every step of the scale is underlined at rest, solid, with no tint on the page's own words",
+      all.every((n) => /text-decoration-style: solid/.test(ruleFor(`anagram-s${n}`)) && !/background-color/.test(ruleFor(`anagram-s${n}`))),
+      css().slice(0, 400));
+    check("…and dashed for an uncertain verdict", all.every((n) => /text-decoration-style: dashed/.test(ruleFor(`anagram-s${n}-u`))), css().slice(0, 400));
+    check("the line weighs the same at every score, so a score either side of a word's edge does not jump",
+      new Set(all.map((n) => (ruleFor(`anagram-s${n}`).match(/text-decoration-thickness: ([^;]+)/) ?? [, ""])[1])).size === 1,
+      css().slice(0, 400));
+    check("the colour moves along the scale: every step differs from the one before it",
+      all.every((n, i) => i === 0 || colour(ruleFor(`anagram-s${n}`)) !== colour(ruleFor(`anagram-s${all[i - 1]}`))),
+      all.map((n) => colour(ruleFor(`anagram-s${n}`))).join(" "));
+    check("nothing anywhere is wavy", !/wavy/.test(css()), css().slice(0, 400));
+    check("the active rules exist for every step, tint and line, so a hover can show the whole of one unit",
+      all.every((n) => /background-color/.test(ruleFor(`anagram-a${n}`)) && /underline/.test(ruleFor(`anagram-a${n}`)) && /background-color/.test(ruleFor(`anagram-a${n}-u`))),
+      css().slice(0, 400));
 
-    PW.setMarkStyle("always");
-    check("always: every band is marked at rest, tint and line, and still nothing wavy",
-      ["human", "light", "heavy", "ai"].every((b) => /background-color/.test(ruleFor(`anagram-${b}`)) && /underline/.test(ruleFor(`anagram-${b}`))) && !/wavy/.test(css()),
-      css());
-    PW.setMarkStyle("quiet");
-
-    const bandsOf = (el) => {
+    const marksOf = (el) => {
       const out = [];
       for (const [name, hl] of CSS.highlights) for (const r of hl) if (el.contains(r.startContainer)) out.push(name);
       return out.sort();
     };
     sandbox.innerHTML = `<p>${words(60)}</p>`;
-    const [quiet] = PW.collectUnits(sandbox);
-    const quietVerdict = PW.unitVerdict(quiet.id, quiet.text.length, [{ start: 0, end: quiet.text.length, result: res([0.9, 0.1, 0, 0]) }]);
-    PW.setHighlight(quiet, quietVerdict);
-    check("a human unit still registers its range — the chip's hover has to have something to show",
-      bandsOf(sandbox).join() === "anagram-human", JSON.stringify(bandsOf(sandbox)));
+    const [human] = PW.collectUnits(sandbox);
+    const humanVerdict = PW.unitVerdict(human.id, human.text.length, [{ start: 0, end: human.text.length, result: res([0.9, 0.1, 0, 0]) }]);
+    const humanStep = step(PW.scaleStep(humanVerdict.result.score));
+    PW.setHighlight(human, humanVerdict);
+    check("a human unit is underlined too, at the quiet end of the scale",
+      marksOf(sandbox).join() === `anagram-s${humanStep}` && PW.scaleStep(humanVerdict.result.score) <= 2, JSON.stringify(marksOf(sandbox)));
 
-    PW.setActiveUnit(quiet.id);
+    PW.setActiveUnit(human.id);
     check("while the unit is active its range moves to the active set, and only that unit's does",
-      bandsOf(sandbox).join() === "anagram-active-human", JSON.stringify(bandsOf(sandbox)));
+      marksOf(sandbox).join() === `anagram-a${humanStep}`, JSON.stringify(marksOf(sandbox)));
     PW.setActiveUnit(null);
-    check("leaving puts it back at rest", bandsOf(sandbox).join() === "anagram-human", JSON.stringify(bandsOf(sandbox)));
+    check("leaving puts it back at rest", marksOf(sandbox).join() === `anagram-s${humanStep}`, JSON.stringify(marksOf(sandbox)));
 
-    PW.setActiveUnit(quiet.id);
-    PW.clearHighlight(quiet.id);
-    check("clearing an ACTIVE unit leaves nothing behind in either set", bandsOf(sandbox).length === 0, JSON.stringify(bandsOf(sandbox)));
+    PW.setActiveUnit(human.id);
+    PW.clearHighlight(human.id);
+    check("clearing an ACTIVE unit leaves nothing behind in either set", marksOf(sandbox).length === 0, JSON.stringify(marksOf(sandbox)));
   }
 
   // ---- what the walk REACHES ---------------------------------------------------------------

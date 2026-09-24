@@ -52,7 +52,8 @@ export { windowReadout, coverageNote } from "../lib/render/coverage";
 // in an ordinary page, and read every character they produce.
 export { buildDiagnostics } from "../lib/diagnostics/report";
 export { captureRegion } from "../lib/diagnostics/anonymise";
-export { setHighlight, clearHighlight, setActiveUnit, setMarkStyle, registerHighlightStyles } from "../lib/render/highlight";
+export { setHighlight, clearHighlight, setActiveUnit, registerHighlightStyles } from "../lib/render/highlight";
+export { scaleStep, isUncertain, SCALE_STEPS } from "../lib/render/scale";
 
 // Structured PDF benchmarks exercise the real reflow and glyph-source mapping layers.
 export { reflowPdf } from "../lib/pdf/reflow";

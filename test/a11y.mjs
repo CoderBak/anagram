@@ -640,7 +640,7 @@ const PARA = (tag) =>
 // filter chips, which only appear when both flagged bands are present.
 const AI_TAGS = ["FLAG-2", "FLAG-6", "FLAG-11"];
 const HEAVY_TAGS = ["FLAG-3", "FLAG-4", "FLAG-7"];
-const CALM_TAGS = ["FLAG-1", "FLAG-17"]; // lightly edited, human
+const CALM_TAGS = ["FLAG-1", "FLAG-24"]; // lightly edited, human
 const KEY_TAGS = [...AI_TAGS, ...HEAVY_TAGS, ...CALM_TAGS];
 const KEYS_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>keyboard fixture</title></head><body style="max-width:720px;margin:0 auto;font:15px/1.6 system-ui">
 ${KEY_TAGS.map((t, i) => `<p id="k${i + 1}">${PARA(t)}</p>`).join("\n")}

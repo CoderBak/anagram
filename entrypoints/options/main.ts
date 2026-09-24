@@ -16,7 +16,6 @@ import {
   clearSiteOverride,
   setSiteOverride,
   effectiveRule,
-  normalizeMarkStyle,
   normalizeRuleHost,
 } from "../../lib/settings/settings";
 import { ALL_SITES } from "../../lib/access/patterns";
@@ -246,15 +245,9 @@ void refreshFileAccess();
   void browser.tabs.create({ url: browser.runtime.getURL(READER_PAGE as PublicPath) });
 });
 bindSelect(displayModeEl, settings.displayMode);
-// One control over the two stored keys: Off is showHighlights=false; the other two keep
-// it on and pick the mark style (an old profile's legacy style reads as "always").
-bindSelect<"flagged" | "all" | "off">(underlineEl, {
-  getValue: async () => !(await settings.showHighlights.getValue()) ? "off"
-    : normalizeMarkStyle(await settings.markStyle.getValue()) === "always" ? "all" : "flagged",
-  setValue: async (v) => {
-    if (v !== "off") await settings.markStyle.setValue(v === "all" ? "always" : "quiet");
-    await settings.showHighlights.setValue(v !== "off");
-  },
+bindSelect<"all" | "off">(underlineEl, {
+  getValue: async () => (await settings.showHighlights.getValue()) ? "all" : "off",
+  setValue: (v) => settings.showHighlights.setValue(v === "all"),
 });
 bindSelect(analysisScopeEl, settings.analysisScope);
 void renderSites();

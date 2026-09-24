@@ -95,7 +95,9 @@ const STALL_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><
 // text the verdict is seeded from. The 900 px lead-in puts every paragraph BELOW the
 // viewport's middle at scroll 0, which is what makes "previous" wrap to the last one.
 const KEY_PARA = (tag) => `${tag} paragraph is long enough to be scored on its own because it carries well over fifty ordinary English words describing nothing in particular except the fact that a keyboard user must be able to walk the flagged paragraphs of a page without ever reaching for a mouse, which is what the next and previous commands are for.`;
-const KEY_TAGS = ["FLAG-1", "FLAG-4", "FLAG-5", "FLAG-7"];
+// Four flagged paragraphs under the fake's text-seeded scores, and not all of one word:
+// FLAG-20 reads AI-generated (.97), the other three heavily edited (.66–.74).
+const KEY_TAGS = ["FLAG-1", "FLAG-20", "FLAG-5", "FLAG-7"];
 const KEYS_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>keyboard fixture</title></head><body style="max-width:720px;margin:0 auto;font:15px/1.6 system-ui">
 <div style="height:900px"></div>
 ${KEY_TAGS.map((t, i) => `<p id="k${i + 1}">${KEY_PARA(t)}</p>\n<div style="height:700px"></div>`).join("\n")}
@@ -653,7 +655,7 @@ async function sweep(page, steps = 6) {
         const host = document.querySelector(`#copysrc ${sel}`);
         const card = host?.shadowRoot?.querySelector(".card");
         if (!card) return null;
-        const meter = card.querySelectorAll(".dist .dbar .seg").length === 4 && card.querySelectorAll(".dist .drow").length === 4;
+        const meter = !!card.querySelector(".dist .scale .marker") && card.querySelectorAll(".dist .drow").length === 4;
         const btn = card.querySelector(".act.copy");
         if (btn) btn.click();
         return { meter, hasCopy: !!btn };

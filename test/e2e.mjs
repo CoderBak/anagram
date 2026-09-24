@@ -280,13 +280,14 @@ console.log("screenshot:", shot);
 // 15) checks + summary.
 const s = snapshot;
 // What the fixture was asked about the windowed paragraph: every block that is a piece of
-// it, in reading order. The fake's verdict is a pure function of the text, so the bands
-// the page must show are known here without asking the page.
-const BANDS = ["human", "light", "heavy", "ai"];
+// it, in reading order. The fake's verdict is a pure function of the text, so the marks
+// the page must show are known here without asking the page: each window on its step of
+// the scale (lib/render/scale.ts, twenty steps), dashed or not as the whole paragraph is.
+const stepOf = (score) => `s${String(Math.round(Math.min(Math.max(score, 0), 1) * 20)).padStart(2, "0")}`;
 const windowBlocks = [...new Set(fixture.stats.texts.filter((t) => t.length > 200 && s.windowed.text.includes(t)))]
   .sort((a, b) => s.windowed.text.indexOf(a) - s.windowed.text.indexOf(b));
 const windowVerdicts = windowBlocks.map((t) => fakeScore(t));
-const expectedBands = [...new Set(windowVerdicts.map((v) => BANDS[v.bucket]))].sort();
+const expectedBands = [...new Set(windowVerdicts.map((v) => stepOf(v.score)))].sort();
 // What lib/render/score.ts writes, in four lines, so the expectation is spelled out here
 // rather than imported out of a TypeScript module this suite cannot load.
 const formatScore = (score) => (Math.round(score * 100) >= 100 ? "1.0" : `.${String(Math.round(score * 100)).padStart(2, "0")}`);
@@ -305,8 +306,8 @@ const checks = [
   ["WINDOWED paragraph: the fixture received it whole, as 3 consecutive blocks, none past its token window",
     windowBlocks.length === 3 && windowBlocks.join(" ") === s.windowed.text && windowVerdicts.every((v) => v.truncated === false)],
   ["WINDOWED paragraph: underline reaches the final sentence", s.hl.windowtail],
-  ["WINDOWED paragraph: each window is marked in its own band (more than one, as the verdicts differ)",
-    expectedBands.length > 1 && JSON.stringify(s.windowed.bands) === JSON.stringify(expectedBands)],
+  ["WINDOWED paragraph: each window is marked in the colour of its own score (more than one, as the verdicts differ)",
+    expectedBands.length > 1 && JSON.stringify([...new Set(s.windowed.bands.map((b) => b.replace(/-u$/, "")))].sort()) === JSON.stringify(expectedBands)],
   ["WINDOWED paragraph: the card reads 'Scored in 3 windows' with each window's number, and claims no prefix",
     s.windowed.card.includes(`Scored in 3 windows${expectedScores.join("\u00a0· ")}`) && !/Only the opening|first \d+/.test(s.windowed.card)],
   ["BR-split halves merged into one unit", s.sections.brsplit === 1 && s.hl.br1 && s.hl.br2],

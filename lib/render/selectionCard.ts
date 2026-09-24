@@ -17,7 +17,7 @@ import { messageLocale, t } from "../i18n";
 import { band, bandLabel, isNoVerdict, languageName, type Band } from "./band";
 import { formatScore } from "./score";
 import { coverageNote, windowScores, windowReadout } from "./coverage";
-import { DIST_CSS, distributionHtml } from "./dist";
+import { DIST_CSS, distributionHtml, swatchHtml } from "./dist";
 import { countWords, MIN_UNIT_WORDS } from "../dom/text";
 import { isDarkPage } from "./theme";
 
@@ -38,10 +38,6 @@ const CARD_CSS = `
 }
 .head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 5px; }
 .verdict { font-weight: 700; font-size: 12px; }
-.verdict.band-human   { color: #116a37; }
-.verdict.band-light   { color: #7a5b00; }
-.verdict.band-heavy   { color: #a13d00; }
-.verdict.band-ai      { color: #b42318; }
 .verdict.band-unknown { color: #57606a; }
 .verdict.band-unsupported { color: #737373; }
 .big { font-weight: 700; font-size: 12px; font-variant-numeric: tabular-nums; }
@@ -77,10 +73,7 @@ const CARD_CSS = `
 }
 :host(.pg-dark) .row .k { color: #a3a3a3; }
 :host(.pg-dark) .foot { border-top-color: rgba(255, 255, 255, 0.08); color: #8a8a8a; }
-:host(.pg-dark) .verdict.band-human { color: #4ecb71; }
-:host(.pg-dark) .verdict.band-light { color: #e6c84c; }
-:host(.pg-dark) .verdict.band-heavy { color: #ff9a57; }
-:host(.pg-dark) .verdict.band-ai    { color: #ff7b81; }
+:host(.pg-dark) .verdict.band-unknown { color: #b9c0c8; }
 ` + DIST_CSS;
 
 let _sheet: CSSStyleSheet | null = null;
@@ -266,9 +259,9 @@ export async function analyzeSelection(): Promise<void> {
         : words;
       card.innerHTML =
         closeBtn +
-        `<div class="head"><span class="verdict band-${b}">${bandLabel(b)}</span>` +
+        `<div class="head"><span class="verdict band-${b}">${isNoVerdict(b) ? "" : swatchHtml(r)}${bandLabel(b)}</span>` +
         `<span class="big" title="${t("cardScaleTitle")}">${isNoVerdict(b) ? "—" : score}</span></div>` +
-        (isNoVerdict(b) ? "" : distributionHtml(r, b)) +
+        (isNoVerdict(b) ? "" : distributionHtml(r)) +
         (b === "unsupported" ? row(t("cardDetectedLang"), `${languageName(r.lang)} · ${Math.round((r.lang_prob ?? 0) * 100)}%`) : "") +
         row(t("selWordsSelected"), String(words)) +
         (readout ? row(t("selWordsAnalyzed"), verdict.unreadChars > 0 ? t("selFirst", analyzed) : String(analyzed)) : "") +
