@@ -24,6 +24,7 @@ HOST = "dev.coderbak.anagram"
 FIREFOX_ID = "anagram@coderbak.dev"
 INVENTORY = "native-registration.json"
 OWNER = ".native-component.json"
+UNINSTALLING = ".native-uninstall.json"
 RELEASES = "https://github.com/CoderBak/anagram/releases"
 RELEASE_VERSION = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)")
 
@@ -57,7 +58,7 @@ def owned_home(home: Path, require_owner=False) -> Path:
     home = raw.resolve()
     if home == Path.home().resolve() or not (home / ".anagram-home").is_file():
         raise ValueError("Not an owned Anagram component directory")
-    for name in (".anagram-home", OWNER, INVENTORY, "app", "bin", "venv", "models", "run"):
+    for name in (".anagram-home", OWNER, UNINSTALLING, INVENTORY, "app", "bin", "venv", "models", "run"):
         safe_path(home / name, home)
     if require_owner:
         marker = json.loads((home / OWNER).read_text(encoding="utf-8"))
@@ -367,6 +368,22 @@ def update(home, worker=False, lock_fd=None, release=None):
     return {"status": "completed"}
 
 
+def remove_home(home):
+    """Delete a retired component. What `anagram uninstall` needs to finish an
+    interrupted removal (both markers and the command itself) goes last."""
+    last = {home / ".anagram-home", home / UNINSTALLING, home / "bin", home / "bin/anagram"}
+    bin_dir = home / "bin"
+    entries = [*home.iterdir(), *(bin_dir.iterdir() if bin_dir.is_dir() and not bin_dir.is_symlink() else ())]
+    for entry in entries:
+        if entry in last:
+            continue
+        if entry.is_dir() and not entry.is_symlink():
+            shutil.rmtree(entry)
+        else:
+            entry.unlink()
+    shutil.rmtree(home)
+
+
 def uninstall(home, lock_fd=None):
     home = owned_home(home, require_owner=True)
     if sys.platform == "win32":
@@ -375,8 +392,9 @@ def uninstall(home, lock_fd=None):
         unregister(home)
         # Retire the startup authority before rmtree can unlink/recreate the lock
         # path; no new host may authorize itself against a half-removed component.
-        (home / OWNER).unlink()
-        shutil.rmtree(home)
+        # The renamed marker records that only file removal remains.
+        os.replace(home / OWNER, home / UNINSTALLING)
+        remove_home(home)
     return {"status": "completed"}
 
 

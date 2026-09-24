@@ -100,6 +100,22 @@ if [ $rc -ne 0 ] && intact "$T/ok3"; then ok "non-interactive uninstall without 
 out="$(cli "$T/ok3" uninstall -y)"; rc=$?
 if [ $rc -ne 0 ] && intact "$T/ok3"; then ok "uninstall refuses incomplete component without its trusted helper"; else bad "missing uninstall helper" "rc=$rc"; fi
 
+# An interrupted uninstall keeps its markers and this command; the CLI finishes it.
+HREM="$T/interrupted-uninstall"; mkdir -p "$HREM/bin" "$HREM/models"
+echo owned > "$HREM/.anagram-home"; echo x > "$HREM/models/weights"
+cp "$ROOT/installer/anagram" "$HREM/bin/anagram"; chmod +x "$HREM/bin/anagram"
+printf '{\n  "schema_version": 1,\n  "host": "dev.coderbak.anagram",\n  "home": "%s"\n}\n' "$(cd "$HREM" && pwd -P)" > "$HREM/.native-uninstall.json"
+plant "$T/victim3"; ln -s "$T/victim3" "$HREM/models/outside"
+cp -R "$HREM" "$T/copied-uninstall"
+mkdir "$HREM/.installer-lock"
+out="$(HOME="$FAKE_HOME" "$HREM/bin/anagram" uninstall -y 2>&1)"; rc=$?
+if [ $rc -ne 0 ] && [ -f "$HREM/models/weights" ]; then ok "an interrupted uninstall waits for an active installer"; else bad "uninstall during install" "rc=$rc $out"; fi
+rmdir "$HREM/.installer-lock"
+out="$(HOME="$FAKE_HOME" "$T/copied-uninstall/bin/anagram" uninstall -y 2>&1)"; rc=$?
+if [ $rc -ne 0 ] && [ -f "$T/copied-uninstall/models/weights" ]; then ok "an uninstall marker naming another folder is refused"; else bad "copied uninstall marker" "rc=$rc $out"; fi
+out="$(HOME="$FAKE_HOME" "$HREM/bin/anagram" uninstall -y 2>&1)"; rc=$?
+if [ $rc -eq 0 ] && [ ! -e "$HREM" ] && intact "$T/victim3"; then ok "an interrupted uninstall is finished without following links"; else bad "finish interrupted uninstall" "rc=$rc $out"; fi
+
 # 9. the CLI refuses to derive a home from a location that is not an Anagram folder
 mkdir -p "$T/stray/bin" && cp "$ROOT/installer/anagram" "$T/stray/bin/anagram"
 out="$(HOME="$FAKE_HOME" sh "$T/stray/bin/anagram" doctor 2>&1)"; rc=$?

@@ -122,8 +122,10 @@ try {
     foreach ($item in Get-ChildItem -LiteralPath $ComponentHome -Force -Recurse) {
       if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Refusing reparse point: $($item.FullName)" }
     }
-    # Revoke startup authority before the lock pathname can disappear.
-    Remove-Item -LiteralPath (Join-Path $ComponentHome '.native-component.json') -Force
+    # Revoke startup authority before the lock pathname can disappear. Both markers
+    # go last, so an interrupted removal is still an Anagram folder a reinstall accepts.
+    Move-Item -LiteralPath (Join-Path $ComponentHome '.native-component.json') -Destination (Join-Path $ComponentHome '.native-uninstall.json') -Force
+    Get-ChildItem -LiteralPath $ComponentHome -Force | Where-Object { $_.Name -notin @('.anagram-home','.native-uninstall.json') } | Remove-Item -Recurse -Force
     Remove-Item -LiteralPath $ComponentHome -Recurse -Force
   }
   $deadline = [DateTime]::UtcNow.AddSeconds(5)

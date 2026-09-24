@@ -3,6 +3,7 @@ import importlib.util
 import json
 import os
 import shlex
+import shutil
 import signal
 import time
 from pathlib import Path
@@ -225,6 +226,29 @@ class MaintenanceLockTests(unittest.TestCase):
             return remove(path)
         with patch.object(reg.Path, "home", return_value=self.user), patch.object(reg.shutil, "rmtree", side_effect=checked):
             reg.uninstall(self.home)
+        self.assertFalse(self.home.exists())
+
+    def test_interrupted_uninstall_is_finished_by_the_terminal_command(self):
+        command = self.home / 'bin/anagram'
+        shutil.copyfile(SOURCE.parent / 'anagram', command); command.chmod(0o700)
+        (self.home / 'models/editlens').mkdir(parents=True); (self.home / 'models/editlens/weights').write_bytes(b'x')
+        (self.home / 'venv/bin').mkdir(parents=True)
+        manifest = reg.manifest_path(self.home, self.user, 'chrome', sys.platform)
+        remove = reg.shutil.rmtree
+        def closed_terminal(path, *args, **kwargs):
+            if Path(path).name == 'models': raise KeyboardInterrupt
+            return remove(path, *args, **kwargs)
+        with patch.object(reg.Path, 'home', return_value=self.user), patch.object(reg.shutil, 'rmtree', side_effect=closed_terminal):
+            with self.assertRaises(KeyboardInterrupt): reg.uninstall(self.home)
+        self.assertFalse(manifest.exists())
+        self.assertFalse((self.home / reg.OWNER).exists())
+        with self.assertRaises(self.ComponentError): self.HomeLock(self.home)
+        for name in ('.anagram-home', reg.UNINSTALLING, 'bin/anagram', 'models/editlens/weights'):
+            self.assertTrue((self.home / name).exists(), name)
+        env = {k: v for k, v in os.environ.items() if k != 'ANAGRAM_HOME'}
+        run = subprocess.run([str(command), 'uninstall', '-y'], env={**env, 'HOME': str(self.user)},
+                             stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30)
+        self.assertEqual(run.returncode, 0, run.stderr)
         self.assertFalse(self.home.exists())
 
     def test_shell_retains_child_acquired_flock_after_python_exits(self):

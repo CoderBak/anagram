@@ -35,7 +35,7 @@ esac
 
 case "/$ANAGRAM_HOME/" in */../*|*/./*) die "ANAGRAM_HOME must not contain . or .. segments" ;; esac
 [ ! -L "$ANAGRAM_HOME/$MARKER" ] || die "installation marker must not be a symbolic link"
-for sub in app bin models venv python hf cache logs run .native-component.json native-registration.json; do
+for sub in app bin models venv python hf cache logs run .native-component.json .native-uninstall.json native-registration.json; do
   [ ! -L "$ANAGRAM_HOME/$sub" ] || die "symbolic link in installation: $sub"
 done
 PY="$ANAGRAM_HOME/venv/bin/python"
@@ -70,6 +70,18 @@ try:
 finally:
     lock.close()
 PYEOF
+}
+
+# An interrupted uninstall already removed the browser registrations and renamed the
+# ownership marker, so no host can start here; only files remain. The helper deletes
+# the markers and this command last, so they are still here to finish the job.
+finish_uninstall() {
+  [ ! -e "$ANAGRAM_HOME/.installer-lock" ] && [ ! -L "$ANAGRAM_HOME/.installer-lock" ] || die "an installer is using $ANAGRAM_HOME; retry after it finishes"
+  real="$(cd "$ANAGRAM_HOME" && pwd -P)"
+  grep -qxF "  \"home\": \"$real\"" "$ANAGRAM_HOME/.native-uninstall.json" || die "the uninstall marker does not name $real"
+  find "$real" -mindepth 1 -maxdepth 1 ! -name .anagram-home ! -name .native-uninstall.json ! -name bin -exec rm -rf {} +
+  rm -rf "$real"
+  say "Removed $real"
 }
 
 case "${1:-}" in
@@ -120,7 +132,11 @@ PYEOF
       read -r answer
       case "$answer" in y|Y|yes) ;; *) exit 0 ;; esac
     fi
-    maintenance uninstall
+    if [ ! -e "$ANAGRAM_HOME/.native-component.json" ] && [ -f "$ANAGRAM_HOME/.native-uninstall.json" ]; then
+      finish_uninstall
+    else
+      maintenance uninstall
+    fi
     ;;
   *)
     cat <<USAGE
