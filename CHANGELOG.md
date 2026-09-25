@@ -5,7 +5,11 @@ Notable changes to Anagram, newest first. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html). The extension, the
 local component and the installer all carry the same version.
 
-## [Unreleased]
+## [0.7.0] — 2026-09-26
+
+macOS Chrome release. Firefox, Linux and Windows are built from the same source but
+are not published or validated in this version. The local engine speaks contract 3.0,
+so 0.6.0 engines must be updated with this release.
 
 ### Changed
 

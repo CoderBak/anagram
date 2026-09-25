@@ -2,7 +2,7 @@
   "name": "anagram-extension",
   "description": "Local AI-editing estimates for Chrome and Firefox, powered by EditLens.",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.7.0",
   "type": "module",
   "scripts": {
     "dev": "node scripts/vendor.mjs && wxt",
