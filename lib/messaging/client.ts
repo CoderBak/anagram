@@ -3,7 +3,7 @@ import { documentSessionId, sendDocumentMessage } from "../access/session";
 import { browser } from "#imports";
 import type { ModelInfo, ScoreBatchRequest, ScoreResult } from "../contract";
 import { ACTIONS } from "./protocol";
-import type { ScoreBatchMessage, ScoreBatchReply } from "./protocol";
+import type { CountTokensMessage, CountTokensReply, ScoreBatchMessage, ScoreBatchReply } from "./protocol";
 
 /**
  * False once this content script's extension context has been invalidated
@@ -76,4 +76,37 @@ export async function requestScores(req: ScoreBatchRequest): Promise<ScoreReply>
     if (attempt >= 1) return { results: [], backend: failed };
     await new Promise((r) => setTimeout(r, 300));
   }
+}
+
+/** Most texts and characters one count request carries: what the worker takes. */
+const COUNT_TEXTS = 512;
+const COUNT_CHARS = 200_000;
+
+/**
+ * How many model tokens each text is, asked of the engine through the worker, in requests
+ * the worker takes, one after another. Null when it cannot say — an engine older than the
+ * count, a worker that did not answer — and never retried: the passes are then planned on
+ * estimates, which is what they were planned on before there was a count.
+ */
+export async function requestTokenCounts(texts: string[]): Promise<number[] | null> {
+  const counts: number[] = [];
+  for (let at = 0; at < texts.length; ) {
+    let end = at;
+    let chars = 0;
+    while (end < texts.length && end - at < COUNT_TEXTS && (end === at || chars + texts[end].length <= COUNT_CHARS)) {
+      chars += texts[end].length;
+      end++;
+    }
+    const slice = texts.slice(at, end);
+    const message: CountTokensMessage = { action: ACTIONS.COUNT_TOKENS, texts: slice };
+    try {
+      const reply = (await sendDocumentMessage(message)) as CountTokensReply | undefined;
+      if (!reply || !Array.isArray(reply.counts) || reply.counts.length !== slice.length) return null;
+      counts.push(...reply.counts);
+    } catch {
+      return null;
+    }
+    at = end;
+  }
+  return counts;
 }

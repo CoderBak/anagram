@@ -8,7 +8,10 @@
 // full bucket distribution plus its probability-weighted score; the UI derives
 // verdict bands from the bucket and shows the score as a 0–1 number (".93").
 
-export const CONTRACT_VERSION = "2.1";
+export const CONTRACT_VERSION = "2.2";
+
+/** The first contract whose engine counts tokens (the `tokens` operation). */
+export const COUNTS_TOKENS_FROM = "2.2";
 
 /** Bucket count the UI is built for: 0 human · 1 lightly edited · 2 heavily edited · 3 AI-generated. */
 export const BUCKET_COUNT = 4;

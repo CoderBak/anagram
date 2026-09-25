@@ -3,6 +3,9 @@ import type { ModelInfo, ScoreBatchRequest, ScoreResult } from "../contract";
 
 export const ACTIONS = {
   SCORE_BATCH: "scoreBatch",
+  /** content/reader/paste → SW: how many model tokens each piece of a long text is, so its
+   *  passes are planned as full as the model allows (lib/capture/windows.ts). */
+  COUNT_TOKENS: "countTokens",
   RESCAN: "rescan",
   SET_ENABLED: "setEnabled",
   GET_TAB_STATE: "getTabState",
@@ -79,6 +82,17 @@ export const ACTIONS = {
 export interface ScoreBatchMessage {
   action: typeof ACTIONS.SCORE_BATCH;
   req: ScoreBatchRequest;
+}
+
+/** content → SW: count model tokens (answered with CountTokensReply). */
+export interface CountTokensMessage {
+  action: typeof ACTIONS.COUNT_TOKENS;
+  texts: string[];
+}
+
+/** SW → content: one count per text, in order, or null when the engine cannot count. */
+export interface CountTokensReply {
+  counts: number[] | null;
 }
 
 /** SW → content (response to SCORE_BATCH). */

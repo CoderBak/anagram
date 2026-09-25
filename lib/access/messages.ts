@@ -26,8 +26,11 @@ export const ScoreRequestSchema = v.pipe(v.strictObject({
 }),v.check((r) => new Set(r.blocks.map((b)=>b.id)).size === r.blocks.length, "duplicate block IDs"),
   v.check((r) => r.blocks.reduce((n,b)=>n+b.text.length,0) <= 256_000,"request too large"),
   v.check((r) => new TextEncoder().encode(JSON.stringify(r)).byteLength <= 900_000,"encoded request too large"));
+const TokenTexts = v.pipe(v.array(v.pipe(v.string(),v.maxLength(16000))),v.minLength(1),v.maxLength(512),
+  v.check((texts) => texts.reduce((n,t)=>n+t.length,0) <= 256_000,"request too large"));
 const schema = v.variant("action",[
   v.strictObject({action:v.literal(ACTIONS.SCORE_BATCH),session,req:ScoreRequestSchema}),
+  v.strictObject({action:v.literal(ACTIONS.COUNT_TOKENS),session,texts:TokenTexts}),
   v.strictObject({action:v.literal(ACTIONS.ANALYZE_TAB),tabId}),
   v.strictObject({action:v.literal(ACTIONS.OPEN_PDF_READER),session,tabId:v.optional(tabId),url:v.optional(pdfUrl)}),
   v.strictObject({action:v.literal(ACTIONS.GET_PDF_STATUS),tabId}),
@@ -45,6 +48,7 @@ export function parseWorkerMessage(value: unknown): WorkerMessage | null {
   // Reject excessive fan-out before the schema traverses any block values.
   const raw=value as {action?:unknown;req?:{blocks?:unknown}}|null;
   if(raw?.action === ACTIONS.SCORE_BATCH && Array.isArray(raw.req?.blocks) && raw.req.blocks.length>256)return null;
+  if(raw?.action === ACTIONS.COUNT_TOKENS && Array.isArray((raw as {texts?:unknown}).texts) && (raw as {texts:unknown[]}).texts.length>512)return null;
   const result = v.safeParse(schema,value,{abortEarly:true,abortPipeEarly:true}); return result.success ? result.output : null;
 }
 export function callerRole(sender: AccessSender, extensionId: string, root: string): CallerRole | null {
@@ -68,7 +72,7 @@ export function permitsMessage(role: CallerRole, msg: WorkerMessage, sender: Acc
       return role === "popup" ? msg.tabId !== undefined && !!msg.url : role === "content" && sender.frameId === 0 && msg.tabId === undefined && msg.url === undefined;
     case ACTIONS.PDF_TAB_OPENED: return role === "content" && sender.frameId === 0 && msg.url === sender.url && new URL(msg.url).protocol === msg.protocol;
     case ACTIONS.PDF_PASS_ONCE: return role === "reader" && Number.isInteger(sender.tab?.id);
-    case ACTIONS.SCORE_BATCH: return role === "content" || role === "reader" || role === "paste";
+    case ACTIONS.SCORE_BATCH: case ACTIONS.COUNT_TOKENS: return role === "content" || role === "reader" || role === "paste";
     case ACTIONS.GET_TOP_HOST: return role === "content";
     case ACTIONS.UPDATE_BADGE: return (role === "content" || role === "reader") && sender.frameId === 0;
     case ACTIONS.GET_BACKEND_STATUS: return true;

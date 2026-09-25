@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const CONTRACT = "2.1";
+export const CONTRACT = "2.2";
 export const FAKE_MODEL = { id: "fake-editlens", ver: "test", calibration: "none" };
 const BUCKETS = ["human", "lightly-edited", "heavily-edited", "ai-generated"];
 const FLAT = [0.25, 0.25, 0.25, 0.25];
@@ -158,6 +158,19 @@ async function serveNative(stateFile, logFile) {
       if (component.state !== "ready") return failed(request, 503, "not_ready", "Fixture engine not ready");
       return ok(request, { ok: true, contract: s.contract, model: s.model, n_buckets: 4, buckets: BUCKETS,
         languages: ["en"], lid: "fake-script-heuristic", max_tokens: 512, device: "fake", dtype: "none", app_version: s.appVersion });
+    }
+    if (request.op === "tokens") {
+      // Counting arrived with contract 2.2; a fixture set to an older contract refuses the
+      // operation the way an older host refuses one it does not know.
+      const [major, minor] = String(s.contract).split(".").map(Number);
+      if (major !== 2 || !(minor >= 2)) return failed(request, 422, "invalid_request", "Invalid native request envelope or operation");
+      if (component.state !== "ready" && component.state !== "idle") return failed(request, 503, "not_ready", "Fixture engine not ready");
+      // Four characters a token, as the scoring below assumes, unless a rule makes a text denser.
+      const counts = (request.payload?.texts ?? []).map((t) => {
+        const rule = s.rules.find((r) => t.includes(r.contains) && r.charsPerToken != null);
+        return Math.ceil(t.length / (rule ? rule.charsPerToken : 4));
+      });
+      return ok(request, { counts, window: 510 });
     }
     if (request.op === "score") {
       if (component.state === "idle") {

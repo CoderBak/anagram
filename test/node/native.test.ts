@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeBrowser } from "wxt/testing";
 import { NativeTransport, NativeTransportError, nativeTransport, type NativePort } from "../../lib/backend/nativeTransport";
-import { trustedNativePage, validPageRequest, parseNativeReply } from "../../lib/backend/nativeProtocol";
+import { trustedNativePage, validPageRequest, parseNativeReply, type NativeReply } from "../../lib/backend/nativeProtocol";
 import { NativeScoreClient } from "../../lib/backend/nativeScoreClient";
 import { parseComponent } from "../../lib/backend/nativeClient";
 import { handleNativePageMessage } from "../../lib/backend/nativeBridge";
@@ -191,6 +191,37 @@ describe("native scoring preserves the scoring contract", () => {
     const client = new NativeScoreClient(() => new Promise((r) => {resolve=r;}));
     const started = client.ready(); client.invalidate(); resolve(reply(HEALTH)); await started;
     expect(client.isUp()).toBe(false);
+  });
+});
+
+describe("token counts come from the engine that scores", () => {
+  const byOp = (health: unknown, tokens: (texts: string[]) => unknown) =>
+    vi.fn(async (op: string, payload: unknown) => (op === "health" ? health : tokens((payload as {texts:string[]}).texts)) as NativeReply);
+  const idle = {v:1 as const,id:"health",ok:false,status:503,error:{code:"engine_idle",message:"Idle"}};
+  it("asks an engine whose contract counts, and takes only an answer with a count per text", async () => {
+    let answer = (texts: string[]): unknown => reply({counts:texts.map((t) => t.length),window:510});
+    const request = byOp(reply({...HEALTH,contract:"2.2"}), (texts) => answer(texts));
+    const client = new NativeScoreClient(request);
+    expect(await client.countTokens(["one","three"])).toEqual([3,5]);
+    expect(request).toHaveBeenCalledWith("tokens", {v:"2.2",texts:["one","three"]}, undefined);
+    answer = () => reply({counts:[1],window:510});
+    expect(await client.countTokens(["one","three"])).toBeNull();
+  });
+  it("never asks an engine whose contract predates counting", async () => {
+    const request = byOp(reply(HEALTH), () => { throw new Error("asked"); });
+    const client = new NativeScoreClient(request);
+    expect(await client.countTokens(["one"])).toBeNull();
+    expect(request.mock.calls.map((c) => c[0])).not.toContain("tokens");
+  });
+  it("learns from one refusal that an idle engine it cannot see cannot count, until the port closes", async () => {
+    const request = byOp(idle, () => ({v:1,id:"tokens",ok:false,status:422,error:{code:"invalid_request",message:"Invalid native request envelope or operation"}}));
+    const client = new NativeScoreClient(request);
+    expect(await client.countTokens(["one"])).toBeNull();
+    expect(await client.countTokens(["one"])).toBeNull();
+    expect(request.mock.calls.filter((c) => c[0] === "tokens")).toHaveLength(1);
+    client.disconnected();
+    expect(await client.countTokens(["one"])).toBeNull();
+    expect(request.mock.calls.filter((c) => c[0] === "tokens")).toHaveLength(2);
   });
 });
 

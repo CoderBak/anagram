@@ -10,6 +10,7 @@ import { defineBackground, browser } from "#imports";
 import type { PublicPath } from "wxt/browser";
 import { createRouter } from "../lib/backend/router";
 import { getScoreClient } from "../lib/backend/getScoreClient";
+import { createTokenCounter } from "../lib/backend/tokenCounts";
 import { createCacheModeController } from "../lib/backend/cacheMode";
 import { ACTIONS } from "../lib/messaging/protocol";
 import type {
@@ -17,6 +18,7 @@ import type {
   ClearCacheReply,
   CopyDiagnosticsReply,
   PdfPassOnceReply,
+  CountTokensReply,
   ScoreBatchReply,
   TopHostReply,
 } from "../lib/messaging/protocol";
@@ -41,6 +43,7 @@ export default defineBackground(() => {
     void browser.storage.local.set({ [EXTENSION_UPDATE_KEY]: details.version });
   });
   const router = createRouter(getScoreClient());
+  const tokenCounter = createTokenCounter(getScoreClient());
   const cacheModes=createCacheModeController((mode,restored)=>applyCacheMode(router,mode,restored),cacheModeStorage);
   // Do not dispatch scoring until persisted privacy preferences have been applied.
   const cacheModeReady=cacheModes.restore();
@@ -360,6 +363,8 @@ export default defineBackground(() => {
       }
       case ACTIONS.GET_BACKEND_STATUS:
         return getScoreClient().status(msg.probe===true);
+      case ACTIONS.COUNT_TOKENS:
+        return {counts:await tokenCounter.count(msg.texts,document!.signal).catch(()=>null)} satisfies CountTokensReply;
       case ACTIONS.SCORE_BATCH: {
         try {
           await cacheModeReady.catch(()=>undefined);

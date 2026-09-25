@@ -80,12 +80,20 @@ describe("document-scoped authorization",()=>{
   });
 });
 describe("worker message schema and roles",()=>{
-  const score=()=>({action:ACTIONS.SCORE_BATCH,req:{v:"2.1",session:"scan",priority:"viewport",blocks:[{id:"one",text:"Paragraph"}]}});
+  const score=()=>({action:ACTIONS.SCORE_BATCH,req:{v:"2.2",session:"scan",priority:"viewport",blocks:[{id:"one",text:"Paragraph"}]}});
   it("bounds requests before hashing or scheduling",()=>{
     expect(parseWorkerMessage(score())).not.toBeNull();
     for(const change of [{priority:"urgent"},{session:"x".repeat(65)},{blocks:Array.from({length:257},(_,i)=>({id:String(i),text:"x"}))},{blocks:[{id:"one",text:"x".repeat(16001)}]},{blocks:[{id:"one",text:"x"},{id:"one",text:"y"}]},{blocks:Array.from({length:17},(_,i)=>({id:String(i),text:"x".repeat(16000)}))}])
       expect(parseWorkerMessage({...score(),req:{...score().req,...change}})).toBeNull();
     expect(parseWorkerMessage({...score(),tabId:99})).toBeNull();
+  });
+  it("bounds token counts like scores, and lets only the pages that score ask for them",()=>{
+    const count=(texts:unknown)=>parseWorkerMessage({action:ACTIONS.COUNT_TOKENS,texts});
+    expect(count(["One sentence. ","Two."])).not.toBeNull();
+    for(const texts of [[],Array.from({length:513},()=>"x"),["x".repeat(16001)],Array.from({length:17},()=>"x".repeat(16000)),[7]])expect(count(texts)).toBeNull();
+    const msg=count(["One."])!;
+    for(const role of ["content","reader","paste"] as const)expect(permitsMessage(role,msg,sender())).toBe(true);
+    for(const role of ["popup","options","onboarding"] as const)expect(permitsMessage(role,msg,sender())).toBe(false);
   });
   it("allows only Settings to mutate caches and only the popup to name a target tab",()=>{
     const clear=parseWorkerMessage({action:ACTIONS.CLEAR_CACHE})!,tab=parseWorkerMessage({action:ACTIONS.ANALYZE_TAB,tabId:99})!;
