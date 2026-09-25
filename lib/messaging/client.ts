@@ -1,7 +1,7 @@
 import { documentSessionId, sendDocumentMessage } from "../access/session";
 // lib/messaging/client.ts — content→SW client.
 import { browser } from "#imports";
-import type { ModelInfo, ScoreBatchRequest, ScoreResult } from "../contract";
+import type { ModelInfo, ScoreBatchRequest, ScoreResult, TokenCounts } from "../contract";
 import { ACTIONS } from "./protocol";
 import type { CountTokensMessage, CountTokensReply, ScoreBatchMessage, ScoreBatchReply } from "./protocol";
 
@@ -83,13 +83,12 @@ const COUNT_TEXTS = 512;
 const COUNT_CHARS = 200_000;
 
 /**
- * How many model tokens each text is, asked of the engine through the worker, in requests
- * the worker takes, one after another. Null when it cannot say — an engine older than the
- * count, a worker that did not answer — and never retried: the passes are then planned on
- * estimates, which is what they were planned on before there was a count.
+ * How many model tokens each text is, alone and following a space, asked of the engine
+ * through the worker in requests the worker takes, one after another. Null when any of
+ * them went unanswered; the text is then Unavailable, like one whose score failed.
  */
-export async function requestTokenCounts(texts: string[]): Promise<number[] | null> {
-  const counts: number[] = [];
+export async function requestTokenCounts(texts: string[]): Promise<TokenCounts | null> {
+  const counts: TokenCounts = { alone: [], following: [] };
   for (let at = 0; at < texts.length; ) {
     let end = at;
     let chars = 0;
@@ -101,8 +100,11 @@ export async function requestTokenCounts(texts: string[]): Promise<number[] | nu
     const message: CountTokensMessage = { action: ACTIONS.COUNT_TOKENS, texts: slice };
     try {
       const reply = (await sendDocumentMessage(message)) as CountTokensReply | undefined;
-      if (!reply || !Array.isArray(reply.counts) || reply.counts.length !== slice.length) return null;
-      counts.push(...reply.counts);
+      const got = reply?.counts;
+      if (!got || !Array.isArray(got.alone) || !Array.isArray(got.following) ||
+        got.alone.length !== slice.length || got.following.length !== slice.length) return null;
+      counts.alone.push(...got.alone);
+      counts.following.push(...got.following);
     } catch {
       return null;
     }

@@ -1,29 +1,31 @@
-// test/node/windowsProps.test.ts — properties of the piece cut and the pass plan.
+// test/node/windowsProps.test.ts — properties of the word chunks and the pass plan.
 //
-// cutPieces() decides where a pass may begin or end, and planPasses() which characters of a
-// long text the model ever sees, and how often. A plan that leaves a gap, goes backwards or
-// overruns the model's window shows up as text nobody read, a verdict that depends on one
-// arbitrary cut, or a request the engine cuts. These run the planner over a few hundred
-// seeded texts of every awkward shape — no sentence ends at all, paragraph joints, CJK full
-// stops, one unbroken token far larger than a window, lengths straddling the one-pass bound
-// and the cap — and assert what the file documents. A failure names the seed to reproduce it.
+// chunksOf() decides where a pass may begin or end, and planPasses() which characters of a
+// long text the model sees, and how often. A plan that leaves a gap, goes backwards, reads a
+// half other than twice or overruns the model's window shows up as text nobody read, a
+// verdict one arbitrary cut decides, or a request the engine cuts. These run the planner
+// over a few hundred seeded texts of every awkward shape — no sentence ends at all,
+// paragraph joints, CJK full stops, one unbroken token far larger than a pass, lengths
+// straddling one pass and the cap — and over random counts, and assert what the file
+// documents. A failure names the seed to reproduce it.
 import { describe, expect, it } from "vitest";
 import {
-  MAX_PIECE_CHARS,
+  MAX_CHUNK_CHARS,
   MAX_READ_CHARS,
   MAX_WINDOWS,
-  ONE_PASS_CHARS,
   PASS_TOKENS,
+  SNAP_TOKENS,
   WINDOW_CHARS,
-  cutPieces,
-  estimateTokens,
+  chunksOf,
   planPasses,
-  planWindows,
   readEnd,
+  type Chunk,
   type TextSpan,
 } from "../../lib/capture/windows";
+import type { TokenCounts } from "../../lib/contract";
 import { makeText, rng, seeds, type Rng, type TextOpts } from "./random";
 import { MAX_UNIT_TEXT_CHARS } from "../../lib/dom/text";
+import { planText } from "./fakeCounts";
 
 function forSeeds(count: number, check: (r: Rng, seed: number) => void): void {
   for (const seed of seeds(count)) {
@@ -56,129 +58,134 @@ function shape(r: Rng): TextOpts {
   ]);
 }
 
-const noSurrogateCut = (text: string, at: number): void => {
-  const before = text.charCodeAt(at - 1);
-  if (at > 0) expect(before >= 0xd800 && before <= 0xdbff).toBe(false);
-};
-
-/** Every invariant the pieces of one text must satisfy. */
-function checkPieces(text: string, end: number, pieces: TextSpan[]): void {
-  expect(pieces[0]?.start ?? 0).toBe(0);
-  for (let i = 0; i < pieces.length; i++) {
-    expect(pieces[i].end).toBeGreaterThan(pieces[i].start);
-    expect(pieces[i].end - pieces[i].start).toBeLessThanOrEqual(MAX_PIECE_CHARS);
-    if (i > 0) expect(pieces[i].start).toBe(pieces[i - 1].end);
-    noSurrogateCut(text, pieces[i].start);
+/** Every invariant the chunks of one text must satisfy: what breaks one, or null. */
+function chunkFault(text: string, end: number, chunks: Chunk[]): string | null {
+  if ((chunks[0]?.start ?? 0) !== 0) return "does not start at 0";
+  const starts = new Set(chunks.map((c) => c.start));
+  for (let i = 0; i < chunks.length; i++) {
+    const c = chunks[i];
+    if (c.end <= c.start) return `empty chunk ${i}`;
+    if (i > 0 && c.start !== chunks[i - 1].end) return `gap before chunk ${i}`;
+    if (c.glued !== (c.start > 0 && !/\s/.test(text[c.start - 1]))) return `chunk ${i} glued wrong`;
+    if (text.slice(c.start, c.end).trimEnd().length > MAX_CHUNK_CHARS) return `chunk ${i} too long`;
+    const before = text.charCodeAt(c.start - 1);
+    if (c.start > 0 && before >= 0xd800 && before <= 0xdbff) return `chunk ${i} splits a surrogate pair`;
   }
-  expect(pieces[pieces.length - 1]?.end ?? 0).toBe(end);
+  if ((chunks[chunks.length - 1]?.end ?? 0) !== end) return "does not reach the end";
+  // A pass can begin on every word.
+  for (let at = 1; at < end; at++) if (/\s/.test(text[at - 1]) && /\S/.test(text[at]) && !starts.has(at)) return `no chunk at word ${at}`;
+  return null;
 }
 
-/** Every invariant the passes over pieces holding `tokens` must satisfy. */
-function checkPasses(pieces: TextSpan[], tokens: number[], passes: TextSpan[], limit: number): void {
-  const edges = new Set(pieces.flatMap((p) => [p.start, p.end]));
-  const tokensIn = (s: TextSpan) =>
-    pieces.reduce((n, p, i) => (p.start >= s.start && p.end <= s.end ? n + tokens[i] : n), 0);
-  expect(passes.length).toBeGreaterThan(0);
-  expect(passes[0].start).toBe(pieces[0].start);
-  expect(passes[passes.length - 1].end).toBe(pieces[pieces.length - 1].end);
+/** Every invariant the passes over counted chunks must satisfy: what breaks one, or null. */
+function planFault(chunks: Chunk[], counts: TokenCounts, passes: TextSpan[]): string | null {
+  const k = chunks.length;
+  const inner = chunks.map((c, i) => (i === 0 || c.glued ? counts.alone[i] : counts.following[i]));
+  const cum = [0];
+  for (let i = 0; i < k; i++) cum.push(cum[i] + inner[i]);
+  const total = cum[k];
+  const index = new Map(chunks.map((c, i) => [c.start, i]));
+  index.set(chunks[k - 1].end, k);
+  const tokens = (s: TextSpan) => {
+    const a = index.get(s.start)!;
+    return cum[index.get(s.end)!] - cum[a] - inner[a] + counts.alone[a];
+  };
+
+  if (passes[0].start !== 0 || passes[passes.length - 1].end !== chunks[k - 1].end) return "does not cover the text";
+  // Never cut inside a chunk.
+  if (!passes.every((s) => index.has(s.start) && index.has(s.end))) return "cuts inside a chunk";
+  const halves = Math.min(k, Math.ceil((2 * total) / (PASS_TOKENS - 2 * SNAP_TOKENS)));
+  if (total <= PASS_TOKENS || halves < 3) return passes.length === 1 ? null : `${passes.length} passes where one fits`;
+  if (passes.length !== halves - 1) return `${passes.length} passes over ${halves} halves`;
   for (let i = 0; i < passes.length; i++) {
-    const s = passes[i];
-    // Never cut inside a piece.
-    expect(edges.has(s.start) && edges.has(s.end)).toBe(true);
-    // Inside the window — or one piece too large for it, on its own.
-    const inside = pieces.filter((p) => p.start >= s.start && p.end <= s.end).length;
-    if (inside > 1) expect(tokensIn(s)).toBeLessThanOrEqual(limit);
-    if (i > 0) {
-      // Forwards, and no gap: each starts past the one before and no later than its end.
-      expect(s.start).toBeGreaterThan(passes[i - 1].start);
-      expect(s.end).toBeGreaterThan(passes[i - 1].end);
-      expect(s.start).toBeLessThanOrEqual(passes[i - 1].end);
-    }
+    // Two neighbouring halves each: a pass ends where the one after next starts, and each
+    // starts inside the one before it, after its start, and reaches past its end.
+    if (i + 2 < passes.length && passes[i].end !== passes[i + 2].start) return `pass ${i} does not end where pass ${i + 2} starts`;
+    if (i > 0 && !(passes[i].start > passes[i - 1].start && passes[i].start < passes[i - 1].end && passes[i].end > passes[i - 1].end))
+      return `pass ${i} does not overlap the one before`;
   }
-  // About as many passes as half-pass steps across the text, not more.
-  const total = tokens.reduce((a, b) => a + b, 0);
-  if (total > limit) expect(passes.length).toBeLessThanOrEqual(Math.ceil((2 * total) / limit) + 2);
+  // With no chunk larger than an edge may move, every pass fits and every edge lies within
+  // reach of its even place.
+  if (inner.every((n, i) => n <= SNAP_TOKENS && counts.alone[i] <= n + 2)) {
+    const over = passes.findIndex((s) => tokens(s) > PASS_TOKENS);
+    if (over >= 0) return `pass ${over} holds ${tokens(passes[over])} tokens`;
+    const far = passes.slice(1).findIndex((s, i) => Math.abs(cum[index.get(s.start)!] - ((i + 1) * total) / halves) > SNAP_TOKENS);
+    if (far >= 0) return `edge ${far + 1} out of reach`;
+  }
+  return null;
 }
 
-describe("cutPieces", () => {
-  it("cuts every text into short, contiguous pieces, however little it offers to cut at", () => {
+describe("chunksOf", () => {
+  it("cuts every text into contiguous words, however little it offers to cut at", () => {
     forSeeds(200, (r) => {
       const text = makeText(r, shape(r));
-      checkPieces(text, text.length, cutPieces(text));
+      expect(chunkFault(text, text.length, chunksOf(text))).toBeNull();
     });
   });
 
-  it("prefers a sentence start, then a clause mark, then a word", () => {
-    const sentences = "One sentence ends here. Another follows it now. ".repeat(20);
-    expect(cutPieces(sentences).every((p) => /^\S/.test(sentences.slice(p.start, p.end)))).toBe(true);
-    const clauses = ("a clause runs on, and on; " + "word ".repeat(10)).repeat(20);
-    const cuts = cutPieces(clauses).slice(1).map((p) => clauses.slice(p.start - 2, p.start));
-    expect(cuts.every((c) => /[,;] $/.test(c) || / $/.test(c))).toBe(true);
-    expect(cuts.some((c) => /[,;] $/.test(c))).toBe(true);
+  it("starts a chunk at a sentence with no space in front, and glues it on", () => {
+    const text = "第一句话。第二句话。 Third one.";
+    const chunks = chunksOf(text);
+    expect(chunks.map((c) => [text.slice(c.start, c.end), c.glued])).toEqual([["第一句话。", false], ["第二句话。 ", true], ["Third ", false], ["one.", false]]);
   });
 });
 
 describe("planPasses", () => {
-  it("reads pieces that fit the window in one pass", () => {
-    const pieces = [{ start: 0, end: 10 }, { start: 10, end: 30 }];
-    expect(planPasses(pieces, [100, 200])).toEqual([{ start: 0, end: 30 }]);
+  const counted = (r: Rng, chunks: Chunk[]): TokenCounts => {
+    const following = chunks.map(() => r.pick([r.int(1, 12), r.int(0, 3), r.int(20, 60), r.int(PASS_TOKENS / 2, 2 * PASS_TOKENS)]));
+    return { following, alone: following.map((n) => Math.max(0, n + r.int(-1, 2))) };
+  };
+
+  it("reads a text that fits in one pass", () => {
+    const text = "Two words.";
+    expect(planPasses(text, chunksOf(text), { alone: [200, 300], following: [201, 310] })).toEqual([{ start: 0, end: 10 }]);
   });
 
-  it("plans full, overlapping passes over counted pieces of every size", () => {
+  it("plans passes over two neighbouring halves each, over counted chunks of every size", () => {
     forSeeds(300, (r) => {
-      const k = r.int(2, 400);
-      const pieces: TextSpan[] = [];
-      const tokens: number[] = [];
-      for (let i = 0, at = 0; i < k; i++) {
-        const len = r.int(1, 300);
-        pieces.push({ start: at, end: at + len });
-        at += len;
-        // Mostly ordinary pieces, some tiny, now and then one larger than a pass.
-        tokens.push(r.pick([r.int(1, 80), r.int(1, 8), r.int(100, 300), r.int(PASS_TOKENS, 2 * PASS_TOKENS)]));
-      }
-      const limit = PASS_TOKENS - 8;
-      checkPasses(pieces, tokens, planPasses(pieces, tokens), limit);
+      const text = makeText(r, shape(r));
+      const chunks = chunksOf(text);
+      const counts = counted(r, chunks);
+      expect(planFault(chunks, counts, planPasses(text, chunks, counts))).toBeNull();
     });
   });
 
-  it("plans exactly one pass per half-pass step when pieces are one token each", () => {
-    const limit = PASS_TOKENS - 8;
-    for (let total = limit + 1; total <= limit * 8; total += 7) {
-      const pieces = Array.from({ length: total }, (_, i) => ({ start: i, end: i + 1 }));
-      const passes = planPasses(pieces, pieces.map(() => 1));
-      expect(passes.length).toBe(1 + Math.ceil((total - limit) / (limit / 2)));
-      expect(passes.every((s) => s.end - s.start === limit)).toBe(true);
+  it("divides a text of one-token words into halves even to the token", () => {
+    for (let words = 511; words <= 4000; words += 97) {
+      const text = Array.from({ length: words }, () => "a").join(" ");
+      const chunks = chunksOf(text);
+      const passes = planPasses(text, chunks, { alone: chunks.map(() => 1), following: chunks.map(() => 1) });
+      const halves = Math.ceil((2 * words) / (PASS_TOKENS - 2 * SNAP_TOKENS));
+      expect(passes).toHaveLength(halves - 1);
+      const edges = [...new Set(passes.flatMap((p) => [p.start, p.end]))].sort((a, b) => a - b);
+      const sizes = edges.slice(1).map((e, i) => text.slice(edges[i], e).split(" ").filter(Boolean).length);
+      expect(Math.max(...sizes) - Math.min(...sizes)).toBeLessThanOrEqual(1);
     }
   });
 
-  it("reads every token past the first half pass at least twice when pieces are small", () => {
-    const pieces = Array.from({ length: 200 }, (_, i) => ({ start: i * 40, end: (i + 1) * 40 }));
-    const tokens = pieces.map(() => 10);
-    const passes = planPasses(pieces, tokens);
-    const limit = PASS_TOKENS - 8;
-    for (let at = limit * 2; at < 8000 - limit * 2; at += 37) {
-      expect(passes.filter((s) => s.start <= at && s.end > at).length).toBeGreaterThanOrEqual(2);
+  it("moves an edge to a sentence start within reach, and no further", () => {
+    // 1 200 one-token words; a sentence starts every 50 words.
+    const words = Array.from({ length: 1200 }, (_, i) => (i % 50 === 49 ? "end." : i % 50 === 0 ? "Start" : "word"));
+    const text = words.join(" ");
+    const chunks = chunksOf(text);
+    const passes = planPasses(text, chunks, { alone: chunks.map(() => 1), following: chunks.map(() => 1) });
+    for (const p of passes.slice(1)) {
+      expect(text.slice(p.start).startsWith("Start")).toBe(true);
     }
   });
 });
 
-describe("planWindows (planned on estimates)", () => {
-  it("returns ONE pass identical to the input span for a text short enough", () => {
-    forSeeds(100, (r) => {
-      const text = makeText(r, { targetChars: r.int(1, ONE_PASS_CHARS), newlines: true }).slice(0, ONE_PASS_CHARS);
-      expect(planWindows(text)).toEqual([{ start: 0, end: text.length }]);
-    });
-  });
-
-  it("plans passes over the text's own pieces that hold everything that is read", () => {
+describe("the plan of a real text (four characters a token)", () => {
+  it("covers everything that is read, by halves, within the model's window", () => {
     forSeeds(200, (r) => {
-      const [text, spans] = planned(r);
-      if (text.length <= ONE_PASS_CHARS) return;
-      const pieces = cutPieces(text, readEnd(text));
-      checkPieces(text, readEnd(text), pieces);
-      const tokens = pieces.map((p) => estimateTokens(text.slice(p.start, p.end)));
-      checkPasses(pieces, tokens, spans, PASS_TOKENS - 8);
-      expect(spans.length).toBeLessThanOrEqual(MAX_WINDOWS);
+      const text = makeText(r, shape(r));
+      const end = readEnd(text);
+      const chunks = chunksOf(text, end);
+      expect(chunkFault(text, end, chunks)).toBeNull();
+      const passes = planText(text);
+      expect(passes[0].start).toBe(0);
+      expect(passes[passes.length - 1].end).toBe(end);
+      expect(passes.length).toBeLessThanOrEqual(MAX_WINDOWS);
     });
   });
 
@@ -186,7 +193,7 @@ describe("planWindows (planned on estimates)", () => {
     // Texts this long are 200 000 characters each: a dozen prove the bound.
     forSeeds(12, (r) => {
       const text = makeText(r, { targetChars: r.int(MAX_READ_CHARS, MAX_READ_CHARS + 20_000), newlines: true });
-      const spans = planWindows(text);
+      const spans = planText(text);
       const read = spans[spans.length - 1].end;
       expect(read).toBeLessThanOrEqual(MAX_READ_CHARS);
       expect(read).toBeGreaterThan(MAX_READ_CHARS - WINDOW_CHARS);
@@ -195,29 +202,22 @@ describe("planWindows (planned on estimates)", () => {
   });
 
   it("is deterministic: the same text plans the same way every time", () => {
-    forSeeds(200, (r) => {
-      const [text, spans] = planned(r);
-      expect(planWindows(text)).toEqual(spans);
-      expect(planWindows(text.slice())).toEqual(spans);
+    forSeeds(100, (r) => {
+      const text = makeText(r, shape(r));
+      expect(planText(text.slice())).toEqual(planText(text));
     });
   });
 });
 
-/** One seeded text and its plan — every property but the first works on this pair. */
-function planned(r: Rng): [string, TextSpan[]] {
-  const text = makeText(r, shape(r));
-  return [text, planWindows(text)];
-}
-
 describe("the two bounds on a long text", () => {
   it("reads everything a unit may hold", () => {
     // MAX_UNIT_TEXT_CHARS (lib/dom/text.ts) guards against a dump in one node;
-    // MAX_READ_CHARS is what the window planner will read. Were the second ever the
-    // smaller, a paragraph found on a page would be half-read again — the very thing the
+    // MAX_READ_CHARS is what the planner will read. Were the second ever the smaller, a
+    // paragraph found on a page would be half-read again — the very thing the
     // eight-window cost cap did to a 4 220-word answer.
     expect(MAX_READ_CHARS).toBeGreaterThanOrEqual(MAX_UNIT_TEXT_CHARS);
     const text = "A sentence of plain words that ends here. ".repeat(Math.ceil(MAX_UNIT_TEXT_CHARS / 42)).slice(0, MAX_UNIT_TEXT_CHARS);
-    const spans = planWindows(text);
+    const spans = planText(text);
     expect(spans[spans.length - 1].end).toBe(text.length);
   });
 });

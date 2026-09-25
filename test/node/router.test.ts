@@ -287,13 +287,13 @@ describe("router retry", () => {
   /** The real client over a scripted port: its generation is what decides whether a retry
    *  may still be answered, so a fake that keeps no generation cannot show this. */
   function nativeClient(fail: (client: NativeScoreClient) => Error) {
-    const health = {ok:true,contract:"2.1",model:A,n_buckets:4,buckets:["a","b","c","d"],max_tokens:512,device:"cpu",dtype:"fp32"};
+    const health = {ok:true,contract:"3.0",model:A,n_buckets:4,buckets:["a","b","c","d"],max_tokens:512,device:"cpu",dtype:"fp32"};
     let failures = 1;
     const request = vi.fn(async (op: string, payload?: Record<string, unknown>) => {
       if (op === "health") return {v:1 as const,id:"health",ok:true,status:200,data:health};
       if (failures-- > 0) throw fail(client);
       const blocks = payload!.blocks as ScoreBlock[];
-      return {v:1 as const,id:"score",ok:true,status:200,data:{v:"2.1",model:A,results:scored(blocks,A).results}};
+      return {v:1 as const,id:"score",ok:true,status:200,data:{v:"3.0",model:A,results:scored(blocks,A).results}};
     });
     const client: NativeScoreClient = new NativeScoreClient(request);
     return { client, ops: () => request.mock.calls.map(([op]) => op) };

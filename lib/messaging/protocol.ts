@@ -1,5 +1,5 @@
 // lib/messaging/protocol.ts — action constants + typed envelope shapes.
-import type { ModelInfo, ScoreBatchRequest, ScoreResult } from "../contract";
+import type { ModelInfo, ScoreBatchRequest, ScoreResult, TokenCounts } from "../contract";
 
 export const ACTIONS = {
   SCORE_BATCH: "scoreBatch",
@@ -90,9 +90,9 @@ export interface CountTokensMessage {
   texts: string[];
 }
 
-/** SW → content: one count per text, in order, or null when the engine cannot count. */
+/** SW → content: the counts of every text, in order, or null when the engine did not answer. */
 export interface CountTokensReply {
-  counts: number[] | null;
+  counts: TokenCounts | null;
 }
 
 /** SW → content (response to SCORE_BATCH). */

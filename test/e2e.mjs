@@ -309,15 +309,17 @@ const checks = [
   ["LONG paragraph underline reaches the end (HF regression)", s.hl.longtail],
   ["LONG paragraph is still one pass: no pass row in its card", !/Scored|Read in/.test(snapshotCardOf.longpara)],
   ["WINDOWED paragraph: exactly ONE chip, showing one score and no per cent sign", s.sections.windowed === 1 && /^(\.\d\d|1\.0)$/.test(s.windowed.chip)],
-  ["WINDOWED paragraph: counted by the engine, then read whole in 3 overlapping passes, none past its token window",
-    windowCounted && windowBlocks.length === 3 && windowAt[0][0] === 0 && windowAt[2][1] === s.windowed.text.length &&
-    windowAt.every(([from, to], i) => i === 0 || (from > windowAt[i - 1][0] && from < windowAt[i - 1][1] && to > windowAt[i - 1][1])) && windowVerdicts.every((v) => v.truncated === false)],
+  ["WINDOWED paragraph: counted by the engine, then read whole in passes over two neighbouring halves each, none past its token window",
+    windowCounted && windowBlocks.length >= 3 && windowAt[0][0] === 0 && windowAt[windowAt.length - 1][1] === s.windowed.text.length &&
+    windowAt.every(([from, to], i) => i === 0 || (from > windowAt[i - 1][0] && from < windowAt[i - 1][1] && to > windowAt[i - 1][1])) &&
+    windowAt.every(([, to], i) => i + 2 >= windowAt.length || s.windowed.text.slice(to).trimStart() === s.windowed.text.slice(windowAt[i + 2][0])) &&
+    windowVerdicts.every((v) => v.truncated === false)],
   ["WINDOWED paragraph: underline reaches the final sentence", s.hl.windowtail],
   ["WINDOWED paragraph: marked stretch by stretch — the opening in the first pass's colour, the close in the last's, the rest between",
-    passSteps[0] !== passSteps[2] && drawnSteps.includes(passSteps[0]) && drawnSteps.includes(passSteps[2]) &&
-    drawnSteps.every((b) => b >= [...passSteps].sort()[0] && b <= [...passSteps].sort()[2])],
-  ["WINDOWED paragraph: the card reads 'Read in 3 passes' with each pass's number, and claims no prefix",
-    s.windowed.card.includes(`Read in 3 passes${expectedScores.join("\u00a0· ")}`) && !/Only the opening|first \d+/.test(s.windowed.card)],
+    passSteps[0] !== passSteps.at(-1) && drawnSteps.includes(passSteps[0]) && drawnSteps.includes(passSteps.at(-1)) &&
+    drawnSteps.every((b) => b >= [...passSteps].sort()[0] && b <= [...passSteps].sort().at(-1))],
+  ["WINDOWED paragraph: the card reads 'Read in N passes' with each pass's number, and claims no prefix",
+    s.windowed.card.includes(`Read in ${windowBlocks.length} passes${expectedScores.join("\u00a0· ")}`) && !/Only the opening|first \d+/.test(s.windowed.card)],
   ["BR-split halves merged into one unit", s.sections.brsplit === 1 && s.hl.br1 && s.hl.br2],
   ["three short siblings merged into one unit", s.sections.mergeshorts === 1 && s.hl.ms1 && s.hl.ms2 && s.hl.ms3],
   ["one-sentence-per-line post: one unit from the first line to the last, without the name row", s.sections.postlines === 1 && s.hl.post1 && s.hl.postN && !s.hl.posterName],

@@ -1,7 +1,7 @@
 import { browser } from "#imports";
-import { CONTRACT_VERSION, type ModelInfo, type ScoreBlock, type ScoreClient, type ScoredBatch } from "../contract";
+import { CONTRACT_VERSION, type ModelInfo, type ScoreBlock, type ScoreClient, type ScoredBatch, type TokenCounts } from "../contract";
 import type { BackendStatus } from "../messaging/protocol";
-import { componentIsBehind, countsTokens, parseHealth, parseScoreResponse, parseTokenCounts } from "./scoreProtocol";
+import { componentIsBehind, parseHealth, parseScoreResponse, parseTokenCounts } from "./scoreProtocol";
 import { type NativeOperation, type NativePayload, type NativeReply } from "./nativeProtocol";
 import { nativeTransport, NativeTransportError, RECONNECT_MS } from "./nativeTransport";
 
@@ -20,16 +20,13 @@ export class NativeScoreClient implements ScoreClient {
     server:{ok:false, checkedAt:0, reason:"unreachable"}};
   private probing: Promise<void> | undefined;
   private generation = 0;
-  /** Whether the engine counts tokens: from the contract its health reported, or — while
-   *  that is unknown (it has only answered idle) — learned from asking once. */
-  private counts: boolean | undefined;
   constructor(private readonly request: Request = (op, payload, signal) => nativeTransport().request(op, payload, signal)) {}
   /** The runtime changed: work in flight belongs to the old one, and health must be read again. */
   invalidate(): void { this.generation++; this.disconnected(); }
   /** The port closed. Every request on it was refused, so none can answer late and no
    *  identity changed: only health is unknown until it is read again. */
   disconnected(): void { this.current = {...this.current, active:"down", model:null,
-    server:{ok:false,checkedAt:0,reason:"unreachable"}}; this.probing = undefined; this.counts = undefined; }
+    server:{ok:false,checkedAt:0,reason:"unreachable"}}; this.probing = undefined; }
   isUp(): boolean { return this.current.server.ok; }
   model(): ModelInfo { return { ...(this.current.model ?? NONE) }; }
   revision(): number { return this.generation; }
@@ -50,7 +47,6 @@ export class NativeScoreClient implements ScoreClient {
         if (result?.ok) {
           const h = result.health;
           this.observeModel(h.model);
-          this.counts = countsTokens(h.contract);
           this.current = {active:"server",model:{...h.model},
             server:{ok:true,checkedAt:Date.now(),device:h.device,dtype:h.dtype,
               outdated:componentIsBehind(h.app_version,extensionVersion())}};
@@ -74,20 +70,15 @@ export class NativeScoreClient implements ScoreClient {
   }
   async status(force: boolean): Promise<BackendStatus> { await this.probe(force); return this.current; }
   /**
-   * How many model tokens each text is, counted by the engine's own tokenizer on the text
-   * it scores; null when it cannot say. An engine older than the count refuses the
-   * operation, and that is remembered until the port closes.
+   * How many model tokens each text is, alone and following a space, counted by the
+   * engine's own tokenizer on the text it scores; null when it did not answer.
    */
-  async countTokens(texts: string[], signal?: AbortSignal): Promise<number[] | null> {
+  async countTokens(texts: string[], signal?: AbortSignal): Promise<TokenCounts | null> {
+    if (texts.length === 0) return { alone: [], following: [] };
     await this.probe();
-    if (this.counts === false || texts.length === 0) return this.counts === false ? null : [];
     try {
       const reply = await this.request("tokens", {v:CONTRACT_VERSION, texts}, signal);
-      if (!reply.ok) {
-        if (reply.error?.code === "invalid_request" && this.counts === undefined) this.counts = false;
-        return null;
-      }
-      return parseTokenCounts(reply.data, texts.length);
+      return reply.ok ? parseTokenCounts(reply.data, texts.length) : null;
     } catch {
       return null;
     }

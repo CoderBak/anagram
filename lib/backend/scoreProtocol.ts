@@ -1,8 +1,8 @@
 // Validate local component responses before results can become chips or cache entries.
 // A batch's own model identity records which configuration produced its verdicts.
 import * as v from "valibot";
-import { BUCKET_COUNT, CONTRACT_VERSION, COUNTS_TOKENS_FROM } from "../contract";
-import type { ScoreBlock, ScoredBatch, ScoreResult } from "../contract";
+import { BUCKET_COUNT, CONTRACT_VERSION } from "../contract";
+import type { ScoreBlock, ScoredBatch, ScoreResult, TokenCounts } from "../contract";
 
 /** Stored probabilities are rounded to 3–4 decimals; allow that much drift in the sum. */
 const PROB_SUM_TOLERANCE = 0.02;
@@ -124,23 +124,18 @@ function toResult(r: v.InferOutput<typeof ResultSchema>): ScoreResult {
   return out;
 }
 
-/** Does an engine reporting `contract` count tokens? Same major, and a minor at or past
- *  COUNTS_TOKENS_FROM's. */
-export function countsTokens(contract: string | undefined): boolean {
-  const [major, minor] = (contract ?? "").split(".").map(Number);
-  const [needMajor, needMinor] = COUNTS_TOKENS_FROM.split(".").map(Number);
-  return major === needMajor && Number.isInteger(minor) && minor >= needMinor;
-}
-
+const Counts = v.array(v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(1_000_000)));
 const TokenCountsSchema = v.object({
-  counts: v.array(v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(1_000_000))),
+  alone: Counts,
+  following: Counts,
   window: v.pipe(v.number(), v.integer(), v.minValue(1)),
 });
 
-/** One count per text asked about, or null for an answer of any other shape. */
-export function parseTokenCounts(body: unknown, asked: number): number[] | null {
+/** Both counts for every text asked about, or null for an answer of any other shape. */
+export function parseTokenCounts(body: unknown, asked: number): TokenCounts | null {
   const parsed = v.safeParse(TokenCountsSchema, body);
-  return parsed.success && parsed.output.counts.length === asked ? parsed.output.counts : null;
+  if (!parsed.success || parsed.output.alone.length !== asked || parsed.output.following.length !== asked) return null;
+  return { alone: parsed.output.alone, following: parsed.output.following };
 }
 
 /** Validate identity, probabilities and requested block IDs. */

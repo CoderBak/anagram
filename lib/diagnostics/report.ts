@@ -19,7 +19,6 @@
 // knows is handed in as `DiagnosticsEnv` by lib/diagnostics/index.ts, which is the part
 // that does run in the content script. It also makes the whole report provable in a plain
 // browser page, which is where test/unit.mjs checks that no page text escapes it.
-import { planWindows } from "../capture/windows";
 import { findMainContent } from "../dom/mainContent";
 import { MIN_MERGE_WORDS } from "../dom/text";
 import { captureRegion, pathOf } from "./anonymise";
@@ -187,7 +186,6 @@ function regionFor(target: Element | null): { el: Element; why: string } {
 
 export async function buildDiagnostics(env: DiagnosticsEnv): Promise<string> {
   const survey = surveyPage({ running: env.running, max: MAX_SILENT });
-  const windows = survey.units.reduce((n, u) => n + planWindows(u.text).length, 0);
   const coverage = survey.proseWords > 0 ? Math.round((survey.wordsJudged / survey.proseWords) * 100) : 0;
 
   const lines: string[] = [];
@@ -217,7 +215,7 @@ export async function buildDiagnostics(env: DiagnosticsEnv): Promise<string> {
   lines.push("");
   lines.push("## Counts");
   lines.push(
-    `- units ${survey.units.length} (${survey.multiPartUnits} multi-part) · windows ${windows} · ` +
+    `- units ${survey.units.length} (${survey.multiPartUnits} multi-part) · ` +
       `chips on the page ${survey.chips}`,
   );
   lines.push(

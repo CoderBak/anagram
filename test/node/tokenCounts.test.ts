@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { createTokenCounter } from "../../lib/backend/tokenCounts";
-import type { ModelInfo } from "../../lib/contract";
+import type { ModelInfo, TokenCounts } from "../../lib/contract";
 
 function source(counts: ((texts: string[]) => number[] | null), id = "editlens-fp32") {
+  const pairs = (texts: string[]): TokenCounts | null => {
+    const n = counts(texts);
+    return n && { alone: n, following: n.map((x) => x + 1) };
+  };
   const asked: string[][] = [];
   const model: ModelInfo = { id, ver: "1", calibration: "none" };
   return {
     asked,
     model: () => ({ ...model }),
     setModel: (next: string) => { model.id = next; },
-    async countTokens(texts: string[]) { asked.push(texts); return counts(texts); },
+    async countTokens(texts: string[]) { asked.push(texts); return pairs(texts); },
   };
 }
 
@@ -17,8 +21,8 @@ describe("token counts in the worker", () => {
   it("asks the engine once per distinct piece and answers again from memory", async () => {
     const s = source((texts) => texts.map((t) => t.length));
     const counter = createTokenCounter(s);
-    expect(await counter.count(["one", "three", "one"])).toEqual([3, 5, 3]);
-    expect(await counter.count(["three", "sixteen"])).toEqual([5, 7]);
+    expect(await counter.count(["one", "three", "one"])).toEqual({ alone: [3, 5, 3], following: [4, 6, 4] });
+    expect(await counter.count(["three", "sixteen"])).toEqual({ alone: [5, 7], following: [6, 8] });
     expect(s.asked).toEqual([["one", "three"], ["sixteen"]]);
   });
 
@@ -41,6 +45,6 @@ describe("token counts in the worker", () => {
     const counter = createTokenCounter(s);
     expect(await counter.count(["one"])).toBeNull();
     up = true;
-    expect(await counter.count(["one"])).toEqual([2]);
+    expect(await counter.count(["one"])).toEqual({ alone: [2], following: [3] });
   });
 });

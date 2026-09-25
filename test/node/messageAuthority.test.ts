@@ -80,7 +80,7 @@ describe("document-scoped authorization",()=>{
   });
 });
 describe("worker message schema and roles",()=>{
-  const score=()=>({action:ACTIONS.SCORE_BATCH,req:{v:"2.2",session:"scan",priority:"viewport",blocks:[{id:"one",text:"Paragraph"}]}});
+  const score=()=>({action:ACTIONS.SCORE_BATCH,req:{v:"3.0",session:"scan",priority:"viewport",blocks:[{id:"one",text:"Paragraph"}]}});
   it("bounds requests before hashing or scheduling",()=>{
     expect(parseWorkerMessage(score())).not.toBeNull();
     for(const change of [{priority:"urgent"},{session:"x".repeat(65)},{blocks:Array.from({length:257},(_,i)=>({id:String(i),text:"x"}))},{blocks:[{id:"one",text:"x".repeat(16001)}]},{blocks:[{id:"one",text:"x"},{id:"one",text:"y"}]},{blocks:Array.from({length:17},(_,i)=>({id:String(i),text:"x".repeat(16000)}))}])

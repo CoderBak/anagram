@@ -5,7 +5,7 @@ import { followSystemTheme } from "../../lib/ui/theme";
 import { t } from "../../lib/i18n";
 import { CONTRACT_VERSION, type ModelInfo, type ScoreResult } from "../../lib/contract";
 import { countWords, MIN_UNIT_WORDS } from "../../lib/dom/text";
-import { planWindows, readInWindows, unitVerdict, type WindowVerdict } from "../../lib/capture/windows";
+import { readInWindows, unitVerdict, type WindowVerdict } from "../../lib/capture/windows";
 import { requestScores, requestTokenCounts } from "../../lib/messaging/client";
 import { modelDim } from "../../lib/backend/router";
 import { cancelDocumentSession } from "../../lib/access/session";
@@ -70,7 +70,7 @@ analyze.addEventListener("click", async () => {
     if (seq !== generation) return;
     const read = windows.get("paste"); if (!read?.length) throw new Error("incomplete");
     const scored = read.filter((w) => !w.result.unsupported && !w.result.degraded);
-    const coverage = t("pasteCoverage", scored.length, read.length || planWindows(text).length,
+    const coverage = t("pasteCoverage", scored.length, read.length,
       read.filter((w) => w.result.unsupported).length, read.filter((w) => w.result.degraded).length,
       read.filter((w) => w.result.truncated).length);
     document.getElementById("coverage")!.textContent = coverage;

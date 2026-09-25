@@ -157,7 +157,7 @@ describe("privileged native operation boundary", () => {
 });
 
 const MODEL = {id:"editlens_roberta-large",ver:"verified-fp32",calibration:"editlens"};
-const HEALTH = {ok:true,contract:"2.1",model:MODEL,n_buckets:4,buckets:["a","b","c","d"],max_tokens:512,device:"cpu",dtype:"fp32"};
+const HEALTH = {ok:true,contract:"3.0",model:MODEL,n_buckets:4,buckets:["a","b","c","d"],max_tokens:512,device:"cpu",dtype:"fp32"};
 const result = {id:"block",bucket:0,probs:[1,0,0,0],score:0};
 const reply = (data:unknown) => ({v:1 as const,id:"test",ok:true,status:200,data});
 describe("native scoring preserves the scoring contract", () => {
@@ -172,7 +172,7 @@ describe("native scoring preserves the scoring contract", () => {
   });
   it("caches health and adopts the actual producing model identity", async () => {
     const request = vi.fn().mockResolvedValueOnce(reply(HEALTH))
-      .mockResolvedValueOnce(reply({v:"2.1",model:{...MODEL,ver:"verified-fp16"},results:[result]}));
+      .mockResolvedValueOnce(reply({v:"3.0",model:{...MODEL,ver:"verified-fp16"},results:[result]}));
     const client = new NativeScoreClient(request);
     await client.ready(); expect(client.model()).toEqual(MODEL);
     const batch = await client.scoreBatch([{id:"block",text:"sample"}]);
@@ -181,7 +181,7 @@ describe("native scoring preserves the scoring contract", () => {
   });
   it("rejects invalid probabilities instead of showing or caching a verdict", async () => {
     const request = vi.fn().mockResolvedValueOnce(reply(HEALTH))
-      .mockResolvedValueOnce(reply({v:"2.1",model:MODEL,results:[{...result,probs:[1,1,1,1]}]}));
+      .mockResolvedValueOnce(reply({v:"3.0",model:MODEL,results:[{...result,probs:[1,1,1,1]}]}));
     const client = new NativeScoreClient(request);
     await expect(client.scoreBatch([{id:"block",text:"sample"}])).rejects.toThrow(/probabilities/);
     expect(client.isUp()).toBe(false); expect(client.model().id).toBe("none");
@@ -197,31 +197,22 @@ describe("native scoring preserves the scoring contract", () => {
 describe("token counts come from the engine that scores", () => {
   const byOp = (health: unknown, tokens: (texts: string[]) => unknown) =>
     vi.fn(async (op: string, payload: unknown) => (op === "health" ? health : tokens((payload as {texts:string[]}).texts)) as NativeReply);
-  const idle = {v:1 as const,id:"health",ok:false,status:503,error:{code:"engine_idle",message:"Idle"}};
-  it("asks an engine whose contract counts, and takes only an answer with a count per text", async () => {
-    let answer = (texts: string[]): unknown => reply({counts:texts.map((t) => t.length),window:510});
-    const request = byOp(reply({...HEALTH,contract:"2.2"}), (texts) => answer(texts));
+  it("asks for both counts and takes only an answer with both for every text", async () => {
+    let answer = (texts: string[]): unknown =>
+      reply({alone:texts.map((t) => t.length),following:texts.map((t) => t.length + 1),window:510});
+    const request = byOp(reply(HEALTH), (texts) => answer(texts));
     const client = new NativeScoreClient(request);
-    expect(await client.countTokens(["one","three"])).toEqual([3,5]);
-    expect(request).toHaveBeenCalledWith("tokens", {v:"2.2",texts:["one","three"]}, undefined);
-    answer = () => reply({counts:[1],window:510});
+    expect(await client.countTokens(["one","three"])).toEqual({alone:[3,5],following:[4,6]});
+    expect(request).toHaveBeenCalledWith("tokens", {v:"3.0",texts:["one","three"]}, undefined);
+    answer = () => reply({alone:[1,2],following:[1],window:510});
     expect(await client.countTokens(["one","three"])).toBeNull();
+    answer = () => ({v:1,id:"tokens",ok:false,status:503,error:{code:"not_ready",message:"Not ready"}});
+    expect(await client.countTokens(["one"])).toBeNull();
   });
-  it("never asks an engine whose contract predates counting", async () => {
+  it("answers no texts without asking", async () => {
     const request = byOp(reply(HEALTH), () => { throw new Error("asked"); });
-    const client = new NativeScoreClient(request);
-    expect(await client.countTokens(["one"])).toBeNull();
-    expect(request.mock.calls.map((c) => c[0])).not.toContain("tokens");
-  });
-  it("learns from one refusal that an idle engine it cannot see cannot count, until the port closes", async () => {
-    const request = byOp(idle, () => ({v:1,id:"tokens",ok:false,status:422,error:{code:"invalid_request",message:"Invalid native request envelope or operation"}}));
-    const client = new NativeScoreClient(request);
-    expect(await client.countTokens(["one"])).toBeNull();
-    expect(await client.countTokens(["one"])).toBeNull();
-    expect(request.mock.calls.filter((c) => c[0] === "tokens")).toHaveLength(1);
-    client.disconnected();
-    expect(await client.countTokens(["one"])).toBeNull();
-    expect(request.mock.calls.filter((c) => c[0] === "tokens")).toHaveLength(2);
+    expect(await new NativeScoreClient(request).countTokens([])).toEqual({alone:[],following:[]});
+    expect(request).not.toHaveBeenCalled();
   });
 });
 
@@ -263,7 +254,7 @@ describe("native scoring lifecycle generation", () => {
     const idle = {v:1,id:"health",ok:false,status:503,error:{code:"engine_idle",message:"Unloaded"}};
     const loading = {v:1,id:"score",ok:false,status:503,error:{code:"not_ready",message:"Loading"}};
     const request = vi.fn().mockResolvedValueOnce(idle).mockResolvedValueOnce(loading)
-      .mockResolvedValueOnce(reply({v:"2.1",model:MODEL,results:[result]}));
+      .mockResolvedValueOnce(reply({v:"3.0",model:MODEL,results:[result]}));
     const client = new NativeScoreClient(request);
     await client.ready(); const generation = client.revision();
     expect(client.isUp()).toBe(false);
@@ -298,7 +289,7 @@ describe("native scoring lifecycle generation", () => {
     expect(client.isUp()).toBe(true); expect(client.revision()).toBe(generation);
     // Health is asked again rather than assumed, and it says the engine is there.
     expect(await client.status(false)).toMatchObject({active:"server",server:{ok:true}});
-    held.resolve(reply({v:"2.1",model:MODEL,results:[result]}));
+    held.resolve(reply({v:"3.0",model:MODEL,results:[result]}));
     expect((await running).model).toEqual(MODEL);
     expect(request.mock.calls.map(([operation]) => operation)).toEqual(["health", "score", "score", "health"]);
   });
@@ -311,7 +302,7 @@ describe("native scoring lifecycle generation", () => {
     const client = new NativeScoreClient(request);
     await client.ready(); const work = client.scoreBatch([{id:"block",text:"sample"}]);
     await Promise.resolve(); client.invalidate();
-    held.resolve(reply({v:"2.1",model:MODEL,results:[result]}));
+    held.resolve(reply({v:"3.0",model:MODEL,results:[result]}));
     await expect(work).rejects.toMatchObject({code:"cancelled"});
     await client.ready(); const generation = client.revision();
     await client.status(true); expect(client.revision()).toBe(generation + 1);

@@ -37,21 +37,25 @@ export { formatScore, spokenScore } from "../lib/render/score";
 export { createBadgeLayer } from "../lib/render/badge";
 export { locateSpans } from "../lib/dom/locate";
 export {
-  planWindows,
-  cutPieces,
+  chunksOf,
+  wordsOf,
   planPasses,
+  fitsWithoutCounting,
   readEnd,
-  estimateTokens,
   halve,
   blockText,
   unitVerdict,
   WINDOW_CHARS,
-  ONE_PASS_CHARS,
   PASS_TOKENS,
-  MAX_PIECE_CHARS,
+  SNAP_TOKENS,
+  MAX_CHUNK_CHARS,
   MAX_WINDOWS,
   MAX_READ_CHARS,
 } from "../lib/capture/windows";
+// The passes a text is read in with the fixtures' pretend tokenizer standing in for the
+// engine's count (the engine's real counts are checked in test/node/windows.test.ts).
+export { planText as planWindows, spanTokens } from "./node/fakeCounts";
+export { fakeTokens } from "./fakeTokens.mjs";
 export { windowReadout, coverageNote } from "../lib/render/coverage";
 // The page diagnostics ship as an on-demand chunk that touches no extension API at all
 // (lib/diagnostics/chunk.ts), which is exactly what lets the privacy check run them here,

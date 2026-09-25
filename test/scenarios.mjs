@@ -20,7 +20,7 @@ import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
 import http from "node:http";
 import { launchExtension, serveHtml, artifact, uiLanguage, uiLanguageOf, BADGE_SEL } from "./harness.mjs";
-import { createNativeFixture } from "./fake-native.mjs";
+import { createNativeFixture, fakeTokens } from "./fake-native.mjs";
 import { docsReadingHtml } from "./fixtures/docs-reading.mjs";
 import {
   GROUPED_PARAS,
@@ -54,7 +54,7 @@ const STALL_MS = 4000;
 const DENSE_MARKER = "DENSEPACK";
 const SOLID_MARKER = "SOLIDPACK";
 const FIXTURE_OPTS = {
-  rules: [{contains: STALL_MARKER, delayMs: STALL_MS}, {contains: SOLID_MARKER, tokens: 600}, {contains: DENSE_MARKER, charsPerToken: 2}],
+  rules: [{contains: STALL_MARKER, delayMs: STALL_MS}, {contains: SOLID_MARKER, tokens: 600}],
 };
 let fixture = await createNativeFixture(FIXTURE_OPTS);
 
@@ -110,7 +110,7 @@ ${KEY_TAGS.map((t, i) => `<p id="k${i + 1}">${KEY_PARA(t)}</p>\n<div style="heig
 // therefore deaf to the rule written for the page it sits in.
 const FRAME_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>framed article</title></head><body style="margin:12px;font:15px/1.6 system-ui">
 <p id="fp">${PARA("FRAMED")}</p></body></html>`;
-// Pass fixtures: the self-test page's three-pass paragraph (~3750 characters, its seeded
+// Pass fixtures: the self-test page's paragraph read in passes (~3750 characters, its seeded
 // pass verdicts add up to a FLAGGED aggregate — test/e2e.mjs prints them), once as a
 // paragraph for the copied report and once in a <textarea>, which passive capture never
 // scores, so the only thing that can read it is the selection card.
@@ -126,23 +126,26 @@ const readWhole = (blocks, text) => {
     at.every(([from, to], i) => i === 0 || (from > at[i - 1][0] && from < at[i - 1][1] && to > at[i - 1][1]));
 };
 const WINDOWS_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>windows fixture</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
-<h1>One paragraph, three passes</h1>
+<h1>One paragraph, several passes</h1>
 <p id="wp">${WINDOWED_TEXT}</p>
 </body></html>`;
 const LONGSEL_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>long selection fixture</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
 <h1>A selection longer than the model reads in one pass</h1>
 <textarea id="draft" style="width:100%;height:420px">${WINDOWED_TEXT}</textarea>
 </body></html>`;
-// Dense fixture: two paragraphs short enough in characters for one pass and still too long
-// for the model. The engine counts DENSEPACK's tokens, so that one is planned into more
-// passes; SOLID's count says it fits and the reading still comes back cut, and every
-// sentence carries the marker, so both halves of the re-read are cut too.
+// Dense fixture: two paragraphs short enough in characters for one pass. DENSEPACK's
+// figures are a token a digit, so its count says it is too long for one and it is planned
+// into more; SOLIDPACK's count says it fits and the reading still comes back cut (the
+// fixture's rule), and every sentence carries the marker, so both halves of the re-read are
+// cut too.
 const DENSE_PARA = (marker) =>
-  Array.from({ length: 14 }, (_, i) => `Line ${i + 1} of the ${marker} ledger lists the figures for that week, the running totals and the initials of whoever checked them.`).join(" ");
+  Array.from({ length: 14 }, (_, i) => `Line ${i + 1} of the ${marker} ledger lists 4471, 88310, 12480 and 30917 for that week, with the initials of whoever checked them.`).join(" ");
+const SOLID_PARA = (marker) =>
+  Array.from({ length: 10 }, (_, i) => `Line ${i + 1} of the ${marker} ledger lists the figures for that week, the running totals and the initials of whoever checked them.`).join(" ");
 const DENSE_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>dense fixture</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
 <h1>Few enough characters for one pass, more tokens than the model takes</h1>
 <p id="dense">${DENSE_PARA(DENSE_MARKER)}</p>
-<p id="solid">${DENSE_PARA(SOLID_MARKER)}</p>
+<p id="solid">${SOLID_PARA(SOLID_MARKER)}</p>
 </body></html>`;
 // Clipped fixture: a feed post the site shows three lines of, with the rest in the DOM
 // behind a "see more" control — the shape LinkedIn, Substack Notes and Goodreads use. The
@@ -967,13 +970,15 @@ async function sweep(page, steps = 6) {
       .catch(() => null);
     const blocks = [...new Set(fixture.stats.texts.filter((t) => t.length > 200 && WINDOWED_TEXT.includes(t)))]
       .sort((a, b) => WINDOWED_TEXT.indexOf(a) - WINDOWED_TEXT.indexOf(b));
+    const passRow = rows && Object.keys(rows).find((k) => /^Read in \d+ passes$/.test(k));
     const ok =
       !!rows &&
       Number(rows["Words selected"]) > 600 &&
       rows["Words analyzed"] === rows["Words selected"] &&
-      /^(\.\d\d|1\.0)\s·\s(\.\d\d|1\.0)\s·\s(\.\d\d|1\.0)$/.test(rows["Read in 3 passes"] ?? "") &&
+      !!passRow && passRow === `Read in ${blocks.length} passes` &&
+      new RegExp(`^(\\.\\d\\d|1\\.0)(\\s·\\s(\\.\\d\\d|1\\.0)){${blocks.length - 1}}$`).test(rows[passRow]) &&
       !("Model window" in rows) &&
-      blocks.length === 3 &&
+      blocks.length >= 3 &&
       readWhole(blocks, WINDOWED_TEXT);
     record("ui", "selection card: a long selection is analyzed whole, in overlapping passes — words analyzed = words selected", ok, JSON.stringify({ rows, blocks: blocks.map((t) => t.length) }));
     await p.close();
@@ -1030,7 +1035,7 @@ async function sweep(page, steps = 6) {
     const report = await p.evaluate(() => navigator.clipboard.readText().catch(() => null));
     // Windows hands the clipboard back with CRLF line ends; the report itself is LF.
     const line = (report ?? "").split(/\r?\n/).find((l) => l.startsWith("1. ")) ?? "";
-    const ok = chipped && /; \d+ words; read in 3 passes: (\.\d\d|1\.0) · (\.\d\d|1\.0) · (\.\d\d|1\.0)\)$/.test(line) && !line.includes("not read");
+    const ok = chipped && /; \d+ words; read in \d+ passes: (\.\d\d|1\.0)( · (\.\d\d|1\.0))+\)$/.test(line) && !line.includes("not read");
     record("ui", "copied report: a paragraph read in passes says so, with each pass's own number", ok, JSON.stringify({ chipped, line }));
     await p.close();
   }
@@ -1063,14 +1068,14 @@ async function sweep(page, steps = 6) {
     const inOrder = (texts, whole) => texts.sort((a, b) => whole.indexOf(a) - whole.indexOf(b));
     const dense = DENSE_PARA(DENSE_MARKER);
     const sent = inOrder([...new Set(fixture.stats.texts.filter((t) => t.includes(DENSE_MARKER)))], dense);
-    const solid = DENSE_PARA(SOLID_MARKER);
+    const solid = SOLID_PARA(SOLID_MARKER);
     const halves = inOrder([...new Set(fixture.stats.texts.filter((t) => t.includes(SOLID_MARKER) && t !== solid))], solid);
     const ok =
       !!cards &&
       `Read in ${sent.length} passes` in cards.dense.rows &&
       !("Passes cut short" in cards.dense.rows) &&
       !/not read/.test(cards.dense.foot) &&
-      !sent.includes(dense) && readWhole(sent, dense) && sent.every((t) => t.length / 2 <= 512) &&
+      !sent.includes(dense) && readWhole(sent, dense) && sent.every((t) => fakeTokens(t) <= 510) &&
       fixture.stats.texts.includes(solid) &&
       halves.length === 2 &&
       halves.join(" ") === solid &&

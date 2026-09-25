@@ -1,16 +1,17 @@
-// lib/capture/windows.ts — reading a long text completely, in overlapping passes.
+// lib/capture/windows.ts — reading a long text completely, in passes that overlap by half.
 //
 // EditLens reads 512 tokens and the engine cuts whatever is longer, so a long paragraph
 // used to be judged by its opening alone while the chip and the underline spoke for all
-// of it. A text that does not fit one pass is cut into small PIECES (paragraph joints,
-// sentence starts, then clause marks, spaces, and at worst a hard cut), the engine says
-// how many tokens each piece is, and the text is read in PASSES as full as the model
-// allows — 510 tokens — that overlap, so every word past the first half pass is read
-// twice and no one cut decides the verdict. Each pass is scored as a block of its own
-// through the ordinary pipeline (same wire contract; the canonical form of each pass is
-// what gets deduplicated and cached), and each stretch of text takes the passes that read
-// it, weighted towards the ones that read it with context on both sides. The chip states
-// ONE aggregate for the unit; the marks follow the stretches. The overwhelming majority of
+// of it. A text that does not fit one pass is divided into HALVES of equal token count and
+// read in PASSES of two neighbouring halves each, so every half past the first is read
+// twice: at the end of one pass, with what came before it, and at the start of the next,
+// with what comes after it. The two readings are mirror images and count alike. The engine
+// counts the tokens of every word (the `tokens` operation), so the halves are even to the
+// token, and each edge between two halves moves to a sentence start when one is near:
+// EditLens was trained on texts that begin where a text begins and are cut, if at all, at
+// the end. Each pass is scored as a block of its own through the ordinary pipeline (same
+// wire contract; the canonical form of each pass is what gets deduplicated and cached).
+// The chip states ONE aggregate for the unit; the marks follow the halves. Most
 // paragraphs fit one pass: same request text, same cache key, same card as before.
 //
 // Order of operations: the unit's OWN collapsed text is cut first and each pass is
@@ -20,7 +21,7 @@
 //
 // This file is pure text and arithmetic — no DOM — so the vitest suite can drive it. The
 // mapping of a stretch back to text nodes lives in lib/dom/locate.ts.
-import type { ScoreBlock, ScoreResult } from "../contract";
+import type { ScoreBlock, ScoreResult, TokenCounts } from "../contract";
 import { BUCKET_COUNT } from "../contract";
 import { canonicalForScoring, sentenceStarts } from "../dom/text";
 
@@ -42,27 +43,31 @@ export const WINDOW_CHARS = 1800;
 /** Text tokens the model reads in one pass: 512 less its two special tokens. */
 export const PASS_TOKENS = 510;
 
-/** Tokens a planned pass leaves free. Pieces are counted one by one, and the same words
- *  can come out a token apart at the seam where two pieces meet inside one pass. */
-const PASS_MARGIN = 8;
+/**
+ * How far, in tokens, an edge between two halves may move from its even place to land on a
+ * sentence start: about one sentence (English runs 20 to 30 tokens a sentence), so one is
+ * usually in reach. Passes are planned twice this short of PASS_TOKENS, so no two moved
+ * edges can push a pass past what the model reads.
+ */
+export const SNAP_TOKENS = 32;
+
+/** The longest run without a space that counts as one word (a URL, CJK without marks). */
+export const MAX_CHUNK_CHARS = 200;
+
+/** Emoji: the engine spells them out by name (":grinning_face:") before it counts. */
+const PICTOGRAPHIC = /[\p{Extended_Pictographic}\p{Regional_Indicator}\u20E3]/u;
 
 /**
- * A text this short is read in one pass without asking how many tokens it has: the densest
- * English the model is given — numbers, identifiers — runs above 2.4 characters a token,
- * and 1200 characters of it stay inside one pass. Nearly every paragraph is this short.
+ * Whether a text certainly fits one pass without asking the engine. The model's tokenizer
+ * never makes more tokens than the text has UTF-8 bytes, counted on what the engine reads
+ * — the canonical text, lower-cased. Only emoji grow on the way, so a text with one is
+ * always counted.
  */
-export const ONE_PASS_CHARS = 1200;
-
-/** What a piece is taken to hold when the engine cannot count (one older than the count,
- *  or not answering): 3.5 characters a token, which technical prose runs near. */
-const ESTIMATE_CHARS_PER_TOKEN = 3.5;
-
-export function estimateTokens(text: string): number {
-  return Math.ceil(text.length / ESTIMATE_CHARS_PER_TOKEN);
+export function fitsWithoutCounting(text: string): boolean {
+  if (text.length > 4 * PASS_TOKENS) return false;
+  const canonical = canonicalForScoring(text);
+  return !PICTOGRAPHIC.test(canonical) && new TextEncoder().encode(canonical.toLowerCase()).length <= PASS_TOKENS;
 }
-
-/** The longest piece a stretch with no better place to cut is divided into. */
-export const MAX_PIECE_CHARS = 300;
 
 /**
  * Most characters of one text that are ever read, and the scheduler's cost of a unit:
@@ -75,11 +80,11 @@ export const MAX_READ_CHARS = 201_600;
 
 /**
  * Most passes read per text: MAX_READ_CHARS of the densest text, at 2.5 characters a
- * token, in passes half a pass apart. A forward pass is around a tenth of a second on the
- * hardware this runs on. The passes of a long text never travel as one request
- * (requestSlices).
+ * token, is 80 640 tokens, or 2 × 80 640 / (PASS_TOKENS − 2 × SNAP_TOKENS) ≈ 362 halves.
+ * A forward pass is around a tenth of a second on the hardware this runs on. The passes of
+ * a long text never travel as one request (requestSlices).
  */
-export const MAX_WINDOWS = 320;
+export const MAX_WINDOWS = 400;
 
 /**
  * Hard bound on one block's text on the wire. NFKC can EXPAND text ("…" → "...",
@@ -180,117 +185,132 @@ export function readEnd(text: string): number {
   return pickCut(text, starts, MAX_READ_CHARS, MAX_READ_CHARS - WINDOW_CHARS, MAX_READ_CHARS);
 }
 
+/** A word of a text, as passes are planned on: its span, trailing space included. */
+export interface Chunk extends TextSpan {
+  /** No space before it: it goes on from the chunk before (a sentence that starts with no
+   *  space in front, as in Chinese, or a cut inside a run too long for one word). */
+  glued: boolean;
+}
+
 /**
- * Cut [0, end) into consecutive PIECES — the places a pass may begin or end. Paragraph
- * joints and sentence starts first (sentenceStarts); a stretch still longer than
- * MAX_PIECE_CHARS is cut again after the last clause mark followed by a space, or before
- * the last word inside it, and a run with neither (a URL, base64, a run of CJK without
- * marks) at MAX_PIECE_CHARS itself, never between the halves of a surrogate pair. A piece
- * is only a place a pass MAY cut: nothing depends on a sentence having been found, and
- * every character belongs to exactly one piece.
+ * Cut [0, end) into the words passes are planned on: a new chunk at every word start, at
+ * every sentence start (sentenceStarts, which finds sentences with no space in front too),
+ * and every MAX_CHUNK_CHARS inside a run without a space, never between the halves of a
+ * surrogate pair. Every character belongs to exactly one chunk.
  */
-export function cutPieces(text: string, end = text.length): TextSpan[] {
-  const bounds = [0, ...sentenceStarts(text.slice(0, end)).filter((at) => at > 0 && at < end), end];
-  const out: TextSpan[] = [];
-  for (let i = 0; i + 1 < bounds.length; i++) {
-    let start = bounds[i];
-    const stop = bounds[i + 1];
-    while (stop - start > MAX_PIECE_CHARS) {
-      const cut = softCut(text, start, start + MAX_PIECE_CHARS);
-      out.push({ start, end: cut });
+export function chunksOf(text: string, end = text.length): Chunk[] {
+  if (end <= 0) return [];
+  const cuts = new Set<number>([0]);
+  for (let at = 1; at < end; at++) if (/\s/.test(text[at - 1]) && /\S/.test(text[at])) cuts.add(at);
+  for (const at of sentenceStarts(text.slice(0, end))) if (at > 0 && at < end) cuts.add(at);
+  const sorted = [...cuts].sort((x, y) => x - y);
+  const out: Chunk[] = [];
+  for (let i = 0; i < sorted.length; i++) {
+    let start = sorted[i];
+    const stop = i + 1 < sorted.length ? sorted[i + 1] : end;
+    let glued = start > 0 && !/\s/.test(text[start - 1]);
+    let run = start;
+    while (run < stop && /\S/.test(text[run])) run++;
+    while (run - start > MAX_CHUNK_CHARS) {
+      let cut = start + MAX_CHUNK_CHARS;
+      const low = text.charCodeAt(cut);
+      if (low >= 0xdc00 && low <= 0xdfff) cut--;
+      out.push({ start, end: cut, glued });
       start = cut;
+      glued = true;
     }
-    if (stop > start) out.push({ start, end: stop });
+    out.push({ start, end: stop, glued });
   }
   return out;
 }
 
-/** A clause ends at one of these (Latin and CJK), and the next piece starts after it. */
-const CLAUSE_MARK = /[,;:，；：、—–)\]»"'”’]/;
-
-/** Where a stretch too long for one piece is cut, inside (start + a third, limit]: after
- *  the last clause mark followed by a space, else before the last word, else at limit. */
-function softCut(text: string, start: number, limit: number): number {
-  const floor = start + Math.floor(MAX_PIECE_CHARS / 3);
-  let word = -1;
-  for (let at = limit; at > floor; at--) {
-    if (!/\s/.test(text[at - 1]) || /\s/.test(text[at])) continue;
-    if (CLAUSE_MARK.test(text[at - 2] ?? "")) return at;
-    if (word < 0) word = at;
-  }
-  if (word > 0) return word;
-  const low = text.charCodeAt(limit);
-  return low >= 0xdc00 && low <= 0xdfff ? limit - 1 : limit;
+/** A text's chunks up to readEnd, and the canonical text of each: what the engine counts. */
+export function wordsOf(text: string): { chunks: Chunk[]; words: string[] } {
+  const chunks = chunksOf(text, readEnd(text));
+  const canonical = new Map<string, string>();
+  const words = chunks.map((c) => {
+    const raw = text.slice(c.start, c.end).trimEnd();
+    let word = canonical.get(raw);
+    if (word === undefined) canonical.set(raw, (word = canonicalForScoring(raw)));
+    return word;
+  });
+  return { chunks, words };
 }
 
 /**
- * The passes pieces holding `tokens` each are read in: [start, end) character spans, each
- * as full as `limit` allows, overlapping, and never cut inside a piece. Pieces within the
- * limit together are one pass. Otherwise the starts are aimed an even share of the way
- * from the first to the last — n = 1 + ⌈(N − L) / (L / 2)⌉ passes, half a pass apart at
- * most, give or take a piece — so nearly every token past the first half pass is read at
- * least twice. Each start is the piece boundary nearest its aim that is past the start
- * before it, no later than the end before it, and late enough to reach past that end —
- * progress, no gap, and no pass inside another — and each pass then takes pieces while
- * they fit. The last pass is anchored at the end, as full as it can be, when it is the one
- * planned next or starts no more than half a pass on, so a start snapped short of its aim
- * does not cost a pass. A piece larger than the limit on its own is a pass by itself; the
- * engine reads its opening and says so, and readInWindows reads it again in halves.
+ * The passes a text of `chunks` is read in, from each chunk's counts: `alone` where a
+ * pass starts on it, `following` a space inside one (a glued chunk goes on from the one
+ * before it, so it counts alone there too). The tokenizer never merges across a space, so
+ * those add up to exactly what the engine reads. One pass when the whole text fits
+ * PASS_TOKENS.
+ *
+ * Otherwise the text is divided into h = ⌈2N / (PASS_TOKENS − 2·SNAP_TOKENS)⌉ halves of
+ * N/h tokens and read in h − 1 passes, each over two neighbouring halves. Each edge
+ * between two halves moves to the nearest sentence start within SNAP_TOKENS of its even
+ * place, else the nearest word start there, else the nearest chunk, but never so far that
+ * a pass would outgrow PASS_TOKENS. A chunk too large for a pass on its own (a run of
+ * emoji the engine spells out) still makes one too long; the engine reads its opening and
+ * says so, and readInWindows reads it again in halves.
  */
-export function planPasses(
-  pieces: readonly TextSpan[],
-  tokens: readonly number[],
-  limit = PASS_TOKENS - PASS_MARGIN,
-): TextSpan[] {
-  const k = pieces.length;
+export function planPasses(text: string, chunks: readonly Chunk[], counts: TokenCounts): TextSpan[] {
+  const k = chunks.length;
   if (k === 0) return [];
+  const end = chunks[k - 1].end;
+  const alone = chunks.map((_, i) => Math.max(0, counts.alone[i] ?? 0));
+  const inner = chunks.map((c, i) => (i === 0 || c.glued ? alone[i] : Math.max(0, counts.following[i] ?? 0)));
   const cum = [0];
-  for (let i = 0; i < k; i++) cum.push(cum[i] + Math.max(0, tokens[i] ?? 0));
+  for (let i = 0; i < k; i++) cum.push(cum[i] + inner[i]);
   const total = cum[k];
-  const span = (a: number, b: number): TextSpan => ({ start: pieces[a].start, end: pieces[b - 1].end });
-  if (total <= limit) return [span(0, k)];
-  const steps = Math.ceil((total - limit) / (limit / 2));
-  const stride = (total - limit) / steps;
-  // The earliest start from which one pass reaches the end: where the last pass starts.
-  let anchor = k - 1;
-  while (anchor > 0 && total - cum[anchor - 1] <= limit) anchor--;
-  const out: TextSpan[] = [];
-  for (let a = 0; ; ) {
-    let e = a + 1;
-    while (e < k && cum[e + 1] - cum[a] <= limit) e++;
-    out.push(span(a, e));
-    if (e >= k) break;
-    // The last pass, if it leaves no gap: when it is the one planned next, or no more than
-    // half a pass on anyway.
-    if (anchor <= e && (out.length >= steps || cum[anchor] - cum[a] <= limit / 2)) {
-      out.push(span(anchor, k));
-      break;
-    }
-    // The next start: past this one, no later than this end, and late enough that the next
-    // pass takes the piece this one could not — or it would end where this one did.
-    let from = a + 1;
-    while (from < e && cum[e + 1] - cum[from] > limit) from++;
-    const aim = out.length * stride; // from the first start, so snapping does not drift
-    let b = from;
-    for (let i = from + 1; i <= e; i++) if (Math.abs(cum[i] - aim) < Math.abs(cum[b] - aim)) b = i;
-    if (b >= anchor) {
-      out.push(span(anchor, k));
-      break;
-    }
-    a = b;
-  }
-  return out;
-}
+  /** Tokens of a pass over chunks [a, b): its first word as a text starts, the rest in place. */
+  const tokens = (a: number, b: number): number => cum[b] - cum[a] - inner[a] + alone[a];
+  const halves = Math.min(k, Math.ceil((2 * total) / (PASS_TOKENS - 2 * SNAP_TOKENS)));
+  if (total <= PASS_TOKENS || halves < 3) return [{ start: 0, end }];
 
-/**
- * The passes a text is read in, planned on estimated token counts — for a caller that
- * cannot ask the engine, and for a count shown before reading (the paste page). One pass
- * covering everything when the text is short enough.
- */
-export function planWindows(text: string): TextSpan[] {
-  if (text.length <= ONE_PASS_CHARS) return [{ start: 0, end: text.length }];
-  const pieces = cutPieces(text, readEnd(text));
-  return planPasses(pieces, pieces.map((p) => estimateTokens(text.slice(p.start, p.end)))).slice(0, MAX_WINDOWS);
+  const sentences = new Set(sentenceStarts(text.slice(0, end)));
+  const edges = [0];
+  let mid = 0;
+  for (let i = 1; i < halves; i++) {
+    const aim = (i * total) / halves;
+    // Where this edge may go: past the one before, leaving a chunk for each edge after it,
+    // no further than the pass that began two edges back can reach, and — the last edge —
+    // no earlier than the last pass can start and still fit.
+    let lo = edges[i - 1] + 1;
+    let hi = k - (halves - i);
+    if (i >= 2) {
+      // A pass grows with its end: the last end that fits, by bisection (or, when not even
+      // the first does — a chunk too large for any pass — the first).
+      const from = edges[i - 2];
+      let a = lo;
+      let b = hi;
+      while (a < b) {
+        const m = (a + b + 1) >> 1;
+        if (tokens(from, m) <= PASS_TOKENS) a = m;
+        else b = m - 1;
+      }
+      hi = a;
+    }
+    if (i === halves - 1) while (lo < hi && tokens(lo, k) > PASS_TOKENS) lo++;
+    mid = Math.max(mid, lo);
+    while (mid < hi && cum[mid] < aim) mid++;
+    mid = Math.min(mid, hi);
+    let best = mid;
+    let bestRank = Infinity;
+    const consider = (j: number): void => {
+      const off = Math.abs(cum[j] - aim);
+      const kind = off > SNAP_TOKENS ? 3 : sentences.has(chunks[j].start) ? 0 : chunks[j].glued ? 2 : 1;
+      const rank = kind * (total + 1) + off;
+      if (rank < bestRank) {
+        bestRank = rank;
+        best = j;
+      }
+    };
+    for (let j = mid; j >= lo && (j >= mid - 1 || cum[j] >= aim - SNAP_TOKENS); j--) consider(j);
+    for (let j = mid + 1; j <= hi && cum[j] <= aim + SNAP_TOKENS; j++) consider(j);
+    edges.push(best);
+  }
+  edges.push(k);
+  const at = (j: number): number => (j < k ? chunks[j].start : end);
+  return edges.slice(0, -2).map((e, p) => ({ start: at(e), end: at(edges[p + 2]) }));
 }
 
 /**
@@ -361,22 +381,12 @@ function resultOf(id: string, probs: number[]): ScoreResult {
 }
 
 /**
- * How much a pass counts at a point: in full in its middle, down to a fifth at an edge where
- * it CUT the text, since it read the words there with nothing of what came before or after.
- * The text's own start and end are not cuts — every pass reads them without that context.
+ * The stretches between every two pass edges, each with the mean of the scored passes
+ * that read it: two for every half but the first and the last, which count alike — one
+ * read it with what came before, the other with what comes after. Passes that do not
+ * overlap (the halves of a pass read again) are their own stretches, unchanged.
  */
-function taper(pass: TextSpan, at: number, textLength: number): number {
-  const fromStart = pass.start > 0 ? at - pass.start : Infinity;
-  const fromEnd = pass.end < textLength ? pass.end - at : Infinity;
-  const nearest = Math.min(fromStart, fromEnd);
-  return nearest === Infinity ? 1 : 0.2 + 0.8 * Math.min(1, nearest / ((pass.end - pass.start) / 2));
-}
-
-/**
- * The stretches between every two pass edges, each with the tapered mean of the scored
- * passes that read it. Passes that do not overlap are their own stretches, unchanged.
- */
-function combineStretches(passes: readonly WindowVerdict[], textLength: number): WindowVerdict[] {
+function combineStretches(passes: readonly WindowVerdict[]): WindowVerdict[] {
   const scored = passes.filter(isScoredWindow);
   const edges = [...new Set(scored.flatMap((p) => [p.start, p.end]))].sort((a, b) => a - b);
   const out: WindowVerdict[] = [];
@@ -389,15 +399,8 @@ function combineStretches(passes: readonly WindowVerdict[], textLength: number):
       out.push(over[0]);
       continue;
     }
-    const at = (start + end) / 2;
     const probs = new Array<number>(BUCKET_COUNT).fill(0);
-    let weight = 0;
-    for (const p of over) {
-      const w = taper(p, at, textLength);
-      weight += w;
-      for (let j = 0; j < BUCKET_COUNT; j++) probs[j] += (p.result.probs[j] ?? 0) * w;
-    }
-    for (let j = 0; j < BUCKET_COUNT; j++) probs[j] /= weight;
+    for (const p of over) for (let j = 0; j < BUCKET_COUNT; j++) probs[j] += (p.result.probs[j] ?? 0) / over.length;
     const result = resultOf(`${start}-${end}`, probs);
     if (over.some((p) => p.result.truncated)) result.truncated = true;
     out.push({ start, end, result });
@@ -441,7 +444,7 @@ export function unitVerdict(id: string, textLength: number, windows: WindowVerdi
     return done({ ...longest.result, id });
   }
 
-  const stretches = combineStretches(windows, textLength);
+  const stretches = combineStretches(windows);
   const probs = new Array<number>(BUCKET_COUNT).fill(0);
   let weight = 0;
   for (const st of stretches) {
@@ -477,40 +480,47 @@ export type ScoreBlocks = (
   owners: ReadonlyMap<string, string>,
 ) => Promise<Map<string, ScoreResult>>;
 
-/**
- * How many model tokens each text is, in order — or null when the engine cannot say (one
- * older than the count, or not answering); the passes are then planned on estimates.
- */
-export type CountTokens = (texts: string[]) => Promise<number[] | null>;
+/** Both token counts of every text, in order — or null when the engine did not answer. */
+export type CountTokens = (texts: string[]) => Promise<TokenCounts | null>;
 
 /**
- * The passes each item is read in. A text within ONE_PASS_CHARS is one pass without a
- * question. The pieces of every longer one are counted together, in one call, on the
- * canonical text the engine will be sent.
+ * The passes each item is read in, or null for one that could not be planned because
+ * the engine did not answer the count. An item that fits one pass without counting
+ * (`fits`) is one pass; the words of every other one are counted together, each distinct
+ * word once, on the canonical text the engine will be sent.
  */
-async function planAll(items: readonly Readable[], countTokens?: CountTokens): Promise<TextSpan[][]> {
-  const plans: TextSpan[][] = items.map((item) =>
-    item.text.length <= ONE_PASS_CHARS ? [{ start: 0, end: item.text.length }] : []);
-  const long = items.flatMap((item, i) => (item.text.length > ONE_PASS_CHARS ? [i] : []));
-  if (long.length === 0) return plans;
-  const pieces = long.map((i) => cutPieces(items[i].text, readEnd(items[i].text)));
-  const texts = long.flatMap((i, n) => pieces[n].map((p) => blockText(items[i].text, p)));
-  let counts: number[] | null = null;
-  if (countTokens) {
-    try {
-      counts = await countTokens(texts);
-    } catch {
-      counts = null;
-    }
+async function planAll(
+  items: readonly Readable[],
+  fits: readonly boolean[],
+  countTokens: CountTokens,
+): Promise<Array<TextSpan[] | null>> {
+  const plans: Array<TextSpan[] | null> = items.map((item, i) => (fits[i] ? [{ start: 0, end: item.text.length }] : null));
+  const long = items.flatMap((_, i) => (fits[i] ? [] : [i]));
+  const planned = long.map((i) => wordsOf(items[i].text));
+  const texts: string[] = [];
+  const known = new Map<string, number>();
+  const refs = planned.map(({ words }) =>
+    words.map((word) => {
+      let at = known.get(word);
+      if (at === undefined) {
+        at = texts.length;
+        known.set(word, at);
+        texts.push(word);
+      }
+      return at;
+    }),
+  );
+  let counts: TokenCounts | null = null;
+  try {
+    counts = await countTokens(texts);
+  } catch {
+    counts = null;
   }
-  if (counts && counts.length !== texts.length) counts = null;
-  let at = 0;
+  if (!counts || counts.alone.length !== texts.length || counts.following.length !== texts.length) return plans;
+  const { alone, following } = counts;
   long.forEach((i, n) => {
-    const tokens = counts
-      ? counts.slice(at, at + pieces[n].length)
-      : pieces[n].map((p) => estimateTokens(items[i].text.slice(p.start, p.end)));
-    at += pieces[n].length;
-    plans[i] = planPasses(pieces[n], tokens).slice(0, MAX_WINDOWS);
+    const own = { alone: refs[n].map((r) => alone[r]), following: refs[n].map((r) => following[r]) };
+    plans[i] = planPasses(items[i].text, planned[n].chunks, own).slice(0, MAX_WINDOWS);
   });
   return plans;
 }
@@ -541,9 +551,10 @@ async function ask(slots: Slot[], scoreBlocks: ScoreBlocks): Promise<Map<string,
 /**
  * Read every item completely: plan its passes (planAll), score them all in ONE call (a
  * unit's passes travel together and come back together), then re-read in halves, once,
- * any pass the engine reports it had to cut — text denser than the count or the estimate
- * said (digits, URLs, names). A half that is STILL cut stays `truncated`; the card says that
- * part of the text was not read, so there is no silent gap.
+ * any pass the engine reports it had to cut — one holding a word too large for any pass.
+ * A half that is STILL cut stays `truncated`; the card says that part of the text was not
+ * read, so there is no silent gap. An item whose words went uncounted is Unavailable, as
+ * one whose score failed is.
  *
  * Atomic per item: the map holds an entry only for items whose EVERY window was
  * answered. Nothing unit-level is cached anywhere — `scoreBlocks` caches per window
@@ -553,17 +564,20 @@ async function ask(slots: Slot[], scoreBlocks: ScoreBlocks): Promise<Map<string,
 export async function readInWindows(
   items: Readable[],
   scoreBlocks: ScoreBlocks,
-  countTokens?: CountTokens,
+  countTokens: CountTokens,
 ): Promise<Map<string, WindowVerdict[]>> {
   let slots: Slot[] = [];
-  // Only a text past ONE_PASS_CHARS waits for a count; the rest start reading at once, as
-  // they always have.
-  const plans = items.some((item) => item.text.length > ONE_PASS_CHARS)
-    ? await planAll(items, countTokens)
-    : items.map((item) => [{ start: 0, end: item.text.length }]);
+  // Only a text that may not fit one pass waits for a count; the rest start reading at
+  // once, as they always have.
+  const fits = items.map((item) => fitsWithoutCounting(item.text));
+  const plans = fits.every(Boolean)
+    ? items.map((item) => [{ start: 0, end: item.text.length }])
+    : await planAll(items, fits, countTokens);
+  const uncounted: Readable[] = [];
   items.forEach((item, i) => {
     const spans = plans[i];
-    slots.push(...slotsFor(item, spans, spans.length === 1 && spans[0].start === 0 && spans[0].end === item.text.length));
+    if (!spans) uncounted.push(item);
+    else slots.push(...slotsFor(item, spans, spans.length === 1 && spans[0].start === 0 && spans[0].end === item.text.length));
   });
   const answers = await ask(slots, scoreBlocks);
 
@@ -595,5 +609,6 @@ export async function readInWindows(
     windows.push({ start: s.span.start, end: s.span.end, result });
   }
   for (const id of incomplete) out.delete(id);
+  for (const item of uncounted) out.set(item.id, [{ start: 0, end: item.text.length, result: unavailableResult(item.id) }]);
   return out;
 }

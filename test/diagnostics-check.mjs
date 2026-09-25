@@ -160,10 +160,10 @@ async function openAndCopy(path, { settle = 4000 } = {}) {
   record("header: the state and the fixture", has("state: running") && has("daemon: up ·"), (text ?? "").split("\n").find((l) => l.startsWith("- daemon")) ?? "");
 
   // --- counts ---
-  const counts = (text ?? "").match(/- units (\d+) \((\d+) multi-part\) · windows (\d+) · chips on the page (\d+)/);
+  const counts = (text ?? "").match(/- units (\d+) \((\d+) multi-part\) · chips on the page (\d+)/);
   record(
-    "counts: units, windows and chips, and the chip count is the page's own",
-    counts !== null && Number(counts[4]) === dom.chips && Number(counts[1]) > 0 && Number(counts[3]) >= Number(counts[1]),
+    "counts: units and chips, and the chip count is the page's own",
+    counts !== null && Number(counts[3]) === dom.chips && Number(counts[1]) > 0,
     `report ${counts?.[0]} · DOM chips ${dom.chips}`,
   );
   const judged = (text ?? "").match(/- words judged (\d+) of (\d+) visible prose words \((\d+) %\)/);

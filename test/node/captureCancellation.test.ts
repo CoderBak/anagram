@@ -20,7 +20,7 @@ vi.mock("../../lib/capture/langGate", async (original) => ({
 }));
 vi.mock("../../lib/messaging/client", () => ({
   requestScores: calls.request, contextAlive: () => true,
-  requestTokenCounts: async (texts: string[]) => texts.map((t) => Math.ceil(t.length / 4)),
+  requestTokenCounts: async (texts: string[]) => ({ alone: texts.map((t) => Math.ceil(t.length / 4)), following: texts.map((t) => Math.ceil((t.length + 1) / 4)) }),
 }));
 vi.mock("../../lib/access/session", () => ({
   sendDocumentMessage: calls.message, cancelDocumentSession: calls.cancel, documentSessionId: () => calls.session,

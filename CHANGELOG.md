@@ -18,15 +18,16 @@ local component and the installer all carry the same version.
   probabilities are split shows a hollow dot, a dashed underline and a line in the card.
 - Underlines are on for every analyzed paragraph or off; the flagged-only mode is gone.
   The card shows where the score sits on the scale instead of a stacked bar.
-- A text longer than the model reads at once is read in overlapping passes, as full as
-  the model's 510 tokens allow and about half a pass apart, instead of in consecutive
-  windows of about 1,800 characters. Passes begin and end between sentences, or between
-  clauses or words when a sentence is too long. Each stretch of text is judged by every
-  pass that read it, and a pass counts for less near an edge where it cut the text. The
-  underline follows those stretches, so a verdict no longer changes at an arbitrary cut.
+- A text longer than the model reads at once is divided into halves of equal token count
+  and read in passes of two neighbouring halves each, instead of in consecutive windows of
+  about 1,800 characters. Every half but the first and the last is read twice, once with
+  what comes before it and once with what comes after, and the two readings count alike;
+  the underline follows the halves, so a verdict no longer changes at an arbitrary cut. An
+  edge between halves moves to a sentence start when one is within about a sentence.
   Cards, the paste page and copied reports count passes.
-- The local engine counts tokens with the model's own tokenizer (contract 2.2), and passes
-  are planned on those counts. With an older engine, the extension estimates them.
+- The local engine counts every word's tokens with the model's own tokenizer, and passes
+  are planned on those counts; a text too short to overflow one pass is not counted. The
+  contract is now 3.0, so an older engine has to be updated.
 - A PDF from the web opens analyzed or not by its own site's rule, as the page it came
   from would, and the reader's panel turns off that site. A file from this computer
   follows the global switch.

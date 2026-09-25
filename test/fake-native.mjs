@@ -4,8 +4,11 @@ import { readFileSync, writeFileSync, appendFileSync, renameSync, mkdtempSync, r
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { fakeTokens } from "./fakeTokens.mjs";
 
-export const CONTRACT = "2.2";
+export { fakeTokens };
+
+export const CONTRACT = "3.0";
 export const FAKE_MODEL = { id: "fake-editlens", ver: "test", calibration: "none" };
 const BUCKETS = ["human", "lightly-edited", "heavily-edited", "ai-generated"];
 const FLAT = [0.25, 0.25, 0.25, 0.25];
@@ -61,9 +64,9 @@ export function detectLanguage(text) {
 }
 
 /** One coherent, text-seeded result (one dominant bucket, neighbours share the rest).
- *  `tokens` is how long the text is to the model — four characters a token unless told
- *  otherwise; past 512 the result comes back `truncated`, as the real component's does. */
-export function fakeScore(text, tokens = Math.ceil(text.length / 4)) {
+ *  `tokens` is how long the text is to the model (fakeTokens unless a rule says otherwise);
+ *  past 512 the result comes back `truncated`, as the real component's does. */
+export function fakeScore(text, tokens = fakeTokens(text)) {
   const [lang, prob] = detectLanguage(text);
   if (lang !== "en") {
     return { bucket: 0, probs: FLAT, score: 0, tokens: 0, truncated: false, lang, lang_prob: prob, unsupported: true };
@@ -104,7 +107,7 @@ export function readyComponent(home) {
 
 /** A filesystem control handle, not a server. Each browser starts the real stdio child.
  * close/resume simulate component loss/recovery without changing its registration.
- * Rules are plain test data: contains + delayMs / tokens / charsPerToken. */
+ * Rules are plain test data: contains + delayMs / tokens. */
 const fixtureHomes = new Set();
 process.once("exit", () => { for (const home of fixtureHomes) rmSync(home, { recursive: true, force: true }); });
 export async function createNativeFixture(options = {}) {
@@ -160,17 +163,10 @@ async function serveNative(stateFile, logFile) {
         languages: ["en"], lid: "fake-script-heuristic", max_tokens: 512, device: "fake", dtype: "none", app_version: s.appVersion });
     }
     if (request.op === "tokens") {
-      // Counting arrived with contract 2.2; a fixture set to an older contract refuses the
-      // operation the way an older host refuses one it does not know.
-      const [major, minor] = String(s.contract).split(".").map(Number);
-      if (major !== 2 || !(minor >= 2)) return failed(request, 422, "invalid_request", "Invalid native request envelope or operation");
       if (component.state !== "ready" && component.state !== "idle") return failed(request, 503, "not_ready", "Fixture engine not ready");
-      // Four characters a token, as the scoring below assumes, unless a rule makes a text denser.
-      const counts = (request.payload?.texts ?? []).map((t) => {
-        const rule = s.rules.find((r) => t.includes(r.contains) && r.charsPerToken != null);
-        return Math.ceil(t.length / (rule ? rule.charsPerToken : 4));
-      });
-      return ok(request, { counts, window: 510 });
+      // The scoring below's own measure, which a space in front does not change.
+      const texts = request.payload?.texts ?? [];
+      return ok(request, { alone: texts.map((t) => fakeTokens(t)), following: texts.map((t) => fakeTokens(t)), window: 510 });
     }
     if (request.op === "score") {
       if (component.state === "idle") {
@@ -184,8 +180,8 @@ async function serveNative(stateFile, logFile) {
       const results = blocks.map((b) => {
         const rules = s.rules.filter((r) => b.text.includes(r.contains));
         for (const rule of rules) delay = Math.max(delay, rule.delayMs ?? 0);
-        const tokens = rules.find((r) => r.tokens != null || r.charsPerToken != null);
-        return { id: b.id, ...fakeScore(b.text, tokens ? tokens.tokens ?? Math.ceil(b.text.length / tokens.charsPerToken) : undefined) };
+        const tokens = rules.find((r) => r.tokens != null);
+        return { id: b.id, ...fakeScore(b.text, tokens?.tokens) };
       });
       await new Promise((r) => setTimeout(r, delay));
       if (!readState().enabled) process.exit(0);
