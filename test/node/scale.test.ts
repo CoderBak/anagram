@@ -2,18 +2,7 @@
 import { describe, expect, it } from "vitest";
 import type { ScoreResult } from "../../lib/contract";
 import { band, isFlagged } from "../../lib/render/band";
-import {
-  isUncertain,
-  levelOf,
-  scaleColor,
-  scaleStep,
-  SCALE_STEPS,
-  SCORE_CUTS,
-  scoreRange,
-  spread,
-  topTwo,
-  UNCERTAIN_SPREAD,
-} from "../../lib/render/scale";
+import { levelOf, scaleColor, scaleStep, SCALE_STEPS, SCORE_CUTS, scoreRange, spread } from "../../lib/render/scale";
 
 const result = (percent: number[]): ScoreResult => {
   const probs = percent.map((p) => p / 100);
@@ -81,17 +70,10 @@ describe("the doubt", () => {
     expect(spread([0, 0.5, 0.5, 0])).toBeLessThan(spread([0.5, 0, 0, 0.5]) / 2);
   });
 
-  it("marks a verdict whose windows disagree, and leaves a clear one alone", () => {
-    expect(UNCERTAIN_SPREAD).toBeGreaterThan(0);
-    expect(isUncertain(result([15, 33, 18, 34]))).toBe(true);
-    expect(isUncertain(result([61, 29, 7, 3]))).toBe(false);
-    expect(isUncertain(result([1, 5, 9, 85]))).toBe(false);
-    expect(isUncertain({ ...result([50, 0, 0, 50]), degraded: true })).toBe(false);
-  });
-
-  it("names the two buckets the probability is split between", () => {
-    expect(topTwo([0.15, 0.33, 0.18, 0.34])).toEqual([3, 1]);
-    expect(topTwo([0.25, 0.25, 0.25, 0.25])).toEqual([0, 1]);
+  it("orders verdicts by how split they are, with no threshold between them", () => {
+    const [split, leaning, sure] = [[15, 33, 18, 34], [61, 29, 7, 3], [1, 5, 9, 85]].map((p) => spread(result(p).probs));
+    expect(split).toBeGreaterThan(leaning);
+    expect(leaning).toBeGreaterThan(sure);
   });
 
   it("shades a range that holds the score and stays on the scale", () => {

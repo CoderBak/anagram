@@ -1470,11 +1470,8 @@ const results = await page.evaluate(() => {
     const verdict = PW.unitVerdict(unit.id, unit.text.length, spans.map((s, i) => ({ ...s, result: ramp[Math.round((i * (ramp.length - 1)) / (spans.length - 1))] })));
     PW.setHighlight(unit, verdict);
     let marks = bandsOver(sandbox);
-    // The name a mark is registered under: its step on the scale, dashed when the UNIT's
-    // verdict is uncertain (passes this far apart make it so).
-    const unsure = PW.isUncertain(verdict.result);
-    const nameFor = (score, active = false) =>
-      `anagram-${active ? "a" : "s"}${String(PW.scaleStep(score)).padStart(2, "0")}${unsure ? "-u" : ""}`;
+    // The name a mark is registered under: its step on the scale, at rest or active.
+    const nameFor = (score, active = false) => `anagram-${active ? "a" : "s"}${String(PW.scaleStep(score)).padStart(2, "0")}`;
     // What the marks should be: the stretches, neighbours on one step drawn as one.
     const runs = [];
     for (const st of verdict.stretches) {
@@ -1484,7 +1481,7 @@ const results = await page.evaluate(() => {
     }
     const drawn = Object.entries(marks).flatMap(([name, texts]) => texts.map((t) => [name, t])).sort((x, y) => unit.text.indexOf(x[1]) - unit.text.indexOf(y[1]));
     check("marks follow the stretches: each run of one step underlined in ITS colour, gap-free, to the last sentence",
-      spans.length >= 4 && unsure && runs.length >= 4 && new Set(runs.map((r) => PW.scaleStep(r.score))).size >= 4 && drawn.length === runs.length &&
+      spans.length >= 4 && runs.length >= 4 && new Set(runs.map((r) => PW.scaleStep(r.score))).size >= 4 && drawn.length === runs.length &&
       drawn.every(([name, t], i) => name === nameFor(runs[i].score) && t === collapse(unit.text.slice(runs[i].start, runs[i].end))) &&
       runs[0].start === 0 && runs[runs.length - 1].end === unit.text.length && runs.every((r, i) => i === 0 || r.start === runs[i - 1].end) && drawn[drawn.length - 1][1].endsWith("TAILMARK sentence closes the paragraph."),
       JSON.stringify(drawn.map(([n, t]) => [n, t.slice(0, 20), t.slice(-20)])));
@@ -1535,8 +1532,8 @@ const results = await page.evaluate(() => {
     layer.render(small, smallVerdict);
     marks = bandsOver(sandbox);
     const smallName = `anagram-s${String(PW.scaleStep(smallVerdict.result.score)).padStart(2, "0")}`;
-    check("a one-pass unit is marked and carded exactly as before, solid (its verdict is not uncertain)",
-      !PW.isUncertain(smallVerdict.result) && Object.keys(marks).join() === smallName && marks[smallName].length === 1 && marks[smallName][0] === small.text && !/Scored/.test(cardText()) && !/window/.test(cardText()),
+    check("a one-pass unit is marked and carded exactly as before",
+      Object.keys(marks).join() === smallName && marks[smallName].length === 1 && marks[smallName][0] === small.text && !/Scored/.test(cardText()) && !/window/.test(cardText()),
       cardText());
     PW.clearHighlight(small.id);
     layer.teardownAll();
@@ -1545,7 +1542,7 @@ const results = await page.evaluate(() => {
   // ---- one scale ----------------------------------------------------------------------
   // Every read unit is underlined at rest, in the colour of its score, and the whole of ONE
   // unit takes a tint while the reader is on it. There is one rule per step of the scale,
-  // solid or dashed, at rest or active.
+  // at rest or active, and every line is solid: how sure the model is shows on the dot.
   {
     PW.registerHighlightStyles();
     const css = () => document.querySelector('style[data-anagram="style"]').textContent;
@@ -1557,16 +1554,16 @@ const results = await page.evaluate(() => {
     check("every step of the scale is underlined at rest, solid, with no tint on the page's own words",
       all.every((n) => /text-decoration-style: solid/.test(ruleFor(`anagram-s${n}`)) && !/background-color/.test(ruleFor(`anagram-s${n}`))),
       css().slice(0, 400));
-    check("…and dashed for an uncertain verdict", all.every((n) => /text-decoration-style: dashed/.test(ruleFor(`anagram-s${n}-u`))), css().slice(0, 400));
     check("the line weighs the same at every score, so a score either side of a word's edge does not jump",
       new Set(all.map((n) => (ruleFor(`anagram-s${n}`).match(/text-decoration-thickness: ([^;]+)/) ?? [, ""])[1])).size === 1,
       css().slice(0, 400));
     check("the colour moves along the scale: every step differs from the one before it",
       all.every((n, i) => i === 0 || colour(ruleFor(`anagram-s${n}`)) !== colour(ruleFor(`anagram-s${all[i - 1]}`))),
       all.map((n) => colour(ruleFor(`anagram-s${n}`))).join(" "));
-    check("nothing anywhere is wavy", !/wavy/.test(css()), css().slice(0, 400));
+    check("nothing anywhere is wavy or dashed, and there is one rule per step at rest and one active",
+      !/wavy|dashed/.test(css()) && (css().match(/::highlight\(/g) ?? []).length === 2 * all.length, css().slice(0, 400));
     check("the active rules exist for every step, tint and line, so a hover can show the whole of one unit",
-      all.every((n) => /background-color/.test(ruleFor(`anagram-a${n}`)) && /underline/.test(ruleFor(`anagram-a${n}`)) && /background-color/.test(ruleFor(`anagram-a${n}-u`))),
+      all.every((n) => /background-color/.test(ruleFor(`anagram-a${n}`)) && /underline/.test(ruleFor(`anagram-a${n}`))),
       css().slice(0, 400));
 
     const marksOf = (el) => {
@@ -1591,6 +1588,41 @@ const results = await page.evaluate(() => {
     PW.setActiveUnit(human.id);
     PW.clearHighlight(human.id);
     check("clearing an ACTIVE unit leaves nothing behind in either set", marksOf(sandbox).length === 0, JSON.stringify(marksOf(sandbox)));
+  }
+
+  // ---- how sure: the dot --------------------------------------------------------------
+  // No threshold: the chip's dot and the card's swatch are full when the model is sure and
+  // a thinner ring, in the same colour, the more its probabilities spread, down to a line
+  // that stays visible.
+  {
+    sandbox.innerHTML = `<p>${words(60)}</p>`;
+    const [unit] = PW.collectUnits(sandbox);
+    const layer = PW.createBadgeLayer();
+    const px = (value) => Number.parseFloat(value);
+    const ring = (el) => px((getComputedStyle(el).boxShadow.match(/([\d.]+)px inset/) ?? [, "NaN"])[1]);
+    const seen = [[1, 0, 0, 0], [0.7, 0.3, 0, 0], [0.5, 0, 0.5, 0], [0.5, 0, 0, 0.5]].map((probs) => {
+      layer.render(unit, PW.unitVerdict(unit.id, unit.text.length, [{ start: 0, end: unit.text.length, result: res(probs) }]));
+      const root = sandbox.querySelector('[data-anagram="host"]').shadowRoot;
+      const dot = root.querySelector(".pill .dot");
+      const sw = root.querySelector(".card .sw");
+      return {
+        spread: PW.spread(probs).toFixed(3),
+        tag: root.querySelector(".pill").style.getPropertyValue("--u"),
+        swTag: sw.style.getPropertyValue("--u"),
+        dot: [ring(dot), px(getComputedStyle(dot).width) / 2],
+        sw: [ring(sw), px(getComputedStyle(sw).width) / 2],
+        card: root.querySelector(".card").textContent,
+      };
+    });
+    check("the chip and the card carry the verdict's spread, and the card has no line saying it is uncertain",
+      seen.every((s) => s.tag === s.spread && s.swTag === s.spread && !/uncertain|split between/i.test(s.card)), JSON.stringify(seen));
+    check("a sure verdict is a full dot; each wider spread is a thinner ring; the widest is still at least 1px",
+      seen.every((s) => s.dot.every(Number.isFinite) && s.sw.every(Number.isFinite)) &&
+      seen[0].dot[0] >= seen[0].dot[1] - 0.01 && seen[0].sw[0] >= seen[0].sw[1] - 0.01 &&
+      seen.every((s, i) => i === 0 || (s.dot[0] < seen[i - 1].dot[0] && s.sw[0] < seen[i - 1].sw[0])) &&
+      seen[3].dot[0] >= 1 && seen[3].sw[0] >= 1 && seen[3].dot[0] < seen[3].dot[1] / 2,
+      JSON.stringify(seen.map((s) => [s.spread, s.dot, s.sw])));
+    layer.teardownAll();
   }
 
   // ---- what the walk REACHES ---------------------------------------------------------------

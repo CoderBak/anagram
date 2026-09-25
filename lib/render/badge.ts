@@ -39,7 +39,7 @@ import { clearActiveUnit, setActiveUnit } from "./highlight";
 import { countWords, hasLetters, unitParagraphs } from "../dom/text";
 import { coverageNote, windowScores, windowReadout } from "./coverage";
 import { distributionHtml, swatchHtml } from "./dist";
-import { isUncertain } from "./scale";
+import { spread } from "./scale";
 import { BADGE_CSS } from "./badge.css";
 import { isDarkContext } from "./theme";
 
@@ -361,10 +361,11 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
     const num = root.querySelector(".num") as HTMLElement;
     const score = formatScore(result.score);
 
-    // The dot is the score's own colour (lib/render/scale.ts) — hollow when the verdict is
-    // uncertain; the text stays in ink, whatever the verdict.
-    pill.className = `pill band-${b}${isNoVerdict(b) ? "" : " scored"}${isUncertain(result) ? " unsure" : ""}`;
+    // The dot is the score's own colour (lib/render/scale.ts), a thinner ring the more the
+    // model's probabilities spread; the text stays in ink, whatever the verdict.
+    pill.className = `pill band-${b}${isNoVerdict(b) ? "" : " scored"}`;
     pill.style.setProperty("--s", result.score.toFixed(3));
+    pill.style.setProperty("--u", spread(result.probs).toFixed(3));
     // The bare number (".38") — what it means is in the card and the intro, not on
     // every line. A merged unit says so up front (".38 ×3"): one verdict covering N
     // short paragraphs must never masquerade as a single-paragraph judgment. How many

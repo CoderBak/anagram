@@ -28,7 +28,7 @@
 // AI-generated text the darkest, so a mostly human page stays calm without anything being
 // left unmarked. The line is solid, never wavy (the spell-checker's "this is wrong"), and
 // the same weight everywhere, so a score on either side of a word's edge does not jump.
-// A paragraph whose verdict is uncertain (scale.ts isUncertain) is underlined DASHED.
+// How sure the model is shows on the chip's dot and in the card, not on the line.
 // Underlines are all on or all off (setHighlightsVisible); there is no flagged-only mode.
 //
 // Detail on demand: while a unit is ACTIVE — its chip hovered, its card pinned, or a
@@ -41,31 +41,26 @@
 // there is no motion to hold back under prefers-reduced-motion.
 //
 // ::highlight() rules cannot take a colour per range, so the ramp is sampled in
-// SCALE_STEPS + 1 named steps, each solid or dashed, at rest or active.
+// SCALE_STEPS + 1 named steps, each at rest or active.
 import type { Unit } from "../types";
 import { MARK_ATTR } from "../types";
 import type { UnitVerdict, WindowVerdict } from "../capture/windows";
 import { locateSpans } from "../dom/locate";
 import { band, isNoVerdict } from "./band";
-import { isUncertain, scaleColor, scaleStep, SCALE_STEPS } from "./scale";
+import { scaleColor, scaleStep, SCALE_STEPS } from "./scale";
 import { isDarkPage } from "./theme";
 
-/** One painted look: a step of the ramp, solid or dashed. */
-interface Mark {
-  step: number;
-  dashed: boolean;
+/** The highlight a step of the ramp is painted under, at rest or active. */
+function markName(step: number, active: boolean): string {
+  return `anagram-${active ? "a" : "s"}${String(step).padStart(2, "0")}`;
 }
 
-function markName(m: Mark, active: boolean): string {
-  return `anagram-${active ? "a" : "s"}${String(m.step).padStart(2, "0")}${m.dashed ? "-u" : ""}`;
-}
-
-/** A rule under the words in the step's colour — never wavy, never anything that moves
- *  the text. */
-function underline(color: string, dashed: boolean): string[] {
+/** A solid rule under the words in the step's colour — never wavy, never anything that
+ *  moves the text. */
+function underline(color: string): string[] {
   return [
     "text-decoration-line: underline",
-    `text-decoration-style: ${dashed ? "dashed" : "solid"}`,
+    "text-decoration-style: solid",
     `text-decoration-color: ${color}`,
     "text-decoration-thickness: 1.5px",
     "text-underline-offset: 3px",
@@ -82,10 +77,8 @@ function buildCss(dark: boolean): string {
     const score = step / SCALE_STEPS;
     const line = scaleColor(score, dark);
     const tint = scaleColor(score, dark, dark ? 0.24 : 0.18);
-    for (const dashed of [false, true]) {
-      rule(markName({ step, dashed }, false), underline(line, dashed));
-      rule(markName({ step, dashed }, true), [`background-color: ${tint}`, ...underline(line, dashed)]);
-    }
+    rule(markName(step, false), underline(line));
+    rule(markName(step, true), [`background-color: ${tint}`, ...underline(line)]);
   }
   return `@media screen {\n${rules.join("\n")}\n}`;
 }
@@ -95,10 +88,10 @@ function highlightsSupported(): boolean {
 }
 
 const _highlights = new Map<string, Highlight>();
-/** The Highlight a look's ranges live in — one set at rest, one for the active unit. */
-function markHighlight(m: Mark, active: boolean): Highlight | null {
+/** The Highlight a step's ranges live in — one set at rest, one for the active unit. */
+function markHighlight(step: number, active: boolean): Highlight | null {
   if (!highlightsSupported()) return null;
-  const name = markName(m, active);
+  const name = markName(step, active);
   let h = _highlights.get(name);
   if (!h) {
     h = new Highlight();
@@ -110,8 +103,8 @@ function markHighlight(m: Mark, active: boolean): Highlight | null {
   return h;
 }
 
-// Ranges added per unit id, with the look they are painted in, so we can clear them.
-const _byUnit = new Map<string, Array<{ mark: Mark; range: Range }>>();
+// Ranges added per unit id, with the step they are painted in, so we can clear them.
+const _byUnit = new Map<string, Array<{ step: number; range: Range }>>();
 /** The one unit the reader is on — hovered chip, pinned card, or a jump's target. */
 let _activeUnit: string | null = null;
 
@@ -188,8 +181,8 @@ function restate(id: string, active: boolean): void {
   const entries = _byUnit.get(id);
   if (!entries) return;
   for (const e of entries) {
-    markHighlight(e.mark, !active)?.delete(e.range);
-    markHighlight(e.mark, active)?.add(e.range);
+    markHighlight(e.step, !active)?.delete(e.range);
+    markHighlight(e.step, active)?.add(e.range);
   }
 }
 
@@ -257,8 +250,7 @@ function stepRuns(stretches: readonly WindowVerdict[]): Array<{ start: number; e
  * Detection cannot attribute below what the model read in one pass, so that is the grain
  * of the marks: the whole unit for nearly every paragraph (one pass, marked uniformly in
  * the chip's colour, no offsets resolved), and stretch by stretch between pass edges for a
- * long one. The dash follows the UNIT's verdict: a paragraph the card calls uncertain is
- * uncertain wherever the reader looks at it.
+ * long one.
  *
  * When a stretch cannot be found in the page any more (the DOM changed between the scan
  * and the verdict), the unit falls back to whole parts in the AGGREGATE colour rather
@@ -270,10 +262,8 @@ export function setHighlight(unit: Unit, verdict: UnitVerdict): void {
   clearHighlight(unit.id);
 
   if (isNoVerdict(band(verdict.result))) return; // no verdict → no mark
-  const dashed = isUncertain(verdict.result);
-  const look = (score: number): Mark => ({ step: scaleStep(score), dashed });
 
-  const marks: Array<{ mark: Mark; ranges: Range[] }> = [];
+  const marks: Array<{ step: number; ranges: Range[] }> = [];
   const onePass = verdict.windows.length === 1 && verdict.unreadChars === 0;
   // The stretches the verdict judged, neighbours on one step of the scale drawn as one.
   const runs = stepRuns(verdict.stretches);
@@ -285,23 +275,23 @@ export function setHighlight(unit: Unit, verdict: UnitVerdict): void {
       ? null
       : locateSpans(unit.parts, unit.text, runs);
   if (located && _locator && onePass) {
-    marks.push({ mark: look(verdict.result.score), ranges: located[0] ?? [] });
+    marks.push({ step: scaleStep(verdict.result.score), ranges: located[0] ?? [] });
   } else if (located) {
-    runs.forEach((run, i) => marks.push({ mark: { step: run.step, dashed }, ranges: located[i] }));
+    runs.forEach((run, i) => marks.push({ step: run.step, ranges: located[i] }));
   } else {
-    marks.push({ mark: look(verdict.result.score), ranges: wholeParts(unit) });
+    marks.push({ step: scaleStep(verdict.result.score), ranges: wholeParts(unit) });
   }
 
   // A unit re-rendered while the pointer is still on its chip (a verdict landing on a
   // hovered paragraph) keeps its marks where the reader can see them.
   const active = _activeUnit === unit.id;
-  const entries: Array<{ mark: Mark; range: Range }> = [];
-  for (const { mark, ranges } of marks) {
-    const highlight = markHighlight(mark, active);
+  const entries: Array<{ step: number; range: Range }> = [];
+  for (const { step, ranges } of marks) {
+    const highlight = markHighlight(step, active);
     if (!highlight) continue;
     for (const range of ranges) {
       highlight.add(range);
-      entries.push({ mark, range });
+      entries.push({ step, range });
     }
   }
   if (entries.length > 0) _byUnit.set(unit.id, entries);
@@ -315,8 +305,8 @@ export function clearHighlight(id: string): void {
   for (const e of entries) {
     // Which of the two sets a range sits in depends on whether the unit was being looked
     // at when it went; asking both is cheaper than remembering.
-    _highlights.get(markName(e.mark, false))?.delete(e.range);
-    _highlights.get(markName(e.mark, true))?.delete(e.range);
+    _highlights.get(markName(e.step, false))?.delete(e.range);
+    _highlights.get(markName(e.step, true))?.delete(e.range);
   }
   _byUnit.delete(id);
 }

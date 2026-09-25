@@ -292,7 +292,7 @@ const windowBlocks = [...new Set(fixture.stats.texts.filter((t) => t.length > 20
 const windowAt = windowBlocks.map((t) => [s.windowed.text.indexOf(t), s.windowed.text.indexOf(t) + t.length]);
 const windowVerdicts = windowBlocks.map((t) => fakeScore(t));
 const passSteps = windowVerdicts.map((v) => stepOf(v.score));
-const drawnSteps = [...new Set(s.windowed.bands.map((b) => b.replace(/-u$/, "")))].sort();
+const drawnSteps = s.windowed.bands;
 const windowCounted = fixture.requests().some((r) => r.op === "tokens" && r.payload.texts.some((t) => s.windowed.text.includes(t)));
 // What lib/render/score.ts writes, in four lines, so the expectation is spelled out here
 // rather than imported out of a TypeScript module this suite cannot load.

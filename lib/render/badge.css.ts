@@ -24,7 +24,7 @@
 // but shadow-context !important beats page !important — so the layout-critical
 // host props are declared !important here AND mirrored as inline styles.
 import { DIST_CSS } from "./dist";
-import { scaleColorCss } from "./scale";
+import { ringCss, scaleColorCss } from "./scale";
 
 export const BADGE_CSS: string = `
 :host {
@@ -102,12 +102,12 @@ export const BADGE_CSS: string = `
   font-variant-numeric: tabular-nums;
 }
 
-/* The score's colour, read from --s (set per chip in badge.ts). */
+/* The score's colour, read from --s, as a ring that thins as the spread in --u grows (both
+   set per chip in badge.ts). */
 .pill.scored { --dot: ${scaleColorCss(false)}; --ring: color-mix(in oklab, var(--dot) 20%, transparent); }
+.pill.scored .dot { background: transparent; box-shadow: inset 0 0 0 ${ringCss("0.28em")} var(--dot), 0 0 0 0.18em var(--ring); }
 .pill.band-unknown { --dot: #a3a3a3; --ring: rgba(163, 163, 163, 0.16); }
 .pill.band-unsupported { --dot: #a3a3a3; --ring: rgba(163, 163, 163, 0.16); color: #737373; font-weight: 500; }
-/* Uncertain: the same colour as a ring, not a disc. */
-.pill.unsure .dot { background: transparent; box-shadow: inset 0 0 0 0.16em var(--dot), 0 0 0 0.18em var(--ring); }
 
 /* ---- pending ("analyzing") state --------------------------------------------- */
 /* Shown the moment a unit's batch actually goes to the backend; morphs in place

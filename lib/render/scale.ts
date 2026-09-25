@@ -95,24 +95,18 @@ export function spread(probs: readonly number[]): number {
 }
 
 /**
- * Past this spread a verdict is shown as uncertain. It marks where the model — or the
- * windows of one paragraph — disagree; it says nothing about length, and it is a
- * starting value to tune against measured agreement.
+ * How thick a verdict's dot is, as a ring in the score's colour, for the spread in `--u`:
+ * the whole `radius` when the model is sure (a full dot), thinning in proportion to
+ * 1 − spread down to a line that stays visible when it has no idea. No threshold, and no
+ * fading, which the colour scale would read as "more human".
  */
-export const UNCERTAIN_SPREAD = 0.65;
-
-export function isUncertain(r: ScoreResult): boolean {
-  return !r.degraded && !r.unsupported && spread(r.probs) >= UNCERTAIN_SPREAD;
+export function ringCss(radius: string): string {
+  const least = "max(1px, 0.08em)";
+  return `calc(${least} + (${radius} - ${least}) * (1 - var(--u, 0)))`;
 }
 
 /** The range the card shades around the score: one standard deviation, in score units. */
 export function scoreRange(r: ScoreResult): { from: number; to: number } {
   const half = (spread(r.probs) * ((BUCKET_COUNT - 1) / 2)) / (BUCKET_COUNT - 1);
   return { from: clamp01(r.score - half), to: clamp01(r.score + half) };
-}
-
-/** The two buckets the probability is split between, most likely first. */
-export function topTwo(probs: readonly number[]): [number, number] {
-  const order = probs.map((p, i) => [p, i] as const).sort((a, b) => b[0] - a[0] || a[1] - b[1]);
-  return [order[0][1], order[1][1]];
 }
