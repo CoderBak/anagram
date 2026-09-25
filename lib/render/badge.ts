@@ -17,8 +17,8 @@
 // lightly edited / heavily edited / AI-generated — as a stacked bar plus rows.
 //
 // v5: the chip states the UNIT's verdict. A paragraph longer than the model reads in one
-// pass was read in windows; the chip shows their aggregate and the card says how it was
-// read ("Scored in 3 windows" with each window's own number).
+// pass was read in several; the chip shows their aggregate and the card says how it was
+// read ("Read in 3 passes" with each pass's own number).
 //
 // The card renders in the browser's TOP LAYER (Popover API, manual mode), so no
 // ancestor overflow:hidden / clip / stacking context can cut it off — an absolutely
@@ -471,9 +471,9 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
     // it for "unknown" — a flat gray bar reads as data when the message is "no answer".
     const dist = isNoVerdict(b) ? "" : distributionHtml(result);
     // Coverage, honestly. "Words" is the whole unit. A unit read in one pass says nothing
-    // more; one read in windows shows each window's own number, in reading order, next to
+    // more; one read in several passes shows each pass's own number, in reading order, next to
     // the aggregate above; and "Scored: first N words" is left for the one case in which
-    // the model really saw less than the unit — a text past the window cap.
+    // the model really saw less than the unit — a text past the pass cap.
     const read = isNoVerdict(b) ? null : windowReadout(verdict);
     const last = verdict.windows[verdict.windows.length - 1];
     const coverageRows = isNoVerdict(b)

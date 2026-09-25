@@ -29,7 +29,7 @@ import { createScheduler, type Scheduler } from "./scheduler";
 import { createScoreCache, type ScoreCache } from "./cache";
 import { readInWindows, requestSlices, unavailableResult, unitVerdict, type UnitVerdict } from "./windows";
 import { detectUnsupported, unsupportedResult } from "./langGate";
-import { requestScores, contextAlive } from "../messaging/client";
+import { requestScores, requestTokenCounts, contextAlive } from "../messaging/client";
 import { modelDim } from "../backend/router";
 import { createBadgeLayer, type BadgeLayer, type BadgeLayerOptions } from "../render/badge";
 import {
@@ -440,7 +440,7 @@ export function createOrchestrator(
           .join(" · ");
         const snippet = unit.text.replace(/\s+/g, " ").slice(0, 220);
         const ellipsis = unit.text.length > 220 ? "…" : "";
-        // A long paragraph's score is an average over windows; whoever reads the
+        // A long paragraph's score combines several passes; whoever reads the
         // report without the page in front of them needs the parts it was made from.
         const read = windowReadout(v);
         const windows = read
@@ -658,7 +658,7 @@ export function createOrchestrator(
    */
   async function send(units: Unit[], lane: Lane): Promise<UnitVerdict[]> {
     const generation = captureGeneration;
-    const read = await readInWindows(units, (blocks, owners) => scoreBlocks(blocks, owners, lane, generation));
+    const read = await readInWindows(units, (blocks, owners) => scoreBlocks(blocks, owners, lane, generation), requestTokenCounts);
     if (generation !== captureGeneration) {
       // Clearing a cache leaves existing verdicts visible, but an abandoned batch
       // must not leave its unfinished chips behind or paint a late result. Where only the

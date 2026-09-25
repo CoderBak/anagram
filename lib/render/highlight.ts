@@ -15,14 +15,15 @@
 // - print suppression: verdict marks are reading aids, not document content —
 //   all rules live under `@media screen`.
 //
-// v4: marks are per WINDOW. A paragraph longer than the model reads in one pass is
-// scored in consecutive windows, and each window's text is marked in its OWN band — so a
-// paragraph that turns from human to AI halfway shows where. Ranges then start and end
-// inside text nodes (lib/dom/locate.ts); still nothing in the page is touched. Text no
-// window covers (past the window cap) and windows the language gate refused get no mark:
-// a mark claims that the model read what it covers.
+// v4: marks are per STRETCH. A paragraph longer than the model reads in one pass is read
+// in overlapping passes, and each stretch between two pass edges is marked in the colour
+// of the passes that read it combined (lib/capture/windows.ts) — so a paragraph that turns
+// from human to AI halfway shows where. Ranges then start and end inside text nodes
+// (lib/dom/locate.ts); still nothing in the page is touched. Text no pass covers (past the
+// pass cap) and text only passes the language gate refused read get no mark: a mark claims
+// that the model read what it covers.
 //
-// v5 — ONE SCALE. Every read window is underlined in the colour of its own score, on the
+// v5 — ONE SCALE. Every read stretch is underlined in the colour of its own score, on the
 // one-hue ramp of lib/render/scale.ts: human text carries the palest, quietest line and
 // AI-generated text the darkest, so a mostly human page stays calm without anything being
 // left unmarked. The line is solid, never wavy (the spell-checker's "this is wrong"), and
@@ -32,7 +33,7 @@
 //
 // Detail on demand: while a unit is ACTIVE — its chip hovered, its card pinned, or a
 // jump from the panel or the next/previous-flagged command just landed on it — its
-// windows also carry a tint of their colour, so the reader sees exactly which text was
+// stretches also carry a tint of their colour, so the reader sees exactly which text was
 // read and how each window scored. Its ranges move into a second set of highlight names
 // for as long as it lasts (::highlight() rules are global per tree scope, so one unit
 // cannot be styled apart from the others in any other way), and move back when the
@@ -43,8 +44,7 @@
 // SCALE_STEPS + 1 named steps, each solid or dashed, at rest or active.
 import type { Unit } from "../types";
 import { MARK_ATTR } from "../types";
-import type { UnitVerdict } from "../capture/windows";
-import { isScoredWindow } from "../capture/windows";
+import type { UnitVerdict, WindowVerdict } from "../capture/windows";
 import { locateSpans } from "../dom/locate";
 import { band, isNoVerdict } from "./band";
 import { isUncertain, scaleColor, scaleStep, SCALE_STEPS } from "./scale";
@@ -164,7 +164,7 @@ export function setHighlightsVisible(visible: boolean): void {
 }
 
 /**
- * The unit the reader is on, or null. Its windows carry their tint for as long as it
+ * The unit the reader is on, or null. Its stretches carry their tint for as long as it
  * lasts — the "detail on demand" half of the marks. Only one unit is
  * ever active: showing a second one's extent while the pointer sits on the first would
  * say the two were read together.
@@ -238,16 +238,29 @@ function wholeParts(unit: Unit): Range[] {
   return ranges;
 }
 
+/** Stretches as runs of one step: neighbours that touch and land on the same step of the
+ *  scale are one span, so a long paragraph is as few ranges as its colours need. */
+function stepRuns(stretches: readonly WindowVerdict[]): Array<{ start: number; end: number; step: number }> {
+  const runs: Array<{ start: number; end: number; step: number }> = [];
+  for (const st of stretches) {
+    const step = scaleStep(st.result.score);
+    const last = runs[runs.length - 1];
+    if (last && last.end === st.start && last.step === step) last.end = st.end;
+    else runs.push({ start: st.start, end: st.end, step });
+  }
+  return runs;
+}
+
 /**
- * Register what was read, window by window, each in the colour of its own score;
- * "unavailable" and "unsupported" get no mark, and neither do windows that were not
- * scored. Detection cannot attribute below what the model read in one pass, so that is
- * the grain of the marks: the whole unit for nearly every paragraph (one window, marked
- * uniformly in the chip's colour, no offsets resolved), and window by window for a long
- * one. The dash follows the UNIT's verdict: a paragraph the card calls uncertain is
+ * Register what was read, stretch by stretch, each in the colour of its own score;
+ * "unavailable" and "unsupported" get no mark, and neither does text no scored pass read.
+ * Detection cannot attribute below what the model read in one pass, so that is the grain
+ * of the marks: the whole unit for nearly every paragraph (one pass, marked uniformly in
+ * the chip's colour, no offsets resolved), and stretch by stretch between pass edges for a
+ * long one. The dash follows the UNIT's verdict: a paragraph the card calls uncertain is
  * uncertain wherever the reader looks at it.
  *
- * When a window cannot be found in the page any more (the DOM changed between the scan
+ * When a stretch cannot be found in the page any more (the DOM changed between the scan
  * and the verdict), the unit falls back to whole parts in the AGGREGATE colour rather
  * than showing nothing; the mutation observer is about to retire it anyway.
  */
@@ -262,19 +275,19 @@ export function setHighlight(unit: Unit, verdict: UnitVerdict): void {
 
   const marks: Array<{ mark: Mark; ranges: Range[] }> = [];
   const onePass = verdict.windows.length === 1 && verdict.unreadChars === 0;
+  // The stretches the verdict judged, neighbours on one step of the scale drawn as one.
+  const runs = stepRuns(verdict.stretches);
   // With a locator even a ONE-PASS unit is placed span by span: on a surface whose text is
   // not what its nodes say, the whole-parts shortcut would cover more than was read.
   const located = _locator
-    ? _locator(unit, onePass ? [{ start: 0, end: unit.text.length }] : verdict.windows)
+    ? _locator(unit, onePass ? [{ start: 0, end: unit.text.length }] : runs)
     : onePass
       ? null
-      : locateSpans(unit.parts, unit.text, verdict.windows);
+      : locateSpans(unit.parts, unit.text, runs);
   if (located && _locator && onePass) {
     marks.push({ mark: look(verdict.result.score), ranges: located[0] ?? [] });
   } else if (located) {
-    verdict.windows.forEach((w, i) => {
-      if (isScoredWindow(w)) marks.push({ mark: look(w.result.score), ranges: located[i] });
-    });
+    runs.forEach((run, i) => marks.push({ mark: { step: run.step, dashed }, ranges: located[i] }));
   } else {
     marks.push({ mark: look(verdict.result.score), ranges: wholeParts(unit) });
   }

@@ -66,7 +66,7 @@
     "message": "词数"
   },
   "cardWindows": {
-    "message": "分 $1 个窗口评分"
+    "message": "分 $1 次读取"
   },
   "cardScored": {
     "message": "评分范围"
@@ -75,13 +75,13 @@
     "message": "前 $1 词"
   },
   "cardWindowsCut": {
-    "message": "被截断的窗口"
+    "message": "被截断的读取"
   },
   "cardOfCount": {
     "message": "$1 / $2"
   },
   "cardWindowsSkipped": {
-    "message": "非英文窗口"
+    "message": "非英文读取"
   },
   "cardFormulas": {
     "message": "略过的公式"
@@ -108,13 +108,13 @@
     "message": "只对所选文本的开头评了分。"
   },
   "coverageTooDense": {
-    "message": "其中一部分对模型的窗口来说太密集，没有读取。"
+    "message": "其中一部分超出模型一次读取的容量，没有读取。"
   },
   "coverageOtherLanguages": {
-    "message": "其他语言的窗口未计入。"
+    "message": "其他语言的读取未计入。"
   },
   "coverageAveraged": {
-    "message": "长度超出模型一次能读的范围，因此分 $1 个连续窗口读取，再按长度加权平均。"
+    "message": "长度超出模型一次能读的范围，因此分 $1 次读取，每一部分由读到它的各次读取综合判断。"
   },
   "selTooShort": {
     "message": "太短，无法判断"
@@ -315,7 +315,7 @@
     "message": "$1 词"
   },
   "reportWindows": {
-    "message": "；分 $1 个窗口评分：$2"
+    "message": "；分 $1 次读取：$2"
   },
   "reportUnread": {
     "message": "；段落末尾未被读取"
@@ -430,7 +430,7 @@
     "description": "Text analysis page action, status, or limit."
   },
   "pasteCoverage": {
-    "message": "已分析 $1/$2 个窗口 · 不支持的语言 $3 个 · 不可用 $4 个 · 截断 $5 个",
+    "message": "已分析 $1/$2 次读取 · 不支持的语言 $3 次 · 不可用 $4 次 · 截断 $5 次",
     "description": "Text analysis page action, status, or limit."
   },
   "pasteFileFailed": {

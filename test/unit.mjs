@@ -1261,100 +1261,119 @@ const results = await page.evaluate(() => {
     layer.teardownAll();
   }
 
-  // ---- long texts: window planning --------------------------------------------------------
-  // `prose(n)` — n distinct sentences of ~75 characters, each opening with a capital and
+  // ---- long texts: pass planning ----------------------------------------------------------
+  // `prose(n)` — n distinct sentences of ~85 characters, each opening with a capital and
   // ending in a full stop, so a cut at a sentence boundary is recognisable from the text.
+  // planWindows plans on ESTIMATED token counts (the engine's real counts are checked in
+  // test/node/windows.test.ts); what matters here is the shape of the plan on real text.
   const W = PW.WINDOW_CHARS;
   const sentenceNo = (i) => `Sentence number ${i} keeps walking through the quiet town while the rain falls on it.`;
   const prose = (n, from = 0) => Array.from({ length: n }, (_, i) => sentenceNo(from + i)).join(" ");
-  const contiguous = (text, spans, end = text.length) =>
-    spans.length > 0 && spans[0].start === 0 && spans[spans.length - 1].end === end && spans.every((s, i) => i === 0 || s.start === spans[i - 1].end);
   const lens = (spans) => spans.map((s) => s.end - s.start);
+  // A span's tokens as planWindows counts them: the estimates of the pieces inside it.
+  const tokensOf = (text, s) => PW.cutPieces(text).filter((p) => p.start >= s.start && p.end <= s.end).reduce((n, p) => n + PW.estimateTokens(text.slice(p.start, p.end)), 0);
+  // Passes that overlap their neighbours and together read [0, end): each starts after the
+  // one before it, no later than where that one ended, and reaches past it.
+  const overlapping = (text, spans, end = text.length) =>
+    spans.length > 1 && spans[0].start === 0 && spans[spans.length - 1].end === end &&
+    spans.every((s, i) => i === 0 || (s.start > spans[i - 1].start && s.start < spans[i - 1].end && s.end > spans[i - 1].end));
+  // Full passes: none over the model's window, and none (not even the last) short of it by
+  // more than the one piece that did not fit.
+  const full = (text, spans) => {
+    const room = PW.PASS_TOKENS - 8 - Math.max(...PW.cutPieces(text).map((p) => tokensOf(text, p)));
+    return spans.every((s) => tokensOf(text, s) <= PW.PASS_TOKENS && tokensOf(text, s) >= room);
+  };
   {
     const short = prose(10);
     const one = PW.planWindows(short);
-    check("a text that fits is ONE window over all of it, sent as its plain canonical form",
+    check("a text that fits is ONE pass over all of it, sent as its plain canonical form",
       one.length === 1 && one[0].start === 0 && one[0].end === short.length && PW.blockText(short, one[0]) === PW.canonicalForScoring(short), JSON.stringify(one));
 
-    const exact = prose(40).slice(0, W - 1) + ".";
-    check("exactly at the budget is still one window; one character more is two",
-      exact.length === W && PW.planWindows(exact).length === 1 && PW.planWindows(exact + " A").length === 2, `${exact.length}`);
+    const fits = prose(40).slice(0, PW.ONE_PASS_CHARS * 1.4);
+    check("a text the model can take in one pass is one pass even past the quick-path length; a longer one is two",
+      fits.length > PW.ONE_PASS_CHARS && PW.planWindows(fits).length === 1 && PW.planWindows(prose(30)).length === 2, JSON.stringify([fits.length, lens(PW.planWindows(prose(30)))]));
 
-    const long = prose(60); // ~5000 characters → three windows
+    const long = prose(60); // ~5000 characters → five passes, each about half a pass after the last
     const spans = PW.planWindows(long);
     const texts = spans.map((s) => long.slice(s.start, s.end));
-    check("a long text is cut into consecutive, non-overlapping windows that cover all of it",
-      spans.length === Math.ceil(long.length / W) && spans.length === 3 && contiguous(long, spans) && texts.join("") === long, JSON.stringify(spans));
-    check("every cut falls on a sentence boundary: windows open on a capital and close on a full stop",
+    const perPass = (PW.PASS_TOKENS - 8) * 3.5;
+    check("a long text is read in overlapping passes that cover all of it",
+      spans.length === 1 + Math.ceil((long.length - perPass) / (perPass / 2)) && overlapping(long, spans), JSON.stringify(spans));
+    check("every pass edge falls on a sentence boundary: passes open on a capital and close on a full stop",
       texts.every((t) => /^Sentence number \d+ /.test(t) && /\.$/.test(t.trim())), JSON.stringify(texts.map((t) => [t.slice(0, 20), t.slice(-12)])));
-    check("the cuts are balanced: no window above the budget, none more than a sentence off the even split",
-      lens(spans).every((n) => n <= W && Math.abs(n - long.length / 3) <= 90), JSON.stringify(lens(spans)));
-
-    const tail = prose(45).slice(0, 2 * W + 40); // two full windows and forty characters
-    const tailSpans = PW.planWindows(tail);
-    check("no tiny tail window: 2 budgets + 40 characters become three windows of a third each",
-      tailSpans.length === 3 && contiguous(tail, tailSpans) && lens(tailSpans).every((n) => n >= PW.MIN_WINDOW_CHARS && n > 1000 && n <= W), JSON.stringify(lens(tailSpans)));
+    check("every pass is full, the last one too (anchored at the end, never a sliver)", full(long, spans), JSON.stringify(spans.map((s) => tokensOf(long, s))));
+    check("each pass starts about half a pass after the one before (within a sentence), so nearly every sentence is read twice",
+      spans.slice(1).every((s, i) => tokensOf(long, { start: spans[i].start, end: s.start }) <= (PW.PASS_TOKENS - 8) / 2 + PW.estimateTokens(sentenceNo(99) + " ")),
+      JSON.stringify(spans.slice(1).map((s, i) => tokensOf(long, { start: spans[i].start, end: s.start }))));
 
     const zh = Array.from({ length: 140 }, (_, i) => `第${i}句话讲的是一座安静的小城和落在屋顶上的雨，孩子们在窗边读书。`).join("");
     const zhSpans = PW.planWindows(zh);
-    check("CJK sentence ends (。 with no space after it) are boundaries too",
-      zhSpans.length >= 2 && contiguous(zh, zhSpans) && zhSpans.every((s) => zh[s.end - 1] === "。" && zh[s.start] === "第") && lens(zhSpans).every((n) => n <= W), JSON.stringify(lens(zhSpans)));
+    check("CJK sentence ends (。 with no space after it) are pass edges too",
+      overlapping(zh, zhSpans) && zhSpans.every((s) => zh[s.end - 1] === "。" && zh[s.start] === "第") && full(zh, zhSpans), JSON.stringify(lens(zhSpans)));
 
     const unpunctuated = Array.from({ length: 900 }, (_, i) => VOCAB[i % VOCAB.length]).join(" ");
     const upSpans = PW.planWindows(unpunctuated);
-    check("one enormous sentence without a full stop is cut between two words",
-      upSpans.length === Math.ceil(unpunctuated.length / W) && contiguous(unpunctuated, upSpans) && upSpans.slice(1).every((s) => unpunctuated[s.start - 1] === " " && unpunctuated[s.start] !== " ") && lens(upSpans).every((n) => n <= W && n >= PW.MIN_WINDOW_CHARS), JSON.stringify(lens(upSpans)));
+    const pieces = PW.cutPieces(unpunctuated);
+    check("one enormous sentence without a full stop is cut into pieces between two words, and the passes into those",
+      pieces.every((p, i) => p.end - p.start <= PW.MAX_PIECE_CHARS && (i === 0 || (unpunctuated[p.start - 1] === " " && unpunctuated[p.start] !== " "))) &&
+      overlapping(unpunctuated, upSpans) && upSpans.every((s) => s.start === 0 || (unpunctuated[s.start - 1] === " " && unpunctuated[s.start] !== " ")) && full(unpunctuated, upSpans),
+      JSON.stringify(lens(upSpans)));
+
+    const clauses = Array.from({ length: 40 }, (_, i) => `the town keeps ${VOCAB[i % VOCAB.length]} walking, and the rain falls on it`).join("; ");
+    const cPieces = PW.cutPieces(clauses);
+    check("…and after a clause mark when there is one in reach",
+      cPieces.length > 1 && cPieces.slice(1).every((p) => /[,;] $/.test(clauses.slice(p.start - 2, p.start))), JSON.stringify(cPieces.map((p) => clauses.slice(p.start - 3, p.start + 3))));
 
     const solid = "😀".repeat(1500); // 3000 UTF-16 units, no space, no sentence
     const solidSpans = PW.planWindows(solid);
     check("…and a text with no space at all is cut hard, never inside a surrogate pair",
-      solidSpans.length === 2 && contiguous(solid, solidSpans) && solidSpans.every((s) => s.start % 2 === 0) && lens(solidSpans).every((n) => n <= W), JSON.stringify(solidSpans));
+      overlapping(solid, solidSpans) && PW.cutPieces(solid).every((p) => p.start % 2 === 0 && p.end % 2 === 0) && solidSpans.every((s) => s.start % 2 === 0 && s.end % 2 === 0), JSON.stringify(solidSpans));
 
     // Merged unit: twenty unpunctuated bullet items joined the way the walker joins parts.
     const items = Array.from({ length: 20 }, (_, i) => `ITEM${i} ` + Array.from({ length: 24 }, (_, j) => VOCAB[(i + j) % VOCAB.length]).join(" "));
     const merged = items.join("\n\n");
     const mSpans = PW.planWindows(merged);
-    check("a merged multi-part unit is cut at a joint between two parts",
-      mSpans.length >= 2 && contiguous(merged, mSpans) && mSpans.slice(1).every((s) => merged.slice(s.start - 2, s.start) === "\n\n" && merged.startsWith("ITEM", s.start)), JSON.stringify(mSpans));
-
-    // Paragraphs of three uneven sentences: the sentence end nearest to an even share is
-    // usually INSIDE a paragraph. The cut still goes between two of them.
-    const trios = Array.from({ length: 50 }, (_, i) => `Line ${i} opens. ${words(14 + (i % 5))} And it closes here.`).join("\n\n");
-    const tSpans = PW.planWindows(trios);
-    check("…and between two parts even where a sentence end INSIDE a part lies nearer to the even split",
-      tSpans.length === 4 && contiguous(trios, tSpans) && tSpans.slice(1).every((s) => trios.slice(s.start - 2, s.start) === "\n\n" && /^Line \d+ opens/.test(trios.slice(s.start))) && lens(tSpans).every((n) => n <= W && n >= PW.MIN_WINDOW_CHARS), JSON.stringify(lens(tSpans)));
+    check("a merged multi-part unit is read in passes that open and close at joints between two parts",
+      overlapping(merged, mSpans) && mSpans.every((s) => (s.start === 0 || (merged.slice(s.start - 2, s.start) === "\n\n" && merged.startsWith("ITEM", s.start))) && (s.end === merged.length || merged.slice(s.end - 2, s.end) === "\n\n")), JSON.stringify(mSpans));
 
     // Longer than anything a page hands over: only a selection can reach the bound now.
     const dump = (prose(250) + " ").repeat(Math.ceil((PW.MAX_READ_CHARS + 6000) / prose(250).length) + 1).slice(0, PW.MAX_READ_CHARS + 5000);
     const dSpans = PW.planWindows(dump);
-    const readEnd = dSpans[dSpans.length - 1].end;
+    const readEnd = PW.readEnd(dump);
     check("past the bound a selection can reach, the rest is left unread and the reading stops at a sentence end",
-      dSpans.length === PW.MAX_WINDOWS && contiguous(dump, dSpans, readEnd) && readEnd <= PW.MAX_READ_CHARS && readEnd > PW.MAX_READ_CHARS - W && dump.slice(0, readEnd).trim().endsWith(".") && lens(dSpans).every((n) => n <= W && n >= PW.MIN_WINDOW_CHARS), JSON.stringify([readEnd, lens(dSpans)]));
+      dSpans.length <= PW.MAX_WINDOWS && overlapping(dump, dSpans, readEnd) && readEnd <= PW.MAX_READ_CHARS && readEnd > PW.MAX_READ_CHARS - W && dump.slice(0, readEnd).trim().endsWith(".") && full(dump, dSpans), JSON.stringify([readEnd, dSpans.length]));
 
     const [h1, h2] = PW.halve(long, spans[1]);
-    check("a window the fixture had to cut is halved at a sentence boundary near its middle",
+    check("a pass the engine had to cut is halved at a sentence boundary near its middle",
       h1.start === spans[1].start && h1.end === h2.start && h2.end === spans[1].end && /^Sentence number/.test(long.slice(h2.start)) && Math.abs((h1.end - h1.start) - (h2.end - h2.start)) <= 90, JSON.stringify([h1, h2]));
 
     check("sentenceStarts: inside the text only, each on the first letter of a sentence",
       (() => { const st = PW.sentenceStarts("One. Two!\n\nThree? Four"); return JSON.stringify(st) === JSON.stringify([5, 11, 18]); })(), JSON.stringify(PW.sentenceStarts("One. Two!\n\nThree? Four")));
   }
 
-  // ---- long texts: from a window back to the page ------------------------------------------
+  // ---- long texts: from a pass back to the page ---------------------------------------------
   const collapse = (t) => t.replace(/\s+/g, " ").trim();
   const located = (unit, spans) => PW.locateSpans(unit.parts, unit.text, spans);
+  // The stretches between every two pass edges: consecutive, non-overlapping — what the
+  // marks are drawn over (unitVerdict's stretches, before neighbours of one step merge).
+  const stretchesOf = (spans) => {
+    const edges = [...new Set(spans.flatMap((s) => [s.start, s.end]))].sort((x, y) => x - y);
+    return edges.slice(1).map((end, i) => ({ start: edges[i], end }));
+  };
   {
-    // Inline markup everywhere, so window edges fall inside and between elements.
+    // Inline markup everywhere, so pass edges fall inside and between elements.
     sandbox.innerHTML = `<p>${Array.from({ length: 60 }, (_, i) => i % 3 === 0 ? `<em>Sentence number ${i}</em> keeps <a href="#x">walking through</a> the quiet town while the rain falls on it.` : i % 3 === 1 ? `Sentence number ${i} keeps walking <b>through the quiet town while the rain</b> falls on it.` : `<span>Sentence <code>number</code> ${i} keeps walking through the quiet town while the rain falls on it.</span>`).join(" ")}</p>`;
     const htmlBefore = sandbox.innerHTML;
     const [unit] = PW.collectUnits(sandbox);
     const spans = PW.planWindows(unit.text);
     const ranges = located(unit, spans);
-    check("inline markup: every window resolves to one range whose text is the window's text",
-      unit.parts.length === 1 && spans.length === 3 && ranges && ranges.every((r, i) => r.length === 1 && collapse(r[0].toString()) === unit.text.slice(spans[i].start, spans[i].end).trim()),
+    check("inline markup: every pass resolves to one range whose text is the pass's text",
+      unit.parts.length === 1 && spans.length >= 3 && ranges && ranges.every((r, i) => r.length === 1 && collapse(r[0].toString()) === unit.text.slice(spans[i].start, spans[i].end).trim()),
       JSON.stringify(ranges && ranges.map((r) => r.map((x) => collapse(x.toString()).slice(0, 24)))));
-    check("…ranges start and end INSIDE text nodes, and consecutive windows leave no gap",
-      ranges && ranges.every((r) => r[0].startContainer.nodeType === 3 && r[0].endContainer.nodeType === 3) &&
-      ranges.slice(1).every((r, i) => r[0].startContainer === ranges[i][0].endContainer && r[0].startOffset === ranges[i][0].endOffset));
+    const stretched = located(unit, stretchesOf(spans));
+    check("…ranges start and end INSIDE text nodes, and the stretches between pass edges leave no gap",
+      ranges && stretched && stretched.length > spans.length && [...ranges, ...stretched].every((r) => r[0].startContainer.nodeType === 3 && r[0].endContainer.nodeType === 3) &&
+      stretched.slice(1).every((r, i) => r.length === 1 && r[0].startContainer === stretched[i][0].endContainer && r[0].startOffset === stretched[i][0].endOffset));
     check("…and resolving them leaves the page exactly as it was", sandbox.innerHTML === htmlBefore);
   }
   {
@@ -1370,28 +1389,30 @@ const results = await page.evaluate(() => {
   }
   {
     // Three list items of two dozen 30-letter words: parts so long that no joint is within
-    // reach of the even split, so the cut falls INSIDE an item and that item gets two ranges.
+    // reach of a pass edge, so an edge falls INSIDE an item and that item gets two ranges.
     const longWords = (n, from) => Array.from({ length: n }, (_, j) => VOCAB[(from + j) % VOCAB.length] + "abcdefghijklmnopqrstuvwxy").join(" ");
     sandbox.innerHTML = `<ul>${Array.from({ length: 3 }, (_, i) => `<li>ITEM${i} <i>${longWords(11, i)}.</i> Then ${longWords(11, i + 11)}.</li>`).join("")}</ul>`;
     const [unit] = PW.collectUnits(sandbox);
     const spans = PW.planWindows(unit.text);
     const ranges = located(unit, spans);
-    const perWindow = ranges && ranges.map((r) => r.map((x) => collapse(x.toString())).join("\n\n"));
-    check("merged parts: a window reaching over several parts is one range PER PART, none across two",
-      unit.parts.length === 3 && spans.length === 2 && ranges && ranges.every((r) => r.length > 1) &&
-      perWindow.every((t, i) => t === unit.text.slice(spans[i].start, spans[i].end).trim()) &&
+    const perPass = ranges && ranges.map((r) => r.map((x) => collapse(x.toString())).join("\n\n"));
+    check("merged parts: a pass reaching over several parts is one range PER PART, none across two",
+      unit.parts.length === 3 && spans.length >= 2 && ranges && ranges.every((r) => r.length > 1) &&
+      perPass.every((t, i) => t === unit.text.slice(spans[i].start, spans[i].end).trim()) &&
       ranges.flat().every((x) => x.startContainer.parentElement.closest("li") === x.endContainer.parentElement.closest("li")),
       JSON.stringify(ranges && ranges.map((r) => r.length)));
-    check("…and together the windows' ranges cover every part exactly once", ranges && ranges.flat().length === unit.parts.length + spans.filter((s, i) => i > 0 && unit.text.slice(s.start - 2, s.start) !== "\n\n").length, JSON.stringify(ranges && ranges.flat().length));
+    const stretches = stretchesOf(spans);
+    const stretched = located(unit, stretches);
+    check("…and together the stretches' ranges cover every part exactly once", stretched && stretched.flat().length === unit.parts.length + stretches.filter((s, i) => i > 0 && unit.text.slice(s.start - 2, s.start) !== "\n\n").length, JSON.stringify(stretched && stretched.flat().length));
   }
   {
     // Formulas the walker skipped sit between two text nodes of the run — also right where
-    // a window ends. They are in no part.nodes; the text and the mapping run across them.
+    // a pass ends. They are in no part.nodes; the text and the mapping run across them.
     sandbox.innerHTML = `<p>${Array.from({ length: 60 }, (_, i) => `Sentence number ${i} keeps <math><mi>QQQ</mi></math> walking through the quiet town while the rain falls on it.`).join(" ")}</p>`;
     const [unit] = PW.collectUnits(sandbox);
     const spans = PW.planWindows(unit.text);
     const ranges = located(unit, spans);
-    check("a skipped formula in mid-sentence shifts nothing: windows still resolve to their own words",
+    check("a skipped formula in mid-sentence shifts nothing: passes still resolve to their own words",
       unit.formulas === 60 && !unit.text.includes("QQQ") && ranges && ranges.every((r, i) => r.length === 1 && collapse(r[0].toString().replace(/QQQ/g, " ")) === unit.text.slice(spans[i].start, spans[i].end).trim()),
       JSON.stringify(ranges && ranges.map((r) => r.map((x) => collapse(x.toString()).slice(0, 30)))));
 
@@ -1400,7 +1421,7 @@ const results = await page.evaluate(() => {
     check("a DOM that no longer says what the unit says resolves to nothing (null), never to wrong words", located(unit, spans) === null);
   }
 
-  // ---- long texts: one verdict from several windows ----------------------------------------
+  // ---- long texts: one verdict from several passes -----------------------------------------
   const res = (probs, extra = {}) => ({ id: "w", bucket: probs.indexOf(Math.max(...probs)), probs, score: probs.reduce((a, p, i) => a + p * i, 0) / 3, ...extra });
   const near = (a, b) => Math.abs(a - b) < 1e-9;
   {
@@ -1415,25 +1436,33 @@ const results = await page.evaluate(() => {
     const left = res([0.55, 0.45, 0, 0]);
     const right = res([0, 0.45, 0.55, 0]);
     const mid = PW.unitVerdict("u2", 2000, [{ start: 0, end: 1000, result: left }, { start: 1000, end: 2000, result: right }]);
-    check("…which may be a bucket no single window chose (human + heavily edited → lightly edited overall)", mid.result.bucket === 1 && near(mid.result.score, 1 / 3), JSON.stringify(mid.result));
+    check("…which may be a bucket no single pass chose (human + heavily edited → lightly edited overall)", mid.result.bucket === 1 && near(mid.result.score, 1 / 3), JSON.stringify(mid.result));
 
     const single = PW.unitVerdict("u3", 900, [{ start: 0, end: 900, result: human }]);
-    check("one window: the unit's verdict IS the fixture's result, number for number", single.result.probs === human.probs && single.result.score === human.score && single.result.id === "u3" && single.windows.length === 1);
+    check("one pass: the unit's verdict IS the fixture's result, number for number", single.result.probs === human.probs && single.result.score === human.score && single.result.id === "u3" && single.windows.length === 1);
 
     const down = PW.unitVerdict("u4", 4000, [{ start: 0, end: 2000, result: ai }, { start: 2000, end: 4000, result: res([0.25, 0.25, 0.25, 0.25], { degraded: true }) }]);
-    check("one degraded window makes the whole unit Unavailable — never flagged on half an answer", down.result.degraded === true && PW.band(down.result) === "unknown" && !PW.isFlagged(down.result));
+    check("one degraded pass makes the whole unit Unavailable — never flagged on half an answer", down.result.degraded === true && PW.band(down.result) === "unknown" && !PW.isFlagged(down.result));
 
     const fr = res([0.25, 0.25, 0.25, 0.25], { unsupported: true, lang: "fr", lang_prob: 0.97, score: 0 });
     const mixed = PW.unitVerdict("u5", 3000, [{ start: 0, end: 1000, result: ai }, { start: 1000, end: 2000, result: fr }, { start: 2000, end: 3000, result: ai }]);
     const allFr = PW.unitVerdict("u6", 2500, [{ start: 0, end: 1000, result: fr }, { start: 1000, end: 2500, result: { ...fr, lang: "de" } }]);
-    check("a window the language gate refused stays out of the mean; all of them refused → Unsupported language",
+    check("a pass the language gate refused stays out of the mean; all of them refused → Unsupported language",
       !mixed.result.unsupported && near(mixed.result.score, ai.score) && PW.windowReadout(mixed).skipped === 1 && PW.windowReadout(mixed).scores.join("|") === ".93|fr|.93" &&
       allFr.result.unsupported === true && allFr.result.lang === "de", JSON.stringify([mixed.result, allFr.result]));
 
     const dense = PW.unitVerdict("u7", 5000, [{ start: 0, end: 2000, result: human }, { start: 2000, end: 4000, result: { ...ai, truncated: true } }]);
-    check("a window still cut after the re-read and an unread tail are both carried by the verdict",
+    check("a pass still cut after the re-read and an unread tail are both carried by the verdict",
       dense.result.truncated === true && dense.unreadChars === 1000 && PW.windowReadout(dense).cutShort === 1 && /Only the opening/.test(PW.coverageNote(dense, "paragraph")) && /too dense/.test(PW.coverageNote(dense, "paragraph")));
-    check("a unit read in one pass has no window readout and no coverage note", PW.windowReadout(single) === null && PW.coverageNote(single, "paragraph") === "");
+    check("a unit read in one pass has no pass readout and no coverage note", PW.windowReadout(single) === null && PW.coverageNote(single, "paragraph") === "");
+
+    // Two passes overlapping by a third: the shared stretch is read by both, each weighed
+    // down towards the edge where it cut the text — equally here, half a pass from each.
+    const ov = PW.unitVerdict("u8", 3000, [{ start: 0, end: 2000, result: res([1, 0, 0, 0]) }, { start: 1000, end: 3000, result: res([0, 0, 0, 1]) }]);
+    check("overlapping passes: the text is judged stretch by stretch between pass edges, and the chip is their mean by length",
+      JSON.stringify(ov.stretches.map((st) => [st.start, st.end])) === "[[0,1000],[1000,2000],[2000,3000]]" &&
+      near(ov.stretches[1].result.score, 0.5) && [0.5, 0, 0, 0.5].every((p, i) => near(ov.stretches[1].result.probs[i], p)) && near(ov.result.score, 0.5) && PW.windowReadout(ov).count === 2,
+      JSON.stringify(ov.stretches));
   }
 
   // ---- long texts: what the marks and the card claim ----------------------------------------
@@ -1447,56 +1476,65 @@ const results = await page.evaluate(() => {
     const htmlBefore = sandbox.innerHTML;
     const [unit] = PW.collectUnits(sandbox);
     const spans = PW.planWindows(unit.text);
-    const verdict = PW.unitVerdict(unit.id, unit.text.length, [
-      { ...spans[0], result: res([0.9, 0.1, 0, 0]) },
-      { ...spans[1], result: res([0.05, 0.15, 0.6, 0.2]) },
-      { ...spans[2], result: res([0, 0, 0.1, 0.9]) },
-    ]);
+    // From human in the first pass to AI-generated in the last, each pass its own number.
+    const ramp = [res([0.9, 0.1, 0, 0]), res([0.4, 0.5, 0.1, 0]), res([0.05, 0.15, 0.6, 0.2]), res([0, 0.1, 0.4, 0.5]), res([0, 0, 0.1, 0.9])];
+    const verdict = PW.unitVerdict(unit.id, unit.text.length, spans.map((s, i) => ({ ...s, result: ramp[Math.round((i * (ramp.length - 1)) / (spans.length - 1))] })));
     PW.setHighlight(unit, verdict);
     let marks = bandsOver(sandbox);
     // The name a mark is registered under: its step on the scale, dashed when the UNIT's
-    // verdict is uncertain (three windows this far apart make it so).
+    // verdict is uncertain (passes this far apart make it so).
     const unsure = PW.isUncertain(verdict.result);
     const nameFor = (score, active = false) =>
       `anagram-${active ? "a" : "s"}${String(PW.scaleStep(score)).padStart(2, "0")}${unsure ? "-u" : ""}`;
-    const [n0, n1, n2] = verdict.windows.map((w) => nameFor(w.result.score));
-    check("marks are per window: each window's text is underlined in the colour of ITS score, to the last sentence",
-      spans.length === 3 && unsure && new Set([n0, n1, n2]).size === 3 && Object.keys(marks).sort().join() === [n0, n1, n2].sort().join() &&
-      marks[n0][0] === unit.text.slice(spans[0].start, spans[0].end).trim() && marks[n1][0] === unit.text.slice(spans[1].start, spans[1].end).trim() && marks[n2][0].endsWith("TAILMARK sentence closes the paragraph."),
-      JSON.stringify(Object.fromEntries(Object.entries(marks).map(([k, v]) => [k, v.map((t) => t.slice(-30))]))));
+    // What the marks should be: the stretches, neighbours on one step drawn as one.
+    const runs = [];
+    for (const st of verdict.stretches) {
+      const last = runs[runs.length - 1];
+      if (last && last.end === st.start && PW.scaleStep(last.score) === PW.scaleStep(st.result.score)) last.end = st.end;
+      else runs.push({ start: st.start, end: st.end, score: st.result.score });
+    }
+    const drawn = Object.entries(marks).flatMap(([name, texts]) => texts.map((t) => [name, t])).sort((x, y) => unit.text.indexOf(x[1]) - unit.text.indexOf(y[1]));
+    check("marks follow the stretches: each run of one step underlined in ITS colour, gap-free, to the last sentence",
+      spans.length >= 4 && unsure && runs.length >= 4 && new Set(runs.map((r) => PW.scaleStep(r.score))).size >= 4 && drawn.length === runs.length &&
+      drawn.every(([name, t], i) => name === nameFor(runs[i].score) && t === collapse(unit.text.slice(runs[i].start, runs[i].end))) &&
+      runs[0].start === 0 && runs[runs.length - 1].end === unit.text.length && runs.every((r, i) => i === 0 || r.start === runs[i - 1].end) && drawn[drawn.length - 1][1].endsWith("TAILMARK sentence closes the paragraph."),
+      JSON.stringify(drawn.map(([n, t]) => [n, t.slice(0, 20), t.slice(-20)])));
     check("…without touching the page", sandbox.innerHTML === htmlBefore);
 
     const layer = PW.createBadgeLayer();
     layer.render(unit, verdict);
     const cardText = () => sandbox.querySelector('[data-anagram="host"]').shadowRoot.querySelector(".card").textContent;
     const chips = sandbox.querySelectorAll('[data-anagram="host"]').length;
-    check("the card says how it was read: 'Scored in 3 windows' with each window's number; ONE chip with the aggregate",
-      chips === 1 && /Scored in 3 windows\s*\.03\s*·\s*\.65\s*·\s*\.97/.test(cardText()) && /averaged by length/.test(cardText()) && !/Only the opening/.test(cardText()) && !/first \d+/.test(cardText()) &&
+    const passNumbers = verdict.windows.map((w) => PW.formatScore(w.result.score).replace(".", "\\.")).join("\\s*·\\s*");
+    check(`the card says how it was read: 'Read in ${spans.length} passes' with each pass's number; ONE chip with the aggregate`,
+      chips === 1 && new RegExp(`Read in ${spans.length} passes\\s*${passNumbers}`).test(cardText()) && /judged by the passes that read it/.test(cardText()) && !/Only the opening/.test(cardText()) && !/first \d+/.test(cardText()) &&
       sandbox.querySelector('[data-anagram="host"]').shadowRoot.querySelector(".num").textContent === PW.formatScore(verdict.result.score) &&
       !/%/.test(sandbox.querySelector('[data-anagram="host"]').shadowRoot.querySelector(".num").textContent), cardText());
 
-    // Two of three windows read (as under the window cap): the tail is neither marked nor claimed.
+    // Only the first two passes read (as under the pass cap): the tail is neither marked nor claimed.
     const partial = PW.unitVerdict(unit.id, unit.text.length, verdict.windows.slice(0, 2));
     PW.setHighlight(unit, partial);
     layer.render(unit, partial);
     marks = bandsOver(sandbox);
-    check("text no window covers gets no mark, and the card says only the opening was scored",
+    check("text no pass covers gets no mark, and the card says only the opening was scored",
       !Object.values(marks).flat().some((t) => t.includes("TAILMARK")) && partial.unreadChars > 0 && /Only the opening of this paragraph was scored/.test(cardText()) && /Scored\s*first \d+ words/.test(cardText()), cardText());
 
-    const gated = PW.unitVerdict(unit.id, unit.text.length, [verdict.windows[0], { ...spans[1], result: res([0.25, 0.25, 0.25, 0.25], { unsupported: true, lang: "fr", score: 0 }) }, verdict.windows[2]]);
+    // A pass the language gate refused counts for nothing: the marks are those of the same
+    // reading without it.
+    const fr = res([0.25, 0.25, 0.25, 0.25], { unsupported: true, lang: "fr", score: 0 });
+    const gated = PW.unitVerdict(unit.id, unit.text.length, verdict.windows.map((w, i) => (i === 1 ? { ...w, result: fr } : w)));
     PW.setHighlight(unit, gated);
-    marks = bandsOver(sandbox);
-    const gatedName = (score) => `anagram-s${String(PW.scaleStep(score)).padStart(2, "0")}${PW.isUncertain(gated.result) ? "-u" : ""}`;
-    check("a window the language gate refused is not marked",
-      Object.keys(marks).sort().join() === [gatedName(verdict.windows[0].result.score), gatedName(verdict.windows[2].result.score)].sort().join() && Object.values(marks).flat().length === 2,
-      JSON.stringify(Object.keys(marks)));
+    const gatedMarks = JSON.stringify(bandsOver(sandbox));
+    PW.setHighlight(unit, PW.unitVerdict(unit.id, unit.text.length, verdict.windows.filter((_, i) => i !== 1)));
+    check("a pass the language gate refused is not marked and changes no mark",
+      gatedMarks === JSON.stringify(bandsOver(sandbox)) && gatedMarks !== JSON.stringify(marks) && gated.stretches.every((st) => st.result.probs !== fr.probs), gatedMarks.slice(0, 200));
 
     // The DOM moves on while the verdict is in flight: whole parts, aggregate band.
     unit.parts[0].nodes[0].data = "Edited " + unit.parts[0].nodes[0].data;
     PW.setHighlight(unit, verdict);
     marks = bandsOver(sandbox);
     const aggregate = nameFor(verdict.result.score);
-    check("a window that cannot be found falls back to the whole part in the aggregate colour, never to nothing",
+    check("a stretch that cannot be found falls back to the whole part in the aggregate colour, never to nothing",
       Object.keys(marks).join() === aggregate && marks[aggregate].length === 1 && marks[aggregate][0].startsWith("Edited Sentence number 0") && marks[aggregate][0].endsWith("closes the paragraph."), JSON.stringify(Object.keys(marks)));
 
     // The common case stays what it was: one whole-part range, no offsets resolved.
@@ -1508,7 +1546,7 @@ const results = await page.evaluate(() => {
     layer.render(small, smallVerdict);
     marks = bandsOver(sandbox);
     const smallName = `anagram-s${String(PW.scaleStep(smallVerdict.result.score)).padStart(2, "0")}`;
-    check("a one-window unit is marked and carded exactly as before, solid (its verdict is not uncertain)",
+    check("a one-pass unit is marked and carded exactly as before, solid (its verdict is not uncertain)",
       !PW.isUncertain(smallVerdict.result) && Object.keys(marks).join() === smallName && marks[smallName].length === 1 && marks[smallName][0] === small.text && !/Scored/.test(cardText()) && !/window/.test(cardText()),
       cardText());
     PW.clearHighlight(small.id);
@@ -1899,15 +1937,17 @@ const results = await page.evaluate(() => {
   const r = await fb.evaluate(() => {
     const en = Array.from({ length: 60 }, (_, i) => `Sentence number ${i} keeps walking through the quiet town while the rain falls on it.`).join(" ");
     const zh = Array.from({ length: 140 }, (_, i) => `第${i}句话讲的是一座安静的小城和落在屋顶上的雨，孩子们在窗边读书。`).join("");
+    // The texts of the passes, and whether they read the whole text, each past the last.
     const cut = (t) => PW.planWindows(t).map((s) => t.slice(s.start, s.end));
-    return { starts: PW.sentenceStarts('One. Two!\n\nThree? "Four." Five'), en: cut(en), zh: cut(zh), enLen: en.length, zhLen: zh.length };
+    const covers = (t) => { const sp = PW.planWindows(t); return sp[0].start === 0 && sp[sp.length - 1].end === t.length && sp.every((s, i) => i === 0 || (s.start > sp[i - 1].start && s.start < sp[i - 1].end)); };
+    return { starts: PW.sentenceStarts('One. Two!\n\nThree? "Four." Five'), en: cut(en), zh: cut(zh), enCovered: covers(en), zhCovered: covers(zh) };
   });
   await fb.close();
   results.push({
     name: "no Intl.Segmenter: the regex fallback finds the same sentence starts, Latin and CJK",
     ok: JSON.stringify(r.starts) === JSON.stringify([5, 11, 18, 26]) &&
-      r.en.length === 3 && r.en.join("").length === r.enLen && r.en.every((t) => /^Sentence number \d+ /.test(t) && t.trim().endsWith(".")) &&
-      r.zh.length >= 2 && r.zh.join("").length === r.zhLen && r.zh.every((t) => t.startsWith("第") && t.endsWith("。")),
+      r.en.length >= 3 && r.enCovered && r.en.every((t) => /^Sentence number \d+ /.test(t) && t.trim().endsWith(".")) &&
+      r.zh.length >= 2 && r.zhCovered && r.zh.every((t) => t.startsWith("第") && t.endsWith("。")),
     note: JSON.stringify([r.starts, r.en.map((t) => t.length), r.zh.map((t) => t.length)]),
   });
 }

@@ -4,14 +4,14 @@
 // places passive capture deliberately skips (editors, textareas, fragments under
 // the evidence floor) — and shows the calibrated readout in a small fixed card
 // near the selection. Below the floor it says so honestly instead of scoring. A long
-// selection is read completely, in the same windows a long paragraph is (one aggregate,
-// each window's own number in the card), so "Words analyzed" is the selection again.
+// selection is read completely, in the same passes a long paragraph is (one aggregate,
+// each pass's own number in the card), so "Words analyzed" is the selection again.
 import { computePosition, flip, offset, shift } from "@floating-ui/dom";
 import { MARK_ATTR } from "../types";
 import type { ModelInfo, ScoreBatchRequest, ScoreResult } from "../contract";
 import { CONTRACT_VERSION } from "../contract";
 import { isScoredWindow, readInWindows, requestSlices, unitVerdict } from "../capture/windows";
-import { requestScores, type ScoreReply } from "../messaging/client";
+import { requestScores, requestTokenCounts, type ScoreReply } from "../messaging/client";
 import { modelDim } from "../backend/router";
 import { messageLocale, t } from "../i18n";
 import { band, bandLabel, isNoVerdict, languageName, type Band } from "./band";
@@ -239,7 +239,7 @@ export async function analyzeSelection(): Promise<void> {
         for (const r of reply.results) answers.set(r.id, r);
       }
       return answers;
-    });
+    }, requestTokenCounts);
     if (!_host || _host !== host) return; // dismissed while in flight
     const windows = incompatible ? undefined : read.get("sel");
     const verdict = windows ? unitVerdict("sel", text.length, windows) : null;

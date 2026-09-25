@@ -88,8 +88,8 @@
     "description": "Card row label: word count of the unit."
   },
   "cardWindows": {
-    "message": "Scored in $1 windows",
-    "description": "Card row label for a long text read in several windows. $1 = window count (2+)."
+    "message": "Read in $1 passes",
+    "description": "Card row label for a long text read in several passes. $1 = pass count (2+)."
   },
   "cardScored": {
     "message": "Scored",
@@ -100,16 +100,16 @@
     "description": "Card row value paired with cardScored. $1 = word count."
   },
   "cardWindowsCut": {
-    "message": "Windows cut short",
-    "description": "Card row label: windows the model still had to truncate."
+    "message": "Passes cut short",
+    "description": "Card row label: passes the model still had to truncate."
   },
   "cardOfCount": {
     "message": "$1 of $2",
     "description": "Card row value: a count out of a total."
   },
   "cardWindowsSkipped": {
-    "message": "Windows not in English",
-    "description": "Card row label: windows the language gate refused."
+    "message": "Passes not in English",
+    "description": "Card row label: passes the language gate refused."
   },
   "cardFormulas": {
     "message": "Formulas omitted",
@@ -144,16 +144,16 @@
     "description": "Card footnote sentence; the trailing space joins it to the next sentence."
   },
   "coverageTooDense": {
-    "message": "Part of it is too dense for the model's window and was not read. ",
+    "message": "Part of it is too dense for one pass of the model and was not read. ",
     "description": "Card footnote sentence; the trailing space joins it to the next sentence."
   },
   "coverageOtherLanguages": {
-    "message": "Windows in another language were left out. ",
+    "message": "Passes in another language were left out. ",
     "description": "Card footnote sentence; the trailing space joins it to the next sentence."
   },
   "coverageAveraged": {
-    "message": "Longer than the model reads in one pass, so it was read in $1 consecutive windows and their results were averaged by length. ",
-    "description": "Card footnote sentence. $1 = window count. The trailing space joins it to the next sentence."
+    "message": "Longer than the model reads in one pass, so it was read in $1 passes, and each part is judged by the passes that read it. ",
+    "description": "Card footnote sentence. $1 = pass count. The trailing space joins it to the next sentence."
   },
   "selTooShort": {
     "message": "Too short to judge",
@@ -420,12 +420,12 @@
     "description": "Report entry detail. $1 = word count."
   },
   "reportWindows": {
-    "message": "; scored in $1 windows: $2",
-    "description": "Report entry detail for a long paragraph. $1 = window count, $2 = each window's percentage."
+    "message": "; read in $1 passes: $2",
+    "description": "Report entry detail for a long paragraph. $1 = pass count, $2 = each pass's percentage."
   },
   "reportUnread": {
     "message": "; the end of the paragraph was not read",
-    "description": "Report entry detail appended when the text outran the window cap."
+    "description": "Report entry detail appended when the text outran the pass cap."
   },
   "reportModel": {
     "message": "Scores from $1 ($2) via the local engine — EditLens estimates of AI-editing extent, not proof.",
@@ -548,8 +548,8 @@
     "description": "Text analysis page action, status, or limit."
   },
   "pasteCoverage": {
-    "message": "$1 of $2 windows analyzed · $3 unsupported · $4 unavailable · $5 truncated",
-    "description": "Coverage line on the text analysis page. Every count is of windows (stretches of text read in one pass), not paragraphs."
+    "message": "$1 of $2 passes analyzed · $3 unsupported · $4 unavailable · $5 truncated",
+    "description": "Coverage line on the text analysis page. Every count is of passes (stretches of text read in one pass), not paragraphs."
   },
   "pasteFileFailed": {
     "message": "Could not read this file as UTF-8 text.",

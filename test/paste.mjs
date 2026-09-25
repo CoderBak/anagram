@@ -30,7 +30,7 @@ try {
   await page.locator("#results").waitFor({state: "visible"});
   assert.ok(fixture.requests().some((r) => r.op === "score"));
   assert.equal(fixture.state().component.state, "ready", "The first score wakes an idle model with no cached identity");
-  assert.match(await page.locator("#coverage").innerText(), /1 of 1 windows analyzed/);
+  assert.match(await page.locator("#coverage").innerText(), /1 of 1 passes analyzed/);
   assert.equal(await page.locator("#windows li").count(), 1);
   await page.evaluate(() => {
     window.__report = "";

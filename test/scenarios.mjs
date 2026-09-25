@@ -110,28 +110,37 @@ ${KEY_TAGS.map((t, i) => `<p id="k${i + 1}">${KEY_PARA(t)}</p>\n<div style="heig
 // therefore deaf to the rule written for the page it sits in.
 const FRAME_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>framed article</title></head><body style="margin:12px;font:15px/1.6 system-ui">
 <p id="fp">${PARA("FRAMED")}</p></body></html>`;
-// Window fixtures: the self-test page's three-window paragraph (~3750 characters, its
-// seeded window verdicts add up to a FLAGGED aggregate — test/e2e.mjs prints them), once as
-// a paragraph for the copied report and once in a <textarea>, which passive capture never
+// Pass fixtures: the self-test page's three-pass paragraph (~3750 characters, its seeded
+// pass verdicts add up to a FLAGGED aggregate — test/e2e.mjs prints them), once as a
+// paragraph for the copied report and once in a <textarea>, which passive capture never
 // scores, so the only thing that can read it is the selection card.
 const WINDOWED_TEXT = readFileSync(join(__dirname, "selftest.html"), "utf8")
   .match(/<section id="windowed">\s*<p>([\s\S]*?)<\/p>/)[1]
   .replace(/\s+/g, " ")
   .trim();
+// Blocks the fixture was sent that read the whole of `text` in passes, each starting after
+// the one before, inside it, and reaching past it.
+const readWhole = (blocks, text) => {
+  const at = blocks.map((t) => [text.indexOf(t), text.indexOf(t) + t.length]);
+  return at.length > 1 && at[0][0] === 0 && at[at.length - 1][1] === text.length &&
+    at.every(([from, to], i) => i === 0 || (from > at[i - 1][0] && from < at[i - 1][1] && to > at[i - 1][1]));
+};
 const WINDOWS_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>windows fixture</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
-<h1>One paragraph, three windows</h1>
+<h1>One paragraph, three passes</h1>
 <p id="wp">${WINDOWED_TEXT}</p>
 </body></html>`;
 const LONGSEL_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>long selection fixture</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
 <h1>A selection longer than the model reads in one pass</h1>
 <textarea id="draft" style="width:100%;height:420px">${WINDOWED_TEXT}</textarea>
 </body></html>`;
-// Dense fixture: two paragraphs that fit the extension's character budget and still do not
-// fit the model. Every sentence carries the marker, so both halves of a re-read are dense too.
+// Dense fixture: two paragraphs short enough in characters for one pass and still too long
+// for the model. The engine counts DENSEPACK's tokens, so that one is planned into more
+// passes; SOLID's count says it fits and the reading still comes back cut, and every
+// sentence carries the marker, so both halves of the re-read are cut too.
 const DENSE_PARA = (marker) =>
   Array.from({ length: 14 }, (_, i) => `Line ${i + 1} of the ${marker} ledger lists the figures for that week, the running totals and the initials of whoever checked them.`).join(" ");
 const DENSE_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>dense fixture</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
-<h1>Fewer characters than a window, more tokens than the model takes</h1>
+<h1>Few enough characters for one pass, more tokens than the model takes</h1>
 <p id="dense">${DENSE_PARA(DENSE_MARKER)}</p>
 <p id="solid">${DENSE_PARA(SOLID_MARKER)}</p>
 </body></html>`;
@@ -962,11 +971,11 @@ async function sweep(page, steps = 6) {
       !!rows &&
       Number(rows["Words selected"]) > 600 &&
       rows["Words analyzed"] === rows["Words selected"] &&
-      /^(\.\d\d|1\.0)\s·\s(\.\d\d|1\.0)\s·\s(\.\d\d|1\.0)$/.test(rows["Scored in 3 windows"] ?? "") &&
+      /^(\.\d\d|1\.0)\s·\s(\.\d\d|1\.0)\s·\s(\.\d\d|1\.0)$/.test(rows["Read in 3 passes"] ?? "") &&
       !("Model window" in rows) &&
       blocks.length === 3 &&
-      blocks.join(" ") === WINDOWED_TEXT;
-    record("ui", "selection card: a long selection is analyzed whole, in windows — words analyzed = words selected", ok, JSON.stringify({ rows, blocks: blocks.map((t) => t.length) }));
+      readWhole(blocks, WINDOWED_TEXT);
+    record("ui", "selection card: a long selection is analyzed whole, in overlapping passes — words analyzed = words selected", ok, JSON.stringify({ rows, blocks: blocks.map((t) => t.length) }));
     await p.close();
   }
 
@@ -1002,8 +1011,8 @@ async function sweep(page, steps = 6) {
     await p.close();
   }
 
-  // A25b: a flagged paragraph that was scored in windows says so in the report, with each
-  // window's own number — whoever reads the report has no underline to look at.
+  // A25b: a flagged paragraph that was read in passes says so in the report, with each
+  // pass's own number — whoever reads the report has no underline to look at.
   {
     const p = await context.newPage();
     await p.goto(server.url("/windows.html"), { waitUntil: "load" });
@@ -1021,14 +1030,15 @@ async function sweep(page, steps = 6) {
     const report = await p.evaluate(() => navigator.clipboard.readText().catch(() => null));
     // Windows hands the clipboard back with CRLF line ends; the report itself is LF.
     const line = (report ?? "").split(/\r?\n/).find((l) => l.startsWith("1. ")) ?? "";
-    const ok = chipped && /; \d+ words; scored in 3 windows: (\.\d\d|1\.0) · (\.\d\d|1\.0) · (\.\d\d|1\.0)\)$/.test(line) && !line.includes("not read");
-    record("ui", "copied report: a paragraph scored in windows says so, with each window's own number", ok, JSON.stringify({ chipped, line }));
+    const ok = chipped && /; \d+ words; read in 3 passes: (\.\d\d|1\.0) · (\.\d\d|1\.0) · (\.\d\d|1\.0)\)$/.test(line) && !line.includes("not read");
+    record("ui", "copied report: a paragraph read in passes says so, with each pass's own number", ok, JSON.stringify({ chipped, line }));
     await p.close();
   }
 
-  // A25c: a paragraph inside the character budget that still overflows the model's window
-  // (figures, URLs, names) is not left half-read: the fixture's `truncated` answer sends both
-  // halves back for a second reading. When even a half overflows, the card says so.
+  // A25c: a paragraph short in characters and long in tokens (figures, URLs, names) is not
+  // left half-read. The engine's count plans it into passes that fit; where the reading still
+  // comes back `truncated`, both halves are sent back for a second reading, and when even a
+  // half overflows, the card says so.
   {
     const p = await context.newPage();
     await p.goto(server.url("/dense.html"), { waitUntil: "load" });
@@ -1050,20 +1060,23 @@ async function sweep(page, steps = 6) {
       )
       .then((h) => h.jsonValue())
       .catch(() => null);
-    const text = DENSE_PARA(DENSE_MARKER);
-    const sent = [...new Set(fixture.stats.texts.filter((t) => t.includes(DENSE_MARKER)))];
-    const halves = sent.filter((t) => t !== text);
+    const inOrder = (texts, whole) => texts.sort((a, b) => whole.indexOf(a) - whole.indexOf(b));
+    const dense = DENSE_PARA(DENSE_MARKER);
+    const sent = inOrder([...new Set(fixture.stats.texts.filter((t) => t.includes(DENSE_MARKER)))], dense);
+    const solid = DENSE_PARA(SOLID_MARKER);
+    const halves = inOrder([...new Set(fixture.stats.texts.filter((t) => t.includes(SOLID_MARKER) && t !== solid))], solid);
     const ok =
       !!cards &&
-      "Scored in 2 windows" in cards.dense.rows &&
-      !("Windows cut short" in cards.dense.rows) &&
+      `Read in ${sent.length} passes` in cards.dense.rows &&
+      !("Passes cut short" in cards.dense.rows) &&
       !/not read/.test(cards.dense.foot) &&
-      sent.includes(text) &&
+      !sent.includes(dense) && readWhole(sent, dense) && sent.every((t) => t.length / 2 <= 512) &&
+      fixture.stats.texts.includes(solid) &&
       halves.length === 2 &&
-      halves.sort((a, b) => text.indexOf(a) - text.indexOf(b)).join(" ") === text &&
-      cards.solid.rows["Windows cut short"] === "2 of 2" &&
-      /too dense for the model's window and was not read/.test(cards.solid.foot);
-    record("ui", "dense text: a paragraph the fixture had to cut is re-read in two halves; one still cut says so", ok, JSON.stringify({ cards: cards && { dense: cards.dense.rows, solid: cards.solid.rows }, sent: sent.map((t) => t.length) }));
+      halves.join(" ") === solid &&
+      cards.solid.rows["Passes cut short"] === "2 of 2" &&
+      /too dense for one pass of the model and was not read/.test(cards.solid.foot);
+    record("ui", "dense text: counted tokens plan a dense paragraph into passes; one the engine still cuts is re-read in two halves, and says so", ok, JSON.stringify({ cards: cards && { dense: cards.dense.rows, solid: cards.solid.rows }, sent: sent.map((t) => t.length), halves: halves.map((t) => t.length) }));
     await p.close();
   }
 

@@ -6,7 +6,7 @@ import { t } from "../../lib/i18n";
 import { CONTRACT_VERSION, type ModelInfo, type ScoreResult } from "../../lib/contract";
 import { countWords, MIN_UNIT_WORDS } from "../../lib/dom/text";
 import { planWindows, readInWindows, unitVerdict, type WindowVerdict } from "../../lib/capture/windows";
-import { requestScores } from "../../lib/messaging/client";
+import { requestScores, requestTokenCounts } from "../../lib/messaging/client";
 import { modelDim } from "../../lib/backend/router";
 import { cancelDocumentSession } from "../../lib/access/session";
 import { band, bandLabel, BUCKET_BANDS, isNoVerdict } from "../../lib/render/band";
@@ -66,7 +66,7 @@ analyze.addEventListener("click", async () => {
         for (const result of response.results) out.set(result.id, result);
       }
       return out;
-    });
+    }, requestTokenCounts);
     if (seq !== generation) return;
     const read = windows.get("paste"); if (!read?.length) throw new Error("incomplete");
     const scored = read.filter((w) => !w.result.unsupported && !w.result.degraded);

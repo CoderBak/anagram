@@ -6,19 +6,19 @@ import { t } from "../i18n";
 import { formatScore } from "./score";
 
 export interface WindowReadout {
-  /** Windows the text was read in (2 or more). */
+  /** Passes the text was read in (2 or more). */
   count: number;
-  /** Each window's own number (".41"), in reading order; a window the language gate
+  /** Each pass's own number (".41"), in reading order; a pass the language gate
    *  refused shows its language code instead. */
   scores: string[];
-  /** Windows the language gate refused: not scored, not in the aggregate, not marked. */
+  /** Passes the language gate refused: not scored, not in the aggregate, not marked. */
   skipped: number;
-  /** Windows the daemon still had to cut after the re-read in halves: part of their text
+  /** Passes the engine still had to cut after the re-read in halves: part of their text
    *  never reached the model. */
   cutShort: number;
 }
 
-/** The readout for a unit read in several windows; null when one pass covered it. */
+/** The readout for a unit read in several passes; null when one pass covered it. */
 export function windowReadout(v: UnitVerdict): WindowReadout | null {
   if (v.windows.length < 2) return null;
   return {
@@ -29,7 +29,7 @@ export function windowReadout(v: UnitVerdict): WindowReadout | null {
   };
 }
 
-/** A card's "Scored in N windows" value: ".41 · .72 · .18". Up to eight numbers may wrap,
+/** A card's "Read in N passes" value: ".41 · .72 · .18". Up to eight numbers may wrap,
  *  and the no-break space keeps each separator with the number in front of it. */
 export function windowScores(read: WindowReadout): string {
   return read.scores.join("\u00a0· ");
@@ -37,7 +37,7 @@ export function windowScores(read: WindowReadout): string {
 
 /**
  * The sentences that go in front of a card's footer when the number needs explaining:
- * it is an average over windows, and whatever was NOT read is said here, in words.
+ * it combines several passes, and whatever was NOT read is said here, in words.
  */
 export function coverageNote(v: UnitVerdict, what: "paragraph" | "selection"): string {
   const read = windowReadout(v);

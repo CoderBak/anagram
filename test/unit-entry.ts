@@ -38,11 +38,17 @@ export { createBadgeLayer } from "../lib/render/badge";
 export { locateSpans } from "../lib/dom/locate";
 export {
   planWindows,
+  cutPieces,
+  planPasses,
+  readEnd,
+  estimateTokens,
   halve,
   blockText,
   unitVerdict,
   WINDOW_CHARS,
-  MIN_WINDOW_CHARS,
+  ONE_PASS_CHARS,
+  PASS_TOKENS,
+  MAX_PIECE_CHARS,
   MAX_WINDOWS,
   MAX_READ_CHARS,
 } from "../lib/capture/windows";

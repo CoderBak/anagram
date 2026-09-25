@@ -5,8 +5,9 @@
 // self-test page over http (so the registered content script injects), scrolls the
 // whole page (scoring is viewport-first BY DESIGN), then asserts the v2 behaviours:
 // long paragraphs badge once and underline to the end (the HF regression), a paragraph
-// longer than the model reads in one pass is scored completely — in windows, one chip,
-// each window marked in its own band —
+// longer than the model reads in one pass is scored completely — in overlapping passes
+// planned on the engine's token counts, one chip, each stretch marked in the colour of the
+// passes that read it —
 // BR-split/short-sibling/pre-wrap content merges into single units, a post written one
 // short sentence per line is one unit while two voices never share one, a post of mixed
 // paragraphs (X markup) sits under ONE chip reading ×N and is one chip again after it is
@@ -125,8 +126,8 @@ const snapshot = await page.evaluate((sel) => {
     // language gate settles it and renders an "unsupported language" chip with no number
     // and no mark. The fake fixture is asserted below to have seen no non-English block.
     cjkUnsupported: !!document.querySelector(`#purecjk ${sel}`)?.shadowRoot?.querySelector(".pill.band-unsupported"),
-    // The paragraph scored in windows: its own text (what the fixture's blocks must add up
-    // to), the chip and card it got, and the band of every range laid over it.
+    // The paragraph read in passes: its own text (what the fixture's blocks must cover),
+    // the chip and card it got, and the band of every range laid over it.
     windowed: (() => {
       const p = document.querySelector("#windowed p");
       const root = document.querySelector(`#windowed ${sel}`)?.shadowRoot;
@@ -280,19 +281,24 @@ console.log("screenshot:", shot);
 // 15) checks + summary.
 const s = snapshot;
 // What the fixture was asked about the windowed paragraph: every block that is a piece of
-// it, in reading order. The fake's verdict is a pure function of the text, so the marks
-// the page must show are known here without asking the page: each window on its step of
-// the scale (lib/render/scale.ts, twenty steps), dashed or not as the whole paragraph is.
+// it, in reading order, and where each lies in it. The fake's verdict is a pure function of
+// the text, so what the page must show is known here without asking the page. The opening
+// is read by the first pass alone and the close by the last alone, so those two stretches
+// carry exactly their pass's step of the scale (lib/render/scale.ts, twenty steps); every
+// stretch between is a weighted mean, so its step lies between the passes' own.
 const stepOf = (score) => `s${String(Math.round(Math.min(Math.max(score, 0), 1) * 20)).padStart(2, "0")}`;
 const windowBlocks = [...new Set(fixture.stats.texts.filter((t) => t.length > 200 && s.windowed.text.includes(t)))]
   .sort((a, b) => s.windowed.text.indexOf(a) - s.windowed.text.indexOf(b));
+const windowAt = windowBlocks.map((t) => [s.windowed.text.indexOf(t), s.windowed.text.indexOf(t) + t.length]);
 const windowVerdicts = windowBlocks.map((t) => fakeScore(t));
-const expectedBands = [...new Set(windowVerdicts.map((v) => stepOf(v.score)))].sort();
+const passSteps = windowVerdicts.map((v) => stepOf(v.score));
+const drawnSteps = [...new Set(s.windowed.bands.map((b) => b.replace(/-u$/, "")))].sort();
+const windowCounted = fixture.requests().some((r) => r.op === "tokens" && r.payload.texts.some((t) => s.windowed.text.includes(t)));
 // What lib/render/score.ts writes, in four lines, so the expectation is spelled out here
 // rather than imported out of a TypeScript module this suite cannot load.
 const formatScore = (score) => (Math.round(score * 100) >= 100 ? "1.0" : `.${String(Math.round(score * 100)).padStart(2, "0")}`);
 const expectedScores = windowVerdicts.map((v) => formatScore(v.score));
-console.log(`windowed paragraph: ${s.windowed.text.length} chars → ${windowBlocks.length} blocks of ${windowBlocks.map((t) => t.length).join(" / ")} chars → ${expectedScores.join(" · ")} (${expectedBands.join(", ")})`);
+console.log(`windowed paragraph: ${s.windowed.text.length} chars → ${windowBlocks.length} passes at ${JSON.stringify(windowAt)} → ${expectedScores.join(" · ")} (${passSteps.join(", ")}; drawn ${drawnSteps.join(", ")})`);
 const checks = [
   ["extension loaded (service worker)", !!sw],
   ["badges rendered across the page", s.badgeTotal >= 11],
@@ -301,15 +307,17 @@ const checks = [
   ["human/ai/quote/div-EN/div-ZH badged", s.sections.human === 1 && s.sections.aiwrap === 1 && s.sections.quote === 1 && s.sections.divbased === 2],
   ["LONG paragraph: exactly ONE badge (no 1000-char split)", s.sections.longpara === 1],
   ["LONG paragraph underline reaches the end (HF regression)", s.hl.longtail],
-  ["LONG paragraph is still one window: no window row in its card", !/Scored/.test(snapshotCardOf.longpara)],
+  ["LONG paragraph is still one pass: no pass row in its card", !/Scored|Read in/.test(snapshotCardOf.longpara)],
   ["WINDOWED paragraph: exactly ONE chip, showing one score and no per cent sign", s.sections.windowed === 1 && /^(\.\d\d|1\.0)$/.test(s.windowed.chip)],
-  ["WINDOWED paragraph: the fixture received it whole, as 3 consecutive blocks, none past its token window",
-    windowBlocks.length === 3 && windowBlocks.join(" ") === s.windowed.text && windowVerdicts.every((v) => v.truncated === false)],
+  ["WINDOWED paragraph: counted by the engine, then read whole in 3 overlapping passes, none past its token window",
+    windowCounted && windowBlocks.length === 3 && windowAt[0][0] === 0 && windowAt[2][1] === s.windowed.text.length &&
+    windowAt.every(([from, to], i) => i === 0 || (from > windowAt[i - 1][0] && from < windowAt[i - 1][1] && to > windowAt[i - 1][1])) && windowVerdicts.every((v) => v.truncated === false)],
   ["WINDOWED paragraph: underline reaches the final sentence", s.hl.windowtail],
-  ["WINDOWED paragraph: each window is marked in the colour of its own score (more than one, as the verdicts differ)",
-    expectedBands.length > 1 && JSON.stringify([...new Set(s.windowed.bands.map((b) => b.replace(/-u$/, "")))].sort()) === JSON.stringify(expectedBands)],
-  ["WINDOWED paragraph: the card reads 'Scored in 3 windows' with each window's number, and claims no prefix",
-    s.windowed.card.includes(`Scored in 3 windows${expectedScores.join("\u00a0· ")}`) && !/Only the opening|first \d+/.test(s.windowed.card)],
+  ["WINDOWED paragraph: marked stretch by stretch — the opening in the first pass's colour, the close in the last's, the rest between",
+    passSteps[0] !== passSteps[2] && drawnSteps.includes(passSteps[0]) && drawnSteps.includes(passSteps[2]) &&
+    drawnSteps.every((b) => b >= [...passSteps].sort()[0] && b <= [...passSteps].sort()[2])],
+  ["WINDOWED paragraph: the card reads 'Read in 3 passes' with each pass's number, and claims no prefix",
+    s.windowed.card.includes(`Read in 3 passes${expectedScores.join("\u00a0· ")}`) && !/Only the opening|first \d+/.test(s.windowed.card)],
   ["BR-split halves merged into one unit", s.sections.brsplit === 1 && s.hl.br1 && s.hl.br2],
   ["three short siblings merged into one unit", s.sections.mergeshorts === 1 && s.hl.ms1 && s.hl.ms2 && s.hl.ms3],
   ["one-sentence-per-line post: one unit from the first line to the last, without the name row", s.sections.postlines === 1 && s.hl.post1 && s.hl.postN && !s.hl.posterName],
