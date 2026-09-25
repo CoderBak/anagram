@@ -636,9 +636,9 @@ const PARA = (tag) =>
   "counter and the triage panel behind them exist for on a page like this one, where every verdict has to " +
   "be one key press away and read out in words rather than shown only as a colour.";
 // The fake fixture's verdicts are a pure function of the text, so the tags below are chosen
-// (with test/fake-native.mjs's own fakeScore) to land three paragraphs in each FLAGGED
-// band and two outside them: the panel then has rows, a Copy report button AND the verdict
-// filter chips, which only appear when both flagged bands are present.
+// (with test/fake-native.mjs's own fakeScore) to land three paragraphs AI-generated — the
+// flagged ones, the panel's rows — three heavily edited and two below: every word the chips
+// can say is on the page, and the panel has rows and a Copy report button.
 const AI_TAGS = ["FLAG-16", "FLAG-18", "FLAG-27"];
 const HEAVY_TAGS = ["FLAG-4", "FLAG-8", "FLAG-11"];
 const CALM_TAGS = ["FLAG-1", "FLAG-19"]; // lightly edited, human
@@ -842,7 +842,7 @@ let fixturePage = null;
     `${(closed.checkedTargets ?? []).length} node targets, e.g. ${(closed.checkedTargets ?? [])[0] ?? "—"}`,
   );
 
-  // Panel open, with flagged rows and — both bands being present here — the filter chips.
+  // Panel open, with flagged rows.
   const panelState = await page.evaluate(() => {
     const sr = document.getElementById("anagram-fab")?.shadowRoot;
     sr?.querySelector(".count").dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -861,8 +861,8 @@ let fixturePage = null;
     { timeout: 4000 },
   ).catch(() => {});
   // Which bands this page happens to produce is the fixture's business, not a contract —
-  // the deterministic both-bands state (and therefore the filter chips) is scanned on the
-  // suite's own keyboard fixture below, where the verdicts are chosen.
+  // the deterministic state is scanned on the suite's own keyboard fixture below, where the
+  // verdicts are chosen.
   record(
     "axe",
     "triage panel opens with flagged rows (the state axe is run on)",
@@ -1358,11 +1358,11 @@ async function panelCodeChecks(page) {
   });
   record(
     "axe",
-    "the keyboard fixture puts both flagged bands in the panel, so the verdict filters are there to scan",
-    state.open && state.items === 6 && state.filters.length === 3 && state.copy,
+    "the keyboard fixture's three AI-generated paragraphs are the panel's rows (heavily edited ones are not flagged)",
+    state.open && state.items === 3 && state.filters.length === 0 && state.copy,
     JSON.stringify(state),
   );
-  await axeScan(page, "ball (panel open, verdict filters)", "#anagram-fab");
+  await axeScan(page, "ball (panel open)", "#anagram-fab");
   const stops = await tabWalk(page, { max: 40 });
   const ours = stops.filter((s) => s.path.includes("#anagram-fab"));
   record("keyboard", "ball + panel: the walk reached our controls at all", ours.length > 2, `${ours.length} stops`);

@@ -32,9 +32,10 @@ describe("the word follows the score", () => {
     expect(band(result([1, 5, 9, 85]))).toBe("ai");
   });
 
-  it("flags from the middle of the scale up, exactly where the word turns to heavily edited", () => {
-    expect(isFlagged({ id: "x", bucket: 1, probs: [0, 0.5, 0.5, 0], score: 0.5 })).toBe(true);
-    expect(isFlagged({ id: "x", bucket: 2, probs: [0.02, 0.5, 0.48, 0], score: 0.4867 })).toBe(false);
+  it("flags AI-generated verdicts only, exactly where the word turns to AI-generated", () => {
+    expect(isFlagged({ id: "x", bucket: 3, probs: [0, 0, 0.5, 0.5], score: 5 / 6 })).toBe(true);
+    expect(isFlagged({ id: "x", bucket: 2, probs: [0, 0.02, 0.5, 0.48], score: 0.8267 })).toBe(false);
+    expect(isFlagged({ id: "x", bucket: 2, probs: [0, 0.2, 0.6, 0.2], score: 2 / 3 })).toBe(false);
   });
 
   it("keeps the two verdicts that are not verdicts", () => {

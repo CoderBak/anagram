@@ -267,18 +267,6 @@
     "message": "Report copied to the clipboard",
     "description": "Spoken after Copy report."
   },
-  "panelFilterAll": {
-    "message": "All $1",
-    "description": "Panel filter chip. $1 = count of all flagged paragraphs."
-  },
-  "panelFilterAi": {
-    "message": "AI $1",
-    "description": "Panel filter chip for AI-generated. $1 = count."
-  },
-  "panelFilterHeavy": {
-    "message": "Heavily edited $1",
-    "description": "Panel filter chip for heavily edited. $1 = count."
-  },
   "panelEmpty": {
     "message": "Nothing flagged on this page.",
     "description": "Panel empty state."
@@ -404,7 +392,7 @@
     "description": "Report preamble: what the percentages mean."
   },
   "reportNothingFlagged": {
-    "message": "No paragraphs were flagged as heavily edited or AI-generated.",
+    "message": "No paragraphs were flagged as AI-generated.",
     "description": "Report body when nothing was flagged."
   },
   "reportFlaggedHeading": {

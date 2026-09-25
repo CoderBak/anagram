@@ -18,6 +18,10 @@ local component and the installer all carry the same version.
   ring the less likely its word is to be right, as estimated by a small model fitted on
   the EditLens validation data and checked on held-out and out-of-domain sets; no number
   is shown for it. The card shades the range the probabilities cover.
+- Only AI-generated paragraphs are flagged: the ball's counter, the toolbar badge, the
+  list and the next/previous commands no longer count heavily edited ones, which are
+  right under a third of the time against what the model is trained to measure. The
+  list's AI / Heavily edited filter is gone with them.
 - Underlines are on for every analyzed paragraph or off; the flagged-only mode is gone.
   The card shows where the score sits on the scale instead of a stacked bar.
 - A text longer than the model reads at once is divided into halves of equal token count

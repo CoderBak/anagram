@@ -52,9 +52,13 @@ export function languageName(code: string | undefined): string {
   }
 }
 
-/** Bands that count as "flagged" (counter, triage panel, toolbar badge, flagged-only mode). */
+/**
+ * Bands that count as "flagged" (counter, triage panel, toolbar badge, flagged-only mode):
+ * AI-generated only. It is the word the model gets right most often; "heavily edited" is
+ * right under a third of the time against the edit-magnitude buckets EditLens is trained on.
+ */
 export function isFlaggedBand(b: Band): boolean {
-  return b === "heavy" || b === "ai";
+  return b === "ai";
 }
 
 export function isFlagged(r: ScoreResult): boolean {

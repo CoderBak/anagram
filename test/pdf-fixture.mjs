@@ -48,10 +48,10 @@ export const PDF_PARAS = [
     "every single unit that the extension sends off to be scored by the local daemon on",
     "this computer, which would be both wasteful and actively misleading to anybody who",
     // The fake daemon's verdicts are a pure function of the text, and this wording is
-    // the one that lands in a FLAGGED band — the panel and the copied report both need
-    // at least one flagged paragraph to have anything to show.
+    // the one that reads AI-generated — the one flagged band — so the panel and the copied
+    // report both have a paragraph to show.
     "later reads the copied report and asks where each of these paragraphs came from, and",
-    "why the same line of furniture turns up in every one of them.",
+    "why the same line of furniture keeps turning up in every one of them.",
   ],
 ];
 

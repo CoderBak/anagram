@@ -334,8 +334,7 @@ const FAB_CSS = `
 }
 .panel .pnotice .fchip { flex: 0 0 auto; }
 
-/* Verdict filter chips. */
-.panel .pfilters { display: flex; gap: 5px; padding: 0 8px 6px; }
+/* Chip-shaped buttons (the Retry in the engine notice). */
 .panel .fchip {
   font: 500 10.5px/1 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   color: #525252;
@@ -558,7 +557,6 @@ export function createFab(opts: {
   let actionLabel: string | null = null;
   let actionCb: (() => void) | undefined;
   let actionAttention = false;
-  let panelFilter: "all" | "ai" | "heavy" = "all";
   let backendDown = false;
   let side: Side = "right";
   let tuckTimer: ReturnType<typeof setTimeout> | null = null;
@@ -985,15 +983,7 @@ export function createFab(opts: {
   function renderPanel(): void {
     if (!panelEl) return;
     panelEl.textContent = "";
-    const all = opts.panel?.entries() ?? [];
-    const counts = {
-      ai: all.filter((e) => e.band === "ai").length,
-      heavy: all.filter((e) => e.band === "heavy").length,
-    };
-    // The filter chips are only drawn when both bands are present (below). Without them a
-    // filter picked earlier could never be undone, so the list goes back to everything.
-    if (!(counts.ai > 0 && counts.heavy > 0)) panelFilter = "all";
-    const entries = panelFilter === "all" ? all : all.filter((e) => e.band === panelFilter);
+    const entries = opts.panel?.entries() ?? [];
 
     if (backendDown) {
       const notice = document.createElement("div");
@@ -1017,9 +1007,9 @@ export function createFab(opts: {
     const title = document.createElement("h2");
     title.id = PANEL_TITLE_ID; // the dialog's accessible name
     title.tabIndex = -1; // where keyboard focus lands when there is no result to land on
-    title.textContent = all.length ? t("panelTitleCount", all.length) : t("panelTitle");
+    title.textContent = entries.length ? t("panelTitleCount", entries.length) : t("panelTitle");
     head.appendChild(title);
-    if (opts.panel && all.length > 0) {
+    if (opts.panel && entries.length > 0) {
       const copy = document.createElement("button");
       copy.type = "button";
       copy.className = "pcopy";
@@ -1082,32 +1072,6 @@ export function createFab(opts: {
       scope.className = "pcov pscope";
       scope.textContent = scopeNote;
       panelEl.appendChild(scope);
-    }
-
-    // Verdict filters — only when both bands are present (a one-band page needs
-    // no chrome for it).
-    if (counts.ai > 0 && counts.heavy > 0) {
-      const filters = document.createElement("div");
-      filters.className = "pfilters";
-      const mk = (key: typeof panelFilter, text: string): HTMLButtonElement => {
-        const b = document.createElement("button");
-        b.type = "button";
-        b.className = "fchip";
-        b.textContent = text;
-        b.setAttribute("aria-pressed", String(panelFilter === key));
-        b.addEventListener("click", (e) => {
-          e.stopPropagation();
-          panelFilter = key;
-          renderPanel();
-        });
-        return b;
-      };
-      filters.append(
-        mk("all", t("panelFilterAll", all.length)),
-        mk("ai", t("panelFilterAi", counts.ai)),
-        mk("heavy", t("panelFilterHeavy", counts.heavy)),
-      );
-      panelEl.appendChild(filters);
     }
 
     const list = document.createElement("div");

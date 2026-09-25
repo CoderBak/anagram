@@ -95,9 +95,8 @@ const STALL_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><
 // text the verdict is seeded from. The 900 px lead-in puts every paragraph BELOW the
 // viewport's middle at scroll 0, which is what makes "previous" wrap to the last one.
 const KEY_PARA = (tag) => `${tag} paragraph is long enough to be scored on its own because it carries well over seventy-five ordinary English words describing nothing in particular except the fact that a keyboard user must be able to walk the flagged paragraphs of a page without ever reaching for a mouse, which is what the next and previous commands are for, and each of them has to bring the next verdict into view and say which paragraph it belongs to before the reader moves on.`;
-// Four flagged paragraphs under the fake's text-seeded scores, and not all of one word:
-// FLAG-2 reads AI-generated (.95), the other three heavily edited (.62–.73).
-const KEY_TAGS = ["FLAG-10", "FLAG-2", "FLAG-11", "FLAG-14"];
+// Four flagged — AI-generated — paragraphs under the fake's text-seeded scores (.91–.95).
+const KEY_TAGS = ["FLAG-3", "FLAG-2", "FLAG-22", "FLAG-37"];
 // A fifth, inserted above them once they are chipped: AI-generated (.90) under the same scores.
 const LATE_TAG = "LATE-1";
 const KEYS_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>keyboard fixture</title></head><body style="max-width:720px;margin:0 auto;font:15px/1.6 system-ui">
@@ -687,8 +686,7 @@ async function sweep(page, steps = 6) {
     await page.mouse.move(5, 400);
   }
 
-  // A17: triage panel — opens from the counter, filter chips appear when both
-  // verdict bands exist, and filtering narrows the list.
+  // A17: triage panel — opens from the counter and lists AI-generated paragraphs only.
   {
     const r = await page.evaluate(() => {
       const fab = document.getElementById("anagram-fab");
@@ -697,19 +695,13 @@ async function sweep(page, steps = 6) {
       const panel = sr?.querySelector(".panel");
       const open = !!panel?.classList.contains("open");
       const items = panel?.querySelectorAll(".pitem").length ?? 0;
-      const chips = [...(panel?.querySelectorAll(".fchip") ?? [])].map((c) => c.textContent);
-      let filtered = -1;
-      const aiChip = [...(panel?.querySelectorAll(".fchip") ?? [])].find((c) => c.textContent.startsWith("AI"));
-      if (aiChip) {
-        aiChip.click();
-        filtered = sr.querySelectorAll(".panel .pitem:not(.band-ai)").length;
-      }
+      const others = panel?.querySelectorAll(".pitem:not(.band-ai)").length ?? -1;
+      const chips = panel?.querySelectorAll(".pfilters, .fchip[aria-pressed]").length ?? -1;
       // close it again
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-      return { open, items, chips, filtered };
+      return { open, items, others, chips };
     });
-    const filterOk = r.chips.length === 0 || r.filtered === 0;
-    record("ui", "triage panel opens; verdict filters narrow the list", r.open && r.items > 0 && filterOk, JSON.stringify(r));
+    record("ui", "triage panel opens and lists AI-generated paragraphs only, with no verdict filters", r.open && r.items > 0 && r.others === 0 && r.chips === 0, JSON.stringify(r));
   }
 
   // A18: FAB drag → snaps to the nearest edge and remembers the side.
@@ -2651,7 +2643,6 @@ ${KEY_TAGS.map((t, i) => `<p id="z${i + 1}">${KEY_PARA(t)}</p>`).join("\n")}
           chip.copy === "复制原文" &&
           panel.lang === "zh-CN" &&
           panel.title === "存疑段落（4）" &&
-          panel.filters.includes("全部 4") &&
           // The coverage line is translated too — "已读 N", and nothing else on a page
           // where every paragraph was read.
           /^已读 \d+$/.test(panel.cov) &&

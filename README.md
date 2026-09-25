@@ -22,9 +22,10 @@ not been exercised on real machines. Firefox has a build but is not the focus.
 ## Use
 
 Every analyzed paragraph gets a small chip with a score from .00 (human) to 1.0
-(AI-generated). Hover it for the four-way breakdown. The floating ball lists flagged
-paragraphs and copies a report. PDFs open in a built-in reader. Google Docs get a
-reading view. Settings covers site access, marks, cache and the local engine.
+(AI-generated). Hover it for the four-way breakdown. The floating ball counts and
+lists paragraphs that read as AI-generated, and copies a report. PDFs open in a
+built-in reader. Google Docs get a reading view. Settings covers site access, marks,
+cache and the local engine.
 
 ## Develop
 

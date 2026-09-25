@@ -200,15 +200,6 @@
   "panelAnnounceCopied": {
     "message": "报告已复制到剪贴板"
   },
-  "panelFilterAll": {
-    "message": "全部 $1"
-  },
-  "panelFilterAi": {
-    "message": "AI $1"
-  },
-  "panelFilterHeavy": {
-    "message": "重度 AI 编辑 $1"
-  },
   "panelEmpty": {
     "message": "本页没有存疑段落。"
   },
@@ -303,7 +294,7 @@
     "message": "分数为 EditLens 四类预测的 (p1 + 2p2 + 3p3) / 3，用于概括类别分布。它不是 AI 撰写的字数占比、实际修改距离，也不能证明作者身份。"
   },
   "reportNothingFlagged": {
-    "message": "没有段落被判为重度 AI 编辑或 AI 生成。"
+    "message": "没有段落被判为 AI 生成。"
   },
   "reportFlaggedHeading": {
     "message": "存疑段落（$1）"

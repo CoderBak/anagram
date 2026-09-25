@@ -35,8 +35,8 @@ grant, **Analyze this page** in the popup scores the page in front of you once.
   guarantee.
 - Short paragraphs are scored together with their neighbours; a ×2 on a chip means it
   covers two paragraphs.
-- The floating ball shows or hides marks. Its counter opens the list of flagged
-  paragraphs, which can jump to each one and copy a report.
+- The floating ball shows or hides marks. Its counter shows how many paragraphs read as
+  AI-generated and opens their list, which can jump to each one and copy a report.
 - Right-click a selection to score just that text. Alt+Shift+P toggles Anagram on the
   page, Alt+Shift+L opens the list, Alt+Shift+J and K walk flagged paragraphs.
 - PDFs open in Anagram's reader from the popup, the floating ball or a right-click on a
