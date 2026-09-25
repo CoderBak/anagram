@@ -234,11 +234,12 @@ with tempfile.TemporaryDirectory() as tmp:
 # Native score validation is transport independent.
 from pydantic import ValidationError
 bad_requests = [
-    {"v":"3.0","blocks":[]},
-    {"v":"2.1","blocks":[{"id":"same","text":"a"},{"id":"same","text":"b"}]},
-    {"v":"2.1","blocks":[{"id":"x" * 65,"text":"a"}]},
-    {"v":"2.1","blocks":[{"id":"x","text":"a" * 16001}]},
-    {"v":"2.1","blocks":[{"id":str(i),"text":"a"} for i in range(257)]},
+    {"v":"2.2","blocks":[]},
+    {"v":"4.0","blocks":[]},
+    {"v":"3.0","blocks":[{"id":"same","text":"a"},{"id":"same","text":"b"}]},
+    {"v":"3.0","blocks":[{"id":"x" * 65,"text":"a"}]},
+    {"v":"3.0","blocks":[{"id":"x","text":"a" * 16001}]},
+    {"v":"3.0","blocks":[{"id":str(i),"text":"a"} for i in range(257)]},
 ]
 for index, payload in enumerate(bad_requests):
     try:
@@ -247,18 +248,18 @@ for index, payload in enumerate(bad_requests):
         check(f"invalid score request {index} is refused before tokenization", True)
     else:
         check(f"invalid score request {index} is refused before tokenization", False)
-check("contract 2.x score request remains valid", engine_api.ScoreRequest.model_validate({"v":"2.1","blocks":[]}).v == "2.1")
+check("contract 3.x score request remains valid", engine_api.ScoreRequest.model_validate({"v":"3.1","blocks":[]}).v == "3.1")
 
 bad_requests = [
-    {"v":"3.0","texts":[]},
+    {"v":"2.2","texts":[]},
     {"texts":["a"]},
-    {"v":"2.2","texts":"a"},
-    {"v":"2.2","texts":["a", 1]},
-    {"v":"2.2","texts":["a", None]},
-    {"v":"2.2","texts":[["a"]]},
-    {"v":"2.2","texts":["a" * 16001]},
-    {"v":"2.2","texts":["a"] * 513},
-    {"v":"2.2","texts":["a" * 16000] * 16 + ["a"]},
+    {"v":"3.0","texts":"a"},
+    {"v":"3.0","texts":["a", 1]},
+    {"v":"3.0","texts":["a", None]},
+    {"v":"3.0","texts":[["a"]]},
+    {"v":"3.0","texts":["a" * 16001]},
+    {"v":"3.0","texts":["a"] * 513},
+    {"v":"3.0","texts":["a" * 16000] * 16 + ["a"]},
 ]
 for index, payload in enumerate(bad_requests):
     try:
@@ -268,11 +269,23 @@ for index, payload in enumerate(bad_requests):
     else:
         check(f"invalid tokens request {index} is refused before tokenization", False)
 check("the largest tokens request is valid",
-      len(engine_api.TokensRequest.model_validate({"v":"2.2","texts":["a" * 500] * 512}).texts) == 512)
+      len(engine_api.TokensRequest.model_validate({"v":"3.0","texts":["a" * 500] * 512}).texts) == 512)
 # A fast tokenizer refuses an empty batch; no texts never reach it.
 untokenized = SimpleNamespace(tok=None, emoji=None, max_length=512)
 check("no texts count to nothing without calling the tokenizer",
-      engine_api.tokens_with_engine(engine_api.TokensRequest.model_validate({"v":"2.2","texts":[]}), untokenized)
-      == {"counts": [], "window": 510})
+      engine_api.tokens_with_engine(engine_api.TokensRequest.model_validate({"v":"3.0","texts":[]}), untokenized)
+      == {"alone": [], "following": [], "window": 510})
+# Each text is counted as cleaned, once on its own and once after a space; an empty one is
+# nothing either way (a space alone is not a word of the text).
+asked = []
+def fake_tok(texts, add_special_tokens, truncation):
+    asked.append(list(texts))
+    return {"input_ids": [[0] * (len(t.split(" ")) if t.strip() else len(t)) for t in texts]}
+counted = engine_api.tokens_with_engine(
+    engine_api.TokensRequest.model_validate({"v":"3.0","texts":["  Two WORDS ", ""]}),
+    SimpleNamespace(tok=fake_tok, emoji=SimpleNamespace(demojize=lambda t: t, replace_emoji=lambda t, r: t), max_length=512))
+check("a text is counted alone and after a space, cleaned the way scoring cleans it",
+      asked == [["two words", "", " two words", " "]] and counted == {"alone": [2, 0], "following": [3, 0], "window": 510},
+      repr((asked, counted)))
 print(f"\n{passed} passed, {failed} failed, {skipped} skipped")
 sys.exit(bool(failed))

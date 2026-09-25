@@ -30,7 +30,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from scoring import score_texts
 
-CONTRACT_VERSION = "2.2"
+CONTRACT_VERSION = "3.0"
 CONTRACT_MAJOR = CONTRACT_VERSION.split(".")[0]
 MODEL_ID = "editlens_roberta-large"
 PIPELINE_REV = "pre1"
@@ -490,7 +490,10 @@ def score_with_engine(req: ScoreRequest, engine) -> dict:
 
 def tokens_with_engine(req: TokensRequest, engine) -> dict:
     """Count each text's tokens after scoring's cleaning, without the two special
-    tokens a pass adds; ``window`` is the text tokens one pass holds.
+    tokens a pass adds, twice: ``alone`` as the start of a text, and ``following``
+    after a space, as a word inside one. The tokenizer never merges across a space,
+    so a text's tokens are the first word's ``alone`` and every later word's
+    ``following``, summed. ``window`` is the text tokens one pass holds.
 
     Runs beside a forward pass and never takes engine.lock. The warm-up score
     before an engine turns ready has settled the fast tokenizer's truncation and
@@ -500,6 +503,9 @@ def tokens_with_engine(req: TokensRequest, engine) -> dict:
     window = engine.max_length - 2
     cleaned = [clean_text(text, engine.emoji) for text in req.texts]
     if not cleaned:
-        return {"counts": [], "window": window}
-    ids = engine.tok(cleaned, add_special_tokens=False, truncation=False)["input_ids"]
-    return {"counts": [len(row) for row in ids], "window": window}
+        return {"alone": [], "following": [], "window": window}
+    ids = engine.tok(cleaned + [" " + text for text in cleaned],
+                     add_special_tokens=False, truncation=False)["input_ids"]
+    counts = [len(row) for row in ids]
+    following = [n if text else 0 for n, text in zip(counts[len(cleaned):], cleaned)]
+    return {"alone": counts[:len(cleaned)], "following": following, "window": window}

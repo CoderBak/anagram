@@ -86,7 +86,7 @@ class FakeEngine:
                  "tokens": 140, "truncated": False} for _ in texts]
 
     def info(self):
-        return {"ok": True, "contract": "2.1", "model": {
+        return {"ok": True, "contract": "3.0", "model": {
             "id": "editlens_roberta-large", "ver": self.version, "calibration": "test"}}
 
     def synchronize(self):

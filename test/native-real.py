@@ -178,7 +178,7 @@ def main():
                          "My brother never rings on weeknights, so I turned the burner off and sat on the floor to listen. "
                          "He talked for twenty minutes about a dog he was thinking of adopting and never mentioned the "
                          "thing we both knew he had rung to say. Afterwards the rice was ruined and I ate it anyway.")
-                scored = client.request("score", {"v": "2.1", "blocks": [{"id": "human", "text": human},
+                scored = client.request("score", {"v": "3.0", "blocks": [{"id": "human", "text": human},
                     {"id": "zh", "text": "这是一个完全用中文写成的段落。模型只在英文数据上训练过，所以这段文字不应该被打分。"}]})
                 assert scored["ok"] and scored["data"]["results"][0]["bucket"] == 0, scored
                 assert scored["data"]["results"][1]["unsupported"] is True, scored

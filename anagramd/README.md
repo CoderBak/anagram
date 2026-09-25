@@ -17,7 +17,7 @@ or measuring candidates is optional. Inference is offline; Pangram's **CC BY-NC-
 | --- | --- |
 | `status`, `health`, `runtime` | Component, engine and runtime snapshots; never wait for a load |
 | `score` | Score up to 256 blocks with the ready engine (wakes an idle one) |
-| `tokens {texts}` | Count up to 512 cleaned texts' tokens without special tokens, and one pass's `window`; runs beside scoring (wakes an idle engine) |
+| `tokens {texts}` | Count up to 512 cleaned texts' tokens without special tokens, `alone` and `following` a space, and one pass's `window`; runs beside scoring (wakes an idle engine) |
 | `runtime.config {id}` | Switch to an available candidate and persist it |
 | `runtime.benchmark {budget_s}` | Measure available candidates in isolated processes; keeps the selection |
 | `runtime.cancel` | Cancel the running load or measurement |

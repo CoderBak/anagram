@@ -70,7 +70,7 @@ class QueuedReader:
 
 class FramingTests(unittest.TestCase):
     def test_utf8_and_fragmented_frames(self):
-        value = request("score", payload={"v": "2.1", "blocks": [{"id": "a", "text": "你好 🙂"}]})
+        value = request("score", payload={"v": "3.0", "blocks": [{"id": "a", "text": "你好 🙂"}]})
         self.assertEqual(host.read_frame(Fragmented(frame(value))), value)
         self.assertEqual(host.read_frame(io.BytesIO()), None)
         for broken in (b"\x01\x00", struct.pack("=I", 8) + b"{}", struct.pack("=I", 0),
@@ -322,7 +322,7 @@ class FixtureEngine:
     def close(self):
         pass
     def info(self):
-        return {"ok": True, "contract": "2.1", "model": {"id": "editlens_roberta-large", "ver": self.version, "calibration": "test"}}
+        return {"ok": True, "contract": "3.0", "model": {"id": "editlens_roberta-large", "ver": self.version, "calibration": "test"}}
 
 
 class LifecycleTests(unittest.TestCase):
@@ -621,7 +621,7 @@ class LifecycleTests(unittest.TestCase):
         component = self.make()
         self.first_run(component)
         self.assertTrue(component.handle("health", {})[1]["ok"])
-        score = component.handle("score", {"v": "2.1", "blocks": [{"id": "a", "text": "a paragraph"}]})[1]
+        score = component.handle("score", {"v": "3.0", "blocks": [{"id": "a", "text": "a paragraph"}]})[1]
         self.assertEqual(score["results"][0]["bucket"], 0)
         component.handle("engine.stop", {})
         self.finish(component)
@@ -660,7 +660,7 @@ class LifecycleTests(unittest.TestCase):
             self.assertEqual(error.exception.code, "engine_idle")
             component.handle("runtime", {})
             self.assertEqual(component.status()["state"], "idle")
-        score = {"v": "2.1", "blocks": [{"id": "a", "text": "a paragraph"}]}
+        score = {"v": "3.0", "blocks": [{"id": "a", "text": "a paragraph"}]}
         response = host.dispatch(component, request("score", payload=score))
         self.assertEqual(response["status"], 200)
         self.finish(component)
@@ -682,16 +682,20 @@ class LifecycleTests(unittest.TestCase):
         component = self.make()
         self.first_run(component)
         texts = ["A smile 🙂 here", "reasoning</think> The ANSWER", "Sure, here it is:\nThe paragraph.", "  "]
-        status, data = component.handle("tokens", {"v": "2.2", "texts": texts})
+        status, data = component.handle("tokens", {"v": "3.0", "texts": texts})
         tok = component.controller.engine.tok
-        expected = [len(tok([clean_text(t, emoji)], add_special_tokens=False)["input_ids"][0]) for t in texts]
-        self.assertEqual((status, data), (200, {"counts": expected, "window": 510}))
-        self.assertGreater(data["counts"][0], len(texts[0]))  # demojized
-        self.assertEqual(data["counts"][1:], [len("the answer"), len("the paragraph."), 0])
-        self.assertEqual(component.handle("tokens", {"v": "2.1", "texts": []}), (200, {"counts": [], "window": 510}))
-        for payload in ({"v": "3.0", "texts": ["a"]}, {"texts": ["a"]}, {"v": "2.2", "texts": [1]},
-                        {"v": "2.2", "texts": ["a" * 16001]}, {"v": "2.2", "texts": ["a"] * 513},
-                        {"v": "2.2", "texts": ["a" * 16000] * 17}):
+        count = lambda text: len(tok([text], add_special_tokens=False)["input_ids"][0])
+        cleaned = [clean_text(t, emoji) for t in texts]
+        expected = {"alone": [count(t) for t in cleaned],
+                    "following": [count(" " + t) if t else 0 for t in cleaned], "window": 510}
+        self.assertEqual((status, data), (200, expected))
+        self.assertGreater(data["alone"][0], len(texts[0]))  # demojized
+        self.assertEqual(data["alone"][1:], [len("the answer"), len("the paragraph."), 0])
+        self.assertEqual(component.handle("tokens", {"v": "3.0", "texts": []}),
+                         (200, {"alone": [], "following": [], "window": 510}))
+        for payload in ({"v": "2.2", "texts": ["a"]}, {"texts": ["a"]}, {"v": "3.0", "texts": [1]},
+                        {"v": "3.0", "texts": ["a" * 16001]}, {"v": "3.0", "texts": ["a"] * 513},
+                        {"v": "3.0", "texts": ["a" * 16000] * 17}):
             with self.subTest(payload=str(payload)[:40]):
                 response = host.dispatch(component, request("tokens", payload=payload))
                 self.assertEqual((response["status"], response["error"]["code"]), (422, "invalid_request"))
@@ -700,13 +704,13 @@ class LifecycleTests(unittest.TestCase):
         self.assertTrue(controller.unload_if_idle())
         self.finish(component)
         self.assertEqual(component.status()["state"], "idle")
-        response = host.dispatch(component, request("tokens", payload={"v": "2.2", "texts": ["a paragraph"]}))
-        self.assertEqual((response["status"], response["data"]["counts"]), (200, [11]))
+        response = host.dispatch(component, request("tokens", payload={"v": "3.0", "texts": ["a paragraph"]}))
+        self.assertEqual((response["status"], response["data"]["alone"]), (200, [11]))
         self.finish(component)
         self.assertEqual(component.status()["state"], "ready")
         component.handle("engine.stop", {})
         self.finish(component)
-        response = host.dispatch(component, request("tokens", payload={"v": "2.2", "texts": ["a paragraph"]}))
+        response = host.dispatch(component, request("tokens", payload={"v": "3.0", "texts": ["a paragraph"]}))
         self.assertEqual((response["status"], response["error"]["code"]), (503, "not_ready"))
 
     def test_tokens_answer_while_a_score_batch_holds_the_engine(self):
@@ -728,11 +732,11 @@ class LifecycleTests(unittest.TestCase):
         thread = threading.Thread(target=host.run_host, args=(reader, Writer(), component))
         thread.start()
         try:
-            reader.queue.put(frame(request("score", "batch", {"v": "2.2", "blocks": [{"id": "a", "text": "a paragraph"}]})))
+            reader.queue.put(frame(request("score", "batch", {"v": "3.0", "blocks": [{"id": "a", "text": "a paragraph"}]})))
             self.assertTrue(entered.wait(2))
-            reader.queue.put(frame(request("tokens", "count", {"v": "2.2", "texts": ["a paragraph"]})))
+            reader.queue.put(frame(request("tokens", "count", {"v": "3.0", "texts": ["a paragraph"]})))
             counted = written.get(timeout=2)
-            self.assertEqual((counted["id"], counted["data"]), ("count", {"counts": [11], "window": 510}))
+            self.assertEqual((counted["id"], counted["data"]), ("count", {"alone": [11], "following": [12], "window": 510}))
         finally:
             release.set()
         self.assertEqual(written.get(timeout=2)["id"], "batch")
@@ -755,7 +759,7 @@ class LifecycleTests(unittest.TestCase):
             return factory(candidate)
         controller.factory = loading
         replies = []
-        score = {"v": "2.1", "blocks": [{"id": "a", "text": "a paragraph"}]}
+        score = {"v": "3.0", "blocks": [{"id": "a", "text": "a paragraph"}]}
         thread = threading.Thread(target=lambda: replies.append(host.dispatch(component, request("score", payload=score))))
         thread.start()
         self.assertTrue(entered.wait(1))
@@ -801,7 +805,7 @@ class LifecycleTests(unittest.TestCase):
     def test_internal_failures_are_host_errors_not_client_errors(self):
         component = self.make()
         self.first_run(component)
-        score = {"v": "2.1", "blocks": [{"id": "a", "text": "a paragraph"}]}
+        score = {"v": "3.0", "blocks": [{"id": "a", "text": "a paragraph"}]}
         engine = component.controller.engine
         engine.score = lambda texts: [{"bucket": "not a bucket", "probs": [1., 0., 0., 0.], "score": 0.,
                                        "tokens": 8, "truncated": False} for _ in texts]  # fails response validation
