@@ -62,6 +62,7 @@ export { buildDiagnostics } from "../lib/diagnostics/report";
 export { captureRegion } from "../lib/diagnostics/anonymise";
 export { setHighlight, clearHighlight, setActiveUnit, registerHighlightStyles } from "../lib/render/highlight";
 export { scaleStep, spread, SCALE_STEPS } from "../lib/render/scale";
+export { confidence, verdictConfidence } from "../lib/render/confidence";
 export { repairSplits, restoreSplits } from "../lib/dom/splits";
 
 // Structured PDF benchmarks exercise the real reflow and glyph-source mapping layers.

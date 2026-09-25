@@ -30,7 +30,9 @@ grant, **Analyze this page** in the popup scores the page in front of you once.
 - The chip's dot and the underline share one colour scale, pale for human writing and
   dark red for AI-generated text. The word follows the number: Human below .17, Lightly
   edited below .50, Heavily edited below .83, AI-generated above. A full dot means the
-  model is sure; the more its probabilities spread, the thinner the ring the dot becomes.
+  word is likely right; the less likely, the thinner the ring the dot becomes. That
+  likelihood comes from a small model fitted on the EditLens dataset: a guide, not a
+  guarantee.
 - Short paragraphs are scored together with their neighbours; a ×2 on a chip means it
   covers two paragraphs.
 - The floating ball shows or hides marks. Its counter opens the list of flagged

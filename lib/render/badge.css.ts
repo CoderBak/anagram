@@ -102,7 +102,7 @@ export const BADGE_CSS: string = `
   font-variant-numeric: tabular-nums;
 }
 
-/* The score's colour, read from --s, as a ring that thins as the spread in --u grows (both
+/* The score's colour, read from --s, as a ring that thins as the doubt in --u grows (both
    set per chip in badge.ts). */
 .pill.scored { --dot: ${scaleColorCss(false)}; --ring: color-mix(in oklab, var(--dot) 20%, transparent); }
 .pill.scored .dot { background: transparent; box-shadow: inset 0 0 0 ${ringCss("0.28em")} var(--dot), 0 0 0 0.18em var(--ring); }

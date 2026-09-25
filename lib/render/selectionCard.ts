@@ -18,6 +18,7 @@ import { band, bandLabel, isNoVerdict, languageName, type Band } from "./band";
 import { formatScore } from "./score";
 import { coverageNote, windowScores, windowReadout } from "./coverage";
 import { DIST_CSS, distributionHtml, swatchHtml } from "./dist";
+import { verdictConfidence } from "./confidence";
 import { countWords, MIN_UNIT_WORDS } from "../dom/text";
 import { isDarkPage } from "./theme";
 
@@ -269,7 +270,7 @@ export async function analyzeSelection(): Promise<void> {
         : words;
       card.innerHTML =
         closeBtn +
-        `<div class="head"><span class="verdict band-${b}">${isNoVerdict(b) ? "" : swatchHtml(r)}${bandLabel(b)}</span>` +
+        `<div class="head"><span class="verdict band-${b}">${isNoVerdict(b) ? "" : swatchHtml(r, verdictConfidence(verdict))}${bandLabel(b)}</span>` +
         `<span class="big" title="${t("cardScaleTitle")}">${isNoVerdict(b) ? "—" : score}</span></div>` +
         (isNoVerdict(b) ? "" : distributionHtml(r)) +
         (b === "unsupported" ? row(t("cardDetectedLang"), `${languageName(r.lang)} · ${Math.round((r.lang_prob ?? 0) * 100)}%`) : "") +

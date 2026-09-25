@@ -15,7 +15,9 @@ local component and the installer all carry the same version.
   change.
 - Chips, underlines, the panel and the cards colour every verdict on one continuous
   scale, pale for human writing and dark red for AI-generated text. The dot thins to a
-  ring as the model's probabilities spread, and the card shades the range they cover.
+  ring the less likely its word is to be right, as estimated by a small model fitted on
+  the EditLens validation data and checked on held-out and out-of-domain sets; no number
+  is shown for it. The card shades the range the probabilities cover.
 - Underlines are on for every analyzed paragraph or off; the flagged-only mode is gone.
   The card shows where the score sits on the scale instead of a stacked bar.
 - A text longer than the model reads at once is divided into halves of equal token count

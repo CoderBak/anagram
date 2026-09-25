@@ -4,15 +4,15 @@
 // four probabilities, each by its colour on the same scale.
 import type { ScoreResult } from "../contract";
 import { bandLabel, BUCKET_BANDS } from "./band";
-import { ringCss, scaleColorCss, scaleGradient, scoreRange, SCORE_CUTS, spread } from "./scale";
+import { ringCss, scaleColorCss, scaleGradient, scoreRange, SCORE_CUTS } from "./scale";
 
 const at = (x: number): string => `${(Math.min(Math.max(x, 0), 1) * 100).toFixed(1)}%`;
 const percent = (p: number): number => Math.round(Math.max(p, 0) * 100);
 
-/** A dot in the score's colour, full when the model is sure and a thinner ring the more
- *  its probabilities spread. */
-export function swatchHtml(r: ScoreResult): string {
-  return `<span class="sw" style="--s:${r.score.toFixed(3)};--u:${spread(r.probs).toFixed(3)}"></span>`;
+/** A dot in the score's colour, full when its word is likely right (`sure`,
+ *  lib/render/confidence.ts) and a thinner ring the less likely it is. */
+export function swatchHtml(r: ScoreResult, sure: number): string {
+  return `<span class="sw" style="--s:${r.score.toFixed(3)};--u:${(1 - sure).toFixed(3)}"></span>`;
 }
 
 export function distributionHtml(r: ScoreResult): string {

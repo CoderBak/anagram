@@ -1600,22 +1600,24 @@ const results = await page.evaluate(() => {
   }
 
   // ---- how sure: the dot --------------------------------------------------------------
-  // No threshold: the chip's dot and the card's swatch are full when the model is sure and
-  // a thinner ring, in the same colour, the more its probabilities spread, down to a line
-  // that stays visible.
+  // No threshold: the chip's dot and the card's swatch are full when the verdict's word is
+  // likely right (lib/render/confidence.ts) and a thinner ring, in the same colour, the less
+  // likely it is, down to a line that stays visible.
   {
     sandbox.innerHTML = `<p>${words(80)}</p>`;
     const [unit] = PW.collectUnits(sandbox);
     const layer = PW.createBadgeLayer();
     const px = (value) => Number.parseFloat(value);
     const ring = (el) => px((getComputedStyle(el).boxShadow.match(/([\d.]+)px inset/) ?? [, "NaN"])[1]);
-    const seen = [[1, 0, 0, 0], [0.7, 0.3, 0, 0], [0.5, 0, 0.5, 0], [0.5, 0, 0, 0.5]].map((probs) => {
-      layer.render(unit, PW.unitVerdict(unit.id, unit.text.length, [{ start: 0, end: unit.text.length, result: res(probs) }]));
+    // From a sure human verdict to a split one, each less likely to be right than the last.
+    const seen = [[0.98, 0.02, 0, 0], [0.8, 0.18, 0.02, 0], [0.55, 0.4, 0.04, 0.01], [0.35, 0.1, 0.1, 0.45]].map((probs) => {
+      const verdict = PW.unitVerdict(unit.id, unit.text.length, [{ start: 0, end: unit.text.length, result: res(probs, { tokens: 302 }) }]);
+      layer.render(unit, verdict);
       const root = sandbox.querySelector('[data-anagram="host"]').shadowRoot;
       const dot = root.querySelector(".pill .dot");
       const sw = root.querySelector(".card .sw");
       return {
-        spread: PW.spread(probs).toFixed(3),
+        doubt: (1 - PW.verdictConfidence(verdict)).toFixed(3),
         tag: root.querySelector(".pill").style.getPropertyValue("--u"),
         swTag: sw.style.getPropertyValue("--u"),
         dot: [ring(dot), px(getComputedStyle(dot).width) / 2],
@@ -1623,14 +1625,15 @@ const results = await page.evaluate(() => {
         card: root.querySelector(".card").textContent,
       };
     });
-    check("the chip and the card carry the verdict's spread, and the card has no line saying it is uncertain",
-      seen.every((s) => s.tag === s.spread && s.swTag === s.spread && !/uncertain|split between/i.test(s.card)), JSON.stringify(seen));
-    check("a sure verdict is a full dot; each wider spread is a thinner ring; the widest is still at least 1px",
+    check("the chip and the card carry the verdict's doubt, and no card puts a number or a word on it",
+      seen.every((s) => s.tag === s.doubt && s.swTag === s.doubt && !/uncertain|split between|confiden/i.test(s.card)) &&
+      seen.every((s, i) => i === 0 || Number(s.doubt) > Number(seen[i - 1].doubt)), JSON.stringify(seen));
+    check("a word surely right is a nearly full dot; each likelier-wrong one is a thinner ring; the thinnest is still at least 1px",
       seen.every((s) => s.dot.every(Number.isFinite) && s.sw.every(Number.isFinite)) &&
-      seen[0].dot[0] >= seen[0].dot[1] - 0.01 && seen[0].sw[0] >= seen[0].sw[1] - 0.01 &&
+      seen[0].dot[0] >= seen[0].dot[1] * 0.9 && seen[0].sw[0] >= seen[0].sw[1] * 0.9 &&
       seen.every((s, i) => i === 0 || (s.dot[0] < seen[i - 1].dot[0] && s.sw[0] < seen[i - 1].sw[0])) &&
       seen[3].dot[0] >= 1 && seen[3].sw[0] >= 1 && seen[3].dot[0] < seen[3].dot[1] / 2,
-      JSON.stringify(seen.map((s) => [s.spread, s.dot, s.sw])));
+      JSON.stringify(seen.map((s) => [s.doubt, s.dot, s.sw])));
     layer.teardownAll();
   }
 

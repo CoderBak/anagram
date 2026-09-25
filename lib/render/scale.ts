@@ -95,10 +95,11 @@ export function spread(probs: readonly number[]): number {
 }
 
 /**
- * How thick a verdict's dot is, as a ring in the score's colour, for the spread in `--u`:
- * the whole `radius` when the model is sure (a full dot), thinning in proportion to
- * 1 − spread down to a line that stays visible when it has no idea. No threshold, and no
- * fading, which the colour scale would read as "more human".
+ * How thick a verdict's dot is, as a ring in the score's colour, for the doubt in `--u`
+ * (1 − the chance its word is right, lib/render/confidence.ts): the whole `radius` when the
+ * word is surely right (a full dot), thinning in proportion to that chance down to a line
+ * that stays visible. No threshold, and no fading, which the colour scale would read as
+ * "more human".
  */
 export function ringCss(radius: string): string {
   const least = "max(1px, 0.08em)";
