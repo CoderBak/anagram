@@ -93,6 +93,9 @@ export interface CountTokensMessage {
 /** SW → content: the counts of every text, in order, or null when the engine did not answer. */
 export interface CountTokensReply {
   counts: TokenCounts | null;
+  /** Whether the engine answers, as a score reply says it: a page takes a count that met a
+   *  stopped engine exactly as it takes a score that did. */
+  backend: "up" | "down";
 }
 
 /** SW → content (response to SCORE_BATCH). */

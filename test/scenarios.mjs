@@ -803,24 +803,25 @@ async function sweep(page, steps = 6) {
 
   // A21: the fixture goes away → the batch in flight renders "Unavailable", nothing new
   // is dispatched, the ball's counter shows "!"; the fixture comes back → everything is
-  // re-queued automatically (no reload, no Rescan).
-  {
+  // re-queued automatically (no reload, no Rescan). Twice: a paragraph under 510 bytes
+  // meets the dead socket with its score request, a longer one with its token count.
+  for (const [path, repeat] of [["score", 1], ["count", 2]]) {
     const p = await context.newPage();
     await p.goto(fixturesUrl, { waitUntil: "load" });
     await p.waitForSelector(BADGE_SEL, { timeout: 12000 }).catch(() => {});
-    // Over the floor and under 510 bytes: a longer text asks the engine for a token count
-    // first, and that request, not the scoring one, would be what meets the dead socket.
+    // Over the floor and under 510 bytes once; twice that the second time, so the text
+    // first asks the engine for a token count, and that request meets the dead socket.
     const addPara = (id) =>
-      p.evaluate((pid) => {
+      p.evaluate(({ pid, times }) => {
         const el = document.createElement("p");
         el.id = pid;
-        el.textContent = `${pid.toUpperCase()} paragraph is appended while the scoring fixture is stopped, so ` +
+        el.textContent = Array.from({ length: times }, () => `${pid.toUpperCase()} paragraph is appended while the scoring fixture is stopped, so ` +
           "the extension must not invent a verdict for it: the batch that hits the dead socket renders as " +
           "Unavailable and later paragraphs wait without any chip, until a health probe succeeds again and " +
           "every waiting or unavailable unit is queued once more without a reload or a manual rescan. " +
-          "Till then, a reader has to be able to tell a unit that waits from one that was read, and a fault from a verdict.";
+          "Till then, a reader has to be able to tell a unit that waits from one that was read, and a fault from a verdict.").join(" ");
         document.querySelector("main").prepend(el);
-      }, id);
+      }, { pid: `${id}${path}`, times: repeat });
     const badgeIn = (id, timeout) =>
       p.waitForFunction(({ sel, pid }) => document.querySelectorAll(`#${pid} ${sel}`).length >= 1, { sel: BADGE_SEL, pid: id }, { timeout }).then(() => true).catch(() => false);
     // Settled = past the "analyzing…" state (the pending chip is inserted at dispatch,
@@ -835,22 +836,22 @@ async function sweep(page, steps = 6) {
 
     await fixture.close(); // connection refused from here on
     await addPara("down1");
-    const gotDown1 = (await badgeIn("down1", 8000)) && (await settledIn("down1", 8000));
-    const band1 = await bandOf("down1");
+    const gotDown1 = (await badgeIn(`down1${path}`, 8000)) && (await settledIn(`down1${path}`, 8000));
+    const band1 = await bandOf(`down1${path}`);
     await addPara("down2");
     await p.waitForTimeout(2000);
-    const down2Chips = await p.evaluate((sel) => document.querySelectorAll(`#down2 ${sel}`).length, BADGE_SEL);
+    const down2Chips = await p.evaluate(({ sel, pid }) => document.querySelectorAll(`#${pid} ${sel}`).length, { sel: BADGE_SEL, pid: `down2${path}` });
     const bubbleDown = await bubble();
-    record("ui", "fixture down: in-flight batch renders Unavailable, later paragraphs get no chip, counter shows !", gotDown1 && band1 === "band-unknown" && down2Chips === 0 && bubbleDown === "!", JSON.stringify({ band1, down2Chips, bubbleDown }));
+    record("ui", `fixture down (${path} request): in-flight batch renders Unavailable, later paragraphs get no chip, counter shows !`, gotDown1 && band1 === "band-unknown" && down2Chips === 0 && bubbleDown === "!", JSON.stringify({ band1, down2Chips, bubbleDown }));
 
     await fixture.resume(); // same native registration
-    const back1 = await badgeIn("down2", 20000);
+    const back1 = await badgeIn(`down2${path}`, 20000);
     const back2 = await p.waitForFunction(({ sel, pid }) => {
       const pill = document.querySelector(`#${pid} ${sel}`)?.shadowRoot?.querySelector(".pill");
       return !!pill && !pill.classList.contains("band-unknown") && !pill.classList.contains("pending");
-    }, { sel: BADGE_SEL, pid: "down1" }, { timeout: 20000 }).then(() => true).catch(() => false);
+    }, { sel: BADGE_SEL, pid: `down1${path}` }, { timeout: 20000 }).then(() => true).catch(() => false);
     const bubbleUp = await bubble();
-    record("ui", "fixture back: waiting + Unavailable units re-queued automatically", back1 && back2 && bubbleUp !== "!", JSON.stringify({ back1, back2, bubbleUp }));
+    record("ui", `fixture back (${path} request): waiting + Unavailable units re-queued automatically`, back1 && back2 && bubbleUp !== "!", JSON.stringify({ back1, back2, bubbleUp }));
     await p.close();
   }
 

@@ -239,7 +239,11 @@ export async function analyzeSelection(): Promise<void> {
         for (const r of reply.results) answers.set(r.id, r);
       }
       return answers;
-    }, requestTokenCounts);
+    }, async (texts) => {
+      const reply = await requestTokenCounts(texts);
+      backend = reply.backend;
+      return reply.counts;
+    });
     if (!_host || _host !== host) return; // dismissed while in flight
     const windows = incompatible ? undefined : read.get("sel");
     const verdict = windows ? unitVerdict("sel", text.length, windows) : null;

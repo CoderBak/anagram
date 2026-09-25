@@ -363,8 +363,10 @@ export default defineBackground(() => {
       }
       case ACTIONS.GET_BACKEND_STATUS:
         return getScoreClient().status(msg.probe===true);
-      case ACTIONS.COUNT_TOKENS:
-        return {counts:await tokenCounter.count(msg.texts,document!.signal).catch(()=>null)} satisfies CountTokensReply;
+      case ACTIONS.COUNT_TOKENS: {
+        const counts=await tokenCounter.count(msg.texts,document!.signal).catch(()=>null);
+        return {counts,backend:counts || getScoreClient().isUp() ? "up" : "down"} satisfies CountTokensReply;
+      }
       case ACTIONS.SCORE_BATCH: {
         try {
           await cacheModeReady.catch(()=>undefined);

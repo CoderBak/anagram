@@ -82,12 +82,19 @@ export async function requestScores(req: ScoreBatchRequest): Promise<ScoreReply>
 const COUNT_TEXTS = 512;
 const COUNT_CHARS = 200_000;
 
+/** Counts for every text, or null, and what the answer says about the engine — in the
+ *  terms of a score reply, so a page meets a stopped engine the same way either way. */
+export interface CountReply {
+  counts: TokenCounts | null;
+  backend: ScoreReply["backend"];
+}
+
 /**
  * How many model tokens each text is, alone and following a space, asked of the engine
- * through the worker in requests the worker takes, one after another. Null when any of
- * them went unanswered; the text is then Unavailable, like one whose score failed.
+ * through the worker in requests the worker takes, one after another. Null counts when any
+ * of them went unanswered; the text is then Unavailable, like one whose score failed.
  */
-export async function requestTokenCounts(texts: string[]): Promise<TokenCounts | null> {
+export async function requestTokenCounts(texts: string[]): Promise<CountReply> {
   const counts: TokenCounts = { alone: [], following: [] };
   for (let at = 0; at < texts.length; ) {
     let end = at;
@@ -99,16 +106,18 @@ export async function requestTokenCounts(texts: string[]): Promise<TokenCounts |
     const slice = texts.slice(at, end);
     const message: CountTokensMessage = { action: ACTIONS.COUNT_TOKENS, texts: slice };
     try {
-      const reply = (await sendDocumentMessage(message)) as CountTokensReply | undefined;
+      const reply = (await sendDocumentMessage(message)) as CountTokensReply | Refusal | undefined;
+      if (reply && "ok" in reply) return { counts: null, backend: reply.error === "invalid_request" ? "refused" : "unreachable" };
       const got = reply?.counts;
       if (!got || !Array.isArray(got.alone) || !Array.isArray(got.following) ||
-        got.alone.length !== slice.length || got.following.length !== slice.length) return null;
+        got.alone.length !== slice.length || got.following.length !== slice.length)
+        return { counts: null, backend: reply?.backend === "down" ? "down" : reply ? "up" : "unreachable" };
       counts.alone.push(...got.alone);
       counts.following.push(...got.following);
     } catch {
-      return null;
+      return { counts: null, backend: "unreachable" };
     }
     at = end;
   }
-  return counts;
+  return { counts, backend: "up" };
 }

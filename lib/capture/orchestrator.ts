@@ -658,7 +658,17 @@ export function createOrchestrator(
    */
   async function send(units: Unit[], lane: Lane): Promise<UnitVerdict[]> {
     const generation = captureGeneration;
-    const read = await readInWindows(units, (blocks, owners) => scoreBlocks(blocks, owners, lane, generation), requestTokenCounts);
+    // A count that meets a stopped engine turns the page down exactly as a score would, so
+    // what it leaves Unavailable is queued again when the engine is back.
+    const countTokens = async (texts: string[]) => {
+      const reply = await requestTokenCounts(texts);
+      if (generation === captureGeneration) {
+        if (reply.backend === "down") enterDown();
+        else if (reply.backend === "up") leaveDown();
+      }
+      return reply.counts;
+    };
+    const read = await readInWindows(units, (blocks, owners) => scoreBlocks(blocks, owners, lane, generation), countTokens);
     if (generation !== captureGeneration) {
       // Clearing a cache leaves existing verdicts visible, but an abandoned batch
       // must not leave its unfinished chips behind or paint a late result. Where only the

@@ -53,6 +53,7 @@ analyze.addEventListener("click", async () => {
   if (countWords(text) < MIN_UNIT_WORDS) { status.textContent = t("pasteShort", MIN_UNIT_WORDS); return; }
   analyze.disabled = true; status.textContent = t("pasteBusy");
   let producing: ModelInfo | null = null;
+  let uncounted = false;
   try {
     const windows = await readInWindows([{id: "paste", text, order: 0}], async (blocks) => {
       const out = new Map<string, ScoreResult>();
@@ -66,8 +67,14 @@ analyze.addEventListener("click", async () => {
         for (const result of response.results) out.set(result.id, result);
       }
       return out;
-    }, requestTokenCounts);
+    }, async (texts) => {
+      const reply = await requestTokenCounts(texts);
+      uncounted = reply.counts === null;
+      return reply.counts;
+    });
     if (seq !== generation) return;
+    // A text whose words went uncounted was not read: the same failure as a score that was not.
+    if (uncounted) throw new Error("unavailable");
     const read = windows.get("paste"); if (!read?.length) throw new Error("incomplete");
     const scored = read.filter((w) => !w.result.unsupported && !w.result.degraded);
     const coverage = t("pasteCoverage", scored.length, read.length,
