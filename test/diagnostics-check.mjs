@@ -73,7 +73,7 @@ const PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>
 <main>
   <article id="story" data-note="${SECRETS.data}">
     <h1 title="${SECRETS.title}">${words(5)}</h1>
-    ${Array.from({ length: 6 }, (_, i) => `<p>${words(60, i)}</p>`).join("\n    ")}
+    ${Array.from({ length: 6 }, (_, i) => `<p>${words(80, i)}</p>`).join("\n    ")}
   </article>
 
   <section class="feed">${Array.from({ length: 5 }, (_, i) => POST(i)).join("")}</section>
@@ -90,10 +90,10 @@ module.exports = { build, ${SECRETS.json} };</code></pre>
   <!-- A short Chinese paragraph with a heading on either side: a heading is a barrier, so
        it has nobody of its own voice to merge with and stays under the floor. -->
   <h2>${words(4, 31)}</h2>
-  <p id="zh-short" lang="zh">这一段很短，不到五十个词的下限，因此不会形成任何单元，旁边也没有同一段落可以合并。</p>
+  <p id="zh-short" lang="zh">这一段很短，不到七十五个词的下限，因此不会形成任何单元，旁边也没有同一段落可以合并。</p>
   <h2>${words(4, 33)}</h2>
 
-  <div id="behind" aria-hidden="true"><p>${words(60, 11)}</p></div>
+  <div id="behind" aria-hidden="true"><p>${words(80, 11)}</p></div>
 
   <address>${SECRETS.author} &lt;${SECRETS.mail}&gt;</address>
   <img alt="${SECRETS.alt}" src="${SECRETS.url}" width="40" height="40">
@@ -102,7 +102,7 @@ module.exports = { build, ${SECRETS.json} };</code></pre>
 <iframe src="/frame.html" width="640" height="360" title="embed"></iframe>
 </body></html>`;
 
-const FRAME = `<!doctype html><html lang="en"><body><p>${words(60, 21)}</p></body></html>`;
+const FRAME = `<!doctype html><html lang="en"><body><p>${words(80, 21)}</p></body></html>`;
 
 // ---- run --------------------------------------------------------------------------------
 
@@ -181,8 +181,8 @@ async function openAndCopy(path, { settle = 4000 } = {}) {
       .find((block) => block.includes(path)) ?? "";
 
   record(
-    "silent: a sub-floor post in a feed — under the 50-word floor, with its word count",
-    /div\.post > p`/.test(silence) && /under the 50-word floor: longest paragraph 22 words/.test(entryFor("div.post > p")),
+    "silent: a sub-floor post in a feed — under the 75-word floor, with its word count",
+    /div\.post > p`/.test(silence) && /under the 75-word floor: longest paragraph 22 words/.test(entryFor("div.post > p")),
     entryFor("div.post > p").replace(/\s+/g, " ").slice(0, 160),
   );
   record(
@@ -283,7 +283,7 @@ async function openAndCopy(path, { settle = 4000 } = {}) {
 // ---- B: a huge page — the cap holds and says so -------------------------------------------
 
 {
-  const big = `<!doctype html><html lang="en"><body><main>${Array.from({ length: 400 }, (_, i) => `<div class="card"><p>${words(60, i)}</p><p>${words(30, i + 1)}</p></div>`).join("")}</main></body></html>`;
+  const big = `<!doctype html><html lang="en"><body><main>${Array.from({ length: 400 }, (_, i) => `<div class="card"><p>${words(80, i)}</p><p>${words(30, i + 1)}</p></div>`).join("")}</main></body></html>`;
   const bigServer = await serveHtml({ "/big.html": big });
   const page = await context.newPage();
   await page.goto(bigServer.url("/big.html"), { waitUntil: "load" });
@@ -321,7 +321,7 @@ async function openAndCopy(path, { settle = 4000 } = {}) {
     "…and the walk still explains the page: units counted, no chips, the structural reasons still named",
     /chips on the page 0/.test(text ?? "") &&
       /- units [1-9]/.test(text ?? "") &&
-      /under the 50-word floor/.test(text ?? "") &&
+      /under the 75-word floor/.test(text ?? "") &&
       /<nav> is chrome wherever it stands/.test(text ?? ""),
     ((text ?? "").split("## Why the rest is silent")[1] ?? "").replace(/\s+/g, " ").slice(0, 160),
   );

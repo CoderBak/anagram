@@ -10,9 +10,12 @@
   (25 %) unjudged: [13][57] lost the lead-in, [39][121][226][120] the opening,
   [62][108][118][82][40] the close. Answer 1 has that shape — the three measured sequences,
   with stretches of short paragraphs between them — and EVERY paragraph of it must be
-  covered. The wrapper class names between the measured elements, the author row and the
-  action bar are modelled. The prose is generated English filler (the walker does not care
-  what language it reads); the chrome keeps the site's own labels.
+  covered. Two paragraphs are longer here than measured, so that they stay full paragraphs
+  over today's 75-word floor: the 57 after the lead-in and the 62 that opens the close are
+  84 words each (answer 1 is 1816 words). The wrapper class names between the measured
+  elements, the author row and the action bar are modelled. The prose is generated English
+  filler (the walker does not care what language it reads); the chrome keeps the site's own
+  labels.
 
   None of these containers is a DECLARED voice scope. Each `div.List-item` is RECOGNISED as
   a post (lib/dom/scope.ts): one of several like it, each with its own byline — the
@@ -23,7 +26,7 @@
   and the 39-word paragraph after the label had to join the full one that follows (×2).
   Inside one person's answer the label is transparent, as it always was inside an
   <article>: the 39-word paragraph is read with the short ones before it (×13) and the full
-  paragraph keeps a chip of its own. Same 12 units, same 1839 words judged, the label still
+  paragraph keeps a chip of its own. Same 12 units, same 1906 words judged, the label still
   in none of them. Answer 2 is too short to be judged and must not borrow from its
   neighbours; answer 3 is three short paragraphs → one unit.
 
@@ -32,6 +35,8 @@
   only the three lines long enough to be prose without a full stop joined (35 words), the
   shorter ones were "labels". Inside a post they are lines of one verse — short unstopped
   lines beside unstopped lines of the same body — and the answer is one unit of six lines.
+  Its three long lines are longer here than measured — 24, 16 and 24 words, 81 in all — so
+  that it clears the 75-word floor only WITH its short lines: the long ones alone are 64.
   (The bold label in answer 1 stands between SENTENCES, and stays out.)
 
   Annotation: see x-timeline.html.
@@ -57,7 +62,7 @@
 <div class="List-header" data-chrome><h4 class="List-headerText"><span>4 个回答</span></h4></div>
 <div role="list">
 
-  <!-- 1 · the measured answer: 49 paragraphs, 1767 words — every one of them judged -->
+  <!-- 1 · the measured answer: 49 paragraphs, 1767 words (1816 here) — every one of them judged -->
   <div class="List-item" tabindex="0">
   <div class="ContentItem AnswerItem" data-zop='{"itemId":"0","type":"answer"}'>
     <div class="ContentItem-meta" data-chrome>
@@ -77,7 +82,8 @@
           <p data-pid="1" data-expect="unit">The old printer repaired a box of letters long after it stopped being useful again. Our small team
             described a box of letters because nobody. My neighbour followed a box of letters and then wrote. A
             friend of mine sorted a map. The old printer sorted a shelf of manuals because nobody had asked them
-            not again.</p>
+            not again. The committee counted the winter schedule on the last working day of the year. The
+            reading group kept a shelf of manuals for most of that spring.</p>
           <p data-pid="2" data-expect="unit">The landlord repaired every broken hinge for most of that spring so my neighbour rewrote a jar
             again.</p>
           <p data-pid="3" data-expect="unit">Our upstairs tenant repaired a list of small debts and then wrote it all. Every new hire rebuilt a
@@ -175,7 +181,8 @@
           <p data-pid="45" data-expect="unit">The harbour office counted a map of again. The survey team found the water meter with more patience.
             The corner bakery rewrote the winter schedule in the hour after lunch. Our small team rewrote a jar
             of spare keys long after it stopped being useful. The landlord counted the back staircase and then
-            wrote it all. My first manager ignored a jar.</p>
+            wrote it all. The ferry crew borrowed a list of small debts although the rules said otherwise. The
+            night shift sorted the monthly figures again. My first manager ignored a jar.</p>
           <p data-pid="46" data-expect="unit">The survey team described a box of letters until again. My neighbour rewrote the winter schedule
             until the money ran out while again. The reading group ignored the same three questions while the
             rain came through again. The landlord borrowed the back staircase without saying a word about again.
@@ -261,9 +268,9 @@
       <span><div class="RichContent-inner"><div class="css-inline" data-voice="answerer-3">
         <span class="RichText ztext CopyrightRichText-richText" options="[object Object]" itemprop="text">
           <p data-pid="0" data-expect="unit">The survey team watched the same three. The corner bakery measured the same three questions. The
-            harbour office described a list of small debts.</p>
+            harbour office described a list of small debts. The ferry crew kept the water meter again.</p>
           <p data-pid="1" data-expect="unit">My neighbour sorted two folding chairs with more patience than I expected again. The landlord kept a
-            map of the valley.</p>
+            map of the valley. The committee borrowed an empty notebook before anyone else arrived.</p>
           <p data-pid="2" data-expect="unit">The old printer rebuilt the missing invoice and nobody noticed for a month. The night shift measured
             the winter schedule without saying a word about it again.</p>
         </span>
@@ -280,7 +287,7 @@
   </div>
   </div>
 
-  <!-- 4 · the measured one-line answer: six <p>, 4 6 13 9 13 7 words, no punctuation → one unit -->
+  <!-- 4 · the measured one-line answer: six <p>, 4 6 13 9 13 7 words (4 6 24 16 24 7 here), no punctuation → one unit -->
   <div class="List-item" tabindex="0">
   <div class="ContentItem AnswerItem" data-zop='{"itemId":"0","type":"answer"}'>
     <div class="ContentItem-meta" data-chrome>
@@ -298,9 +305,9 @@
         <span class="RichText ztext CopyrightRichText-richText" options="[object Object]" itemprop="text">
           <p data-pid="0" data-expect="unit">The harbour office rebuilt</p>
           <p data-pid="1" data-expect="unit">The committee followed the missing invoice</p>
-          <p data-pid="2" data-expect="unit">The corner bakery measured an empty notebook and nobody noticed for a month</p>
-          <p data-pid="3" data-expect="unit">The old printer counted a box of letters which</p>
-          <p data-pid="4" data-expect="unit">A retired teacher watched the long way round and nobody noticed for a</p>
+          <p data-pid="2" data-expect="unit">The corner bakery measured an empty notebook and nobody noticed for a month while the rain came through the roof on the last day</p>
+          <p data-pid="3" data-expect="unit">The old printer counted a box of letters which nobody had asked them to count again</p>
+          <p data-pid="4" data-expect="unit">A retired teacher watched the long way round and nobody noticed for a month until the money ran out and the old ferry crew</p>
           <p data-pid="5" data-expect="unit">A friend of mine questioned a jar</p>
         </span>
       </div></div></span>

@@ -76,10 +76,11 @@ export function unitParagraphs(unit: Unit): number {
 // ---- thresholds -------------------------------------------------------------------
 
 /**
- * Evidence floor per unit. Pangram Labs (the commercial detector) states predictions are unreliable below
- * ~50 words (it cannot attribute below ~75). A unit is only emitted at ≥ this.
+ * Evidence floor per unit: a unit is only emitted at ≥ this. The open EditLens model was
+ * trained and evaluated only on texts of at least 75 words, and scores shorter ones
+ * unreliably: on 50-word openings a quarter of human texts read as AI-edited.
  */
-export const MIN_UNIT_WORDS = 50;
+export const MIN_UNIT_WORDS = 75;
 
 /**
  * Prose by LENGTH: a short run that does not end like a sentence (a bullet item

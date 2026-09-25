@@ -80,7 +80,7 @@ Nothing is written to `storage.sync`, `storage.session` or `storage.managed`.
 | `reportIncludeText` | opt-in to include passage excerpts in copied reports |
 | `reportIncludeUrl` | opt-in to include page titles and URLs in copied reports |
 | `displayMode` | mark everything, or only flagged paragraphs |
-| `mergeShorts` | group short paragraphs to reach the 50-word floor |
+| `mergeShorts` | group short paragraphs to reach the 75-word floor |
 | `analysisScope` | the whole page, or its main content |
 | `fabPos` | where the user dragged the ball, per hostname |
 

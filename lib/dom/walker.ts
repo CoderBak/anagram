@@ -1034,8 +1034,8 @@ function createAssembler(
 
   /**
    * The stretch of short runs ends here — at a barrier, another section, the end of the
-   * scope, or at `following`, the full paragraph that comes right after it. With fifty
-   * words it stands by itself, in model-sized groups. Without them it used to be dropped,
+   * scope, or at `following`, the full paragraph that comes right after it. Over the
+   * floor it stands by itself, in model-sized groups. Under it, it used to be dropped,
    * and next to full paragraphs that is most of what went unjudged: a Substack article
    * lost 570 of its 2407 words that way (isolated paragraphs of 40 to 47 words between
    * full ones), a Zhihu answer the 13-word lead-in before a 57-word paragraph and the
@@ -1289,7 +1289,7 @@ function createAssembler(
    * long it is: a flat eight-word floor dropped a whole post written one short
    * sentence per line (LinkedIn, X — exactly the text people want checked), and, being
    * transparent, let a thread's short comments merge ACROSS the "alice · 2h" and
-   * "Reply · Share" rows between them — fifty words borrowed from other authors.
+   * "Reply · Share" rows between them — a floor's worth of words borrowed from others.
    */
   function short(r: Run): void {
     const f = enter(scopeOf(r.container));

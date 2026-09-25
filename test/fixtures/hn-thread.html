@@ -29,7 +29,7 @@
     <td valign="top" class="votelinks"><center><a id="up_101" href="#"><div class="votearrow" title="upvote"></div></a></center></td>
     <td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead" data-chrome>
         <a href="#alice" class="hnuser">alice</a> <span class="age" title="2026-09-18T07:00:00"><a href="#101">2 hours ago</a></span> <span id="unv_101"></span><span class="navs"> | <a href="#" class="clicky">next</a> <a class="togg clicky" id="101" n="4" href="javascript:void(0)">[–]</a></span></span></div><br>
-      <div class="comment"><div class="commtext c00" data-voice="alice" data-expect="unit">I have a few doubts about this, mostly because the benchmark in the post only measures cold starts, and cold starts are the one thing our users never actually complain about.<p>What they do complain about is the editor freezing for a second when a large file is saved, and nothing here touches that path, so I would hold the celebration for now.</p></div>
+      <div class="comment"><div class="commtext c00" data-voice="alice" data-expect="unit">I have a few doubts about this, mostly because the benchmark in the post only measures cold starts, and cold starts are the one thing our users never actually complain about. Nobody opens the editor more than twice a day.<p>What they do complain about is the editor freezing for a second when a large file is saved, and nothing here touches that path, so I would hold the celebration for now. A second benchmark on the save path would settle it quickly.</p></div>
         <div class="reply" data-chrome><p><font size="1"><u><a href="#reply101" rel="nofollow">reply</a></u></font></p></div></div></td>
   </tr></tbody></table></td></tr>
 
@@ -39,7 +39,7 @@
     <td valign="top" class="votelinks"><center><a id="up_102" href="#"><div class="votearrow" title="upvote"></div></a></center></td>
     <td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead" data-chrome>
         <a href="#bob" class="hnuser">bob</a> <span class="age" title="2026-09-18T07:30:00"><a href="#102">1 hour ago</a></span> <span id="unv_102"></span><span class="navs"> | <a href="#" class="clicky">parent</a> | <a href="#" class="clicky">next</a> <a class="togg clicky" id="102" n="1" href="javascript:void(0)">[–]</a></span></span></div><br>
-      <div class="comment"><div class="commtext c00" data-voice="bob" data-expect="none">The save path is a different team, to be fair, and they have said more than once that the freeze comes from the antivirus hook rather than from anything in the editor.</div>
+      <div class="comment"><div class="commtext c00" data-voice="bob" data-expect="none">The save path is a different team, to be fair, and they have said more than once that the freeze comes from the antivirus hook rather than from anything in the editor. I would want to see that measured before blaming either side.</div>
         <div class="reply" data-chrome><p><font size="1"><u><a href="#reply102" rel="nofollow">reply</a></u></font></p></div></div></td>
   </tr></tbody></table></td></tr>
 
@@ -49,7 +49,7 @@
     <td valign="top" class="votelinks"><center><a id="up_103" href="#"><div class="votearrow" title="upvote"></div></a></center></td>
     <td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead" data-chrome>
         <a href="#carol" class="hnuser">carol</a> <span class="age" title="2026-09-18T08:00:00"><a href="#103">40 minutes ago</a></span> <span id="unv_103"></span><span class="navs"> | <a href="#" class="clicky">parent</a> | <a href="#" class="clicky">prev</a> <a class="togg clicky" id="103" n="1" href="javascript:void(0)">[–]</a></span></span></div><br>
-      <div class="comment"><div class="commtext c00" data-voice="carol" data-expect="none">Cold starts matter a great deal on the machines my school hands out, where the editor takes most of a minute to open and the lesson is only forty minutes long.</div>
+      <div class="comment"><div class="commtext c00" data-voice="carol" data-expect="none">Cold starts matter a great deal on the machines my school hands out, where the editor takes most of a minute to open and the lesson is only forty minutes long. For those students the start-up time is the whole problem.</div>
         <div class="reply" data-chrome><p><font size="1"><u><a href="#reply103" rel="nofollow">reply</a></u></font></p></div></div></td>
   </tr></tbody></table></td></tr>
 
@@ -59,7 +59,7 @@
     <td valign="top" class="votelinks"><center><a id="up_104" href="#"><div class="votearrow" title="upvote"></div></a></center></td>
     <td class="default"><div style="margin-top:2px; margin-bottom:-10px;"><span class="comhead" data-chrome>
         <a href="#dave" class="hnuser">dave</a> <span class="age" title="2026-09-18T08:20:00"><a href="#104">20 minutes ago</a></span> <span id="unv_104"></span><span class="navs"> | <a href="#" class="clicky">prev</a> <a class="togg clicky" id="104" n="1" href="javascript:void(0)">[–]</a></span></span></div><br>
-      <div class="comment"><div class="commtext c00" data-voice="dave" data-expect="unit">I maintained a plugin for this editor for six years and the thing nobody mentions is how much of the start-up time belongs to plugins like mine. We all registered our commands eagerly because the documentation told us to, and by the time the lazy activation hooks arrived there were four thousand extensions in the registry that nobody was ever going to rewrite.</div>
+      <div class="comment"><div class="commtext c00" data-voice="dave" data-expect="unit">I maintained a plugin for this editor for six years and the thing nobody mentions is how much of the start-up time belongs to plugins like mine. We all registered our commands eagerly because the documentation told us to, and by the time the lazy activation hooks arrived there were four thousand extensions in the registry that nobody was ever going to rewrite. Most of them still load on start-up today, and the benchmark would look very different with them installed.</div>
         <div class="reply" data-chrome><p><font size="1"><u><a href="#reply104" rel="nofollow">reply</a></u></font></p></div></div></td>
   </tr></tbody></table></td></tr>
 

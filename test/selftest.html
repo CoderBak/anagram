@@ -29,23 +29,25 @@
      encompasses a wide array of nuanced dimensions that merit careful and deliberate
      examination. Furthermore, one must carefully weigh the various interconnected factors at
      play in order to arrive at a well-rounded and balanced conclusion that adequately addresses
-     the full breadth of the relevant concerns and considerations at hand.</p>
+     the full breadth of the relevant concerns and considerations at hand. Ultimately, a
+     thoughtful, holistic and carefully balanced approach remains absolutely essential.</p>
   <button id="removeAi">Remove the AI paragraph</button>
   </section>
 
   <h2>3 · Too short AND isolated (must stay unbadged)</h2>
   <section id="short">
-  <p>This short paragraph has well under fifty words, so the minimum-length threshold
+  <p>This short paragraph has well under seventy-five words, so the minimum-length threshold
      should skip it and leave it with no badge at all.</p>
   </section>
 
   <h2>4 · Blockquote</h2>
   <section id="quote">
   <blockquote><p>This is a quoted paragraph nested inside a blockquote, written deliberately
-     long enough to clear the fifty-word minimum, and used to confirm two separate things at
-     once: that the walker anchors the badge to the inner block rather than the quote wrapper
+     long enough to clear the seventy-five-word minimum, and used to confirm two separate things
+     at once: that the walker anchors the badge to the inner block rather than the quote wrapper
      itself, and that the underline reliably covers the whole quoted passage even when the
-     source happens to contain a line break partway through the running text.</p></blockquote>
+     source happens to contain a line break partway through the running text, which is exactly
+     what happens when somebody wraps a long quotation by hand before publishing it.</p></blockquote>
   </section>
 
   <h2>5 · div/span content (Zhihu-style, EN + ZH)</h2>
@@ -53,11 +55,12 @@
     <div>This paragraph is built entirely from div and span elements with no paragraph tag
       anywhere, exactly the way Zhihu and most modern single-page applications render their
       body text, so it exercises the generalized block detection. It runs comfortably past the
-      fifty-word minimum, so the walker should capture this div-based content and render a
-      confidence badge for it rather than ignoring everything that is not a semantic tag.</div>
+      seventy-five-word minimum, so the walker should capture this div-based content and render a
+      confidence badge for it rather than ignoring everything that is not a semantic tag, which is
+      how an older version of the extension quietly missed most of the writing on those sites.</div>
     <div lang="zh">这是一个完全用 div 和 span 构建的中文段落，没有使用任何 p 标签，就像知乎以及大量现代单页
       应用渲染正文内容那样，因此它专门用来验证泛化之后的块检测逻辑能否正确地处理中文文本。这段文字被刻意写得
-      足够长，从而越过五十词的最小长度阈值，这样我们就能够确认，扩展程序在面对基于 div 的中文内容时，依然
+      足够长，从而越过七十五词的最小长度阈值，这样我们就能够确认，扩展程序在面对基于 div 的中文内容时，依然
       可以正确地捕获文本，并最终为它渲染出对应的置信度徽章，而不仅仅是处理使用语义化标签的英文网页内容。</div>
   </section>
 
@@ -136,19 +139,21 @@
   <h2>7 · BR-separated paragraphs (merged into one unit)</h2>
   <section id="brsplit">
   <div>BRPART-ONE begins here and continues with enough ordinary words to pass the merge floor
-     comfortably, describing absolutely nothing of consequence in a calm and steady voice.<br><br>
+     comfortably, describing absolutely nothing of consequence in a calm and steady voice, the way
+     a caption or a short note might, before it stops at a double line break.<br><br>
      BRPART-TWO follows after a double line break inside the very same div element, also long
-     enough to matter, and the two halves together should merge into exactly one scored unit.</div>
+     enough to matter, and the two halves together should merge into exactly one scored unit,
+     because neither of them alone carries enough words to be judged at all.</div>
   </section>
 
   <h2>8 · Three short siblings (merged into one unit)</h2>
   <section id="mergeshorts">
-  <p>MS-ONE is a deliberately short paragraph of roughly twenty words that could never be
-     scored on its own under the evidence floor.</p>
-  <p>MS-TWO is another short sibling paragraph, again around twenty words long, that should
-     be grouped together with its neighbours.</p>
+  <p>MS-ONE is a deliberately short paragraph of roughly thirty words that could never be
+     scored on its own under the evidence floor, however carefully it happened to be written.</p>
+  <p>MS-TWO is another short sibling paragraph, again around thirty words long, that should
+     be grouped together with its neighbours rather than dropped for being too brief to judge.</p>
   <p>MS-THREE closes the trio with one more short paragraph so the merged segment clears the
-     fifty-word minimum and earns a single badge.</p>
+     seventy-five-word minimum and earns a single badge that covers all three paragraphs.</p>
   </section>
 
   <h2>8b · One short sentence per line (one post → one unit)</h2>
@@ -161,6 +166,9 @@
       The new one has three.<br><br>
       Sign-ups went up by a fifth.<br><br>
       Support tickets about passwords fell by half.<br><br>
+      We cut the form down to four fields.<br><br>
+      Nobody has asked for the old one back.<br><br>
+      Two of the remaining screens are optional now.<br><br>
       The lesson is not that short is better<br><br>
       The lesson is that somebody has to count the screens.<br><br>
       POSTLINE-LAST and for two years nobody had</div>
@@ -169,14 +177,18 @@
 
   <h2>8c · Two voices never share a unit (must stay unbadged)</h2>
   <section id="twovoices">
-  <article><span>first_author</span> VOICE-ONE wrote a short post of about thirty words, which is well under the evidence
-     floor and therefore cannot be scored by itself, however interesting the neighbouring post might be.</article>
-  <article><span>second_author</span> VOICE-TWO wrote another short post right underneath it, also about thirty words long,
-     and the two of them together would clear the floor if anybody were allowed to add them up.</article>
-  <p>VOICE-THREE is the author of this page introducing, in roughly thirty words, a quotation from
-     somebody else, and an author and the person they quote are two voices as well:</p>
-  <blockquote><p>VOICE-FOUR is the person being quoted, again in about thirty words, which would make
-     sixty together with the paragraph above, and sixty words that describe nobody.</p></blockquote>
+  <article><span>first_author</span> VOICE-ONE wrote a short post of about forty words, which is well under the evidence
+     floor and therefore cannot be scored by itself, however interesting the neighbouring post might be, and
+     however much the two of them might seem to belong together.</article>
+  <article><span>second_author</span> VOICE-TWO wrote another short post right underneath it, also about forty words long,
+     and the two of them together would clear the floor if anybody were allowed to add them up, which is
+     exactly what the walker must refuse to do here.</article>
+  <p>VOICE-THREE is the author of this page introducing, in roughly forty words, a quotation from
+     somebody else, and an author and the person they quote are two voices as well, however closely
+     the one paragraph leads into the other on the page:</p>
+  <blockquote><p>VOICE-FOUR is the person being quoted, again in about forty words, which would make
+     eighty together with the paragraph above, comfortably over the floor, and eighty words that
+     describe nobody in particular and belong to no single author at all.</p></blockquote>
   </section>
 
   <h2>8d · One post of mixed paragraphs (X markup: one text node, blank lines) → one chip</h2>
@@ -186,7 +198,7 @@
       <div style="display:flex;flex-direction:row"><a href="#poster2" role="link"><div><span>Another Poster</span></div></a></div>
       <div id="postwholetext" dir="auto" lang="en" style="display:block;white-space:pre-wrap"><span>POSTW-ONE We switched the whole team to written status updates in January, and I expected a quiet revolt within the first two weeks.
 
-POSTW-TWO What happened instead is that the people who never spoke in the Monday meeting turned out to have the most to say once nobody was watching them say it, and the people who used to fill that meeting with confident summaries suddenly had to put numbers next to their adjectives, which several of them found harder than they had imagined.
+POSTW-TWO What happened instead is that the people who never spoke in the Monday meeting turned out to have the most to say once nobody was watching them say it, and the people who used to fill that meeting with confident summaries suddenly had to put numbers next to their adjectives, which several of them found harder than they had imagined, and one of them told me afterwards that it was the first time in years anybody had asked him what the adjective was actually measuring.
 
 POSTW-THREE Nobody misses the meeting, and I checked twice.
 
@@ -203,8 +215,9 @@ POSTW-FOUR The updates take ten minutes to write, five to read, and they are sti
      after which the configuration lives in <code>config.yaml</code> and can be checked by
      invoking the command line interface with the <code>--verbose</code> flag to print every
      resolved option. None of those inline code spans should break this paragraph into
-     fragments; the whole thing must be captured as one unit whose underline continues past
-     the last code span all the way to the ICODE tail marker.</p>
+     fragments, and none of them should be counted as a separate block either; the whole thing
+     must be captured as one unit whose underline continues past the last code span all the
+     way to the ICODE tail marker.</p>
   </section>
 
   <h2>10 · Pure CJK (no Latin letters at all)</h2>
@@ -217,9 +230,9 @@ POSTW-FOUR The updates take ten minutes to write, five to read, and they are sti
 
   <h2>11 · Preserved whitespace (blank-line paragraphs)</h2>
   <section>
-<div id="prewrap">PREWRAP-ONE keeps its own newlines because this container uses pre-wrap whitespace, and this first paragraph carries enough words to clear the merge floor without any trouble at all.
+<div id="prewrap">PREWRAP-ONE keeps its own newlines because this container uses pre-wrap whitespace, and this first paragraph carries enough words to clear the merge floor without any trouble at all, though nowhere near enough to be judged by itself.
 
-PREWRAP-TWO sits after a genuinely blank line inside the same text node, so the walker must split the node at the gap and the two paragraphs should merge into one scored unit.</div>
+PREWRAP-TWO sits after a genuinely blank line inside the same text node, so the walker must split the node at the gap and the two paragraphs should merge into one scored unit that clears the evidence floor only when both of them are read together.</div>
   </section>
 
   <h2>12 · Hidden tab (revealed by class flip)</h2>
@@ -229,7 +242,9 @@ PREWRAP-TWO sits after a genuinely blank line inside the same text node, so the 
     <p>TABPANEL content stays completely hidden behind a display-none class until the button
        above flips it to active, at which point the attribute observer must notice the class
        change, re-scan this revealed subtree, and give this comfortably long paragraph its own
-       confidence badge without requiring any page reload or manual rescan from the popup.</p>
+       confidence badge without requiring any page reload or manual rescan from the popup,
+       exactly as it would for a panel that a reader opened on a documentation site or on a
+       settings page that keeps several of them stacked behind a row of tabs.</p>
   </div>
   </section>
 
@@ -240,7 +255,9 @@ PREWRAP-TWO sits after a genuinely blank line inside the same text node, so the 
     <p>DETAILS content lives inside a collapsed details element and therefore renders with zero
        size until the element is opened, at which point the open attribute appears, the observer
        marks the subtree dirty, and this paragraph — long enough to clear every floor — must be
-       captured, scored, and badged exactly like any other ordinary visible paragraph.</p>
+       captured, scored, and badged exactly like any other ordinary visible paragraph, the way
+       a reader would expect when an answer on a help page or a footnote on a long article only
+       appears after the summary line above it has been clicked.</p>
   </details>
   </section>
 
@@ -249,7 +266,9 @@ PREWRAP-TWO sits after a genuinely blank line inside the same text node, so the 
   <p>SPA-INITIAL content represents the first client-side route of a single page application,
      written long enough to receive a badge of its own, and it will be entirely replaced when
      the navigation button below pushes a new history entry and swaps this container's markup
-     for a fresh route without ever reloading the page.</p>
+     for a fresh route without ever reloading the page, which is how most modern web
+     applications move between their views and exactly the case a content script that only
+     listens for full page loads would miss.</p>
   <button id="spaNav">Navigate (pushState + swap)</button>
   </section>
 
@@ -267,14 +286,17 @@ const alsoIgnored = "even though this string is fairly long and wordy";</code></
     <a href="#f">Sixth linked story headline rounding out the navigation list nicely</a>
   </div>
   <div id="editable" contenteditable="true">This editable region simulates a comment box or a
-     document editor and, although it easily contains more than fifty words of perfectly
+     document editor and, although it easily contains more than seventy-five words of perfectly
      ordinary prose spread over several sentences, it must never receive a badge because live
      editors are excluded from scoring by design, exactly like real Google Docs surfaces and
-     the comment forms on every mainstream site.</div>
+     the comment forms on every mainstream site, where somebody is still in the middle of
+     writing and a verdict on half a draft would be both premature and unwelcome.</div>
   <div aria-hidden="true">This aria-hidden container also carries more than enough words to be
      scored, yet it is explicitly marked as hidden from assistive technology, which the walker
      treats as a signal that the content is not really part of the page's readable prose, so
-     no badge and no underline may ever appear anywhere inside this particular container.</div>
+     no badge and no underline may ever appear anywhere inside this particular container,
+     however long and however ordinary the sentences it happens to hold turn out to be, and
+     however much it looks like the paragraphs around it.</div>
   </section>
 
   <h2>16 · Dynamic insertion</h2>
@@ -287,10 +309,12 @@ const alsoIgnored = "even though this string is fairly long and wordy";</code></
     document.getElementById('add').onclick = () => {
       const p = document.createElement('p');
       p.textContent = 'Dynamically inserted paragraph, written long enough to clear the '
-        + 'fifty-word minimum so that it actually receives a badge, and used to verify that '
+        + 'seventy-five-word minimum so that it actually receives a badge, and used to verify that '
         + 'the MutationObserver reliably picks up brand-new content as it is appended to the '
         + 'page, schedules that content for scoring through the queue, and then renders a fresh '
-        + 'badge in place without ever requiring a full reload of the surrounding document.';
+        + 'badge in place without ever requiring a full reload of the surrounding document, '
+        + 'however many copies of it arrive in the same moment and however quickly the '
+        + 'reader keeps on clicking the button.';
       document.getElementById('sink').appendChild(p);
     };
     document.getElementById('tabbtn').onclick = () => {
@@ -313,7 +337,9 @@ const alsoIgnored = "even though this string is fairly long and wordy";</code></
         '<p>SPA-SECOND route content arrives after a pushState navigation that no popstate '
         + 'event will ever announce, so the extension has to notice the URL change or the DOM '
         + 'swap on its own, collect this replacement paragraph, and badge it while also '
-        + 'purging the stale unit that belonged to the initial route content it replaced.</p>';
+        + 'purging the stale unit that belonged to the initial route content it replaced, '
+        + 'so that the page never ends up with a chip for text that is no longer there, '
+        + 'or with two chips for one route that happened to be visited twice.</p>';
     };
   </script>
 </body></html>

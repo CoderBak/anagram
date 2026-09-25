@@ -289,7 +289,7 @@
   },
   "panelCovShort": {
     "message": "$1 short",
-    "description": "Coverage line: prose the walk found and left unread, under the 50-word evidence floor with no neighbour of its own voice to join."
+    "description": "Coverage line: prose the walk found and left unread, under the 75-word evidence floor with no neighbour of its own voice to join."
   },
   "panelCovNotEnglish": {
     "message": "$1 not English",

@@ -446,7 +446,7 @@ function reasonFor(el: Element, cs: Styler): string {
     );
   }
   // The walk counts fewer words than this does: citation marks and formulas are skipped
-  // mid-sentence, so a block measuring 51 here can be 48 to it and fall under the floor.
+  // mid-sentence, so a block measuring 76 here can be 73 to it and fall under the floor.
   const marks = el.querySelectorAll("sup,cite").length;
   const formulas = el.querySelectorAll("math,mjx-container,.katex,.mwe-math-element,.ltx_Math,.MathJax").length;
   return (

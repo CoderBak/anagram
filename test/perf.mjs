@@ -1,6 +1,6 @@
 // test/perf.mjs — performance budgets on pathological pages.
 //
-// A) A STILL page of 3000 paragraphs (~55 words each, unique text) — an order of
+// A) A STILL page of 3000 paragraphs (~80 words each, unique text) — an order of
 //    magnitude beyond a long Wikipedia article. Budgets: first badge within 4s of load,
 //    no single main-thread long task over 1s during startup, and the page must keep
 //    scoring smoothly while scrolling. Run before/after walker changes.
@@ -40,7 +40,7 @@ const N = 3000;
 const words = (seed) => {
   const VOCAB = "the quick brown fox jumps over a lazy dog while rain falls gently on rooftops and children read books near warm windows during long quiet evenings".split(" ");
   let out = [];
-  for (let i = 0; i < 55; i++) out.push(VOCAB[(seed * 31 + i * 7) % VOCAB.length]);
+  for (let i = 0; i < 80; i++) out.push(VOCAB[(seed * 31 + i * 7) % VOCAB.length]);
   return `Paragraph ${seed}: ` + out.join(" ") + ".";
 };
 let body = "";

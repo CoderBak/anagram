@@ -19,12 +19,13 @@ try {
   const page = await context.newPage();
   const errors = []; page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(`chrome-extension://${launched.extId}/paste.html`);
-  await page.locator("#text").fill("Too short to score.");
+  // Exactly 75 words, the evidence floor; the same text one word shorter is refused.
+  const text = "The local library opens every morning and welcomes readers from across the town. Its staff help visitors find books, learn new skills, and share ideas with neighbors. Last week I borrowed a history book and spent the afternoon reading beside a sunny window. I plan to return tomorrow because the quiet room makes it easier to concentrate on difficult passages. On Saturdays the reading room fills with families, and a volunteer reads old stories aloud.";
+  await page.locator("#text").fill(text.replace(/ aloud\.$/, "."));
   await page.locator("#analyze").click();
-  await page.waitForFunction(() => document.querySelector("#status").textContent.includes("50"));
+  await page.waitForFunction(() => document.querySelector("#status").textContent.includes("75"));
   assert.equal(fixture.requests().filter((r) => r.op === "score").length, 0);
   assert.equal(fixture.state().component.state, "idle", "Health checks must not wake the idle model");
-  const text = "The local library opens every morning and welcomes readers from across the town. Its staff help visitors find books, learn new skills, and share ideas with neighbors. Last week I borrowed a history book and spent the afternoon reading beside a sunny window. I plan to return tomorrow because the quiet room makes it easier to concentrate on difficult passages.";
   await page.locator("#text").fill(text);
   await page.locator("#analyze").click();
   await page.locator("#results").waitFor({state: "visible"});

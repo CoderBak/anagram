@@ -630,17 +630,18 @@ async function untuck(page) {
 // fixtures
 // =====================================================================================
 const PARA = (tag) =>
-  `${tag} paragraph is long enough to be scored on its own because it carries well over fifty ordinary ` +
+  `${tag} paragraph is long enough to be scored on its own because it carries well over seventy-five ordinary ` +
   "English words describing nothing in particular except the fact that a reader who never touches a mouse " +
   "must still be able to reach every verdict this extension produces, which is what the floating ball, its " +
-  "counter and the triage panel behind them exist for on a page like this one.";
+  "counter and the triage panel behind them exist for on a page like this one, where every verdict has to " +
+  "be one key press away and read out in words rather than shown only as a colour.";
 // The fake fixture's verdicts are a pure function of the text, so the tags below are chosen
 // (with test/fake-native.mjs's own fakeScore) to land three paragraphs in each FLAGGED
 // band and two outside them: the panel then has rows, a Copy report button AND the verdict
 // filter chips, which only appear when both flagged bands are present.
-const AI_TAGS = ["FLAG-2", "FLAG-6", "FLAG-11"];
-const HEAVY_TAGS = ["FLAG-3", "FLAG-4", "FLAG-7"];
-const CALM_TAGS = ["FLAG-1", "FLAG-24"]; // lightly edited, human
+const AI_TAGS = ["FLAG-16", "FLAG-18", "FLAG-27"];
+const HEAVY_TAGS = ["FLAG-4", "FLAG-8", "FLAG-11"];
+const CALM_TAGS = ["FLAG-1", "FLAG-19"]; // lightly edited, human
 const KEY_TAGS = [...AI_TAGS, ...HEAVY_TAGS, ...CALM_TAGS];
 const KEYS_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>keyboard fixture</title></head><body style="max-width:720px;margin:0 auto;font:15px/1.6 system-ui">
 ${KEY_TAGS.map((t, i) => `<p id="k${i + 1}">${PARA(t)}</p>`).join("\n")}

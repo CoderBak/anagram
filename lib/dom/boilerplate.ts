@@ -5,7 +5,7 @@
 // DOM references for in-place rendering, so we cannot run an extractor over a
 // serialized copy of the page. Instead we apply their strongest, safest signals
 // (landmark roles, sectioning tags, class/id tokens) as subtree skips during the
-// walk. The 50-word floor and the link-density barrier do the rest.
+// walk. The 75-word floor and the link-density barrier do the rest.
 //
 // Deliberately conservative: user-generated content (comments, chat, reviews) is
 // exactly what an AI detector must cover, so nothing here matches "comment",

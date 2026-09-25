@@ -143,7 +143,7 @@ export interface TextSpan {
 /**
  * How far from the middle the cut of a pass read again in halves may move to fall BETWEEN
  * two paragraphs instead of between two sentences of one, so that no paragraph is split
- * across the halves when a joint is near. Short paragraphs are under fifty words, so a
+ * across the halves when a joint is near. Short paragraphs are under 75 words, so a
  * joint is rarely further than this.
  */
 const JOINT_REACH_CHARS = 300;

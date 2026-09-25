@@ -58,7 +58,7 @@ const FIXTURE_OPTS = {
 };
 let fixture = await createNativeFixture(FIXTURE_OPTS);
 
-const PARA = (tag) => `${tag} paragraph is long enough to be scored on its own because it carries well over fifty ordinary English words describing nothing in particular except the fact that a self-rewriting page must still end up with chips after it replaces its own document element, which is what legacy challenge pages and some old single-page frameworks do.`;
+const PARA = (tag) => `${tag} paragraph is long enough to be scored on its own because it carries well over seventy-five ordinary English words describing nothing in particular except the fact that a self-rewriting page must still end up with chips after it replaces its own document element, which is what legacy challenge pages and some old single-page frameworks do, and the extension then has to find the new document, walk it again from the top and read every paragraph in it as if the page had only just loaded.`;
 const REWRITE_HTML = `<!doctype html><html><head><meta charset="utf-8"><title>rewrite fixture</title></head><body>
 <p>Interstitial: checking your browser, please wait…</p>
 <script>
@@ -72,7 +72,7 @@ const REWRITE_HTML = `<!doctype html><html><head><meta charset="utf-8"><title>re
 // plus a long paragraph OUTSIDE it carrying a marker word. Under "Main content only"
 // that paragraph must never be chipped and its text must never reach the fixture.
 const SCOPE_MARKER = "ZORBLAX";
-const OUTSIDE_PARA = `${SCOPE_MARKER} sits in a block outside the article region, and it is deliberately long enough to clear the evidence floor on its own, with well over sixty ordinary English words in it, so that nothing except the analysis scope can explain its absence: if the first scan ran under the default whole-page setting, this sentence would have been dispatched to the scoring fixture long before the stored setting ever arrived.`;
+const OUTSIDE_PARA = `${SCOPE_MARKER} sits in a block outside the article region, and it is deliberately long enough to clear the evidence floor on its own, with well over seventy-five ordinary English words in it, so that nothing except the analysis scope can explain its absence: if the first scan ran under the default whole-page setting, this sentence would have been dispatched to the scoring fixture long before the stored setting ever arrived, and the fixture's log would show it among the very first texts it was sent.`;
 const SCOPE_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>scope fixture</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
 <main id="article"><h1>The article region</h1>
 <p id="s1">${PARA("SCOPED-ONE")}</p>
@@ -83,7 +83,7 @@ const SCOPE_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><
 // Stall fixture: the marker text sits in a <textarea>, which passive capture never
 // scores — so the only request it can ever produce is the selection card's own, and
 // no cached verdict can rob that card of its "Analyzing…" state.
-const STALL_TEXT = `${STALL_MARKER} is the marker word this selection carries so the fake fixture knows to hold its answer back for a few seconds, which is exactly the state the close button used to be dead in: the request is in flight, the card says it is analyzing, and the one listener that could dismiss it had not been attached yet, because attaching it was the last statement of the function.`;
+const STALL_TEXT = `${STALL_MARKER} is the marker word this selection carries so the fake fixture knows to hold its answer back for a few seconds, which is exactly the state the close button used to be dead in: the request is in flight, the card says it is analyzing, and the one listener that could dismiss it had not been attached yet, because attaching it was the last statement of the function, so a reader who changed their mind had to wait for the answer before the card would go away.`;
 const STALL_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>stall fixture</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
 <h1>Selection while the fixture stalls</h1>
 <textarea id="draft" style="width:100%;height:150px">${STALL_TEXT}</textarea>
@@ -94,12 +94,12 @@ const STALL_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><
 // on the page carries words, so no short run can merge into a paragraph and change the
 // text the verdict is seeded from. The 900 px lead-in puts every paragraph BELOW the
 // viewport's middle at scroll 0, which is what makes "previous" wrap to the last one.
-const KEY_PARA = (tag) => `${tag} paragraph is long enough to be scored on its own because it carries well over fifty ordinary English words describing nothing in particular except the fact that a keyboard user must be able to walk the flagged paragraphs of a page without ever reaching for a mouse, which is what the next and previous commands are for.`;
+const KEY_PARA = (tag) => `${tag} paragraph is long enough to be scored on its own because it carries well over seventy-five ordinary English words describing nothing in particular except the fact that a keyboard user must be able to walk the flagged paragraphs of a page without ever reaching for a mouse, which is what the next and previous commands are for, and each of them has to bring the next verdict into view and say which paragraph it belongs to before the reader moves on.`;
 // Four flagged paragraphs under the fake's text-seeded scores, and not all of one word:
-// FLAG-20 reads AI-generated (.97), the other three heavily edited (.66–.74).
-const KEY_TAGS = ["FLAG-1", "FLAG-20", "FLAG-5", "FLAG-7"];
+// FLAG-2 reads AI-generated (.95), the other three heavily edited (.62–.73).
+const KEY_TAGS = ["FLAG-10", "FLAG-2", "FLAG-11", "FLAG-14"];
 // A fifth, inserted above them once they are chipped: AI-generated (.90) under the same scores.
-const LATE_TAG = "LATE-0";
+const LATE_TAG = "LATE-1";
 const KEYS_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>keyboard fixture</title></head><body style="max-width:720px;margin:0 auto;font:15px/1.6 system-ui">
 <div style="height:900px"></div>
 ${KEY_TAGS.map((t, i) => `<p id="k${i + 1}">${KEY_PARA(t)}</p>\n<div style="height:700px"></div>`).join("\n")}
@@ -342,7 +342,9 @@ async function sweep(page, steps = 6) {
       p.textContent = "SHADOWLATE paragraph was appended into the open shadow root well after the " +
         "initial scan finished, and it must still receive a badge because the observer has to " +
         "watch mutations inside every shadow root the walker descended into, not only the light " +
-        "document tree where a subtree observer on the root element never sees this change.";
+        "document tree where a subtree observer on the root element never sees this change. A " +
+        "component that loads its content lazily, a comment thread that fills in after the page " +
+        "settles, or a feed that grows as the reader scrolls all change a shadow tree this way.";
       root.querySelector("div").appendChild(p);
     });
     const ok = await page
@@ -806,6 +808,8 @@ async function sweep(page, steps = 6) {
     const p = await context.newPage();
     await p.goto(fixturesUrl, { waitUntil: "load" });
     await p.waitForSelector(BADGE_SEL, { timeout: 12000 }).catch(() => {});
+    // Over the floor and under 510 bytes: a longer text asks the engine for a token count
+    // first, and that request, not the scoring one, would be what meets the dead socket.
     const addPara = (id) =>
       p.evaluate((pid) => {
         const el = document.createElement("p");
@@ -813,7 +817,8 @@ async function sweep(page, steps = 6) {
         el.textContent = `${pid.toUpperCase()} paragraph is appended while the scoring fixture is stopped, so ` +
           "the extension must not invent a verdict for it: the batch that hits the dead socket renders as " +
           "Unavailable and later paragraphs wait without any chip, until a health probe succeeds again and " +
-          "every waiting or unavailable unit is queued once more without a reload or a manual rescan.";
+          "every waiting or unavailable unit is queued once more without a reload or a manual rescan. " +
+          "Till then, a reader has to be able to tell a unit that waits from one that was read, and a fault from a verdict.";
         document.querySelector("main").prepend(el);
       }, id);
     const badgeIn = (id, timeout) =>
@@ -2370,7 +2375,7 @@ async function sweep(page, steps = 6) {
   // pieces cut off it stayed on screen: the expanded post ended with a stale copy of its
   // preview, and that copy was scored with it. lib/dom/splits.ts puts the page back.
   {
-    const P1 = "FWHEAD The keeper's log for that winter runs to nearly four hundred pages, and almost none of it is about the light. It is about weather, mostly, and about the small economies of a household cut off from the mainland.";
+    const P1 = "FWHEAD The keeper's log for that winter runs to nearly four hundred pages, and almost none of it is about the light. It is about weather, mostly, and about the small economies of a household cut off from the mainland: how much coal was left, which hens were still laying, when the supply boat was due and whether it came, and which books the children read by the stove.";
     const P2 = "He wrote in pencil because ink froze in the well, and he wrote every evening without exception, even on the night his youngest was born in the room below the lantern.";
     const P3 = "FWTAIL The entry for that night is eleven words long, and it gives the wind, the barometer and the hour the glass went before anything else.";
     const PREVIEW = `${P1}\n\n${P2.slice(0, 60)}`;
@@ -2707,7 +2712,7 @@ function post(){
   d.className="post";d.id="post-"+i;d.setAttribute("data-home","post-"+i);
   d.innerHTML='<div class="row"><a href="/user/u'+i+'"><img class="avatar" src="data:image/gif;base64,R0lGODlhAQABAAAAACw="></a>'+
     '<a href="/user/u'+i+'">Author '+i+'</a><time datetime="2026-09-1'+(i%9)+'T10:00:00Z">'+(i%23)+'h ago</time></div>'+
-    '<p class="body">'+para(i,24)+'</p><p class="body">'+para(i+100,26)+'</p><p class="body">'+para(i+200,22)+'</p>';
+    '<p class="body">'+para(i,30)+'</p><p class="body">'+para(i+100,32)+'</p><p class="body">'+para(i+200,28)+'</p>';
   document.getElementById("feed").appendChild(d);
   return d;
 }
@@ -2992,7 +2997,8 @@ addEventListener("load",()=>{window.__loadAt=performance.now();
 // PHASE B — live sites (soft: unreachable → SKIP; loaded-but-wrong → FAIL)
 // =====================================================================================
 const LIVE = [
-  { name: "hf-paper", url: "https://huggingface.co/papers/2606.12385", min: 3, chromeMax: 0 },
+  // Two chips: the abstract's 65-word paragraph, under the 75-word floor, is read with the one before it.
+  { name: "hf-paper", url: "https://huggingface.co/papers/2606.12385", min: 2, chromeMax: 0 },
   { name: "wiki-en", url: "https://en.wikipedia.org/wiki/Alan_Turing", min: 10, chromeMax: 0 },
   { name: "wiki-ar-rtl", url: "https://ar.wikipedia.org/wiki/%D8%A2%D9%84%D8%A7%D9%86_%D8%AA%D9%88%D8%B1%D9%86%D8%BA", min: 3 },
   { name: "wiki-ja-cjk", url: "https://ja.wikipedia.org/wiki/%E3%82%A2%E3%83%A9%E3%83%B3%E3%83%BB%E3%83%81%E3%83%A5%E3%83%BC%E3%83%AA%E3%83%B3%E3%82%B0", min: 3 },

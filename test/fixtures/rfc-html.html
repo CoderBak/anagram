@@ -65,14 +65,16 @@ Table of Contents
    that reports otherwise is reporting something it has invented rather
    than something it has observed. Senders that need an answer are
    expected to ask for one in the note itself, in whatever words their
-   application uses for the purpose.
+   application uses for the purpose, and to conclude nothing from the
+   silence that may follow, since a silence is not a refusal.
 
    Implementations are expected to keep a note until the recipient has
    asked for it or until the sender withdraws it, whichever happens
    first. A note that has been withdrawn is not an error, and a recipient
    that asks for a withdrawn note is told only that there is nothing to
    deliver, because telling it more would leak the fact that a note once
-   existed.
+   existed. A recipient that has collected a note may ask for it again,
+   and is given the same note for as long as it is kept.
 </pre>
 
 <!-- another body page -->
@@ -86,6 +88,8 @@ Table of Contents
    ordering is observed by a recipient, it is a property of that
    implementation and not of this protocol, and depending on it makes a
    program that works in one deployment and fails quietly in the next.
+   Applications that need an ordering across participants are expected
+   to carry it in the notes themselves, where every recipient can see it.
 </pre>
 
 <!-- a grammar block: punctuation-dense, never read -->

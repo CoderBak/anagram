@@ -15,8 +15,8 @@
 // hands over the whole sequence at once and takes the groups back. Both get the same
 // floor, the same window and the same even division, because there is one copy of them.
 //
-// The thresholds themselves are NOT redefined here — the floor is Pangram's published one
-// (lib/dom/text.ts) and the window is the model's (lib/capture/windows.ts).
+// The thresholds themselves are NOT redefined here — the floor is the model's training
+// minimum (lib/dom/text.ts) and the window is the model's (lib/capture/windows.ts).
 import { MIN_UNIT_WORDS } from "../dom/text";
 import { WINDOW_CHARS } from "../capture/windows";
 
@@ -41,7 +41,7 @@ export function groupWords(blocks: readonly Sized[]): number {
   return total;
 }
 
-/** Enough writing to be judged at all (Pangram states predictions are unreliable below it). */
+/** Enough writing to be judged at all (the model was never trained on less). */
 export function clearsFloor(blocks: readonly Sized[]): boolean {
   return groupWords(blocks) >= MIN_UNIT_WORDS;
 }
@@ -74,7 +74,7 @@ function evenPieces<T extends Sized>(blocks: readonly T[], n: number): T[][] {
 
 /**
  * A stretch of short blocks of one voice as the units it becomes. Closing a group the
- * moment it reached fifty words cut a 1767-word Zhihu answer of 49 paragraphs into 20
+ * moment it reached the floor cut a 1767-word Zhihu answer of 49 paragraphs into 20
  * chips and a 288-word X post into four; reading the whole stretch as ONE unit would put
  * a single number on a thousand words, and what makes a chip worth having on a long text
  * is that it is fine-grained. So the stretch is divided into groups of at most one model

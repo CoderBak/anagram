@@ -10,7 +10,7 @@
   further inline children (`a`, `span > a`, `img`), so a longer post is several text nodes
   in one block. One real post measured 181 words in 12 paragraphs of 10 to 24 words (post 2
   has that shape). On the timeline X cuts every long post to about 280 characters and puts
-  a "Show more" link under the text: 41 to 48 visible words, just under the evidence floor
+  a "Show more" link under the text: 41 to 48 visible words, under the evidence floor
   (post 4) — such a post gets nothing until it is opened, which is X's doing, not ours.
   Names, handles and timestamps are `a[role=link]`; the action bar is made of buttons. The
   QUOTED post — `div[role=link][tabindex=0]` inside the quoting post's <article> — follows
@@ -65,9 +65,15 @@ Charge money from the very first day.
 
 Ship the ugly version
 
+Say no to the feature that only one customer asked for.
+
 Nobody cares about your architecture, they care about their problem.
 
 Most advice is survivorship bias dressed up as wisdom.
+
+Keep your first ten customers on a first name basis.
+
+Write down why you started, because you will need it later.
 
 I would do it all again 🙂</span></div>
         <div class="h" role="group" aria-label="12 replies, 3 reposts, 41 likes" data-chrome>
@@ -140,13 +146,13 @@ It turns out most of us already know where the risk is. </span><span class="r"><
         </div>
         <div dir="auto" lang="en" class="t" data-testid="tweetText" data-voice="heidi" data-expect="unit" data-parts="5"><span>We shut down our on-call rotation in March and replaced it with nothing, which is the kind of sentence that makes other engineering managers put their coffee down, so let me explain.
 
-The rotation existed because of one service, written in a hurry four years ago by people who have all since left, that fell over roughly twice a week for reasons nobody could reproduce; every other system we run had paged a human exactly three times in two years, and two of those three were the monitoring itself being wrong.
+The rotation existed because of one service, written in a hurry four years ago by people who have all since left, that fell over roughly twice a week for reasons nobody could reproduce; every other system we run had paged a human exactly three times in two years, and two of those three were the monitoring itself being wrong. Most of those pages came at night, and most of them cleared themselves before anyone had even logged in.
 
 So we spent one quarter rewriting that one service, slowly, with tests, and with a rollback we actually rehearsed.
 
 </span><span class="r"><a dir="ltr" href="#hashtag" role="link">#oncall</a></span><span> </span><span class="r"><a dir="ltr" href="#hashtag" role="link">#sre</a></span><span> </span><span class="r"><a dir="ltr" href="#hashtag" role="link">#engineeringmanagement</a></span><span>
 
-Since then the pager has gone off once, for a certificate that expired on a Sunday, and the person who fixed it did so from a phone in under ten minutes and went back to lunch; we pay that person, and whoever is next, a flat fee for being reachable, which costs less per year than the rotation cost us per month in tired people making small mistakes on Monday mornings.
+Since then the pager has gone off once, for a certificate that expired on a Sunday, and the person who fixed it did so from a phone in under ten minutes and went back to lunch; we pay that person, and whoever is next, a flat fee for being reachable, which costs less per year than the rotation cost us per month in tired people making small mistakes on Monday mornings. It has not happened again since, and nobody misses the handover meetings.
 
 I am not saying rotations are wrong. I am saying ours was a tax we paid to avoid fixing one thing, and we had stopped noticing.</span></div>
         <div class="h" role="group" aria-label="4 replies, 2 reposts, 19 likes" data-chrome>
@@ -230,7 +236,7 @@ So I said no, and then I spent a fairly miserable six months wondering whether I
             <div dir="ltr" aria-hidden="true" class="t"><span>·</span></div>
             <a href="#s2" role="link" dir="ltr" aria-label="4 hours ago" class="t"><time datetime="2026-09-18T08:00:00.000Z">4h</time></a></div>
         </div>
-        <div dir="auto" lang="en" class="t" data-testid="tweetText" data-voice="bob" data-expect="none"><span>The train was forty minutes late again this morning, so I finally finished the book about railway timetables that my sister gave me two winters ago, and it was honestly wonderful.</span></div>
+        <div dir="auto" lang="en" class="t" data-testid="tweetText" data-voice="bob" data-expect="none"><span>The train was forty minutes late again this morning, so I finally finished the book about railway timetables that my sister gave me two winters ago, and it was honestly wonderful. Now I want a timetable of my own.</span></div>
         <div class="h" role="group" aria-label="1 reply" data-chrome>
           <button role="button" aria-label="1 Reply. Reply" data-testid="reply"><div class="h"><span>1</span></div></button>
         </div>
@@ -251,14 +257,14 @@ So I said no, and then I spent a fairly miserable six months wondering whether I
             <div dir="ltr" aria-hidden="true" class="t"><span>·</span></div>
             <a href="#s3" role="link" dir="ltr" aria-label="5 hours ago" class="t"><time datetime="2026-09-18T07:00:00.000Z">5h</time></a></div>
         </div>
-        <div dir="auto" lang="en" class="t" data-testid="tweetText" data-voice="carol" data-expect="none"><span>I keep coming back to this thread because it says out loud what most of us only admit in private, and I think the second point deserves far more attention.</span></div>
+        <div dir="auto" lang="en" class="t" data-testid="tweetText" data-voice="carol" data-expect="none"><span>I keep coming back to this thread because it says out loud what most of us only admit in private, and I think the second point deserves far more attention than it got the first time round, when everybody argued about the title.</span></div>
         <div class="v" aria-labelledby="q3">
           <div class="v quote" role="link" tabindex="0" id="q3">
             <div class="v"><div class="h" data-testid="User-Name" data-chrome>
               <div class="v"><div dir="ltr" class="t"><span><span>Dan Whitfield</span></span></div></div>
               <div class="h"><div dir="ltr" class="t"><span>@danwhit</span></div><div dir="ltr" aria-hidden="true" class="t"><span>·</span></div><div dir="ltr" class="t"><time datetime="2026-09-17T07:00:00.000Z">Sep 17</time></div></div>
             </div></div>
-            <div class="v"><div dir="auto" lang="en" class="t" data-testid="tweetText" data-voice="dan" data-expect="none"><span>Every team I have worked with believed their deadlines were unusual, their customers were unusually demanding and their code was unusually tangled, and every one of them was describing a perfectly ordinary software project.</span></div></div>
+            <div class="v"><div dir="auto" lang="en" class="t" data-testid="tweetText" data-voice="dan" data-expect="none"><span>Every team I have worked with believed their deadlines were unusual, their customers were unusually demanding and their code was unusually tangled, and every one of them was describing a perfectly ordinary software project. I include my own teams in that.</span></div></div>
           </div>
         </div>
         <div class="h" role="group" aria-label="2 replies" data-chrome>
@@ -282,9 +288,9 @@ So I said no, and then I spent a fairly miserable six months wondering whether I
             <div dir="ltr" aria-hidden="true" class="t"><span>·</span></div>
             <a href="#s7" role="link" dir="ltr" aria-label="5 hours ago" class="t"><time datetime="2026-09-18T07:00:00.000Z">5h</time></a></div>
         </div>
-        <div dir="auto" lang="en" class="t" data-testid="tweetText" data-voice="mallory" data-expect="unit" data-parts="3"><span>I disagree with almost every line of this, and I still think everybody who runs a team should read it twice.
+        <div dir="auto" lang="en" class="t" data-testid="tweetText" data-voice="mallory" data-expect="unit" data-parts="3"><span>I disagree with almost every line of this, and I still think everybody who runs a team should read it twice. Then argue with it over lunch, which is what we did today.
 
-The part about estimates is wrong in an interesting way: he treats a missed date as a failure of honesty, when in my experience it is nearly always a failure of curiosity.
+The part about estimates is wrong in an interesting way: he treats a missed date as a failure of honesty, when in my experience it is nearly always a failure of curiosity. Curiosity is cheaper than honesty, and it arrives much earlier in a project.
 
 Nobody lied. Nobody asked the second question either.</span></div>
         <div class="v" aria-labelledby="q7">
@@ -293,7 +299,7 @@ Nobody lied. Nobody asked the second question either.</span></div>
               <div class="v"><div dir="ltr" class="t"><span><span>Niaj Rahman</span></span></div></div>
               <div class="h"><div dir="ltr" class="t"><span>@niajr</span></div><div dir="ltr" aria-hidden="true" class="t"><span>·</span></div><div dir="ltr" class="t"><time datetime="2026-09-17T07:00:00.000Z">Sep 17</time></div></div>
             </div></div>
-            <div class="v"><div dir="auto" lang="en" class="t" data-testid="tweetText" data-voice="niaj" data-expect="unit" data-parts="1"><span>After fifteen years of running projects I have come to believe that an estimate is a promise made by somebody who has not been told the truth yet, and that the only honest schedule is the one you write down after the work is finished, which is of course the one schedule nobody has ever asked me for.</span></div></div>
+            <div class="v"><div dir="auto" lang="en" class="t" data-testid="tweetText" data-voice="niaj" data-expect="unit" data-parts="1"><span>After fifteen years of running projects I have come to believe that an estimate is a promise made by somebody who has not been told the truth yet, and that the only honest schedule is the one you write down after the work is finished, which is of course the one schedule nobody has ever asked me for. I have kept every one of those estimates in a drawer, and not one of them was wrong for the reason anybody expected.</span></div></div>
           </div>
         </div>
         <div class="h" role="group" aria-label="7 replies" data-chrome>
@@ -315,7 +321,7 @@ Nobody lied. Nobody asked the second question either.</span></div>
             <div dir="ltr" aria-hidden="true" class="t"><span>·</span></div>
             <a href="#s4" role="link" dir="ltr" aria-label="6 hours ago" class="t"><time datetime="2026-09-18T06:00:00.000Z">6h</time></a></div>
         </div>
-        <div dir="auto" lang="en" class="t" data-testid="tweetText" data-voice="erin" data-expect="unit"><span>We moved the whole office to a four day week last spring and I was certain it would fall apart within a month, but the opposite happened: meetings got shorter, people stopped pretending to be busy on Friday afternoons, and the work that used to spill into the weekend simply got finished by Thursday because everybody wanted it to be.</span></div>
+        <div dir="auto" lang="en" class="t" data-testid="tweetText" data-voice="erin" data-expect="unit"><span>We moved the whole office to a four day week last spring and I was certain it would fall apart within a month, but the opposite happened: meetings got shorter, people stopped pretending to be busy on Friday afternoons, and the work that used to spill into the weekend simply got finished by Thursday because everybody wanted it to be. Nobody has asked to go back, and the only complaint so far is about the new rota for the coffee machine.</span></div>
       </div>
     </div></div>
   </article>
@@ -330,7 +336,7 @@ Nobody lied. Nobody asked the second question either.</span></div>
           <div class="v"><a href="#frank" role="link" class="v"><div dir="ltr" class="t"><span><span>Frank Adeyemi</span></span></div></a></div>
           <div class="h"><a href="#frank" role="link" tabindex="-1" class="v"><div dir="ltr" class="t"><span>@frankade</span></div></a></div>
         </div>
-        <div dir="auto" lang="en" class="t" data-testid="tweetText" data-voice="frank-1" data-expect="none"><span>First of two thoughts about the conference: the talks were fine, but the hallway conversations were where I actually learned something, which is apparently what everybody says every single year.</span></div>
+        <div dir="auto" lang="en" class="t" data-testid="tweetText" data-voice="frank-1" data-expect="none"><span>First of two thoughts about the conference: the talks were fine, but the hallway conversations were where I actually learned something, which is apparently what everybody says every single year. I came home with a notebook full of names and not a single slide.</span></div>
       </div>
     </div></div>
   </article>
@@ -343,7 +349,7 @@ Nobody lied. Nobody asked the second question either.</span></div>
           <div class="v"><a href="#frank" role="link" class="v"><div dir="ltr" class="t"><span><span>Frank Adeyemi</span></span></div></a></div>
           <div class="h"><a href="#frank" role="link" tabindex="-1" class="v"><div dir="ltr" class="t"><span>@frankade</span></div></a></div>
         </div>
-        <div dir="auto" lang="en" class="t" data-testid="tweetText" data-voice="frank-2" data-expect="none"><span>Second thought: next year I am skipping the keynote entirely and spending that hour in the coffee queue, where the people who build the tools are standing around with nothing to do.</span></div>
+        <div dir="auto" lang="en" class="t" data-testid="tweetText" data-voice="frank-2" data-expect="none"><span>Second thought: next year I am skipping the keynote entirely and spending that hour in the coffee queue, where the people who build the tools are standing around with nothing to do. They were happy to talk, and nobody once asked me what my job title was.</span></div>
       </div>
     </div></div>
   </article>

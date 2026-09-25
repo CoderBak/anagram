@@ -35,6 +35,10 @@ local component and the installer all carry the same version.
   footnotes, the counter's tooltip and copied reports.
 - The model reads text as it was written, as the official EditLens pipeline does: quotes,
   dashes, ellipses and line breaks are no longer rewritten before scoring.
+- Paragraphs under 75 words are no longer scored by themselves, and a selection or pasted
+  text needs 75 words, up from 50; short paragraphs are still read with their neighbours.
+  The open EditLens model was trained only on texts of at least 75 words and scores shorter
+  ones unreliably: at 50 words a quarter of human texts read as AI-edited.
 
 ### Fixed
 

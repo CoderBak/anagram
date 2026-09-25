@@ -14,7 +14,7 @@
 // WHAT IT DOES NOT DO. Footnotes, reference lists, tables and formula fragments
 // are left as the paragraphs and lines they look like. Being clever there means
 // guessing, and the walker's own filters (name lists, symbol noise, link density,
-// the 50-word floor) already skip most of it — a table row never reaches the
+// the 75-word floor) already skip most of it — a table row never reaches the
 // daemon anyway. Ligatures are kept exactly as the PDF gives them; the model form
 // (modelText) spells ﬁ/ﬂ out itself.
 
@@ -812,7 +812,7 @@ const FRONT_MATTER_LABEL_WORDS = 3;
  * Naming it buys two things: it is a segment of its own, so the authors can never be
  * welded to the abstract, and its blocks are not headings — except the title, and a short
  * label closing the block, because neither of those is what goes wrong. Everything in it
- * is short enough that the walker's 50-word floor leaves it unscored, which is right: an
+ * is short enough that the walker's 75-word floor leaves it unscored, which is right: an
  * author list is not prose and has no business carrying a verdict.
  */
 function frontMatterOf(lines: Line[], pageHeight: number, bodySize: number): Set<Line> {

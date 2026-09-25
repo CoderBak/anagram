@@ -23,21 +23,21 @@
 <div class="chat-log">
 
   <div class="row head" data-chrome><span class="nick">alice</span> <span class="ts">10:01 AM</span></div>
-  <div class="row msg" data-voice="alice" data-expect="none">Morning. I looked at the invoice run from last night and about a third of the customers in the northern region were billed twice, so please do not send the reminder emails yet.</div>
+  <div class="row msg" data-voice="alice" data-expect="none">Morning. I looked at the invoice run from last night and about a third of the customers in the northern region were billed twice, so please do not send the reminder emails yet. The first complaints came in overnight.</div>
 
   <div class="row head" data-chrome><span class="nick">bob</span> <span class="ts">10:02 AM</span></div>
-  <div class="row msg" data-voice="bob" data-expect="unit">Already paused them. The duplicate rows all share one batch number, which makes me think the retry job fired while the first attempt was still writing to the ledger.</div>
-  <div class="row msg" data-voice="bob" data-expect="unit">I can reverse the second charge for everybody in that batch before lunch, but I would like somebody from finance to confirm the list first.</div>
+  <div class="row msg" data-voice="bob" data-expect="unit">Already paused them. The duplicate rows all share one batch number, which makes me think the retry job fired while the first attempt was still writing to the ledger. I have asked the bank for the raw file so that we can compare the two runs line by line.</div>
+  <div class="row msg" data-voice="bob" data-expect="unit">I can reverse the second charge for everybody in that batch before lunch, but I would like somebody from finance to confirm the list first. Once that is done I will post the totals here so everybody can see what went out.</div>
   <div class="row actions" data-chrome><span>Reply</span> · <span>Share</span> · <span>Pin</span></div>
 
   <div class="row head" data-chrome><span class="nick">carol</span> <span class="ts">10:04 AM</span></div>
   <div class="row msg" data-voice="carol" data-expect="none">Sounds good to me.</div>
 
   <div class="row head" data-chrome><span class="nick">alice</span> <span class="ts">10:05 AM</span></div>
-  <div class="row msg" data-voice="alice-2" data-expect="none">Send me the list and I will check it against the bank file. If the totals match we reverse today, and I will write to the affected customers myself this afternoon.</div>
+  <div class="row msg" data-voice="alice-2" data-expect="none">Send me the list and I will check it against the bank file. If the totals match we reverse today, and I will write to the affected customers myself this afternoon. Nothing else goes out until then.</div>
 
   <div class="row head" data-chrome><span class="nick">dave</span> <span class="ts">10:09 AM</span></div>
-  <div class="row msg" data-voice="dave" data-expect="unit">For the record, the retry job is mine, and the reason it fired early is that I shortened its timeout on Friday without telling anybody, because the old value made the nightly report late. I have put it back, added a lock around the ledger write so that two attempts can never overlap again, and I will bring the change to the review on Thursday.</div>
+  <div class="row msg" data-voice="dave" data-expect="unit">For the record, the retry job is mine, and the reason it fired early is that I shortened its timeout on Friday without telling anybody, because the old value made the nightly report late. I have put it back, added a lock around the ledger write so that two attempts can never overlap again, and I will bring the change to the review on Thursday. If anything in the ledger still looks wrong after the reversal, send it to me directly and I will go through it with finance before the next run.</div>
 
 </div>
 </body></html>

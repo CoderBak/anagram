@@ -53,8 +53,8 @@
         <span class="label">Contributor</span>
       </div>
       <div data-testid="markdown-body" class="markdown-body" data-voice="alice" data-expect="unit" data-parts="3">
-        <p>Exporting a project with a large archive never finishes. The progress bar reaches about eighty percent and then stays there until I close the window.</p>
-        <p>It looks related to the number of entries rather than their size: 4096 entries export fine, 4097 do not, whatever is in them.</p>
+        <p>Exporting a project with a large archive never finishes. The progress bar reaches about eighty percent and then stays there until I close the window. It has done this on two machines, one of them freshly installed.</p>
+        <p>It looks related to the number of entries rather than their size: 4096 entries export fine, 4097 do not, whatever is in them. I tried three different projects and the boundary is the same in all of them.</p>
         <pre><code>$ tool export --project demo --out demo.zip
 writing entry 4097 of 5210 ...</code></pre>
         <p>I can share the project privately if that helps, it is nothing confidential, just too big to attach here.</p>
@@ -88,7 +88,7 @@ writing entry 4097 of 5210 ...</code></pre>
         <span class="label">Member</span>
       </div>
       <div data-testid="markdown-body" class="markdown-body" data-voice="carol" data-expect="unit" data-parts="2">
-        <p>I think I know what this is. The writer keeps its central directory in a fixed buffer that was sized for the old format, and when the buffer is full it waits for a flush that the export path never asks for, because the export path was written before the buffer existed and nobody went back to it when the limit was introduced two releases ago.</p>
+        <p>I think I know what this is. The writer keeps its central directory in a fixed buffer that was sized for the old format, and when the buffer is full it waits for a flush that the export path never asks for, because the export path was written before the buffer existed and nobody went back to it when the limit was introduced two releases ago. That would also explain why smaller projects never show it, and why nobody noticed in testing.</p>
         <p>I will open a pull request tonight. It should be a small change, the hard part was finding it.</p>
       </div>
       <div class="reactions" data-chrome><button aria-label="react with hooray">🎉 2</button></div>
@@ -104,10 +104,10 @@ writing entry 4097 of 5210 ...</code></pre>
         <span>commented <a href="#c4"><relative-time datetime="2026-09-17T12:00:00Z">yesterday</relative-time></a></span>
       </div>
       <div data-testid="markdown-body" class="markdown-body" data-voice="dave" data-expect="unit" data-parts="4">
-        <p>Before that lands, a few things worth checking, because we have been bitten by this buffer before:</p>
+        <p>Before that lands, a few things worth checking, because we have been bitten by this buffer before, and it cost us a week the last time:</p>
         <ul>
-          <li>whether the import path has the same assumption, since it was written in the same week</li>
-          <li>whether the limit is documented anywhere a user would find it, which I doubt</li>
+          <li>whether the import path has the same assumption, since it was written in the same week and has never had a test of its own</li>
+          <li>whether the limit is documented anywhere a user would find it, without reading the source first, which I doubt</li>
           <li>whether the test archive in the repository is big enough to have caught this, which it clearly is not.</li>
         </ul>
       </div>
@@ -124,7 +124,7 @@ writing entry 4097 of 5210 ...</code></pre>
       </div>
       <div data-testid="markdown-body" class="markdown-body">
         <blockquote data-voice="carol" data-expect="none"><p>It should be a small change, the hard part was finding it.</p></blockquote>
-        <p data-voice="erin" data-expect="none">That sentence describes most of the bugs I have fixed in this code base, and all of the ones I am proud of.</p>
+        <p data-voice="erin" data-expect="none">That sentence describes most of the bugs I have fixed in this code base, and all of the ones I am proud of. Once you know where to look it is always one line, but it takes a week of reading to learn where to look, and the notes from that week never make it into the repository. Thank you for taking the time to find it.</p>
       </div>
     </div>
   </div>

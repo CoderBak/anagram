@@ -29,7 +29,7 @@
   let seed = 20260919;
   const next = () => (seed = (seed * 1103515245 + 12345) % 2147483648);
   const words = (n) => { const out = []; for (let i = 0; i < n; i++) out.push(VOCAB[next() % VOCAB.length]); const s = out.join(" ") + "."; return s[0].toUpperCase() + s.slice(1); };
-  const SHAPES = [[30, 55, 20], [25], [60], [28, 27]];
+  const SHAPES = [[30, 80, 20], [25], [80], [40, 40]];
   const thread = document.getElementById("thread");
   for (let i = 0; i < 100; i++) {
     const shape = SHAPES[i % 4];

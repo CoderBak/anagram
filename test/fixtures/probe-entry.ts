@@ -17,7 +17,7 @@
 // the markup declared it or its structure gave it away (lib/dom/scope.ts) — the question to
 // ask of a logged-in page when a post is cut into several units.
 import { collectUnits } from "../../lib/dom/walker";
-import { countWords } from "../../lib/dom/text";
+import { countWords, MIN_UNIT_WORDS } from "../../lib/dom/text";
 import { createScopes } from "../../lib/dom/scope";
 
-(window as unknown as { __anagramProbe: unknown }).__anagramProbe = { collectUnits, countWords, createScopes };
+(window as unknown as { __anagramProbe: unknown }).__anagramProbe = { collectUnits, countWords, createScopes, MIN_UNIT_WORDS };

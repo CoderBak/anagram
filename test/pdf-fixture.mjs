@@ -33,7 +33,7 @@ export const PDF_PARAS = [
     "typesetter broke across two lines with a hyphen-",
     "ation mark is joined again, while a genuine compound such as state-of-the-",
     "art keeps the hyphen it was written with in the first place. This paragraph carries",
-    "on for long enough to clear the fifty word floor that the extension applies to every",
+    "on for long enough to clear the seventy-five word floor the extension applies to every",
     "unit it sends to the daemon, and it does not stop at the bottom of this page either,",
     "because the final line of it ends with no punctuation at all and simply runs on, so",
   ],
@@ -50,7 +50,8 @@ export const PDF_PARAS = [
     // The fake daemon's verdicts are a pure function of the text, and this wording is
     // the one that lands in a FLAGGED band — the panel and the copied report both need
     // at least one flagged paragraph to have anything to show.
-    "later reads the copied report and asks where each of these paragraphs came from.",
+    "later reads the copied report and asks where each of these paragraphs came from, and",
+    "why the same line of furniture turns up in every one of them.",
   ],
 ];
 
@@ -210,28 +211,28 @@ export const TEST_PDF = buildPdf([
 export const SCANNED_PDF = buildPdf([[]]);
 
 // A document of SHORT paragraphs — the case a paper is full of and the reader used to drop
-// on the floor. Three paragraphs of 24 words each under a heading are read together, the
-// way three short <p>s of one voice are on a web page; the heading under them is a barrier,
-// so the two paragraphs after it (48 words, under the fifty-word floor with nothing of
-// their own section to join) are read by nobody. Every line starts in lower case and every
+// on the floor. Three paragraphs of about 30 words each under a heading are read together,
+// the way three short <p>s of one voice are on a web page; the heading under them is a
+// barrier, so the two paragraphs after it (48 words, under the 75-word floor with nothing
+// of their own section to join) are read by nobody. Every line starts in lower case and every
 // paragraph is set to the same measure, so the only thing separating two of them is the
 // blank line between — nothing here tests the reflow's cleverness, only the grouping.
 export const GROUPED_HEADINGS = ["Short paragraphs", "Another section"];
 export const GROUPED_PARAS = [
   [
-    "the reader keeps every short paragraph in view",
-    "and joins it to the ones beside it",
-    "so that nothing written here goes unread today.",
+    "the reader keeps every short paragraph of a paper in view",
+    "and joins it to the ones that stand right beside it",
+    "so that nothing written here goes unread by anybody today.",
   ],
   [
-    "a second short paragraph follows the first one",
-    "and carries its own handful of quiet words",
-    "which nobody would ever judge on their own.",
+    "a second short paragraph follows the first one closely",
+    "and carries its own small handful of quiet ordinary words",
+    "which nobody would ever think of judging on their own.",
   ],
   [
-    "the third one closes the run of three",
-    "and brings the group past the evidence floor",
-    "where the model can finally read them together.",
+    "the third one closes this run of three short paragraphs",
+    "and brings the whole group well past the evidence floor",
+    "where the model can finally read all of them together.",
   ],
   [
     "under the second heading two more paragraphs sit",
@@ -271,8 +272,8 @@ export const LOCKED_PDF = buildPdf(
  * A long two-column paper. Two suites need a document that does not fit on one screen:
  * the scenarios, to prove that a page far down the stack has its TEXT (and so its units,
  * its chips and the panel's rows) long before it has any pixels, and test/perf.mjs, for
- * the budgets that only a real stack of pages can state. Every paragraph is eight lines
- * of eight words, which clears the fifty-word floor, and no line repeats, so nothing but
+ * the budgets that only a real stack of pages can state. Every paragraph is twenty-two
+ * lines of five words, which clears the 75-word floor, and no line repeats, so nothing but
  * the running head and the page number is taken for furniture.
  */
 export function buildTwoColumnPdf(pageCount) {
@@ -285,7 +286,8 @@ export function buildTwoColumnPdf(pageCount) {
   // one repeated paragraph would arrive there as a single block.
   const word = (n) => WORDS[Math.abs(Math.imul(n, 2654435761) >>> 7) % WORDS.length];
   const line = (seed) => Array.from({ length: 5 }, (_, i) => word(seed * 31 + i)).join(" ");
-  const LINES = 14; // 70 words a paragraph — well clear of the evidence floor
+  const LINES = 22; // 114 words a paragraph — well clear of the evidence floor
+  const PER_COLUMN = 2; // paragraphs, which fill the column down to the page number
   const pages = [];
   for (let p = 0; p < pageCount; p++) {
     const items = [
@@ -293,8 +295,8 @@ export function buildTwoColumnPdf(pageCount) {
       { x: 300, y: 50, size: 10, text: `${p + 1}` },
     ];
     for (const [c, x] of [[0, 72], [1, 320]]) {
-      for (let para = 0; para < 3; para++) {
-        const id = (p * 6 + c * 3 + para) * 101;
+      for (let para = 0; para < PER_COLUMN; para++) {
+        const id = (p * 2 * PER_COLUMN + c * PER_COLUMN + para) * 101;
         for (let i = 0; i < LINES; i++) {
           const text = i === LINES - 1 ? `${line(id + i)} and so it ends.` : line(id + i);
           items.push({ x, y: 700 - (para * (LINES + 1) + i) * 14, size: 11, text });

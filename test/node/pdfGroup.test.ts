@@ -1,6 +1,6 @@
 // test/node/pdfGroup.test.ts — a PDF's short paragraphs, read together.
 //
-// On a web page a paragraph under the fifty-word floor is not thrown away: short
+// On a web page a paragraph under the 75-word floor is not thrown away: short
 // neighbours of one voice are read together (lib/dom/walker.ts). A PDF got none of that —
 // every reconstructed paragraph under the floor was dropped, so a paper's short ones were
 // silently unread. The rules now live in one place (lib/plan/group.ts) and lib/pdf/units.ts
@@ -73,14 +73,14 @@ function shortParagraphPage(): PdfPageText {
   placed.push({ text: "Short paragraphs", y, size: 16, width: 120 });
   y += PITCH + GAP;
   for (const seed of [1, 2, 3]) {
-    const p = para(seed, y);
+    const p = para(seed, y, 4);
     placed.push(...p.placed);
     y = p.next;
   }
   placed.push({ text: "Another section", y, size: 16, width: 120 });
   y += PITCH + GAP;
   for (const seed of [4, 5]) {
-    const p = para(seed, y);
+    const p = para(seed, y, 4);
     placed.push(...p.placed);
     y = p.next;
   }
@@ -99,7 +99,7 @@ describe("a PDF's short paragraphs", () => {
       "paragraph",
       "paragraph",
     ]);
-    // 24 words a paragraph: the three together clear the floor, the two after the second
+    // 32 words a paragraph: the three together clear the floor, the two after the second
     // heading do not and are read by nobody — exactly what the walker does on a page.
     expect(groupsOf(blocks)).toEqual([[1, 2, 3]]);
   });
@@ -113,7 +113,7 @@ describe("a PDF's short paragraphs", () => {
     const placed: Placed[] = [];
     let y = 100;
     for (const seed of [1, 2]) {
-      const p = para(seed, y, 8); // 64 words — over the floor by itself
+      const p = para(seed, y, 10); // 80 words — over the floor by itself
       placed.push(...p.placed);
       y = p.next;
     }
@@ -131,7 +131,7 @@ describe("a PDF's short paragraphs", () => {
     placed.push({ text: "Figure 1: the layout of one printed page.", y, width: 200 });
     y += PITCH + GAP;
     for (const seed of [2, 3]) {
-      const p = para(seed, y, 4);
+      const p = para(seed, y, 5); // 40 words each, 80 together
       placed.push(...p.placed);
       y = p.next;
     }
@@ -145,18 +145,18 @@ describe("a PDF's short paragraphs", () => {
 
   it("says where a column or a page break lies, and never reads across one", () => {
     const short = (seed: number, top: number, x: number): Placed[] =>
-      para(seed, top, 3).placed.map((p) => ({ ...p, x, width: 200 }));
+      para(seed, top, 4).placed.map((p) => ({ ...p, x, width: 200 }));
     // Two columns of one page: three short paragraphs in the left, two in the right.
     const placed: Placed[] = [];
     let y = 100;
     for (const seed of [1, 2, 3]) {
       placed.push(...short(seed, y, 72));
-      y += 3 * PITCH + GAP;
+      y += 4 * PITCH + GAP;
     }
     y = 100;
     for (const seed of [4, 5]) {
       placed.push(...short(seed, y, 330));
-      y += 3 * PITCH + GAP;
+      y += 4 * PITCH + GAP;
     }
     const blocks = reflowPdf([page(1, placed)]);
     if (blocks.length !== 5) return; // the gutter finder did not see two columns here

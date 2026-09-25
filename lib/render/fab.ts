@@ -43,7 +43,7 @@ export interface PanelEntry {
 export interface PanelCounts {
   /** Units with a real verdict behind them. */
   read: number;
-  /** Prose the walker found and left unread: under the 50-word evidence floor, with no
+  /** Prose the walker found and left unread: under the 75-word evidence floor, with no
    *  neighbour of its own voice to join. Zero — and left off the line — in strict
    *  per-paragraph mode, where the walk never decides what a short run was. */
   short: number;

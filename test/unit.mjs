@@ -50,108 +50,116 @@ const results = await page.evaluate(() => {
   };
 
   // ---- walker: unit formation -------------------------------------------------------
-  let u = collect(`<p>${words(60)}</p>`);
+  let u = collect(`<p>${words(80)}</p>`);
   check("long paragraph → one 1-part unit", u.length === 1 && u[0].parts === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  u = collect(`<p>${words(60)}</p><p>${words(55)}</p>`);
+  {
+    const below = collect(`<p>${words(74)}</p>`);
+    const at = collect(`<p>${words(75)}</p>`);
+    check("the floor is the open model's training minimum: 74 words alone are not read, 75 are",
+      PW.MIN_UNIT_WORDS === 75 && below.length === 0 && at.length === 1 && at[0].words === 75, JSON.stringify([below.length, at.map(x => x.words)]));
+  }
+
+  u = collect(`<p>${words(80)}</p><p>${words(85)}</p>`);
   check("two long paragraphs → two units", u.length === 2);
 
   u = collect(`<h2>Title</h2><p>${words(20)}</p><h2>Title</h2>`);
   check("isolated short between headings → dropped", u.length === 0);
 
-  u = collect(`<p>${words(20)}</p><p>${words(20)}</p><p>${words(20)}</p>`);
+  u = collect(`<p>${words(30)}</p><p>${words(30)}</p><p>${words(30)}</p>`);
   check("three short siblings → one 3-part unit", u.length === 1 && u[0].parts === 3, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  u = collect(`<div>${words(25)}<br><br>${words(26)}</div>`);
+  u = collect(`<div>${words(40)}<br><br>${words(41)}</div>`);
   check("BR-split halves → one 2-part unit", u.length === 1 && u[0].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  u = collect(`<p>${words(20)}</p><p>${words(60)}</p><p>${words(20)}</p>`);
-  check("short|LONG|short → ONE unit of three parts: a short text that cannot stand alone joins the full paragraph beside it", u.length === 1 && u[0].parts === 3 && u[0].words === 100, JSON.stringify(u.map(x => [x.parts, x.words])));
+  u = collect(`<p>${words(20)}</p><p>${words(80)}</p><p>${words(20)}</p>`);
+  check("short|LONG|short → ONE unit of three parts: a short text that cannot stand alone joins the full paragraph beside it", u.length === 1 && u[0].parts === 3 && u[0].words === 120, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  u = collect(`<p>${words(30)}</p><h3>Break</h3><p>${words(30)}</p>`);
+  u = collect(`<p>${words(40)}</p><h3>Break</h3><p>${words(40)}</p>`);
   check("heading is a merge barrier", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  u = collect(`<p>${words(30)}</p><p>${words(30)}</p>`);
-  check("two 30w shorts merge past the floor", u.length === 1 && u[0].words >= 50);
+  u = collect(`<p>${words(40)}</p><p>${words(40)}</p>`);
+  check("two 40w shorts merge past the floor", u.length === 1 && u[0].words >= 75);
 
-  u = collect(`<section><p>${words(30)}</p></section><section><p>${words(30)}</p></section>`);
+  u = collect(`<section><p>${words(40)}</p></section><section><p>${words(40)}</p></section>`);
   check("shorts in unrelated sections do NOT merge", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  u = collect(`<p>${words(30)} <code>npm install</code> ${words(25)}</p>`);
+  u = collect(`<p>${words(40)} <code>npm install</code> ${words(35)}</p>`);
   check("inline <code> stays in the paragraph", u.length === 1 && u[0].text.includes("npm install"), JSON.stringify(u.map(x => [x.parts, x.words])));
 
   u = collect(`<pre>${words(80)}</pre>`);
   check("<pre> block never scored", u.length === 0);
 
-  u = collect(`<nav><p>${words(60)}</p></nav>`);
+  u = collect(`<nav><p>${words(80)}</p></nav>`);
   check("<nav> subtree skipped (boilerplate)", u.length === 0);
 
   u = collect(`<div><a href="#">${words(30)}</a><br><a href="#">${words(30)}</a></div>`);
   check("link-dense runs are barriers, not units", u.length === 0);
 
-  u = collect(`<div contenteditable="true">${words(60)}</div>`);
+  u = collect(`<div contenteditable="true">${words(80)}</div>`);
   check("contenteditable never scored", u.length === 0);
 
-  u = collect(`<div aria-hidden="true">${words(60)}</div>`);
+  u = collect(`<div aria-hidden="true">${words(80)}</div>`);
   check("aria-hidden never scored", u.length === 0);
 
-  u = collect(`<div style="display:none">${words(60)}</div>`);
+  u = collect(`<div style="display:none">${words(80)}</div>`);
   check("display:none never scored", u.length === 0);
 
-  u = collect(`<div style="visibility:hidden">${words(60)}</div>`);
+  u = collect(`<div style="visibility:hidden">${words(80)}</div>`);
   check("visibility:hidden never scored", u.length === 0);
 
-  u = collect(`<div style="opacity:0">${words(60)}</div>`);
+  u = collect(`<div style="opacity:0">${words(80)}</div>`);
   check("opacity:0 never scored", u.length === 0);
 
-  u = collect(`<div class="notranslate">${words(60)}</div>`);
+  u = collect(`<div class="notranslate">${words(80)}</div>`);
   check("notranslate honored", u.length === 0);
 
-  u = collect(`<div translate="no">${words(60)}</div>`);
+  u = collect(`<div translate="no">${words(80)}</div>`);
   check("translate=no honored", u.length === 0);
 
   const cjk = "这是一个用来验证中文分词与字母检测的完整段落，其中完全没有任何拉丁字母出现，" +
-    "但是包含了数量足够多的中文词语，可以顺利越过五十个词的最低门槛，从而形成一个可以被评分的单元，" +
-    "并且证明统一码字母判断和中文分词统计都在按预期工作着。";
+    "但是包含了数量足够多的中文词语，可以顺利越过七十五个词的最低门槛，从而形成一个可以被评分的单元，" +
+    "并且证明统一码字母判断和中文分词统计都在按预期工作着，" +
+    "就算换了一种分词方法，这一段的词数也仍然留有足够的余量，不会恰好落在门槛的下面。";
   u = collect(`<p>${cjk}</p>`);
   check("pure-CJK paragraph scored", u.length === 1, JSON.stringify(u.map(x => x.words)));
 
   u = collect(`<p>1 2 3 4 5 6 7 8 9 10 11 12</p>`);
   check("letterless run dropped", u.length === 0);
 
-  u = collect(`<div style="white-space:pre">+----+----+\n| A  | B  |\n+----+----+</div><p>${words(30)}</p>`);
+  u = collect(`<div style="white-space:pre">+----+----+\n| A  | B  |\n+----+----+</div><p>${words(40)}</p>`);
   check("ASCII-box run is a barrier; lone neighbor short dropped", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  u = collect(`<div style="white-space:pre-wrap">${words(30)}\n\n${words(30)}</div>`);
+  u = collect(`<div style="white-space:pre-wrap">${words(40)}\n\n${words(40)}</div>`);
   check("pre-wrap blank-line gap splits then merges → 2 parts", u.length === 1 && u[0].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  u = collect(`<p><span style="float:left;font-size:2em">T</span>${words(60)}</p>`);
+  u = collect(`<p><span style="float:left;font-size:2em">T</span>${words(80)}</p>`);
   check("floated drop-cap span stays inline", u.length === 1 && u[0].text.startsWith("T"), JSON.stringify(u.map(x => x.text.slice(0, 12))));
 
-  u = collect(`<p>${words(30)}</p><div style="display:inline-block"><div>${words(9)}</div></div><p>${words(30)}</p>`);
+  u = collect(`<p>${words(40)}</p><div style="display:inline-block"><div>${words(9)}</div></div><p>${words(40)}</p>`);
   check("inline-block card with block children does not sever merging siblings", u.length >= 1, JSON.stringify(u.map(x => [x.parts, x.words])));
 
   sandbox.innerHTML = `<div id="sh"></div>`;
   const sh = sandbox.querySelector("#sh").attachShadow({ mode: "open" });
-  sh.innerHTML = `<p>${words(60)}</p>`;
+  sh.innerHTML = `<p>${words(80)}</p>`;
   u = PW.collectUnits(sandbox).map((x) => ({ parts: x.parts.length }));
   check("open shadow root content collected", u.length === 1, JSON.stringify(u));
 
-  u = collect(`<p>${words(30)}<span style="position:absolute;width:1px;height:1px;overflow:hidden">SRONLY LEAK</span> ${words(25)}</p>`);
+  u = collect(`<p>${words(40)}<span style="position:absolute;width:1px;height:1px;overflow:hidden">SRONLY LEAK</span> ${words(40)}</p>`);
   check("sr-only inline text excluded mid-sentence", u.length === 1 && !u[0].text.includes("SRONLY"), JSON.stringify(u.map(x => x.parts)));
 
-  sandbox.innerHTML = `<p>${words(60)}</p>`;
+  sandbox.innerHTML = `<p>${words(80)}</p>`;
   const skipped = PW.collectUnits(sandbox, { claimFilter: () => "skip" });
   check("claimFilter skip suppresses owned runs", skipped.length === 0);
 
   // ---- inline whitespace fidelity ------------------------------------------------------
   // Whitespace-only text nodes BETWEEN inline elements are the spaces between words.
-  u = collect(`<p>${Array.from({ length: 60 }, (_, i) => `<span>${VOCAB[i % VOCAB.length]}</span>`).join(" ")}.</p>`);
-  check("span-per-word paragraph keeps its spaces (60 words, one unit)", u.length === 1 && u[0].words === 60, JSON.stringify(u.map(x => [x.words, x.text.slice(0, 30)])));
-  u = collect(`<p><b>Alan Turing</b> <small>OBE</small> ${words(55)}</p>`);
+  u = collect(`<p>${Array.from({ length: 80 }, (_, i) => `<span>${VOCAB[i % VOCAB.length]}</span>`).join(" ")}.</p>`);
+  check("span-per-word paragraph keeps its spaces (80 words, one unit)", u.length === 1 && u[0].words === 80, JSON.stringify(u.map(x => [x.words, x.text.slice(0, 30)])));
+  u = collect(`<p><b>Alan Turing</b> <small>OBE</small> ${words(80)}</p>`);
   check("`<b>…</b> <small>…</small>` is not glued into one token", u.length === 1 && u[0].text.startsWith("Alan Turing OBE "), JSON.stringify(u.map(x => x.text.slice(0, 24))));
   {
-    sandbox.innerHTML = `<p>\n  <span>${words(60)}</span>\n  </p>`;
+    sandbox.innerHTML = `<p>\n  <span>${words(80)}</span>\n  </p>`;
     const [unit] = PW.collectUnits(sandbox);
     const nodes = unit?.parts[0].nodes ?? [];
     const edgesClean = nodes.length > 0 && nodes[0].textContent.trim() !== "" && nodes[nodes.length - 1].textContent.trim() !== "";
@@ -159,7 +167,7 @@ const results = await page.evaluate(() => {
   }
   {
     sandbox.innerHTML = `<div id="sh2"></div>`;
-    sandbox.querySelector("#sh2").attachShadow({ mode: "open" }).innerHTML = `<p>${words(60)}</p>`;
+    sandbox.querySelector("#sh2").attachShadow({ mode: "open" }).innerHTML = `<p>${words(80)}</p>`;
     const roots = [];
     const got = PW.collectUnits(sandbox, { onShadowRoot: (r) => roots.push(r) });
     check("walker reports each open shadow root it descends into", got.length === 1 && roots.length === 1 && roots[0] instanceof ShadowRoot, `${roots.length}`);
@@ -167,7 +175,7 @@ const results = await page.evaluate(() => {
 
   // ---- regression: review-workflow findings ------------------------------------------
   // 1) preserved-whitespace splitting must be IDEMPOTENT (no infinite observe loop).
-  sandbox.innerHTML = `<div style="white-space:pre-wrap">${words(30)}\n\n${words(30)}</div>`;
+  sandbox.innerHTML = `<div style="white-space:pre-wrap">${words(40)}\n\n${words(40)}</div>`;
   PW.collectUnits(sandbox);
   const nAfter1 = sandbox.firstElementChild.childNodes.length;
   PW.collectUnits(sandbox);
@@ -253,36 +261,36 @@ const results = await page.evaluate(() => {
   }
 
   // 2) SVG exclusion fires despite lowercase nodeName; embedded title/style never leak.
-  u = collect(`<p>${words(30)} <svg viewBox="0 0 10 10"><title>SVGLEAK</title><style>.q{fill:red}</style><text x="0" y="9">42</text></svg> ${words(25)}</p>`);
+  u = collect(`<p>${words(40)} <svg viewBox="0 0 10 10"><title>SVGLEAK</title><style>.q{fill:red}</style><text x="0" y="9">42</text></svg> ${words(40)}</p>`);
   check("inline SVG excluded, title/style text never leaks, sentence intact",
     u.length === 1 && u[0].parts === 1 && !u[0].text.includes("SVGLEAK") && !u[0].text.includes("fill:red"),
     JSON.stringify(u.map(x => [x.parts, x.text.slice(0, 40)])));
-  u = collect(`<svg width="400" height="200"><text x="0" y="20">${words(60)}</text></svg>`);
+  u = collect(`<svg width="400" height="200"><text x="0" y="20">${words(80)}</text></svg>`);
   check("standalone SVG chart text never scored", u.length === 0);
 
   // 3) inline exclusions must not split the sentence around them.
-  u = collect(`<p>${words(30)} <img alt="pic"> ${words(25)}</p>`);
+  u = collect(`<p>${words(40)} <img alt="pic"> ${words(40)}</p>`);
   check("<img> mid-sentence does not split the run", u.length === 1 && u[0].parts === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
-  u = collect(`<p>${words(30)} <span aria-hidden="true">★</span> ${words(25)}</p>`);
+  u = collect(`<p>${words(40)} <span aria-hidden="true">★</span> ${words(40)}</p>`);
   check("aria-hidden icon mid-sentence does not split the run", u.length === 1 && u[0].parts === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
-  u = collect(`<p>${words(30)} <span style="display:none">HIDDENLEAK</span> ${words(25)}</p>`);
+  u = collect(`<p>${words(40)} <span style="display:none">HIDDENLEAK</span> ${words(40)}</p>`);
   check("display:none span mid-sentence: no split, no leak",
     u.length === 1 && u[0].parts === 1 && !u[0].text.includes("HIDDENLEAK"), JSON.stringify(u.map(x => [x.parts, x.words])));
 
   // 4) column-gap barrier applies ONLY to preserved-whitespace runs.
-  u = collect(`<p>${words(30)}          ${words(25)}</p>`);
+  u = collect(`<p>${words(40)}          ${words(40)}</p>`);
   check("8+ source spaces in collapsed HTML do not drop prose", u.length === 1, JSON.stringify(u.map(x => x.words)));
 
   // 5a) strict per-paragraph mode (mergeShorts:false): sub-floor runs are skipped.
-  sandbox.innerHTML = `<p>${words(20)}</p><p>${words(20)}</p><p>${words(20)}</p>`;
+  sandbox.innerHTML = `<p>${words(30)}</p><p>${words(30)}</p><p>${words(30)}</p>`;
   const strict = PW.collectUnits(sandbox, { mergeShorts: false });
   check("mergeShorts:false — shorts never grouped", strict.length === 0, JSON.stringify(strict.length));
-  sandbox.innerHTML = `<p>${words(60)}</p><p>${words(20)}</p>`;
+  sandbox.innerHTML = `<p>${words(80)}</p><p>${words(20)}</p>`;
   const strictLong = PW.collectUnits(sandbox, { mergeShorts: false });
   check("mergeShorts:false — full paragraphs still scored", strictLong.length === 1 && strictLong[0].parts.length === 1);
 
   // 5) shorts must not merge ACROSS an existing claimed unit.
-  sandbox.innerHTML = `<p>${words(20)}</p><p>${words(60)}</p><p>${words(20)}</p>`;
+  sandbox.innerHTML = `<p>${words(20)}</p><p>${words(80)}</p><p>${words(20)}</p>`;
   const first = PW.collectUnits(sandbox);
   const owned = new Set();
   for (const un of first) for (const part of un.parts) for (const n of part.nodes) owned.add(n);
@@ -295,31 +303,31 @@ const results = await page.evaluate(() => {
   const line = (n) => words(n).slice(0, -1);
   const partsOf = (x) => x.text.split("\n\n");
 
-  u = collect(`<article><span class="by">alice</span> ${sent(30)}</article><article><span class="by">bob</span> ${sent(30)}</article>`);
+  u = collect(`<article><span class="by">alice</span> ${sent(40)}</article><article><span class="by">bob</span> ${sent(40)}</article>`);
   check("two sibling <article>s by different authors never merge", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  u = collect(`<div role="article">${sent(30)}</div><div role="article">${sent(30)}</div>`);
+  u = collect(`<div role="article">${sent(40)}</div><div role="article">${sent(40)}</div>`);
   check("…nor two [role=article] posts (Reddit comments)", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  u = collect(`<article><p>${sent(30)}</p><p>${sent(30)}</p></article><article><p>${sent(30)}</p></article>`);
+  u = collect(`<article><p>${sent(40)}</p><p>${sent(40)}</p></article><article><p>${sent(40)}</p></article>`);
   check("the short paragraphs of ONE article still merge; the neighbour's stays out", u.length === 1 && u[0].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  u = collect(`<p>${sent(30)}</p><blockquote>${sent(30)}</blockquote>`);
+  u = collect(`<p>${sent(40)}</p><blockquote>${sent(40)}</blockquote>`);
   check("an author and a bare <blockquote> never merge", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
-  u = collect(`<p>${sent(30)}</p><blockquote><p>${sent(30)}</p></blockquote>`);
+  u = collect(`<p>${sent(40)}</p><blockquote><p>${sent(40)}</p></blockquote>`);
   check("…nor with <blockquote><p>", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  u = collect(`<p>AUTHOR-A ${sent(30)}</p><blockquote><p>QUOTED ${sent(30)}</p></blockquote><p>AUTHOR-B ${sent(30)}</p>`);
+  u = collect(`<p>AUTHOR-A ${sent(40)}</p><blockquote><p>QUOTED ${sent(40)}</p></blockquote><p>AUTHOR-B ${sent(40)}</p>`);
   check("a quotation interrupts the author's text, it does not end it: [p, p] without the quote",
     u.length === 1 && u[0].parts === 2 && u[0].text.includes("AUTHOR-A") && u[0].text.includes("AUTHOR-B") && !u[0].text.includes("QUOTED"),
     JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  u = collect(`<p>AUTHOR-A ${sent(30)}</p><blockquote><p>QUOTED ${sent(60)}</p></blockquote><p>AUTHOR-B ${sent(30)}</p>`);
+  u = collect(`<p>AUTHOR-A ${sent(40)}</p><blockquote><p>QUOTED ${sent(80)}</p></blockquote><p>AUTHOR-B ${sent(40)}</p>`);
   check("a full-length quotation is its own unit; units come back in document order",
     u.length === 2 && u[0].parts === 2 && u[0].text.startsWith("AUTHOR-A") && u[1].parts === 1 && u[1].text.startsWith("QUOTED"),
     JSON.stringify(u.map(x => [x.parts, x.text.slice(0, 10)])));
   {
-    sandbox.innerHTML = `<p>${sent(30)}</p><blockquote><p>${sent(60)}</p></blockquote><p>${sent(30)}</p>`;
+    sandbox.innerHTML = `<p>${sent(40)}</p><blockquote><p>${sent(80)}</p></blockquote><p>${sent(40)}</p>`;
     const got = PW.collectUnits(sandbox);
     check("ids are unique and `order` ascends in document order", got.length === 2 && got[0].id !== got[1].id && got[0].order < got[1].order, JSON.stringify(got.map(x => [x.id, x.order])));
   }
@@ -327,7 +335,7 @@ const results = await page.evaluate(() => {
     // A later walk numbers its units after every earlier one, wherever they are: a post
     // prepended to a feed, a reply inserted above, text in a shadow tree or a slot. Their
     // place on the page is asked of the page, across the shadow boundary the walk crosses.
-    sandbox.innerHTML = `<p id="old">OLD ${sent(60)}</p>`;
+    sandbox.innerHTML = `<p id="old">OLD ${sent(80)}</p>`;
     const owned = new Set();
     const walk = (root) => {
       const got = PW.collectUnits(root, { claimFilter: (nodes) => (nodes.every((n) => owned.has(n)) ? "skip" : "take") });
@@ -336,12 +344,12 @@ const results = await page.evaluate(() => {
     };
     const units = walk(sandbox);
     const top = document.createElement("p");
-    top.textContent = `TOP ${sent(60)}`;
+    top.textContent = `TOP ${sent(80)}`;
     sandbox.prepend(top);
     units.push(...walk(sandbox));
     const host = document.createElement("div");
-    host.attachShadow({ mode: "open" }).innerHTML = `<p>SHADOW ${sent(60)}</p><slot></slot>`;
-    host.innerHTML = `<p>SLOTTED ${sent(60)}</p>`;
+    host.attachShadow({ mode: "open" }).innerHTML = `<p>SHADOW ${sent(80)}</p><slot></slot>`;
+    host.innerHTML = `<p>SLOTTED ${sent(80)}</p>`;
     sandbox.insertBefore(host, document.getElementById("old"));
     units.push(...walk(sandbox));
     const found = units.map((x) => x.text.split(" ")[0]);
@@ -351,28 +359,28 @@ const results = await page.evaluate(() => {
       JSON.stringify({ found, shown }));
   }
 
-  u = collect(`<p>${sent(30)}</p><blockquote><p>${sent(20)}</p><cite><a href="#s">The Source, 1931</a></cite></blockquote><p>${sent(30)}</p>`);
+  u = collect(`<p>${sent(40)}</p><blockquote><p>${sent(20)}</p><cite><a href="#s">The Source, 1931</a></cite></blockquote><p>${sent(40)}</p>`);
   check("a barrier INSIDE a quotation (its linked <cite>) does not end the author's text around it", u.length === 1 && u[0].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  u = collect(`<p>${sent(30)}</p><h3>Break</h3><blockquote><p>${sent(30)}</p></blockquote><p>${sent(30)}</p>`);
+  u = collect(`<p>${sent(40)}</p><h3>Break</h3><blockquote><p>${sent(40)}</p></blockquote><p>${sent(40)}</p>`);
   check("…while a heading in the author's own flow still does", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  u = collect(`<p>${sent(30)}</p><figure><img alt=""><figcaption>CAPTION ${sent(14)}</figcaption></figure><p>${sent(30)}</p>`);
+  u = collect(`<p>${sent(40)}</p><figure><img alt=""><figcaption>CAPTION ${sent(14)}</figcaption></figure><p>${sent(40)}</p>`);
   check("a figure caption between two short paragraphs is not borrowed: [p, p] without it",
     u.length === 1 && u[0].parts === 2 && !u[0].text.includes("CAPTION"), JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  u = collect(`<article><div class="t">${sent(30)}</div><div role="link" tabindex="0"><div class="t">${sent(30)}</div></div></article>`);
+  u = collect(`<article><div class="t">${sent(40)}</div><div role="link" tabindex="0"><div class="t">${sent(40)}</div></div></article>`);
   check("a QUOTED post — div[role=link] inside the quoting post's <article> — never merges with it", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  u = collect(`<div role="link" tabindex="0"><div>${sent(30)}</div></div><div role="link" tabindex="0"><div>${sent(30)}</div></div>`);
+  u = collect(`<div role="link" tabindex="0"><div>${sent(40)}</div></div><div role="link" tabindex="0"><div>${sent(40)}</div></div>`);
   check("feed items that are div[role=link] cards (Bluesky) never merge", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  u = collect(`<p>${sent(58)} <span role="link" tabindex="0">a scripted link</span> inside.</p>`);
+  u = collect(`<p>${sent(78)} <span role="link" tabindex="0">a scripted link</span> inside.</p>`);
   check("an inline span[role=link] is not a scope: the sentence stays whole", u.length === 1 && u[0].parts === 1 && u[0].text.includes("a scripted link inside."), JSON.stringify(u.map(x => [x.parts, x.words])));
 
   {
     sandbox.innerHTML = `<div id="host-a"></div>`;
-    sandbox.querySelector("#host-a").attachShadow({ mode: "open" }).innerHTML = `<p>${sent(30)}</p><blockquote><p>${sent(30)}</p></blockquote>`;
+    sandbox.querySelector("#host-a").attachShadow({ mode: "open" }).innerHTML = `<p>${sent(40)}</p><blockquote><p>${sent(40)}</p></blockquote>`;
     const inside = PW.collectUnits(sandbox);
     check("a scope inside a shadow root separates there too", inside.length === 0, JSON.stringify(inside.map(x => x.parts.length)));
 
@@ -380,84 +388,84 @@ const results = await page.evaluate(() => {
     // shadow root, so the lookup has to climb through the host — otherwise this text
     // would count as bare-page text and the title row would cut it in two.
     sandbox.innerHTML = `<article><div id="host-b"></div></article>`;
-    sandbox.querySelector("#host-b").attachShadow({ mode: "open" }).innerHTML = `<div><p>${sent(30)}</p><div class="ttl">Finish early</div><p>${sent(30)}</p></div>`;
+    sandbox.querySelector("#host-b").attachShadow({ mode: "open" }).innerHTML = `<div><p>${sent(40)}</p><div class="ttl">Finish early</div><p>${sent(40)}</p></div>`;
     const climbed = PW.collectUnits(sandbox);
     check("scope lookup climbs through shadow hosts", climbed.length === 1 && climbed[0].parts.length === 2, JSON.stringify(climbed.map(x => x.parts.length)));
   }
 
   // ---- who may be scored together: role, not length --------------------------------------
-  u = collect(Array.from({ length: 10 }, (_, i) => `<p>POST${i} ${sent(5)}</p>`).join(""));
-  check("ten six-word one-sentence paragraphs of one post → ONE unit (the old 8-word floor dropped them all)",
-    u.length === 1 && u[0].parts === 10 && u[0].words === 60, JSON.stringify(u.map(x => [x.parts, x.words])));
+  u = collect(Array.from({ length: 13 }, (_, i) => `<p>POST${i} ${sent(5)}</p>`).join(""));
+  check("thirteen six-word one-sentence paragraphs of one post → ONE unit (the old 8-word floor dropped them all)",
+    u.length === 1 && u[0].parts === 13 && u[0].words === 78, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  u = collect(`<div>${Array.from({ length: 10 }, (_, i) => `L${i} ${line(5)}`).join("<br>")}</div>`);
+  u = collect(`<div>${Array.from({ length: 13 }, (_, i) => `L${i} ${line(5)}`).join("<br>")}</div>`);
   check("BR-separated short lines of one block join with NO punctuation at all",
-    u.length === 1 && u[0].parts === 10 && u[0].text.startsWith("L0 "), JSON.stringify(u.map(x => [x.parts, x.words])));
+    u.length === 1 && u[0].parts === 13 && u[0].text.startsWith("L0 "), JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  u = collect(`<div style="white-space:pre-wrap">${Array.from({ length: 10 }, (_, i) => `L${i} ${line(5)}`).join("\n\n")}</div>`);
-  check("…and so do blank-line-separated lines of a pre-wrap block (X, LinkedIn)", u.length === 1 && u[0].parts === 10, JSON.stringify(u.map(x => [x.parts, x.words])));
+  u = collect(`<div style="white-space:pre-wrap">${Array.from({ length: 13 }, (_, i) => `L${i} ${line(5)}`).join("\n\n")}</div>`);
+  check("…and so do blank-line-separated lines of a pre-wrap block (X, LinkedIn)", u.length === 1 && u[0].parts === 13, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  u = collect(`<div>alice_92<br>2h ago<br>${Array.from({ length: 9 }, () => sent(6)).join("<br>")}<br>Reply · Share · Report</div>`);
+  u = collect(`<div>alice_92<br>2h ago<br>${Array.from({ length: 13 }, () => sent(6)).join("<br>")}<br>Reply · Share · Report</div>`);
   check("a handle, a timestamp and an action row set in the message's own block are skipped, never joined",
-    u.length === 1 && !/alice_92|2h ago|Reply|Share/.test(u[0].text) && u[0].parts === 9, JSON.stringify(u.map(x => [x.parts, x.text.slice(0, 30)])));
+    u.length === 1 && !/alice_92|2h ago|Reply|Share/.test(u[0].text) && u[0].parts === 13, JSON.stringify(u.map(x => [x.parts, x.text.slice(0, 30)])));
 
   {
     const thread = (rows) => rows.map(([who, text]) => `<div class="row head">${who} · 2h</div><div class="row msg">${text}</div><div class="row act">Reply · Share</div>`).join("");
-    u = collect(`<div class="thread">${thread([["alice", sent(30)], ["bob", sent(30)], ["carol", sent(30)]])}</div>`);
+    u = collect(`<div class="thread">${thread([["alice", sent(40)], ["bob", sent(40)], ["carol", sent(40)]])}</div>`);
     check("div-soup thread: short comments do NOT merge across the name / action rows between them", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
-    u = collect(`<div class="thread"><div class="row head">alice · 2h</div><div class="row msg">A1 ${sent(30)}</div><div class="row msg">A2 ${sent(30)}</div><div class="row act">Reply · Share</div><div class="row head">bob · 1h</div><div class="row msg">B1 ${sent(20)}</div></div>`);
+    u = collect(`<div class="thread"><div class="row head">alice · 2h</div><div class="row msg">A1 ${sent(40)}</div><div class="row msg">A2 ${sent(40)}</div><div class="row act">Reply · Share</div><div class="row head">bob · 1h</div><div class="row msg">B1 ${sent(20)}</div></div>`);
     check("…one speaker's consecutive messages do; the next speaker's orphan does not extend that unit",
       u.length === 1 && u[0].parts === 2 && !u[0].text.includes("B1") && !/alice|bob|Reply/.test(u[0].text), JSON.stringify(u.map(x => [x.parts, x.text.slice(0, 12)])));
   }
 
-  u = collect(`<article><div class="who">Alice Moreau</div><p>${sent(30)}</p><div class="meta">Edited 2h ago</div><p>${sent(30)}</p><div class="act">Reply · Share</div></article>`);
+  u = collect(`<article><div class="who">Alice Moreau</div><p>${sent(40)}</p><div class="meta">Edited 2h ago</div><p>${sent(40)}</p><div class="act">Reply · Share</div></article>`);
   check("name, 'Edited 2h ago' and action rows inside a post are transparent — and never part of its text",
     u.length === 1 && u[0].parts === 2 && !/Alice|Edited|Reply/.test(u[0].text), JSON.stringify(u.map(x => [x.parts, x.text.slice(0, 20)])));
 
-  u = collect(`<article><p>${sent(30)}</p><p><strong>2. One owner per decision</strong></p><p>${sent(30)}</p></article>`);
+  u = collect(`<article><p>${sent(40)}</p><p><strong>2. One owner per decision</strong></p><p>${sent(40)}</p></article>`);
   check("inside an <article> a bold pseudo-heading is transparent: the sections still merge, without it",
     u.length === 1 && u[0].parts === 2 && !u[0].text.includes("owner"), JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  u = collect(`<div><div class="txt">${sent(30)}</div><div class="ttl">Finish early</div><div class="txt">${sent(30)}</div></div>`);
+  u = collect(`<div><div class="txt">${sent(40)}</div><div class="ttl">Finish early</div><div class="txt">${sent(40)}</div></div>`);
   check("on the bare page the same row is indistinguishable from a name row and ends the group (like a real heading)", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  u = collect(`<p>${sent(30)}</p><div class="widget"><div class="bar"><div class="btns"><span style="display:block">Play</span></div></div></div><p>${sent(30)}</p>`);
+  u = collect(`<p>${sent(40)}</p><div class="widget"><div class="bar"><div class="btns"><span style="display:block">Play</span></div></div></div><p>${sent(40)}</p>`);
   check("a label buried deeper than the text is a widget's crumb, not a boundary (MDN's live-sample 'Play')", u.length === 1 && u[0].parts === 2 && !u[0].text.includes("Play"), JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  u = collect(`<ul><li>${line(12)}</li><li>Sea salt</li><li>${sent(20)}</li><li>Rest the dough</li><li>${line(20)}</li></ul>`);
+  u = collect(`<ul><li>${line(20)}</li><li>Sea salt</li><li>${sent(30)}</li><li>Rest the dough</li><li>${line(30)}</li></ul>`);
   check("bullet items join with or without a full stop; a short item is skipped, never a boundary",
     u.length === 1 && u[0].parts === 3 && !/Sea salt|Rest the dough/.test(u[0].text), JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  u = collect(`<dl><dt>Brown butter</dt><dd>${sent(30)}</dd><dt>Rolled oats</dt><dd>${sent(30)}</dd></dl>`);
+  u = collect(`<dl><dt>Brown butter</dt><dd>${sent(40)}</dd><dt>Rolled oats</dt><dd>${sent(40)}</dd></dl>`);
   check("a glossary <dt> is a term, not a boundary", u.length === 1 && u[0].parts === 2 && !u[0].text.includes("Brown"), JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  u = collect(`<p>${sent(25)}</p><p>Can also be written as:</p><p>${sent(25)}</p>`);
+  u = collect(`<p>${sent(40)}</p><p>Can also be written as:</p><p>${sent(40)}</p>`);
   check("a lead-in sentence ending in a colon is the author's own and joins", u.length === 1 && u[0].parts === 3, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  u = collect(`<div class="log"><div>${sent(30)}</div><div>bob wrote:</div><div>${sent(30)}</div></div>`);
+  u = collect(`<div class="log"><div>${sent(40)}</div><div>bob wrote:</div><div>${sent(40)}</div></div>`);
   check("…but 'bob wrote:' names somebody else: a label, and on the bare page a boundary", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  u = collect(`<p>${sent(30)}</p><p>Yes.</p><p>${sent(30)}</p>`);
+  u = collect(`<p>${sent(40)}</p><p>Yes.</p><p>${sent(40)}</p>`);
   check("a punctuated aside too short to be evidence ('Yes.') is skipped without consequence", u.length === 1 && u[0].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  u = collect(`<p>${sent(30)}</p><p>Hodges 1983, p. 208.</p><p>Alice Moreau, Ph.D.</p><p>SIGN UP TODAY!</p><p>${sent(30)}</p>`);
+  u = collect(`<p>${sent(40)}</p><p>Hodges 1983, p. 208.</p><p>Alice Moreau, Ph.D.</p><p>SIGN UP TODAY!</p><p>${sent(40)}</p>`);
   check("a citation, a name with a title and a shouting button end in punctuation but are not sentences",
     u.length === 1 && u[0].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
 
   {
     const zh = "我完全同意你的看法。";
-    u = collect(Array.from({ length: 12 }, () => `<p>${zh}</p>`).join(""));
+    u = collect(Array.from({ length: 16 }, () => `<p>${zh}</p>`).join(""));
     check("short CJK sentences (。) are sentences too", u.length >= 1 && u[0].parts > 1, JSON.stringify(u.map(x => [x.parts, x.words])));
   }
 
-  u = collect(`<div>${line(5)}<br>${Array.from({ length: 9 }, () => sent(6)).join("<br>")}</div>`);
+  u = collect(`<div>${line(5)}<br>${Array.from({ length: 13 }, () => sent(6)).join("<br>")}</div>`);
   check("an unpunctuated FIRST line ('I quit my job') is adopted once the next line shows it opens a block",
-    u.length === 1 && u[0].parts === 10, JSON.stringify(u.map(x => [x.parts, x.words])));
+    u.length === 1 && u[0].parts === 14, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  u = collect(`<div><div>${line(5)}</div><div>${sent(30)}</div><div>${sent(30)}</div></div>`);
+  u = collect(`<div><div>${line(5)}</div><div>${sent(40)}</div><div>${sent(40)}</div></div>`);
   check("…and dropped when what follows is another block", u.length === 1 && u[0].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  sandbox.innerHTML = Array.from({ length: 10 }, () => `<p>${sent(6)}</p>`).join("");
+  sandbox.innerHTML = Array.from({ length: 13 }, () => `<p>${sent(6)}</p>`).join("");
   check("mergeShorts:false — one-sentence paragraphs are still skipped in strict mode", PW.collectUnits(sandbox, { mergeShorts: false }).length === 0);
 
   {
@@ -496,16 +504,16 @@ const results = await page.evaluate(() => {
     check("…a line of hashtags and a row of asterisks inside a post are left out of it and end nothing",
       u.length === 1 && u[0].parts === 3 && !/#oncall|\*/.test(u[0].text), shape(u));
 
-    u = collect(`<article><h2>A heading inside a forum post</h2><p>A ${sent(29)}</p><h3>Another one</h3><p>B ${sent(29)}</p></article>`);
+    u = collect(`<article><h2>A heading inside a forum post</h2><p>A ${sent(39)}</p><h3>Another one</h3><p>B ${sent(39)}</p></article>`);
     check("…and so is a heading: inside a post it is no boundary", u.length === 1 && u[0].parts === 2 && !u[0].text.includes("heading"), shape(u));
 
     // Just above one window: an article. Full paragraphs keep their chip, shorts group.
-    const over = [`A ${sent(24)}`, `B ${sent(24)}`, `C ${sent(99)}`, `D ${sent(19)}`, `E ${sent(19)}`, `F ${sent(19)}`, `G ${sent(119)}`];
+    const over = [`A ${sent(39)}`, `B ${sent(39)}`, `C ${sent(79)}`, `D ${sent(29)}`, `E ${sent(29)}`, `F ${sent(29)}`, `G ${sent(79)}`];
     u = collect(xPost(over));
     const overChars = over.join("\n\n").length;
     check("a post just ABOVE one window is an article: a unit per full paragraph, the short ones grouped between them",
-      overChars > PW.WINDOW_CHARS && overChars < PW.WINDOW_CHARS * 1.2 && shape(u) === JSON.stringify([[2, 50], [1, 100], [3, 60], [1, 120]]), `${overChars} chars ${shape(u)}`);
-    const under = [`A ${sent(24)}`, `B ${sent(24)}`, `C ${sent(99)}`, `D ${sent(19)}`, `E ${sent(19)}`, `F ${sent(19)}`, `G ${sent(69)}`];
+      overChars > PW.WINDOW_CHARS && overChars < PW.WINDOW_CHARS * 1.2 && shape(u) === JSON.stringify([[2, 80], [1, 80], [3, 90], [1, 80]]), `${overChars} chars ${shape(u)}`);
+    const under = [`A ${sent(39)}`, `B ${sent(39)}`, `C ${sent(79)}`, `D ${sent(29)}`, `E ${sent(29)}`, `F ${sent(29)}`, `G ${sent(69)}`];
     u = collect(xPost(under));
     check("…and the same post a sentence shorter, inside the window, is one unit", under.join("\n\n").length <= PW.WINDOW_CHARS && u.length === 1 && u[0].parts === 7, `${under.join("\n\n").length} chars ${shape(u)}`);
 
@@ -517,34 +525,34 @@ const results = await page.evaluate(() => {
     check("a post the timeline cut at 280 characters (44 visible words and 'Show more') gets nothing until it is opened", u.length === 0, shape(u));
 
     const quoted = (text) => `<div><div role="link" tabindex="0" style="display:flex;flex-direction:column"><div data-testid="User-Name"><div><span>Quoted Person</span></div></div><div data-testid="tweetText" style="display:block;white-space:pre-wrap"><span>${text}</span></div></div></div>`;
-    u = collect(xPost([`OUTER-A ${sent(29)}`, `OUTER-B ${sent(29)}`], { after: quoted(`QUOTED ${sent(39)}`) }));
+    u = collect(xPost([`OUTER-A ${sent(39)}`, `OUTER-B ${sent(39)}`], { after: quoted(`QUOTED ${sent(39)}`) }));
     check("a quoted post (div[role=link] inside the quoting post) is excluded from the post's unit",
       u.length === 1 && u[0].parts === 2 && u[0].text.includes("OUTER-A") && u[0].text.includes("OUTER-B") && !u[0].text.includes("QUOTED"), shape(u));
-    u = collect(xPost([`OUTER-A ${sent(29)}`, `OUTER-B ${sent(29)}`], { after: quoted(`QUOTED ${sent(59)}`) }));
+    u = collect(xPost([`OUTER-A ${sent(39)}`, `OUTER-B ${sent(39)}`], { after: quoted(`QUOTED ${sent(79)}`) }));
     check("…and one long enough to be judged is a unit of its own: two voices, two verdicts",
       u.length === 2 && u[0].parts === 2 && !u[0].text.includes("QUOTED") && u[1].parts === 1 && u[1].text.startsWith("QUOTED"), shape(u));
 
-    u = collect(`<article><div class="lockup"><div><a href="#a">Alice Moreau</a></div><p>${line(11)}</p></div><div class="text"><p>TEXT ${sent(29)}</p><p>${sent(30)}</p></div></article>`);
+    u = collect(`<article><div class="lockup"><div><a href="#a">Alice Moreau</a></div><p>${line(11)}</p></div><div class="text"><p>TEXT ${sent(39)}</p><p>${sent(40)}</p></div></article>`);
     check("what stands elsewhere in the card (LinkedIn's headline row, running text by its looks) is not the post",
       u.length === 1 && u[0].parts === 2 && u[0].text.startsWith("TEXT"), shape(u));
 
-    u = collect(`<article><p>${sent(30)}</p><ul><li><p>ITEM ${sent(11)}</p></li><li><p>ITEM ${sent(11)}</p></li></ul><p>LAST ${sent(29)}</p></article>`);
+    u = collect(`<article><p>${sent(40)}</p><ul><li><p>ITEM ${sent(11)}</p></li><li><p>ITEM ${sent(11)}</p></li></ul><p>LAST ${sent(39)}</p></article>`);
     check("the paragraphs on both sides of a list set a level deeper still belong together", u.length === 1 && u[0].parts === 2 && u[0].text.includes("LAST") && !u[0].text.includes("ITEM"), shape(u));
 
-    sandbox.innerHTML = xPost([`A ${sent(29)}`, `B ${sent(54)}`, `C ${sent(19)}`]);
+    sandbox.innerHTML = xPost([`A ${sent(29)}`, `B ${sent(79)}`, `C ${sent(19)}`]);
     const strictPost = PW.collectUnits(sandbox, { mergeShorts: false });
-    check("mergeShorts:false — a post is NOT read whole: strict per-paragraph mode", strictPost.length === 1 && strictPost[0].parts.length === 1 && strictPost[0].wordCount === 55, JSON.stringify(strictPost.map((x) => [x.parts.length, x.wordCount])));
+    check("mergeShorts:false — a post is NOT read whole: strict per-paragraph mode", strictPost.length === 1 && strictPost[0].parts.length === 1 && strictPost[0].wordCount === 80, JSON.stringify(strictPost.map((x) => [x.parts.length, x.wordCount])));
   }
   {
     // Groups no longer close at the floor — on the bare page and in articles alike.
     u = collect(Array.from({ length: 6 }, (_, i) => `<p>P${i} ${sent(24)}</p>`).join(""));
     check("six 25-word paragraphs of one voice on the bare page → ONE unit of six parts (they were ×2 / ×2 / ×2)", u.length === 1 && u[0].parts === 6 && u[0].words === 150, shape(u));
 
-    u = collect(`<p>${sent(25)}</p><p>${sent(25)}</p><p>${sent(25)}</p><p>FULL ${sent(79)}</p><p>${sent(25)}</p><p>${sent(25)}</p>`);
-    check("a full paragraph still ends the group before it and stays a unit of its own", shape(u) === JSON.stringify([[3, 75], [1, 80], [2, 50]]), shape(u));
+    u = collect(`<p>${sent(30)}</p><p>${sent(30)}</p><p>${sent(30)}</p><p>FULL ${sent(79)}</p><p>${sent(40)}</p><p>${sent(40)}</p>`);
+    check("a full paragraph still ends the group before it and stays a unit of its own", shape(u) === JSON.stringify([[3, 90], [1, 80], [2, 80]]), shape(u));
 
-    u = collect(`<p>${sent(25)}</p><p>${sent(25)}</p><p>${sent(25)}</p><h3>Next topic</h3><p>${sent(25)}</p><p>${sent(25)}</p><p>${sent(20)}</p>`);
-    check("…and so does a heading", shape(u) === JSON.stringify([[3, 75], [3, 70]]), shape(u));
+    u = collect(`<p>${sent(30)}</p><p>${sent(30)}</p><p>${sent(30)}</p><h3>Next topic</h3><p>${sent(30)}</p><p>${sent(30)}</p><p>${sent(25)}</p>`);
+    check("…and so does a heading", shape(u) === JSON.stringify([[3, 90], [3, 85]]), shape(u));
 
     // A thousand words of 20-word lines, one voice: neither a chip every three lines nor one
     // number for the lot — model-sized groups, cut between lines, even, nothing dropped.
@@ -560,52 +568,52 @@ const results = await page.evaluate(() => {
     got = PW.collectUnits(sandbox);
     check("a 6000-word run → ceil(length / window) groups, none above a window, none below the floor, as even as the lines allow",
       got.length === Math.ceil((got.reduce((n, x) => n + x.text.length, 0) + 2 * (got.length - 1)) / PW.WINDOW_CHARS) && got.reduce((n, x) => n + x.parts.length, 0) === 300 && got.reduce((n, x) => n + x.wordCount, 0) === 6000 &&
-      got.every((x) => x.text.length <= PW.WINDOW_CHARS && x.wordCount >= 50 && Math.abs(x.parts.length - 300 / got.length) <= 1), sized(got));
+      got.every((x) => x.text.length <= PW.WINDOW_CHARS && x.wordCount >= PW.MIN_UNIT_WORDS && Math.abs(x.parts.length - 300 / got.length) <= 1), sized(got));
 
-    u = collect(Array.from({ length: 7 }, (_, i) => `<p>P${i} ${sent(54)}</p>`).join("").replace(/<p>P3 [^<]*<\/p>/, `<p>P3 ${sent(19)}</p>`));
+    u = collect(Array.from({ length: 7 }, (_, i) => `<p>P${i} ${sent(79)}</p>`).join("").replace(/<p>P3 [^<]*<\/p>/, `<p>P3 ${sent(19)}</p>`));
     check("full paragraphs are never grouped with each other, however short", u.length === 6 && u.filter((x) => x.parts === 2).length === 1, shape(u));
   }
   {
     // No orphans inside one voice: a short text that cannot stand alone joins the full
     // paragraph beside it — the one before it by preference — if the two fit one window.
-    u = collect(`<p>FULL ${sent(59)}</p><p>TAIL ${sent(19)}</p>`);
-    check("[60][20] → one unit ×2: the tail joins the paragraph before it", u.length === 1 && u[0].parts === 2 && u[0].words === 80 && u[0].text.startsWith("FULL"), shape(u));
-    u = collect(`<p>LEAD ${sent(12)}</p><p>FULL ${sent(56)}</p>`);
-    check("[13][57] → one unit ×2: a lead-in with nothing before it joins the paragraph after it (Zhihu)", u.length === 1 && u[0].parts === 2 && u[0].words === 70 && u[0].text.startsWith("LEAD"), shape(u));
-    u = collect(`<p>A ${sent(59)}</p><p>MID ${sent(19)}</p><p>B ${sent(59)}</p>`);
-    check("[60][20][60] → the paragraph BEFORE it is preferred", shape(u) === JSON.stringify([[2, 80], [1, 60]]) && u[0].text.includes("MID"), shape(u));
+    u = collect(`<p>FULL ${sent(79)}</p><p>TAIL ${sent(19)}</p>`);
+    check("[80][20] → one unit ×2: the tail joins the paragraph before it", u.length === 1 && u[0].parts === 2 && u[0].words === 100 && u[0].text.startsWith("FULL"), shape(u));
+    u = collect(`<p>LEAD ${sent(12)}</p><p>FULL ${sent(76)}</p>`);
+    check("[13][77] → one unit ×2: a lead-in with nothing before it joins the paragraph after it (Zhihu)", u.length === 1 && u[0].parts === 2 && u[0].words === 90 && u[0].text.startsWith("LEAD"), shape(u));
+    u = collect(`<p>A ${sent(79)}</p><p>MID ${sent(19)}</p><p>B ${sent(79)}</p>`);
+    check("[80][20][80] → the paragraph BEFORE it is preferred", shape(u) === JSON.stringify([[2, 100], [1, 80]]) && u[0].text.includes("MID"), shape(u));
     u = collect(`<p>${sent(39)}</p><p>${sent(121)}</p><p>${sent(226)}</p><p>${sent(120)}</p>`);
     check("[39][121][226][120] → the 39-word opening is judged with the paragraph after it (Zhihu)", shape(u) === JSON.stringify([[2, 160], [1, 226], [1, 120]]), shape(u));
-    u = collect(`<p>${sent(62)}</p><p>${sent(108)}</p><p>${sent(118)}</p><p>${sent(82)}</p><p>${sent(40)}</p>`);
-    check("[62][108][118][82][40] → the 40-word close is judged with the paragraph before it (Zhihu)", shape(u) === JSON.stringify([[1, 62], [1, 108], [1, 118], [2, 122]]), shape(u));
+    u = collect(`<p>${sent(80)}</p><p>${sent(108)}</p><p>${sent(118)}</p><p>${sent(82)}</p><p>${sent(40)}</p>`);
+    check("[80][108][118][82][40] → the 40-word close is judged with the paragraph before it (Zhihu)", shape(u) === JSON.stringify([[1, 80], [1, 108], [1, 118], [2, 122]]), shape(u));
 
     const brim = sent(300); // a paragraph that nearly fills a window by itself
-    u = collect(`<p>A ${brim}</p><p>MID ${sent(39)}</p><p>B ${sent(59)}</p>`);
+    u = collect(`<p>A ${brim}</p><p>MID ${sent(39)}</p><p>B ${sent(79)}</p>`);
     check("no room in the paragraph before it (the two would not fit one window) → it joins the one after",
-      `A ${brim}`.length <= PW.WINDOW_CHARS && `A ${brim}\n\nMID ${sent(39)}`.length > PW.WINDOW_CHARS && shape(u) === JSON.stringify([[1, 301], [2, 100]]) && u[1].text.startsWith("MID"), shape(u));
+      `A ${brim}`.length <= PW.WINDOW_CHARS && `A ${brim}\n\nMID ${sent(39)}`.length > PW.WINDOW_CHARS && shape(u) === JSON.stringify([[1, 301], [2, 120]]) && u[1].text.startsWith("MID"), shape(u));
     u = collect(`<p>A ${brim}</p><p>MID ${sent(39)}</p><p>B ${brim}</p>`);
     check("no room on either side → it stays unjudged, as before", shape(u) === JSON.stringify([[1, 301], [1, 301]]), shape(u));
 
-    u = collect(`<p>${sent(60)}</p><h3>Next topic</h3><p>${sent(20)}</p>`);
-    check("a heading between them: not joined", shape(u) === JSON.stringify([[1, 60]]), shape(u));
-    u = collect(`<p>${sent(60)}</p><div><a href="#a">One</a> · <a href="#b">Two</a> · <a href="#c">Three</a></div><p>${sent(20)}</p>`);
-    check("a link row between them: not joined", shape(u) === JSON.stringify([[1, 60]]), shape(u));
-    u = collect(`<section><p>${sent(60)}</p></section><section><p>${sent(20)}</p></section>`);
-    check("standing in another section: not joined", shape(u) === JSON.stringify([[1, 60]]), shape(u));
-    u = collect(`<article><p>${sent(60)}</p></article><article><p>${sent(20)}</p></article>`);
-    check("another post: never joined", shape(u) === JSON.stringify([[1, 60]]), shape(u));
-    u = collect(`<p>${sent(60)}</p><blockquote><p>QUOTED ${sent(19)}</p></blockquote><figure><img alt=""><figcaption>CAPTION ${sent(14)}</figcaption></figure>`);
-    check("a short quotation or a caption after a full paragraph is another voice: never joined", shape(u) === JSON.stringify([[1, 60]]) && !/QUOTED|CAPTION/.test(u[0].text), shape(u));
-    u = collect(`<div class="thread"><div class="row head">alice · 2h</div><div class="row msg">ALICE ${sent(59)}</div><div class="row act">Reply · Share</div><div class="row head">bob · 1h</div><div class="row msg">BOB ${sent(19)}</div></div>`);
-    check("div-soup thread: the next speaker's short message does NOT join the full message before it — the name row lets it go", shape(u) === JSON.stringify([[1, 60]]) && !u[0].text.includes("BOB"), shape(u));
-    u = collect(`<p>${sent(250)}</p><p>${sent(25)}</p><p>${sent(25)}</p>`);
-    check("shorts that reach the floor together stand by themselves; only an orphan joins", shape(u) === JSON.stringify([[1, 250], [2, 50]]), shape(u));
-    sandbox.innerHTML = `<p>${sent(60)}</p><p>${sent(20)}</p>`;
-    check("mergeShorts:false — nothing joins anything", JSON.stringify(PW.collectUnits(sandbox, { mergeShorts: false }).map((x) => [x.parts.length, x.wordCount])) === "[[1,60]]");
+    u = collect(`<p>${sent(80)}</p><h3>Next topic</h3><p>${sent(20)}</p>`);
+    check("a heading between them: not joined", shape(u) === JSON.stringify([[1, 80]]), shape(u));
+    u = collect(`<p>${sent(80)}</p><div><a href="#a">One</a> · <a href="#b">Two</a> · <a href="#c">Three</a></div><p>${sent(20)}</p>`);
+    check("a link row between them: not joined", shape(u) === JSON.stringify([[1, 80]]), shape(u));
+    u = collect(`<section><p>${sent(80)}</p></section><section><p>${sent(20)}</p></section>`);
+    check("standing in another section: not joined", shape(u) === JSON.stringify([[1, 80]]), shape(u));
+    u = collect(`<article><p>${sent(80)}</p></article><article><p>${sent(20)}</p></article>`);
+    check("another post: never joined", shape(u) === JSON.stringify([[1, 80]]), shape(u));
+    u = collect(`<p>${sent(80)}</p><blockquote><p>QUOTED ${sent(19)}</p></blockquote><figure><img alt=""><figcaption>CAPTION ${sent(14)}</figcaption></figure>`);
+    check("a short quotation or a caption after a full paragraph is another voice: never joined", shape(u) === JSON.stringify([[1, 80]]) && !/QUOTED|CAPTION/.test(u[0].text), shape(u));
+    u = collect(`<div class="thread"><div class="row head">alice · 2h</div><div class="row msg">ALICE ${sent(79)}</div><div class="row act">Reply · Share</div><div class="row head">bob · 1h</div><div class="row msg">BOB ${sent(19)}</div></div>`);
+    check("div-soup thread: the next speaker's short message does NOT join the full message before it — the name row lets it go", shape(u) === JSON.stringify([[1, 80]]) && !u[0].text.includes("BOB"), shape(u));
+    u = collect(`<p>${sent(250)}</p><p>${sent(40)}</p><p>${sent(40)}</p>`);
+    check("shorts that reach the floor together stand by themselves; only an orphan joins", shape(u) === JSON.stringify([[1, 250], [2, 80]]), shape(u));
+    sandbox.innerHTML = `<p>${sent(80)}</p><p>${sent(20)}</p>`;
+    check("mergeShorts:false — nothing joins anything", JSON.stringify(PW.collectUnits(sandbox, { mergeShorts: false }).map((x) => [x.parts.length, x.wordCount])) === "[[1,80]]");
 
-    u = collect(xPost([`FULL ${sent(54)}`, `Here is what happened next`, `LAST ${sent(29)}`]));
+    u = collect(xPost([`FULL ${sent(79)}`, `Here is what happened next`, `LAST ${sent(29)}`]));
     check("X: an unpunctuated line after a FULL paragraph of the same text block is still a line of that post", u.length === 1 && u[0].parts === 3 && u[0].text.includes("Here is what happened next"), shape(u));
-    u = collect(`<div>${sent(60)}<br>Posted by alice on March 3</div>`);
+    u = collect(`<div>${sent(80)}<br>Posted by alice on March 3</div>`);
     check("…on the bare page it is not: that is where a forum sets 'Posted by alice on March 3' under a message", u.length === 1 && u[0].parts === 1 && !u[0].text.includes("Posted"), shape(u));
     u = collect(xPost([51, 30, 35, 51, 46, 75].map((n, i) => `P${i} ${sent(n - 1)}`)));
     check("X: a 288-word post in six blank-line paragraphs is ONE unit (it was four: 51, 65, 51, 75 words, 46 unjudged)", u.length === 1 && u[0].parts === 6 && u[0].words === 288 && u[0].text.length <= PW.WINDOW_CHARS, `${shape(u)} ${u[0]?.text.length}`);
@@ -622,15 +630,15 @@ const results = await page.evaluate(() => {
       JSON.stringify(PW.groupBlocks(asPlan(ns)).map((g) => [g.length, g.reduce((sum, i) => sum + ns[i], 0)]));
     const walkShape = (ns) => shape(collect(ns.map((n) => `<p>${words(n)}</p>`).join("")));
     for (const ns of [
-      [20, 20, 20],
-      [20, 60, 20],
-      [60, 20],
-      [13, 57],
-      [60, 20, 60],
+      [30, 30, 30],
+      [20, 80, 20],
+      [80, 20],
+      [13, 77],
+      [80, 20, 80],
       [39, 121, 226, 120],
-      [62, 108, 118, 82, 40],
-      [25, 25, 25, 80, 25, 25],
-      [250, 25, 25],
+      [80, 108, 118, 82, 40],
+      [30, 30, 30, 80, 40, 40],
+      [250, 40, 40],
       Array.from({ length: 12 }, () => 45),
       Array.from({ length: 50 }, () => 20),
     ]) {
@@ -646,7 +654,7 @@ const results = await page.evaluate(() => {
     const inArticle = collect(`<article><h1>Title</h1>${body}</article>`);
     check("an article of 80–200-word paragraphs: one single-part unit per paragraph, with or without <article>",
       shape(bare) === JSON.stringify([[1, 120], [1, 80], [1, 200], [1, 95], [1, 150], [1, 110]]) && shape(inArticle) === shape(bare), `${shape(bare)} ${shape(inArticle)}`);
-    u = collect(`<article><h1>Title</h1>${body}<p>${sent(20)}</p><p>${sent(20)}</p><p>${sent(20)}</p></article>`);
+    u = collect(`<article><h1>Title</h1>${body}<p>${sent(30)}</p><p>${sent(30)}</p><p>${sent(30)}</p></article>`);
     check("…its short paragraphs group among themselves and never into a full one", u.length === 7 && u[6].parts === 3 && u.slice(0, 6).every((x) => x.parts === 1), shape(u));
   }
   // ---- who may be scored together: posts that do not declare themselves ------------------
@@ -665,14 +673,14 @@ const results = await page.evaluate(() => {
     u = collect(`<ul>${["ALICE", "BOB", "CAROL"].map((who) => `<li>${who} ${sent(24)}</li>`).join("")}</ul>`);
     check("…while the same items without a byline are one author's bullets, and merge as ever", u.length === 1 && u[0].parts === 3, shape(u));
 
-    u = collect(post("alice", `PARENT ${sent(29)}`).replace(/<\/div>$/, `<div class="replies">${post("bob", `REPLY ${sent(29)}`)}</div></div>`) + post("carol", sent(20)));
+    u = collect(post("alice", `PARENT ${sent(39)}`).replace(/<\/div>$/, `<div class="replies">${post("bob", `REPLY ${sent(39)}`)}</div></div>`) + post("carol", sent(20)));
     check("a reply standing ALONE under its parent has no sibling like it: it is a post by being shaped like the post around it — never read with its parent", u.length === 0, shape(u));
-    u = collect(post("alice", `PARENT ${sent(59)}`).replace(/<\/div>$/, `<div class="replies">${post("bob", `REPLY-A ${sent(27)}`, `REPLY-B ${sent(27)}`)}</div></div>`) + post("carol", sent(20)));
+    u = collect(post("alice", `PARENT ${sent(79)}`).replace(/<\/div>$/, `<div class="replies">${post("bob", `REPLY-A ${sent(39)}`, `REPLY-B ${sent(39)}`)}</div></div>`) + post("carol", sent(20)));
     check("…and gets a verdict of its own when it has the words: [parent ×1][reply ×2]",
       u.length === 2 && u[0].parts === 1 && u[0].text.startsWith("PARENT") && u[1].parts === 2 && u[1].text.startsWith("REPLY-A") && !u[0].text.includes("REPLY"), shape(u));
 
-    u = collect(`<div class="one">${by("alice")}<div class="b"><p>A ${sent(29)}</p><p>B ${sent(54)}</p><p>C ${sent(19)}</p><p>D ${sent(59)}</p></div></div>`);
-    check("ONE comment on its page has nobody like it and is not recognised: read as the bare page always was (×3, ×1) — a stated limit", shape(u) === JSON.stringify([[3, 105], [1, 60]]), shape(u));
+    u = collect(`<div class="one">${by("alice")}<div class="b"><p>A ${sent(29)}</p><p>B ${sent(79)}</p><p>C ${sent(19)}</p><p>D ${sent(79)}</p></div></div>`);
+    check("ONE comment on its page has nobody like it and is not recognised: read as the bare page always was (×3, ×1) — a stated limit", shape(u) === JSON.stringify([[3, 130], [1, 80]]), shape(u));
 
     // The chat transcript whose name rows carry avatars: every such row is "one of several
     // like it, with a byline" and is recognised — as a post of no text. It must still END the
@@ -680,68 +688,69 @@ const results = await page.evaluate(() => {
     const row = (who, ...msgs) => `<div class="row head"><img class="avatar" alt=""> <span>${who}</span></div>` + msgs.map((t) => `<div class="row msg">${t}</div>`).join("");
     u = collect(`<div class="log">${row("alice", `ALICE ${sent(29)}`)}${row("bob", `BOB ${sent(29)}`)}${row("carol", `CAROL ${sent(29)}`)}</div>`);
     check("a flat chat whose name rows carry avatars: the recognised rows END the group, the voices are never added up", u.length === 0, shape(u));
-    u = collect(`<div class="log">${row("alice", `A1 ${sent(29)}`, `A2 ${sent(29)}`)}${row("bob", `BOB ${sent(19)}`)}</div>`);
+    u = collect(`<div class="log">${row("alice", `A1 ${sent(39)}`, `A2 ${sent(39)}`)}${row("bob", `BOB ${sent(19)}`)}</div>`);
     check("…and one speaker's consecutive messages still are", u.length === 1 && u[0].parts === 2 && !u[0].text.includes("BOB"), shape(u));
 
     // A label inside a recognised post: among the text it is the author's pseudo-heading and
     // cuts nothing; as a row of the card it concludes what was read, as the bare page did.
-    u = collect(post("alice", `A ${sent(24)}`, "What went wrong with it", `B ${sent(24)}`, "Where we ended up", `C ${sent(24)}`) + post("bob", sent(20)));
+    u = collect(post("alice", `A ${sent(29)}`, "What went wrong with it", `B ${sent(29)}`, "Where we ended up", `C ${sent(29)}`) + post("bob", sent(20)));
     check("a label AMONG THE TEXT of a recognised post (V2EX's unpunctuated <p>s, Zhihu's bold <p>) cuts nothing and is in no unit",
       u.length === 1 && u[0].parts === 3 && !/wrong|ended/.test(u[0].text), shape(u));
     const card = (who, text) => `<div class="card"><div class="main"><div class="stats">26 people found this review helpful<br>3 people found this review funny</div><div class="vote"><div class="t">Recommended</div></div><div class="text"><div class="date">Posted: 12 September</div>${text}</div></div><div class="author"><a href="/id/${who}"><img alt="" src="https://avatars.example.invalid/${who}.jpg"></a><a href="/id/${who}">${who}</a></div></div>`;
-    u = collect(card("alice", `REVIEW ${sent(59)}`) + card("bob", sent(20)));
+    u = collect(card("alice", `REVIEW ${sent(79)}`) + card("bob", sent(20)));
     check("a label that is a ROW OF THE CARD (Steam: 'Posted: …' between the counters and the review) concludes what was read: the site's counter lines are never the opening lines of a review",
       u.length === 1 && u[0].parts === 1 && u[0].text.startsWith("REVIEW") && !/found this review/.test(u[0].text), shape(u));
 
     // Lines of verse: one unpunctuated line per block. The short ones used to be "labels".
     {
-      const VERSE = [4, 6, 13, 9, 13, 7]; // a Zhihu answer as measured: 52 words, no line ends in punctuation
+      const VERSE = [4, 6, 13, 9, 13, 7, 5, 12, 6, 7]; // a Zhihu answer as measured (the first six lines), four lines longer: no line ends in punctuation
       const verse = VERSE.map((n, i) => `V${i} ${line(n - 1)}`);
       u = collect(post("alice", ...verse) + post("bob", sent(20)));
-      check("a recognised answer written one unpunctuated line per <p> — 4, 6, 13, 9, 13, 7 words — is ONE unit of six lines, 52 words (only the three long lines joined: 35 words, nothing)",
-        u.length === 1 && u[0].parts === 6 && u[0].words === 52 && partsOf(u[0]).every((t, i) => t.startsWith(`V${i} `)), shape(u));
+      check("a recognised answer written one unpunctuated line per <p> — 4, 6, 13, 9, 13, 7, 5, 12, 6, 7 words — is ONE unit of ten lines, 82 words (only the four long lines joined: 47 words, nothing)",
+        u.length === 1 && u[0].parts === 10 && u[0].words === 82 && partsOf(u[0]).every((t, i) => t.startsWith(`V${i} `)), shape(u));
       u = collect(`<article>${verse.map((t) => `<p>${t}</p>`).join("")}</article>`);
-      check("…and so is a declared post of that shape", u.length === 1 && u[0].parts === 6 && u[0].words === 52, shape(u));
+      check("…and so is a declared post of that shape", u.length === 1 && u[0].parts === 10 && u[0].words === 82, shape(u));
       u = collect(verse.map((t) => `<p>${t}</p>`).join(""));
       check("…while on the bare page nothing changes: there a short unpunctuated line may be the next person's name row", u.length === 0, shape(u));
 
-      u = collect(post("alice", `A ${sent(24)}`, "What went wrong with it", `B ${sent(24)}`, `C ${line(9)}`) + post("bob", sent(20)));
+      u = collect(post("alice", `A ${sent(34)}`, "What went wrong with it", `B ${sent(34)}`, `C ${line(9)}`) + post("bob", sent(20)));
       check("a pseudo-heading is still in no unit: it introduces sentences, and a line of verse stands beside lines that read on without a stop",
         u.length === 1 && u[0].parts === 3 && !u[0].text.includes("wrong"), shape(u));
-      u = collect(post("alice", `A ${sent(24)}`, "Where We Ended Up", `B ${line(12)}`, `C ${line(13)}`, `D ${line(12)}`) + post("bob", sent(20)));
+      u = collect(post("alice", `A ${sent(39)}`, "Where We Ended Up", `B ${line(12)}`, `C ${line(13)}`, `D ${line(12)}`) + post("bob", sent(20)));
       check("…nor is a Title In Title Case before unstopped lines: a line of verse is running text", u.length === 1 && !u[0].text.includes("Ended"), shape(u));
       const stats = `<div class="stat">26 people found this review helpful</div><div class="stat">3 people found this review funny</div>`;
-      u = collect(`<div class="c">${by("alice")}<div class="b">${stats}<div class="text">REVIEW ${sent(59)}</div></div></div>` + post("bob", sent(20)));
+      u = collect(`<div class="c">${by("alice")}<div class="b">${stats}<div class="text">REVIEW ${sent(79)}</div></div></div>` + post("bob", sent(20)));
       check("two counter rows of a card, side by side above a punctuated review, are no verse and stay out of it", u.length === 1 && u[0].parts === 1 && !/found this review/.test(u[0].text), shape(u));
-      u = collect(`<div class="c">${by("alice")}<div class="b">${stats}<div class="text">REVIEW ${line(60)}</div></div></div>` + post("bob", sent(20)));
+      u = collect(`<div class="c">${by("alice")}<div class="b">${stats}<div class="text">REVIEW ${line(80)}</div></div></div>` + post("bob", sent(20)));
       check("…even above a review that has no full stop itself: they are not blocks of the text's body (another class)", u.length === 1 && u[0].parts === 1 && !/found this review/.test(u[0].text), shape(u));
 
-      u = collect(`<article><ul><li>ITEM-A ${line(12)}</li><li>two spoons of brown sugar</li><li>ITEM-B ${line(20)}</li><li>ITEM-C ${line(20)}</li></ul></article>`);
+      u = collect(`<article><ul><li>ITEM-A ${line(24)}</li><li>two spoons of brown sugar</li><li>ITEM-B ${line(26)}</li><li>ITEM-C ${line(26)}</li></ul></article>`);
       check("list items keep their own rule inside a post too: a five-word item beside long unpunctuated ones is skipped, not a line of verse (Google's terms, an sspai article)",
         u.length === 1 && u[0].parts === 3 && !u[0].text.includes("spoons"), shape(u));
 
-      // LinkedIn as measured on the live page: 45 words of prose and a line that is all hashtags.
+      // LinkedIn as measured on the live page, longer: prose three words short of the floor and a line
+      // that is all hashtags.
       const tags = `<a href="/feed/hashtag/?keywords=oncall">#oncall</a> <a href="/feed/hashtag/?keywords=sre">#sre</a> <a href="/feed/hashtag/?keywords=reliability">#reliability</a>`;
-      u = collect(`<div role="list"><div><div role="listitem"><div class="hd">${by("alice")}</div><p><span data-testid="expandable-text-box">${sent(25)}<br><br>${sent(20)}<br><br>${tags}</span></p></div></div><div><div role="listitem"><div class="hd">${by("bob")}</div><p><span>${sent(30)}</span></p></div></div></div>`);
-      check("LinkedIn: 45 words of prose and an all-link hashtag line stay unjudged — the hashtags are never what lifts a post over the floor", u.length === 0, shape(u));
+      u = collect(`<div role="list"><div><div role="listitem"><div class="hd">${by("alice")}</div><p><span data-testid="expandable-text-box">${sent(35)}<br><br>${sent(35)}<br><br>${tags}</span></p></div></div><div><div role="listitem"><div class="hd">${by("bob")}</div><p><span>${sent(30)}</span></p></div></div></div>`);
+      check("LinkedIn: 72 words of prose and an all-link hashtag line stay unjudged — the hashtags are never what lifts a post over the floor", u.length === 0, shape(u));
     }
 
     // One text body: deeper because of LIST markup, never because of a layout box.
-    u = collect(post("alice", `LEAD ${sent(19)}`).replace("</p></div>", `</p><ol><li><p>ITEM-A ${sent(14)}</p></li><li><p>ITEM-B ${sent(14)}</p></li></ol><p>LAST ${sent(14)}</p></div>`) + post("bob", sent(20)));
+    u = collect(post("alice", `LEAD ${sent(34)}`).replace("</p></div>", `</p><ol><li><p>ITEM-A ${sent(14)}</p></li><li><p>ITEM-B ${sent(14)}</p></li></ol><p>LAST ${sent(14)}</p></div>`) + post("bob", sent(20)));
     check("inside a recognised post a paragraph and `ol > li > p` items two levels down are one text (a Zhihu answer lost such paragraphs: no neighbour by proximity)",
       u.length === 1 && u[0].parts === 4 && u[0].text.includes("ITEM-A") && u[0].text.includes("LAST"), shape(u));
-    u = collect(post("alice", `REVIEW ${sent(59)}`).replace(/<\/div><\/div>$/, `</div><hr><div class="ask"><div class="q">Was this review helpful?</div></div></div>`) + post("bob", sent(20)));
+    u = collect(post("alice", `REVIEW ${sent(79)}`).replace(/<\/div><\/div>$/, `</div><hr><div class="ask"><div class="q">Was this review helpful?</div></div></div>`) + post("bob", sent(20)));
     check("…while a sentence of the SITE in a layout box under the text (Steam: 'Was this review helpful?') never joins it, byline between them or not",
       u.length === 1 && u[0].parts === 1 && !u[0].text.includes("helpful"), shape(u));
-    u = collect(`<article><p>LEAD ${sent(19)}</p><ol><li><p>ITEM-A ${sent(14)}</p></li><li><p>ITEM-B ${sent(14)}</p></li></ol><p>LAST ${sent(34)}</p></article>`);
+    u = collect(`<article><p>LEAD ${sent(39)}</p><ol><li><p>ITEM-A ${sent(14)}</p></li><li><p>ITEM-B ${sent(14)}</p></li></ol><p>LAST ${sent(39)}</p></article>`);
     check("…and a DECLARED post is read exactly as before: the items a level deeper stay out", u.length === 1 && u[0].parts === 2 && !u[0].text.includes("ITEM"), shape(u));
 
     // The opening post: no sibling like it, but the thread that answers it follows it.
     const opening = (inner) => `<div class="box"><div class="hd">${by("alice")}</div><div class="cell">${inner}</div></div><div class="box"><div class="cell">${by("bob")}<p>${sent(20)}</p></div><div class="cell">${by("carol")}<p>${sent(20)}</p></div></div>`;
-    u = collect(opening(`<p>A ${sent(24)}</p><p>What we tried first</p><ul><li>${line(9)}</li><li>${line(9)}</li></ul><p>B ${sent(24)}</p>`));
+    u = collect(opening(`<p>A ${sent(34)}</p><p>What we tried first</p><ul><li>${line(9)}</li><li>${line(9)}</li></ul><p>B ${sent(34)}</p>`));
     check("the post a thread answers (V2EX's topic box) is a post: its label <p> cuts nothing → paragraphs and list items are ONE unit (the label ended the group: nothing)",
       u.length === 1 && u[0].parts === 4 && !u[0].text.includes("tried"), shape(u));
-    u = collect(opening(`<h2>Summary</h2><p>SUMMARY ${sent(23)}</p><h2>Abstract</h2><p>ABSTRACT ${sent(59)}</p>`));
+    u = collect(opening(`<h2>Summary</h2><p>SUMMARY ${sent(23)}</p><h2>Abstract</h2><p>ABSTRACT ${sent(79)}</p>`));
     check("…but an ARTICLE with section headings and comments under it is none: its headings stay boundaries (a paper page read its AI summary with its abstract)",
       u.length === 1 && u[0].parts === 1 && u[0].text.startsWith("ABSTRACT"), shape(u));
 
@@ -849,29 +858,29 @@ const results = await page.evaluate(() => {
 
     // 2) the released paragraphs are re-scanned ONE BY ONE, and the root is a single <p>:
     //    each of them, read by itself, would be a short text with nobody to join.
-    sandbox.innerHTML = `<article><div class="body"><p>ONE ${sent(29)}</p><p id="grow">TWO ${sent(19)}</p><p>THREE ${sent(19)}</p></div></article>`;
+    sandbox.innerHTML = `<article><div class="body"><p>ONE ${sent(39)}</p><p id="grow">TWO ${sent(19)}</p><p>THREE ${sent(19)}</p></div></article>`;
     o = orchestrator();
     o.scan([sandbox]);
     sandbox.querySelector("#grow").insertAdjacentHTML("beforeend", ` <em>ADDED ${sent(9)}</em>`);
     o.scan([sandbox.querySelector("#grow")]);
     after = o.census(sandbox);
     check("re-scan from INSIDE a post starts at the post: a paragraph that grew is re-read with its neighbours",
-      JSON.stringify(after.units) === "[[3,80]]" && after.twice === 0 && after.text.includes("ADDED") && o.retired.length === 1, JSON.stringify([after.units, after.twice, o.retired]));
+      JSON.stringify(after.units) === "[[3,90]]" && after.twice === 0 && after.text.includes("ADDED") && o.retired.length === 1, JSON.stringify([after.units, after.twice, o.retired]));
 
     // 3) a post whose text changes in place: X's tweetText span has ONE string child, so
     //    React sets its text anew and the nodes the walker split are gone.
-    sandbox.innerHTML = xPost([`A ${sent(19)}`, `B ${sent(19)}`, `C ${sent(19)}`]);
+    sandbox.innerHTML = xPost([`A ${sent(29)}`, `B ${sent(29)}`, `C ${sent(29)}`]);
     o = orchestrator();
     o.scan([sandbox]);
     const span = sandbox.querySelector('[data-testid="tweetText"] > span');
-    span.textContent = [`A ${sent(19)}`, `B ${sent(19)}`, `C ${sent(19)}`, `D ${sent(54)}`, `E ${sent(19)}`].join("\n\n");
+    span.textContent = [`A ${sent(29)}`, `B ${sent(29)}`, `C ${sent(29)}`, `D ${sent(79)}`, `E ${sent(19)}`].join("\n\n");
     o.scan([span.parentElement]);
     after = o.census(sandbox);
     check("re-scan: an X-shaped post whose text is re-rendered in place is ONE unit again, full paragraph included",
-      JSON.stringify(after.units) === "[[5,135]]" && after.twice === 0 && o.retired.length === 1, JSON.stringify([after.units, o.retired]));
+      JSON.stringify(after.units) === "[[5,190]]" && after.twice === 0 && o.retired.length === 1, JSON.stringify([after.units, o.retired]));
 
     // 4) an answer streamed into its <article> outgrows the window: the post becomes an article.
-    sandbox.innerHTML = `<article><div class="md"><p>ONE ${sent(59)}</p><p>TWO ${sent(19)}</p><p>THREE ${sent(64)}</p></div></article>`;
+    sandbox.innerHTML = `<article><div class="md"><p>ONE ${sent(79)}</p><p>TWO ${sent(19)}</p><p>THREE ${sent(84)}</p></div></article>`;
     o = orchestrator();
     o.scan([sandbox]);
     const whole = o.census(sandbox).units;
@@ -879,7 +888,7 @@ const results = await page.evaluate(() => {
     o.scan([sandbox.querySelector(".md")]);
     after = o.census(sandbox);
     check("re-scan: a post that outgrows the window is retired whole and re-taken per paragraph — no stale ×3 next to the new chips",
-      JSON.stringify(whole) === "[[3,145]]" && JSON.stringify(after.units) === "[[2,80],[1,65],[1,300]]" && after.twice === 0, JSON.stringify([whole, after.units, o.retired]));
+      JSON.stringify(whole) === "[[3,185]]" && JSON.stringify(after.units) === "[[2,100],[1,85],[1,300]]" && after.twice === 0, JSON.stringify([whole, after.units, o.retired]));
 
     // 5) the bare page: a list of short items that gets one more.
     sandbox.innerHTML = `<ul>${Array.from({ length: 4 }, (_, i) => `<li>ITEM${i} ${sent(19)}</li>`).join("")}</ul>`;
@@ -894,7 +903,7 @@ const results = await page.evaluate(() => {
     // 5b) owned runs are not even READ unless something new comes to stand beside them:
     //     a re-scan of a page where nothing changed counts no words at all.
     {
-      sandbox.innerHTML = `<article><p>${sent(30)}</p><p>${sent(30)}</p></article>` + Array.from({ length: 40 }, (_, i) => `<p>BODY${i} ${sent(59)}</p>`).join("") + `<ul><li>${sent(30)}</li><li>${sent(30)}</li></ul>`;
+      sandbox.innerHTML = `<article><p>${sent(40)}</p><p>${sent(40)}</p></article>` + Array.from({ length: 40 }, (_, i) => `<p>BODY${i} ${sent(79)}</p>`).join("") + `<ul><li>${sent(40)}</li><li>${sent(40)}</li></ul>`;
       o = orchestrator();
       o.scan([sandbox]);
       const segment = Intl.Segmenter.prototype.segment;
@@ -907,50 +916,50 @@ const results = await page.evaluate(() => {
 
     // 5c) a heading between what a unit owns and what is new keeps its place: in an article
     //     it still ends the group; in a post it never did.
-    sandbox.innerHTML = `<article><div class="b"><p>ONE ${sent(29)}</p><p>TWO ${sent(29)}</p><h3>Next topic</h3><p>LONG ${sent(339)}</p></div></article>`;
+    sandbox.innerHTML = `<article><div class="b"><p>ONE ${sent(39)}</p><p>TWO ${sent(39)}</p><h3>Next topic</h3><p>LONG ${sent(339)}</p></div></article>`;
     o = orchestrator();
     o.scan([sandbox]);
     sandbox.querySelector("h3").insertAdjacentHTML("afterend", `<p>NEW ${sent(39)}</p>`);
     o.scan([sandbox.querySelector(".b")]);
     after = o.census(sandbox);
     check("re-scan of an article: a new short paragraph BEHIND a heading does not reach across it into an owned group",
-      JSON.stringify(after.units) === "[[2,60],[1,340]]" && o.retired.length === 0 && !after.text.includes("NEW"), JSON.stringify([after.units, o.retired]));
-    sandbox.innerHTML = `<article><div class="b"><p>ONE ${sent(29)}</p><p>TWO ${sent(29)}</p><h3>Next topic</h3><p>LONG ${sent(299)}</p></div></article>`;
+      JSON.stringify(after.units) === "[[2,80],[1,340]]" && o.retired.length === 0 && !after.text.includes("NEW"), JSON.stringify([after.units, o.retired]));
+    sandbox.innerHTML = `<article><div class="b"><p>ONE ${sent(39)}</p><p>TWO ${sent(39)}</p><h3>Next topic</h3><p>LONG ${sent(299)}</p></div></article>`;
     o = orchestrator();
     o.scan([sandbox]);
     sandbox.querySelector("h3").insertAdjacentHTML("afterend", `<p>NEW ${sent(19)}</p>`);
     o.scan([sandbox.querySelector(".b")]);
     after = o.census(sandbox);
     check("…it joins the owned full paragraph after it instead, whose unit is retired and re-taken as ×2",
-      JSON.stringify(after.units) === "[[2,60],[2,320]]" && o.retired.length === 1 && after.twice === 0 && after.text.includes("NEW"), JSON.stringify([after.units, o.retired]));
-    sandbox.innerHTML = `<article><div class="b"><p>ONE ${sent(29)}</p><p>TWO ${sent(29)}</p><h3>Next topic</h3></div></article>`;
+      JSON.stringify(after.units) === "[[2,80],[2,320]]" && o.retired.length === 1 && after.twice === 0 && after.text.includes("NEW"), JSON.stringify([after.units, o.retired]));
+    sandbox.innerHTML = `<article><div class="b"><p>ONE ${sent(39)}</p><p>TWO ${sent(39)}</p><h3>Next topic</h3></div></article>`;
     o = orchestrator();
     o.scan([sandbox]);
     sandbox.querySelector("h3").insertAdjacentHTML("afterend", `<p>NEW ${sent(19)}</p>`);
     o.scan([sandbox.querySelector(".b")]);
     after = o.census(sandbox);
-    check("…while in a post the same paragraph joins the post", JSON.stringify(after.units) === "[[3,80]]" && o.retired.length === 1 && after.twice === 0, JSON.stringify([after.units, o.retired]));
+    check("…while in a post the same paragraph joins the post", JSON.stringify(after.units) === "[[3,100]]" && o.retired.length === 1 && after.twice === 0, JSON.stringify([after.units, o.retired]));
 
     // 6) inside a LONG article the walk stays where it was asked to start, and what it sees
     //    there is never mistaken for a post: the full paragraphs keep their own units.
-    sandbox.innerHTML = `<article><section id="sec"><p>S1 ${sent(59)}</p><p>S2 ${sent(19)}</p><p>S3 ${sent(69)}</p></section>${Array.from({ length: 8 }, (_, i) => `<p>BODY${i} ${sent(119)}</p>`).join("")}</article>`;
+    sandbox.innerHTML = `<article><section id="sec"><p>S1 ${sent(79)}</p><p>S2 ${sent(19)}</p><p>S3 ${sent(89)}</p></section>${Array.from({ length: 8 }, (_, i) => `<p>BODY${i} ${sent(119)}</p>`).join("")}</article>`;
     o = orchestrator();
     o.scan([sandbox]);
     const articleBefore = o.census(sandbox).units;
-    sandbox.querySelector("#sec").insertAdjacentHTML("beforeend", `<p>S4 ${sent(19)}</p><p>S5 ${sent(34)}</p>`);
+    sandbox.querySelector("#sec").insertAdjacentHTML("beforeend", `<p>S4 ${sent(39)}</p><p>S5 ${sent(39)}</p>`);
     o.scan([sandbox.querySelector("#sec")]);
     after = o.census(sandbox);
     check("re-scan inside a long article: its section is not taken for a post — every unit untouched, the new shorts a group of their own",
-      JSON.stringify(articleBefore.slice(0, 2)) === "[[2,80],[1,70]]" && articleBefore.length === 10 && o.retired.length === 0 && JSON.stringify(after.units.slice(0, 10)) === JSON.stringify(articleBefore) && JSON.stringify(after.units[10]) === "[2,55]" && after.twice === 0 && after.text.includes("S5"),
+      JSON.stringify(articleBefore.slice(0, 2)) === "[[2,100],[1,90]]" && articleBefore.length === 10 && o.retired.length === 0 && JSON.stringify(after.units.slice(0, 10)) === JSON.stringify(articleBefore) && JSON.stringify(after.units[10]) === "[2,80]" && after.twice === 0 && after.text.includes("S5"),
       JSON.stringify([articleBefore, after.units, o.retired]));
 
     // 7) RECOGNISED posts (lib/dom/scope.ts) under the same re-scans. `thread` is a list of
     //    undeclared comments, each with a byline of its own.
     const byline = (who) => `<div class="meta"><a href="/u/${who}"><img class="avatar" alt=""></a> <a href="/u/${who}">${who}</a> <time datetime="2026-09-18T08:00:00Z">2h</time></div>`;
     const comment = (who, ...paras) => `<div class="c" id="c-${who}">${byline(who)}<div class="b">${paras.map((t) => `<p>${t}</p>`).join("")}</div></div>`;
-    const mixed = (tag) => [`${tag}1 ${sent(29)}`, `${tag}2 ${sent(54)}`, `${tag}3 ${sent(19)}`, `${tag}4 ${sent(59)}`];
+    const mixed = (tag) => [`${tag}1 ${sent(29)}`, `${tag}2 ${sent(79)}`, `${tag}3 ${sent(19)}`, `${tag}4 ${sent(79)}`];
 
-    sandbox.innerHTML = `<div class="thread">${comment("alice", ...mixed("A"))}${comment("bob", `B ${sent(29)}`)}${comment("carol", `C ${sent(59)}`)}</div>`;
+    sandbox.innerHTML = `<div class="thread">${comment("alice", ...mixed("A"))}${comment("bob", `B ${sent(29)}`)}${comment("carol", `C ${sent(79)}`)}</div>`;
     o = orchestrator();
     o.scan([sandbox]);
     const threadBefore = o.census(sandbox).units;
@@ -958,7 +967,7 @@ const results = await page.evaluate(() => {
     o.scan([sandbox.querySelector(".thread")]); // computeScanRoots: the parent of what was added
     after = o.census(sandbox);
     check("re-scan: a comment APPENDED to a thread of recognised posts is one unit ×4 of its own — nobody else's chip retired, nothing owned twice, nothing borrowed from bob's short comment next to it",
-      JSON.stringify(threadBefore) === "[[4,165],[1,60]]" && JSON.stringify(after.units) === "[[4,165],[1,60],[4,165]]" && o.retired.length === 0 && after.twice === 0 && JSON.stringify(o.census(sandbox.querySelector("#c-dave")).units) === "[[4,165]]",
+      JSON.stringify(threadBefore) === "[[4,210],[1,80]]" && JSON.stringify(after.units) === "[[4,210],[1,80],[4,210]]" && o.retired.length === 0 && after.twice === 0 && JSON.stringify(o.census(sandbox.querySelector("#c-dave")).units) === "[[4,210]]",
       JSON.stringify([threadBefore, after.units, o.retired]));
 
     // 7b) The thread had ONE comment — nobody like it, read as the bare page (×3, ×1). The
@@ -972,31 +981,31 @@ const results = await page.evaluate(() => {
     o.scan([sandbox.querySelector(".thread")]);
     after = o.census(sandbox);
     check("re-scan: a second comment arrives next to a LONE one — the newcomer is a post (×4); the first keeps its two chips, none retired, none doubled, the two never mixed",
-      JSON.stringify(lone) === "[[3,105],[1,60]]" && JSON.stringify(after.units) === "[[3,105],[1,60],[4,165]]" && o.retired.length === 0 && after.twice === 0 &&
+      JSON.stringify(lone) === "[[3,130],[1,80]]" && JSON.stringify(after.units) === "[[3,130],[1,80],[4,210]]" && o.retired.length === 0 && after.twice === 0 &&
       [...o.live.values()].every((x) => new Set(x.parts.map((part) => part.container.closest(".c").id)).size === 1), JSON.stringify([lone, after.units, o.retired]));
 
     // 8) A comment EDITED in place: the framework sets the paragraph's text anew, the old
     //    node is gone, and the root of the re-scan is the comment's body — inside the post.
-    sandbox.innerHTML = `<div class="thread">${comment("alice", `A1 ${sent(29)}`, `A2 ${sent(24)}`)}${comment("bob", `B ${sent(29)}`)}</div>`;
+    sandbox.innerHTML = `<div class="thread">${comment("alice", `A1 ${sent(39)}`, `A2 ${sent(39)}`)}${comment("bob", `B ${sent(29)}`)}</div>`;
     o = orchestrator();
     o.scan([sandbox]);
     const unedited = o.census(sandbox).units;
-    sandbox.querySelector("#c-alice .b p").textContent = `EDITED ${sent(34)}`;
+    sandbox.querySelector("#c-alice .b p").textContent = `EDITED ${sent(44)}`;
     o.scan([sandbox.querySelector("#c-alice .b")]);
     after = o.census(sandbox);
     check("re-scan: a recognised comment edited in place is re-taken WHOLE as one unit — the walk asked to start at its body starts at the post",
-      JSON.stringify(unedited) === "[[2,55]]" && JSON.stringify(after.units) === "[[2,60]]" && after.twice === 0 && o.retired.length === 1 && after.text.includes("EDITED") && after.text.includes("A2"), JSON.stringify([unedited, after.units, o.retired]));
+      JSON.stringify(unedited) === "[[2,80]]" && JSON.stringify(after.units) === "[[2,85]]" && after.twice === 0 && o.retired.length === 1 && after.text.includes("EDITED") && after.text.includes("A2"), JSON.stringify([unedited, after.units, o.retired]));
 
     // 9) A partial walk that starts INSIDE a recognised post finds the scope the full walk
     //    found: one paragraph of it, read by itself, would be a short text with nobody to join.
-    sandbox.innerHTML = `<div class="thread">${comment("alice", `ONE ${sent(29)}`, `TWO ${sent(19)}`, `THREE ${sent(19)}`)}${comment("bob", `B ${sent(29)}`)}</div>`;
+    sandbox.innerHTML = `<div class="thread">${comment("alice", `ONE ${sent(39)}`, `TWO ${sent(19)}`, `THREE ${sent(19)}`)}${comment("bob", `B ${sent(29)}`)}</div>`;
     o = orchestrator();
     o.scan([sandbox]);
     sandbox.querySelector("#c-alice .b p:nth-child(2)").insertAdjacentHTML("beforeend", ` <em>ADDED ${sent(9)}</em>`);
     o.scan([sandbox.querySelector("#c-alice .b p:nth-child(2)")]);
     after = o.census(sandbox);
     check("re-scan from INSIDE a recognised post starts at the post: a paragraph that grew is re-read with its neighbours (×3), bob's comment not touched",
-      JSON.stringify(after.units) === "[[3,80]]" && after.twice === 0 && after.text.includes("ADDED") && o.retired.length === 1 && !after.text.includes("B "), JSON.stringify([after.units, after.twice, o.retired]));
+      JSON.stringify(after.units) === "[[3,90]]" && after.twice === 0 && after.text.includes("ADDED") && o.retired.length === 1 && !after.text.includes("B "), JSON.stringify([after.units, after.twice, o.retired]));
     {
       // …and the same question asked of the scopes directly: from any element inside, the same post.
       const scopes = PW.createScopes();
@@ -1007,15 +1016,15 @@ const results = await page.evaluate(() => {
 
     // 10) Inside a LONG recognised answer the walk stays where it was asked to start, exactly
     //     as inside a long <article>: nothing is re-read, nothing is taken for a small post.
-    sandbox.innerHTML = `<div class="thread">${comment("alice", `S1 ${sent(59)}`, `S2 ${sent(19)}`, `S3 ${sent(69)}`, ...Array.from({ length: 8 }, (_, i) => `BODY${i} ${sent(119)}`))}${comment("bob", `B ${sent(29)}`)}</div>`;
+    sandbox.innerHTML = `<div class="thread">${comment("alice", `S1 ${sent(79)}`, `S2 ${sent(19)}`, `S3 ${sent(89)}`, ...Array.from({ length: 8 }, (_, i) => `BODY${i} ${sent(119)}`))}${comment("bob", `B ${sent(29)}`)}</div>`;
     o = orchestrator();
     o.scan([sandbox]);
     const answerBefore = o.census(sandbox).units;
-    sandbox.querySelector("#c-alice .b").insertAdjacentHTML("beforeend", `<p>S4 ${sent(19)}</p><p>S5 ${sent(34)}</p>`);
+    sandbox.querySelector("#c-alice .b").insertAdjacentHTML("beforeend", `<p>S4 ${sent(39)}</p><p>S5 ${sent(39)}</p>`);
     o.scan([sandbox.querySelector("#c-alice .b")]);
     after = o.census(sandbox);
     check("re-scan inside a long recognised answer: every unit untouched, the two new short paragraphs a group of their own",
-      answerBefore.length === 10 && o.retired.length === 0 && JSON.stringify(after.units.slice(0, 10)) === JSON.stringify(answerBefore) && JSON.stringify(after.units[10]) === "[2,55]" && after.twice === 0, JSON.stringify([answerBefore, after.units, o.retired]));
+      answerBefore.length === 10 && o.retired.length === 0 && JSON.stringify(after.units.slice(0, 10)) === JSON.stringify(answerBefore) && JSON.stringify(after.units[10]) === "[2,80]" && after.twice === 0, JSON.stringify([answerBefore, after.units, o.retired]));
   }
 
   check("endsLikeProse: sentence and clause ends, CJK, closers, trailing emoji — not names, times, colons",
@@ -1039,41 +1048,41 @@ const results = await page.evaluate(() => {
   }
 
   // ---- boilerplate token expansion (trafilatura-derived) ------------------------------
-  u = collect(`<div class="social-share">${words(60)}</div>`);
+  u = collect(`<div class="social-share">${words(80)}</div>`);
   check("social-share widget skipped", u.length === 0);
-  u = collect(`<div class="related-articles">${words(60)}</div>`);
+  u = collect(`<div class="related-articles">${words(80)}</div>`);
   check("related-articles widget skipped", u.length === 0);
-  u = collect(`<section class="related-work">${words(60)}</section>`);
+  u = collect(`<section class="related-work">${words(80)}</section>`);
   check("compound guard: 'related-work' prose section KEPT", u.length === 1);
-  u = collect(`<div class="OUTBRAIN">${words(60)}</div>`);
+  u = collect(`<div class="OUTBRAIN">${words(80)}</div>`);
   check("outbrain widget skipped", u.length === 0);
-  u = collect(`<div role="complementary">${words(60)}</div>`);
+  u = collect(`<div role="complementary">${words(80)}</div>`);
   check("role=complementary skipped", u.length === 0);
-  u = collect(`<div class="byline">${words(60)}</div>`);
+  u = collect(`<div class="byline">${words(80)}</div>`);
   check("byline row skipped", u.length === 0);
-  u = collect(`<div class="registration-info">${words(60)}</div>`);
+  u = collect(`<div class="registration-info">${words(80)}</div>`);
   check("compound guard: 'registration-info' prose KEPT", u.length === 1);
-  u = collect(`<div class="login-form">${words(60)}</div>`);
+  u = collect(`<div class="login-form">${words(80)}</div>`);
   check("login-form chrome skipped", u.length === 0);
-  u = collect(`<div class="sharedwith">${words(60)}</div>`);
+  u = collect(`<div class="sharedwith">${words(80)}</div>`);
   check("token boundary: 'sharedwith' (no delimiter) KEPT", u.length === 1);
   {
     // The reply FORM is chrome; the comments are not. 博客园 wraps its comment LIST in boxes
     // carrying the same token, and a Greenhouse job application sets consent text among its
     // fields.
-    u = collect(`<div class="comment-form"><p class="comment-notes">${words(60)}</p><textarea></textarea></div>`);
+    u = collect(`<div class="comment-form"><p class="comment-notes">${words(80)}</p><textarea></textarea></div>`);
     check("a reply form is still chrome", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
-    u = collect(`<div id="comment_form_container">${Array.from({ length: 3 }, (_, i) => `<div class="feedbackItem">${words(60)}</div>`).join("")}</div>`);
+    u = collect(`<div id="comment_form_container">${Array.from({ length: 3 }, (_, i) => `<div class="feedbackItem">${words(80)}</div>`).join("")}</div>`);
     check("a comment LIST carrying the same token is read (博客园)", u.length === 3, JSON.stringify(u.map(x => [x.parts, x.words])));
-    u = collect(`<div class="comment_form_wrap">${Array.from({ length: 3 }, () => `<div class="feedbackItem">${words(60)}</div>`).join("")}<div class="comment_form"><p>${words(60)}</p><textarea></textarea></div></div>`);
+    u = collect(`<div class="comment_form_wrap">${Array.from({ length: 3 }, () => `<div class="feedbackItem">${words(80)}</div>`).join("")}<div class="comment_form"><p>${words(80)}</p><textarea></textarea></div></div>`);
     check("…even where the reply form stands inside the same box, which is chrome by itself", u.length === 3, JSON.stringify(u.map(x => [x.parts, x.words])));
-    u = collect(`<div class="comment_form_list"><p>${words(60)}</p></div>`);
+    u = collect(`<div class="comment_form_list"><p>${words(80)}</p></div>`);
     check("a box carrying the token with nothing to type in is not a form", u.length === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
-    u = collect(`<article><p>${words(60)}</p></article><form><p>CONSENT ${words(60)}</p><input type="email"><button type="submit">Apply</button></form>`);
+    u = collect(`<article><p>${words(80)}</p></article><form><p>CONSENT ${words(80)}</p><input type="email"><button type="submit">Apply</button></form>`);
     check("a <form> with fields to fill in is chrome, legal paragraph and all", u.length === 1 && !u[0].text.includes("CONSENT"), JSON.stringify(u.map(x => [x.parts, x.words])));
-    u = collect(`<main><form><input type="search"></form><p>${words(60)}</p></main>`);
+    u = collect(`<main><form><input type="search"></form><p>${words(80)}</p></main>`);
     check("…while the prose around a search box inside <main> is untouched", u.length === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
-    u = collect(`<form id="form1"><input type="text"><main><p>${words(60)}</p></main></form>`);
+    u = collect(`<form id="form1"><input type="text"><main><p>${words(80)}</p></main></form>`);
     check("…and a page wrapped in one <form> (ASP.NET WebForms) is not a sign-up box", u.length === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
   }
   {
@@ -1150,73 +1159,73 @@ const results = await page.evaluate(() => {
 
   // ---- math, markers, hidden copies: never split the sentence ------------------------------
   {
-    sandbox.innerHTML = `<p>${words(30)} <math><mi>x</mi><mo>=</mo><mn>1</mn></math> ${words(30)}</p>`;
+    sandbox.innerHTML = `<p>${words(40)} <math><mi>x</mi><mo>=</mo><mn>1</mn></math> ${words(40)}</p>`;
     const [unit] = PW.collectUnits(sandbox);
     check("inline <math> (display:math) does not split the paragraph; formula counted, text excluded",
-      unit && unit.parts.length === 1 && unit.formulas === 1 && !unit.text.includes("x=1") && unit.wordCount === 60,
+      unit && unit.parts.length === 1 && unit.formulas === 1 && !unit.text.includes("x=1") && unit.wordCount === 80,
       JSON.stringify(unit && [unit.parts.length, unit.formulas, unit.wordCount]));
   }
   {
     // Wikipedia: visible <img> fallback + a display:block, absolutely positioned, clipped MathML copy.
-    sandbox.innerHTML = `<p>${words(30)} <span class="mwe-math-element"><span style="display:block;position:absolute;clip:rect(1px,1px,1px,1px);width:1px;height:1px;overflow:hidden"><math><mi>y</mi></math></span><img alt="y"></span> ${words(30)}</p>`;
+    sandbox.innerHTML = `<p>${words(40)} <span class="mwe-math-element"><span style="display:block;position:absolute;clip:rect(1px,1px,1px,1px);width:1px;height:1px;overflow:hidden"><math><mi>y</mi></math></span><img alt="y"></span> ${words(40)}</p>`;
     const [unit] = PW.collectUnits(sandbox);
-    check("Wikipedia math (hidden block MathML + img) does not split the paragraph", unit && unit.parts.length === 1 && unit.formulas === 1 && unit.wordCount === 60, JSON.stringify(unit && [unit.parts.length, unit.formulas]));
+    check("Wikipedia math (hidden block MathML + img) does not split the paragraph", unit && unit.parts.length === 1 && unit.formulas === 1 && unit.wordCount === 80, JSON.stringify(unit && [unit.parts.length, unit.formulas]));
   }
   {
     // MathJax v3: inline-block container whose only block child is the hidden assistive copy.
-    sandbox.innerHTML = `<p>${words(30)} <mjx-container style="display:inline-block"><mjx-math style="display:inline-block">GLYPHLEAK</mjx-math><mjx-assistive-mml style="display:block;position:absolute;clip:rect(1px,1px,1px,1px);width:1px;height:1px;overflow:hidden"><math><mi>z</mi></math></mjx-assistive-mml></mjx-container> ${words(30)}</p>`;
+    sandbox.innerHTML = `<p>${words(40)} <mjx-container style="display:inline-block"><mjx-math style="display:inline-block">GLYPHLEAK</mjx-math><mjx-assistive-mml style="display:block;position:absolute;clip:rect(1px,1px,1px,1px);width:1px;height:1px;overflow:hidden"><math><mi>z</mi></math></mjx-assistive-mml></mjx-container> ${words(40)}</p>`;
     const [unit] = PW.collectUnits(sandbox);
     check("MathJax container does not split; its glyph text never leaks", unit && unit.parts.length === 1 && unit.formulas === 1 && !unit.text.includes("GLYPHLEAK"), JSON.stringify(unit && [unit.parts.length, unit.text.slice(-30)]));
   }
   {
-    sandbox.innerHTML = `<p>${words(30)}</p><table class="ltx_equation"><tr><td><math display="block"><mi>E</mi></math></td><td>(1)</td></tr></table><p>${words(30)}</p>`;
+    sandbox.innerHTML = `<p>${words(40)}</p><table class="ltx_equation"><tr><td><math display="block"><mi>E</mi></math></td><td>(1)</td></tr></table><p>${words(40)}</p>`;
     u = collect(sandbox.innerHTML);
     check("display equation between two short paragraphs is not a merge barrier", u.length === 1 && u[0].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
   }
   {
-    sandbox.innerHTML = `<p>${words(30)}</p><div>(3)</div><p>${words(30)}</p>`;
+    sandbox.innerHTML = `<p>${words(40)}</p><div>(3)</div><p>${words(40)}</p>`;
     u = collect(sandbox.innerHTML);
     check("a bare equation number '(3)' is transparent, not a barrier", u.length === 1 && u[0].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
-    u = collect(`<p>${words(30)}</p><div>* * *</div><p>${words(30)}</p>`);
+    u = collect(`<p>${words(40)}</p><div>* * *</div><p>${words(40)}</p>`);
     check("'* * *' separator is still a barrier", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
   }
-  u = collect(`<p>${words(60)}<sup class="reference"><a href="#c">[7]</a></sup> and<sup class="ltx_note_mark">1</sup> more<sup><a href="#f2">2</a></sup>.</p>`);
+  u = collect(`<p>${words(80)}<sup class="reference"><a href="#c">[7]</a></sup> and<sup class="ltx_note_mark">1</sup> more<sup><a href="#f2">2</a></sup>.</p>`);
   check("citation / footnote marks never enter the text", u.length === 1 && !/\[7\]|\b1\b|\b2\b/.test(u[0].text.slice(-40)), JSON.stringify(u.map(x => x.text.slice(-40))));
-  u = collect(`<p>${words(58)} area of 5 km<sup>2</sup>.</p>`);
+  u = collect(`<p>${words(78)} area of 5 km<sup>2</sup>.</p>`);
   check("an unlinked exponent <sup>2</sup> is kept (km2)", u.length === 1 && /km2\.$/.test(u[0].text), JSON.stringify(u.map(x => x.text.slice(-12))));
-  u = collect(`<p>${words(58)} shown in <cite class="ltx_cite">[<a href="#b">12</a>]</cite> below.</p>`);
+  u = collect(`<p>${words(78)} shown in <cite class="ltx_cite">[<a href="#b">12</a>]</cite> below.</p>`);
   check("bracketed <cite> reference is skipped", u.length === 1 && !u[0].text.includes("[12]") && u[0].text.endsWith("shown in below."), JSON.stringify(u.map(x => x.text.slice(-24))));
 
   // ---- markers, accordions, name lists, page-level hints ------------------------------
-  u = collect(`<p>${words(30)}<span style="position:absolute;right:0">[Pg 12]</span> ${words(30)}</p>`);
+  u = collect(`<p>${words(40)}<span style="position:absolute;right:0">[Pg 12]</span> ${words(40)}</p>`);
   check("absolutely positioned page-number span does not split the paragraph", u.length === 1 && u[0].parts === 1 && !u[0].text.includes("[Pg"), JSON.stringify(u.map(x => [x.parts, x.words])));
-  u = collect(`<p>${words(30)}<div style="position:absolute;left:0">${words(20)}</div> ${words(30)}</p>`);
+  u = collect(`<p>${words(40)}<div style="position:absolute;left:0">${words(20)}</div> ${words(40)}</p>`);
   check("a large out-of-flow box still behaves as its own block", u.length >= 1 && u.every(x => !x.text.includes(words(20).slice(0, 20)) || x.words >= 20), JSON.stringify(u.map(x => [x.parts, x.words])));
   {
     // A shadow host reports none of its shadow tree in textContent, so a fixed host with a
     // whole document inside read as an empty decoration (Google Docs' reading overlay).
     sandbox.innerHTML = `<div id="ovl" style="position:fixed;inset:0"></div>`;
-    sandbox.querySelector("#ovl").attachShadow({ mode: "open" }).innerHTML = `<p>${words(60)}</p><p>${words(55)}</p>`;
+    sandbox.querySelector("#ovl").attachShadow({ mode: "open" }).innerHTML = `<p>${words(80)}</p><p>${words(85)}</p>`;
     const inside = PW.collectUnits(sandbox).map((x) => ({ parts: x.parts.length, words: x.wordCount }));
-    check("a fixed-position shadow host holding a document is walked", inside.length === 2 && inside[0].words === 60, JSON.stringify(inside));
+    check("a fixed-position shadow host holding a document is walked", inside.length === 2 && inside[0].words === 80, JSON.stringify(inside));
     sandbox.innerHTML = `<div style="position:fixed;inset:0"><div id="deep"></div></div>`;
-    sandbox.querySelector("#deep").attachShadow({ mode: "open" }).innerHTML = `<p>${words(60)}</p>`;
+    sandbox.querySelector("#deep").attachShadow({ mode: "open" }).innerHTML = `<p>${words(80)}</p>`;
     const nested = PW.collectUnits(sandbox).map((x) => ({ parts: x.parts.length, words: x.wordCount }));
-    check("a fixed box whose text hangs in a shadow tree below it is walked", nested.length === 1 && nested[0].words === 60, JSON.stringify(nested));
-    sandbox.innerHTML = `<p>${words(30)}<span style="position:fixed;right:0">Page 12</span> ${words(30)}</p>`;
+    check("a fixed box whose text hangs in a shadow tree below it is walked", nested.length === 1 && nested[0].words === 80, JSON.stringify(nested));
+    sandbox.innerHTML = `<p>${words(40)}<span style="position:fixed;right:0">Page 12</span> ${words(40)}</p>`;
     const label = PW.collectUnits(sandbox).map((x) => ({ parts: x.parts.length, text: x.text }));
     check("a small out-of-flow label is still skipped", label.length === 1 && label[0].parts === 1 && !label[0].text.includes("Page 12"), JSON.stringify(label.map(x => x.parts)));
-    sandbox.innerHTML = `<p>${words(30)}<span id="badge" style="position:fixed;right:0"></span> ${words(30)}</p>`;
+    sandbox.innerHTML = `<p>${words(40)}<span id="badge" style="position:fixed;right:0"></span> ${words(40)}</p>`;
     sandbox.querySelector("#badge").attachShadow({ mode: "open" }).innerHTML = `<b>Page 12</b>`;
     const small = PW.collectUnits(sandbox).map((x) => ({ parts: x.parts.length, text: x.text }));
     check("a small out-of-flow shadow host with a label inside is still skipped", small.length === 1 && small[0].parts === 1 && !small[0].text.includes("Page 12"), JSON.stringify(small.map(x => [x.parts, x.text.slice(-20)])));
   }
-  u = collect(`<div role="tablist"><div role="tab">Section 1</div><div role="tabpanel"><p>${words(60)}</p></div></div>`);
+  u = collect(`<div role="tablist"><div role="tab">Section 1</div><div role="tabpanel"><p>${words(80)}</p></div></div>`);
   check("role=tablist accordion content is scored; the tab label is chrome", u.length === 1 && !u[0].text.includes("Section 1"), JSON.stringify(u.map(x => [x.parts, x.words])));
   {
     const b = document.createElement("body"); b.className = "notranslate";
     const s = document.createElement("span"); s.className = "notranslate";
-    check("notranslate is ignored at page level, honoured on spans", PW.isBoilerplate(b) === false && (() => { sandbox.innerHTML = `<p>${words(58)} <span class="notranslate">BRANDLEAK</span> end.</p>`; const [x] = PW.collectUnits(sandbox); return x && !x.text.includes("BRANDLEAK"); })());
+    check("notranslate is ignored at page level, honoured on spans", PW.isBoilerplate(b) === false && (() => { sandbox.innerHTML = `<p>${words(78)} <span class="notranslate">BRANDLEAK</span> end.</p>`; const [x] = PW.collectUnits(sandbox); return x && !x.text.includes("BRANDLEAK"); })());
   }
   {
     const names = "Pallarés-Carratalá V, Polo García J, Martín Rioboo E, Ruíz García A, Serrano-Cumplido A, Divisón-Garrote JA, Segura-Fragoso A, Cinza-Sanjurjo S, Prieto-Díaz MÁ, Barquilla-García A, Escobar-Cervantes C, Velilla-Zancada S, Micó-Pérez RM, Rey-Aldana D, Vitelli-Storelli F, Cebrián-Cuenca AM, Turégano-Yedro M.";
@@ -1239,22 +1248,22 @@ const results = await page.evaluate(() => {
     };
     const desc = (h) => h && `${h.previousElementSibling?.tagName ?? "#text"}|host|${h.nextElementSibling?.tagName ?? "-"}`;
 
-    let host = chipFor(`<p>${words(60)} <img alt="emoji"></p>`);
+    let host = chipFor(`<p>${words(80)} <img alt="emoji"></p>`);
     check("chip goes AFTER a trailing emoji image (end of the line, not mid-sentence)",
       host && host.previousElementSibling?.tagName === "IMG" && host.parentElement.lastElementChild === host, desc(host));
 
-    host = chipFor(`<p><span>${words(60)} <img alt="emoji"></span></p>`);
+    host = chipFor(`<p><span>${words(80)} <img alt="emoji"></span></p>`);
     check("…also when the text and the emoji sit inside an inline wrapper",
       host && host.parentElement.tagName === "P" && host.parentElement.lastElementChild === host, desc(host));
 
-    host = chipFor(`<p>${words(60)}<sup class="reference"><a href="#c">[7]</a></sup></p>`);
+    host = chipFor(`<p>${words(80)}<sup class="reference"><a href="#c">[7]</a></sup></p>`);
     check("chip goes after a trailing citation mark", host && host.previousElementSibling?.tagName === "SUP", desc(host));
 
-    host = chipFor(`<p>${words(55)} and it ends with <a href="#x">a real link</a>.</p>`);
+    host = chipFor(`<p>${words(80)} and it ends with <a href="#x">a real link</a>.</p>`);
     check("a trailing link with words is NOT jumped; the chip stays outside the anchor",
       host && !host.closest("a") && host.parentElement.tagName === "P", desc(host));
 
-    host = chipFor(`<p>${words(60)}<br></p>`);
+    host = chipFor(`<p>${words(80)}<br></p>`);
     check("a trailing <br> is never jumped (the chip must not fall to the next line)",
       host && host.nextElementSibling?.tagName === "BR", desc(host));
 
@@ -1525,7 +1534,7 @@ const results = await page.evaluate(() => {
 
     // The common case stays what it was: one whole-part range, no offsets resolved.
     PW.clearHighlight(unit.id);
-    sandbox.innerHTML = `<p>${words(60)}</p>`;
+    sandbox.innerHTML = `<p>${words(80)}</p>`;
     const [small] = PW.collectUnits(sandbox);
     const smallVerdict = PW.unitVerdict(small.id, small.text.length, [{ start: 0, end: small.text.length, result: res([0, 0, 0.1, 0.9]) }]);
     PW.setHighlight(small, smallVerdict);
@@ -1571,7 +1580,7 @@ const results = await page.evaluate(() => {
       for (const [name, hl] of CSS.highlights) for (const r of hl) if (el.contains(r.startContainer)) out.push(name);
       return out.sort();
     };
-    sandbox.innerHTML = `<p>${words(60)}</p>`;
+    sandbox.innerHTML = `<p>${words(80)}</p>`;
     const [human] = PW.collectUnits(sandbox);
     const humanVerdict = PW.unitVerdict(human.id, human.text.length, [{ start: 0, end: human.text.length, result: res([0.9, 0.1, 0, 0]) }]);
     const humanStep = step(PW.scaleStep(humanVerdict.result.score));
@@ -1595,7 +1604,7 @@ const results = await page.evaluate(() => {
   // a thinner ring, in the same colour, the more its probabilities spread, down to a line
   // that stays visible.
   {
-    sandbox.innerHTML = `<p>${words(60)}</p>`;
+    sandbox.innerHTML = `<p>${words(80)}</p>`;
     const [unit] = PW.collectUnits(sandbox);
     const layer = PW.createBadgeLayer();
     const px = (value) => Number.parseFloat(value);
@@ -1636,37 +1645,37 @@ const results = await page.evaluate(() => {
     const preProse = (n) => Array.from({ length: n }, () => words(10)).join("\n");
 
     // 1 · a heading is a barrier only while it is a LABEL ------------------------------------
-    u = collect(`<div role="heading" aria-level="3"><p>${sent(30)}</p><p>${sent(30)}</p></div>`);
+    u = collect(`<div role="heading" aria-level="3"><p>${sent(40)}</p><p>${sent(40)}</p></div>`);
     check("a div[role=heading] holding paragraphs is a container, not a heading: its text is read (lobste.rs comment bodies)",
       u.length === 1 && u[0].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-    u = collect(`<h2><a href="#c">A teaser card title</a><p>${sent(60)}</p></h2>`);
+    u = collect(`<h2><a href="#c">A teaser card title</a><p>${sent(80)}</p></h2>`);
     check("…and so is a whole teaser card wrapped in <h2> (网易, 新浪, the Guardian's live blog, dev.to)",
       u.length === 1 && !u[0].text.includes("teaser card title"), JSON.stringify(u.map(x => [x.parts, x.words])));
 
     u = collect(`<div role="heading">Short Section Label</div><p>${sent(30)}</p><div role="heading">Another Label</div>`);
     check("a real role=heading label is still a barrier and still never scored", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-    u = collect(`<p>${sent(30)}</p><h3><span>Title</span> <em>continued</em></h3><p>${sent(30)}</p>`);
+    u = collect(`<p>${sent(40)}</p><h3><span>Title</span> <em>continued</em></h3><p>${sent(40)}</p>`);
     check("…inline markup inside a heading does not make it a container", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-    u = collect(`<h2>${sent(60)}</h2>`);
-    check("a 'heading' of sixty words is a text block and is read as one (decided: length settles it)",
+    u = collect(`<h2>${sent(80)}</h2>`);
+    check("a 'heading' of eighty words is a text block and is read as one (decided: length settles it)",
       u.length === 1 && u[0].parts === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-    u = collect(`<h2><a href="#a">A long headline that runs to about twenty words and is still nothing but a headline on the page</a></h2><p>${sent(30)}</p><p>${sent(30)}</p>`);
+    u = collect(`<h2><a href="#a">A long headline that runs to about twenty words and is still nothing but a headline on the page</a></h2><p>${sent(40)}</p><p>${sent(40)}</p>`);
     check("…while a twenty-word headline is a label: a barrier, and no part of the text under it",
       u.length === 1 && u[0].parts === 2 && !u[0].text.includes("headline"), JSON.stringify(u.map(x => [x.parts, x.words])));
 
     // 2 · notranslate: a shell is not a widget ------------------------------------------------
-    u = collect(`<div id="mastodon" class="notranslate app-holder"><div class="ui"><main><div role="feed"><article><p>${sent(60)}</p></article></div></main></div></div>`);
+    u = collect(`<div id="mastodon" class="notranslate app-holder"><div class="ui"><main><div role="feed"><article><p>${sent(80)}</p></article></div></main></div></div>`);
     check("a notranslate APPLICATION SHELL (Mastodon's app-holder) is walked: the statuses inside it are read",
-      u.length === 1 && u[0].words >= 50, JSON.stringify(u.map(x => [x.parts, x.words])));
+      u.length === 1 && u[0].words >= 75, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-    u = collect(`<div translate="no"><section><p>${sent(60)}</p></section></div>`);
+    u = collect(`<div translate="no"><section><p>${sent(80)}</p></section></div>`);
     check("…sectioning content anywhere under it is what tells a shell from a widget", u.length === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-    u = collect(`<div class="notranslate"><p>${sent(60)}</p></div>`);
+    u = collect(`<div class="notranslate"><p>${sent(80)}</p></div>`);
     check("a notranslate WIDGET is still honoured (no landmark, a sliver of the page)", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
 
     check("isNoTranslate: shell no, widget yes, page level no",
@@ -1759,7 +1768,7 @@ const results = await page.evaluate(() => {
         `${r.hosts.length} host(s)`);
 
       // Two units in one clipped box: only the one nobody can see moves.
-      r = chipsFor(`<div class="post"><div id="box" style="width:400px;max-height:120px;overflow:hidden"><p>${sent(60)}</p><p>${sent(60)}</p><p>${sent(60)}</p></div></div>`);
+      r = chipsFor(`<div class="post"><div id="box" style="width:400px;max-height:120px;overflow:hidden"><p>${sent(80)}</p><p>${sent(80)}</p><p>${sent(80)}</p></div></div>`);
       const visible = r.hosts.filter((h) => box().contains(h));
       check("several units in one clipped box: the chips of the visible paragraphs stay put, only the hidden ones move out",
         r.units.length >= 2 && visible.length >= 1 && visible.length < r.hosts.length,
@@ -1781,7 +1790,7 @@ const results = await page.evaluate(() => {
       // A quotation, a list or a spoiler span INSIDE the clipped text is not a post
       // boundary: the chips of quoted passages in Goodreads reviews used to stay in the
       // truncated box, out of sight (2 of 150 chips on one book page).
-      r = chipsFor(`<article class="post"><div id="box" style="${CLIPPED}">${sent(30)}<blockquote><p>${sent(60)}</p></blockquote></div></article>`);
+      r = chipsFor(`<article class="post"><div id="box" style="${CLIPPED}">${sent(40)}<blockquote><p>${sent(80)}</p></blockquote></div></article>`);
       check("a chip anchored inside a <blockquote> in the clipped text still finds the box above it (Goodreads reviews)",
         r.hosts.length >= 1 && r.hosts.every((h) => !box().contains(h)) && r.hosts[r.hosts.length - 1].previousElementSibling === box(),
         `${r.hosts.filter((h) => box().contains(h)).length} of ${r.hosts.length} still inside`);
@@ -1802,7 +1811,7 @@ const results = await page.evaluate(() => {
       // review has nothing like twice its own height in it — but the reader cannot see what
       // it cuts off, chips included (the survey found 25 such chips on one Steam page). What
       // the placement layer asks is only whether something is hidden.
-      r = chipsFor(`<div class="post"><div id="box" style="width:400px;height:150px;overflow:hidden"><p>${sent(60)}</p><p>${sent(60)}</p></div></div>`);
+      r = chipsFor(`<div class="post"><div id="box" style="width:400px;height:150px;overflow:hidden"><p>${sent(80)}</p><p>${sent(80)}</p></div></div>`);
       {
         const outside = r.hosts.filter((h) => !box().contains(h));
         check("a box that hides a paragraph of its own text without hiding half of itself still gets one chip under it (Steam review cards)",
@@ -1814,7 +1823,7 @@ const results = await page.evaluate(() => {
       for (const [name, style, text] of [
         ["a plain paragraph", "width:400px", sent(80)],
         ["a scroll container", "width:400px;max-height:40px;overflow:auto", sent(80)],
-        ["a box that overflows by a line", "width:400px;height:110px;overflow:hidden", sent(60)],
+        ["a box that overflows by a line", "width:400px;height:146px;overflow:hidden", sent(80)],
       ]) {
         r = chipsFor(`<div class="post"><div id="box" style="${style}">${text}</div></div>`);
         check(`the chip stays inside ${name}`, r.hosts.length === 1 && box().contains(r.hosts[0]), `${r.hosts.length} host(s)`);
@@ -1824,14 +1833,14 @@ const results = await page.evaluate(() => {
     }
 
     // 4 · prose typeset in <pre> -----------------------------------------------------------------
-    u = collect(`<pre>${preProse(6)}</pre>`);
+    u = collect(`<pre>${preProse(8)}</pre>`);
     check("a <pre> of wrapped PROSE is read (RFCs as HTML, man pages, mailing-list archives)",
-      u.length === 1 && u[0].words >= 50, JSON.stringify(u.map(x => [x.parts, x.words])));
+      u.length === 1 && u[0].words >= 75, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-    u = collect(`<pre><code>${preProse(6)}</code></pre>`);
+    u = collect(`<pre><code>${preProse(8)}</code></pre>`);
     check("…but markup that says code keeps it out, whatever the text reads like", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-    u = collect(`<div class="highlight-python notranslate"><div class="highlight"><pre>${preProse(6)}</pre></div></div>`);
+    u = collect(`<div class="highlight-python notranslate"><div class="highlight"><pre>${preProse(8)}</pre></div></div>`);
     check("…and so does a highlighter's wrapper (Sphinx, Pygments, Prism)", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
 
     {
@@ -1857,7 +1866,7 @@ const results = await page.evaluate(() => {
       u = collect(`<pre>${licence}</pre>`);
       check("a licence header IS prose — English sentences, written by a person — and is read", u.length === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-      const poem = "the quiet town keeps walking through the rain\nand children read their books near warm windows\nwhile rooftops hold the evening over us\nthe lazy dog has given up the garden\nand nothing in the house is moving now\nthe long quiet evenings fall on every roof";
+      const poem = "the quiet town keeps walking through the rain\nand children read their books near warm windows\nwhile rooftops hold the evening over us\nthe lazy dog has given up the garden\nand nothing in the house is moving now\nthe long quiet evenings fall on every roof\nthe brown fox sleeps beneath the empty table\nand somewhere down the road a gate is swinging\nthe lamps come on along the river slowly\nand all the windows gather in the dark";
       u = collect(`<pre>${poem}</pre>`);
       check("…while lines that never punctuate like sentences (a poem) stay excluded, as anything unclear does", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
     }
@@ -1865,27 +1874,27 @@ const results = await page.evaluate(() => {
     {
       // A mailing-list message: the reply is the author's, the "> " lines are not.
       const quoted = "> QUOTED the committee met on thursday to consider the revised plan\n> QUOTED and several members asked for the deadline to be moved again";
-      sandbox.innerHTML = `<pre>Alice Moreau wrote:\n${quoted}\n\n${preProse(6)}</pre>`;
+      sandbox.innerHTML = `<pre>Alice Moreau wrote:\n${quoted}\n\n${preProse(8)}</pre>`;
       let got = PW.collectUnits(sandbox);
       check("an e-mail quotation never merges with the reply under it",
         got.length === 1 && !got[0].text.includes("QUOTED"), JSON.stringify(got.map(x => [x.parts.length, x.wordCount, x.text.slice(0, 20)])));
 
       // lore.kernel.org wraps each quoted block in a span: the boundary is between nodes.
-      sandbox.innerHTML = `<pre>Alice Moreau wrote:\n<span class="q">${quoted}</span>\n${preProse(6)}</pre>`;
+      sandbox.innerHTML = `<pre>Alice Moreau wrote:\n<span class="q">${quoted}</span>\n${preProse(8)}</pre>`;
       got = PW.collectUnits(sandbox);
       check("…including where the quote sits in a <span> of its own (lore.kernel.org)",
         got.length === 1 && !got[0].text.includes("QUOTED"), JSON.stringify(got.map(x => [x.parts.length, x.wordCount, x.text.slice(0, 20)])));
     }
 
-    u = collect(`<pre>RFC 9999                       Short Notes                      June 2026\n\n${preProse(6)}</pre>`);
+    u = collect(`<pre>RFC 9999                       Short Notes                      June 2026\n\n${preProse(8)}</pre>`);
     check("a running head in column layout inside an accepted <pre> is still a barrier, never part of the text",
       u.length === 1 && !u[0].text.includes("Short Notes"), JSON.stringify(u.map(x => [x.parts, x.text.slice(0, 20)])));
 
     {
       // An incremental re-scan rooted inside a <pre> follows the same rule as the walk.
-      sandbox.innerHTML = `<pre><span id="in-prose">${preProse(6)}</span></pre>`;
+      sandbox.innerHTML = `<pre><span id="in-prose">${preProse(8)}</span></pre>`;
       const inProse = PW.collectUnits(sandbox.querySelector("#in-prose")).length;
-      sandbox.innerHTML = `<pre><code><span id="in-code">${preProse(6)}</span></code></pre>`;
+      sandbox.innerHTML = `<pre><code><span id="in-code">${preProse(8)}</span></code></pre>`;
       const inCode = PW.collectUnits(sandbox.querySelector("#in-code")).length;
       check("a re-scan inside a <pre>: prose is read, code is not", inProse === 1 && inCode === 0, `${inProse} / ${inCode}`);
     }
@@ -1976,7 +1985,7 @@ const results = await page.evaluate(() => {
   await ob.addScriptTag({ path: BUNDLE });
   const r = await ob.evaluate(async () => {
     const WORDS = "the quick brown fox jumps over a lazy dog while rain falls gently on rooftops and children read books near warm windows during long quiet evenings".split(" ");
-    document.body.innerHTML = `<p>${Array.from({ length: 60 }, (_, i) => WORDS[i % WORDS.length]).join(" ")}.</p>`;
+    document.body.innerHTML = `<p>${Array.from({ length: 80 }, (_, i) => WORDS[i % WORDS.length]).join(" ")}.</p>`;
     const [unit] = PW.collectUnits(document.body);
     const seen = [];
     const observers = PW.createObservers({ onVisible: () => seen.push("viewport"), onNear: () => seen.push("near"), onDirty() {} });
@@ -2014,7 +2023,7 @@ const results = await page.evaluate(() => {
   const r = await rf.evaluate(async () => {
     const WORDS = "the quick brown fox jumps over a lazy dog while rain falls gently on rooftops and children read books near warm windows during long quiet evenings".split(" ");
     const words = (n) => Array.from({ length: n }, (_, i) => WORDS[i % WORDS.length]).join(" ") + ".";
-    document.body.innerHTML = `<div class="post"><div id="box" style="width:400px;height:150px;overflow:hidden"><div id="pad" style="height:0"></div><p id="first">${words(60)}</p><h3>A heading keeps the two apart</h3><p>${words(120)}</p></div></div>`;
+    document.body.innerHTML = `<div class="post"><div id="box" style="width:400px;height:150px;overflow:hidden"><div id="pad" style="height:0"></div><p id="first">${words(80)}</p><h3>A heading keeps the two apart</h3><p>${words(120)}</p></div></div>`;
     const layer = window.PW_LAYER = PW.createBadgeLayer();
     const box = document.getElementById("box");
     const units = PW.collectUnits(document.body);
@@ -2343,7 +2352,7 @@ for (const file of fixtureFiles) {
     document.body.innerHTML =
       `<div class="post"><div id="box" style="max-height:400px;overflow:hidden;width:400px">` +
       `<img id="cover" alt="" style="display:block;width:100%;height:0">` +
-      `<p id="one">${words(60)}</p><p id="two">${words(60)}</p></div></div>`;
+      `<p id="one">${words(80)}</p><p id="two">${words(80)}</p></div></div>`;
     const box = document.getElementById("box");
     const layer = (window.PW_LAYER = PW.createBadgeLayer());
     const units = PW.collectUnits(document.body);
@@ -2388,7 +2397,7 @@ for (const file of fixtureFiles) {
 // nonsense built from consonant clusters that occur in no English text, so the check can
 // be the strict one: not one FOUR-CHARACTER run of any text node on that page may appear
 // anywhere in the report. Natural prose could not be checked that way (a page saying
-// "under" would collide with the report's own "under the 50-word floor") and a weaker
+// "under" would collide with the report's own "under the 75-word floor") and a weaker
 // check is what lets a leak through.
 // =====================================================================================
 {
@@ -2445,8 +2454,8 @@ for (const file of fixtureFiles) {
         `<nav class="site-nav"><a href="${secrets.url}">${prose(12)}</a></nav>` +
         `<main><article class="post" data-note="${secrets.note}" data-testid="postBody">` +
         `<h2>${prose(4)}</h2>` +
-        `<p title="${secrets.title}">${prose(60)}</p>` +
-        `<p>${prose(60)}</p>` +
+        `<p title="${secrets.title}">${prose(80)}</p>` +
+        `<p>${prose(80)}</p>` +
         // A person's name in all three of the places an identifier can carry one.
         `<div class="byline author-${secrets.handle}" id="thread-${secrets.handle}" ` +
         `data-testid="${secrets.handle}Panel"><span>${prose(3)}</span></div>` +
@@ -2510,7 +2519,7 @@ for (const file of fixtureFiles) {
       hasSections: ["# Anagram page diagnostics", "## Counts", "## Why the rest is silent", "## Frames", "## Structure"].every(
         (h) => report.includes(h),
       ),
-      // The shape survives even though the words do not: two paragraphs of sixty words
+      // The shape survives even though the words do not: two paragraphs of eighty words
       // each are two units, and the capture keeps the elements that made them.
       structureKeeps: /<article[^>]*class="post"/.test(report) && /<p[^>]*>/.test(report),
       dropsUrls: !report.includes("href") && !report.includes("intranet"),

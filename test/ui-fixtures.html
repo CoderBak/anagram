@@ -10,7 +10,7 @@
   #tiny  { font-size: 11px; line-height: 1.5; }
   #large { font-size: 22px; line-height: 1.5; }
   #tight { font-size: 15px; line-height: 1.25; }
-  #clipbox { overflow: hidden; height: 140px; border: 1px dashed #ccc; padding: 8px; }
+  #clipbox { overflow: hidden; height: 240px; border: 1px dashed #ccc; padding: 8px; }
   #darksection { background: #14161a; color: #cdd3da; padding: 18px; border-radius: 8px; }
   #oklchdark { background: oklch(0.22 0.03 260); color: #d5d9de; padding: 18px; border-radius: 8px; }
   #rtl { direction: rtl; }
@@ -22,7 +22,9 @@
   <p>TOPEDGE paragraph sits at the very top of the viewport before any heading, so when the
      pointer hovers its badge the detail card cannot open upward without leaving the screen,
      and the edge-aware placement is expected to flip the card underneath the chip instead,
-     keeping every pixel of the readout inside the visible viewport for the reader.</p>
+     keeping every pixel of the readout inside the visible viewport for the reader, even on a
+     page that leaves no room at all above its first paragraph, where the only space left for
+     the card is the part of the screen that lies below the chip.</p>
   </section>
 
   <!-- 2: narrow right-aligned column — card must pin to the right edge -->
@@ -31,7 +33,9 @@
     <p>RIGHTEDGE paragraph lives inside a narrow column pushed against the right side of the
        page, which drives its badge close to the right viewport edge and therefore exercises
        the horizontal pinning branch of the edge-aware hover card placement logic under a
-       realistic sidebar-like layout rather than a synthetic absolute position.</p>
+       realistic sidebar-like layout rather than a synthetic absolute position, the way a blog's
+       side column or the table of contents of a documentation page squeezes a paragraph into a
+       narrow strip at the edge of the screen, right next to the scroll bar.</p>
   </div>
   </section>
 
@@ -40,7 +44,9 @@
   <p>هذه فقرة تجريبية مكتوبة باللغة العربية من اليمين إلى اليسار وتحتوي على عدد كافٍ من الكلمات
      لتتجاوز الحد الأدنى المطلوب للتقييم بسهولة، والغرض منها هو التحقق من أن الشارة تظهر في نهاية
      السطر الأخير من الفقرة في الاتجاه الصحيح وأن الهامش المنطقي يعمل كما هو متوقع في النصوص
-     المكتوبة بالاتجاه المعاكس تماماً للنصوص اللاتينية المعتادة على صفحات الويب الحديثة.</p>
+     المكتوبة بالاتجاه المعاكس تماماً للنصوص اللاتينية المعتادة على صفحات الويب الحديثة، ولذلك يجب
+     أن تكون هذه الفقرة طويلة بما يكفي لتتجاوز الحد الأدنى للتقييم وهو خمس وسبعون كلمة، حتى تحصل على
+     شارة خاصة بها مثل أي فقرة أخرى في هذه الصفحة التجريبية دون أن تحتاج إلى جيرانها.</p>
   </section>
 
   <!-- 4: font scaling — the chip must scale with the annotated text -->
@@ -48,11 +54,14 @@
   <p id="tiny">TINY paragraph is set in an eleven pixel font so the badge chip is expected to
      scale itself down toward its lower clamp and sit on the same baseline as this small text,
      never towering over the line box, which is exactly what a fixed pixel chip used to do on
-     dense forum layouts and footnote-sized print styles across many older websites today.</p>
+     dense forum layouts and footnote-sized print styles across many older websites today, where
+     a chip drawn at one fixed size stands out far more than the small words it describes on the page.</p>
   <p id="large">LARGE paragraph is set in a twenty-two pixel font so the chip is expected to
      scale up toward its upper clamp and keep visual proportion with these larger words,
      demonstrating that the badge inherits the surrounding type size instead of rendering at
-     one hard-coded size regardless of the typography of the page hosting it.</p>
+     one hard-coded size regardless of the typography of the page hosting it, so a chip after a
+     pull quote or an introduction set in display type looks like it belongs to that text rather
+     than to the smaller body copy around it.</p>
   </section>
 
   <!-- 5: tight line-height — chip must not expand the line box noticeably -->
@@ -60,7 +69,9 @@
   <p id="tight">TIGHT paragraph uses a deliberately compact line height so any oversized inline
      chip would visibly push its final line apart from the rest, and the assertion measures
      that the chip's rendered height stays within the paragraph's computed line height plus a
-     small tolerance, guaranteeing the badge introduces no jarring vertical layout shift.</p>
+     small tolerance, guaranteeing the badge introduces no jarring vertical layout shift, which
+     matters most on dense pages such as forums, changelogs and legal documents that set their
+     paragraphs close together to fit more of them on a single screen at once.</p>
   </section>
 
   <!-- 6: open shadow DOM with a slot — composed traversal -->
@@ -69,7 +80,9 @@
   <p id="slotted-src" hidden>SLOTTED light-DOM paragraph is assigned into a slot inside the open
      shadow root and must be captured through the composed-tree traversal, receiving its own
      badge exactly as if it were ordinary markup, because slotted content renders inside the
-     shadow root even though the nodes themselves belong to the light document tree.</p>
+     shadow root even though the nodes themselves belong to the light document tree, which is
+     exactly how web components built with slots present the text that a page author writes
+     between their opening and closing tags, and what every reader of such a page takes for ordinary text.</p>
   </section>
 
   <!-- 7: overflow hidden container — inline badge must stay inside, not clip away -->
@@ -78,7 +91,9 @@
     <p>CLIPBOX paragraph sits inside an overflow-hidden container of fixed height, a layout
        that used to clip absolutely-positioned overlays into invisibility, and the inline
        badge is expected to remain fully visible inside the container because it participates
-       in the normal flow of the text instead of floating above it at computed coordinates.</p>
+       in the normal flow of the text instead of floating above it at computed coordinates, so
+       the container can clip whatever it likes without ever hiding the verdict that belongs to
+       the paragraph written inside it, however little of the box is left to see on the screen.</p>
   </div>
   </section>
 
@@ -87,14 +102,18 @@
   <p id="copysrc">COPYSRC paragraph exists to verify that selecting and copying the entire
      block of text never captures the badge's percentage label along with it, because the
      badge lives in a closed-off shadow tree marked non-selectable, so the clipboard payload
-     must contain exactly the words of this paragraph and nothing injected by the extension.</p>
+     must contain exactly the words of this paragraph and nothing injected by the extension,
+     which matters to anyone who quotes a passage in an email or a document and would otherwise
+     find a stray number pasted into the middle of the sentence they copied.</p>
   </section>
 
   <!-- 9: paragraph ending with a link — badge must not live inside the anchor -->
   <section>
   <p id="linkend">LINKEND paragraph runs long enough to be scored and deliberately finishes its
      final sentence with a hyperlink so the insertion logic has to climb out of the anchor
-     element before placing the chip, ensuring a click on the badge never triggers the
+     element before placing the chip, which is the shape of countless paragraphs on news sites,
+     blogs and wikis that close by pointing the reader to a source, a reference or a follow-up
+     article somewhere else on the web, ensuring a click on the badge never triggers the
      navigation of the <a href="#never-navigate" id="lastlink">link that ends this paragraph</a>.</p>
   </section>
 
@@ -104,12 +123,16 @@
     <p>DARKSECTION paragraph is rendered on a nearly black card embedded in an otherwise light
        page, and the badge attached to it must detect the local dark background of its own
        container rather than the global page background, switching to the dark chip theme so
-       it stays legible without glowing against the surrounding dark surface.</p>
+       it stays legible without glowing against the surrounding dark surface, the way a light
+       pill would stand out on a code panel, a dark hero banner or a call-out box that a designer
+       set apart from the rest of the page.</p>
   </div>
   <p id="lightafter">LIGHTAFTER paragraph immediately follows the dark card on the normal white
      background, and its badge must remain in the light theme, proving the background probe is
      genuinely per-anchor instead of a single page-level decision that would misclassify mixed
-     designs like hero sections, code panels, and dark call-out boxes on light pages.</p>
+     designs like hero sections, code panels, and dark call-out boxes on light pages, and on
+     sites that switch between light and dark sections as the reader scrolls down through a
+     long article or a landing page built from alternating bands of colour.</p>
   </section>
 
   <!-- 10b: CSS Color 4 background — computed style stays oklch(); chip must still go dark -->
@@ -118,22 +141,27 @@
   <p>OKLCHDARK paragraph sits on a surface whose background is declared with the oklch() colour
      function, which Chrome keeps verbatim in the computed style rather than converting to rgb(),
      so the chip theming has to parse a modern colour space to notice that this card is dark and
-     switch to the dark chip palette instead of painting a bright pill onto a near-black surface.</p>
+     switch to the dark chip palette instead of painting a bright pill onto a near-black surface,
+     which is how a growing number of design systems now write the colours of their cards and panels.</p>
   </div>
   </section>
 
   <!-- 11: exact duplicates — every copy gets its own badge.
-       Each copy must clear the 50-word floor ON ITS OWN, otherwise the two short
+       Each copy must clear the 75-word floor ON ITS OWN, otherwise the two short
        siblings would (correctly) merge into a single unit. -->
   <section id="dupes">
   <p>DUPLICATE paragraph text appears twice in a row with byte-identical content so the text
      level deduplication must score it only once at the backend while the unit level rendering
      still gives each visual copy its own independent badge and underline on the page, and this
-     copy also carries enough extra words to clear the evidence floor entirely on its own.</p>
+     copy also carries enough extra words to clear the evidence floor entirely on its own, so
+     that neither of the two copies ever has to borrow a single word from its twin in order
+     to be read and badged.</p>
   <p>DUPLICATE paragraph text appears twice in a row with byte-identical content so the text
      level deduplication must score it only once at the backend while the unit level rendering
      still gives each visual copy its own independent badge and underline on the page, and this
-     copy also carries enough extra words to clear the evidence floor entirely on its own.</p>
+     copy also carries enough extra words to clear the evidence floor entirely on its own, so
+     that neither of the two copies ever has to borrow a single word from its twin in order
+     to be read and badged.</p>
   </section>
 
   <!-- 12: KaTeX-shaped formula — visual copy is aria-hidden, accessible copy is a
@@ -145,10 +173,12 @@
        <span class="katex-mathml" style="position:absolute;clip:rect(1px,1px,1px,1px);width:1px;height:1px;overflow:hidden"><math><mrow><mi>E</mi><mo>=</mo><mi>m</mi><msup><mi>c</mi><mn>2</mn></msup></mrow></math>KATEXDUP</span>
        <span class="katex-html" aria-hidden="true"><span class="base">E=mc<sup>2</sup>KATEXDUP</span></span>
      </span>
-     right in the middle of a sentence that keeps going long enough to clear the fifty
+     right in the middle of a sentence that keeps going long enough to clear the seventy-five
      word evidence floor comfortably, proving that math markup rendered the KaTeX way with
      duplicated visual and accessible copies never splits the sentence and never counts the
-     formula text twice in the unit that finally receives the badge KATEXTAIL marker.</p>
+     formula text twice in the unit that finally receives the badge, which is how equations
+     appear in lecture notes, papers converted to HTML and technical blog posts all over the
+     web today KATEXTAIL marker.</p>
   </section>
 
   <!-- 13: modal <dialog> — page content in the TOP LAYER. Its prose must still be
@@ -159,7 +189,9 @@
     <p>MODAL paragraph lives inside a showModal dialog which the browser promotes into the
        top layer above every ordinary stacking context on the page, and it still deserves a
        badge like any other paragraph because reading happens inside modals all the time on
-       real sites, from privacy policies to full article previews and cookie-free readers.</p>
+       real sites, from privacy policies to full article previews and cookie-free readers, and a
+       dialog that opens over the page is often the only thing the reader is looking at for as
+       long as it stays open on the screen in front of them.</p>
     <button id="closemodal" type="button">Close</button>
   </dialog>
   </section>
@@ -183,7 +215,7 @@
   <div style="writing-mode:vertical-rl;height:340px;font-size:14px;line-height:1.9">
     <p>VERTICAL 縦書きの段落は日本の小説や新聞でよく使われる伝統的な組み方であり、右から左へ流れる
        縦のレイアウトの中でも本文はほかの段落と同じように解析される必要があります。この段落には
-       五十語の下限を確実に超えるだけの十分な語数が含まれており、チップが行の流れを壊さずに末尾へ
+       七十五語の下限を確実に超えるだけの十分な語数が含まれており、チップが行の流れを壊さずに末尾へ
        挿入されることと、下線が縦書きでも正しく描画されることを検証するための標識文です。</p>
   </div>
   </section>
@@ -203,7 +235,9 @@
       p.textContent = 'CHURN paragraph was appended at the same moment a nearby counter began ' +
         'updating its text every eighty milliseconds for several seconds, which resets a naive ' +
         'trailing debounce on every tick and would postpone the incremental re-scan until the ' +
-        'page fell silent, so the observer must force a drain after a bounded wait instead.';
+        'page fell silent, so the observer must force a drain after a bounded wait instead, or the ' +
+        'paragraph would sit without a chip for as long as the page keeps changing something ' +
+        'somewhere else, which on a live dashboard or a ticker can mean forever.';
       document.getElementById('churn').appendChild(p);
     });
     document.getElementById('openoverlay').addEventListener('click', () => document.getElementById('siteoverlay').hidden = false);
@@ -221,7 +255,9 @@
         <p>SHADOW paragraph lives directly inside an open shadow root rather than the light
            document, and the walker must reach it through the composed children traversal,
            badge it like any ordinary paragraph, and keep its underline working through the
-           highlight ranges even though the nodes belong to a shadow tree entirely.</p>
+           highlight ranges even though the nodes belong to a shadow tree entirely, which is
+           how many modern component libraries render the text of cards, comments and whole
+           articles without ever placing a word of it in the light document at all, so a walker that stopped at the host would miss them.</p>
         <slot></slot>
       </div>`;
     const src = document.getElementById('slotted-src');
