@@ -58,6 +58,9 @@ function shape(r: Rng): TextOpts {
   ]);
 }
 
+/** A space between words: JavaScript counts the byte-order mark as one, the model form drops it. */
+const SPACE = /[^\S\uFEFF]/;
+
 /** Every invariant the chunks of one text must satisfy: what breaks one, or null. */
 function chunkFault(text: string, end: number, chunks: Chunk[]): string | null {
   if ((chunks[0]?.start ?? 0) !== 0) return "does not start at 0";
@@ -66,14 +69,14 @@ function chunkFault(text: string, end: number, chunks: Chunk[]): string | null {
     const c = chunks[i];
     if (c.end <= c.start) return `empty chunk ${i}`;
     if (i > 0 && c.start !== chunks[i - 1].end) return `gap before chunk ${i}`;
-    if (c.glued !== (c.start > 0 && !/\s/.test(text[c.start - 1]))) return `chunk ${i} glued wrong`;
+    if (c.glued !== (c.start > 0 && !SPACE.test(text[c.start - 1]))) return `chunk ${i} glued wrong`;
     if (text.slice(c.start, c.end).trimEnd().length > MAX_CHUNK_CHARS) return `chunk ${i} too long`;
     const before = text.charCodeAt(c.start - 1);
     if (c.start > 0 && before >= 0xd800 && before <= 0xdbff) return `chunk ${i} splits a surrogate pair`;
   }
   if ((chunks[chunks.length - 1]?.end ?? 0) !== end) return "does not reach the end";
   // A pass can begin on every word.
-  for (let at = 1; at < end; at++) if (/\s/.test(text[at - 1]) && /\S/.test(text[at]) && !starts.has(at)) return `no chunk at word ${at}`;
+  for (let at = 1; at < end; at++) if (SPACE.test(text[at - 1]) && !SPACE.test(text[at]) && !starts.has(at)) return `no chunk at word ${at}`;
   return null;
 }
 

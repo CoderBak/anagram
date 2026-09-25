@@ -1,5 +1,5 @@
 // lib/capture/cache.ts — per-tab L1 content-hash cache.
-// Keyed by hash(normalizeText(text)) so a paragraph's badge stays stable across
+// Keyed by hash(modelText(text)) so a paragraph's badge stays stable across
 // re-scroll / re-entry (virtualized lists). Request-level dedup lives in the
 // orchestrator's scoreBlocks() and the SW router. An entry answers for one BLOCK's text —
 // a whole unit, or one window of a long one; a unit's aggregate is never stored, it is
@@ -10,7 +10,7 @@
 // verdict from a previous backend can never be served as the current one. The
 // service-worker cache behind it is model-keyed and answers a cleared L1 in a few ms.
 import type { ScoreResult } from "../contract";
-import { normalizeText, SCORING_NORMALIZATION_VERSION } from "../dom/text";
+import { modelText, SCORING_NORMALIZATION_VERSION } from "../dom/text";
 import { cyrb53 } from "../hash";
 import { SCORE_CACHE_MAX_AGE_MS } from "../cachePolicy";
 
@@ -23,7 +23,7 @@ export const L1_MAX_ENTRIES = 2000;
 export interface ScoreCache {
   get(text: string): ScoreResult | undefined;
   set(text: string, r: ScoreResult): void;
-  keyOf(text: string): string; // sync 53-bit hash of normalizeText(text)
+  keyOf(text: string): string; // sync 53-bit hash of modelText(text)
   /** Drop every entry (backend identity changed, or a full rescan). */
   clear(): void;
   size(): number;
@@ -33,7 +33,7 @@ export function createScoreCache(): ScoreCache {
   const l1 = new Map<string, { result: ScoreResult; at: number }>();
 
   function keyOf(text: string): string {
-    return `n${SCORING_NORMALIZATION_VERSION}:${cyrb53(normalizeText(text)).toString(36)}`;
+    return `n${SCORING_NORMALIZATION_VERSION}:${cyrb53(modelText(text)).toString(36)}`;
   }
 
   return {

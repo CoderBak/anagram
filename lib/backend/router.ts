@@ -3,7 +3,7 @@
 import type { ModelInfo, ScanPriority, ScoreClient, ScoreBlock, ScoreResult,
   ScoreBatchRequest, ScoreBatchResponse } from "../contract";
 import { BUCKET_COUNT } from "../contract";
-import { canonicalForScoring } from "../dom/text";
+import { modelText } from "../dom/text";
 import type { ScoreCacheMode } from "../cachePolicy";
 import { createSwCache, type SwCache } from "./swCache";
 import { retryWaitMs } from "./retry";
@@ -194,15 +194,16 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
       if (!alive()) return unanswered();
       model = snapshot(client.model());
       const revision = client.revision?.(), dim = modelDim(model);
-      // The cache and the actual payload use precisely the same canonical bytes.
-      const canonical = req.blocks.map((block) => ({ ...block, text: canonicalForScoring(block.text) }));
-      const keys = canonical.map((block) => cache.keyOf(block.text, dim));
+      // The cache and the actual payload use precisely the same bytes: the model form, which
+      // a page's blocks are in already (modelText is a fixed point).
+      const sent = req.blocks.map((block) => ({ ...block, text: modelText(block.text) }));
+      const keys = sent.map((block) => cache.keyOf(block.text, dim));
       const hits = await Promise.race([cache.getMany(keys, reader.persist), reader.cancelled]);
       if (!alive() || !hits || !revisionMatches(revision)) return unanswered();
       const results = new Map<string, ScoreResult>();
       const producers = new Map<string, ModelInfo>();
       const groups = new Map<string, ScoreBlock[]>();
-      canonical.forEach((block, index) => {
+      sent.forEach((block, index) => {
         const key = keys[index], hit = hits.get(key);
         if (hit) { results.set(block.id, { ...hit, id: block.id }); producers.set(dim, model); }
         else { const group = groups.get(key) ?? []; group.push(block); groups.set(key, group); }

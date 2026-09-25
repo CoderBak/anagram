@@ -124,93 +124,50 @@ export function extractPartText(nodes: Text[]): string {
 }
 
 /**
- * Presentation-only invisibles that must never reach hashing OR the detector:
- * zero-width space/joiners, BOM, soft hyphens (hyphenation hints), and bidi
- * control characters. The same visible sentence on two sites must produce the
- * same payload — soft-hyphenated news text was scoring differently per site.
+ * Characters that shape how a page is SET and are no part of what was written: soft
+ * hyphens (hyphenation hints), the zero-width space and non-joiner, the byte-order mark,
+ * the word joiner and the invisible math operators, bidi marks and controls. The same
+ * sentence on two sites must reach the model alike — soft-hyphenated news text was scored
+ * differently per site. The zero-width JOINER stays, as do the variation selectors: they
+ * hold an emoji sequence together ("👨‍👩‍👧" is one family, not three people), and the
+ * engine spells out each sequence by its name.
  */
 const INVISIBLES_RE =
-  // ZWSP..RLM | SHY | BOM | LRE..RLO+PDF | word-joiner block | LRI..PDI
-  /[\u200B-\u200F\u00AD\uFEFF\u202A-\u202E\u2060-\u2064\u2066-\u2069]/g;
-
-/** Strip presentation-only invisible characters (kept in the rendered DOM). */
-export function stripInvisibles(s: string): string {
-  return s.replace(INVISIBLES_RE, "");
-}
+  // SHY | ZWSP ZWNJ | LRM RLM | BOM | LRE..RLO+PDF | word joiner..invisible plus | LRI..PDI
+  /[\u00AD\u200B\u200C\u200E\u200F\uFEFF\u202A-\u202E\u2060-\u2064\u2066-\u2069]/g;
 
 /** Un-rendered inline LaTeX ($\tau^{2}$): only spans that contain a command — "$5 and $10" stays. */
 const RAW_LATEX_RE = /\$[^$\n]*\\[A-Za-z]+[^$\n]*\$/g;
 
+/** Bump when the model form changes; caches from older rules must never match. */
+export const SCORING_NORMALIZATION_VERSION = "3";
+
 /**
- * LaTeX quote digraphs — ``` `` ``` and `''` for the double quotes, a lone backtick for an
- * opening apostrophe — folded until nothing is left to fold. A fold can put two quote
- * characters side by side that were not neighbours before: a backtick turned into an
- * apostrophe beside an apostrophe, a pair of typographic quotes flattened, and above all
- * an un-rendered LaTeX span removed from between them ("the constant '$\alpha$' is"
- * leaves `''`). One pass then returned a text that was not itself canonical. Every round
- * either drops a character or turns a backtick into an apostrophe, and none writes a
- * backtick, so this settles in a round or two.
+ * The text the model reads, which is also what its verdicts are cached under.
+ *
+ * EditLens was trained on text as it was written, prepared only by the cleaning the
+ * engine applies itself (anagramd/engine.py clean_text, the official pipeline's): emoji
+ * spelled out, a chatbot's opening paragraph dropped, lower case, whitespace collapsed.
+ * Typography is part of that text — curly quotes, dashes, "…", "--" and "™" are evidence
+ * of who wrote it — so nothing here folds them. Only what reading a page leaves behind is
+ * repaired: the invisibles above out, `\%` `\&` `\_` `\#` `\$` escapes to the character and
+ * un-rendered LaTeX spans out (arXiv-like pages), a PDF's ligature glyphs (ﬁ, ﬄ) to their
+ * letters, runs of spaces to one space, and a run of whitespace that breaks a line to one
+ * "\n" — the engine can drop an opening paragraph only where it sees one end.
+ *
+ * A FIXED POINT: m(m(x)) === m(x), so the worker can apply it again to what a page sends
+ * and key its cache on the same bytes. Ligatures go first: "$\ﬁ$" is a LaTeX span only
+ * once spelled out. Removing an invisible, an escape or a span can join what stood on
+ * either side of it into another, so those steps repeat until none applies.
  */
-function foldQuotes(s: string): string {
+export function modelText(s: string): string {
+  s = s.replace(/[\uFB00-\uFB06]/g, (ligature) => ligature.normalize("NFKC"));
   for (;;) {
-    const next = s.replace(/``|''/g, '"').replace(/(?<=\s|^)`(?=\S)/g, "'");
-    if (next === s) return next;
+    const next = s.replace(INVISIBLES_RE, "").replace(/\\+([%&_#$])/g, "$1").replace(RAW_LATEX_RE, "");
+    if (next === s) break;
     s = next;
   }
-}
-
-/** Bump when scoring normalization changes; caches from older rules must never match. */
-export const SCORING_NORMALIZATION_VERSION = "2";
-
-/**
- * The ONE canonical form of a paragraph for scoring AND for cache keys.
- *
- * Presentation is normalized, content is not: the same sentence rendered by arXiv's
- * abstract page, its HTML converter, a PDF-derived copy or a CMS must reach the model
- * as the same bytes. EditLens is surface-sensitive — a LaTeX `---` where the page
- * meant an em dash moved a verdict from 55 % to 9 % — so LaTeX residue and
- * typographic variants are folded to one convention: NFKC (ligatures, full-width
- * forms), invisibles and non-breaking spaces out, `---`/`--` → dashes, LaTeX quotes
- * and escapes (`\%`) → characters, curly quotes/apostrophes → ASCII, digit ranges
- * `1–5` → `1-5`, whitespace collapsed. No lowercasing, no punctuation stripping — the
- * daemon applies the model's own preprocessing on top of this.
- *
- * IT IS A FIXED POINT: c(c(x)) === c(x). The canonical form is the cache key as well
- * as what the model reads, so a paragraph must not get a second, different key by
- * being canonicalized again. That is what fixes the ORDER here: every step that can
- * weld two characters together — dropping an un-rendered LaTeX span, folding a
- * typographic quote — runs BEFORE the folds that would then have something left to
- * do. Residue removal can also join combining marks or another escape, so the
- * contracting pipeline repeats until these newly adjacent forms are stable.
- */
-export function canonicalForScoring(s: string): string {
-  // Removing residue can join combining marks, escapes or punctuation. Repeat the
-  // contracting folds so those newly adjacent characters settle in this same call.
-  // All adjacent backslashes before an escaped %&_#$ denote presentation residue.
-  for (;;) {
-    const folded = stripInvisibles(s.normalize("NFKC"))
-      .replace(/\u00A0/g, " ")
-      .replace(/\\+([%&_#$])/g, "$1")
-      .replace(RAW_LATEX_RE, "")
-      .replace(/---/g, "—")
-      .replace(/(?<=\S)--(?=\S)/g, "–")
-      .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
-      .replace(/[\u201C\u201D\u201E\u201F]/g, '"');
-    const next = foldQuotes(folded)
-      .replace(/(?<=\d)[\u2013\u2010\u2011](?=\d)/g, "-")
-      .replace(/\s+/g, " ")
-      .trim();
-    if (next === s) return next;
-    s = next;
-  }
-}
-
-/**
- * Normalize for hashing/cache — the same canonical form the model receives, so two
- * renderings of one paragraph share one cache entry and one verdict.
- */
-export function normalizeText(s: string): string {
-  return canonicalForScoring(s);
+  return s.replace(/\s+/g, (run) => (/[\n\r\u2028\u2029]/.test(run) ? "\n" : " ")).trim();
 }
 
 /** True if the text contains at least one letter in ANY script (incl. CJK). */

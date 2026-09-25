@@ -87,7 +87,7 @@ Nothing is written to `storage.sync`, `storage.session` or `storage.managed`.
 ### IndexedDB `anagram-scores`
 
 The persistent score cache. A row holds the model identity plus a 53-bit hash of the
-canonical text, the verdict (bucket, four probabilities, score), token count, truncation
+text the model read, the verdict (bucket, four probabilities, score), token count, truncation
 flag, detected language and write time. **No raw page text is stored in the score cache.**
 An unsalted hash is not anonymous: someone with local cache access can test guesses about
 known text. The store keeps at most 20 000 rows, pruned back to 15 000 oldest first, and

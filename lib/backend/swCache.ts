@@ -3,8 +3,8 @@
 //
 // Why persistent: an MV3 service worker is killed after ~30 s idle, so a memory-only
 // cache evaporates constantly and every tab re-scores paragraphs the model already
-// judged. The model is deterministic, so a hash of the normalized text plus the model
-// identity and normalization version define the key — stored rows hold buckets and probabilities
+// judged. The model is deterministic, so a hash of the text it reads (modelText) plus the
+// model identity and normalization version define the key — stored rows hold buckets and probabilities
 // only, never text. A different model, checkpoint or calibration changes the key dimension, so
 // stale verdicts are never served across models.
 //
@@ -20,7 +20,7 @@
 // somebody has been reading.
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 import type { ScoreResult } from "../contract";
-import { normalizeText, SCORING_NORMALIZATION_VERSION } from "../dom/text";
+import { modelText, SCORING_NORMALIZATION_VERSION } from "../dom/text";
 import { cyrb53 } from "../hash";
 import { SCORE_CACHE_MAX_AGE_MS, type ScoreCacheMode } from "../cachePolicy";
 import { createLogger } from "../log";
@@ -28,7 +28,7 @@ import { createLogger } from "../log";
 const log = createLogger("swcache");
 
 export interface SwCache {
-  /** Sync key: `<normalization version>:<dim>:<hash of normalizeText(text)>`;
+  /** Sync key: `<normalization version>:<dim>:<hash of modelText(text)>`;
    * `dim` is the complete backend identity snapshotted by router.ts modelDim. */
   keyOf(text: string, dim: string): string;
   /**
@@ -261,7 +261,7 @@ export function createSwCache(store: ScoreStore = indexedDbStore()): SwCache {
     return operation;
   }
   const keyOf = (text: string, dim: string): string =>
-    `n${SCORING_NORMALIZATION_VERSION}:${dim}:${cyrb53(normalizeText(text)).toString(36)}`;
+    `n${SCORING_NORMALIZATION_VERSION}:${dim}:${cyrb53(modelText(text)).toString(36)}`;
   const current = (seq: number): boolean => seq === generation;
   const fresh = (at: number): boolean => Number.isFinite(at) && Date.now() - at < MAX_AGE_MS;
 

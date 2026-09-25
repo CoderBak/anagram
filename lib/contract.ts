@@ -29,7 +29,7 @@ export interface ScoreBlock {
   /** Stable per-scan id ("u_3f" for a whole unit, "u_3f:1259-2567" for a window of it);
    *  results are matched by this, NOT by array index. */
   id: string;
-  /** The canonical form (canonicalForScoring) of the unit's text, or of one window of it. */
+  /** The model form (modelText) of the unit's text, or of one window of it. */
   text: string;
 }
 

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { readInWindows, unitVerdict, blockText, fitsWithoutCounting, wordsOf, requestSlices, MAX_BLOCK_CHARS, MAX_WINDOWS, PASS_TOKENS, REQUEST_BLOCKS, REQUEST_CHARS, type CountTokens, type ScoreBlocks, type WindowVerdict } from "../../lib/capture/windows";
 import { ROUTER_LIMITS } from "../../lib/backend/router";
 import type { ScoreBlock, ScoreResult } from "../../lib/contract";
-import { canonicalForScoring } from "../../lib/dom/text";
+import { modelText } from "../../lib/dom/text";
 import { fakeCounts, planText, spanTokens } from "./fakeCounts";
 
 const sentence = (i: number): string => `Sentence number ${i} keeps walking through the quiet town while the rain falls on it.`;
@@ -48,7 +48,7 @@ const byHalves = (passes: readonly { start: number; end: number }[]): boolean =>
   passes.every((p, i) => i === 0 || (p.start > passes[i - 1].start && p.start < passes[i - 1].end && p.end > passes[i - 1].end));
 
 describe("readInWindows", () => {
-  it("sends a text that certainly fits exactly as before: one block, the unit's own id, its canonical form, no count", async () => {
+  it("sends a text that certainly fits exactly as before: one block, the unit's own id, its model form, no count", async () => {
     const text = "It costs ``nothing'' --- 74.1\\% of the time. " + prose(4);
     expect(fitsWithoutCounting(text)).toBe(true);
     const { calls, scoreBlocks } = recorder();
@@ -56,7 +56,7 @@ describe("readInWindows", () => {
     const read = await readInWindows([{ id: "u_1", text, order: 7 }], scoreBlocks, countTokens);
     expect(asked).toHaveLength(0);
     expect(calls).toHaveLength(1);
-    expect(calls[0]).toEqual([{ id: "u_1", text: canonicalForScoring(text) }]);
+    expect(calls[0]).toEqual([{ id: "u_1", text: modelText(text) }]);
     expect(read.get("u_1")).toEqual([{ start: 0, end: text.length, result: real(calls[0][0]) }]);
   });
 
@@ -67,7 +67,7 @@ describe("readInWindows", () => {
     const { asked, countTokens } = counter();
     const read = await readInWindows([{ id: "u_1", text, order: 0 }], scoreBlocks, countTokens);
     expect(asked).toHaveLength(1);
-    expect(calls[0]).toEqual([{ id: "u_1", text: canonicalForScoring(text) }]);
+    expect(calls[0]).toEqual([{ id: "u_1", text: modelText(text) }]);
     expect(read.get("u_1")!.map(({ start, end }) => [start, end])).toEqual([[0, text.length]]);
   });
 
@@ -89,7 +89,7 @@ describe("readInWindows", () => {
     expect(passes.every((p) => spanTokens(long, p) <= PASS_TOKENS)).toBe(true);
     // Every edge on a sentence start: a pass opens on a capital and closes on a full stop.
     expect(passes.every((p) => /^Sentence number \d+ /.test(long.slice(p.start)) && /\.\s*$/.test(long.slice(p.start, p.end)))).toBe(true);
-    expect(calls[0].map((b) => b.text)).toEqual([...passes.map((p) => blockText(long, p)), canonicalForScoring(short)]);
+    expect(calls[0].map((b) => b.text)).toEqual([...passes.map((p) => blockText(long, p)), modelText(short)]);
     expect(new Set(calls[0].map((b) => b.id)).size).toBe(passes.length + 1);
     expect([...owners[0].values()]).toEqual([...passes.map(() => "u_a"), "u_b"]);
   });
@@ -188,15 +188,40 @@ describe("combining overlapping passes", () => {
   });
 });
 
-it("keeps original source spans when canonical ranges, repeated escapes and joined accents contract", async () => {
+it("keeps original source spans when repeated escapes and invisibles contract", async () => {
   const raw = (`Original 1–2–3 costs \\\\% and A\u200b\u0301 remains mapped to its source. ` + prose(8)).repeat(5);
   const spans = planText(raw), {calls, scoreBlocks} = recorder();
   const windows = (await readInWindows([{id:"mapped",text:raw,order:0}],scoreBlocks,counter().countTokens)).get("mapped")!;
   expect(spans.length).toBeGreaterThan(1);
   expect(windows.map(({start,end}) => [start,end])).toEqual(spans.map(({start,end}) => [start,end]));
   expect(covered(windows, raw.length)).toBe(true);
-  expect(calls.flat().map(({text}) => text)).toEqual(spans.map((span) => canonicalForScoring(raw.slice(span.start,span.end))));
-  expect(calls.flat().some(({text}) => text.includes("1-2-3 costs % and Á"))).toBe(true);
+  expect(calls.flat().map(({text}) => text)).toEqual(spans.map((span) => modelText(raw.slice(span.start,span.end))));
+  expect(calls.flat().some(({text}) => text.includes("1–2–3 costs % and A\u0301"))).toBe(true);
+});
+
+describe("the model form in passes", () => {
+  const written = "“Quoted” words — and a soft\u00ADhyphen, the ﬁnal 👨\u200D👩\u200D👧 emoji…\n\nNext -- paragraph™ with\u200Bzero width, by\uFEFFtes.";
+
+  it("counts each word in the form the pass sends it, so the counts add up to the pass", () => {
+    const { words } = wordsOf(written);
+    expect(words).toEqual(["“Quoted”", "words", "—", "and", "a", "softhyphen,", "the", "final", "👨\u200D👩\u200D👧", "emoji…",
+      "Next", "--", "paragraph™", "withzero", "width,", "bytes."]);
+    expect(words.join(" ")).toBe(modelText(written).replace(/\n/g, " "));
+  });
+
+  it("measures whether a text fits on its typography as written", () => {
+    expect(fitsWithoutCounting(`"${"a".repeat(508)}"`)).toBe(true);
+    expect(fitsWithoutCounting(`“${"a".repeat(508)}”`)).toBe(false);
+  });
+
+  it("keeps the line breaks of a pass that opens the text, and sends a later pass's as spaces", () => {
+    const text = `Sure! Here is a rewrite.\n\n${prose(3)}\n\nHere is the second part.\n\n${prose(3)}`;
+    const later = text.indexOf("Here is the second");
+    expect(blockText(text, { start: 0, end: text.length })).toBe(modelText(text));
+    expect(blockText(text, { start: 0, end: text.length })).toContain("rewrite.\nSentence number 0");
+    expect(blockText(text, { start: later, end: text.length })).toBe(modelText(text.slice(later)).replace(/\n/g, " "));
+    expect(blockText(text, { start: later, end: text.length })).not.toContain("\n");
+  });
 });
 
 it("sends the most a batch can hold in requests the worker takes, four of them at once included", () => {

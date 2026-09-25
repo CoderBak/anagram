@@ -10,20 +10,19 @@
 // token, and each edge between two halves moves to a sentence start when one is near:
 // EditLens was trained on texts that begin where a text begins and are cut, if at all, at
 // the end. Each pass is scored as a block of its own through the ordinary pipeline (same
-// wire contract; the canonical form of each pass is what gets deduplicated and cached).
+// wire contract; the model form of each pass is what gets deduplicated and cached).
 // The chip states ONE aggregate for the unit; the marks follow the halves. Most
 // paragraphs fit one pass: same request text, same cache key, same card as before.
 //
-// Order of operations: the unit's OWN collapsed text is cut first and each pass is
-// canonicalized afterwards. The other way round (canonicalize, then cut) left cut
-// positions that could not be mapped back to the DOM, because canonicalization drops and
-// rewrites characters.
+// Order of operations: the unit's OWN collapsed text is cut first and each pass is put in
+// its model form (modelText) afterwards. The other way round left cut positions that could
+// not be mapped back to the DOM, because the model form drops characters.
 //
 // This file is pure text and arithmetic — no DOM — so the vitest suite can drive it. The
 // mapping of a stretch back to text nodes lives in lib/dom/locate.ts.
 import type { ScoreBlock, ScoreResult, TokenCounts } from "../contract";
 import { BUCKET_COUNT } from "../contract";
-import { canonicalForScoring, sentenceStarts } from "../dom/text";
+import { modelText, sentenceStarts } from "../dom/text";
 
 // ---- the budget ---------------------------------------------------------------------
 
@@ -55,18 +54,18 @@ export const SNAP_TOKENS = 32;
 export const MAX_CHUNK_CHARS = 200;
 
 /** Emoji: the engine spells them out by name (":grinning_face:") before it counts. */
-const PICTOGRAPHIC = /[\p{Extended_Pictographic}\p{Regional_Indicator}\u20E3]/u;
+const PICTOGRAPHIC = /[\p{Extended_Pictographic}\p{Emoji_Modifier}\p{Regional_Indicator}\u20E3]/u;
 
 /**
  * Whether a text certainly fits one pass without asking the engine. The model's tokenizer
  * never makes more tokens than the text has UTF-8 bytes, counted on what the engine reads
- * — the canonical text, lower-cased. Only emoji grow on the way, so a text with one is
- * always counted.
+ * — the model form, lower-cased. Only emoji grow on the way, so a text with one is always
+ * counted.
  */
 export function fitsWithoutCounting(text: string): boolean {
   if (text.length > 4 * PASS_TOKENS) return false;
-  const canonical = canonicalForScoring(text);
-  return !PICTOGRAPHIC.test(canonical) && new TextEncoder().encode(canonical.toLowerCase()).length <= PASS_TOKENS;
+  const model = modelText(text);
+  return !PICTOGRAPHIC.test(model) && new TextEncoder().encode(model.toLowerCase()).length <= PASS_TOKENS;
 }
 
 /**
@@ -87,12 +86,10 @@ export const MAX_READ_CHARS = 201_600;
 export const MAX_WINDOWS = 400;
 
 /**
- * Hard bound on one block's text on the wire. NFKC can EXPAND text ("…" → "...",
- * "½" → "1⁄2", Arabic presentation forms up to 18×), so a pass of page characters has no
- * fixed canonical length, while the engine refuses any block over 16 000 characters — and
- * a refused block fails the whole request, its neighbours included. A pass planned on
- * counts holds 510 tokens of the canonical text, which reaches 4000 characters only at
- * eight characters a token, and no prose does: nothing that reaches this bound is prose.
+ * Hard bound on one block's text on the wire. The engine refuses any block over 16 000
+ * characters, and a refused block fails the whole request, its neighbours included. A pass
+ * planned on counts holds 510 tokens, which reaches 4000 characters only at eight
+ * characters a token, and no prose does: nothing that reaches this bound is prose.
  */
 export const MAX_BLOCK_CHARS = 4000;
 
@@ -101,11 +98,11 @@ export const MAX_BLOCK_CHARS = 4000;
  * more than 256 blocks or 256 000 characters whole (lib/access/messages.ts), and answers
  * Unavailable past 256 blocks or 250 000 characters of one page's at a time
  * (lib/backend/router.ts). One unit can pass all of that alone: MAX_WINDOWS windows, each
- * up to MAX_BLOCK_CHARS once NFKC has expanded it, and twice as many halves when the daemon
- * cuts them. So what a batch sends goes in requests of this size, one after another, and
- * the four batches the orchestrator keeps in flight stay inside the page's share together.
- * At six bytes a character, the most JSON takes to escape one, a request also stays under
- * the worker's 900 000 encoded bytes.
+ * up to MAX_BLOCK_CHARS, and twice as many halves when the daemon cuts them. So what a
+ * batch sends goes in requests of this size, one after another, and the four batches the
+ * orchestrator keeps in flight stay inside the page's share together. At six bytes a
+ * character, the most JSON takes to escape one, a request also stays under the worker's
+ * 900 000 encoded bytes.
  */
 export const REQUEST_BLOCKS = 64;
 export const REQUEST_CHARS = 48_000;
@@ -192,6 +189,10 @@ export interface Chunk extends TextSpan {
   glued: boolean;
 }
 
+/** A space between two words as the engine reads them: not the byte-order mark JavaScript
+ *  counts as one, which the model form drops (modelText), so the words either side meet. */
+const SPACE = /[^\S\uFEFF]/;
+
 /**
  * Cut [0, end) into the words passes are planned on: a new chunk at every word start, at
  * every sentence start (sentenceStarts, which finds sentences with no space in front too),
@@ -201,16 +202,16 @@ export interface Chunk extends TextSpan {
 export function chunksOf(text: string, end = text.length): Chunk[] {
   if (end <= 0) return [];
   const cuts = new Set<number>([0]);
-  for (let at = 1; at < end; at++) if (/\s/.test(text[at - 1]) && /\S/.test(text[at])) cuts.add(at);
+  for (let at = 1; at < end; at++) if (SPACE.test(text[at - 1]) && !SPACE.test(text[at])) cuts.add(at);
   for (const at of sentenceStarts(text.slice(0, end))) if (at > 0 && at < end) cuts.add(at);
   const sorted = [...cuts].sort((x, y) => x - y);
   const out: Chunk[] = [];
   for (let i = 0; i < sorted.length; i++) {
     let start = sorted[i];
     const stop = i + 1 < sorted.length ? sorted[i + 1] : end;
-    let glued = start > 0 && !/\s/.test(text[start - 1]);
+    let glued = start > 0 && !SPACE.test(text[start - 1]);
     let run = start;
-    while (run < stop && /\S/.test(text[run])) run++;
+    while (run < stop && !SPACE.test(text[run])) run++;
     while (run - start > MAX_CHUNK_CHARS) {
       let cut = start + MAX_CHUNK_CHARS;
       const low = text.charCodeAt(cut);
@@ -224,14 +225,14 @@ export function chunksOf(text: string, end = text.length): Chunk[] {
   return out;
 }
 
-/** A text's chunks up to readEnd, and the canonical text of each: what the engine counts. */
+/** A text's chunks up to readEnd, and the model form of each: what the engine counts. */
 export function wordsOf(text: string): { chunks: Chunk[]; words: string[] } {
   const chunks = chunksOf(text, readEnd(text));
-  const canonical = new Map<string, string>();
+  const model = new Map<string, string>();
   const words = chunks.map((c) => {
     const raw = text.slice(c.start, c.end).trimEnd();
-    let word = canonical.get(raw);
-    if (word === undefined) canonical.set(raw, (word = canonicalForScoring(raw)));
+    let word = model.get(raw);
+    if (word === undefined) model.set(raw, (word = modelText(raw)));
     return word;
   });
   return { chunks, words };
@@ -325,13 +326,20 @@ export function halve(text: string, span: TextSpan): [TextSpan, TextSpan] {
   return [{ start: span.start, end: cut }, { start: cut, end: span.end }];
 }
 
-/** What is SENT for a stretch of text: its canonical form (which is also its cache key). */
+/**
+ * What is SENT for a stretch of text: its model form, which is also its cache key. The
+ * engine drops the first paragraph of a block that opens like a chatbot's preamble ("Sure!
+ * Here is…") when more follow, as the official pipeline does with a whole text. A pass
+ * further in does not open the text, so its line breaks go as spaces, which the engine
+ * reads alike otherwise.
+ */
 export function blockText(text: string, span: TextSpan): string {
-  const canonical = canonicalForScoring(text.slice(span.start, span.end));
-  if (canonical.length <= MAX_BLOCK_CHARS) return canonical;
+  let model = modelText(text.slice(span.start, span.end));
+  if (span.start > 0) model = model.replace(/\n/g, " ");
+  if (model.length <= MAX_BLOCK_CHARS) return model;
   // Not through the middle of a surrogate pair: half of one cannot be encoded as UTF-8.
-  const last = canonical.charCodeAt(MAX_BLOCK_CHARS - 1);
-  return canonical.slice(0, last >= 0xd800 && last <= 0xdbff ? MAX_BLOCK_CHARS - 1 : MAX_BLOCK_CHARS);
+  const last = model.charCodeAt(MAX_BLOCK_CHARS - 1);
+  return model.slice(0, last >= 0xd800 && last <= 0xdbff ? MAX_BLOCK_CHARS - 1 : MAX_BLOCK_CHARS);
 }
 
 // ---- verdicts -----------------------------------------------------------------------
@@ -487,7 +495,7 @@ export type CountTokens = (texts: string[]) => Promise<TokenCounts | null>;
  * The passes each item is read in, or null for one that could not be planned because
  * the engine did not answer the count. An item that fits one pass without counting
  * (`fits`) is one pass; the words of every other one are counted together, each distinct
- * word once, on the canonical text the engine will be sent.
+ * word once, on the model form the engine will be sent.
  */
 async function planAll(
   items: readonly Readable[],

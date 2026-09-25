@@ -33,6 +33,8 @@ local component and the installer all carry the same version.
   follows the global switch.
 - The engine is called "Local engine" (本地引擎) everywhere, including card and selection
   footnotes, the counter's tooltip and copied reports.
+- The model reads text as it was written, as the official EditLens pipeline does: quotes,
+  dashes, ellipses and line breaks are no longer rewritten before scoring.
 
 ### Fixed
 

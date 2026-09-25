@@ -1286,8 +1286,8 @@ const results = await page.evaluate(() => {
   {
     const short = prose(10);
     const one = PW.planWindows(short);
-    check("a text that fits is ONE pass over all of it, sent as its plain canonical form",
-      one.length === 1 && one[0].start === 0 && one[0].end === short.length && PW.blockText(short, one[0]) === PW.canonicalForScoring(short), JSON.stringify(one));
+    check("a text that fits is ONE pass over all of it, sent as its model form",
+      one.length === 1 && one[0].start === 0 && one[0].end === short.length && PW.blockText(short, one[0]) === PW.modelText(short), JSON.stringify(one));
 
     check("a text too short to overflow is not even counted; a longer one the model holds is still one pass; past that, several",
       PW.fitsWithoutCounting(prose(6)) && !PW.fitsWithoutCounting(prose(7)) && !PW.fitsWithoutCounting("😀 " + prose(1)) &&
@@ -1891,24 +1891,17 @@ const results = await page.evaluate(() => {
     }
   }
 
-  // ---- canonical scoring text ------------------------------------------------------------
-  check("canonical: LaTeX residue and escapes", PW.canonicalForScoring("steps---prompting, 74.1\\% and ``quoted''") === 'steps—prompting, 74.1% and "quoted"', JSON.stringify(PW.canonicalForScoring("steps---prompting, 74.1\\% and ``quoted''")));
-  check("canonical: typographic quotes, ranges, NBSP, ligatures → one convention", PW.canonicalForScoring("LLMs’ “rich” 1–5\u00a0ﬁnal") === `LLMs' "rich" 1-5 final`, JSON.stringify(PW.canonicalForScoring("LLMs’ “rich” 1–5\u00a0ﬁnal")));
-  check("canonical: un-rendered LaTeX math dropped, dollar amounts kept", PW.canonicalForScoring("on the $\\tau^{2}$-bench costs $5 and $10") === "on the -bench costs $5 and $10", JSON.stringify(PW.canonicalForScoring("on the $\\tau^{2}$-bench costs $5 and $10")));
-  check("cache key equals the canonical form of what is sent, and canonicalizing twice changes nothing",
-    PW.normalizeText("a---b ‘c’") === PW.blockText("a---b ‘c’", { start: 0, end: 9 }) && PW.normalizeText(PW.normalizeText("a---b ‘c’ ``d''")) === PW.normalizeText("a---b ‘c’ ``d''"));
+  // ---- the text the model reads ------------------------------------------------------------
+  const written = "LLMs’ “rich” steps---prompting -- pages 1–5… of Acme™ 👨\u200D👩\u200D👧";
+  check("model form: quotes, dashes, ellipses, symbols and emoji sequences reach the engine as written", PW.modelText(written) === written, JSON.stringify(PW.modelText(written)));
+  check("model form: escapes, invisibles, NBSP and ligatures repaired", PW.modelText("74.1\\% of hy\u00ADphen\u200Bated \u202Ebidi\u202C\u00A0ﬁnal") === "74.1% of hyphenated bidi final", JSON.stringify(PW.modelText("74.1\\% of hy\u00ADphen\u200Bated \u202Ebidi\u202C\u00a0ﬁnal")));
+  check("model form: un-rendered LaTeX math dropped, dollar amounts kept", PW.modelText("on the $\\tau^{2}$-bench costs $5 and $10") === "on the -bench costs $5 and $10", JSON.stringify(PW.modelText("on the $\\tau^{2}$-bench costs $5 and $10")));
+  check("model form: paragraph breaks survive as one line break", PW.modelText("Sure, here it is.\n\n  Body  text.") === "Sure, here it is.\nBody text.", JSON.stringify(PW.modelText("Sure, here it is.\n\n  Body  text.")));
+  check("what is sent is the model form, and putting it in the model form again changes nothing",
+    PW.modelText("a---b ‘c’") === PW.blockText("a---b ‘c’", { start: 0, end: 9 }) && PW.modelText(PW.modelText("a -- b ‘c’ ``d'' ﬁ\\%")) === PW.modelText("a -- b ‘c’ ``d'' ﬁ\\%"));
   check("isSeparatorRun: rules yes, numbers no", PW.isSeparatorRun("* * *") && PW.isSeparatorRun("———") && !PW.isSeparatorRun("(3)") && !PW.isSeparatorRun("12"));
 
   // ---- pure text utils ---------------------------------------------------------------
-  check(
-    "stripInvisibles removes SHY/ZWSP/bidi controls",
-    PW.stripInvisibles("hy\u00ADphen\u200Bated \u202Ebidi\u202C \u2066iso\u2069") === "hyphenated bidi iso",
-    JSON.stringify(PW.stripInvisibles("hy\u00ADphen\u200Bated")),
-  );
-  check(
-    "normalizeText: soft-hyphenated text hashes like plain text",
-    PW.normalizeText("news\u00ADpaper text") === PW.normalizeText("newspaper text"),
-  );
   check(
     "blockText strips invisibles from the payload",
     !PW.blockText("soft\u00ADwrap sentence.", { start: 0, end: 19 }).includes("\u00AD"),

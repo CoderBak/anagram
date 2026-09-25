@@ -244,8 +244,8 @@ export const GROUPED_PARAS = [
     "however short the paragraphs on either side are.",
   ],
 ];
-/** The three paragraphs as the daemon sees them: one unit, its parts joined by a space. */
-export const GROUPED_UNIT_TEXT = GROUPED_PARAS.slice(0, 3).map((p) => p.join(" ")).join(" ");
+/** The three paragraphs as the daemon sees them: one unit, each paragraph on a line of its own. */
+export const GROUPED_UNIT_TEXT = GROUPED_PARAS.slice(0, 3).map((p) => p.join(" ")).join("\n");
 
 export const GROUPED_PDF = buildPdf([
   [

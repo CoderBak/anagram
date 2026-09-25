@@ -114,7 +114,7 @@ describe("cache invalidation and retention races", () => {
 
   it("versioned keys and epoch-guarded writes exclude pre-clear work", async () => {
     const cache = createSwCache(fakeScoreStore()), epoch = cache.epoch();
-    expect(cache.keyOf("1–2–3", dim)).toBe(cache.keyOf("1-2-3", dim));
+    expect(cache.keyOf("1–2–3", dim)).not.toBe(cache.keyOf("1-2-3", dim));
     expect(cache.keyOf("text", dim)).toMatch(new RegExp(`^n${SCORING_NORMALIZATION_VERSION}:`));
     expect(createScoreCache().keyOf("text")).toMatch(new RegExp(`^n${SCORING_NORMALIZATION_VERSION}:`));
     await cache.clear(); cache.set("late", result, dim, false, epoch);

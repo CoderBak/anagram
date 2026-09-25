@@ -339,13 +339,15 @@ describe("router retry", () => {
 });
 
 describe("router invalidation, bounded admission and fairness", () => {
-  it("uses identical canonical bytes for inference and dedup keys", async () => {
+  it("uses identical model-form bytes for inference and dedup keys", async () => {
     const client = fakeClient(A), router = createRouter(client);
     const first = await router.handle(req(["range 1–2–3 costs \\\\%"]));
-    await router.handle(req(["range 1-2-3 costs %"]));
+    await router.handle(req(["range\u00a01–2–3 cos\u00adts %"]));
     expect(first.results[0].degraded).toBeUndefined();
     expect(client.calls).toHaveLength(1);
-    expect(client.calls[0][0].text).toBe("range 1-2-3 costs %");
+    expect(client.calls[0][0].text).toBe("range 1–2–3 costs %");
+    await router.handle(req(["range 1-2-3 costs %"]));
+    expect(client.calls).toHaveLength(2);
   });
 
   it("separates calibration and snapshots a mutable model object", async () => {

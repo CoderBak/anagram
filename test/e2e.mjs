@@ -335,6 +335,9 @@ const checks = [
   ["page DOM carries no marker attributes", s.strayMarks === 0],
   ["hidden tab badged after class-flip reveal", tabBadged],
   ["<details> content badged after open", detailsBadged],
+  ["the engine reads the page as written: a merged unit's paragraphs on lines of their own, em dashes untouched",
+    fixture.stats.texts.some((t) => t.includes("evidence floor.\nMS-TWO") && t.includes("neighbours.\nMS-THREE")) &&
+    fixture.stats.texts.some((t) => t.includes("this paragraph — long enough to clear every floor — must be"))],
   ["pushState swap: new route badged, stale purged", spaBadged],
   ["removing a paragraph removes its badge", afterRemove === beforeRemove - 1],
   ["rapid insert: every added paragraph badged", afterAdd === beforeAdd + RAPID],

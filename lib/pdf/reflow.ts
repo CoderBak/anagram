@@ -15,8 +15,8 @@
 // are left as the paragraphs and lines they look like. Being clever there means
 // guessing, and the walker's own filters (name lists, symbol noise, link density,
 // the 50-word floor) already skip most of it — a table row never reaches the
-// daemon anyway. Ligatures are kept exactly as the PDF gives them; the scorer's
-// canonical form folds ﬁ/ﬂ itself.
+// daemon anyway. Ligatures are kept exactly as the PDF gives them; the model form
+// (modelText) spells ﬁ/ﬂ out itself.
 
 /** One run of glyphs as the extractor hands it over. */
 export interface PdfTextItem {

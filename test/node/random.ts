@@ -1,6 +1,6 @@
 // test/node/random.ts — a seeded generator for the property suites.
 //
-// The pure text machinery (canonical form, window planning, the scheduler) is fed by
+// The pure text machinery (model form, window planning, the scheduler) is fed by
 // whatever the web hands it, so the interesting inputs are the ones nobody thought to
 // write a fixture for. These helpers build them from a seed: every case is reproducible
 // from the number the failing assertion prints, and the same seed gives the same text on
@@ -48,9 +48,9 @@ const CAPS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 /** Han + kana: text with no spaces between words and its own sentence marks. */
 const CJK_CHARS = "的一是不了人我在有他这为之大来以个中上们时年月日国经过说要会後言語文字漢かなカナ";
 const EMOJI = ["😀", "🚀", "🌍", "👩‍💻", "🇯🇵", "✅", "🙂"];
-/** Every presentation-only invisible the canonical form promises to remove. */
+/** Every invisible the model form promises to remove. The joiner is kept: emoji need it. */
 export const INVISIBLES = [
-  "​", "‌", "‍", "‎", "‏", "­", "﻿",
+  "​", "‌", "‎", "‏", "­", "﻿",
   "‪", "‬", "⁠", "⁦", "⁩",
 ];
 /** What a LaTeX-to-HTML converter leaves in the text. */
@@ -171,7 +171,7 @@ export function makeText(r: Rng, o: TextOpts = {}): string {
   return text;
 }
 
-// ---- presentation variants (pairs that must canonicalize to the same bytes) -----------
+// ---- presentation variants (renderings of one text) ----------------------------------
 
 /** Positions a character may be inserted at without splitting a surrogate pair. */
 function safeCut(s: string, at: number): boolean {
