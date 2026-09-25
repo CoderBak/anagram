@@ -129,6 +129,25 @@ describe("reflowPdf — single column", () => {
     ]);
     expect(texts(blocks)).toEqual(["a claim with a footnote3 and the rest of the sentence"]);
   });
+
+  it("keeps a superscript AND a subscript on the line they were set on", () => {
+    // arXiv 2004.04906: w with (i) above and 1 below. The superscript is the topmost run,
+    // so it opened the line, and the subscript was further below IT than a line holds —
+    // the subscripts of a formula came out as a line of their own, "1 2 |pi|", which
+    // broke the paragraph around it in three.
+    const blocks = reflowPdf([
+      page(1, [
+        { text: "the sequence of tokens w", y: 100, width: 130 },
+        { text: "(i)", x: 202, y: 100 - 4, size: 8, width: 10 },
+        { text: "1", x: 202, y: 100 + 3, size: 8, width: 4 },
+        { text: "and the rest of the sentence", x: 216, y: 100, width: 140 },
+        { text: "on the next line of the same paragraph", y: 100 + PITCH, width: 200 },
+      ]),
+    ]);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].text).toMatch(/^the sequence of tokens w.*and the rest of the sentence on the next line of the same paragraph$/);
+    expect(blocks[0].text).toContain("(i)");
+  });
 });
 
 describe("reflowPdf — lists", () => {
@@ -366,6 +385,27 @@ describe("reflowPdf — two columns", () => {
         ...column(left, 120, 72, 200).map((p, i) => (i % 3 === 0 ? { ...p, width: 218 } : p)),
         ...column(right, 120, 306, 218),
       ]),
+    ]);
+    expect(texts(blocks)).toEqual([left.join(" "), right.join(" ")]);
+  });
+
+  it("reads a column of plain prose beside one broken into many runs as two columns", () => {
+    // arXiv 2004.04906, page 2: the right column's formulas (subscripts, italic variables)
+    // come out of the PDF as a run per word, the left column's prose as a run per line —
+    // 59 runs beside 189 of equal text. Counting runs made the left column look too small
+    // to be one, and the page was read line by line across both.
+    const left = Array.from({ length: 8 }, (_, i) => `left line ${i} of plain prose here.`);
+    const right = Array.from({ length: 8 }, (_, i) => `Right line ${i} set in many runs.`);
+    const words = (text: string, y: number): Placed[] => {
+      let x = 320;
+      return text.split(" ").map((w) => {
+        const placed = { text: w, x, y };
+        x += (w.length + 1) * CHAR;
+        return placed;
+      });
+    };
+    const blocks = reflowPdf([
+      page(1, [...column(left, 120, 72, 200), ...right.flatMap((line, i) => words(line, 120 + i * PITCH))]),
     ]);
     expect(texts(blocks)).toEqual([left.join(" "), right.join(" ")]);
   });

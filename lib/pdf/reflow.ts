@@ -118,8 +118,8 @@ const SPACE_GAP = 0.2;
 /** Below this many lines a page is a title page — not enough of a layout to read. */
 const MIN_LINES_FOR_COLUMNS = 6;
 /**
- * A column holds at least this share of an even split of the page's runs — half of a
- * 1/N share. At two columns that is the 0.25 the two-column rule always used; at three
+ * A column holds at least this share of an even split of the page's text, in characters
+ * — half of a 1/N share. At two columns that is the 0.25 the two-column rule always used; at three
  * it is 0.167, which a table's stray gap or a ragged indent never reaches.
  */
 const COLUMN_EVEN_SHARE = 0.5;
@@ -445,7 +445,10 @@ function makeLine(page: number, items: PdfTextItem[], index: ItemIndex): Line {
 /**
  * Group a page's runs into lines by baseline. The tolerance is relative to the taller
  * of the two runs, which is what makes sub- and superscripts join the line they belong
- * to instead of opening one of their own.
+ * to instead of opening one of their own. It is measured from the baseline of the line's
+ * TALLEST run — its body text — not from its first: runs arrive top down, so on a line
+ * with a superscript and a subscript ("w" with (i) above and 1 below) the superscript
+ * comes first, and the subscript lies further below it than any line holds.
  */
 function groupIntoLines(page: PdfPageText, index: ItemIndex): Line[] {
   const readable = readableItems(page).sort((a, b) => a.y - b.y || a.x - b.x);
@@ -465,7 +468,10 @@ function groupIntoLines(page: PdfPageText, index: ItemIndex): Line[] {
     }
     if (it.y - base <= Math.max(size, it.height) * BASELINE_TOL) {
       current.push(it);
-      size = Math.max(size, it.height);
+      if (it.height > size) {
+        size = it.height;
+        base = it.y;
+      }
     } else {
       rows.push(current);
       current = [it];
@@ -687,15 +693,24 @@ function bandOf(
   };
 }
 
-/** Would these gutters leave every column with a real share of the page's runs? */
+/**
+ * Would these gutters leave every column with a real share of the page's text? Measured
+ * in characters, not runs: how a PDF cuts text into runs depends on what is in it — a
+ * column of formulas comes out as a run per symbol, a column of plain prose as a run per
+ * line — so on a page of each, counting runs made the prose look too little to be a
+ * column, and both were read line by line across the page (arXiv 2004.04906, page 2).
+ */
 function columnsHold(items: PdfTextItem[], gutters: number[]): boolean {
-  const counts = new Array<number>(gutters.length + 1).fill(0);
+  const chars = new Array<number>(gutters.length + 1).fill(0);
+  let total = 0;
   for (const it of items) {
+    const n = it.str.replace(/\s/g, "").length;
+    total += n;
     const col = columnOf(it, gutters);
-    if (col >= 0) counts[col]++;
+    if (col >= 0) chars[col] += n;
   }
-  const floor = (items.length * COLUMN_EVEN_SHARE) / counts.length;
-  return counts.every((n) => n >= floor);
+  const floor = (total * COLUMN_EVEN_SHARE) / chars.length;
+  return chars.every((n) => n >= floor);
 }
 
 /** Which column a run sits in, or -1 when it spans a gutter and belongs to none. */
@@ -711,40 +726,34 @@ function columnOf(it: PdfTextItem, gutters: number[]): number {
 }
 
 /**
- * Tag each line with its column, splitting the ones that only LOOK full-width: columns
- * printed level with each other share a baseline, so they arrive as one line with holes
- * in the middle. A line with a run that actually straddles a gutter is the real thing —
- * a title, a spanning header — and stays whole.
+ * Tag each line with its column. Columns are rarely printed exactly level with each other,
+ * so the page-wide grouping made "lines" out of one column's line and the other's a few
+ * points lower, anchored on whichever came first — and a subscript a point or two under
+ * its own column's text could lie further below that anchor than a line holds, and come
+ * out as a line of its own ("s s+1 e" under a formula, splitting its paragraph in three).
+ * So each column's runs are grouped into lines again, on their own. A line with a run that
+ * actually straddles a gutter is the real thing — a title, a spanning header — and stays
+ * whole, in its place.
  */
-function splitColumns(lines: Line[], gutters: number[], index: ItemIndex): Line[] {
+function splitColumns(page: PdfPageText, lines: Line[], gutters: number[], index: ItemIndex): Line[] {
   const out: Line[] = [];
+  const columns = new Map<number, PdfTextItem[]>();
   for (const line of lines) {
-    const parts = new Map<number, PdfTextItem[]>();
-    let spans = false;
-    for (const it of line.items) {
-      const col = columnOf(it, gutters);
-      if (col < 0) {
-        spans = true;
-        break;
-      }
-      const part = parts.get(col);
-      if (part) part.push(it);
-      else parts.set(col, [it]);
-    }
-    if (spans) {
+    if (line.items.some((it) => columnOf(it, gutters) < 0)) {
       out.push({ ...line, col: -1 });
       continue;
     }
-    const cols = [...parts.keys()].sort((a, b) => a - b);
-    if (cols.length <= 1) {
-      out.push({ ...line, col: cols[0] ?? 0 });
-      continue;
-    }
-    for (const col of cols) {
-      out.push({ ...makeLine(line.page, parts.get(col) ?? [], index), col });
+    for (const it of line.items) {
+      const col = columnOf(it, gutters);
+      const items = columns.get(col);
+      if (items) items.push(it);
+      else columns.set(col, [it]);
     }
   }
-  return out;
+  for (const [col, items] of columns) {
+    for (const line of groupIntoLines({ ...page, items }, index)) out.push({ ...line, col });
+  }
+  return out.sort((a, b) => a.y - b.y || a.col - b.col);
 }
 
 /**
@@ -1398,7 +1407,7 @@ export function reflowPdf(pages: PdfPageText[]): ReflowBlock[] {
     const gutters = findGutters(lines, p.width);
     return gutters.length === 0
       ? lines
-      : orderColumns(splitColumns(lines, gutters, index), gutters.length + 1);
+      : orderColumns(splitColumns(p, lines, gutters, index), gutters.length + 1);
   });
 
   const drop = findMarginLines(perPage, pages);

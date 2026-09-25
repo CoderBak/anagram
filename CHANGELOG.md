@@ -5,6 +5,19 @@ Notable changes to Anagram, newest first. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html). The extension, the
 local component and the installer all carry the same version.
 
+## [Unreleased]
+
+### Fixed
+
+- The PDF reader no longer reads a two-column page line by line across both columns when
+  one column is plain prose and the other is full of formulas (arXiv 2004.04906, page 2).
+  A column's share of the page is now measured in characters, not in the text runs a PDF
+  happens to cut it into.
+- Subscripts and superscripts in a column stay on the line they belong to. Each column's
+  lines are grouped on their own, so a column printed a few points lower than its
+  neighbour no longer splits a formula's subscripts off into a line of their own, which
+  broke the paragraph around it into pieces too short to score.
+
 ## [0.7.0] — 2026-09-26
 
 macOS Chrome release. Firefox, Linux and Windows are built from the same source but
