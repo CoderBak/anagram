@@ -45,7 +45,10 @@ try {
     });
   });
   const page = await browser.newPage(); const errors = [];
-  page.on("pageerror",(error) => errors.push(error.message));
+  // While a reload hands the tab from Firefox's own PDF viewer to the reader, that viewer is
+  // torn down half-started and may throw ("globalThis.pdfjsLib is undefined"): not ours.
+  let handover = false, handoverErrors = [];
+  page.on("pageerror",(error) => (handover ? handoverErrors : errors).push(error.message));
   await page.goto(source,{waitUntil:"domcontentloaded",timeout:10000}).catch(() => {});
   const tabId = await driver.evaluate(async (url) => (await browser.tabs.query({})).find((tab)=>tab.url===url)?.id, source);
   assert.ok(tabId!==undefined,"Native PDF tab must be observable under its granted source");
@@ -67,8 +70,11 @@ try {
   await driver.evaluate(() => browser.storage.local.set({autoOpenPdfs:true}));
   await page.evaluate(()=>document.getElementById("original").click()); await until(page, (url) => location.href === url, {arg:source});
   await new Promise((resolve) => setTimeout(resolve,600)); assert.equal(await hrefOf(page),source,"Open original bypass lasts for the whole navigation");
+  handover = true;
   await page.reload({waitUntil:"domcontentloaded",timeout:2500}).catch(() => {});
   await until(page, inReader, {timeout:20000, arg:extUrl("reader.html")});
+  await new Promise((resolve) => setTimeout(resolve,500)); handover = false;
+  if (handoverErrors.length) console.log("Firefox's own viewer, replaced mid-load:", JSON.stringify(handoverErrors));
   assert.ok((await hrefOf(page)).startsWith(extUrl("reader.html")),"Reload routes after the one-navigation pass is spent");
   const before = requests.length;
   const forged = await browser.newPage();
