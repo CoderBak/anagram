@@ -105,25 +105,47 @@ function isMathContainer(el: Element, tag: string): boolean {
 }
 
 /**
- * Footnote / citation marks: `<sup class="reference">[7]</sup>` (Wikipedia),
- * `<sup class="ltx_note_mark">1</sup>` and `<cite class="ltx_cite">[12]</cite>` (arXiv),
- * markdown footnote refs, `[citation needed]`, daggers. Not prose — skipped without
- * closing the run. A bare-number `<sup>` counts only when it is a link, so
- * `km<sup>2</sup>` keeps its exponent.
+ * Footnote and citation MARKS, which send the reader to a note or to the bibliography and
+ * are no words of the sentence: `<sup class="reference">[7]</sup>` and its page locator
+ * ":p. 7" (Wikipedia), `<sup class="ltx_note_mark">1</sup>` and a `<cite class="ltx_cite">`
+ * set as numbers, "[4, 7–9]" or a superscript "1, 2" (arXiv), markdown footnote refs,
+ * `[citation needed]`, daggers. Skipped without closing the run. An author–year citation,
+ * "Smith et al. (2020)" or "(Smith and Lee, 2020)", and a citation by name alone are words
+ * of the sentence and are read, as the PDF reader reads them (lib/pdf/structured.ts). What
+ * the element holds and how it is marked decide, never its length. Numbers in a `<sup>`
+ * are a mark only when they are a link, so `km<sup>2</sup>` keeps its exponent.
  */
-const MARKER_CLASS_RE =
-  /(?:^|\s)(?:reference|references|footnote|footnote-ref|footnote-reference|footnoteRef|fn-ref|fnref|noteref|note-ref|ltx_note_mark|ltx_cite|citation|cite-bracket|Inline-Template|mw-ref)(?:\s|$)/;
+const MARK_CLASS_RE =
+  /(?:^|\s)(?:reference|references|footnote|footnote-ref|footnote-reference|footnoteRef|fn-ref|fnref|noteref|note-ref|ltx_note_mark|cite-bracket|Inline-Template|mw-ref)(?:\s|$)/;
+/** An element that holds a citation of either kind. */
+const CITE_CLASS_RE = /(?:^|\s)(?:ltx_cite|citation)(?:\s|$)/;
+const MARK_NUMBER = String.raw`\d{1,4}[a-z]?`;
+/** "7", "12, 13", "4, 7–9", "(48)", "[3]". */
+const MARK_NUMBERS_RE = new RegExp(String.raw`^[[(]?${MARK_NUMBER}(?:\s*[,;–—-]\s*${MARK_NUMBER})*[\])]?$`);
+/** A year as a word of its own ("2020", "2026a"), not the digits of a key ("warren2012"). */
+const YEAR_RE = /(?<![\p{L}\p{N}])(?:1[5-9]|20)\d\d[a-z]?(?![\p{L}\p{N}])/u;
 
 function isCitationMarker(el: Element, tag: string): boolean {
   if (tag !== "SUP" && tag !== "CITE") return false;
-  const text = (el.textContent ?? "").trim();
-  if (text.length > 40) return false; // a real <cite> title
-  const cls = el.getAttribute("class");
-  if (cls && MARKER_CLASS_RE.test(cls)) return true;
-  if (/^\[[^\]]{1,30}\]$/.test(text)) return true; // [7] · [a] · [12, 13] · [citation needed]
-  if (tag === "SUP" && /^[*†‡§¶]{1,3}$/.test(text)) return true;
-  if (tag === "SUP" && /^\d{1,3}$/.test(text) && el.querySelector("a")) return true;
-  return false;
+  const text = (el.textContent ?? "").replace(/\s+/g, " ").trim();
+  if (text === "") return false;
+  const numbers = MARK_NUMBERS_RE.test(text);
+  if (numbers && text.startsWith("[")) return true;
+  // A year with a name, or in parentheses: an author–year citation.
+  if (YEAR_RE.test(text) && (/\p{L}{2}/u.test(text) || text.startsWith("("))) return false;
+  const cls = el.getAttribute("class") ?? "";
+  if (MARK_CLASS_RE.test(cls)) return true;
+  if (numbers) return CITE_CLASS_RE.test(cls) || (tag === "SUP" && isLinkMark(el, text));
+  // [a] · [note 1] · [citation needed] · [Knu84]: labels, not a phrase.
+  if (/^\[[^\]]+\]$/.test(text)) return text.slice(1, -1).split(/[,;]/).every((label) => countWords(label) <= 3);
+  return tag === "SUP" && /^[*†‡§¶]{1,3}$/.test(text);
+}
+
+/** A mark that is a link, or the whole text of one (`<a href="#fn1"><sup>1</sup></a>`). */
+function isLinkMark(el: Element, text: string): boolean {
+  if (el.querySelector("a")) return true;
+  const parent = el.parentElement;
+  return parent !== null && tagOf(parent) === "A" && (parent.textContent ?? "").trim() === text;
 }
 
 /** Longer than this, a floated phrase element is no drop cap whatever it holds. */

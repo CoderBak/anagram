@@ -1471,6 +1471,29 @@ const results = await page.evaluate(() => {
   check("an unlinked exponent <sup>2</sup> is kept (km2)", u.length === 1 && /km2\.$/.test(u[0].text), JSON.stringify(u.map(x => x.text.slice(-12))));
   u = collect(`<p>${words(78)} shown in <cite class="ltx_cite">[<a href="#b">12</a>]</cite> below.</p>`);
   check("bracketed <cite> reference is skipped", u.length === 1 && !u[0].text.includes("[12]") && u[0].text.endsWith("shown in below."), JSON.stringify(u.map(x => x.text.slice(-24))));
+  {
+    // One citation policy with the PDF reader (lib/pdf/structured.ts): a mark that points to
+    // the bibliography or a note is left out however long it is; an author–year citation is
+    // words of the sentence and is read however short it is.
+    const refs = (ns) => ns.map((n) => `<a href="#bib${n}">${n}</a>`).join(", ");
+    const tail = (html) => {
+      const got = collect(`<p>${words(78)} ${html}</p>`);
+      return got.length === 1 ? got[0].text.slice(words(78).length) : JSON.stringify(got);
+    };
+    const cases = [
+      [`as <cite class="ltx_cite ltx_citemacro_citet"><a href="#b1">Smith et al. (2020)</a></cite> showed.`, " as Smith et al. (2020) showed."],
+      [`was shown <cite class="ltx_cite ltx_citemacro_citep">(<a href="#b1">Smith and Lee, 2020</a>)</cite>.`, " was shown (Smith and Lee, 2020)."],
+      [`following <cite class="ltx_cite ltx_citemacro_citeauthor"><a href="#b1">Abebe et al.</a></cite> here.`, " following Abebe et al. here."],
+      [`as in <cite class="ltx_cite ltx_citemacro_cite">[${refs([8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])}]</cite> before.`, " as in before."],
+      [`learn it <cite class="ltx_cite ltx_citemacro_cite"><sup class="ltx_sup">${refs([1, 2, 3, 4])}</sup></cite>. Then`, " learn it . Then"],
+      [`hereafter <cite class="ltx_cite ltx_citemacro_citealias"><a href="#b2">48</a></cite> again.`, " hereafter again."],
+      [`the rate<sup class="reference"><a href="#r">:p. 7</a></sup> fell.`, " the rate fell."],
+      [`begins<a href="#footnote1"><sup>1</sup></a> at noon.`, " begins at noon."],
+      [`as noted<sup><a href="#fn">22, 23, 24</a></sup> above.`, " as noted above."],
+    ];
+    const bad = cases.map(([html, want]) => [tail(html), want]).filter(([got, want]) => got !== want);
+    check("citation marks are left out by what they hold, author–year citations are read", bad.length === 0, JSON.stringify(bad));
+  }
 
   // ---- markers, accordions, name lists, page-level hints ------------------------------
   u = collect(`<p>${words(40)}<span style="position:absolute;right:0">[Pg 12]</span> ${words(40)}</p>`);

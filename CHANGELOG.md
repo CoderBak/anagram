@@ -115,6 +115,13 @@ local component and the installer all carry the same version.
   read as more human than the PDF of the same paper: on 1,464 paragraphs read from both,
   it lowered the HTML's score by 0.04 on average and by 0.10 where citations were. Earlier
   verdicts are not reused for the texts this changes.
+- An author–year citation is read with its sentence on every page. Anagram left out any
+  citation of 40 characters or fewer, so on arXiv's HTML "Smith et al. (2020) showed" reached
+  the model as "showed" while the same paper's PDF read the names, and a longer citation was
+  read whatever it was. What a citation holds now decides, as it does in the PDF reader: a
+  mark that only points to the bibliography or to a note is left out however long it is —
+  "[4]", "[4, 7–9]", a superscript "1, 2", Wikipedia's "[7]" and its ":p. 7", a footnote
+  number that is a link — and names with a year, or a name alone, are read.
 - The PDF reader reads the sentence that leads into a display equation ("…can be written
   equivalently as") with the paragraphs around it. Such a piece does not end in a full
   stop, so it was taken for a label, and a label ends the run of short paragraphs being read
