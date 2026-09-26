@@ -19,7 +19,7 @@ import type { DaemonFacts, DiagnosticsEnv } from "./report";
 /** What the content script knows about this page and the chunk cannot ask for. */
 export type DiagnosticsFacts = Pick<
   DiagnosticsEnv,
-  "running" | "onceForPage" | "pdf" | "docs" | "counts" | "frameGate" | "clickedFrameId" | "target"
+  "running" | "onceForPage" | "translated" | "pdf" | "docs" | "counts" | "frameGate" | "clickedFrameId" | "target"
 > & {
   /** The hostname the site rules are keyed on (a subframe's is its top page's). */
   host: string;

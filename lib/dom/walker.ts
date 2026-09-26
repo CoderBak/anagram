@@ -71,6 +71,7 @@ import {
   MAX_UNIT_TEXT_CHARS,
 } from "./text";
 import { type Scopes, createScopes } from "./scope";
+import { isTranslatedInPlace } from "./translation";
 import { WINDOW_CHARS } from "../capture/windows";
 // The arithmetic of grouping — the floor, the window, the even division, the orphan rule
 // — is not the walk's own: a PDF's paragraphs are grouped by exactly these rules without
@@ -443,6 +444,7 @@ export function collectUnits(
       // page published as HTML, a mailing-list message — is read like any other block.
       (tag === "PRE" && !plainTextDoc && !isProsePre(el)) ||
       isNoTranslate(el) ||
+      isTranslatedInPlace(el) ||
       (el as HTMLElement).isContentEditable ||
       el.getAttribute("aria-hidden") === "true" ||
       (cs !== null && (cs as any).contentVisibility === "hidden");
@@ -644,7 +646,7 @@ export function isExcludedByAncestry(start: Element): boolean {
     if (NO_SCORE_TAGS.has(tag)) return true;
     if (tag === "PRE" && !plainTextDoc && !isProsePre(el)) return true;
     if (el.hasAttribute(MARK_ATTR)) return true;
-    if (isNoTranslate(el)) return true;
+    if (isNoTranslate(el) || isTranslatedInPlace(el)) return true;
     if ((el as HTMLElement).isContentEditable) return true;
     if (el.getAttribute("aria-hidden") === "true") return true;
     if (isBoilerplate(el, pageText) || isConsentBanner(el)) return true;

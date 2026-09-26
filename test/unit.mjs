@@ -1111,6 +1111,13 @@ const results = await page.evaluate(() => {
       most.length === 2 && box.length === 2 && box.every((x) => x.wordCount === 90), JSON.stringify([most.map((x) => x.wordCount), box.map((x) => x.wordCount)]));
   }
   {
+    // Read Frog's "translation only" mode writes the translation into the paragraph's own
+    // text nodes and marks the paragraph (lib/dom/translation.ts).
+    sandbox.innerHTML = `<p lang="en" dir="ltr" data-read-frog-translation-only="">MACHINE ${words(80)}</p><p>${words(80)}</p>`;
+    const u = PW.collectUnits(sandbox);
+    check("a paragraph a translator extension rewrote in place is not read; the one beside it is", u.length === 1 && !u[0].text.includes("MACHINE"), JSON.stringify(u.map((x) => x.text.slice(0, 20))));
+  }
+  {
     // MediaWiki's furniture is its own only inside a wiki's content box: a list classed
     // `references` on another site is judged like any other list.
     const list = `<ol class="references">${Array.from({ length: 4 }, () => `<li>${words(25)}</li>`).join("")}</ol>`;

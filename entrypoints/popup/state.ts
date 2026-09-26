@@ -28,6 +28,8 @@ export type PopupStatus =
   | "off"
   /** nothing can run on this page */
   | "unsupported"
+  /** the browser has translated the page, and nothing on it is read until it is back */
+  | "translated"
   /** there is no active tab */
   | "noTab"
   /** the local engine is unavailable — show its state and the Settings action */
@@ -49,7 +51,7 @@ export interface PageFacts {
   pdfReadable: boolean;
   /** What the content script answered, or null when nothing answered — which is the
    *  ordinary case on a site nothing has been granted for. */
-  tab: { enabled: boolean } | null;
+  tab: { enabled: boolean; translated?: boolean } | null;
   /** The local daemon. Everything else is beside the point while this is not "up". */
   daemon: "up" | "down" | "mismatch";
 }
@@ -80,6 +82,8 @@ export function popupLead(f: PageFacts): PopupLead {
   }
   if (f.daemon !== "up") return { action: "retry", primary: true, status: "daemon" };
   if (!f.hasTab) return { action: "openReader", primary: false, status: "noTab" };
+  // Neither a rescan nor a one-off run reads a translated page, so neither is offered.
+  if (f.tab?.translated === true) return { action: "openReader", primary: false, status: "translated" };
   if (f.tab?.enabled === true) return { action: "rescan", primary: false, status: "counts" };
   if (f.pattern !== null) return { action: "analyze", primary: true, status: "off" };
   return { action: "openReader", primary: false, status: "unsupported" };

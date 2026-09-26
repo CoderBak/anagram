@@ -18,6 +18,7 @@
 import { collectUnits, isExcludedByAncestry, isProsePre } from "../dom/walker";
 import { isBoilerplate, isConsentBanner, isNoTranslate, mediaWikiFurniture } from "../dom/boilerplate";
 import { NO_SCORE_TAGS, isHeading, isHeadingLabel, tagOf } from "../dom/tags";
+import { isTranslatedInPlace } from "../dom/translation";
 import {
   clipsOwnText,
   createStyleCache,
@@ -305,6 +306,7 @@ function ancestryReason(el: Element): string | null {
     }
     if (cur.hasAttribute(MARK_ATTR)) return "inside Anagram's own UI";
     if (isNoTranslate(cur)) return `translate="no" / .notranslate on ${nameOf(cur)}`;
+    if (isTranslatedInPlace(cur)) return `machine-translated in place by a translator extension: ${nameOf(cur)}`;
     if ((cur as HTMLElement).isContentEditable) return `inside contenteditable ${nameOf(cur)}`;
     if (cur.getAttribute("aria-hidden") === "true") {
       return `aria-hidden ${nameOf(cur)} — hidden from assistive tech, so hidden from the walk`;

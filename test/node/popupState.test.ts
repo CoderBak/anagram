@@ -56,6 +56,19 @@ describe("what the popup leads with", () => {
     });
   });
 
+  it("says why nothing is read on a page the browser has translated, and offers no run", () => {
+    // Neither a rescan nor a one-off run reads the translator's text, on or off.
+    const translated = { action: "openReader", primary: false, status: "translated" };
+    expect(lead({ tab: { enabled: true, translated: true } })).toEqual(translated);
+    expect(lead({ tab: { enabled: false, translated: true } })).toEqual(translated);
+    // An engine that is not ready still comes first.
+    expect(lead({ tab: { enabled: true, translated: true }, daemon: "down" })).toEqual({
+      action: "retry",
+      primary: true,
+      status: "daemon",
+    });
+  });
+
   it("falls back to a PDF from this computer where nothing can run", () => {
     // A browser page, the web store, a `file:` URL: no origin pattern covers them.
     expect(lead({ pattern: null, tab: null })).toEqual({
