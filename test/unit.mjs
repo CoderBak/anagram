@@ -1294,6 +1294,24 @@ const results = await page.evaluate(() => {
     const u = PW.collectUnits(sandbox);
     check("Gemini's conversation markup: the answer is read", u.length === 1 && u[0].wordCount >= 400, JSON.stringify(u.map((x) => x.wordCount)));
   }
+  {
+    // An id that a link on the page points at names a PLACE in the document, and a long one is
+    // a slug: neither says what the element is. PostgreSQL's section on the locking clause,
+    // the section a Sphinx heading names (Flask's "Cookies"), and the box Consumer Reports
+    // continues an article in were each read as a share bar, a cookie banner and a list of
+    // related articles.
+    // (The page holds more than the section, so it cannot pass for the page by its size.)
+    const read = (html) => { sandbox.innerHTML = `<p>PAGE ${words(300)}</p>${html}`; return PW.collectUnits(sandbox).map((x) => x.text.split(" ")[0]).filter((w) => w !== "PAGE"); };
+    const anchor = read(`<p>See <a href="sql-select.html#SQL-FOR-UPDATE-SHARE">The Locking Clause</a> below.</p><div class="refsect2" id="SQL-FOR-UPDATE-SHARE"><h3>The Locking Clause</h3><p>LOCKING ${words(80)}</p></div>`);
+    const sphinx = read(`<section id="cookies"><h2>Cookies<a class="headerlink" href="#cookies">¶</a></h2><p>COOKIES ${words(80)}</p></section>`);
+    const slug = read(`<div class="rel-article-wrapper" id="more-on-car-repair-maintenance-related-articles"><div class="related-links-multiple"><a href="/a">LINKS ${words(80)}</a></div><div class="text-container" id="more-on-car-repair-maintenance-related-articles-text"><p>SLUG ${words(80)}</p></div></div>`);
+    check("an id a link points at, or a slug of more than four parts, is no component name: the section is read",
+      JSON.stringify([anchor, sphinx, slug]) === JSON.stringify([["LOCKING"], ["COOKIES"], ["SLUG"]]), JSON.stringify([anchor, sphinx, slug]));
+    const mk = (id) => { const e = document.createElement("div"); e.id = id; return e; };
+    check("…while a short id nothing links to is still a component's name",
+      ["share-buttons", "related-articles", "social-share-bar-top", "cookie-law-info-bar", "sharing"].every((id) => PW.isBoilerplate(mk(id))));
+    sandbox.innerHTML = "";
+  }
 
   // ---- main-content detection ----------------------------------------------------------
   {

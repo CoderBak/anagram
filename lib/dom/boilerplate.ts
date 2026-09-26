@@ -138,6 +138,37 @@ const CHROME_TOKEN_RE = new RegExp(
 export const SKIP_DESTINATION_RE = /\S*skip[-_]?(?:link|to|nav)\S*[-_](?:target|destination|anchor)\S*/gi;
 
 /**
+ * An id that says WHERE an element stands, not WHAT it is. PostgreSQL names its section on
+ * the locking clause `SQL-FOR-UPDATE-SHARE` and links to it from the text above; Sphinx names
+ * a section after its heading and points the heading's own ¶ link at it (`section#cookies` in
+ * Flask's docs); Consumer Reports continues an article in
+ * `div#more-on-car-repair-maintenance-related-articles-text`. Taken for component names, the
+ * `share`, `cookies` and `related-articles` in them made each a share bar, a cookie banner or
+ * a box of links, and the section went unread. An id some link on the page points at is an
+ * anchor, and one of more than four parts is a slug — of a heading, or of the path through a
+ * template: neither is looked in for chrome words. Class names are the component vocabulary
+ * and always count, and so does a short id nothing links to (`share-buttons`).
+ */
+const MAX_ID_PARTS = 4;
+
+function namesAPlace(el: Element, id: string): boolean {
+  if (id.split(/[-_]+/).filter(Boolean).length > MAX_ID_PARTS) return true;
+  return el.ownerDocument.querySelector(`a[href$="#${CSS.escape(id)}"]`) !== null;
+}
+
+/**
+ * The names isBoilerplate looks in for chrome words: the classes, and the id where it is a
+ * name at all. Exported so the page diagnostics blame the name the filter really read.
+ */
+export function chromeNames(el: Element): string {
+  const cls = el.getAttribute("class") ?? "";
+  let id = el.getAttribute("id") ?? "";
+  // The page-wide question is asked only of an id that would count against the element.
+  if (id && (CHROME_TOKEN_RE.test(id) || REPLY_FORM_TOKEN_RE.test(id)) && namesAPlace(el, id)) id = "";
+  return `${id} ${cls}`.slice(0, 256);
+}
+
+/**
  * A term the post is filed under, written on the post's own wrapper. WordPress' post_class()
  * gives a post `category-<slug>` and `tag-<slug>` for every category and tag it has, beside
  * `type-`, `status-` and `format-` for its kind (wp-includes/post-template.php), and Ghost's
@@ -314,11 +345,11 @@ export function isBoilerplate(el: Element, page: PageTextSize = pageTextSize(el.
 
   // Strong class/id tokens (cookie banners, paywalls, ads, share bars, …).
   const cls = el.getAttribute("class");
-  const id = (el as HTMLElement).id;
+  const id = el.getAttribute("id");
   if (cls || id) {
     const names = `${id ?? ""} ${cls ?? ""}`.slice(0, 256);
     if (names.split(/\s+/).some((name) => MAIN_CONTENT_NAME_RE.test(name))) return false;
-    const hay = names.replace(SKIP_DESTINATION_RE, " ").replace(TAXONOMY_TERM_RE, "$1");
+    const hay = chromeNames(el).replace(SKIP_DESTINATION_RE, " ").replace(TAXONOMY_TERM_RE, "$1");
     if (CHROME_TOKEN_RE.test(hay) && !holdsMostOfPage(el, page)) return true;
     if (REPLY_FORM_TOKEN_RE.test(hay) && isReplyForm(el)) return true;
     if (cls && mediaWikiFurniture(el) !== null) return true;

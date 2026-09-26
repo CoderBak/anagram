@@ -62,6 +62,11 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- A section of a page is no longer skipped because of the words in its anchor. PostgreSQL's
+  reference section on the locking clause is `SQL-FOR-UPDATE-SHARE`, Flask's documentation
+  names its section on cookies `cookies`, and those ids read as a share bar and a cookie
+  banner. An id that a link on the page points at, or one of more than four words, names a
+  place in the document, and is no longer looked in for the names of page chrome.
 - In Kindle for the web, a chip is now put after the paragraph's last printed word. It
   used to go after the first line of the paragraph's accessibility text, which is the whole
   column wide, so a right-hand column's chips were cut off at the edge of the page.
