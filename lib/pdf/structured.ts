@@ -494,13 +494,15 @@ function assemble(pieces: Piece[], { sources, faces }: Located, vocab: Vocabular
 }
 
 /**
- * A numeric citation mark: "[12]", "[3, 5–7]", "[10,11]". The web walker skips one as a
- * mark rather than prose (isCitationMarker, lib/dom/walker.ts), and arXiv's HTML marks
- * every one, so the PDF reader leaves it out too, with the space in front of it: "the
- * bases [4]." reads "the bases.", as the same paper's HTML reads. An author-year citation
- * is words of the sentence and stays.
+ * A numeric citation mark: "[12]", "[3, 5–7]", "[10,11]", and a run of them as IEEE's style
+ * sets it, "[19], [20]" or "[5]–[7]". The web walker skips one as a mark rather than prose
+ * (isCitationMarker, lib/dom/walker.ts), and arXiv's HTML marks every one, a run as one, so
+ * the PDF reader leaves it out too, with the space in front of it: "the bases [4]." reads
+ * "the bases.", and "programs [19], [20], rewards" "programs, rewards", as the same paper's
+ * HTML reads. An author-year citation is words of the sentence and stays.
  */
-const CITATION = / ?\[\d{1,4}[a-z]?(?:\s?[,–-]\s?\d{1,4}[a-z]?)*\]/gu;
+const MARK = String.raw`\[\d{1,4}[a-z]?(?:\s?[,–-]\s?\d{1,4}[a-z]?)*\]`;
+const CITATION = new RegExp(String.raw` ?${MARK}(?:\s?[,;–-]\s?${MARK})*`, "gu");
 
 function withoutCitations(text: string, prov: (Source | null)[]): { text: string; prov: (Source | null)[] } {
   let out = "";

@@ -205,6 +205,17 @@ describe("structuredBlocks — text and runs", () => {
     expectRunsToMatch(blocks[0], pages);
   });
 
+  it("leaves out a run of citation marks as IEEE's style sets it, as one", () => {
+    const n = node(1, [
+      { text: "Related work generates programs [19], [20], geometric constraints", x: 72, y: 100 },
+      { text: "[21]–[23], and rewards [24].", x: 72, y: 114 },
+    ]);
+    const pages = [pageText(1, n.items)];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0].text).toBe("Related work generates programs, geometric constraints, and rewards.");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
   it("puts a space between two glyphs a word apart that Zotero ran together", () => {
     const a = drawn(1, { text: "where", x: 72, y: 100 });
     const b = drawn(1, { text: "the", x: 72 + 5 * CW + 6, y: 100 });
