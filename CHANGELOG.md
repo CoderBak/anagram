@@ -14,6 +14,15 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- A fast scroll no longer keeps the reader waiting for what they scrolled past. A paragraph
+  that was on screen for a moment goes back behind the one the reader stopped at, and one
+  that leaves the screen for the margin just around it waits behind what is on screen;
+  whatever was already sent to the engine is finished, not recalled. With an engine taking
+  0.7 s a batch, the paragraphs at the end of a page of ninety flicked through in one go
+  were sent after 0.35 s instead of 4.5 s.
+- A tab in the background asks the engine for nothing, neither the paragraphs that were
+  on screen there nor the rest of the page, and carries on where it was when it is shown
+  again. The PDF reader's tab behaves the same.
 - The PDF reader no longer reads a two-column page line by line across both columns when
   one column is plain prose and the other is full of formulas (arXiv 2004.04906, page 2).
   A column's share of the page is now measured in characters, not in the text runs a PDF

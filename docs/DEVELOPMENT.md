@@ -81,8 +81,8 @@ release must ship matching assets.
 ## Open work
 
 - Follow the reader: score what is on screen after a short dwell, skip fast scrolling,
-  bound queued work per document, pause hidden tabs. Hooks are in `lib/capture/observers.ts`
-  and `lib/capture/scheduler.ts`.
+  bound queued work per document. Hooks are in `lib/capture/observers.ts` and
+  `lib/capture/scheduler.ts`.
 - PDF: replace the 300-page analysis cap with a bounded active-page budget and keep
   results across PDF.js page recycling (`entrypoints/reader/main.ts`, `lib/pdf/units.ts`).
 - Installer recovery on Windows: two component homes registering one browser race on

@@ -277,6 +277,8 @@ export function createOrchestrator(
   let gateLoad: (() => void) | null = null;
   /** The daemon stopped answering: dispatch is paused until a probe succeeds. */
   let backendDown = false;
+  /** The tab is in the background: dispatch is paused until it is shown again. */
+  let pageHidden = false;
   let downTimer: ReturnType<typeof setInterval> | null = null;
   /** The flagged unit the last jump parked on. Without it a second next-flagged press
    *  would re-pick the paragraph the first one centred, since "the next one past the
@@ -827,6 +829,22 @@ export function createOrchestrator(
     }
     unwatchUrl();
     stopDownPolling();
+    document.removeEventListener("visibilitychange", onVisibilityChange);
+  }
+
+  // --- dispatch: held while the daemon is down or nobody can see the tab -----------------
+
+  /** Queued units wait (in-flight batches finish) for as long as either reason holds. */
+  function syncDispatch(): void {
+    if (backendDown || pageHidden) scheduler.pause();
+    else scheduler.resume();
+  }
+
+  /** A hidden tab asks the engine for nothing — no chip there can be read — and picks up
+   *  where it was when it is shown again, as Firefox's full-page translation does. */
+  function onVisibilityChange(): void {
+    pageHidden = document.visibilityState === "hidden";
+    syncDispatch();
   }
 
   // --- daemon down / back --------------------------------------------------------------
@@ -837,7 +855,7 @@ export function createOrchestrator(
   function enterDown(): void {
     if (backendDown) return;
     backendDown = true;
-    scheduler.pause();
+    syncDispatch();
     fab.setBackendDown(true);
     if (downTimer === null) downTimer = setInterval(() => void checkBackend(false), DOWN_POLL_MS);
     log.warn("scoring daemon not answering — dispatch paused, re-checking every", DOWN_POLL_MS, "ms");
@@ -848,7 +866,7 @@ export function createOrchestrator(
     backendDown = false;
     stopDownPolling();
     fab.setBackendDown(false);
-    scheduler.resume();
+    syncDispatch();
     retryUnavailable();
     log.log("scoring daemon back");
   }
@@ -1059,12 +1077,17 @@ export function createOrchestrator(
 
   // --- observers ---------------------------------------------------------------------
 
+  // The observers follow the reader both ways; the idle prefetch only ever enqueues, so it
+  // never pulls down a unit the reader is looking at.
   const observers: Observers = createObservers({
     onVisible(unit) {
-      scheduler.enqueue(unit, "viewport");
+      scheduler.requeue(unit, "viewport");
     },
     onNear(unit) {
-      scheduler.enqueue(unit, "near");
+      scheduler.requeue(unit, "near");
+    },
+    onFar(unit) {
+      scheduler.requeue(unit, "background");
     },
     onDirty(nodes, removed) {
       try {
@@ -1314,6 +1337,9 @@ export function createOrchestrator(
     booted = false;
     visible = true;
     lastHref = location.href;
+    pageHidden = document.visibilityState === "hidden";
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    syncDispatch();
 
     watchInsertionGate();
     // The underline rules are a <style> in the page's own head, so they wait with the
@@ -1495,6 +1521,7 @@ export function createOrchestrator(
     observers.stop();
     scheduler.stop();
     stopDownPolling();
+    document.removeEventListener("visibilitychange", onVisibilityChange);
     backendDown = false;
     fab.setBackendDown(false);
     clearAllResults();

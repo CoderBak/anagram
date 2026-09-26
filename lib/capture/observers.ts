@@ -5,6 +5,11 @@
 // - Dispatch latches key off UNIT ID, not element identity. (M1 latched elements in
 //   a WeakSet, so after a rescan or a disable→enable cycle the same elements never
 //   re-fired and nothing was ever scored again.)
+// - An element stays observed until its units are scored, and every change of where it
+//   stands — on screen, near it, far from it — is reported, leaving included: a unit that
+//   was on screen for a moment of a fast scroll is not left at the head of the queue.
+//   (Firefox's full-page translation, translations-document.sys.mjs, keeps its
+//   in-viewport and beyond-viewport observers for the same reason.)
 // - An element can anchor SEVERAL units (a container whose BR-split halves each
 //   cleared the word floor), so the registry is Element → Map<unitId, Unit>.
 // - Attribute mutations (class/style/hidden/open/aria-hidden) mark subtrees dirty:
@@ -45,16 +50,23 @@ const ATTR_RESCAN_MIN_MS = 1500;
 // node covers both, so the post is scored the moment it opens.
 export const WATCHED_ATTRS = ["class", "style", "hidden", "open", "aria-hidden", "aria-expanded"];
 
+/** Where an observed element stands: on screen, within the prefetch margin, or beyond it. */
+type Zone = "viewport" | "near" | "far";
+
 export function createObservers(opts: {
   onVisible(unit: Unit): void;
   onNear(unit: Unit): void;
+  /** A unit reported near or on screen before is beyond the prefetch margin now. */
+  onFar?(unit: Unit): void;
   onDirty(nodes: Node[], removed: Node[]): void;
   /** The document element itself was replaced (document.open()/write()). */
   onDocumentReplaced?(): void;
 }): Observers {
   const unitsByEl = new WeakMap<Element, Map<string, Unit>>();
-  /** Per-unit dispatch latch: which lane has fired. Cleaned up in dropUnit. */
-  const dispatched = new Map<string, "near" | "viewport">();
+  /** Per-unit latch: the zone last reported for it. Cleaned up in dropUnit. */
+  const reported = new Map<string, Zone>();
+  /** What each observer last said about an element. */
+  let seen = new WeakMap<Element, { near: boolean; viewport: boolean }>();
   const attrScanAt = new WeakMap<Element, number>();
 
   const dirty = new Set<Node>();
@@ -179,44 +191,44 @@ export function createObservers(opts: {
   // fires when an element moves from the margin band INTO the real viewport (the
   // intersection state vs the expanded root never changes), so the near→viewport
   // lane upgrade was unreachable. ioNear prefetches; ioViewport upgrades.
-  function dispatchLane(el: Element, lane: "near" | "viewport"): void {
+  /** Tell the orchestrator about every unscored unit here whose zone has changed. A zone
+   *  first seen as "far" is only noted: the idle prefetch queues those in reading order. */
+  function report(el: Element): void {
     const units = unitsByEl.get(el);
-    if (!units || units.size === 0) return;
+    const at = seen.get(el);
+    if (!units || units.size === 0 || !at) return;
+    const zone: Zone = at.viewport ? "viewport" : at.near ? "near" : "far";
     for (const unit of units.values()) {
       if (unit.isScored) continue;
-      const prev = dispatched.get(unit.id);
-      if (lane === "viewport" && prev !== "viewport") {
-        dispatched.set(unit.id, "viewport"); // fresh dispatch or near→viewport upgrade
-        opts.onVisible(unit);
-      } else if (lane === "near" && prev === undefined) {
-        dispatched.set(unit.id, "near");
-        opts.onNear(unit);
-      }
+      const prev = reported.get(unit.id);
+      if (prev === zone) continue;
+      reported.set(unit.id, zone);
+      if (zone === "viewport") opts.onVisible(unit);
+      else if (zone === "near") opts.onNear(unit);
+      else if (prev !== undefined) opts.onFar?.(unit);
     }
   }
 
-  const ioNear = new IntersectionObserver(
-    (entries) => {
-      for (const entry of entries) {
-        if (entry.isIntersecting) dispatchLane(entry.target as Element, "near");
-      }
-    },
-    { root: null, rootMargin: ROOT_MARGIN, threshold: 0 },
-  );
+  function note(entries: IntersectionObserverEntry[], key: "near" | "viewport"): void {
+    for (const entry of entries) {
+      const el = entry.target as Element;
+      const at = seen.get(el) ?? { near: false, viewport: false };
+      at[key] = entry.isIntersecting;
+      seen.set(el, at);
+      report(el);
+    }
+  }
 
-  const ioViewport = new IntersectionObserver(
-    (entries) => {
-      for (const entry of entries) {
-        if (!entry.isIntersecting) continue;
-        const el = entry.target as Element;
-        dispatchLane(el, "viewport");
-        // Highest priority reached for everything anchored here → one-shot.
-        ioViewport.unobserve(el);
-        ioNear.unobserve(el);
-      }
-    },
-    { root: null, threshold: 0 },
-  );
+  const ioNear = new IntersectionObserver((entries) => note(entries, "near"), {
+    root: null,
+    rootMargin: ROOT_MARGIN,
+    threshold: 0,
+  });
+
+  const ioViewport = new IntersectionObserver((entries) => note(entries, "viewport"), {
+    root: null,
+    threshold: 0,
+  });
 
   const mo = new MutationObserver((records) => {
     ingest(records);
@@ -234,10 +246,12 @@ export function createObservers(opts: {
     units.set(unit.id, unit);
     ioNear.observe(el); // observing an already-observed target is a no-op
     ioViewport.observe(el);
+    // …so a unit joining an element the observers have already placed is placed with it.
+    report(el);
   }
 
   function dropUnit(unit: Unit): void {
-    dispatched.delete(unit.id);
+    reported.delete(unit.id);
     const el = unit.topElement;
     const units = el ? unitsByEl.get(el) : undefined;
     if (units) {
@@ -245,18 +259,20 @@ export function createObservers(opts: {
       if (units.size === 0 && el) {
         ioNear.unobserve(el);
         ioViewport.unobserve(el);
+        seen.delete(el);
       }
     }
   }
 
   function reobserve(unit: Unit): void {
-    dispatched.delete(unit.id);
+    reported.delete(unit.id);
     const el = unit.topElement;
     if (!el || !el.isConnected) return;
     // Observing a target that is already observed reports nothing: let go of it first, so
     // the observers answer where it is NOW.
     ioNear.unobserve(el);
     ioViewport.unobserve(el);
+    seen.delete(el);
     observeUnit(unit);
   }
 
@@ -293,7 +309,8 @@ export function createObservers(opts: {
     attrPending.clear();
     dirty.clear();
     removed.clear();
-    dispatched.clear();
+    reported.clear();
+    seen = new WeakMap(); // disconnect() forgot every target: the next start asks afresh
     dirtySince = null;
     observedRoots = new WeakSet(); // disconnect() dropped them; the next scan re-registers
     pendingRoots.clear();

@@ -81,7 +81,7 @@ beforeEach(() => {
     navigation: new EventTarget(), requestIdleCallback: (run: () => void) => {queueMicrotask(run); return 1;},
   });
   vi.stubGlobal("window", window);
-  vi.stubGlobal("document", {body: {}, querySelector: () => null});
+  vi.stubGlobal("document", Object.assign(new EventTarget(), {body: {}, querySelector: () => null, visibilityState: "visible"}));
 });
 afterEach(() => {vi.unstubAllGlobals();});
 

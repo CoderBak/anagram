@@ -79,6 +79,34 @@ describe("scheduler", () => {
     expect(lanes).toEqual(["viewport:u3", "background:u1", "background:u2"]);
   });
 
+  it("requeue moves a waiting unit down as well as up, and leaves one in flight alone", async () => {
+    const lanes: string[] = [];
+    const s = createScheduler({
+      batchCharBudget: 80, // one unit per batch
+      maxInFlight: 1,
+      async send(units, lane) {
+        lanes.push(`${lane}:${units.map((u) => u.id).join(",")}`);
+        await tick();
+        return units.map(score);
+      },
+      render() {},
+    });
+    // A fast scroll: three paragraphs were on screen for a moment each.
+    s.enqueue(unit(1), "viewport");
+    s.enqueue(unit(2), "viewport");
+    s.enqueue(unit(3), "viewport");
+    s.enqueue(unit(4), "background");
+    await Promise.resolve(); // the pump has sent u1
+    s.requeue(unit(1), "background"); // in flight: nothing recalls it
+    s.requeue(unit(2), "background"); // scrolled far past
+    s.requeue(unit(3), "near"); // just above where the reader stopped
+    s.enqueue(unit(5), "viewport"); // where the reader stopped
+    s.enqueue(unit(3), "background"); // the idle prefetch never pulls anything down
+    await new Promise((r) => setTimeout(r, 120));
+    expect(lanes).toEqual(["viewport:u1", "viewport:u5", "near:u3", "background:u4", "background:u2"]);
+    expect(s.pendingCount()).toBe(0);
+  });
+
   it("charges a long unit for all of its windows: it travels whole, in a batch of its own", async () => {
     const batches: string[] = [];
     const s = createScheduler({

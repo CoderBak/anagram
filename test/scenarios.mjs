@@ -2985,6 +2985,128 @@ addEventListener("load",()=>{window.__loadAt=performance.now();
   await new Promise((r) => slow.close(() => r()));
 }
 
+// ---- A47: following the reader — a fast scroll, a hidden tab ---------------------------
+// Every paragraph is its own unit and every text is new to the caches, so each one is
+// dispatched by the content script exactly once, and the moment its "analyzing…" chip is
+// inserted is the moment it was dispatched.
+{
+  const VOCAB = "the quick brown fox jumps over a lazy dog while rain falls gently on rooftops and children read books near warm windows during long quiet evenings a timetable moved off paper and nobody noticed until the trains ran on time".split(" ");
+  const para = (tag, i) => `${tag}-${i} ` + Array.from({ length: 84 }, (_, k) => VOCAB[(i * 7 + k * 13) % VOCAB.length]).join(" ") + ".";
+  const page = (title, body) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">${body}</body></html>`;
+  PAGES["/scroll.html"] = page("scroll fixture", Array.from({ length: 90 }, (_, i) => `<p id="sp${i}">${para("SCROLLPAST", i)}</p>`).join("\n"));
+  PAGES["/hidden.html"] = page("hidden fixture", `<main id="top">${[0, 1].map((i) => `<p>${para("SHOWNFIRST", i)}</p>`).join("")}</main><div style="height:5000px"></div><div id="bottom"></div>`);
+  const chipClock = () => {
+    window.__chipAt = {};
+    new MutationObserver(() => {
+      for (const host of document.querySelectorAll('[data-anagram="host"]:not(#anagram-fab)')) {
+        const p = host.closest("p[id]");
+        if (p && !(p.id in window.__chipAt)) window.__chipAt[p.id] = performance.now();
+      }
+    }).observe(document, { childList: true, subtree: true });
+  };
+
+  // A reader flicks through ninety paragraphs to the end of the page while the engine is
+  // slow. What was on screen for a moment and is far behind now must wait for what the
+  // reader stopped at, not the other way round.
+  {
+    const p = await context.newPage();
+    await p.addInitScript(chipClock);
+    fixture.setState({ latency: [700, 700] });
+    await p.goto(server.url("/scroll.html"), { waitUntil: "load" });
+    await p.waitForFunction(() => Object.keys(window.__chipAt).length > 0, null, { timeout: 12000 }).catch(() => {});
+    const end = await p.evaluate(async () => {
+      const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const step = Math.round(innerHeight * 0.9);
+      const bottom = document.documentElement.scrollHeight - innerHeight;
+      for (let y = step; y < bottom; y += step) {
+        scrollTo(0, y);
+        await frames();
+      }
+      scrollTo(0, bottom);
+      await frames();
+      const rows = [...document.querySelectorAll("p[id]")].map((el) => ({ id: el.id, box: el.getBoundingClientRect() }));
+      return {
+        t0: performance.now(),
+        onScreen: rows.filter((r) => r.box.bottom > 0 && r.box.top < innerHeight).map((r) => r.id),
+        // Well outside the 1200 px the prefetch margin reaches above the viewport.
+        far: rows.filter((r) => r.box.bottom < -1500).map((r) => r.id),
+      };
+    });
+    const allOnScreen = await p
+      .waitForFunction((ids) => ids.every((id) => id in window.__chipAt), end.onScreen, { timeout: 40000 })
+      .then(() => true)
+      .catch(() => false);
+    const r = await p.evaluate(({ onScreen, far, t0 }) => {
+      const at = window.__chipAt;
+      const last = Math.max(...onScreen.map((id) => at[id] ?? Infinity));
+      // A batch dispatched as the scroll stopped may put its chips up a moment later.
+      const after = t0 + 100;
+      return {
+        onScreen: onScreen.length,
+        far: far.length,
+        farBefore: far.filter((id) => at[id] <= after).length,
+        farFirst: far.filter((id) => at[id] > after && at[id] < last).length,
+        waitMs: Math.round(last - t0),
+      };
+    }, end);
+    fixture.setState({ latency: [60, 160] });
+    record("ui", "a fast scroll: what is on screen when it stops is sent before anything scrolled far past", allOnScreen && r.onScreen > 0 && r.far > 20 && r.farFirst === 0, JSON.stringify(r));
+    await p.close();
+  }
+
+  // A tab in the background sends nothing — neither what the reader would see there nor
+  // the idle prefetch — and picks up where it was the moment it is shown again. Headless
+  // Chromium never hides a page, so the content script's own world is told it is hidden,
+  // exactly as the browser would tell it: visibilityState and a visibilitychange event.
+  {
+    const p = await context.newPage();
+    await p.goto(server.url("/hidden.html"), { waitUntil: "load" });
+    await p.waitForFunction((sel) => document.querySelectorAll(`#top ${sel}`).length === 2, BADGE_SEL, { timeout: 12000 }).catch(() => {});
+    const cdp = await context.newCDPSession(p);
+    const worlds = [];
+    cdp.on("Runtime.executionContextCreated", ({ context: c }) => worlds.push(c));
+    await cdp.send("Runtime.enable");
+    const { frameTree } = await cdp.send("Page.getFrameTree");
+    await p.waitForTimeout(200);
+    const isolated = worlds.find((c) => c.auxData?.frameId === frameTree.frame.id && c.auxData?.type === "isolated" && c.origin.startsWith("chrome-extension://"));
+    const setHidden = (hidden) =>
+      cdp.send("Runtime.evaluate", {
+        contextId: isolated.id,
+        expression: `(() => {
+          for (const [key, value] of [["visibilityState", ${hidden} ? "hidden" : "visible"], ["hidden", ${hidden}]])
+            Object.defineProperty(document, key, { configurable: true, get: () => value });
+          document.dispatchEvent(new Event("visibilitychange"));
+        })()`,
+      });
+    let r = { world: !!isolated };
+    if (isolated) {
+      await setHidden(true);
+      await p.evaluate(([onScreen, below]) => {
+        const add = (where, id, text) => {
+          const el = document.createElement("p");
+          el.id = id;
+          el.textContent = text;
+          where.append(el);
+        };
+        add(document.getElementById("top"), "hid-top", onScreen);
+        add(document.getElementById("bottom"), "hid-bottom", below);
+      }, [para("WHILEHIDDEN", 0), para("WHILEHIDDEN", 1)]);
+      await p.waitForTimeout(2500);
+      const quiet = await p.evaluate((sel) => document.querySelectorAll(`#hid-top ${sel}, #hid-bottom ${sel}`).length, BADGE_SEL);
+      const sent = fixture.stats.texts.filter((t) => t.includes("WHILEHIDDEN")).length;
+      await setHidden(false);
+      const shown = await p
+        .waitForFunction((sel) => document.querySelectorAll(`#hid-top ${sel}`).length === 1, BADGE_SEL, { timeout: 10000 })
+        .then(() => true)
+        .catch(() => false);
+      r = { world: true, chipsWhileHidden: quiet, sentWhileHidden: sent, shown };
+    }
+    record("ui", "a hidden tab dispatches nothing, not even the idle prefetch, and resumes when shown", r.world && r.chipsWhileHidden === 0 && r.sentWhileHidden === 0 && r.shown, JSON.stringify(r));
+    await cdp.detach().catch(() => {});
+    await p.close();
+  }
+}
+
 // =====================================================================================
 // PHASE B — live sites (soft: unreachable → SKIP; loaded-but-wrong → FAIL)
 // =====================================================================================
