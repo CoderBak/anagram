@@ -132,6 +132,10 @@ local component and the installer all carry the same version.
   as the web walker does with the same marks on the paper's HTML. A bracket that names a
   year ("[Higham, 2002]") is read as an author–year citation, and one with no reference in
   it ("[sic]") as the writer's own.
+- The PDF reader's own reconstruction leaves out the same bracketed citation marks. It reads
+  a document until Zotero's structure is ready and wherever that is not used, and it reads
+  the PDFs that Google Drive and OneDrive preview; "[4]" and "[19], [20]" reached the model
+  from all of these. The label that opens an entry of a reference list stays.
 - The PDF reader keeps a number the text writes next to an inline formula: "pores of 11.3 μm"
   read as "pores of m", "by Theorem 2, x is" as "by Theorem, is", and "(Federer, 1969,
   3.2.12)" lost its year. A number beside a formula went with it, because TeX sets a formula's

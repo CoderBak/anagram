@@ -29,7 +29,7 @@
 //
 // The textMap decoding follows structured-document-text/src/pdf/decode.js of
 // https://github.com/zotero/structured-document-text (AGPL-3.0).
-import { SENTENCE_END, dehyphenates, vocabularyOf, type PdfPageText, type PdfTextItem, type ReflowBlock, type SourceRun, type Vocabulary } from "./reflow";
+import { SENTENCE_END, bracketCitations, dehyphenates, vocabularyOf, type PdfPageText, type PdfTextItem, type ReflowBlock, type SourceRun, type Vocabulary } from "./reflow";
 
 // ---- the structure, as far as this reads it ----------------------------------------------
 
@@ -603,43 +603,9 @@ function composed(text: string, prov: (Source | null)[]): { text: string; prov: 
   return { text: out, prov: kept };
 }
 
-/**
- * A citation mark in brackets: numbers, "[12]", "[3, 5–7]", "[10,11]"; a reference with a
- * locator or a note, "[16, Section 4]", "[e.g., 17, 18]"; an alphabetic key, "[And58]",
- * "[Kir08, Theorem 3.9; GK12]"; and a run of them as IEEE's style sets it, "[19], [20]" or
- * "[5]–[7]". The web walker skips one as a mark rather than prose (isCitationMarker,
- * lib/dom/walker.ts), and arXiv's HTML marks every one, a run as one, so the PDF reader
- * leaves it out too, with the space in front of it: "the bases [4]." reads "the bases.", and
- * "programs [19], [20], rewards" "programs, rewards", as the same paper's HTML reads. A
- * bracket that names a year is an author-year citation, words of the sentence, and one with
- * no reference in it ("[sic]") is the writer's own.
- */
-const BRACKETS = /\[[^[\]]*\]/gu;
-const NUMBERS = /^\d{1,4}[a-z]?(?:\s?[–-]\s?\d{1,4}[a-z]?)?$/u;
-/** A reference of a mark: a number, a range, or an alphabetic key ("Kir08", "ABC+20", "KS17b"). */
-const REFERENCE = /^(?:\d{1,4}[a-z]?(?:\s?[–-]\s?\d{1,4}[a-z]?)?|\p{Lu}[\p{L}+]{0,6}\d{2}[a-z]?)$/u;
-const YEAR = /(?<![\p{L}\p{N}])(?:1[5-9]|20)\d\d[a-z]?(?![\p{L}\p{N}])/u;
-/** Words a part of a mark has at most: a locator ("Theorem 3.9") or a note ("e.g."), not a phrase. */
-const MARK_PART_WORDS = 3;
-/** What stands between two marks of one run. */
-const RUN = /^\s?[,;–-]\s?$/u;
-
-function isBracketMark(inner: string): boolean {
-  const parts = inner.split(/[,;]/u).map((part) => part.trim());
-  if (parts.every((part) => NUMBERS.test(part))) return true;
-  if (YEAR.test(inner)) return false;
-  return parts.some((part) => REFERENCE.test(part)) && parts.every((part) => part.split(/\s+/u).length <= MARK_PART_WORDS);
-}
-
+/** The text without its bracketed citation marks (bracketCitations, lib/pdf/reflow.ts). */
 function withoutCitations(text: string, prov: (Source | null)[]): { text: string; prov: (Source | null)[] } {
-  const cuts: [number, number][] = [];
-  for (const m of text.matchAll(BRACKETS)) {
-    if (!isBracketMark(m[0].slice(1, -1))) continue;
-    const start = m.index, end = start + m[0].length;
-    const last = cuts.at(-1);
-    if (last && RUN.test(text.slice(last[1], start))) last[1] = end;
-    else cuts.push([text[start - 1] === " " ? start - 1 : start, end]);
-  }
+  const cuts = bracketCitations(text);
   if (cuts.length === 0) return { text, prov };
   let out = "";
   const kept: (Source | null)[] = [];
