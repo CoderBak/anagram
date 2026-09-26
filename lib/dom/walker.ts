@@ -1108,14 +1108,16 @@ const MAX_WRAPPER_HOPS = 3;
 const LAYOUT_WRAPPERS = new Set(["DIV", "SPAN"]);
 
 /**
- * The box a paragraph really stands in, inside a DECLARED scope: up through wrappers that hold
- * that one block and nothing else. Facebook sets each paragraph of a post — `div[dir=auto]` —
- * in a `pre-wrap` box of its own, so two paragraphs of one post are cousins, never siblings,
- * and a post of two short paragraphs got nothing: neither `compatible` with the other. Inside
- * one declared voice such a wrapper separates nothing; on the bare page it is still read as
- * the section boundary it may be, and a recognised post has its own rule (`oneBody`).
+ * The box a paragraph really stands in: up through wrappers that hold that one block and
+ * nothing else (inside a scope, no further than the scope). Facebook sets each paragraph of
+ * a post — `div[dir=auto]` — in a `pre-wrap` box of its own, so two paragraphs of one post
+ * are cousins, never siblings, and a post of two short paragraphs got nothing: neither
+ * `compatible` with the other. Inside one declared voice such a wrapper separates nothing.
+ * On the bare page it may be the section boundary it looks like, and two wrapped paragraphs
+ * are read together only when their boxes come from one template (see `together`); a
+ * recognised post has its own rule (`oneBody`).
  */
-function unwrapped(el: Element, scope: Element): Element {
+function unwrapped(el: Element, scope: Element | null): Element {
   let at = el;
   for (let hops = 0; hops < MAX_WRAPPER_HOPS; hops++) {
     const parent = at.parentElement;
@@ -1243,11 +1245,15 @@ function createAssembler(
    * Do two runs of one frame stand in the same place? Proximity (`compatible`) everywhere.
    * Inside a RECOGNISED post also when nothing but that person's text lies between them
    * (scope.ts, `oneBody`): there proximity is not what keeps a voice together — the post is.
-   * Declared scopes and the bare page are read exactly as before.
+   * Inside a declared scope, whatever wrappers each paragraph stands in. On the bare page,
+   * when each stands in a wrapper of ONE TEMPLATE, side by side (`sameBody`): Asciidoctor sets
+   * every paragraph in a `div.paragraph` of its own, a CMS in a `div.j6zgbu0`, and the short
+   * paragraphs of one section were read as strangers, each too short to judge. Two boxes of
+   * different names side by side — a column and a sidebar — are still two places.
    */
   function together(f: Frame, a: Element, b: Element): boolean {
     if (compatible(a, b)) return true;
-    if (f.scope === null) return false;
+    if (f.scope === null) return sameBody(unwrapped(a, null), unwrapped(b, null));
     if (scopes.recognised(f.scope)) return scopes.oneBody(a, b, f.scope);
     return compatible(unwrapped(a, f.scope), unwrapped(b, f.scope));
   }
@@ -1634,7 +1640,11 @@ function createAssembler(
     // (An item is an item whether its text stands in the <li> or in a <p> inside it.)
     const up = r.container.parentElement;
     const listItem = tag === "LI" || tag === "DT" || (up !== null && (tagOf(up) === "LI" || tagOf(up) === "DT"));
-    if (!listItem && last && compatible(last.container, r.container)) {
+    // (Where the text itself stands in a wrapper of its own on the bare page — one template's
+    // box per paragraph, see `together` — it is that box a row stands beside.)
+    const box = last && f.scope === null ? unwrapped(last.container, null) : null;
+    const beside = !!last && (compatible(last.container, r.container) || (!!box && box !== last.container && compatible(box, unwrapped(r.container, null))));
+    if (!listItem && beside) {
       if (f.scope === null) close(f);
       else if (scopes.recognised(f.scope) && !amongTheText(f, r.container)) conclude(f);
     }

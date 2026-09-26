@@ -89,6 +89,10 @@ local component and the installer all carry the same version.
   p`, a definition list) stood apart from the paragraphs around them and from each other,
   so a lead-in, the items and the sentence after them, each too short alone, went unread.
   A list no longer separates the text of one section; a heading still does.
+- Short paragraphs that a site sets each in a box of its own are read together when the
+  boxes come from one template, side by side (Asciidoctor's `div.paragraph`, a CMS's
+  paragraph block). Two different boxes side by side, a column and a sidebar, are still
+  read apart, and a name row between two such boxes still ends the text.
 - In Kindle for the web, a chip is now put after the paragraph's last printed word. It
   used to go after the first line of the paragraph's accessibility text, which is the whole
   column wide, so a right-hand column's chips were cut off at the edge of the page.

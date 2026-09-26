@@ -97,6 +97,14 @@ const results = await page.evaluate(() => {
   u = collect(`<div>${["Self-paced courses", "Instructor-led courses", "Blended courses", "Certification courses"].map((t, i) => `<ol start="${i + 1}"><li><p><strong>${t}</strong></p></li></ol><p>${words(20)}</p>`).join("")}</div>`);
   check("…and an item that is only a name, `li > p` as much as `li`, is an item there and cuts nothing (easy-lms.com's numbered course types)",
     u.length === 1 && u[0].parts === 4, JSON.stringify(u.map(x => [x.parts, x.words])));
+  // A site that sets every paragraph in a box of its own, from one template — Asciidoctor's
+  // `div.paragraph > p`, a CMS's `div.j6zgbu0 > p` — has not made each paragraph a section.
+  u = collect(`<div class="body"><div class="paragraph"><p>${words(40)}</p></div><div class="paragraph"><div class="inner"><p>${words(40)}</p></div></div></div>`);
+  check("paragraphs each in a wrapper of one template are one body of text", u.length === 1 && u[0].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
+  u = collect(`<div class="layout"><div class="main"><p>${words(40)}</p></div><div class="side"><p>${words(40)}</p></div></div>`);
+  check("…while two different boxes side by side are still two places", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+  u = collect(`<div class="thread"><div class="paragraph"><p>${words(40)}</p></div><div class="meta"><div class="who"><span>alice 2h</span></div></div><div class="paragraph"><p>${words(40)}</p></div></div>`);
+  check("…and a name row between two such boxes still ends the text", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
 
   u = collect(`<p>${words(40)} <code>npm install</code> ${words(35)}</p>`);
   check("inline <code> stays in the paragraph", u.length === 1 && u[0].text.includes("npm install"), JSON.stringify(u.map(x => [x.parts, x.words])));

@@ -1,11 +1,12 @@
 // lib/surfaces/paragraphs.ts — a site whose every paragraph is a box of its own.
 //
 // The walk reads short paragraphs together only where they stand together in the markup:
-// siblings, or a paragraph and its uncle. Two paragraphs each wrapped in a box of its own
-// are cousins, and a cousin is what the next person's comment is on a page nobody marked
-// up, so they are never read together — which is right on a comment thread and wrong on a
-// site that wraps every paragraph of a chapter that way. Web fiction is written in short
-// paragraphs, and there the walk read only the rare one of seventy-five words or more.
+// siblings, a paragraph and its uncle, or boxes of one template that hold nothing but their
+// paragraph. Two paragraphs each in a box that holds something else as well are cousins,
+// and a cousin is what the next person's comment is on a page nobody marked up, so they
+// are not read together — which is right on a comment thread and wrong on a site that sets
+// every paragraph of a chapter with its own comment counter. Web fiction is written in
+// short paragraphs, and there the walk read only the rare one of seventy-five words or more.
 //
 // A site like that is read here from the list of its paragraphs, which its source knows:
 // in document order, with the breaks between them (a new chapter). The grouping rules are

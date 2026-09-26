@@ -392,8 +392,8 @@ export async function surfaceChecks(browser, bundle, fixtures, results) {
       };
     });
     check(
-      "webnovel: the walk alone never reads short paragraphs each in a box of its own together, and leaves most of a chapter unread (why the surface exists)",
-      r.walkedMissing >= r.expected - 1,
+      "webnovel: the walk alone leaves short paragraphs whose boxes also hold their counters unread (why the surface exists)",
+      r.walkedMissing >= 3,
       JSON.stringify({ missing: r.walkedMissing, of: r.expected }),
     );
     check(
