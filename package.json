@@ -2,6 +2,7 @@
   "name": "anagram-extension",
   "description": "Local AI-editing estimates for Chrome and Firefox, powered by EditLens.",
   "private": true,
+  "license": "AGPL-3.0-or-later",
   "version": "0.7.0",
   "type": "module",
   "scripts": {

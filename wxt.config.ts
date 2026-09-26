@@ -113,6 +113,10 @@ export default defineConfig({
   },
   vite: () => ({ plugins: [englishFallback()] }),
   hooks: {
+    // AGPL: every copy of the extension carries the licence text.
+    "build:publicAssets": (_wxt, files) => {
+      files.push({ absoluteSrc: resolve(ROOT, "LICENSE"), relativeDest: "LICENSE" });
+    },
     // Production content scripts are registered only after a grant or user action.
     // Remove WXT's inferred hosts; its dev server manages its own registration.
     "build:manifestGenerated": (wxt, manifest) => {

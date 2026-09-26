@@ -3,7 +3,7 @@ name = "anagramd"
 version = "0.7.0"
 description = "Local EditLens native component for the Anagram browser extension"
 requires-python = ">=3.12,<3.14"
-license = "MIT"
+license = "AGPL-3.0-or-later"
 dependencies = [
   "torch>=2.4",
   "transformers>=4.45",

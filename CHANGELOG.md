@@ -7,6 +7,11 @@ local component and the installer all carry the same version.
 
 ## [Unreleased]
 
+### Changed
+
+- Anagram's code is now licensed under the GNU AGPL v3.0 or later. The licence text ships
+  in the extension and in the local component. The model keeps its CC BY-NC-SA 4.0 licence.
+
 ### Fixed
 
 - The PDF reader no longer reads a two-column page line by line across both columns when

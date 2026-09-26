@@ -41,6 +41,8 @@ and open work.
 
 ## Model and license
 
+Anagram's code is licensed under the [GNU AGPL v3.0 or later](LICENSE).
+
 Inference uses [Pangram's EditLens RoBERTa-large](https://huggingface.co/pangram/editlens_roberta-large)
 via the [CoderBak/editlens_roberta_modelkit](https://huggingface.co/CoderBak/editlens_roberta_modelkit)
 redistribution, pinned in `anagramd/modelkit.json`. The model is **CC BY-NC-SA 4.0**,
