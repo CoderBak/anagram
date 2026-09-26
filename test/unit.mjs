@@ -85,6 +85,19 @@ const results = await page.evaluate(() => {
   u = collect(`<section><p>${words(40)}</p></section><section><p>${words(40)}</p></section>`);
   check("shorts in unrelated sections do NOT merge", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
 
+  // The short paragraphs of ONE section, however the markup nests them. A list sets its items a
+  // level deeper — `ul > li > p`, a <dl> — without taking them out of the text around them.
+  u = collect(`<div><p>INTRO ${words(20)}</p><ul><li><p>${words(15)}</p></li><li><p>${words(15)}</p></li></ul><p>${words(30)}</p></div>`);
+  check("…but a list is no section: the paragraph before it, its <li><p> items and the paragraph after it are read together",
+    u.length === 1 && u[0].parts === 4 && u[0].text.startsWith("INTRO"), JSON.stringify(u.map(x => [x.parts, x.words])));
+  u = collect(`<dl><dt>First term</dt><dd><p>${words(40)}</p></dd><dt>Second term</dt><dd><p>${words(40)}</p></dd></dl>`);
+  check("…nor is a definition list", u.length === 1 && u[0].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
+  u = collect(`<section><ul><li>${words(40)}</li></ul></section><section><ul><li>${words(40)}</li></ul></section>`);
+  check("…while lists in unrelated sections still do not merge", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+  u = collect(`<div>${["Self-paced courses", "Instructor-led courses", "Blended courses", "Certification courses"].map((t, i) => `<ol start="${i + 1}"><li><p><strong>${t}</strong></p></li></ol><p>${words(20)}</p>`).join("")}</div>`);
+  check("…and an item that is only a name, `li > p` as much as `li`, is an item there and cuts nothing (easy-lms.com's numbered course types)",
+    u.length === 1 && u[0].parts === 4, JSON.stringify(u.map(x => [x.parts, x.words])));
+
   u = collect(`<p>${words(40)} <code>npm install</code> ${words(35)}</p>`);
   check("inline <code> stays in the paragraph", u.length === 1 && u[0].text.includes("npm install"), JSON.stringify(u.map(x => [x.parts, x.words])));
 
@@ -629,7 +642,7 @@ const results = await page.evaluate(() => {
       u.length === 1 && u[0].parts === 2 && u[0].text.startsWith("TEXT"), shape(u));
 
     u = collect(`<article><p>${sent(40)}</p><ul><li><p>ITEM ${sent(11)}</p></li><li><p>ITEM ${sent(11)}</p></li></ul><p>LAST ${sent(39)}</p></article>`);
-    check("the paragraphs on both sides of a list set a level deeper still belong together", u.length === 1 && u[0].parts === 2 && u[0].text.includes("LAST") && !u[0].text.includes("ITEM"), shape(u));
+    check("the paragraphs on both sides of a list set a level deeper, and the list's items, are one text", u.length === 1 && u[0].parts === 4 && u[0].text.includes("LAST") && u[0].text.includes("ITEM"), shape(u));
 
     sandbox.innerHTML = xPost([`A ${sent(29)}`, `B ${sent(79)}`, `C ${sent(19)}`]);
     const strictPost = PW.collectUnits(sandbox, { mergeShorts: false });
@@ -835,7 +848,7 @@ const results = await page.evaluate(() => {
     check("…while a sentence of the SITE in a layout box under the text (Steam: 'Was this review helpful?') never joins it, byline between them or not",
       u.length === 1 && u[0].parts === 1 && !u[0].text.includes("helpful"), shape(u));
     u = collect(`<article><p>LEAD ${sent(39)}</p><ol><li><p>ITEM-A ${sent(14)}</p></li><li><p>ITEM-B ${sent(14)}</p></li></ol><p>LAST ${sent(39)}</p></article>`);
-    check("…and a DECLARED post is read exactly as before: the items a level deeper stay out", u.length === 1 && u[0].parts === 2 && !u[0].text.includes("ITEM"), shape(u));
+    check("…and so is a DECLARED post's: a list is no boundary in any voice", u.length === 1 && u[0].parts === 4 && u[0].text.includes("ITEM-A") && u[0].text.includes("LAST"), shape(u));
 
     // The opening post: no sibling like it, but the thread that answers it follows it.
     const opening = (inner) => `<div class="box"><div class="hd">${by("alice")}</div><div class="cell">${inner}</div></div><div class="box"><div class="cell">${by("bob")}<p>${sent(20)}</p></div><div class="cell">${by("carol")}<p>${sent(20)}</p></div></div>`;

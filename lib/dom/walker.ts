@@ -1042,16 +1042,40 @@ interface Assembler {
 
 /**
  * Merge compatibility: same container (BR-split halves), sibling containers (the
- * paragraphs of one post, <li>s), or one-level cousins (<li><p> structures). Anything
- * further apart is a different section and must not merge.
+ * paragraphs of one post, <li>s), or a block and the child of its sibling. Anything further
+ * apart is a different section and must not merge — except by list markup (`outsideLists`).
  */
 function compatible(a: Element, b: Element): boolean {
+  if (near(a, b)) return true;
+  const la = outsideLists(a);
+  const lb = outsideLists(b);
+  return (la !== a || lb !== b) && near(la, lb);
+}
+
+function near(a: Element, b: Element): boolean {
   if (a === b) return true;
   const ap = a.parentElement;
   const bp = b.parentElement;
   if (ap && ap === bp) return true;
   if (ap && bp && (ap === bp.parentElement || bp === ap.parentElement)) return true;
   return false;
+}
+
+/** Markup that sets an item a level deeper than the text around it without taking it out
+ *  of that text: the items of a list, the terms and definitions of a <dl>. */
+const LIST_MARKUP = new Set(["UL", "OL", "LI", "DL", "DT", "DD"]);
+
+/**
+ * The outermost list `el` stands in, or `el` itself. A list is no section boundary: an
+ * epam.com article sets its bullets as `ul > li > p` between two paragraphs, each item a
+ * cousin of the next and of the paragraphs around the list, and the lead-in, the six items
+ * and the sentence after them — 112 words of one section — were read as nine texts too
+ * short to judge. Seen from outside its lists, an item stands where the list stands.
+ */
+function outsideLists(el: Element): Element {
+  let at = el;
+  for (let up = at.parentElement; up && LIST_MARKUP.has(tagOf(up)); up = up.parentElement) at = up;
+  return at;
 }
 
 /**
@@ -1607,7 +1631,10 @@ function createAssembler(
     // concluded, exactly where the bare page would have ended the group, and the post rule
     // does not reach across it.
     const tag = tagOf(r.container);
-    if (tag !== "LI" && tag !== "DT" && last && compatible(last.container, r.container)) {
+    // (An item is an item whether its text stands in the <li> or in a <p> inside it.)
+    const up = r.container.parentElement;
+    const listItem = tag === "LI" || tag === "DT" || (up !== null && (tagOf(up) === "LI" || tagOf(up) === "DT"));
+    if (!listItem && last && compatible(last.container, r.container)) {
       if (f.scope === null) close(f);
       else if (scopes.recognised(f.scope) && !amongTheText(f, r.container)) conclude(f);
     }
