@@ -1,19 +1,20 @@
 // test/pdf-bench/pipeline.ts — the reader's own path from a PDF page to scored units.
 //
 // bench.mjs bundles this with esbuild and runs it in Node. Nothing here re-implements the
-// reader: extractPageText, reflowPdf and groupsOf are the functions entrypoints/reader/
-// main.ts and lib/pdf/units.ts call, and pdf.js is the very file the reader loads
-// (public/vendor/pdfjs.min.mjs, through lib/lazy.ts with a stub for the extension API).
-// The one thing written out again is the join of a group's text, which units.ts does
-// inside a DOM-bound function: "\n\n" between paragraphs, cut at MAX_UNIT_TEXT_CHARS, the
-// words being the plan's own counts.
+// reader: extractPageText, reflowPdf, structuredBlocks and groupsOf are the functions
+// entrypoints/reader/main.ts and lib/pdf/units.ts call, and pdf.js is the very file the
+// reader loads (public/vendor/pdfjs.min.mjs, through lib/lazy.ts with a stub for the
+// extension API). The one thing written out again is the join of a group's text, which
+// units.ts does inside a DOM-bound function: "\n\n" between paragraphs, cut at
+// MAX_UNIT_TEXT_CHARS, the words being the plan's own counts.
 import { loadPdfjs } from "../../lib/lazy";
 import { extractPageText } from "../../lib/pdf/extract";
 import { reflowPdf, type PdfPageText, type ReflowBlock } from "../../lib/pdf/reflow";
+import { structuredBlocks } from "../../lib/pdf/structured";
 import { groupsOf, planOf } from "../../lib/pdf/units";
 import { MAX_UNIT_TEXT_CHARS, MIN_UNIT_WORDS } from "../../lib/dom/text";
 
-export { loadPdfjs, extractPageText, reflowPdf, MIN_UNIT_WORDS };
+export { loadPdfjs, extractPageText, reflowPdf, structuredBlocks, MIN_UNIT_WORDS };
 
 export interface BenchUnit {
   text: string;

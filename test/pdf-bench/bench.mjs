@@ -2,7 +2,8 @@
 //
 //   ANAGRAM_PDF_BENCH=<corpus> node test/pdf-bench/bench.mjs run [--name <run>] [--only <id,…>] [--window <pages>]
 //   ANAGRAM_PDF_BENCH=<corpus> node test/pdf-bench/bench.mjs zotero <raw dir> [--name <run>] [--features <run>]
-//   ANAGRAM_PDF_BENCH=<corpus> node test/pdf-bench/bench.mjs report <run> [<other run>…]
+//   ANAGRAM_PDF_BENCH=<corpus> node test/pdf-bench/bench.mjs structured <raw dir> [--name <run>] [--only <id,…>]
+//   ANAGRAM_PDF_BENCH=<corpus> node test/pdf-bench/bench.mjs report <run> [<other run>…] [--split dev|test]
 //   ANAGRAM_PDF_BENCH=<corpus> node test/pdf-bench/bench.mjs diff <run> [--worst <n>] [--page <id>:<n>]
 //
 // The corpus is built by corpus.mjs; results go to <corpus>/../out/<run>/ (or --out):
@@ -11,6 +12,12 @@
 // diff/*.html (side by side with the truth) for the pages that fail worst. `zotero`
 // scores what zotero-dump.mjs wrote from Zotero's document-worker the same way, taking
 // each document's category from an Anagram run, so `report` can set the two side by side.
+// `structured` runs the reader's integrated path over the same dumps: Zotero's structure
+// translated onto pdf.js's text runs (lib/pdf/structured.ts), then the reader's grouping.
+//
+// HELD OUT. Rules are tuned on the `dev` split only; `test` is the documents whose
+// manifest id's SHA-1 begins with a hex digit 0–4 (about 30%), and is only ever reported.
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { LEAK, alignDocument, lineNumberItems, lineNumbersScored } from "./align.mjs";
@@ -25,6 +32,8 @@ const flag = (name, fallback = null) => {
 };
 const OUT = flag("out", join(dirname(CORPUS), "out"));
 const manifest = () => JSON.parse(readFileSync(join(CORPUS, "manifest.json"), "utf8"));
+/** Which split a document is in, by its id alone: "test" is held out, "dev" is tuned on. */
+export const splitOf = (id) => (/^[0-4]/.test(createHash("sha1").update(id).digest("hex")) ? "test" : "dev");
 
 /** A share of the page's body text set across its middle: a one-column page. */
 function twoColumnPage(page) {
@@ -117,7 +126,7 @@ function scoreDocument(dir, doc, run, { kind, truth }, extra = {}) {
     pages: aligned?.pages ?? null,
     splits: aligned?.splits ?? [], merges: aligned?.merges ?? [], outOfOrder: aligned?.outOfOrder ?? [],
     blocks: (aligned?.blocks ?? run.blocks).map((b, i) => ({
-      page: b.page, kind: b.kind, apart: b.apart, columnBreak: b.columnBreak, unit: aligned ? b.unit : -1, text: b.text,
+      page: b.page, kind: b.kind, apart: b.apart, columnBreak: b.columnBreak, unit: aligned ? b.unit : -1, text: b.text, ...(b.origin ? { origin: b.origin } : {}),
       ...(aligned ? { ts: b.toks.map((t) => t.s), te: b.toks.map((t) => t.e), tp: b.toks.map((t) => t.page), tg: b.toks.map((t) => t.gt), tl: b.toks.map((t) => LABEL_CODE[t.label] ?? "?").join("") } : { index: i }),
     })),
     unitList: run.units.map((u) => ({ blocks: u.blocks, words: u.words, page: u.page })),
@@ -189,7 +198,7 @@ function zoteroBlocks(content) {
   const add = (node, kind, path) => {
     const t = text(node).replace(/\s+/g, " ").trim();
     if (!t) return;
-    const page = (node.pageRects?.[0]?.[0] ?? 0) + 1;
+    const page = ((node.anchor?.pageRects ?? node.pageRects)?.[0]?.[0] ?? 0) + 1;
     const prev = node.previousPart ? byPath.get(JSON.stringify(node.previousPart)) : null;
     if (prev) {
       prev.text = /\p{L}-$/u.test(prev.text) && /^\p{Ll}/u.test(t) ? prev.text.slice(0, -1) + t : `${prev.text} ${t}`;
@@ -226,7 +235,7 @@ async function zotero() {
     if (!existsSync(file)) continue;
     const z = JSON.parse(readFileSync(file, "utf8"));
     if (z.error) { console.log(`${doc.id} FAILED in Zotero`); continue; }
-    const blocks = zoteroBlocks(z.content);
+    const blocks = zoteroBlocks(z.structure?.content ?? z.content);
     const known = base.get(doc.id);
     const result = {
       numPages: z.pages, analysedPages: z.pages, producer: known?.producer ?? "", creator: known?.creator ?? "",
@@ -238,6 +247,41 @@ async function zotero() {
     console.log(`${doc.id} ${m ? `cov ${(m.coverage.scored / Math.max(1, m.coverage.body)).toFixed(2)} leak ${m.leak.scoredShare.toFixed(2)} F1 ${m.bounds.f1.toFixed(2)}` : "(no truth)"}`);
   }
   writeFileSync(join(dir, "run.json"), JSON.stringify({ engine: "zotero document-worker", date: new Date().toISOString() }));
+  report([name]);
+}
+
+// ---- structured --------------------------------------------------------------------------
+
+async function structured() {
+  const raw = rest[0];
+  const name = flag("name", "structured");
+  const only = flag("only")?.split(",");
+  // --all reads every block Zotero produced, tagged with what Zotero called it: an
+  // accounting run, to see where body text the reader leaves out is hiding.
+  const options = argv.includes("--all") ? { everything: true } : {};
+  const { loadPipeline, runStructured } = await import("./anagram.mjs");
+  const engine = await loadPipeline();
+  const dir = join(OUT, name);
+  mkdirSync(join(dir, "docs"), { recursive: true });
+  const docs = manifest().filter((d) => existsSync(join(CORPUS, d.file)) && (!only || only.includes(d.id)));
+  let i = 0;
+  for (const doc of docs) {
+    i++;
+    const file = join(raw, `${safe(doc.id)}.json`);
+    if (!existsSync(file)) continue;
+    const z = JSON.parse(readFileSync(file, "utf8"));
+    if (z.error || !z.structure) { console.log(`${i}/${docs.length} ${doc.id} no structure`); continue; }
+    try {
+      const result = await runStructured(engine, join(CORPUS, doc.file), z.structure, z.ms, options);
+      const record = scoreDocument(dir, doc, result, await truthFor(doc, isWordMade(result.producer, result.creator)));
+      const m = record.metrics;
+      console.log(`${i}/${docs.length} ${doc.id} ${result.pages.length}p ${m ? `cov ${(m.coverage.scored / Math.max(1, m.coverage.body)).toFixed(2)} leak ${m.leak.scoredShare.toFixed(2)} F1 ${m.bounds.f1.toFixed(2)} tau ${m.order.tau.toFixed(2)}` : "(no truth)"}`);
+    } catch (error) {
+      console.log(`${i}/${docs.length} ${doc.id} FAILED ${error?.message ?? error}`);
+      writeFileSync(join(dir, "docs", `${safe(doc.id)}.error`), String(error?.stack ?? error));
+    }
+  }
+  writeFileSync(join(dir, "run.json"), JSON.stringify({ engine: "anagram + zotero document-worker", date: new Date().toISOString() }));
   report([name]);
 }
 
@@ -346,7 +390,8 @@ function table(rows, head) {
 }
 
 function report(names) {
-  const runs = names.map(loadRun);
+  const split = flag("split");
+  const runs = names.map(loadRun).map((run) => (split ? { ...run, name: `${run.name} [${split}]`, docs: run.docs.filter((d) => splitOf(d.id) === split) } : run));
   const out = [];
   const groups = (docs) => {
     const tags = new Map([["all", docs]]);
@@ -372,7 +417,7 @@ function report(names) {
     out.push("Worst pages (at most two per document):", "", table(worst.map((p) => [p.id, p.page, p.badness, reasonOf(p), Object.entries(p.leak).map(([k, v]) => `${k} ${v}`).join(", "), p.missed, p.splits, p.merges, p.backJumps, p.outOfOrder]),
       ["doc", "page", "badness", "main reason", "leaked scored tokens", "missed", "splits", "merges", "back jumps", "out of order"]), "");
     const summary = { run: run.name, meta: run.meta, groups: Object.fromEntries([...tags].map(([t, d]) => [t, aggregate(d)])), worst };
-    writeFileSync(join(run.dir, "summary.json"), JSON.stringify(summary, null, 1));
+    writeFileSync(join(run.dir, `summary${split ? `-${split}` : ""}.json`), JSON.stringify(summary, null, 1));
   }
   if (runs.length > 1) {
     // Head to head on the documents every run read, with truth.
@@ -386,7 +431,8 @@ function report(names) {
     out.push(table(rows, ["run", "cov read", "cov scored", "leak scored", "math", "margins+line nos", "captions/figs/notes/refs/front", "bnd F1", "tau", "out of order", "units", "unit words", "ms/page"]), "");
   }
   const text = out.join("\n");
-  writeFileSync(join(runs[0].dir, runs.length > 1 ? `compare-${runs.map((r) => r.name).join("-vs-")}.md` : "summary.md"), text);
+  const suffix = split ? `-${split}` : "";
+  writeFileSync(join(runs[0].dir, runs.length > 1 ? `compare-${names.join("-vs-")}${suffix}.md` : `summary${suffix}.md`), text);
   console.log(text);
 }
 
@@ -462,4 +508,5 @@ if (command === "run") await run();
 else if (command === "report") report(rest);
 else if (command === "diff") await diff(rest[0]);
 else if (command === "zotero") await zotero();
-else console.log("usage: bench.mjs run [--name <run>] [--only <ids>] [--window <n>] | zotero <raw dir> [--name <run>] [--features <run>] | report <run> [<run>…] | diff <run> [--worst <n> | --page <id>:<n>]");
+else if (command === "structured") await structured();
+else console.log("usage: bench.mjs run [--name <run>] [--only <ids>] [--window <n>] | zotero <raw dir> [--name <run>] [--features <run>] | structured <raw dir> [--name <run>] [--only <ids>] | report <run> [<run>…] [--split dev|test] | diff <run> [--worst <n> | --page <id>:<n>]");
