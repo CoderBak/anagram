@@ -85,6 +85,27 @@ const results = await page.evaluate(() => {
   u = collect(`<section><p>${words(40)}</p></section><section><p>${words(40)}</p></section>`);
   check("shorts in unrelated sections do NOT merge", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
 
+  // The short paragraphs of ONE section, however the markup nests them. A list sets its items a
+  // level deeper — `ul > li > p`, a <dl> — without taking them out of the text around them.
+  u = collect(`<div><p>INTRO ${words(20)}</p><ul><li><p>${words(15)}</p></li><li><p>${words(15)}</p></li></ul><p>${words(30)}</p></div>`);
+  check("…but a list is no section: the paragraph before it, its <li><p> items and the paragraph after it are read together",
+    u.length === 1 && u[0].parts === 4 && u[0].text.startsWith("INTRO"), JSON.stringify(u.map(x => [x.parts, x.words])));
+  u = collect(`<dl><dt>First term</dt><dd><p>${words(40)}</p></dd><dt>Second term</dt><dd><p>${words(40)}</p></dd></dl>`);
+  check("…nor is a definition list", u.length === 1 && u[0].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
+  u = collect(`<section><ul><li>${words(40)}</li></ul></section><section><ul><li>${words(40)}</li></ul></section>`);
+  check("…while lists in unrelated sections still do not merge", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+  u = collect(`<div>${["Self-paced courses", "Instructor-led courses", "Blended courses", "Certification courses"].map((t, i) => `<ol start="${i + 1}"><li><p><strong>${t}</strong></p></li></ol><p>${words(20)}</p>`).join("")}</div>`);
+  check("…and an item that is only a name, `li > p` as much as `li`, is an item there and cuts nothing (easy-lms.com's numbered course types)",
+    u.length === 1 && u[0].parts === 4, JSON.stringify(u.map(x => [x.parts, x.words])));
+  // A site that sets every paragraph in a box of its own, from one template — Asciidoctor's
+  // `div.paragraph > p`, a CMS's `div.j6zgbu0 > p` — has not made each paragraph a section.
+  u = collect(`<div class="body"><div class="paragraph"><p>${words(40)}</p></div><div class="paragraph"><div class="inner"><p>${words(40)}</p></div></div></div>`);
+  check("paragraphs each in a wrapper of one template are one body of text", u.length === 1 && u[0].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
+  u = collect(`<div class="layout"><div class="main"><p>${words(40)}</p></div><div class="side"><p>${words(40)}</p></div></div>`);
+  check("…while two different boxes side by side are still two places", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+  u = collect(`<div class="thread"><div class="paragraph"><p>${words(40)}</p></div><div class="meta"><div class="who"><span>alice 2h</span></div></div><div class="paragraph"><p>${words(40)}</p></div></div>`);
+  check("…and a name row between two such boxes still ends the text", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+
   u = collect(`<p>${words(40)} <code>npm install</code> ${words(35)}</p>`);
   check("inline <code> stays in the paragraph", u.length === 1 && u[0].text.includes("npm install"), JSON.stringify(u.map(x => [x.parts, x.words])));
 
@@ -124,6 +145,15 @@ const results = await page.evaluate(() => {
     "就算换了一种分词方法，这一段的词数也仍然留有足够的余量，不会恰好落在门槛的下面。";
   u = collect(`<p>${cjk}</p>`);
   check("pure-CJK paragraph scored", u.length === 1, JSON.stringify(u.map(x => x.words)));
+  {
+    // The floor never counts fewer words than a reader: a contraction or a number is one word,
+    // and a hyphenated word, an abbreviation, a URL or a pair joined by a dash count once per
+    // word in them (Chrome's segmenter breaks at every inner full stop, too). A paragraph the
+    // walk counts under the floor while a reader counts 75 is missing text, not words.
+    const plain = (t) => t.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+    const samples = ["Don't stop: it's 3.5% of U.S. sales, e.g. in 2024.", "The in-house team—not the agency—wrote it.", "See https://example.com/a-b or mail a@b.org at 10:42.", "Rock 'n' roll, and/or C++ — it’s 1,000 times.", "sys.stderr and time.localtime() are used."];
+    check("countWords never counts fewer words than a reader does", samples.every((t) => PW.countWords(t) >= plain(t)), JSON.stringify(samples.map((t) => [PW.countWords(t), plain(t)])));
+  }
 
   u = collect(`<p>1 2 3 4 5 6 7 8 9 10 11 12</p>`);
   check("letterless run dropped", u.length === 0);
@@ -153,6 +183,12 @@ const results = await page.evaluate(() => {
 
   u = collect(`<p>${words(40)}</p><div style="display:inline-block"><div>${words(9)}</div></div><p>${words(40)}</p>`);
   check("inline-block card with block children does not sever merging siblings", u.length >= 1, JSON.stringify(u.map(x => [x.parts, x.words])));
+  // A link set as an inline flex box — its label and an icon (aaa.com) — makes its children
+  // block boxes by the rules of flex layout, and is no card: it stays in its sentence.
+  u = collect(`<p>${words(40)} <a href="#x" style="display:inline-flex;gap:4px"><span>vacation hot spots</span><svg width="8" height="8"></svg></a>, ${words(40)}</p>`);
+  check("an inline-flex link (a label and an icon) stays in its sentence", u.length === 1 && u[0].parts === 1 && u[0].text.includes("vacation hot spots,"), JSON.stringify(u.map(x => [x.parts, x.words])));
+  u = collect(`<div class="text">${words(80)} <span style="display:inline-flex"><div>CARD ${words(9)}</div></span> ${words(80)}</div>`);
+  check("…while an inline flex box holding a block of its own is still a card laid into the line", u.length >= 2 && u.every((x) => !/ CARD/.test(x.text)), JSON.stringify(u.map(x => [x.parts, x.words])));
 
   sandbox.innerHTML = `<div id="sh"></div>`;
   const sh = sandbox.querySelector("#sh").attachShadow({ mode: "open" });
@@ -620,7 +656,7 @@ const results = await page.evaluate(() => {
       u.length === 1 && u[0].parts === 2 && u[0].text.startsWith("TEXT"), shape(u));
 
     u = collect(`<article><p>${sent(40)}</p><ul><li><p>ITEM ${sent(11)}</p></li><li><p>ITEM ${sent(11)}</p></li></ul><p>LAST ${sent(39)}</p></article>`);
-    check("the paragraphs on both sides of a list set a level deeper still belong together", u.length === 1 && u[0].parts === 2 && u[0].text.includes("LAST") && !u[0].text.includes("ITEM"), shape(u));
+    check("the paragraphs on both sides of a list set a level deeper, and the list's items, are one text", u.length === 1 && u[0].parts === 4 && u[0].text.includes("LAST") && u[0].text.includes("ITEM"), shape(u));
 
     sandbox.innerHTML = xPost([`A ${sent(29)}`, `B ${sent(79)}`, `C ${sent(19)}`]);
     const strictPost = PW.collectUnits(sandbox, { mergeShorts: false });
@@ -826,7 +862,7 @@ const results = await page.evaluate(() => {
     check("…while a sentence of the SITE in a layout box under the text (Steam: 'Was this review helpful?') never joins it, byline between them or not",
       u.length === 1 && u[0].parts === 1 && !u[0].text.includes("helpful"), shape(u));
     u = collect(`<article><p>LEAD ${sent(39)}</p><ol><li><p>ITEM-A ${sent(14)}</p></li><li><p>ITEM-B ${sent(14)}</p></li></ol><p>LAST ${sent(39)}</p></article>`);
-    check("…and a DECLARED post is read exactly as before: the items a level deeper stay out", u.length === 1 && u[0].parts === 2 && !u[0].text.includes("ITEM"), shape(u));
+    check("…and so is a DECLARED post's: a list is no boundary in any voice", u.length === 1 && u[0].parts === 4 && u[0].text.includes("ITEM-A") && u[0].text.includes("LAST"), shape(u));
 
     // The opening post: no sibling like it, but the thread that answers it follows it.
     const opening = (inner) => `<div class="box"><div class="hd">${by("alice")}</div><div class="cell">${inner}</div></div><div class="box"><div class="cell">${by("bob")}<p>${sent(20)}</p></div><div class="cell">${by("carol")}<p>${sent(20)}</p></div></div>`;
@@ -1167,6 +1203,9 @@ const results = await page.evaluate(() => {
     check("…while the prose around a search box inside <main> is untouched", u.length === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
     u = collect(`<form id="form1"><input type="text"><main><p>${words(80)}</p></main></form>`);
     check("…and a page wrapped in one <form> (ASP.NET WebForms) is not a sign-up box", u.length === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
+    u = collect(`<div class="header"><a href="/">Frisbee shop</a> <a href="/cart">Cart</a></div><form name="cart_quantity" action="/product_info.php?action=add_product"><table><tr><td><h1>Power Driver</h1><p>PRODUCT ${words(150)}</p><p>${words(120)}</p>Qty: <input type="text" name="quantity" value="1"><input type="submit" value="Add to Cart"></td></tr></table></form>`);
+    check("…nor a shop's product page wrapped in its add-to-cart form (osCommerce's cart_quantity): the form holds the page's text",
+      u.length === 2 && u[0].text.startsWith("PRODUCT"), JSON.stringify(u.map(x => [x.parts, x.words])));
   }
   {
     // A consent platform that names its banner after itself (lib/dom/consentBanners.ts) is
@@ -1294,6 +1333,46 @@ const results = await page.evaluate(() => {
     const u = PW.collectUnits(sandbox);
     check("Gemini's conversation markup: the answer is read", u.length === 1 && u[0].wordCount >= 400, JSON.stringify(u.map((x) => x.wordCount)));
   }
+  {
+    // An id that a link on the page points at names a PLACE in the document, and a long one is
+    // a slug: neither says what the element is. PostgreSQL's section on the locking clause,
+    // the section a Sphinx heading names (Flask's "Cookies"), and the box Consumer Reports
+    // continues an article in were each read as a share bar, a cookie banner and a list of
+    // related articles.
+    // (The page holds more than the section, so it cannot pass for the page by its size.)
+    const read = (html) => { sandbox.innerHTML = `<p>PAGE ${words(300)}</p>${html}`; return PW.collectUnits(sandbox).map((x) => x.text.split(" ")[0]).filter((w) => w !== "PAGE"); };
+    const anchor = read(`<p>See <a href="sql-select.html#SQL-FOR-UPDATE-SHARE">The Locking Clause</a> below.</p><div class="refsect2" id="SQL-FOR-UPDATE-SHARE"><h3>The Locking Clause</h3><p>LOCKING ${words(80)}</p></div>`);
+    const sphinx = read(`<section id="cookies"><h2>Cookies<a class="headerlink" href="#cookies">¶</a></h2><p>COOKIES ${words(80)}</p></section>`);
+    const slug = read(`<div class="rel-article-wrapper" id="more-on-car-repair-maintenance-related-articles"><div class="related-links-multiple"><a href="/a">LINKS ${words(80)}</a></div><div class="text-container" id="more-on-car-repair-maintenance-related-articles-text"><p>SLUG ${words(80)}</p></div></div>`);
+    check("an id a link points at, or a slug of more than four parts, is no component name: the section is read",
+      JSON.stringify([anchor, sphinx, slug]) === JSON.stringify([["LOCKING"], ["COOKIES"], ["SLUG"]]), JSON.stringify([anchor, sphinx, slug]));
+    const mk = (id) => { const e = document.createElement("div"); e.id = id; return e; };
+    check("…while a short id nothing links to is still a component's name",
+      ["share-buttons", "related-articles", "social-share-bar-top", "cookie-law-info-bar", "sharing"].every((id) => PW.isBoilerplate(mk(id))));
+    sandbox.innerHTML = "";
+  }
+  {
+    // An <aside> is furniture — a sidebar, a pull quote, a signature — except where it stands IN
+    // the text: a callout between an article's paragraphs (garnix's "A note on other devices"),
+    // the box XenForo sets a quoted post in, in the middle of the reply. And one that holds the
+    // whole page is the page (fermyon.com never closes its announcement banner).
+    // (The page holds more than the box, so it cannot pass for the page by its size.)
+    const read = (html, page = true) => { sandbox.innerHTML = page ? `<p>PAGE ${words(400)}</p>${html}` : html; return PW.collectUnits(sandbox).map((x) => x.text.split(/\s/)[0]).filter((w) => w !== "PAGE"); };
+    const callout = read(`<div class="body"><p>P1 ${words(80)}</p><aside class="callout"><h3>A note on other devices</h3><p>NOTE ${words(80)}</p></aside><p>P2 ${words(80)}</p></div>`);
+    const quote = read(`<article><blockquote class="messageText"><b>My first car</b><br><br><div class="bbCodeBlock bbCodeQuote"><aside><div class="attribution">alice said:</div><blockquote>QUOTED ${words(80)}</blockquote></aside></div>REPLY ${words(80)}</blockquote></article>`);
+    const unclosed = read(`<aside class="announcement-banner"><a href="/news">Announcement: we were acquired</a><div class="page"><h1>Lessons from 25 years of startups</h1><p>WHOLE ${words(300)}</p></div></aside>`, false);
+    check("an <aside> standing among the text, or holding the whole page, is read",
+      JSON.stringify([callout, quote, unclosed]) === JSON.stringify([["P1", "NOTE", "P2"], ["QUOTED", "REPLY"], ["WHOLE"]]), JSON.stringify([callout, quote, unclosed]));
+    const pullQuote = `<div class="body"><p>P1 ${words(80)} about the price of two return tickets a year.</p><aside class="pullquote">“About the price of two return tickets a year”</aside><p>P2 ${words(30)}</p></div>`;
+    const pull = read(pullQuote);
+    const floated = read(`<div class="body"><p>P1 ${words(80)}</p><aside style="float:right;width:200px"><p>MARGIN ${words(80)}</p></aside><p>P2 ${words(80)}</p></div>`);
+    const sidebar = read(`<div class="layout"><main><p>MAIN ${words(80)}</p></main><aside class="sidebar"><p>SIDE ${words(80)}</p></aside></div>`);
+    const signature = read(`<div class="message"><div class="messageContent"><article><blockquote class="messageText">POST ${words(80)}</blockquote></article></div><div class="signature"><aside>SIG ${words(80)}</aside></div></div>`);
+    check("…while a pull quote repeating the text, a box floated beside it, a sidebar and a signature are still furniture",
+      JSON.stringify([pull, floated, sidebar, signature]) === JSON.stringify([["P1"], ["P1", "P2"], ["MAIN"], ["POST"]]) && !PW.collectUnits((sandbox.innerHTML = `<p>PAGE ${words(400)}</p>${pullQuote}`, sandbox)).some((x) => x.text.includes("About the price")),
+      JSON.stringify([pull, floated, sidebar, signature]));
+    sandbox.innerHTML = "";
+  }
 
   // ---- main-content detection ----------------------------------------------------------
   {
@@ -1373,7 +1452,10 @@ const results = await page.evaluate(() => {
     const item = (n) => `<li class="ltx_item"><span class="ltx_tag ltx_tag_item">1.</span> ${para(n)}</li>`;
     u = collect(`<section class="ltx_section">${para(80)}<ol class="ltx_enumerate">${item(40)}${item(40)}</ol></section>`);
     check("the short items of a paper's list are read together", u.length === 2 && u[1].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
-    u = collect(`<section><div class="box"><p>${words(40)}.</p></div><div class="box"><p>${words(40)}.</p></div></section>`);
+    // (Boxes of one template that hold nothing but their paragraph are read together on any
+    // page — see "paragraphs each in a wrapper of one template" — so the guard is a box that
+    // holds something besides its paragraph, where the next person's comment would stand.)
+    u = collect(`<section><div class="box"><p>${words(40)}.</p><span>alice</span></div><div class="box"><p>${words(40)}.</p><span>bob</span></div></section>`);
     check("two short paragraphs in boxes of their own elsewhere stay apart", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
   }
   {
@@ -1416,10 +1498,23 @@ const results = await page.evaluate(() => {
   }
   u = collect(`<div role="tablist"><div role="tab">Section 1</div><div role="tabpanel"><p>${words(80)}</p></div></div>`);
   check("role=tablist accordion content is scored; the tab label is chrome", u.length === 1 && !u[0].text.includes("Section 1"), JSON.stringify(u.map(x => [x.parts, x.words])));
+  u = collect(`<div class="accordion" role="tablist"><div class="accordion-item" role="tab"><h2><button>Eligibility</button></h2><div role="tabpanel"><ul><li>ITEM ${words(40)}</li><li>${words(40)}</li></ul></div></div></div>`);
+  check("…and an accordion ITEM marked role=tab, header and panel in it, is no tab label: its panel is read (PSE&G)",
+    u.length === 1 && u[0].text.startsWith("ITEM"), JSON.stringify(u.map(x => [x.parts, x.words])));
   {
     const b = document.createElement("body"); b.className = "notranslate";
-    const s = document.createElement("span"); s.className = "notranslate";
-    check("notranslate is ignored at page level, honoured on spans", PW.isBoilerplate(b) === false && (() => { sandbox.innerHTML = `<p>${words(78)} <span class="notranslate">BRANDLEAK</span> end.</p>`; const [x] = PW.collectUnits(sandbox); return x && !x.text.includes("BRANDLEAK"); })());
+    check("notranslate is ignored at page level", PW.isBoilerplate(b) === false);
+    // Inline, the attribute marks a word of the sentence — a brand name, the code literal Sphinx
+    // sets in the sentences of Python's, Django's and Flask's docs (`code.docutils.literal
+    // .notranslate`): not for translating, but read. Left out, it holed the sentence the model
+    // reads, and 76-word paragraphs counted 73 and fell under the floor.
+    sandbox.innerHTML = `<p>${words(78)} <span class="notranslate">BRAND</span> end.</p>`;
+    const [brand] = PW.collectUnits(sandbox);
+    sandbox.innerHTML = `<p>${words(40)} <code class="docutils literal notranslate"><span class="pre">localtime()</span></code> ${words(34)}</p>`;
+    const sphinx = PW.collectUnits(sandbox);
+    check("…and inline, a notranslate word is a word of its sentence: read, and counted toward the floor",
+      !!brand && brand.text.endsWith("BRAND end.") && sphinx.length === 1 && sphinx[0].wordCount === 75 && sphinx[0].text.includes(" localtime() "),
+      JSON.stringify([brand?.text.slice(-12), sphinx.map((x) => x.wordCount)]));
   }
   {
     const names = "Pallarés-Carratalá V, Polo García J, Martín Rioboo E, Ruíz García A, Serrano-Cumplido A, Divisón-Garrote JA, Segura-Fragoso A, Cinza-Sanjurjo S, Prieto-Díaz MÁ, Barquilla-García A, Escobar-Cervantes C, Velilla-Zancada S, Micó-Pérez RM, Rey-Aldana D, Vitelli-Storelli F, Cebrián-Cuenca AM, Turégano-Yedro M.";

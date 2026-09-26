@@ -566,6 +566,9 @@ export function collectUnits(
     container: Element; // nearest block-laid-out ancestor
     hidden: boolean; // computed visibility: hidden/collapse
     preserves: boolean; // computed white-space preserves newlines
+    /** The children of an inline flex or grid box: block boxes by the rules of that layout,
+     *  phrasing all the same (see hasBlockChildren). */
+    blockified?: boolean;
   }
 
   function visitChildren(el: Element, ctx: Ctx): void {
@@ -589,7 +592,7 @@ export function collectUnits(
     if (el.hasAttribute(MARK_ATTR)) return; // our own UI — transparent, mid-flow safe
 
     const cs = styles.get(el);
-    const flow = flowClassOf(el, cs);
+    const flow = ctx.blockified && (INLINE_FALLBACK_TAGS.has(tag) || NO_SCORE_TAGS.has(tag)) && flowClassOf(el, cs) === "block" ? "inline" : flowClassOf(el, cs);
     // display:none takes NO space: the text around it reads as one sentence, so it
     // must never close the run (hidden template spans, lazy content, <script>…).
     if (flow === "hidden") return;
@@ -655,13 +658,14 @@ export function collectUnits(
     if (flow === "inline") {
       // An inline-block/-flex/-grid hosting its own block children is a CARD laid
       // into the line (tweet embeds, product tiles) — treat as a block boundary.
-      if (cs && cs.display.startsWith("inline-") && hasBlockChildren(el)) {
+      if (cs && cs.display.startsWith("inline-") && hasBlockChildren(el, cs.display)) {
         closeRun();
         visitChildren(el, { container: el, hidden, preserves });
         closeRun();
         return;
       }
-      visitChildren(el, { container: ctx.container, hidden, preserves });
+      const blockifies = cs !== null && (cs.display === "inline-flex" || cs.display === "inline-grid");
+      visitChildren(el, { container: ctx.container, hidden, preserves, blockified: blockifies });
       return;
     }
 
@@ -766,11 +770,20 @@ export function collectUnits(
     }
   }
 
-  function hasBlockChildren(el: Element): boolean {
+  /**
+   * Does an inline-level box hold blocks of its own? A flex or grid container makes every
+   * child a block box whatever it is (CSS Display, "blockification"): an inline-flex link
+   * that sets its label in a <span> beside an icon — aaa.com's links, a design system's —
+   * holds phrasing, not a card, and cut every sentence it stood in into three runs, the link
+   * a barrier in the middle. There only an element that is a block by what it is counts.
+   */
+  function hasBlockChildren(el: Element, display: string): boolean {
+    const blockified = display === "inline-flex" || display === "inline-grid";
     for (const c of el.children) {
       const ccs = styles.get(c);
       const d = ccs?.display ?? "";
       if (ccs && isOutOfFlow(ccs)) continue; // absolutely positioned helpers are not layout
+      if (blockified && (INLINE_FALLBACK_TAGS.has(tagOf(c)) || NO_SCORE_TAGS.has(tagOf(c)))) continue;
       if (d && d !== "none" && d !== "contents" && !isInlineDisplay(d)) return true;
     }
     return false;
@@ -1057,10 +1070,17 @@ function paragraphBox(el: Element): Element {
 
 /**
  * Merge compatibility: same container (BR-split halves), sibling containers (the
- * paragraphs of one post, <li>s), or one-level cousins (<li><p> structures). Anything
- * further apart is a different section and must not merge.
+ * paragraphs of one post, <li>s), or a block and the child of its sibling. Anything further
+ * apart is a different section and must not merge — except by list markup (`outsideLists`).
  */
 function compatible(a: Element, b: Element): boolean {
+  if (near(a, b)) return true;
+  const la = outsideLists(a);
+  const lb = outsideLists(b);
+  return (la !== a || lb !== b) && near(la, lb);
+}
+
+function near(a: Element, b: Element): boolean {
   if (a === b) return true;
   a = paragraphBox(a);
   b = paragraphBox(b);
@@ -1070,6 +1090,23 @@ function compatible(a: Element, b: Element): boolean {
   if (ap && ap === bp) return true;
   if (ap && bp && (ap === bp.parentElement || bp === ap.parentElement)) return true;
   return false;
+}
+
+/** Markup that sets an item a level deeper than the text around it without taking it out
+ *  of that text: the items of a list, the terms and definitions of a <dl>. */
+const LIST_MARKUP = new Set(["UL", "OL", "LI", "DL", "DT", "DD"]);
+
+/**
+ * The outermost list `el` stands in, or `el` itself. A list is no section boundary: an
+ * epam.com article sets its bullets as `ul > li > p` between two paragraphs, each item a
+ * cousin of the next and of the paragraphs around the list, and the lead-in, the six items
+ * and the sentence after them — 112 words of one section — were read as nine texts too
+ * short to judge. Seen from outside its lists, an item stands where the list stands.
+ */
+function outsideLists(el: Element): Element {
+  let at = el;
+  for (let up = at.parentElement; up && LIST_MARKUP.has(tagOf(up)); up = up.parentElement) at = up;
+  return at;
 }
 
 /**
@@ -1102,14 +1139,16 @@ const MAX_WRAPPER_HOPS = 3;
 const LAYOUT_WRAPPERS = new Set(["DIV", "SPAN"]);
 
 /**
- * The box a paragraph really stands in, inside a DECLARED scope: up through wrappers that hold
- * that one block and nothing else. Facebook sets each paragraph of a post — `div[dir=auto]` —
- * in a `pre-wrap` box of its own, so two paragraphs of one post are cousins, never siblings,
- * and a post of two short paragraphs got nothing: neither `compatible` with the other. Inside
- * one declared voice such a wrapper separates nothing; on the bare page it is still read as
- * the section boundary it may be, and a recognised post has its own rule (`oneBody`).
+ * The box a paragraph really stands in: up through wrappers that hold that one block and
+ * nothing else (inside a scope, no further than the scope). Facebook sets each paragraph of
+ * a post — `div[dir=auto]` — in a `pre-wrap` box of its own, so two paragraphs of one post
+ * are cousins, never siblings, and a post of two short paragraphs got nothing: neither
+ * `compatible` with the other. Inside one declared voice such a wrapper separates nothing.
+ * On the bare page it may be the section boundary it looks like, and two wrapped paragraphs
+ * are read together only when their boxes come from one template (see `together`); a
+ * recognised post has its own rule (`oneBody`).
  */
-function unwrapped(el: Element, scope: Element): Element {
+function unwrapped(el: Element, scope: Element | null): Element {
   let at = el;
   for (let hops = 0; hops < MAX_WRAPPER_HOPS; hops++) {
     const parent = at.parentElement;
@@ -1237,11 +1276,15 @@ function createAssembler(
    * Do two runs of one frame stand in the same place? Proximity (`compatible`) everywhere.
    * Inside a RECOGNISED post also when nothing but that person's text lies between them
    * (scope.ts, `oneBody`): there proximity is not what keeps a voice together — the post is.
-   * Declared scopes and the bare page are read exactly as before.
+   * Inside a declared scope, whatever wrappers each paragraph stands in. On the bare page,
+   * when each stands in a wrapper of ONE TEMPLATE, side by side (`sameBody`): Asciidoctor sets
+   * every paragraph in a `div.paragraph` of its own, a CMS in a `div.j6zgbu0`, and the short
+   * paragraphs of one section were read as strangers, each too short to judge. Two boxes of
+   * different names side by side — a column and a sidebar — are still two places.
    */
   function together(f: Frame, a: Element, b: Element): boolean {
     if (compatible(a, b)) return true;
-    if (f.scope === null) return false;
+    if (f.scope === null) return sameBody(unwrapped(a, null), unwrapped(b, null));
     if (scopes.recognised(f.scope)) return scopes.oneBody(a, b, f.scope);
     return compatible(unwrapped(a, f.scope), unwrapped(b, f.scope));
   }
@@ -1625,7 +1668,14 @@ function createAssembler(
     // concluded, exactly where the bare page would have ended the group, and the post rule
     // does not reach across it.
     const tag = tagOf(r.container);
-    if (tag !== "LI" && tag !== "DT" && last && compatible(last.container, r.container)) {
+    // (An item is an item whether its text stands in the <li> or in a <p> inside it.)
+    const up = r.container.parentElement;
+    const listItem = tag === "LI" || tag === "DT" || (up !== null && (tagOf(up) === "LI" || tagOf(up) === "DT"));
+    // (Where the text itself stands in a wrapper of its own on the bare page — one template's
+    // box per paragraph, see `together` — it is that box a row stands beside.)
+    const box = last && f.scope === null ? unwrapped(last.container, null) : null;
+    const beside = !!last && (compatible(last.container, r.container) || (!!box && box !== last.container && compatible(box, unwrapped(r.container, null))));
+    if (!listItem && beside) {
       if (f.scope === null) close(f);
       else if (scopes.recognised(f.scope) && !amongTheText(f, r.container)) conclude(f);
     }

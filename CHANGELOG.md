@@ -71,6 +71,39 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- A section of a page is no longer skipped because of the words in its anchor. PostgreSQL's
+  reference section on the locking clause is `SQL-FOR-UPDATE-SHARE`, Flask's documentation
+  names its section on cookies `cookies`, and those ids read as a share bar and a cookie
+  banner. An id that a link on the page points at, or one of more than four words, names a
+  place in the document, and is no longer looked in for the names of page chrome.
+- An `<aside>` in the middle of the text is read. Every aside used to be skipped as a
+  sidebar or a pull quote, and with it the callouts writers set between their paragraphs
+  and the post a XenForo reply quotes. One that stands among the text and holds prose of
+  its own is read now; sidebars, pull quotes, signatures and boxes of other articles stay
+  out, and so does an aside floated beside the text. An aside a site never closed, and
+  that holds the whole article, no longer hides it.
+- A shop's product page that sits inside its add-to-cart form is read. osCommerce and Zen
+  Cart set the whole page, description and all, in that form, and a form with a field to
+  fill in was taken for a sign-up box. A form that holds most of the page's text, on a page
+  that declares no main text elsewhere, is now read as the page.
+- The panels of an accordion whose items are marked as tabs are read. Bootstrap and Drupal
+  accordions put `role="tab"` on each item, header and panel together, and carousels on
+  each slide; a tab is the label of a panel, and one that holds a panel, a heading or a
+  paragraph is no longer taken for one.
+- Code and names marked not-to-translate in the middle of a sentence are read with it.
+  Sphinx marks every inline code literal in Python's, Django's and Flask's documentation
+  that way; left out, they holed the sentence the model read, and a 76-word paragraph
+  counted 73 words and was not analyzed at all.
+- Short paragraphs around and inside a list are read together. A list's items (`ul > li >
+  p`, a definition list) stood apart from the paragraphs around them and from each other,
+  so a lead-in, the items and the sentence after them, each too short alone, went unread.
+  A list no longer separates the text of one section; a heading still does.
+- Short paragraphs that a site sets each in a box of its own are read together when the
+  boxes come from one template, side by side (Asciidoctor's `div.paragraph`, a CMS's
+  paragraph block). Two different boxes side by side, a column and a sidebar, are still
+  read apart, and a name row between two such boxes still ends the text.
+- A link drawn as an inline flex box, a label beside an icon, no longer cuts its sentence
+  in three. On aaa.com every paragraph with a link was split at the link and left unread.
 - The PDF reader works better with a screen reader, a keyboard and zoom. The page declares
   its language (the one the viewer's toolbar is drawn in, with Anagram's own controls in
   Anagram's), no longer stops pinch zoom, and puts the toolbar, the pages and the scope note
