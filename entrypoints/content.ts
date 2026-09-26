@@ -105,8 +105,12 @@ export default defineContentScript({
   async main(ctx) {
     const world = window as unknown as Record<string, boolean>;
     if (world[ALREADY_RUNNING]) return;
-    world[ALREADY_RUNNING] = true;
     const isTop = window.self === window.top;
+    // A sandboxed frame has no origin, so no grant covers it and the worker answers none of
+    // its requests (pageAddress in lib/access/messages.ts). The registration reaches it all
+    // the same, through the origin its page gave it before the sandbox took it away.
+    if (!isTop && window.origin === "null") return;
+    world[ALREADY_RUNNING] = true;
     // Google Docs (top frame only): the editor is a canvas (no DOM text) — the
     // FAB's action opens our in-tab analyzed reading overlay instead.
     const docs = isTop ? detectDocsPage(location) : null;

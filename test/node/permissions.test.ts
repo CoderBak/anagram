@@ -103,10 +103,11 @@ describe("the hosts each target asks for", () => {
     for (const { manifest } of [chrome, firefox]) expect(manifest.content_scripts).toBeUndefined();
   });
 
-  it.skipIf(!chrome.ready)("still builds the script the worker registers by name", () => {
-    // lib/access/worker.ts names this path; a rename that only the bundler knew about
+  it.skipIf(!chrome.ready)("still builds the scripts the worker registers by name", () => {
+    // lib/access/worker.ts names these paths; a rename that only the bundler knew about
     // would leave the extension unable to run anywhere.
     expect(existsSync(join(ROOT, "output", "chrome-mv3", "content-scripts", "content.js"))).toBe(true);
+    expect(existsSync(join(ROOT, "output", "chrome-mv3", "content-scripts", "shadow.js"))).toBe(true);
   });
 
   it.skipIf(!chrome.ready)("asks for nothing at all in the SHIPPING build, whatever the test build does", () => {

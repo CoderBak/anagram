@@ -72,6 +72,25 @@ describe("document-scoped authorization",()=>{
     expect(await pending).toBeNull();
     const reopened=env.open(source);expect(await env.authority.authorize(source,reopened.session)).toBeNull();
   });
+  it("authorizes a srcdoc, about:blank or blob: frame by the origin its granted page gave it, and withdraws it with that page",async()=>{
+    const env=environment();
+    const frame=(url:string,origin:string|undefined,frameId:number):AccessSender=>
+      ({id:fakeBrowser.runtime.id,url,origin,frameId,documentId:`doc-${frameId}`,tab:{id:7,url:"https://top.test/article"}});
+    const inherited=[frame("about:srcdoc","https://top.test",4),frame("about:blank","https://top.test",5),frame("blob:https://top.test/0b5c6f1e-0000-4000-8000-000000000000","https://top.test",6)];
+    const records=[];
+    for(const source of inherited){
+      expect(callerRole(source,fakeBrowser.runtime.id,fakeBrowser.runtime.getURL("/"))).toBe("content");
+      const port=env.open(source),record=await env.authority.authorize(source,port.session);
+      expect(record?.url).toBe("https://top.test/");records.push(record!);
+    }
+    // An opaque origin (a sandboxed frame, a data: URL) speaks for no site, nor does a frame
+    // whose browser gives no origin (Firefox), nor one whose page was never granted.
+    for(const source of [frame("about:srcdoc","null",8),frame("data:text/html,x","null",9),frame("about:srcdoc",undefined,10),frame("about:srcdoc","https://other.test",11)]){
+      const port=env.open(source);expect(await env.authority.authorize(source,port.session)).toBeNull();
+    }
+    env.withdraw("https://top.test/*");
+    expect(records.every((record)=>record.signal.aborted)).toBe(true);
+  });
   it("allows trusted pasted text without a tab, but not an arbitrary extension page",async()=>{
     const env=environment([]),paste={id:fakeBrowser.runtime.id,url:fakeBrowser.runtime.getURL("/paste.html")};
     const p=env.open(paste);expect(await env.authority.authorize(paste,p.session)).not.toBeNull();

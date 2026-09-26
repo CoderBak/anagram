@@ -186,6 +186,36 @@ const results = await page.evaluate(() => {
     const got = PW.collectUnits(sandbox, { onShadowRoot: (r) => roots.push(r) });
     check("walker reports each open shadow root it descends into", got.length === 1 && roots.length === 1 && roots[0] instanceof ShadowRoot, `${roots.length}`);
   }
+  {
+    // A closed root is out of reach of the page's other scripts, not of the extension:
+    // Chrome hands it to a content script through chrome.dom.openOrClosedShadowRoot, which
+    // this plain page stands in for with the roots it attached itself.
+    const closed = new Map();
+    const hadChrome = "chrome" in window;
+    window.chrome ??= {};
+    const hadDom = "dom" in window.chrome;
+    window.chrome.dom = { openOrClosedShadowRoot: (el) => closed.get(el) ?? null };
+    sandbox.innerHTML = `<closed-card id="cc"></closed-card><div id="cd"></div>`;
+    const card = sandbox.querySelector("#cc");
+    closed.set(card, card.attachShadow({ mode: "closed" }));
+    closed.get(card).innerHTML = `<p>${words(80)}</p>`;
+    const div = sandbox.querySelector("#cd");
+    closed.set(div, div.attachShadow({ mode: "closed" }));
+    closed.get(div).innerHTML = `<p>${words(85)}</p>`;
+    const roots = [];
+    const got = PW.collectUnits(sandbox, { onShadowRoot: (r) => roots.push(r) });
+    const inCard = got.filter((u) => closed.get(card).contains(u.container));
+    check("a closed root on a custom element is walked through the extension API, and reported for observation",
+      got.length === 1 && inCard.length === 1 && roots.length === 1 && roots[0] === closed.get(card), JSON.stringify({ units: got.length, roots: roots.length }));
+    // The page saying it attached one (entrypoints/shadow.content.ts) is what opens a
+    // built-in element's closed root: asking every element costs every walk a call each.
+    PW.noteShadowHost(div);
+    const after = PW.collectUnits(sandbox);
+    check("a closed root on a built-in element is walked once the page has announced it",
+      after.length === 2 && after.some((u) => closed.get(div).contains(u.container)), JSON.stringify({ units: after.length }));
+    if (hadDom) delete window.chrome.dom;
+    if (!hadChrome) delete window.chrome;
+  }
 
   // ---- regression: review-workflow findings ------------------------------------------
   // 1) preserved-whitespace splitting must be IDEMPOTENT (no infinite observe loop).
@@ -2083,6 +2113,39 @@ const results = await page.evaluate(() => {
   await ob.close();
 }
 
+// ---- the page's shadow roots are watched, never Anagram's own ------------------------------
+// Every shadow root on the page is watched from the start, walked into or not. The ball and
+// the chips are shadow hosts too, and a ball that redraws its count must not wake the
+// observer that redraws it: that is a re-scan every quarter second on a settled page.
+{
+  const ob = await browser.newPage();
+  await ob.setContent("<!doctype html><html><body></body></html>");
+  await ob.addScriptTag({ path: BUNDLE });
+  const r = await ob.evaluate(async () => {
+    const own = document.createElement("div");
+    own.setAttribute("data-anagram", "host");
+    const ownRoot = own.attachShadow({ mode: "open" });
+    ownRoot.innerHTML = "<span>1</span>";
+    const widget = document.createElement("div");
+    const widgetRoot = widget.attachShadow({ mode: "open" });
+    document.body.append(own, widget);
+    const dirty = [];
+    const observers = PW.createObservers({ onVisible() {}, onNear() {}, onDirty: (nodes) => dirty.push(...nodes) });
+    observers.start();
+    ownRoot.querySelector("span").textContent = "2"; // the ball redraws its count
+    widgetRoot.innerHTML = "<p>The page renders into its own root.</p>";
+    await new Promise((done) => setTimeout(done, 500));
+    observers.stop();
+    return { own: dirty.filter((n) => ownRoot.contains(n)).length, page: dirty.filter((n) => widgetRoot.contains(n)).length };
+  });
+  results.push({
+    name: "a shadow root on the page is watched from the start, one of Anagram's own never is",
+    ok: r.page > 0 && r.own === 0,
+    note: JSON.stringify(r),
+  });
+  await ob.close();
+}
+
 // ---- a chip inside a clipped box follows the page when it reflows -------------------------
 // The placement is measured once, when the verdict lands, and the page does not stand still:
 // on a Goodreads book page the reviews grow as their images and web fonts arrive, and a chip
@@ -2564,6 +2627,7 @@ for (const file of fixtureFiles) {
       docs: null,
       counts: { scored: 0, flagged: 0, unsupported: 0, unavailable: 0 },
       frameGate: { minWidth: 200, minArea: 40000 },
+      originFallbackFrames: true,
       clickedFrameId: 0,
       target: document.querySelector("article"),
       detectLanguage: async () => null,
@@ -2641,6 +2705,38 @@ for (const file of fixtureFiles) {
     ok: r.hasSections && r.bytes <= 60_000,
     note: `${r.bytes} bytes`,
   });
+}
+
+// ---- diagnostics: which subframes the content script reaches ------------------------------
+// A srcdoc or about:blank frame takes the page's origin, and in Chrome the registration follows
+// it there (matchOriginAsFallback); a sandboxed frame has no origin and is left alone.
+{
+  const fp = await browser.newPage();
+  await fp.setContent("<!doctype html><html lang=\"en\"><body></body></html>");
+  await fp.addScriptTag({ path: BUNDLE });
+  const frames = await fp.evaluate(async () => {
+    document.body.innerHTML = `<article><p>A page with frames.</p></article>` +
+      `<iframe srcdoc="<p>A chapter.</p>" width="640" height="300"></iframe>` +
+      `<iframe width="640" height="300"></iframe>` +
+      `<iframe sandbox srcdoc="<p>Sandboxed.</p>" width="640" height="300"></iframe>` +
+      `<iframe src="data:text/html,x" width="640" height="300"></iframe>`;
+    const report = (fallback) => PW.buildDiagnostics({
+      version: "0.0.0-test", manifestVersion: 3, uiLanguage: "en", messageLocale: "en", analysisScope: "page",
+      mergeShorts: true, displayMode: "all", siteRule: null, globallyEnabled: true, daemon: { state: "up" },
+      running: true, onceForPage: false, pdf: false, docs: null, counts: { scored: 0, flagged: 0, unsupported: 0, unavailable: 0 },
+      frameGate: { minWidth: 200, minArea: 40000 }, originFallbackFrames: fallback, clickedFrameId: 0,
+      target: null, detectLanguage: async () => null,
+    }).then((text) => text.split("\n").filter((l) => /^ {2}- (srcdoc|about:blank|data:)/.test(l)));
+    return { chrome: await report(true), firefox: await report(false) };
+  });
+  const runs = (l) => l.includes("our content script runs there");
+  results.push({
+    name: "diagnostics: srcdoc and about:blank frames run the content script where the browser allows it, a sandboxed or data: frame never",
+    ok: frames.chrome.length === 4 && runs(frames.chrome[0]) && runs(frames.chrome[1]) && !runs(frames.chrome[2]) && frames.chrome[2].includes("sandboxed") && !runs(frames.chrome[3]) &&
+      frames.firefox.length === 4 && frames.firefox.every((l) => !runs(l)),
+    note: JSON.stringify(frames),
+  });
+  await fp.close();
 }
 
 await browser.close();

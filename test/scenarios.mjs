@@ -3051,6 +3051,257 @@ addEventListener("load",()=>{window.__loadAt=performance.now();
   await new Promise((r) => slow.close(() => r()));
 }
 
+// ---- A47: following the reader — a fast scroll, a hidden tab ---------------------------
+// Every paragraph is its own unit and every text is new to the caches, so each one is
+// dispatched by the content script exactly once, and the moment its "analyzing…" chip is
+// inserted is the moment it was dispatched.
+{
+  const VOCAB = "the quick brown fox jumps over a lazy dog while rain falls gently on rooftops and children read books near warm windows during long quiet evenings a timetable moved off paper and nobody noticed until the trains ran on time".split(" ");
+  const para = (tag, i) => `${tag}-${i} ` + Array.from({ length: 84 }, (_, k) => VOCAB[(i * 7 + k * 13) % VOCAB.length]).join(" ") + ".";
+  const page = (title, body) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">${body}</body></html>`;
+  PAGES["/scroll.html"] = page("scroll fixture", Array.from({ length: 90 }, (_, i) => `<p id="sp${i}">${para("SCROLLPAST", i)}</p>`).join("\n"));
+  PAGES["/hidden.html"] = page("hidden fixture", `<main id="top">${[0, 1].map((i) => `<p>${para("SHOWNFIRST", i)}</p>`).join("")}</main><div style="height:5000px"></div><div id="bottom"></div>`);
+  const chipClock = () => {
+    window.__chipAt = {};
+    new MutationObserver(() => {
+      for (const host of document.querySelectorAll('[data-anagram="host"]:not(#anagram-fab)')) {
+        const p = host.closest("p[id]");
+        if (p && !(p.id in window.__chipAt)) window.__chipAt[p.id] = performance.now();
+      }
+    }).observe(document, { childList: true, subtree: true });
+  };
+
+  // A reader flicks through ninety paragraphs to the end of the page while the engine is
+  // slow. What was on screen for a moment and is far behind now must wait for what the
+  // reader stopped at, not the other way round.
+  {
+    const p = await context.newPage();
+    await p.addInitScript(chipClock);
+    fixture.setState({ latency: [700, 700] });
+    await p.goto(server.url("/scroll.html"), { waitUntil: "load" });
+    await p.waitForFunction(() => Object.keys(window.__chipAt).length > 0, null, { timeout: 12000 }).catch(() => {});
+    const end = await p.evaluate(async () => {
+      const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const step = Math.round(innerHeight * 0.9);
+      const bottom = document.documentElement.scrollHeight - innerHeight;
+      for (let y = step; y < bottom; y += step) {
+        scrollTo(0, y);
+        await frames();
+      }
+      scrollTo(0, bottom);
+      await frames();
+      const rows = [...document.querySelectorAll("p[id]")].map((el) => ({ id: el.id, box: el.getBoundingClientRect() }));
+      return {
+        t0: performance.now(),
+        onScreen: rows.filter((r) => r.box.bottom > 0 && r.box.top < innerHeight).map((r) => r.id),
+        // Well outside the 1200 px the prefetch margin reaches above the viewport.
+        far: rows.filter((r) => r.box.bottom < -1500).map((r) => r.id),
+      };
+    });
+    const allOnScreen = await p
+      .waitForFunction((ids) => ids.every((id) => id in window.__chipAt), end.onScreen, { timeout: 40000 })
+      .then(() => true)
+      .catch(() => false);
+    const r = await p.evaluate(({ onScreen, far, t0 }) => {
+      const at = window.__chipAt;
+      const last = Math.max(...onScreen.map((id) => at[id] ?? Infinity));
+      // A batch dispatched as the scroll stopped may put its chips up a moment later.
+      const after = t0 + 100;
+      return {
+        onScreen: onScreen.length,
+        far: far.length,
+        farBefore: far.filter((id) => at[id] <= after).length,
+        farFirst: far.filter((id) => at[id] > after && at[id] < last).length,
+        waitMs: Math.round(last - t0),
+      };
+    }, end);
+    fixture.setState({ latency: [60, 160] });
+    record("ui", "a fast scroll: what is on screen when it stops is sent before anything scrolled far past", allOnScreen && r.onScreen > 0 && r.far > 20 && r.farFirst === 0, JSON.stringify(r));
+    await p.close();
+  }
+
+  // A tab in the background sends nothing — neither what the reader would see there nor
+  // the idle prefetch — and picks up where it was the moment it is shown again. Headless
+  // Chromium never hides a page, so the content script's own world is told it is hidden,
+  // exactly as the browser would tell it: visibilityState and a visibilitychange event.
+  {
+    const p = await context.newPage();
+    await p.goto(server.url("/hidden.html"), { waitUntil: "load" });
+    await p.waitForFunction((sel) => document.querySelectorAll(`#top ${sel}`).length === 2, BADGE_SEL, { timeout: 12000 }).catch(() => {});
+    const cdp = await context.newCDPSession(p);
+    const worlds = [];
+    cdp.on("Runtime.executionContextCreated", ({ context: c }) => worlds.push(c));
+    await cdp.send("Runtime.enable");
+    const { frameTree } = await cdp.send("Page.getFrameTree");
+    await p.waitForTimeout(200);
+    const isolated = worlds.find((c) => c.auxData?.frameId === frameTree.frame.id && c.auxData?.type === "isolated" && c.origin.startsWith("chrome-extension://"));
+    const setHidden = (hidden) =>
+      cdp.send("Runtime.evaluate", {
+        contextId: isolated.id,
+        expression: `(() => {
+          for (const [key, value] of [["visibilityState", ${hidden} ? "hidden" : "visible"], ["hidden", ${hidden}]])
+            Object.defineProperty(document, key, { configurable: true, get: () => value });
+          document.dispatchEvent(new Event("visibilitychange"));
+        })()`,
+      });
+    let r = { world: !!isolated };
+    if (isolated) {
+      await setHidden(true);
+      await p.evaluate(([onScreen, below]) => {
+        const add = (where, id, text) => {
+          const el = document.createElement("p");
+          el.id = id;
+          el.textContent = text;
+          where.append(el);
+        };
+        add(document.getElementById("top"), "hid-top", onScreen);
+        add(document.getElementById("bottom"), "hid-bottom", below);
+      }, [para("WHILEHIDDEN", 0), para("WHILEHIDDEN", 1)]);
+      await p.waitForTimeout(2500);
+      const quiet = await p.evaluate((sel) => document.querySelectorAll(`#hid-top ${sel}, #hid-bottom ${sel}`).length, BADGE_SEL);
+      const sent = fixture.stats.texts.filter((t) => t.includes("WHILEHIDDEN")).length;
+      await setHidden(false);
+      const shown = await p
+        .waitForFunction((sel) => document.querySelectorAll(`#hid-top ${sel}`).length === 1, BADGE_SEL, { timeout: 10000 })
+        .then(() => true)
+        .catch(() => false);
+      r = { world: true, chipsWhileHidden: quiet, sentWhileHidden: sent, shown };
+    }
+    record("ui", "a hidden tab dispatches nothing, not even the idle prefetch, and resumes when shown", r.world && r.chipsWhileHidden === 0 && r.sentWhileHidden === 0 && r.shown, JSON.stringify(r));
+    await cdp.detach().catch(() => {});
+    await p.close();
+  }
+}
+
+// ---- A48: shadow roots the first walk could not see ------------------------------------
+// Nothing of these is in the light DOM: a shadow root attached, or filled, after the walk
+// passed its host changes no node the document's own observer watches.
+//  - #lc: an element the page defines late; its upgrade attaches the root and renders.
+//  - #panel: a fixed panel with an empty root when the page is walked — too small then
+//    to be read, so the walk never goes in — filled later.
+//  - #panel2: the same panel added after the walk, its root attached before it was added.
+{
+  const LONG = (tag) => `${tag} paragraph is long enough to be scored on its own because it carries well over seventy-five ordinary English words describing nothing in particular except the fact that a web component may attach its shadow root or render into it long after the extension walked past its host, and the text it shows the reader there has to be found all the same, without a reload and without anything in the light document changing at the same moment to point at it.`;
+  PAGES["/shadow-late.html"] = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>late shadow roots</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+<h1>Late shadow roots</h1>
+<late-card id="lc"></late-card>
+<script>
+  const LONG = ${LONG.toString()};
+  const panel = (id, bottom) => {
+    const el = document.createElement("div");
+    el.id = id;
+    el.style.cssText = "position:fixed;right:8px;bottom:" + bottom + "px;width:420px;max-height:40vh;overflow:auto;background:#fff;font:14px/1.5 system-ui";
+    window["__" + id] = el.attachShadow({ mode: "open" });
+    document.body.append(el);
+  };
+  panel("panel", 8);
+  // Apart in time: adding a node to the body has the body walked again, and that walk
+  // would find a root attached just before it.
+  setTimeout(() => panel("panel2", 260), 1200);
+  setTimeout(() => customElements.define("late-card", class extends HTMLElement {
+    connectedCallback() { this.attachShadow({ mode: "open" }).innerHTML = "<p>" + LONG("LATECARD") + "</p>"; }
+  }), 2400);
+  setTimeout(() => {
+    __panel.innerHTML = "<p>" + LONG("LATEPANEL") + "</p>";
+    __panel2.innerHTML = "<p>" + LONG("LATEPANELTWO") + "</p>";
+  }, 3200);
+</script></body></html>`;
+  const p = await context.newPage();
+  await p.goto(server.url("/shadow-late.html"), { waitUntil: "load" });
+  const chipsIn = (id) => p.evaluate(({ id, sel }) => document.getElementById(id)?.shadowRoot?.querySelectorAll(sel).length ?? -1, { id, sel: BADGE_SEL });
+  const settled = await p
+    .waitForFunction((sel) => ["lc", "panel", "panel2"].every((id) => (document.getElementById(id)?.shadowRoot?.querySelectorAll(sel).length ?? 0) > 0), BADGE_SEL, { timeout: 12000 })
+    .then(() => true)
+    .catch(() => false);
+  const r = { settled, defined: await chipsIn("lc"), filled: await chipsIn("panel"), added: await chipsIn("panel2") };
+  record("ui", "a shadow root attached after the walk (a late custom element) is read", r.defined === 1, JSON.stringify(r));
+  record("ui", "a shadow root the walk passed empty, filled later, is read — on the page from the start or added after", r.filled === 1 && r.added === 1, JSON.stringify(r));
+  await p.close();
+}
+
+// ---- A49: closed shadow roots ------------------------------------------------------------
+// A closed root keeps the page's other scripts out, not the extension: Chrome gives a content
+// script every root through chrome.dom.openOrClosedShadowRoot. The page keeps its own
+// references in window.__closed, which is how this test looks inside.
+//  - #cc: a custom element whose closed root is there when the page is walked.
+//  - #cd: a plain <div> given a closed root after the walk, announced by the page-world script.
+{
+  const LONG = (tag) => `${tag} paragraph is long enough to be scored on its own because it carries well over seventy-five ordinary English words describing nothing in particular except the fact that a component may keep its shadow root closed to the scripts of the page it sits in, which is its own business, while the reader who asked for the page to be analyzed still sees every word it renders there and expects a verdict for them like for any other paragraph.`;
+  PAGES["/shadow-closed.html"] = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>closed shadow roots</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+<h1>Closed shadow roots</h1>
+<closed-card id="cc"></closed-card>
+<div id="cd"></div>
+<script>
+  const LONG = ${LONG.toString()};
+  window.__closed = {};
+  customElements.define("closed-card", class extends HTMLElement {
+    constructor() { super(); window.__closed.cc = this.attachShadow({ mode: "closed" }); window.__closed.cc.innerHTML = "<p>" + LONG("CLOSEDCARD") + "</p>"; }
+  });
+  setTimeout(() => {
+    window.__closed.cd = document.getElementById("cd").attachShadow({ mode: "closed" });
+    window.__closed.cd.innerHTML = "<p>" + LONG("CLOSEDDIV") + "</p>";
+  }, 2000);
+</script></body></html>`;
+  const p = await context.newPage();
+  await p.goto(server.url("/shadow-closed.html"), { waitUntil: "load" });
+  const count = () => p.evaluate((sel) => Object.fromEntries(["cc", "cd"].map((id) => [id, window.__closed[id]?.querySelectorAll(sel).length ?? -1])), BADGE_SEL);
+  await p.waitForFunction((sel) => ["cc", "cd"].every((id) => (window.__closed[id]?.querySelectorAll(sel).length ?? 0) > 0), BADGE_SEL, { timeout: 12000 }).catch(() => {});
+  const r = await count();
+  record("ui", "a closed shadow root is read: a custom element's at load, a <div>'s attached later", r.cc === 1 && r.cd === 1, JSON.stringify(r));
+  await p.close();
+}
+
+// ---- A50: frames with no address of their own --------------------------------------------
+// An EPUB reader shows each chapter in a srcdoc frame (epub.js), editors and embeds write
+// into about:blank frames, and some pages show a blob: document. Each has its parent's
+// origin, which is granted, and gets the content script through it. A sandboxed frame has
+// no origin at all — the worker could not tell whose it is — and is left alone.
+{
+  const LONG = (tag) => `${tag} paragraph is long enough to be scored on its own because it carries well over seventy-five ordinary English words describing nothing in particular except the fact that a chapter of a book may be shown in a frame that has no address of its own, only the origin of the page that wrote it, and the reader of that page still expects every paragraph of the chapter to be read like any other paragraph on the site they turned the extension on for.`;
+  const doc = (tag) => `<!doctype html><html lang="en"><head><meta charset="utf-8"></head><body style="margin:12px;font:15px/1.6 system-ui"><p>${LONG(tag)}</p></body></html>`;
+  const attr = (html) => html.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  PAGES["/frames-local.html"] = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>frames without an address</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+<iframe id="srcdoc" srcdoc="${attr(doc("SRCDOCFRAME"))}" width="640" height="300"></iframe>
+<iframe id="blank" width="640" height="300"></iframe>
+<iframe id="blob" width="640" height="300"></iframe>
+<iframe id="sandboxed" sandbox srcdoc="${attr(doc("SANDBOXEDFRAME"))}" width="640" height="300"></iframe>
+<script>
+  document.getElementById("blank").contentDocument.body.innerHTML = ${JSON.stringify(`<p style="font:15px/1.6 system-ui">${LONG("BLANKFRAME")}</p>`)};
+  document.getElementById("blob").src = URL.createObjectURL(new Blob([${JSON.stringify(doc("BLOBFRAME"))}], { type: "text/html" }));
+</script></body></html>`;
+  const p = await context.newPage();
+  await p.goto(server.url("/frames-local.html"), { waitUntil: "load" });
+  // The sandboxed frame is out of the page's reach but not of the test's: every chip host
+  // ever inserted there is counted, the "analyzing…" ones a refused request takes down too.
+  const quietFrame = [];
+  for (const f of p.frames()) {
+    if (f === p.mainFrame()) continue;
+    const isSandboxed = await f.evaluate(() => window.origin === "null").catch(() => false);
+    if (!isSandboxed) continue;
+    quietFrame.push(f);
+    await f.evaluate(() => {
+      window.__hosts = document.querySelectorAll('[data-anagram="host"]').length;
+      new MutationObserver((records) => {
+        for (const rec of records) for (const n of rec.addedNodes) if (n.nodeType === 1 && n.matches('[data-anagram="host"]')) window.__hosts++;
+      }).observe(document, { childList: true, subtree: true });
+    });
+  }
+  const inFrame = (id) => p.evaluate(({ id, sel }) => document.getElementById(id)?.contentDocument?.querySelectorAll(sel).length ?? -1, { id, sel: BADGE_SEL });
+  await p.waitForFunction((sel) => ["srcdoc", "blank", "blob"].every((id) => (document.getElementById(id)?.contentDocument?.querySelectorAll(sel).length ?? 0) > 0), BADGE_SEL, { timeout: 12000 }).catch(() => {});
+  await p.waitForTimeout(1500);
+  const r = {
+    srcdoc: await inFrame("srcdoc"),
+    blank: await inFrame("blank"),
+    blob: await inFrame("blob"),
+    sandboxedFrames: quietFrame.length,
+    sandboxedChips: quietFrame.length ? await quietFrame[0].evaluate(() => window.__hosts).catch(() => -1) : -1,
+    sandboxedSent: fixture.stats.texts.some((t) => t.includes("SANDBOXEDFRAME")),
+  };
+  record("ui", "a srcdoc, an about:blank and a blob: frame on a granted page are read, each in its own frame", r.srcdoc === 1 && r.blank === 1 && r.blob === 1, JSON.stringify(r));
+  record("ui", "a sandboxed frame, whose origin the worker cannot know, is left alone", r.sandboxedFrames === 1 && r.sandboxedChips === 0 && !r.sandboxedSent, JSON.stringify(r));
+  await p.close();
+}
+
 // =====================================================================================
 // PHASE B — live sites (soft: unreachable → SKIP; loaded-but-wrong → FAIL)
 // =====================================================================================

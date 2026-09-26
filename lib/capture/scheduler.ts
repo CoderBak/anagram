@@ -4,9 +4,12 @@
 // budget with a bounded fan-out (maxInFlight). Dedup is by UNIT IDENTITY — a unit is
 // never in flight twice — NOT by text: distinct paragraphs sharing the same text each
 // need their own badge (text-level dedup lives in the orchestrator's send()). A unit
-// already queued in a LOWER lane is upgraded when re-enqueued for a higher one
-// (background → near → viewport on scroll). Each enqueue captures the current epoch;
-// responses from a superseded generation are discarded.
+// already queued in a LOWER lane is upgraded when enqueued for a higher one (the idle
+// prefetch never pulls anything down); requeue() follows the reader both ways, so a
+// paragraph that was on screen for a moment of a fast scroll goes back behind the one
+// the reader stopped at. What has been sent stays sent: nothing recalls a batch in
+// flight. Each enqueue captures the current epoch; responses from a superseded
+// generation are discarded.
 //
 // The queue moves UNITS and nothing smaller. What a unit becomes on the wire — one block,
 // or several windows when it is longer than the model reads in one pass — is send()'s
@@ -27,7 +30,10 @@ import type { Unit, Lane } from "../types";
 import { MAX_READ_CHARS } from "./windows";
 
 export interface Scheduler {
+  /** Queue a unit, or move it UP to `lane` when it waits in a lower one. */
   enqueue(unit: Unit, lane: Lane): void;
+  /** Queue a unit in exactly `lane`, moving it down as well as up. One in flight stays. */
+  requeue(unit: Unit, lane: Lane): void;
   bumpEpoch(): number; // SPA route change / teardown
   stop(): void;
   /** Units currently queued (any lane) or in flight. */
@@ -78,12 +84,12 @@ export function createScheduler<V>(opts: {
   const queuedLane = new Map<string, Lane>();
   const inFlightIds = new Set<string>();
 
-  function enqueue(unit: Unit, lane: Lane): void {
+  function place(unit: Unit, lane: Lane, down: boolean): void {
     if (inFlightIds.has(unit.id)) return;
     const existing = queuedLane.get(unit.id);
     if (existing !== undefined) {
-      if (LANE_RANK[lane] >= LANE_RANK[existing]) return; // same or lower — keep
-      // Upgrade: pull out of the lower lane, re-push into the higher one.
+      if (existing === lane || (!down && LANE_RANK[lane] > LANE_RANK[existing])) return;
+      // Pull it out of the lane it waits in and push it onto the other one.
       const q = queues[existing];
       const i = q.findIndex((p) => p.unit.id === unit.id);
       if (i >= 0) q.splice(i, 1);
@@ -92,6 +98,9 @@ export function createScheduler<V>(opts: {
     queues[lane].push({ unit, epoch: currentEpoch });
     schedulePump();
   }
+
+  const enqueue = (unit: Unit, lane: Lane): void => place(unit, lane, false);
+  const requeue = (unit: Unit, lane: Lane): void => place(unit, lane, true);
 
   function schedulePump(): void {
     if (pumpScheduled) return;
@@ -194,5 +203,5 @@ export function createScheduler<V>(opts: {
     schedulePump();
   }
 
-  return { enqueue, bumpEpoch, stop, pendingCount, pause, resume };
+  return { enqueue, requeue, bumpEpoch, stop, pendingCount, pause, resume };
 }

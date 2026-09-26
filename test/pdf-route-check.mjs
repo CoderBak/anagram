@@ -542,6 +542,7 @@ await setAutoOpen(false);
   await ready(page);
   await analyzed(page);
   const before = await chips(page);
+  const visibility = await page.evaluate(() => document.visibilityState).catch(() => null);
   const offered = await panelSwitch(page);
   await page.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".psiteoff")?.click()).catch(() => {});
   await page.waitForTimeout(1000);
@@ -550,7 +551,7 @@ await setAutoOpen(false);
   record(
     "reader: Turn off names the PDF's own site, writes the rule there, and stops the reader",
     before > 0 && offered.label === "Turn off on localhost" && after === 0 && JSON.stringify(written) === JSON.stringify({ localhost: "off" }),
-    JSON.stringify({ before, offered, after, written }),
+    JSON.stringify({ before, visibility, offered, after, written }),
   );
 
   const next = await visit(files.url("/site-off-next.pdf"), { settle: 2500 });

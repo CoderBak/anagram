@@ -1,8 +1,8 @@
 // lib/access/worker.ts — the service worker's half of optional site access.
 //
-// Nothing is declared in the manifest any more: the content script is registered at
-// runtime, and its `matches` are exactly the origins the user has granted. Four things
-// follow, and they are the whole module.
+// Nothing is declared in the manifest any more: the content script (and its page-world
+// companion) is registered at runtime, and its `matches` are exactly the origins the user
+// has granted. Four things follow, and they are the whole module.
 //
 //  1. The registration FOLLOWS the grant. It is re-asserted whenever a grant changes, on
 //     every install/update (an update wipes dynamic registrations) and on browser start,
@@ -25,14 +25,19 @@ import type { PingReply } from "../messaging/protocol";
 import { browsingOrigins, matchesAny } from "./patterns";
 import { createLogger } from "../log";
 import { documentAuthority } from "./authority";
+import { ORIGIN_FALLBACK_FRAMES } from "../surface";
 
 const log = createLogger("access");
 
-/** The one dynamic registration, and the file it runs. Built by WXT from
+/** The dynamic registration, and the file it runs. Built by WXT from
  *  entrypoints/content.ts, whose `registration: "runtime"` keeps it out of the manifest;
  *  test/node/permissions.test.ts pins that this path is what the build produces. */
 const SCRIPT_ID = "anagram-content";
 const CONTENT_SCRIPT = "/content-scripts/content.js";
+/** Its page-world companion (entrypoints/shadow.content.ts), on the same sites: it only
+ *  tells the content script when the page attaches a shadow root. */
+const SHADOW_SCRIPT_ID = "anagram-shadow";
+const SHADOW_SCRIPT = "/content-scripts/shadow.js";
 
 /** How long `ensureInjected` waits for a freshly injected script to start listening.
  *  executeScript resolves when the file has been evaluated, which is before the async
@@ -54,32 +59,88 @@ async function grantedMatches(): Promise<string[]> {
   return browsingOrigins(granted.origins);
 }
 
-async function syncNow(): Promise<void> {
-  try {
-    const matches = await grantedMatches();
-    const registered = await browser.scripting
-      .getRegisteredContentScripts({ ids: [SCRIPT_ID] })
-      .catch(() => []);
-    if (matches.length === 0) {
-      if (registered.length > 0) await browser.scripting.unregisterContentScripts({ ids: [SCRIPT_ID] });
-      log.log("no site access — content script unregistered");
-      return;
-    }
+type Registration = Parameters<typeof browser.scripting.registerContentScripts>[0][number];
+
+/**
+ * The scripts the granted origins ask for, the content script first. Both also run in the
+ * frames of a granted page that have no address of their own — about:blank and srcdoc
+ * frames, blob: documents — by the origin they take from it, where the browser can say
+ * which that is (lib/surface.ts): an EPUB reader shows every chapter in a srcdoc frame.
+ */
+function registrations(matches: string[]): Registration[] {
+  const frames = ORIGIN_FALLBACK_FRAMES ? { matchOriginAsFallback: true } : {};
+  return [
     // The same options the manifest declaration carried before this was dynamic.
-    const script = {
+    {
       id: SCRIPT_ID,
       matches,
       js: [CONTENT_SCRIPT],
       allFrames: true,
-      runAt: "document_end" as const,
+      ...frames,
+      runAt: "document_end",
       persistAcrossSessions: true,
-    };
-    if (registered.length === 0) {
+    },
+    // Before the page's own scripts, so that no attachShadow() goes unannounced.
+    {
+      id: SHADOW_SCRIPT_ID,
+      matches,
+      js: [SHADOW_SCRIPT],
+      allFrames: true,
+      ...frames,
+      runAt: "document_start",
+      world: "MAIN",
+      persistAcrossSessions: true,
+    },
+  ];
+}
+
+/** Would `script` replace what is registered under its id? */
+function differs(current: Registration, script: Registration): boolean {
+  return (
+    !sameMatches(current.matches ?? [], script.matches ?? []) ||
+    (current.matchOriginAsFallback ?? false) !== (script.matchOriginAsFallback ?? false)
+  );
+}
+
+/** Register `script`, or bring the one under its id up to date. A browser that does not know
+ *  `matchOriginAsFallback` (Chrome before 119) refuses the whole script: it gets it without. */
+async function ensureScript(script: Registration, current: Registration | undefined): Promise<void> {
+  const put = async (s: Registration): Promise<void> => {
+    if (!current) {
       // A registration that survived a restart but was not reported (or a duplicate id
       // from a race we lost) is an update, not a failure.
-      await browser.scripting.registerContentScripts([script]).catch(() => browser.scripting.updateContentScripts([script]));
-    } else if (!sameMatches(registered[0].matches ?? [], matches)) {
-      await browser.scripting.updateContentScripts([script]);
+      await browser.scripting.registerContentScripts([s]).catch(() => browser.scripting.updateContentScripts([s]));
+    } else if (differs(current, s)) {
+      await browser.scripting.updateContentScripts([s]);
+    }
+  };
+  if (!script.matchOriginAsFallback) return put(script);
+  await put(script).catch(() => {
+    const { matchOriginAsFallback: _, ...plain } = script;
+    return put(plain);
+  });
+}
+
+async function syncNow(): Promise<void> {
+  try {
+    const matches = await grantedMatches();
+    const registered = await browser.scripting
+      .getRegisteredContentScripts({ ids: [SCRIPT_ID, SHADOW_SCRIPT_ID] })
+      .catch(() => []);
+    if (matches.length === 0) {
+      if (registered.length > 0) await browser.scripting.unregisterContentScripts({ ids: registered.map((s) => s.id) });
+      log.log("no site access — content script unregistered");
+      return;
+    }
+    // One at a time: a browser that refuses the page-world companion still gets the
+    // content script, which reads everything but a shadow root attached after its walk.
+    for (const script of registrations(matches)) {
+      try {
+        await ensureScript(script, registered.find((s) => s.id === script.id));
+      } catch (e) {
+        if (script.id === SCRIPT_ID) throw e;
+        log.log("page-world script not registered", e);
+      }
     }
     log.log("registered on", matches.join(" "));
   } catch (e) {

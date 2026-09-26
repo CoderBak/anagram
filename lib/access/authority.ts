@@ -2,17 +2,21 @@
 import { browser } from "#imports";
 import * as v from "valibot";
 import { ACTIONS } from "../messaging/protocol";
-import { callerRole, SESSION_PORT, SessionSchema, type AccessSender } from "./messages";
+import { callerRole, pageAddress, SESSION_PORT, SessionSchema, type AccessSender } from "./messages";
 import { matcher, matchesAny } from "./patterns";
 
 interface Identity {tabId:number;frameId:number;url:string;origin:string;documentId?:string;session:string}
 export interface DocumentAccess extends Identity { documentKey:string; signal:AbortSignal }
 interface Live extends DocumentAccess {key:string;controller:AbortController;port:ReturnType<typeof browser.runtime.connect>}
 const frameKey = (tabId:number,frameId:number) => `${tabId}:${frameId}`;
+/** What a sender is checked against: the page a content script speaks for (for a srcdoc or
+ *  about:blank frame, the origin it took from its page), an extension page's own URL. */
+const addressOf = (sender: AccessSender): string | undefined => pageAddress(sender) ?? sender.url;
 function sameDocument(identity: Identity, sender: AccessSender, session: string): boolean {
-  if (identity.tabId !== (sender.tab?.id ?? -1) || identity.frameId !== (sender.frameId ?? 0) || identity.session !== session || !sender.url) return false;
+  const address = addressOf(sender);
+  if (identity.tabId !== (sender.tab?.id ?? -1) || identity.frameId !== (sender.frameId ?? 0) || identity.session !== session || !address) return false;
   if (identity.documentId !== undefined && identity.documentId !== sender.documentId) return false;
-  try { return new URL(sender.url).origin === identity.origin; } catch { return false; }
+  try { return new URL(address).origin === identity.origin; } catch { return false; }
 }
 export function createDocumentAuthority() {
   const live = new Map<string,Live>();
@@ -58,7 +62,8 @@ export function createDocumentAuthority() {
           const key=sender.tab?.id === undefined ? `page:${parsed.output.session}` : frameKey(sender.tab.id,sender.frameId ?? 0);
           const old=live.get(key); if(old)retire(old);
           const controller=new AbortController();
-          record={key,tabId:sender.tab?.id ?? -1,frameId:sender.frameId ?? 0,url:sender.url!,origin:new URL(sender.url!).origin,
+          const address=addressOf(sender)!;
+          record={key,tabId:sender.tab?.id ?? -1,frameId:sender.frameId ?? 0,url:address,origin:new URL(address).origin,
             documentId:sender.documentId,session:parsed.output.session,documentKey:crypto.randomUUID(),controller,signal:controller.signal,port};
           live.set(key,record); port.postMessage({session:record.session});
         });
@@ -78,7 +83,7 @@ export function createDocumentAuthority() {
       if (!record || !sameDocument(record,sender,session) || record.signal.aborted) return null;
       const role=callerRole(sender,browser.runtime.id,browser.runtime.getURL("/"));
       const one=once.get(key);
-      const allowed=role === "reader" || role === "paste" || (role === "content" && ((one && sameDocument(one,sender,session)) || await granted(sender.url!)));
+      const allowed=role === "reader" || role === "paste" || (role === "content" && ((one && sameDocument(one,sender,session)) || await granted(addressOf(sender)!)));
       if (!allowed || record.signal.aborted || live.get(key)!==record) return null;
       return record;
     },
