@@ -1167,6 +1167,9 @@ const results = await page.evaluate(() => {
     check("…while the prose around a search box inside <main> is untouched", u.length === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
     u = collect(`<form id="form1"><input type="text"><main><p>${words(80)}</p></main></form>`);
     check("…and a page wrapped in one <form> (ASP.NET WebForms) is not a sign-up box", u.length === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
+    u = collect(`<div class="header"><a href="/">Frisbee shop</a> <a href="/cart">Cart</a></div><form name="cart_quantity" action="/product_info.php?action=add_product"><table><tr><td><h1>Power Driver</h1><p>PRODUCT ${words(150)}</p><p>${words(120)}</p>Qty: <input type="text" name="quantity" value="1"><input type="submit" value="Add to Cart"></td></tr></table></form>`);
+    check("…nor a shop's product page wrapped in its add-to-cart form (osCommerce's cart_quantity): the form holds the page's text",
+      u.length === 2 && u[0].text.startsWith("PRODUCT"), JSON.stringify(u.map(x => [x.parts, x.words])));
   }
   {
     // A consent platform that names its banner after itself (lib/dom/consentBanners.ts) is

@@ -226,6 +226,22 @@ function holdsMostOfPage(el: Element, page: PageTextSize): boolean {
   return total >= PAGE_TEXT_MIN_CHARS && mine > total * PAGE_TEXT_SHARE;
 }
 
+/** Where a page declares its main text. */
+const MAIN_TEXT_SELECTOR = 'main,article,[role="main"],[role="article"]';
+
+/**
+ * A form that holds most of the page's text, with no main text declared anywhere else, is
+ * the page: osCommerce and Zen Cart set the whole product page — name, price, description —
+ * in the add-to-cart form (`form[name=cart_quantity]`), whose one field is the quantity, and
+ * the description went unread as the text of a widget. A sign-up box or a job application
+ * holds its own fields and some consent text, never the page the reader came for.
+ */
+function holdsThePage(el: Element, page: PageTextSize): boolean {
+  if (!holdsMostOfPage(el, page)) return false;
+  for (const main of el.ownerDocument.querySelectorAll(MAIN_TEXT_SELECTOR)) if (!el.contains(main) && !main.contains(el)) return false;
+  return true;
+}
+
 /**
  * The element calls ITSELF the page's main content — as a whole class token or as its id,
  * never as part of a longer name ("main-content-share" is a share bar). That is a <main>
@@ -419,9 +435,10 @@ export function isBoilerplate(el: Element, page: PageTextSize = pageTextSize(el.
   // A <form> with something to fill in is a widget, whatever prose stands between its
   // fields: a Greenhouse job application sets a paragraph of consent text among them and
   // got a unit of its own, a newsletter box sets its pitch there. Never the page's own
-  // shell (ASP.NET wraps whole sites in one <form>), and the walk keeps handling
-  // contenteditable and <textarea> wherever they stand.
-  if (tag === "FORM" && el.querySelector(FORM_CONTROL_SELECTOR) !== null && !isShell(el)) return true;
+  // shell (ASP.NET wraps whole sites in one <form>), nor the form a shop wraps the whole
+  // product page in (holdsThePage), and the walk keeps handling contenteditable and
+  // <textarea> wherever they stand.
+  if (tag === "FORM" && el.querySelector(FORM_CONTROL_SELECTOR) !== null && !isShell(el) && !holdsThePage(el, page)) return true;
 
   // Strong class/id tokens (cookie banners, paywalls, ads, share bars, …).
   const cls = el.getAttribute("class");
