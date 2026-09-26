@@ -23,6 +23,10 @@ local component and the installer all carry the same version.
   layer is one transparent span per run of the PDF's text, which Anagram used to read as a
   heap of short paragraphs running down both columns at once; the paragraphs are now
   rebuilt in reading order across columns and pages, and chips are kept off the print.
+- Webnovel chapters are read. Every paragraph there is a box of its own, which Anagram
+  treats as it treats two strangers' comments, so short paragraphs were never read together
+  and most of a chapter went unread; each chapter's paragraphs are now grouped as they are
+  on any page, never across a chapter heading, and the reader-comment counters are left out.
 - The setup page mentions that most arXiv papers also have an HTML version, which Anagram
   reads most precisely. Nothing redirects there; PDFs are read as before.
 
@@ -48,6 +52,9 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- In Kindle for the web, a chip is now put after the paragraph's last printed word. It
+  used to go after the first line of the paragraph's accessibility text, which is the whole
+  column wide, so a right-hand column's chips were cut off at the edge of the page.
 - Cookie banners are no longer analyzed as page text when their consent platform names
   them after itself: Cookiebot, Didomi, Quantcast, Usercentrics, iubenda, Complianz,
   Osano, consentmanager, the cookieconsent library and some twenty more. Their containers

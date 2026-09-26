@@ -1,0 +1,76 @@
+<!doctype html>
+<!--
+  Archive of Our Own, a chapter of a work (archiveofourown.org/works/…/chapters/…). Synthetic
+  text. MODELLED: the site answers a plain headless browser with a Cloudflare challenge
+  (2026-09), so the markup is taken from Read Aloud's adapter (js/content/archiveofourown.js
+  reads `#chapters .userstuff p` and `#chapters .title`) and from AO3's published work skin
+  structure: `#workskin > .preface.group` (title, byline, summary and notes, each note a
+  `blockquote.userstuff`), `#chapters > .chapter > .userstuff[role=article]` with a visually
+  hidden "Chapter Text" landmark heading, end notes, and the tag list `dl.work.meta` above.
+
+  What the walk does: the chapter's paragraphs are read, dialogue lines grouped with the text
+  around them — a chapter that fits one model window is one unit, a longer one a unit per
+  full paragraph — and the tag list, the byline and the kudos row are not text. The summary
+  and the notes sit in `role=complementary` modules, which the walk leaves out as asides:
+  they are the author's words about the work, not the work.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>The Salt Road - Chapter 2 - Archive of Our Own</title>
+<style>
+  body { margin: 0; font: 16px/1.5 Georgia, serif; color: #2a2a2a; background: #fff; }
+  #outer { max-width: 900px; margin: 0 auto; padding: 16px; }
+  .landmark { position: absolute; clip: rect(0 0 0 0); height: 1px; width: 1px; overflow: hidden; }
+  dl.work.meta { border: 1px solid #ddd; padding: 8px; font: 13px/1.4 sans-serif; }
+  dl.work.meta dd ul { display: inline; margin: 0; padding: 0; } dl.work.meta li { display: inline; }
+  .userstuff p { margin: 1em 0; }
+  blockquote.userstuff { margin: 0 2em; }
+  .kudos, .actions { font: 13px/1.4 sans-serif; }
+</style></head>
+<body><div id="outer"><div id="inner"><div id="main" role="main">
+  <div class="work">
+    <ul class="work navigation actions" role="menu" data-chrome><li><a href="/works/1/chapters/1">← Previous Chapter</a></li><li><a href="/works/1/chapters/3">Next Chapter →</a></li><li><a href="#comments">Comments</a></li></ul>
+    <div class="wrapper"><dl class="work meta group" data-expect="none">
+      <dt class="rating tags">Rating:</dt><dd class="rating tags"><ul class="commas"><li><a class="tag" href="/tags/General%20Audiences/works">General Audiences</a></li></ul></dd>
+      <dt class="freeform tags">Additional Tags:</dt><dd class="freeform tags"><ul class="commas"><li><a class="tag" href="/tags/a">Road Trip</a></li><li><a class="tag" href="/tags/b">Found Family</a></li><li><a class="tag" href="/tags/c">Slow Burn</a></li><li><a class="tag" href="/tags/d">Hurt/Comfort</a></li><li><a class="tag" href="/tags/e">Canon Divergence</a></li></ul></dd>
+      <dt class="stats">Stats:</dt><dd class="stats"><dl class="stats"><dt>Words:</dt><dd>4,812</dd><dt>Chapters:</dt><dd>2/5</dd><dt>Kudos:</dt><dd>211</dd></dl></dd>
+    </dl></div>
+    <div id="workskin">
+      <div class="preface group">
+        <h2 class="title heading">The Salt Road</h2>
+        <h3 class="byline heading" data-chrome><a rel="author" href="/users/marrow/pseuds/marrow">marrow</a></h3>
+        <div class="summary module" role="complementary">
+          <h3 class="heading">Summary:</h3>
+          <blockquote class="userstuff" data-voice="author-note" data-expect="none">
+            <p>Two sisters walk the old salt road to the coast to settle a debt their father left behind, and find that the people who are owed have their own idea of what the debt was. This chapter is the long day on the marsh, and the first time either of them says aloud what they have been thinking since they left.</p>
+            <p>Thank you to everyone who left a comment on the first chapter. I read every one of them twice, and the one about the bridge changed the ending of this chapter for the better.</p>
+          </blockquote>
+        </div>
+      </div>
+      <div id="chapters" role="article">
+        <div class="chapter" id="chapter-2" role="article">
+          <div class="chapter preface group" role="complementary">
+            <h3 class="title"><a href="/works/1/chapters/2">Chapter 2</a>: The Marsh</h3>
+          </div>
+          <div class="userstuff module" role="article" data-voice="story">
+            <h3 class="landmark heading" id="work">Chapter Text</h3>
+            <p data-expect="unit">The marsh began where the road forgot to be a road. For the first mile there were still stones under the mud, laid by somebody who had cared, and then there was only the mud and a line of posts that leaned toward the sea like people trying to hear something far away. Ada walked in front because she had the map, and Nell walked behind because she did not trust the map, and neither of them said anything about it until the posts ran out.</p>
+            <p data-expect="unit">“We should have waited for the tide book,” Nell said.</p>
+            <p data-expect="unit">“The tide book would have told us to wait until Thursday.”</p>
+            <p data-expect="unit">“Thursday would have been fine.”</p>
+            <p data-expect="unit">Ada stopped and turned around, and for a moment it looked as if she was going to say the thing she had carried all the way from the house, the thing about their father and the letters in the drawer. Then a heron lifted out of the reeds beside them, slow and grey and enormous, and both of them watched it go, and the moment went with it across the water toward the line of the dunes.</p>
+            <p data-expect="unit">They reached the causeway an hour before dark. It was older than the road and better made, and on the far side of it a light was already burning in the one window of the salt house, where somebody was expecting them and had been, by the look of the smoke, for most of the afternoon. Nell took the map out of her sister's hand, folded it once along the old crease, and put it in her own coat without a word.</p>
+          </div>
+          <div class="chapter preface group" role="complementary">
+            <div id="chapter_2_endnotes" class="end notes module">
+              <h3 class="heading">Notes:</h3>
+              <blockquote class="userstuff" data-voice="end-note" data-expect="none"><p>Next week: the salt house.</p></blockquote>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="feedback" class="feedback" data-chrome>
+      <ul class="actions" role="menu"><li><button class="kudos">Kudos ♥</button></li><li><a href="#comments">Comments (14)</a></li></ul>
+      <p class="kudos">anon, lark_rise, twelvebirds, and 208 more users left kudos on this work!</p>
+    </div>
+  </div>
+</div></div></div></body></html>

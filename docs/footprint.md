@@ -74,6 +74,8 @@ reader hands it; the document's bytes are copied into it and nowhere else.
 | `entrypoints/shadow.content.ts` | `https://github.com/FluentRead/FluentRead` | the attribution of adapted FluentRead code in a comment |
 | `lib/surfaces/drive.ts` | `https://github.com/ken107/read-aloud` | the attribution of Read Aloud's Google Drive adapters, which the Drive preview surface follows, in a comment |
 | `lib/surfaces/pdfjs.ts` | `https://github.com/ken107/read-aloud` | the attribution of Read Aloud's OneDrive adapter, whose pdf.js selectors the pdf.js surface starts from, in a comment |
+| `lib/surfaces/kindle.ts` | `https://github.com/ken107/read-aloud` | the attribution of Read Aloud's Kindle adapter, in a comment |
+| `lib/surfaces/paragraphs.ts` | `https://github.com/ken107/read-aloud` | the attribution of Read Aloud's Webnovel adapter, whose selectors the Webnovel source uses, in a comment |
 | `entrypoints/onboarding/index.html` | `https://github.com/CoderBak/anagram/blob/dev/docs/user-guide.en.md` | the user-guide link on the setup page; opened only when clicked |
 | `entrypoints/onboarding/main.ts` | `https://github.com/CoderBak/anagram/blob/dev/docs/user-guide.zh-CN.md` | the same link for a Chinese browser |
 | `entrypoints/options/index.html` | `https://github.com/CoderBak/anagram/blob/dev/PRIVACY.md` | the privacy-policy link on the settings page; opened only when clicked |

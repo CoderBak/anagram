@@ -16,9 +16,11 @@ import type { Surface } from "./types";
 /**
  * "drive": Google Drive's file preview — drive.google.com, and the same viewer on
  * docs.google.com. "pdfjs": a PDF shown by pdf.js inside a page — OneDrive's preview of a PDF,
- * and any page carrying pdf.js's own viewer.
+ * and any page carrying pdf.js's own viewer. "kindle": Kindle's web reader, which is walked
+ * as it is and only needs its chips put somewhere its frame does not cut them off.
+ * "webnovel": Webnovel's chapters, a box per paragraph.
  */
-export type SurfaceId = "drive" | "pdfjs";
+export type SurfaceId = "drive" | "pdfjs" | "kindle" | "webnovel";
 
 /** The viewer's addresses on docs.google.com: a file (/file/d/…) and the URL viewer. The
  *  Docs editor (/document/d/…) is lib/docs.ts's. */
@@ -36,6 +38,8 @@ export function surfaceFor(
   if (loc.hostname === "drive.google.com") return "drive";
   if (loc.hostname === "docs.google.com" && DOCS_VIEWER.test(loc.pathname)) return "drive";
   if (isOneDrive(loc.hostname)) return "pdfjs";
+  if (/^read\.amazon\.(?:com?\.)?[a-z]{2,3}$/.test(loc.hostname)) return "kindle";
+  if (loc.hostname === "www.webnovel.com" && loc.pathname.startsWith("/book/")) return "webnovel";
   // pdf.js's viewer page sets its pages in `.pdfViewer` from the start.
   if (doc?.querySelector(".pdfViewer")) return "pdfjs";
   return null;
@@ -46,15 +50,15 @@ export interface PageSurface {
   collect: NonNullable<OrchestratorOptions["collect"]>;
   placeBadge: NonNullable<OrchestratorOptions["placeBadge"]>;
   ranges: RangeLocator;
-  painter: MarkPainter;
+  painter: MarkPainter | null;
 }
 
 export function asPageSurface(surface: Surface): PageSurface {
   return {
     collect: (root, claim, opts) =>
-      surface.active() ? surface.collect(claim, opts.mergeShorts ?? true) : collectUnits(root, opts),
+      surface.collect && surface.active() ? surface.collect(claim, opts.mergeShorts ?? true) : collectUnits(root, opts),
     placeBadge: (unit, host) => surface.place(unit, host),
     ranges: (unit, spans) => surface.ranges(unit, spans),
-    painter: surface.painter,
+    painter: surface.painter ?? null,
   };
 }

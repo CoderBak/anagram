@@ -9,6 +9,8 @@ import type { Surface } from "./types";
 import { createLineLayerSurface } from "./lineLayer";
 import { createDriveSource } from "./drive";
 import { createPdfjsSource } from "./pdfjs";
+import { createKindleSurface } from "./kindle";
+import { createParagraphSurface, createWebnovelSource } from "./paragraphs";
 
 export function createSurface(id: SurfaceId, doc: Document): Surface | null {
   switch (id) {
@@ -16,6 +18,10 @@ export function createSurface(id: SurfaceId, doc: Document): Surface | null {
       return createLineLayerSurface(createDriveSource(doc));
     case "pdfjs":
       return createLineLayerSurface(createPdfjsSource(doc));
+    case "kindle":
+      return createKindleSurface(doc);
+    case "webnovel":
+      return createParagraphSurface(createWebnovelSource(doc));
     default:
       return null;
   }

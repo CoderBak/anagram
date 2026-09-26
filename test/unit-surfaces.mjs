@@ -79,8 +79,21 @@ export async function surfaceChecks(browser, bundle, fixtures, results) {
           at("https://moodle.example.edu/mod/resource/view.php", viewer),
         ],
         no: [at("https://mozilla.github.io/pdf.js/", plain), at("https://sharepoint.com.example.org/x", plain), at("https://example.org/", undefined)],
+        kindle: [at("https://read.amazon.com/sample/B07CW4FRW2", plain), at("https://read.amazon.co.uk/?asin=B0", plain), at("https://read.amazon.co.jp/", plain)],
+        webnovel: [at("https://www.webnovel.com/book/lanterns_1/the-keeper_2", plain), at("https://www.webnovel.com/", plain), at("https://www.webnovel.com/ranking", plain)],
+        notKindle: [at("https://www.amazon.com/dp/B07CW4FRW2", plain), at("https://read.amazon.com.example.org/", plain)],
       };
     });
+    check(
+      "surfaces: Webnovel's surface is its book pages only",
+      JSON.stringify(pdfjs.webnovel) === JSON.stringify(["webnovel", null, null]),
+      JSON.stringify(pdfjs.webnovel),
+    );
+    check(
+      "surfaces: Kindle for the web is recognised on every read.amazon.* address and nowhere else on Amazon",
+      pdfjs.kindle.every((s) => s === "kindle") && pdfjs.notKindle.every((s) => s === null),
+      JSON.stringify([pdfjs.kindle, pdfjs.notKindle]),
+    );
     check(
       "surfaces: a pdf.js viewer is recognised by OneDrive's and SharePoint's addresses, or by pdf.js's own viewer element on any page",
       pdfjs.yes.every((s) => s === "pdfjs") && pdfjs.no.every((s) => s === null),
@@ -303,30 +316,158 @@ export async function surfaceChecks(browser, bundle, fixtures, results) {
     await page.close();
   }
 
+  // ---- Kindle for the web: the walk reads it, the chips go after the last word --------------
+  {
+    const r = {};
+    for (const mode of ["flow", "kindle"]) {
+      const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+      await page.goto(pathToFileURL(join(fixtures, "surfaces", "kindle-reader.html")).href);
+      await page.addScriptTag({ path: bundle });
+      r[mode] = await page.evaluate((mode) => {
+        const units = PW.collectUnits(document.body);
+        const s = mode === "kindle" ? PW.createSurface("kindle", document) : null;
+        const layer = PW.createBadgeLayer(s ? { place: (u, h) => s.place(u, h) } : {});
+        for (const u of units) layer.render(u, PW.unitVerdict(u.id, u.text.length, [{ start: 0, end: u.text.length, result: { id: u.id, bucket: 0, probs: [0.5, 0.5, 0, 0], score: 0.5 } }]));
+        const frame = document.getElementById("renderer-container").getBoundingClientRect();
+        // One chip per unit, rendered in the units' order, which is also the page's.
+        const hosts = [...document.querySelectorAll('[data-anagram="host"]')];
+        const last = (u) => {
+          const node = u.parts.at(-1).nodes.at(-1);
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          return [...range.getClientRects()].at(-1);
+        };
+        return {
+          units: units.map((u) => ({ parts: u.parts.length, text: u.text.slice(0, 30) })),
+          active: s ? s.active() : null,
+          chips: hosts.map((h, i) => {
+            const b = h.getBoundingClientRect();
+            const w = last(units[i]);
+            const shown = Math.max(0, Math.min(b.right, frame.right) - Math.max(b.left, frame.left));
+            return { whole: shown >= b.width - 1, afterWord: b.left >= w.right - 1 && b.left - w.right <= 12, onLine: b.top < w.bottom && b.bottom > w.top };
+          }),
+        };
+      }, mode);
+      await page.close();
+    }
+    check(
+      "kindle reader: the walk reads each printed paragraph from the accessibility layer, the heading left out",
+      r.flow.units.length === 2 && r.flow.units.every((u) => u.parts === 2) && r.flow.units[0].text.startsWith("The house on the point"),
+      JSON.stringify(r.flow.units),
+    );
+    check(
+      "kindle reader: in the flow a right-hand column's chip is cut off at the page's edge (why the surface exists)",
+      r.flow.chips.length === 2 && !r.flow.chips[1].whole,
+      JSON.stringify(r.flow.chips),
+    );
+    check(
+      "kindle reader: every chip sits whole after its paragraph's last word, and the page is still walked",
+      r.kindle.active === false && r.kindle.chips.length === 2 && r.kindle.chips.every((c) => c.whole && c.afterWord && c.onLine),
+      JSON.stringify(r.kindle.chips),
+    );
+  }
+
+  // ---- Webnovel: a box per paragraph ---------------------------------------------------------
+  {
+    const page = await browser.newPage();
+    await page.goto(pathToFileURL(join(fixtures, "surfaces", "webnovel-chapter.html")).href);
+    await page.addScriptTag({ path: bundle });
+    const r = await page.evaluate(() => {
+      const expected = [...document.querySelectorAll('[data-expect="unit"]')];
+      const coverage = (units) => {
+        const covered = new Set(units.flatMap((u) => u.parts.map((p) => p.container.closest("[data-expect]"))));
+        return expected.filter((el) => !covered.has(el)).length;
+      };
+      const walked = PW.collectUnits(document.body);
+      const s = PW.createSurface("webnovel", document);
+      const units = s.collect(() => "take", true);
+      const chapterOf = (el) => el.closest("[data-voice]")?.getAttribute("data-voice");
+      return {
+        walkedMissing: coverage(walked),
+        expected: expected.length,
+        active: s.active(),
+        missing: coverage(units),
+        units: units.map((u) => ({ parts: u.parts.length, chapters: [...new Set(u.parts.map((p) => chapterOf(p.container)))], text: u.text })),
+        place: s.place(units[0], document.createElement("span")),
+      };
+    });
+    check(
+      "webnovel: the walk alone never reads short paragraphs each in a box of its own together, and leaves most of a chapter unread (why the surface exists)",
+      r.walkedMissing >= r.expected - 1,
+      JSON.stringify({ missing: r.walkedMissing, of: r.expected }),
+    );
+    check(
+      "webnovel: every paragraph is read, grouped within its chapter and never across one, the comment counters left out",
+      r.active && r.missing === 0 && r.units.length === 2 && r.units.every((u) => u.chapters.length === 1) &&
+        !r.units.some((u) => /\d/.test(u.text)) && r.place === null,
+      JSON.stringify(r.units.map((u) => [u.parts, u.chapters, u.text.slice(0, 40)])),
+    );
+    await page.close();
+  }
+
+  // ---- surfaces the walk already reads -------------------------------------------------------
+  // Read Aloud needs an adapter for these because it reads by selectors; the walk reads the
+  // page's layout, and these fixtures (modelled — see each file's header) hold it to that.
+  // Same annotations as test/fixtures/: data-voice names a voice, data-expect="unit"|"none"
+  // says whether some unit covers text there, data-chrome marks rows no unit may take in.
+  const WALKED = { "ao3-work": [1, 1], "playbooks-reader": [2, 0], "epub-chapter": [2, 1] };
+  for (const [name, [wantUnits, wantMerged]] of Object.entries(WALKED)) {
+    const page = await browser.newPage();
+    await page.goto(pathToFileURL(join(fixtures, "surfaces", `${name}.html`)).href);
+    await page.addScriptTag({ path: bundle });
+    const r = await page.evaluate(() => {
+      const units = PW.collectUnits(document.body);
+      const near = (e, attr) => e?.closest(`[${attr}]`) ?? null;
+      const covered = new Set();
+      const mixed = [], chrome = [];
+      for (const u of units) {
+        const voices = new Set(u.parts.map((p) => near(p.nodes[0].parentElement, "data-voice")?.getAttribute("data-voice") ?? "(none)"));
+        if (voices.size > 1) mixed.push([...voices].join("+"));
+        for (const p of u.parts) for (const n of p.nodes) {
+          if (near(n.parentElement, "data-chrome")) chrome.push(n.data.trim().slice(0, 30));
+          for (let e = n.parentElement; e; e = e.parentElement) covered.add(e);
+        }
+      }
+      const wrong = [...document.querySelectorAll("[data-expect]")]
+        .filter((el) => covered.has(el) !== (el.getAttribute("data-expect") === "unit"))
+        .map((el) => `${el.getAttribute("data-expect")}: "${el.textContent.trim().slice(0, 40)}"`);
+      return { units: units.length, merged: units.filter((u) => u.parts.length > 1).length, mixed, chrome, wrong };
+    });
+    await page.close();
+    check(
+      `${name}: read by the walk as it is — every paragraph where expected, no two voices mixed, no chrome (${wantUnits} units, ${wantMerged} multi-part)`,
+      r.units === wantUnits && r.merged === wantMerged && r.mixed.length === 0 && r.chrome.length === 0 && r.wrong.length === 0,
+      JSON.stringify(r),
+    );
+  }
+
   // ---- an ordinary page is left to the walk --------------------------------------------
   {
     const page = await browser.newPage();
     await page.goto(pathToFileURL(join(fixtures, "news-article.html")).href);
     await page.addScriptTag({ path: bundle });
-    const r = await page.evaluate(() => {
-      const s = PW.createSurface("drive", document);
-      const wrapped = PW.asPageSurface(s);
-      const opts = {};
-      const viaSurface = wrapped.collect(document.body, () => "take", opts).map((u) => u.text);
-      const walked = PW.collectUnits(document.body, opts).map((u) => u.text);
-      const unit = { id: "u_x", parts: [], text: "" };
-      return {
-        active: s.active(),
-        same: JSON.stringify(viaSurface) === JSON.stringify(walked) && walked.length > 0,
-        place: wrapped.placeBadge(unit, document.createElement("span")),
-        ranges: wrapped.ranges(unit, [{ start: 0, end: 1 }]),
-        painted: wrapped.painter.paint(unit, [], false),
-        added: document.querySelectorAll('[data-anagram]').length,
-      };
-    });
+    const r = await page.evaluate(() =>
+      ["drive", "pdfjs", "kindle", "webnovel"].map((id) => {
+        const s = PW.createSurface(id, document);
+        const wrapped = PW.asPageSurface(s);
+        const opts = {};
+        const viaSurface = wrapped.collect(document.body, () => "take", opts).map((u) => u.text);
+        const walked = PW.collectUnits(document.body, opts).map((u) => u.text);
+        const unit = { id: "u_x", parts: [], text: "" };
+        return {
+          id,
+          active: s.active(),
+          same: JSON.stringify(viaSurface) === JSON.stringify(walked) && walked.length > 0,
+          place: wrapped.placeBadge(unit, document.createElement("span")),
+          ranges: wrapped.ranges(unit, [{ start: 0, end: 1 }]),
+          painted: wrapped.painter ? wrapped.painter.paint(unit, [], false) : false,
+          added: document.querySelectorAll("[data-anagram]").length,
+        };
+      }),
+    );
     check(
-      "surfaces: on a page without the viewer the walk reads the page, and the surface places, locates and paints nothing",
-      !r.active && r.same && r.place === null && r.ranges === undefined && r.painted === false && r.added === 0,
+      "surfaces: on a page without their document every surface leaves the page to the walk, and places, locates and paints nothing",
+      r.every((x) => !x.active && x.same && x.place === null && x.ranges === undefined && x.painted === false && x.added === 0),
       JSON.stringify(r),
     );
     await page.close();
