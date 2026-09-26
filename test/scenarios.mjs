@@ -20,7 +20,7 @@ import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
 import http from "node:http";
 import { launchExtension, serveHtml, artifact, uiLanguage, uiLanguageOf, BADGE_SEL } from "./harness.mjs";
-import { createNativeFixture, fakeTokens } from "./fake-native.mjs";
+import { createNativeFixture, fakeTokens, EXTENSION_VERSION } from "./fake-native.mjs";
 import { docsReadingHtml } from "./fixtures/docs-reading.mjs";
 import {
   GROUPED_PARAS,
@@ -2807,6 +2807,9 @@ ${KEY_TAGS.map((t, i) => `<p id="z${i + 1}">${KEY_PARA(t)}</p>`).join("\n")}
         runtimeTitle: document.querySelector("#runtimeSettings h3")?.textContent ?? "",
         marks: document.querySelector('label[for="underline"]')?.textContent ?? "",
         fabricatedCommand: /~\/.anagram\/bin\/anagram|curl -fsSL/.test(document.body.innerText),
+        // The footer's link to this version's source, next to the model credit.
+        source: document.getElementById("sourceCode")?.textContent ?? "",
+        sourceHref: document.getElementById("sourceCode")?.getAttribute("href") ?? "",
       }));
       await opts.close();
 
@@ -2876,6 +2879,8 @@ ${KEY_TAGS.map((t, i) => `<p id="z${i + 1}">${KEY_PARA(t)}</p>`).join("\n")}
           optionsText.componentCard === "本地引擎" &&
           optionsText.componentStatus === "就绪" && optionsText.update &&
           optionsText.runtimeTitle === "运行配置" && optionsText.marks === "下划线" && !optionsText.fabricatedCommand &&
+          optionsText.source === "源代码（AGPL-3.0）" &&
+          optionsText.sourceHref === `https://github.com/CoderBak/anagram/tree/v${EXTENSION_VERSION}` &&
           chip.lang === "zh-CN" &&
           ["人工撰写", "轻度 AI 编辑", "重度 AI 编辑", "AI 生成"].includes(chip.verdict) &&
           chip.words === "词数" &&

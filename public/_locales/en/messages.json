@@ -547,6 +547,10 @@
     "message": "Model: pangram/editlens_roberta-large (CC BY-NC-SA 4.0, non-commercial).",
     "description": "Model credit in the options and first-run footers. The model id and licence are never translated."
   },
+  "sourceCodeLink": {
+    "message": "Source code (AGPL-3.0)",
+    "description": "Footer link, next to the model credit in the options and first-run pages, to the source code of the running version. The licence name is never translated."
+  },
   "cmdToggleOverlay": {
     "message": "Show or hide marks on this page",
     "description": "Keyboard shortcut description; also listed on the settings page."

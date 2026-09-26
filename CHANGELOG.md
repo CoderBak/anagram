@@ -15,6 +15,8 @@ local component and the installer all carry the same version.
   copyright and licence text; the minified bundles strip those notices, so they now travel
   here. ONNX Runtime's own notices for the libraries its WebAssembly build links ship beside
   it in the reader's worker folder.
+- Settings and the setup page link to Anagram's source code in their footer, next to the
+  model credit: the release tag of the version that is running.
 
 - Google Drive's file preview is read in place. A PDF or Word file opened in Drive, embedded
   from Drive in another page, or shown by Google's document viewer is drawn as page images

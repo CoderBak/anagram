@@ -432,6 +432,9 @@
   "modelLine": {
     "message": "模型：pangram/editlens_roberta-large（CC BY-NC-SA 4.0，非商业用途）。"
   },
+  "sourceCodeLink": {
+    "message": "源代码（AGPL-3.0）"
+  },
   "cmdToggleOverlay": {
     "message": "显示或隐藏本页的标记"
   },
