@@ -19,7 +19,14 @@ The full inventory of network calls, address literals and storage keys is in
   `chrome://extensions`. Open pages stop immediately when a grant is withdrawn. An e-book
   reader that shows its books from a second address — Google Play Books, Libby, VitalSource
   Bookshelf — is asked for together with that address, in the same browser prompt, because
-  the book is in a frame from there.
+  the book is in a frame from there. In Chrome, frames a granted page writes itself (srcdoc,
+  about:blank, blob:) take that page's address and are read with it; sandboxed frames are not.
+  Frames that only hold a consent platform's cookie banner are skipped, and a page the
+  browser has translated is paused until the original is shown again.
+- **Text a document viewer has already put in the page**, on a granted site: Google Drive's
+  file preview, a PDF shown by pdf.js inside a page (OneDrive, SharePoint and others),
+  Kindle for the web and Webnovel. Nothing is fetched for it, and no page image is captured
+  or sent anywhere.
 - **One page, on your click, without a grant.** "Analyze this page", the right-click
   entries and the keyboard shortcuts use the browser's `activeTab` permission. The run
   is bound to that document and ends when you navigate away.
@@ -36,6 +43,15 @@ for your exact extension ID and accepts a fixed list of operations, never file p
 commands from a page. The scoring request carries paragraph IDs and text only: no URL,
 no cookies, no account data. Inference runs from files on disk in Hugging Face offline
 mode.
+
+Deciding what to read happens inside the browser, with code that ships in the extension.
+**Main content only** runs Defuddle on a copy of the page and uses only its offline
+extraction; nothing it could fetch is called. The PDF reader finds a document's paragraphs
+with Zotero's document-worker, in a worker inside the reader's own tab that loads its
+models and data from the extension; the document is not sent anywhere else. On granted
+sites a tiny second script runs in the page's own context: it reads nothing and only tells
+the content script when the page attaches a shadow root, so text a web component draws
+later is read too.
 
 The engine runs with your ordinary user privileges. When you install, download models or
 request an update, it contacts GitHub releases, the Astral Python and uv distributions,
@@ -68,7 +84,7 @@ normal download metadata and never page text.
 | `storage` | The settings above. |
 | `activeTab` | One-off actions on the page in front of you. |
 | `contextMenus` | The right-click entries. |
-| `scripting` | Inject the packaged content script into granted sites or the one-off tab. On granted sites a second packaged script runs in the page's own context; it reads nothing and only tells the first when the page attaches a shadow root. |
+| `scripting` | Inject the packaged content script into granted sites or the one-off tab, and on granted sites the page-context script described above. |
 | `webNavigation`, `webRequest` | Recognize PDF navigations. Reading still requires a grant. |
 | `https://*/*`, `http://*/*` (optional) | The sites you choose. Never held at install. |
 | `file:///*` (optional) | Open a local PDF already in a tab. Picking a file needs no grant. |

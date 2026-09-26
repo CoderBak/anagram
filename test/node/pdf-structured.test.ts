@@ -152,6 +152,70 @@ describe("structuredBlocks — text and runs", () => {
     expectRunsToMatch(blocks[0], pages);
   });
 
+  it("finds a glyph Zotero moved left into the run before it: a formula's, or an italic word's", () => {
+    // pdf.js: "lattice carrying", a space, "M" in the math face, a space, "physical modes".
+    // Zotero dropped both spaces and set the glyphs after them on from where it dropped
+    // them, so the "p" of "physical" stands inside the box of "M".
+    const fonts = { f_text: "NimbusRomNo9L-Regu", f_math: "OHTAKJ+CMMI10" };
+    const a = drawn(1, { text: "lattice carrying", x: 72, y: 100 });
+    // A capital twice a letter's width.
+    const mx = 72 + 17 * CW;
+    const m: PdfTextItem = { str: "M", x: mx, y: 100, width: 2 * CW, height: SIZE, fontName: "f_math" };
+    const mRun = [0, 0, mx - CW, HEIGHT - 102, mx + CW, HEIGHT - 93];
+    const b = drawn(1, { text: "physical modes", x: mx + 3 * CW, y: 100, drift: -2 * CW });
+    const n = { text: "lattice carryingMphysical modes", anchor: { textMap: JSON.stringify([a.run, mRun, b.run]) } };
+    const pages = [pageText(1, [a.item, m, b.item], fonts)];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0].text).toBe("lattice carrying physical modes");
+    expectRunsToMatch(blocks[0], pages);
+
+    // An italic word, then a narrow "i" Zotero drew where the space was: its centre is
+    // just past the end of the italic run, inside that run's slack.
+    const it1 = drawn(1, { text: "contextuality", x: 72, y: 200, font: "f_italic" });
+    const x0 = 72 + 13 * CW;
+    const it2: PdfTextItem = { str: "is tested", x: x0 + 4, y: 200, width: 9 * CW, height: SIZE, fontName: "f_text" };
+    const run2 = [0, 0, x0, HEIGHT - 202, x0 + 2.5 + 8 * CW, HEIGHT - 193, 2.5, CW, [CW, CW], CW, CW, CW, CW, CW];
+    const n2 = { text: "contextualityis tested", anchor: { textMap: JSON.stringify([it1.run, run2]) } };
+    const pages2 = [pageText(1, [it1.item, it2])];
+    const blocks2 = structuredBlocks(structure([paragraph(1, [n2])]), pages2);
+    expect(blocks2[0].text).toBe("contextuality is tested");
+    expectRunsToMatch(blocks2[0], pages2);
+  });
+
+  it("puts back a space pdf.js's own run has where Zotero's text has none", () => {
+    // One run on the page; Zotero dropped the spaces around a linked "II" and set the
+    // glyphs after them on without the gap, so geometry alone cannot see them.
+    const page = drawn(1, { text: "The paper is organized as follows. Section II presents the results", x: 72, y: 100 });
+    const zotero = drawn(1, { text: "The paper is organized as follows. SectionIIpresents the results", x: 72, y: 100 });
+    const n = { text: "The paper is organized as follows. SectionIIpresents the results", anchor: { textMap: JSON.stringify([zotero.run]) } };
+    const pages = [pageText(1, [page.item])];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0].text).toBe("The paper is organized as follows. Section II presents the results");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
+  it("leaves out numeric citation marks, as the web walker does, and keeps author-year ones", () => {
+    const n = node(1, [
+      { text: "[1] Direct constructions span the bases [2,3]. They apply [5–7] to", x: 72, y: 100 },
+      { text: "superconductors [10, 11], as Smith et al. (2020) showed in [4].", x: 72, y: 114 },
+    ]);
+    const pages = [pageText(1, n.items)];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0].text).toBe("Direct constructions span the bases. They apply to superconductors, as Smith et al. (2020) showed in.");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
+  it("leaves out a run of citation marks as IEEE's style sets it, as one", () => {
+    const n = node(1, [
+      { text: "Related work generates programs [19], [20], geometric constraints", x: 72, y: 100 },
+      { text: "[21]–[23], and rewards [24].", x: 72, y: 114 },
+    ]);
+    const pages = [pageText(1, n.items)];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0].text).toBe("Related work generates programs, geometric constraints, and rewards.");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
   it("puts a space between two glyphs a word apart that Zotero ran together", () => {
     const a = drawn(1, { text: "where", x: 72, y: 100 });
     const b = drawn(1, { text: "the", x: 72 + 5 * CW + 6, y: 100 });
@@ -218,6 +282,46 @@ describe("structuredBlocks — formulas", () => {
     // "+ 0.5" goes with the formula: letterless, on its line, and TeX sets the operators
     // and digits of a formula in the text face with word-sized spaces around them.
     expect(blocks[0].text).toBe("where is the value of in the");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
+  it("keeps the full stop and the comma that close a formula, as arXiv's HTML does", () => {
+    const fonts = { f_text: "NimbusRomNo9L-Regu", f_math: "BXJUHM+CMMI10", f_cmr: "UTRHDZ+CMR10" };
+    const items: PdfTextItem[] = [];
+    const runs: (number | number[])[][] = [];
+    let x = 72;
+    const put = (text: string, font: string, gap = CW) => {
+      const d = drawn(1, { text, x, y: 100, font });
+      items.push(d.item);
+      runs.push(d.run);
+      x += text.length * CW + gap;
+    };
+    put("the value of", "f_text");
+    put("x", "f_math", 0);
+    put(",", "f_cmr");
+    put("then of", "f_text");
+    put("y", "f_math", 0);
+    put("= 1.5.", "f_cmr");
+    put("The next", "f_text");
+    const n = { text: "the value of x, then of y = 1.5. The next", anchor: { textMap: JSON.stringify(runs) } };
+    const pages = [pageText(1, items, fonts)];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0].text).toBe("the value of, then of. The next");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
+  it("leaves out a formula's letter that pdf.js spells otherwise, by the face it is set in", () => {
+    // Zotero reads a "ψ" where pdf.js's run of the mathematics face holds another code
+    // point (a font without a Unicode map): the glyph is in no run's string.
+    const fonts = { f_text: "NimbusRomNo9L-Regu", f_math: "OHTAKJ+CMMI10" };
+    const a = drawn(1, { text: "which determines", x: 72, y: 100 });
+    const m: PdfTextItem = { str: "", x: 72 + 17 * CW, y: 100, width: CW, height: SIZE, fontName: "f_math" };
+    const mRun = drawn(1, { text: "ψ", x: 72 + 17 * CW, y: 100 }).run;
+    const b = drawn(1, { text: "entirely.", x: 72 + 19 * CW, y: 100 });
+    const n = { text: "which determines ψ entirely.", anchor: { textMap: JSON.stringify([a.run, mRun, b.run]) } };
+    const pages = [pageText(1, [a.item, m, b.item], fonts)];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0].text).toBe("which determines entirely.");
     expectRunsToMatch(blocks[0], pages);
   });
 

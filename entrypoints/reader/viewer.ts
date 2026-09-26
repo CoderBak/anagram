@@ -3,6 +3,7 @@ import type { PublicPath } from "wxt/browser";
 import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
 import { lazyVendor, loadPdfjs } from "../../lib/lazy";
 import "../../lib/pdf/upsert";
+import { messageLocale, t } from "../../lib/i18n";
 
 /** The small upstream API surface the Anagram adapter uses. Rendering stays upstream. */
 export interface UpstreamPage {
@@ -39,8 +40,31 @@ export const VIEWER_OPTIONS = {
   defaultZoomValue: "", maxCanvasPixels: 16 * 1024 * 1024,
 } as const;
 
+/**
+ * What the upstream page leaves unsaid for assistive technology. The page is in the
+ * language pdf.js draws its toolbar in, which is the browser's; Anagram's own controls are
+ * in Anagram's, English where it has no translation. The scrolling page area takes focus,
+ * so it is named (it is the page's main landmark, scripts/pdfjsViewer.mjs). The page field
+ * and the zoom menu are named only by a tooltip that pdf.js localizes: each gets the same
+ * words as its label, in whatever language pdf.js chose, whenever pdf.js sets them.
+ */
+function describeViewer(lang: string): void {
+  document.documentElement.lang = lang;
+  for (const el of document.querySelectorAll<HTMLElement>('[data-anagram="host"]')) el.lang = messageLocale();
+  document.getElementById("viewerContainer")?.setAttribute("aria-label", t("readerPages"));
+  for (const id of ["pageNumber", "scaleSelect"]) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    const label = (): void => { if (el.title) el.setAttribute("aria-label", el.title); };
+    new MutationObserver(label).observe(el, { attributeFilter: ["title"] });
+    label();
+  }
+}
+
 /** Configure before upstream run() reads options or opens its default/query-string URL. */
 export async function startViewer(): Promise<PdfApplication> {
+  const lang = browser.i18n.getUILanguage();
+  describeViewer(lang);
   const url = new URL(location.href);
   // Generic PDF.js accepts ?file=. Only verified tickets and user-picked bytes may open here.
   url.searchParams.delete("file");
@@ -50,7 +74,7 @@ export async function startViewer(): Promise<PdfApplication> {
     const globals = window as unknown as ViewerModule;
     globals.PDFViewerApplicationOptions.setAll({
       ...VIEWER_OPTIONS,
-      localeProperties: {lang: browser.i18n.getUILanguage()},
+      localeProperties: {lang},
       workerSrc: asset("start/pdf.worker.mjs"), imageResourcesPath: asset("pdfjs/web/images/"),
       cMapUrl: asset("cmaps/"), cMapPacked: true,
       standardFontDataUrl: asset("standard_fonts/"), wasmUrl: asset("wasm/"), iccUrl: asset("iccs/"),

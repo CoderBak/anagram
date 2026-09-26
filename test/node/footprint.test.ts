@@ -122,6 +122,14 @@ describe("the network inventory in docs/footprint.md", () => {
     expect(rows.filter((r) => r[1] === "fetch(").map((r) => r[0]).sort()).toEqual(["lib/docsOverlay.ts", "lib/pdf/handoff.ts", "lib/pdf/loader.ts"]);
   });
 
+  it("asks the vendored Defuddle for its offline extraction only", () => {
+    // Its parseAsync() can call third-party APIs; parse() on a clone cannot.
+    expect(SOURCES.filter((rel) => /\bDefuddle\(/.test(read(rel)))).toEqual(["lib/dom/mainContent.ts"]);
+    expect(read("lib/dom/mainContent.ts")).toMatch(/new D\.Defuddle\(doc\.cloneNode\(true\) as Document, \{ useAsync: false \}\)\.parse\(\)/);
+    expect(SOURCES.filter((rel) => /\.parseAsync\s*\(/.test(read(rel)))).toEqual([]);
+    expect(DOC).toContain("Defuddle");
+  });
+
 });
 
 // ---- the addresses written into the source ----------------------------------------------------

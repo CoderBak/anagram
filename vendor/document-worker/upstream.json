@@ -28,6 +28,7 @@
     "LICENSE.document-worker": "0bc6acc735089ddddd0f5ec30d2c472c9387d1c004871ee1bddf4d782ccfbeb4",
     "LICENSE.onnxruntime-web": "aa904cc230fc11e1514816224d896a9ee6907b620e91fd1abd6b21fed0faec02",
     "LICENSE.pdfjs": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+    "ThirdPartyNotices.onnxruntime-web.txt": "0e07b95f3a8d6230037707c5c4a2b554d12c4cb67369669ac255635528ffcee2",
     "block-seg/classifier/model.onnx": "572077354eea61583982a31a3f443c5abd8d92c04e2dbfd105299c1ca1d131f7",
     "block-seg/classifier/stats.bin": "abc86d6fa7cfb9aa18bafc2fd8cbcbf656350a7190b08fab2239efba5c673e95",
     "block-seg/clusterer/model.onnx": "5cb6f8645a0f4c8f4396d5e8b1da70d9c8d8fff8c98f324889b8c6e271575350",

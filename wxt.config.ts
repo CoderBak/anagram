@@ -10,6 +10,7 @@ import {
   unscanned,
 } from "./scripts/i18nSubset";
 import { ALL_SITES } from "./lib/access/patterns";
+import { NOTICES_FILE, bundledPackages, packageOfModule, unlistedPackages } from "./scripts/notices.mjs";
 
 // Page-reading tests pregrant website access in a separate output-test directory.
 // Shipping installs keep website access optional.
@@ -78,6 +79,32 @@ function englishFallback() {
   };
 }
 
+// Every npm package the build compiles code from is named in THIRD_PARTY_NOTICES.md
+// (scripts/notices.mjs), and every package named there for this build still ships: a
+// dependency added without its notice, or a notice kept for code that has gone, fails the
+// build. The group builds each report what their chunks hold; "build:done" compares.
+const shippedPackages = new Set<string>();
+type BundleChunk = { type: string; modules?: Record<string, { renderedLength: number }> };
+function thirdPartyNotices() {
+  return {
+    name: "anagram:third-party-notices",
+    generateBundle(_options: unknown, bundle: Record<string, BundleChunk>) {
+      for (const chunk of Object.values(bundle)) {
+        for (const [id, { renderedLength }] of Object.entries(chunk.modules ?? {})) {
+          const pkg = renderedLength > 0 ? packageOfModule(id) : null;
+          if (pkg) shippedPackages.add(pkg);
+        }
+      }
+      const unlisted = unlistedPackages(shippedPackages);
+      if (unlisted.length > 0) {
+        throw new Error(
+          `The build bundles code from packages ${NOTICES_FILE} does not list. Add each to scripts/notices.mjs with its licence and run node scripts/notices.mjs:\n  ${unlisted.join("\n  ")}`,
+        );
+      }
+    },
+  };
+}
+
 // The private PDF loader reads only document-bound, authorized source tickets.
 // Other UI pages add connect-src 'self' in a meta policy; the viewer only opens bytes.
 // Native setup downloads run outside browser CSP.
@@ -111,11 +138,22 @@ export default defineConfig({
       "test/*.png", "test/matrix.json", "test/survey.json", "test/a11y.json",
     ],
   },
-  vite: () => ({ plugins: [englishFallback()] }),
+  vite: () => ({ plugins: [englishFallback(), thirdPartyNotices()] }),
   hooks: {
-    // AGPL: every copy of the extension carries the licence text.
+    // AGPL: every copy of the extension carries the licence text, and the notices of the
+    // third-party work it contains.
     "build:publicAssets": (_wxt, files) => {
-      files.push({ absoluteSrc: resolve(ROOT, "LICENSE"), relativeDest: "LICENSE" });
+      for (const name of ["LICENSE", NOTICES_FILE]) files.push({ absoluteSrc: resolve(ROOT, name), relativeDest: name });
+    },
+    "build:before": () => shippedPackages.clear(),
+    "build:done": (wxt) => {
+      if (wxt.config.command === "serve") return;
+      const gone = [...bundledPackages()].filter(([name, { chunk }]) => !chunk && !shippedPackages.has(name)).map(([name]) => name);
+      if (gone.length > 0) {
+        throw new Error(
+          `${NOTICES_FILE} lists packages this build no longer bundles. Remove them from scripts/notices.mjs and run node scripts/notices.mjs:\n  ${gone.join("\n  ")}`,
+        );
+      }
     },
     // Production content scripts are registered only after a grant or user action.
     // Remove WXT's inferred hosts; its dev server manages its own registration.

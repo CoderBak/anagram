@@ -71,6 +71,9 @@ const DESCENT = 0.35;
 /** How far, in run heights, a glyph may stand from the nearest run on its line and still
  *  be that run's: the width of the word space Zotero's fork folded into it. */
 const DRIFT = 1.5;
+/** How far right of a glyph, in run heights, the run it came from may stand: the spaces
+ *  Zotero's fork dropped from a line add up along it (boxesFor). */
+const REACH = 4;
 
 // ---- glyphs -----------------------------------------------------------------------------
 
@@ -193,20 +196,28 @@ function centreOf(g: Glyph, m: number[]): { cx: number; cy: number; h: number } 
   return { cx: (minX + maxX) / 2, cy: (minY + maxY) / 2, h: maxY - minY };
 }
 
-/** The run whose box holds the glyph's centre, the nearest when several do. */
-function boxFor(index: PageIndex, g: Glyph): Box | null {
+/**
+ * The runs a glyph may belong to, the likeliest first: the run whose box holds its centre
+ * (the nearest when several do), else the nearest one to its right within DRIFT heights;
+ * after it, every other run to its right on the line within REACH heights, nearest first.
+ *
+ * Zotero's fork folds a dropped word space into the glyphs after it and sets the rest of
+ * the line on from there, so a glyph can stand a space's width LEFT of where pdf.js drew
+ * it, and more further along a line that lost several: out of its own run and into the
+ * gap before it, or into the run before it — the formula before a word, or an italic word
+ * the next one follows without a space in Zotero's text. Never a run to its left: that is
+ * the run the space came after.
+ */
+function boxesFor(index: PageIndex, g: Glyph): Box[] {
   const { cx, cy, h } = centreOf(g, index.transform);
   const boxes = index.boxes;
   // Baselines lie below a glyph's centre by up to its ascent; scan the band around it.
   let lo = 0, hi = boxes.length;
   const from = cy - 4 * h;
   while (lo < hi) { const mid = (lo + hi) >> 1; if (boxes[mid].y < from) lo = mid + 1; else hi = mid; }
-  // Zotero's fork folds a dropped word space into the glyphs after it, so a glyph can
-  // stand up to a space's width LEFT of where pdf.js drew it: a box that does not hold
-  // the centre is still taken when it is the nearest one to the right on the line, within
-  // DRIFT heights. Never one to the left — that is the run the space came after.
   let best: Box | null = null, bestScore = Infinity;
   let near: Box | null = null, nearScore = Infinity;
+  const right: Box[] = [];
   for (let i = lo; i < boxes.length; i++) {
     const b = boxes[i];
     if (b.y > cy + 4 * h) break;
@@ -217,8 +228,11 @@ function boxFor(index: PageIndex, g: Glyph): Box | null {
     if (dx <= slack) {
       if (score < bestScore) { best = b; bestScore = score; }
     } else if (cx < b.x1 && dx <= b.h * DRIFT && score < nearScore) { near = b; nearScore = score; }
+    if (cx < b.x1 && b.x1 - cx <= b.h * REACH) right.push(b);
   }
-  return best ?? near;
+  const first = best ?? near;
+  if (!first) return [];
+  return [first, ...right.filter((b) => b !== first).sort((a, b) => a.x1 - b.x1)];
 }
 
 // ---- pieces of a paragraph ----------------------------------------------------------------
@@ -268,38 +282,56 @@ function piecesOf(block: SdtBlock, out: Piece[] = []): Piece[] {
   return out;
 }
 
+/** Where each piece was found, and the run it stands in even where it was not: a glyph
+ *  pdf.js spells otherwise (a Greek letter of a formula it maps to another character)
+ *  is in no run's string, but its run's face still says whether it is mathematics. */
+interface Located {
+  sources: (Source | null)[];
+  faces: (Box | null)[];
+}
+
 /**
  * Find every piece's glyph among the text layer's runs: by geometry to the run, then in
  * order along the run's own string, so that "e" number three of a run is the third "e".
+ * A glyph its run cannot take in order — the run has no such character left — is one
+ * Zotero moved left out of a run further right (boxesFor): it is the next character of
+ * that run, if it is the next character of one.
  */
-function locate(pieces: Piece[], pagesByNumber: Map<number, PageIndex>): (Source | null)[] {
+function locate(pieces: Piece[], pagesByNumber: Map<number, PageIndex>): Located {
   const sources: (Source | null)[] = pieces.map(() => null);
-  /** Pieces assigned to each run, in text order, with their piece index. */
-  const byBox = new Map<Box, number[]>();
+  const faces: (Box | null)[] = pieces.map(() => null);
+  /** How far along each run's string its glyphs have been found. */
+  const cursor = new Map<Box, number>();
+  const put = (i: number, box: Box, offset: number): void => {
+    sources[i] = { page: box.page, item: box.item, offset, box };
+    faces[i] = box;
+    cursor.set(box, offset + 1);
+  };
+  /** Where `ch` is the next character of a run, spaces passed over, or -1. */
+  const opens = (box: Box, ch: string): number => {
+    const str = box.it.str;
+    let k = cursor.get(box) ?? 0;
+    while (k < str.length && isSpace(str[k])) k++;
+    return str[k] === ch ? k : -1;
+  };
   pieces.forEach((p, i) => {
     if (!p.glyph) return;
     const index = pagesByNumber.get(p.glyph.page + 1);
     if (!index) return;
-    const box = boxFor(index, p.glyph);
-    if (!box) return;
-    let list = byBox.get(box);
-    if (!list) { list = []; byBox.set(box, list); }
-    list.push(i);
-  });
-  for (const [box, members] of byBox) {
-    const str = box.it.str;
-    let at = 0;
-    for (const i of members) {
-      const ch = pieces[i].ch;
-      let j = str.indexOf(ch, at);
-      // Out of step (a superscript Zotero read after the line): look from the start once.
-      if (j < 0) j = str.indexOf(ch);
-      if (j < 0) continue;
-      sources[i] = { page: box.page, item: box.item, offset: j, box };
-      at = j + 1;
+    const [first, ...right] = boxesFor(index, p.glyph);
+    if (!first) return;
+    faces[i] = first;
+    let j = first.it.str.indexOf(p.ch, cursor.get(first) ?? 0);
+    if (j >= 0) return put(i, first, j);
+    for (const box of right) {
+      const k = opens(box, p.ch);
+      if (k >= 0) return put(i, box, k);
     }
-  }
-  return sources;
+    // Out of step (a superscript Zotero read after the line): look from the start once.
+    j = first.it.str.indexOf(p.ch);
+    if (j >= 0) put(i, first, j);
+  });
+  return { sources, faces };
 }
 
 /** Two glyphs on one line of one page: their heights overlap. */
@@ -318,18 +350,25 @@ function wordApart(a: Glyph, b: Glyph): boolean {
 /**
  * The same test on pdf.js's runs, for the gap Zotero's geometry cannot see: its fork folds
  * the space after a glyph into the glyph's own extent and sometimes drops the space from
- * the text as well (a bold run-in head, "InferenceUncertainty"). When the first glyph ends
- * one run and the second opens another, the distance between the two runs is the gap.
+ * the text as well (a bold run-in head, "InferenceUncertainty"; a linked "Section II" in
+ * the middle of a line, "SectionIIpresents"). pdf.js's own string says where a space is:
+ * between the two glyphs in one run, or, when the first glyph ends one run and the second
+ * opens another on the same line, at the end of the first or the start of the second;
+ * where neither run holds one, the distance between the two runs is the gap.
  */
 function runsApart(a: Source, b: Source): boolean {
-  if (a.page !== b.page || a.item === b.item) return false;
-  if (a.offset !== a.box.it.str.trimEnd().length - 1 || b.offset !== b.box.it.str.length - b.box.it.str.trimStart().length) return false;
+  if (a.page !== b.page) return false;
+  const sa = a.box.it.str, sb = b.box.it.str;
+  if (a.item === b.item) return b.offset > a.offset + 1 && sa.slice(a.offset + 1, b.offset).trim() === "";
+  if (a.offset !== sa.trimEnd().length - 1 || b.offset !== sb.length - sb.trimStart().length) return false;
   const h = Math.max(a.box.h, b.box.h);
   if (Math.abs(a.box.y - b.box.y) > h * 0.5) return false;
-  return b.box.x1 - a.box.x2 > h * SPACE_GAP;
+  return sa.length > a.offset + 1 || b.offset > 0 || b.box.x1 - a.box.x2 > h * SPACE_GAP;
 }
 
 const HYPHEN = /[-‐­]/u;
+/** Punctuation that ends a clause or a sentence, kept where the formula before it is not. */
+const CLAUSE_END = /^[.,;:!?]$/u;
 
 /** A token of the text: consecutive glyphs with no word space among them. */
 interface Token {
@@ -352,33 +391,38 @@ interface Assembled {
  *  - A FORMULA is left out. A token with a glyph in a mathematics font is one, and so is
  *    a letterless token beside it on the same line — the parentheses, digits, operators
  *    and punctuation the formula is set in, which come from the text face in TeX. What
- *    remains is the sentence around the formula, which is the writing.
+ *    remains is the sentence around the formula, which is the writing, with the full stop
+ *    or comma that closed the formula, as arXiv's HTML has it.
  *  - A HYPHEN at a line break is Zotero's to drop, and it drops every one: "language-only"
  *    becomes "languageonly". The hyphen is still in pdf.js's run, and the document's own
  *    vocabulary says whether the word is spelt with it (lib/pdf/reflow.ts).
  */
-function assemble(pieces: Piece[], sources: (Source | null)[], vocab: Vocabulary): Assembled {
+function assemble(pieces: Piece[], { sources, faces }: Located, vocab: Vocabulary): Assembled {
   // ---- tokens: where a word space belongs ----
   const tokens: Token[] = [];
   let open: Token | null = null;
   let prevGlyph: Glyph | null = null;
   let prevSource: Source | null = null;
+  let prevFace: Box | null = null;
   let spaced = true;
   pieces.forEach((p, i) => {
     if (p.ch === " ") { spaced = true; return; }
     const src = sources[i];
+    const face = faces[i];
     // A change of face between text and mathematics is a word boundary too, however tight
     // TeX set it: "with" and the "C" of "withC :=" are two words.
     const apart = spaced
       || (prevGlyph !== null && p.glyph !== null && wordApart(prevGlyph, p.glyph))
-      || (prevSource !== null && src !== null && (runsApart(prevSource, src) || prevSource.box.math !== src.box.math));
+      || (prevSource !== null && src !== null && runsApart(prevSource, src))
+      || (prevFace !== null && face !== null && prevFace.math !== face.math);
     if (apart || !open) { open = { at: [], math: false, letters: false }; tokens.push(open); }
     open.at.push(i);
-    if (src?.box.math) open.math = true;
+    if (face?.math) open.math = true;
     if (/\p{L}/u.test(p.ch)) open.letters = true;
     spaced = false;
     if (p.glyph) prevGlyph = p.glyph;
     if (src) prevSource = src;
+    if (face) prevFace = face;
   });
 
   // ---- formulas: the math tokens and the letterless tokens beside them ----
@@ -396,9 +440,18 @@ function assemble(pieces: Piece[], sources: (Source | null)[], vocab: Vocabulary
 
   // ---- the text ----
   let text = "";
-  const prov: (Source | null)[] = [];
+  let prov: (Source | null)[] = [];
   tokens.forEach((t, k) => {
-    if (drop[k]) return;
+    if (drop[k]) {
+      // The formula goes; the full stop or the comma after it, set in the text face, stays
+      // with the sentence it ends, as it does on arXiv's HTML: "the value of x." reads
+      // "the value of.", not "the value of" run into the next sentence.
+      let tail = t.at.length;
+      while (tail > 0 && CLAUSE_END.test(pieces[t.at[tail - 1]].ch) && !faces[t.at[tail - 1]]?.math) tail--;
+      if (text === "") return;
+      for (const i of t.at.slice(tail)) { text += pieces[i].ch; prov.push(sources[i]); }
+      return;
+    }
     if (text !== "") { text += " "; prov.push(null); }
     let previous: number | null = null;
     for (const i of t.at) {
@@ -420,6 +473,8 @@ function assemble(pieces: Piece[], sources: (Source | null)[], vocab: Vocabulary
     }
   });
 
+  ({ text, prov } = withoutCitations(text, prov));
+
   // The space a run contributes between two of its own glyphs is the run's, not ours.
   for (let i = 1; i + 1 < prov.length; i++) {
     if (prov[i] !== null) continue;
@@ -436,6 +491,34 @@ function assemble(pieces: Piece[], sources: (Source | null)[], vocab: Vocabulary
     if (run) runs.push(run);
   });
   return { text, runs };
+}
+
+/**
+ * A numeric citation mark: "[12]", "[3, 5–7]", "[10,11]", and a run of them as IEEE's style
+ * sets it, "[19], [20]" or "[5]–[7]". The web walker skips one as a mark rather than prose
+ * (isCitationMarker, lib/dom/walker.ts), and arXiv's HTML marks every one, a run as one, so
+ * the PDF reader leaves it out too, with the space in front of it: "the bases [4]." reads
+ * "the bases.", and "programs [19], [20], rewards" "programs, rewards", as the same paper's
+ * HTML reads. An author-year citation is words of the sentence and stays.
+ */
+const MARK = String.raw`\[\d{1,4}[a-z]?(?:\s?[,–-]\s?\d{1,4}[a-z]?)*\]`;
+const CITATION = new RegExp(String.raw` ?${MARK}(?:\s?[,;–-]\s?${MARK})*`, "gu");
+
+function withoutCitations(text: string, prov: (Source | null)[]): { text: string; prov: (Source | null)[] } {
+  let out = "";
+  const kept: (Source | null)[] = [];
+  let at = 0;
+  for (const m of text.matchAll(CITATION)) {
+    out += text.slice(at, m.index);
+    kept.push(...prov.slice(at, m.index));
+    at = m.index + m[0].length;
+  }
+  if (at === 0) return { text, prov };
+  out += text.slice(at);
+  kept.push(...prov.slice(at));
+  // A mark that opened the paragraph leaves the space after it.
+  if (out.startsWith(" ")) { out = out.slice(1); kept.shift(); }
+  return { text: out, prov: kept };
 }
 
 // ---- the document -------------------------------------------------------------------------

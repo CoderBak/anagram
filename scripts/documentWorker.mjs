@@ -44,14 +44,16 @@ const MODELS = [
   "block-seg/clusterer/runtime.bin",
 ];
 /** Licences kept beside the artefacts, copied from the checkout: the worker's and its
- *  pdf.js fork's. The ONNX runtime's (MIT; its npm package carries none) is written down
- *  in vendor/document-worker/LICENSE.onnxruntime-web and pinned like the rest. */
+ *  pdf.js fork's. The ONNX runtime's npm package carries neither its licence (MIT) nor the
+ *  notices of the libraries its WebAssembly build links; both are written down here (the
+ *  notices are ONNX Runtime's ThirdPartyNotices.txt at the pinned version's tag) and pinned
+ *  like the rest. */
 const LICENCES = {
   "LICENSE.document-worker": "COPYING",
   // Not "….js": linters, AMO's among them, would parse the licence as a script.
   "LICENSE.pdfjs": "pdf.js/LICENSE",
 };
-const ORT_LICENCE = "LICENSE.onnxruntime-web";
+const ORT_FILES = ["LICENSE.onnxruntime-web", "ThirdPartyNotices.onnxruntime-web.txt"];
 
 const sha256 = (file) => createHash("sha256").update(readFileSync(file)).digest("hex");
 
@@ -171,7 +173,7 @@ async function rebuild(cache) {
   // Minified here: the worker's bundle is unminified by design (Zotero reads it in its
   // own tree), and a third of the size is a third of the extension's parse time.
   const { build } = await import("esbuild");
-  for (const name of Object.keys(pin.files)) if (name !== ORT_LICENCE) rmSync(join(VENDOR, name), { force: true });
+  for (const name of Object.keys(pin.files)) if (!ORT_FILES.includes(name)) rmSync(join(VENDOR, name), { force: true });
   await build({
     entryPoints: [join(checkout, "build", "anagram-worker.js")],
     minify: true, bundle: false, outfile: join(VENDOR, "worker.js"), logLevel: "error",
@@ -184,7 +186,7 @@ async function rebuild(cache) {
   for (const [name, from] of Object.entries(LICENCES)) cpSync(join(checkout, from), join(VENDOR, name));
 
   pin.files = {};
-  for (const name of ["worker.js", ...MODELS, ...Object.keys(LICENCES), ORT_LICENCE].sort()) pin.files[name] = sha256(join(VENDOR, name));
+  for (const name of ["worker.js", ...MODELS, ...Object.keys(LICENCES), ...ORT_FILES].sort()) pin.files[name] = sha256(join(VENDOR, name));
   pin.shared = {};
   for (const [name, { fork, keep }] of Object.entries(SHARED)) pin.shared[name] = sharedDigest(join(checkout, fork), keep);
   const ortVersion = JSON.parse(readFileSync(join(checkout, "node_modules/onnxruntime-web/package.json"), "utf8")).version;

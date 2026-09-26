@@ -69,6 +69,23 @@ class NetworkPrivacyTests(unittest.TestCase):
                                if module.split(".")[0] in network_modules)
         self.assertEqual(imports, [])
 
+    def test_only_the_download_transport_imports_an_http_client(self):
+        # "The engine uses the network only to download model files and updates you
+        # request." Downloads run in hub_transfer.py, in a process of its own; an update
+        # runs the installer's maintenance helper. No other engine module imports a network
+        # client. URL parsing is not one.
+        network_modules = {"socket", "ssl", "http", "urllib", "requests", "httpx", "aiohttp",
+                           "websockets", "ftplib", "smtplib", "huggingface_hub"}
+        importers = set()
+        for path in sorted((ROOT / "anagramd").glob("*.py")):
+            for node in ast.walk(source(path.name)):
+                modules = ([entry.name for entry in node.names] if isinstance(node, ast.Import)
+                           else [node.module or ""] if isinstance(node, ast.ImportFrom) else [])
+                if any(module.split(".")[0] in network_modules and module != "urllib.parse"
+                       for module in modules):
+                    importers.add(path.name)
+        self.assertEqual(importers, {"hub_transfer.py"})
+
 
 if __name__ == "__main__":
     unittest.main()
