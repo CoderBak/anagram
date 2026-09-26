@@ -282,6 +282,14 @@ function piecesOf(block: SdtBlock, out: Piece[] = []): Piece[] {
   return out;
 }
 
+/** Where each piece was found, and the run it stands in even where it was not: a glyph
+ *  pdf.js spells otherwise (a Greek letter of a formula it maps to another character)
+ *  is in no run's string, but its run's face still says whether it is mathematics. */
+interface Located {
+  sources: (Source | null)[];
+  faces: (Box | null)[];
+}
+
 /**
  * Find every piece's glyph among the text layer's runs: by geometry to the run, then in
  * order along the run's own string, so that "e" number three of a run is the third "e".
@@ -289,12 +297,14 @@ function piecesOf(block: SdtBlock, out: Piece[] = []): Piece[] {
  * Zotero moved left out of a run further right (boxesFor): it is the next character of
  * that run, if it is the next character of one.
  */
-function locate(pieces: Piece[], pagesByNumber: Map<number, PageIndex>): (Source | null)[] {
+function locate(pieces: Piece[], pagesByNumber: Map<number, PageIndex>): Located {
   const sources: (Source | null)[] = pieces.map(() => null);
+  const faces: (Box | null)[] = pieces.map(() => null);
   /** How far along each run's string its glyphs have been found. */
   const cursor = new Map<Box, number>();
   const put = (i: number, box: Box, offset: number): void => {
     sources[i] = { page: box.page, item: box.item, offset, box };
+    faces[i] = box;
     cursor.set(box, offset + 1);
   };
   /** Where `ch` is the next character of a run, spaces passed over, or -1. */
@@ -310,6 +320,7 @@ function locate(pieces: Piece[], pagesByNumber: Map<number, PageIndex>): (Source
     if (!index) return;
     const [first, ...right] = boxesFor(index, p.glyph);
     if (!first) return;
+    faces[i] = first;
     let j = first.it.str.indexOf(p.ch, cursor.get(first) ?? 0);
     if (j >= 0) return put(i, first, j);
     for (const box of right) {
@@ -320,7 +331,7 @@ function locate(pieces: Piece[], pagesByNumber: Map<number, PageIndex>): (Source
     j = first.it.str.indexOf(p.ch);
     if (j >= 0) put(i, first, j);
   });
-  return sources;
+  return { sources, faces };
 }
 
 /** Two glyphs on one line of one page: their heights overlap. */
@@ -383,28 +394,32 @@ interface Assembled {
  *    becomes "languageonly". The hyphen is still in pdf.js's run, and the document's own
  *    vocabulary says whether the word is spelt with it (lib/pdf/reflow.ts).
  */
-function assemble(pieces: Piece[], sources: (Source | null)[], vocab: Vocabulary): Assembled {
+function assemble(pieces: Piece[], { sources, faces }: Located, vocab: Vocabulary): Assembled {
   // ---- tokens: where a word space belongs ----
   const tokens: Token[] = [];
   let open: Token | null = null;
   let prevGlyph: Glyph | null = null;
   let prevSource: Source | null = null;
+  let prevFace: Box | null = null;
   let spaced = true;
   pieces.forEach((p, i) => {
     if (p.ch === " ") { spaced = true; return; }
     const src = sources[i];
+    const face = faces[i];
     // A change of face between text and mathematics is a word boundary too, however tight
     // TeX set it: "with" and the "C" of "withC :=" are two words.
     const apart = spaced
       || (prevGlyph !== null && p.glyph !== null && wordApart(prevGlyph, p.glyph))
-      || (prevSource !== null && src !== null && (runsApart(prevSource, src) || prevSource.box.math !== src.box.math));
+      || (prevSource !== null && src !== null && runsApart(prevSource, src))
+      || (prevFace !== null && face !== null && prevFace.math !== face.math);
     if (apart || !open) { open = { at: [], math: false, letters: false }; tokens.push(open); }
     open.at.push(i);
-    if (src?.box.math) open.math = true;
+    if (face?.math) open.math = true;
     if (/\p{L}/u.test(p.ch)) open.letters = true;
     spaced = false;
     if (p.glyph) prevGlyph = p.glyph;
     if (src) prevSource = src;
+    if (face) prevFace = face;
   });
 
   // ---- formulas: the math tokens and the letterless tokens beside them ----

@@ -263,6 +263,21 @@ describe("structuredBlocks — formulas", () => {
     expectRunsToMatch(blocks[0], pages);
   });
 
+  it("leaves out a formula's letter that pdf.js spells otherwise, by the face it is set in", () => {
+    // Zotero reads a "ψ" where pdf.js's run of the mathematics face holds another code
+    // point (a font without a Unicode map): the glyph is in no run's string.
+    const fonts = { f_text: "NimbusRomNo9L-Regu", f_math: "OHTAKJ+CMMI10" };
+    const a = drawn(1, { text: "which determines", x: 72, y: 100 });
+    const m: PdfTextItem = { str: "", x: 72 + 17 * CW, y: 100, width: CW, height: SIZE, fontName: "f_math" };
+    const mRun = drawn(1, { text: "ψ", x: 72 + 17 * CW, y: 100 }).run;
+    const b = drawn(1, { text: "entirely.", x: 72 + 19 * CW, y: 100 });
+    const n = { text: "which determines ψ entirely.", anchor: { textMap: JSON.stringify([a.run, mRun, b.run]) } };
+    const pages = [pageText(1, [a.item, m, b.item], fonts)];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0].text).toBe("which determines entirely.");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
   it("changes nothing in a document with no mathematics face", () => {
     const n = node(1, [{ text: "a plain sentence with x = 5 and (2 + 0.5) in it.", x: 72, y: 100 }]);
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), [pageText(1, n.items, { f_text: "Calibri" })]);
