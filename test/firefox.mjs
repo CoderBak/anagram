@@ -16,7 +16,10 @@
 //     swap is covered by the orchestrator's 2.5 s URL poll and is given ~6 s here;
 //   * the Popover API (top-layer hover card) has a CSS fallback;
 //   * the PDF reading mode is the one page where the whole pipeline runs on a
-//     moz-extension: document, and it loads pdf.js and a MODULE WORKER from that origin.
+//     moz-extension: document, and it loads pdf.js and a MODULE WORKER from that origin;
+//   * what the Chromium scenarios cover and Gecko could do its own way (10d): the MAIN-world
+//     script and closed shadow roots, a really hidden tab, scroll order, Firefox's own
+//     translation marks, consent frames, the surfaces and Defuddle chunks, the licences.
 //
 //   node test/firefox.mjs
 //   node test/firefox.mjs --quick     # skip the fixture down/up cycle (~25 s)
@@ -27,6 +30,7 @@ import { serveHtml, artifact } from "./harness.mjs";
 import { createNativeFixture } from "./fake-native.mjs";
 import {
   BADGE_SEL,
+  EXT,
   EXT_UUID,
   GECKO_ID,
   launchFirefox,
@@ -50,7 +54,9 @@ const skip = (name, why) => results.push({ name, state: "SKIP", note: why });
 
 // ── 1) fake fixture + the self-test page over http ──────────────────────────────────
 let fixture = await createNativeFixture();
-const server = await serveHtml({ "/selftest.html": readFileSync(join(__dirname, "selftest.html"), "utf8") });
+// Served live: the checks in 10d) add their pages as they go.
+const PAGES = { "/selftest.html": readFileSync(join(__dirname, "selftest.html"), "utf8") };
+const server = await serveHtml(PAGES);
 const pageUrl = server.url("/selftest.html");
 
 // ── 2) headless Firefox + a temporary install of output-test/firefox-mv2 ───────────
@@ -600,6 +606,268 @@ const renderPdfPages = async (page) => {
     absent === true,
     String(absent),
   );
+}
+
+// ── 10d) what the Chromium scenarios cover, where Firefox could differ ─────────────
+// Each is a smaller copy of its case in test/scenarios.mjs, run on the Firefox build.
+const VOCAB = "the quick brown fox jumps over a lazy dog while rain falls gently on rooftops and children read books near warm windows during long quiet evenings a timetable moved off paper and nobody noticed until the trains ran on time".split(" ");
+/** A paragraph over the 75-word floor, its words set by `i` so that no two are alike. */
+const para = (tag, i = 0) => `${tag}-${i} ` + Array.from({ length: 84 }, (_, k) => VOCAB[(i * 7 + k * 13) % VOCAB.length]).join(" ") + ".";
+const html = (title, body, lang = "en") => `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><title>${title}</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">${body}</body></html>`;
+const sentSince = (n, marker) => fixture.stats.texts.slice(n).filter((t) => t.includes(marker)).length;
+const chipsIn = (p, css) => p.evaluate(({ css, sel }) => document.querySelectorAll(`${css} ${sel}`).length, { css, sel: BADGE_SEL });
+
+// The page-world script (entrypoints/shadow.content.ts) is registered in the MAIN world,
+// and a shadow root attached after the walk — open, or closed — is read.
+{
+  const registered = await optionsPage
+    .evaluate(async () => (await browser.scripting.getRegisteredContentScripts()).map((s) => `${s.id}:${s.world ?? "ISOLATED"}`))
+    .catch((e) => [String(e)]);
+  PAGES["/shadow.html"] = html("late and closed shadow roots", `<late-card id="lc"></late-card><closed-card id="cc"></closed-card><div id="cd"></div>
+<script>
+  window.__closed = {};
+  customElements.define("closed-card", class extends HTMLElement {
+    constructor() { super(); window.__closed.cc = this.attachShadow({ mode: "closed" }); window.__closed.cc.innerHTML = "<p>${para("CLOSEDCARD")}</p>"; }
+  });
+  setTimeout(() => customElements.define("late-card", class extends HTMLElement {
+    connectedCallback() { this.attachShadow({ mode: "open" }).innerHTML = "<p>${para("LATECARD", 1)}</p>"; }
+  }), 1500);
+  setTimeout(() => {
+    window.__closed.cd = document.getElementById("cd").attachShadow({ mode: "closed" });
+    window.__closed.cd.innerHTML = "<p>${para("CLOSEDDIV", 2)}</p>";
+  }, 2000);
+</script>`);
+  const p = await browser.newPage();
+  await p.goto(server.url("/shadow.html"), { waitUntil: "load" });
+  const count = () =>
+    p.evaluate((sel) => ({
+      lc: document.getElementById("lc")?.shadowRoot?.querySelectorAll(sel).length ?? -1,
+      cc: window.__closed.cc?.querySelectorAll(sel).length ?? -1,
+      cd: window.__closed.cd?.querySelectorAll(sel).length ?? -1,
+    }), BADGE_SEL);
+  await waitFor(p, (sel) => [document.getElementById("lc")?.shadowRoot, window.__closed.cc, window.__closed.cd].every((r) => (r?.querySelectorAll(sel).length ?? 0) > 0), { timeout: 15000, arg: BADGE_SEL });
+  const r = await count();
+  check(
+    "the page-world script is registered in the MAIN world, and a shadow root attached after the walk is read",
+    registered.includes("anagram-shadow:MAIN") && r.lc === 1,
+    JSON.stringify({ registered, lc: r.lc }),
+  );
+  check("a closed shadow root is read (openOrClosedShadowRoot): a custom element's at load, a <div>'s attached later", r.cc === 1 && r.cd === 1, JSON.stringify(r));
+  await p.close();
+}
+
+// A tab in the background sends nothing, not even the idle prefetch, and picks up where it
+// was once it is shown. Here the tab is really hidden: another one is brought in front of it.
+{
+  PAGES["/hidden.html"] = html("hidden fixture", `<main id="top">${[0, 1].map((i) => `<p>${para("SHOWNFIRST", i)}</p>`).join("")}</main><div style="height:5000px"></div><div id="bottom"></div>`);
+  const p = await browser.newPage();
+  await p.goto(server.url("/hidden.html"), { waitUntil: "load" });
+  await waitFor(p, (sel) => document.querySelectorAll(`#top ${sel}`).length === 2, { timeout: 15000, arg: BADGE_SEL });
+  const front = await browser.newPage();
+  const hidden = await waitFor(p, () => document.visibilityState === "hidden", { timeout: 5000 });
+  const before = fixture.stats.texts.length;
+  await p.evaluate(([onScreen, below]) => {
+    const add = (where, id, text) => Object.assign(where.appendChild(document.createElement("p")), { id, textContent: text });
+    add(document.getElementById("top"), "hid-top", onScreen);
+    add(document.getElementById("bottom"), "hid-bottom", below);
+  }, [para("WHILEHIDDEN", 3), para("WHILEHIDDEN", 4)]);
+  await sleep(2500);
+  const quiet = (await chipsIn(p, "#hid-top")) + (await chipsIn(p, "#hid-bottom"));
+  const sent = sentSince(before, "WHILEHIDDEN");
+  await front.close();
+  await p.bringToFront();
+  const shown = await waitFor(p, (sel) => document.querySelectorAll(`#hid-top ${sel}`).length === 1, { timeout: 10000, arg: BADGE_SEL });
+  check(
+    "a hidden tab dispatches nothing, not even the idle prefetch, and resumes when shown",
+    hidden && quiet === 0 && sent === 0 && shown,
+    JSON.stringify({ hidden, chipsWhileHidden: quiet, sentWhileHidden: sent, shown }),
+  );
+  await p.close();
+}
+
+// A reader flicks through ninety paragraphs while the engine is slow: what is on screen when
+// the scroll stops is sent before anything scrolled far past.
+{
+  PAGES["/scroll.html"] = html("scroll fixture", Array.from({ length: 90 }, (_, i) => `<p id="sp${i}">${para("SCROLLPAST", i)}</p>`).join("\n"));
+  const p = await browser.newPage();
+  await p.evaluateOnNewDocument(() => {
+    window.__chipAt = {};
+    new MutationObserver(() => {
+      for (const host of document.querySelectorAll('[data-anagram="host"]:not(#anagram-fab)')) {
+        const el = host.closest("p[id]");
+        if (el && !(el.id in window.__chipAt)) window.__chipAt[el.id] = performance.now();
+      }
+    }).observe(document, { childList: true, subtree: true });
+  });
+  fixture.setState({ latency: [700, 700] });
+  await p.goto(server.url("/scroll.html"), { waitUntil: "load" });
+  await waitFor(p, () => Object.keys(window.__chipAt ?? {}).length > 0, { timeout: 12000 });
+  const end = await p.evaluate(async () => {
+    const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const step = Math.round(innerHeight * 0.9);
+    const bottom = document.documentElement.scrollHeight - innerHeight;
+    for (let y = step; y < bottom; y += step) {
+      scrollTo(0, y);
+      await frames();
+    }
+    scrollTo(0, bottom);
+    await frames();
+    const rows = [...document.querySelectorAll("p[id]")].map((el) => ({ id: el.id, box: el.getBoundingClientRect() }));
+    return {
+      t0: performance.now(),
+      onScreen: rows.filter((r) => r.box.bottom > 0 && r.box.top < innerHeight).map((r) => r.id),
+      far: rows.filter((r) => r.box.bottom < -1500).map((r) => r.id),
+    };
+  });
+  const allOnScreen = await waitFor(p, (ids) => ids.every((id) => id in window.__chipAt), { timeout: 40000, arg: end.onScreen });
+  const r = await p.evaluate(({ onScreen, far, t0 }) => {
+    const at = window.__chipAt;
+    const last = Math.max(...onScreen.map((id) => at[id] ?? Infinity));
+    const after = t0 + 100;
+    return {
+      onScreen: onScreen.length,
+      far: far.length,
+      farFirst: far.filter((id) => at[id] > after && at[id] < last).length,
+      waitMs: Math.round(last - t0),
+    };
+  }, end);
+  fixture.setState({ latency: [60, 160] });
+  check(
+    "a fast scroll: what is on screen when it stops is sent before anything scrolled far past",
+    allOnScreen && r.onScreen > 0 && r.far > 20 && r.farFirst === 0,
+    JSON.stringify(r),
+  );
+  await p.close();
+}
+
+// Firefox's full-page translation relabels <html lang> when it starts (the Firefox build
+// alone reads that as a translation, lib/surface.ts) and numbers the elements of a block
+// with data-moz-translations-id while it translates it. Modelled: the real one downloads
+// its models from Mozilla.
+for (const how of ["lang", "ids"]) {
+  const path = `/translated-${how}.html`;
+  PAGES[path] = html("translated fixture", `<main>${[0, 1].map((i) => `<p id="t${i}">ORIGINAL-${how} ${para("TRANSLATE", i + 5)}</p>`).join("")}</main>
+<script>
+  window.__translate = () => {
+    ${how === "lang" ? `document.documentElement.lang = "en";` : ""}
+    for (const p of document.querySelectorAll("main p")) {
+      ${how === "ids" ? `p.dataset.mozTranslationsId = "1";` : ""}
+      p.firstChild.data = p.firstChild.data.replace("ORIGINAL", "MACHINE");
+      ${how === "ids" ? `delete p.dataset.mozTranslationsId;` : ""}
+    }
+  };
+</script>`, "de");
+  const p = await browser.newPage();
+  await p.goto(server.url(path), { waitUntil: "load" });
+  const settled = await waitFor(p, (sel) => {
+    const hosts = [...document.querySelectorAll(sel)];
+    return hosts.length === 2 && hosts.every((h) => !h.shadowRoot?.querySelector(".pill.pending"));
+  }, { timeout: 15000, arg: BADGE_SEL });
+  const before = fixture.stats.texts.length;
+  await p.evaluate(() => window.__translate());
+  await sleep(3000);
+  const during = await p.evaluate((sel) => ({ chips: document.querySelectorAll(sel).length, ball: !!document.getElementById("anagram-fab") }), BADGE_SEL);
+  const href = await p.evaluate(() => location.href);
+  const state = await optionsPage
+    .evaluate(async (url) => {
+      const tab = (await browser.tabs.query({})).find((t) => t.url === url);
+      return browser.tabs.sendMessage(tab.id, { action: "getTabState" }, { frameId: 0 });
+    }, href)
+    .catch(() => null);
+  const machineSent = sentSince(before, "MACHINE-");
+  check(
+    `a page Firefox translates (${how === "lang" ? "<html lang> relabelled" : "data-moz-translations-id"}): nothing is read or left on it`,
+    settled && during.chips === 0 && !during.ball && machineSent === 0 && state?.translated === true,
+    JSON.stringify({ settled, during, machineSent, translated: state?.translated }),
+  );
+  await p.close();
+}
+
+// A consent platform's banner in a frame of its own is not read, while an ordinary frame
+// from the same address is: Sourcepoint on the publisher's domain, known by its address.
+{
+  const cross = server.base.replace("localhost", "127.0.0.1");
+  PAGES["/index.html"] = html("SP Consent Message", `<div id="notice" class="message type-modal" role="dialog" aria-label="Privacy notice"><p class="message-component">${para("SPFRAME", 6)}</p><button>Accept all</button></div>`);
+  PAGES["/plain.html"] = html("an ordinary frame", `<p>${para("PLAINFRAME", 7)}</p>`);
+  PAGES["/consent-top.html"] = html("consent frames", `<p id="topp">${para("CONSENTHOST", 8)}</p>
+<div id="sp_message_container_1001"><iframe id="sp_message_iframe_1001" title="SP Consent Message" src="${cross}/index.html?message_id=1001&amp;requestUUID=00000000-0001" width="640" height="300"></iframe></div>
+<iframe id="plain" src="${cross}/plain.html" width="640" height="300"></iframe>`);
+  const before = fixture.stats.texts.length;
+  const p = await browser.newPage();
+  await p.goto(server.url("/consent-top.html"), { waitUntil: "load" });
+  await waitFor(p, (sel) => document.querySelectorAll(`#topp ${sel}`).length > 0, { timeout: 15000, arg: BADGE_SEL });
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline && sentSince(before, "PLAINFRAME") === 0) await sleep(250);
+  await sleep(1500);
+  const r = { top: await chipsIn(p, "#topp"), plain: sentSince(before, "PLAINFRAME"), consent: sentSince(before, "SPFRAME") };
+  check(
+    "a consent platform's frame is not read, an ordinary frame from the same address and the page around it are",
+    r.top === 1 && r.plain > 0 && r.consent === 0,
+    JSON.stringify(r),
+  );
+  await p.close();
+}
+
+// A PDF shown by pdf.js inside a web page is read by the surfaces chunk (lib/surfaces/),
+// which the content script imports by its extension URL.
+{
+  PAGES["/pdfjs-viewer.html"] = readFileSync(join(__dirname, "fixtures", "surfaces", "pdfjs-viewer.html"), "utf8");
+  const before = fixture.stats.texts.length;
+  const p = await browser.newPage();
+  await p.goto(server.url("/pdfjs-viewer.html"), { waitUntil: "load" });
+  const chipped = await waitFor(p, (sel) => document.querySelectorAll(`.page > [data-anagram] > [data-chip] > ${sel}`).length >= 4, { timeout: 25000, arg: BADGE_SEL });
+  const r = {
+    chipped,
+    inLayer: await p.evaluate((sel) => document.querySelectorAll(`.textLayer ${sel}, .textLayer [data-anagram]`).length, BADGE_SEL),
+    mended: sentSince(before, "notice what is different about each one") > 0,
+    acrossPages: sentSince(before, "by the afternoon boat. The new keeper") > 0,
+  };
+  check("a pdf.js viewer in a web page: paragraphs rebuilt across columns and pages, chips over the page", r.chipped && r.inLayer === 0 && r.mended && r.acrossPages, JSON.stringify(r));
+  await p.close();
+}
+
+// "Main content only" finds the article with Defuddle, an on-demand chunk the content
+// script imports. The comments below the post hold most of the page's text, so the
+// text-mass probe Anagram falls back on without Defuddle would take them for the article;
+// Defuddle leaves comments out. Its phrases are located on the page, so every paragraph
+// here is its own draw of words: para()'s rotations would share them.
+{
+  const OTHER = "readers argued about harbours ferries lighthouses keepers storms gulls nets tides pilots moorings beacons fog horns charts compasses anchors decks masts sails ropes knots cargo crews ports quays".split(" ");
+  const prose = (tag, i, words) => {
+    let s = i * 7919 + 1;
+    return `${tag}-${i} ` + Array.from({ length: 84 }, () => words[(s = (s * 48271) % 2147483647) % words.length]).join(" ") + ".";
+  };
+  PAGES["/scope-defuddle.html"] = html("A post and its comments", `<div id="post" class="entry-content"><h1>A post and its comments</h1>${[9, 10, 11].map((i) => `<p>${prose("POSTBODY", i, VOCAB)}</p>`).join("")}</div>
+<div id="comments" class="comments"><h2>Comments</h2>${[12, 13, 14, 15, 16].map((i) => `<div class="comment"><p>${prose("COMMENTBODY", i, OTHER)}</p></div>`).join("")}</div>`);
+  await optionsPage.evaluate(() => browser.storage.local.set({ analysisScope: "main" }));
+  const before = fixture.stats.texts.length;
+  const p = await browser.newPage();
+  await p.goto(server.url("/scope-defuddle.html"), { waitUntil: "load" });
+  await waitFor(p, (sel) => document.querySelectorAll(sel).length > 0, { timeout: 15000, arg: BADGE_SEL });
+  await sweep(p, 3);
+  await sleep(2000);
+  const r = { post: await chipsIn(p, "#post"), comments: await chipsIn(p, "#comments"), commentsSent: sentSince(before, "COMMENTBODY") };
+  await optionsPage.evaluate(() => browser.storage.local.set({ analysisScope: "page" }));
+  check("main-content scope: Defuddle loads on demand and takes the post, not the comments", r.post === 3 && r.comments === 0 && r.commentsSent === 0, JSON.stringify(r));
+  await p.close();
+}
+
+// Every licence the build owes is in it.
+{
+  const text = (path) => { try { return readFileSync(join(EXT, path), "utf8"); } catch { return ""; } };
+  const missing = [
+    ["LICENSE", "GNU AFFERO GENERAL PUBLIC LICENSE"],
+    ["vendor/pdfjs/LICENSE", "Apache License"],
+    ["vendor/document-worker/LICENSE.document-worker", "GNU AFFERO GENERAL PUBLIC LICENSE"],
+    ["vendor/document-worker/LICENSE.pdf.js", "Apache License"],
+    ["vendor/document-worker/LICENSE.onnxruntime-web", "MIT License"],
+    ["vendor/wasm/LICENSE_OPENJPEG", "BSD License"],
+    ["vendor/wasm/LICENSE_JBIG2", "PDFium Authors"],
+    ["vendor/standard_fonts/LICENSE_FOXIT", "PDFium Authors"],
+    ["vendor/standard_fonts/LICENSE_LIBERATION", "SIL Open Font License"],
+    ["vendor/defuddle.min.mjs", "MIT License, Copyright (c) 2025 Steph Ango"],
+  ].filter(([path, needle]) => !text(path).includes(needle)).map(([path]) => path);
+  check("the Firefox build carries its own and every bundled component's licence", missing.length === 0, missing.join(", "));
 }
 
 // ── 11) screenshot ─────────────────────────────────────────────────────────────────
