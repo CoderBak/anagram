@@ -106,6 +106,9 @@ local component and the installer all carry the same version.
   papers, PubMed Central, bioRxiv and medRxiv, Springer Nature, Wiley, ScienceDirect and
   anything a CSL processor such as Pandoc writes are skipped by the names those platforms
   give them, and so is any list marked `role="doc-bibliography"`.
+- On AMP pages, the consent prompt (`amp-consent`) is no longer analyzed, and neither are
+  the notification bar, sidebar, app and push banners, ad and embed slots and share
+  buttons AMP draws around an article.
 
 ## [0.7.0] — 2026-09-26
 

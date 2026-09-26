@@ -2199,6 +2199,7 @@ const results = await page.evaluate(() => {
 const FIXTURES = join(__dirname, "fixtures");
 /** [units, multi-part units] per fixture — a change here is a change of behaviour. */
 const EXPECTED = {
+  "amp-article": [1, 1],
   "article-list-table": [6, 5],
   "bilibili-comments": [2, 2],
   "chat-transcript": [2, 1],

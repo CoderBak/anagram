@@ -278,6 +278,9 @@ function boilerplateBranch(el: Element): string {
   if (tag === "ASIDE") return "<aside> is chrome wherever it stands";
   if (tag === "HEADER" || tag === "FOOTER") return `<${tag.toLowerCase()}> outside an <article>/<main>`;
   if (tag === "FORM") return "a <form> with fields to fill in is a widget";
+  if (tag.startsWith("AMP-") && isBoilerplate(document.createElement(tag.toLowerCase()))) {
+    return `AMP's <${tag.toLowerCase()}> is chrome wherever it stands`;
+  }
   const wiki = mediaWikiFurniture(el);
   if (wiki) return `MediaWiki's "${wiki}", not the article's prose`;
   const refs = referenceList(el);
