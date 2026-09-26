@@ -32,7 +32,7 @@ export function readStructure(bytes: Uint8Array, pages: number, signal?: AbortSi
   return new Promise((resolve, reject) => {
     if (signal?.aborted) { reject(new Error("aborted")); return; }
     const began = performance.now();
-    const worker = new Worker(asset("document-worker/worker.js"));
+    const worker = new Worker(asset("start/document-worker.js"));
     let done = false;
     const finish = (error: Error | null, structure?: SdtStructure): void => {
       if (done) return;

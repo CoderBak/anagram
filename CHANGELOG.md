@@ -164,6 +164,9 @@ local component and the installer all carry the same version.
 - In Firefox 140 ESR, the oldest Firefox Anagram supports, pages were read but nothing was
   shown on them: no chip, no ball and no selection card, because that version refuses the
   stylesheet an extension gives them the usual way. They are drawn there now.
+- The PDF reader opens files in Firefox 140 ESR again. The bundled PDF.js and the paragraph
+  reader both use two JavaScript methods that arrived in later versions, so every PDF was
+  refused as "not a PDF"; the reader now brings them itself where the browser has none.
 
 ## [0.7.0] — 2026-09-26
 

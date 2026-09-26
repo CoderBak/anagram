@@ -477,6 +477,10 @@ const renderPdfPages = async (page) => {
       const pills = [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill"));
       return pills.length > 0 && !pills.some((h) => h.shadowRoot.querySelector(".pill.pending"));
     }, { timeout: 30000, arg: BADGE_SEL }));
+  // The paragraphs come from Zotero's document-worker once it has read the whole file: its
+  // pdf.js, and an ONNX model run by onnxruntime-web's WebAssembly under the MV2 policy.
+  const structured = rendered &&
+    (await waitFor(p, () => performance.getEntriesByName("anagram-structured").length > 0, { timeout: 30000 }));
   const pdf = arrived
     ? await p.evaluate((sel) => {
         const chips = [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill"));
@@ -516,6 +520,11 @@ const renderPdfPages = async (page) => {
       pdf.text.includes(PDF_HEADING) &&
       pdf.text.includes(PDF_HEAD),
     JSON.stringify({ pages: pdf?.pages, drawn: pdf?.drawn, spans: pdf?.spans, notice: pdf?.notice }),
+  );
+  check(
+    "PDF reader: Zotero's document-worker reads the paragraphs (ONNX model in WebAssembly under the MV2 policy)",
+    !!structured,
+    JSON.stringify(await p.evaluate(() => performance.getEntriesByType("measure").map((e) => e.name)).catch(() => null)),
   );
   check(
     "PDF reader: the ordinary pipeline scores the reconstruction — chips on the page, marks, no errors",
@@ -564,7 +573,7 @@ const renderPdfPages = async (page) => {
     "PDF reader: a dropped file is read, and pdf.js parses it in a MODULE WORKER from moz-extension://",
     read &&
       Array.isArray(workers) &&
-      workers.some((w) => w.startsWith(`moz-extension://${EXT_UUID}/vendor/pdf.worker.mjs`) && w.endsWith("|module")),
+      workers.some((w) => w.startsWith(`moz-extension://${EXT_UUID}/vendor/start/pdf.worker.mjs`) && w.endsWith("|module")),
     JSON.stringify({ read, workers }),
   );
   await p.close();

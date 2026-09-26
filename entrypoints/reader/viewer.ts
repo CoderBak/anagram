@@ -2,6 +2,7 @@ import { browser } from "#imports";
 import type { PublicPath } from "wxt/browser";
 import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
 import { lazyVendor, loadPdfjs } from "../../lib/lazy";
+import "../../lib/pdf/upsert";
 
 /** The small upstream API surface the Anagram adapter uses. Rendering stays upstream. */
 export interface UpstreamPage {
@@ -50,7 +51,7 @@ export async function startViewer(): Promise<PdfApplication> {
     globals.PDFViewerApplicationOptions.setAll({
       ...VIEWER_OPTIONS,
       localeProperties: {lang: browser.i18n.getUILanguage()},
-      workerSrc: asset("pdf.worker.mjs"), imageResourcesPath: asset("pdfjs/web/images/"),
+      workerSrc: asset("start/pdf.worker.mjs"), imageResourcesPath: asset("pdfjs/web/images/"),
       cMapUrl: asset("cmaps/"), cMapPacked: true,
       standardFontDataUrl: asset("standard_fonts/"), wasmUrl: asset("wasm/"), iccUrl: asset("iccs/"),
     });
