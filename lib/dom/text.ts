@@ -141,7 +141,7 @@ const INVISIBLES_RE =
 const RAW_LATEX_RE = /\$[^$\n]*\\[A-Za-z]+[^$\n]*\$/g;
 
 /** Bump when the model form changes; caches from older rules must never match. */
-export const SCORING_NORMALIZATION_VERSION = "4";
+export const SCORING_NORMALIZATION_VERSION = "5";
 
 /**
  * A space before closing punctuation that ends a word: what is left where a formula or a
@@ -160,7 +160,9 @@ const SPACED_PUNCTUATION_RE = / ([.,;:!?)]+)(?=\s|$)/g;
  * of who wrote it — so nothing here folds them. Only what reading a page leaves behind is
  * repaired: the invisibles above out, `\%` `\&` `\_` `\#` `\$` escapes to the character and
  * un-rendered LaTeX spans out (arXiv-like pages), a PDF's ligature glyphs (ﬁ, ﬄ) to their
- * letters, runs of spaces to one space, a run of whitespace that breaks a line to one
+ * letters, a letter and its combining accents to one character (NFC: a PDF gives "e" and a
+ * combining acute where a page writes "é", and the tokenizer reads the two apart), runs of
+ * spaces to one space, a run of whitespace that breaks a line to one
  * "\n" — the engine can drop an opening paragraph only where it sees one end — and the
  * space a skipped formula or citation mark leaves before punctuation closed up. The model
  * reads that space: on 1,464 paragraphs of arXiv papers read both from the PDF and from the
@@ -178,7 +180,7 @@ export function modelText(s: string): string {
     if (next === s) break;
     s = next;
   }
-  return s.replace(/\s+/g, (run) => (/[\n\r\u2028\u2029]/.test(run) ? "\n" : " ")).trim().replace(SPACED_PUNCTUATION_RE, "$1");
+  return s.normalize("NFC").replace(/\s+/g, (run) => (/[\n\r\u2028\u2029]/.test(run) ? "\n" : " ")).trim().replace(SPACED_PUNCTUATION_RE, "$1");
 }
 
 /** True if the text contains at least one letter in ANY script (incl. CJK). */

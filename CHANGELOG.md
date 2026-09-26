@@ -90,6 +90,11 @@ local component and the installer all carry the same version.
   page. On 50 arXiv papers read both as PDF and as HTML, the prose the HTML reads and the PDF
   left unscored fell from 19,000 words to 3,000, and the two readings give a paragraph the
   same verdict 95.0% of the time (93.6% before).
+- An accented letter reaches the model as one character however the page encoded it: a PDF
+  gives "e" and a combining acute where a web page writes "é", and the model read the two as
+  different words. The PDF reader also puts an accent back on the letter it is printed over
+  ("Alfven´" and "Garcıá" read "Alfvén" and "García" again). Earlier verdicts are not reused
+  for the texts this changes.
 - On arXiv's HTML papers, short paragraphs are read together with their neighbours, as on
   any other page and as the PDF reader reads them. Each paragraph there sits in a box of
   its own, so none under the 75-word floor was ever grouped: proofs, definitions and short

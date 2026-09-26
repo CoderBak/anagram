@@ -133,6 +133,15 @@ describe("modelText", () => {
     }
   });
 
+  it("writes an accented letter one way however it was encoded (NFC)", () => {
+    // A PDF gives "Le´vy" as "e" and a combining acute; arXiv's HTML writes "é". The model's
+    // tokenizer reads the two differently, so the same word would count as two.
+    expect(modelText("Lévy, Čech and the Ångström")).toBe("Lévy, Čech and the Ångström");
+    expect(modelText("Lévy, Čech and the Ångström")).toBe("Lévy, Čech and the Ångström");
+    const l1 = createScoreCache();
+    expect(l1.keyOf("Lévy flights.")).toBe(l1.keyOf("Lévy flights."));
+  });
+
   it("spells out a PDF's ligature glyphs and nothing else", () => {
     expect(modelText("the ﬁnal ﬂow of ﬀ, ﬃ and ﬄ")).toBe("the final flow of ff, ffi and ffl");
   });

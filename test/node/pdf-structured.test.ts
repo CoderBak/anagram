@@ -226,6 +226,48 @@ describe("structuredBlocks — text and runs", () => {
   });
 });
 
+describe("structuredBlocks — accented letters", () => {
+  it("writes a letter and its accent as one character, the accent on the letter it is drawn over", () => {
+    // pdf.js keeps TeX's accent as a glyph of its own before the letter ("Alfv´en"); Zotero
+    // reads it as a combining mark but can put it past the letter ("Alfven´"), or after the
+    // next one when the letter is a dotless ı ("Garcıá"). Each word is one run on the page.
+    const words = [["the", "the"], ["Alfv´en", "Alfveń"], ["speed,", "speed,"], ["as", "as"],
+      ["Garcı´a", "Garcıá"], ["and", "and"], ["Le´vy", "Lévy"], ["found.", "found."]];
+    /** Which letter of the word the accent is drawn over. */
+    const over: Record<string, number> = { "Alfveń": 4, "Garcıá": 4, "Lévy": 1 };
+    const items: PdfTextItem[] = [];
+    const spans: [number, number][] = [];
+    let x = 72;
+    for (const [drawnAs, read] of words) {
+      const letters = [...read].filter((c) => !/\p{M}/u.test(c)).length;
+      items.push({ str: drawnAs, x, y: 100, width: letters * CW, height: SIZE, fontName: "f_text" });
+      let k = 0;
+      for (const c of read) {
+        if (/\p{M}/u.test(c)) spans.push([x + over[read] * CW + 0.5, x + over[read] * CW + CW - 0.5]);
+        else spans.push([x + k * CW, x + ++k * CW]);
+      }
+      x += (letters + 1) * CW;
+    }
+    // One glyph run for the line: each glyph's box as a [gap, width] from the one before.
+    const widths: (number | number[])[] = [];
+    let pos = spans[0][0];
+    for (const [a, b] of spans) {
+      widths.push(a === pos ? b - a : [a - pos, b - a]);
+      pos = b;
+    }
+    const n = { text: words.map(([, read]) => read).join(" "), anchor: { textMap: JSON.stringify([[0, 0, spans[0][0], HEIGHT - 102, pos, HEIGHT - 93, ...widths]]) } };
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), [pageText(1, items)]);
+    expect(blocks[0].text).toBe("the Alfvén speed, as García and Lévy found.");
+    // The accented letter is found where its letter is: a highlight over the word covers it.
+    for (const word of ["Alfvén", "García", "Lévy"]) {
+      const at = blocks[0].text.indexOf(word);
+      let covered = 0;
+      for (const r of blocks[0].runs) covered += Math.max(0, Math.min(r.at + r.length, at + word.length) - Math.max(r.at, at));
+      expect(covered, word).toBe(word.length);
+    }
+  });
+});
+
 describe("structuredBlocks — hyphens at line ends", () => {
   it("mends a syllable break and keeps a compound's own hyphen, by the document's usage", () => {
     const n = node(1, [

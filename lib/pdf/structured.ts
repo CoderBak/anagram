@@ -282,6 +282,40 @@ function piecesOf(block: SdtBlock, out: Piece[] = []): Piece[] {
   return out;
 }
 
+const ACCENT = /^\p{M}$/u;
+/** How many letters away from where Zotero put it an accent's letter is looked for. */
+const ACCENT_REACH = 3;
+
+/**
+ * Every accent after the letter it is drawn over. TeX sets an accent as a glyph of its own
+ * and Zotero reads it as a combining mark, but it can put the mark past its letter —
+ * "Alfven´" for "Alfvén", "Garcıá" for "García" — and the mark then accents another
+ * letter, or none. The letter is the one of its word whose box holds the mark's centre.
+ */
+function placeMarks(pieces: Piece[]): Piece[] {
+  const home = new Map<number, number>();
+  pieces.forEach((m, i) => {
+    if (!m.glyph || !ACCENT.test(m.ch)) return;
+    const cx = (m.glyph.x1 + m.glyph.x2) / 2;
+    const under = (j: number): boolean => {
+      const g = pieces[j].glyph;
+      return g !== null && g.page === m.glyph!.page && /\p{L}/u.test(pieces[j].ch) && g.x1 <= cx && cx <= g.x2 && sameLine(g, m.glyph!);
+    };
+    for (let j = i - 1, n = 0; j >= 0 && pieces[j].ch !== " " && n <= ACCENT_REACH; j--, n++) if (under(j)) return void home.set(i, j);
+    for (let j = i + 1, n = 0; j < pieces.length && pieces[j].ch !== " " && n <= ACCENT_REACH; j++, n++) if (under(j)) return void home.set(i, j);
+  });
+  if (home.size === 0) return pieces;
+  const after = new Map<number, Piece[]>();
+  for (const [i, j] of home) after.set(j, [...(after.get(j) ?? []), pieces[i]]);
+  const out: Piece[] = [];
+  pieces.forEach((p, i) => {
+    if (home.has(i)) return;
+    out.push(p);
+    out.push(...(after.get(i) ?? []));
+  });
+  return out;
+}
+
 /** Where each piece was found, and the run it stands in even where it was not: a glyph
  *  pdf.js spells otherwise (a Greek letter of a formula it maps to another character)
  *  is in no run's string, but its run's face still says whether it is mathematics. */
@@ -473,6 +507,7 @@ function assemble(pieces: Piece[], { sources, faces }: Located, vocab: Vocabular
     }
   });
 
+  ({ text, prov } = composed(text, prov));
   ({ text, prov } = withoutCitations(text, prov));
 
   // The space a run contributes between two of its own glyphs is the run's, not ours.
@@ -491,6 +526,31 @@ function assemble(pieces: Piece[], { sources, faces }: Located, vocab: Vocabular
     if (run) runs.push(run);
   });
   return { text, runs };
+}
+
+/** TeX's dotless letters, which it accents instead of "i" and "j": \'{\i} is "í". */
+const DOTLESS: Record<string, string> = { "ı": "i", "ȷ": "j" };
+
+/**
+ * Each letter and its accents as one character (NFC), as a web page writes "Lévy" and the
+ * model reads it: Zotero gives "e" and a combining acute. The character keeps the letter's
+ * place on the page.
+ */
+function composed(text: string, prov: (Source | null)[]): { text: string; prov: (Source | null)[] } {
+  if (!/\p{M}/u.test(text)) return { text, prov };
+  let out = "";
+  const kept: (Source | null)[] = [];
+  for (let i = 0; i < text.length;) {
+    const size = (text.codePointAt(i) ?? 0) > 0xffff ? 2 : 1;
+    let end = i + size;
+    while (end < text.length && ACCENT.test(text[end])) end++;
+    const cluster = end > i + size ? (DOTLESS[text[i]] ?? text.slice(i, i + size)) + text.slice(i + size, end) : text.slice(i, end);
+    const nfc = cluster.normalize("NFC");
+    out += nfc;
+    for (let k = 0; k < nfc.length; k++) kept.push(k < size ? prov[i + k] : null);
+    i = end;
+  }
+  return { text: out, prov: kept };
 }
 
 /**
@@ -650,7 +710,7 @@ export function createStructuredReader(structure: SdtStructure, options: Structu
     if (r === "barrier") { barrier = true; open = null; continue; }
     if (r === "display" && open) open.display = true;
     if (r === "skip" || r === "display") continue;
-    const pieces = piecesOf(r.block);
+    const pieces = placeMarks(piecesOf(r.block));
     const part = r.block.previousPart ? byPath.get(r.block.previousPart.join(".")) : undefined;
     const prev = part ?? (r.kind === "paragraph" && open !== null && !options.everything && continues(open.pieces, pieces) ? open : undefined);
     if (prev) {
