@@ -9,6 +9,7 @@ export async function extractPageText(page: PDFPageProxy): Promise<PdfPageText> 
   ]);
   const viewport = page.getViewport({ scale: 1 });
   const items: PdfTextItem[] = [];
+  const fonts: Record<string, string> = {};
   for (const item of content.items) {
     if (!("str" in item)) continue;
     const matrix = pdfjs.Util.transform(viewport.transform, item.transform);
@@ -17,6 +18,20 @@ export async function extractPageText(page: PDFPageProxy): Promise<PdfPageText> 
       fontName: item.fontName, hasEOL: item.hasEOL,
       rotated: Math.abs(matrix[1]) > .02 || Math.abs(matrix[2]) > .02,
     });
+    // The font's PDF name reaches the main thread with the page's drawing, which the
+    // viewer has done by the time it builds the text layer; a font not there yet is
+    // simply not named, and nothing set in it is taken for mathematics.
+    if (item.fontName && !(item.fontName in fonts)) fonts[item.fontName] = fontNameOf(page, item.fontName);
   }
-  return {page: page.pageNumber, width: viewport.width, height: viewport.height, items};
+  return {page: page.pageNumber, width: viewport.width, height: viewport.height, items, transform: [...viewport.transform], fonts};
+}
+
+function fontNameOf(page: PDFPageProxy, loadedName: string): string {
+  try {
+    const objs = page.commonObjs as { has(id: string): boolean; get(id: string): unknown };
+    const font = objs.has(loadedName) ? (objs.get(loadedName) as { name?: unknown } | null) : null;
+    return typeof font?.name === "string" ? font.name : "";
+  } catch {
+    return "";
+  }
 }

@@ -106,7 +106,7 @@ export default defineConfig({
     // Keep generated output out of Firefox's review source archive. WXT excludes
     // output/ and node_modules itself, but does not apply our .gitignore.
     excludeSources: [
-      "dist/**", "output-test/**", "test-results/**",
+      "dist/**", "output-test/**", "test-results/**", ".cache/**",
       "**/__pycache__/**", "**/*.pyc", "**/*.log", "**/*.ses",
       "test/*.png", "test/matrix.json", "test/survey.json", "test/a11y.json",
     ],

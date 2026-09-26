@@ -49,6 +49,15 @@ export interface PdfPageText {
   width: number;
   height: number;
   items: PdfTextItem[];
+  /**
+   * pdf.js's viewport transform at scale 1 — PDF user space to this page's top-left
+   * space — for a reading that arrives in PDF coordinates (lib/pdf/structured.ts).
+   * Absent means an unrotated page with its origin at the corner.
+   */
+  transform?: number[];
+  /** The PDF name of each font the items are set in, by the extractor's id, where the
+   *  viewer has loaded it ("g_d0_f2" → "BXJUHM+CMMI10"). */
+  fonts?: Record<string, string>;
 }
 
 /**
@@ -245,7 +254,7 @@ const CJK = /[⺀-〿぀-ヿ㐀-䶿一-鿿豈-﫿＀-￯]/;
 const CJK_SPACE_GAP = 1;
 
 /** Sentence-final punctuation, including the CJK and quoted-close forms. */
-const SENTENCE_END = /[.!?。！？…](["'”’)\]]|\s)*$/u;
+export const SENTENCE_END = /[.!?。！？…](["'”’)\]]|\s)*$/u;
 
 // ---- provenance -------------------------------------------------------------------------
 // The reader shows the REAL pages and lays its marks over the document's own glyphs, so
@@ -984,7 +993,7 @@ const HYPHEN_MEASURE = 0.5;
  * What the document says about its own compounds — the only dictionary available, and a
  * better one than any list we could ship, because it is this document's usage.
  */
-interface Vocabulary {
+export interface Vocabulary {
   /** Compounds written WITH a hyphen where no line break forced it: "third-party". */
   hyphenated: Set<string>;
   /** Their first elements: "third", for the compound met only in its broken form. */
@@ -994,7 +1003,7 @@ interface Vocabulary {
 }
 
 /** Collect the evidence once per document — it is read at every broken line. */
-function vocabularyOf(texts: string[]): Vocabulary {
+export function vocabularyOf(texts: string[]): Vocabulary {
   const vocab: Vocabulary = { hyphenated: new Set(), heads: new Set(), fused: new Set() };
   for (const text of texts) {
     const lower = text.toLowerCase();
@@ -1029,7 +1038,7 @@ function vocabularyOf(texts: string[]): Vocabulary {
  * — comes back fused. Spending a kept hyphen on every unattested compound instead would
  * leave far more real words ("straightfor-ward") broken, which reads worse to a scorer.
  */
-function dehyphenates(stem: string, head: string, vocab: Vocabulary): boolean {
+export function dehyphenates(stem: string, head: string, vocab: Vocabulary): boolean {
   if (!/^\p{Ll}/u.test(head)) return false;
   if (!/^\p{L}{2,}$/u.test(stem)) return false;
   if (stem === stem.toUpperCase()) return false;

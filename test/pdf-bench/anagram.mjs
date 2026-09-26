@@ -63,12 +63,12 @@ export function documentOptions(data) {
 }
 
 /**
- * One document as the reader would read it with every page rendered: each page extracted
- * as its text layer is, the whole run of pages reflowed at once, the units grouped with
- * the reader's default (short paragraphs read together). `window` > 0 instead reflows
- * runs of that many pages, the way a reader holding only a few pages sees the document.
+ * The pages of a document as the reader's text layers know them: each page's text as
+ * pdf.js extracts it, up to the reader's cap. With `fonts`, each page is also drawn
+ * first (its operator list built), which is what puts the fonts' PDF names within reach
+ * of the extractor — the viewer has drawn a page before it builds its text layer.
  */
-export async function runAnagram({ pipeline, pdfjs }, file, { window = 0 } = {}) {
+export async function readPages({ pipeline, pdfjs }, file, { fonts = false } = {}) {
   const data = new Uint8Array(readFileSync(file));
   const doc = await pdfjs.getDocument(documentOptions(data)).promise;
   const meta = await doc.getMetadata().catch(() => null);
@@ -79,11 +79,24 @@ export async function runAnagram({ pipeline, pdfjs }, file, { window = 0 } = {})
   for (let n = 1; n <= count; n++) {
     const began = performance.now();
     const page = await doc.getPage(n);
+    if (fonts) await page.getOperatorList().catch(() => undefined);
     pages.push(await pipeline.extractPageText(page));
     extractMs.push(performance.now() - began);
     page.cleanup();
   }
   await doc.destroy();
+  return { numPages, producer: meta?.info?.Producer ?? "", creator: meta?.info?.Creator ?? "", pages, extractMs };
+}
+
+/**
+ * One document as the reader would read it with every page rendered: each page extracted
+ * as its text layer is, the whole run of pages reflowed at once, the units grouped with
+ * the reader's default (short paragraphs read together). `window` > 0 instead reflows
+ * runs of that many pages, the way a reader holding only a few pages sees the document.
+ */
+export async function runAnagram(engine, file, { window = 0 } = {}) {
+  const { pipeline } = engine;
+  const { numPages, producer, creator, pages, extractMs } = await readPages(engine, file);
   const runs = [];
   if (window > 0) for (let i = 0; i < pages.length; i += window) runs.push(pages.slice(i, i + window));
   else runs.push(pages);
@@ -91,13 +104,29 @@ export async function runAnagram({ pipeline, pdfjs }, file, { window = 0 } = {})
   const blocks = pipeline.reflowRuns(runs);
   const reflowMs = performance.now() - began;
   return {
-    numPages,
-    producer: meta?.info?.Producer ?? "",
-    creator: meta?.info?.Creator ?? "",
-    pages,
-    blocks,
+    numPages, producer, creator, pages, blocks,
     words: pipeline.planWords(blocks),
     units: pipeline.unitsOf(blocks),
     timing: { extractMs, reflowMs, totalMs: extractMs.reduce((a, b) => a + b, 0) + reflowMs },
+  };
+}
+
+/**
+ * One document as the reader reads it with Zotero's structure in hand (the integrated
+ * path): every page extracted with its fonts named, the structure translated onto those
+ * pages (lib/pdf/structured.ts), the units grouped as above. `structureMs` is what the
+ * worker took to produce the structure, counted into the total.
+ */
+export async function runStructured(engine, file, structure, structureMs = 0, options = {}) {
+  const { pipeline } = engine;
+  const { numPages, producer, creator, pages, extractMs } = await readPages(engine, file, { fonts: true });
+  const began = performance.now();
+  const blocks = pipeline.structuredBlocks(structure, pages, options);
+  const reflowMs = performance.now() - began;
+  return {
+    numPages, producer, creator, pages, blocks,
+    words: pipeline.planWords(blocks),
+    units: pipeline.unitsOf(blocks),
+    timing: { extractMs, reflowMs, structureMs, totalMs: extractMs.reduce((a, b) => a + b, 0) + reflowMs + structureMs },
   };
 }

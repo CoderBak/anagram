@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { copyFileSync, cpSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { vendorPdfViewer } from "./pdfjsViewer.mjs";
+import { vendorDocumentWorker } from "./documentWorker.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 vendorPdfViewer(ROOT);
@@ -121,3 +122,9 @@ for (const [name, { from, only }] of Object.entries(trees)) {
   }
   console.log(`vendor/${name}/  ${files.length} files, ${(bytes / 1024).toFixed(1)} kB`);
 }
+
+// Zotero's document-worker for the PDF reader's paragraphs: the committed, hash-pinned build
+// under vendor/document-worker/ (scripts/documentWorker.mjs), plus the ONNX runtime's wasm
+// from its npm package. After the trees above, because the worker reads the CMaps, fonts
+// and decoders from those copies and the check that they are the fork's own files runs here.
+vendorDocumentWorker(ROOT);
