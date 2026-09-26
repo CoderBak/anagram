@@ -24,7 +24,7 @@
 //
 // Only pages set mostly in Latin script are kept: the metrics count words by letter runs,
 // which a CJK page does not have, and the product reads English. Samples are the first
-// pages in SHA-1 order of their id, so a rebuild picks the same pages.
+// pages in a fixed hash order (sampleKey), so a rebuild picks the same pages.
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -37,6 +37,9 @@ if (!SOURCES || !CORPUS) throw new Error("usage: corpus.mjs <sources dir> <corpu
 const SAMPLE = { wmb: { Normal: 400, Conversational: 200 }, sigirPerSource: 150, webseg: 400 };
 
 const sha1 = (s) => createHash("sha1").update(s).digest("hex");
+/** The order samples are drawn in. Not the id's own SHA-1: that decides the held-out split
+ *  (bench.mjs), and the first N ids in that order would all be held out. */
+const sampleKey = (id) => sha1(`sample:${id}`);
 export const safe = (id) => id.replace(/[^\w.-]+/g, "_");
 
 /** Share of letters that are Latin script (ASCII or Latin-1/Extended). */
@@ -110,7 +113,7 @@ async function webmainbench() {
     const d = JSON.parse(line);
     if (d.meta?.language !== "en") continue;
     const style = d.meta?.style === "Conversational" ? "Conversational" : "Normal";
-    picked[style].push({ key: sha1(`wmb/${d.track_id}`), d });
+    picked[style].push({ key: sampleKey(`wmb/${d.track_id}`), d });
     // Keep the memory bounded: only the best-ranked candidates can end up in the sample.
     if (picked[style].length > SAMPLE.wmb[style] * 4) {
       picked[style].sort((a, b) => (a.key < b.key ? -1 : 1));
@@ -141,7 +144,7 @@ function sigir() {
     const source = file.replace(/\.jsonl$/, "");
     if (source === "readability") continue; // the originals come from Mozilla's own tests
     const rows = readFileSync(join(root, "ground-truth", file), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
-    rows.sort((a, b) => (sha1(`sigir/${source}/${a.page_id}`) < sha1(`sigir/${source}/${b.page_id}`) ? -1 : 1));
+    rows.sort((a, b) => (sampleKey(`sigir/${source}/${a.page_id}`) < sampleKey(`sigir/${source}/${b.page_id}`) ? -1 : 1));
     let n = 0;
     for (const row of rows) {
       if (n >= SAMPLE.sigirPerSource) break;
@@ -211,7 +214,7 @@ function csvRows(text) {
 
 function webseg() {
   const root = join(SOURCES, "webseg", "webis-webseg-20");
-  const ids = readdirSync(root).filter((d) => /^\d+$/.test(d)).sort((a, b) => (sha1(`webseg/${a}`) < sha1(`webseg/${b}`) ? -1 : 1));
+  const ids = readdirSync(root).filter((d) => /^\d+$/.test(d)).sort((a, b) => (sampleKey(`webseg/${a}`) < sampleKey(`webseg/${b}`) ? -1 : 1));
   let n = 0;
   for (const pid of ids) {
     if (n >= SAMPLE.webseg) break;

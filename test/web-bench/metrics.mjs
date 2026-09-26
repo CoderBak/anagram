@@ -69,12 +69,18 @@ const norm = (s) => (s ?? "").normalize("NFKC").toLowerCase().replace(/\s+/g, " 
 export function scorePage({ truthBlocks, units, scopeText = null, snippets = null, commentsAreContent = false }) {
   const truthToks = [];
   const inLong = [];
+  /** Size class of the truth block each word is in: a label or heading, a short paragraph,
+   *  a paragraph that clears the floor by itself. */
+  const size = [];
   for (const block of truthBlocks) {
     const toks = tokens(block);
-    const long = wordCount(block) >= 75;
+    const words = wordCount(block);
+    const long = words >= 75;
+    const cls = words < 10 ? 0 : long ? 2 : 1;
     for (const t of toks) {
       truthToks.push(t);
       inLong.push(long);
+      size.push(cls);
     }
   }
   const unitToks = units.map((u) => tokens(u.text));
@@ -86,7 +92,10 @@ export function scorePage({ truthBlocks, units, scopeText = null, snippets = nul
   const inTruth = marked(readToks, truthGrams);
 
   let coveredAll = 0, long = 0, coveredLong = 0;
+  const bySize = { truth: [0, 0, 0], covered: [0, 0, 0] };
   for (let i = 0; i < truthToks.length; i++) {
+    bySize.truth[size[i]]++;
+    if (covered[i]) bySize.covered[size[i]]++;
     if (covered[i]) coveredAll++;
     if (inLong[i]) {
       long++;
@@ -135,7 +144,7 @@ export function scorePage({ truthBlocks, units, scopeText = null, snippets = nul
   return {
     truth: truthToks.length, truthLong: long,
     read, readMain, leakOther, leakComment,
-    covered: coveredAll, coveredLong,
+    covered: coveredAll, coveredLong, bySize,
     precision, recall,
     bowP, bowR, bowF1: bowP + bowR > 0 ? (2 * bowP * bowR) / (bowP + bowR) : 0,
     scope,

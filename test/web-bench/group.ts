@@ -28,11 +28,21 @@ function blocksOf(markdown: string): Block[] {
       continue;
     }
     if (fenced || line === "") continue;
-    if (/^#{1,6}\s/.test(line) || /^\|/.test(line) || /^(-{3,}|\*{3,}|_{3,})$/.test(line)) {
+    if (/^#{1,6}\s/.test(line) || /^\|?[\s:|-]*-{3,}[\s:|-]*$/.test(line) || /^(-{3,}|\*{3,}|_{3,})$/.test(line)) {
       barrier();
       continue;
     }
-    const text = line
+    // A table row: the walker reads a cell's text as a paragraph of its own, and so is it here.
+    if (line.startsWith("|")) {
+      for (const cell of line.split("|")) push(cell);
+      continue;
+    }
+    push(line);
+  }
+  return blocks;
+
+  function push(raw: string): void {
+    const text = raw
       .replace(/^>\s?/, "")
       .replace(/^([-*+]|\d+[.)])\s+/, "")
       .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
@@ -40,10 +50,8 @@ function blocksOf(markdown: string): Block[] {
       .replace(/[*_`]{1,3}([^*_`]+)[*_`]{1,3}/g, "$1")
       .replace(/\s+/g, " ")
       .trim();
-    if (!text) continue;
-    blocks.push({ text, words: countWords(text), chars: text.length });
+    if (text) blocks.push({ text, words: countWords(text), chars: text.length });
   }
-  return blocks;
 }
 
 /** The units a Markdown text becomes: their texts, "\n\n" between paragraphs. */

@@ -1,10 +1,11 @@
 // test/web-bench/bench.mjs — how well the content script reads web pages, measured offline.
 //
-//   ANAGRAM_WEB_BENCH=<corpus> node test/web-bench/bench.mjs run [--name <run>] [--scope page|main] [--extractor readability]
+//   ANAGRAM_WEB_BENCH=<corpus> node test/web-bench/bench.mjs run [--name <run>] [--scope page|main] [--extractor readability|none]
 //                                    [--only <id,…>] [--datasets wcxb,wmb,…] [--concurrency <n>] [--no-explain]
 //   ANAGRAM_WEB_BENCH=<corpus> node test/web-bench/bench.mjs external <name> <outputs.jsonl> --truth-from <run>
 //   ANAGRAM_WEB_BENCH=<corpus> node test/web-bench/bench.mjs report <run> [<other run>…] [--split dev|test]
 //   ANAGRAM_WEB_BENCH=<corpus> node test/web-bench/bench.mjs diff <run> [--worst <n>] [--page <id>]
+//   ANAGRAM_WEB_BENCH=<corpus> node test/web-bench/bench.mjs rescore <run>
 //
 // The corpus is built by corpus.mjs. Each page is opened in Playwright's bundled Chromium,
 // headless, in a throwaway context, with page scripts off, at its original address — the
@@ -128,7 +129,11 @@ async function measurePage(context, bundle, entry, opts) {
   });
   const began = Date.now();
   try {
-    await page.goto(url, { waitUntil: "load", timeout: 30000 });
+    // A page whose load event never comes (a stalled subresource) is measured as parsed.
+    await page.goto(url, { waitUntil: "load", timeout: 30000 }).catch(async (error) => {
+      const state = await page.evaluate(() => document.readyState).catch(() => "loading");
+      if (state === "loading") throw error;
+    });
     phase = "measure";
     await page.evaluate(bundle);
     const measured = await Promise.race([
@@ -184,7 +189,9 @@ async function run() {
   const datasets = flag("datasets")?.split(",");
   const explain = !has("no-explain");
   const dir = join(OUT, name);
-  rmSync(join(dir, "docs"), { recursive: true, force: true });
+  // A run of the whole corpus starts afresh; one restricted by --only or --datasets
+  // re-measures those pages inside the run it names.
+  if (!only && !datasets) rmSync(join(dir, "docs"), { recursive: true, force: true });
   mkdirSync(join(dir, "docs"), { recursive: true });
   const bundle = await bundlePage();
   const entries = manifest().filter((e) => (!only || only.includes(e.id)) && (!datasets || datasets.includes(e.dataset)));
@@ -259,6 +266,25 @@ async function external(name, file) {
   }
 }
 
+// ---- rescore -----------------------------------------------------------------------------
+
+/** Recompute a run's figures from what it recorded (the units and the truth blocks), after
+ *  the metrics changed; the region's own figures are kept, its text was not stored. */
+function rescore(name) {
+  const run = loadRun(name);
+  const byId = new Map(manifest().map((e) => [e.id, e]));
+  for (const d of run.docs) {
+    if (!d.metrics || !d.truthBlocks) continue;
+    const truth = JSON.parse(readFileSync(join(CORPUS, byId.get(d.id).truth), "utf8"));
+    const m = scorePage({ truthBlocks: d.truthBlocks, units: d.units, snippets: truth.with ? { with: truth.with, without: truth.without } : null, commentsAreContent: COMMENTS_ARE_CONTENT.has(d.type) });
+    const { perUnit, marks, ...metrics } = m;
+    d.metrics = { ...metrics, scope: d.metrics.scope };
+    d.units.forEach((u, k) => Object.assign(u, perUnit[k]));
+    writeFileSync(join(run.dir, "docs", `${safe(d.id)}.json`), JSON.stringify(d));
+  }
+  report([name]);
+}
+
 // ---- report ------------------------------------------------------------------------------
 
 function loadRun(name) {
@@ -302,6 +328,7 @@ function aggregate(docs) {
     pages: docs.length, errors: docs.filter((d) => d.error).length,
     nothingRead: ok.filter((d) => d.metrics.read === 0 && d.metrics.truth > 0).length,
     units: ok.reduce((a, d) => a + d.units.length, 0),
+    commentWords: ok.reduce((a, d) => a + d.units.filter((u) => u.comment).reduce((b, u) => b + u.words, 0), 0),
     words: ok.reduce((a, d) => a + d.units.reduce((b, u) => b + u.words, 0), 0),
     recall, recallLong: truthLong ? coveredLong / truthLong : NaN,
     precision, leak: read ? leakOther / read : NaN, leakComment: read ? leakComment / read : NaN,
@@ -353,10 +380,15 @@ function groupsOf(docs) {
 function missedBy(docs) {
   const by = new Map();
   let truth = 0, missed = 0, outside = 0;
+  const size = { truth: [0, 0, 0], covered: [0, 0, 0] };
   for (const d of docs) {
     if (!d.metrics) continue;
     truth += d.metrics.truth;
     missed += d.metrics.truth - d.metrics.covered;
+    for (let k = 0; k < 3; k++) {
+      size.truth[k] += d.metrics.bySize?.truth[k] ?? 0;
+      size.covered[k] += d.metrics.bySize?.covered[k] ?? 0;
+    }
     if (d.metrics.scope) outside += Math.max(0, d.metrics.truth - d.metrics.scope.covered);
     for (const s of d.silent ?? []) {
       if (s.main < s.toks * 0.5 || s.main < 20) continue;
@@ -367,7 +399,7 @@ function missedBy(docs) {
       by.set(k, v);
     }
   }
-  return { truth, missed, outside, rows: [...by].sort((a, b) => b[1].toks - a[1].toks) };
+  return { truth, missed, outside, size, rows: [...by].sort((a, b) => b[1].toks - a[1].toks) };
 }
 
 /** Which containers the leaked words were read from, by class/id token and by landmark. */
@@ -419,10 +451,10 @@ function report(names) {
       return [g, a.pages, a.errors, a.nothingRead, a.units, a.words, pct(a.recall), pct(a.recallLong), pct(a.precision), pct(a.leak), pct(a.leakComment), pct(a.f1), pct(a.f1PageMean), pct(a.bowF1Mean),
         pct(a.withRate), pct(a.withoutRate), pct(a.scopeRecall), pct(a.scopePrecision), pct(a.byExtractor), num(a.msMedian, 0)];
     });
-    out.push(table(rows, ["pages", "n", "err", "none read", "units", "words", "recall", "recall ≥75w ¶", "precision", "leak", "comments/reviews outside truth", "F1", "F1 page mean", "BoW F1 page mean", "must-incl hit", "must-excl hit", "scope recall", "scope precision", "extractor answered", "ms/page"]), "");
+    out.push(table(rows, ["pages", "n", "err", "none read", "units", "words", "recall", "recall ≥75w ¶", "precision", "leak", "comments/reviews outside truth", "F1", "F1 page mean", "BoW F1 page mean", "must-incl hit", "must-excl hit", "scope recall", "scope precision", "region ≠ text-mass probe", "ms/page"]), "");
     const everything = aggregate(run.docs);
     if (!m.engine) out.push(`Requests while measuring, every one refused: ${everything.requests}, of them anything but a font, image or media file layout asked for: ${everything.requestsNotLayout}.` +
-      (m.scope === "main" ? ` Main-content detection ${num(everything.scopeMsMedian, 1)} ms median, ${num(everything.scopeMsP90, 1)} ms p90; pages whose element count it changed: ${everything.mutated}.` : ""), "");
+      (m.scope === "main" ? ` Main-content detection ${num(everything.scopeMsMedian, 1)} ms median, ${num(everything.scopeMsP90, 1)} ms p90; pages it changed: ${everything.mutated}.` : ""), "");
     const segDocs = run.docs.filter((d) => d.dataset === "webseg");
     if (segDocs.length) {
       const s = aggregateSegments(segDocs);
@@ -432,6 +464,11 @@ function report(names) {
     }
     const all = run.docs.filter((d) => d.dataset !== "webseg" && d.dataset !== "readability");
     const missed = missedBy(all);
+    if (missed.size.truth.some(Boolean)) {
+      const names = ["under 10 words (headings, labels, short items)", "10 to 74 words", "75 words or more"];
+      out.push("Truth words by the size of the truth paragraph they are in, and the share of them read:", "",
+        table(names.map((n, k) => [n, pct(missed.size.truth[k] / Math.max(1, missed.truth)), pct(missed.size.covered[k] / Math.max(1, missed.size.truth[k]))]), ["paragraph", "% of truth", "read"]), "");
+    }
     if (missed.rows.length || missed.outside) {
       out.push(`Main content missed: ${pct(missed.missed / Math.max(1, missed.truth))}% of truth words${missed.outside ? `, of them outside the scope root ${pct(missed.outside / Math.max(1, missed.truth))}%` : ""}. Silent prose blocks that are main content, by the page diagnostics' reason (whole-page walk):`, "",
         table(missed.rows.slice(0, 20).map(([k, v]) => [k, v.toks, pct(v.toks / Math.max(1, missed.truth)), v.pages.size]), ["reason", "truth words", "% of truth", "pages"]), "");
@@ -461,10 +498,10 @@ function report(names) {
         const docs = groupsOf(r.docs.filter((d) => common.has(d.id))).get(g) ?? [];
         if (!docs.length) continue;
         const a = aggregate(docs);
-        rows.push([g, r.name, a.pages, a.units, a.words, pct(a.recall), pct(a.recallLong), pct(a.precision), pct(a.leak), pct(a.leakComment), pct(a.f1), pct(a.bowF1Mean), pct(a.withRate), pct(a.withoutRate), pct(a.scopeRecall), pct(a.scopePrecision)]);
+        rows.push([g, r.name, a.pages, a.units, a.words, a.commentWords, pct(a.recall), pct(a.recallLong), pct(a.precision), pct(a.leak), pct(a.leakComment), pct(a.f1), pct(a.bowF1Mean), pct(a.withRate), pct(a.withoutRate), pct(a.scopeRecall), pct(a.scopePrecision)]);
       }
     }
-    out.push(table(rows, ["pages", "run", "n", "units", "words", "recall", "recall ≥75w ¶", "precision", "leak", "comments/reviews outside truth", "F1", "BoW F1 page mean", "must-incl hit", "must-excl hit", "scope recall", "scope precision"]), "");
+    out.push(table(rows, ["pages", "run", "n", "units", "words", "comment/review words", "recall", "recall ≥75w ¶", "precision", "leak", "comments/reviews outside truth", "F1", "BoW F1 page mean", "must-incl hit", "must-excl hit", "scope recall", "scope precision"]), "");
   }
   const text = out.join("\n");
   const suffix = split ? `-${split}` : "";
@@ -530,4 +567,5 @@ if (command === "run") await run();
 else if (command === "external") await external(rest[0], rest[1]);
 else if (command === "report") report(rest);
 else if (command === "diff") diff(rest[0]);
-else console.log("usage: bench.mjs run [--name <run>] [--scope page|main] [--extractor readability] [--only <ids>] [--datasets <names>] [--concurrency <n>] [--no-explain] | external <name> <jsonl> --truth-from <run> | report <run> [<run>…] [--split dev|test] | diff <run> [--worst <n> | --page <id>]");
+else if (command === "rescore") rescore(rest[0]);
+else console.log("usage: bench.mjs run [--name <run>] [--scope page|main] [--extractor readability|none] [--only <ids>] [--datasets <names>] [--concurrency <n>] [--no-explain] | external <name> <jsonl> --truth-from <run> | report <run> [<run>…] [--split dev|test] | diff <run> [--worst <n> | --page <id>] | rescore <run>");

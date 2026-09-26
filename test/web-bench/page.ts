@@ -41,7 +41,8 @@ const COMMENT_RE = /(?:^|[\s_-])(?:comments?|commentlist|comment[-_]?list|commen
  *  and several datasets call boilerplate. */
 function inComments(el: Element | null): boolean {
   for (let cur = el; cur && cur !== document.body; cur = cur.parentElement) {
-    const hay = `${cur.id} ${cur.getAttribute("class") ?? ""}`;
+    // Attributes, not properties: a form's `id` property is its field named "id".
+    const hay = `${cur.getAttribute("id") ?? ""} ${cur.getAttribute("class") ?? ""}`;
     if (COMMENT_RE.test(hay)) return true;
     const itemtype = cur.getAttribute("itemtype") ?? "";
     if (/Comment/.test(itemtype) || cur.getAttribute("itemprop") === "comment") return true;
@@ -54,7 +55,8 @@ function whereOf(el: Element | null, depth = 5): string {
   const parts: string[] = [];
   for (let cur = el; cur && cur !== document.documentElement && parts.length < depth; cur = cur.parentElement) {
     const cls = (cur.getAttribute("class") ?? "").trim().split(/\s+/).filter(Boolean).slice(0, 3);
-    parts.unshift(cur.tagName.toLowerCase() + (cur.id ? `#${cur.id.slice(0, 40)}` : "") + cls.map((c) => `.${c.slice(0, 40)}`).join(""));
+    const id = cur.getAttribute("id");
+    parts.unshift(cur.tagName.toLowerCase() + (id ? `#${id.slice(0, 40)}` : "") + cls.map((c) => `.${c.slice(0, 40)}`).join(""));
   }
   return parts.join(" > ");
 }
@@ -94,10 +96,12 @@ const BLOCK_TAGS = new Set([
   "SUMMARY", "TABLE", "TBODY", "TD", "TFOOT", "TH", "THEAD", "TR", "UL", "CAPTION",
 ]);
 
-/** An HTML truth as text blocks: one block per block-level box, markup and scripts dropped. */
+/** An HTML truth as text blocks: one block per block-level box, markup and scripts dropped,
+ *  and code blocks too — a <pre> of code is main content the product never reads, and one
+ *  source listing of forty thousand words would otherwise outweigh a hundred articles. */
 function htmlBlocks(html: string): string[] {
   const doc = new DOMParser().parseFromString(html, "text/html");
-  for (const el of doc.querySelectorAll("script, style, noscript, template, head")) el.remove();
+  for (const el of doc.querySelectorAll("script, style, noscript, template, head, pre")) el.remove();
   const blocks: string[] = [];
   let cur = "";
   const flush = (): void => {
@@ -137,12 +141,13 @@ export function measure(opts: MeasureOptions) {
     setExtractor("none");
     textMassRoot = findMainContent(document);
     setExtractor(opts.extractor);
-    const before = document.getElementsByTagName("*").length;
+    const snapshot = (): string => `${document.getElementsByTagName("*").length}:${document.documentElement.outerHTML.length}`;
+    const before = snapshot();
     const t = performance.now();
     root = findMainContent(document);
     scopeMs = performance.now() - t;
     // The extractor must leave the live page as it found it.
-    mutated = document.getElementsByTagName("*").length !== before;
+    mutated = snapshot() !== before;
   }
   const base = root ?? document.body;
   const t = performance.now();
