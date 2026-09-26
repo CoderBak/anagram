@@ -8,7 +8,7 @@
 // from — which lib/pdf/units.ts turns into ranges over the page's own glyphs.
 import { describe, expect, it } from "vitest";
 import type { PdfPageText, PdfTextItem, ReflowBlock } from "../../lib/pdf/reflow";
-import { glyphsOf, isMathFont, structuredBlocks, type SdtBlock, type SdtStructure } from "../../lib/pdf/structured";
+import { glyphsOf, isMathFont, structuredBlocks, type SdtBlock, type SdtStructure, type SdtTextNode } from "../../lib/pdf/structured";
 import { groupsOf } from "../../lib/pdf/units";
 
 const WIDTH = 612;
@@ -220,6 +220,47 @@ describe("structuredBlocks — text and runs", () => {
     const pages = [pageText(1, n.items)];
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
     expect(blocks[0].text).toBe("Related work generates programs, geometric constraints, and rewards.");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
+  it("leaves out a superscript number that refers to the bibliography after a word, and keeps exponents", () => {
+    // Nature's style sets a citation as a raised number after the word, and Zotero links it
+    // to the bibliography entries it names; arXiv's HTML skips it as a mark. Zotero links an
+    // exponent to an entry of the same number too, but an exponent follows a unit or a
+    // formula's letter, not a word.
+    const fonts = { f_text: "NimbusRomNo9L-Regu", f_math: "BXJUHM+CMMI10" };
+    const items: PdfTextItem[] = [];
+    const nodes: SdtTextNode[] = [];
+    let x = 72;
+    /** A run of the line, and Zotero's node for it: `gap` word spaces before it. */
+    const put = (text: string, { gap = 0, raised = false, refs, font = "f_text" }: { gap?: number; raised?: boolean; refs?: number[][]; font?: string } = {}) => {
+      x += gap * CW;
+      const d = drawn(1, { text, x, y: raised ? 96 : 100, font });
+      if (raised) d.item.height = 7;
+      items.push(d.item);
+      if (gap) nodes.push({ text: " " });
+      nodes.push({ text, anchor: { textMap: JSON.stringify([d.run]) }, ...(raised ? { style: { sup: true } } : {}), ...(refs ? { refs } : {}) });
+      x += text.length * CW;
+    };
+    const entry = [[1, 1]];
+    put("learn through prediction errors");
+    put("1–4", { raised: true, refs: [[1, 0], [1, 1]] });
+    put("over an area of 5 cm", { gap: 1 });
+    put("2", { raised: true, refs: entry });
+    put("of the variance", { gap: 1 });
+    put("σ", { gap: 1, font: "f_math" });
+    put("2", { raised: true, refs: entry });
+    put("as Dunne", { gap: 1 });
+    put("2", { gap: 1, raised: true, refs: entry });
+    put("found in two forms", { gap: 1 });
+    put("1", { raised: true, refs: [[1, 0]] });
+    put(",");
+    put("2", { raised: true, refs: entry });
+    put(".");
+    const bibliography: SdtBlock = { type: "list", content: [{ type: "listitem", reference: true, content: [] }, { type: "listitem", reference: true, content: [] }] };
+    const pages = [pageText(1, items, fonts)];
+    const blocks = structuredBlocks(structure([{ type: "paragraph", content: nodes }, bibliography]), pages);
+    expect(blocks[0].text).toBe("learn through prediction errors over an area of 5 cm2 of the variance as Dunne found in two forms.");
     expectRunsToMatch(blocks[0], pages);
   });
 

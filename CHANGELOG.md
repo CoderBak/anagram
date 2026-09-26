@@ -122,6 +122,11 @@ local component and the installer all carry the same version.
   mark that only points to the bibliography or to a note is left out however long it is —
   "[4]", "[4, 7–9]", a superscript "1, 2", Wikipedia's "[7]" and its ":p. 7", a footnote
   number that is a link — and names with a year, or a name alone, are read.
+- The PDF reader leaves out a citation printed as a raised number after its word
+  ("errors¹⁻⁴", the style of Nature and many journals), as it already left out "[4]" and as
+  the web walker skips the same mark: the model read "errors1–4." where the paper's HTML
+  reads "errors.". Zotero's document-worker tells which raised numbers name entries of the
+  bibliography; one after a unit or a formula's letter ("cm²") is still read as an exponent.
 - The PDF reader reads the sentence that leads into a display equation ("…can be written
   equivalently as") with the paragraphs around it. Such a piece does not end in a full
   stop, so it was taken for a label, and a label ends the run of short paragraphs being read
