@@ -1,6 +1,7 @@
 // lib/hash.ts — shared string hash for cache keys.
 //
-// cyrb53: 53-bit output. Both cache layers key results by hashed normalized text;
+// cyrb53 (https://github.com/bryc/code, jshash/experimental/cyrb53.js, public domain,
+// © 2018 bryc): 53-bit output. Both cache layers key results by hashed normalized text;
 // a 32-bit hash (the SW side used FNV-1a) makes wrong-badge collisions realistic
 // over a long session of heavy browsing — birthday bound ~1 in 2^16 per ~300
 // unique paragraphs vs ~1 in 2^26 here.

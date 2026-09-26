@@ -19,11 +19,30 @@ import { dirname, join } from "node:path";
 import { copyFileSync, cpSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { vendorPdfViewer } from "./pdfjsViewer.mjs";
 import { vendorDocumentWorker } from "./documentWorker.mjs";
+import { NOTICES_FILE, bundledPackages, packageOfModule, unlistedPackages } from "./notices.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 vendorPdfViewer(ROOT);
 const OUT = join(ROOT, "public", "vendor");
 mkdirSync(OUT, { recursive: true });
+
+/** esbuild with a metafile, which says what each chunk really took from where: a package
+ *  not in THIRD_PARTY_NOTICES.md fails the build, and so does a chunk that no longer holds
+ *  the package the notices say it carries (scripts/notices.mjs). */
+async function buildChecked(file, options) {
+  const { metafile } = await build({ ...options, metafile: true });
+  const took = new Set();
+  for (const output of Object.values(metafile.outputs)) {
+    for (const [id, { bytesInOutput }] of Object.entries(output.inputs)) {
+      const pkg = bytesInOutput > 0 ? packageOfModule(id) : null;
+      if (pkg) took.add(pkg);
+    }
+  }
+  const unlisted = unlistedPackages(took);
+  if (unlisted.length > 0) throw new Error(`vendor/${file} bundles packages ${NOTICES_FILE} does not list (scripts/notices.mjs): ${unlisted.join(", ")}`);
+  const missing = [...bundledPackages()].filter(([name, { chunk }]) => chunk === file && !took.has(name)).map(([name]) => name);
+  if (missing.length > 0) throw new Error(`${NOTICES_FILE} says vendor/${file} carries ${missing.join(", ")}, and it no longer does (scripts/notices.mjs)`);
+}
 
 const chunks = {
   // Defuddle's browser build (no dependencies); its MIT notice is kept in the chunk.
@@ -83,7 +102,7 @@ const trees = {
 };
 
 for (const [file, contents] of Object.entries(chunks)) {
-  await build({
+  await buildChecked(file, {
     stdin: { contents, resolveDir: ROOT, loader: "js" },
     bundle: true,
     format: "esm",
@@ -99,7 +118,7 @@ for (const [file, contents] of Object.entries(chunks)) {
 // import no extension API at all — everything the platform knows is handed to it by
 // lib/diagnostics/index.ts — and esbuild enforces that here: a stray `#imports` has no
 // resolver outside WXT and fails this build rather than the browser.
-await build({
+await buildChecked("diagnostics.min.mjs", {
   entryPoints: [join(ROOT, "lib", "diagnostics", "chunk.ts")],
   bundle: true,
   format: "esm",
@@ -112,7 +131,7 @@ console.log(`vendor/diagnostics.min.mjs  ${(statSync(join(OUT, "diagnostics.min.
 
 // The surfaces chunk (lib/surfaces/chunk.ts): the reading of the sites that show a document
 // the walk cannot read, built the same way and for the same reason.
-await build({
+await buildChecked("surfaces.min.mjs", {
   entryPoints: [join(ROOT, "lib", "surfaces", "chunk.ts")],
   bundle: true,
   format: "esm",

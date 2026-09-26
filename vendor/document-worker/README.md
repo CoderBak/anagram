@@ -6,7 +6,10 @@ The PDF reader's paragraphs come from Zotero's
 models, run in a Web Worker with onnxruntime-web (MIT). `upstream.json` records the exact
 commits, the archive hashes, the SHA-256 of every file here and of the ONNX runtime's wasm
 that `scripts/vendor.mjs` takes from the pinned npm package at build time. The models
-carry no licence of their own in the repository; they are distributed as part of it.
+carry no licence of their own in the repository; they are distributed as part of it. The ONNX
+runtime's npm package carries no licence file, so its MIT licence and the notices of the
+libraries its WebAssembly build links (`ThirdPartyNotices.onnxruntime-web.txt`, ONNX
+Runtime's own file at the pinned tag) are kept here and pinned with the rest.
 
 `worker.js` is built from `src/worker.js` — Anagram's entry, one `getStructure` call —
 by the worker's own webpack build, then minified. `scripts/documentWorker.mjs` regenerates

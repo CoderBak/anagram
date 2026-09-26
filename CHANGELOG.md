@@ -9,6 +9,13 @@ local component and the installer all carry the same version.
 
 ### Added
 
+- THIRD_PARTY_NOTICES.md ships next to LICENSE in both browser packages and in the local
+  component. It lists every third-party library, font, data file and model Anagram contains,
+  and the code and word lists its own source adapts, each with its version, licence,
+  copyright and licence text; the minified bundles strip those notices, so they now travel
+  here. ONNX Runtime's own notices for the libraries its WebAssembly build links ship beside
+  it in the reader's worker folder.
+
 - Google Drive's file preview is read in place. A PDF or Word file opened in Drive, embedded
   from Drive in another page, or shown by Google's document viewer is drawn as page images
   with an invisible line of text over each printed line; Anagram used to read those lines as

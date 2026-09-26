@@ -58,6 +58,7 @@ reader hands it; the document's bytes are copied into it and nowhere else.
 | `lib/ui/basecoat-vega.cdn.min.css` | `http://www.w3.org/2000/svg` | the SVG namespace inside data-URI icons; a name, not an address |
 | `lib/ui/basecoat-vega.cdn.min.css` | `https://tailwindcss.com` | the licence banner of the vendored Basecoat stylesheet |
 | `lib/diagnostics/anonymise.ts` | `https://schema.org/Article` | an example in a comment about `itemtype` vocabularies |
+| `lib/hash.ts` | `https://github.com/bryc/code` | the attribution of the cyrb53 hash, in a comment |
 | `lib/dom/scope.ts` | `https://github.com/mailgun/talon` | attribution of the quoted-mail markers, in a comment |
 | `lib/dom/scope.ts` | `https://github.com/lever/planer` | the same attribution, for the JavaScript port |
 | `lib/dom/text.ts` | `https://github.com/mailgun/talon` | attribution of the "On … wrote:" pattern, in a comment |
