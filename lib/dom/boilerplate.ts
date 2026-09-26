@@ -14,6 +14,7 @@
 // COMPOUND form ("social-share", "related-articles") — a paper's
 // `<section class="related-work">` is content, not chrome.
 import { CONSENT_BANNER_SELECTORS } from "./consentBanners";
+import { INLINE_FALLBACK_TAGS } from "./tags";
 
 /** Landmark roles that are page chrome by definition. NOT "tablist": Bootstrap-style
  *  accordions put role="tablist" on the container that holds every panel's CONTENT
@@ -307,6 +308,87 @@ export function isConsentBanner(el: Element): boolean {
   return el.matches(CONSENT_SELECTOR);
 }
 
+/** A line of text this long beside a box is the text the box stands in. */
+const RUNNING_TEXT_CHARS = 40;
+
+/** The words of a text, lower case, one space between them: what a pull quote repeats. */
+function wordsOf(text: string): string {
+  return ` ${text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `;
+}
+
+/** A sibling of a box that is running text: a line of it, a paragraph, a line break, or a
+ *  phrase element — the tags a browser lays out inline, and custom elements, which are
+ *  inline until a stylesheet says otherwise. */
+function runningText(node: Node): boolean {
+  if (node.nodeType === Node.TEXT_NODE) return (node.textContent ?? "").trim().length >= RUNNING_TEXT_CHARS;
+  if (node.nodeType !== Node.ELEMENT_NODE) return false;
+  const tag = node.nodeName.toUpperCase();
+  if (tag === "BR") return true;
+  if (tag !== "P" && !INLINE_FALLBACK_TAGS.has(tag) && !tag.includes("-")) return false;
+  return (node.textContent ?? "").trim().length >= RUNNING_TEXT_CHARS;
+}
+
+/** Prose of its own: a paragraph, a quotation, a caption or an item with this much text
+ *  outside links. A teaser's excerpt runs to a line and a "Read more". */
+const ASIDE_PROSE_CHARS = 120;
+const ASIDE_PROSE_BLOCKS = "p,blockquote,figcaption,li,dd";
+/** What holds the page itself: its title, its main region. */
+const PAGE_BODY_SELECTOR = 'h1,main,[role="main"]';
+
+function holdsProse(el: Element): boolean {
+  let seen = 0;
+  for (const block of el.querySelectorAll(ASIDE_PROSE_BLOCKS)) {
+    if (++seen > 40) break;
+    let chars = (block.textContent ?? "").trim().length;
+    for (const a of block.querySelectorAll("a")) chars -= (a.textContent ?? "").trim().length;
+    if (chars >= ASIDE_PROSE_CHARS) return true;
+  }
+  return false;
+}
+
+/** The aside stands IN the text rather than beside it (see asideApart). */
+function inTheText(el: Element): boolean {
+  const cs = el.ownerDocument.defaultView?.getComputedStyle(el) ?? null;
+  if (cs && ((cs.cssFloat !== "none" && cs.cssFloat !== "") || cs.position === "absolute" || cs.position === "fixed" || cs.position === "sticky")) return false;
+  // Teaser cards of other articles, however they stand, are no note on this one.
+  if (el.querySelector("article") !== null || !holdsProse(el)) return false;
+  let box = el;
+  while (box.parentElement && box.parentElement.nodeName.toUpperCase() === "DIV" && holdsOnly(box.parentElement, box)) box = box.parentElement;
+  const around = box.parentElement;
+  let beside = false;
+  for (let n = around?.firstChild ?? null; n && !beside; n = n.nextSibling) if (n !== box) beside = runningText(n);
+  if (!beside || !around) return false;
+  // A pull quote says again what the text around it says.
+  const own = wordsOf(el.textContent ?? "");
+  const text = wordsOf(around.textContent ?? "");
+  return text.indexOf(own) === text.lastIndexOf(own);
+}
+
+/**
+ * An <aside> is a sidebar, a pull quote, a signature under a forum post, a box of related
+ * articles: set APART from the text, and never read (a pull quote repeats a sentence of the
+ * article, and would put a second chip on it). But the element is also what writers and
+ * forum software reach for inside the text: garnix sets a callout — a heading and three
+ * paragraphs of the article — between two paragraphs in an <aside>, XenForo sets the post a
+ * reply quotes in `div.bbCodeQuote > aside` in the middle of the reply. So an aside is read
+ * where it stands IN the text — running text beside it (through wrappers that hold nothing
+ * but it), not floated or positioned beside it — and holds prose of its own, not the words
+ * around it again, nor teasers of other articles. And one that holds most of the page, its
+ * title or main region with it, is the page: fermyon.com never closes the <aside> of its
+ * announcement banner, and the article after it went unread with it.
+ */
+export function asideApart(el: Element, page: PageTextSize = pageTextSize(el.ownerDocument)): boolean {
+  if (inTheText(el)) return false;
+  return !(el.querySelector(PAGE_BODY_SELECTOR) !== null && holdsMostOfPage(el, page));
+}
+
+/** `parent` holds `child` and nothing else: no other element, no text. */
+function holdsOnly(parent: Element, child: Element): boolean {
+  if (parent.childElementCount !== 1) return false;
+  for (let n = parent.firstChild; n; n = n.nextSibling) if (n !== child && n.nodeType === Node.TEXT_NODE && (n.textContent ?? "").trim() !== "") return false;
+  return true;
+}
+
 /**
  * True if this element is page chrome whose subtree should not be scored.
  * Called once per element during a walk — must stay cheap. A walk passes one `page` for all
@@ -331,9 +413,7 @@ export function isBoilerplate(el: Element, page: PageTextSize = pageTextSize(el.
   if (tag === "HEADER" || tag === "FOOTER") {
     if (!el.closest("article, main, [role=main], [role=article]")) return true;
   }
-  // <aside> is related-links / widgets / pull-quote duplication — skip always
-  // (pull quotes duplicate body text and would double-badge the same sentence).
-  if (tag === "ASIDE") return true;
+  if (tag === "ASIDE" && asideApart(el, page)) return true;
   if (AMP_CHROME_TAGS.has(tag)) return true;
 
   // A <form> with something to fill in is a widget, whatever prose stands between its

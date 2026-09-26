@@ -16,7 +16,7 @@
 // a rule here would drift from the rule in lib/dom/ within a release, and the report would
 // then explain a page the product no longer reads that way.
 import { collectUnits, isExcludedByAncestry, isExpandLabel, isProsePre } from "../dom/walker";
-import { chromeNames, isBoilerplate, isConsentBanner, isNoTranslate, mediaWikiFurniture, referenceList } from "../dom/boilerplate";
+import { asideApart, chromeNames, isBoilerplate, isConsentBanner, isNoTranslate, mediaWikiFurniture, referenceList } from "../dom/boilerplate";
 import { NO_SCORE_TAGS, isHeading, isHeadingLabel, tagOf } from "../dom/tags";
 import { isTranslatedInPlace } from "../dom/translation";
 import {
@@ -276,7 +276,7 @@ function boilerplateBranch(el: Element): string {
   }
   const tag = tagOf(el);
   if (tag === "NAV") return "<nav> is chrome wherever it stands";
-  if (tag === "ASIDE") return "<aside> is chrome wherever it stands";
+  if (tag === "ASIDE" && asideApart(el)) return "<aside> set apart from the text (a sidebar, a pull quote, a signature)";
   if (tag === "HEADER" || tag === "FOOTER") return `<${tag.toLowerCase()}> outside an <article>/<main>`;
   if (tag === "FORM") return "a <form> with fields to fill in is a widget";
   if (tag.startsWith("AMP-") && isBoilerplate(document.createElement(tag.toLowerCase()))) {

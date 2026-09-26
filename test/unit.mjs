@@ -1312,6 +1312,28 @@ const results = await page.evaluate(() => {
       ["share-buttons", "related-articles", "social-share-bar-top", "cookie-law-info-bar", "sharing"].every((id) => PW.isBoilerplate(mk(id))));
     sandbox.innerHTML = "";
   }
+  {
+    // An <aside> is furniture — a sidebar, a pull quote, a signature — except where it stands IN
+    // the text: a callout between an article's paragraphs (garnix's "A note on other devices"),
+    // the box XenForo sets a quoted post in, in the middle of the reply. And one that holds the
+    // whole page is the page (fermyon.com never closes its announcement banner).
+    // (The page holds more than the box, so it cannot pass for the page by its size.)
+    const read = (html, page = true) => { sandbox.innerHTML = page ? `<p>PAGE ${words(400)}</p>${html}` : html; return PW.collectUnits(sandbox).map((x) => x.text.split(/\s/)[0]).filter((w) => w !== "PAGE"); };
+    const callout = read(`<div class="body"><p>P1 ${words(80)}</p><aside class="callout"><h3>A note on other devices</h3><p>NOTE ${words(80)}</p></aside><p>P2 ${words(80)}</p></div>`);
+    const quote = read(`<article><blockquote class="messageText"><b>My first car</b><br><br><div class="bbCodeBlock bbCodeQuote"><aside><div class="attribution">alice said:</div><blockquote>QUOTED ${words(80)}</blockquote></aside></div>REPLY ${words(80)}</blockquote></article>`);
+    const unclosed = read(`<aside class="announcement-banner"><a href="/news">Announcement: we were acquired</a><div class="page"><h1>Lessons from 25 years of startups</h1><p>WHOLE ${words(300)}</p></div></aside>`, false);
+    check("an <aside> standing among the text, or holding the whole page, is read",
+      JSON.stringify([callout, quote, unclosed]) === JSON.stringify([["P1", "NOTE", "P2"], ["QUOTED", "REPLY"], ["WHOLE"]]), JSON.stringify([callout, quote, unclosed]));
+    const pullQuote = `<div class="body"><p>P1 ${words(80)} about the price of two return tickets a year.</p><aside class="pullquote">“About the price of two return tickets a year”</aside><p>P2 ${words(30)}</p></div>`;
+    const pull = read(pullQuote);
+    const floated = read(`<div class="body"><p>P1 ${words(80)}</p><aside style="float:right;width:200px"><p>MARGIN ${words(80)}</p></aside><p>P2 ${words(80)}</p></div>`);
+    const sidebar = read(`<div class="layout"><main><p>MAIN ${words(80)}</p></main><aside class="sidebar"><p>SIDE ${words(80)}</p></aside></div>`);
+    const signature = read(`<div class="message"><div class="messageContent"><article><blockquote class="messageText">POST ${words(80)}</blockquote></article></div><div class="signature"><aside>SIG ${words(80)}</aside></div></div>`);
+    check("…while a pull quote repeating the text, a box floated beside it, a sidebar and a signature are still furniture",
+      JSON.stringify([pull, floated, sidebar, signature]) === JSON.stringify([["P1"], ["P1", "P2"], ["MAIN"], ["POST"]]) && !PW.collectUnits((sandbox.innerHTML = `<p>PAGE ${words(400)}</p>${pullQuote}`, sandbox)).some((x) => x.text.includes("About the price")),
+      JSON.stringify([pull, floated, sidebar, signature]));
+    sandbox.innerHTML = "";
+  }
 
   // ---- main-content detection ----------------------------------------------------------
   {

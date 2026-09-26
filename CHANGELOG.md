@@ -67,6 +67,12 @@ local component and the installer all carry the same version.
   names its section on cookies `cookies`, and those ids read as a share bar and a cookie
   banner. An id that a link on the page points at, or one of more than four words, names a
   place in the document, and is no longer looked in for the names of page chrome.
+- An `<aside>` in the middle of the text is read. Every aside used to be skipped as a
+  sidebar or a pull quote, and with it the callouts writers set between their paragraphs
+  and the post a XenForo reply quotes. One that stands among the text and holds prose of
+  its own is read now; sidebars, pull quotes, signatures and boxes of other articles stay
+  out, and so does an aside floated beside the text. An aside a site never closed, and
+  that holds the whole article, no longer hides it.
 - In Kindle for the web, a chip is now put after the paragraph's last printed word. It
   used to go after the first line of the paragraph's accessibility text, which is the whole
   column wide, so a right-hand column's chips were cut off at the edge of the page.
