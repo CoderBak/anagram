@@ -69,3 +69,9 @@ export { repairSplits, restoreSplits } from "../lib/dom/splits";
 // Structured PDF benchmarks exercise the real reflow and glyph-source mapping layers.
 export { reflowPdf } from "../lib/pdf/reflow";
 export { createPdfUnitSource } from "../lib/pdf/units";
+
+// The surfaces chunk (lib/surfaces/chunk.ts) and the page's side of it: Google Drive's
+// preview is read and drawn on in a blank page here, exactly as the content script does.
+export { createSurface } from "../lib/surfaces/chunk";
+export { surfaceFor, asPageSurface } from "../lib/surfaces";
+export { setMarkPainter, setRangeLocator, setHighlightsVisible } from "../lib/render/highlight";

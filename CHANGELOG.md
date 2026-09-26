@@ -9,6 +9,28 @@ local component and the installer all carry the same version.
 
 ### Added
 
+- Google Drive's file preview is read in place. A PDF or Word file opened in Drive, embedded
+  from Drive in another page, or shown by Google's document viewer is drawn as page images
+  with an invisible line of text over each printed line; Anagram used to read those lines as
+  paragraphs of their own, dropped the short ones and left hyphenated words in two pieces.
+  It now rebuilds the document's paragraphs from the lines' positions with the PDF reader's
+  own reconstruction — lines joined, hyphens mended, headings and page numbers left out, a
+  paragraph that runs onto the next page read as one — reads each page as Drive loads it,
+  and draws the underlines and chips over the printed words. Nothing is fetched: the text is
+  the viewer's own. The approach follows Read Aloud's Drive adapters (MIT).
+- A PDF shown by pdf.js inside a web page is read in place the same way: OneDrive's and
+  SharePoint's preview of a PDF, and any page that carries pdf.js's own viewer. Its text
+  layer is one transparent span per run of the PDF's text, which Anagram used to read as a
+  heap of short paragraphs running down both columns at once; the paragraphs are now
+  rebuilt in reading order across columns and pages, and chips are kept off the print.
+- Webnovel chapters are read. Every paragraph there is a box of its own, which Anagram
+  treats as it treats two strangers' comments, so short paragraphs were never read together
+  and most of a chapter went unread; each chapter's paragraphs are now grouped as they are
+  on any page, never across a chapter heading, and the reader-comment counters are left out.
+- Books in Google Play Books, Libby and VitalSource Bookshelf can be read with the site
+  granted on its own. Each shows the book in a frame from a second address, and a site
+  grant never reached it; turning Anagram on for the reader now asks for that address in
+  the same prompt, and a reader whose site was granted before shows as off until it is.
 - The setup page mentions that most arXiv papers also have an HTML version, which Anagram
   reads most precisely. Nothing redirects there; PDFs are read as before.
 
@@ -34,6 +56,9 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- In Kindle for the web, a chip is now put after the paragraph's last printed word. It
+  used to go after the first line of the paragraph's accessibility text, which is the whole
+  column wide, so a right-hand column's chips were cut off at the edge of the page.
 - Cookie banners are no longer analyzed as page text when their consent platform names
   them after itself: Cookiebot, Didomi, Quantcast, Usercentrics, iubenda, Complianz,
   Osano, consentmanager, the cookieconsent library and some twenty more. Their containers

@@ -288,12 +288,13 @@ record(
 // 2026-09-20 `vendor/*` was declared for <all_urls>, which handed every site three
 // megabytes of the reader's pdf.js, CMaps, fonts and decoders — and handed any site that
 // cared a reliable way to tell that this extension is installed. What is declared now is
-// the three chunks a content script import()s, at a per-session address Chrome gives only
+// the four chunks a content script import()s, at a per-session address Chrome gives only
 // to that content script, so not even those answer a page that guesses the extension id.
 //
 // That they still load for the content script is not measured here but next door:
 // test/diagnostics-check.mjs loads the diagnostics chunk, the main-content scenarios load
-// Readability, and DOMPurify goes through the same lib/lazy.ts call as both.
+// Readability, the surface scenarios the surfaces chunk (test/scenario-surfaces.mjs), and
+// DOMPurify goes through the same lib/lazy.ts call as all of them.
 const narrow = JSON.parse(readFileSync(join(EXT, "manifest.json"), "utf8")).web_accessible_resources;
 {
   const web = await context.newPage();

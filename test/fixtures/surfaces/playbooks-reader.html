@@ -1,0 +1,37 @@
+<!doctype html>
+<!--
+  Google Play Books, the reader's book frame (books.googleusercontent.com, inside
+  play.google.com/books/reader). Synthetic text. MODELLED: the reader needs a signed-in account
+  with the book in its library (a public-domain book redirects to its store page), so the
+  markup is taken from Read Aloud's adapter (js/content/google-play-book.js reads the children
+  of `reader-page:visible .gb-segment`, and turns `.liste` children into numbered items) and
+  its content handler, which runs it in the frame at books.googleusercontent.com. The page
+  being read is laid out; the next one is already in the frame, hidden.
+
+  What the walk must do, and does: the visible page's paragraphs are read, the hidden page's
+  are not, and a footnote marker is not part of the sentence.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Reader</title>
+<style>
+  body { margin: 0; font: 17px/1.6 Georgia, serif; color: #202124; background: #fff; }
+  reader-page { display: block; max-width: 640px; margin: 0 auto; padding: 32px; }
+  reader-page[hidden] { display: none; }
+  .gb-segment p { margin: 0 0 0.8em; text-indent: 1.5em; }
+  .gb-segment h2 { font-size: 1.2em; text-align: center; }
+  .liste { margin: 0 0 1em 2em; }
+</style></head>
+<body>
+<reader-page class="visible-page">
+  <div class="gb-segment" data-voice="book">
+    <h2 class="chapter-title">IV. The Survey</h2>
+    <p data-expect="unit">The instruments arrived in the second week of March, packed in straw in three wooden cases that had travelled further than any of us, and it took the whole of an afternoon to unpack them and another day to learn what half of them were for. The theodolite was the handsomest thing in the house, brass and glass and black lacquer, and my father would not let anybody else touch it until he had cleaned every part of it himself.<sup><a href="#n4">4</a></sup></p>
+    <p data-expect="unit">We began at the church, because the church was the one thing in the valley whose place was certain, and worked outward from it along the lanes, measuring every hedge and every gate as though the fields might wander off in the night if we did not pin them down. By the end of April we had drawn the whole of the parish on eleven sheets of paper, and my father had grown quiet in a way that my mother said was worse than shouting.</p>
+    <ul class="liste" data-expect="none"><li>Eleven sheets</li><li>Two chains</li></ul>
+  </div>
+</reader-page>
+<reader-page hidden>
+  <div class="gb-segment" data-voice="next-page">
+    <p data-expect="none">The next page is already here but hidden, and although this paragraph is long enough to be read on its own, with well over seventy-five words in it about the survey and the valley and the sheets of paper spread across the kitchen table in the evenings, it must not be read until the reader turns to it, because nothing that is not on the screen should be sent anywhere before the reader has had a chance to see it on the page.</p>
+  </div>
+</reader-page>
+</body></html>

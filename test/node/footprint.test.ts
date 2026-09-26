@@ -245,13 +245,14 @@ describe("the shipping manifest", () => {
     expect(existsSync(join(OUT, "pdf-loader.html"))).toBe(true);
   });
 
-  it.skipIf(!ready)("makes only the three content-script chunks web accessible", () => {
+  it.skipIf(!ready)("makes only the four content-script chunks web accessible", () => {
     expect(manifest().web_accessible_resources).toEqual([
       {
         resources: [
           "vendor/readability.min.mjs",
           "vendor/purify.min.mjs",
           "vendor/diagnostics.min.mjs",
+          "vendor/surfaces.min.mjs",
         ],
         matches: ["<all_urls>"],
         use_dynamic_url: true,

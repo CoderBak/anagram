@@ -7,6 +7,8 @@ node_modules/
 # The other vendor chunks are copies of published libraries and are committed; this one is
 # our own source and would go stale the moment a segmentation rule changed.
 public/vendor/diagnostics.min.mjs
+# The same for lib/surfaces/.
+public/vendor/surfaces.min.mjs
 # Generated from the hash-verified upstream viewer under vendor/pdfjs/.
 public/vendor/pdfjs/
 # Copied from the hash-verified build under vendor/document-worker/ and from onnxruntime-web.

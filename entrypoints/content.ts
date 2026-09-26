@@ -25,6 +25,9 @@ import type { ControlMessage, PingReply, TabState, TopHostReply } from "../lib/m
 import { serveTabPdfBytes } from "../lib/pdf/handoff";
 import { isPageTranslated, watchPageTranslation } from "../lib/dom/translation";
 import { isConsentFrame } from "../lib/dom/consentBanners";
+import { surfaceFor } from "../lib/surfaces";
+import { loadSurface } from "../lib/surfaces/load";
+import { setMarkPainter, setRangeLocator } from "../lib/render/highlight";
 
 /** Min frame viewport for a subframe to be worth scanning (ad slots are smaller). */
 const MIN_FRAME_AREA = 40_000; // e.g. 400×100
@@ -123,9 +126,21 @@ export default defineContentScript({
     // is nothing to scan here — the walk finds nothing and costs nothing — and the whole
     // feature is the ball's action chip, which hands the file to our reader page.
     const isPdf = isTop && !docs && document.contentType === "application/pdf";
+    // A page that shows a document the walk cannot read — Google Drive's file preview, a PDF
+    // in a pdf.js viewer — in a tab or embedded in another page's frame (lib/surfaces/).
+    // Everywhere else this is a look at the address and one querySelector, and nothing loads.
+    const surfaceId = docs || isPdf ? null : surfaceFor(location, document);
+    const surface = surfaceId ? await loadSurface(surfaceId).catch(() => null) : null;
+    if (surface) {
+      setRangeLocator(surface.ranges);
+      setMarkPainter(surface.painter);
+    }
     const orchestrator = createOrchestrator(ctx, {
       mountFab: isTop,
-      lockScope: docs?.kind === "editor" ? "page" : undefined,
+      // A surface's document is not the region the main-content probe would pick.
+      lockScope: docs?.kind === "editor" || surface ? "page" : undefined,
+      collect: surface?.collect,
+      placeBadge: surface?.placeBadge,
       // The panel's "Turn off on <host>" writes the rule; this page stops here and now.
       // It has to, because the write is not always a change: on a site whose rule already
       // says "off" — where the only way to be looking at the panel is a one-shot run from

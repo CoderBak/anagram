@@ -154,6 +154,7 @@ export function setHighlightsVisible(visible: boolean): void {
   _visible = visible;
   if (_styleEl) _styleEl.disabled = !visible;
   if (_shadowSheet) _shadowSheet.disabled = !visible;
+  _painter?.show(visible);
 }
 
 /**
@@ -178,6 +179,7 @@ export function clearActiveUnit(id: string): void {
 
 /** Move one unit's ranges between the resting highlights and the active ones. */
 function restate(id: string, active: boolean): void {
+  if (_painted.has(id)) _painter?.activate(id, active);
   const entries = _byUnit.get(id);
   if (!entries) return;
   for (const e of entries) {
@@ -199,17 +201,46 @@ export function refreshHighlightTheme(): void {
  * sweep up whatever the reconstruction left out (a running head, the other column). The
  * reader knows which run of which page every character came from and hands back ranges
  * over exactly those glyphs. Null from it falls back to the whole unit, as always.
+ * Undefined says the unit is not the locator's own — a page that shows one document among
+ * ordinary text (lib/surfaces/) — and that unit is located the way any page's is.
  */
 export type RangeLocator = (
   unit: Unit,
   spans: ReadonlyArray<{ start: number; end: number }>,
-) => Range[][] | null;
+) => Range[][] | null | undefined;
 
 let _locator: RangeLocator | null = null;
 
 /** Install (or, with null, remove) the locator above. One per document. */
 export function setRangeLocator(locator: RangeLocator | null): void {
   _locator = locator;
+}
+
+/**
+ * Marks for text the page cannot show a highlight on. Google Drive previews a file as page
+ * images under a layer of lines set at 1% opacity (lib/surfaces/): a highlight on that text
+ * is painted at 1% too, and in a font that does not match the picture. Such a surface draws
+ * the marks itself, over the picture, from the same ranges and the same steps of the scale.
+ */
+export interface MarkPainter {
+  /** Draw these marks for `unit`, or return false to leave it to the page's highlights. */
+  paint(unit: Unit, marks: ReadonlyArray<{ step: number; ranges: readonly Range[] }>, active: boolean): boolean;
+  /** Take a unit's marks off again. */
+  clear(id: string): void;
+  /** The unit became (or stopped being) the one the reader is on. */
+  activate(id: string, active: boolean): void;
+  /** Show or hide every mark it drew. */
+  show(visible: boolean): void;
+}
+
+let _painter: MarkPainter | null = null;
+/** Units whose marks the painter holds rather than the highlight registry. */
+const _painted = new Set<string>();
+
+/** Install (or, with null, remove) the painter above. One per document. */
+export function setMarkPainter(painter: MarkPainter | null): void {
+  _painter = painter;
+  painter?.show(_visible);
 }
 
 /** One range per part, first text node to last — the whole unit, as it was scanned. */
@@ -269,12 +300,9 @@ export function setHighlight(unit: Unit, verdict: UnitVerdict): void {
   const runs = stepRuns(verdict.stretches);
   // With a locator even a ONE-PASS unit is placed span by span: on a surface whose text is
   // not what its nodes say, the whole-parts shortcut would cover more than was read.
-  const located = _locator
-    ? _locator(unit, onePass ? [{ start: 0, end: unit.text.length }] : runs)
-    : onePass
-      ? null
-      : locateSpans(unit.parts, unit.text, runs);
-  if (located && _locator && onePass) {
+  const own = _locator?.(unit, onePass ? [{ start: 0, end: unit.text.length }] : runs);
+  const located = own !== undefined ? own : onePass ? null : locateSpans(unit.parts, unit.text, runs);
+  if (located && own !== undefined && onePass) {
     marks.push({ step: scaleStep(verdict.result.score), ranges: located[0] ?? [] });
   } else if (located) {
     runs.forEach((run, i) => marks.push({ step: run.step, ranges: located[i] }));
@@ -285,6 +313,10 @@ export function setHighlight(unit: Unit, verdict: UnitVerdict): void {
   // A unit re-rendered while the pointer is still on its chip (a verdict landing on a
   // hovered paragraph) keeps its marks where the reader can see them.
   const active = _activeUnit === unit.id;
+  if (_painter?.paint(unit, marks, active)) {
+    _painted.add(unit.id);
+    return;
+  }
   const entries: Array<{ step: number; range: Range }> = [];
   for (const { step, ranges } of marks) {
     const highlight = markHighlight(step, active);
@@ -300,6 +332,7 @@ export function setHighlight(unit: Unit, verdict: UnitVerdict): void {
 /** Remove all highlight ranges associated with a unit id. */
 export function clearHighlight(id: string): void {
   if (_activeUnit === id) _activeUnit = null;
+  if (_painted.delete(id)) _painter?.clear(id);
   const entries = _byUnit.get(id);
   if (!entries) return;
   for (const e of entries) {

@@ -14,6 +14,7 @@ import { buildSync } from "esbuild";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 import { readdirSync } from "node:fs";
+import { surfaceChecks } from "./unit-surfaces.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -2806,6 +2807,9 @@ for (const file of fixtureFiles) {
   });
   await fp.close();
 }
+
+// ---- reading surfaces: sites that show a document the walk cannot read (lib/surfaces/) --------
+await surfaceChecks(browser, BUNDLE, FIXTURES, results);
 
 await browser.close();
 

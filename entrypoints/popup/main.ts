@@ -24,6 +24,7 @@ import { siteLine, switchWrite } from "./siteSwitch";
 import { ACTION_LABEL, popupLead, type PageFacts, type PopupLead } from "./state";
 import { sitePattern } from "../../lib/access/patterns";
 import { hasAccess, requestAccess } from "../../lib/access/grant";
+import { readerFrames } from "../../lib/surfaces/frames";
 import { ACTIONS } from "../../lib/messaging/protocol";
 import type { BackendStatus, ControlMessage, TabState } from "../../lib/messaging/protocol";
 import { looksLikePdfUrl, READER_PAGE } from "../../lib/pdf/source";
@@ -215,6 +216,11 @@ async function refreshBackend(probe = false): Promise<void> {
 let siteRule: SiteRule | null = null;
 let globalDefault = true;
 let granted = false;
+/** The addresses this site shows its books from, asked for with it (lib/surfaces/frames.ts),
+ *  and whether they are granted: without them the site runs but its books are unread, so
+ *  the switch shows off and turning it on asks for them. */
+let frames: string[] = [];
+let framesGranted = true;
 
 /** What the settings alone say about this site, access aside. */
 const ruleSaysOn = (): boolean => (siteRule ? siteRule.mode === "on" : globalDefault);
@@ -228,6 +234,7 @@ const ruleSaysOn = (): boolean => (siteRule ? siteRule.mode === "on" : globalDef
 async function refreshSite(host: string): Promise<void> {
   globalDefault = await settings.enabled.getValue();
   granted = await hasAccess(facts.pattern);
+  framesGranted = frames.length === 0 || (await hasAccess(frames[0], frames.slice(1)));
   if (!host) {
     siteEl.checked = false;
     siteHostEl.textContent = "";
@@ -235,7 +242,7 @@ async function refreshSite(host: string): Promise<void> {
     return;
   }
   siteRule = await effectiveRule(host);
-  siteEl.checked = granted && ruleSaysOn();
+  siteEl.checked = granted && framesGranted && ruleSaysOn();
   siteHostEl.textContent = siteLine(host, siteRule);
   siteHostEl.title = host;
 }
@@ -281,6 +288,7 @@ async function init(): Promise<void> {
   const host = hostOf(tab?.url);
   facts.hasTab = tab != null;
   facts.pattern = sitePattern(tab?.url);
+  frames = host && facts.pattern ? readerFrames(host) : [];
   const localFile = tab?.url?.startsWith("file://") === true;
   facts.pdfTab = (facts.pattern !== null || localFile) && looksLikePdfUrl(tab?.url);
   if (localFile) {
@@ -309,13 +317,14 @@ async function init(): Promise<void> {
       const write = switchWrite(host, siteRule, globalDefault, want);
       written = write.kind === "clear" ? clearSiteOverride(write.host) : setSiteOverride(write.host, write.mode);
     }
-    if (want && facts.pattern && !granted) {
+    if (want && facts.pattern && (!granted || !framesGranted)) {
       // Turning it on for a site Anagram may not read is asking for the site. The prompt
       // is the browser's and the explanation is the browser's; Chrome closes the popup to
       // show it, so everything that follows a yes happens in the worker — the content
       // script is registered and the open tabs are injected there (lib/access/worker.ts).
-      void requestAccess([facts.pattern]).then((ok) => {
-        if (ok) granted = true;
+      // An e-book reader's site brings the address it shows the book from (lib/surfaces/frames.ts).
+      void requestAccess([facts.pattern, ...frames]).then((ok) => {
+        if (ok) granted = framesGranted = true;
         void refreshSite(host); // only reached where the popup survives the prompt
       });
       return;

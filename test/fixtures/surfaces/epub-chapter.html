@@ -1,0 +1,34 @@
+<!doctype html>
+<!--
+  An EPUB chapter as a library or textbook reader shows it: Libby (the chapter frames at
+  *.read.libbyapp.com) and VitalSource Bookshelf (the book frame at jigsaw.vitalsource.com).
+  Synthetic text. MODELLED: both readers need an account and a loan or a purchase, so the
+  markup is taken from Read Aloud's adapters (js/content/libbyapp.js and
+  js/content/vitalsource-book.js read the `h1`–`h6` and `p` of the book's own XHTML, hiding
+  `sup` footnote markers) and from the EPUB 3 conventions such books are made of: a
+  `section[epub:type=chapter]`, paragraphs classed by indentation, a footnote reference in a
+  linked `sup`, and the footnote itself in an `aside[epub:type=footnote]`.
+
+  What the walk must do, and does: the chapter's paragraphs are read, the footnote marker
+  is not part of its sentence, and the one-line footnote is not text anybody's paragraphs
+  are read with.
+-->
+<html lang="en" xmlns:epub="http://www.idpf.org/2007/ops"><head><meta charset="utf-8"><title>Chapter 3</title>
+<style>
+  body { margin: 0; padding: 24px; font: 17px/1.55 Georgia, serif; color: #1b1b1b; }
+  h1.chapter-number { text-align: center; font-size: 1.1em; letter-spacing: 0.2em; }
+  h2.chapter-title { text-align: center; font-weight: normal; font-style: italic; }
+  p.noindent { text-indent: 0; margin: 0; }
+  p.indent { text-indent: 1.4em; margin: 0; }
+  aside.footnote { font-size: 0.85em; border-top: 1px solid #ccc; margin-top: 2em; padding-top: 0.5em; }
+</style></head>
+<body class="calibre">
+<section epub:type="chapter" id="ch03" data-voice="chapter">
+  <h1 class="chapter-number">THREE</h1>
+  <h2 class="chapter-title">What the River Kept</h2>
+  <p class="noindent" data-expect="unit">The river had moved twice in living memory, and both times it had taken something with it that the town had not been ready to give. The first time it was the mill, which had stood on the old bank for two hundred years and was found one spring morning standing in a field, a quarter of a mile from any water, with its wheel turning slowly in the wind as if it had not yet noticed what had happened.<sup><a epub:type="noteref" href="#fn3-1">1</a></sup></p>
+  <p class="indent" data-expect="unit">The second time it was the ferry, and the ferryman, who had refused to believe that a river could change its mind and had gone on waiting at the old landing for three days with his lantern lit. People brought him food and blankets and told him the news, and he thanked them politely and went on waiting, and on the fourth morning he was gone and so was the boat.</p>
+  <p class="indent" data-expect="unit">Nobody in the town talked about the ferryman after that, at least not where children could hear, and so of course the children talked about nothing else. They said he had rowed out to find where the river had gone, and that on quiet nights you could still see his lantern moving along the old bed, looking for the water that had left him behind.</p>
+</section>
+<aside epub:type="footnote" id="fn3-1" class="footnote" data-voice="footnote"><p data-expect="none">1. The mill still stands.</p></aside>
+</body></html>

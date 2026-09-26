@@ -1,0 +1,46 @@
+<!doctype html>
+<!--
+  Webnovel, a book's reading page with two chapters loaded (www.webnovel.com/book/…). Synthetic
+  text. MODELLED: the site answers a plain headless browser with a Cloudflare challenge
+  (2026-09), so the markup is taken from Read Aloud's adapter (js/content/webnovel.js reads
+  every chapter's `h1` and the `.cha-paragraph p` under it, and scrolls to the foot of the
+  page for the next chapter to load). Each paragraph block carries the reader-comment
+  counter the site sets beside it.
+
+  What must happen: each chapter's paragraphs are read — the short dialogue lines grouped
+  with the prose around them, never across a chapter heading — and neither the counters nor
+  the chapter's header and footer rows are text. The walk alone reads none of it: every
+  paragraph is a cousin of the next, which is how two strangers' comments stand on a page
+  nobody marked up, so short ones are never read together (lib/surfaces/paragraphs.ts).
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Lanterns of the Tide - Chapter 12 - Webnovel</title>
+<style>
+  body { margin: 0; font: 18px/1.7 Georgia, serif; color: #222; background: #f6f1e7; }
+  .chapter_content { max-width: 720px; margin: 0 auto; padding: 24px; }
+  .cha-hd-mn-text { font: 13px/1.4 sans-serif; color: #888; }
+  .cha-paragraph { position: relative; }
+  .cha-paragraph p { margin: 0 0 1em; }
+  .para-comment { position: absolute; right: -40px; top: 4px; font: 12px/1 sans-serif; color: #999; }
+  .cha-ft { font: 13px/1.4 sans-serif; color: #666; border-top: 1px solid #ddd; margin: 24px 0; padding-top: 12px; }
+</style></head>
+<body><div class="page">
+  <div class="chapter_content" data-cid="12">
+    <div class="cha-tit"><h1 class="dib mb0 fw700 fs24 lh1.5">Chapter 12: The Lantern Keeper</h1><div class="cha-hd-mn-text" data-chrome><span>Updated 3 days ago</span> · <span>1,204 words</span></div></div>
+    <div class="cha-content" data-voice="chapter-12"><div class="cha-words">
+      <div class="cha-paragraph" data-expect="unit"><p>The lantern keeper lived at the end of the harbour wall, in a hut built from the timbers of a boat that had not come home. Every evening he walked the length of the wall with a long pole and a box of matches, and every morning he walked it again to put the lanterns out, and in between he sat at his window and watched the water as if it owed him money.</p><div class="para-comment j_paragraph_comment"><span class="para-comment_num">12</span></div></div>
+      <div class="cha-paragraph" data-expect="unit"><p>“You're late,” he said when Mei came in without knocking.</p><div class="para-comment"><span class="para-comment_num">3</span></div></div>
+      <div class="cha-paragraph" data-expect="unit"><p>“The tide was early.”</p><div class="para-comment"><span class="para-comment_num">1</span></div></div>
+      <div class="cha-paragraph" data-expect="unit"><p>“The tide is never early. People are late and blame the sea for it.”</p></div>
+      <div class="cha-paragraph" data-expect="unit"><p>She put the basket on his table and began to unpack it, the bread first and then the fish wrapped in newspaper, and he watched her do it without offering to help, the way he had watched her mother do it for twenty years before her. When the basket was empty she folded the cloth and sat down across from him, and for a while neither of them said anything at all.</p></div>
+    </div></div>
+    <div class="cha-ft" data-chrome><a href="#">Report</a> · <span>Paragraph comments: 16</span> · <a href="#">Add to library</a></div>
+  </div>
+  <div class="chapter_content" data-cid="13">
+    <div class="cha-tit"><h1 class="dib mb0 fw700 fs24 lh1.5">Chapter 13: Low Water</h1><div class="cha-hd-mn-text" data-chrome><span>Updated 2 days ago</span> · <span>987 words</span></div></div>
+    <div class="cha-content" data-voice="chapter-13"><div class="cha-words">
+      <div class="cha-paragraph" data-expect="unit"><p>At low water the harbour showed its bones. The keeper said the old town was down there under the mud, the whole of it, streets and chapel and all, and that on the lowest tide of the year you could walk out to the chapel door if you knew where to put your feet and did not mind the cold. Mei had heard the story since she was small and had never once believed it.</p></div>
+      <div class="cha-paragraph" data-expect="unit"><p>“Tonight,” he said. “The lowest one.”</p></div>
+      <div class="cha-paragraph" data-expect="unit"><p>She laughed, and then she saw that he was already putting on his boots.</p></div>
+    </div></div>
+  </div>
+</div></body></html>

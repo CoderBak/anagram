@@ -20,11 +20,12 @@ export async function accessSummary(): Promise<AccessSummary> {
   }
 }
 
-/** Is this exact origin pattern already granted (directly or by an all-sites grant)? */
-export async function hasAccess(pattern: string | null): Promise<boolean> {
+/** Is this exact origin pattern already granted (directly or by an all-sites grant) — and,
+ *  when `also` names more, every one of those too? */
+export async function hasAccess(pattern: string | null, also: readonly string[] = []): Promise<boolean> {
   if (!pattern) return false;
   try {
-    return await browser.permissions.contains({ origins: [pattern] });
+    return await browser.permissions.contains({ origins: [pattern, ...also] });
   } catch {
     return false;
   }

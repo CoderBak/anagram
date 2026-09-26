@@ -34,6 +34,7 @@ import {
   openPdfInReader,
   handOverPdf,
 } from "./pdf-fixture.mjs";
+import { surfaceScenarios } from "./scenario-surfaces.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LOCAL_ONLY = process.argv.includes("--local");
@@ -1614,6 +1615,9 @@ async function sweep(page, steps = 6) {
       JSON.stringify(failed),
     );
   }
+  // Reading surfaces: Google Drive's preview read in place, and an ordinary page left alone.
+  await surfaceScenarios({ context, fixture, record, artifact, BADGE_SEL, fixturesDir: join(__dirname, "fixtures"), ordinaryUrl: fixturesUrl });
+
   // A30–A34: a real PDF is handed to the full PDF.js viewer and shown as-is, with the
   // ORDINARY pipeline over them: the same chips, the same underlines, the same ball and
   // panel, the same copied report. The reconstruction is invisible and is only asserted
