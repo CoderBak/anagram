@@ -14,6 +14,21 @@ local component and the installer all carry the same version.
 
 ### Changed
 
+- The PDF reader's paragraphs now come from Zotero's document-worker (AGPL-3.0), the
+  engine behind Zotero 10's reading mode, run inside the extension in a Web Worker with
+  its block-segmentation model, and translated onto the pages pdf.js draws. On a corpus of
+  198 papers with ground truth it scores 90% of the body text (85% before) with a tenth of
+  the leakage: reference lists, captions, footnotes, table and figure text and running
+  heads stay out, columns are read in the right order, and a paragraph cut in two by an
+  equation, a column or a page is one paragraph again. Inline formulas — glyphs set in a
+  mathematics font — are left out of the text that is scored, as they are on arXiv's HTML.
+  The reader's own reflow still reads the pages while the worker works (well under a
+  second for a paper, a few seconds for a 300-page book), and on its own if the worker
+  fails or the document is over the 300-page cap. The extension grows by about 24 MB: the
+  worker, its models and the ONNX runtime, all shipped inside it and never downloaded.
+
+### Changed
+
 - Anagram's code is now licensed under the GNU AGPL v3.0 or later. The licence text ships
   in the extension and in the local component. The model keeps its CC BY-NC-SA 4.0 licence.
 

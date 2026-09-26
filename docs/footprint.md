@@ -37,6 +37,12 @@ user's ordinary OS privileges and is not sandboxed by browser CSP.
 There is no analytics, error-reporting or telemetry endpoint. The component update
 notice compares versions locally; it does not poll GitHub.
 
+The PDF reader starts one Web Worker per open document (`lib/pdf/structureWorker.ts`,
+running the vendored Zotero document-worker, `vendor/document-worker/`). The worker's own
+`fetch` calls read the CMaps, standard fonts, image decoders, ONNX runtime and models that
+ship inside the extension, by the `chrome-extension://<this extension>/vendor/…` URLs the
+reader hands it; the document's bytes are copied into it and nowhere else.
+
 ### Every address written in the source
 
 | File | URL | Why |
@@ -63,6 +69,8 @@ notice compares versions locally; it does not poll GitHub.
 | `lib/dom/boilerplate.ts` | `https://gitlab.wikimedia.org/repos/research/html-dumps` | the attribution of the MediaWiki classes the walk skips, in a comment |
 | `lib/dom/translation.ts` | `https://github.com/mengxi-ream/read-frog` | where Read Frog's attribute name was looked up, in a comment |
 | `lib/dom/shadow.ts` | `https://github.com/mozilla-firefox/firefox` | the attribution of adapted Firefox code in a comment |
+| `lib/pdf/structured.ts` | `https://github.com/zotero/document-worker` | the attribution of Zotero's document-worker, whose reading of a PDF this translates, in a comment |
+| `lib/pdf/structured.ts` | `https://github.com/zotero/structured-document-text` | the attribution of the glyph-map decoding adapted from Zotero's library, in a comment |
 | `entrypoints/shadow.content.ts` | `https://github.com/FluentRead/FluentRead` | the attribution of adapted FluentRead code in a comment |
 | `entrypoints/onboarding/index.html` | `https://github.com/CoderBak/anagram/blob/dev/docs/user-guide.en.md` | the user-guide link on the setup page; opened only when clicked |
 | `entrypoints/onboarding/main.ts` | `https://github.com/CoderBak/anagram/blob/dev/docs/user-guide.zh-CN.md` | the same link for a Chinese browser |
@@ -87,6 +95,7 @@ Nothing is written to `storage.sync`, `storage.session` or `storage.managed`.
 | `siteOverrides` | per-site on/off rules, as hostnames the user chose |
 | `showHighlights` | whether analyzed text is underlined in place |
 | `autoOpenPdfs` | whether a PDF tab opens in the reader by itself |
+| `pdfStructure` | whether the reader's paragraphs come from the vendored Zotero document-worker (default) or from its own geometric reflow; no control in the UI |
 | `debug` | verbose logging |
 | `cacheMode` | persistent scores (up to 30 days) or memory only |
 | `reportIncludeText` | opt-in to include passage excerpts in copied reports |

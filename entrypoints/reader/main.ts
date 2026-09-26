@@ -8,6 +8,8 @@ import { setRangeLocator } from "../../lib/render/highlight";
 import { setOwnPageSite } from "../../lib/render/fab";
 import { extractPageText } from "../../lib/pdf/extract";
 import { reflowPdf, type PdfPageText, type ReflowBlock } from "../../lib/pdf/reflow";
+import { createStructuredReader, type StructuredReader } from "../../lib/pdf/structured";
+import { readStructure } from "../../lib/pdf/structureWorker";
 import { createPdfUnitSource, type PdfUnitSource } from "../../lib/pdf/units";
 import { pdfNameFromUrl, safePdfSource } from "../../lib/pdf/source";
 import { claimPdfBytes } from "../../lib/pdf/handoff";
@@ -32,6 +34,13 @@ let site: string | null = null;
 let generation = 0;
 let controller: AbortController | null = null;
 let started = false;
+/**
+ * Zotero's reading of the whole document (lib/pdf/structureWorker.ts), once it has
+ * arrived. Until then, and if it never does — the worker failed or timed out, the
+ * document is over the page cap, or the setting is off — the pages on screen are
+ * reflowed by lib/pdf/reflow.ts, page by page as they render.
+ */
+let structure: StructuredReader | null = null;
 const pages = new Map<number, {view: PageView; text: PdfPageText; geometry: string}>();
 const extracting = new WeakSet<Element>();
 
@@ -59,23 +68,47 @@ function rebuild(): void {
   for (const [n, record] of pages) {
     if (!record.view.layer.isConnected) { pages.delete(n); source.removePage(n); }
   }
-  // A recycled/unrendered page is a real gap, never join prose across it.
+  const began = performance.now();
+  const rendered = [...pages.values()].map(({text}) => text).sort((a, b) => a.page - b.page);
+  source.setBlocks(structure ? structure.blocks(rendered) : reflowRendered(rendered));
+  performance.measure(structure ? "anagram-structured" : "anagram-reflow", {start: began});
+  updateScope();
+}
+/** The fallback: every run of consecutive rendered pages reflowed on its own — a
+ *  recycled or unrendered page is a real gap, and prose is never joined across it. */
+function reflowRendered(rendered: PdfPageText[]): ReflowBlock[] {
   const groups: PdfPageText[][] = [];
-  for (const {text} of [...pages.values()].sort((a, b) => a.text.page - b.text.page)) {
+  for (const text of rendered) {
     const previous = groups.at(-1);
     if (previous && previous.at(-1)!.page + 1 === text.page) previous.push(text);
     else groups.push([text]);
   }
-  const began = performance.now();
   const blocks: ReflowBlock[] = [];
   for (const group of groups) {
     const reflow = reflowPdf(group);
     if (reflow[0] && blocks.length) reflow[0].columnBreak = true;
     blocks.push(...reflow);
   }
-  source.setBlocks(blocks);
-  performance.measure("anagram-reflow", {start: began});
-  updateScope();
+  return blocks;
+}
+/**
+ * Ask the worker for the document's structure and switch to it when it comes. A paper
+ * takes well under a second; a long book takes a few, during which the reflow's chips
+ * are already up, and the switch re-collects the units — the verdicts of paragraphs
+ * whose text did not change come straight back from the cache.
+ */
+async function readWholeDocument(bytes: Uint8Array, count: number, owned: number, signal: AbortSignal): Promise<void> {
+  if (count > MAX_ANALYSIS_PAGES || !(await settings.pdfStructure.getValue())) return;
+  if (owned !== generation) return;
+  try {
+    const result = await readStructure(bytes, count, signal);
+    if (owned !== generation) return;
+    structure = createStructuredReader(result);
+    rebuild();
+    if (started) orchestrator?.rescan();
+  } catch {
+    // The reflow is already reading the pages; nothing to tell the user.
+  }
 }
 function prune(): void {
   if ([...pages.values()].some(({view}) => !view.layer.isConnected)) rebuild();
@@ -144,7 +177,7 @@ function beginLoad(): {owned: number; signal: AbortSignal; closing: Promise<void
   orchestrator?.stop(); orchestrator = null; started = false;
   cancelDocumentSession();
   setRangeLocator(null);
-  pages.clear(); source = null; scopeLabel.hidden = true;
+  pages.clear(); source = null; structure = null; scopeLabel.hidden = true;
   originalUrl = null; original.hidden = true;
   site = null; setOwnPageSite(null);
   say(t("readerLoading")); drop.hidden = true;
@@ -162,12 +195,16 @@ async function openBytes(bytes: Uint8Array, name: string, url: string | null, lo
   // Upstream controls the password dialog, rendering, navigation, find and printing.
   try {
     app.setTitleUsingUrl(name);
+    // pdf.js may transfer the bytes it is given to its worker: the structure worker
+    // gets its own copy, taken before that.
+    const copy = bytes.slice();
     await app.open({data: bytes});
     if (load.owned !== generation) return;
     drop.hidden = true;
     const count = app.pdfDocument?.numPages ?? 0;
     updateScope();
     say(count > MAX_ANALYSIS_PAGES ? t("readerAnalysisCapped", MAX_ANALYSIS_PAGES) : "");
+    void readWholeDocument(copy, count, load.owned, load.signal);
   } catch {
     if (load.owned === generation) { say(t("readerBadFile")); drop.hidden = false; }
   }

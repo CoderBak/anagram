@@ -12,6 +12,10 @@ export const settings = {
   showHighlights: storage.defineItem<boolean>("local:showHighlights", { fallback: true }),
   // Replacing the browser's PDF viewer requires opt-in; manual opening stays available.
   autoOpenPdfs: storage.defineItem<boolean>("local:autoOpenPdfs", { fallback: false }),
+  // The reader's paragraphs come from Zotero's document-worker (lib/pdf/structured.ts);
+  // off, the reader's own geometric reflow reads the pages instead. No setting in the UI:
+  // a switch for the benchmark and for a machine where the worker misbehaves.
+  pdfStructure: storage.defineItem<boolean>("local:pdfStructure", { fallback: true }),
   debug: storage.defineItem<boolean>("local:debug", { fallback: false }),
   reportIncludeText: storage.defineItem<boolean>("local:reportIncludeText", { fallback: false }),
   reportIncludeUrl: storage.defineItem<boolean>("local:reportIncludeUrl", { fallback: false }),

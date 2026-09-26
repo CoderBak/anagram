@@ -47,6 +47,29 @@ try {
     await page.screenshot({path:join(artifacts,"missing-chips.png")});
     throw new Error(`No Anagram chips: ${await page.locator("#notice").textContent()}; ${JSON.stringify(failures)}`);
   });
+  // The structure worker's reading replaces the reflow's, and its marks land on the page's
+  // own glyphs: the paragraphs the fixture set, the running head and page number left
+  // out, the broken word mended, the paragraph sewn across the page break.
+  await page.waitForFunction(() => performance.getEntriesByName("anagram-structure").length > 0 && performance.getEntriesByName("anagram-structured").length > 0, null, {timeout:60000}).catch(() => {
+    throw new Error(`The structure worker never answered: ${JSON.stringify(failures)}`);
+  });
+  await page.waitForFunction(() => [...document.querySelectorAll('.anagramPdfChips [data-anagram="host"]')].filter((el)=>el.shadowRoot?.querySelector(".pill")).length >= 3, null, {timeout:15000});
+  const marked = await page.evaluate(() => {
+    const ranges = [];
+    for (const [, highlight] of CSS.highlights) for (const range of highlight) {
+      const box = range.getBoundingClientRect();
+      ranges.push({page: Number(range.startContainer.parentElement?.closest(".page")?.dataset.pageNumber), y: box.top, x: box.left, text: range.toString()});
+    }
+    ranges.sort((a, b) => a.page - b.page || a.y - b.y || a.x - b.x);
+    const text = (n) => ranges.filter((r) => r.page === n).map((r) => r.text).join(" ").replace(/\s+/g, " ");
+    return {page1: text(1), page2: text(2), all: ranges.map((r) => r.text)};
+  });
+  assert.match(marked.page1, /Anagram rebuilds this document from the text runs .* That is the whole idea\./);
+  assert.match(marked.page1, /hyphen ation mark is joined again/, "the mended word is marked on both of its glyph runs");
+  assert.match(marked.page2, /that the paragraph is sewn back together across the page break/);
+  assert.match(marked.page2, /Running heads and page numbers are furniture/);
+  assert.ok(!marked.all.some((s) => s.includes("ANAGRAM TEST DOCUMENT")), "the running head is not marked");
+  assert.ok(!marked.all.some((s) => /^\s*[12]\s*$/.test(s)), "the page number is not marked");
   await page.locator("#anagramAnalyze").click();
   await page.locator("#anagram-fab .pscope").waitFor();
   assert.match(await page.locator("#analysisScope").textContent(),/2/);

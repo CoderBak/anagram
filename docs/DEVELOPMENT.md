@@ -15,7 +15,7 @@ service anywhere. Work on `dev`; `main` holds the published README only.
 | Page capture and scheduling | `entrypoints/content.ts`, `lib/capture/orchestrator.ts`, `lib/capture/scheduler.ts`, `lib/dom/walker.ts` |
 | In-page rendering | `lib/render/scale.ts` (score to word, colour, doubt), `lib/render/badge.ts` (chips, card), `lib/render/fab.ts` (ball, panel), `lib/render/highlight.ts` |
 | Setup, popup, settings | `entrypoints/onboarding/`, `entrypoints/popup/`, `entrypoints/options/`, `lib/ui/componentSettings.ts` |
-| PDF reader | `entrypoints/reader/`, `lib/pdf/reflow.ts`, `lib/pdf/handoff.ts`, `vendor/pdfjs/` |
+| PDF reader | `entrypoints/reader/`, `lib/pdf/structured.ts` (Zotero's structure onto pdf.js's text layer), `lib/pdf/reflow.ts` (the fallback), `lib/pdf/handoff.ts`, `vendor/pdfjs/`, `vendor/document-worker/` (pinned by `scripts/documentWorker.mjs`) |
 | Native host: protocol, ownership, lifecycle | `anagramd/native_host.py`, `anagramd/native_component.py` |
 | Inference and runtime selection | `anagramd/engine.py`, `anagramd/runtime_controller.py`, `anagramd/runtime_adapters.py`, `anagramd/model_plan.py` |
 | Model download | `anagramd/download_modelkit.py`, `anagramd/hub_transfer.py`, `anagramd/prepare_models.py`, `anagramd/modelkit.json` |
@@ -31,7 +31,10 @@ service anywhere. Work on `dev`; `main` holds the published README only.
   anonymously with SHA-256 verification. License is CC BY-NC-SA 4.0.
 - Website access is optional and granted by the user. The shipping manifest declares no
   host permissions; the content script is registered at runtime from grants.
-- The complete upstream PDF.js viewer ships unmodified and hash-pinned.
+- The complete upstream PDF.js viewer ships unmodified and hash-pinned, and so does the
+  build of Zotero's document-worker that reads the PDF's paragraphs (`vendor/document-worker/`,
+  regenerated from the pinned commits by `scripts/documentWorker.mjs`). The reader's own
+  reflow stays as the fallback while the worker runs and where it cannot.
 
 ## Checks
 
@@ -55,6 +58,7 @@ npm run test:pdf-install           # PDF setup and local-file access flow, EN an
 node test/pdf-route-check.mjs      # PDF routing, handoff caps and privacy
 npm run test:network-privacy       # the offline-mode promise in PRIVACY.md
 ANAGRAM_PDF_BENCH=<corpus dir> node test/pdf-bench/bench.mjs run   # PDF reading benchmark, never in CI; corpus from test/pdf-bench/corpus.mjs
+ANAGRAM_PDF_BENCH=<corpus dir> node test/pdf-bench/bench.mjs structured <dumps>   # the shipping path, over test/pdf-bench/zotero-dump.mjs output; tune on --split dev, report --split test
 ```
 
 Backend and installer tests need a Python venv with the test dependencies only:
