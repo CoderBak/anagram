@@ -189,6 +189,7 @@ export default defineConfig({
             "vendor/readability.min.mjs",
             "vendor/purify.min.mjs",
             "vendor/diagnostics.min.mjs",
+            "vendor/surfaces.min.mjs",
           ],
           matches: ["<all_urls>"],
           use_dynamic_url: true,

@@ -46,6 +46,17 @@ export interface DiagnosticsModule {
 export const loadDiagnostics = (): Promise<DiagnosticsModule> =>
   lazyVendor<DiagnosticsModule>("diagnostics.min.mjs");
 
+/**
+ * The reading of the few sites that show a document the walk cannot read (lib/surfaces/).
+ * Our own code too, and out of the content script for the same reason as the diagnostics:
+ * it carries the PDF reader's paragraph rebuilder, which only those sites need.
+ */
+export interface SurfacesModule {
+  createSurface: typeof import("./surfaces/chunk").createSurface;
+}
+
+export const loadSurfaces = (): Promise<SurfacesModule> => lazyVendor<SurfacesModule>("surfaces.min.mjs");
+
 /** Engine API used alongside the separately packaged full upstream viewer. */
 export type PdfJsModule = Pick<
   typeof import("pdfjs-dist"),

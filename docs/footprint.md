@@ -32,7 +32,7 @@ user's ordinary OS privileges and is not sandboxed by browser CSP.
 | `lib/pdf/handoff.ts` | `fetch(` | re-reads, from the content script in a PDF tab, the document that tab is already showing, so the reader can be handed its bytes | the same URL the tab is already showing, same-origin, normally answered from the HTTP cache |
 | `lib/pdf/loader.ts` | `fetch(` | reads an online PDF only after the private loader validates its one-use source ticket and current website access; rejects redirects | the exact authorized original HTTP(S) PDF URL, with normal browser credentials and no referrer |
 | `lib/pdf/loader.ts` | `XMLHttpRequest` | reads bytes for an authorized local PDF after checking file access, size and PDF signature | the exact authorized local file URL; remote-host file URLs are rejected |
-| `lib/lazy.ts` | `import(` | loads one of the vendored chunks that ship inside the extension (Readability, DOMPurify, the diagnostics chunk, pdf.js) | `chrome-extension://<this extension>/vendor/…` |
+| `lib/lazy.ts` | `import(` | loads one of the vendored chunks that ship inside the extension (Readability, DOMPurify, the diagnostics chunk, the surfaces chunk, pdf.js) | `chrome-extension://<this extension>/vendor/…` |
 
 There is no analytics, error-reporting or telemetry endpoint. The component update
 notice compares versions locally; it does not poll GitHub.
@@ -72,6 +72,7 @@ reader hands it; the document's bytes are copied into it and nowhere else.
 | `lib/pdf/structured.ts` | `https://github.com/zotero/document-worker` | the attribution of Zotero's document-worker, whose reading of a PDF this translates, in a comment |
 | `lib/pdf/structured.ts` | `https://github.com/zotero/structured-document-text` | the attribution of the glyph-map decoding adapted from Zotero's library, in a comment |
 | `entrypoints/shadow.content.ts` | `https://github.com/FluentRead/FluentRead` | the attribution of adapted FluentRead code in a comment |
+| `lib/surfaces/drive.ts` | `https://github.com/ken107/read-aloud` | the attribution of Read Aloud's Google Drive adapters, which the Drive preview surface follows, in a comment |
 | `entrypoints/onboarding/index.html` | `https://github.com/CoderBak/anagram/blob/dev/docs/user-guide.en.md` | the user-guide link on the setup page; opened only when clicked |
 | `entrypoints/onboarding/main.ts` | `https://github.com/CoderBak/anagram/blob/dev/docs/user-guide.zh-CN.md` | the same link for a Chinese browser |
 | `entrypoints/options/index.html` | `https://github.com/CoderBak/anagram/blob/dev/PRIVACY.md` | the privacy-policy link on the settings page; opened only when clicked |

@@ -100,6 +100,19 @@ await build({
 });
 console.log(`vendor/diagnostics.min.mjs  ${(statSync(join(OUT, "diagnostics.min.mjs")).size / 1024).toFixed(1)} kB`);
 
+// The surfaces chunk (lib/surfaces/chunk.ts): the reading of the sites that show a document
+// the walk cannot read, built the same way and for the same reason.
+await build({
+  entryPoints: [join(ROOT, "lib", "surfaces", "chunk.ts")],
+  bundle: true,
+  format: "esm",
+  minify: true,
+  target: ["chrome110", "firefox128"],
+  outfile: join(OUT, "surfaces.min.mjs"),
+  logLevel: "error",
+});
+console.log(`vendor/surfaces.min.mjs  ${(statSync(join(OUT, "surfaces.min.mjs")).size / 1024).toFixed(1)} kB`);
+
 for (const [file, from] of Object.entries(copies)) {
   copyFileSync(join(ROOT, "node_modules", from), join(OUT, file));
   console.log(`vendor/${file}  ${(statSync(join(OUT, file)).size / 1024).toFixed(1)} kB`);

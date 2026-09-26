@@ -75,9 +75,11 @@ export interface BadgeLayerOptions {
    * a place with no meaning, and a chip belongs in the white space at the end of the
    * paragraph's last line, in the page's own coordinates. Everything else about the chip
    * — its look, its card, its theme, its flash — is unchanged, and the default path (a
-   * chip in the flow after the last run) is untouched.
+   * chip in the flow after the last run) is untouched. Null says the unit is not the
+   * surface's own (a page that shows one document among ordinary text, lib/surfaces/): its
+   * chip goes in the flow like any other.
    */
-  place?: (unit: Unit, host: HTMLElement) => boolean;
+  place?: (unit: Unit, host: HTMLElement) => boolean | null;
 }
 
 export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
@@ -318,13 +320,14 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
     let host = hosts.get(unit.id);
     if (!host || !host.isConnected) {
       host?.remove();
-      if (options.place) {
-        const own = buildHost(unit.id);
-        if (!options.place(unit, own)) return null;
+      const own = options.place ? buildHost(unit.id) : null;
+      const placed = own && options.place ? options.place(unit, own) : null;
+      if (placed === false) return null;
+      if (own && placed) {
         hosts.set(unit.id, own);
         host = own;
         host.classList.toggle("pg-hidden", !visible);
-        host.classList.toggle("pg-dark", darkFor(unit.container, darkCache));
+        host.classList.toggle("pg-dark", darkFor(themeAnchor(unit, host), darkCache));
         return host;
       }
       const placement = insertionPoint(unit);
@@ -346,8 +349,15 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
       }
     }
     host.classList.toggle("pg-hidden", !visible);
-    host.classList.toggle("pg-dark", darkFor(unit.container, darkCache));
+    host.classList.toggle("pg-dark", darkFor(themeAnchor(unit, host), darkCache));
     return host;
+  }
+
+  /** What a chip is themed by: the text it closes, or, for a chip a surface put somewhere of
+   *  its own, the place it was put — a Drive page's chip sits on the paper, not on the
+   *  invisible layer of text over it. */
+  function themeAnchor(unit: Unit, host: HTMLElement): Element {
+    return options.place && host.parentElement && !unit.container.contains(host) ? host.parentElement : unit.container;
   }
 
   function render(unit: Unit, verdict: UnitVerdict): void {

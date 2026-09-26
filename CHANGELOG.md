@@ -9,6 +9,15 @@ local component and the installer all carry the same version.
 
 ### Added
 
+- Google Drive's file preview is read in place. A PDF or Word file opened in Drive, embedded
+  from Drive in another page, or shown by Google's document viewer is drawn as page images
+  with an invisible line of text over each printed line; Anagram used to read those lines as
+  paragraphs of their own, dropped the short ones and left hyphenated words in two pieces.
+  It now rebuilds the document's paragraphs from the lines' positions with the PDF reader's
+  own reconstruction — lines joined, hyphens mended, headings and page numbers left out, a
+  paragraph that runs onto the next page read as one — reads each page as Drive loads it,
+  and draws the underlines and chips over the printed words. Nothing is fetched: the text is
+  the viewer's own. The approach follows Read Aloud's Drive adapters (MIT).
 - The setup page mentions that most arXiv papers also have an HTML version, which Anagram
   reads most precisely. Nothing redirects there; PDFs are read as before.
 
