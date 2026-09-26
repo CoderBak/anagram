@@ -339,15 +339,20 @@ function wordApart(a: Glyph, b: Glyph): boolean {
 /**
  * The same test on pdf.js's runs, for the gap Zotero's geometry cannot see: its fork folds
  * the space after a glyph into the glyph's own extent and sometimes drops the space from
- * the text as well (a bold run-in head, "InferenceUncertainty"). When the first glyph ends
- * one run and the second opens another, the distance between the two runs is the gap.
+ * the text as well (a bold run-in head, "InferenceUncertainty"; a linked "Section II" in
+ * the middle of a line, "SectionIIpresents"). pdf.js's own string says where a space is:
+ * between the two glyphs in one run, or, when the first glyph ends one run and the second
+ * opens another on the same line, at the end of the first or the start of the second;
+ * where neither run holds one, the distance between the two runs is the gap.
  */
 function runsApart(a: Source, b: Source): boolean {
-  if (a.page !== b.page || a.item === b.item) return false;
-  if (a.offset !== a.box.it.str.trimEnd().length - 1 || b.offset !== b.box.it.str.length - b.box.it.str.trimStart().length) return false;
+  if (a.page !== b.page) return false;
+  const sa = a.box.it.str, sb = b.box.it.str;
+  if (a.item === b.item) return b.offset > a.offset + 1 && sa.slice(a.offset + 1, b.offset).trim() === "";
+  if (a.offset !== sa.trimEnd().length - 1 || b.offset !== sb.length - sb.trimStart().length) return false;
   const h = Math.max(a.box.h, b.box.h);
   if (Math.abs(a.box.y - b.box.y) > h * 0.5) return false;
-  return b.box.x1 - a.box.x2 > h * SPACE_GAP;
+  return sa.length > a.offset + 1 || b.offset > 0 || b.box.x1 - a.box.x2 > h * SPACE_GAP;
 }
 
 const HYPHEN = /[-‐­]/u;

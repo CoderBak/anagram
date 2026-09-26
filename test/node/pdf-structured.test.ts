@@ -182,6 +182,18 @@ describe("structuredBlocks — text and runs", () => {
     expectRunsToMatch(blocks2[0], pages2);
   });
 
+  it("puts back a space pdf.js's own run has where Zotero's text has none", () => {
+    // One run on the page; Zotero dropped the spaces around a linked "II" and set the
+    // glyphs after them on without the gap, so geometry alone cannot see them.
+    const page = drawn(1, { text: "The paper is organized as follows. Section II presents the results", x: 72, y: 100 });
+    const zotero = drawn(1, { text: "The paper is organized as follows. SectionIIpresents the results", x: 72, y: 100 });
+    const n = { text: "The paper is organized as follows. SectionIIpresents the results", anchor: { textMap: JSON.stringify([zotero.run]) } };
+    const pages = [pageText(1, [page.item])];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0].text).toBe("The paper is organized as follows. Section II presents the results");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
   it("puts a space between two glyphs a word apart that Zotero ran together", () => {
     const a = drawn(1, { text: "where", x: 72, y: 100 });
     const b = drawn(1, { text: "the", x: 72 + 5 * CW + 6, y: 100 });
