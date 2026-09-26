@@ -1,0 +1,38 @@
+{
+  "repository": "https://github.com/zotero/document-worker",
+  "commit": "5f58a01c697d069afdf98ee9d58ae5f0767b3b9a",
+  "archive_sha256": "f2d6f50b912b216d1c6699bb05b4ac3ae2ec07a4350d3f9150f6c3b9b93e3a2a",
+  "submodules": {
+    "pdf.js": {
+      "repository": "https://github.com/zotero/pdf.js",
+      "commit": "f4d05caed86bd38f6ccd2171dbbd5cb832d72912",
+      "archive_sha256": "1f7e4bf98643d3c4c45f5861f37d1e0a69aad1e9bbf937fa1f2e912ed6427c26"
+    },
+    "structured-document-text": {
+      "repository": "https://github.com/zotero/structured-document-text",
+      "commit": "7963c11faac4595be3bbe86b7574704a22c67bed",
+      "archive_sha256": "ea021e5fc686a4558f31f2f2be74d9ed484294e55e112d2b079dbdb6772477d5"
+    }
+  },
+  "onnxruntime_web": {
+    "version": "1.27.0",
+    "file": "dist/ort-wasm-simd-threaded.wasm",
+    "sha256": "d1ab1b94b16a65b29d710d0b587b29e7bed336827577623913479b8afe8113e6"
+  },
+  "shared": {
+    "cmaps": "5237c4107eaddda3371908f52e4dfa6d1620b6c12aaaa40e8de91c4232a4b68f",
+    "standard_fonts": "dd8dcf6af737401b48fbe4907ad33a167695ee9715a3e5c1be8c77bab781cd4a",
+    "wasm": "9cd32d6c496011c99508fa07e9a68f4754a27506b9bdf4d0b34d4eb9c77b8cff"
+  },
+  "files": {
+    "LICENSE.document-worker": "0bc6acc735089ddddd0f5ec30d2c472c9387d1c004871ee1bddf4d782ccfbeb4",
+    "LICENSE.onnxruntime-web": "aa904cc230fc11e1514816224d896a9ee6907b620e91fd1abd6b21fed0faec02",
+    "LICENSE.pdf.js": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+    "block-seg/classifier/model.onnx": "572077354eea61583982a31a3f443c5abd8d92c04e2dbfd105299c1ca1d131f7",
+    "block-seg/classifier/stats.bin": "abc86d6fa7cfb9aa18bafc2fd8cbcbf656350a7190b08fab2239efba5c673e95",
+    "block-seg/clusterer/model.onnx": "5cb6f8645a0f4c8f4396d5e8b1da70d9c8d8fff8c98f324889b8c6e271575350",
+    "block-seg/clusterer/repair.onnx": "7fd29831c26f09cefa5a4f92c797e559bda5f513f6691d339d6c323bd563a789",
+    "block-seg/clusterer/runtime.bin": "a0d71f9be6c63404393457ec31875ae799b5f4ba48dc17736112446a4f82ca26",
+    "worker.js": "ab53ec25918b8c502a03091aaca0a268104eafa5b30384a8f7656e198ef25d90"
+  }
+}

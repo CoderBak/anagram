@@ -9,6 +9,10 @@ node_modules/
 public/vendor/diagnostics.min.mjs
 # Generated from the hash-verified upstream viewer under vendor/pdfjs/.
 public/vendor/pdfjs/
+# Copied from the hash-verified build under vendor/document-worker/ and from onnxruntime-web.
+public/vendor/document-worker/
+# Pinned Zotero sources and their build, kept by scripts/documentWorker.mjs.
+.cache/
 *.log
 /:memory:.ses
 .DS_Store
