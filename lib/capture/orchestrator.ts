@@ -60,7 +60,7 @@ const PREFETCH_PASS = 300;
 // The Navigation API (window.navigation, Chrome 102+) fires `currententrychange` for
 // every same-document navigation — pushState/replaceState included — and is reachable
 // from the content script's isolated world, so no MAIN-world history patch is needed.
-// Where it is missing (Firefox before it shipped the API; it is there in 156) a slow URL
+// Where it is missing (Firefox 140 ESR has none; 153 ESR has it) a slow URL
 // poll covers pushState instead.
 const URL_POLL_MS = 2500;
 /** A route change is answered once, not once per entry: frameworks that push and then

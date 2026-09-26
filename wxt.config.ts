@@ -185,9 +185,9 @@ export default defineConfig({
             browser_specific_settings: {
               gecko: {
                 id: "anagram@coderbak.dev",
-                // 140 is the real floor: before it a content script cannot give a shadow root a
-                // constructed stylesheet ("Accessing from Xray wrapper is not supported"), so no
-                // chip, ball or card renders at all; 140 is also where CSS.highlights arrived.
+                // 140 (an ESR) is where CSS.highlights arrived, which draws every underline.
+                // What it still lacks is made up for in lib/dom/shadow.ts (adoptSheets) and
+                // lib/pdf/upsert.ts; test/firefox.mjs runs against it.
                 strict_min_version: "140.0",
                 // AMO's data-collection disclosure: nothing is collected or transmitted.
                 data_collection_permissions: { required: ["none"] },

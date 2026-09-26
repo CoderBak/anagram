@@ -50,7 +50,8 @@ const MODELS = [
  *  like the rest. */
 const LICENCES = {
   "LICENSE.document-worker": "COPYING",
-  "LICENSE.pdf.js": "pdf.js/LICENSE",
+  // Not "….js": linters, AMO's among them, would parse the licence as a script.
+  "LICENSE.pdfjs": "pdf.js/LICENSE",
 };
 const ORT_FILES = ["LICENSE.onnxruntime-web", "ThirdPartyNotices.onnxruntime-web.txt"];
 

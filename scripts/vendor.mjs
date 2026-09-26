@@ -16,7 +16,7 @@
 import { build } from "esbuild";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { copyFileSync, cpSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import { copyFileSync, cpSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { vendorPdfViewer } from "./pdfjsViewer.mjs";
 import { vendorDocumentWorker } from "./documentWorker.mjs";
 import { NOTICES_FILE, bundledPackages, packageOfModule, unlistedPackages } from "./notices.mjs";
@@ -141,6 +141,23 @@ await buildChecked("surfaces.min.mjs", {
   logLevel: "error",
 });
 console.log(`vendor/surfaces.min.mjs  ${(statSync(join(OUT, "surfaces.min.mjs")).size / 1024).toFixed(1)} kB`);
+
+// Both workers start from a file of ours that first installs what pdf.js needs and an older
+// browser lacks (lib/pdf/upsert.ts), then loads the worker itself, unchanged.
+const START = join(OUT, "start");
+rmSync(START, { recursive: true, force: true });
+await build({
+  entryPoints: [join(ROOT, "lib", "pdf", "upsert.ts")],
+  bundle: true,
+  format: "iife",
+  minify: true,
+  target: ["chrome110", "firefox128"],
+  outfile: join(START, "upsert.js"),
+  logLevel: "error",
+});
+writeFileSync(join(START, "pdf.worker.mjs"), `import "./upsert.js";\nimport "../pdf.worker.mjs";\n`);
+writeFileSync(join(START, "document-worker.js"), `importScripts("upsert.js", "../document-worker/worker.js");\n`);
+console.log("vendor/start/  worker start files");
 
 for (const [file, from] of Object.entries(copies)) {
   copyFileSync(join(ROOT, "node_modules", from), join(OUT, file));

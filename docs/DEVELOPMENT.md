@@ -57,6 +57,7 @@ npm run test:native                # real stdio host fixture, EN and ZH setup
 npm run test:paste                 # the paste page, pass readout and report
 npm run test:pdf-viewer            # upstream reader: find, zoom, recycling, file limits
 npm run test:pdf-install           # PDF setup and local-file access flow, EN and ZH
+ANAGRAM_FIREFOX=<path to firefox> npm run test:firefox   # the Firefox build in Firefox 140+, e.g. an ESR from archive.mozilla.org, never installed
 node test/pdf-route-check.mjs      # PDF routing, handoff caps and privacy
 npm run test:network-privacy       # the offline-mode promise in PRIVACY.md
 ANAGRAM_PDF_BENCH=<corpus dir> node test/pdf-bench/bench.mjs run   # PDF reading benchmark, never in CI; corpus from test/pdf-bench/corpus.mjs

@@ -12,17 +12,17 @@
 //
 //   * MV2: a background PAGE, not a service worker, and browserAction instead of action;
 //   * moz-extension:// pages (popup / options / onboarding) render and talk to it;
-//   * the CSS Custom Highlight API is Firefox 140+; below that the DOCUMENTED behaviour
-//     is chips without underlines, so that check reports SKIP rather than failing —
-//     what actually happens below 140 is in the FINDINGS block at the end of a run;
-//   * there is no Navigation API in older Firefox, so a pushState route swap is covered
-//     by the orchestrator's 2.5 s URL poll and is given ~6 s here;
+//   * Firefox 140 ESR, the manifest's floor, has no Navigation API, so a pushState route
+//     swap is covered by the orchestrator's 2.5 s URL poll and is given ~6 s here;
 //   * the Popover API (top-layer hover card) has a CSS fallback;
 //   * the PDF reading mode is the one page where the whole pipeline runs on a
-//     moz-extension: document, and it loads pdf.js and a MODULE WORKER from that origin.
+//     moz-extension: document, and it loads pdf.js and a MODULE WORKER from that origin;
+//   * what the Chromium scenarios cover and Gecko could do its own way (10d): the MAIN-world
+//     script and closed shadow roots, a really hidden tab, scroll order, Firefox's own
+//     translation marks, consent frames, the surfaces and Defuddle chunks, the licences.
 //
-//   npm run build:firefox && npm run test:firefox
-//   npm run test:firefox -- --quick     # skip the fixture down/up cycle (~25 s)
+//   node test/firefox.mjs
+//   node test/firefox.mjs --quick     # skip the fixture down/up cycle (~25 s)
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
@@ -30,6 +30,7 @@ import { serveHtml, artifact } from "./harness.mjs";
 import { createNativeFixture } from "./fake-native.mjs";
 import {
   BADGE_SEL,
+  EXT,
   EXT_UUID,
   GECKO_ID,
   launchFirefox,
@@ -53,7 +54,9 @@ const skip = (name, why) => results.push({ name, state: "SKIP", note: why });
 
 // ── 1) fake fixture + the self-test page over http ──────────────────────────────────
 let fixture = await createNativeFixture();
-const server = await serveHtml({ "/selftest.html": readFileSync(join(__dirname, "selftest.html"), "utf8") });
+// Served live: the checks in 10d) add their pages as they go.
+const PAGES = { "/selftest.html": readFileSync(join(__dirname, "selftest.html"), "utf8") };
+const server = await serveHtml(PAGES);
 const pageUrl = server.url("/selftest.html");
 
 // ── 2) headless Firefox + a temporary install of output-test/firefox-mv2 ───────────
@@ -88,7 +91,7 @@ await sleep(1200);
 const versionText = await optionsPage.evaluate(() => document.getElementById("version")?.textContent ?? "");
 check(
   "options page renders and shows the version (background page reachable)",
-  /^v\d+\.\d+\.\d+ · Ready to analyze$/.test(versionText),
+  /^v\d+\.\d+\.\d+ · Ready$/.test(versionText),
   versionText,
 );
 
@@ -201,24 +204,12 @@ check(
   `${fixture.stats.blocks} blocks, ${fixture.stats.nonEnglishBlocks} non-English`,
 );
 
-// ── 5) underlines: CSS Custom Highlight API is Firefox 140+ ────────────────────────
-if (features.highlights) {
-  check(
-    "underlines: highlight ranges exist and cover the LONGTAIL marker",
-    snapshot.highlightCount > 0 && snapshot.hl.longtail,
-    `${snapshot.highlightCount} ranges, longtail=${snapshot.hl.longtail}`,
-  );
-} else {
-  skip(
-    "underlines: highlight ranges exist and cover the LONGTAIL marker",
-    `CSS.highlights missing in Firefox ${firefox.version} (needs 140+) — documented degradation to chips only`,
-  );
-  check(
-    "…degrades gracefully: chips still render without CSS.highlights",
-    snapshot.badgeTotal >= 11 && snapshot.highlightCount === 0,
-    `${snapshot.badgeTotal} chips, ${snapshot.highlightCount} ranges`,
-  );
-}
+// ── 5) underlines: the CSS Custom Highlight API ────────────────────────────────────
+check(
+  "underlines: highlight ranges exist and cover the LONGTAIL marker",
+  snapshot.highlightCount > 0 && snapshot.hl.longtail,
+  `${snapshot.highlightCount} ranges, longtail=${snapshot.hl.longtail}`,
+);
 
 // ── 6) the floating ball, its counter, the panel, the toggle ───────────────────────
 const fab = await page.evaluate(() => {
@@ -376,18 +367,11 @@ const underlineLive = await (async () => {
   const on = await waitFor(page, () => document.querySelector('style[data-anagram="style"]')?.disabled === false, { timeout: 8000 });
   return { hadStyleEl: !!before, paintsTheScale: /::highlight\(anagram-s00\)/.test(before?.css ?? ""), off, on };
 })();
-if (features.highlights) {
-  check(
-    "a setting written in the options page reaches an open tab live (underlines off and on)",
-    underlineLive.hadStyleEl && underlineLive.paintsTheScale && underlineLive.off && underlineLive.on,
-    JSON.stringify(underlineLive),
-  );
-} else {
-  skip(
-    "a setting written in the options page reaches an open tab live (underlines off and on)",
-    "no ::highlight() stylesheet is injected without CSS.highlights",
-  );
-}
+check(
+  "a setting written in the options page reaches an open tab live (underlines off and on)",
+  underlineLive.hadStyleEl && underlineLive.paintsTheScale && underlineLive.off && underlineLive.on,
+  JSON.stringify(underlineLive),
+);
 
 // ── 9) extension pages render: popup, options, onboarding ──────────────────────────
 const popupPage = await openExtensionPage(browser, extUrl("popup.html")).catch(() => null);
@@ -427,11 +411,11 @@ const badgeApi = await optionsPage
     const before = await browser.browserAction.getBadgeText({ tabId: own.id });
     const rejected = await browser.runtime.sendMessage({ action: "updateBadge", flagged: 7 });
     const after = await browser.browserAction.getBadgeText({ tabId: own.id });
-    const [tab] = await browser.tabs.query({ url });
+    const tab = (await browser.tabs.query({})).find((t) => t.url === url);
     const state = await browser.tabs.sendMessage(tab.id, { action: "getTabState" }, { frameId: 0 });
     const actual = await browser.browserAction.getBadgeText({ tabId: tab.id });
     return { before, after, rejected, actual, expected: state.flagged > 0 ? String(state.flagged) : "" };
-  }, pageUrl)
+  }, await page.evaluate(() => location.href)) // the pushState route swap above moved it
   .catch((e) => ({ error: String(e).slice(0, 200) }));
 check(
   "MV2 toolbar badge follows the actual content frame and rejects Settings spoofing",
@@ -479,8 +463,6 @@ const renderPdfPages = async (page) => {
   }
   return true;
 };
-/** What Resource Timing reported on the reader page — evidence for a finding below. */
-let pdfResources = [];
 {
   // File/drop rendering is independent of source grants. Authorized online loading
   // through the popup/private loader is covered by pdf-source-firefox.mjs.
@@ -501,6 +483,10 @@ let pdfResources = [];
       const pills = [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill"));
       return pills.length > 0 && !pills.some((h) => h.shadowRoot.querySelector(".pill.pending"));
     }, { timeout: 30000, arg: BADGE_SEL }));
+  // The paragraphs come from Zotero's document-worker once it has read the whole file: its
+  // pdf.js, and an ONNX model run by onnxruntime-web's WebAssembly under the MV2 policy.
+  const structured = rendered &&
+    (await waitFor(p, () => performance.getEntriesByName("anagram-structured").length > 0, { timeout: 30000 }));
   const pdf = arrived
     ? await p.evaluate((sel) => {
         const chips = [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill"));
@@ -527,14 +513,10 @@ let pdfResources = [];
           marks,
           notice: document.getElementById("notice")?.textContent ?? "",
           title: document.title,
-          // What Resource Timing reports on a privileged document — nothing of the page's
-          // own origin here, which is why the worker is watched by its constructor below.
-          resources: performance.getEntriesByType("resource").map((e) => e.name.split("/").pop()),
         };
       }, BADGE_SEL)
     : null;
   console.log("PDF READER:", JSON.stringify(pdf).slice(0, 400));
-  pdfResources = pdf?.resources ?? [];
   check(
     "PDF reader: Gecko draws the real pages and builds a text layer over each of them",
     !!pdf &&
@@ -544,6 +526,11 @@ let pdfResources = [];
       pdf.text.includes(PDF_HEADING) &&
       pdf.text.includes(PDF_HEAD),
     JSON.stringify({ pages: pdf?.pages, drawn: pdf?.drawn, spans: pdf?.spans, notice: pdf?.notice }),
+  );
+  check(
+    "PDF reader: Zotero's document-worker reads the paragraphs (ONNX model in WebAssembly under the MV2 policy)",
+    !!structured,
+    JSON.stringify(await p.evaluate(() => performance.getEntriesByType("measure").map((e) => e.name)).catch(() => null)),
   );
   check(
     "PDF reader: the ordinary pipeline scores the reconstruction — chips on the page, marks, no errors",
@@ -562,7 +549,7 @@ let pdfResources = [];
 // nothing on its own: when the worker cannot be created pdf.js falls back to a "fake
 // worker" on the main thread and parses it anyway. Firefox reports no Resource Timing
 // entry for a moz-extension: subresource and BiDi runs no preload script on a privileged
-// document (see the findings at the end), so the constructor is watched instead — on a
+// document, so the constructor is watched instead — on a
 // reader opened with NO source, which loads nothing until a file arrives.
 {
   const readerUrl = extUrl("reader.html");
@@ -592,7 +579,7 @@ let pdfResources = [];
     "PDF reader: a dropped file is read, and pdf.js parses it in a MODULE WORKER from moz-extension://",
     read &&
       Array.isArray(workers) &&
-      workers.some((w) => w.startsWith(`moz-extension://${EXT_UUID}/vendor/pdf.worker.mjs`) && w.endsWith("|module")),
+      workers.some((w) => w.startsWith(`moz-extension://${EXT_UUID}/vendor/start/pdf.worker.mjs`) && w.endsWith("|module")),
     JSON.stringify({ read, workers }),
   );
   await p.close();
@@ -621,6 +608,301 @@ let pdfResources = [];
   );
 }
 
+// ── 10d) what the Chromium scenarios cover, where Firefox could differ ─────────────
+// Each is a smaller copy of its case in test/scenarios.mjs, run on the Firefox build.
+const VOCAB = "the quick brown fox jumps over a lazy dog while rain falls gently on rooftops and children read books near warm windows during long quiet evenings a timetable moved off paper and nobody noticed until the trains ran on time".split(" ");
+/** A paragraph over the 75-word floor, its words set by `i` so that no two are alike. */
+const para = (tag, i = 0) => `${tag}-${i} ` + Array.from({ length: 84 }, (_, k) => VOCAB[(i * 7 + k * 13) % VOCAB.length]).join(" ") + ".";
+const html = (title, body, lang = "en") => `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><title>${title}</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">${body}</body></html>`;
+const sentSince = (mark, marker) => fixture.textsSince(mark).filter((t) => t.includes(marker)).length;
+const chipsIn = (p, css) => p.evaluate(({ css, sel }) => document.querySelectorAll(`${css} ${sel}`).length, { css, sel: BADGE_SEL });
+
+// The page-world script (entrypoints/shadow.content.ts) is registered in the MAIN world,
+// and a shadow root attached after the walk — open, or closed — is read.
+{
+  const registered = await optionsPage
+    .evaluate(async () => (await browser.scripting.getRegisteredContentScripts()).map((s) => `${s.id}:${s.world ?? "ISOLATED"}`))
+    .catch((e) => [String(e)]);
+  PAGES["/shadow.html"] = html("late and closed shadow roots", `<late-card id="lc"></late-card><closed-card id="cc"></closed-card><div id="cd"></div>
+<script>
+  window.__closed = {};
+  customElements.define("closed-card", class extends HTMLElement {
+    constructor() { super(); window.__closed.cc = this.attachShadow({ mode: "closed" }); window.__closed.cc.innerHTML = "<p>${para("CLOSEDCARD")}</p>"; }
+  });
+  setTimeout(() => customElements.define("late-card", class extends HTMLElement {
+    connectedCallback() { this.attachShadow({ mode: "open" }).innerHTML = "<p>${para("LATECARD", 1)}</p>"; }
+  }), 1500);
+  setTimeout(() => {
+    window.__closed.cd = document.getElementById("cd").attachShadow({ mode: "closed" });
+    window.__closed.cd.innerHTML = "<p>${para("CLOSEDDIV", 2)}</p>";
+  }, 2000);
+</script>`);
+  const p = await browser.newPage();
+  await p.goto(server.url("/shadow.html"), { waitUntil: "load" });
+  const count = () =>
+    p.evaluate((sel) => ({
+      lc: document.getElementById("lc")?.shadowRoot?.querySelectorAll(sel).length ?? -1,
+      cc: window.__closed.cc?.querySelectorAll(sel).length ?? -1,
+      cd: window.__closed.cd?.querySelectorAll(sel).length ?? -1,
+    }), BADGE_SEL);
+  await waitFor(p, (sel) => [document.getElementById("lc")?.shadowRoot, window.__closed.cc, window.__closed.cd].every((r) => (r?.querySelectorAll(sel).length ?? 0) > 0), { timeout: 15000, arg: BADGE_SEL });
+  const r = await count();
+  check(
+    "the page-world script is registered in the MAIN world, and a shadow root attached after the walk is read",
+    registered.includes("anagram-shadow:MAIN") && r.lc === 1,
+    JSON.stringify({ registered, lc: r.lc }),
+  );
+  check("a closed shadow root is read (openOrClosedShadowRoot): a custom element's at load, a <div>'s attached later", r.cc === 1 && r.cd === 1, JSON.stringify(r));
+  await p.close();
+}
+
+// A tab in the background sends nothing, not even the idle prefetch, and picks up where it
+// was once it is shown. Here the tab is really hidden: another one is brought in front of it.
+{
+  PAGES["/hidden.html"] = html("hidden fixture", `<main id="top">${[0, 1].map((i) => `<p>${para("SHOWNFIRST", i)}</p>`).join("")}</main><div style="height:5000px"></div><div id="bottom"></div>`);
+  const p = await browser.newPage();
+  await p.goto(server.url("/hidden.html"), { waitUntil: "load" });
+  await waitFor(p, (sel) => document.querySelectorAll(`#top ${sel}`).length === 2, { timeout: 15000, arg: BADGE_SEL });
+  const front = await browser.newPage();
+  const hidden = await waitFor(p, () => document.visibilityState === "hidden", { timeout: 5000 });
+  const before = fixture.textMark();
+  await p.evaluate(([onScreen, below]) => {
+    const add = (where, id, text) => Object.assign(where.appendChild(document.createElement("p")), { id, textContent: text });
+    add(document.getElementById("top"), "hid-top", onScreen);
+    add(document.getElementById("bottom"), "hid-bottom", below);
+  }, [para("WHILEHIDDEN", 3), para("WHILEHIDDEN", 4)]);
+  await sleep(2500);
+  const quiet = (await chipsIn(p, "#hid-top")) + (await chipsIn(p, "#hid-bottom"));
+  const sent = sentSince(before, "WHILEHIDDEN");
+  await front.close();
+  await p.bringToFront();
+  const shown = await waitFor(p, (sel) => document.querySelectorAll(`#hid-top ${sel}`).length === 1, { timeout: 10000, arg: BADGE_SEL });
+  check(
+    "a hidden tab dispatches nothing, not even the idle prefetch, and resumes when shown",
+    hidden && quiet === 0 && sent === 0 && shown,
+    JSON.stringify({ hidden, chipsWhileHidden: quiet, sentWhileHidden: sent, shown }),
+  );
+  await p.close();
+}
+
+// A reader flicks through ninety paragraphs while the engine is slow: what is on screen when
+// the scroll stops is sent before anything scrolled far past.
+{
+  PAGES["/scroll.html"] = html("scroll fixture", Array.from({ length: 90 }, (_, i) => `<p id="sp${i}">${para("SCROLLPAST", i)}</p>`).join("\n"));
+  const p = await browser.newPage();
+  await p.evaluateOnNewDocument(() => {
+    window.__chipAt = {};
+    new MutationObserver(() => {
+      for (const host of document.querySelectorAll('[data-anagram="host"]:not(#anagram-fab)')) {
+        const el = host.closest("p[id]");
+        if (el && !(el.id in window.__chipAt)) window.__chipAt[el.id] = performance.now();
+      }
+    }).observe(document, { childList: true, subtree: true });
+  });
+  fixture.setState({ latency: [700, 700] });
+  await p.goto(server.url("/scroll.html"), { waitUntil: "load" });
+  await waitFor(p, () => Object.keys(window.__chipAt ?? {}).length > 0, { timeout: 12000 });
+  const end = await p.evaluate(async () => {
+    const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const step = Math.round(innerHeight * 0.9);
+    const bottom = document.documentElement.scrollHeight - innerHeight;
+    for (let y = step; y < bottom; y += step) {
+      scrollTo(0, y);
+      await frames();
+    }
+    scrollTo(0, bottom);
+    await frames();
+    const rows = [...document.querySelectorAll("p[id]")].map((el) => ({ id: el.id, box: el.getBoundingClientRect() }));
+    return {
+      t0: performance.now(),
+      onScreen: rows.filter((r) => r.box.bottom > 0 && r.box.top < innerHeight).map((r) => r.id),
+      far: rows.filter((r) => r.box.bottom < -1500).map((r) => r.id),
+    };
+  });
+  const allOnScreen = await waitFor(p, (ids) => ids.every((id) => id in window.__chipAt), { timeout: 40000, arg: end.onScreen });
+  const r = await p.evaluate(({ onScreen, far, t0 }) => {
+    const at = window.__chipAt;
+    const last = Math.max(...onScreen.map((id) => at[id] ?? Infinity));
+    const after = t0 + 100;
+    return {
+      onScreen: onScreen.length,
+      far: far.length,
+      farFirst: far.filter((id) => at[id] > after && at[id] < last).length,
+      waitMs: Math.round(last - t0),
+    };
+  }, end);
+  fixture.setState({ latency: [60, 160] });
+  check(
+    "a fast scroll: what is on screen when it stops is sent before anything scrolled far past",
+    allOnScreen && r.onScreen > 0 && r.far > 20 && r.farFirst === 0,
+    JSON.stringify(r),
+  );
+  await p.close();
+}
+
+// Firefox's full-page translation relabels <html lang> when it starts (the Firefox build
+// alone reads that as a translation, lib/surface.ts) and numbers the elements of a block
+// with data-moz-translations-id while it translates it. Modelled: the real one downloads
+// its models from Mozilla.
+for (const how of ["lang", "ids"]) {
+  const path = `/translated-${how}.html`;
+  PAGES[path] = html("translated fixture", `<main>${[0, 1].map((i) => `<p id="t${i}">ORIGINAL-${how} ${para("TRANSLATE", i + 5)}</p>`).join("")}</main>
+<script>
+  window.__translate = () => {
+    ${how === "lang" ? `document.documentElement.lang = "en";` : ""}
+    for (const p of document.querySelectorAll("main p")) {
+      ${how === "ids" ? `p.dataset.mozTranslationsId = "1";` : ""}
+      p.firstChild.data = p.firstChild.data.replace("ORIGINAL", "MACHINE");
+      ${how === "ids" ? `delete p.dataset.mozTranslationsId;` : ""}
+    }
+  };
+</script>`, "de");
+  const p = await browser.newPage();
+  await p.goto(server.url(path), { waitUntil: "load" });
+  const settled = await waitFor(p, (sel) => {
+    const hosts = [...document.querySelectorAll(sel)];
+    return hosts.length === 2 && hosts.every((h) => !h.shadowRoot?.querySelector(".pill.pending"));
+  }, { timeout: 15000, arg: BADGE_SEL });
+  const before = fixture.textMark();
+  await p.evaluate(() => window.__translate());
+  await sleep(3000);
+  const during = await p.evaluate((sel) => ({ chips: document.querySelectorAll(sel).length, ball: !!document.getElementById("anagram-fab") }), BADGE_SEL);
+  const href = await p.evaluate(() => location.href);
+  const state = await optionsPage
+    .evaluate(async (url) => {
+      const tab = (await browser.tabs.query({})).find((t) => t.url === url);
+      return browser.tabs.sendMessage(tab.id, { action: "getTabState" }, { frameId: 0 });
+    }, href)
+    .catch(() => null);
+  const machineSent = sentSince(before, "MACHINE-");
+  check(
+    `a page Firefox translates (${how === "lang" ? "<html lang> relabelled" : "data-moz-translations-id"}): nothing is read or left on it`,
+    settled && during.chips === 0 && !during.ball && machineSent === 0 && state?.translated === true,
+    JSON.stringify({ settled, during, machineSent, translated: state?.translated }),
+  );
+  await p.close();
+}
+
+// A consent platform's banner in a frame of its own is not read, while an ordinary frame
+// from the same address is: Sourcepoint on the publisher's domain, known by its address.
+{
+  const cross = server.base.replace("localhost", "127.0.0.1");
+  PAGES["/index.html"] = html("SP Consent Message", `<div id="notice" class="message type-modal" role="dialog" aria-label="Privacy notice"><p class="message-component">${para("SPFRAME", 6)}</p><button>Accept all</button></div>`);
+  PAGES["/plain.html"] = html("an ordinary frame", `<p>${para("PLAINFRAME", 7)}</p>`);
+  PAGES["/consent-top.html"] = html("consent frames", `<p id="topp">${para("CONSENTHOST", 8)}</p>
+<div id="sp_message_container_1001"><iframe id="sp_message_iframe_1001" title="SP Consent Message" src="${cross}/index.html?message_id=1001&amp;requestUUID=00000000-0001" width="640" height="300"></iframe></div>
+<iframe id="plain" src="${cross}/plain.html" width="640" height="300"></iframe>`);
+  const before = fixture.textMark();
+  const p = await browser.newPage();
+  await p.goto(server.url("/consent-top.html"), { waitUntil: "load" });
+  await waitFor(p, (sel) => document.querySelectorAll(`#topp ${sel}`).length > 0, { timeout: 15000, arg: BADGE_SEL });
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline && sentSince(before, "PLAINFRAME") === 0) await sleep(250);
+  await sleep(1500);
+  const r = { top: await chipsIn(p, "#topp"), plain: sentSince(before, "PLAINFRAME"), consent: sentSince(before, "SPFRAME") };
+  check(
+    "a consent platform's frame is not read, an ordinary frame from the same address and the page around it are",
+    r.top === 1 && r.plain > 0 && r.consent === 0,
+    JSON.stringify(r),
+  );
+  await p.close();
+}
+
+// A srcdoc frame (an EPUB reader's chapter), an about:blank frame and a blob: document take
+// the page's origin and are read; a sandboxed frame has none and is left alone.
+{
+  const doc = (tag, i) => `<!doctype html><html lang="en"><head><meta charset="utf-8"></head><body style="margin:12px;font:15px/1.6 system-ui"><p>${para(tag, i)}</p></body></html>`;
+  const attr = (s) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  PAGES["/frames-local.html"] = html("frames without an address", `<iframe id="srcdoc" srcdoc="${attr(doc("SRCDOCFRAME", 17))}" width="640" height="300"></iframe>
+<iframe id="blank" width="640" height="300"></iframe>
+<iframe id="blob" width="640" height="300"></iframe>
+<iframe id="sandboxed" sandbox srcdoc="${attr(doc("SANDBOXEDFRAME", 18))}" width="640" height="300"></iframe>
+<script>
+  document.getElementById("blank").contentDocument.body.innerHTML = ${JSON.stringify(`<p style="font:15px/1.6 system-ui">${para("BLANKFRAME", 19)}</p>`)};
+  document.getElementById("blob").src = URL.createObjectURL(new Blob([${JSON.stringify(doc("BLOBFRAME", 20))}], { type: "text/html" }));
+</script>`);
+  const before = fixture.textMark();
+  const p = await browser.newPage();
+  await p.goto(server.url("/frames-local.html"), { waitUntil: "load" });
+  const inFrame = (id) => p.evaluate(({ id, sel }) => document.getElementById(id)?.contentDocument?.querySelectorAll(sel).length ?? -1, { id, sel: BADGE_SEL });
+  await waitFor(p, (sel) => ["srcdoc", "blank", "blob"].every((id) => (document.getElementById(id)?.contentDocument?.querySelectorAll(sel).length ?? 0) > 0), { timeout: 15000, arg: BADGE_SEL });
+  await sleep(1500);
+  const r = { srcdoc: await inFrame("srcdoc"), blank: await inFrame("blank"), blob: await inFrame("blob"), sandboxedSent: sentSince(before, "SANDBOXEDFRAME") };
+  // Known on Firefox 140 (153 reads it): an about:blank frame the page fills while it is
+  // still being parsed, still "uninitialized", is read only once something in it changes.
+  const blankKnownMiss = firefox.major < 153 && r.blank === 0;
+  check(
+    "a srcdoc, an about:blank and a blob: frame are read by the page's origin, a sandboxed frame is left alone",
+    r.srcdoc === 1 && (r.blank === 1 || blankKnownMiss) && r.blob === 1 && r.sandboxedSent === 0,
+    JSON.stringify(r) + (blankKnownMiss ? " (Firefox 140: the about:blank frame filled during parsing is not read)" : ""),
+  );
+  await p.close();
+}
+
+// A PDF shown by pdf.js inside a web page is read by the surfaces chunk (lib/surfaces/),
+// which the content script imports by its extension URL.
+{
+  PAGES["/pdfjs-viewer.html"] = readFileSync(join(__dirname, "fixtures", "surfaces", "pdfjs-viewer.html"), "utf8");
+  const before = fixture.textMark();
+  const p = await browser.newPage();
+  await p.goto(server.url("/pdfjs-viewer.html"), { waitUntil: "load" });
+  const chipped = await waitFor(p, (sel) => document.querySelectorAll(`.page > [data-anagram] > [data-chip] > ${sel}`).length >= 4, { timeout: 25000, arg: BADGE_SEL });
+  const r = {
+    chipped,
+    inLayer: await p.evaluate((sel) => document.querySelectorAll(`.textLayer ${sel}, .textLayer [data-anagram]`).length, BADGE_SEL),
+    mended: sentSince(before, "notice what is different about each one") > 0,
+    acrossPages: sentSince(before, "by the afternoon boat. The new keeper") > 0,
+  };
+  check("a pdf.js viewer in a web page: paragraphs rebuilt across columns and pages, chips over the page", r.chipped && r.inLayer === 0 && r.mended && r.acrossPages, JSON.stringify(r));
+  await p.close();
+}
+
+// "Main content only" finds the article with Defuddle, an on-demand chunk the content
+// script imports. The comments below the post hold most of the page's text, so the
+// text-mass probe Anagram falls back on without Defuddle would take them for the article;
+// Defuddle leaves comments out. Its phrases are located on the page, so every paragraph
+// here is its own draw of words: para()'s rotations would share them.
+{
+  const OTHER = "readers argued about harbours ferries lighthouses keepers storms gulls nets tides pilots moorings beacons fog horns charts compasses anchors decks masts sails ropes knots cargo crews ports quays".split(" ");
+  const prose = (tag, i, words) => {
+    let s = i * 7919 + 1;
+    return `${tag}-${i} ` + Array.from({ length: 84 }, () => words[(s = (s * 48271) % 2147483647) % words.length]).join(" ") + ".";
+  };
+  PAGES["/scope-defuddle.html"] = html("A post and its comments", `<div id="post" class="entry-content"><h1>A post and its comments</h1>${[9, 10, 11].map((i) => `<p>${prose("POSTBODY", i, VOCAB)}</p>`).join("")}</div>
+<div id="comments" class="comments"><h2>Comments</h2>${[12, 13, 14, 15, 16].map((i) => `<div class="comment"><p>${prose("COMMENTBODY", i, OTHER)}</p></div>`).join("")}</div>`);
+  await optionsPage.evaluate(() => browser.storage.local.set({ analysisScope: "main" }));
+  const before = fixture.textMark();
+  const p = await browser.newPage();
+  await p.goto(server.url("/scope-defuddle.html"), { waitUntil: "load" });
+  await waitFor(p, (sel) => document.querySelectorAll(sel).length > 0, { timeout: 15000, arg: BADGE_SEL });
+  await sweep(p, 3);
+  await sleep(2000);
+  const r = { post: await chipsIn(p, "#post"), comments: await chipsIn(p, "#comments"), commentsSent: sentSince(before, "COMMENTBODY") };
+  await optionsPage.evaluate(() => browser.storage.local.set({ analysisScope: "page" }));
+  check("main-content scope: Defuddle loads on demand and takes the post, not the comments", r.post === 3 && r.comments === 0 && r.commentsSent === 0, JSON.stringify(r));
+  await p.close();
+}
+
+// Every licence the build owes is in it.
+{
+  const text = (path) => { try { return readFileSync(join(EXT, path), "utf8"); } catch { return ""; } };
+  const missing = [
+    ["LICENSE", "GNU AFFERO GENERAL PUBLIC LICENSE"],
+    ["THIRD_PARTY_NOTICES.md", "# Third-party notices"],
+    ["vendor/document-worker/ThirdPartyNotices.onnxruntime-web.txt", "THIRD PARTY SOFTWARE NOTICES"],
+    ["vendor/pdfjs/LICENSE", "Apache License"],
+    ["vendor/document-worker/LICENSE.document-worker", "GNU AFFERO GENERAL PUBLIC LICENSE"],
+    ["vendor/document-worker/LICENSE.pdfjs", "Apache License"],
+    ["vendor/document-worker/LICENSE.onnxruntime-web", "MIT License"],
+    ["vendor/wasm/LICENSE_OPENJPEG", "BSD License"],
+    ["vendor/wasm/LICENSE_JBIG2", "PDFium Authors"],
+    ["vendor/standard_fonts/LICENSE_FOXIT", "PDFium Authors"],
+    ["vendor/standard_fonts/LICENSE_LIBERATION", "SIL Open Font License"],
+    ["vendor/defuddle.min.mjs", "MIT License, Copyright (c) 2025 Steph Ango"],
+  ].filter(([path, needle]) => !text(path).includes(needle)).map(([path]) => path);
+  check("the Firefox build carries its own and every bundled component's licence", missing.length === 0, missing.join(", "));
+}
+
 // ── 11) screenshot ─────────────────────────────────────────────────────────────────
 const shot = artifact("firefox-screenshot.png");
 await page.evaluate(() => window.scrollTo(0, 0));
@@ -630,19 +912,19 @@ await page
   .then(() => console.log("screenshot:", shot))
   .catch((e) => console.log("screenshot failed:", String(e).slice(0, 120)));
 
-// ── 11b) diagnostic (no assertion): does the idle prefetch lane run at all? ────────
+// ── 11b) the idle prefetch lane ────────────────────────────────────────────────────
 // Scoring is viewport-first and everything else is drained by an idle-time background
-// lane, so a page that is never scrolled should still end up fully scored. Chromium
-// does; if Firefox stops at the first viewport, the lane never ran.
-const prefetched = await (async () => {
+// lane, so a page that is never scrolled still ends up fully scored. It once stopped at the
+// first viewport here: Gecko refuses a requestIdleCallback called off `window`.
+{
   const p = await browser.newPage();
   await setViewportSafe(p);
   await p.goto(pageUrl, { waitUntil: "load" });
   await sleep(7000); // no scrolling at all
   const n = await p.evaluate((sel) => document.querySelectorAll(sel).length, BADGE_SEL);
   await p.close();
-  return n;
-})();
+  check("a page that is never scrolled is scored whole by the idle lane", n === snapshot.badgeTotal, `${n} of ${snapshot.badgeTotal}`);
+}
 
 // ── 12) fixture down → "Unavailable" + "!" counter; fixture back → re-queued ─────────
 if (QUICK) {
@@ -660,7 +942,8 @@ if (QUICK) {
         `${pid.toUpperCase()} paragraph is appended while the scoring fixture is stopped, so ` +
         "the extension must not invent a verdict for it: the batch that hits the dead socket renders as " +
         "Unavailable and later paragraphs wait without any chip, until a health probe succeeds again and " +
-        "every waiting or unavailable unit is queued once more without a reload or a manual rescan.";
+        "every waiting or unavailable unit is queued once more without a reload or a manual rescan. " +
+        "Till then, a reader has to be able to tell a unit that waits from one that was read, and a fault from a verdict.";
       document.body.prepend(el);
       window.scrollTo(0, 0);
     }, id);
@@ -723,66 +1006,6 @@ const pass = results.filter((r) => r.state === "PASS").length;
 const fail = results.filter((r) => r.state === "FAIL").length;
 const skipped = results.filter((r) => r.state === "SKIP").length;
 console.log(`\n${pass} passed · ${fail} failed · ${skipped} skipped`);
-
-// ── Firefox-vs-Chromium findings ───────────────────────────────────────────────────
-// Differences this suite has established. Product code is NOT worked around here: a
-// difference that breaks a behaviour is a FAIL above, and what it is stands below.
-console.log("\n=== FIREFOX vs CHROMIUM ===");
-const xrayBug = consoleErrors.some((e) => e.includes("Accessing from Xray wrapper"));
-if (xrayBug || (snapshot.badgeTotal === 0 && !features.highlights)) {
-  console.log(
-    "FINDING · nothing renders at all on this Firefox. Assigning a constructed stylesheet to a\n" +
-      "  shadow root from a CONTENT SCRIPT — lib/render/badge.ts:200, lib/render/fab.ts:600,\n" +
-      "  lib/render/selectionCard.ts:151, lib/docsOverlay.ts:233, all `shadow.adoptedStyleSheets = [sheet()]` —\n" +
-      "  throws in Gecko before 140:\n" +
-      "    Error: Accessing from Xray wrapper is not supported.\n" +
-      "  Cross-compartment adoptedStyleSheets only became usable from a content script in Firefox 140,\n" +
-      "  the same release that brought CSS.highlights. Every chip and the floating ball die on the\n" +
-      "  first render, so the extension does nothing — it does NOT degrade to chips without\n" +
-      "  underlines. The manifest's strict_min_version is 128.0 (wxt.config.ts:21) and README's\n" +
-      "  'Install (unpacked)' says older versions degrade gracefully; the real floor is 140.\n" +
-      "  Reproduce: `ANAGRAM_FIREFOX=<firefox 139> npm run test:firefox`.",
-  );
-}
-const ricBug = consoleErrors.some((e) => e.includes("requestIdleCallback"));
-if (ricBug) {
-  console.log(
-    "FINDING · lib/capture/orchestrator.ts:486 reads `const ric = window.requestIdleCallback`\n" +
-      "  and calls it unbound. Firefox's WebIDL binding rejects the undefined receiver:\n" +
-      '    TypeError: \'requestIdleCallback\' called on an object that does not implement interface Window.\n' +
-      "  The throw escapes schedulePrefetch() -> ingestUnits() -> start(), so the tail of the\n" +
-      "  content script's boot (watchUrl() and the late-Defuddle re-derive) never runs, and\n" +
-      "  because `prefetchScheduled` was already set to true the idle prefetch lane is dead for\n" +
-      "  the life of the frame — it throws exactly once and is then skipped by its own guard.\n" +
-      `  Measured here: ${prefetched} of ${snapshot.badgeTotal} units are scored on a page that is\n` +
-      "  never scrolled (Chromium scores all of them from the idle lane). Chromium accepts the\n" +
-      "  unbound call, which is why no existing suite sees this.",
-  );
-} else {
-  console.log(`idle prefetch: ${prefetched} of ${snapshot.badgeTotal} units scored without scrolling.`);
-}
-console.log(
-  `NOTE · window.navigation is ${features.navigation ? "PRESENT" : "absent"} in Firefox ${firefox.version}. ` +
-    "lib/capture/orchestrator.ts:59-62 still says the Navigation API is a Chrome-only path and that\n" +
-    "  Firefox falls back to the 2.5 s URL poll; on this build the Navigation API branch is taken.",
-);
-console.log(
-  "NOTE · a moz-extension: document reports NO Resource Timing entry for its own subresources in\n" +
-    "  Firefox: on the PDF reader page, `performance.getEntriesByType(\"resource\")` lists nothing at all —\n" +
-    "  not the on-demand pdf.js chunk and not its worker\n" +
-    `  (this run: ${JSON.stringify(pdfResources)}). Chromium lists both. BiDi also runs no preload\n` +
-    "  script on a privileged document (`evaluateOnNewDocument` installs and never fires) and\n" +
-    "  surfaces no dedicated workers (`page.workers()` is empty), so the suite watches the Worker\n" +
-    "  constructor from inside the page instead.",
-);
-console.log(
-  "NOTE · test infrastructure: Firefox's WebDriver BiDi reports neither a URL nor a load event for a\n" +
-    "  moz-extension: document (page.url() stays \"about:blank\", page.goto always times out), and it\n" +
-    "  refuses script evaluation there unless the browser was started with -remote-allow-system-access.\n" +
-    "  Content-script console.log output is not relayed to the page's log either — only uncaught\n" +
-    "  content-script exceptions surface, as page errors. See test/firefox-harness.mjs.",
-);
-
 console.log("\n" + (fail === 0 ? "✅ ALL CHECKS PASSED" : "❌ SOME CHECKS FAILED"));
 
 await browser.close();

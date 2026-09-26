@@ -841,7 +841,7 @@ All rights not expressly granted are reserved.
 - Project: https://github.com/zotero/pdf.js
 - Licence: Apache-2.0 (full text under Licence texts below)
 - Copyright: Copyright Mozilla Foundation and the PDF.js contributors, with changes by the Corporation for Digital Scholarship
-- In Anagram: Bundled into vendor/document-worker/worker.js, with its licence as vendor/document-worker/LICENSE.pdf.js; it reads the same CMaps, fonts and decoders listed above.
+- In Anagram: Bundled into vendor/document-worker/worker.js, with its licence as vendor/document-worker/LICENSE.pdfjs; it reads the same CMaps, fonts and decoders listed above.
 
 ### Block-segmentation models (document-worker 5f58a01)
 

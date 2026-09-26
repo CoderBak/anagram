@@ -181,7 +181,9 @@ export async function launchFirefox({ nativeFixture, extraPrefs = {}, args = [],
     protocol: "webDriverBiDi",
     executablePath: firefox.executablePath,
     userDataDir: join(home, "profile"),
-    env: { ...process.env, HOME: home, XDG_CONFIG_HOME: join(home, ".config") },
+    // No crash reporter: on macOS it keeps its files in the real ~/Library/Application
+    // Support/Firefox whatever HOME says.
+    env: { ...process.env, HOME: home, XDG_CONFIG_HOME: join(home, ".config"), MOZ_CRASHREPORTER_DISABLE: "1" },
     headless: true, // never negotiable — see the note at the top
     // puppeteer adds --foreground on macOS; it makes Firefox a foreground application.
     ignoreDefaultArgs: ["--foreground"],
@@ -332,10 +334,21 @@ export async function sweep(page, steps = 8, stepDelay = 320) {
     .catch(() => {});
 }
 
-/** puppeteer's waitForFunction, reduced to a boolean (no throw on timeout). */
+/**
+ * Poll `fn` in the page until it returns something truthy; false on timeout. Not puppeteer's
+ * waitForFunction: it builds its poller with Function(), which the extension's policy
+ * refuses on a moz-extension: document in Firefox 140 ("call to Function() blocked by CSP").
+ */
 export async function waitFor(page, fn, { timeout = 8000, arg } = {}) {
-  return page
-    .waitForFunction(fn, { timeout, polling: 200 }, arg)
-    .then(() => true)
-    .catch(() => false);
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    if (await page.evaluate(fn, arg).catch(() => false)) return true;
+    if (Date.now() >= deadline) return false;
+    await sleep(200);
+  }
+}
+
+/** waitFor, throwing on timeout — for the scripts that stop at the first failure. */
+export async function until(page, fn, { timeout = 30000, arg } = {}) {
+  if (!(await waitFor(page, fn, { timeout, arg }))) throw new Error(`timed out waiting for ${String(fn).slice(0, 160)}`);
 }

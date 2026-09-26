@@ -187,7 +187,7 @@ const GROUPS = [
         adapted: ["lib/pdf/structured.ts"] },
       { name: "Zotero's PDF.js fork", version: `commit ${short(workerPin().submodules["pdf.js"].commit)}`, url: workerPin().submodules["pdf.js"].repository,
         licence: "Apache-2.0", copyright: "Copyright Mozilla Foundation and the PDF.js contributors, with changes by the Corporation for Digital Scholarship",
-        where: "Bundled into vendor/document-worker/worker.js, with its licence as vendor/document-worker/LICENSE.pdf.js; it reads the same CMaps, fonts and decoders listed above." },
+        where: "Bundled into vendor/document-worker/worker.js, with its licence as vendor/document-worker/LICENSE.pdfjs; it reads the same CMaps, fonts and decoders listed above." },
       { name: "Block-segmentation models", version: `document-worker ${short(workerPin().commit)}`, url: workerPin().repository,
         licence: "AGPL-3.0", copyright: "Copyright (c) Corporation for Digital Scholarship",
         where: "vendor/document-worker/block-seg/ (ONNX models and their statistics). They carry no licence of their own; they are distributed as part of document-worker." },

@@ -13,7 +13,7 @@
     "zip": "node scripts/vendor.mjs && wxt zip",
     "typecheck": "wxt prepare && tsc --noEmit",
     "test:e2e": "node test/e2e.mjs",
-    "test:firefox": "node test/firefox.mjs",
+    "test:firefox": "npm run build:firefox && node test/pdf-viewer-firefox.mjs && node test/pdf-source-firefox.mjs && node test/firefox.mjs",
     "postinstall": "wxt prepare && node scripts/vendor.mjs",
     "test:unit": "node test/unit.mjs",
     "test:scenarios": "node test/scenarios.mjs",
