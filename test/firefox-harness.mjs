@@ -344,3 +344,8 @@ export async function waitFor(page, fn, { timeout = 8000, arg } = {}) {
     await sleep(200);
   }
 }
+
+/** waitFor, throwing on timeout — for the scripts that stop at the first failure. */
+export async function until(page, fn, { timeout = 30000, arg } = {}) {
+  if (!(await waitFor(page, fn, { timeout, arg }))) throw new Error(`timed out waiting for ${String(fn).slice(0, 160)}`);
+}
