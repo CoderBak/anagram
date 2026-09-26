@@ -133,20 +133,18 @@ export function registerHighlightStyles(): void {
 }
 
 /**
- * Make highlights paint inside a shadow root we render into (the Docs overlay).
- * ::highlight() rules do not cross tree scopes, so each such root adopts a shared
- * sheet carrying the same rules. Idempotent per root.
+ * The sheet that makes highlights paint inside a shadow root we render into (the Docs
+ * overlay), or none where there are no highlights. ::highlight() rules do not cross tree
+ * scopes, so each such root adopts this shared sheet carrying the same rules.
  */
-export function adoptHighlightStyles(root: ShadowRoot): void {
-  if (!highlightsSupported()) return;
+export function highlightSheets(): CSSStyleSheet[] {
+  if (!highlightsSupported()) return [];
   if (!_shadowSheet) {
     _shadowSheet = new CSSStyleSheet();
     _shadowSheet.replaceSync(buildCss(isDarkPage()));
     _shadowSheet.disabled = !_visible;
   }
-  if (!root.adoptedStyleSheets.includes(_shadowSheet)) {
-    root.adoptedStyleSheets = [...root.adoptedStyleSheets, _shadowSheet];
-  }
+  return [_shadowSheet];
 }
 
 /** Instantly show/hide ALL highlights by toggling the stylesheets (keeps ranges). */

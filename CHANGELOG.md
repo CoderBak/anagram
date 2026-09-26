@@ -161,6 +161,9 @@ local component and the installer all carry the same version.
   that ends in an ellipsis mark a preview; it is read, whole, once the reader opens it.
   Posts whose whole text is in the page behind a clamp, as on LinkedIn and YouTube, are read
   as before.
+- In Firefox 140 ESR, the oldest Firefox Anagram supports, pages were read but nothing was
+  shown on them: no chip, no ball and no selection card, because that version refuses the
+  stylesheet an extension gives them the usual way. They are drawn there now.
 
 ## [0.7.0] — 2026-09-26
 

@@ -76,3 +76,23 @@ export function shadowRootOf(el: Element): ShadowRoot | null {
     return null;
   }
 }
+
+type CloneInto = <T>(value: T, scope: object, options: { wrapReflectors: boolean }) => T;
+
+/**
+ * Give a shadow root these constructed stylesheets, in place of the ones it had. A content
+ * script in Firefox 140 cannot do that the ordinary way: its view of the root refuses
+ * `adoptedStyleSheets` ("Accessing from Xray wrapper is not supported"; Firefox 153 takes
+ * it). There the list is made in the page's compartment and set on the page's view of the
+ * root. The sheets are the same objects, so replaceSync() and `disabled` still reach them.
+ */
+export function adoptSheets(root: ShadowRoot, sheets: CSSStyleSheet[]): void {
+  try {
+    root.adoptedStyleSheets = sheets;
+  } catch (e) {
+    const page = (root as ShadowRoot & { wrappedJSObject?: ShadowRoot }).wrappedJSObject;
+    const cloneInto = (globalThis as { cloneInto?: CloneInto }).cloneInto;
+    if (!page || typeof cloneInto !== "function") throw e;
+    page.adoptedStyleSheets = cloneInto(sheets, window, { wrapReflectors: true });
+  }
+}

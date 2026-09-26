@@ -24,6 +24,7 @@ import { messageLocale, t, tn } from "../i18n";
 import { bandLabel, type Band } from "./band";
 import { formatScore, spokenScore } from "./score";
 import { isDarkPage } from "./theme";
+import { adoptSheets } from "../dom/shadow";
 import { scaleColorCss } from "./scale";
 
 export interface PanelEntry {
@@ -757,7 +758,7 @@ export function createFab(opts: {
     // Same signal the chips and the selection card use — one theme probe, not two.
     host.classList.toggle("pg-dark", isDarkPage());
     const shadow = host.attachShadow({ mode: "open" });
-    shadow.adoptedStyleSheets = [sheet()];
+    adoptSheets(shadow, [sheet()]);
 
     const stack = document.createElement("div");
     stack.className = "stack side-right";

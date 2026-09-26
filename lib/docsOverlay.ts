@@ -27,7 +27,8 @@ import type { DOMPurify as Purifier } from "dompurify";
 import { loadPurify } from "./lazy";
 import { messageLocale, t } from "./i18n";
 import { MARK_ATTR } from "./types";
-import { adoptHighlightStyles } from "./render/highlight";
+import { highlightSheets } from "./render/highlight";
+import { adoptSheets } from "./dom/shadow";
 
 export const DOCS_OVERLAY_ID = "anagram-docs-overlay";
 
@@ -308,8 +309,8 @@ export function createDocsOverlay(opts: DocsOverlayOptions): DocsOverlay {
     const shadow = host.attachShadow({ mode: "open" });
     docStyle = document.createElement("style");
     docStyle.textContent = doc.css;
-    shadow.adoptedStyleSheets = [overlaySheet()];
-    adoptHighlightStyles(shadow); // underline rules must exist in this tree scope
+    // The underline rules must exist in this tree scope too.
+    adoptSheets(shadow, [overlaySheet(), ...highlightSheets()]);
 
     const ovl = document.createElement("div");
     ovl.className = "ovl";

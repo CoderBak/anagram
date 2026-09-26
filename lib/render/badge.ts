@@ -42,6 +42,7 @@ import { distributionHtml, swatchHtml } from "./dist";
 import { verdictConfidence } from "./confidence";
 import { BADGE_CSS } from "./badge.css";
 import { isDarkContext } from "./theme";
+import { adoptSheets } from "../dom/shadow";
 
 export interface BadgeLayer {
   render(unit: Unit, verdict: UnitVerdict): void;
@@ -442,7 +443,7 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
     });
     _hostUnit.set(host, id);
     const shadow = host.attachShadow({ mode: "open" });
-    shadow.adoptedStyleSheets = [badgeSheet()];
+    adoptSheets(shadow, [badgeSheet()]);
 
     const pill = document.createElement("span");
     pill.className = "pill";
