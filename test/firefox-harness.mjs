@@ -181,7 +181,9 @@ export async function launchFirefox({ nativeFixture, extraPrefs = {}, args = [],
     protocol: "webDriverBiDi",
     executablePath: firefox.executablePath,
     userDataDir: join(home, "profile"),
-    env: { ...process.env, HOME: home, XDG_CONFIG_HOME: join(home, ".config") },
+    // No crash reporter: on macOS it keeps its files in the real ~/Library/Application
+    // Support/Firefox whatever HOME says.
+    env: { ...process.env, HOME: home, XDG_CONFIG_HOME: join(home, ".config"), MOZ_CRASHREPORTER_DISABLE: "1" },
     headless: true, // never negotiable — see the note at the top
     // puppeteer adds --foreground on macOS; it makes Firefox a foreground application.
     ignoreDefaultArgs: ["--foreground"],
