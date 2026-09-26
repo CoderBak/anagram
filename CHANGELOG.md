@@ -14,6 +14,10 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- Cookie banners are no longer analyzed as page text when their consent platform names
+  them after itself: Cookiebot, Didomi, Quantcast, Usercentrics, iubenda, Complianz,
+  Osano, consentmanager, the cookieconsent library and some twenty more. Their containers
+  are taken from DuckDuckGo's autoconsent rules (MPL-2.0).
 - The PDF reader no longer reads a two-column page line by line across both columns when
   one column is plain prose and the other is full of formulas (arXiv 2004.04906, page 2).
   A column's share of the page is now measured in characters, not in the text runs a PDF

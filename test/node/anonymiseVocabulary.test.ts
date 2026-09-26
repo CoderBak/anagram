@@ -12,6 +12,10 @@ describe("the vocabulary", () => {
     for (const atom of ["site", "nav", "byline", "paywall", "newsletter", "breadcrumb", "respond"]) {
       expect(isKnownAtom(atom), atom).toBe(true);
     }
+    // …and the names consent platforms give their banners (lib/dom/consentBanners.ts).
+    for (const atom of ["didomi", "usercentrics", "iubenda", "cybotcookiebotdialog"]) {
+      expect(isKnownAtom(atom), atom).toBe(true);
+    }
     // The framework roots the orchestrator's hydration gate looks for.
     for (const atom of ["next", "gatsby", "nuxt", "docusaurus", "reactroot", "sveltekit"]) {
       expect(isKnownAtom(atom), atom).toBe(true);

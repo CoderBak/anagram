@@ -52,6 +52,8 @@ notice compares versions locally; it does not poll GitHub.
 | `lib/ui/basecoat-vega.cdn.min.css` | `http://www.w3.org/2000/svg` | the SVG namespace inside data-URI icons; a name, not an address |
 | `lib/ui/basecoat-vega.cdn.min.css` | `https://tailwindcss.com` | the licence banner of the vendored Basecoat stylesheet |
 | `lib/diagnostics/anonymise.ts` | `https://schema.org/Article` | an example in a comment about `itemtype` vocabularies |
+| `lib/dom/consentBanners.ts` | `https://mozilla.org/MPL/2.0/` | the MPL-2.0 notice of the consent-banner selector list, in a comment |
+| `lib/dom/consentBanners.ts` | `https://github.com/duckduckgo/autoconsent` | where that selector list comes from, in a comment |
 | `entrypoints/onboarding/index.html` | `https://github.com/CoderBak/anagram/blob/dev/docs/user-guide.en.md` | the user-guide link on the setup page; opened only when clicked |
 | `entrypoints/onboarding/main.ts` | `https://github.com/CoderBak/anagram/blob/dev/docs/user-guide.zh-CN.md` | the same link for a Chinese browser |
 | `entrypoints/options/index.html` | `https://github.com/CoderBak/anagram/blob/dev/PRIVACY.md` | the privacy-policy link on the settings page; opened only when clicked |

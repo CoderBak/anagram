@@ -16,7 +16,7 @@
 // a rule here would drift from the rule in lib/dom/ within a release, and the report would
 // then explain a page the product no longer reads that way.
 import { collectUnits, isExcludedByAncestry, isProsePre } from "../dom/walker";
-import { isBoilerplate, isNoTranslate } from "../dom/boilerplate";
+import { isBoilerplate, isConsentBanner, isNoTranslate } from "../dom/boilerplate";
 import { NO_SCORE_TAGS, isHeading, isHeadingLabel, tagOf } from "../dom/tags";
 import {
   clipsOwnText,
@@ -308,6 +308,7 @@ function ancestryReason(el: Element): string | null {
       return `aria-hidden ${nameOf(cur)} — hidden from assistive tech, so hidden from the walk`;
     }
     if (isBoilerplate(cur)) return `page chrome ${nameOf(cur)} — ${boilerplateBranch(cur)}`;
+    if (isConsentBanner(cur)) return `page chrome ${nameOf(cur)} — a consent platform's cookie banner`;
   }
   return "refused by an ancestor (branch not determined)";
 }

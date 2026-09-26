@@ -38,7 +38,7 @@
 // end-to-end (the HF-abstract "underline stops mid-paragraph" bug); a unit that does not
 // fit the model's window is read in windows (lib/capture/windows.ts), never cut here.
 import { NO_SCORE_TAGS, INLINE_FALLBACK_TAGS, isHeading, isHeadingLabel, tagOf } from "./tags";
-import { isBoilerplate, isNoTranslate } from "./boilerplate";
+import { findConsentBanners, isBoilerplate, isConsentBanner, isNoTranslate } from "./boilerplate";
 import {
   createStyleCache,
   flowClassOf,
@@ -272,6 +272,7 @@ export function collectUnits(
   const rects = createRectVisibleCache();
   const startEl = rootEl ? wholePost(rootEl) : document.body;
   if (!startEl) return [];
+  const consentBanners = findConsentBanners(startEl);
   const asm = createAssembler(opts.mergeShorts ?? true, startEl, read, (nodes) => opts.claimFilter?.(nodes) !== "skip", opts.onShortText);
 
   // ---- run accumulation ------------------------------------------------------------
@@ -433,7 +434,7 @@ export function collectUnits(
     // depends on layout — inline exclusions (icons, <img>, MathJax spans, sr-only,
     // aria-hidden decorations) sit mid-sentence and are skipped silently; block
     // exclusions occupy their own space and close the run.
-    const boiler = isBoilerplate(el);
+    const boiler = consentBanners.has(el) || isBoilerplate(el);
     const excluded =
       boiler ||
       NO_SCORE_TAGS.has(tag) ||
@@ -644,7 +645,7 @@ export function isExcludedByAncestry(start: Element): boolean {
     if (isNoTranslate(el)) return true;
     if ((el as HTMLElement).isContentEditable) return true;
     if (el.getAttribute("aria-hidden") === "true") return true;
-    if (isBoilerplate(el)) return true;
+    if (isBoilerplate(el) || isConsentBanner(el)) return true;
     el = el.parentElement ?? ((el.getRootNode() as ShadowRoot).host ?? null);
   }
   return false;

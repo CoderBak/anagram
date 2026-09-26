@@ -13,6 +13,7 @@
 // trafilatura discards on a bare token ("social", "related"), we require the
 // COMPOUND form ("social-share", "related-articles") — a paper's
 // `<section class="related-work">` is content, not chrome.
+import { CONSENT_BANNER_SELECTORS } from "./consentBanners";
 
 /** Landmark roles that are page chrome by definition. NOT "tablist": Bootstrap-style
  *  accordions put role="tablist" on the container that holds every panel's CONTENT
@@ -173,6 +174,35 @@ function holdsAList(el: Element, depth = 2): boolean {
 function isReplyForm(el: Element): boolean {
   if (el.querySelector(`${FORM_CONTROL_SELECTOR},form`) === null) return false;
   return !holdsAList(el);
+}
+
+/**
+ * Cookie banners whose platform names them after itself: Cookiebot's #CybotCookiebotDialog,
+ * Didomi's #didomi-host, iubenda's #iubenda-cs-banner say nothing a class token could catch,
+ * and every one of them holds a paragraph of consent text long enough to be scored.
+ * (lib/dom/consentBanners.ts has the list.) Found ONCE per walk rather than asked of every
+ * element: the ids are looked up directly, and the rest go into one querySelectorAll. On a
+ * 140,000-element page that is 15 ms beside a 540 ms walk; the whole list as one selector
+ * took 40, most of it matching every element against thirty ids.
+ */
+const CONSENT_SELECTOR = CONSENT_BANNER_SELECTORS.join(",");
+const CONSENT_IDS = CONSENT_BANNER_SELECTORS.filter((s) => /^#[\w-]+$/.test(s)).map((s) => s.slice(1));
+const CONSENT_OTHERS = CONSENT_BANNER_SELECTORS.filter((s) => !/^#[\w-]+$/.test(s)).join(",");
+
+/** The consent banners in or around `root`, for a walk to skip. */
+export function findConsentBanners(root: Element): Set<Element> {
+  const found = new Set<Element>(root.querySelectorAll(CONSENT_OTHERS));
+  for (const id of CONSENT_IDS) {
+    const el = root.ownerDocument.getElementById(id);
+    if (el) found.add(el);
+  }
+  return found;
+}
+
+/** Is this one element a consent banner? For single questions — a re-scan root's ancestors,
+ *  the page diagnostics — where a lookup over the whole page would be the wrong price. */
+export function isConsentBanner(el: Element): boolean {
+  return el.matches(CONSENT_SELECTOR);
 }
 
 /**

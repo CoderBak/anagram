@@ -1086,6 +1086,16 @@ const results = await page.evaluate(() => {
     check("…and a page wrapped in one <form> (ASP.NET WebForms) is not a sign-up box", u.length === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
   }
   {
+    // A consent platform that names its banner after itself (lib/dom/consentBanners.ts) is
+    // found once per walk; a re-scan that starts INSIDE the banner asks the element itself.
+    sandbox.innerHTML = `<p>${words(80)}</p><div id="didomi-host"><div class="didomi-notice-text"><p>${words(80)}</p></div></div><div class="osano-cm-window"><span>${words(80)}</span></div>`;
+    const whole = PW.collectUnits(sandbox);
+    const inside = PW.collectUnits(sandbox.querySelector(".didomi-notice-text"));
+    check("consent banners named after their platform are skipped, whole walk and re-scan alike",
+      whole.length === 1 && inside.length === 0 && PW.isConsentBanner(sandbox.querySelector(".osano-cm-window")) && !PW.isConsentBanner(sandbox.querySelector("p")),
+      JSON.stringify([whole.length, inside.length]));
+  }
+  {
     // Regression: Wikipedia Vector-2022 body classes ("…-toc-pinned-…") must
     // never classify a page-level container as chrome.
     const b = document.createElement("body");
@@ -2070,6 +2080,7 @@ const EXPECTED = {
   "chat-transcript": [2, 1],
   "clipped-reviews": [8, 1],
   "comments-li": [2, 1],
+  "consent-banners": [1, 1],
   "discourse-thread": [2, 2],
   "front-page-cards": [2, 1],
   "github-discussion": [3, 2],
