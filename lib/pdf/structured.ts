@@ -15,13 +15,17 @@
 // runs — the same contract lib/pdf/reflow.ts produces, consumed unchanged by
 // lib/pdf/units.ts. Pure, DOM-free, and covered by test/node/pdf-structured.test.ts.
 //
-// Two things are decided here and not by Zotero. Which blocks are READ: body paragraphs,
-// list items and headings in the main flow; not what Zotero marks auxiliary or excluded
-// (captions, notes, tables, figures, furniture, references). And what the TEXT of a
-// paragraph is: Zotero's glyphs, with a space put back where two glyphs stand a word
-// apart but its text runs them together (a bold run-in head, an italic variable), and
-// with glyphs set in a mathematics font left out — an inline formula is not anybody's
-// prose, and the web walker already skips arXiv's inline math.
+// Three things are decided here and not by Zotero, each measured on the benchmark
+// (test/pdf-bench) before it went in. Which blocks are READ: body paragraphs, list items
+// and headings; what Zotero marks auxiliary or excluded (captions, notes, tables,
+// figures, equations, furniture) is passed over without becoming a boundary, and a
+// bibliography entry ends the writing. Which blocks are ONE paragraph: the parts Zotero
+// links, and a paragraph an equation, a column or a page cut in two whose sentence runs
+// on. And what the TEXT of a paragraph is: Zotero's glyphs, with a space put back where
+// two glyphs stand a word apart but its text runs them together (a bold run-in head, an
+// italic variable), a hyphen kept at a line break where the document spells the word
+// with it, and glyphs set in a mathematics font left out — an inline formula is not
+// anybody's prose, and the web walker already skips arXiv's inline math.
 //
 // The textMap decoding follows structured-document-text/src/pdf/decode.js of
 // https://github.com/zotero/structured-document-text (AGPL-3.0).
