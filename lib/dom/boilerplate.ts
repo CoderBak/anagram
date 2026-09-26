@@ -29,6 +29,14 @@ const CHROME_ROLES = new Set([
 ]);
 
 /**
+ * A tab is the LABEL of a panel, and a label holds no panel, heading or paragraph. Bootstrap
+ * and Drupal accordions put role="tab" on the ITEM — its header and its panel together
+ * (PSE&G's rebate pages) — and carousels on each whole slide; read as tab labels, every panel
+ * went unread with them.
+ */
+const NOT_A_TAB_LABEL = '[role="tabpanel"],p,li,blockquote,h1,h2,h3,h4,h5,h6';
+
+/**
  * The components an AMP page draws around its article, by their tag names: the consent
  * prompt, notification bars, the sidebar, the app and push banners, and the ad, embed and
  * share slots (amp.dev's component catalogue, "Ads & analytics", "Presentation" and "Dynamic
@@ -422,7 +430,7 @@ export function isBoilerplate(el: Element, page: PageTextSize = pageTextSize(el.
   // <nav> and chrome landmark roles: always skip.
   if (tag === "NAV") return true;
   const role = el.getAttribute("role");
-  if (role && CHROME_ROLES.has(role)) return true;
+  if (role && CHROME_ROLES.has(role) && !(role === "tab" && el.querySelector(NOT_A_TAB_LABEL) !== null)) return true;
 
   // <header>/<footer>/<aside>: skip at page level. Inside an <article>/<main>
   // scope they often hold real ledes and standfirsts, so those stay.

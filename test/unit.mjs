@@ -1446,6 +1446,9 @@ const results = await page.evaluate(() => {
   }
   u = collect(`<div role="tablist"><div role="tab">Section 1</div><div role="tabpanel"><p>${words(80)}</p></div></div>`);
   check("role=tablist accordion content is scored; the tab label is chrome", u.length === 1 && !u[0].text.includes("Section 1"), JSON.stringify(u.map(x => [x.parts, x.words])));
+  u = collect(`<div class="accordion" role="tablist"><div class="accordion-item" role="tab"><h2><button>Eligibility</button></h2><div role="tabpanel"><ul><li>ITEM ${words(40)}</li><li>${words(40)}</li></ul></div></div></div>`);
+  check("…and an accordion ITEM marked role=tab, header and panel in it, is no tab label: its panel is read (PSE&G)",
+    u.length === 1 && u[0].text.startsWith("ITEM"), JSON.stringify(u.map(x => [x.parts, x.words])));
   {
     const b = document.createElement("body"); b.className = "notranslate";
     const s = document.createElement("span"); s.className = "notranslate";

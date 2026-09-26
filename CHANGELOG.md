@@ -77,6 +77,10 @@ local component and the installer all carry the same version.
   Cart set the whole page, description and all, in that form, and a form with a field to
   fill in was taken for a sign-up box. A form that holds most of the page's text, on a page
   that declares no main text elsewhere, is now read as the page.
+- The panels of an accordion whose items are marked as tabs are read. Bootstrap and Drupal
+  accordions put `role="tab"` on each item, header and panel together, and carousels on
+  each slide; a tab is the label of a panel, and one that holds a panel, a heading or a
+  paragraph is no longer taken for one.
 - In Kindle for the web, a chip is now put after the paragraph's last printed word. It
   used to go after the first line of the paragraph's accessibility text, which is the whole
   column wide, so a right-hand column's chips were cut off at the edge of the page.
