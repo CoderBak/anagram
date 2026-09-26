@@ -287,7 +287,7 @@ const s = snapshot;
 // carry exactly their pass's step of the scale (lib/render/scale.ts, twenty steps); every
 // stretch between is a weighted mean, so its step lies between the passes' own.
 const stepOf = (score) => `s${String(Math.round(Math.min(Math.max(score, 0), 1) * 20)).padStart(2, "0")}`;
-const windowBlocks = [...new Set(fixture.stats.texts.filter((t) => t.length > 200 && s.windowed.text.includes(t)))]
+const windowBlocks = [...new Set(fixture.textsSince().filter((t) => t.length > 200 && s.windowed.text.includes(t)))]
   .sort((a, b) => s.windowed.text.indexOf(a) - s.windowed.text.indexOf(b));
 const windowAt = windowBlocks.map((t) => [s.windowed.text.indexOf(t), s.windowed.text.indexOf(t) + t.length]);
 const windowVerdicts = windowBlocks.map((t) => fakeScore(t));
@@ -336,8 +336,8 @@ const checks = [
   ["hidden tab badged after class-flip reveal", tabBadged],
   ["<details> content badged after open", detailsBadged],
   ["the engine reads the page as written: a merged unit's paragraphs on lines of their own, em dashes untouched",
-    fixture.stats.texts.some((t) => t.includes("happened to be written.\nMS-TWO") && t.includes("too brief to judge.\nMS-THREE")) &&
-    fixture.stats.texts.some((t) => t.includes("this paragraph — long enough to clear every floor — must be"))],
+    fixture.textsSince().some((t) => t.includes("happened to be written.\nMS-TWO") && t.includes("too brief to judge.\nMS-THREE")) &&
+    fixture.textsSince().some((t) => t.includes("this paragraph — long enough to clear every floor — must be"))],
   ["pushState swap: new route badged, stale purged", spaBadged],
   ["removing a paragraph removes its badge", afterRemove === beforeRemove - 1],
   ["rapid insert: every added paragraph badged", afterAdd === beforeAdd + RAPID],
