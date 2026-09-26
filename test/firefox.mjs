@@ -808,6 +808,37 @@ for (const how of ["lang", "ids"]) {
   await p.close();
 }
 
+// A srcdoc frame (an EPUB reader's chapter), an about:blank frame and a blob: document take
+// the page's origin and are read; a sandboxed frame has none and is left alone.
+{
+  const doc = (tag, i) => `<!doctype html><html lang="en"><head><meta charset="utf-8"></head><body style="margin:12px;font:15px/1.6 system-ui"><p>${para(tag, i)}</p></body></html>`;
+  const attr = (s) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  PAGES["/frames-local.html"] = html("frames without an address", `<iframe id="srcdoc" srcdoc="${attr(doc("SRCDOCFRAME", 17))}" width="640" height="300"></iframe>
+<iframe id="blank" width="640" height="300"></iframe>
+<iframe id="blob" width="640" height="300"></iframe>
+<iframe id="sandboxed" sandbox srcdoc="${attr(doc("SANDBOXEDFRAME", 18))}" width="640" height="300"></iframe>
+<script>
+  document.getElementById("blank").contentDocument.body.innerHTML = ${JSON.stringify(`<p style="font:15px/1.6 system-ui">${para("BLANKFRAME", 19)}</p>`)};
+  document.getElementById("blob").src = URL.createObjectURL(new Blob([${JSON.stringify(doc("BLOBFRAME", 20))}], { type: "text/html" }));
+</script>`);
+  const before = fixture.stats.texts.length;
+  const p = await browser.newPage();
+  await p.goto(server.url("/frames-local.html"), { waitUntil: "load" });
+  const inFrame = (id) => p.evaluate(({ id, sel }) => document.getElementById(id)?.contentDocument?.querySelectorAll(sel).length ?? -1, { id, sel: BADGE_SEL });
+  await waitFor(p, (sel) => ["srcdoc", "blank", "blob"].every((id) => (document.getElementById(id)?.contentDocument?.querySelectorAll(sel).length ?? 0) > 0), { timeout: 15000, arg: BADGE_SEL });
+  await sleep(1500);
+  const r = { srcdoc: await inFrame("srcdoc"), blank: await inFrame("blank"), blob: await inFrame("blob"), sandboxedSent: sentSince(before, "SANDBOXEDFRAME") };
+  // Known on Firefox 140 (153 reads it): an about:blank frame the page fills while it is
+  // still being parsed, still "uninitialized", is read only once something in it changes.
+  const blankKnownMiss = firefox.major < 153 && r.blank === 0;
+  check(
+    "a srcdoc, an about:blank and a blob: frame are read by the page's origin, a sandboxed frame is left alone",
+    r.srcdoc === 1 && (r.blank === 1 || blankKnownMiss) && r.blob === 1 && r.sandboxedSent === 0,
+    JSON.stringify(r) + (blankKnownMiss ? " (Firefox 140: the about:blank frame filled during parsing is not read)" : ""),
+  );
+  await p.close();
+}
+
 // A PDF shown by pdf.js inside a web page is read by the surfaces chunk (lib/surfaces/),
 // which the content script imports by its extension URL.
 {

@@ -25,7 +25,6 @@ import type { PingReply } from "../messaging/protocol";
 import { browsingOrigins, matchesAny } from "./patterns";
 import { createLogger } from "../log";
 import { documentAuthority } from "./authority";
-import { ORIGIN_FALLBACK_FRAMES } from "../surface";
 import { readerSitesFor } from "../surfaces/frames";
 
 const log = createLogger("access");
@@ -65,11 +64,11 @@ type Registration = Parameters<typeof browser.scripting.registerContentScripts>[
 /**
  * The scripts the granted origins ask for, the content script first. Both also run in the
  * frames of a granted page that have no address of their own — about:blank and srcdoc
- * frames, blob: documents — by the origin they take from it, where the browser can say
- * which that is (lib/surface.ts): an EPUB reader shows every chapter in a srcdoc frame.
+ * frames, blob: documents — by the origin they take from it, which the browser reports on
+ * their messages (lib/access/messages.ts): an EPUB reader shows every chapter in a srcdoc
+ * frame. Chrome 119+ and Firefox 140 ESR both do.
  */
 function registrations(matches: string[]): Registration[] {
-  const frames = ORIGIN_FALLBACK_FRAMES ? { matchOriginAsFallback: true } : {};
   return [
     // The same options the manifest declaration carried before this was dynamic.
     {
@@ -77,7 +76,7 @@ function registrations(matches: string[]): Registration[] {
       matches,
       js: [CONTENT_SCRIPT],
       allFrames: true,
-      ...frames,
+      matchOriginAsFallback: true,
       runAt: "document_end",
       persistAcrossSessions: true,
     },
@@ -87,7 +86,7 @@ function registrations(matches: string[]): Registration[] {
       matches,
       js: [SHADOW_SCRIPT],
       allFrames: true,
-      ...frames,
+      matchOriginAsFallback: true,
       runAt: "document_start",
       world: "MAIN",
       persistAcrossSessions: true,

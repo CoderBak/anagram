@@ -68,10 +68,6 @@ export interface DiagnosticsEnv {
   counts: { scored: number; flagged: number; unsupported: number; unavailable: number };
   /** The size gate a subframe has to pass to be scanned at all. */
   frameGate: { minWidth: number; minArea: number };
-  /** srcdoc and about:blank frames and blob: documents run the content script by the origin
-   *  they take from the page (lib/surface.ts). Handed in: this chunk is one build for both
-   *  browsers and cannot tell which it is in. */
-  originFallbackFrames: boolean;
   /** The frame the reader right-clicked in; 0 is the page itself. */
   clickedFrameId: number;
   /** What they right-clicked, when the page still holds it. */
@@ -140,16 +136,16 @@ function frameLines(env: DiagnosticsEnv): string[] {
     const raw = frame.getAttribute("src") ?? "";
     let where = raw === "" ? (frame.hasAttribute("srcdoc") ? "srcdoc" : "about:blank") : "(unparsable src)";
     // A srcdoc or about:blank frame, or a blob: document, has no address of its own and runs
-    // our script by the origin it takes from this page, where the browser can say whose that
-    // is (lib/surface.ts). A data: document takes none.
-    let scriptable = raw === "" && env.originFallbackFrames;
+    // our script by the origin it takes from this page (lib/access/worker.ts). A data:
+    // document takes none.
+    let scriptable = raw === "";
     try {
       if (raw !== "") {
         const url = new URL(raw, location.href);
         where = url.protocol === "http:" || url.protocol === "https:" ? url.hostname : url.protocol;
         scriptable =
           url.protocol === "http:" || url.protocol === "https:" || url.protocol === "file:" ||
-          ((url.protocol === "about:" || url.protocol === "blob:") && env.originFallbackFrames);
+          url.protocol === "about:" || url.protocol === "blob:";
       }
     } catch {
       /* an address that does not parse */

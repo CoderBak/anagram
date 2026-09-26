@@ -58,7 +58,7 @@ const ORIGINLESS = new Set(["about:", "blob:"]);
  * The http(s) address a content script's document speaks for, or null. That is its own URL,
  * or — for an about:blank or srcdoc frame, or a blob: document, which the content script
  * reaches by the origin it took from its page (matchOriginAsFallback, lib/access/worker.ts)
- * — that origin, as the browser reports it on the sender (Chrome's MessageSender.origin).
+ * — that origin, as the browser reports it on the sender (MessageSender.origin).
  * An opaque origin (a sandboxed frame, a data: URL) speaks for no site at all.
  */
 export function pageAddress(sender: AccessSender): string | null {
