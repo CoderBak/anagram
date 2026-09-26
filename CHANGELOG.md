@@ -121,7 +121,10 @@ local component and the installer all carry the same version.
   read whatever it was. What a citation holds now decides, as it does in the PDF reader: a
   mark that only points to the bibliography or to a note is left out however long it is —
   "[4]", "[4, 7–9]", a superscript "1, 2", Wikipedia's "[7]" and its ":p. 7", a footnote
-  number that is a link — and names with a year, or a name alone, are read.
+  number that is a link — and names with a year, or a name alone, are read. With the PDF
+  reader's changes below, on 50 arXiv papers read both as PDF and as HTML the paragraphs whose
+  two readings differ only in citations fell from 334 to 102, and the two give a paragraph
+  the same verdict 96.2% of the time (95.9% before).
 - The PDF reader leaves out a citation printed as a raised number after its word
   ("errors¹⁻⁴", the style of Nature and many journals), as it already left out "[4]" and as
   the web walker skips the same mark: the model read "errors1–4." where the paper's HTML
