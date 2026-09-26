@@ -168,6 +168,8 @@ function record(entry, truth, measured, requests, wallMs, meta) {
     commentsAreContent: COMMENTS_ARE_CONTENT.has(entry.type),
   });
   const { perUnit, marks, ...metrics } = m;
+  // How much of the truth the rendered page shows at all, offline: the ceiling for any reader.
+  metrics.visible = scorePage({ truthBlocks, units: [{ text: measured.bodyText }] }).covered;
   // Silent stretches that are main content: how much of the truth each would have given.
   const truthGramsText = truthBlocks.join("\n");
   const silent = (measured.silent ?? []).map((s) => {
@@ -278,7 +280,7 @@ function rescore(name) {
     const truth = JSON.parse(readFileSync(join(CORPUS, byId.get(d.id).truth), "utf8"));
     const m = scorePage({ truthBlocks: d.truthBlocks, units: d.units, snippets: truth.with ? { with: truth.with, without: truth.without } : null, commentsAreContent: COMMENTS_ARE_CONTENT.has(d.type) });
     const { perUnit, marks, ...metrics } = m;
-    d.metrics = { ...metrics, scope: d.metrics.scope };
+    d.metrics = { ...metrics, scope: d.metrics.scope, visible: d.metrics.visible };
     d.units.forEach((u, k) => Object.assign(u, perUnit[k]));
     writeFileSync(join(run.dir, "docs", `${safe(d.id)}.json`), JSON.stringify(d));
   }
@@ -311,6 +313,7 @@ function aggregate(docs) {
   const truth = sum((d) => d.metrics.truth), read = sum((d) => d.metrics.read);
   const readMain = sum((d) => d.metrics.readMain), covered = sum((d) => d.metrics.covered);
   const truthLong = sum((d) => d.metrics.truthLong), coveredLong = sum((d) => d.metrics.coveredLong);
+  const seen = ok.filter((d) => d.metrics.visible !== undefined);
   const leakOther = sum((d) => d.metrics.leakOther), leakComment = sum((d) => d.metrics.leakComment);
   const withN = sum((d) => d.metrics.with?.n), withHit = sum((d) => d.metrics.with?.hit);
   const withoutN = sum((d) => d.metrics.without?.n), withoutHit = sum((d) => d.metrics.without?.hit);
@@ -331,6 +334,7 @@ function aggregate(docs) {
     commentWords: ok.reduce((a, d) => a + d.units.filter((u) => u.comment).reduce((b, u) => b + u.words, 0), 0),
     words: ok.reduce((a, d) => a + d.units.reduce((b, u) => b + u.words, 0), 0),
     recall, recallLong: truthLong ? coveredLong / truthLong : NaN,
+    visible: seen.length ? seen.reduce((a, d) => a + d.metrics.visible, 0) / Math.max(1, seen.reduce((a, d) => a + d.metrics.truth, 0)) : NaN,
     precision, leak: read ? leakOther / read : NaN, leakComment: read ? leakComment / read : NaN,
     f1: precision + recall > 0 ? (2 * precision * recall) / (precision + recall) : NaN,
     f1PageMean: f1PerPage.reduce((a, b) => a + b, 0) / Math.max(1, f1PerPage.length),
@@ -448,10 +452,10 @@ function report(names) {
     const groups = groupsOf(run.docs);
     const rows = [...groups].map(([g, docs]) => {
       const a = aggregate(docs);
-      return [g, a.pages, a.errors, a.nothingRead, a.units, a.words, pct(a.recall), pct(a.recallLong), pct(a.precision), pct(a.leak), pct(a.leakComment), pct(a.f1), pct(a.f1PageMean), pct(a.bowF1Mean),
+      return [g, a.pages, a.errors, a.nothingRead, a.units, a.words, pct(a.visible), pct(a.recall), pct(a.recallLong), pct(a.precision), pct(a.leak), pct(a.leakComment), pct(a.f1), pct(a.f1PageMean), pct(a.bowF1Mean),
         pct(a.withRate), pct(a.withoutRate), pct(a.scopeRecall), pct(a.scopePrecision), pct(a.byExtractor), num(a.msMedian, 0)];
     });
-    out.push(table(rows, ["pages", "n", "err", "none read", "units", "words", "recall", "recall ≥75w ¶", "precision", "leak", "comments/reviews outside truth", "F1", "F1 page mean", "BoW F1 page mean", "must-incl hit", "must-excl hit", "scope recall", "scope precision", "region ≠ text-mass probe", "ms/page"]), "");
+    out.push(table(rows, ["pages", "n", "err", "none read", "units", "words", "truth on screen offline", "recall", "recall ≥75w ¶", "precision", "leak", "comments/reviews outside truth", "F1", "F1 page mean", "BoW F1 page mean", "must-incl hit", "must-excl hit", "scope recall", "scope precision", "region ≠ text-mass probe", "ms/page"]), "");
     const everything = aggregate(run.docs);
     if (!m.engine) out.push(`Requests while measuring, every one refused: ${everything.requests}, of them anything but a font, image or media file layout asked for: ${everything.requestsNotLayout}.` +
       (m.scope === "main" ? ` Main-content detection ${num(everything.scopeMsMedian, 1)} ms median, ${num(everything.scopeMsP90, 1)} ms p90; pages it changed: ${everything.mutated}.` : ""), "");

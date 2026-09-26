@@ -176,7 +176,7 @@ export function measure(opts: MeasureOptions) {
       nodeTexts: opts.xpaths ? u.parts.map((p) => p.nodes.filter((n) => (n.textContent ?? "").trim()).map((n) => (n.textContent ?? "").replace(/\s+/g, " ").trim())) : undefined,
     })),
     truthBlocks: opts.truthHtml ? htmlBlocks(opts.truthHtml) : null,
-    bodyText: document.body ? document.body.innerText ?? "" : "",
+    bodyText: "",
     silent: null as null | { path: string; words: number; reason: string; note: string | null; undrawn: boolean; text: string }[],
     timing: { scopeMs, collectMs, totalMs: 0 },
   };
@@ -188,5 +188,13 @@ export function measure(opts: MeasureOptions) {
     }));
   }
   out.timing.totalMs = performance.now() - began;
+  // What of the page is on the screen at all, offline: with page scripts off a <noscript>
+  // renders, and an application that puts its text there (Discourse) would otherwise look
+  // readable here while the walk rightly skips it. Measured last; nothing reads the page after.
+  const hide = document.createElement("style");
+  hide.textContent = "noscript { display: none !important; }";
+  document.documentElement.append(hide);
+  out.bodyText = document.body ? document.body.innerText ?? "" : "";
+  hide.remove();
   return out;
 }
