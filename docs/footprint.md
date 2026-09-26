@@ -43,6 +43,10 @@ running the vendored Zotero document-worker, `vendor/document-worker/`). The wor
 ship inside the extension, by the `chrome-extension://<this extension>/vendor/…` URLs the
 reader hands it; the document's bytes are copied into it and nowhere else.
 
+The vendored Defuddle, which finds the region for "Main content only", can reach third-party
+APIs through its `parseAsync()`. `lib/dom/mainContent.ts` calls only its synchronous
+`parse()`, on a clone of the page, and the test pins that.
+
 ### Every address written in the source
 
 | File | URL | Why |
