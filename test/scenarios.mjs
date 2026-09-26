@@ -793,6 +793,72 @@ async function sweep(page, steps = 6) {
     await p.close();
   }
 
+  // A22b: the browser translates the page. Chrome's page translation replaces every text
+  // node with <font> copies holding the translation and classes <html> `translated-ltr`;
+  // "Show original" puts the nodes back and drops the class. Machine output is nobody's
+  // writing: while the class is there nothing is sent, and no chip, mark or ball is left;
+  // once it is gone the page is read again.
+  {
+    PAGES["/translated.html"] = `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>translated fixture</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+<main><p id="t1">${PARA("ORIGINAL-ONE")}</p><p id="t2">${PARA("ORIGINAL-TWO")}</p></main>
+<script>
+  const saved = [];
+  window.__translate = () => {
+    for (const p of document.querySelectorAll("main p")) {
+      const text = p.firstChild;
+      saved.push([p, text]);
+      const outer = document.createElement("font");
+      const inner = document.createElement("font");
+      outer.style.verticalAlign = inner.style.verticalAlign = "inherit";
+      inner.textContent = text.data.replace("ORIGINAL", "MACHINE");
+      outer.appendChild(inner);
+      p.replaceChild(outer, text);
+    }
+    document.documentElement.classList.add("translated-ltr");
+  };
+  window.__revert = () => {
+    for (const [p, text] of saved.splice(0)) p.replaceChildren(text);
+    document.documentElement.classList.remove("translated-ltr");
+  };
+</script></body></html>`;
+    const p = await context.newPage();
+    await p.goto(server.url("/translated.html"), { waitUntil: "load" });
+    const settled = (n) =>
+      p.waitForFunction(({ sel, n }) => {
+        const hosts = [...document.querySelectorAll(sel)];
+        return hosts.length === n && hosts.every((h) => !h.shadowRoot?.querySelector(".pill.pending"));
+      }, { sel: BADGE_SEL, n }, { timeout: 15000 }).then(() => true).catch(() => false);
+    const look = () =>
+      p.evaluate((sel) => {
+        let marks = 0;
+        for (const h of CSS.highlights.values()) marks += h.size;
+        return { chips: document.querySelectorAll(sel).length, ball: !!document.getElementById("anagram-fab"), marks };
+      }, BADGE_SEL);
+    const tabState = () =>
+      sw?.evaluate(async (url) => {
+        const [tab] = await chrome.tabs.query({ url });
+        return tab ? chrome.tabs.sendMessage(tab.id, { action: "getTabState" }, { frameId: 0 }) : null;
+      }, server.url("/translated.html")).catch(() => null);
+    const before = (await settled(2)) ? await look() : null;
+    await p.evaluate(() => window.__translate());
+    await p.waitForTimeout(3000); // past the observers' debounce, the scheduler and the fixture
+    const during = await look();
+    const duringState = await tabState();
+    const machineSent = fixture.stats.texts.some((t) => t.includes("MACHINE-"));
+    await p.evaluate(() => window.__revert());
+    await settled(2);
+    const back = await look();
+    record(
+      "ui",
+      "a page the browser translated: nothing is read or left on it while it is translated, and it is read again once the original is back",
+      !!before && before.chips === 2 && before.ball &&
+        during.chips === 0 && !during.ball && during.marks === 0 && !machineSent && duringState?.translated === true &&
+        back.chips === 2 && back.ball && back.marks > 0,
+      JSON.stringify({ before, during, duringState, machineSent, back }),
+    );
+    await p.close();
+  }
+
   // A21: the fixture goes away → the batch in flight renders "Unavailable", nothing new
   // is dispatched, the ball's counter shows "!"; the fixture comes back → everything is
   // re-queued automatically (no reload, no Rescan). Twice: a paragraph under 510 bytes

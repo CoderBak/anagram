@@ -39,7 +39,7 @@
 // end-to-end (the HF-abstract "underline stops mid-paragraph" bug); a unit that does not
 // fit the model's window is read in windows (lib/capture/windows.ts), never cut here.
 import { NO_SCORE_TAGS, INLINE_FALLBACK_TAGS, isHeading, isHeadingLabel, tagOf } from "./tags";
-import { isBoilerplate, isNoTranslate } from "./boilerplate";
+import { findConsentBanners, isBoilerplate, isConsentBanner, isNoTranslate, pageTextSize } from "./boilerplate";
 import {
   createStyleCache,
   flowClassOf,
@@ -73,6 +73,7 @@ import {
   MAX_UNIT_TEXT_CHARS,
 } from "./text";
 import { type Scopes, createScopes } from "./scope";
+import { isTranslatedInPlace } from "./translation";
 import { WINDOW_CHARS } from "../capture/windows";
 // The arithmetic of grouping — the floor, the window, the even division, the orphan rule
 // — is not the walk's own: a PDF's paragraphs are grouped by exactly these rules without
@@ -289,6 +290,8 @@ export function collectUnits(
   const scopes = scopesOfScan();
   scanScopes = null; // the next scan looks at the page anew
   if (!startEl) return [];
+  const consentBanners = findConsentBanners(startEl);
+  const pageText = pageTextSize(document);
   const asm = createAssembler(scopes, opts.mergeShorts ?? true, startEl, read, (nodes) => opts.claimFilter?.(nodes) !== "skip", opts.onShortText);
 
   // ---- run accumulation ------------------------------------------------------------
@@ -476,7 +479,7 @@ export function collectUnits(
     // depends on layout — inline exclusions (icons, <img>, MathJax spans, sr-only,
     // aria-hidden decorations) sit mid-sentence and are skipped silently; block
     // exclusions occupy their own space and close the run.
-    const boiler = isBoilerplate(el);
+    const boiler = consentBanners.has(el) || isBoilerplate(el, pageText);
     const excluded =
       boiler ||
       NO_SCORE_TAGS.has(tag) ||
@@ -484,6 +487,7 @@ export function collectUnits(
       // page published as HTML, a mailing-list message — is read like any other block.
       (tag === "PRE" && !plainTextDoc && !isProsePre(el)) ||
       isNoTranslate(el) ||
+      isTranslatedInPlace(el) ||
       (el as HTMLElement).isContentEditable ||
       el.getAttribute("aria-hidden") === "true" ||
       (cs !== null && (cs as any).contentVisibility === "hidden") ||
@@ -682,16 +686,17 @@ function composedChildren(el: Element, onShadowRoot?: (root: ShadowRoot) => void
  */
 export function isExcludedByAncestry(start: Element): boolean {
   const plainTextDoc = document.contentType === "text/plain";
+  const pageText = pageTextSize(document);
   let el: Element | null = start;
   while (el) {
     const tag = tagOf(el);
     if (NO_SCORE_TAGS.has(tag)) return true;
     if (tag === "PRE" && !plainTextDoc && !isProsePre(el)) return true;
     if (el.hasAttribute(MARK_ATTR)) return true;
-    if (isNoTranslate(el)) return true;
+    if (isNoTranslate(el) || isTranslatedInPlace(el)) return true;
     if ((el as HTMLElement).isContentEditable) return true;
     if (el.getAttribute("aria-hidden") === "true") return true;
-    if (isBoilerplate(el)) return true;
+    if (isBoilerplate(el, pageText) || isConsentBanner(el)) return true;
     el = el.parentElement ?? ((el.getRootNode() as ShadowRoot).host ?? null);
   }
   return false;

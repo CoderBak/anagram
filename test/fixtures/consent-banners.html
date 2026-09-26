@@ -1,0 +1,135 @@
+<!doctype html>
+<!--
+  An article under the cookie banners of nine consent platforms, each banner long enough to
+  be scored on its own. Synthetic text.
+
+  The container of every banner is the one DuckDuckGo autoconsent names for that platform
+  (rules/autoconsent/*.json and lib/cmps/*.ts, 2026-09): Cookiebot's #CybotCookiebotDialog,
+  Didomi's #didomi-host, Quantcast Choice's #qc-cmp2-container, Usercentrics' #usercentrics-root
+  (an open shadow root), iubenda's #iubenda-cs-banner, Complianz's #cmplz-cookiebanner-container,
+  Osano's .osano-cm-window, consentmanager's #cmpbox and the cookieconsent library's
+  [aria-describedby="cookieconsent:desc"]. What sits inside each container is modelled on the
+  platform's banner template; none of its names says cookie, consent or gdpr, which is why the
+  class-token filter let these banners through. The OneTrust banner is the control: its
+  #onetrust-consent-sdk was always caught by the "consent" token.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: consent banners</title>
+<style>
+  body { max-width: 720px; margin: 30px auto; font: 17px/1.55 Georgia, serif; }
+  body > div { font: 14px/1.45 system-ui, sans-serif; border: 1px solid #ccc; padding: 12px; margin: 12px 0; }
+  button { font: inherit; }
+</style></head>
+<body>
+<main>
+  <article>
+    <h1>The ferry timetable, explained</h1>
+    <div class="article-body" data-voice="author">
+      <p data-expect="unit">The winter timetable has always been a compromise between the tides and the school run, and this year the operator has finally published the reasoning behind it, which turns out to be more interesting than the timetable itself. Every departure is tied to a window of water deep enough for the loaded boat, and the windows move by about fifty minutes a day, so a fixed clock-face timetable was never possible.</p>
+      <p data-expect="unit">What the operator did instead was to fix the first and last crossings to the school day and let everything in between drift with the tide, publishing a fortnight at a time on paper at both slipways. Regular passengers say they stopped reading it years ago and simply ask the skipper, who has been known to wait a minute for a running child and never for a running adult.</p>
+    </div>
+  </article>
+</main>
+
+<div id="CybotCookiebotDialog" name="CybotCookiebotDialog" role="dialog" aria-modal="true" aria-labelledby="CybotCookiebotDialogBodyContentTitle" lang="en" class="CybotEdge CybotCookiebotDialogActive" data-template="popup">
+  <div class="CybotCookiebotDialogContentWrapper">
+    <div id="CybotCookiebotDialogTabContent">
+      <div id="CybotCookiebotDialogBody" class="CybotCookiebotScrollContainer">
+        <div id="CybotCookiebotDialogBodyContent">
+          <h2 id="CybotCookiebotDialogBodyContentTitle">This website uses cookies</h2>
+          <div id="CybotCookiebotDialogBodyContentText" data-voice="cookiebot" data-expect="none">We use cookies to personalise content and ads, to provide social media features and to analyse our traffic. We also share information about your use of our site with our social media, advertising and analytics partners who may combine it with other information that you have provided to them or that they have collected from your use of their services. You consent to our cookies if you continue to use our website, and you can change or withdraw your consent at any time from the cookie declaration on this page.</div>
+        </div>
+      </div>
+    </div>
+    <div id="CybotCookiebotDialogFooter"><button id="CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll">Allow all</button> <button id="CybotCookiebotDialogBodyButtonDecline">Deny</button></div>
+  </div>
+</div>
+
+<div id="didomi-host" data-nosnippet="true" class="didomi-host">
+  <div class="didomi-notice-popup">
+    <div id="didomi-notice" class="didomi-regular-notice didomi-notice-banner shape-rounded didomi-border">
+      <div class="didomi-notice__interior-border">
+        <div id="didomi-notice-text" class="didomi-notice-text" data-voice="didomi" data-expect="none">With your agreement, we and our partners use cookies or similar technologies to store, access, and process personal data like your visit on this website. You can withdraw your consent or object to processing based on legitimate interest at any time by clicking on "Learn More" or in our Privacy Policy on this website. We and our partners do the following data processing based on your consent and on legitimate interest: store and access information on a device, personalised advertising and content, advertising and content measurement, audience research and services development.</div>
+      </div>
+      <button id="didomi-notice-agree-button">Agree and close</button> <button id="didomi-notice-learn-more-button">Learn more</button>
+    </div>
+  </div>
+</div>
+
+<div id="qc-cmp2-container" data-nosnippet="">
+  <div class="qc-cmp2-main">
+    <div id="qc-cmp2-ui" role="dialog" aria-label="qc-cmp2-ui" aria-modal="true">
+      <div class="qc-cmp2-summary-section">
+        <h2>We value your privacy</h2>
+        <div class="qc-cmp2-summary-info">
+          <p data-voice="quantcast" data-expect="none">We and our partners store and/or access information on a device, such as cookies and process personal data, such as unique identifiers and standard information sent by a device for personalised advertising and content, advertising and content measurement, audience research and services development. With your permission we and our partners may use precise geolocation data and identification through device scanning. You may click to consent to our and our partners' processing as described above. Alternatively you may access more detailed information and change your preferences before consenting or to refuse consenting.</p>
+        </div>
+      </div>
+      <div class="qc-cmp2-summary-buttons"><button mode="secondary">More options</button> <button mode="primary">Agree</button></div>
+    </div>
+  </div>
+</div>
+
+<div id="usercentrics-root" data-created-at="1790000000000"><template shadowrootmode="open">
+  <div data-testid="uc-app-container">
+    <div id="uc-center-container" role="dialog" aria-modal="true">
+      <div data-testid="uc-message-container">
+        <h2 id="uc-privacy-title">Privacy Settings</h2>
+        <div id="uc-privacy-description" data-voice="usercentrics" data-expect="none">This site uses third-party website tracking technologies to provide and continually improve our services, and to display advertisements according to users' interests. I agree and may revoke or change my consent at any time with effect for the future. The processing is based on your consent under the applicable data protection law, and the data may also be processed in countries outside the European Economic Area that do not offer a comparable level of protection. Further details are given in the privacy policy linked from every page.</div>
+      </div>
+      <div data-testid="uc-buttons-container"><button data-testid="uc-deny-all-button">Deny</button> <button data-testid="uc-accept-all-button">Accept All</button></div>
+    </div>
+  </div>
+</template></div>
+
+<div id="iubenda-cs-banner" class="iubenda-cs-default-floating iubenda-cs-bottom iubenda-cs-visible" role="alertdialog" aria-labelledby="iubenda-cs-title" aria-describedby="iubenda-cs-paragraph">
+  <div class="iubenda-cs-container">
+    <div class="iubenda-cs-content">
+      <div class="iubenda-cs-rationale">
+        <div id="iubenda-cs-title">Notice</div>
+        <div id="iubenda-cs-paragraph" data-voice="iubenda" data-expect="none"><p class="iub-p">We and selected third parties use cookies or similar technologies for technical purposes and, with your consent, for other purposes as specified in the cookie policy. Denying consent may make related features unavailable. You can freely give, deny, or withdraw your consent at any time. In case of sale of your personal information, you may opt out by using the link on this page. To find out more about the categories of personal information collected and the purposes for which such information will be used, please refer to our privacy policy.</p></div>
+      </div>
+      <div class="iubenda-cs-opt-group"><button class="iubenda-cs-reject-btn">Reject</button> <button class="iubenda-cs-accept-btn">Accept</button></div>
+    </div>
+  </div>
+</div>
+
+<div id="cmplz-cookiebanner-container">
+  <div class="cmplz-cookiebanner cmplz-show banner-1 optin cmplz-bottom-right cmplz-categories-type-view-preferences" aria-modal="true" data-nosnippet="true" role="dialog" aria-live="polite" aria-labelledby="cmplz-header-1-optin" aria-describedby="cmplz-message-1-optin">
+    <div class="cmplz-header"><div class="cmplz-title" id="cmplz-header-1-optin">Manage Cookie Consent</div></div>
+    <div class="cmplz-body">
+      <div class="cmplz-message" id="cmplz-message-1-optin" data-voice="complianz" data-expect="none">To provide the best experiences, we use technologies like cookies to store and/or access device information. Consenting to these technologies will allow us to process data such as browsing behaviour or unique IDs on this site. Not consenting or withdrawing consent may adversely affect certain features and functions. The technical storage or access is strictly necessary for the legitimate purpose of enabling the use of a specific service explicitly requested by the subscriber or user, or for the sole purpose of carrying out the transmission of a communication.</div>
+    </div>
+    <div class="cmplz-buttons"><button class="cmplz-btn cmplz-accept">Accept</button> <button class="cmplz-btn cmplz-deny">Deny</button></div>
+  </div>
+</div>
+
+<div class="osano-cm-window" dir="ltr">
+  <div role="dialog" aria-describedby="osano-cm-dialog__message" aria-label="Cookie Consent Banner" class="osano-cm-dialog osano-cm-dialog--position_bottom osano-cm-dialog--type_bar osano-style_light">
+    <span id="osano-cm-dialog__message" class="osano-cm-message osano-cm-content" data-voice="osano" data-expect="none">This website utilizes technologies such as cookies to enable essential site functionality, as well as for analytics, personalization, and targeted advertising purposes. You may change your settings at any time or accept the default settings. You may close this banner to continue with only essential cookies, and you can revisit these choices whenever you like from the link at the bottom of every page, where the list of the vendors we work with, and what each of them does with the information it receives, is kept up to date.</span>
+    <div class="osano-cm-dialog__buttons"><button class="osano-cm-button osano-cm-accept-all">Accept All</button> <button class="osano-cm-button osano-cm-denyAll">Reject Non-Essential</button></div>
+  </div>
+</div>
+
+<div id="cmpbox" class="cmpbox cmpstyleroot cmpBoxShowing" role="dialog" aria-modal="true">
+  <div class="cmpboxinner">
+    <div class="cmpboxtxt cmptxt_txt" data-voice="consentmanager" data-expect="none">To provide the best experiences, we and our partners use technologies like cookies to store and/or access device information. Consenting to these technologies will allow us and our partners to process personal data such as browsing behavior or unique IDs on this site and show personalised or non-personalised ads. Not consenting or withdrawing consent may adversely affect certain features and functions. Click below to consent to the above or make granular choices. Your choices will be applied to this site only, and you can change them at any time.</div>
+    <div class="cmpboxbtns"><button class="cmpboxbtn cmpboxbtnyes">Accept</button> <button class="cmpboxbtn cmpboxbtnno">Reject</button></div>
+  </div>
+</div>
+
+<div role="dialog" aria-live="polite" aria-label="cookieconsent" aria-describedby="cookieconsent:desc" class="cc-window cc-banner cc-type-opt-in cc-theme-classic cc-bottom">
+  <span id="cookieconsent:desc" class="cc-message" data-voice="cookieconsent" data-expect="none">This website uses cookies and similar technologies to understand how visitors use it, to remember the choices you make here, and to show you things that are more relevant to you. Some of them are strictly necessary for the site to work at all, while others are only set if you allow them. You can read which is which, and what each of them keeps and for how long, in the cookie policy, and you can change your mind at any time from the settings link at the bottom of the page.</span>
+  <div class="cc-compliance cc-highlight"><button class="cc-btn cc-deny">Decline</button> <button class="cc-btn cc-allow">Allow cookies</button></div>
+</div>
+
+<div id="onetrust-consent-sdk">
+  <div id="onetrust-banner-sdk" class="otFlat" role="region" aria-label="Cookie banner">
+    <div id="onetrust-policy">
+      <div id="onetrust-policy-text" data-voice="onetrust" data-expect="none">We use cookies and similar technologies to recognise your repeat visits and preferences, to measure the effectiveness of campaigns, and to improve our websites. By clicking "Accept all" you consent to the use of all cookies on this site, and by clicking "Reject all" you refuse every cookie that is not strictly necessary. You can manage your choices in detail, and change them at any time, from the cookie settings, where each category is described together with the partners that set cookies in it.</div>
+    </div>
+    <div id="onetrust-button-group"><button id="onetrust-reject-all-handler">Reject all</button> <button id="onetrust-accept-btn-handler">Accept all</button></div>
+  </div>
+</div>
+</body></html>

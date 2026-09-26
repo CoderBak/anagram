@@ -23,6 +23,7 @@ import { t } from "../lib/i18n";
 import { ACTIONS } from "../lib/messaging/protocol";
 import type { ControlMessage, PingReply, TabState, TopHostReply } from "../lib/messaging/protocol";
 import { serveTabPdfBytes } from "../lib/pdf/handoff";
+import { isPageTranslated, watchPageTranslation } from "../lib/dom/translation";
 
 /** Min frame viewport for a subframe to be worth scanning (ad slots are smaller). */
 const MIN_FRAME_AREA = 40_000; // e.g. 400×100
@@ -164,6 +165,13 @@ export default defineContentScript({
       startWhenGated();
     };
 
+    /**
+     * The browser has translated this page (lib/dom/translation.ts). What is on it now is
+     * the translator's text, so nothing is read, and nothing that was read stays up, until
+     * the reader shows the original again — whatever the settings say.
+     */
+    let translated = isPageTranslated();
+
     const frameGateOk = (): boolean =>
       isTop ||
       (window.innerWidth >= MIN_FRAME_WIDTH &&
@@ -192,7 +200,7 @@ export default defineContentScript({
 
     let resizeArmed = false;
     const startWhenGated = (): void => {
-      if (!enabled) return;
+      if (!enabled || translated) return;
       if (frameGateOk()) {
         orchestrator.start();
         return;
@@ -202,7 +210,7 @@ export default defineContentScript({
       if (resizeArmed) return;
       resizeArmed = true;
       const onResize = (): void => {
-        if (!enabled || !frameGateOk()) return;
+        if (!enabled || translated || !frameGateOk()) return;
         window.removeEventListener("resize", onResize);
         resizeArmed = false;
         orchestrator.start();
@@ -242,6 +250,22 @@ export default defineContentScript({
     };
     settings.enabled.watch(() => void applyEnabled());
     settings.siteOverrides.watch(() => void applyEnabled());
+
+    watchPageTranslation((now) => {
+      translated = now;
+      if (now) {
+        // A run asked for once was for the page as it was: it ends here, as it would if the
+        // site were switched off (the settings say off, or it would not be a one-off), and
+        // the one-off authorization goes with the stopped run.
+        if (onceForPage) {
+          onceForPage = false;
+          enabled = false;
+        }
+        orchestrator.stop();
+      } else {
+        startWhenGated();
+      }
+    });
 
     if (docs) {
       if (docs.kind === "editor") {
@@ -351,7 +375,7 @@ export default defineContentScript({
 
           case ACTIONS.RESCAN:
             // Rescan must never force-start a disabled page or bypass the gate.
-            if (enabled && frameGateOk()) orchestrator.rescan();
+            if (enabled && !translated && frameGateOk()) orchestrator.rescan();
             return;
 
           case ACTIONS.SET_ENABLED:
@@ -370,7 +394,7 @@ export default defineContentScript({
             // a Rescan; a page Anagram is off for starts here and now — the frame gate
             // still decides for a subframe, and nothing is written to storage.
             if (enabled) {
-              if (frameGateOk()) orchestrator.rescan();
+              if (!translated && frameGateOk()) orchestrator.rescan();
             } else {
               startOnce();
             }
@@ -388,8 +412,9 @@ export default defineContentScript({
                 sendResponse(
                   await copyPageDiagnostics({
                     host: effectiveHost,
-                    running: enabled,
+                    running: enabled && !translated,
                     onceForPage,
+                    translated,
                     pdf: isPdf,
                     docs: docs?.kind ?? null,
                     counts: {
@@ -419,6 +444,7 @@ export default defineContentScript({
             if (!isTop) return;
             const state: TabState = {
               enabled,
+              translated,
               hostname: location.hostname,
               pdf: isPdf,
               scored: orchestrator.scoredCount(),
@@ -437,7 +463,7 @@ export default defineContentScript({
             // button does there instead: one run, nothing written (the command carries
             // `activeTab`, so the worker could put a script here in the first place).
             if (!enabled) startOnce();
-            else if (frameGateOk()) orchestrator.toggle();
+            else if (!translated && frameGateOk()) orchestrator.toggle();
             return;
 
           // The remaining keyboard commands are the PAGE's, not a frame's: the panel and

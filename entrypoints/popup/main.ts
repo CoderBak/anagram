@@ -151,6 +151,9 @@ function paint(): void {
     case "unsupported":
       statusEl.textContent = t("popupUnsupportedPage");
       break;
+    case "translated":
+      statusEl.textContent = t("popupTranslatedPage");
+      break;
     case "noTab":
       statusEl.textContent = t("popupUnsupportedPage");
       break;
@@ -256,7 +259,7 @@ async function refreshStatus(tabId: number | undefined): Promise<void> {
       if (!state) throw new Error("no state");
       // A response MIME type also identifies PDFs whose URL has no filename extension.
       if (state.pdf && facts.pattern) facts.pdfTab = true;
-      facts.tab = { enabled: state.enabled };
+      facts.tab = { enabled: state.enabled, translated: state.translated === true };
       counts = state.enabled ? state : null;
     } catch {
       /* no content script there, or the page tore it down — Anagram is not running */

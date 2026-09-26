@@ -1138,6 +1138,48 @@ const results = await page.evaluate(() => {
     check("…and a page wrapped in one <form> (ASP.NET WebForms) is not a sign-up box", u.length === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
   }
   {
+    // A consent platform that names its banner after itself (lib/dom/consentBanners.ts) is
+    // found once per walk; a re-scan that starts INSIDE the banner asks the element itself.
+    sandbox.innerHTML = `<p>${words(80)}</p><div id="didomi-host"><div class="didomi-notice-text"><p>${words(80)}</p></div></div><div class="osano-cm-window"><span>${words(80)}</span></div>`;
+    const whole = PW.collectUnits(sandbox);
+    const inside = PW.collectUnits(sandbox.querySelector(".didomi-notice-text"));
+    check("consent banners named after their platform are skipped, whole walk and re-scan alike",
+      whole.length === 1 && inside.length === 0 && PW.isConsentBanner(sandbox.querySelector(".osano-cm-window")) && !PW.isConsentBanner(sandbox.querySelector("p")),
+      JSON.stringify([whole.length, inside.length]));
+  }
+  {
+    // A post's own wrapper carries the terms it is filed under (WordPress post_class):
+    // `category-newsletter`, `tag-cookies`. Those are what the post is about, not what the box is.
+    const post = (cls) => { const e = document.createElement("div"); e.className = cls; return e; };
+    check("a post's category and tag classes (WordPress post_class) never make it chrome, its other names still do",
+      PW.isBoilerplate(post("post-41 post type-post status-publish format-standard hentry category-newsletter tag-cookies tag-share")) === false &&
+      PW.isBoilerplate(post("type-sponsored status-publish format-aside")) === false &&
+      PW.isBoilerplate(post("hentry tag-recipes newsletter-box")) === true);
+    sandbox.innerHTML = `<div class="post-52 post hentry series-newsletter"><p>${words(90)}</p><p>${words(90)}</p></div><p>${words(40)}</p>`;
+    const most = PW.collectUnits(sandbox);
+    sandbox.innerHTML = `<p>${words(90)}</p><p>${words(90)}</p><div class="newsletter-signup"><p>${words(80)}</p></div>`;
+    const box = PW.collectUnits(sandbox);
+    check("a box holding most of the page's text is the page, whatever it is called; a smaller one keeps its name (Unclutter's guard)",
+      most.length === 2 && box.length === 2 && box.every((x) => x.wordCount === 90), JSON.stringify([most.map((x) => x.wordCount), box.map((x) => x.wordCount)]));
+  }
+  {
+    // Read Frog's "translation only" mode writes the translation into the paragraph's own
+    // text nodes and marks the paragraph (lib/dom/translation.ts).
+    sandbox.innerHTML = `<p lang="en" dir="ltr" data-read-frog-translation-only="">MACHINE ${words(80)}</p><p>${words(80)}</p>`;
+    const u = PW.collectUnits(sandbox);
+    check("a paragraph a translator extension rewrote in place is not read; the one beside it is", u.length === 1 && !u[0].text.includes("MACHINE"), JSON.stringify(u.map((x) => x.text.slice(0, 20))));
+  }
+  {
+    // MediaWiki's furniture is its own only inside a wiki's content box: a list classed
+    // `references` on another site is judged like any other list.
+    const list = `<ol class="references">${Array.from({ length: 4 }, () => `<li>${words(25)}</li>`).join("")}</ol>`;
+    sandbox.innerHTML = `<div class="mw-parser-output">${list}</div>`;
+    const inWiki = PW.collectUnits(sandbox);
+    sandbox.innerHTML = `<div class="page">${list}</div>`;
+    const elsewhere = PW.collectUnits(sandbox);
+    check("a wiki's reference list is never read, a list of the same name elsewhere still is", inWiki.length === 0 && elsewhere.length === 1, JSON.stringify([inWiki.length, elsewhere.length]));
+  }
+  {
     // Regression: Wikipedia Vector-2022 body classes ("…-toc-pinned-…") must
     // never classify a page-level container as chrome.
     const b = document.createElement("body");
@@ -2099,6 +2141,7 @@ const EXPECTED = {
   "chat-transcript": [2, 1],
   "clipped-reviews": [8, 1],
   "comments-li": [2, 1],
+  "consent-banners": [1, 1],
   "discourse-thread": [2, 2],
   "front-page-cards": [2, 1],
   "github-discussion": [3, 2],
@@ -2129,7 +2172,10 @@ const EXPECTED = {
   "webmail-apple": [4, 4],
   "webmail-gmail": [4, 3],
   "webmail-outlook": [5, 5],
+  "wikipedia-article": [3, 2],
   "wordpress-comments": [2, 2],
+  "wordpress-single": [1, 1],
+  "wordpress-taxonomy": [3, 3],
   "x-timeline": [7, 5],
   "zhihu-answers": [13, 7],
 };

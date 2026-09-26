@@ -891,6 +891,10 @@
     "message": "Not available on this page.",
     "description": "Status on a page no extension may run on."
   },
+  "popupTranslatedPage": {
+    "message": "This page is translated by the browser. Show the original to analyze it.",
+    "description": "Status when the browser has machine-translated the page, so nothing on it is analyzed until the original is shown."
+  },
   "popupFileAccessNeeded": {
     "message": "Allow local file access in Settings to open this PDF.",
     "description": "Status on a local PDF without file access."

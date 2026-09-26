@@ -13,6 +13,7 @@
 // trafilatura discards on a bare token ("social", "related"), we require the
 // COMPOUND form ("social-share", "related-articles") — a paper's
 // `<section class="related-work">` is content, not chrome.
+import { CONSENT_BANNER_SELECTORS } from "./consentBanners";
 
 /** Landmark roles that are page chrome by definition. NOT "tablist": Bootstrap-style
  *  accordions put role="tablist" on the container that holds every panel's CONTENT
@@ -123,6 +124,63 @@ const CHROME_TOKEN_RE = new RegExp(
 export const SKIP_DESTINATION_RE = /\S*skip[-_]?(?:link|to|nav)\S*[-_](?:target|destination|anchor)\S*/gi;
 
 /**
+ * A term the post is filed under, written on the post's own wrapper. WordPress' post_class()
+ * gives a post `category-<slug>` and `tag-<slug>` for every category and tag it has, beside
+ * `type-`, `status-` and `format-` for its kind (wp-includes/post-template.php), and Ghost's
+ * post_class writes `tag-<slug>` the same way. So a blog that files its issues under
+ * "Newsletter", marks paid posts "Sponsored" or tags a recipe "cookies" had those posts taken
+ * for a newsletter box, an advert or a cookie banner, whole. A term says what the post is
+ * about, never what the box is: these names are dropped before the tokens are looked for.
+ */
+const TAXONOMY_TERM_RE = /(^|\s)(?:category|tag|type|status|format)-\S*/gi;
+
+/**
+ * An element that holds more than this share of the page's text is the page, whatever it is
+ * called — except on a page too short for shares to mean anything. Adapted from Unclutter
+ * (https://github.com/lindylearn/unclutter, AGPL-3.0, © the Unclutter authors), whose
+ * `mainContentFractionThreshold` and `mainContentMinLength` (textContainer.ts) guard its
+ * own class-name filter the same way. It catches what no prefix can: WordPress names the
+ * terms of any other taxonomy `<taxonomy>-<slug>`, so an issue in a "Newsletter" series is
+ * `series-newsletter`.
+ */
+const PAGE_TEXT_SHARE = 0.4;
+const PAGE_TEXT_MIN_CHARS = 500;
+
+/** The page's text size in characters, measured the first time a walk needs it. */
+export type PageTextSize = () => number;
+
+export function pageTextSize(doc: Document = document): PageTextSize {
+  let chars: number | null = null;
+  return () => (chars ??= doc.body ? textChars(doc.body) : 0);
+}
+
+/** Characters that are not spaces, script, style or markup kept as text. */
+function textChars(el: Element): number {
+  let n = nonSpaceChars(el.textContent ?? "");
+  for (const machine of el.querySelectorAll("script,style,noscript")) n -= nonSpaceChars(machine.textContent ?? "");
+  return n;
+}
+
+function nonSpaceChars(s: string): number {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c > 32 && c !== 160) n++;
+  }
+  return n;
+}
+
+function holdsMostOfPage(el: Element, page: PageTextSize): boolean {
+  const body = el.ownerDocument.body;
+  if (!body || !body.contains(el)) return false;
+  const mine = textChars(el);
+  // Under this it is under the share of every page long enough to be asked.
+  if (mine <= PAGE_TEXT_MIN_CHARS * PAGE_TEXT_SHARE) return false;
+  const total = page();
+  return total >= PAGE_TEXT_MIN_CHARS && mine > total * PAGE_TEXT_SHARE;
+}
+
+/**
  * The element calls ITSELF the page's main content — as a whole class token or as its id,
  * never as part of a longer name ("main-content-share" is a share bar). That is a <main>
  * written as a <div>, and like <main> it is never chrome on the strength of a token.
@@ -176,10 +234,40 @@ function isReplyForm(el: Element): boolean {
 }
 
 /**
- * True if this element is page chrome whose subtree should not be scored.
- * Called once per element during a walk — must stay cheap.
+ * Cookie banners whose platform names them after itself: Cookiebot's #CybotCookiebotDialog,
+ * Didomi's #didomi-host, iubenda's #iubenda-cs-banner say nothing a class token could catch,
+ * and every one of them holds a paragraph of consent text long enough to be scored.
+ * (lib/dom/consentBanners.ts has the list.) Found ONCE per walk rather than asked of every
+ * element: the ids are looked up directly, and the rest go into one querySelectorAll. On a
+ * 140,000-element page that is 15 ms beside a 540 ms walk; the whole list as one selector
+ * took 40, most of it matching every element against thirty ids.
  */
-export function isBoilerplate(el: Element): boolean {
+const CONSENT_SELECTOR = CONSENT_BANNER_SELECTORS.join(",");
+const CONSENT_IDS = CONSENT_BANNER_SELECTORS.filter((s) => /^#[\w-]+$/.test(s)).map((s) => s.slice(1));
+const CONSENT_OTHERS = CONSENT_BANNER_SELECTORS.filter((s) => !/^#[\w-]+$/.test(s)).join(",");
+
+/** The consent banners in or around `root`, for a walk to skip. */
+export function findConsentBanners(root: Element): Set<Element> {
+  const found = new Set<Element>(root.querySelectorAll(CONSENT_OTHERS));
+  for (const id of CONSENT_IDS) {
+    const el = root.ownerDocument.getElementById(id);
+    if (el) found.add(el);
+  }
+  return found;
+}
+
+/** Is this one element a consent banner? For single questions — a re-scan root's ancestors,
+ *  the page diagnostics — where a lookup over the whole page would be the wrong price. */
+export function isConsentBanner(el: Element): boolean {
+  return el.matches(CONSENT_SELECTOR);
+}
+
+/**
+ * True if this element is page chrome whose subtree should not be scored.
+ * Called once per element during a walk — must stay cheap. A walk passes one `page` for all
+ * its questions, so the page is measured at most once.
+ */
+export function isBoilerplate(el: Element, page: PageTextSize = pageTextSize(el.ownerDocument)): boolean {
   const tag = el.nodeName.toUpperCase(); // XHTML documents report lowercase
 
   // Page-level containers are NEVER chrome, whatever utility classes a skin
@@ -215,10 +303,39 @@ export function isBoilerplate(el: Element): boolean {
   if (cls || id) {
     const names = `${id ?? ""} ${cls ?? ""}`.slice(0, 256);
     if (names.split(/\s+/).some((name) => MAIN_CONTENT_NAME_RE.test(name))) return false;
-    const hay = names.replace(SKIP_DESTINATION_RE, " ");
-    if (CHROME_TOKEN_RE.test(hay)) return true;
+    const hay = names.replace(SKIP_DESTINATION_RE, " ").replace(TAXONOMY_TERM_RE, "$1");
+    if (CHROME_TOKEN_RE.test(hay) && !holdsMostOfPage(el, page)) return true;
     if (REPLY_FORM_TOKEN_RE.test(hay) && isReplyForm(el)) return true;
+    if (cls && mediaWikiFurniture(el) !== null) return true;
   }
 
   return false;
+}
+
+/**
+ * What MediaWiki writes around an article's prose that is not the article: the hatnotes
+ * ("For other uses, see …"), the Notes and References lists, a bibliography set in
+ * `{{refbegin}}`, and the citations its CS1/CS2 templates write into Further reading lists.
+ * Class names of the read view (en.wikipedia.org serves Parsoid HTML; older wikis and
+ * Fandom the legacy parser's), and the choice of what to skip follows Wikimedia's own
+ * plain-text extractor, mwparserfromhtml (https://gitlab.wikimedia.org/repos/research/html-dumps,
+ * MIT, © Wikimedia Foundation), which leaves out notes, references and citations. A hatnote
+ * that ends in a full stop was read as the first line of the section under it, and a list of
+ * references or sources merged into units of its own. Only inside a wiki's content box: a
+ * `references` class means something else on other pages. Infoboxes, message boxes and
+ * sidebars are not listed — the walk already reads none of them: their short cells never
+ * merge with anything.
+ */
+export const MEDIAWIKI_FURNITURE_RE = /(?:^|\s)(hatnote|references|mw-references-wrap|refbegin)(?:\s|$)/;
+const CITATION_RE = /(?:^|\s)citation(?:\s|$)/;
+const CS_CITATION_RE = /(?:^|\s)cs[12](?:\s|$)/;
+
+/** The MediaWiki class that makes this element furniture, or null (see above). */
+export function mediaWikiFurniture(el: Element): string | null {
+  const cls = el.getAttribute("class");
+  if (!cls) return null;
+  const hit =
+    MEDIAWIKI_FURNITURE_RE.exec(cls)?.[1] ??
+    (el.nodeName.toUpperCase() === "CITE" && CITATION_RE.test(cls) && CS_CITATION_RE.test(cls) ? "citation" : null);
+  return hit !== null && el.closest(".mw-parser-output") !== null ? hit : null;
 }

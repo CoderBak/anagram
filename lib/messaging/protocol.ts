@@ -147,6 +147,8 @@ export interface GetTabStateMessage {
 /** content → popup (response to GET_TAB_STATE). */
 export interface TabState {
   enabled: boolean;
+  /** The browser has translated the page, so nothing on it is read (lib/dom/translation.ts). */
+  translated?: boolean;
   hostname: string;
   /** The tab is a PDF the browser's own viewer is showing — the popup offers the reader. */
   pdf?: boolean;

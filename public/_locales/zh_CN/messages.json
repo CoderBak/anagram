@@ -690,6 +690,9 @@
   "popupUnsupportedPage": {
     "message": "此页不可用。"
   },
+  "popupTranslatedPage": {
+    "message": "此页已由浏览器翻译。显示原文后即可分析。"
+  },
   "popupFileAccessNeeded": {
     "message": "请在设置中允许访问本地文件，以打开此 PDF。"
   },

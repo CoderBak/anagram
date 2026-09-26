@@ -19,6 +19,25 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- Cookie banners are no longer analyzed as page text when their consent platform names
+  them after itself: Cookiebot, Didomi, Quantcast, Usercentrics, iubenda, Complianz,
+  Osano, consentmanager, the cookieconsent library and some twenty more. Their containers
+  are taken from DuckDuckGo's autoconsent rules (MPL-2.0).
+- A blog post is no longer skipped whole because of what it is filed under. WordPress
+  writes a post's categories and tags on the box that holds it (`category-newsletter`,
+  `tag-cookies`, `category-sponsored`), and those names read as a newsletter box, a cookie
+  banner or an advert. They are ignored now, and a box that holds more than 40% of the
+  page's text is never taken for page chrome, whatever it is called (a guard adapted from
+  Unclutter, AGPL-3.0).
+- On Wikipedia and other MediaWiki sites, the Notes, References, bibliography and Further
+  reading lists are no longer analyzed, and a hatnote ("Not to be confused with …") is no
+  longer read as the first line of the section under it. On Alan Turing's article such
+  lists made up 30 of the 95 stretches analyzed.
+- A page the browser has translated is no longer analyzed: its text is the translator's,
+  not anybody's writing. While Chrome's translation is on, chips, underlines and the ball
+  go away and the popup says why; the page is read again once the original is shown. A
+  paragraph Read Frog translates in place is skipped the same way; the copies that Read
+  Frog, KISS Translator and FluentRead add beside the original were already skipped.
 - The PDF reader no longer reads a two-column page line by line across both columns when
   one column is plain prose and the other is full of formulas (arXiv 2004.04906, page 2).
   A column's share of the page is now measured in characters, not in the text runs a PDF

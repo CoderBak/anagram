@@ -9,9 +9,10 @@
 //
 // Where the vocabulary comes from, in order of authority:
 //
-//   1. The tokens our own detectors test for. If `lib/dom/boilerplate.ts` decides a box is
-//      page chrome because it is called `site-nav`, then "site" and "nav" are exactly the
-//      words a report has to be able to say — otherwise it cannot explain its own verdict.
+//   1. The tokens and selectors our own detectors test for. If `lib/dom/boilerplate.ts`
+//      decides a box is page chrome because it is called `site-nav`, then "site" and "nav"
+//      are exactly the words a report has to be able to say — otherwise it cannot explain
+//      its own verdict.
 //      They are DERIVED from those lists rather than copied, so a token added there turns
 //      up here without anybody remembering to.
 //   2. The framework markers the orchestrator gates on (below): a page whose root is
@@ -22,9 +23,11 @@
 import {
   CHROME_TOKEN_PATTERNS,
   MAIN_CONTENT_NAME_RE,
+  MEDIAWIKI_FURNITURE_RE,
   REPLY_FORM_TOKEN_RE,
   SKIP_DESTINATION_RE,
 } from "../dom/boilerplate";
+import { CONSENT_BANNER_SELECTORS } from "../dom/consentBanners";
 
 /**
  * Frameworks whose pages are still being hydrated when the document is "ready". The
@@ -96,7 +99,9 @@ function withBothNumbers(atom: string): string[] {
 const VOCABULARY: ReadonlySet<string> = new Set(
   [
     ...CHROME_TOKEN_PATTERNS,
+    ...CONSENT_BANNER_SELECTORS,
     MAIN_CONTENT_NAME_RE.source,
+    MEDIAWIKI_FURNITURE_RE.source,
     REPLY_FORM_TOKEN_RE.source,
     SKIP_DESTINATION_RE.source,
     ...HYDRATION_MARKERS.map(([selector]) => selector),

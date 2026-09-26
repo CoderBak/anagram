@@ -16,8 +16,9 @@
 // a rule here would drift from the rule in lib/dom/ within a release, and the report would
 // then explain a page the product no longer reads that way.
 import { collectUnits, isExcludedByAncestry, isProsePre } from "../dom/walker";
-import { isBoilerplate, isNoTranslate } from "../dom/boilerplate";
+import { isBoilerplate, isConsentBanner, isNoTranslate, mediaWikiFurniture } from "../dom/boilerplate";
 import { NO_SCORE_TAGS, isHeading, isHeadingLabel, tagOf } from "../dom/tags";
+import { isTranslatedInPlace } from "../dom/translation";
 import {
   clipsOwnText,
   createStyleCache,
@@ -277,6 +278,8 @@ function boilerplateBranch(el: Element): string {
   if (tag === "ASIDE") return "<aside> is chrome wherever it stands";
   if (tag === "HEADER" || tag === "FOOTER") return `<${tag.toLowerCase()}> outside an <article>/<main>`;
   if (tag === "FORM") return "a <form> with fields to fill in is a widget";
+  const wiki = mediaWikiFurniture(el);
+  if (wiki) return `MediaWiki's "${wiki}", not the article's prose`;
   const hay = `${el.id} ${el.getAttribute("class") ?? ""}`.slice(0, 256);
   // One probe per token, as a class. isBoilerplate merges the id and the classes into a
   // single haystack and runs one regex over it, so asking again as an id can only ever
@@ -303,11 +306,13 @@ function ancestryReason(el: Element): string | null {
     }
     if (cur.hasAttribute(MARK_ATTR)) return "inside Anagram's own UI";
     if (isNoTranslate(cur)) return `translate="no" / .notranslate on ${nameOf(cur)}`;
+    if (isTranslatedInPlace(cur)) return `machine-translated in place by a translator extension: ${nameOf(cur)}`;
     if ((cur as HTMLElement).isContentEditable) return `inside contenteditable ${nameOf(cur)}`;
     if (cur.getAttribute("aria-hidden") === "true") {
       return `aria-hidden ${nameOf(cur)} — hidden from assistive tech, so hidden from the walk`;
     }
     if (isBoilerplate(cur)) return `page chrome ${nameOf(cur)} — ${boilerplateBranch(cur)}`;
+    if (isConsentBanner(cur)) return `page chrome ${nameOf(cur)} — a consent platform's cookie banner`;
   }
   return "refused by an ancestor (branch not determined)";
 }

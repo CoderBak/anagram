@@ -59,6 +59,8 @@ export interface DiagnosticsEnv {
   running: boolean;
   /** The run was asked for once from the context menu, against the settings. */
   onceForPage: boolean;
+  /** The browser has translated the page, which stops any run (lib/dom/translation.ts). */
+  translated?: boolean;
   /** The tab is a PDF the browser's own viewer is showing. */
   pdf: boolean;
   /** Google Docs, and in which shape ("editor" / "reading"). */
@@ -277,6 +279,9 @@ function stateLine(env: DiagnosticsEnv): string {
     : env.docs
       ? ` · Google Docs (${env.docs})`
       : "";
+  if (env.translated) {
+    return `state: PAUSED — the browser has translated this page (html.translated-ltr/rtl); nothing is read until it shows the original${where}`;
+  }
   if (!env.running) {
     if (env.siteRule?.mode === "off") return `state: DISABLED for this site by rule \`${env.siteRule.host}\`${where}`;
     if (!env.globallyEnabled) return `state: DISABLED — the global switch is off${where}`;

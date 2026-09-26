@@ -1,0 +1,81 @@
+<!doctype html>
+<!--
+  A WordPress blog's front page in a classic theme, three posts whose categories and tags
+  happen to be words that name page chrome elsewhere. Synthetic text.
+
+  Markup of WordPress's bundled Twenty Ten theme (loop.php): every post is
+  `<div id="post-N" <?php post_class(); ?>>`, and post_class() emits `post-N`, the post type,
+  `type-…`, `status-…`, `format-…`, `hentry`, then one class per term: `category-<slug>`,
+  `tag-<slug>`, and `<taxonomy>-<slug>` for other taxonomies (wp-includes/post-template.php).
+  A blog that files its issues under "Newsletter", marks paid posts "Sponsored" and tags a
+  recipe "cookies" gets `category-newsletter`, `category-sponsored` and `tag-cookies` on the
+  post itself — and each is a whole class token that names page chrome. The sidebar is
+  Twenty Ten's `#primary.widget-area[role=complementary]`, the footer its
+  `#footer[role=contentinfo]`.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: WordPress taxonomy classes</title>
+<style>
+  body { margin: 0; font: 16px/1.6 Georgia, serif; }
+  #wrapper { max-width: 940px; margin: 20px auto; }
+  #container { float: left; width: 640px; }
+  #primary { float: right; width: 220px; font: 13px/1.5 system-ui, sans-serif; }
+  #footer { clear: both; font: 12px system-ui, sans-serif; }
+  .entry-meta, .entry-utility { font: 12px/1.5 system-ui, sans-serif; color: #888; }
+  .post { margin-bottom: 36px; }
+</style></head>
+<body class="home blog">
+<div id="wrapper" class="hfeed">
+  <div id="header">
+    <div id="masthead">
+      <div id="branding" role="banner"><div id="site-title"><a href="/" rel="home">The Slipway</a></div><div id="site-description">Notes from a harbour town</div></div>
+      <div id="access" role="navigation"><div class="menu"><ul><li><a href="/">Home</a></li><li><a href="/about/">About</a></li><li><a href="/newsletter/">Newsletter</a></li></ul></div></div>
+    </div>
+  </div>
+  <div id="main">
+    <div id="container">
+      <div id="content" role="main">
+
+        <div id="post-41" class="post-41 post type-post status-publish format-standard hentry category-newsletter">
+          <h2 class="entry-title"><a href="/2026/09/issue-12/" rel="bookmark">Issue 12: the ferry vote</a></h2>
+          <div class="entry-meta" data-chrome><span class="meta-prep meta-prep-author">Posted on</span> <a href="/2026/09/issue-12/" rel="bookmark"><span class="entry-date">September 18, 2026</span></a> <span class="meta-sep">by</span> <span class="author vcard"><a class="url fn n" href="/author/alice/">Alice Moreau</a></span></div>
+          <div class="entry-content" data-voice="post-41" data-expect="unit">
+            <p>This is the twelfth issue, and the first one written in a hurry: the town voted on Thursday night to take over the ferry, and I wanted you to have the numbers before the rumours reach you. The levy goes up by about the price of two return tickets a year, and the new company takes over on the first of January.</p>
+            <p>The board will be elected at a public meeting next month. If you want to stand, the form is at the harbour office and it asks for nothing more than your name, your address and the names of two people who will say that you are not a pirate. I will write again after the meeting.</p>
+          </div>
+          <div class="entry-utility" data-chrome><span class="cat-links"><span class="entry-utility-prep entry-utility-prep-cat-links">Posted in</span> <a href="/category/newsletter/" rel="category tag">Newsletter</a></span> <span class="meta-sep">|</span> <span class="comments-link"><a href="/2026/09/issue-12/#comments">3 Comments</a></span></div>
+        </div>
+
+        <div id="post-38" class="post-38 post type-post status-publish format-standard hentry category-recipes tag-cookies tag-baking">
+          <h2 class="entry-title"><a href="/2026/09/oat-cookies/" rel="bookmark">The oat cookies from the lifeboat station</a></h2>
+          <div class="entry-meta" data-chrome><span class="meta-prep meta-prep-author">Posted on</span> <a href="/2026/09/oat-cookies/" rel="bookmark"><span class="entry-date">September 11, 2026</span></a> <span class="meta-sep">by</span> <span class="author vcard"><a class="url fn n" href="/author/alice/">Alice Moreau</a></span></div>
+          <div class="entry-content" data-voice="post-38" data-expect="unit">
+            <p>Everybody who has ever sat through a lifeboat committee meeting knows these cookies, and nobody knew who made them until the coxswain retired and the tin stopped appearing. It turns out his wife baked them every Sunday for thirty years, and she has kindly let me print the recipe here, with the warning that nobody else has ever got them right.</p>
+            <p>You need oats, butter, golden syrup, a little flour and more patience than seems reasonable. The trick, she says, is to take them out of the oven while they still look undercooked and to leave them on the tray until they are cold, however loudly anybody complains about the wait.</p>
+          </div>
+          <div class="entry-utility" data-chrome><span class="cat-links"><span class="entry-utility-prep entry-utility-prep-cat-links">Posted in</span> <a href="/category/recipes/" rel="category tag">Recipes</a></span> <span class="meta-sep">|</span> <span class="tag-links"><span class="entry-utility-prep entry-utility-prep-tag-links">Tagged</span> <a href="/tag/baking/" rel="tag">baking</a>, <a href="/tag/cookies/" rel="tag">cookies</a></span></div>
+        </div>
+
+        <div id="post-35" class="post-35 post type-post status-publish format-standard has-post-thumbnail hentry category-sponsored tag-share tag-copyright">
+          <h2 class="entry-title"><a href="/2026/09/boatyard/" rel="bookmark">A week at the boatyard, paid for by the boatyard</a></h2>
+          <div class="entry-meta" data-chrome><span class="meta-prep meta-prep-author">Posted on</span> <a href="/2026/09/boatyard/" rel="bookmark"><span class="entry-date">September 4, 2026</span></a> <span class="meta-sep">by</span> <span class="author vcard"><a class="url fn n" href="/author/alice/">Alice Moreau</a></span></div>
+          <div class="entry-content" data-voice="post-35" data-expect="unit">
+            <p>The boatyard asked me to spend a week with them and write about it, and paid for the week, so this post is filed under Sponsored, as every such post here is. They did not ask to read it first. What I found was a business of eleven people keeping about two hundred boats afloat, most of them older than anybody working on them.</p>
+            <p>Half of the work is paperwork now: every hull has its own file, and the files go back to the nineteen fifties. The owner is trying to have them scanned before the damp gets to them, and she would like to hear from anybody who owns photographs of the yard in its early years, whoever took them.</p>
+          </div>
+          <div class="entry-utility" data-chrome><span class="cat-links"><span class="entry-utility-prep entry-utility-prep-cat-links">Posted in</span> <a href="/category/sponsored/" rel="category tag">Sponsored</a></span> <span class="meta-sep">|</span> <span class="tag-links"><span class="entry-utility-prep entry-utility-prep-tag-links">Tagged</span> <a href="/tag/copyright/" rel="tag">copyright</a>, <a href="/tag/share/" rel="tag">share</a></span></div>
+        </div>
+
+      </div>
+    </div>
+    <div id="primary" class="widget-area" role="complementary">
+      <ul class="xoxo">
+        <li id="text-2" class="widget-container widget_text"><h3 class="widget-title">About</h3><div class="textwidget" data-voice="widget" data-expect="none"><p>The Slipway is written by Alice Moreau, who has lived in the harbour town all her life and has opinions about most of it, including the ferry, the lifeboat station, the price of fish and the council's plan for the car park by the north slip, which she would like to see abandoned before anybody pours any concrete.</p></div></li>
+        <li id="recent-posts-2" class="widget-container widget_recent_entries"><h3 class="widget-title">Recent Posts</h3><ul><li><a href="/2026/09/issue-12/">Issue 12: the ferry vote</a></li><li><a href="/2026/09/oat-cookies/">The oat cookies from the lifeboat station</a></li></ul></li>
+      </ul>
+    </div>
+  </div>
+  <div id="footer" role="contentinfo"><div id="colophon"><div id="site-info"><a href="/" rel="home">The Slipway</a></div><div id="site-generator"><a href="https://wordpress.org/">Proudly powered by WordPress.</a></div></div></div>
+</div>
+</body></html>
