@@ -118,6 +118,12 @@ local component and the installer all carry the same version.
   analyzed, the same as a page Chrome translates: nothing is read and no chip stays up while
   the translation is on, and in Edge the page is read again once the original is shown.
   Immersive Translate's bilingual copies of a paragraph are skipped too.
+- A Facebook post of several short paragraphs is read as one post. Facebook sets each
+  paragraph in a wrapper of its own, and the paragraphs were never read together, so such a
+  post got no verdict at all; the posts of the logged-in feed, which Facebook marks only by
+  their place in the feed, are now voices of their own as well. A text cut to one line with
+  an ellipsis is no longer read: Discord repeats the message a reply answers above it that
+  way, and that message was scored a second time.
 
 ## [0.7.0] — 2026-09-26
 

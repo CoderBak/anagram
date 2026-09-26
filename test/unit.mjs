@@ -1204,6 +1204,15 @@ const results = await page.evaluate(() => {
     sandbox.innerHTML = "";
   }
   {
+    // Text laid out on one line that a box cuts off with an ellipsis is a preview of a text
+    // shown in full elsewhere (Discord's reply context, an inbox snippet); a line that merely
+    // does not wrap, in a box the reader can scroll, is still read.
+    u = collect(`<div style="width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><div>${words(80)}</div></div>`);
+    check("a text cut to one line with an ellipsis is a preview, never read", u.length === 0, JSON.stringify(u.map(x => x.words)));
+    u = collect(`<div style="width:300px;overflow-x:auto;white-space:nowrap">${words(80)}</div>`);
+    check("…while a line that does not wrap in a box the reader can scroll is read", u.length === 1, JSON.stringify(u.map(x => x.words)));
+  }
+  {
     // A post's own wrapper carries the terms it is filed under (WordPress post_class):
     // `category-newsletter`, `tag-cookies`. Those are what the post is about, not what the box is.
     const post = (cls) => { const e = document.createElement("div"); e.className = cls; return e; };
@@ -2228,11 +2237,14 @@ const EXPECTED = {
   "amp-article": [1, 1],
   "article-list-table": [6, 5],
   "bilibili-comments": [2, 2],
+  "bluesky-profile": [0, 0],
   "chat-transcript": [2, 1],
   "clipped-reviews": [8, 1],
   "comments-li": [2, 1],
   "consent-banners": [1, 1],
+  "discord-channel": [1, 0],
   "discourse-thread": [2, 2],
+  "facebook-page": [3, 2],
   "front-page-cards": [2, 1],
   "github-discussion": [3, 2],
   "github-issue": [3, 3],
@@ -2248,16 +2260,21 @@ const EXPECTED = {
   "news-article": [1, 1],
   "permalink-single": [2, 1],
   "phpbb-topic": [2, 1],
+  "quora-question": [2, 1],
   "recipe-faq": [5, 4],
   "reddit-thread": [3, 2],
   "reference-lists": [6, 0],
   "review-cards": [2, 1],
   "rfc-html": [3, 0],
+  "slack-channel": [2, 1],
+  "stackoverflow-question": [5, 2],
   "substack-article": [16, 13],
   "substack-comments": [3, 2],
   "substack-note": [3, 1],
   "telegram-channel": [2, 1],
+  "teams-chat": [2, 1],
   "thread-100": [75, 50],
+  "threads-profile": [2, 1],
   "tufte-sidenotes": [4, 3],
   "v2ex-topic": [2, 2],
   "webmail-apple": [4, 4],
@@ -2268,6 +2285,7 @@ const EXPECTED = {
   "wordpress-single": [1, 1],
   "wordpress-taxonomy": [3, 3],
   "x-timeline": [7, 5],
+  "youtube-comments": [2, 0],
   "zhihu-answers": [13, 7],
 };
 const fixtureFiles = readdirSync(FIXTURES).filter((f) => f.endsWith(".html")).sort();

@@ -42,6 +42,7 @@ import { NO_SCORE_TAGS, INLINE_FALLBACK_TAGS, isHeading, isHeadingLabel, tagOf }
 import { findConsentBanners, isBoilerplate, isConsentBanner, isNoTranslate, pageTextSize } from "./boilerplate";
 import {
   createStyleCache,
+  cutToOneLine,
   flowClassOf,
   isInlineDisplay,
   isOutOfFlow,
@@ -378,6 +379,7 @@ export function collectUnits(
   function read(found: Found, claimed: boolean): Run | null {
     const { nodes, container, preserved, formulas, note } = found;
     if (!rects.get(container)) return null; // zero-size container → invisible text
+    if (cutToOneLine(container, styles)) return null; // a one-line preview of somebody's text (style.ts)
     const raw = extractPartText(nodes);
     // One definition of a part's text (lib/dom/text.ts), because the orchestrator recomputes
     // it to tell whether a unit changed and the locator maps offsets in it back to the page.
@@ -928,6 +930,34 @@ function composedContains(root: Element, el: Element): boolean {
   return false;
 }
 
+/** How many wrappers `unwrapped` looks through, and what a wrapper is: a box of layout, never
+ *  list or table markup — an item a level deeper stays out of the post's text. */
+const MAX_WRAPPER_HOPS = 3;
+const LAYOUT_WRAPPERS = new Set(["DIV", "SPAN"]);
+
+/**
+ * The box a paragraph really stands in, inside a DECLARED scope: up through wrappers that hold
+ * that one block and nothing else. Facebook sets each paragraph of a post — `div[dir=auto]` —
+ * in a `pre-wrap` box of its own, so two paragraphs of one post are cousins, never siblings,
+ * and a post of two short paragraphs got nothing: neither `compatible` with the other. Inside
+ * one declared voice such a wrapper separates nothing; on the bare page it is still read as
+ * the section boundary it may be, and a recognised post has its own rule (`oneBody`).
+ */
+function unwrapped(el: Element, scope: Element): Element {
+  let at = el;
+  for (let hops = 0; hops < MAX_WRAPPER_HOPS; hops++) {
+    const parent = at.parentElement;
+    if (!parent || parent === scope || parent.childElementCount !== 1 || !LAYOUT_WRAPPERS.has(tagOf(parent))) break;
+    let alone = true;
+    for (let n = parent.firstChild; n && alone; n = n.nextSibling) {
+      if (n.nodeType === Node.TEXT_NODE && (n.textContent ?? "").trim() !== "") alone = false;
+    }
+    if (!alone) break;
+    at = parent;
+  }
+  return at;
+}
+
 /** Two blocks of ONE BODY of text: siblings of the same tag and the same class — the <p>s
  *  of one rendered answer, not a paragraph and the stats row the card sets beside it. */
 function sameBody(a: Element, b: Element): boolean {
@@ -1045,7 +1075,9 @@ function createAssembler(
    */
   function together(f: Frame, a: Element, b: Element): boolean {
     if (compatible(a, b)) return true;
-    return f.scope !== null && scopes.recognised(f.scope) && scopes.oneBody(a, b, f.scope);
+    if (f.scope === null) return false;
+    if (scopes.recognised(f.scope)) return scopes.oneBody(a, b, f.scope);
+    return compatible(unwrapped(a, f.scope), unwrapped(b, f.scope));
   }
 
   function emit(runs: Run[]): void {

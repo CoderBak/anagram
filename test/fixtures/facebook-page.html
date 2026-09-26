@@ -1,0 +1,135 @@
+<!doctype html>
+<!--
+  A Facebook page's timeline as a logged-out visitor sees it. Synthetic text.
+
+  Reduced from facebook.com/nasa (2026-09-26, logged out). Every post is a
+  `div[role=article]`; its text is in `div[data-ad-preview=message]`, one `div[dir=auto]` per
+  paragraph inside `white-space: pre-wrap` boxes. The page's name is a link in an <h2>, the
+  time a link reading "10h" beside an aria-hidden "10 hours ago"; there is no <time> element.
+  A comment is a `div[role=article][aria-label="Comment by …"]` nested inside the post, its
+  text again a `div[dir=auto]`. Each paragraph of a post stands in a wrapper of its own,
+  so two paragraphs of one post are cousins rather than siblings, and a post of two short
+  paragraphs got no unit (post 1). The logged-in feed (post 3) is modelled, not measured: there
+  a post is no `role=article` but a `div[aria-posinset]` in the `div[role=feed]`, as
+  browsertrix-behaviors' Facebook behaviour finds it (src/site/facebook.ts,
+  https://github.com/webrecorder/browsertrix-behaviors, AGPL-3.0), and nothing in it made it
+  one voice. What the site cuts behind "See more" is in truncated-previews.html.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: Facebook page timeline</title>
+<style>
+  body { margin: 0; font: 15px/1.34 system-ui, sans-serif; background: #f0f2f5; }
+  main { width: 680px; margin: 0 auto; }
+  [role="article"] { background: #fff; border-radius: 8px; margin: 12px 0; padding: 12px 16px; }
+  [role="article"] [role="article"] { background: #f0f2f5; border-radius: 18px; padding: 8px 12px; margin: 6px 0; }
+  .f { display: flex; }
+  .col { display: flex; flex-direction: column; }
+  .pw { white-space: pre-wrap; }
+  .hide { position: absolute; }
+  h2 { font-size: 15px; margin: 0; }
+  a { color: inherit; text-decoration: none; }
+  [role="button"] { cursor: pointer; font-weight: 600; }
+  ul { list-style: none; margin: 0; padding: 0; }
+</style></head>
+<body>
+<main role="main">
+
+<!-- 1 · a post shown whole: two paragraphs → one ×2 unit; a comment under it → its own unit -->
+<div class="x1a2a7pz" role="article">
+  <div class="col">
+    <div class="f" data-chrome>
+      <a aria-label="Harbour Gazette" href="/harbourgazette?__cft__[0]=x" role="link" tabindex="0" style="display:inline-block"><svg width="40" height="40"></svg></a>
+      <div class="col">
+        <h2><span class="f"><a href="/harbourgazette?__cft__[0]=x" role="link" tabindex="0"><b><span>Harbour Gazette</span></b></a></span></h2>
+        <div class="f"><span aria-hidden="true" class="hide">10 hours ago</span><a aria-label="10h" href="/harbourgazette/posts/pfbid0aaa" role="link" tabindex="0">10h</a><span aria-hidden="true"> · </span></div>
+      </div>
+    </div>
+    <div dir="auto">
+      <div class="x1l90r2v x1iorvi4 x1g0dm76" data-ad-comet-preview="message" data-ad-preview="message" data-voice="gazette">
+        <div class="col"><span dir="auto" style="display:block">
+          <div class="pw" data-expect="unit" data-parts="2"><div dir="auto">The winter timetable is out, and for the first time the operator has published the reasoning behind it along with the times. Every crossing is tied to a window of water deep enough for the loaded boat, and those windows move by about fifty minutes a day.</div></div>
+          <div class="pw" data-expect="unit"><div dir="auto">So the first and last boats are fixed to the school day and everything in between drifts with the tide. The fortnightly sheets are at both slipways and in the shop, and the skipper will still wait a minute for a running child.</div></div>
+        </span></div>
+      </div>
+    </div>
+    <div class="f" data-chrome>
+      <span aria-label="See who reacted to this" role="toolbar"><div aria-label="Like: 368 people" role="button" tabindex="0" style="display:inline-flex"><img role="presentation" alt=""></div></span>
+      <span>425</span><span>31 comments</span><span>12 shares</span>
+    </div>
+    <div class="f" data-chrome>
+      <div role="button" tabindex="0" class="f"><span dir="auto" style="display:block">Like</span></div>
+      <div role="button" tabindex="0" class="f"><span dir="auto" style="display:block">Comment</span></div>
+      <div role="button" tabindex="0" class="f"><span dir="auto" style="display:block">Share</span></div>
+    </div>
+    <div class="f" data-chrome><div role="button" tabindex="0" class="f"><span dir="auto" style="display:block">View more comments</span></div></div>
+
+    <div aria-label="Comment by Ines Varga 2 hours ago" role="article" tabindex="-1" class="f">
+      <div><a aria-hidden="true" href="/ines.varga?comment_id=Y29t1" role="link" tabindex="-1" style="display:inline-block"><svg width="32" height="32"></svg></a></div>
+      <div>
+        <div style="display:inline-block">
+          <div data-chrome><a aria-hidden="false" href="/ines.varga?comment_id=Y29t1" role="link" tabindex="0"><span dir="auto" style="display:block">Ines Varga</span></a></div>
+          <div data-voice="ines"><span dir="auto" lang="en" style="display:block"><div class="pw" data-expect="unit"><div dir="auto">We moved to the island in the autumn and nobody told us the boats followed the tide rather than the clock, so the first fortnight was a series of very long waits on the slipway with the dog. Now we just ask in the shop, which is what everybody else seems to do. It would help if the sheet said somewhere near the top that the middle crossings move, because the first time you read it the times look like a mistake.</div></div></span></div>
+        </div>
+        <div class="f" data-chrome><ul class="f"><li><a href="/harbourgazette/posts/pfbid0aaa" role="link" tabindex="0">2h</a></li><li><div role="button" tabindex="0">Like</div></li><li><div role="button" tabindex="0">Reply</div></li></ul></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- 2 · a short post → nothing -->
+<div class="x1a2a7pz" role="article">
+  <div class="col">
+    <div class="f" data-chrome>
+      <a aria-label="Harbour Gazette" href="/harbourgazette?__cft__[0]=y" role="link" tabindex="0" style="display:inline-block"><svg width="40" height="40"></svg></a>
+      <div class="col">
+        <h2><span class="f"><a href="/harbourgazette?__cft__[0]=y" role="link" tabindex="0"><b><span>Harbour Gazette</span></b></a></span></h2>
+        <div class="f"><span aria-hidden="true" class="hide">1 day ago</span><a aria-label="1d" href="/harbourgazette/posts/pfbid0bbb" role="link" tabindex="0">1d</a></div>
+      </div>
+    </div>
+    <div dir="auto">
+      <div class="x1l90r2v x1iorvi4 x1g0dm76" data-ad-comet-preview="message" data-ad-preview="message" data-voice="gazette-2">
+        <div class="col"><span dir="auto" style="display:block">
+          <div class="pw" data-expect="none"><div dir="auto">The library is open late on Thursdays again from next week.</div></div>
+        </span></div>
+      </div>
+    </div>
+    <div class="f" data-chrome>
+      <div role="button" tabindex="0" class="f"><span dir="auto" style="display:block">Like</span></div>
+      <div role="button" tabindex="0" class="f"><span dir="auto" style="display:block">Comment</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- 3 · the logged-in feed (modelled): a post is a div[aria-posinset] in the feed → one ×2 unit -->
+<div role="feed">
+  <div class="x1lliihq">
+    <div aria-posinset="1" aria-setsize="-1" aria-describedby="_r_4a_ _r_4b_" aria-labelledby="_r_49_" class="x1a2a7pz">
+      <div class="col">
+        <div class="f" data-chrome>
+          <a aria-label="Mara Oyelaran" href="/mara.oyelaran?__cft__[0]=z" role="link" tabindex="0" style="display:inline-block"><svg width="40" height="40"><image href="avatar.jpg" width="40" height="40"></image></svg></a>
+          <div class="col">
+            <h4 id="_r_49_"><span class="f"><a href="/mara.oyelaran?__cft__[0]=z" role="link" tabindex="0"><b><span>Mara Oyelaran</span></b></a></span></h4>
+            <div class="f"><a aria-label="3h" href="/mara.oyelaran/posts/pfbid0ccc" role="link" tabindex="0">3h</a><span aria-hidden="true"> · </span></div>
+          </div>
+        </div>
+        <div id="_r_4a_" dir="auto">
+          <div data-ad-rendering-role="story_message" data-ad-comet-preview="message" data-ad-preview="message" data-voice="mara">
+            <div class="col"><span dir="auto" style="display:block">
+              <div class="pw" data-expect="unit" data-parts="2"><div dir="auto">Twenty years of walking the same stretch of coast every morning, and today for the first time a seal followed me the whole length of the beach, keeping pace about ten metres out and watching me the entire time.</div></div>
+              <div class="pw" data-expect="unit"><div dir="auto">When I stopped, it stopped. When I turned back, it turned back too. I have no idea what it wanted, but I have decided to take it as a compliment and I will be there again tomorrow at seven.</div></div>
+            </span></div>
+          </div>
+        </div>
+        <div class="f" data-chrome>
+          <div role="button" tabindex="0" class="f"><span dir="auto" style="display:block">Like</span></div>
+          <div role="button" tabindex="0" class="f"><span dir="auto" style="display:block">Comment</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</main>
+</body></html>

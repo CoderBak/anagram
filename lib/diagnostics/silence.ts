@@ -21,6 +21,7 @@ import { NO_SCORE_TAGS, isHeading, isHeadingLabel, tagOf } from "../dom/tags";
 import { isTranslatedInPlace } from "../dom/translation";
 import {
   clipsOwnText,
+  cutToOneLine,
   createStyleCache,
   flowClassOf,
   isOutOfFlow,
@@ -343,6 +344,9 @@ function hiddenReason(el: Element, cs: Styler): string | null {
     }
     if (style.opacity === "0") return `opacity:0 on ${nameOf(cur)}`;
     if (isVisuallyHidden(style)) return `visually hidden (a screen-reader-only copy) on ${nameOf(cur)}`;
+    if (cutToOneLine(cur, { get: cs })) {
+      return `cut to one line with an ellipsis on ${nameOf(cur)} — a preview of a text shown in full elsewhere`;
+    }
     if (isOutOfFlow(style) && (cur.textContent ?? "").trim().length <= MARKER_CHARS) {
       return `out of flow (position:${style.position}) with under ${MARKER_CHARS} characters — read as a marker, not prose`;
     }

@@ -1,0 +1,158 @@
+<!doctype html>
+<!--
+  A Stack Overflow question with its answers and comments, synthetic text.
+
+  Stack Overflow refuses a plain headless browser, so this is reduced from the Wayback
+  Machine's copy of a question page (2025), rendered: `div#question.question` and
+  `div#answer-N.answer`, the text in `div.s-prose.js-post-body` beside a vote cell of buttons,
+  the tags a list of links, and under the text the `div.post-signature` user cards ("edited" /
+  "asked" / "answered" with `span.relativetime[title=<ISO date>]`, a `/users/N/name` link and a
+  reputation score). Comments are the classic `li.comment` (text in `span.comment-copy`, then
+  "– " and the `a.comment-user`, a dated `span.relativetime-clean`) or, on newer answers,
+  "follow-ups": `div[role=listitem]#follow-up-N` in a `div[role=list]`, a user card with a
+  `<time title>` above the text and a row of buttons under it. Neither a question nor an
+  answer declares itself, and the comments under a post keep its byline from reading as
+  one at the post's edge, so both are read as the page is; the comments are voices of their
+  own.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: Stack Overflow question</title>
+<style>
+  body { margin: 0; font: 15px/1.5 -apple-system, "Segoe UI", sans-serif; }
+  #mainbar { width: 728px; margin: 0 auto; }
+  .post-layout { display: grid; grid-template-columns: 48px 1fr; }
+  .d-flex, .js-voting-container { display: flex; }
+  .fd-column { flex-direction: column; }
+  .d-none { display: none; }
+  .v-visible-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  pre { white-space: pre; background: #f6f6f6; padding: 12px; }
+  ul.comments-list { list-style: none; padding: 0; font-size: 13px; }
+  ul.js-post-tag-list-wrapper { display: inline; list-style: none; padding: 0; }
+  ul.js-post-tag-list-wrapper li { display: inline; }
+  .post-signature { width: 200px; font-size: 12px; }
+</style></head>
+<body>
+<div id="content">
+<div id="mainbar" role="main" aria-label="question and answers">
+
+  <div class="question js-question" data-questionid="1100" id="question">
+    <div class="post-layout">
+      <div class="votecell post-layout--left" data-chrome>
+        <div class="js-voting-container d-flex fd-column"><button class="js-vote-up-btn" title="This question shows research effort" aria-label="Up vote">▲</button><div class="js-vote-count">412</div><button class="js-vote-down-btn" aria-label="Down vote">▼</button></div>
+      </div>
+      <div class="postcell post-layout--right">
+        <div class="s-prose js-post-body" data-voice="asker">
+          <p data-expect="unit" data-parts="2">I have a loop over a large array of small integers that adds up every value above a threshold. When I sort the array before the loop, the loop itself runs about six times faster, even though it does exactly the same number of additions and comparisons either way.</p>
+<pre class="lang-cpp s-code-block"><code>for (unsigned i = 0; i &lt; n; ++i)
+    if (data[i] &gt;= 128) sum += data[i];</code></pre>
+          <p>I expected the sort to make no difference at all, since every element is still visited once. Is this something about the cache, or about the compiler, or something else entirely that I am not seeing?</p>
+        </div>
+        <div class="post-taglist" data-chrome><ul class="ml0 list-ls-none js-post-tag-list-wrapper d-inline"><li><a href="/questions/tagged/c%2b%2b" class="post-tag">c++</a></li> <li><a href="/questions/tagged/performance" class="post-tag">performance</a></li> <li><a href="/questions/tagged/cpu-architecture" class="post-tag">cpu-architecture</a></li></ul></div>
+        <div class="mb0" data-chrome>
+          <div class="d-flex">
+            <div class="flex--item mr16"><a href="/q/1100" title="Short permalink to this question">Share</a> <a href="/posts/1100/edit">Improve this question</a> <button type="button">Follow</button></div>
+            <div class="post-signature flex--item"><div class="user-info user-hover"><div class="d-flex"><div class="user-action-time fl-grow1"><a href="/posts/1100/revisions" title="show all edits to this post">edited <span title="2025-05-23 14:23:04Z" class="relativetime">May 23 at 14:23</span></a></div></div><div class="user-gravatar32"><a href="/users/2204/tessa-marlowe"><div class="gravatar-wrapper-32"><img alt="Tessa Marlowe's user avatar" width="32" height="32"></div></a></div><div class="user-details"><a href="/users/2204/tessa-marlowe" dir="auto">Tessa Marlowe</a><div class="-flair"><span class="reputation-score" title="reputation score 38,275" dir="ltr">38.3k</span></div></div></div></div>
+            <div class="post-signature owner flex--item"><div class="user-info user-hover"><div class="d-flex"><div class="user-action-time fl-grow1">asked <span title="2012-06-27 13:51:36Z" class="relativetime">Jun 27, 2012 at 13:51</span></div></div><div class="user-gravatar32"><a href="/users/8723/quill-and-nib"><div class="gravatar-wrapper-32"><img alt="quill-and-nib's user avatar" width="32" height="32"></div></a></div><div class="user-details"><a href="/users/8723/quill-and-nib" dir="auto">quill-and-nib</a><div class="-flair"><span class="reputation-score" title="reputation score 50,633" dir="ltr">50.6k</span></div></div></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="post-layout--right js-post-comments-component">
+        <div id="comments-1100" class="comments js-comments-container">
+          <ul class="comments-list js-comments-list">
+            <li id="comment-501" class="comment js-comment">
+              <div class="js-comment-actions comment-actions" data-chrome><div class="comment-score js-comment-score"><span title="number of 'useful comment' votes received" class="supernova">164</span></div></div>
+              <div class="comment-text js-comment-text-and-form">
+                <div class="comment-body js-comment-edit-hide"><span class="comment-copy" data-voice="comment-ansel" data-expect="unit">It is worth saying for anyone who finds this later that the effect depends heavily on the compiler and the flags. At higher optimisation levels several compilers turn this particular branch into a conditional move or even vectorise the whole loop, and then the sorted and unsorted runs take exactly the same time. So if you cannot reproduce it, check the generated code before you check anything else, because the difference is in the instructions the compiler chose.</span>
+                  <div class="d-inline-flex ai-center" data-chrome><div class="d-none">Ansel Brightwater</div> – <a href="/users/5649/ansel-brightwater" title="924 reputation" class="comment-user">Ansel Brightwater</a></div>
+                  <span class="comment-date" dir="ltr" data-chrome><span class="v-visible-sr">Commented</span><span title="2018-05-11 12:45:08Z, License: CC BY-SA 4.0" class="relativetime-clean">May 11, 2018 at 12:45</span></span>
+                </div>
+              </div>
+            </li>
+            <li id="comment-502" class="comment js-comment">
+              <div class="js-comment-actions comment-actions" data-chrome><div class="comment-score js-comment-score"><span class="cool">12</span></div></div>
+              <div class="comment-text js-comment-text-and-form">
+                <div class="comment-body js-comment-edit-hide"><span class="comment-copy" data-voice="comment-wren" data-expect="none">Which compiler and which flags are you using?</span>
+                  <div class="d-inline-flex ai-center" data-chrome><div class="d-none">wren</div> – <a href="/users/7731/wren" title="1,204 reputation" class="comment-user">wren</a></div>
+                  <span class="comment-date" dir="ltr" data-chrome><span class="v-visible-sr">Commented</span><span title="2012-06-27 14:02:11Z, License: CC BY-SA 3.0" class="relativetime-clean">Jun 27, 2012 at 14:02</span></span>
+                </div>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="answers">
+    <div id="answers-header" data-chrome><div class="d-flex"><h2 class="mb0" data-answercount="2">2 Answers</h2><div><label for="answer-sort">Sorted by:</label><select id="answer-sort"><option>Highest score (default)</option></select></div></div></div>
+
+    <div id="answer-1102" class="answer js-answer accepted-answer" data-answerid="1102">
+      <div class="post-layout">
+        <div class="votecell post-layout--left" data-chrome><div class="js-voting-container d-flex fd-column"><button aria-label="Up vote">▲</button><div class="js-vote-count">3525</div><button aria-label="Down vote">▼</button><div class="js-accepted-answer-indicator" title="Loading when this answer was accepted…" tabindex="0" role="note" aria-label="Accepted">✓</div></div></div>
+        <div class="answercell post-layout--right">
+          <div class="s-prose js-post-body" data-voice="answerer-odile">
+            <p data-expect="unit" data-parts="3"><strong>You are a victim of branch prediction failure.</strong></p>
+            <p>A modern processor does not wait to find out which way a branch goes. It guesses, starts working on the guessed path, and throws that work away if the guess turns out to be wrong, which costs it a dozen or more cycles each time.</p>
+            <p>With sorted data the guess is almost always right: the branch goes one way for the first half of the array and the other way for the second, and the predictor learns that within a few iterations.</p>
+<pre class="lang-none prettyprint-override"><code>T = branch taken
+N = branch not taken
+
+data[] = 0, 1, 2, 3, 4, ... 126, 127, 128, 129, 130, ... 250, 251, 252, ...
+branch = N  N  N  N  N  ...   N    N    T    T    T  ...   T    T    T  ...</code></pre>
+            <p data-expect="unit">With random data the branch is taken about half the time with no pattern at all, so the predictor is wrong about half the time and every wrong guess throws work away. That is the whole of the six times: the same instructions, but a great many of them started and then discarded. If you remove the branch, for example by computing a mask from the comparison and adding the masked value unconditionally, the sorted and unsorted versions run at the same speed, and on most machines both run faster than either did before.</p>
+          </div>
+          <div class="mt24" data-chrome><div class="d-flex"><div class="flex--item mr16"><a href="/a/1102">Share</a> <a href="/posts/1102/edit">Improve this answer</a></div><div class="post-signature flex--item"><div class="user-info"><div class="d-flex"><div class="user-action-time fl-grow1">answered <span title="2012-06-27 13:56:42Z" class="relativetime">Jun 27, 2012 at 13:56</span></div></div><div class="user-gravatar32"><a href="/users/5024/odile-strand"><div class="gravatar-wrapper-32"><img alt="Odile Strand's user avatar" width="32" height="32"></div></a></div><div class="user-details"><a href="/users/5024/odile-strand">Odile Strand</a><div class="-flair"><span class="reputation-score" title="reputation score 470,318" dir="ltr">470k</span></div></div></div></div></div></div>
+        </div>
+        <div class="post-layout--right">
+          <div id="follow-ups-container-1102">
+            <div class="mt16">
+              <div class="mb8 d-flex ai-center" role="button" tabindex="0" data-chrome>3 comments</div>
+              <div role="list">
+                <div id="follow-up-601" role="listitem">
+                  <div class="d-flex fd-column">
+                    <div class="d-flex g6" data-chrome><div class="flex--item w24"><a href="/users/4416/iver-sandqvist" class="s-avatar s-avatar__24 s-user-card--avatar" aria-label="User profile"><img class="s-avatar--image" alt="" width="24" height="24"></a></div><div class="flex--item d-flex fd-column"><div class="s-user-card--info"><div class="s-user-card--awards"><a href="/users/4416/iver-sandqvist" class="s-user-card--link truncate wmx2">Iver Sandqvist</a> <a class="comment-link" href="#comment601_1102"><time title="2020-07-12T23:52:48.26Z" class="s-user-card--time">Jul 12, 2020</time></a></div></div></div></div>
+                    <div class="flex--item d-flex g6">
+                      <div class="flex--item d-flex fd-column"><div class="h100 ml12 mr12"></div></div>
+                      <div class="flex--item d-flex fd-column">
+                        <div class="flex--item fw-normal fs-body1" data-voice="followup-iver" data-expect="unit">The railway analogy in the older version of this answer helped me more than any textbook did, but it hides one thing that matters in practice: a mispredicted branch does not only cost the cycles thrown away, it also stops the processor from doing anything useful further ahead while it recovers. That is why the penalty is so much larger on long pipelines, and why it keeps growing as processors get wider and their pipelines deeper.
+                        <div class="d-flex g16 pb8" data-chrome><button class="s-btn s-btn__xs" type="button"><span>66</span></button> <button class="s-btn s-btn__xs" type="button"><span>Reply</span></button> <button class="s-btn s-btn__xs" type="button" aria-label="Open menu">…</button></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div id="follow-up-602" role="listitem">
+                  <div class="d-flex fd-column">
+                    <div class="d-flex g6" data-chrome><div class="flex--item w24"><a href="/users/9911/pim" class="s-avatar s-avatar__24 s-user-card--avatar" aria-label="User profile"><img class="s-avatar--image" alt="" width="24" height="24"></a></div><div class="flex--item d-flex fd-column"><div class="s-user-card--info"><div class="s-user-card--awards"><a href="/users/9911/pim" class="s-user-card--link truncate wmx2">pim</a> <a class="comment-link" href="#comment602_1102"><time title="2021-01-03T08:12:00.00Z" class="s-user-card--time">Jan 3, 2021</time></a></div></div></div></div>
+                    <div class="flex--item d-flex g6">
+                      <div class="flex--item d-flex fd-column"><div class="h100 ml12 mr12"></div></div>
+                      <div class="flex--item d-flex fd-column">
+                        <div class="flex--item fw-normal fs-body1" data-voice="followup-pim" data-expect="none">Great explanation, thank you.</div>
+                        <div class="d-flex g16 pb8" data-chrome><button class="s-btn s-btn__xs" type="button"><span>3</span></button> <button class="s-btn s-btn__xs" type="button"><span>Reply</span></button></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="answer-1105" class="answer js-answer" data-answerid="1105">
+      <div class="post-layout">
+        <div class="votecell post-layout--left" data-chrome><div class="js-voting-container d-flex fd-column"><button aria-label="Up vote">▲</button><div class="js-vote-count">48</div><button aria-label="Down vote">▼</button></div></div>
+        <div class="answercell post-layout--right">
+          <div class="s-prose js-post-body" data-voice="answerer-bram">
+            <p data-expect="none">Try compiling with optimisations on and look at the assembly; you will probably find that the branch is gone.</p>
+          </div>
+          <div class="mt24" data-chrome><div class="d-flex"><div class="flex--item mr16"><a href="/a/1105">Share</a></div><div class="post-signature flex--item"><div class="user-info"><div class="d-flex"><div class="user-action-time fl-grow1">answered <span title="2019-03-02 10:00:12Z" class="relativetime">Mar 2, 2019 at 10:00</span></div></div><div class="user-gravatar32"><a href="/users/8120/bram-oduya"><div class="gravatar-wrapper-32"><img alt="Bram Oduya's user avatar" width="32" height="32"></div></a></div><div class="user-details"><a href="/users/8120/bram-oduya">Bram Oduya</a><div class="-flair"><span class="reputation-score" title="reputation score 2,114" dir="ltr">2,114</span></div></div></div></div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+</body></html>

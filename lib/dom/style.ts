@@ -122,6 +122,34 @@ export function clipsOwnText(el: Element, cs: CSSStyleDeclaration): boolean {
   return true;
 }
 
+/** How far above a line of text the box that cuts it off may sit: Discord sets the preview
+ *  box one element above the text it cuts. */
+const ONE_LINE_BOX_LEVELS = 3;
+
+/**
+ * Is text in `container` laid out on ONE line that a box cuts off with an ellipsis — the
+ * one-line preview of a text shown in full somewhere else? Discord opens a reply with the
+ * message it answers, name and text, in `div.repliedTextPreview` (`white-space: nowrap;
+ * overflow: hidden; text-overflow: ellipsis`); the whole of that other message is in the
+ * page, its first few words on screen, and it was read — a second verdict on a message that
+ * has one of its own, most of it words nobody sees. An inbox's snippet lines are the same
+ * shape. Nobody writes a paragraph to be read on one unwrapped line: this is a measurement
+ * of how the text is laid out, not a name, and it asks the style cache only for text that
+ * does not wrap.
+ */
+export function cutToOneLine(container: Element, styles: StyleCache): boolean {
+  const own = styles.get(container);
+  const ws = own?.whiteSpace ?? "";
+  if (ws !== "nowrap" && ws !== "pre") return false;
+  let at: Element | null = container;
+  for (let up = 0; at && up <= ONE_LINE_BOX_LEVELS; up++, at = at.parentElement) {
+    const cs = up === 0 ? own : styles.get(at);
+    if (!cs) continue;
+    if (cs.textOverflow === "ellipsis" && (cs.overflowX === "hidden" || cs.overflowX === "clip")) return true;
+  }
+  return false;
+}
+
 /**
  * Visually absent content, whatever its display: screen-reader-only copies ("(opens
  * in a new tab)", icon labels, legacy clip-rect sr-only spans) and the hidden

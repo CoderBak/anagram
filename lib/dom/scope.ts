@@ -28,6 +28,12 @@
 //                             role is spelt out on a NON-<li> element inside a list on
 //                             purpose: `<ul role="list">` is the common Safari workaround on
 //                             ordinary bullet lists, whose <li> stay one author's text.
+//   [role=feed]             — an item of a feed, by the position ARIA gives it in the feed:
+//     [aria-posinset]         Facebook's logged-in feed marks every post only that way,
+//                             `div[aria-posinset]` in `div[role=feed]` (the item
+//                             browsertrix-behaviors keys its Facebook behaviour on), with
+//                             no `role=article`; the paragraphs of a post were read as the
+//                             bare page reads them.
 //   bili-comment-renderer,  — Bilibili's comments are nested OPEN shadow roots
 //   bili-comment-reply-       (`bili-comments` → `bili-comment-thread-renderer` →
 //   renderer                  `bili-comment-renderer` → `bili-rich-text` → `p#contents`);
@@ -134,7 +140,7 @@
 import { INLINE_FALLBACK_TAGS, tagOf } from "./tags";
 
 const DECLARED_SCOPE_SELECTOR =
-  'article,[role="article"],blockquote,figure,[role="link"],[role="list"] [role="listitem"]:not(li),bili-comment-renderer,bili-comment-reply-renderer';
+  'article,[role="article"],blockquote,figure,[role="link"],[role="list"] [role="listitem"]:not(li),[role="feed"] [aria-posinset],bili-comment-renderer,bili-comment-reply-renderer';
 
 /** Everything that could be byline evidence; `isEvidence` decides. */
 const EVIDENCE_CANDIDATES = "time,relative-time,[datetime],[title],img,a[href]";
