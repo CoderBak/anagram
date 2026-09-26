@@ -306,7 +306,36 @@ export function isBoilerplate(el: Element, page: PageTextSize = pageTextSize(el.
     const hay = names.replace(SKIP_DESTINATION_RE, " ").replace(TAXONOMY_TERM_RE, "$1");
     if (CHROME_TOKEN_RE.test(hay) && !holdsMostOfPage(el, page)) return true;
     if (REPLY_FORM_TOKEN_RE.test(hay) && isReplyForm(el)) return true;
+    if (cls && mediaWikiFurniture(el) !== null) return true;
   }
 
   return false;
+}
+
+/**
+ * What MediaWiki writes around an article's prose that is not the article: the hatnotes
+ * ("For other uses, see …"), the Notes and References lists, a bibliography set in
+ * `{{refbegin}}`, and the citations its CS1/CS2 templates write into Further reading lists.
+ * Class names of the read view (en.wikipedia.org serves Parsoid HTML; older wikis and
+ * Fandom the legacy parser's), and the choice of what to skip follows Wikimedia's own
+ * plain-text extractor, mwparserfromhtml (https://gitlab.wikimedia.org/repos/research/html-dumps,
+ * MIT, © Wikimedia Foundation), which leaves out notes, references and citations. A hatnote
+ * that ends in a full stop was read as the first line of the section under it, and a list of
+ * references or sources merged into units of its own. Only inside a wiki's content box: a
+ * `references` class means something else on other pages. Infoboxes, message boxes and
+ * sidebars are not listed — the walk already reads none of them: their short cells never
+ * merge with anything.
+ */
+export const MEDIAWIKI_FURNITURE_RE = /(?:^|\s)(hatnote|references|mw-references-wrap|refbegin)(?:\s|$)/;
+const CITATION_RE = /(?:^|\s)citation(?:\s|$)/;
+const CS_CITATION_RE = /(?:^|\s)cs[12](?:\s|$)/;
+
+/** The MediaWiki class that makes this element furniture, or null (see above). */
+export function mediaWikiFurniture(el: Element): string | null {
+  const cls = el.getAttribute("class");
+  if (!cls) return null;
+  const hit =
+    MEDIAWIKI_FURNITURE_RE.exec(cls)?.[1] ??
+    (el.nodeName.toUpperCase() === "CITE" && CITATION_RE.test(cls) && CS_CITATION_RE.test(cls) ? "citation" : null);
+  return hit !== null && el.closest(".mw-parser-output") !== null ? hit : null;
 }

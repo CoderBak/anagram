@@ -1111,6 +1111,16 @@ const results = await page.evaluate(() => {
       most.length === 2 && box.length === 2 && box.every((x) => x.wordCount === 90), JSON.stringify([most.map((x) => x.wordCount), box.map((x) => x.wordCount)]));
   }
   {
+    // MediaWiki's furniture is its own only inside a wiki's content box: a list classed
+    // `references` on another site is judged like any other list.
+    const list = `<ol class="references">${Array.from({ length: 4 }, () => `<li>${words(25)}</li>`).join("")}</ol>`;
+    sandbox.innerHTML = `<div class="mw-parser-output">${list}</div>`;
+    const inWiki = PW.collectUnits(sandbox);
+    sandbox.innerHTML = `<div class="page">${list}</div>`;
+    const elsewhere = PW.collectUnits(sandbox);
+    check("a wiki's reference list is never read, a list of the same name elsewhere still is", inWiki.length === 0 && elsewhere.length === 1, JSON.stringify([inWiki.length, elsewhere.length]));
+  }
+  {
     // Regression: Wikipedia Vector-2022 body classes ("…-toc-pinned-…") must
     // never classify a page-level container as chrome.
     const b = document.createElement("body");
@@ -2122,6 +2132,7 @@ const EXPECTED = {
   "telegram-channel": [2, 1],
   "thread-100": [75, 50],
   "v2ex-topic": [2, 2],
+  "wikipedia-article": [3, 2],
   "wordpress-comments": [2, 2],
   "wordpress-single": [1, 1],
   "wordpress-taxonomy": [3, 3],

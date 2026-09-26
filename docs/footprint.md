@@ -55,6 +55,7 @@ notice compares versions locally; it does not poll GitHub.
 | `lib/dom/consentBanners.ts` | `https://mozilla.org/MPL/2.0/` | the MPL-2.0 notice of the consent-banner selector list, in a comment |
 | `lib/dom/consentBanners.ts` | `https://github.com/duckduckgo/autoconsent` | where that selector list comes from, in a comment |
 | `lib/dom/boilerplate.ts` | `https://github.com/lindylearn/unclutter` | the attribution of the page-text guard on the chrome filter, in a comment |
+| `lib/dom/boilerplate.ts` | `https://gitlab.wikimedia.org/repos/research/html-dumps` | the attribution of the MediaWiki classes the walk skips, in a comment |
 | `entrypoints/onboarding/index.html` | `https://github.com/CoderBak/anagram/blob/dev/docs/user-guide.en.md` | the user-guide link on the setup page; opened only when clicked |
 | `entrypoints/onboarding/main.ts` | `https://github.com/CoderBak/anagram/blob/dev/docs/user-guide.zh-CN.md` | the same link for a Chinese browser |
 | `entrypoints/options/index.html` | `https://github.com/CoderBak/anagram/blob/dev/PRIVACY.md` | the privacy-policy link on the settings page; opened only when clicked |
