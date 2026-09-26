@@ -1364,6 +1364,19 @@ const results = await page.evaluate(() => {
     check("display equation between two short paragraphs is not a merge barrier", u.length === 1 && u[0].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
   }
   {
+    // LaTeXML (arXiv's HTML) wraps every paragraph in a div.ltx_para of its own.
+    const para = (n, cls = "") => `<div class="ltx_para${cls}"><p class="ltx_p">${words(n)}.</p></div>`;
+    u = collect(`<section class="ltx_section">${para(40)}${para(40)}</section>`);
+    check("a paper's two short paragraphs, each in its own div.ltx_para, are read together", u.length === 1 && u[0].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
+    u = collect(`<section class="ltx_section">${para(40)}<div class="ltx_theorem">${para(40)}</div></section>`);
+    check("a theorem's short statement is read with the paragraph before it", u.length === 1 && u[0].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
+    const item = (n) => `<li class="ltx_item"><span class="ltx_tag ltx_tag_item">1.</span> ${para(n)}</li>`;
+    u = collect(`<section class="ltx_section">${para(80)}<ol class="ltx_enumerate">${item(40)}${item(40)}</ol></section>`);
+    check("the short items of a paper's list are read together", u.length === 2 && u[1].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
+    u = collect(`<section><div class="box"><p>${words(40)}.</p></div><div class="box"><p>${words(40)}.</p></div></section>`);
+    check("two short paragraphs in boxes of their own elsewhere stay apart", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+  }
+  {
     sandbox.innerHTML = `<p>${words(40)}</p><div>(3)</div><p>${words(40)}</p>`;
     u = collect(sandbox.innerHTML);
     check("a bare equation number '(3)' is transparent, not a barrier", u.length === 1 && u[0].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
