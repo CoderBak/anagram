@@ -102,12 +102,18 @@ describe("glyphsOf", () => {
 
 describe("isMathFont", () => {
   it("knows the TeX and OpenType mathematics faces, subset tag and all", () => {
-    for (const name of ["BXJUHM+CMMI10", "CMSY7", "XEQPCY+CMEX10", "MSBM10", "txsy", "LatinModernMath-Regular", "STIXTwoMath-Regular", "CambriaMath", "Symbol", "SymbolMT"]) {
+    for (const name of ["BXJUHM+CMMI10", "CMSY7", "XEQPCY+CMEX10", "MSBM10", "txsy", "LatinModernMath-Regular", "STIXTwoMath-Regular", "CambriaMath", "Symbol", "SymbolMT",
+      // mathabx, MnSymbol, kpfonts, the MLM build of Latin Modern, txfonts, newtx's alternative
+      // math faces, fdsymbol, doublestroke, bbold, esint, URW's Symbol, mathpazo, cmbright.
+      "QJDHKG+TeX-matha10", "TeX-mathx10", "MnSymbol10", "Kp--M-Italic", "Kp--M-Sy-Regular", "UASACH+MLMMathItalic10-Regular",
+      "MLMMathSymbols8-Regular", "rtxmi", "LibertineMathMI7", "XCharterMathMI", "FdSymbolA-Book", "XMDXUT+dsrom10", "BBOLD10",
+      "esint10", "StandardSymL-Slant_167", "PazoMath-Italic", "HFBRMI10", "HFBRSY10"]) {
       expect(isMathFont(name), name).toBe(true);
     }
   });
   it("leaves the text faces alone", () => {
-    for (const name of ["UTRHDZ+CMR10", "NimbusRomNo9L-Regu", "Times-Roman", "CMBX12", "CMTI10", "Helvetica", "DejaVuSans", ""]) {
+    for (const name of ["UTRHDZ+CMR10", "NimbusRomNo9L-Regu", "Times-Roman", "CMBX12", "CMTI10", "Helvetica", "DejaVuSans", "",
+      "MLMRoman10-Regular", "rtxr", "Kp-Regular", "LinLibertineT", "URWPalladioL-Roma", "SFRM1000"]) {
       expect(isMathFont(name), name).toBe(false);
     }
   });
@@ -406,6 +412,39 @@ describe("structuredBlocks — formulas", () => {
     const pages = [pageText(1, [a.item, m, b.item], fonts)];
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
     expect(blocks[0].text).toBe("which determines entirely.");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
+  it("leaves out what TeX sets of a formula in the text face: operator names, capital Greek, sub- and superscripts", () => {
+    // "\sup \Gamma(\Delta)", "\log p", "x_{\mathrm{init}}": TeX takes the operator names,
+    // the upright capital Greek and the letters of \mathrm from the text face, so only the
+    // face of their neighbours says they are mathematics. The same word in the sentence stays.
+    const fonts = { f_text: "NimbusRomNo9L-Regu", f_math: "BXJUHM+CMMI10", f_cmr: "UTRHDZ+CMR10", f_cmr7: "UTRHDZ+CMR7" };
+    const items: PdfTextItem[] = [];
+    const runs: (number | number[])[][] = [];
+    let x = 72;
+    const put = (text: string, font: string, gap = CW, size = SIZE) => {
+      const d = drawn(1, { text, x, y: 100, font });
+      d.item.height = size;
+      items.push(d.item);
+      runs.push(d.run);
+      x += text.length * CW + gap;
+    };
+    put("the bound", "f_text");
+    put("sup", "f_cmr", 2);
+    put("Γ(∆)", "f_cmr");
+    put("is finite, and", "f_text");
+    put("log", "f_cmr", 2);
+    put("p", "f_math");
+    put("is the score of", "f_text");
+    put("x", "f_math", 0);
+    put("init", "f_cmr7", CW, 7);
+    put("in the log of the data.", "f_text");
+    const text = "the bound sup Γ(∆) is finite, and log p is the score of xinit in the log of the data.";
+    const n = { text, anchor: { textMap: JSON.stringify(runs) } };
+    const pages = [pageText(1, items, fonts)];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0].text).toBe("the bound is finite, and is the score of in the log of the data.");
     expectRunsToMatch(blocks[0], pages);
   });
 

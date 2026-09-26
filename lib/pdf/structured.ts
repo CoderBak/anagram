@@ -131,13 +131,15 @@ export function glyphsOf(textMap: string | undefined): Glyph[] {
 
 /**
  * Faces that set mathematics: the Computer Modern math faces and their descendants
- * (CMMI, CMSY, CMEX, MSAM/MSBM, txfonts/pxfonts/newtx math), the OpenType math faces
+ * (CMMI, CMSY, CMEX, MSAM/MSBM, txfonts/pxfonts/newtx math and newtx's …MathMI faces,
+ * Latin Modern's Type 1 math, kpfonts, mathpazo, cmbright), the OpenType math faces
  * (Latin Modern Math, STIX, XITS, Cambria Math, Asana, TeX Gyre …Math), Euler and the
- * script faces, and the symbol faces of office suites. The base name is matched after the
- * subset tag ("BXJUHM+CMMI10" is CMMI10). A text face that happens to carry a formula
+ * script faces, the symbol packages (mathabx, MnSymbol, fdsymbol, stmaryrd, esint) and
+ * blackboard faces (doublestroke, bbold, bbm), and the symbol faces of office suites. The
+ * base name is matched after the subset tag ("BXJUHM+CMMI10" is CMMI10). A text face that happens to carry a formula
  * (an upright "x" in CMR10) is not caught, and is not meant to be.
  */
-const MATH_FONT = /^(?:CM(?:MI|SY|EX|BSY|MIB)\d|(?:MS[AB]M|EU(?:FM|FB|SM|SB|RM|RB|EX)|RSFS|CMSY|CMEX|CMMI)\d|(?:tx|px|ntx|npx|newtx|newpx)(?:mi|sy|ex|bmi|bsy|sys|exa|exb|exs|exx|exmods|mia|btmi|mio|bmio)|lmmath|latinmodernmath|LMMath|STIX(?:Math|Two-?Math|General)|XITS-?Math|CambriaMath|Cambria-Math|Asana-?Math|TeXGyre\w*Math|FiraMath|Erewhon-?Math|Libertinus-?Math|GFSNeohellenicMath|NotoSansMath|MathJax_(?:Main|Math|AMS|Caligraphic|Fraktur|Script|Size\d)|Symbol(?:MT)?|MTExtra|MT-Extra|MathematicalPi|Mathematica\d|LucidaNewMath|LucidaMath|MathTime|Wingdings|Euclid)/i;
+const MATH_FONT = /^(?:CM(?:MI|SY|EX|BSY|MIB)\d|(?:MS[AB]M|EU(?:FM|FB|SM|SB|RM|RB|EX)|RSFS|CMSY|CMEX|CMMI)\d|r?(?:tx|px|ntx|npx|newtx|newpx)(?:mi|sy|ex|bmi|bsy|sys|exa|exb|exs|exx|exmods|mia|btmi|mio|bmio)|lmmath|latinmodernmath|M?LMMath|STIX(?:Math|Two-?Math|General)|XITS-?Math|CambriaMath|Cambria-Math|Asana-?Math|TeXGyre\w*Math|FiraMath|Erewhon-?Math|Libertinus-?Math|GFSNeohellenicMath|NotoSansMath|MathJax_(?:Main|Math|AMS|Caligraphic|Fraktur|Script|Size\d)|Symbol(?:MT)?|MTExtra|MT-Extra|MathematicalPi|Mathematica\d|LucidaNewMath|LucidaMath|MathTime|Wingdings|Euclid|(?:TeX-)?math[abxu]\d|MnSymbol|Kp-+M-|[A-Za-z]+Math(?:MI|SY|EX|BMI|BSY|RM|BB)|FdSymbol|ds(?:rom|ss)\d|bbold|bbm\w*\d|esint|StandardSym|PazoMath|HFBR(?:MI|SY|EX)|ztmcm|stmary)/i;
 
 /** Whether a font, by its PDF name, sets mathematics rather than text. */
 export function isMathFont(name: string | undefined): boolean {
@@ -404,6 +406,16 @@ const HYPHEN = /[-‐­]/u;
 /** Punctuation that ends a clause or a sentence, kept where the formula before it is not. */
 const CLAUSE_END = /^[.,;:!?]$/u;
 
+/** Operator names TeX sets upright in the text face (\log, \max, \Pr …). Not the ones that
+ *  are also English set before a symbol: "of rank r", "the sign of x", "mod p". */
+const OPERATOR = new Set([
+  "arccos", "arcsin", "arctan", "arg", "argmax", "argmin", "cos", "cosh", "cot", "coth", "Cov", "csc", "det",
+  "diag", "dim", "exp", "gcd", "hom", "inf", "ker", "lg", "lim", "liminf", "limsup", "ln", "log", "max", "min",
+  "Pr", "sgn", "sin", "sinh", "sup", "supp", "tan", "tanh", "tr", "Tr", "Var",
+]);
+/** A token set this much smaller than its block is a formula's sub- or superscript. */
+const SCRIPT_SIZE = 0.8;
+
 /** A token of the text: consecutive glyphs with no word space among them. */
 interface Token {
   /** Indices into `pieces`, spaces left out. */
@@ -422,16 +434,18 @@ interface Assembled {
  * space goes in wherever two glyphs stand a word apart and Zotero's text runs them
  * together. Then two decisions the reflow makes too, taken here on Zotero's glyphs:
  *
- *  - A FORMULA is left out. A token with a glyph in a mathematics font is one, and so is
- *    a letterless token beside it on the same line — the parentheses, digits, operators
- *    and punctuation the formula is set in, which come from the text face in TeX. What
- *    remains is the sentence around the formula, which is the writing, with the full stop
- *    or comma that closed the formula, as arXiv's HTML has it.
+ *  - A FORMULA is left out. A token with a glyph in a mathematics font is one, and so is,
+ *    on a page that has such a font, a token of capital Greek. Beside one on the same line
+ *    go the rest of what TeX takes from the text face: a letterless token (parentheses,
+ *    digits, operators, punctuation), an operator name ("log", "sup") and a token set in
+ *    a sub- or superscript's size ("init" of x_init). What remains is the sentence around
+ *    the formula, which is the writing, with the full stop or comma that closed the
+ *    formula, as arXiv's HTML has it.
  *  - A HYPHEN at a line break is Zotero's to drop, and it drops every one: "language-only"
  *    becomes "languageonly". The hyphen is still in pdf.js's run, and the document's own
  *    vocabulary says whether the word is spelt with it (lib/pdf/reflow.ts).
  */
-function assemble(pieces: Piece[], { sources, faces }: Located, vocab: Vocabulary): Assembled {
+function assemble(pieces: Piece[], { sources, faces }: Located, vocab: Vocabulary, mathPages: ReadonlySet<number>): Assembled {
   // ---- tokens: where a word space belongs ----
   const tokens: Token[] = [];
   let open: Token | null = null;
@@ -468,9 +482,19 @@ function assemble(pieces: Piece[], { sources, faces }: Located, vocab: Vocabular
     const x = glyphAt(a, true), y = glyphAt(b, false);
     return x !== null && y !== null && sameLine(x, y);
   };
-  const drop = tokens.map((t) => t.math);
-  for (let i = 1; i < tokens.length; i++) if (drop[i - 1] && !tokens[i].letters && beside(tokens[i - 1], tokens[i])) drop[i] = true;
-  for (let i = tokens.length - 2; i >= 0; i--) if (drop[i + 1] && !tokens[i].letters && beside(tokens[i], tokens[i + 1])) drop[i] = true;
+  const letters = (t: Token): string => t.at.map((i) => pieces[i].ch).join("").replace(/\P{L}/gu, "");
+  const sizes = pieces.flatMap((p, i) => (faces[i] && /\p{L}/u.test(p.ch) ? [faces[i].h] : [])).sort((a, b) => a - b);
+  const body = sizes[sizes.length >> 1] ?? 0;
+  const script = (t: Token): boolean => t.at.every((i) => faces[i] !== null && faces[i].h <= body * SCRIPT_SIZE);
+  const greek = (t: Token): boolean => {
+    const face = t.at.map((i) => faces[i]).find((f) => f !== null);
+    return face !== undefined && mathPages.has(face.page) && /^(?:(?=\p{Lu})\p{Script=Greek})+$/u.test(letters(t));
+  };
+  /** What stands beside a formula and goes with it. */
+  const withFormula = (t: Token): boolean => !t.letters || OPERATOR.has(letters(t)) || script(t);
+  const drop = tokens.map((t) => t.math || (t.letters && greek(t)));
+  for (let i = 1; i < tokens.length; i++) if (drop[i - 1] && withFormula(tokens[i]) && beside(tokens[i - 1], tokens[i])) drop[i] = true;
+  for (let i = tokens.length - 2; i >= 0; i--) if (drop[i + 1] && withFormula(tokens[i]) && beside(tokens[i], tokens[i + 1])) drop[i] = true;
 
   // ---- the text ----
   let text = "";
@@ -772,11 +796,14 @@ export function createStructuredReader(structure: SdtStructure, options: Structu
     blocks(pages) {
       const pagesByNumber = new Map<number, PageIndex>();
       for (const p of pages) pagesByNumber.set(p.page, indexPage(p));
+      /** Pages that set mathematics in a mathematics face, where capital Greek is a formula's. */
+      const mathPages = new Set<number>();
+      for (const [n, index] of pagesByNumber) if (index.boxes.some((b) => b.math)) mathPages.add(n);
       const out: StructuredBlock[] = [];
       for (const d of drafts) {
         const seen = d.pages.filter((n) => pagesByNumber.has(n)).join(",");
         if (d.seen !== seen) {
-          const { text, runs } = assemble(d.pieces, locate(d.pieces, pagesByNumber), vocab);
+          const { text, runs } = assemble(d.pieces, locate(d.pieces, pagesByNumber), vocab, mathPages);
           const on = d.display && d.block.kind === "paragraph" && !SENTENCE_END.test(text);
           d.result = text === "" ? null : { ...d.block, text, runs, ...(on ? { runsOn: true } : {}) };
           d.seen = seen;

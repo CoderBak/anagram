@@ -90,6 +90,11 @@ local component and the installer all carry the same version.
   page. On 50 arXiv papers read both as PDF and as HTML, the prose the HTML reads and the PDF
   left unscored fell from 19,000 words to 3,000, and the two readings give a paragraph the
   same verdict 95.0% of the time (93.6% before).
+- The PDF reader leaves out more of a paper's inline formulas, as arXiv's HTML does: those
+  set in mathematics fonts it did not know (mathabx, MnSymbol, kpfonts, newtx's Libertine
+  and XCharter faces, the Type 1 build of Latin Modern, fdsymbol, blackboard bold), and the
+  parts of a formula TeX takes from the text font — an operator name such as "log" or "sup",
+  an upright capital Greek letter, the "init" of x_init.
 - The PDF reader keeps the hyphen of a compound broken at the end of a line where the
   document's own usage says so ("near-equilibrium", "self-attention"). Zotero's text joins
   every such word, and the reader took those joins for the document spelling the compound
