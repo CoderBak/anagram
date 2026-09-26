@@ -42,8 +42,8 @@ interface Tab {
 /** Everything the module touches, recorded. `origins` starts empty because the
  *  extension requires no host permission of its own: what the browser reports granted is
  *  what the user granted. */
-function environment(tabs: Tab[] = [], origins: string[] = [], opts: { refuseMainWorld?: boolean } = {}) {
-  const registered: { id: string; matches: string[]; js: string[]; world?: string }[] = [];
+function environment(tabs: Tab[] = [], origins: string[] = [], opts: { refuseMainWorld?: boolean; refuseFallback?: boolean } = {}) {
+  const registered: { id: string; matches: string[]; js: string[]; world?: string; matchOriginAsFallback?: boolean }[] = [];
   const calls = {
     /** The content script's matches, per register / update call. Its page-world companion
      *  follows it, and is checked on its own below. */
@@ -71,6 +71,7 @@ function environment(tabs: Tab[] = [], origins: string[] = [], opts: { refuseMai
     registerContentScripts: async (scripts: typeof registered) => {
       for (const script of scripts) {
         if (opts.refuseMainWorld && script.world === "MAIN") throw new Error("Unexpected property \"world\"");
+        if (opts.refuseFallback && "matchOriginAsFallback" in script) throw new Error("Unexpected property \"matchOriginAsFallback\"");
         if (registered.some((s) => s.id === script.id)) throw new Error("Duplicate script ID");
         if (script.id === "anagram-content") calls.register.push(script.matches);
         registered.push({ ...script });
@@ -79,6 +80,7 @@ function environment(tabs: Tab[] = [], origins: string[] = [], opts: { refuseMai
     updateContentScripts: async (scripts: typeof registered) => {
       for (const script of scripts) {
         if (opts.refuseMainWorld && script.world === "MAIN") throw new Error("Unexpected property \"world\"");
+        if (opts.refuseFallback && "matchOriginAsFallback" in script) throw new Error("Unexpected property \"matchOriginAsFallback\"");
         const found = registered.find((s) => s.id === script.id);
         if (!found) throw new Error("No script with ID");
         Object.assign(found, script);
@@ -180,6 +182,28 @@ describe("the registration follows the grant", () => {
       runAt: "document_end",
       persistAcrossSessions: true,
     });
+  });
+
+  it("reaches a granted page's srcdoc, about:blank and blob: frames too, and still registers where that is refused", async () => {
+    const env = environment();
+    env.grant("https://example.com/*");
+    await syncRegistration();
+    expect(env.registered.map((s) => [s.id, s.matchOriginAsFallback])).toEqual([["anagram-content", true], ["anagram-shadow", true]]);
+    // Chrome before 119 knows no such option and refuses the whole script over it.
+    const old = environment([], [], { refuseFallback: true });
+    old.grant("https://example.com/*");
+    await syncRegistration();
+    expect(old.registered.map((s) => [s.id, s.matchOriginAsFallback])).toEqual([["anagram-content", undefined], ["anagram-shadow", undefined]]);
+  });
+
+  it("updates a registration made without the frames option", async () => {
+    // What an earlier version left registered, if an update did not wipe it.
+    const env = environment();
+    env.grant("https://example.com/*");
+    env.registered.push({ id: "anagram-content", matches: ["https://example.com/*"], js: [SCRIPT] });
+    await syncRegistration();
+    expect(env.calls.update).toEqual([["https://example.com/*"]]);
+    expect(env.registered.find((s) => s.id === "anagram-content")?.matchOriginAsFallback).toBe(true);
   });
 
   it("registers the page-world companion on the same origins, ahead of the page's scripts", async () => {

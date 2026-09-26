@@ -66,6 +66,10 @@ export interface DiagnosticsEnv {
   counts: { scored: number; flagged: number; unsupported: number; unavailable: number };
   /** The size gate a subframe has to pass to be scanned at all. */
   frameGate: { minWidth: number; minArea: number };
+  /** srcdoc and about:blank frames and blob: documents run the content script by the origin
+   *  they take from the page (lib/surface.ts). Handed in: this chunk is one build for both
+   *  browsers and cannot tell which it is in. */
+  originFallbackFrames: boolean;
   /** The frame the reader right-clicked in; 0 is the page itself. */
   clickedFrameId: number;
   /** What they right-clicked, when the page still holds it. */
@@ -133,22 +137,33 @@ function frameLines(env: DiagnosticsEnv): string[] {
   for (const frame of frames.slice(0, 12)) {
     const raw = frame.getAttribute("src") ?? "";
     let where = raw === "" ? (frame.hasAttribute("srcdoc") ? "srcdoc" : "about:blank") : "(unparsable src)";
-    let scriptable = false;
+    // A srcdoc or about:blank frame, or a blob: document, has no address of its own and runs
+    // our script by the origin it takes from this page, where the browser can say whose that
+    // is (lib/surface.ts). A data: document takes none.
+    let scriptable = raw === "" && env.originFallbackFrames;
     try {
       if (raw !== "") {
         const url = new URL(raw, location.href);
         where = url.protocol === "http:" || url.protocol === "https:" ? url.hostname : url.protocol;
-        scriptable = url.protocol === "http:" || url.protocol === "https:" || url.protocol === "file:";
+        scriptable =
+          url.protocol === "http:" || url.protocol === "https:" || url.protocol === "file:" ||
+          ((url.protocol === "about:" || url.protocol === "blob:") && env.originFallbackFrames);
       }
     } catch {
-      /* about:blank, srcdoc, a data: URL — nothing of ours runs in any of them */
+      /* an address that does not parse */
     }
+    // A sandbox without allow-same-origin takes the origin away, whatever the address, and
+    // the content script leaves such a frame alone (entrypoints/content.ts).
+    const sandbox = frame.getAttribute("sandbox");
+    const opaque = sandbox !== null && !sandbox.split(/\s+/).includes("allow-same-origin");
     const box = frame.getBoundingClientRect();
     const w = Math.round(box.width);
     const h = Math.round(box.height);
     const gate = w >= env.frameGate.minWidth && w * h >= env.frameGate.minArea;
-    const verdict = !scriptable
-      ? "no content script (not an http(s)/file document)"
+    const verdict = opaque
+      ? "no content script (a sandboxed frame has no origin a grant could cover)"
+      : !scriptable
+      ? "no content script (not an http(s)/file document, nor one that takes this page's origin)"
       : gate
         ? "our content script runs there and passes the size gate"
         : `our content script runs there but the frame is under the size gate (${env.frameGate.minWidth}px wide, ${env.frameGate.minArea}px² needed)`;

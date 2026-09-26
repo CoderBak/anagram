@@ -26,3 +26,13 @@ const target = buildTarget();
  * has to start from the PDF tab itself can exist there.
  */
 export const PDF_TAB_SCRIPTS_RUN = target !== "firefox";
+
+/**
+ * Does the content script run in the frames that have no address of their own — an
+ * about:blank or srcdoc frame, a blob: document — by the origin they take from the page
+ * that made them (`matchOriginAsFallback`, Chrome 119+)? Firefox registers such scripts as
+ * well, but its runtime.MessageSender carries no `origin`, so the worker could not tell
+ * which site a message from one of them speaks for (lib/access/messages.ts), and would
+ * refuse every one of them.
+ */
+export const ORIGIN_FALLBACK_FRAMES = target !== "firefox";

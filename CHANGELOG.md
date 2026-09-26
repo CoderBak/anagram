@@ -33,6 +33,13 @@ local component and the installer all carry the same version.
   out, not the extension, which reads it through the browser's extension API: on any
   custom element, and on any other element the page is seen attaching one to. A closed
   root written into the markup of a built-in element such as a `<div>` is still missed.
+- In Chrome, frames with no address of their own are read on a site Anagram is on: a
+  srcdoc frame (an EPUB reader shows each chapter in one), an about:blank frame a page
+  writes into, a blob: document. Each takes its origin from the page that made it, and the
+  worker answers it for that origin. A sandboxed frame has no origin a grant could cover
+  and is left alone. As in any frame, the chips are in the frame; the ball, the list and
+  the counts are the page's own. Firefox tells an extension no such origin, so these
+  frames are still not read there.
 - The PDF reader no longer reads a two-column page line by line across both columns when
   one column is plain prose and the other is full of formulas (arXiv 2004.04906, page 2).
   A column's share of the page is now measured in characters, not in the text runs a PDF

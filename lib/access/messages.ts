@@ -51,6 +51,33 @@ export function parseWorkerMessage(value: unknown): WorkerMessage | null {
   if(raw?.action === ACTIONS.COUNT_TOKENS && Array.isArray((raw as {texts?:unknown}).texts) && (raw as {texts:unknown[]}).texts.length>512)return null;
   const result = v.safeParse(schema,value,{abortEarly:true,abortPipeEarly:true}); return result.success ? result.output : null;
 }
+/** Schemes of the documents that take their origin from the page that made them. */
+const ORIGINLESS = new Set(["about:", "blob:"]);
+
+/**
+ * The http(s) address a content script's document speaks for, or null. That is its own URL,
+ * or — for an about:blank or srcdoc frame, or a blob: document, which the content script
+ * reaches by the origin it took from its page (matchOriginAsFallback, lib/access/worker.ts)
+ * — that origin, as the browser reports it on the sender (Chrome's MessageSender.origin).
+ * An opaque origin (a sandboxed frame, a data: URL) speaks for no site at all.
+ */
+export function pageAddress(sender: AccessSender): string | null {
+  if (!sender.url) return null;
+  let parsed: URL;
+  try { parsed = new URL(sender.url); } catch { return null; }
+  if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+    return !sender.origin || sender.origin === parsed.origin ? sender.url : null;
+  }
+  if (!ORIGINLESS.has(parsed.protocol) || !sender.origin) return null;
+  try {
+    const origin = new URL(sender.origin);
+    const web = origin.protocol === "http:" || origin.protocol === "https:";
+    return web && origin.origin === sender.origin ? `${origin.origin}/` : null;
+  } catch {
+    return null; // "null": an opaque origin
+  }
+}
+
 export function callerRole(sender: AccessSender, extensionId: string, root: string): CallerRole | null {
   if (sender.id !== extensionId || !sender.url || (sender.documentLifecycle && sender.documentLifecycle !== "active")) return null;
   let parsed: URL;
@@ -60,8 +87,7 @@ export function callerRole(sender: AccessSender, extensionId: string, root: stri
     const pages: Record<string,CallerRole> = {"/reader.html":"reader","/popup.html":"popup","/options.html":"options","/onboarding.html":"onboarding","/paste.html":"paste"};
     return pages[parsed.pathname] ?? null;
   }
-  if (!["http:","https:"].includes(parsed.protocol) || !Number.isInteger(sender.tab?.id) || !Number.isInteger(sender.frameId) || sender.frameId! < 0) return null;
-  if (sender.origin && sender.origin !== parsed.origin) return null;
+  if (pageAddress(sender) === null || !Number.isInteger(sender.tab?.id) || !Number.isInteger(sender.frameId) || sender.frameId! < 0) return null;
   return "content";
 }
 export function permitsMessage(role: CallerRole, msg: WorkerMessage, sender: AccessSender): boolean {

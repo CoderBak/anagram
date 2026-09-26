@@ -25,6 +25,7 @@ import type { PingReply } from "../messaging/protocol";
 import { browsingOrigins, matchesAny } from "./patterns";
 import { createLogger } from "../log";
 import { documentAuthority } from "./authority";
+import { ORIGIN_FALLBACK_FRAMES } from "../surface";
 
 const log = createLogger("access");
 
@@ -60,8 +61,14 @@ async function grantedMatches(): Promise<string[]> {
 
 type Registration = Parameters<typeof browser.scripting.registerContentScripts>[0][number];
 
-/** The scripts the granted origins ask for, the content script first. */
+/**
+ * The scripts the granted origins ask for, the content script first. Both also run in the
+ * frames of a granted page that have no address of their own — about:blank and srcdoc
+ * frames, blob: documents — by the origin they take from it, where the browser can say
+ * which that is (lib/surface.ts): an EPUB reader shows every chapter in a srcdoc frame.
+ */
 function registrations(matches: string[]): Registration[] {
+  const frames = ORIGIN_FALLBACK_FRAMES ? { matchOriginAsFallback: true } : {};
   return [
     // The same options the manifest declaration carried before this was dynamic.
     {
@@ -69,6 +76,7 @@ function registrations(matches: string[]): Registration[] {
       matches,
       js: [CONTENT_SCRIPT],
       allFrames: true,
+      ...frames,
       runAt: "document_end",
       persistAcrossSessions: true,
     },
@@ -78,11 +86,39 @@ function registrations(matches: string[]): Registration[] {
       matches,
       js: [SHADOW_SCRIPT],
       allFrames: true,
+      ...frames,
       runAt: "document_start",
       world: "MAIN",
       persistAcrossSessions: true,
     },
   ];
+}
+
+/** Would `script` replace what is registered under its id? */
+function differs(current: Registration, script: Registration): boolean {
+  return (
+    !sameMatches(current.matches ?? [], script.matches ?? []) ||
+    (current.matchOriginAsFallback ?? false) !== (script.matchOriginAsFallback ?? false)
+  );
+}
+
+/** Register `script`, or bring the one under its id up to date. A browser that does not know
+ *  `matchOriginAsFallback` (Chrome before 119) refuses the whole script: it gets it without. */
+async function ensureScript(script: Registration, current: Registration | undefined): Promise<void> {
+  const put = async (s: Registration): Promise<void> => {
+    if (!current) {
+      // A registration that survived a restart but was not reported (or a duplicate id
+      // from a race we lost) is an update, not a failure.
+      await browser.scripting.registerContentScripts([s]).catch(() => browser.scripting.updateContentScripts([s]));
+    } else if (differs(current, s)) {
+      await browser.scripting.updateContentScripts([s]);
+    }
+  };
+  if (!script.matchOriginAsFallback) return put(script);
+  await put(script).catch(() => {
+    const { matchOriginAsFallback: _, ...plain } = script;
+    return put(plain);
+  });
 }
 
 async function syncNow(): Promise<void> {
@@ -99,15 +135,8 @@ async function syncNow(): Promise<void> {
     // One at a time: a browser that refuses the page-world companion still gets the
     // content script, which reads everything but a shadow root attached after its walk.
     for (const script of registrations(matches)) {
-      const current = registered.find((s) => s.id === script.id);
       try {
-        if (!current) {
-          // A registration that survived a restart but was not reported (or a duplicate id
-          // from a race we lost) is an update, not a failure.
-          await browser.scripting.registerContentScripts([script]).catch(() => browser.scripting.updateContentScripts([script]));
-        } else if (!sameMatches(current.matches ?? [], matches)) {
-          await browser.scripting.updateContentScripts([script]);
-        }
+        await ensureScript(script, registered.find((s) => s.id === script.id));
       } catch (e) {
         if (script.id === SCRIPT_ID) throw e;
         log.log("page-world script not registered", e);

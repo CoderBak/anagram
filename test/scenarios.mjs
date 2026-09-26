@@ -3185,6 +3185,57 @@ addEventListener("load",()=>{window.__loadAt=performance.now();
   await p.close();
 }
 
+// ---- A50: frames with no address of their own --------------------------------------------
+// An EPUB reader shows each chapter in a srcdoc frame (epub.js), editors and embeds write
+// into about:blank frames, and some pages show a blob: document. Each has its parent's
+// origin, which is granted, and gets the content script through it. A sandboxed frame has
+// no origin at all — the worker could not tell whose it is — and is left alone.
+{
+  const LONG = (tag) => `${tag} paragraph is long enough to be scored on its own because it carries well over seventy-five ordinary English words describing nothing in particular except the fact that a chapter of a book may be shown in a frame that has no address of its own, only the origin of the page that wrote it, and the reader of that page still expects every paragraph of the chapter to be read like any other paragraph on the site they turned the extension on for.`;
+  const doc = (tag) => `<!doctype html><html lang="en"><head><meta charset="utf-8"></head><body style="margin:12px;font:15px/1.6 system-ui"><p>${LONG(tag)}</p></body></html>`;
+  const attr = (html) => html.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  PAGES["/frames-local.html"] = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>frames without an address</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+<iframe id="srcdoc" srcdoc="${attr(doc("SRCDOCFRAME"))}" width="640" height="300"></iframe>
+<iframe id="blank" width="640" height="300"></iframe>
+<iframe id="blob" width="640" height="300"></iframe>
+<iframe id="sandboxed" sandbox srcdoc="${attr(doc("SANDBOXEDFRAME"))}" width="640" height="300"></iframe>
+<script>
+  document.getElementById("blank").contentDocument.body.innerHTML = ${JSON.stringify(`<p style="font:15px/1.6 system-ui">${LONG("BLANKFRAME")}</p>`)};
+  document.getElementById("blob").src = URL.createObjectURL(new Blob([${JSON.stringify(doc("BLOBFRAME"))}], { type: "text/html" }));
+</script></body></html>`;
+  const p = await context.newPage();
+  await p.goto(server.url("/frames-local.html"), { waitUntil: "load" });
+  // The sandboxed frame is out of the page's reach but not of the test's: every chip host
+  // ever inserted there is counted, the "analyzing…" ones a refused request takes down too.
+  const quietFrame = [];
+  for (const f of p.frames()) {
+    if (f === p.mainFrame()) continue;
+    const isSandboxed = await f.evaluate(() => window.origin === "null").catch(() => false);
+    if (!isSandboxed) continue;
+    quietFrame.push(f);
+    await f.evaluate(() => {
+      window.__hosts = document.querySelectorAll('[data-anagram="host"]').length;
+      new MutationObserver((records) => {
+        for (const rec of records) for (const n of rec.addedNodes) if (n.nodeType === 1 && n.matches('[data-anagram="host"]')) window.__hosts++;
+      }).observe(document, { childList: true, subtree: true });
+    });
+  }
+  const inFrame = (id) => p.evaluate(({ id, sel }) => document.getElementById(id)?.contentDocument?.querySelectorAll(sel).length ?? -1, { id, sel: BADGE_SEL });
+  await p.waitForFunction((sel) => ["srcdoc", "blank", "blob"].every((id) => (document.getElementById(id)?.contentDocument?.querySelectorAll(sel).length ?? 0) > 0), BADGE_SEL, { timeout: 12000 }).catch(() => {});
+  await p.waitForTimeout(1500);
+  const r = {
+    srcdoc: await inFrame("srcdoc"),
+    blank: await inFrame("blank"),
+    blob: await inFrame("blob"),
+    sandboxedFrames: quietFrame.length,
+    sandboxedChips: quietFrame.length ? await quietFrame[0].evaluate(() => window.__hosts).catch(() => -1) : -1,
+    sandboxedSent: fixture.stats.texts.some((t) => t.includes("SANDBOXEDFRAME")),
+  };
+  record("ui", "a srcdoc, an about:blank and a blob: frame on a granted page are read, each in its own frame", r.srcdoc === 1 && r.blank === 1 && r.blob === 1, JSON.stringify(r));
+  record("ui", "a sandboxed frame, whose origin the worker cannot know, is left alone", r.sandboxedFrames === 1 && r.sandboxedChips === 0 && !r.sandboxedSent, JSON.stringify(r));
+  await p.close();
+}
+
 // =====================================================================================
 // PHASE B — live sites (soft: unreachable → SKIP; loaded-but-wrong → FAIL)
 // =====================================================================================

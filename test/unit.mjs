@@ -2548,6 +2548,7 @@ for (const file of fixtureFiles) {
       docs: null,
       counts: { scored: 0, flagged: 0, unsupported: 0, unavailable: 0 },
       frameGate: { minWidth: 200, minArea: 40000 },
+      originFallbackFrames: true,
       clickedFrameId: 0,
       target: document.querySelector("article"),
       detectLanguage: async () => null,
@@ -2625,6 +2626,38 @@ for (const file of fixtureFiles) {
     ok: r.hasSections && r.bytes <= 60_000,
     note: `${r.bytes} bytes`,
   });
+}
+
+// ---- diagnostics: which subframes the content script reaches ------------------------------
+// A srcdoc or about:blank frame takes the page's origin, and in Chrome the registration follows
+// it there (matchOriginAsFallback); a sandboxed frame has no origin and is left alone.
+{
+  const fp = await browser.newPage();
+  await fp.setContent("<!doctype html><html lang=\"en\"><body></body></html>");
+  await fp.addScriptTag({ path: BUNDLE });
+  const frames = await fp.evaluate(async () => {
+    document.body.innerHTML = `<article><p>A page with frames.</p></article>` +
+      `<iframe srcdoc="<p>A chapter.</p>" width="640" height="300"></iframe>` +
+      `<iframe width="640" height="300"></iframe>` +
+      `<iframe sandbox srcdoc="<p>Sandboxed.</p>" width="640" height="300"></iframe>` +
+      `<iframe src="data:text/html,x" width="640" height="300"></iframe>`;
+    const report = (fallback) => PW.buildDiagnostics({
+      version: "0.0.0-test", manifestVersion: 3, uiLanguage: "en", messageLocale: "en", analysisScope: "page",
+      mergeShorts: true, displayMode: "all", siteRule: null, globallyEnabled: true, daemon: { state: "up" },
+      running: true, onceForPage: false, pdf: false, docs: null, counts: { scored: 0, flagged: 0, unsupported: 0, unavailable: 0 },
+      frameGate: { minWidth: 200, minArea: 40000 }, originFallbackFrames: fallback, clickedFrameId: 0,
+      target: null, detectLanguage: async () => null,
+    }).then((text) => text.split("\n").filter((l) => /^ {2}- (srcdoc|about:blank|data:)/.test(l)));
+    return { chrome: await report(true), firefox: await report(false) };
+  });
+  const runs = (l) => l.includes("our content script runs there");
+  results.push({
+    name: "diagnostics: srcdoc and about:blank frames run the content script where the browser allows it, a sandboxed or data: frame never",
+    ok: frames.chrome.length === 4 && runs(frames.chrome[0]) && runs(frames.chrome[1]) && !runs(frames.chrome[2]) && frames.chrome[2].includes("sandboxed") && !runs(frames.chrome[3]) &&
+      frames.firefox.length === 4 && frames.firefox.every((l) => !runs(l)),
+    note: JSON.stringify(frames),
+  });
+  await fp.close();
 }
 
 await browser.close();

@@ -15,6 +15,7 @@ import { ACTIONS } from "../messaging/protocol";
 import type { BackendStatus } from "../messaging/protocol";
 import { effectiveRule, settings } from "../settings/settings";
 import type { DaemonFacts, DiagnosticsEnv } from "./report";
+import { ORIGIN_FALLBACK_FRAMES } from "../surface";
 
 /** What the content script knows about this page and the chunk cannot ask for. */
 export type DiagnosticsFacts = Pick<
@@ -122,6 +123,7 @@ export async function copyPageDiagnostics(facts: DiagnosticsFacts): Promise<Copy
     siteRule: rule,
     globallyEnabled,
     daemon,
+    originFallbackFrames: ORIGIN_FALLBACK_FRAMES,
     detectLanguage: detectUnsupported,
   });
   const via = await copyText(text);
