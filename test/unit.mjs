@@ -1178,6 +1178,32 @@ const results = await page.evaluate(() => {
       JSON.stringify([whole.length, inside.length]));
   }
   {
+    // A consent platform's banner in a frame of its own is known by the frame's address
+    // (the frame itself is exercised in test/scenarios.mjs).
+    const frame = (href) => PW.isConsentFrame(new URL(href));
+    const yes = [
+      "https://cdn.privacy-mgmt.com/index.html?message_id=1000&consentUUID=x",
+      "https://sourcepoint.example-news.co.uk/index.html?message_id=1000",
+      "https://example-news.com/privacy-manager/index.html?consentUUID=x",
+      "https://ccpa-notice.sp-prod.net/?message_id=1",
+      "https://cmp-consent-tool.privacymanager.io/latest/index.html",
+      "https://consent-pref.trustarc.com/?type=x&site=example.com",
+      "https://cdn.appconsent.io/tcf2-clear/current/index.html",
+    ];
+    const no = [
+      "https://example-news.com/index.html",
+      "https://example-news.com/2026/09/article.html?message_id=1",
+      "https://www.trustarc.com/blog/",
+      "https://www.youtube.com/embed/abc",
+    ];
+    check("a frame is a consent platform's by its host, or by Sourcepoint's path and message id",
+      yes.every(frame) && !no.some(frame), JSON.stringify([yes.filter((h) => !frame(h)), no.filter(frame)]));
+    sandbox.innerHTML = `<div id="piano-cookie_banner"><p>${words(80)}</p></div>`;
+    check("…or, where the platform gives it no address of its own, by what it draws (Piano)",
+      PW.isConsentFrame(new URL("https://example-news.com/frame"), document), "");
+    sandbox.innerHTML = "";
+  }
+  {
     // A post's own wrapper carries the terms it is filed under (WordPress post_class):
     // `category-newsletter`, `tag-cookies`. Those are what the post is about, not what the box is.
     const post = (cls) => { const e = document.createElement("div"); e.className = cls; return e; };

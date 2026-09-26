@@ -24,6 +24,7 @@ import { ACTIONS } from "../lib/messaging/protocol";
 import type { ControlMessage, PingReply, TabState, TopHostReply } from "../lib/messaging/protocol";
 import { serveTabPdfBytes } from "../lib/pdf/handoff";
 import { isPageTranslated, watchPageTranslation } from "../lib/dom/translation";
+import { isConsentFrame } from "../lib/dom/consentBanners";
 
 /** Min frame viewport for a subframe to be worth scanning (ad slots are smaller). */
 const MIN_FRAME_AREA = 40_000; // e.g. 400×100
@@ -110,6 +111,9 @@ export default defineContentScript({
     // its requests (pageAddress in lib/access/messages.ts). The registration reaches it all
     // the same, through the origin its page gave it before the sandbox took it away.
     if (!isTop && window.origin === "null") return;
+    // A consent platform's banner in a frame of its own (Sourcepoint, TrustArc, LiveRamp, …)
+    // is nobody's writing, however long its paragraph; nothing in it is read.
+    if (!isTop && isConsentFrame(location, document)) return;
     world[ALREADY_RUNNING] = true;
     // Google Docs (top frame only): the editor is a canvas (no DOM text) — the
     // FAB's action opens our in-tab analyzed reading overlay instead.

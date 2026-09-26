@@ -46,3 +46,45 @@ export const CONSENT_BANNER_SELECTORS: readonly string[] = [
   "#wcpConsentBannerCtrl", // microsoft
   "#cc--main", "#cc-main", // cookieconsent2, cookieconsent3
 ];
+
+/**
+ * Hosts that serve a consent platform's banner or its settings in a FRAME of their own, with
+ * the platform's text in it: Sourcepoint's message CDN and its CCPA hosts (sourcepoint-frame.ts
+ * names ccpa-notice and ccpa-pm.sp-prod.net), LiveRamp's cmp-consent-tool.privacymanager.io
+ * (privacymanager.json) and the amp-consent-tool beside it, TrustArc's consent manager — the
+ * `.truste_popframe` of trustarc-top.ts — AppConsent's `iframe[title='Consent window']`
+ * (appconsent.json), and Google's Funding Choices messages, which amp-consent frames. A host
+ * listed without a leading dot is matched exactly, one with a dot with all its subdomains.
+ */
+const CONSENT_FRAME_HOSTS: readonly string[] = [
+  ".privacy-mgmt.com", ".sp-prod.net",
+  ".privacymanager.io",
+  "consent-pref.trustarc.com", "consent.trustarc.com",
+  ".appconsent.io",
+  "fundingchoicesmessages.google.com",
+];
+
+/** Sourcepoint serves its messages from the publisher's own domain as well (a CNAME such as
+ *  `sourcepoint.<site>`), and there the page is known by its address: one of these paths with
+ *  a message or consent id in the query (sourcepoint-frame.ts, `detectCmp`). */
+const SOURCEPOINT_PATHS = new Set(["/index.html", "/privacy-manager/index.html", "/ccpa_pm/index.html", "/us_pm/index.html"]);
+const SOURCEPOINT_PARAMS = ["message_id", "requestUUID", "consentUUID"];
+
+/** What a consent platform draws inside a frame it gives no address of its own: Piano's
+ *  banner (piano.io.json). */
+const CONSENT_FRAME_CONTENT = "#piano-cookie_banner";
+
+/**
+ * Is this frame a consent platform's banner or settings page? With every site granted the
+ * content script runs in each frame of a page, and a frame of consent text is as long as any
+ * article paragraph. Asked by the frame of itself, before anything is read.
+ */
+export function isConsentFrame(url: URL | Location, doc?: Document): boolean {
+  const host = url.hostname.toLowerCase();
+  if (CONSENT_FRAME_HOSTS.some((h) => (h.startsWith(".") ? host.endsWith(h) || host === h.slice(1) : host === h))) return true;
+  if (SOURCEPOINT_PATHS.has(url.pathname)) {
+    const query = new URLSearchParams(url.search);
+    if (SOURCEPOINT_PARAMS.some((p) => query.has(p))) return true;
+  }
+  return !!doc && doc.querySelector(CONSENT_FRAME_CONTENT) !== null;
+}

@@ -26,6 +26,7 @@ export {
 // they agree on the same sequence of paragraphs (lib/plan/group.ts, lib/pdf/units.ts).
 export { groupBlocks, modelSized, groupChars, groupWords, clearsFloor, fitsWindow } from "../lib/plan/group";
 export { isBoilerplate, isNoTranslate, findConsentBanners, isConsentBanner } from "../lib/dom/boilerplate";
+export { isConsentFrame } from "../lib/dom/consentBanners";
 export { clipsOwnText } from "../lib/dom/style";
 export { WATCHED_ATTRS, createObservers } from "../lib/capture/observers";
 export { findMainContent, useReadability } from "../lib/dom/mainContent";

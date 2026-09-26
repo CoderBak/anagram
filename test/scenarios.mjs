@@ -1382,6 +1382,53 @@ async function sweep(page, steps = 6) {
     );
   }
 
+  // A28b: a consent platform's banner in a frame of its own is not read. With every site
+  // granted the content script runs in each frame, and Sourcepoint's message frame holds a
+  // paragraph of consent text as long as any article's. The hosts are served locally (the
+  // frames' markup is modelled); the third frame is a Sourcepoint message on the publisher's
+  // own domain, known only by its address.
+  {
+    const CONSENT = (tag) => `${tag} We and our partners store and access information on your device, such as cookies and unique identifiers, and process personal data such as browsing data, to show you personalised advertising and content, to measure how advertising and content perform, to understand our audiences and to develop our services. Some partners rely on their legitimate interest for this, which you can object to. You can accept, reject or choose purpose by purpose, and change your mind at any time from the privacy settings link in the footer of every page.`;
+    const message = (tag) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>SP Consent Message</title></head><body style="margin:0;font:14px/1.4 sans-serif">
+<div id="notice" class="message type-modal" role="dialog" aria-label="Privacy notice" tabindex="0">
+  <div class="message-component message-row"><p class="message-component">${CONSENT(tag)}</p></div>
+  <div class="message-component message-row"><button class="message-component message-button sp_choice_type_11" title="Accept all">Accept all</button><button class="message-component message-button sp_choice_type_12" title="Settings">Settings</button></div>
+</div></body></html>`;
+    const trustarc = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>TrustArc Cookie Consent Manager</title></head><body style="margin:0;font:14px/1.4 sans-serif">
+<div class="banner"><div class="banner-content"><h2>How we use your data</h2><p>${CONSENT("TRUSTEFRAME")}</p><button class="call">Agree and proceed</button></div></div></body></html>`;
+    await context.route("https://cdn.privacy-mgmt.com/**", (route) => route.fulfill({ contentType: "text/html", body: message("SPCDNFRAME") }));
+    await context.route("https://consent-pref.trustarc.com/**", (route) => route.fulfill({ contentType: "text/html", body: trustarc }));
+    PAGES["/index.html"] = message("SPCNAMEFRAME");
+    PAGES["/consent-top.html"] = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>consent frames</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+<p id="topp">${PARA("CONSENTHOST")}</p>
+<div id="sp_message_container_1000"><iframe id="sp_message_iframe_1000" title="SP Consent Message" src="https://cdn.privacy-mgmt.com/index.html?message_id=1000&amp;consentUUID=00000000-0000&amp;preload_message=true" width="640" height="300"></iframe></div>
+<div id="sp_message_container_1001"><iframe id="sp_message_iframe_1001" title="SP Consent Message" src="${server.base.replace("localhost", "127.0.0.1")}/index.html?message_id=1001&amp;requestUUID=00000000-0001" width="640" height="300"></iframe></div>
+<div class="truste_box_overlay"><iframe class="truste_popframe" title="TrustArc Cookie Consent Manager" src="https://consent-pref.trustarc.com/?type=example&amp;site=example.com&amp;action=notice&amp;country=gb&amp;locale=en" width="640" height="300"></iframe></div>
+</body></html>`;
+    const p = await context.newPage();
+    await p.goto(server.url("/consent-top.html"), { waitUntil: "load" });
+    await p.waitForSelector(`#topp ${BADGE_SEL}`, { timeout: 15000 }).catch(() => {});
+    await p.waitForTimeout(4000); // long enough for a frame's chip to have appeared
+    const frames = [];
+    for (const f of p.frames()) {
+      if (f !== p.mainFrame()) frames.push(await f.evaluate((sel) => document.querySelectorAll(sel).length, BADGE_SEL).catch(() => -1));
+    }
+    const r = {
+      top: await p.evaluate((sel) => document.querySelectorAll(`#topp ${sel}`).length, BADGE_SEL),
+      frames,
+      sent: ["SPCDNFRAME", "SPCNAMEFRAME", "TRUSTEFRAME"].filter((t) => fixture.stats.texts.some((s) => s.includes(t))),
+    };
+    record(
+      "ui",
+      "a consent platform's banner in a frame of its own (Sourcepoint, on its CDN or the publisher's domain; TrustArc) is not read, the page around it is",
+      r.top > 0 && frames.length === 3 && frames.every((n) => n === 0) && r.sent.length === 0,
+      JSON.stringify(r),
+    );
+    await p.close();
+    await context.unroute("https://cdn.privacy-mgmt.com/**");
+    await context.unroute("https://consent-pref.trustarc.com/**");
+  }
+
   // A29: the Google Docs reading overlay refreshes in place. The overlay shows a
   // snapshot of the document, so its Refresh button reads the static view again and
   // swaps the paper's content: the old paragraphs leave with their chips, the new ones

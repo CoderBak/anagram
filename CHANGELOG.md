@@ -109,6 +109,11 @@ local component and the installer all carry the same version.
 - On AMP pages, the consent prompt (`amp-consent`) is no longer analyzed, and neither are
   the notification bar, sidebar, app and push banners, ad and embed slots and share
   buttons AMP draws around an article.
+- A cookie banner a consent platform shows in a frame of its own is no longer analyzed:
+  Sourcepoint's message frames (on its own servers or the publisher's domain), TrustArc's
+  consent manager, LiveRamp's privacy manager, AppConsent, Piano's banner and Google's
+  consent messages on AMP pages. With access to all sites the frame was read like any
+  other, and its paragraph of consent text got a chip.
 
 ## [0.7.0] — 2026-09-26
 
