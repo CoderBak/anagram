@@ -27,6 +27,10 @@ local component and the installer all carry the same version.
   treats as it treats two strangers' comments, so short paragraphs were never read together
   and most of a chapter went unread; each chapter's paragraphs are now grouped as they are
   on any page, never across a chapter heading, and the reader-comment counters are left out.
+- Books in Google Play Books, Libby and VitalSource Bookshelf can be read with the site
+  granted on its own. Each shows the book in a frame from a second address, and a site
+  grant never reached it; turning Anagram on for the reader now asks for that address in
+  the same prompt, and a reader whose site was granted before shows as off until it is.
 - The setup page mentions that most arXiv papers also have an HTML version, which Anagram
   reads most precisely. Nothing redirects there; PDFs are read as before.
 

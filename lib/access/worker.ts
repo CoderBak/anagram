@@ -26,6 +26,7 @@ import { browsingOrigins, matchesAny } from "./patterns";
 import { createLogger } from "../log";
 import { documentAuthority } from "./authority";
 import { ORIGIN_FALLBACK_FRAMES } from "../surface";
+import { readerSitesFor } from "../surfaces/frames";
 
 const log = createLogger("access");
 
@@ -163,7 +164,8 @@ function sameMatches(a: readonly string[], b: readonly string[]): boolean {
  */
 async function injectGranted(origins: string[]): Promise<void> {
   if (origins.length === 0) return;
-  const tabs = await browser.tabs.query({ url: origins }).catch(() => []);
+  // A book's frame is never a tab's own address: the reader's site is (lib/surfaces/frames.ts).
+  const tabs = await browser.tabs.query({ url: [...origins, ...readerSitesFor(origins)] }).catch(() => []);
   await Promise.all(
     tabs.map(async (tab) => {
       if (tab.id == null) return;

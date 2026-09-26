@@ -1,6 +1,6 @@
 # Anagram Privacy Policy
 
-Last updated: 2026-09-22. Applies to the Anagram browser extension and the local engine
+Last updated: 2026-09-26. Applies to the Anagram browser extension and the local engine
 it installs on your computer.
 
 **The short version.** Anagram reads the text of pages you allow it to read, sends that
@@ -16,7 +16,10 @@ The full inventory of network calls, address literals and storage keys is in
 
 - **Paragraph text on sites you granted.** Anagram installs with access to no site.
   You grant sites from the popup or Settings and can revoke them there or at
-  `chrome://extensions`. Open pages stop immediately when a grant is withdrawn.
+  `chrome://extensions`. Open pages stop immediately when a grant is withdrawn. An e-book
+  reader that shows its books from a second address — Google Play Books, Libby, VitalSource
+  Bookshelf — is asked for together with that address, in the same browser prompt, because
+  the book is in a frame from there.
 - **One page, on your click, without a grant.** "Analyze this page", the right-click
   entries and the keyboard shortcuts use the browser's `activeTab` permission. The run
   is bound to that document and ends when you navigate away.

@@ -76,6 +76,14 @@ reader hands it; the document's bytes are copied into it and nowhere else.
 | `lib/surfaces/pdfjs.ts` | `https://github.com/ken107/read-aloud` | the attribution of Read Aloud's OneDrive adapter, whose pdf.js selectors the pdf.js surface starts from, in a comment |
 | `lib/surfaces/kindle.ts` | `https://github.com/ken107/read-aloud` | the attribution of Read Aloud's Kindle adapter, in a comment |
 | `lib/surfaces/paragraphs.ts` | `https://github.com/ken107/read-aloud` | the attribution of Read Aloud's Webnovel adapter, whose selectors the Webnovel source uses, in a comment |
+| `lib/surfaces/frames.ts` | `https://github.com/ken107/read-aloud` | the attribution of Read Aloud's content handlers, which name the frames below, in a comment |
+| `lib/surfaces/frames.ts` | `https://play.google.com/*` | a Google Play Books tab, reached when the frame its books are shown in is granted; does not initiate a request |
+| `lib/surfaces/frames.ts` | `https://books.google.com/*` | the same, for Google Books |
+| `lib/surfaces/frames.ts` | `https://books.googleusercontent.com/*` | the frame Play Books shows a book in, asked for with the site so the book can be read; does not initiate a request |
+| `lib/surfaces/frames.ts` | `https://libbyapp.com/*` | a Libby tab, reached when the frames its books are shown in are granted; does not initiate a request |
+| `lib/surfaces/frames.ts` | `https://*.read.libbyapp.com/*` | the frames Libby shows a book's chapters in, asked for with the site; does not initiate a request |
+| `lib/surfaces/frames.ts` | `https://*.vitalsource.com/*` | a VitalSource Bookshelf tab, reached when the frame its books are shown in is granted; does not initiate a request |
+| `lib/surfaces/frames.ts` | `https://jigsaw.vitalsource.com/*` | the frame VitalSource shows a book in, asked for with the site; does not initiate a request |
 | `entrypoints/onboarding/index.html` | `https://github.com/CoderBak/anagram/blob/dev/docs/user-guide.en.md` | the user-guide link on the setup page; opened only when clicked |
 | `entrypoints/onboarding/main.ts` | `https://github.com/CoderBak/anagram/blob/dev/docs/user-guide.zh-CN.md` | the same link for a Chinese browser |
 | `entrypoints/options/index.html` | `https://github.com/CoderBak/anagram/blob/dev/PRIVACY.md` | the privacy-policy link on the settings page; opened only when clicked |
