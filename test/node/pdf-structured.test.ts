@@ -8,7 +8,7 @@
 // from — which lib/pdf/units.ts turns into ranges over the page's own glyphs.
 import { describe, expect, it } from "vitest";
 import type { PdfPageText, PdfTextItem, ReflowBlock } from "../../lib/pdf/reflow";
-import { glyphsOf, isMathFont, structuredBlocks, type SdtBlock, type SdtStructure } from "../../lib/pdf/structured";
+import { glyphsOf, isMathFont, structuredBlocks, type SdtBlock, type SdtStructure, type SdtTextNode } from "../../lib/pdf/structured";
 import { groupsOf } from "../../lib/pdf/units";
 
 const WIDTH = 612;
@@ -223,6 +223,60 @@ describe("structuredBlocks — text and runs", () => {
     expectRunsToMatch(blocks[0], pages);
   });
 
+  it("leaves out a bracketed mark with a locator or an alphabetic key, and keeps brackets that are words", () => {
+    // arXiv's HTML marks each of these as a citation, and the web walker skips it; a year
+    // makes one author-year, and a bracket with no reference in it is the writer's own.
+    const n = node(1, [
+      { text: "As Kahn and Szemerédi [16, Section 4] showed [e.g., 17, 18], the bound [And58] holds", x: 72, y: 100 },
+      { text: "[Kir08, Theorem 3.9; GK12]; it [sic] is known [Higham, 2002] and [see Section 3].", x: 72, y: 114 },
+    ]);
+    const pages = [pageText(1, n.items)];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0].text).toBe("As Kahn and Szemerédi showed, the bound holds; it [sic] is known [Higham, 2002] and [see Section 3].");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
+  it("leaves out a superscript number that refers to the bibliography after a word, and keeps exponents", () => {
+    // Nature's style sets a citation as a raised number after the word, and Zotero links it
+    // to the bibliography entries it names; arXiv's HTML skips it as a mark. Zotero links an
+    // exponent to an entry of the same number too, but an exponent follows a unit or a
+    // formula's letter, not a word.
+    const fonts = { f_text: "NimbusRomNo9L-Regu", f_math: "BXJUHM+CMMI10" };
+    const items: PdfTextItem[] = [];
+    const nodes: SdtTextNode[] = [];
+    let x = 72;
+    /** A run of the line, and Zotero's node for it: `gap` word spaces before it. */
+    const put = (text: string, { gap = 0, raised = false, refs, font = "f_text" }: { gap?: number; raised?: boolean; refs?: number[][]; font?: string } = {}) => {
+      x += gap * CW;
+      const d = drawn(1, { text, x, y: raised ? 96 : 100, font });
+      if (raised) d.item.height = 7;
+      items.push(d.item);
+      if (gap) nodes.push({ text: " " });
+      nodes.push({ text, anchor: { textMap: JSON.stringify([d.run]) }, ...(raised ? { style: { sup: true } } : {}), ...(refs ? { refs } : {}) });
+      x += text.length * CW;
+    };
+    const entry = [[1, 1]];
+    put("learn through prediction errors");
+    put("1–4", { raised: true, refs: [[1, 0], [1, 1]] });
+    put("over an area of 5 cm", { gap: 1 });
+    put("2", { raised: true, refs: entry });
+    put("of the variance", { gap: 1 });
+    put("σ", { gap: 1, font: "f_math" });
+    put("2", { raised: true, refs: entry });
+    put("as Dunne", { gap: 1 });
+    put("2", { gap: 1, raised: true, refs: entry });
+    put("found in two forms", { gap: 1 });
+    put("1", { raised: true, refs: [[1, 0]] });
+    put(",");
+    put("2", { raised: true, refs: entry });
+    put(".");
+    const bibliography: SdtBlock = { type: "list", content: [{ type: "listitem", reference: true, content: [] }, { type: "listitem", reference: true, content: [] }] };
+    const pages = [pageText(1, items, fonts)];
+    const blocks = structuredBlocks(structure([{ type: "paragraph", content: nodes }, bibliography]), pages);
+    expect(blocks[0].text).toBe("learn through prediction errors over an area of 5 cm2 of the variance as Dunne found in two forms.");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
   it("puts a space between two glyphs a word apart that Zotero ran together", () => {
     const a = drawn(1, { text: "where", x: 72, y: 100 });
     const b = drawn(1, { text: "the", x: 72 + 5 * CW + 6, y: 100 });
@@ -364,7 +418,11 @@ describe("structuredBlocks — formulas", () => {
     put("(", "f_cmr", 0);
     put("x", "f_math", 0);
     put(")", "f_cmr");
-    put("+ 0.5 in the", "f_text");
+    // TeX sets the decimal point of a formula in its mathematics face.
+    put("+ 0", "f_cmr", 0);
+    put(".", "f_math", 0);
+    put("5", "f_cmr");
+    put("in the", "f_text");
     const text = "where r is the value of (x) + 0.5 in the";
     const n = { text, anchor: { textMap: JSON.stringify(runs) } };
     const pages = [pageText(1, items, fonts)];
@@ -391,7 +449,9 @@ describe("structuredBlocks — formulas", () => {
     put(",", "f_cmr");
     put("then of", "f_text");
     put("y", "f_math", 0);
-    put("= 1.5.", "f_cmr");
+    put("= 1", "f_cmr", 0);
+    put(".", "f_math", 0);
+    put("5.", "f_cmr");
     put("The next", "f_text");
     const n = { text: "the value of x, then of y = 1.5. The next", anchor: { textMap: JSON.stringify(runs) } };
     const pages = [pageText(1, items, fonts)];
@@ -445,6 +505,34 @@ describe("structuredBlocks — formulas", () => {
     const pages = [pageText(1, items, fonts)];
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
     expect(blocks[0].text).toBe("the bound is finite, and is the score of in the log of the data.");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
+  it("keeps a number the text writes beside a formula, as arXiv's HTML does", () => {
+    // TeX sets a formula's decimal point and comma in its mathematics face, so a number
+    // whose point or comma is in the text face is the text's ("11.3 $\mu$m"), and so is one
+    // that ends its clause before the formula starts ("Theorem 2, $x$").
+    const fonts = { f_text: "NimbusRomNo9L-Regu", f_math: "BXJUHM+CMMI10" };
+    const items: PdfTextItem[] = [];
+    const runs: (number | number[])[][] = [];
+    let x = 72;
+    const put = (text: string, font: string, gap = CW) => {
+      const d = drawn(1, { text, x, y: 100, font });
+      items.push(d.item);
+      runs.push(d.run);
+      x += text.length * CW + gap;
+    };
+    put("the pores are 11.3", "f_text");
+    put("µ", "f_math", 0);
+    put("m wide, and by Theorem 2,", "f_text");
+    put("x", "f_math");
+    put("is bounded by 1,024", "f_text");
+    put("n", "f_math", 0);
+    put(".", "f_text");
+    const n = { text: "the pores are 11.3 µm wide, and by Theorem 2, x is bounded by 1,024 n.", anchor: { textMap: JSON.stringify(runs) } };
+    const pages = [pageText(1, items, fonts)];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0].text).toBe("the pores are 11.3 m wide, and by Theorem 2, is bounded by 1,024.");
     expectRunsToMatch(blocks[0], pages);
   });
 

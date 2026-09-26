@@ -115,6 +115,40 @@ local component and the installer all carry the same version.
   read as more human than the PDF of the same paper: on 1,464 paragraphs read from both,
   it lowered the HTML's score by 0.04 on average and by 0.10 where citations were. Earlier
   verdicts are not reused for the texts this changes.
+- An author–year citation is read with its sentence on every page. Anagram left out any
+  citation of 40 characters or fewer, so on arXiv's HTML "Smith et al. (2020) showed" reached
+  the model as "showed" while the same paper's PDF read the names, and a longer citation was
+  read whatever it was. What a citation holds now decides, as it does in the PDF reader: a
+  mark that only points to the bibliography or to a note is left out however long it is —
+  "[4]", "[4, 7–9]", a superscript "1, 2", Wikipedia's "[7]" and its ":p. 7", a footnote
+  number that is a link — and names with a year, or a name alone, are read. With the PDF
+  reader's changes below, on 50 arXiv papers read both as PDF and as HTML the paragraphs whose
+  two readings differ only in citations fell from 334 to 102, and the two give a paragraph
+  the same verdict 96.2% of the time (95.9% before).
+- The PDF reader leaves out a citation printed as a raised number after its word
+  ("errors¹⁻⁴", the style of Nature and many journals), as it already left out "[4]" and as
+  the web walker skips the same mark: the model read "errors1–4." where the paper's HTML
+  reads "errors.". Zotero's document-worker tells which raised numbers name entries of the
+  bibliography; one after a unit or a formula's letter ("cm²") is still read as an exponent.
+- The PDF reader also leaves out a bracketed citation that carries a locator or a note,
+  "[16, Section 4]" or "[e.g., 17, 18]", or names an alphabetic key, "[Kir08, Theorem 3.9]",
+  as the web walker does with the same marks on the paper's HTML. A bracket that names a
+  year ("[Higham, 2002]") is read as an author–year citation, and one with no reference in
+  it ("[sic]") as the writer's own.
+- The PDF reader's own reconstruction leaves out the same bracketed citation marks. It reads
+  a document until Zotero's structure is ready and wherever that is not used, and it reads
+  the PDFs that Google Drive and OneDrive preview; "[4]" and "[19], [20]" reached the model
+  from all of these. The label that opens an entry of a reference list stays.
+- The PDF reader keeps a number the text writes next to an inline formula: "pores of 11.3 μm"
+  read as "pores of m", "by Theorem 2, x is" as "by Theorem, is", and "(Federer, 1969,
+  3.2.12)" lost its year. A number beside a formula went with it, because TeX sets a formula's
+  digits in the text's face; but it sets a formula's decimal point and comma in the
+  mathematics face, so a number whose point or comma is the text's, or one that closes its
+  clause before the formula starts, is read now, as arXiv's HTML reads it.
+- A raised number right after a word is left out of a web page's text even when it is not a
+  link: an author's own superscript citation on arXiv ("change¹⁻⁴"), a footnote number on an
+  older page ("report⁴"). After a unit or a variable it is still read as an exponent ("km²",
+  "3x²"), as in the PDF reader.
 - The PDF reader reads the sentence that leads into a display equation ("…can be written
   equivalently as") with the paragraphs around it. Such a piece does not end in a full
   stop, so it was taken for a label, and a label ends the run of short paragraphs being read

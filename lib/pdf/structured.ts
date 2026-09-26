@@ -29,7 +29,7 @@
 //
 // The textMap decoding follows structured-document-text/src/pdf/decode.js of
 // https://github.com/zotero/structured-document-text (AGPL-3.0).
-import { SENTENCE_END, dehyphenates, vocabularyOf, type PdfPageText, type PdfTextItem, type ReflowBlock, type SourceRun, type Vocabulary } from "./reflow";
+import { SENTENCE_END, bracketCitations, dehyphenates, vocabularyOf, type PdfPageText, type PdfTextItem, type ReflowBlock, type SourceRun, type Vocabulary } from "./reflow";
 
 // ---- the structure, as far as this reads it ----------------------------------------------
 
@@ -37,6 +37,11 @@ import { SENTENCE_END, dehyphenates, vocabularyOf, type PdfPageText, type PdfTex
 export interface SdtTextNode {
   text: string;
   anchor?: { textMap?: string };
+  /** How the text is set; `sup` is a raised run. */
+  style?: { sup?: boolean };
+  /** Paths of the blocks the text refers to: the bibliography entries a citation names,
+   *  a figure, an equation. */
+  refs?: number[][];
 }
 
 /** A block of the content tree. Containers (list, blockquote) hold blocks; leaves hold text. */
@@ -243,6 +248,8 @@ function boxesFor(index: PageIndex, g: Glyph): Box[] {
 interface Piece {
   ch: string;
   glyph: Glyph | null;
+  /** Part of a raised number Zotero links to the bibliography (isRaisedCitation). */
+  raised?: boolean;
 }
 
 /** Where a piece was found in the text layer. */
@@ -261,15 +268,17 @@ function isTextNode(node: SdtBlock | SdtTextNode): node is SdtTextNode {
   return typeof (node as SdtTextNode).text === "string";
 }
 
-/** The pieces of a block: its text nodes' units, each with its glyph, nested blocks' too. */
-function piecesOf(block: SdtBlock, out: Piece[] = []): Piece[] {
+/** The pieces of a block: its text nodes' units, each with its glyph, nested blocks' too.
+ *  `raised` says which nodes are raised citations. */
+function piecesOf(block: SdtBlock, raised: (node: SdtTextNode) => boolean, out: Piece[] = []): Piece[] {
   for (const node of block.content ?? []) {
     if (!isTextNode(node)) {
       if (out.length && out[out.length - 1].ch !== " ") out.push({ ch: " ", glyph: null });
-      piecesOf(node, out);
+      piecesOf(node, raised, out);
       continue;
     }
     const glyphs = glyphsOf(node.anchor?.textMap);
+    const cite = raised(node) ? { raised: true } : {};
     let k = 0;
     let nonSpace = 0;
     for (const ch of node.text) nonSpace += isSpace(ch) ? 0 : ch.length;
@@ -277,8 +286,8 @@ function piecesOf(block: SdtBlock, out: Piece[] = []): Piece[] {
     const trusted = glyphs.length === nonSpace;
     for (let i = 0; i < node.text.length; i++) {
       const ch = node.text[i];
-      if (isSpace(ch)) out.push({ ch: " ", glyph: null });
-      else out.push({ ch, glyph: trusted ? glyphs[k++] : null });
+      if (isSpace(ch)) out.push({ ch: " ", glyph: null, ...cite });
+      else out.push({ ch, glyph: trusted ? glyphs[k++] : null, ...cite });
     }
   }
   return out;
@@ -453,21 +462,26 @@ function assemble(pieces: Piece[], { sources, faces }: Located, vocab: Vocabular
   let prevSource: Source | null = null;
   let prevFace: Box | null = null;
   let spaced = true;
+  const cited = citationMarks(pieces, faces);
   pieces.forEach((p, i) => {
     if (p.ch === " ") { spaced = true; return; }
     const src = sources[i];
     const face = faces[i];
-    // A change of face between text and mathematics is a word boundary too, however tight
-    // TeX set it: "with" and the "C" of "withC :=" are two words.
-    const apart = spaced
-      || (prevGlyph !== null && p.glyph !== null && wordApart(prevGlyph, p.glyph))
-      || (prevSource !== null && src !== null && runsApart(prevSource, src))
-      || (prevFace !== null && face !== null && prevFace.math !== face.math);
-    if (apart || !open) { open = { at: [], math: false, letters: false }; tokens.push(open); }
-    open.at.push(i);
-    if (face?.math) open.math = true;
-    if (/\p{L}/u.test(p.ch)) open.letters = true;
-    spaced = false;
+    // A citation mark is left out, but the text after it follows it on the page: "errors¹⁻⁴."
+    // is a word and its full stop.
+    if (!cited[i]) {
+      // A change of face between text and mathematics is a word boundary too, however tight
+      // TeX set it: "with" and the "C" of "withC :=" are two words.
+      const apart = spaced
+        || (prevGlyph !== null && p.glyph !== null && wordApart(prevGlyph, p.glyph))
+        || (prevSource !== null && src !== null && runsApart(prevSource, src))
+        || (prevFace !== null && face !== null && prevFace.math !== face.math);
+      if (apart || !open) { open = { at: [], math: false, letters: false }; tokens.push(open); }
+      open.at.push(i);
+      if (face?.math) open.math = true;
+      if (/\p{L}/u.test(p.ch)) open.letters = true;
+      spaced = false;
+    }
     if (p.glyph) prevGlyph = p.glyph;
     if (src) prevSource = src;
     if (face) prevFace = face;
@@ -492,9 +506,21 @@ function assemble(pieces: Piece[], { sources, faces }: Located, vocab: Vocabular
   };
   /** What stands beside a formula and goes with it. */
   const withFormula = (t: Token): boolean => !t.letters || OPERATOR.has(letters(t)) || script(t);
+  /** A comma or a full stop in the text face. TeX sets a formula's own in its mathematics
+   *  face — the point of "$0.5$", the comma of "$x, y$" — so this one is the text's. */
+  const textStop = (i: number): boolean => (pieces[i].ch === "." || pieces[i].ch === ",") && faces[i] !== null && !faces[i]!.math;
+  /** A number the text writes, its decimal point or its thousands comma in the text face:
+   *  the "11.3" of "11.3 $\mu$m". */
+  const written = (t: Token): boolean =>
+    t.at.some((i, k) => k > 0 && k + 1 < t.at.length && textStop(i) && /\d/u.test(pieces[t.at[k - 1]].ch) && /\d/u.test(pieces[t.at[k + 1]].ch));
+  /** The token ends its clause in the text face, so a formula after it starts after it:
+   *  "by Theorem 2, $x$". */
+  const closes = (t: Token): boolean => textStop(t.at[t.at.length - 1]);
   const drop = tokens.map((t) => t.math || (t.letters && greek(t)));
-  for (let i = 1; i < tokens.length; i++) if (drop[i - 1] && withFormula(tokens[i]) && beside(tokens[i - 1], tokens[i])) drop[i] = true;
-  for (let i = tokens.length - 2; i >= 0; i--) if (drop[i + 1] && withFormula(tokens[i]) && beside(tokens[i], tokens[i + 1])) drop[i] = true;
+  for (let i = 1; i < tokens.length; i++) if (drop[i - 1] && withFormula(tokens[i]) && !written(tokens[i]) && beside(tokens[i - 1], tokens[i])) drop[i] = true;
+  for (let i = tokens.length - 2; i >= 0; i--) {
+    if (drop[i + 1] && withFormula(tokens[i]) && !written(tokens[i]) && !closes(tokens[i]) && beside(tokens[i], tokens[i + 1])) drop[i] = true;
+  }
 
   // ---- the text ----
   let text = "";
@@ -577,32 +603,81 @@ function composed(text: string, prov: (Source | null)[]): { text: string; prov: 
   return { text: out, prov: kept };
 }
 
-/**
- * A numeric citation mark: "[12]", "[3, 5–7]", "[10,11]", and a run of them as IEEE's style
- * sets it, "[19], [20]" or "[5]–[7]". The web walker skips one as a mark rather than prose
- * (isCitationMarker, lib/dom/walker.ts), and arXiv's HTML marks every one, a run as one, so
- * the PDF reader leaves it out too, with the space in front of it: "the bases [4]." reads
- * "the bases.", and "programs [19], [20], rewards" "programs, rewards", as the same paper's
- * HTML reads. An author-year citation is words of the sentence and stays.
- */
-const MARK = String.raw`\[\d{1,4}[a-z]?(?:\s?[,–-]\s?\d{1,4}[a-z]?)*\]`;
-const CITATION = new RegExp(String.raw` ?${MARK}(?:\s?[,;–-]\s?${MARK})*`, "gu");
-
+/** The text without its bracketed citation marks (bracketCitations, lib/pdf/reflow.ts). */
 function withoutCitations(text: string, prov: (Source | null)[]): { text: string; prov: (Source | null)[] } {
+  const cuts = bracketCitations(text);
+  if (cuts.length === 0) return { text, prov };
   let out = "";
   const kept: (Source | null)[] = [];
   let at = 0;
-  for (const m of text.matchAll(CITATION)) {
-    out += text.slice(at, m.index);
-    kept.push(...prov.slice(at, m.index));
-    at = m.index + m[0].length;
+  for (const [from, to] of cuts) {
+    out += text.slice(at, from);
+    kept.push(...prov.slice(at, from));
+    at = to;
   }
-  if (at === 0) return { text, prov };
   out += text.slice(at);
   kept.push(...prov.slice(at));
   // A mark that opened the paragraph leaves the space after it.
   if (out.startsWith(" ")) { out = out.slice(1); kept.shift(); }
   return { text: out, prov: kept };
+}
+
+/** "7", "1–4", "13,14", "(1)": the numbers a citation mark is set as. */
+const MARK_NUMBERS = /^[[(]?\d{1,4}[a-z]?(?:\s*[,;–-]\s*\d{1,4}[a-z]?)*[\])]?$/u;
+
+/**
+ * A raised number Zotero links to the bibliography entries it names: a citation as
+ * Nature's style and many journals' set it, "errors¹⁻⁴". Zotero links an exponent to the
+ * entry of its number too ("cm²", "σ²"), so the mark is taken for a citation only after a
+ * word (citationMarks).
+ */
+function isRaisedCitation(node: SdtTextNode, content: SdtBlock[]): boolean {
+  if (!node.style?.sup || !node.refs?.length || !MARK_NUMBERS.test(node.text.trim())) return false;
+  return node.refs.every((path) => blockAt(content, path)?.reference === true);
+}
+
+/** Letters of the word a raised citation follows; fewer are a unit's ("cm²"). */
+const CITED_WORD = 3;
+const CLOSING = /^[.,;:!?)\]’”"']$/u;
+const SEPARATOR = /^[\s,;–-]$/u;
+
+/**
+ * The pieces of the raised citations that follow a word of the text face, spaces and
+ * closing punctuation aside: "errors¹⁻⁴", "behavior.⁵", "Dunne ⁴⁶", "forms²²,²³". They
+ * point to the bibliography and are no words of the sentence: the web walker skips them
+ * (isCitationMarker, lib/dom/walker.ts), and so does the reader. After a unit or a
+ * formula's letter the number is an exponent, and stays.
+ */
+function citationMarks(pieces: Piece[], faces: (Box | null)[]): boolean[] {
+  const out = pieces.map(() => false);
+  /** Where the last mark left out ends. */
+  let last = -1;
+  for (let i = 0; i < pieces.length;) {
+    if (!pieces[i].raised) { i++; continue; }
+    let end = i;
+    while (end < pieces.length && pieces[end].raised) end++;
+    // Back over the marks before it in the same run, spaces and closing punctuation, to its word.
+    let j = i - 1;
+    while (j >= 0 && (pieces[j].raised || SEPARATOR.test(pieces[j].ch))) j--;
+    while (j >= 0 && CLOSING.test(pieces[j].ch)) j--;
+    let letters = 0;
+    for (; j >= 0 && /\p{L}/u.test(pieces[j].ch) && !faces[j]?.math; j--) letters++;
+    if (letters >= CITED_WORD) {
+      // What separates it from the mark before it goes with the two.
+      const from = last >= 0 && pieces.slice(last, i).every((p) => SEPARATOR.test(p.ch)) ? last : i;
+      out.fill(true, from, end);
+      last = end;
+    }
+    i = end;
+  }
+  return out;
+}
+
+/** The block at a path of the content tree, if there is one. */
+function blockAt(content: SdtBlock[], path: number[]): SdtBlock | undefined {
+  let node: SdtBlock | SdtTextNode | undefined = { type: "root", content };
+  for (const k of path) node = node && !isTextNode(node) ? node.content?.[k] : undefined;
+  return node && !isTextNode(node) ? node : undefined;
 }
 
 // ---- the document -------------------------------------------------------------------------
@@ -753,7 +828,7 @@ export function createStructuredReader(structure: SdtStructure, options: Structu
     if (r === "barrier") { barrier = true; open = null; continue; }
     if (r === "display" && open) open.display = true;
     if (r === "skip" || r === "display") continue;
-    const pieces = placeMarks(piecesOf(r.block));
+    const pieces = placeMarks(piecesOf(r.block, (node) => isRaisedCitation(node, structure.content)));
     const part = r.block.previousPart ? byPath.get(r.block.previousPart.join(".")) : undefined;
     const prev = part ?? (r.kind === "paragraph" && open !== null && !options.everything && continues(open.pieces, pieces) ? open : undefined);
     if (prev) {

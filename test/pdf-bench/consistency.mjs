@@ -490,6 +490,8 @@ function compareDocument(rec, sc, pipeline) {
     row.onlyPdf = onlyPdf;
     row.onlyWeb = onlyWeb;
     row.sameParaText = Object.keys(onlyPdf).length === 0 && Object.keys(onlyWeb).length === 0;
+    const differs = [...Object.keys(onlyPdf), ...Object.keys(onlyWeb)];
+    row.cites = differs.some((k) => k === "cite" || k === "+cite") ? (differs.every((k) => k === "cite" || k === "+cite") ? "only" : "also") : null;
     if (readA && readB) {
       const ua = rec.pdf.units[a.unit], ub = rec.web.units[b.unit];
       const pa = parasOf.pdf[a.unit], pb = parasOf.web[b.unit];
@@ -581,6 +583,10 @@ function report(docs, pipeline) {
   out.push(table([...byStratum.keys()].map((k) => line(k, summarize(k === "all" ? both : rowsBy((r) => idsIn(k).has(r.doc))))), head), "");
   const kinds = ["identical input", "same boundaries, same words", "same boundaries, different words", "different boundaries, same paragraph text", "different boundaries, different paragraph text"];
   out.push("## By what differs between the two readings", "", table(kinds.map((k) => line(k, summarize(rowsBy((r) => r.kind === k)))), head), "");
+  out.push("Citations: ", table([
+    line("citations are all that differs", summarize(rowsBy((r) => r.cites === "only"))),
+    line("citations and more differ", summarize(rowsBy((r) => r.cites === "also"))),
+  ], head), "");
   out.push("Passes: ", table([
     line("one pass on both sides", summarize(rowsBy((r) => r.pdfPasses === 1 && r.webPasses === 1))),
     line("several passes on a side", summarize(rowsBy((r) => r.pdfPasses > 1 || r.webPasses > 1))),

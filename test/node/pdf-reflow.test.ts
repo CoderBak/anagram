@@ -964,6 +964,17 @@ describe("reflowPdf — provenance", () => {
     expect(invented(blocks[0])).toBe(" ");
   });
 
+  it("leaves out bracketed citation marks, as the structured reading and the web walker do", () => {
+    const pages = [page(1, column([
+      "Direct constructions span the bases [2,3]. They",
+      "apply [16, Section 4] to superconductors [19], [20], as",
+      "Smith et al. (2020) and [Higham, 2002] showed [sic].",
+    ], 100))];
+    const blocks = reflowPdf(pages);
+    verify(pages, blocks);
+    expect(texts(blocks)).toEqual(["Direct constructions span the bases. They apply to superconductors, as Smith et al. (2020) and [Higham, 2002] showed [sic]."]);
+  });
+
   it("covers a line's own runs one after another, with the word spaces left over", () => {
     const pages = [
       page(1, [
