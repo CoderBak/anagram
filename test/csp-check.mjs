@@ -401,7 +401,7 @@ if (!CHROME_ONLY) {
       {
         settle: 8000,
         prepare: async (page) => {
-          await page.waitForFunction(() => window.PDFViewerApplication?.initialized && !document.getElementById("drop")?.hidden);
+          await ff.until(page, () => window.PDFViewerApplication?.initialized && !document.getElementById("drop")?.hidden);
           await page.evaluate((b64) => {
               const bin = atob(b64);
               const bytes = new Uint8Array(bin.length);

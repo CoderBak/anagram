@@ -334,7 +334,8 @@ export async function sweep(page, steps = 8, stepDelay = 320) {
 
 /**
  * Poll `fn` in the page until it returns something truthy; false on timeout. Not puppeteer's
- * waitForFunction: Firefox 140 does not run that one on a moz-extension: document.
+ * waitForFunction: it builds its poller with Function(), which the extension's policy
+ * refuses on a moz-extension: document in Firefox 140 ("call to Function() blocked by CSP").
  */
 export async function waitFor(page, fn, { timeout = 8000, arg } = {}) {
   const deadline = Date.now() + timeout;
