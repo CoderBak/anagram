@@ -34,6 +34,6 @@
     "block-seg/clusterer/model.onnx": "5cb6f8645a0f4c8f4396d5e8b1da70d9c8d8fff8c98f324889b8c6e271575350",
     "block-seg/clusterer/repair.onnx": "7fd29831c26f09cefa5a4f92c797e559bda5f513f6691d339d6c323bd563a789",
     "block-seg/clusterer/runtime.bin": "a0d71f9be6c63404393457ec31875ae799b5f4ba48dc17736112446a4f82ca26",
-    "worker.js": "ab53ec25918b8c502a03091aaca0a268104eafa5b30384a8f7656e198ef25d90"
+    "worker.js": "b10bcda684ee6b76ed5ec960dc084302f609581e5577542118fe992b04022a4e"
   }
 }

@@ -9,6 +9,7 @@ import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { machinePaths } from "./machinePaths.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = join(ROOT, "dist");
@@ -42,8 +43,16 @@ for (const target of [stage, DIST]) cpSync(join(ROOT, "install.ps1"), join(targe
 writeFileSync(join(stage, "VERSION"), version + "\n");
 for (const name of ["LICENSE", "THIRD_PARTY_NOTICES.md"]) cpSync(join(ROOT, name), join(stage, name));
 
-// macOS copyfile metadata and xattrs are not part of the installed component.
-const tarFlags = process.platform === "darwin" ? ["--no-xattrs"] : [];
+const leaks = machinePaths(stage);
+if (leaks.length > 0) throw new Error(`The component carries paths of the machine it was built on (scripts/machinePaths.mjs):\n  ${leaks.join("\n  ")}`);
+
+// macOS copyfile metadata and xattrs are not part of the installed component, and nor are
+// the owner's user name and ids.
+const bsdtar = execFileSync("tar", ["--version"], { encoding: "utf8" }).includes("bsdtar");
+const tarFlags = [
+  ...(process.platform === "darwin" ? ["--no-xattrs"] : []),
+  ...(bsdtar ? ["--uid", "0", "--gid", "0"] : ["--owner=0", "--group=0"]), "--numeric-owner",
+];
 execFileSync("tar", [...tarFlags, "-czf", join(DIST, "anagram.tar.gz"), "-C", join(DIST, "stage"), "anagram"], {
   stdio: "inherit", env: { ...process.env, COPYFILE_DISABLE: "1" },
 });
