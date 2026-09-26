@@ -81,6 +81,10 @@ local component and the installer all carry the same version.
   accordions put `role="tab"` on each item, header and panel together, and carousels on
   each slide; a tab is the label of a panel, and one that holds a panel, a heading or a
   paragraph is no longer taken for one.
+- Code and names marked not-to-translate in the middle of a sentence are read with it.
+  Sphinx marks every inline code literal in Python's, Django's and Flask's documentation
+  that way; left out, they holed the sentence the model read, and a 76-word paragraph
+  counted 73 words and was not analyzed at all.
 - In Kindle for the web, a chip is now put after the paragraph's last printed word. It
   used to go after the first line of the paragraph's accessibility text, which is the whole
   column wide, so a right-hand column's chips were cut off at the edge of the page.

@@ -82,15 +82,23 @@ function isShell(el: Element): boolean {
 }
 
 /**
- * `translate="no"` / `.notranslate` honoured only below page level and only on things
- * smaller than the page: on code, brand names and widgets it means "not prose"; on
- * <body> or on an application shell it just opts out of machine translation and would
- * otherwise blank the whole site. The attribute test comes first — the shell tests
- * touch the DOM, and all but a handful of elements never carry the attribute at all.
+ * `translate="no"` / `.notranslate` honoured only below page level, only on things
+ * smaller than the page, and only on boxes of their own: on a code block or a widget it
+ * means "not prose"; on <body> or on an application shell it just opts out of machine
+ * translation and would otherwise blank the whole site. In the middle of a line it marks a
+ * WORD of the sentence — a brand name, the code literal Sphinx sets in the sentences of
+ * Python's, Django's and Flask's docs (`code.docutils.literal.notranslate`) — which is not
+ * for translating but is read: left out, it holed the sentence the model reads, and a
+ * 76-word paragraph counted 73 and fell under the floor. The attribute test comes first —
+ * the other tests touch the DOM and the layout, and all but a handful of elements never
+ * carry the attribute at all.
  */
 export function isNoTranslate(el: Element): boolean {
   if (el.getAttribute("translate") !== "no" && !el.classList.contains("notranslate")) return false;
-  if (PAGE_LEVEL_TAGS.has(el.nodeName.toUpperCase()) || el.getAttribute("role") === "main") return false;
+  const tag = el.nodeName.toUpperCase();
+  if (PAGE_LEVEL_TAGS.has(tag) || el.getAttribute("role") === "main") return false;
+  const display = el.ownerDocument.defaultView?.getComputedStyle(el).display ?? "";
+  if (display === "" ? INLINE_FALLBACK_TAGS.has(tag) : display.startsWith("inline")) return false;
   return !isShell(el);
 }
 

@@ -124,6 +124,15 @@ const results = await page.evaluate(() => {
     "就算换了一种分词方法，这一段的词数也仍然留有足够的余量，不会恰好落在门槛的下面。";
   u = collect(`<p>${cjk}</p>`);
   check("pure-CJK paragraph scored", u.length === 1, JSON.stringify(u.map(x => x.words)));
+  {
+    // The floor never counts fewer words than a reader: a contraction or a number is one word,
+    // and a hyphenated word, an abbreviation, a URL or a pair joined by a dash count once per
+    // word in them (Chrome's segmenter breaks at every inner full stop, too). A paragraph the
+    // walk counts under the floor while a reader counts 75 is missing text, not words.
+    const plain = (t) => t.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+    const samples = ["Don't stop: it's 3.5% of U.S. sales, e.g. in 2024.", "The in-house team—not the agency—wrote it.", "See https://example.com/a-b or mail a@b.org at 10:42.", "Rock 'n' roll, and/or C++ — it’s 1,000 times.", "sys.stderr and time.localtime() are used."];
+    check("countWords never counts fewer words than a reader does", samples.every((t) => PW.countWords(t) >= plain(t)), JSON.stringify(samples.map((t) => [PW.countWords(t), plain(t)])));
+  }
 
   u = collect(`<p>1 2 3 4 5 6 7 8 9 10 11 12</p>`);
   check("letterless run dropped", u.length === 0);
@@ -1451,8 +1460,18 @@ const results = await page.evaluate(() => {
     u.length === 1 && u[0].text.startsWith("ITEM"), JSON.stringify(u.map(x => [x.parts, x.words])));
   {
     const b = document.createElement("body"); b.className = "notranslate";
-    const s = document.createElement("span"); s.className = "notranslate";
-    check("notranslate is ignored at page level, honoured on spans", PW.isBoilerplate(b) === false && (() => { sandbox.innerHTML = `<p>${words(78)} <span class="notranslate">BRANDLEAK</span> end.</p>`; const [x] = PW.collectUnits(sandbox); return x && !x.text.includes("BRANDLEAK"); })());
+    check("notranslate is ignored at page level", PW.isBoilerplate(b) === false);
+    // Inline, the attribute marks a word of the sentence — a brand name, the code literal Sphinx
+    // sets in the sentences of Python's, Django's and Flask's docs (`code.docutils.literal
+    // .notranslate`): not for translating, but read. Left out, it holed the sentence the model
+    // reads, and 76-word paragraphs counted 73 and fell under the floor.
+    sandbox.innerHTML = `<p>${words(78)} <span class="notranslate">BRAND</span> end.</p>`;
+    const [brand] = PW.collectUnits(sandbox);
+    sandbox.innerHTML = `<p>${words(40)} <code class="docutils literal notranslate"><span class="pre">localtime()</span></code> ${words(34)}</p>`;
+    const sphinx = PW.collectUnits(sandbox);
+    check("…and inline, a notranslate word is a word of its sentence: read, and counted toward the floor",
+      !!brand && brand.text.endsWith("BRAND end.") && sphinx.length === 1 && sphinx[0].wordCount === 75 && sphinx[0].text.includes(" localtime() "),
+      JSON.stringify([brand?.text.slice(-12), sphinx.map((x) => x.wordCount)]));
   }
   {
     const names = "Pallarés-Carratalá V, Polo García J, Martín Rioboo E, Ruíz García A, Serrano-Cumplido A, Divisón-Garrote JA, Segura-Fragoso A, Cinza-Sanjurjo S, Prieto-Díaz MÁ, Barquilla-García A, Escobar-Cervantes C, Velilla-Zancada S, Micó-Pérez RM, Rey-Aldana D, Vitelli-Storelli F, Cebrián-Cuenca AM, Turégano-Yedro M.";
