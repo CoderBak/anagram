@@ -67,6 +67,10 @@ local component and the installer all carry the same version.
   read as more human than the PDF of the same paper: on 1,464 paragraphs read from both,
   it lowered the HTML's score by 0.04 on average and by 0.10 where citations were. Earlier
   verdicts are not reused for the texts this changes.
+- On arXiv's HTML papers, short paragraphs are read together with their neighbours, as on
+  any other page and as the PDF reader reads them. Each paragraph there sits in a box of
+  its own, so none under the 75-word floor was ever grouped: proofs, definitions and short
+  remarks, some 12% of a paper's prose, went unread.
 - In Kindle for the web, a chip is now put after the paragraph's last printed word. It
   used to go after the first line of the paragraph's accessibility text, which is the whole
   column wide, so a right-hand column's chips were cut off at the edge of the page.
