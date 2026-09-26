@@ -21,11 +21,11 @@ Adobe CMap resources are covered by their own copyright but the same license:
 
 See https://github.com/adobe-type-tools/cmap-resources
 -->
-<html dir="ltr" mozdisallowselectionprint>
+<html dir="ltr" lang="en" mozdisallowselectionprint>
   <head>
     <meta charset="utf-8" />
     <meta http-equiv="Content-Security-Policy" content="connect-src 'self'" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="google" content="notranslate" />
     <title>PDF.js viewer</title>
 
@@ -43,12 +43,12 @@ See https://github.com/adobe-type-tools/cmap-resources
       <p id="notice" role="status"></p>
       <section id="drop" hidden><p id="dropLabel"></p><button id="choose" type="button"></button><input id="file" type="file" accept="application/pdf,.pdf" hidden /></section>
     </aside>
-    <p id="analysisScope" data-anagram="host" hidden></p>
+    <footer id="analysisScope" data-anagram="host" hidden></footer>
     <div id="outerContainer">
       <span id="viewer-alert" class="visuallyHidden" role="alert"></span>
 
       <div id="mainContainer">
-        <div class="toolbar">
+        <div class="toolbar" role="banner">
           <div id="toolbarContainer">
             <div id="toolbarViewer" class="toolbarHorizontalGroup">
               <div id="toolbarViewerLeft" class="toolbarHorizontalGroup">
@@ -780,7 +780,7 @@ See https://github.com/adobe-type-tools/cmap-resources
           </div>
         </div>
 
-        <div id="viewerContainer" tabindex="0">
+        <div id="viewerContainer" tabindex="0" role="main">
           <div id="viewer" class="pdfViewer"></div>
         </div>
       </div>

@@ -347,6 +347,9 @@
   "readerChoose": {
     "message": "选择文件"
   },
+  "readerPages": {
+    "message": "文档页面"
+  },
   "readerLoading": {
     "message": "载入中…"
   },

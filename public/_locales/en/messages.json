@@ -455,6 +455,10 @@
     "message": "Choose a file",
     "description": "Reader drop-zone button."
   },
+  "readerPages": {
+    "message": "Document pages",
+    "description": "Accessible name of the PDF reader's scrolling page area, which screen readers announce when it takes keyboard focus."
+  },
   "readerLoading": {
     "message": "Loading…",
     "description": "Reader notice while the file is fetched."

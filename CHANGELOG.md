@@ -71,6 +71,12 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- The PDF reader works better with a screen reader, a keyboard and zoom. The page declares
+  its language (the one the viewer's toolbar is drawn in, with Anagram's own controls in
+  Anagram's), no longer stops pinch zoom, and puts the toolbar, the pages and the scope note
+  in landmarks. The page field and the zoom menu are labelled with the words of their
+  tooltips, and the scrolling page area has a name and a visible focus outline when the
+  keyboard reaches it. The accessibility suite now passes on every reader state.
 - In Kindle for the web, a chip is now put after the paragraph's last printed word. It
   used to go after the first line of the paragraph's accessibility text, which is the whole
   column wide, so a right-hand column's chips were cut off at the edge of the page.
