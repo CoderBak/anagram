@@ -54,6 +54,7 @@ npm run test:pdf-viewer            # upstream reader: find, zoom, recycling, fil
 npm run test:pdf-install           # PDF setup and local-file access flow, EN and ZH
 node test/pdf-route-check.mjs      # PDF routing, handoff caps and privacy
 npm run test:network-privacy       # the offline-mode promise in PRIVACY.md
+ANAGRAM_PDF_BENCH=<corpus dir> node test/pdf-bench/bench.mjs run   # PDF reading benchmark, never in CI; corpus from test/pdf-bench/corpus.mjs
 ```
 
 Backend and installer tests need a Python venv with the test dependencies only:
