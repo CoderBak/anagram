@@ -6,7 +6,6 @@ export { collectUnits, inPageOrder } from "../lib/dom/walker";
 export { createScopes } from "../lib/dom/scope";
 export {
   countWords,
-  splitSentences,
   sentenceStarts,
   symbolNoiseRatio,
   hasColumnGaps,

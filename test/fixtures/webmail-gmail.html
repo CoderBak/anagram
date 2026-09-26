@@ -1,0 +1,53 @@
+<!doctype html>
+<!--
+  A Gmail conversation with a reply and a forward, synthetic text.
+
+  The message bodies are the HTML Gmail writes, as collected in mailgun talon's fixtures
+  (https://github.com/mailgun/talon, tests/fixtures/html_replies/gmail.html, Apache-2.0,
+  Copyright Mailgun Inc.) and handled by its html_quotations.py: what was typed is in
+  `div[dir=ltr]`, first line as bare text and every further line a <div>; the quoted history
+  is `div.gmail_quote`, with the "On … wrote:" line in `div.gmail_attr` above a
+  `blockquote.gmail_quote`. A FORWARD has no blockquote: the forwarded message follows the
+  "Forwarded message" header block inside `div.gmail_quote`. The thread around the bodies
+  (a `div[role=list]` with one `div[role=listitem]` per message) is modelled.
+
+  Neither the "On … wrote:" line nor the forwarded header block is anybody's text; the
+  forwarded message is Dana's, not Carol's.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: Gmail conversation, quoted history</title>
+<style>
+  body { margin: 0; font: 14px/20px Arial, sans-serif; }
+  .thread { width: 760px; margin: 0 auto; }
+  .adn { padding: 16px 20px; border-bottom: 1px solid #eceff1; }
+  .hdr { font-size: 13px; color: #5f6368; }
+  blockquote.gmail_quote { margin: 0 0 0 .8ex; border-left: 1px #ccc solid; padding-left: 1ex; }
+</style></head>
+<body>
+<div role="main">
+<div class="thread" role="list">
+
+  <div class="adn ads" role="listitem">
+    <div class="hdr" data-chrome><span class="gD">Bob Nowak</span> <span class="g3">11:02 AM (2 hours ago)</span></div>
+    <div class="a3s aiL">
+      <div dir="ltr" data-voice="bob"><span data-expect="unit">Thanks for pulling this together so quickly. I have read the survey twice now and I agree that the slates on the north side have to come off before the winter, whatever we decide about the rest of the roof.</span><div><br></div><div data-expect="unit">What I would rather not do is commit the whole reserve to it at the next meeting. Could we ask the builder to price the north side on its own, so that the committee has something smaller to vote on?</div><div><br></div><div>Bob</div></div><br>
+      <div class="gmail_quote">
+        <div dir="ltr" class="gmail_attr" data-chrome>On Mon, Sep 14, 2026 at 9:12 AM Alice Moreau &lt;<a href="mailto:alice@example.org">alice@example.org</a>&gt; wrote:<br></div>
+        <blockquote class="gmail_quote" style="margin:0 0 0 .8ex;border-left:1px #ccc solid;padding-left:1ex" data-voice="alice"><div dir="ltr"><span data-expect="unit">The survey came back on Friday and it is worse than we hoped. The surveyor found that about a third of the slates on the north side are loose, and the battens under them have rotted where the gutter overflowed last winter.</span><div><br></div><div data-expect="unit">He thinks the south side will last another five years with some patching, but he would not promise more than that. I have attached his report and the two quotes he suggested we get from builders in town.</div></div></blockquote>
+      </div>
+    </div>
+  </div>
+
+  <div class="adn ads" role="listitem">
+    <div class="hdr" data-chrome><span class="gD">Carol Iyer</span> <span class="g3">1:40 PM (4 minutes ago)</span></div>
+    <div class="a3s aiL">
+      <div dir="ltr" data-voice="carol"><span data-expect="unit">Forwarding this from Dana, who has done two of these grant applications for the school and knows how the fund works. She is happy to sign ours, and she raises a question about the listing that I had not thought to ask, so I will ring the council office in the morning and find out from them exactly which parts of the old hall the entry actually covers before I start on the form this week.</span><br><br>
+        <div class="gmail_quote"><div dir="ltr" class="gmail_attr" data-chrome>---------- Forwarded message ---------<br>From: <strong class="gmail_sendername" dir="auto">Dana Lindqvist</strong> <span dir="auto">&lt;<a href="mailto:dana@example.org">dana@example.org</a>&gt;</span><br>Date: Tue, Sep 15, 2026 at 8:30 AM<br>Subject: Re: Grant for the hall roof<br>To: Carol Iyer &lt;<a href="mailto:carol@example.org">carol@example.org</a>&gt;<br></div><br><br><div dir="ltr" data-voice="dana"><span data-expect="unit">I can sign it. I have done two of these applications for the school, and the fund was quick both times as long as the photographs showed the damage clearly, so it would be worth asking the surveyor for his.</span><div><br></div><div data-expect="unit">One thing to check first is whether the hall is listed as a whole or only the front, because the form asks for the entry number and the answer changes what they will pay for.</div></div></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+</body></html>

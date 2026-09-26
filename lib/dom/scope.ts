@@ -90,6 +90,23 @@
 //              under it is no opening post: a text with section headings is read as the
 //              page always read it (see `isSectioned`).
 //
+// QUOTED HISTORY — a reply and the messages it quotes are different voices. Apple Mail and
+// Thunderbird quote in a `blockquote[type=cite]`, which is declared above, but most mail
+// programs mark the history some other way and leave the quoted message standing BESIDE the
+// reply, as its siblings: Outlook for Windows starts it with a `div` that draws a thin top
+// border around a From / Sent / To / Subject block, Outlook on the web with `div#appendonsend`
+// and `div#divRplyFwdMsg`, Gmail and Yahoo wrap it in `div.gmail_quote` and
+// `div.yahoo_quoted`, Zimbra with `hr[data-marker=__DIVIDER__]`, and a forward anywhere with
+// the From / Sent / To / Subject block alone. Read as one voice, a reply and the message it
+// answers got one verdict describing neither. The markers are mailgun talon's
+// (https://github.com/mailgun/talon, talon/html_quotations.py, Apache-2.0, Copyright Mailgun
+// Inc.) and its JavaScript port planer's (https://github.com/lever/planer,
+// src/htmlPlaner.coffee, MIT, Copyright (c) 2015 Leighton Wallace). As they do, the history
+// runs from its MARKER to the end of the message: the marker and every later sibling of it.
+// Its scope is named by the marker, which therefore does not CONTAIN all of what it names
+// (`holds`). A history quoted inside a history is a voice of its own again, and the header
+// block and the "On … wrote:" line of `div.gmail_attr` are nobody's text (`header`).
+//
 // The nearest scope wins, declared or recognised, exactly as Reddit's nested
 // `[role=article]` always did. Nothing at page level (`body`, `main`) is ever a post.
 //
@@ -112,9 +129,9 @@
 // Everything here reads attributes and tree structure only — never styles, never layout —
 // and is a pure function of the DOM, so a partial re-scan that starts inside a post finds
 // the scope the full scan found: no answer depends on which element was asked first. The
-// page is surveyed for bylines once per scan (two querySelectorAll), lazily; every other
-// answer is cached per element for the scan.
-import { tagOf } from "./tags";
+// page is surveyed for bylines once per scan (two querySelectorAll) and for the markers of
+// quoted mail once (one more), lazily; every other answer is cached per element for the scan.
+import { INLINE_FALLBACK_TAGS, tagOf } from "./tags";
 
 const DECLARED_SCOPE_SELECTOR =
   'article,[role="article"],blockquote,figure,[role="link"],[role="list"] [role="listitem"]:not(li),bili-comment-renderer,bili-comment-reply-renderer';
@@ -189,6 +206,11 @@ export interface Scopes {
    * sentence of the site's, which "no byline between" alone let into every review.
    */
   oneBody(a: Element, b: Element, scope: Element): boolean;
+  /** The voice `outer` names takes in `inner`: `outer` contains it, or `outer` is the marker
+   *  of a quoted history and `inner` stands in that history, after the marker. */
+  holds(outer: Element, inner: Element): boolean;
+  /** A header block or an attribution line of a quoted mail message: never scored. */
+  header(el: Element): boolean;
 }
 
 function isText(node: Node | null): node is Text {
@@ -371,6 +393,142 @@ function composedParent(el: Element): Element | null {
   return root instanceof ShadowRoot ? root.host : null;
 }
 
+// ---- quoted history in a mail message ------------------------------------------------------
+
+/** A mail program's class or id as a webmail shows it: Outlook on the web gives every class
+ *  and id of a received message an `x_` prefix, Gmail an `m_` and a number. */
+const MAIL_PREFIX = String.raw`(?:x_|m_-?\d+_?)?`;
+/** A box that holds the whole quoted history (talon: `cut_gmail_quote`, `cut_yahoo_quote`). */
+const QUOTE_BOX_RE = new RegExp(`^${MAIL_PREFIX}(?:gmail_quote|yahoo_quoted)$`);
+/** The line above a quotation that says who wrote it and when. */
+const ATTRIBUTION_CLASS_RE = new RegExp(`^${MAIL_PREFIX}(?:gmail_attr|moz-cite-prefix)$`);
+/** Outlook on the web's reply markers and the section Outlook for Mac wraps a quotation in
+ *  (talon: QUOTE_IDS; planer: OUTLOOK_SPLITTER_QUOTE_IDS). */
+const QUOTE_ID_RE = new RegExp(`^${MAIL_PREFIX}(?:divRplyFwdMsg|appendonsend|OLK_SRC_BODY_SECTION)$`);
+/** Outlook's splitter, the box around the header block: a one-point top border in #E1E1E1
+ *  (Outlook 2013 and later) or #B5C4DF (2007, 2010, Outlook for Mac), or Windows Mail's
+ *  five-pixel padding over a rgb(229, 229, 229) border — talon's `cut_microsoft_quote`,
+ *  spacing and case aside. A border set in points is Word's, not a web page's. */
+const SPLITTER_STYLE_RE =
+  /border-top\s*:\s*(?:solid\s+#(?:e1e1e1|b5c4df)\s+1(?:\.0)?pt|#b5c4df\s+1(?:\.0)?pt\s+solid)|padding-top\s*:\s*5px;\s*border-top-color\s*:\s*rgb\(229,\s*229,\s*229\)/i;
+const MAIL_MARKER_SELECTOR = [
+  'div[class*="gmail_quote"]',
+  'div[class*="yahoo_quoted"]',
+  '[class*="gmail_attr"]',
+  '[class*="moz-cite-prefix"]',
+  '[id*="divRplyFwdMsg"]',
+  '[id*="appendonsend"]',
+  '[id*="OLK_SRC_BODY_SECTION"]',
+  'hr[data-marker="__DIVIDER__"]',
+  'div[style*="border-top" i]',
+  "b",
+  "strong",
+].join(",");
+/** The labels of a header block that starts a forwarded or quoted message (talon's
+ *  `cut_from_block` and RE_FROM_COLON_OR_DATE_COLON), set in bold by Outlook. */
+const HEADER_LABEL_RE = /^(From|Sent|Date|To|Cc|Subject)\s?:$/;
+/** A From line and at least two of the others make a header block. */
+const MIN_HEADER_LABELS = 3;
+/** How many sibling blocks after the From line may carry the rest of the block (Apple Mail
+ *  sets each line in a <div> of its own). */
+const MAX_HEADER_LINES = 6;
+/** Longer than this, the block holding a bold "From:" is somebody's text, not a header. */
+const MAX_HEADER_CHARS = 1000;
+
+interface MailHistory {
+  /** Every marker a quoted history starts at … */
+  starts: Set<Element>;
+  /** … per parent, in document order. */
+  byParent: Map<Element, Element[]>;
+  /** The header blocks and attribution lines: the mail program's words, never scored. */
+  headers: Set<Element>;
+}
+
+/** Short enough to be a header block and nothing more. */
+function isShort(el: Element): boolean {
+  return (el.textContent ?? "").length <= MAX_HEADER_CHARS;
+}
+
+/** Up through wrappers that hold nothing but this (Outlook: `<div><div style="border-top:…">`,
+ *  the splitter alone in a div). Never into a scope: a message that is nothing but a forward
+ *  does not make the thread around it a history. */
+function wholeWrapper(el: Element): Element {
+  let at = el;
+  for (let hops = 0; hops < 2; hops++) {
+    const parent = at.parentElement;
+    if (!parent || parent.childElementCount !== 1 || isPageLevel(parent) || parent.matches(DECLARED_SCOPE_SELECTOR)) break;
+    let alone = true;
+    for (const n of parent.childNodes) if (isText(n) && (n.textContent ?? "").trim()) alone = false;
+    if (!alone) break;
+    at = parent;
+  }
+  return at;
+}
+
+/** The header lines that begin at the block holding a bold "From:" — the block itself and
+ *  the sibling blocks after it that open with a bold label — or null when they do not add up
+ *  to a header (an article that sets "From:" in bold in a sentence of its own). */
+function headerBlock(from: Element): Element[] | null {
+  let block: Element | null = from.parentElement;
+  while (block && INLINE_FALLBACK_TAGS.has(tagOf(block))) block = block.parentElement;
+  if (!block || isPageLevel(block) || !isShort(block)) return null;
+  const labels = new Set<string>();
+  const labelsIn = (el: Element): void => {
+    for (const b of el.querySelectorAll("b,strong")) {
+      const m = HEADER_LABEL_RE.exec((b.textContent ?? "").trim());
+      if (m) labels.add(m[1]);
+    }
+  };
+  labelsIn(block);
+  const lines = [block];
+  for (let next = block.nextElementSibling; next && lines.length <= MAX_HEADER_LINES; next = next.nextElementSibling) {
+    const first = next.querySelector("b,strong");
+    const label = first && HEADER_LABEL_RE.exec((first.textContent ?? "").trim());
+    if (!label || !(next.textContent ?? "").trim().startsWith((first.textContent ?? "").trim())) break;
+    labels.add(label[1]);
+    lines.push(next);
+  }
+  return labels.has("From") && labels.size >= MIN_HEADER_LABELS ? lines : null;
+}
+
+function surveyMail(doc: Document): MailHistory {
+  const starts = new Set<Element>();
+  const headers = new Set<Element>();
+  const tokens = (el: Element): string[] => (el.getAttribute("class") ?? "").split(/\s+/);
+  for (const el of doc.querySelectorAll(MAIL_MARKER_SELECTOR)) {
+    const tag = tagOf(el);
+    if (tag === "B" || tag === "STRONG") {
+      if (!/^From\s?:$/.test((el.textContent ?? "").trim())) continue;
+      const lines = headerBlock(el);
+      if (!lines) continue;
+      for (const line of lines) headers.add(line);
+      starts.add(wholeWrapper(lines[0]));
+    } else if (tag === "HR") {
+      starts.add(el);
+    } else if (QUOTE_ID_RE.test(el.id)) {
+      starts.add(el);
+      if (/divRplyFwdMsg$/.test(el.id) && isShort(el)) headers.add(el);
+    } else if (tokens(el).some((t) => ATTRIBUTION_CLASS_RE.test(t))) {
+      headers.add(el);
+    } else if (tag === "DIV" && tokens(el).some((t) => QUOTE_BOX_RE.test(t))) {
+      starts.add(el);
+    } else if (tag === "DIV" && SPLITTER_STYLE_RE.test(el.getAttribute("style") ?? "")) {
+      if (isShort(el)) headers.add(el);
+      starts.add(wholeWrapper(el));
+    }
+  }
+  const byParent = new Map<Element, Element[]>();
+  for (const start of starts) {
+    const parent = start.parentElement;
+    if (!parent) continue;
+    const list = byParent.get(parent);
+    if (list) list.push(start);
+    else byParent.set(parent, [start]);
+  }
+  for (const list of byParent.values()) list.sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+  return { starts, byParent, headers };
+}
+
 /** The scopes of one scan of `doc`. Cheap to create: the page is surveyed on first use. */
 export function createScopes(doc: Document = document): Scopes {
   /** Every element with byline evidence below it (light DOM) → the FIRST such evidence. */
@@ -385,6 +543,21 @@ export function createScopes(doc: Document = document): Scopes {
   const several = new Map<Element, boolean>();
   const posts = new Map<Element, boolean>();
   const nearest = new Map<Element, Element | null>();
+  let mail: MailHistory | null = null;
+
+  /** The quoted history `el` stands in at its own level: the last marker among its siblings
+   *  at or before it. */
+  function historyAt(el: Element): Element | null {
+    const parent = el.parentElement;
+    const starts = parent && (mail ??= surveyMail(doc)).byParent.get(parent);
+    if (!starts) return null;
+    let found: Element | null = null;
+    for (const start of starts) {
+      if (start !== el && !(start.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)) break;
+      found = start;
+    }
+    return found;
+  }
 
   /** Document order, so the first evidence to reach an ancestor is the first inside it. */
   function survey(): Map<Element, Element> {
@@ -569,13 +742,18 @@ export function createScopes(doc: Document = document): Scopes {
           scope = cur;
           break;
         }
+        const history = historyAt(cur);
+        if (history) {
+          scope = history;
+          break;
+        }
       }
       for (const seen of path) nearest.set(seen, scope);
       return scope;
     },
 
     recognised(scope: Element | null): boolean {
-      return scope !== null && !scope.matches(DECLARED_SCOPE_SELECTOR);
+      return scope !== null && !scope.matches(DECLARED_SCOPE_SELECTOR) && !(mail ??= surveyMail(doc)).starts.has(scope);
     },
 
     oneBody(a: Element, b: Element, scope: Element): boolean {
@@ -589,6 +767,19 @@ export function createScopes(doc: Document = document): Scopes {
       if (!body || body === scope) return false; // they meet at the post itself, where its byline is
       for (let cur = composedParent(a); cur && cur !== body; cur = composedParent(cur)) if (!TEXT_MARKUP.has(tagOf(cur))) return false;
       return !(bylines ??= survey()).has(body);
+    },
+
+    holds(outer: Element, inner: Element): boolean {
+      if (outer.contains(inner)) return true;
+      if (!(mail ??= surveyMail(doc)).starts.has(outer)) return false;
+      for (let cur: Element | null = inner; cur; cur = cur.parentElement) {
+        if (cur.parentElement === outer.parentElement) return (outer.compareDocumentPosition(cur) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+      }
+      return false;
+    },
+
+    header(el: Element): boolean {
+      return (mail ??= surveyMail(doc)).headers.has(el);
     },
   };
 }

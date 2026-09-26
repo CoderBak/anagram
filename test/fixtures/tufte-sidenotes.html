@@ -1,0 +1,44 @@
+<!doctype html>
+<!--
+  An essay set with sidenotes and margin notes, synthetic text.
+
+  The markup and the rules that place the notes are tufte-css's
+  (https://github.com/edwardtufte/tufte-css, index.html and tufte.css, MIT, Copyright (c)
+  2014 Dave Liepmann): a note is a `span.sidenote` or `span.marginnote` IN THE MIDDLE OF THE
+  PARAGRAPH it annotates, after a `label.margin-toggle` and a hidden checkbox, and CSS floats
+  it into the right margin. A float is laid out as a block, and the walk used to keep every
+  floated phrase element in the run as if it were a drop cap: each note was read into the
+  middle of the sentence it stands beside. A note is the author's own text, so it is read
+  as a paragraph of its own, right after the paragraph it floats beside, and may join it.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: sidenotes and margin notes</title>
+<style>
+  html { font-size: 15px; }
+  body { width: 87.5%; margin-left: auto; margin-right: auto; padding-left: 12.5%; font-family: Palatino, Georgia, serif; max-width: 1400px; counter-reset: sidenote-counter; }
+  section > p { width: 55%; }
+  .sidenote, .marginnote { float: right; clear: right; margin-right: -60%; width: 50%; margin-top: 0.3rem; margin-bottom: 0; font-size: 1.1rem; line-height: 1.3; vertical-align: baseline; position: relative; }
+  .sidenote-number { counter-increment: sidenote-counter; }
+  .sidenote-number:after { content: counter(sidenote-counter); font-size: 1rem; position: relative; top: -0.5rem; left: 0.1rem; }
+  .sidenote:before { content: counter(sidenote-counter) " "; font-size: 1rem; position: relative; top: -0.5rem; }
+  input.margin-toggle { display: none; }
+  label.sidenote-number { display: inline-block; max-height: 2rem; }
+  label.margin-toggle:not(.sidenote-number) { display: none; }
+  .dropcap { float: left; font-size: 3.4rem; line-height: 1; margin-right: 0.1rem; }
+</style></head>
+<body>
+<article data-voice="author">
+  <h1>On keeping a ferry</h1>
+  <section>
+    <p data-expect="unit" data-parts="2">The ferry has crossed the estuary eleven times a day since 1931, and for most of that time nobody in the town gave it a second thought<label for="sn-1" class="margin-toggle sidenote-number"></label><input type="checkbox" id="sn-1" class="margin-toggle"><span class="sidenote" data-expect="unit">The first boat was a converted herring drifter, bought second hand from a yard across the water.</span> until the operator announced in March that the winter timetable would be its last. What followed was a winter of meetings in the lifeboat station, a petition that half the town signed in a week, and a slow realisation among people who had never thought about it that the boat was the only thing standing between them and a forty minute drive.</p>
+
+    <p data-expect="unit" data-parts="2">The argument that carried the vote was a practical one, and it was made by a councillor who had opposed the plan until a week before the meeting. She said that she was not sentimental about a boat, but that she was practical about a bridge that is forty minutes away by road, and about an ambulance that has to drive it. <label for="mn-1" class="margin-toggle">&#8853;</label><input type="checkbox" id="mn-1" class="margin-toggle"><span class="marginnote" data-expect="unit">Several people who were in the room said afterwards that it was the ambulance, not the arithmetic, that changed their minds.</span>The room went quiet after that, and the vote was taken a little after midnight.</p>
+
+    <p data-expect="unit" data-parts="3">Not everybody was persuaded. Owners of the holiday lets along the front, who pay the levy but rarely use the boat, asked the council at its December meeting for an exemption from the levy<label for="sn-2" class="margin-toggle sidenote-number"></label><input type="checkbox" id="sn-2" class="margin-toggle"><span class="sidenote" data-expect="unit">They asked for it in writing, twice, and were refused both times.</span> and were refused by a wide margin, after a debate that was shorter than anybody had expected it to be.</p>
+    <p data-expect="unit">Their representative said afterwards that they would not challenge the result, but that they expected the accounts to be published every quarter, in full, and on paper, so that anybody in the town could see where the money had gone and what it had bought.</p>
+
+    <p data-expect="unit" data-parts="1"><span class="dropcap">T</span>he handover is planned for the first of January. Until then the present operator will run the winter timetable as announced, with one boat instead of two, and the new company will spend the months that are left finding a skipper, a mate and an engineer who are willing to work for a board of volunteers. A public meeting to elect that board will be held in the lifeboat station next month, and nominations are already open to anybody who pays the levy.</p>
+  </section>
+</article>
+</body></html>

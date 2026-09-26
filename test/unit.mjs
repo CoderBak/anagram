@@ -136,6 +136,20 @@ const results = await page.evaluate(() => {
   u = collect(`<p><span style="float:left;font-size:2em">T</span>${words(80)}</p>`);
   check("floated drop-cap span stays inline", u.length === 1 && u[0].text.startsWith("T"), JSON.stringify(u.map(x => x.text.slice(0, 12))));
 
+  // A sidenote or a margin note (tufte-css: `span.sidenote { float: right }` in the middle of
+  // a sentence) is the author's text, but not the sentence it floats beside: it is read after
+  // that paragraph, as a paragraph of its own.
+  u = collect(`<p>AAA ${words(40)} <span style="float:right;width:30%">SIDENOTE ${words(20)}</span> BBB ${words(40)}</p>`);
+  check("a floated sidenote in mid-sentence is a run of its own after its paragraph, which reads on across it",
+    u.length === 1 && u[0].parts === 2 && u[0].text === `AAA ${words(40)} BBB ${words(40)}\n\nSIDENOTE ${words(20)}`,
+    JSON.stringify(u.map(x => [x.parts, x.text.split("\n\n").map((t) => t.slice(0, 12))])));
+  u = collect(`<p>P0 ${words(80)}</p><p>P1 ${words(40)}<span style="float:right;width:30%">SIDENOTE ${words(20)}</span> ${words(40)}</p><p>P2 ${words(80)}</p>`);
+  check("…and a short one joins the paragraph it floats beside, not the one before it",
+    u.length === 3 && u[0].parts === 1 && u[1].parts === 2 && u[1].text.startsWith("P1 ") && u[1].text.includes("\n\nSIDENOTE ") && u[2].parts === 1,
+    JSON.stringify(u.map(x => [x.parts, x.text.split("\n\n").map((t) => t.slice(0, 12))])));
+  u = collect(`<p><span style="float:left;font-size:3em">“T</span>he ${words(80)}</p>`);
+  check("…while a floated initial with its opening quote is still a drop cap", u.length === 1 && u[0].parts === 1 && u[0].text.startsWith("“The "), JSON.stringify(u.map(x => x.text.slice(0, 12))));
+
   u = collect(`<p>${words(40)}</p><div style="display:inline-block"><div>${words(9)}</div></div><p>${words(40)}</p>`);
   check("inline-block card with block children does not sever merging siblings", u.length >= 1, JSON.stringify(u.map(x => [x.parts, x.words])));
 
@@ -364,6 +378,44 @@ const results = await page.evaluate(() => {
 
   u = collect(`<p>${sent(40)}</p><h3>Break</h3><blockquote><p>${sent(40)}</p></blockquote><p>${sent(40)}</p>`);
   check("…while a heading in the author's own flow still does", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+  // QUOTED HISTORY in a mail message without a <blockquote> (talon's markers, lib/dom/scope.ts):
+  // the reply and the history are two voices, and neither the header block nor the
+  // "On … wrote:" line is anybody's text. The full webmail pages are fixtures (webmail-*.html).
+  {
+    const REPLY = `<div>REPLY-A ${sent(40)}</div><div>REPLY-B ${sent(40)}</div>`;
+    const QUOTED = `<div>QUOTED-A ${sent(40)}</div><div>QUOTED-B ${sent(40)}</div>`;
+    const HEADER = `<b>From:</b> Alice Moreau &lt;alice@example.org&gt;<br><b>Sent:</b> Monday, September 14, 2026 9:12 AM<br><b>To:</b> Bob Nowak<br><b>Subject:</b> Hall roof`;
+    const apart = (html) => {
+      const got = collect(`<div class="msg">${html}</div>`);
+      const ok = got.length === 2 && /^REPLY-A .*\n\nREPLY-B /s.test(got[0].text) && /^QUOTED-A .*\n\nQUOTED-B /s.test(got[1].text) &&
+        got.every((x) => x.parts === 2 && !/wrote|Sent:|Subject:|Alice Moreau/.test(x.text));
+      return [ok, JSON.stringify(got.map((x) => x.text.split("\n\n").map((t) => t.slice(0, 16))))];
+    };
+    check("mail: Yahoo's div.yahoo_quoted and its \"On … wrote:\" line are not the reply's",
+      ...apart(`${REPLY}<div class="yahoo_quoted" id="yahoo_quoted_0033794750"><div>On Tuesday, June 4, 2019, 5:41:43 PM PDT, John Smith &lt;jsmith@example.com&gt; wrote:</div>${QUOTED}</div>`));
+    check("mail: Outlook 2007's splitter (#B5C4DF, cm) starts a history that runs through its later siblings",
+      ...apart(`${REPLY}<div style="border:none;border-top:solid #B5C4DF 1.0pt;padding:3.0pt 0cm 0cm 0cm"><p class="MsoNormal">${HEADER}</p></div>${QUOTED}`));
+    check("mail: Windows Mail's splitter too",
+      ...apart(`${REPLY}<div style="padding-top: 5px; border-top-color: rgb(229, 229, 229); border-top-width: 1px; border-top-style: solid;"><div><font>${HEADER}</font></div></div>${QUOTED}`));
+    check("mail: Outlook for Mac's #OLK_SRC_BODY_SECTION",
+      ...apart(`${REPLY}<span id="OLK_SRC_BODY_SECTION"><div style="font-family:Calibri; font-size:11pt; BORDER-TOP: #b5c4df 1pt solid; PADDING-TOP: 3pt"><span style="font-weight:bold">From: </span>Alice Moreau<br><span style="font-weight:bold">Date: </span>Monday, 14 September 2026 at 09:12<br></div><div><br></div>${QUOTED}</span>`));
+    check("mail: Zimbra's divider and header block",
+      ...apart(`${REPLY}<hr id="zwchr" data-marker="__DIVIDER__"><div data-marker="__HEADERS__"><b>From: </b>"Alice Moreau" &lt;alice@example.org&gt;<br><b>To: </b>bob@example.org<br><b>Sent: </b>Monday, September 14, 2026 9:12:00 AM<br><b>Subject: </b>Hall roof<br></div><br><div data-marker="__QUOTED_TEXT__">${QUOTED}</div>`));
+    check("mail: a From / Sent / To / Subject block alone (Outlook 2010, a forward)",
+      ...apart(`${REPLY}<p class="MsoNormal">${HEADER}</p><p class="MsoNormal">&nbsp;</p>${QUOTED}`));
+    check("mail: Thunderbird's div.moz-cite-prefix line is not the reply's",
+      ...apart(`${REPLY}<div class="moz-cite-prefix">On 14/09/2026 09:12, Alice Moreau wrote:<br></div><blockquote type="cite" cite="mid:1@example.org">${QUOTED}</blockquote>`));
+    check("mail: a quotation inside the history interrupts it without ending it",
+      ...apart(`${REPLY}<div id="x_divRplyFwdMsg" dir="ltr"><font>${HEADER}</font></div><div>QUOTED-A ${sent(40)}</div><blockquote><p>INNER ${sent(20)}</p></blockquote><div>QUOTED-B ${sent(40)}</div>`));
+    // …and what is no mail history stays one voice.
+    u = collect(`<div class="msg">${REPLY}<div style="border-top:1px solid #e1e1e1;padding-top:8px">${QUOTED}</div></div>`);
+    check("mail: a page's own light-grey rule in pixels is no Outlook splitter", u.length === 1 && u[0].parts === 4, JSON.stringify(u.map(x => [x.parts, x.words])));
+    u = collect(`<div class="msg">${REPLY}<div><b>From:</b> the minutes of the March meeting, which the secretary has now circulated to everyone.</div>${QUOTED}</div>`);
+    check("mail: a bold \"From:\" without the rest of a header is somebody's sentence", u.length === 1 && u[0].parts === 5 && u[0].text.includes("From: the minutes"), JSON.stringify(u.map(x => [x.parts, x.words])));
+    u = collect(`<article><p>AUTHOR ${sent(40)}</p><p>On 3 March 1931 the editor of the Gazette wrote:</p><blockquote><p>${sent(40)}</p></blockquote><p>AUTHOR ${sent(40)}</p></article>`);
+    check("mail: an author's own \"On 3 March 1931 … wrote:\" is still the author's sentence", u.length === 1 && u[0].parts === 3 && u[0].text.includes("the editor of the Gazette wrote:"), JSON.stringify(u.map(x => [x.parts, x.words])));
+  }
 
   u = collect(`<p>${sent(40)}</p><figure><img alt=""><figcaption>CAPTION ${sent(14)}</figcaption></figure><p>${sent(40)}</p>`);
   check("a figure caption between two short paragraphs is not borrowed: [p, p] without it",
@@ -1347,6 +1399,9 @@ const results = await page.evaluate(() => {
 
     check("sentenceStarts: inside the text only, each on the first letter of a sentence",
       (() => { const st = PW.sentenceStarts("One. Two!\n\nThree? Four"); return JSON.stringify(st) === JSON.stringify([5, 11, 18]); })(), JSON.stringify(PW.sentenceStarts("One. Two!\n\nThree? Four")));
+    // Chromium's own segmenter, not Node's: test/node/sentences.test.ts has the full table.
+    check("sentenceStarts: none after \"Mr.\", \"Dr.\" or \"the U.S.\" in Chromium",
+      JSON.stringify(PW.sentenceStarts("Mr. Smith met Dr. Jones. The U.S. Army came.")) === JSON.stringify([25]), JSON.stringify(PW.sentenceStarts("Mr. Smith met Dr. Jones. The U.S. Army came.")));
   }
 
   // ---- long texts: from a pass back to the page ---------------------------------------------
@@ -1952,32 +2007,6 @@ const results = await page.evaluate(() => {
   return out;
 });
 
-// ---- window cuts without Intl.Segmenter ---------------------------------------------------
-// The sentence segmenter is cached per page, so its regex fallback needs a page of its own
-// in which the API never existed.
-{
-  const fb = await browser.newPage();
-  await fb.setContent("<!doctype html><html><body></body></html>");
-  await fb.evaluate(() => { delete Intl.Segmenter; });
-  await fb.addScriptTag({ path: BUNDLE });
-  const r = await fb.evaluate(() => {
-    const en = Array.from({ length: 60 }, (_, i) => `Sentence number ${i} keeps walking through the quiet town while the rain falls on it.`).join(" ");
-    const zh = Array.from({ length: 140 }, (_, i) => `第${i}句话讲的是一座安静的小城和落在屋顶上的雨，孩子们在窗边读书。`).join("");
-    // The texts of the passes, and whether they read the whole text, each past the last.
-    const cut = (t) => PW.planWindows(t).map((s) => t.slice(s.start, s.end));
-    const covers = (t) => { const sp = PW.planWindows(t); return sp[0].start === 0 && sp[sp.length - 1].end === t.length && sp.every((s, i) => i === 0 || (s.start > sp[i - 1].start && s.start < sp[i - 1].end)); };
-    return { starts: PW.sentenceStarts('One. Two!\n\nThree? "Four." Five'), en: cut(en), zh: cut(zh), enCovered: covers(en), zhCovered: covers(zh) };
-  });
-  await fb.close();
-  results.push({
-    name: "no Intl.Segmenter: the regex fallback finds the same sentence starts, Latin and CJK",
-    ok: JSON.stringify(r.starts) === JSON.stringify([5, 11, 18, 26]) &&
-      r.en.length >= 3 && r.enCovered && r.en.every((t) => /^Sentence number \d+ /.test(t) && t.trim().endsWith(".")) &&
-      r.zh.length >= 2 && r.zhCovered && r.zh.every((t) => t.startsWith("第") && t.endsWith("。")),
-    note: JSON.stringify([r.starts, r.en.map((t) => t.length), r.zh.map((t) => t.length)]),
-  });
-}
-
 // ---- a unit whose batch was abandoned is dispatched again from where it stands ------------
 // The viewport observer lets an element go once it has been seen, so a paragraph on screen
 // is dispatched once. When that batch is abandoned (the caches were cleared under it) the
@@ -2095,7 +2124,11 @@ const EXPECTED = {
   "substack-note": [3, 1],
   "telegram-channel": [2, 1],
   "thread-100": [75, 50],
+  "tufte-sidenotes": [4, 3],
   "v2ex-topic": [2, 2],
+  "webmail-apple": [4, 4],
+  "webmail-gmail": [4, 3],
+  "webmail-outlook": [5, 5],
   "wordpress-comments": [2, 2],
   "x-timeline": [7, 5],
   "zhihu-answers": [13, 7],

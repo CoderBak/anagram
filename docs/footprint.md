@@ -52,6 +52,11 @@ notice compares versions locally; it does not poll GitHub.
 | `lib/ui/basecoat-vega.cdn.min.css` | `http://www.w3.org/2000/svg` | the SVG namespace inside data-URI icons; a name, not an address |
 | `lib/ui/basecoat-vega.cdn.min.css` | `https://tailwindcss.com` | the licence banner of the vendored Basecoat stylesheet |
 | `lib/diagnostics/anonymise.ts` | `https://schema.org/Article` | an example in a comment about `itemtype` vocabularies |
+| `lib/dom/scope.ts` | `https://github.com/mailgun/talon` | attribution of the quoted-mail markers, in a comment |
+| `lib/dom/scope.ts` | `https://github.com/lever/planer` | the same attribution, for the JavaScript port |
+| `lib/dom/text.ts` | `https://github.com/mailgun/talon` | attribution of the "On … wrote:" pattern, in a comment |
+| `lib/dom/text.ts` | `https://github.com/unicode-org/cldr` | attribution of the English sentence-break suppressions, in a comment |
+| `lib/dom/text.ts` | `https://github.com/nipunsadvilkar/pySBD` | attribution of the abbreviations set before a name or a number, in a comment |
 | `entrypoints/onboarding/index.html` | `https://github.com/CoderBak/anagram/blob/dev/docs/user-guide.en.md` | the user-guide link on the setup page; opened only when clicked |
 | `entrypoints/onboarding/main.ts` | `https://github.com/CoderBak/anagram/blob/dev/docs/user-guide.zh-CN.md` | the same link for a Chinese browser |
 | `entrypoints/options/index.html` | `https://github.com/CoderBak/anagram/blob/dev/PRIVACY.md` | the privacy-policy link on the settings page; opened only when clicked |

@@ -1,0 +1,46 @@
+<!doctype html>
+<!--
+  Two replies from Apple Mail read in a webmail client, synthetic text.
+
+  Apple Mail on the Mac quotes with `blockquote[type=cite]` and puts the "On … wrote:" line
+  INSIDE the quotation, above the quoted message; Mail on iOS puts that line in a
+  `blockquote[type=cite]` of its own and the quoted message in a second one. (The markup is
+  what talon's html_quotations.py cuts as a blockquote, https://github.com/mailgun/talon,
+  Apache-2.0, Copyright Mailgun Inc.; the reading pane around the bodies is modelled.) The
+  quotation was always another voice; the "On … wrote:" line is nobody's text at all.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: Apple Mail replies, quoted history</title>
+<style>
+  body { margin: 0; font: 14px/20px -apple-system, "Helvetica Neue", sans-serif; }
+  .pane { width: 760px; margin: 0 auto; }
+  .message { padding: 16px 20px; border-bottom: 1px solid #ddd; }
+  .meta { font-size: 13px; color: #777; }
+  blockquote[type=cite] { margin: 0 0 0 5px; padding-left: 5px; border-left: 2px solid #1010ff; color: #1010ff; }
+</style></head>
+<body>
+<div class="pane" role="main">
+
+  <div class="message">
+    <div class="meta" data-chrome>Bob Nowak · 14 September 2026 at 11:02</div>
+    <div class="body">
+      <div data-voice="bob" data-expect="unit">Thanks for pulling this together so quickly. I have read the survey twice now and I agree that the slates on the north side have to come off before the winter, whatever we decide about the rest of the roof.</div>
+      <div><br></div>
+      <div data-voice="bob" data-expect="unit">What I would rather not do is commit the whole reserve to it at the next meeting. Could we ask the builder to price the north side on its own, so that the committee has something smaller to vote on?</div>
+      <div><br><blockquote type="cite" data-voice="alice"><div data-chrome>On 14 Sep 2026, at 09:12, Alice Moreau &lt;alice@example.org&gt; wrote:</div><br class="Apple-interchange-newline"><div><div data-expect="unit">The survey came back on Friday and it is worse than we hoped. The surveyor found that about a third of the slates on the north side are loose, and the battens under them have rotted where the gutter overflowed last winter.</div><div><br></div><div data-expect="unit">He thinks the south side will last another five years with some patching, but he would not promise more than that. I have attached his report and the two quotes he suggested we get from builders in town.</div></div></blockquote></div><br>
+    </div>
+  </div>
+
+  <div class="message">
+    <div class="meta" data-chrome>Dana Lindqvist · 15 September 2026 at 08:30</div>
+    <div class="body">
+      <div dir="ltr" data-voice="dana" data-expect="unit">I can sign it. I have done two of these applications for the school, and the fund was quick both times as long as the photographs showed the damage clearly, so it would be worth asking the surveyor for his.</div>
+      <div dir="ltr" data-voice="dana" data-expect="unit">One thing to check first is whether the hall is listed as a whole or only the front, because the form asks for the entry number and the answer changes what they will pay for.</div>
+      <div dir="ltr"><br><blockquote type="cite" data-chrome>On 14 Sep 2026, at 19:15, Erik Brandt &lt;erik@example.org&gt; wrote:<br><br></blockquote></div>
+      <blockquote type="cite" data-voice="erik"><div dir="ltr" data-expect="unit">Carol says the heritage fund might pay for half of the roof if we apply by the end of October. You have done these before, so would you be willing to sign the application if she writes it?</div><div dir="ltr" data-expect="unit">I know it is a lot to ask in the same month as the school's, and I will understand if you would rather not, but nobody else on the committee has been through the process with them.</div></blockquote>
+    </div>
+  </div>
+
+</div>
+</body></html>

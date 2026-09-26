@@ -27,6 +27,19 @@ local component and the installer all carry the same version.
   lines are grouped on their own, so a column printed a few points lower than its
   neighbour no longer splits a formula's subscripts off into a line of their own, which
   broke the paragraph around it into pieces too short to score.
+- A sidenote or margin note floated beside a paragraph (tufte-css pages and others like
+  them) is no longer read into the middle of the sentence it annotates. It is read as a
+  paragraph of its own after that paragraph, and a short note is scored with it. Only a
+  floated initial of one word is still read as a drop cap.
+- A reply and the messages it quotes are scored apart in webmail and mail archives when
+  the quoted history is not a quotation block: Outlook's From / Sent / To / Subject block
+  and its reply markers, Gmail's and Yahoo's quote boxes and Zimbra's divider now start a
+  voice of their own that runs to the end of the message. The header block and the
+  "On …, … wrote:" line above a quotation are no longer scored as anybody's text.
+- The edge between two passes of a long text no longer moves to a "sentence start" right
+  after an abbreviation such as "Mr.", "Dr.", "p." or "the U.S.", where Chrome's sentence
+  segmenter starts one. CLDR's English abbreviations and pySBD's titles and page and
+  number abbreviations now keep the name or number with the word before it.
 
 ## [0.7.0] — 2026-09-26
 

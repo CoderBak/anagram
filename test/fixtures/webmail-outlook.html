@@ -1,0 +1,70 @@
+<!doctype html>
+<!--
+  Outlook on the web reading two replies, synthetic text.
+
+  The message bodies are the HTML Outlook writes, as collected in mailgun talon's fixtures
+  (https://github.com/mailgun/talon, tests/fixtures/html_replies, Apache-2.0, Copyright
+  Mailgun Inc.) and handled by its html_quotations.py: a reply written in Outlook on the
+  web ends in `div#appendonsend`, an <hr> and `div#divRplyFwdMsg` holding the
+  From / Sent / To / Subject block; Outlook for Windows starts the quoted history with a
+  `div` whose inline style draws a top border in #E1E1E1 (#B5C4DF before 2013) around the
+  same block, or, in Outlook 2010, with that block alone. The original follows as SIBLINGS
+  of the marker, not inside a <blockquote>. Outlook on the web gives every id and class of a
+  received message an `x_` prefix. The reading pane around the bodies is modelled.
+
+  The first message is Bob's reply to Alice, whose message quoted Carol's; the second is
+  Dana's reply to Erik, written in Outlook 2010. Every quoted message is its own voice, and
+  the header blocks are the mail program's, not anybody's text.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: Outlook on the web, quoted history</title>
+<style>
+  body { margin: 0; font: 15px/21px "Segoe UI", sans-serif; }
+  .pane { width: 780px; margin: 0 auto; }
+  .item { padding: 16px 20px; border-bottom: 1px solid #e1dfdd; }
+  .head { font-size: 13px; color: #605e5c; }
+  p.x_MsoNormal { margin: 0; }
+</style></head>
+<body>
+<div class="pane" role="main" aria-label="Reading Pane">
+
+  <div class="item">
+    <div class="head" data-chrome>Bob Nowak · Mon 14/09/2026 11:02</div>
+    <div aria-label="Message body">
+      <div class="x_elementToProof" data-voice="bob" data-expect="unit">Thanks for pulling this together so quickly. I have read the survey twice now and I agree that the slates on the north side have to come off before the winter, whatever we decide about the rest of the roof.</div>
+      <div class="x_elementToProof"><br></div>
+      <div class="x_elementToProof" data-voice="bob" data-expect="unit">What I would rather not do is commit the whole reserve to it at the next meeting. Could we ask the builder to price the north side on its own, so that the committee has something smaller to vote on?</div>
+      <div id="x_appendonsend"></div>
+      <hr style="display:inline-block;width:98%" tabindex="-1">
+      <div id="x_divRplyFwdMsg" dir="ltr" data-chrome><font face="Calibri, sans-serif" style="font-size:11pt" color="#000000"><b>From:</b> Alice Moreau &lt;alice@example.org&gt;<br><b>Sent:</b> Monday, September 14, 2026 9:12 AM<br><b>To:</b> Bob Nowak &lt;bob@example.org&gt;<br><b>Subject:</b> RE: Hall roof survey</font><div>&nbsp;</div></div>
+      <div class="x_WordSection1">
+        <p class="x_MsoNormal" data-voice="alice" data-expect="unit">The survey came back on Friday and it is worse than we hoped. The surveyor found that about a third of the slates on the north side are loose, and the battens under them have rotted where the gutter overflowed last winter.</p>
+        <p class="x_MsoNormal">&nbsp;</p>
+        <p class="x_MsoNormal" data-voice="alice" data-expect="unit">He thinks the south side will last another five years with some patching, but he would not promise more than that. I have attached his report and the two quotes he suggested we get, and Carol's note on the grant is below.</p>
+        <p class="x_MsoNormal">&nbsp;</p>
+        <div><div style="border:none;border-top:solid #E1E1E1 1.0pt;padding:3.0pt 0in 0in 0in" data-chrome><p class="x_MsoNormal"><b>From:</b> Carol Iyer &lt;carol@example.org&gt;<br><b>Sent:</b> Friday, September 11, 2026 4:40 PM<br><b>To:</b> Alice Moreau &lt;alice@example.org&gt;<br><b>Subject:</b> Hall roof survey</p></div></div>
+        <p class="x_MsoNormal">&nbsp;</p>
+        <p class="x_MsoNormal" data-voice="carol" data-expect="unit">I rang the heritage fund this afternoon about the grant. They will pay up to half the cost of repairs to a listed roof, but only if the work is done with reclaimed slate and the application goes in before the end of October.</p>
+        <p class="x_MsoNormal" data-voice="carol" data-expect="unit">That is tight but not impossible, and they said the survey we already have would do as the condition report. I can write the application if somebody on the committee is willing to sign it.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="head" data-chrome>Dana Lindqvist · Tue 15/09/2026 08:30</div>
+    <div aria-label="Message body">
+      <div class="x_WordSection1">
+        <p class="x_MsoNormal" data-voice="dana" data-expect="unit">I can sign it. I have done two of these applications for the school, and the fund was quick both times as long as the photographs showed the damage clearly, so it would be worth asking the surveyor for his.</p>
+        <p class="x_MsoNormal" data-voice="dana" data-expect="unit">One thing to check first is whether the hall is listed as a whole or only the front, because the form asks for the entry number and the answer changes what they will pay for.</p>
+        <p class="x_MsoNormal">&nbsp;</p>
+        <p class="x_MsoNormal" data-chrome><b><span>From:</span></b><span> Erik Brandt [mailto:erik@example.org] <br><b>Sent:</b> Monday, September 14, 2026 7:15 PM<br><b>To:</b> Dana Lindqvist<br><b>Subject:</b> Grant for the hall roof</span></p>
+        <p class="x_MsoNormal">&nbsp;</p>
+        <p data-voice="erik" data-expect="unit">Carol says the heritage fund might pay for half of the roof if we apply by the end of October. You have done these before, so would you be willing to sign the application if she writes it?</p>
+        <p data-voice="erik" data-expect="unit">I know it is a lot to ask in the same month as the school's, and I will understand if you would rather not, but nobody else on the committee has been through the process with them.</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body></html>
