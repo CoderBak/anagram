@@ -566,6 +566,9 @@ export function collectUnits(
     container: Element; // nearest block-laid-out ancestor
     hidden: boolean; // computed visibility: hidden/collapse
     preserves: boolean; // computed white-space preserves newlines
+    /** The children of an inline flex or grid box: block boxes by the rules of that layout,
+     *  phrasing all the same (see hasBlockChildren). */
+    blockified?: boolean;
   }
 
   function visitChildren(el: Element, ctx: Ctx): void {
@@ -589,7 +592,7 @@ export function collectUnits(
     if (el.hasAttribute(MARK_ATTR)) return; // our own UI — transparent, mid-flow safe
 
     const cs = styles.get(el);
-    const flow = flowClassOf(el, cs);
+    const flow = ctx.blockified && (INLINE_FALLBACK_TAGS.has(tag) || NO_SCORE_TAGS.has(tag)) && flowClassOf(el, cs) === "block" ? "inline" : flowClassOf(el, cs);
     // display:none takes NO space: the text around it reads as one sentence, so it
     // must never close the run (hidden template spans, lazy content, <script>…).
     if (flow === "hidden") return;
@@ -655,13 +658,14 @@ export function collectUnits(
     if (flow === "inline") {
       // An inline-block/-flex/-grid hosting its own block children is a CARD laid
       // into the line (tweet embeds, product tiles) — treat as a block boundary.
-      if (cs && cs.display.startsWith("inline-") && hasBlockChildren(el)) {
+      if (cs && cs.display.startsWith("inline-") && hasBlockChildren(el, cs.display)) {
         closeRun();
         visitChildren(el, { container: el, hidden, preserves });
         closeRun();
         return;
       }
-      visitChildren(el, { container: ctx.container, hidden, preserves });
+      const blockifies = cs !== null && (cs.display === "inline-flex" || cs.display === "inline-grid");
+      visitChildren(el, { container: ctx.container, hidden, preserves, blockified: blockifies });
       return;
     }
 
@@ -766,11 +770,20 @@ export function collectUnits(
     }
   }
 
-  function hasBlockChildren(el: Element): boolean {
+  /**
+   * Does an inline-level box hold blocks of its own? A flex or grid container makes every
+   * child a block box whatever it is (CSS Display, "blockification"): an inline-flex link
+   * that sets its label in a <span> beside an icon — aaa.com's links, a design system's —
+   * holds phrasing, not a card, and cut every sentence it stood in into three runs, the link
+   * a barrier in the middle. There only an element that is a block by what it is counts.
+   */
+  function hasBlockChildren(el: Element, display: string): boolean {
+    const blockified = display === "inline-flex" || display === "inline-grid";
     for (const c of el.children) {
       const ccs = styles.get(c);
       const d = ccs?.display ?? "";
       if (ccs && isOutOfFlow(ccs)) continue; // absolutely positioned helpers are not layout
+      if (blockified && (INLINE_FALLBACK_TAGS.has(tagOf(c)) || NO_SCORE_TAGS.has(tagOf(c)))) continue;
       if (d && d !== "none" && d !== "contents" && !isInlineDisplay(d)) return true;
     }
     return false;

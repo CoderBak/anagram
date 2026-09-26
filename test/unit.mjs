@@ -183,6 +183,12 @@ const results = await page.evaluate(() => {
 
   u = collect(`<p>${words(40)}</p><div style="display:inline-block"><div>${words(9)}</div></div><p>${words(40)}</p>`);
   check("inline-block card with block children does not sever merging siblings", u.length >= 1, JSON.stringify(u.map(x => [x.parts, x.words])));
+  // A link set as an inline flex box — its label and an icon (aaa.com) — makes its children
+  // block boxes by the rules of flex layout, and is no card: it stays in its sentence.
+  u = collect(`<p>${words(40)} <a href="#x" style="display:inline-flex;gap:4px"><span>vacation hot spots</span><svg width="8" height="8"></svg></a>, ${words(40)}</p>`);
+  check("an inline-flex link (a label and an icon) stays in its sentence", u.length === 1 && u[0].parts === 1 && u[0].text.includes("vacation hot spots,"), JSON.stringify(u.map(x => [x.parts, x.words])));
+  u = collect(`<div class="text">${words(80)} <span style="display:inline-flex"><div>CARD ${words(9)}</div></span> ${words(80)}</div>`);
+  check("…while an inline flex box holding a block of its own is still a card laid into the line", u.length >= 2 && u.every((x) => !/ CARD/.test(x.text)), JSON.stringify(u.map(x => [x.parts, x.words])));
 
   sandbox.innerHTML = `<div id="sh"></div>`;
   const sh = sandbox.querySelector("#sh").attachShadow({ mode: "open" });

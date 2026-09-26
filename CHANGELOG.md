@@ -93,6 +93,8 @@ local component and the installer all carry the same version.
   boxes come from one template, side by side (Asciidoctor's `div.paragraph`, a CMS's
   paragraph block). Two different boxes side by side, a column and a sidebar, are still
   read apart, and a name row between two such boxes still ends the text.
+- A link drawn as an inline flex box, a label beside an icon, no longer cuts its sentence
+  in three. On aaa.com every paragraph with a link was split at the link and left unread.
 - In Kindle for the web, a chip is now put after the paragraph's last printed word. It
   used to go after the first line of the paragraph's accessibility text, which is the whole
   column wide, so a right-hand column's chips were cut off at the edge of the page.
