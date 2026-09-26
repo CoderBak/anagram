@@ -147,7 +147,7 @@ export function createLineLayerSurface(source: LineSource): Surface {
   /** The units handed out here, by id: everything else on the page is somebody else's. */
   const mine = new Map<string, Unit>();
   /** Our layer over each page box. */
-  const overlays = new Map<HTMLElement, HTMLElement>();
+  const overlays = new WeakMap<HTMLElement, HTMLElement>();
   /** What each unit's marks are made of. */
   const drawn = new Map<string, { bars: HTMLElement[]; tints: HTMLElement[] }>();
   let visible = true;
