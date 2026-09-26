@@ -859,6 +859,92 @@ async function sweep(page, steps = 6) {
     await p.close();
   }
 
+  // A22c: the same for Edge's translator and Firefox's full-page translation, which mark the
+  // page their own ways (lib/dom/translation.ts), both modelled here. Edge gives every element
+  // it rewrites `_msttexthash` and `_msthash`, and takes them away with the translation.
+  // Firefox relabels <html lang> and numbers the elements inside a block it is translating
+  // with `data-moz-translations-id` until the translation is in; its "Show original" reloads
+  // the page, so there is no way back to check. And Immersive Translate's bilingual copy,
+  // `font.immersive-translate-target-wrapper`, is never read beside the original.
+  for (const browser of ["edge", "firefox"]) {
+    const path = `/translated-${browser}.html`;
+    PAGES[path] = `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>translated fixture</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+<main><p id="t1">${PARA("ORIGINAL-ONE")} <a href="#one">Mehr dazu</a></p><p id="t2">${PARA("ORIGINAL-TWO")} <a href="#two">Mehr dazu</a></p></main>
+<script>
+  const saved = [];
+  window.__translate = ${browser === "edge"
+    ? `() => {
+    let n = 0;
+    for (const p of document.querySelectorAll("main p")) {
+      const text = p.firstChild;
+      saved.push([p, text.data]);
+      p.setAttribute("_msttexthash", String(1000 + n));
+      p.setAttribute("_msthash", String(++n));
+      text.data = text.data.replace("ORIGINAL", "MACHINE");
+    }
+  }`
+    : `() => {
+    document.documentElement.lang = "en";
+    for (const p of document.querySelectorAll("main p")) {
+      p.querySelectorAll("*").forEach((el, i) => { el.dataset.mozTranslationsId = String(i); });
+      p.firstChild.data = p.firstChild.data.replace("ORIGINAL", "MACHINE");
+      p.querySelectorAll("*").forEach((el) => { delete el.dataset.mozTranslationsId; });
+    }
+  }`};
+  window.__revert = () => {
+    for (const [p, data] of saved.splice(0)) {
+      p.removeAttribute("_msttexthash");
+      p.removeAttribute("_msthash");
+      p.firstChild.data = data;
+    }
+  };
+</script></body></html>`;
+    const p = await context.newPage();
+    await p.goto(server.url(path), { waitUntil: "load" });
+    const settled = (n) =>
+      p.waitForFunction(({ sel, n }) => {
+        const hosts = [...document.querySelectorAll(sel)];
+        return hosts.length === n && hosts.every((h) => !h.shadowRoot?.querySelector(".pill.pending"));
+      }, { sel: BADGE_SEL, n }, { timeout: 15000 }).then(() => true).catch(() => false);
+    const look = () => p.evaluate((sel) => ({ chips: document.querySelectorAll(sel).length, ball: !!document.getElementById("anagram-fab") }), BADGE_SEL);
+    const sentBefore = fixture.stats.texts.length;
+    const before = (await settled(2)) ? await look() : null;
+    await p.evaluate(() => window.__translate());
+    await p.waitForTimeout(3000); // past the observers' debounce, the scheduler and the fixture
+    const during = await look();
+    const machineSent = fixture.stats.texts.slice(sentBefore).some((t) => t.includes("MACHINE-"));
+    let back = null;
+    if (browser === "edge") {
+      await p.evaluate(() => window.__revert());
+      back = (await settled(2)) ? await look() : await look();
+    }
+    record(
+      "ui",
+      `a page ${browser === "edge" ? "Edge's translator" : "Firefox's full-page translation"} translated: nothing is read or left on it while it is translated${browser === "edge" ? ", and it is read again once the original is back" : ""}`,
+      !!before && before.chips === 2 && before.ball && during.chips === 0 && !during.ball && !machineSent &&
+        (browser !== "edge" || (back.chips === 2 && back.ball)),
+      JSON.stringify({ before, during, machineSent, back }),
+    );
+    await p.close();
+  }
+  {
+    PAGES["/immersive.html"] = `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>bilingual fixture</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+<main><p id="i1">${PARA("ORIGINAL-IMT")}<font class="immersive-translate-target-wrapper" lang="en"><br><font class="immersive-translate-target-inner">${PARA("MACHINE-IMT")}</font></font></p></main>
+</body></html>`;
+    const p = await context.newPage();
+    await p.goto(server.url("/immersive.html"), { waitUntil: "load" });
+    await p.waitForSelector(`#i1 ${BADGE_SEL}`, { timeout: 15000 }).catch(() => {});
+    await p.waitForTimeout(1500);
+    const sent = fixture.stats.texts.filter((t) => t.includes("-IMT"));
+    record(
+      "ui",
+      "Immersive Translate's bilingual copy is never read, the original beside it is",
+      sent.length > 0 && sent.every((t) => t.includes("ORIGINAL-IMT") && !t.includes("MACHINE-IMT")),
+      JSON.stringify(sent.map((t) => t.slice(0, 40))),
+    );
+    await p.close();
+  }
+
   // A21: the fixture goes away → the batch in flight renders "Unavailable", nothing new
   // is dispatched, the ball's counter shows "!"; the fixture comes back → everything is
   // re-queued automatically (no reload, no Rescan). Twice: a paragraph under 510 bytes

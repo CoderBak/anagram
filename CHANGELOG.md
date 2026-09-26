@@ -114,6 +114,10 @@ local component and the installer all carry the same version.
   consent manager, LiveRamp's privacy manager, AppConsent, Piano's banner and Google's
   consent messages on AMP pages. With access to all sites the frame was read like any
   other, and its paragraph of consent text got a chip.
+- A page Edge's translator or Firefox's full-page translation has translated is no longer
+  analyzed, the same as a page Chrome translates: nothing is read and no chip stays up while
+  the translation is on, and in Edge the page is read again once the original is shown.
+  Immersive Translate's bilingual copies of a paragraph are skipped too.
 
 ## [0.7.0] — 2026-09-26
 
