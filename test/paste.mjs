@@ -63,8 +63,8 @@ try {
   await page.locator("#text").fill(slow);
   await page.locator("#analyze").click();
   const deadline = Date.now() + 10_000;
-  while (!fixture.stats.texts.some((value) => value.includes("Pending cancellation")) && Date.now() < deadline) await page.waitForTimeout(25);
-  assert.ok(fixture.stats.texts.some((value) => value.includes("Pending cancellation")), "The slow request entered inference before cancellation");
+  while (!fixture.textsSince().some((value) => value.includes("Pending cancellation")) && Date.now() < deadline) await page.waitForTimeout(25);
+  assert.ok(fixture.textsSince().some((value) => value.includes("Pending cancellation")), "The slow request entered inference before cancellation");
   await page.locator("#clear").click();
   assert.equal(await page.locator("#analyze").isEnabled(), true, "Clear immediately unlocks analysis");
   await page.locator("#text").fill(`${text} This is a fresh request after cancellation.`);
@@ -72,7 +72,7 @@ try {
   await page.locator("#results").waitFor({state:"visible"});
   await page.waitForTimeout(2700);
   assert.ok(!(await page.locator("#windows").innerText()).includes("Pending cancellation"));
-  assert.equal(fixture.stats.texts.filter((value) => value.includes("Pending cancellation")).length, 1, "Cancelled text is never resent");
+  assert.equal(fixture.textsSince().filter((value) => value.includes("Pending cancellation")).length, 1, "Cancelled text is never resent");
   await page.locator("#clear").click();
   assert.equal(await page.locator("#text").inputValue(), "");
   assert.equal(await page.locator("#results").isHidden(), true);

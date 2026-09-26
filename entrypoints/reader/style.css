@@ -34,3 +34,5 @@
 
 #analysisScope:not([hidden]) { position: fixed; left: 12px; bottom: 8px; z-index: 5; margin: 0; padding: 4px 8px; max-width: min(650px, calc(100vw - 108px)); box-sizing: border-box; font: 12px/1.4 system-ui, sans-serif; color: var(--anagram-reader-muted); background: var(--anagram-reader-bg); border-radius: 4px; pointer-events: none; }
 @media print { #analysisScope { display: none !important; } }
+/* The page area takes keyboard focus to scroll; upstream draws no outline, so show one inside its edge. */
+#viewerContainer:focus-visible { outline: var(--focus-ring-outline, 2px solid #0060df); outline-offset: -2px; }

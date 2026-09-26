@@ -75,8 +75,17 @@ describe("modelText", () => {
       // Latin text: a CJK sentence or a run too long for one word is counted glued on.
       const text = makeText(r, { ...writtenFor(r), cjk: 0 });
       const whole = { start: 0, end: text.length };
-      expect(wordsOf(text).words.filter(Boolean).join(" ")).toBe(blockText(text, whole).replace(/\n/g, " "));
+      // The pass closes up a space before closing punctuation, which is counted as a word of
+      // its own: the tokenizer splits punctuation from the word before it either way.
+      expect(modelText(wordsOf(text).words.filter(Boolean).join(" "))).toBe(blockText(text, whole).replace(/\n/g, " "));
     });
+  });
+
+  it("closes up the space a skipped formula or citation mark leaves before punctuation", () => {
+    expect(modelText("changes the bases . The ramp , as in ( ) or ( see ) , ends ?! Done .")).toBe(
+      "changes the bases. The ramp, as in () or ( see), ends?! Done.");
+    // Not a decimal, not a smiley inside a sentence, not across a line break.
+    expect(modelText("a value of .5 and :-) here\n. next")).toBe("a value of .5 and :-) here\n. next");
   });
 
   it("keeps a single space between words and one line break where a line broke, nothing at the edges", () => {

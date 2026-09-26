@@ -117,8 +117,10 @@ export async function createNativeFixture(options = {}) {
   atomicWrite(stateFile, { enabled: true, latency: [60, 160], model: FAKE_MODEL,
     contract: CONTRACT, appVersion: EXTENSION_VERSION, rules: [], component: readyComponent(home), ...options });
   writeFileSync(logFile, "");
-  let drained = 0;
   const requests = () => readFileSync(logFile, "utf8").split("\n").filter(Boolean).map(JSON.parse);
+  /** Every text sent to be scored, in the order the host received it, from the start of the run. */
+  const sentTexts = () => requests().filter((r) => r.op === "score")
+    .flatMap((r) => (r.payload.blocks ?? []).map((b) => b.text)).filter((t) => typeof t === "string");
   const fixture = {
     home, stateFile, logFile, label: "native test fixture",
     state: () => JSON.parse(readFileSync(stateFile, "utf8")),
@@ -129,9 +131,15 @@ export async function createNativeFixture(options = {}) {
       const blocks = rows.flatMap((r) => r.payload.blocks ?? []);
       const texts = blocks.map((b) => b.text).filter((t) => typeof t === "string");
       return { requests: rows.length, blocks: blocks.length,
-        nonEnglishBlocks: texts.filter((t) => detectLanguage(t)[0] !== "en").length, texts: texts.slice(-500) };
+        nonEnglishBlocks: texts.filter((t) => detectLanguage(t)[0] !== "en").length };
     },
-    drainTexts() { const rows = requests(); const texts = rows.slice(drained).filter((r) => r.op === "score").flatMap((r) => r.payload.blocks.map((b) => b.text)); drained = rows.length; return texts; },
+    /** How many texts have been sent to be scored so far: a mark for textsSince(). It only
+     *  grows, however long the run, so "what this page sent" is textsSince(a mark taken
+     *  before the page), never an index into a list that is cut. */
+    textMark() { return sentTexts().length; },
+    /** Every text sent to be scored after `mark` (from textMark()), in order; every text of
+     *  the run without one. */
+    textsSince(mark = 0) { return sentTexts().slice(mark); },
     async close() { fixture.setState({ enabled: false }); await new Promise((r) => setTimeout(r, 120)); },
     async resume() { fixture.setState({ enabled: true }); },
     dispose() { fixtureHomes.delete(home); rmSync(home, { recursive: true, force: true }); },

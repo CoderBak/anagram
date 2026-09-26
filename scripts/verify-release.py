@@ -41,6 +41,8 @@ def verify(path):
                     relative = (Path(name).parent / source).as_posix() if not source.startswith("/") else source[1:]
                     assert relative in names, f"Unpackaged script: {relative}"
         assert any(name.endswith(".wasm") for name in names), "Packaged PDF WASM decoders missing"
+        for notice in ("LICENSE", "THIRD_PARTY_NOTICES.md"):
+            assert notice in names, f"Missing {notice}"
     print(f"PASS {path.name}: shipping permissions, pages, CSP and executable assets")
 
 

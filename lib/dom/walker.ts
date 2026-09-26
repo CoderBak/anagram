@@ -1054,6 +1054,21 @@ interface Assembler {
 }
 
 /**
+ * LaTeXML, which renders arXiv's HTML papers, sets every paragraph in a `div.ltx_para` of
+ * its own, so two paragraphs of one section — or a theorem's statement and the paragraph
+ * before it — are cousins, never siblings, and a paper's short paragraphs were never read
+ * with their neighbours: 12% of the prose of 50 papers went unread that the same papers'
+ * PDFs read. The wrapper stands for the paragraph it holds, and in a list the item
+ * (`li.ltx_item`) holding that wrapper does, so a list's items are siblings as in any list.
+ */
+function paragraphBox(el: Element): Element {
+  const parent = el.parentElement;
+  if (!parent?.classList.contains("ltx_para")) return el;
+  const item = parent.parentElement;
+  return item?.classList.contains("ltx_item") ? item : parent;
+}
+
+/**
  * Merge compatibility: same container (BR-split halves), sibling containers (the
  * paragraphs of one post, <li>s), or a block and the child of its sibling. Anything further
  * apart is a different section and must not merge — except by list markup (`outsideLists`).
@@ -1066,6 +1081,9 @@ function compatible(a: Element, b: Element): boolean {
 }
 
 function near(a: Element, b: Element): boolean {
+  if (a === b) return true;
+  a = paragraphBox(a);
+  b = paragraphBox(b);
   if (a === b) return true;
   const ap = a.parentElement;
   const bp = b.parentElement;

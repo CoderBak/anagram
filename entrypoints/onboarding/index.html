@@ -46,6 +46,7 @@
       .links { margin: 4px 0 0; font-size: 14px; color: var(--muted-foreground); }
       .links a { display: inline-block; min-height: 24px; line-height: 24px; color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; }
       footer.foot { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 13px; line-height: 1.6; color: var(--muted-foreground); }
+      footer.foot a { display: inline-block; min-height: 24px; line-height: 24px; color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; }
     </style>
   </head>
   <body>
@@ -110,7 +111,7 @@
         </p>
       </div>
 
-      <footer class="foot" data-i18n="modelLine">Model: pangram/editlens_roberta-large (CC BY-NC-SA 4.0, non-commercial).</footer>
+      <footer class="foot"><span data-i18n="modelLine">Model: pangram/editlens_roberta-large (CC BY-NC-SA 4.0, non-commercial).</span> · <a id="sourceCode" target="_blank" rel="noopener noreferrer" data-i18n="sourceCodeLink">Source code (AGPL-3.0)</a></footer>
     </main>
     <script type="module" src="./main.ts"></script>
   </body>

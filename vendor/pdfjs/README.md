@@ -6,7 +6,8 @@ viewer HTML, JavaScript, CSS, images, Fluent translations and Apache-2.0 license
 
 `scripts/pdfjsViewer.mjs` verifies those checksums and the installed engine version before
 copying assets and deriving `entrypoints/reader/index.html`. The generated page adds only
-Anagram's entry script, restrictive network meta policy and small analysis/file controls.
+Anagram's entry script, restrictive network meta policy, small analysis/file controls, and
+what accessibility needs from the template: a language, a zoomable viewport and landmarks.
 Engine, worker, fonts, CMaps and image codecs come from the same pinned `pdfjs-dist` package.
 The PDF-scripting sandbox, example PDF, debugger and source maps are not shipped.
 
