@@ -177,53 +177,85 @@ export function hasLetters(text: string): boolean {
 }
 
 // ---- segmenters (cached — constructing Intl.Segmenter per call is expensive) -------
+//
+// Every browser Anagram runs in has Intl.Segmenter (Chrome 87, Firefox 125; the Firefox
+// build asks for 140), so there is no fallback.
 
 type Seg = { segment(s: string): Iterable<{ segment: string; index: number; isWordLike?: boolean }> };
 
-let _wordSeg: Seg | null | undefined;
-function wordSegmenter(): Seg | null {
-  if (_wordSeg === undefined) {
-    try {
-      _wordSeg = new (Intl as any).Segmenter(undefined, { granularity: "word" });
-    } catch {
-      _wordSeg = null;
-    }
-  }
-  return _wordSeg ?? null;
+let _wordSeg: Seg | undefined;
+function wordSegmenter(): Seg {
+  return (_wordSeg ??= new Intl.Segmenter(undefined, { granularity: "word" }));
 }
 
-let _sentSeg: Seg | null | undefined;
-function sentenceSegmenter(): Seg | null {
-  if (_sentSeg === undefined) {
-    try {
-      _sentSeg = new (Intl as any).Segmenter(undefined, { granularity: "sentence" });
-    } catch {
-      _sentSeg = null;
-    }
-  }
-  return _sentSeg ?? null;
+let _sentSeg: Seg | undefined;
+function sentenceSegmenter(): Seg {
+  return (_sentSeg ??= new Intl.Segmenter(undefined, { granularity: "sentence" }));
 }
 
-/** Word count via Intl.Segmenter (CJK-correct), whitespace-split fallback. */
+/** Word count via Intl.Segmenter (CJK counts correctly). */
 export function countWords(text: string): number {
   const t = text.trim();
   if (!t) return 0;
-  const seg = wordSegmenter();
-  if (seg) {
-    let n = 0;
-    for (const s of seg.segment(t)) if ((s as any).isWordLike) n++;
-    return n;
-  }
-  return t.split(/\s+/).filter(Boolean).length;
+  let n = 0;
+  for (const s of wordSegmenter().segment(t)) if (s.isWordLike) n++;
+  return n;
 }
 
-/** Sentence split (Intl.Segmenter sentence granularity, regex fallback). */
-export function splitSentences(text: string): string[] {
-  const seg = sentenceSegmenter();
-  if (seg) {
-    return [...seg.segment(text)].map((x) => x.segment).filter((s) => s.trim());
-  }
-  return text.split(/(?<=[.!?。！？])\s+/).filter((s) => s.trim());
+// ---- where a sentence starts ---------------------------------------------------------------
+
+/**
+ * Abbreviations after which a full stop ends no sentence. ICU drops a sentence break after
+ * these when asked to (`-u-ss-standard`); V8's Intl.Segmenter never does, so without them a
+ * sentence "started" at "Smith" in "Mr. Smith" and at "Army" in "The U.S. Army". CLDR's list
+ * of English sentence-break suppressions, as it stands: https://github.com/unicode-org/cldr,
+ * common/segments/en.xml, Unicode License V3, Copyright © 2001–2026 Unicode, Inc. Matched
+ * exactly, case included, as ICU matches it — but as a whole word.
+ */
+const CLDR_SUPPRESSIONS = new Set([
+  "L.P.", "Alt.", "Approx.", "E.G.", "O.", "Maj.", "Misc.", "P.O.", "J.D.", "Jam.",
+  "Card.", "Dec.", "Sept.", "MR.", "Long.", "Hat.", "G.", "Link.", "DC.", "D.C.", "M.T.",
+  "Hz.", "Mrs.", "By.", "Act.", "Var.", "N.V.", "Aug.", "B.", "S.A.", "Up.", "Job.",
+  "Num.", "M.I.T.", "Ok.", "Org.", "Ex.", "Cont.", "U.", "Mart.", "Fn.", "Abs.", "Lt.",
+  "OK.", "Z.", "E.", "Kb.", "Est.", "A.M.", "L.A.", "Prof.", "U.S.", "Nov.", "Ph.D.",
+  "Mar.", "I.T.", "exec.", "Jan.", "N.Y.", "X.", "Md.", "Op.", "vs.", "D.A.", "A.D.",
+  "R.L.", "P.M.", "Or.", "M.R.", "Cap.", "PC.", "Feb.", "Exec.", "I.e.", "Sep.", "Gb.",
+  "K.", "U.S.C.", "Mt.", "S.", "A.S.", "C.O.D.", "Capt.", "Col.", "In.", "C.F.", "Adj.",
+  "AD.", "I.D.", "Mgr.", "R.T.", "B.V.", "M.", "Conn.", "Yr.", "Rev.", "Phys.", "pp.",
+  "Ms.", "To.", "Sgt.", "J.K.", "Nr.", "Jun.", "Fri.", "S.A.R.", "Lev.", "Lt.Cdr.", "Def.",
+  "F.", "Do.", "Joe.", "Id.", "Mr.", "Dept.", "Is.", "Pvt.", "Diff.", "Hon.B.A.", "Q.",
+  "Mb.", "On.", "Min.", "J.B.", "Ed.", "AB.", "A.", "S.p.A.", "I.", "a.m.", "Comm.", "Go.",
+  "VS.", "L.", "All.", "PP.", "P.V.", "T.", "K.R.", "Etc.", "D.", "Adv.", "Lib.", "E.g.",
+  "Pro.", "U.S.A.", "S.E.", "AA.", "Rep.", "Sq.", "As.",
+]);
+
+/**
+ * CLDR's list has no "Dr.", "St." or "Gen.". pySBD's PREPOSITIVE abbreviations — set before
+ * a name, never at the end of a sentence — and its NUMBER abbreviations, which hold only
+ * before a number ("p. 55", "No. 7"), any case: https://github.com/nipunsadvilkar/pySBD,
+ * pysbd/lang/common/standard.py, MIT, Copyright (c) 2019 Nipun Sadvilkar.
+ */
+const BEFORE_A_NAME = new Set([
+  "adm", "attys", "brig", "capt", "cmdr", "col", "cpl", "det", "dr", "gen", "gov", "ing", "lt", "maj",
+  "mr", "mrs", "ms", "mt", "messrs", "mssrs", "prof", "ph", "rep", "reps", "rev", "sen", "sens", "sgt",
+  "st", "supt", "v", "vs", "fig",
+]);
+const BEFORE_A_NUMBER = new Set(["art", "ext", "no", "nos", "p", "pp"]);
+
+/** Longer than this, a word ends in no abbreviation of the lists above. */
+const LONGEST_ABBREVIATION = 10;
+
+/** Does the break ICU puts at `at` follow one of those abbreviations, in the same paragraph? */
+function afterAbbreviation(text: string, at: number): boolean {
+  let end = at;
+  while (end > 0 && /\s/.test(text[end - 1])) end--;
+  if (end === at || text[end - 1] !== "." || text.slice(end, at).includes("\n")) return false;
+  let start = end;
+  while (start > 0 && !/\s/.test(text[start - 1])) if (end - --start > LONGEST_ABBREVIATION + 2) return false;
+  const word = text.slice(start, end).replace(/^[(\["'“‘«]+/, "");
+  if (CLDR_SUPPRESSIONS.has(word)) return true;
+  const bare = word.slice(0, -1).toLowerCase();
+  return BEFORE_A_NAME.has(bare) || (BEFORE_A_NUMBER.has(bare) && /\d/.test(text[at] ?? ""));
 }
 
 /**
@@ -232,20 +264,14 @@ export function splitSentences(text: string): string[] {
  * whitespace that follows it, so a cut never opens a window on a space. The "\n\n"
  * between the parts of a merged unit is a boundary too: a bullet list whose items carry
  * no full stop can still be cut between two items. CJK sentence marks count with
- * nothing after them, because Chinese and Japanese put no space there.
+ * nothing after them, because Chinese and Japanese put no space there. No sentence starts
+ * after an abbreviation that stands before a name or a number.
  */
 export function sentenceStarts(text: string): number[] {
   const out: number[] = [];
-  const seg = sentenceSegmenter();
-  if (seg) {
-    // ICU reports the second newline of a "\n\n" joint as a sentence of its own.
-    for (const s of seg.segment(text)) if (s.index > 0 && /\S/.test(s.segment)) out.push(s.index);
-    return out;
-  }
-  const re = /(?:[.!?]["'”’»)\]]*(?=\s)|[。！？][」』）】]*|\n\n)\s*/g;
-  for (let m = re.exec(text); m; m = re.exec(text)) {
-    const at = m.index + m[0].length;
-    if (at > 0 && at < text.length && out[out.length - 1] !== at) out.push(at);
+  // ICU reports the second newline of a "\n\n" joint as a sentence of its own.
+  for (const s of sentenceSegmenter().segment(text)) {
+    if (s.index > 0 && /\S/.test(s.segment) && !afterAbbreviation(text, s.index)) out.push(s.index);
   }
   return out;
 }
@@ -297,12 +323,7 @@ export function wordShape(text: string): WordShape {
     if (/[\p{Lu}\p{Ll}]/u.test(t)) casedWords++;
     if (/^\p{Ll}\p{L}/u.test(t)) lowerStart = true;
   };
-  const seg = wordSegmenter();
-  if (seg) {
-    for (const s of seg.segment(text)) if ((s as any).isWordLike) see(s.segment);
-  } else {
-    for (const t of text.split(/\s+/)) see(t);
-  }
+  for (const s of wordSegmenter().segment(text)) if (s.isWordLike) see(s.segment);
   // A Chinese sentence that names OpenAI or an iPhone is still a Chinese sentence: one
   // capitalised brand used to make it "punctuated but not prose", and a 223-word post on X
   // was judged by 135 of its words. Most words caseless → running text.

@@ -1399,6 +1399,9 @@ const results = await page.evaluate(() => {
 
     check("sentenceStarts: inside the text only, each on the first letter of a sentence",
       (() => { const st = PW.sentenceStarts("One. Two!\n\nThree? Four"); return JSON.stringify(st) === JSON.stringify([5, 11, 18]); })(), JSON.stringify(PW.sentenceStarts("One. Two!\n\nThree? Four")));
+    // Chromium's own segmenter, not Node's: test/node/sentences.test.ts has the full table.
+    check("sentenceStarts: none after \"Mr.\", \"Dr.\" or \"the U.S.\" in Chromium",
+      JSON.stringify(PW.sentenceStarts("Mr. Smith met Dr. Jones. The U.S. Army came.")) === JSON.stringify([25]), JSON.stringify(PW.sentenceStarts("Mr. Smith met Dr. Jones. The U.S. Army came.")));
   }
 
   // ---- long texts: from a pass back to the page ---------------------------------------------
@@ -2003,32 +2006,6 @@ const results = await page.evaluate(() => {
   sandbox.remove();
   return out;
 });
-
-// ---- window cuts without Intl.Segmenter ---------------------------------------------------
-// The sentence segmenter is cached per page, so its regex fallback needs a page of its own
-// in which the API never existed.
-{
-  const fb = await browser.newPage();
-  await fb.setContent("<!doctype html><html><body></body></html>");
-  await fb.evaluate(() => { delete Intl.Segmenter; });
-  await fb.addScriptTag({ path: BUNDLE });
-  const r = await fb.evaluate(() => {
-    const en = Array.from({ length: 60 }, (_, i) => `Sentence number ${i} keeps walking through the quiet town while the rain falls on it.`).join(" ");
-    const zh = Array.from({ length: 140 }, (_, i) => `第${i}句话讲的是一座安静的小城和落在屋顶上的雨，孩子们在窗边读书。`).join("");
-    // The texts of the passes, and whether they read the whole text, each past the last.
-    const cut = (t) => PW.planWindows(t).map((s) => t.slice(s.start, s.end));
-    const covers = (t) => { const sp = PW.planWindows(t); return sp[0].start === 0 && sp[sp.length - 1].end === t.length && sp.every((s, i) => i === 0 || (s.start > sp[i - 1].start && s.start < sp[i - 1].end)); };
-    return { starts: PW.sentenceStarts('One. Two!\n\nThree? "Four." Five'), en: cut(en), zh: cut(zh), enCovered: covers(en), zhCovered: covers(zh) };
-  });
-  await fb.close();
-  results.push({
-    name: "no Intl.Segmenter: the regex fallback finds the same sentence starts, Latin and CJK",
-    ok: JSON.stringify(r.starts) === JSON.stringify([5, 11, 18, 26]) &&
-      r.en.length >= 3 && r.enCovered && r.en.every((t) => /^Sentence number \d+ /.test(t) && t.trim().endsWith(".")) &&
-      r.zh.length >= 2 && r.zhCovered && r.zh.every((t) => t.startsWith("第") && t.endsWith("。")),
-    note: JSON.stringify([r.starts, r.en.map((t) => t.length), r.zh.map((t) => t.length)]),
-  });
-}
 
 // ---- a unit whose batch was abandoned is dispatched again from where it stands ------------
 // The viewport observer lets an element go once it has been seen, so a paragraph on screen

@@ -31,6 +31,10 @@ local component and the installer all carry the same version.
   and its reply markers, Gmail's and Yahoo's quote boxes and Zimbra's divider now start a
   voice of their own that runs to the end of the message. The header block and the
   "On …, … wrote:" line above a quotation are no longer scored as anybody's text.
+- The edge between two passes of a long text no longer moves to a "sentence start" right
+  after an abbreviation such as "Mr.", "Dr.", "p." or "the U.S.", where Chrome's sentence
+  segmenter starts one. CLDR's English abbreviations and pySBD's titles and page and
+  number abbreviations now keep the name or number with the word before it.
 
 ## [0.7.0] — 2026-09-26
 
