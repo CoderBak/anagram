@@ -2223,6 +2223,7 @@ const EXPECTED = {
   "phpbb-topic": [2, 1],
   "recipe-faq": [5, 4],
   "reddit-thread": [3, 2],
+  "reference-lists": [6, 0],
   "review-cards": [2, 1],
   "rfc-html": [3, 0],
   "substack-article": [16, 13],

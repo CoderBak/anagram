@@ -16,7 +16,7 @@
 // a rule here would drift from the rule in lib/dom/ within a release, and the report would
 // then explain a page the product no longer reads that way.
 import { collectUnits, isExcludedByAncestry, isProsePre } from "../dom/walker";
-import { isBoilerplate, isConsentBanner, isNoTranslate, mediaWikiFurniture } from "../dom/boilerplate";
+import { isBoilerplate, isConsentBanner, isNoTranslate, mediaWikiFurniture, referenceList } from "../dom/boilerplate";
 import { NO_SCORE_TAGS, isHeading, isHeadingLabel, tagOf } from "../dom/tags";
 import { isTranslatedInPlace } from "../dom/translation";
 import {
@@ -280,6 +280,8 @@ function boilerplateBranch(el: Element): string {
   if (tag === "FORM") return "a <form> with fields to fill in is a widget";
   const wiki = mediaWikiFurniture(el);
   if (wiki) return `MediaWiki's "${wiki}", not the article's prose`;
+  const refs = referenceList(el);
+  if (refs) return `a paper's reference list (${refs}), not its prose`;
   const hay = `${el.id} ${el.getAttribute("class") ?? ""}`.slice(0, 256);
   // One probe per token, as a class. isBoilerplate merges the id and the classes into a
   // single haystack and runs one regex over it, so asking again as an id can only ever

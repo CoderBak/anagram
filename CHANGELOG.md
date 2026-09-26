@@ -100,6 +100,12 @@ local component and the installer all carry the same version.
   after an abbreviation such as "Mr.", "Dr.", "p." or "the U.S.", where Chrome's sentence
   segmenter starts one. CLDR's English abbreviations and pySBD's titles and page and
   number abbreviations now keep the name or number with the word before it.
+- The reference list at the end of a paper served as a web page is no longer analyzed.
+  One punctuated citation after another read as a list of sentences, and the lists on
+  PubMed Central and Wiley merged into units of their own. The lists of arXiv's HTML
+  papers, PubMed Central, bioRxiv and medRxiv, Springer Nature, Wiley, ScienceDirect and
+  anything a CSL processor such as Pandoc writes are skipped by the names those platforms
+  give them, and so is any list marked `role="doc-bibliography"`.
 
 ## [0.7.0] — 2026-09-26
 

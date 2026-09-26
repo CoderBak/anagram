@@ -24,6 +24,7 @@ import {
   CHROME_TOKEN_PATTERNS,
   MAIN_CONTENT_NAME_RE,
   MEDIAWIKI_FURNITURE_RE,
+  REFERENCE_LIST_RE,
   REPLY_FORM_TOKEN_RE,
   SKIP_DESTINATION_RE,
 } from "../dom/boilerplate";
@@ -102,6 +103,7 @@ const VOCABULARY: ReadonlySet<string> = new Set(
     ...CONSENT_BANNER_SELECTORS,
     MAIN_CONTENT_NAME_RE.source,
     MEDIAWIKI_FURNITURE_RE.source,
+    REFERENCE_LIST_RE.source,
     REPLY_FORM_TOKEN_RE.source,
     SKIP_DESTINATION_RE.source,
     ...HYDRATION_MARKERS.map(([selector]) => selector),

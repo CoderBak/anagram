@@ -308,8 +308,29 @@ export function isBoilerplate(el: Element, page: PageTextSize = pageTextSize(el.
     if (REPLY_FORM_TOKEN_RE.test(hay) && isReplyForm(el)) return true;
     if (cls && mediaWikiFurniture(el) !== null) return true;
   }
+  if (referenceList(el) !== null) return true;
 
   return false;
+}
+
+/**
+ * The reference list of a paper served as a web page, by the names its publishing platforms
+ * give it: LaTeXML's `ltx_bibliography` (arXiv's HTML papers), JATS' `ref-list` (PubMed
+ * Central, and HighWire's bioRxiv and medRxiv), Springer Nature's `c-article-references`,
+ * Atypon's `article-section__references` (Wiley), Elsevier's `bibliography` section on
+ * ScienceDirect, and the `csl-bib-body` of every CSL processor (Pandoc, Quarto, Zotero's
+ * exports); and the DPUB-ARIA role, `doc-bibliography`, where a page declares it. One
+ * punctuated citation after another reads to the walk as a list of sentences, and PubMed
+ * Central's and Wiley's lists merged into units of their own. Whole class tokens only.
+ */
+export const REFERENCE_LIST_RE =
+  /(?:^|\s)(ltx_bibliography|ref-list|c-article-references|article-section__references|bibliography|csl-bib-body)(?:\s|$)/;
+
+/** The name that makes this element a reference list, or null (see above). */
+export function referenceList(el: Element): string | null {
+  if (el.getAttribute("role") === "doc-bibliography") return 'role="doc-bibliography"';
+  const cls = el.getAttribute("class");
+  return cls ? (REFERENCE_LIST_RE.exec(cls)?.[1] ?? null) : null;
 }
 
 /**
