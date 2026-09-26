@@ -3153,6 +3153,38 @@ addEventListener("load",()=>{window.__loadAt=performance.now();
   await p.close();
 }
 
+// ---- A49: closed shadow roots ------------------------------------------------------------
+// A closed root keeps the page's other scripts out, not the extension: Chrome gives a content
+// script every root through chrome.dom.openOrClosedShadowRoot. The page keeps its own
+// references in window.__closed, which is how this test looks inside.
+//  - #cc: a custom element whose closed root is there when the page is walked.
+//  - #cd: a plain <div> given a closed root after the walk, announced by the page-world script.
+{
+  const LONG = (tag) => `${tag} paragraph is long enough to be scored on its own because it carries well over seventy-five ordinary English words describing nothing in particular except the fact that a component may keep its shadow root closed to the scripts of the page it sits in, which is its own business, while the reader who asked for the page to be analyzed still sees every word it renders there and expects a verdict for them like for any other paragraph.`;
+  PAGES["/shadow-closed.html"] = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>closed shadow roots</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+<h1>Closed shadow roots</h1>
+<closed-card id="cc"></closed-card>
+<div id="cd"></div>
+<script>
+  const LONG = ${LONG.toString()};
+  window.__closed = {};
+  customElements.define("closed-card", class extends HTMLElement {
+    constructor() { super(); window.__closed.cc = this.attachShadow({ mode: "closed" }); window.__closed.cc.innerHTML = "<p>" + LONG("CLOSEDCARD") + "</p>"; }
+  });
+  setTimeout(() => {
+    window.__closed.cd = document.getElementById("cd").attachShadow({ mode: "closed" });
+    window.__closed.cd.innerHTML = "<p>" + LONG("CLOSEDDIV") + "</p>";
+  }, 2000);
+</script></body></html>`;
+  const p = await context.newPage();
+  await p.goto(server.url("/shadow-closed.html"), { waitUntil: "load" });
+  const count = () => p.evaluate((sel) => Object.fromEntries(["cc", "cd"].map((id) => [id, window.__closed[id]?.querySelectorAll(sel).length ?? -1])), BADGE_SEL);
+  await p.waitForFunction((sel) => ["cc", "cd"].every((id) => (window.__closed[id]?.querySelectorAll(sel).length ?? 0) > 0), BADGE_SEL, { timeout: 12000 }).catch(() => {});
+  const r = await count();
+  record("ui", "a closed shadow root is read: a custom element's at load, a <div>'s attached later", r.cc === 1 && r.cd === 1, JSON.stringify(r));
+  await p.close();
+}
+
 // =====================================================================================
 // PHASE B — live sites (soft: unreachable → SKIP; loaded-but-wrong → FAIL)
 // =====================================================================================

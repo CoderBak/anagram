@@ -24,7 +24,7 @@
 import { MARK_ATTR, type Unit } from "../types";
 import { NO_SCORE_TAGS } from "../dom/tags";
 import { repairSplits } from "../dom/splits";
-import { SHADOW_ATTACHED_EVENT, eachShadowRoot } from "../dom/shadow";
+import { SHADOW_ATTACHED_EVENT, eachShadowRoot, noteShadowHost } from "../dom/shadow";
 
 export interface Observers {
   observeUnit(unit: Unit): void;
@@ -288,6 +288,7 @@ export function createObservers(opts: {
   function onShadowAttached(e: Event): void {
     const host = e.composedPath()[0] as Node | undefined;
     if (!host || host.nodeType !== Node.ELEMENT_NODE || inSelfHost(host)) return;
+    noteShadowHost(host as Element); // closed or open, its root is read from now on
     eachShadowRoot(host, observeRoot);
     dirty.add(host);
     scheduleDrain();

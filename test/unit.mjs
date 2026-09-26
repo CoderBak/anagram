@@ -172,6 +172,36 @@ const results = await page.evaluate(() => {
     const got = PW.collectUnits(sandbox, { onShadowRoot: (r) => roots.push(r) });
     check("walker reports each open shadow root it descends into", got.length === 1 && roots.length === 1 && roots[0] instanceof ShadowRoot, `${roots.length}`);
   }
+  {
+    // A closed root is out of reach of the page's other scripts, not of the extension:
+    // Chrome hands it to a content script through chrome.dom.openOrClosedShadowRoot, which
+    // this plain page stands in for with the roots it attached itself.
+    const closed = new Map();
+    const hadChrome = "chrome" in window;
+    window.chrome ??= {};
+    const hadDom = "dom" in window.chrome;
+    window.chrome.dom = { openOrClosedShadowRoot: (el) => closed.get(el) ?? null };
+    sandbox.innerHTML = `<closed-card id="cc"></closed-card><div id="cd"></div>`;
+    const card = sandbox.querySelector("#cc");
+    closed.set(card, card.attachShadow({ mode: "closed" }));
+    closed.get(card).innerHTML = `<p>${words(80)}</p>`;
+    const div = sandbox.querySelector("#cd");
+    closed.set(div, div.attachShadow({ mode: "closed" }));
+    closed.get(div).innerHTML = `<p>${words(85)}</p>`;
+    const roots = [];
+    const got = PW.collectUnits(sandbox, { onShadowRoot: (r) => roots.push(r) });
+    const inCard = got.filter((u) => closed.get(card).contains(u.container));
+    check("a closed root on a custom element is walked through the extension API, and reported for observation",
+      got.length === 1 && inCard.length === 1 && roots.length === 1 && roots[0] === closed.get(card), JSON.stringify({ units: got.length, roots: roots.length }));
+    // The page saying it attached one (entrypoints/shadow.content.ts) is what opens a
+    // built-in element's closed root: asking every element costs every walk a call each.
+    PW.noteShadowHost(div);
+    const after = PW.collectUnits(sandbox);
+    check("a closed root on a built-in element is walked once the page has announced it",
+      after.length === 2 && after.some((u) => closed.get(div).contains(u.container)), JSON.stringify({ units: after.length }));
+    if (hadDom) delete window.chrome.dom;
+    if (!hadChrome) delete window.chrome;
+  }
 
   // ---- regression: review-workflow findings ------------------------------------------
   // 1) preserved-whitespace splitting must be IDEMPOTENT (no infinite observe loop).

@@ -29,6 +29,10 @@ local component and the installer all carry the same version.
   root and renders into it) is read; it reads nothing itself. Shadow roots in a part of
   the page added later, and ones that were empty when the page was first read, such as a
   fixed panel filled when it opens, are watched as well.
+- Text in a closed shadow root is read too. A closed root keeps the page's other scripts
+  out, not the extension, which reads it through the browser's extension API: on any
+  custom element, and on any other element the page is seen attaching one to. A closed
+  root written into the markup of a built-in element such as a `<div>` is still missed.
 - The PDF reader no longer reads a two-column page line by line across both columns when
   one column is plain prose and the other is full of formulas (arXiv 2004.04906, page 2).
   A column's share of the page is now measured in characters, not in the text runs a PDF

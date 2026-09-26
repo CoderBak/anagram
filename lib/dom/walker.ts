@@ -48,6 +48,7 @@ import {
   preservesNewlines,
 } from "./style";
 import { createRectVisibleCache } from "./visibility";
+import { shadowRootOf } from "./shadow";
 import {
   type Unit,
   type UnitPart,
@@ -178,7 +179,7 @@ export interface CollectOptions {
    */
   onShortText?: (nodes: Text[]) => void;
   /**
-   * Called once per open shadow root the walk descends into. The orchestrator
+   * Called once per shadow root, open or closed, the walk descends into. The orchestrator
    * registers a MutationObserver on each: subtree observation of the document
    * never crosses a shadow boundary, so content appended inside a web component
    * after the first scan would otherwise never be seen.
@@ -598,13 +599,13 @@ function composedTextLength(root: Element | ShadowRoot, limit: number): number {
   // Then the shadow trees: the element's own first — that is the Docs overlay — and the
   // ones hanging inside it. What a slot renders is the host's light children, already
   // counted above, so only a shadow tree's own text is added to them.
-  const own = root instanceof Element ? root.shadowRoot : null;
+  const own = root instanceof Element ? shadowRootOf(root) : null;
   if (own !== null) {
     total += composedTextLength(own, limit - total);
     if (total > limit) return total;
   }
   for (const el of root.querySelectorAll("*")) {
-    const sr = el.shadowRoot;
+    const sr = shadowRootOf(el);
     if (sr === null) continue;
     total += composedTextLength(sr, limit - total);
     if (total > limit) break;
@@ -612,9 +613,10 @@ function composedTextLength(root: Element | ShadowRoot, limit: number): number {
   return total;
 }
 
-/** Composed-tree children: shadow root replaces light children; slots resolve. */
+/** Composed-tree children: shadow root replaces light children, closed ones included (see
+ *  lib/dom/shadow.ts); slots resolve. */
 function composedChildren(el: Element, onShadowRoot?: (root: ShadowRoot) => void): Node[] {
-  const sr = el.shadowRoot;
+  const sr = shadowRootOf(el);
   if (sr) {
     onShadowRoot?.(sr);
     return Array.from(sr.childNodes);
