@@ -27,7 +27,7 @@ export async function surfaceScenarios({ context, fixture, record, artifact, BAD
     await context.route("https://drive.google.com/**", (route) =>
       route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: html }),
     );
-    const sentBefore = fixture.stats.texts.length;
+    const mark = fixture.textMark();
     const page = await context.newPage();
     await page.setViewportSize({ width: 1100, height: 900 });
     await page.goto("https://drive.google.com/file/d/ANAGRAMDRIVEFIXTURE/view", { waitUntil: "load" });
@@ -56,7 +56,7 @@ export async function surfaceScenarios({ context, fixture, record, artifact, BAD
     await page.screenshot({ path: artifact("scn-drive-preview.png") }).catch(() => {});
     // The engine is sent the model's form of a unit, one line break between paragraphs.
     const flat = (t) => t.replace(/\s+/g, " ");
-    const sent = fixture.stats.texts.slice(sentBefore);
+    const sent = fixture.textsSince(mark);
     const want = [DRIVE.p1, `${DRIVE.p2} ${DRIVE.p3}`, DRIVE.p4, DRIVE.p5, DRIVE.p6];
     const missing = want.filter((t) => !sent.some((s) => flat(s) === t)).map((t) => t.slice(0, 40));
     const lines = sent.filter((t) => t.includes("north-") || /show\s*\n\s*the stones/.test(t));
@@ -78,7 +78,7 @@ export async function surfaceScenarios({ context, fixture, record, artifact, BAD
     await context.route("https://onedrive.live.com/**", (route) =>
       route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: html }),
     );
-    const sentBefore = fixture.stats.texts.length;
+    const mark = fixture.textMark();
     const page = await context.newPage();
     await page.setViewportSize({ width: 1100, height: 900 });
     await page.goto("https://onedrive.live.com/?id=ANAGRAMPDFJSFIXTURE", { waitUntil: "load" });
@@ -96,7 +96,7 @@ export async function surfaceScenarios({ context, fixture, record, artifact, BAD
       inLayer: document.querySelectorAll(`.textLayer ${sel}, .textLayer [data-anagram]`).length,
     }), BADGE_SEL);
     await page.screenshot({ path: artifact("scn-pdfjs-viewer.png") }).catch(() => {});
-    const sent = fixture.stats.texts.slice(sentBefore);
+    const sent = fixture.textsSince(mark);
     const mended = sent.some((t) => t.includes("notice what is different about each one"));
     const acrossColumns = sent.some((t) => t.includes("the boy who brought the supplies from the harbour"));
     const acrossPages = sent.some((t) => t.includes("by the afternoon boat. The new keeper"));

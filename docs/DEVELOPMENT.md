@@ -10,6 +10,7 @@ service anywhere. Work on `dev`; `main` holds the published README only.
 | Area | Start here |
 | --- | --- |
 | Manifest, CSP, builds | `wxt.config.ts`, `scripts/release.mjs`, `scripts/verify-release.py` |
+| Third-party notices | `scripts/notices.mjs` writes `THIRD_PARTY_NOTICES.md`; the build and `test/node/notices.test.ts` refuse what it does not list |
 | Background: authorization, site access, message ACL | `entrypoints/background.ts`, `lib/access/`, `lib/messaging/protocol.ts` |
 | Scoring router and cache | `lib/backend/router.ts`, `lib/backend/swCache.ts`, `lib/backend/nativeTransport.ts` |
 | Page capture and scheduling | `entrypoints/content.ts`, `lib/capture/orchestrator.ts`, `lib/capture/scheduler.ts`, `lib/dom/walker.ts` |

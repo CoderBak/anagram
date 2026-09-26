@@ -40,7 +40,7 @@ writeFileSync(join(stage, "install.sh"), installer);
 writeFileSync(join(DIST, "install.sh"), installer);
 for (const target of [stage, DIST]) cpSync(join(ROOT, "install.ps1"), join(target, "install.ps1"));
 writeFileSync(join(stage, "VERSION"), version + "\n");
-cpSync(join(ROOT, "LICENSE"), join(stage, "LICENSE"));
+for (const name of ["LICENSE", "THIRD_PARTY_NOTICES.md"]) cpSync(join(ROOT, name), join(stage, name));
 
 // macOS copyfile metadata and xattrs are not part of the installed component.
 const tarFlags = process.platform === "darwin" ? ["--no-xattrs"] : [];

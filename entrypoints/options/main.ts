@@ -9,6 +9,7 @@ import { READER_PAGE } from "../../lib/pdf/source";
 import "../../lib/ui/basecoat-vega.cdn.min.css";
 import { followSystemTheme } from "../../lib/ui/theme";
 import { localizePage } from "../../lib/ui/localize";
+import { linkSourceCode } from "../../lib/ui/sourceCode";
 import { t, tn } from "../../lib/i18n";
 import {
   settings,
@@ -169,6 +170,7 @@ addHostEl.addEventListener("input", () => {
 
 localizePage();
 followSystemTheme();
+linkSourceCode();
 bindToggle(enabledEl, settings.enabled);
 bindToggle(debugEl, settings.debug);
 bindToggle(mergeShortsEl, settings.mergeShorts);

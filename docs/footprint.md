@@ -43,6 +43,10 @@ running the vendored Zotero document-worker, `vendor/document-worker/`). The wor
 ship inside the extension, by the `chrome-extension://<this extension>/vendor/…` URLs the
 reader hands it; the document's bytes are copied into it and nowhere else.
 
+The vendored Defuddle, which finds the region for "Main content only", can reach third-party
+APIs through its `parseAsync()`. `lib/dom/mainContent.ts` calls only its synchronous
+`parse()`, on a clone of the page, and the test pins that.
+
 ### Every address written in the source
 
 | File | URL | Why |
@@ -55,9 +59,11 @@ reader hands it; the document's bytes are copied into it and nowhere else.
 | `lib/docs.ts` | `https://docs.google.com/document/d/` | builds the address of the document the tab is on |
 | `lib/docsOverlay.ts` | `https://docs.google.com/document/d/` | the same address, for the same-origin read above |
 | `lib/ui/installationCommand.ts` | `https://github.com/CoderBak/anagram/releases/download/v$` | builds the version-pinned install command the user runs once; the extension does not fetch it |
+| `lib/ui/sourceCode.ts` | `https://github.com/CoderBak/anagram/tree/v$` | the "Source code" link in the Settings and setup footers, to the running version's release tag; opened only when clicked |
 | `lib/ui/basecoat-vega.cdn.min.css` | `http://www.w3.org/2000/svg` | the SVG namespace inside data-URI icons; a name, not an address |
 | `lib/ui/basecoat-vega.cdn.min.css` | `https://tailwindcss.com` | the licence banner of the vendored Basecoat stylesheet |
 | `lib/diagnostics/anonymise.ts` | `https://schema.org/Article` | an example in a comment about `itemtype` vocabularies |
+| `lib/hash.ts` | `https://github.com/bryc/code` | the attribution of the cyrb53 hash, in a comment |
 | `lib/dom/scope.ts` | `https://github.com/mailgun/talon` | attribution of the quoted-mail markers, in a comment |
 | `lib/dom/scope.ts` | `https://github.com/lever/planer` | the same attribution, for the JavaScript port |
 | `lib/dom/text.ts` | `https://github.com/mailgun/talon` | attribution of the "On … wrote:" pattern, in a comment |

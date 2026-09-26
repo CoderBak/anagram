@@ -20,7 +20,7 @@ import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
 import http from "node:http";
 import { launchExtension, serveHtml, artifact, uiLanguage, uiLanguageOf, BADGE_SEL } from "./harness.mjs";
-import { createNativeFixture, fakeTokens } from "./fake-native.mjs";
+import { createNativeFixture, fakeTokens, EXTENSION_VERSION } from "./fake-native.mjs";
 import { docsReadingHtml } from "./fixtures/docs-reading.mjs";
 import {
   GROUPED_PARAS,
@@ -822,6 +822,7 @@ async function sweep(page, steps = 6) {
     document.documentElement.classList.remove("translated-ltr");
   };
 </script></body></html>`;
+    const mark = fixture.textMark();
     const p = await context.newPage();
     await p.goto(server.url("/translated.html"), { waitUntil: "load" });
     const settled = (n) =>
@@ -845,7 +846,7 @@ async function sweep(page, steps = 6) {
     await p.waitForTimeout(3000); // past the observers' debounce, the scheduler and the fixture
     const during = await look();
     const duringState = await tabState();
-    const machineSent = fixture.stats.texts.some((t) => t.includes("MACHINE-"));
+    const machineSent = fixture.textsSince(mark).some((t) => t.includes("MACHINE-"));
     await p.evaluate(() => window.__revert());
     await settled(2);
     const back = await look();
@@ -908,12 +909,12 @@ async function sweep(page, steps = 6) {
         return hosts.length === n && hosts.every((h) => !h.shadowRoot?.querySelector(".pill.pending"));
       }, { sel: BADGE_SEL, n }, { timeout: 15000 }).then(() => true).catch(() => false);
     const look = () => p.evaluate((sel) => ({ chips: document.querySelectorAll(sel).length, ball: !!document.getElementById("anagram-fab") }), BADGE_SEL);
-    const sentBefore = fixture.stats.texts.length;
+    const mark = fixture.textMark();
     const before = (await settled(2)) ? await look() : null;
     await p.evaluate(() => window.__translate());
     await p.waitForTimeout(3000); // past the observers' debounce, the scheduler and the fixture
     const during = await look();
-    const machineSent = fixture.stats.texts.slice(sentBefore).some((t) => t.includes("MACHINE-"));
+    const machineSent = fixture.textsSince(mark).some((t) => t.includes("MACHINE-"));
     let back = null;
     if (browser === "edge") {
       await p.evaluate(() => window.__revert());
@@ -932,11 +933,12 @@ async function sweep(page, steps = 6) {
     PAGES["/immersive.html"] = `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>bilingual fixture</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
 <main><p id="i1">${PARA("ORIGINAL-IMT")}<font class="immersive-translate-target-wrapper" lang="en"><br><font class="immersive-translate-target-inner">${PARA("MACHINE-IMT")}</font></font></p></main>
 </body></html>`;
+    const mark = fixture.textMark();
     const p = await context.newPage();
     await p.goto(server.url("/immersive.html"), { waitUntil: "load" });
     await p.waitForSelector(`#i1 ${BADGE_SEL}`, { timeout: 15000 }).catch(() => {});
     await p.waitForTimeout(1500);
-    const sent = fixture.stats.texts.filter((t) => t.includes("-IMT"));
+    const sent = fixture.textsSince(mark).filter((t) => t.includes("-IMT"));
     record(
       "ui",
       "Immersive Translate's bilingual copy is never read, the original beside it is",
@@ -1011,6 +1013,7 @@ async function sweep(page, steps = 6) {
       const opt = await context.newPage();
       await opt.goto(`chrome-extension://${extId}/options.html`);
       await opt.evaluate(() => new Promise((res) => chrome.storage.local.set({ analysisScope: "main" }, res)));
+      const mark = fixture.textMark();
       const p = await context.newPage();
       await p.goto(server.url("/scope.html"), { waitUntil: "load" });
       await p.waitForSelector(`main ${BADGE_SEL}`, { timeout: 12000 }).catch(() => {});
@@ -1020,7 +1023,7 @@ async function sweep(page, steps = 6) {
         inMain: await p.evaluate((sel) => document.querySelectorAll(`main ${sel}`).length, BADGE_SEL),
         outside: await p.evaluate((sel) => document.querySelectorAll(`#offmain ${sel}`).length, BADGE_SEL),
         // Read BEFORE the setting is restored — restoring re-scans the page whole.
-        leaked: fixture.stats.texts.some((t) => t.includes(SCOPE_MARKER)),
+        leaked: fixture.textsSince(mark).some((t) => t.includes(SCOPE_MARKER)),
       };
       await opt.evaluate(() => new Promise((res) => chrome.storage.local.set({ analysisScope: "page" }, res)));
       await p.close();
@@ -1091,6 +1094,7 @@ async function sweep(page, steps = 6) {
   // "first N" of it. Runs before anything else has scored this text, so the blocks the
   // fixture saw are this card's own.
   {
+    const mark = fixture.textMark();
     const p = await context.newPage();
     await p.goto(server.url("/longsel.html"), { waitUntil: "load" });
     await p.bringToFront();
@@ -1119,7 +1123,7 @@ async function sweep(page, steps = 6) {
       )
       .then((h) => h.jsonValue())
       .catch(() => null);
-    const blocks = [...new Set(fixture.stats.texts.filter((t) => t.length > 200 && WINDOWED_TEXT.includes(t)))]
+    const blocks = [...new Set(fixture.textsSince(mark).filter((t) => t.length > 200 && WINDOWED_TEXT.includes(t)))]
       .sort((a, b) => WINDOWED_TEXT.indexOf(a) - WINDOWED_TEXT.indexOf(b));
     const passRow = rows && Object.keys(rows).find((k) => /^Read in \d+ passes$/.test(k));
     const ok =
@@ -1196,6 +1200,7 @@ async function sweep(page, steps = 6) {
   // comes back `truncated`, both halves are sent back for a second reading, and when even a
   // half overflows, the card says so.
   {
+    const mark = fixture.textMark();
     const p = await context.newPage();
     await p.goto(server.url("/dense.html"), { waitUntil: "load" });
     const cards = await p
@@ -1218,16 +1223,17 @@ async function sweep(page, steps = 6) {
       .catch(() => null);
     const inOrder = (texts, whole) => texts.sort((a, b) => whole.indexOf(a) - whole.indexOf(b));
     const dense = DENSE_PARA(DENSE_MARKER);
-    const sent = inOrder([...new Set(fixture.stats.texts.filter((t) => t.includes(DENSE_MARKER)))], dense);
+    const texts = fixture.textsSince(mark);
+    const sent = inOrder([...new Set(texts.filter((t) => t.includes(DENSE_MARKER)))], dense);
     const solid = SOLID_PARA(SOLID_MARKER);
-    const halves = inOrder([...new Set(fixture.stats.texts.filter((t) => t.includes(SOLID_MARKER) && t !== solid))], solid);
+    const halves = inOrder([...new Set(texts.filter((t) => t.includes(SOLID_MARKER) && t !== solid))], solid);
     const ok =
       !!cards &&
       `Read in ${sent.length} passes` in cards.dense.rows &&
       !("Passes cut short" in cards.dense.rows) &&
       !/not read/.test(cards.dense.foot) &&
       !sent.includes(dense) && readWhole(sent, dense) && sent.every((t) => fakeTokens(t) <= 510) &&
-      fixture.stats.texts.includes(solid) &&
+      texts.includes(solid) &&
       halves.length === 2 &&
       halves.join(" ") === solid &&
       cards.solid.rows["Passes cut short"] === "2 of 2" &&
@@ -1492,6 +1498,7 @@ async function sweep(page, steps = 6) {
 <div id="sp_message_container_1001"><iframe id="sp_message_iframe_1001" title="SP Consent Message" src="${server.base.replace("localhost", "127.0.0.1")}/index.html?message_id=1001&amp;requestUUID=00000000-0001" width="640" height="300"></iframe></div>
 <div class="truste_box_overlay"><iframe class="truste_popframe" title="TrustArc Cookie Consent Manager" src="https://consent-pref.trustarc.com/?type=example&amp;site=example.com&amp;action=notice&amp;country=gb&amp;locale=en" width="640" height="300"></iframe></div>
 </body></html>`;
+    const mark = fixture.textMark();
     const p = await context.newPage();
     await p.goto(server.url("/consent-top.html"), { waitUntil: "load" });
     await p.waitForSelector(`#topp ${BADGE_SEL}`, { timeout: 15000 }).catch(() => {});
@@ -1503,7 +1510,7 @@ async function sweep(page, steps = 6) {
     const r = {
       top: await p.evaluate((sel) => document.querySelectorAll(`#topp ${sel}`).length, BADGE_SEL),
       frames,
-      sent: ["SPCDNFRAME", "SPCNAMEFRAME", "TRUSTEFRAME"].filter((t) => fixture.stats.texts.some((s) => s.includes(t))),
+      sent: ["SPCDNFRAME", "SPCNAMEFRAME", "TRUSTEFRAME"].filter((t) => fixture.textsSince(mark).some((s) => s.includes(t))),
     };
     record(
       "ui",
@@ -1699,7 +1706,7 @@ async function sweep(page, steps = 6) {
         extErrors.push(m.text().slice(0, 140));
       }
     });
-    const seen = fixture.stats.texts.length; // what THIS document sends, not the whole run
+    const mark = fixture.textMark(); // what THIS document sends, not the whole run
     await p.goto(fileUrl("/doc.pdf"), { waitUntil: "load" }).catch(() => {});
     await handOverPdf(p);
     await visitShortPdf(p);
@@ -1713,7 +1720,7 @@ async function sweep(page, steps = 6) {
       .catch(() => {});
 
     const page = await readReader(p);
-    const sent = fixture.stats.texts.slice(seen);
+    const sent = fixture.textsSince(mark);
     const first = PDF_PARAS[0].join(" "), last = PDF_PARAS[3].join(" ");
     const continuation = PDF_PARAS[1].join(" ").replace("hyphen- ation", "hyphenation").replace("state-of-the- art", "state-of-the-art");
     const tail = PDF_PARAS[2].join(" ");
@@ -1841,7 +1848,7 @@ async function sweep(page, steps = 6) {
   // supplying the barriers — so the three under the first heading are one unit and the two
   // under the second, 48 words with nothing of their section to join, are read by nobody.
   if (extId) {
-    const seen = fixture.stats.texts.length;
+    const mark = fixture.textMark();
     const p = await openReader("/grouped.pdf");
     await visitShortPdf(p);
     await p
@@ -1851,7 +1858,7 @@ async function sweep(page, steps = 6) {
       }, BADGE_SEL, { timeout: 20000 })
       .catch(() => {});
     const grouped = await readReader(p);
-    const groupedSent = fixture.stats.texts.slice(seen);
+    const groupedSent = fixture.textsSince(mark);
     const chipNum = await p.evaluate((sel) => {
       const host = [...document.querySelectorAll(sel)].find((h) => h.shadowRoot?.querySelector(".pill"));
       return host?.shadowRoot.querySelector(".num")?.textContent ?? null;
@@ -2495,6 +2502,7 @@ async function sweep(page, steps = 6) {
   // its chip and read it again; only the per-tab cache kept the fixture out of it.
   {
     PAGES["/mailing-list.html"] = readFileSync(join(__dirname, "fixtures", "mailing-list.html"), "utf8");
+    const mark = fixture.textMark();
     const p = await context.newPage();
     await p.goto(server.url("/mailing-list.html"), { waitUntil: "load" });
     const settled = await p
@@ -2517,11 +2525,11 @@ async function sweep(page, steps = 6) {
       if (quoted) quoted.__quoted = true;
       return { hosts: hosts.length, found: !!quoted, pills: hosts.map((h) => h.shadowRoot?.querySelector(".num")?.textContent ?? "") };
     }, BADGE_SEL);
-    const timesAsked = () => fixture.stats.texts.filter((t) => t.includes("maintained by four people")).length;
+    const timesAsked = () => fixture.textsSince(mark).filter((t) => t.includes("maintained by four people")).length;
     const askedBefore = timesAsked();
     // What the fixture was actually given: the quotation without its markers, while the page
     // still holds them — the difference this whole check is about.
-    const sent = fixture.stats.texts.find((t) => t.includes("maintained by four people")) ?? "";
+    const sent = fixture.textsSince(mark).find((t) => t.includes("maintained by four people")) ?? "";
     const onPage = await p.evaluate(() => document.querySelector("pre").textContent.includes("> Right, so a package"));
     // Four mutations, not one character of the unit changed by any of them. The removal is
     // the one lib/dom/splits.ts reacts to: the <pre>'s text node was cut, with chips between
@@ -2584,6 +2592,7 @@ async function sweep(page, steps = 6) {
   document.getElementById("more").addEventListener("click", () => { node.nodeValue = ${JSON.stringify(FULL)}; });
   window.__dropPost = () => node.remove();
 </script></body></html>`;
+    const mark = fixture.textMark();
     const p = await context.newPage();
     await p.goto(server.url("/framework-post.html"), { waitUntil: "load" });
     const chipped = (sel) => [...document.querySelectorAll(`#post ${sel}`)].some((h) => h.shadowRoot?.querySelector(".pill:not(.pending)"));
@@ -2595,7 +2604,7 @@ async function sweep(page, steps = 6) {
       .then(() => true)
       .catch(() => false);
     // The old chip stays up until the new verdict replaces it, so wait for the request itself.
-    const sentWhole = () => fixture.stats.texts.some((t) => t.includes("FWTAIL") && t.includes("FWHEAD"));
+    const sentWhole = () => fixture.textsSince(mark).some((t) => t.includes("FWTAIL") && t.includes("FWHEAD"));
     for (let i = 0; i < 60 && !sentWhole(); i++) await p.waitForTimeout(250);
     const rescored = sentWhole() && (await p.waitForFunction(chipped, BADGE_SEL, { timeout: 15000 }).then(() => true).catch(() => false));
     const shown = await p.evaluate(() => document.getElementById("post").textContent);
@@ -2626,10 +2635,10 @@ async function sweep(page, steps = 6) {
     document.getElementById("text").replaceChildren(document.createTextNode(${JSON.stringify(HEAD + TAIL)}));
   });
 </script></body></html>`;
+    const mark = fixture.textMark();
     const p = await context.newPage();
-    // The fixture keeps only its last 500 texts, so this late in the run an index into them
-    // means nothing: the marker, which no other page uses, picks out this page's texts.
-    const mine = () => fixture.stats.texts.filter((t) => t.includes("SEEMOREHEAD"));
+    // What this page sent: everything since the mark that carries its marker.
+    const mine = () => fixture.textsSince(mark).filter((t) => t.includes("SEEMOREHEAD"));
     await p.goto(server.url("/see-more.html"), { waitUntil: "load" });
     await p.waitForTimeout(3000); // long enough for a chip on the preview to have appeared
     const preview = {
@@ -2807,6 +2816,9 @@ ${KEY_TAGS.map((t, i) => `<p id="z${i + 1}">${KEY_PARA(t)}</p>`).join("\n")}
         runtimeTitle: document.querySelector("#runtimeSettings h3")?.textContent ?? "",
         marks: document.querySelector('label[for="underline"]')?.textContent ?? "",
         fabricatedCommand: /~\/.anagram\/bin\/anagram|curl -fsSL/.test(document.body.innerText),
+        // The footer's link to this version's source, next to the model credit.
+        source: document.getElementById("sourceCode")?.textContent ?? "",
+        sourceHref: document.getElementById("sourceCode")?.getAttribute("href") ?? "",
       }));
       await opts.close();
 
@@ -2876,6 +2888,8 @@ ${KEY_TAGS.map((t, i) => `<p id="z${i + 1}">${KEY_PARA(t)}</p>`).join("\n")}
           optionsText.componentCard === "本地引擎" &&
           optionsText.componentStatus === "就绪" && optionsText.update &&
           optionsText.runtimeTitle === "运行配置" && optionsText.marks === "下划线" && !optionsText.fabricatedCommand &&
+          optionsText.source === "源代码（AGPL-3.0）" &&
+          optionsText.sourceHref === `https://github.com/CoderBak/anagram/tree/v${EXTENSION_VERSION}` &&
           chip.lang === "zh-CN" &&
           ["人工撰写", "轻度 AI 编辑", "重度 AI 编辑", "AI 生成"].includes(chip.verdict) &&
           chip.words === "词数" &&
@@ -3298,6 +3312,7 @@ addEventListener("load",()=>{window.__loadAt=performance.now();
   // Chromium never hides a page, so the content script's own world is told it is hidden,
   // exactly as the browser would tell it: visibilityState and a visibilitychange event.
   {
+    const mark = fixture.textMark();
     const p = await context.newPage();
     await p.goto(server.url("/hidden.html"), { waitUntil: "load" });
     await p.waitForFunction((sel) => document.querySelectorAll(`#top ${sel}`).length === 2, BADGE_SEL, { timeout: 12000 }).catch(() => {});
@@ -3332,7 +3347,7 @@ addEventListener("load",()=>{window.__loadAt=performance.now();
       }, [para("WHILEHIDDEN", 0), para("WHILEHIDDEN", 1)]);
       await p.waitForTimeout(2500);
       const quiet = await p.evaluate((sel) => document.querySelectorAll(`#hid-top ${sel}, #hid-bottom ${sel}`).length, BADGE_SEL);
-      const sent = fixture.stats.texts.filter((t) => t.includes("WHILEHIDDEN")).length;
+      const sent = fixture.textsSince(mark).filter((t) => t.includes("WHILEHIDDEN")).length;
       await setHidden(false);
       const shown = await p
         .waitForFunction((sel) => document.querySelectorAll(`#hid-top ${sel}`).length === 1, BADGE_SEL, { timeout: 10000 })
@@ -3442,6 +3457,7 @@ addEventListener("load",()=>{window.__loadAt=performance.now();
   document.getElementById("blank").contentDocument.body.innerHTML = ${JSON.stringify(`<p style="font:15px/1.6 system-ui">${LONG("BLANKFRAME")}</p>`)};
   document.getElementById("blob").src = URL.createObjectURL(new Blob([${JSON.stringify(doc("BLOBFRAME"))}], { type: "text/html" }));
 </script></body></html>`;
+  const mark = fixture.textMark();
   const p = await context.newPage();
   await p.goto(server.url("/frames-local.html"), { waitUntil: "load" });
   // The sandboxed frame is out of the page's reach but not of the test's: every chip host
@@ -3468,7 +3484,7 @@ addEventListener("load",()=>{window.__loadAt=performance.now();
     blob: await inFrame("blob"),
     sandboxedFrames: quietFrame.length,
     sandboxedChips: quietFrame.length ? await quietFrame[0].evaluate(() => window.__hosts).catch(() => -1) : -1,
-    sandboxedSent: fixture.stats.texts.some((t) => t.includes("SANDBOXEDFRAME")),
+    sandboxedSent: fixture.textsSince(mark).some((t) => t.includes("SANDBOXEDFRAME")),
   };
   record("ui", "a srcdoc, an about:blank and a blob: frame on a granted page are read, each in its own frame", r.srcdoc === 1 && r.blank === 1 && r.blob === 1, JSON.stringify(r));
   record("ui", "a sandboxed frame, whose origin the worker cannot know, is left alone", r.sandboxedFrames === 1 && r.sandboxedChips === 0 && !r.sandboxedSent, JSON.stringify(r));

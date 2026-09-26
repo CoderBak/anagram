@@ -4,6 +4,7 @@ import { browser } from "#imports";
 import "../../lib/ui/basecoat-vega.cdn.min.css";
 import { followSystemTheme } from "../../lib/ui/theme";
 import { localizePage } from "../../lib/ui/localize";
+import { linkSourceCode } from "../../lib/ui/sourceCode";
 import { messageLocale } from "../../lib/i18n";
 import { ALL_SITES } from "../../lib/access/patterns";
 import { accessSummary, requestAccess } from "../../lib/access/grant";
@@ -12,6 +13,7 @@ import { scaleColorCss } from "../../lib/render/scale";
 
 localizePage();
 followSystemTheme();
+linkSourceCode();
 // The demo's colours come from the same scale as the chips and marks on the page.
 const scaleRule = document.createElement("style");
 scaleRule.textContent = `.sc { --c: ${scaleColorCss(false)}; } html.dark .sc { --c: ${scaleColorCss(true)}; }`;
