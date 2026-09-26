@@ -614,7 +614,7 @@ const VOCAB = "the quick brown fox jumps over a lazy dog while rain falls gently
 /** A paragraph over the 75-word floor, its words set by `i` so that no two are alike. */
 const para = (tag, i = 0) => `${tag}-${i} ` + Array.from({ length: 84 }, (_, k) => VOCAB[(i * 7 + k * 13) % VOCAB.length]).join(" ") + ".";
 const html = (title, body, lang = "en") => `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><title>${title}</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">${body}</body></html>`;
-const sentSince = (n, marker) => fixture.stats.texts.slice(n).filter((t) => t.includes(marker)).length;
+const sentSince = (mark, marker) => fixture.textsSince(mark).filter((t) => t.includes(marker)).length;
 const chipsIn = (p, css) => p.evaluate(({ css, sel }) => document.querySelectorAll(`${css} ${sel}`).length, { css, sel: BADGE_SEL });
 
 // The page-world script (entrypoints/shadow.content.ts) is registered in the MAIN world,
@@ -665,7 +665,7 @@ const chipsIn = (p, css) => p.evaluate(({ css, sel }) => document.querySelectorA
   await waitFor(p, (sel) => document.querySelectorAll(`#top ${sel}`).length === 2, { timeout: 15000, arg: BADGE_SEL });
   const front = await browser.newPage();
   const hidden = await waitFor(p, () => document.visibilityState === "hidden", { timeout: 5000 });
-  const before = fixture.stats.texts.length;
+  const before = fixture.textMark();
   await p.evaluate(([onScreen, below]) => {
     const add = (where, id, text) => Object.assign(where.appendChild(document.createElement("p")), { id, textContent: text });
     add(document.getElementById("top"), "hid-top", onScreen);
@@ -763,7 +763,7 @@ for (const how of ["lang", "ids"]) {
     const hosts = [...document.querySelectorAll(sel)];
     return hosts.length === 2 && hosts.every((h) => !h.shadowRoot?.querySelector(".pill.pending"));
   }, { timeout: 15000, arg: BADGE_SEL });
-  const before = fixture.stats.texts.length;
+  const before = fixture.textMark();
   await p.evaluate(() => window.__translate());
   await sleep(3000);
   const during = await p.evaluate((sel) => ({ chips: document.querySelectorAll(sel).length, ball: !!document.getElementById("anagram-fab") }), BADGE_SEL);
@@ -792,7 +792,7 @@ for (const how of ["lang", "ids"]) {
   PAGES["/consent-top.html"] = html("consent frames", `<p id="topp">${para("CONSENTHOST", 8)}</p>
 <div id="sp_message_container_1001"><iframe id="sp_message_iframe_1001" title="SP Consent Message" src="${cross}/index.html?message_id=1001&amp;requestUUID=00000000-0001" width="640" height="300"></iframe></div>
 <iframe id="plain" src="${cross}/plain.html" width="640" height="300"></iframe>`);
-  const before = fixture.stats.texts.length;
+  const before = fixture.textMark();
   const p = await browser.newPage();
   await p.goto(server.url("/consent-top.html"), { waitUntil: "load" });
   await waitFor(p, (sel) => document.querySelectorAll(`#topp ${sel}`).length > 0, { timeout: 15000, arg: BADGE_SEL });
@@ -821,7 +821,7 @@ for (const how of ["lang", "ids"]) {
   document.getElementById("blank").contentDocument.body.innerHTML = ${JSON.stringify(`<p style="font:15px/1.6 system-ui">${para("BLANKFRAME", 19)}</p>`)};
   document.getElementById("blob").src = URL.createObjectURL(new Blob([${JSON.stringify(doc("BLOBFRAME", 20))}], { type: "text/html" }));
 </script>`);
-  const before = fixture.stats.texts.length;
+  const before = fixture.textMark();
   const p = await browser.newPage();
   await p.goto(server.url("/frames-local.html"), { waitUntil: "load" });
   const inFrame = (id) => p.evaluate(({ id, sel }) => document.getElementById(id)?.contentDocument?.querySelectorAll(sel).length ?? -1, { id, sel: BADGE_SEL });
@@ -843,7 +843,7 @@ for (const how of ["lang", "ids"]) {
 // which the content script imports by its extension URL.
 {
   PAGES["/pdfjs-viewer.html"] = readFileSync(join(__dirname, "fixtures", "surfaces", "pdfjs-viewer.html"), "utf8");
-  const before = fixture.stats.texts.length;
+  const before = fixture.textMark();
   const p = await browser.newPage();
   await p.goto(server.url("/pdfjs-viewer.html"), { waitUntil: "load" });
   const chipped = await waitFor(p, (sel) => document.querySelectorAll(`.page > [data-anagram] > [data-chip] > ${sel}`).length >= 4, { timeout: 25000, arg: BADGE_SEL });
@@ -871,7 +871,7 @@ for (const how of ["lang", "ids"]) {
   PAGES["/scope-defuddle.html"] = html("A post and its comments", `<div id="post" class="entry-content"><h1>A post and its comments</h1>${[9, 10, 11].map((i) => `<p>${prose("POSTBODY", i, VOCAB)}</p>`).join("")}</div>
 <div id="comments" class="comments"><h2>Comments</h2>${[12, 13, 14, 15, 16].map((i) => `<div class="comment"><p>${prose("COMMENTBODY", i, OTHER)}</p></div>`).join("")}</div>`);
   await optionsPage.evaluate(() => browser.storage.local.set({ analysisScope: "main" }));
-  const before = fixture.stats.texts.length;
+  const before = fixture.textMark();
   const p = await browser.newPage();
   await p.goto(server.url("/scope-defuddle.html"), { waitUntil: "load" });
   await waitFor(p, (sel) => document.querySelectorAll(sel).length > 0, { timeout: 15000, arg: BADGE_SEL });
@@ -888,6 +888,8 @@ for (const how of ["lang", "ids"]) {
   const text = (path) => { try { return readFileSync(join(EXT, path), "utf8"); } catch { return ""; } };
   const missing = [
     ["LICENSE", "GNU AFFERO GENERAL PUBLIC LICENSE"],
+    ["THIRD_PARTY_NOTICES.md", "# Third-party notices"],
+    ["vendor/document-worker/ThirdPartyNotices.onnxruntime-web.txt", "THIRD PARTY SOFTWARE NOTICES"],
     ["vendor/pdfjs/LICENSE", "Apache License"],
     ["vendor/document-worker/LICENSE.document-worker", "GNU AFFERO GENERAL PUBLIC LICENSE"],
     ["vendor/document-worker/LICENSE.pdfjs", "Apache License"],
