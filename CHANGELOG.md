@@ -18,6 +18,12 @@ local component and the installer all carry the same version.
   them after itself: Cookiebot, Didomi, Quantcast, Usercentrics, iubenda, Complianz,
   Osano, consentmanager, the cookieconsent library and some twenty more. Their containers
   are taken from DuckDuckGo's autoconsent rules (MPL-2.0).
+- A blog post is no longer skipped whole because of what it is filed under. WordPress
+  writes a post's categories and tags on the box that holds it (`category-newsletter`,
+  `tag-cookies`, `category-sponsored`), and those names read as a newsletter box, a cookie
+  banner or an advert. They are ignored now, and a box that holds more than 40% of the
+  page's text is never taken for page chrome, whatever it is called (a guard adapted from
+  Unclutter, AGPL-3.0).
 - The PDF reader no longer reads a two-column page line by line across both columns when
   one column is plain prose and the other is full of formulas (arXiv 2004.04906, page 2).
   A column's share of the page is now measured in characters, not in the text runs a PDF

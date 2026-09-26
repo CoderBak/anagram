@@ -1,0 +1,81 @@
+<!doctype html>
+<!--
+  A single WordPress post in a classic theme, filed in a series called "Newsletter" by a
+  series plugin. Synthetic text.
+
+  post_class() gives every taxonomy a post is in a class `<taxonomy>-<slug>`
+  (wp-includes/post-template.php), and a plugin's taxonomy has no prefix a filter could know:
+  Organize Series registers `series`, so an issue in the series "Newsletter" carries
+  `series-newsletter` on the wrapper that holds the whole post. Nothing about the name says
+  it is a term; what gives it away is that the wrapper holds most of the page's text, which a
+  newsletter box never does (Unclutter's guard, lib/dom/boilerplate.ts). The signup box
+  inside the post and Jetpack's related posts under it are chrome by their names and stay so.
+  Twenty Ten's single.php markup: `#content[role=main] > div.post`, `#comments`, the sidebar
+  `#primary.widget-area[role=complementary]`.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: WordPress single post</title>
+<style>
+  body { margin: 0; font: 16px/1.6 Georgia, serif; }
+  #wrapper { max-width: 940px; margin: 20px auto; }
+  #container { float: left; width: 640px; }
+  #primary { float: right; width: 220px; font: 13px/1.5 system-ui, sans-serif; }
+  #footer { clear: both; font: 12px system-ui, sans-serif; }
+  .entry-meta, .entry-utility { font: 12px/1.5 system-ui, sans-serif; color: #888; }
+  .newsletter-signup { border: 1px solid #ccc; padding: 12px; font: 14px system-ui, sans-serif; }
+</style></head>
+<body class="post-template-default single single-post postid-52 single-format-standard">
+<div id="wrapper" class="hfeed">
+  <div id="header">
+    <div id="masthead">
+      <div id="branding" role="banner"><div id="site-title"><a href="/" rel="home">The Slipway</a></div></div>
+      <div id="access" role="navigation"><div class="menu"><ul><li><a href="/">Home</a></li><li><a href="/about/">About</a></li></ul></div></div>
+    </div>
+  </div>
+  <div id="main">
+    <div id="container">
+      <div id="content" role="main">
+        <div id="nav-above" class="navigation"><div class="nav-previous"><a href="/2026/09/issue-12/" rel="prev">← Issue 12: the ferry vote</a></div></div>
+
+        <div id="post-52" class="post-52 post type-post status-publish format-standard hentry category-harbour series-newsletter">
+          <h1 class="entry-title">Issue 13: the first month of the new ferry</h1>
+          <div class="entry-meta" data-chrome><span class="meta-prep meta-prep-author">Posted on</span> <a href="/2026/10/issue-13/" rel="bookmark"><span class="entry-date">October 2, 2026</span></a> <span class="meta-sep">by</span> <span class="author vcard"><a class="url fn n" href="/author/alice/">Alice Moreau</a></span></div>
+          <div class="entry-content" data-voice="post-52">
+            <p data-expect="unit">The new company has now run the ferry for a month, and the first thing to say is that it has run: every crossing on the winter timetable has sailed, including the two in the storm on the ninth, when the skipper decided that a little spray was not a reason to strand forty schoolchildren on the wrong side of the estuary for the night.</p>
+            <p data-expect="unit">The second thing is that the accounts are open. The board promised to publish them every quarter, and it has gone further and put the first month's figures on the noticeboard at both slipways, with a note in the treasurer's handwriting explaining that the fuel bill is higher than planned because the old boat burns more than anybody had admitted.</p>
+            <p data-expect="unit">The third thing is the timetable itself, which has not changed and will not change before the spring. Several of you have written to ask for a later last crossing on Fridays. The board says it will consider it once the second boat is back from its refit, and I will tell you here as soon as there is anything to tell.</p>
+            <p data-expect="unit">Finally, a correction. In the last issue I wrote that the levy would rise by about the price of two return tickets a year. It is closer to three for the larger houses along the front, which pay on the rateable value, and I am grateful to the reader who wrote in with the arithmetic and a very polite covering note.</p>
+            <div class="newsletter-signup" data-voice="signup" data-expect="none"><p>Get every issue of The Slipway by email as soon as it is written, a day before it appears here. There is one issue a month, sometimes two when the council is misbehaving, and never anything else: no offers, no partners and no surveys, and every issue ends with a link that takes you off the list at once, without asking why you are going.</p><form><input type="email" placeholder="Your email"> <button>Subscribe</button></form></div>
+          </div>
+          <div id="jp-relatedposts" class="jp-relatedposts" data-voice="related" data-expect="none">
+            <h3 class="jp-relatedposts-headline"><em>Related</em></h3>
+            <div class="jp-relatedposts-items jp-relatedposts-items-visual">
+              <div class="jp-relatedposts-post jp-relatedposts-post0"><h4 class="jp-relatedposts-post-title"><a href="/2026/09/issue-12/">Issue 12: the ferry vote</a></h4><p class="jp-relatedposts-post-excerpt">This is the twelfth issue, and the first one written in a hurry: the town voted on Thursday night to take over the ferry, and I wanted you to have the numbers before the rumours reach you.</p></div>
+              <div class="jp-relatedposts-post jp-relatedposts-post1"><h4 class="jp-relatedposts-post-title"><a href="/2026/08/issue-11/">Issue 11: the meeting</a></h4><p class="jp-relatedposts-post-excerpt">The meeting to decide the future of the ferry has been called for the eighteenth, in the lifeboat station, and the council has promised that everybody who turns up will be heard.</p></div>
+            </div>
+          </div>
+          <div class="entry-utility" data-chrome>This entry was posted in <a href="/category/harbour/" rel="category tag">Harbour</a>. Bookmark the <a href="/2026/10/issue-13/" rel="bookmark">permalink</a>.</div>
+        </div>
+
+        <div id="comments">
+          <h3 id="comments-title">One Response to <em>Issue 13: the first month of the new ferry</em></h3>
+          <ol class="commentlist">
+            <li class="comment even thread-even depth-1" id="li-comment-7">
+              <div id="comment-7">
+                <div class="comment-author vcard" data-chrome><cite class="fn">Tomas Berg</cite> <span class="says">says:</span></div>
+                <div class="comment-meta commentmetadata" data-chrome><a href="#comment-7">October 2, 2026 at 6:40 pm</a></div>
+                <div class="comment-body" data-voice="tomas"><p>Thank you for the correction, and for printing the accounts. The fuel figure is the one to watch: the old boat has needed a new engine for years, and I would rather the company said so now than found out in February.</p></div>
+              </div>
+            </li>
+          </ol>
+        </div>
+      </div>
+    </div>
+    <div id="primary" class="widget-area" role="complementary">
+      <ul class="xoxo"><li id="recent-posts-2" class="widget-container widget_recent_entries"><h3 class="widget-title">Recent Posts</h3><ul><li><a href="/2026/10/issue-13/">Issue 13: the first month of the new ferry</a></li><li><a href="/2026/09/issue-12/">Issue 12: the ferry vote</a></li></ul></li></ul>
+    </div>
+  </div>
+  <div id="footer" role="contentinfo"><div id="colophon"><div id="site-info"><a href="/" rel="home">The Slipway</a></div></div></div>
+</div>
+</body></html>

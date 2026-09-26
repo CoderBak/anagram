@@ -1096,6 +1096,21 @@ const results = await page.evaluate(() => {
       JSON.stringify([whole.length, inside.length]));
   }
   {
+    // A post's own wrapper carries the terms it is filed under (WordPress post_class):
+    // `category-newsletter`, `tag-cookies`. Those are what the post is about, not what the box is.
+    const post = (cls) => { const e = document.createElement("div"); e.className = cls; return e; };
+    check("a post's category and tag classes (WordPress post_class) never make it chrome, its other names still do",
+      PW.isBoilerplate(post("post-41 post type-post status-publish format-standard hentry category-newsletter tag-cookies tag-share")) === false &&
+      PW.isBoilerplate(post("type-sponsored status-publish format-aside")) === false &&
+      PW.isBoilerplate(post("hentry tag-recipes newsletter-box")) === true);
+    sandbox.innerHTML = `<div class="post-52 post hentry series-newsletter"><p>${words(90)}</p><p>${words(90)}</p></div><p>${words(40)}</p>`;
+    const most = PW.collectUnits(sandbox);
+    sandbox.innerHTML = `<p>${words(90)}</p><p>${words(90)}</p><div class="newsletter-signup"><p>${words(80)}</p></div>`;
+    const box = PW.collectUnits(sandbox);
+    check("a box holding most of the page's text is the page, whatever it is called; a smaller one keeps its name (Unclutter's guard)",
+      most.length === 2 && box.length === 2 && box.every((x) => x.wordCount === 90), JSON.stringify([most.map((x) => x.wordCount), box.map((x) => x.wordCount)]));
+  }
+  {
     // Regression: Wikipedia Vector-2022 body classes ("…-toc-pinned-…") must
     // never classify a page-level container as chrome.
     const b = document.createElement("body");
@@ -2108,6 +2123,8 @@ const EXPECTED = {
   "thread-100": [75, 50],
   "v2ex-topic": [2, 2],
   "wordpress-comments": [2, 2],
+  "wordpress-single": [1, 1],
+  "wordpress-taxonomy": [3, 3],
   "x-timeline": [7, 5],
   "zhihu-answers": [13, 7],
 };

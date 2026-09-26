@@ -124,6 +124,63 @@ const CHROME_TOKEN_RE = new RegExp(
 export const SKIP_DESTINATION_RE = /\S*skip[-_]?(?:link|to|nav)\S*[-_](?:target|destination|anchor)\S*/gi;
 
 /**
+ * A term the post is filed under, written on the post's own wrapper. WordPress' post_class()
+ * gives a post `category-<slug>` and `tag-<slug>` for every category and tag it has, beside
+ * `type-`, `status-` and `format-` for its kind (wp-includes/post-template.php), and Ghost's
+ * post_class writes `tag-<slug>` the same way. So a blog that files its issues under
+ * "Newsletter", marks paid posts "Sponsored" or tags a recipe "cookies" had those posts taken
+ * for a newsletter box, an advert or a cookie banner, whole. A term says what the post is
+ * about, never what the box is: these names are dropped before the tokens are looked for.
+ */
+const TAXONOMY_TERM_RE = /(^|\s)(?:category|tag|type|status|format)-\S*/gi;
+
+/**
+ * An element that holds more than this share of the page's text is the page, whatever it is
+ * called — except on a page too short for shares to mean anything. Adapted from Unclutter
+ * (https://github.com/lindylearn/unclutter, AGPL-3.0, © the Unclutter authors), whose
+ * `mainContentFractionThreshold` and `mainContentMinLength` (textContainer.ts) guard its
+ * own class-name filter the same way. It catches what no prefix can: WordPress names the
+ * terms of any other taxonomy `<taxonomy>-<slug>`, so an issue in a "Newsletter" series is
+ * `series-newsletter`.
+ */
+const PAGE_TEXT_SHARE = 0.4;
+const PAGE_TEXT_MIN_CHARS = 500;
+
+/** The page's text size in characters, measured the first time a walk needs it. */
+export type PageTextSize = () => number;
+
+export function pageTextSize(doc: Document = document): PageTextSize {
+  let chars: number | null = null;
+  return () => (chars ??= doc.body ? textChars(doc.body) : 0);
+}
+
+/** Characters that are not spaces, script, style or markup kept as text. */
+function textChars(el: Element): number {
+  let n = nonSpaceChars(el.textContent ?? "");
+  for (const machine of el.querySelectorAll("script,style,noscript")) n -= nonSpaceChars(machine.textContent ?? "");
+  return n;
+}
+
+function nonSpaceChars(s: string): number {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c > 32 && c !== 160) n++;
+  }
+  return n;
+}
+
+function holdsMostOfPage(el: Element, page: PageTextSize): boolean {
+  const body = el.ownerDocument.body;
+  if (!body || !body.contains(el)) return false;
+  const mine = textChars(el);
+  // Under this it is under the share of every page long enough to be asked.
+  if (mine <= PAGE_TEXT_MIN_CHARS * PAGE_TEXT_SHARE) return false;
+  const total = page();
+  return total >= PAGE_TEXT_MIN_CHARS && mine > total * PAGE_TEXT_SHARE;
+}
+
+/**
  * The element calls ITSELF the page's main content — as a whole class token or as its id,
  * never as part of a longer name ("main-content-share" is a share bar). That is a <main>
  * written as a <div>, and like <main> it is never chrome on the strength of a token.
@@ -207,9 +264,10 @@ export function isConsentBanner(el: Element): boolean {
 
 /**
  * True if this element is page chrome whose subtree should not be scored.
- * Called once per element during a walk — must stay cheap.
+ * Called once per element during a walk — must stay cheap. A walk passes one `page` for all
+ * its questions, so the page is measured at most once.
  */
-export function isBoilerplate(el: Element): boolean {
+export function isBoilerplate(el: Element, page: PageTextSize = pageTextSize(el.ownerDocument)): boolean {
   const tag = el.nodeName.toUpperCase(); // XHTML documents report lowercase
 
   // Page-level containers are NEVER chrome, whatever utility classes a skin
@@ -245,8 +303,8 @@ export function isBoilerplate(el: Element): boolean {
   if (cls || id) {
     const names = `${id ?? ""} ${cls ?? ""}`.slice(0, 256);
     if (names.split(/\s+/).some((name) => MAIN_CONTENT_NAME_RE.test(name))) return false;
-    const hay = names.replace(SKIP_DESTINATION_RE, " ");
-    if (CHROME_TOKEN_RE.test(hay)) return true;
+    const hay = names.replace(SKIP_DESTINATION_RE, " ").replace(TAXONOMY_TERM_RE, "$1");
+    if (CHROME_TOKEN_RE.test(hay) && !holdsMostOfPage(el, page)) return true;
     if (REPLY_FORM_TOKEN_RE.test(hay) && isReplyForm(el)) return true;
   }
 
