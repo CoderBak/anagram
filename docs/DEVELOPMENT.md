@@ -60,6 +60,7 @@ node test/pdf-route-check.mjs      # PDF routing, handoff caps and privacy
 npm run test:network-privacy       # the offline-mode promise in PRIVACY.md
 ANAGRAM_PDF_BENCH=<corpus dir> node test/pdf-bench/bench.mjs run   # PDF reading benchmark, never in CI; corpus from test/pdf-bench/corpus.mjs
 ANAGRAM_PDF_BENCH=<corpus dir> node test/pdf-bench/bench.mjs structured <dumps>   # the shipping path, over test/pdf-bench/zotero-dump.mjs output; tune on --split dev, report --split test
+ANAGRAM_PDF_BENCH=<corpus dir> node test/pdf-bench/consistency.mjs <dumps> --features <structured run> --python <engine python> --modelkit <dir> --lid <file> --out <dir>   # the same papers' PDF and arXiv HTML verdicts with the real model, never in CI
 ANAGRAM_WEB_BENCH=<corpus dir> node test/web-bench/bench.mjs run --scope page   # web reading benchmark (or --scope main), never in CI; corpus from test/web-bench/corpus.mjs; tune on --split dev, report --split test
 ANAGRAM_EDITLENS_DATA=<EditLens checkout + data> ANAGRAM_MODELKIT=<modelkit> ANAGRAM_LID_MODEL=<lid.176.ftz> python test/editlens-parity.py   # the native host against Pangram's official inference, never in CI
 ```

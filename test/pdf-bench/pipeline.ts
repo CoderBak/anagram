@@ -12,9 +12,13 @@ import { extractPageText } from "../../lib/pdf/extract";
 import { reflowPdf, type PdfPageText, type ReflowBlock } from "../../lib/pdf/reflow";
 import { structuredBlocks } from "../../lib/pdf/structured";
 import { groupsOf, planOf } from "../../lib/pdf/units";
-import { MAX_UNIT_TEXT_CHARS, MIN_UNIT_WORDS } from "../../lib/dom/text";
+import { MAX_UNIT_TEXT_CHARS, MIN_UNIT_WORDS, modelText } from "../../lib/dom/text";
+import { readInWindows, requestSlices, unitVerdict } from "../../lib/capture/windows";
+import { levelOf } from "../../lib/render/scale";
 
 export { loadPdfjs, extractPageText, reflowPdf, structuredBlocks, MIN_UNIT_WORDS };
+// How a unit is read and judged (consistency.mjs): passes, the one verdict, its word.
+export { modelText, readInWindows, requestSlices, unitVerdict, levelOf };
 
 export interface BenchUnit {
   text: string;
