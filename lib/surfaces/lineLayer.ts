@@ -7,7 +7,10 @@
 // one-line blocks: a line of up to forty characters is skipped as a positioned label, a
 // longer one becomes a "paragraph" of its own, and what comes out is a unit of twenty-one
 // "paragraphs" that are the lines of four real ones, with holes where the short lines were
-// and "collabora- tion" where a word was hyphenated.
+// and "collabora- tion" where a word was hyphenated. A pdf.js viewer in a page (OneDrive's
+// preview of a PDF) is the same thing with a canvas for the picture and a transparent span per
+// run of the PDF's text (lib/surfaces/pdfjs.ts); a source says where the lines are, and the
+// rest is this file's.
 //
 // Those lines are what a PDF's text runs are: text at coordinates. So they are read the way
 // the PDF reader reads a PDF. lib/pdf/reflow.ts rebuilds the paragraphs — joins the lines,
@@ -35,6 +38,8 @@ export interface LineBox {
   top: number;
   width: number;
   height: number;
+  /** Set at an angle (a label up the margin): never part of a paragraph. */
+  rotated?: boolean;
 }
 
 /** One loaded page of the document, as its source reads it off the page. */
@@ -70,6 +75,7 @@ const CHIP_GAP = 0.006;
 /** Chip widths the badge reserves before its label is in: one paragraph, several. */
 const CHIP_PX = 54;
 const CHIP_GROUP_PX = 80;
+const CHIP_HEIGHT_PX = 22;
 const MARK_PX = 2;
 
 /** The type size of each line: the page's usual one, or the line's own where it is larger. */
@@ -87,7 +93,7 @@ function pageText(page: LinePage, sizes: readonly number[]): PdfPageText {
     height: page.height,
     items: page.lines.map((line, i) => {
       const b = page.boxes[i];
-      return { str: line.textContent ?? "", x: b.x, y: b.top + sizes[i] * BASELINE, width: b.width, height: sizes[i] * GLYPH };
+      return { str: line.textContent ?? "", x: b.x, y: b.top + sizes[i] * BASELINE, width: b.width, height: sizes[i] * GLYPH, rotated: b.rotated };
     }),
   };
 }
@@ -234,6 +240,9 @@ export function createLineLayerSurface(source: LineSource): Surface {
     return layer;
   }
 
+  /** Where the chips on a page box already sit, in page units. */
+  const chipsAt = new WeakMap<HTMLElement, Map<HTMLElement, LineBox>>();
+
   function place(unit: Unit, host: HTMLElement): boolean | null {
     if (!mine.has(unit.id)) return null;
     const node = unit.parts.at(-1)?.nodes.at(-1);
@@ -241,15 +250,27 @@ export function createLineLayerSurface(source: LineSource): Surface {
     if (!at) return false;
     const { page, i, size } = at;
     const b = page.boxes[i];
-    const px = page.box.getBoundingClientRect().width;
-    const chip = ((unitParagraphs(unit) > 1 ? CHIP_GROUP_PX : CHIP_PX) / Math.max(px, 1)) * page.width;
-    // After the last word where the line leaves room; else just outside the page's edge,
-    // where the viewer shows its own background — never over the printed text.
-    let x = b.x + b.width + page.width * CHIP_GAP;
-    const onPaper = x + chip <= page.width;
-    if (!onPaper) x = page.width * (1 + CHIP_GAP);
+    const px = Math.max(page.box.getBoundingClientRect().width, 1);
+    const w = ((unitParagraphs(unit) > 1 ? CHIP_GROUP_PX : CHIP_PX) / px) * page.width;
+    const h = (CHIP_HEIGHT_PX / px) * page.width;
+    const top = b.top + size / 2 - h / 2;
     const layer = overlayFor(page);
-    for (const stale of [...layer.children]) if (stale.hasAttribute("data-chip") && !stale.firstElementChild) stale.remove();
+    let placed = chipsAt.get(page.box);
+    if (!placed) chipsAt.set(page.box, (placed = new Map()));
+    for (const [slot] of placed) {
+      if (slot.isConnected && slot.firstElementChild) continue;
+      slot.remove();
+      placed.delete(slot);
+    }
+    // After the last word, else in the page's right margin, as long as neither covers a line
+    // of print or another chip (the next column starts right after this one); else just
+    // outside the page's edge, where the viewer shows its own background.
+    const gap = page.width * CHIP_GAP;
+    const free = (x: number): boolean =>
+      x >= 0 && x + w <= page.width &&
+      ![...page.boxes, ...placed.values()].some((o) => o.x < x + w && o.x + o.width > x && o.top < top + h && o.top + o.height > top);
+    const x = [b.x + b.width + gap, page.width - w - gap].find(free) ?? page.width + gap;
+    const onPaper = x < page.width;
     const slot = document.createElement("span");
     slot.setAttribute("data-chip", "");
     // The chip is themed by what it sits on (lib/render/badge.ts): the page is a picture of
@@ -261,6 +282,7 @@ export function createLineLayerSurface(source: LineSource): Surface {
     host.style.marginInlineStart = "0";
     slot.append(host);
     layer.append(slot);
+    placed.set(slot, { x, top, width: w, height: h });
     return true;
   }
 

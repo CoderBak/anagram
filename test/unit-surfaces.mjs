@@ -63,6 +63,29 @@ export async function surfaceChecks(browser, bundle, fixtures, results) {
       r.none.every((s) => s === null),
       JSON.stringify(r.none),
     );
+    const pdfjs = await page.evaluate(() => {
+      const at = (href, doc) => {
+        const u = new URL(href);
+        return PW.surfaceFor({ hostname: u.hostname, pathname: u.pathname }, doc);
+      };
+      const viewer = { querySelector: (sel) => (sel === ".pdfViewer" ? {} : null) };
+      const plain = { querySelector: () => null };
+      return {
+        yes: [
+          at("https://onedrive.live.com/?id=ABC%21123&cid=ABC", plain),
+          at("https://contoso.sharepoint.com/sites/team/Shared%20Documents/report.pdf", plain),
+          at("https://contoso-my.sharepoint.com/personal/a/Documents/report.pdf", plain),
+          at("https://mozilla.github.io/pdf.js/web/viewer.html", viewer),
+          at("https://moodle.example.edu/mod/resource/view.php", viewer),
+        ],
+        no: [at("https://mozilla.github.io/pdf.js/", plain), at("https://sharepoint.com.example.org/x", plain), at("https://example.org/", undefined)],
+      };
+    });
+    check(
+      "surfaces: a pdf.js viewer is recognised by OneDrive's and SharePoint's addresses, or by pdf.js's own viewer element on any page",
+      pdfjs.yes.every((s) => s === "pdfjs") && pdfjs.no.every((s) => s === null),
+      JSON.stringify(pdfjs),
+    );
     await page.close();
   }
 
@@ -219,6 +242,63 @@ export async function surfaceChecks(browser, bundle, fixtures, results) {
       "drive preview: a mark over a whole part (the fallback when a stretch is lost) is drawn line by line",
       r.partLines === 4 && r.wholeLines === r.partLines,
       JSON.stringify({ wholeLines: r.wholeLines, partLines: r.partLines }),
+    );
+    await page.close();
+  }
+
+  // ---- a PDF in a pdf.js viewer (OneDrive's preview) ---------------------------------------
+  {
+    const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
+    await page.goto(pathToFileURL(join(fixtures, "surfaces", "pdfjs-viewer.html")).href);
+    await page.addScriptTag({ path: bundle });
+    const r = await page.evaluate(() => {
+      const walk = PW.collectUnits(document.body).map((u) => ({ parts: u.parts.length, text: u.text }));
+      const layers = () => [...document.querySelectorAll(".textLayer")].map((l) => l.innerHTML).join("");
+      const before = layers();
+      const s = PW.createSurface("pdfjs", document);
+      const units = s.collect(() => "take", true);
+      PW.registerHighlightStyles();
+      PW.setMarkPainter(s.painter);
+      PW.setRangeLocator((u, spans) => s.ranges(u, spans));
+      const layer = PW.createBadgeLayer({ place: (u, h) => s.place(u, h) });
+      for (const u of units) {
+        const v = PW.unitVerdict(u.id, u.text.length, [{ start: 0, end: u.text.length, result: { id: u.id, bucket: 0, probs: [0.5, 0.5, 0, 0], score: 0.5 } }]);
+        layer.render(u, v);
+        PW.setHighlight(u, v);
+      }
+      const marks = [...document.querySelectorAll('.page > [data-anagram="marks"]')];
+      const nodes = units.reduce((n, u) => n + u.parts.reduce((m, p) => m + p.nodes.length, 0), 0);
+      return {
+        active: s.active(),
+        walk,
+        units: units.map((u) => ({ text: u.text, parts: u.parts.length, paragraphs: u.paragraphs })),
+        bars: marks.flatMap((m) => [...m.querySelectorAll(":scope > div")]).filter((d) => !d.hidden).length,
+        nodes,
+        chips: marks.flatMap((m) => [...m.querySelectorAll(':scope > [data-chip] > [data-anagram="host"]')]).length,
+        sameLayers: layers() === before,
+      };
+    });
+    const columnsMixed = r.walk.some((u) => u.parts >= 10 && u.text.includes("differ-\n\nent"));
+    check(
+      "pdf.js viewer: the walk alone reads each run of a text layer as a paragraph and leaves hyphens in (why the surface exists)",
+      columnsMixed,
+      JSON.stringify(r.walk.map((u) => [u.parts, u.text.slice(0, 40)])),
+    );
+    const texts = r.units.map((u) => u.text);
+    check(
+      "pdf.js viewer: the surface reads the paragraphs in reading order — a hyphen mended, a paragraph joined across the column and across the page",
+      r.active && texts.length === 4 &&
+        texts[0].includes("notice what is different about each one") && texts[0].includes("\n\nIn the first year") &&
+        texts[1].startsWith("By the third year") && texts[1].includes("who brought the supplies from the harbour") && texts[1].endsWith("gone to the moon to look.") &&
+        texts[2].startsWith("The storms are recorded") &&
+        texts[3].includes("by the afternoon boat. The new keeper") && r.units[3].parts === 2 && r.units[3].paragraphs === 1 &&
+        !texts.some((t) => /Lighthouse Log|(?:^|\n)\d+(?:\n|$)/.test(t)),
+      JSON.stringify(r.units.map((u) => [u.parts, u.paragraphs, u.text.slice(0, 40)])),
+    );
+    check(
+      "pdf.js viewer: marks are drawn over every run a unit read and a chip beside each unit, pdf.js's layer untouched",
+      r.bars === r.nodes && r.chips === 4 && r.sameLayers,
+      JSON.stringify({ bars: r.bars, nodes: r.nodes, chips: r.chips, sameLayers: r.sameLayers }),
     );
     await page.close();
   }

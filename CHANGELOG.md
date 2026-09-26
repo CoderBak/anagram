@@ -18,6 +18,11 @@ local component and the installer all carry the same version.
   paragraph that runs onto the next page read as one — reads each page as Drive loads it,
   and draws the underlines and chips over the printed words. Nothing is fetched: the text is
   the viewer's own. The approach follows Read Aloud's Drive adapters (MIT).
+- A PDF shown by pdf.js inside a web page is read in place the same way: OneDrive's and
+  SharePoint's preview of a PDF, and any page that carries pdf.js's own viewer. Its text
+  layer is one transparent span per run of the PDF's text, which Anagram used to read as a
+  heap of short paragraphs running down both columns at once; the paragraphs are now
+  rebuilt in reading order across columns and pages, and chips are kept off the print.
 - The setup page mentions that most arXiv papers also have an HTML version, which Anagram
   reads most precisely. Nothing redirects there; PDFs are read as before.
 

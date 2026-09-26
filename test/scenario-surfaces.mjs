@@ -71,7 +71,46 @@ export async function surfaceScenarios({ context, fixture, record, artifact, BAD
     await context.unroute("https://drive.google.com/**");
   }
 
-  // S2: an ordinary page never loads the chunk, and is read exactly as before.
+  // S2: a PDF in OneDrive's pdf.js preview. Its two columns and two pages are read as four
+  // units in reading order, a hyphen mended, and nothing is drawn inside pdf.js's own layer.
+  {
+    const html = readFileSync(join(fixturesDir, "surfaces", "pdfjs-viewer.html"), "utf8");
+    await context.route("https://onedrive.live.com/**", (route) =>
+      route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: html }),
+    );
+    const sentBefore = fixture.stats.texts.length;
+    const page = await context.newPage();
+    await page.setViewportSize({ width: 1100, height: 900 });
+    await page.goto("https://onedrive.live.com/?id=ANAGRAMPDFJSFIXTURE", { waitUntil: "load" });
+    const chipped = await page
+      .waitForFunction(
+        (sel) => document.querySelectorAll(`.page > [data-anagram] > [data-chip] > ${sel}`).length >= 4,
+        BADGE_SEL,
+        { timeout: 25000 },
+      )
+      .then(() => true)
+      .catch(() => false);
+    await page.waitForTimeout(800);
+    const r = await page.evaluate((sel) => ({
+      bars: document.querySelectorAll(".page > [data-anagram] > div:not([hidden])").length,
+      inLayer: document.querySelectorAll(`.textLayer ${sel}, .textLayer [data-anagram]`).length,
+    }), BADGE_SEL);
+    await page.screenshot({ path: artifact("scn-pdfjs-viewer.png") }).catch(() => {});
+    const sent = fixture.stats.texts.slice(sentBefore);
+    const mended = sent.some((t) => t.includes("notice what is different about each one"));
+    const acrossColumns = sent.some((t) => t.includes("the boy who brought the supplies from the harbour"));
+    const acrossPages = sent.some((t) => t.includes("by the afternoon boat. The new keeper"));
+    record(
+      "ui",
+      "OneDrive's pdf.js preview: paragraphs read in reading order across columns and pages, chips and marks over the page",
+      chipped && mended && acrossColumns && acrossPages && r.bars > 20 && r.inLayer === 0 && (chunkLoads.get(page) ?? 0) > 0,
+      JSON.stringify({ chipped, mended, acrossColumns, acrossPages, ...r, sent: sent.length }),
+    );
+    await page.close();
+    await context.unroute("https://onedrive.live.com/**");
+  }
+
+  // S3: an ordinary page never loads the chunk, and is read exactly as before.
   {
     const page = await context.newPage();
     await page.goto(ordinaryUrl, { waitUntil: "load" });
