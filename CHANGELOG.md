@@ -90,6 +90,11 @@ local component and the installer all carry the same version.
   page. On 50 arXiv papers read both as PDF and as HTML, the prose the HTML reads and the PDF
   left unscored fell from 19,000 words to 3,000, and the two readings give a paragraph the
   same verdict 95.0% of the time (93.6% before).
+- The PDF reader keeps the hyphen of a compound broken at the end of a line where the
+  document's own usage says so ("near-equilibrium", "self-attention"). Zotero's text joins
+  every such word, and the reader took those joins for the document spelling the compound
+  as one word, so the hyphen always went. A word broken right after a bracket or a quote
+  ("(Ta-/ble 1)") is mended now instead of keeping its hyphen.
 - An accented letter reaches the model as one character however the page encoded it: a PDF
   gives "e" and a combining acute where a web page writes "é", and the model read the two as
   different words. The PDF reader also puts an accent back on the letter it is printed over

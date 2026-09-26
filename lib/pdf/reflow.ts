@@ -1006,11 +1006,20 @@ export interface Vocabulary {
   heads: Set<string>;
   /** Every word written as one: "nonlinear" attests the mend of "non-/linear". */
   fused: Set<string>;
+  /** How those words begin, from their first five letters on: "exper" of "experiment". */
+  starts: Set<string>;
 }
+
+/**
+ * Letters after a line break that, where a word the document writes begins with the stem
+ * and them, show the break to be inside such a word: "ex-/perienced" in a document that
+ * writes "experiment". Three, so that "near-/equilibrium" is not taken for "nearest".
+ */
+const CONTINUED = 3;
 
 /** Collect the evidence once per document — it is read at every broken line. */
 export function vocabularyOf(texts: string[]): Vocabulary {
-  const vocab: Vocabulary = { hyphenated: new Set(), heads: new Set(), fused: new Set() };
+  const vocab: Vocabulary = { hyphenated: new Set(), heads: new Set(), fused: new Set(), starts: new Set() };
   for (const text of texts) {
     const lower = text.toLowerCase();
     for (const m of lower.matchAll(INLINE_COMPOUND)) {
@@ -1019,6 +1028,7 @@ export function vocabularyOf(texts: string[]): Vocabulary {
     }
     for (const m of lower.matchAll(WORD)) vocab.fused.add(m[0]);
   }
+  for (const word of vocab.fused) for (let k = 2 + CONTINUED; k <= word.length; k++) vocab.starts.add(word.slice(0, k));
   return vocab;
 }
 
@@ -1028,7 +1038,8 @@ export function vocabularyOf(texts: string[]): Vocabulary {
  * case, so the rule weighs only the evidence the document itself supplies, in this order:
  *
  *   (a) the document writes "in-depth" somewhere no line break forced it to  → keep;
- *       it writes "straightforward" as one word somewhere                    → join.
+ *       it writes "straightforward" as one word somewhere, or a word that goes
+ *       three letters on past the break ("experiment" for "ex-/perienced")   → join.
  *       This is the strongest signal there is and it outranks everything below.
  *   (b) the stem carries a hyphen of its own ("state-of-the-/art")           → keep,
  *       and so does the continuation ("state-/of-the-art").
@@ -1045,6 +1056,8 @@ export function vocabularyOf(texts: string[]): Vocabulary {
  * leave far more real words ("straightfor-ward") broken, which reads worse to a scorer.
  */
 export function dehyphenates(stem: string, head: string, vocab: Vocabulary): boolean {
+  // What stands before the word is not part of it: "(Ta-" and "causal/en-" end in "Ta-", "en-".
+  stem = stem.replace(/^.*[^\p{L}\p{M}‐-]/u, "");
   if (!/^\p{Ll}/u.test(head)) return false;
   if (!/^\p{L}{2,}$/u.test(stem)) return false;
   if (stem === stem.toUpperCase()) return false;
@@ -1054,6 +1067,7 @@ export function dehyphenates(stem: string, head: string, vocab: Vocabulary): boo
   const tail = next.toLowerCase();
   if (vocab.hyphenated.has(`${lower}-${tail}`)) return false;
   if (vocab.fused.has(lower + tail)) return true;
+  if (tail.length >= CONTINUED && vocab.starts.has(lower + tail.slice(0, CONTINUED))) return true;
   if (vocab.heads.has(lower)) return false;
   return !KEEP_HYPHEN.has(lower);
 }

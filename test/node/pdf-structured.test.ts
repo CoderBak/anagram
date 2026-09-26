@@ -297,6 +297,47 @@ describe("structuredBlocks — hyphens at line ends", () => {
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), [pageText(1, n.items)]);
     expect(blocks[0].text).toBe("an in-depth study, then in-depth again; a nonlinear model, and nonlinear again.");
   });
+
+  it("does not count a word Zotero mended at a line end as the document writing it fused", () => {
+    // Zotero's text reads "nearequilibrium" and "selfattention": the document never wrote
+    // them so, and a compound whose first element it writes with a hyphen ("near-optimal"),
+    // or that the rule keeps ("self-"), keeps its hyphen.
+    const n = node(1, [
+      { text: "we train a near-optimal policy in the near-", x: 72, y: 100, softHyphen: true },
+      { text: "equilibrium regime, with a self-", x: 72, y: 114, softHyphen: true },
+      { text: "attention layer and a hyphen-", x: 72, y: 128, softHyphen: true },
+      { text: "ated word.", x: 72, y: 142 },
+    ]);
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), [pageText(1, n.items)]);
+    expect(blocks[0].text).toBe("we train a near-optimal policy in the near-equilibrium regime, with a self-attention layer and a hyphenated word.");
+  });
+
+  it("mends a word broken after an opening bracket", () => {
+    const n = node(1, [
+      { text: "the counts (Ta-", x: 72, y: 100, softHyphen: true },
+      { text: "ble 1) and the “fig-", x: 72, y: 114, softHyphen: true },
+      { text: "ure” differ.", x: 72, y: 128 },
+    ]);
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), [pageText(1, n.items)]);
+    expect(blocks[0].text).toBe("the counts (Table 1) and the “figure” differ.");
+  });
+
+  it("decides the hyphen that ends one part of a paragraph by the document's usage too", () => {
+    // A paragraph carried over a page is no more the document writing "finitesample" than
+    // a line break is. It writes "finite-dimensional", so "finite-" keeps its hyphen there,
+    // and "posi-" does not.
+    const a = node(1, [{ text: "a finite-dimensional bound holds in the finite-", x: 72, y: 700 }]);
+    const b = node(2, [{ text: "sample case, and is posi-", x: 72, y: 80 }]);
+    const c = node(3, [{ text: "tive.", x: 72, y: 80 }]);
+    const pages = [pageText(1, a.items), pageText(2, b.items), pageText(3, c.items)];
+    const blocks = structuredBlocks(structure([
+      paragraph(1, [a], { nextPart: [1] }),
+      paragraph(2, [b], { previousPart: [0], nextPart: [2] }),
+      paragraph(3, [c], { previousPart: [1] }),
+    ], 3), pages);
+    expect(blocks[0].text).toBe("a finite-dimensional bound holds in the finite-sample case, and is positive.");
+    expectRunsToMatch(blocks[0], pages);
+  });
 });
 
 describe("structuredBlocks — formulas", () => {

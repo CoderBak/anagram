@@ -648,6 +648,25 @@ function startPage(block: SdtBlock): number {
   return rect ? rect[0] + 1 : 0;
 }
 
+/**
+ * A block's text as the document spelt it, for its vocabulary (lib/pdf/reflow.ts): a word
+ * that runs on from one line or page to the next is two pieces there. Zotero mends every
+ * such word — "nearequilibrium" for "near-/equilibrium" — and counted as written, that
+ * mend was the document spelling the compound as one word, so every compound broken at a
+ * line end was taken to be one and lost its hyphen.
+ */
+function written(pieces: Piece[]): string {
+  let out = "";
+  let prev: Glyph | null = null;
+  for (const p of pieces) {
+    if (p.ch === " ") { out += " "; prev = null; continue; }
+    if (prev && p.glyph && !sameLine(prev, p.glyph)) out += " ";
+    out += p.ch;
+    if (p.glyph) prev = p.glyph;
+  }
+  return out;
+}
+
 /** 1-based page a block's text ends on, by its last glyph. */
 function endPage(draft: Draft): number {
   for (let i = draft.pieces.length - 1; i >= 0; i--) {
@@ -747,7 +766,7 @@ export function createStructuredReader(structure: SdtStructure, options: Structu
     for (const p of d.pieces) if (p.glyph) on.add(p.glyph.page + 1);
     d.pages = [...on].sort((a, b) => a - b);
   }
-  const vocab = vocabularyOf(drafts.map((d) => d.pieces.map((p) => p.ch).join("")));
+  const vocab = vocabularyOf(drafts.map((d) => written(d.pieces)));
 
   return {
     blocks(pages) {
