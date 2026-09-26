@@ -48,7 +48,8 @@ const MODELS = [
  *  in vendor/document-worker/LICENSE.onnxruntime-web and pinned like the rest. */
 const LICENCES = {
   "LICENSE.document-worker": "COPYING",
-  "LICENSE.pdf.js": "pdf.js/LICENSE",
+  // Not "….js": linters, AMO's among them, would parse the licence as a script.
+  "LICENSE.pdfjs": "pdf.js/LICENSE",
 };
 const ORT_LICENCE = "LICENSE.onnxruntime-web";
 

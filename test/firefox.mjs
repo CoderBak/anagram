@@ -890,7 +890,7 @@ for (const how of ["lang", "ids"]) {
     ["LICENSE", "GNU AFFERO GENERAL PUBLIC LICENSE"],
     ["vendor/pdfjs/LICENSE", "Apache License"],
     ["vendor/document-worker/LICENSE.document-worker", "GNU AFFERO GENERAL PUBLIC LICENSE"],
-    ["vendor/document-worker/LICENSE.pdf.js", "Apache License"],
+    ["vendor/document-worker/LICENSE.pdfjs", "Apache License"],
     ["vendor/document-worker/LICENSE.onnxruntime-web", "MIT License"],
     ["vendor/wasm/LICENSE_OPENJPEG", "BSD License"],
     ["vendor/wasm/LICENSE_JBIG2", "PDFium Authors"],
