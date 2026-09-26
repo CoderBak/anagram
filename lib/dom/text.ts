@@ -309,6 +309,21 @@ export function wordShape(text: string): WordShape {
   return { letterWords, running: lowerStart || casedWords * 2 < letterWords };
 }
 
+/**
+ * The line a mail program writes over a quotation — "On 14 Sep 2026, at 09:12, Alice Moreau
+ * <alice@example.org> wrote:" — which Apple Mail sets inside the quotation and Thunderbird and
+ * Yahoo in a block of their own above it. It reads like a lead-in sentence, but nobody wrote
+ * it. The shape is mailgun talon's RE_QUOTE_HEADER (https://github.com/mailgun/talon,
+ * talon/html_quotations.py, Apache-2.0, Copyright Mailgun Inc.); a clock time or an address
+ * in it tells it from an author's "On 3 March 1931 the editor wrote:".
+ */
+const ATTRIBUTION_RE = /^On\s.{0,500}\swrote\s?:$/s;
+const ATTRIBUTION_DETAIL_RE = /\d{1,2}[:.]\d{2}|\S@\S/;
+
+export function isAttribution(text: string): boolean {
+  return ATTRIBUTION_RE.test(text) && ATTRIBUTION_DETAIL_RE.test(text);
+}
+
 /** What a short run turns out to BE (shortRole). */
 export type ShortRole =
   /** A sentence, or long enough to be one without the full stop: it takes part in merging. */
@@ -325,12 +340,13 @@ export type ShortRole =
  * when it reads like a sentence ("I agree completely.", or the lead-in "Can also be
  * written as:" before a code sample) or is long enough to be one without the full stop
  * (most bullet items). Either way it must be running text: "Alice Moreau, Ph.D." and
- * "SIGN UP TODAY!" are not, and neither is "alice:".
+ * "SIGN UP TODAY!" are not, and neither is "alice:" nor "On …, alice wrote:".
  *
  * The caller passes the shape when it has already measured it — the walker reads it again
  * for its own tests, and wordShape segments the text.
  */
 export function shortRole(text: string, shape: WordShape = wordShape(text)): ShortRole {
+  if (isAttribution(text)) return "label";
   const prose =
     shape.running &&
     (((endsLikeProse(text) || endsInColon(text)) && shape.letterWords >= MIN_SENTENCE_WORDS) ||

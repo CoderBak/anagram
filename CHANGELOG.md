@@ -26,6 +26,11 @@ local component and the installer all carry the same version.
   them) is no longer read into the middle of the sentence it annotates. It is read as a
   paragraph of its own after that paragraph, and a short note is scored with it. Only a
   floated initial of one word is still read as a drop cap.
+- A reply and the messages it quotes are scored apart in webmail and mail archives when
+  the quoted history is not a quotation block: Outlook's From / Sent / To / Subject block
+  and its reply markers, Gmail's and Yahoo's quote boxes and Zimbra's divider now start a
+  voice of their own that runs to the end of the message. The header block and the
+  "On …, … wrote:" line above a quotation are no longer scored as anybody's text.
 
 ## [0.7.0] — 2026-09-26
 

@@ -379,6 +379,44 @@ const results = await page.evaluate(() => {
   u = collect(`<p>${sent(40)}</p><h3>Break</h3><blockquote><p>${sent(40)}</p></blockquote><p>${sent(40)}</p>`);
   check("…while a heading in the author's own flow still does", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
 
+  // QUOTED HISTORY in a mail message without a <blockquote> (talon's markers, lib/dom/scope.ts):
+  // the reply and the history are two voices, and neither the header block nor the
+  // "On … wrote:" line is anybody's text. The full webmail pages are fixtures (webmail-*.html).
+  {
+    const REPLY = `<div>REPLY-A ${sent(40)}</div><div>REPLY-B ${sent(40)}</div>`;
+    const QUOTED = `<div>QUOTED-A ${sent(40)}</div><div>QUOTED-B ${sent(40)}</div>`;
+    const HEADER = `<b>From:</b> Alice Moreau &lt;alice@example.org&gt;<br><b>Sent:</b> Monday, September 14, 2026 9:12 AM<br><b>To:</b> Bob Nowak<br><b>Subject:</b> Hall roof`;
+    const apart = (html) => {
+      const got = collect(`<div class="msg">${html}</div>`);
+      const ok = got.length === 2 && /^REPLY-A .*\n\nREPLY-B /s.test(got[0].text) && /^QUOTED-A .*\n\nQUOTED-B /s.test(got[1].text) &&
+        got.every((x) => x.parts === 2 && !/wrote|Sent:|Subject:|Alice Moreau/.test(x.text));
+      return [ok, JSON.stringify(got.map((x) => x.text.split("\n\n").map((t) => t.slice(0, 16))))];
+    };
+    check("mail: Yahoo's div.yahoo_quoted and its \"On … wrote:\" line are not the reply's",
+      ...apart(`${REPLY}<div class="yahoo_quoted" id="yahoo_quoted_0033794750"><div>On Tuesday, June 4, 2019, 5:41:43 PM PDT, John Smith &lt;jsmith@example.com&gt; wrote:</div>${QUOTED}</div>`));
+    check("mail: Outlook 2007's splitter (#B5C4DF, cm) starts a history that runs through its later siblings",
+      ...apart(`${REPLY}<div style="border:none;border-top:solid #B5C4DF 1.0pt;padding:3.0pt 0cm 0cm 0cm"><p class="MsoNormal">${HEADER}</p></div>${QUOTED}`));
+    check("mail: Windows Mail's splitter too",
+      ...apart(`${REPLY}<div style="padding-top: 5px; border-top-color: rgb(229, 229, 229); border-top-width: 1px; border-top-style: solid;"><div><font>${HEADER}</font></div></div>${QUOTED}`));
+    check("mail: Outlook for Mac's #OLK_SRC_BODY_SECTION",
+      ...apart(`${REPLY}<span id="OLK_SRC_BODY_SECTION"><div style="font-family:Calibri; font-size:11pt; BORDER-TOP: #b5c4df 1pt solid; PADDING-TOP: 3pt"><span style="font-weight:bold">From: </span>Alice Moreau<br><span style="font-weight:bold">Date: </span>Monday, 14 September 2026 at 09:12<br></div><div><br></div>${QUOTED}</span>`));
+    check("mail: Zimbra's divider and header block",
+      ...apart(`${REPLY}<hr id="zwchr" data-marker="__DIVIDER__"><div data-marker="__HEADERS__"><b>From: </b>"Alice Moreau" &lt;alice@example.org&gt;<br><b>To: </b>bob@example.org<br><b>Sent: </b>Monday, September 14, 2026 9:12:00 AM<br><b>Subject: </b>Hall roof<br></div><br><div data-marker="__QUOTED_TEXT__">${QUOTED}</div>`));
+    check("mail: a From / Sent / To / Subject block alone (Outlook 2010, a forward)",
+      ...apart(`${REPLY}<p class="MsoNormal">${HEADER}</p><p class="MsoNormal">&nbsp;</p>${QUOTED}`));
+    check("mail: Thunderbird's div.moz-cite-prefix line is not the reply's",
+      ...apart(`${REPLY}<div class="moz-cite-prefix">On 14/09/2026 09:12, Alice Moreau wrote:<br></div><blockquote type="cite" cite="mid:1@example.org">${QUOTED}</blockquote>`));
+    check("mail: a quotation inside the history interrupts it without ending it",
+      ...apart(`${REPLY}<div id="x_divRplyFwdMsg" dir="ltr"><font>${HEADER}</font></div><div>QUOTED-A ${sent(40)}</div><blockquote><p>INNER ${sent(20)}</p></blockquote><div>QUOTED-B ${sent(40)}</div>`));
+    // …and what is no mail history stays one voice.
+    u = collect(`<div class="msg">${REPLY}<div style="border-top:1px solid #e1e1e1;padding-top:8px">${QUOTED}</div></div>`);
+    check("mail: a page's own light-grey rule in pixels is no Outlook splitter", u.length === 1 && u[0].parts === 4, JSON.stringify(u.map(x => [x.parts, x.words])));
+    u = collect(`<div class="msg">${REPLY}<div><b>From:</b> the minutes of the March meeting, which the secretary has now circulated to everyone.</div>${QUOTED}</div>`);
+    check("mail: a bold \"From:\" without the rest of a header is somebody's sentence", u.length === 1 && u[0].parts === 5 && u[0].text.includes("From: the minutes"), JSON.stringify(u.map(x => [x.parts, x.words])));
+    u = collect(`<article><p>AUTHOR ${sent(40)}</p><p>On 3 March 1931 the editor of the Gazette wrote:</p><blockquote><p>${sent(40)}</p></blockquote><p>AUTHOR ${sent(40)}</p></article>`);
+    check("mail: an author's own \"On 3 March 1931 … wrote:\" is still the author's sentence", u.length === 1 && u[0].parts === 3 && u[0].text.includes("the editor of the Gazette wrote:"), JSON.stringify(u.map(x => [x.parts, x.words])));
+  }
+
   u = collect(`<p>${sent(40)}</p><figure><img alt=""><figcaption>CAPTION ${sent(14)}</figcaption></figure><p>${sent(40)}</p>`);
   check("a figure caption between two short paragraphs is not borrowed: [p, p] without it",
     u.length === 1 && u[0].parts === 2 && !u[0].text.includes("CAPTION"), JSON.stringify(u.map(x => [x.parts, x.words])));
@@ -2111,6 +2149,9 @@ const EXPECTED = {
   "thread-100": [75, 50],
   "tufte-sidenotes": [4, 3],
   "v2ex-topic": [2, 2],
+  "webmail-apple": [4, 4],
+  "webmail-gmail": [4, 3],
+  "webmail-outlook": [5, 5],
   "wordpress-comments": [2, 2],
   "x-timeline": [7, 5],
   "zhihu-answers": [13, 7],

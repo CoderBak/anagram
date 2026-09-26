@@ -64,6 +64,7 @@ import {
   endsInColon,
   wordShape,
   shortRole,
+  isAttribution,
   quoteDepth,
   runQuoteDepth,
   unitPartText,
@@ -285,8 +286,10 @@ export function collectUnits(
   const styles = createStyleCache();
   const rects = createRectVisibleCache();
   const startEl = rootEl ? wholePost(rootEl) : document.body;
+  const scopes = scopesOfScan();
+  scanScopes = null; // the next scan looks at the page anew
   if (!startEl) return [];
-  const asm = createAssembler(opts.mergeShorts ?? true, startEl, read, (nodes) => opts.claimFilter?.(nodes) !== "skip", opts.onShortText);
+  const asm = createAssembler(scopes, opts.mergeShorts ?? true, startEl, read, (nodes) => opts.claimFilter?.(nodes) !== "skip", opts.onShortText);
 
   // ---- run accumulation ------------------------------------------------------------
 
@@ -483,7 +486,10 @@ export function collectUnits(
       isNoTranslate(el) ||
       (el as HTMLElement).isContentEditable ||
       el.getAttribute("aria-hidden") === "true" ||
-      (cs !== null && (cs as any).contentVisibility === "hidden");
+      (cs !== null && (cs as any).contentVisibility === "hidden") ||
+      // The From / Sent / To / Subject block over a quoted mail message, and the "On … wrote:"
+      // line over a quotation: the mail program's words (lib/dom/scope.ts).
+      scopes.header(el);
     if (excluded) {
       if (flow !== "inline" && flow !== "contents") closeRun();
       if (boiler) asm.barrier(el); // page chrome separates sections — no merging across
@@ -895,9 +901,9 @@ function compatible(a: Element, b: Element): boolean {
  * VOICE BOUNDARIES. Every run belongs to a SCOPE — its post, comment, quotation, figure or
  * quoted card, declared by the markup or recognised by its structure (lib/dom/scope.ts);
  * else the page — and runs merge only inside one scope. The answers are cached per scan,
- * and a scan asks twice: `wholePost` before the walk, the assembler during it. The first
- * to ask creates the scopes of the scan and the assembler takes them over, so the page is
- * surveyed for bylines once.
+ * and a scan asks twice: `wholePost` before the walk, the walk and its assembler during it.
+ * The first to ask creates the scopes of the scan and the walk takes them over, so the page
+ * is surveyed for bylines and mail quotations once.
  */
 let scanScopes: Scopes | null = null;
 
@@ -945,7 +951,8 @@ const WHOLE_POST_CHARS = 2 * WINDOW_CHARS;
  */
 function wholePost(root: Element): Element {
   const scope = scopesOfScan().of(root);
-  if (!scope || scope === root) return root;
+  // A quoted mail history is named by its marker, which need not contain `root` (scope.ts).
+  if (!scope || scope === root || !composedContains(scope, root)) return root;
   const all = scope.textContent ?? "";
   // Pretty-printed markup is mostly indentation; far beyond the bound it is not worth collapsing.
   if (all.length > 8 * WHOLE_POST_CHARS) return root;
@@ -1005,6 +1012,8 @@ interface Frame {
 }
 
 function createAssembler(
+  /** The voices of this scan (see scopesOfScan). */
+  scopes: Scopes,
   mergeShorts: boolean,
   walkRoot: Element,
   /** Read a found run; null when there is nothing to read (invisible, empty). */
@@ -1019,8 +1028,6 @@ function createAssembler(
   const emitted: { unit: Unit; at: number }[] = [];
   const stack: Frame[] = [];
   let runIndex = 0;
-  const scopes = scopesOfScan();
-  scanScopes = null; // the next scan looks at the page anew
   const scopeOf = (el: Element): Element | null => scopes.of(el);
 
   /**
@@ -1209,7 +1216,7 @@ function createAssembler(
     while (stack.length > 0) {
       const top = stack[stack.length - 1];
       if (top.scope === scope) return top;
-      if (top.scope === null || (scope !== null && top.scope.contains(scope))) return null;
+      if (top.scope === null || (scope !== null && scopes.holds(top.scope, scope))) return null;
       settle(top);
       stack.pop();
     }
@@ -1346,8 +1353,9 @@ function createAssembler(
       // The next LINE of the text block this group is reading (BR- or blank-line-
       // separated): the same author by construction, whatever the punctuation. One to
       // three unpunctuated words are skipped, not joined — that is where a name or
-      // "2h ago" sits when a site sets it in the message's own block.
-      if (!punctuated && wordShape(r.text).letterWords < MIN_LINE_WORDS) return;
+      // "2h ago" sits when a site sets it in the message's own block — and so is the
+      // "On …, alice wrote:" a mail program sets over a quotation.
+      if (!punctuated && (wordShape(r.text).letterWords < MIN_LINE_WORDS || isAttribution(r.text))) return;
       f.lines = [];
       if (f.pending) {
         const first = f.pending;
@@ -1408,6 +1416,9 @@ function createAssembler(
       if (f.scope === null) close(f);
       else if (scopes.recognised(f.scope) && !amongTheText(f, r.container)) conclude(f);
     }
+    // The "On …, alice wrote:" over a quotation separates what it separates, and is never
+    // a line of anybody's text.
+    if (isAttribution(r.text)) return;
     // LINES OF VERSE. A Zhihu answer written one line per <p> — 4, 6, 13, 9, 13 and 7
     // words, not one of them ending in punctuation — got nothing: only the three lines long
     // enough to be prose without a full stop joined (35 words), and each shorter one was a
