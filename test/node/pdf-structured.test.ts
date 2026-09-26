@@ -223,6 +223,19 @@ describe("structuredBlocks — text and runs", () => {
     expectRunsToMatch(blocks[0], pages);
   });
 
+  it("leaves out a bracketed mark with a locator or an alphabetic key, and keeps brackets that are words", () => {
+    // arXiv's HTML marks each of these as a citation, and the web walker skips it; a year
+    // makes one author-year, and a bracket with no reference in it is the writer's own.
+    const n = node(1, [
+      { text: "As Kahn and Szemerédi [16, Section 4] showed [e.g., 17, 18], the bound [And58] holds", x: 72, y: 100 },
+      { text: "[Kir08, Theorem 3.9; GK12]; it [sic] is known [Higham, 2002] and [see Section 3].", x: 72, y: 114 },
+    ]);
+    const pages = [pageText(1, n.items)];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0].text).toBe("As Kahn and Szemerédi showed, the bound holds; it [sic] is known [Higham, 2002] and [see Section 3].");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
   it("leaves out a superscript number that refers to the bibliography after a word, and keeps exponents", () => {
     // Nature's style sets a citation as a raised number after the word, and Zotero links it
     // to the bibliography entries it names; arXiv's HTML skips it as a mark. Zotero links an

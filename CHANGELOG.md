@@ -127,6 +127,11 @@ local component and the installer all carry the same version.
   the web walker skips the same mark: the model read "errors1–4." where the paper's HTML
   reads "errors.". Zotero's document-worker tells which raised numbers name entries of the
   bibliography; one after a unit or a formula's letter ("cm²") is still read as an exponent.
+- The PDF reader also leaves out a bracketed citation that carries a locator or a note,
+  "[16, Section 4]" or "[e.g., 17, 18]", or names an alphabetic key, "[Kir08, Theorem 3.9]",
+  as the web walker does with the same marks on the paper's HTML. A bracket that names a
+  year ("[Higham, 2002]") is read as an author–year citation, and one with no reference in
+  it ("[sic]") as the writer's own.
 - A raised number right after a word is left out of a web page's text even when it is not a
   link: an author's own superscript citation on arXiv ("change¹⁻⁴"), a footnote number on an
   older page ("report⁴"). After a unit or a variable it is still read as an exponent ("km²",
