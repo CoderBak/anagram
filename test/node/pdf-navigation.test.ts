@@ -42,6 +42,16 @@ describe("PDF navigation without content scripts", () => {
     await e.route.contentPdf(7, "https://example.test/document", "navigate"); await ticks(); expect(e.open).not.toHaveBeenCalled();
     e.before(); e.headers(); e.commit(); await ticks(); expect(e.open).toHaveBeenCalledTimes(1);
   });
+  it("keeps the Open original pass through a navigation Firefox announces twice", async () => {
+    // Firefox fires onBeforeNavigate again when it moves the load from the extension's
+    // process to a web one; the pass is spent when the navigation commits, not before.
+    for (const order of [["before", "before", "headers"], ["before", "headers", "before"]] as const) {
+      const e = await setup(); e.route.pass(7, "https://example.test/document");
+      for (const step of order) e[step]();
+      e.commit(); e.complete(); await ticks(); expect(e.open).not.toHaveBeenCalled();
+      e.before(); e.headers(); e.commit(); await ticks(); expect(e.open).toHaveBeenCalledTimes(1);
+    }
+  });
   it("leaves back/forward, POST and attachments untouched", async () => {
     const e = await setup(); e.before(); e.headers(); e.commit({transitionQualifiers: ["forward_back"]}); await ticks(); expect(e.open).not.toHaveBeenCalled();
     e.before(); e.headers({method: "POST"}); e.commit(); await e.route.contentPdf(7, "https://example.test/document", "navigate"); await ticks(); expect(e.open).not.toHaveBeenCalled();

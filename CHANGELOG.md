@@ -170,6 +170,9 @@ local component and the installer all carry the same version.
 - In Firefox, a book whose chapters are shown in a frame with no address of its own (an
   EPUB reader's srcdoc frame), and text in about:blank frames and blob: documents, is now
   read on a site Anagram is on, as it already was in Chrome.
+- In Firefox, "Open original" in the PDF reader no longer sends the PDF straight back to
+  the reader about half the time when PDFs are set to open in the reader. Firefox reports
+  that one navigation twice, and the first report used up the pass it was given.
 
 ## [0.7.0] — 2026-09-26
 

@@ -43,9 +43,12 @@ export function createPdfNavigation(deps: Dependencies) {
     serve() {
       browser.webNavigation.onBeforeNavigate.addListener((details) => {
         if (details.frameId !== 0) return;
-        const pass = passes.get(details.tabId); passes.delete(details.tabId);
-        documents.set(details.tabId, {url: details.url, pdf: false, allowedMethod: false, committed: false, opening: false,
-          suppressed: !!pass && pass.expires > Date.now() && samePdfSource(pass.url, details.url)});
+        // The pass is spent when its navigation commits (below): Firefox announces a
+        // navigation from the reader twice, again as it moves the load to a web process.
+        const pass = passes.get(details.tabId);
+        const suppressed = !!pass && pass.expires > Date.now() && samePdfSource(pass.url, details.url);
+        if (!suppressed) passes.delete(details.tabId);
+        documents.set(details.tabId, {url: details.url, pdf: false, allowedMethod: false, committed: false, opening: false, suppressed});
       });
       // Chrome rejects a webRequest listener while the extension holds no host permission
       // ("You need to request host permissions in the manifest file…") and never retries it.
@@ -77,6 +80,7 @@ export function createPdfNavigation(deps: Dependencies) {
           documents.set(details.tabId, entry);
         }
         entry.url = details.url; entry.committed = true;
+        passes.delete(details.tabId);
         entry.suppressed ||= details.transitionQualifiers?.includes("forward_back") ?? false;
         if (safePdfSource(details.url)?.protocol === "file:" && looksLikePdfUrl(details.url)) { entry.pdf = true; entry.allowedMethod = true; }
         void attempt(details.tabId, entry);
