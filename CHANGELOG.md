@@ -36,6 +36,12 @@ local component and the installer all carry the same version.
 
 ### Changed
 
+- "Main content only" now finds the article with Defuddle (MIT) instead of Mozilla
+  Readability. On 3,437 saved pages from four public web-extraction benchmarks it reads
+  about one point more of the main content with the same leakage, and it keeps the replies
+  of a forum or discussion thread in the region: on those pages 6 to 7 points more of the
+  thread is read. Defuddle works on a copy of the page and only its offline extraction is
+  used; nothing it could fetch is ever called. The extension grows by about 290 kB.
 - The PDF reader's paragraphs now come from Zotero's document-worker (AGPL-3.0), the
   engine behind Zotero 10's reading mode, run inside the extension in a Web Worker with
   its block-segmentation model, and translated onto the pages pdf.js draws. On a corpus of

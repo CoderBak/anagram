@@ -28,11 +28,11 @@ const browser = await launchPlain({ headless: true });
 const page = await browser.newPage();
 await page.setContent("<!doctype html><html><body></body></html>");
 await page.addScriptTag({ path: BUNDLE });
-// Readability is an on-demand vendor chunk in the extension; here the library's own
-// browser globals stand in for it so the Readability-guided path is exercised too.
-await page.addScriptTag({ path: join(ROOT, "node_modules", "@mozilla", "readability", "Readability.js") });
-await page.addScriptTag({ path: join(ROOT, "node_modules", "@mozilla", "readability", "Readability-readerable.js") });
-await page.evaluate(() => PW.useReadability({ Readability: window.Readability, isProbablyReaderable: window.isProbablyReaderable }));
+// Defuddle is an on-demand vendor chunk in the extension; here the library's own browser
+// build (it sets a `Defuddle` global) stands in for it so the Defuddle-guided path is
+// exercised too.
+await page.addScriptTag({ path: join(ROOT, "node_modules", "defuddle", "dist", "index.js") });
+await page.evaluate(() => PW.useDefuddle({ Defuddle: window.Defuddle }));
 
 const results = await page.evaluate(() => {
   const out = [];
@@ -1322,7 +1322,7 @@ const results = await page.evaluate(() => {
     check("findMainContent honest null on tiny pages", mc === null, mc && mc.tagName);
   }
   {
-    // Readability-guided: distinct paragraphs (so the sampled sentences are unique on
+    // Defuddle-guided: distinct paragraphs (so the sampled sentences are unique on
     // the page), chrome around them, and a teaser that echoes an opening sentence.
     const wordsFrom = (off, n) => Array.from({ length: n }, (_, i) => VOCAB[(off + i * 5) % VOCAB.length]).join(" ") + ".";
     const paras = [0, 7, 13, 19, 3].map((o) => `<p>${wordsFrom(o, 70)}</p>`).join("");
@@ -1332,10 +1332,10 @@ const results = await page.evaluate(() => {
       `<div><div><div id="art">${paras}</div></div></div>` +
       `<footer>${words(12)}</footer>`;
     const mc = PW.findMainContent(document);
-    check("findMainContent (Readability) maps the article to its live container", mc && mc.id === "art", mc && (mc.id || mc.tagName));
-    PW.useReadability(null);
+    check("findMainContent (Defuddle) maps the article to its live container", mc && mc.id === "art", mc && (mc.id || mc.tagName));
+    PW.useDefuddle(null);
     const mc2 = PW.findMainContent(document);
-    check("findMainContent falls back to text mass without Readability", mc2 && (mc2.id === "art" || mc2.contains(document.getElementById("art"))), mc2 && (mc2.id || mc2.tagName));
+    check("findMainContent falls back to text mass without Defuddle", mc2 && (mc2.id === "art" || mc2.contains(document.getElementById("art"))), mc2 && (mc2.id || mc2.tagName));
   }
 
   // ---- math, markers, hidden copies: never split the sentence ------------------------------

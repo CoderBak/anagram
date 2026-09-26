@@ -1,6 +1,6 @@
 // scripts/vendor.mjs — prebuild the on-demand vendor chunks into public/vendor/.
 //
-// Readability (main-content scope), DOMPurify (Google Docs reading mode) and pdf.js
+// Defuddle (main-content scope), DOMPurify (Google Docs reading mode) and pdf.js
 // (the PDF reader) are only needed on demand, so they are NOT bundled into the content
 // script that runs on every page. They are built here as minified ESM files, shipped as
 // web-accessible resources, and loaded with a dynamic import() of their extension URL
@@ -26,11 +26,21 @@ const OUT = join(ROOT, "public", "vendor");
 mkdirSync(OUT, { recursive: true });
 
 const chunks = {
-  // @mozilla/readability is CommonJS; a tiny ESM wrapper gives it named exports.
-  "readability.min.mjs": `
-    import mod from "@mozilla/readability";
-    export const Readability = mod.Readability;
-    export const isProbablyReaderable = mod.isProbablyReaderable;
+  // Defuddle's browser build (no dependencies); its MIT notice is kept in the chunk.
+  "defuddle.min.mjs": `
+    /*! Defuddle https://github.com/kepano/defuddle — MIT License, Copyright (c) 2025 Steph Ango (@kepano).
+        Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
+        associated documentation files (the "Software"), to deal in the Software without restriction,
+        including without limitation the rights to use, copy, modify, merge, publish, distribute,
+        sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+        furnished to do so, subject to the following conditions: The above copyright notice and this
+        permission notice shall be included in all copies or substantial portions of the Software.
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
+        NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+        NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES
+        OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+        CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. */
+    export { default as Defuddle } from "defuddle";
   `,
   "purify.min.mjs": `export { default } from "dompurify";`,
 };

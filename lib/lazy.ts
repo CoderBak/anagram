@@ -1,7 +1,7 @@
 // lib/lazy.ts — on-demand vendor chunks.
 //
 // Content scripts are bundled as one IIFE that runs on every page, so libraries a
-// feature needs only sometimes (Readability for the main-content scope, DOMPurify for
+// feature needs only sometimes (Defuddle for the main-content scope, DOMPurify for
 // the Google Docs reading mode, pdf.js for the PDF reader) are kept out of it.
 // scripts/vendor.mjs prebuilds them as minified ESM files under public/vendor/
 // (web-accessible resources) and this helper imports one by its extension URL the first
@@ -21,13 +21,12 @@ export function lazyVendor<T>(file: string): Promise<T> {
   return p as Promise<T>;
 }
 
-export interface ReadabilityModule {
-  Readability: typeof import("@mozilla/readability").Readability;
-  isProbablyReaderable: typeof import("@mozilla/readability").isProbablyReaderable;
+export interface DefuddleModule {
+  Defuddle: typeof import("defuddle").default;
 }
 
-export const loadReadability = (): Promise<ReadabilityModule> =>
-  lazyVendor<ReadabilityModule>("readability.min.mjs");
+export const loadDefuddle = (): Promise<DefuddleModule> =>
+  lazyVendor<DefuddleModule>("defuddle.min.mjs");
 
 export const loadPurify = (): Promise<{ default: import("dompurify").DOMPurify }> =>
   lazyVendor("purify.min.mjs");

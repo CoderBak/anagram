@@ -25,7 +25,7 @@ export const settings = {
   }),
   // Group short neighbors to reach the evidence floor; otherwise skip short paragraphs.
   mergeShorts: storage.defineItem<boolean>("local:mergeShorts", { fallback: true }),
-  // "main" restricts analysis to the Readability region, excluding outside comments/sidebars.
+  // "main" restricts analysis to the region Defuddle finds, excluding outside comments/sidebars.
   analysisScope: storage.defineItem<"page" | "main">("local:analysisScope", {
     fallback: "page",
   }),

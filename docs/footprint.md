@@ -32,7 +32,7 @@ user's ordinary OS privileges and is not sandboxed by browser CSP.
 | `lib/pdf/handoff.ts` | `fetch(` | re-reads, from the content script in a PDF tab, the document that tab is already showing, so the reader can be handed its bytes | the same URL the tab is already showing, same-origin, normally answered from the HTTP cache |
 | `lib/pdf/loader.ts` | `fetch(` | reads an online PDF only after the private loader validates its one-use source ticket and current website access; rejects redirects | the exact authorized original HTTP(S) PDF URL, with normal browser credentials and no referrer |
 | `lib/pdf/loader.ts` | `XMLHttpRequest` | reads bytes for an authorized local PDF after checking file access, size and PDF signature | the exact authorized local file URL; remote-host file URLs are rejected |
-| `lib/lazy.ts` | `import(` | loads one of the vendored chunks that ship inside the extension (Readability, DOMPurify, the diagnostics chunk, the surfaces chunk, pdf.js) | `chrome-extension://<this extension>/vendor/…` |
+| `lib/lazy.ts` | `import(` | loads one of the vendored chunks that ship inside the extension (Defuddle, DOMPurify, the diagnostics chunk, the surfaces chunk, pdf.js) | `chrome-extension://<this extension>/vendor/…` |
 
 There is no analytics, error-reporting or telemetry endpoint. The component update
 notice compares versions locally; it does not poll GitHub.
@@ -67,6 +67,7 @@ reader hands it; the document's bytes are copied into it and nowhere else.
 | `lib/dom/consentBanners.ts` | `https://github.com/duckduckgo/autoconsent` | where that selector list comes from, in a comment |
 | `lib/dom/boilerplate.ts` | `https://github.com/lindylearn/unclutter` | the attribution of the page-text guard on the chrome filter, in a comment |
 | `lib/dom/boilerplate.ts` | `https://gitlab.wikimedia.org/repos/research/html-dumps` | the attribution of the MediaWiki classes the walk skips, in a comment |
+| `lib/dom/mainContent.ts` | `https://github.com/kepano/defuddle` | the attribution of Defuddle, which finds the main content for the "Main content only" scope, in a comment |
 | `lib/dom/translation.ts` | `https://github.com/mengxi-ream/read-frog` | where Read Frog's attribute name was looked up, in a comment |
 | `lib/dom/shadow.ts` | `https://github.com/mozilla-firefox/firefox` | the attribution of adapted Firefox code in a comment |
 | `lib/pdf/structured.ts` | `https://github.com/zotero/document-worker` | the attribution of Zotero's document-worker, whose reading of a PDF this translates, in a comment |
