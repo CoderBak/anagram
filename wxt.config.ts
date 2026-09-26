@@ -11,6 +11,7 @@ import {
 } from "./scripts/i18nSubset";
 import { ALL_SITES } from "./lib/access/patterns";
 import { NOTICES_FILE, bundledPackages, packageOfModule, unlistedPackages } from "./scripts/notices.mjs";
+import { machinePaths } from "./scripts/machinePaths.mjs";
 
 // Page-reading tests pregrant website access in a separate output-test directory.
 // Shipping installs keep website access optional.
@@ -153,6 +154,10 @@ export default defineConfig({
         throw new Error(
           `${NOTICES_FILE} lists packages this build no longer bundles. Remove them from scripts/notices.mjs and run node scripts/notices.mjs:\n  ${gone.join("\n  ")}`,
         );
+      }
+      const leaks = machinePaths(wxt.config.outDir);
+      if (leaks.length > 0) {
+        throw new Error(`The build carries paths of the machine it was built on (scripts/machinePaths.mjs):\n  ${leaks.join("\n  ")}`);
       }
     },
     // Production content scripts are registered only after a grant or user action.

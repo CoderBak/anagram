@@ -29,6 +29,7 @@ import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { machinePathsIn } from "./machinePaths.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const VENDOR = join(ROOT, "vendor", "document-worker");
@@ -179,6 +180,8 @@ async function rebuild(cache) {
     minify: true, bundle: false, outfile: join(VENDOR, "worker.js"), logLevel: "error",
     banner: { js: `/* Zotero document-worker ${pin.commit.slice(0, 7)} (AGPL-3.0, https://github.com/zotero/document-worker) with its pdf.js fork ${pin.submodules["pdf.js"].commit.slice(0, 7)} (Apache-2.0) and onnxruntime-web ${pin.onnxruntime_web.version} (MIT); built by scripts/documentWorker.mjs. */` },
   });
+  const leaks = machinePathsIn(readFileSync(join(VENDOR, "worker.js"), "latin1"));
+  if (leaks.length > 0) throw new Error(`the worker's bundle carries paths of this machine (see anagram/webpack.config.cjs): ${leaks.join(", ")}`);
   for (const name of MODELS) {
     mkdirSync(dirname(join(VENDOR, name)), { recursive: true });
     cpSync(join(checkout, "src/pdf/structure/model", name), join(VENDOR, name));

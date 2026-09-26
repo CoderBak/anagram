@@ -253,6 +253,8 @@ local component and the installer all carry the same version.
 - In Firefox, "Open original" in the PDF reader no longer sends the PDF straight back to
   the reader about half the time when PDFs are set to open in the reader. Firefox reports
   that one navigation twice, and the first report used up the pass it was given.
+- The PDF reader's paragraph worker no longer contains folder paths of the machine it was
+  built on, and the component archive no longer records the builder's user name.
 
 ## [0.7.0] — 2026-09-26
 
