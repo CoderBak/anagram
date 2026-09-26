@@ -35,7 +35,9 @@ import {
   looksLikeNameList,
   shortRole,
   symbolNoiseRatio,
+  wordShape,
   MAX_UNIT_TEXT_CHARS,
+  MIN_SENTENCE_WORDS,
   MIN_UNIT_WORDS,
   type Unit,
   type UnitPart,
@@ -125,6 +127,13 @@ function roleOf(block: ReflowBlock, words: number): BlockRole {
   if (!hasLetters(block.text)) return isSeparatorRun(block.text) ? "barrier" : "skip";
   if (symbolNoiseRatio(block.text) > MAX_SYMBOL_NOISE) return "barrier";
   if (looksLikeNameList(block.text)) return "barrier";
+  if (block.runsOn) {
+    // "…can be written equivalently as" before a display equation is the first half of a
+    // sentence, read like one that ends in a colon; "Then" or "and" alone between two
+    // equations is the formula's connective and neither read nor a boundary.
+    const shape = wordShape(block.text);
+    return shape.running && shape.letterWords >= MIN_SENTENCE_WORDS ? "prose" : "skip";
+  }
   const role = shortRole(block.text);
   return role === "prose" ? "prose" : role === "aside" ? "skip" : "barrier";
 }

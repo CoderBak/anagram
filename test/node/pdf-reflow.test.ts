@@ -258,6 +258,21 @@ describe("reflowPdf — hyphenation", () => {
     );
   });
 
+  it("mends a word broken right after an opening bracket, a quote or a slash", () => {
+    expect(broken("the counts are given in (Ta-", "ble 1) for each of the runs")).toContain("(Table 1)");
+    expect(broken("what the authors called “fig-", "ure” in the text above them")).toContain("“figure”");
+    expect(broken("the questions on causal/en-", "ablement relations were harder")).toContain("causal/enablement");
+  });
+
+  it("mends a word the document writes the start of elsewhere, even after a modifier", () => {
+    // "ex" and "in" keep a hyphen by the rules below, but the document writes "experiment"
+    // and "independently": the letters after the break go on into a word it uses.
+    expect(broken("an experiment where the one ex-", "perienced event is recalled")).toContain("one experienced event");
+    expect(broken("an in-house tool, run independently and in-", "dependent of the first")).toContain("and independent of");
+    // A compound's second element starts no word of the document's.
+    expect(broken("the nearest near-optimal policy and the near-", "equilibrium state it reaches")).toContain("near-equilibrium");
+  });
+
   it("keeps the hyphen of a compound broken after one of its own hyphens", () => {
     expect(broken("a genuine state-of-the-", "art result stands here")).toBe(
       "a genuine state-of-the-art result stands here",

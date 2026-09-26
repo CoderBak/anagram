@@ -196,7 +196,7 @@ it("keeps original source spans when repeated escapes and invisibles contract", 
   expect(windows.map(({start,end}) => [start,end])).toEqual(spans.map(({start,end}) => [start,end]));
   expect(covered(windows, raw.length)).toBe(true);
   expect(calls.flat().map(({text}) => text)).toEqual(spans.map((span) => modelText(raw.slice(span.start,span.end))));
-  expect(calls.flat().some(({text}) => text.includes("1–2–3 costs % and A\u0301"))).toBe(true);
+  expect(calls.flat().some(({text}) => text.includes("1–2–3 costs % and \u00c1"))).toBe(true);
 });
 
 describe("the model form in passes", () => {
