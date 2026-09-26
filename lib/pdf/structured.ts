@@ -440,7 +440,7 @@ function assemble(pieces: Piece[], { sources, faces }: Located, vocab: Vocabular
 
   // ---- the text ----
   let text = "";
-  const prov: (Source | null)[] = [];
+  let prov: (Source | null)[] = [];
   tokens.forEach((t, k) => {
     if (drop[k]) {
       // The formula goes; the full stop or the comma after it, set in the text face, stays
@@ -473,6 +473,8 @@ function assemble(pieces: Piece[], { sources, faces }: Located, vocab: Vocabular
     }
   });
 
+  ({ text, prov } = withoutCitations(text, prov));
+
   // The space a run contributes between two of its own glyphs is the run's, not ours.
   for (let i = 1; i + 1 < prov.length; i++) {
     if (prov[i] !== null) continue;
@@ -489,6 +491,32 @@ function assemble(pieces: Piece[], { sources, faces }: Located, vocab: Vocabular
     if (run) runs.push(run);
   });
   return { text, runs };
+}
+
+/**
+ * A numeric citation mark: "[12]", "[3, 5–7]", "[10,11]". The web walker skips one as a
+ * mark rather than prose (isCitationMarker, lib/dom/walker.ts), and arXiv's HTML marks
+ * every one, so the PDF reader leaves it out too, with the space in front of it: "the
+ * bases [4]." reads "the bases.", as the same paper's HTML reads. An author-year citation
+ * is words of the sentence and stays.
+ */
+const CITATION = / ?\[\d{1,4}[a-z]?(?:\s?[,–-]\s?\d{1,4}[a-z]?)*\]/gu;
+
+function withoutCitations(text: string, prov: (Source | null)[]): { text: string; prov: (Source | null)[] } {
+  let out = "";
+  const kept: (Source | null)[] = [];
+  let at = 0;
+  for (const m of text.matchAll(CITATION)) {
+    out += text.slice(at, m.index);
+    kept.push(...prov.slice(at, m.index));
+    at = m.index + m[0].length;
+  }
+  if (at === 0) return { text, prov };
+  out += text.slice(at);
+  kept.push(...prov.slice(at));
+  // A mark that opened the paragraph leaves the space after it.
+  if (out.startsWith(" ")) { out = out.slice(1); kept.shift(); }
+  return { text: out, prov: kept };
 }
 
 // ---- the document -------------------------------------------------------------------------

@@ -194,6 +194,17 @@ describe("structuredBlocks — text and runs", () => {
     expectRunsToMatch(blocks[0], pages);
   });
 
+  it("leaves out numeric citation marks, as the web walker does, and keeps author-year ones", () => {
+    const n = node(1, [
+      { text: "[1] Direct constructions span the bases [2,3]. They apply [5–7] to", x: 72, y: 100 },
+      { text: "superconductors [10, 11], as Smith et al. (2020) showed in [4].", x: 72, y: 114 },
+    ]);
+    const pages = [pageText(1, n.items)];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0].text).toBe("Direct constructions span the bases. They apply to superconductors, as Smith et al. (2020) showed in.");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
   it("puts a space between two glyphs a word apart that Zotero ran together", () => {
     const a = drawn(1, { text: "where", x: 72, y: 100 });
     const b = drawn(1, { text: "the", x: 72 + 5 * CW + 6, y: 100 });
