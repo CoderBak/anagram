@@ -9,6 +9,7 @@
 import { describe, expect, it } from "vitest";
 import type { PdfPageText, PdfTextItem, ReflowBlock } from "../../lib/pdf/reflow";
 import { glyphsOf, isMathFont, structuredBlocks, type SdtBlock, type SdtStructure } from "../../lib/pdf/structured";
+import { groupsOf } from "../../lib/pdf/units";
 
 const WIDTH = 612;
 const HEIGHT = 792;
@@ -406,5 +407,78 @@ describe("structuredBlocks — the document", () => {
     ]), pages);
     expect(blocks.map((x) => x.text)).toEqual(["the loss is defined as where the sum runs over all examples.", "The next paragraph stands alone."]);
     for (const x of blocks) expectRunsToMatch(x, pages);
+  });
+});
+
+describe("structuredBlocks — text cut off by a display equation", () => {
+  /** A display equation as Zotero sets it aside. */
+  const display = (page: number, y: number): { block: SdtBlock; items: PdfTextItem[] } => {
+    const eq = node(page, [{ text: "A = B + C", x: 200, y }]);
+    return { block: { type: "math", anchor: { pageRects: [[page - 1, 200, HEIGHT - y - 2, 300, HEIGHT - y + 7]] }, content: [eq], flowClass: "auxiliary" }, items: eq.items };
+  };
+  /** A sentence of `n` words, all different from the other sentences'. */
+  const sentence = (seed: string, n: number): string =>
+    `${seed.toUpperCase()}${Array.from({ length: n }, (_, i) => `${seed}${String.fromCharCode(97 + (i % 26))}${i}`).join(" ").slice(1)}.`;
+
+  it("reads a lead-in to an equation as the start of a sentence, and a connective as nothing", () => {
+    // "The matrix is defined by [eq] <40 words>. [eq] Then [eq] <40 words>." — each piece
+    // under the floor, and the lead-in and the "Then" unpunctuated. On arXiv's HTML all of
+    // it is one paragraph box and read as one; here the lead-in was a label that cut the
+    // paragraph off from what came before, and "Then" one that cut it in two.
+    const lead = node(1, [{ text: "The sensitivity matrix is defined by", x: 72, y: 100 }]);
+    const first = node(1, [{ text: sentence("f", 40), x: 72, y: 160 }]);
+    const then = node(1, [{ text: "Then", x: 72, y: 220 }]);
+    const second = node(1, [{ text: sentence("s", 40), x: 72, y: 280 }]);
+    const eqs = [display(1, 130), display(1, 190), display(1, 250)];
+    const pages = [pageText(1, [...lead.items, ...first.items, ...then.items, ...second.items, ...eqs.flatMap((e) => e.items)])];
+    const blocks = structuredBlocks(structure([
+      paragraph(1, [lead]), eqs[0].block, paragraph(1, [first]), eqs[1].block, paragraph(1, [then]), eqs[2].block, paragraph(1, [second]),
+    ]), pages);
+    expect(blocks.map((b) => b.text.split(" ")[0])).toEqual(["The", "Fa0", "Then", "Sa0"]);
+    expect(blocks.map((b) => b.runsOn === true)).toEqual([true, false, true, false]);
+    expect(groupsOf(blocks)).toEqual([[0, 1, 3]]);
+  });
+
+  it("does not take a heading or a sentence that ended for a lead-in", () => {
+    const head = node(1, [{ text: "2 Results", x: 72, y: 80 }]);
+    const done = node(1, [{ text: "The equation reads.", x: 72, y: 100 }]);
+    const eq = display(1, 130);
+    const pages = [pageText(1, [...head.items, ...done.items, ...eq.items])];
+    const blocks = structuredBlocks(structure([
+      { type: "heading", anchor: { pageRects: [[0, 72, 700, 300, 712]] }, content: [head] }, eq.block,
+      paragraph(1, [done]), display(1, 160).block,
+    ]), pages);
+    expect(blocks.map((b) => [b.kind, b.runsOn === true])).toEqual([["heading", false], ["paragraph", false]]);
+  });
+
+  it("reads on across a page break where the sentence runs on, and stops at one where it ended", () => {
+    // Page 1 ends "…the correction is given by", the equation opens page 2 and the text
+    // after it starts a new sentence: the break is inside the writing, not between two
+    // pieces of it. A paragraph that ended at the foot of page 1 still ends there.
+    const tail = node(1, [{ text: sentence("t", 30), x: 72, y: 600 }]);
+    const lead = node(1, [{ text: "and the correction is given by", x: 72, y: 700 }]);
+    const eq = display(2, 90);
+    const after = node(2, [{ text: sentence("a", 30), x: 72, y: 130 }]);
+    const ended = node(2, [{ text: sentence("e", 30), x: 72, y: 700 }]);
+    const fresh = node(3, [{ text: sentence("n", 30), x: 72, y: 100 }]);
+    const pages = [pageText(1, [...tail.items, ...lead.items]), pageText(2, [...eq.items, ...after.items, ...ended.items]), pageText(3, fresh.items)];
+    const blocks = structuredBlocks(structure([
+      paragraph(1, [tail]), paragraph(1, [lead]), eq.block, paragraph(2, [after]), paragraph(2, [ended]), paragraph(3, [fresh]),
+    ], 3), pages);
+    expect(blocks.map((b) => b.columnBreak)).toEqual([true, false, false, false, true]);
+    expect(blocks[1].runsOn).toBe(true);
+  });
+
+  it("marks no break after a paragraph that was carried onto the page it ends on", () => {
+    const first = node(1, [{ text: "the paragraph begins on one page and", x: 72, y: 700 }]);
+    const second = node(2, [{ text: "ends on the next.", x: 72, y: 80 }]);
+    const next = node(2, [{ text: "Another paragraph follows it.", x: 72, y: 110 }]);
+    const pages = [pageText(1, first.items), pageText(2, [...second.items, ...next.items])];
+    const blocks = structuredBlocks(structure([
+      paragraph(1, [first], { nextPart: [1] }),
+      paragraph(2, [second], { previousPart: [0] }),
+      paragraph(2, [next]),
+    ], 2), pages);
+    expect(blocks.map((b) => [b.page, b.columnBreak])).toEqual([[1, true], [2, false]]);
   });
 });

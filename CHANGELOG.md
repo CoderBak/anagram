@@ -82,6 +82,14 @@ local component and the installer all carry the same version.
   read as more human than the PDF of the same paper: on 1,464 paragraphs read from both,
   it lowered the HTML's score by 0.04 on average and by 0.10 where citations were. Earlier
   verdicts are not reused for the texts this changes.
+- The PDF reader reads the sentence that leads into a display equation ("…can be written
+  equivalently as") with the paragraphs around it. Such a piece does not end in a full
+  stop, so it was taken for a label, and a label ends the run of short paragraphs being read
+  together: in a paper full of formulas most of the text between two equations went unread.
+  A page break no longer ends that run either where the sentence before it goes on over the
+  page. On 50 arXiv papers read both as PDF and as HTML, the prose the HTML reads and the PDF
+  left unscored fell from 19,000 words to 3,000, and the two readings give a paragraph the
+  same verdict 95.0% of the time (93.6% before).
 - On arXiv's HTML papers, short paragraphs are read together with their neighbours, as on
   any other page and as the PDF reader reads them. Each paragraph there sits in a box of
   its own, so none under the 75-word floor was ever grouped: proofs, definitions and short

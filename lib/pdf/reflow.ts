@@ -105,6 +105,12 @@ export interface ReflowBlock {
    * block and says false, because the break is inside it rather than in front of it.
    */
   columnBreak: boolean;
+  /**
+   * The block stops where a display equation the reader passes over takes its sentence on:
+   * "…can be written equivalently as". An open end then says the sentence goes on, not
+   * that the block is a label (lib/pdf/units.ts). Only lib/pdf/structured.ts knows it.
+   */
+  runsOn?: boolean;
 }
 
 // ---- tuning ---------------------------------------------------------------------------

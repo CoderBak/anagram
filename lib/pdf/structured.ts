@@ -539,11 +539,11 @@ function originOf(node: SdtBlock): string {
   return `${node.type}${node.flowClass ? `:${node.flowClass}` : ""}${node.reference ? ":ref" : ""}`;
 }
 
-function readingsOf(content: SdtBlock[], everything: boolean): (Reading | "barrier" | "skip")[] {
-  const out: (Reading | "barrier" | "skip")[] = [];
+function readingsOf(content: SdtBlock[], everything: boolean): (Reading | "barrier" | "display" | "skip")[] {
+  const out: (Reading | "barrier" | "display" | "skip")[] = [];
   const aside = (node: SdtBlock, path: number[]): void => {
     if (everything) out.push({ kind: "paragraph", block: node, path, origin: originOf(node) });
-    else out.push(node.reference ? "barrier" : "skip");
+    else out.push(node.reference ? "barrier" : node.type === "math" ? "display" : "skip");
   };
   content.forEach((node, i) => {
     if (node.flowClass || node.reference) { aside(node, [i]); return; }
@@ -572,15 +572,29 @@ function readingsOf(content: SdtBlock[], everything: boolean): (Reading | "barri
  * (`previousPart`); a LaTeX paragraph cut in two by its own equation it does not.
  */
 function continues(prev: Piece[], next: Piece[]): boolean {
-  const before = prev.map((p) => p.ch).join("").trimEnd();
   const first = next.find((p) => p.ch !== " ");
-  return before !== "" && !SENTENCE_END.test(before) && first !== undefined && /\p{Ll}/u.test(first.ch);
+  return runsOn(prev) && first !== undefined && /\p{Ll}/u.test(first.ch);
+}
+
+/** The text stops without ending its sentence. */
+function runsOn(pieces: Piece[]): boolean {
+  const text = pieces.map((p) => p.ch).join("").trimEnd();
+  return text !== "" && !SENTENCE_END.test(text);
 }
 
 /** 1-based page a block starts on, by its first rect. */
 function startPage(block: SdtBlock): number {
   const rect = block.anchor?.pageRects?.[0];
   return rect ? rect[0] + 1 : 0;
+}
+
+/** 1-based page a block's text ends on, by its last glyph. */
+function endPage(draft: Draft): number {
+  for (let i = draft.pieces.length - 1; i >= 0; i--) {
+    const g = draft.pieces[i].glyph;
+    if (g) return g.page + 1;
+  }
+  return draft.block.page;
 }
 
 /**
@@ -609,6 +623,8 @@ interface Draft {
   /** The last answer, and which of the block's pages were rendered when it was given. */
   seen: string | null;
   result: StructuredBlock | null;
+  /** A display equation came after the block's last part. */
+  display: boolean;
 }
 
 /**
@@ -624,7 +640,6 @@ export interface StructuredReader {
 
 export function createStructuredReader(structure: SdtStructure, options: StructuredOptions = {}): StructuredReader {
   const readings = readingsOf(structure.content, options.everything === true);
-  const blocks: StructuredBlock[] = [];
   /** The draft each read path became, for the parts that continue it. */
   const byPath = new Map<string, Draft>();
   const drafts: Draft[] = [];
@@ -633,7 +648,8 @@ export function createStructuredReader(structure: SdtStructure, options: Structu
   let open: Draft | null = null;
   for (const r of readings) {
     if (r === "barrier") { barrier = true; open = null; continue; }
-    if (r === "skip") continue;
+    if (r === "display" && open) open.display = true;
+    if (r === "skip" || r === "display") continue;
     const pieces = piecesOf(r.block);
     const part = r.block.previousPart ? byPath.get(r.block.previousPart.join(".")) : undefined;
     const prev = part ?? (r.kind === "paragraph" && open !== null && !options.everything && continues(open.pieces, pieces) ? open : undefined);
@@ -645,19 +661,23 @@ export function createStructuredReader(structure: SdtStructure, options: Structu
       if (last && last.ch === "-" && first && /\p{Ll}/u.test(first.ch)) prev.pieces.pop();
       else prev.pieces.push({ ch: " ", glyph: null });
       prev.pieces.push(...pieces);
+      prev.display = false;
       byPath.set(r.path.join("."), prev);
       continue;
     }
     const page = startPage(r.block);
-    const previous = blocks.at(-1);
+    const previous = drafts.at(-1);
+    // A page is no break in the writing where the sentence before it goes on over it —
+    // most often into a display equation at the head of the next page. Where it ended, the
+    // page is where the reader's grouping stops, as it always did.
+    const turned = previous !== undefined && endPage(previous) !== page && !(previous.block.kind === "paragraph" && runsOn(previous.pieces));
     const block: StructuredBlock = {
       kind: r.kind, text: "", page, runs: [], apart: false,
-      columnBreak: barrier || !previous || previous.page !== page,
+      columnBreak: barrier || !previous || turned,
       ...(options.everything ? { origin: r.origin } : {}),
     };
     barrier = false;
-    blocks.push(block);
-    const draft: Draft = { block, pieces, pages: [], seen: null, result: null };
+    const draft: Draft = { block, pieces, pages: [], seen: null, result: null, display: false };
     drafts.push(draft);
     byPath.set(r.path.join("."), draft);
     open = r.kind === "paragraph" ? draft : null;
@@ -678,7 +698,8 @@ export function createStructuredReader(structure: SdtStructure, options: Structu
         const seen = d.pages.filter((n) => pagesByNumber.has(n)).join(",");
         if (d.seen !== seen) {
           const { text, runs } = assemble(d.pieces, locate(d.pieces, pagesByNumber), vocab);
-          d.result = text === "" ? null : { ...d.block, text, runs };
+          const on = d.display && d.block.kind === "paragraph" && !SENTENCE_END.test(text);
+          d.result = text === "" ? null : { ...d.block, text, runs, ...(on ? { runsOn: true } : {}) };
           d.seen = seen;
         }
         if (d.result) out.push(d.result);
