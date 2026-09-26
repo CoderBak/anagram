@@ -367,6 +367,8 @@ function runsApart(a: Source, b: Source): boolean {
 }
 
 const HYPHEN = /[-‐­]/u;
+/** Punctuation that ends a clause or a sentence, kept where the formula before it is not. */
+const CLAUSE_END = /^[.,;:!?]$/u;
 
 /** A token of the text: consecutive glyphs with no word space among them. */
 interface Token {
@@ -389,7 +391,8 @@ interface Assembled {
  *  - A FORMULA is left out. A token with a glyph in a mathematics font is one, and so is
  *    a letterless token beside it on the same line — the parentheses, digits, operators
  *    and punctuation the formula is set in, which come from the text face in TeX. What
- *    remains is the sentence around the formula, which is the writing.
+ *    remains is the sentence around the formula, which is the writing, with the full stop
+ *    or comma that closed the formula, as arXiv's HTML has it.
  *  - A HYPHEN at a line break is Zotero's to drop, and it drops every one: "language-only"
  *    becomes "languageonly". The hyphen is still in pdf.js's run, and the document's own
  *    vocabulary says whether the word is spelt with it (lib/pdf/reflow.ts).
@@ -439,7 +442,16 @@ function assemble(pieces: Piece[], { sources, faces }: Located, vocab: Vocabular
   let text = "";
   const prov: (Source | null)[] = [];
   tokens.forEach((t, k) => {
-    if (drop[k]) return;
+    if (drop[k]) {
+      // The formula goes; the full stop or the comma after it, set in the text face, stays
+      // with the sentence it ends, as it does on arXiv's HTML: "the value of x." reads
+      // "the value of.", not "the value of" run into the next sentence.
+      let tail = t.at.length;
+      while (tail > 0 && CLAUSE_END.test(pieces[t.at[tail - 1]].ch) && !faces[t.at[tail - 1]]?.math) tail--;
+      if (text === "") return;
+      for (const i of t.at.slice(tail)) { text += pieces[i].ch; prov.push(sources[i]); }
+      return;
+    }
     if (text !== "") { text += " "; prov.push(null); }
     let previous: number | null = null;
     for (const i of t.at) {

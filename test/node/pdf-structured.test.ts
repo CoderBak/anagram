@@ -263,6 +263,31 @@ describe("structuredBlocks — formulas", () => {
     expectRunsToMatch(blocks[0], pages);
   });
 
+  it("keeps the full stop and the comma that close a formula, as arXiv's HTML does", () => {
+    const fonts = { f_text: "NimbusRomNo9L-Regu", f_math: "BXJUHM+CMMI10", f_cmr: "UTRHDZ+CMR10" };
+    const items: PdfTextItem[] = [];
+    const runs: (number | number[])[][] = [];
+    let x = 72;
+    const put = (text: string, font: string, gap = CW) => {
+      const d = drawn(1, { text, x, y: 100, font });
+      items.push(d.item);
+      runs.push(d.run);
+      x += text.length * CW + gap;
+    };
+    put("the value of", "f_text");
+    put("x", "f_math", 0);
+    put(",", "f_cmr");
+    put("then of", "f_text");
+    put("y", "f_math", 0);
+    put("= 1.5.", "f_cmr");
+    put("The next", "f_text");
+    const n = { text: "the value of x, then of y = 1.5. The next", anchor: { textMap: JSON.stringify(runs) } };
+    const pages = [pageText(1, items, fonts)];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0].text).toBe("the value of, then of. The next");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
   it("leaves out a formula's letter that pdf.js spells otherwise, by the face it is set in", () => {
     // Zotero reads a "ψ" where pdf.js's run of the mathematics face holds another code
     // point (a font without a Unicode map): the glyph is in no run's string.
