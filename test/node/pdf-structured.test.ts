@@ -418,7 +418,11 @@ describe("structuredBlocks — formulas", () => {
     put("(", "f_cmr", 0);
     put("x", "f_math", 0);
     put(")", "f_cmr");
-    put("+ 0.5 in the", "f_text");
+    // TeX sets the decimal point of a formula in its mathematics face.
+    put("+ 0", "f_cmr", 0);
+    put(".", "f_math", 0);
+    put("5", "f_cmr");
+    put("in the", "f_text");
     const text = "where r is the value of (x) + 0.5 in the";
     const n = { text, anchor: { textMap: JSON.stringify(runs) } };
     const pages = [pageText(1, items, fonts)];
@@ -445,7 +449,9 @@ describe("structuredBlocks — formulas", () => {
     put(",", "f_cmr");
     put("then of", "f_text");
     put("y", "f_math", 0);
-    put("= 1.5.", "f_cmr");
+    put("= 1", "f_cmr", 0);
+    put(".", "f_math", 0);
+    put("5.", "f_cmr");
     put("The next", "f_text");
     const n = { text: "the value of x, then of y = 1.5. The next", anchor: { textMap: JSON.stringify(runs) } };
     const pages = [pageText(1, items, fonts)];
@@ -499,6 +505,34 @@ describe("structuredBlocks — formulas", () => {
     const pages = [pageText(1, items, fonts)];
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
     expect(blocks[0].text).toBe("the bound is finite, and is the score of in the log of the data.");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
+  it("keeps a number the text writes beside a formula, as arXiv's HTML does", () => {
+    // TeX sets a formula's decimal point and comma in its mathematics face, so a number
+    // whose point or comma is in the text face is the text's ("11.3 $\mu$m"), and so is one
+    // that ends its clause before the formula starts ("Theorem 2, $x$").
+    const fonts = { f_text: "NimbusRomNo9L-Regu", f_math: "BXJUHM+CMMI10" };
+    const items: PdfTextItem[] = [];
+    const runs: (number | number[])[][] = [];
+    let x = 72;
+    const put = (text: string, font: string, gap = CW) => {
+      const d = drawn(1, { text, x, y: 100, font });
+      items.push(d.item);
+      runs.push(d.run);
+      x += text.length * CW + gap;
+    };
+    put("the pores are 11.3", "f_text");
+    put("µ", "f_math", 0);
+    put("m wide, and by Theorem 2,", "f_text");
+    put("x", "f_math");
+    put("is bounded by 1,024", "f_text");
+    put("n", "f_math", 0);
+    put(".", "f_text");
+    const n = { text: "the pores are 11.3 µm wide, and by Theorem 2, x is bounded by 1,024 n.", anchor: { textMap: JSON.stringify(runs) } };
+    const pages = [pageText(1, items, fonts)];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0].text).toBe("the pores are 11.3 m wide, and by Theorem 2, is bounded by 1,024.");
     expectRunsToMatch(blocks[0], pages);
   });
 

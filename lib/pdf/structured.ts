@@ -506,9 +506,21 @@ function assemble(pieces: Piece[], { sources, faces }: Located, vocab: Vocabular
   };
   /** What stands beside a formula and goes with it. */
   const withFormula = (t: Token): boolean => !t.letters || OPERATOR.has(letters(t)) || script(t);
+  /** A comma or a full stop in the text face. TeX sets a formula's own in its mathematics
+   *  face — the point of "$0.5$", the comma of "$x, y$" — so this one is the text's. */
+  const textStop = (i: number): boolean => (pieces[i].ch === "." || pieces[i].ch === ",") && faces[i] !== null && !faces[i]!.math;
+  /** A number the text writes, its decimal point or its thousands comma in the text face:
+   *  the "11.3" of "11.3 $\mu$m". */
+  const written = (t: Token): boolean =>
+    t.at.some((i, k) => k > 0 && k + 1 < t.at.length && textStop(i) && /\d/u.test(pieces[t.at[k - 1]].ch) && /\d/u.test(pieces[t.at[k + 1]].ch));
+  /** The token ends its clause in the text face, so a formula after it starts after it:
+   *  "by Theorem 2, $x$". */
+  const closes = (t: Token): boolean => textStop(t.at[t.at.length - 1]);
   const drop = tokens.map((t) => t.math || (t.letters && greek(t)));
-  for (let i = 1; i < tokens.length; i++) if (drop[i - 1] && withFormula(tokens[i]) && beside(tokens[i - 1], tokens[i])) drop[i] = true;
-  for (let i = tokens.length - 2; i >= 0; i--) if (drop[i + 1] && withFormula(tokens[i]) && beside(tokens[i], tokens[i + 1])) drop[i] = true;
+  for (let i = 1; i < tokens.length; i++) if (drop[i - 1] && withFormula(tokens[i]) && !written(tokens[i]) && beside(tokens[i - 1], tokens[i])) drop[i] = true;
+  for (let i = tokens.length - 2; i >= 0; i--) {
+    if (drop[i + 1] && withFormula(tokens[i]) && !written(tokens[i]) && !closes(tokens[i]) && beside(tokens[i], tokens[i + 1])) drop[i] = true;
+  }
 
   // ---- the text ----
   let text = "";

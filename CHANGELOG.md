@@ -132,6 +132,12 @@ local component and the installer all carry the same version.
   as the web walker does with the same marks on the paper's HTML. A bracket that names a
   year ("[Higham, 2002]") is read as an author–year citation, and one with no reference in
   it ("[sic]") as the writer's own.
+- The PDF reader keeps a number the text writes next to an inline formula: "pores of 11.3 μm"
+  read as "pores of m", "by Theorem 2, x is" as "by Theorem, is", and "(Federer, 1969,
+  3.2.12)" lost its year. A number beside a formula went with it, because TeX sets a formula's
+  digits in the text's face; but it sets a formula's decimal point and comma in the
+  mathematics face, so a number whose point or comma is the text's, or one that closes its
+  clause before the formula starts, is read now, as arXiv's HTML reads it.
 - A raised number right after a word is left out of a web page's text even when it is not a
   link: an author's own superscript citation on arXiv ("change¹⁻⁴"), a footnote number on an
   older page ("report⁴"). After a unit or a variable it is still read as an exponent ("km²",
