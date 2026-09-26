@@ -579,6 +579,10 @@
     "message": "Open any article and a chip appears after each paragraph.",
     "description": "Shown on the setup page once the engine is ready and sites are allowed."
   },
+  "onbArxivTip": {
+    "message": "Tip: most arXiv papers also have an HTML version at arxiv.org/html/. Its paragraphs and formulas are marked up, so Anagram reads it most precisely. PDFs are read too.",
+    "description": "A tip on the setup page's How it reads card."
+  },
   "componentTitle": {
     "message": "Local engine",
     "description": "Name of the native component, used everywhere."

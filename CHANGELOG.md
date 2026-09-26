@@ -7,6 +7,11 @@ local component and the installer all carry the same version.
 
 ## [Unreleased]
 
+### Added
+
+- The setup page mentions that most arXiv papers also have an HTML version, which Anagram
+  reads most precisely. Nothing redirects there; PDFs are read as before.
+
 ### Changed
 
 - Anagram's code is now licensed under the GNU AGPL v3.0 or later. The licence text ships

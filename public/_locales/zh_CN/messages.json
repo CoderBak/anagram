@@ -456,6 +456,9 @@
   "onbGo": {
     "message": "打开任意文章，每段之后都会出现一枚标签。"
   },
+  "onbArxivTip": {
+    "message": "提示：大多数 arXiv 论文另有 HTML 版本（arxiv.org/html/），段落和公式都有标记，Anagram 读取最准确。PDF 同样可以读取。"
+  },
   "componentTitle": {
     "message": "本地引擎"
   },

@@ -42,6 +42,7 @@
       .bands .sc .dot { background: var(--c); } .b-none .dot { background: var(--d-none); }
       .b-lang .dot { background: var(--d-none); box-shadow: inset 0 0 0 2px var(--card); }
 
+      .tip { margin: 0; font-size: 13.5px; color: var(--muted-foreground); }
       .links { margin: 4px 0 0; font-size: 14px; color: var(--muted-foreground); }
       .links a { display: inline-block; min-height: 24px; line-height: 24px; color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; }
       footer.foot { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 13px; line-height: 1.6; color: var(--muted-foreground); }
@@ -99,6 +100,7 @@
               <span class="badge b-none" data-variant="outline"><span class="dot"></span><span data-i18n="bandUnavailable">Unavailable</span></span>
               <span class="badge b-lang" data-variant="outline"><span class="dot"></span><span data-i18n="bandUnsupported">Unsupported language</span></span>
             </div>
+            <p class="tip" data-i18n="onbArxivTip">Tip: most arXiv papers also have an HTML version at arxiv.org/html/. Its paragraphs and formulas are marked up, so Anagram reads it most precisely. PDFs are read too.</p>
           </section>
         </section>
 
