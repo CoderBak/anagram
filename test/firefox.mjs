@@ -12,17 +12,14 @@
 //
 //   * MV2: a background PAGE, not a service worker, and browserAction instead of action;
 //   * moz-extension:// pages (popup / options / onboarding) render and talk to it;
-//   * the CSS Custom Highlight API is Firefox 140+; below that the DOCUMENTED behaviour
-//     is chips without underlines, so that check reports SKIP rather than failing —
-//     what actually happens below 140 is in the FINDINGS block at the end of a run;
-//   * there is no Navigation API in older Firefox, so a pushState route swap is covered
-//     by the orchestrator's 2.5 s URL poll and is given ~6 s here;
+//   * Firefox 140 ESR, the manifest's floor, has no Navigation API, so a pushState route
+//     swap is covered by the orchestrator's 2.5 s URL poll and is given ~6 s here;
 //   * the Popover API (top-layer hover card) has a CSS fallback;
 //   * the PDF reading mode is the one page where the whole pipeline runs on a
 //     moz-extension: document, and it loads pdf.js and a MODULE WORKER from that origin.
 //
-//   npm run build:firefox && npm run test:firefox
-//   npm run test:firefox -- --quick     # skip the fixture down/up cycle (~25 s)
+//   node test/firefox.mjs
+//   node test/firefox.mjs --quick     # skip the fixture down/up cycle (~25 s)
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
@@ -88,7 +85,7 @@ await sleep(1200);
 const versionText = await optionsPage.evaluate(() => document.getElementById("version")?.textContent ?? "");
 check(
   "options page renders and shows the version (background page reachable)",
-  /^v\d+\.\d+\.\d+ · Ready to analyze$/.test(versionText),
+  /^v\d+\.\d+\.\d+ · Ready$/.test(versionText),
   versionText,
 );
 
@@ -201,24 +198,12 @@ check(
   `${fixture.stats.blocks} blocks, ${fixture.stats.nonEnglishBlocks} non-English`,
 );
 
-// ── 5) underlines: CSS Custom Highlight API is Firefox 140+ ────────────────────────
-if (features.highlights) {
-  check(
-    "underlines: highlight ranges exist and cover the LONGTAIL marker",
-    snapshot.highlightCount > 0 && snapshot.hl.longtail,
-    `${snapshot.highlightCount} ranges, longtail=${snapshot.hl.longtail}`,
-  );
-} else {
-  skip(
-    "underlines: highlight ranges exist and cover the LONGTAIL marker",
-    `CSS.highlights missing in Firefox ${firefox.version} (needs 140+) — documented degradation to chips only`,
-  );
-  check(
-    "…degrades gracefully: chips still render without CSS.highlights",
-    snapshot.badgeTotal >= 11 && snapshot.highlightCount === 0,
-    `${snapshot.badgeTotal} chips, ${snapshot.highlightCount} ranges`,
-  );
-}
+// ── 5) underlines: the CSS Custom Highlight API ────────────────────────────────────
+check(
+  "underlines: highlight ranges exist and cover the LONGTAIL marker",
+  snapshot.highlightCount > 0 && snapshot.hl.longtail,
+  `${snapshot.highlightCount} ranges, longtail=${snapshot.hl.longtail}`,
+);
 
 // ── 6) the floating ball, its counter, the panel, the toggle ───────────────────────
 const fab = await page.evaluate(() => {
@@ -376,18 +361,11 @@ const underlineLive = await (async () => {
   const on = await waitFor(page, () => document.querySelector('style[data-anagram="style"]')?.disabled === false, { timeout: 8000 });
   return { hadStyleEl: !!before, paintsTheScale: /::highlight\(anagram-s00\)/.test(before?.css ?? ""), off, on };
 })();
-if (features.highlights) {
-  check(
-    "a setting written in the options page reaches an open tab live (underlines off and on)",
-    underlineLive.hadStyleEl && underlineLive.paintsTheScale && underlineLive.off && underlineLive.on,
-    JSON.stringify(underlineLive),
-  );
-} else {
-  skip(
-    "a setting written in the options page reaches an open tab live (underlines off and on)",
-    "no ::highlight() stylesheet is injected without CSS.highlights",
-  );
-}
+check(
+  "a setting written in the options page reaches an open tab live (underlines off and on)",
+  underlineLive.hadStyleEl && underlineLive.paintsTheScale && underlineLive.off && underlineLive.on,
+  JSON.stringify(underlineLive),
+);
 
 // ── 9) extension pages render: popup, options, onboarding ──────────────────────────
 const popupPage = await openExtensionPage(browser, extUrl("popup.html")).catch(() => null);
@@ -427,11 +405,11 @@ const badgeApi = await optionsPage
     const before = await browser.browserAction.getBadgeText({ tabId: own.id });
     const rejected = await browser.runtime.sendMessage({ action: "updateBadge", flagged: 7 });
     const after = await browser.browserAction.getBadgeText({ tabId: own.id });
-    const [tab] = await browser.tabs.query({ url });
+    const tab = (await browser.tabs.query({})).find((t) => t.url === url);
     const state = await browser.tabs.sendMessage(tab.id, { action: "getTabState" }, { frameId: 0 });
     const actual = await browser.browserAction.getBadgeText({ tabId: tab.id });
     return { before, after, rejected, actual, expected: state.flagged > 0 ? String(state.flagged) : "" };
-  }, pageUrl)
+  }, await page.evaluate(() => location.href)) // the pushState route swap above moved it
   .catch((e) => ({ error: String(e).slice(0, 200) }));
 check(
   "MV2 toolbar badge follows the actual content frame and rejects Settings spoofing",
@@ -479,8 +457,6 @@ const renderPdfPages = async (page) => {
   }
   return true;
 };
-/** What Resource Timing reported on the reader page — evidence for a finding below. */
-let pdfResources = [];
 {
   // File/drop rendering is independent of source grants. Authorized online loading
   // through the popup/private loader is covered by pdf-source-firefox.mjs.
@@ -527,14 +503,10 @@ let pdfResources = [];
           marks,
           notice: document.getElementById("notice")?.textContent ?? "",
           title: document.title,
-          // What Resource Timing reports on a privileged document — nothing of the page's
-          // own origin here, which is why the worker is watched by its constructor below.
-          resources: performance.getEntriesByType("resource").map((e) => e.name.split("/").pop()),
         };
       }, BADGE_SEL)
     : null;
   console.log("PDF READER:", JSON.stringify(pdf).slice(0, 400));
-  pdfResources = pdf?.resources ?? [];
   check(
     "PDF reader: Gecko draws the real pages and builds a text layer over each of them",
     !!pdf &&
@@ -562,7 +534,7 @@ let pdfResources = [];
 // nothing on its own: when the worker cannot be created pdf.js falls back to a "fake
 // worker" on the main thread and parses it anyway. Firefox reports no Resource Timing
 // entry for a moz-extension: subresource and BiDi runs no preload script on a privileged
-// document (see the findings at the end), so the constructor is watched instead — on a
+// document, so the constructor is watched instead — on a
 // reader opened with NO source, which loads nothing until a file arrives.
 {
   const readerUrl = extUrl("reader.html");
@@ -630,19 +602,19 @@ await page
   .then(() => console.log("screenshot:", shot))
   .catch((e) => console.log("screenshot failed:", String(e).slice(0, 120)));
 
-// ── 11b) diagnostic (no assertion): does the idle prefetch lane run at all? ────────
+// ── 11b) the idle prefetch lane ────────────────────────────────────────────────────
 // Scoring is viewport-first and everything else is drained by an idle-time background
-// lane, so a page that is never scrolled should still end up fully scored. Chromium
-// does; if Firefox stops at the first viewport, the lane never ran.
-const prefetched = await (async () => {
+// lane, so a page that is never scrolled still ends up fully scored. It once stopped at the
+// first viewport here: Gecko refuses a requestIdleCallback called off `window`.
+{
   const p = await browser.newPage();
   await setViewportSafe(p);
   await p.goto(pageUrl, { waitUntil: "load" });
   await sleep(7000); // no scrolling at all
   const n = await p.evaluate((sel) => document.querySelectorAll(sel).length, BADGE_SEL);
   await p.close();
-  return n;
-})();
+  check("a page that is never scrolled is scored whole by the idle lane", n === snapshot.badgeTotal, `${n} of ${snapshot.badgeTotal}`);
+}
 
 // ── 12) fixture down → "Unavailable" + "!" counter; fixture back → re-queued ─────────
 if (QUICK) {
@@ -660,7 +632,8 @@ if (QUICK) {
         `${pid.toUpperCase()} paragraph is appended while the scoring fixture is stopped, so ` +
         "the extension must not invent a verdict for it: the batch that hits the dead socket renders as " +
         "Unavailable and later paragraphs wait without any chip, until a health probe succeeds again and " +
-        "every waiting or unavailable unit is queued once more without a reload or a manual rescan.";
+        "every waiting or unavailable unit is queued once more without a reload or a manual rescan. " +
+        "Till then, a reader has to be able to tell a unit that waits from one that was read, and a fault from a verdict.";
       document.body.prepend(el);
       window.scrollTo(0, 0);
     }, id);
@@ -723,66 +696,6 @@ const pass = results.filter((r) => r.state === "PASS").length;
 const fail = results.filter((r) => r.state === "FAIL").length;
 const skipped = results.filter((r) => r.state === "SKIP").length;
 console.log(`\n${pass} passed · ${fail} failed · ${skipped} skipped`);
-
-// ── Firefox-vs-Chromium findings ───────────────────────────────────────────────────
-// Differences this suite has established. Product code is NOT worked around here: a
-// difference that breaks a behaviour is a FAIL above, and what it is stands below.
-console.log("\n=== FIREFOX vs CHROMIUM ===");
-const xrayBug = consoleErrors.some((e) => e.includes("Accessing from Xray wrapper"));
-if (xrayBug || (snapshot.badgeTotal === 0 && !features.highlights)) {
-  console.log(
-    "FINDING · nothing renders at all on this Firefox. Assigning a constructed stylesheet to a\n" +
-      "  shadow root from a CONTENT SCRIPT — lib/render/badge.ts:200, lib/render/fab.ts:600,\n" +
-      "  lib/render/selectionCard.ts:151, lib/docsOverlay.ts:233, all `shadow.adoptedStyleSheets = [sheet()]` —\n" +
-      "  throws in Gecko before 140:\n" +
-      "    Error: Accessing from Xray wrapper is not supported.\n" +
-      "  Cross-compartment adoptedStyleSheets only became usable from a content script in Firefox 140,\n" +
-      "  the same release that brought CSS.highlights. Every chip and the floating ball die on the\n" +
-      "  first render, so the extension does nothing — it does NOT degrade to chips without\n" +
-      "  underlines. The manifest's strict_min_version is 128.0 (wxt.config.ts:21) and README's\n" +
-      "  'Install (unpacked)' says older versions degrade gracefully; the real floor is 140.\n" +
-      "  Reproduce: `ANAGRAM_FIREFOX=<firefox 139> npm run test:firefox`.",
-  );
-}
-const ricBug = consoleErrors.some((e) => e.includes("requestIdleCallback"));
-if (ricBug) {
-  console.log(
-    "FINDING · lib/capture/orchestrator.ts:486 reads `const ric = window.requestIdleCallback`\n" +
-      "  and calls it unbound. Firefox's WebIDL binding rejects the undefined receiver:\n" +
-      '    TypeError: \'requestIdleCallback\' called on an object that does not implement interface Window.\n' +
-      "  The throw escapes schedulePrefetch() -> ingestUnits() -> start(), so the tail of the\n" +
-      "  content script's boot (watchUrl() and the late-Defuddle re-derive) never runs, and\n" +
-      "  because `prefetchScheduled` was already set to true the idle prefetch lane is dead for\n" +
-      "  the life of the frame — it throws exactly once and is then skipped by its own guard.\n" +
-      `  Measured here: ${prefetched} of ${snapshot.badgeTotal} units are scored on a page that is\n` +
-      "  never scrolled (Chromium scores all of them from the idle lane). Chromium accepts the\n" +
-      "  unbound call, which is why no existing suite sees this.",
-  );
-} else {
-  console.log(`idle prefetch: ${prefetched} of ${snapshot.badgeTotal} units scored without scrolling.`);
-}
-console.log(
-  `NOTE · window.navigation is ${features.navigation ? "PRESENT" : "absent"} in Firefox ${firefox.version}. ` +
-    "lib/capture/orchestrator.ts:59-62 still says the Navigation API is a Chrome-only path and that\n" +
-    "  Firefox falls back to the 2.5 s URL poll; on this build the Navigation API branch is taken.",
-);
-console.log(
-  "NOTE · a moz-extension: document reports NO Resource Timing entry for its own subresources in\n" +
-    "  Firefox: on the PDF reader page, `performance.getEntriesByType(\"resource\")` lists nothing at all —\n" +
-    "  not the on-demand pdf.js chunk and not its worker\n" +
-    `  (this run: ${JSON.stringify(pdfResources)}). Chromium lists both. BiDi also runs no preload\n` +
-    "  script on a privileged document (`evaluateOnNewDocument` installs and never fires) and\n" +
-    "  surfaces no dedicated workers (`page.workers()` is empty), so the suite watches the Worker\n" +
-    "  constructor from inside the page instead.",
-);
-console.log(
-  "NOTE · test infrastructure: Firefox's WebDriver BiDi reports neither a URL nor a load event for a\n" +
-    "  moz-extension: document (page.url() stays \"about:blank\", page.goto always times out), and it\n" +
-    "  refuses script evaluation there unless the browser was started with -remote-allow-system-access.\n" +
-    "  Content-script console.log output is not relayed to the page's log either — only uncaught\n" +
-    "  content-script exceptions surface, as page errors. See test/firefox-harness.mjs.",
-);
-
 console.log("\n" + (fail === 0 ? "✅ ALL CHECKS PASSED" : "❌ SOME CHECKS FAILED"));
 
 await browser.close();

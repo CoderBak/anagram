@@ -332,10 +332,15 @@ export async function sweep(page, steps = 8, stepDelay = 320) {
     .catch(() => {});
 }
 
-/** puppeteer's waitForFunction, reduced to a boolean (no throw on timeout). */
+/**
+ * Poll `fn` in the page until it returns something truthy; false on timeout. Not puppeteer's
+ * waitForFunction: Firefox 140 does not run that one on a moz-extension: document.
+ */
 export async function waitFor(page, fn, { timeout = 8000, arg } = {}) {
-  return page
-    .waitForFunction(fn, { timeout, polling: 200 }, arg)
-    .then(() => true)
-    .catch(() => false);
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    if (await page.evaluate(fn, arg).catch(() => false)) return true;
+    if (Date.now() >= deadline) return false;
+    await sleep(200);
+  }
 }
