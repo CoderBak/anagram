@@ -22,6 +22,10 @@ local component and the installer all carry the same version.
   lines are grouped on their own, so a column printed a few points lower than its
   neighbour no longer splits a formula's subscripts off into a line of their own, which
   broke the paragraph around it into pieces too short to score.
+- A sidenote or margin note floated beside a paragraph (tufte-css pages and others like
+  them) is no longer read into the middle of the sentence it annotates. It is read as a
+  paragraph of its own after that paragraph, and a short note is scored with it. Only a
+  floated initial of one word is still read as a drop cap.
 
 ## [0.7.0] — 2026-09-26
 

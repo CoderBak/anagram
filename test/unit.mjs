@@ -136,6 +136,20 @@ const results = await page.evaluate(() => {
   u = collect(`<p><span style="float:left;font-size:2em">T</span>${words(80)}</p>`);
   check("floated drop-cap span stays inline", u.length === 1 && u[0].text.startsWith("T"), JSON.stringify(u.map(x => x.text.slice(0, 12))));
 
+  // A sidenote or a margin note (tufte-css: `span.sidenote { float: right }` in the middle of
+  // a sentence) is the author's text, but not the sentence it floats beside: it is read after
+  // that paragraph, as a paragraph of its own.
+  u = collect(`<p>AAA ${words(40)} <span style="float:right;width:30%">SIDENOTE ${words(20)}</span> BBB ${words(40)}</p>`);
+  check("a floated sidenote in mid-sentence is a run of its own after its paragraph, which reads on across it",
+    u.length === 1 && u[0].parts === 2 && u[0].text === `AAA ${words(40)} BBB ${words(40)}\n\nSIDENOTE ${words(20)}`,
+    JSON.stringify(u.map(x => [x.parts, x.text.split("\n\n").map((t) => t.slice(0, 12))])));
+  u = collect(`<p>P0 ${words(80)}</p><p>P1 ${words(40)}<span style="float:right;width:30%">SIDENOTE ${words(20)}</span> ${words(40)}</p><p>P2 ${words(80)}</p>`);
+  check("…and a short one joins the paragraph it floats beside, not the one before it",
+    u.length === 3 && u[0].parts === 1 && u[1].parts === 2 && u[1].text.startsWith("P1 ") && u[1].text.includes("\n\nSIDENOTE ") && u[2].parts === 1,
+    JSON.stringify(u.map(x => [x.parts, x.text.split("\n\n").map((t) => t.slice(0, 12))])));
+  u = collect(`<p><span style="float:left;font-size:3em">“T</span>he ${words(80)}</p>`);
+  check("…while a floated initial with its opening quote is still a drop cap", u.length === 1 && u[0].parts === 1 && u[0].text.startsWith("“The "), JSON.stringify(u.map(x => x.text.slice(0, 12))));
+
   u = collect(`<p>${words(40)}</p><div style="display:inline-block"><div>${words(9)}</div></div><p>${words(40)}</p>`);
   check("inline-block card with block children does not sever merging siblings", u.length >= 1, JSON.stringify(u.map(x => [x.parts, x.words])));
 
@@ -2095,6 +2109,7 @@ const EXPECTED = {
   "substack-note": [3, 1],
   "telegram-channel": [2, 1],
   "thread-100": [75, 50],
+  "tufte-sidenotes": [4, 3],
   "v2ex-topic": [2, 2],
   "wordpress-comments": [2, 2],
   "x-timeline": [7, 5],

@@ -6,8 +6,9 @@
 //
 //   walk  — text nodes accumulate into an inline RUN; block-laid-out elements
 //           close runs (a run == one visual paragraph). Inline markup — <code>,
-//           <em>, links, drop caps — never splits a sentence. <br> and blank
-//           lines in preserved-whitespace contexts are paragraph breaks.
+//           <em>, links, drop caps — never splits a sentence, and neither does a
+//           sidenote floated into the margin: it is read after its paragraph. <br> and
+//           blank lines in preserved-whitespace contexts are paragraph breaks.
 //   asm   — a paragraph of ≥ MIN_UNIT_WORDS is a unit of its own. Consecutive SHORT runs
 //           of ONE VOICE (the lines of a post, list items, the short paragraphs of an
 //           article or of one comment) MERGE into multi-part units — short text gets
@@ -120,6 +121,16 @@ function isCitationMarker(el: Element, tag: string): boolean {
   return false;
 }
 
+/** Longer than this, a floated phrase element is no drop cap whatever it holds. */
+const DROP_CAP_CHARS = 12;
+
+/** A drop cap or a raised initial word — `T`, `“T`, `Once` — begins the sentence it floats
+ *  beside. A float of several words is a note beside it. */
+function isDropCap(el: Element): boolean {
+  const text = (el.textContent ?? "").trim();
+  return text.length <= DROP_CAP_CHARS && countWords(text) <= 1;
+}
+
 /** One assembled inline run (== one visual paragraph) awaiting unit assembly. */
 interface Run {
   nodes: Text[];
@@ -139,6 +150,8 @@ interface Run {
   index: number;
   /** Incremental re-scan: a live unit already owns exactly this run. */
   claimed: boolean;
+  /** A sidenote or margin note, read right after the paragraph it floats beside (see visitNote). */
+  note: boolean;
 }
 
 /** A run the walk has found but nobody has READ yet: reading — joining the text, counting
@@ -148,6 +161,7 @@ interface Found {
   container: Element;
   preserved: boolean;
   formulas: number;
+  note: boolean;
 }
 
 export interface CollectOptions {
@@ -306,31 +320,56 @@ export function collectUnits(
     return true;
   }
 
+  /** Runs read inside a floated note while the walk was in the middle of a paragraph: they
+   *  wait for that paragraph to close, and are processed right after it (see visitNote). */
+  let notes: Found[] = [];
+  /** How many floated notes the walk is inside. */
+  let inNote = 0;
+
   function closeRun(): void {
     // Interior whitespace nodes were kept (see visitText); trailing ones are not
     // part of the paragraph.
     while (cur.length > 0 && (cur[cur.length - 1].textContent ?? "").trim() === "") cur.pop();
-    const formulas = curFormulas;
-    curFormulas = 0;
-    if (cur.length === 0) {
-      cur = [];
-      curContainer = null;
-      curPreserved = false;
-      curQuote = -1;
-      return;
-    }
-    const nodes = cur;
-    const container = curContainer as Element;
-    const preserved = curPreserved;
+    const found: Found | null =
+      cur.length > 0 ? { nodes: cur, container: curContainer as Element, preserved: curPreserved, formulas: curFormulas, note: inNote > 0 } : null;
     cur = [];
     curContainer = null;
     curPreserved = false;
+    curFormulas = 0;
     curQuote = -1;
-    processRun(nodes, container, preserved, formulas);
+    if (found && found.note) notes.push(found);
+    else if (found) processRun(found);
+    if (inNote === 0 && notes.length > 0) {
+      const waiting = notes;
+      notes = [];
+      for (const note of waiting) processRun(note);
+    }
+  }
+
+  /**
+   * A SIDENOTE or a MARGIN NOTE: a phrase element in the middle of a paragraph that CSS floats
+   * into the margin (tufte-css sets `span.sidenote` and `span.marginnote` right after the
+   * word they annotate, with `float: right`). It is the author's text, but not the sentence it
+   * interrupts in the markup: the paragraph is read on across it, as one run, and the note is
+   * read as a paragraph of its own right after it. The run the walk was in the middle of is
+   * set aside while the note is walked and taken up again after it.
+   */
+  function visitNote(el: Element, ctx: Ctx): void {
+    const open = { cur, curContainer, curPreserved, curFormulas, curQuote };
+    cur = [];
+    curContainer = null;
+    curPreserved = false;
+    curFormulas = 0;
+    curQuote = -1;
+    inNote++;
+    visitChildren(el, { ...ctx, container: el });
+    closeRun();
+    inNote--;
+    ({ cur, curContainer, curPreserved, curFormulas, curQuote } = open);
   }
 
   function read(found: Found, claimed: boolean): Run | null {
-    const { nodes, container, preserved, formulas } = found;
+    const { nodes, container, preserved, formulas, note } = found;
     if (!rects.get(container)) return null; // zero-size container → invisible text
     const raw = extractPartText(nodes);
     // One definition of a part's text (lib/dom/text.ts), because the orchestrator recomputes
@@ -350,11 +389,12 @@ export function collectUnits(
       formulas,
       index: 0,
       claimed,
+      note,
     };
   }
 
-  function processRun(nodes: Text[], container: Element, preserved: boolean, formulas: number): void {
-    const found: Found = { nodes, container, preserved, formulas };
+  function processRun(found: Found): void {
+    const { nodes, container, preserved } = found;
     // A change of e-mail quote depth is a change of voice: the reply of a
     // lists.debian.org message never merges with the lines it quotes, nor those with
     // the quotation nested inside them. It is raised for an OWNED run as well, BEFORE the
@@ -472,11 +512,12 @@ export function collectUnits(
     }
 
     // block-laid-out from here on.
-    // Floated phrase-tag elements (drop caps: <span class="dropcap">T</span>) still
-    // read as part of the sentence — keep them in the run.
+    // A floated phrase element: a drop cap (<span class="dropcap">T</span>) still reads as
+    // part of the sentence and stays in the run; anything longer is a sidenote.
     const float = cs ? ((cs as any).float ?? cs.cssFloat ?? "none") : "none";
     if (float !== "none" && INLINE_FALLBACK_TAGS.has(tag)) {
-      visitChildren(el, { container: ctx.container, hidden, preserves });
+      if (isDropCap(el)) visitChildren(el, { container: ctx.container, hidden, preserves });
+      else visitNote(el, { container: ctx.container, hidden, preserves });
       return;
     }
     // A heading is a barrier only while it is a LABEL. A container that merely declares
@@ -1295,6 +1336,10 @@ function createAssembler(
     const f = enter(scopeOf(r.container));
     catchUp(f);
     if (!r.claimed && f.scope !== null) f.live = true;
+    if (r.note) {
+      note(f, r);
+      return;
+    }
     const punctuated = endsLikeProse(r.text);
 
     if (f.block === r.container) {
@@ -1394,6 +1439,29 @@ function createAssembler(
       f.block = r.container;
       if (!r.claimed) f.live = true;
     }
+  }
+
+  /**
+   * A short SIDENOTE, read right after the paragraph it floats beside. It is that author's
+   * text and belongs with that paragraph: after a full one it joins its unit while the two
+   * fit one window, after a short one it is the next text of the group being read. A note
+   * that is no sentence — a credit, a figure label — is passed over without consequence: it
+   * stands outside the text, so it separates nothing either, and neither does the note from
+   * the line of its paragraph that may follow it.
+   */
+  function note(f: Frame, r: Run): void {
+    if (shortRole(r.text) !== "prose") return;
+    const last = f.group.length > 0 ? f.group[f.group.length - 1] : f.prev ? f.prev[f.prev.length - 1] : null;
+    if (last && !together(f, last.container, r.container)) close(f);
+    if (!r.claimed) f.live = true;
+    if (f.group.length === 0 && f.prev && fitsWindow([...f.prev, r])) {
+      f.prev.push(r);
+      if (f.scope !== null) f.prose.push(r);
+      return;
+    }
+    const block = f.block;
+    push(f, r);
+    f.block = block;
   }
 
   /** What a run is decides where it goes. `index` is its position in the walk. */
