@@ -1,0 +1,105 @@
+<!doctype html>
+<!--
+  A Threads profile's posts, synthetic text.
+
+  Reduced from threads.com/@zuck as a logged-out visitor sees it (2026-09-26). Nothing is
+  declared: every post is a `div[data-pressable-container=true]` two wrappers inside a
+  classless `div`, one per post, in a column of them. The author is an avatar link and a name
+  link to the same `/@name` (a picture and a name, the byline scope.ts recognises) and a
+  `time[datetime]` inside the permalink; the text is ONE `span[dir=auto]` with
+  `white-space: pre-line` inside a `pre-wrap` box, paragraphs as blank lines; media, the
+  counters and the action buttons are `div[role=button]`s. Threads caps a post at 500
+  characters, so a post of 75 words and more is possible, and nothing is cut to a preview.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: Threads profile</title>
+<style>
+  body { margin: 0; font: 15px/1.4 system-ui, sans-serif; }
+  .column { width: 620px; margin: 0 auto; }
+  .f { display: flex; }
+  .g { display: grid; grid-template-columns: 48px 1fr; }
+  .body { white-space: pre-wrap; }
+  .text { display: block; white-space: pre-line; }
+  .nowrap { white-space: nowrap; }
+  a { color: inherit; text-decoration: none; }
+  [data-pressable-container] { padding: 12px 24px; border-bottom: 1px solid #ddd; }
+</style></head>
+<body>
+<div class="x1c1b4dv x13dflua x11xpdln" role="main">
+<div class="column x1plvlek xryxfnj">
+
+  <!-- a post of one long paragraph → a unit -->
+  <div><div class="x78zum5 xdt5ytf f" style="flex-direction:column"><div class="x9f619 x1n2onr6 x1ja2u2z"><div class="x1a2a7pz x1n2onr6">
+  <div class="x1n2onr6 x1ypdohk x1f9n5g" data-pressable-container="true">
+    <div class="xrvj5dj xd0jker g">
+      <div class="xcrlgei xqti54a x1agbcgv"><div class="x1ywlc9c x1xn7y0n x1uxb8k9"><a href="/@maren.holt" role="link" tabindex="0"><div class="f"><img alt="" width="36" height="36"></div></a></div></div>
+      <div class="xqcrz7y x1xdureb x1agbcgv">
+        <div class="f nowrap" data-chrome>
+          <span class="f"><div><span style="display:contents"><div><a href="/@maren.holt" role="link" tabindex="0"><span dir="auto" style="display:block"><span style="display:block">maren.holt</span></span></a></div></span></div></span>
+          <div class="f"><span dir="auto" style="display:block;white-space:pre-line"><a href="/@maren.holt/post/Aa1" role="link" tabindex="0"><time datetime="2026-09-25T15:09:40.000Z" title="Friday, September 25, 2026 at 11:09 PM" style="display:inline-block"><span style="display:inline-block"><abbr aria-label="15 hours ago"><span>15h</span></abbr></span></time></a></span></div>
+          <div role="button" tabindex="0" style="display:inline-flex"><svg width="20" height="20"></svg></div>
+        </div>
+      </div>
+      <div class="x1xdureb xkbb5z x13vxnyz" style="grid-column:2">
+        <div>
+          <div class="body"><div class="xat24cr x1n2onr6 xdj266r"><span class="text" dir="auto" data-voice="maren" data-expect="unit"><span>Dear stranger at the ferry terminal who gave my daughter your umbrella yesterday and then walked off into the rain before either of us could thank you: she has not stopped talking about it. She has decided that when she grows up she is going to carry two umbrellas everywhere, one for herself and one for whoever needs it, and I am not going to be the one to tell her how heavy that gets. Thank you, whoever you are.</span></span></div></div>
+          <div class="f" data-chrome>
+            <div role="button" tabindex="0" class="f"><svg width="18" height="18"></svg><span dir="auto" style="display:block"><div class="nowrap"><span style="display:block;position:absolute">382</span></div></span></div>
+            <div role="button" tabindex="0" class="f"><svg width="18" height="18"></svg><span dir="auto" style="display:block"><div class="nowrap"><span style="display:block;position:absolute">9</span></div></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div></div></div></div>
+
+  <!-- a post of two short paragraphs (a blank line in one text node) → one ×2 unit -->
+  <div><div class="x78zum5 xdt5ytf f" style="flex-direction:column"><div class="x9f619 x1n2onr6 x1ja2u2z"><div class="x1a2a7pz x1n2onr6">
+  <div class="x1n2onr6 x1ypdohk x1f9n5g" data-pressable-container="true">
+    <div class="xrvj5dj xd0jker g">
+      <div class="xcrlgei xqti54a x1agbcgv"><div class="x1ywlc9c x1xn7y0n x1uxb8k9"><a href="/@oskar.lind" role="link" tabindex="0"><div class="f"><img alt="" width="36" height="36"></div></a></div></div>
+      <div class="xqcrz7y x1xdureb x1agbcgv">
+        <div class="f nowrap" data-chrome>
+          <span class="f"><div><span style="display:contents"><div><a href="/@oskar.lind" role="link" tabindex="0"><span dir="auto" style="display:block"><span style="display:block">oskar.lind</span></span></a></div></span></div></span>
+          <div class="f"><span dir="auto" style="display:block;white-space:pre-line"><a href="/@oskar.lind/post/Bb2" role="link" tabindex="0"><time datetime="2026-09-25T11:02:00.000Z" title="Friday, September 25, 2026 at 7:02 PM" style="display:inline-block"><span style="display:inline-block"><abbr aria-label="19 hours ago"><span>19h</span></abbr></span></time></a></span></div>
+          <div role="button" tabindex="0" style="display:inline-flex"><svg width="20" height="20"></svg></div>
+        </div>
+      </div>
+      <div class="x1xdureb xkbb5z x13vxnyz" style="grid-column:2">
+        <div>
+          <div class="body"><div class="xat24cr x1n2onr6 xdj266r"><span class="text" dir="auto" data-voice="oskar" data-expect="unit" data-parts="2"><span>Unpopular opinion: the best part of a long train journey is the hour after your phone dies and before you give in and ask somebody for a charger. You look out of the window properly for the first time in years.
+
+Yesterday it was two hours of fields, a heron, three abandoned stations and a man in a hi-vis jacket waving at the train as if he had been waiting all week for it to come past.</span></div></div>
+          <div class="f" data-chrome>
+            <div role="button" tabindex="0" class="f"><svg width="18" height="18"></svg><span dir="auto" style="display:block"><div class="nowrap"><span style="display:block;position:absolute">41</span></div></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div></div></div></div>
+
+  <!-- a short post → nothing -->
+  <div><div class="x78zum5 xdt5ytf f" style="flex-direction:column"><div class="x9f619 x1n2onr6 x1ja2u2z"><div class="x1a2a7pz x1n2onr6">
+  <div class="x1n2onr6 x1ypdohk x1f9n5g" data-pressable-container="true">
+    <div class="xrvj5dj xd0jker g">
+      <div class="xcrlgei xqti54a x1agbcgv"><div class="x1ywlc9c x1xn7y0n x1uxb8k9"><a href="/@maren.holt" role="link" tabindex="0"><div class="f"><img alt="" width="36" height="36"></div></a></div></div>
+      <div class="xqcrz7y x1xdureb x1agbcgv">
+        <div class="f nowrap" data-chrome>
+          <span class="f"><div><span style="display:contents"><div><a href="/@maren.holt" role="link" tabindex="0"><span dir="auto" style="display:block"><span style="display:block">maren.holt</span></span></a></div></span></div></span>
+          <div class="f"><span dir="auto" style="display:block;white-space:pre-line"><a href="/@maren.holt/post/Cc3" role="link" tabindex="0"><time datetime="2026-09-24T09:00:00.000Z" title="Thursday, September 24, 2026 at 5:00 PM" style="display:inline-block"><span style="display:inline-block"><abbr aria-label="1 day ago"><span>1d</span></abbr></span></time></a></span></div>
+        </div>
+      </div>
+      <div class="x1xdureb xkbb5z x13vxnyz" style="grid-column:2">
+        <div>
+          <div class="body"><div class="xat24cr x1n2onr6 xdj266r"><span class="text" dir="auto" data-voice="maren-2" data-expect="none"><span>Is there anything better than the first cold morning of the year and a coat you forgot you owned?</span></span></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div></div></div></div>
+
+</div>
+</div>
+</body></html>

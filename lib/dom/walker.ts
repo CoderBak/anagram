@@ -41,7 +41,9 @@
 import { NO_SCORE_TAGS, INLINE_FALLBACK_TAGS, isHeading, isHeadingLabel, tagOf } from "./tags";
 import { findConsentBanners, isBoilerplate, isConsentBanner, isNoTranslate, pageTextSize } from "./boilerplate";
 import {
+  capsOwnText,
   createStyleCache,
+  cutToOneLine,
   flowClassOf,
   isInlineDisplay,
   isOutOfFlow,
@@ -155,6 +157,10 @@ interface Run {
   claimed: boolean;
   /** A sidenote or margin note, read right after the paragraph it floats beside (see visitNote). */
   note: boolean;
+  /** The end of a preview the SITE cut, with the control that brings the rest (see markCut):
+   *  no unit that holds it is emitted. Set as the run is read, or just after it, when the
+   *  control stands in a block of its own. */
+  truncated: boolean;
 }
 
 /** A run the walk has found but nobody has READ yet: reading — joining the text, counting
@@ -165,6 +171,7 @@ interface Found {
   preserved: boolean;
   formulas: number;
   note: boolean;
+  truncated: boolean;
 }
 
 export interface CollectOptions {
@@ -211,6 +218,43 @@ const SMALL_OUT_OF_FLOW_CHARS = 40;
 
 /** Blank line inside preserved-whitespace text == paragraph gap. */
 const PARA_GAP_RE = /\n[ \t\r]*\n/;
+
+/** How far a clamping box may sit above the text, and a control above its label or after
+ *  the text it cuts. */
+const CLAMP_BOX_LEVELS = 4;
+
+/** A text that ends in an ellipsis — "…", "...", "……" — spaces and zero-width ones aside. */
+const ENDS_IN_ELLIPSIS_RE = /(?:\u2026|\.\.\.)[\s\u200b]*$/;
+/** A control label that opens with the ellipsis itself: LinkedIn's "…see more". */
+const LEADING_ELLIPSIS_RE = /^(?:\u2026|\.\.\.)/;
+const MAX_EXPAND_LABEL_CHARS = 40;
+
+/**
+ * What the controls that bring the rest of a text say, in the languages Anagram's readers
+ * browse in: Facebook's "See more", X's "Show more", YouTube's and Reddit's "Read more",
+ * Quora's "(more)", LinkedIn's "…see more", Weibo's "展开" / "展开全文" / "全文", Zhihu's
+ * "阅读全文". Lower case, without the ellipsis, parentheses or arrow around them.
+ */
+const EXPAND_LABELS = new Set([
+  "more", "see more", "show more", "read more", "view more", "continue reading", "keep reading",
+  "read the rest", "see full post", "show full text", "expand",
+  "展开", "展开全文", "全文", "阅读全文", "查看全文", "展开阅读全文", "显示全部", "更多", "顯示更多", "展開",
+  "続きを読む", "もっと見る", "さらに表示", "全文を表示", "더보기", "더 보기",
+  "mehr anzeigen", "weiterlesen", "mehr", "voir plus", "lire la suite", "afficher la suite",
+  "ver más", "leer más", "ver mais", "leia mais", "mostra altro", "leggi tutto",
+  "ещё", "показать полностью", "читать далее",
+]);
+
+export function isExpandLabel(label: string): boolean {
+  if (label === "" || label.length > MAX_EXPAND_LABEL_CHARS) return false;
+  const bare = label
+    .toLowerCase()
+    .replace(/^[\s.\u2026·]+/, "")
+    .replace(/[\s›»>▾▼⌄→]+$/, "")
+    .replace(/^[(（[]\s*(.*?)\s*[)）\]]$/, "$1")
+    .trim();
+  return EXPAND_LABELS.has(bare);
+}
 
 let _unitSeq = 0;
 
@@ -305,6 +349,11 @@ export function collectUnits(
   let quoteLevel = 0;
   /** Quote depth the OPEN run speaks in; -1 until it has its first node. */
   let curQuote = -1;
+  /** The open run is a preview the site cut (see markCut). */
+  let curTruncated = false;
+  /** The run read last, while nothing else has been: a control in a block of its own after
+   *  it may still say it was cut (see markCut). */
+  let lastRun: Run | null = null;
 
   function pushNode(tn: Text, ctx: Ctx): void {
     if (cur.length === 0) {
@@ -338,12 +387,15 @@ export function collectUnits(
     // part of the paragraph.
     while (cur.length > 0 && (cur[cur.length - 1].textContent ?? "").trim() === "") cur.pop();
     const found: Found | null =
-      cur.length > 0 ? { nodes: cur, container: curContainer as Element, preserved: curPreserved, formulas: curFormulas, note: inNote > 0 } : null;
+      cur.length > 0
+        ? { nodes: cur, container: curContainer as Element, preserved: curPreserved, formulas: curFormulas, note: inNote > 0, truncated: curTruncated }
+        : null;
     cur = [];
     curContainer = null;
     curPreserved = false;
     curFormulas = 0;
     curQuote = -1;
+    curTruncated = false;
     if (found && found.note) notes.push(found);
     else if (found) processRun(found);
     if (inNote === 0 && notes.length > 0) {
@@ -362,22 +414,24 @@ export function collectUnits(
    * set aside while the note is walked and taken up again after it.
    */
   function visitNote(el: Element, ctx: Ctx): void {
-    const open = { cur, curContainer, curPreserved, curFormulas, curQuote };
+    const open = { cur, curContainer, curPreserved, curFormulas, curQuote, curTruncated };
     cur = [];
     curContainer = null;
     curPreserved = false;
     curFormulas = 0;
     curQuote = -1;
+    curTruncated = false;
     inNote++;
     visitChildren(el, { ...ctx, container: el });
     closeRun();
     inNote--;
-    ({ cur, curContainer, curPreserved, curFormulas, curQuote } = open);
+    ({ cur, curContainer, curPreserved, curFormulas, curQuote, curTruncated } = open);
   }
 
   function read(found: Found, claimed: boolean): Run | null {
-    const { nodes, container, preserved, formulas, note } = found;
+    const { nodes, container, preserved, formulas, note, truncated } = found;
     if (!rects.get(container)) return null; // zero-size container → invisible text
+    if (cutToOneLine(container, styles)) return null; // a one-line preview of somebody's text (style.ts)
     const raw = extractPartText(nodes);
     // One definition of a part's text (lib/dom/text.ts), because the orchestrator recomputes
     // it to tell whether a unit changed and the locator maps offsets in it back to the page.
@@ -397,6 +451,7 @@ export function collectUnits(
       index: 0,
       claimed,
       note,
+      truncated,
     };
   }
 
@@ -416,12 +471,93 @@ export function collectUnits(
       asm.barrier(container);
     }
     if (opts.claimFilter && opts.claimFilter(nodes) === "skip") {
+      lastRun = null;
       asm.owned(found); // a live unit's part: read only if something new turns up beside it
       return;
     }
     const run = read(found, false);
     if (!run) return;
     asm.run(run);
+    lastRun = run;
+  }
+
+  // ---- previews the site cut ---------------------------------------------------------
+
+  /** The last text the open run holds, spaces aside. */
+  function openRunTail(): string {
+    for (let i = cur.length - 1; i >= 0; i--) {
+      const t = (cur[i].textContent ?? "").trimEnd();
+      if (t) return t;
+    }
+    return "";
+  }
+
+  /** A box around the text, up to its voice, that caps its height: the text is all in the
+   *  page and only the view of it is cut (a clamp), whatever the control under it says. */
+  function heldBack(container: Element): boolean {
+    const scope = scopes.of(container);
+    let at: Element | null = container;
+    for (let up = 0; at && up <= CLAMP_BOX_LEVELS; up++, at = at.parentElement) {
+      const cs = styles.get(at);
+      if (cs && capsOwnText(at, cs)) return true;
+      if (at === scope) break;
+    }
+    return false;
+  }
+
+  /**
+   * A control that brings the rest of a text — "See more", "(more)", "全文", "…see more" —
+   * right after it, and the text before it ends in an ellipsis, or the control carries the
+   * ellipsis itself and nothing clamps the text: the SITE cut the text to a preview, and only
+   * the preview is in the page. Facebook ends the last paragraph of a long post or comment in
+   * "…" and sets an inline "See more" button after it; Weibo's mobile site ends a long status
+   * in " ..." and a link "全文" to the whole of it; Quora an answer in "…" and "(more)". Read as
+   * the whole text, a preview got a verdict that speaks for words nobody has read to the end.
+   * Behind a box that caps the text's height nothing was cut: the whole text is in the page
+   * and the control only lifts the clamp, so that is read as it always was.
+   * The control stands at the end of the open run, or in a block of its own right after the
+   * run read last, in the same voice. Returns whether the preview was marked.
+   */
+  function markCut(label: string, control: Element): boolean {
+    const carries = LEADING_ELLIPSIS_RE.test(label);
+    if (cur.length > 0) {
+      if (!carries && !ENDS_IN_ELLIPSIS_RE.test(openRunTail())) return false;
+      if (heldBack(curContainer as Element)) return false;
+      curTruncated = true;
+      return true;
+    }
+    const r = lastRun;
+    if (!r || r.truncated || !r.container.isConnected || scopes.of(r.container) !== scopes.of(control)) return false;
+    let near = false;
+    for (let at: Element | null = control, up = 0; at && up <= CLAMP_BOX_LEVELS && !near; up++, at = at.parentElement) near = at.contains(r.container);
+    if (!near) return false;
+    if (!carries && !ENDS_IN_ELLIPSIS_RE.test(r.text)) return false;
+    // A text that ends in an ellipsis of its own behind a clamp is all in the page: the
+    // control only lifts the clamp (YouTube's "Read more").
+    if (heldBack(r.container)) return false;
+    r.truncated = true;
+    return true;
+  }
+
+  /** Something a reader clicks: a link, a button, or an element made to act as one. */
+  function isControl(el: Element): boolean {
+    const tag = tagOf(el);
+    if (tag === "A" || tag === "BUTTON" || tag === "SUMMARY") return true;
+    const role = el.getAttribute("role");
+    if (role === "button" || role === "link") return true;
+    if (el.hasAttribute("tabindex") || el.hasAttribute("onclick")) return true;
+    return styles.get(el)?.cursor === "pointer";
+  }
+
+  /** The control a text node is the whole label of, looked for through the wrappers that
+   *  hold nothing but it (`div[role=button] > span > "See more"`). */
+  function controlOf(tn: Text, label: string): Element | null {
+    let el = tn.parentElement;
+    for (let up = 0; el && up <= CLAMP_BOX_LEVELS; up++, el = el.parentElement) {
+      if ((el.textContent ?? "").trim() !== label) return null;
+      if (isControl(el)) return el;
+    }
+    return null;
   }
 
   // ---- traversal ---------------------------------------------------------------------
@@ -457,6 +593,13 @@ export function collectUnits(
     // display:none takes NO space: the text around it reads as one sentence, so it
     // must never close the run (hidden template spans, lazy content, <script>…).
     if (flow === "hidden") return;
+    if (tag === "BUTTON") {
+      const label = (el.textContent ?? "").trim();
+      if (isExpandLabel(label) && markCut(label, el)) {
+        if (flow !== "inline" && flow !== "contents") closeRun();
+        return;
+      }
+    }
 
     // Mid-sentence markup that is not prose — skipped WITHOUT closing the run, so the
     // sentence continues around it: formulas (counted for the card), footnote and
@@ -547,6 +690,13 @@ export function collectUnits(
   function visitText(tn: Text, ctx: Ctx): void {
     if (ctx.hidden) return;
     const s = tn.textContent ?? "";
+    if (s.length <= MAX_EXPAND_LABEL_CHARS) {
+      const label = s.trim();
+      if (isExpandLabel(label)) {
+        const control = controlOf(tn, label);
+        if (control && markCut(label, control)) return; // the control is not the text
+      }
+    }
     if (ctx.preserves && s.trim() !== "" && curQuote >= 0 && (curQuote > 0 || s.indexOf(">") >= 0)) {
       // The quotation ends (or begins) at a node boundary rather than inside a node:
       // lore.kernel.org puts every quoted block in a `<span class="q">` of its own. The
@@ -928,6 +1078,34 @@ function composedContains(root: Element, el: Element): boolean {
   return false;
 }
 
+/** How many wrappers `unwrapped` looks through, and what a wrapper is: a box of layout, never
+ *  list or table markup — an item a level deeper stays out of the post's text. */
+const MAX_WRAPPER_HOPS = 3;
+const LAYOUT_WRAPPERS = new Set(["DIV", "SPAN"]);
+
+/**
+ * The box a paragraph really stands in, inside a DECLARED scope: up through wrappers that hold
+ * that one block and nothing else. Facebook sets each paragraph of a post — `div[dir=auto]` —
+ * in a `pre-wrap` box of its own, so two paragraphs of one post are cousins, never siblings,
+ * and a post of two short paragraphs got nothing: neither `compatible` with the other. Inside
+ * one declared voice such a wrapper separates nothing; on the bare page it is still read as
+ * the section boundary it may be, and a recognised post has its own rule (`oneBody`).
+ */
+function unwrapped(el: Element, scope: Element): Element {
+  let at = el;
+  for (let hops = 0; hops < MAX_WRAPPER_HOPS; hops++) {
+    const parent = at.parentElement;
+    if (!parent || parent === scope || parent.childElementCount !== 1 || !LAYOUT_WRAPPERS.has(tagOf(parent))) break;
+    let alone = true;
+    for (let n = parent.firstChild; n && alone; n = n.nextSibling) {
+      if (n.nodeType === Node.TEXT_NODE && (n.textContent ?? "").trim() !== "") alone = false;
+    }
+    if (!alone) break;
+    at = parent;
+  }
+  return at;
+}
+
 /** Two blocks of ONE BODY of text: siblings of the same tag and the same class — the <p>s
  *  of one rendered answer, not a paragraph and the stats row the card sets beside it. */
 function sameBody(a: Element, b: Element): boolean {
@@ -1045,7 +1223,9 @@ function createAssembler(
    */
   function together(f: Frame, a: Element, b: Element): boolean {
     if (compatible(a, b)) return true;
-    return f.scope !== null && scopes.recognised(f.scope) && scopes.oneBody(a, b, f.scope);
+    if (f.scope === null) return false;
+    if (scopes.recognised(f.scope)) return scopes.oneBody(a, b, f.scope);
+    return compatible(unwrapped(a, f.scope), unwrapped(b, f.scope));
   }
 
   function emit(runs: Run[]): void {
@@ -1075,6 +1255,7 @@ function createAssembler(
    * nobody to join, under a chip that speaks for a post it has not read to the end.
    */
   function release(runs: Run[]): void {
+    if (runs.some((r) => r.truncated)) return; // a preview the site cut is not the text (markCut)
     const owned = runs.reduce((n, r) => n + (r.claimed ? 1 : 0), 0);
     if (owned === runs.length) return;
     if (owned > 0 && !retake(runs.flatMap((r) => r.nodes))) return;
@@ -1109,12 +1290,13 @@ function createAssembler(
       for (const runs of modelSized(g)) out(f, runs);
     } else if (g.length > 0) {
       const beside = (a: Run, b: Run): boolean => together(f, a.container, b.container);
+      // A preview the site cut takes nobody in: it is not read, and what joined it would not be.
+      const prev = f.prev && !f.prev.some((r) => r.truncated) ? f.prev : null;
+      const next = following && !following.truncated ? following : null;
       // Whether the paragraph on that side is in the same place is the walk's to answer;
       // the window bound and the order of preference are the shared rule's (plan/group).
-      const home = orphanHome(g, f.prev, following, (side) =>
-        side === "before"
-          ? beside((f.prev as Run[])[(f.prev as Run[]).length - 1], g[0])
-          : beside(g[g.length - 1], following as Run),
+      const home = orphanHome(g, prev, next, (side) =>
+        side === "before" ? beside((prev as Run[])[(prev as Run[]).length - 1], g[0]) : beside(g[g.length - 1], next as Run),
       );
       if (home === "before") (f.prev as Run[]).push(...g);
       else if (home === "after") lead = g;
@@ -1168,6 +1350,12 @@ function createAssembler(
   function conclude(f: Frame): void {
     close(f);
     if (f.scope === null) return;
+    if (!f.partial && fitsWindow(f.prose) && f.prose.some((r) => r.truncated)) {
+      // A post the site cut to a preview: none of it is the post (markCut).
+      f.prose = [];
+      f.held = [];
+      return;
+    }
     if (!f.partial && clearsFloor(f.prose) && fitsWindow(f.prose)) {
       for (const runs of standingTogether(f.prose, (a, b) => together(f, a, b))) {
         if (clearsFloor(runs)) release(runs);

@@ -1,0 +1,86 @@
+<!doctype html>
+<!--
+  A Slack channel in the web client, synthetic text. MODELLED: Slack needs an account, so the
+  markup follows what FluentRead's Slack rule reads (`.c-message_kit__text`,
+  `.p-rich_text_section`; it protects `.c-message__sender` and `.c-timestamp`) and the Slack
+  classes other translator rule sets name (`.p-rich_text_block`, `[data-qa=message_attachment_text]`).
+  The message list is `div.c-virtual_list__scroll_container[role=list]`, every message a
+  `div.c-virtual_list__item[role=listitem]`; the sender is a button, the time an
+  `a.c-timestamp` with a `data-ts`, a paragraph break a `span.c-mrkdwn__br`, reactions and the
+  "3 replies" bar are buttons, and a day divider stands between messages as an item of its
+  own. A second message from the same sender a minute later has no name above it and is
+  still an item of its own.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: Slack channel</title>
+<style>
+  body { margin: 0; font: 15px/1.46 Lato, sans-serif; }
+  .c-virtual_list__scroll_container { width: 760px; margin: 0 auto; }
+  .c-message_kit__gutter { display: flex; }
+  .c-message__sender, .c-timestamp { display: inline; }
+  .c-mrkdwn__br { display: block; height: 8px; }
+  .c-reaction_bar, .c-message__reply_bar { display: flex; gap: 4px; }
+  button { font: inherit; }
+</style></head>
+<body>
+<div class="p-workspace__primary_view" role="main">
+<div class="c-virtual_list__scroll_container" role="list" aria-label="Messages in #harbour-committee">
+
+  <div class="c-virtual_list__item" role="listitem" tabindex="-1" data-qa="virtual-list-item" id="1727330000.000100">
+    <div class="c-message_list__day_divider" data-chrome><div class="c-message_list__day_divider__label"><button class="c-message_list__day_divider__label__pill" type="button">Thursday, September 24th</button></div></div>
+  </div>
+
+  <div class="c-virtual_list__item" role="listitem" tabindex="-1" data-qa="virtual-list-item" id="1727330100.000200">
+    <div class="c-message_kit__background c-message_kit__message" role="presentation" data-qa="message_container">
+      <div class="c-message_kit__hover" role="document" aria-roledescription="message">
+        <div class="c-message_kit__gutter">
+          <div class="c-message_kit__gutter__left" role="presentation"><button class="c-message_kit__avatar" aria-label="Maren Holt"><img class="c-base_icon" alt="" width="36" height="36"></button></div>
+          <div class="c-message_kit__gutter__right" role="presentation" data-qa="message_content">
+            <span data-chrome><span class="c-message__sender c-message_kit__sender" data-qa="message_sender"><button class="c-link--button c-message__sender_button" data-qa="message_sender_name">Maren Holt</button></span> <a aria-label="Sep 24th at 10:21:52 AM" class="c-link c-timestamp" data-ts="1727330100.000200" href="/archives/C0HARBOUR/p1727330100000200"><span class="c-timestamp__label" data-qa="timestamp_label">10:21 AM</span></a></span>
+            <div class="c-message_kit__blocks c-message_kit__blocks--rich_text"><div class="c-message__message_blocks" data-qa="message-text"><div class="p-block_kit_renderer" data-qa="block-kit-renderer"><div class="p-block_kit_renderer__block_wrapper">
+              <div class="p-rich_text_block" dir="auto" data-voice="maren" data-expect="unit" data-parts="2"><div class="p-rich_text_section">I went through last winter's crossings with the operator yesterday and the pattern is clearer than I expected. The problem is not the tide as such, it is the one week in four when the school day and the deep-water windows disagree completely, and in that week the midday boat is the one people miss.<span class="c-mrkdwn__br" data-stringify-type="paragraph-break"></span>They are willing to try an extra crossing that week if we can show them the numbers, so I have put everything we have in the shared sheet.</div></div>
+            </div></div></div></div>
+            <div class="c-reaction_bar" data-chrome><button class="c-reaction" aria-label="4 reactions, react with thumbsup emoji"><span>👍</span><span class="c-reaction__count">4</span></button></div>
+            <div class="c-message__reply_bar" data-chrome><button class="c-message__reply_count" type="button">3 replies</button><span class="c-message__reply_bar_last_reply">Last reply 2 days ago</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="c-virtual_list__item" role="listitem" tabindex="-1" data-qa="virtual-list-item" id="1727330160.000300">
+    <div class="c-message_kit__background c-message_kit__message" role="presentation" data-qa="message_container">
+      <div class="c-message_kit__hover" role="document" aria-roledescription="message">
+        <div class="c-message_kit__gutter">
+          <div class="c-message_kit__gutter__left" role="presentation" data-chrome><a aria-label="Sep 24th at 10:22:40 AM" class="c-link c-timestamp c-message_kit__gutter__timestamp" data-ts="1727330160.000300" href="/archives/C0HARBOUR/p1727330160000300"><span class="c-timestamp__label">10:22</span></a></div>
+          <div class="c-message_kit__gutter__right" role="presentation" data-qa="message_content">
+            <div class="c-message_kit__blocks c-message_kit__blocks--rich_text"><div class="c-message__message_blocks" data-qa="message-text"><div class="p-block_kit_renderer"><div class="p-block_kit_renderer__block_wrapper">
+              <div class="p-rich_text_block" dir="auto" data-voice="maren-2" data-expect="none"><div class="p-rich_text_section">Sheet is pinned in the channel if anyone cannot find it.</div></div>
+            </div></div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="c-virtual_list__item" role="listitem" tabindex="-1" data-qa="virtual-list-item" id="1727331000.000400">
+    <div class="c-message_kit__background c-message_kit__message" role="presentation" data-qa="message_container">
+      <div class="c-message_kit__hover" role="document" aria-roledescription="message">
+        <div class="c-message_kit__gutter">
+          <div class="c-message_kit__gutter__left" role="presentation"><button class="c-message_kit__avatar" aria-label="Tomas Brandt"><img class="c-base_icon" alt="" width="36" height="36"></button></div>
+          <div class="c-message_kit__gutter__right" role="presentation" data-qa="message_content">
+            <span data-chrome><span class="c-message__sender c-message_kit__sender" data-qa="message_sender"><button class="c-link--button c-message__sender_button" data-qa="message_sender_name">Tomas Brandt</button></span> <a aria-label="Sep 24th at 10:36:40 AM" class="c-link c-timestamp" data-ts="1727331000.000400" href="/archives/C0HARBOUR/p1727331000000400"><span class="c-timestamp__label">10:36 AM</span></a></span>
+            <div class="c-message_kit__blocks c-message_kit__blocks--rich_text"><div class="c-message__message_blocks" data-qa="message-text"><div class="p-block_kit_renderer"><div class="p-block_kit_renderer__block_wrapper">
+              <div class="p-rich_text_block" dir="auto" data-voice="tomas" data-expect="unit"><div class="p-rich_text_section">Thanks for doing this. One thing the numbers will not show is how many people simply stopped trying the midday boat in that week and drove round by the causeway instead, which is most of the farm traffic by now. If we only count the people who missed it, we will undercount the problem by a lot, so it might be worth asking the shop to keep a tally for a month before we meet the operator again.</div></div>
+            </div></div></div></div>
+            <div class="c-reaction_bar" data-chrome><button class="c-reaction" aria-label="2 reactions, react with pray emoji"><span>🙏</span><span class="c-reaction__count">2</span></button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+</body></html>

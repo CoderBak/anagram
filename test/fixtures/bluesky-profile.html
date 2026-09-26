@@ -1,0 +1,81 @@
+<!doctype html>
+<!--
+  A Bluesky profile's feed, synthetic text.
+
+  Reduced from bsky.app/profile/bsky.app and one of its threads (2026-09-26, logged out),
+  react-native-web markup like X's: every feed item and every thread item is a
+  `div[role=link][tabindex=0]` (`data-testid=feedItem-by-<handle>` /
+  `postThreadItem-by-<handle>`), a quoted post a further `div[role=link]` inside it; name and
+  handle are `a[aria-label="View profile"]`, the time a link whose aria-label spells out the
+  date; the text is `div[data-testid=postText]`, pre-wrap; replies, reposts and likes are
+  buttons. A post is at most 300 characters, some fifty words, so no post is a unit, and none
+  may be added to its neighbour, its quote or the profile's description to make one.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: Bluesky profile</title>
+<style>
+  body { margin: 0; font: 15px/20px system-ui, sans-serif; }
+  div { display: flex; flex-direction: column; }
+  .row { flex-direction: row; }
+  .t { display: block; white-space: pre-wrap; }
+  .nw { display: block; white-space: nowrap; }
+  [data-testid="profileView"] { width: 600px; margin: 0 auto; }
+  a { color: inherit; text-decoration: none; }
+</style></head>
+<body>
+<div id="root"><main role="main"><div data-testid="profileScreen"><div data-testid="profileView">
+
+  <div data-testid="profileHeader" data-voice="profile">
+    <div class="row" data-chrome><a href="/profile/harbour.example" role="link" aria-label="View profile"><div data-testid="userAvatarImage"><img alt="" width="80" height="80"></div></a></div>
+    <div data-chrome><div class="nw" data-testid="profileHeaderDisplayName">Harbour Gazette</div><div class="nw">@harbour.example</div></div>
+    <div class="row" data-chrome><a href="/profile/harbour.example/followers" role="link"><span>12.4K</span> followers</a> <a href="/profile/harbour.example/follows" role="link"><span>310</span> following</a></div>
+    <div class="t" data-testid="profileHeaderDescription" data-expect="none">News, tide tables and the letters page from the island, every Thursday since the causeway opened. Corrections to the address on the masthead.</div>
+  </div>
+
+  <div data-testid="profilePager" data-chrome><div role="tablist" class="row"><div role="tab" aria-selected="true">Posts</div><div role="tab">Replies</div><div role="tab">Media</div></div></div>
+
+  <div data-testid="postsFeed">
+    <div data-testid="postsFeed-flatlist">
+
+      <div role="link" tabindex="0" data-testid="feedItem-by-harbour.example">
+        <div class="row">
+          <div><a href="/profile/harbour.example" role="link" aria-label="Harbour Gazette's avatar"><div data-testid="userAvatarImage"><img alt="" width="42" height="42"></div></a></div>
+          <div>
+            <div class="row" data-chrome><a href="/profile/harbour.example" role="link" aria-label="View profile" class="nw">Harbour Gazette</a><a href="/profile/harbour.example" role="link" aria-label="View profile" class="nw">@harbour.example</a><a href="/profile/harbour.example/post/3k1" role="link" aria-label="September 25, 2026 at 3:06 PM" class="nw"><span>·</span> 17h</a></div>
+            <div data-testid="contentHider-post"><div><div class="t" data-testid="postText" data-voice="gazette-1" data-expect="none">The winter timetable is out. The first and last boats are fixed to the school day and everything in between moves with the tide, about fifty minutes a day. Sheets at both slipways and in the shop.</div></div></div>
+            <div class="row" data-chrome><button data-testid="replyBtn" aria-label="Reply (21 replies)"><span class="t">21</span></button><button aria-label="Repost or quote post"><span class="t" data-testid="repostCount">192</span></button><button data-testid="likeBtn" aria-label="Like (2,311 likes)"><span class="t" data-testid="likeCount">2.3K</span></button></div>
+          </div>
+        </div>
+      </div>
+
+      <div role="link" tabindex="0" data-testid="feedItem-by-harbour.example">
+        <div class="row">
+          <div><a href="/profile/harbour.example" role="link" aria-label="Harbour Gazette's avatar"><div data-testid="userAvatarImage"><img alt="" width="42" height="42"></div></a></div>
+          <div>
+            <div class="row" data-chrome><a href="/profile/harbour.example" role="link" aria-label="View profile" class="nw">Harbour Gazette</a><a href="/profile/harbour.example/post/3k2" role="link" aria-label="September 24, 2026 at 9:12 AM" class="nw"><span>·</span> 2d</a></div>
+            <div data-testid="contentHider-post"><div><div class="t" data-testid="postText" data-voice="gazette-2" data-expect="none">This, from a reader who has walked the same stretch of coast every morning for twenty years, is the best thing we have been sent all week.</div></div></div>
+            <div role="link" tabindex="0" aria-label="Post by Mara Oyelaran">
+              <div class="row" data-chrome><div data-testid="userAvatarImage"><img alt="" width="16" height="16"></div><span class="nw">Mara Oyelaran</span><span class="nw">@mara.example</span><span class="nw">· 2d</span></div>
+              <div class="t" data-testid="postText" data-voice="mara" data-expect="none">Today for the first time a seal followed me the whole length of the beach, about ten metres out, watching me the entire time. When I stopped, it stopped. When I turned back, it turned back too. I will be there again tomorrow at seven.</div>
+            </div>
+            <div class="row" data-chrome><button data-testid="replyBtn" aria-label="Reply (4 replies)"><span class="t">4</span></button><button data-testid="likeBtn" aria-label="Like (310 likes)"><span class="t" data-testid="likeCount">310</span></button></div>
+          </div>
+        </div>
+      </div>
+
+      <div role="link" tabindex="0" data-testid="feedItem-by-harbour.example">
+        <div class="row">
+          <div><a href="/profile/harbour.example" role="link" aria-label="Harbour Gazette's avatar"><div data-testid="userAvatarImage"><img alt="" width="42" height="42"></div></a></div>
+          <div>
+            <div class="row" data-chrome><a href="/profile/harbour.example" role="link" aria-label="View profile" class="nw">Harbour Gazette</a><a href="/profile/harbour.example/post/3k3" role="link" aria-label="September 23, 2026 at 6:40 PM" class="nw"><span>·</span> 3d</a></div>
+            <div data-testid="contentHider-post"><div><div class="t" data-testid="postText" data-voice="gazette-3" data-expect="none">The lighthouse keeper's logs from the winter the causeway flooded are on show in the library from Monday. Almost none of the four hundred pages is about the light.</div></div></div>
+            <div class="row" data-chrome><button data-testid="replyBtn" aria-label="Reply (2 replies)"><span class="t">2</span></button><button data-testid="likeBtn" aria-label="Like (97 likes)"><span class="t" data-testid="likeCount">97</span></button></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div></div></main></div>
+</body></html>

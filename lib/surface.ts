@@ -36,3 +36,12 @@ export const PDF_TAB_SCRIPTS_RUN = target !== "firefox";
  * refuse every one of them.
  */
 export const ORIGIN_FALLBACK_FRAMES = target !== "firefox";
+
+/**
+ * Does the browser's own page translation relabel the page's language — set `<html lang>` to
+ * the language it translates into? Firefox's full-page translation does, when it starts
+ * (translations-document.sys.mjs); Chrome's and Edge's mark the page in other ways
+ * (lib/dom/translation.ts). Elsewhere a page that changes its own `lang` is a site switching
+ * its language, and it keeps being read.
+ */
+export const TRANSLATION_RELABELS_PAGE = target === "firefox";

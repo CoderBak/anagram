@@ -1,0 +1,86 @@
+<!doctype html>
+<!--
+  A Quora question page with its answers, synthetic text. MODELLED: Quora refuses a plain
+  headless browser and the Wayback Machine keeps no copy of it, so the markup follows Quora's
+  utility-class DOM as translator rule sets describe it (`q-box`, `q-text`, `qu-*` classes;
+  `spacing_log_answer_header` and `spacing_log_answer_content` around each answer's byline and
+  text; the answer footer and its buttons excluded as chrome). Nothing is declared: each
+  answer is a `div.q-box.dom_annotate_question_answer_item_N`, the author an avatar and a name
+  that both link to `/profile/<Name>`, a credential line and a date link; the text is <p>s of
+  `q-text` in a `span.q-box`; the footer holds the vote and share buttons. What Quora cuts to
+  a preview with "(more)" is in truncated-previews.html.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: Quora question</title>
+<style>
+  body { margin: 0; font: 15px/1.4 -apple-system, sans-serif; }
+  .q-flex { display: flex; }
+  .page { width: 600px; margin: 0 auto; }
+  .qu-display--block { display: block; margin: 0 0 1em; }
+  .q-box.answer { border-bottom: 1px solid #ddd; padding: 12px 0; }
+  a { color: inherit; text-decoration: none; }
+</style></head>
+<body>
+<div id="root"><div class="q-box page" role="main">
+  <div class="q-box qu-borderBottom" data-chrome><div class="q-text puppeteer_test_question_title"><span><span>Why does the ferry timetable change every fortnight?</span></span></div></div>
+  <div class="q-box" data-chrome><div class="q-flex"><button class="q-click-wrapper" type="button">Answer</button><button class="q-click-wrapper" type="button">Follow</button><button class="q-click-wrapper" type="button">Request</button></div></div>
+
+  <div class="q-box">
+    <div class="q-box answer dom_annotate_question_answer_item_0">
+      <div class="q-box spacing_log_answer_header" data-chrome>
+        <div class="q-flex">
+          <div class="q-box qu-mr--small"><a class="q-box qu-cursor--pointer" href="https://www.quora.com/profile/Ines-Varga-3"><div class="q-inlineFlex"><img class="q-image" alt="Profile photo for Ines Varga" width="36" height="36"></div></a></div>
+          <div class="q-box">
+            <div class="q-text qu-dynamicFontSize--small"><span><a class="q-box qu-cursor--pointer" href="https://www.quora.com/profile/Ines-Varga-3"><span>Ines Varga</span></a></span><span> · </span><span>Former ferry deckhand, 1998–2006</span></div>
+            <div class="q-text qu-dynamicFontSize--small qu-color--gray"><a class="q-box qu-cursor--pointer answer_timestamp" href="/Why-does-the-ferry-timetable-change-every-fortnight/answer/Ines-Varga-3">Updated 2y</a></div>
+          </div>
+        </div>
+      </div>
+      <div class="q-box spacing_log_answer_content puppeteer_test_answer_content">
+        <div class="q-relative spacing_log_answer_content"><div class="q-text qu-wordBreak--break-word"><span class="q-box qu-userSelect--text" data-voice="ines" data-expect="unit" data-parts="2">
+          <p class="q-text qu-display--block qu-wordBreak--break-word qu-textAlign--start"><span>Because the boat can only use the harbour when there is enough water under it, and the hours when there is enough water move by about fifty minutes every day. A fixed timetable would have the boat sitting on the mud for half of every month.</span></p>
+          <p class="q-text qu-display--block qu-wordBreak--break-word qu-textAlign--start"><span>So the first and last crossings are tied to the school day and the rest drift with the tide, and a new sheet is printed every fourteen days and put up at both slipways.</p>
+        </span></div></div>
+      </div>
+      <div class="q-box qu-zIndex--action_bar" data-chrome><div class="q-flex"><button class="q-click-wrapper" type="button" aria-label="Upvote"><span>Upvote</span><span> · 1.2K</span></button><button class="q-click-wrapper" type="button" aria-label="Share">Share</button></div></div>
+    </div>
+
+    <div class="q-box answer dom_annotate_question_answer_item_1">
+      <div class="q-box spacing_log_answer_header" data-chrome>
+        <div class="q-flex">
+          <div class="q-box qu-mr--small"><a class="q-box qu-cursor--pointer" href="https://www.quora.com/profile/Oskar-Lind-12"><div class="q-inlineFlex"><img class="q-image" alt="Profile photo for Oskar Lind" width="36" height="36"></div></a></div>
+          <div class="q-box">
+            <div class="q-text qu-dynamicFontSize--small"><span><a class="q-box qu-cursor--pointer" href="https://www.quora.com/profile/Oskar-Lind-12"><span>Oskar Lind</span></a></span><span> · </span><span>Lives on the island</span></div>
+            <div class="q-text qu-dynamicFontSize--small qu-color--gray"><a class="q-box qu-cursor--pointer answer_timestamp" href="/Why-does-the-ferry-timetable-change-every-fortnight/answer/Oskar-Lind-12">3y</a></div>
+          </div>
+        </div>
+      </div>
+      <div class="q-box spacing_log_answer_content puppeteer_test_answer_content">
+        <div class="q-relative spacing_log_answer_content"><div class="q-text qu-wordBreak--break-word"><span class="q-box qu-userSelect--text" data-voice="oskar" data-expect="none">
+          <p class="q-text qu-display--block qu-wordBreak--break-word qu-textAlign--start"><span>The tide. Ask anyone in the shop and they will tell you the same thing.</span></p>
+        </span></div></div>
+      </div>
+      <div class="q-box qu-zIndex--action_bar" data-chrome><div class="q-flex"><button class="q-click-wrapper" type="button" aria-label="Upvote"><span>Upvote</span><span> · 40</span></button></div></div>
+    </div>
+
+    <div class="q-box answer dom_annotate_question_answer_item_2">
+      <div class="q-box spacing_log_answer_header" data-chrome>
+        <div class="q-flex">
+          <div class="q-box qu-mr--small"><a class="q-box qu-cursor--pointer" href="https://www.quora.com/profile/Tamsin-Oyelaran"><div class="q-inlineFlex"><img class="q-image" alt="Profile photo for Tamsin Oyelaran" width="36" height="36"></div></a></div>
+          <div class="q-box">
+            <div class="q-text qu-dynamicFontSize--small"><span><a class="q-box qu-cursor--pointer" href="https://www.quora.com/profile/Tamsin-Oyelaran"><span>Tamsin Oyelaran</span></a></span><span> · </span><span>Studied coastal logistics</span></div>
+            <div class="q-text qu-dynamicFontSize--small qu-color--gray"><a class="q-box qu-cursor--pointer answer_timestamp" href="/Why-does-the-ferry-timetable-change-every-fortnight/answer/Tamsin-Oyelaran">1y</a></div>
+          </div>
+        </div>
+      </div>
+      <div class="q-box spacing_log_answer_content puppeteer_test_answer_content">
+        <div class="q-relative spacing_log_answer_content"><div class="q-text qu-wordBreak--break-word"><span class="q-box qu-userSelect--text" data-voice="tamsin" data-expect="unit">
+          <p class="q-text qu-display--block qu-wordBreak--break-word qu-textAlign--start"><span>Everyone says the tide, and that is right, but the fortnight is the interesting part. The tides themselves repeat on a cycle of about two weeks, from springs to neaps and back again, and the operator prints one sheet per cycle so that the pattern of the times is the same from one sheet to the next. If they printed a month at a time the second half would look completely different from the first and people would assume it was a mistake.</span></p>
+        </span></div></div>
+      </div>
+      <div class="q-box qu-zIndex--action_bar" data-chrome><div class="q-flex"><button class="q-click-wrapper" type="button" aria-label="Upvote"><span>Upvote</span><span> · 310</span></button></div></div>
+    </div>
+  </div>
+</div></div>
+</body></html>

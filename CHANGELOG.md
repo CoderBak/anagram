@@ -100,6 +100,36 @@ local component and the installer all carry the same version.
   after an abbreviation such as "Mr.", "Dr.", "p." or "the U.S.", where Chrome's sentence
   segmenter starts one. CLDR's English abbreviations and pySBD's titles and page and
   number abbreviations now keep the name or number with the word before it.
+- The reference list at the end of a paper served as a web page is no longer analyzed.
+  One punctuated citation after another read as a list of sentences, and the lists on
+  PubMed Central and Wiley merged into units of their own. The lists of arXiv's HTML
+  papers, PubMed Central, bioRxiv and medRxiv, Springer Nature, Wiley, ScienceDirect and
+  anything a CSL processor such as Pandoc writes are skipped by the names those platforms
+  give them, and so is any list marked `role="doc-bibliography"`.
+- On AMP pages, the consent prompt (`amp-consent`) is no longer analyzed, and neither are
+  the notification bar, sidebar, app and push banners, ad and embed slots and share
+  buttons AMP draws around an article.
+- A cookie banner a consent platform shows in a frame of its own is no longer analyzed:
+  Sourcepoint's message frames (on its own servers or the publisher's domain), TrustArc's
+  consent manager, LiveRamp's privacy manager, AppConsent, Piano's banner and Google's
+  consent messages on AMP pages. With access to all sites the frame was read like any
+  other, and its paragraph of consent text got a chip.
+- A page Edge's translator or Firefox's full-page translation has translated is no longer
+  analyzed, the same as a page Chrome translates: nothing is read and no chip stays up while
+  the translation is on, and in Edge the page is read again once the original is shown.
+  Immersive Translate's bilingual copies of a paragraph are skipped too.
+- A Facebook post of several short paragraphs is read as one post. Facebook sets each
+  paragraph in a wrapper of its own, and the paragraphs were never read together, so such a
+  post got no verdict at all; the posts of the logged-in feed, which Facebook marks only by
+  their place in the feed, are now voices of their own as well. A text cut to one line with
+  an ellipsis is no longer read: Discord repeats the message a reply answers above it that
+  way, and that message was scored a second time.
+- A post or comment the site has cut to a preview is no longer analyzed as if it were the
+  whole text. Facebook's "… See more", Weibo's "... 全文", Quora's "… (more)", a "…see more"
+  that no CSS clamp explains and any other link or button of that kind right after a text
+  that ends in an ellipsis mark a preview; it is read, whole, once the reader opens it.
+  Posts whose whole text is in the page behind a clamp, as on LinkedIn and YouTube, are read
+  as before.
 
 ## [0.7.0] — 2026-09-26
 

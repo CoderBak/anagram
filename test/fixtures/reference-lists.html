@@ -1,0 +1,169 @@
+<!doctype html>
+<!--
+  A paper's closing paragraph above the reference list of six publishers' web pages.
+  Synthetic text, invented authors and titles.
+
+  Reduced from the live pages (2026-09-26): arXiv's HTML papers (LaTeXML,
+  arxiv.org/html/2310.06825 — `section.ltx_bibliography > ul.ltx_biblist > li.ltx_bibitem`, a
+  number tag and three `span.ltx_bibblock` laid out as blocks), PubMed Central
+  (pmc.ncbi.nlm.nih.gov/articles/PMC3159421 — `section.ref-list > section > ul.ref-list >
+  li`, a label and a `<cite>`, with the [DOI] [PubMed] [Google Scholar] links inline after it)
+  and Springer Nature (nature.com/articles/s41586-021-03819-2 and link.springer.com —
+  `ol.c-article-references > li.c-article-references__item`, the entry in a `<p>` and its links
+  in a second one). ScienceDirect, Wiley Online Library and bioRxiv refused a plain headless
+  browser; their lists are modelled on the markup those platforms are known to serve:
+  Elsevier's `section.bibliography > ol.references > li` (a label, then authors, title and host
+  in blocks of their own), Atypon's `section.article-section__references > ul.rlist > li`
+  (one inline citation and a block of links) as Wiley serves it, and HighWire's
+  `div.section.ref-list > ol.cit-list > li > div.cit` as bioRxiv and medRxiv serve it. The PMC,
+  Wiley and bioRxiv lists were read as prose — one punctuated list item after another, each
+  long enough to join the next — and got units of their own.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: reference lists</title>
+<style>
+  body { max-width: 760px; margin: 30px auto; font: 16px/1.55 Georgia, serif; }
+  .ltx_biblist { display: grid; list-style: none; padding: 0; }
+  .ltx_bibitem { display: grid; grid-template-columns: 3em 1fr; }
+  .ltx_bibblock, .ltx_tag { display: block; }
+  .ltx_bibblock { grid-column: 2; }
+  ul.ref-list { list-style: none; font-size: 14px; }
+  .c-article-references__item { display: flex; flex-direction: column; }
+  .c-article-references__links { display: flex; gap: 8px; font-size: 13px; }
+  .c-article-references__links a { display: block; }
+  ol.references .label { font-family: sans-serif; }
+  ol.references .authors, ol.references .title, ol.references .host { display: block; }
+  .ReferenceLinks { font-size: 13px; }
+  ul.rlist { list-style: none; padding: 0; }
+  .extra-links { display: block; font-size: 13px; }
+  .extra-links a { margin-right: 8px; }
+  .hidden { display: none; }
+  ol.cit-list { list-style: none; }
+  ol.cit-auth-list { display: inline; list-style: none; padding: 0; }
+  ol.cit-auth-list li { display: inline; }
+  .cit-extra { display: block; font-size: 13px; }
+</style></head>
+<body>
+<main>
+
+<article class="ltx_document">
+  <section class="ltx_section">
+    <h2 class="ltx_title ltx_title_section">6 Conclusion</h2>
+    <div class="ltx_para"><p class="ltx_p" data-voice="arxiv" data-expect="unit">We have shown that a small model trained on carefully filtered harbour logs can predict the arrival of a supply boat about as well as the skipper can, which is less impressive than it sounds, because the skipper is often wrong. The interesting result is the failure cases: the model is confident exactly where the logs are thin, in the weeks after a storm, and that is where a human would hedge. We leave the question of how to make it hedge to future work.</p></div>
+  </section>
+  <section id="bib" class="ltx_bibliography">
+    <h2 class="ltx_title ltx_title_bibliography">References</h2>
+    <ul class="ltx_biblist">
+      <li id="bib.bib1" class="ltx_bibitem" data-expect="none">
+        <span class="ltx_tag ltx_role_refnum ltx_tag_bibitem">(1)</span>
+        <span class="ltx_bibblock">Mira Castellane, Ode Brunvik, Tamsin Oyelaran, and Pell Varga.</span>
+        <span class="ltx_bibblock">Tidal windows and the scheduling of small ferries: a study of two island crossings over twelve winters, with notes on what the timetables leave out.</span>
+        <span class="ltx_bibblock"><span class="ltx_text ltx_font_italic">Journal of Coastal Logistics</span>, 14(2):101–130, 2021.</span>
+      </li>
+      <li id="bib.bib2" class="ltx_bibitem" data-expect="none">
+        <span class="ltx_tag ltx_role_refnum ltx_tag_bibitem">(2)</span>
+        <span class="ltx_bibblock">Ode Brunvik and Lise Harrowgate.</span>
+        <span class="ltx_bibblock">What the keeper wrote: reading lighthouse logs as a record of weather, households and the supply boat, and why the entries grow shorter in bad years.</span>
+        <span class="ltx_bibblock"><span class="ltx_text ltx_font_italic">arXiv preprint arXiv:2101.00001</span>, 2021.</span>
+      </li>
+      <li id="bib.bib3" class="ltx_bibitem" data-expect="none">
+        <span class="ltx_tag ltx_role_refnum ltx_tag_bibitem">(3)</span>
+        <span class="ltx_bibblock">Tamsin Oyelaran.</span>
+        <span class="ltx_bibblock">On the confidence of models trained on sparse records, and on the particular danger of weeks in which almost nothing was written down by anybody.</span>
+        <span class="ltx_bibblock">In <span class="ltx_text ltx_font_italic">Proceedings of the Workshop on Small Data</span>, pages 12–19, 2022.</span>
+      </li>
+    </ul>
+  </section>
+</article>
+
+<article class="pmc-article">
+  <section id="sec5">
+    <h2 class="pmc_sec_title">Discussion</h2>
+    <p data-voice="pmc" data-expect="unit">The packaging format described here has been in use for three years across four archives, and the main lesson is that the manifest matters more than the container. Every archive that tried to infer the structure of a package from its file names eventually gave up and wrote a manifest, and every archive that started with one never had to. The format therefore requires one, and the tools refuse a package that arrives without it, which some depositors have found irritating.</p>
+  </section>
+  <section id="ref-list1" class="ref-list">
+    <h2 class="pmc_sec_title">References</h2>
+    <section id="ref-list1_sec2">
+      <ul class="ref-list font-sm">
+        <li id="R1" data-expect="none"><span class="label">1.</span><cite>Castellane M, Brunvik O. A manifest is worth a thousand file names: lessons from four years of deposit packages at a regional archive, and what we would do differently next time. J Arch Pract. 2019;31:201–214.</cite> [<a href="https://doi.org/10.0000/jap.2019.201" class="usa-link usa-link--external">DOI</a>] [<a href="https://scholar.google.com/scholar_lookup?title=A%20manifest" class="usa-link usa-link--external">Google Scholar</a>]</li>
+        <li id="R2" data-expect="none"><span class="label">2.</span><cite>Oyelaran T, Varga P, Harrowgate L. Deposit packages in practice: a survey of how small archives receive, check and store the files their contributors send them. Digit Preserv Rev. 2020;8:45–61.</cite> [<a href="https://doi.org/10.0000/dpr.2020.45" class="usa-link usa-link--external">DOI</a>] [<a href="https://pubmed.ncbi.nlm.nih.gov/00000001/" class="usa-link">PubMed</a>] [<a href="https://scholar.google.com/scholar_lookup?title=Deposit" class="usa-link usa-link--external">Google Scholar</a>]</li>
+        <li id="R3" data-expect="none"><span class="label">3.</span><cite>Varga P. When the container is not the content: validating packages against their manifests rather than their names, with a note on character encodings. Arch Tech Notes. 2021;2:1–9.</cite> [<a href="https://scholar.google.com/scholar_lookup?title=When%20the%20container" class="usa-link usa-link--external">Google Scholar</a>]</li>
+        <li id="R4" data-expect="none"><span class="label">4.</span><cite>Harrowgate L, Castellane M. The depositor's view: interviews with forty contributors about the tools archives ask them to use, and the ones they quietly avoid. J Arch Pract. 2022;34:77–95.</cite> [<a href="https://doi.org/10.0000/jap.2022.77" class="usa-link usa-link--external">DOI</a>] [<a href="https://scholar.google.com/scholar_lookup?title=The%20depositor" class="usa-link usa-link--external">Google Scholar</a>]</li>
+      </ul>
+    </section>
+  </section>
+</article>
+
+<article class="c-article-body">
+  <section data-title="Discussion">
+    <h2 class="c-article-section__title">Discussion</h2>
+    <div class="c-article-section__content" data-voice="springer"><p data-expect="unit">The structures predicted for the smaller proteins agree with the measured ones to within the uncertainty of the measurements themselves, which is the strongest claim we can make and the one we have tried hardest to test. For the larger complexes the agreement is weaker, and the disagreements cluster at the interfaces between subunits, where the training data is thinnest and where, not by coincidence, the experimental structures are least certain too. We report both kinds of result side by side.</p></div>
+  </section>
+  <section data-title="References">
+    <h2 class="c-article-section__title">References</h2>
+    <div class="c-article-section__content" data-container-section="references">
+      <ol class="c-article-references" data-track-component="outbound reference">
+        <li class="c-article-references__item js-c-reading-companion-references-item" data-counter="1." data-expect="none">
+          <p class="c-article-references__text" id="ref-CR1">Brunvik, O., Castellane, M. &amp; Varga, P. Interfaces between subunits are where structure prediction still fails, and why the measurements there are least certain as well. <i>Struct. Notes</i> <b>9</b>, 667 (2020).</p>
+          <p class="c-article-references__links u-hide-print"><a aria-label="Article reference 1" href="https://doi.org/10.0000/sn.2020.667">Article</a><a aria-label="CAS reference 1" href="/articles/cas-redirect/1">CAS</a><a aria-label="Google Scholar reference 1" href="http://scholar.google.com/scholar_lookup?title=Interfaces">Google Scholar</a></p>
+        </li>
+        <li class="c-article-references__item js-c-reading-companion-references-item" data-counter="2." data-expect="none">
+          <p class="c-article-references__text" id="ref-CR2">Oyelaran, T. &amp; Harrowgate, L. How the smallest proteins came to be the easiest to predict, with a survey of the measurements that confirm it. <i>Trends Struct. Sci.</i> <b>40</b>, 49–57 (2015).</p>
+          <p class="c-article-references__links u-hide-print"><a aria-label="Article reference 2" href="https://doi.org/10.0000/tss.2015.49">Article</a><a aria-label="PubMed reference 2" href="http://www.ncbi.nlm.nih.gov/entrez/query.fcgi?cmd=Retrieve">PubMed</a><a aria-label="Google Scholar reference 2" href="http://scholar.google.com/scholar_lookup?title=How%20the">Google Scholar</a></p>
+        </li>
+      </ol>
+    </div>
+  </section>
+</article>
+
+<article class="Body">
+  <section id="sec0050">
+    <h2 class="u-h4">5. Conclusions</h2>
+    <div id="p0120" class="u-margin-s-bottom" data-voice="elsevier" data-expect="unit">A network that learns the timetable of a ferry from its logs learns the tides first and the school run second, and it forgets the school run the moment the logs stop mentioning it. That is the whole of our result, stated plainly: the regularities that matter to the passengers are the ones the logs record least often, and a model trained on the logs alone will always be surest about the ones that matter least.</div>
+  </section>
+  <section class="bibliography u-font-serif text-s" id="bibliography0010">
+    <h2 class="section-title u-h4">References</h2>
+    <section id="bibsec0010">
+      <ol class="references" id="reference-links-bibsec0010">
+        <li data-expect="none"><span class="label u-font-sans"><a href="#bbib1" class="anchor anchor-primary">Brunvik and Castellane, 2016</a></span><span class="reference" id="sref1"><div class="contribution"><div class="authors u-font-sans">O. Brunvik, M. Castellane</div><div id="ref-id-sref1" class="title text-m">Learning the tides before the timetable: what a network trained on ferry logs notices first, and what it never notices at all</div></div><div class="host u-font-sans">Neural Networks for Small Harbours, 12 (2016), pp. 265-283</div></span><div class="ReferenceLinks u-font-sans"><a class="anchor link anchor-primary" href="https://scholar.google.com/scholar_lookup?title=Learning">Google Scholar</a></div></li>
+        <li data-expect="none"><span class="label u-font-sans"><a href="#bbib2" class="anchor anchor-primary">Oyelaran, 2018</a></span><span class="reference" id="sref2"><div class="contribution"><div class="authors u-font-sans">T. Oyelaran</div><div id="ref-id-sref2" class="title text-m">Rare events in operational logs: why the entries that matter to passengers are the ones written down least often by the crew</div></div><div class="host u-font-sans">Transport Records Quarterly, 7 (2018), pp. 12-30</div></span><div class="ReferenceLinks u-font-sans"><a class="anchor link anchor-primary" href="https://doi.org/10.0000/trq.2018.12">View in Scopus</a><a class="anchor link anchor-primary" href="https://scholar.google.com/scholar_lookup?title=Rare">Google Scholar</a></div></li>
+      </ol>
+    </section>
+  </section>
+</article>
+
+<article class="article__body">
+  <section class="article-section article-section__full">
+    <h2 class="article-section__title section__title section1">General Discussion</h2>
+    <p data-voice="wiley" data-expect="unit">People who were told the average of the other judgements moved towards it, and people who were told only the extremes moved away from them, which is the opposite of what the averaging account predicts and roughly what the adding account does. We do not think this settles the matter between the two accounts, but it does suggest that the question was never which rule people follow, only which of the numbers in front of them they believe.</p>
+  </section>
+  <section class="article-section article-section__references" id="references-section">
+    <h2 class="article-section__header main abstractlang_en main" id="references">References</h2>
+    <div class="article-section__content">
+      <ul class="rlist separator">
+        <li data-bib-id="pssc-cit-0001" data-expect="none"><span class="author">Castellane, M.</span> (<span class="pubYear">1965</span>). <span class="articleTitle">Averaging versus adding as a rule for combining the judgements of other people, tested on estimates of distance and of weight</span>. <i>Journal of Judgement Research</i>, <span class="vol">70</span>, <span class="pageFirst">394</span>–<span class="pageLast">400</span>.<div class="extra-links getFTR"><span class="hidden data-doi">10.0000/jjr.1965.394</span><a href="/servlet/linkout?suffix=cit-0001" class="ext-link">CAS</a><a href="/servlet/linkout?suffix=cit-0001&amp;dbid=8" class="ext-link">PubMed</a><a href="https://scholar.google.com/scholar_lookup?title=Averaging" class="ext-link">Google Scholar</a></div></li>
+        <li data-bib-id="pssc-cit-0002" data-expect="none"><span class="author">Brunvik, O.</span>, &amp; <span class="author">Oyelaran, T.</span> (<span class="pubYear">1998</span>). <span class="articleTitle">Which numbers do people believe? Advice taking when the adviser reports an average and when the adviser reports only the extremes</span>. <i>Organizational Behavior Letters</i>, <span class="vol">76</span>, <span class="pageFirst">1</span>–<span class="pageLast">24</span>.<div class="extra-links getFTR"><a href="https://scholar.google.com/scholar_lookup?title=Which" class="ext-link">Google Scholar</a></div></li>
+        <li data-bib-id="pssc-cit-0003" data-expect="none"><span class="author">Harrowgate, L.</span> (<span class="pubYear">2004</span>). <span class="articleTitle">Moving towards the middle: a meta-analysis of studies in which people revised an estimate after seeing the estimates of other people</span>. <i>Psychological Review Notes</i>, <span class="vol">12</span>, <span class="pageFirst">33</span>–<span class="pageLast">58</span>.<div class="extra-links getFTR"><a href="https://scholar.google.com/scholar_lookup?title=Moving" class="ext-link">Google Scholar</a></div></li>
+      </ul>
+    </div>
+  </section>
+</article>
+
+<article class="highwire-markup">
+  <div class="section discussion" id="sec-12">
+    <h2>Discussion</h2>
+    <p id="p-31" data-voice="biorxiv" data-expect="unit">The virus isolated from the second cluster differs from the first at eleven positions, all of them outside the region the assay targets, which is why the assay detected both and why we did not notice the difference until the sequences came back. We therefore recommend that laboratories using this assay sequence a sample of their positives as a matter of routine, and we have made our pipeline for doing so available with this preprint.</p>
+  </div>
+  <div class="section ref-list" id="ref-list-1">
+    <h2>References</h2>
+    <ol class="cit-list ref-use-labels">
+      <li data-expect="none"><span class="ref-label ref-label-empty"></span><a class="rev-xref-ref" href="#xref-ref-1-1" title="View reference 1 in text" id="ref-1">↵</a><div class="cit ref-cit ref-journal" id="cit-1" data-doi="10.0000/nat.2020.265"><div class="cit-metadata"><ol class="cit-auth-list"><li><span class="cit-auth"><span class="cit-name-surname">Varga</span> <span class="cit-name-given-names">P</span></span>, </li><li><span class="cit-auth"><span class="cit-name-surname">Brunvik</span> <span class="cit-name-given-names">O</span></span> et al. </li></ol><cite><span class="cit-article-title">A new respiratory virus from a coastal cluster, sequenced within a week of the first case and compared with every related sequence then published</span>. <abbr class="cit-jnl-abbrev">Nature</abbr> <span class="cit-vol">579</span>, <span class="cit-fpage">265</span>–<span class="cit-lpage">269</span> (<span class="cit-pub-date">2020</span>).</cite></div><div class="cit-extra"><a href="https://doi.org/10.0000/nat.2020.265" class="cit-ref-sprinkles cit-ref-sprinkles-doi">CrossRef</a> <a href="/lookup/external-ref?access_num=1&amp;link_type=MED" class="cit-ref-sprinkles cit-ref-sprinkles-medline">PubMed</a> <a href="/lookup/google-scholar?link_type=googlescholar" class="cit-ref-sprinkles cit-ref-sprinkles-google-scholar">Google Scholar</a></div></div></li>
+      <li data-expect="none"><span class="ref-label ref-label-empty"></span><a class="rev-xref-ref" href="#xref-ref-2-1" title="View reference 2 in text" id="ref-2">↵</a><div class="cit ref-cit ref-journal" id="cit-2" data-doi="10.0000/lan.2020.497"><div class="cit-metadata"><ol class="cit-auth-list"><li><span class="cit-auth"><span class="cit-name-surname">Oyelaran</span> <span class="cit-name-given-names">T</span></span>, </li><li><span class="cit-auth"><span class="cit-name-surname">Harrowgate</span> <span class="cit-name-given-names">L</span></span> et al. </li></ol><cite><span class="cit-article-title">Clinical features of patients in the second coastal cluster, and how they differed from the first in the week before admission and the week after</span>. <abbr class="cit-jnl-abbrev">Lancet</abbr> <span class="cit-vol">395</span>, <span class="cit-fpage">497</span>–<span class="cit-lpage">506</span> (<span class="cit-pub-date">2020</span>).</cite></div><div class="cit-extra"><a href="https://doi.org/10.0000/lan.2020.497" class="cit-ref-sprinkles cit-ref-sprinkles-doi">CrossRef</a> <a href="/lookup/google-scholar?link_type=googlescholar" class="cit-ref-sprinkles cit-ref-sprinkles-google-scholar">Google Scholar</a></div></div></li>
+      <li data-expect="none"><span class="ref-label ref-label-empty"></span><a class="rev-xref-ref" href="#xref-ref-3-1" title="View reference 3 in text" id="ref-3">↵</a><div class="cit ref-cit ref-journal" id="cit-3" data-doi="10.0000/eur.2020.3"><div class="cit-metadata"><ol class="cit-auth-list"><li><span class="cit-auth"><span class="cit-name-surname">Castellane</span> <span class="cit-name-given-names">M</span></span> et al. </li></ol><cite><span class="cit-article-title">Detection of the new respiratory virus by a real-time assay whose targets lie outside the positions where the two clusters differ</span>. <abbr class="cit-jnl-abbrev">Euro Surveill</abbr> <span class="cit-vol">25</span>, <span class="cit-fpage">3</span> (<span class="cit-pub-date">2020</span>).</cite></div><div class="cit-extra"><a href="https://doi.org/10.0000/eur.2020.3" class="cit-ref-sprinkles cit-ref-sprinkles-doi">CrossRef</a></div></div></li>
+    </ol>
+  </div>
+</article>
+
+</main>
+</body></html>

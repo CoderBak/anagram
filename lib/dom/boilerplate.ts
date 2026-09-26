@@ -27,6 +27,20 @@ const CHROME_ROLES = new Set([
   "complementary", "alert", "status",
 ]);
 
+/**
+ * The components an AMP page draws around its article, by their tag names: the consent
+ * prompt, notification bars, the sidebar, the app and push banners, and the ad, embed and
+ * share slots (amp.dev's component catalogue, "Ads & analytics", "Presentation" and "Dynamic
+ * content"). The runtime gives amp-sidebar `role="menu"` and amp-user-notification
+ * `role="alert"`, which were skipped already; it gives amp-consent's prompt no role at all,
+ * and the prompt holds a paragraph of consent text.
+ */
+const AMP_CHROME_TAGS = new Set([
+  "AMP-CONSENT", "AMP-USER-NOTIFICATION", "AMP-SIDEBAR", "AMP-APP-BANNER",
+  "AMP-WEB-PUSH-WIDGET", "AMP-STICKY-AD", "AMP-AD", "AMP-EMBED", "AMP-AUTO-ADS",
+  "AMP-SOCIAL-SHARE", "AMP-SUBSCRIPTIONS-DIALOG",
+]);
+
 /** Containers a site-wide hint must never exclude (a `notranslate` <body> is a
  *  translation opt-out, not "no prose here"). */
 const PAGE_LEVEL_TAGS = new Set(["BODY", "HTML", "MAIN", "ARTICLE"]);
@@ -289,6 +303,7 @@ export function isBoilerplate(el: Element, page: PageTextSize = pageTextSize(el.
   // <aside> is related-links / widgets / pull-quote duplication — skip always
   // (pull quotes duplicate body text and would double-badge the same sentence).
   if (tag === "ASIDE") return true;
+  if (AMP_CHROME_TAGS.has(tag)) return true;
 
   // A <form> with something to fill in is a widget, whatever prose stands between its
   // fields: a Greenhouse job application sets a paragraph of consent text among them and
@@ -308,8 +323,29 @@ export function isBoilerplate(el: Element, page: PageTextSize = pageTextSize(el.
     if (REPLY_FORM_TOKEN_RE.test(hay) && isReplyForm(el)) return true;
     if (cls && mediaWikiFurniture(el) !== null) return true;
   }
+  if (referenceList(el) !== null) return true;
 
   return false;
+}
+
+/**
+ * The reference list of a paper served as a web page, by the names its publishing platforms
+ * give it: LaTeXML's `ltx_bibliography` (arXiv's HTML papers), JATS' `ref-list` (PubMed
+ * Central, and HighWire's bioRxiv and medRxiv), Springer Nature's `c-article-references`,
+ * Atypon's `article-section__references` (Wiley), Elsevier's `bibliography` section on
+ * ScienceDirect, and the `csl-bib-body` of every CSL processor (Pandoc, Quarto, Zotero's
+ * exports); and the DPUB-ARIA role, `doc-bibliography`, where a page declares it. One
+ * punctuated citation after another reads to the walk as a list of sentences, and PubMed
+ * Central's and Wiley's lists merged into units of their own. Whole class tokens only.
+ */
+export const REFERENCE_LIST_RE =
+  /(?:^|\s)(ltx_bibliography|ref-list|c-article-references|article-section__references|bibliography|csl-bib-body)(?:\s|$)/;
+
+/** The name that makes this element a reference list, or null (see above). */
+export function referenceList(el: Element): string | null {
+  if (el.getAttribute("role") === "doc-bibliography") return 'role="doc-bibliography"';
+  const cls = el.getAttribute("class");
+  return cls ? (REFERENCE_LIST_RE.exec(cls)?.[1] ?? null) : null;
 }
 
 /**

@@ -1,0 +1,74 @@
+<!doctype html>
+<!--
+  A Discord text channel in the web client, synthetic text. MODELLED: Discord needs an
+  account, so the markup follows what FluentRead's Discord rule reads (the text in
+  `[id^="message-content-"]`; it omits the `span[class*="timestamp_"]` inside) and what other
+  translator rule sets name (`li[id^=chat-messages]`, `div[class^=headerText]`, and the
+  `[class*='repliedMessage']` they leave out). The channel is an
+  `ol[data-list-id=chat-messages]`; every message an `li#chat-messages-<channel>-<id>` holding
+  a `div[role=article][aria-roledescription=Message]`: avatar, an <h3> with the username (a
+  `span[role=button]`) and a `<time datetime>`, then `div#message-content-<id>`. A message
+  sent a minute after the one before by the same person has no header, only a hidden time.
+  A reply opens with the message it answers, name and text, cut to one line by CSS
+  (`div.repliedMessage_… > div.repliedTextPreview_…`): the whole of that other message is
+  in the page, but it is somebody else's and it is shown in full further up the channel.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: Discord channel</title>
+<style>
+  body { margin: 0; font: 16px/1.375 "gg sans", sans-serif; }
+  ol { list-style: none; margin: 0 auto; padding: 0; width: 760px; }
+  .contents_c19a55 { position: relative; padding-left: 72px; }
+  .avatar_c19a55 { position: absolute; left: 16px; width: 40px; height: 40px; }
+  h3 { margin: 0; font-size: 16px; font-weight: 500; }
+  .markup__75297 { white-space: break-spaces; }
+  .repliedMessage_c19a55 { display: flex; white-space: nowrap; overflow: hidden; font-size: 14px; }
+  .repliedTextPreview_c19a55 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .repliedTextContent_c19a55 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .latin12CompactTimeStamp__3bd2c { display: none; }
+  .buttonContainer_c19a55 { position: absolute; right: 0; top: -16px; }
+</style></head>
+<body>
+<main class="chatContent__5dca8" aria-label="general (channel)">
+<ol class="scrollerInner__36d07" data-list-id="chat-messages" aria-label="Messages in general" role="list" tabindex="0">
+
+  <li id="chat-messages-900-1001" class="messageListItem__5126c" aria-setsize="-1">
+    <div class="message__5126c cozyMessage__5126c groupStart__5126c wrapper_c19a55 cozy_c19a55" role="article" data-list-item-id="chat-messages___chat-messages-900-1001" tabindex="-1" aria-setsize="-1" aria-roledescription="Message" aria-labelledby="message-username-1001 message-content-1001 message-timestamp-1001">
+      <div class="contents_c19a55">
+        <img src="avatar-1.png" aria-hidden="true" class="avatar_c19a55 clickable_c19a55" alt=" ">
+        <h3 class="header_c19a55" data-chrome><span id="message-username-1001" class="headerText_c19a55"><span class="username_c19a55 clickable_c19a55" aria-expanded="false" role="button" tabindex="0">oskar.lind</span></span><span class="timestamp_c19a55 timestampInline_c19a55"><time aria-label="Today at 10:21" id="message-timestamp-1001" datetime="2026-09-26T10:21:00.000Z"><i class="separator_c19a55" aria-hidden="true"> — </i>Today at 10:21</time></span></h3>
+        <div id="message-content-1001" class="markup__75297 messageContent_c19a55" data-voice="oskar" data-expect="unit">Has anyone else noticed that the late ferry has been leaving five minutes early all week? I have missed it twice now, standing on the slipway with the timetable in my hand while it pulled away, and the second time the skipper waved. I asked in the shop and they said the operator changed the times after the last committee meeting, but nothing has gone up at the slipway and the website still shows the old sheet.</div>
+      </div>
+      <div id="message-accessories-1001" class="container_b7e1cb"></div>
+      <div class="buttonContainer_c19a55" data-chrome><div class="buttons_c19a55" role="group" aria-label="Message Actions"><div role="button" aria-label="Add Reaction" tabindex="0"></div><div role="button" aria-label="Reply" tabindex="0"></div></div></div>
+    </div>
+  </li>
+
+  <li id="chat-messages-900-1002" class="messageListItem__5126c" aria-setsize="-1">
+    <div class="message__5126c cozyMessage__5126c wrapper_c19a55 cozy_c19a55" role="article" data-list-item-id="chat-messages___chat-messages-900-1002" tabindex="-1" aria-setsize="-1" aria-roledescription="Message" aria-labelledby="message-content-1002 message-timestamp-1002">
+      <div class="contents_c19a55">
+        <span class="latin12CompactTimeStamp__3bd2c timestamp_c19a55 timestampVisibleOnHover_c19a55" data-chrome><time aria-label="10:22" id="message-timestamp-1002" datetime="2026-09-26T10:22:00.000Z">10:22</time></span>
+        <div id="message-content-1002" class="markup__75297 messageContent_c19a55" data-voice="oskar-2" data-expect="none">Screenshot of the old sheet below.</div>
+      </div>
+    </div>
+  </li>
+
+  <li id="chat-messages-900-1003" class="messageListItem__5126c" aria-setsize="-1">
+    <div class="message__5126c cozyMessage__5126c hasReply__5126c groupStart__5126c wrapper_c19a55 cozy_c19a55" role="article" data-list-item-id="chat-messages___chat-messages-900-1003" tabindex="-1" aria-setsize="-1" aria-roledescription="Message" aria-labelledby="message-username-1003 message-content-1003 message-timestamp-1003">
+      <div id="message-reply-context-1003" aria-label="Replying to oskar.lind" class="repliedMessage_c19a55" data-chrome>
+        <img src="avatar-1.png" aria-hidden="true" class="replyAvatar_c19a55" alt=" " width="16" height="16">
+        <span class="username_c19a55" role="button" tabindex="0">@oskar.lind</span>
+        <div class="repliedTextPreview_c19a55 clickable_c19a55" role="button" tabindex="0"><div id="message-content-1001" class="repliedTextContent_c19a55 markup__75297 messageContent_c19a55" data-voice="oskar-quoted" data-expect="none">Has anyone else noticed that the late ferry has been leaving five minutes early all week? I have missed it twice now, standing on the slipway with the timetable in my hand while it pulled away, and the second time the skipper waved. I asked in the shop and they said the operator changed the times after the last committee meeting, but nothing has gone up at the slipway and the website still shows the old sheet.</div></div>
+      </div>
+      <div class="contents_c19a55">
+        <img src="avatar-2.png" aria-hidden="true" class="avatar_c19a55 clickable_c19a55" alt=" ">
+        <h3 class="header_c19a55" data-chrome><span id="message-username-1003" class="headerText_c19a55"><span class="username_c19a55 clickable_c19a55" aria-expanded="false" role="button" tabindex="0">maren</span></span><span class="timestamp_c19a55 timestampInline_c19a55"><time aria-label="Today at 10:40" id="message-timestamp-1003" datetime="2026-09-26T10:40:00.000Z"><i class="separator_c19a55" aria-hidden="true"> — </i>Today at 10:40</time></span></h3>
+        <div id="message-content-1003" class="markup__75297 messageContent_c19a55" data-voice="maren" data-expect="none">Yes, the new sheet starts on Monday. I will ask them to put it up today.</div>
+      </div>
+    </div>
+  </li>
+
+</ol>
+</main>
+</body></html>

@@ -859,6 +859,92 @@ async function sweep(page, steps = 6) {
     await p.close();
   }
 
+  // A22c: the same for Edge's translator and Firefox's full-page translation, which mark the
+  // page their own ways (lib/dom/translation.ts), both modelled here. Edge gives every element
+  // it rewrites `_msttexthash` and `_msthash`, and takes them away with the translation.
+  // Firefox relabels <html lang> and numbers the elements inside a block it is translating
+  // with `data-moz-translations-id` until the translation is in; its "Show original" reloads
+  // the page, so there is no way back to check. And Immersive Translate's bilingual copy,
+  // `font.immersive-translate-target-wrapper`, is never read beside the original.
+  for (const browser of ["edge", "firefox"]) {
+    const path = `/translated-${browser}.html`;
+    PAGES[path] = `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>translated fixture</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+<main><p id="t1">${PARA("ORIGINAL-ONE")} <a href="#one">Mehr dazu</a></p><p id="t2">${PARA("ORIGINAL-TWO")} <a href="#two">Mehr dazu</a></p></main>
+<script>
+  const saved = [];
+  window.__translate = ${browser === "edge"
+    ? `() => {
+    let n = 0;
+    for (const p of document.querySelectorAll("main p")) {
+      const text = p.firstChild;
+      saved.push([p, text.data]);
+      p.setAttribute("_msttexthash", String(1000 + n));
+      p.setAttribute("_msthash", String(++n));
+      text.data = text.data.replace("ORIGINAL", "MACHINE");
+    }
+  }`
+    : `() => {
+    document.documentElement.lang = "en";
+    for (const p of document.querySelectorAll("main p")) {
+      p.querySelectorAll("*").forEach((el, i) => { el.dataset.mozTranslationsId = String(i); });
+      p.firstChild.data = p.firstChild.data.replace("ORIGINAL", "MACHINE");
+      p.querySelectorAll("*").forEach((el) => { delete el.dataset.mozTranslationsId; });
+    }
+  }`};
+  window.__revert = () => {
+    for (const [p, data] of saved.splice(0)) {
+      p.removeAttribute("_msttexthash");
+      p.removeAttribute("_msthash");
+      p.firstChild.data = data;
+    }
+  };
+</script></body></html>`;
+    const p = await context.newPage();
+    await p.goto(server.url(path), { waitUntil: "load" });
+    const settled = (n) =>
+      p.waitForFunction(({ sel, n }) => {
+        const hosts = [...document.querySelectorAll(sel)];
+        return hosts.length === n && hosts.every((h) => !h.shadowRoot?.querySelector(".pill.pending"));
+      }, { sel: BADGE_SEL, n }, { timeout: 15000 }).then(() => true).catch(() => false);
+    const look = () => p.evaluate((sel) => ({ chips: document.querySelectorAll(sel).length, ball: !!document.getElementById("anagram-fab") }), BADGE_SEL);
+    const sentBefore = fixture.stats.texts.length;
+    const before = (await settled(2)) ? await look() : null;
+    await p.evaluate(() => window.__translate());
+    await p.waitForTimeout(3000); // past the observers' debounce, the scheduler and the fixture
+    const during = await look();
+    const machineSent = fixture.stats.texts.slice(sentBefore).some((t) => t.includes("MACHINE-"));
+    let back = null;
+    if (browser === "edge") {
+      await p.evaluate(() => window.__revert());
+      back = (await settled(2)) ? await look() : await look();
+    }
+    record(
+      "ui",
+      `a page ${browser === "edge" ? "Edge's translator" : "Firefox's full-page translation"} translated: nothing is read or left on it while it is translated${browser === "edge" ? ", and it is read again once the original is back" : ""}`,
+      !!before && before.chips === 2 && before.ball && during.chips === 0 && !during.ball && !machineSent &&
+        (browser !== "edge" || (back.chips === 2 && back.ball)),
+      JSON.stringify({ before, during, machineSent, back }),
+    );
+    await p.close();
+  }
+  {
+    PAGES["/immersive.html"] = `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>bilingual fixture</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+<main><p id="i1">${PARA("ORIGINAL-IMT")}<font class="immersive-translate-target-wrapper" lang="en"><br><font class="immersive-translate-target-inner">${PARA("MACHINE-IMT")}</font></font></p></main>
+</body></html>`;
+    const p = await context.newPage();
+    await p.goto(server.url("/immersive.html"), { waitUntil: "load" });
+    await p.waitForSelector(`#i1 ${BADGE_SEL}`, { timeout: 15000 }).catch(() => {});
+    await p.waitForTimeout(1500);
+    const sent = fixture.stats.texts.filter((t) => t.includes("-IMT"));
+    record(
+      "ui",
+      "Immersive Translate's bilingual copy is never read, the original beside it is",
+      sent.length > 0 && sent.every((t) => t.includes("ORIGINAL-IMT") && !t.includes("MACHINE-IMT")),
+      JSON.stringify(sent.map((t) => t.slice(0, 40))),
+    );
+    await p.close();
+  }
+
   // A21: the fixture goes away → the batch in flight renders "Unavailable", nothing new
   // is dispatched, the ball's counter shows "!"; the fixture comes back → everything is
   // re-queued automatically (no reload, no Rescan). Twice: a paragraph under 510 bytes
@@ -1380,6 +1466,53 @@ async function sweep(page, steps = 6) {
         !!r.off && r.off.top === 0 && r.off.frame === 0 && r.off.referrer === "",
       JSON.stringify(r),
     );
+  }
+
+  // A28b: a consent platform's banner in a frame of its own is not read. With every site
+  // granted the content script runs in each frame, and Sourcepoint's message frame holds a
+  // paragraph of consent text as long as any article's. The hosts are served locally (the
+  // frames' markup is modelled); the third frame is a Sourcepoint message on the publisher's
+  // own domain, known only by its address.
+  {
+    const CONSENT = (tag) => `${tag} We and our partners store and access information on your device, such as cookies and unique identifiers, and process personal data such as browsing data, to show you personalised advertising and content, to measure how advertising and content perform, to understand our audiences and to develop our services. Some partners rely on their legitimate interest for this, which you can object to. You can accept, reject or choose purpose by purpose, and change your mind at any time from the privacy settings link in the footer of every page.`;
+    const message = (tag) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>SP Consent Message</title></head><body style="margin:0;font:14px/1.4 sans-serif">
+<div id="notice" class="message type-modal" role="dialog" aria-label="Privacy notice" tabindex="0">
+  <div class="message-component message-row"><p class="message-component">${CONSENT(tag)}</p></div>
+  <div class="message-component message-row"><button class="message-component message-button sp_choice_type_11" title="Accept all">Accept all</button><button class="message-component message-button sp_choice_type_12" title="Settings">Settings</button></div>
+</div></body></html>`;
+    const trustarc = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>TrustArc Cookie Consent Manager</title></head><body style="margin:0;font:14px/1.4 sans-serif">
+<div class="banner"><div class="banner-content"><h2>How we use your data</h2><p>${CONSENT("TRUSTEFRAME")}</p><button class="call">Agree and proceed</button></div></div></body></html>`;
+    await context.route("https://cdn.privacy-mgmt.com/**", (route) => route.fulfill({ contentType: "text/html", body: message("SPCDNFRAME") }));
+    await context.route("https://consent-pref.trustarc.com/**", (route) => route.fulfill({ contentType: "text/html", body: trustarc }));
+    PAGES["/index.html"] = message("SPCNAMEFRAME");
+    PAGES["/consent-top.html"] = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>consent frames</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+<p id="topp">${PARA("CONSENTHOST")}</p>
+<div id="sp_message_container_1000"><iframe id="sp_message_iframe_1000" title="SP Consent Message" src="https://cdn.privacy-mgmt.com/index.html?message_id=1000&amp;consentUUID=00000000-0000&amp;preload_message=true" width="640" height="300"></iframe></div>
+<div id="sp_message_container_1001"><iframe id="sp_message_iframe_1001" title="SP Consent Message" src="${server.base.replace("localhost", "127.0.0.1")}/index.html?message_id=1001&amp;requestUUID=00000000-0001" width="640" height="300"></iframe></div>
+<div class="truste_box_overlay"><iframe class="truste_popframe" title="TrustArc Cookie Consent Manager" src="https://consent-pref.trustarc.com/?type=example&amp;site=example.com&amp;action=notice&amp;country=gb&amp;locale=en" width="640" height="300"></iframe></div>
+</body></html>`;
+    const p = await context.newPage();
+    await p.goto(server.url("/consent-top.html"), { waitUntil: "load" });
+    await p.waitForSelector(`#topp ${BADGE_SEL}`, { timeout: 15000 }).catch(() => {});
+    await p.waitForTimeout(4000); // long enough for a frame's chip to have appeared
+    const frames = [];
+    for (const f of p.frames()) {
+      if (f !== p.mainFrame()) frames.push(await f.evaluate((sel) => document.querySelectorAll(sel).length, BADGE_SEL).catch(() => -1));
+    }
+    const r = {
+      top: await p.evaluate((sel) => document.querySelectorAll(`#topp ${sel}`).length, BADGE_SEL),
+      frames,
+      sent: ["SPCDNFRAME", "SPCNAMEFRAME", "TRUSTEFRAME"].filter((t) => fixture.stats.texts.some((s) => s.includes(t))),
+    };
+    record(
+      "ui",
+      "a consent platform's banner in a frame of its own (Sourcepoint, on its CDN or the publisher's domain; TrustArc) is not read, the page around it is",
+      r.top > 0 && frames.length === 3 && frames.every((n) => n === 0) && r.sent.length === 0,
+      JSON.stringify(r),
+    );
+    await p.close();
+    await context.unroute("https://cdn.privacy-mgmt.com/**");
+    await context.unroute("https://consent-pref.trustarc.com/**");
   }
 
   // A29: the Google Docs reading overlay refreshes in place. The overlay shows a
@@ -2472,6 +2605,42 @@ async function sweep(page, steps = 6) {
     await p.waitForTimeout(1500);
     const after = await p.evaluate((sel) => ({ text: document.getElementById("post").textContent, chips: document.querySelectorAll(`#post ${sel}`).length }), BADGE_SEL);
     record("ui", "…and removing its node leaves no piece of the post and no chip behind", after.text === "" && after.chips === 0, JSON.stringify(after));
+    await p.close();
+  }
+
+  // ---- a post the SITE cut to a preview ("… See more") ---------------------------------
+  // Facebook puts only the first lines of a long post in the page, ending in "…" and an
+  // inline "See more" button, and writes the rest in when it is pressed. The preview is not
+  // the post: nothing of it is sent, and once the post is opened it is read whole.
+  {
+    const HEAD = "SEEMOREHEAD Volunteers from the history society have spent the last two long winters transcribing them all by hand. The keeper's logs for that winter run to nearly four hundred pages, and almost none of it is about the light. It is about weather, mostly, and about the small economies of a household cut off from the mainland: how much coal was left, which hens were still laying, when the supply boat was due and whether it";
+    const TAIL = " came at all, and which books the children read by the stove. SEEMORETAIL He wrote in pencil because ink froze in the well, and he wrote every evening without exception.";
+    PAGES["/see-more.html"] = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>see more fixture</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+<div role="article" id="post"><div data-ad-preview="message"><div style="white-space:pre-wrap"><div dir="auto" id="text">${HEAD}…<div role="button" tabindex="0" id="more" style="display:inline;cursor:pointer;font-weight:600">See more</div></div></div></div></div>
+<script>
+  document.getElementById("more").addEventListener("click", () => {
+    document.getElementById("text").replaceChildren(document.createTextNode(${JSON.stringify(HEAD + TAIL)}));
+  });
+</script></body></html>`;
+    const p = await context.newPage();
+    // The fixture keeps only its last 500 texts, so this late in the run an index into them
+    // means nothing: the marker, which no other page uses, picks out this page's texts.
+    const mine = () => fixture.stats.texts.filter((t) => t.includes("SEEMOREHEAD"));
+    await p.goto(server.url("/see-more.html"), { waitUntil: "load" });
+    await p.waitForTimeout(3000); // long enough for a chip on the preview to have appeared
+    const preview = {
+      chips: await p.evaluate((sel) => document.querySelectorAll(`#post ${sel}`).length, BADGE_SEL),
+      sent: mine().length > 0,
+    };
+    await p.click("#more");
+    const whole = await p.waitForFunction((sel) => document.querySelectorAll(`#post ${sel}`).length > 0, BADGE_SEL, { timeout: 15000 }).then(() => true).catch(() => false);
+    const sent = mine();
+    record(
+      "ui",
+      "a post the site cut to a preview (\"… See more\") is not read until it is opened, and then it is read whole",
+      preview.chips === 0 && !preview.sent && whole && sent.length > 0 && sent.every((t) => t.includes("SEEMORETAIL")),
+      JSON.stringify({ preview, whole, sent: sent.map((t) => t.slice(-40)) }),
+    );
     await p.close();
   }
 

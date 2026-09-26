@@ -1,0 +1,139 @@
+<!doctype html>
+<!--
+  Posts and comments a site CUTS to a preview, with the control that fetches or reveals the
+  rest; synthetic text. Only the preview is in the page, and a verdict on it would speak for
+  a text nobody has read to the end, so none of them is read until it is opened — and then
+  it is read whole (the re-scan sees the full text; test/scenarios.mjs opens one).
+
+    Facebook (reduced from facebook.com/nasa, 2026-09-26, logged out): the last paragraph
+      ends in "…" and an inline `div[role=button]` "See more" follows it in the same
+      `div[dir=auto]`; a comment is cut the same way.
+    Weibo's mobile site (reduced from m.weibo.cn, 2026-09-26): `div.weibo-text` ends in " ..."
+      and an inline link "全文" to the full status.
+    Quora (modelled; Quora refuses a plain headless browser): the answer's preview ends in
+      "…" and "(more)" follows it, a pointer-cursor `div.q-text` with no role.
+    LinkedIn's public post pages (modelled; LinkedIn refuses a plain headless browser): a
+      preview that ends mid-sentence and a button that carries the ellipsis itself,
+      "…see more", after the text block.
+  And what stays read: a post whose whole text is in the page behind a CSS clamp with the
+  same "…see more" button (linkedin-clipped.html has the live shape), a paragraph that
+  ends in an ellipsis of its own with no control after it, and a teaser followed by a
+  "Read more" link that is complete in itself.
+
+  Annotation: see x-timeline.html.
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: truncated previews</title>
+<style>
+  body { margin: 0; font: 15px/1.4 system-ui, sans-serif; }
+  main { width: 680px; margin: 0 auto; }
+  section { border: 1px solid #ddd; margin: 16px 0; padding: 12px; }
+  .col { display: flex; flex-direction: column; }
+  .f { display: flex; }
+  .pw { white-space: pre-wrap; }
+  [role="button"], .qu-cursor--pointer { cursor: pointer; font-weight: 600; }
+  .clamp { overflow: hidden; max-height: 60px; }
+  a { color: inherit; }
+</style></head>
+<body>
+<main>
+
+<!-- Facebook: a post and a comment cut after "…" with "See more" -->
+<section>
+<div class="x1a2a7pz" role="article">
+  <div class="col">
+    <div class="f" data-chrome>
+      <a aria-label="Harbour Gazette" href="/harbourgazette?__cft__[0]=y" role="link" tabindex="0" style="display:inline-block"><svg width="40" height="40"></svg></a>
+      <h2><span class="f"><a href="/harbourgazette?__cft__[0]=y" role="link" tabindex="0"><b><span>Harbour Gazette</span></b></a></span></h2>
+      <a aria-label="1d" href="/harbourgazette/posts/pfbid0bbb" role="link" tabindex="0">1d</a>
+    </div>
+    <div dir="auto">
+      <div class="x1l90r2v x1iorvi4 x1g0dm76" data-ad-comet-preview="message" data-ad-preview="message" data-voice="gazette" data-expect="none">
+        <div class="col"><span dir="auto" style="display:block">
+          <div class="pw"><div dir="auto">The lighthouse keeper's logs from the winter the causeway flooded have been transcribed by volunteers from the history society, and they are going on show in the library from Monday.</div></div>
+          <div class="pw"><div dir="auto">Almost none of the four hundred pages is about the light. It is about weather, mostly, and about the small economies of a household cut off from the mainland: how much coal was left, which hens were still laying, when the supply boat was due and whether it…<div class="x1i10hfl xjbqb8w x1ejq31n" role="button" tabindex="0" style="display:inline">See more</div></div></div>
+        </span></div>
+      </div>
+    </div>
+    <div class="f" data-chrome><div role="button" tabindex="0" class="f"><span dir="auto" style="display:block">Like</span></div><div role="button" tabindex="0" class="f"><span dir="auto" style="display:block">Comment</span></div></div>
+    <div aria-label="Comment by Tomas Brandt 1 hour ago" role="article" tabindex="-1" class="f">
+      <div><a aria-hidden="true" href="/tomas.brandt?comment_id=Y29t2" role="link" tabindex="-1" style="display:inline-block"><svg width="32" height="32"></svg></a></div>
+      <div>
+        <div style="display:inline-block">
+          <div data-chrome><a aria-hidden="false" href="/tomas.brandt?comment_id=Y29t2" role="link" tabindex="0"><span dir="auto" style="display:block">Tomas Brandt</span></a></div>
+          <div data-voice="tomas"><span dir="auto" lang="en" style="display:block"><div class="pw" data-expect="none"><div dir="auto">I have been on the committee that argues about this every year, and the problem has never been the tide. The problem is that the school day and the tide agree for about three weeks in every month and disagree completely for the fourth, and in that week somebody always ends up waiting two hours with a van full of shopping. We asked the operator to put on an extra crossing for that week and they said the crew…<div role="button" tabindex="0" style="display:inline">See more</div></div></div></span></div>
+        </div>
+        <div class="f" data-chrome><a href="/harbourgazette/posts/pfbid0bbb" role="link" tabindex="0">1h</a> <div role="button" tabindex="0">Like</div> <div role="button" tabindex="0">Reply</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- Weibo's mobile site: a status cut after " ..." with a link to the full text, "全文" -->
+<section>
+<div class="card m-panel card9">
+  <div class="card-wrap">
+    <header class="weibo-top m-box f" data-chrome>
+      <div class="m-avatar-box m-box-center f"><a href="/profile/1000000001" class="m-img-box" style="display:block"><img alt="" width="36" height="36"></a></div>
+      <div class="m-box-dir m-box-col m-box-center f"><div class="m-text-box"><a href="/profile/1000000001"><h3 class="m-text-cut" style="white-space:nowrap">海港日报</h3></a><h4 class="m-text-cut" style="white-space:nowrap"><span class="time">5小时前</span><span class="from"> 来自 微博网页版</span></h4></div></div>
+    </header>
+  </div>
+  <article class="weibo-main">
+    <div class="card-wrap"><div class="weibo-og">
+      <div class="weibo-text" data-voice="weibo" data-expect="none">冬季轮渡时刻表今天正式公布，这是运营方第一次把排班的理由和时刻一起印出来。每一班船都要等到港口的水足够深、满载的船能够安全靠岸的时候才能出发，而这样的时间窗口每天大约要往后推迟五十分钟，所以一张固定不变的时刻表从来都不可能存在。于是第一班和最后一班船被固定在上学和放学的时间，中间的班次则随着潮水一天天地移动，每两个星期在两个码头和小卖部里贴出一张新的时刻表，常坐船的人说他们早就不看了，直接去问船长 ...<a href="/status/5000000000000001">全文</a></div>
+    </div></div>
+  </article>
+  <footer class="f-footer-ctrl f" data-chrome><div class="m-diy-btn m-box-center-a f"><h4>2341</h4></div><div class="m-diy-btn m-box-center-a f"><h4>253</h4></div><div class="m-diy-btn m-box-center-a f"><h4>2.8万</h4></div></footer>
+</div>
+</section>
+
+<!-- Quora (modelled): an answer's preview cut after "…" with "(more)" -->
+<section>
+<div class="q-box">
+  <div class="q-box dom_annotate_multifeed_bundle_AnswersBundle">
+    <div class="q-box spacing_log_answer_header" data-chrome><div class="f"><a class="q-box qu-cursor--pointer" href="https://www.quora.com/profile/Tamsin-Oyelaran"><img class="q-image" alt="Profile photo for Tamsin Oyelaran" width="36" height="36"></a><div><a class="q-box qu-cursor--pointer" href="https://www.quora.com/profile/Tamsin-Oyelaran"><span>Tamsin Oyelaran</span></a><div class="q-text"><a class="answer_timestamp" href="/Why-does-the-ferry-timetable-change-every-fortnight/answer/Tamsin-Oyelaran">1y</a></div></div></div></div>
+    <div class="q-box spacing_log_answer_content">
+      <div class="q-relative"><div class="q-text qu-wordBreak--break-word" data-voice="tamsin" data-expect="none"><span class="q-box qu-userSelect--text"><span>Everyone says the tide, and that is right, but the fortnight is the interesting part. The tides themselves repeat on a cycle of about two weeks, from springs to neaps and back again, and the operator prints one sheet per cycle so that the pattern of the times is the same from one sheet to the next. If they printed a month at a time the second half would look completely different from the…</span></span><div class="q-text qu-cursor--pointer QTextTruncated__StyledReadMoreLink-sc-1pev100-3" style="display:inline"> (more)</div></div></div>
+    </div>
+    <div class="q-box qu-zIndex--action_bar" data-chrome><div class="f"><button class="q-click-wrapper" type="button" aria-label="Upvote">Upvote · 310</button></div></div>
+  </div>
+</div>
+</section>
+
+<!-- LinkedIn public post (modelled): a preview cut mid-sentence, the ellipsis on the button -->
+<section>
+<article class="main-feed-activity-card" data-activity-urn="urn:li:activity:7000000000000000001">
+  <div class="base-main-card__info" data-chrome><a href="/in/maren-holt" data-tracking-control-name="public_post_feed-actor-name">Maren Holt</a><p class="base-main-card__subtitle">Harbour committee chair</p><span class="base-main-card__metadata"><time>2d</time></span></div>
+  <div class="attributed-text-segment-list__container" data-voice="maren" data-expect="none">
+    <p class="attributed-text-segment-list__content" dir="ltr">Two years ago our island's committee asked the ferry operator one question: why does the middle of the timetable move every day? The answer turned out to be the most useful thing anybody has told us about our own harbour. Every crossing waits for a window of deep water, the windows drift by fifty minutes a day, and so the only honest timetable is one that drifts with them. What we did with that answer is the part I want to write about, because it changed how the whole</p>
+  </div>
+  <button class="attributed-text-segment-list__show-more" type="button" aria-label="See more, visually reveals content which is already detected by screen readers" data-chrome>…see more</button>
+  <div class="main-feed-activity-card__social-actions" data-chrome><span>312</span> <span>41 comments</span></div>
+</article>
+</section>
+
+<!-- stays read: the whole text is in the page behind a CSS clamp with the same button -->
+<section>
+<article class="clamped-card">
+  <div class="card-header" data-chrome><a href="/in/oskar-lind">Oskar Lind</a> <time>3d</time></div>
+  <div class="clamp" data-voice="oskar" data-expect="unit"><span dir="ltr">Every morning for a month I counted the people who walked down to the slipway for the midday boat and turned round at the top of the hill when they saw the queue. It was never fewer than six and once it was nineteen, most of them with shopping and two with a pram, and not one of them would ever have shown up in the operator's numbers, because nobody counts the passengers who give up before they get to the boat. That is the number I am taking to the meeting on Thursday.</span></div>
+  <button type="button" aria-expanded="false" data-chrome>…see more</button>
+</article>
+</section>
+
+<!-- stays read: an ellipsis of the author's own, and a complete teaser before "Read more" -->
+<section>
+<article>
+  <p data-voice="author" data-expect="unit">The keeper's last entry for that winter is eleven words long, and it gives the wind, the barometer and the hour the glass went before anything else, as every entry before it had. His daughter found the book forty years later in a trunk in the byre, under a coil of rope and a box of lamp glasses, and read it through in one night by the light of the kitchen stove, and she said afterwards that she had never known him at all until then...</p>
+</article>
+</section>
+<section>
+<article class="teaser">
+  <h2>What the keeper wrote</h2>
+  <p data-voice="teaser" data-expect="unit">A lighthouse keeper's logs are mostly about the weather and the household, not the light. Volunteers from the history society have spent two winters transcribing the four hundred pages he wrote in the year the causeway flooded, and the library is showing a selection of them from Monday, together with the tide tables and the ration books of that year and a map of the island as it was before the causeway was built across the sound.
+  <a class="read-more" href="/2026/09/what-the-keeper-wrote">Read more</a>
+</article>
+</section>
+
+</main>
+</body></html>

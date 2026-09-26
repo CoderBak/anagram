@@ -1,0 +1,80 @@
+<!doctype html>
+<!--
+  An AMP article with the components AMP draws around it: a consent prompt, a user
+  notification, a sidebar that is open, an app banner and a sticky ad. Synthetic text.
+
+  The markup is the one the AMP runtime leaves in the document once it has built the
+  components (preview.amp.dev/documentation/examples/components/amp-sidebar,
+  amp-user-notification and amp-sticky-ad, 2026-09-26): `i-amphtml-*` classes, and the roles
+  it sets itself — `role="alert"` on amp-user-notification, `role="menu"` on amp-sidebar, which
+  the walk already skipped. The consent prompt follows amp.dev's own amp-consent example
+  (`amp-consent#myUserConsent > div#consentDialog`), with the position the runtime's stylesheet
+  gives the element (cdn.ampproject.org/v0/amp-consent-0.1.js: fixed, at the bottom); the
+  runtime sets no role on it, and "consentDialog" is one class-name token that says nothing
+  the chrome filter knew — the prompt was scored. The app banner is modelled on amp.dev's
+  amp-app-banner documentation.
+
+  Annotation: see x-timeline.html.
+-->
+<html amp lang="en" class="i-amphtml-singledoc i-amphtml-standalone"><head><meta charset="utf-8"><title>Fixture: AMP article</title>
+<style>
+  body { max-width: 680px; margin: 30px auto; font: 17px/1.55 Georgia, serif; }
+  amp-consent { display: block; position: fixed; bottom: 0; left: 0; width: 100%; background: #fff; z-index: 10; font: 14px/1.4 sans-serif; }
+  amp-user-notification { display: block; position: fixed; top: 0; left: 0; width: 100%; background: #eee; font: 14px/1.4 sans-serif; }
+  amp-sidebar { display: block; position: fixed; top: 0; right: 0; width: 280px; height: 100%; background: #fafafa; overflow-y: auto; }
+  amp-sticky-ad { display: block; position: fixed; bottom: 0; width: 100%; height: 50px; }
+  amp-app-banner { display: block; font: 14px/1.4 sans-serif; border: 1px solid #ccc; padding: 8px; }
+  amp-img { display: inline-block; }
+</style></head>
+<body class="amp-mode-mouse">
+
+<amp-app-banner layout="nodisplay" id="app-banner" class="i-amphtml-element i-amphtml-layout-nodisplay i-amphtml-built">
+  <div id="banner-content">
+    <amp-img src="icon.png" width="60" height="60" class="i-amphtml-element i-amphtml-layout-fixed i-amphtml-built"></amp-img>
+    <h3>The Harbour Gazette</h3>
+    <p data-voice="app-banner" data-expect="none">Read every story on the islands in our app, where the ferry times update themselves, the tide tables work offline on the crossing, and the letters page arrives the evening before it is printed. The app is free for readers who already subscribe to the paper edition, and a month of it costs less than a return ticket to the mainland for everybody else who would like to try it first.</p>
+    <div class="actions"><button open-button>View in the app</button></div>
+  </div>
+</amp-app-banner>
+
+<header><h1>The Harbour Gazette</h1></header>
+
+<main>
+  <article>
+    <h1>The winter timetable, explained at last</h1>
+    <p data-voice="author" data-expect="unit">The winter timetable has always been a compromise between the tides and the school run, and this year the operator has finally published the reasoning behind it, which turns out to be more interesting than the timetable itself. Every departure is tied to a window of water deep enough for the loaded boat, and the windows move by about fifty minutes a day, so a fixed clock-face timetable was never possible.</p>
+    <p data-voice="author" data-expect="unit">What the operator did instead was to fix the first and last crossings to the school day and let everything in between drift with the tide, publishing a fortnight at a time on paper at both slipways. Regular passengers say they stopped reading it years ago and simply ask the skipper, who has been known to wait a minute for a running child and never for a running adult.</p>
+  </article>
+</main>
+
+<amp-sidebar id="sidebar" class="sample-sidebar i-amphtml-element i-amphtml-layout-nodisplay i-amphtml-overlay i-amphtml-scrollable i-amphtml-built" layout="nodisplay" side="right" open="" i-amphtml-layout="nodisplay" role="menu" tabindex="-1">
+  <h3>About the Gazette</h3>
+  <p data-voice="sidebar" data-expect="none">The Harbour Gazette has been published every Thursday since the year the causeway opened, by a cooperative of readers who own one share each and meet once a year in the school hall to argue about the crossword. It is printed on the mainland and comes over on the first boat, which in winter means that the paper sometimes arrives on Friday, and nobody has ever complained about that in the letters page.</p>
+  <button on="tap:sidebar.close">Close sidebar</button>
+</amp-sidebar>
+
+<amp-user-notification id="my-notification" class="sample-notification i-amphtml-element i-amphtml-layout-nodisplay i-amphtml-built amp-active" layout="nodisplay" i-amphtml-layout="nodisplay" role="alert">
+  <span data-voice="notification" data-expect="none">This site keeps a note in your browser of which stories you have already read, so that the front page can put the new ones first when you come back. Nothing about you leaves your browser, the note is deleted after thirty days, and you can clear it at any time from the settings page, where you can also switch the feature off altogether if you would rather see every story in the order it was published.</span>
+  <button on="tap:my-notification.dismiss">I accept</button>
+</amp-user-notification>
+
+<amp-sticky-ad layout="nodisplay" class="i-amphtml-element i-amphtml-layout-nodisplay i-amphtml-sticky-ad-layout i-amphtml-built i-amphtml-layout" i-amphtml-layout="nodisplay">
+  <amp-sticky-ad-top-padding class="amp-sticky-ad-top-padding"></amp-sticky-ad-top-padding>
+  <amp-ad width="320" height="50" type="doubleclick" data-slot="/0000/sticky" class="i-amphtml-element i-amphtml-layout-fixed i-amphtml-layout-size-defined i-amphtml-built" i-amphtml-layout="fixed" style="width: 320px; height: 50px;">
+    <div fallback=""><div class="i-amphtml-ad-default-holder" data-ad-holder-text="Ad"></div></div>
+  </amp-ad>
+</amp-sticky-ad>
+
+<amp-consent id="myUserConsent" layout="nodisplay" class="i-amphtml-element i-amphtml-layout-nodisplay i-amphtml-built amp-active" i-amphtml-layout="nodisplay">
+  <div id="consentDialog">
+    <div class="dismiss-button" role="button" tabindex="2" on="tap:myUserConsent.dismiss">X</div>
+    <div class="message">
+      <h2>Your choices on this site</h2>
+      <p data-voice="amp-consent" data-expect="none">We and our partners store and read information on your device to measure how our stories are read, to show advertising that pays for the reporting, and to remember the choices you make here. Some partners do this on the basis of their legitimate interest, which you can object to at any time. You can accept all of this, reject all of it, or choose purpose by purpose, and you can change your mind later from the link at the foot of every page.</p>
+      <button on="tap:myUserConsent.accept" role="button">Accept</button>
+      <button on="tap:myUserConsent.reject" role="button">Reject</button>
+    </div>
+  </div>
+</amp-consent>
+
+</body></html>

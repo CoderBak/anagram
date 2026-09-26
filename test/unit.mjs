@@ -1178,6 +1178,62 @@ const results = await page.evaluate(() => {
       JSON.stringify([whole.length, inside.length]));
   }
   {
+    // A consent platform's banner in a frame of its own is known by the frame's address
+    // (the frame itself is exercised in test/scenarios.mjs).
+    const frame = (href) => PW.isConsentFrame(new URL(href));
+    const yes = [
+      "https://cdn.privacy-mgmt.com/index.html?message_id=1000&consentUUID=x",
+      "https://sourcepoint.example-news.co.uk/index.html?message_id=1000",
+      "https://example-news.com/privacy-manager/index.html?consentUUID=x",
+      "https://ccpa-notice.sp-prod.net/?message_id=1",
+      "https://cmp-consent-tool.privacymanager.io/latest/index.html",
+      "https://consent-pref.trustarc.com/?type=x&site=example.com",
+      "https://cdn.appconsent.io/tcf2-clear/current/index.html",
+    ];
+    const no = [
+      "https://example-news.com/index.html",
+      "https://example-news.com/2026/09/article.html?message_id=1",
+      "https://www.trustarc.com/blog/",
+      "https://www.youtube.com/embed/abc",
+    ];
+    check("a frame is a consent platform's by its host, or by Sourcepoint's path and message id",
+      yes.every(frame) && !no.some(frame), JSON.stringify([yes.filter((h) => !frame(h)), no.filter(frame)]));
+    sandbox.innerHTML = `<div id="piano-cookie_banner"><p>${words(80)}</p></div>`;
+    check("…or, where the platform gives it no address of its own, by what it draws (Piano)",
+      PW.isConsentFrame(new URL("https://example-news.com/frame"), document), "");
+    sandbox.innerHTML = "";
+  }
+  {
+    // Text laid out on one line that a box cuts off with an ellipsis is a preview of a text
+    // shown in full elsewhere (Discord's reply context, an inbox snippet); a line that merely
+    // does not wrap, in a box the reader can scroll, is still read.
+    u = collect(`<div style="width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><div>${words(80)}</div></div>`);
+    check("a text cut to one line with an ellipsis is a preview, never read", u.length === 0, JSON.stringify(u.map(x => x.words)));
+    u = collect(`<div style="width:300px;overflow-x:auto;white-space:nowrap">${words(80)}</div>`);
+    check("…while a line that does not wrap in a box the reader can scroll is read", u.length === 1, JSON.stringify(u.map(x => x.words)));
+  }
+  {
+    // A text the SITE cut to a preview — an ellipsis and the control that brings the rest —
+    // is not read as the whole text; once the site writes the rest in, it is read whole.
+    const cut = (tail) => `<div role="article"><div dir="auto">${words(40)}</div><div dir="auto" id="last">${words(45).slice(0, -1)}${tail}</div></div>`;
+    u = collect(cut(`…<div role="button" tabindex="0" style="display:inline">See more</div>`));
+    check("a post cut after '…' with an inline 'See more' (Facebook) is not read", u.length === 0, JSON.stringify(u.map(x => x.words)));
+    const whole = collect(cut(` and then the rest of it, which the site wrote in when the reader asked for it.`));
+    check("…and the same post opened is read whole, the control gone", whole.length === 1 && whole[0].parts === 2 && !whole[0].text.includes("See more"), JSON.stringify(whole.map(x => [x.parts, x.words])));
+    u = collect(`<p>${words(80).slice(0, -1)} ...<a href="#status">全文</a></p><p>OTHER ${words(80)}</p>`);
+    check("a paragraph cut after ' ...' with a link '全文' (Weibo) is not read, the next one is", u.length === 1 && u[0].text.startsWith("OTHER"), JSON.stringify(u.map(x => x.text.slice(0, 12))));
+    u = collect(`<article><div><p>${words(80).slice(0, -1)}</p></div><button type="button">…see more</button></article>`);
+    check("a text followed by a '…see more' button in a block of its own, with nothing clamping it, is not read", u.length === 0, JSON.stringify(u.map(x => x.words)));
+    u = collect(`<article><div style="overflow:hidden;max-height:40px"><p>${words(80)}</p></div><button type="button">…see more</button></article>`);
+    check("…while the same button under a clamped box, the whole text in the page, is read", u.length === 1, JSON.stringify(u.map(x => x.words)));
+    u = collect(`<article><div style="overflow:hidden;max-height:40px"><span>${words(80).slice(0, -1)}...</span></div><div role="button" tabindex="0">Read more</div></article>`);
+    check("…and so is a clamped comment that ends in an ellipsis of its own (YouTube's 'Read more')", u.length === 1, JSON.stringify(u.map(x => x.words)));
+    u = collect(`<p>${words(80).slice(0, -1)}…</p><p><a href="#next">Read more</a></p>`);
+    check("an excerpt cut after '…' with 'Read more' under it is not read", u.length === 0, JSON.stringify(u.map(x => x.words)));
+    u = collect(`<p>${words(80)}</p><p><a href="#next">Read more</a></p>`);
+    check("a complete teaser followed by 'Read more' is read", u.length === 1, JSON.stringify(u.map(x => x.words)));
+  }
+  {
     // A post's own wrapper carries the terms it is filed under (WordPress post_class):
     // `category-newsletter`, `tag-cookies`. Those are what the post is about, not what the box is.
     const post = (cls) => { const e = document.createElement("div"); e.className = cls; return e; };
@@ -2199,13 +2255,17 @@ const results = await page.evaluate(() => {
 const FIXTURES = join(__dirname, "fixtures");
 /** [units, multi-part units] per fixture — a change here is a change of behaviour. */
 const EXPECTED = {
+  "amp-article": [1, 1],
   "article-list-table": [6, 5],
   "bilibili-comments": [2, 2],
+  "bluesky-profile": [0, 0],
   "chat-transcript": [2, 1],
   "clipped-reviews": [8, 1],
   "comments-li": [2, 1],
   "consent-banners": [1, 1],
+  "discord-channel": [1, 0],
   "discourse-thread": [2, 2],
+  "facebook-page": [3, 2],
   "front-page-cards": [2, 1],
   "github-discussion": [3, 2],
   "github-issue": [3, 3],
@@ -2221,15 +2281,22 @@ const EXPECTED = {
   "news-article": [1, 1],
   "permalink-single": [2, 1],
   "phpbb-topic": [2, 1],
+  "quora-question": [2, 1],
   "recipe-faq": [5, 4],
   "reddit-thread": [3, 2],
+  "reference-lists": [6, 0],
   "review-cards": [2, 1],
   "rfc-html": [3, 0],
+  "slack-channel": [2, 1],
+  "stackoverflow-question": [5, 2],
   "substack-article": [16, 13],
   "substack-comments": [3, 2],
   "substack-note": [3, 1],
   "telegram-channel": [2, 1],
+  "teams-chat": [2, 1],
   "thread-100": [75, 50],
+  "threads-profile": [2, 1],
+  "truncated-previews": [3, 0],
   "tufte-sidenotes": [4, 3],
   "v2ex-topic": [2, 2],
   "webmail-apple": [4, 4],
@@ -2240,6 +2307,7 @@ const EXPECTED = {
   "wordpress-single": [1, 1],
   "wordpress-taxonomy": [3, 3],
   "x-timeline": [7, 5],
+  "youtube-comments": [2, 0],
   "zhihu-answers": [13, 7],
 };
 const fixtureFiles = readdirSync(FIXTURES).filter((f) => f.endsWith(".html")).sort();

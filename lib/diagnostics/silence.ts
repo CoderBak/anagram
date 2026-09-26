@@ -15,12 +15,13 @@
 // answer for the barriers, and the floors are the constants the assembler uses. A copy of
 // a rule here would drift from the rule in lib/dom/ within a release, and the report would
 // then explain a page the product no longer reads that way.
-import { collectUnits, isExcludedByAncestry, isProsePre } from "../dom/walker";
-import { isBoilerplate, isConsentBanner, isNoTranslate, mediaWikiFurniture } from "../dom/boilerplate";
+import { collectUnits, isExcludedByAncestry, isExpandLabel, isProsePre } from "../dom/walker";
+import { isBoilerplate, isConsentBanner, isNoTranslate, mediaWikiFurniture, referenceList } from "../dom/boilerplate";
 import { NO_SCORE_TAGS, isHeading, isHeadingLabel, tagOf } from "../dom/tags";
 import { isTranslatedInPlace } from "../dom/translation";
 import {
   clipsOwnText,
+  cutToOneLine,
   createStyleCache,
   flowClassOf,
   isOutOfFlow,
@@ -278,8 +279,13 @@ function boilerplateBranch(el: Element): string {
   if (tag === "ASIDE") return "<aside> is chrome wherever it stands";
   if (tag === "HEADER" || tag === "FOOTER") return `<${tag.toLowerCase()}> outside an <article>/<main>`;
   if (tag === "FORM") return "a <form> with fields to fill in is a widget";
+  if (tag.startsWith("AMP-") && isBoilerplate(document.createElement(tag.toLowerCase()))) {
+    return `AMP's <${tag.toLowerCase()}> is chrome wherever it stands`;
+  }
   const wiki = mediaWikiFurniture(el);
   if (wiki) return `MediaWiki's "${wiki}", not the article's prose`;
+  const refs = referenceList(el);
+  if (refs) return `a paper's reference list (${refs}), not its prose`;
   const hay = `${el.id} ${el.getAttribute("class") ?? ""}`.slice(0, 256);
   // One probe per token, as a class. isBoilerplate merges the id and the classes into a
   // single haystack and runs one regex over it, so asking again as an id can only ever
@@ -306,7 +312,7 @@ function ancestryReason(el: Element): string | null {
     }
     if (cur.hasAttribute(MARK_ATTR)) return "inside Anagram's own UI";
     if (isNoTranslate(cur)) return `translate="no" / .notranslate on ${nameOf(cur)}`;
-    if (isTranslatedInPlace(cur)) return `machine-translated in place by a translator extension: ${nameOf(cur)}`;
+    if (isTranslatedInPlace(cur)) return `a translator extension's machine translation: ${nameOf(cur)}`;
     if ((cur as HTMLElement).isContentEditable) return `inside contenteditable ${nameOf(cur)}`;
     if (cur.getAttribute("aria-hidden") === "true") {
       return `aria-hidden ${nameOf(cur)} — hidden from assistive tech, so hidden from the walk`;
@@ -338,6 +344,9 @@ function hiddenReason(el: Element, cs: Styler): string | null {
     }
     if (style.opacity === "0") return `opacity:0 on ${nameOf(cur)}`;
     if (isVisuallyHidden(style)) return `visually hidden (a screen-reader-only copy) on ${nameOf(cur)}`;
+    if (cutToOneLine(cur, { get: cs })) {
+      return `cut to one line with an ellipsis on ${nameOf(cur)} — a preview of a text shown in full elsewhere`;
+    }
     if (isOutOfFlow(style) && (cur.textContent ?? "").trim().length <= MARKER_CHARS) {
       return `out of flow (position:${style.position}) with under ${MARKER_CHARS} characters — read as a marker, not prose`;
     }
@@ -417,6 +426,12 @@ function reasonFor(el: Element, cs: Styler): string {
   }
   if (standalone.length > 0) {
     return `the box alone yields ${standalone.length} unit(s) — a page-level barrier or a neighbouring voice suppressed it here`;
+  }
+  // A control that brings the rest of the text: the walk leaves a preview the site cut
+  // unread until it is opened (walker.ts, markCut). Named when the box holds one.
+  for (const control of el.querySelectorAll('a,button,summary,[role="button"],[role="link"],[tabindex]')) {
+    const label = (control.textContent ?? "").trim();
+    if (isExpandLabel(label)) return "a preview the site cut, with a control that brings the rest — read once it is opened";
   }
 
   const runs = runsIn(el, cs).filter((r) => r.words > 0);
