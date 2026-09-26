@@ -152,6 +152,36 @@ describe("structuredBlocks — text and runs", () => {
     expectRunsToMatch(blocks[0], pages);
   });
 
+  it("finds a glyph Zotero moved left into the run before it: a formula's, or an italic word's", () => {
+    // pdf.js: "lattice carrying", a space, "M" in the math face, a space, "physical modes".
+    // Zotero dropped both spaces and set the glyphs after them on from where it dropped
+    // them, so the "p" of "physical" stands inside the box of "M".
+    const fonts = { f_text: "NimbusRomNo9L-Regu", f_math: "OHTAKJ+CMMI10" };
+    const a = drawn(1, { text: "lattice carrying", x: 72, y: 100 });
+    // A capital twice a letter's width.
+    const mx = 72 + 17 * CW;
+    const m: PdfTextItem = { str: "M", x: mx, y: 100, width: 2 * CW, height: SIZE, fontName: "f_math" };
+    const mRun = [0, 0, mx - CW, HEIGHT - 102, mx + CW, HEIGHT - 93];
+    const b = drawn(1, { text: "physical modes", x: mx + 3 * CW, y: 100, drift: -2 * CW });
+    const n = { text: "lattice carryingMphysical modes", anchor: { textMap: JSON.stringify([a.run, mRun, b.run]) } };
+    const pages = [pageText(1, [a.item, m, b.item], fonts)];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0].text).toBe("lattice carrying physical modes");
+    expectRunsToMatch(blocks[0], pages);
+
+    // An italic word, then a narrow "i" Zotero drew where the space was: its centre is
+    // just past the end of the italic run, inside that run's slack.
+    const it1 = drawn(1, { text: "contextuality", x: 72, y: 200, font: "f_italic" });
+    const x0 = 72 + 13 * CW;
+    const it2: PdfTextItem = { str: "is tested", x: x0 + 4, y: 200, width: 9 * CW, height: SIZE, fontName: "f_text" };
+    const run2 = [0, 0, x0, HEIGHT - 202, x0 + 2.5 + 8 * CW, HEIGHT - 193, 2.5, CW, [CW, CW], CW, CW, CW, CW, CW];
+    const n2 = { text: "contextualityis tested", anchor: { textMap: JSON.stringify([it1.run, run2]) } };
+    const pages2 = [pageText(1, [it1.item, it2])];
+    const blocks2 = structuredBlocks(structure([paragraph(1, [n2])]), pages2);
+    expect(blocks2[0].text).toBe("contextuality is tested");
+    expectRunsToMatch(blocks2[0], pages2);
+  });
+
   it("puts a space between two glyphs a word apart that Zotero ran together", () => {
     const a = drawn(1, { text: "where", x: 72, y: 100 });
     const b = drawn(1, { text: "the", x: 72 + 5 * CW + 6, y: 100 });

@@ -71,6 +71,9 @@ const DESCENT = 0.35;
 /** How far, in run heights, a glyph may stand from the nearest run on its line and still
  *  be that run's: the width of the word space Zotero's fork folded into it. */
 const DRIFT = 1.5;
+/** How far right of a glyph, in run heights, the run it came from may stand: the spaces
+ *  Zotero's fork dropped from a line add up along it (boxesFor). */
+const REACH = 4;
 
 // ---- glyphs -----------------------------------------------------------------------------
 
@@ -193,20 +196,28 @@ function centreOf(g: Glyph, m: number[]): { cx: number; cy: number; h: number } 
   return { cx: (minX + maxX) / 2, cy: (minY + maxY) / 2, h: maxY - minY };
 }
 
-/** The run whose box holds the glyph's centre, the nearest when several do. */
-function boxFor(index: PageIndex, g: Glyph): Box | null {
+/**
+ * The runs a glyph may belong to, the likeliest first: the run whose box holds its centre
+ * (the nearest when several do), else the nearest one to its right within DRIFT heights;
+ * after it, every other run to its right on the line within REACH heights, nearest first.
+ *
+ * Zotero's fork folds a dropped word space into the glyphs after it and sets the rest of
+ * the line on from there, so a glyph can stand a space's width LEFT of where pdf.js drew
+ * it, and more further along a line that lost several: out of its own run and into the
+ * gap before it, or into the run before it — the formula before a word, or an italic word
+ * the next one follows without a space in Zotero's text. Never a run to its left: that is
+ * the run the space came after.
+ */
+function boxesFor(index: PageIndex, g: Glyph): Box[] {
   const { cx, cy, h } = centreOf(g, index.transform);
   const boxes = index.boxes;
   // Baselines lie below a glyph's centre by up to its ascent; scan the band around it.
   let lo = 0, hi = boxes.length;
   const from = cy - 4 * h;
   while (lo < hi) { const mid = (lo + hi) >> 1; if (boxes[mid].y < from) lo = mid + 1; else hi = mid; }
-  // Zotero's fork folds a dropped word space into the glyphs after it, so a glyph can
-  // stand up to a space's width LEFT of where pdf.js drew it: a box that does not hold
-  // the centre is still taken when it is the nearest one to the right on the line, within
-  // DRIFT heights. Never one to the left — that is the run the space came after.
   let best: Box | null = null, bestScore = Infinity;
   let near: Box | null = null, nearScore = Infinity;
+  const right: Box[] = [];
   for (let i = lo; i < boxes.length; i++) {
     const b = boxes[i];
     if (b.y > cy + 4 * h) break;
@@ -217,8 +228,11 @@ function boxFor(index: PageIndex, g: Glyph): Box | null {
     if (dx <= slack) {
       if (score < bestScore) { best = b; bestScore = score; }
     } else if (cx < b.x1 && dx <= b.h * DRIFT && score < nearScore) { near = b; nearScore = score; }
+    if (cx < b.x1 && b.x1 - cx <= b.h * REACH) right.push(b);
   }
-  return best ?? near;
+  const first = best ?? near;
+  if (!first) return [];
+  return [first, ...right.filter((b) => b !== first).sort((a, b) => a.x1 - b.x1)];
 }
 
 // ---- pieces of a paragraph ----------------------------------------------------------------
@@ -271,34 +285,41 @@ function piecesOf(block: SdtBlock, out: Piece[] = []): Piece[] {
 /**
  * Find every piece's glyph among the text layer's runs: by geometry to the run, then in
  * order along the run's own string, so that "e" number three of a run is the third "e".
+ * A glyph its run cannot take in order — the run has no such character left — is one
+ * Zotero moved left out of a run further right (boxesFor): it is the next character of
+ * that run, if it is the next character of one.
  */
 function locate(pieces: Piece[], pagesByNumber: Map<number, PageIndex>): (Source | null)[] {
   const sources: (Source | null)[] = pieces.map(() => null);
-  /** Pieces assigned to each run, in text order, with their piece index. */
-  const byBox = new Map<Box, number[]>();
+  /** How far along each run's string its glyphs have been found. */
+  const cursor = new Map<Box, number>();
+  const put = (i: number, box: Box, offset: number): void => {
+    sources[i] = { page: box.page, item: box.item, offset, box };
+    cursor.set(box, offset + 1);
+  };
+  /** Where `ch` is the next character of a run, spaces passed over, or -1. */
+  const opens = (box: Box, ch: string): number => {
+    const str = box.it.str;
+    let k = cursor.get(box) ?? 0;
+    while (k < str.length && isSpace(str[k])) k++;
+    return str[k] === ch ? k : -1;
+  };
   pieces.forEach((p, i) => {
     if (!p.glyph) return;
     const index = pagesByNumber.get(p.glyph.page + 1);
     if (!index) return;
-    const box = boxFor(index, p.glyph);
-    if (!box) return;
-    let list = byBox.get(box);
-    if (!list) { list = []; byBox.set(box, list); }
-    list.push(i);
-  });
-  for (const [box, members] of byBox) {
-    const str = box.it.str;
-    let at = 0;
-    for (const i of members) {
-      const ch = pieces[i].ch;
-      let j = str.indexOf(ch, at);
-      // Out of step (a superscript Zotero read after the line): look from the start once.
-      if (j < 0) j = str.indexOf(ch);
-      if (j < 0) continue;
-      sources[i] = { page: box.page, item: box.item, offset: j, box };
-      at = j + 1;
+    const [first, ...right] = boxesFor(index, p.glyph);
+    if (!first) return;
+    let j = first.it.str.indexOf(p.ch, cursor.get(first) ?? 0);
+    if (j >= 0) return put(i, first, j);
+    for (const box of right) {
+      const k = opens(box, p.ch);
+      if (k >= 0) return put(i, box, k);
     }
-  }
+    // Out of step (a superscript Zotero read after the line): look from the start once.
+    j = first.it.str.indexOf(p.ch);
+    if (j >= 0) put(i, first, j);
+  });
   return sources;
 }
 
