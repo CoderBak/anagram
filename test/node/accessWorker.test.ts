@@ -13,6 +13,7 @@ import { ALL_SITES, matchesAny } from "../../lib/access/patterns";
 import { ensureInjected, installAccess, syncRegistration } from "../../lib/access/worker";
 
 const SCRIPT = "/content-scripts/content.js";
+const SHADOW_SCRIPT = "/content-scripts/shadow.js";
 
 interface Listener<A extends unknown[]> {
   addListener(fn: (...args: A) => void): void;
@@ -41,9 +42,11 @@ interface Tab {
 /** Everything the module touches, recorded. `origins` starts empty because the
  *  extension requires no host permission of its own: what the browser reports granted is
  *  what the user granted. */
-function environment(tabs: Tab[] = [], origins: string[] = []) {
-  const registered: { id: string; matches: string[]; js: string[] }[] = [];
+function environment(tabs: Tab[] = [], origins: string[] = [], opts: { refuseMainWorld?: boolean } = {}) {
+  const registered: { id: string; matches: string[]; js: string[]; world?: string }[] = [];
   const calls = {
+    /** The content script's matches, per register / update call. Its page-world companion
+     *  follows it, and is checked on its own below. */
     register: [] as string[][],
     update: [] as string[][],
     unregister: 0,
@@ -67,17 +70,19 @@ function environment(tabs: Tab[] = [], origins: string[] = []) {
       registered.filter((s) => ids.includes(s.id)),
     registerContentScripts: async (scripts: typeof registered) => {
       for (const script of scripts) {
+        if (opts.refuseMainWorld && script.world === "MAIN") throw new Error("Unexpected property \"world\"");
         if (registered.some((s) => s.id === script.id)) throw new Error("Duplicate script ID");
-        calls.register.push(script.matches);
+        if (script.id === "anagram-content") calls.register.push(script.matches);
         registered.push({ ...script });
       }
     },
     updateContentScripts: async (scripts: typeof registered) => {
       for (const script of scripts) {
+        if (opts.refuseMainWorld && script.world === "MAIN") throw new Error("Unexpected property \"world\"");
         const found = registered.find((s) => s.id === script.id);
         if (!found) throw new Error("No script with ID");
         Object.assign(found, script);
-        calls.update.push(script.matches);
+        if (script.id === "anagram-content") calls.update.push(script.matches);
       }
     },
     unregisterContentScripts: async ({ ids }: { ids: string[] }) => {
@@ -177,6 +182,33 @@ describe("the registration follows the grant", () => {
     });
   });
 
+  it("registers the page-world companion on the same origins, ahead of the page's scripts", async () => {
+    const env = environment();
+    env.grant("https://example.com/*");
+    await syncRegistration();
+    expect(env.registered.find((s) => s.id === "anagram-shadow")).toMatchObject({
+      matches: ["https://example.com/*"],
+      js: [SHADOW_SCRIPT],
+      allFrames: true,
+      runAt: "document_start",
+      world: "MAIN",
+      persistAcrossSessions: true,
+    });
+    env.grant(...ALL_SITES);
+    await syncRegistration();
+    expect(env.registered.find((s) => s.id === "anagram-shadow")?.matches).toEqual(["https://example.com/*", ...ALL_SITES]);
+    env.withdraw("https://example.com/*", ...ALL_SITES);
+    await syncRegistration();
+    expect(env.registered).toEqual([]);
+  });
+
+  it("still registers the content script where the page world is refused", async () => {
+    const env = environment([], [], { refuseMainWorld: true });
+    env.grant("https://example.com/*");
+    await syncRegistration();
+    expect(env.registered.map((s) => s.id)).toEqual(["anagram-content"]);
+  });
+
   it("never registers on the daemon's own hosts", async () => {
     // They are required permissions, so they are always granted; a content script there
     // would run on every page a local server puts out.
@@ -196,7 +228,7 @@ describe("the registration follows the grant", () => {
     await syncRegistration();
     expect(env.calls.register).toHaveLength(1);
     expect(env.calls.update).toEqual([["https://a.com/*", ...ALL_SITES]]);
-    expect(env.registered).toHaveLength(1);
+    expect(env.registered).toHaveLength(2);
   });
 
   it("does nothing when a sync finds what is already registered", async () => {
@@ -227,7 +259,7 @@ describe("the registration follows the grant", () => {
     env.grant(...ALL_SITES);
     await Promise.all([syncRegistration(), syncRegistration(), syncRegistration()]);
     expect(env.calls.register).toHaveLength(1);
-    expect(env.registered).toHaveLength(1);
+    expect(env.registered).toHaveLength(2);
   });
 
   it("re-asserts itself on install, on startup and when the worker wakes", async () => {

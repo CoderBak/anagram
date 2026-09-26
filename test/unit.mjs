@@ -2012,6 +2012,39 @@ const results = await page.evaluate(() => {
   await ob.close();
 }
 
+// ---- the page's shadow roots are watched, never Anagram's own ------------------------------
+// Every shadow root on the page is watched from the start, walked into or not. The ball and
+// the chips are shadow hosts too, and a ball that redraws its count must not wake the
+// observer that redraws it: that is a re-scan every quarter second on a settled page.
+{
+  const ob = await browser.newPage();
+  await ob.setContent("<!doctype html><html><body></body></html>");
+  await ob.addScriptTag({ path: BUNDLE });
+  const r = await ob.evaluate(async () => {
+    const own = document.createElement("div");
+    own.setAttribute("data-anagram", "host");
+    const ownRoot = own.attachShadow({ mode: "open" });
+    ownRoot.innerHTML = "<span>1</span>";
+    const widget = document.createElement("div");
+    const widgetRoot = widget.attachShadow({ mode: "open" });
+    document.body.append(own, widget);
+    const dirty = [];
+    const observers = PW.createObservers({ onVisible() {}, onNear() {}, onDirty: (nodes) => dirty.push(...nodes) });
+    observers.start();
+    ownRoot.querySelector("span").textContent = "2"; // the ball redraws its count
+    widgetRoot.innerHTML = "<p>The page renders into its own root.</p>";
+    await new Promise((done) => setTimeout(done, 500));
+    observers.stop();
+    return { own: dirty.filter((n) => ownRoot.contains(n)).length, page: dirty.filter((n) => widgetRoot.contains(n)).length };
+  });
+  results.push({
+    name: "a shadow root on the page is watched from the start, one of Anagram's own never is",
+    ok: r.page > 0 && r.own === 0,
+    note: JSON.stringify(r),
+  });
+  await ob.close();
+}
+
 // ---- a chip inside a clipped box follows the page when it reflows -------------------------
 // The placement is measured once, when the verdict lands, and the page does not stand still:
 // on a Goodreads book page the reviews grow as their images and web fonts arrive, and a chip

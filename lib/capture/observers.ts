@@ -18,9 +18,13 @@
 // - Added inline elements (spans carrying new text — chat apps) are no longer
 //   filtered out of the dirty queue; only our own UI and no-score tags are.
 // - removedNodes are surfaced so the orchestrator can purge dead units.
+// - Shadow roots the walk never went into are watched too: every root already on the page
+//   at start, every root in a subtree the page adds, and every root the page attaches
+//   later, which the page-world script announces (lib/dom/shadow.ts).
 import { MARK_ATTR, type Unit } from "../types";
 import { NO_SCORE_TAGS } from "../dom/tags";
 import { repairSplits } from "../dom/splits";
+import { SHADOW_ATTACHED_EVENT, eachShadowRoot } from "../dom/shadow";
 
 export interface Observers {
   observeUnit(unit: Unit): void;
@@ -152,6 +156,9 @@ export function createObservers(opts: {
         if (inSelfHost(n)) return;
         if (n.nodeType === Node.ELEMENT_NODE && NO_SCORE_TAGS.has(n.nodeName.toUpperCase())) return;
         dirty.add(n);
+        // A root attached before its host was added, which the walk of this subtree will
+        // not go into while it is empty — a closed panel, a widget that renders later.
+        if (n.nodeType === Node.ELEMENT_NODE) eachShadowRoot(n, observeRoot);
       });
       rec.removedNodes.forEach((n) => {
         if (inSelfHost(n)) return;
@@ -276,6 +283,16 @@ export function createObservers(opts: {
     observeUnit(unit);
   }
 
+  /** The page attached a shadow root (entrypoints/shadow.content.ts): watch it from now on,
+   *  and walk its host again once whatever it renders there has settled. */
+  function onShadowAttached(e: Event): void {
+    const host = e.composedPath()[0] as Node | undefined;
+    if (!host || host.nodeType !== Node.ELEMENT_NODE || inSelfHost(host)) return;
+    eachShadowRoot(host, observeRoot);
+    dirty.add(host);
+    scheduleDrain();
+  }
+
   function observeRoot(root: ShadowRoot): void {
     if (observedRoots.has(root)) return;
     observedRoots.add(root);
@@ -291,10 +308,14 @@ export function createObservers(opts: {
     mo.observe(document, MO_OPTIONS);
     for (const root of pendingRoots) mo.observe(root, MO_OPTIONS);
     pendingRoots.clear();
+    // …and every shadow root already on the page, walked into or not.
+    eachShadowRoot(document, observeRoot);
+    document.addEventListener(SHADOW_ATTACHED_EVENT, onShadowAttached, true);
   }
 
   function stop(): void {
     started = false;
+    document.removeEventListener(SHADOW_ATTACHED_EVENT, onShadowAttached, true);
     ioNear.disconnect();
     ioViewport.disconnect();
     mo.disconnect();

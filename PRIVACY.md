@@ -65,7 +65,7 @@ normal download metadata and never page text.
 | `storage` | The settings above. |
 | `activeTab` | One-off actions on the page in front of you. |
 | `contextMenus` | The right-click entries. |
-| `scripting` | Inject the packaged content script into granted sites or the one-off tab. |
+| `scripting` | Inject the packaged content script into granted sites or the one-off tab. On granted sites a second packaged script runs in the page's own context; it reads nothing and only tells the first when the page attaches a shadow root. |
 | `webNavigation`, `webRequest` | Recognize PDF navigations. Reading still requires a grant. |
 | `https://*/*`, `http://*/*` (optional) | The sites you choose. Never held at install. |
 | `file:///*` (optional) | Open a local PDF already in a tab. Picking a file needs no grant. |

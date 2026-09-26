@@ -23,6 +23,12 @@ local component and the installer all carry the same version.
 - A tab in the background asks the engine for nothing, neither the paragraphs that were
   on screen there nor the rest of the page, and carries on where it was when it is shown
   again. The PDF reader's tab behaves the same.
+- Text a web component renders into a shadow root after the page was read is found. A
+  small script in the page's own context tells the content script whenever the page
+  attaches a shadow root, so an element the page defines late (its upgrade attaches the
+  root and renders into it) is read; it reads nothing itself. Shadow roots in a part of
+  the page added later, and ones that were empty when the page was first read, such as a
+  fixed panel filled when it opens, are watched as well.
 - The PDF reader no longer reads a two-column page line by line across both columns when
   one column is plain prose and the other is full of formulas (arXiv 2004.04906, page 2).
   A column's share of the page is now measured in characters, not in the text runs a PDF

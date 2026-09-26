@@ -3107,6 +3107,52 @@ addEventListener("load",()=>{window.__loadAt=performance.now();
   }
 }
 
+// ---- A48: shadow roots the first walk could not see ------------------------------------
+// Nothing of these is in the light DOM: a shadow root attached, or filled, after the walk
+// passed its host changes no node the document's own observer watches.
+//  - #lc: an element the page defines late; its upgrade attaches the root and renders.
+//  - #panel: a fixed panel with an empty root when the page is walked — too small then
+//    to be read, so the walk never goes in — filled later.
+//  - #panel2: the same panel added after the walk, its root attached before it was added.
+{
+  const LONG = (tag) => `${tag} paragraph is long enough to be scored on its own because it carries well over seventy-five ordinary English words describing nothing in particular except the fact that a web component may attach its shadow root or render into it long after the extension walked past its host, and the text it shows the reader there has to be found all the same, without a reload and without anything in the light document changing at the same moment to point at it.`;
+  PAGES["/shadow-late.html"] = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>late shadow roots</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+<h1>Late shadow roots</h1>
+<late-card id="lc"></late-card>
+<script>
+  const LONG = ${LONG.toString()};
+  const panel = (id, bottom) => {
+    const el = document.createElement("div");
+    el.id = id;
+    el.style.cssText = "position:fixed;right:8px;bottom:" + bottom + "px;width:420px;max-height:40vh;overflow:auto;background:#fff;font:14px/1.5 system-ui";
+    window["__" + id] = el.attachShadow({ mode: "open" });
+    document.body.append(el);
+  };
+  panel("panel", 8);
+  // Apart in time: adding a node to the body has the body walked again, and that walk
+  // would find a root attached just before it.
+  setTimeout(() => panel("panel2", 260), 1200);
+  setTimeout(() => customElements.define("late-card", class extends HTMLElement {
+    connectedCallback() { this.attachShadow({ mode: "open" }).innerHTML = "<p>" + LONG("LATECARD") + "</p>"; }
+  }), 2400);
+  setTimeout(() => {
+    __panel.innerHTML = "<p>" + LONG("LATEPANEL") + "</p>";
+    __panel2.innerHTML = "<p>" + LONG("LATEPANELTWO") + "</p>";
+  }, 3200);
+</script></body></html>`;
+  const p = await context.newPage();
+  await p.goto(server.url("/shadow-late.html"), { waitUntil: "load" });
+  const chipsIn = (id) => p.evaluate(({ id, sel }) => document.getElementById(id)?.shadowRoot?.querySelectorAll(sel).length ?? -1, { id, sel: BADGE_SEL });
+  const settled = await p
+    .waitForFunction((sel) => ["lc", "panel", "panel2"].every((id) => (document.getElementById(id)?.shadowRoot?.querySelectorAll(sel).length ?? 0) > 0), BADGE_SEL, { timeout: 12000 })
+    .then(() => true)
+    .catch(() => false);
+  const r = { settled, defined: await chipsIn("lc"), filled: await chipsIn("panel"), added: await chipsIn("panel2") };
+  record("ui", "a shadow root attached after the walk (a late custom element) is read", r.defined === 1, JSON.stringify(r));
+  record("ui", "a shadow root the walk passed empty, filled later, is read — on the page from the start or added after", r.filled === 1 && r.added === 1, JSON.stringify(r));
+  await p.close();
+}
+
 // =====================================================================================
 // PHASE B — live sites (soft: unreachable → SKIP; loaded-but-wrong → FAIL)
 // =====================================================================================
