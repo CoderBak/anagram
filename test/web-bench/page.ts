@@ -10,9 +10,9 @@
 // needs to see: which units read as comments, where each unit sits, the text of the scope,
 // the truth an HTML subtree stands for, and — through the product's own diagnostics
 // (lib/diagnostics/silence.ts) — why a block of prose got no unit.
-import ReadabilityLib from "@mozilla/readability";
+import Defuddle from "defuddle";
 import { collectUnits, inPageOrder } from "../../lib/dom/walker";
-import { findMainContent, useReadability } from "../../lib/dom/mainContent";
+import { findMainContent, useDefuddle } from "../../lib/dom/mainContent";
 import { surveyPage } from "../../lib/diagnostics/silence";
 import type { Unit } from "../../lib/dom/text";
 
@@ -20,7 +20,7 @@ export interface MeasureOptions {
   /** The setting "Scope": the whole page (the shipped default) or its main content. */
   scope: "page" | "main";
   /** Which main-content extractor findMainContent() is given under "main". */
-  extractor: "readability" | "none";
+  extractor: "defuddle" | "none";
   /** The truth as an HTML subtree (WebMainBench) or document (Readability's expected output). */
   truthHtml?: string | null;
   /** Report each scored text node's XPath (Webis-WebSeg-20 names nodes that way). */
@@ -30,7 +30,7 @@ export interface MeasureOptions {
 }
 
 function setExtractor(name: MeasureOptions["extractor"]): void {
-  useReadability(name === "readability" ? { Readability: ReadabilityLib.Readability, isProbablyReaderable: ReadabilityLib.isProbablyReaderable } : null);
+  useDefuddle(name === "defuddle" ? { Defuddle } : null);
 }
 
 /** Id and class tokens a comment thread or a list of reviews is built from (WordPress,

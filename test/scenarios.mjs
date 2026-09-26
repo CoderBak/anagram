@@ -68,7 +68,7 @@ const REWRITE_HTML = `<!doctype html><html><head><meta charset="utf-8"><title>re
     document.close();
   }, 1500);
 </script></body></html>`;
-// Scope fixture: an article region both the text-mass probe and Readability land on,
+// Scope fixture: an article region both the text-mass probe and Defuddle land on,
 // plus a long paragraph OUTSIDE it carrying a marker word. Under "Main content only"
 // that paragraph must never be chipped and its text must never reach the fixture.
 const SCOPE_MARKER = "ZORBLAX";
@@ -749,7 +749,7 @@ async function sweep(page, steps = 6) {
   await page.screenshot({ path: artifact("scn-ui-fixtures.png"), fullPage: true });
   await page.close();
 
-  // A20: "main content" scope pulls Readability in as an on-demand vendor chunk —
+  // A20: "main content" scope pulls Defuddle in as an on-demand vendor chunk —
   // import()ed by extension URL from the content script's isolated world (a
   // web-accessible resource). Debug logging on → the orchestrator says so.
   {
@@ -766,15 +766,15 @@ async function sweep(page, steps = 6) {
       await p.waitForFunction(() => false, null, { timeout: 2500 }).catch(() => {});
       await p.waitForSelector(BADGE_SEL, { timeout: 10000 }).catch(() => {});
       r = {
-        loaded: logs.some((l) => l.includes("Readability chunk loaded")),
-        failed: logs.some((l) => l.includes("Readability chunk failed")),
+        loaded: logs.some((l) => l.includes("Defuddle chunk loaded")),
+        failed: logs.some((l) => l.includes("Defuddle chunk failed")),
         badges: await p.evaluate((sel) => document.querySelectorAll(sel).length, BADGE_SEL),
       };
       await opt.evaluate(() => new Promise((res) => chrome.storage.local.set({ debug: false, analysisScope: "page" }, res)));
       await p.close();
       await opt.close();
     }
-    record("ui", "main-content scope loads the Readability vendor chunk on demand", r.loaded && !r.failed && r.badges > 0, JSON.stringify(r));
+    record("ui", "main-content scope loads the Defuddle vendor chunk on demand", r.loaded && !r.failed && r.badges > 0, JSON.stringify(r));
   }
 
   // A22: a page that replaces its own <html> after load (document.open()/write(),

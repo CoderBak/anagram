@@ -293,7 +293,7 @@ record(
 //
 // That they still load for the content script is not measured here but next door:
 // test/diagnostics-check.mjs loads the diagnostics chunk, the main-content scenarios load
-// Readability, and DOMPurify goes through the same lib/lazy.ts call as both.
+// Defuddle, and DOMPurify goes through the same lib/lazy.ts call as both.
 const narrow = JSON.parse(readFileSync(join(EXT, "manifest.json"), "utf8")).web_accessible_resources;
 {
   const web = await context.newPage();

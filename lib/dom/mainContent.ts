@@ -1,29 +1,29 @@
 // lib/dom/mainContent.ts — main-content region detection ("precision scope").
 //
-// Mozilla Readability (the extractor behind Firefox Reader View) decides WHAT the
-// article is. We only need to know WHERE it lives in the live DOM, because rendering
-// anchors into real nodes and Readability works on a clone that it rewrites (node
-// identity is lost). So: take a handful of sentences from its extracted content,
-// locate each one in the live document by descending to the deepest element that
-// contains it, and return their lowest common ancestor — the live article container.
+// Defuddle (https://github.com/kepano/defuddle, MIT, Copyright (c) 2025 Steph Ango) decides
+// WHAT the article is. We only need to know WHERE it lives in the live DOM, because
+// rendering anchors into real nodes and Defuddle returns cleaned-up HTML (node identity is
+// lost). So: take a handful of sentences from its extracted content, locate each one in the
+// live document by descending to the deepest element that contains it, and return their
+// lowest common ancestor — the live article container.
 //
-// Pages Readability declines (portals, feeds, apps) fall back to a text-mass probe:
-// semantic candidates (<main>, [role=main], <article>) first, then a dominant-path
-// descent from <body>. Body itself means "no dominant region" → null, and callers keep
-// whole-page behaviour. The walk's own style- and boilerplate-level filters still apply
-// INSIDE whatever scope is returned.
+// Pages where Defuddle finds nothing to locate fall back to a text-mass probe: semantic
+// candidates (<main>, [role=main], <article>) first, then a dominant-path descent from
+// <body>. Body itself means "no dominant region" → null, and callers keep whole-page
+// behaviour. The walk's own style- and boilerplate-level filters still apply INSIDE
+// whatever scope is returned.
 //
-// Readability itself is NOT bundled into the content script: it is a vendor chunk
-// loaded on demand (lib/lazy.ts) and handed in through useReadability() by the
-// orchestrator when the scope setting is "main". Until then (or if the load fails)
-// the text-mass probe answers alone.
-import type { ReadabilityModule } from "../lazy";
+// Defuddle itself is NOT bundled into the content script: it is a vendor chunk loaded on
+// demand (lib/lazy.ts) and handed in through useDefuddle() by the orchestrator when the
+// scope setting is "main". Until then (or if the load fails) the text-mass probe answers
+// alone.
+import type { DefuddleModule } from "../lazy";
 
-let _readability: ReadabilityModule | null = null;
+let _defuddle: DefuddleModule | null = null;
 
-/** Provide the Readability implementation (lazy vendor chunk, or a test double). */
-export function useReadability(mod: ReadabilityModule | null): void {
-  _readability = mod;
+/** Provide Defuddle (lazy vendor chunk, or a test double). */
+export function useDefuddle(mod: DefuddleModule | null): void {
+  _defuddle = mod;
 }
 
 const SKIP_MASS_TAGS = new Set(["SCRIPT", "STYLE", "TEMPLATE", "NOSCRIPT", "HEAD"]);
@@ -44,25 +44,26 @@ const MIN_NEEDLE_SOURCE_CHARS = 120;
 
 /**
  * Find the page's main content container, or null when none dominates.
- * Costs one document clone + Readability pass (or one linear text-mass pass) — call
- * per scan session, not per mutation.
+ * Costs one document clone + Defuddle pass (or one linear text-mass pass) — call per scan
+ * session, not per mutation.
  */
 export function findMainContent(doc: Document = document): Element | null {
   if (!doc.body) return null;
-  return fromReadability(doc) ?? fromTextMass(doc);
+  return fromDefuddle(doc) ?? fromTextMass(doc);
 }
 
-// ---- Readability-guided --------------------------------------------------------------
+// ---- Defuddle-guided -------------------------------------------------------------------
 
-function fromReadability(doc: Document): Element | null {
-  const R = _readability;
-  if (!R) return null;
+function fromDefuddle(doc: Document): Element | null {
+  const D = _defuddle;
+  if (!D) return null;
   try {
-    if (!R.isProbablyReaderable(doc, { minContentLength: MIN_REGION_CHARS / 4 })) return null;
-    const article = new R.Readability(doc.cloneNode(true) as Document, {
-      charThreshold: MIN_REGION_CHARS,
-    }).parse();
-    if (!article?.content) return null;
+    // parse() only, the synchronous pipeline: parseAsync() is what reaches third-party
+    // APIs, and it is never called. And on a CLONE: parse() edits the document it is given
+    // before it copies it — it promotes <noscript> images and fills lazy <img>
+    // placeholders, which on the live page would insert images and start their downloads.
+    const article = new D.Defuddle(doc.cloneNode(true) as Document, { useAsync: false }).parse();
+    if (!article.wordCount || !article.content) return null;
     const needles = sampleNeedles(article.content);
     if (needles.length < 2) return null;
     const hits: Element[] = [];
@@ -70,7 +71,7 @@ function fromReadability(doc: Document): Element | null {
       const el = deepestContaining(doc.body, re);
       if (el) hits.push(el);
     }
-    // Most samples must be locatable, or Readability rewrote too much to trust the map.
+    // Most samples must be locatable, or the extraction rewrote too much to trust the map.
     if (hits.length < Math.max(2, Math.ceil(needles.length / 2))) return null;
     const lca = lowestCommonAncestor(hits);
     if (!lca || lca === doc.body || lca === doc.documentElement) return null;

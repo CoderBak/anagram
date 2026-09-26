@@ -1,6 +1,6 @@
 // test/web-bench/bench.mjs — how well the content script reads web pages, measured offline.
 //
-//   ANAGRAM_WEB_BENCH=<corpus> node test/web-bench/bench.mjs run [--name <run>] [--scope page|main] [--extractor readability|none]
+//   ANAGRAM_WEB_BENCH=<corpus> node test/web-bench/bench.mjs run [--name <run>] [--scope page|main] [--extractor defuddle|none]
 //                                    [--only <id,…>] [--datasets wcxb,wmb,…] [--concurrency <n>] [--no-explain]
 //   ANAGRAM_WEB_BENCH=<corpus> node test/web-bench/bench.mjs external <name> <outputs.jsonl> --truth-from <run>
 //   ANAGRAM_WEB_BENCH=<corpus> node test/web-bench/bench.mjs report <run> [<other run>…] [--split dev|test]
@@ -183,7 +183,7 @@ function record(entry, truth, measured, requests, wallMs, meta) {
 async function run() {
   const { chromium } = await import("playwright");
   const scope = flag("scope", "page");
-  const extractor = scope === "main" ? flag("extractor", "readability") : "none";
+  const extractor = scope === "main" ? flag("extractor", "defuddle") : "none";
   const name = flag("name", `${scope}${scope === "main" ? `-${extractor}` : ""}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "")}`);
   const only = flag("only")?.split(",");
   const datasets = flag("datasets")?.split(",");
@@ -568,4 +568,4 @@ else if (command === "external") await external(rest[0], rest[1]);
 else if (command === "report") report(rest);
 else if (command === "diff") diff(rest[0]);
 else if (command === "rescore") rescore(rest[0]);
-else console.log("usage: bench.mjs run [--name <run>] [--scope page|main] [--extractor readability|none] [--only <ids>] [--datasets <names>] [--concurrency <n>] [--no-explain] | external <name> <jsonl> --truth-from <run> | report <run> [<run>…] [--split dev|test] | diff <run> [--worst <n> | --page <id>] | rescore <run>");
+else console.log("usage: bench.mjs run [--name <run>] [--scope page|main] [--extractor defuddle|none] [--only <ids>] [--datasets <names>] [--concurrency <n>] [--no-explain] | external <name> <jsonl> --truth-from <run> | report <run> [<run>…] [--split dev|test] | diff <run> [--worst <n> | --page <id>] | rescore <run>");

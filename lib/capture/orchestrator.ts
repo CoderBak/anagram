@@ -21,8 +21,8 @@ import type { ModelInfo, ScoreBlock, ScoreResult, ScoreBatchRequest } from "../c
 import { CONTRACT_VERSION } from "../contract";
 import { collectUnits, inPageOrder, type CollectOptions } from "../dom/walker";
 import { restoreSplits } from "../dom/splits";
-import { findMainContent, useReadability } from "../dom/mainContent";
-import { loadReadability } from "../lazy";
+import { findMainContent, useDefuddle } from "../dom/mainContent";
+import { loadDefuddle } from "../lazy";
 import { partTextOf, MAX_UNIT_TEXT_CHARS } from "../dom/text";
 import { createObservers, type Observers } from "./observers";
 import { createScheduler, type Scheduler } from "./scheduler";
@@ -69,8 +69,8 @@ const URL_POLL_MS = 2500;
 const URL_REFRESH_DEBOUNCE_MS = 300;
 /** While the daemon is down: how often the content script asks the worker to re-probe. */
 const DOWN_POLL_MS = 5000;
-/** How long the first collect waits for the Readability chunk under "main" scope. */
-const READABILITY_BOOT_MS = 1500;
+/** How long the first collect waits for the Defuddle chunk under "main" scope. */
+const DEFUDDLE_BOOT_MS = 1500;
 
 /**
  * Pages that are rendered on a server and HYDRATED in the browser check the markup they
@@ -244,8 +244,8 @@ export function createOrchestrator(
   let bootSeq = 0;
   /** Retire page work across awaits too, before it can refill L1 or send old text. */
   let captureGeneration = 0;
-  /** The Readability chunk is in the main-content detector's hands. */
-  let readabilityLoaded = false;
+  /** The Defuddle chunk is in the main-content detector's hands. */
+  let defuddleLoaded = false;
   let visible = true;
   let highlightsEnabled = true;
   let displayMode: "all" | "flagged" = "all";
@@ -478,19 +478,19 @@ export function createOrchestrator(
   }
 
   /**
-   * Fetch the on-demand Readability chunk once and hand it to the detector. Resolves
+   * Fetch the on-demand Defuddle chunk once and hand it to the detector. Resolves
    * false when it cannot be loaded — the text-mass probe then answers alone, which is
    * also what happens for as long as the chunk is in flight.
    */
-  async function loadReadabilityOnce(): Promise<boolean> {
-    if (readabilityLoaded) return true;
+  async function loadDefuddleOnce(): Promise<boolean> {
+    if (defuddleLoaded) return true;
     try {
-      useReadability(await loadReadability());
-      readabilityLoaded = true;
-      log.log("Readability chunk loaded");
+      useDefuddle(await loadDefuddle());
+      defuddleLoaded = true;
+      log.log("Defuddle chunk loaded");
       return true;
     } catch (e) {
-      log.warn("Readability chunk failed to load", e);
+      log.warn("Defuddle chunk failed to load", e);
       return false;
     }
   }
@@ -1036,9 +1036,9 @@ export function createOrchestrator(
     if (v === analysisScope) return;
     analysisScope = v;
     if (v === "main") {
-      // Readability is an on-demand chunk: fetch it once, then re-collect under the
+      // Defuddle is an on-demand chunk: fetch it once, then re-collect under the
       // new scope (the text-mass probe covers the rare failure to load).
-      void loadReadabilityOnce().then(() => {
+      void loadDefuddleOnce().then(() => {
         if (started && analysisScope === "main") rescan();
       });
     } else if (started) {
@@ -1276,7 +1276,7 @@ export function createOrchestrator(
    * page did not change: the MutationObserver is what covers real DOM changes, and it
    * never missed one in the survey. So a rewrite that left every live unit connected and
    * the main region in the document is answered by the purge alone. Looking for the
-   * region again is left to the refresh: under "Main content only" that is Readability
+   * region again is left to the refresh: under "Main content only" that is Defuddle
    * over a clone of the whole document, which a rewrite on every scroll step cannot pay.
    *
    * Anything else — a pushed entry, a traversal, a popstate, a hash change, the slow poll
@@ -1367,15 +1367,15 @@ export function createOrchestrator(
     applySnapshot(await readSettings());
     if (seq !== bootSeq || !started) return; // stopped or restarted while we waited
 
-    // Under "main" scope the region is Readability's answer once the chunk is here and
+    // Under "main" scope the region is Defuddle's answer once the chunk is here and
     // the text-mass probe's until then, and the two can disagree — so give the chunk a
     // bounded head start instead of scanning the page twice on every load.
-    let lateReadability = false;
+    let lateDefuddle = false;
     if (analysisScope === "main") {
-      const ready = loadReadabilityOnce();
-      lateReadability = await Promise.race([
+      const ready = loadDefuddleOnce();
+      lateDefuddle = await Promise.race([
         ready.then(() => false),
-        new Promise<boolean>((r) => setTimeout(() => r(true), READABILITY_BOOT_MS)),
+        new Promise<boolean>((r) => setTimeout(() => r(true), DEFUDDLE_BOOT_MS)),
       ]);
       if (seq !== bootSeq || !started) return;
     }
@@ -1391,9 +1391,9 @@ export function createOrchestrator(
     log.log("started", { session, domain });
 
     // The chunk was still in flight when the wait ran out, so this page was scoped by
-    // the text-mass probe alone: re-derive it once if Readability does turn up.
-    if (lateReadability) {
-      void loadReadabilityOnce().then((ok) => {
+    // the text-mass probe alone: re-derive it once if Defuddle does turn up.
+    if (lateDefuddle) {
+      void loadDefuddleOnce().then((ok) => {
         if (ok && started && seq === bootSeq && analysisScope === "main") rescan();
       });
     }

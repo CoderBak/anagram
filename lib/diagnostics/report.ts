@@ -180,7 +180,7 @@ function frameLines(env: DiagnosticsEnv): string[] {
 /**
  * The smallest ancestor of the click that still holds a body of text — a post, a card, an
  * article — so the fixture is of the thing that went wrong rather than of the whole page.
- * With no click to go on, the page's own main region answers; Readability is not loaded
+ * With no click to go on, the page's own main region answers; Defuddle is not loaded
  * here, so that is the text-mass probe's answer rather than the precision scope's.
  */
 function regionFor(target: Element | null): { el: Element; why: string } {

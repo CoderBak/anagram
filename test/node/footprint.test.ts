@@ -249,7 +249,7 @@ describe("the shipping manifest", () => {
     expect(manifest().web_accessible_resources).toEqual([
       {
         resources: [
-          "vendor/readability.min.mjs",
+          "vendor/defuddle.min.mjs",
           "vendor/purify.min.mjs",
           "vendor/diagnostics.min.mjs",
         ],

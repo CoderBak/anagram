@@ -751,7 +751,7 @@ if (ricBug) {
       "  and calls it unbound. Firefox's WebIDL binding rejects the undefined receiver:\n" +
       '    TypeError: \'requestIdleCallback\' called on an object that does not implement interface Window.\n' +
       "  The throw escapes schedulePrefetch() -> ingestUnits() -> start(), so the tail of the\n" +
-      "  content script's boot (watchUrl() and the late-Readability re-derive) never runs, and\n" +
+      "  content script's boot (watchUrl() and the late-Defuddle re-derive) never runs, and\n" +
       "  because `prefetchScheduled` was already set to true the idle prefetch lane is dead for\n" +
       "  the life of the frame — it throws exactly once and is then skipped by its own guard.\n" +
       `  Measured here: ${prefetched} of ${snapshot.badgeTotal} units are scored on a page that is\n` +

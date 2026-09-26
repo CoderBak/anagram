@@ -26,7 +26,7 @@ const targets = args.includes("--all")
 
 // The on-demand chunks first, exactly as `npm run build` does: public/vendor/*.mjs is
 // generated, not tracked, so in a fresh checkout it is not there — and a variant built
-// without it has no Readability, no DOMPurify and no diagnostics chunk, which shows up as
+// without it has no Defuddle, no DOMPurify and no diagnostics chunk, which shows up as
 // twenty-odd checks failing for no visible reason.
 const vendor = spawnSync(process.execPath, [join(ROOT, "scripts", "vendor.mjs")], { cwd: ROOT, stdio: "inherit" });
 if (vendor.status !== 0) process.exit(vendor.status ?? 1);

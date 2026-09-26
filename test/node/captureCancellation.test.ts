@@ -50,8 +50,8 @@ vi.mock("../../lib/render/highlight", () => ({
   refreshHighlightTheme() {},
 }));
 vi.mock("../../lib/dom/walker", () => ({collectUnits: () => calls.units, inPageOrder: (units: Unit[]) => [...units]}));
-vi.mock("../../lib/dom/mainContent", () => ({findMainContent: calls.main, useReadability() {}}));
-vi.mock("../../lib/lazy", () => ({loadReadability: async () => ({})}));
+vi.mock("../../lib/dom/mainContent", () => ({findMainContent: calls.main, useDefuddle() {}}));
+vi.mock("../../lib/lazy", () => ({loadDefuddle: async () => ({})}));
 vi.mock("../../lib/settings/settings", () => {
   const setting = (value: unknown) => ({getValue: async () => value, watch: () => () => {}});
   return {settings: {
