@@ -2608,6 +2608,40 @@ async function sweep(page, steps = 6) {
     await p.close();
   }
 
+  // ---- a post the SITE cut to a preview ("… See more") ---------------------------------
+  // Facebook puts only the first lines of a long post in the page, ending in "…" and an
+  // inline "See more" button, and writes the rest in when it is pressed. The preview is not
+  // the post: nothing of it is sent, and once the post is opened it is read whole.
+  {
+    const HEAD = "SEEMOREHEAD Volunteers from the history society have spent the last two long winters transcribing them all by hand. The keeper's logs for that winter run to nearly four hundred pages, and almost none of it is about the light. It is about weather, mostly, and about the small economies of a household cut off from the mainland: how much coal was left, which hens were still laying, when the supply boat was due and whether it";
+    const TAIL = " came at all, and which books the children read by the stove. SEEMORETAIL He wrote in pencil because ink froze in the well, and he wrote every evening without exception.";
+    PAGES["/see-more.html"] = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>see more fixture</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+<div role="article" id="post"><div data-ad-preview="message"><div style="white-space:pre-wrap"><div dir="auto" id="text">${HEAD}…<div role="button" tabindex="0" id="more" style="display:inline;cursor:pointer;font-weight:600">See more</div></div></div></div></div>
+<script>
+  document.getElementById("more").addEventListener("click", () => {
+    document.getElementById("text").replaceChildren(document.createTextNode(${JSON.stringify(HEAD + TAIL)}));
+  });
+</script></body></html>`;
+    const p = await context.newPage();
+    const sentBefore = fixture.stats.texts.length;
+    await p.goto(server.url("/see-more.html"), { waitUntil: "load" });
+    await p.waitForTimeout(3000); // long enough for a chip on the preview to have appeared
+    const preview = {
+      chips: await p.evaluate((sel) => document.querySelectorAll(`#post ${sel}`).length, BADGE_SEL),
+      sent: fixture.stats.texts.slice(sentBefore).some((t) => t.includes("SEEMOREHEAD")),
+    };
+    await p.click("#more");
+    const whole = await p.waitForFunction((sel) => document.querySelectorAll(`#post ${sel}`).length > 0, BADGE_SEL, { timeout: 15000 }).then(() => true).catch(() => false);
+    const sent = fixture.stats.texts.slice(sentBefore).filter((t) => t.includes("SEEMOREHEAD"));
+    record(
+      "ui",
+      "a post the site cut to a preview (\"… See more\") is not read until it is opened, and then it is read whole",
+      preview.chips === 0 && !preview.sent && whole && sent.length > 0 && sent.every((t) => t.includes("SEEMORETAIL")),
+      JSON.stringify({ preview, whole, sent: sent.map((t) => t.slice(-40)) }),
+    );
+    await p.close();
+  }
+
   // ---- A39: chips inside a box the site clips to a few lines ---------------------------
   // A 30-page session survey (2026-09) found the chips themselves stable and
   // their PLACEMENT wrong in exactly one shape of box: the "see more" review. Every unit of

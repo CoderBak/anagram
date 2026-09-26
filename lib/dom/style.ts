@@ -122,6 +122,24 @@ export function clipsOwnText(el: Element, cs: CSSStyleDeclaration): boolean {
   return true;
 }
 
+/**
+ * Does this box CAP its own text — hide what grows past a height it declares, or hide text
+ * already? Asked where a control that says "…see more" follows a text: behind a clamp the whole
+ * text is in the page (LinkedIn's feed clamps to three lines, a margin short of what
+ * `clipsOwnText` asks for), and without one the site has cut the text itself. Only a declared
+ * cap counts besides hidden text, as in the chip layer's own test (lib/render/badge.ts).
+ */
+export function capsOwnText(el: Element, cs: CSSStyleDeclaration): boolean {
+  const overflowY = cs.overflowY;
+  if (overflowY !== "hidden" && overflowY !== "clip") return false;
+  if (NEVER_CLIPPED_TAGS.has(tagOf(el)) || el.getAttribute("role") === "main") return false;
+  const clamp = cs.getPropertyValue("-webkit-line-clamp");
+  if (cs.maxHeight !== "none" || (clamp !== "" && clamp !== "none")) return true;
+  return el.scrollHeight - el.clientHeight > CAP_MIN_HIDDEN_PX;
+}
+/** More hidden than this is a line of text, not a descender or a border. */
+const CAP_MIN_HIDDEN_PX = 4;
+
 /** How far above a line of text the box that cuts it off may sit: Discord sets the preview
  *  box one element above the text it cuts. */
 const ONE_LINE_BOX_LEVELS = 3;

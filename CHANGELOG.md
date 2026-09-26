@@ -124,6 +124,12 @@ local component and the installer all carry the same version.
   their place in the feed, are now voices of their own as well. A text cut to one line with
   an ellipsis is no longer read: Discord repeats the message a reply answers above it that
   way, and that message was scored a second time.
+- A post or comment the site has cut to a preview is no longer analyzed as if it were the
+  whole text. Facebook's "… See more", Weibo's "... 全文", Quora's "… (more)", a "…see more"
+  that no CSS clamp explains and any other link or button of that kind right after a text
+  that ends in an ellipsis mark a preview; it is read, whole, once the reader opens it.
+  Posts whose whole text is in the page behind a clamp, as on LinkedIn and YouTube, are read
+  as before.
 
 ## [0.7.0] — 2026-09-26
 

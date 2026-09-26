@@ -15,7 +15,7 @@
 // answer for the barriers, and the floors are the constants the assembler uses. A copy of
 // a rule here would drift from the rule in lib/dom/ within a release, and the report would
 // then explain a page the product no longer reads that way.
-import { collectUnits, isExcludedByAncestry, isProsePre } from "../dom/walker";
+import { collectUnits, isExcludedByAncestry, isExpandLabel, isProsePre } from "../dom/walker";
 import { isBoilerplate, isConsentBanner, isNoTranslate, mediaWikiFurniture, referenceList } from "../dom/boilerplate";
 import { NO_SCORE_TAGS, isHeading, isHeadingLabel, tagOf } from "../dom/tags";
 import { isTranslatedInPlace } from "../dom/translation";
@@ -426,6 +426,12 @@ function reasonFor(el: Element, cs: Styler): string {
   }
   if (standalone.length > 0) {
     return `the box alone yields ${standalone.length} unit(s) — a page-level barrier or a neighbouring voice suppressed it here`;
+  }
+  // A control that brings the rest of the text: the walk leaves a preview the site cut
+  // unread until it is opened (walker.ts, markCut). Named when the box holds one.
+  for (const control of el.querySelectorAll('a,button,summary,[role="button"],[role="link"],[tabindex]')) {
+    const label = (control.textContent ?? "").trim();
+    if (isExpandLabel(label)) return "a preview the site cut, with a control that brings the rest — read once it is opened";
   }
 
   const runs = runsIn(el, cs).filter((r) => r.words > 0);
