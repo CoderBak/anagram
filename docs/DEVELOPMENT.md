@@ -59,6 +59,7 @@ node test/pdf-route-check.mjs      # PDF routing, handoff caps and privacy
 npm run test:network-privacy       # the offline-mode promise in PRIVACY.md
 ANAGRAM_PDF_BENCH=<corpus dir> node test/pdf-bench/bench.mjs run   # PDF reading benchmark, never in CI; corpus from test/pdf-bench/corpus.mjs
 ANAGRAM_PDF_BENCH=<corpus dir> node test/pdf-bench/bench.mjs structured <dumps>   # the shipping path, over test/pdf-bench/zotero-dump.mjs output; tune on --split dev, report --split test
+ANAGRAM_WEB_BENCH=<corpus dir> node test/web-bench/bench.mjs run --scope page   # web reading benchmark (or --scope main), never in CI; corpus from test/web-bench/corpus.mjs; tune on --split dev, report --split test
 ```
 
 Backend and installer tests need a Python venv with the test dependencies only:
