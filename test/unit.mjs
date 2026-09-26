@@ -1490,6 +1490,11 @@ const results = await page.evaluate(() => {
       [`the rate<sup class="reference"><a href="#r">:p. 7</a></sup> fell.`, " the rate fell."],
       [`begins<a href="#footnote1"><sup>1</sup></a> at noon.`, " begins at noon."],
       [`as noted<sup><a href="#fn">22, 23, 24</a></sup> above.`, " as noted above."],
+      // A raised number after a word is a mark even when it is no link (an author's own
+      // \textsuperscript, an old page's footnote); after a unit or a variable it is an exponent.
+      [`moments of change<sup class="ltx_sup">1-4</sup>. This`, " moments of change. This"],
+      [`in a 1996 report<sup>4</sup> to the board.`, " in a 1996 report to the board."],
+      [`where y = 3x<sup>2</sup> and 9 m<sup>2</sup> hold.`, " where y = 3x2 and 9 m2 hold."],
     ];
     const bad = cases.map(([html, want]) => [tail(html), want]).filter(([got, want]) => got !== want);
     check("citation marks are left out by what they hold, author–year citations are read", bad.length === 0, JSON.stringify(bad));

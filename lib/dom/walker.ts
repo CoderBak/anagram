@@ -113,7 +113,8 @@ function isMathContainer(el: Element, tag: string): boolean {
  * "Smith et al. (2020)" or "(Smith and Lee, 2020)", and a citation by name alone are words
  * of the sentence and are read, as the PDF reader reads them (lib/pdf/structured.ts). What
  * the element holds and how it is marked decide, never its length. Numbers in a `<sup>`
- * are a mark only when they are a link, so `km<sup>2</sup>` keeps its exponent.
+ * are a mark only when they are a link or follow a word, so `km<sup>2</sup>` keeps its
+ * exponent.
  */
 const MARK_CLASS_RE =
   /(?:^|\s)(?:reference|references|footnote|footnote-ref|footnote-reference|footnoteRef|fn-ref|fnref|noteref|note-ref|ltx_note_mark|cite-bracket|Inline-Template|mw-ref)(?:\s|$)/;
@@ -135,10 +136,21 @@ function isCitationMarker(el: Element, tag: string): boolean {
   if (YEAR_RE.test(text) && (/\p{L}{2}/u.test(text) || text.startsWith("("))) return false;
   const cls = el.getAttribute("class") ?? "";
   if (MARK_CLASS_RE.test(cls)) return true;
-  if (numbers) return CITE_CLASS_RE.test(cls) || (tag === "SUP" && isLinkMark(el, text));
+  if (numbers) return CITE_CLASS_RE.test(cls) || (tag === "SUP" && (isLinkMark(el, text) || followsWord(el)));
   // [a] · [note 1] · [citation needed] · [Knu84]: labels, not a phrase.
   if (/^\[[^\]]+\]$/.test(text)) return text.slice(1, -1).split(/[,;]/).every((label) => countWords(label) <= 3);
   return tag === "SUP" && /^[*†‡§¶]{1,3}$/.test(text);
+}
+
+/** Letters of the word a raised number follows to be a mark; after fewer it is a unit's or
+ *  a variable's exponent ("km²", "3x²"). The PDF reader draws the same line (lib/pdf/structured.ts). */
+const MARKED_WORD = 3;
+
+/** A raised number right after a word ("report⁴", "change.¹⁻⁴"): a note's or a citation's
+ *  mark, linked or not. */
+function followsWord(el: Element): boolean {
+  const before = el.previousSibling?.textContent ?? "";
+  return (/(\p{L}+)[.,;:!?)\]’”"']*\s*$/u.exec(before)?.[1].length ?? 0) >= MARKED_WORD;
 }
 
 /** A mark that is a link, or the whole text of one (`<a href="#fn1"><sup>1</sup></a>`). */

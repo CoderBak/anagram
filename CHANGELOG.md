@@ -127,6 +127,10 @@ local component and the installer all carry the same version.
   the web walker skips the same mark: the model read "errors1–4." where the paper's HTML
   reads "errors.". Zotero's document-worker tells which raised numbers name entries of the
   bibliography; one after a unit or a formula's letter ("cm²") is still read as an exponent.
+- A raised number right after a word is left out of a web page's text even when it is not a
+  link: an author's own superscript citation on arXiv ("change¹⁻⁴"), a footnote number on an
+  older page ("report⁴"). After a unit or a variable it is still read as an exponent ("km²",
+  "3x²"), as in the PDF reader.
 - The PDF reader reads the sentence that leads into a display equation ("…can be written
   equivalently as") with the paragraphs around it. Such a piece does not end in a full
   stop, so it was taken for a label, and a label ends the run of short paragraphs being read
