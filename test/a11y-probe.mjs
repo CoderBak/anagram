@@ -238,6 +238,9 @@ export function installProbe() {
         if (el.shadowRoot) walk(el.shadowRoot);
         const cs = getComputedStyle(el);
         if (cs.display === "none" || cs.visibility === "hidden") continue;
+        // Words kept for a screen reader only (a clipped 1 px box, the ball's live region
+        // while it announces) are never drawn, so they have no contrast to reach.
+        if (cs.clipPath !== "none" && el.getBoundingClientRect().width < 2) continue;
         const own = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim() !== "");
         if (own) out.push(el);
       }

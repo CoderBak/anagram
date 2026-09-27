@@ -66,9 +66,11 @@ try {
   check("engine.settings is answered", settings?.ok && settings.data?.settings?.idle_unload_s === 600, JSON.stringify(settings).slice(0, 200));
   const status = await page.evaluate(() => browser.runtime.sendMessage({ action: "getBackendStatus", probe: true }));
   check("the background reports scoring unavailable, not an error", status?.active === "down", JSON.stringify(status).slice(0, 200));
+  // The panel reads the engine only while its page is shown: a tab opened behind another stays "Starting…".
+  await page.bringToFront().catch(() => {});
   let seen;
-  for (let i = 0; i < 40; i++) {
-    seen = await page.evaluate(() => ({ line: document.querySelector("#componentSettings .component-status")?.textContent ?? "", button: document.getElementById("component-primary")?.textContent ?? "" }));
+  for (let i = 0; i < 80; i++) {
+    seen = await page.evaluate(() => ({ line: document.querySelector("#componentSettings .component-status")?.textContent ?? "", button: document.getElementById("component-primary")?.textContent ?? "", visibility: document.visibilityState }));
     if (/Not set up yet|尚未设置/.test(seen.line)) break;
     await new Promise((r) => setTimeout(r, 250));
   }
