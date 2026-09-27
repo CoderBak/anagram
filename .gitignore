@@ -7,8 +7,9 @@ node_modules/
 # The other vendor chunks are copies of published libraries and are committed; this one is
 # our own source and would go stale the moment a segmentation rule changed.
 public/vendor/diagnostics.min.mjs
-# The same for lib/surfaces/.
+# The same for lib/surfaces/ and lib/render/textFragment.ts.
 public/vendor/surfaces.min.mjs
+public/vendor/fragments.min.mjs
 # And the workers' start files (lib/pdf/upsert.ts).
 public/vendor/start/
 # Generated from the hash-verified upstream viewer under vendor/pdfjs/.

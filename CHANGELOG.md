@@ -42,6 +42,15 @@ local component and the installer all carry the same version.
   the same prompt, and a reader whose site was granted before shows as off until it is.
 - The setup page mentions that most arXiv papers also have an HTML version, which Anagram
   reads most precisely. Nothing redirects there; PDFs are read as before.
+- A copied report links each flagged paragraph to its place on the page. When reports
+  include both the page's address and passage text (Settings, Privacy), every flagged
+  paragraph gets a link that reopens the page scrolled to it and highlighted: a text
+  fragment (`#:~:text=`), which Chrome and Firefox 140 follow. The link names the
+  paragraph's first and last words, checked to match nothing else on the page, with the
+  fragment generation of GoogleChromeLabs' text-fragments-polyfill (Apache-2.0). A paragraph
+  whose words the page repeats around it, one inside a shadow root or an editable field, and
+  whatever the PDF reader or a document viewer shows get no link, and so does anything the
+  report has not linked within a second and a half.
 
 ### Changed
 

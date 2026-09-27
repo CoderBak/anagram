@@ -20,7 +20,7 @@ import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
 import http from "node:http";
 import { launchExtension, serveHtml, artifact, uiLanguage, uiLanguageOf, BADGE_SEL } from "./harness.mjs";
-import { createNativeFixture, fakeTokens, EXTENSION_VERSION } from "./fake-native.mjs";
+import { createNativeFixture, fakeScore, fakeTokens, EXTENSION_VERSION } from "./fake-native.mjs";
 import { docsReadingHtml } from "./fixtures/docs-reading.mjs";
 import {
   GROUPED_PARAS,
@@ -158,8 +158,20 @@ const CLIPPED_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"
 </div>
 <p id="plain">${PARA("PLAINPOST")}</p>
 </body></html>`;
+// Links fixture: two paragraphs the fake scores as AI-generated, far down a long page, each
+// opening and closing on words of its own so a link can name it by them alone. The tags are
+// found here rather than written down: the fake's verdict is a pure function of the text.
+const LINK_PARA = (tag) => `${tag} opens this paragraph, written so that a copied report can point back to it: the link names its first words and its last, the browser finds them, scrolls the page until the paragraph is in view and marks it, and whoever opens the report later lands on the words it is about instead of the top of a long page, which is the whole point of giving a paragraph a link of its own, closing on ${tag}.`;
+const LINK_TAGS = [];
+for (let n = 1; LINK_TAGS.length < 2 && n < 1000; n++) if (fakeScore(LINK_PARA(`LINK-${n}`)).score >= 0.88) LINK_TAGS.push(`LINK-${n}`);
+const LINKS_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>links fixture</title></head><body style="max-width:720px;margin:0 auto;font:15px/1.6 system-ui">
+<h1>Links to flagged paragraphs</h1>
+${LINK_TAGS.map((t, i) => `<div style="height:1600px"></div>\n<p id="l${i + 1}">${LINK_PARA(t)}</p>`).join("\n")}
+<div style="height:1600px"></div>
+</body></html>`;
 const PAGES = {
   "/ui-fixtures.html": readFileSync(join(__dirname, "ui-fixtures.html"), "utf8"),
+  "/links.html": LINKS_HTML,
   "/clipped.html": CLIPPED_HTML,
   "/dense.html": DENSE_HTML,
   "/windows.html": WINDOWS_HTML,
@@ -1192,6 +1204,75 @@ async function sweep(page, steps = 6) {
     const line = (report ?? "").split(/\r?\n/).find((l) => l.startsWith("1. ")) ?? "";
     const ok = chipped && /; \d+ words; read in \d+ passes: (\.\d\d|1\.0)( · (\.\d\d|1\.0))+\)$/.test(line) && !line.includes("not read");
     record("ui", "copied report: a paragraph read in passes says so, with each pass's own number", ok, JSON.stringify({ chipped, line }));
+    await p.close();
+  }
+
+  // A25d: with the page's address and passage text both in the report, each flagged
+  // paragraph gets a link that reopens the page at it — and the browser really goes there.
+  // With either left out, no link: a link is the address plus words of the paragraph.
+  {
+    const setReport = (url, text) =>
+      sw.evaluate((v) => new Promise((res) => chrome.storage.local.set({ reportIncludeUrl: v[0], reportIncludeText: v[1] }, res)), [url, text]);
+    const p = await context.newPage();
+    const pageUrl = server.url("/links.html");
+    await p.goto(pageUrl, { waitUntil: "load" });
+    const chipped = await p
+      .waitForFunction(
+        (sel) => ["l1", "l2"].every((id) => /^(\.\d\d|1\.0)$/.test(document.querySelector(`#${id} ${sel}`)?.shadowRoot?.querySelector(".num")?.textContent ?? "")),
+        BADGE_SEL,
+        { timeout: 20000 },
+      )
+      .then(() => true)
+      .catch(() => false);
+    const copyReport = async () => {
+      await p.evaluate(() => navigator.clipboard.writeText("NO REPORT COPIED").catch(() => {}));
+      await p.evaluate(() => {
+        const sr = document.getElementById("anagram-fab")?.shadowRoot;
+        if (!sr?.querySelector(".panel.open")) sr?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        sr?.querySelector(".pcopy")?.click();
+      });
+      for (let i = 0; i < 30; i++) {
+        await p.waitForTimeout(200);
+        const text = await p.evaluate(() => navigator.clipboard.readText().catch(() => null));
+        if (text && text !== "NO REPORT COPIED") return text.replace(/\r\n/g, "\n");
+      }
+      return null;
+    };
+    const linksIn = (report) => [...(report ?? "").matchAll(/^ {3}Open at this paragraph: (\S+)$/gm)].map((m) => m[1]);
+    await setReport(false, false);
+    const privateReport = await copyReport();
+    await setReport(true, false);
+    const urlOnly = await copyReport();
+    await setReport(true, true);
+    const full = await copyReport();
+    await setReport(false, false);
+    const links = linksIn(full);
+    // Each link, opened fresh, lands on its paragraph: the page is scrolled far enough that
+    // the paragraph is on screen.
+    const landed = [];
+    for (const [i, link] of links.entries()) {
+      const q = await context.newPage();
+      await q.goto(link, { waitUntil: "load" });
+      await q.waitForTimeout(1200);
+      landed.push(
+        await q.evaluate((id) => {
+          const r = document.getElementById(id).getBoundingClientRect();
+          return { y: Math.round(scrollY), onScreen: r.top >= 0 && r.bottom <= innerHeight };
+        }, `l${i + 1}`),
+      );
+      await q.close();
+    }
+    const entries = (full ?? "").split("\n").filter((l) => /^\d+\. \*\*/.test(l)).length;
+    record(
+      "ui",
+      "copied report: with the address and passage text included, each flagged paragraph links to the page scrolled to it; without either, no link",
+      chipped && LINK_TAGS.length === 2 &&
+        typeof privateReport === "string" && !privateReport.includes(":~:") && linksIn(privateReport).length === 0 &&
+        typeof urlOnly === "string" && urlOnly.includes(`Page: ${pageUrl}`) && !urlOnly.includes(":~:") && linksIn(urlOnly).length === 0 &&
+        entries === 2 && links.length === 2 && links.every((l) => l.startsWith(`${pageUrl}#:~:text=`)) &&
+        landed.length === 2 && landed.every((l) => l.onScreen && l.y > 1000) && landed[1].y > landed[0].y,
+      JSON.stringify({ chipped, tags: LINK_TAGS, links, landed, urlOnly: urlOnly?.slice(0, 160) }),
+    );
     await p.close();
   }
 

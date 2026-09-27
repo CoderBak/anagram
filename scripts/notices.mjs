@@ -264,6 +264,10 @@ const GROUPS = [
       { name: "cyrb53", version: "jshash/experimental/cyrb53.js", url: "https://github.com/bryc/code",
         licence: "Public domain", copyright: "cyrb53 (c) 2018 bryc; \"License: Public domain (or MIT if needed). Attribution appreciated.\"",
         where: "The cache-key hash in lib/hash.ts.", adapted: ["lib/hash.ts"] },
+      { name: "Text Fragments polyfill", version: "6.7.0, commit abc6ed4", url: "https://github.com/GoogleChromeLabs/text-fragments-polyfill",
+        licence: "Apache-2.0", copyright: "Copyright 2020 Google LLC",
+        where: "The fragment generation and the search it checks uniqueness with (src/fragment-generation-utils.js, src/text-fragment-utils.js), in lib/render/textFragment.ts and its build vendor/fragments.min.mjs: the copied report's links to flagged paragraphs. The file keeps the licence notice and says what was changed.",
+        adapted: ["lib/render/textFragment.ts"] },
     ],
   },
   {

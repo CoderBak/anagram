@@ -411,6 +411,10 @@
     "message": "; the end of the paragraph was not read",
     "description": "Report entry detail appended when the text outran the pass cap."
   },
+  "reportLink": {
+    "message": "Open at this paragraph: $1",
+    "description": "Report entry line under a flagged paragraph. $1 is a link that opens the page scrolled to that paragraph, with it highlighted."
+  },
   "reportModel": {
     "message": "Scores from $1 ($2) via the local engine — EditLens estimates of AI-editing extent, not proof.",
     "description": "Report footer. $1 = model id, $2 = model version. Both are identifiers, never translated."

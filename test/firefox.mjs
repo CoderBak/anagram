@@ -27,7 +27,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
 import { serveHtml, artifact } from "./harness.mjs";
-import { createNativeFixture } from "./fake-native.mjs";
+import { createNativeFixture, fakeScore } from "./fake-native.mjs";
 import {
   BADGE_SEL,
   EXT,
@@ -60,7 +60,8 @@ const server = await serveHtml(PAGES);
 const pageUrl = server.url("/selftest.html");
 
 // ── 2) headless Firefox + a temporary install of output-test/firefox-mv2 ───────────
-const { browser, firefox, extId, extUrl } = await launchFirefox({ nativeFixture: fixture }).catch(async (e) => {
+// The asynchronous clipboard without a paste prompt, so the copied report can be read back.
+const { browser, firefox, extId, extUrl } = await launchFirefox({ nativeFixture: fixture, extraPrefs: { "dom.events.testing.asyncClipboard": true } }).catch(async (e) => {
   console.error(e.message ?? e);
   await server.close();
   await fixture.close();
@@ -881,6 +882,50 @@ for (const how of ["lang", "ids"]) {
   await optionsPage.evaluate(() => browser.storage.local.set({ analysisScope: "page" }));
   check("main-content scope: Defuddle loads on demand and takes the post, not the comments", r.post === 3 && r.comments === 0 && r.commentsSent === 0, JSON.stringify(r));
   await p.close();
+}
+
+// The copied report's link to a flagged paragraph: the chunk that writes it loads, and
+// Firefox (text fragments since 131) opens the page at the paragraph. A real click, so the
+// copy has the user activation Firefox asks the clipboard for.
+{
+  const LINK_PARA = (tag) => `${tag} opens this paragraph, written so that a copied report can point back to it: the link names its first words and its last, the browser finds them, scrolls the page until the paragraph is in view and marks it, and whoever opens the report later lands on the words it is about instead of the top of a long page, which is the whole point of giving a paragraph a link of its own, closing on ${tag}.`;
+  let tag = null;
+  for (let n = 1; !tag && n < 1000; n++) if (fakeScore(LINK_PARA(`LINK-${n}`)).score >= 0.88) tag = `LINK-${n}`;
+  PAGES["/report-link.html"] = html("A flagged paragraph far down", `<div style="height:1600px"></div><p id="far">${LINK_PARA(tag)}</p><div style="height:1600px"></div>`);
+  await optionsPage.evaluate(() => browser.storage.local.set({ reportIncludeUrl: true, reportIncludeText: true }));
+  const p = await browser.newPage();
+  await p.goto(server.url("/report-link.html"), { waitUntil: "load" });
+  await p.evaluate(() => window.scrollTo(0, 1400));
+  const chipped = await waitFor(p, (sel) => /^(\.\d\d|1\.0)$/.test(document.querySelector(`#far ${sel}`)?.shadowRoot?.querySelector(".num")?.textContent ?? ""), { timeout: 15000, arg: BADGE_SEL });
+  let report = null;
+  try {
+    await (await p.$("#anagram-fab >>> .count")).click();
+    await sleep(400);
+    await (await p.$("#anagram-fab >>> .pcopy")).click();
+    await sleep(1500);
+    report = await p.evaluate(() => navigator.clipboard.readText().catch(() => null));
+  } catch (e) {
+    report = String(e);
+  }
+  await optionsPage.evaluate(() => browser.storage.local.set({ reportIncludeUrl: false, reportIncludeText: false }));
+  await p.close();
+  const link = /^ {3}Open at this paragraph: (\S+)$/m.exec(report ?? "")?.[1] ?? null;
+  let landed = null;
+  if (link) {
+    const q = await browser.newPage();
+    await q.goto(link, { waitUntil: "load" });
+    await sleep(1500);
+    landed = await q.evaluate(() => {
+      const r = document.getElementById("far").getBoundingClientRect();
+      return { y: Math.round(scrollY), onScreen: r.top >= 0 && r.bottom <= innerHeight };
+    });
+    await q.close();
+  }
+  check(
+    "copied report: a flagged paragraph's link reopens the page scrolled to it in Firefox",
+    chipped && !!link && link.startsWith(`${server.url("/report-link.html")}#:~:text=`) && !!landed && landed.onScreen && landed.y > 1000,
+    JSON.stringify({ tag, chipped, link, landed }),
+  );
 }
 
 // Every licence the build owes is in it.

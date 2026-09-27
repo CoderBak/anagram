@@ -22,7 +22,7 @@ import { CONTRACT_VERSION } from "../contract";
 import { collectUnits, inPageOrder, type CollectOptions } from "../dom/walker";
 import { restoreSplits } from "../dom/splits";
 import { findMainContent, useDefuddle } from "../dom/mainContent";
-import { loadDefuddle } from "../lazy";
+import { loadDefuddle, loadFragments } from "../lazy";
 import { partTextOf, MAX_UNIT_TEXT_CHARS } from "../dom/text";
 import { createObservers, type Observers } from "./observers";
 import { createScheduler, type Scheduler } from "./scheduler";
@@ -44,6 +44,7 @@ import { t, tn } from "../i18n";
 import { band, bandLabel, BUCKET_BANDS, isFlagged } from "../render/band";
 import { formatScore } from "../render/score";
 import { windowReadout } from "../render/coverage";
+import { mayLinkParagraphs } from "../render/report";
 import { settings } from "../settings/settings";
 import { createLogger } from "../log";
 
@@ -397,6 +398,15 @@ export function createOrchestrator(
     const [includeText, includeUrl] = await Promise.all([settings.reportIncludeText.getValue(), settings.reportIncludeUrl.getValue()]);
     const status = await sendDocumentMessage({action: ACTIONS.GET_BACKEND_STATUS}).catch(() => undefined) as BackendStatus | undefined;
     const flagged = flaggedInOrder().map(({ unit, v }) => ({ unit, v, r: v.result }));
+    // A link that reopens the page at each flagged paragraph. Only the walk's own units are
+    // the page's text as the browser will search it: a reader or a surface draws its units
+    // over something else, and names a document rather than this address.
+    const links =
+      !opts.collect && !opts.reportUrl && mayLinkParagraphs({ includeUrl, includeText, pageUrl: location.href })
+        ? await loadFragments()
+            .then((m) => m.paragraphLinks(location.href, flagged.map(({ unit }) => unitRange(unit))))
+            .catch(() => [])
+        : [];
 
     const lines: string[] = [];
     lines.push(`# ${includeUrl ? t("reportTitle", document.title || location.hostname) : t("reportPrivateTitle")}`);
@@ -453,6 +463,8 @@ export function createOrchestrator(
           `${i + 1}. **${bandLabel(band(r))} · ${score}** ` +
             `(${dist}; ${t("reportWords", unit.wordCount)}${windows})`,
         );
+        // Before the quotation: a line after it would be read as part of the quotation.
+        if (links[i]) lines.push(`   ${t("reportLink", links[i]!)}`);
         if (includeText) lines.push(`   > ${snippet}${ellipsis}`);
       });
     }
@@ -463,6 +475,22 @@ export function createOrchestrator(
     if (m) lines.push(t("reportRuntime", m.calibration));
     if (m && status?.model && modelDim(status.model) === modelDim(m)) lines.push(t("reportDevice", status.server.device ?? "?", status.server.dtype ?? "?"));
     return lines.join("\n");
+  }
+
+  /** The stretch of the page a unit reads, from its first text node to the end of its last. */
+  function unitRange(unit: Unit): Range | null {
+    const first = unit.parts[0]?.nodes[0];
+    const lastPart = unit.parts[unit.parts.length - 1];
+    const last = lastPart?.nodes[lastPart.nodes.length - 1];
+    if (!first?.isConnected || !last?.isConnected) return null;
+    try {
+      const range = document.createRange();
+      range.setStart(first, 0);
+      range.setEnd(last, last.data.length);
+      return range;
+    } catch {
+      return null;
+    }
   }
 
   /** Painted under the current display mode? Everything is analyzed regardless. */
