@@ -15,7 +15,7 @@
 import { chromium } from "playwright";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import http from "node:http";
@@ -113,7 +113,9 @@ export async function launchExtension({
     if (testPort) detach = await attachTestPort(sw, fixture);
     else registerTestHost(join(profile, "NativeMessagingHosts", HOST_NAME + ".json"), fixture, "chrome", extId);
     if (!extDir) await waitForRegistration(sw);
-    if (fixture.state().enabled && fixture.state().component.state === "ready") {
+    // A build without Native Messaging (the oneclick flavor) never reaches the fixture.
+    const native = JSON.parse(readFileSync(join(extension, "manifest.json"), "utf8")).permissions?.includes("nativeMessaging");
+    if (native && fixture.state().enabled && fixture.state().component.state === "ready") {
       const probe = await context.newPage();
       await probe.goto(`chrome-extension://${extId}/options.html`);
       const deadline = Date.now() + 15000;

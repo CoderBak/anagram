@@ -125,7 +125,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   dialog.setAttribute("aria-labelledby", dialogTitle.id); dialog.setAttribute("aria-describedby", dialogText.id);
   const dialogActions = element("div", undefined, "component-actions");
   const keep = makeButton("buttonCancel", () => dialog.close(), "outline");
-  const accept = makeButton("componentDeleteModels", () => { dialog.close(); if (confirming && !pending) run("models.delete"); }, "destructive");
+  const accept = makeButton("componentDeleteModels", () => { dialog.close(); if (confirming && !pending) run("models.delete"); }); accept.id = "engine-confirm";
   dialogActions.append(keep, accept); dialog.append(dialogTitle, dialogText, dialogActions);
   host.replaceChildren(summary, intro, progress, progressText, where, stored, error, details, actions, hosts, manage, dialog);
 

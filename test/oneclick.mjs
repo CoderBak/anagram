@@ -283,7 +283,7 @@ for (const lang of ["en", "zh-CN"]) {
     await setup.click("#engine-cancel");
     const dialog = await until(() => setup.evaluate(() => { const d = document.querySelector("#componentSettings dialog"); return d?.open ? d.textContent : null; }));
     check(`${lang}: Cancel asks first, saying what is deleted`, dialog?.includes(w("engineKeepDownloading")) && dialog.includes(w("engineCancelDownload")), dialog);
-    await setup.click("#componentSettings dialog .btn[data-variant=destructive]");
+    await setup.click("#engine-confirm");
     const cancelled = await until(async () => (await statusOf(setup)) === w("engineNotSetUp"), 20000);
     const after = await engine(setup, "status");
     check(`${lang}: Cancel deletes what arrived and setup starts over`, cancelled && after?.data?.state === "needs_models" && after.data.storage.models_bytes < 10000,
@@ -391,7 +391,7 @@ async function realRun(files) {
     // Delete, from Manage.
     await setup.evaluate(() => { document.getElementById("manage").open = true; });
     await setup.click("#engine-delete");
-    await setup.click("#componentSettings dialog .btn[data-variant=destructive]");
+    await setup.click("#engine-confirm");
     const gone = await until(async () => (await statusOf(setup)) === w("engineNotSetUp"), 60_000);
     const after = await engine(setup, "status");
     check("real: Delete model files empties the engine's storage", gone && after?.data?.storage?.models_bytes < 10000, JSON.stringify(after?.data?.storage));
