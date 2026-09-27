@@ -120,6 +120,35 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- A PDF manuscript with numbered lines, as preprints and papers under review are set, is
+  read without its line numbers. Word's line numbering and LaTeX's lineno put a number
+  beside every line, and both of the reader's readings took it for a word: "84 Vertical
+  land motion (VLM), defined as … 85 represents", which also hid every paragraph's indent.
+  Zotero's reader took each numbered line for the item of a numbered list and set whole
+  pages of such prose aside as tables. The numbers are now told by where they stand — a
+  bare number at the edge of each line, in a column clear of the text, counting on line by
+  line — and left out; the lines Zotero read one by one are joined into the paragraphs
+  their indents and last lines show (in a manuscript set ragged right, where nearly every
+  line stops short of the margin, by their indents), a paragraph carried over a page is
+  one; a page it took for a table is read,
+  and so are numbered lines it took for the entries of a bibliography before the
+  manuscript's own References heading. On 18 EarthArXiv manuscripts, those whose PDF
+  carries its own paragraphs read 81% of their text instead of 60%, the paragraphs are
+  found (boundary F1 82% instead of 58%), and the 6% of scored words that were line
+  numbers are gone.
+- A report's footnotes are no longer read as its text. Government and agency reports set
+  each note as a raised number run into the note ("¹⁷DOD civilian personnel are funded …"),
+  and Zotero's reader took the notes at the foot of a page for the items of a numbered list
+  in the body. A block the text's raised mark links to, opening with a raised number, is now
+  the note it is, and so are the others of its list. On five reports the share of scored
+  text that is not the body falls from 22% to 9%.
+- The PDF reader's own reflow, which reads a document before Zotero's structure arrives, a
+  long one past its 300 pages, and Google Drive's and OneDrive's previews, reads the columns
+  of a page that has them in one stretch only: under a first page's title and abstract, or
+  beside a figure set across the page, and of a page whose gutter is no wider than an em,
+  as many conference templates and small books set it. It read such a page line by line
+  across both columns. On olmOCR-Bench's pages it passes 65% of the checks instead of 58%,
+  and on two-column arXiv papers it puts 9 paragraphs out of order where it put 118.
 - In Firefox, a web PDF without ".pdf" in its address now and then stayed in Firefox's own
   viewer instead of opening in Anagram's reader, and a PDF the reader opened by itself, as
   it does when one loads or is reloaded, could land on "This PDF could not be loaded". Both

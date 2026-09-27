@@ -989,6 +989,32 @@ describe("structuredBlocks — the document", () => {
     for (const b of blocks) expectRunsToMatch(b, pages);
   });
 
+  it("leaves out a footnote Zotero took for an item of a list: it opens with the raised number a mark links to", () => {
+    // A report's notes open with their raised number, "17DOD civilian personnel…", and
+    // Zotero reads them as a numbered list of the body; it links the body's raised "18" to
+    // the note all the same (and a note of the same list it links no mark to is one too).
+    const body = node(1, [{ text: "the severity of those challenges varied by location.", x: 72, y: 100 }]);
+    const mark = drawn(1, { text: "18", x: 72 + 52 * CW, y: 96 });
+    const n17 = node(1, [{ text: "DOD civilian personnel are funded through two avenues.", x: 80, y: 700 }]);
+    const n18 = node(1, [{ text: "Our review focuses on the challenges of remote installations.", x: 80, y: 714 }]);
+    const sup = (text: string, y: number): SdtTextNode => {
+      const d = drawn(1, { text, x: 72, y: y - 4 });
+      return { text, anchor: { textMap: JSON.stringify([d.run]) }, style: { sup: true } };
+    };
+    const pages = [pageText(1, [...body.items, mark.item, ...n17.items, ...n18.items])];
+    const blocks = structuredBlocks(structure([
+      { type: "paragraph", content: [{ text: body.text, anchor: body.anchor }, { text: "18", anchor: { textMap: JSON.stringify([mark.run]) }, style: { sup: true }, refs: [[1, 1]] }] },
+      { type: "list", content: [
+        { type: "listitem", content: [sup("17", 700), { text: n17.text, anchor: n17.anchor }] },
+        { type: "listitem", backRefs: [[0, 1]], content: [sup("18", 714), { text: n18.text, anchor: n18.anchor }] },
+      ] },
+      paragraph(1, [node(1, [{ text: "A body paragraph after the notes.", x: 72, y: 300 }])]),
+    ]), pages);
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0].text).toMatch(/^the severity of those challenges varied by location\./);
+    expect(blocks[1].text).toBe("A body paragraph after the notes.");
+  });
+
   it("makes a paragraph carried over a page one block, with runs on both pages", () => {
     const first = node(1, [{ text: "the paragraph begins on one page and", x: 72, y: 700 }]);
     const second = node(2, [{ text: "ends on the next.", x: 72, y: 80 }]);
@@ -1109,5 +1135,121 @@ describe("structuredBlocks — text cut off by a display equation", () => {
       paragraph(2, [next]),
     ], 2), pages);
     expect(blocks.map((b) => [b.page, b.columnBreak])).toEqual([[1, true], [2, false]]);
+  });
+});
+
+describe("structuredBlocks — a manuscript with numbered lines", () => {
+  // Word numbers every line of a review copy, a tab before the text: "84" right-aligned at
+  // the margin, the text at 72, a paragraph's first line at 108. Zotero takes each number
+  // for a list marker and each line for an item of a list, or reads the page — text,
+  // numbers and all — as a table, and sets it aside.
+  /** Words, all different, to exactly `n` characters. */
+  const fill = (seed: string, n: number): string => {
+    let s = "";
+    for (let i = 0; s.length < n; i++) s += `${s ? " " : ""}${seed}${String.fromCharCode(97 + (i % 26))}${i}`;
+    return s.slice(0, n).replace(/ $/, "x");
+  };
+  /** Three paragraphs: indented first lines, full lines, a short last line ending a sentence. */
+  const LINES = [
+    { text: `The ${fill("a", 79)}`, x: 108 }, { text: fill("b", 90), x: 72 }, { text: fill("c", 90), x: 72 }, { text: `${fill("d", 35)}.`, x: 72 },
+    { text: `Then ${fill("e", 78)}`, x: 108 }, { text: fill("f", 90), x: 72 }, { text: `${fill("g", 30)}.`, x: 72 },
+    { text: `Last ${fill("h", 78)}`, x: 108 }, { text: `${fill("i", 88)}.`, x: 72 },
+  ];
+  const PARAGRAPHS = [[0, 4], [4, 7], [7, 9]].map(([a, b]) => LINES.slice(a, b).map((l) => l.text).join(" "));
+  const PITCH = 14;
+  interface Line { items: PdfTextItem[]; run: (number | number[])[][]; text: string }
+  /** A numbered line: pdf.js's two runs and Zotero's glyphs for them, the number first. */
+  const numbered = (page: number, n: number, line: { text: string; x: number }, y: number): Line => {
+    const num = String(n);
+    const a = drawn(page, { text: num, x: 54 - num.length * CW, y });
+    const b = drawn(page, { text: line.text, x: line.x, y });
+    return { items: [a.item, b.item], run: [a.run, b.run], text: `${num} ${line.text}` };
+  };
+  const lines = (page: number, first: number, top: number, of = LINES): Line[] => of.map((l, i) => numbered(page, first + i, l, top + i * PITCH));
+  /** Zotero's one text node for several lines. */
+  const textOf = (set: Line[]): SdtTextNode => ({ text: set.map((l) => l.text).join(" "), anchor: { textMap: JSON.stringify(set.flatMap((l) => l.run)) } });
+  const asList = (set: Line[]): SdtBlock => ({ type: "list", content: set.map((l) => ({ type: "listitem", content: [textOf([l])] })) });
+
+  it("reads a list of numbered lines as the paragraphs they are, without the numbers", () => {
+    const head = numbered(1, 83, { text: "1. Introduction", x: 72 }, 86);
+    const set = lines(1, 84, 100);
+    const pages = [pageText(1, [...head.items, ...set.flatMap((l) => l.items)])];
+    const blocks = structuredBlocks(structure([{ type: "heading", content: [textOf([head])] }, asList(set)]), pages);
+    expect(blocks.map((b) => [b.kind, b.text])).toEqual([["heading", "1. Introduction"], ...PARAGRAPHS.map((p) => ["paragraph", p])]);
+    for (const b of blocks) expectRunsToMatch(b, pages);
+  });
+
+  it("finds the paragraphs of numbered lines set ragged right by their indents", () => {
+    // Every line stops short of the margin by a word or two, and many of them are followed
+    // by a line opening with a capital or a bracket: only the indent opens a paragraph.
+    const ragged = [
+      { text: `The ${fill("a", 80)}`, x: 108 }, { text: fill("b", 78), x: 72 }, { text: `(Smith ${fill("c", 76)}`, x: 72 },
+      { text: `Jones ${fill("d", 78)}`, x: 72 }, { text: `${fill("e", 70)}.`, x: 72 },
+      { text: `Then ${fill("f", 76)}`, x: 108 }, { text: `(Doe ${fill("g", 82)}`, x: 72 }, { text: `${fill("h", 60)}.`, x: 72 },
+    ];
+    const set = lines(1, 84, 100, ragged);
+    const pages = [pageText(1, set.flatMap((l) => l.items))];
+    const blocks = structuredBlocks(structure([asList(set)]), pages);
+    expect(blocks.map((b) => b.text)).toEqual([ragged.slice(0, 5), ragged.slice(5)].map((p) => p.map((l) => l.text).join(" ")));
+  });
+
+  it("reads a numbered paragraph on over a page whose next line opens with a capital", () => {
+    // "…in the United" at the foot of one page, "Kingdom (Figure 1)." at the head of the
+    // next, the page's own furniture between them.
+    const foot = [...LINES.slice(0, 8), { text: fill("i", 90), x: 72 }];
+    const head = { text: `Kingdom ${fill("k", 60)}.`, x: 72 };
+    const one = lines(1, 84, 100, foot);
+    const two = lines(2, 93, 100, [head]);
+    const stamp = node(1, [{ text: "This manuscript is a preprint.", x: 72, y: 760 }]);
+    const pages = [pageText(1, [...one.flatMap((l) => l.items), ...stamp.items]), pageText(2, two.flatMap((l) => l.items))];
+    const blocks = structuredBlocks(structure([asList(one), paragraph(1, [stamp], { flowClass: "excluded" }), asList(two)], 2), pages);
+    expect(blocks.map((b) => b.text)).toEqual([...PARAGRAPHS.slice(0, 2), [LINES[7].text, fill("i", 90), head.text].join(" ")]);
+  });
+
+  it("reads a page of numbered prose Zotero took for a table", () => {
+    const set = lines(1, 84, 100);
+    const pages = [pageText(1, set.flatMap((l) => l.items))];
+    const blocks = structuredBlocks(structure([{ type: "table", flowClass: "auxiliary", content: [textOf(set)] }]), pages);
+    expect(blocks.map((b) => b.text)).toEqual(PARAGRAPHS);
+    for (const b of blocks) expectRunsToMatch(b, pages);
+  });
+
+  it("reads numbered lines Zotero took for a bibliography before the References heading", () => {
+    const set = lines(1, 84, 100);
+    const more = lines(1, 93, 100 + 9 * PITCH);
+    const head = numbered(1, 102, { text: "References", x: 72 }, 100 + 18 * PITCH);
+    const entry = numbered(1, 103, { text: "Doe, J. (2020). A paper about papers. Journal 1, 1-2.", x: 72 }, 100 + 19 * PITCH);
+    const pages = [pageText(1, [...set, ...more, head, entry].flatMap((l) => l.items))];
+    const asEntries = (of: Line[]): SdtBlock => ({ type: "list", content: of.map((l) => ({ type: "listitem", reference: true, content: [textOf([l])] })) });
+    const blocks = structuredBlocks(structure([asList(set), asEntries(more), { type: "heading", content: [textOf([head])] }, asEntries([entry])]), pages);
+    expect(blocks.map((b) => b.text)).toEqual([...PARAGRAPHS, ...PARAGRAPHS, "References"]);
+  });
+
+  it("leaves a real table set aside, though its caption's lines are numbered", () => {
+    const set = lines(1, 84, 100);
+    const caption = lines(1, 94, 240, [{ text: "Table 1. Rates of land motion at six stations.", x: 72 }]);
+    const rows = ["Boston", "Woods Hole", "Nantucket", "Chatham", "Fall River", "New Bedford"].map((name, i): Line => {
+      const y = 260 + i * PITCH;
+      const cells = [drawn(1, { text: name, x: 72, y }), drawn(1, { text: `-${i}.59`, x: 250, y }), drawn(1, { text: `${i}.6`, x: 400, y })];
+      return { items: cells.map((c) => c.item), run: cells.map((c) => c.run), text: [name, `-${i}.59`, `${i}.6`].join(" ") };
+    });
+    const pages = [pageText(1, [...set.flatMap((l) => l.items), ...caption.flatMap((l) => l.items), ...rows.flatMap((r) => r.items)])];
+    const blocks = structuredBlocks(structure([asList(set), { type: "table", flowClass: "auxiliary", content: [textOf([...caption, ...rows])] }]), pages);
+    expect(blocks.map((b) => b.text)).toEqual(PARAGRAPHS);
+  });
+
+  it("leaves a paper's own numbers alone: a table of years under a paragraph", () => {
+    // Ten years counting on, each first on its line: but the paragraph's lines start where
+    // the years do, so they are the table's first column, not a margin's.
+    const years = Array.from({ length: 10 }, (_, i): Line => {
+      const y = 200 + i * PITCH;
+      const a = drawn(1, { text: String(2001 + i), x: 72, y });
+      const b = drawn(1, { text: `rainfall was ${i + 3}00 millimetres that year`, x: 140, y });
+      return { items: [a.item, b.item], text: `${2001 + i} rainfall was ${i + 3}00 millimetres that year`, run: [a.run, b.run] };
+    });
+    const body = node(1, ["the body paragraph above the table", "reads as it did before, all its", "lines set flush left where the", "years of the table are set too."].map((text, i) => ({ text, x: 72, y: 100 + i * PITCH })));
+    const pages = [pageText(1, [...body.items, ...years.flatMap((r) => r.items)])];
+    const blocks = structuredBlocks(structure([paragraph(1, [body]), { type: "table", flowClass: "auxiliary", content: [textOf(years)] }]), pages);
+    expect(blocks.map((b) => b.text)).toEqual([body.text]);
   });
 });
