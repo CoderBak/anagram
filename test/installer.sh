@@ -210,10 +210,15 @@ cp "$ROOT/installer/anagram" "$RELDIR/src/anagram/bin/anagram"
 ( cd "$RELDIR/src" && tar -czf "$RELDIR/anagram.tar.gz" anagram )
 sha_of "$RELDIR/anagram.tar.gz" > "$RELDIR/anagram.tar.gz.sha256"
 # Clear only the prior fixture's exact owned registration through the real helper.
-out="$(HOME="$FAKE_HOME" ANAGRAM_HOME="$HFIRST" ANAGRAM_RELEASE_URL="file://$RELDIR" sh "$ROOT/install.sh" 2>&1)"; rc=$?
+# A UTF-8 locale, as in any Mac terminal: there bash reads a multibyte character right after
+# $NAME as part of the name.
+out="$(HOME="$FAKE_HOME" LC_ALL=en_US.UTF-8 ANAGRAM_HOME="$HFIRST" ANAGRAM_RELEASE_URL="file://$RELDIR" sh "$ROOT/install.sh" 2>&1)"; rc=$?
 if [ $rc -eq 0 ] && [ -f "$HFIRST/.native-component.json" ] && [ ! -f "$HFIRST/config" ] && echo "$out" | grep -q "the browser finishes setup automatically"; then
   ok "fresh installation registers native host and invokes terminal preparation without a listener config"
 else bad "fresh native install" "rc=$rc $out"; fi
+if echo "$out" | grep -q "Downloading and installing [A-Za-z]*, ONNX Runtime" && ! echo "$out" | grep -q "unbound variable"; then
+  ok "the runtime packages step names its runtime in a UTF-8 locale"
+else bad "runtime packages note" "$(echo "$out" | grep -A1 '\[4/7\]')"; fi
 out="$(HOME="$FAKE_HOME" ANAGRAM_HOME="$HFIRST" ANAGRAM_RELEASE_URL="file://$RELDIR" sh "$ROOT/install.sh" 2>&1)"; rc=$?
 if [ $rc -eq 0 ] && [ ! -f "$HFIRST/config" ]; then
   ok "installer rerun updates exact owned registration without a listener config"
