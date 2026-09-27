@@ -125,6 +125,17 @@ const results = await page.evaluate(() => {
   u = PW.collectUnits(sandbox).map((x) => x.wordCount);
   check("text inside a named anchor (no href) is no link text", u.length === 2, JSON.stringify(u));
 
+  {
+    // A card that is one link (stackoverflow.blog's front page: `a.d-block > time + h2 + p`):
+    // the excerpt is link text only because the whole card can be clicked.
+    const card = (i, text) => `<div class="item"><a href="/n/${i}" style="display:block"><time>May ${i}</time><h2>Issue ${i}</h2><p>${text}</p></a></div>`;
+    u = collect(`<div class="cards">${card(1, words(80))}${card(2, words(80))}</div>`);
+    const menu = collect(`<ul>${Array.from({ length: 8 }, (_, i) => `<li><a href="/p${i}" style="display:block"><span style="display:block">${words(12)}</span></a></li>`).join("")}</ul>` +
+      `<ul>${Array.from({ length: 8 }, (_, i) => `<li><a href="/q${i}" style="display:block">${words(12)}</a></li>`).join("")}</ul>`);
+    check("prose in a block inside a link that is a whole card is read; a menu of block links is still link-dense",
+      u.length === 2 && u.every((x) => x.words === 80) && menu.length === 0, JSON.stringify([u.map(x => x.words), menu.map(x => x.words)]));
+  }
+
   u = collect(`<div contenteditable="true">${words(80)}</div>`);
   check("contenteditable never scored", u.length === 0);
 

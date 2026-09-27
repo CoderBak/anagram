@@ -97,6 +97,10 @@ local component and the installer all carry the same version.
   to, and a page that leaves it open holds the whole section after it inside the element;
   every paragraph there was taken for link text, like a menu, and a North Carolina extension
   bulletin of 1,900 words got nothing. Only an `<a>` that goes somewhere is a link now.
+- A paragraph inside a card that is one big link is read when it is prose: a sentence of
+  twenty words or more, in a block of its own inside the link. The excerpts on a blog's front
+  page were taken for menu items, because every word of the card is link text. A menu whose
+  items are block links is still not read.
 - A section of a page is no longer skipped because of the words in its anchor. PostgreSQL's
   reference section on the locking clause is `SQL-FOR-UPDATE-SHARE`, Flask's documentation
   names its section on cookies `cookies`, and those ids read as a share bar and a cookie

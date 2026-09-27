@@ -247,6 +247,20 @@ export interface CollectOptions {
 
 /** Max link-text fraction for a run to count as prose (nav/menu barrier above it). */
 const MAX_LINK_RATIO = 0.6;
+/** Words a text inside a card link needs, a sentence's end with them, to be prose. */
+const CARD_TEXT_WORDS = 20;
+
+/**
+ * Text in a block INSIDE a link is link text only because the whole card around it can be
+ * clicked: stackoverflow.blog sets each newsletter issue on its front page as one
+ * `a.d-block` holding a date, a title and a paragraph of prose, and the paragraph was a
+ * link-dense barrier like a menu item. A menu's link stands inside its block or is the block
+ * itself, and stays one; a card's text is read when it runs to a sentence of some length.
+ */
+function inCardLink(r: Run): boolean {
+  if (r.words < CARD_TEXT_WORDS || !endsLikeProse(r.text)) return false;
+  return r.container.parentElement?.closest("a[href]") != null;
+}
 /** An out-of-flow element with at most this much text is a marker (page number,
  *  badge, anchor label), not content — skipped without breaking the sentence. */
 const SMALL_OUT_OF_FLOW_CHARS = 40;
@@ -1797,7 +1811,7 @@ function createAssembler(
       barrier(r.container);
       return;
     }
-    if (r.linkRatio > MAX_LINK_RATIO || looksLikeNameList(r.text)) {
+    if ((r.linkRatio > MAX_LINK_RATIO && !inCardLink(r)) || looksLikeNameList(r.text)) {
       // Nav/menu/story-title lists and author/citation strings: not prose AND a
       // section boundary.
       barrier(r.container);
