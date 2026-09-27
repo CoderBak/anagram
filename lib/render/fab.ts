@@ -304,9 +304,12 @@ const FAB_CSS = `
 }
 /* The dialog's own heading (and its accessible name). Kept typographically identical
    to the plain span it replaced — the row only gained semantics. */
-.panel .phead h2 { font: inherit; margin: 0; }
-/* Basecoat "primary" button: near-black surface, light text. */
+.panel .phead h2 { font: inherit; margin: 0; min-width: 0; overflow-wrap: anywhere; }
+/* Basecoat "primary" button: near-black surface, light text. A longer title wraps; the
+   button keeps its one line. */
 .panel .pcopy {
+  flex: none;
+  white-space: nowrap;
   font: 500 10.5px/1 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   text-transform: none;
   letter-spacing: 0;
