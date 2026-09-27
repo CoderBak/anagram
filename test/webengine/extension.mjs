@@ -119,6 +119,11 @@ try {
   check(`the offscreen worker is cross-origin isolated (${threads} WASM thread${threads === 1 ? "" : "s"})`, threads > 1, wasm?.label);
   check("the GPU is the automatic pick", runtime?.active_id === "webgpu:fp32", runtime?.active_id);
 
+  // The background reads the engine's health afresh (a health read while the model loaded
+  // says "not ready" for a second and a half), as the setup page does once it shows ready.
+  const health = await setup.evaluate(() => chrome.runtime.sendMessage({ action: "getBackendStatus", probe: true }));
+  check("the background reports the engine up on WebGPU, FP32", health?.active === "server" && health?.server?.device === "webgpu" && health?.server?.dtype === "fp32", JSON.stringify(health).slice(0, 300));
+
   // The paste page scores through the ordinary pipeline.
   const paste = await context.newPage();
   paste.on("pageerror", (e) => problems.push(`paste: ${e.message}`));
@@ -136,8 +141,6 @@ try {
     const wanted = score.toFixed(2).replace(/^0/, "");
     check("the verdict's score is the official one to two places", shown !== undefined && Math.abs(Number(shown) - Number(wanted)) <= 0.011, `${shown} vs ${wanted} (${chosen.text_id})`);
   }
-  const health = await setup.evaluate(() => chrome.runtime.sendMessage({ action: "getBackendStatus", probe: true }));
-  check("the background reports the engine up on WebGPU, FP32", health?.active === "server" && health?.server?.device === "webgpu" && health?.server?.dtype === "fp32", JSON.stringify(health).slice(0, 300));
   console.log(`peak memory while loading and scoring (GiB, phys_footprint): ${JSON.stringify(await memory.stop())}`);
 
   if (argv.includes("--idle")) {
@@ -155,6 +158,8 @@ try {
     const idle = await watch.stop();
     console.log(`memory once idle (GiB): ${JSON.stringify(idle)}`);
     check("the idle engine's worker is ended and its memory given back", idle.renderer < 0.5 && idle["gpu-process"] < 0.5, JSON.stringify(idle));
+    // A text not scored yet: the first one's verdict is answered from the cache.
+    await paste.fill("#text", `${TEXT} The minutes were approved without changes.`);
     await paste.click("#analyze");
     for (let i = 0; i < 120 && reply?.data?.state !== "ready"; i++) {
       await new Promise((r) => setTimeout(r, 500));
