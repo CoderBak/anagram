@@ -35,6 +35,7 @@ import {
   handOverPdf,
 } from "./pdf-fixture.mjs";
 import { surfaceScenarios } from "./scenario-surfaces.mjs";
+import { crashScenarios } from "./scenario-crash.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LOCAL_ONLY = process.argv.includes("--local");
@@ -3730,6 +3731,9 @@ ${KEY_TAGS.slice(0, 2).map((t) => `<p>${KEY_PARA(t)}</p>`).join("\n")}
     rmSync(dir, { recursive: true, force: true });
   }
 }
+
+// The engine dying under the pages' work, in a browser of its own (test/scenario-crash.mjs).
+await crashScenarios({ record });
 
 // =====================================================================================
 // PHASE B — live sites (soft: unreachable → SKIP; loaded-but-wrong → FAIL)

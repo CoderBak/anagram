@@ -120,6 +120,13 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- When the local engine stops unexpectedly in the middle of a page, as it does when the
+  Apple GPU throws away MLX's work and takes the engine's process with it, it is started
+  again and asked once more for what it was scoring, once it has loaded its model. The
+  chips end with their verdicts instead of reading "Unavailable", nothing already answered
+  is asked again, and the PDF reader and the paste page carry on the same way. An engine
+  that keeps stopping (four times within two minutes with nothing scored in between) is no
+  longer started over and over: pages show that the engine is down until Retry.
 - A consent box a publisher builds itself, such as the Daily Mail's, is no longer read. No
   platform's name is on it; it is recognised by what it holds: a list of third parties, each
   linking to its own privacy policy, beside buttons that give or refuse consent. Its
