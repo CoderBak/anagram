@@ -67,10 +67,14 @@ export interface EngineInit {
   /** Waits between download attempts, in ms (the suite shortens them). */
   retryWaits?: number[];
   /** A backend factory, for the suite; the real one loads the ONNX model. */
-  createSession?: (candidate: Candidate, model: Uint8Array) => Promise<LoadedSession>;
+  createSession?: (candidate: Candidate, model: Blob) => Promise<LoadedSession>;
   probe?: () => Promise<Candidate[]>;
   /** The clock, for the suite. */
   now?: () => number;
+  /** Start as a model let go while idle: loaded by the next score, not now. */
+  idle?: boolean;
+  /** Called when the model has been let go while idle, so the worker can be ended. */
+  onIdle?: () => void;
 }
 
 /** What the engine needs of a session: the forward pass, its identity and a release. */
@@ -124,6 +128,7 @@ export class Engine {
       if (await this.modelsPresent()) {
         if (this.settings.download_pending) this.settings.download_pending = false;
         await this.writeSettings();
+        if (this.init.idle && !this.settings.engine_stopped) { this.state = "idle"; return; }
         this.startRuntime();
         return;
       }
@@ -137,6 +142,11 @@ export class Engine {
       if (this.settings.download_pending && !this.settings.engine_stopped) { this.beginDownload(); return; }
       this.state = "needs_models";
     })();
+  }
+
+  /** The model was let go while idle and nothing has woken it since. */
+  get idle(): boolean {
+    return this.state === "idle" && !this.loaded && !this.loading && this.pendingScores === 0;
   }
 
   async close(): Promise<void> {
@@ -290,16 +300,12 @@ export class Engine {
         let lastError: unknown = null;
         for (const candidate of this.candidateOrder()) {
           if (abort.signal.aborted) throw new Error("cancelled");
-          // One buffer of the model's size, filled from disk and handed to the runtime; it is
-          // dropped as soon as the session holds its own copy.
-          let model: Uint8Array | null = new Uint8Array(entry.size_bytes);
-          await this.store.readInto(entry.name, model);
+          // The file itself, which the runtime reads from disk a tensor at a time.
+          const model = await this.store.file(entry.name);
           try {
             session = await (this.init.createSession ? this.init.createSession(candidate, model) : Session.create(this.init.assets, candidate, model, abort.signal));
-            model = null;
             break;
           } catch (error) {
-            model = null;
             lastError = error;
             candidate.available = false;
             candidate.reason = `Failed to load: ${asText(error)}`;
@@ -364,6 +370,7 @@ export class Engine {
     this.runtimeState = "idle";
     this.state = "idle";
     await this.releaseModel();
+    if (this.state === "idle") this.init.onIdle?.();
   }
 
   /** runtime_controller.wake_and_wait: an idle engine loads again; a score waits for it, bounded. */

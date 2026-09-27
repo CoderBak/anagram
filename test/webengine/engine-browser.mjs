@@ -114,6 +114,8 @@ try {
   console.log("waiting a minute for the idle unload…");
   reply = await until((d) => d.state === "idle", 90_000).catch((e) => ({ data: { state: String(e) } }));
   check("the model is let go after the idle time", reply.data.state === "idle", reply.data.state);
+  const ended = await page.evaluate(() => window.engine.ended);
+  check("the idle worker is ended, and the next one starts idle", ended === 1 && (await request("status")).data.state === "idle", `ended ${ended}`);
   const idle = await request("health");
   check("health says engine_idle", !idle.ok && idle.error?.code === "engine_idle", JSON.stringify(idle));
   reply = await request("score", { v: "3.0", blocks: [{ id: "x", text: "hello world" }] });
@@ -132,12 +134,12 @@ try {
   // Delete, then download again with an interruption in the middle.
   reply = await browser.page.evaluate(() => window.engine.request("models.delete", { confirm: true }));
   check("models.delete empties the store", reply.ok && reply.data.state === "needs_models" && reply.data.operation?.status === "completed", JSON.stringify(reply).slice(0, 300));
-  await browser.close();
+  await browser.close({ keepProfile: false });
   await closeServer();
 } catch (error) {
   if (!error?.done) {
     check("no exception", false, String(error?.stack ?? error));
-    await browser.close().catch(() => {});
+    await browser.close({ keepProfile: false }).catch(() => {});
     await closeServer().catch(() => {});
   }
 }

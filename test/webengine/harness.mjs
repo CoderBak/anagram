@@ -13,7 +13,8 @@
 // the model's 1.4 GB, so the parity script reuses one and deletes it.
 import { chromium } from "playwright";
 import { createServer } from "node:http";
-import { createReadStream, existsSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { createReadStream, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -44,27 +45,48 @@ const PAGE = `<!doctype html><meta charset="utf-8"><title>Anagram engine test</t
 const PAGE_SCRIPT = `
 const pending = new Map();
 let sequence = 0;
-let worker = null, ready = null;
+let worker = null, ready = null, init = null, ending = false, idle = false;
+// What lib/webengine/host.ts does with a worker that let the model go while idle: end it
+// once nothing waits on it, and start the next one idle when a request comes.
+const endIfIdle = () => {
+  if (!ending || pending.size > 0 || !worker) return;
+  worker.terminate();
+  worker = null;
+  ending = false;
+  idle = true;
+  window.engine.ended++;
+};
+const spawn = () => {
+  worker = new Worker("/vendor/engine/worker.min.mjs", { type: "module" });
+  ready = new Promise((resolve) => {
+    worker.onmessage = (event) => {
+      const message = event.data;
+      if (message.type === "ready") resolve();
+      else if (message.type === "reply") {
+        const p = pending.get(message.reply.id); pending.delete(message.reply.id);
+        if (!message.idle) ending = false;
+        p?.(message.reply);
+        endIfIdle();
+      } else if (message.type === "idle") { ending = true; endIfIdle(); }
+    };
+  });
+  worker.onerror = (event) => { window.__workerError = String(event.message || event); };
+  worker.postMessage({ type: "init", ...init, idle });
+  idle = false;
+  return ready;
+};
+const send = async (id, request) => {
+  if (!worker) await spawn();
+  return new Promise((resolve) => { pending.set(id, resolve); worker.postMessage({ type: "request", request }); });
+};
 window.engine = {
-  start(init) {
-    worker = new Worker("/vendor/engine/worker.min.mjs", { type: "module" });
-    ready = new Promise((resolve) => {
-      worker.onmessage = (event) => {
-        const message = event.data;
-        if (message.type === "ready") resolve();
-        else if (message.type === "reply") { const p = pending.get(message.reply.id); pending.delete(message.reply.id); p?.(message.reply); }
-      };
-    });
-    worker.onerror = (event) => { window.__workerError = String(event.message || event); };
-    worker.postMessage({ type: "init", ...init });
-    return ready;
-  },
-  request(op, payload = {}, id = "t-" + (++sequence)) {
-    return new Promise((resolve) => { pending.set(id, resolve); worker.postMessage({ type: "request", request: { v: 1, id, op, payload } }); });
-  },
-  raw(request) {
-    return new Promise((resolve) => { const id = request?.id ?? "protocol-error"; pending.set(id, resolve); worker.postMessage({ type: "request", request }); });
-  },
+  /** Workers ended while idle. */
+  ended: 0,
+  start(first) { init = first; ending = false; idle = false; return spawn(); },
+  /** Terminate the worker, as lib/webengine/host.ts does; start() begins a fresh one. */
+  stop() { worker?.terminate(); worker = null; pending.clear(); },
+  request(op, payload = {}, id = "t-" + (++sequence)) { return send(id, { v: 1, id, op, payload }); },
+  raw(request) { return send(request?.id ?? "protocol-error", request); },
   async until(predicate, timeoutMs = 600000) {
     const began = Date.now();
     for (;;) {
@@ -93,8 +115,10 @@ window.__ready = true;
  * `csp` goes on every response; with `pageCsp` false only the worker's script carries it
  * (a dedicated worker takes its policy from its script's response), for a driver whose
  * page.evaluate is itself dynamic code under the page's policy (Firefox 140 over BiDi).
+ * `port` 0 takes any free one; a profile that keeps the model in OPFS between runs needs
+ * the same one every time, since the origin, port included, is what OPFS is kept under.
  */
-export async function serve(mounts = {}, { isolate = true, csp = EXTENSION_CSP, pageCsp = true } = {}) {
+export async function serve(mounts = {}, { isolate = true, csp = EXTENSION_CSP, pageCsp = true, port = 0 } = {}) {
   await ensureEngineBuild();
   const roots = [["/vendor/engine/", VENDOR], ...Object.entries(mounts)];
   const requests = [];
@@ -135,10 +159,33 @@ export async function serve(mounts = {}, { isolate = true, csp = EXTENSION_CSP, 
     res.writeHead(200, { ...headers, "Content-Type": type, "Content-Length": size, "Accept-Ranges": "bytes" });
     createReadStream(file, { highWaterMark: 4 << 20 }).pipe(res);
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise((resolve, reject) => { server.once("error", reject); server.listen(port, "127.0.0.1", resolve); });
   const base = `http://127.0.0.1:${server.address().port}`;
   return { base, requests, server, close: () => new Promise((resolve) => server.close(resolve)) };
 }
+
+/**
+ * Peak memory of the browser's processes whose command line holds `substring` (a profile
+ * directory), by kind, in GiB, through test/webengine/memwatch.py (phys_footprint, Metal
+ * buffers included), from now until stop().
+ */
+export function watchMemory(substring) {
+  const out = join(tmpdir(), `anagram-webengine-memory-${process.pid}-${++watches}.json`);
+  const child = spawn("python3", [join(ROOT, "test", "webengine", "memwatch.py"), substring, out, "0.25"], { stdio: "ignore" });
+  return {
+    stop: async () => {
+      child.kill("SIGTERM");
+      await new Promise((resolve) => child.on("exit", resolve));
+      try {
+        const data = JSON.parse(readFileSync(out, "utf8"));
+        rmSync(out, { force: true });
+        const gib = (n) => +(n / 2 ** 30).toFixed(2);
+        return { total: gib(data.total_phys_peak), ...Object.fromEntries(Object.entries(data.kinds).map(([k, v]) => [k, gib(v.phys)])) };
+      } catch { return {}; }
+    },
+  };
+}
+let watches = 0;
 
 /** A pin over files the server mounts, hashed by the caller (see pinOf). The one named
  *  lid.176.ftz stands for the package's copy, which the engine reads rather than downloads. */
