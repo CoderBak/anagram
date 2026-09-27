@@ -100,6 +100,12 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- Overleaf's PDF preview is read like any other pdf.js viewer. Overleaf builds the viewer
+  once the project has loaded and compiled, after Anagram had looked for one, so its text
+  layer was walked as a page: every run of the PDF's text a fragment, citations and broken
+  words left as printed, and chips drawn inside the layer. A project's page is now known by
+  its address, and the preview's paragraphs are rebuilt from the text layer as they are for
+  OneDrive's.
 - The Copy report button in the panel keeps to one line when the panel's title needs more
   room, as it does in a longer translation; the title wraps instead.
 - The legal fine print a site sets under its text or its offer is no longer read: boxes
