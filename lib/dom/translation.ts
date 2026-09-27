@@ -51,7 +51,7 @@ export function isPageTranslated(doc: Document = document): boolean {
 
 /** The primary language of a `lang` value ("de" of "de-AT"), or "" when there is none. */
 function primaryLanguage(lang: string | null): string {
-  return (lang ?? "").trim().split(/[-_]/)[0].toLowerCase();
+  return (lang ?? "").trim().split(/[-_]/)[0]!.toLowerCase();
 }
 
 /**

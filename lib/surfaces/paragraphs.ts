@@ -47,8 +47,8 @@ function textNodes(el: Element): Text[] {
     acceptNode: (n) => (n.parentElement?.closest(`[${MARK_ATTR}]`) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
   });
   for (let n = walker.nextNode(); n; n = walker.nextNode()) out.push(n as Text);
-  while (out.length > 0 && out[0].data.trim() === "") out.shift();
-  while (out.length > 0 && out[out.length - 1].data.trim() === "") out.pop();
+  while (out.length > 0 && out[0]!.data.trim() === "") out.shift();
+  while (out.length > 0 && out[out.length - 1]!.data.trim() === "") out.pop();
   return out;
 }
 
@@ -88,7 +88,7 @@ export function createParagraphSurface(source: ParagraphSource): Surface {
         : usable.flatMap((b, i) => (b.role === "prose" && b.words >= MIN_UNIT_WORDS ? [[i]] : []));
       const out: Unit[] = [];
       for (const group of groups) {
-        const members = group.map((i) => usable[i]);
+        const members = group.map((i) => usable[i]!);
         // The walker's protocol: a unit whose every part a live unit owns exactly is that
         // unit; anything else is asked for as a whole, which retires a stale owner.
         if (members.every((m) => claim(m.nodes) === "skip")) continue;
@@ -101,8 +101,8 @@ export function createParagraphSurface(source: ParagraphSource): Surface {
           wordCount: members.reduce((n, m) => n + m.words, 0),
           formulas: 0,
           order: seq,
-          topElement: members[0].p.el,
-          container: members[members.length - 1].p.el,
+          topElement: members[0]!.p.el,
+          container: members[members.length - 1]!.p.el,
           isScored: false,
         });
       }
