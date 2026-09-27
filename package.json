@@ -19,7 +19,7 @@
     "test:unit": "node test/unit.mjs",
     "test:scenarios": "node test/scenarios.mjs",
     "test:a11y": "playwright test a11y",
-    "test:perf": "node test/perf.mjs",
+    "test:perf": "playwright test --project perf --no-deps",
     "zip:firefox": "node scripts/vendor.mjs && wxt zip -b firefox",
     "vendor:basecoat": "cp node_modules/basecoat-css/dist/basecoat-vega.cdn.min.css lib/ui/basecoat-vega.cdn.min.css",
     "vendor:lazy": "node scripts/vendor.mjs",
