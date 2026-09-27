@@ -119,11 +119,42 @@ const askForDiagnostics = (frameId = 0) =>
 
 const readClipboard = (page) => page.evaluate(() => navigator.clipboard.readText().catch(() => null));
 
-async function openAndCopy(path, { settle = 4000 } = {}) {
+/** The content script of the active tab answers the worker's own probe (lib/access/worker.ts). */
+async function contentScriptUp(timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const up = await sw
+      .evaluate(async () => {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        try {
+          return (await chrome.tabs.sendMessage(tab.id, { action: "ping" }, { frameId: 0 }))?.ok === true;
+        } catch {
+          return false;
+        }
+      })
+      .catch(() => false);
+    if (up) return true;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return false;
+}
+
+/** Every paragraph of the article carries its verdict: the page has been read. */
+const articleRead = (page) =>
+  page
+    .waitForFunction(() => {
+      const paragraphs = [...document.querySelectorAll("#story p")];
+      return paragraphs.length > 0 && paragraphs.every((p) =>
+        [...p.querySelectorAll('[data-anagram="host"]')].some((h) => h.shadowRoot?.querySelector(".pill:not(.pending)")));
+    }, null, { timeout: 20000 })
+    .catch(() => {});
+
+async function openAndCopy(path, { ready } = {}) {
   const page = await context.newPage();
   await page.goto(server.url(path) + "?session=OTTERGLASS77#fragment", { waitUntil: "load" });
-  await page.waitForTimeout(settle);
   await page.bringToFront();
+  await contentScriptUp();
+  await ready?.(page);
   await page.evaluate(() => navigator.clipboard.writeText("NOTHING COPIED").catch(() => {}));
   const reply = await askForDiagnostics();
   const text = await readClipboard(page);
@@ -133,7 +164,7 @@ async function openAndCopy(path, { settle = 4000 } = {}) {
 // ---- A: a page Anagram is running on -----------------------------------------------------
 
 {
-  const { page, reply, text } = await openAndCopy("/diag.html");
+  const { page, reply, text } = await openAndCopy("/diag.html", { ready: articleRead });
   const dom = await page.evaluate(() => ({
     chips: document.querySelectorAll('[data-anagram="host"]:not(#anagram-fab)').length,
     elements: document.getElementsByTagName("*").length,
@@ -287,8 +318,8 @@ async function openAndCopy(path, { settle = 4000 } = {}) {
   const bigServer = await serveHtml({ "/big.html": big });
   const page = await context.newPage();
   await page.goto(bigServer.url("/big.html"), { waitUntil: "load" });
-  await page.waitForTimeout(3000);
   await page.bringToFront();
+  await contentScriptUp();
   const reply = await askForDiagnostics();
   const text = await readClipboard(page);
   const bytes = Buffer.byteLength(text ?? "", "utf8");
@@ -307,7 +338,7 @@ async function openAndCopy(path, { settle = 4000 } = {}) {
   await sw.evaluate(
     () => new Promise((res) => chrome.storage.local.set({ siteOverrides: { localhost: "off" } }, res)),
   );
-  const { page, reply, text } = await openAndCopy("/diag.html", { settle: 2500 });
+  const { page, reply, text } = await openAndCopy("/diag.html");
   const chips = await page.evaluate(() => document.querySelectorAll('[data-anagram="host"]:not(#anagram-fab)').length);
   record(
     "a site switched off by rule still answers, and the report says which rule turned it off",
