@@ -34,14 +34,18 @@ off until you switch it on again.
 
 - A chip after each paragraph shows the score. Hover it for where the score sits on the
   scale, the four-way breakdown and the word count. Non-English text gets a grey chip
-  with the language code. Scores are estimates, not proof of authorship: do not use them
-  for disciplinary or other high-stakes decisions.
+  with the language code.
 - The chip's dot and the underline share one colour scale, pale for human writing and
   dark red for AI-generated text. The word follows the number: Human below .17, Lightly
   edited below .50, Heavily edited below .83, AI-generated above. A full dot means the
-  word is likely right; the less likely, the thinner the ring the dot becomes. That
-  likelihood comes from a small model fitted on the EditLens dataset: a guide, not a
-  guarantee.
+  word is likely right; the less likely, the thinner the ring the dot becomes.
+- Professionally edited human writing, such as news and magazine articles, often reads
+  as Lightly edited, and a single paragraph of a human article can read as AI-generated.
+  The dot's likelihood comes from a small model fitted on the EditLens dataset, which
+  mixes human, edited and AI text; on a page with no AI-edited text, a dot on Lightly or
+  Heavily edited is fuller than it should be. The open EditLens model is a research
+  baseline: scores are estimates, not proof of authorship, so do not use them for
+  disciplinary or other high-stakes decisions.
 - The model needs 75 words. Shorter paragraphs are scored together with their neighbours
   in the same section, never across a heading; a ×2 on a chip means it covers two
   paragraphs, and a short paragraph with nothing to join is not scored.
