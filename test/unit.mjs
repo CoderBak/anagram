@@ -3063,6 +3063,60 @@ for (const file of fixtureFiles) {
   await fp.close();
 }
 
+// ---- diagnostics: a consent box known by what it holds is named as the chrome it is -------
+// A publisher's own consent box (the Daily Mail's) carries no platform's name: the walk knows
+// it by its list of third parties' privacy policies beside the controls that give or refuse
+// consent (lib/dom/boilerplate.ts, findConsentBanners). The report has to give that reason,
+// on an English page and on a Chinese one, whose controls say 全部接受 and 拒绝.
+{
+  const cp = await browser.newPage();
+  await cp.setContent("<!doctype html><html><body></body></html>");
+  await cp.addScriptTag({ path: BUNDLE });
+  const r = await cp.evaluate(async () => {
+    const VOCAB = "the quick brown fox jumps over a lazy dog while rain falls gently on rooftops and children read books near warm windows during long quiet evenings".split(" ");
+    const en = (n) => Array.from({ length: n }, (_, i) => VOCAB[i % VOCAB.length]).join(" ") + ".";
+    const zh = (n) => "我们和合作伙伴在您的设备上存储和访问信息用于个性化广告和内容衡量受众和改进产品".repeat(Math.ceil(n / 30)).slice(0, n) + "。";
+    const vendors = Array.from({ length: 6 }, (_, i) => `<li>Vendor ${i}<br><a href="https://vendor${i}.example/privacy">Privacy policy</a></li>`).join("");
+    const pages = {
+      en: {
+        lang: "en",
+        html: `<main><article><p>${en(90)}</p><p>${en(90)}</p></article></main>` +
+          `<div class="mol-ads-cmp"><div class="mol-ads-cmp--body"><h3>Functional</h3><p>${en(60)}</p><ul>${vendors}</ul></div>` +
+          `<div class="mol-ads-cmp--footer"><button type="button">Don't allow these partners</button><button type="button">Allow all</button></div></div>`,
+      },
+      zh: {
+        lang: "zh-CN",
+        html: `<main><article><p>${zh(200)}</p><p>${zh(200)}</p></article></main>` +
+          `<div class="privacy-box"><div class="privacy-box-body"><h3>我们重视您的隐私</h3><p>${zh(120)}</p><ul>${vendors}</ul></div>` +
+          `<div class="privacy-box-footer"><button type="button">拒绝</button><button type="button">全部接受</button></div></div>`,
+      },
+    };
+    const out = {};
+    for (const [key, { lang, html }] of Object.entries(pages)) {
+      document.documentElement.lang = lang;
+      document.body.innerHTML = html;
+      const box = document.body.lastElementChild;
+      const walked = PW.collectUnits(document.body).filter((u) => u.parts.some((p) => box.contains(p.container))).length;
+      const report = await PW.buildDiagnostics({
+        version: "0.0.0-test", manifestVersion: 3, uiLanguage: "en", messageLocale: "en", analysisScope: "page",
+        mergeShorts: true, displayMode: "all", siteRule: null, globallyEnabled: true, daemon: { state: "up" },
+        running: false, onceForPage: false, pdf: false, docs: null, counts: { scored: 0, flagged: 0, unsupported: 0, unavailable: 0 },
+        frameGate: { minWidth: 200, minArea: 40000 }, clickedFrameId: 0, target: null, detectLanguage: async () => null,
+      });
+      const silent = report.split("## Why the rest is silent")[1]?.split("## Frames")[0] ?? "";
+      const chrome = /(\d+) more in page chrome/.exec(report)?.[1];
+      out[key] = { walked, named: /page chrome .* — a consent box/.test(silent), chrome: Number(chrome), silent: silent.trim().split("\n").slice(0, 6) };
+    }
+    return out;
+  });
+  results.push({
+    name: "diagnostics: a publisher's own consent box, known by its list of third parties, is named as skipped page chrome and counted with it, on an English page and a Chinese one",
+    ok: ["en", "zh"].every((k) => r[k].walked === 0 && r[k].named && r[k].chrome >= 60),
+    note: JSON.stringify(r),
+  });
+  await cp.close();
+}
+
 // ---- a link to a flagged paragraph: the fewest words that name it and nothing else ----------
 // The copied report links each flagged paragraph with a text fragment. The browser highlights
 // the FIRST place a fragment matches, so it must match exactly one: checked here with the

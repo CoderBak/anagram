@@ -378,9 +378,9 @@ const VENDOR_LIST_MIN = 5;
 /** How far above the list of vendors the controls that give or refuse consent may stand. */
 const CONSENT_BOX_LEVELS = 8;
 /** What those controls say: "Allow all", "Don't allow these partners", "Got it", "Reject all",
- *  "Save my preferences". */
+ *  "Save my preferences"; in Chinese 全部接受, 拒绝, 我同意, 知道了, 保存设置, 确认选择. */
 const CONSENT_CONTROL_RE =
-  /^(?:accept|allow|agree|reject|decline|refuse|deny|disallow|got it|i agree|i accept|don.?t allow|save (?:my )?(?:settings|preferences|choices)|confirm (?:my )?(?:choices|selection))\b/i;
+  /^(?:accept|allow|agree|reject|decline|refuse|deny|disallow|got it|i agree|i accept|don.?t allow|save (?:my )?(?:settings|preferences|choices)|confirm (?:my )?(?:choices|selection))\b|^(?:我|全部|所有)?(?:不?接受|不?同意|允[许許]|拒[绝絕])|^我?知道了|^(?:保存|储存|儲存)(?:我的)?(?:设置|設定|偏好|选择|選擇)|^(?:确认|確認)(?:我的)?(?:选择|選擇)/i;
 const CONSENT_CONTROL_SELECTOR = 'button,[role="button"],input[type="button"],input[type="submit"]';
 /** What holds the page itself, which no consent box ever does. */
 const PAGE_ITSELF_SELECTOR = 'main,article,[role="main"],h1';

@@ -16,7 +16,7 @@
 // a rule here would drift from the rule in lib/dom/ within a release, and the report would
 // then explain a page the product no longer reads that way.
 import { MAX_SHORTCODE_SHARE, collectUnits, isExcludedByAncestry, isExpandLabel, isProsePre } from "../dom/walker";
-import { asideApart, chromeNames, isBoilerplate, isConsentBanner, isNoTranslate, mediaWikiFurniture, referenceList } from "../dom/boilerplate";
+import { asideApart, chromeNames, findConsentBanners, isBoilerplate, isConsentBanner, isNoTranslate, mediaWikiFurniture, referenceList } from "../dom/boilerplate";
 import { NO_SCORE_TAGS, isHeading, isHeadingLabel, tagOf } from "../dom/tags";
 import { isTranslatedInPlace } from "../dom/translation";
 import {
@@ -151,6 +151,11 @@ export function surveyPage(opts: { running: boolean; max: number }): PageSurvey 
   const proseOf = new Map<Element, number>();
   const blocks: Element[] = [];
   const darkElements = new Set<string>();
+  // The consent boxes the walk skips, found as the walk finds them: once over the page and
+  // once in every shadow root, for a box known by what it holds (a list of third parties'
+  // privacy policies beside the controls that give or refuse consent) is no question an
+  // element can answer about itself.
+  const consentBoxes = body ? findConsentBanners(body) : new Set<Element>();
   let chromeWords = 0;
   let shadowRoots = 0;
 
@@ -165,8 +170,11 @@ export function surveyPage(opts: { running: boolean; max: number }): PageSurvey 
     if (style && (flowClassOf(el, style) === "hidden" || style.getPropertyValue("content-visibility") === "hidden")) {
       return { all: 0, prose: 0 };
     }
-    if (el.shadowRoot) shadowRoots++;
-    let chrome = inChrome;
+    if (el.shadowRoot) {
+      shadowRoots++;
+      findConsentBanners(el.shadowRoot, consentBoxes);
+    }
+    let chrome = inChrome || consentBoxes.has(el);
     if (!chrome) {
       try {
         chrome = el.matches(CHROME_SEL);
@@ -228,7 +236,7 @@ export function surveyPage(opts: { running: boolean; max: number }): PageSurvey 
       el,
       path: pathOf(el),
       words,
-      reason: hits.length > 0 ? "" : reasonFor(el, cs),
+      reason: hits.length > 0 ? "" : reasonFor(el, cs, consentBoxes),
       note: siteNote(el, cs),
       undrawn: hits.length > 0,
     });
@@ -304,9 +312,13 @@ function boilerplateBranch(el: Element): string {
   return "reply-form token beside fields to type in";
 }
 
-/** The walk's ancestry exclusion, re-run so the answer names the test AND the ancestor. */
-function ancestryReason(el: Element): string | null {
-  if (!isExcludedByAncestry(el)) return null;
+/** The walk's ancestry exclusion, re-run so the answer names the test AND the ancestor.
+ *  A consent box known by what it holds is the walk's own finding too (`consentBoxes`),
+ *  which it makes once per walk rather than of each ancestor. */
+function ancestryReason(el: Element, consentBoxes: ReadonlySet<Element>): string | null {
+  let inConsentBox = false;
+  for (let cur: Element | null = el; cur && !inConsentBox; cur = composedParent(cur)) inConsentBox = consentBoxes.has(cur);
+  if (!inConsentBox && !isExcludedByAncestry(el)) return null;
   const plainTextDoc = document.contentType === "text/plain";
   for (let cur: Element | null = el; cur; cur = composedParent(cur)) {
     const tag = tagOf(cur);
@@ -323,6 +335,9 @@ function ancestryReason(el: Element): string | null {
     }
     if (isBoilerplate(cur)) return `page chrome ${nameOf(cur)} — ${boilerplateBranch(cur)}`;
     if (isConsentBanner(cur)) return `page chrome ${nameOf(cur)} — a consent platform's cookie banner`;
+    if (consentBoxes.has(cur)) {
+      return `page chrome ${nameOf(cur)} — a consent box, known by what it holds: a list of third parties' privacy policies beside controls that give or refuse consent`;
+    }
   }
   return "refused by an ancestor (branch not determined)";
 }
@@ -411,8 +426,8 @@ function runsIn(root: Element, cs: Styler): RunLike[] {
  * Why this box produced nothing. The order mirrors the walk: what it refuses outright
  * first, then what it cannot see, then how the assembler routed the runs it did read.
  */
-function reasonFor(el: Element, cs: Styler): string {
-  const ancestry = ancestryReason(el);
+function reasonFor(el: Element, cs: Styler, consentBoxes: ReadonlySet<Element>): string {
+  const ancestry = ancestryReason(el, consentBoxes);
   if (ancestry) return ancestry;
   const heading = headingReason(el);
   if (heading) return heading;
