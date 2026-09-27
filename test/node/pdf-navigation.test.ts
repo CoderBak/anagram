@@ -52,6 +52,16 @@ describe("PDF navigation without content scripts", () => {
       e.before(); e.headers(); e.commit(); await ticks(); expect(e.open).toHaveBeenCalledTimes(1);
     }
   });
+  it("knows a PDF whose navigation Firefox announces again after its headers", async () => {
+    // Firefox delivers webRequest and webNavigation events on paths of their own: the second
+    // announcement of a navigation that moved to a web process can come after its headers.
+    const e = await setup(); e.before(); e.headers(); e.before(); e.commit(); await ticks();
+    expect(e.open).toHaveBeenCalledWith(7, "https://example.test/document", {auto: true});
+    expect(await e.route.status(7)).toEqual({pdf: true, source: "https://example.test/document", local: false, authorized: true});
+    // A reload is a new load all the same: it is opened when its own headers say PDF.
+    e.before(); e.commit(); await ticks(); expect(e.open).toHaveBeenCalledTimes(1);
+    e.headers(); await ticks(); expect(e.open).toHaveBeenCalledTimes(2);
+  });
   it("leaves back/forward, POST and attachments untouched", async () => {
     const e = await setup(); e.before(); e.headers(); e.commit({transitionQualifiers: ["forward_back"]}); await ticks(); expect(e.open).not.toHaveBeenCalled();
     e.before(); e.headers({method: "POST"}); e.commit(); await e.route.contentPdf(7, "https://example.test/document", "navigate"); await ticks(); expect(e.open).not.toHaveBeenCalled();

@@ -35,6 +35,7 @@ import {
   handOverPdf,
 } from "./pdf-fixture.mjs";
 import { surfaceScenarios } from "./scenario-surfaces.mjs";
+import { crashScenarios } from "./scenario-crash.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LOCAL_ONLY = process.argv.includes("--local");
@@ -3654,7 +3655,7 @@ addEventListener("load",()=>{window.__loadAt=performance.now();
 // Disqus shows a page's comments in a frame of disqus.com, which a content script reaches only
 // once that site is granted too. The test build grants every site, so this runs a copy of it
 // that grants localhost ALONE — the page's own site — and leaves the rest optional, as a
-// reader's per-site grant does (the way test/pdf-install-flow.mjs grants file access alone).
+// reader's per-site grant does (the way test/pw/pdf-install.spec.mjs grants file access alone).
 // A permission prompt is native UI no automation can answer: what is checked is that the
 // panel names the site and offers it, that nothing is ever asked for by itself, and that the
 // offer's button opens Settings at the one row that can ask.
@@ -3730,6 +3731,9 @@ ${KEY_TAGS.slice(0, 2).map((t) => `<p>${KEY_PARA(t)}</p>`).join("\n")}
     rmSync(dir, { recursive: true, force: true });
   }
 }
+
+// The engine dying under the pages' work, in a browser of its own (test/scenario-crash.mjs).
+await crashScenarios({ record });
 
 // =====================================================================================
 // PHASE B — live sites (soft: unreachable → SKIP; loaded-but-wrong → FAIL)

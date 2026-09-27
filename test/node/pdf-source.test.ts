@@ -44,7 +44,7 @@ function setup() {
     const p = port(SOURCE_LOADER_PORT, {id: fakeBrowser.runtime.id, tab: {id: 7}, frameId: 2, documentId: "loader-1", url, ...overrides});
     connect(p.port as never); p.send({ticket: key, proof: providedProof}); return p;
   };
-  return {broker, update, reader, loader, revoke, loading:()=>updated(7,{status:"loading"} as never), complete:()=>updated(7,{status:"complete"} as never), proof: (value: string) => {proof = value;}, current: () => current, move: (url: string) => { current = url; navigate({tabId: 7, frameId: 0, url} as never); },
+  return {broker, update, reader, loader, revoke, loading:(url?:string)=>updated(7,{status:"loading",...(url?{url}:{})} as never), complete:()=>updated(7,{status:"complete"} as never), proof: (value: string) => {proof = value;}, current: () => current, move: (url: string) => { current = url; navigate({tabId: 7, frameId: 0, url} as never); },
     document: (id: string) => { readerDocument = id; }, parent: (id: number) => { childParent = id; }};
 }
 
@@ -83,6 +83,14 @@ describe("private PDF source tickets", () => {
   it("invalidates a pre-claim reload even when extension navigation details are hidden", async () => {
     const e=setup();await e.broker.open(7,"https://example.test/document");
     e.loading();e.complete();e.loading(); const owner=e.reader();await ticks();expect(owner.port.postMessage).not.toHaveBeenCalled();
+  });
+  it("keeps the ticket through the late updates of the document the reader replaces", async () => {
+    // Firefox tells the tab's updates on a path of its own: an open that follows the commit
+    // of a PDF can be told that PDF's "loading" and "complete" after it has asked for the reader.
+    const e=setup();await e.broker.open(7,"https://example.test/document");
+    e.loading("https://example.test/document");e.complete();e.loading();e.loading();e.complete();
+    const owner=e.reader();await ticks();
+    expect(owner.port.postMessage).toHaveBeenCalledWith({load:expect.any(String),proof:expect.any(String)});
   });
   it("allows duplicate loading events for one normal extension navigation", async () => {
     const e=setup();await e.broker.open(7,"https://example.test/document");

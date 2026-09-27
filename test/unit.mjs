@@ -2460,6 +2460,41 @@ const results = await page.evaluate(() => {
   await ob.close();
 }
 
+// ---- a dear drain spaces the next, for a while and no longer -------------------------------
+// A drain waits nineteen times what the last one cost, so reading a page that grows takes a
+// twentieth of its time at most; a drain a busy machine stalled for 600 ms would put the next
+// eleven seconds off, and five is the most a paragraph the page adds after it waits.
+{
+  const ob = await browser.newPage();
+  await ob.setContent("<!doctype html><html><body></body></html>");
+  await ob.addScriptTag({ path: BUNDLE });
+  const r = await ob.evaluate(async () => {
+    const drains = [];
+    const observers = PW.createObservers({
+      onVisible() {},
+      onNear() {},
+      onDirty() {
+        const began = performance.now();
+        if (drains.length === 0) while (performance.now() - began < 600);
+        drains.push(performance.now());
+      },
+    });
+    observers.start();
+    document.body.append(document.createElement("p"));
+    while (drains.length === 0) await new Promise((done) => setTimeout(done, 50));
+    document.body.append(document.createElement("p"));
+    while (drains.length === 1 && performance.now() - drains[0] < 8000) await new Promise((done) => setTimeout(done, 50));
+    observers.stop();
+    return { waited: drains.length > 1 ? Math.round(drains[1] - drains[0]) : null };
+  });
+  results.push({
+    name: "a dear drain spaces the next one out, and by five seconds at most",
+    ok: r.waited !== null && r.waited >= 4500 && r.waited < 6000,
+    note: JSON.stringify(r),
+  });
+  await ob.close();
+}
+
 // ---- a chip inside a clipped box follows the page when it reflows -------------------------
 // The placement is measured once, when the verdict lands, and the page does not stand still:
 // on a Goodreads book page the reviews grow as their images and web fonts arrive, and a chip
@@ -2519,15 +2554,19 @@ const EXPECTED = {
   "bluesky-profile": [0, 0],
   "chat-transcript": [2, 1],
   "clipped-reviews": [8, 1],
+  "commento-comments": [5, 2],
   "comments-li": [2, 1],
   "consent-banners": [1, 1],
+  "coral-comments": [5, 2],
   "discord-channel": [1, 0],
   "discourse-thread": [2, 2],
   "facebook-page": [3, 2],
+  "foxnews-comments": [5, 2],
   "front-page-cards": [2, 1],
   "github-discussion": [3, 2],
   "github-issue": [3, 3],
   "hn-thread": [2, 1],
+  "hyvor-talk-comments": [5, 2],
   "linkedin-clipped": [5, 1],
   "linkedin-feed": [2, 2],
   "linkedin-listitem": [2, 1],
@@ -2537,6 +2576,7 @@ const EXPECTED = {
   "mailing-list": [3, 0],
   "mastodon-shell": [2, 1],
   "news-article": [1, 1],
+  "openweb-comments": [5, 2],
   "permalink-single": [2, 1],
   "phpbb-topic": [2, 1],
   "quora-question": [2, 1],
@@ -3061,6 +3101,60 @@ for (const file of fixtureFiles) {
     note: JSON.stringify(frames),
   });
   await fp.close();
+}
+
+// ---- diagnostics: a consent box known by what it holds is named as the chrome it is -------
+// A publisher's own consent box (the Daily Mail's) carries no platform's name: the walk knows
+// it by its list of third parties' privacy policies beside the controls that give or refuse
+// consent (lib/dom/boilerplate.ts, findConsentBanners). The report has to give that reason,
+// on an English page and on a Chinese one, whose controls say 全部接受 and 拒绝.
+{
+  const cp = await browser.newPage();
+  await cp.setContent("<!doctype html><html><body></body></html>");
+  await cp.addScriptTag({ path: BUNDLE });
+  const r = await cp.evaluate(async () => {
+    const VOCAB = "the quick brown fox jumps over a lazy dog while rain falls gently on rooftops and children read books near warm windows during long quiet evenings".split(" ");
+    const en = (n) => Array.from({ length: n }, (_, i) => VOCAB[i % VOCAB.length]).join(" ") + ".";
+    const zh = (n) => "我们和合作伙伴在您的设备上存储和访问信息用于个性化广告和内容衡量受众和改进产品".repeat(Math.ceil(n / 30)).slice(0, n) + "。";
+    const vendors = Array.from({ length: 6 }, (_, i) => `<li>Vendor ${i}<br><a href="https://vendor${i}.example/privacy">Privacy policy</a></li>`).join("");
+    const pages = {
+      en: {
+        lang: "en",
+        html: `<main><article><p>${en(90)}</p><p>${en(90)}</p></article></main>` +
+          `<div class="mol-ads-cmp"><div class="mol-ads-cmp--body"><h3>Functional</h3><p>${en(60)}</p><ul>${vendors}</ul></div>` +
+          `<div class="mol-ads-cmp--footer"><button type="button">Don't allow these partners</button><button type="button">Allow all</button></div></div>`,
+      },
+      zh: {
+        lang: "zh-CN",
+        html: `<main><article><p>${zh(200)}</p><p>${zh(200)}</p></article></main>` +
+          `<div class="privacy-box"><div class="privacy-box-body"><h3>我们重视您的隐私</h3><p>${zh(120)}</p><ul>${vendors}</ul></div>` +
+          `<div class="privacy-box-footer"><button type="button">拒绝</button><button type="button">全部接受</button></div></div>`,
+      },
+    };
+    const out = {};
+    for (const [key, { lang, html }] of Object.entries(pages)) {
+      document.documentElement.lang = lang;
+      document.body.innerHTML = html;
+      const box = document.body.lastElementChild;
+      const walked = PW.collectUnits(document.body).filter((u) => u.parts.some((p) => box.contains(p.container))).length;
+      const report = await PW.buildDiagnostics({
+        version: "0.0.0-test", manifestVersion: 3, uiLanguage: "en", messageLocale: "en", analysisScope: "page",
+        mergeShorts: true, displayMode: "all", siteRule: null, globallyEnabled: true, daemon: { state: "up" },
+        running: false, onceForPage: false, pdf: false, docs: null, counts: { scored: 0, flagged: 0, unsupported: 0, unavailable: 0 },
+        frameGate: { minWidth: 200, minArea: 40000 }, clickedFrameId: 0, target: null, detectLanguage: async () => null,
+      });
+      const silent = report.split("## Why the rest is silent")[1]?.split("## Frames")[0] ?? "";
+      const chrome = /(\d+) more in page chrome/.exec(report)?.[1];
+      out[key] = { walked, named: /page chrome .* — a consent box/.test(silent), chrome: Number(chrome), silent: silent.trim().split("\n").slice(0, 6) };
+    }
+    return out;
+  });
+  results.push({
+    name: "diagnostics: a publisher's own consent box, known by its list of third parties, is named as skipped page chrome and counted with it, on an English page and a Chinese one",
+    ok: ["en", "zh"].every((k) => r[k].walked === 0 && r[k].named && r[k].chrome >= 60),
+    note: JSON.stringify(r),
+  });
+  await cp.close();
 }
 
 // ---- a link to a flagged paragraph: the fewest words that name it and nothing else ----------

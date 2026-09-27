@@ -4,7 +4,7 @@
 // four parts are plain functions over their inputs and belong here: the bytes-as-JSON
 // encoding both hops use, the read out of the tab (over an injected `fetch`, so nothing
 // here goes near a network), and the worker's ticket store. The fourth — two ports and a
-// tab navigation — is checked in a real browser by test/pdf-route-check.mjs.
+// tab navigation — is checked in a real browser by test/pw/pdf-route.spec.mjs.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeBrowser } from "wxt/testing/fake-browser";
 import {

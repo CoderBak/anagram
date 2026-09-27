@@ -1,11 +1,12 @@
 // One native port per background worker; all tabs share it. Never import this in a page.
 // The native flavor's engine transport (lib/backend/transport.ts): the port multiplexing
-// of lib/backend/portTransport.ts over a Native Messaging port to the local host.
+// and crash recovery of lib/backend/portTransport.ts over a Native Messaging port to the
+// local host.
 import { browser } from "#imports";
 import { NATIVE_HOST } from "./nativeProtocol";
 import { PortTransport, type NativePort } from "./portTransport";
 
-export type { NativePort } from "./portTransport";
+export { CRASH_LIMIT, CRASH_WINDOW_MS, RESTART_BACKOFF_MS, type NativePort } from "./portTransport";
 
 export class NativeTransport extends PortTransport {
   constructor(connect: () => NativePort = () => browser.runtime.connectNative(NATIVE_HOST)) {

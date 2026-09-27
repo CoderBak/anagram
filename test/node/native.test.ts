@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeBrowser } from "wxt/testing/fake-browser";
-import { NativeTransport, nativeTransport, type NativePort } from "../../lib/backend/nativeTransport";
+import { CRASH_LIMIT, NativeTransport, RESTART_BACKOFF_MS, nativeTransport, type NativePort } from "../../lib/backend/nativeTransport";
 import { NativeTransportError } from "../../lib/backend/transport";
 import { trustedNativePage, validPageRequest, parseNativeReply, type NativeReply } from "../../lib/backend/nativeProtocol";
 import { NativeScoreClient } from "../../lib/backend/nativeScoreClient";
@@ -104,6 +104,192 @@ describe("native port multiplexing and failure recovery", () => {
     await vi.advanceTimersByTimeAsync(1501);
     const retried = transport.request("health"); second.answer(0,{ok:true});
     expect((await retried).data).toEqual({ok:true}); transport.close();
+  });
+});
+
+describe("a host that dies with work in flight", () => {
+  type Port = ReturnType<typeof port>;
+  /** Ports handed out in order; `hosts[n]` is the n-th host the transport started. */
+  function hosts() {
+    const started: Port[] = [];
+    const connect = vi.fn(() => { const p = port(); started.push(p); return p.p; });
+    return {started, connect, transport: new NativeTransport(connect)};
+  }
+  const statusOf = (p: Port, index: number, state: string) =>
+    p.receive({v:1,id:p.messages[index].id,ok:true,status:200,data:{state}});
+  const scoreReply = (p: Port, index: number) =>
+    p.receive({v:1,id:p.messages[index].id,ok:true,status:200,data:{v:"3.0",results:[]}});
+  /** A host that was running: it has answered a health check. */
+  async function running(h: ReturnType<typeof hosts>) {
+    const health = h.transport.request("health"); h.started.at(-1)!.answer(h.started.at(-1)!.messages.length - 1); await health;
+  }
+  /** Wait out the restart backoff and let the new host report its model loaded. */
+  async function restarted(h: ReturnType<typeof hosts>, backoff: number) {
+    await vi.advanceTimersByTimeAsync(backoff);
+    const p = h.started.at(-1)!;
+    expect(p.messages.at(-1)?.op).toBe("status");
+    statusOf(p, p.messages.length - 1, "ready");
+    await vi.advanceTimersByTimeAsync(0);
+    return p;
+  }
+
+  it("starts it again, waits for its model and asks it what died with the first, once", async () => {
+    vi.useFakeTimers(); const h = hosts(); const disconnected = vi.fn(); h.transport.onDisconnect(disconnected);
+    await running(h);
+    const first = h.started[0];
+    const score = h.transport.request("score", {v:"3.0",blocks:[{id:"a",text:"text"}]});
+    const done = vi.fn(); void score.then(done, done);
+    first.disconnect();
+    await vi.advanceTimersByTimeAsync(RESTART_BACKOFF_MS - 1);
+    expect(h.connect).toHaveBeenCalledTimes(1); expect(done).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    const second = h.started[1];
+    // Loading: nothing is sent but the question how far it got.
+    expect(second.messages.map((m) => m.op)).toEqual(["status"]);
+    statusOf(second, 0, "loading"); await vi.advanceTimersByTimeAsync(250);
+    expect(second.messages.map((m) => m.op)).toEqual(["status", "status"]);
+    statusOf(second, 1, "ready"); await vi.advanceTimersByTimeAsync(0);
+    expect(second.messages.map((m) => m.op)).toEqual(["status", "status", "score"]);
+    expect(second.messages[2].payload).toEqual(first.messages[1].payload);
+    scoreReply(second, 2);
+    expect((await score).ok).toBe(true);
+    expect(disconnected).not.toHaveBeenCalled(); // restarting is not down
+    h.transport.close();
+  });
+
+  it("asks a restarted host that is slow to answer again, and sends what waits once its model is loaded", async () => {
+    vi.useFakeTimers(); const h = hosts(); await running(h);
+    const score = h.transport.request("score", {v:"3.0",blocks:[{id:"a",text:"text"}]});
+    h.started[0].disconnect();
+    await vi.advanceTimersByTimeAsync(RESTART_BACKOFF_MS);
+    const second = h.started[1];
+    await vi.advanceTimersByTimeAsync(5_000); // the first status went unanswered
+    await vi.advanceTimersByTimeAsync(250);
+    expect(second.messages.map((m) => m.op)).toEqual(["status", "status"]);
+    statusOf(second, 1, "ready"); await vi.advanceTimersByTimeAsync(0);
+    expect(second.messages.map((m) => m.op)).toEqual(["status", "status", "score"]);
+    scoreReply(second, 2);
+    await expect(score).resolves.toMatchObject({ok:true});
+    h.transport.close();
+  });
+
+  it("holds requests made while it restarts and sends them to the new host", async () => {
+    vi.useFakeTimers(); const h = hosts(); await running(h);
+    const inFlight = h.transport.request("tokens", {v:"3.0",texts:["a"]});
+    h.started[0].disconnect();
+    const later = h.transport.request("score", {v:"3.0",blocks:[{id:"b",text:"later"}]});
+    expect(h.connect).toHaveBeenCalledTimes(1);
+    const second = await restarted(h, RESTART_BACKOFF_MS);
+    expect(second.messages.map((m) => m.op)).toEqual(["status", "tokens", "score"]);
+    second.answer(1, {alone:[1],following:[1],window:510}); scoreReply(second, 2);
+    await expect(inFlight).resolves.toMatchObject({ok:true}); await expect(later).resolves.toMatchObject({ok:true});
+    h.transport.close();
+  });
+
+  it("does not replay control operations, nor a request that was in flight when two hosts died", async () => {
+    vi.useFakeTimers(); const h = hosts(); await running(h);
+    const config = h.transport.request("runtime.config", {id:"cpu"});
+    const score = h.transport.request("score", {v:"3.0",blocks:[{id:"a",text:"text"}]});
+    const configFailed = expect(config).rejects.toMatchObject({code:"native_unavailable"});
+    const scoreFailed = expect(score).rejects.toMatchObject({code:"engine_crashed"});
+    h.started[0].disconnect(); await configFailed;
+    const second = await restarted(h, RESTART_BACKOFF_MS);
+    expect(second.messages.map((m) => m.op)).toEqual(["status", "score"]);
+    second.disconnect(); await scoreFailed;
+    h.transport.close();
+  });
+
+  it("gives up after CRASH_LIMIT deaths in a row, refuses scoring without starting a host, and a Retry starts one", async () => {
+    vi.useFakeTimers(); const h = hosts(); const disconnected = vi.fn(); h.transport.onDisconnect(disconnected);
+    await running(h);
+    const score = h.transport.request("score", {v:"3.0",blocks:[{id:"a",text:"text"}]});
+    const failed = expect(score).rejects.toMatchObject({code:"engine_crashed"});
+    // Every host answers how far it got, then dies on the batch (a fresh one each time).
+    let backoff = RESTART_BACKOFF_MS;
+    h.started[0].disconnect();
+    for (let crash = 2; crash < CRASH_LIMIT; crash++) {
+      const next = await restarted(h, backoff); backoff *= 2;
+      const again = h.transport.request("score", {v:"3.0",blocks:[{id:`x${crash}`,text:"another"}]}).catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(0);
+      next.disconnect(); void again;
+    }
+    const last = await restarted(h, backoff);
+    last.disconnect();
+    await failed;
+    expect(disconnected).toHaveBeenCalledTimes(1);
+    const starts = h.connect.mock.calls.length;
+    await expect(h.transport.request("health")).rejects.toMatchObject({code:"engine_crashed"});
+    await expect(h.transport.request("score", {})).rejects.toMatchObject({code:"engine_crashed"});
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(h.connect).toHaveBeenCalledTimes(starts); // nothing loops
+    h.transport.retry();
+    const health = h.transport.request("health"); h.started.at(-1)!.answer(0, {ok:true});
+    await expect(health).resolves.toMatchObject({ok:true});
+    expect(h.connect).toHaveBeenCalledTimes(starts + 1);
+    h.transport.close();
+  });
+
+  it("forgets earlier deaths once a batch is answered", async () => {
+    vi.useFakeTimers(); const h = hosts(); await running(h);
+    for (let round = 0; round < CRASH_LIMIT + 1; round++) {
+      const score = h.transport.request("score", {v:"3.0",blocks:[{id:"a",text:`round ${round}`}]});
+      await vi.advanceTimersByTimeAsync(0);
+      h.started.at(-1)!.disconnect();
+      const next = await restarted(h, RESTART_BACKOFF_MS);
+      scoreReply(next, next.messages.length - 1);
+      await expect(score).resolves.toMatchObject({ok:true});
+    }
+    h.transport.close();
+  });
+
+  it("treats a host that never answered as not there: work fails at once and a later request starts it again", async () => {
+    vi.useFakeTimers(); const h = hosts(); const disconnected = vi.fn(); h.transport.onDisconnect(disconnected);
+    await running(h);
+    const score = h.transport.request("score", {v:"3.0",blocks:[{id:"a",text:"text"}]});
+    const failed = expect(score).rejects.toMatchObject({code:"native_unavailable"});
+    h.started[0].disconnect(); // crashed: it had answered
+    await vi.advanceTimersByTimeAsync(RESTART_BACKOFF_MS);
+    h.started[1].disconnect(); // gone before a word: stopped or uninstalled, not crashing
+    await failed; expect(disconnected).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1501);
+    const health = h.transport.request("health"); h.started[2].answer(0, {ok:true});
+    await expect(health).resolves.toMatchObject({ok:true});
+    h.transport.close();
+  });
+
+  it("close() during a restart ends it: what waits is rejected and no host is started", async () => {
+    vi.useFakeTimers(); const h = hosts(); await running(h);
+    const score = h.transport.request("score", {v:"3.0",blocks:[{id:"a",text:"text"}]});
+    const failed = expect(score).rejects.toMatchObject({code:"component_updated"});
+    h.started[0].disconnect();
+    h.transport.close("component_updated", "Updated"); await failed;
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(h.connect).toHaveBeenCalledTimes(1);
+  });
+
+  it("counts a death while the host works on a batch nobody waits for any more", async () => {
+    vi.useFakeTimers(); const h = hosts(); const disconnected = vi.fn(); h.transport.onDisconnect(disconnected);
+    await running(h);
+    const ctl = new AbortController();
+    const score = h.transport.request("score", {v:"3.0",blocks:[{id:"a",text:"text"}]}, ctl.signal);
+    const cancelled = expect(score).rejects.toMatchObject({code:"cancelled"});
+    ctl.abort(); await cancelled;
+    h.started[0].disconnect(); // the host was still on it
+    expect(disconnected).not.toHaveBeenCalled();
+    const second = await restarted(h, RESTART_BACKOFF_MS);
+    expect(second.messages.map((m) => m.op)).toEqual(["status"]); // and it is not asked again
+    h.transport.close();
+  });
+
+  it("a request cancelled while it waits for the restarted host is never sent", async () => {
+    vi.useFakeTimers(); const h = hosts(); await running(h);
+    const ctl = new AbortController();
+    const score = h.transport.request("score", {v:"3.0",blocks:[{id:"a",text:"text"}]}, ctl.signal);
+    const cancelled = expect(score).rejects.toMatchObject({code:"cancelled"});
+    h.started[0].disconnect(); ctl.abort(); await cancelled;
+    const second = await restarted(h, RESTART_BACKOFF_MS);
+    expect(second.messages.map((m) => m.op)).toEqual(["status"]);
+    h.transport.close();
   });
 });
 
@@ -281,6 +467,36 @@ describe("native scoring lifecycle generation", () => {
     expect(await client.status(false)).toMatchObject({active:"server",model:MODEL,server:{ok:true}});
     expect(request.mock.calls.map(([operation]) => operation)).toEqual(["health", "score", "score"]);
     expect(request.mock.calls[1][2]).toBe(controller.signal);
+  });
+
+  it("is down, saying why, when the engine kept dying under its work, and reads health again", async () => {
+    vi.useFakeTimers();
+    const crashed = new NativeTransportError("engine_crashed", "The local engine stopped unexpectedly 4 times in a row");
+    const request = vi.fn().mockResolvedValueOnce(reply(HEALTH)).mockRejectedValueOnce(crashed)
+      .mockRejectedValueOnce(crashed).mockResolvedValueOnce(reply(HEALTH));
+    const client = new NativeScoreClient(request);
+    await client.ready(); const generation = client.revision();
+    await expect(client.scoreBatch([{id:"block",text:"sample"}])).rejects.toBe(crashed);
+    expect(client.isUp()).toBe(false); expect(client.revision()).toBe(generation);
+    expect(await client.status(false)).toMatchObject({active:"down",server:{ok:false,code:"engine_crashed",error:crashed.message}});
+    await vi.advanceTimersByTimeAsync(1501);
+    // Its transport refuses the health read of an engine it gave up on: still down, still why.
+    expect(await client.status(false)).toMatchObject({active:"down",server:{code:"engine_crashed"}});
+    await vi.advanceTimersByTimeAsync(1501);
+    expect(await client.status(false)).toMatchObject({active:"server",server:{ok:true}});
+    expect(request.mock.calls.map(([operation]) => operation)).toEqual(["health", "score", "health", "health"]);
+  });
+
+  it("keeps the engine up when it fails a batch and says the failure may be retried", async () => {
+    const failed = {v:1,id:"score",ok:false,status:503,error:{code:"engine_failed",message:"The GPU runtime failed on this batch"}};
+    const request = vi.fn().mockResolvedValueOnce(reply(HEALTH)).mockResolvedValueOnce(failed)
+      .mockResolvedValueOnce(reply({v:"3.0",model:MODEL,results:[result]}));
+    const client = new NativeScoreClient(request);
+    await client.ready(); const generation = client.revision();
+    const error = await client.scoreBatch([{id:"block",text:"sample"}]).catch((e: unknown) => e);
+    expect(error).toMatchObject({status:503,code:"engine_failed"}); expect(isTransientFailure(error)).toBe(true);
+    expect(client.isUp()).toBe(true); expect(client.revision()).toBe(generation);
+    expect((await client.scoreBatch([{id:"block",text:"sample"}])).model).toEqual(MODEL);
   });
 
   it("does not auto-wake an explicitly stopped component", async () => {

@@ -40,7 +40,11 @@ export async function handleNativePageMessage(
   if (!validPageRequest(message.op, message.payload)) return error("invalid_request","Invalid local operation");
   try {
     const reply = await engineTransport().request(message.op,message.payload as Record<string,unknown>);
-    if (reply.ok && REPLACES_ENGINE[message.op]) controls.invalidate();
+    if (reply.ok && REPLACES_ENGINE[message.op]) {
+      // Somebody acted on the engine: one given up on after it kept dying may start again.
+      engineTransport().retry?.();
+      controls.invalidate();
+    }
     if (reply.ok) {
       const snapshot = parseComponent(reply.data);
       if (snapshot?.operation?.status === "completed") {

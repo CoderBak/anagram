@@ -25,6 +25,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { LEAK, alignDocument, lineNumberItems, lineNumbersScored } from "./align.mjs";
+import { docbankTruthOf, hrdocTruthOf } from "./labelled.mjs";
 import { NEUTRAL, truthOf, withoutMath } from "./truth.mjs";
 
 const CORPUS = process.env.ANAGRAM_PDF_BENCH;
@@ -92,15 +93,30 @@ const LABEL_CODE = { body: "b", appendix: "a", ack: "k", runin: "r", mark: "m", 
 const CODE_LABEL = Object.fromEntries(Object.entries(LABEL_CODE).map(([k, v]) => [v, k]));
 
 /**
- * The truth for a document: arXiv's HTML where there is one, else the structure tree of a
+ * The truth for a document: arXiv's HTML where there is one, a labelled dataset's
+ * annotations (labelled.mjs) where the manifest names one, else the structure tree of a
  * Word-made PDF or of one the manifest marks `truth: "tagged"` (tagged.mjs), else none —
  * the document is still read and timed, and only the measures that need no truth are
  * reported for it.
  */
-async function truthFor(doc, wordMade) {
+async function truthFor(doc, wordMade, run = null) {
+  // A truth found not to describe its PDF (a stub page, tags without the text) is set aside:
+  // the manifest's `truth_rejected` gives the reason.
+  if (doc.truth_rejected) return { kind: null, truth: null };
   if (doc.has_html) {
     const truth = truthOf(readFileSync(join(CORPUS, doc.html), "utf8"));
     return { kind: "html", truth: argv.includes("--nomath") ? withoutMath(truth) : truth };
+  }
+  if (doc.truth === "hrdoc") {
+    const truth = hrdocTruthOf(JSON.parse(readFileSync(join(CORPUS, doc.truth_file), "utf8")));
+    return { kind: "hrdoc", truth: argv.includes("--nomath") ? withoutMath(truth) : truth };
+  }
+  if (doc.truth === "docbank") {
+    const pages = run?.pages ?? (await readTruthPages(doc));
+    const files = doc.truth_files.map(({ index, file }) => ({ index, text: readFileSync(join(CORPUS, file), "utf8") }));
+    const truth = docbankTruthOf(files, pages);
+    if (truth.pages.size === 0) return { kind: null, truth: null };
+    return { kind: "docbank", truth: argv.includes("--nomath") ? { ...withoutMath(truth), pages: truth.pages, bounds: false, order: false } : truth };
   }
   if (!wordMade && doc.truth !== "tagged") return { kind: null, truth: null };
   const { loadPipeline, documentOptions, MAX_ANALYSIS_PAGES } = await import("./anagram.mjs");
@@ -108,7 +124,16 @@ async function truthFor(doc, wordMade) {
   const { pdfjs } = await loadPipeline();
   const data = new Uint8Array(readFileSync(join(CORPUS, doc.file)));
   const truth = await taggedTruthOf(pdfjs, documentOptions(data), MAX_ANALYSIS_PAGES);
+  // The tags are read on the first MAX_ANALYSIS_PAGES; the structured path reads every page,
+  // and what it reads past them is not leakage.
+  if (truth) truth.pages = new Set(Array.from({ length: MAX_ANALYSIS_PAGES }, (_, i) => i + 1));
   return { kind: truth ? "tagged" : null, truth };
+}
+
+/** A document's pages as the reader extracts them, for a truth that is placed by them. */
+async function readTruthPages(doc) {
+  const { loadPipeline, readPages } = await import("./anagram.mjs");
+  return (await readPages(await loadPipeline(), join(CORPUS, doc.file))).pages;
 }
 
 const isWordMade = (producer, creator) => WORD_MADE.test(`${producer} ${creator}`) && !TEX_MADE.test(`${producer} ${creator}`);
@@ -175,7 +200,7 @@ async function run() {
     i++;
     try {
       const result = await runAnagram(engine, join(CORPUS, doc.file), { window });
-      const record = scoreDocument(dir, doc, result, await truthFor(doc, isWordMade(result.producer, result.creator)));
+      const record = scoreDocument(dir, doc, result, await truthFor(doc, isWordMade(result.producer, result.creator), result));
       const m = record.metrics;
       console.log(`${i}/${docs.length} ${doc.id} ${result.pages.length}p ${m ? `cov ${(m.coverage.scored / Math.max(1, m.coverage.body)).toFixed(2)} leak ${m.leak.scoredShare.toFixed(2)} F1 ${m.bounds.f1.toFixed(2)} tau ${m.order.tau.toFixed(2)}` : "(no truth)"}`);
     } catch (error) {
@@ -280,7 +305,7 @@ async function structured() {
     if (z.error || !z.structure) { console.log(`${i}/${docs.length} ${doc.id} no structure`); continue; }
     try {
       const result = await runStructured(engine, join(CORPUS, doc.file), z.structure, z.ms, options);
-      const record = scoreDocument(dir, doc, result, await truthFor(doc, isWordMade(result.producer, result.creator)));
+      const record = scoreDocument(dir, doc, result, await truthFor(doc, isWordMade(result.producer, result.creator), result));
       const m = record.metrics;
       console.log(`${i}/${docs.length} ${doc.id} ${result.pages.length}p ${m ? `cov ${(m.coverage.scored / Math.max(1, m.coverage.body)).toFixed(2)} leak ${m.leak.scoredShare.toFixed(2)} F1 ${m.bounds.f1.toFixed(2)} tau ${m.order.tau.toFixed(2)}` : "(no truth)"}`);
     } catch (error) {

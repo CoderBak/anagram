@@ -78,16 +78,20 @@ export function alignDocument(truth, engine) {
   engine.units.forEach((u, k) => { for (const b of u.blocks) unitOf[b] = k; });
 
   // ---- tokens of the reconstruction, in reading order --------------------------------
+  // A truth of some pages only (DocBank's sampled pages, tags read on the first pages) is
+  // measured on those pages: text read from any other page is neither leakage nor coverage.
   const ours = [];
   const blocks = engine.blocks.map((block, bi) => {
-    const toks = tokenize(block.text).map((tok) => {
+    const toks = [];
+    for (const tok of tokenize(block.text)) {
       const run = sourceOf(block, tok.s);
       const page = run?.page ?? block.page;
+      if (truth.pages && !truth.pages.has(page)) continue;
       const item = run ? pagesByNumber.get(run.page)?.items[run.item] : undefined;
       const out = { t: tok.t, s: tok.s, e: tok.e, block: bi, page, gt: -1, label: "", item, itemIndex: run?.item ?? -1, g: ours.length };
       ours.push(out);
-      return out;
-    });
+      toks.push(out);
+    }
     return { ...block, toks, unit: unitOf[bi] };
   });
 
@@ -206,7 +210,8 @@ export function alignDocument(truth, engine) {
     mine.sort((x, y) => x - y);
     return { pi, prose, matched: mine.length, pos: mine.length ? mine[mine.length >> 1] : -1 };
   });
-  const placed = paraStats.filter((s) => s.prose >= 5 && s.matched >= s.prose * 0.5);
+  // A truth that knows no reading order (DocBank's) or no paragraphs measures neither.
+  const placed = truth.order === false ? [] : paraStats.filter((s) => s.prose >= 5 && s.matched >= s.prose * 0.5);
   let concordant = 0, discordant = 0;
   for (let x = 0; x < placed.length; x++) {
     for (let y = x + 1; y < placed.length; y++) {
@@ -218,7 +223,7 @@ export function alignDocument(truth, engine) {
   const outOfOrder = placed.filter((_, i) => !inOrder.has(i)).map((s) => ({ para: s.pi, page: ours[s.pos].page }));
   let lastProse = -1;
   const backJumps = [];
-  for (const tok of ours) {
+  for (const tok of truth.order === false ? [] : ours) {
     if (tok.gt < 0 || !PROSE.has(G[tok.gt].cat)) continue;
     if (tok.gt < lastProse) backJumps.push(tok.page);
     lastProse = tok.gt;
@@ -233,7 +238,7 @@ export function alignDocument(truth, engine) {
   };
   const starts = new Set();
   const splits = [];
-  for (const b of blocks) {
+  for (const b of truth.bounds === false ? [] : blocks) {
     // A block with fewer prose tokens than an anchor holds (a figure's "0", a stray label)
     // was placed by chance if at all, and says nothing about where paragraphs break.
     const prose = b.toks.filter((t) => t.gt >= 0 && PROSE.has(G[t.gt].cat) && G[t.gt].para >= 0);
@@ -253,7 +258,7 @@ export function alignDocument(truth, engine) {
   }
   const merges = [];
   let tp = 0;
-  for (const s of paraStats) {
+  for (const s of truth.bounds === false ? [] : paraStats) {
     const p = truth.paras[s.pi];
     if (!PROSE.has(p.cat) || p.soft || s.prose < 3 || s.matched < s.prose * 0.5) continue;
     let q0 = -1;

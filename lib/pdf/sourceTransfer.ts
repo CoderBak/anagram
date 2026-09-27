@@ -69,6 +69,11 @@ export function createSourceBroker(readerUrl: (source: string) => string) {
       browser.tabs.onUpdated.addListener((tabId, change) => {
         if (change.status === "loading") epochs.set(tabId, (epochs.get(tabId) ?? 0) + 1);
         for (const [key, entry] of held) if (entry.tabId === tabId && !entry.owner) {
+          // Firefox delivers a tab's updates apart from its navigation events, and an open
+          // that follows a PDF's commit can hear that PDF's own "loading" and "complete"
+          // after it: updates of the document the reader replaces are no load of the reader.
+          // (A new navigation to it is told by onBeforeNavigate, below.)
+          if (change.url && samePdfSource(change.url, entry.source)) continue;
           // Chrome can emit multiple loading events for one extension navigation and
           // hides its frame metadata. Only a load after completion proves a new load;
           // before the first claim/commit, those events cannot identify a document.

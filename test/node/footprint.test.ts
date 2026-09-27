@@ -228,7 +228,7 @@ describe.each(["chrome-mv3", "oneclick-chrome-mv3"])("the shipping manifest of o
   const manifest = (): Record<string, unknown> =>
     JSON.parse(readFileSync(join(OUT, "manifest.json"), "utf8"));
 
-  /** The exact policy, which docs/footprint.md quotes and test/csp-check.mjs exercises. */
+  /** The exact policy, which docs/footprint.md quotes and test/pw/csp.spec.mjs and test/csp-firefox.mjs exercise. */
   const CSP =
     "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; " +
     "connect-src 'self' http: https: file:; " +
