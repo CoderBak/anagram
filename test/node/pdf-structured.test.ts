@@ -75,6 +75,36 @@ const structure = (content: SdtBlock[], pages = 1): SdtStructure =>
 const paragraph = (page: number, nodes: { text: string; anchor: { textMap: string } }[], extra: Partial<SdtBlock> = {}): SdtBlock =>
   ({ type: "paragraph", anchor: { pageRects: [[page - 1, 72, 100, 500, 700]] }, content: nodes.map(({ text, anchor }) => ({ text, anchor })), ...extra });
 
+/**
+ * One line set run by run, as TeX sets a sentence with a formula in it: each run in its face
+ * and size (a smaller one a little below the line, a script), `gap` after it — a word space
+ * when it is CW. Zotero's text has a space wherever there is a gap. `read` is the one block's
+ * text, its runs checked against pdf.js's.
+ */
+function setLine(fonts: Record<string, string>): { put(s: string, font: string, gap?: number, size?: number): void; read(): string } {
+  const items: PdfTextItem[] = [];
+  const runs: (number | number[])[][] = [];
+  let text = "";
+  let x = 72;
+  return {
+    put(s, font, gap = CW, size = SIZE) {
+      const d = drawn(1, { text: s, x, y: size < SIZE ? 102 : 100, font });
+      d.item.height = size;
+      items.push(d.item);
+      runs.push(d.run);
+      text += s + (gap ? " " : "");
+      x += s.length * CW + gap;
+    },
+    read() {
+      const n = { text, anchor: { textMap: JSON.stringify(runs) } };
+      const pages = [pageText(1, items, fonts)];
+      const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+      expectRunsToMatch(blocks[0], pages);
+      return blocks[0].text;
+    },
+  };
+}
+
 /** Every run of a block reads back, from pdf.js's runs, exactly the text it claims. */
 function expectRunsToMatch(block: ReflowBlock, pages: PdfPageText[]): void {
   expect(block.runs.length).toBeGreaterThan(0);
@@ -823,6 +853,23 @@ describe("structuredBlocks — formulas", () => {
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
     expect(blocks[0].text).toBe("the edge in is kept, the model(s) agree, and is small.");
     expectRunsToMatch(blocks[0], pages);
+  });
+
+  it("leaves out the part of a formula a hyphen joins to a word, and keeps the word: \"$(2+1)$-dimensional\"", () => {
+    // TeX spaces the "+" of "(2+1)" as an operator, so the formula is three tokens and the
+    // last runs into the word after it; arXiv's HTML reads "-dimensional". A number the text
+    // hyphens to a word with no formula beside it ("3-dimensional") is the text's.
+    const line = setLine({ f_text: "UTRHDZ+CMR10", f_math: "BXJUHM+CMMI10" });
+    line.put("the linear span is", "f_text");
+    line.put("(2", "f_text", 3);
+    line.put("+", "f_text", 3);
+    line.put("1)-dimensional, and", "f_text");
+    line.put("(", "f_text", 0);
+    line.put("d", "f_math", 3);
+    line.put("+", "f_text", 3);
+    line.put("1)-dimensional", "f_text");
+    line.put("as well, while a 3-dimensional space keeps its number.", "f_text");
+    expect(line.read()).toBe("the linear span is -dimensional, and -dimensional as well, while a 3-dimensional space keeps its number.");
   });
 
   it("changes nothing in a document with no mathematics face", () => {

@@ -257,6 +257,10 @@ local component and the installer all carry the same version.
   function applied to it: "\mathrm{Aug}(\mathcal{G})" read "Aug(" and "\operatorname{KL}(p\|q)"
   read "KL(". On the development papers the paragraphs whose reading still held formula
   text fell from 2,819 to 2,639.
+- The PDF reader leaves out the end of a formula that a hyphen joins to a word:
+  "$(2+1)$-dimensional" read "1)-dimensional" and "$(1-\alpha)$-quantile" read ")-quantile".
+  The word is kept from its hyphen on, as arXiv's HTML reads it ("-dimensional"); a number the
+  text hyphens to a word ("a 3-dimensional space") stays.
 - The PDF reader keeps a number the text writes next to an inline formula: "pores of 11.3 μm"
   read as "pores of m", "by Theorem 2, x is" as "by Theorem, is", and "(Federer, 1969,
   3.2.12)" lost its year. A number beside a formula went with it, because TeX sets a formula's

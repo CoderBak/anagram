@@ -568,6 +568,30 @@ interface Token {
   letters: boolean;
   /** A citation mark was left out right before it. */
   marked?: true;
+  /** The word a formula is hyphened to, split from it (hyphened): set against the token
+   *  before it, with no space, where that one is read. */
+  glued?: true;
+}
+
+/**
+ * Split off what stands before the hyphen of a token when it is a formula's: "(2+1)" of
+ * "$(2+1)$-dimensional", whose operator TeX spaces, leaves "1)-dimensional" one token. A
+ * letterless stretch with a digit or a closing bracket before the hyphen becomes a token of
+ * its own, and the word after it a token glued to it; whether either is a formula's is then
+ * decided as for any other token.
+ */
+function hyphened(tokens: Token[], pieces: Piece[], formula: (i: number) => boolean): Token[] {
+  const out: Token[] = [];
+  for (const t of tokens) {
+    const h = t.at.findIndex((i, k) => k > 0 && /^[-‐]$/u.test(pieces[i].ch) && LETTER.test(pieces[t.at[k + 1]]?.ch ?? ""));
+    const head = h > 0 ? t.at.slice(0, h) : [];
+    const chars = head.map((i) => pieces[i].ch).join("");
+    if (head.length === 0 || /\p{L}/u.test(chars) || !/[\p{N})\]]/u.test(chars)) { out.push(t); continue; }
+    const rest = t.at.slice(h);
+    out.push({ at: head, math: head.some(formula), letters: false, ...(t.marked ? { marked: true as const } : {}) });
+    out.push({ at: rest, math: rest.some(formula), letters: true, glued: true });
+  }
+  return out;
 }
 
 interface Assembled {
@@ -596,7 +620,7 @@ interface Assembled {
 function assemble(pieces: Piece[], located: Located, vocab: Vocabulary, mathPages: ReadonlySet<number>): Assembled {
   const { sources, faces } = located;
   // ---- tokens: where a word space belongs ----
-  const tokens: Token[] = [];
+  let tokens: Token[] = [];
   let open: Token | null = null;
   let prevGlyph: Glyph | null = null;
   let prevSource: Source | null = null;
@@ -632,6 +656,7 @@ function assemble(pieces: Piece[], located: Located, vocab: Vocabulary, mathPage
     if (src) prevSource = src;
     if (formula !== null && !cited[i]) prevFormula = formula;
   });
+  tokens = hyphened(tokens, pieces, (i) => symbolic[i] || faces[i]?.math === true);
 
   // ---- formulas: the math tokens and the letterless tokens beside them ----
   const glyphAt = (t: Token, last: boolean): Glyph | null => {
@@ -760,7 +785,7 @@ function assemble(pieces: Piece[], located: Located, vocab: Vocabulary, mathPage
       return;
     }
     if (t.marked && text !== "") skips.push(text.length);
-    if (text !== "") { text += " "; prov.push(null); }
+    if (text !== "" && !(t.glued && !drop[k - 1])) { text += " "; prov.push(null); }
     let previous: number | null = null;
     for (const i of t.at) {
       const p = pieces[i], src = sources[i];
