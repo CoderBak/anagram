@@ -403,6 +403,10 @@
     "message": "$1 words",
     "description": "Report entry detail. $1 = word count."
   },
+  "reportCloseCall": {
+    "message": "close call",
+    "description": "Copied report, first detail of a flagged paragraph whose verdict is a close call (next to the line between two verdicts, or more likely wrong than right)."
+  },
   "reportWindows": {
     "message": "; read in $1 passes: $2",
     "description": "Report entry detail for a long paragraph. $1 = pass count, $2 = each pass's percentage."
@@ -416,7 +420,7 @@
     "description": "Report entry line under a flagged paragraph. $1 is a link that opens the page scrolled to that paragraph, with it highlighted."
   },
   "reportModel": {
-    "message": "Scores from $1 ($2) via the local engine — EditLens estimates of AI-editing extent, not proof.",
+    "message": "Scores from $1 ($2) via the local engine — EditLens estimates of AI-editing extent.",
     "description": "Report footer. $1 = model id, $2 = model version. Both are identifiers, never translated."
   },
   "reportNoModel": {
@@ -434,6 +438,34 @@
   "reportPending": {
     "message": "Not yet analyzed: $1",
     "description": "Report privacy preference, export metadata, or cache status shown in settings."
+  },
+  "reportStateShort": {
+    "message": "Too little text to judge: no passage reached the $1 words the model needs for a verdict.",
+    "description": "Copied report, the line under the counts when nothing on the page was long enough to be scored. $1 = the word floor (75)."
+  },
+  "reportStateNotEnglish": {
+    "message": "No verdict: the passages long enough to judge are not in English, the only language the model reads.",
+    "description": "Copied report, the line under the counts when every passage long enough to score was in another language."
+  },
+  "reportStateUnavailable": {
+    "message": "No verdict: the local engine did not answer.",
+    "description": "Copied report, the line under the counts when the local engine gave no verdict at all."
+  },
+  "reportStatePending": {
+    "message": "No verdict yet: the page was still being analyzed when this report was copied.",
+    "description": "Copied report, the line under the counts when no verdict had arrived yet."
+  },
+  "reportStateUncertain_one": {
+    "message": "Mixed or uncertain: $1 of $2 verdicts is a close call, next to the line between two verdicts or more likely wrong than right. Read it as an estimate, not a label.",
+    "description": "Copied report, the line under the counts when half or more of the verdicts are close calls. $1 = close calls, $2 = verdicts."
+  },
+  "reportStateUncertain_other": {
+    "message": "Mixed or uncertain: $1 of $2 verdicts are close calls, next to the line between two verdicts or more likely wrong than right. Read them as estimates, not labels.",
+    "description": "Copied report, the line under the counts when half or more of the verdicts are close calls. $1 = close calls, $2 = verdicts."
+  },
+  "reportCaveat": {
+    "message": "Scores are estimates, not proof of authorship. Do not use them for disciplinary or other high-stakes decisions.",
+    "description": "The fixed caveat every copied report carries."
   },
   "reportRuntime": {
     "message": "Calibration / preprocessing identity: $1",

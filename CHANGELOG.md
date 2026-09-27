@@ -51,6 +51,18 @@ local component and the installer all carry the same version.
   whose words the page repeats around it, one inside a shadow root or an editable field, and
   whatever the PDF reader or a document viewer shows get no link, and so does anything the
   report has not linked within a second and a half.
+- A copied report says what its counts add up to where they would mislead on their own. A
+  page where no passage reached the 75-word floor says "Too little text to judge" instead of
+  "No paragraphs were flagged", and no longer claims the local engine did not answer when
+  nothing was sent to it; a page with nothing in English, no answer from the engine or no
+  verdict yet says that. The report can now be copied with nothing flagged, to say so. When
+  half or more of the verdicts are close calls — within .05 of a place where the word
+  changes, or more likely wrong than right by the confidence dot's model — the report calls
+  them mixed or uncertain, and marks each flagged paragraph that is one. Every report, the
+  Analyze text page's included, carries the caveat "Scores are estimates, not proof of
+  authorship. Do not use them for disciplinary or other high-stakes decisions." The idea of
+  stated result states and a caveat that travels with the result comes from
+  lynote-ai/ai-text-detector (MIT).
 
 ### Changed
 

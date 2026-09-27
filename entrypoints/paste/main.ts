@@ -94,7 +94,7 @@ analyze.addEventListener("click", async () => {
 });
 document.getElementById("copy")!.addEventListener("click", async () => {
   if (!report) return;
-  const lines = [t("reportPrivateTitle"), `Anagram ${browser.runtime.getManifest().version} · contract ${CONTRACT_VERSION}`, report.coverage, t("reportEstimate")];
+  const lines = [t("reportPrivateTitle"), `Anagram ${browser.runtime.getManifest().version} · contract ${CONTRACT_VERSION}`, report.coverage, t("reportCaveat"), t("reportEstimate")];
   if (report.model) lines.push(JSON.stringify(report.model));
   report.windows.forEach((w, index) => {
     lines.push(`${index + 1}. ${readout(w.result)}${w.result.truncated ? ` · ${t("reportUnread")}` : ""}`);

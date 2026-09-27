@@ -1,9 +1,83 @@
-// test/node/report.test.ts — the copied report's rules that need no page: when a flagged
-// paragraph gets a link, and how that link is written. Generating the fragment itself needs
-// a real DOM and is checked in test/unit.mjs; opening it, in test/scenarios.mjs.
+// test/node/report.test.ts — the copied report's rules that need no page: what the verdicts
+// add up to, when a flagged paragraph gets a link, and how that link is written. Generating
+// the fragment itself needs a real DOM and is checked in test/unit.mjs; opening it, in
+// test/scenarios.mjs.
 import { describe, expect, it } from "vitest";
-import { mayLinkParagraphs } from "../../lib/render/report";
+import type { ScoreResult } from "../../lib/contract";
+import { unitVerdict, type UnitVerdict } from "../../lib/capture/windows";
+import { t } from "../../lib/i18n";
+import { isCloseCall, mayLinkParagraphs, reportState } from "../../lib/render/report";
 import { textDirective, withTextDirective } from "../../lib/render/textFragment";
+
+const verdict = (probs: number[], extra: Partial<ScoreResult> = {}, tokens = 200): UnitVerdict => {
+  const result: ScoreResult = {
+    id: "u",
+    bucket: probs.indexOf(Math.max(...probs)),
+    probs,
+    score: (probs[1] + 2 * probs[2] + 3 * probs[3]) / 3,
+    tokens,
+    ...extra,
+  };
+  return unitVerdict("u", 1000, [{ start: 0, end: 1000, result }]);
+};
+
+describe("close calls", () => {
+  it("are not the verdicts the model is sure of, at either end", () => {
+    expect(isCloseCall(verdict([0, 0.01, 0.05, 0.94]))).toBe(false); // .98, AI-generated
+    expect(isCloseCall(verdict([0.92, 0.07, 0.01, 0]))).toBe(false); // .03, human
+  });
+
+  it("are scores within a step of the colour scale of a place where the word changes", () => {
+    // .85 — AI-generated, two points above the cut at 5/6, however sure the model says it is.
+    const near = verdict([0, 0.05, 0.35, 0.6]);
+    expect(near.result.score).toBeGreaterThan(5 / 6);
+    expect(near.result.score - 5 / 6).toBeLessThan(0.05);
+    expect(isCloseCall(near)).toBe(true);
+  });
+
+  it("are words more likely wrong than right, by the dot's own model", () => {
+    // .32, lightly edited, its probabilities spread over three words.
+    const spread = verdict([0.3, 0.45, 0.2, 0.05]);
+    expect(Math.min(...[1 / 6, 1 / 2, 5 / 6].map((c) => Math.abs(spread.result.score - c)))).toBeGreaterThan(0.05);
+    expect(isCloseCall(spread)).toBe(true);
+  });
+
+  it("are never a paragraph that has no verdict", () => {
+    expect(isCloseCall(verdict([0.25, 0.25, 0.25, 0.25], { unsupported: true, lang: "zh" }))).toBe(false);
+    expect(isCloseCall(verdict([0.25, 0.25, 0.25, 0.25], { degraded: true }))).toBe(false);
+  });
+});
+
+describe("what the report says the verdicts add up to", () => {
+  const counts = { analyzed: 0, unavailable: 0, skipped: 0, pending: 0 };
+
+  it("says plainly that there was too little text when nothing reached the floor", () => {
+    expect(reportState(counts, 0)).toBe(
+      "Too little text to judge: no passage reached the 75 words the model needs for a verdict.",
+    );
+  });
+
+  it("gives the reason there is no verdict when there was text", () => {
+    expect(reportState({ ...counts, skipped: 3 }, 0)).toMatch(/^No verdict: .*not in English/);
+    expect(reportState({ ...counts, skipped: 3, unavailable: 2 }, 0)).toMatch(/^No verdict: the local engine did not answer/);
+    expect(reportState({ ...counts, unavailable: 2, pending: 4 }, 0)).toMatch(/^No verdict yet: /);
+  });
+
+  it("calls the verdicts mixed or uncertain when half or more of them are close calls", () => {
+    expect(reportState({ ...counts, analyzed: 4 }, 2)).toBe(
+      "Mixed or uncertain: 2 of 4 verdicts are close calls, next to the line between two verdicts or more likely wrong than right. Read them as estimates, not labels.",
+    );
+    expect(reportState({ ...counts, analyzed: 2 }, 1)).toMatch(/^Mixed or uncertain: 1 of 2 verdicts is a close call, .* Read it as an estimate, not a label\.$/);
+    expect(reportState({ ...counts, analyzed: 5 }, 2)).toBeNull();
+    expect(reportState({ ...counts, analyzed: 5, pending: 9 }, 0)).toBeNull();
+  });
+
+  it("carries the fixed caveat in the words the product uses elsewhere", () => {
+    expect(t("reportCaveat")).toBe(
+      "Scores are estimates, not proof of authorship. Do not use them for disciplinary or other high-stakes decisions.",
+    );
+  });
+});
 
 describe("links to flagged paragraphs", () => {
   const page = "https://example.com/post";

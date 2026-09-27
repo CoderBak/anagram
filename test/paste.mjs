@@ -40,6 +40,7 @@ try {
   await page.locator("#copy").click();
   const sanitized = await page.evaluate(() => window.__report);
   assert.ok(sanitized.includes("fake-editlens"));
+  assert.ok(sanitized.includes("not proof of authorship. Do not use them for disciplinary or other high-stakes decisions."), "The copied result carries its caveat");
   assert.ok(!sanitized.includes(text));
   await page.locator("#includeText").check();
   await page.locator("#copy").click();
