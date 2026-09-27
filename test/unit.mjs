@@ -118,6 +118,13 @@ const results = await page.evaluate(() => {
   u = collect(`<div><a href="#">${words(30)}</a><br><a href="#">${words(30)}</a></div>`);
   check("link-dense runs are barriers, not units", u.length === 0);
 
+  // An old page's named anchor (`<a name=best>`), left open, holds the whole section after it
+  // in the DOM: a place to link TO, not a link.
+  sandbox.innerHTML = "";
+  sandbox.insertAdjacentHTML("beforeend", `<h2>Fertility</h2><a name="best"><p>${words(80)}</p><p>${words(80)}</p></a>`);
+  u = PW.collectUnits(sandbox).map((x) => x.wordCount);
+  check("text inside a named anchor (no href) is no link text", u.length === 2, JSON.stringify(u));
+
   u = collect(`<div contenteditable="true">${words(80)}</div>`);
   check("contenteditable never scored", u.length === 0);
 

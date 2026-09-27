@@ -549,7 +549,9 @@ export function quoteMarkerMask(raw: string): boolean[] | null {
 /**
  * Fraction of the run's text inside <a> links. Article prose has some links but is
  * mostly plain text; nav menus / story-title lists are ~all links. High ratio marks
- * a non-prose run that also acts as a merge barrier.
+ * a non-prose run that also acts as a merge barrier. A link is an <a> that goes somewhere:
+ * an old page's named anchor (`<a name=best>`), left open, holds the whole section after it
+ * in the DOM, and every paragraph of the section was a "link".
  */
 export function linkTextRatio(nodes: Text[]): number {
   let total = 0;
@@ -558,7 +560,7 @@ export function linkTextRatio(nodes: Text[]): number {
     const len = (n.textContent ?? "").trim().length;
     if (len === 0) continue;
     total += len;
-    if (n.parentElement && n.parentElement.closest("a")) link += len;
+    if (n.parentElement && n.parentElement.closest("a[href]")) link += len;
   }
   return total > 0 ? link / total : 0;
 }
