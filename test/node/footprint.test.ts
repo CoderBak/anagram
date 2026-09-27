@@ -7,7 +7,7 @@
 // down, and a line written down whose call site has gone.
 //
 // The second half reads the SHIPPING manifest, where the Content-Security-Policy and
-// `web_accessible_resources` live. Those checks skip when `output/chrome-mv3` is older than
+// `web_accessible_resources` live, in both flavors. Those checks skip when a build is older than
 // the config that decides them, the way test/node/i18n.test.ts does: CI builds before it
 // runs vitest, so there they always run.
 import { describe, expect, it } from "vitest";
@@ -217,8 +217,9 @@ describe("the storage inventory in docs/footprint.md", () => {
 
 // ---- what the built manifest really says -------------------------------------------------------
 
-describe("the shipping manifest", () => {
-  const OUT = join(ROOT, "output", "chrome-mv3");
+// Both flavors ship the same policy and the same web-accessible chunks (scripts/flavor.mjs).
+describe.each(["chrome-mv3", "oneclick-chrome-mv3"])("the shipping manifest of output/%s", (dir) => {
+  const OUT = join(ROOT, "output", dir);
   const CONFIG = join(ROOT, "wxt.config.ts");
   const builtAt = existsSync(join(OUT, "manifest.json"))
     ? statSync(join(OUT, "manifest.json")).mtimeMs

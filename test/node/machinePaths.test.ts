@@ -34,7 +34,9 @@ describe("build-machine paths", () => {
     expect(machinePaths(join(ROOT, "vendor"))).toEqual([]);
   });
 
-  for (const dir of ["public/vendor", "output/chrome-mv3", "output/firefox-mv2", "output-test/chrome-mv3", "output-test/firefox-mv2"]) {
+  // Both flavors (scripts/flavor.mjs): the oneclick one adds its engine files, public-oneclick/.
+  const outputs = ["chrome-mv3", "firefox-mv2", "oneclick-chrome-mv3", "oneclick-firefox-mv2"];
+  for (const dir of ["public/vendor", "public-oneclick", ...outputs.flatMap((o) => [`output/${o}`, `output-test/${o}`])]) {
     it.skipIf(!existsSync(join(ROOT, dir)))(`are in nothing under ${dir}`, () => {
       expect(machinePaths(join(ROOT, dir))).toEqual([]);
     });

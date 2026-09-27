@@ -1,10 +1,14 @@
 """Offline source-policy checks; stdlib only, no inference imports or downloads.
 
-These regressions pin our own model-loading policy, the "offline mode" that
-PRIVACY.md promises. They are not a sandbox or an audit of the transitive
-dependencies.
+These regressions pin our own model-loading policy, per flavor, as PRIVACY.md
+promises it: the native engine's "offline mode" (anagramd/), and the oneclick
+flavor's in-browser engine (lib/webengine/), whose only network use is the
+one-time download of the pinned model and the language-ID file. They are not a
+sandbox or an audit of the transitive dependencies.
 """
 import ast
+import json
+import re
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
@@ -12,6 +16,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 INFERENCE = ("engine.py", "runtime_adapters.py", "scoring.py", "mlx_roberta.py",
              "benchmark_worker.py", "model_plan.py")
+# The oneclick flavor's download hosts, as lib/access/patterns.ts grants them.
+MODEL_HOSTS = ["https://huggingface.co/*", "https://*.hf.co/*", "https://dl.fbaipublicfiles.com/*"]
 
 
 def source(name):
@@ -85,6 +91,51 @@ class NetworkPrivacyTests(unittest.TestCase):
                        for module in modules):
                     importers.add(path.name)
         self.assertEqual(importers, {"hub_transfer.py"})
+
+
+def web_engine_sources():
+    """The oneclick flavor's engine: its transport and its offscreen document."""
+    roots = [ROOT / "lib" / "webengine", ROOT / "entrypoints" / "engine"]
+    return sorted(path for root in roots if root.exists() for path in root.rglob("*")
+                  if path.suffix in {".ts", ".html"})
+
+
+class InBrowserEnginePrivacyTests(unittest.TestCase):
+    """The oneclick flavor scores in the browser and downloads its files once."""
+
+    def test_the_download_hosts_are_huggingface_and_fasttext_only(self):
+        patterns = (ROOT / "lib" / "access" / "patterns.ts").read_text()
+        declared = re.search(r"export const MODEL_HOSTS = (\[[^\]]*\])", patterns)
+        self.assertIsNotNone(declared)
+        self.assertEqual(json.loads(declared.group(1)), MODEL_HOSTS)
+
+    def test_the_engine_addresses_only_the_download_hosts(self):
+        # Page text never leaves the browser: any address the engine writes down is one
+        # of the model's download hosts, and never a loopback or other inference server.
+        allowed = re.compile(r"^https://(huggingface\.co|[\w.-]+\.hf\.co|dl\.fbaipublicfiles\.com)/")
+        sources = web_engine_sources()
+        self.assertTrue(sources, "No in-browser engine source was inspected")
+        for path in sources:
+            for url in re.findall(r"""(?:https?|wss?)://[^\s"'`)]+""", path.read_text()):
+                with self.subTest(file=str(path.relative_to(ROOT)), url=url):
+                    self.assertRegex(url, allowed)
+
+    def test_the_engine_opens_no_socket_beacon_or_native_port(self):
+        forbidden = re.compile(r"\b(WebSocket|EventSource|sendBeacon|connectNative|RTCPeerConnection)\b")
+        for path in web_engine_sources():
+            with self.subTest(file=str(path.relative_to(ROOT))):
+                self.assertIsNone(forbidden.search(path.read_text()))
+
+    def test_the_engine_downloads_the_pinned_modelkit_revision(self):
+        # Where the engine names a Hugging Face repository it is the pinned modelkit at its
+        # pinned revision (anagramd/modelkit.json), the same files the native engine verifies.
+        pin = json.loads((ROOT / "anagramd" / "modelkit.json").read_text())
+        for path in web_engine_sources():
+            text = path.read_text()
+            for repository in re.findall(r"huggingface\.co/([\w.-]+/[\w.-]+)/resolve/", text):
+                with self.subTest(file=str(path.relative_to(ROOT))):
+                    self.assertEqual(repository, pin["repository"])
+                    self.assertIn(pin["revision"], text)
 
 
 if __name__ == "__main__":

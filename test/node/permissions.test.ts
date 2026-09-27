@@ -1,19 +1,24 @@
-// Shipping builds require Native Messaging and request website access separately.
-// Firefox clipboard access is optional; Chrome needs no clipboard permission.
-// Manifest assertions require a build newer than wxt.config.ts.
+// Shipping builds require their engine's permissions — Native Messaging in the native
+// flavor, an offscreen document and unevictable storage in the oneclick one — and request
+// website access separately. Firefox clipboard access is optional; Chrome needs no
+// clipboard permission. Manifest assertions require a build newer than wxt.config.ts.
 import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { ALL_SITES } from "../../lib/access/patterns";
+import { ALL_SITES, MODEL_HOSTS } from "../../lib/access/patterns";
 
 const ROOT = join(__dirname, "..", "..");
 
 interface Manifest {
+  name?: string;
+  description?: string;
   permissions?: string[];
   optional_permissions?: string[];
   host_permissions?: string[];
   optional_host_permissions?: string[];
   content_scripts?: unknown[];
+  content_security_policy?: unknown;
+  browser_specific_settings?: { gecko?: { id?: string } };
 }
 
 const CLIPBOARD = ["clipboardWrite", "clipboardRead"];
@@ -155,5 +160,66 @@ describe("the test build cannot be mistaken for the store package", () => {
     const config = readFileSync(DECIDES, "utf8");
     expect(config).toMatch(/if \(TEST_GRANT_ALL && process\.argv\.slice\(2\)\.includes\("zip"\)\)/);
     expect(config).toMatch(/would package the TEST build/);
+  });
+});
+
+/**
+ * The oneclick flavor (scripts/flavor.mjs): the same reading permissions as native, the
+ * in-browser engine's in place of Native Messaging, and the hosts the model downloads from
+ * as optional grants, asked for with the click that starts the download. Named apart, so
+ * both flavors install side by side. Checks run on `npm run build:oneclick` and
+ * `build:oneclick:firefox` output.
+ */
+describe("the oneclick flavor", () => {
+  const chrome = target("oneclick-chrome-mv3");
+  const firefox = target("oneclick-firefox-mv2");
+  const nativeChrome = target("chrome-mv3");
+  const variant = target("oneclick-chrome-mv3", "output-test");
+
+  it.skipIf(!chrome.ready)("Chrome swaps nativeMessaging for an offscreen document and unevictable storage", () => {
+    expect(chrome.manifest.permissions).toEqual(
+      ["storage", "activeTab", "contextMenus", "scripting", "offscreen", "unlimitedStorage", "webNavigation", "webRequest"],
+    );
+  });
+
+  it.skipIf(!firefox.ready)("Firefox takes unevictable storage and no offscreen document: its background page is one", () => {
+    expect((firefox.manifest.permissions ?? []).filter((p) => !p.includes("://"))).toEqual(
+      ["storage", "activeTab", "contextMenus", "scripting", "unlimitedStorage", "webNavigation", "webRequest"],
+    );
+  });
+
+  it.skipIf(!chrome.ready || !firefox.ready)("asks for Native Messaging nowhere, required or optional", () => {
+    for (const { manifest } of [chrome, firefox]) {
+      expect([...(manifest.permissions ?? []), ...(manifest.optional_permissions ?? [])]).not.toContain("nativeMessaging");
+    }
+  });
+
+  it.skipIf(!chrome.ready || !firefox.ready)("requires no host, and offers the model's download hosts beside the sites", () => {
+    expect(chrome.manifest.host_permissions).toBeUndefined();
+    expect(chrome.manifest.optional_host_permissions).toEqual([...OPTIONAL_HOSTS, ...MODEL_HOSTS]);
+    expect((firefox.manifest.permissions ?? []).filter((p) => p.includes("://"))).toEqual([]);
+    expect(firefox.manifest.optional_permissions).toEqual(["clipboardWrite", ...OPTIONAL_HOSTS, ...MODEL_HOSTS]);
+    for (const { manifest } of [chrome, firefox]) expect(manifest.content_scripts).toBeUndefined();
+  });
+
+  it("downloads from Hugging Face, its CDN and fastText's file host, and nowhere else", () => {
+    expect(MODEL_HOSTS).toEqual(["https://huggingface.co/*", "https://*.hf.co/*", "https://dl.fbaipublicfiles.com/*"]);
+  });
+
+  it.skipIf(!chrome.ready || !firefox.ready)("is named apart from the native flavor, in Chrome and in Firefox", () => {
+    for (const { manifest } of [chrome, firefox]) {
+      expect(manifest.name).toBe("__MSG_extNameInBrowser__");
+      expect(manifest.description).toBe("__MSG_extDescriptionInBrowser__");
+    }
+    expect(firefox.manifest.browser_specific_settings?.gecko?.id).toBe("anagram-oneclick@coderbak.dev");
+  });
+
+  it.skipIf(!chrome.ready || !nativeChrome.ready)("keeps the native flavor's Content-Security-Policy", () => {
+    expect(chrome.manifest.content_security_policy).toEqual(nativeChrome.manifest.content_security_policy);
+  });
+
+  it.skipIf(!variant.ready)("its test variant requires the site patterns, as the native one does", () => {
+    expect(variant.manifest.host_permissions ?? []).toEqual([...ALL_SITES]);
+    expect(variant.manifest.optional_host_permissions).toEqual(["file:///*", ...MODEL_HOSTS]);
   });
 });

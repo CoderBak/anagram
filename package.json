@@ -43,7 +43,8 @@
     "zip:oneclick:firefox": "node scripts/oneclick.mjs npm run zip:firefox",
     "release:oneclick": "node scripts/oneclick.mjs npm run release",
     "typecheck:oneclick": "node scripts/oneclick.mjs npm run typecheck",
-    "lint:firefox:oneclick": "node scripts/oneclick.mjs npm run lint:firefox"
+    "lint:firefox:oneclick": "node scripts/oneclick.mjs npm run lint:firefox",
+    "test:oneclick": "node test/oneclick.mjs"
   },
   "devDependencies": {
     "@floating-ui/dom": "^1.8.0",
