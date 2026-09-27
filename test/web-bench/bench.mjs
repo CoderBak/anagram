@@ -1,7 +1,8 @@
 // test/web-bench/bench.mjs — how well the content script reads web pages, measured offline.
 //
 //   ANAGRAM_WEB_BENCH=<corpus> node test/web-bench/bench.mjs run [--name <run>] [--scope page|main] [--extractor defuddle|none]
-//                                    [--only <id,…>] [--datasets wcxb,wmb,…] [--concurrency <n>] [--no-explain]
+//                                    [--only <id,…>] [--datasets wcxb,wmb,…] [--concurrency <n>] [--no-explain] [--css]
+//   ANAGRAM_WEB_BENCH=<corpus> node test/web-bench/bench.mjs styles [--only <id,…>] [--datasets wcxb,wmb,…]
 //   ANAGRAM_WEB_BENCH=<corpus> node test/web-bench/bench.mjs external <name> <outputs.jsonl> --truth-from <run>
 //   ANAGRAM_WEB_BENCH=<corpus> node test/web-bench/bench.mjs report <run> [<other run>…] [--split dev|test]
 //   ANAGRAM_WEB_BENCH=<corpus> node test/web-bench/bench.mjs diff <run> [--worst <n>] [--page <id>]
@@ -10,7 +11,8 @@
 // The corpus is built by corpus.mjs. Each page is opened in Playwright's bundled Chromium,
 // headless, in a throwaway context, with page scripts off, at its original address — the
 // document is answered from disk by the harness and every other request is refused, with
-// DNS mapped to nowhere underneath in case anything slipped past. page.ts then runs the
+// DNS mapped to nowhere underneath in case anything slipped past; with --css the page's
+// stylesheets are answered from what `styles` fetched (see styleStore). page.ts then runs the
 // content script's first collection in it (see there). Results go to <corpus>/../out/<run>/:
 // docs/<id>.json, summary.md and summary.json, diff/*.html for the pages that fail worst.
 // `external` scores another extractor's output (JSON lines of {id, markdown, ms}) the same
@@ -22,6 +24,7 @@ import { build } from "esbuild";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { gunzipSync, gzipSync } from "node:zlib";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { scorePage, scoreSegments, tokens } from "./metrics.mjs";
@@ -98,8 +101,55 @@ async function bundlePage() {
   return source;
 }
 
-async function measurePage(context, bundle, entry, opts) {
-  const truth = JSON.parse(readFileSync(join(CORPUS, entry.truth), "utf8"));
+// ---- stylesheets -------------------------------------------------------------------------
+//
+// The datasets keep a page's HTML and nothing else, so offline a page is laid out without its
+// stylesheets and whatever they hide — a modal, a `.hide`d panel, the other copy of a
+// responsive layout — shows, and is read. `styles` fetches ONCE the stylesheets each saved
+// page asks for, from their addresses as they are today, into <corpus>/../styles: plain GETs
+// from Node with a generic User-Agent, no cookies, nothing else; the browser still reaches
+// nothing. `run --css` answers the page's stylesheet requests from there and measures only
+// the pages whose every stylesheet came back. Today's CSS is not the CSS of the day the page
+// was saved, so a CSS run measures what the missing stylesheets cost; it does not replace
+// the offline run that rules are tuned on.
+const STYLES = flag("styles", join(dirname(CORPUS), "styles"));
+const USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
+const MAX_SHEET_BYTES = 5e6;
+
+function styleStore(fetchMissing) {
+  mkdirSync(STYLES, { recursive: true });
+  const indexFile = join(STYLES, "index.json");
+  const index = existsSync(indexFile) ? JSON.parse(readFileSync(indexFile, "utf8")) : {};
+  const inflight = new Map();
+  async function fetchSheet(url) {
+    try {
+      const res = await fetch(url, { headers: { "user-agent": USER_AGENT, accept: "text/css,*/*;q=0.1" }, signal: AbortSignal.timeout(15000) });
+      const body = Buffer.from(await res.arrayBuffer());
+      if (!res.ok || body.length > MAX_SHEET_BYTES) return { status: res.status };
+      const file = `${createHash("sha1").update(url).digest("hex")}.css.gz`;
+      writeFileSync(join(STYLES, file), gzipSync(body));
+      return { status: res.status, type: res.headers.get("content-type") ?? "text/css", file };
+    } catch {
+      return { status: 0 };
+    }
+  }
+  return {
+    async get(url) {
+      let hit = index[url];
+      if (!hit && fetchMissing) {
+        if (!inflight.has(url)) inflight.set(url, fetchSheet(url).then((r) => (index[url] = r)));
+        hit = await inflight.get(url);
+      }
+      return hit?.file ? { status: 200, contentType: hit.type, body: gunzipSync(readFileSync(join(STYLES, hit.file))) } : null;
+    },
+    save: () => writeFileSync(indexFile, JSON.stringify(index)),
+  };
+}
+
+/** Which saved pages had every stylesheet they asked for fetched (see `styles`). */
+const stylePagesFile = () => join(STYLES, "pages.json");
+
+async function openPage(context, entry, styles) {
   const body = readFileSync(join(CORPUS, entry.page));
   const url = entry.url && /^https?:/.test(entry.url) ? entry.url : `https://${entry.dataset}.bench.invalid/${safe(entry.id)}.html`;
   const page = await context.newPage();
@@ -107,9 +157,10 @@ async function measurePage(context, bundle, entry, opts) {
   // Requests the page makes while it is being measured: layout starts web fonts and lazy
   // images on its own, anything else would be the code under test reaching out.
   const requests = { load: 0, measure: 0, measureByType: {}, measureUrls: [] };
-  let phase = "load";
+  const css = { served: 0, missed: 0 };
+  const state = { phase: "load" };
   let served = false;
-  await page.route("**/*", (route) => {
+  await page.route("**/*", async (route) => {
     const req = route.request();
     if (req.isNavigationRequest() && req.frame() === page.mainFrame()) {
       if (!served) {
@@ -117,9 +168,15 @@ async function measurePage(context, bundle, entry, opts) {
         return route.fulfill({ status: 200, contentType: entry.charset ? `text/html; charset=${entry.charset}` : "text/html", body });
       }
       // A meta refresh or a form: 204 keeps the page where it is.
-      requests[phase]++;
+      requests[state.phase]++;
       return route.fulfill({ status: 204, body: "" });
     }
+    if (styles && req.resourceType() === "stylesheet") {
+      const sheet = await styles.get(req.url());
+      css[sheet ? "served" : "missed"]++;
+      if (sheet) return route.fulfill(sheet);
+    }
+    const phase = state.phase;
     requests[phase]++;
     if (phase === "measure") {
       requests.measureByType[req.resourceType()] = (requests.measureByType[req.resourceType()] ?? 0) + 1;
@@ -127,14 +184,20 @@ async function measurePage(context, bundle, entry, opts) {
     }
     return route.abort();
   });
+  // A page whose load event never comes (a stalled subresource) is measured as parsed.
+  await page.goto(url, { waitUntil: "load", timeout: 30000 }).catch(async (error) => {
+    const ready = await page.evaluate(() => document.readyState).catch(() => "loading");
+    if (ready === "loading") throw error;
+  });
+  return { page, requests, css, state };
+}
+
+async function measurePage(context, bundle, entry, opts) {
+  const truth = JSON.parse(readFileSync(join(CORPUS, entry.truth), "utf8"));
   const began = Date.now();
+  const { page, requests, css, state } = await openPage(context, entry, opts.styles);
   try {
-    // A page whose load event never comes (a stalled subresource) is measured as parsed.
-    await page.goto(url, { waitUntil: "load", timeout: 30000 }).catch(async (error) => {
-      const state = await page.evaluate(() => document.readyState).catch(() => "loading");
-      if (state === "loading") throw error;
-    });
-    phase = "measure";
+    state.phase = "measure";
     await page.evaluate(bundle);
     const measured = await Promise.race([
       page.evaluate((o) => WB.measure(o), {
@@ -144,10 +207,45 @@ async function measurePage(context, bundle, entry, opts) {
       }),
       new Promise((_, reject) => setTimeout(() => reject(new Error("measure timed out")), 90000)),
     ]);
-    return { truth, measured, requests, wallMs: Date.now() - began };
+    return { truth, measured, requests: opts.styles ? { ...requests, css } : requests, wallMs: Date.now() - began };
   } finally {
     await page.close().catch(() => {});
   }
+}
+
+/** Fetch the stylesheets of every saved page that has an address, once (see styleStore). */
+async function fetchStyles() {
+  const { chromium } = await import("playwright");
+  const only = flag("only")?.split(",");
+  const datasets = flag("datasets")?.split(",");
+  const entries = manifest().filter((e) => e.dataset !== "webseg" && /^https?:/.test(e.url ?? "") && (!only || only.includes(e.id)) && (!datasets || datasets.includes(e.dataset)));
+  const styles = styleStore(true);
+  const pages = existsSync(stylePagesFile()) ? JSON.parse(readFileSync(stylePagesFile(), "utf8")) : {};
+  const browser = await chromium.launch({ headless: true, args: ["--host-resolver-rules=MAP * ~NOTFOUND"] });
+  const context = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 1280, height: 850 }, serviceWorkers: "block" });
+  let next = 0, done = 0;
+  async function worker() {
+    for (let entry; (entry = entries[next++]); ) {
+      try {
+        const { page, css } = await openPage(context, entry, styles);
+        await page.close().catch(() => {});
+        pages[entry.id] = css;
+      } catch (error) {
+        pages[entry.id] = { error: String(error?.message ?? error) };
+      }
+      if (++done % 100 === 0) {
+        styles.save();
+        writeFileSync(stylePagesFile(), JSON.stringify(pages));
+        console.log(`${done}/${entries.length}`);
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Number(flag("concurrency", "8")) }, worker));
+  await browser.close();
+  styles.save();
+  writeFileSync(stylePagesFile(), JSON.stringify(pages));
+  const all = Object.values(pages);
+  console.log(`${all.length} pages: ${all.filter((p) => p.served > 0 && p.missed === 0).length} with every stylesheet, ${all.filter((p) => p.missed > 0).length} missing some, ${all.filter((p) => !p.served && !p.missed && !p.error).length} with none`);
 }
 
 function record(entry, truth, measured, requests, wallMs, meta) {
@@ -196,8 +294,12 @@ async function run() {
   if (!only && !datasets) rmSync(join(dir, "docs"), { recursive: true, force: true });
   mkdirSync(join(dir, "docs"), { recursive: true });
   const bundle = await bundlePage();
-  const entries = manifest().filter((e) => (!only || only.includes(e.id)) && (!datasets || datasets.includes(e.dataset)));
-  const meta = { scope, extractor, explain, date: new Date().toISOString(), js: false };
+  const css = has("css");
+  const styled = css ? JSON.parse(readFileSync(stylePagesFile(), "utf8")) : null;
+  const styles = css ? styleStore(false) : null;
+  const entries = manifest().filter((e) => (!only || only.includes(e.id)) && (!datasets || datasets.includes(e.dataset)) &&
+    (!styled || (styled[e.id]?.served > 0 && styled[e.id].missed === 0)));
+  const meta = { scope, extractor, explain, date: new Date().toISOString(), js: false, css };
   writeFileSync(join(dir, "run.json"), JSON.stringify(meta));
 
   // Nothing leaves the machine: the harness answers the one document itself and refuses
@@ -213,7 +315,7 @@ async function run() {
       if (!entry) return;
       const file = join(dir, "docs", `${safe(entry.id)}.json`);
       try {
-        const { truth, measured, requests, wallMs } = await measurePage(context, bundle, entry, { scope, extractor, explain });
+        const { truth, measured, requests, wallMs } = await measurePage(context, bundle, entry, { scope, extractor, explain, styles });
         writeFileSync(file, JSON.stringify(record(entry, truth, measured, requests, wallMs, meta)));
       } catch (error) {
         writeFileSync(file, JSON.stringify({ id: entry.id, dataset: entry.dataset, type: entry.type, split: splitOf(entry.id), error: String(error?.message ?? error) }));
@@ -448,7 +550,7 @@ function report(names) {
   const out = [];
   for (const run of runs) {
     const m = run.meta;
-    out.push(`# ${run.name} (${m.engine ?? `scope ${m.scope}${m.scope === "main" ? `, ${m.extractor}` : ""}`}${m.grouped ? ", grouped into Anagram units" : ""})`, "");
+    out.push(`# ${run.name} (${m.engine ?? `scope ${m.scope}${m.scope === "main" ? `, ${m.extractor}` : ""}`}${m.grouped ? ", grouped into Anagram units" : ""}${m.css ? ", with the stylesheets fetched by `styles`" : ""})`, "");
     const groups = groupsOf(run.docs);
     const rows = [...groups].map(([g, docs]) => {
       const a = aggregate(docs);
@@ -565,11 +667,12 @@ function diff(name) {
 }
 
 /** The arguments that are neither a --flag nor a flag's value. */
-const positional = argv.filter((a, i) => !a.startsWith("--") && !(i > 0 && argv[i - 1].startsWith("--") && !["no-explain"].includes(argv[i - 1].slice(2))));
+const positional = argv.filter((a, i) => !a.startsWith("--") && !(i > 0 && argv[i - 1].startsWith("--") && !["no-explain", "css"].includes(argv[i - 1].slice(2))));
 const [command, ...rest] = positional;
 if (command === "run") await run();
 else if (command === "external") await external(rest[0], rest[1]);
 else if (command === "report") report(rest);
 else if (command === "diff") diff(rest[0]);
 else if (command === "rescore") rescore(rest[0]);
-else console.log("usage: bench.mjs run [--name <run>] [--scope page|main] [--extractor defuddle|none] [--only <ids>] [--datasets <names>] [--concurrency <n>] [--no-explain] | external <name> <jsonl> --truth-from <run> | report <run> [<run>…] [--split dev|test] | diff <run> [--worst <n> | --page <id>] | rescore <run>");
+else if (command === "styles") await fetchStyles();
+else console.log("usage: bench.mjs run [--name <run>] [--scope page|main] [--extractor defuddle|none] [--only <ids>] [--datasets <names>] [--concurrency <n>] [--no-explain] [--css] | styles [--only <ids>] [--datasets <names>] | external <name> <jsonl> --truth-from <run> | report <run> [<run>…] [--split dev|test] | diff <run> [--worst <n> | --page <id>] | rescore <run>");
