@@ -560,6 +560,29 @@ function formulaChars(pieces: Piece[], { sources, faces }: Located, mathPages: R
   });
 }
 
+/** Which pages set mathematics, and how. */
+interface MathPages {
+  /** Pages with a run in a mathematics face: there capital Greek is a formula's. */
+  mathPages: ReadonlySet<number>;
+  /** Of those, the pages where no mathematics face sets a formula's letters — a lower-case
+   *  Latin letter or a mathematical alphanumeric symbol; CMSY's calligraphic capitals and
+   *  the blackboard bold capitals are no text's letters either way. There the formulas take
+   *  their letters from the text's italic (mathptmx, mathpazo). */
+  italicMath: ReadonlySet<number>;
+}
+
+const MATH_LETTER = /[a-z\u{1D400}-\u{1D7FF}]/u;
+
+function mathPagesOf(pages: ReadonlyMap<number, PageIndex>): MathPages {
+  const mathPages = new Set<number>(), italicMath = new Set<number>();
+  for (const [n, index] of pages) {
+    if (!index.boxes.some((b) => b.math)) continue;
+    mathPages.add(n);
+    if (!index.boxes.some((b) => b.math && MATH_LETTER.test(b.it.str))) italicMath.add(n);
+  }
+  return { mathPages, italicMath };
+}
+
 /** A token of the text: consecutive glyphs with no word space among them. */
 interface Token {
   /** Indices into `pieces`, spaces left out. */
@@ -573,26 +596,36 @@ interface Token {
   glued?: true;
 }
 
+/** Faces that set italic: Times', Palatino's, TeX's text italic, and so on. */
+const ITALIC_FONT = /ital|obli|slant|(?:^|[-_])it(?:$|[-_\d])|^(?:cm|sf|lm)\w*ti\d|libertine\w*i$/i;
+
 /**
  * Split off what stands before the hyphen of a token when it is a formula's: "(2+1)" of
- * "$(2+1)$-dimensional", whose operator TeX spaces, leaves "1)-dimensional" one token. A
- * letterless stretch with a digit or a closing bracket before the hyphen becomes a token of
- * its own, and the word after it a token glued to it; whether either is a formula's is then
- * decided as for any other token.
+ * "$(2+1)$-dimensional", whose operator TeX spaces, leaves "1)-dimensional" one token, and a
+ * formula's letter set in the text's italic runs into its word ("$g$-band"). A letterless
+ * stretch with a digit or a closing bracket before the hyphen, or one letter of an italic
+ * face the word after the hyphen is not set in on a page whose formulas take their letters
+ * from the text's italic, becomes a token of its own, and the word after it a token glued to
+ * it; whether either is a formula's is then decided as for any other token.
  */
-function hyphened(tokens: Token[], pieces: Piece[], formula: (i: number) => boolean): Token[] {
+function hyphened(tokens: Token[], pieces: Piece[], faces: (Box | null)[], formula: (i: number) => boolean, italicMath: ReadonlySet<number>): Token[] {
   const out: Token[] = [];
   for (const t of tokens) {
     const h = t.at.findIndex((i, k) => k > 0 && /^[-‐]$/u.test(pieces[i].ch) && LETTER.test(pieces[t.at[k + 1]]?.ch ?? ""));
     const head = h > 0 ? t.at.slice(0, h) : [];
     const chars = head.map((i) => pieces[i].ch).join("");
-    if (head.length === 0 || /\p{L}/u.test(chars) || !/[\p{N})\]]/u.test(chars)) { out.push(t); continue; }
+    const f = faces[head[0]], g = faces[t.at[h + 1]];
+    const split = !/\p{L}/u.test(chars) ? /[\p{N})\]]/u.test(chars)
+      : head.length === 1 && f !== null && g !== null && !f.math && !f.mono && italicMath.has(f.page) && ITALIC_FONT.test(baseName(f.font)) && g.font !== f.font;
+    if (!split) { out.push(t); continue; }
     const rest = t.at.slice(h);
-    out.push({ at: head, math: head.some(formula), letters: false, ...(t.marked ? { marked: true as const } : {}) });
+    out.push({ at: head, math: head.some(formula), letters: /\p{L}/u.test(chars), ...(t.marked ? { marked: true as const } : {}) });
     out.push({ at: rest, math: rest.some(formula), letters: true, glued: true });
   }
   return out;
 }
+
+const baseName = (font: string): string => font.replace(/^[A-Z]{6}\+/, "");
 
 interface Assembled {
   text: string;
@@ -617,7 +650,7 @@ interface Assembled {
  *    becomes "languageonly". The hyphen is still in pdf.js's run, and the document's own
  *    vocabulary says whether the word is spelt with it (lib/pdf/reflow.ts).
  */
-function assemble(pieces: Piece[], located: Located, vocab: Vocabulary, mathPages: ReadonlySet<number>): Assembled {
+function assemble(pieces: Piece[], located: Located, vocab: Vocabulary, { mathPages, italicMath }: MathPages): Assembled {
   const { sources, faces } = located;
   // ---- tokens: where a word space belongs ----
   let tokens: Token[] = [];
@@ -656,7 +689,7 @@ function assemble(pieces: Piece[], located: Located, vocab: Vocabulary, mathPage
     if (src) prevSource = src;
     if (formula !== null && !cited[i]) prevFormula = formula;
   });
-  tokens = hyphened(tokens, pieces, (i) => symbolic[i] || faces[i]?.math === true);
+  tokens = hyphened(tokens, pieces, faces, (i) => symbolic[i] || faces[i]?.math === true, italicMath);
 
   // ---- formulas: the math tokens and the letterless tokens beside them ----
   const glyphAt = (t: Token, last: boolean): Glyph | null => {
@@ -731,25 +764,39 @@ function assemble(pieces: Piece[], located: Located, vocab: Vocabulary, mathPage
     for (let j = k + step; j >= 0 && j < tokens.length; j += step) if (tokens[j].letters) return tokens[j];
     return null;
   };
-  /** A single letter set alone in a bold face: "\mathbf{h}", "\mathbf{J}_0". No word beside it
-   *  is in that face — "Part A" is a phrase of it — and one is in another; what else the token
-   *  holds is punctuation or the letter's script, not a label's digit ("(A1)"); and it is no
-   *  label itself, "(A)" or the "A" of "Appendix A". An italic letter stays: the text's
-   *  italic sets the writer's \textit as often as a formula's letter. */
-  const alone = (k: number): boolean => {
+  /** A letter set alone: one letter of a text face on a page that sets mathematics, what
+   *  else the token holds punctuation or the letter's own script, not a label's digit
+   *  ("(A1)"); no label itself, "(A)" or the "A" of "Appendix A"; and no word beside it in
+   *  its face — "Part A" is a phrase of it — but one in another. Its face, and whether it
+   *  carries a script. */
+  const lone = (k: number): { face: Box; script: boolean } | null => {
     const t = tokens[k];
     const size = Math.max(...t.at.map((i) => faces[i]?.h ?? 0));
     const small = (i: number): boolean => faces[i] !== null && faces[i]!.h < size * CORNER && !afterSpace(i);
     const main = t.at.filter((i) => LETTER.test(pieces[i].ch) && !small(i));
     const face = main.length === 1 ? faces[main[0]] : null;
-    if (!face || face.math || face.mono || !BOLD_FONT.test(face.font) || !mathPages.has(face.page)) return false;
-    if (t.at.some((i) => i !== main[0] && !/^[\p{P}\p{M}\p{Lm}\p{Sk}]$/u.test(pieces[i].ch) && !small(i))) return false;
-    if (/^[([]\p{L}[)\]]/u.test(t.at.map((i) => pieces[i].ch).join(""))) return false;
+    if (!face || face.math || face.mono || !mathPages.has(face.page)) return null;
+    if (t.at.some((i) => i !== main[0] && !/^[\p{P}\p{M}\p{Lm}\p{Sk}]$/u.test(pieces[i].ch) && !small(i))) return null;
+    if (/^[([]\p{L}[)\]]/u.test(t.at.map((i) => pieces[i].ch).join(""))) return null;
     const before = word(k, -1);
-    if (before && REFERENCE.test(letters(before))) return false;
+    if (before && REFERENCE.test(letters(before))) return null;
     const around = [before, word(k, 1)].filter((n): n is Token => n !== null);
     const same = (n: Token): boolean => faceOf(n)?.font === face.font;
-    return around.some((n) => !same(n)) && !around.some((n) => same(n) && count(n) > 1);
+    if (!around.some((n) => !same(n)) || around.some((n) => same(n) && count(n) > 1)) return null;
+    return { face, script: t.at.some((i) => small(i) && ALNUM.test(pieces[i].ch)) };
+  };
+  /** A single letter set alone in a bold face: "\mathbf{h}", "\mathbf{J}_0". */
+  const alone = (k: number): boolean => BOLD_FONT.test(lone(k)?.face.font ?? "");
+  /** A formula's letter set alone in the text's italic, on a page whose mathematics has no
+   *  face of its own for letters (italicMath: mathptmx, mathpazo): beside a formula ("$R =
+   *  $"), with a script of its own ("$D_i$", "$M_\odot$"), or hyphened to a word ("$g$-band").
+   *  An italic letter nothing marks stays ("plan B"), and every one does where the
+   *  mathematics sets its letters in a face of its own: there the italic is the writer's. */
+  const variable = (k: number): boolean => {
+    const l = lone(k);
+    if (!l || !italicMath.has(l.face.page) || !ITALIC_FONT.test(baseName(l.face.font))) return false;
+    const t = tokens[k], prev = tokens[k - 1], next = tokens[k + 1];
+    return l.script || next?.glued === true || (prev?.math === true && beside(prev, t)) || (next?.math === true && beside(t, next));
   };
   /** Set in a face the page uses only for formulas (formulaFaces): a number, a symbol, a
    *  word of three letters or fewer ("km", "SNR"), an operator name or a function applied
@@ -766,7 +813,7 @@ function assemble(pieces: Piece[], located: Located, vocab: Vocabulary, mathPage
     const name = letters(t);
     return any && (name.length <= 3 || OPERATOR.has(name) || /\p{L}\(/u.test(t.at.map((i) => pieces[i].ch).join("")));
   };
-  const drop = tokens.map((t, k) => t.math || alone(k) || formulaFace(t));
+  const drop = tokens.map((t, k) => t.math || alone(k) || variable(k) || formulaFace(t));
   for (let i = 1; i < tokens.length; i++) {
     if (drop[i - 1] && withFormula(tokens[i]) && !written(tokens[i]) && !typedAfter(i) && beside(tokens[i - 1], tokens[i])) drop[i] = true;
   }
@@ -1148,14 +1195,12 @@ export function createStructuredReader(structure: SdtStructure, options: Structu
     blocks(pages) {
       const pagesByNumber = new Map<number, PageIndex>();
       for (const p of pages) pagesByNumber.set(p.page, indexPage(p));
-      /** Pages that set mathematics in a mathematics face, where capital Greek is a formula's. */
-      const mathPages = new Set<number>();
-      for (const [n, index] of pagesByNumber) if (index.boxes.some((b) => b.math)) mathPages.add(n);
+      const kinds = mathPagesOf(pagesByNumber);
       const out: StructuredBlock[] = [];
       for (const d of drafts) {
         const seen = d.pages.filter((n) => pagesByNumber.has(n)).join(",");
         if (d.seen !== seen) {
-          const { text, runs } = assemble(d.pieces, locate(d.pieces, pagesByNumber), vocab, mathPages);
+          const { text, runs } = assemble(d.pieces, locate(d.pieces, pagesByNumber), vocab, kinds);
           const on = d.display && d.block.kind === "paragraph" && !SENTENCE_END.test(text);
           d.result = text === "" ? null : { ...d.block, text, runs, ...(on ? { runsOn: true } : {}) };
           d.seen = seen;

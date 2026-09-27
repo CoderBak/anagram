@@ -266,6 +266,16 @@ local component and the installer all carry the same version.
   "$(2+1)$-dimensional" read "1)-dimensional" and "$(1-\alpha)$-quantile" read ")-quantile".
   The word is kept from its hyphen on, as arXiv's HTML reads it ("-dimensional"); a number the
   text hyphens to a word ("a 3-dimensional space") stays.
+- The PDF reader leaves out a formula's letter set in the text's italic, where a paper's
+  mathematics has no face of its own for letters (Times with mathptmx, Palatino with mathpazo,
+  Word's MathType): a lone italic letter beside a formula ("$R = $ Er"), with a script of its
+  own ("$D_i$", "$M_\odot$") or hyphened to a word ("the $g$-band", which reads "the -band" as
+  on arXiv's HTML). An italic word, an italic letter nothing marks ("plan *B*"), an italic
+  statement's "a", and every italic letter of a paper whose formulas take their letters from a
+  mathematics face stay. The words after a script that Word sets in the script's own run are
+  no longer taken for the script. On the benchmark's papers, against their HTML with the
+  formulas taken out, the formula tokens left in the reading fell by 546 on the development
+  papers and 208 on the held-out ones, and the prose read rose by 38 and 29 tokens.
 - The PDF reader keeps a number the text writes next to an inline formula: "pores of 11.3 μm"
   read as "pores of m", "by Theorem 2, x is" as "by Theorem, is", and "(Federer, 1969,
   3.2.12)" lost its year. A number beside a formula went with it, because TeX sets a formula's
