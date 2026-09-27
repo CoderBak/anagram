@@ -51,6 +51,17 @@ class Client:
         assert response["id"] == request_id and response["v"] == 1, response
         return response
 
+    def accepted(self, op, payload=None, timeout=10):
+        """Status shows a job's last state while its thread still counts storage; the next
+        job is refused as busy until that thread ends."""
+        end = time.monotonic() + timeout
+        while True:
+            response = self.request(op, payload)
+            if response["ok"] or response["error"]["code"] != "busy" or time.monotonic() > end:
+                assert response["ok"] and response["status"] == 202, response
+                return response
+            time.sleep(0.05)
+
     def until(self, expected, timeout=240):
         end = time.monotonic() + timeout
         while time.monotonic() < end:
@@ -185,10 +196,10 @@ def main():
                 assert scored["data"]["results"][1]["unsupported"] is True, scored
                 assert scored["data"]["model"]["ver"] == version
                 report["selected_id"], report["model_version"] = desired, version
-                client.request("engine.stop")
+                client.accepted("engine.stop")
                 client.until({"stopped"})
                 assert client.request("health")["error"]["code"] == "not_ready"
-                client.request("engine.resume")
+                client.accepted("engine.resume")
                 client.until({"ready"})
                 assert client.request("health")["data"]["model"]["ver"] == version
                 client.close()
