@@ -20,7 +20,8 @@ import {
   normalizeRuleHost,
 } from "../../lib/settings/settings";
 import { ALL_SITES } from "../../lib/access/patterns";
-import { accessSummary, requestAccess, withdrawAccess } from "../../lib/access/grant";
+import { accessSummary, hasAccess, requestAccess, withdrawAccess } from "../../lib/access/grant";
+import { commentOriginOfHost } from "../../lib/access/commentFrames";
 import { ACTIONS } from "../../lib/messaging/protocol";
 import { getFileAccess, openFileAccessSettings, requestFileAccess } from "../../lib/pdf/fileAccess";
 import type { CacheCountReply } from "../../lib/messaging/protocol";
@@ -273,6 +274,39 @@ accessWithdrawEl.addEventListener("click", () => {
 browser.permissions.onAdded.addListener(() => void renderAccess());
 browser.permissions.onRemoved.addListener(() => void renderAccess());
 void renderAccess();
+
+// --- a comment thread from another site ----------------------------------------------------
+// The panel on a page that shows its comments in a frame of a site nobody granted (Disqus,
+// Facebook's comments plugin) opens this page at `#comments=<host>`: a content script cannot
+// ask the browser for a site, and this page's click can. Only a known comment provider is
+// offered, whatever the address says (lib/access/commentFrames.ts).
+const commentsEl = document.getElementById("comments") as HTMLElement;
+const commentsStateEl = document.getElementById("commentsState") as HTMLElement;
+const commentsAllowEl = document.getElementById("commentsAllow") as HTMLButtonElement;
+let commentsOrigin: string | null = null;
+async function renderComments(): Promise<void> {
+  const host = new URLSearchParams(location.hash.slice(1)).get("comments") ?? "";
+  commentsOrigin = commentOriginOfHost(host);
+  commentsEl.hidden = commentsOrigin === null;
+  if (!commentsOrigin) return;
+  const granted = await hasAccess(commentsOrigin);
+  commentsStateEl.textContent = t(granted ? "optCommentsAllowed" : "optCommentsFrom", host);
+  commentsAllowEl.textContent = t("optCommentsAllow", host);
+  commentsAllowEl.hidden = granted;
+}
+commentsAllowEl.addEventListener("click", () => {
+  // The request first, with nothing awaited before it (lib/access/grant.ts). A yes reaches
+  // the pages that show the thread from the worker (lib/access/worker.ts).
+  if (commentsOrigin) void requestAccess([commentsOrigin]).then(renderComments);
+});
+browser.permissions.onAdded.addListener(() => void renderComments());
+browser.permissions.onRemoved.addListener(() => void renderComments());
+window.addEventListener("hashchange", () => void renderComments());
+void renderComments().then(() => {
+  if (commentsEl.hidden) return;
+  commentsEl.scrollIntoView({ block: "center" });
+  if (!commentsAllowEl.hidden) commentsAllowEl.focus({ preventScroll: true });
+});
 
 mountComponentSettings(document.getElementById("componentSettings")!, (reply) => {
   versionEl.textContent = `v${version} · ${componentConnectionLabel(reply)}`;

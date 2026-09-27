@@ -188,6 +188,15 @@
   "panelRetry": {
     "message": "重试"
   },
+  "panelCommentsElsewhere": {
+    "message": "此页评论来自 $1，Anagram 无权读取。"
+  },
+  "panelCommentsAllow": {
+    "message": "允许…"
+  },
+  "panelCommentsAllowAria": {
+    "message": "允许 Anagram 读取来自 $1 的评论"
+  },
   "panelTitle": {
     "message": "存疑段落"
   },
@@ -827,6 +836,15 @@
   },
   "accessWithdraw": {
     "message": "撤回"
+  },
+  "optCommentsFrom": {
+    "message": "你刚才的页面显示来自 $1 的评论。Anagram 需获准访问该网站才能读取。"
+  },
+  "optCommentsAllow": {
+    "message": "允许 $1"
+  },
+  "optCommentsAllowed": {
+    "message": "已允许 $1。在 Anagram 运行的网站上，其评论会被读取。"
   },
   "optEnabled": {
     "message": "默认在已授权网站运行"

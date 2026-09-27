@@ -9,6 +9,12 @@ local component and the installer all carry the same version.
 
 ### Added
 
+- A page whose comments come from another site's frame — Disqus, Facebook's comments
+  plugin, utterances, giscus — says so in the panel and offers to allow that site. Anagram
+  reads a frame only with access to its own site, so those threads went unread without a
+  word. The panel's button opens Settings at a row that names the site; the browser asks
+  there, on your click, and nothing is requested otherwise. Once allowed, the open pages
+  that show the thread read it without a reload.
 - THIRD_PARTY_NOTICES.md ships next to LICENSE in both browser packages and in the local
   component. It lists every third-party library, font, data file and model Anagram contains,
   and the code and word lists its own source adapts, each with its version, licence,
