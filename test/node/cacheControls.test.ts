@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import { fakeBrowser } from "wxt/testing";
+import { fakeBrowser } from "wxt/testing/fake-browser";
 import { applyCacheMode, invalidateAndNotify } from "../../lib/access/cacheControls";
 import { createCacheModeController } from "../../lib/backend/cacheMode";
 import { createRouter } from "../../lib/backend/router";
@@ -33,7 +33,7 @@ it("does not misreport disk success because a tab closed before receiving the no
 });
 
 it("also notifies pages when invalidation throws synchronously", async () => {
-  const query = vi.spyOn(fakeBrowser.tabs, "query").mockResolvedValue([]);
+  const query = vi.spyOn(fakeBrowser.tabs, "query").mockResolvedValue([] as never);
   expect(() => invalidateAndNotify(() => { throw new Error("clear failed"); })).toThrow("clear failed");
   expect(query).toHaveBeenCalledOnce();
   await Promise.resolve();

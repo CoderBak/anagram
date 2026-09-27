@@ -3,7 +3,7 @@
 // cap must be what was used most recently. IndexedDB does not exist in this environment,
 // so the worker cache is memory-only here and getMany() reports its memory layer exactly.
 import { describe, expect, it, beforeEach } from "vitest";
-import { fakeBrowser } from "wxt/testing";
+import { fakeBrowser } from "wxt/testing/fake-browser";
 import { fakeScoreStore } from "./scoreStore";
 import { createSwCache, MEMORY_MAX_ENTRIES } from "../../lib/backend/swCache";
 import { createScoreCache, L1_MAX_ENTRIES } from "../../lib/capture/cache";

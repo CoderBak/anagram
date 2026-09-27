@@ -5,7 +5,7 @@
 // is the RULE — thirty days from the write, a hit does not restart the clock — rather than
 // the cursor walk that carries it out.
 import { describe, expect, it, beforeEach } from "vitest";
-import { fakeBrowser } from "wxt/testing";
+import { fakeBrowser } from "wxt/testing/fake-browser";
 import { createSwCache } from "../../lib/backend/swCache";
 import { fakeScoreStore as fakeStore } from "./scoreStore";
 import type { ScoreResult } from "../../lib/contract";

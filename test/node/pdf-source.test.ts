@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fakeBrowser } from "wxt/testing";
+import { fakeBrowser } from "wxt/testing/fake-browser";
 import { safePdfSource } from "../../lib/pdf/source";
 import { loaderConnectPolicy, readAuthorizedPdf } from "../../lib/pdf/loader";
 import { claimSourceBytes, createSourceBroker, SOURCE_CAP, SOURCE_CLAIM_PORT, SOURCE_LOADER_PORT } from "../../lib/pdf/sourceTransfer";
@@ -92,7 +92,7 @@ describe("private PDF source tickets", () => {
   it("uses a separate parent proof when Chromium hides extension URL/frame metadata", async () => {
     const e = setup(); await e.broker.open(7, "https://example.test/document");
     vi.spyOn(fakeBrowser.tabs, "get").mockResolvedValue({id:7} as never);
-    vi.spyOn(fakeBrowser.webNavigation, "getFrame").mockResolvedValue(null);
+    vi.spyOn(fakeBrowser.webNavigation, "getFrame").mockResolvedValue(null as never);
     const owner=e.reader(); await ticks(); const reply=owner.port.postMessage.mock.calls[0][0];
     const forged=e.loader(reply.load,{},"0".repeat(32)); await ticks(); expect(forged.port.postMessage).not.toHaveBeenCalled();
     e.proof(reply.proof);const child=e.loader(reply.load);await ticks();

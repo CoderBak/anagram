@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fakeBrowser } from "wxt/testing";
+import { fakeBrowser } from "wxt/testing/fake-browser";
 import { NATIVE_MESSAGE } from "../../lib/backend/nativeProtocol";
 import {
   parseRuntime, requestRuntime, runtimeBusy, runtimePollMs, runtimeReady,
@@ -17,9 +17,9 @@ const snapshot = (patch: Partial<RuntimeSnapshot> = {}): RuntimeSnapshot => ({
 
 const result = (batch_size: number) => ({ candidate_id: "torch:cpu:fp32", status: "ok" as const, batch_size, samples: 4, latency_ms: 40, throughput_per_s: 30, load_ms: 1000, warmup_ms: 300, peak_rss_bytes: 1024 });
 function respond(body: unknown, status = 200) {
-  return vi.spyOn(fakeBrowser.runtime, "sendMessage").mockResolvedValue(status < 400
+  return vi.spyOn(fakeBrowser.runtime, "sendMessage").mockResolvedValue((status < 400
     ? {v:1,id:"fixture",ok:true,status,data:body}
-    : {v:1,id:"fixture",ok:false,status,error:{code:"busy",message:"Benchmark already running"}});
+    : {v:1,id:"fixture",ok:false,status,error:{code:"busy",message:"Benchmark already running"}}) as never);
 }
 beforeEach(() => fakeBrowser.reset());
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });

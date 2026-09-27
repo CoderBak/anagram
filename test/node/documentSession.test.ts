@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fakeBrowser } from "wxt/testing";
+import { fakeBrowser } from "wxt/testing/fake-browser";
 import { cancelDocumentSession, connectDocument, documentSessionId, sendDocumentMessage } from "../../lib/access/session";
 import { requestScores } from "../../lib/messaging/client";
 import { CONTRACT_VERSION, type ScoreBatchRequest } from "../../lib/contract";
@@ -42,7 +42,7 @@ const req = (): ScoreBatchRequest => ({ v: CONTRACT_VERSION, session: "scan", pr
 describe("document connection lifetime", () => {
   it("keeps simultaneous replies paired with their own model snapshots", async () => {
     const ports = connections(), a = deferred<unknown>(), b = deferred<unknown>();
-    vi.spyOn(fakeBrowser.runtime, "sendMessage").mockReturnValueOnce(a.promise).mockReturnValueOnce(b.promise);
+    vi.spyOn(fakeBrowser.runtime, "sendMessage").mockReturnValueOnce(a.promise as never).mockReturnValueOnce(b.promise as never);
     const first = requestScores(req()), second = requestScores(req()); ports[0].acknowledge();
     const modelA = {id: "A", ver: "1", calibration: "a"}, modelB = {id: "B", ver: "2", calibration: "b"};
     const result = (score: number) => ({id: "1", bucket: score ? 3 : 0, score, probs: score ? [0, 0, 0, 1] : [1, 0, 0, 0]});
@@ -59,8 +59,8 @@ describe("document connection lifetime", () => {
   it("does not attach a previous model to a real verdict that omitted provenance", async () => {
     const ports = connections();
     vi.spyOn(fakeBrowser.runtime, "sendMessage")
-      .mockResolvedValueOnce({backend: "up", model: {id: "previous", ver: "1", calibration: "none"}, results: []})
-      .mockResolvedValueOnce({backend: "up", results: [{id: "1", bucket: 3, score: 1, probs: [0, 0, 0, 1]}]});
+      .mockResolvedValueOnce({backend: "up", model: {id: "previous", ver: "1", calibration: "none"}, results: []} as never)
+      .mockResolvedValueOnce({backend: "up", results: [{id: "1", bucket: 3, score: 1, probs: [0, 0, 0, 1]}]} as never);
     const previous = requestScores(req()); ports[0].acknowledge(); await previous;
     await expect(requestScores(req())).resolves.toEqual({results: [], backend: "unreachable"});
   });
@@ -93,7 +93,7 @@ describe("document connection lifetime", () => {
     expect(send).toHaveBeenCalledOnce();
     const rejected = expect(first).rejects.toThrow("cancelled");
     cancelDocumentSession(); await rejected;
-    send.mockResolvedValueOnce({ ok: "new" });
+    send.mockResolvedValueOnce({ ok: "new" } as never);
     const next = sendDocumentMessage({ action: "next" });
     ports[1].acknowledge(); ports[0].disconnected(); complete({ ok: "old" });
     await expect(next).resolves.toEqual({ ok: "new" });
@@ -129,7 +129,7 @@ describe("document connection lifetime", () => {
     const ports = connections();
     const send = vi.spyOn(fakeBrowser.runtime, "sendMessage")
       .mockRejectedValueOnce(new Error("worker unavailable"))
-      .mockResolvedValueOnce({ results: [], backend: "up" });
+      .mockResolvedValueOnce({ results: [], backend: "up" } as never);
     const pending = requestScores(req()); ports[0].acknowledge();
     await vi.advanceTimersByTimeAsync(300);
     await expect(pending).resolves.toEqual({ results: [], backend: "up" });
@@ -138,7 +138,7 @@ describe("document connection lifetime", () => {
 
   it("stops at once when the worker found the request malformed", async () => {
     const ports = connections();
-    const send = vi.spyOn(fakeBrowser.runtime, "sendMessage").mockResolvedValue({ok: false, error: "invalid_request"});
+    const send = vi.spyOn(fakeBrowser.runtime, "sendMessage").mockResolvedValue({ok: false, error: "invalid_request"} as never);
     const pending = requestScores(req()); ports[0].acknowledge();
     await vi.advanceTimersByTimeAsync(1000);
     await expect(pending).resolves.toEqual({results: [], backend: "refused"});
@@ -147,7 +147,7 @@ describe("document connection lifetime", () => {
 
   it("asks once more when the page was not authorized, and a second refusal stands", async () => {
     const ports = connections();
-    const send = vi.spyOn(fakeBrowser.runtime, "sendMessage").mockResolvedValue({ok: false, error: "forbidden"});
+    const send = vi.spyOn(fakeBrowser.runtime, "sendMessage").mockResolvedValue({ok: false, error: "forbidden"} as never);
     const pending = requestScores(req()); ports[0].acknowledge();
     await vi.advanceTimersByTimeAsync(1000);
     await expect(pending).resolves.toEqual({results: [], backend: "refused"});
@@ -157,8 +157,8 @@ describe("document connection lifetime", () => {
   it("takes the second answer when the first refusal came from a worker that had just restarted", async () => {
     const ports = connections();
     vi.spyOn(fakeBrowser.runtime, "sendMessage")
-      .mockResolvedValueOnce({ok: false, error: "forbidden"})
-      .mockResolvedValueOnce({results: [], backend: "up"});
+      .mockResolvedValueOnce({ok: false, error: "forbidden"} as never)
+      .mockResolvedValueOnce({results: [], backend: "up"} as never);
     const pending = requestScores(req()); ports[0].acknowledge();
     await vi.advanceTimersByTimeAsync(300);
     await expect(pending).resolves.toEqual({results: [], backend: "up"});

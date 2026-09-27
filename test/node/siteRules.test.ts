@@ -2,7 +2,7 @@
 // each parent domain, most specific first, with a leading "www." absent on both sides.
 // Rules already in storage (any spelling) keep deciding what they always decided.
 import { describe, expect, it, beforeEach } from "vitest";
-import { fakeBrowser } from "wxt/testing";
+import { fakeBrowser } from "wxt/testing/fake-browser";
 import {
   settings,
   clearSiteOverride,

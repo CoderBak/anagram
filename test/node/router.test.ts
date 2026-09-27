@@ -1,6 +1,6 @@
 // test/node/router.test.ts — provenance and settlement invariants of the SW router.
 import { describe, expect, it, beforeEach, vi } from "vitest";
-import { fakeBrowser } from "wxt/testing";
+import { fakeBrowser } from "wxt/testing/fake-browser";
 import { createRouter } from "../../lib/backend/router";
 import type {
   ModelInfo,
