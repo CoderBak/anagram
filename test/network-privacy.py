@@ -112,11 +112,14 @@ class InBrowserEnginePrivacyTests(unittest.TestCase):
     def test_the_engine_addresses_only_the_download_hosts(self):
         # Page text never leaves the browser: any address the engine writes down is one
         # of the model's download hosts, and never a loopback or other inference server.
+        # Comment lines are the attributions THIRD_PARTY_NOTICES.md requires of the
+        # adapted code (test/node/notices.test.ts) and name nothing the code reaches.
         allowed = re.compile(r"^https://(huggingface\.co|[\w.-]+\.hf\.co|dl\.fbaipublicfiles\.com)/")
         sources = web_engine_sources()
         self.assertTrue(sources, "No in-browser engine source was inspected")
         for path in sources:
-            for url in re.findall(r"""(?:https?|wss?)://[^\s"'`)]+""", path.read_text()):
+            code = "\n".join(line for line in path.read_text().splitlines() if not line.lstrip().startswith(("//", "*", "<!--")))
+            for url in re.findall(r"""(?:https?|wss?)://[^\s"'`)]+""", code):
                 with self.subTest(file=str(path.relative_to(ROOT)), url=url):
                     self.assertRegex(url, allowed)
 
