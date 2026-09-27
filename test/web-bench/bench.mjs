@@ -74,6 +74,7 @@ function reasonClass(reason) {
     [/^no letters/, () => "no letters"],
     [/^symbol noise/, () => "symbol noise"],
     [/^unrendered shortcodes/, () => "unrendered shortcodes"],
+    [/^one phrase said over and over/, () => "a repeated phrase"],
     [/^preserved-whitespace/, () => "column gaps in preserved text"],
     [/^link-dense/, () => "link-dense"],
     [/^reads as a name list/, () => "name list"],

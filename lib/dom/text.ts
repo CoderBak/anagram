@@ -463,6 +463,29 @@ export function looksLikeNameList(text: string): boolean {
   return capitalised / tokens.length >= 0.6 && commas >= tokens.length / 8;
 }
 
+// ---- repetition ------------------------------------------------------------------------
+
+/** A run this long that uses no more than MAX_REPEATED_WORDS different words is one phrase
+ *  said over and over. */
+const REPEAT_MIN_WORDS = 30;
+const MAX_REPEATED_WORDS = 8;
+
+/**
+ * A phrase a machine repeats: a marquee's "Book Now *Book Now *…" two hundred words long,
+ * set four times over for its animation. Thirty words of writing use more than eight
+ * different ones.
+ */
+export function isRepetitive(text: string): boolean {
+  const seen = new Set<string>();
+  let words = 0;
+  for (const s of wordSegmenter().segment(text)) {
+    if (!s.isWordLike) continue;
+    words++;
+    if (seen.size <= MAX_REPEATED_WORDS) seen.add(s.segment.toLowerCase());
+  }
+  return words >= REPEAT_MIN_WORDS && seen.size <= MAX_REPEATED_WORDS;
+}
+
 // ---- unrendered shortcodes -----------------------------------------------------------
 
 /** A WordPress shortcode as a page builder writes it: a closing `[/vc_column_text]`, a name

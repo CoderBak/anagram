@@ -1594,6 +1594,14 @@ const results = await page.evaluate(() => {
     check("author-list block is never a unit", u.length === 0, JSON.stringify(u.map(x => x.words)));
   }
   {
+    // What a machine repeats is no writing: a marquee's "Book Now *Book Now *…", set four
+    // times over for its animation.
+    u = collect(`<div class="marquee">${"Book Now *".repeat(100)}</div><div class="marquee">${"Shop the sale · Free shipping · ".repeat(20)}</div>`);
+    const refrain = collect(`<p>${"Nevermore, quoth the raven. ".repeat(3)}${words(70)}</p>`);
+    check("a phrase repeated a hundred times is no prose; a refrain inside a text is",
+      u.length === 0 && refrain.length === 1, JSON.stringify([u.map(x => x.words), refrain.map(x => x.words)]));
+  }
+  {
     // A WordPress page whose builder plugin is gone shows its shortcodes as text.
     const row = `[vc_row type=”in_container” full_screen_row_position=”middle” column_margin=”default” column_direction=”default” text_color=”dark” text_align=”left”][vc_column column_padding=”no-extra-padding” centered_text=”true”]`;
     u = collect(`<p>${row}${row}[vc_column_text]A short line.[/vc_column_text]${row}</p><p>${row}[nectar_btn size=”small” text=”Click to get the pattern” url=”/p/1″][/vc_column][/vc_row]${row}</p>`);

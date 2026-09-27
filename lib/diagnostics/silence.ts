@@ -36,6 +36,7 @@ import {
   linkTextRatio,
   looksLikeNameList,
   shortcodeShare,
+  isRepetitive,
   symbolNoiseRatio,
   MIN_MERGE_WORDS,
   MIN_UNIT_WORDS,
@@ -443,6 +444,7 @@ function reasonFor(el: Element, cs: Styler): string {
   const noisy = runs.filter((r) => symbolNoiseRatio(r.text) > MAX_SYMBOL_NOISE);
   const names = runs.filter((r) => looksLikeNameList(r.text));
   const shortcodes = runs.filter((r) => shortcodeShare(r.text) > MAX_SHORTCODE_SHARE);
+  const repeated = runs.filter((r) => isRepetitive(r.text));
   const half = Math.ceil(runs.length / 2);
 
   if (runs.every((r) => !hasLetters(r.text))) {
@@ -451,6 +453,9 @@ function reasonFor(el: Element, cs: Styler): string {
   }
   if (noisy.length >= half) {
     return `symbol noise over ${MAX_SYMBOL_NOISE} in ${noisy.length}/${runs.length} blocks — machine layout (ASCII art, a table rule), a barrier`;
+  }
+  if (repeated.length >= half) {
+    return `one phrase said over and over in ${repeated.length}/${runs.length} blocks — a marquee or a machine's output, a barrier`;
   }
   if (shortcodes.length >= half) {
     return `unrendered shortcodes in ${shortcodes.length}/${runs.length} blocks — a page builder's layout shown as text, a barrier`;
