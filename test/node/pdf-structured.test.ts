@@ -102,8 +102,8 @@ function setLine(fonts: Record<string, string>): { put(s: string, font: string, 
       const n = { text, anchor: { textMap: JSON.stringify(runs) } };
       const pages = [pageText(1, items, fonts)];
       const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
-      expectRunsToMatch(blocks[0], pages);
-      return blocks[0].text;
+      expectRunsToMatch(blocks[0]!, pages);
+      return blocks[0]!.text;
     },
   };
 }
@@ -112,7 +112,7 @@ function setLine(fonts: Record<string, string>): { put(s: string, font: string, 
 function expectRunsToMatch(block: ReflowBlock, pages: PdfPageText[]): void {
   expect(block.runs.length).toBeGreaterThan(0);
   for (const run of block.runs) {
-    const item = pages.find((p) => p.page === run.page)!.items[run.item];
+    const item = pages.find((p) => p.page === run.page)!.items[run.item]!;
     expect(item.str.slice(run.from, run.from + run.length)).toBe(block.text.slice(run.at, run.at + run.length));
   }
 }
@@ -161,20 +161,20 @@ describe("structuredBlocks — text and runs", () => {
     const pages = [pageText(1, n.items)];
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
     expect(blocks).toHaveLength(1);
-    expect(blocks[0].text).toBe("the paragraph opens on the first line and closes on the second.");
+    expect(blocks[0]!.text).toBe("the paragraph opens on the first line and closes on the second.");
     expect(blocks[0]).toMatchObject({ kind: "paragraph", page: 1, apart: false, columnBreak: true });
-    expect(blocks[0].runs).toEqual([
+    expect(blocks[0]!.runs).toEqual([
       { page: 1, item: 0, at: 0, length: 32, from: 0 },
       { page: 1, item: 1, at: 33, length: 30, from: 0 },
     ]);
-    expectRunsToMatch(blocks[0], pages);
+    expectRunsToMatch(blocks[0]!, pages);
   });
 
   it("keeps a block whose page is not rendered yet, with no runs to hang it on", () => {
     const n = node(1, [{ text: "text on a page the viewer has not drawn", x: 72, y: 100 }]);
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), []);
-    expect(blocks[0].text).toBe("text on a page the viewer has not drawn");
-    expect(blocks[0].runs).toEqual([]);
+    expect(blocks[0]!.text).toBe("text on a page the viewer has not drawn");
+    expect(blocks[0]!.runs).toEqual([]);
   });
 
   it("finds a glyph that Zotero placed a folded space's width left of the run", () => {
@@ -184,12 +184,12 @@ describe("structuredBlocks — text and runs", () => {
     const pages = [pageText(1, [head.item, rest.item])];
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
     // The space Zotero lost is put back: the two runs stand a word apart on the page.
-    expect(blocks[0].text).toBe("Inference Uncertainty was estimated");
-    expect(blocks[0].runs).toEqual([
+    expect(blocks[0]!.text).toBe("Inference Uncertainty was estimated");
+    expect(blocks[0]!.runs).toEqual([
       { page: 1, item: 0, at: 0, length: 9, from: 0 },
       { page: 1, item: 1, at: 10, length: 25, from: 0 },
     ]);
-    expectRunsToMatch(blocks[0], pages);
+    expectRunsToMatch(blocks[0]!, pages);
   });
 
   it("finds a glyph Zotero moved left into the run before it: a formula's, or an italic word's", () => {
@@ -206,8 +206,8 @@ describe("structuredBlocks — text and runs", () => {
     const n = { text: "lattice carryingMphysical modes", anchor: { textMap: JSON.stringify([a.run, mRun, b.run]) } };
     const pages = [pageText(1, [a.item, m, b.item], fonts)];
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
-    expect(blocks[0].text).toBe("lattice carrying physical modes");
-    expectRunsToMatch(blocks[0], pages);
+    expect(blocks[0]!.text).toBe("lattice carrying physical modes");
+    expectRunsToMatch(blocks[0]!, pages);
 
     // An italic word, then a narrow "i" Zotero drew where the space was: its centre is
     // just past the end of the italic run, inside that run's slack.
@@ -218,8 +218,8 @@ describe("structuredBlocks — text and runs", () => {
     const n2 = { text: "contextualityis tested", anchor: { textMap: JSON.stringify([it1.run, run2]) } };
     const pages2 = [pageText(1, [it1.item, it2])];
     const blocks2 = structuredBlocks(structure([paragraph(1, [n2])]), pages2);
-    expect(blocks2[0].text).toBe("contextuality is tested");
-    expectRunsToMatch(blocks2[0], pages2);
+    expect(blocks2[0]!.text).toBe("contextuality is tested");
+    expectRunsToMatch(blocks2[0]!, pages2);
   });
 
   it("puts back a space pdf.js's own run has where Zotero's text has none", () => {
@@ -230,8 +230,8 @@ describe("structuredBlocks — text and runs", () => {
     const n = { text: "The paper is organized as follows. SectionIIpresents the results", anchor: { textMap: JSON.stringify([zotero.run]) } };
     const pages = [pageText(1, [page.item])];
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
-    expect(blocks[0].text).toBe("The paper is organized as follows. Section II presents the results");
-    expectRunsToMatch(blocks[0], pages);
+    expect(blocks[0]!.text).toBe("The paper is organized as follows. Section II presents the results");
+    expectRunsToMatch(blocks[0]!, pages);
   });
 
   it("leaves out numeric citation marks, as the web walker does, and keeps author-year ones", () => {
@@ -241,8 +241,8 @@ describe("structuredBlocks — text and runs", () => {
     ]);
     const pages = [pageText(1, n.items)];
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
-    expect(blocks[0].text).toBe("Direct constructions span the bases. They apply to superconductors, as Smith et al. (2020) showed in.");
-    expectRunsToMatch(blocks[0], pages);
+    expect(blocks[0]!.text).toBe("Direct constructions span the bases. They apply to superconductors, as Smith et al. (2020) showed in.");
+    expectRunsToMatch(blocks[0]!, pages);
   });
 
   it("leaves out a run of citation marks as IEEE's style sets it, as one", () => {
@@ -252,8 +252,8 @@ describe("structuredBlocks — text and runs", () => {
     ]);
     const pages = [pageText(1, n.items)];
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
-    expect(blocks[0].text).toBe("Related work generates programs, geometric constraints, and rewards.");
-    expectRunsToMatch(blocks[0], pages);
+    expect(blocks[0]!.text).toBe("Related work generates programs, geometric constraints, and rewards.");
+    expectRunsToMatch(blocks[0]!, pages);
   });
 
   it("leaves out a bracketed mark with a locator or an alphabetic key, and keeps brackets that are words", () => {
@@ -265,8 +265,8 @@ describe("structuredBlocks — text and runs", () => {
     ]);
     const pages = [pageText(1, n.items)];
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
-    expect(blocks[0].text).toBe("As Kahn and Szemerédi showed, the bound holds; it [sic] is known [Higham, 2002] and [see Section 3].");
-    expectRunsToMatch(blocks[0], pages);
+    expect(blocks[0]!.text).toBe("As Kahn and Szemerédi showed, the bound holds; it [sic] is known [Higham, 2002] and [see Section 3].");
+    expectRunsToMatch(blocks[0]!, pages);
   });
 
   it("leaves out a superscript number that refers to the bibliography after a word, and keeps exponents", () => {
@@ -306,8 +306,8 @@ describe("structuredBlocks — text and runs", () => {
     const bibliography: SdtBlock = { type: "list", content: [{ type: "listitem", reference: true, content: [] }, { type: "listitem", reference: true, content: [] }] };
     const pages = [pageText(1, items, fonts)];
     const blocks = structuredBlocks(structure([{ type: "paragraph", content: nodes }, bibliography]), pages);
-    expect(blocks[0].text).toBe("learn through prediction errors over an area of 5 cm2 of the variance as Dunne found in two forms.");
-    expectRunsToMatch(blocks[0], pages);
+    expect(blocks[0]!.text).toBe("learn through prediction errors over an area of 5 cm2 of the variance as Dunne found in two forms.");
+    expectRunsToMatch(blocks[0]!, pages);
   });
 
   it("closes up the space a mark left out leaves before punctuation, and keeps the author's own", () => {
@@ -331,8 +331,8 @@ describe("structuredBlocks — text and runs", () => {
     const bibliography: SdtBlock = { type: "list", content: [{ type: "listitem", reference: true, content: [] }] };
     const pages = [pageText(1, items, { f_text: "NimbusRomNo9L-Regu" })];
     const blocks = structuredBlocks(structure([{ type: "paragraph", content: nodes }, bibliography]), pages);
-    expect(blocks[0].text).toBe("as reported by Dunne. It spans the bases, and a word .");
-    expectRunsToMatch(blocks[0], pages);
+    expect(blocks[0]!.text).toBe("as reported by Dunne. It spans the bases, and a word .");
+    expectRunsToMatch(blocks[0]!, pages);
   });
 
   it("puts a space between two glyphs a word apart that Zotero ran together", () => {
@@ -340,7 +340,7 @@ describe("structuredBlocks — text and runs", () => {
     const b = drawn(1, { text: "the", x: 72 + 5 * CW + 6, y: 100 });
     const n = { text: "wherethe", anchor: { textMap: JSON.stringify([a.run, b.run]) } };
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), [pageText(1, [a.item, b.item])]);
-    expect(blocks[0].text).toBe("where the");
+    expect(blocks[0]!.text).toBe("where the");
   });
 });
 
@@ -349,7 +349,7 @@ describe("structuredBlocks — accented letters", () => {
     // pdf.js keeps TeX's accent as a glyph of its own before the letter ("Alfv´en"); Zotero
     // reads it as a combining mark but can put it past the letter ("Alfven´"), or after the
     // next one when the letter is a dotless ı ("Garcıá"). Each word is one run on the page.
-    const words = [["the", "the"], ["Alfv´en", "Alfveń"], ["speed,", "speed,"], ["as", "as"],
+    const words: [string, string][] = [["the", "the"], ["Alfv´en", "Alfveń"], ["speed,", "speed,"], ["as", "as"],
       ["Garcı´a", "Garcıá"], ["and", "and"], ["Le´vy", "Lévy"], ["found.", "found."]];
     /** Which letter of the word the accent is drawn over. */
     const over: Record<string, number> = { "Alfveń": 4, "Garcıá": 4, "Lévy": 1 };
@@ -361,26 +361,26 @@ describe("structuredBlocks — accented letters", () => {
       items.push({ str: drawnAs, x, y: 100, width: letters * CW, height: SIZE, fontName: "f_text" });
       let k = 0;
       for (const c of read) {
-        if (/\p{M}/u.test(c)) spans.push([x + over[read] * CW + 0.5, x + over[read] * CW + CW - 0.5]);
+        if (/\p{M}/u.test(c)) spans.push([x + over[read]! * CW + 0.5, x + over[read]! * CW + CW - 0.5]);
         else spans.push([x + k * CW, x + ++k * CW]);
       }
       x += (letters + 1) * CW;
     }
     // One glyph run for the line: each glyph's box as a [gap, width] from the one before.
     const widths: (number | number[])[] = [];
-    let pos = spans[0][0];
+    let pos = spans[0]![0];
     for (const [a, b] of spans) {
       widths.push(a === pos ? b - a : [a - pos, b - a]);
       pos = b;
     }
-    const n = { text: words.map(([, read]) => read).join(" "), anchor: { textMap: JSON.stringify([[0, 0, spans[0][0], HEIGHT - 102, pos, HEIGHT - 93, ...widths]]) } };
+    const n = { text: words.map(([, read]) => read).join(" "), anchor: { textMap: JSON.stringify([[0, 0, spans[0]![0], HEIGHT - 102, pos, HEIGHT - 93, ...widths]]) } };
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), [pageText(1, items)]);
-    expect(blocks[0].text).toBe("the Alfvén speed, as García and Lévy found.");
+    expect(blocks[0]!.text).toBe("the Alfvén speed, as García and Lévy found.");
     // The accented letter is found where its letter is: a highlight over the word covers it.
     for (const word of ["Alfvén", "García", "Lévy"]) {
-      const at = blocks[0].text.indexOf(word);
+      const at = blocks[0]!.text.indexOf(word);
       let covered = 0;
-      for (const r of blocks[0].runs) covered += Math.max(0, Math.min(r.at + r.length, at + word.length) - Math.max(r.at, at));
+      for (const r of blocks[0]!.runs) covered += Math.max(0, Math.min(r.at + r.length, at + word.length) - Math.max(r.at, at));
       expect(covered, word).toBe(word.length);
     }
   });
@@ -398,12 +398,12 @@ describe("structuredBlocks — hyphens at line ends", () => {
     expect(n.text).toContain("state-of-theart");
     const pages = [pageText(1, n.items)];
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
-    expect(blocks[0].text).toBe("a word broken by the typesetter into hyphenation is mended, while a compound such as state-of-the-art keeps the hyphen it was written with.");
+    expect(blocks[0]!.text).toBe("a word broken by the typesetter into hyphenation is mended, while a compound such as state-of-the-art keeps the hyphen it was written with.");
     // The kept hyphen is the run's own glyph, so a highlight over it is a highlight over the page.
-    expectRunsToMatch(blocks[0], pages);
-    const hyphenAt = blocks[0].text.indexOf("the-art") + 3;
-    const run = blocks[0].runs.find((r) => r.at <= hyphenAt && hyphenAt < r.at + r.length)!;
-    expect(pages[0].items[run.item].str[run.from + hyphenAt - run.at]).toBe("-");
+    expectRunsToMatch(blocks[0]!, pages);
+    const hyphenAt = blocks[0]!.text.indexOf("the-art") + 3;
+    const run = blocks[0]!.runs.find((r) => r.at <= hyphenAt && hyphenAt < r.at + r.length)!;
+    expect(pages[0]!.items[run.item]!.str[run.from + hyphenAt - run.at]).toBe("-");
   });
 
   it("keeps a hyphen the document itself writes ('in-depth') and mends one it writes fused", () => {
@@ -413,7 +413,7 @@ describe("structuredBlocks — hyphens at line ends", () => {
       { text: "linear again.", x: 72, y: 128 },
     ]);
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), [pageText(1, n.items)]);
-    expect(blocks[0].text).toBe("an in-depth study, then in-depth again; a nonlinear model, and nonlinear again.");
+    expect(blocks[0]!.text).toBe("an in-depth study, then in-depth again; a nonlinear model, and nonlinear again.");
   });
 
   it("does not count a word Zotero mended at a line end as the document writing it fused", () => {
@@ -427,7 +427,7 @@ describe("structuredBlocks — hyphens at line ends", () => {
       { text: "ated word.", x: 72, y: 142 },
     ]);
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), [pageText(1, n.items)]);
-    expect(blocks[0].text).toBe("we train a near-optimal policy in the near-equilibrium regime, with a self-attention layer and a hyphenated word.");
+    expect(blocks[0]!.text).toBe("we train a near-optimal policy in the near-equilibrium regime, with a self-attention layer and a hyphenated word.");
   });
 
   it("mends a word broken after an opening bracket", () => {
@@ -437,7 +437,7 @@ describe("structuredBlocks — hyphens at line ends", () => {
       { text: "ure” differ.", x: 72, y: 128 },
     ]);
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), [pageText(1, n.items)]);
-    expect(blocks[0].text).toBe("the counts (Table 1) and the “figure” differ.");
+    expect(blocks[0]!.text).toBe("the counts (Table 1) and the “figure” differ.");
   });
 
   it("decides the hyphen that ends one part of a paragraph by the document's usage too", () => {
@@ -453,8 +453,8 @@ describe("structuredBlocks — hyphens at line ends", () => {
       paragraph(2, [b], { previousPart: [0], nextPart: [2] }),
       paragraph(3, [c], { previousPart: [1] }),
     ], 3), pages);
-    expect(blocks[0].text).toBe("a finite-dimensional bound holds in the finite-sample case, and is positive.");
-    expectRunsToMatch(blocks[0], pages);
+    expect(blocks[0]!.text).toBe("a finite-dimensional bound holds in the finite-sample case, and is positive.");
+    expectRunsToMatch(blocks[0]!, pages);
   });
 });
 
@@ -487,8 +487,8 @@ describe("structuredBlocks — formulas", () => {
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
     // "+ 0.5" goes with the formula: letterless, on its line, and TeX sets the operators
     // and digits of a formula in the text face with word-sized spaces around them.
-    expect(blocks[0].text).toBe("where is the value of in the");
-    expectRunsToMatch(blocks[0], pages);
+    expect(blocks[0]!.text).toBe("where is the value of in the");
+    expectRunsToMatch(blocks[0]!, pages);
   });
 
   it("keeps the full stop and the comma that close a formula, as arXiv's HTML does", () => {
@@ -514,8 +514,8 @@ describe("structuredBlocks — formulas", () => {
     const n = { text: "the value of x, then of y = 1.5. The next", anchor: { textMap: JSON.stringify(runs) } };
     const pages = [pageText(1, items, fonts)];
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
-    expect(blocks[0].text).toBe("the value of, then of. The next");
-    expectRunsToMatch(blocks[0], pages);
+    expect(blocks[0]!.text).toBe("the value of, then of. The next");
+    expectRunsToMatch(blocks[0]!, pages);
   });
 
   it("closes up the space a formula left out leaves before punctuation, as the web walker does", () => {
@@ -536,8 +536,8 @@ describe("structuredBlocks — formulas", () => {
     const n = { text: "it holds for x f . A word .", anchor: { textMap: JSON.stringify(runs) } };
     const pages = [pageText(1, items, fonts)];
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
-    expect(blocks[0].text).toBe("it holds for x. A word .");
-    expectRunsToMatch(blocks[0], pages);
+    expect(blocks[0]!.text).toBe("it holds for x. A word .");
+    expectRunsToMatch(blocks[0]!, pages);
   });
 
   it("leaves out a formula's letter that pdf.js spells otherwise, by the face it is set in", () => {
@@ -551,8 +551,8 @@ describe("structuredBlocks — formulas", () => {
     const n = { text: "which determines ψ entirely.", anchor: { textMap: JSON.stringify([a.run, mRun, b.run]) } };
     const pages = [pageText(1, [a.item, m, b.item], fonts)];
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
-    expect(blocks[0].text).toBe("which determines entirely.");
-    expectRunsToMatch(blocks[0], pages);
+    expect(blocks[0]!.text).toBe("which determines entirely.");
+    expectRunsToMatch(blocks[0]!, pages);
   });
 
   it("leaves out what TeX sets of a formula in the text face: operator names, capital Greek, sub- and superscripts", () => {
@@ -583,8 +583,8 @@ describe("structuredBlocks — formulas", () => {
     const n = { text, anchor: { textMap: JSON.stringify(runs) } };
     const pages = [pageText(1, items, fonts)];
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
-    expect(blocks[0].text).toBe("the bound is finite, and is the score of in the log of the data.");
-    expectRunsToMatch(blocks[0], pages);
+    expect(blocks[0]!.text).toBe("the bound is finite, and is the score of in the log of the data.");
+    expectRunsToMatch(blocks[0]!, pages);
   });
 
   it("keeps a number the text writes beside a formula, as arXiv's HTML does", () => {
@@ -611,8 +611,8 @@ describe("structuredBlocks — formulas", () => {
     const n = { text: "the pores are 11.3 µm wide, and by Theorem 2, x is bounded by 1,024 n.", anchor: { textMap: JSON.stringify(runs) } };
     const pages = [pageText(1, items, fonts)];
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
-    expect(blocks[0].text).toBe("the pores are 11.3 m wide, and by Theorem 2, is bounded by 1,024.");
-    expectRunsToMatch(blocks[0], pages);
+    expect(blocks[0]!.text).toBe("the pores are 11.3 m wide, and by Theorem 2, is bounded by 1,024.");
+    expectRunsToMatch(blocks[0]!, pages);
   });
 
   it("leaves out the characters BabelDOC takes for a formula's in any face: operators, Greek, stray accents", () => {
@@ -672,8 +672,8 @@ describe("structuredBlocks — formulas", () => {
     const n = { text, anchor: { textMap: JSON.stringify(runs) } };
     const pages = [pageText(1, items, fonts)];
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
-    expect(blocks[0].text).toBe("so all pairs of CDM fits of J1351+0039 on 2048 × 2048 pixels of an α-helix run in C++ with seed + 1 at 5 μm, or 5–14μ m, where is small. Thus is fixed, and that holds for Müller.");
-    expectRunsToMatch(blocks[0], pages);
+    expect(blocks[0]!.text).toBe("so all pairs of CDM fits of J1351+0039 on 2048 × 2048 pixels of an α-helix run in C++ with seed + 1 at 5 μm, or 5–14μ m, where is small. Thus is fixed, and that holds for Müller.");
+    expectRunsToMatch(blocks[0]!, pages);
   });
 
   it("leaves out a letter set alone in a bold face: \\mathbf", () => {
@@ -718,8 +718,8 @@ describe("structuredBlocks — formulas", () => {
     const n = { text, anchor: { textMap: JSON.stringify(runs) } };
     const pages = [pageText(1, items, fonts)];
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
-    expect(blocks[0].text).toBe("Let denote the state and the readouts, the matrix, and R the ratio, as in Part A under (A1) and (B) of Appendix C with a b side.");
-    expectRunsToMatch(blocks[0], pages);
+    expect(blocks[0]!.text).toBe("Let denote the state and the readouts, the matrix, and R the ratio, as in Part A under (A1) and (B) of Appendix C with a b side.");
+    expectRunsToMatch(blocks[0]!, pages);
   });
 
   it("leaves out what is set in a face the page uses only for formulas", () => {
@@ -760,8 +760,8 @@ describe("structuredBlocks — formulas", () => {
     const n = { text, anchor: { textMap: JSON.stringify(runs) } };
     const pages = [pageText(1, items, fonts)];
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
-    expect(blocks[0].text).toBe("We train the network for up to epochs at per second, keeping bounded, as the Results section shows; lr is tuned, and otherwise the et al. method holds.");
-    expectRunsToMatch(blocks[0], pages);
+    expect(blocks[0]!.text).toBe("We train the network for up to epochs at per second, keeping bounded, as the Results section shows; lr is tuned, and otherwise the et al. method holds.");
+    expectRunsToMatch(blocks[0]!, pages);
   });
 
   it("keeps a number set against the relation that ends a formula, as TeX sets a typed one", () => {
@@ -790,8 +790,8 @@ describe("structuredBlocks — formulas", () => {
     const n = { text, anchor: { textMap: JSON.stringify(runs) } };
     const pages = [pageText(1, items, fonts)];
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
-    expect(blocks[0].text).toBe("recorded at a 10 kHz rate, and the bound holds.");
-    expectRunsToMatch(blocks[0], pages);
+    expect(blocks[0]!.text).toBe("recorded at a 10 kHz rate, and the bound holds.");
+    expectRunsToMatch(blocks[0]!, pages);
   });
 
   it("keeps the number a cross-reference names when a formula follows it", () => {
@@ -819,8 +819,8 @@ describe("structuredBlocks — formulas", () => {
     const n = { text, anchor: { textMap: JSON.stringify(runs) } };
     const pages = [pageText(1, items, fonts)];
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
-    expect(blocks[0].text).toBe("by Proposition 1 is bounded, and by Eq. (3) holds, while a stays.");
-    expectRunsToMatch(blocks[0], pages);
+    expect(blocks[0]!.text).toBe("by Proposition 1 is bounded, and by Eq. (3) holds, while a stays.");
+    expectRunsToMatch(blocks[0]!, pages);
   });
 
   it("leaves out a name set against the bracket of a formula's argument", () => {
@@ -852,8 +852,8 @@ describe("structuredBlocks — formulas", () => {
     const n = { text, anchor: { textMap: JSON.stringify(runs) } };
     const pages = [pageText(1, items, fonts)];
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
-    expect(blocks[0].text).toBe("the edge in is kept, the model(s) agree, and is small.");
-    expectRunsToMatch(blocks[0], pages);
+    expect(blocks[0]!.text).toBe("the edge in is kept, the model(s) agree, and is small.");
+    expectRunsToMatch(blocks[0]!, pages);
   });
 
   it("leaves out the part of a formula a hyphen joins to a word, and keeps the word: \"$(2+1)$-dimensional\"", () => {
@@ -946,8 +946,8 @@ describe("structuredBlocks — formulas", () => {
       const n = { text: text.replace(/  +/g, " "), anchor: { textMap: JSON.stringify(runs) } };
       const pages = [pageText(1, items, fonts)];
       const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
-      expectRunsToMatch(blocks[0], pages);
-      return blocks[0].text;
+      expectRunsToMatch(blocks[0]!, pages);
+      return blocks[0]!.text;
     };
     // Word's own equations are set in Cambria Math.
     expect(read("CambriaMath")).toBe("the resetting parameters and are drawn at random where holds.");
@@ -958,7 +958,7 @@ describe("structuredBlocks — formulas", () => {
   it("changes nothing in a document with no mathematics face", () => {
     const n = node(1, [{ text: "a plain sentence with x = 5 and (2 + 0.5) in it.", x: 72, y: 100 }]);
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), [pageText(1, n.items, { f_text: "Calibri" })]);
-    expect(blocks[0].text).toBe("a plain sentence with x = 5 and (2 + 0.5) in it.");
+    expect(blocks[0]!.text).toBe("a plain sentence with x = 5 and (2 + 0.5) in it.");
   });
 });
 
@@ -1011,8 +1011,8 @@ describe("structuredBlocks — the document", () => {
       paragraph(1, [node(1, [{ text: "A body paragraph after the notes.", x: 72, y: 300 }])]),
     ]), pages);
     expect(blocks).toHaveLength(2);
-    expect(blocks[0].text).toMatch(/^the severity of those challenges varied by location\./);
-    expect(blocks[1].text).toBe("A body paragraph after the notes.");
+    expect(blocks[0]!.text).toMatch(/^the severity of those challenges varied by location\./);
+    expect(blocks[1]!.text).toBe("A body paragraph after the notes.");
   });
 
   it("makes a paragraph carried over a page one block, with runs on both pages", () => {
@@ -1024,9 +1024,9 @@ describe("structuredBlocks — the document", () => {
       paragraph(2, [second], { previousPart: [0] }),
     ], 2), pages);
     expect(blocks).toHaveLength(1);
-    expect(blocks[0].text).toBe("the paragraph begins on one page and ends on the next.");
-    expect(blocks[0].runs.map((r) => r.page)).toEqual([1, 2]);
-    expectRunsToMatch(blocks[0], pages);
+    expect(blocks[0]!.text).toBe("the paragraph begins on one page and ends on the next.");
+    expect(blocks[0]!.runs.map((r) => r.page)).toEqual([1, 2]);
+    expectRunsToMatch(blocks[0]!, pages);
   });
 
   it("marks a break after a bibliography entry and at a new page, and none at an equation", () => {
@@ -1087,7 +1087,7 @@ describe("structuredBlocks — text cut off by a display equation", () => {
     const eqs = [display(1, 130), display(1, 190), display(1, 250)];
     const pages = [pageText(1, [...lead.items, ...first.items, ...then.items, ...second.items, ...eqs.flatMap((e) => e.items)])];
     const blocks = structuredBlocks(structure([
-      paragraph(1, [lead]), eqs[0].block, paragraph(1, [first]), eqs[1].block, paragraph(1, [then]), eqs[2].block, paragraph(1, [second]),
+      paragraph(1, [lead]), eqs[0]!.block, paragraph(1, [first]), eqs[1]!.block, paragraph(1, [then]), eqs[2]!.block, paragraph(1, [second]),
     ]), pages);
     expect(blocks.map((b) => b.text.split(" ")[0])).toEqual(["The", "Fa0", "Then", "Sa0"]);
     expect(blocks.map((b) => b.runsOn === true)).toEqual([true, false, true, false]);
@@ -1121,7 +1121,7 @@ describe("structuredBlocks — text cut off by a display equation", () => {
       paragraph(1, [tail]), paragraph(1, [lead]), eq.block, paragraph(2, [after]), paragraph(2, [ended]), paragraph(3, [fresh]),
     ], 3), pages);
     expect(blocks.map((b) => b.columnBreak)).toEqual([true, false, false, false, true]);
-    expect(blocks[1].runsOn).toBe(true);
+    expect(blocks[1]!.runsOn).toBe(true);
   });
 
   it("marks no break after a paragraph that was carried onto the page it ends on", () => {
@@ -1203,7 +1203,7 @@ describe("structuredBlocks — a manuscript with numbered lines", () => {
     const stamp = node(1, [{ text: "This manuscript is a preprint.", x: 72, y: 760 }]);
     const pages = [pageText(1, [...one.flatMap((l) => l.items), ...stamp.items]), pageText(2, two.flatMap((l) => l.items))];
     const blocks = structuredBlocks(structure([asList(one), paragraph(1, [stamp], { flowClass: "excluded" }), asList(two)], 2), pages);
-    expect(blocks.map((b) => b.text)).toEqual([...PARAGRAPHS.slice(0, 2), [LINES[7].text, fill("i", 90), head.text].join(" ")]);
+    expect(blocks.map((b) => b.text)).toEqual([...PARAGRAPHS.slice(0, 2), [LINES[7]!.text, fill("i", 90), head.text].join(" ")]);
   });
 
   it("reads a page of numbered prose Zotero took for a table", () => {

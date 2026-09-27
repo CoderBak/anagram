@@ -49,8 +49,8 @@ describe("the colour", () => {
     for (const dark of [false, true]) {
       const steps = Array.from({ length: SCALE_STEPS + 1 }, (_, i) => lightness(scaleColor(i / SCALE_STEPS, dark)));
       for (let i = 1; i < steps.length; i++) {
-        if (dark) expect(steps[i]).toBeGreaterThan(steps[i - 1]);
-        else expect(steps[i]).toBeLessThan(steps[i - 1]);
+        if (dark) expect(steps[i]).toBeGreaterThan(steps[i - 1]!);
+        else expect(steps[i]).toBeLessThan(steps[i - 1]!);
       }
     }
   });
@@ -72,7 +72,7 @@ describe("the doubt", () => {
   });
 
   it("orders verdicts by how split they are, with no threshold between them", () => {
-    const [split, leaning, sure] = [[15, 33, 18, 34], [61, 29, 7, 3], [1, 5, 9, 85]].map((p) => spread(result(p).probs));
+    const [split, leaning, sure] = [[15, 33, 18, 34], [61, 29, 7, 3], [1, 5, 9, 85]].map((p) => spread(result(p).probs)) as [number, number, number];
     expect(split).toBeGreaterThan(leaning);
     expect(leaning).toBeGreaterThan(sure);
   });

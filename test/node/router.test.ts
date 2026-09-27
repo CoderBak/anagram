@@ -108,8 +108,8 @@ describe("router provenance", () => {
     client.setModel(B); // the identity flips while the batch is in the air
     client.release(A); // …but batch #1 was produced by A
     const [r1, r2] = await Promise.all([first, second]);
-    expect(r1.results[0].degraded).toBeUndefined();
-    expect(r2.results[0].degraded).toBeUndefined();
+    expect(r1.results[0]!.degraded).toBeUndefined();
+    expect(r2.results[0]!.degraded).toBeUndefined();
     expect(r1.model).toEqual(A); // provenance = producer, not the post-hoc identity
     // A third request must not hang on a stale in-flight entry and is served by B.
     const third = await Promise.race([
@@ -140,10 +140,10 @@ describe("router provenance", () => {
     const router = createRouter(client);
     client.fail(); // a busy daemon: the one failure that is worth sending again
     const r = await router.handle(req(["will fail"]));
-    expect(r.results[0].degraded).toBe(true);
+    expect(r.results[0]!.degraded).toBe(true);
     client.release();
     const again = await router.handle(req(["will fail"]));
-    expect(again.results[0].degraded).toBeUndefined();
+    expect(again.results[0]!.degraded).toBeUndefined();
     expect(client.calls.length).toBe(3); // 2 attempts (retry) + 1 fresh
   });
 
@@ -151,9 +151,9 @@ describe("router provenance", () => {
     const client = fakeClient(A);
     const router = createRouter(client);
     const r = await router.handle(req(["dup", "dup", "other"]));
-    expect(client.calls[0].length).toBe(2);
+    expect(client.calls[0]!.length).toBe(2);
     expect(r.results.map((x) => x.id)).toEqual(["b0", "b1", "b2"]);
-    expect(r.results[0].bucket).toBe(r.results[1].bucket);
+    expect(r.results[0]!.bucket).toBe(r.results[1]!.bucket);
   });
 
   it("viewport batches run before background ones", async () => {
@@ -171,7 +171,7 @@ describe("router provenance", () => {
     expect(client.calls.length).toBe(4);
     client.release();
     await new Promise((r) => setTimeout(r, 10));
-    expect(client.calls[4][0].text).toBe("vp");
+    expect(client.calls[4]![0]!.text).toBe("vp");
     client.release();
     await Promise.all([...bg, vp]);
   });
@@ -211,8 +211,8 @@ describe("router queueing", () => {
     const [r1, r2] = await Promise.all([first, second]);
     await Promise.all(busy);
     expect(client.calls.length).toBe(5); // the waiting batch was joined, not duplicated
-    expect(r1.results[0].degraded).toBeUndefined();
-    expect(r2.results[0].degraded).toBeUndefined();
+    expect(r1.results[0]!.degraded).toBeUndefined();
+    expect(r2.results[0]!.degraded).toBeUndefined();
   });
 
   it("a viewport request promotes the queued batch it joins", async () => {
@@ -228,7 +228,7 @@ describe("router queueing", () => {
     await settle();
     client.releaseOne(); // one slot frees; the promoted batch must take it
     await settle();
-    expect(client.calls[4][0].text).toBe("q2");
+    expect(client.calls[4]![0]!.text).toBe("q2");
     client.release();
     await Promise.all([...busy, ...queued, vp]);
   });
@@ -245,13 +245,13 @@ describe("router queueing", () => {
       new Promise<"timeout">((r) => setTimeout(() => r("timeout"), 2000)),
     ]);
     expect(both).not.toBe("timeout");
-    const [r1, r2] = both as ScoreBatchResponse[];
-    expect(r1.results[0].degraded).toBe(true);
-    expect(r2.results[0].degraded).toBe(true);
+    const [r1, r2] = both as [ScoreBatchResponse, ScoreBatchResponse];
+    expect(r1.results[0]!.degraded).toBe(true);
+    expect(r2.results[0]!.degraded).toBe(true);
     expect(client.calls.length).toBe(2); // one attempt plus the retry; the joiner added none
     client.release();
     const again = await router.handle(req(["doomed paragraph"]));
-    expect(again.results[0].degraded).toBeUndefined(); // nothing degraded was cached
+    expect(again.results[0]!.degraded).toBeUndefined(); // nothing degraded was cached
     expect(client.calls.length).toBe(3);
   });
 });
@@ -264,7 +264,7 @@ describe("router retry", () => {
     // sending it again only doubles the load on a daemon already answering.
     client.fail(Object.assign(new Error("malformed /score response"), { name: "ProtocolError" }));
     const r = await router.handle(req(["a paragraph the daemon mis-answers"]));
-    expect(r.results[0].degraded).toBe(true);
+    expect(r.results[0]!.degraded).toBe(true);
     expect(client.calls.length).toBe(1);
   });
 
@@ -302,7 +302,7 @@ describe("router retry", () => {
   it("answers from the second attempt after the local queue turned the first away", async () => {
     const { client, ops } = nativeClient(() => new NativeTransportError("busy", "Too many pending requests"));
     const r = await createRouter(client).handle(req(["a paragraph the local queue turned away"]));
-    expect(r.results[0].degraded).toBeUndefined();
+    expect(r.results[0]!.degraded).toBeUndefined();
     expect(r.model).toEqual(A);
     expect(ops()).toEqual(["health", "score", "score"]);
   });
@@ -310,7 +310,7 @@ describe("router retry", () => {
   it("answers from the second attempt after the first ran out of time on a live port", async () => {
     const { client, ops } = nativeClient(() => new NativeTransportError("native_timeout", "Local component did not answer in time"));
     const r = await createRouter(client).handle(req(["a paragraph queued behind a slow batch"]));
-    expect(r.results[0].degraded).toBeUndefined();
+    expect(r.results[0]!.degraded).toBeUndefined();
     expect(client.isUp()).toBe(true);
     expect(ops()).toEqual(["health", "score", "health", "score"]); // health is read again first
   });
@@ -323,7 +323,7 @@ describe("router retry", () => {
       const work = createRouter(client).handle(req(["a paragraph whose port went away"]));
       await vi.advanceTimersByTimeAsync(4000);
       const r = await work;
-      expect(r.results[0].degraded).toBeUndefined();
+      expect(r.results[0]!.degraded).toBeUndefined();
       expect(ops()).toEqual(["health", "score", "health", "score"]); // health is read again first
     } finally { vi.useRealTimers(); }
   });
@@ -334,7 +334,7 @@ describe("router retry", () => {
     client.fail(new NativeTransportError("cancelled", "Cancelled"));
     const result = await router.handle(req(["cancelled work"]));
     expect(client.calls).toHaveLength(1);
-    expect(result.results[0].degraded).toBe(true);
+    expect(result.results[0]!.degraded).toBe(true);
   });
 });
 
@@ -343,9 +343,9 @@ describe("router invalidation, bounded admission and fairness", () => {
     const client = fakeClient(A), router = createRouter(client);
     const first = await router.handle(req(["range 1–2–3 costs \\\\%"]));
     await router.handle(req(["range\u00a01–2–3 cos\u00adts %"]));
-    expect(first.results[0].degraded).toBeUndefined();
+    expect(first.results[0]!.degraded).toBeUndefined();
     expect(client.calls).toHaveLength(1);
-    expect(client.calls[0][0].text).toBe("range 1–2–3 costs %");
+    expect(client.calls[0]![0]!.text).toBe("range 1–2–3 costs %");
     await router.handle(req(["range 1-2-3 costs %"]));
     expect(client.calls).toHaveLength(2);
   });
@@ -383,7 +383,7 @@ describe("router invalidation, bounded admission and fairness", () => {
     let generation = 1; client.revision = () => generation;
     client.hold(); const work = router.handle(req(["same runtime label"]));
     await settle(); generation++; client.release(A);
-    expect((await work).results[0].degraded).toBe(true);
+    expect((await work).results[0]!.degraded).toBe(true);
     await router.handle(req(["same runtime label"]));
     expect(client.calls).toHaveLength(2);
   });
@@ -408,7 +408,7 @@ describe("router invalidation, bounded admission and fairness", () => {
     client.ready = () => ready.promise;
     const controller = new AbortController();
     const work = router.handle(req(["abandoned page"]), { documentKey: "doc", signal: controller.signal });
-    controller.abort(); expect((await work).results[0].degraded).toBe(true);
+    controller.abort(); expect((await work).results[0]!.degraded).toBe(true);
     ready.resolve(); await settle(); expect(client.calls).toHaveLength(0);
   });
 
@@ -420,8 +420,8 @@ describe("router invalidation, bounded admission and fairness", () => {
     await settle();
     const second = router.handle(req(["shared"]), { documentKey: "second" });
     await settle(); cancel.abort();
-    expect((await first).results[0].degraded).toBe(true);
-    client.release(); expect((await second).results[0].degraded).toBeUndefined();
+    expect((await first).results[0]!.degraded).toBe(true);
+    client.release(); expect((await second).results[0]!.degraded).toBeUndefined();
     expect(client.calls).toHaveLength(1);
   });
 
@@ -431,7 +431,7 @@ describe("router invalidation, bounded admission and fairness", () => {
     const many = Array.from({ length: 6 }, (_, index) => router.handle(req([`one ${index}`]), { documentKey: "one" }));
     await settle(); expect(client.calls).toHaveLength(2);
     const other = router.handle(req(["two"]), { documentKey: "two" });
-    await settle(); expect(client.calls[2][0].text).toBe("two");
+    await settle(); expect(client.calls[2]![0]!.text).toBe("two");
     client.release(); await Promise.all([...many, other]);
   });
 
@@ -440,13 +440,13 @@ describe("router invalidation, bounded admission and fairness", () => {
     const client = fakeClient(A), router = createRouter(client);
     client.hold();
     const huge = await router.handle(req(["x".repeat(ROUTER_LIMITS.documentChars + 1)]), { documentKey: "one" });
-    expect(huge.results[0].degraded).toBe(true); expect(client.calls).toHaveLength(0);
+    expect(huge.results[0]!.degraded).toBe(true); expect(client.calls).toHaveLength(0);
     const active = Array.from({ length: 4 }, (_, index) => router.handle(req([String(index).repeat(250_000)]), { documentKey: `doc${index}` }));
     await settle();
-    expect((await router.handle(req(["overflow"]), { documentKey: "extra" })).results[0].degraded).toBe(true);
+    expect((await router.handle(req(["overflow"]), { documentKey: "extra" })).results[0]!.degraded).toBe(true);
     expect(client.calls).toHaveLength(4);
     client.release(); await Promise.all(active);
-    expect((await router.handle(req(["quota released"]), { documentKey: "extra" })).results[0].degraded).toBeUndefined();
+    expect((await router.handle(req(["quota released"]), { documentKey: "extra" })).results[0]!.degraded).toBeUndefined();
   });
 });
 
@@ -479,7 +479,7 @@ it("limits queued item counts, reclaims cancelled capacity, and never sends aban
   const cancel = new AbortController();
   const queued = router.handle(req(["cancelled queued"]), {documentKey:"cancel me", signal: cancel.signal});
   await settle(); cancel.abort();
-  expect((await queued).results[0].degraded).toBe(true);
+  expect((await queued).results[0]!.degraded).toBe(true);
   client.release(); await Promise.all(held);
   expect(client.calls.flat().some((block) => block.text === "cancelled queued")).toBe(false);
 });
@@ -512,7 +512,7 @@ it("ages waiting background work ahead of a later stream of viewport requests", 
     now += 3000;
     const recent = router.handle(req(["new viewport"], "viewport")); await settle();
     client.releaseOne(); await settle();
-    expect(client.calls[4][0].text).toBe("old background");
+    expect(client.calls[4]![0]!.text).toBe("old background");
     client.release(); await Promise.all([...held, old, recent]);
   } finally { client.release(); clock.mockRestore(); }
 });
@@ -523,6 +523,6 @@ it("bounds all queued block references even when requests contain short text", a
   const held = Array.from({length:4}, (_, doc) => router.handle(req(Array.from({length:256}, (_, index)=>`d${doc} b${index}`)),{documentKey:`bounded ${doc}`}));
   await settle();
   const extra = await router.handle(req(["one more"]),{documentKey:"other"});
-  expect(extra.results[0].degraded).toBe(true); expect(client.calls).toHaveLength(4);
+  expect(extra.results[0]!.degraded).toBe(true); expect(client.calls).toHaveLength(4);
   client.release(); await Promise.all(held);
 });

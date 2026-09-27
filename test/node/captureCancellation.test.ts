@@ -90,7 +90,7 @@ async function page() {
   controller.start();
   // Settings resolve before the real orchestrator completes its first empty collect.
   for (let i = 0; i < 10; i++) await Promise.resolve();
-  return {controller, send: calls.sends[0], cache: calls.caches[0]};
+  return {controller, send: calls.sends[0]!, cache: calls.caches[0]!};
 }
 
 describe("capture cancellation across language detection and replies", () => {
@@ -136,7 +136,7 @@ describe("capture cancellation across language detection and replies", () => {
     const {controller, send} = await page();
     try {
       expect(await send([unit], "viewport")).toHaveLength(1);
-      const report = await calls.reports[0]();
+      const report = await calls.reports[0]!();
       expect(report).toContain("model");
     } finally {controller.stop();}
   });
@@ -152,13 +152,13 @@ describe("capture cancellation across language detection and replies", () => {
       }));
       expect(await send([next], "viewport")).toEqual([]);
       expect(cache.size()).toBe(0);
-      expect(await calls.reports[0]()).toContain("replacement-model");
+      expect(await calls.reports[0]!()).toContain("replacement-model");
     } finally {controller.stop();}
   });
   it("says a page with nothing long enough had too little text, not that nothing was flagged", async () => {
     const {controller} = await page();
     try {
-      const report = await calls.reports[0]();
+      const report = await calls.reports[0]!();
       expect(report).toContain("Too little text to judge: no passage reached the 75 words the model needs for a verdict.");
       expect(report).not.toContain("No paragraphs were flagged");
       // Nothing was sent, so the engine did not fail to answer either.

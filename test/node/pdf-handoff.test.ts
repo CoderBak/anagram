@@ -177,7 +177,7 @@ describe("reading the document out of the tab", () => {
     const fetcher = vi.fn().mockResolvedValue(streamed([pdfOf(64)]));
     vi.stubGlobal("fetch", fetcher);
     await streamPdfBytes("https://example.test/a.pdf", () => undefined, { cap: 1024 });
-    expect(fetcher.mock.calls[0][1]).toMatchObject({ credentials: "include", cache: "force-cache" });
+    expect(fetcher.mock.calls[0]![1]).toMatchObject({ credentials: "include", cache: "force-cache" });
   });
 });
 
@@ -253,7 +253,7 @@ describe("asking a tab with no content script in it", () => {
     expect(calls).toEqual(["inject 7", "connect 7"]);
     // An explicit click is answered: the reading mode opens and says what happened.
     expect(updated).toHaveLength(1);
-    expect(updated[0].url).toMatch(/&err=read$/);
+    expect(updated[0]!.url).toMatch(/&err=read$/);
 
     // The automatic route is not a click, so a tab it cannot read is left exactly as it is.
     updated.length = 0;

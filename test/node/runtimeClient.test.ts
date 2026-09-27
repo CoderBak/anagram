@@ -29,12 +29,12 @@ describe("runtime contract validation", () => {
     const s = snapshot(); s.benchmark.results = [result(1), { ...result(8), accelerator_bytes: null }];
     const parsed = parseRuntime(s)!;
     expect(parsed.benchmark.results).toHaveLength(2);
-    expect(parsed.benchmark.results[0].accelerator_bytes).toBeUndefined();
-    expect(parsed.benchmark.results[1].accelerator_bytes).toBeNull();
+    expect(parsed.benchmark.results[0]!.accelerator_bytes).toBeUndefined();
+    expect(parsed.benchmark.results[1]!.accelerator_bytes).toBeNull();
   });
   it("accepts an errored measurement without pretending its metrics are zero", () => {
     const s = snapshot(); s.benchmark.results = [{ candidate_id: "torch:cpu:fp32", status: "error", error: "load failed", latency_ms: null, samples: null, batch_size: 1 }];
-    expect(parseRuntime(s)?.benchmark.results[0].latency_ms).toBeNull();
+    expect(parseRuntime(s)?.benchmark.results[0]!.latency_ms).toBeNull();
   });
   it.each([
     () => snapshot({ schema_version: 2 as 1 }),

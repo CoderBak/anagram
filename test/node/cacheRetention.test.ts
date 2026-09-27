@@ -36,8 +36,8 @@ describe("how long a verdict is kept", () => {
     expect(store.rows.has(recent)).toBe(true);
     // The sweep is thirty days back, and it runs once per worker lifetime, not per call.
     expect(store.cutoffs.length).toBe(1);
-    expect(Date.now() - store.cutoffs[0]).toBeGreaterThan(29 * DAY);
-    expect(Date.now() - store.cutoffs[0]).toBeLessThan(31 * DAY);
+    expect(Date.now() - store.cutoffs[0]!).toBeGreaterThan(29 * DAY);
+    expect(Date.now() - store.cutoffs[0]!).toBeLessThan(31 * DAY);
     await cache.getMany([recent]);
     expect(store.cutoffs.length).toBe(1);
     expect(hits.has(old)).toBe(false); // expired rows are never returned, even before pruning
