@@ -54,13 +54,14 @@ existed; each `*:oneclick` script runs the same command as that flavor.
 | Required permissions beyond reading | `nativeMessaging` | `offscreen` (Chrome), `unlimitedStorage` |
 | Optional hosts beyond sites and files | none | the model download's, `MODEL_HOSTS` in `lib/access/patterns.ts` |
 | Name, Firefox ID | Anagram for Chrome/Firefox, `anagram@coderbak.dev` | Anagram (in-browser), `anagram-oneclick@coderbak.dev` |
+| Browsers | Chrome, Firefox 140+ | Chrome 137+ (JSPI), Firefox 153+; Chrome's extension pages cross-origin isolated |
 | Build output | `output/chrome-mv3`, `output/firefox-mv2` | `output/oneclick-chrome-mv3`, `output/oneclick-firefox-mv2` |
 | Release | `dist/anagram-{chrome,firefox}-<ver>.zip`, component, installers | `dist/anagram-oneclick-{chrome,firefox}-<ver>.zip` only |
 
 ```sh
 npm run build:oneclick             # build:oneclick:firefox, build:test:oneclick (output-test/oneclick-*)
 npm run typecheck:oneclick
-npm run test:oneclick              # the test build in Chromium: worker, setup page and Settings, EN and ZH
+npm run test:oneclick              # setup from its button in Chromium, the model hosts served locally (test/webengine/model-server.mjs), popup and panel, EN and ZH; --real downloads the real files to Ready
 npm run lint:firefox:oneclick
 npm run zip:oneclick               # zip:oneclick:firefox
 npm run release:oneclick           # after npm run release, which empties dist/
@@ -107,7 +108,7 @@ ANAGRAM_EDITLENS_DATA=<EditLens checkout + data> ANAGRAM_MODELKIT=<modelkit> ANA
 node test/webengine/engine-browser.mjs   # the in-browser engine's worker build on a tiny model in a temporary Chromium, under the extension's CSP: download, WebGPU and WASM, idle unload, restart, deletion
 ANAGRAM_MODELKIT=<modelkit> ANAGRAM_LID_MODEL=<lid.176.ftz> ANAGRAM_PARITY_SAMPLE=<sample.json> node test/webengine/parity.mjs   # the in-browser engine (WebGPU and WASM) against the official probabilities and the native counts, with speed and memory, in a Chromium profile under the temp directory (--clean removes it; --firefox <binary> for a Firefox ESR); the sample comes from test/webengine/parity-sample.py; never in CI
 ANAGRAM_MODELKIT=<modelkit> ANAGRAM_LID_MODEL=<lid.176.ftz> node test/webengine/extension.mjs   # the oneclick build scoring for real through background, offscreen document and worker, model files seeded into OPFS from a local server; --isolate tries the cross-origin isolation keys; never in CI
-ANAGRAM_FIREFOX=<path to firefox> node test/webengine/firefox-extension.mjs   # the oneclick Firefox build: its background page hosts the engine's worker, which answers the contract's status without model files
+ANAGRAM_FIREFOX=<path to firefox 153+> node test/webengine/firefox-extension.mjs   # the oneclick Firefox build: its background page hosts the engine's worker, which answers the contract's status without model files
 ```
 
 Backend and installer tests need a Python venv with the test dependencies only:
