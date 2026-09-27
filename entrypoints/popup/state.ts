@@ -6,6 +6,7 @@
 // tab. The choice is a pure function so every combination is provable without a browser
 // (test/node/popupState.test.ts) — the popup itself only paints what comes back.
 import type { MessageKey } from "../../lib/i18n";
+import type { EngineSetup } from "../../lib/messaging/protocol";
 
 /** What the one button does. */
 export type PopupAction =
@@ -18,7 +19,9 @@ export type PopupAction =
   /** nothing here can be read — open the reading mode empty, for a file on this computer */
   | "openReader"
   /** the local engine is unavailable — open Settings */
-  | "retry";
+  | "retry"
+  /** the in-browser engine is not set up yet — open its setup page */
+  | "setup";
 
 /** Which line goes above the button. */
 export type PopupStatus =
@@ -34,6 +37,8 @@ export type PopupStatus =
   | "noTab"
   /** the local engine is unavailable — show its state and the Settings action */
   | "daemon"
+  /** the in-browser engine is not set up yet, or is downloading its model */
+  | "setup"
   | "fileAccess"
   /** the button says everything there is to say */
   | "none";
@@ -54,6 +59,8 @@ export interface PageFacts {
   tab: { enabled: boolean; translated?: boolean } | null;
   /** The local daemon. Everything else is beside the point while this is not "up". */
   daemon: "up" | "down" | "mismatch";
+  /** The in-browser engine's setup, while that is why it is down (the oneclick flavor only). */
+  setup?: EngineSetup | null;
 }
 
 export interface PopupLead {
@@ -71,6 +78,7 @@ export const ACTION_LABEL: Record<PopupAction, MessageKey> = {
   readPdf: "popupReadPdf",
   openReader: "popupOpenReader",
   retry: "onbOpenSettings",
+  setup: "engineSetUp",
 };
 
 /** Reading a PDF remains available while the model is stopped or not installed. */
@@ -80,7 +88,7 @@ export function popupLead(f: PageFacts): PopupLead {
       ? { action: "readPdf", primary: true, status: "none" }
       : { action: "openReader", primary: false, status: "fileAccess" };
   }
-  if (f.daemon !== "up") return { action: "retry", primary: true, status: "daemon" };
+  if (f.daemon !== "up") return f.setup ? { action: "setup", primary: true, status: "setup" } : { action: "retry", primary: true, status: "daemon" };
   if (!f.hasTab) return { action: "openReader", primary: false, status: "noTab" };
   // Neither a rescan nor a one-off run reads a translated page, so neither is offered.
   if (f.tab?.translated === true) return { action: "openReader", primary: false, status: "translated" };

@@ -8,15 +8,20 @@
 // test/firefox-harness.mjs does for the native build), asks the engine for its status
 // through the background's bridge from the options page, and expects the worker to
 // answer as it does on Chrome: no model files, the runtime candidates FP32, the CPU
-// provider available (headless Firefox has no WebGPU adapter). Nothing is downloaded.
+// provider available (headless Firefox has no WebGPU adapter), and Settings offering the
+// one-time download. Nothing is downloaded. The oneclick package needs Firefox 153
+// (wxt.config.ts); an older binary is skipped, as that Firefox refuses to install it.
 import { launch } from "puppeteer-core";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ensureTestBuild } from "../test-build.mjs";
+import { firefoxVersion } from "../firefox-harness.mjs";
 
 const firefox = process.env.ANAGRAM_FIREFOX;
-if (!firefox) { console.log("SKIP  oneclick Firefox — set ANAGRAM_FIREFOX to a Firefox 140+ binary"); process.exit(0); }
+if (!firefox) { console.log("SKIP  oneclick Firefox — set ANAGRAM_FIREFOX to a Firefox 153+ binary"); process.exit(0); }
+const { major, version } = firefoxVersion(firefox);
+if (major < 153) { console.log(`SKIP  oneclick Firefox — it needs Firefox 153 or later, this is ${version}`); process.exit(0); }
 process.env.ANAGRAM_FLAVOR = "oneclick";
 const EXT = ensureTestBuild("oneclick-firefox-mv2");
 const GECKO_ID = "anagram-oneclick@coderbak.dev";
@@ -61,8 +66,15 @@ try {
   check("engine.settings is answered", settings?.ok && settings.data?.settings?.idle_unload_s === 600, JSON.stringify(settings).slice(0, 200));
   const status = await page.evaluate(() => browser.runtime.sendMessage({ action: "getBackendStatus", probe: true }));
   check("the background reports scoring unavailable, not an error", status?.active === "down", JSON.stringify(status).slice(0, 200));
-  const line = await page.evaluate(() => document.querySelector("#componentSettings .component-status")?.textContent ?? "");
-  check("Settings shows the engine's state", /Model files needed|需要模型文件|Starting|正在启动/.test(line), line);
+  // The panel reads the engine only while its page is shown: a tab opened behind another stays "Starting…".
+  await page.bringToFront().catch(() => {});
+  let seen;
+  for (let i = 0; i < 80; i++) {
+    seen = await page.evaluate(() => ({ line: document.querySelector("#componentSettings .component-status")?.textContent ?? "", button: document.getElementById("component-primary")?.textContent ?? "", visibility: document.visibilityState }));
+    if (/Not set up yet|尚未设置/.test(seen.line)) break;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  check("Settings says setup is needed and offers the download", /Not set up yet|尚未设置/.test(seen.line) && /1\.4 GB/.test(seen.button), JSON.stringify(seen));
 } catch (error) {
   check("no exception", false, String(error?.stack ?? error));
 } finally {

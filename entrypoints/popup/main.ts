@@ -12,7 +12,7 @@ import type { PublicPath } from "wxt/browser";
 import "../../lib/ui/basecoat-vega.cdn.min.css";
 import { followSystemTheme } from "../../lib/ui/theme";
 import { localizePage } from "../../lib/ui/localize";
-import { t, tn } from "../../lib/i18n";
+import { t, tn, type MessageKey } from "../../lib/i18n";
 import {
   settings,
   clearSiteOverride,
@@ -26,7 +26,7 @@ import { sitePattern } from "../../lib/access/patterns";
 import { hasAccess, requestAccess } from "../../lib/access/grant";
 import { readerFrames } from "../../lib/surfaces/frames";
 import { ACTIONS } from "../../lib/messaging/protocol";
-import type { BackendStatus, ControlMessage, TabState } from "../../lib/messaging/protocol";
+import type { BackendStatus, ControlMessage, EngineSetup, TabState } from "../../lib/messaging/protocol";
 import { looksLikePdfUrl, READER_PAGE } from "../../lib/pdf/source";
 import { PDF_TAB_SCRIPTS_RUN } from "../../lib/surface";
 import { getFileAccess } from "../../lib/pdf/fileAccess";
@@ -164,6 +164,13 @@ function paint(): void {
     case "fileAccess":
       statusEl.textContent = t("popupFileAccessNeeded");
       break;
+    case "setup": {
+      const setup = facts.setup!;
+      statusEl.textContent = setup.state === "downloading" ? t("popupSetupDownloading", setup.percent)
+        : setup.state === "paused" ? t("popupSetupPaused", setup.percent)
+        : t(setup.state === "failed" ? "engineSetupFailed" : "popupSetupNeeded");
+      break;
+    }
     case "none":
       statusEl.textContent = "";
       break;
@@ -172,10 +179,15 @@ function paint(): void {
   // gap where a sentence used to be.
   statusEl.hidden = lead.status === "none";
 
-  actionEl.textContent = t(ACTION_LABEL[lead.action]);
+  actionEl.textContent = t(lead.action === "setup" ? setupLabel(facts.setup!) : ACTION_LABEL[lead.action]);
   actionEl.disabled = false;
   if (lead.primary) delete actionEl.dataset.variant;
   else actionEl.dataset.variant = "outline";
+}
+
+/** The setup button's words: start it, watch it, or carry on with it. */
+function setupLabel(setup: EngineSetup): MessageKey {
+  return setup.state === "needed" ? "engineSetUp" : setup.state === "downloading" ? "engineShowProgress" : "engineContinueSetup";
 }
 
 /** The engine line at the foot, when the engine is up (the action block says the rest). */
@@ -197,6 +209,7 @@ async function refreshBackend(probe = false): Promise<void> {
     if (!s) throw new Error("no status");
     const there = s.server.reason === "contract";
     facts.daemon = (s.active === "server" && s.model) || s.active === "idle" ? "up" : there ? "mismatch" : "down";
+    facts.setup = s.setup ?? null;
     paintModel(s);
   } catch {
     // No worker to ask at all: say nothing about a model, and leave the page's own state
@@ -370,6 +383,12 @@ async function init(): Promise<void> {
         return;
       case "retry":
         void browser.runtime.openOptionsPage();
+        window.close();
+        return;
+      case "setup":
+        // The setup page: the browser's question about the download sites must be asked from
+        // a click there, since Chrome closes this popup to show a prompt.
+        void browser.tabs.create({ url: browser.runtime.getURL("/onboarding.html") });
         window.close();
         return;
       case "rescan":

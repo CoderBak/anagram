@@ -32,6 +32,24 @@ export interface DownloadOptions {
 
 const RETRY_WAITS = [2_000, 5_000, 15_000];
 
+/** What stopped a download, in the terms the setup page explains it in (lib/ui/inBrowserEngine.ts):
+ *  the connection, a full disk, the server's answer, bytes that were not the pinned ones. */
+export type DownloadFailure = "network" | "storage" | "server" | "damaged" | "other";
+
+/** The kind of failure a DownloadFailed message describes, as the engine passes it on in
+ *  its status (`download.error`); the messages are this file's own. */
+export function failureKind(message: string | null | undefined): DownloadFailure {
+  if (!message) return "other";
+  if (/not enough free disk space/.test(message)) return "storage";
+  if (/Checksum or size mismatch|larger than its pinned size/.test(message)) return "damaged";
+  if (/answered \S+ with status \d+/.test(message)) return "server";
+  if (/network request for|connection for \S+ was lost|Incomplete download|unexpected range|sent no body/.test(message)) return "network";
+  return "other";
+}
+
+/** The browser's word for a disk (or an origin's quota) with no room left. */
+const outOfSpace = (error: unknown): boolean => (error as { name?: string } | null)?.name === "QuotaExceededError";
+
 /** HTTPS, or plain HTTP to this machine only (the suites serve the files themselves). */
 export function secure(url: string): boolean {
   const parsed = new URL(url);
@@ -139,7 +157,10 @@ async function attemptDownload(store: FileStore, entry: PinnedFile, part: string
       const chunk = next.value;
       if (offset + chunk.length > entry.size_bytes) throw new DownloadFailed(`${entry.name} is larger than its pinned size`);
       hasher.update(chunk);
-      await writer.write(chunk);
+      // A full disk stays full however often it is asked: no retry, and the part is kept
+      // for when there is room again.
+      try { await writer.write(chunk); }
+      catch (error) { throw outOfSpace(error) ? new DownloadFailed(`There is not enough free disk space for ${entry.name}`) : error; }
       offset += chunk.length;
       onProgress(offset);
       paused();

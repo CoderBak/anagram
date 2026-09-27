@@ -15,6 +15,7 @@ import { createTokenCounter } from "../lib/backend/tokenCounts";
 import { createCacheModeController } from "../lib/backend/cacheMode";
 import { ACTIONS } from "../lib/messaging/protocol";
 import type {
+  BackendStatus,
   CacheCountReply,
   CommentAccessReply,
   ClearCacheReply,
@@ -36,6 +37,7 @@ import { PDF_TAB_SCRIPTS_RUN } from "../lib/surface";
 import { settings, cacheModeStorage } from "../lib/settings/settings";
 import { t } from "../lib/i18n";
 import { handleNativePageMessage } from "../lib/backend/nativeBridge";
+import { readEngineSetup } from "../lib/backend/engineSetup";
 import { NATIVE_MESSAGE, NATIVE_UNINSTALL } from "../lib/backend/nativeProtocol";
 const EXTENSION_UPDATE_KEY = "extensionUpdatePending";
 
@@ -364,10 +366,24 @@ export default defineBackground(() => {
         try {host=new URL(sender.tab?.url ?? "").hostname;}catch {/* no readable top URL */}
         return {host} satisfies TopHostReply;
       }
-      case ACTIONS.GET_BACKEND_STATUS:
+      case ACTIONS.GET_BACKEND_STATUS: {
         // A probe is somebody's Retry: an engine given up on after it kept dying may start again.
         if (msg.probe===true) engineTransport().retry?.();
-        return getScoreClient().status(msg.probe===true);
+        const status=await getScoreClient().status(msg.probe===true);
+        // The in-browser engine is down until it is set up: the popup and the panel say how far
+        // setup has got, and offer its page, instead of "not ready".
+        if (import.meta.env.ANAGRAM_FLAVOR !== "oneclick" || status.active !== "down" || status.server.code === "engine_crashed") return status;
+        return {...status,setup:await readEngineSetup((op) => engineTransport().request(op))} satisfies BackendStatus;
+      }
+      case ACTIONS.OPEN_ENGINE_SETUP: {
+        // The in-browser engine's only: the local engine has no setup page to open.
+        if (import.meta.env.ANAGRAM_FLAVOR !== "oneclick") return {ok:false,error:"forbidden"};
+        // The setup page beside the tab: the browser's question about the model's download
+        // sites is asked from a click there, which a content script cannot make.
+        const tab=sender.tab as {id?:number;index?:number}|undefined;
+        await browser.tabs.create({url:browser.runtime.getURL("/onboarding.html"),...(tab?.index !== undefined ? {index:tab.index+1} : {}),...(tab?.id !== undefined ? {openerTabId:tab.id} : {})});
+        return {ok:true};
+      }
       case ACTIONS.COMMENT_ACCESS: {
         const missing:string[]=[];
         for (const origin of msg.origins) if (!(await browser.permissions.contains({origins:[origin]}).catch(()=>false))) missing.push(origin);

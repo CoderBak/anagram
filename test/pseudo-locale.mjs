@@ -4,7 +4,9 @@
 // for "Add" has to hold whatever the next language says there. This renders every page a
 // reader sees — setup (with and without an engine), settings (and its row that allows a
 // comment site), popup, the PDF reader's own chrome, chips, a chip's card, the ball's panel
-// (and its offer to allow that site) — at 1280 and 400 px, three times: in a
+// (and its offer to allow that site), and the oneclick build's setup page in each state on the
+// way to Ready, its cancel confirmation, its popup and its panel offering setup — at 1280 and
+// 400 px, three times: in a
 // pseudo-locale (every English message accented and stretched by the pseudo-localization
 // package, placeholders kept), in Chinese, and in English. On each it looks for the ways
 // a longer label breaks a layout:
@@ -26,6 +28,8 @@ import { join } from "node:path";
 import { pseudoLocalizeString } from "pseudo-localization";
 import { EXT, artifact, launchExtension, requireBuild, serveHtml, uiLanguage, uiLanguageOf, waitForRegistration } from "./harness.mjs";
 import { TEST_PDF, pdfChips, readerRead } from "./pdf-fixture.mjs";
+import { ensureTestBuild } from "./test-build.mjs";
+import { scriptEngine } from "./webengine/scripted-engine.mjs";
 
 requireBuild();
 
@@ -41,14 +45,15 @@ const pseudo = (message) =>
     .map((part, i) => (i % 2 ? part : pseudoLocalizeString(part)))
     .join("");
 
-function pseudoBuild() {
+function pseudoBuild(source = EXT, { siteOnly = true } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "anagram-pseudo-"));
   const ext = join(dir, "extension");
-  cpSync(EXT, ext, { recursive: true });
+  cpSync(source, ext, { recursive: true });
   const file = join(ext, "_locales", "en", "messages.json");
   const messages = JSON.parse(readFileSync(file, "utf8"));
   for (const entry of Object.values(messages)) entry.message = pseudo(entry.message);
   writeFileSync(file, JSON.stringify(messages));
+  if (!siteOnly) return { dir, ext };
   // Only the page's own site granted, as a reader's per-site grant leaves it: the panel's
   // offer to allow a comment site, and the settings row it opens, are then on screen.
   const manifestFile = join(ext, "manifest.json");
@@ -312,6 +317,79 @@ async function pages(context, extId, fixture, lang) {
   await page.close();
 }
 
+// ---- the oneclick build's setup ----------------------------------------------------------------
+
+/** The in-browser engine's panel in each state people meet on the way to Ready, scripted into
+ *  the page (test/webengine/scripted-engine.mjs); the panel's notice is the real engine's, which
+ *  a fresh profile has not set up. */
+async function oneclickPages(context, extId, lang) {
+  const url = (p) => `chrome-extension://${extId}/${p}`;
+  const painted = (page) =>
+    page.waitForFunction(() => (document.querySelector("#componentSettings .component-status")?.textContent ?? "") !== "", null, { timeout: 15000 }).catch(() => {});
+  const scripted = async (path, state, size, options = {}) => {
+    const page = await context.newPage();
+    await scriptEngine(page, state, options);
+    await page.setViewportSize(size);
+    await page.goto(url(path), { waitUntil: "load" });
+    return page;
+  };
+  for (const size of [WIDE, NARROW]) {
+    for (const state of ["needed", "downloading", "paused", "network", "storage", "ready_gpu", "ready_cpu", "load_failed"]) {
+      const page = await scripted("onboarding.html", state, size, state === "needed" ? { permission: false } : {});
+      await painted(page);
+      await page.waitForTimeout(300);
+      // A refused permission is the longest the needed state gets: its error over the button.
+      if (state === "needed") await page.click("#component-primary").catch(() => {});
+      await page.evaluate(() => { const manage = document.getElementById("manage"); if (manage && !manage.hidden) manage.open = true; });
+      await check(page, lang, `oneclick setup, ${state}`);
+      if (state === "paused") {
+        await page.click("#engine-cancel").catch(() => {});
+        await page.waitForSelector("#componentSettings dialog[open]", { timeout: 5000 }).catch(() => {});
+        await check(page, lang, "oneclick setup, cancel confirmation");
+      }
+      await page.close();
+    }
+    const settings = await scripted("options.html", "downloading", size);
+    await painted(settings);
+    await check(settings, lang, "oneclick settings, downloading");
+    await settings.close();
+  }
+  for (const state of ["needed", "downloading", "paused"]) {
+    const popup = await scripted("popup.html", state, { width: 300, height: 600 });
+    await popup.waitForFunction(() => !document.getElementById("action").disabled, null, { timeout: 10000 }).catch(() => {});
+    await check(popup, lang, `oneclick popup, setup ${state}`);
+    await popup.close();
+  }
+  const page = await context.newPage();
+  for (const size of [WIDE, NARROW]) {
+    await page.setViewportSize(size);
+    await page.goto(server.url("/article.html"), { waitUntil: "load" });
+    await page.waitForFunction(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.textContent === "!", null, { timeout: 25000 }).catch(() => {});
+    await page.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const shown = await page.waitForFunction(() => !!document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".panel.open .pnotice button"), null, { timeout: 15000 }).then(() => true, () => false);
+    if (shown) await check(page, lang, "oneclick panel, setup needed", { scope: "[data-anagram]" });
+    else record(`${lang}: oneclick panel, setup needed at ${size.width} px`, false, "the panel's setup notice never showed");
+  }
+  await page.close();
+}
+
+async function runOneclick(lang, launch) {
+  const { context, sw, extId } = await launchExtension(launch);
+  await context.route("https://disqus.com/**", (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>comments</title>" }));
+  try {
+    const got = await uiLanguageOf(sw);
+    const want = lang === "zh-CN" ? "zh-CN" : "en";
+    if (!got?.startsWith(want.slice(0, 2)) || (want === "zh-CN" && !/^zh/i.test(got))) {
+      record(`${lang}: the oneclick browser came up in that language`, null, `it is in ${got}`);
+      return;
+    }
+    await waitForRegistration(sw);
+    await oneclickPages(context, extId, lang);
+  } finally {
+    await context.close();
+  }
+}
+
 async function run(lang, launch) {
   const { context, sw, extId, fixture } = await launchExtension(launch);
   // The article's comment frame, answered here: nothing leaves the machine.
@@ -331,12 +409,18 @@ async function run(lang, launch) {
 }
 
 const built = pseudoBuild();
+const ONECLICK = ensureTestBuild("oneclick-chrome-mv3");
+const builtOneclick = pseudoBuild(ONECLICK, { siteOnly: false });
 try {
   await run("pseudo", { extDir: built.ext });
   await run("zh-CN", uiLanguage("zh-CN"));
   await run("en", {});
+  await runOneclick("pseudo", { extDir: builtOneclick.ext });
+  await runOneclick("zh-CN", { extDir: ONECLICK, ...uiLanguage("zh-CN") });
+  await runOneclick("en", { extDir: ONECLICK });
 } finally {
   rmSync(built.dir, { recursive: true, force: true });
+  rmSync(builtOneclick.dir, { recursive: true, force: true });
   await server.close();
 }
 

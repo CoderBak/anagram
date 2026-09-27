@@ -216,7 +216,11 @@ export class Engine {
         }
         await downloadFile(this.store, file, {
           signal, transport: this.init.transport, retryWaits: this.init.retryWaits,
-          onProgress: (bytes) => { this.download = { ...this.download, bytes_received: Math.min(total, received + bytes) }; },
+          onProgress: (bytes) => {
+            const now = Math.min(total, received + bytes);
+            // Bytes arriving again end a retry's notice.
+            this.download = { ...this.download, bytes_received: now, detail: now > this.download.bytes_received ? null : this.download.detail };
+          },
           onNotice: (message) => { this.download = { ...this.download, detail: message }; },
         });
         this.settings.verified[file.name] = file.sha256;

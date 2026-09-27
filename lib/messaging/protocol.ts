@@ -83,6 +83,9 @@ export const ACTIONS = {
    *  cannot ask the browser for a site, so the worker opens the settings page, where the
    *  reader's click can. */
   OPEN_COMMENT_ACCESS: "openCommentAccess",
+  /** content (top frame) / reader → SW: the panel's button when the in-browser engine is not
+   *  set up. A content script cannot open an extension page, so the worker opens setup. */
+  OPEN_ENGINE_SETUP: "openEngineSetup",
 } as const;
 
 /** SW → content (response to COMMENT_ACCESS): the providers' patterns nothing grants. */
@@ -138,6 +141,16 @@ export interface BackendStatus {
     /** A compatible component reports an older release than this extension. */
     outdated?: boolean;
   };
+  /** The in-browser engine (the oneclick flavor) while it is down because it is not set up:
+   *  what its setup is doing. Never set by the local engine. */
+  setup?: EngineSetup | null;
+}
+
+/** How far the in-browser engine's one-time setup has got (lib/backend/engineSetup.ts). */
+export interface EngineSetup {
+  state: "needed" | "downloading" | "paused" | "failed";
+  /** Of the model download, 0–100. */
+  percent: number;
 }
 
 /** popup/SW → content: force a re-scan of the active tab. */

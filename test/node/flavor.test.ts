@@ -168,8 +168,8 @@ describe("what each flavor's build carries", () => {
     const install = ["releases/download", "Invoke-RestMethod", "componentInstallIntro"];
     expect(install.filter((m) => code(oneclick!, "chunks").includes(m))).toEqual([]);
     expect(install.every((m) => code(native!, "chunks").includes(m))).toBe(true);
-    expect(code(native!, "chunks")).not.toContain("engineInBrowserIntro");
-    expect(code(oneclick!, "chunks")).toContain("engineInBrowserIntro");
+    expect(code(native!, "chunks")).not.toContain("engineSetUpIntro");
+    expect(code(oneclick!, "chunks")).toContain("engineSetUpIntro");
   });
 
   it.skipIf(!native || !oneclick)("only the oneclick build ships the engine's runtime", () => {
