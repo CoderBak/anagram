@@ -19,6 +19,7 @@ import { dirname, join } from "node:path";
 import { copyFileSync, cpSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { vendorPdfViewer } from "./pdfjsViewer.mjs";
 import { vendorDocumentWorker } from "./documentWorker.mjs";
+import { vendorWebEngine } from "./webengine.mjs";
 import { NOTICES_FILE, bundledPackages, packageOfModule, unlistedPackages } from "./notices.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -200,3 +201,7 @@ for (const [name, { from, only }] of Object.entries(trees)) {
 // from its npm package. After the trees above, because the worker reads the CMaps, fonts
 // and decoders from those copies and the check that they are the fork's own files runs here.
 vendorDocumentWorker(ROOT);
+
+// The in-browser engine: ONNX Runtime Web from its npm package and the engine worker built
+// from lib/webengine/ (scripts/webengine.mjs).
+await vendorWebEngine(ROOT);

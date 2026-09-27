@@ -935,6 +935,81 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## The in-browser engine
+
+The build whose scoring runs inside the browser (lib/webengine/, entrypoints/engine/) ships ONNX Runtime Web under vendor/engine/, copied verbatim from the pinned npm package by scripts/webengine.mjs, and the emoji names EditLens's preprocessing spells emoji out with. Its model files are downloaded by the user, verified, and kept in the browser's own storage; they are the modelkit and language model listed under the component package below.
+
+### ONNX Runtime Web (engine) (1.27.0)
+
+- Project: https://github.com/microsoft/onnxruntime
+- Licence: MIT
+- Copyright: Copyright (c) Microsoft Corporation
+- In Anagram: vendor/engine/ort.min.mjs, ort-wasm-simd-threaded.jsep.mjs and ort-wasm-simd-threaded.jsep.wasm, copied from the pinned onnxruntime-web package; the WebAssembly build links the third-party libraries whose notices ship as vendor/document-worker/ThirdPartyNotices.onnxruntime-web.txt.
+
+```text
+ONNX Runtime (onnxruntime-web, https://github.com/microsoft/onnxruntime)
+
+MIT License
+
+Copyright (c) Microsoft Corporation
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### emoji (data) (2.15.0)
+
+- Project: https://github.com/carpedm20/emoji
+- Licence: BSD-3-Clause
+- Copyright: Copyright (c) 2014-2025, Taehoon Kim, Kevin Wurster
+- In Anagram: lib/webengine/emoji.data.json: the package's English emoji names and qualification statuses (its emoji.json, from Unicode's emoji-test.txt), written by scripts/emojiData.py from the version anagramd/uv.lock pins, so the browser engine spells emoji out as the native engine does.
+
+```text
+New BSD License
+
+Copyright (c) 2014-2025, Taehoon Kim, Kevin Wurster
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this
+  list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution.
+
+* The names of its contributors may not be used to endorse or promote products
+  derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
 ## Stylesheet
 
 The extension pages' stylesheet, lib/ui/basecoat-vega.cdn.min.css, copied from the basecoat-css package.
@@ -1260,6 +1335,75 @@ SOFTWARE.
 - Licence: Apache-2.0 (full text under Licence texts below)
 - Copyright: Copyright 2020 Google LLC
 - In Anagram: The fragment generation and the search it checks uniqueness with (src/fragment-generation-utils.js, src/text-fragment-utils.js), in lib/render/textFragment.ts and its build vendor/fragments.min.mjs: the copied report's links to flagged paragraphs. The file keeps the licence notice and says what was changed.
+
+### emoji (tokenizer) (2.15.0, emoji/tokenizer.py)
+
+- Project: https://github.com/carpedm20/emoji
+- Licence: BSD-3-Clause
+- Copyright: Copyright (c) 2014-2025, Taehoon Kim, Kevin Wurster
+- In Anagram: The emoji search and the zero-width-joiner rules of demojize and replace_emoji, in lib/webengine/emoji.ts.
+
+```text
+New BSD License
+
+Copyright (c) 2014-2025, Taehoon Kim, Kevin Wurster
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this
+  list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution.
+
+* The names of its contributors may not be used to endorse or promote products
+  derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+### fastText (0.9.3, src/)
+
+- Project: https://github.com/facebookresearch/fastText
+- Licence: MIT
+- Copyright: Copyright (c) 2016-present, Facebook, Inc.
+- In Anagram: The prediction path of the language identifier — the .ftz reader, the dictionary's word and n-gram lookup, the product quantizer and the hierarchical-softmax search — in lib/webengine/fasttext.ts.
+
+```text
+MIT License
+
+Copyright (c) 2016-present, Facebook, Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
 
 ### MLX examples (bert/model.py)
 
