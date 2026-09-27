@@ -2,7 +2,7 @@
 // document, worker, model, in a temporary Chromium profile.
 //
 //   ANAGRAM_MODELKIT=<modelkit dir> ANAGRAM_LID_MODEL=<lid.176.ftz> [ANAGRAM_PARITY_SAMPLE=<sample.json>] \
-//     node test/webengine/extension.mjs [--isolate]
+//     node test/webengine/extension.mjs [--idle]
 //
 // test/oneclick.mjs stops where the engine says it has no model files. This goes on: the
 // pinned files are put into the extension origin's OPFS from a local server (the same
@@ -11,15 +11,17 @@
 // paste page scores an English text through the ordinary pipeline — background, offscreen
 // document, worker — under the extension's real manifest and CSP. The engine's runtime
 // snapshot says which provider ran and how many threads the WASM one may use, which is
-// what `crossOriginIsolated` in the offscreen document comes to; --isolate adds the
-// manifest's cross-origin isolation keys to the test build first, to see whether Chrome
-// honours them there. Skips when the paths are missing or CI is set; never part of CI.
+// what `crossOriginIsolated` in the offscreen document comes to (the manifest's isolation
+// keys, wxt.config.ts). The browser's peak memory while the model loads and scores is
+// printed; --idle then waits the engine's shortest idle time (a minute) and checks that
+// the offscreen document ended the worker and gave its memory back, and that a score
+// brings it back. Skips when the paths are missing or CI is set; never part of CI.
 import { chromium } from "playwright";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ensureTestBuild } from "../test-build.mjs";
-import { ROOT, serve } from "./harness.mjs";
+import { ROOT, serve, watchMemory } from "./harness.mjs";
 
 const argv = process.argv.slice(2);
 if (process.env.CI) { console.log("SKIP  extension scoring — never in CI"); process.exit(0); }
@@ -44,14 +46,6 @@ const TEXT = chosen?.text ?? ("The committee met on Tuesday to review the propos
 
 process.env.ANAGRAM_FLAVOR = "oneclick";
 const EXT = ensureTestBuild("oneclick-chrome-mv3");
-const manifestPath = join(EXT, "manifest.json");
-const original = readFileSync(manifestPath, "utf8");
-if (argv.includes("--isolate")) {
-  const manifest = JSON.parse(original);
-  manifest.cross_origin_embedder_policy = { value: "require-corp" };
-  manifest.cross_origin_opener_policy = { value: "same-origin" };
-  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-}
 const results = [];
 const check = (name, ok, note = "") => { results.push({ name, ok: !!ok, note: String(note) }); console.log(`${ok ? "ok  " : "FAIL"} ${name}${ok ? "" : ` — ${note}`}`); };
 
@@ -105,6 +99,7 @@ try {
   setup.on("pageerror", (e) => problems.push(`onboarding: ${e.message}`));
   await setup.goto(`chrome-extension://${extId}/onboarding.html`);
   const request = (op, payload = {}) => setup.evaluate(([op, payload]) => chrome.runtime.sendMessage({ action: "anagram.nativeRequest", op, payload }), [op, payload]);
+  const memory = watchMemory(profile);
   let reply = await request("status");
   check("the engine answers through the offscreen document", reply?.ok && reply.data?.home === "opfs:anagram-engine", JSON.stringify(reply).slice(0, 200));
   const began = Date.now();
@@ -121,8 +116,13 @@ try {
   const threads = Number(/(\d+) thread/.exec(wasm?.label ?? "")?.[1] ?? 0);
   console.log(`ready in ${loadS} s (download ${reply?.data?.download?.status}); active ${runtime?.active_id}; ${runtime?.candidates?.map((c) => `${c.id}: ${c.label}`).join(" | ")}`);
   console.log(`load: ${JSON.stringify(runtime?.benchmark?.results)}`);
-  check(`the offscreen worker ${argv.includes("--isolate") ? "is" : "is not"} cross-origin isolated (${threads} WASM thread${threads === 1 ? "" : "s"})`, argv.includes("--isolate") ? threads > 1 : threads === 1, wasm?.label);
+  check(`the offscreen worker is cross-origin isolated (${threads} WASM thread${threads === 1 ? "" : "s"})`, threads > 1, wasm?.label);
   check("the GPU is the automatic pick", runtime?.active_id === "webgpu:fp32", runtime?.active_id);
+
+  // The background reads the engine's health afresh (a health read while the model loaded
+  // says "not ready" for a second and a half), as the setup page does once it shows ready.
+  const health = await setup.evaluate(() => chrome.runtime.sendMessage({ action: "getBackendStatus", probe: true }));
+  check("the background reports the engine up on WebGPU, FP32", health?.active === "server" && health?.server?.device === "webgpu" && health?.server?.dtype === "fp32", JSON.stringify(health).slice(0, 300));
 
   // The paste page scores through the ordinary pipeline.
   const paste = await context.newPage();
@@ -141,8 +141,33 @@ try {
     const wanted = score.toFixed(2).replace(/^0/, "");
     check("the verdict's score is the official one to two places", shown !== undefined && Math.abs(Number(shown) - Number(wanted)) <= 0.011, `${shown} vs ${wanted} (${chosen.text_id})`);
   }
-  const health = await setup.evaluate(() => chrome.runtime.sendMessage({ action: "getBackendStatus", probe: true }));
-  check("the background reports the engine up on WebGPU, FP32", health?.active === "server" && health?.server?.device === "webgpu" && health?.server?.dtype === "fp32", JSON.stringify(health).slice(0, 300));
+  console.log(`peak memory while loading and scoring (GiB, phys_footprint): ${JSON.stringify(await memory.stop())}`);
+
+  if (argv.includes("--idle")) {
+    reply = await request("engine.settings", { idle_unload_s: 60 });
+    check("engine.settings takes a minute", reply?.ok && reply.data?.settings?.idle_unload_s === 60, JSON.stringify(reply).slice(0, 200));
+    console.log("waiting a minute for the idle unload…");
+    for (let i = 0; i < 90 && reply?.data?.state !== "idle"; i++) {
+      await new Promise((r) => setTimeout(r, 1000));
+      reply = await request("status");
+    }
+    check("the model is let go after the idle time", reply?.data?.state === "idle", reply?.data?.state);
+    await new Promise((r) => setTimeout(r, 3000));
+    const watch = watchMemory(profile);
+    await new Promise((r) => setTimeout(r, 2000));
+    const idle = await watch.stop();
+    console.log(`memory once idle (GiB): ${JSON.stringify(idle)}`);
+    check("the idle engine's worker is ended and its memory given back", idle.renderer < 0.5 && idle["gpu-process"] < 0.5, JSON.stringify(idle));
+    // A text not scored yet: the first one's verdict is answered from the cache.
+    await paste.fill("#text", `${TEXT} The minutes were approved without changes.`);
+    await paste.click("#analyze");
+    for (let i = 0; i < 120 && reply?.data?.state !== "ready"; i++) {
+      await new Promise((r) => setTimeout(r, 500));
+      reply = await request("status");
+    }
+    check("a score brings the engine back", reply?.data?.state === "ready" && reply.data.runtime?.active_id === "webgpu:fp32", JSON.stringify(reply?.data).slice(0, 300));
+    await request("engine.settings", { idle_unload_s: 300 });
+  }
   check("no errors in the worker or the pages", problems.length === 0, problems.join(" | "));
 } catch (error) {
   check("no exception", false, String(error?.stack ?? error));
@@ -150,7 +175,6 @@ try {
   await context.close().catch(() => {});
   rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   await closeServer();
-  writeFileSync(manifestPath, original);
 }
 const failed = results.filter((r) => !r.ok);
 console.log(`${results.length - failed.length}/${results.length} checks passed`);
