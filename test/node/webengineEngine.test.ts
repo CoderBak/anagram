@@ -34,8 +34,8 @@ const candidates = (): Candidate[] => [
   { id: "wasm:fp32", label: "CPU", device: "cpu", runtime: "onnxruntime-web/wasm", precision: "fp32", experimental: false, available: true, reason: null },
 ];
 
-function fakeSession(candidate: Candidate, model: Uint8Array, log: string[]): LoadedSession {
-  expect(model).toEqual(MODEL);
+async function fakeSession(candidate: Candidate, model: Blob, log: string[]): Promise<LoadedSession> {
+  expect(new Uint8Array(await model.arrayBuffer())).toEqual(MODEL);
   log.push(`create ${candidate.id}`);
   return {
     info: { candidate, threads: 1, createMs: 5, firstRunMs: 1 },
@@ -50,7 +50,7 @@ function fakeSession(candidate: Candidate, model: Uint8Array, log: string[]): Lo
 }
 
 interface Made { engine: Engine; store: MemoryStore; log: string[]; server: ReturnType<typeof fakeServer>; clock: { now: number } }
-function make(options: { store?: MemoryStore; server?: FakeServerOptions; failing?: string[]; probe?: Candidate[] } = {}): Made {
+function make(options: { store?: MemoryStore; server?: FakeServerOptions; failing?: string[]; probe?: Candidate[]; idle?: boolean } = {}): Made {
   const store = options.store ?? new MemoryStore();
   const log: string[] = [];
   const server = fakeServer(FILES, options.server);
@@ -63,6 +63,8 @@ function make(options: { store?: MemoryStore; server?: FakeServerOptions; failin
     },
     probe: async () => options.probe ?? candidates(),
     now: () => clock.now,
+    idle: options.idle,
+    onIdle: () => log.push("idle"),
   });
   return { engine, store, log, server, clock };
 }
@@ -192,14 +194,30 @@ describe("the engine's lifecycle", () => {
     await new Promise((r) => setTimeout(r, 1100));
     let { data } = await m.engine.handle("status", {});
     expect(data).toMatchObject({ state: "idle", runtime: { state: "idle", active_id: null } });
-    expect(m.log).toEqual(["create webgpu:fp32", "release webgpu:fp32"]);
+    expect(m.log).toEqual(["create webgpu:fp32", "release webgpu:fp32", "idle"]);
     await fails(m.engine.handle("health", {}), "engine_idle", 503);
     ({ data } = await m.engine.handle("score", { v: "3.0", blocks: [{ id: "a", text: "hello world" }] }));
     expect((data as { results: Array<{ lang: string }> }).results[0].lang).toBe("en");
-    expect(m.log).toEqual(["create webgpu:fp32", "release webgpu:fp32", "create webgpu:fp32"]);
+    expect(m.log).toEqual(["create webgpu:fp32", "release webgpu:fp32", "idle", "create webgpu:fp32"]);
     ({ data } = await m.engine.handle("status", {}));
     expect((data as { state: string }).state).toBe("ready");
   }, 10_000);
+
+  it("starts idle in the worker that follows an idle one, and loads for the next score", async () => {
+    const first = track(make());
+    await first.engine.handle("models.download", {});
+    await ready(first.engine);
+    await first.engine.close();
+    const m = track(make({ store: first.store, idle: true }));
+    let { data } = await m.engine.handle("status", {});
+    expect(data).toMatchObject({ state: "idle", runtime: { state: "idle", active_id: null } });
+    await fails(m.engine.handle("health", {}), "engine_idle", 503);
+    expect(m.log).toEqual([]);
+    ({ data } = await m.engine.handle("score", { v: "3.0", blocks: [{ id: "a", text: "hello world" }] }));
+    expect((data as { results: Array<{ lang: string }> }).results[0].lang).toBe("en");
+    expect(m.log).toEqual(["create webgpu:fp32"]);
+    expect(m.server.requests).toEqual([]);
+  });
 
   it("stops and resumes, and deletes the model files", async () => {
     const m = track(make());

@@ -3,9 +3,9 @@
 // The origin-private file system (OPFS) of the extension's own origin: a file system
 // only this extension can open, on disk, outside any quota prompt for an installed
 // extension, with random-access reads and appends through synchronous access handles in
-// a worker. Cache Storage would hold the same bytes but only whole responses: no
-// appending to a partial download, no reading a 1.4 GB file into a buffer without a
-// second copy. The engine's directory holds the verified files, `.part` files of
+// a worker, and a file handed to the runtime as a Blob that it reads a tensor at a time.
+// Cache Storage would hold the same bytes but only whole responses: no appending to a
+// partial download. The engine's directory holds the verified files, `.part` files of
 // unfinished downloads and `state.json` (settings, and which files were verified).
 // `FileStore` is the seam; the suite runs the engine on the in-memory store.
 
@@ -20,8 +20,8 @@ export interface FileStore {
   size(name: string): Promise<number | null>;
   /** The whole file. */
   read(name: string): Promise<Uint8Array>;
-  /** The whole file into `target`, which is exactly its size. */
-  readInto(name: string, target: Uint8Array): Promise<void>;
+  /** The file as a Blob, read from disk only as it is read. */
+  file(name: string): Promise<Blob>;
   /** The file's bytes from the start, in chunks. */
   stream(name: string, chunkBytes?: number): AsyncIterable<Uint8Array>;
   /** A writer at the end of the file (`append`) or over a new empty file. */
@@ -82,14 +82,10 @@ export class OpfsStore implements FileStore {
     } finally { access.close(); }
   }
 
-  async readInto(name: string, target: Uint8Array): Promise<void> {
+  async file(name: string): Promise<Blob> {
     const file = await this.handle(name);
     if (!file) throw new Error(`no such file: ${name}`);
-    const access = await file.createSyncAccessHandle();
-    try {
-      if (access.getSize() !== target.length) throw new Error(`${name} is ${access.getSize()} bytes, not ${target.length}`);
-      this.readAll(access, target);
-    } finally { access.close(); }
+    return file.getFile();
   }
 
   private readAll(access: SyncHandle, target: Uint8Array): void {
@@ -193,10 +189,8 @@ export class MemoryStore implements FileStore {
     if (!file) throw new Error(`no such file: ${name}`);
     return file.slice();
   }
-  async readInto(name: string, target: Uint8Array): Promise<void> {
-    const file = await this.read(name);
-    if (file.length !== target.length) throw new Error(`${name} is ${file.length} bytes, not ${target.length}`);
-    target.set(file);
+  async file(name: string): Promise<Blob> {
+    return new Blob([await this.read(name) as Uint8Array<ArrayBuffer>]);
   }
   async *stream(name: string, chunkBytes = 64 * 1024): AsyncIterable<Uint8Array> {
     const file = await this.read(name);

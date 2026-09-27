@@ -5,7 +5,10 @@
 // for the worker: it starts vendor/engine/worker.min.mjs, sends it the initial message
 // with the pin and the runtime's URLs, queues requests until the engine says it is up,
 // and turns a crashed worker into a disconnect, after which the next request starts a
-// fresh one. It imports no extension API either; the caller hands it the URLs.
+// fresh one. A worker that has let the model go while idle is ended quietly once no
+// request waits on it and its last reply says it is still idle: that is the only way to
+// give its WebAssembly memory back. The next request starts a fresh one that knows it is
+// idle. It imports no extension API either; the caller hands it the URLs.
 import type { NativePort } from "../backend/portTransport";
 import type { WorkerInit, WorkerReply } from "./worker";
 
@@ -19,6 +22,12 @@ export class EngineHost implements NativePort {
   private worker: Worker | null = null;
   private ready = false;
   private queue: unknown[] = [];
+  /** Requests the current worker has not answered yet: every request gets one reply. */
+  private unanswered = 0;
+  /** The worker said it let the model go while idle: end it when nothing waits on it. */
+  private ending = false;
+  /** The last worker was ended while idle: the next one starts so. */
+  private idle = false;
   private readonly messageListeners = new Set<(value: unknown) => void>();
   private readonly disconnectListeners = new Set<() => void>();
   error?: { message?: string };
@@ -45,7 +54,13 @@ export class EngineHost implements NativePort {
         this.queue = [];
         for (const request of queued) worker.postMessage({ type: "request", request });
       } else if (message.type === "reply") {
+        this.unanswered--;
+        if (!message.idle) this.ending = false;
         for (const listener of this.messageListeners) listener(message.reply);
+        this.endIfIdle(worker);
+      } else if (message.type === "idle") {
+        this.ending = true;
+        this.endIfIdle(worker);
       }
     };
     worker.onerror = (event) => {
@@ -53,13 +68,24 @@ export class EngineHost implements NativePort {
       this.error = { message: event.message || "The engine worker failed" };
       this.disconnect();
     };
-    const init: WorkerInit = { type: "init", ...this.options.init };
+    const init: WorkerInit = { type: "init", ...this.options.init, idle: this.idle };
+    this.idle = false;
     worker.postMessage(init);
     return worker;
   }
 
+  private endIfIdle(worker: Worker): void {
+    if (!this.ending || this.worker !== worker || this.unanswered > 0 || this.queue.length > 0) return;
+    this.worker = null;
+    this.ready = false;
+    this.ending = false;
+    this.idle = true;
+    worker.terminate();
+  }
+
   postMessage(message: unknown): void {
     const worker = this.start();
+    this.unanswered++;
     if (this.ready) worker.postMessage({ type: "request", request: message });
     else this.queue.push(message);
   }
@@ -70,6 +96,8 @@ export class EngineHost implements NativePort {
     this.worker = null;
     this.ready = false;
     this.queue = [];
+    this.unanswered = 0;
+    this.ending = false;
     worker?.terminate();
     if (worker) for (const listener of this.disconnectListeners) listener();
   }
