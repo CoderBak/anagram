@@ -316,6 +316,69 @@ export async function surfaceChecks(browser, bundle, fixtures, results) {
     await page.close();
   }
 
+  // ---- a page drawn after the first units were handed out ----------------------------------
+  // Page 2 is drawn only once page 1 has been read, as a viewer draws the pages the reader
+  // scrolls to. The claims are the orchestrator's (makeClaimFilter): a run a live unit owns
+  // exactly is skipped, anything else retires its owners and is taken. After the ONE burst
+  // the drawn page makes, what is live must be what the document reads with both pages
+  // drawn from the start — the paragraph that runs onto the new page joined to its first
+  // half, the paragraphs its first half had been read with read again — and a unit whose
+  // text did not change is left as it was.
+  for (const [id, file] of [["drive", "drive-preview.html"], ["pdfjs", "pdfjs-viewer.html"]]) {
+    const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
+    await page.goto(pathToFileURL(join(fixtures, "surfaces", file)).href);
+    await page.addScriptTag({ path: bundle });
+    const r = await page.evaluate(async (id) => {
+      const texts = (units) => units.map((u) => u.text).sort();
+      const whole = texts(PW.createSurface(id, document).collect(() => "take", true));
+      // Page 2 not drawn yet: Drive's box is an empty slot, pdf.js's page has no text layer.
+      const box = id === "drive" ? document.querySelector('[data-page-slot="2"]') : document.querySelector('.page[data-page-number="2"] .textLayer');
+      const parent = box.parentElement, next = box.nextSibling;
+      const slot = id === "drive" ? box.cloneNode(false) : null;
+      if (slot) box.replaceWith(slot);
+      else box.remove();
+      const draw = () => (slot ? slot.replaceWith(box) : parent.insertBefore(box, next));
+
+      const s = PW.createSurface(id, document);
+      const owner = new Map(), live = new Map();
+      const retire = (u) => {
+        for (const p of u.parts) for (const n of p.nodes) if (owner.get(n) === u) owner.delete(n);
+        live.delete(u.id);
+      };
+      const claim = (nodes) => {
+        const owners = new Set(nodes.map((n) => owner.get(n)).filter(Boolean));
+        if (owners.size === 0) return "take";
+        if (owners.size === 1) {
+          const [u] = owners;
+          const part = u.parts.find((p) => p.nodes.includes(nodes[0]));
+          if (live.has(u.id) && part && part.nodes.length === nodes.length && part.nodes.every((n, i) => n === nodes[i])) return "skip";
+        }
+        owners.forEach(retire);
+        return "take";
+      };
+      const ingest = (units) => {
+        for (const u of units) {
+          live.set(u.id, u);
+          for (const p of u.parts) for (const n of p.nodes) owner.set(n, u);
+        }
+        return units;
+      };
+      const first = ingest(s.collect(claim, true));
+      await new Promise((r) => setTimeout(r, 0));
+      draw();
+      const burst = ingest(s.collect(claim, true));
+      const kept = first.filter((u) => live.get(u.id) === u).map((u) => u.text);
+      return { whole, first: texts(first), live: texts([...live.values()]), burst: burst.map((u) => [u.parts.length, u.paragraphs, u.text.slice(0, 40)]), kept };
+    }, id);
+    check(
+      `${id === "drive" ? "drive preview" : "pdf.js viewer"}: a page drawn after the first units were read joins the paragraph running onto it, and the burst it makes re-reads the paragraphs that had been read with its first half`,
+      r.first.length > 0 && JSON.stringify(r.first) !== JSON.stringify(r.whole) &&
+        JSON.stringify(r.live) === JSON.stringify(r.whole) && r.kept.length > 0 && r.kept.every((t) => r.whole.includes(t)),
+      JSON.stringify({ burst: r.burst, kept: r.kept.map((t) => t.slice(0, 40)), missing: r.whole.filter((t) => !r.live.includes(t)).map((t) => t.slice(0, 40)) }),
+    );
+    await page.close();
+  }
+
   // ---- Kindle for the web: the walk reads it, the chips go after the last word --------------
   {
     const r = {};

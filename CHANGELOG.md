@@ -120,6 +120,13 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- In Google Drive's preview and in a pdf.js viewer in a page (OneDrive, SharePoint,
+  Overleaf), a page drawn after the pages before it were read no longer leaves paragraphs
+  unread. The first half of a paragraph running onto the new page had been read with the
+  short paragraphs before it; joining the halves let go of that group, and the paragraphs
+  it held stayed unread, with no chip, until something else on the page changed. They are
+  read again as soon as the page is drawn, and a paragraph the page does not change keeps
+  its verdict.
 - A consent box a publisher builds itself, such as the Daily Mail's, is no longer read. No
   platform's name is on it; it is recognised by what it holds: a list of third parties, each
   linking to its own privacy policy, beside buttons that give or refuse consent. Its
