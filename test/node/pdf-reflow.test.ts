@@ -679,8 +679,72 @@ describe("reflowPdf — furniture", () => {
   });
 });
 
+describe("reflowPdf — line numbers", () => {
+  /** A line of a Word manuscript with line numbering: the number right-aligned a tab
+   *  before the text, the text flush at 72 or indented at 108 where a paragraph opens. */
+  const numbered = (lines: { text: string; indent?: boolean; short?: boolean }[], first: number, top = 100, x2 = 54): Placed[] =>
+    lines.flatMap((l, i) => {
+      const n = String(first + i);
+      const x = l.indent ? 108 : 72;
+      return [
+        { text: n, x: x2 - n.length * CHAR, y: top + i * PITCH, width: n.length * CHAR },
+        { text: l.text, x, y: top + i * PITCH, width: l.short ? l.text.length * CHAR : 532 - x },
+      ];
+    });
+  const MANUSCRIPT = [
+    { text: "Vertical land motion (VLM), defined as the upward or", indent: true },
+    { text: "downward movement of the surface over time, represents" },
+    { text: "a critical component of coastal change assessments and" },
+    { text: "varies over short spatial scales.", short: true },
+    { text: "The accurate characterization of VLM is particularly", indent: true },
+    { text: "critical for assessments of relative sea-level rise, which" },
+    { text: "has risen by about twenty centimetres since the year" },
+    { text: "nineteen hundred and is projected to go on rising.", short: true },
+    { text: "Along the Atlantic coast, glacial isostatic adjustment", indent: true },
+    { text: "represents the dominant natural process driving it." },
+  ];
+
+  it("leaves out a column of line numbers and finds the paragraphs behind it", () => {
+    const blocks = reflowPdf([page(1, numbered(MANUSCRIPT, 84))]);
+    expect(texts(blocks)).toEqual([
+      MANUSCRIPT.slice(0, 4).map((l) => l.text).join(" "),
+      MANUSCRIPT.slice(4, 8).map((l) => l.text).join(" "),
+      MANUSCRIPT.slice(8).map((l) => l.text).join(" "),
+    ]);
+  });
+
+  it("leaves out numbers set close to the text, and a column down the right margin", () => {
+    const close = numbered(MANUSCRIPT, 7, 100, 66);
+    expect(texts(reflowPdf([page(1, close)])).join(" ")).not.toMatch(/\d/);
+    const right = MANUSCRIPT.flatMap((l, i) => [
+      { text: l.text, x: l.indent ? 108 : 72, y: 100 + i * PITCH, width: l.short ? l.text.length * CHAR : 460 - (l.indent ? 36 : 0) },
+      { text: String(120 + i), x: 560, y: 100 + i * PITCH, width: 3 * CHAR },
+    ]);
+    expect(texts(reflowPdf([page(1, right)])).join(" ")).not.toMatch(/\d/);
+  });
+
+  it("takes the few numbered lines of a figure page in line with the column of the others", () => {
+    const caption = [{ text: "Figure 2. Rates of vertical land motion at every station." }, { text: "The rates are in millimetres a year, and the bars their errors." }];
+    const blocks = reflowPdf([page(1, numbered(MANUSCRIPT, 84)), page(2, numbered(caption, 120, 600))]);
+    expect(texts(blocks).join(" ")).not.toMatch(/\b(?:120|121)\b/);
+  });
+
+  it("keeps the numbers of the text: a table's column, a short numbered list, a page number", () => {
+    const table = [3, 17, 5, 42, 8, 11, 29, 2, 64, 7].flatMap((v, i) => [
+      { text: String(v), x: 72, y: 100 + i * PITCH, width: 2 * CHAR },
+      { text: "units of the measured quantity", x: 120, y: 100 + i * PITCH, width: 160 },
+    ]);
+    expect(texts(reflowPdf([page(1, table)])).join(" ")).toContain("64 units");
+    const list = ["1", "2", "3"].flatMap((n, i) => [
+      { text: n, x: 72, y: 100 + i * PITCH, width: CHAR },
+      { text: `Step ${n} of the procedure is described here.`, x: 90, y: 100 + i * PITCH, width: 300 },
+    ]);
+    expect(texts(reflowPdf([page(1, list)])).join(" ")).toContain("3 Step 3");
+  });
+});
+
 describe("reflowPdf — footnotes and captions", () => {
-  const LEFT = ["a paragraph that fills the", "left column right down to", "its foot and carries on", "straight past the end with", "no punctuation at all to", "stop it going, and"];
+  const LEFT =["a paragraph that fills the", "left column right down to", "its foot and carries on", "straight past the end with", "no punctuation at all to", "stop it going, and"];
   const RIGHT = ["so the right column takes", "it up again in lower case", "and finishes the sentence", "over there instead, on the", "very same printed page as", "the one it started on."];
 
   it("reaches past a footnote at the foot of a column to the rest of the paragraph", () => {

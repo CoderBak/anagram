@@ -18,6 +18,7 @@
 // daemon anyway. Ligatures are kept exactly as the PDF gives them; the model form
 // (modelText) spells ﬁ/ﬂ out itself.
 import { skipGap } from "../dom/text";
+import { BARE_NUMBER, lineNumberMarks, type NumberMark, type PageContent } from "./lineNumbers";
 
 /** One run of glyphs as the extractor hands it over. */
 export interface PdfTextItem {
@@ -483,6 +484,37 @@ interface Line {
 /** Runs worth reading: something other than whitespace, and set the normal way round. */
 function readableItems(page: PdfPageText): PdfTextItem[] {
   return page.items.filter((it) => !it.rotated && it.str.trim() !== "");
+}
+
+/**
+ * The runs of these pages that number their lines (lib/pdf/lineNumbers.ts): a bare number
+ * with nothing else of its line on one side of it, in a column of such numbers counting on.
+ */
+function lineNumberRuns(pages: PdfPageText[]): Set<PdfTextItem> {
+  const marks: (NumberMark & { it: PdfTextItem })[] = [];
+  const content: PageContent[] = [];
+  for (const page of pages) {
+    const items = readableItems(page).filter((it) => it.height > 0).sort((a, b) => a.y - b.y);
+    items.forEach((it, i) => {
+      const s = it.str.trim();
+      const entry: PageContent = { page: page.page, x1: it.x, x2: it.x + it.width, y: it.y, weight: s.replace(/\s/g, "").length };
+      content.push(entry);
+      if (!BARE_NUMBER.test(s)) return;
+      const mid = it.x + it.width / 2;
+      let first = true, last = true;
+      const look = (o: PdfTextItem): void => {
+        if (Math.abs(o.y - it.y) > Math.max(o.height, it.height) * BASELINE_TOL) return;
+        if (o.x + o.width / 2 < mid) first = false;
+        else last = false;
+      };
+      for (let j = i - 1; j >= 0 && it.y - items[j].y <= it.height * 3; j--) look(items[j]);
+      for (let j = i + 1; j < items.length && items[j].y - it.y <= it.height * 3; j++) look(items[j]);
+      const mark = { page: page.page, x1: it.x, x2: it.x + it.width, y: it.y, h: it.height, value: Number(s), first, last, it };
+      entry.mark = mark;
+      marks.push(mark);
+    });
+  }
+  return new Set([...lineNumberMarks(marks, content)].map((m) => m.it));
 }
 
 /**
@@ -1500,7 +1532,11 @@ export function reflowPdf(pages: PdfPageText[]): ReflowBlock[] {
   const index = new Map<PdfTextItem, number>();
   for (const p of pages) p.items.forEach((it, i) => index.set(it, i));
 
-  const perPage = pages.map((p) => {
+  // A review copy's line numbers are no one's words, and left in they stand in front of
+  // every line, where the paragraphs' indents and sentence starts are read.
+  const numbers = lineNumberRuns(pages);
+  const perPage = pages.map((whole) => {
+    const p = numbers.size === 0 ? whole : { ...whole, items: whole.items.filter((it) => !numbers.has(it)) };
     const lines = groupIntoLines(p, index);
     const gutters = findGutters(lines, p.width);
     return gutters.length === 0

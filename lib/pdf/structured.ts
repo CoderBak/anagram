@@ -28,6 +28,7 @@
 // The textMap decoding follows structured-document-text/src/pdf/decode.js of
 // https://github.com/zotero/structured-document-text (AGPL-3.0).
 import { ACCENT, MARK_NUMBERS, assemble, indexPage, isSpace, mathPagesOf, sameLine, type Box, type Glyph, type Located, type PageIndex, type Piece, type Source } from "./reading";
+import { BARE_NUMBER, lineNumberMarks, mayHoldColumn, type NumberMark, type PageContent } from "./lineNumbers";
 import { SENTENCE_END, vocabularyOf, type PdfPageText, type ReflowBlock } from "./reflow";
 
 export { isMathFont } from "./reading";
@@ -199,7 +200,7 @@ function piecesOf(block: SdtBlock, raised: (node: SdtTextNode) => boolean, out: 
     for (let i = 0; i < node.text.length; i++) {
       const ch = node.text[i];
       if (isSpace(ch)) out.push({ ch: " ", glyph: null, ...cite });
-      else out.push({ ch, glyph: trusted ? glyphs[k++] : null, ...cite });
+      else out.push({ ch, glyph: trusted ? glyphs[k++] : null, ...cite, ...(i === 0 ? { opens: true } : {}) });
     }
   }
   return out;
@@ -311,17 +312,21 @@ function blockAt(content: SdtBlock[], path: number[]): SdtBlock | undefined {
  * and often halves of one paragraph (see `continues`), and the reader's grouping of short
  * paragraphs (lib/plan/group.ts) must be free to read them together.
  */
-type Reading = { kind: "heading" | "paragraph"; block: SdtBlock; path: number[]; origin: string };
+type Reading = { kind: "heading" | "paragraph" | "table"; block: SdtBlock; path: number[]; origin: string };
+type Marker = "barrier" | "display" | "skip";
 
 /** What Zotero called a block, for the benchmark's accounting. */
 function originOf(node: SdtBlock): string {
   return `${node.type}${node.flowClass ? `:${node.flowClass}` : ""}${node.reference ? ":ref" : ""}`;
 }
 
-function readingsOf(content: SdtBlock[], everything: boolean): (Reading | "barrier" | "display" | "skip")[] {
-  const out: (Reading | "barrier" | "display" | "skip")[] = [];
+/** The readings of the content tree. A table is skipped like the rest of what is set aside,
+ *  unless it is the prose of a manuscript with numbered lines (numberedReadings). */
+function readingsOf(content: SdtBlock[], everything: boolean): (Reading | Marker)[] {
+  const out: (Reading | Marker)[] = [];
   const aside = (node: SdtBlock, path: number[]): void => {
     if (everything) out.push({ kind: "paragraph", block: node, path, origin: originOf(node) });
+    else if (node.type === "table" && !node.reference) out.push({ kind: "table", block: node, path, origin: originOf(node) });
     else out.push(node.reference ? "barrier" : node.type === "math" ? "display" : "skip");
   };
   content.forEach((node, i) => {
@@ -342,6 +347,342 @@ function readingsOf(content: SdtBlock[], everything: boolean): (Reading | "barri
     } else aside(node, [i]);
   });
   return out;
+}
+
+/** A reading with its pieces: what the drafts are made of. `paths` are the content tree's
+ *  paths it reads, for the parts Zotero says continue it. */
+interface Prepared {
+  kind: "heading" | "paragraph";
+  pieces: Piece[];
+  page: number;
+  paths: string[];
+  previousPart?: string;
+  origin: string;
+}
+
+// ---- a manuscript's numbered lines ---------------------------------------------------------
+//
+// A manuscript sent for review numbers its lines (lib/pdf/lineNumbers.ts), and Zotero's
+// model reads such a page as nothing else: each number looks like a list's marker, so each
+// line becomes an item of a list, and a page of numbered prose often a table, which the
+// reader sets aside. Where Zotero's glyphs show a column of line numbers, the numbers are
+// left out, a table whose every line is numbered and none holds a table's gaps is read as
+// the prose it is, and the paragraphs of those lines — which Zotero did not find — are found
+// again as the reflow finds them: by a first-line indent, a last line that stopped short
+// before a new sentence, and a gap wider than the line pitch.
+
+const DIGIT = /^\p{Nd}$/u;
+const HYPHEN_PIECE = /^[-‐]$/u;
+/** Two glyphs closer than this share of their height are set against each other: no space. */
+const TOUCH = 0.15;
+/** As lib/pdf/reflow.ts: a gap of this many line pitches, an indent of this share of the
+ *  size, and a last line this many sizes short of the measure start a paragraph. */
+const PARA_GAP = 1.45;
+const INDENT = 0.5;
+const SHORT_LINE = 2;
+/** A gap this many sizes wide inside a line is a table's, between two cells. */
+const CELL_GAP = 1.5;
+/** Share of a table's lines that must be numbered, and at most hold a cell's gap, for it to
+ *  be prose. */
+const NUMBERED_TABLE = 0.9;
+const GAPPED_TABLE = 0.1;
+/** A caption: its label, and at most this many words (lib/pdf/reflow.ts CAPTION_LABEL). */
+const CAPTION = /^(?:fig(?:ure)?s?\.?|table|tab\.|chart|scheme)\s*[A-Z]?\d/i;
+const CAPTION_WORDS = 60;
+const LIST_OPENING = /^(?:[•▪◦‣·∙*]|[–—-]\s)/u;
+const FRESH_START = /^[\p{Lu}\p{Lt}\d"“'‘([]/u;
+
+function touching(a: Glyph, b: Glyph): boolean {
+  const h = Math.max(a.y2 - a.y1, b.y2 - b.y1);
+  const gap = b.x1 - a.x2;
+  return sameLine(a, b) && gap < h * TOUCH && gap > -h;
+}
+
+/** Two pieces set against each other in one text node; a new node is another run. */
+const glued = (a: Piece | undefined, b: Piece | undefined): boolean => !!a?.glyph && !!b?.glyph && !b.opens && touching(a.glyph, b.glyph);
+
+/** Where down the page a glyph's middle is: PDF space grows upward. */
+const down = (g: Glyph): number => -(g.y1 + g.y2) / 2;
+
+/**
+ * The pieces of these blocks that number their lines: a bare number of Zotero's text —
+ * digits set against each other, nothing set against them — that stands first or last on
+ * its line among every glyph of the page, in a column of such numbers counting on.
+ */
+function lineNumberPieces(texts: Piece[][]): Set<Piece> {
+  const marks: (NumberMark & { run: Piece[] })[] = [];
+  for (const pieces of texts) {
+    for (let i = 0; i < pieces.length; i++) {
+      const g = pieces[i].glyph;
+      if (!g || !DIGIT.test(pieces[i].ch)) continue;
+      let j = i + 1;
+      while (j < pieces.length && DIGIT.test(pieces[j].ch) && glued(pieces[j - 1], pieces[j])) j++;
+      const run = pieces.slice(i, j);
+      const text = run.map((p) => p.ch).join("");
+      if (BARE_NUMBER.test(text) && !glued(pieces[i - 1], pieces[i]) && !glued(pieces[j - 1], pieces[j])) {
+        const glyphs = run.map((p) => p.glyph!);
+        marks.push({
+          page: g.page, x1: Math.min(...glyphs.map((q) => q.x1)), x2: Math.max(...glyphs.map((q) => q.x2)),
+          y: down(g), h: g.y2 - g.y1, value: Number(text), first: true, last: true, run,
+        });
+      }
+      i = j - 1;
+    }
+  }
+  if (!mayHoldColumn(marks)) return new Set();
+  // Where each mark stands on its line, among every glyph of its page; and what else each
+  // printed line of the pages holds, from where it starts to where it ends.
+  const pages = new Set(marks.map((m) => m.page));
+  const byPage = new Map<number, Glyph[]>();
+  const inMark = new Set<Piece>(marks.flatMap((m) => m.run));
+  const content: PageContent[] = marks.map((m) => ({ page: m.page, x1: m.x1, x2: m.x2, y: m.y, weight: m.run.length, mark: m }));
+  for (const pieces of texts) {
+    if (!pieces.some((p) => p.glyph && pages.has(p.glyph.page))) continue;
+    for (const row of rowsOf(pieces, inMark)) {
+      if (!pages.has(row.page)) continue;
+      const list = byPage.get(row.page) ?? [];
+      byPage.set(row.page, list);
+      let x1 = Infinity, x2 = -Infinity, weight = 0;
+      for (const p of row.pieces) {
+        if (!p.glyph) continue;
+        list.push(p.glyph);
+        if (inMark.has(p)) continue;
+        x1 = Math.min(x1, p.glyph.x1);
+        x2 = Math.max(x2, p.glyph.x2);
+        weight++;
+      }
+      if (weight > 0) content.push({ page: row.page, x1, x2, y: (row.top + row.bottom) / 2, weight });
+    }
+  }
+  for (const list of byPage.values()) list.sort((a, b) => down(a) - down(b));
+  for (const m of marks) {
+    const list = byPage.get(m.page)!;
+    const own = new Set(m.run.map((p) => p.glyph));
+    const g = m.run[0].glyph!;
+    const mid = (m.x1 + m.x2) / 2;
+    let lo = 0, hi = list.length;
+    while (lo < hi) { const k = (lo + hi) >> 1; if (down(list[k]) < m.y - 2 * m.h) lo = k + 1; else hi = k; }
+    for (let k = lo; k < list.length && down(list[k]) <= m.y + 2 * m.h; k++) {
+      const o = list[k];
+      if (own.has(o) || !sameLine(o, g)) continue;
+      if ((o.x1 + o.x2) / 2 < mid) m.first = false;
+      else m.last = false;
+    }
+  }
+  return new Set([...lineNumberMarks(marks, content)].flatMap((m) => m.run));
+}
+
+/**
+ * A block's pieces without its line numbers. Where a number stood at a line break the words
+ * either side of it meet as the break would have had them: a hyphen before a lower-case
+ * continuation, or a word Zotero ran straight into the number (a hyphenation it mended),
+ * joins the next line's word — the hyphen is then the document's to keep or drop
+ * (lib/pdf/reading.ts); otherwise one space parts them.
+ */
+function withoutNumbers(pieces: Piece[], numbers: ReadonlySet<Piece>): Piece[] {
+  const out: Piece[] = [];
+  for (let i = 0; i < pieces.length; i++) {
+    if (!numbers.has(pieces[i])) { out.push(pieces[i]); continue; }
+    let j = i;
+    while (j < pieces.length && numbers.has(pieces[j])) j++;
+    let k = j;
+    while (k < pieces.length && pieces[k].ch === " ") k++;
+    let t = out.length - 1;
+    while (t >= 0 && out[t].ch === " ") t--;
+    const runInto = out.length > 0 && out[out.length - 1].ch !== " ";
+    const prev = out[t], next = pieces[k];
+    const broken = prev?.glyph && next?.glyph && !sameLine(prev.glyph, next.glyph);
+    if (broken && HYPHEN_PIECE.test(prev.ch) && /\p{Ll}/u.test(next.ch)) {
+      out.length = t;
+      i = k - 1;
+    } else if ((broken && runInto) || !runInto) {
+      // One word over the break, or a space before the number already parts the words.
+      i = k - 1;
+    } else {
+      // A number run into a word of its own line: the space after it parts them.
+      i = j - 1;
+      if (k === j) out.push({ ch: " ", glyph: null });
+    }
+  }
+  return out;
+}
+
+/** One printed line of a block, as its glyphs lie. */
+interface Row {
+  pieces: Piece[];
+  page: number;
+  x0: number;
+  x1: number;
+  /** Down the page: the top and bottom of the line's first glyph, and its height. */
+  top: number;
+  bottom: number;
+  h: number;
+  /** A line number was set on the line. */
+  numbered: boolean;
+  /** The line opens its block. */
+  opens: boolean;
+  /** Its reading, as an index into the pool. */
+  from: number;
+  /** A cell's gap stands inside the line. */
+  gapped: boolean;
+}
+
+/** A block's pieces cut into its printed lines: a glyph starts a line where its middle is
+ *  below the line's first glyph, well above it (a new column), or on another page. A piece
+ *  with no glyph stays on the line it comes after. */
+function rowsOf(pieces: Piece[], numbers: ReadonlySet<Piece>): Row[] {
+  const rows: Row[] = [];
+  let row: Row | null = null;
+  let last: Glyph | null = null;
+  const pending: Piece[] = [];
+  for (const p of pieces) {
+    const g = p.glyph;
+    if (g) {
+      const mid = down(g);
+      if (!row || row.page !== g.page || mid > row.bottom || mid < row.top - row.h) {
+        row = { pieces: rows.length === 0 ? pending.splice(0) : [], page: g.page, x0: g.x1, x1: g.x2, top: -g.y2, bottom: -g.y1, h: g.y2 - g.y1, numbered: false, opens: rows.length === 0, from: 0, gapped: false };
+        rows.push(row);
+        last = null;
+      }
+      row.x0 = Math.min(row.x0, g.x1);
+      row.x1 = Math.max(row.x1, g.x2);
+      if (last && g.x1 - last.x2 > row.h * CELL_GAP) row.gapped = true;
+      last = g;
+    }
+    if (row) row.pieces.push(p);
+    else pending.push(p);
+    if (row && numbers.has(p)) row.numbered = true;
+  }
+  return rows;
+}
+
+function percentile(values: number[], p: number): number {
+  const s = [...values].sort((a, b) => a - b);
+  return s[Math.min(s.length - 1, Math.max(0, Math.round((s.length - 1) * p)))] ?? 0;
+}
+
+const firstLetter = (pieces: Piece[]): string => pieces.find((p) => p.ch !== " ")?.ch ?? "";
+
+/**
+ * The paragraphs of a run of numbered lines, by the reflow's signals on each page's own
+ * margins and pitch (`pages`): a line below the last by more than PARA_GAP pitches, one
+ * indented where the last was flush, one opening a sentence or a list item after a line
+ * that stopped short, and every new page or column (the reading joins a paragraph carried
+ * over one by its sentence, `continues`).
+ */
+function paragraphsOfRows(rows: Row[], pages: ReadonlyMap<number, { left: number; right: number; pitch: number }>): Row[][] {
+  const out: Row[][] = [];
+  rows.forEach((b, i) => {
+    const a = rows[i - 1];
+    const m = pages.get(b.page);
+    const opening = firstLetter(b.pieces);
+    const breaks = !a || !m || a.page !== b.page || b.top <= a.top
+      || b.top - a.top > m.pitch * PARA_GAP
+      || (b.x0 > m.left + b.h * INDENT && a.x0 <= m.left + a.h * INDENT)
+      || (a.x1 < m.right - a.h * SHORT_LINE && FRESH_START.test(opening))
+      || LIST_OPENING.test(b.pieces.map((p) => p.ch).join("").trimStart());
+    if (breaks) out.push([b]);
+    else out[out.length - 1].push(b);
+  });
+  return out;
+}
+
+/** The lines of one paragraph as its pieces: lines of one block as Zotero joined them, the
+ *  line that opens another block after a space, or after the hyphen it mends. */
+function joinRows(rows: Row[]): Piece[] {
+  const out: Piece[] = [];
+  for (const r of rows) {
+    const pieces = r.pieces;
+    if (out.length > 0 && r.opens) {
+      while (out.length && out[out.length - 1].ch === " ") out.pop();
+      const first = pieces.find((p) => p.ch !== " ");
+      if (out.length && HYPHEN_PIECE.test(out[out.length - 1].ch) && first && /\p{Ll}/u.test(first.ch)) out.pop();
+      else out.push({ ch: " ", glyph: null });
+    }
+    out.push(...pieces);
+  }
+  while (out.length && out[0].ch === " ") out.shift();
+  return out;
+}
+
+/** A reading as it is prepared when nothing of it is numbered. */
+function plain(r: Reading, pieces: Piece[]): Prepared | Marker {
+  if (r.kind === "table") return "skip";
+  return { kind: r.kind, pieces, page: startPage(r.block), paths: [r.path.join(".")], ...(r.block.previousPart ? { previousPart: r.block.previousPart.join(".") } : {}), origin: r.origin };
+}
+
+/**
+ * The readings of a document whose lines are numbered: every number left out, and the runs
+ * of consecutive numbered prose — paragraphs, list items, tables that are prose — read again
+ * as the paragraphs their lines make. A heading keeps its place; a reading with no number
+ * on it is Zotero's as it was. (With `everything`, the numbers only are left out.)
+ */
+function numberedReadings(readings: (Reading | Marker)[], texts: (Piece[] | null)[], numbers: ReadonlySet<Piece>, everything: boolean): (Prepared | Marker)[] {
+  const out: (Prepared | Marker)[] = [];
+  /** Each run of numbered prose: its readings, and their lines. */
+  const pools: { at: number; readings: Reading[]; rows: Row[] }[] = [];
+  let pool: { at: number; readings: Reading[]; rows: Row[] } | null = null;
+  readings.forEach((r, k) => {
+    const pieces = texts[k];
+    if (typeof r === "string" || !pieces) { pool = null; out.push(r as Marker); return; }
+    if (!pieces.some((p) => numbers.has(p))) { pool = null; out.push(plain(r, pieces)); return; }
+    const kept = withoutNumbers(pieces, numbers);
+    if (everything || r.kind === "heading") {
+      pool = null;
+      out.push({ ...(plain(r, kept) as Prepared), kind: r.kind === "heading" ? "heading" : "paragraph" });
+      return;
+    }
+    const rows = rowsOf(kept, numbers);
+    if (r.kind === "table") {
+      // Prose only if nearly every line carried a number and hardly any holds a cell's gap.
+      const lines = rowsOf(pieces, numbers);
+      const numbered = lines.filter((l) => l.numbered).length;
+      if (numbered < lines.length * NUMBERED_TABLE || rows.filter((l) => l.gapped).length > rows.length * GAPPED_TABLE) {
+        pool = null;
+        out.push("skip");
+        return;
+      }
+    }
+    if (!pool) {
+      pool = { at: out.length, readings: [], rows: [] };
+      pools.push(pool);
+      out.push("skip");
+    }
+    for (const row of rows) row.from = pool.readings.length;
+    pool.readings.push(r);
+    pool.rows.push(...rows);
+  });
+  // Each page's margins and line pitch, from all its numbered prose.
+  const byPage = new Map<number, { rows: Row[]; steps: number[] }>();
+  for (const p of pools) p.rows.forEach((r, i) => {
+    const on = byPage.get(r.page) ?? { rows: [], steps: [] };
+    byPage.set(r.page, on);
+    on.rows.push(r);
+    const a = p.rows[i - 1];
+    if (a && a.page === r.page && r.top > a.top && r.top - a.top < 3 * r.h) on.steps.push(r.top - a.top);
+  });
+  const pages = new Map<number, { left: number; right: number; pitch: number }>();
+  for (const [n, { rows, steps }] of byPage) {
+    pages.set(n, { left: percentile(rows.map((r) => r.x0), 0.15), right: percentile(rows.map((r) => r.x1), 0.85), pitch: steps.length ? percentile(steps, 0.5) : rows[0].h * 1.2 });
+  }
+  // Each pool's paragraphs, in the place the pool holds.
+  const replaced = new Map<number, (Prepared | Marker)[]>();
+  for (const p of pools) {
+    const made: (Prepared | Marker)[] = [];
+    for (const rows of paragraphsOfRows(p.rows, pages)) {
+      const pieces = joinRows(rows);
+      const text = pieces.map((q) => q.ch).join("");
+      if (CAPTION.test(text) && text.split(/\s+/).length <= CAPTION_WORDS) { made.push("skip"); continue; }
+      const sources = [...new Set(rows.map((r) => r.from))].map((i) => p.readings[i]);
+      const head = p.readings[rows[0].from];
+      made.push({
+        kind: "paragraph", pieces, page: rows[0].page + 1, paths: sources.map((s) => s.path.join(".")),
+        ...(rows[0].opens && head.block.previousPart ? { previousPart: head.block.previousPart.join(".") } : {}), origin: head.origin,
+      });
+    }
+    replaced.set(p.at, made);
+  }
+  return out.flatMap((x, i) => replaced.get(i) ?? [x]);
 }
 
 /**
@@ -437,20 +778,26 @@ export interface StructuredReader {
 }
 
 export function createStructuredReader(structure: SdtStructure, options: StructuredOptions = {}): StructuredReader {
-  const readings = readingsOf(structure.content, options.everything === true);
+  const everything = options.everything === true;
+  const readings = readingsOf(structure.content, everything);
+  const texts = readings.map((r) => (typeof r === "string" ? null : placeMarks(piecesOf(r.block, (node) => isRaisedCitation(node, structure.content)))));
+  const numbers = lineNumberPieces(texts.filter((t): t is Piece[] => t !== null));
+  const prepared = numbers.size > 0
+    ? numberedReadings(readings, texts, numbers, everything)
+    : readings.map((r, k) => (typeof r === "string" ? r : plain(r, texts[k]!)));
   /** The draft each read path became, for the parts that continue it. */
   const byPath = new Map<string, Draft>();
   const drafts: Draft[] = [];
   let barrier = true;
   /** The last paragraph read, still open for a continuation. */
   let open: Draft | null = null;
-  for (const r of readings) {
+  for (const r of prepared) {
     if (r === "barrier") { barrier = true; open = null; continue; }
     if (r === "display" && open) open.display = true;
     if (r === "skip" || r === "display") continue;
-    const pieces = placeMarks(piecesOf(r.block, (node) => isRaisedCitation(node, structure.content)));
-    const part = r.block.previousPart ? byPath.get(r.block.previousPart.join(".")) : undefined;
-    const prev = part ?? (r.kind === "paragraph" && open !== null && !options.everything && continues(open.pieces, pieces) ? open : undefined);
+    const pieces = r.pieces;
+    const part = r.previousPart ? byPath.get(r.previousPart) : undefined;
+    const prev = part ?? (r.kind === "paragraph" && open !== null && !everything && continues(open.pieces, pieces) ? open : undefined);
     if (prev) {
       // Carried over an equation, a column or a page: one paragraph. A hyphen the break
       // left behind is mended when what follows is a lowercase continuation.
@@ -460,10 +807,10 @@ export function createStructuredReader(structure: SdtStructure, options: Structu
       else prev.pieces.push({ ch: " ", glyph: null });
       prev.pieces.push(...pieces);
       prev.display = false;
-      byPath.set(r.path.join("."), prev);
+      for (const path of r.paths) byPath.set(path, prev);
       continue;
     }
-    const page = startPage(r.block);
+    const page = r.page;
     const previous = drafts.at(-1);
     // A page is no break in the writing where the sentence before it goes on over it —
     // most often into a display equation at the head of the next page. Where it ended, the
@@ -472,12 +819,12 @@ export function createStructuredReader(structure: SdtStructure, options: Structu
     const block: StructuredBlock = {
       kind: r.kind, text: "", page, runs: [], apart: false,
       columnBreak: barrier || !previous || turned,
-      ...(options.everything ? { origin: r.origin } : {}),
+      ...(everything ? { origin: r.origin } : {}),
     };
     barrier = false;
     const draft: Draft = { block, pieces, pages: [], seen: null, result: null, display: false };
     drafts.push(draft);
-    byPath.set(r.path.join("."), draft);
+    for (const path of r.paths) byPath.set(path, draft);
     open = r.kind === "paragraph" ? draft : null;
   }
   for (const d of drafts) {

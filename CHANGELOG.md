@@ -120,6 +120,18 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- A PDF manuscript with numbered lines, as preprints and papers under review are set, is
+  read without its line numbers. Word's line numbering and LaTeX's lineno put a number
+  beside every line, and both of the reader's readings took it for a word: "84 Vertical
+  land motion (VLM), defined as … 85 represents", which also hid every paragraph's indent.
+  Zotero's reader took each numbered line for the item of a numbered list and set whole
+  pages of such prose aside as tables. The numbers are now told by where they stand — a
+  bare number at the edge of each line, in a column clear of the text, counting on line by
+  line — and left out; the lines Zotero read one by one are joined into the paragraphs
+  their indents and last lines show, and a page it took for a table is read. On 18
+  EarthArXiv manuscripts, those whose PDF carries its own paragraphs read 74% of their
+  text instead of 60%, the paragraphs are found (boundary F1 81% instead of 58%), and the
+  6% of scored words that were line numbers are gone.
 - In Firefox, a web PDF without ".pdf" in its address now and then stayed in Firefox's own
   viewer instead of opening in Anagram's reader, and a PDF the reader opened by itself, as
   it does when one loads or is reloaded, could land on "This PDF could not be loaded". Both
