@@ -3,13 +3,17 @@
 //   node test/pdf-bench/corpus.mjs seed <ids.txt> [<dir with <id>.pdf>]   add arXiv ids
 //   node test/pdf-bench/corpus.mjs add <id> <pdf-url> <category,…> [--html <url>] [--truth tagged]
 //   node test/pdf-bench/corpus.mjs derive <id> <parent-id> <category,…> <how it was made>
+//   node test/pdf-bench/corpus.mjs hrdoc <dir of HRDoc JSONs> [--n 80]    HRDoc's documents (labelled.mjs)
+//   node test/pdf-bench/corpus.mjs docbank <DocBank root> <sample.json>   DocBank's sampled pages
 //   node test/pdf-bench/corpus.mjs fetch                                  download what is missing
 //
 // ANAGRAM_PDF_BENCH names the corpus directory. It holds manifest.json, pdf/<id>.pdf and
-// html/<id>.html (arXiv's LaTeXML rendering, the ground truth). Third-party documents are
-// never committed; the manifest records where each came from so the corpus can be rebuilt.
+// the ground truth: html/<id>.html (arXiv's LaTeXML rendering) or truth/ (a labelled
+// dataset's annotations of the document). Third-party documents are never committed; the
+// manifest records where each came from so the corpus can be rebuilt.
 // Requests go out with a generic User-Agent and at most one every three seconds.
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const ROOT = process.env.ANAGRAM_PDF_BENCH;
@@ -21,6 +25,7 @@ const PAUSE_MS = 3100;
 const load = () => (existsSync(MANIFEST) ? JSON.parse(readFileSync(MANIFEST, "utf8")) : []);
 const save = (docs) => writeFileSync(MANIFEST, `${JSON.stringify(docs, null, 1)}\n`);
 const safeId = (id) => id.replace(/[^\w.-]+/g, "_");
+const sha1 = (s) => createHash("sha1").update(s).digest("hex");
 const arxivPdf = (id) => `https://export.arxiv.org/pdf/${id}`;
 const arxivHtml = (id) => `https://arxiv.org/html/${id}`;
 
@@ -80,6 +85,44 @@ if (command === "seed") {
     category: categories.split(","), file: `pdf/${safeId(id)}.pdf`, html: parent.html, has_html: parent.has_html,
   });
   save(docs);
+} else if (command === "hrdoc") {
+  // HRDoc's annotated documents (labelled.mjs): the first --n by the SHA-1 of their name.
+  // An ACL Anthology paper is named <venue>_<anthology id>, an arXiv one by its id.
+  const [dir] = args;
+  const n = Number(args.includes("--n") ? args[args.indexOf("--n") + 1] : "80");
+  mkdirSync(join(ROOT, "truth"), { recursive: true });
+  const names = readdirSync(dir).filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -5));
+  names.sort((a, b) => sha1(a).localeCompare(sha1(b)));
+  for (const name of names.slice(0, n)) {
+    const anthology = name.includes("_") ? name.slice(name.indexOf("_") + 1) : null;
+    const id = `hrdoc-${name}`;
+    copyFileSync(join(dir, `${name}.json`), join(ROOT, "truth", `${safeId(id)}.json`));
+    upsert(docs, {
+      id, source: anthology ? `https://aclanthology.org/${anthology}.pdf` : arxivPdf(name), html_source: null, subject: null,
+      category: ["hrdoc"], file: `pdf/${safeId(id)}.pdf`, html: null, truth: "hrdoc", truth_file: `truth/${safeId(id)}.json`,
+    });
+  }
+  save(docs);
+  console.log(`${docs.length} documents`);
+} else if (command === "docbank") {
+  // DocBank's sampled pages (labelled.mjs): sample.json lists {arxiv, pages, files}, the
+  // files being DocBank .txt annotations under <txt root>.
+  const [root, sample] = args;
+  mkdirSync(join(ROOT, "truth"), { recursive: true });
+  for (const s of JSON.parse(readFileSync(sample, "utf8"))) {
+    const id = `docbank-${s.arxiv}`;
+    const files = s.files.map((f, k) => {
+      const file = `truth/${safeId(id)}-${s.pages[k]}.txt`;
+      copyFileSync(join(root, f), join(ROOT, file));
+      return { index: s.pages[k], file };
+    });
+    upsert(docs, {
+      id, source: arxivPdf(s.arxiv), html_source: null, subject: null, category: ["docbank"],
+      file: `pdf/${safeId(id)}.pdf`, html: null, truth: "docbank", truth_files: files,
+    });
+  }
+  save(docs);
+  console.log(`${docs.length} documents`);
 } else if (command === "fetch") {
   for (const doc of docs) {
     if (!existsSync(join(ROOT, doc.file))) {
@@ -104,5 +147,5 @@ if (command === "seed") {
   save(docs);
   console.log(`${docs.filter((d) => existsSync(join(ROOT, d.file))).length} PDFs, ${docs.filter((d) => d.has_html).length} with HTML`);
 } else {
-  console.log("usage: corpus.mjs seed <ids.txt> [<pdf dir>] | add <id> <url> <cats> [<html-url>] | fetch");
+  console.log("usage: corpus.mjs seed <ids.txt> [<pdf dir>] | add <id> <url> <cats> [--html <url>] [--truth tagged] | derive <id> <parent> <cats> <how> | hrdoc <dir> [--n 80] | docbank <root> <sample.json> | fetch");
 }
