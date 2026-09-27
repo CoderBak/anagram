@@ -26,7 +26,7 @@ let report: {text: string; windows: WindowVerdict[]; model: ModelInfo | null; co
 function clearResult(): void { report = undefined; results.hidden = true; list.replaceChildren(); }
 function readout(r: ScoreResult): string {
   const label = bandLabel(band(r));
-  return isNoVerdict(band(r)) ? label : `${label} · ${formatScore(r.score)} · ${r.probs.map((p, i) => `${bandLabel(BUCKET_BANDS[i])} ${Math.round(p * 100)}%`).join(" / ")}`;
+  return isNoVerdict(band(r)) ? label : `${label} · ${formatScore(r.score)} · ${r.probs.map((p, i) => `${bandLabel(BUCKET_BANDS[i]!)} ${Math.round(p * 100)}%`).join(" / ")}`;
 }
 function cancel(): void { ++generation; cancelDocumentSession(); analyze.disabled = false; }
 input.addEventListener("input", () => { cancel(); clearResult(); status.textContent = ""; });

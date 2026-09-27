@@ -225,6 +225,6 @@ export function groupBlocks(blocks: readonly PlanBlock[]): number[][] {
   });
   endGroup(null);
 
-  done.sort((a, b) => a[0].index - b[0].index);
+  done.sort((a, b) => a[0]!.index - b[0]!.index);
   return done.map((items) => items.map((i) => i.index));
 }

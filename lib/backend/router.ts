@@ -142,7 +142,7 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
     while (running < MAX_IN_FLIGHT) {
       let chosen = -1, chosenOwner = "", bestPriority = -Infinity, bestTurn = Infinity;
       for (let i = 0; i < waiting.length; i++) {
-        const batch = waiting[i];
+        const batch = waiting[i]!;
         const owners = new Set(batch.entries.flatMap((entry) => [...entry.readers].map((reader) => reader.document)));
         const owner = [...owners].filter((doc) => (runningByDocument.get(doc) ?? 0) < MAX_DOCUMENT_IN_FLIGHT)
           .sort((a, b) => (lastServed.get(a) ?? 0) - (lastServed.get(b) ?? 0))[0];
@@ -155,7 +155,7 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
         }
       }
       if (chosen < 0) return;
-      const batch = waiting.splice(chosen, 1)[0];
+      const batch = waiting.splice(chosen, 1)[0]!;
       batch.owner = chosenOwner;
       lastServed.set(chosenOwner, ++turn);
       runningByDocument.set(chosenOwner, (runningByDocument.get(chosenOwner) ?? 0) + 1);
@@ -204,7 +204,7 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
       const producers = new Map<string, ModelInfo>();
       const groups = new Map<string, ScoreBlock[]>();
       sent.forEach((block, index) => {
-        const key = keys[index], hit = hits.get(key);
+        const key = keys[index]!, hit = hits.get(key);
         if (hit) { results.set(block.id, { ...hit, id: block.id }); producers.set(dim, model); }
         else { const group = groups.get(key) ?? []; group.push(block); groups.set(key, group); }
       });
@@ -213,17 +213,19 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
       let batch: Batch | undefined, size = 0;
       for (const [cacheKey, group] of groups) {
         const key = `${revision ?? "none"}:${cacheKey}`;
+        // A group is made with its first block (above).
+        const first = group[0]!;
         let entry = inFlight.get(key);
         if (!entry) {
-          if (!batch || (size && size + group[0].text.length > BATCH_CHAR_BUDGET)) {
+          if (!batch || (size && size + first.text.length > BATCH_CHAR_BUDGET)) {
             batch = { priority: PRIORITY[req.priority] ?? 0, queuedAt: Date.now(),
               entries: [], controller: new AbortController(), epoch: requestEpoch, cacheEpoch, revision };
             batches.push(batch); size = 0;
           }
           let resolve!: (value: Produced) => void;
           const promise = new Promise<Produced>((done) => { resolve = done; });
-          entry = { key, block: group[0], batch, readers: new Set(), promise, resolve };
-          batch.entries.push(entry); size += group[0].text.length; inFlight.set(key, entry);
+          entry = { key, block: first, batch, readers: new Set(), promise, resolve };
+          batch.entries.push(entry); size += first.text.length; inFlight.set(key, entry);
         }
         entry.readers.add(reader); reader.entries.add(entry);
         entry.batch.priority = Math.max(entry.batch.priority, PRIORITY[req.priority] ?? 0);

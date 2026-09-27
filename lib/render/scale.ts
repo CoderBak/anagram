@@ -22,7 +22,7 @@ export const SCORE_CUTS = [1 / 6, 1 / 2, 5 / 6] as const;
 export function levelOf(score: number): number {
   const s = Number.isFinite(score) ? score : 0;
   let level = 0;
-  while (level < SCORE_CUTS.length && s >= SCORE_CUTS[level]) level++;
+  while (level < SCORE_CUTS.length && s >= SCORE_CUTS[level]!) level++;
   return level;
 }
 

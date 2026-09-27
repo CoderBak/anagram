@@ -251,7 +251,7 @@ export function createPdfUnitSource(): PdfUnitSource {
     const nodes: Text[] = [];
     let missing = false;
     members.forEach((block, i) => {
-      const base = starts[i];
+      const base = starts[i]!;
       let open: { part: UnitPart; page: number; item: number } | null = null;
       for (const run of block.runs) {
         const at = base + run.at;
@@ -273,9 +273,9 @@ export function createPdfUnitSource(): PdfUnitSource {
     });
     if (missing || parts.length === 0) return null;
 
-    const first = parts[0].nodes[0];
-    const lastPart = parts[parts.length - 1];
-    const last = lastPart.nodes[lastPart.nodes.length - 1];
+    const first = parts[0]!.nodes[0]!;
+    const lastPart = parts[parts.length - 1]!;
+    const last = lastPart.nodes[lastPart.nodes.length - 1]!;
     const topElement = first.parentElement;
     const container = last.parentElement;
     if (!topElement || !container) return null;
@@ -295,7 +295,7 @@ export function createPdfUnitSource(): PdfUnitSource {
     const groups = mergeShorts ? groupBlocks(plan) : soloGroups(plan);
     const out: Blueprint[] = [];
     groups.forEach((group, i) => {
-      const p = build(group.map((at) => blocks[at]), group.map((at) => plan[at].words), i);
+      const p = build(group.map((at) => blocks[at]!), group.map((at) => plan[at]!.words), i);
       if (p) out.push(p);
     });
     built = out;
@@ -349,9 +349,9 @@ export function createPdfUnitSource(): PdfUnitSource {
     if (!home) return null;
     const out: Range[][] = spans.map(() => []);
     for (let k = 0; k < spans.length; k++) {
-      const { start, end } = spans[k];
+      const { start, end } = spans[k]!;
       for (let i = 0; i < home.runs.length; i++) {
-        const run = home.runs[i];
+        const run = home.runs[i]!;
         const from = Math.max(start, run.at);
         const to = Math.min(end, run.at + run.length);
         if (from >= to) continue;
@@ -359,7 +359,7 @@ export function createPdfUnitSource(): PdfUnitSource {
         if (!element?.isConnected) return null;
         const resolved = itemRanges(element, run.from + from - run.at, run.from + to - run.at);
         if (!resolved) return null;
-        out[k].push(...resolved);
+        out[k]!.push(...resolved);
       }
     }
     return out;

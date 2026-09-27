@@ -40,12 +40,12 @@ function counter() {
 
 /** Every character of [0, end) inside some pass. */
 const covered = (passes: readonly { start: number; end: number }[], end: number): boolean =>
-  passes[0].start === 0 && passes.every((p, i) => i === 0 || p.start <= passes[i - 1].end) && passes[passes.length - 1].end === end;
+  passes[0]!.start === 0 && passes.every((p, i) => i === 0 || p.start <= passes[i - 1]!.end) && passes[passes.length - 1]!.end === end;
 
 /** Passes over two neighbouring halves each: every pass ends where the one after next starts. */
 const byHalves = (passes: readonly { start: number; end: number }[]): boolean =>
-  passes.every((p, i) => i + 2 >= passes.length || p.end === passes[i + 2].start) &&
-  passes.every((p, i) => i === 0 || (p.start > passes[i - 1].start && p.start < passes[i - 1].end && p.end > passes[i - 1].end));
+  passes.every((p, i) => i + 2 >= passes.length || p.end === passes[i + 2]!.start) &&
+  passes.every((p, i) => i === 0 || (p.start > passes[i - 1]!.start && p.start < passes[i - 1]!.end && p.end > passes[i - 1]!.end));
 
 describe("readInWindows", () => {
   it("sends a text that certainly fits exactly as before: one block, the unit's own id, its model form, no count", async () => {
@@ -57,7 +57,7 @@ describe("readInWindows", () => {
     expect(asked).toHaveLength(0);
     expect(calls).toHaveLength(1);
     expect(calls[0]).toEqual([{ id: "u_1", text: modelText(text) }]);
-    expect(read.get("u_1")).toEqual([{ start: 0, end: text.length, result: real(calls[0][0]) }]);
+    expect(read.get("u_1")).toEqual([{ start: 0, end: text.length, result: real(calls[0]![0]!) }]);
   });
 
   it("counts a text that may not fit, and reads it in one pass as before when it does", async () => {
@@ -78,7 +78,7 @@ describe("readInWindows", () => {
     const { asked, countTokens } = counter();
     const read = await readInWindows([{ id: "u_a", text: long, order: 0 }, { id: "u_b", text: short, order: 1 }], scoreBlocks, countTokens);
     expect(asked).toHaveLength(1);
-    expect(new Set(asked[0]).size).toBe(asked[0].length);
+    expect(new Set(asked[0]).size).toBe(asked[0]!.length);
     expect(new Set(asked[0])).toEqual(new Set(wordsOf(long).words));
     expect(calls).toHaveLength(1);
     const passes = read.get("u_a")!;
@@ -89,9 +89,9 @@ describe("readInWindows", () => {
     expect(passes.every((p) => spanTokens(long, p) <= PASS_TOKENS)).toBe(true);
     // Every edge on a sentence start: a pass opens on a capital and closes on a full stop.
     expect(passes.every((p) => /^Sentence number \d+ /.test(long.slice(p.start)) && /\.\s*$/.test(long.slice(p.start, p.end)))).toBe(true);
-    expect(calls[0].map((b) => b.text)).toEqual([...passes.map((p) => blockText(long, p)), modelText(short)]);
-    expect(new Set(calls[0].map((b) => b.id)).size).toBe(passes.length + 1);
-    expect([...owners[0].values()]).toEqual([...passes.map(() => "u_a"), "u_b"]);
+    expect(calls[0]!.map((b) => b.text)).toEqual([...passes.map((p) => blockText(long, p)), modelText(short)]);
+    expect(new Set(calls[0]!.map((b) => b.id)).size).toBe(passes.length + 1);
+    expect([...owners[0]!.values()]).toEqual([...passes.map(() => "u_a"), "u_b"]);
   });
 
   it("makes a text whose words went uncounted Unavailable, and reads the others", async () => {
@@ -106,12 +106,12 @@ describe("readInWindows", () => {
   it("re-reads a pass the engine had to cut, once, in two halves", async () => {
     const long = prose(60);
     const plan = planText(long);
-    const dense = blockText(long, plan[1]);
+    const dense = blockText(long, plan[1]!);
     const { calls, scoreBlocks } = recorder((b) => real(b, b.text === dense ? { truncated: true, tokens: 512 } : {}));
     const windows = (await readInWindows([{ id: "u_a", text: long, order: 0 }], scoreBlocks, counter().countTokens)).get("u_a")!;
     expect(calls).toHaveLength(2);
     expect(calls[1]).toHaveLength(2);
-    expect(calls[1].map((b) => b.text).join(" ")).toBe(dense);
+    expect(calls[1]!.map((b) => b.text).join(" ")).toBe(dense);
     expect(windows).toHaveLength(plan.length + 1);
     expect(covered(windows, long.length)).toBe(true);
     expect(windows.some((w) => w.result.truncated)).toBe(false);
@@ -137,7 +137,7 @@ describe("readInWindows", () => {
 
   it("gives a unit no verdict at all while one of its passes is unanswered; its neighbours keep theirs", async () => {
     const long = prose(60);
-    const lost = blockText(long, planText(long)[2]);
+    const lost = blockText(long, planText(long)[2]!);
     const { scoreBlocks } = recorder((b) => (b.text === lost ? undefined : real(b)));
     const read = await readInWindows([{ id: "u_a", text: long, order: 0 }, { id: "u_b", text: prose(4), order: 1 }], scoreBlocks, counter().countTokens);
     expect(read.has("u_a")).toBe(false);
@@ -146,7 +146,7 @@ describe("readInWindows", () => {
 
   it("turns one degraded pass into an Unavailable unit", async () => {
     const long = prose(60);
-    const failed = blockText(long, planText(long)[1]);
+    const failed = blockText(long, planText(long)[1]!);
     const { scoreBlocks } = recorder((b) => real(b, b.text === failed ? { degraded: true } : {}));
     const windows = (await readInWindows([{ id: "u_a", text: long, order: 0 }], scoreBlocks, counter().countTokens)).get("u_a")!;
     expect(windows).toHaveLength(planText(long).length);
@@ -156,16 +156,16 @@ describe("readInWindows", () => {
 
 describe("combining overlapping passes", () => {
   const pass = (start: number, end: number, probs: number[], extra: Partial<ScoreResult> = {}): WindowVerdict =>
-    ({ start, end, result: { id: `${start}-${end}`, bucket: probs.indexOf(Math.max(...probs)), probs, score: (probs[1] + 2 * probs[2] + 3 * probs[3]) / 3, ...extra } });
+    ({ start, end, result: { id: `${start}-${end}`, bucket: probs.indexOf(Math.max(...probs)), probs, score: (probs[1]! + 2 * probs[2]! + 3 * probs[3]!) / 3, ...extra } });
   const human = [1, 0, 0, 0];
   const ai = [0, 0, 0, 1];
 
   it("judges every stretch between two pass edges by the mean of the passes that read it", () => {
     const v = unitVerdict("u", 150, [pass(0, 100, human), pass(50, 150, ai)]);
     expect(v.stretches.map((s) => [s.start, s.end])).toEqual([[0, 50], [50, 100], [100, 150]]);
-    expect(v.stretches[0].result.probs).toEqual(human);
-    expect(v.stretches[2].result.probs).toEqual(ai);
-    expect(v.stretches[1].result.probs).toEqual([0.5, 0, 0, 0.5]);
+    expect(v.stretches[0]!.result.probs).toEqual(human);
+    expect(v.stretches[2]!.result.probs).toEqual(ai);
+    expect(v.stretches[1]!.result.probs).toEqual([0.5, 0, 0, 0.5]);
     expect(v.result.score).toBeCloseTo(0.5);
   });
 

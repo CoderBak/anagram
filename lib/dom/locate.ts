@@ -44,10 +44,10 @@ function mapPart(part: UnitPart): PartMap {
   /** Offset in the joined text of the part — what the marker flags are counted in. */
   let at = 0;
   for (let n = 0; n < nodes.length; n++) {
-    const data = nodes[n].data;
+    const data = nodes[n]!.data;
     for (let o = 0; o < data.length; o++, at++) {
       if (marker !== null && marker[at]) continue;
-      if (/\s/.test(data[o])) {
+      if (/\s/.test(data[o]!)) {
         if (chars.length > 0 && !gap) gap = { n, o };
         continue;
       }
@@ -57,7 +57,7 @@ function mapPart(part: UnitPart): PartMap {
         offset.push(gap.o);
         gap = null;
       }
-      chars.push(data[o]);
+      chars.push(data[o]!);
       node.push(n);
       offset.push(o);
     }
@@ -88,14 +88,15 @@ export function locateSpans(parts: UnitPart[], text: string, spans: Span[]): Ran
     matched = base + expected.length;
     if (expected.length < map.text.length && matched !== text.length) return null;
 
-    const before = (i: number): [Text, number] => [part.nodes[map.node[i]], map.offset[i]];
+    // One node index and offset per character of map.text, the node one of the part's.
+    const before = (i: number): [Text, number] => [part.nodes[map.node[i]!]!, map.offset[i]!];
     const firstWord = (i: number): number => {
       while (i < map.text.length && map.text[i] === " ") i++;
       return i;
     };
     for (let k = 0; k < spans.length; k++) {
-      const from = firstWord(Math.max(spans[k].start - base, 0));
-      const to = Math.min(spans[k].end - base, expected.length);
+      const from = firstWord(Math.max(spans[k]!.start - base, 0));
+      const to = Math.min(spans[k]!.end - base, expected.length);
       if (from >= to) continue;
       const next = firstWord(to);
       const last = map.text.length - 1;
@@ -103,8 +104,8 @@ export function locateSpans(parts: UnitPart[], text: string, spans: Span[]): Ran
         const range = new Range();
         range.setStart(...before(from));
         if (next <= last) range.setEnd(...before(next));
-        else range.setEnd(part.nodes[map.node[last]], map.offset[last] + 1);
-        out[k].push(range);
+        else range.setEnd(part.nodes[map.node[last]!]!, map.offset[last]! + 1);
+        out[k]!.push(range);
       } catch {
         return null; // a node left the document between the scan and now
       }

@@ -105,7 +105,7 @@ export function createFiller(): (text: string) => string {
         // A letter outside Latin and Han keeps only its case: Cyrillic, Greek, Arabic and
         // Hangul all count words the way Latin does, so the shape is all that matters.
         if (!/\p{Script=Latin}/u.test(ch)) return ch === ch.toUpperCase() && ch !== ch.toLowerCase() ? "X" : "x";
-        const f = LATIN[latinAt++ % LATIN.length];
+        const f = LATIN[latinAt++ % LATIN.length]!;
         return ch === ch.toUpperCase() && ch !== ch.toLowerCase() ? f.toUpperCase() : f;
       })
       .join("");

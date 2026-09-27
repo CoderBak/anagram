@@ -84,7 +84,7 @@ const PROSE_WORDS = 3;
 /** A face's family: the name without its subset tag, weight, shape and size. Computer
  *  Modern's faces are one family (CMR10, CMBX12), and so are the EC fonts' (SFRM1095). */
 function familyOf(name: string): string {
-  const base = name.replace(/^[A-Z]{6}\+/, "").split(/[-,]/)[0].replace(/\d.*$/, "");
+  const base = name.replace(/^[A-Z]{6}\+/, "").split(/[-,]/)[0]!.replace(/\d.*$/, "");
   return /^CM[A-Z]/.test(base) ? "CM" : /^SF[A-Z]{2}/.test(base) ? "SF" : base;
 }
 
@@ -264,16 +264,16 @@ const REFERENCE = /^(?:Eqs?|Equations?|Secs?|Sections?|Figs?|Figures?|Tables?|Th
  * before it ("Thusθ"), though not the μ of a unit after a number ("14 μm").
  */
 function formulaChars(pieces: Piece[], { sources, faces }: Located, mathPages: ReadonlySet<number>): boolean[] {
-  const letter = (i: number): boolean => i >= 0 && i < pieces.length && /\p{L}/u.test(pieces[i].ch);
+  const letter = (i: number): boolean => i >= 0 && i < pieces.length && /\p{L}/u.test(pieces[i]!.ch);
   /** The next piece past at most one space. */
   const near = (i: number, step: number): string => (pieces[i + step]?.ch === " " ? pieces[i + 2 * step] : pieces[i + step])?.ch ?? " ";
   /** The μ of a quantity's unit, "14 μm", "4μ B". */
-  const unit = (i: number): boolean => pieces[i].ch === "μ" && /\p{N}/u.test(near(i, -1)) && /\p{Script=Latin}/u.test(near(i, 1));
+  const unit = (i: number): boolean => pieces[i]!.ch === "μ" && /\p{N}/u.test(near(i, -1)) && /\p{Script=Latin}/u.test(near(i, 1));
   /** A letter or digit stands against the i-th piece, past any more of it ("C++"). */
   const glued = (i: number, step: number): boolean => {
     let j = i + step;
-    while (j >= 0 && j < pieces.length && pieces[j].ch === pieces[i].ch) j += step;
-    return j >= 0 && j < pieces.length && ALNUM.test(pieces[j].ch);
+    while (j >= 0 && j < pieces.length && pieces[j]!.ch === pieces[i]!.ch) j += step;
+    return j >= 0 && j < pieces.length && ALNUM.test(pieces[j]!.ch);
   };
   return pieces.map((p, i) => {
     const page = faces[i]?.page ?? (p.glyph ? p.glyph.page + 1 : 0);
@@ -286,9 +286,9 @@ function formulaChars(pieces: Piece[], { sources, faces }: Located, mathPages: R
     if (!MARK.test(ch) || /[\uFE00-\uFE0F]/u.test(ch)) return false;
     // A mark stays with its letter where the two make one character.
     let j = i - 1;
-    while (j >= 0 && MARK.test(pieces[j].ch)) j--;
+    while (j >= 0 && MARK.test(pieces[j]!.ch)) j--;
     if (!letter(j)) return true;
-    const cluster = (DOTLESS[pieces[j].ch] ?? pieces[j].ch) + pieces.slice(j + 1, i + 1).map((q) => q.ch).join("");
+    const cluster = (DOTLESS[pieces[j]!.ch] ?? pieces[j]!.ch) + pieces.slice(j + 1, i + 1).map((q) => q.ch).join("");
     return /\p{Mn}/u.test(cluster.normalize("NFC"));
   });
 }
@@ -329,6 +329,12 @@ interface Token {
   glued?: true;
 }
 
+/** The character at the k-th place of a token, or "" past either end of it. */
+function chAt(pieces: readonly Piece[], t: Token, k: number): string {
+  const i = t.at[k];
+  return i === undefined ? "" : pieces[i]!.ch;
+}
+
 /** Faces that set italic: Times', Palatino's, TeX's text italic, and so on. */
 const ITALIC_FONT = /ital|obli|slant|(?:^|[-_])it(?:$|[-_\d])|^(?:cm|sf|lm)\w*ti\d|libertine\w*i$/i;
 
@@ -344,10 +350,12 @@ const ITALIC_FONT = /ital|obli|slant|(?:^|[-_])it(?:$|[-_\d])|^(?:cm|sf|lm)\w*ti
 function hyphened(tokens: Token[], pieces: Piece[], faces: (Box | null)[], formula: (i: number) => boolean, italicMath: ReadonlySet<number>): Token[] {
   const out: Token[] = [];
   for (const t of tokens) {
-    const h = t.at.findIndex((i, k) => k > 0 && /^[-‐]$/u.test(pieces[i].ch) && LETTER.test(pieces[t.at[k + 1]]?.ch ?? ""));
+    const h = t.at.findIndex((i, k) => k > 0 && /^[-‐]$/u.test(pieces[i]!.ch) && LETTER.test(chAt(pieces, t, k + 1)));
     const head = h > 0 ? t.at.slice(0, h) : [];
-    const chars = head.map((i) => pieces[i].ch).join("");
-    const f = faces[head[0]], g = faces[t.at[h + 1]];
+    const chars = head.map((i) => pieces[i]!.ch).join("");
+    // The face of a one-letter head, and of the letter after the hyphen (or, with no such
+    // hyphen, of the token's first); only a one-letter head is asked about either.
+    const f = head.length === 1 ? faces[head[0]!]! : null, g = faces[t.at[h + 1]!]!;
     const split = !/\p{L}/u.test(chars) ? /[\p{N})\]]/u.test(chars)
       : head.length === 1 && f !== null && g !== null && !f.math && !f.mono && italicMath.has(f.page) && ITALIC_FONT.test(baseName(f.font)) && g.font !== f.font;
     if (!split) { out.push(t); continue; }
@@ -402,7 +410,7 @@ export function assemble(pieces: Piece[], located: Located, vocab: Vocabulary | 
   const symbolic = formulaChars(pieces, located, mathPages);
   pieces.forEach((p, i) => {
     if (p.ch === " ") { spaced = true; return; }
-    const src = sources[i];
+    const src = sources[i]!;
     // A formula's by its face or by what it is; unknown with no face and no such character.
     const formula = symbolic[i] ? true : faces[i] ? faces[i]!.math : null;
     // A citation mark is left out, but the text after it follows it on the page: "errors¹⁻⁴."
@@ -430,38 +438,38 @@ export function assemble(pieces: Piece[], located: Located, vocab: Vocabulary | 
 
   // ---- formulas: the math tokens and the letterless tokens beside them ----
   const glyphAt = (t: Token, last: boolean): Glyph | null => {
-    for (const i of last ? [...t.at].reverse() : t.at) if (pieces[i].glyph) return pieces[i].glyph;
+    for (const i of last ? [...t.at].reverse() : t.at) if (pieces[i]!.glyph) return pieces[i]!.glyph;
     return null;
   };
   const beside = (a: Token, b: Token): boolean => {
     const x = glyphAt(a, true), y = glyphAt(b, false);
     return x !== null && y !== null && sameLine(x, y);
   };
-  const letters = (t: Token): string => t.at.map((i) => pieces[i].ch).join("").replace(/\P{L}/gu, "");
+  const letters = (t: Token): string => t.at.map((i) => pieces[i]!.ch).join("").replace(/\P{L}/gu, "");
   const sizes = pieces.flatMap((p, i) => (faces[i] && /\p{L}/u.test(p.ch) ? [faces[i].h] : [])).sort((a, b) => a - b);
   const body = sizes[sizes.length >> 1] ?? 0;
   /** The piece follows a space in its pdf.js run. pdf.js gives a run one size, and a Word
    *  document's equation leaves the words after a script in the script's run ("i and" of
    *  "$c_i$ and"): what a space parts from a script in its run is not the script. */
   const afterSpace = (i: number): boolean => {
-    const s = sources[i];
+    const s = sources[i]!;
     return s !== null && /\s/u.test(s.box.it.str.slice(0, s.offset));
   };
   const script = (t: Token): boolean => t.at.every((i) => faces[i] !== null && faces[i]!.h <= body * SCRIPT_SIZE && !afterSpace(i));
   /** What stands beside a formula and goes with it; not a word it is hyphened to, the
    *  "liminf" of "$\Gamma$-liminf". */
   const withFormula = (t: Token): boolean =>
-    !t.letters || ((OPERATOR.has(letters(t)) || script(t)) && !/^[-‐]\p{L}/u.test(pieces[t.at[0]].ch + (pieces[t.at[1]]?.ch ?? "")));
+    !t.letters || ((OPERATOR.has(letters(t)) || script(t)) && !/^[-‐]\p{L}/u.test(chAt(pieces, t, 0) + chAt(pieces, t, 1)));
   /** A comma or a full stop in the text face. TeX sets a formula's own in its mathematics
    *  face — the point of "$0.5$", the comma of "$x, y$" — so this one is the text's. */
-  const textStop = (i: number): boolean => (pieces[i].ch === "." || pieces[i].ch === ",") && faces[i] !== null && !faces[i]!.math;
+  const textStop = (i: number): boolean => (pieces[i]!.ch === "." || pieces[i]!.ch === ",") && faces[i] !== null && !faces[i]!.math;
   /** A number the text writes, its decimal point or its thousands comma in the text face:
    *  the "11.3" of "11.3 $\mu$m". */
   const written = (t: Token): boolean =>
-    t.at.some((i, k) => k > 0 && k + 1 < t.at.length && textStop(i) && /\d/u.test(pieces[t.at[k - 1]].ch) && /\d/u.test(pieces[t.at[k + 1]].ch));
+    t.at.some((i, k) => k > 0 && k + 1 < t.at.length && textStop(i) && /\d/u.test(pieces[t.at[k - 1]!]!.ch) && /\d/u.test(pieces[t.at[k + 1]!]!.ch));
   /** The token ends its clause in the text face, so a formula after it starts after it:
    *  "by Theorem 2, $x$". */
-  const closes = (t: Token): boolean => textStop(t.at[t.at.length - 1]);
+  const closes = (t: Token): boolean => textStop(t.at[t.at.length - 1]!);
   /** A number set against the relation that ends the formula before it: TeX puts a thick
    *  space after a relation inside a formula, outside a sub- or superscript, so "$\sim$10
    *  kHz" and "$\geq$50%" are the text's numbers, and "$\sim 10$" is not. What decides is
@@ -469,17 +477,17 @@ export function assemble(pieces: Piece[], located: Located, vocab: Vocabulary | 
   /** A number a cross-reference names, with nothing between it and the formula after it:
    *  "by Proposition 1 $f$ is", "Eq. (3) $x$". */
   const referenced = (k: number): boolean =>
-    k > 0 && !drop[k - 1] && /^[(\[]?\p{N}/u.test(pieces[tokens[k].at[0]].ch + (pieces[tokens[k].at[1]]?.ch ?? "")) && REFERENCE.test(letters(tokens[k - 1]));
+    k > 0 && !drop[k - 1] && /^[(\[]?\p{N}/u.test(chAt(pieces, tokens[k]!, 0) + chAt(pieces, tokens[k]!, 1)) && REFERENCE.test(letters(tokens[k - 1]!));
   /** A name set against the bracket of the formula after it: a function applied,
    *  "\mathrm{Aug}(\mathcal{G})", "\operatorname{KL}(p\|q)". */
   const applied = (k: number): boolean => {
-    const t = tokens[k], next = tokens[k + 1];
-    return t.letters && /\p{L}[([]$/u.test(pieces[t.at[t.at.length - 2]]?.ch + pieces[t.at[t.at.length - 1]].ch) && next !== undefined && pieces[next.at[0] - 1]?.ch !== " ";
+    const t = tokens[k]!, next = tokens[k + 1];
+    return t.letters && /\p{L}[([]$/u.test(chAt(pieces, t, t.at.length - 2) + chAt(pieces, t, t.at.length - 1)) && next !== undefined && pieces[next.at[0]! - 1]?.ch !== " ";
   };
   const typedAfter = (k: number): boolean => {
-    const t = tokens[k], before = tokens[k - 1];
-    if (!before || !/^\p{N}/u.test(pieces[t.at[0]].ch) || !RELATION.test(pieces[before.at[before.at.length - 1]].ch)) return false;
-    const a = sources[before.at[before.at.length - 1]], b = sources[t.at[0]];
+    const t = tokens[k]!, before = tokens[k - 1];
+    if (!before || !/^\p{N}/u.test(pieces[t.at[0]!]!.ch) || !RELATION.test(pieces[before.at[before.at.length - 1]!]!.ch)) return false;
+    const a = sources[before.at[before.at.length - 1]!], b = sources[t.at[0]!];
     if (!a || !b || a.page !== b.page || a.item === b.item || b.offset !== 0) return false;
     if (a.offset !== a.box.it.str.trimEnd().length - 1 || b.box.h <= body * SCRIPT_SIZE) return false;
     return Math.abs(a.box.y - b.box.y) < b.box.h * 0.5 && b.box.x1 - a.box.x2 < b.box.h * GLUED;
@@ -488,17 +496,17 @@ export function assemble(pieces: Piece[], located: Located, vocab: Vocabulary | 
   const faceOf = (t: Token): Box | null => {
     let face: Box | null = null;
     for (const i of t.at) {
-      if (!LETTER.test(pieces[i].ch)) continue;
+      if (!LETTER.test(pieces[i]!.ch)) continue;
       const f = faces[i];
       if (!f || f.math || f.mono || (face !== null && f.font !== face.font)) return null;
       face = f;
     }
     return face;
   };
-  const count = (t: Token): number => t.at.filter((i) => LETTER.test(pieces[i].ch)).length;
+  const count = (t: Token): number => t.at.filter((i) => LETTER.test(pieces[i]!.ch)).length;
   /** The nearest token with letters before or after the k-th. */
   const word = (k: number, step: number): Token | null => {
-    for (let j = k + step; j >= 0 && j < tokens.length; j += step) if (tokens[j].letters) return tokens[j];
+    for (let j = k + step; j >= 0 && j < tokens.length; j += step) if (tokens[j]!.letters) return tokens[j]!;
     return null;
   };
   /** A letter set alone: one letter of a text face on a page that sets mathematics, what
@@ -507,20 +515,20 @@ export function assemble(pieces: Piece[], located: Located, vocab: Vocabulary | 
    *  its face — "Part A" is a phrase of it — but one in another. Its face, and whether it
    *  carries a script. */
   const lone = (k: number): { face: Box; script: boolean } | null => {
-    const t = tokens[k];
+    const t = tokens[k]!;
     const size = Math.max(...t.at.map((i) => faces[i]?.h ?? 0));
     const small = (i: number): boolean => faces[i] !== null && faces[i]!.h < size * CORNER && !afterSpace(i);
-    const main = t.at.filter((i) => LETTER.test(pieces[i].ch) && !small(i));
-    const face = main.length === 1 ? faces[main[0]] : null;
+    const main = t.at.filter((i) => LETTER.test(pieces[i]!.ch) && !small(i));
+    const face = main.length === 1 ? faces[main[0]!] : null;
     if (!face || face.math || face.mono || !mathPages.has(face.page)) return null;
-    if (t.at.some((i) => i !== main[0] && !/^[\p{P}\p{M}\p{Lm}\p{Sk}]$/u.test(pieces[i].ch) && !small(i))) return null;
-    if (/^[([]\p{L}[)\]]/u.test(t.at.map((i) => pieces[i].ch).join(""))) return null;
+    if (t.at.some((i) => i !== main[0] && !/^[\p{P}\p{M}\p{Lm}\p{Sk}]$/u.test(pieces[i]!.ch) && !small(i))) return null;
+    if (/^[([]\p{L}[)\]]/u.test(t.at.map((i) => pieces[i]!.ch).join(""))) return null;
     const before = word(k, -1);
     if (before && REFERENCE.test(letters(before))) return null;
     const around = [before, word(k, 1)].filter((n): n is Token => n !== null);
     const same = (n: Token): boolean => faceOf(n)?.font === face.font;
     if (!around.some((n) => !same(n)) || around.some((n) => same(n) && count(n) > 1)) return null;
-    return { face, script: t.at.some((i) => small(i) && ALNUM.test(pieces[i].ch)) };
+    return { face, script: t.at.some((i) => small(i) && ALNUM.test(pieces[i]!.ch)) };
   };
   /** A single letter set alone in a bold face: "\mathbf{h}", "\mathbf{J}_0". */
   const alone = (k: number): boolean => BOLD_FONT.test(lone(k)?.face.font ?? "");
@@ -532,7 +540,7 @@ export function assemble(pieces: Piece[], located: Located, vocab: Vocabulary | 
   const variable = (k: number): boolean => {
     const l = lone(k);
     if (!l || !italicMath.has(l.face.page) || !ITALIC_FONT.test(baseName(l.face.font))) return false;
-    const t = tokens[k], prev = tokens[k - 1], next = tokens[k + 1];
+    const t = tokens[k]!, prev = tokens[k - 1], next = tokens[k + 1];
     return l.script || next?.glued === true || (prev?.math === true && beside(prev, t)) || (next?.math === true && beside(t, next));
   };
   /** Set in a face the page uses only for formulas (formulaFaces): a number, a symbol, a
@@ -548,14 +556,14 @@ export function assemble(pieces: Piece[], located: Located, vocab: Vocabulary | 
       any = true;
     }
     const name = letters(t);
-    return any && (name.length <= 3 || OPERATOR.has(name) || /\p{L}\(/u.test(t.at.map((i) => pieces[i].ch).join("")));
+    return any && (name.length <= 3 || OPERATOR.has(name) || /\p{L}\(/u.test(t.at.map((i) => pieces[i]!.ch).join("")));
   };
   const drop = tokens.map((t, k) => t.math || alone(k) || variable(k) || formulaFace(t));
   for (let i = 1; i < tokens.length; i++) {
-    if (drop[i - 1] && withFormula(tokens[i]) && !written(tokens[i]) && !typedAfter(i) && beside(tokens[i - 1], tokens[i])) drop[i] = true;
+    if (drop[i - 1] && withFormula(tokens[i]!) && !written(tokens[i]!) && !typedAfter(i) && beside(tokens[i - 1]!, tokens[i]!)) drop[i] = true;
   }
   for (let i = tokens.length - 2; i >= 0; i--) {
-    if (drop[i + 1] && (withFormula(tokens[i]) || applied(i)) && !written(tokens[i]) && !closes(tokens[i]) && !referenced(i) && beside(tokens[i], tokens[i + 1])) drop[i] = true;
+    if (drop[i + 1] && (withFormula(tokens[i]!) || applied(i)) && !written(tokens[i]!) && !closes(tokens[i]!) && !referenced(i) && beside(tokens[i]!, tokens[i + 1]!)) drop[i] = true;
   }
 
   // ---- the text ----
@@ -569,25 +577,25 @@ export function assemble(pieces: Piece[], located: Located, vocab: Vocabulary | 
       // with the sentence it ends, as it does on arXiv's HTML: "the value of x." reads
       // "the value of.", not "the value of" run into the next sentence.
       let tail = t.at.length;
-      while (tail > 0 && CLAUSE_END.test(pieces[t.at[tail - 1]].ch) && !faces[t.at[tail - 1]]?.math) tail--;
+      while (tail > 0 && CLAUSE_END.test(pieces[t.at[tail - 1]!]!.ch) && !faces[t.at[tail - 1]!]?.math) tail--;
       if (text === "") return;
       skips.push(text.length);
-      for (const i of t.at.slice(tail)) { text += pieces[i].ch; prov.push(sources[i]); }
+      for (const i of t.at.slice(tail)) { text += pieces[i]!.ch; prov.push(sources[i]!); }
       return;
     }
     if (t.marked && text !== "") skips.push(text.length);
     if (text !== "" && !(t.glued && !drop[k - 1])) { text += " "; prov.push(null); }
     let previous: number | null = null;
     for (const i of t.at) {
-      const p = pieces[i], src = sources[i];
+      const p = pieces[i]!, src = sources[i]!;
       // A line break inside a token with no space: Zotero mended a hyphenation. The
       // hyphen is at the end of the previous glyph's run, if it is anywhere.
       if (vocab && previous !== null) {
-        const a = pieces[previous], s = sources[previous];
+        const a = pieces[previous]!, s = sources[previous];
         if (a.glyph && p.glyph && !sameLine(a.glyph, p.glyph) && s && HYPHEN.test(s.box.it.str[s.offset + 1] ?? "")) {
           const stem = /(\S+)$/u.exec(text)?.[1] ?? "";
           const from = previous;
-          const head = t.at.filter((j) => j > from).map((j) => pieces[j].ch).join("");
+          const head = t.at.filter((j) => j > from).map((j) => pieces[j]!.ch).join("");
           if (!dehyphenates(stem, head, vocab)) { text += s.box.it.str[s.offset + 1]; prov.push({ ...s, offset: s.offset + 1 }); }
         }
       }
@@ -605,7 +613,7 @@ export function assemble(pieces: Piece[], located: Located, vocab: Vocabulary | 
   for (let i = 1; i + 1 < prov.length; i++) {
     if (prov[i] !== null) continue;
     const a = prov[i - 1], b = prov[i + 1];
-    if (a && b && a.item === b.item && a.page === b.page && b.offset === a.offset + 2 && isSpace(a.box.it.str[a.offset + 1])) {
+    if (a && b && a.item === b.item && a.page === b.page && b.offset === a.offset + 2 && isSpace(a.box.it.str[a.offset + 1]!)) {
       prov[i] = { ...a, offset: a.offset + 1 };
     }
   }
@@ -634,7 +642,7 @@ function closedUp(text: string, prov: (Source | null)[], skips: number[]): { tex
   for (let i = 0; i < text.length; i++) {
     if (drop[i]) continue;
     out += text[i];
-    kept.push(prov[i]);
+    kept.push(prov[i]!);
   }
   return { text: out, prov: kept };
 }
@@ -654,11 +662,11 @@ function composed(text: string, prov: (Source | null)[]): { text: string; prov: 
   for (let i = 0; i < text.length;) {
     const size = (text.codePointAt(i) ?? 0) > 0xffff ? 2 : 1;
     let end = i + size;
-    while (end < text.length && ACCENT.test(text[end])) end++;
-    const cluster = end > i + size ? (DOTLESS[text[i]] ?? text.slice(i, i + size)) + text.slice(i + size, end) : text.slice(i, end);
+    while (end < text.length && ACCENT.test(text[end]!)) end++;
+    const cluster = end > i + size ? (DOTLESS[text[i]!] ?? text.slice(i, i + size)) + text.slice(i + size, end) : text.slice(i, end);
     const nfc = cluster.normalize("NFC");
     out += nfc;
-    for (let k = 0; k < nfc.length; k++) kept.push(k < size ? prov[i + k] : null);
+    for (let k = 0; k < nfc.length; k++) kept.push(k < size ? prov[i + k]! : null);
     i = end;
   }
   return { text: out, prov: kept };
@@ -703,15 +711,15 @@ function citationMarks(pieces: Piece[], faces: (Box | null)[]): boolean[] {
   /** Where the last mark left out ends. */
   let last = -1;
   for (let i = 0; i < pieces.length;) {
-    if (!pieces[i].raised) { i++; continue; }
+    if (!pieces[i]!.raised) { i++; continue; }
     let end = i;
-    while (end < pieces.length && pieces[end].raised) end++;
+    while (end < pieces.length && pieces[end]!.raised) end++;
     // Back over the marks before it in the same run, spaces and closing punctuation, to its word.
     let j = i - 1;
-    while (j >= 0 && (pieces[j].raised || SEPARATOR.test(pieces[j].ch))) j--;
-    while (j >= 0 && CLOSING.test(pieces[j].ch)) j--;
+    while (j >= 0 && (pieces[j]!.raised || SEPARATOR.test(pieces[j]!.ch))) j--;
+    while (j >= 0 && CLOSING.test(pieces[j]!.ch)) j--;
     let letters = 0;
-    for (; j >= 0 && /\p{L}/u.test(pieces[j].ch) && !faces[j]?.math; j--) letters++;
+    for (; j >= 0 && /\p{L}/u.test(pieces[j]!.ch) && !faces[j]?.math; j--) letters++;
     if (letters >= CITED_WORD) {
       // What separates it from the mark before it goes with the two.
       const from = last >= 0 && pieces.slice(last, i).every((p) => SEPARATOR.test(p.ch)) ? last : i;
@@ -749,7 +757,7 @@ function reflowPieces(block: ReflowBlock, pages: ReadonlyMap<number, PdfPageText
   const runAt = new Array<SourceRun | null>(block.text.length).fill(null);
   for (const r of block.runs) for (let k = 0; k < r.length; k++) runAt[r.at + k] = r;
   for (let j = 0; j < block.text.length; j++) {
-    const ch = block.text[j], r = runAt[j];
+    const ch = block.text[j]!, r = runAt[j]!;
     const it = r ? pages.get(r.page)?.items[r.item] : undefined;
     const box = r ? boxes.get(r.page)?.get(r.item) ?? null : null;
     if (!r || !it) {
@@ -766,12 +774,12 @@ function reflowPieces(block: ReflowBlock, pages: ReadonlyMap<number, PdfPageText
     items.push(it);
   }
   for (let i = 0; i + 1 < pieces.length; i++) {
-    const mark = COMBINING[pieces[i].ch];
-    if (!mark || !ACCENTED.test(pieces[i + 1].ch)) continue;
-    [pieces[i], pieces[i + 1]] = [pieces[i + 1], { ...pieces[i], ch: mark }];
-    [sources[i], sources[i + 1]] = [sources[i + 1], sources[i]];
-    [faces[i], faces[i + 1]] = [faces[i + 1], faces[i]];
-    [items[i], items[i + 1]] = [items[i + 1], items[i]];
+    const mark = COMBINING[pieces[i]!.ch];
+    if (!mark || !ACCENTED.test(pieces[i + 1]!.ch)) continue;
+    [pieces[i], pieces[i + 1]] = [pieces[i + 1]!, { ...pieces[i]!, ch: mark }];
+    [sources[i], sources[i + 1]] = [sources[i + 1]!, sources[i]!];
+    [faces[i], faces[i + 1]] = [faces[i + 1]!, faces[i]!];
+    [items[i], items[i + 1]] = [items[i + 1]!, items[i]!];
     i++;
   }
   let word: PdfTextItem | null = null;
@@ -780,7 +788,7 @@ function reflowPieces(block: ReflowBlock, pages: ReadonlyMap<number, PdfPageText
     let end = i + 1;
     while (it !== null && end < pieces.length && items[end] === it) end++;
     if (it && word && it !== word && it.height <= word.height * SCRIPT_SIZE && it.y < word.y - word.height * RAISED && MARK_NUMBERS.test(it.str.trim())) {
-      for (let k = i; k < end; k++) pieces[k].raised = true;
+      for (let k = i; k < end; k++) pieces[k]!.raised = true;
     } else if (it && pieces.slice(i, end).some((p) => /\p{L}/u.test(p.ch))) word = it;
     i = end;
   }

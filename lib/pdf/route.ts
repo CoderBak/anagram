@@ -21,6 +21,6 @@ export interface PdfResponseFacts {
 export function isInlinePdfResponse(details: PdfResponseFacts): boolean {
   const header = (name: string) => details.responseHeaders?.find((h) => h.name.toLowerCase() === name)?.value ?? "";
   return details.method === "GET" && details.statusCode >= 200 && details.statusCode < 300 &&
-    header("content-type").split(";", 1)[0].trim().toLowerCase() === "application/pdf" &&
+    header("content-type").split(";", 1)[0]!.trim().toLowerCase() === "application/pdf" &&
     !/^attachment(?:\s*;|\s*$)/i.test(header("content-disposition"));
 }

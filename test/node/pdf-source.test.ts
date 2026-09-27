@@ -52,7 +52,7 @@ describe("private PDF source tickets", () => {
   it("discloses only the exact source to an iframe of the live, same-tab reader", async () => {
     const e = setup(); await e.broker.open(7, "https://example.test/document");
     const owner = e.reader(); await ticks();
-    const key = owner.port.postMessage.mock.calls[0][0].load; e.proof(owner.port.postMessage.mock.calls[0][0].proof);
+    const key = owner.port.postMessage.mock.calls[0]![0].load; e.proof(owner.port.postMessage.mock.calls[0]![0].proof);
     expect(owner.port.postMessage).toHaveBeenCalledWith({load: key, proof: expect.stringMatching(/^[a-f0-9]{32}$/)});
     const child = e.loader(key); await ticks();
     expect(child.port.postMessage).toHaveBeenCalledWith({source: "https://example.test/document", cap: SOURCE_CAP});
@@ -65,7 +65,7 @@ describe("private PDF source tickets", () => {
   });
   it("consumes the reader ticket once and requires direct-parent iframe identity", async () => {
     const e = setup(); await e.broker.open(7, "https://example.test/document");
-    const owner = e.reader(); await ticks(); const key = owner.port.postMessage.mock.calls[0][0].load; e.proof(owner.port.postMessage.mock.calls[0][0].proof);
+    const owner = e.reader(); await ticks(); const key = owner.port.postMessage.mock.calls[0]![0].load; e.proof(owner.port.postMessage.mock.calls[0]![0].proof);
     const replay = e.reader(); await ticks(); expect(replay.port.postMessage).not.toHaveBeenCalled();
     e.parent(1); const child = e.loader(key); await ticks();
     expect(child.port.postMessage).not.toHaveBeenCalled(); expect(child.port.disconnect).toHaveBeenCalled();
@@ -76,7 +76,7 @@ describe("private PDF source tickets", () => {
   });
   it("aborts an active loader when its source permission is withdrawn", async () => {
     const e = setup(); await e.broker.open(7, "https://example.test/document");
-    const owner = e.reader(); await ticks(); e.proof(owner.port.postMessage.mock.calls[0][0].proof); const child = e.loader(owner.port.postMessage.mock.calls[0][0].load); await ticks();
+    const owner = e.reader(); await ticks(); e.proof(owner.port.postMessage.mock.calls[0]![0].proof); const child = e.loader(owner.port.postMessage.mock.calls[0]![0].load); await ticks();
     vi.mocked(hasPdfSourceAccess).mockResolvedValue(false); e.revoke(); await ticks();
     expect(child.port.disconnect).toHaveBeenCalled(); expect(owner.port.disconnect).toHaveBeenCalled();
   });
@@ -101,7 +101,7 @@ describe("private PDF source tickets", () => {
     const e = setup(); await e.broker.open(7, "https://example.test/document");
     vi.spyOn(fakeBrowser.tabs, "get").mockResolvedValue({id:7} as never);
     vi.spyOn(fakeBrowser.webNavigation, "getFrame").mockResolvedValue(null as never);
-    const owner=e.reader(); await ticks(); const reply=owner.port.postMessage.mock.calls[0][0];
+    const owner=e.reader(); await ticks(); const reply=owner.port.postMessage.mock.calls[0]![0];
     const forged=e.loader(reply.load,{},"0".repeat(32)); await ticks(); expect(forged.port.postMessage).not.toHaveBeenCalled();
     e.proof(reply.proof);const child=e.loader(reply.load);await ticks();
     expect(child.port.postMessage).toHaveBeenCalledWith({source:"https://example.test/document",cap:SOURCE_CAP});
@@ -159,7 +159,7 @@ describe("why a private source read came back empty", () => {
     worker.send({source: "https://example.test/paper", cap: SOURCE_CAP});
     await vi.waitFor(() => expect(parent.postMessage).toHaveBeenCalledTimes(2));
     frame.dispatchEvent(new Event("pagehide"));
-    return parent.postMessage.mock.calls[1][0];
+    return parent.postMessage.mock.calls[1]![0];
   }
   /** Claim a source ticket as the reader does, and hand it what the loader posted. */
   function claim(data: object) {

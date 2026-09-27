@@ -66,35 +66,35 @@ function chunkFault(text: string, end: number, chunks: Chunk[]): string | null {
   if ((chunks[0]?.start ?? 0) !== 0) return "does not start at 0";
   const starts = new Set(chunks.map((c) => c.start));
   for (let i = 0; i < chunks.length; i++) {
-    const c = chunks[i];
+    const c = chunks[i]!;
     if (c.end <= c.start) return `empty chunk ${i}`;
-    if (i > 0 && c.start !== chunks[i - 1].end) return `gap before chunk ${i}`;
-    if (c.glued !== (c.start > 0 && !SPACE.test(text[c.start - 1]))) return `chunk ${i} glued wrong`;
+    if (i > 0 && c.start !== chunks[i - 1]!.end) return `gap before chunk ${i}`;
+    if (c.glued !== (c.start > 0 && !SPACE.test(text[c.start - 1]!))) return `chunk ${i} glued wrong`;
     if (text.slice(c.start, c.end).trimEnd().length > MAX_CHUNK_CHARS) return `chunk ${i} too long`;
     const before = text.charCodeAt(c.start - 1);
     if (c.start > 0 && before >= 0xd800 && before <= 0xdbff) return `chunk ${i} splits a surrogate pair`;
   }
   if ((chunks[chunks.length - 1]?.end ?? 0) !== end) return "does not reach the end";
   // A pass can begin on every word.
-  for (let at = 1; at < end; at++) if (SPACE.test(text[at - 1]) && !SPACE.test(text[at]) && !starts.has(at)) return `no chunk at word ${at}`;
+  for (let at = 1; at < end; at++) if (SPACE.test(text[at - 1]!) && !SPACE.test(text[at]!) && !starts.has(at)) return `no chunk at word ${at}`;
   return null;
 }
 
 /** Every invariant the passes over counted chunks must satisfy: what breaks one, or null. */
 function planFault(chunks: Chunk[], counts: TokenCounts, passes: TextSpan[]): string | null {
   const k = chunks.length;
-  const inner = chunks.map((c, i) => (i === 0 || c.glued ? counts.alone[i] : counts.following[i]));
+  const inner = chunks.map((c, i) => (i === 0 || c.glued ? counts.alone[i]! : counts.following[i]!));
   const cum = [0];
-  for (let i = 0; i < k; i++) cum.push(cum[i] + inner[i]);
-  const total = cum[k];
+  for (let i = 0; i < k; i++) cum.push(cum[i]! + inner[i]!);
+  const total = cum[k]!;
   const index = new Map(chunks.map((c, i) => [c.start, i]));
-  index.set(chunks[k - 1].end, k);
+  index.set(chunks[k - 1]!.end, k);
   const tokens = (s: TextSpan) => {
     const a = index.get(s.start)!;
-    return cum[index.get(s.end)!] - cum[a] - inner[a] + counts.alone[a];
+    return cum[index.get(s.end)!]! - cum[a]! - inner[a]! + counts.alone[a]!;
   };
 
-  if (passes[0].start !== 0 || passes[passes.length - 1].end !== chunks[k - 1].end) return "does not cover the text";
+  if (passes[0]!.start !== 0 || passes[passes.length - 1]!.end !== chunks[k - 1]!.end) return "does not cover the text";
   // Never cut inside a chunk.
   if (!passes.every((s) => index.has(s.start) && index.has(s.end))) return "cuts inside a chunk";
   const halves = Math.min(k, Math.ceil((2 * total) / (PASS_TOKENS - 2 * SNAP_TOKENS)));
@@ -103,16 +103,16 @@ function planFault(chunks: Chunk[], counts: TokenCounts, passes: TextSpan[]): st
   for (let i = 0; i < passes.length; i++) {
     // Two neighbouring halves each: a pass ends where the one after next starts, and each
     // starts inside the one before it, after its start, and reaches past its end.
-    if (i + 2 < passes.length && passes[i].end !== passes[i + 2].start) return `pass ${i} does not end where pass ${i + 2} starts`;
-    if (i > 0 && !(passes[i].start > passes[i - 1].start && passes[i].start < passes[i - 1].end && passes[i].end > passes[i - 1].end))
+    if (i + 2 < passes.length && passes[i]!.end !== passes[i + 2]!.start) return `pass ${i} does not end where pass ${i + 2} starts`;
+    if (i > 0 && !(passes[i]!.start > passes[i - 1]!.start && passes[i]!.start < passes[i - 1]!.end && passes[i]!.end > passes[i - 1]!.end))
       return `pass ${i} does not overlap the one before`;
   }
   // With no chunk larger than an edge may move, every pass fits and every edge lies within
   // reach of its even place.
-  if (inner.every((n, i) => n <= SNAP_TOKENS && counts.alone[i] <= n + 2)) {
+  if (inner.every((n, i) => n <= SNAP_TOKENS && counts.alone[i]! <= n + 2)) {
     const over = passes.findIndex((s) => tokens(s) > PASS_TOKENS);
-    if (over >= 0) return `pass ${over} holds ${tokens(passes[over])} tokens`;
-    const far = passes.slice(1).findIndex((s, i) => Math.abs(cum[index.get(s.start)!] - ((i + 1) * total) / halves) > SNAP_TOKENS);
+    if (over >= 0) return `pass ${over} holds ${tokens(passes[over]!)} tokens`;
+    const far = passes.slice(1).findIndex((s, i) => Math.abs(cum[index.get(s.start)!]! - ((i + 1) * total) / halves) > SNAP_TOKENS);
     if (far >= 0) return `edge ${far + 1} out of reach`;
   }
   return null;
@@ -186,8 +186,8 @@ describe("the plan of a real text (four characters a token)", () => {
       const chunks = chunksOf(text, end);
       expect(chunkFault(text, end, chunks)).toBeNull();
       const passes = planText(text);
-      expect(passes[0].start).toBe(0);
-      expect(passes[passes.length - 1].end).toBe(end);
+      expect(passes[0]!.start).toBe(0);
+      expect(passes[passes.length - 1]!.end).toBe(end);
       expect(passes.length).toBeLessThanOrEqual(MAX_WINDOWS);
     });
   });
@@ -197,7 +197,7 @@ describe("the plan of a real text (four characters a token)", () => {
     forSeeds(12, (r) => {
       const text = makeText(r, { targetChars: r.int(MAX_READ_CHARS, MAX_READ_CHARS + 20_000), newlines: true });
       const spans = planText(text);
-      const read = spans[spans.length - 1].end;
+      const read = spans[spans.length - 1]!.end;
       expect(read).toBeLessThanOrEqual(MAX_READ_CHARS);
       expect(read).toBeGreaterThan(MAX_READ_CHARS - WINDOW_CHARS);
       expect(spans.length).toBeLessThanOrEqual(MAX_WINDOWS);
@@ -221,6 +221,6 @@ describe("the two bounds on a long text", () => {
     expect(MAX_READ_CHARS).toBeGreaterThanOrEqual(MAX_UNIT_TEXT_CHARS);
     const text = "A sentence of plain words that ends here. ".repeat(Math.ceil(MAX_UNIT_TEXT_CHARS / 42)).slice(0, MAX_UNIT_TEXT_CHARS);
     const spans = planText(text);
-    expect(spans[spans.length - 1].end).toBe(text.length);
+    expect(spans[spans.length - 1]!.end).toBe(text.length);
   });
 });

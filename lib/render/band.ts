@@ -17,7 +17,7 @@ export const BUCKET_BANDS: readonly Band[] = ["human", "light", "heavy", "ai"];
 export function band(r: ScoreResult): Band {
   if (r.degraded) return "unknown";
   if (r.unsupported) return "unsupported";
-  return BUCKET_BANDS[levelOf(r.score)];
+  return BUCKET_BANDS[levelOf(r.score)]!;
 }
 
 const BAND_KEY: Record<Band, MessageKey> = {

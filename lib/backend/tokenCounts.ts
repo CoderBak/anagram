@@ -25,14 +25,15 @@ export function createTokenCounter(source: TokenCountSource) {
       // Before the engine has said which model it runs, there is nothing to key counts by.
       if (source.model().id === "none") return source.countTokens(texts, signal);
       const keys = texts.map(keyOf);
-      const missing = [...new Set(texts.filter((_, i) => !known.has(keys[i])))];
+      const missing = [...new Set(texts.filter((_, i) => !known.has(keys[i]!)))];
       if (missing.length > 0) {
         const counts = await source.countTokens(missing, signal);
         if (!counts) return null;
+        // One count of each kind per text asked about (parseTokenCounts).
         missing.forEach((text, i) => {
           const key = keyOf(text);
           known.delete(key);
-          known.set(key, [counts.alone[i], counts.following[i]]);
+          known.set(key, [counts.alone[i]!, counts.following[i]!]);
         });
         while (known.size > MAX_COUNTS) known.delete(known.keys().next().value!);
       }

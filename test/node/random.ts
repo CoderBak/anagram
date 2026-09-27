@@ -32,7 +32,7 @@ export function rng(seed: number): Rng {
     float: next,
     int,
     chance: (p) => next() < p,
-    pick: (xs) => xs[int(0, xs.length - 1)],
+    pick: (xs) => xs[int(0, xs.length - 1)]!,
   };
 }
 

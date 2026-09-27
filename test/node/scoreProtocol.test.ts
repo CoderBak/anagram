@@ -84,6 +84,6 @@ describe("parseScoreResponse", () => {
     const body = ({ v: "3.0", model: MODEL, results: [good("a"), { ...good("a"), bucket: 0, probs: [1, 0, 0, 0], score: 0 }, good("stray"), good("b")] });
     const r = parseScoreResponse(body, blocks);
     expect(r.results.length).toBe(2);
-    expect(r.results[0].bucket).toBe(3);
+    expect(r.results[0]!.bucket).toBe(3);
   });
 });
