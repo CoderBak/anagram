@@ -78,7 +78,7 @@ jobs:
         run: node test/diagnostics-check.mjs
       - name: where a PDF opens
         if: runner.os != 'Windows'
-        run: node test/pdf-route-check.mjs
+        run: npm run test:pdf-route
       - name: content-security-policy, live
         run: node test/csp-check.mjs --chrome-only
       - name: the two WebAssembly PDF decoders

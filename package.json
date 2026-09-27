@@ -33,6 +33,7 @@
     "test:pseudo-locale": "node test/pseudo-locale.mjs",
     "test:pdf-viewer": "npm run build && playwright test pdf-viewer",
     "test:pdf-install": "npm run build && playwright test pdf-install",
+    "test:pdf-route": "playwright test pdf-route",
     "test:matrix": "node test/matrix.mjs",
     "test:backend": "sh test/backend.sh",
     "test:network-privacy": "python3 test/network-privacy.py"

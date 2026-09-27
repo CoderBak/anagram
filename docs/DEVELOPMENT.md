@@ -61,7 +61,7 @@ npx playwright test                # the suites in test/pw/ (Playwright Test); -
 npm run test:pdf-install           # PDF setup and local-file access flow, EN and ZH
 ANAGRAM_FIREFOX=<path to firefox> npm run test:firefox   # the Firefox build in Firefox 140+, e.g. an ESR from archive.mozilla.org, never installed
 npm run lint:firefox               # Mozilla's add-on linter on the Firefox build; accepted warnings in scripts/lintFirefox.mjs
-node test/pdf-route-check.mjs      # PDF routing, handoff caps and privacy
+npm run test:pdf-route             # PDF routing, handoff caps and privacy
 npm run test:network-privacy       # the offline-mode promise in PRIVACY.md
 ANAGRAM_PDF_BENCH=<corpus dir> node test/pdf-bench/bench.mjs run   # PDF reading benchmark, never in CI; corpus from test/pdf-bench/corpus.mjs
 ANAGRAM_PDF_BENCH=<corpus dir> node test/pdf-bench/bench.mjs structured <dumps>   # the shipping path, over test/pdf-bench/zotero-dump.mjs output; tune on --split dev, report --split test
