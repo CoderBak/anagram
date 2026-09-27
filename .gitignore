@@ -26,7 +26,6 @@ public/vendor/document-worker/
 test/*.png
 test/matrix.json
 test/survey.json
-test/a11y.json
 test/.pw-profile/
 test/.unit-bundle.js
 

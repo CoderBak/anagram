@@ -136,7 +136,7 @@ export default defineConfig({
     excludeSources: [
       "dist/**", "output-test/**", "test-results/**", ".cache/**",
       "**/__pycache__/**", "**/*.pyc", "**/*.log", "**/*.ses",
-      "test/*.png", "test/matrix.json", "test/survey.json", "test/a11y.json",
+      "test/*.png", "test/matrix.json", "test/survey.json",
     ],
   },
   // A dev build is never shipped, and WXT's reloader pulls in code no shipping build has.
