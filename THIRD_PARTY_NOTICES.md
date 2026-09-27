@@ -824,7 +824,7 @@ All rights not expressly granted are reserved.
 - Project: https://github.com/microsoft/onnxruntime
 - Licence: MIT
 - Copyright: Copyright (c) Microsoft Corporation
-- In Anagram: Its JavaScript is bundled into vendor/document-worker/worker.js, and vendor/document-worker/onnx/ort-wasm-simd-threaded.wasm is copied from the pinned npm package. The WebAssembly build links third-party libraries whose notices Microsoft publishes with ONNX Runtime; they ship verbatim as vendor/document-worker/ThirdPartyNotices.onnxruntime-web.txt.
+- In Anagram: Its JavaScript is bundled into vendor/document-worker/worker.js, and vendor/document-worker/onnx/ort-wasm-simd-threaded.wasm is copied from the pinned npm package. The in-browser (oneclick) flavor also ships the package's library, loader and WebGPU-capable WebAssembly, vendor/engine/ort.min.mjs, ort-wasm-simd-threaded.jsep.mjs and ort-wasm-simd-threaded.jsep.wasm, unmodified (scripts/webengine.mjs), with this licence and these notices beside them. The WebAssembly build links third-party libraries whose notices Microsoft publishes with ONNX Runtime; they ship verbatim as vendor/document-worker/ThirdPartyNotices.onnxruntime-web.txt.
 
 ```text
 ONNX Runtime (onnxruntime-web, https://github.com/microsoft/onnxruntime)
@@ -937,40 +937,7 @@ SOFTWARE.
 
 ## The in-browser engine
 
-The build whose scoring runs inside the browser (lib/webengine/, entrypoints/engine/) ships ONNX Runtime Web under vendor/engine/, copied verbatim from the pinned npm package by scripts/webengine.mjs, and the emoji names EditLens's preprocessing spells emoji out with. Its model files are downloaded by the user, verified, and kept in the browser's own storage; they are the modelkit and language model listed under the component package below.
-
-### ONNX Runtime Web (engine) (1.27.0)
-
-- Project: https://github.com/microsoft/onnxruntime
-- Licence: MIT
-- Copyright: Copyright (c) Microsoft Corporation
-- In Anagram: vendor/engine/ort.min.mjs, ort-wasm-simd-threaded.jsep.mjs and ort-wasm-simd-threaded.jsep.wasm, copied from the pinned onnxruntime-web package; the WebAssembly build links the third-party libraries whose notices ship as vendor/document-worker/ThirdPartyNotices.onnxruntime-web.txt.
-
-```text
-ONNX Runtime (onnxruntime-web, https://github.com/microsoft/onnxruntime)
-
-MIT License
-
-Copyright (c) Microsoft Corporation
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
+The oneclick flavor, whose scoring runs inside the browser (lib/webengine/, entrypoints/engine/), ships ONNX Runtime Web under vendor/engine/ (listed with Zotero's document-worker above, the same pinned package) and the emoji names EditLens's preprocessing spells emoji out with. Its model files are downloaded by the user, verified, and kept in the browser's own storage; they are the modelkit and language model listed under the component package below.
 
 ### emoji (data) (2.15.0)
 

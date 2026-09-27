@@ -21,6 +21,7 @@ import { vendorPdfViewer } from "./pdfjsViewer.mjs";
 import { vendorDocumentWorker } from "./documentWorker.mjs";
 import { vendorWebEngine } from "./webengine.mjs";
 import { NOTICES_FILE, bundledPackages, packageOfModule, unlistedPackages } from "./notices.mjs";
+import { ONECLICK_PUBLIC, flavorOf } from "./flavor.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 vendorPdfViewer(ROOT);
@@ -202,6 +203,9 @@ for (const [name, { from, only }] of Object.entries(trees)) {
 // and decoders from those copies and the check that they are the fork's own files runs here.
 vendorDocumentWorker(ROOT);
 
-// The in-browser engine: ONNX Runtime Web from its npm package and the engine worker built
-// from lib/webengine/ (scripts/webengine.mjs).
-await vendorWebEngine(ROOT);
+// The oneclick flavor's engine (scripts/flavor.mjs, scripts/webengine.mjs): ONNX Runtime
+// Web copied verbatim from the npm package, whose version the document-worker pin has just
+// checked, with the licences that pin keeps, and the engine's worker built from
+// lib/webengine/. They go to public-oneclick/, not public/, which every build copies: only
+// that flavor's builds take them (wxt.config.ts), and a native run never writes there.
+if (flavorOf() === "oneclick") await vendorWebEngine(ROOT);

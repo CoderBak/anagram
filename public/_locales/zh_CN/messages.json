@@ -8,6 +8,12 @@
   "extDescription": {
     "message": "显示每个段落经 AI 编辑的程度，全部在本机评分。"
   },
+  "extNameInBrowser": {
+    "message": "Anagram（浏览器内运行）"
+  },
+  "extDescriptionInBrowser": {
+    "message": "显示每个段落经 AI 编辑的程度，在浏览器内评分，无需安装其他软件。"
+  },
   "cmdOpenPanel": {
     "message": "打开存疑段落列表"
   },
@@ -502,6 +508,12 @@
   },
   "componentNotInstalled": {
     "message": "未安装"
+  },
+  "engineInBrowserNotReady": {
+    "message": "尚未就绪"
+  },
+  "engineInBrowserIntro": {
+    "message": "模型在浏览器内运行，无需安装任何软件。模型文件约 1.4 GB，只需下载一次。"
   },
   "componentStarting": {
     "message": "正在启动…"

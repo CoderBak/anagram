@@ -90,7 +90,8 @@ const composed = (kind, copyright) =>
 // reproduced verbatim — the component's own licence carrying its own copyright — or
 // { compose: "MIT" | "Zlib" } to write the short licence out with `copyright`), packages
 // (npm packages whose code is bundled; checked against the build) and chunk (the vendor/
-// chunk scripts/vendor.mjs builds them into, when it is not the extension build), adapted
+// chunk scripts/vendor.mjs builds them into, when it is not the extension build), flavor
+// ("oneclick" for packages only that flavor's build bundles, scripts/flavor.mjs), adapted
 // (files of Anagram's own source that adapt it; checked to still name it), note.
 
 /** @type {{ title: string, intro: string, components: () => object[] }[]} */
@@ -190,7 +191,7 @@ const GROUPS = [
         where: "vendor/document-worker/block-seg/ (ONNX models and their statistics). They carry no licence of their own; they are distributed as part of document-worker." },
       { name: "ONNX Runtime Web", version: workerPin().onnxruntime_web.version, url: "https://github.com/microsoft/onnxruntime",
         licence: "MIT", copyright: "Copyright (c) Microsoft Corporation",
-        where: "Its JavaScript is bundled into vendor/document-worker/worker.js, and vendor/document-worker/onnx/ort-wasm-simd-threaded.wasm is copied from the pinned npm package. The WebAssembly build links third-party libraries whose notices Microsoft publishes with ONNX Runtime; they ship verbatim as vendor/document-worker/ThirdPartyNotices.onnxruntime-web.txt.",
+        where: "Its JavaScript is bundled into vendor/document-worker/worker.js, and vendor/document-worker/onnx/ort-wasm-simd-threaded.wasm is copied from the pinned npm package. The in-browser (oneclick) flavor also ships the package's library, loader and WebGPU-capable WebAssembly, vendor/engine/ort.min.mjs, ort-wasm-simd-threaded.jsep.mjs and ort-wasm-simd-threaded.jsep.wasm, unmodified (scripts/webengine.mjs), with this licence and these notices beside them. The WebAssembly build links third-party libraries whose notices Microsoft publishes with ONNX Runtime; they ship verbatim as vendor/document-worker/ThirdPartyNotices.onnxruntime-web.txt.",
         notice: ["vendor/document-worker/LICENSE.onnxruntime-web"] },
       { name: "pako", version: "2.1.0", url: "https://github.com/nodeca/pako",
         licence: "MIT AND Zlib", copyright: "Copyright (C) 2014-2017 by Vitaly Puzrin and Andrei Tuputcyn",
@@ -203,12 +204,8 @@ const GROUPS = [
   },
   {
     title: "The in-browser engine",
-    intro: "The build whose scoring runs inside the browser (lib/webengine/, entrypoints/engine/) ships ONNX Runtime Web under vendor/engine/, copied verbatim from the pinned npm package by scripts/webengine.mjs, and the emoji names EditLens's preprocessing spells emoji out with. Its model files are downloaded by the user, verified, and kept in the browser's own storage; they are the modelkit and language model listed under the component package below.",
+    intro: "The oneclick flavor, whose scoring runs inside the browser (lib/webengine/, entrypoints/engine/), ships ONNX Runtime Web under vendor/engine/ (listed with Zotero's document-worker above, the same pinned package) and the emoji names EditLens's preprocessing spells emoji out with. Its model files are downloaded by the user, verified, and kept in the browser's own storage; they are the modelkit and language model listed under the component package below.",
     components: () => [
-      { name: "ONNX Runtime Web (engine)", version: npm("onnxruntime-web"), url: "https://github.com/microsoft/onnxruntime",
-        licence: "MIT", copyright: "Copyright (c) Microsoft Corporation",
-        where: "vendor/engine/ort.min.mjs, ort-wasm-simd-threaded.jsep.mjs and ort-wasm-simd-threaded.jsep.wasm, copied from the pinned onnxruntime-web package; the WebAssembly build links the third-party libraries whose notices ship as vendor/document-worker/ThirdPartyNotices.onnxruntime-web.txt.",
-        notice: ["vendor/document-worker/LICENSE.onnxruntime-web"] },
       { name: "emoji (data)", version: "2.15.0", url: "https://github.com/carpedm20/emoji",
         licence: "BSD-3-Clause", copyright: "Copyright (c) 2014-2025, Taehoon Kim, Kevin Wurster",
         where: "lib/webengine/emoji.data.json: the package's English emoji names and qualification statuses (its emoji.json, from Unicode's emoji-test.txt), written by scripts/emojiData.py from the version anagramd/uv.lock pins, so the browser engine spells emoji out as the native engine does.",
@@ -326,11 +323,12 @@ export function components() {
 /**
  * The npm packages the extension may bundle: each with its component and, for the
  * on-demand chunks scripts/vendor.mjs builds, the chunk it is built into. The rest are
- * what the extension build itself (wxt.config.ts) compiles into Anagram's scripts.
+ * what the extension build itself (wxt.config.ts) compiles into Anagram's scripts: all of
+ * them in every flavor, or in the one `flavor` names.
  */
 export function bundledPackages() {
   const out = new Map();
-  for (const c of components()) for (const p of c.packages ?? []) out.set(p, { component: c.name, chunk: c.chunk });
+  for (const c of components()) for (const p of c.packages ?? []) out.set(p, { component: c.name, chunk: c.chunk, flavor: c.flavor });
   return out;
 }
 

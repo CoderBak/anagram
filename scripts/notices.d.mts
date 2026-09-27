@@ -10,11 +10,12 @@ export interface Component {
   where: string;
   packages?: string[];
   chunk?: string;
+  flavor?: "native" | "oneclick";
   adapted?: string[];
   group: string;
 }
 export function components(): Component[];
-export function bundledPackages(): Map<string, { component: string; chunk?: string }>;
+export function bundledPackages(): Map<string, { component: string; chunk?: string; flavor?: "native" | "oneclick" }>;
 export function packageOfModule(id: string): string | null;
 export function unlistedPackages(packages: Iterable<string>): string[];
 export function render(): string;

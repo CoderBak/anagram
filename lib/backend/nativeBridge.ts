@@ -1,6 +1,7 @@
 import { browser } from "#imports";
 import { parseComponent } from "./nativeClient";
-import { nativeTransport, NativeTransportError } from "./nativeTransport";
+import { engineTransport } from "#flavor/engine-transport";
+import { NativeTransportError } from "./transport";
 import { NATIVE_MESSAGE, NATIVE_UNINSTALL, isRecord, trustedNativePage, validPageRequest, type ComponentOperation, type NativeReply } from "./nativeProtocol";
 
 /** Operations after which the engine that answers is not the one that answered before, or
@@ -31,14 +32,14 @@ export async function handleNativePageMessage(
     try {
       await controls.clear();
       await browser.storage.local.clear();
-      nativeTransport().close();
+      engineTransport().close();
       await browser.management.uninstallSelf({showConfirmDialog:false});
       return {ok:true};
     } catch { return {ok:false,error:"Remove the extension from the browser's extension page"}; }
   }
   if (!validPageRequest(message.op, message.payload)) return error("invalid_request","Invalid local operation");
   try {
-    const reply = await nativeTransport().request(message.op,message.payload as Record<string,unknown>);
+    const reply = await engineTransport().request(message.op,message.payload as Record<string,unknown>);
     if (reply.ok && REPLACES_ENGINE[message.op]) controls.invalidate();
     if (reply.ok) {
       const snapshot = parseComponent(reply.data);
@@ -46,7 +47,7 @@ export async function handleNativePageMessage(
         if (snapshot.operation.name === "uninstall") uninstallReceipt = snapshot.operation.receipt;
         if (snapshot.operation.name === "update") {
           controls.invalidate();
-          nativeTransport().close();
+          engineTransport().close();
         }
       }
     }

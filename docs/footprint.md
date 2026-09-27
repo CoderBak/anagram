@@ -21,7 +21,10 @@ Every ordinary extension page tightens `connect-src` to `'self'` with a meta tag
 wide manifest value exists only for the private PDF loader frame, which sets a policy
 naming the exact authorized source right before its single read. Scoring goes over
 Native Messaging, which is outside `connect-src`; the local component runs with the
-user's ordinary OS privileges and is not sandboxed by browser CSP.
+user's ordinary OS privileges and is not sandboxed by browser CSP. The oneclick flavor
+(`scripts/flavor.mjs`) has no Native Messaging: it scores inside the browser
+(`lib/webengine/`), and its only requests are the one-time model and language-ID
+downloads from the hosts listed under `lib/access/patterns.ts` below.
 
 ### Every call site
 
@@ -56,6 +59,9 @@ APIs through its `parseAsync()`. `lib/dom/mainContent.ts` calls only its synchro
 | `lib/access/patterns.ts` | `http://localhost/*` | an example in the comment that explains why a match pattern carries no port |
 | `lib/access/patterns.ts` | `https://*/*` | the optional site access the user may grant |
 | `lib/access/patterns.ts` | `http://*/*` | the same, for plain http |
+| `lib/access/patterns.ts` | `https://huggingface.co/*` | oneclick flavor: optional grant for the one-time download of the pinned model; asked for with the click that starts it |
+| `lib/access/patterns.ts` | `https://*.hf.co/*` | oneclick flavor: the same grant for Hugging Face's file CDN, where its `resolve` URLs redirect large files |
+| `lib/access/patterns.ts` | `https://dl.fbaipublicfiles.com/*` | oneclick flavor: the same grant for fastText's language-ID file, which is served without CORS headers |
 | `lib/pdf/navigation.ts` | `http://*/*` | filters main-frame response observations used to recognize a PDF; does not initiate a request |
 | `lib/pdf/navigation.ts` | `https://*/*` | the corresponding HTTPS response-observation filter |
 | `lib/docs.ts` | `https://docs.google.com/document/d/` | builds the address of the document the tab is on |

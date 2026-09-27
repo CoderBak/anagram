@@ -12,7 +12,7 @@ import type {
 } from "../../lib/contract";
 import { CONTRACT_VERSION } from "../../lib/contract";
 import { NativeScoreClient, NativeScoreError } from "../../lib/backend/nativeScoreClient";
-import { NativeTransportError } from "../../lib/backend/nativeTransport";
+import { NativeTransportError } from "../../lib/backend/transport";
 
 const A: ModelInfo = { id: "model-a", ver: "1", calibration: "none" };
 const B: ModelInfo = { id: "model-b", ver: "1", calibration: "none" };

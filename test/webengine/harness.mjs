@@ -13,17 +13,35 @@
 // the model's 1.4 GB, so the parity script reuses one and deletes it.
 import { chromium } from "playwright";
 import { createServer } from "node:http";
-import { createReadStream, existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { createReadStream, existsSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ENGINE_DIR, vendorWebEngine } from "../../scripts/webengine.mjs";
 
 export const ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..");
-const VENDOR = join(ROOT, "public", "vendor", "engine");
+const VENDOR = join(ROOT, ENGINE_DIR);
+
+/** The worker build the suites serve, rebuilt when it is missing or older than lib/webengine/. */
+export async function ensureEngineBuild() {
+  const worker = join(VENDOR, "worker.min.mjs");
+  const built = existsSync(worker) ? statSync(worker).mtimeMs : 0;
+  const sources = join(ROOT, "lib", "webengine");
+  const newest = Math.max(...readdirSync(sources).map((name) => statSync(join(sources, name)).mtimeMs), statSync(join(ROOT, "scripts", "webengine.mjs")).mtimeMs);
+  if (built > newest) return;
+  await vendorWebEngine(ROOT);
+}
 const TYPES = { ".html": "text/html; charset=utf-8", ".mjs": "text/javascript", ".js": "text/javascript", ".wasm": "application/wasm", ".json": "application/json" };
 
+/** The extension's Content-Security-Policy (wxt.config.ts), sent on every response when asked:
+ *  the page and the worker then run under exactly the policy the offscreen document has. */
+export const EXTENSION_CSP = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; " +
+  "connect-src 'self' http: https: file:; img-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; " +
+  "worker-src 'self'; frame-src 'self'; form-action 'none'; base-uri 'none'";
+
 /** The engine's page: one worker, driven through window.engine from page.evaluate. */
-const PAGE = `<!doctype html><meta charset="utf-8"><title>Anagram engine test</title><script type="module">
+const PAGE = `<!doctype html><meta charset="utf-8"><title>Anagram engine test</title><script type="module" src="/page.mjs"></script>`;
+const PAGE_SCRIPT = `
 const pending = new Map();
 let sequence = 0;
 let worker = null, ready = null;
@@ -60,13 +78,14 @@ window.engine = {
   isolated: () => crossOriginIsolated,
 };
 window.__ready = true;
-</script>`;
+`;
 
 /**
  * Serve the engine's vendor files and the given directories. `mounts` maps a URL prefix
  * ("/model/") to a directory. Range requests are honoured, so a download can resume.
  */
-export async function serve(mounts = {}, { isolate = true } = {}) {
+export async function serve(mounts = {}, { isolate = true, csp = EXTENSION_CSP } = {}) {
+  await ensureEngineBuild();
   const roots = [["/vendor/engine/", VENDOR], ...Object.entries(mounts)];
   const requests = [];
   const server = createServer((req, res) => {
@@ -74,9 +93,15 @@ export async function serve(mounts = {}, { isolate = true } = {}) {
     requests.push({ path: url.pathname, range: req.headers.range ?? null });
     const headers = { "Cache-Control": "no-store", "Cross-Origin-Resource-Policy": "same-origin" };
     if (isolate) Object.assign(headers, { "Cross-Origin-Opener-Policy": "same-origin", "Cross-Origin-Embedder-Policy": "require-corp" });
+    if (csp) headers["Content-Security-Policy"] = csp;
     if (url.pathname === "/" || url.pathname === "/index.html") {
       res.writeHead(200, { ...headers, "Content-Type": TYPES[".html"] });
       res.end(PAGE);
+      return;
+    }
+    if (url.pathname === "/page.mjs") {
+      res.writeHead(200, { ...headers, "Content-Type": TYPES[".mjs"] });
+      res.end(PAGE_SCRIPT);
       return;
     }
     let file = null;

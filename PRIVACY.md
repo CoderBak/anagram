@@ -1,13 +1,19 @@
 # Anagram Privacy Policy
 
-Last updated: 2026-09-27. Applies to the Anagram browser extension and the local engine
-it installs on your computer.
+Last updated: 2026-09-28. Applies to both editions of the Anagram browser extension, and
+to the local engine the first of them installs on your computer:
 
-**The short version.** Anagram reads the text of pages you allow it to read, sends that
-text to a program on your own computer, and shows the score next to the paragraph. Page
-text never leaves your machine. There is no account, sign-in, analytics or telemetry.
-The engine uses the network only to download model files and updates you request.
-Opening an online PDF or a Google Doc re-reads that document from its source.
+- **Anagram** scores with that local engine, over the browser's Native Messaging pipe.
+- **Anagram (in-browser)** runs the same pinned model inside the browser and installs
+  nothing else.
+
+**The short version.** Anagram reads the text of pages you allow it to read, scores it on
+your own computer — in the local engine, or inside the browser in the in-browser edition —
+and shows the score next to the paragraph. Page text never leaves your machine. There is
+no account, sign-in, analytics or telemetry. The engine uses the network only to download
+model files and updates you request; the in-browser edition downloads its model files
+once and uses the network for nothing else. Opening an online PDF or a Google Doc re-reads
+that document from its source.
 
 The full inventory of network calls, address literals and storage keys is in
 [docs/footprint.md](docs/footprint.md), checked against the code by a test on every run.
@@ -48,6 +54,15 @@ commands from a page. The scoring request carries paragraph IDs and text only: n
 no cookies, no account data. Inference runs from files on disk in Hugging Face offline
 mode.
 
+In the in-browser edition, to the engine inside the extension itself: a hidden extension
+page running ONNX Runtime Web on the model files stored in your browser. The same request,
+paragraph IDs and text only, goes from the extension's background to that page and to no
+server. Before the first score it downloads the pinned model files from Hugging Face
+(`huggingface.co` and its file CDN under `hf.co`) and fastText's language-ID file from
+`dl.fbaipublicfiles.com`, once, after you allow those three hosts with the click that
+starts the download. Those requests carry normal download metadata and never page text;
+after them, scoring needs no network.
+
 Deciding what to read happens inside the browser, with code that ships in the extension.
 **Main content only** runs Defuddle on a copy of the page and uses only its offline
 extraction; nothing it could fetch is called. The PDF reader finds a document's paragraphs
@@ -57,7 +72,7 @@ sites a tiny second script runs in the page's own context: it reads nothing and 
 the content script when the page attaches a shadow root, so text a web component draws
 later is read too.
 
-The engine runs with your ordinary user privileges. When you install, download models or
+The local engine runs with your ordinary user privileges. When you install, download models or
 request an update, it contacts GitHub releases, the Astral Python and uv distributions,
 PyPI, Hugging Face and its file CDN, and the fastText file host. Those requests carry
 normal download metadata and never page text.
@@ -77,6 +92,8 @@ normal download metadata and never page text.
   (Windows): the runtime, model files, the saved configuration and registration records.
   A small registration manifest also lives in the browser's user-level
   NativeMessagingHosts location. Nothing from your browsing is written there.
+- **The in-browser edition's model files**, about 1.4 GB, in the extension's own storage in
+  your browser profile. Nothing from your browsing is written with them.
 - **Your clipboard**, only when you click Copy. A copied report holds the page's title and
   address, and passage text, only when Settings includes them; its links to flagged
   paragraphs carry words of each paragraph, so they appear only with both. Diagnostics
@@ -86,7 +103,9 @@ normal download metadata and never page text.
 
 | Permission | Why |
 | --- | --- |
-| `nativeMessaging` | Talk to the local engine. |
+| `nativeMessaging` | Talk to the local engine. Not in the in-browser edition. |
+| `offscreen` (in-browser edition, Chrome) | Run the engine in a hidden extension page. |
+| `unlimitedStorage` (in-browser edition) | Keep the model files in the browser without the browser evicting them. |
 | `storage` | The settings above. |
 | `activeTab` | One-off actions on the page in front of you. |
 | `contextMenus` | The right-click entries. |
@@ -94,12 +113,14 @@ normal download metadata and never page text.
 | `webNavigation`, `webRequest` | Recognize PDF navigations. Reading still requires a grant. |
 | `https://*/*`, `http://*/*` (optional) | The sites you choose. Never held at install. |
 | `file:///*` (optional) | Open a local PDF already in a tab. Picking a file needs no grant. |
+| `https://huggingface.co/*`, `https://*.hf.co/*`, `https://dl.fbaipublicfiles.com/*` (optional, in-browser edition) | The one-time model download, asked for when you start it. |
 
 ## Removal
 
 **Uninstall** in Settings removes the engine, models and registration, then the extension.
 Removing the extension from the browser alone leaves the engine on disk. Uninstall
 removes the whole `~/.anagram` directory, including anything you put inside it.
+Removing the in-browser edition removes its model files with it.
 
 ## Contact
 

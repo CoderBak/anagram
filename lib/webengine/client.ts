@@ -1,28 +1,21 @@
-// lib/webengine/client.ts — the background's way to the in-browser engine.
+// lib/webengine/client.ts — the oneclick flavor's engine transport (lib/backend/transport.ts).
 //
-// The same transport as the native host's (lib/backend/nativeTransport.ts: request(op,
+// The same multiplexing as the native host's (lib/backend/nativeTransport.ts: request(op,
 // payload, signal, timeout) → the host's reply, onDisconnect, close), over a different
 // port. On Chrome the engine's worker lives in an offscreen document (a service worker
 // cannot start workers, and dies after thirty idle seconds, which no 1.4 GB model should
 // follow), reached through a runtime port named ENGINE_PORT; the document is created on
 // the first request and kept. On Firefox the background page is a document already, so
-// it hosts the worker itself. Either way the transport speaks the native host's
-// contract, and lib/backend/nativeScoreClient.ts and nativeClient.ts need no change.
-//
-// The seam the background uses: `webEngineTransport()` gives the singleton, whose
-// public API is NativeTransport's — `request`, `onDisconnect`, `close`. A build that
-// scores natively never imports this file.
+// it hosts the worker itself. Either way the transport speaks the native host's contract,
+// and lib/backend/nativeScoreClient.ts and nativeClient.ts need no change.
 import { browser } from "#imports";
 import type { PublicPath } from "wxt/browser";
 import { NativeTransport, type NativePort } from "../backend/nativeTransport";
+import type { EngineTransport } from "../backend/transport";
 import { EngineHost } from "./host";
 import { pin } from "./pin";
 import { ENGINE_PORT } from "./protocol";
 import type { WorkerInit } from "./worker";
-
-export type { NativeReply } from "../backend/nativeProtocol";
-/** What a transport is, for the caller that needs the shape and not the class. */
-export type EngineTransport = Pick<NativeTransport, "request" | "onDisconnect" | "close">;
 
 const OFFSCREEN_PATH = "/engine.html";
 
@@ -114,9 +107,13 @@ export function offscreenPort(): NativePort {
   return out;
 }
 
-let instance: NativeTransport | undefined;
+let instance: EngineTransport | undefined;
 
-/** The engine transport for this browser: the offscreen document's port on Chrome, a worker here otherwise. */
-export function webEngineTransport(): NativeTransport {
+/**
+ * What "#flavor/engine-transport" names in the oneclick flavor: the offscreen document's
+ * port on Chrome, a worker in this page on Firefox, behind the native transport's
+ * request multiplexing, timeouts and reconnection.
+ */
+export function engineTransport(): EngineTransport {
   return instance ??= new NativeTransport(() => (offscreenApi() ? offscreenPort() : new EngineHost({ workerUrl: WORKER_URL(), init: workerInit() })));
 }
