@@ -1175,6 +1175,17 @@ describe("structuredBlocks — a manuscript with numbered lines", () => {
     for (const b of blocks) expectRunsToMatch(b, pages);
   });
 
+  it("reads numbered lines Zotero took for a bibliography before the References heading", () => {
+    const set = lines(1, 84, 100);
+    const more = lines(1, 93, 100 + 9 * PITCH);
+    const head = numbered(1, 102, { text: "References", x: 72 }, 100 + 18 * PITCH);
+    const entry = numbered(1, 103, { text: "Doe, J. (2020). A paper about papers. Journal 1, 1-2.", x: 72 }, 100 + 19 * PITCH);
+    const pages = [pageText(1, [...set, ...more, head, entry].flatMap((l) => l.items))];
+    const asEntries = (of: Line[]): SdtBlock => ({ type: "list", content: of.map((l) => ({ type: "listitem", reference: true, content: [textOf([l])] })) });
+    const blocks = structuredBlocks(structure([asList(set), asEntries(more), { type: "heading", content: [textOf([head])] }, asEntries([entry])]), pages);
+    expect(blocks.map((b) => b.text)).toEqual([...PARAGRAPHS, ...PARAGRAPHS, "References"]);
+  });
+
   it("leaves a real table set aside, though its caption's lines are numbered", () => {
     const set = lines(1, 84, 100);
     const caption = lines(1, 94, 240, [{ text: "Table 1. Rates of land motion at six stations.", x: 72 }]);

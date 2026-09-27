@@ -312,7 +312,7 @@ function blockAt(content: SdtBlock[], path: number[]): SdtBlock | undefined {
  * and often halves of one paragraph (see `continues`), and the reader's grouping of short
  * paragraphs (lib/plan/group.ts) must be free to read them together.
  */
-type Reading = { kind: "heading" | "paragraph" | "table"; block: SdtBlock; path: number[]; origin: string };
+type Reading = { kind: "heading" | "paragraph" | "table" | "reference"; block: SdtBlock; path: number[]; origin: string };
 type Marker = "barrier" | "display" | "skip";
 
 /** What Zotero called a block, for the benchmark's accounting. */
@@ -321,13 +321,15 @@ function originOf(node: SdtBlock): string {
 }
 
 /** The readings of the content tree. A table is skipped like the rest of what is set aside,
- *  unless it is the prose of a manuscript with numbered lines (numberedReadings). */
+ *  and a bibliography entry is a barrier, unless either is the prose of a manuscript with
+ *  numbered lines (numberedReadings). */
 function readingsOf(content: SdtBlock[], everything: boolean): (Reading | Marker)[] {
   const out: (Reading | Marker)[] = [];
   const aside = (node: SdtBlock, path: number[]): void => {
     if (everything) out.push({ kind: "paragraph", block: node, path, origin: originOf(node) });
-    else if (node.type === "table" && !node.reference) out.push({ kind: "table", block: node, path, origin: originOf(node) });
-    else out.push(node.reference ? "barrier" : node.type === "math" ? "display" : "skip");
+    else if (node.reference) out.push({ kind: "reference", block: node, path, origin: originOf(node) });
+    else if (node.type === "table") out.push({ kind: "table", block: node, path, origin: originOf(node) });
+    else out.push(node.type === "math" ? "display" : "skip");
   };
   content.forEach((node, i) => {
     if (node.flowClass || node.reference) { aside(node, [i]); return; }
@@ -395,6 +397,8 @@ const GAPPED_TABLE = 0.1;
 const CAPTION = /^(?:fig(?:ure)?s?\.?|table|tab\.|chart|scheme)\s*[A-Z]?\d/i;
 const CAPTION_WORDS = 60;
 const LIST_OPENING = /^(?:[•▪◦‣·∙*]|[–—-]\s)/u;
+/** The heading of a bibliography, numbered or not. */
+const REFERENCES_HEAD = /^(?:[\dIVX]+(?:\.\d+)*\.?\s*)?(?:references|bibliography|literature cited|works cited|reference list|cited literature)\s*:?$/iu;
 const FRESH_START = /^[\p{Lu}\p{Lt}\d"“'‘([]/u;
 
 function touching(a: Glyph, b: Glyph): boolean {
@@ -622,6 +626,7 @@ interface Margins {
 /** A reading as it is prepared when nothing of it is numbered. */
 function plain(r: Reading, pieces: Piece[]): Prepared | Marker {
   if (r.kind === "table") return "skip";
+  if (r.kind === "reference") return "barrier";
   return { kind: r.kind, pieces, page: startPage(r.block), paths: [r.path.join(".")], ...(r.block.previousPart ? { previousPart: r.block.previousPart.join(".") } : {}), origin: r.origin };
 }
 
@@ -636,10 +641,15 @@ function numberedReadings(readings: (Reading | Marker)[], texts: (Piece[] | null
   /** Each run of numbered prose: its readings, and their lines. */
   const pools: { at: number; readings: Reading[]; rows: Row[] }[] = [];
   let pool: { at: number; readings: Reading[]; rows: Row[] } | null = null;
+  // Zotero takes numbered lines for the numbered entries of a bibliography, wherever they
+  // are: before the document's own References heading, such an entry is its prose.
+  const bibliography = readings.findIndex((r, k) => typeof r !== "string" && r.kind !== "table" && REFERENCES_HEAD.test(withoutNumbers(texts[k] ?? [], numbers).map((p) => p.ch).join("").trim()));
   readings.forEach((r, k) => {
     const pieces = texts[k];
     if (typeof r === "string" || !pieces) { pool = null; out.push(r as Marker); return; }
-    if (!pieces.some((p) => numbers.has(p))) { pool = null; out.push(plain(r, pieces)); return; }
+    const numbered = pieces.some((p) => numbers.has(p));
+    if (r.kind === "reference" && (!numbered || bibliography < 0 || k >= bibliography)) { pool = null; out.push("barrier"); return; }
+    if (!numbered) { pool = null; out.push(plain(r, pieces)); return; }
     const kept = withoutNumbers(pieces, numbers);
     if (everything || r.kind === "heading") {
       pool = null;
@@ -799,11 +809,17 @@ export interface StructuredReader {
 export function createStructuredReader(structure: SdtStructure, options: StructuredOptions = {}): StructuredReader {
   const everything = options.everything === true;
   const readings = readingsOf(structure.content, everything);
-  const texts = readings.map((r) => (typeof r === "string" ? null : placeMarks(piecesOf(r.block, (node) => isRaisedCitation(node, structure.content)))));
-  const numbers = lineNumberPieces(texts.filter((t): t is Piece[] => t !== null));
+  const read = (r: Reading): Piece[] => placeMarks(piecesOf(r.block, (node) => isRaisedCitation(node, structure.content)));
+  // A bibliography is read only where the lines are numbered, and asked about then.
+  const texts = readings.map((r) => (typeof r === "string" || r.kind === "reference" ? null : read(r)));
+  let numbers = lineNumberPieces(texts.filter((t): t is Piece[] => t !== null));
+  if (numbers.size > 0) {
+    readings.forEach((r, k) => { if (typeof r !== "string" && r.kind === "reference") texts[k] = read(r); });
+    numbers = lineNumberPieces(texts.filter((t): t is Piece[] => t !== null));
+  }
   const prepared = numbers.size > 0
     ? numberedReadings(readings, texts, numbers, everything)
-    : readings.map((r, k) => (typeof r === "string" ? r : plain(r, texts[k]!)));
+    : readings.map((r, k) => (typeof r === "string" ? r : plain(r, texts[k] ?? [])));
   /** The draft each read path became, for the parts that continue it. */
   const byPath = new Map<string, Draft>();
   const drafts: Draft[] = [];

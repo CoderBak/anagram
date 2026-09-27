@@ -129,11 +129,12 @@ local component and the installer all carry the same version.
   bare number at the edge of each line, in a column clear of the text, counting on line by
   line — and left out; the lines Zotero read one by one are joined into the paragraphs
   their indents and last lines show (in a manuscript set ragged right, where nearly every
-  line stops short of the margin, by their indents), and a page it took for a table is
-  read. On 18
-  EarthArXiv manuscripts, those whose PDF carries its own paragraphs read 74% of their
-  text instead of 60%, the paragraphs are found (boundary F1 81% instead of 58%), and the
-  6% of scored words that were line numbers are gone.
+  line stops short of the margin, by their indents); a page it took for a table is read,
+  and so are numbered lines it took for the entries of a bibliography before the
+  manuscript's own References heading. On 18 EarthArXiv manuscripts, those whose PDF
+  carries its own paragraphs read 81% of their text instead of 60%, the paragraphs are
+  found (boundary F1 82% instead of 58%), and the 6% of scored words that were line
+  numbers are gone.
 - In Firefox, a web PDF without ".pdf" in its address now and then stayed in Firefox's own
   viewer instead of opening in Anagram's reader, and a PDF the reader opened by itself, as
   it does when one loads or is reloaded, could land on "This PDF could not be loaded". Both
