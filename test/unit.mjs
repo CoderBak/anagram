@@ -1261,6 +1261,21 @@ const results = await page.evaluate(() => {
     check("consent banners named after their platform are skipped, whole walk and re-scan alike",
       whole.length === 1 && inside.length === 0 && PW.isConsentBanner(sandbox.querySelector(".osano-cm-window")) && !PW.isConsentBanner(sandbox.querySelector("p")),
       JSON.stringify([whole.length, inside.length]));
+    // A consent box a publisher builds itself carries no platform's name — the Daily Mail's
+    // is `div.mol-ads-cmp`, and AEM prefixes every component on a page `cmp-` — but it lists
+    // the third parties it asks consent for, each with a link to its privacy policy, beside
+    // the buttons that give or refuse it.
+    const vendors = Array.from({ length: 6 }, (_, i) => `<li class="x-consent">Vendor ${i}<br><a href="https://vendor${i}.example/privacy">Privacy policy</a></li>`).join("");
+    sandbox.innerHTML = `<article><p>${words(90)}</p></article><div class="mol-ads-cmp"><form class="mol-ads-cmp--banner"><input type="hidden" name="consent" value="yes"><h2>By using the site you agree to our privacy settings</h2><button type="button">Got it</button></form>` +
+      `<div class="mol-ads-cmp--modal"><div class="mol-ads-cmp--body"><div class="tab"><h3>Functional</h3><p>CONSENT ${words(90)}</p><ul>${vendors}</ul></div><div class="tab"><p>CONSENT ${words(90)}</p></div></div>` +
+      `<div class="mol-ads-cmp--footer"><button type="button">Don't allow these partners</button><button type="button">Allow all</button></div></div></div>`;
+    const publisher = PW.collectUnits(sandbox);
+    const rescan = PW.collectUnits(sandbox.querySelectorAll(".tab")[1]);
+    sandbox.innerHTML = `<article><p>${words(90)}</p><ul>${vendors}</ul><p>${words(90)}</p><button type="button">Share</button></article><div class="cmp-text"><p>${words(90)}</p></div>`;
+    const article = PW.collectUnits(sandbox);
+    check("a publisher's own consent box is known by its list of third parties' privacy policies beside an Allow button, whole walk and re-scan alike; a list of privacy policies in a text, and AEM's cmp- components, are read",
+      publisher.length === 1 && !publisher[0].text.includes("CONSENT") && rescan.length === 0 && article.reduce((n, x) => n + x.wordCount, 0) === 270,
+      JSON.stringify([publisher.map((x) => x.text.slice(0, 12)), rescan.length, article.map((x) => [x.wordCount, x.text.slice(0, 30)])]));
     // …and where the platform draws it inside a shadow root of its own, which no lookup over
     // the page reaches: the walk looks in each shadow root it descends into.
     sandbox.innerHTML = `<p>${words(80)}</p><div class="cmp-host"></div>`;

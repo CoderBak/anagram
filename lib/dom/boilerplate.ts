@@ -363,7 +363,76 @@ export function findConsentBanners(root: Element | ShadowRoot, found = new Set<E
     const el = byId.getElementById(id);
     if (el) found.add(el);
   }
+  // Over the whole page, as the ids are: a re-scan of the box's second tab holds no list.
+  for (const list of vendorLists(root instanceof ShadowRoot ? root : root.ownerDocument)) {
+    const box = consentBoxAround(list);
+    if (box) found.add(box);
+  }
   return found;
+}
+
+/** Links that may be a third party's privacy or cookie policy, by where they point. */
+const VENDOR_LINK_SELECTOR = 'a[href*="privacy" i],a[href*="cookie" i]';
+/** Items of one list, each linking a different site's policy, that make it a list of vendors. */
+const VENDOR_LIST_MIN = 5;
+/** How far above the list of vendors the controls that give or refuse consent may stand. */
+const CONSENT_BOX_LEVELS = 8;
+/** What those controls say: "Allow all", "Don't allow these partners", "Got it", "Reject all",
+ *  "Save my preferences". */
+const CONSENT_CONTROL_RE =
+  /^(?:accept|allow|agree|reject|decline|refuse|deny|disallow|got it|i agree|i accept|don.?t allow|save (?:my )?(?:settings|preferences|choices)|confirm (?:my )?(?:choices|selection))\b/i;
+const CONSENT_CONTROL_SELECTOR = 'button,[role="button"],input[type="button"],input[type="submit"]';
+/** What holds the page itself, which no consent box ever does. */
+const PAGE_ITSELF_SELECTOR = 'main,article,[role="main"],h1';
+
+/**
+ * Lists whose items link to the privacy policies of at least five DIFFERENT outside sites:
+ * the vendors a consent box asks permission for. The Daily Mail's own box (`div.mol-ads-cmp`)
+ * names 900 of them, each "Privacy policy" linked to that company's site, and no platform's
+ * name is on it for CONSENT_BANNER_SELECTORS to find — nor can a `cmp` in a name say it,
+ * because Adobe's AEM calls every component on a page `cmp-…`.
+ */
+function vendorLists(root: Document | ShadowRoot): Element[] {
+  const doc = root instanceof ShadowRoot ? root.ownerDocument : root;
+  const own = (doc.defaultView?.location.hostname ?? "").replace(/^www\./, "");
+  const byList = new Map<Element, Set<string>>();
+  for (const a of root.querySelectorAll<HTMLAnchorElement>(VENDOR_LINK_SELECTOR)) {
+    const list = a.closest("li")?.parentElement;
+    if (!list) continue;
+    let host: string;
+    try {
+      host = new URL(a.href).hostname.replace(/^www\./, "");
+    } catch {
+      continue;
+    }
+    if (!host || host === own) continue;
+    let hosts = byList.get(list);
+    if (!hosts) byList.set(list, (hosts = new Set()));
+    hosts.add(host);
+  }
+  return [...byList].filter(([, hosts]) => hosts.size >= VENDOR_LIST_MIN).map(([list]) => list);
+}
+
+/** The box around a list of vendors that also holds the controls that give or refuse
+ *  consent — the whole consent box, its explanations included — or null: a list of policies
+ *  in an article about privacy has no "Allow all" beside it. Never the page's own body. */
+function consentBoxAround(list: Element): Element | null {
+  let at = list.parentElement;
+  for (let up = 0; at && up < CONSENT_BOX_LEVELS; up++, at = at.parentElement) {
+    if (PAGE_LEVEL_TAGS.has(at.nodeName.toUpperCase()) || at.matches(PAGE_ITSELF_SELECTOR) || at.querySelector(PAGE_ITSELF_SELECTOR)) return null;
+    // (Not "most of the page's text": a list of 900 vendors is.)
+    if (holdsConsentControl(at)) return at;
+  }
+  return null;
+}
+
+function holdsConsentControl(box: Element): boolean {
+  if (box.querySelector('input[name*="consent" i]')) return true;
+  for (const control of box.querySelectorAll(CONSENT_CONTROL_SELECTOR)) {
+    const label = (control instanceof HTMLInputElement ? control.value : (control.textContent ?? "")).replace(/\s+/g, " ").trim();
+    if (label.length <= 40 && CONSENT_CONTROL_RE.test(label)) return true;
+  }
+  return false;
 }
 
 /** Is this one element a consent banner? For single questions — a re-scan root's ancestors,

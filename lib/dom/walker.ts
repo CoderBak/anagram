@@ -394,6 +394,8 @@ export function collectUnits(
   scanScopes = null; // the next scan looks at the page anew
   if (!startEl) return [];
   const consentBanners = findConsentBanners(startEl);
+  // A consent box known by what it holds can stand around a re-scan's root (its second tab).
+  for (const banner of consentBanners) if (banner !== startEl && banner.contains(startEl)) return [];
   const pageText = pageTextSize(document);
   const asm = createAssembler(scopes, opts.mergeShorts ?? true, startEl, read, (nodes) => opts.claimFilter?.(nodes) !== "skip", opts.onShortText);
 

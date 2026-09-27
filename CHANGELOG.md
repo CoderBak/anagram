@@ -100,6 +100,10 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- A consent box a publisher builds itself, such as the Daily Mail's, is no longer read. No
+  platform's name is on it; it is recognised by what it holds: a list of third parties, each
+  linking to its own privacy policy, beside buttons that give or refuse consent. Its
+  explanations were read on four Daily Mail pages of the web benchmark, 319 words each.
 - A cookie banner a consent platform draws inside a shadow root of its own is no longer
   analyzed; only banners in the page itself were recognised.
 - Immersive Translate's "translation only" mode is recognised: the translation it shows in
