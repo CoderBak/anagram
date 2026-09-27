@@ -29,7 +29,7 @@ import { launch } from "puppeteer-core";
 import { getInstalledBrowsers } from "@puppeteer/browsers";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { homedir, platform, tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
@@ -81,15 +81,39 @@ function systemFirefoxCandidates() {
   }
 }
 
-/** "Mozilla Firefox 156.0" → { version: "156.0", major: 156 }; null when it will not run. */
+/**
+ * A Firefox's version, read from the application.ini of its install: beside the binary, or in
+ * Contents/Resources of a macOS bundle. That file is what `firefox --version` prints from
+ * ("Mozilla Firefox" and its Version); starting the browser to hear it again was the one
+ * process this suite ran while nothing else of it had started, right after the rebuild of
+ * output-test, and when the machine could not start one, the error was swallowed and the
+ * suite stopped at "would not report a version" while `firefox --version` worked a minute
+ * later. `firefox --version` remains the answer where no application.ini is found, and its
+ * error is told.
+ */
 export function firefoxVersion(executablePath) {
+  const exeDir = dirname(executablePath);
+  for (const ini of [join(exeDir, "application.ini"), join(exeDir, "..", "Resources", "application.ini")]) {
+    let text;
+    try {
+      text = readFileSync(ini, "utf8");
+    } catch {
+      continue;
+    }
+    // An ESR says so in its repository, as `--version` does in its number: "140.16.0esr".
+    const version = /^Version=(\S+)/m.exec(text)?.[1] + (/^SourceRepository=\S*\/mozilla-esr\d+/m.test(text) ? "esr" : "");
+    const vendor = /^Vendor=(.+)$/m.exec(text)?.[1]?.trim() ?? "Mozilla";
+    const name = /^Name=(.+)$/m.exec(text)?.[1]?.trim() ?? "Firefox";
+    const major = Number(/^(\d+)\./.exec(version)?.[1]);
+    if (Number.isInteger(major)) return { version, major, banner: `${vendor} ${name} ${version}` };
+  }
   try {
     const out = execFileSync(executablePath, ["--version"], { encoding: "utf8", timeout: 30000 });
     const m = /(\d+)(?:\.(\d+))?(?:\.(\d+))?/.exec(out);
-    if (!m) return null;
+    if (!m) return { error: `printed no version: ${JSON.stringify(out.slice(0, 200))}` };
     return { version: out.trim().replace(/^Mozilla Firefox\s*/i, ""), major: Number(m[1]), banner: out.trim() };
-  } catch {
-    return null;
+  } catch (e) {
+    return { error: `--version failed (${e.code ?? `status ${e.status}, signal ${e.signal}`})${e.stderr ? `: ${String(e.stderr).trim().slice(0, 200)}` : ""}` };
   }
 }
 
@@ -125,8 +149,8 @@ export async function resolveFirefox() {
       continue;
     }
     const v = firefoxVersion(executablePath);
-    if (!v) {
-      reject("would not report a version");
+    if (v.error) {
+      reject(`would not report a version: ${v.error}`);
       continue;
     }
     if (v.major < MIN_DRIVER_FIREFOX) {

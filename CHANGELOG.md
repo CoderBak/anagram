@@ -120,6 +120,13 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- In Firefox, a web PDF without ".pdf" in its address now and then stayed in Firefox's own
+  viewer instead of opening in Anagram's reader, and a PDF the reader opened by itself, as
+  it does when one loads or is reloaded, could land on "This PDF could not be loaded". Both
+  happened on a busy computer, where Firefox reports a tab's loading, its navigation and the
+  response that says "PDF" out of order: a navigation announced a second time after its
+  response was taken for a new one that had said nothing yet, and the PDF tab's own late
+  "loading" for the tab moving on, which withdrew the reader's permission to read the file.
 - In Google Drive's preview and in a pdf.js viewer in a page (OneDrive, SharePoint,
   Overleaf), a page drawn after the pages before it were read no longer leaves paragraphs
   unread. The first half of a paragraph running onto the new page had been read with the
