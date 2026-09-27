@@ -14,11 +14,13 @@ import { fileURLToPath } from "node:url";
 import { flavorOf, outputDir } from "./flavor.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const SOURCE = join(ROOT, "output", outputDir(flavorOf(), "firefox", 2));
+const FLAVOR = flavorOf();
+const SOURCE = join(ROOT, "output", outputDir(FLAVOR, "firefox", 2));
 
 const INNER_HTML = /^Unsafe assignment to innerHTML$/;
 const IMPORT = /^Unsafe call to import for argument 0$/;
-/** The warnings Anagram's Firefox build carries on purpose, and how many of each. */
+/** The warnings Anagram's Firefox build carries on purpose, and how many of each. An entry
+ *  with a `flavor` counts only in that flavor's build (scripts/flavor.mjs). */
 const ACCEPTED = [
   {
     code: "KEY_FIREFOX_ANDROID_UNSUPPORTED_BY_MIN_VERSION", file: /^manifest\.json$/, count: 1,
@@ -46,7 +48,18 @@ const ACCEPTED = [
     why: "import() of files packaged with the extension: our on-demand chunks (runtime.getURL), " +
       "PDF.js's worker and decoders, and the document worker's modules. Nothing remote.",
   },
-];
+  {
+    flavor: "oneclick", code: "UNSAFE_VAR_ASSIGNMENT", message: IMPORT, file: /^vendor\/engine\/ort\.bundle\.min\.mjs$/, count: 1,
+    why: "ONNX Runtime Web as published: import() of its Emscripten glue, " +
+      "ort-wasm-simd-threaded.jsep.mjs, from the extension's own vendor/engine/ (or a blob: of it). Nothing remote.",
+  },
+  {
+    flavor: "oneclick", code: "DANGEROUS_EVAL", file: /^vendor\/engine\/ort\.bundle\.min\.mjs$/, count: 1,
+    why: "ONNX Runtime Web as published: Emscripten embind's method caller builds a function with " +
+      "new Function. The extension's CSP has no 'unsafe-eval', so that path throws rather than runs; " +
+      "the in-browser engine must not depend on it.",
+  },
+].filter((entry) => !entry.flavor || entry.flavor === FLAVOR);
 
 if (!existsSync(join(SOURCE, "manifest.json"))) {
   console.error(`No Firefox build in ${SOURCE}: run npm run build:firefox (or build:oneclick:firefox) first.`);
