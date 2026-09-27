@@ -75,7 +75,7 @@ jobs:
       - name: device matrix
         run: npm run test:matrix
       - name: diagnostics report ("Copy page diagnostics")
-        run: node test/diagnostics-check.mjs
+        run: npm run test:diagnostics
       - name: where a PDF opens
         if: runner.os != 'Windows'
         run: npm run test:pdf-route
