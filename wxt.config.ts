@@ -154,7 +154,7 @@ export default defineConfig({
     excludeSources: [
       "dist/**", "output-test/**", "test-results/**", ".cache/**", `${ONECLICK_PUBLIC}/**`,
       "**/__pycache__/**", "**/*.pyc", "**/*.log", "**/*.ses",
-      "test/*.png", "test/matrix.json", "test/survey.json", "test/a11y.json",
+      "test/*.png", "test/matrix.json", "test/survey.json",
     ],
     // The oneclick packages are named apart from the native ones, which they never replace.
     ...(ONECLICK ? {

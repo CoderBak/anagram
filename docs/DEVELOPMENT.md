@@ -95,13 +95,13 @@ npx playwright test                # the suites in test/pw/ (Playwright Test); -
 npm run test:pdf-install           # PDF setup and local-file access flow, EN and ZH
 ANAGRAM_FIREFOX=<path to firefox> npm run test:firefox   # the Firefox build in Firefox 140+, e.g. an ESR from archive.mozilla.org, never installed
 npm run lint:firefox               # Mozilla's add-on linter on the Firefox build; accepted warnings in scripts/lintFirefox.mjs
-node test/pdf-route-check.mjs      # PDF routing, handoff caps and privacy
+npm run test:pdf-route             # PDF routing, handoff caps and privacy
 npm run test:network-privacy       # the network promises in PRIVACY.md, for both flavors
-ANAGRAM_PDF_BENCH=<corpus dir> node test/pdf-bench/bench.mjs run   # PDF reading benchmark, never in CI; corpus from test/pdf-bench/corpus.mjs
+npm run bench:pdf -- run           # PDF reading benchmark, never in CI; ANAGRAM_PDF_BENCH is the corpus from test/pdf-bench/corpus.mjs, ~/anagram-bench/pdfbench/corpus when unset
 ANAGRAM_PDF_BENCH=<corpus dir> node test/pdf-bench/bench.mjs structured <dumps>   # the shipping path, over test/pdf-bench/zotero-dump.mjs output; tune on --split dev, report --split test
 node test/pdf-bench/olmocr.mjs <olmOCR-Bench bench_data> <out> --structure <dumps>   # olmOCR-Bench's column, page-furniture and small-print pages; scored by test/pdf-bench/olmocr-check.py with upstream's checks, never in CI
 ANAGRAM_PDF_BENCH=<corpus dir> node test/pdf-bench/consistency.mjs <dumps> --features <structured run> --python <engine python> --modelkit <dir> --lid <file> --out <dir>   # the same papers' PDF and arXiv HTML verdicts with the real model, never in CI
-ANAGRAM_WEB_BENCH=<corpus dir> node test/web-bench/bench.mjs run --scope page   # web reading benchmark (or --scope main), never in CI; corpus from test/web-bench/corpus.mjs; tune on --split dev, report --split test
+npm run bench:web -- run --scope page   # web reading benchmark (or --scope main), never in CI; ANAGRAM_WEB_BENCH is the corpus from test/web-bench/corpus.mjs, ~/anagram-bench/webbench/corpus when unset; tune on --split dev, report --split test
 ANAGRAM_EDITLENS_DATA=<EditLens checkout + data> ANAGRAM_MODELKIT=<modelkit> ANAGRAM_LID_MODEL=<lid.176.ftz> python test/editlens-parity.py   # the native host against Pangram's official inference, never in CI
 ```
 

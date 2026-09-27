@@ -2460,6 +2460,41 @@ const results = await page.evaluate(() => {
   await ob.close();
 }
 
+// ---- a dear drain spaces the next, for a while and no longer -------------------------------
+// A drain waits nineteen times what the last one cost, so reading a page that grows takes a
+// twentieth of its time at most; a drain a busy machine stalled for 600 ms would put the next
+// eleven seconds off, and five is the most a paragraph the page adds after it waits.
+{
+  const ob = await browser.newPage();
+  await ob.setContent("<!doctype html><html><body></body></html>");
+  await ob.addScriptTag({ path: BUNDLE });
+  const r = await ob.evaluate(async () => {
+    const drains = [];
+    const observers = PW.createObservers({
+      onVisible() {},
+      onNear() {},
+      onDirty() {
+        const began = performance.now();
+        if (drains.length === 0) while (performance.now() - began < 600);
+        drains.push(performance.now());
+      },
+    });
+    observers.start();
+    document.body.append(document.createElement("p"));
+    while (drains.length === 0) await new Promise((done) => setTimeout(done, 50));
+    document.body.append(document.createElement("p"));
+    while (drains.length === 1 && performance.now() - drains[0] < 8000) await new Promise((done) => setTimeout(done, 50));
+    observers.stop();
+    return { waited: drains.length > 1 ? Math.round(drains[1] - drains[0]) : null };
+  });
+  results.push({
+    name: "a dear drain spaces the next one out, and by five seconds at most",
+    ok: r.waited !== null && r.waited >= 4500 && r.waited < 6000,
+    note: JSON.stringify(r),
+  });
+  await ob.close();
+}
+
 // ---- a chip inside a clipped box follows the page when it reflows -------------------------
 // The placement is measured once, when the verdict lands, and the page does not stand still:
 // on a Goodreads book page the reviews grow as their images and web fonts arrive, and a chip

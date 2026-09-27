@@ -272,7 +272,7 @@ export const LOCKED_PDF = buildPdf(
 /**
  * A long two-column paper. Two suites need a document that does not fit on one screen:
  * the scenarios, to prove that a page far down the stack has its TEXT (and so its units,
- * its chips and the panel's rows) long before it has any pixels, and test/perf.mjs, for
+ * its chips and the panel's rows) long before it has any pixels, and test/pw/perf.spec.mjs, for
  * the budgets that only a real stack of pages can state. Every paragraph is twenty-two
  * lines of five words, which clears the 75-word floor, and no line repeats, so nothing but
  * the running head and the page number is taken for furniture.

@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, truncateSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { build } from "esbuild";
-import { test as base, expect } from "./fixtures.mjs";
+import { test, expect } from "./fixtures.mjs";
 import { TEST_PDF, LOCKED_PDF, PDF_PASSWORD, TALL_PDF, PDF_CHIP, PDF_HEAD, PDF_HEADING, PDF_PARAS, buildPdf, buildTwoColumnPdf, pdfColumn, readerReady } from "../pdf-fixture.mjs";
 import { BADGE_SEL } from "../harness.mjs";
 
@@ -21,23 +21,7 @@ const frames = (page) => page.evaluate(() => new Promise((r) => requestAnimation
 
 // The shipping build, offline: nothing the viewer, its parser, fonts or locale files need
 // may come from anywhere but the extension, and every test checks that at its end.
-const test = base.extend({
-  packagedOnly: [
-    async ({ context }, use) => {
-      await context.setOffline(true);
-      const external = [];
-      const record = (request) => {
-        if (/^https?:/.test(request.url())) external.push(request.url());
-      };
-      context.on("request", record);
-      await use(external);
-      context.off("request", record);
-      expect(external, "requests that left the extension").toEqual([]);
-    },
-    { auto: true },
-  ],
-});
-test.use({ build: "shipping" });
+test.use({ build: "shipping", offline: true });
 
 /** The reader with a document chosen from this computer; a `file=` query is never read. */
 async function openReader(page, extId, file = input("offline.pdf", TEST_PDF)) {
@@ -264,9 +248,9 @@ test("source offsets survive nested search markup and page replacement", async (
 // (services/web/frontend/js/features/pdf-preview/components/pdf-js-viewer.tsx) under its
 // address, with pdf.js from the package; nothing reaches Overleaf. The test build grants
 // every site, as the user's grant for overleaf.com would.
-base.describe("a pdf.js viewer in a web page", () => {
-base.use({ build: "test" });
-base("Overleaf's PDF preview is read by the pdf.js surface, once its app has built the viewer", async ({ page, context, nativeHost }) => {
+test.describe("a pdf.js viewer in a web page", () => {
+test.use({ build: "test", offline: false });
+test("Overleaf's PDF preview is read by the pdf.js surface, once its app has built the viewer", async ({ page, context, nativeHost }) => {
   const pdf = buildPdf([
     [
       { x: 72, y: 742, size: 9, text: PDF_HEAD },
