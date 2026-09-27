@@ -670,7 +670,14 @@ function assemble(pieces: Piece[], located: Located, vocab: Vocabulary, mathPage
   const letters = (t: Token): string => t.at.map((i) => pieces[i].ch).join("").replace(/\P{L}/gu, "");
   const sizes = pieces.flatMap((p, i) => (faces[i] && /\p{L}/u.test(p.ch) ? [faces[i].h] : [])).sort((a, b) => a - b);
   const body = sizes[sizes.length >> 1] ?? 0;
-  const script = (t: Token): boolean => t.at.every((i) => faces[i] !== null && faces[i].h <= body * SCRIPT_SIZE);
+  /** The piece follows a space in its pdf.js run. pdf.js gives a run one size, and a Word
+   *  document's equation leaves the words after a script in the script's run ("i and" of
+   *  "$c_i$ and"): what a space parts from a script in its run is not the script. */
+  const afterSpace = (i: number): boolean => {
+    const s = sources[i];
+    return s !== null && /\s/u.test(s.box.it.str.slice(0, s.offset));
+  };
+  const script = (t: Token): boolean => t.at.every((i) => faces[i] !== null && faces[i]!.h <= body * SCRIPT_SIZE && !afterSpace(i));
   /** What stands beside a formula and goes with it; not a word it is hyphened to, the
    *  "liminf" of "$\Gamma$-liminf". */
   const withFormula = (t: Token): boolean =>
@@ -732,7 +739,7 @@ function assemble(pieces: Piece[], located: Located, vocab: Vocabulary, mathPage
   const alone = (k: number): boolean => {
     const t = tokens[k];
     const size = Math.max(...t.at.map((i) => faces[i]?.h ?? 0));
-    const small = (i: number): boolean => faces[i] !== null && faces[i]!.h < size * CORNER;
+    const small = (i: number): boolean => faces[i] !== null && faces[i]!.h < size * CORNER && !afterSpace(i);
     const main = t.at.filter((i) => LETTER.test(pieces[i].ch) && !small(i));
     const face = main.length === 1 ? faces[main[0]] : null;
     if (!face || face.math || face.mono || !BOLD_FONT.test(face.font) || !mathPages.has(face.page)) return false;

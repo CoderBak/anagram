@@ -28,11 +28,14 @@ interface Drawn {
   softHyphen?: boolean;
   /** Zotero's glyphs stand this much left of where pdf.js drew them (a folded space). */
   drift?: number;
+  /** The size it is set in: pdf.js's run height, and the height of Zotero's glyph boxes. */
+  size?: number;
 }
 
 /** The text run as pdf.js hands it over, and Zotero's glyph run for the same glyphs. */
 function drawn(page: number, d: Drawn): { item: PdfTextItem; run: (number | number[])[] } {
-  const item: PdfTextItem = { str: d.text, x: d.x, y: d.y, width: d.text.length * CW, height: SIZE, fontName: d.font ?? "f_text" };
+  const size = d.size ?? SIZE;
+  const item: PdfTextItem = { str: d.text, x: d.x, y: d.y, width: d.text.length * CW, height: size, fontName: d.font ?? "f_text" };
   const x0 = d.x + (d.drift ?? 0);
   const widths: (number | number[])[] = [];
   let pendingSpace = 0;
@@ -42,8 +45,9 @@ function drawn(page: number, d: Drawn): { item: PdfTextItem; run: (number | numb
     pendingSpace = 0;
   }
   const header = d.softHyphen ? 1 : 0;
-  // PDF space: y grows upward; the glyph box reaches 2 below the baseline and 7 above.
-  const run = [header, page - 1, x0, HEIGHT - d.y - 2, x0 + d.text.length * CW, HEIGHT - d.y + 7, ...(widths.length === 1 ? [] : widths)];
+  // PDF space: y grows upward; the glyph box reaches a fifth of the size below the baseline
+  // and seven tenths above.
+  const run = [header, page - 1, x0, HEIGHT - d.y - 0.2 * size, x0 + d.text.length * CW, HEIGHT - d.y + 0.7 * size, ...(widths.length === 1 ? [] : widths)];
   return { item, run };
 }
 
@@ -88,8 +92,7 @@ function setLine(fonts: Record<string, string>): { put(s: string, font: string, 
   let x = 72;
   return {
     put(s, font, gap = CW, size = SIZE) {
-      const d = drawn(1, { text: s, x, y: size < SIZE ? 102 : 100, font });
-      d.item.height = size;
+      const d = drawn(1, { text: s, x, y: size < SIZE ? 102 : 100, font, size });
       items.push(d.item);
       runs.push(d.run);
       text += s + (gap ? " " : "");
@@ -561,8 +564,7 @@ describe("structuredBlocks — formulas", () => {
     const runs: (number | number[])[][] = [];
     let x = 72;
     const put = (text: string, font: string, gap = CW, size = SIZE) => {
-      const d = drawn(1, { text, x, y: 100, font });
-      d.item.height = size;
+      const d = drawn(1, { text, x, y: 100, font, size });
       items.push(d.item);
       runs.push(d.run);
       x += text.length * CW + gap;
@@ -685,8 +687,7 @@ describe("structuredBlocks — formulas", () => {
     let text = "";
     let x = 72;
     const put = (s: string, font: string, gap = CW, size = SIZE) => {
-      const d = drawn(1, { text: s, x, y: size < SIZE ? 102 : 100, font });
-      d.item.height = size;
+      const d = drawn(1, { text: s, x, y: size < SIZE ? 102 : 100, font, size });
       items.push(d.item);
       runs.push(d.run);
       text += s + (gap ? " " : "");
@@ -870,6 +871,46 @@ describe("structuredBlocks — formulas", () => {
     line.put("1)-dimensional", "f_text");
     line.put("as well, while a 3-dimensional space keeps its number.", "f_text");
     expect(line.read()).toBe("the linear span is -dimensional, and -dimensional as well, while a 3-dimensional space keeps its number.");
+  });
+
+  it("keeps the words a Word equation leaves in its script's run", () => {
+    // Word sets "$c_i$ and" as a run of the "c" and one run of "i and" at the subscript's
+    // size: pdf.js gives the words after the script its size.
+    const read = (letters: string): string => {
+      const fonts = { f_text: "TimesNewRomanPSMT", f_letters: letters, f_extra: "MT-Extra" };
+      const items: PdfTextItem[] = [];
+      const runs: (number | number[])[][] = [];
+      let text = "";
+      let x = 72;
+      /** A run of pdf.js; `parts` are Zotero's glyph runs within it, each at its own size. */
+      const put = (font: string, size: number, parts: [string, number][], gap = CW) => {
+        const str = parts.map(([s]) => s).join("");
+        items.push({ str, x, y: size < SIZE ? 101 : 100, width: str.length * CW, height: size, fontName: font });
+        let at = x;
+        for (const [s, sz] of parts) {
+          const glyphs = s.trim();
+          if (glyphs) runs.push(drawn(1, { text: glyphs, x: at + (s.length - s.trimStart().length) * CW, y: sz < SIZE ? 101 : 100, size: sz }).run);
+          at += s.length * CW;
+        }
+        text += str + (gap ? " " : "");
+        x += str.length * CW + gap;
+      };
+      put("f_text", SIZE, [["the resetting parameters", SIZE]]);
+      put("f_letters", SIZE, [["c", SIZE]], 0);
+      put("f_text", 7, [["i", 7], [" and", SIZE]]);
+      put("f_letters", SIZE, [["d", SIZE]], 0);
+      put("f_text", 7, [["i", 7], [" are drawn at random", SIZE]]);
+      put("f_text", SIZE, [["where", SIZE]]);
+      put("f_extra", SIZE, [["∼", SIZE]]);
+      put("f_text", SIZE, [["holds.", SIZE]]);
+      const n = { text: text.replace(/  +/g, " "), anchor: { textMap: JSON.stringify(runs) } };
+      const pages = [pageText(1, items, fonts)];
+      const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+      expectRunsToMatch(blocks[0], pages);
+      return blocks[0].text;
+    };
+    // Word's own equations are set in Cambria Math.
+    expect(read("CambriaMath")).toBe("the resetting parameters and are drawn at random where holds.");
   });
 
   it("changes nothing in a document with no mathematics face", () => {
