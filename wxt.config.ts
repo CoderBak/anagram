@@ -244,12 +244,28 @@ export default defineConfig({
                 id: ONECLICK ? "anagram-oneclick@coderbak.dev" : "anagram@coderbak.dev",
                 // 140 (an ESR) is where CSS.highlights arrived, which draws every underline.
                 // What it still lacks is made up for in lib/dom/shadow.ts (adoptSheets) and
-                // lib/pdf/upsert.ts; test/firefox.mjs runs against it.
-                strict_min_version: "140.0",
+                // lib/pdf/upsert.ts; test/firefox.mjs runs against it. The in-browser engine
+                // needs 153 (the ESR after it): 140 has no WebAssembly JSPI and no WebGPU, so
+                // it would score on one CPU thread, seconds per paragraph, and its support
+                // ends in September 2026 (lib/webengine/session.ts).
+                strict_min_version: ONECLICK ? "153.0" : "140.0",
                 // AMO's data-collection disclosure: nothing is collected or transmitted.
                 data_collection_permissions: { required: ["none"] },
               },
             },
+          }
+        : {}),
+      ...(ONECLICK && browser !== "firefox"
+        ? {
+            // The engine's GPU path is ONNX Runtime Web's WebGPU provider in its JSPI build
+            // (lib/webengine/session.ts): WebAssembly JSPI shipped in Chrome 137.
+            minimum_chrome_version: "137",
+            // Cross-origin isolation for every extension page, so that the offscreen
+            // document's worker has SharedArrayBuffer and the CPU path four threads instead
+            // of one. The pages load nothing cross-origin but by fetch (test/oneclick.mjs
+            // checks each one isolated, and the reader opening a PDF).
+            cross_origin_embedder_policy: { value: "require-corp" },
+            cross_origin_opener_policy: { value: "same-origin" },
           }
         : {}),
       // Chrome permits four suggested shortcuts. Avoid its Alt+Shift+T/B/I bindings.

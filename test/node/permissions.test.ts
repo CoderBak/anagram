@@ -18,7 +18,10 @@ interface Manifest {
   optional_host_permissions?: string[];
   content_scripts?: unknown[];
   content_security_policy?: unknown;
-  browser_specific_settings?: { gecko?: { id?: string } };
+  browser_specific_settings?: { gecko?: { id?: string; strict_min_version?: string } };
+  minimum_chrome_version?: string;
+  cross_origin_embedder_policy?: { value: string };
+  cross_origin_opener_policy?: { value: string };
 }
 
 const CLIPBOARD = ["clipboardWrite", "clipboardRead"];
@@ -212,6 +215,25 @@ describe("the oneclick flavor", () => {
       expect(manifest.description).toBe("__MSG_extDescriptionInBrowser__");
     }
     expect(firefox.manifest.browser_specific_settings?.gecko?.id).toBe("anagram-oneclick@coderbak.dev");
+  });
+
+  it.skipIf(!chrome.ready || !firefox.ready)("requires the browsers its GPU path runs in: Chrome 137, Firefox 153", () => {
+    // WebAssembly JSPI, which the WebGPU runtime's build needs (lib/webengine/session.ts).
+    expect(chrome.manifest.minimum_chrome_version).toBe("137");
+    expect(firefox.manifest.browser_specific_settings?.gecko?.strict_min_version).toBe("153.0");
+  });
+
+  it.skipIf(!chrome.ready || !firefox.ready)("isolates Chrome's extension pages, so the engine's WebAssembly gets threads", () => {
+    expect(chrome.manifest.cross_origin_embedder_policy).toEqual({ value: "require-corp" });
+    expect(chrome.manifest.cross_origin_opener_policy).toEqual({ value: "same-origin" });
+    // Firefox's MV2 manifest has no such keys; its background page runs the engine one-threaded.
+    expect(firefox.manifest.cross_origin_embedder_policy).toBeUndefined();
+  });
+
+  it.skipIf(!nativeChrome.ready)("leaves the native flavor's browsers and isolation as they were", () => {
+    expect(nativeChrome.manifest.minimum_chrome_version).toBeUndefined();
+    expect(nativeChrome.manifest.cross_origin_embedder_policy).toBeUndefined();
+    expect(nativeChrome.manifest.cross_origin_opener_policy).toBeUndefined();
   });
 
   it.skipIf(!chrome.ready || !nativeChrome.ready)("keeps the native flavor's Content-Security-Policy", () => {
