@@ -21,8 +21,14 @@
 // - Shadow roots the walk never went into are watched too: every root already on the page
 //   at start, every root in a subtree the page adds, and every root the page attaches
 //   later, which the page-world script announces (lib/dom/shadow.ts).
+// - Text that changes without changing shape — a like count, a relative time, a score —
+//   is QUIET: it is handed over apart from the dirt (see sameShape), because it can change
+//   a unit that owns it and nothing else. A feed rewrites those every second on every post
+//   it shows, and each rewrite was a walk: on a page that keeps its posts, a walk costs as
+//   much as the page is long, so an hour on it cost more every minute than the last.
 import { MARK_ATTR, type Unit } from "../types";
 import { NO_SCORE_TAGS } from "../dom/tags";
+import { countWords } from "../dom/text";
 import { repairSplits } from "../dom/splits";
 import { SHADOW_ATTACHED_EVENT, eachShadowRoot, noteShadowHost } from "../dom/shadow";
 
@@ -62,7 +68,9 @@ export function createObservers(opts: {
   onNear(unit: Unit): void;
   /** A unit reported near or on screen before is beyond the prefetch margin now. */
   onFar?(unit: Unit): void;
-  onDirty(nodes: Node[], removed: Node[]): void;
+  /** `quiet`: text that changed without changing shape — the text node that changed (for
+   *  one the page replaced, the one that left) and the element it stood in. */
+  onDirty(nodes: Node[], removed: Node[], quiet: Map<Text, Element>): void;
   /** The document element itself was replaced (document.open()/write()). */
   onDocumentReplaced?(): void;
 }): Observers {
@@ -75,6 +83,7 @@ export function createObservers(opts: {
 
   const dirty = new Set<Node>();
   const removed = new Set<Node>();
+  const quiet = new Map<Text, Element>();
   const attrPending = new Set<Element>();
   let attrTimer: ReturnType<typeof setTimeout> | null = null;
   let drainTimer: ReturnType<typeof setTimeout> | null = null;
@@ -130,7 +139,10 @@ export function createObservers(opts: {
         continue;
       }
       if (rec.type === "characterData") {
-        if (!inSelfHost(rec.target)) dirty.add(rec.target);
+        if (inSelfHost(rec.target)) continue;
+        const parent = rec.target.parentElement;
+        if (parent && sameShape(rec.oldValue ?? "", (rec.target as Text).data)) quiet.set(rec.target as Text, parent);
+        else dirty.add(rec.target);
         continue;
       }
       if (rec.type === "attributes") {
@@ -151,7 +163,12 @@ export function createObservers(opts: {
         dirty.add(el);
         continue;
       }
-      // childList
+      // childList. A text node swapped for another of the same shape (`el.textContent = n`
+      // on a counter) is quiet: what left is what a unit could have owned.
+      if (textSwap(rec)) {
+        if (!inSelfHost(rec.target)) rec.removedNodes.forEach((n) => quiet.set(n as Text, rec.target as Element));
+        continue;
+      }
       rec.addedNodes.forEach((n) => {
         if (inSelfHost(n)) return;
         if (n.nodeType === Node.ELEMENT_NODE && NO_SCORE_TAGS.has(n.nodeName.toUpperCase())) return;
@@ -183,15 +200,18 @@ export function createObservers(opts: {
       documentReplaced = false;
       dirty.clear();
       removed.clear();
+      quiet.clear();
       opts.onDocumentReplaced?.();
       return;
     }
-    if (dirty.size === 0 && removed.size === 0) return;
+    if (dirty.size === 0 && removed.size === 0 && quiet.size === 0) return;
     const nodes = Array.from(dirty);
     const rem = Array.from(removed);
+    const still = new Map(quiet);
     dirty.clear();
     removed.clear();
-    opts.onDirty(nodes, rem);
+    quiet.clear();
+    opts.onDirty(nodes, rem, still);
   }
 
   // TWO observers: with a single rootMargin observer and threshold 0, no event
@@ -331,6 +351,7 @@ export function createObservers(opts: {
     attrPending.clear();
     dirty.clear();
     removed.clear();
+    quiet.clear();
     reported.clear();
     seen = new WeakMap(); // disconnect() forgot every target: the next start asks afresh
     dirtySince = null;
@@ -339,4 +360,31 @@ export function createObservers(opts: {
   }
 
   return { observeUnit, observeRoot, dropUnit, reobserve, start, stop };
+}
+
+/**
+ * The same number of words before and after. Text that keeps its shape cannot take a
+ * paragraph over the word floor or out from under it, so it cannot make a unit or unmake
+ * one it is not part of; what it can change is the text of a unit that owns it, and the
+ * orchestrator checks that. Anything that grows or shrinks — a chat message typed, a
+ * paragraph streamed — is dirt as before.
+ */
+function sameShape(before: string, after: string): boolean {
+  return countWords(before) === countWords(after);
+}
+
+/** A childList record that only put text in place of text, of the same shape. */
+function textSwap(rec: MutationRecord): boolean {
+  if (rec.target.nodeType !== Node.ELEMENT_NODE || rec.addedNodes.length === 0 || rec.removedNodes.length === 0) return false;
+  let before = "";
+  let after = "";
+  for (const n of rec.removedNodes) {
+    if (n.nodeType !== Node.TEXT_NODE) return false;
+    before += (n as Text).data;
+  }
+  for (const n of rec.addedNodes) {
+    if (n.nodeType !== Node.TEXT_NODE) return false;
+    after += (n as Text).data;
+  }
+  return sameShape(before, after);
 }
