@@ -20,23 +20,28 @@ export const expect = baseExpect.configure({ timeout: 20_000 });
 /** A settled score on a chip: ".42" or "1.0". */
 export const SCORE = /^(\.\d\d|1\.0)$/;
 
+/** How long a check that something does NOT happen watches for it, once what would have
+ *  caused it is known to have happened: there is no signal for a chip that never comes. */
+export const ABSENCE_MS = 2500;
+
 const NO_REPORT = "NO REPORT COPIED";
 
 export const test = base.extend({
   tell: async ({ extension }, use) => {
+    /** Resolves to the content script's answer, if it gives one. */
     await use(async (page, message) => {
       const url = page.url();
-      const sent = await extension.worker().evaluate(async ({ url, message }) => {
+      const { found, reply } = await extension.worker().evaluate(async ({ url, message }) => {
         const tab = (await chrome.tabs.query({})).find((t) => t.url === url);
-        if (!tab) return false;
+        if (!tab) return { found: false };
         try {
-          await chrome.tabs.sendMessage(tab.id, message);
+          return { found: true, reply: await chrome.tabs.sendMessage(tab.id, message) };
         } catch {
-          /* most of these are answered by nobody */
+          return { found: true, reply: null }; // most of these are answered by nobody
         }
-        return true;
       }, { url, message });
-      expect(sent, `a tab showing ${url}`).toBe(true);
+      expect(found, `a tab showing ${url}`).toBe(true);
+      return reply;
     });
   },
 
