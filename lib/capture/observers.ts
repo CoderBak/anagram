@@ -60,6 +60,11 @@ const DRAIN_MAX_WAIT_MS = 1000;
  * waits in proportion to what the last ones cost rather than for the next frame.
  */
 const DRAIN_COST_SPACING = 19;
+/** But no longer than this. A drain is timed by the clock, so one a busy machine or a
+ *  garbage collection stalled looks dear, and what the page adds after it would wait for
+ *  as long as twenty such drains: it is read within this instead. Only drains dearer than
+ *  260 ms, which no page has been seen to cost, take more than a twentieth again. */
+const DRAIN_MAX_SPACING_MS = 5000;
 // Prefetch margin for the "near" lane: at reading-speed scrolling, ~1.5 screens ahead
 // keeps chips landing before the paragraph enters the viewport.
 const ROOT_MARGIN = "1200px 0px";
@@ -202,7 +207,7 @@ export function createObservers(opts: {
     const now = Date.now();
     if (dirtySince === null) dirtySince = now;
     if (drainTimer !== null) clearTimeout(drainTimer);
-    const spacing = drainCost * DRAIN_COST_SPACING;
+    const spacing = Math.min(drainCost * DRAIN_COST_SPACING, DRAIN_MAX_SPACING_MS);
     const debounced = Math.min(DRAIN_DEBOUNCE_MS, dirtySince + Math.max(DRAIN_MAX_WAIT_MS, spacing) - now);
     drainTimer = setTimeout(drain, Math.max(0, debounced, lastDrainAt + spacing - now));
   }
