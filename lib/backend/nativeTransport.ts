@@ -1,13 +1,8 @@
 // One native port per background worker; all tabs share it. Never import this in a page.
+// The native flavor's engine transport (lib/backend/transport.ts).
 import { browser } from "#imports";
 import { MAX_NATIVE_BYTES, NATIVE_HOST, parseNativeReply, type NativeOperation, type NativePayload, type NativeReply } from "./nativeProtocol";
-
-/** A port that closed, or could not open, is not opened again before this. */
-export const RECONNECT_MS = 1500;
-
-export class NativeTransportError extends Error {
-  constructor(public readonly code: string, message: string) { super(message); this.name = "NativeTransportError"; }
-}
+import { NativeTransportError, RECONNECT_MS, type EngineTransport } from "./transport";
 
 export interface NativePort {
   postMessage(message: unknown): void;
@@ -18,7 +13,7 @@ export interface NativePort {
 }
 interface Pending {op: NativeOperation; resolve(reply: NativeReply): void; reject(error: Error): void; cleanup(): void}
 
-export class NativeTransport {
+export class NativeTransport implements EngineTransport {
   private port: NativePort | null = null;
   private pending = new Map<string, Pending>();
   private sequence = 0;
@@ -116,3 +111,5 @@ export class NativeTransport {
 
 let instance: NativeTransport | undefined;
 export function nativeTransport(): NativeTransport { return instance ??= new NativeTransport(); }
+/** What "#flavor/engine-transport" names in the native flavor. */
+export { nativeTransport as engineTransport };

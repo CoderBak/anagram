@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NativeScoreError } from "../../lib/backend/nativeScoreClient";
-import { NativeTransportError } from "../../lib/backend/nativeTransport";
+import { NativeTransportError } from "../../lib/backend/transport";
 import { ProtocolError } from "../../lib/backend/scoreProtocol";
 import { RETRY_BACKOFF_MS, isTransientFailure, retryWaitMs } from "../../lib/backend/retry";
-import { RECONNECT_MS } from "../../lib/backend/nativeTransport";
+import { RECONNECT_MS } from "../../lib/backend/transport";
 
 afterEach(() => vi.restoreAllMocks());
 
