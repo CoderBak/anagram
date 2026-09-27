@@ -40,12 +40,23 @@ off until you switch it on again.
   edited below .50, Heavily edited below .83, AI-generated above. A full dot means the
   word is likely right; the less likely, the thinner the ring the dot becomes.
 - Professionally edited human writing, such as news and magazine articles, often reads
-  as Lightly edited, and a single paragraph of a human article can read as AI-generated.
-  The dot's likelihood comes from a small model fitted on the EditLens dataset, which
-  mixes human, edited and AI text; on a page with no AI-edited text, a dot on Lightly or
-  Heavily edited is fuller than it should be. The open EditLens model is a research
-  baseline: scores are estimates, not proof of authorship, so do not use them for
-  disciplinary or other high-stakes decisions.
+  as Lightly edited. The dot's likelihood comes from a small model fitted on the EditLens
+  dataset, which mixes human, edited and AI text; on a page with no AI-edited text, a dot
+  on Lightly or Heavily edited is fuller than it should be. The open EditLens model is a
+  research baseline: scores are estimates, not proof of authorship, so do not use them
+  for disciplinary or other high-stakes decisions.
+- On [RAID](https://github.com/liamdugan/raid), a public benchmark of English writing by
+  people and by 11 language models in eight genres, 21,000 of its texts were each scored
+  whole, as a pasted text. Of 2,400 human texts, 3 (0.1%) read as AI-generated, and about
+  1 paragraph in 300 when they were read paragraph by paragraph; 7% read as Lightly or
+  Heavily edited, most often arXiv abstracts and book passages. About half of what chat
+  assistants wrote read as AI-generated (22% for Cohere's, 72% for ChatGPT's), but only 1%
+  of what plain completion models such as GPT-2 wrote; recipes were almost never flagged
+  and poems seldom. Changing letter case or adding spaces, zero-width spaces or paragraph
+  breaks changed nothing, and British spellings, altered numbers, dropped articles and
+  misspellings lowered detection by 2 points at most. Swapping in synonyms lowered it from
+  29% to 18%, and paraphrasing with another model to 6%. Text whose letters were replaced
+  with look-alike Cyrillic ones gets no verdict: it shows as another language.
 - The model needs 75 words. Shorter paragraphs are scored together with their neighbours
   in the same section, never across a heading; a ×2 on a chip means it covers two
   paragraphs, and a short paragraph with nothing to join is not scored.
