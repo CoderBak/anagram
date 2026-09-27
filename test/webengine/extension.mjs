@@ -165,8 +165,10 @@ try {
     console.log(`memory once idle (GiB): ${JSON.stringify(idle)}`);
     check("the idle engine's worker is ended and its memory given back", idle.renderer < 0.5 && idle["gpu-process"] < 0.5, JSON.stringify(idle));
     await paste.click("#analyze");
-    await paste.waitForFunction(() => !/Analyzing|分析中/.test(document.getElementById("status").textContent ?? ""), undefined, { timeout: 120_000 });
-    reply = await request("status");
+    for (let i = 0; i < 120 && reply?.data?.state !== "ready"; i++) {
+      await new Promise((r) => setTimeout(r, 500));
+      reply = await request("status");
+    }
     check("a score brings the engine back", reply?.data?.state === "ready" && reply.data.runtime?.active_id === "webgpu:fp32", JSON.stringify(reply?.data).slice(0, 300));
     await request("engine.settings", { idle_unload_s: 300 });
   }

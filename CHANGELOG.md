@@ -72,6 +72,16 @@ local component and the installer all carry the same version.
 
 ### Changed
 
+- Anagram (in-browser), the build that scores inside the browser, needs a third of the
+  memory it did. Its engine handed ONNX Runtime the whole 1.4 GB model, which the engine's
+  worker copied and kept: on an M4 with WebGPU the browser took 6.6 GB loading the model
+  and 7.2 GB scoring, and kept 3.8 GB after the idle time had let the model go. The
+  weights are now read from the browser's storage one tensor at a time, straight onto the
+  GPU: 2.3 GB loading, 2.5 GB at most scoring, and at the idle time the engine's worker
+  is ended with the model, which gives the memory back. Without WebGPU the CPU runtime holds
+  the weights once, 1.9 GB instead of 4.8 GB, as fast on long texts and up to 15% slower on
+  short ones. Scores are unchanged, and the GPU is 5–20% faster, now given four texts at a
+  time instead of eight. The engine runs on ONNX Runtime Web 1.30 (MIT).
 - On Apple silicon the local engine runs the model in MLX (MIT) on the GPU instead of
   PyTorch, still in FP32 from the same model.safetensors, and PyTorch and Transformers are
   no longer installed there: the engine's Python packages shrink from 780 MB to 340 MB.

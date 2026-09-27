@@ -146,7 +146,7 @@ export class Engine {
 
   /** The model was let go while idle and nothing has woken it since. */
   get idle(): boolean {
-    return this.state === "idle" && !this.loaded && !this.loading;
+    return this.state === "idle" && !this.loaded && !this.loading && this.pendingScores === 0;
   }
 
   async close(): Promise<void> {
