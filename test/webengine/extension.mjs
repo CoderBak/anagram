@@ -13,13 +13,16 @@
 // snapshot says which provider ran and how many threads the WASM one may use, which is
 // what `crossOriginIsolated` in the offscreen document comes to; --isolate adds the
 // manifest's cross-origin isolation keys to the test build first, to see whether Chrome
-// honours them there. Skips when the paths are missing or CI is set; never part of CI.
+// honours them there. The browser's peak memory while the model loads and scores is
+// printed; --idle then waits the engine's shortest idle time (a minute) and checks that
+// the offscreen document ended the worker and gave its memory back, and that a score
+// brings it back. Skips when the paths are missing or CI is set; never part of CI.
 import { chromium } from "playwright";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ensureTestBuild } from "../test-build.mjs";
-import { ROOT, serve } from "./harness.mjs";
+import { ROOT, serve, watchMemory } from "./harness.mjs";
 
 const argv = process.argv.slice(2);
 if (process.env.CI) { console.log("SKIP  extension scoring — never in CI"); process.exit(0); }
@@ -105,6 +108,7 @@ try {
   setup.on("pageerror", (e) => problems.push(`onboarding: ${e.message}`));
   await setup.goto(`chrome-extension://${extId}/onboarding.html`);
   const request = (op, payload = {}) => setup.evaluate(([op, payload]) => chrome.runtime.sendMessage({ action: "anagram.nativeRequest", op, payload }), [op, payload]);
+  const memory = watchMemory(profile);
   let reply = await request("status");
   check("the engine answers through the offscreen document", reply?.ok && reply.data?.home === "opfs:anagram-engine", JSON.stringify(reply).slice(0, 200));
   const began = Date.now();
@@ -143,6 +147,29 @@ try {
   }
   const health = await setup.evaluate(() => chrome.runtime.sendMessage({ action: "getBackendStatus", probe: true }));
   check("the background reports the engine up on WebGPU, FP32", health?.active === "server" && health?.server?.device === "webgpu" && health?.server?.dtype === "fp32", JSON.stringify(health).slice(0, 300));
+  console.log(`peak memory while loading and scoring (GiB, phys_footprint): ${JSON.stringify(await memory.stop())}`);
+
+  if (argv.includes("--idle")) {
+    reply = await request("engine.settings", { idle_unload_s: 60 });
+    check("engine.settings takes a minute", reply?.ok && reply.data?.settings?.idle_unload_s === 60, JSON.stringify(reply).slice(0, 200));
+    console.log("waiting a minute for the idle unload…");
+    for (let i = 0; i < 90 && reply?.data?.state !== "idle"; i++) {
+      await new Promise((r) => setTimeout(r, 1000));
+      reply = await request("status");
+    }
+    check("the model is let go after the idle time", reply?.data?.state === "idle", reply?.data?.state);
+    await new Promise((r) => setTimeout(r, 3000));
+    const watch = watchMemory(profile);
+    await new Promise((r) => setTimeout(r, 2000));
+    const idle = await watch.stop();
+    console.log(`memory once idle (GiB): ${JSON.stringify(idle)}`);
+    check("the idle engine's worker is ended and its memory given back", idle.renderer < 0.5 && idle["gpu-process"] < 0.5, JSON.stringify(idle));
+    await paste.click("#analyze");
+    await paste.waitForFunction(() => !/Analyzing|分析中/.test(document.getElementById("status").textContent ?? ""), undefined, { timeout: 120_000 });
+    reply = await request("status");
+    check("a score brings the engine back", reply?.data?.state === "ready" && reply.data.runtime?.active_id === "webgpu:fp32", JSON.stringify(reply?.data).slice(0, 300));
+    await request("engine.settings", { idle_unload_s: 300 });
+  }
   check("no errors in the worker or the pages", problems.length === 0, problems.join(" | "));
 } catch (error) {
   check("no exception", false, String(error?.stack ?? error));

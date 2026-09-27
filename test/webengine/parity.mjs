@@ -17,10 +17,9 @@
 // operation, and the browser's processes are watched for their peak resident memory.
 // Skips when a path is missing or CI is set; never part of CI (the data is gated).
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { initFor, launchChromium, launchFirefox, ROOT, serve } from "./harness.mjs";
+import { initFor, launchChromium, launchFirefox, ROOT, serve, watchMemory } from "./harness.mjs";
 
 const argv = process.argv.slice(2);
 const opt = (name, fallback) => { const i = argv.indexOf(`--${name}`); return i < 0 ? fallback : argv[i + 1]; };
@@ -52,7 +51,8 @@ const runtimes = opt("runtimes", "webgpu,wasm").split(",").filter(Boolean);
 mkdirSync(profile, { recursive: true });
 
 const firefox = opt("firefox");
-const { base, close: closeServer } = await serve({ "/kit/": kit, "/lid/": join(lid, "..") }, { pageCsp: !firefox });
+// One port every time: the profile keeps the model in the OPFS of this origin, port included.
+const { base, close: closeServer } = await serve({ "/kit/": kit, "/lid/": join(lid, "..") }, { pageCsp: !firefox, port: firefox ? 0 : 47613 });
 const pin = {
   files: [
     { name: "model.onnx", size_bytes: entry("onnx/model.onnx").size_bytes, sha256: entry("onnx/model.onnx").sha256, url: `${base}/kit/onnx/model.onnx` },
@@ -62,24 +62,6 @@ const pin = {
   model: { id: "editlens_roberta-large", calibration: "editlens-4bucket-cosine(0.03,0.15)" },
   license: modelkit.license,
 };
-
-/** Peak memory of the browser's processes, by kind, through test/webengine/memwatch.py (phys_footprint, Metal buffers included). */
-function watchMemory(substring) {
-  const out = join(tmpdir(), `anagram-webengine-memory-${process.pid}.json`);
-  const child = spawn("python3", [join(ROOT, "test", "webengine", "memwatch.py"), substring, out, "0.25"], { stdio: "ignore" });
-  return {
-    stop: async () => {
-      child.kill("SIGTERM");
-      await new Promise((resolve) => child.on("exit", resolve));
-      try {
-        const data = JSON.parse(readFileSync(out, "utf8"));
-        rmSync(out, { force: true });
-        const gib = (n) => +(n / 2 ** 30).toFixed(2);
-        return { total: gib(data.total_phys_peak), ...Object.fromEntries(Object.entries(data.kinds).map(([k, v]) => [k, gib(v.phys)])) };
-      } catch { return {}; }
-    },
-  };
-}
 
 const report = { started: new Date().toISOString(), sample: sample.length, longer_than_512: sample.filter((t) => t.length > MAX_LENGTH).length, runtimes: {} };
 const browser = firefox ? await launchFirefox(base, firefox, { prefs: { "dom.webgpu.enabled": true } }) : await launchChromium(base, { profile });
@@ -117,9 +99,13 @@ try {
     report.memory_peak_gib_startup ??= await memory.stop();
     memory = watchMemory(firefox ? browser.profile : profile);
     if (!status.data.runtime.candidates.some((c) => c.id === id && c.available)) { out.skipped = "not available"; console.log(`SKIP  ${id} — not available here`); continue; }
-    // A cold start of this runtime: stop, then resume, so the load is measured from disk.
+    // A cold start of this runtime in a fresh worker (WebAssembly memory never shrinks, so
+    // the previous runtime's would count against this one): stop, end the worker, start
+    // another, resume, so the load is measured from disk.
     await request("engine.stop");
     await request("runtime.config", { id });
+    await page.evaluate(() => window.engine.stop());
+    await page.evaluate((init) => window.engine.start(init), initFor(base, pin));
     t0 = performance.now();
     await request("engine.resume");
     status = await until("(d) => d.state === 'ready' || d.state === 'error'");
