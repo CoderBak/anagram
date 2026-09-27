@@ -17,6 +17,7 @@
 // the 75-word floor) already skip most of it — a table row never reaches the
 // daemon anyway. Ligatures are kept exactly as the PDF gives them; the model form
 // (modelText) spells ﬁ/ﬂ out itself.
+import { skipGap } from "../dom/text";
 
 /** One run of glyphs as the extractor hands it over. */
 export interface PdfTextItem {
@@ -415,7 +416,8 @@ function isBracketMark(inner: string): boolean {
  * GK12]"; and a run of them as IEEE's style sets it, "[19], [20]" or "[5]–[7]". The web
  * walker skips one as a mark rather than prose (isCitationMarker, lib/dom/walker.ts), and
  * arXiv's HTML marks every one, a run as one, so the PDF reader leaves it out too, with the
- * space in front of it: "the bases [4]." reads "the bases.", and "programs [19], [20],
+ * space in front of it, and with the space after it where punctuation follows (skipGap):
+ * "the bases [4]." and "the bases [4] ." read "the bases.", and "programs [19], [20],
  * rewards" "programs, rewards", as the same paper's HTML reads. A bracket that names a year
  * is an author-year citation, words of the sentence, and one with no reference in it
  * ("[sic]") is the writer's own.
@@ -429,6 +431,7 @@ export function bracketCitations(text: string): [number, number][] {
     if (last && RUN.test(text.slice(last[1], start))) last[1] = end;
     else cuts.push([text[start - 1] === " " ? start - 1 : start, end]);
   }
+  for (const cut of cuts) cut[1] = skipGap(text, cut[1])?.[1] ?? cut[1];
   return cuts;
 }
 

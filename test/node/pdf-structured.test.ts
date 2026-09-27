@@ -277,6 +277,31 @@ describe("structuredBlocks — text and runs", () => {
     expectRunsToMatch(blocks[0], pages);
   });
 
+  it("closes up the space a mark left out leaves before punctuation, and keeps the author's own", () => {
+    const items: PdfTextItem[] = [];
+    const nodes: SdtTextNode[] = [];
+    let x = 72;
+    const put = (text: string, { gap = 0, raised = false }: { gap?: number; raised?: boolean } = {}) => {
+      x += gap * CW;
+      const d = drawn(1, { text, x, y: raised ? 96 : 100 });
+      if (raised) d.item.height = 7;
+      items.push(d.item);
+      if (gap) nodes.push({ text: " " });
+      nodes.push({ text, anchor: { textMap: JSON.stringify([d.run]) }, ...(raised ? { style: { sup: true }, refs: [[1, 0]] } : {}) });
+      x += text.length * CW;
+    };
+    put("as reported by Dunne");
+    put("46", { gap: 1, raised: true });
+    put(".");
+    put("It spans the bases [4] , and a word", { gap: 1 });
+    put(".", { gap: 1 });
+    const bibliography: SdtBlock = { type: "list", content: [{ type: "listitem", reference: true, content: [] }] };
+    const pages = [pageText(1, items, { f_text: "NimbusRomNo9L-Regu" })];
+    const blocks = structuredBlocks(structure([{ type: "paragraph", content: nodes }, bibliography]), pages);
+    expect(blocks[0].text).toBe("as reported by Dunne. It spans the bases, and a word .");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
   it("puts a space between two glyphs a word apart that Zotero ran together", () => {
     const a = drawn(1, { text: "where", x: 72, y: 100 });
     const b = drawn(1, { text: "the", x: 72 + 5 * CW + 6, y: 100 });
@@ -457,6 +482,28 @@ describe("structuredBlocks — formulas", () => {
     const pages = [pageText(1, items, fonts)];
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
     expect(blocks[0].text).toBe("the value of, then of. The next");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
+  it("closes up the space a formula left out leaves before punctuation, as the web walker does", () => {
+    const fonts = { f_text: "NimbusRomNo9L-Regu", f_math: "BXJUHM+CMMI10" };
+    const items: PdfTextItem[] = [];
+    const runs: (number | number[])[][] = [];
+    let x = 72;
+    const put = (text: string, font: string) => {
+      const d = drawn(1, { text, x, y: 100, font });
+      items.push(d.item);
+      runs.push(d.run);
+      x += text.length * CW + CW;
+    };
+    put("it holds for x", "f_text");
+    put("f", "f_math");
+    put(". A word", "f_text");
+    put(".", "f_text");
+    const n = { text: "it holds for x f . A word .", anchor: { textMap: JSON.stringify(runs) } };
+    const pages = [pageText(1, items, fonts)];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0].text).toBe("it holds for x. A word .");
     expectRunsToMatch(blocks[0], pages);
   });
 

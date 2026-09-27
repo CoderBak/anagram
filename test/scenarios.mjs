@@ -2788,6 +2788,9 @@ async function sweep(page, steps = 6) {
     };
     await p.click("#more");
     const whole = await p.waitForFunction((sel) => document.querySelectorAll(`#post ${sel}`).length > 0, BADGE_SEL, { timeout: 15000 }).then(() => true).catch(() => false);
+    // The chip that answers the wait may be the pending one, drawn before the batch leaves:
+    // wait for the text itself to reach the fixture, not for the chip.
+    for (const until = Date.now() + 15000; mine().length === 0 && Date.now() < until; ) await p.waitForTimeout(100);
     const sent = mine();
     record(
       "ui",

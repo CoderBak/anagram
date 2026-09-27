@@ -66,8 +66,8 @@ local component and the installer all carry the same version.
 
 ### Changed
 
-- The model behind a verdict's dot is refitted on the EditLens validation data read as
-  Anagram reads text now (a space before punctuation closed up, accents composed). Its
+- The model behind a verdict's dot is refitted on the EditLens validation data read
+  through Anagram's current pipeline (passes, grouping, accents composed). Its
   coefficients move by a few hundredths and its calibration on the test, Enron and Llama
   sets holds (error 0.044, 0.037, 0.041). Checked on two sets it had never seen, 300 news
   articles and 91 learners' essays, each wholly human or wholly AI-generated: a verdict
@@ -179,11 +179,13 @@ local component and the installer all carry the same version.
   in landmarks. The page field and the zoom menu are labelled with the words of their
   tooltips, and the scrolling page area has a name and a visible focus outline when the
   keyboard reaches it. The accessibility suite now passes on every reader state.
-- The model no longer reads the space a skipped formula or citation leaves before a full
-  stop or a comma ("the bases [4]." read as "the bases ."). That space made arXiv's HTML
-  read as more human than the PDF of the same paper: on 1,464 paragraphs read from both,
-  it lowered the HTML's score by 0.04 on average and by 0.10 where citations were. Earlier
-  verdicts are not reused for the texts this changes.
+- The model no longer reads the space Anagram leaves where it skips a formula or a citation
+  mark before a full stop or a comma ("the bases [4]." read as "the bases ."). That space
+  made arXiv's HTML read as more human than the PDF of the same paper: on 1,464 paragraphs
+  read from both, it lowered the HTML's score by 0.04 on average and by 0.10 where
+  citations were. The web page reader and the PDF reader both close it up where they skip
+  something, and nowhere else: a space the author typed before punctuation reaches the model
+  as written. Earlier verdicts are not reused for the texts this changes.
 - An author–year citation is read with its sentence on every page. Anagram left out any
   citation of 40 characters or fewer, so on arXiv's HTML "Smith et al. (2020) showed" reached
   the model as "showed" while the same paper's PDF read the names, and a longer citation was

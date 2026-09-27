@@ -1483,6 +1483,18 @@ const results = await page.evaluate(() => {
     check("MathJax container does not split; its glyph text never leaks", unit && unit.parts.length === 1 && unit.formulas === 1 && !unit.text.includes("GLYPHLEAK"), JSON.stringify(unit && [unit.parts.length, unit.text.slice(-30)]));
   }
   {
+    // The space a skipped formula leaves before punctuation is the walk's, not the author's:
+    // closed up in the unit's text, in the text recomputed from its parts and in the map back
+    // to the page. A space the author typed there reaches the model as written.
+    sandbox.innerHTML = `<p>${words(78)} the value of <math><mi>x</mi></math>, and x <span class="katex">f</span> . Then a word . Done</p>`;
+    const [unit] = PW.collectUnits(sandbox);
+    const tail = " the value of, and x. Then a word . Done";
+    check("a skipped formula's space before punctuation is closed up, an author's own kept",
+      unit && unit.text.endsWith(tail) && PW.modelText(unit.text) === unit.text && unit.parts.map(PW.partTextOf).join("\n\n") === unit.text &&
+      PW.locateSpans(unit.parts, unit.text, [{ start: unit.text.length - tail.length, end: unit.text.length }])?.[0][0].toString().startsWith("the value of"),
+      JSON.stringify(unit && unit.text.slice(-tail.length)));
+  }
+  {
     sandbox.innerHTML = `<p>${words(40)}</p><table class="ltx_equation"><tr><td><math display="block"><mi>E</mi></math></td><td>(1)</td></tr></table><p>${words(40)}</p>`;
     u = collect(sandbox.innerHTML);
     check("display equation between two short paragraphs is not a merge barrier", u.length === 1 && u[0].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
@@ -1530,7 +1542,9 @@ const results = await page.evaluate(() => {
       [`was shown <cite class="ltx_cite ltx_citemacro_citep">(<a href="#b1">Smith and Lee, 2020</a>)</cite>.`, " was shown (Smith and Lee, 2020)."],
       [`following <cite class="ltx_cite ltx_citemacro_citeauthor"><a href="#b1">Abebe et al.</a></cite> here.`, " following Abebe et al. here."],
       [`as in <cite class="ltx_cite ltx_citemacro_cite">[${refs([8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])}]</cite> before.`, " as in before."],
-      [`learn it <cite class="ltx_cite ltx_citemacro_cite"><sup class="ltx_sup">${refs([1, 2, 3, 4])}</sup></cite>. Then`, " learn it . Then"],
+      // The space before a mark left out is closed up where punctuation follows it; an author's own is kept.
+      [`learn it <cite class="ltx_cite ltx_citemacro_cite"><sup class="ltx_sup">${refs([1, 2, 3, 4])}</sup></cite>. Then`, " learn it. Then"],
+      [`span the bases <cite class="ltx_cite ltx_citemacro_cite">[<a href="#bib4">4</a>]</cite>. A word .`, " span the bases. A word ."],
       [`hereafter <cite class="ltx_cite ltx_citemacro_citealias"><a href="#b2">48</a></cite> again.`, " hereafter again."],
       [`the rate<sup class="reference"><a href="#r">:p. 7</a></sup> fell.`, " the rate fell."],
       [`begins<a href="#footnote1"><sup>1</sup></a> at noon.`, " begins at noon."],

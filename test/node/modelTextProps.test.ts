@@ -10,7 +10,7 @@
 // carry. A failure names the seed to reproduce it.
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
-import { modelText } from "../../lib/dom/text";
+import { modelText, skipGap, unitPartText } from "../../lib/dom/text";
 import { createScoreCache } from "../../lib/capture/cache";
 import { blockText, wordsOf } from "../../lib/capture/windows";
 import { createSwCache } from "../../lib/backend/swCache";
@@ -62,11 +62,12 @@ describe("modelText", () => {
     }), { numRuns: 1000, seed: 0xCACE });
   });
 
-  it("changes nothing an author wrote but whitespace", () => {
+  it("changes nothing an author wrote but whitespace, and that only where it collapses", () => {
     forSeeds(300, (r) => {
       const text = makeText(r, writtenFor(r));
-      const written = (s: string): string => s.replace(INVISIBLE_RE, "").replace(/\\+([%&_#$])/g, "$1").replace(/\s+/g, "");
-      expect(modelText(text).replace(/\s+/g, "")).toBe(written(text));
+      const written = (s: string): string => s.replace(INVISIBLE_RE, "").replace(/\\+([%&_#$])/g, "$1").normalize("NFC")
+        .replace(/\s+/g, (run) => (/[\n\r\u2028\u2029]/.test(run) ? "\n" : " ")).trim();
+      expect(modelText(text)).toBe(written(text));
     });
   });
 
@@ -75,17 +76,25 @@ describe("modelText", () => {
       // Latin text: a CJK sentence or a run too long for one word is counted glued on.
       const text = makeText(r, { ...writtenFor(r), cjk: 0 });
       const whole = { start: 0, end: text.length };
-      // The pass closes up a space before closing punctuation, which is counted as a word of
-      // its own: the tokenizer splits punctuation from the word before it either way.
-      expect(modelText(wordsOf(text).words.filter(Boolean).join(" "))).toBe(blockText(text, whole).replace(/\n/g, " "));
+      expect(wordsOf(text).words.filter(Boolean).join(" ")).toBe(blockText(text, whole).replace(/\n/g, " "));
     });
   });
 
-  it("closes up the space a skipped formula or citation mark leaves before punctuation", () => {
-    expect(modelText("changes the bases . The ramp , as in ( ) or ( see ) , ends ?! Done .")).toBe(
-      "changes the bases. The ramp, as in () or ( see), ends?! Done.");
-    // Not a decimal, not a smiley inside a sentence, not across a line break.
-    expect(modelText("a value of .5 and :-) here\n. next")).toBe("a value of .5 and :-) here\n. next");
+  it("keeps a space the author typed before punctuation", () => {
+    // One human text in six of EditLens's has one ("word ." or "word ,").
+    for (const text of ["changes the bases . The ramp , as in ( ) or ( see ) , ends ?! Done .", "a value of .5 and :-) here\n. next"]) {
+      expect(modelText(text)).toBe(text);
+    }
+  });
+
+  it("closes up only the space a reader left where it skipped something before punctuation", () => {
+    // "the bases [4]." and "x $f$ ." read with the mark and the formula left out, at 10 and at 19.
+    const read = "the bases . Then x  . A word . Done";
+    expect(unitPartText(read, false, [10, 19])).toBe("the bases. Then x. A word . Done");
+    expect(unitPartText(read, false)).toBe("the bases . Then x . A word . Done");
+    // Not before a word or a decimal, not with nothing before it, not where there is no space.
+    expect([skipGap("x  y", 2), skipGap("x .5", 2), skipGap(" .", 1), skipGap("bases.", 5)]).toEqual([null, null, null, null]);
+    expect(skipGap("the bases ), then", 10)).toEqual([9, 10]);
   });
 
   it("keeps a single space between words and one line break where a line broke, nothing at the edges", () => {

@@ -73,6 +73,7 @@ import {
   isCapsHeading,
   quoteDepth,
   runQuoteDepth,
+  skipOffsets,
   unitPartText,
   MIN_UNIT_WORDS,
   MIN_LINE_WORDS,
@@ -188,6 +189,8 @@ interface Run {
   linkRatio: number;
   /** Formulas skipped inside this run. */
   formulas: number;
+  /** Nodes something was left out right before (UnitPart.skips). */
+  skips: number[];
   /** Position in the walk (set by the assembler) — units are returned in this order. */
   index: number;
   /** Incremental re-scan: a live unit already owns exactly this run. */
@@ -207,6 +210,7 @@ interface Found {
   container: Element;
   preserved: boolean;
   formulas: number;
+  skips: number[];
   note: boolean;
   truncated: boolean;
 }
@@ -398,6 +402,10 @@ export function collectUnits(
   let curContainer: Element | null = null;
   let curPreserved = false;
   let curFormulas = 0;
+  /** Nodes of the open run that something left out stands right before (UnitPart.skips). */
+  let curSkips: number[] = [];
+  /** Something was left out since the open run's last node. */
+  let skipped = false;
   /** Quote depth the last processed run spoke in (e-mail quotations, see processRun). */
   let quoteLevel = 0;
   /** Quote depth the OPEN run speaks in; -1 until it has its first node. */
@@ -413,8 +421,15 @@ export function collectUnits(
       curContainer = ctx.container;
       curPreserved = ctx.preserves;
       curQuote = ctx.preserves ? runQuoteDepth(tn.textContent ?? "") : 0;
-    }
+    } else if (skipped) curSkips.push(cur.length);
+    skipped = false;
     cur.push(tn);
+  }
+
+  /** Something that takes space in the sentence — a formula, a mark, an image — is left out
+   *  of the open run here, and the space it leaves before punctuation is the walk's own. */
+  function leaveOut(): void {
+    if (cur.length > 0) skipped = true;
   }
 
   /** Does the text accumulated so far end a line, so that the next node opens one?
@@ -439,14 +454,17 @@ export function collectUnits(
     // Interior whitespace nodes were kept (see visitText); trailing ones are not
     // part of the paragraph.
     while (cur.length > 0 && (cur[cur.length - 1].textContent ?? "").trim() === "") cur.pop();
+    const kept = cur.length;
     const found: Found | null =
       cur.length > 0
-        ? { nodes: cur, container: curContainer as Element, preserved: curPreserved, formulas: curFormulas, note: inNote > 0, truncated: curTruncated }
+        ? { nodes: cur, container: curContainer as Element, preserved: curPreserved, formulas: curFormulas, skips: curSkips.filter((n) => n < kept), note: inNote > 0, truncated: curTruncated }
         : null;
     cur = [];
     curContainer = null;
     curPreserved = false;
     curFormulas = 0;
+    curSkips = [];
+    skipped = false;
     curQuote = -1;
     curTruncated = false;
     if (found && found.note) notes.push(found);
@@ -467,29 +485,31 @@ export function collectUnits(
    * set aside while the note is walked and taken up again after it.
    */
   function visitNote(el: Element, ctx: Ctx): void {
-    const open = { cur, curContainer, curPreserved, curFormulas, curQuote, curTruncated };
+    const open = { cur, curContainer, curPreserved, curFormulas, curSkips, skipped, curQuote, curTruncated };
     cur = [];
     curContainer = null;
     curPreserved = false;
     curFormulas = 0;
+    curSkips = [];
+    skipped = false;
     curQuote = -1;
     curTruncated = false;
     inNote++;
     visitChildren(el, { ...ctx, container: el });
     closeRun();
     inNote--;
-    ({ cur, curContainer, curPreserved, curFormulas, curQuote, curTruncated } = open);
+    ({ cur, curContainer, curPreserved, curFormulas, curSkips, skipped, curQuote, curTruncated } = open);
   }
 
   function read(found: Found, claimed: boolean): Run | null {
-    const { nodes, container, preserved, formulas, note, truncated } = found;
+    const { nodes, container, preserved, formulas, skips, note, truncated } = found;
     if (!rects.get(container)) return null; // zero-size container → invisible text
     if (cutToOneLine(container, styles)) return null; // a one-line preview of somebody's text (style.ts)
     const raw = extractPartText(nodes);
     // One definition of a part's text (lib/dom/text.ts), because the orchestrator recomputes
     // it to tell whether a unit changed and the locator maps offsets in it back to the page.
     // `raw` keeps the `>` markers, because the depth and the column-gap tests read them.
-    const text = unitPartText(raw, preserved);
+    const text = unitPartText(raw, preserved, skipOffsets(nodes, skips));
     if (!text) return null;
     return {
       nodes,
@@ -501,6 +521,7 @@ export function collectUnits(
       chars: text.length,
       linkRatio: linkTextRatio(nodes),
       formulas,
+      skips,
       index: 0,
       claimed,
       note,
@@ -663,17 +684,23 @@ export function collectUnits(
     // accessibility MathML that math renderers keep beside the visible glyphs).
     if (isMathContainer(el, tag)) {
       curFormulas++;
+      leaveOut();
       return;
     }
-    if (isCitationMarker(el, tag)) return;
-    if (cs && isVisuallyHidden(cs)) return;
+    if (isCitationMarker(el, tag) || (cs && isVisuallyHidden(cs))) {
+      leaveOut();
+      return;
+    }
     // Absolutely positioned page numbers ("[Pg 12]"), corner badges and anchor labels
     // sit in the middle of a paragraph's markup but not in its sentence. (Chromium
     // blockifies them, so without this they closed the run — Gutenberg paragraphs were
     // scored in two pieces.) Large out-of-flow boxes (tooltips, positioned columns)
     // keep behaving as their own blocks, and what makes a box large is the text it
     // COMPOSES, shadow trees included (composedTextLength).
-    if (cs && isOutOfFlow(cs) && composedTextLength(el, SMALL_OUT_OF_FLOW_CHARS) <= SMALL_OUT_OF_FLOW_CHARS) return;
+    if (cs && isOutOfFlow(cs) && composedTextLength(el, SMALL_OUT_OF_FLOW_CHARS) <= SMALL_OUT_OF_FLOW_CHARS) {
+      leaveOut();
+      return;
+    }
 
     // Exclusions: never descend, never score. Whether they BREAK the sentence
     // depends on layout — inline exclusions (icons, <img>, MathJax spans, sr-only,
@@ -696,6 +723,7 @@ export function collectUnits(
       scopes.header(el);
     if (excluded) {
       if (flow !== "inline" && flow !== "contents") closeRun();
+      else leaveOut();
       if (boiler) asm.barrier(el); // page chrome separates sections — no merging across
       return;
     }
@@ -1343,7 +1371,7 @@ function createAssembler(
   }
 
   function emit(runs: Run[]): void {
-    const parts: UnitPart[] = runs.map((r) => ({ nodes: r.nodes, container: r.container, preserved: r.preserved }));
+    const parts: UnitPart[] = runs.map((r) => ({ nodes: r.nodes, container: r.container, preserved: r.preserved, ...(r.skips.length > 0 ? { skips: r.skips } : {}) }));
     const text = runs.map((r) => r.text).join("\n\n").slice(0, MAX_UNIT_TEXT_CHARS);
     const unit: Unit = {
       id: "",

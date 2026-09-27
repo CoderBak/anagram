@@ -9,7 +9,7 @@
 //
 // Nothing here touches the page: ranges start and end INSIDE text nodes, no node is
 // split and nothing is wrapped.
-import { extractPartText, quoteMarkerMask, type UnitPart } from "./text";
+import { extractPartText, leftOutOf, skipOffsets, type UnitPart } from "./text";
 
 /** A stretch of a unit's text: offsets into `unit.text`, end exclusive. */
 interface Span {
@@ -27,13 +27,15 @@ interface PartMap {
   offset: number[];
 }
 
-/** The walker's `unitPartText(extractPartText(nodes), part.preserved)` (lib/dom/text.ts),
- *  remembering where each surviving character came from. The quote markers of a mailing-list
- *  message are not in the unit's text, so they are not in this map either — the two have to
- *  drop the same characters or nothing lines up. */
+/** The walker's `unitPartText` of a part (lib/dom/text.ts, partTextOf), remembering where
+ *  each surviving character came from. The quote markers of a mailing-list message and the
+ *  space a skipped formula leaves before punctuation are not in the unit's text, so they are
+ *  not in this map either — the two have to drop the same characters or nothing lines up. */
 function mapPart(part: UnitPart): PartMap {
   const nodes = part.nodes;
-  const marker = part.preserved ? quoteMarkerMask(extractPartText(nodes)) : null;
+  const marker = part.preserved || part.skips?.length
+    ? leftOutOf(extractPartText(nodes), part.preserved === true, skipOffsets(nodes, part.skips))
+    : null;
   const chars: string[] = [];
   const node: number[] = [];
   const offset: number[] = [];
