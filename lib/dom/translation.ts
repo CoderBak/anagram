@@ -28,6 +28,11 @@
 //     text nodes and marks the paragraph `data-read-frog-translation-only`
 //     (src/utils/constants/dom-labels.ts in https://github.com/mengxi-ream/read-frog,
 //     GPL-3.0, © the Read Frog authors); such a paragraph is skipped wherever it stands.
+//     Immersive Translate's "translation only" state marks <html> `imt-state="translation"`
+//     and shows each translation in the original's place in an element marked
+//     `data-imt-translation-only`, with no bilingual wrapper around it, as the stylesheet it
+//     injects into every page says (the extension publishes it as docs/styles/inject.css in
+//     its public repository; nothing of it is used here); that element is skipped too.
 import { TRANSLATION_RELABELS_PAGE } from "../surface";
 
 const TRANSLATED_PAGE_CLASSES = ["translated-ltr", "translated-rtl"];
@@ -87,11 +92,11 @@ export function watchPageTranslation(onChange: (translated: boolean) => void, do
   };
 }
 
-const TRANSLATED_IN_PLACE_ATTR = "data-read-frog-translation-only";
+const TRANSLATED_IN_PLACE_ATTRS = ["data-read-frog-translation-only", "data-imt-translation-only"];
 const TRANSLATION_COPY_CLASS = "immersive-translate-target-wrapper";
 
 /** Is this element's text a translator extension's — written over the original, or a copy
  *  of the translation set beside it? */
 export function isTranslatedInPlace(el: Element): boolean {
-  return el.hasAttribute(TRANSLATED_IN_PLACE_ATTR) || el.classList.contains(TRANSLATION_COPY_CLASS);
+  return TRANSLATED_IN_PLACE_ATTRS.some((name) => el.hasAttribute(name)) || el.classList.contains(TRANSLATION_COPY_CLASS);
 }

@@ -37,6 +37,8 @@ interface Tab {
   script?: boolean;
   /** Refuse an injection, the way a browser page does. */
   closed?: boolean;
+  /** The addresses of its subframes, as webNavigation reports them. */
+  frames?: string[];
 }
 
 /** Everything the module touches, recorded. `origins` starts empty because the
@@ -127,10 +129,19 @@ function environment(tabs: Tab[] = [], origins: string[] = [], opts: { refuseMai
     onUpdated: onTabUpdated,
   };
 
+  const webNavigation = {
+    getAllFrames: async ({ tabId }: { tabId: number }) => {
+      const tab = tabs.find((t) => t.id === tabId);
+      if (!tab) throw new Error("No tab with id");
+      return [{ frameId: 0, url: tab.url ?? "" }, ...(tab.frames ?? []).map((url, i) => ({ frameId: i + 1, url }))];
+    },
+  };
+
   Object.assign(fakeBrowser as unknown as Record<string, unknown>, {
     permissions,
     scripting,
     tabs: tabsApi,
+    webNavigation,
   });
   Object.assign((fakeBrowser as unknown as { runtime: Record<string, unknown> }).runtime, {
     onInstalled,
@@ -332,6 +343,21 @@ describe("a grant reaches the tabs that are already open", () => {
     expect(env.calls.register).toHaveLength(1);
     expect(env.calls.update).toEqual([]);
     expect(env.calls.injected).toHaveLength(2); // the script itself refuses the second run
+  });
+
+  it("reaches a page on another site that shows a frame of the granted one — a comment thread from Disqus", async () => {
+    const env = environment([
+      { id: 1, url: "https://blog.example/post", script: true, frames: ["https://disqus.com/embed/comments/?f=blog"] },
+      { id: 2, url: "https://other.org/", script: true, frames: ["https://www.youtube.com/embed/x"] },
+    ]);
+    installAccess();
+    await settle();
+    env.grant("https://disqus.com/*");
+    env.events.onAdded.emit({ origins: ["https://disqus.com/*"] });
+    await settle();
+    // The page's own site was granted before, so it is no one-off to be told otherwise.
+    expect(env.calls.injected).toEqual([{ tabId: 1, allFrames: true, func: false }]);
+    expect(env.calls.sent).toEqual([]);
   });
 
   it("ignores a grant that is not a site at all", async () => {

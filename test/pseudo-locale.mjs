@@ -2,8 +2,9 @@
 //
 // A translation is rarely the length of the English it replaces, and a control laid out
 // for "Add" has to hold whatever the next language says there. This renders every page a
-// reader sees — setup (with and without an engine), settings, popup, the PDF reader's own
-// chrome, chips, a chip's card, the ball's panel — at 1280 and 400 px, three times: in a
+// reader sees — setup (with and without an engine), settings (and its row that allows a
+// comment site), popup, the PDF reader's own chrome, chips, a chip's card, the ball's panel
+// (and its offer to allow that site) — at 1280 and 400 px, three times: in a
 // pseudo-locale (every English message accented and stretched by the pseudo-localization
 // package, placeholders kept), in Chinese, and in English. On each it looks for the ways
 // a longer label breaks a layout:
@@ -48,6 +49,13 @@ function pseudoBuild() {
   const messages = JSON.parse(readFileSync(file, "utf8"));
   for (const entry of Object.values(messages)) entry.message = pseudo(entry.message);
   writeFileSync(file, JSON.stringify(messages));
+  // Only the page's own site granted, as a reader's per-site grant leaves it: the panel's
+  // offer to allow a comment site, and the settings row it opens, are then on screen.
+  const manifestFile = join(ext, "manifest.json");
+  const manifest = JSON.parse(readFileSync(manifestFile, "utf8"));
+  manifest.host_permissions = ["http://localhost/*"];
+  manifest.optional_host_permissions = ["https://*/*", "http://*/*", "file:///*"];
+  writeFileSync(manifestFile, JSON.stringify(manifest));
   return { dir, ext };
 }
 
@@ -218,7 +226,8 @@ const PARA = (tag) =>
   `${tag} paragraph is long enough to be scored on its own because it carries well over seventy-five ordinary English words describing nothing in particular except the fact that a panel full of longer labels must still fit the window it opens in, which is what this page is for, and each of its paragraphs has to be read and chipped before the ball can offer a list of the flagged ones and a way to copy the report.`;
 const server = await serveHtml({
   "/article.html": `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>article</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
-${["ITEM-16", "ITEM-111", "ITEM-149"].map((t) => `<p>${PARA(t)}</p>`).join("\n")}</body></html>`,
+${["ITEM-16", "ITEM-111", "ITEM-149"].map((t) => `<p>${PARA(t)}</p>`).join("\n")}
+<iframe src="https://disqus.com/embed/comments/?f=pseudo" width="600" height="120"></iframe></body></html>`,
 });
 
 const WIDE = { width: 1280, height: 900 };
@@ -243,6 +252,11 @@ async function pages(context, extId, fixture, lang) {
     await componentReady();
     await openFolds();
     await check(page, lang, "settings");
+
+    // Opened by the panel's offer to allow a comment site (lib/access/commentFrames.ts).
+    await page.goto(url("options.html#comments=disqus.com"), { waitUntil: "load" });
+    await page.locator("#comments:not([hidden])").waitFor({ timeout: 10000 }).catch(() => {});
+    await check(page, lang, "settings, a comment site to allow");
 
     await page.goto(url("onboarding.html"), { waitUntil: "load" });
     await componentReady();
@@ -300,6 +314,8 @@ async function pages(context, extId, fixture, lang) {
 
 async function run(lang, launch) {
   const { context, sw, extId, fixture } = await launchExtension(launch);
+  // The article's comment frame, answered here: nothing leaves the machine.
+  await context.route("https://disqus.com/**", (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>comments</title>" }));
   try {
     if (launch.extDir) await waitForRegistration(sw);
     const got = await uiLanguageOf(sw);

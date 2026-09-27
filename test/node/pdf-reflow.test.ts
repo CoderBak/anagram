@@ -7,6 +7,7 @@
 // test reads as the page it describes.
 import { describe, expect, it } from "vitest";
 import { reflowPdf, type PdfPageText, type PdfTextItem, type SourceRun } from "../../lib/pdf/reflow";
+import { readReflowed } from "../../lib/pdf/reading";
 import { looksLikePdfUrl, pdfNameFromUrl, readerQuery } from "../../lib/pdf/source";
 
 const WIDTH = 612;
@@ -1083,6 +1084,66 @@ describe("reflowPdf — provenance", () => {
       ]),
     ];
     verify(mixed, reflowPdf(mixed));
+  });
+});
+
+describe("readReflowed — the reflow's paragraphs, read", () => {
+  /** A line cut into runs, each in its face: [text, font, size?, raised?]. Runs follow one
+   *  another a word space apart unless `glued`. */
+  function line(y: number, parts: [string, string, number?, boolean?][], glued = false): Placed[] {
+    let x = 72;
+    return parts.map(([text, font, size = SIZE, raised = false]) => {
+      const run = { text, x, y: raised ? y - 4 : y, size, font, width: text.length * CHAR * (size / SIZE) };
+      x += run.width + (glued ? 0 : CHAR);
+      return run;
+    });
+  }
+  const fonts = { text: "UTRHDZ+CMR10", math: "BXJUHM+CMMI10", sy: "CMSY10" };
+  const read = (placed: Placed[], faces: Record<string, string> = fonts) => {
+    const pages = [{ ...page(1, placed), fonts: faces }];
+    const blocks = readReflowed(pages);
+    // Every run reads back its text, an accented letter as its letter: the run is the letter's.
+    const bare = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").replace(/ı/g, "i");
+    for (const b of blocks) {
+      for (const r of b.runs) expect(bare(pages[0].items[r.item].str.slice(r.from, r.from + r.length))).toBe(bare(b.text.slice(r.at, r.at + r.length)));
+    }
+    return blocks;
+  };
+
+  it("leaves out a formula, a citation mark and the space they leave before punctuation", () => {
+    const blocks = read(line(100, [["the value of", "text"], ["x", "math"], ["is small, as shown [12], and of", "text"], ["y", "math"], [". The next one", "text"]]));
+    expect(texts(blocks)).toEqual(["the value of is small, as shown, and of. The next one"]);
+  });
+
+  it("writes an accent pdf.js sets before its letter on the letter", () => {
+    const blocks = read(line(100, [["Tom´as and Fran¸cois met in Z¨urich, Pˇr´ıvratsk´a too.", "text"]]));
+    expect(texts(blocks)).toEqual(["Tomás and François met in Zürich, Přívratská too."]);
+  });
+
+  it("leaves out a raised number after a word, and keeps an exponent", () => {
+    const blocks = read([
+      ...line(100, [["as the errors", "text"], ["12", "text", 7, true], ["show, an area of 3 cm", "text"], ["2", "text", 7, true], ["is covered.", "text"]]),
+    ]);
+    expect(texts(blocks)).toEqual(["as the errors show, an area of 3 cm 2 is covered."]);
+  });
+
+  it("passes over a display equation, and reads the sentence it cuts in two as one paragraph", () => {
+    const blocks = read([
+      ...column(["The energy of the system can be", "written equivalently as"], 100),
+      ...line(100 + 3 * PITCH, [["E", "math"], ["=", "text"], ["mc", "math"], ["(1)", "text"]]),
+      ...column(["where the constant is known. The next", "sentence ends the paragraph."], 100 + 5 * PITCH),
+      ...line(100 + 8 * PITCH, [["F", "math"], ["=", "text"], ["ma", "math"]]),
+      ...column(["Then a new paragraph opens here."], 100 + 10 * PITCH),
+    ]);
+    expect(texts(blocks)).toEqual([
+      "The energy of the system can be written equivalently as where the constant is known. The next sentence ends the paragraph.",
+      "Then a new paragraph opens here.",
+    ]);
+  });
+
+  it("changes only accents and raised marks where the runs name no face", () => {
+    const blocks = read([...line(100, [["a Poincar´e map x", "body"], ["2", "body", 7, true], ["of the orbit", "body"], ["7", "body", 7, true], ["is", "body"]])], {});
+    expect(texts(blocks)).toEqual(["a Poincaré map x 2 of the orbit is"]);
   });
 });
 

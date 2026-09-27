@@ -26,6 +26,7 @@ import { formatScore, spokenScore } from "./score";
 import { isDarkPage } from "./theme";
 import { adoptSheets } from "../dom/shadow";
 import { scaleColorCss } from "./scale";
+import { commentHost } from "../access/commentFrames";
 
 export interface PanelEntry {
   id: string;
@@ -67,6 +68,13 @@ export interface PanelHooks {
   buildReport(): string | Promise<string>;
   /** Explicit coverage limits for a virtualized document surface. */
   scopeNote?(): string;
+  /** Comment threads the page shows in frames of a site nobody granted, as the patterns a
+   *  grant would ask for (lib/access/commentFrames.ts). Each gets an offer to allow it. */
+  commentOrigins?(): readonly string[];
+  /** The reader asked to allow one of them. */
+  onAllowComments?(origin: string): void;
+  /** The panel is opening: what it shows may be brought up to date (see refreshPanel). */
+  onOpen?(): void;
 }
 
 export interface Fab {
@@ -82,6 +90,8 @@ export interface Fab {
   /** Open the triage panel; with `focus`, move keyboard focus into it (the
    *  keyboard command hands the panel over, a pointer never does). */
   openPanel(focus?: boolean): void;
+  /** Draw the panel again if it is open: something its hooks answer has changed. */
+  refreshPanel(): void;
   unmount(): void;
 }
 
@@ -929,6 +939,7 @@ export function createFab(opts: {
     // the ball mounted, and the panel is the part that would be wrong about it.
     host.classList.toggle("pg-dark", isDarkPage());
     cancelTuck();
+    opts.panel?.onOpen?.();
     renderPanel();
     panelEl.classList.add("open");
     countEl?.setAttribute("aria-expanded", "true");
@@ -1080,6 +1091,28 @@ export function createFab(opts: {
       panelEl.appendChild(scope);
     }
 
+    // A comment thread from another site's frame, which nothing here may read until that
+    // site is allowed. The button only opens the settings page at the offer: the browser
+    // asks for a site on an extension page's click, never on its own.
+    for (const origin of opts.panel?.commentOrigins?.() ?? []) {
+      const site = commentHost(origin);
+      const notice = document.createElement("div");
+      notice.className = "pnotice pcomments";
+      const text = document.createElement("span");
+      text.textContent = t("panelCommentsElsewhere", site);
+      const allow = document.createElement("button");
+      allow.type = "button";
+      allow.className = "fchip";
+      allow.textContent = t("panelCommentsAllow");
+      allow.setAttribute("aria-label", t("panelCommentsAllowAria", site));
+      allow.addEventListener("click", (e) => {
+        e.stopPropagation();
+        opts.panel?.onAllowComments?.(origin);
+      });
+      notice.append(text, allow);
+      panelEl.appendChild(notice);
+    }
+
     const list = document.createElement("div");
     list.className = "plist";
     if (entries.length === 0) {
@@ -1172,5 +1205,17 @@ export function createFab(opts: {
     liveEl = null;
   }
 
-  return { mount, setActive, setBackendDown, setCount, setAction, openPanel, unmount };
+  function refreshPanel(): void {
+    const panel = panelEl;
+    if (!panel?.classList.contains("open")) return;
+    // A keyboard reader in the panel keeps their place: the same row, or the heading.
+    const active = host?.shadowRoot?.activeElement ?? null;
+    const row = active && panel.contains(active) ? [...panel.querySelectorAll(".pitem")].indexOf(active) : null;
+    renderPanel();
+    if (row === null) return;
+    const rows = panel.querySelectorAll<HTMLElement>(".pitem");
+    (rows[row] ?? panel.querySelector<HTMLElement>(".phead h2"))?.focus({ preventScroll: true });
+  }
+
+  return { mount, setActive, setBackendDown, setCount, setAction, openPanel, refreshPanel, unmount };
 }

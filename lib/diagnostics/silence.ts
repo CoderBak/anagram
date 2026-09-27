@@ -37,6 +37,7 @@ import {
   looksLikeNameList,
   shortcodeShare,
   isRepetitive,
+  isServerDiagnostic,
   symbolNoiseRatio,
   MIN_MERGE_WORDS,
   MIN_UNIT_WORDS,
@@ -445,6 +446,7 @@ function reasonFor(el: Element, cs: Styler): string {
   const names = runs.filter((r) => looksLikeNameList(r.text));
   const shortcodes = runs.filter((r) => shortcodeShare(r.text) > MAX_SHORTCODE_SHARE);
   const repeated = runs.filter((r) => isRepetitive(r.text));
+  const diagnostics = runs.filter((r) => isServerDiagnostic(r.text));
   const half = Math.ceil(runs.length / 2);
 
   if (runs.every((r) => !hasLetters(r.text))) {
@@ -456,6 +458,9 @@ function reasonFor(el: Element, cs: Styler): string {
   }
   if (repeated.length >= half) {
     return `one phrase said over and over in ${repeated.length}/${runs.length} blocks — a marquee or a machine's output, a barrier`;
+  }
+  if (diagnostics.length >= half) {
+    return `a server's warnings printed into the page in ${diagnostics.length}/${runs.length} blocks — machine output, a barrier`;
   }
   if (shortcodes.length >= half) {
     return `unrendered shortcodes in ${shortcodes.length}/${runs.length} blocks — a page builder's layout shown as text, a barrier`;

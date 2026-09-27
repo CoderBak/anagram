@@ -28,11 +28,14 @@ interface Drawn {
   softHyphen?: boolean;
   /** Zotero's glyphs stand this much left of where pdf.js drew them (a folded space). */
   drift?: number;
+  /** The size it is set in: pdf.js's run height, and the height of Zotero's glyph boxes. */
+  size?: number;
 }
 
 /** The text run as pdf.js hands it over, and Zotero's glyph run for the same glyphs. */
 function drawn(page: number, d: Drawn): { item: PdfTextItem; run: (number | number[])[] } {
-  const item: PdfTextItem = { str: d.text, x: d.x, y: d.y, width: d.text.length * CW, height: SIZE, fontName: d.font ?? "f_text" };
+  const size = d.size ?? SIZE;
+  const item: PdfTextItem = { str: d.text, x: d.x, y: d.y, width: d.text.length * CW, height: size, fontName: d.font ?? "f_text" };
   const x0 = d.x + (d.drift ?? 0);
   const widths: (number | number[])[] = [];
   let pendingSpace = 0;
@@ -42,8 +45,9 @@ function drawn(page: number, d: Drawn): { item: PdfTextItem; run: (number | numb
     pendingSpace = 0;
   }
   const header = d.softHyphen ? 1 : 0;
-  // PDF space: y grows upward; the glyph box reaches 2 below the baseline and 7 above.
-  const run = [header, page - 1, x0, HEIGHT - d.y - 2, x0 + d.text.length * CW, HEIGHT - d.y + 7, ...(widths.length === 1 ? [] : widths)];
+  // PDF space: y grows upward; the glyph box reaches a fifth of the size below the baseline
+  // and seven tenths above.
+  const run = [header, page - 1, x0, HEIGHT - d.y - 0.2 * size, x0 + d.text.length * CW, HEIGHT - d.y + 0.7 * size, ...(widths.length === 1 ? [] : widths)];
   return { item, run };
 }
 
@@ -74,6 +78,35 @@ const structure = (content: SdtBlock[], pages = 1): SdtStructure =>
 
 const paragraph = (page: number, nodes: { text: string; anchor: { textMap: string } }[], extra: Partial<SdtBlock> = {}): SdtBlock =>
   ({ type: "paragraph", anchor: { pageRects: [[page - 1, 72, 100, 500, 700]] }, content: nodes.map(({ text, anchor }) => ({ text, anchor })), ...extra });
+
+/**
+ * One line set run by run, as TeX sets a sentence with a formula in it: each run in its face
+ * and size (a smaller one a little below the line, a script), `gap` after it — a word space
+ * when it is CW. Zotero's text has a space wherever there is a gap. `read` is the one block's
+ * text, its runs checked against pdf.js's.
+ */
+function setLine(fonts: Record<string, string>): { put(s: string, font: string, gap?: number, size?: number): void; read(): string } {
+  const items: PdfTextItem[] = [];
+  const runs: (number | number[])[][] = [];
+  let text = "";
+  let x = 72;
+  return {
+    put(s, font, gap = CW, size = SIZE) {
+      const d = drawn(1, { text: s, x, y: size < SIZE ? 102 : 100, font, size });
+      items.push(d.item);
+      runs.push(d.run);
+      text += s + (gap ? " " : "");
+      x += s.length * CW + gap;
+    },
+    read() {
+      const n = { text, anchor: { textMap: JSON.stringify(runs) } };
+      const pages = [pageText(1, items, fonts)];
+      const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+      expectRunsToMatch(blocks[0], pages);
+      return blocks[0].text;
+    },
+  };
+}
 
 /** Every run of a block reads back, from pdf.js's runs, exactly the text it claims. */
 function expectRunsToMatch(block: ReflowBlock, pages: PdfPageText[]): void {
@@ -531,8 +564,7 @@ describe("structuredBlocks — formulas", () => {
     const runs: (number | number[])[][] = [];
     let x = 72;
     const put = (text: string, font: string, gap = CW, size = SIZE) => {
-      const d = drawn(1, { text, x, y: 100, font });
-      d.item.height = size;
+      const d = drawn(1, { text, x, y: 100, font, size });
       items.push(d.item);
       runs.push(d.run);
       x += text.length * CW + gap;
@@ -655,8 +687,7 @@ describe("structuredBlocks — formulas", () => {
     let text = "";
     let x = 72;
     const put = (s: string, font: string, gap = CW, size = SIZE) => {
-      const d = drawn(1, { text: s, x, y: size < SIZE ? 102 : 100, font });
-      d.item.height = size;
+      const d = drawn(1, { text: s, x, y: size < SIZE ? 102 : 100, font, size });
       items.push(d.item);
       runs.push(d.run);
       text += s + (gap ? " " : "");
@@ -823,6 +854,105 @@ describe("structuredBlocks — formulas", () => {
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
     expect(blocks[0].text).toBe("the edge in is kept, the model(s) agree, and is small.");
     expectRunsToMatch(blocks[0], pages);
+  });
+
+  it("leaves out the part of a formula a hyphen joins to a word, and keeps the word: \"$(2+1)$-dimensional\"", () => {
+    // TeX spaces the "+" of "(2+1)" as an operator, so the formula is three tokens and the
+    // last runs into the word after it; arXiv's HTML reads "-dimensional". A number the text
+    // hyphens to a word with no formula beside it ("3-dimensional") is the text's.
+    const line = setLine({ f_text: "UTRHDZ+CMR10", f_math: "BXJUHM+CMMI10" });
+    line.put("the linear span is", "f_text");
+    line.put("(2", "f_text", 3);
+    line.put("+", "f_text", 3);
+    line.put("1)-dimensional, and", "f_text");
+    line.put("(", "f_text", 0);
+    line.put("d", "f_math", 3);
+    line.put("+", "f_text", 3);
+    line.put("1)-dimensional", "f_text");
+    line.put("as well, while a 3-dimensional space keeps its number.", "f_text");
+    expect(line.read()).toBe("the linear span is -dimensional, and -dimensional as well, while a 3-dimensional space keeps its number.");
+  });
+
+  it("leaves out a formula's letter set in the text's italic where the mathematics has no letter face of its own", () => {
+    // mathptmx and mathpazo set a formula's letters in the text's italic (Times, Palatino)
+    // and only its symbols in a mathematics face. A letter of that italic set alone is a
+    // formula's beside a formula ("$R = $ Er", "$M_\odot$"), with a script of its own
+    // ("$D_i$"), or hyphened to a word ("$g$-band"); the writer's italic word, a lone italic
+    // letter nothing marks ("plan B") and an italic statement's "a" stay.
+    const line = setLine({ f_text: "NimbusRomNo9L-Regu", f_ital: "NimbusRomNo9L-ReguItal", f_sy: "CMSY10", f_sym: "Symbol" });
+    line.put("for", "f_text");
+    line.put("R", "f_ital", 3);
+    line.put("=", "f_text", 3);
+    line.put("Er the moments align, the ZTF", "f_text");
+    line.put("g", "f_ital", 0);
+    line.put("-band light curve varies, and", "f_text");
+    line.put("D", "f_ital", 0);
+    line.put("i", "f_ital", CW, 7);
+    line.put("is fitted in", "f_text");
+    line.put("M", "f_ital", 0);
+    line.put("⊙", "f_sy", CW, 7);
+    line.put("units, as we call it", "f_text");
+    line.put("robust", "f_ital");
+    line.put("and plan", "f_text");
+    line.put("B", "f_ital");
+    line.put("works. Let", "f_text");
+    line.put("f map X into a", "f_ital");
+    line.put("σ", "f_sym", 0);
+    line.put("-algebra.", "f_ital");
+    expect(line.read()).toBe("for Er the moments align, the ZTF -band light curve varies, and is fitted in units, as we call it robust and plan B works. Let f map X into a -algebra.");
+
+    // Where the mathematics sets its letters in a face of its own (CMMI), an italic letter of
+    // the text is the writer's \textit.
+    const cm = setLine({ f_text: "UTRHDZ+CMR10", f_ital: "CMTI10", f_math: "BXJUHM+CMMI10" });
+    cm.put("of type", "f_text");
+    cm.put("A", "f_ital", 3);
+    cm.put("x", "f_math", 3);
+    cm.put("holds, and the", "f_text");
+    cm.put("g", "f_ital", 0);
+    cm.put("-band too.", "f_text");
+    expect(cm.read()).toBe("of type A holds, and the g-band too.");
+  });
+
+  it("keeps the words a Word equation leaves in its script's run", () => {
+    // Word sets "$c_i$ and" as a run of the "c" and one run of "i and" at the subscript's
+    // size: pdf.js gives the words after the script its size.
+    const read = (letters: string): string => {
+      const fonts = { f_text: "TimesNewRomanPSMT", f_letters: letters, f_extra: "MT-Extra" };
+      const items: PdfTextItem[] = [];
+      const runs: (number | number[])[][] = [];
+      let text = "";
+      let x = 72;
+      /** A run of pdf.js; `parts` are Zotero's glyph runs within it, each at its own size. */
+      const put = (font: string, size: number, parts: [string, number][], gap = CW) => {
+        const str = parts.map(([s]) => s).join("");
+        items.push({ str, x, y: size < SIZE ? 101 : 100, width: str.length * CW, height: size, fontName: font });
+        let at = x;
+        for (const [s, sz] of parts) {
+          const glyphs = s.trim();
+          if (glyphs) runs.push(drawn(1, { text: glyphs, x: at + (s.length - s.trimStart().length) * CW, y: sz < SIZE ? 101 : 100, size: sz }).run);
+          at += s.length * CW;
+        }
+        text += str + (gap ? " " : "");
+        x += str.length * CW + gap;
+      };
+      put("f_text", SIZE, [["the resetting parameters", SIZE]]);
+      put("f_letters", SIZE, [["c", SIZE]], 0);
+      put("f_text", 7, [["i", 7], [" and", SIZE]]);
+      put("f_letters", SIZE, [["d", SIZE]], 0);
+      put("f_text", 7, [["i", 7], [" are drawn at random", SIZE]]);
+      put("f_text", SIZE, [["where", SIZE]]);
+      put("f_extra", SIZE, [["∼", SIZE]]);
+      put("f_text", SIZE, [["holds.", SIZE]]);
+      const n = { text: text.replace(/  +/g, " "), anchor: { textMap: JSON.stringify(runs) } };
+      const pages = [pageText(1, items, fonts)];
+      const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+      expectRunsToMatch(blocks[0], pages);
+      return blocks[0].text;
+    };
+    // Word's own equations are set in Cambria Math.
+    expect(read("CambriaMath")).toBe("the resetting parameters and are drawn at random where holds.");
+    // MathType sets the letters in the text's italic, and only its symbols in a face of its own.
+    expect(read("TimesNewRomanPS-ItalicMT")).toBe("the resetting parameters and are drawn at random where holds.");
   });
 
   it("changes nothing in a document with no mathematics face", () => {

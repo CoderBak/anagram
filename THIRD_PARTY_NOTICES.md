@@ -1162,7 +1162,7 @@ SOFTWARE.
 - Project: https://github.com/funstory-ai/BabelDOC
 - Licence: AGPL-3.0 (the same text as LICENSE, which ships beside this file)
 - Copyright: Copyright (c) awwaawwa, funstory.ai and the BabelDOC contributors
-- In Anagram: How the PDF reader tells a formula's characters from the text's in lib/pdf/structured.ts (babeldoc/format/pdf/document_il/utils/formular_helper.py and midend/styles_and_formulas.py).
+- In Anagram: How the PDF reader tells a formula's characters from the text's in lib/pdf/reading.ts (babeldoc/format/pdf/document_il/utils/formular_helper.py and midend/styles_and_formulas.py).
 
 ### mwparserfromhtml (Wikimedia html-dumps) (plain-text extraction rules)
 

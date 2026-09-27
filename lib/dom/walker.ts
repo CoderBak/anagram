@@ -65,6 +65,7 @@ import {
   looksLikeNameList,
   shortcodeShare,
   isRepetitive,
+  isServerDiagnostic,
   endsLikeProse,
   endsInColon,
   wordShape,
@@ -393,6 +394,8 @@ export function collectUnits(
   scanScopes = null; // the next scan looks at the page anew
   if (!startEl) return [];
   const consentBanners = findConsentBanners(startEl);
+  // A consent box known by what it holds can stand around a re-scan's root (its second tab).
+  for (const banner of consentBanners) if (banner !== startEl && banner.contains(startEl)) return [];
   const pageText = pageTextSize(document);
   const asm = createAssembler(scopes, opts.mergeShorts ?? true, startEl, read, (nodes) => opts.claimFilter?.(nodes) !== "skip", opts.onShortText);
 
@@ -645,8 +648,14 @@ export function collectUnits(
     blockified?: boolean;
   }
 
+  /** A shadow root the walk descends into: observed, and looked in for consent banners. */
+  const onShadowRoot = (root: ShadowRoot): void => {
+    opts.onShadowRoot?.(root);
+    findConsentBanners(root, consentBanners);
+  };
+
   function visitChildren(el: Element, ctx: Ctx): void {
-    for (const child of composedChildren(el, opts.onShadowRoot)) visit(child, ctx);
+    for (const child of composedChildren(el, onShadowRoot)) visit(child, ctx);
   }
 
   function visit(node: Node, ctx: Ctx): void {
@@ -1835,10 +1844,10 @@ function createAssembler(
       if (isSeparatorRun(r.text)) barrier(r.container);
       return;
     }
-    if (symbolNoiseRatio(r.text) > 0.2 || shortcodeShare(r.text) > MAX_SHORTCODE_SHARE || (r.preserved && hasColumnGaps(r.raw)) || isRepetitive(r.text)) {
+    if (symbolNoiseRatio(r.text) > 0.2 || shortcodeShare(r.text) > MAX_SHORTCODE_SHARE || (r.preserved && hasColumnGaps(r.raw)) || isRepetitive(r.text) || isServerDiagnostic(r.text)) {
       // ASCII diagrams / table rules / column-layout headers ("RFC 768   J.
-      // Postel"), a page builder's unrendered shortcodes and a phrase repeated a hundred
-      // times over: machine layout, not prose —
+      // Postel"), a page builder's unrendered shortcodes, a phrase repeated a hundred
+      // times over and a server's warnings printed into the page: machine output, not prose —
       // barrier, never merged. The column-gap check applies ONLY to preserved-whitespace
       // runs: in normal HTML, interior space runs collapse invisibly and must not drop prose.
       barrier(r.container);

@@ -10,7 +10,8 @@ const VENDOR = join(ROOT, "public", "vendor");
 const LEGACY = join(ROOT, "node_modules", "pdfjs-dist", "legacy", "build");
 /** The upstream viewer the reader ships (vendor/pdfjs/upstream.json). */
 const PINNED = JSON.parse(readFileSync(join(ROOT, "vendor", "pdfjs", "upstream.json"), "utf8")).version;
-/** The reader analyses no page past this (entrypoints/reader/main.ts MAX_ANALYSIS_PAGES). */
+/** The bench reads no page past this: the reader's cap on Zotero's structure (entrypoints/reader/
+ *  main.ts MAX_STRUCTURE_PAGES), past which it reflows every page; no paper of the corpus is longer. */
 export const MAX_ANALYSIS_PAGES = 300;
 
 let loaded = null;
@@ -90,13 +91,14 @@ export async function readPages({ pipeline, pdfjs }, file, { fonts = false } = {
 
 /**
  * One document as the reader would read it with every page rendered: each page extracted
- * as its text layer is, the whole run of pages reflowed at once, the units grouped with
+ * as its text layer is, its fonts named as the viewer has drawn it, the whole run of pages
+ * reflowed and read at once (lib/pdf/reading.ts readReflowed), the units grouped with
  * the reader's default (short paragraphs read together). `window` > 0 instead reflows
  * runs of that many pages, the way a reader holding only a few pages sees the document.
  */
 export async function runAnagram(engine, file, { window = 0 } = {}) {
   const { pipeline } = engine;
-  const { numPages, producer, creator, pages, extractMs } = await readPages(engine, file);
+  const { numPages, producer, creator, pages, extractMs } = await readPages(engine, file, { fonts: true });
   const runs = [];
   if (window > 0) for (let i = 0; i < pages.length; i += window) runs.push(pages.slice(i, i + window));
   else runs.push(pages);

@@ -9,6 +9,12 @@ local component and the installer all carry the same version.
 
 ### Added
 
+- A page whose comments come from another site's frame — Disqus, Facebook's comments
+  plugin, utterances, giscus — says so in the panel and offers to allow that site. Anagram
+  reads a frame only with access to its own site, so those threads went unread without a
+  word. The panel's button opens Settings at a row that names the site; the browser asks
+  there, on your click, and nothing is requested otherwise. Once allowed, the open pages
+  that show the thread read it without a reload.
 - THIRD_PARTY_NOTICES.md ships next to LICENSE in both browser packages and in the local
   component. It lists every third-party library, font, data file and model Anagram contains,
   and the code and word lists its own source adapts, each with its version, licence,
@@ -101,6 +107,11 @@ local component and the installer all carry the same version.
   second for a paper, a few seconds for a 300-page book), and on its own if the worker
   fails or the document is over the 300-page cap. The extension grows by about 24 MB: the
   worker, its models and the ONNX runtime, all shipped inside it and never downloaded.
+- A PDF of more than 300 pages is read on every page, by the reader's own reflow as each
+  page is drawn; only its first 300 pages were read before. Zotero's structure is still
+  asked for up to 300 pages: on 336- to 816-page documents the worker took 9–17 seconds and
+  its tab 0.7–0.9 GB at its peak, and its reading would stay in the tab at about 0.3 MB a
+  page for as long as the document is open, while the reflow holds only the pages drawn.
 
 ### Changed
 
@@ -109,6 +120,28 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- A consent box a publisher builds itself, such as the Daily Mail's, is no longer read. No
+  platform's name is on it; it is recognised by what it holds: a list of third parties, each
+  linking to its own privacy policy, beside buttons that give or refuse consent. Its
+  explanations were read on four Daily Mail pages of the web benchmark, 319 words each.
+- A cookie banner a consent platform draws inside a shadow root of its own is no longer
+  analyzed; only banners in the page itself were recognised.
+- Immersive Translate's "translation only" mode is recognised: the translation it shows in
+  place of a paragraph is marked `data-imt-translation-only`, as the stylesheet the
+  extension publishes says, and is no longer read as the page's own text.
+- The PHP warnings a forum running in debug mode prints above its pages ("[phpBB Debug] PHP
+  Warning: in file … on line 483") are no longer read as a text; neither is the warning
+  output of any PHP site. Two phpBB topics in the web benchmark lost 750 words each to them.
+- Overleaf's PDF preview is read like any other pdf.js viewer. Overleaf builds the viewer
+  once the project has loaded and compiled, after Anagram had looked for one, so its text
+  layer was walked as a page: every run of the PDF's text a fragment, citations and broken
+  words left as printed, and chips drawn inside the layer. A project's page is now known by
+  its address, and the preview's paragraphs are rebuilt from the text layer as they are for
+  OneDrive's.
+- In a pdf.js viewer in a page, text set at an angle is left out of the paragraphs again,
+  such as the identifier arXiv stamps up the margin of a paper's first page. pdf.js turns
+  such a run with a style property of its own since version 4, which Anagram did not read,
+  so the stamp was read into the first paragraph beside it.
 - Stopping, resuming, updating or removing the local engine no longer waits forever for a
   forward pass that does not end. It waits as long as the extension waits for any answer,
   30 seconds, then reports that inference is still running and can be tried again.
@@ -263,6 +296,31 @@ local component and the installer all carry the same version.
   function applied to it: "\mathrm{Aug}(\mathcal{G})" read "Aug(" and "\operatorname{KL}(p\|q)"
   read "KL(". On the development papers the paragraphs whose reading still held formula
   text fell from 2,819 to 2,639.
+- The PDF reader leaves out the end of a formula that a hyphen joins to a word:
+  "$(2+1)$-dimensional" read "1)-dimensional" and "$(1-\alpha)$-quantile" read ")-quantile".
+  The word is kept from its hyphen on, as arXiv's HTML reads it ("-dimensional"); a number the
+  text hyphens to a word ("a 3-dimensional space") stays.
+- The PDF reader leaves out a formula's letter set in the text's italic, where a paper's
+  mathematics has no face of its own for letters (Times with mathptmx, Palatino with mathpazo,
+  Word's MathType): a lone italic letter beside a formula ("$R = $ Er"), with a script of its
+  own ("$D_i$", "$M_\odot$") or hyphened to a word ("the $g$-band", which reads "the -band" as
+  on arXiv's HTML). An italic word, an italic letter nothing marks ("plan *B*"), an italic
+  statement's "a", and every italic letter of a paper whose formulas take their letters from a
+  mathematics face stay. The words after a script that Word sets in the script's own run are
+  no longer taken for the script. On the benchmark's papers, against their HTML with the
+  formulas taken out, the formula tokens left in the reading fell by 546 on the development
+  papers and 208 on the held-out ones, and the prose read rose by 38 and 29 tokens.
+- The PDF reader's own reflow now reads a paragraph by the same rules as Zotero's structure:
+  a formula, what TeX sets of one in the text's face and a raised citation or footnote
+  number after a word are left out, a display equation is passed over and the sentence it
+  cuts in two read as one paragraph, and an accent pdf.js spells before its letter ("Tom´as",
+  "Fran¸cois") is written on the letter. The reflow reads a PDF until the structure is ready,
+  every page of one over 300 pages and every page when the worker fails; in the previews of
+  Google Drive, OneDrive and Overleaf, which name no fonts and set every line at one size,
+  only the accents change. On the PDF benchmark's papers the reflow's scored text that is
+  not their prose fell from 23% to 13% (development) and from 26% to 16% (held out), against
+  their HTML with the formulas taken out, and the prose it scores rose from 85% to 90% and
+  from 84% to 88%.
 - The PDF reader keeps a number the text writes next to an inline formula: "pores of 11.3 μm"
   read as "pores of m", "by Theorem 2, x is" as "by Theorem, is", and "(Federer, 1969,
   3.2.12)" lost its year. A number beside a formula went with it, because TeX sets a formula's
