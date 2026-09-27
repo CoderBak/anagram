@@ -426,6 +426,69 @@ describe("reflowPdf — two columns", () => {
     expect(texts(blocks)).toEqual([left.join(" "), right.join(" ")]);
   });
 
+  it("reads the columns under a full-width title and abstract that fill most of the page", () => {
+    // A first page: the title and the abstract run the whole measure down two thirds of
+    // it, the two columns start below. Their gutter is clear in a third of the page only.
+    const abstract = Array.from({ length: 14 }, (_, i) => `the abstract runs across the whole measure of the page, line ${i}${i === 13 ? "." : ""}`);
+    const left = Array.from({ length: 8 }, (_, i) => `Left line ${i} of the page.`);
+    const right = Array.from({ length: 8 }, (_, i) => `Right line ${i} of it too.`);
+    const blocks = reflowPdf([
+      page(1, [
+        { text: "A Title That Runs Across The Page", x: 72, y: 76, size: 16, font: "display", width: 400 },
+        ...column(abstract, 100, 72, 468),
+        ...column(left, 320, 72, 200),
+        ...column(right, 320, 320, 200),
+      ]),
+    ]);
+    expect(texts(blocks).slice(-2)).toEqual([left.join(" "), right.join(" ")]);
+    expect(blocks[1].text).toBe(abstract.join(" "));
+  });
+
+  it("reads the columns of a page's lower half and leaves a table above them whole", () => {
+    // Where the gutter is found in one stretch of the page only, the rest of the page is
+    // not cut by it: a table's row above the columns stays one line.
+    const rows = ["one", "two", "three"].map((n, i) => [
+      { text: `row ${n} left`, x: 72, y: 100 + i * PITCH, width: 150 },
+      { text: `row ${n} right`, x: 300, y: 100 + i * PITCH, width: 150 },
+    ]);
+    const prose = Array.from({ length: 10 }, (_, i) => `a full-width paragraph line ${i} of prose under the table${i === 9 ? "." : ""}`);
+    const left = Array.from({ length: 8 }, (_, i) => `Left line ${i} of the page.`);
+    const right = Array.from({ length: 8 }, (_, i) => `Right line ${i} of it too.`);
+    const blocks = reflowPdf([
+      page(1, [...rows.flat(), ...column(prose, 160, 72, 468), ...column(left, 320, 72, 200), ...column(right, 320, 320, 200)]),
+    ]);
+    expect(blocks[0].text).toContain("row one left row one right");
+    expect(texts(blocks).slice(-2)).toEqual([left.join(" "), right.join(" ")]);
+  });
+
+  it("reads the columns of a first page's last quarter, its running head and page number set across them", () => {
+    // The title and a long abstract fill the page down to its last quarter; the columns
+    // start there. A running head and a page number stand across the gutter in the margins.
+    const abstract = Array.from({ length: 20 }, (_, i) => `the abstract runs across the whole measure of the page, line ${i}${i === 19 ? "." : ""}`);
+    const left = Array.from({ length: 12 }, (_, i) => `Left line ${i} of the page.`);
+    const right = Array.from({ length: 12 }, (_, i) => `Right line ${i} of it too.`);
+    const blocks = reflowPdf([
+      page(1, [
+        { text: "Journal of Examples, Vol. 5", x: 250, y: 40, size: 9, width: 120 },
+        { text: "A Title That Runs Across The Page", x: 72, y: 80, size: 16, font: "display", width: 400 },
+        ...column(abstract, 110, 72, 468),
+        ...column(left, 560, 72, 200),
+        ...column(right, 560, 320, 200),
+        { text: "Page 156 of 200", x: 262, y: 745, size: 9, width: 70 },
+      ]),
+    ]);
+    expect(texts(blocks).slice(-2)).toEqual([left.join(" "), right.join(" ")]);
+  });
+
+  it("reads two columns whose gutter is no wider than the type is high", () => {
+    // A conference template's gutter of 11 points under 11-point type: clear down every line
+    // of the page, and still narrower than the gutter floor was.
+    const left = Array.from({ length: 10 }, (_, i) => `Left line ${i} of a page set narrow.`);
+    const right = Array.from({ length: 10 }, (_, i) => `Right line ${i} of it, beside it.`);
+    const blocks = reflowPdf([page(1, [...column(left, 120, 72, 229), ...column(right, 120, 312, 229)])]);
+    expect(texts(blocks)).toEqual([left.join(" "), right.join(" ")]);
+  });
+
   it("reads a page whose second column stops half way as two columns still", () => {
     const left = Array.from({ length: 12 }, (_, i) => `left line ${i} of the page.`);
     const right = Array.from({ length: 6 }, (_, i) => `Right line ${i} of it.`);
@@ -679,8 +742,72 @@ describe("reflowPdf — furniture", () => {
   });
 });
 
+describe("reflowPdf — line numbers", () => {
+  /** A line of a Word manuscript with line numbering: the number right-aligned a tab
+   *  before the text, the text flush at 72 or indented at 108 where a paragraph opens. */
+  const numbered = (lines: { text: string; indent?: boolean; short?: boolean }[], first: number, top = 100, x2 = 54): Placed[] =>
+    lines.flatMap((l, i) => {
+      const n = String(first + i);
+      const x = l.indent ? 108 : 72;
+      return [
+        { text: n, x: x2 - n.length * CHAR, y: top + i * PITCH, width: n.length * CHAR },
+        { text: l.text, x, y: top + i * PITCH, width: l.short ? l.text.length * CHAR : 532 - x },
+      ];
+    });
+  const MANUSCRIPT = [
+    { text: "Vertical land motion (VLM), defined as the upward or", indent: true },
+    { text: "downward movement of the surface over time, represents" },
+    { text: "a critical component of coastal change assessments and" },
+    { text: "varies over short spatial scales.", short: true },
+    { text: "The accurate characterization of VLM is particularly", indent: true },
+    { text: "critical for assessments of relative sea-level rise, which" },
+    { text: "has risen by about twenty centimetres since the year" },
+    { text: "nineteen hundred and is projected to go on rising.", short: true },
+    { text: "Along the Atlantic coast, glacial isostatic adjustment", indent: true },
+    { text: "represents the dominant natural process driving it." },
+  ];
+
+  it("leaves out a column of line numbers and finds the paragraphs behind it", () => {
+    const blocks = reflowPdf([page(1, numbered(MANUSCRIPT, 84))]);
+    expect(texts(blocks)).toEqual([
+      MANUSCRIPT.slice(0, 4).map((l) => l.text).join(" "),
+      MANUSCRIPT.slice(4, 8).map((l) => l.text).join(" "),
+      MANUSCRIPT.slice(8).map((l) => l.text).join(" "),
+    ]);
+  });
+
+  it("leaves out numbers set close to the text, and a column down the right margin", () => {
+    const close = numbered(MANUSCRIPT, 7, 100, 66);
+    expect(texts(reflowPdf([page(1, close)])).join(" ")).not.toMatch(/\d/);
+    const right = MANUSCRIPT.flatMap((l, i) => [
+      { text: l.text, x: l.indent ? 108 : 72, y: 100 + i * PITCH, width: l.short ? l.text.length * CHAR : 460 - (l.indent ? 36 : 0) },
+      { text: String(120 + i), x: 560, y: 100 + i * PITCH, width: 3 * CHAR },
+    ]);
+    expect(texts(reflowPdf([page(1, right)])).join(" ")).not.toMatch(/\d/);
+  });
+
+  it("takes the few numbered lines of a figure page in line with the column of the others", () => {
+    const caption = [{ text: "Figure 2. Rates of vertical land motion at every station." }, { text: "The rates are in millimetres a year, and the bars their errors." }];
+    const blocks = reflowPdf([page(1, numbered(MANUSCRIPT, 84)), page(2, numbered(caption, 120, 600))]);
+    expect(texts(blocks).join(" ")).not.toMatch(/\b(?:120|121)\b/);
+  });
+
+  it("keeps the numbers of the text: a table's column, a short numbered list, a page number", () => {
+    const table = [3, 17, 5, 42, 8, 11, 29, 2, 64, 7].flatMap((v, i) => [
+      { text: String(v), x: 72, y: 100 + i * PITCH, width: 2 * CHAR },
+      { text: "units of the measured quantity", x: 120, y: 100 + i * PITCH, width: 160 },
+    ]);
+    expect(texts(reflowPdf([page(1, table)])).join(" ")).toContain("64 units");
+    const list = ["1", "2", "3"].flatMap((n, i) => [
+      { text: n, x: 72, y: 100 + i * PITCH, width: CHAR },
+      { text: `Step ${n} of the procedure is described here.`, x: 90, y: 100 + i * PITCH, width: 300 },
+    ]);
+    expect(texts(reflowPdf([page(1, list)])).join(" ")).toContain("3 Step 3");
+  });
+});
+
 describe("reflowPdf — footnotes and captions", () => {
-  const LEFT = ["a paragraph that fills the", "left column right down to", "its foot and carries on", "straight past the end with", "no punctuation at all to", "stop it going, and"];
+  const LEFT =["a paragraph that fills the", "left column right down to", "its foot and carries on", "straight past the end with", "no punctuation at all to", "stop it going, and"];
   const RIGHT = ["so the right column takes", "it up again in lower case", "and finishes the sentence", "over there instead, on the", "very same printed page as", "the one it started on."];
 
   it("reaches past a footnote at the foot of a column to the rest of the paragraph", () => {

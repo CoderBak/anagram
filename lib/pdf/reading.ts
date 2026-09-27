@@ -144,6 +144,9 @@ export interface Piece {
   glyph: Glyph | null;
   /** Part of a raised number Zotero links to the bibliography (isRaisedCitation). */
   raised?: boolean;
+  /** The first character of one of Zotero's text nodes: what stands before it is another
+   *  run of the page, however close Zotero drew the two (lib/pdf/structured.ts). */
+  opens?: boolean;
 }
 
 /** Where a piece was found in the text layer. */
