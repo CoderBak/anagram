@@ -597,6 +597,53 @@ describe("structuredBlocks — formulas", () => {
     expectRunsToMatch(blocks[0], pages);
   });
 
+  it("leaves out a letter set alone in a bold face: \\mathbf", () => {
+    // "\mathbf{h}" and "\mathbf{J}_0" are set in a bold face the words around them are not set
+    // in. A phrase in that face ("Part A") is the text's, and so are a label ("(A1)", "(B)",
+    // "Appendix C") and an italic letter, which is the writer's \textit as often as a
+    // formula's.
+    const fonts = { f_text: "NimbusRomNo9L-Regu", f_bold: "CMBX10", f_bold7: "CMR7", f_medi: "NimbusRomNo9L-Medi", f_ital: "NimbusRomNo9L-ReguItal", f_sy: "CMSY10" };
+    const items: PdfTextItem[] = [];
+    const runs: (number | number[])[][] = [];
+    let text = "";
+    let x = 72;
+    const put = (s: string, font: string, gap = CW, size = SIZE) => {
+      const d = drawn(1, { text: s, x, y: size < SIZE ? 102 : 100, font });
+      d.item.height = size;
+      items.push(d.item);
+      runs.push(d.run);
+      text += s + (gap ? " " : "");
+      x += s.length * CW + gap;
+    };
+    put("Let", "f_text");
+    put("h", "f_bold");
+    put("denote the state and", "f_text");
+    put("(v", "f_bold", 0);
+    put(",", "f_sy");
+    put("u)", "f_bold");
+    put("the readouts,", "f_text");
+    put("J", "f_bold", 0);
+    put("0", "f_bold7", CW, 7);
+    put("the matrix, and", "f_text");
+    put("R", "f_ital");
+    put("the ratio, as in", "f_text");
+    put("Part A", "f_medi");
+    put("under", "f_text");
+    put("(A1)", "f_medi");
+    put("and", "f_text");
+    put("(B)", "f_medi");
+    put("of Appendix", "f_text");
+    put("C", "f_medi");
+    put("with a", "f_text");
+    put("b", "f_text");
+    put("side.", "f_text");
+    const n = { text, anchor: { textMap: JSON.stringify(runs) } };
+    const pages = [pageText(1, items, fonts)];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0].text).toBe("Let denote the state and the readouts, the matrix, and R the ratio, as in Part A under (A1) and (B) of Appendix C with a b side.");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
   it("changes nothing in a document with no mathematics face", () => {
     const n = node(1, [{ text: "a plain sentence with x = 5 and (2 + 0.5) in it.", x: 72, y: 100 }]);
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), [pageText(1, n.items, { f_text: "Calibri" })]);

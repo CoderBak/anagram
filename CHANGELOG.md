@@ -148,6 +148,12 @@ local component and the installer all carry the same version.
   and stays ("2048 × 2048", "an α-helix"), and so do an operator with no space around it
   ("J1351+0039", "C++") and the μ of a unit ("14 μm"). On the development papers of the PDF
   benchmark, the paragraphs whose reading still held formula text fell from 3,798 to 3,391.
+- The PDF reader leaves out a letter set alone in a bold face, a formula's \mathbf ("the
+  state **h**", "**J**₀"). A phrase in that face, a label ("(A1)", "(B)", "Appendix C") and
+  an italic letter stay: the text's italic sets the writer's \textit as often as a formula's
+  letter, and on the development papers leaving italic letters out as well cost about 190
+  words of prose for almost no formula text. With bold letters out, the formula tokens left
+  in the PDF's reading of those papers fell from 3,500 to 2,460.
 - The PDF reader keeps a number the text writes next to an inline formula: "pores of 11.3 μm"
   read as "pores of m", "by Theorem 2, x is" as "by Theorem, is", and "(Federer, 1969,
   3.2.12)" lost its year. A number beside a formula went with it, because TeX sets a formula's

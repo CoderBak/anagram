@@ -169,6 +169,8 @@ interface Box {
   math: boolean;
   /** A typewriter face: code, whose "x = 5" is the text's. */
   mono: boolean;
+  /** The face, by the PDF's name for it. */
+  font: string;
 }
 
 /** The page's runs by page number, boxed and sorted by baseline. */
@@ -189,7 +191,7 @@ function indexPage(page: PdfPageText): PageIndex {
     const name = page.fonts?.[it.fontName ?? ""];
     boxes.push({
       page: page.page, item, it, x1: it.x, x2: it.x + it.width, y: it.y, h: it.height,
-      math: isMathFont(name), mono: MONO_FONT.test(name?.replace(/^[A-Z]{6}\+/, "") ?? ""),
+      math: isMathFont(name), mono: MONO_FONT.test(name?.replace(/^[A-Z]{6}\+/, "") ?? ""), font: name ?? it.fontName ?? "",
     });
   });
   boxes.sort((a, b) => a.y - b.y);
@@ -452,6 +454,16 @@ const GREEK = /^\p{Script=Greek}$/u;
 const SPACING_ACCENT = /^[\^¨¯´¸ˆˇˉ˘˙˚˛˜˝]$/u;
 const MARK = /^\p{Mn}$/u;
 const ALNUM = /^[\p{Script=Latin}\p{N}]$/u;
+/** A letter, and not a modifier letter such as the ˆ of a formula's hat. */
+const LETTER = /^[\p{Lu}\p{Ll}\p{Lt}\p{Lo}]$/u;
+const BOLD_FONT = /bold|medi|semibold|demi|heavy|black|bx\d|^cmb|mib/i;
+/** A glyph set below this share of the size of the letter it follows is that letter's sub-
+ *  or superscript: BabelDOC's corner mark (a script is set at 0.76 of the size, small
+ *  capitals at 0.8). */
+const CORNER = 0.79;
+/** The words a cross-reference names a numbered or lettered thing with: "Appendix A",
+ *  "by Proposition 1", "Eq. (3)". */
+const REFERENCE = /^(?:Eqs?|Equations?|Secs?|Sections?|Figs?|Figures?|Tables?|Theorems?|Thms?|Lemmas?|Propositions?|Props?|Corollar(?:y|ies)|Cors?|Definitions?|Defs?|Assumptions?|Remarks?|Examples?|Algorithms?|Algs?|Appendi(?:x|ces)|Steps?|Cases?|Chapters?|Conditions?|Claims?|Parts?|Stages?|Lines?|Items?|Propert(?:y|ies)|Hypothes[ei]s|Conjectures?|Problems?|Rules?|Axioms?|Observations?|Facts?|Panels?)$/u;
 
 /**
  * Which pieces are a formula's by what they are, on a page that sets mathematics in a
@@ -510,8 +522,9 @@ interface Assembled {
  * space goes in wherever two glyphs stand a word apart and Zotero's text runs them
  * together. Then two decisions the reflow makes too, taken here on Zotero's glyphs:
  *
- *  - A FORMULA is left out. A token with a glyph in a mathematics font is one, and so is
- *    one of what a formula is made of in any face (formulaChars). Beside one on the same line
+ *  - A FORMULA is left out. A token with a glyph in a mathematics font is one, and so are
+ *    one of what a formula is made of in any face (formulaChars) and a letter set alone in
+ *    a bold face of its own (alone). Beside one on the same line
  *    go the rest of what TeX takes from the text face: a letterless token (parentheses,
  *    digits, operators, punctuation), an operator name ("log", "sup") and a token set in
  *    a sub- or superscript's size ("init" of x_init). What remains is the sentence around
@@ -585,7 +598,44 @@ function assemble(pieces: Piece[], located: Located, vocab: Vocabulary, mathPage
   /** The token ends its clause in the text face, so a formula after it starts after it:
    *  "by Theorem 2, $x$". */
   const closes = (t: Token): boolean => textStop(t.at[t.at.length - 1]);
-  const drop = tokens.map((t) => t.math);
+  /** The one text face a token's letters are set in, if there is one. */
+  const faceOf = (t: Token): Box | null => {
+    let face: Box | null = null;
+    for (const i of t.at) {
+      if (!LETTER.test(pieces[i].ch)) continue;
+      const f = faces[i];
+      if (!f || f.math || f.mono || (face !== null && f.font !== face.font)) return null;
+      face = f;
+    }
+    return face;
+  };
+  const count = (t: Token): number => t.at.filter((i) => LETTER.test(pieces[i].ch)).length;
+  /** The nearest token with letters before or after the k-th. */
+  const word = (k: number, step: number): Token | null => {
+    for (let j = k + step; j >= 0 && j < tokens.length; j += step) if (tokens[j].letters) return tokens[j];
+    return null;
+  };
+  /** A single letter set alone in a bold face: "\mathbf{h}", "\mathbf{J}_0". No word beside it
+   *  is in that face — "Part A" is a phrase of it — and one is in another; what else the token
+   *  holds is punctuation or the letter's script, not a label's digit ("(A1)"); and it is no
+   *  label itself, "(A)" or the "A" of "Appendix A". An italic letter stays: the text's
+   *  italic sets the writer's \textit as often as a formula's letter. */
+  const alone = (k: number): boolean => {
+    const t = tokens[k];
+    const size = Math.max(...t.at.map((i) => faces[i]?.h ?? 0));
+    const small = (i: number): boolean => faces[i] !== null && faces[i]!.h < size * CORNER;
+    const main = t.at.filter((i) => LETTER.test(pieces[i].ch) && !small(i));
+    const face = main.length === 1 ? faces[main[0]] : null;
+    if (!face || face.math || face.mono || !BOLD_FONT.test(face.font) || !mathPages.has(face.page)) return false;
+    if (t.at.some((i) => i !== main[0] && !/^[\p{P}\p{M}\p{Lm}\p{Sk}]$/u.test(pieces[i].ch) && !small(i))) return false;
+    if (/^[([]\p{L}[)\]]/u.test(t.at.map((i) => pieces[i].ch).join(""))) return false;
+    const before = word(k, -1);
+    if (before && REFERENCE.test(letters(before))) return false;
+    const around = [before, word(k, 1)].filter((n): n is Token => n !== null);
+    const same = (n: Token): boolean => faceOf(n)?.font === face.font;
+    return around.some((n) => !same(n)) && !around.some((n) => same(n) && count(n) > 1);
+  };
+  const drop = tokens.map((t, k) => t.math || alone(k));
   for (let i = 1; i < tokens.length; i++) if (drop[i - 1] && withFormula(tokens[i]) && !written(tokens[i]) && beside(tokens[i - 1], tokens[i])) drop[i] = true;
   for (let i = tokens.length - 2; i >= 0; i--) {
     if (drop[i + 1] && withFormula(tokens[i]) && !written(tokens[i]) && !closes(tokens[i]) && beside(tokens[i], tokens[i + 1])) drop[i] = true;
