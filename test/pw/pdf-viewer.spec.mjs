@@ -8,7 +8,7 @@ import { readFileSync, truncateSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { build } from "esbuild";
 import { test as base, expect } from "./fixtures.mjs";
-import { TEST_PDF, LOCKED_PDF, PDF_PASSWORD, TALL_PDF, PDF_CHIP, PDF_HEAD, PDF_HEADING, PDF_PARAS, buildPdf, pdfColumn, readerReady } from "../pdf-fixture.mjs";
+import { TEST_PDF, LOCKED_PDF, PDF_PASSWORD, TALL_PDF, PDF_CHIP, PDF_HEAD, PDF_HEADING, PDF_PARAS, buildPdf, buildTwoColumnPdf, pdfColumn, readerReady } from "../pdf-fixture.mjs";
 import { BADGE_SEL } from "../harness.mjs";
 
 const ROOT = join(import.meta.dirname, "..", "..");
@@ -180,6 +180,17 @@ test("a long document builds only the text layers near the view, and rebuilds re
     await page.locator("#pageNumber").press("Enter");
     await page.waitForFunction((n) => window.PDFViewerApplication.page === n && !!document.querySelector(`.page[data-page-number="${n}"] .textLayer span`), n);
   }
+});
+
+test("a document past the structure's page cap is read on every page, by the reflow", async ({ page, extension }) => {
+  await openReader(page, extension.extId, input("book.pdf", buildTwoColumnPdf(305)));
+  const onPage = (n) => page.evaluate(([n, sel]) => [...document.querySelectorAll(`.page[data-page-number="${n}"] ${sel}`)].filter((el) => el.shadowRoot?.querySelector(".pill")).length, [n, PDF_CHIP]);
+  await expect.poll(() => onPage(1), { message: "chips on the first page", timeout: 20000 }).toBeGreaterThan(0);
+  await page.locator("#pageNumber").fill("303");
+  await page.locator("#pageNumber").press("Enter");
+  await expect.poll(() => onPage(303), { message: "chips on page 303", timeout: 20000 }).toBeGreaterThan(0);
+  expect(await page.locator("#notice").isVisible(), "no notice that pages go unread").toBe(false);
+  expect(await page.evaluate(() => performance.getEntriesByName("anagram-structure").length), "no structure worker for it").toBe(0);
 });
 
 test("with the engine stopped, the viewer and its file picker still work", async ({ page, extension, nativeHost }) => {

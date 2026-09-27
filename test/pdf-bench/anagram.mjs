@@ -10,7 +10,8 @@ const VENDOR = join(ROOT, "public", "vendor");
 const LEGACY = join(ROOT, "node_modules", "pdfjs-dist", "legacy", "build");
 /** The upstream viewer the reader ships (vendor/pdfjs/upstream.json). */
 const PINNED = JSON.parse(readFileSync(join(ROOT, "vendor", "pdfjs", "upstream.json"), "utf8")).version;
-/** The reader analyses no page past this (entrypoints/reader/main.ts MAX_ANALYSIS_PAGES). */
+/** The bench reads no page past this: the reader's cap on Zotero's structure (entrypoints/reader/
+ *  main.ts MAX_STRUCTURE_PAGES), past which it reflows every page; no paper of the corpus is longer. */
 export const MAX_ANALYSIS_PAGES = 300;
 
 let loaded = null;

@@ -519,10 +519,6 @@
     "message": "This PDF could not be loaded. Drop the file here instead.",
     "description": "Reader notice when the fetch failed."
   },
-  "readerAnalysisCapped": {
-    "description": "PDF reading, local file access, or network privacy guidance.",
-    "message": "Only the first $1 pages are analyzed; all pages remain readable."
-  },
   "readerReloadRequired": {
     "message": "This tab no longer holds the PDF data. Open the original and choose Anagram again, or choose a local file.",
     "description": "PDF source loading and recovery status."

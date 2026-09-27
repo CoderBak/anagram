@@ -66,7 +66,7 @@ off until you switch it on again.
   link. You can also drop a file into the reader. The first chips come from a quick
   reading of each page; a moment later Zotero's document engine has worked out the
   paragraphs, leaving out captions, footnotes and reference lists, and the chips are
-  redrawn on those. Past 300 pages, only the first 300 are analyzed, by the quick reading.
+  redrawn on those. Past 300 pages every page is read by the quick reading alone.
   Google Docs get a reading view from the floating ball.
 
 ## Settings

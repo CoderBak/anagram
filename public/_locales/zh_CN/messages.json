@@ -395,10 +395,6 @@
   "readerFetchFailed": {
     "message": "这个 PDF 无法载入。可以直接把文件拖进来。"
   },
-  "readerAnalysisCapped": {
-    "description": "PDF reading, local file access, or network privacy guidance.",
-    "message": "仅分析前 $1 页；仍可阅读所有页面。"
-  },
   "readerReloadRequired": {
     "message": "此标签页已不再持有 PDF 数据。可打开原件后再次选择 Anagram，或选择本地文件。",
     "description": "PDF source loading and recovery status."

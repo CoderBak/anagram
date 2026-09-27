@@ -92,6 +92,11 @@ local component and the installer all carry the same version.
   second for a paper, a few seconds for a 300-page book), and on its own if the worker
   fails or the document is over the 300-page cap. The extension grows by about 24 MB: the
   worker, its models and the ONNX runtime, all shipped inside it and never downloaded.
+- A PDF of more than 300 pages is read on every page, by the reader's own reflow as each
+  page is drawn; only its first 300 pages were read before. Zotero's structure is still
+  asked for up to 300 pages: on 336- to 816-page documents the worker took 9–17 seconds and
+  its tab 0.7–0.9 GB at its peak, and its reading would stay in the tab at about 0.3 MB a
+  page for as long as the document is open, while the reflow holds only the pages drawn.
 
 ### Changed
 
