@@ -138,7 +138,7 @@ export async function launchExtension({
  * the first moments of a launch could load before the worker has registered it and get no
  * content script at all. The suites wait for the registration instead of racing it.
  */
-async function waitForRegistration(sw, timeoutMs = 10000) {
+export async function waitForRegistration(sw, timeoutMs = 10000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const ready = await sw
