@@ -32,6 +32,12 @@ export interface DownloadOptions {
 
 const RETRY_WAITS = [2_000, 5_000, 15_000];
 
+/** HTTPS, or plain HTTP to this machine only (the suites serve the files themselves). */
+export function secure(url: string): boolean {
+  const parsed = new URL(url);
+  return parsed.protocol === "https:" || (parsed.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(parsed.hostname));
+}
+
 /** Whether a file of the pinned size and hash is already at `name`; hashes it to say so. */
 export async function verifyFile(store: FileStore, entry: PinnedFile, name = entry.name): Promise<boolean> {
   if ((await store.size(name)) !== entry.size_bytes) return false;
@@ -49,7 +55,7 @@ export async function downloadFile(store: FileStore, entry: PinnedFile, options:
   const part = `${entry.name}.part`;
   const paused = () => { if (signal?.aborted) throw new DownloadPaused(); };
   paused();
-  if (new URL(entry.url).protocol !== "https:" && !transport) throw new DownloadFailed("Model downloads require HTTPS");
+  if (!secure(entry.url)) throw new DownloadFailed("Model downloads require HTTPS");
   for (let attempt = 0; ; attempt++) {
     try {
       await attemptDownload(store, entry, part, transport, signal, onProgress);

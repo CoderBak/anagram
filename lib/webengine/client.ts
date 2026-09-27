@@ -10,7 +10,7 @@
 // and lib/backend/nativeScoreClient.ts and nativeClient.ts need no change.
 import { browser } from "#imports";
 import type { PublicPath } from "wxt/browser";
-import { NativeTransport, type NativePort } from "../backend/nativeTransport";
+import { PortTransport, type NativePort } from "../backend/portTransport";
 import type { EngineTransport } from "../backend/transport";
 import { EngineHost } from "./host";
 import { pin } from "./pin";
@@ -28,9 +28,9 @@ export function workerInit(): Omit<WorkerInit, "type"> {
   return {
     pin: pin(),
     assets: {
-      ort: url("/vendor/engine/ort.min.mjs"),
-      mjs: url("/vendor/engine/ort-wasm-simd-threaded.jsep.mjs"),
-      wasm: url("/vendor/engine/ort-wasm-simd-threaded.jsep.wasm"),
+      ort: url("/vendor/engine/ort.jspi.min.mjs"),
+      mjs: url("/vendor/engine/ort-wasm-simd-threaded.jspi.mjs"),
+      wasm: url("/vendor/engine/ort-wasm-simd-threaded.jspi.wasm"),
     },
     version,
   };
@@ -107,13 +107,21 @@ export function offscreenPort(): NativePort {
   return out;
 }
 
+class WebEngineTransport extends PortTransport {
+  constructor() {
+    super(() => (offscreenApi() ? offscreenPort() : new EngineHost({ workerUrl: WORKER_URL(), init: workerInit() })),
+      { cannotStart: "The in-browser engine could not be started" });
+  }
+  protected override lastError(): string | undefined { return browser.runtime.lastError?.message; }
+}
+
 let instance: EngineTransport | undefined;
 
 /**
  * What "#flavor/engine-transport" names in the oneclick flavor: the offscreen document's
- * port on Chrome, a worker in this page on Firefox, behind the native transport's
- * request multiplexing, timeouts and reconnection.
+ * port on Chrome, a worker in this page on Firefox, behind the same request
+ * multiplexing, timeouts and reconnection as the native transport.
  */
 export function engineTransport(): EngineTransport {
-  return instance ??= new NativeTransport(() => (offscreenApi() ? offscreenPort() : new EngineHost({ workerUrl: WORKER_URL(), init: workerInit() })));
+  return instance ??= new WebEngineTransport();
 }

@@ -6,7 +6,7 @@
 // with the pin and the runtime's URLs, queues requests until the engine says it is up,
 // and turns a crashed worker into a disconnect, after which the next request starts a
 // fresh one. It imports no extension API either; the caller hands it the URLs.
-import type { NativePort } from "../backend/nativeTransport";
+import type { NativePort } from "../backend/portTransport";
 import type { WorkerInit, WorkerReply } from "./worker";
 
 export interface HostOptions {

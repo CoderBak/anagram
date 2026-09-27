@@ -3,7 +3,8 @@
 // The flavor swaps the engine transport and the setup/Settings engine panel; this checks
 // the swap in a browser: the worker starts and answers without Native Messaging (it has no
 // such permission, and nothing asks for it), a contract request reaches the in-browser
-// engine's transport, and the setup page and Settings show the in-browser engine block and
+// engine (its offscreen document and worker, which find no model files in a fresh profile
+// and download nothing by themselves), and the setup page and Settings show the in-browser engine block and
 // no install command, in English and Chinese. A temporary profile; no native host exists.
 //
 //   npm run test:oneclick        # builds output-test/oneclick-chrome-mv3 when stale
@@ -68,8 +69,10 @@ for (const lang of ["en", "zh-CN"]) {
         version: document.getElementById("version")?.textContent ?? "",
       }));
       check(`${lang}: ${name} shows the in-browser engine block`, seen.block, seen.status);
-      check(`${lang}: ${name} reads "not ready" from the engine transport`,
-        seen.status === (lang === "en" ? "Not ready yet" : "尚未就绪"), seen.status);
+      // A fresh profile holds no model files: the engine says so through the same
+      // `status` operation the native host answers.
+      check(`${lang}: ${name} reads "model files needed" from the in-browser engine`,
+        seen.status === (lang === "en" ? "Model files needed" : "需要模型文件"), seen.status);
       check(`${lang}: ${name} shows no install command`,
         !seen.installUi && !/curl|Invoke-RestMethod|install\.sh|Terminal|终端/.test(seen.text), seen.text.slice(0, 200));
       if (name === "options") check(`${lang}: Settings' version line carries the engine state`, seen.version.includes(seen.status), seen.version);
@@ -77,7 +80,8 @@ for (const lang of ["en", "zh-CN"]) {
         // The page's contract request goes through the worker's bridge to the in-browser
         // engine's transport, which answers for itself.
         const reply = await page.evaluate(() => chrome.runtime.sendMessage({ action: "anagram.nativeRequest", op: "status", payload: {} }));
-        check(`${lang}: a contract request reaches the in-browser engine's transport`, reply?.error?.code === "engine_not_ready", JSON.stringify(reply));
+        check(`${lang}: a contract request reaches the in-browser engine through the offscreen document`,
+          reply?.ok === true && reply.data?.state === "needs_models" && reply.data?.home === "opfs:anagram-engine", JSON.stringify(reply).slice(0, 300));
         const status = await page.evaluate(() => chrome.runtime.sendMessage({ action: "getBackendStatus", probe: true }));
         check(`${lang}: the worker reports scoring unavailable, not an error`, status?.active === "down", JSON.stringify(status));
       }

@@ -141,7 +141,7 @@ export function pinFor(base, files) {
 
 /** The worker's init message against `base`. */
 export function initFor(base, pin, version = "0.0.0-test") {
-  return { pin, assets: { ort: `${base}/vendor/engine/ort.min.mjs`, mjs: `${base}/vendor/engine/ort-wasm-simd-threaded.jsep.mjs`, wasm: `${base}/vendor/engine/ort-wasm-simd-threaded.jsep.wasm` }, version };
+  return { pin, assets: { ort: `${base}/vendor/engine/ort.jspi.min.mjs`, mjs: `${base}/vendor/engine/ort-wasm-simd-threaded.jspi.mjs`, wasm: `${base}/vendor/engine/ort-wasm-simd-threaded.jspi.wasm` }, version };
 }
 
 /**

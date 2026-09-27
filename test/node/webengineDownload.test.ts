@@ -1,6 +1,6 @@
 // test/node/webengineDownload.test.ts — resumable, verified downloads into the engine's store.
 import { describe, expect, it } from "vitest";
-import { downloadFile, DownloadFailed, DownloadPaused, verifyFile } from "../../lib/webengine/download";
+import { downloadFile, DownloadFailed, DownloadPaused, secure, verifyFile } from "../../lib/webengine/download";
 import { sha256Hex } from "../../lib/webengine/sha256";
 import { MemoryStore } from "../../lib/webengine/storage";
 import { fakeServer } from "./webengineFake";
@@ -119,7 +119,11 @@ describe("model download", () => {
     expect(await store.read("model.bin")).toEqual(FILE);
   });
 
-  it("insists on HTTPS", async () => {
+  it("insists on HTTPS, except to this machine", async () => {
     await expect(downloadFile(new MemoryStore(), { ...entry(), url: "http://example.test/model.bin" })).rejects.toThrow(/HTTPS/);
+    expect(secure("http://127.0.0.1:8080/model.bin")).toBe(true);
+    expect(secure("http://localhost/model.bin")).toBe(true);
+    expect(secure("http://127.0.0.1.example.test/model.bin")).toBe(false);
+    expect(secure("ftp://127.0.0.1/model.bin")).toBe(false);
   });
 });

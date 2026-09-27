@@ -4,7 +4,8 @@
 // The runtime is the pinned onnxruntime-web package, copied verbatim into
 // vendor/engine/ by scripts/webengine.mjs and imported here by its extension URL: the
 // library, its WebAssembly loader and the one WebAssembly binary that carries both the
-// WebGPU execution provider (JSEP, the GPU path) and the CPU one (the WASM path).
+// native WebGPU execution provider (the GPU path) and the CPU one (the WASM path), in
+// the JSPI build (see scripts/webengine.mjs for why not the package's default JSEP one).
 //
 // The choice is automatic and FP32 either way, as the native engine's: WebGPU when the
 // browser offers an adapter whose storage-buffer limit can hold the word-embedding matrix
