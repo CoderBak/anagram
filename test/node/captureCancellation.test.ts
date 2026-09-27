@@ -155,6 +155,18 @@ describe("capture cancellation across language detection and replies", () => {
       expect(await calls.reports[0]()).toContain("replacement-model");
     } finally {controller.stop();}
   });
+  it("says a page with nothing long enough had too little text, not that nothing was flagged", async () => {
+    const {controller} = await page();
+    try {
+      const report = await calls.reports[0]();
+      expect(report).toContain("Too little text to judge: no passage reached the 75 words the model needs for a verdict.");
+      expect(report).not.toContain("No paragraphs were flagged");
+      // Nothing was sent, so the engine did not fail to answer either.
+      expect(report).not.toContain("did not answer");
+      expect(report).toContain("Scores are estimates, not proof of authorship. Do not use them for disciplinary or other high-stakes decisions.");
+    } finally {controller.stop();}
+  });
+
   it("keeps a virtual document coverage limit in reports even when source metadata is private", async () => {
     const {controller: original} = await page();
     const controller = createOrchestrator(null, {reportScopeNote: () => "PDF scope: 2 of 30 rendered pages; incomplete document."});

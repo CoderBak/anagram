@@ -302,14 +302,20 @@
   "reportWords": {
     "message": "$1 词"
   },
+  "reportCloseCall": {
+    "message": "临界判断"
+  },
   "reportWindows": {
     "message": "；分 $1 次读取：$2"
   },
   "reportUnread": {
     "message": "；段落末尾未被读取"
   },
+  "reportLink": {
+    "message": "打开页面并定位到此段：$1"
+  },
   "reportModel": {
-    "message": "评分来自本地引擎上的 $1（$2）——这是 EditLens 对 AI 编辑程度的估计，不是证据。"
+    "message": "评分来自本地引擎上的 $1（$2）——这是 EditLens 对 AI 编辑程度的估计。"
   },
   "reportNoModel": {
     "message": "分析本页时本地引擎没有响应。"
@@ -325,6 +331,27 @@
   "reportPending": {
     "message": "尚未分析：$1",
     "description": "Report privacy preference, export metadata, or cache status shown in settings."
+  },
+  "reportStateShort": {
+    "message": "文本太少，无法判断：没有一段文字达到模型给出判断所需的 $1 个词。"
+  },
+  "reportStateNotEnglish": {
+    "message": "没有判断：够长的段落都不是英文，而模型只读英文。"
+  },
+  "reportStateUnavailable": {
+    "message": "没有判断：本地引擎没有响应。"
+  },
+  "reportStatePending": {
+    "message": "尚无判断：复制此报告时仍在分析。"
+  },
+  "reportStateUncertain_one": {
+    "message": "判断不一或不确定：$2 个判断中有 $1 个是临界判断，紧挨两种判断的分界，或更可能判错。这类判断只能当作估计，不能当作定论。"
+  },
+  "reportStateUncertain_other": {
+    "message": "判断不一或不确定：$2 个判断中有 $1 个是临界判断，紧挨两种判断的分界，或更可能判错。这类判断只能当作估计，不能当作定论。"
+  },
+  "reportCaveat": {
+    "message": "分数只是估计，不能证明作者身份。请勿将其用于纪律处分或其他重大决定。"
   },
   "reportRuntime": {
     "message": "校准 / 预处理标识：$1",

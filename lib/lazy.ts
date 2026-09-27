@@ -56,6 +56,14 @@ export interface SurfacesModule {
 
 export const loadSurfaces = (): Promise<SurfacesModule> => lazyVendor<SurfacesModule>("surfaces.min.mjs");
 
+/** The copied report's links to flagged paragraphs (lib/render/textFragment.ts): our code,
+ *  run only when a report with addresses and passage text is copied. */
+export interface FragmentsModule {
+  paragraphLinks: typeof import("./render/textFragment").paragraphLinks;
+}
+
+export const loadFragments = (): Promise<FragmentsModule> => lazyVendor<FragmentsModule>("fragments.min.mjs");
+
 /** Engine API used alongside the separately packaged full upstream viewer. */
 export type PdfJsModule = Pick<
   typeof import("pdfjs-dist"),

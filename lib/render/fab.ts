@@ -1010,7 +1010,9 @@ export function createFab(opts: {
     title.tabIndex = -1; // where keyboard focus lands when there is no result to land on
     title.textContent = entries.length ? t("panelTitleCount", entries.length) : t("panelTitle");
     head.appendChild(title);
-    if (opts.panel && entries.length > 0) {
+    // Also with nothing flagged: the report then says what the page's zero means — nothing
+    // long enough to judge, nothing in English, or verdicts that are close calls.
+    if (opts.panel) {
       const copy = document.createElement("button");
       copy.type = "button";
       copy.className = "pcopy";

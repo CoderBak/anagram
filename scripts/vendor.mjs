@@ -142,6 +142,19 @@ await buildChecked("surfaces.min.mjs", {
 });
 console.log(`vendor/surfaces.min.mjs  ${(statSync(join(OUT, "surfaces.min.mjs")).size / 1024).toFixed(1)} kB`);
 
+// The copied report's links to flagged paragraphs (lib/render/textFragment.ts), the same way:
+// only a click on Copy report with both report options on ever runs it.
+await buildChecked("fragments.min.mjs", {
+  entryPoints: [join(ROOT, "lib", "render", "textFragment.ts")],
+  bundle: true,
+  format: "esm",
+  minify: true,
+  target: ["chrome110", "firefox128"],
+  outfile: join(OUT, "fragments.min.mjs"),
+  logLevel: "error",
+});
+console.log(`vendor/fragments.min.mjs  ${(statSync(join(OUT, "fragments.min.mjs")).size / 1024).toFixed(1)} kB`);
+
 // Both workers start from a file of ours that first installs what pdf.js needs and an older
 // browser lacks (lib/pdf/upsert.ts), then loads the worker itself, unchanged.
 const START = join(OUT, "start");

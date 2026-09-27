@@ -1,6 +1,6 @@
 # Anagram Privacy Policy
 
-Last updated: 2026-09-26. Applies to the Anagram browser extension and the local engine
+Last updated: 2026-09-27. Applies to the Anagram browser extension and the local engine
 it installs on your computer.
 
 **The short version.** Anagram reads the text of pages you allow it to read, sends that
@@ -73,8 +73,10 @@ normal download metadata and never page text.
   (Windows): the runtime, model files, the saved configuration and registration records.
   A small registration manifest also lives in the browser's user-level
   NativeMessagingHosts location. Nothing from your browsing is written there.
-- **Your clipboard**, only when you click Copy. Diagnostics reports replace every word
-  of page text with same-shaped filler and drop URLs and titles.
+- **Your clipboard**, only when you click Copy. A copied report holds the page's title and
+  address, and passage text, only when Settings includes them; its links to flagged
+  paragraphs carry words of each paragraph, so they appear only with both. Diagnostics
+  reports replace every word of page text with same-shaped filler and drop URLs and titles.
 
 ## Permissions
 

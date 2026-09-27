@@ -22,7 +22,7 @@ import { CONTRACT_VERSION } from "../contract";
 import { collectUnits, inPageOrder, type CollectOptions } from "../dom/walker";
 import { restoreSplits } from "../dom/splits";
 import { findMainContent, useDefuddle } from "../dom/mainContent";
-import { loadDefuddle } from "../lazy";
+import { loadDefuddle, loadFragments } from "../lazy";
 import { partTextOf, MAX_UNIT_TEXT_CHARS } from "../dom/text";
 import { createObservers, type Observers } from "./observers";
 import { createScheduler, type Scheduler } from "./scheduler";
@@ -44,6 +44,7 @@ import { t, tn } from "../i18n";
 import { band, bandLabel, BUCKET_BANDS, isFlagged } from "../render/band";
 import { formatScore } from "../render/score";
 import { windowReadout } from "../render/coverage";
+import { isCloseCall, mayLinkParagraphs, reportState } from "../render/report";
 import { settings } from "../settings/settings";
 import { createLogger } from "../log";
 
@@ -397,6 +398,15 @@ export function createOrchestrator(
     const [includeText, includeUrl] = await Promise.all([settings.reportIncludeText.getValue(), settings.reportIncludeUrl.getValue()]);
     const status = await sendDocumentMessage({action: ACTIONS.GET_BACKEND_STATUS}).catch(() => undefined) as BackendStatus | undefined;
     const flagged = flaggedInOrder().map(({ unit, v }) => ({ unit, v, r: v.result }));
+    // A link that reopens the page at each flagged paragraph. Only the walk's own units are
+    // the page's text as the browser will search it: a reader or a surface draws its units
+    // over something else, and names a document rather than this address.
+    const links =
+      !opts.collect && !opts.reportUrl && mayLinkParagraphs({ includeUrl, includeText, pageUrl: location.href })
+        ? await loadFragments()
+            .then((m) => m.paragraphLinks(location.href, flagged.map(({ unit }) => unitRange(unit))))
+            .catch(() => [])
+        : [];
 
     const lines: string[] = [];
     lines.push(`# ${includeUrl ? t("reportTitle", document.title || location.hostname) : t("reportPrivateTitle")}`);
@@ -411,11 +421,14 @@ export function createOrchestrator(
     // an outage look like a clean sweep.
     let skipped = 0;
     let unavailable = 0;
-    for (const { result: r } of verdictsById.values()) {
-      if (r.unsupported) skipped++;
-      else if (r.degraded) unavailable++;
+    let closeCalls = 0;
+    for (const v of verdictsById.values()) {
+      if (v.result.unsupported) skipped++;
+      else if (v.result.degraded) unavailable++;
+      else if (isCloseCall(v)) closeCalls++;
     }
     const analyzed = verdictsById.size - skipped - unavailable;
+    const pending = Math.max(0, unitsById.size - verdictsById.size);
     lines.push(
       "- " +
         [
@@ -424,15 +437,23 @@ export function createOrchestrator(
           ...(unavailable > 0 ? [t("reportUnavailable", unavailable)] : []),
           ...(skipped > 0 ? [t("reportSkipped", skipped)] : []),
           t("reportShort", shortTexts.size),
-          t("reportPending", Math.max(0, unitsById.size - verdictsById.size)),
+          t("reportPending", pending),
         ].join(" · "),
     );
     lines.push("");
-    lines.push(t("reportEstimate"));
+    // What the counts add up to, where they would mislead on their own: "Flagged: 0" on a
+    // page where nothing was judged, or a list of verdicts half of which are close calls.
+    const state = reportState({ analyzed, unavailable, skipped, pending }, closeCalls);
+    if (state) lines.push(state, "");
+    // The caveat travels with every report, whoever it is forwarded to.
+    lines.push(t("reportCaveat"));
     lines.push("");
+    lines.push(t("reportEstimate"));
     if (flagged.length === 0) {
-      lines.push(t("reportNothingFlagged"));
+      // With no verdict at all, the state line has already said why.
+      if (analyzed > 0) lines.push("", t("reportNothingFlagged"));
     } else {
+      lines.push("");
       lines.push(`## ${t("reportFlaggedHeading", flagged.length)}`);
       lines.push("");
       flagged.forEach(({ unit, v, r }, i) => {
@@ -449,20 +470,40 @@ export function createOrchestrator(
           ? t("reportWindows", read.count, read.scores.join(" · ")) +
             (v.unreadChars > 0 ? t("reportUnread") : "")
           : "";
+        const close = isCloseCall(v) ? `${t("reportCloseCall")}; ` : "";
         lines.push(
           `${i + 1}. **${bandLabel(band(r))} · ${score}** ` +
-            `(${dist}; ${t("reportWords", unit.wordCount)}${windows})`,
+            `(${close}${dist}; ${t("reportWords", unit.wordCount)}${windows})`,
         );
+        // Before the quotation: a line after it would be read as part of the quotation.
+        if (links[i]) lines.push(`   ${t("reportLink", links[i]!)}`);
         if (includeText) lines.push(`   > ${snippet}${ellipsis}`);
       });
     }
-    lines.push("");
     const m = l1Model;
-    const backend = m ? t("reportModel", m.id, m.ver) : t("reportNoModel");
-    lines.push("---", backend);
+    // No model and nothing waiting on one: every passage was too short or not English, and
+    // the engine was never asked, so it did not fail to answer either.
+    const backend = m ? t("reportModel", m.id, m.ver) : unavailable > 0 || pending > 0 ? t("reportNoModel") : null;
+    if (backend) lines.push("", "---", backend);
     if (m) lines.push(t("reportRuntime", m.calibration));
     if (m && status?.model && modelDim(status.model) === modelDim(m)) lines.push(t("reportDevice", status.server.device ?? "?", status.server.dtype ?? "?"));
     return lines.join("\n");
+  }
+
+  /** The stretch of the page a unit reads, from its first text node to the end of its last. */
+  function unitRange(unit: Unit): Range | null {
+    const first = unit.parts[0]?.nodes[0];
+    const lastPart = unit.parts[unit.parts.length - 1];
+    const last = lastPart?.nodes[lastPart.nodes.length - 1];
+    if (!first?.isConnected || !last?.isConnected) return null;
+    try {
+      const range = document.createRange();
+      range.setStart(first, 0);
+      range.setEnd(last, last.data.length);
+      return range;
+    } catch {
+      return null;
+    }
   }
 
   /** Painted under the current display mode? Everything is analyzed regardless. */

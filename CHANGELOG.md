@@ -42,6 +42,27 @@ local component and the installer all carry the same version.
   the same prompt, and a reader whose site was granted before shows as off until it is.
 - The setup page mentions that most arXiv papers also have an HTML version, which Anagram
   reads most precisely. Nothing redirects there; PDFs are read as before.
+- A copied report links each flagged paragraph to its place on the page. When reports
+  include both the page's address and passage text (Settings, Privacy), every flagged
+  paragraph gets a link that reopens the page scrolled to it and highlighted: a text
+  fragment (`#:~:text=`), which Chrome and Firefox 140 follow. The link names the
+  paragraph's first and last words, checked to match nothing else on the page, with the
+  fragment generation of GoogleChromeLabs' text-fragments-polyfill (Apache-2.0). A paragraph
+  whose words the page repeats around it, one inside a shadow root or an editable field, and
+  whatever the PDF reader or a document viewer shows get no link, and so does anything the
+  report has not linked within a second and a half.
+- A copied report says what its counts add up to where they would mislead on their own. A
+  page where no passage reached the 75-word floor says "Too little text to judge" instead of
+  "No paragraphs were flagged", and no longer claims the local engine did not answer when
+  nothing was sent to it; a page with nothing in English, no answer from the engine or no
+  verdict yet says that. The report can now be copied with nothing flagged, to say so. When
+  half or more of the verdicts are close calls — within .05 of a place where the word
+  changes, or more likely wrong than right by the confidence dot's model — the report calls
+  them mixed or uncertain, and marks each flagged paragraph that is one. Every report, the
+  Analyze text page's included, carries the caveat "Scores are estimates, not proof of
+  authorship. Do not use them for disciplinary or other high-stakes decisions." The idea of
+  stated result states and a caveat that travels with the result comes from
+  lynote-ai/ai-text-detector (MIT).
 
 ### Changed
 

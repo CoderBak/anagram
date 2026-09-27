@@ -19,29 +19,51 @@
 The command shown in a development build is disabled because no matching release
 exists for it yet.
 
+Anagram also runs in Firefox 140 or later, ESR included, from its Firefox ZIP, with the
+same setup. Firefox keeps an unsigned add-on only in ESR, Developer Edition and Nightly
+with `xpinstall.signatures.required` set to false in `about:config`; elsewhere,
+`about:debugging` loads it until Firefox restarts.
+
 ## Read
 
 Grant a site with the switch in the popup, or allow all sites from Settings. Without a
-grant, **Analyze this page** in the popup scores the page in front of you once.
+grant, **Analyze this page** in the popup scores the page in front of you once. Google
+Play Books, Libby and VitalSource Bookshelf show the book in a frame from a second
+address, and the switch asks for both; a reader granted with an older version shows as
+off until you switch it on again.
 
 - A chip after each paragraph shows the score. Hover it for where the score sits on the
   scale, the four-way breakdown and the word count. Non-English text gets a grey chip
-  with the language code.
+  with the language code. Scores are estimates, not proof of authorship: do not use them
+  for disciplinary or other high-stakes decisions.
 - The chip's dot and the underline share one colour scale, pale for human writing and
   dark red for AI-generated text. The word follows the number: Human below .17, Lightly
   edited below .50, Heavily edited below .83, AI-generated above. A full dot means the
   word is likely right; the less likely, the thinner the ring the dot becomes. That
   likelihood comes from a small model fitted on the EditLens dataset: a guide, not a
   guarantee.
-- Short paragraphs are scored together with their neighbours; a ×2 on a chip means it
-  covers two paragraphs.
+- The model needs 75 words. Shorter paragraphs are scored together with their neighbours
+  in the same section, never across a heading; a ×2 on a chip means it covers two
+  paragraphs, and a short paragraph with nothing to join is not scored.
+- Only the writing is scored. Reference marks such as [4] or a raised ¹, formulas inside a
+  sentence and cookie banners are left out; author–year citations stay. A post the site
+  has cut short behind "See more" is read once you open it. A page the browser has
+  translated is paused until you show the original, and text a translation extension
+  adds is skipped.
+- Text in a frame is read where Anagram may read the frame, an EPUB reader's chapters
+  included. Its chips are in the frame; the ball's list and report cover the page itself.
 - The floating ball shows or hides marks. Its counter shows how many paragraphs read as
-  AI-generated and opens their list, which can jump to each one and copy a report.
+  AI-generated and opens their list, which can jump to each one and copy a report. When
+  reports include both the page address and passage text, each flagged paragraph in a
+  copied report links back to the page, scrolled to it.
 - Right-click a selection to score just that text. Alt+Shift+P toggles Anagram on the
   page, Alt+Shift+L opens the list, Alt+Shift+J and K walk flagged paragraphs.
 - PDFs open in Anagram's reader from the popup, the floating ball or a right-click on a
-  link. You can also drop a file into the reader. Google Docs get a reading view from
-  the floating ball.
+  link. You can also drop a file into the reader. The first chips come from a quick
+  reading of each page; a moment later Zotero's document engine has worked out the
+  paragraphs, leaving out captions, footnotes and reference lists, and the chips are
+  redrawn on those. Past 300 pages, only the first 300 are analyzed, by the quick reading.
+  Google Docs get a reading view from the floating ball.
 
 ## Settings
 
@@ -57,6 +79,7 @@ The toolbar icon's gear opens Settings.
 - **Privacy**: score cache retention, clearing, and what copied reports include.
 
 The engine unloads the model after five minutes without work and reloads on demand.
+**Source code** in the footer opens the code of the exact version you are running.
 
 ## Update and remove
 

@@ -75,3 +75,6 @@ export { createPdfUnitSource } from "../lib/pdf/units";
 export { createSurface } from "../lib/surfaces/chunk";
 export { surfaceFor, asPageSurface } from "../lib/surfaces";
 export { setMarkPainter, setRangeLocator, setHighlightsVisible } from "../lib/render/highlight";
+
+// The copied report's links to flagged paragraphs (an on-demand chunk of its own).
+export { paragraphLinks, generateFragment, processTextFragmentDirective } from "../lib/render/textFragment";
