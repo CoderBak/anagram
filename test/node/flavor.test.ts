@@ -6,6 +6,7 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
+import { ORT_FILES } from "../../scripts/webengine.mjs";
 import {
   FLAVOR_ENTRYPOINTS,
   FLAVOR_MODULES,
@@ -172,8 +173,9 @@ describe("what each flavor's build carries", () => {
   });
 
   it.skipIf(!native || !oneclick)("only the oneclick build ships the engine's runtime", () => {
-    for (const file of ["vendor/engine/ort.bundle.min.mjs", "vendor/engine/ort-wasm-simd-threaded.jsep.wasm"]) {
-      expect(existsSync(join(oneclick!, file)), file).toBe(true);
+    // The files scripts/webengine.mjs prepares: the runtime's two builds and the engine's worker.
+    for (const file of [...ORT_FILES, "worker.min.mjs"]) {
+      expect(existsSync(join(oneclick!, "vendor", "engine", file)), file).toBe(true);
     }
     expect(existsSync(join(native!, "vendor", "engine"))).toBe(false);
     expect(existsSync(join(native!, "engine.html"))).toBe(false);

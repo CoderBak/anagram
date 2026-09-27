@@ -117,9 +117,9 @@ describe("the network inventory in docs/footprint.md", () => {
     }
   });
 
-  it("uses one native connection and limits fetch call sites to original-document readers", () => {
+  it("uses one native connection and limits fetch call sites to original-document readers and the model download", () => {
     expect(rows.filter((r) => r[1] === "connectNative(").map((r) => r[0])).toEqual(["lib/backend/nativeTransport.ts"]);
-    expect(rows.filter((r) => r[1] === "fetch(").map((r) => r[0]).sort()).toEqual(["lib/docsOverlay.ts", "lib/pdf/handoff.ts", "lib/pdf/loader.ts"]);
+    expect(rows.filter((r) => r[1] === "fetch(").map((r) => r[0]).sort()).toEqual(["lib/docsOverlay.ts", "lib/pdf/handoff.ts", "lib/pdf/loader.ts", "lib/webengine/download.ts"]);
   });
 
   it("asks the vendored Defuddle for its offline extraction only", () => {

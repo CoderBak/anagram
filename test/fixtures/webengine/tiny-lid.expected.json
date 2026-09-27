@@ -1,0 +1,82 @@
+[
+ {
+  "text": "hello world",
+  "label": "en",
+  "prob": 0.5348544716835022
+ },
+ {
+  "text": "bonjour le monde",
+  "label": "fr",
+  "prob": 0.5288418531417847
+ },
+ {
+  "text": "the world",
+  "label": "en",
+  "prob": 0.537814199924469
+ },
+ {
+  "text": "le monde",
+  "label": "fr",
+  "prob": 0.5374778509140015
+ },
+ {
+  "text": "hello",
+  "label": "en",
+  "prob": 0.5391303896903992
+ },
+ {
+  "text": "unknown words only",
+  "label": "fr",
+  "prob": 0.5026840567588806
+ },
+ {
+  "text": "",
+  "label": "und",
+  "prob": 0.0
+ },
+ {
+  "text": "   ",
+  "label": "und",
+  "prob": 0.0
+ },
+ {
+  "text": "a\nb",
+  "label": "en",
+  "prob": 0.5002737045288086
+ },
+ {
+  "text": "hello\nbonjour le monde",
+  "label": "fr",
+  "prob": 0.511019229888916
+ },
+ {
+  "text": "__label__fr hello",
+  "label": "en",
+  "prob": 0.5391303896903992
+ },
+ {
+  "text": "zzz",
+  "label": "en",
+  "prob": 0.5039632320404053
+ },
+ {
+  "text": "the",
+  "label": "en",
+  "prob": 0.5493649244308472
+ },
+ {
+  "text": "Hello World",
+  "label": "en",
+  "prob": 0.5096268057823181
+ },
+ {
+  "text": "hello, world!",
+  "label": "en",
+  "prob": 0.5057295560836792
+ },
+ {
+  "text": "h\u00e9llo w\u00f6rld",
+  "label": "en",
+  "prob": 0.504181981086731
+ }
+]

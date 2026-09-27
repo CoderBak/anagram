@@ -43,7 +43,7 @@ function newestMtime(path) {
 
 /**
  * Make sure output-test/<dir> is there and not older than the sources; build it if not.
- * `dir` is "chrome-mv3" or "firefox-mv2".
+ * `dir` is "chrome-mv3" or "firefox-mv2", or either with the oneclick flavor's prefix.
  */
 export function ensureTestBuild(dir = "chrome-mv3") {
   const manifest = join(TEST_OUT, dir, "manifest.json");
@@ -53,7 +53,7 @@ export function ensureTestBuild(dir = "chrome-mv3") {
   console.log(`building the test extension (output-test/${dir})…`);
   execFileSync(
     process.execPath,
-    [join(ROOT, "scripts", "buildTest.mjs"), ...(dir === "firefox-mv2" ? ["--firefox"] : [])],
+    [join(ROOT, "scripts", "buildTest.mjs"), ...(dir.endsWith("firefox-mv2") ? ["--firefox"] : [])],
     { cwd: ROOT, stdio: "inherit" },
   );
   if (!existsSync(manifest)) {

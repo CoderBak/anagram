@@ -24,7 +24,9 @@ Native Messaging, which is outside `connect-src`; the local component runs with 
 user's ordinary OS privileges and is not sandboxed by browser CSP. The oneclick flavor
 (`scripts/flavor.mjs`) has no Native Messaging: it scores inside the browser
 (`lib/webengine/`), and its only requests are the one-time model and language-ID
-downloads from the hosts listed under `lib/access/patterns.ts` below.
+downloads from the hosts listed under `lib/access/patterns.ts` below. Its engine page
+(`engine.html`, Chrome's offscreen document) keeps the manifest's `connect-src`: the
+worker it hosts is what performs those downloads, into the extension's own storage.
 
 ### Every call site
 
@@ -36,6 +38,8 @@ downloads from the hosts listed under `lib/access/patterns.ts` below.
 | `lib/pdf/loader.ts` | `fetch(` | reads an online PDF only after the private loader validates its one-use source ticket and current website access; rejects redirects | the exact authorized original HTTP(S) PDF URL, with normal browser credentials and no referrer |
 | `lib/pdf/loader.ts` | `XMLHttpRequest` | reads bytes for an authorized local PDF after checking file access, size and PDF signature | the exact authorized local file URL; remote-host file URLs are rejected |
 | `lib/lazy.ts` | `import(` | loads one of the vendored chunks that ship inside the extension (Defuddle, DOMPurify, the diagnostics chunk, the surfaces chunk, the report's paragraph links, pdf.js) | `chrome-extension://<this extension>/vendor/…` |
+| `lib/webengine/download.ts` | `fetch(` | downloads the pinned model files once, resumably, verifying each against its pinned SHA-256 as it streams; anonymous, no credentials, no referrer (the in-browser engine build only) | the exact pinned addresses in `lib/webengine/pin.ts`: the modelkit on huggingface.co (following its redirect to its storage) and lid.176.ftz on dl.fbaipublicfiles.com |
+| `lib/webengine/session.ts` | `import(` | loads ONNX Runtime Web, which ships inside the extension, into the engine's worker | `chrome-extension://<this extension>/vendor/engine/ort.jspi.min.mjs` (or `ort.wasm.min.mjs` in a browser without JSPI) |
 
 There is no analytics, error-reporting or telemetry endpoint. The component update
 notice compares versions locally; it does not poll GitHub.
@@ -85,6 +89,10 @@ APIs through its `parseAsync()`. `lib/dom/mainContent.ts` calls only its synchro
 | `lib/dom/shadow.ts` | `https://github.com/mozilla-firefox/firefox` | the attribution of adapted Firefox code in a comment |
 | `lib/pdf/structured.ts` | `https://github.com/zotero/document-worker` | the attribution of Zotero's document-worker, whose reading of a PDF this translates, in a comment |
 | `lib/pdf/structured.ts` | `https://github.com/zotero/structured-document-text` | the attribution of the glyph-map decoding adapted from Zotero's library, in a comment |
+| `lib/webengine/pin.ts` | `https://huggingface.co/` | builds the pinned modelkit files' download addresses (`anagramd/modelkit.json`'s repository and revision), the native installer's |
+| `lib/webengine/pin.ts` | `https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz` | the language model's download address, the native installer's |
+| `lib/webengine/emoji.ts` | `https://github.com/carpedm20/emoji` | the attribution of the emoji tokenizer port, in a comment |
+| `lib/webengine/fasttext.ts` | `https://github.com/facebookresearch/fastText` | the attribution of the fastText prediction port, in a comment |
 | `lib/pdf/reading.ts` | `https://github.com/funstory-ai/BabelDOC` | the attribution of the formula-character rules adapted from BabelDOC, in a comment |
 | `entrypoints/shadow.content.ts` | `https://github.com/FluentRead/FluentRead` | the attribution of adapted FluentRead code in a comment |
 | `lib/render/textFragment.ts` | `https://github.com/GoogleChromeLabs/text-fragments-polyfill` | the attribution of the text-fragment generation the copied report links flagged paragraphs with, in a comment |
@@ -154,6 +162,11 @@ rows expire 30 days after they were written.
 - The packaged PDF.js viewer uses `localStorage` keys `pdfjs.history` (up to 20 document
   fingerprints with view state, no text or password) and `pdfjs.preferences`. These are
   not erased by "Clear cached verdicts".
+- The in-browser engine build keeps its model files in the extension origin's private
+  file system (OPFS), directory `anagram-engine`: the verified model, tokenizer and
+  language-model files, `.part` files of an unfinished download, and `state.json` (the
+  engine's preferences and which files were verified). Deleted by "Delete model files";
+  never page text.
 
 ## On disk, outside the browser
 

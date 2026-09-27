@@ -49,15 +49,16 @@ const ACCEPTED = [
       "PDF.js's worker and decoders, and the document worker's modules. Nothing remote.",
   },
   {
-    flavor: "oneclick", code: "UNSAFE_VAR_ASSIGNMENT", message: IMPORT, file: /^vendor\/engine\/ort\.bundle\.min\.mjs$/, count: 1,
-    why: "ONNX Runtime Web as published: import() of its Emscripten glue, " +
-      "ort-wasm-simd-threaded.jsep.mjs, from the extension's own vendor/engine/ (or a blob: of it). Nothing remote.",
+    flavor: "oneclick", code: "UNSAFE_VAR_ASSIGNMENT", message: IMPORT, file: /^vendor\/engine\/(ort\.jspi\.min|ort\.wasm\.min|worker\.min)\.mjs$/, count: 3,
+    why: "ONNX Runtime Web as published: import() of its Emscripten glue, ort-wasm-simd-threaded[.jspi].mjs, " +
+      "from the extension's own vendor/engine/; and the engine's worker importing that runtime by its " +
+      "extension URL (lib/webengine/session.ts). Nothing remote.",
   },
   {
-    flavor: "oneclick", code: "DANGEROUS_EVAL", file: /^vendor\/engine\/ort\.bundle\.min\.mjs$/, count: 1,
+    flavor: "oneclick", code: "DANGEROUS_EVAL", file: /^vendor\/engine\/ort-wasm-simd-threaded\.jspi\.mjs$/, count: 1,
     why: "ONNX Runtime Web as published: Emscripten embind's method caller builds a function with " +
       "new Function. The extension's CSP has no 'unsafe-eval', so that path throws rather than runs; " +
-      "the in-browser engine must not depend on it.",
+      "the engine never reaches it (test/webengine/engine-browser.mjs runs the worker under that CSP).",
   },
 ].filter((entry) => !entry.flavor || entry.flavor === FLAVOR);
 
