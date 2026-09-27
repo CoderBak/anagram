@@ -314,6 +314,16 @@ base("Overleaf's PDF preview is read by the pdf.js surface, once its app has bui
   const sent = nativeHost.textsSince(mark).map((t) => t.replace(/\s+/g, " "));
   expect(sent.some((t) => t.includes("broke across two lines with a hyphenation mark is joined again")), "the broken word mended").toBe(true);
   expect(sent.some((t) => t.includes("Running heads and page numbers are furniture")), "the second page read").toBe(true);
+  // pdf.js has turned a run with `--rotate` since version 4, not with its transform: the stamp
+  // up the margin is a rotated line, which is never part of a paragraph.
+  const { outputFiles } = await build({ entryPoints: [join(ROOT, "lib/surfaces/pdfjs.ts")], bundle: true, write: false, format: "iife", globalName: "PdfjsSource" });
+  await page.addScriptTag({ content: outputFiles[0].text });
+  const stamp = await page.evaluate(() => {
+    const [first] = PdfjsSource.createPdfjsSource(document).pages();
+    const at = first.lines.findIndex((line) => line.textContent.startsWith("arXiv:"));
+    return at < 0 ? null : first.boxes[at].rotated;
+  });
+  expect(stamp, "the stamp up the margin is read as rotated").toBe(true);
   expect(sent.filter((t) => t.includes("arXiv:") || t.includes(PDF_HEAD) || t.includes("LaTeX source")), "the stamp up the margin, the running head, the editor").toEqual([]);
 });
 });

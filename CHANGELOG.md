@@ -106,6 +106,10 @@ local component and the installer all carry the same version.
   words left as printed, and chips drawn inside the layer. A project's page is now known by
   its address, and the preview's paragraphs are rebuilt from the text layer as they are for
   OneDrive's.
+- In a pdf.js viewer in a page, text set at an angle is left out of the paragraphs again,
+  such as the identifier arXiv stamps up the margin of a paper's first page. pdf.js turns
+  such a run with a style property of its own since version 4, which Anagram did not read,
+  so the stamp was read into the first paragraph beside it.
 - The Copy report button in the panel keeps to one line when the panel's title needs more
   room, as it does in a longer translation; the title wraps instead.
 - The legal fine print a site sets under its text or its offer is no longer read: boxes
