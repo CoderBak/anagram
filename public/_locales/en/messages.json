@@ -651,6 +651,14 @@
     "message": "Not installed",
     "description": "Engine state: the local engine has never connected."
   },
+  "engineInBrowserNotReady": {
+    "message": "Not ready yet",
+    "description": "In-browser edition: engine state while the engine inside the browser cannot answer yet."
+  },
+  "engineInBrowserIntro": {
+    "message": "The model runs inside your browser, with nothing to install. Its files, about 1.4 GB, download once.",
+    "description": "In-browser edition: the engine card's explanation, in place of the install command."
+  },
   "componentStarting": {
     "message": "Starting…",
     "description": "Engine state: starting or loading the model."

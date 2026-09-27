@@ -32,6 +32,8 @@ export function flavorOf(env = process.env) {
 export const FLAVOR_MODULES = {
   // The engine the background worker sends contract operations to: `engineTransport()`.
   "#flavor/engine-transport": { native: "lib/backend/nativeTransport.ts", oneclick: "lib/webengine/client.ts" },
+  // The engine panel on the setup page and in Settings.
+  "#flavor/engine-panel": { native: "lib/ui/componentSettings.ts", oneclick: "lib/ui/inBrowserEngine.ts" },
 };
 
 /** `FLAVOR_MODULES` resolved for one flavor: specifier → absolute file. */

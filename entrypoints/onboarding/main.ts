@@ -8,7 +8,7 @@ import { linkSourceCode } from "../../lib/ui/sourceCode";
 import { messageLocale } from "../../lib/i18n";
 import { ALL_SITES } from "../../lib/access/patterns";
 import { accessSummary, requestAccess } from "../../lib/access/grant";
-import { mountComponentSettings, componentReady } from "../../lib/ui/componentSettings";
+import { mountComponentSettings, componentReady } from "#flavor/engine-panel";
 import { scaleColorCss } from "../../lib/render/scale";
 
 localizePage();

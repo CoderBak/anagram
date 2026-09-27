@@ -509,6 +509,12 @@
   "componentNotInstalled": {
     "message": "未安装"
   },
+  "engineInBrowserNotReady": {
+    "message": "尚未就绪"
+  },
+  "engineInBrowserIntro": {
+    "message": "模型在浏览器内运行，无需安装任何软件。模型文件约 1.4 GB，只需下载一次。"
+  },
   "componentStarting": {
     "message": "正在启动…"
   },

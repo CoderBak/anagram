@@ -25,7 +25,7 @@ import { commentOriginOfHost } from "../../lib/access/commentFrames";
 import { ACTIONS } from "../../lib/messaging/protocol";
 import { getFileAccess, openFileAccessSettings, requestFileAccess } from "../../lib/pdf/fileAccess";
 import type { CacheCountReply } from "../../lib/messaging/protocol";
-import { mountComponentSettings, componentConnectionLabel } from "../../lib/ui/componentSettings";
+import { mountComponentSettings, componentConnectionLabel } from "#flavor/engine-panel";
 import { bindConfirmedToggle } from "../../lib/ui/confirmedToggle";
 import { bindSelect, bindToggle } from "../../lib/ui/boundSetting";
 import { createLogger } from "../../lib/log";
