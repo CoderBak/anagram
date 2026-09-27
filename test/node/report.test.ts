@@ -14,7 +14,7 @@ const verdict = (probs: number[], extra: Partial<ScoreResult> = {}, tokens = 200
     id: "u",
     bucket: probs.indexOf(Math.max(...probs)),
     probs,
-    score: (probs[1] + 2 * probs[2] + 3 * probs[3]) / 3,
+    score: (probs[1]! + 2 * probs[2]! + 3 * probs[3]!) / 3,
     tokens,
     ...extra,
   };

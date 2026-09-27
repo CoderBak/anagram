@@ -87,13 +87,13 @@ describe("a private tab leaves nothing on the disk", () => {
     await router.handle(req(["read in an ordinary window first"])); // an ordinary tab
     await flushed();
     expect(store.rows.size).toBe(1);
-    const written = [...store.rows.values()][0].t;
+    const written = [...store.rows.values()][0]!.t;
 
     await router.handle(req(["read in an ordinary window first"]), { private: true });
     await flushed();
     expect(client.calls.length).toBe(1); // a hit
     expect(store.rows.size).toBe(1);
-    expect([...store.rows.values()][0].t).toBe(written); // the read did not rewrite it
+    expect([...store.rows.values()][0]!.t).toBe(written); // the read did not rewrite it
   });
 
   it("writes it once an ordinary tab asks for the same text", async () => {
@@ -154,7 +154,7 @@ it("does not persist private work after its only public subscriber cancels", asy
   const controller = new AbortController();
   const publicWork = router.handle(req(["shared until navigation"]), { documentKey: "public", signal: controller.signal });
   await new Promise((resolve) => setTimeout(resolve, 10));
-  controller.abort(); expect((await publicWork).results[0].degraded).toBe(true);
-  client.release(); expect((await secret).results[0].degraded).toBeUndefined();
+  controller.abort(); expect((await publicWork).results[0]!.degraded).toBe(true);
+  client.release(); expect((await secret).results[0]!.degraded).toBeUndefined();
   await flushed(); expect(store.rows.size).toBe(0); expect(client.calls).toHaveLength(1);
 });

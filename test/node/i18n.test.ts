@@ -63,8 +63,8 @@ describe("message files", () => {
   });
 
   it("declares its own locale, so the UI never has to guess what resolved", () => {
-    expect(EN.localeTag.message).toBe("en");
-    expect(ZH.localeTag.message).toBe("zh-CN");
+    expect(EN.localeTag!.message).toBe("en");
+    expect(ZH.localeTag!.message).toBe("zh-CN");
   });
 
   it("has no empty message", () => {
@@ -80,7 +80,7 @@ describe("message files", () => {
 
   it("uses the same placeholders in both languages", () => {
     for (const key of Object.keys(EN)) {
-      expect(placeholders(ZH[key].message), key).toEqual(placeholders(EN[key].message));
+      expect(placeholders(ZH[key]!.message), key).toEqual(placeholders(EN[key]!.message));
     }
   });
 
@@ -97,7 +97,7 @@ describe("message files", () => {
 
   it("counts windows as 窗口, never as the 段 a paragraph is", () => {
     for (const [key, entry] of Object.entries(EN)) {
-      if (/\bwindows?\b/i.test(entry.message)) expect(ZH[key].message, key).toContain("窗口");
+      if (/\bwindows?\b/i.test(entry.message)) expect(ZH[key]!.message, key).toContain("窗口");
     }
   });
 
@@ -122,15 +122,15 @@ describe("keys and the code that names them", () => {
 
   it("has a message for every key the code asks for", () => {
     const asked = new Set<string>();
-    for (const m of SOURCE.matchAll(/\bt\(\s*"([A-Za-z0-9_]+)"/g)) asked.add(m[1]);
+    for (const m of SOURCE.matchAll(/\bt\(\s*"([A-Za-z0-9_]+)"/g)) asked.add(m[1]!);
     for (const m of SOURCE.matchAll(/\btn\(\s*"([A-Za-z0-9_]+)"/g)) {
       asked.add(`${m[1]}_one`);
       asked.add(`${m[1]}_other`);
     }
     for (const m of SOURCE.matchAll(/data-i18n(?:-title|-aria-label|-placeholder|-html)?="([A-Za-z0-9_]+)"/g)) {
-      asked.add(m[1]);
+      asked.add(m[1]!);
     }
-    for (const m of SOURCE.matchAll(/__MSG_([A-Za-z0-9_]+)__/g)) asked.add(m[1]);
+    for (const m of SOURCE.matchAll(/__MSG_([A-Za-z0-9_]+)__/g)) asked.add(m[1]!);
     expect(asked.size).toBeGreaterThan(50);
     expect([...asked].filter((key) => !(key in EN)).sort()).toEqual([]);
   });
@@ -218,7 +218,7 @@ describe("t()", () => {
     expect(t("bandHeavy")).toBe("Heavily edited");
     expect(tn("countAria", 3)).toBe("3 flagged paragraphs — show list");
     Object.assign(host, { browser: undefined, chrome: { i18n: { getMessage: () => "" } } });
-    expect(t("cardScored")).toBe(EN.cardScored.message);
+    expect(t("cardScored")).toBe(EN.cardScored!.message);
     expect(messageLocale()).toBe("en");
   });
 
@@ -339,7 +339,7 @@ describe("the English each bundle carries", () => {
     const OUT = join(ROOT, "output", "chrome-mv3");
     /** `key:{message:` — how the compiled fallback object comes out of the minifier. */
     const compiledKeys = (code: string): Set<string> =>
-      new Set([...code.matchAll(/\b([A-Za-z0-9_]+):\{message:/g)].map((m) => m[1]));
+      new Set([...code.matchAll(/\b([A-Za-z0-9_]+):\{message:/g)].map((m) => m[1]!));
 
     /** Every built .js, by path relative to the output. */
     const bundles = (): string[] => {
@@ -403,14 +403,14 @@ describe("the English each bundle carries", () => {
     });
 
     it.skipIf(!ready)("keeps the pages' strings out of the content script", () => {
-      const compiled = compiledKeys(readFileSync(join(OUT, carriers().content), "utf8"));
+      const compiled = compiledKeys(readFileSync(join(OUT, carriers().content!), "utf8"));
       expect([...compiled].filter((key) => /^(opt|onb|popup|reader)/.test(key))).toEqual([]);
       // And it is a real saving, not a rounding of one.
       expect(compiled.size).toBeLessThan(Object.keys(EN).length / 2);
     });
 
     it.skipIf(!ready)("leaves the background worker its menu titles and little else", () => {
-      const compiled = compiledKeys(readFileSync(join(OUT, carriers().background), "utf8"));
+      const compiled = compiledKeys(readFileSync(join(OUT, carriers().background!), "utf8"));
       expect([...compiled].sort()).toEqual([
         "localeTag",
         "menuAnalyzePage",

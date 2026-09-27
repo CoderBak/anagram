@@ -13,7 +13,7 @@ const result = (probs: number[], tokens?: number): ScoreResult => ({
   id: "r",
   bucket: probs.indexOf(Math.max(...probs)),
   probs,
-  score: (probs[1] + 2 * probs[2] + 3 * probs[3]) / 3,
+  score: (probs[1]! + 2 * probs[2]! + 3 * probs[3]!) / 3,
   ...(tokens === undefined ? {} : { tokens }),
 });
 

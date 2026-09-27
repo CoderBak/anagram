@@ -45,10 +45,10 @@ export function unitsOf(blocks: ReflowBlock[], mergeShorts = true): BenchUnit[] 
   const plan = planOf(blocks);
   return groupsOf(blocks, mergeShorts).map((group) => {
     let text = "";
-    for (const at of group) text = text.length === 0 ? blocks[at].text : `${text}\n\n${blocks[at].text}`;
+    for (const at of group) text = text.length === 0 ? blocks[at]!.text : `${text}\n\n${blocks[at]!.text}`;
     let words = 0;
-    for (const at of group) words += plan[at].words;
-    return { text: text.slice(0, MAX_UNIT_TEXT_CHARS), words, blocks: group, page: blocks[group[0]].page };
+    for (const at of group) words += plan[at]!.words;
+    return { text: text.slice(0, MAX_UNIT_TEXT_CHARS), words, blocks: group, page: blocks[group[0]!]!.page };
   });
 }
 

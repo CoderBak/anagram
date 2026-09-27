@@ -142,7 +142,7 @@ export function surveyPage(opts: { running: boolean; max: number }): PageSurvey 
   // badge layer puts the chip after the last run, which for a clipped box is a sibling of
   // the box rather than a child of it.
   const drawn = units.map((_, i) =>
-    partContainers[i].some(
+    partContainers[i]!.some(
       (c) => c.querySelector(CHIP_SEL) !== null || (c.nextElementSibling?.hasAttribute(MARK_ATTR) ?? false),
     ),
   );
@@ -224,7 +224,7 @@ export function surveyPage(opts: { running: boolean; max: number }): PageSurvey 
   for (const el of blocks) {
     const hits: number[] = [];
     for (let i = 0; i < units.length; i++) {
-      if (partContainers[i].some((c) => containsComposed(el, c) || containsComposed(c, el))) hits.push(i);
+      if (partContainers[i]!.some((c) => containsComposed(el, c) || containsComposed(c, el))) hits.push(i);
     }
     // While Anagram is running, silence means NO CHIP: a unit nobody drew is exactly the
     // case the owner reports. On a page it is switched off for there are no chips to

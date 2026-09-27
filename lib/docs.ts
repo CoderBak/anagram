@@ -37,7 +37,7 @@ export function detectDocsPage(loc: Location | URL): DocsPage | null {
   const m = loc.pathname.match(DOC_PATH_RE);
   if (!m) return null;
   const [, id, view] = m;
-  return { kind: view === "mobilebasic" ? "reading" : "editor", id };
+  return { kind: view === "mobilebasic" ? "reading" : "editor", id: id! };
 }
 
 /**

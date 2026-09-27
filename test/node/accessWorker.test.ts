@@ -92,7 +92,7 @@ function environment(tabs: Tab[] = [], origins: string[] = [], opts: { refuseMai
     unregisterContentScripts: async ({ ids }: { ids: string[] }) => {
       calls.unregister += 1;
       for (let i = registered.length - 1; i >= 0; i--) {
-        if (ids.includes(registered[i].id)) registered.splice(i, 1);
+        if (ids.includes(registered[i]!.id)) registered.splice(i, 1);
       }
     },
     executeScript: async ({

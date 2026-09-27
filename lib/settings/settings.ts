@@ -114,7 +114,7 @@ function matchRule(overrides: Record<string, SiteMode>, host: string): SiteRule 
   const byKey = indexRules(overrides);
   for (const candidate of ruleCandidates(host)) {
     const stored = byKey.get(candidate);
-    if (stored !== undefined) return { host: stored, mode: overrides[stored] };
+    if (stored !== undefined) return { host: stored, mode: overrides[stored]! };
   }
   return null;
 }

@@ -112,8 +112,8 @@ describe("the network inventory in docs/footprint.md", () => {
   it("says where each one goes", () => {
     for (const row of rows) {
       expect(row, row[0]).toHaveLength(4);
-      expect(row[2].length, `${row[0]}: no purpose`).toBeGreaterThan(10);
-      expect(row[3].length, `${row[0]}: no destination`).toBeGreaterThan(5);
+      expect(row[2]!.length, `${row[0]}: no purpose`).toBeGreaterThan(10);
+      expect(row[3]!.length, `${row[0]}: no destination`).toBeGreaterThan(5);
     }
   });
 
@@ -150,20 +150,20 @@ describe("the addresses in docs/footprint.md", () => {
 
   it("has a row for every http(s) literal in the shipped source", () => {
     const unlisted = inCode
-      .filter(({ file, url }) => !rows.some((r) => r[0] === file && url.startsWith(r[1])))
+      .filter(({ file, url }) => !rows.some((r) => r[0] === file && url.startsWith(r[1]!)))
       .map(({ file, url }) => `${file} ${url}`);
     expect([...new Set(unlisted)].sort()).toEqual([]);
   });
 
   it("lists no address that is no longer written anywhere", () => {
     const stale = rows
-      .filter((r) => !inCode.some(({ file, url }) => file === r[0] && url.startsWith(r[1])))
+      .filter((r) => !inCode.some(({ file, url }) => file === r[0] && url.startsWith(r[1]!)))
       .map((r) => `${r[0]} ${r[1]}`);
     expect(stale.sort()).toEqual([]);
   });
 
   it("explains the purpose of every address literal", () => {
-    for (const row of rows) expect(row[2].length, `${row[0]} ${row[1]}`).toBeGreaterThan(10);
+    for (const row of rows) expect(row[2]!.length, `${row[0]} ${row[1]}`).toBeGreaterThan(10);
 
   });
 });
@@ -172,7 +172,7 @@ describe("the addresses in docs/footprint.md", () => {
 
 describe("the storage inventory in docs/footprint.md", () => {
   const rows = tableUnder("### `chrome.storage.local`");
-  const inDoc = new Set(rows.map((r) => r[0]));
+  const inDoc = new Set(rows.map((r) => r[0]!));
 
   /** Every key the code really defines or writes by name. */
   function keysInCode(): Set<string> {
@@ -180,13 +180,13 @@ describe("the storage inventory in docs/footprint.md", () => {
     // `"local:<key>"` is WXT's own spelling of a storage.local item; the type argument in
     // front of it can carry its own angle brackets, so the key is read and not the call.
     for (const m of read("lib/settings/settings.ts").matchAll(/"local:([A-Za-z0-9_]+)"/g)) {
-      keys.add(m[1]);
+      keys.add(m[1]!);
     }
     // Anything else written straight to storage.local, by the constant it is held in.
     for (const rel of SOURCES) {
       const code = read(rel);
       if (!/storage\.local\.(set|remove)/.test(code)) continue;
-      for (const m of code.matchAll(/^const ([A-Z_]*(?:FLAG|KEY))\s*=\s*"([^"]+)"/gm)) keys.add(m[2]);
+      for (const m of code.matchAll(/^const ([A-Z_]*(?:FLAG|KEY))\s*=\s*"([^"]+)"/gm)) keys.add(m[2]!);
     }
     return keys;
   }

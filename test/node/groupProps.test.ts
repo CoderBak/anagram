@@ -60,13 +60,13 @@ describe("groupBlocks", () => {
       for (const g of groups) {
         expect(g.length).toBeGreaterThan(0);
         expect(g[0]).toBeGreaterThan(previousFirst);
-        previousFirst = g[0];
+        previousFirst = g[0]!;
         for (let i = 0; i < g.length; i++) {
           expect(g[i]).toBeGreaterThanOrEqual(0);
           expect(g[i]).toBeLessThan(blocks.length);
-          if (i > 0) expect(g[i]).toBeGreaterThan(g[i - 1]);
-          expect(seen.has(g[i])).toBe(false);
-          seen.add(g[i]);
+          if (i > 0) expect(g[i]).toBeGreaterThan(g[i - 1]!);
+          expect(seen.has(g[i]!)).toBe(false);
+          seen.add(g[i]!);
         }
       }
     });
@@ -76,8 +76,8 @@ describe("groupBlocks", () => {
     forSeeds(300, (r) => {
       const blocks = sequence(r);
       for (const g of groupBlocks(blocks)) {
-        expect(clearsFloor(g.map((i) => blocks[i]))).toBe(true);
-        expect(groupWords(g.map((i) => blocks[i]))).toBeGreaterThanOrEqual(MIN_UNIT_WORDS);
+        expect(clearsFloor(g.map((i) => blocks[i]!))).toBe(true);
+        expect(groupWords(g.map((i) => blocks[i]!))).toBeGreaterThanOrEqual(MIN_UNIT_WORDS);
       }
     });
   });
@@ -86,7 +86,7 @@ describe("groupBlocks", () => {
     forSeeds(300, (r) => {
       const blocks = sequence(r);
       for (const g of groupBlocks(blocks)) {
-        const parts = g.map((i) => blocks[i]);
+        const parts = g.map((i) => blocks[i]!);
         if (fitsWindow(parts) || parts.length === 1) continue;
         // The only group allowed past the window is a stretch of SHORT blocks that cannot
         // be divided without leaving a piece under the floor (thirty-letter words).
@@ -99,14 +99,14 @@ describe("groupBlocks", () => {
     forSeeds(300, (r) => {
       const blocks = sequence(r);
       for (const g of groupBlocks(blocks)) {
-        for (const i of g) expect(["prose", "apart"]).toContain(roleOf(blocks[i]));
-        if (roleOf(blocks[g[0]]) === "apart") expect(g.length).toBe(1);
-        for (let at = g[0] + 1; at <= g[g.length - 1]; at++) {
+        for (const i of g) expect(["prose", "apart"]).toContain(roleOf(blocks[i]!));
+        if (roleOf(blocks[g[0]!]!) === "apart") expect(g.length).toBe(1);
+        for (let at = g[0]! + 1; at <= g[g.length - 1]!; at++) {
           // Nothing between the first and the last block of a group may be a boundary…
-          expect(roleOf(blocks[at])).not.toBe("barrier");
-          expect(roleOf(blocks[at])).not.toBe("apart");
+          expect(roleOf(blocks[at]!)).not.toBe("barrier");
+          expect(roleOf(blocks[at]!)).not.toBe("apart");
           // …and no joint inside it may be one.
-          expect(blocks[at].barrierBefore ?? false).toBe(false);
+          expect(blocks[at]!.barrierBefore ?? false).toBe(false);
         }
       }
     });
@@ -136,7 +136,7 @@ describe("groupBlocks", () => {
       const groups = groupBlocks(blocks);
       expect(groupBlocks(blocks)).toEqual(groups);
       for (const g of groups) {
-        const parts = g.map((i) => blocks[i]);
+        const parts = g.map((i) => blocks[i]!);
         // A group past the window is one modelSized could not divide IN ITS STRETCH; on
         // its own it is a different question, so only the ordinary case is asserted.
         if (!fitsWindow(parts)) continue;

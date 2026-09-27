@@ -42,7 +42,7 @@ async function fakeSession(candidate: Candidate, model: Blob, log: string[]): Pr
     device: candidate.id === "webgpu:fp32" ? "webgpu" : "wasm",
     async logits(ids, mask) {
       const out = new Float32Array(ids.length * 4);
-      ids.forEach((r, i) => r.forEach((id, j) => { if (mask[i][j]) row(id).forEach((v, k) => { out[i * 4 + k] += v; }); }));
+      ids.forEach((r, i) => r.forEach((id, j) => { if (mask[i]![j]) row(id).forEach((v, k) => { out[i * 4 + k]! += v; }); }));
       return out;
     },
     async release() { log.push(`release ${candidate.id}`); },
@@ -121,14 +121,14 @@ describe("the engine's lifecycle", () => {
     expect(response.results.map((r) => r.id)).toEqual(["a", "b", "c", "d"]);
     const [a, b, c, d] = response.results;
     expect(a).toMatchObject({ lang: "en", tokens: expect.any(Number), truncated: false });
-    expect(a.lang_prob).toBe(0.535);
-    expect((a.probs as number[]).reduce((x, y) => x + y)).toBeCloseTo(1, 3);
+    expect(a!.lang_prob).toBe(0.535);
+    expect((a!.probs as number[]).reduce((x, y) => x + y)).toBeCloseTo(1, 3);
     expect(b).toMatchObject({ bucket: 0, probs: [0.25, 0.25, 0.25, 0.25], score: 0, tokens: 0, truncated: false, lang: "fr", lang_prob: 0.529, unsupported: true });
     expect(c).toMatchObject({ bucket: 0, score: 0, tokens: 0, degraded: true });
     // The tiny model sums a fixed row per token: the expected logits are known.
     const ids = [0, ...[0, 0].map(() => 0), 2];
     void ids;
-    expect(d.tokens).toBe(4);
+    expect(d!.tokens).toBe(4);
     const { data: counts } = await m.engine.handle("tokens", { v: "3.0", texts: ["the the", ""] });
     expect(counts).toEqual({ alone: [2, 0], following: [2, 0], window: 510 });
   });
@@ -197,7 +197,7 @@ describe("the engine's lifecycle", () => {
     expect(m.log).toEqual(["create webgpu:fp32", "release webgpu:fp32", "idle"]);
     await fails(m.engine.handle("health", {}), "engine_idle", 503);
     ({ data } = await m.engine.handle("score", { v: "3.0", blocks: [{ id: "a", text: "hello world" }] }));
-    expect((data as { results: Array<{ lang: string }> }).results[0].lang).toBe("en");
+    expect((data as { results: Array<{ lang: string }> }).results[0]!.lang).toBe("en");
     expect(m.log).toEqual(["create webgpu:fp32", "release webgpu:fp32", "idle", "create webgpu:fp32"]);
     ({ data } = await m.engine.handle("status", {}));
     expect((data as { state: string }).state).toBe("ready");
@@ -214,7 +214,7 @@ describe("the engine's lifecycle", () => {
     await fails(m.engine.handle("health", {}), "engine_idle", 503);
     expect(m.log).toEqual([]);
     ({ data } = await m.engine.handle("score", { v: "3.0", blocks: [{ id: "a", text: "hello world" }] }));
-    expect((data as { results: Array<{ lang: string }> }).results[0].lang).toBe("en");
+    expect((data as { results: Array<{ lang: string }> }).results[0]!.lang).toBe("en");
     expect(m.log).toEqual(["create webgpu:fp32"]);
     expect(m.server.requests).toEqual([]);
   });

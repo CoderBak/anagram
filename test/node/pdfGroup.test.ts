@@ -136,8 +136,8 @@ describe("a PDF's short paragraphs", () => {
       y = p.next;
     }
     const blocks = reflowPdf([page(1, placed)]);
-    expect(blocks[1].apart).toBe(true);
-    expect(blocks[0].apart).toBe(false);
+    expect(blocks[1]!.apart).toBe(true);
+    expect(blocks[0]!.apart).toBe(false);
     // The 32-word paragraph above the caption has nobody left to join and is dropped; the
     // two below it are read together.
     expect(groupsOf(blocks)).toEqual([[2, 3]]);
@@ -160,8 +160,8 @@ describe("a PDF's short paragraphs", () => {
     }
     const blocks = reflowPdf([page(1, placed)]);
     if (blocks.length !== 5) return; // the gutter finder did not see two columns here
-    expect(blocks[3].columnBreak).toBe(true);
-    expect(blocks[1].columnBreak).toBe(false);
+    expect(blocks[3]!.columnBreak).toBe(true);
+    expect(blocks[1]!.columnBreak).toBe(false);
     expect(groupsOf(blocks)).toEqual([[0, 1, 2]]);
   });
 });

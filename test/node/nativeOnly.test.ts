@@ -60,7 +60,7 @@ describe("native-only scoring and settings migration", () => {
     const router = createRouter(getScoreClient(), createSwCache(fakeScoreStore()));
     const work = router.handle({v:"3.0",session:"s",priority:"viewport",blocks:[{id:"b0",text:"One local paragraph"}]});
     await vi.advanceTimersByTimeAsync(5000);
-    expect((await work).results[0].degraded).toBeUndefined();
+    expect((await work).results[0]!.degraded).toBeUndefined();
     expect(connect).toHaveBeenCalledTimes(2);
   });
   it.each(["http://127.0.0.1:8765","https://example.com/score"])("ignores the saved HTTP destination %s even before migration", async (serverUrl) => {

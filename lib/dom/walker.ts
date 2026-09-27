@@ -155,7 +155,7 @@ const MARKED_WORD = 3;
  *  mark, linked or not. */
 function followsWord(el: Element): boolean {
   const before = el.previousSibling?.textContent ?? "";
-  return (/(\p{L}+)[.,;:!?)\]’”"']*\s*$/u.exec(before)?.[1].length ?? 0) >= MARKED_WORD;
+  return (/(\p{L}+)[.,;:!?)\]’”"']*\s*$/u.exec(before)?.[1]!.length ?? 0) >= MARKED_WORD;
 }
 
 /** A mark that is a link, or the whole text of one (`<a href="#fn1"><sup>1</sup></a>`). */
@@ -338,7 +338,7 @@ export function inPageOrder(units: readonly Unit[]): Unit[] {
     const ka = keys.get(a), kb = keys.get(b);
     // Where two paths part, both nodes have one parent in the DOM as well: a host's shadow
     // root, the host whose children a slot shows, or an ordinary element.
-    if (ka && kb) for (let i = 0; i < ka.length && i < kb.length; i++) if (ka[i] !== kb[i]) return ka[i] - kb[i];
+    if (ka && kb) for (let i = 0; i < ka.length && i < kb.length; i++) if (ka[i] !== kb[i]) return ka[i]! - kb[i]!;
     return a.order - b.order;
   });
 }
@@ -440,7 +440,7 @@ export function collectUnits(
    *  puts the quote boundary BETWEEN two text nodes rather than inside one. */
   function atLineStart(): boolean {
     for (let i = cur.length - 1; i >= 0; i--) {
-      const s = cur[i].textContent ?? "";
+      const s = cur[i]!.textContent ?? "";
       if (s.length === 0) continue;
       return /\n[ \t]*$/.test(s);
     }
@@ -456,7 +456,7 @@ export function collectUnits(
   function closeRun(): void {
     // Interior whitespace nodes were kept (see visitText); trailing ones are not
     // part of the paragraph.
-    while (cur.length > 0 && (cur[cur.length - 1].textContent ?? "").trim() === "") cur.pop();
+    while (cur.length > 0 && (cur[cur.length - 1]!.textContent ?? "").trim() === "") cur.pop();
     const kept = cur.length;
     const found: Found | null =
       cur.length > 0
@@ -563,7 +563,7 @@ export function collectUnits(
   /** The last text the open run holds, spaces aside. */
   function openRunTail(): string {
     for (let i = cur.length - 1; i >= 0; i--) {
-      const t = (cur[i].textContent ?? "").trimEnd();
+      const t = (cur[i]!.textContent ?? "").trimEnd();
       if (t) return t;
     }
     return "";
@@ -849,7 +849,7 @@ export function collectUnits(
       }
       // Gap at position 0: consume it (and any following blank space).
       let end = m.index + m[0].length;
-      while (end < s.length && /\s/.test(s[end])) end++;
+      while (end < s.length && /\s/.test(s[end]!)) end++;
       closeRun();
       // Whole node is gap: NOTHING to split. splitText(length) would be a mutating
       // no-op that fires fresh mutation records — the first scan already left this
@@ -1044,7 +1044,7 @@ function readsAsProse(raw: string): boolean {
     }
     nonSpace++;
     lineHasText = true;
-    const ch = t[i];
+    const ch = t[i]!;
     if (CODE_PUNCT_CHARS.has(ch)) punct++;
     if (code === 46 /* . */ || code === 33 /* ! */ || code === 63 /* ? */) {
       // A full stop ends a sentence only where a space or the end of the text follows
@@ -1389,11 +1389,11 @@ function createAssembler(
       wordCount: groupWords(runs),
       formulas: runs.reduce((n, r) => n + r.formulas, 0),
       order: 0,
-      topElement: runs[0].container,
-      container: runs[runs.length - 1].container,
+      topElement: runs[0]!.container,
+      container: runs[runs.length - 1]!.container,
       isScored: false,
     };
-    emitted.push({ unit, at: runs[0].index });
+    emitted.push({ unit, at: runs[0]!.index });
   }
 
   /**
@@ -1447,7 +1447,7 @@ function createAssembler(
       // Whether the paragraph on that side is in the same place is the walk's to answer;
       // the window bound and the order of preference are the shared rule's (plan/group).
       const home = orphanHome(g, prev, next, (side) =>
-        side === "before" ? beside((prev as Run[])[(prev as Run[]).length - 1], g[0]) : beside(g[g.length - 1], next as Run),
+        side === "before" ? beside((prev as Run[])[(prev as Run[]).length - 1]!, g[0]!) : beside(g[g.length - 1]!, next as Run),
       );
       if (home === "before") (f.prev as Run[]).push(...g);
       else if (home === "after") lead = g;
@@ -1560,7 +1560,7 @@ function createAssembler(
    */
   function unwindTo(scope: Element | null): Frame | null {
     while (stack.length > 0) {
-      const top = stack[stack.length - 1];
+      const top = stack[stack.length - 1]!;
       if (top.scope === scope) return top;
       if (top.scope === null || (scope !== null && scopes.holds(top.scope, scope))) return null;
       settle(top);
@@ -1581,7 +1581,7 @@ function createAssembler(
   function enter(scope: Element | null): Frame {
     let f = unwindTo(scope);
     if (!f) {
-      if (stack.length > 0 && scopes.recognised(scope)) cut(stack[stack.length - 1]);
+      if (stack.length > 0 && scopes.recognised(scope)) cut(stack[stack.length - 1]!);
       const partial = scope !== null && !composedContains(walkRoot, scope);
       f = { scope, group: [], block: null, pending: null, lines: [], prev: null, prose: [], held: [], partial, unread: [], live: false };
       stack.push(f);
@@ -1732,7 +1732,7 @@ function createAssembler(
       f.pending = null;
       if (last && !together(f, last.container, r.container)) close(f); // another section
       // The short lines held before it are lines of the same verse (see below).
-      if (unstopped && lines.length > 0 && sameBody(lines[lines.length - 1].container, r.container)) for (const line of lines) push(f, line);
+      if (unstopped && lines.length > 0 && sameBody(lines[lines.length - 1]!.container, r.container)) for (const line of lines) push(f, line);
       push(f, r);
       return;
     }
@@ -1800,7 +1800,7 @@ function createAssembler(
         return;
       }
       const held = f.lines;
-      f.lines = held.length > 0 && sameBody(held[held.length - 1].container, r.container) ? [...held, r] : [r];
+      f.lines = held.length > 0 && sameBody(held[held.length - 1]!.container, r.container) ? [...held, r] : [r];
     }
     if (f.group.length === 0 && shape.letterWords >= MIN_LINE_WORDS) {
       // "I quit my job" — the unpunctuated first line of a post. It opens the group

@@ -57,5 +57,5 @@ function blocksOf(markdown: string): Block[] {
 /** The units a Markdown text becomes: their texts, "\n\n" between paragraphs. */
 export function unitsOfMarkdown(markdown: string): string[] {
   const blocks = blocksOf(markdown);
-  return groupBlocks(blocks).map((group) => group.map((i) => blocks[i].text).join("\n\n"));
+  return groupBlocks(blocks).map((group) => group.map((i) => blocks[i]!.text).join("\n\n"));
 }

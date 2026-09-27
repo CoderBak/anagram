@@ -52,7 +52,7 @@ it("a waking worker applies its saved mode without clearing a cache or a tab's b
   const send = vi.spyOn(fakeBrowser.tabs, "sendMessage").mockResolvedValue(undefined);
   const work = router.handle({v:CONTRACT_VERSION,session:"s",priority:"viewport",blocks:[{id:"b0",text:"a paragraph in flight"}]});
   await modes.restore(); answer.resolve();
-  expect((await work).results[0].degraded).toBeUndefined();
+  expect((await work).results[0]!.degraded).toBeUndefined();
   await new Promise((r) => setTimeout(r, 10));
   expect(send).not.toHaveBeenCalled(); expect(clear).not.toHaveBeenCalled();
   await modes.change("persistent");

@@ -100,9 +100,10 @@ export function reachableSources(entries: string[], root: string, aliases: Recor
     const text = readFileSync(file, "utf8");
     const specs: string[] = [];
     if (file.endsWith(".html")) {
-      for (const m of text.matchAll(SCRIPT_SRC)) specs.push(m[1]);
+      for (const m of text.matchAll(SCRIPT_SRC)) specs.push(m[1]!);
     } else if (CODE.test(file)) {
-      for (const m of text.matchAll(SPECIFIER)) specs.push(m[1] ?? m[2] ?? m[3]);
+      // Each match is one of the three alternatives, and has its specifier.
+      for (const m of text.matchAll(SPECIFIER)) specs.push(m[1] ?? m[2] ?? m[3]!);
     }
     for (const spec of specs) {
       const aliased = Object.hasOwn(aliases, spec) ? aliases[spec] : undefined;
@@ -139,7 +140,7 @@ export function keysUsedBy(
   for (const file of files) {
     const text = readFileSync(file, "utf8");
     for (const m of text.matchAll(QUOTED)) {
-      const word = m[1];
+      const word = m[1]!;
       if (has(word)) keys.add(word);
       const [one, other] = plural(word);
       if (has(one) && has(other)) {
@@ -148,7 +149,7 @@ export function keysUsedBy(
       }
     }
     for (const m of text.matchAll(NAMED)) {
-      const word = m[1] ?? m[2] ?? m[3];
+      const word = m[1] ?? m[2] ?? m[3]!;
       const [one, other] = plural(word);
       if (!has(word) && !(has(one) && has(other))) unknown.add(`${word} (${file})`);
     }
@@ -162,7 +163,8 @@ export function subsetMessages(
   keys: string[],
 ): Record<string, Message> {
   const lean: Record<string, Message> = {};
-  for (const key of keys) lean[key] = { message: all[key].message };
+  // Every key is one of all's (keysUsedBy).
+  for (const key of keys) lean[key] = { message: all[key]!.message };
   return lean;
 }
 
@@ -215,7 +217,7 @@ export function unscanned(moduleIds: Iterable<string>, root: string, scanned: st
   const known = new Set(scanned.map(slash));
   const out = new Set<string>();
   for (const raw of moduleIds) {
-    const id = slash(raw).split("?")[0];
+    const id = slash(raw).split("?")[0]!;
     if (!id.startsWith(base)) continue;
     if (id.includes("/node_modules/") || id.includes("/.wxt/")) continue;
     if (!CODE.test(id) || known.has(id)) continue;

@@ -38,7 +38,7 @@ export async function detectUnsupported(text: string): Promise<{ lang: string; p
     if (top.percentage < (d.isReliable ? MIN_SHARE_RELIABLE : MIN_SHARE_UNSURE)) return null;
     if (d.languages.some((l) => l.language === "en" && l.percentage >= MAX_ENGLISH_SHARE)) return null;
     // "zh-CN" / "zh-TW" → "zh" to match the daemon's ISO 639-1 codes.
-    return { lang: top.language.split("-")[0].toLowerCase(), prob: Math.round(top.percentage) / 100 };
+    return { lang: top.language.split("-")[0]!.toLowerCase(), prob: Math.round(top.percentage) / 100 };
   } catch {
     return null;
   }

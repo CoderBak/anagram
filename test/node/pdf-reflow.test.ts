@@ -116,7 +116,7 @@ describe("reflowPdf — single column", () => {
         ...column(body, heading + 24, 72, 460),
       ]),
     ]);
-    expect(blocks[0].text).toBe(abstract.join(" "));
+    expect(blocks[0]!.text).toBe(abstract.join(" "));
     expect(blocks[1]).toMatchObject({ kind: "heading", text: "1 Introduction" });
   });
 
@@ -146,8 +146,8 @@ describe("reflowPdf — single column", () => {
       ]),
     ]);
     expect(blocks).toHaveLength(1);
-    expect(blocks[0].text).toMatch(/^the sequence of tokens w.*and the rest of the sentence on the next line of the same paragraph$/);
-    expect(blocks[0].text).toContain("(i)");
+    expect(blocks[0]!.text).toMatch(/^the sequence of tokens w.*and the rest of the sentence on the next line of the same paragraph$/);
+    expect(blocks[0]!.text).toContain("(i)");
   });
 });
 
@@ -236,7 +236,7 @@ describe("reflowPdf — drop caps", () => {
         ...column(["and a paragraph well below,", "set on its own further down."], 200),
       ]),
     ]);
-    expect(blocks[0].text).toBe("A single line beside it");
+    expect(blocks[0]!.text).toBe("A single line beside it");
   });
 });
 
@@ -251,7 +251,7 @@ describe("reflowPdf — hyphenation", () => {
         { text: first, y: 100, width: 455 },
         { text: second, y: 100 + PITCH, width: 460 },
       ]),
-    ])[0].text;
+    ])[0]!.text;
 
   it("mends a word the typesetter broke", () => {
     expect(broken("the reconstruction is straightfor-", "ward once the lines are grouped")).toBe(
@@ -294,7 +294,7 @@ describe("reflowPdf — hyphenation", () => {
         { text: "party audit does not settle them", y: 100 + 2 * PITCH, width: 460 },
       ]),
     ]);
-    expect(blocks[0].text).toContain("a third-party audit");
+    expect(blocks[0]!.text).toContain("a third-party audit");
   });
 
   it("keeps the hyphen of a compound the document spells out only much later", () => {
@@ -302,7 +302,7 @@ describe("reflowPdf — hyphenation", () => {
       page(1, column(["we report an in-", "depth reading of the corpus"], 100)),
       page(2, column(["the in-depth reading is set out", "in the appendix that follows."], 100)),
     ]);
-    expect(blocks[0].text).toContain("an in-depth reading");
+    expect(blocks[0]!.text).toContain("an in-depth reading");
   });
 
   it("mends a compound the document writes as one word elsewhere, list or no list", () => {
@@ -313,7 +313,7 @@ describe("reflowPdf — hyphenation", () => {
         { text: "linear term dominates the fit", y: 100 + 2 * PITCH, width: 460 },
       ]),
     ]);
-    expect(blocks[0].text).toContain("the nonlinear term");
+    expect(blocks[0]!.text).toContain("the nonlinear term");
   });
 
   it("keeps the hyphen of an acronym compound and before a capital or a digit", () => {
@@ -340,7 +340,7 @@ describe("reflowPdf — hyphenation", () => {
         { text: "and reported in the spring of", y: 100 + 2 * PITCH, width: 460 },
       ]),
     ]);
-    expect(blocks[0].text).toContain("a long-term view");
+    expect(blocks[0]!.text).toContain("a long-term view");
   });
 
   it("fuses a compound the document never spells out — the one cost of the rule", () => {
@@ -387,7 +387,7 @@ describe("reflowPdf — two columns", () => {
     const lines = Array.from({ length: 12 }, (_, i) => `line number ${i} of an ordinary page`);
     const blocks = reflowPdf([page(1, column(lines, 100))]);
     expect(blocks).toHaveLength(1);
-    expect(blocks[0].text).toBe(lines.join(" "));
+    expect(blocks[0]!.text).toBe(lines.join(" "));
   });
 
   it("cuts the columns where every line leaves white, not in the middle of the gap", () => {
@@ -441,7 +441,7 @@ describe("reflowPdf — two columns", () => {
       ]),
     ]);
     expect(texts(blocks).slice(-2)).toEqual([left.join(" "), right.join(" ")]);
-    expect(blocks[1].text).toBe(abstract.join(" "));
+    expect(blocks[1]!.text).toBe(abstract.join(" "));
   });
 
   it("reads the columns of a page's lower half and leaves a table above them whole", () => {
@@ -457,7 +457,7 @@ describe("reflowPdf — two columns", () => {
     const blocks = reflowPdf([
       page(1, [...rows.flat(), ...column(prose, 160, 72, 468), ...column(left, 320, 72, 200), ...column(right, 320, 320, 200)]),
     ]);
-    expect(blocks[0].text).toContain("row one left row one right");
+    expect(blocks[0]!.text).toContain("row one left row one right");
     expect(texts(blocks).slice(-2)).toEqual([left.join(" "), right.join(" ")]);
   });
 
@@ -546,7 +546,7 @@ describe("reflowPdf — three columns", () => {
     ]);
     const prose = Array.from({ length: 10 }, (_, i) => `prose line ${i} under the table`);
     const blocks = reflowPdf([page(1, [...rows.flat(), ...column(prose, 220, 72, 240)])]);
-    expect(blocks[0].text).toContain("row one left row one middle row one right");
+    expect(blocks[0]!.text).toContain("row one left row one middle row one right");
     expect(texts(blocks)).toContain(prose.join(" "));
   });
 
@@ -570,7 +570,7 @@ describe("reflowPdf — three columns", () => {
     ]);
     const blocks = reflowPdf([page(1, items)]);
     expect(blocks).toHaveLength(1);
-    expect(blocks[0].text).toContain("the first half of justified line 0 and the second half of it here");
+    expect(blocks[0]!.text).toContain("the first half of justified line 0 and the second half of it here");
   });
 });
 
@@ -594,7 +594,7 @@ describe("reflowPdf — front matter", () => {
       { text: "john@elsewhere.ac.uk", x: 320, y: 176, size: 10, width: 100 },
       { text: "Abstract", x: 285, y: 210, size: 11, font: "display", width: 50 },
       // The abstract opens from a first-line indent, as an abstract usually does.
-      { text: ABSTRACT[0], x: 114, y: 234, width: 396 },
+      { text: ABSTRACT[0]!, x: 114, y: 234, width: 396 },
       ...ABSTRACT.slice(1).map((text, i) => ({ text, x: 100, y: 234 + (i + 1) * PITCH, width: 410 })),
     ]);
 
@@ -623,7 +623,7 @@ describe("reflowPdf — front matter", () => {
       ]),
     ]);
     expect(blocks[1]).toMatchObject({ kind: "paragraph", text: "jane@example.edu", page: 1 });
-    expect(blocks[2].text).toBe(
+    expect(blocks[2]!.text).toBe(
       "the text of the paper opens here and runs on over several lines of prose set flush to the left margin of the page, as prose is.",
     );
   });
@@ -640,7 +640,7 @@ describe("reflowPdf — front matter", () => {
     ]);
     expect(blocks[1]).toMatchObject({ kind: "paragraph", text: "Jane Doe and John Smith", page: 1 });
     expect(blocks[2]).toMatchObject({ kind: "heading", text: "1 Introduction", page: 1 });
-    expect(blocks[3].text).toBe(body.join(" "));
+    expect(blocks[3]!.text).toBe(body.join(" "));
   });
 
   it("finds no front matter on a first page that opens with prose", () => {
@@ -656,7 +656,7 @@ describe("reflowPdf — front matter", () => {
       page(2, [heading, ...body.map((text, i) => ({ text, x: 100, y: 140 + i * PITCH, width: 410 }))]),
     ]);
     expect(blocks[1]).toMatchObject({ kind: "heading", text: heading.text, page: 2 });
-    expect(blocks[2].text).toBe(body.join(" "));
+    expect(blocks[2]!.text).toBe(body.join(" "));
   });
 
   it("finds none on a run of pages that starts past the first page", () => {
@@ -726,7 +726,7 @@ describe("reflowPdf — furniture", () => {
   it("keeps a heading that only looks like a running head because it sits high", () => {
     const titles = ["Introduction", "Methods", "Results"];
     const heading = (n: number): PdfPageText =>
-      page(n, [{ text: titles[n - 1], y: 40, size: 18, width: 90 }, ...column(body(n), 120)]);
+      page(n, [{ text: titles[n - 1]!, y: 40, size: 18, width: 90 }, ...column(body(n), 120)]);
     const blocks = reflowPdf([heading(1), heading(2), heading(3)]);
     expect(texts(blocks)).toEqual([1, 2, 3].flatMap((n) => [titles[n - 1], body(n).join(" ")]));
   });
@@ -875,7 +875,7 @@ describe("reflowPdf — footnotes and captions", () => {
         ...refs.map((text, i) => ({ text, x: 320, y: 120 + i * PITCH, size: 8, width: 200 })),
       ]),
     ]);
-    expect(blocks[0].text).toBe(
+    expect(blocks[0]!.text).toBe(
       `${LEFT.join(" ")} carries on past the foot of it and over the end of the column here`,
     );
   });
@@ -918,7 +918,7 @@ describe("reflowPdf — headings", () => {
       ]),
     ]);
     expect(blocks[0]).toMatchObject({ kind: "heading", text: "Results", page: 1 });
-    expect(blocks[1].kind).toBe("paragraph");
+    expect(blocks[1]!.kind).toBe("paragraph");
   });
 
   it("marks a numbered section title as a heading even at the body size", () => {
@@ -929,13 +929,13 @@ describe("reflowPdf — headings", () => {
         ...column(body, 100 + PITCH * 2),
       ]),
     ]);
-    expect(blocks[0].kind).toBe("heading");
+    expect(blocks[0]!.kind).toBe("heading");
   });
 
   it("leaves a long block of display type as a paragraph", () => {
     const long = "a pull quote set large enough to look like a heading but far too long to be one and running on well past any title";
     const blocks = reflowPdf([page(1, [{ text: long, y: 100, size: 16, width: 460 }])]);
-    expect(blocks[0].kind).toBe("paragraph");
+    expect(blocks[0]!.kind).toBe("paragraph");
   });
 });
 
@@ -947,7 +947,7 @@ describe("reflowPdf — other scripts", () => {
         { text: "中文的换行是否会插入空格。", y: 100 + PITCH, width: 300 },
       ]),
     ]);
-    expect(blocks[0].text).toBe("这是一个测试段落，用来检查中文的换行是否会插入空格。");
+    expect(blocks[0]!.text).toBe("这是一个测试段落，用来检查中文的换行是否会插入空格。");
   });
 
   it("joins CJK runs on one line without inventing a word space", () => {
@@ -960,7 +960,7 @@ describe("reflowPdf — other scripts", () => {
         { text: "，用来检查换行。", x: 166, y: 100, width: 88 },
       ]),
     ]);
-    expect(blocks[0].text).toBe("这是一个测试段落，用来检查换行。");
+    expect(blocks[0]!.text).toBe("这是一个测试段落，用来检查换行。");
   });
 
   it("keeps a space where CJK text is set a whole ideograph apart", () => {
@@ -970,7 +970,7 @@ describe("reflowPdf — other scripts", () => {
         { text: "第二列", x: 160, y: 100, width: 33 },
       ]),
     ]);
-    expect(blocks[0].text).toBe("第一列 第二列");
+    expect(blocks[0]!.text).toBe("第一列 第二列");
   });
 
   it("joins a CJK paragraph that continues on the next page", () => {
@@ -991,7 +991,7 @@ describe("reflowPdf — other scripts", () => {
       ]),
     ]);
     expect(blocks).toHaveLength(1);
-    expect(blocks[0].text).toContain("العربية");
+    expect(blocks[0]!.text).toContain("العربية");
   });
 
   it("returns nothing for a page with no text layer at all", () => {
@@ -1062,7 +1062,7 @@ describe("reflowPdf — provenance", () => {
         expect(end).toBeLessThanOrEqual(block.text.length);
         const page = pages.find((p) => p.page === r.page);
         expect(page).toBeDefined();
-        const item = page!.items[r.item];
+        const item = page!.items[r.item]!;
         expect(item).toBeDefined();
         expect(item.str.slice(r.from, r.from + r.length)).toBe(
           block.text.slice(r.at, r.at + r.length),
@@ -1084,12 +1084,12 @@ describe("reflowPdf — provenance", () => {
     const pages = [page(1, column(["a paragraph set over", "two lines of its own"], 100))];
     const blocks = reflowPdf(pages);
     verify(pages, blocks);
-    expect(blocks[0].runs.map((r) => ({ page: r.page, item: r.item, at: r.at }))).toEqual([
+    expect(blocks[0]!.runs.map((r) => ({ page: r.page, item: r.item, at: r.at }))).toEqual([
       { page: 1, item: 0, at: 0 },
       { page: 1, item: 1, at: 21 },
     ]);
     // The space between the two lines is the reflow's, and belongs to neither of them.
-    expect(invented(blocks[0])).toBe(" ");
+    expect(invented(blocks[0]!)).toBe(" ");
   });
 
   it("leaves out bracketed citation marks, as the structured reading and the web walker do", () => {
@@ -1113,9 +1113,9 @@ describe("reflowPdf — provenance", () => {
     ];
     const blocks = reflowPdf(pages);
     verify(pages, blocks);
-    expect(blocks[0].text).toBe("the quick brown fox jumps over the lazy dog");
-    expect(blocks[0].runs.map((r) => r.item)).toEqual([0, 1, 2]);
-    expect(invented(blocks[0])).toBe("  ");
+    expect(blocks[0]!.text).toBe("the quick brown fox jumps over the lazy dog");
+    expect(blocks[0]!.runs.map((r) => r.item)).toEqual([0, 1, 2]);
+    expect(invented(blocks[0]!)).toBe("  ");
   });
 
   it("leaves the running head and the page number out of every block's runs", () => {
@@ -1144,11 +1144,11 @@ describe("reflowPdf — provenance", () => {
     ];
     const blocks = reflowPdf(pages);
     verify(pages, blocks);
-    expect(blocks[0].text).toBe("the reconstruction is straightforward once the lines are grouped");
+    expect(blocks[0]!.text).toBe("the reconstruction is straightforward once the lines are grouped");
     // Nothing was invented: the two halves meet with no space between them.
-    expect(invented(blocks[0])).toBe("");
-    const at = blocks[0].text.indexOf("ward");
-    const run = blocks[0].runs.find((r) => r.at === at);
+    expect(invented(blocks[0]!)).toBe("");
+    const at = blocks[0]!.text.indexOf("ward");
+    const run = blocks[0]!.runs.find((r) => r.at === at);
     expect(run).toMatchObject({ page: 1, item: 1, from: 0 });
   });
 
@@ -1160,7 +1160,7 @@ describe("reflowPdf — provenance", () => {
     const blocks = reflowPdf(pages);
     verify(pages, blocks);
     expect(blocks).toHaveLength(1);
-    expect([...new Set(blocks[0].runs.map((r) => r.page))]).toEqual([1, 2]);
+    expect([...new Set(blocks[0]!.runs.map((r) => r.page))]).toEqual([1, 2]);
   });
 
   it("keeps a drop cap's letter at the head of the paragraph it opens", () => {
@@ -1174,8 +1174,8 @@ describe("reflowPdf — provenance", () => {
     ];
     const blocks = reflowPdf(pages);
     verify(pages, blocks);
-    expect(blocks[0].text.startsWith("The opening")).toBe(true);
-    expect(blocks[0].runs[0]).toMatchObject({ page: 1, item: 0, at: 0, length: 1, from: 0 });
+    expect(blocks[0]!.text.startsWith("The opening")).toBe(true);
+    expect(blocks[0]!.runs[0]).toMatchObject({ page: 1, item: 0, at: 0, length: 1, from: 0 });
   });
 
   it("reads a two-column page's runs in reading order, column by column", () => {
@@ -1185,12 +1185,12 @@ describe("reflowPdf — provenance", () => {
     // the line beside it in the right one, all the way down. Reading order is not the
     // order the runs were written in, which is the whole reason a block needs to say
     // which runs it is made of rather than a first and a last.
-    const placed = column(left, 120, 72, 200).flatMap((l, i) => [l, column(right, 120, 320, 200)[i]]);
+    const placed = column(left, 120, 72, 200).flatMap((l, i) => [l, column(right, 120, 320, 200)[i]!]);
     const pages = [page(1, placed)];
     const blocks = reflowPdf(pages);
     verify(pages, blocks);
-    expect(blocks[0].runs.map((r) => r.item)).toEqual([0, 2, 4, 6, 8, 10]);
-    expect(blocks[1].runs.map((r) => r.item)).toEqual([1, 3, 5, 7, 9, 11]);
+    expect(blocks[0]!.runs.map((r) => r.item)).toEqual([0, 2, 4, 6, 8, 10]);
+    expect(blocks[1]!.runs.map((r) => r.item)).toEqual([1, 3, 5, 7, 9, 11]);
   });
 
   it("holds the invariant on every page the other suites exercise", () => {
@@ -1232,7 +1232,7 @@ describe("readReflowed — the reflow's paragraphs, read", () => {
     // Every run reads back its text, an accented letter as its letter: the run is the letter's.
     const bare = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").replace(/ı/g, "i");
     for (const b of blocks) {
-      for (const r of b.runs) expect(bare(pages[0].items[r.item].str.slice(r.from, r.from + r.length))).toBe(bare(b.text.slice(r.at, r.at + r.length)));
+      for (const r of b.runs) expect(bare(pages[0]!.items[r.item]!.str.slice(r.from, r.from + r.length))).toBe(bare(b.text.slice(r.at, r.at + r.length)));
     }
     return blocks;
   };

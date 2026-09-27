@@ -31,8 +31,8 @@ const number = (value: number | null | undefined, digits: number): string =>
 function measuredLine(s: RuntimeSnapshot, id: string): string | null {
   const good = s.benchmark.results.filter((r) => r.candidate_id === id && r.status === "ok");
   if (good.length === 0) return null;
-  const single = good.find((r) => r.batch_size === 1) ?? good[0];
-  const batched = good.find((r) => r.batch_size !== 1) ?? good[0];
+  const single = good.find((r) => r.batch_size === 1) ?? good[0]!;
+  const batched = good.find((r) => r.batch_size !== 1) ?? good[0]!;
   const memory = good.map((r) => r.peak_rss_bytes).filter((n): n is number => n != null);
   return t("runtimeMeasured", number(single.latency_ms, 1), number(batched.throughput_per_s, 0), memory.length ? formatBytes(Math.max(...memory)) : "–");
 }
