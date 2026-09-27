@@ -13,8 +13,9 @@ export const RECONNECT_MS = 1500;
  * what happens next (lib/backend/retry.ts, nativeScoreClient.ts): `native_unavailable`
  * (the engine cannot be reached, or went away mid-request), `native_timeout`, `busy`
  * (too many requests pending), `cancelled`, `request_too_large`, `native_protocol` (an
- * invalid reply), `component_updated`. The name predates the in-browser engine and is
- * what retry.ts reads.
+ * invalid reply), `component_updated`, `engine_crashed` (the engine kept dying with work in
+ * flight and is not started again until retry()). The name predates the in-browser engine
+ * and is what retry.ts reads.
  */
 export class NativeTransportError extends Error {
   constructor(public readonly code: string, message: string) { super(message); this.name = "NativeTransportError"; }
@@ -30,4 +31,7 @@ export interface EngineTransport {
   /** Rejects everything pending with `code`, closes the connection and tells the
    *  disconnect listeners; the next request opens it again. */
   close(code?: string, message?: string): void;
+  /** The user asked to try again: an engine given up on after it kept dying may be started
+   *  once more. Only a transport that gives up has it. */
+  retry?(): void;
 }

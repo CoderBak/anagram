@@ -28,6 +28,15 @@ export class NativeScoreClient implements ScoreClient {
    *  identity changed: only health is unknown until it is read again. */
   disconnected(): void { this.current = {...this.current, active:"down", model:null,
     server:{ok:false,checkedAt:0,reason:"unreachable"}}; this.probing = undefined; }
+  /** The engine died under a request twice, or so often that it was given up on: down,
+   *  saying why. Health is read again as for any engine that is down, so one that recovers
+   *  (it was the request, not the engine) comes back by itself; one given up on is refused
+   *  that health read by its transport until a Retry. */
+  private crashed(error: NativeTransportError): void {
+    this.current = {active:"down",model:null,
+      server:{ok:false,checkedAt:Date.now(),reason:"unreachable",code:error.code,error:error.message}};
+    this.probing = undefined;
+  }
   isUp(): boolean { return this.current.server.ok; }
   model(): ModelInfo { return { ...(this.current.model ?? NONE) }; }
   revision(): number { return this.generation; }
@@ -59,8 +68,9 @@ export class NativeScoreClient implements ScoreClient {
             server:{ok:false,checkedAt:Date.now(),reason:result && !result.ok ? result.reason : "unreachable",
               contract:result && !result.ok ? result.contract : undefined,code:reply.error?.code,error:reply.error?.message}};
         }
-      } catch {
+      } catch (error) {
         if (generation !== this.generation) return;
+        if (error instanceof NativeTransportError && error.code === "engine_crashed") { this.crashed(error); return; }
         this.current = {active:"down",model:null,
           server:{ok:false,checkedAt:Date.now(),reason:"unreachable",code:"native_unavailable"}};
       }
@@ -80,7 +90,8 @@ export class NativeScoreClient implements ScoreClient {
     try {
       const reply = await this.request("tokens", {v:CONTRACT_VERSION, texts}, signal);
       return reply.ok ? parseTokenCounts(reply.data, texts.length) : null;
-    } catch {
+    } catch (error) {
+      if (error instanceof NativeTransportError && error.code === "engine_crashed") this.crashed(error);
       return null;
     }
   }
@@ -98,9 +109,10 @@ export class NativeScoreClient implements ScoreClient {
         server:{...this.current.server,ok:true,checkedAt:Date.now(),reason:undefined,code:undefined,error:undefined}};
       return batch;
     } catch (error) {
-      // Loading and idle-wakeup are retryable without changing the model generation.
+      // Loading and idle-wakeup are retryable without changing the model generation, and so
+      // is a batch the runtime failed on and said so (`engine_failed`: it is still loaded).
       // Cancellation belongs to the caller; it must not invalidate other shared work.
-      const retryable = error instanceof NativeScoreError && ["not_ready", "busy", "engine_idle", "cancelled"].includes(error.code);
+      const retryable = error instanceof NativeScoreError && ["not_ready", "busy", "engine_idle", "engine_failed", "cancelled"].includes(error.code);
       // Nor does a port that closed (it has said so itself, see getScoreClient.ts) or a full
       // local queue change the runtime: nothing sent can answer after its port failed, so
       // the router may send the batch again under the same generation.
@@ -110,6 +122,7 @@ export class NativeScoreClient implements ScoreClient {
       // every tab, and the batches still running keep their answers.
       if (transport && error.code === "native_timeout")
         this.current = {...this.current, server:{...this.current.server, checkedAt:0}};
+      if (transport && error.code === "engine_crashed") this.crashed(error);
       if (!retryable && !transport && !signal?.aborted && generation === this.generation) this.invalidate();
       throw error;
     }

@@ -18,7 +18,7 @@ from pathlib import Path
 
 import numpy as np
 
-from runtime_controller import Candidate, RuntimeController
+from runtime_controller import Candidate, RuntimeController, RuntimeFailure, error_text
 from model_plan import candidate_catalog, candidate_spec, discover_hardware, mlx_thread
 from safe_files import sha256_file
 from scoring import Tokenizer, score_texts
@@ -290,7 +290,23 @@ class MlxEditLens:
 
     def _logits(self, ids):
         enc = self.tok.pad({"input_ids": ids})
-        return self.owner.submit(self._forward, enc["input_ids"], enc["attention_mask"]).result()
+        try:
+            return self.owner.submit(self._forward, enc["input_ids"], enc["attention_mask"]).result()
+        except Exception as exc:
+            # Some GPU failures MLX raises (a command buffer that did not complete, memory
+            # it could not get); others abort the process, which nothing here can catch
+            # (runtime_controller counts those). This batch failed and may be asked again;
+            # the buffers MLX kept are dropped first so the retry starts clean.
+            try:
+                self.owner.submit(self._clear).result()
+            except Exception:
+                pass
+            raise RuntimeFailure(f"The GPU runtime failed on this batch: {error_text(exc)}") from exc
+
+    @staticmethod
+    def _clear():
+        import mlx.core as mx
+        mx.clear_cache()
 
     def score(self, texts):
         return score_texts(self, texts, self.api.clean_text)

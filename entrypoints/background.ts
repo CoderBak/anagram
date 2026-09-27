@@ -10,6 +10,7 @@ import { defineBackground, browser } from "#imports";
 import type { PublicPath } from "wxt/browser";
 import { createRouter } from "../lib/backend/router";
 import { getScoreClient } from "../lib/backend/getScoreClient";
+import { engineTransport } from "#flavor/engine-transport";
 import { createTokenCounter } from "../lib/backend/tokenCounts";
 import { createCacheModeController } from "../lib/backend/cacheMode";
 import { ACTIONS } from "../lib/messaging/protocol";
@@ -364,6 +365,8 @@ export default defineBackground(() => {
         return {host} satisfies TopHostReply;
       }
       case ACTIONS.GET_BACKEND_STATUS:
+        // A probe is somebody's Retry: an engine given up on after it kept dying may start again.
+        if (msg.probe===true) engineTransport().retry?.();
         return getScoreClient().status(msg.probe===true);
       case ACTIONS.COMMENT_ACCESS: {
         const missing:string[]=[];

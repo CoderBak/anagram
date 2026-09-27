@@ -81,8 +81,9 @@ export interface Fab {
   mount(): void;
   /** Reflect whether the overlay is currently shown. */
   setActive(active: boolean): void;
-  /** The scoring daemon stopped answering (counter shows "!", panel explains + Retry). */
-  setBackendDown(down: boolean): void;
+  /** The scoring daemon stopped answering (counter shows "!", panel explains + Retry);
+   *  `crashed`: it kept dying under its work and is not started again until Retry. */
+  setBackendDown(down: boolean, crashed?: boolean): void;
   /** Update the flagged-paragraph counter. */
   setCount(flagged: number): void;
   /** Show (label + callback) or hide (null) the secondary action chip. */
@@ -572,6 +573,7 @@ export function createFab(opts: {
   let actionCb: (() => void) | undefined;
   let actionAttention = false;
   let backendDown = false;
+  let engineCrashed = false;
   let side: Side = "right";
   let tuckTimer: ReturnType<typeof setTimeout> | null = null;
   let liveEl: HTMLElement | null = null;
@@ -921,9 +923,10 @@ export function createFab(opts: {
     countEl.classList.toggle("zero", flagged === 0);
   }
 
-  function setBackendDown(down: boolean): void {
-    if (down === backendDown) return;
+  function setBackendDown(down: boolean, crashed = false): void {
+    if (down === backendDown && (down && crashed) === engineCrashed) return;
     backendDown = down;
+    engineCrashed = down && crashed;
     setCount(lastFlagged);
     if (panelEl?.classList.contains("open")) renderPanel();
   }
@@ -1004,7 +1007,7 @@ export function createFab(opts: {
       const notice = document.createElement("div");
       notice.className = "pnotice";
       const text = document.createElement("span");
-      text.textContent = t("panelDaemonDown");
+      text.textContent = t(engineCrashed ? "panelEngineCrashed" : "panelDaemonDown");
       const retry = document.createElement("button");
       retry.type = "button";
       retry.className = "fchip";

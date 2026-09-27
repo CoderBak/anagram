@@ -7,6 +7,7 @@ import { requestComponent, finishNativeUninstall, type ComponentSnapshot } from 
 import { runtimeReady } from "../backend/runtimeClient";
 import { mountRuntimeSettings, formatBytes } from "./runtimeSettings";
 import { installationCommand } from "./installationCommand";
+import { ACTIONS, type BackendStatus } from "../messaging/protocol";
 import "./componentSettings.css";
 
 export type ComponentReply = Awaited<ReturnType<typeof requestComponent>>;
@@ -89,8 +90,12 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
 
   // The one contextual button, and the receipt-flow button after an uninstall.
   const actions = element("div", undefined, "component-actions");
-  let primaryOp: Operation | "status" | undefined;
-  const primary = makeButton("panelRetry", () => { if (primaryOp === "models.pause") pausing = true; run(primaryOp === "status" ? undefined : primaryOp); });
+  let primaryOp: Operation | "status" | "retry" | undefined;
+  const primary = makeButton("panelRetry", () => {
+    if (primaryOp === "retry") { void retryEngine(); return; }
+    if (primaryOp === "models.pause") pausing = true;
+    run(primaryOp === "status" ? undefined : primaryOp);
+  });
   primary.id = "component-primary"; primary.hidden = true;
   const finishRemoval = makeButton("componentRemoveExtension", () => void finishUninstall()); finishRemoval.hidden = true;
   actions.append(primary, finishRemoval);
@@ -136,6 +141,9 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   let controller: AbortController | undefined;
   let runtimePanel: ReturnType<typeof mountRuntimeSettings> | undefined;
   let destroyed = false, pending = false, everConnected = false, pausing = false, retryable = false;
+  /** The worker gave up on an engine that kept dying while it scored (lib/backend/nativeTransport.ts):
+   *  the component may say it is ready, and that is not the whole story. */
+  let crashed = false;
   let actionError = "", actionDetail = "";
   let awaitingUninstall = false, awaitingUpdate = false, removingExtension = false, scheduledCleanup = false, scheduledUpdate = false;
   let completedUninstallReceipt: string | null = null;
@@ -177,9 +185,10 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   }
 
   /** The one thing to do about the current state, or nothing. */
-  function primaryAction(s: ComponentSnapshot | undefined): [MessageKey, Operation | "status"] | null {
+  function primaryAction(s: ComponentSnapshot | undefined): [MessageKey, Operation | "status" | "retry"] | null {
     if (!s) return retryable ? ["panelRetry", "status"] : null;
     if (s.error?.code === "busy" || s.operation?.status === "running" || s.operation?.status === "scheduled") return null;
+    if (crashed) return ["panelRetry", "retry"];
     if (s.download.status === "running") return ["componentPauseDownload", "models.pause"];
     if (s.download.status === "paused") return ["componentResumeDownload", "models.download"];
     if (s.download.status === "failed") return ["panelRetry", "models.download"];
@@ -234,7 +243,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     if (s.operation?.status === "failed") awaitingUninstall = awaitingUpdate = scheduledCleanup = scheduledUpdate = false;
     if (awaitingUpdate && s.operation?.name !== "update" && !["updating", "stopped"].includes(s.state)) awaitingUpdate = false;
     const downloading = ["running", "paused", "failed"].includes(s.download.status);
-    let label = completedUninstallReceipt ? t("componentCleanupDone") : componentStateLabel(s);
+    let label = completedUninstallReceipt ? t("componentCleanupDone") : crashed ? t("componentNeedsAttention") : componentStateLabel(s);
     if (downloading && s.download.total_bytes > 0 && !completedUninstallReceipt) label += ` · ${t("componentDownloadBytes", formatBytes(s.download.bytes_received), formatBytes(s.download.total_bytes))}`;
     summary.textContent = label;
     install.hidden = true;
@@ -250,7 +259,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     progress.hidden = !downloading || !!completedUninstallReceipt;
     if (s.download.total_bytes > 0) { progress.max = s.download.total_bytes; progress.value = Math.min(s.download.bytes_received, s.download.total_bytes); }
     else progress.removeAttribute("value");
-    error.textContent = actionError || (s.error || s.download.error ? t("componentFailed") : "");
+    error.textContent = actionError || (crashed ? t("componentEngineCrashed") : s.error || s.download.error ? t("componentFailed") : "");
     error.hidden = !error.textContent;
     detailsText.textContent = actionDetail || s.error?.message || s.download.error || ""; details.hidden = !detailsText.textContent;
     showRuntime(s); buttons(); onUpdate?.(reply);
@@ -290,6 +299,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
       // A component older than pinned updates refuses the version; it can only update to the latest release.
       if (op === "component.update" && reply.kind === "rejected" && reply.code === "invalid_request" && !ac.signal.aborted)
         reply = await requestComponent(op, undefined, ac.signal);
+      crashed = reply.kind === "ok" && await engineCrashed();
       if (destroyed || ac.signal.aborted) return;
       if (reply.kind === "rejected" && op) {
         pausing = false; awaitingUpdate = awaitingUninstall = false;
@@ -301,6 +311,22 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
       }
     } catch { if (!destroyed && !ac.signal.aborted) paint({ kind: "unavailable" }); }
     finally { pending = false; controller = undefined; buttons(); schedule(); }
+  }
+
+  async function engineCrashed(): Promise<boolean> {
+    try {
+      const status = await browser.runtime.sendMessage({action: ACTIONS.GET_BACKEND_STATUS}) as BackendStatus | undefined;
+      return status?.server.code === "engine_crashed";
+    } catch { return false; }
+  }
+
+  /** Retry: the worker may start the engine again (a probe is a Retry), then read it all again. */
+  async function retryEngine(): Promise<void> {
+    if (pending || destroyed) return;
+    pending = true; buttons();
+    try { await browser.runtime.sendMessage({action: ACTIONS.GET_BACKEND_STATUS, probe: true}); } catch { /* the poll says */ }
+    pending = false;
+    run();
   }
 
   function run(op?: Operation): void {

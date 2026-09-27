@@ -22,7 +22,7 @@ import tomllib
 
 from download_modelkit import (PIN, LID_ENTRY, LID_URL, DownloadPaused, download_asset,
                                install_streaming, invalid_files, load_pin, matches, plain_tree)
-from runtime_controller import RuntimeBusy, RuntimeUnavailable, error_text
+from runtime_controller import RuntimeBusy, RuntimeUnavailable, error_text, forget_crashes
 from safe_files import atomic_json, is_link, read_json, regular_stat
 
 HOST_NAME = "dev.coderbak.anagram"
@@ -522,7 +522,11 @@ class NativeComponent:
                 if op == "tokens":
                     return 200, tokens_with_engine(request, engine)
                 response = score_with_engine(request, engine)
-                return 200, ScoreResponse.model_validate(response).model_dump(exclude_none=True)
+                result = ScoreResponse.model_validate(response).model_dump(exclude_none=True)
+            if any(not r.get("unsupported") and not r.get("degraded") for r in result["results"]):
+                # The runtime has scored a batch: it survived its start (runtime_controller).
+                controller.confirm()
+            return 200, result
         if op == "runtime":
             self._payload(payload)
             return 200, self._runtime().snapshot()
@@ -617,6 +621,8 @@ class NativeComponent:
                 self.operation = None
                 def resume():
                     self._stop_runtime()
+                    # Retry means every configuration, including one passed over for crashing.
+                    forget_crashes(self.home / "runtime.json")
                     self.cancel_download.clear()
                     self._ensure_plan()
                     if not self.verifier():
@@ -648,6 +654,7 @@ class NativeComponent:
             if (self.home / "models").exists():
                 shutil.rmtree(self.home / "models")
             runtime_path.unlink(missing_ok=True)
+            forget_crashes(runtime_path)
             with self.lock:
                 self.settings.update(initialized=True, models_deleted=True, engine_stopped=True,
                                      download_pending=False, download_paused=False, download_failed=False)

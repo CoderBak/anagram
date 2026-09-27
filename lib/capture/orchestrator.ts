@@ -971,6 +971,9 @@ export function createOrchestrator(
         // are all cache hits sends no request at all, so the probe is the only place
         // such a tab can ever notice.
         adoptBackend(s.model);
+      } else if (backendDown) {
+        // An engine that kept dying under its work is not merely "not ready": the panel says so.
+        fab.setBackendDown(true, s?.server.code === "engine_crashed");
       }
     } catch {
       /* worker restarting — next tick */

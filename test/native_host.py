@@ -27,7 +27,7 @@ import native_host as host
 from engine import clean_text
 from native_component import ComponentError, HOST_NAME, HomeLock, NativeComponent, STATE_DEFAULT
 from download_modelkit import DownloadPaused, download_asset, install_streaming, invalid_files
-from runtime_controller import Candidate, RuntimeController
+from runtime_controller import Candidate, RuntimeController, RuntimeFailure
 from transfer_fixture import transfer_with
 
 
@@ -831,6 +831,60 @@ class LifecycleTests(unittest.TestCase):
             response = host.dispatch(component, request(op, payload=payload))
             self.assertEqual((response["status"], response["error"]["code"]), (422, "invalid_request"), op)
         self.assertEqual(component.status()["state"], "ready")
+
+    def test_a_runtime_failure_is_answered_as_one_the_browser_may_retry(self):
+        component = self.make()
+        self.first_run(component)
+        score = {"v": "3.0", "blocks": [{"id": "a", "text": "a paragraph"}]}
+        engine = component.controller.engine
+        working = engine.score
+        def failed(_texts):
+            raise RuntimeFailure("The GPU runtime failed on this batch: [METAL] Command buffer execution failed")
+        engine.score = failed
+        response = host.dispatch(component, request("score", payload=score))
+        # The browser may ask again: 503, and nothing about the engine changed.
+        self.assertEqual((response["status"], response["error"]["code"]), (503, "engine_failed"))
+        self.assertIn("Command buffer", response["error"]["message"])
+        self.assertEqual(component.status()["state"], "ready")
+        engine.score = working
+        self.assertEqual(host.dispatch(component, request("score", payload=score))["status"], 200)
+
+    def test_the_first_scored_batch_confirms_a_start_and_a_failed_batch_does_not(self):
+        component = self.make()
+        self.first_run(component)
+        record = lambda: json.loads((self.home / "runtime-crashes.json").read_text())
+        self.assertEqual((record()["candidate_id"], record()["open"]), ("torch:cpu:fp32", True))
+        engine = component.controller.engine
+        working = engine.score
+        def failed(_texts):
+            raise RuntimeFailure("The GPU runtime failed on this batch")
+        engine.score = failed
+        score = {"v": "3.0", "blocks": [{"id": "a", "text": "a paragraph"}]}
+        self.assertEqual(host.dispatch(component, request("score", payload=score))["status"], 503)
+        self.assertTrue(record()["open"])  # not yet shown to work
+        engine.score = working
+        self.assertEqual(host.dispatch(component, request("score", payload=score))["status"], 200)
+        self.assertEqual((record()["open"], record()["crashes"]), (False, 0))
+        # A clean shutdown before any batch is not a death either (the next start counts none).
+        component.close()
+        restarted = self.make()
+        self.first_run(restarted)
+        restarted.close()
+        self.assertEqual((record()["open"], record()["crashes"]), (False, 0))
+
+    def test_retry_tries_again_a_runtime_passed_over_for_crashing(self):
+        component = self.make()
+        self.first_run(component)
+        component.handle("engine.stop", {})
+        self.finish(component)
+        crashes = self.home / "runtime-crashes.json"
+        crashes.write_text(json.dumps({"schema_version": 1, "candidate_id": None, "open": False,
+                                       "crashes": 0, "passed_over": ["torch:cpu:fp32"]}))
+        component.handle("engine.resume", {})
+        self.finish(component)
+        status = component.status()
+        self.assertEqual((status["state"], status["runtime"]["active_id"]), ("ready", "torch:cpu:fp32"))
+        self.assertEqual(json.loads(crashes.read_text())["passed_over"], [])
 
     def test_legacy_component_settings_receive_default_idle_timeout(self):
         component = self.make()

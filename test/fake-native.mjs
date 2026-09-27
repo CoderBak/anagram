@@ -107,7 +107,13 @@ export function readyComponent(home) {
 
 /** A filesystem control handle, not a server. Each browser starts the real stdio child.
  * close/resume simulate component loss/recovery without changing its registration.
- * Rules are plain test data: contains + delayMs / tokens. */
+ * Rules are plain test data: contains + delayMs / tokens.
+ * `crash` makes a host die the way an aborted engine does (an MLX Metal failure ends the
+ * process in libc++abi): `{skip, times, delayMs}` lets `skip` score batches through, then
+ * the next `times` ones (-1: every one) take their host down `delayMs` after they arrive,
+ * unanswered, with whatever else it was working on. `startupMs` is how long a new host
+ * takes to load its model: meanwhile its status says `loading` and health, tokens and score
+ * answer `not_ready`, as the real one's do. */
 const fixtureHomes = new Set();
 process.once("exit", () => { for (const home of fixtureHomes) rmSync(home, { recursive: true, force: true }); });
 export async function createNativeFixture(options = {}) {
@@ -140,6 +146,8 @@ export async function createNativeFixture(options = {}) {
     /** Every text sent to be scored after `mark` (from textMark()), in order; every text of
      *  the run without one. */
     textsSince(mark = 0) { return sentTexts().slice(mark); },
+    /** How many hosts have died by `crash`. */
+    crashes() { return requests().filter((r) => r.op === "__crash").length; },
     async close() { fixture.setState({ enabled: false }); await new Promise((r) => setTimeout(r, 120)); },
     async resume() { fixture.setState({ enabled: true }); },
     dispose() { fixtureHomes.delete(home); rmSync(home, { recursive: true, force: true }); },
@@ -149,11 +157,33 @@ export async function createNativeFixture(options = {}) {
 
 async function serveNative(stateFile, logFile) {
   const readState = () => JSON.parse(readFileSync(stateFile, "utf8"));
+  const bornAt = Date.now();
+  let dying = false;
+  // Crash suites read which host answered what, so a text sent again can be told apart
+  // from one that was lost with its host.
+  const logged = (record) => { if (readState().crash) appendFileSync(logFile, JSON.stringify({ ...record, pid: process.pid }) + "\n"); };
   const send = (request, reply) => {
+    if (dying) return; // an aborted process answers nothing more
     const bytes = Buffer.from(JSON.stringify({ v: 1, id: request.id, ...reply }));
     const header = Buffer.alloc(4); header.writeUInt32LE(bytes.length);
     process.stdout.write(Buffer.concat([header, bytes]));
+    logged({ op: "__reply", id: request.id, ok: reply.ok });
   };
+  /** Take the next batch's host down if the suite asked for it: the count lives in the
+   *  state file, so it spans every host the browser starts. */
+  const crashes = (s, request) => {
+    if (dying) return true; // one death takes every batch it holds
+    const crash = s.crash;
+    if (!crash || crash.times === 0) return false;
+    if ((crash.skip ?? 0) > 0) { atomicWrite(stateFile, { ...s, crash: { ...crash, skip: crash.skip - 1 } }); return false; }
+    if (crash.times > 0) atomicWrite(stateFile, { ...s, crash: { ...crash, times: crash.times - 1 } });
+    dying = true;
+    appendFileSync(logFile, JSON.stringify({ op: "__crash", id: request.id, pid: process.pid }) + "\n");
+    // Whatever was written before is flushed; nothing after it is (send() is closed).
+    setTimeout(() => process.stdout.write("", () => process.exit(70)), crash.delayMs ?? 150);
+    return true;
+  };
+  const loading = (s) => Date.now() - bornAt < (s.startupMs ?? 0);
   const ok = (request, data) => send(request, { ok: true, status: 200, data });
   const failed = (request, status, code, message) => send(request, { ok: false, status, error: { code, message } });
   // A closed fixture breaks the native pipe, including an otherwise idle connection.
@@ -166,12 +196,12 @@ async function serveNative(stateFile, logFile) {
     const component = s.component;
     if (request.op === "health") {
       if (component.state === "idle") return failed(request, 503, "engine_idle", "Fixture engine unloaded while idle");
-      if (component.state !== "ready") return failed(request, 503, "not_ready", "Fixture engine not ready");
+      if (component.state !== "ready" || loading(s)) return failed(request, 503, "not_ready", "Fixture engine not ready");
       return ok(request, { ok: true, contract: s.contract, model: s.model, n_buckets: 4, buckets: BUCKETS,
         languages: ["en"], lid: "fake-script-heuristic", max_tokens: 512, device: "fake", dtype: "none", app_version: s.appVersion });
     }
     if (request.op === "tokens") {
-      if (component.state !== "ready" && component.state !== "idle") return failed(request, 503, "not_ready", "Fixture engine not ready");
+      if ((component.state !== "ready" && component.state !== "idle") || loading(s)) return failed(request, 503, "not_ready", "Fixture engine not ready");
       // The scoring below's own measure, which a space in front does not change.
       const texts = request.payload?.texts ?? [];
       return ok(request, { alone: texts.map((t) => fakeTokens(t)), following: texts.map((t) => fakeTokens(t)), window: 510 });
@@ -182,7 +212,8 @@ async function serveNative(stateFile, logFile) {
         if (component.runtime) Object.assign(component.runtime, {state:"ready",active_id:component.runtime.selected_id});
         atomicWrite(stateFile, s);
       }
-      if (component.state !== "ready") return failed(request, 503, "not_ready", "Fixture engine not ready");
+      if (component.state !== "ready" || loading(s)) return failed(request, 503, "not_ready", "Fixture engine not ready");
+      if (crashes(s, request)) return;
       const blocks = request.payload?.blocks ?? [];
       let delay = s.latency[0] + Math.random() * (s.latency[1] - s.latency[0]);
       const results = blocks.map((b) => {
@@ -200,6 +231,9 @@ async function serveNative(stateFile, logFile) {
     if (component.state === "downloading" && component.download.status === "completed") {
       component.runtime = readyRuntime(); component.state = "ready"; atomicWrite(stateFile, s);
     }
+    // A host still loading its model says so, as the real one does (its runtime's state).
+    if (request.op === "status" && loading(s) && component.state === "ready")
+      return ok(request, { ...component, state: "loading", runtime: component.runtime && { ...component.runtime, state: "loading", active_id: null } });
     if (request.op === "runtime") return component.runtime ? ok(request, component.runtime) : failed(request, 503, "not_ready", "Runtime unavailable");
     if (request.op.startsWith("runtime.")) {
       const runtime = component.runtime;

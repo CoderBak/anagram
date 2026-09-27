@@ -20,8 +20,8 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "anagramd"))
 import engine as engine_api
-from runtime_controller import (Candidate, Cancelled, RuntimeBusy, RuntimeController, RuntimeUnavailable,
-                                auto_candidate, error_text)
+from runtime_controller import (Candidate, Cancelled, PASSED_OVER, RuntimeBusy, RuntimeController, RuntimeFailure,
+                                RuntimeUnavailable, auto_candidate, error_text, forget_crashes)
 from runtime_adapters import MlxEditLens, OnnxEditLens, artifact_files, digest, runtime_version, load_candidate
 from benchmark_worker import SubprocessBenchmark
 
@@ -791,6 +791,151 @@ class LifecycleTests(unittest.TestCase):
                 controller.request_selection(value)
 
 
+# A child process that runs a runtime the way the native host does and dies where the test
+# says, the way MLX ends the process on some Metal failures: at once, no handler, no finally.
+CRASHING_HOST = r"""
+import json, os, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from runtime_controller import Candidate, RuntimeController
+MLX = Candidate("mlx:gpu:fp32", "Apple GPU", "gpu", "mlx", "fp32")
+ONNX32 = Candidate("onnx:cpu:fp32", "CPU ONNX", "cpu", "onnx", "fp32")
+candidates = [MLX] + ([ONNX32] if sys.argv[4] == "both" else [])
+where = sys.argv[3]
+class Engine:
+    def __init__(self, candidate):
+        self.candidate, self.version = candidate, "v1:" + candidate.id
+        self.warm = False
+    def score(self, texts):
+        if self.candidate.runtime == "mlx" and where == "warmup":
+            os._exit(134)
+        return [{"bucket": 0, "probs": [1., 0., 0., 0.], "score": 0., "tokens": 1, "truncated": False} for _ in texts]
+    def synchronize(self):
+        pass
+    def close(self):
+        pass
+controller = RuntimeController(Path(sys.argv[2]), lambda: (candidates, "ctx"), Engine)
+controller.start()
+controller.thread.join(10)
+active = controller.snapshot()["active_id"]
+if where == "first_batch":
+    with controller.use_engine() as engine:
+        os._exit(134)  # the first real batch never finishes
+if where == "after_batch":
+    with controller.use_engine() as engine:
+        engine.score(["a batch"])
+    controller.confirm()
+    os._exit(134)  # a mid-run death, long after the start
+if where == "close":
+    controller.close()  # the browser went away before any batch: an ordinary exit
+print(json.dumps(active))
+"""
+
+
+class CrashTests(unittest.TestCase):
+    """What a start does after runtimes that took their process down (runtime_controller)."""
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.path = Path(self.temp.name) / "runtime.json"
+        self.controllers = []
+
+    def tearDown(self):
+        for controller in self.controllers:
+            controller.close()
+            if controller.thread:
+                controller.thread.join(timeout=2)
+
+    def host(self, where, candidates="both"):
+        daemon = Path(__file__).resolve().parents[1] / "anagramd"
+        return subprocess.run([sys.executable, "-c", CRASHING_HOST, str(daemon), str(self.path), where, candidates],
+                              capture_output=True, text=True, timeout=30)
+
+    def start(self, candidates=(MLX, ONNX32)):
+        clock = Clock()
+        factory = Factory(clock)
+        controller = RuntimeController(self.path, lambda: (list(candidates), "ctx"), factory,
+                                       clock=clock, memory=lambda: 1, max_runs=1)
+        self.controllers.append(controller)
+        controller.start()
+        controller.thread.join(3)
+        return controller, factory
+
+    def record(self):
+        return json.loads(self.path.with_name("runtime-crashes.json").read_text())
+
+    def test_a_runtime_that_took_the_process_down_twice_while_starting_is_passed_over_for_onnx_cpu(self):
+        for _ in range(2):
+            self.assertEqual(self.host("warmup").returncode, 134)
+        controller, factory = self.start()
+        snapshot = controller.snapshot()
+        # FP32 ONNX on the CPU, chosen automatically: no comparison was run, nothing asked.
+        self.assertEqual((snapshot["state"], snapshot["active_id"]), ("ready", ONNX32.id))
+        self.assertEqual(snapshot["recommended_id"], ONNX32.id)
+        self.assertEqual(snapshot["benchmark"]["status"], "idle")
+        self.assertEqual(factory.loaded, [ONNX32.id])  # the crashing runtime is not even loaded
+        mlx = next(c for c in snapshot["candidates"] if c["id"] == MLX.id)
+        self.assertEqual((mlx["available"], mlx["reason"]), (True, PASSED_OVER))
+        # Later starts keep to the fallback.
+        controller.close()
+        again, factory = self.start()
+        self.assertEqual((again.snapshot()["active_id"], factory.loaded), (ONNX32.id, [ONNX32.id]))
+        # Chosen again on purpose, it is tried again.
+        again.request_selection(MLX.id)
+        again.thread.join(3)
+        snapshot = again.snapshot()
+        self.assertEqual((snapshot["state"], snapshot["active_id"], snapshot["recommended_id"]), ("ready", MLX.id, MLX.id))
+        self.assertNotEqual(next(c for c in snapshot["candidates"] if c["id"] == MLX.id).get("reason"), PASSED_OVER)
+
+    def test_a_death_on_the_first_batch_counts_as_one_while_starting(self):
+        for _ in range(2):
+            self.assertEqual(self.host("first_batch").returncode, 134)
+        controller, _ = self.start()
+        self.assertEqual(controller.snapshot()["active_id"], ONNX32.id)
+
+    def test_one_death_is_retried_by_loading_and_warming_up_again_and_a_scored_batch_forgets_it(self):
+        self.assertEqual(self.host("warmup").returncode, 134)
+        self.assertEqual(self.record()["open"], True)
+        # The next start re-validates the same runtime: loaded, warmed up, then trusted
+        # once it has scored; dying later on is not dying at the start.
+        finished = self.host("after_batch")
+        self.assertEqual(finished.returncode, 134)
+        self.assertEqual((self.record()["open"], self.record()["crashes"]), (False, 0))
+        self.assertEqual(self.host("warmup").returncode, 134)
+        controller, factory = self.start()
+        self.assertEqual((controller.snapshot()["active_id"], factory.loaded), (MLX.id, [MLX.id]))
+        self.assertEqual(self.record()["passed_over"], [])
+
+    def test_an_ordinary_exit_before_the_first_batch_is_not_a_death(self):
+        for _ in range(3):
+            result = self.host("close")
+            self.assertEqual((result.returncode, result.stdout.strip()), (0, json.dumps(MLX.id)))
+        controller, _ = self.start()
+        self.assertEqual(controller.snapshot()["active_id"], MLX.id)
+
+    def test_with_nothing_else_installed_it_stops_and_says_so_until_retried(self):
+        for _ in range(2):
+            self.assertEqual(self.host("warmup", candidates="mlx").returncode, 134)
+        controller, factory = self.start(candidates=(MLX,))
+        snapshot = controller.snapshot()
+        self.assertEqual(snapshot["state"], "error")
+        self.assertIn("stopped the engine unexpectedly twice", snapshot["error"])
+        self.assertEqual(factory.loaded, [])
+        controller.close()
+        forget_crashes(self.path)  # Retry in Settings (engine.resume)
+        retried, factory = self.start(candidates=(MLX,))
+        self.assertEqual((retried.snapshot()["state"], factory.loaded), ("ready", [MLX.id]))
+
+    def test_a_damaged_record_is_forgotten_and_never_blocks_a_start(self):
+        crash_path = self.path.with_name("runtime-crashes.json")
+        for damaged in ("{", "[]", json.dumps({"schema_version": 1, "candidate_id": 5, "open": True,
+                                                "crashes": 9, "passed_over": []})):
+            crash_path.write_text(damaged)
+            controller, _ = self.start()
+            self.assertEqual(controller.snapshot()["active_id"], MLX.id)
+            controller.close()
+
+
 class ProvenanceTests(unittest.TestCase):
     def test_selected_onnx_and_external_data_change_identity(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1073,6 +1218,40 @@ class ScoringParityTests(unittest.TestCase):
         self.assertNotIn("sure", onnx.tok.cleaned[0])
         self.assertEqual(onnx.tok.cleaned[-1], "this is the answer")
         self.assertEqual(sum(len(feed["input_ids"]) for feed in feeds), len(texts))
+
+
+class MlxFailureTests(unittest.TestCase):
+    def test_a_failure_mlx_reports_fails_the_batch_retriably_and_drops_its_buffers(self):
+        import numpy as np
+        import emoji
+
+        class Tokenizer:
+            eos_token_id = sep_token_id = 2
+            def __call__(self, texts, **_):
+                return {"input_ids": [[1, 5, 2] for _ in texts]}
+            def pad(self, inputs, **_):
+                ids = np.array(inputs["input_ids"])
+                return {"input_ids": ids, "attention_mask": np.ones_like(ids)}
+
+        calls = []
+        def failing(ids, mask):
+            calls.append(("forward", threading.current_thread().name))
+            raise RuntimeError("[METAL] Command buffer execution failed: Discarded (victim of GPU error/recovery)")
+        fake_mx = SimpleNamespace(array=np.asarray,
+                                  clear_cache=lambda: calls.append(("clear", threading.current_thread().name)))
+        mlx = MlxEditLens.__new__(MlxEditLens)
+        mlx.api, mlx.model, mlx.tok, mlx.emoji = engine_api, failing, Tokenizer(), emoji
+        mlx.owner = ThreadPoolExecutor(max_workers=1, thread_name_prefix="anagram-mlx")
+        mlx.max_length, mlx.batch_size, mlx.n_buckets, mlx.lock = 8, 2, 4, threading.Lock()
+        with patch.dict(sys.modules, {"mlx": SimpleNamespace(core=fake_mx), "mlx.core": fake_mx}):
+            with self.assertRaisesRegex(RuntimeFailure, "Command buffer execution failed"):
+                mlx.score(["a paragraph"])
+            # Dropped on MLX's own thread, and the engine is not held: the next batch runs.
+            self.assertEqual([what for what, _ in calls], ["forward", "clear"])
+            self.assertTrue(all(name.startswith("anagram-mlx") for _, name in calls))
+            mlx.model = lambda ids, mask: np.zeros((len(ids), 4), dtype=np.float32)
+            self.assertEqual(len(mlx.score(["a paragraph", "another"])), 2)
+            mlx.close()
 
 
 if __name__ == "__main__":
