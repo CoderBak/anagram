@@ -34,10 +34,19 @@
 //    work over the whole document), the long tasks that building them costs, and the
 //    canvases still holding a bitmap after a scroll to the end and back.
 //
+// F) Long feed sessions (test/perf-feeds.mjs): an X-like timeline that virtualizes and a
+//    Reddit-like feed that keeps every post, both ticking counters and times and changing
+//    classes and styles as they are read, scrolled for ANAGRAM_FEED_SECONDS (120) at twice
+//    reading speed. Budgets: the content script's share of the main thread over the
+//    session, the share mutation handling takes in its LAST minute — the one the page is
+//    longest in, where a cost that grows with the page shows — the worst long task, full
+//    rescans, and the heap kept after a forced GC.
+//
 // Every budget is a soft expectation, printed with what was measured, pass or fail.
 import { test as base, expect } from "./fixtures.mjs";
 import { launchPlain, BADGE_SEL } from "../harness.mjs";
 import { buildTwoColumnPdf, handOverPdf } from "../pdf-fixture.mjs";
+import { X_FEED, REDDIT_FEED, scrollSession } from "../perf-feeds.mjs";
 
 const test = base.extend({
   /** A budget: printed with what was measured, and failed softly when it is exceeded. */
@@ -48,7 +57,9 @@ const test = base.extend({
     });
   },
 });
-test.use({ launch: { viewport: { width: 1100, height: 850 } } });
+// No trace: it records the page as it goes, in the page's own time and memory.
+// ANAGRAM_PERF_BUILD=<unpacked build> measures another build against the same budgets.
+test.use({ launch: { viewport: { width: 1100, height: 850 } }, tracing: false, build: process.env.ANAGRAM_PERF_BUILD ?? "test" });
 
 /** Collect the main thread's long tasks from before the page's own scripts run. */
 const watchLongTasks = (page) =>
@@ -348,3 +359,83 @@ test.describe("E) the PDF reader", () => {
     budget("PDF reader: the bytes cross the last hop < 500ms", marks.handoffMs < 500, `${marks.handoffMs}ms`);
   });
 });
+
+const FEED_SECONDS = Number(process.env.ANAGRAM_FEED_SECONDS ?? 120);
+const FEEDS = [
+  // Virtualized: what it holds must not grow with what it has shown.
+  { name: "X-like", html: X_FEED, heap: (kept) => [`heap kept after GC < 8MB`, kept.mb < 8] },
+  // Every post stays: what it holds may grow with the posts, by little per post once warm.
+  { name: "Reddit-like", html: REDDIT_FEED, heap: (kept) => [`heap kept after GC in the second half < 8KB per post rendered`, kept.laterPerPost < 8] },
+];
+
+for (const feed of FEEDS) {
+  test(`F) ${FEED_SECONDS} s on a ${feed.name} feed: content-script CPU, mutation handling, long tasks, rescans, memory`, async ({ page, pages, storage, budget }) => {
+    test.setTimeout((FEED_SECONDS + 120) * 1000);
+    // The orchestrator's "dirty scan" line is how drains are counted and timed.
+    await storage.set({ debug: true });
+    pages.serve({ "/feed.html": feed.html });
+    await watchLongTasks(page);
+    const cdp = await page.context().newCDPSession(page);
+    const drains = [];
+    let rescans = 0;
+    await cdp.send("Runtime.enable");
+    cdp.on("Runtime.consoleAPICalled", (e) => {
+      const args = e.args.map((a) => a.value ?? a.description ?? "");
+      if (!String(args[0]).startsWith("[anagram:")) return;
+      if (args[1] === "rescan") rescans++;
+      if (args[1] !== "dirty scan:") return;
+      const v = {};
+      for (let i = 2; i + 1 < args.length; i += 2) v[String(args[i + 1]).replace(/,$/, "")] = Number(args[i]);
+      drains.push({ at: Date.now(), ms: v.ms, roots: v.roots });
+    });
+    await cdp.send("HeapProfiler.enable");
+    const heap = async () => {
+      await cdp.send("HeapProfiler.collectGarbage");
+      await cdp.send("HeapProfiler.collectGarbage");
+      return (await cdp.send("Runtime.getHeapUsage")).usedSize / 1048576;
+    };
+    const reading = async () => ({ mb: await heap(), posts: await page.evaluate(() => window.__feed.posts()) });
+
+    await page.goto(pages.url("/feed.html"), { waitUntil: "load" });
+    await page.waitForSelector(BADGE_SEL, { timeout: 20000 });
+    await page.waitForTimeout(2000);
+    const start = await reading();
+    await page.evaluate(() => { window.__longTasks.length = 0; });
+    await cdp.send("Profiler.enable");
+    await cdp.send("Profiler.start");
+    const began = Date.now();
+    let middle = null;
+    await scrollSession(page, FEED_SECONDS, {
+      pace: 2,
+      onTick: async (t) => {
+        if (!middle && t >= (FEED_SECONDS * 1000) / 2) middle = await reading();
+      },
+    });
+    const ended = Date.now();
+    const { profile } = await cdp.send("Profiler.stop");
+    await page.waitForTimeout(2000);
+    const end = await reading();
+    const state = await page.evaluate((sel) => ({ chips: document.querySelectorAll(sel).length, longTasks: window.__longTasks }), BADGE_SEL);
+
+    // The content script's own time: the profile's samples in frames of the extension.
+    const byId = new Map(profile.nodes.map((n) => [n.id, n]));
+    let scriptMs = 0;
+    for (let i = 0; i < profile.samples.length; i++) {
+      if (byId.get(profile.samples[i]).callFrame.url.startsWith("chrome-extension://")) scriptMs += (profile.timeDeltas[i + 1] ?? 0) / 1000;
+    }
+    const sessionMs = ended - began;
+    const lastMinute = drains.filter((d) => d.at > ended - 60_000);
+    const lastMinuteMs = lastMinute.reduce((sum, d) => sum + d.ms, 0);
+    const perPost = (from) => ((end.mb - from.mb) * 1024) / Math.max(1, end.posts - from.posts);
+    const kept = { mb: end.mb - start.mb, perPost: perPost(start), laterPerPost: perPost(middle ?? start) };
+    const worst = Math.max(0, ...state.longTasks);
+    const [heapName, heapOk] = feed.heap(kept);
+
+    budget(`${feed.name}: the content script takes < 5% of the main thread`, scriptMs / sessionMs < 0.05, `${Math.round(scriptMs)}ms of ${Math.round(sessionMs / 1000)}s (${((100 * scriptMs) / sessionMs).toFixed(1)}%), ${end.posts} posts, ${state.chips} chips`);
+    budget(`${feed.name}: mutation handling takes < 6% of the last minute`, lastMinuteMs / 60_000 < 0.06, `${Math.round(lastMinuteMs)}ms in ${lastMinute.length} drains (${((100 * lastMinuteMs) / 60_000).toFixed(1)}%); ${drains.length} drains, ${drains.filter((d) => d.roots > 0).length} of them walks, worst ${Math.max(0, ...drains.map((d) => d.ms))}ms`);
+    budget(`${feed.name}: worst long task < 500ms`, worst < 500, `${worst}ms of ${state.longTasks.length} long tasks`);
+    budget(`${feed.name}: no full rescan`, rescans === 0, `${rescans} rescans`);
+    budget(`${feed.name}: ${heapName}`, heapOk, `${kept.mb.toFixed(2)}MB (${start.mb.toFixed(1)} → ${middle?.mb.toFixed(1)} → ${end.mb.toFixed(1)}) over ${end.posts - start.posts} posts, ${kept.perPost.toFixed(1)}KB each, ${kept.laterPerPost.toFixed(1)}KB each in the second half`);
+    expect(state.chips, "the session was read at all").toBeGreaterThan(0);
+  });
+}

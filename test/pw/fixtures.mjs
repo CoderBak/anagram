@@ -22,6 +22,8 @@
 //   uiLanguage  the browser's UI language ("zh-CN"); a test the browser does not come up
 //               in that language for is skipped, never run against English
 //   offline     the context is offline and the test fails on any http(s) request
+//   tracing     false turns the trace off: it records the page as it goes, which a suite
+//               that measures time or memory must not pay for
 //
 // A failed test keeps a trace and a screenshot in its test-results/ folder:
 // `npx playwright show-trace <zip>`.
@@ -61,6 +63,7 @@ export const test = base.extend({
   launch: [{}, { option: true }],
   uiLanguage: [null, { option: true }],
   offline: [false, { option: true }],
+  tracing: [true, { option: true }],
 
   nativeHost: async ({}, use) => {
     const host = await createNativeFixture();
@@ -69,7 +72,7 @@ export const test = base.extend({
     host.dispose();
   },
 
-  extension: async ({ build, launch, uiLanguage, nativeHost }, use, testInfo) => {
+  extension: async ({ build, launch, uiLanguage, tracing, nativeHost }, use, testInfo) => {
     const extDir = build === "shipping" ? SHIPPING : isAbsolute(build) ? build : undefined;
     const language = uiLanguage ? uiLanguageLaunch(uiLanguage) : {};
     const launched = await launchExtension({ nativeFixture: nativeHost, extDir, ...language, ...launch });
@@ -89,10 +92,10 @@ export const test = base.extend({
     const { context, extId } = launched;
     /** The extension's worker as it is now: a reload (the file-access switch) replaces it. */
     const worker = () => context.serviceWorkers().find((w) => w.url().startsWith(`chrome-extension://${extId}/`)) ?? launched.sw;
-    await context.tracing.start({ screenshots: true, snapshots: true });
+    if (tracing) await context.tracing.start({ screenshots: true, snapshots: true });
     await use({ ...launched, worker, url: (path) => `chrome-extension://${extId}/${path}` });
     const failed = testInfo.status !== testInfo.expectedStatus;
-    await context.tracing.stop(failed ? { path: testInfo.outputPath("trace.zip") } : undefined).catch(() => {});
+    if (tracing) await context.tracing.stop(failed ? { path: testInfo.outputPath("trace.zip") } : undefined).catch(() => {});
     await context.close();
   },
 
