@@ -12,7 +12,7 @@
     "build:test": "node scripts/buildTest.mjs --all",
     "zip": "node scripts/vendor.mjs && wxt zip",
     "typecheck": "wxt prepare && tsc --noEmit",
-    "test:e2e": "node test/e2e.mjs",
+    "test:e2e": "playwright test e2e",
     "test:firefox": "npm run build:firefox && node test/pdf-viewer-firefox.mjs && node test/pdf-source-firefox.mjs && node test/firefox.mjs",
     "lint:firefox": "npm run build:firefox && node scripts/lintFirefox.mjs",
     "postinstall": "wxt prepare && node scripts/vendor.mjs",

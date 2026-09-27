@@ -1,6 +1,6 @@
 // test/firefox.mjs — end-to-end test of the FIREFOX MV2 build, in a real Firefox.
 //
-// The Chromium suites (test/e2e.mjs, test/scenarios.mjs) drive Playwright; Playwright
+// The Chromium suites (test/pw/, test/scenarios.mjs) drive Playwright; Playwright
 // cannot load an extension into Firefox, so this one drives headless Firefox through
 // puppeteer-core over WebDriver BiDi — see test/firefox-harness.mjs for the launch,
 // the temporary install of output-test/firefox-mv2, and the fixed moz-extension:// origin.
