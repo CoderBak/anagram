@@ -106,6 +106,11 @@ export const toggleCounter = (page) =>
 /** A paragraph long enough to be scored alone, opening on `tag`. */
 export const PARA = (tag) => `${tag} paragraph is long enough to be scored on its own because it carries well over seventy-five ordinary English words describing nothing in particular except the fact that a self-rewriting page must still end up with chips after it replaces its own document element, which is what legacy challenge pages and some old single-page frameworks do, and the extension then has to find the new document, walk it again from the top and read every paragraph in it as if the page had only just loaded.`;
 
+/** A paragraph long enough to be scored alone. With the four KEY_TAGS, the fake host's
+ *  text-seeded scores put it in the FLAGGED band (AI-generated, .91 to .95). */
+export const KEY_PARA = (tag) => `${tag} paragraph is long enough to be scored on its own because it carries well over seventy-five ordinary English words describing nothing in particular except the fact that a keyboard user must be able to walk the flagged paragraphs of a page without ever reaching for a mouse, which is what the next and previous commands are for, and each of them has to bring the next verdict into view and say which paragraph it belongs to before the reader moves on.`;
+export const KEY_TAGS = ["FLAG-3", "FLAG-2", "FLAG-22", "FLAG-37"];
+
 /** A plain page: a title and a body, in the one layout every fixture uses. */
 export const PAGE = (title, body, lang = "en") =>
   `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><title>${title}</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">

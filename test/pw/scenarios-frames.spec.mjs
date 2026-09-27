@@ -6,13 +6,11 @@
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test, expect, BADGE_SEL, ABSENCE_MS, PARA, PAGE, settledChips, toggleCounter } from "./kit.mjs";
+import { test, expect, BADGE_SEL, ABSENCE_MS, PARA, KEY_PARA, KEY_TAGS, PAGE, settledChips, toggleCounter } from "./kit.mjs";
 import { EXT, waitForRegistration } from "../harness.mjs";
 
 /** The same server under another origin: 127.0.0.1 where the page is on localhost. */
 const otherOrigin = (pages) => pages.base.replace("localhost", "127.0.0.1");
-/** A paragraph the fake scores as flagged (the keyboard fixture's text). */
-const KEY_PARA = (tag) => `${tag} paragraph is long enough to be scored on its own because it carries well over seventy-five ordinary English words describing nothing in particular except the fact that a keyboard user must be able to walk the flagged paragraphs of a page without ever reaching for a mouse, which is what the next and previous commands are for, and each of them has to bring the next verdict into view and say which paragraph it belongs to before the reader moves on.`;
 
 // The embedded page is served from 127.0.0.1 while its host page is on localhost (a
 // different origin, so the frame cannot read window.top), and the embed forbids the
@@ -156,7 +154,7 @@ localhostOnly("a comment thread in another site's frame: not read, named and off
     route.fulfill({ status: 200, contentType: "text/html", body: `<!doctype html><html lang="en"><body><p>${KEY_PARA("DISQUSCOMMENT")}</p></body></html>` }),
   );
   pages.serve({
-    "/comments.html": PAGE("comments from another site", `${["FLAG-3", "FLAG-2"].map((t) => `<p>${KEY_PARA(t)}</p>`).join("\n")}
+    "/comments.html": PAGE("comments from another site", `${KEY_TAGS.slice(0, 2).map((t) => `<p>${KEY_PARA(t)}</p>`).join("\n")}
 <div id="disqus_thread"><iframe id="dsq-app1" src="https://disqus.com/embed/comments/?base=default&f=fixture&t_u=http%3A%2F%2Flocalhost%2Fcomments.html" width="680" height="400"></iframe></div>`),
   });
   const granted = () => extension.worker().evaluate(() => chrome.permissions.contains({ origins: ["https://disqus.com/*"] }));
