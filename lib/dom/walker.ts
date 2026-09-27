@@ -927,10 +927,10 @@ const CODE_PUNCT_CHARS = new Set(["(", ")", "{", "}", "[", "]", ";", "=", "<", "
 /** Markup that means "this is code", on the <pre> itself or just above it: the
  *  `<pre><code>` idiom, and the class tokens every highlighter and docs generator
  *  leaves behind (highlight.js, Pygments/Sphinx, Chroma, prettify, Prism's
- *  `language-*`, GitHub's `data-lang`). */
+ *  `language-*`, GitHub's `data-lang`, SyntaxHighlighter's `brush: xml; gutter: true`). */
 const CODE_MARKUP_SELECTOR = "code,samp,kbd,var";
 const CODE_CLASS_RE =
-  /(?:^|[\s_-])(?:code|codeblock|codehilite|highlight|highlighter|hljs|chroma|prettyprint|prettyprinted|linenums|sourcecode|syntax|snippet|terminal|console|repl|crayon|gist|diff|patch|listing|language-[\w+#.-]+|lang-[\w+#.-]+|brush:[\w+#.-]+)(?:[\s_-]|$)/i;
+  /(?:^|[\s_-])(?:code|codeblock|codehilite|highlight|highlighter|hljs|chroma|prettyprint|prettyprinted|linenums|sourcecode|syntax|snippet|terminal|console|repl|crayon|gist|diff|patch|listing|language-[\w+#.-]+|lang-[\w+#.-]+|brush:\s*[\w+#.-]+\S*)(?:[\s_-]|$)/i;
 /** How far above the <pre> the wrapper of a highlighter sits (Sphinx: `<div
  *  class="highlight-python"><div class="highlight"><pre>`). */
 const CODE_WRAPPER_LEVELS = 3;

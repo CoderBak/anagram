@@ -80,6 +80,9 @@ local component and the installer all carry the same version.
   boxes named as an author box, an author bio or "about the author". A box of authors that
   holds the article itself is still the article. On the web benchmark's development pages
   this removes a further 2% of the words read that are not the page's content, on 32 pages.
+- A code block marked up for SyntaxHighlighter (`class="brush: xml; gutter: true"`) is no
+  longer read as prose. Its settings were not recognised as a highlighter's, and a security
+  advisory's exploit code was read as a 2,500-word paragraph.
 - A section of a page is no longer skipped because of the words in its anchor. PostgreSQL's
   reference section on the locking clause is `SQL-FOR-UPDATE-SHARE`, Flask's documentation
   names its section on cookies `cookies`, and those ids read as a share bar and a cookie

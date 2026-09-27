@@ -2174,6 +2174,9 @@ const results = await page.evaluate(() => {
     u = collect(`<div class="highlight-python notranslate"><div class="highlight"><pre>${preProse(8)}</pre></div></div>`);
     check("…and so does a highlighter's wrapper (Sphinx, Pygments, Prism)", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
 
+    u = collect(`<pre class="brush: xml;gutter:true;auto-links: false">${preProse(8)}</pre><pre class="brush:js">${preProse(8)}</pre>`);
+    check("…and SyntaxHighlighter's `brush: xml;` settings, spaces and semicolons in them", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+
     {
       const code = {
         python: "def parse(path):\n    with open(path) as fh:\n        data = json.load(fh)\n    result = {}\n    for key, value in data.items():\n        if key.startswith(\"_\"):\n            continue\n        result[key] = normalise(value)\n    return result",
