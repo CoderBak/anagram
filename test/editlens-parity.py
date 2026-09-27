@@ -45,7 +45,7 @@ BATCH = 24  # scripts/inference.py --batch_size default
 CUTS = (1 / 6, 1 / 2, 5 / 6)  # lib/render/scale.ts SCORE_CUTS
 TOLERANCE = 1e-4
 APP_FILES = ("native_host.py", "native_component.py", "download_modelkit.py", "model_plan.py", "modelkit.json",
-             "runtime_controller.py", "runtime_adapters.py", "benchmark_worker.py", "scoring.py", "engine.py",
+             "runtime_controller.py", "runtime_adapters.py", "benchmark_worker.py", "scoring.py", "mlx_roberta.py", "engine.py",
              "safe_files.py", "pyproject.toml")
 
 

@@ -67,14 +67,16 @@ def preference_rank(candidate: Candidate):
     index = int(device.split(":")[1]) if device.startswith("cuda:") and device[5:].isdigit() else 0
     if candidate.runtime == "torch" and device.startswith("cuda:"):
         return (0, index)
-    if candidate.runtime == "torch" and device == "mps":
+    if candidate.runtime == "mlx" and device == "gpu":
         return (1, 0)
+    if candidate.runtime == "torch" and device == "mps":
+        return (2, 0)
     if candidate.runtime == "onnx" and device.startswith("cuda:"):
-        return (2, index)
+        return (3, index)
     if candidate.runtime == "onnx" and device == "cpu":
-        return (3, 0)
-    if candidate.runtime == "torch" and device == "cpu":
         return (4, 0)
+    if candidate.runtime == "torch" and device == "cpu":
+        return (5, 0)
     return None
 
 

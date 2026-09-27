@@ -7,9 +7,9 @@ for the exact extension ID and prepares the pinned
 [EditLens modelkit](https://huggingface.co/CoderBak/editlens_roberta_modelkit) plus the
 fastText language model in the terminal (`prepare_models.py`, also `bin/anagram download`).
 When the browser reconnects, the component verifies the files, picks the best available
-FP32 configuration itself (Torch CUDA, Torch MPS, ONNX CUDA, ONNX CPU, then Torch CPU),
-loads it and becomes ready. The choice is saved in `runtime.json` and reused; switching it
-or measuring candidates is optional. Inference is offline; Pangram's **CC BY-NC-SA 4.0** applies.
+FP32 configuration itself (Torch CUDA, MLX, Torch MPS, ONNX CUDA, ONNX CPU, then Torch
+CPU), loads it and becomes ready; Apple silicon installs MLX, the other platforms Torch. The
+choice is saved in `runtime.json` and reused; switching it or measuring candidates is optional. Inference is offline; Pangram's **CC BY-NC-SA 4.0** applies.
 
 ## Operations
 

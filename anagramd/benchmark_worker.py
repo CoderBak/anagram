@@ -135,9 +135,11 @@ def run_candidate(spec, emit):
             raise
         torch = None
     import emoji  # noqa: F401 -- include import cost in initialization, not load
-    from transformers import AutoTokenizer  # noqa: F401
+    import tokenizers  # noqa: F401
     if candidate.runtime == "torch":
         from transformers import AutoModelForSequenceClassification  # noqa: F401
+    if candidate.runtime == "mlx":
+        import mlx.core  # noqa: F401
     if candidate.runtime == "onnx":
         import onnxruntime as ort
         if hasattr(ort, "disable_telemetry_events"):

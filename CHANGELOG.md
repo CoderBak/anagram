@@ -72,6 +72,15 @@ local component and the installer all carry the same version.
 
 ### Changed
 
+- On Apple silicon the local engine runs the model in MLX (MIT) on the GPU instead of
+  PyTorch, still in FP32 from the same model.safetensors, and PyTorch and Transformers are
+  no longer installed there: the engine's Python packages shrink from 780 MB to 340 MB.
+  On 200 texts of the EditLens test split every probability stays within 0.00001 of
+  PyTorch's on the GPU, with the same words. One paragraph scores a tenth faster, a page's
+  worth 5–7% faster, and a new engine is ready in 2.6 seconds instead of 4.2. ONNX Runtime
+  on the CPU remains the fallback on a Mac whose GPU MLX cannot use; Linux and Windows keep
+  PyTorch. Every runtime now tokenizes with the tokenizers library directly, from the same
+  tokenizer.json. The half-precision GPU choice goes with PyTorch on the Mac.
 - The model behind a verdict's dot is refitted on the EditLens validation data read
   through Anagram's current pipeline (passes, grouping, accents composed). Its
   coefficients move by a few hundredths and its calibration on the test, Enron and Llama
@@ -133,6 +142,13 @@ local component and the installer all carry the same version.
   such as the identifier arXiv stamps up the margin of a paper's first page. pdf.js turns
   such a run with a style property of its own since version 4, which Anagram did not read,
   so the stamp was read into the first paragraph beside it.
+- Stopping, resuming, updating or removing the local engine no longer waits forever for a
+  forward pass that does not end. It waits as long as the extension waits for any answer,
+  30 seconds, then reports that inference is still running and can be tried again.
+- A local engine that could not start, because the installation was unfinished, another
+  browser held it or its folder needed repair, kept giving the same answer until the
+  browser was restarted. It now answers once and exits, and the next request starts a
+  fresh one that tries again.
 - The Copy report button in the panel keeps to one line when the panel's title needs more
   room, as it does in a longer translation; the title wraps instead.
 - The legal fine print a site sets under its text or its offer is no longer read: boxes

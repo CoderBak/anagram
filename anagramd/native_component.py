@@ -370,7 +370,13 @@ class NativeComponent:
             self.download["detail"] = error_text(message)
 
     def _download_work(self):
-        self._stop_runtime()
+        try:
+            self._stop_runtime()
+        except ComponentError:
+            with self.lock:
+                # Nothing was fetched: this is not a failed download to resume from.
+                self.download["status"] = "idle"
+            raise
         with self.lock:
             self.state = "downloading"
             self.download.update(status="running", error=None)
@@ -411,12 +417,13 @@ class NativeComponent:
             self.state = "loading"
         controller.start()
 
-    def _stop_runtime(self, *, timeout=None):
+    def _stop_runtime(self):
         """Close the runtime and drain its work; a closed controller refuses new leases.
 
-        Lifecycle jobs drain without a deadline: an in-flight score or an
-        uncancellable load finishes and the job continues instead of failing.
-        Only shutdown passes a ``timeout``.
+        An in-flight score or an uncancellable load finishes first. Lifecycle jobs and
+        shutdown wait for it up to ``stop_timeout``, as long as the extension waits for
+        any reply (native_host.QUEUE_TIMEOUT_S); a job then fails and can be retried,
+        and the closed runtime releases its engine when that work ends.
         """
         with self.lock:
             controller = self.controller
@@ -425,7 +432,7 @@ class NativeComponent:
         if controller is None:
             return
         controller.close()
-        deadline = time.monotonic() + timeout if timeout is not None else None
+        deadline = time.monotonic() + self.stop_timeout
         while True:
             thread = getattr(controller, "thread", None)
             alive = thread is not None and thread.is_alive()
@@ -433,8 +440,8 @@ class NativeComponent:
                 leased = controller.leases > 0
             if not alive and not leased:
                 break
-            if deadline is not None and time.monotonic() >= deadline:
-                raise ComponentError("busy", "The current inference/load is still stopping; retry after it finishes", 409)
+            if time.monotonic() >= deadline:
+                raise ComponentError("not_ready", "Inference or a model load is still running; retry when it finishes", 503)
             time.sleep(0.05)
         with self.lock:
             if self.controller is controller:
@@ -731,7 +738,7 @@ class NativeComponent:
         if thread is not None and thread is not threading.current_thread():
             thread.join(timeout=self.stop_timeout + 12)
         try:
-            self._stop_runtime(timeout=self.stop_timeout)
+            self._stop_runtime()
         except ComponentError:
             pass
         # Do not release ownership while an in-process model/job still runs.
