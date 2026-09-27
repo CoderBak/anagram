@@ -191,7 +191,7 @@ const GROUPS = [
         where: "vendor/document-worker/block-seg/ (ONNX models and their statistics). They carry no licence of their own; they are distributed as part of document-worker." },
       { name: "ONNX Runtime Web", version: workerPin().onnxruntime_web.version, url: "https://github.com/microsoft/onnxruntime",
         licence: "MIT", copyright: "Copyright (c) Microsoft Corporation",
-        where: "Its JavaScript is bundled into vendor/document-worker/worker.js, and vendor/document-worker/onnx/ort-wasm-simd-threaded.wasm is copied from the pinned npm package. The in-browser (oneclick) flavor also ships the package's native WebGPU execution provider in its JSPI build (vendor/engine/ort.jspi.min.mjs, ort-wasm-simd-threaded.jspi.mjs and ort-wasm-simd-threaded.jspi.wasm) and its plain WebAssembly build for browsers without JSPI (ort.wasm.min.mjs, ort-wasm-simd-threaded.mjs and ort-wasm-simd-threaded.wasm), unmodified (scripts/webengine.mjs), with this licence and these notices beside them. The WebAssembly build links third-party libraries whose notices Microsoft publishes with ONNX Runtime; they ship verbatim as vendor/document-worker/ThirdPartyNotices.onnxruntime-web.txt.",
+        where: "Its JavaScript is bundled into vendor/document-worker/worker.js, and vendor/document-worker/onnx/ort-wasm-simd-threaded.wasm is copied from the pinned npm package. The WebAssembly build links third-party libraries whose notices Microsoft publishes with ONNX Runtime; they ship verbatim as vendor/document-worker/ThirdPartyNotices.onnxruntime-web.txt.",
         notice: ["vendor/document-worker/LICENSE.onnxruntime-web"] },
       { name: "pako", version: "2.1.0", url: "https://github.com/nodeca/pako",
         licence: "MIT AND Zlib", copyright: "Copyright (C) 2014-2017 by Vitaly Puzrin and Andrei Tuputcyn",
@@ -204,8 +204,12 @@ const GROUPS = [
   },
   {
     title: "The in-browser engine",
-    intro: "The oneclick flavor, whose scoring runs inside the browser (lib/webengine/, entrypoints/engine/), ships ONNX Runtime Web under vendor/engine/ (listed with Zotero's document-worker above, the same pinned package) and the emoji names EditLens's preprocessing spells emoji out with. Its model files are downloaded by the user, verified, and kept in the browser's own storage; they are the modelkit and language model listed under the component package below.",
+    intro: "The oneclick flavor, whose scoring runs inside the browser (lib/webengine/, entrypoints/engine/), ships ONNX Runtime Web under vendor/engine/ and the emoji names EditLens's preprocessing spells emoji out with. Its model files are downloaded by the user, verified, and kept in the browser's own storage; they are the modelkit and language model listed under the component package below.",
     components: () => [
+      { name: "ONNX Runtime Web", version: npm("onnxruntime-web-engine"), url: "https://github.com/microsoft/onnxruntime",
+        licence: "MIT", copyright: "Copyright (c) Microsoft Corporation",
+        where: "The engine's own pin of the npm package (installed as onnxruntime-web-engine; scripts/webengine.mjs), unmodified: its native WebGPU execution provider in the JSPI build (vendor/engine/ort.jspi.min.mjs, ort-wasm-simd-threaded.jspi.mjs and ort-wasm-simd-threaded.jspi.wasm) and its plain WebAssembly build for browsers without JSPI (ort.wasm.min.mjs, ort-wasm-simd-threaded.mjs and ort-wasm-simd-threaded.wasm), with this licence beside them as vendor/engine/LICENSE.onnxruntime-web. The WebAssembly builds link third-party libraries whose notices Microsoft publishes with ONNX Runtime; those of this version's tag ship verbatim as vendor/engine/ThirdPartyNotices.onnxruntime-web.txt.",
+        notice: ["vendor/document-worker/LICENSE.onnxruntime-web"] },
       { name: "emoji (data)", version: "2.15.0", url: "https://github.com/carpedm20/emoji",
         licence: "BSD-3-Clause", copyright: "Copyright (c) 2014-2025, Taehoon Kim, Kevin Wurster",
         where: "lib/webengine/emoji.data.json: the package's English emoji names and qualification statuses (its emoji.json, from Unicode's emoji-test.txt), written by scripts/emojiData.py from the version anagramd/uv.lock pins, so the browser engine spells emoji out as the native engine does.",

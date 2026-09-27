@@ -5,14 +5,18 @@
 // (Firefox). It imports no extension API: everything it needs to know — the pin, the
 // runtime's URLs, the extension version — arrives in the first message. Requests are
 // the native host's envelopes and are answered with its replies, concurrently, each
-// under its own id; a request that is not one is refused as the host refuses it.
+// under its own id; a request that is not one is refused as the host refuses it. When
+// the engine lets the model go while idle the worker says so ("idle"), and every reply
+// says whether it still is: a worker's WebAssembly memory cannot shrink, so the host
+// ends an idle worker once nothing waits on it, and starts the next one with `idle`
+// set, which loads the model again only when a score asks.
 import { Engine, type EngineInit } from "./engine";
 import { EngineError, fail, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, ok, parseEngineRequest, type EngineReply } from "./protocol";
 import { OpfsStore } from "./storage";
 
-export interface WorkerInit { type: "init"; pin: EngineInit["pin"]; assets: EngineInit["assets"]; version: string | null }
+export interface WorkerInit { type: "init"; pin: EngineInit["pin"]; assets: EngineInit["assets"]; version: string | null; idle?: boolean }
 export type WorkerMessage = WorkerInit | { type: "request"; request: unknown };
-export type WorkerReply = { type: "ready" } | { type: "reply"; reply: EngineReply };
+export type WorkerReply = { type: "ready" } | { type: "reply"; reply: EngineReply; idle: boolean } | { type: "idle" };
 
 let engine: Engine | null = null;
 const pending = new Set<string>();
@@ -47,14 +51,17 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
     if (engine) return;
     void (async () => {
       const store = await OpfsStore.open();
-      engine = new Engine({ pin: message.pin, assets: message.assets, version: message.version, store });
+      engine = new Engine({
+        pin: message.pin, assets: message.assets, version: message.version, store, idle: message.idle === true,
+        onIdle: () => post({ type: "idle" }),
+      });
       await engine.start();
       post({ type: "ready" });
     })();
     return;
   }
   if (message.type === "request") {
-    if (!engine) { post({ type: "reply", reply: fail("protocol-error", "not_ready", "The engine is starting", 503) }); return; }
-    void answer(message.request).then((reply) => post({ type: "reply", reply }));
+    if (!engine) { post({ type: "reply", reply: fail("protocol-error", "not_ready", "The engine is starting", 503), idle: false }); return; }
+    void answer(message.request).then((reply) => post({ type: "reply", reply, idle: engine!.idle }));
   }
 };

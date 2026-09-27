@@ -204,8 +204,7 @@ for (const [name, { from, only }] of Object.entries(trees)) {
 vendorDocumentWorker(ROOT);
 
 // The oneclick flavor's engine (scripts/flavor.mjs, scripts/webengine.mjs): ONNX Runtime
-// Web copied verbatim from the npm package, whose version the document-worker pin has just
-// checked, with the licences that pin keeps, and the engine's worker built from
-// lib/webengine/. They go to public-oneclick/, not public/, which every build copies: only
+// Web copied verbatim from its own npm alias (a newer version than the document-worker's),
+// with its licence and notices, and the engine's worker built from lib/webengine/. They go to public-oneclick/, not public/, which every build copies: only
 // that flavor's builds take them (wxt.config.ts), and a native run never writes there.
 if (flavorOf() === "oneclick") await vendorWebEngine(ROOT);
