@@ -99,6 +99,9 @@ const DOCBANK_LABEL = {
  *  is often a later version than the one DocBank built, and a page of it that shares 80% of
  *  its words with DocBank's has paragraphs the truth does not. */
 const MIN_OVERLAP = 0.9;
+/** Share of the PDF page's words that must be on DocBank's page, all labels: a later version
+ *  can keep every word of DocBank's page and add a paragraph of its own. */
+const MIN_BACK = 0.9;
 const MIN_WORDS = 100;
 /** How far from its own number a DocBank page is looked for in the PDF. */
 const PAGE_REACH = 2;
@@ -158,7 +161,8 @@ function relabel(rows) {
  */
 export function docbankTruthOf(files, pdfPages) {
   const words = (s) => tokenize(s).map((t) => t.t);
-  const bags = pdfPages.map((p) => new Set(words(p.items.map((it) => it.str).join(" "))));
+  const lists = pdfPages.map((p) => words(p.items.map((it) => it.str).join(" ")));
+  const bags = lists.map((l) => new Set(l));
   const tokens = [];
   const paras = [];
   const pages = new Set();
@@ -175,6 +179,8 @@ export function docbankTruthOf(files, pdfPages) {
       if (s > share) { share = s; best = k; }
     }
     if (share < MIN_OVERLAP || pages.has(best + 1)) continue;
+    const all = new Set(words(rows.map((r) => r[0]).join(" ")));
+    if (lists[best].filter((w) => all.has(w)).length < MIN_BACK * lists[best].length) continue;
     pages.add(best + 1);
     const catOf = relabel(rows);
     let para = -1;
