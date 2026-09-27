@@ -108,6 +108,9 @@ local component and the installer all carry the same version.
 - A phrase a page repeats over and over, such as a scrolling "Book Now * Book Now * …"
   banner or a notice printed once per item, is no longer read as a paragraph: thirty words or
   more that use no more than eight different ones.
+- More boxes of other articles are recognised by their names and left out: related cards,
+  resources, guides and videos, "you may also like", "more like this", "more stories", and
+  YARPP's related posts.
 - A section of a page is no longer skipped because of the words in its anchor. PostgreSQL's
   reference section on the locking clause is `SQL-FOR-UPDATE-SHARE`, Flask's documentation
   names its section on cookies `cookies`, and those ids read as a share bar and a cookie

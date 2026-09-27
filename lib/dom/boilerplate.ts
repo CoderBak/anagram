@@ -122,14 +122,17 @@ export const CHROME_TOKEN_PATTERNS: string[] = [
   "share", "sharing", "sharedaddy", "syndication",
   "social[-_]?(?:share|links?|icons?|media|buttons?|bar)",
   // trafilatura: related/recommended widgets — compound forms only
-  "related[-_]?(?:articles?|posts?|stories|links?|content|news|items?)",
+  "related[-_]?(?:articles?|posts?|stories|links?|content|news|items?|cards?|resources?|reading|guides?|videos?|entries)",
   "recommended[-_]?(?:articles?|posts?|stories|reads?|for[-_]?you)",
-  "read[-_]?next", "also[-_]?read", "more[-_]?from",
+  "read[-_]?next", "also[-_]?read", "more[-_]?from", "more[-_]?like[-_]?this", "more[-_]?stories",
+  "you[-_]?(?:may|might)[-_]?(?:also[-_]?)?(?:like|enjoy)",
   "trending[-_]?(?:now|topics?|posts?|articles?|stories)",
   "popular[-_]?(?:posts?|articles?|stories|topics?)",
   "most[-_]?(?:read|popular|viewed|shared)",
   // content-recommendation ad networks (vendor names — always widgets)
   "outbrain", "taboola", "mgid", "revcontent",
+  // and the related-posts plugin that names its box after itself (YARPP)
+  "yarpp",
   // article metadata rows (bylines/dates render as text but are not prose)
   "byline", "dateline", "post[-_]?meta", "entry[-_]?meta", "article[-_]?meta",
   // the author's bio box beside or under the text — compound forms only, so a box of the

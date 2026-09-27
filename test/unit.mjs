@@ -1201,6 +1201,9 @@ const results = await page.evaluate(() => {
   check("related-articles widget skipped", u.length === 0);
   u = collect(`<section class="related-work">${words(80)}</section>`);
   check("compound guard: 'related-work' prose section KEPT", u.length === 1);
+  u = collect(`<p>${words(90)}</p><p>${words(90)}</p><div class="resource-related_card-list"><div><p>${words(80)}</p></div></div><div class="yarpp yarpp-related"><p>${words(80)}</p></div><section class="you-may-like"><p>${words(80)}</p></section><div class="more-like-this"><p>${words(80)}</p></div>`);
+  check("boxes of related cards, YARPP's related posts, 'you may like' and 'more like this' are chrome",
+    u.length === 2 && u.every((x) => x.words === 90), JSON.stringify(u.map(x => x.words)));
   u = collect(`<div class="OUTBRAIN">${words(80)}</div>`);
   check("outbrain widget skipped", u.length === 0);
   u = collect(`<div role="complementary">${words(80)}</div>`);
