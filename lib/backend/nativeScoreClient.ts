@@ -109,9 +109,10 @@ export class NativeScoreClient implements ScoreClient {
         server:{...this.current.server,ok:true,checkedAt:Date.now(),reason:undefined,code:undefined,error:undefined}};
       return batch;
     } catch (error) {
-      // Loading and idle-wakeup are retryable without changing the model generation.
+      // Loading and idle-wakeup are retryable without changing the model generation, and so
+      // is a batch the runtime failed on and said so (`engine_failed`: it is still loaded).
       // Cancellation belongs to the caller; it must not invalidate other shared work.
-      const retryable = error instanceof NativeScoreError && ["not_ready", "busy", "engine_idle", "cancelled"].includes(error.code);
+      const retryable = error instanceof NativeScoreError && ["not_ready", "busy", "engine_idle", "engine_failed", "cancelled"].includes(error.code);
       // Nor does a port that closed (it has said so itself, see getScoreClient.ts) or a full
       // local queue change the runtime: nothing sent can answer after its port failed, so
       // the router may send the batch again under the same generation.

@@ -27,7 +27,7 @@ import native_host as host
 from engine import clean_text
 from native_component import ComponentError, HOST_NAME, HomeLock, NativeComponent, STATE_DEFAULT
 from download_modelkit import DownloadPaused, download_asset, install_streaming, invalid_files
-from runtime_controller import Candidate, RuntimeController
+from runtime_controller import Candidate, RuntimeController, RuntimeFailure
 from transfer_fixture import transfer_with
 
 
@@ -831,6 +831,23 @@ class LifecycleTests(unittest.TestCase):
             response = host.dispatch(component, request(op, payload=payload))
             self.assertEqual((response["status"], response["error"]["code"]), (422, "invalid_request"), op)
         self.assertEqual(component.status()["state"], "ready")
+
+    def test_a_runtime_failure_is_answered_as_one_the_browser_may_retry(self):
+        component = self.make()
+        self.first_run(component)
+        score = {"v": "3.0", "blocks": [{"id": "a", "text": "a paragraph"}]}
+        engine = component.controller.engine
+        working = engine.score
+        def failed(_texts):
+            raise RuntimeFailure("The GPU runtime failed on this batch: [METAL] Command buffer execution failed")
+        engine.score = failed
+        response = host.dispatch(component, request("score", payload=score))
+        # The browser may ask again: 503, and nothing about the engine changed.
+        self.assertEqual((response["status"], response["error"]["code"]), (503, "engine_failed"))
+        self.assertIn("Command buffer", response["error"]["message"])
+        self.assertEqual(component.status()["state"], "ready")
+        engine.score = working
+        self.assertEqual(host.dispatch(component, request("score", payload=score))["status"], 200)
 
     def test_legacy_component_settings_receive_default_idle_timeout(self):
         component = self.make()

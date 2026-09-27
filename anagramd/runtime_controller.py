@@ -48,6 +48,11 @@ class Cancelled(Exception):
     pass
 
 
+class RuntimeFailure(Exception):
+    """The runtime raised while it computed a batch (a GPU error it reported instead of
+    aborting on): the batch failed, the engine is still there, and asking again may work."""
+
+
 def error_text(error) -> str:
     """Keep provider failures readable by the control client's bounded schema."""
     # The browser counts UTF-16 code units. Replace malformed surrogates and

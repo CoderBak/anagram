@@ -129,6 +129,10 @@ local component and the installer all carry the same version.
   longer started over and over: pages show that the engine is down until Retry, and the
   panel and Settings say that it kept stopping rather than that it is not ready, each with
   its Retry.
+- A GPU failure MLX reports instead of aborting on (a command buffer that did not complete,
+  memory it could not get) no longer counts as a broken engine: the batch is answered as
+  one that may be asked again, MLX's cached buffers are dropped, and the engine stays
+  loaded. Before, it was an internal error and the extension declared the engine down.
 - A consent box a publisher builds itself, such as the Daily Mail's, is no longer read. No
   platform's name is on it; it is recognised by what it holds: a list of third parties, each
   linking to its own privacy policy, beside buttons that give or refuse consent. Its

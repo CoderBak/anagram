@@ -20,8 +20,8 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "anagramd"))
 import engine as engine_api
-from runtime_controller import (Candidate, Cancelled, RuntimeBusy, RuntimeController, RuntimeUnavailable,
-                                auto_candidate, error_text)
+from runtime_controller import (Candidate, Cancelled, RuntimeBusy, RuntimeController, RuntimeFailure,
+                                RuntimeUnavailable, auto_candidate, error_text)
 from runtime_adapters import MlxEditLens, OnnxEditLens, artifact_files, digest, runtime_version, load_candidate
 from benchmark_worker import SubprocessBenchmark
 
@@ -1073,6 +1073,40 @@ class ScoringParityTests(unittest.TestCase):
         self.assertNotIn("sure", onnx.tok.cleaned[0])
         self.assertEqual(onnx.tok.cleaned[-1], "this is the answer")
         self.assertEqual(sum(len(feed["input_ids"]) for feed in feeds), len(texts))
+
+
+class MlxFailureTests(unittest.TestCase):
+    def test_a_failure_mlx_reports_fails_the_batch_retriably_and_drops_its_buffers(self):
+        import numpy as np
+        import emoji
+
+        class Tokenizer:
+            eos_token_id = sep_token_id = 2
+            def __call__(self, texts, **_):
+                return {"input_ids": [[1, 5, 2] for _ in texts]}
+            def pad(self, inputs, **_):
+                ids = np.array(inputs["input_ids"])
+                return {"input_ids": ids, "attention_mask": np.ones_like(ids)}
+
+        calls = []
+        def failing(ids, mask):
+            calls.append(("forward", threading.current_thread().name))
+            raise RuntimeError("[METAL] Command buffer execution failed: Discarded (victim of GPU error/recovery)")
+        fake_mx = SimpleNamespace(array=np.asarray,
+                                  clear_cache=lambda: calls.append(("clear", threading.current_thread().name)))
+        mlx = MlxEditLens.__new__(MlxEditLens)
+        mlx.api, mlx.model, mlx.tok, mlx.emoji = engine_api, failing, Tokenizer(), emoji
+        mlx.owner = ThreadPoolExecutor(max_workers=1, thread_name_prefix="anagram-mlx")
+        mlx.max_length, mlx.batch_size, mlx.n_buckets, mlx.lock = 8, 2, 4, threading.Lock()
+        with patch.dict(sys.modules, {"mlx": SimpleNamespace(core=fake_mx), "mlx.core": fake_mx}):
+            with self.assertRaisesRegex(RuntimeFailure, "Command buffer execution failed"):
+                mlx.score(["a paragraph"])
+            # Dropped on MLX's own thread, and the engine is not held: the next batch runs.
+            self.assertEqual([what for what, _ in calls], ["forward", "clear"])
+            self.assertTrue(all(name.startswith("anagram-mlx") for _, name in calls))
+            mlx.model = lambda ids, mask: np.zeros((len(ids), 4), dtype=np.float32)
+            self.assertEqual(len(mlx.score(["a paragraph", "another"])), 2)
+            mlx.close()
 
 
 if __name__ == "__main__":

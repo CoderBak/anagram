@@ -471,6 +471,18 @@ describe("native scoring lifecycle generation", () => {
     expect(request.mock.calls.map(([operation]) => operation)).toEqual(["health", "score", "health", "health"]);
   });
 
+  it("keeps the engine up when it fails a batch and says the failure may be retried", async () => {
+    const failed = {v:1,id:"score",ok:false,status:503,error:{code:"engine_failed",message:"The GPU runtime failed on this batch"}};
+    const request = vi.fn().mockResolvedValueOnce(reply(HEALTH)).mockResolvedValueOnce(failed)
+      .mockResolvedValueOnce(reply({v:"3.0",model:MODEL,results:[result]}));
+    const client = new NativeScoreClient(request);
+    await client.ready(); const generation = client.revision();
+    const error = await client.scoreBatch([{id:"block",text:"sample"}]).catch((e: unknown) => e);
+    expect(error).toMatchObject({status:503,code:"engine_failed"}); expect(isTransientFailure(error)).toBe(true);
+    expect(client.isUp()).toBe(true); expect(client.revision()).toBe(generation);
+    expect((await client.scoreBatch([{id:"block",text:"sample"}])).model).toEqual(MODEL);
+  });
+
   it("does not auto-wake an explicitly stopped component", async () => {
     const request = vi.fn().mockResolvedValue({v:1,id:"health",ok:false,status:503,error:{code:"not_ready",message:"Stopped"}});
     const client = new NativeScoreClient(request);
