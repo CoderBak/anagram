@@ -100,6 +100,9 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- Stopping, resuming, updating or removing the local engine no longer waits forever for a
+  forward pass that does not end. It waits as long as the extension waits for any answer,
+  30 seconds, then reports that inference is still running and can be tried again.
 - The Copy report button in the panel keeps to one line when the panel's title needs more
   room, as it does in a longer translation; the title wraps instead.
 - The legal fine print a site sets under its text or its offer is no longer read: boxes

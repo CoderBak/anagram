@@ -276,7 +276,7 @@ def main():
     from native_component import ComponentError, NativeComponent
     component, error = None, None
     try:
-        component = NativeComponent(args.home)
+        component = NativeComponent(args.home, stop_timeout=QUEUE_TIMEOUT_S)
         configure_environment(component.home)
         # Contain dependency diagnostics created relative to cwd before any
         # background runtime import (including ORT's fallback session file).
