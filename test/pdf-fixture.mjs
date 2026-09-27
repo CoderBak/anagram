@@ -4,7 +4,7 @@
 // its fonts are resolved — but a binary fixture in the repository would be opaque and a
 // PDF library would be a dependency bought for one test. A PDF set in one of the standard
 // fourteen fonts is a few hundred bytes of text, so this writes its own. Two suites open
-// it: test/scenarios.mjs in Chromium and test/firefox.mjs in Firefox, and they must read
+// it: test/pw/scenarios-pdf.spec.mjs in Chromium and test/firefox.mjs in Firefox, and they must read
 // the SAME document — a second copy of this would drift the moment one of them changed.
 import http from "node:http";
 import { createHash } from "node:crypto";

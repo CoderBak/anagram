@@ -6,6 +6,8 @@
 //
 // The performance budgets measure time, so they are a project of their own: one worker,
 // after everything else has passed (`npm run test:perf` runs them alone, with --no-deps).
+// The live sites are the only tests that go to the network, so they are one too:
+// `--project chromium` leaves them out.
 import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
@@ -18,7 +20,8 @@ export default defineConfig({
   timeout: 90_000,
   reporter: [["list"]],
   projects: [
-    { name: "chromium", testMatch: "**/*.spec.mjs", testIgnore: "**/perf.spec.mjs" },
+    { name: "chromium", testMatch: "**/*.spec.mjs", testIgnore: ["**/perf.spec.mjs", "**/scenarios-live.spec.mjs"] },
+    { name: "live", testMatch: "**/scenarios-live.spec.mjs" },
     { name: "perf", testMatch: "**/perf.spec.mjs", dependencies: ["chromium"], workers: 1, fullyParallel: false, timeout: 15 * 60_000 },
   ],
 });

@@ -1,6 +1,6 @@
 // test/firefox.mjs — end-to-end test of the FIREFOX MV2 build, in a real Firefox.
 //
-// The Chromium suites (test/pw/, test/scenarios.mjs) drive Playwright; Playwright
+// The Chromium suites (test/pw/) drive Playwright; Playwright
 // cannot load an extension into Firefox, so this one drives headless Firefox through
 // puppeteer-core over WebDriver BiDi — see test/firefox-harness.mjs for the launch,
 // the temporary install of output-test/firefox-mv2, and the fixed moz-extension:// origin.
@@ -429,7 +429,7 @@ check(
 // document on an extension page of its own and runs the ORDINARY pipeline over it. That
 // is the only place where pdf.js, a module worker and the orchestrator all run on a
 // moz-extension: document — three things Firefox could do differently, and the suite that
-// would notice is this one. The PDF is the one test/scenarios.mjs opens in Chromium
+// would notice is this one. The PDF is the one test/pw/scenarios-pdf.spec.mjs opens in Chromium
 // (test/pdf-fixture.mjs), supplied here as local File bytes.
 const readerErrors = [];
 
@@ -613,7 +613,7 @@ const renderPdfPages = async (page) => {
 }
 
 // ── 10d) what the Chromium scenarios cover, where Firefox could differ ─────────────
-// Each is a smaller copy of its case in test/scenarios.mjs, run on the Firefox build.
+// Each is a smaller copy of its case in test/pw/scenarios-*.spec.mjs, run on the Firefox build.
 const VOCAB = "the quick brown fox jumps over a lazy dog while rain falls gently on rooftops and children read books near warm windows during long quiet evenings a timetable moved off paper and nobody noticed until the trains ran on time".split(" ");
 /** A paragraph over the 75-word floor, its words set by `i` so that no two are alike. */
 const para = (tag, i = 0) => `${tag}-${i} ` + Array.from({ length: 84 }, (_, k) => VOCAB[(i * 7 + k * 13) % VOCAB.length]).join(" ") + ".";
