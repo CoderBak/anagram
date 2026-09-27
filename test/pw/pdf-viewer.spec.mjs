@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, truncateSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { build } from "esbuild";
-import { test as base, expect } from "./fixtures.mjs";
+import { test, expect } from "./fixtures.mjs";
 import { TEST_PDF, LOCKED_PDF, PDF_PASSWORD, TALL_PDF, PDF_CHIP, readerReady } from "../pdf-fixture.mjs";
 
 const ROOT = join(import.meta.dirname, "..", "..");
@@ -20,23 +20,7 @@ const frames = (page) => page.evaluate(() => new Promise((r) => requestAnimation
 
 // The shipping build, offline: nothing the viewer, its parser, fonts or locale files need
 // may come from anywhere but the extension, and every test checks that at its end.
-const test = base.extend({
-  packagedOnly: [
-    async ({ context }, use) => {
-      await context.setOffline(true);
-      const external = [];
-      const record = (request) => {
-        if (/^https?:/.test(request.url())) external.push(request.url());
-      };
-      context.on("request", record);
-      await use(external);
-      context.off("request", record);
-      expect(external, "requests that left the extension").toEqual([]);
-    },
-    { auto: true },
-  ],
-});
-test.use({ build: "shipping" });
+test.use({ build: "shipping", offline: true });
 
 /** The reader with a document chosen from this computer; a `file=` query is never read. */
 async function openReader(page, extId, file = input("offline.pdf", TEST_PDF)) {
