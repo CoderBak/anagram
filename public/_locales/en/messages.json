@@ -255,6 +255,10 @@
     "message": "The local engine is not ready. Open Anagram Settings; new paragraphs wait until it is ready.",
     "description": "Notice at the top of the triage panel while the local engine is not ready."
   },
+  "panelEngineCrashed": {
+    "message": "The local engine kept stopping unexpectedly, so Anagram stopped restarting it. New paragraphs wait until you retry.",
+    "description": "Notice at the top of the triage panel when the local engine died several times in a row while scoring and is no longer restarted automatically."
+  },
   "panelRetry": {
     "message": "Retry",
     "description": "Panel action beside the daemon-down notice."
@@ -694,6 +698,10 @@
   "componentNeedsAttention": {
     "message": "Needs attention",
     "description": "Engine state: an error or lost connection."
+  },
+  "componentEngineCrashed": {
+    "message": "The engine stopped unexpectedly several times in a row while scoring, so Anagram stopped restarting it. Retry to start it again.",
+    "description": "Engine panel on the setup page and in Settings: the engine died several times in a row while scoring and is no longer restarted automatically."
   },
   "componentInUse": {
     "message": "In use by another browser",

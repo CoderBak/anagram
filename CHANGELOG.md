@@ -126,7 +126,9 @@ local component and the installer all carry the same version.
   chips end with their verdicts instead of reading "Unavailable", nothing already answered
   is asked again, and the PDF reader and the paste page carry on the same way. An engine
   that keeps stopping (four times within two minutes with nothing scored in between) is no
-  longer started over and over: pages show that the engine is down until Retry.
+  longer started over and over: pages show that the engine is down until Retry, and the
+  panel and Settings say that it kept stopping rather than that it is not ready, each with
+  its Retry.
 - A consent box a publisher builds itself, such as the Daily Mail's, is no longer read. No
   platform's name is on it; it is recognised by what it holds: a list of third parties, each
   linking to its own privacy policy, beside buttons that give or refuse consent. Its

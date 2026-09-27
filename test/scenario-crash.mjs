@@ -179,28 +179,41 @@ export async function crashScenarios({ record }) {
       pages["/always.html"] = PAGE("ALWAYS", 6);
       await healthy();
       fixture.setState({ crash: { skip: 0, times: -1, delayMs: 150 }, startupMs: 300 });
+      /** Deaths since `from` once no host has died for 12 s (at most a minute): a loop would
+       *  start one at each of the pages' re-checks, every 5 s. */
+      const quiet = async (from) => {
+        let last = fixture.crashes(), still = Date.now();
+        const end = Date.now() + 60000;
+        while (Date.now() < end && Date.now() - still < 12000) {
+          await new Promise((r) => setTimeout(r, 500));
+          if (fixture.crashes() !== last) { last = fixture.crashes(); still = Date.now(); }
+        }
+        return { crashes: last - from, stopped: Date.now() - still >= 12000 };
+      };
       const before = fixture.crashes();
       const page = await context.newPage();
       await page.goto(server.url("/always.html"), { waitUntil: "load" });
       const down = await until(async () => (await ball(page)) === "!", 60000);
-      // Down may be passing (a batch that killed two hosts takes the page down, and the
-      // engine is asked again when it answers health); the hosts must stop being started
-      // soon after all the same. A loop would start one at every re-check (every 5 s).
-      let last = fixture.crashes(), still = Date.now();
-      const end = Date.now() + 60000;
-      while (Date.now() < end && Date.now() - still < 12000) {
-        await page.waitForTimeout(500);
-        if (fixture.crashes() !== last) { last = fixture.crashes(); still = Date.now(); }
-      }
-      const stopped = Date.now() - still >= 12000;
+      // Down may be passing at first (a batch that killed two hosts takes the page down, and
+      // the engine is asked again once it answers health); the starts must stop all the same.
+      const first = await quiet(before);
       const states = await chipStates(page, BADGE_SEL);
       const downAtEnd = (await ball(page)) === "!";
       record("ui", "engine dies on every batch: the page shows the engine-down state (ball !, no verdict invented)",
         down && downAtEnd && states.every((s) => s === "unavailable") && states.includes("unavailable"),
         JSON.stringify({ down, downAtEnd, states }));
       record("ui", "engine dies on every batch: restarts stop after a bounded number, nothing loops",
-        stopped && last - before >= 2 && last - before <= 4, JSON.stringify({ crashes: last - before, stopped }));
+        first.stopped && first.crashes >= 2 && first.crashes <= 4, JSON.stringify(first));
       const later = fixture.crashes();
+
+      // The panel says why: not the generic "not ready" but that the engine keeps stopping.
+      await page.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.click());
+      const notice = await until(async () => !!(await page.evaluate(() =>
+        document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".pnotice")?.textContent)), 3000)
+        ? await page.evaluate(() => document.getElementById("anagram-fab").shadowRoot.querySelector(".pnotice").textContent) : null;
+      record("ui", "engine dies on every batch: the panel says the engine keeps stopping and offers Retry",
+        !!notice && /stopp/i.test(notice) && /Retry/.test(notice), JSON.stringify(notice));
+
       // The reader and the paste page meet the same state and start nothing either.
       const reader = await openPdfInReader(context, pdfs.url("/grouped.pdf"));
       const readerDown = await until(async () => (await ball(reader)) === "!", 20000);
@@ -213,6 +226,24 @@ export async function crashScenarios({ record }) {
       record("ui", "engine dies on every batch: the PDF reader and the paste page show their engine-down state and start no host",
         readerDown && /did not complete/.test(pasteStatus) && fixture.crashes() === later,
         JSON.stringify({ readerDown, pasteStatus, crashes: fixture.crashes() - before }));
+
+      // Settings says so too, and reading it wakes nothing. Its Retry starts the engine again:
+      // the pages ask again by themselves, and an engine still broken is given up on again
+      // after as many deaths.
+      const options = await context.newPage();
+      await options.goto(`chrome-extension://${extId}/options.html`);
+      const status = () => options.locator("#componentSettings .component-status").innerText().catch(() => "");
+      const crashNotice = await until(async () => /stopp/i.test(await options.locator("#componentSettings").innerText().catch(() => "")), 10000);
+      const settingsText = (await options.locator("#componentSettings").innerText().catch(() => "")).replace(/\s+/g, " ").slice(0, 240);
+      record("ui", "engine dies on every batch: Settings names the repeated stops and offers Retry",
+        crashNotice && (await status()) === "Needs attention" && /Retry/.test(settingsText) && fixture.crashes() === later,
+        JSON.stringify(settingsText));
+      await options.locator("#component-primary").click();
+      const lifted = await until(async () => (await status()) === "Ready", 10000);
+      const second = await quiet(later);
+      record("ui", "engine dies on every batch: Retry in Settings starts it again, and it is given up on again as quickly",
+        lifted && second.stopped && second.crashes >= 2 && second.crashes <= 4, JSON.stringify({ lifted, ...second }));
+      await options.close();
 
       // Mended, and Retry in the panel brings everything back: the page, and the reader
       // with it (it re-checks by itself once the engine answers again).

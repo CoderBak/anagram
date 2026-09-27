@@ -191,6 +191,9 @@
   "panelDaemonDown": {
     "message": "本地引擎尚未就绪。请打开 Anagram 设置；新段落将等待引擎就绪后再分析。"
   },
+  "panelEngineCrashed": {
+    "message": "本地引擎接连意外停止，Anagram 已不再自动重启它。新段落将等待你重试后再分析。"
+  },
   "panelRetry": {
     "message": "重试"
   },
@@ -541,6 +544,9 @@
   },
   "componentNeedsAttention": {
     "message": "需要处理"
+  },
+  "componentEngineCrashed": {
+    "message": "引擎在分析时接连多次意外停止，Anagram 已不再自动重启它。点击重试可重新启动。"
   },
   "componentInUse": {
     "message": "正被另一个浏览器使用"
