@@ -94,6 +94,10 @@ APIs through its `parseAsync()`. `lib/dom/mainContent.ts` calls only its synchro
 | `lib/surfaces/frames.ts` | `https://*.read.libbyapp.com/*` | the frames Libby shows a book's chapters in, asked for with the site; does not initiate a request |
 | `lib/surfaces/frames.ts` | `https://*.vitalsource.com/*` | a VitalSource Bookshelf tab, reached when the frame its books are shown in is granted; does not initiate a request |
 | `lib/surfaces/frames.ts` | `https://jigsaw.vitalsource.com/*` | the frame VitalSource shows a book in, asked for with the site; does not initiate a request |
+| `lib/access/commentFrames.ts` | `https://disqus.com/*` | the site a page's Disqus comment thread is framed from, offered in the panel for the reader to allow; does not initiate a request |
+| `lib/access/commentFrames.ts` | `https://www.facebook.com/*` | the same, for Facebook's comments plugin |
+| `lib/access/commentFrames.ts` | `https://utteranc.es/*` | the same, for utterances |
+| `lib/access/commentFrames.ts` | `https://giscus.app/*` | the same, for giscus |
 | `entrypoints/onboarding/index.html` | `https://github.com/CoderBak/anagram/blob/dev/docs/user-guide.en.md` | the user-guide link on the setup page; opened only when clicked |
 | `entrypoints/onboarding/main.ts` | `https://github.com/CoderBak/anagram/blob/dev/docs/user-guide.zh-CN.md` | the same link for a Chinese browser |
 | `entrypoints/options/index.html` | `https://github.com/CoderBak/anagram/blob/dev/PRIVACY.md` | the privacy-policy link on the settings page; opened only when clicked |

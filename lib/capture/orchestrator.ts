@@ -15,7 +15,8 @@ import { cancelDocumentSession, documentSessionId, sendDocumentMessage } from ".
 // flickering still-valid badges. The popup Rescan button remains the full teardown+rescan.
 import { browser, type ContentScriptContext } from "#imports";
 import { ACTIONS } from "../messaging/protocol";
-import type { BackendStatus } from "../messaging/protocol";
+import type { BackendStatus, CommentAccessReply } from "../messaging/protocol";
+import { commentOriginsIn } from "../access/commentFrames";
 import type { Unit, Lane } from "../types";
 import type { ModelInfo, ScoreBlock, ScoreResult, ScoreBatchRequest } from "../contract";
 import { CONTRACT_VERSION } from "../contract";
@@ -321,6 +322,12 @@ export function createOrchestrator(
       onJump: jumpTo,
       buildReport,
       scopeNote: opts.reportScopeNote,
+      commentOrigins: () => commentOffer,
+      // Nothing is asked for here: the worker opens the settings page at the offer, where
+      // the reader's own click can ask the browser for the site.
+      onAllowComments: (origin) =>
+        void sendDocumentMessage({ action: ACTIONS.OPEN_COMMENT_ACCESS, origin }).catch(() => undefined),
+      onOpen: () => refreshCommentOffer(),
     },
     // The panel's "Turn off on <host>" writes the rule itself; the content script is what
     // knows whether this page is running because of the settings or because it was asked
@@ -345,6 +352,34 @@ export function createOrchestrator(
     let pending = 0;
     for (const id of unitsById.keys()) if (!verdictsById.has(id)) pending++;
     return { read, short: shortTexts.size, notEnglish, pending, unavailable };
+  }
+
+  /**
+   * Comment threads this page shows in frames of a site nobody has granted (Disqus,
+   * Facebook's comments plugin — lib/access/commentFrames.ts): no script runs in those
+   * frames, so the panel says so and offers to allow the site. Asked when the page is first
+   * read and whenever the panel opens, because such a frame is usually put in late.
+   */
+  let commentOffer: readonly string[] = [];
+  let commentAsked = 0;
+  function refreshCommentOffer(): void {
+    if (!mountFab || opts.collect || !started) return;
+    const origins = commentOriginsIn(document);
+    const asked = ++commentAsked;
+    if (origins.length === 0) {
+      setCommentOffer([]);
+      return;
+    }
+    void sendDocumentMessage({ action: ACTIONS.COMMENT_ACCESS, origins })
+      .then((reply) => {
+        if (asked === commentAsked && started) setCommentOffer((reply as CommentAccessReply | undefined)?.missing ?? []);
+      })
+      .catch(() => undefined);
+  }
+  function setCommentOffer(next: readonly string[]): void {
+    if (next.join(" ") === commentOffer.join(" ")) return;
+    commentOffer = next;
+    fab.refreshPanel();
   }
 
   /** Centre a unit in the viewport and pulse its chip (panel rows and the
@@ -1427,6 +1462,7 @@ export function createOrchestrator(
     resolveScopeRoot();
     const base = scanBase();
     if (base) ingestUnits(collect(base, makeClaimFilter()));
+    refreshCommentOffer();
 
     watchUrl();
     log.log("started", { session, domain });
@@ -1565,6 +1601,8 @@ export function createOrchestrator(
     document.removeEventListener("visibilitychange", onVisibilityChange);
     backendDown = false;
     fab.setBackendDown(false);
+    commentOffer = [];
+    commentAsked++;
     clearAllResults();
     // Every text node the walker cut gets its text back: a page Anagram has left is the
     // page its own script wrote.

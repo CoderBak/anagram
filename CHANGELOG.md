@@ -9,6 +9,12 @@ local component and the installer all carry the same version.
 
 ### Added
 
+- A page whose comments come from another site's frame — Disqus, Facebook's comments
+  plugin, utterances, giscus — says so in the panel and offers to allow that site. Anagram
+  reads a frame only with access to its own site, so those threads went unread without a
+  word. The panel's button opens Settings at a row that names the site; the browser asks
+  there, on your click, and nothing is requested otherwise. Once allowed, the open pages
+  that show the thread read it without a reload.
 - THIRD_PARTY_NOTICES.md ships next to LICENSE in both browser packages and in the local
   component. It lists every third-party library, font, data file and model Anagram contains,
   and the code and word lists its own source adapts, each with its version, licence,
@@ -100,6 +106,18 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- A consent box a publisher builds itself, such as the Daily Mail's, is no longer read. No
+  platform's name is on it; it is recognised by what it holds: a list of third parties, each
+  linking to its own privacy policy, beside buttons that give or refuse consent. Its
+  explanations were read on four Daily Mail pages of the web benchmark, 319 words each.
+- A cookie banner a consent platform draws inside a shadow root of its own is no longer
+  analyzed; only banners in the page itself were recognised.
+- Immersive Translate's "translation only" mode is recognised: the translation it shows in
+  place of a paragraph is marked `data-imt-translation-only`, as the stylesheet the
+  extension publishes says, and is no longer read as the page's own text.
+- The PHP warnings a forum running in debug mode prints above its pages ("[phpBB Debug] PHP
+  Warning: in file … on line 483") are no longer read as a text; neither is the warning
+  output of any PHP site. Two phpBB topics in the web benchmark lost 750 words each to them.
 - The Copy report button in the panel keeps to one line when the panel's title needs more
   room, as it does in a longer translation; the title wraps instead.
 - The legal fine print a site sets under its text or its offer is no longer read: boxes
