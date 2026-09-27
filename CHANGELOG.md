@@ -100,6 +100,9 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- The PHP warnings a forum running in debug mode prints above its pages ("[phpBB Debug] PHP
+  Warning: in file … on line 483") are no longer read as a text; neither is the warning
+  output of any PHP site. Two phpBB topics in the web benchmark lost 750 words each to them.
 - The Copy report button in the panel keeps to one line when the panel's title needs more
   room, as it does in a longer translation; the title wraps instead.
 - The legal fine print a site sets under its text or its offer is no longer read: boxes

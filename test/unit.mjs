@@ -1627,6 +1627,17 @@ const results = await page.evaluate(() => {
       u.length === 0 && sic.length === 2 && PW.shortcodeShare(row) > 0.9, JSON.stringify([u.map(x => x.words), sic.map(x => x.words)]));
   }
 
+  {
+    // A forum running with debugging on prints PHP's warnings above the page, one line each.
+    const warning = `<b>[phpBB Debug] PHP Warning</b>: in file <b>[ROOT]/includes/bbcode.php</b> on line <b>483</b>: <b>preg_replace(): The /e modifier is no longer supported, use preg_replace_callback instead</b><br />\n`;
+    u = collect(`<div>${warning.repeat(12)}</div><div class="post"><div class="content">${words(80)}</div></div>`);
+    const php = collect(`<div><br /><b>Warning</b>:  Undefined variable $title in <b>/var/www/html/wp-content/themes/x/header.php</b> on line <b>12</b><br /><br /><b>Deprecated</b>:  Function create_function() is deprecated in <b>/var/www/html/wp-includes/plugin.php</b> on line <b>30</b><br /></div><p>${words(80)}</p>`);
+    const prose = collect(`<p>Warning: ${words(40)} It stopped on line 12 of the script, the operator said, and ${words(40)}</p>`);
+    check("PHP's and phpBB's debug warnings above a page are no prose; a sentence that begins with a warning is",
+      u.length === 1 && !u[0].text.includes("phpBB") && php.length === 1 && !php[0].text.includes("Undefined") && prose.length === 1,
+      JSON.stringify([u.map(x => x.text.slice(0, 40)), php.map(x => x.text.slice(0, 40)), prose.length]));
+  }
+
   // ---- where the chip is inserted ---------------------------------------------------------
   {
     const layer = PW.createBadgeLayer();

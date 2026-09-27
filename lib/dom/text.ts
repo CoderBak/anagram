@@ -507,6 +507,24 @@ export function isRepetitive(text: string): boolean {
   return words >= REPEAT_MIN_WORDS && seen.size <= MAX_REPEATED_WORDS;
 }
 
+// ---- server diagnostics ------------------------------------------------------------------
+
+/** One of PHP's diagnostics as `display_errors` prints it — "Warning: Undefined variable $x
+ *  in /var/www/header.php on line 12" — or as phpBB's debug mode does: "[phpBB Debug] PHP
+ *  Warning: in file [ROOT]/includes/bbcode.php on line 483: preg_replace(): …". */
+const PHP_DIAGNOSTIC_RE =
+  /^(?:\[phpBB Debug\]\s*)?(?:PHP\s+)?(?:Warning|Notice|Deprecated|Strict Standards|(?:Catchable |Recoverable )?Fatal error|Parse error)\s*:\s.*?\bin (?:file )?\S+\.(?:php\d?|inc|phtml)\b.*?\bon line\s+\d+/i;
+
+/**
+ * A server's error output printed into the page: a forum that runs with debugging on sets a
+ * line of it above the page for every call that warned — 32 lines, 750 words, on one phpBB
+ * topic — and the lines of one block were read together as a text. Every line must be one.
+ */
+export function isServerDiagnostic(text: string): boolean {
+  const lines = text.split("\n").filter((l) => l.trim() !== "");
+  return lines.length > 0 && lines.every((l) => PHP_DIAGNOSTIC_RE.test(l.trim()));
+}
+
 // ---- unrendered shortcodes -----------------------------------------------------------
 
 /** A WordPress shortcode as a page builder writes it: a closing `[/vc_column_text]`, a name

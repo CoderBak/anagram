@@ -65,6 +65,7 @@ import {
   looksLikeNameList,
   shortcodeShare,
   isRepetitive,
+  isServerDiagnostic,
   endsLikeProse,
   endsInColon,
   wordShape,
@@ -1835,10 +1836,10 @@ function createAssembler(
       if (isSeparatorRun(r.text)) barrier(r.container);
       return;
     }
-    if (symbolNoiseRatio(r.text) > 0.2 || shortcodeShare(r.text) > MAX_SHORTCODE_SHARE || (r.preserved && hasColumnGaps(r.raw)) || isRepetitive(r.text)) {
+    if (symbolNoiseRatio(r.text) > 0.2 || shortcodeShare(r.text) > MAX_SHORTCODE_SHARE || (r.preserved && hasColumnGaps(r.raw)) || isRepetitive(r.text) || isServerDiagnostic(r.text)) {
       // ASCII diagrams / table rules / column-layout headers ("RFC 768   J.
-      // Postel"), a page builder's unrendered shortcodes and a phrase repeated a hundred
-      // times over: machine layout, not prose —
+      // Postel"), a page builder's unrendered shortcodes, a phrase repeated a hundred
+      // times over and a server's warnings printed into the page: machine output, not prose —
       // barrier, never merged. The column-gap check applies ONLY to preserved-whitespace
       // runs: in normal HTML, interior space runs collapse invisibly and must not drop prose.
       barrier(r.container);
