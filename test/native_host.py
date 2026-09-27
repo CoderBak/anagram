@@ -849,6 +849,43 @@ class LifecycleTests(unittest.TestCase):
         engine.score = working
         self.assertEqual(host.dispatch(component, request("score", payload=score))["status"], 200)
 
+    def test_the_first_scored_batch_confirms_a_start_and_a_failed_batch_does_not(self):
+        component = self.make()
+        self.first_run(component)
+        record = lambda: json.loads((self.home / "runtime-crashes.json").read_text())
+        self.assertEqual((record()["candidate_id"], record()["open"]), ("torch:cpu:fp32", True))
+        engine = component.controller.engine
+        working = engine.score
+        def failed(_texts):
+            raise RuntimeFailure("The GPU runtime failed on this batch")
+        engine.score = failed
+        score = {"v": "3.0", "blocks": [{"id": "a", "text": "a paragraph"}]}
+        self.assertEqual(host.dispatch(component, request("score", payload=score))["status"], 503)
+        self.assertTrue(record()["open"])  # not yet shown to work
+        engine.score = working
+        self.assertEqual(host.dispatch(component, request("score", payload=score))["status"], 200)
+        self.assertEqual((record()["open"], record()["crashes"]), (False, 0))
+        # A clean shutdown before any batch is not a death either (the next start counts none).
+        component.close()
+        restarted = self.make()
+        self.first_run(restarted)
+        restarted.close()
+        self.assertEqual((record()["open"], record()["crashes"]), (False, 0))
+
+    def test_retry_tries_again_a_runtime_passed_over_for_crashing(self):
+        component = self.make()
+        self.first_run(component)
+        component.handle("engine.stop", {})
+        self.finish(component)
+        crashes = self.home / "runtime-crashes.json"
+        crashes.write_text(json.dumps({"schema_version": 1, "candidate_id": None, "open": False,
+                                       "crashes": 0, "passed_over": ["torch:cpu:fp32"]}))
+        component.handle("engine.resume", {})
+        self.finish(component)
+        status = component.status()
+        self.assertEqual((status["state"], status["runtime"]["active_id"]), ("ready", "torch:cpu:fp32"))
+        self.assertEqual(json.loads(crashes.read_text())["passed_over"], [])
+
     def test_legacy_component_settings_receive_default_idle_timeout(self):
         component = self.make()
         self.first_run(component)

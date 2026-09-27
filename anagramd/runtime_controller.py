@@ -9,6 +9,15 @@ process per candidate, and never change the selection.
 Native status and control requests never wait for a model load or forward pass.
 Measurements cover text cleaning, tokenization, forward and postprocessing of
 fixed ~120-word English samples, not language identification or browser transport.
+
+A runtime can take the whole process down where no handler runs: MLX aborts in
+libc++abi when Metal discards a command buffer. Every activation is therefore
+recorded before it starts (runtime-crashes.json) and confirmed by the first batch
+it scores; a record still open when the next process starts means the one before
+died starting that runtime or on its first batch. The next start loads and warms it
+up again, which re-validates it; after STARTUP_CRASH_LIMIT such deaths in a row it
+is passed over for ONNX Runtime on the CPU in FP32 (or the next automatic choice
+when that is not installed), until it is chosen again.
 """
 from __future__ import annotations
 
@@ -53,6 +62,12 @@ class RuntimeFailure(Exception):
     aborting on): the batch failed, the engine is still there, and asking again may work."""
 
 
+# Deaths while starting a runtime, or before its first batch, after which it is passed over.
+STARTUP_CRASH_LIMIT = 2
+PASSED_OVER = ("Stopped the engine unexpectedly twice while starting; Anagram uses another "
+               "configuration until you choose this one again")
+
+
 def error_text(error) -> str:
     """Keep provider failures readable by the control client's bounded schema."""
     # The browser counts UTF-16 code units. Replace malformed surrogates and
@@ -90,6 +105,23 @@ def auto_candidate(candidates) -> Candidate | None:
     ranked = [(preference_rank(c), position, c) for position, c in enumerate(candidates)
               if c.available and preference_rank(c) is not None]
     return min(ranked)[2] if ranked else None
+
+
+def fallback_candidate(candidates, passed_over) -> Candidate | None:
+    """Automatic selection without the runtimes that kept taking the process down: ONNX
+    Runtime on the CPU in FP32 first, the configuration least likely to fail the same way."""
+    usable = [c for c in candidates if c.id not in passed_over]
+    if passed_over:
+        cpu = next((c for c in usable if c.available and c.runtime == "onnx"
+                    and c.device == "cpu" and c.precision == "fp32"), None)
+        if cpu is not None:
+            return cpu
+    return auto_candidate(usable)
+
+
+def forget_crashes(config_path: Path) -> None:
+    """An explicit retry: every runtime passed over for crashing is tried again."""
+    Path(config_path).with_name("runtime-crashes.json").unlink(missing_ok=True)
 
 
 # Fixed English samples for warmup and measurements; they do not measure accuracy.
@@ -207,6 +239,10 @@ class RuntimeController:
         self.error = None
         self.benchmark = empty_benchmark()
         self.benchmark_started = None
+        self.crash_path = self.config_path.with_name("runtime-crashes.json")
+        self.passed_over = set()
+        # The candidate whose activation this process recorded and has not yet confirmed.
+        self.trial = None
 
     def snapshot(self) -> dict:
         with self.lock:
@@ -219,7 +255,9 @@ class RuntimeController:
                     "active_id": self.active_id, "selected_id": self.selected_id,
                     "recommended_id": self.recommended_id,
                     "fastest_id": self.fastest_id,
-                    "candidates": [asdict(candidate) for candidate in self.candidates],
+                    "candidates": [{**asdict(candidate), "reason": PASSED_OVER}
+                                   if candidate.id in self.passed_over else asdict(candidate)
+                                   for candidate in self.candidates],
                     "benchmark": benchmark, "error": self.error}
 
     def start(self):
@@ -266,8 +304,8 @@ class RuntimeController:
             if self.closed:
                 raise RuntimeBusy("runtime is busy; retry after the current operation finishes")
             candidate, expected = self._find(self.selected_id), self.selected_version
-            if candidate is None or not candidate.available:
-                candidate, expected = auto_candidate(self.candidates), None
+            if candidate is None or not candidate.available or candidate.id in self.passed_over:
+                candidate, expected = fallback_candidate(self.candidates, self.passed_over), None
             if candidate is None:
                 raise RuntimeUnavailable(self._unavailable_text())
             self.state = "loading"
@@ -341,11 +379,77 @@ class RuntimeController:
             return None
 
     def _unavailable_text(self):
+        passed = [c.label for c in self.candidates if c.id in self.passed_over]
+        if passed:
+            return (f"{passed[0]} stopped the engine unexpectedly twice while starting and no other "
+                    "configuration is installed; retry to try it again")
         reasons = [c.reason for c in self.candidates if not c.available and c.reason]
         detail = f" ({reasons[0]})" if reasons else ""
         return "No available runtime" + detail + "; download the model files and use a supported runtime"
 
+    # ---- activations that took the process down -------------------------------------------
+
+    def _crash_record(self):
+        empty = {"schema_version": 1, "candidate_id": None, "open": False, "crashes": 0, "passed_over": []}
+        try:
+            record = read_json(self.crash_path, max_bytes=65536)
+        except FileNotFoundError:
+            return empty
+        except (OSError, ValueError):
+            return empty  # a damaged record only forgets; it never blocks a start
+        if (not isinstance(record, dict) or record.get("schema_version") != 1
+                or not isinstance(record.get("candidate_id"), (str, type(None)))
+                or type(record.get("open")) is not bool or type(record.get("crashes")) is not int
+                or not isinstance(record.get("passed_over"), list)
+                or not all(isinstance(value, str) and len(value) <= 120 for value in record["passed_over"])):
+            return empty
+        return record
+
+    def _write_crashes(self, candidate_id, open_, crashes):
+        try:
+            atomic_json(self.crash_path, {"schema_version": 1, "candidate_id": candidate_id, "open": open_,
+                                          "crashes": crashes, "passed_over": sorted(self.passed_over)})
+        except (OSError, ValueError):
+            pass  # an unwritable record costs the fallback, never the engine
+
+    def _account_crashes(self):
+        """At process start: an activation left open died with the process before it."""
+        record = self._crash_record()
+        with self.lock:
+            self.passed_over = set(record["passed_over"])
+            if not record["open"] or record["candidate_id"] is None:
+                return
+            crashes = record["crashes"] + 1
+            if crashes >= STARTUP_CRASH_LIMIT:
+                self.passed_over.add(record["candidate_id"])
+                crashes = 0
+            self._write_crashes(record["candidate_id"], False, crashes)
+
+    def _open_trial(self, candidate):
+        record = self._crash_record()
+        crashes = record["crashes"] if record["candidate_id"] == candidate.id else 0
+        with self.lock:
+            self.trial = candidate.id
+            self._write_crashes(candidate.id, True, crashes)
+
+    def _close_trial(self, confirmed):
+        """The process lives on: the activation failed where Python saw it, the engine was
+        closed, or (`confirmed`) it scored a batch, which forgets earlier deaths."""
+        with self.lock:
+            if self.trial is None:
+                return
+            candidate_id, self.trial = self.trial, None
+            record = self._crash_record()
+            crashes = 0 if confirmed else (record["crashes"] if record["candidate_id"] == candidate_id else 0)
+            self._write_crashes(candidate_id, False, crashes)
+
+    def confirm(self):
+        """The first batch was scored: the runtime survived its start."""
+        if self.trial is not None:
+            self._close_trial(True)
+
     def _bootstrap(self):
+        self._account_crashes()
         self._refresh()
         self._check_cancel()
         saved = self._read_saved() or {}
@@ -356,7 +460,7 @@ class RuntimeController:
                 self.benchmark = report
                 self._recommend()
         candidate = self._find(saved.get("selected_id"))
-        if candidate is not None and candidate.available:
+        if candidate is not None and candidate.available and candidate.id not in self.passed_over:
             # The saved choice survives context and provenance changes; the
             # loaded engine's version is recorded again for the idle-wake check.
             with self.lock:
@@ -367,7 +471,7 @@ class RuntimeController:
         self._auto_select()
 
     def _auto_select(self):
-        candidate = auto_candidate(self.candidates)
+        candidate = fallback_candidate(self.candidates, self.passed_over)
         if candidate is None:
             raise ValueError(self._unavailable_text())
         with self.lock:
@@ -505,6 +609,11 @@ class RuntimeController:
             candidate = self._find(candidate_id)
             if candidate is None or not candidate.available:
                 raise ValueError("choose an available runtime candidate in Settings")
+            if candidate.id in self.passed_over:
+                # Chosen again on purpose: it is tried again, and counted afresh.
+                self.passed_over.discard(candidate.id)
+                self._write_crashes(candidate.id, False, 0)
+                self._recommend()
             self.state = "loading"
             self.error = None
             self.benchmark["phase"] = "loading"
@@ -574,8 +683,12 @@ class RuntimeController:
             self.benchmark["phase"] = "loading"
             self.benchmark["current_id"] = candidate.id
         engine = None
+        committed = False
         try:
             self._check_cancel()
+            # Open until the first batch: loading and warming up are where a runtime that
+            # cannot work on this machine takes the process down.
+            self._open_trial(candidate)
             engine = self.factory(candidate)
             self._check_cancel()
             if expected_version is not None and engine.version != expected_version:
@@ -608,8 +721,11 @@ class RuntimeController:
                 self.error = None
                 self.benchmark["phase"] = "ready"
                 self.benchmark["current_id"] = None
+                committed = True
             return True
         finally:
+            if not committed:
+                self._close_trial(False)
             self._close_engine(engine)
 
     def _finish_benchmark(self, status):
@@ -623,7 +739,7 @@ class RuntimeController:
         # The recommendation is what automatic selection picks: FP32 only, by
         # device preference. The fastest measured candidate is a separate label
         # and may be lower precision; speed samples are never accuracy evaluations.
-        chosen = auto_candidate(self.candidates)
+        chosen = fallback_candidate(self.candidates, self.passed_over)
         self.recommended_id = chosen.id if chosen else None
         measured = [r for r in self.benchmark["results"] if r.get("status") == "ok"
                     and r.get("batch_size") == 1 and self._find(r.get("candidate_id"))
@@ -798,4 +914,6 @@ class RuntimeController:
                 self.active_id = None
             else:
                 engine = None
+        # A process that closes its engine did not die with it.
+        self._close_trial(False)
         self._close_engine(engine)

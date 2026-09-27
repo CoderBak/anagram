@@ -133,6 +133,13 @@ local component and the installer all carry the same version.
   memory it could not get) no longer counts as a broken engine: the batch is answered as
   one that may be asked again, MLX's cached buffers are dropped, and the engine stays
   loaded. Before, it was an internal error and the extension declared the engine down.
+- A configuration that takes the engine down twice in a row while it starts, or before it
+  has scored its first batch, is passed over: the engine picks ONNX Runtime on the CPU in
+  FP32 by itself, with no comparison and nothing to choose, and Settings says which
+  configuration was passed over and why; choosing it again tries it again. Where no other
+  configuration is installed (the recommended download on a Mac has only MLX), the engine
+  stops and says so, and Retry tries again. A death after batches were scored is not held
+  against the configuration: the next start loads and warms it up again, as every start does.
 - A consent box a publisher builds itself, such as the Daily Mail's, is no longer read. No
   platform's name is on it; it is recognised by what it holds: a list of third parties, each
   linking to its own privacy policy, beside buttons that give or refuse consent. Its
