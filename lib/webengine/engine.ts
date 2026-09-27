@@ -6,7 +6,7 @@
 // with the native host's shapes, errors and status numbers, and lets the model go after
 // the same idle time. One engine per worker; lib/webengine/worker.ts feeds it requests.
 import type { ScoreResult } from "../contract";
-import { downloadFile, DownloadFailed, DownloadPaused, verifyFile } from "./download";
+import { downloadFile, DownloadFailed, DownloadPaused, readPackaged, verifyFile } from "./download";
 import { FastText } from "./fasttext";
 import { BUCKET_LABELS, CALIBRATION, MODEL_ID, SUPPORTED_LANGUAGES, type Pin, type PinnedFile } from "./pin";
 import { CONTRACT_VERSION, EngineError, checkPayloadKeys, parseScorePayload, parseTokensPayload, type EngineOperation } from "./protocol";
@@ -282,7 +282,7 @@ export class Engine {
         const files = new Map(this.init.pin.files.map((f) => [f.name, f]));
         const tokenizerBytes = await this.store.read("tokenizer.json");
         const tokenizer = new Tokenizer(JSON.parse(new TextDecoder().decode(tokenizerBytes)));
-        const lidBytes = await this.store.read("lid.176.ftz");
+        const lidBytes = await readPackaged(this.init.pin.lid);
         const lid = new FastText(lidBytes);
         const version = this.modelVersion(files, tokenizerBytes, lidBytes);
         const entry = files.get("model.onnx")!;

@@ -57,8 +57,8 @@ const pin = {
   files: [
     { name: "model.onnx", size_bytes: entry("onnx/model.onnx").size_bytes, sha256: entry("onnx/model.onnx").sha256, url: `${base}/kit/onnx/model.onnx` },
     { name: "tokenizer.json", size_bytes: entry("tokenizer.json").size_bytes, sha256: entry("tokenizer.json").sha256, url: `${base}/kit/tokenizer.json` },
-    { name: "lid.176.ftz", size_bytes: 938013, sha256: LID_SHA, url: `${base}/lid/${lid.split("/").pop()}` },
   ],
+  lid: { name: "lid.176.ftz", size_bytes: 938013, sha256: LID_SHA, url: `${base}/lid/${lid.split("/").pop()}` },
   model: { id: "editlens_roberta-large", calibration: "editlens-4bucket-cosine(0.03,0.15)" },
   license: modelkit.license,
 };

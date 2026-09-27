@@ -64,6 +64,17 @@ export async function verifyFile(store: FileStore, entry: PinnedFile, name = ent
   return hasher.digest() === entry.sha256;
 }
 
+/** A file the extension ships (lid.176.ftz), read from the package and checked against its pin. */
+export async function readPackaged(entry: PinnedFile): Promise<Uint8Array> {
+  const response = await fetch(entry.url);
+  if (!response.ok) throw new Error(`${entry.name} is missing from the extension (status ${response.status})`);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const hasher = new Sha256();
+  hasher.update(bytes);
+  if (bytes.length !== entry.size_bytes || hasher.digest() !== entry.sha256) throw new Error(`${entry.name} in the extension is not the pinned file`);
+  return bytes;
+}
+
 /**
  * Bring `entry` into the store, verified. Resolves when the file is in place; throws
  * DownloadPaused when `signal` aborts (the part stays), DownloadFailed otherwise.

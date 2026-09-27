@@ -66,7 +66,7 @@ try {
   check("models.download answers a snapshot", reply.ok && ["downloading", "loading", "ready"].includes(reply.data.state), JSON.stringify(reply).slice(0, 300));
   reply = await until((d) => d.state === "ready" || d.state === "error");
   check("download, verification and load reach ready", reply.data.state === "ready", JSON.stringify(reply.data).slice(0, 600));
-  const total = pinFiles.reduce((n, f) => n + f.size_bytes, 0);
+  const total = pin.files.reduce((n, f) => n + f.size_bytes, 0);
   check("download completed with every byte", reply.data.download.status === "completed" && reply.data.download.bytes_received === total, JSON.stringify(reply.data.download));
   check("storage counts the files", reply.data.storage.models_bytes >= total, reply.data.storage.models_bytes);
   const runtime = reply.data.runtime;
@@ -125,7 +125,9 @@ try {
   browser = await launchChromium(base, { profile: browser.profile });
   await browser.page.evaluate((init) => window.engine.start(init), initFor(base, pin));
   reply = await browser.page.evaluate(() => window.engine.until((d) => d.state === "ready" || d.state === "error", 120000));
-  check("a restarted browser finds the files in OPFS and loads without downloading", reply.data.state === "ready" && requests.filter((r) => r.path.startsWith("/files/")).length === requests.slice(0, before).filter((r) => r.path.startsWith("/files/")).length, JSON.stringify(reply.data).slice(0, 300));
+  // The language identifier is the package's, read again on every load; the rest is downloaded once.
+  const downloads = (list) => list.filter((r) => r.path.startsWith("/files/") && r.path !== "/files/tiny-lid.bin").length;
+  check("a restarted browser finds the files in OPFS and loads without downloading", reply.data.state === "ready" && downloads(requests) === downloads(requests.slice(0, before)), JSON.stringify(reply.data).slice(0, 300));
 
   // Delete, then download again with an interruption in the middle.
   reply = await browser.page.evaluate(() => window.engine.request("models.delete", { confirm: true }));

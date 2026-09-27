@@ -204,8 +204,11 @@ const GROUPS = [
   },
   {
     title: "The in-browser engine",
-    intro: "The oneclick flavor, whose scoring runs inside the browser (lib/webengine/, entrypoints/engine/), ships ONNX Runtime Web under vendor/engine/ (listed with Zotero's document-worker above, the same pinned package) and the emoji names EditLens's preprocessing spells emoji out with. Its model files are downloaded by the user, verified, and kept in the browser's own storage; they are the modelkit and language model listed under the component package below.",
+    intro: "The oneclick flavor, whose scoring runs inside the browser (lib/webengine/, entrypoints/engine/), ships ONNX Runtime Web under vendor/engine/ (listed with Zotero's document-worker above, the same pinned package), the emoji names EditLens's preprocessing spells emoji out with, and fastText's language identifier. Its model files are downloaded once, verified, and kept in the browser's own storage; they are the modelkit listed under the component package below.",
     components: () => [
+      { name: "fastText language identification (lid.176.ftz)", version: "lid.176", url: "https://fasttext.cc/docs/en/language-identification.html",
+        licence: "CC-BY-SA-3.0", copyright: "Copyright (c) Facebook, Inc.",
+        where: "The oneclick package carries the model unmodified as vendor/engine/lid.176.ftz (938,013 bytes, SHA-256 8f3472cfe8738a7b6099e8e999c3cbfae0dcd15696aac7d7738a8039db603e83): the build fetches it from https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz and refuses any other bytes (scripts/webengine.mjs), and the engine reads it from the package, checking the hash again, to tell English from other languages. The local component's installer downloads the same file, with the same check, instead of shipping it. fastText's authors distribute the model under the Creative Commons Attribution-Share Alike 3.0 licence, https://creativecommons.org/licenses/by-sa/3.0/, and ask that it be cited as A. Joulin, E. Grave, P. Bojanowski, T. Mikolov, Bag of Tricks for Efficient Text Classification (2016), and A. Joulin, E. Grave, P. Bojanowski, M. Douze, H. Jégou, T. Mikolov, FastText.zip: Compressing text classification models (2016)." },
       { name: "emoji (data)", version: "2.15.0", url: "https://github.com/carpedm20/emoji",
         licence: "BSD-3-Clause", copyright: "Copyright (c) 2014-2025, Taehoon Kim, Kevin Wurster",
         where: "lib/webengine/emoji.data.json: the package's English emoji names and qualification statuses (its emoji.json, from Unicode's emoji-test.txt), written by scripts/emojiData.py from the version anagramd/uv.lock pins, so the browser engine spells emoji out as the native engine does.",
@@ -299,7 +302,7 @@ const GROUPS = [
   },
   {
     title: "The local component package",
-    intro: "The component archive (anagram.tar.gz, anagram.zip) holds Anagram's own engine, installer and native launcher, the two browser builds above with this file, LICENSE and this file. Nothing below is in it: the installer downloads each at install time from its publisher, and each keeps its own licence.",
+    intro: "The component archive (anagram.tar.gz, anagram.zip) holds Anagram's own engine, installer and native launcher, the two browser builds above with this file, LICENSE and this file. Nothing below is in it: the installer downloads each at install time from its publisher, and each keeps its own licence. It downloads fastText's language identifier too, listed under the in-browser engine above.",
     components: () => [
       { name: "uv", version: "pinned in install.sh and install.ps1", url: "https://github.com/astral-sh/uv",
         licence: "MIT OR Apache-2.0", copyright: "Copyright (c) Astral Software Inc.",
@@ -307,9 +310,6 @@ const GROUPS = [
       { name: "Python and the engine's Python packages", version: "locked in anagramd/uv.lock", url: "https://pypi.org/",
         licence: "Each package's own", copyright: "Their respective authors",
         where: "A Python runtime from uv's distributions and the packages anagramd/pyproject.toml names (MLX on Apple silicon, PyTorch and Transformers elsewhere, ONNX Runtime, tokenizers, fastText and others), installed from PyPI by uv at the exact versions of anagramd/uv.lock." },
-      { name: "fastText language identification (lid.176.ftz)", version: "lid.176", url: "https://fasttext.cc/docs/en/language-identification.html",
-        licence: "CC-BY-SA-3.0", copyright: "Copyright (c) Facebook, Inc.",
-        where: "Downloaded with SHA-256 verification; it tells English from other languages in the engine." },
       { name: "EditLens RoBERTa-large", version: "pinned in anagramd/modelkit.json", url: "https://huggingface.co/pangram/editlens_roberta-large",
         urls: ["https://huggingface.co/CoderBak/editlens_roberta_modelkit"],
         licence: "CC-BY-NC-SA-4.0", copyright: "Pangram Labs",

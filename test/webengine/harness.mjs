@@ -140,10 +140,13 @@ export async function serve(mounts = {}, { isolate = true, csp = EXTENSION_CSP, 
   return { base, requests, server, close: () => new Promise((resolve) => server.close(resolve)) };
 }
 
-/** A pin over files the server mounts, hashed by the caller (see pinOf). */
+/** A pin over files the server mounts, hashed by the caller (see pinOf). The one named
+ *  lid.176.ftz stands for the package's copy, which the engine reads rather than downloads. */
 export function pinFor(base, files) {
+  const entry = (f) => ({ name: f.name, size_bytes: f.size_bytes, sha256: f.sha256, url: `${base}${f.path}` });
   return {
-    files: files.map((f) => ({ name: f.name, size_bytes: f.size_bytes, sha256: f.sha256, url: `${base}${f.path}` })),
+    files: files.filter((f) => f.name !== "lid.176.ftz").map(entry),
+    lid: entry(files.find((f) => f.name === "lid.176.ftz")),
     model: { id: "editlens_roberta-large", calibration: "editlens-4bucket-cosine(0.03,0.15)" },
     license: "CC-BY-NC-SA-4.0",
   };

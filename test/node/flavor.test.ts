@@ -6,7 +6,9 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
-import { ORT_FILES } from "../../scripts/webengine.mjs";
+import { createHash } from "node:crypto";
+import { LID as PACKAGED_LID, ORT_FILES } from "../../scripts/webengine.mjs";
+import { LID, LID_PATH } from "../../lib/webengine/pin";
 import {
   FLAVOR_ENTRYPOINTS,
   FLAVOR_MODULES,
@@ -102,6 +104,19 @@ describe("the modules each flavor links", () => {
   });
 });
 
+describe("the language identifier the oneclick package carries", () => {
+  it("is the file the build fetches and the native installer pins, at the path the engine reads", () => {
+    const { url, ...pinned } = PACKAGED_LID;
+    expect(pinned).toEqual(LID);
+    expect(url).toBe("https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz");
+    const native = read("anagramd/download_modelkit.py");
+    expect(native).toContain(`LID_URL = "${url}"`);
+    expect(native).toContain(`"size_bytes": ${LID.size_bytes}`);
+    expect(native).toContain(`"sha256": "${LID.sha256}"`);
+    expect(LID_PATH).toBe(`/vendor/engine/${LID.name}`);
+  });
+});
+
 // ---- what came out of the builds ----------------------------------------------------------
 
 const DECIDES = join(ROOT, "wxt.config.ts");
@@ -173,10 +188,13 @@ describe("what each flavor's build carries", () => {
   });
 
   it.skipIf(!native || !oneclick)("only the oneclick build ships the engine's runtime", () => {
-    // The files scripts/webengine.mjs prepares: the runtime's two builds and the engine's worker.
-    for (const file of [...ORT_FILES, "worker.min.mjs"]) {
+    // The files scripts/webengine.mjs prepares: the runtime's two builds, the engine's worker
+    // and the language identifier.
+    for (const file of [...ORT_FILES, "worker.min.mjs", LID.name]) {
       expect(existsSync(join(oneclick!, "vendor", "engine", file)), file).toBe(true);
     }
+    const lid = readFileSync(join(oneclick!, LID_PATH));
+    expect([lid.length, createHash("sha256").update(lid).digest("hex")]).toEqual([LID.size_bytes, LID.sha256]);
     expect(existsSync(join(native!, "vendor", "engine"))).toBe(false);
     expect(existsSync(join(native!, "engine.html"))).toBe(false);
     expect(existsSync(join(oneclick!, "engine.html"))).toBe(existsSync(join(ROOT, "entrypoints", "engine")));
