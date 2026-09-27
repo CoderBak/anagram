@@ -758,7 +758,7 @@ function stopFloating(host: HTMLElement): void {
  * mid-wrapper content would pile every badge at the wrapper's end.
  */
 function insertionPoint(unit: Unit): Placement | null {
-  const lastPart = unit.parts[unit.parts.length - 1];
+  const lastPart = unit.parts[unit.parts.length - 1]!;
   const nodes = lastPart.nodes;
   const lastNode = nodes[nodes.length - 1];
   if (!lastNode || !lastNode.isConnected) return null;
@@ -925,7 +925,7 @@ function endRectOf(node: ChildNode): DOMRect | null {
       rects = range.getClientRects();
       if (rects.length === 0) return range.getBoundingClientRect();
     }
-    return rects[rects.length - 1];
+    return rects[rects.length - 1]!;
   } catch {
     return null;
   }

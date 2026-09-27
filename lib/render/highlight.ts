@@ -303,7 +303,8 @@ export function setHighlight(unit: Unit, verdict: UnitVerdict): void {
   if (located && own !== undefined && onePass) {
     marks.push({ step: scaleStep(verdict.result.score), ranges: located[0] ?? [] });
   } else if (located) {
-    runs.forEach((run, i) => marks.push({ step: run.step, ranges: located[i] }));
+    // One list of ranges per span asked about (RangeLocator, locateSpans).
+    runs.forEach((run, i) => marks.push({ step: run.step, ranges: located[i]! }));
   } else {
     marks.push({ step: scaleStep(verdict.result.score), ranges: wholeParts(unit) });
   }
