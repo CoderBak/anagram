@@ -45,6 +45,14 @@ local component and the installer all carry the same version.
 
 ### Changed
 
+- The model behind a verdict's dot is refitted on the EditLens validation data read as
+  Anagram reads text now (a space before punctuation closed up, accents composed). Its
+  coefficients move by a few hundredths and its calibration on the test, Enron and Llama
+  sets holds (error 0.044, 0.037, 0.041). Checked on two sets it had never seen, 300 news
+  articles and 91 learners' essays, each wholly human or wholly AI-generated: a verdict
+  rated 0.9 or more was right 99.6–100% of the time, but where no text is AI-edited the
+  two middle words are never right and their dots still stay a third to a half full. The dot
+  keeps depending on a page's mix of human and AI text, which is why it shows no number.
 - "Main content only" now finds the article with Defuddle (MIT) instead of Mozilla
   Readability. On 3,437 saved pages from four public web-extraction benchmarks it reads
   about one point more of the main content with the same leakage, and it keeps the replies

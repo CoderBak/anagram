@@ -4,32 +4,35 @@
 // Heavily edited / AI-generated, from the score's cuts) names the edit-magnitude bucket
 // EditLens was trained to predict (the official score_to_bucket of the cosine score). It
 // was fitted on the EditLens validation split only — full texts, 75/100/150-word prefixes
-// and long texts read in passes, prepared as the official pipeline prepares them — chosen
-// by grouped cross-validation on that split together with a held-out half of the
-// out-of-domain Enron set, and checked once on the test, Enron and Llama sets (calibration
-// error 0.045 / 0.037 / 0.041; a verdict rated 0.9 or more was right 93–98% of the time).
+// and long texts read in passes, each read as the extension reads it (modelText, passes,
+// unitVerdict) — and chosen by grouped cross-validation on that split together with a
+// held-out half of the out-of-domain Enron set. Its calibration error on the test, Enron
+// and Llama sets is 0.044 / 0.037 / 0.041.
 //
 // What it says still depends on the mix of human and AI text a page holds, which nothing
 // here can know, so it is only ever shown as how full a verdict's dot is (ringCss in
-// scale.ts), never as a number.
+// scale.ts), never as a number. On two sets the fitting never saw — news articles and
+// learners' essays, each wholly human or wholly AI-generated — a verdict rated 0.9 or
+// more was right 99.6–100% of the time, but the two middle words, which no text there
+// could earn, were still rated 0.3–0.5 on average: the chance they have on EditLens's mix.
 import type { ScoreResult } from "../contract";
 import { isScoredWindow, type UnitVerdict } from "../capture/windows";
 import { levelOf, spread } from "./scale";
 
-const INTERCEPT = 0.4789800889881948;
+const INTERCEPT = 0.39604529574629543;
 /** Per level (human, lightly, heavily, AI): the level's own offset … */
-const LEVEL = [0, -0.27777072278684506, -0.8218023160479644, -0.49052984604712996];
+const LEVEL = [0, -0.3041899230185732, -0.8430515498859256, -0.49279492129463337];
 /** … and its slope on logit(score). */
-const SCORE = [-0.27906235472594465, 0.3749664232263039, -0.15136091856577924, 0.04171772685651157];
+const SCORE = [-0.29204303263171155, 0.4170929568122539, -0.15785272051282226, 0.04341040130161003];
 /** Shared slopes: ln(tokens read), logit(probability on the shown category), spread. */
-const TOKENS = 0.17878516533077032;
-const SHOWN = 0.17470375685695397;
-const SPREAD = -2.062463805292949;
+const TOKENS = 0.19895368771235053;
+const SHOWN = 0.16876597318770153;
+const SPREAD = -2.032751610589588;
 
 type Range = readonly [number, number];
 /** Per level, the range each input took in the fitting data; inputs are held inside it. */
 const RANGES: ReadonlyArray<{ score: Range; tokens: Range; shown: Range; spread: Range }> = [
-  { score: [-5.066224313171635, -1.6115994695962763], tokens: [4.330733340286331, 7.6511201757027], shown: [0.3187800617569478, 4.157867957904519], spread: [0.1079897114440898, 0.6159157193426169] },
+  { score: [-5.066224313171635, -1.6115994695962763], tokens: [4.330733340286331, 7.6511201757027], shown: [0.3301982077272004, 4.157867957904519], spread: [0.1079897114440898, 0.5779440918750994] },
   { score: [-1.6094379124341005, -0.00386667148425811], tokens: [4.382026634673881, 7.61085279039525], shown: [-1.874926793954646, 2.2482560573486663], spread: [0.4018233110875144, 0.8898423705603394] },
   { score: [0.00026666666824688506, 1.6056028166501586], tokens: [4.430816798843313, 7.460490305825338], shown: [-2.2298704300161543, 1.8244563919418213], spread: [0.4842262831913746, 0.8853121859924141] },
   { score: [1.614004862123296, 8.00603417874912], tokens: [4.382026634673881, 7.487733761436444], shown: [0.4959198380732626, 7.130098510125688], spread: [0.029050071715344638, 0.5926436403475907] },
