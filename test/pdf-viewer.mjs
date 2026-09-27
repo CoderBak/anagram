@@ -90,8 +90,9 @@ try {
   const downloadPromise=page.waitForEvent("download");
   await page.locator("#downloadButton").click();
   const download=await downloadPromise;
-  await download.saveAs(join(artifacts,"downloaded.pdf"));
-  assert.equal(digest(readFileSync(join(artifacts,"downloaded.pdf"))),digest(TEST_PDF));
+  // Into this run's own scratch folder: runs side by side share test-results/.
+  await download.saveAs(join(scratch,"downloaded.pdf"));
+  assert.equal(digest(readFileSync(join(scratch,"downloaded.pdf"))),digest(TEST_PDF));
   await page.locator("#printButton").click();
   await page.waitForFunction(()=>window.__printSnapshot?.length===2);
   assert.ok(await page.evaluate(()=>window.__printSnapshot.every(image=>image.width>0 && image.height>0)),"Print pipeline renders all pages before the native print call");
@@ -136,6 +137,9 @@ try {
   const rejected=await page.evaluate(async()=>{try{await window.PDFViewerApplication.open({url:"https://must-not-load.invalid/b.pdf"});return false;}catch{return true;}});
   assert.equal(rejected,true); assert.deepEqual(external,[],"All viewer/parser/font/locale requests stay packaged while offline");
   await page.setViewportSize({width:400,height:900});
+  // The upstream find bar re-wraps from a ResizeObserver, which is delivered after the
+  // frame's animation callbacks: the second frame after the resize is the first that sees it.
+  await page.evaluate(()=>new Promise((r)=>requestAnimationFrame(()=>requestAnimationFrame(r))));
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,"Reader chrome stays within a narrow window");
   await page.emulateMedia({colorScheme:"dark"});
   await page.evaluate(readFileSync(join(ROOT,"node_modules/axe-core/axe.min.js"),"utf8"));
