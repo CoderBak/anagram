@@ -88,6 +88,11 @@ local component and the installer all carry the same version.
   the first line of the paragraph under it. A shop's product description set as four short
   paragraphs under such headings got nothing and is now read as one text, as a text under
   bold headings inside an article already was. Real headings still end a section.
+- A page footer built from a `<div>` or a `<section>` is no longer read when it names itself
+  the footer (`footer`, `site-footer`, `footer-wrapper`), as a `<footer>` element outside the
+  article never was: Project Gutenberg's licence under every book, a blog's footer widgets,
+  a news site's advertising notice. A component's own footer (a card's, a banner's) and a
+  footer box inside the article or the main region are still read.
 - A section of a page is no longer skipped because of the words in its anchor. PostgreSQL's
   reference section on the locking clause is `SQL-FOR-UPDATE-SHARE`, Flask's documentation
   names its section on cookies `cookies`, and those ids read as a share bar and a cookie

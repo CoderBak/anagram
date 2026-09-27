@@ -249,6 +249,25 @@ function holdsMostOfPage(el: Element, page: PageTextSize): boolean {
   return total >= PAGE_TEXT_MIN_CHARS && mine > total * PAGE_TEXT_SHARE;
 }
 
+/**
+ * The name of a page's footer as a whole class token or id — `footer`, `site-footer`,
+ * `pg-footer`, `footer-wrapper`, `FooterContainer` — written on a <div> or a <section> where
+ * the page has no <footer> element. Project Gutenberg's licence (`section#pg-footer`), a
+ * blog's `div#footer` of text widgets, a bank's `div#footer-content` of risk notices were
+ * read. A component's own footer (`card__footer`, `banner__footer`, `section-footer`) and
+ * Weebly's content box (`wsite-not-footer`) are not the page's.
+ */
+const PAGE_FOOTER_NAME_RE =
+  /^(?:(?:page|site|global|main|region|pg|bottom)[-_]?)?footer(?:[-_]?(?:wrapper|container|content|inner|area|section|region|block|bottom|main))?$/i;
+
+function namesPageFooter(el: Element): boolean {
+  const id = el.getAttribute("id");
+  if (id && PAGE_FOOTER_NAME_RE.test(id)) return true;
+  const cls = el.getAttribute("class");
+  if (!cls || !/footer/i.test(cls)) return false;
+  return cls.split(/\s+/).some((name) => PAGE_FOOTER_NAME_RE.test(name));
+}
+
 /** Where a page declares its main text. */
 const MAIN_TEXT_SELECTOR = 'main,article,[role="main"],[role="article"]';
 
@@ -452,6 +471,8 @@ export function isBoilerplate(el: Element, page: PageTextSize = pageTextSize(el.
   if (tag === "HEADER" || tag === "FOOTER") {
     if (!el.closest("article, main, [role=main], [role=article]")) return true;
   }
+  // …and so is a box that NAMES itself the page's footer (see PAGE_FOOTER_NAME_RE).
+  if (namesPageFooter(el) && !el.closest("article, main, [role=main], [role=article]") && !holdsMostOfPage(el, page)) return true;
   if (tag === "ASIDE" && asideApart(el, page)) return true;
   if (AMP_CHROME_TAGS.has(tag)) return true;
 

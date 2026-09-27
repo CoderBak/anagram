@@ -1195,6 +1195,12 @@ const results = await page.evaluate(() => {
   check("login-form chrome skipped", u.length === 0);
   u = collect(`<div class="sharedwith">${words(80)}</div>`);
   check("token boundary: 'sharedwith' (no delimiter) KEPT", u.length === 1);
+  u = collect(`<p>${words(90)}</p><p>${words(90)}</p><section id="pg-footer"><p>${words(80)}</p></section><div class="FooterWrapper"><p>${words(80)}</p></div><div id="footer"><div class="widget">${words(80)}</div></div>`);
+  check("a box that names itself the page's footer is chrome like a <footer> (Project Gutenberg's licence, a blog's footer widgets)",
+    u.length === 2 && u.every((x) => x.words === 90), JSON.stringify(u.map(x => x.words)));
+  u = collect(`<div class="wsite-not-footer"><p>${words(90)}</p></div><div class="card"><p>${words(90)}</p><div class="card__footer">${words(80)}</div></div><main><div class="footer">${words(80)}</div></main><p>${words(40)}</p>`);
+  check("…not Weebly's content box (wsite-not-footer), a card's own footer, or a footer box inside <main>",
+    u.length === 4, JSON.stringify(u.map(x => x.words)));
   u = collect(`<p>${words(90)}</p><p>${words(90)}</p><div class="common-bottom-disclaimer"><ol><li>${words(80)}</li></ol></div><p class="pricing-disclaimer-text">${words(80)}</p><div class="fine-print">${words(80)}</div>`);
   check("legal fine print under the text is not read (Samsung's bottom disclaimer, a pricing disclaimer)",
     u.length === 2 && u.every((x) => x.words === 90), JSON.stringify(u.map(x => x.words)));
