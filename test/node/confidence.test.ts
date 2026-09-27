@@ -1,6 +1,6 @@
 // test/node/confidence.test.ts — the chance a verdict's word is right, against the model it
 // was fitted as. test/fixtures/confidence-vectors.json holds the fitting script's own inputs
-// and outputs (EditLens test rows spanning every word and length, points outside the
+// and outputs (EditLens val rows spanning every word and length, points outside the
 // fitting data's range, and hand-made verdicts), so the port must match it to the last digit.
 import { describe, expect, it } from "vitest";
 import { confidence, verdictConfidence } from "../../lib/render/confidence";

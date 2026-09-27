@@ -1,291 +1,291 @@
 [
  {
-  "note": "test row, human, \u2264100 tok, median P",
+  "note": "val row, human, \u2264100 tok, median P",
   "probs": [
-   0.917,
-   0.0685,
-   0.0117,
-   0.0028
-  ],
-  "tokens_read": 97,
-  "level": 0,
-  "expected": 0.8964867234992593
- },
- {
-  "note": "test row, human, \u2264100 tok, lowest P",
-  "probs": [
-   0.6881,
-   0.1949,
-   0.0568,
-   0.0602
-  ],
-  "tokens_read": 84,
-  "level": 0,
-  "expected": 0.6671638065454474
- },
- {
-  "note": "test row, human, 100\u2013150 tok, median P",
-  "probs": [
-   0.9352,
-   0.0527,
-   0.009,
-   0.003
-  ],
-  "tokens_read": 133,
-  "level": 0,
-  "expected": 0.9145065145369423
- },
- {
-  "note": "test row, human, 100\u2013150 tok, lowest P",
-  "probs": [
-   0.6824,
-   0.205,
-   0.0527,
-   0.0599
-  ],
-  "tokens_read": 131,
-  "level": 0,
-  "expected": 0.6851674991214037
- },
- {
-  "note": "test row, human, 150\u2013510 tok, median P",
-  "probs": [
-   0.9525,
-   0.0385,
-   0.0068,
-   0.0022
-  ],
-  "tokens_read": 157,
-  "level": 0,
-  "expected": 0.9311967650753358
- },
- {
-  "note": "test row, human, 150\u2013510 tok, lowest P",
-  "probs": [
-   0.6465,
-   0.2501,
-   0.0651,
-   0.0384
-  ],
-  "tokens_read": 191,
-  "level": 0,
-  "expected": 0.7111984162385419
- },
- {
-  "note": "test row, human, multi-pass, median P",
-  "probs": [
-   0.9484310066643282,
-   0.04217446509996492,
-   0.007145668186601192,
-   0.002248860049105577
-  ],
-  "tokens_read": 707,
-  "level": 0,
-  "expected": 0.944083312525351
- },
- {
-  "note": "test row, human, multi-pass, lowest P",
-  "probs": [
-   0.6456100808003078,
-   0.2516083108888034,
-   0.06578595613697576,
-   0.03699565217391305
-  ],
-  "tokens_read": 703,
-  "level": 0,
-  "expected": 0.7578011612436029
- },
- {
-  "note": "test row, lightly, \u2264100 tok, median P",
-  "probs": [
-   0.3563,
-   0.5181,
-   0.1,
-   0.0257
+   0.9115,
+   0.0745,
+   0.0113,
+   0.0027
   ],
   "tokens_read": 99,
-  "level": 1,
-  "expected": 0.4343111379355612
+  "level": 0,
+  "expected": 0.8982391968969222
  },
  {
-  "note": "test row, lightly, 100\u2013150 tok, median P",
+  "note": "val row, human, \u2264100 tok, lowest P",
   "probs": [
-   0.1541,
-   0.441,
-   0.1958,
-   0.2091
-  ],
-  "tokens_read": 149,
-  "level": 1,
-  "expected": 0.4542159110535156
- },
- {
-  "note": "test row, lightly, 150\u2013510 tok, median P",
-  "probs": [
-   0.2147,
-   0.5617,
-   0.157,
-   0.0666
-  ],
-  "tokens_read": 229,
-  "level": 1,
-  "expected": 0.5062343709287574
- },
- {
-  "note": "test row, lightly, multi-pass, median P",
-  "probs": [
-   0.15102629374813042,
-   0.428597277894107,
-   0.22346966796290754,
-   0.19690676039485494
-  ],
-  "tokens_read": 744,
-  "level": 1,
-  "expected": 0.5348863861909958
- },
- {
-  "note": "test row, heavily, \u2264100 tok, median P",
-  "probs": [
-   0.0178,
-   0.23,
-   0.2843,
-   0.4679
+   0.6668,
+   0.2327,
+   0.0569,
+   0.0436
   ],
   "tokens_read": 85,
+  "level": 0,
+  "expected": 0.6925327168642251
+ },
+ {
+  "note": "val row, human, 100\u2013150 tok, median P",
+  "probs": [
+   0.9307,
+   0.0546,
+   0.0109,
+   0.0038
+  ],
+  "tokens_read": 105,
+  "level": 0,
+  "expected": 0.909242679458722
+ },
+ {
+  "note": "val row, human, 100\u2013150 tok, lowest P",
+  "probs": [
+   0.6609,
+   0.2384,
+   0.0648,
+   0.0359
+  ],
+  "tokens_read": 104,
+  "level": 0,
+  "expected": 0.7058423376620031
+ },
+ {
+  "note": "val row, human, 150\u2013510 tok, median P",
+  "probs": [
+   0.9401,
+   0.0503,
+   0.0076,
+   0.0021
+  ],
+  "tokens_read": 206,
+  "level": 0,
+  "expected": 0.9300340530532
+ },
+ {
+  "note": "val row, human, 150\u2013510 tok, lowest P",
+  "probs": [
+   0.6441,
+   0.2552,
+   0.0722,
+   0.0284
+  ],
+  "tokens_read": 166,
+  "level": 0,
+  "expected": 0.7262732437850525
+ },
+ {
+  "note": "val row, human, multi-pass, median P",
+  "probs": [
+   0.9317002302898945,
+   0.057268802492549446,
+   0.00880803305337307,
+   0.002222934164183148
+  ],
+  "tokens_read": 1274,
+  "level": 0,
+  "expected": 0.9460090859019791
+ },
+ {
+  "note": "val row, human, multi-pass, lowest P",
+  "probs": [
+   0.6513107401032703,
+   0.25968,
+   0.0494021686746988,
+   0.039607091222030974
+  ],
+  "tokens_read": 783,
+  "level": 0,
+  "expected": 0.7817761095129211
+ },
+ {
+  "note": "val row, lightly, \u2264100 tok, median P",
+  "probs": [
+   0.3055,
+   0.5057,
+   0.1314,
+   0.0574
+  ],
+  "tokens_read": 98,
+  "level": 1,
+  "expected": 0.4179517732844152
+ },
+ {
+  "note": "val row, lightly, 100\u2013150 tok, median P",
+  "probs": [
+   0.1683,
+   0.3884,
+   0.2236,
+   0.2196
+  ],
+  "tokens_read": 127,
+  "level": 1,
+  "expected": 0.439527388324846
+ },
+ {
+  "note": "val row, lightly, 150\u2013510 tok, median P",
+  "probs": [
+   0.2915,
+   0.5327,
+   0.1285,
+   0.0473
+  ],
+  "tokens_read": 421,
+  "level": 1,
+  "expected": 0.5051406730541227
+ },
+ {
+  "note": "val row, lightly, multi-pass, median P",
+  "probs": [
+   0.2520758031542056,
+   0.5267213054906542,
+   0.16217932242990657,
+   0.059023568925233645
+  ],
+  "tokens_read": 1478,
+  "level": 1,
+  "expected": 0.5779248340216836
+ },
+ {
+  "note": "val row, heavily, \u2264100 tok, median P",
+  "probs": [
+   0.0101,
+   0.1686,
+   0.2617,
+   0.5596
+  ],
+  "tokens_read": 99,
   "level": 2,
-  "expected": 0.2961774766990384
+  "expected": 0.29606157363020924
  },
  {
-  "note": "test row, heavily, 100\u2013150 tok, median P",
+  "note": "val row, heavily, 100\u2013150 tok, median P",
   "probs": [
-   0.0195,
-   0.2899,
-   0.2996,
-   0.391
+   0.0304,
+   0.2834,
+   0.303,
+   0.3832
   ],
-  "tokens_read": 118,
+  "tokens_read": 127,
   "level": 2,
-  "expected": 0.3228558236582039
+  "expected": 0.3219054397051643
  },
  {
-  "note": "test row, heavily, 150\u2013510 tok, median P",
+  "note": "val row, heavily, 150\u2013510 tok, median P",
   "probs": [
-   0.0295,
-   0.3444,
-   0.3314,
-   0.2948
+   0.0058,
+   0.1503,
+   0.3115,
+   0.5324
   ],
-  "tokens_read": 181,
+  "tokens_read": 278,
   "level": 2,
-  "expected": 0.36514605531734134
+  "expected": 0.35791883604481084
  },
  {
-  "note": "test row, heavily, multi-pass, median P",
+  "note": "val row, heavily, multi-pass, median P",
   "probs": [
-   0.15828717105263157,
-   0.40676776315789476,
-   0.18399638157894738,
-   0.25099835526315795
+   0.0062890869407057105,
+   0.16822369952710076,
+   0.2654777009821753,
+   0.5599598763186614
   ],
-  "tokens_read": 873,
+  "tokens_read": 682,
   "level": 2,
-  "expected": 0.3788577650421209
+  "expected": 0.3860543088385047
  },
  {
-  "note": "test row, AI, \u2264100 tok, median P",
-  "probs": [
-   0.0001,
-   0.0001,
-   0.0006,
-   0.9991
-  ],
-  "tokens_read": 89,
-  "level": 3,
-  "expected": 0.9068737544187037
- },
- {
-  "note": "test row, AI, \u2264100 tok, lowest P",
-  "probs": [
-   0.0427,
-   0.1282,
-   0.1068,
-   0.7224
-  ],
-  "tokens_read": 90,
-  "level": 3,
-  "expected": 0.4569571160478352
- },
- {
-  "note": "test row, AI, 100\u2013150 tok, median P",
-  "probs": [
-   0.0001,
-   0.0002,
-   0.0009,
-   0.9989
-  ],
-  "tokens_read": 147,
-  "level": 3,
-  "expected": 0.9108128265853962
- },
- {
-  "note": "test row, AI, 100\u2013150 tok, lowest P",
-  "probs": [
-   0.0533,
-   0.0974,
-   0.083,
-   0.7663
-  ],
-  "tokens_read": 101,
-  "level": 3,
-  "expected": 0.473901226129948
- },
- {
-  "note": "test row, AI, 150\u2013510 tok, median P",
+  "note": "val row, AI, \u2264100 tok, median P",
   "probs": [
    0.0001,
    0.0001,
    0.0007,
    0.9991
   ],
-  "tokens_read": 191,
+  "tokens_read": 86,
   "level": 3,
-  "expected": 0.9181487067077303
+  "expected": 0.9048166278041844
  },
  {
-  "note": "test row, AI, 150\u2013510 tok, lowest P",
+  "note": "val row, AI, \u2264100 tok, lowest P",
   "probs": [
-   0.0105,
-   0.1396,
-   0.1773,
-   0.6725
+   0.0337,
+   0.1248,
+   0.0987,
+   0.7428
   ],
-  "tokens_read": 186,
+  "tokens_read": 93,
   "level": 3,
-  "expected": 0.514697349046162
+  "expected": 0.4815547508324528
  },
  {
-  "note": "test row, AI, multi-pass, median P",
+  "note": "val row, AI, 100\u2013150 tok, median P",
   "probs": [
-   0.00010000000000000002,
-   0.0001521951989892609,
-   0.0008087807959570436,
-   0.998991219204043
+   0.0001,
+   0.0002,
+   0.0008,
+   0.999
   ],
-  "tokens_read": 754,
+  "tokens_read": 127,
   "level": 3,
-  "expected": 0.933166322627136
+  "expected": 0.9092525858713073
  },
  {
-  "note": "test row, AI, multi-pass, lowest P",
+  "note": "val row, AI, 100\u2013150 tok, lowest P",
   "probs": [
-   0.018711601307189542,
-   0.13653676470588236,
-   0.13998513071895427,
-   0.7047166666666667
+   0.0561,
+   0.1008,
+   0.0671,
+   0.776
   ],
-  "tokens_read": 738,
+  "tokens_read": 136,
   "level": 3,
-  "expected": 0.5735261276556612
+  "expected": 0.4917591434100874
+ },
+ {
+  "note": "val row, AI, 150\u2013510 tok, median P",
+  "probs": [
+   0.0001,
+   0.0001,
+   0.0006,
+   0.9991
+  ],
+  "tokens_read": 203,
+  "level": 3,
+  "expected": 0.9181622618335732
+ },
+ {
+  "note": "val row, AI, 150\u2013510 tok, lowest P",
+  "probs": [
+   0.0483,
+   0.1092,
+   0.0882,
+   0.7543
+  ],
+  "tokens_read": 193,
+  "level": 3,
+  "expected": 0.5091331902275196
+ },
+ {
+  "note": "val row, AI, multi-pass, median P",
+  "probs": [
+   0.0001,
+   0.0002,
+   0.0007494475138121547,
+   0.9990011049723756
+  ],
+  "tokens_read": 744,
+  "level": 3,
+  "expected": 0.9342409014511732
+ },
+ {
+  "note": "val row, AI, multi-pass, lowest P",
+  "probs": [
+   0.014481888595912986,
+   0.12155827290705339,
+   0.11710591628213579,
+   0.7469161173368489
+  ],
+  "tokens_read": 1087,
+  "level": 3,
+  "expected": 0.6303793354883459
  },
  {
   "note": "outside val: human, extreme score, 40 tokens",
@@ -297,7 +297,7 @@
   ],
   "tokens_read": 40,
   "level": 0,
-  "expected": 0.9597171866356704
+  "expected": 0.9615580841084811
  },
  {
   "note": "outside val: AI, extreme score, 20,000 tokens",
@@ -309,7 +309,7 @@
   ],
   "tokens_read": 20000,
   "level": 3,
-  "expected": 0.9451571705409618
+  "expected": 0.9470886189686409
  },
  {
   "note": "outside val: s = 1/2 exactly (heavily), spread 1, p_display 0",
@@ -321,7 +321,7 @@
   ],
   "tokens_read": 300,
   "level": 2,
-  "expected": 0.17673859785327975
+  "expected": 0.1841911773325296
  },
  {
   "note": "boundary: s = 1/2 exactly, uniform probs",
@@ -333,7 +333,7 @@
   ],
   "tokens_read": 300,
   "level": 2,
-  "expected": 0.2972598222989743
+  "expected": 0.3041986237136233
  },
  {
   "note": "outside val: lightly with extreme spread, p_display 0",
@@ -345,7 +345,7 @@
   ],
   "tokens_read": 150,
   "level": 1,
-  "expected": 0.22831968118401802
+  "expected": 0.23047531732164828
  },
  {
   "note": "outside val: AI, 1 token",
@@ -357,7 +357,7 @@
   ],
   "tokens_read": 1,
   "level": 3,
-  "expected": 0.5062777062821155
+  "expected": 0.5091421218695175
  },
  {
   "note": "human, 5,000 tokens",
@@ -369,7 +369,7 @@
   ],
   "tokens_read": 5000,
   "level": 0,
-  "expected": 0.9403603765646736
+  "expected": 0.9461360819014745
  },
  {
   "note": "example: human",
@@ -381,7 +381,7 @@
   ],
   "tokens_read": 300,
   "level": 0,
-  "expected": 0.9381469957600488
+  "expected": 0.9421198580077552
  },
  {
   "note": "example: lightly (displays as the score says)",
@@ -393,7 +393,7 @@
   ],
   "tokens_read": 120,
   "level": 1,
-  "expected": 0.392191626294496
+  "expected": 0.3766239171541403
  },
  {
   "note": "example: lightly",
@@ -405,7 +405,7 @@
   ],
   "tokens_read": 450,
   "level": 1,
-  "expected": 0.6257376945692316
+  "expected": 0.6272366144327773
  },
  {
   "note": "example: 'heavily' probs \u2014 score .85 displays as AI",
@@ -417,7 +417,7 @@
   ],
   "tokens_read": 300,
   "level": 3,
-  "expected": 0.5882336814460781
+  "expected": 0.5982487334249605
  },
  {
   "note": "example: AI",
@@ -429,7 +429,7 @@
   ],
   "tokens_read": 300,
   "level": 3,
-  "expected": 0.8461051682918391
+  "expected": 0.8484307184742509
  },
  {
   "note": "example: AI, 60 tokens",
@@ -441,7 +441,7 @@
   ],
   "tokens_read": 60,
   "level": 3,
-  "expected": 0.9081810809990393
+  "expected": 0.9060968548259598
  },
  {
   "note": "example: human, 80 tokens",
@@ -453,6 +453,6 @@
   ],
   "tokens_read": 80,
   "level": 0,
-  "expected": 0.829202675714002
+  "expected": 0.8346900049495977
  }
 ]
