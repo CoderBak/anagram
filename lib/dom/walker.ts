@@ -646,8 +646,14 @@ export function collectUnits(
     blockified?: boolean;
   }
 
+  /** A shadow root the walk descends into: observed, and looked in for consent banners. */
+  const onShadowRoot = (root: ShadowRoot): void => {
+    opts.onShadowRoot?.(root);
+    findConsentBanners(root, consentBanners);
+  };
+
   function visitChildren(el: Element, ctx: Ctx): void {
-    for (const child of composedChildren(el, opts.onShadowRoot)) visit(child, ctx);
+    for (const child of composedChildren(el, onShadowRoot)) visit(child, ctx);
   }
 
   function visit(node: Node, ctx: Ctx): void {

@@ -1261,6 +1261,17 @@ const results = await page.evaluate(() => {
     check("consent banners named after their platform are skipped, whole walk and re-scan alike",
       whole.length === 1 && inside.length === 0 && PW.isConsentBanner(sandbox.querySelector(".osano-cm-window")) && !PW.isConsentBanner(sandbox.querySelector("p")),
       JSON.stringify([whole.length, inside.length]));
+    // …and where the platform draws it inside a shadow root of its own, which no lookup over
+    // the page reaches: the walk looks in each shadow root it descends into.
+    sandbox.innerHTML = `<p>${words(80)}</p><div class="cmp-host"></div>`;
+    const root = sandbox.querySelector(".cmp-host").attachShadow({ mode: "open" });
+    root.innerHTML = `<div class="osano-cm-window"><p>CONSENT ${words(80)}</p></div><div id="CybotCookiebotDialog"><p>CONSENT ${words(80)}</p></div><p>${words(80)}</p>`;
+    const shadowed = PW.collectUnits(sandbox);
+    const within = PW.collectUnits(root.querySelector("#CybotCookiebotDialog p"));
+    check("…and so is one drawn inside a shadow root, whole walk and re-scan alike; the shadow root's other text is read",
+      shadowed.length === 2 && shadowed.every((x) => !x.text.includes("CONSENT")) && within.length === 0,
+      JSON.stringify([shadowed.map((x) => x.text.slice(0, 12)), within.length]));
+    sandbox.innerHTML = "";
   }
   {
     // A consent platform's banner in a frame of its own is known by the frame's address

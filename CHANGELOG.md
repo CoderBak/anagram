@@ -100,6 +100,8 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- A cookie banner a consent platform draws inside a shadow root of its own is no longer
+  analyzed; only banners in the page itself were recognised.
 - Immersive Translate's "translation only" mode is recognised: the translation it shows in
   place of a paragraph is marked `data-imt-translation-only`, as the stylesheet the
   extension publishes says, and is no longer read as the page's own text.

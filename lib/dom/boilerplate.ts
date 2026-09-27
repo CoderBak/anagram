@@ -353,11 +353,14 @@ const CONSENT_SELECTOR = CONSENT_BANNER_SELECTORS.join(",");
 const CONSENT_IDS = CONSENT_BANNER_SELECTORS.filter((s) => /^#[\w-]+$/.test(s)).map((s) => s.slice(1));
 const CONSENT_OTHERS = CONSENT_BANNER_SELECTORS.filter((s) => !/^#[\w-]+$/.test(s)).join(",");
 
-/** The consent banners in or around `root`, for a walk to skip. */
-export function findConsentBanners(root: Element): Set<Element> {
-  const found = new Set<Element>(root.querySelectorAll(CONSENT_OTHERS));
+/** The consent banners in or around `root`, for a walk to skip — or, given a shadow root the
+ *  walk has just descended into, the ones inside it, added to `found`: a platform that draws
+ *  its banner in a shadow root of its own is out of reach of any lookup over the page. */
+export function findConsentBanners(root: Element | ShadowRoot, found = new Set<Element>()): Set<Element> {
+  for (const el of root.querySelectorAll(CONSENT_OTHERS)) found.add(el);
+  const byId = root instanceof ShadowRoot ? root : root.ownerDocument;
   for (const id of CONSENT_IDS) {
-    const el = root.ownerDocument.getElementById(id);
+    const el = byId.getElementById(id);
     if (el) found.add(el);
   }
   return found;
