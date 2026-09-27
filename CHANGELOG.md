@@ -23,7 +23,7 @@ local component and the installer all carry the same version.
   the processor path runs four threads. The model's weights are read from the browser's
   storage a tensor at a time, straight onto the graphics card, and never held twice: on an
   M4 the browser takes 2.3 GB while the model loads and at most 2.5 GB while scoring on the
-  graphics card (1.9 GB on the processor), where holding the model file whole had taken it
+  graphics card (2.0 GB on the processor), where holding the model file whole had taken it
   to 7.2 GB, and when the idle time lets the model go the engine's worker ends with it and
   the memory is given back. The engine runs on ONNX Runtime Web 1.30 (MIT). The local
   engine's edition is unchanged.
