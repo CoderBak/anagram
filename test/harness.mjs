@@ -55,7 +55,15 @@ export async function serveHtml(pages, fallback = Object.keys(pages)[0]) {
   });
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   const base = `http://localhost:${server.address().port}`;
-  return { base, url: (path) => base + path, close: () => new Promise((r) => server.close(() => r())) };
+  return { base, url: (path) => base + path, close: () => closeServer(server) };
+}
+
+/** Stop an http server while a browser may still hold keep-alive or preconnected sockets
+ *  to it: close() alone waits for those, and an open browser never lets them go. */
+export function closeServer(server) {
+  const closed = new Promise((r) => server.close(() => r()));
+  server.closeAllConnections();
+  return closed;
 }
 
 /** Extra Chromium switches from the environment (the sandbox uses this for containers). */
