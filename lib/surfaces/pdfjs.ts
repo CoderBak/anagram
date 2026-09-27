@@ -31,6 +31,14 @@ function runsOf(layer: Element): HTMLElement[] {
   return out;
 }
 
+/** A run set at an angle (arXiv's identifier up the margin): pdf.js turned it with its
+ *  transform up to version 3, and has since given its angle as `--rotate`. */
+function rotated(span: HTMLElement): boolean {
+  if (/rotate/.test(span.style.transform)) return true;
+  const angle = parseFloat(span.style.getPropertyValue("--rotate"));
+  return Number.isFinite(angle) && angle % 360 !== 0;
+}
+
 interface Seen {
   layer: Element;
   count: number;
@@ -62,7 +70,7 @@ export function createPdfjsSource(doc: Document): LineSource {
         top: (b.top - top) * unit,
         width: b.width * unit,
         height: b.height * unit,
-        rotated: /rotate/.test(span.style.transform),
+        rotated: rotated(span),
       });
     }
     return lines.length > 0 ? { n, box, layer, width: 100, height: h * unit, lines, boxes } : null;

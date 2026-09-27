@@ -2,8 +2,8 @@
 //
 // scripts/vendor.mjs bundles this into public/vendor/surfaces.min.mjs, which the content
 // script imports by URL only on a page that has a surface (lib/surfaces/index.ts). The
-// paragraph rebuilder it carries is the PDF reader's, twelve kilobytes that no ordinary page
-// should parse. Like the diagnostics chunk it imports no extension API.
+// paragraph rebuilder it carries is the PDF reader's, which no ordinary page should parse.
+// Like the diagnostics chunk it imports no extension API.
 import type { SurfaceId } from "./index";
 import type { Surface } from "./types";
 import { createLineLayerSurface } from "./lineLayer";
