@@ -166,7 +166,7 @@ function pickCut(text: string, starts: number[], ideal: number, lo: number, hi: 
   const mid = Math.min(hi, Math.max(lo, Math.round(ideal)));
   for (let d = 0; mid - d >= lo || mid + d <= hi; d++) {
     for (const at of [mid - d, mid + d]) {
-      if (at >= lo && at <= hi && /\s/.test(text[at - 1]) && /\S/.test(text[at])) return at;
+      if (at >= lo && at <= hi && /\s/.test(text[at - 1]!) && /\S/.test(text[at]!)) return at;
     }
   }
   // Never between the two halves of a surrogate pair.
@@ -202,16 +202,16 @@ const SPACE = /[^\S\uFEFF]/;
 export function chunksOf(text: string, end = text.length): Chunk[] {
   if (end <= 0) return [];
   const cuts = new Set<number>([0]);
-  for (let at = 1; at < end; at++) if (SPACE.test(text[at - 1]) && !SPACE.test(text[at])) cuts.add(at);
+  for (let at = 1; at < end; at++) if (SPACE.test(text[at - 1]!) && !SPACE.test(text[at]!)) cuts.add(at);
   for (const at of sentenceStarts(text.slice(0, end))) if (at > 0 && at < end) cuts.add(at);
   const sorted = [...cuts].sort((x, y) => x - y);
   const out: Chunk[] = [];
   for (let i = 0; i < sorted.length; i++) {
-    let start = sorted[i];
-    const stop = i + 1 < sorted.length ? sorted[i + 1] : end;
-    let glued = start > 0 && !SPACE.test(text[start - 1]);
+    let start = sorted[i]!;
+    const stop = i + 1 < sorted.length ? sorted[i + 1]! : end;
+    let glued = start > 0 && !SPACE.test(text[start - 1]!);
     let run = start;
-    while (run < stop && !SPACE.test(text[run])) run++;
+    while (run < stop && !SPACE.test(text[run]!)) run++;
     while (run - start > MAX_CHUNK_CHARS) {
       let cut = start + MAX_CHUNK_CHARS;
       const low = text.charCodeAt(cut);
@@ -256,14 +256,14 @@ export function wordsOf(text: string): { chunks: Chunk[]; words: string[] } {
 export function planPasses(text: string, chunks: readonly Chunk[], counts: TokenCounts): TextSpan[] {
   const k = chunks.length;
   if (k === 0) return [];
-  const end = chunks[k - 1].end;
+  const end = chunks[k - 1]!.end;
   const alone = chunks.map((_, i) => Math.max(0, counts.alone[i] ?? 0));
-  const inner = chunks.map((c, i) => (i === 0 || c.glued ? alone[i] : Math.max(0, counts.following[i] ?? 0)));
+  const inner = chunks.map((c, i) => (i === 0 || c.glued ? alone[i]! : Math.max(0, counts.following[i] ?? 0)));
   const cum = [0];
-  for (let i = 0; i < k; i++) cum.push(cum[i] + inner[i]);
-  const total = cum[k];
+  for (let i = 0; i < k; i++) cum.push(cum[i]! + inner[i]!);
+  const total = cum[k]!;
   /** Tokens of a pass over chunks [a, b): its first word as a text starts, the rest in place. */
-  const tokens = (a: number, b: number): number => cum[b] - cum[a] - inner[a] + alone[a];
+  const tokens = (a: number, b: number): number => cum[b]! - cum[a]! - inner[a]! + alone[a]!;
   const halves = Math.min(k, Math.ceil((2 * total) / (PASS_TOKENS - 2 * SNAP_TOKENS)));
   if (total <= PASS_TOKENS || halves < 3) return [{ start: 0, end }];
 
@@ -275,12 +275,12 @@ export function planPasses(text: string, chunks: readonly Chunk[], counts: Token
     // Where this edge may go: past the one before, leaving a chunk for each edge after it,
     // no further than the pass that began two edges back can reach, and — the last edge —
     // no earlier than the last pass can start and still fit.
-    let lo = edges[i - 1] + 1;
+    let lo = edges[i - 1]! + 1;
     let hi = k - (halves - i);
     if (i >= 2) {
       // A pass grows with its end: the last end that fits, by bisection (or, when not even
       // the first does — a chunk too large for any pass — the first).
-      const from = edges[i - 2];
+      const from = edges[i - 2]!;
       let a = lo;
       let b = hi;
       while (a < b) {
@@ -292,26 +292,26 @@ export function planPasses(text: string, chunks: readonly Chunk[], counts: Token
     }
     if (i === halves - 1) while (lo < hi && tokens(lo, k) > PASS_TOKENS) lo++;
     mid = Math.max(mid, lo);
-    while (mid < hi && cum[mid] < aim) mid++;
+    while (mid < hi && cum[mid]! < aim) mid++;
     mid = Math.min(mid, hi);
     let best = mid;
     let bestRank = Infinity;
     const consider = (j: number): void => {
-      const off = Math.abs(cum[j] - aim);
-      const kind = off > SNAP_TOKENS ? 3 : sentences.has(chunks[j].start) ? 0 : chunks[j].glued ? 2 : 1;
+      const off = Math.abs(cum[j]! - aim);
+      const kind = off > SNAP_TOKENS ? 3 : sentences.has(chunks[j]!.start) ? 0 : chunks[j]!.glued ? 2 : 1;
       const rank = kind * (total + 1) + off;
       if (rank < bestRank) {
         bestRank = rank;
         best = j;
       }
     };
-    for (let j = mid; j >= lo && (j >= mid - 1 || cum[j] >= aim - SNAP_TOKENS); j--) consider(j);
-    for (let j = mid + 1; j <= hi && cum[j] <= aim + SNAP_TOKENS; j++) consider(j);
+    for (let j = mid; j >= lo && (j >= mid - 1 || cum[j]! >= aim - SNAP_TOKENS); j--) consider(j);
+    for (let j = mid + 1; j <= hi && cum[j]! <= aim + SNAP_TOKENS; j++) consider(j);
     edges.push(best);
   }
   edges.push(k);
-  const at = (j: number): number => (j < k ? chunks[j].start : end);
-  return edges.slice(0, -2).map((e, p) => ({ start: at(e), end: at(edges[p + 2]) }));
+  const at = (j: number): number => (j < k ? chunks[j]!.start : end);
+  return edges.slice(0, -2).map((e, p) => ({ start: at(e), end: at(edges[p + 2]!) }));
 }
 
 /**
@@ -384,7 +384,7 @@ export function isScoredWindow(w: WindowVerdict): boolean {
 /** A probability vector in wire shape: bucket = its argmax, score = Σ pᵢ·i / 3. */
 function resultOf(id: string, probs: number[]): ScoreResult {
   let bucket = 0;
-  for (let i = 1; i < BUCKET_COUNT; i++) if (probs[i] > probs[bucket]) bucket = i;
+  for (let i = 1; i < BUCKET_COUNT; i++) if (probs[i]! > probs[bucket]!) bucket = i;
   return { id, bucket, probs, score: probs.reduce((acc, p, i) => acc + p * i, 0) / (BUCKET_COUNT - 1) };
 }
 
@@ -399,16 +399,16 @@ function combineStretches(passes: readonly WindowVerdict[]): WindowVerdict[] {
   const edges = [...new Set(scored.flatMap((p) => [p.start, p.end]))].sort((a, b) => a - b);
   const out: WindowVerdict[] = [];
   for (let i = 0; i + 1 < edges.length; i++) {
-    const start = edges[i];
-    const end = edges[i + 1];
+    const start = edges[i]!;
+    const end = edges[i + 1]!;
     const over = scored.filter((p) => p.start <= start && p.end >= end);
     if (over.length === 0) continue;
-    if (over.length === 1 && over[0].start === start && over[0].end === end) {
-      out.push(over[0]);
+    if (over.length === 1 && over[0]!.start === start && over[0]!.end === end) {
+      out.push(over[0]!);
       continue;
     }
     const probs = new Array<number>(BUCKET_COUNT).fill(0);
-    for (const p of over) for (let j = 0; j < BUCKET_COUNT; j++) probs[j] += (p.result.probs[j] ?? 0) / over.length;
+    for (const p of over) for (let j = 0; j < BUCKET_COUNT; j++) probs[j]! += (p.result.probs[j] ?? 0) / over.length;
     const result = resultOf(`${start}-${end}`, probs);
     if (over.some((p) => p.result.truncated)) result.truncated = true;
     out.push({ start, end, result });
@@ -444,7 +444,7 @@ export function unitVerdict(id: string, textLength: number, windows: WindowVerdi
   const done = (result: ScoreResult, stretches: WindowVerdict[] = []): UnitVerdict =>
     ({ id, result, windows, stretches, unreadChars });
 
-  if (windows.length === 1) return done({ ...windows[0].result, id }, windows.filter(isScoredWindow));
+  if (windows.length === 1) return done({ ...windows[0]!.result, id }, windows.filter(isScoredWindow));
   if (windows.length === 0 || windows.some((w) => w.result.degraded)) return done(unavailableResult(id));
   const scored = windows.filter(isScoredWindow);
   if (scored.length === 0) {
@@ -458,9 +458,9 @@ export function unitVerdict(id: string, textLength: number, windows: WindowVerdi
   for (const st of stretches) {
     const len = st.end - st.start;
     weight += len;
-    for (let i = 0; i < BUCKET_COUNT; i++) probs[i] += (st.result.probs[i] ?? 0) * len;
+    for (let i = 0; i < BUCKET_COUNT; i++) probs[i]! += (st.result.probs[i] ?? 0) * len;
   }
-  for (let i = 0; i < BUCKET_COUNT; i++) probs[i] /= weight;
+  for (let i = 0; i < BUCKET_COUNT; i++) probs[i]! /= weight;
   const result = resultOf(id, probs);
   if (scored.every((w) => typeof w.result.tokens === "number")) {
     result.tokens = scored.reduce((n, w) => n + (w.result.tokens ?? 0), 0);
@@ -504,7 +504,7 @@ async function planAll(
 ): Promise<Array<TextSpan[] | null>> {
   const plans: Array<TextSpan[] | null> = items.map((item, i) => (fits[i] ? [{ start: 0, end: item.text.length }] : null));
   const long = items.flatMap((_, i) => (fits[i] ? [] : [i]));
-  const planned = long.map((i) => wordsOf(items[i].text));
+  const planned = long.map((i) => wordsOf(items[i]!.text));
   const texts: string[] = [];
   const known = new Map<string, number>();
   const refs = planned.map(({ words }) =>
@@ -526,9 +526,10 @@ async function planAll(
   }
   if (!counts || counts.alone.length !== texts.length || counts.following.length !== texts.length) return plans;
   const { alone, following } = counts;
+  // Every ref is an index into texts, which both counts match in length (checked above).
   long.forEach((i, n) => {
-    const own = { alone: refs[n].map((r) => alone[r]), following: refs[n].map((r) => following[r]) };
-    plans[i] = planPasses(items[i].text, planned[n].chunks, own).slice(0, MAX_WINDOWS);
+    const own = { alone: refs[n]!.map((r) => alone[r]!), following: refs[n]!.map((r) => following[r]!) };
+    plans[i] = planPasses(items[i]!.text, planned[n]!.chunks, own).slice(0, MAX_WINDOWS);
   });
   return plans;
 }
@@ -585,7 +586,7 @@ export async function readInWindows(
   items.forEach((item, i) => {
     const spans = plans[i];
     if (!spans) uncounted.push(item);
-    else slots.push(...slotsFor(item, spans, spans.length === 1 && spans[0].start === 0 && spans[0].end === item.text.length));
+    else slots.push(...slotsFor(item, spans, spans.length === 1 && spans[0]!.start === 0 && spans[0]!.end === item.text.length));
   });
   const answers = await ask(slots, scoreBlocks);
 

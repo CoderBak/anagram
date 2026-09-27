@@ -121,7 +121,7 @@ export function createScheduler<V>(opts: {
       const batch: Pending[] = [];
       let chars = 0;
       while (q.length > 0) {
-        const next = q[0];
+        const next = q[0]!;
         // A unit costs what is sent for it: all of a long one's windows, up to the cap.
         // One that outweighs the budget alone still goes — in a batch of its own when it
         // leads the queue, and closing the batch in front of it when it does not.
@@ -152,7 +152,8 @@ export function createScheduler<V>(opts: {
       queuedLane.delete(p.unit.id);
       inFlightIds.add(p.unit.id);
     }
-    const batchEpoch = batch[0].epoch;
+    // pickBatch never makes an empty batch.
+    const batchEpoch = batch[0]!.epoch;
 
     opts
       .send(batch.map((p) => p.unit), lane)
