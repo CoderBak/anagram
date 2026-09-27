@@ -336,7 +336,7 @@ fi
 step 3 "$(tr_msg 'Installing private Python' '正在安装独立 Python') $PYTHON_VERSION"
 run_uv python install "$PYTHON_VERSION"
 step 4 "$(tr_msg 'Installing locked runtime packages' '正在安装版本锁定的运行依赖')"
-note "$(tr_msg "Downloading and installing $RUNTIMES, ONNX Runtime and other dependencies; progress appears below." "正在下载并安装 $RUNTIMES、ONNX Runtime 等依赖；具体进度显示在下方。")"
+note "$(tr_msg "Downloading and installing $RUNTIMES, ONNX Runtime and other dependencies; progress appears below." "正在下载并安装 ${RUNTIMES}、ONNX Runtime 等依赖；具体进度显示在下方。")"
 note "$(tr_msg 'Device-selected model weights will download here after registration.' '注册完成后，将在此下载适合本机设备的模型权重。')"
 CREATED_VENV=1
 # --no-build everywhere: every locked package resolves to a wheel on each supported

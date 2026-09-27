@@ -488,6 +488,10 @@ local component and the installer all carry the same version.
   that one navigation twice, and the first report used up the pass it was given.
 - The PDF reader's paragraph worker no longer contains folder paths of the machine it was
   built on, and the component archive no longer records the builder's user name.
+- Ctrl-C during `anagram update` no longer leaves the local engine locked. The installer
+  put the old engine back, but the command's own Python processes killed it a quarter of
+  a second into that, before it released its lock, and Anagram would not start until the
+  update was run again. They now wait for the installer to finish.
 
 ## [0.7.0] — 2026-09-26
 
