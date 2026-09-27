@@ -29,7 +29,7 @@
     "test:installer": "sh test/installer.sh",
     "test:runtime": "npm run build && node test/runtime.mjs",
     "test:native": "npm run build && node test/native-browser.mjs",
-    "test:paste": "npm run build && node test/paste.mjs",
+    "test:paste": "npm run build && playwright test paste",
     "test:pseudo-locale": "node test/pseudo-locale.mjs",
     "test:pdf-viewer": "npm run build && playwright test pdf-viewer",
     "test:pdf-install": "npm run build && node test/pdf-install-flow.mjs",
