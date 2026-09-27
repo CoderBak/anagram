@@ -2230,9 +2230,17 @@ async function sweep(page, steps = 6) {
     const waitStatus = (page, words, timeout = 15000) => page.waitForFunction(
       (w) => document.querySelector("#componentSettings .component-status")?.textContent === w, words, { timeout },
     ).then(() => true).catch(() => false);
+    // "Ready" is painted from the component's status; the runtime panel it mounts then asks
+    // for the configurations on its own (lib/ui/runtimeSettings.ts), so the active row
+    // arrives a round trip later. The card is read once both are there.
+    const waitReady = (page, timeout = 15000) => page.waitForFunction(
+      () => document.querySelector("#componentSettings .component-status")?.textContent === "Ready" &&
+        !!document.querySelector('#runtimeSettings .runtime-row[data-active="true"]'),
+      null, { timeout },
+    ).then(() => true).catch(() => false);
     const p = await context.newPage();
     await p.goto(onboardingUrl, { waitUntil: "load" });
-    const sawRunning = await waitStatus(p, "Ready");
+    const sawRunning = await waitReady(p);
     const up = await readCard(p);
     record("ui", "the setup page says Ready with the active configuration, the site grant and no install command",
       // The test build already grants every site, so the grant button gives way to the go line.
@@ -2248,7 +2256,7 @@ async function sweep(page, steps = 6) {
       down.active === null && down.primary === null,
       JSON.stringify(down));
     await fixture.resume();
-    const cameBack = await waitStatus(p, "Ready");
+    const cameBack = await waitReady(p);
     const back = await readCard(p);
     record("ui", "the setup page follows engine recovery without a reload",
       cameBack && back.active?.includes("Test CPU · FP32") && back.ready && back.install === null, JSON.stringify(back));
