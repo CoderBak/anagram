@@ -157,3 +157,23 @@ export function truthOf(html) {
     paras: paras.map((p, i) => ({ cat: p.cat, soft: p.soft, abstract: p.abstract, start: bounds[i].start, end: bounds[i].end })),
   };
 }
+
+/**
+ * The truth without its formulas. Neither reading keeps a formula (the walker skips
+ * MathML, the PDF path the glyphs set in a mathematics face), so the words either side of
+ * one meet in both, and the truth is made to read the same way: otherwise the anchors that
+ * place a reading on the truth break at every formula and the words after it look missing.
+ */
+export function withoutMath(truth) {
+  const keep = [];
+  const remap = new Int32Array(truth.tokens.length + 1);
+  truth.tokens.forEach((t, q) => {
+    remap[q] = keep.length;
+    if (t.cat !== "inline-math" && t.cat !== "display-math") keep.push(t);
+  });
+  remap[truth.tokens.length] = keep.length;
+  return {
+    tokens: keep,
+    paras: truth.paras.map((p) => (p.start < 0 ? p : { ...p, start: remap[p.start], end: remap[p.end] })),
+  };
+}
