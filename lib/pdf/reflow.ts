@@ -243,13 +243,13 @@ function median(values: number[]): number {
   if (values.length === 0) return 0;
   const s = [...values].sort((a, b) => a - b);
   const mid = s.length >> 1;
-  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+  return s.length % 2 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2;
 }
 
 function percentile(values: number[], p: number): number {
   if (values.length === 0) return 0;
   const s = [...values].sort((a, b) => a - b);
-  return s[Math.min(s.length - 1, Math.max(0, Math.round((s.length - 1) * p)))];
+  return s[Math.min(s.length - 1, Math.max(0, Math.round((s.length - 1) * p)))]!;
 }
 
 /** CJK and friends set text without word spaces — joining their lines must not add one. */
@@ -363,7 +363,7 @@ function collapse(t: Traced): Traced {
   const home: number[] = [];
   let gap = -1;
   for (let i = 0; i < t.text.length; i++) {
-    if (/\s/.test(t.text[i])) {
+    if (/\s/.test(t.text[i]!)) {
       if (home.length > 0 && gap < 0) gap = i;
       continue;
     }
@@ -386,9 +386,9 @@ function collapse(t: Traced): Traced {
   const out = traced();
   out.text = text;
   for (let i = 0; i < home.length; i++) {
-    const h = home[i];
-    if (page[h] < 0) continue;
-    pushRun(out.runs, { page: page[h], item: item[h], at: i, length: 1, from: off[h] });
+    const h = home[i]!;
+    if (page[h]! < 0) continue;
+    pushRun(out.runs, { page: page[h]!, item: item[h]!, at: i, length: 1, from: off[h]! });
   }
   return out;
 }
@@ -509,8 +509,8 @@ function lineNumberRuns(pages: PdfPageText[]): Set<PdfTextItem> {
         if (o.x + o.width / 2 < mid) first = false;
         else last = false;
       };
-      for (let j = i - 1; j >= 0 && it.y - items[j].y <= it.height * 3; j--) look(items[j]);
-      for (let j = i + 1; j < items.length && items[j].y - it.y <= it.height * 3; j++) look(items[j]);
+      for (let j = i - 1; j >= 0 && it.y - items[j]!.y <= it.height * 3; j--) look(items[j]!);
+      for (let j = i + 1; j < items.length && items[j]!.y - it.y <= it.height * 3; j++) look(items[j]!);
       const mark = { page: page.page, x1: it.x, x2: it.x + it.width, y: it.y, h: it.height, value: Number(s), first, last, it };
       entry.mark = mark;
       marks.push(mark);
@@ -526,7 +526,7 @@ function lineNumberRuns(pages: PdfPageText[]): Set<PdfTextItem> {
  */
 function makeLine(page: number, items: PdfTextItem[], index: ItemIndex): Line {
   const sorted = [...items].sort((a, b) => a.x - b.x);
-  let dominant = sorted[0];
+  let dominant = sorted[0]!;
   for (const it of sorted) if (it.width > dominant.width) dominant = it;
 
   const t = traced();
@@ -609,7 +609,7 @@ function groupIntoLines(page: PdfPageText, index: ItemIndex): Line[] {
       lines.push(makeLine(page.page, [cap], index));
       continue;
     }
-    const line = lines[home];
+    const line = lines[home]!;
     lines[home] = { ...makeLine(page.page, [...line.items, cap], index), wrapped: line.wrapped };
   }
   return caps.length === 0 ? lines : lines.sort((a, b) => a.y - b.y || a.x0 - b.x0);
@@ -718,7 +718,7 @@ function findGutters(lines: Line[], pageWidth: number, pageHeight: number): Gutt
   const bands: Band[] = [];
   let open = -1;
   for (let c = 0; c <= GUTTER_CELLS; c++) {
-    const share = c < GUTTER_CELLS ? divides[c] / withText : 0;
+    const share = c < GUTTER_CELLS ? divides[c]! / withText : 0;
     if (share >= GUTTER_BAND_SHARE) {
       if (open < 0) open = c;
       continue;
@@ -769,8 +769,8 @@ function bandsOf(items: PdfTextItem[], left: number, cell: number): Banding {
     const from = Math.min(GUTTER_CELLS - 1, Math.max(0, Math.floor((it.x - left) / cell)));
     const to = Math.min(GUTTER_CELLS - 1, Math.ceil((it.x + it.width - left) / cell) - 1);
     if (to < from) continue;
-    covers[band][from] += 1;
-    covers[band][to + 1] -= 1;
+    covers[band]![from]! += 1;
+    covers[band]![to + 1]! -= 1;
   }
   const divides = new Int32Array(GUTTER_CELLS);
   const dividing: (Uint8Array | null)[] = [];
@@ -781,7 +781,7 @@ function bandsOf(items: PdfTextItem[], left: number, cell: number): Banding {
     let last = -1;
     let covering = 0;
     for (let c = 0; c < GUTTER_CELLS; c++) {
-      covering += band[c];
+      covering += band[c]!;
       if (covering > 0) {
         covered[c] = 1;
         if (first < 0) first = c;
@@ -796,7 +796,7 @@ function bandsOf(items: PdfTextItem[], left: number, cell: number): Banding {
     const here = new Uint8Array(GUTTER_CELLS);
     for (let c = first + 1; c < last; c++) {
       if (covered[c]) continue;
-      divides[c] += 1;
+      divides[c]! += 1;
       here[c] = 1;
     }
     dividing.push(here);
@@ -850,26 +850,26 @@ function stretchGutters(
       if (!d[c]) { len = 0; return; }
       if (len === 0) from = b;
       len++;
-      if (len > length[c]) { length[c] = len; first[c] = from; last[c] = b; }
+      if (len > length[c]!) { length[c] = len; first[c] = from; last[c] = b; }
     });
   }
   const candidates: { at: number; length: number; first: number; last: number; width: number }[] = [];
   let open = -1;
   for (let c = 0; c <= GUTTER_CELLS; c++) {
-    if (c < GUTTER_CELLS && length[c] >= STRETCH_BANDS) {
+    if (c < GUTTER_CELLS && length[c]! >= STRETCH_BANDS) {
       if (open < 0) open = c;
       continue;
     }
     if (open >= 0 && whiteOf(open, c, g.cell) >= g.minWidth) {
       const band = bandOf(length, open, c, g.left, g.cell, 1);
       const k = Math.min(c - 1, Math.max(open, Math.floor((band.at - g.left) / g.cell)));
-      candidates.push({ at: band.at, length: length[k], first: first[k], last: last[k], width: band.width });
+      candidates.push({ at: band.at, length: length[k]!, first: first[k]!, last: last[k]!, width: band.width });
     }
     open = -1;
   }
   if (candidates.length === 0) return NO_GUTTERS;
   candidates.sort((a, b) => b.length - a.length || b.width - a.width);
-  const best = candidates[0];
+  const best = candidates[0]!;
   const runTop = top + best.first * depth;
   const runBottom = top + (best.last + 1) * depth;
   let from = -Infinity, to = Infinity;
@@ -894,7 +894,7 @@ function linesHold(items: PdfTextItem[], gutters: number[]): boolean {
   const lines = Array.from({ length: gutters.length + 1 }, () => new Set<number>());
   for (const it of items) {
     const col = columnOf(it, gutters);
-    if (col >= 0) lines[col].add(Math.round(it.y / Math.max(1, it.height * BASELINE_TOL)));
+    if (col >= 0) lines[col]!.add(Math.round(it.y / Math.max(1, it.height * BASELINE_TOL)));
   }
   return lines.every((l) => l.size >= STRETCH_LINES);
 }
@@ -915,7 +915,7 @@ function bandOf(
   withText: number,
 ): Band {
   let best = 0;
-  for (let c = from; c < to; c++) best = Math.max(best, divides[c]);
+  for (let c = from; c < to; c++) best = Math.max(best, divides[c]!);
   let start = from;
   let run = 0;
   let longest = 0;
@@ -951,7 +951,7 @@ function columnsHold(items: PdfTextItem[], gutters: number[]): boolean {
     const n = it.str.replace(/\s/g, "").length;
     total += n;
     const col = columnOf(it, gutters);
-    if (col >= 0) chars[col] += n;
+    if (col >= 0) chars[col]! += n;
   }
   const floor = (total * COLUMN_EVEN_SHARE) / chars.length;
   return chars.every((n) => n >= floor);
@@ -1017,7 +1017,7 @@ function orderColumns(lines: Line[], columns: number): Line[] {
     if (line.col < 0 || line.col >= columns) {
       flush();
       out.push({ ...line, col: -1 });
-    } else held[line.col].push(line);
+    } else held[line.col]!.push(line);
   }
   flush();
   return out;
@@ -1075,16 +1075,16 @@ function frontMatterOf(lines: Line[], pageHeight: number, bodySize: number): Set
   let title = -1;
   let largest = 0;
   for (let i = 0; i < limit; i++) {
-    if (lines[i].y > pageHeight * FRONT_MATTER_MAX_Y) break;
-    if (lines[i].size > largest) {
-      largest = lines[i].size;
+    if (lines[i]!.y > pageHeight * FRONT_MATTER_MAX_Y) break;
+    if (lines[i]!.size > largest) {
+      largest = lines[i]!.size;
       title = i;
     }
   }
   if (title < 0 || largest < bodySize * HEADING_SIZE) return front;
 
   for (let i = title; i < limit; i++) {
-    const line = lines[i];
+    const line = lines[i]!;
     if (line.y > pageHeight * FRONT_MATTER_MAX_Y) break;
     if (i > title && SECTION_NUMBER.test(line.text)) break;
     if (isProse(lines, i)) break;
@@ -1142,7 +1142,7 @@ function findMarginLines(perPage: Line[][], pages: PdfPageText[]): Set<Line> {
   const candidates: { line: Line; band: "top" | "bottom"; rel: number }[] = [];
 
   perPage.forEach((lines, i) => {
-    const height = pages[i].height || 1;
+    const height = pages[i]!.height || 1;
     for (const line of lines) {
       const rel = line.y / height;
       const band = rel <= MARGIN_TOP ? "top" : rel >= MARGIN_BOTTOM ? "bottom" : null;
@@ -1254,7 +1254,7 @@ export function vocabularyOf(texts: string[]): Vocabulary {
     const lower = text.toLowerCase();
     for (const m of lower.matchAll(INLINE_COMPOUND)) {
       vocab.hyphenated.add(`${m[1]}-${m[2]}`);
-      vocab.heads.add(m[1]);
+      vocab.heads.add(m[1]!);
     }
     for (const m of lower.matchAll(WORD)) vocab.fused.add(m[0]);
   }
@@ -1317,7 +1317,7 @@ function appendLine(t: Traced, next: Traced, vocab: Vocabulary, br: Break = {}):
   // The whole token is captured, hyphens and all, so "state-of-the-" arrives at the
   // test below as "state-of-the" and is refused for carrying a hyphen of its own.
   const hyphen = /(\S+)[-‐­]$/u.exec(t.text);
-  if (hyphen && !br.short && dehyphenates(hyphen[1], next.text, vocab)) {
+  if (hyphen && !br.short && dehyphenates(hyphen[1]!, next.text, vocab)) {
     dropLastChar(t);
   } else if (!hyphen && !(CJK.test(t.text.slice(-1)) && CJK.test(next.text.slice(0, 1)))) {
     // Neither a real hyphen (which swallowed no space) nor CJK (which is set solid):
@@ -1373,12 +1373,12 @@ function markAsides(drafts: Draft[], bodySize: number): void {
   // table's notes — which is nobody's paragraph and needs no reaching past.
   let start = 0;
   for (let i = 1; i <= drafts.length; i++) {
-    if (i < drafts.length && drafts[i].segment === drafts[start].segment) continue;
-    if (!drafts[start].front) {
+    if (i < drafts.length && drafts[i]!.segment === drafts[start]!.segment) continue;
+    if (!drafts[start]!.front) {
       let j = i - 1;
-      while (j > start && drafts[j].size <= bodySize * FOOTNOTE_SIZE) j--;
-      if (drafts[j].size > bodySize * FOOTNOTE_SIZE) {
-        for (let k = j + 1; k < i; k++) drafts[k].aside = true;
+      while (j > start && drafts[j]!.size <= bodySize * FOOTNOTE_SIZE) j--;
+      if (drafts[j]!.size > bodySize * FOOTNOTE_SIZE) {
+        for (let k = j + 1; k < i; k++) drafts[k]!.aside = true;
       }
     }
     start = i;
@@ -1417,7 +1417,7 @@ function segments(lines: Line[], front: Set<Line>): Line[][] {
 function paragraphsOf(lines: Line[], vocab: Vocabulary, front: boolean): Draft[] {
   const pitches: number[] = [];
   for (let i = 1; i < lines.length; i++) {
-    const d = lines[i].y - lines[i - 1].y;
+    const d = lines[i]!.y - lines[i - 1]!.y;
     if (d > 0) pitches.push(d);
   }
   const pitch = median(pitches) || median(lines.map((l) => l.size)) * 1.2 || 1;
@@ -1427,8 +1427,8 @@ function paragraphsOf(lines: Line[], vocab: Vocabulary, front: boolean): Draft[]
   // A stretch too short to have a measure of its own keeps the column's.
   const stretch: Line[][] = [];
   for (let i = 0; i < lines.length; i++) {
-    if (i === 0 || lines[i].y - lines[i - 1].y > pitch * PARA_GAP) stretch.push([]);
-    stretch[stretch.length - 1].push(lines[i]);
+    if (i === 0 || lines[i]!.y - lines[i - 1]!.y > pitch * PARA_GAP) stretch.push([]);
+    stretch[stretch.length - 1]!.push(lines[i]!);
   }
   const edgesOf = (of: Line[]) => {
     const leftEdge = percentile(of.map((l) => l.x0), 0.15);
@@ -1445,7 +1445,7 @@ function paragraphsOf(lines: Line[], vocab: Vocabulary, front: boolean): Draft[]
   const opens = lines.map((line, i) => {
     if (LIST_MARKER.test(line.text)) return true;
     if (!DASH_ITEM.test(line.text)) return false;
-    const before = i > 0 ? lines[i - 1].text : "";
+    const before = i > 0 ? lines[i - 1]!.text : "";
     return i === 0 || SENTENCE_END.test(before) || ITEM_BEFORE.test(before);
   });
 
@@ -1463,15 +1463,15 @@ function paragraphsOf(lines: Line[], vocab: Vocabulary, front: boolean): Draft[]
     }
     t = collapse(t);
     if (t.text !== "") {
-      const last = group[group.length - 1];
-      let widest = group[0];
+      const last = group[group.length - 1]!;
+      let widest = group[0]!;
       for (const l of group) if (l.x1 - l.x0 > widest.x1 - widest.x0) widest = l;
-      const segment = `${group[0].page}:${group[0].col}${front ? ":front" : ""}`;
+      const segment = `${group[0]!.page}:${group[0]!.col}${front ? ":front" : ""}`;
       out.push({
         kind: "paragraph",
         text: t.text,
         runs: t.runs,
-        page: group[0].page,
+        page: group[0]!.page,
         segment,
         start: segment,
         size: median(group.map((l) => l.size)),
@@ -1484,11 +1484,11 @@ function paragraphsOf(lines: Line[], vocab: Vocabulary, front: boolean): Draft[]
   };
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+    const line = lines[i]!;
     // A line that ends mid-word is never a paragraph's last line, whatever else the
     // geometry says — the hyphen is the typesetter telling us so.
-    if (i > 0 && !/[-‐­]$/.test(lines[i - 1].text)) {
-      const prev = lines[i - 1];
+    if (i > 0 && !/[-‐­]$/.test(lines[i - 1]!.text)) {
+      const prev = lines[i - 1]!;
       const { leftEdge, rightEdge } = edges.get(prev) ?? column;
       const gap = line.y - prev.y;
       // A list item's second line is ranged under its text, past the marker, and that
@@ -1537,7 +1537,7 @@ function setOnItsOwnMeasure(s: Line[]): boolean {
   let flush = 0;
   for (const l of s) {
     for (let k = 1; k < l.items.length; k++) {
-      if (l.items[k].x - (l.items[k - 1].x + l.items[k - 1].width) > l.size) return false;
+      if (l.items[k]!.x - (l.items[k - 1]!.x + l.items[k - 1]!.width) > l.size) return false;
     }
     if (Math.abs(l.x0 - left) <= l.size * FLUSH_TOL && l.x1 >= right - l.size * SHORT_LINE) flush++;
   }
@@ -1705,10 +1705,10 @@ export function reflowPdf(pages: PdfPageText[]): ReflowBlock[] {
   const vocab = vocabularyOf(lines.map((l) => l.text));
   // Only the document's own first page has a title block. The reader reflows each run of
   // rendered pages on its own, and a run that starts deeper in opens on an ordinary page.
-  const front = pages[0].page === 1
-    ? frontMatterOf(perPage[0].filter((l) => !drop.has(l)), pages[0].height, bodySize)
+  const front = pages[0]!.page === 1
+    ? frontMatterOf(perPage[0]!.filter((l) => !drop.has(l)), pages[0]!.height, bodySize)
     : new Set<Line>();
-  const drafts = segments(lines, front).flatMap((s) => paragraphsOf(s, vocab, front.has(s[0])));
+  const drafts = segments(lines, front).flatMap((s) => paragraphsOf(s, vocab, front.has(s[0]!)));
   classifyHeadings(drafts, bodySize, displayFonts);
   markAsides(drafts, bodySize);
 
@@ -1725,7 +1725,7 @@ export function reflowPdf(pages: PdfPageText[]): ReflowBlock[] {
       page: d.page,
       runs,
       apart: d.aside === true || d.front,
-      columnBreak: i === 0 || joined[i - 1].segment !== d.start,
+      columnBreak: i === 0 || joined[i - 1]!.segment !== d.start,
     }];
   });
 }

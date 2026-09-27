@@ -74,7 +74,7 @@ function counts(marks: NumberMark[]): boolean {
   const down = [...marks].sort((a, b) => a.y - b.y);
   let good = 0;
   for (let i = 1; i < down.length; i++) {
-    const step = down[i].value - down[i - 1].value;
+    const step = down[i]!.value - down[i - 1]!.value;
     if (step >= 1 && step <= MAX_STEP) good++;
   }
   return down.length === 1 || good >= (down.length - 1) * COUNTING;
@@ -105,7 +105,7 @@ function clusters<T extends NumberMark>(marks: T[], edge: "x1" | "x2"): T[][] {
   const out: T[][] = [];
   for (const m of sorted) {
     const open = out.at(-1);
-    if (open && m[edge] - open[0][edge] <= Math.max(open[0].h, m.h) * ALIGN) open.push(m);
+    if (open && m[edge] - open[0]![edge] <= Math.max(open[0]!.h, m.h) * ALIGN) open.push(m);
     else out.push([m]);
   }
   return out;
@@ -128,7 +128,7 @@ export function mayHoldColumn(marks: readonly NumberMark[]): boolean {
         const down = [...cluster].sort((a, b) => a.y - b.y);
         let good = 0;
         for (let i = 1; i < down.length; i++) {
-          const step = down[i].value - down[i - 1].value;
+          const step = down[i]!.value - down[i - 1]!.value;
           if (step >= 1 && step <= MAX_STEP) good++;
         }
         if (good >= (COLUMN_MIN - 1) * COUNTING) return true;
@@ -170,7 +170,7 @@ export function lineNumberMarks<T extends NumberMark>(marks: readonly T[], conte
       for (const edge of ["x1", "x2"] as const) {
         for (const cluster of clusters(at, edge)) {
           if (!counts(cluster)) continue;
-          const column: Column = { side, edge, at: cluster[0][edge], h: cluster[0].h };
+          const column: Column = { side, edge, at: cluster[0]![edge], h: cluster[0]!.h };
           found.push({ cluster, column, page });
           if (cluster.length >= COLUMN_MIN && clear(cluster, side, contentOf.get(page) ?? [])) columns.push(column);
         }

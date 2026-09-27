@@ -339,7 +339,7 @@ export function createPdfHandoff(deps:HandoffDeps):PdfHandoff {
             }
             if(!isAck(value,next)){finish();return;}
             if(next===entry.chunks.length){port.postMessage({done:true});finish();return;}
-            const seq=next++;port.postMessage({chunk:toBase64(entry.chunks[seq]),seq});
+            const seq=next++;port.postMessage({chunk:toBase64(entry.chunks[seq]!),seq});
           }catch{finish();}
         });
       });
