@@ -376,6 +376,8 @@ export default defineBackground(() => {
         return {...status,setup:await readEngineSetup((op) => engineTransport().request(op))} satisfies BackendStatus;
       }
       case ACTIONS.OPEN_ENGINE_SETUP: {
+        // The in-browser engine's only: the local engine has no setup page to open.
+        if (import.meta.env.ANAGRAM_FLAVOR !== "oneclick") return {ok:false,error:"forbidden"};
         // The setup page beside the tab: the browser's question about the model's download
         // sites is asked from a click there, which a content script cannot make.
         const tab=sender.tab as {id?:number;index?:number}|undefined;
