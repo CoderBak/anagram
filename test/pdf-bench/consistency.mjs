@@ -206,7 +206,7 @@ async function readAll(docs) {
 // ---- the engine ------------------------------------------------------------------------------
 
 const APP_FILES = ["native_host.py", "native_component.py", "download_modelkit.py", "model_plan.py", "modelkit.json",
-  "runtime_controller.py", "runtime_adapters.py", "benchmark_worker.py", "scoring.py", "engine.py", "safe_files.py", "pyproject.toml"];
+  "runtime_controller.py", "runtime_adapters.py", "benchmark_worker.py", "scoring.py", "mlx_roberta.py", "engine.py", "safe_files.py", "pyproject.toml"];
 
 /** A throwaway component home holding links to the files the host's own plan selects. */
 function prepareHome(python, kit, lid) {

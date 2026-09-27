@@ -66,6 +66,15 @@ local component and the installer all carry the same version.
 
 ### Changed
 
+- On Apple silicon the local engine runs the model in MLX (MIT) on the GPU instead of
+  PyTorch, still in FP32 from the same model.safetensors, and PyTorch and Transformers are
+  no longer installed there: the engine's Python packages shrink from 780 MB to 340 MB.
+  On 200 texts of the EditLens test split every probability stays within 0.00001 of
+  PyTorch's on the GPU, with the same words. One paragraph scores a tenth faster, a page's
+  worth 5–7% faster, and a new engine is ready in 2.6 seconds instead of 4.2. ONNX Runtime
+  on the CPU remains the fallback on a Mac whose GPU MLX cannot use; Linux and Windows keep
+  PyTorch. Every runtime now tokenizes with the tokenizers library directly, from the same
+  tokenizer.json. The half-precision GPU choice goes with PyTorch on the Mac.
 - The model behind a verdict's dot is refitted on the EditLens validation data read
   through Anagram's current pipeline (passes, grouping, accents composed). Its
   coefficients move by a few hundredths and its calibration on the test, Enron and Llama

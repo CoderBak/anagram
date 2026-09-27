@@ -22,7 +22,7 @@ from runtime_adapters import OnnxEditLens, create_controller, execution_environm
 from runtime_controller import Candidate
 
 
-def hardware(*, torch=True, cpu=True, mps=False, cuda=False, ort=True, ort_cpu=True, ort_cuda=False, rocm=False):
+def hardware(*, torch=True, cpu=True, mps=False, cuda=False, ort=True, ort_cpu=True, ort_cuda=False, rocm=False, mlx=False):
     def state(value):
         return {"available": value, "error": None if value else "probe unavailable"}
     def device(kind):
@@ -31,6 +31,7 @@ def hardware(*, torch=True, cpu=True, mps=False, cuda=False, ort=True, ort_cpu=T
             "torch": {"available": torch, "version": "test", "error": None,
                       "cpu": state(cpu and torch), "mps": state(mps and torch),
                       "cuda": [device("rocm" if rocm else "cuda")] if cuda else []},
+            "mlx": {"available": mlx, "version": "test", "error": None, "gpu": state(mlx)},
             "onnx": {"available": ort, "version": "test", "error": None,
                      "cpu": state(ort_cpu and ort), "cuda": [device("cuda")] if ort_cuda else [],
                      "providers": ["CPUExecutionProvider", "CUDAExecutionProvider", "CoreMLExecutionProvider"]}}
@@ -57,6 +58,27 @@ class FakeTorch:
         if device in self.fail:
             raise RuntimeError("allocation failed on " + device)
         return np.ones(shape, dtype=np.float32)
+
+
+class FakeMlx:
+    __version__ = "test"
+    float32 = "float32"
+    gpu = "gpu"
+
+    def __init__(self, *, metal=True, wrong=False):
+        self.calls = []
+        self.wrong = wrong
+        self.metal = SimpleNamespace(is_available=lambda: metal)
+
+    def ones(self, shape, *, dtype, stream):
+        self.calls.append(("allocate", stream))
+        return np.ones(shape, dtype=np.float32)
+
+    def matmul(self, a, b, *, stream):
+        return np.zeros((2, 2), dtype=np.float32) if self.wrong else a @ b
+
+    def eval(self, value):
+        self.calls.append(("eval", value.shape))
 
 
 class FakeOrt:
@@ -108,12 +130,12 @@ class ModelPlanTests(unittest.TestCase):
 import sys
 class RejectRuntimeImport:
     def find_spec(self, fullname, *args):
-        if fullname.split('.')[0] in {'torch', 'onnxruntime', 'numpy'}:
+        if fullname.split('.')[0] in {'torch', 'mlx', 'onnxruntime', 'numpy'}:
             raise AssertionError('heavy import: ' + fullname)
 sys.meta_path.insert(0, RejectRuntimeImport())
 sys.path.insert(0, sys.argv[1])
 import model_plan
-assert 'torch' not in sys.modules and 'onnxruntime' not in sys.modules
+assert not {'torch', 'mlx', 'onnxruntime'} & set(sys.modules)
 """
         run = subprocess.run([sys.executable, "-I", "-c", code, str(ROOT / "anagramd")],
                              capture_output=True, text=True, timeout=10)
@@ -181,7 +203,7 @@ assert 'torch' not in sys.modules and 'onnxruntime' not in sys.modules
 
     def test_recommended_gpu_shares_one_source_with_cpu_and_half_precision(self):
         plan = build_plan(self.pin, hardware(mps=True))
-        self.assertEqual(plan["artifact_ids"], ["torch-source"])
+        self.assertEqual(plan["artifact_ids"], ["safetensors"])
         self.assertEqual(self.weights(plan), {"model.safetensors"})
         self.assertEqual(plan["candidate_ids"], ["torch:cpu:fp32", "torch:mps:fp32", "torch:mps:fp16"])
         self.assertIn("Apple GPU (MPS)", plan["devices"])
@@ -191,6 +213,47 @@ assert 'torch' not in sys.modules and 'onnxruntime' not in sys.modules
         self.assertEqual(plan["total_bytes"], sum(e["size_bytes"] for e in plan["files"]))
         plan["files"][0]["size_bytes"] = 0
         self.assertNotEqual(self.pin["files"][0]["size_bytes"], 0)
+
+    def test_mlx_probe_reports_the_gpu_only_after_an_evaluated_correct_result(self):
+        cases = ((FakeMlx(), True), (FakeMlx(metal=False), False), (FakeMlx(wrong=True), False))
+        for mx, working in cases:
+            with self.subTest(working=working), patch.object(
+                    model_plan.importlib, "import_module",
+                    side_effect=lambda name: {"mlx.core": mx, "onnxruntime": FakeOrt()}[name]):
+                found = discover_hardware()
+            self.assertTrue(found["mlx"]["available"])
+            self.assertIs(found["mlx"]["gpu"]["available"], working)
+            self.assertEqual(found["mlx"]["gpu"]["error"] is None, working)
+        self.assertIn(("eval", (2, 2)), cases[0][0].calls)
+        with patch.object(model_plan.importlib, "import_module", side_effect=ImportError("No module named 'mlx'")):
+            found = discover_hardware()
+        self.assertFalse(found["mlx"]["available"])
+        self.assertIn("mlx", found["mlx"]["gpu"]["error"])
+
+    def test_recommended_apple_gpu_is_mlx_on_the_source_weights_alone(self):
+        for torch in (False, True):
+            plan = build_plan(self.pin, hardware(torch=torch, mps=torch, mlx=True))
+            self.assertEqual(plan["candidate_ids"], ["mlx:gpu:fp32"])
+            self.assertEqual(plan["artifact_ids"], ["safetensors"])
+            self.assertEqual(self.weights(plan), {"model.safetensors"})
+            self.assertEqual(plan["devices"], ["Apple GPU"])
+        expanded = build_plan(self.pin, hardware(torch=False, mlx=True), "expanded")
+        self.assertEqual(expanded["candidate_ids"], ["mlx:gpu:fp32", "onnx:cpu:fp32", "onnx:cpu:int8"])
+        self.assertEqual(self.weights(expanded), {"model.safetensors", "onnx/model.onnx", "onnx/model_int8.onnx"})
+        # Without a working Metal GPU the Mac falls back to ONNX Runtime on the CPU.
+        self.assertEqual(build_plan(self.pin, hardware(torch=False))["candidate_ids"], ["onnx:cpu:fp32"])
+
+    def test_planned_mlx_gpu_that_stops_working_stays_listed_as_unavailable(self):
+        lost = hardware(torch=False)
+        lost["mlx"]["gpu"]["error"] = "MLX cannot reach a Metal GPU"
+        spec = model_plan.candidate_spec("mlx:gpu:fp32", lost)
+        self.assertEqual((spec["runtime"], spec["device"], spec["precision"]), ("mlx", "gpu", "fp32"))
+        self.assertFalse(spec["available"])
+        self.assertIn("Metal", spec["reason"])
+        self.assertEqual(spec["label"], "Apple GPU · MLX · FP32")
+        for invalid in ("mlx:gpu:fp16", "mlx:cpu:fp32", "onnx:gpu:fp32"):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                model_plan.candidate_spec(invalid, lost)
 
     def test_recommended_cpu_prefers_verified_ort_else_torch(self):
         ort = build_plan(self.pin, hardware())

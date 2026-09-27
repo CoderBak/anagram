@@ -8,15 +8,17 @@ for insufficient memory or unsupported operators.
 from __future__ import annotations
 
 import base64
+from concurrent.futures import ThreadPoolExecutor
 import copy
 import importlib
 import platform
 import re
+import threading
 
 from runtime_controller import error_text
 
 ARTIFACT_PATHS = {
-    "torch-source": "model.safetensors",
+    "safetensors": "model.safetensors",
     "onnx-fp32": "onnx/model.onnx",
     "onnx-fp16": "onnx/model_fp16.onnx",
     "onnx-int8": "onnx/model_int8.onnx",
@@ -42,6 +44,37 @@ def _torch_probe(torch, device):
         torch.cuda.synchronize(device)
     if result.sum().item() != 8.0:
         raise RuntimeError("Device capability probe returned an incorrect result")
+
+
+_mlx_lock = threading.Lock()
+_mlx_executor = None
+
+
+def mlx_thread():
+    """The one thread that runs every MLX call in this process.
+
+    An MLX stream belongs to the thread that made it: evaluating a graph built on another
+    thread aborts the process instead of raising, and each thread that touches MLX keeps
+    a Metal command queue of its own for as long as the process lives.
+    """
+    global _mlx_executor
+    with _mlx_lock:
+        if _mlx_executor is None:
+            _mlx_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="anagram-mlx")
+        return _mlx_executor
+
+
+def _mlx_probe(mx):
+    if not mx.metal.is_available():
+        raise RuntimeError("MLX cannot reach a Metal GPU")
+    value = mx.ones((2, 2), dtype=mx.float32, stream=mx.gpu)
+    result = mx.matmul(value, value, stream=mx.gpu)
+    mx.eval(result)
+    if result.sum().item() != 8.0:
+        raise RuntimeError("Device capability probe returned an incorrect result")
+
+
+RUNTIME_NAMES = {"torch": "PyTorch", "mlx": "MLX", "onnx": "ONNX Runtime"}
 
 
 def _ort_probe(ort, provider, index=0):
@@ -73,10 +106,12 @@ def discover_hardware():
     torch_info = {"available": False, "version": None, "error": None,
                   "cpu": _status(error="PyTorch is unavailable"),
                   "mps": _status(error="MPS is unavailable"), "cuda": []}
+    mlx_info = {"available": False, "version": None, "error": None,
+                "gpu": _status(error="MLX is unavailable")}
     ort_info = {"available": False, "version": None, "error": None, "providers": [],
                 "cpu": _status(error="CPUExecutionProvider is unavailable"), "cuda": []}
     result = {"schema_version": 1, "system": platform.system(), "machine": platform.machine(),
-              "torch": torch_info, "onnx": ort_info}
+              "torch": torch_info, "mlx": mlx_info, "onnx": ort_info}
     try:
         torch = importlib.import_module("torch")
         torch_info.update(available=True, version=str(torch.__version__))
@@ -112,6 +147,18 @@ def discover_hardware():
         torch_info.update(error=message)
         torch_info["cpu"] = _status(error=message)
         torch_info["mps"] = _status(error=message)
+
+    try:
+        mx = importlib.import_module("mlx.core")
+        mlx_info.update(available=True, version=str(mx.__version__))
+        try:
+            mlx_thread().submit(_mlx_probe, mx).result()
+            mlx_info["gpu"] = _status(True)
+        except Exception as exc:
+            mlx_info["gpu"] = _status(error=error_text(exc))
+    except Exception as exc:
+        message = error_text(exc)
+        mlx_info.update(error=message, gpu=_status(error=message))
 
     try:
         ort = importlib.import_module("onnxruntime")
@@ -152,11 +199,13 @@ def candidate_catalog(hardware):
         runtime_status = hardware.get(runtime, {})
         available = runtime_status.get("available") is True and status.get("available") is True
         result.append({"id": f"{runtime}:{device}:{precision}",
-                       "label": f"{label} · {'PyTorch' if runtime == 'torch' else 'ONNX Runtime'} · {precision.upper()}",
+                       "label": f"{label} · {RUNTIME_NAMES[runtime]} · {precision.upper()}",
                        "device_label": label, "device": device, "runtime": runtime, "precision": precision,
                        "experimental": precision == "int8", "available": available,
                        "reason": None if available else error_text(status.get("error") or runtime_status.get("error") or "Device/runtime is unavailable")})
 
+    if hardware.get("mlx", {}).get("gpu", {}).get("available") is True:
+        add("mlx", "gpu", "Apple GPU", "fp32", hardware["mlx"]["gpu"])
     for runtime in ("torch", "onnx"):
         info = hardware.get(runtime, {})
         cpu = info.get("cpu", {})
@@ -179,14 +228,15 @@ def candidate_spec(candidate_id, hardware):
     for candidate in candidate_catalog(hardware):
         if candidate["id"] == candidate_id:
             return candidate
-    match = re.fullmatch(r"(torch|onnx):(mps|cuda:(?:0|[1-9][0-9]*)):(fp32|fp16)", candidate_id)
+    match = re.fullmatch(r"(torch|onnx):(mps|cuda:(?:0|[1-9][0-9]*)):(fp32|fp16)|(mlx):(gpu):(fp32)", candidate_id)
     if not match or (match[1] == "onnx" and match[2] == "mps"):
         raise ValueError("Unsupported runtime candidate in model plan")
-    runtime, device, precision = match.groups()
-    label = "Apple GPU (MPS)" if device == "mps" else f"GPU {device.split(':')[1]}"
+    runtime, device, precision = match.groups()[:3] if match[1] else match.groups()[3:]
+    label = {"mps": "Apple GPU (MPS)", "gpu": "Apple GPU"}.get(device) or f"GPU {device.split(':')[1]}"
     info = hardware.get(runtime, {})
-    error = info.get("mps", {}).get("error") if device == "mps" else info.get("cuda_error")
-    return {"id": candidate_id, "label": f"{label} · {'PyTorch' if runtime == 'torch' else 'ONNX Runtime'} · {precision.upper()}",
+    error = (info.get("mps", {}).get("error") if device == "mps" else info.get("gpu", {}).get("error")
+             if device == "gpu" else info.get("cuda_error"))
+    return {"id": candidate_id, "label": f"{label} · {RUNTIME_NAMES[runtime]} · {precision.upper()}",
             "device_label": label, "device": device, "runtime": runtime, "precision": precision,
             "experimental": False, "available": False,
             "reason": error_text(error or info.get("error") or "Planned device is no longer available; rescan the model plan")}
@@ -199,6 +249,8 @@ def build_plan(pin, hardware, profile="recommended"):
     available = [c for c in candidate_catalog(hardware) if c["available"]]
     if profile == "expanded":
         chosen = available
+    elif any(c["runtime"] == "mlx" for c in available):
+        chosen = [c for c in available if c["runtime"] == "mlx"]
     elif any(c["runtime"] == "torch" and c["device"] != "cpu" for c in available):
         chosen = [c for c in available if c["runtime"] == "torch"]
     elif any(c["runtime"] == "onnx" and c["device"] != "cpu" for c in available):
@@ -209,7 +261,7 @@ def build_plan(pin, hardware, profile="recommended"):
         chosen = [c for c in available if c["id"] == "torch:cpu:fp32"]
     if not chosen:
         raise ValueError("No working local inference runtime was found")
-    artifacts = {"torch-source" if c["runtime"] == "torch" else f"onnx-{c['precision']}" for c in chosen}
+    artifacts = {f"onnx-{c['precision']}" if c["runtime"] == "onnx" else "safetensors" for c in chosen}
     selected_weights = {ARTIFACT_PATHS[name] for name in artifacts}
     entries = pin.get("files")
     if not isinstance(entries, list) or not entries:
