@@ -2,7 +2,7 @@
 // document, worker, model, in a temporary Chromium profile.
 //
 //   ANAGRAM_MODELKIT=<modelkit dir> ANAGRAM_LID_MODEL=<lid.176.ftz> [ANAGRAM_PARITY_SAMPLE=<sample.json>] \
-//     node test/webengine/extension.mjs [--isolate]
+//     node test/webengine/extension.mjs [--idle]
 //
 // test/oneclick.mjs stops where the engine says it has no model files. This goes on: the
 // pinned files are put into the extension origin's OPFS from a local server (the same
@@ -11,14 +11,13 @@
 // paste page scores an English text through the ordinary pipeline — background, offscreen
 // document, worker — under the extension's real manifest and CSP. The engine's runtime
 // snapshot says which provider ran and how many threads the WASM one may use, which is
-// what `crossOriginIsolated` in the offscreen document comes to; --isolate adds the
-// manifest's cross-origin isolation keys to the test build first, to see whether Chrome
-// honours them there. The browser's peak memory while the model loads and scores is
+// what `crossOriginIsolated` in the offscreen document comes to (the manifest's isolation
+// keys, wxt.config.ts). The browser's peak memory while the model loads and scores is
 // printed; --idle then waits the engine's shortest idle time (a minute) and checks that
 // the offscreen document ended the worker and gave its memory back, and that a score
 // brings it back. Skips when the paths are missing or CI is set; never part of CI.
 import { chromium } from "playwright";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ensureTestBuild } from "../test-build.mjs";
@@ -47,14 +46,6 @@ const TEXT = chosen?.text ?? ("The committee met on Tuesday to review the propos
 
 process.env.ANAGRAM_FLAVOR = "oneclick";
 const EXT = ensureTestBuild("oneclick-chrome-mv3");
-const manifestPath = join(EXT, "manifest.json");
-const original = readFileSync(manifestPath, "utf8");
-if (argv.includes("--isolate")) {
-  const manifest = JSON.parse(original);
-  manifest.cross_origin_embedder_policy = { value: "require-corp" };
-  manifest.cross_origin_opener_policy = { value: "same-origin" };
-  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-}
 const results = [];
 const check = (name, ok, note = "") => { results.push({ name, ok: !!ok, note: String(note) }); console.log(`${ok ? "ok  " : "FAIL"} ${name}${ok ? "" : ` — ${note}`}`); };
 
@@ -125,7 +116,7 @@ try {
   const threads = Number(/(\d+) thread/.exec(wasm?.label ?? "")?.[1] ?? 0);
   console.log(`ready in ${loadS} s (download ${reply?.data?.download?.status}); active ${runtime?.active_id}; ${runtime?.candidates?.map((c) => `${c.id}: ${c.label}`).join(" | ")}`);
   console.log(`load: ${JSON.stringify(runtime?.benchmark?.results)}`);
-  check(`the offscreen worker ${argv.includes("--isolate") ? "is" : "is not"} cross-origin isolated (${threads} WASM thread${threads === 1 ? "" : "s"})`, argv.includes("--isolate") ? threads > 1 : threads === 1, wasm?.label);
+  check(`the offscreen worker is cross-origin isolated (${threads} WASM thread${threads === 1 ? "" : "s"})`, threads > 1, wasm?.label);
   check("the GPU is the automatic pick", runtime?.active_id === "webgpu:fp32", runtime?.active_id);
 
   // The paste page scores through the ordinary pipeline.
@@ -179,7 +170,6 @@ try {
   await context.close().catch(() => {});
   rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   await closeServer();
-  writeFileSync(manifestPath, original);
 }
 const failed = results.filter((r) => !r.ok);
 console.log(`${results.length - failed.length}/${results.length} checks passed`);

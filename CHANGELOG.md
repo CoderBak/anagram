@@ -20,7 +20,13 @@ local component and the installer all carry the same version.
   takes, and holds the idle unload and **Delete model files**. Until then the popup and the
   panel say setup is needed, or how far the download has got, with a button to the setup
   page. It needs Chrome 137 or Firefox 153; its Chrome pages are cross-origin isolated, so
-  the processor path runs four threads. The local engine's edition is unchanged.
+  the processor path runs four threads. The model's weights are read from the browser's
+  storage a tensor at a time, straight onto the graphics card, and never held twice: on an
+  M4 the browser takes 2.3 GB while the model loads and at most 2.5 GB while scoring on the
+  graphics card (1.9 GB on the processor), where holding the model file whole had taken it
+  to 7.2 GB, and when the idle time lets the model go the engine's worker ends with it and
+  the memory is given back. The engine runs on ONNX Runtime Web 1.30 (MIT). The local
+  engine's edition is unchanged.
 - A page whose comments come from another site's frame — Disqus, Facebook's comments
   plugin, utterances, giscus — says so in the panel and offers to allow that site. Anagram
   reads a frame only with access to its own site, so those threads went unread without a
@@ -84,16 +90,6 @@ local component and the installer all carry the same version.
 
 ### Changed
 
-- Anagram (in-browser), the build that scores inside the browser, needs a third of the
-  memory it did. Its engine handed ONNX Runtime the whole 1.4 GB model, which the engine's
-  worker copied and kept: on an M4 with WebGPU the browser took 6.6 GB loading the model
-  and 7.2 GB scoring, and kept 3.8 GB after the idle time had let the model go. The
-  weights are now read from the browser's storage one tensor at a time, straight onto the
-  GPU: 2.3 GB loading, 2.5 GB at most scoring, and at the idle time the engine's worker
-  is ended with the model, which gives the memory back. Without WebGPU the CPU runtime holds
-  the weights once, 1.9 GB instead of 4.8 GB, as fast on long texts and up to 15% slower on
-  short ones. Scores are unchanged, and the GPU is 5–20% faster, now given four texts at a
-  time instead of eight. The engine runs on ONNX Runtime Web 1.30 (MIT).
 - On Apple silicon the local engine runs the model in MLX (MIT) on the GPU instead of
   PyTorch, still in FP32 from the same model.safetensors, and PyTorch and Transformers are
   no longer installed there: the engine's Python packages shrink from 780 MB to 340 MB.
