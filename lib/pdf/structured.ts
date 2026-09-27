@@ -576,22 +576,35 @@ const firstLetter = (pieces: Piece[]): string => pieces.find((p) => p.ch !== " "
  * The paragraphs of a run of numbered lines, by the reflow's signals on each page's own
  * margins and pitch (`pages`): a line below the last by more than PARA_GAP pitches, one
  * indented where the last was flush, one opening a sentence or a list item after a line
- * that stopped short, and every new page or column (the reading joins a paragraph carried
- * over one by its sentence, `continues`). A manuscript is often set ragged right, where
- * every line stops a word or two short of the margin and as often as not the next opens
- * with a capital or a bracket: there a line has stopped short only well inside the measure.
+ * that stopped short; and it goes on over a page or a column where its last line ran full
+ * without ending a sentence and the next line is not indented. A manuscript is often set
+ * ragged right, where every line stops a word or two short of the margin and as often as
+ * not the next opens with a capital or a bracket: there a line has stopped short only well
+ * inside the measure.
  */
 function paragraphsOfRows(rows: Row[], pages: ReadonlyMap<number, Margins>, ragged: boolean): Row[][] {
   const out: Row[][] = [];
+  const short = (r: Row, m: Margins): boolean =>
+    ragged ? r.x1 < m.left + (m.right - m.left) * RAGGED_SHORT : r.x1 < m.right - r.h * SHORT_LINE;
+  const indented = (r: Row, m: Margins): boolean => r.x0 > m.left + r.h * INDENT;
+  const listItem = (r: Row): boolean => LIST_OPENING.test(r.pieces.map((p) => p.ch).join("").trimStart());
   rows.forEach((b, i) => {
     const a = rows[i - 1];
     const m = pages.get(b.page);
-    const opening = firstLetter(b.pieces);
-    const breaks = !a || !m || a.page !== b.page || b.top <= a.top
-      || b.top - a.top > m.pitch * PARA_GAP
-      || (b.x0 > m.left + b.h * INDENT && a.x0 <= m.left + a.h * INDENT)
-      || ((ragged ? a.x1 < m.left + (m.right - m.left) * RAGGED_SHORT : a.x1 < m.right - a.h * SHORT_LINE) && FRESH_START.test(opening))
-      || LIST_OPENING.test(b.pieces.map((p) => p.ch).join("").trimStart());
+    const ma = a && pages.get(a.page);
+    let breaks: boolean;
+    if (!a || !m || !ma) breaks = true;
+    else if (a.page !== b.page || b.top <= a.top) {
+      // Over a page or a column: the paragraph goes on where its last line ran full to the
+      // margin without ending a sentence and the next opens neither indented nor as an item.
+      const ended = SENTENCE_END.test(a.pieces.map((p) => p.ch).join("").trimEnd());
+      breaks = ended || short(a, ma) || indented(b, m) || listItem(b);
+    } else {
+      breaks = b.top - a.top > m.pitch * PARA_GAP
+        || (indented(b, m) && !indented(a, m))
+        || (short(a, m) && FRESH_START.test(firstLetter(b.pieces)))
+        || listItem(b);
+    }
     if (breaks) out.push([b]);
     else out[out.length - 1].push(b);
   });
@@ -646,7 +659,9 @@ function numberedReadings(readings: (Reading | Marker)[], texts: (Piece[] | null
   const bibliography = readings.findIndex((r, k) => typeof r !== "string" && r.kind !== "table" && REFERENCES_HEAD.test(withoutNumbers(texts[k] ?? [], numbers).map((p) => p.ch).join("").trim()));
   readings.forEach((r, k) => {
     const pieces = texts[k];
-    if (typeof r === "string" || !pieces) { pool = null; out.push(r as Marker); return; }
+    // A run of numbered prose goes on past what is skipped — a page's furniture, a figure —
+    // and stops at a bibliography's barrier or a display equation.
+    if (typeof r === "string" || !pieces) { if (r !== "skip") pool = null; out.push(r as Marker); return; }
     const numbered = pieces.some((p) => numbers.has(p));
     if (r.kind === "reference" && (!numbered || bibliography < 0 || k >= bibliography)) { pool = null; out.push("barrier"); return; }
     if (!numbered) { pool = null; out.push(plain(r, pieces)); return; }
@@ -662,7 +677,6 @@ function numberedReadings(readings: (Reading | Marker)[], texts: (Piece[] | null
       const lines = rowsOf(pieces, numbers);
       const numbered = lines.filter((l) => l.numbered).length;
       if (numbered < lines.length * NUMBERED_TABLE || rows.filter((l) => l.gapped).length > rows.length * GAPPED_TABLE) {
-        pool = null;
         out.push("skip");
         return;
       }

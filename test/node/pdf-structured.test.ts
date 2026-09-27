@@ -1167,6 +1167,19 @@ describe("structuredBlocks — a manuscript with numbered lines", () => {
     expect(blocks.map((b) => b.text)).toEqual([ragged.slice(0, 5), ragged.slice(5)].map((p) => p.map((l) => l.text).join(" ")));
   });
 
+  it("reads a numbered paragraph on over a page whose next line opens with a capital", () => {
+    // "…in the United" at the foot of one page, "Kingdom (Figure 1)." at the head of the
+    // next, the page's own furniture between them.
+    const foot = [...LINES.slice(0, 8), { text: fill("i", 90), x: 72 }];
+    const head = { text: `Kingdom ${fill("k", 60)}.`, x: 72 };
+    const one = lines(1, 84, 100, foot);
+    const two = lines(2, 93, 100, [head]);
+    const stamp = node(1, [{ text: "This manuscript is a preprint.", x: 72, y: 760 }]);
+    const pages = [pageText(1, [...one.flatMap((l) => l.items), ...stamp.items]), pageText(2, two.flatMap((l) => l.items))];
+    const blocks = structuredBlocks(structure([asList(one), paragraph(1, [stamp], { flowClass: "excluded" }), asList(two)], 2), pages);
+    expect(blocks.map((b) => b.text)).toEqual([...PARAGRAPHS.slice(0, 2), [LINES[7].text, fill("i", 90), head.text].join(" ")]);
+  });
+
   it("reads a page of numbered prose Zotero took for a table", () => {
     const set = lines(1, 84, 100);
     const pages = [pageText(1, set.flatMap((l) => l.items))];
