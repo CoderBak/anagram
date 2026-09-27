@@ -5,9 +5,12 @@ description = "Local EditLens native component for the Anagram browser extension
 requires-python = ">=3.12,<3.14"
 license = "AGPL-3.0-or-later"
 dependencies = [
-  "torch>=2.4",
-  "transformers>=4.45",
-  "safetensors>=0.4",
+  # Apple Silicon runs the classifier in MLX; Torch serves CUDA and the other platforms.
+  "mlx>=0.32.2,<0.33; sys_platform == 'darwin' and platform_machine == 'arm64'",
+  "torch>=2.4; sys_platform != 'darwin' or platform_machine != 'arm64'",
+  "transformers>=4.45; sys_platform != 'darwin' or platform_machine != 'arm64'",
+  "safetensors>=0.4; sys_platform != 'darwin' or platform_machine != 'arm64'",
+  "tokenizers>=0.21",
   "numpy>=1.26",
   "pydantic>=2.7",
   "emoji>=2.10",

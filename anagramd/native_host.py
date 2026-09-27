@@ -170,8 +170,11 @@ def run_host(reader, writer, component=None, startup_error=None):
                 output.write(error_reply(request_id, "invalid_request", str(exc), 422))
                 continue
             if startup_error is not None:
+                # A host that could not start holds no lock and keeps nothing. It answers
+                # once and exits, so the browser's next request starts a fresh host that
+                # tries again: after an installation, another browser letting go, a repair.
                 output.write(error_reply(request["id"], startup_error.code, startup_error.message, startup_error.status))
-                continue
+                break
             with pending_lock:
                 duplicate = request["id"] in pending
             if duplicate:
@@ -276,7 +279,7 @@ def main():
     from native_component import ComponentError, NativeComponent
     component, error = None, None
     try:
-        component = NativeComponent(args.home)
+        component = NativeComponent(args.home, stop_timeout=QUEUE_TIMEOUT_S)
         configure_environment(component.home)
         # Contain dependency diagnostics created relative to cwd before any
         # background runtime import (including ORT's fallback session file).

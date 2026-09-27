@@ -148,7 +148,8 @@ export function buildPdf(pages, { password = null, padBytes = 0 } = {}) {
     const plain =
       "BT\n" +
       lines
-        .map((l) => `/${l.bold ? "F2" : "F1"} ${l.size} Tf\n1 0 0 1 ${l.x} ${l.y} Tm\n(${esc(l.text)}) Tj`)
+        // `up`: set bottom to top, as arXiv stamps its identifier up the first page's margin.
+        .map((l) => `/${l.bold ? "F2" : "F1"} ${l.size} Tf\n${l.up ? "0 1 -1 0" : "1 0 0 1"} ${l.x} ${l.y} Tm\n(${esc(l.text)}) Tj`)
         .join("\n") +
       "\nET\n";
     const contents = objects.length + 1; // the object number this stream is about to take

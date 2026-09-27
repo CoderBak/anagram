@@ -3650,6 +3650,87 @@ addEventListener("load",()=>{window.__loadAt=performance.now();
   await p.close();
 }
 
+// ---- A51: a comment thread in another site's frame ------------------------------------------
+// Disqus shows a page's comments in a frame of disqus.com, which a content script reaches only
+// once that site is granted too. The test build grants every site, so this runs a copy of it
+// that grants localhost ALONE — the page's own site — and leaves the rest optional, as a
+// reader's per-site grant does (the way test/pw/pdf-install.spec.mjs grants file access alone).
+// A permission prompt is native UI no automation can answer: what is checked is that the
+// panel names the site and offers it, that nothing is ever asked for by itself, and that the
+// offer's button opens Settings at the one row that can ask.
+{
+  const { cpSync, mkdtempSync, rmSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { EXT, waitForRegistration } = await import("./harness.mjs");
+  const dir = mkdtempSync(join(tmpdir(), "anagram-localhost-grant-"));
+  const ext = join(dir, "chrome-mv3");
+  cpSync(EXT, ext, { recursive: true });
+  const manifest = JSON.parse(readFileSync(join(ext, "manifest.json"), "utf8"));
+  manifest.name += " — LOCALHOST GRANT TEST ONLY";
+  manifest.host_permissions = ["http://localhost/*"];
+  manifest.optional_host_permissions = ["https://*/*", "http://*/*", "file:///*"];
+  writeFileSync(join(ext, "manifest.json"), JSON.stringify(manifest, null, 2));
+  const one = await launchExtension({ nativeFixture: fixture, extDir: ext });
+  try {
+    if (one.sw) await waitForRegistration(one.sw);
+    await one.context.route("https://disqus.com/**", (route) =>
+      route.fulfill({ status: 200, contentType: "text/html", body: `<!doctype html><html lang="en"><body><p>${KEY_PARA("DISQUSCOMMENT")}</p></body></html>` }),
+    );
+    PAGES["/comments.html"] = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>comments from another site</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+${KEY_TAGS.slice(0, 2).map((t) => `<p>${KEY_PARA(t)}</p>`).join("\n")}
+<div id="disqus_thread"><iframe id="dsq-app1" src="https://disqus.com/embed/comments/?base=default&f=fixture&t_u=http%3A%2F%2Flocalhost%2Fcomments.html" width="680" height="400"></iframe></div>
+</body></html>`;
+    const granted = () => one.sw.evaluate(() => chrome.permissions.contains({ origins: ["https://disqus.com/*"] }));
+    const mark = fixture.textMark();
+    const p = await one.context.newPage();
+    await p.goto(server.url("/comments.html"), { waitUntil: "load" });
+    await p.waitForFunction((sel) => document.querySelectorAll(sel).length >= 2, BADGE_SEL, { timeout: 12000 }).catch(() => {});
+    await p.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const offer = await p
+      .waitForFunction(() => {
+        const row = document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".panel.open .pcomments");
+        const button = row?.querySelector("button");
+        return row && button ? { text: row.textContent, label: button.getAttribute("aria-label") } : null;
+      }, null, { timeout: 8000 })
+      .then((h) => h.jsonValue())
+      .catch(() => null);
+    const before = await granted();
+    const frameRead = fixture.textsSince(mark).some((t) => t.includes("DISQUSCOMMENT"));
+    const opened = one.context.waitForEvent("page", { timeout: 8000 }).catch(() => null);
+    await p.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".pcomments button")?.click());
+    const settingsPage = await opened;
+    let row = null;
+    if (settingsPage) {
+      await settingsPage.waitForLoadState("load").catch(() => {});
+      row = await settingsPage
+        .waitForFunction(() => {
+          const el = document.getElementById("comments");
+          const button = document.getElementById("commentsAllow");
+          return el && !el.hidden && button && !button.hidden && button.textContent ? { text: document.getElementById("commentsState")?.textContent, button: button.textContent, url: location.hash, focused: document.activeElement === button } : null;
+        }, null, { timeout: 8000 })
+        .then((h) => h.jsonValue())
+        .catch(() => null);
+    }
+    const after = await granted();
+    record("ui", "a comment thread in another site's frame is not read; the panel names that site and offers to allow it",
+      !!offer && offer.text.includes("disqus.com") && offer.label.includes("disqus.com") && !frameRead, JSON.stringify({ offer, frameRead }));
+    record("ui", "…the offer asks for nothing by itself: its button opens Settings at the one row that can, and the site stays ungranted until the reader says yes there",
+      before === false && after === false && !!row && row.text.includes("disqus.com") && row.button.includes("disqus.com") && row.url === "#comments=disqus.com" && row.focused,
+      JSON.stringify({ before, after, row }));
+    const forged = await one.context.newPage();
+    await forged.goto(`chrome-extension://${new URL(one.sw.url()).host}/options.html#comments=bank.example`, { waitUntil: "load" });
+    await forged.waitForTimeout(400);
+    const forgedShown = await forged.evaluate(() => !document.getElementById("comments")?.hidden);
+    record("ui", "…and Settings offers only a comment provider, whatever its address names", forgedShown === false, JSON.stringify({ forgedShown }));
+    await forged.close();
+    await settingsPage?.close();
+    await p.close();
+  } finally {
+    await one.context.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // =====================================================================================
 // PHASE B — live sites (soft: unreachable → SKIP; loaded-but-wrong → FAIL)
 // =====================================================================================

@@ -16,7 +16,7 @@ import type { Surface } from "./types";
 /**
  * "drive": Google Drive's file preview — drive.google.com, and the same viewer on
  * docs.google.com. "pdfjs": a PDF shown by pdf.js inside a page — OneDrive's preview of a PDF,
- * and any page carrying pdf.js's own viewer. "kindle": Kindle's web reader, which is walked
+ * Overleaf's preview, and any page carrying pdf.js's own viewer. "kindle": Kindle's web reader, which is walked
  * as it is and only needs its chips put somewhere its frame does not cut them off.
  * "webnovel": Webnovel's chapters, a box per paragraph.
  */
@@ -31,13 +31,19 @@ function isOneDrive(host: string): boolean {
   return host === "onedrive.live.com" || host.endsWith(".sharepoint.com");
 }
 
+/** Overleaf's editor previews the compiled PDF with pdf.js's viewer, which the app builds
+ *  once the project has loaded and compiled: long after the script looked for one. */
+function isOverleafProject(loc: { hostname: string; pathname: string }): boolean {
+  return (loc.hostname === "overleaf.com" || loc.hostname.endsWith(".overleaf.com")) && /^\/project\/[^/]+/.test(loc.pathname);
+}
+
 export function surfaceFor(
   loc: { hostname: string; pathname: string },
   doc?: Pick<Document, "querySelector">,
 ): SurfaceId | null {
   if (loc.hostname === "drive.google.com") return "drive";
   if (loc.hostname === "docs.google.com" && DOCS_VIEWER.test(loc.pathname)) return "drive";
-  if (isOneDrive(loc.hostname)) return "pdfjs";
+  if (isOneDrive(loc.hostname) || isOverleafProject(loc)) return "pdfjs";
   if (/^read\.amazon\.(?:com?\.)?[a-z]{2,3}$/.test(loc.hostname)) return "kindle";
   if (loc.hostname === "www.webnovel.com" && loc.pathname.startsWith("/book/")) return "webnovel";
   // pdf.js's viewer page sets its pages in `.pdfViewer` from the start.

@@ -8,7 +8,8 @@ import { readFileSync, truncateSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { build } from "esbuild";
 import { test, expect } from "./fixtures.mjs";
-import { TEST_PDF, LOCKED_PDF, PDF_PASSWORD, TALL_PDF, PDF_CHIP, readerReady } from "../pdf-fixture.mjs";
+import { TEST_PDF, LOCKED_PDF, PDF_PASSWORD, TALL_PDF, PDF_CHIP, PDF_HEAD, PDF_HEADING, PDF_PARAS, buildPdf, buildTwoColumnPdf, pdfColumn, readerReady } from "../pdf-fixture.mjs";
+import { BADGE_SEL } from "../harness.mjs";
 
 const ROOT = join(import.meta.dirname, "..", "..");
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -165,6 +166,17 @@ test("a long document builds only the text layers near the view, and rebuilds re
   }
 });
 
+test("a document past the structure's page cap is read on every page, by the reflow", async ({ page, extension }) => {
+  await openReader(page, extension.extId, input("book.pdf", buildTwoColumnPdf(305)));
+  const onPage = (n) => page.evaluate(([n, sel]) => [...document.querySelectorAll(`.page[data-page-number="${n}"] ${sel}`)].filter((el) => el.shadowRoot?.querySelector(".pill")).length, [n, PDF_CHIP]);
+  await expect.poll(() => onPage(1), { message: "chips on the first page", timeout: 20000 }).toBeGreaterThan(0);
+  await page.locator("#pageNumber").fill("303");
+  await page.locator("#pageNumber").press("Enter");
+  await expect.poll(() => onPage(303), { message: "chips on page 303", timeout: 20000 }).toBeGreaterThan(0);
+  expect(await page.locator("#notice").isVisible(), "no notice that pages go unread").toBe(false);
+  expect(await page.evaluate(() => performance.getEntriesByName("anagram-structure").length), "no structure worker for it").toBe(0);
+});
+
 test("with the engine stopped, the viewer and its file picker still work", async ({ page, extension, nativeHost }) => {
   await nativeHost.close();
   await openReader(page, extension.extId, input("without-engine.pdf", TEST_PDF));
@@ -228,4 +240,85 @@ test("source offsets survive nested search markup and page replacement", async (
   });
   expect(result.rangeText).toBe(result.expected);
   expect(result).toMatchObject({ nodesFresh: true, missing: 0, rebound: true });
+});
+
+// Overleaf previews the compiled PDF with pdf.js's own PDFViewer (pdfjs-dist, a text layer of
+// transparent spans over each page's canvas), which its editor app builds once the project
+// has compiled: after the content script has started. The page here is Overleaf's markup
+// (services/web/frontend/js/features/pdf-preview/components/pdf-js-viewer.tsx) under its
+// address, with pdf.js from the package; nothing reaches Overleaf. The test build grants
+// every site, as the user's grant for overleaf.com would.
+test.describe("a pdf.js viewer in a web page", () => {
+test.use({ build: "test", offline: false });
+test("Overleaf's PDF preview is read by the pdf.js surface, once its app has built the viewer", async ({ page, context, nativeHost }) => {
+  const pdf = buildPdf([
+    [
+      { x: 72, y: 742, size: 9, text: PDF_HEAD },
+      { x: 300, y: 50, size: 10, text: "1" },
+      { x: 30, y: 250, size: 18, up: true, text: "arXiv:2609.00001v1 [cs.CL] 1 Sep 2026" },
+      { x: 72, y: 700, size: 16, bold: true, text: PDF_HEADING },
+      ...pdfColumn(PDF_PARAS[0], 670),
+      ...pdfColumn(PDF_PARAS[1], 670 - PDF_PARAS[0].length * 14),
+    ],
+    [
+      { x: 72, y: 742, size: 9, text: PDF_HEAD },
+      { x: 300, y: 50, size: 10, text: "2" },
+      ...pdfColumn(PDF_PARAS[2], 700),
+      ...pdfColumn(PDF_PARAS[3], 700 - PDF_PARAS[2].length * 14 - 14),
+    ],
+  ]);
+  const source = Array.from({ length: 12 }, (_, i) => `<div class="cm-line">\\paragraph{Line ${i}} This is the LaTeX source in the editor, which the preview beside it typesets for the reader.</div>`).join("");
+  const html = `<!doctype html><meta charset="utf-8"><title>Project - Overleaf</title><link rel="stylesheet" href="/pdfjs/web/pdf_viewer.css">
+<style>body{margin:0;display:flex;height:100vh}.cm-editor{width:40%;overflow:auto}#pdf{width:60%;position:relative}.pdfjs-viewer,.pdfjs-viewer-inner{position:absolute;inset:0}.pdfjs-viewer-inner{overflow:auto}</style>
+<div class="cm-editor"><div class="cm-content" contenteditable="true" role="textbox">${source}</div></div><div id="pdf"></div>
+<script type="module">
+  await new Promise((r) => setTimeout(r, 1000));
+  const pdfjsLib = await import("/pdfjs/build/pdf.mjs");
+  globalThis.pdfjsLib = pdfjsLib;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdfjs/build/pdf.worker.mjs";
+  const { PDFViewer, EventBus, PDFLinkService } = await import("/pdfjs/web/pdf_viewer.mjs");
+  document.getElementById("pdf").innerHTML = '<div class="pdfjs-viewer pdfjs-viewer-outer" tabindex="-1"><div class="pdfjs-viewer-inner" tabindex="0" role="tabpanel"><div class="pdfViewer"></div></div></div>';
+  const eventBus = new EventBus(), linkService = new PDFLinkService({ eventBus });
+  const viewer = new PDFViewer({ container: document.querySelector(".pdfjs-viewer-inner"), eventBus, linkService, annotationMode: pdfjsLib.AnnotationMode.ENABLE, annotationEditorMode: pdfjsLib.AnnotationEditorType.DISABLE });
+  linkService.setViewer(viewer);
+  eventBus.on("pagesinit", () => { viewer.currentScaleValue = "page-width"; });
+  const doc = await pdfjsLib.getDocument({ url: "/build/output.pdf", standardFontDataUrl: "/pdfjs/standard_fonts/" }).promise;
+  viewer.setDocument(doc);
+  linkService.setDocument(doc);
+</script>`;
+  const PDFJS = join(ROOT, "node_modules", "pdfjs-dist");
+  await context.route("https://www.overleaf.com/**", (route) => {
+    const { pathname } = new URL(route.request().url());
+    if (pathname === "/build/output.pdf") return route.fulfill({ contentType: "application/pdf", body: pdf });
+    if (pathname.startsWith("/pdfjs/")) {
+      const type = pathname.endsWith(".mjs") ? "text/javascript" : pathname.endsWith(".css") ? "text/css" : "application/octet-stream";
+      return route.fulfill({ contentType: type, body: readFileSync(join(PDFJS, pathname.slice("/pdfjs/".length))) });
+    }
+    return route.fulfill({ contentType: "text/html; charset=utf-8", body: html });
+  });
+  const mark = nativeHost.textMark();
+  await page.setViewportSize({ width: 1300, height: 1000 });
+  await page.goto("https://www.overleaf.com/project/64f0c0ffee0123456789abcd");
+  const onPages = () => page.evaluate((sel) => document.querySelectorAll(`.page > [data-anagram] ${sel}`).length, BADGE_SEL);
+  await expect.poll(onPages, { message: "chips over the preview's pages", timeout: 30000 }).toBeGreaterThanOrEqual(3);
+  const drawn = await page.evaluate((sel) => ({
+    inLayer: document.querySelectorAll(".textLayer [data-anagram]").length,
+    inEditor: document.querySelectorAll(`.cm-editor ${sel}`).length,
+  }), BADGE_SEL);
+  expect(drawn, "nothing drawn inside pdf.js's text layer or on the editor").toEqual({ inLayer: 0, inEditor: 0 });
+  const sent = nativeHost.textsSince(mark).map((t) => t.replace(/\s+/g, " "));
+  expect(sent.some((t) => t.includes("broke across two lines with a hyphenation mark is joined again")), "the broken word mended").toBe(true);
+  expect(sent.some((t) => t.includes("Running heads and page numbers are furniture")), "the second page read").toBe(true);
+  // pdf.js has turned a run with `--rotate` since version 4, not with its transform: the stamp
+  // up the margin is a rotated line, which is never part of a paragraph.
+  const { outputFiles } = await build({ entryPoints: [join(ROOT, "lib/surfaces/pdfjs.ts")], bundle: true, write: false, format: "iife", globalName: "PdfjsSource" });
+  await page.addScriptTag({ content: outputFiles[0].text });
+  const stamp = await page.evaluate(() => {
+    const [first] = PdfjsSource.createPdfjsSource(document).pages();
+    const at = first.lines.findIndex((line) => line.textContent.startsWith("arXiv:"));
+    return at < 0 ? null : first.boxes[at].rotated;
+  });
+  expect(stamp, "the stamp up the margin is read as rotated").toBe(true);
+  expect(sent.filter((t) => t.includes("arXiv:") || t.includes(PDF_HEAD) || t.includes("LaTeX source")), "the stamp up the margin, the running head, the editor").toEqual([]);
+});
 });

@@ -1261,6 +1261,32 @@ const results = await page.evaluate(() => {
     check("consent banners named after their platform are skipped, whole walk and re-scan alike",
       whole.length === 1 && inside.length === 0 && PW.isConsentBanner(sandbox.querySelector(".osano-cm-window")) && !PW.isConsentBanner(sandbox.querySelector("p")),
       JSON.stringify([whole.length, inside.length]));
+    // A consent box a publisher builds itself carries no platform's name — the Daily Mail's
+    // is `div.mol-ads-cmp`, and AEM prefixes every component on a page `cmp-` — but it lists
+    // the third parties it asks consent for, each with a link to its privacy policy, beside
+    // the buttons that give or refuse it.
+    const vendors = Array.from({ length: 6 }, (_, i) => `<li class="x-consent">Vendor ${i}<br><a href="https://vendor${i}.example/privacy">Privacy policy</a></li>`).join("");
+    sandbox.innerHTML = `<article><p>${words(90)}</p></article><div class="mol-ads-cmp"><form class="mol-ads-cmp--banner"><input type="hidden" name="consent" value="yes"><h2>By using the site you agree to our privacy settings</h2><button type="button">Got it</button></form>` +
+      `<div class="mol-ads-cmp--modal"><div class="mol-ads-cmp--body"><div class="tab"><h3>Functional</h3><p>CONSENT ${words(90)}</p><ul>${vendors}</ul></div><div class="tab"><p>CONSENT ${words(90)}</p></div></div>` +
+      `<div class="mol-ads-cmp--footer"><button type="button">Don't allow these partners</button><button type="button">Allow all</button></div></div></div>`;
+    const publisher = PW.collectUnits(sandbox);
+    const rescan = PW.collectUnits(sandbox.querySelectorAll(".tab")[1]);
+    sandbox.innerHTML = `<article><p>${words(90)}</p><ul>${vendors}</ul><p>${words(90)}</p><button type="button">Share</button></article><div class="cmp-text"><p>${words(90)}</p></div>`;
+    const article = PW.collectUnits(sandbox);
+    check("a publisher's own consent box is known by its list of third parties' privacy policies beside an Allow button, whole walk and re-scan alike; a list of privacy policies in a text, and AEM's cmp- components, are read",
+      publisher.length === 1 && !publisher[0].text.includes("CONSENT") && rescan.length === 0 && article.reduce((n, x) => n + x.wordCount, 0) === 270,
+      JSON.stringify([publisher.map((x) => x.text.slice(0, 12)), rescan.length, article.map((x) => [x.wordCount, x.text.slice(0, 30)])]));
+    // …and where the platform draws it inside a shadow root of its own, which no lookup over
+    // the page reaches: the walk looks in each shadow root it descends into.
+    sandbox.innerHTML = `<p>${words(80)}</p><div class="cmp-host"></div>`;
+    const root = sandbox.querySelector(".cmp-host").attachShadow({ mode: "open" });
+    root.innerHTML = `<div class="osano-cm-window"><p>CONSENT ${words(80)}</p></div><div id="CybotCookiebotDialog"><p>CONSENT ${words(80)}</p></div><p>${words(80)}</p>`;
+    const shadowed = PW.collectUnits(sandbox);
+    const within = PW.collectUnits(root.querySelector("#CybotCookiebotDialog p"));
+    check("…and so is one drawn inside a shadow root, whole walk and re-scan alike; the shadow root's other text is read",
+      shadowed.length === 2 && shadowed.every((x) => !x.text.includes("CONSENT")) && within.length === 0,
+      JSON.stringify([shadowed.map((x) => x.text.slice(0, 12)), within.length]));
+    sandbox.innerHTML = "";
   }
   {
     // A consent platform's banner in a frame of its own is known by the frame's address
@@ -1339,6 +1365,12 @@ const results = await page.evaluate(() => {
     sandbox.innerHTML = `<p lang="en" dir="ltr" data-read-frog-translation-only="">MACHINE ${words(80)}</p><p>${words(80)}</p>`;
     const u = PW.collectUnits(sandbox);
     check("a paragraph a translator extension rewrote in place is not read; the one beside it is", u.length === 1 && !u[0].text.includes("MACHINE"), JSON.stringify(u.map((x) => x.text.slice(0, 20))));
+    // Immersive Translate's "translation only" state (`<html imt-state="translation">`) shows
+    // the translation in the paragraph's place, in an element marked `data-imt-translation-only`
+    // that no bilingual wrapper stands around.
+    sandbox.innerHTML = `<p data-immersive-translate-paragraph="1"><font class="immersive-translate-target-inner" data-imt-translation-only="1">MACHINE ${words(80)}</font></p><p>${words(80)}</p>`;
+    const imt = PW.collectUnits(sandbox);
+    check("…and so is Immersive Translate's translation shown in place of the original", imt.length === 1 && !imt[0].text.includes("MACHINE"), JSON.stringify(imt.map((x) => x.text.slice(0, 20))));
   }
   {
     // MediaWiki's furniture is its own only inside a wiki's content box: a list classed
@@ -1625,6 +1657,17 @@ const results = await page.evaluate(() => {
     const sic = collect(`<p>${words(70)} The report says it "was recieved [sic] on time" and nothing more.</p><p>${words(60)}</p><p>“Our app helps [audience] do [job]. How? By [doing this thing]. That lets them [achieve these benefits].”</p>`);
     check("unrendered page-builder shortcodes are no prose; a [sic] or a template's [audience] in a sentence is",
       u.length === 0 && sic.length === 2 && PW.shortcodeShare(row) > 0.9, JSON.stringify([u.map(x => x.words), sic.map(x => x.words)]));
+  }
+
+  {
+    // A forum running with debugging on prints PHP's warnings above the page, one line each.
+    const warning = `<b>[phpBB Debug] PHP Warning</b>: in file <b>[ROOT]/includes/bbcode.php</b> on line <b>483</b>: <b>preg_replace(): The /e modifier is no longer supported, use preg_replace_callback instead</b><br />\n`;
+    u = collect(`<div>${warning.repeat(12)}</div><div class="post"><div class="content">${words(80)}</div></div>`);
+    const php = collect(`<div><br /><b>Warning</b>:  Undefined variable $title in <b>/var/www/html/wp-content/themes/x/header.php</b> on line <b>12</b><br /><br /><b>Deprecated</b>:  Function create_function() is deprecated in <b>/var/www/html/wp-includes/plugin.php</b> on line <b>30</b><br /></div><p>${words(80)}</p>`);
+    const prose = collect(`<p>Warning: ${words(40)} It stopped on line 12 of the script, the operator said, and ${words(40)}</p>`);
+    check("PHP's and phpBB's debug warnings above a page are no prose; a sentence that begins with a warning is",
+      u.length === 1 && !u[0].text.includes("phpBB") && php.length === 1 && !php[0].text.includes("Undefined") && prose.length === 1,
+      JSON.stringify([u.map(x => x.text.slice(0, 40)), php.map(x => x.text.slice(0, 40)), prose.length]));
   }
 
   // ---- where the chip is inserted ---------------------------------------------------------

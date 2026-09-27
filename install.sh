@@ -155,7 +155,8 @@ OS="$(uname -s)"; ARCH="$(uname -m)"
 case "$OS/$ARCH" in
   Darwin/arm64)
     MACOS_MAJOR="$(sw_vers -productVersion | cut -d. -f1)"
-    [ "$MACOS_MAJOR" -ge 14 ] || die "the locked PyTorch and ONNX Runtime packages require macOS 14 or newer"
+    [ "$MACOS_MAJOR" -ge 14 ] || die "the locked MLX and ONNX Runtime packages require macOS 14 or newer"
+    RUNTIMES="MLX"
     UV_TARGET="aarch64-apple-darwin"; UV_SHA="1a7adf8dadae3b55853115d13a8bf564d219597ad13824b93b213706933863e5" ;;
   Darwin/x86_64) die "the locked model runtimes do not provide Intel macOS wheels; use macOS 14+ on Apple Silicon or Linux glibc 2.28+" ;;
   Linux/x86_64|Linux/aarch64)
@@ -163,6 +164,7 @@ case "$OS/$ARCH" in
       die "the locked model runtimes require glibc 2.28+; musl Linux is not supported"
     fi
     LIBC=gnu
+    RUNTIMES="PyTorch"
     GLIBC_VERSION="$(getconf GNU_LIBC_VERSION 2>/dev/null | awk '{print $2}')" || true
     printf '%s\n' "$GLIBC_VERSION" | awk -F. 'NF >= 2 && ($1 > 2 || ($1 == 2 && $2 >= 28)) {ok=1} END {exit !ok}' \
       || die "the locked model runtimes require glibc 2.28+ (found ${GLIBC_VERSION:-unknown})"
@@ -334,7 +336,7 @@ fi
 step 3 "$(tr_msg 'Installing private Python' '正在安装独立 Python') $PYTHON_VERSION"
 run_uv python install "$PYTHON_VERSION"
 step 4 "$(tr_msg 'Installing locked runtime packages' '正在安装版本锁定的运行依赖')"
-note "$(tr_msg 'Downloading and installing PyTorch, ONNX Runtime and other dependencies; progress appears below.' '正在下载并安装 PyTorch、ONNX Runtime 等依赖；具体进度显示在下方。')"
+note "$(tr_msg "Downloading and installing $RUNTIMES, ONNX Runtime and other dependencies; progress appears below." "正在下载并安装 ${RUNTIMES}、ONNX Runtime 等依赖；具体进度显示在下方。")"
 note "$(tr_msg 'Device-selected model weights will download here after registration.' '注册完成后，将在此下载适合本机设备的模型权重。')"
 CREATED_VENV=1
 # --no-build everywhere: every locked package resolves to a wheel on each supported

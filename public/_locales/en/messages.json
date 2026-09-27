@@ -251,6 +251,18 @@
     "message": "Retry",
     "description": "Panel action beside the daemon-down notice."
   },
+  "panelCommentsElsewhere": {
+    "message": "Comments here come from $1, which Anagram may not read.",
+    "description": "Panel notice when the page shows a comment thread (Disqus, Facebook comments) in a frame of a site that is not granted. $1 = that site's host name, e.g. disqus.com."
+  },
+  "panelCommentsAllow": {
+    "message": "Allow…",
+    "description": "Button beside that notice. It opens Settings, where the site can be allowed; nothing is granted by the click itself."
+  },
+  "panelCommentsAllowAria": {
+    "message": "Allow Anagram to read comments from $1",
+    "description": "Accessible name of that button. $1 = the host name."
+  },
   "panelTitle": {
     "message": "Flagged paragraphs",
     "description": "Triage panel heading with nothing flagged."
@@ -518,10 +530,6 @@
   "readerFetchFailed": {
     "message": "This PDF could not be loaded. Drop the file here instead.",
     "description": "Reader notice when the fetch failed."
-  },
-  "readerAnalysisCapped": {
-    "description": "PDF reading, local file access, or network privacy guidance.",
-    "message": "Only the first $1 pages are analyzed; all pages remain readable."
   },
   "readerReloadRequired": {
     "message": "This tab no longer holds the PDF data. Open the original and choose Anagram again, or choose a local file.",
@@ -1074,6 +1082,18 @@
   "accessWithdraw": {
     "message": "Withdraw",
     "description": "Button that removes every site grant."
+  },
+  "optCommentsFrom": {
+    "message": "The page you came from shows comments from $1. Anagram reads them only with access to that site.",
+    "description": "Settings, Site access: shown when the panel's Allow button opened Settings. $1 = the comment site's host name."
+  },
+  "optCommentsAllow": {
+    "message": "Allow $1",
+    "description": "Button that asks the browser for access to the comment site. $1 = its host name."
+  },
+  "optCommentsAllowed": {
+    "message": "$1 is allowed. Its comments are read on the sites Anagram is on.",
+    "description": "Settings, Site access: the comment site is granted. $1 = its host name."
   },
   "optEnabled": {
     "message": "Run on granted sites by default",

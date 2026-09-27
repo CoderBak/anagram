@@ -165,17 +165,36 @@ async function injectGranted(origins: string[]): Promise<void> {
   if (origins.length === 0) return;
   // A book's frame is never a tab's own address: the reader's site is (lib/surfaces/frames.ts).
   const tabs = await browser.tabs.query({ url: [...origins, ...readerSitesFor(origins)] }).catch(() => []);
+  const inject = (tabId: number): Promise<unknown> =>
+    browser.scripting
+      .executeScript({ target: { tabId, allFrames: true }, files: [CONTENT_SCRIPT] })
+      .catch(() => undefined); // a tab that navigated away, or a page nobody may inject
   await Promise.all(
     tabs.map(async (tab) => {
       if (tab.id == null) return;
-      await browser.scripting
-        .executeScript({ target: { tabId: tab.id, allFrames: true }, files: [CONTENT_SCRIPT] })
-        .catch(() => undefined); // a tab that navigated away, or a page nobody may inject
+      await inject(tab.id);
       void browser.tabs
         .sendMessage(tab.id, { action: ACTIONS.ACCESS_GRANTED })
         .catch(() => undefined);
     }),
   );
+  // A page of another site that shows a frame of this one — the comment thread Disqus puts
+  // in a page (lib/access/commentFrames.ts) — holds the frame, not the site: its own frames
+  // are injected, and its top frame, granted before, refuses the second script.
+  const framing = await tabsFraming(origins, new Set(tabs.map((tab) => tab.id)));
+  await Promise.all(framing.map(inject));
+}
+
+/** The tabs, other than `skip`, with a subframe at one of `origins`. */
+async function tabsFraming(origins: string[], skip: Set<number | undefined>): Promise<number[]> {
+  const all = await browser.tabs.query({}).catch(() => []);
+  const found: number[] = [];
+  for (const tab of all) {
+    if (tab.id == null || skip.has(tab.id)) continue;
+    const frames = await browser.webNavigation.getAllFrames({ tabId: tab.id }).catch(() => null);
+    if (frames?.some((frame) => frame.frameId !== 0 && matchesAny(origins, frame.url))) found.push(tab.id);
+  }
+  return found;
 }
 
 /**

@@ -51,6 +51,17 @@ class Client:
         assert response["id"] == request_id and response["v"] == 1, response
         return response
 
+    def accepted(self, op, payload=None, timeout=10):
+        """Status shows a job's last state while its thread still counts storage; the next
+        job is refused as busy until that thread ends."""
+        end = time.monotonic() + timeout
+        while True:
+            response = self.request(op, payload)
+            if response["ok"] or response["error"]["code"] != "busy" or time.monotonic() > end:
+                assert response["ok"] and response["status"] == 202, response
+                return response
+            time.sleep(0.05)
+
     def until(self, expected, timeout=240):
         end = time.monotonic() + timeout
         while time.monotonic() < end:
@@ -96,7 +107,7 @@ def main():
         (home / ".native-component.json").write_text(json.dumps(
             {"schema_version": 1, "host": "dev.coderbak.anagram", "home": str(home)}))
         for name in ("native_host.py", "native_component.py", "download_modelkit.py", "model_plan.py", "modelkit.json",
-                     "runtime_controller.py", "runtime_adapters.py", "benchmark_worker.py", "scoring.py", "engine.py", "safe_files.py", "pyproject.toml"):
+                     "runtime_controller.py", "runtime_adapters.py", "benchmark_worker.py", "scoring.py", "mlx_roberta.py", "engine.py", "safe_files.py", "pyproject.toml"):
             shutil.copyfile(DAEMON / name, home / "app" / name)
         for entry in pin["files"]:
             if entry["path"] not in expected_plan["selected_paths"]:
@@ -132,7 +143,8 @@ def main():
                 try:
                     busy = peer.request("status")
                     assert not busy["ok"] and busy["status"] == 409 and busy["error"]["code"] == "busy", busy
-                    assert peer.request("models.download")["error"]["code"] == "busy"
+                    # It answers once and exits; the browser's next request starts another host.
+                    assert peer.process.wait(timeout=30) == 0
                 finally:
                     peer.close()
                 # Prepared files lead straight to an automatically selected, loaded runtime.
@@ -184,10 +196,10 @@ def main():
                 assert scored["data"]["results"][1]["unsupported"] is True, scored
                 assert scored["data"]["model"]["ver"] == version
                 report["selected_id"], report["model_version"] = desired, version
-                client.request("engine.stop")
+                client.accepted("engine.stop")
                 client.until({"stopped"})
                 assert client.request("health")["error"]["code"] == "not_ready"
-                client.request("engine.resume")
+                client.accepted("engine.resume")
                 client.until({"ready"})
                 assert client.request("health")["data"]["model"]["ver"] == version
                 client.close()

@@ -48,9 +48,11 @@ export class NativeTransport {
       this.pending.delete(reply.id);
       request.cleanup();
       request.resolve(reply);
-      // A host that could not acquire its home lock keeps a startup error for its
-      // lifetime. Retire that port so a later Retry can acquire the released lock.
-      // Ordinary scoring/control busy responses must not interrupt our own host.
+      // A host that could not start answers once and exits, and the next request after
+      // RECONNECT_MS starts a fresh one. A host from an earlier release kept a busy
+      // startup error for its lifetime instead: retire that port so a later Retry can
+      // acquire the released lock. Ordinary scoring/control busy responses must not
+      // interrupt our own host.
       const startupBusy = !reply.ok && reply.status === 409 && reply.error?.code === "busy" &&
         (request.op === "status" || request.op === "health");
       const updated = !reply.ok && reply.error?.code === "component_updated";

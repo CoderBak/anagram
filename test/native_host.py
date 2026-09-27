@@ -95,12 +95,19 @@ class FramingTests(unittest.TestCase):
         self.assertEqual([r["error"]["code"] for r in values], ["response_too_large", "invalid_response"])
         self.assertLess(len(output.getvalue()), 4096)
 
-    def test_busy_startup_never_constructs_or_starts_another_component(self):
-        output = io.BytesIO()
-        error = ComponentError("busy", "another browser owns this component", 409)
-        host.run_host(io.BytesIO(frame(request()) + frame(request("models.download", "2"))), output,
-                      startup_error=error)
-        self.assertEqual([r["status"] for r in replies(output.getvalue())], [409, 409])
+    def test_a_host_that_could_not_start_answers_once_and_exits(self):
+        # The browser's next request starts a fresh host, which tries the home again
+        # with the files then on disk; the extension need not reopen the port itself.
+        for error in (ComponentError("busy", "another browser owns this component", 409),
+                      ComponentError("not_installed", "The owned native component marker is missing", 503)):
+            with self.subTest(code=error.code):
+                output = io.BytesIO()
+                reader = io.BytesIO(frame(request()) + frame(request("models.download", "2")))
+                host.run_host(reader, output, startup_error=error)
+                answered = replies(output.getvalue())
+                self.assertEqual([(r["id"], r["status"], r["error"]["code"]) for r in answered],
+                                 [("request-1", error.status, error.code)])
+                self.assertLess(reader.tell(), len(reader.getvalue()))  # the second request was never read
 
     def test_completed_update_health_reply_retires_the_old_host(self):
         class Component:
@@ -248,7 +255,7 @@ from pathlib import Path
 sys.path.insert(0, sys.argv[1])
 import native_host, native_component
 class Component:
-    def __init__(self, home): self.home = Path(home).resolve()
+    def __init__(self, home, **_): self.home = Path(home).resolve()
     def start(self): Path('dependency-session').write_text('fixture')
     def handle(self, op, payload):
         return 200, {'cwd': str(Path.cwd()), 'tmp': tempfile.gettempdir(),
@@ -774,7 +781,7 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(component.status()["state"], "stopped")
 
     def test_engine_stop_lets_an_inflight_score_finish_then_unloads(self):
-        component = self.make(stop_timeout=0.05)
+        component = self.make(stop_timeout=3)
         self.first_run(component)
         controller = component.controller
         entered, release = threading.Event(), threading.Event()
@@ -789,7 +796,7 @@ class LifecycleTests(unittest.TestCase):
         scorer.start()
         self.assertTrue(entered.wait(2))
         self.assertEqual(component.handle("engine.stop", {})[0], 202)
-        time.sleep(0.3)  # well past stop_timeout: the stop must wait, not fail
+        time.sleep(0.3)  # the stop waits for the score
         self.assertEqual(component.status()["state"], "loading")
         self.assertTrue(json.loads((self.home / "component-state.json").read_text())["engine_stopped"])
         self.assertEqual(closed, [])
@@ -999,14 +1006,14 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(restarted.status()["state"], "needs_models")
         self.assertEqual(self.downloads, 1)
 
-    def test_lifecycle_jobs_wait_past_the_stop_timeout_for_an_inflight_score(self):
+    def test_lifecycle_jobs_wait_for_an_inflight_score_to_finish(self):
         # Deletion goes last: the next component would otherwise need models again.
         for op, payload, final in (("engine.resume", {}, "ready"), ("models.download", {}, "ready"),
                                    ("component.update", {}, "stopped"),
                                    ("component.uninstall", {"confirm": True}, "stopped"),
                                    ("models.delete", {"confirm": True}, "needs_models")):
             with self.subTest(op=op):
-                component = self.make(stop_timeout=0.05, helper=lambda _: {"status": "completed"})
+                component = self.make(stop_timeout=3, helper=lambda _: {"status": "completed"})
                 self.first_run(component)
                 controller = component.controller
                 entered, release = threading.Event(), threading.Event()
@@ -1019,7 +1026,7 @@ class LifecycleTests(unittest.TestCase):
                 try:
                     self.assertTrue(entered.wait(2))
                     self.assertEqual(component.handle(op, payload)[0], 202)
-                    time.sleep(0.3)  # well past stop_timeout: the job must wait, not fail
+                    time.sleep(0.3)  # the job waits for the score
                     status = component.status()
                     self.assertNotEqual(status["state"], "error", status)
                     self.assertIsNone(status["error"])
@@ -1037,8 +1044,8 @@ class LifecycleTests(unittest.TestCase):
                 component.close()
         self.assertFalse((self.home / "models").exists())
 
-    def test_lifecycle_job_waits_for_an_uncancellable_load_past_the_stop_timeout(self):
-        component = self.make(stop_timeout=0.05)
+    def test_lifecycle_job_waits_for_an_uncancellable_load(self):
+        component = self.make(stop_timeout=3)
         self.first_run(component)
         controller = component.controller
         entered, release = threading.Event(), threading.Event()
@@ -1061,6 +1068,58 @@ class LifecycleTests(unittest.TestCase):
         self.finish(component)
         self.assertEqual(component.status()["state"], "needs_models")
         self.assertEqual(component.status()["operation"]["status"], "completed")
+        self.assertFalse((self.home / "models").exists())
+
+    def test_lifecycle_job_fails_retryably_when_work_outlives_the_deadline(self):
+        # A forward pass that never ends must not hold the component in a job forever:
+        # past stop_timeout the job fails having changed nothing, and runs again once
+        # the work is done. The closed runtime still releases its engine then.
+        for op, payload, final in (("engine.stop", {}, "stopped"), ("engine.resume", {}, "ready"),
+                                   ("models.download", {}, "ready"), ("component.update", {}, "stopped"),
+                                   ("component.uninstall", {"confirm": True}, "stopped"),
+                                   ("models.delete", {"confirm": True}, "needs_models")):
+            with self.subTest(op=op):
+                helped = []
+                component = self.make(stop_timeout=0.1, helper=lambda name: (helped.append(name), {"status": "completed"})[1])
+                self.first_run(component)
+                controller = component.controller
+                downloads = self.downloads
+                closed, entered, release = [], threading.Event(), threading.Event()
+                controller.engine.close = lambda: closed.append(True)
+                def slow_score():
+                    with controller.use_engine():
+                        entered.set()
+                        release.wait(5)
+                scorer = threading.Thread(target=slow_score)
+                scorer.start()
+                try:
+                    self.assertTrue(entered.wait(2))
+                    self.assertEqual(component.handle(op, payload)[0], 202)
+                    self.finish(component)
+                    status = component.status()
+                    self.assertEqual((status["state"], status["error"]["code"]), ("error", "not_ready"), status)
+                    self.assertIn("still running", status["error"]["message"])
+                    if status["operation"]:
+                        self.assertEqual(status["operation"]["status"], "failed")
+                    self.assertNotEqual(status["download"]["status"], "failed")
+                    self.assertFalse(json.loads((self.home / "component-state.json").read_text())["download_failed"])
+                    self.assertTrue((self.home / "models/fixture").is_file())
+                    self.assertEqual((helped, self.downloads, closed), ([], downloads, []))
+                finally:
+                    release.set()
+                    scorer.join(2)
+                self.assertEqual(closed, [True])
+                self.assertEqual(component.handle(op, payload)[0], 202)
+                self.finish(component)
+                status = component.status()
+                self.assertEqual(status["state"], final, status)
+                self.assertIsNone(status["error"])
+                component.close()
+                if final == "stopped" and op == "engine.stop":
+                    component = self.make()
+                    component.handle("engine.resume", {})
+                    self.finish(component)
+                    component.close()
         self.assertFalse((self.home / "models").exists())
 
     def test_owned_tree_links_are_not_followed_during_delete(self):

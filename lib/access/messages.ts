@@ -1,6 +1,7 @@
 // Validate worker messages before authorization, hashing, cache access or queueing.
 import * as v from "valibot";
 import { safePdfSource } from "../pdf/source";
+import { isCommentOrigin } from "./commentFrames";
 import { CONTRACT_VERSION } from "../contract";
 import { ACTIONS } from "../messaging/protocol";
 
@@ -18,6 +19,9 @@ const url = v.pipe(v.string(), v.maxLength(8192), v.check((s) => {
   try { return ["http:", "https:"].includes(new URL(s).protocol); } catch { return false; }
 }));
 const pdfUrl = v.pipe(v.string(), v.check((s) => safePdfSource(s) !== null));
+/** A comment provider's pattern (lib/access/commentFrames.ts), and nothing else: the page
+ *  may not ask the worker what else is granted. */
+const commentOrigin = v.pipe(v.string(), v.check(isCommentOrigin));
 const Block = v.strictObject({id:v.pipe(v.string(),v.minLength(1),v.maxLength(64)),text:v.pipe(v.string(),v.maxLength(16000))});
 export const ScoreRequestSchema = v.pipe(v.strictObject({
   v:v.literal(CONTRACT_VERSION), session:v.pipe(v.string(),v.minLength(1),v.maxLength(64)),
@@ -42,6 +46,8 @@ const schema = v.variant("action",[
   v.strictObject({action:v.literal(ACTIONS.UPDATE_BADGE),session,flagged:v.pipe(v.number(),v.integer(),v.minValue(0),v.maxValue(1_000_000))}),
   v.strictObject({action:v.literal(ACTIONS.GET_TOP_HOST),session}),
   v.strictObject({action:v.literal(ACTIONS.GET_BACKEND_STATUS),session,probe:v.optional(v.boolean())}),
+  v.strictObject({action:v.literal(ACTIONS.COMMENT_ACCESS),session,origins:v.pipe(v.array(commentOrigin),v.maxLength(8))}),
+  v.strictObject({action:v.literal(ACTIONS.OPEN_COMMENT_ACCESS),session,origin:commentOrigin}),
 ]);
 export type WorkerMessage = v.InferOutput<typeof schema>;
 export function parseWorkerMessage(value: unknown): WorkerMessage | null {
@@ -102,5 +108,6 @@ export function permitsMessage(role: CallerRole, msg: WorkerMessage, sender: Acc
     case ACTIONS.GET_TOP_HOST: return role === "content";
     case ACTIONS.UPDATE_BADGE: return (role === "content" || role === "reader") && sender.frameId === 0;
     case ACTIONS.GET_BACKEND_STATUS: return true;
+    case ACTIONS.COMMENT_ACCESS: case ACTIONS.OPEN_COMMENT_ACCESS: return role === "content" && sender.frameId === 0;
   }
 }

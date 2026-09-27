@@ -80,6 +80,19 @@ describe("native port multiplexing and failure recovery", () => {
     second.receive({v:1,id:second.messages[1].id,ok:false,status:409,error:{code:"busy",message:"Scoring queue full"}});
     await scoring; expect(second.p.disconnect).not.toHaveBeenCalled(); transport.close();
   });
+  it("starts a fresh host after one that could not start answers and exits", async () => {
+    vi.useFakeTimers(); const first = port(); const second = port();
+    const connect = vi.fn().mockReturnValueOnce(first.p).mockReturnValue(second.p);
+    const transport = new NativeTransport(connect); const disconnected = vi.fn(); transport.onDisconnect(disconnected);
+    const health = transport.request("health");
+    first.receive({v:1,id:first.messages[0].id,ok:false,status:503,error:{code:"not_installed",message:"The owned native component marker is missing"}});
+    first.disconnect();
+    expect((await health).error?.code).toBe("not_installed"); expect(disconnected).toHaveBeenCalledTimes(1);
+    await expect(transport.request("health")).rejects.toMatchObject({code:"native_unavailable"});
+    await vi.advanceTimersByTimeAsync(1501);
+    const retried = transport.request("health"); second.answer(0,{ok:true});
+    expect((await retried).data).toEqual({ok:true}); expect(connect).toHaveBeenCalledTimes(2); transport.close();
+  });
   it("reconnects an updated component even after the Settings page was closed", async () => {
     vi.useFakeTimers(); const first = port(); const second = port();
     const transport = new NativeTransport(vi.fn().mockReturnValueOnce(first.p).mockReturnValue(second.p));

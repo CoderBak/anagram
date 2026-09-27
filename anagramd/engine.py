@@ -28,7 +28,7 @@ from typing import Annotated
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from scoring import score_texts
+from scoring import Tokenizer, score_texts
 
 CONTRACT_VERSION = "3.0"
 CONTRACT_MAJOR = CONTRACT_VERSION.split(".")[0]
@@ -216,7 +216,7 @@ class EditLens:
     ):
         import emoji
         import torch
-        from transformers import AutoModelForSequenceClassification, AutoTokenizer
+        from transformers import AutoModelForSequenceClassification
 
         self.emoji = emoji
         self.torch = torch
@@ -238,9 +238,7 @@ class EditLens:
         self.dtype_name = str(self.dtype).replace("torch.", "")
         self.version = None  # runtime_adapters names the loaded artifacts
         t0 = time.time()
-        self.tok = AutoTokenizer.from_pretrained(
-            str(model_dir), local_files_only=True, trust_remote_code=False
-        )
+        self.tok = Tokenizer(model_dir)
         self.model = self._load(AutoModelForSequenceClassification, model_dir)
         self.model.to(self.device).eval()
         self.n_buckets = int(self.model.config.num_labels)
@@ -287,10 +285,9 @@ class EditLens:
         return score_texts(self, texts, clean_text)
 
     def _logits(self, ids):
+        enc = self.tok.pad({"input_ids": ids})
         with self.torch.inference_mode():
-            enc = self.tok.pad(
-                {"input_ids": ids}, padding=True, return_tensors="pt"
-            ).to(self.device)
+            enc = {name: self.torch.from_numpy(value).to(self.device) for name, value in enc.items()}
             return self.model(**enc).logits.float().cpu().numpy()
 
     def synchronize(self):
@@ -495,10 +492,8 @@ def tokens_with_engine(req: TokensRequest, engine) -> dict:
     so a text's tokens are the first word's ``alone`` and every later word's
     ``following``, summed. ``window`` is the text tokens one pass holds.
 
-    Runs beside a forward pass and never takes engine.lock. The warm-up score
-    before an engine turns ready has settled the fast tokenizer's truncation and
-    padding, so a call made like score_texts' own only reads them and encodes
-    under a shared borrow of the Rust tokenizer.
+    Runs beside a forward pass and never takes engine.lock: scoring.Tokenizer
+    keeps the Rust tokenizer's truncation and padding off, so encoding only reads it.
     """
     window = engine.max_length - 2
     cleaned = [clean_text(text, engine.emoji) for text in req.texts]

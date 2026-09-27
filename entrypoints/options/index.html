@@ -151,6 +151,12 @@
                   data-i18n="accessWithdraw" aria-describedby="accessLabel">Withdraw</button>
               </span>
             </div>
+            <div class="field" data-orientation="horizontal" id="comments" hidden>
+              <p id="commentsState" role="status" aria-live="polite"></p>
+              <span class="row-actions">
+                <button type="button" class="btn" data-variant="outline" data-size="sm" id="commentsAllow" aria-describedby="commentsState"></button>
+              </span>
+            </div>
             <div class="field" data-orientation="horizontal">
               <label for="enabled" data-i18n="optEnabled">Run on granted sites by default</label>
               <input id="enabled" type="checkbox" role="switch" />

@@ -1162,7 +1162,7 @@ SOFTWARE.
 - Project: https://github.com/funstory-ai/BabelDOC
 - Licence: AGPL-3.0 (the same text as LICENSE, which ships beside this file)
 - Copyright: Copyright (c) awwaawwa, funstory.ai and the BabelDOC contributors
-- In Anagram: How the PDF reader tells a formula's characters from the text's in lib/pdf/structured.ts (babeldoc/format/pdf/document_il/utils/formular_helper.py and midend/styles_and_formulas.py).
+- In Anagram: How the PDF reader tells a formula's characters from the text's in lib/pdf/reading.ts (babeldoc/format/pdf/document_il/utils/formular_helper.py and midend/styles_and_formulas.py).
 
 ### mwparserfromhtml (Wikimedia html-dumps) (plain-text extraction rules)
 
@@ -1268,6 +1268,37 @@ SOFTWARE.
 - Copyright: Copyright 2020 Google LLC
 - In Anagram: The fragment generation and the search it checks uniqueness with (src/fragment-generation-utils.js, src/text-fragment-utils.js), in lib/render/textFragment.ts and its build vendor/fragments.min.mjs: the copied report's links to flagged paragraphs. The file keeps the licence notice and says what was changed.
 
+### MLX examples (bert/model.py)
+
+- Project: https://github.com/ml-explore/mlx-examples
+- Licence: MIT
+- Copyright: Copyright © 2023 Apple Inc.
+- In Anagram: The encoder layout of the engine's RoBERTa classifier for Apple silicon, in anagramd/mlx_roberta.py.
+
+```text
+MIT License
+
+Copyright © 2023 Apple Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ## The local component package
 
 The component archive (anagram.tar.gz, anagram.zip) holds Anagram's own engine, installer and native launcher, the two browser builds above with this file, LICENSE and this file. Nothing below is in it: the installer downloads each at install time from its publisher, and each keeps its own licence.
@@ -1284,7 +1315,7 @@ The component archive (anagram.tar.gz, anagram.zip) holds Anagram's own engine, 
 - Project: https://pypi.org/
 - Licence: Each package's own
 - Copyright: Their respective authors
-- In Anagram: A Python runtime from uv's distributions and the packages anagramd/pyproject.toml names (PyTorch, Transformers, ONNX Runtime, fastText and others), installed from PyPI by uv at the exact versions of anagramd/uv.lock.
+- In Anagram: A Python runtime from uv's distributions and the packages anagramd/pyproject.toml names (MLX on Apple silicon, PyTorch and Transformers elsewhere, ONNX Runtime, tokenizers, fastText and others), installed from PyPI by uv at the exact versions of anagramd/uv.lock.
 
 ### fastText language identification (lid.176.ftz) (lid.176)
 

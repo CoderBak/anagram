@@ -1,4 +1,4 @@
-"""Offline Torch/ONNX adapters and hardware inventory for the runtime controller.
+"""Offline Torch/MLX/ONNX adapters and hardware inventory for the runtime controller.
 
 Imports of model libraries are deliberately inside background discovery/loading.
 Only the fixed artifact names below can be selected through native runtime controls.
@@ -19,11 +19,12 @@ from pathlib import Path
 import numpy as np
 
 from runtime_controller import Candidate, RuntimeController
-from model_plan import candidate_catalog, candidate_spec, discover_hardware
+from model_plan import candidate_catalog, candidate_spec, discover_hardware, mlx_thread
 from safe_files import sha256_file
-from scoring import score_texts
+from scoring import Tokenizer, score_texts
 
 ONNX_FILES = {"fp32": "model.onnx", "fp16": "model_fp16.onnx", "int8": "model_int8.onnx"}
+PACKAGES = ("torch", "transformers", "mlx", "onnxruntime", "tokenizers", "numpy")
 
 
 def package_version(name):
@@ -110,7 +111,8 @@ def load_candidate(model_dir, candidate, max_length, batch_size, gate, api, envi
                             candidate.precision, gate, warmup=False)
             options = {"device": candidate.device, "environment": environment}
         else:
-            engine = OnnxEditLens.__new__(OnnxEditLens)
+            adapter = MlxEditLens if candidate.runtime == "mlx" else OnnxEditLens
+            engine = adapter.__new__(adapter)
             engine.__init__(model_dir, candidate, max_length, batch_size, gate, api)
             options = {**engine.options, "environment": environment}
         engine.synchronize()
@@ -142,19 +144,25 @@ def runtime_version(engine, candidate, model_dir, api, options):
     manifest["runtime"] = {"candidate": candidate.id, "runtime": candidate.runtime,
                            "device": candidate.device, "precision": candidate.precision,
                            "options": options,
-                           "versions": {name: package_version(name) for name in
-                                        ("torch", "transformers", "onnxruntime", "numpy")},
-                           "implementation": {name: digest(Path(__file__).with_name(name))
-                                              for name in ("engine.py", "runtime_adapters.py", "scoring.py")}}
+                           "versions": {name: package_version(name) for name in PACKAGES},
+                           "implementation": {name: digest(Path(__file__).with_name(name)) for name in
+                                              ("engine.py", "runtime_adapters.py", "scoring.py", "mlx_roberta.py")}}
     tail = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
     return f"sha256:{weight_hash[:12]}-p{tail[:8]}-runtime1"
+
+
+def require_classifier(model_dir, n_buckets):
+    config = json.loads((model_dir / "config.json").read_text())
+    if (config.get("architectures") != ["RobertaForSequenceClassification"]
+            or len(config.get("id2label", {})) != n_buckets
+            or config.get("problem_type") not in (None, "single_label_classification")):
+        raise ValueError("The runtime requires the four-class EditLens RoBERTa configuration")
 
 
 class OnnxEditLens:
     def __init__(self, model_dir, candidate, max_length, batch_size, lid, api):
         import emoji
         import onnxruntime as ort
-        from transformers import AutoTokenizer
 
         if hasattr(ort, "disable_telemetry_events"):
             ort.disable_telemetry_events()
@@ -166,13 +174,8 @@ class OnnxEditLens:
         self.last_run_ms = self.last_wait_ms = 0.0
         self.n_buckets = len(api.BUCKET_LABELS)
         self.api = api
-        config = json.loads((model_dir / "config.json").read_text())
-        if (config.get("architectures") != ["RobertaForSequenceClassification"]
-                or len(config.get("id2label", {})) != self.n_buckets
-                or config.get("problem_type") not in (None, "single_label_classification")):
-            raise ValueError("The ONNX adapter requires the four-class EditLens RoBERTa configuration")
-        self.tok = AutoTokenizer.from_pretrained(str(model_dir), local_files_only=True,
-                                                 trust_remote_code=False)
+        require_classifier(model_dir, self.n_buckets)
+        self.tok = Tokenizer(model_dir)
         self.options = self.provider_options(candidate)
         provider = self.options["provider"]
         if provider not in ort.get_available_providers():
@@ -214,7 +217,7 @@ class OnnxEditLens:
         raise ValueError("Unsupported ONNX device/precision combination")
 
     def _logits(self, ids):
-        enc = self.tok.pad({"input_ids": ids}, padding=True, return_tensors="np")
+        enc = self.tok.pad({"input_ids": ids})
         if "token_type_ids" in self.input_names and "token_type_ids" not in enc:
             enc["token_type_ids"] = np.zeros_like(enc["input_ids"])
         feed = {name: np.asarray(enc[name], dtype=np.int64) for name in self.input_names}
@@ -240,6 +243,81 @@ class OnnxEditLens:
         self.session = None
         self.tok = None
         gc.collect()
+
+
+class MlxEditLens:
+    """RoBERTa in MLX on the Apple GPU, in FP32, from model.safetensors (mlx_roberta.py).
+
+    Every MLX call runs on model_plan.mlx_thread(), whichever thread scores.
+    """
+    def __init__(self, model_dir, candidate, max_length, batch_size, lid, api):
+        import emoji
+
+        if candidate.device != "gpu" or candidate.precision != "fp32":
+            raise ValueError("Unsupported MLX device/precision combination")
+        self.emoji, self.lid = emoji, lid
+        self.max_length, self.batch_size = max_length, batch_size
+        self.device, self.dtype_name = candidate.device, candidate.precision
+        self.lock = threading.Lock()
+        self.last_run_ms = self.last_wait_ms = 0.0
+        self.n_buckets = len(api.BUCKET_LABELS)
+        self.api = api
+        self.model = None
+        require_classifier(model_dir, self.n_buckets)
+        self.tok = Tokenizer(model_dir)
+        self.owner = mlx_thread()
+        try:
+            self.options = self.owner.submit(self._load, model_dir).result()
+        except BaseException:
+            self.close()
+            raise
+
+    def _load(self, model_dir):
+        import mlx.core as mx
+        import mlx_roberta
+
+        if not mx.metal.is_available():
+            raise ValueError("MLX cannot reach a Metal GPU")
+        # MLX keeps freed buffers for reuse, by default up to most of the machine's memory,
+        # and every new batch shape adds more. A gigabyte costs no measurable speed.
+        mx.set_cache_limit(1 << 30)
+        self.model = mlx_roberta.load(model_dir)
+        return {"device": "gpu", "architecture": mx.device_info().get("architecture")}
+
+    def _forward(self, ids, mask):
+        import mlx.core as mx
+        return np.array(self.model(mx.array(ids.astype(np.int32)), mx.array(mask.astype(np.int32))))
+
+    def _logits(self, ids):
+        enc = self.tok.pad({"input_ids": ids})
+        return self.owner.submit(self._forward, enc["input_ids"], enc["attention_mask"]).result()
+
+    def score(self, texts):
+        return score_texts(self, texts, self.api.clean_text)
+
+    def synchronize(self):
+        # _logits returns evaluated CPU logits.
+        pass
+
+    def accelerator_bytes(self):
+        return None
+
+    def info(self):
+        info = self.api.EditLens.info(self)
+        info["runtime"] = "mlx"
+        return info
+
+    def _release(self):
+        import mlx.core as mx
+        self.model = None
+        gc.collect()
+        mx.clear_cache()
+
+    def close(self):
+        owner, self.owner = getattr(self, "owner", None), None
+        if owner is not None:
+            owner.submit(self._release).result()
+        self.tok = None
 
 
 def create_controller(model_dir: Path, config_path: Path, lid_path: Path,
@@ -287,12 +365,13 @@ def create_controller(model_dir: Path, config_path: Path, lid_path: Path,
         inventory = {"candidates": [c.__dict__ for c in candidates],
                      "machine": [environment, hardware],
                      "planned_candidates": planned_ids,
-                     "versions": {n: package_version(n) for n in ("torch", "transformers", "onnxruntime", "numpy")},
+                     "versions": {n: package_version(n) for n in PACKAGES},
                      "pipeline": api.pipeline_manifest(model_dir, max_length, "catalog", gate) if gate is not None else None,
                      "batch_size": batch_size,
                      "artifacts": {c.id: artifact_stamp(artifact_files(model_dir, c)) for c in candidates if c.available},
                      "implementation": {name: digest(Path(__file__).with_name(name)) for name in
-                                        ("runtime_adapters.py", "runtime_controller.py", "benchmark_worker.py", "model_plan.py", "scoring.py")}}
+                                        ("runtime_adapters.py", "runtime_controller.py", "benchmark_worker.py", "model_plan.py",
+                                         "scoring.py", "mlx_roberta.py")}}
         context = hashlib.sha256(json.dumps(inventory, sort_keys=True).encode()).hexdigest()
         return candidates, context, environment
 

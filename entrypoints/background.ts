@@ -15,6 +15,7 @@ import { createCacheModeController } from "../lib/backend/cacheMode";
 import { ACTIONS } from "../lib/messaging/protocol";
 import type {
   CacheCountReply,
+  CommentAccessReply,
   ClearCacheReply,
   CopyDiagnosticsReply,
   PdfPassOnceReply,
@@ -26,6 +27,7 @@ import { ensureInjected, installAccess } from "../lib/access/worker";
 import { documentAuthority } from "../lib/access/authority";
 import { applyCacheMode, invalidateAndNotify } from "../lib/access/cacheControls";
 import { callerRole, parseWorkerMessage, permitsMessage, type AccessSender } from "../lib/access/messages";
+import { commentHost } from "../lib/access/commentFrames";
 import { READER_PAGE, readerQuery } from "../lib/pdf/source";
 import { createPdfNavigation } from "../lib/pdf/navigation";
 import { createPdfHandoff } from "../lib/pdf/handoff";
@@ -363,6 +365,19 @@ export default defineBackground(() => {
       }
       case ACTIONS.GET_BACKEND_STATUS:
         return getScoreClient().status(msg.probe===true);
+      case ACTIONS.COMMENT_ACCESS: {
+        const missing:string[]=[];
+        for (const origin of msg.origins) if (!(await browser.permissions.contains({origins:[origin]}).catch(()=>false))) missing.push(origin);
+        return {missing} satisfies CommentAccessReply;
+      }
+      case ACTIONS.OPEN_COMMENT_ACCESS: {
+        // The settings page beside the tab, at the offer: the request must be the reader's
+        // own click on an extension page, which a content script cannot make.
+        const tab=sender.tab as {id?:number;index?:number}|undefined;
+        const url=`${browser.runtime.getURL("/options.html")}#comments=${encodeURIComponent(commentHost(msg.origin))}`;
+        await browser.tabs.create({url,...(tab?.index !== undefined ? {index:tab.index+1} : {}),...(tab?.id !== undefined ? {openerTabId:tab.id} : {})});
+        return {ok:true};
+      }
       case ACTIONS.COUNT_TOKENS: {
         const counts=await tokenCounter.count(msg.texts,document!.signal).catch(()=>null);
         return {counts,backend:counts || getScoreClient().isUp() ? "up" : "down"} satisfies CountTokensReply;

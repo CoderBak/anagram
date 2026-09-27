@@ -7,7 +7,8 @@ import { ACTIONS, type ControlMessage, type TabState } from "../../lib/messaging
 import { setRangeLocator } from "../../lib/render/highlight";
 import { setOwnPageSite } from "../../lib/render/fab";
 import { extractPageText } from "../../lib/pdf/extract";
-import { reflowPdf, type PdfPageText, type ReflowBlock } from "../../lib/pdf/reflow";
+import { readReflowed } from "../../lib/pdf/reading";
+import type { PdfPageText, ReflowBlock } from "../../lib/pdf/reflow";
 import { createStructuredReader, type StructuredReader } from "../../lib/pdf/structured";
 import { readStructure } from "../../lib/pdf/structureWorker";
 import { createPdfUnitSource, type PdfUnitSource } from "../../lib/pdf/units";
@@ -18,7 +19,10 @@ import { placeChip } from "./chips";
 import "./style.css";
 
 const MAX_BYTES = 100 * 1024 * 1024;
-const MAX_ANALYSIS_PAGES = 300;
+/** Zotero's structure is asked for up to this many pages; past it the reflow reads every page
+ *  as it renders. The worker's peak grows with the document (0.5 GB at 300 pages, 0.7 GB at
+ *  800) and the structure's reading stays in the page while it is open (0.3 MB a page). */
+const MAX_STRUCTURE_PAGES = 300;
 const notice = document.getElementById("notice")!;
 const drop = document.getElementById("drop")!;
 const scopeLabel = document.getElementById("analysisScope")!;
@@ -85,7 +89,7 @@ function reflowRendered(rendered: PdfPageText[]): ReflowBlock[] {
   }
   const blocks: ReflowBlock[] = [];
   for (const group of groups) {
-    const reflow = reflowPdf(group);
+    const reflow = readReflowed(group);
     if (reflow[0] && blocks.length) reflow[0].columnBreak = true;
     blocks.push(...reflow);
   }
@@ -98,7 +102,7 @@ function reflowRendered(rendered: PdfPageText[]): ReflowBlock[] {
  * whose text did not change come straight back from the cache.
  */
 async function readWholeDocument(bytes: Uint8Array, count: number, owned: number, signal: AbortSignal): Promise<void> {
-  if (count > MAX_ANALYSIS_PAGES || !(await settings.pdfStructure.getValue())) return;
+  if (count > MAX_STRUCTURE_PAGES || !(await settings.pdfStructure.getValue())) return;
   if (owned !== generation) return;
   try {
     const result = await readStructure(bytes, count, signal);
@@ -139,7 +143,7 @@ async function startAnalysis(owned: number): Promise<void> {
   if (enabled || started) { started = true; orchestrator?.start(); }
 }
 async function rendered(page: UpstreamPage | undefined): Promise<void> {
-  if (!page?.pdfPage || !source || page.id > MAX_ANALYSIS_PAGES) return;
+  if (!page?.pdfPage || !source) return;
   const view = pageView(page);
   if (!view || extracting.has(view.layer)) return;
   const geometry = `${page.viewport.width}:${page.viewport.height}:${page.viewport.scale}`;
@@ -161,7 +165,7 @@ async function rendered(page: UpstreamPage | undefined): Promise<void> {
     currentSource.setPage(page.id, {layer: view.layer, spans: view.spans});
     rebuild();
     if (text.items.some((item) => item.str.trim())) {
-      if (app.pdfDocument!.numPages <= MAX_ANALYSIS_PAGES) say("");
+      say("");
       if (!orchestrator) await startAnalysis(owned);
       else if (started) orchestrator.rescan();
     } else if (app.pdfDocument?.numPages === 1) say(t("readerNoText"));
@@ -203,7 +207,7 @@ async function openBytes(bytes: Uint8Array, name: string, url: string | null, lo
     drop.hidden = true;
     const count = app.pdfDocument?.numPages ?? 0;
     updateScope();
-    say(count > MAX_ANALYSIS_PAGES ? t("readerAnalysisCapped", MAX_ANALYSIS_PAGES) : "");
+    say("");
     void readWholeDocument(copy, count, load.owned, load.signal);
   } catch {
     if (load.owned === generation) { say(t("readerBadFile")); drop.hidden = false; }

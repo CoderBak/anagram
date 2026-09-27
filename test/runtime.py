@@ -6,6 +6,7 @@ import hashlib
 import io
 import json
 import copy
+from concurrent.futures import ThreadPoolExecutor
 import os
 import subprocess
 import sys
@@ -21,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "anagramd"))
 import engine as engine_api
 from runtime_controller import (Candidate, Cancelled, RuntimeBusy, RuntimeController, RuntimeUnavailable,
                                 auto_candidate, error_text)
-from runtime_adapters import OnnxEditLens, artifact_files, digest, runtime_version, load_candidate
+from runtime_adapters import MlxEditLens, OnnxEditLens, artifact_files, digest, runtime_version, load_candidate
 from benchmark_worker import SubprocessBenchmark
 
 
@@ -45,6 +46,7 @@ MPS16 = Candidate("torch:mps:fp16", "Apple GPU FP16", "mps", "torch", "fp16")
 CUDA1 = Candidate("torch:cuda:1:fp32", "GPU 1", "cuda:1", "torch", "fp32")
 CUDA0 = Candidate("torch:cuda:0:fp32", "GPU 0", "cuda:0", "torch", "fp32")
 ONNX_CUDA = Candidate("onnx:cuda:0:fp32", "GPU 0 ONNX", "cuda:0", "onnx", "fp32")
+MLX = Candidate("mlx:gpu:fp32", "Apple GPU", "gpu", "mlx", "fp32")
 
 
 class Factory:
@@ -240,8 +242,8 @@ class LifecycleTests(unittest.TestCase):
             self.assertEqual(engine.candidate, FP32)
 
     def test_automatic_selection_prefers_devices_in_a_fixed_order_and_never_lower_precision(self):
-        everything = [INT8, MPS16, FP16, FP32, ONNX32, ONNX_CUDA, MPS, CUDA1, CUDA0]
-        expected = [CUDA0, CUDA1, MPS, ONNX_CUDA, ONNX32, FP32]
+        everything = [INT8, MPS16, FP16, FP32, ONNX32, ONNX_CUDA, MPS, MLX, CUDA1, CUDA0]
+        expected = [CUDA0, CUDA1, MLX, MPS, ONNX_CUDA, ONNX32, FP32]
         remaining = list(everything)
         for candidate in expected:
             self.assertEqual(auto_candidate(remaining), candidate)
@@ -865,7 +867,8 @@ def load(*args, **kwargs):
 sys.modules["engine"] = types.SimpleNamespace(LanguageId=lambda _: object())
 sys.modules["torch"] = types.SimpleNamespace()
 sys.modules["emoji"] = types.SimpleNamespace()
-sys.modules["transformers"] = types.SimpleNamespace(AutoTokenizer=object, AutoModelForSequenceClassification=object)
+sys.modules["transformers"] = types.SimpleNamespace(AutoModelForSequenceClassification=object)
+sys.modules["tokenizers"] = types.SimpleNamespace()
 sys.modules["onnxruntime"] = types.SimpleNamespace()
 sys.modules["runtime_adapters"] = types.SimpleNamespace(execution_environment=lambda _: {}, load_candidate=load)
 runpy.run_path(sys.argv[1], run_name="__main__")
@@ -984,10 +987,9 @@ class ScoringParityTests(unittest.TestCase):
                 return self
         fake_torch = SimpleNamespace(float32="float32", float16="float16")
         fake_transformers = SimpleNamespace(
-            AutoModelForSequenceClassification=SimpleNamespace(from_pretrained=lambda *a, **k: Model()),
-            AutoTokenizer=SimpleNamespace(from_pretrained=lambda *a, **k: object()))
+            AutoModelForSequenceClassification=SimpleNamespace(from_pretrained=lambda *a, **k: Model()))
         with patch.dict(sys.modules, {"torch": fake_torch, "transformers": fake_transformers}), \
-                patch.object(engine_api, "require_model"):
+                patch.object(engine_api, "require_model"), patch.object(engine_api, "Tokenizer", lambda _: object()):
             for device in ("cpu", "mps", "cuda:0"):
                 engine = engine_api.EditLens(Path("unused"), device, 512, 8, "fp32", None, warmup=False)
                 self.assertEqual((engine.device, engine.dtype_name), (device, "float32"))
@@ -1031,8 +1033,20 @@ class ScoringParityTests(unittest.TestCase):
         onnx = OnnxEditLens.__new__(OnnxEditLens)
         onnx.api, onnx.session = engine_api, Session()
         onnx.input_names = {"input_ids", "attention_mask", "token_type_ids"}
+        # MLX aborts the process when a graph is evaluated off the thread that built
+        # it; every forward runs on the engine's own thread, whoever calls score.
+        mlx_threads = []
+        def mlx_model(ids, mask):
+            mlx_threads.append(threading.current_thread().name)
+            self_test.assertEqual(ids.dtype, np.int32)
+            self_test.assertTrue(np.array_equal(mask, ids != 0))
+            return logits(ids)
+        fake_mx = SimpleNamespace(array=np.asarray, clear_cache=lambda: mlx_threads.append("released"))
+        mlx = MlxEditLens.__new__(MlxEditLens)
+        mlx.api, mlx.model = engine_api, mlx_model
+        mlx.owner = ThreadPoolExecutor(max_workers=1, thread_name_prefix="anagram-mlx")
         direct = engine_api.EditLens.__new__(engine_api.EditLens)
-        for engine in (onnx, direct):
+        for engine in (onnx, mlx, direct):
             engine.tok, engine.emoji = Tokenizer(), emoji
             engine.max_length, engine.batch_size, engine.n_buckets = 8, 2, 4
             engine.lock = threading.Lock()
@@ -1041,6 +1055,17 @@ class ScoringParityTests(unittest.TestCase):
                  "discarded reasoning</think> This IS the answer"]
         expected, actual = direct.score(texts), onnx.score(texts)
         self.assertEqual(actual, expected)
+        with patch.dict(sys.modules, {"mlx": SimpleNamespace(core=fake_mx), "mlx.core": fake_mx}):
+            elsewhere = []
+            caller = threading.Thread(target=lambda: elsewhere.append(mlx.score(texts)))
+            caller.start()
+            caller.join(5)
+            self.assertEqual(elsewhere, [expected])
+            self.assertEqual(mlx.score(texts), expected)
+            mlx.close()
+        self.assertEqual(len(mlx_threads), 5)  # two batches per score, then the release
+        self.assertTrue(all(name.startswith("anagram-mlx") for name in mlx_threads[:-1]))
+        self.assertEqual((mlx_threads[-1], mlx.owner, mlx.model), ("released", None, None))
         self.assertTrue(actual[1]["truncated"])
         self.assertEqual(actual[1]["tokens"], 8)
         self.assertEqual(len(actual[0]["probs"]), 4)

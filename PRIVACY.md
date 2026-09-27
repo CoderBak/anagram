@@ -22,7 +22,11 @@ The full inventory of network calls, address literals and storage keys is in
   the book is in a frame from there. In Chrome, frames a granted page writes itself (srcdoc,
   about:blank, blob:) take that page's address and are read with it; sandboxed frames are not.
   Frames that only hold a consent platform's cookie banner are skipped, and a page the
-  browser has translated is paused until the original is shown again.
+  browser has translated is paused until the original is shown again. A comment thread a
+  granted page shows in a frame from another site — Disqus, Facebook's comments plugin,
+  utterances, giscus — is read only if that site is granted too: the panel names the site
+  and offers to allow it, and its button opens Settings, where your click makes the
+  browser's request. Nothing is asked for on its own.
 - **Text a document viewer has already put in the page**, on a granted site: Google Drive's
   file preview, a PDF shown by pdf.js inside a page (OneDrive, SharePoint and others),
   Kindle for the web and Webnovel. Nothing is fetched for it, and no page image is captured

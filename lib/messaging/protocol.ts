@@ -76,7 +76,19 @@ export const ACTIONS = {
   GET_CACHE_COUNT: "getCacheCount",
   /** SW → content: the worker's caches are gone — drop this tab's own layer too. */
   CACHE_CLEARED: "cacheCleared",
+  /** content (top frame) → SW: which of these comment providers, whose threads the page shows
+   *  in frames of their own, has nobody granted? (lib/access/commentFrames.ts) */
+  COMMENT_ACCESS: "commentAccess",
+  /** content (top frame) → SW: the reader asked to allow a comment provider. A content script
+   *  cannot ask the browser for a site, so the worker opens the settings page, where the
+   *  reader's click can. */
+  OPEN_COMMENT_ACCESS: "openCommentAccess",
 } as const;
+
+/** SW → content (response to COMMENT_ACCESS): the providers' patterns nothing grants. */
+export interface CommentAccessReply {
+  missing: string[];
+}
 
 /** content → SW: score a batch of blocks. */
 export interface ScoreBatchMessage {
