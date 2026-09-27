@@ -80,7 +80,7 @@ jobs:
         if: runner.os != 'Windows'
         run: npm run test:pdf-route
       - name: content-security-policy, live
-        run: node test/csp-check.mjs --chrome-only
+        run: npm run test:csp
       - name: the two WebAssembly PDF decoders
         run: node test/pdf-codecs-check.mjs
       - name: native engine and lifecycle (no model)
@@ -128,12 +128,10 @@ jobs:
             npx --yes @puppeteer/browsers install firefox@stable --path "$HOME/.cache/puppeteer"
             "$HOME"/.cache/puppeteer/firefox/*/firefox/firefox --version 2>/dev/null || true
           fi
-      - name: install Chromium (the policy check runs both browsers)
-        run: npx playwright install --with-deps chromium
       - run: npm run build:firefox
       - run: npm run test:firefox
-      - name: content-security-policy, live (both browsers)
-        run: node test/csp-check.mjs
+      - name: content-security-policy, live
+        run: node test/csp-firefox.mjs
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
