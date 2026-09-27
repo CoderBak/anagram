@@ -54,7 +54,8 @@ export function ensureTestBuild(dir = "chrome-mv3") {
   execFileSync(
     process.execPath,
     [join(ROOT, "scripts", "buildTest.mjs"), ...(dir.endsWith("firefox-mv2") ? ["--firefox"] : [])],
-    { cwd: ROOT, stdio: "inherit" },
+    // The folder names the flavor (scripts/flavor.mjs), whatever this process was started with.
+    { cwd: ROOT, stdio: "inherit", env: { ...process.env, ANAGRAM_FLAVOR: dir.startsWith("oneclick-") ? "oneclick" : "native" } },
   );
   if (!existsSync(manifest)) {
     console.error(`the test build produced no ${dir} manifest`);

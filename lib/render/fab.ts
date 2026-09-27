@@ -27,6 +27,7 @@ import { isDarkPage } from "./theme";
 import { adoptSheets } from "../dom/shadow";
 import { scaleColorCss } from "./scale";
 import { commentHost } from "../access/commentFrames";
+import type { EngineSetup } from "../messaging/protocol";
 
 export interface PanelEntry {
   id: string;
@@ -82,8 +83,10 @@ export interface Fab {
   /** Reflect whether the overlay is currently shown. */
   setActive(active: boolean): void;
   /** The scoring daemon stopped answering (counter shows "!", panel explains + Retry);
-   *  `crashed`: it kept dying under its work and is not started again until Retry. */
-  setBackendDown(down: boolean, crashed?: boolean): void;
+   *  `crashed`: it kept dying under its work and is not started again until Retry;
+   *  `setup`: the in-browser engine is down because it is not set up, and how far that got
+   *  (the panel says so and offers setup instead of Retry). */
+  setBackendDown(down: boolean, crashed?: boolean, setup?: EngineSetup | null): void;
   /** Update the flagged-paragraph counter. */
   setCount(flagged: number): void;
   /** Show (label + callback) or hide (null) the secondary action chip. */
@@ -555,6 +558,8 @@ type Side = "left" | "right";
 export function createFab(opts: {
   onToggle: () => void;
   onRetry?: () => void;
+  /** The in-browser engine's setup page, from the panel's button while it is not set up. */
+  onSetup?: () => void;
   panel?: PanelHooks;
   /** The footer's per-site kill switch was used. The rule is written here either way;
    *  this is how the PAGE learns to stop, which the stored rule cannot always tell it:
@@ -574,6 +579,7 @@ export function createFab(opts: {
   let actionAttention = false;
   let backendDown = false;
   let engineCrashed = false;
+  let engineSetup: EngineSetup | null = null;
   let side: Side = "right";
   let tuckTimer: ReturnType<typeof setTimeout> | null = null;
   let liveEl: HTMLElement | null = null;
@@ -923,10 +929,12 @@ export function createFab(opts: {
     countEl.classList.toggle("zero", flagged === 0);
   }
 
-  function setBackendDown(down: boolean, crashed = false): void {
-    if (down === backendDown && (down && crashed) === engineCrashed) return;
+  function setBackendDown(down: boolean, crashed = false, setup: EngineSetup | null = null): void {
+    const next = down && !crashed ? setup : null;
+    if (down === backendDown && (down && crashed) === engineCrashed && next?.state === engineSetup?.state && next?.percent === engineSetup?.percent) return;
     backendDown = down;
     engineCrashed = down && crashed;
+    engineSetup = next;
     setCount(lastFlagged);
     if (panelEl?.classList.contains("open")) renderPanel();
   }
@@ -1007,14 +1015,20 @@ export function createFab(opts: {
       const notice = document.createElement("div");
       notice.className = "pnotice";
       const text = document.createElement("span");
-      text.textContent = t(engineCrashed ? "panelEngineCrashed" : "panelDaemonDown");
+      const setup = engineSetup;
+      text.textContent = !setup ? t(engineCrashed ? "panelEngineCrashed" : "panelDaemonDown")
+        : setup.state === "downloading" ? t("panelSetupDownloading", setup.percent)
+        : setup.state === "paused" ? t("panelSetupPaused", setup.percent)
+        : t(setup.state === "failed" ? "panelSetupFailed" : "panelSetupNeeded");
       const retry = document.createElement("button");
       retry.type = "button";
       retry.className = "fchip";
-      retry.textContent = t("panelRetry");
+      retry.textContent = t(!setup ? "panelRetry" : setup.state === "needed" ? "engineSetUp"
+        : setup.state === "downloading" ? "engineShowProgress" : "engineContinueSetup");
       retry.addEventListener("click", (e) => {
         e.stopPropagation();
-        opts.onRetry?.();
+        if (setup) opts.onSetup?.();
+        else opts.onRetry?.();
       });
       notice.append(text, retry);
       panelEl.appendChild(notice);

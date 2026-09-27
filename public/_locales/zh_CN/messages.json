@@ -512,11 +512,122 @@
   "componentNotInstalled": {
     "message": "未安装"
   },
-  "engineInBrowserNotReady": {
-    "message": "尚未就绪"
+  "engineSetUpIntro": {
+    "message": "Anagram 的模型直接在你的浏览器里运行，无需安装其他软件，只需一次性下载 $1。"
   },
-  "engineInBrowserIntro": {
-    "message": "模型在浏览器内运行，无需安装任何软件。模型文件约 1.4 GB，只需下载一次。"
+  "engineSetUpButton": {
+    "message": "开始设置（一次性下载 $1）"
+  },
+  "engineSetUpHosts": {
+    "message": "浏览器会询问是否允许 Anagram 访问发布模型的 huggingface.co 和 dl.fbaipublicfiles.com。Anagram 仅在这次下载时使用它们。"
+  },
+  "engineNotSetUp": {
+    "message": "尚未设置"
+  },
+  "engineDownloading": {
+    "message": "正在下载模型…"
+  },
+  "enginePaused": {
+    "message": "下载已暂停"
+  },
+  "engineSetupFailed": {
+    "message": "设置未完成"
+  },
+  "engineLoading": {
+    "message": "正在启动模型…"
+  },
+  "engineProgress": {
+    "message": "$1% · $2 / $3"
+  },
+  "engineSpeed": {
+    "message": "$1/秒"
+  },
+  "engineLeftUnderMinute": {
+    "message": "剩余不到 1 分钟"
+  },
+  "engineLeftMinutes_one": {
+    "message": "剩余约 $1 分钟"
+  },
+  "engineLeftMinutes_other": {
+    "message": "剩余约 $1 分钟"
+  },
+  "engineLeftHours": {
+    "message": "剩余约 $1 小时 $2 分钟"
+  },
+  "engineRetrying": {
+    "message": "连接中断，正在重试…"
+  },
+  "engineCancelDownload": {
+    "message": "取消下载"
+  },
+  "engineKeepDownloading": {
+    "message": "继续下载"
+  },
+  "engineCancelConfirm": {
+    "message": "已下载的 $1 将被删除。"
+  },
+  "engineDeleteConfirm": {
+    "message": "这将释放 $1。在重新设置（需要再次下载模型）之前，Anagram 无法分析任何内容。"
+  },
+  "engineOnGpu": {
+    "message": "在你的显卡上运行（WebGPU）。"
+  },
+  "engineOnCpu": {
+    "message": "在处理器上运行，比显卡慢得多。如果浏览器设置中关闭了硬件加速，开启后 Anagram 可能就能使用显卡。"
+  },
+  "enginePermissionRefused": {
+    "message": "Anagram 需要你允许它从 huggingface.co 和 dl.fbaipublicfiles.com 下载模型。请再次点击按钮，并在浏览器询问时选择“允许”。"
+  },
+  "engineNetworkLost": {
+    "message": "网络连接已中断。请确认已联网，然后点击“重试”，下载会从中断处继续。"
+  },
+  "engineDiskFull": {
+    "message": "磁盘可用空间不足。请至少腾出 $1，然后点击“重试”。"
+  },
+  "engineServerDown": {
+    "message": "下载站点暂时没有响应。请等几分钟后点击“重试”。"
+  },
+  "engineDamaged": {
+    "message": "有一个下载的文件已损坏并已删除。点击“重试”重新下载。"
+  },
+  "engineDownloadStopped": {
+    "message": "下载已停止。点击“重试”从中断处继续。"
+  },
+  "engineLoadFailed": {
+    "message": "模型无法在此浏览器中启动。请点击“重试”；如果仍然失败，请重启浏览器。"
+  },
+  "engineUnavailable": {
+    "message": "浏览器内的引擎未能启动。请点击“重试”；如果仍然失败，请重启浏览器。"
+  },
+  "engineSetUp": {
+    "message": "开始设置"
+  },
+  "engineShowProgress": {
+    "message": "查看进度"
+  },
+  "engineContinueSetup": {
+    "message": "继续设置"
+  },
+  "popupSetupNeeded": {
+    "message": "Anagram 尚未设置：需要一次性下载模型。"
+  },
+  "popupSetupDownloading": {
+    "message": "正在下载模型 · $1%"
+  },
+  "popupSetupPaused": {
+    "message": "下载已暂停（$1%）"
+  },
+  "panelSetupNeeded": {
+    "message": "Anagram 尚未设置。新段落将等待模型下载完成后再分析。"
+  },
+  "panelSetupDownloading": {
+    "message": "正在下载模型（$1%）。新段落将等待模型就绪后再分析。"
+  },
+  "panelSetupPaused": {
+    "message": "模型下载已暂停（$1%）。新段落将等待下载完成后再分析。"
+  },
+  "panelSetupFailed": {
+    "message": "Anagram 的设置未完成。新段落将等待设置完成后再分析。"
   },
   "componentStarting": {
     "message": "正在启动…"

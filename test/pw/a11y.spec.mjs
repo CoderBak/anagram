@@ -46,10 +46,11 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test as base, expect } from "./fixtures.mjs";
-import { BADGE_SEL } from "../harness.mjs";
+import { BADGE_SEL, waitForRegistration } from "../harness.mjs";
 import { SMALL_PDF } from "../a11y-pdf.mjs";
 import { LOCKED_PDF } from "../pdf-fixture.mjs";
 import { installProbe, settle, settleAll, still, fabReady, untuck, chipsSettled } from "../a11y-probe.mjs";
+import { scriptEngine } from "../webengine/scripted-engine.mjs";
 
 const TEST_DIR = join(import.meta.dirname, "..");
 const AXE_SRC = readFileSync(join(TEST_DIR, "..", "node_modules", "axe-core", "axe.min.js"), "utf8");
@@ -185,8 +186,9 @@ const test = base.extend({
    *  report and a card's Copy text write to it. */
   open: async ({ context, axe, clipboard }, use) => {
     void clipboard;
-    await use(async (url, { scheme = "light", viewport = null, media = {} } = {}) => {
+    await use(async (url, { scheme = "light", viewport = null, media = {}, script } = {}) => {
       const page = await context.newPage();
+      if (script) await script(page);
       if (viewport) await page.setViewportSize(viewport);
       await page.emulateMedia({ colorScheme: scheme, ...media });
       await page.goto(url, { waitUntil: "load" });
@@ -887,4 +889,60 @@ test("the fixture-down notice in the panel", async ({ nativeHost, open, site, ax
   expect(notice, "fixture-down notice renders in the panel (the state axe is run on)").toBeTruthy();
   await axe.scan(page, "ball (panel open, fixture-down notice)", "#anagram-fab");
   await ourTextContrast(axe, page, "panel (fixture down)", "#anagram-fab");
+});
+
+// =====================================================================================
+// PART 5 — the in-browser engine's setup (the oneclick build)
+// =====================================================================================
+// Its panel on the setup page in each state people meet on the way to Ready, scripted into
+// the page (test/webengine/scripted-engine.mjs; test/oneclick.mjs drives the real engine
+// through them), the confirmation before a download is cancelled, the popup offering setup,
+// and the panel's notice on a page while the engine is not set up, which is the real state
+// of a fresh profile.
+test.describe("the in-browser engine's setup (oneclick build)", () => {
+  test.use({ build: join(TEST_DIR, "..", "output-test", "oneclick-chrome-mv3") });
+  const painted = (page) => page.waitForFunction(() => (document.querySelector("#componentSettings .component-status")?.textContent ?? "Starting…") !== "Starting…", null, { timeout: 15000 });
+
+  for (const scheme of ["light", "dark"]) {
+    for (const state of ["needed", "downloading", "paused", "network", "ready_gpu", "ready_cpu", "load_failed"]) {
+      test(`setup page, ${state} [${scheme}]`, async ({ extension, open, axe }) => {
+        const page = await open(extension.url("onboarding.html"), { scheme, viewport: { width: 1100, height: 900 }, script: (p) => scriptEngine(p, state) });
+        await painted(page);
+        await page.evaluate(() => { const manage = document.getElementById("manage"); if (manage && !manage.hidden) manage.open = true; });
+        await settle(page, scheme);
+        await axe.scan(page, `setup page, ${state} [${scheme}]`);
+        if (scheme === "light") judgeStops(axe, `setup page, ${state}`, await tabWalk(page, { max: 80 }));
+      });
+    }
+  }
+
+  test("the confirmation before a download is cancelled", async ({ extension, open, axe }) => {
+    const page = await open(extension.url("onboarding.html"), { viewport: { width: 1100, height: 900 }, script: (p) => scriptEngine(p, "paused") });
+    await painted(page);
+    await page.click("#engine-cancel");
+    await page.waitForSelector("#componentSettings dialog[open]");
+    await still(page);
+    expect(await page.evaluate(() => document.activeElement?.textContent), "focus starts on the button that keeps the download").toBe("Keep downloading");
+    await axe.scan(page, "setup page, cancel confirmation");
+  });
+
+  test("the popup offering setup", async ({ extension, open, axe }) => {
+    const page = await open(extension.url("popup.html"), { viewport: { width: 300, height: 600 }, script: (p) => scriptEngine(p, "downloading") });
+    await page.waitForFunction(() => !document.getElementById("action").disabled, null, { timeout: 10000 });
+    await settle(page);
+    await axe.scan(page, "popup, setup downloading");
+    judgeStops(axe, "popup, setup downloading", await tabWalk(page, { max: 20 }));
+  });
+
+  test("the panel's notice while the engine is not set up", async ({ extension, open, site, axe }) => {
+    await waitForRegistration(extension.sw);
+    const page = await open(site("/keyboard.html"));
+    await page.waitForFunction(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.textContent === "!", null, { timeout: 25000 });
+    await untuck(page);
+    await openPanel(page);
+    await page.waitForFunction(() => /set up/i.test(document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".panel .pnotice button")?.textContent ?? ""), null, { timeout: 15000 });
+    await still(page);
+    await axe.scan(page, "ball (panel open, setup notice)", "#anagram-fab");
+    await ourTextContrast(axe, page, "panel (setup notice)", "#anagram-fab");
+  });
 });

@@ -1,6 +1,6 @@
 // test/node/webengineDownload.test.ts — resumable, verified downloads into the engine's store.
 import { describe, expect, it } from "vitest";
-import { downloadFile, DownloadFailed, DownloadPaused, secure, verifyFile } from "../../lib/webengine/download";
+import { downloadFile, DownloadFailed, DownloadPaused, failureKind, secure, verifyFile } from "../../lib/webengine/download";
 import { sha256Hex } from "../../lib/webengine/sha256";
 import { MemoryStore } from "../../lib/webengine/storage";
 import { fakeServer } from "./webengineFake";
@@ -14,6 +14,30 @@ function bytes(n: number, seed = 1): Uint8Array {
 const FILE = bytes(1000);
 const entry = (sha = sha256Hex(FILE)) => ({ name: "model.bin", size_bytes: FILE.length, sha256: sha, url: "https://example.test/model.bin" });
 const NO_WAIT = { retryWaits: [0, 0, 0] };
+
+/** A store on a disk that fills up after `room` bytes, as the browser says it: a QuotaExceededError. */
+class FullDisk extends MemoryStore {
+  constructor(private readonly room: number) { super(); }
+  override async writer(name: string, append: boolean) {
+    const inner = await super.writer(name, append);
+    return {
+      write: async (chunk: Uint8Array) => {
+        let used = 0;
+        for (const file of this.files.values()) used += file.length;
+        if (used + chunk.length > this.room) throw new DOMException("The disk is full", "QuotaExceededError");
+        await inner.write(chunk);
+      },
+      close: () => inner.close(),
+    };
+  }
+}
+
+/** The message a failed download leaves, as the engine reports it in `download.error`. */
+async function failure(run: Promise<void>): Promise<string> {
+  const error = await run.then(() => null, (e: unknown) => e);
+  expect(error).toBeInstanceOf(DownloadFailed);
+  return (error as Error).message;
+}
 
 describe("model download", () => {
   it("streams a file into place, verifying it as it arrives", async () => {
@@ -117,6 +141,31 @@ describe("model download", () => {
     await downloadFile(store, entry(), { transport: server.fetch, ...NO_WAIT });
     expect(server.requests).toHaveLength(1);
     expect(await store.read("model.bin")).toEqual(FILE);
+  });
+
+  it("stops at once when the disk is full, keeping what arrived, and says so", async () => {
+    const store = new FullDisk(400);
+    const server = fakeServer({ "/model.bin": FILE });
+    const message = await failure(downloadFile(store, entry(), { transport: server.fetch, ...NO_WAIT }));
+    expect(failureKind(message)).toBe("storage");
+    // Retrying cannot make room: one request, and the part stays for when there is some.
+    expect(server.requests).toHaveLength(1);
+    expect(await store.size("model.bin.part")).toBeGreaterThan(0);
+  });
+
+  it("names every way a download fails in the terms the setup page explains", async () => {
+    const run = (options: Parameters<typeof fakeServer>[1], sha?: string, file = FILE) =>
+      failure(downloadFile(new MemoryStore(), entry(sha), { transport: fakeServer({ "/model.bin": file }, options).fetch, retryWaits: [] }));
+    expect(failureKind(await run({ cutAfter: 100 }))).toBe("network");
+    const offline = (async () => { throw new TypeError("Failed to fetch"); }) as unknown as typeof fetch;
+    expect(failureKind(await failure(downloadFile(new MemoryStore(), entry(), { transport: offline, retryWaits: [] })))).toBe("network");
+    expect(failureKind(await run({ status: 503 }))).toBe("server");
+    expect(failureKind(await run({ status: 404 }))).toBe("server");
+    expect(failureKind(await run({}, "0".repeat(64)))).toBe("damaged");
+    expect(failureKind(await run({}, undefined, bytes(1200)))).toBe("damaged");
+    // What the engine says after a restart that found a failed download, and nothing at all.
+    expect(failureKind("Retry the model download to continue setup")).toBe("other");
+    expect(failureKind(null)).toBe("other");
   });
 
   it("insists on HTTPS, except to this machine", async () => {

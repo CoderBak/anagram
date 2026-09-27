@@ -101,6 +101,20 @@ describe("what the popup leads with", () => {
     }
   });
 
+  it("offers the in-browser engine's setup page where it has not been set up, on every page but a PDF", () => {
+    // The oneclick flavor says what setup is doing; the native one never sets `setup`.
+    for (const state of ["needed", "downloading", "paused", "failed"] as const) {
+      const setup = { state, percent: 45 };
+      for (const over of [{}, { tab: null }, { pattern: null }, { hasTab: false }]) {
+        expect(lead({ ...over, daemon: "down", setup })).toEqual({ action: "setup", primary: true, status: "setup" });
+      }
+      expect(lead({ pdfTab: true, daemon: "down", setup })).toEqual({ action: "readPdf", primary: true, status: "none" });
+      // An engine that answers has nothing left to set up, whatever was last said.
+      expect(lead({ daemon: "up", setup })).toEqual({ action: "rescan", primary: false, status: "counts" });
+    }
+    expect(lead({ daemon: "down", setup: null })).toEqual({ action: "retry", primary: true, status: "daemon" });
+  });
+
   it("keeps PDF reading available before engine setup and with the engine stopped", () => {
     for (const daemon of ["down", "mismatch"] as const) {
       expect(lead({ pdfTab: true, daemon })).toEqual({ action: "readPdf", primary: true, status: "none" });
@@ -130,7 +144,9 @@ describe("what the popup leads with", () => {
                 expect(got.status === "counts").toBe(got.action === "rescan");
               }
     expect(total).toBe(144);
-    // All five buttons are reachable — none of them is dead code.
+    // All five buttons are reachable without the in-browser engine's setup — none of them is
+    // dead code — and its setup is the sixth.
     expect([...seen].sort()).toEqual(["analyze", "openReader", "readPdf", "rescan", "retry"]);
+    expect(ACTION_LABEL.setup).toBeTruthy();
   });
 });

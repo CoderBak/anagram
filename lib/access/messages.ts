@@ -48,6 +48,7 @@ const schema = v.variant("action",[
   v.strictObject({action:v.literal(ACTIONS.GET_BACKEND_STATUS),session,probe:v.optional(v.boolean())}),
   v.strictObject({action:v.literal(ACTIONS.COMMENT_ACCESS),session,origins:v.pipe(v.array(commentOrigin),v.maxLength(8))}),
   v.strictObject({action:v.literal(ACTIONS.OPEN_COMMENT_ACCESS),session,origin:commentOrigin}),
+  v.strictObject({action:v.literal(ACTIONS.OPEN_ENGINE_SETUP),session}),
 ]);
 export type WorkerMessage = v.InferOutput<typeof schema>;
 export function parseWorkerMessage(value: unknown): WorkerMessage | null {
@@ -109,5 +110,7 @@ export function permitsMessage(role: CallerRole, msg: WorkerMessage, sender: Acc
     case ACTIONS.UPDATE_BADGE: return (role === "content" || role === "reader") && sender.frameId === 0;
     case ACTIONS.GET_BACKEND_STATUS: return true;
     case ACTIONS.COMMENT_ACCESS: case ACTIONS.OPEN_COMMENT_ACCESS: return role === "content" && sender.frameId === 0;
+    // The panel's Set up: from the page it is drawn on, the top frame's, or the reader.
+    case ACTIONS.OPEN_ENGINE_SETUP: return (role === "content" && sender.frameId === 0) || role === "reader";
   }
 }

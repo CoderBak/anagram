@@ -655,13 +655,161 @@
     "message": "Not installed",
     "description": "Engine state: the local engine has never connected."
   },
-  "engineInBrowserNotReady": {
-    "message": "Not ready yet",
-    "description": "In-browser edition: engine state while the engine inside the browser cannot answer yet."
+  "engineSetUpIntro": {
+    "message": "Anagram's model runs right here in your browser, with nothing else to install. It needs a one-time download of $1.",
+    "description": "In-browser edition, setup page before setup: what setting up means. $1 is the download's size, e.g. 1.4 GB."
   },
-  "engineInBrowserIntro": {
-    "message": "The model runs inside your browser, with nothing to install. Its files, about 1.4 GB, download once.",
-    "description": "In-browser edition: the engine card's explanation, in place of the install command."
+  "engineSetUpButton": {
+    "message": "Set up (one-time $1 download)",
+    "description": "In-browser edition: the button that starts setup (the browser asks for the download sites, then the model downloads). $1 is the size, e.g. 1.4 GB."
+  },
+  "engineSetUpHosts": {
+    "message": "Your browser will ask to let Anagram reach huggingface.co and dl.fbaipublicfiles.com, where the model is published. Anagram uses them for this download only.",
+    "description": "In-browser edition: under the setup button, what the browser's permission prompt will be about. Keep the two host names as they are."
+  },
+  "engineNotSetUp": {
+    "message": "Not set up yet",
+    "description": "In-browser edition: engine status before the model was downloaded."
+  },
+  "engineDownloading": {
+    "message": "Downloading the model…",
+    "description": "In-browser edition: engine status while the model downloads."
+  },
+  "enginePaused": {
+    "message": "Download paused",
+    "description": "In-browser edition: engine status while the model download is paused."
+  },
+  "engineSetupFailed": {
+    "message": "Setup didn't finish",
+    "description": "In-browser edition: engine status when the model download stopped on an error."
+  },
+  "engineLoading": {
+    "message": "Starting the model…",
+    "description": "In-browser edition: engine status while the downloaded model is loaded into memory."
+  },
+  "engineProgress": {
+    "message": "$1% · $2 of $3",
+    "description": "In-browser edition: download progress. $1 is the percentage, $2 the bytes downloaded, $3 the total, e.g. 45% · 620 MB of 1.4 GB."
+  },
+  "engineSpeed": {
+    "message": "$1/s",
+    "description": "In-browser edition: download speed; $1 is an amount such as 12 MB."
+  },
+  "engineLeftUnderMinute": {
+    "message": "less than a minute left",
+    "description": "In-browser edition: the download's estimated time left, under a minute."
+  },
+  "engineLeftMinutes_one": {
+    "message": "about $1 minute left",
+    "description": "In-browser edition: the download's estimated time left; $1 is minutes."
+  },
+  "engineLeftMinutes_other": {
+    "message": "about $1 minutes left",
+    "description": "In-browser edition: the download's estimated time left; $1 is minutes."
+  },
+  "engineLeftHours": {
+    "message": "about $1 h $2 min left",
+    "description": "In-browser edition: the download's estimated time left; $1 is hours, $2 minutes."
+  },
+  "engineRetrying": {
+    "message": "connection interrupted, trying again…",
+    "description": "In-browser edition: after the download progress, while a lost connection is retried by itself."
+  },
+  "engineCancelDownload": {
+    "message": "Cancel download",
+    "description": "In-browser edition: button that stops the model download and deletes what arrived (after a confirmation)."
+  },
+  "engineKeepDownloading": {
+    "message": "Keep downloading",
+    "description": "In-browser edition: the confirmation's button that leaves the download alone."
+  },
+  "engineCancelConfirm": {
+    "message": "The $1 downloaded so far will be deleted.",
+    "description": "In-browser edition: confirmation before cancelling the download; $1 is the amount downloaded, e.g. 620 MB."
+  },
+  "engineDeleteConfirm": {
+    "message": "This frees $1. Anagram can't analyze anything until you set it up again, which downloads the model again.",
+    "description": "In-browser edition: confirmation before deleting the model; $1 is its size, e.g. 1.4 GB."
+  },
+  "engineOnGpu": {
+    "message": "Runs on your graphics card (WebGPU).",
+    "description": "In-browser edition, engine ready: where the model runs, in plain words."
+  },
+  "engineOnCpu": {
+    "message": "Runs on your processor, which is much slower than a graphics card. If hardware acceleration is off in your browser's settings, turning it on may let Anagram use the graphics card.",
+    "description": "In-browser edition, engine ready without a usable GPU: where the model runs, and how to get the faster path."
+  },
+  "enginePermissionRefused": {
+    "message": "Anagram needs your permission to download the model from huggingface.co and dl.fbaipublicfiles.com. Click the button again and choose Allow.",
+    "description": "In-browser edition: the browser's permission for the download sites was refused or withdrawn, and how to fix it."
+  },
+  "engineNetworkLost": {
+    "message": "The connection was lost. Check that you're online, then click Retry: the download continues where it stopped.",
+    "description": "In-browser edition: the download failed on the network, and how to fix it. Retry is the button's label (panelRetry)."
+  },
+  "engineDiskFull": {
+    "message": "There isn't enough free disk space. Free up at least $1, then click Retry.",
+    "description": "In-browser edition: the download stopped on a full disk; $1 is how much it still needs, e.g. 800 MB."
+  },
+  "engineServerDown": {
+    "message": "The download site isn't answering right now. Wait a few minutes, then click Retry.",
+    "description": "In-browser edition: the download server refused or failed the request."
+  },
+  "engineDamaged": {
+    "message": "A downloaded file was damaged and has been removed. Click Retry to download it again.",
+    "description": "In-browser edition: a downloaded file did not match its pinned checksum."
+  },
+  "engineDownloadStopped": {
+    "message": "The download stopped. Click Retry to continue where it left off.",
+    "description": "In-browser edition: the download failed for another reason, or before the browser restarted."
+  },
+  "engineLoadFailed": {
+    "message": "The model couldn't start in this browser. Click Retry; if it still fails, restart the browser.",
+    "description": "In-browser edition: the downloaded model failed to load."
+  },
+  "engineUnavailable": {
+    "message": "The in-browser engine didn't start. Click Retry; if it still fails, restart the browser.",
+    "description": "In-browser edition: the engine's hidden page or worker could not be reached at all."
+  },
+  "engineSetUp": {
+    "message": "Set up",
+    "description": "In-browser edition, popup and panel: button that opens the setup page when the engine is not set up."
+  },
+  "engineShowProgress": {
+    "message": "Show progress",
+    "description": "In-browser edition, popup and panel: button that opens the setup page while the model downloads."
+  },
+  "engineContinueSetup": {
+    "message": "Continue setup",
+    "description": "In-browser edition, popup and panel: button that opens the setup page when the download is paused or stopped."
+  },
+  "popupSetupNeeded": {
+    "message": "Anagram isn't set up yet: its model needs a one-time download.",
+    "description": "In-browser edition, popup: the engine is not set up yet."
+  },
+  "popupSetupDownloading": {
+    "message": "Downloading the model · $1%",
+    "description": "In-browser edition, popup: setup is downloading; $1 is the percentage."
+  },
+  "popupSetupPaused": {
+    "message": "Download paused at $1%",
+    "description": "In-browser edition, popup: the setup download is paused; $1 is the percentage."
+  },
+  "panelSetupNeeded": {
+    "message": "Anagram isn't set up yet. New paragraphs wait until its model is downloaded.",
+    "description": "In-browser edition, the in-page panel: the engine is not set up yet."
+  },
+  "panelSetupDownloading": {
+    "message": "Downloading the model ($1%). New paragraphs wait until it's ready.",
+    "description": "In-browser edition, the in-page panel: setup is downloading; $1 is the percentage."
+  },
+  "panelSetupPaused": {
+    "message": "The model download is paused at $1%. New paragraphs wait until it finishes.",
+    "description": "In-browser edition, the in-page panel: the setup download is paused; $1 is the percentage."
+  },
+  "panelSetupFailed": {
+    "message": "Anagram's setup didn't finish. New paragraphs wait until it does.",
+    "description": "In-browser edition, the in-page panel: the setup download stopped on an error."
   },
   "componentStarting": {
     "message": "Starting…",

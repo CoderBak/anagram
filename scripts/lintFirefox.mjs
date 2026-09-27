@@ -23,7 +23,8 @@ const IMPORT = /^Unsafe call to import for argument 0$/;
  *  with a `flavor` counts only in that flavor's build (scripts/flavor.mjs). */
 const ACCEPTED = [
   {
-    code: "KEY_FIREFOX_ANDROID_UNSUPPORTED_BY_MIN_VERSION", file: /^manifest\.json$/, count: 1,
+    // The oneclick build asks for Firefox 153 (wxt.config.ts), past where Android reads it.
+    flavor: "native", code: "KEY_FIREFOX_ANDROID_UNSUPPORTED_BY_MIN_VERSION", file: /^manifest\.json$/, count: 1,
     why: "data_collection_permissions (AMO's disclosure: nothing collected) is read by Firefox " +
       "for Android only after 140; Anagram is a desktop extension.",
   },
