@@ -20,6 +20,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ensureTestBuild } from "../test-build.mjs";
 import { ROOT, serve } from "./harness.mjs";
+import { NO_MODEL_HOSTS, cancelAutoSetup } from "./model-server.mjs";
 
 const argv = process.argv.slice(2);
 if (process.env.CI) { console.log("SKIP  extension scoring — never in CI"); process.exit(0); }
@@ -58,7 +59,8 @@ const { base, close: closeServer } = await serve({ "/kit/": kit }, { csp: null, 
 const profile = mkdtempSync(join(tmpdir(), "anagram-webengine-ext-"));
 const context = await chromium.launchPersistentContext(profile, {
   headless: process.env.HEADED !== "1", channel: "chromium",
-  args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`, "--no-first-run", "--no-default-browser-check"],
+  // Installing starts the model's download (lib/webengine/autoSetup.ts): Hugging Face resolves to nothing here.
+  args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`, "--no-first-run", "--no-default-browser-check", NO_MODEL_HOSTS],
   env: { ...process.env, HOME: profile },
 });
 const problems = [];
@@ -68,11 +70,14 @@ try {
   sw.on("console", (m) => { if (m.type() === "error") problems.push(`worker: ${m.text()}`); });
   const extId = new URL(sw.url()).host;
   console.log(`Chromium ${context.browser()?.version()}, extension ${extId}`);
+  // What installing started is cancelled before the files are put in its place.
+  await cancelAutoSetup(context, extId);
 
   // Seed the engine's store: the same files, verified by the same hashes. From the engine
   // page, the one extension page whose connect-src is the manifest's (every other page
   // tightens it to 'self' with a meta tag); it is closed again before the engine is asked
-  // anything, so that only the offscreen document answers the background's port.
+  // for the model, so that only the offscreen document answers the background's port. The
+  // engine, started at install, verifies the files it finds when asked for them.
   const seed = await context.newPage();
   await seed.goto(`chrome-extension://${extId}/engine.html`);
   const t0 = Date.now();

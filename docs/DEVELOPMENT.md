@@ -107,7 +107,7 @@ ANAGRAM_EDITLENS_DATA=<EditLens checkout + data> ANAGRAM_MODELKIT=<modelkit> ANA
 node test/webengine/engine-browser.mjs   # the in-browser engine's worker build on a tiny model in a temporary Chromium, under the extension's CSP: download, WebGPU and WASM, idle unload, restart, deletion
 ANAGRAM_MODELKIT=<modelkit> ANAGRAM_LID_MODEL=<lid.176.ftz> ANAGRAM_PARITY_SAMPLE=<sample.json> node test/webengine/parity.mjs   # the in-browser engine (WebGPU and WASM) against the official probabilities and the native counts, with speed and memory, in a Chromium profile under the temp directory (--clean removes it; --firefox <binary> for a Firefox ESR); the sample comes from test/webengine/parity-sample.py; never in CI
 ANAGRAM_MODELKIT=<modelkit> node test/webengine/extension.mjs   # the oneclick build scoring for real through background, offscreen document and worker, model files seeded into OPFS from a local server; --isolate tries the cross-origin isolation keys; never in CI
-ANAGRAM_FIREFOX=<path to firefox 153+> node test/webengine/firefox-extension.mjs   # the oneclick Firefox build: its background page hosts the engine's worker, which answers the contract's status without model files
+ANAGRAM_FIREFOX=<path to firefox 153+> node test/webengine/firefox-extension.mjs   # the oneclick Firefox build: its background page hosts the engine's worker, which starts the download at install and answers the contract after Cancel; --hf lets that download reach Hugging Face (20 MB, no host permission)
 ```
 
 Backend and installer tests need a Python venv with the test dependencies only:
