@@ -43,6 +43,22 @@ const results = []; // { phase, name, status: PASS|FAIL|SKIP, note }
 const record = (phase, name, ok, note = "") =>
   results.push({ phase, name, status: ok === null ? "SKIP" : ok ? "PASS" : "FAIL", note });
 
+// ---- the panel's Copy report -----------------------------------------------------------
+// The report is built before it is written — its paragraph links alone may take 1.5 s
+// (lib/render/textFragment.ts) — so the clipboard is read once it holds something else
+// than the sentinel put there first, never after a fixed pause.
+const NO_REPORT = "NO REPORT COPIED";
+const clearClipboard = (p) => p.evaluate((s) => navigator.clipboard.writeText(s).catch(() => {}), NO_REPORT);
+const readCopiedReport = (p, { timeout = 10000 } = {}) =>
+  p.evaluate(async ({ sentinel, timeout }) => {
+    const end = Date.now() + timeout;
+    for (;;) {
+      const text = await navigator.clipboard.readText().catch(() => null);
+      if ((text && text !== sentinel) || Date.now() > end) return text;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }, { sentinel: NO_REPORT, timeout }).catch(() => null);
+
 // ---- fake fixture (deterministic verdicts) + server for the fixture page -------------
 // Texts carrying the stall marker are answered only after STALL_MS — long enough to
 // hold a selection card in its "Analyzing…" state while the test acts on it. Every
@@ -1177,7 +1193,7 @@ async function sweep(page, steps = 6) {
     await p.waitForSelector(BADGE_SEL, { timeout: 12000 }).catch(() => {});
     await sweep(p, 6);
     await p.waitForTimeout(2500);
-    await p.evaluate(() => navigator.clipboard.writeText("NO REPORT COPIED").catch(() => {}));
+    await clearClipboard(p);
     const clicked = await p.evaluate(() => {
       const sr = document.getElementById("anagram-fab")?.shadowRoot;
       sr?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -1186,8 +1202,7 @@ async function sweep(page, steps = 6) {
       copy.click();
       return true;
     });
-    await p.waitForTimeout(500);
-    const report = await p.evaluate(() => navigator.clipboard.readText().catch(() => null));
+    const report = await readCopiedReport(p);
     const ok =
       clicked &&
       typeof report === "string" &&
@@ -1210,14 +1225,13 @@ async function sweep(page, steps = 6) {
       .waitForFunction((sel) => /^(\.\d\d|1\.0)$/.test(document.querySelector(`#wp ${sel}`)?.shadowRoot?.querySelector(".num")?.textContent ?? ""), BADGE_SEL, { timeout: 12000 })
       .then(() => true)
       .catch(() => false);
-    await p.evaluate(() => navigator.clipboard.writeText("NO REPORT COPIED").catch(() => {}));
+    await clearClipboard(p);
     await p.evaluate(() => {
       const sr = document.getElementById("anagram-fab")?.shadowRoot;
       sr?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       sr?.querySelector(".pcopy")?.click();
     });
-    await p.waitForTimeout(500);
-    const report = await p.evaluate(() => navigator.clipboard.readText().catch(() => null));
+    const report = await readCopiedReport(p);
     // Windows hands the clipboard back with CRLF line ends; the report itself is LF.
     const line = (report ?? "").split(/\r?\n/).find((l) => l.startsWith("1. ")) ?? "";
     const ok = chipped && /; \d+ words; read in \d+ passes: (\.\d\d|1\.0)( · (\.\d\d|1\.0))+\)$/.test(line) && !line.includes("not read");
@@ -1243,18 +1257,14 @@ async function sweep(page, steps = 6) {
       .then(() => true)
       .catch(() => false);
     const copyReport = async () => {
-      await p.evaluate(() => navigator.clipboard.writeText("NO REPORT COPIED").catch(() => {}));
+      await clearClipboard(p);
       await p.evaluate(() => {
         const sr = document.getElementById("anagram-fab")?.shadowRoot;
         if (!sr?.querySelector(".panel.open")) sr?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         sr?.querySelector(".pcopy")?.click();
       });
-      for (let i = 0; i < 30; i++) {
-        await p.waitForTimeout(200);
-        const text = await p.evaluate(() => navigator.clipboard.readText().catch(() => null));
-        if (text && text !== "NO REPORT COPIED") return text.replace(/\r\n/g, "\n");
-      }
-      return null;
+      const text = await readCopiedReport(p);
+      return text && text !== NO_REPORT ? text.replace(/\r\n/g, "\n") : null;
     };
     const linksIn = (report) => [...(report ?? "").matchAll(/^ {3}Open at this paragraph: (\S+)$/gm)].map((m) => m[1]);
     await setReport(false, false);
@@ -1303,14 +1313,13 @@ async function sweep(page, steps = 6) {
       await p.goto(server.url(path), { waitUntil: "load" });
       await p.waitForFunction(ready, BADGE_SEL, { timeout: 15000 }).catch(() => {});
       await p.waitForTimeout(1000); // the ball is up before the first walk has run
-      await p.evaluate(() => navigator.clipboard.writeText("NO REPORT COPIED").catch(() => {}));
+      await clearClipboard(p);
       await p.evaluate(() => {
         const sr = document.getElementById("anagram-fab")?.shadowRoot;
         sr?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         sr?.querySelector(".pcopy")?.click();
       });
-      await p.waitForTimeout(600);
-      return p.evaluate(() => navigator.clipboard.readText().catch(() => null));
+      return readCopiedReport(p);
     };
     const report = await copyFrom("/short.html", () => !!document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count"));
     record(
@@ -1541,7 +1550,7 @@ async function sweep(page, steps = 6) {
       (sel) => ["k0", "k1", "k2", "k3", "k4"].map((id) => document.querySelector(`#${id} ${sel}`)?.shadowRoot?.querySelector(".num")?.textContent?.trim() ?? null),
       BADGE_SEL,
     );
-    await p.evaluate(() => navigator.clipboard.writeText("NO REPORT COPIED").catch(() => {}));
+    await clearClipboard(p);
     const listed = await p.evaluate(() => {
       const sr = document.getElementById("anagram-fab")?.shadowRoot;
       sr?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -1549,9 +1558,8 @@ async function sweep(page, steps = 6) {
       sr?.querySelector(".pcopy")?.click();
       return rows;
     });
-    await p.waitForTimeout(500);
+    const report = await readCopiedReport(p);
     await p.keyboard.press("Escape");
-    const report = await p.evaluate(() => navigator.clipboard.readText().catch(() => null));
     const reported = (report ?? "").split(/\r?\n/).map((l) => /^\d+\. \*\*[^*]+ · (\.\d\d|1\.0)\*\*/.exec(l)?.[1]).filter(Boolean);
     const lateAt = await p.evaluate((sel) => Math.round(document.querySelector(`#k0 ${sel}`).getBoundingClientRect().top + window.scrollY), BADGE_SEL).catch(() => null);
     await p.evaluate(() => window.scrollTo(0, 0));
@@ -1949,7 +1957,7 @@ async function sweep(page, steps = 6) {
     let report = null;
     let flagged;
     for (let attempt = 0; attempt < 10; attempt++) {
-      await p.evaluate(() => navigator.clipboard.writeText("NO REPORT COPIED").catch(() => {}));
+      await clearClipboard(p);
       panel = await p.evaluate(async () => {
         const sr = document.getElementById("anagram-fab")?.shadowRoot;
         const toggle = () => sr?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -1960,10 +1968,9 @@ async function sweep(page, steps = 6) {
         toggle();
         await new Promise((r) => setTimeout(r, 400));
         sr?.querySelector(".pcopy")?.click();
-        await new Promise((r) => setTimeout(r, 300));
         return { open: !!sr?.querySelector(".panel.open"), items: sr?.querySelectorAll(".pitem").length ?? -1 };
       });
-      report = await p.evaluate(() => navigator.clipboard.readText().catch(() => null));
+      report = await readCopiedReport(p);
       flagged = (report ?? "").match(/· Flagged: (\d+)/)?.[1];
       if (panel.items === Number(flagged)) break;
       await p.waitForTimeout(500);
@@ -2230,9 +2237,17 @@ async function sweep(page, steps = 6) {
     const waitStatus = (page, words, timeout = 15000) => page.waitForFunction(
       (w) => document.querySelector("#componentSettings .component-status")?.textContent === w, words, { timeout },
     ).then(() => true).catch(() => false);
+    // "Ready" is painted from the component's status; the runtime panel it mounts then asks
+    // for the configurations on its own (lib/ui/runtimeSettings.ts), so the active row
+    // arrives a round trip later. The card is read once both are there.
+    const waitReady = (page, timeout = 15000) => page.waitForFunction(
+      () => document.querySelector("#componentSettings .component-status")?.textContent === "Ready" &&
+        !!document.querySelector('#runtimeSettings .runtime-row[data-active="true"]'),
+      null, { timeout },
+    ).then(() => true).catch(() => false);
     const p = await context.newPage();
     await p.goto(onboardingUrl, { waitUntil: "load" });
-    const sawRunning = await waitStatus(p, "Ready");
+    const sawRunning = await waitReady(p);
     const up = await readCard(p);
     record("ui", "the setup page says Ready with the active configuration, the site grant and no install command",
       // The test build already grants every site, so the grant button gives way to the go line.
@@ -2248,7 +2263,7 @@ async function sweep(page, steps = 6) {
       down.active === null && down.primary === null,
       JSON.stringify(down));
     await fixture.resume();
-    const cameBack = await waitStatus(p, "Ready");
+    const cameBack = await waitReady(p);
     const back = await readCard(p);
     record("ui", "the setup page follows engine recovery without a reload",
       cameBack && back.active?.includes("Test CPU · FP32") && back.ready && back.install === null, JSON.stringify(back));
@@ -2991,7 +3006,7 @@ ${KEY_TAGS.map((t, i) => `<p id="z${i + 1}">${KEY_PARA(t)}</p>`).join("\n")}
         };
       }, BADGE_SEL);
 
-      await p.evaluate(() => navigator.clipboard.writeText("NO REPORT COPIED").catch(() => {}));
+      await clearClipboard(p);
       const panel = await p.evaluate(() => {
         const sr = document.getElementById("anagram-fab")?.shadowRoot;
         sr?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -3007,11 +3022,10 @@ ${KEY_TAGS.map((t, i) => `<p id="z${i + 1}">${KEY_PARA(t)}</p>`).join("\n")}
       await p.evaluate(() => {
         document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".pcopy")?.click();
       });
-      await p.waitForTimeout(600);
+      const report = await readCopiedReport(p);
       const copied = await p.evaluate(
         () => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".pcopy")?.textContent ?? "",
       );
-      const report = await p.evaluate(() => navigator.clipboard.readText().catch(() => null));
       await p.close();
 
       const seen = { uiLang, menus, popup: popupText, options: optionsText, chip, panel, copied, report: (report ?? "").slice(0, 120) };

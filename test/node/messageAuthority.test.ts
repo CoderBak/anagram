@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
-import { fakeBrowser } from "wxt/testing";
+import { fakeBrowser } from "wxt/testing/fake-browser";
 import { createDocumentAuthority } from "../../lib/access/authority";
 import { callerRole,parseWorkerMessage,permitsMessage,SESSION_PORT,type AccessSender } from "../../lib/access/messages";
 import { ACTIONS } from "../../lib/messaging/protocol";

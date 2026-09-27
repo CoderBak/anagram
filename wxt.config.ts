@@ -139,8 +139,14 @@ export default defineConfig({
       "test/*.png", "test/matrix.json", "test/survey.json", "test/a11y.json",
     ],
   },
-  vite: () => ({ plugins: [englishFallback(), thirdPartyNotices()] }),
+  // A dev build is never shipped, and WXT's reloader pulls in code no shipping build has.
+  vite: ({ command }) => ({ plugins: [englishFallback(), ...(command === "serve" ? [] : [thirdPartyNotices()])] }),
   hooks: {
+    // WXT 0.21's generated tsconfig adds noUncheckedIndexedAccess, which the code base does
+    // not meet yet (about 800 indexed reads, most in lib/pdf/). The other options hold.
+    "prepare:tsconfig": (_wxt, { tsconfig }) => {
+      delete tsconfig.compilerOptions.noUncheckedIndexedAccess;
+    },
     // AGPL: every copy of the extension carries the licence text, and the notices of the
     // third-party work it contains.
     "build:publicAssets": (_wxt, files) => {
@@ -166,8 +172,6 @@ export default defineConfig({
       if (wxt.config.command === "serve") return;
       if (TEST_GRANT_ALL) manifest.host_permissions = [...ALL_SITES];
       else delete manifest.host_permissions;
-      // With no script left to declare, WXT still leaves the empty array behind.
-      if (manifest.content_scripts?.length === 0) delete manifest.content_scripts;
     },
   },
   manifest: ({ browser }) => {

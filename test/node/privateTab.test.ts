@@ -7,7 +7,7 @@
 // a fake here: vitest has no IndexedDB, and what these checks are about is which rows
 // reach the persistent layer at all, not how it keeps them.
 import { describe, expect, it, beforeEach } from "vitest";
-import { fakeBrowser } from "wxt/testing";
+import { fakeBrowser } from "wxt/testing/fake-browser";
 import { createSwCache } from "../../lib/backend/swCache";
 import { createRouter } from "../../lib/backend/router";
 import { fakeScoreStore as fakeStore } from "./scoreStore";

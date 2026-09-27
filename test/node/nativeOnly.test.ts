@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fakeBrowser } from "wxt/testing";
+import { fakeBrowser } from "wxt/testing/fake-browser";
 import { getScoreClient } from "../../lib/backend/getScoreClient";
 import { nativeTransport } from "../../lib/backend/nativeTransport";
 import { createRouter } from "../../lib/backend/router";

@@ -7,7 +7,7 @@
 // and reach the tabs that are already open, does a withdrawal stop them, is any of it
 // upset by the same event arriving twice or by a worker that was evicted halfway.
 import { describe, expect, it, beforeEach } from "vitest";
-import { fakeBrowser } from "wxt/testing";
+import { fakeBrowser } from "wxt/testing/fake-browser";
 import { ACTIONS } from "../../lib/messaging/protocol";
 import { ALL_SITES, matchesAny } from "../../lib/access/patterns";
 import { ensureInjected, installAccess, syncRegistration } from "../../lib/access/worker";

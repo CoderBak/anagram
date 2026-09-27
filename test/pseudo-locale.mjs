@@ -1,0 +1,333 @@
+// test/pseudo-locale.mjs — the extension's pages with longer words than English has.
+//
+// A translation is rarely the length of the English it replaces, and a control laid out
+// for "Add" has to hold whatever the next language says there. This renders every page a
+// reader sees — setup (with and without an engine), settings, popup, the PDF reader's own
+// chrome, chips, a chip's card, the ball's panel — at 1280 and 400 px, three times: in a
+// pseudo-locale (every English message accented and stretched by the pseudo-localization
+// package, placeholders kept), in Chinese, and in English. On each it looks for the ways
+// a longer label breaks a layout:
+//
+//   cut off   — a control's words run out of its box, or a box that clips (overflow
+//               hidden) cuts the control;
+//   wrapped   — a button's label breaks onto a second line;
+//   off-page  — a control sticks out of the window, or the page scrolls sideways;
+//   overlap   — two controls cover each other.
+//
+// The pseudo-locale is the build's own _locales/en rewritten in a copy of the test build,
+// so every string still comes through chrome.i18n exactly as it ships.
+//
+//   npm run test:pseudo-locale
+//   PSEUDO_SHOTS=1 npm run test:pseudo-locale   # and a screenshot of every page checked
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pseudoLocalizeString } from "pseudo-localization";
+import { EXT, artifact, launchExtension, requireBuild, serveHtml, uiLanguage, uiLanguageOf, waitForRegistration } from "./harness.mjs";
+import { TEST_PDF, pdfChips, readerRead } from "./pdf-fixture.mjs";
+
+requireBuild();
+
+const results = [];
+const record = (name, ok, note = "") => results.push({ name, status: ok === null ? "SKIP" : ok ? "PASS" : "FAIL", note: String(note) });
+
+// ---- the pseudo-locale ---------------------------------------------------------------------
+
+/** Accent and stretch the words; leave $1…$9 and $NAMED$ placeholders exactly as they are. */
+const pseudo = (message) =>
+  message
+    .split(/(\$\d|\$[A-Za-z_]+\$)/)
+    .map((part, i) => (i % 2 ? part : pseudoLocalizeString(part)))
+    .join("");
+
+function pseudoBuild() {
+  const dir = mkdtempSync(join(tmpdir(), "anagram-pseudo-"));
+  const ext = join(dir, "extension");
+  cpSync(EXT, ext, { recursive: true });
+  const file = join(ext, "_locales", "en", "messages.json");
+  const messages = JSON.parse(readFileSync(file, "utf8"));
+  for (const entry of Object.values(messages)) entry.message = pseudo(entry.message);
+  writeFileSync(file, JSON.stringify(messages));
+  return { dir, ext };
+}
+
+// ---- what a broken layout looks like -------------------------------------------------------
+
+/**
+ * Runs in the page. `scope`, when given, limits the check to the elements under it (and
+ * to overlaps that involve one of them): the reader's toolbar is upstream pdf.js, and only
+ * what Anagram puts there is ours to answer for. Open shadow roots are walked.
+ */
+function layoutFaults(scope) {
+  const CONTROL =
+    'button, a[href], select, input:not([type="hidden"]), textarea, label, summary, [role="button"], [role="tab"], [role="switch"], [role="link"], [role="menuitem"], .pill, .card .head, .card .row';
+  const up = (el) => el.parentElement ?? (el.getRootNode() instanceof ShadowRoot ? el.getRootNode().host : null);
+  const within = (el, sel) => {
+    for (let a = el; a; a = up(a)) if (a.matches?.(sel)) return true;
+    return false;
+  };
+  const contains = (a, b) => {
+    for (let x = b; x; x = up(x)) if (x === a) return true;
+    return false;
+  };
+  const shown = (el) => {
+    const r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) return false;
+    for (let a = el; a; a = up(a)) {
+      const cs = getComputedStyle(a);
+      if (cs.display === "none" || cs.visibility === "hidden" || Number(cs.opacity) === 0) return false;
+      // Kept for a screen reader only: a clipped 1 px box.
+      if (cs.clipPath !== "none" && a.getBoundingClientRect().width < 2) return false;
+    }
+    return true;
+  };
+  const describe = (el) => {
+    const text = (el.textContent || el.getAttribute("aria-label") || el.value || "").replace(/\s+/g, " ").trim().slice(0, 40);
+    const cls = typeof el.className === "string" && el.className ? "." + el.className.trim().split(/\s+/).slice(0, 2).join(".") : "";
+    return `${el.tagName.toLowerCase()}${el.id ? "#" + el.id : ""}${cls}${text ? ` "${text}"` : ""}`;
+  };
+  const controls = [];
+  const walk = (root) => {
+    for (const el of root.querySelectorAll("*")) {
+      if (el.matches(CONTROL) && shown(el)) controls.push(el);
+      if (el.shadowRoot) walk(el.shadowRoot);
+    }
+  };
+  walk(document);
+  const subject = (el) => !scope || within(el, scope);
+  /** Where the control's own words are drawn: its text nodes' boxes, not its box. */
+  const textBox = (el) => {
+    const range = document.createRange(), walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let box = null;
+    const tops = [];
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (!n.textContent.trim() || !n.parentElement) continue;
+      // Words kept for a screen reader only (a 1 px box, clipped) are not drawn at all.
+      const holder = n.parentElement.getBoundingClientRect(), hs = getComputedStyle(n.parentElement);
+      if (holder.width < 2 || holder.height < 2 || hs.clipPath !== "none" || hs.visibility === "hidden") continue;
+      // A line cut with an ellipsis says so: the panel's excerpt of a paragraph, the Docs
+      // bar's document title. Only page text is drawn that way.
+      if (hs.textOverflow === "ellipsis") continue;
+      range.selectNodeContents(n);
+      for (const q of range.getClientRects()) {
+        if (q.width < 0.5 || q.height < 0.5) continue;
+        if (!tops.some((t) => Math.abs(t - q.top) < q.height / 2)) tops.push(q.top);
+        box = box
+          ? { left: Math.min(box.left, q.left), top: Math.min(box.top, q.top), right: Math.max(box.right, q.right), bottom: Math.max(box.bottom, q.bottom) }
+          : { left: q.left, top: q.top, right: q.right, bottom: q.bottom };
+      }
+    }
+    return box && { ...box, lines: tops.length };
+  };
+  // A button whose label breaks onto a second line has outgrown its row.
+  const ONE_LINE = 'button, [role="button"], [role="tab"], .btn, .pill';
+  // Drawn over one another on purpose: the flagged count sits on the ball's corner.
+  const DESIGNED = [[".fab", ".count"]];
+  const designed = (a, b) => DESIGNED.some(([x, y]) => (a.matches(x) && b.matches(y)) || (a.matches(y) && b.matches(x)));
+  const faults = [];
+  const W = document.documentElement.clientWidth, H = innerHeight;
+  if (!scope && document.documentElement.scrollWidth > W + 1)
+    faults.push(`the page scrolls sideways (${document.documentElement.scrollWidth} px in ${W})`);
+  for (const el of controls) {
+    if (!subject(el)) continue;
+    const cs = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    const text = cs.display !== "inline" ? textBox(el) : null;
+    if (text && (text.left < r.left - 1 || text.right > r.right + 1))
+      faults.push(`${describe(el)}: its words run ${Math.round(Math.max(r.left - text.left, text.right - r.right))} px out of its box at the side`);
+    if (text && text.lines > 1 && el.matches(ONE_LINE)) faults.push(`${describe(el)}: its label breaks onto ${text.lines} lines`);
+    // Glyphs a pixel or two taller than a tight line box are drawn all the same; a line that
+    // spills out of its box, or a box that clips its words, is not.
+    const spill = /hidden|clip/.test(cs.overflowY) ? 1 : parseFloat(cs.fontSize) / 2;
+    if (text && (text.top < r.top - spill || text.bottom > r.bottom + spill))
+      faults.push(`${describe(el)}: its words run ${Math.round(Math.max(r.top - text.top, text.bottom - r.bottom))} px out of its box at the top or bottom`);
+    let scrolled = false, fixed = cs.position === "fixed";
+    for (let a = up(el); a && a !== document.documentElement && a !== document.body; a = up(a)) {
+      const as = getComputedStyle(a);
+      if (as.position === "fixed") fixed = true;
+      const ar = a.getBoundingClientRect();
+      const clipX = /hidden|clip/.test(as.overflowX), clipY = /hidden|clip/.test(as.overflowY);
+      if (clipX && (r.left < ar.left - 1 || r.right > ar.right + 1)) {
+        faults.push(`${describe(el)}: cut off at the side by ${describe(a)}`);
+        break;
+      }
+      if (clipY && (r.top < ar.top - 1 || r.bottom > ar.bottom + 1)) {
+        faults.push(`${describe(el)}: cut off at the top or bottom by ${describe(a)}`);
+        break;
+      }
+      if (/auto|scroll/.test(as.overflowX + as.overflowY)) {
+        scrolled = true;
+        break;
+      }
+    }
+    // A ball left idle slides half off its edge on purpose (lib/render/fab.ts).
+    if (within(el, ".stack.tucked")) continue;
+    if (!scrolled && (r.left < -1 || r.right > W + 1)) faults.push(`${describe(el)}: sticks out of the window at the side`);
+    if (!scrolled && fixed && (r.top < -1 || r.bottom > H + 1)) faults.push(`${describe(el)}: sticks out of the window at the top or bottom`);
+  }
+  // A fixed layer (the ball, its panel, a pinned card) lies over the page on purpose.
+  const layer = (el) => {
+    for (let a = el; a; a = up(a)) if (getComputedStyle(a).position === "fixed") return a;
+    return null;
+  };
+  const labelled = (a, b) => a instanceof HTMLLabelElement && (a.control === b || a.contains(b));
+  for (let i = 0; i < controls.length; i++) {
+    for (let j = i + 1; j < controls.length; j++) {
+      const a = controls[i], b = controls[j];
+      if (!subject(a) && !subject(b)) continue;
+      if (contains(a, b) || contains(b, a) || labelled(a, b) || labelled(b, a) || designed(a, b) || layer(a) !== layer(b)) continue;
+      const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+      const w = Math.min(ra.right, rb.right) - Math.max(ra.left, rb.left);
+      const h = Math.min(ra.bottom, rb.bottom) - Math.max(ra.top, rb.top);
+      if (w > 2 && h > 2) faults.push(`${describe(a)} and ${describe(b)} overlap (${Math.round(w)}×${Math.round(h)} px)`);
+    }
+  }
+  return [...new Set(faults)];
+}
+
+/** Layout as it ends up, not on its way there: no transitions (a <details> opens by
+ *  animating its height), fonts loaded, two frames drawn. */
+const settle = (page) =>
+  page.evaluate(async () => {
+    const still = "*, *::before, *::after, ::details-content { transition: none !important; animation: none !important; }";
+    const roots = [document];
+    for (let i = 0; i < roots.length; i++) for (const el of roots[i].querySelectorAll("*")) if (el.shadowRoot) roots.push(el.shadowRoot);
+    for (const root of roots) {
+      if (root.querySelector?.(":scope > style[data-still]")) continue;
+      const style = document.createElement("style");
+      style.dataset.still = "";
+      style.textContent = still;
+      (root === document ? document.head : root).append(style);
+    }
+    await document.fonts.ready;
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  });
+
+async function check(page, lang, what, { scope, shot } = {}) {
+  await settle(page);
+  const faults = await page.evaluate(layoutFaults, scope ?? null).catch((e) => [`could not be checked: ${e}`]);
+  const size = page.viewportSize();
+  const name = `${lang}: ${what} at ${size.width} px`;
+  if (faults.length || process.env.PSEUDO_SHOTS) await page.screenshot({ path: artifact(`pseudo-${shot ?? what.replace(/\W+/g, "-")}-${lang}-${size.width}.png`), fullPage: true }).catch(() => {});
+  record(name, faults.length === 0, faults.slice(0, 8).join("; "));
+}
+
+// ---- the pages ------------------------------------------------------------------------------
+
+const PARA = (tag) =>
+  `${tag} paragraph is long enough to be scored on its own because it carries well over seventy-five ordinary English words describing nothing in particular except the fact that a panel full of longer labels must still fit the window it opens in, which is what this page is for, and each of its paragraphs has to be read and chipped before the ball can offer a list of the flagged ones and a way to copy the report.`;
+const server = await serveHtml({
+  "/article.html": `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>article</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+${["ITEM-16", "ITEM-111", "ITEM-149"].map((t) => `<p>${PARA(t)}</p>`).join("\n")}</body></html>`,
+});
+
+const WIDE = { width: 1280, height: 900 };
+const NARROW = { width: 400, height: 800 };
+
+async function pages(context, extId, fixture, lang) {
+  const url = (p) => `chrome-extension://${extId}/${p}`;
+  const page = await context.newPage();
+  const componentReady = () =>
+    page.waitForFunction(() => !!document.querySelector('#runtimeSettings .runtime-row[data-active="true"]'), null, { timeout: 15000 }).catch(() => {});
+  const openFolds = () => page.evaluate(() => document.querySelectorAll("details").forEach((d) => d.setAttribute("open", "")));
+
+  // The popup is a fixed 300 px wide, whatever the window.
+  await page.setViewportSize({ width: 300, height: 600 });
+  await page.goto(url("popup.html"), { waitUntil: "load" });
+  await page.waitForFunction(() => document.getElementById("status")?.textContent !== "…", null, { timeout: 10000 }).catch(() => {});
+  await check(page, lang, "popup");
+
+  for (const size of [WIDE, NARROW]) {
+    await page.setViewportSize(size);
+    await page.goto(url("options.html"), { waitUntil: "load" });
+    await componentReady();
+    await openFolds();
+    await check(page, lang, "settings");
+
+    await page.goto(url("onboarding.html"), { waitUntil: "load" });
+    await componentReady();
+    await openFolds();
+    await check(page, lang, "setup, engine ready");
+  }
+
+  // Setup without an engine: the install command and its buttons.
+  await fixture.close();
+  for (const size of [WIDE, NARROW]) {
+    await page.setViewportSize(size);
+    await page.goto(url("onboarding.html"), { waitUntil: "load" });
+    await page.locator("#install:not([hidden])").waitFor({ timeout: 15000 }).catch(() => {});
+    await check(page, lang, "setup, no engine");
+  }
+  await fixture.resume();
+
+  // The reader: its own controls in the upstream toolbar, the picker, and the ball.
+  const READER_OWN = '#anagramAnalyze, #analysisScope, #original, #drop, #notice, [data-anagram]';
+  for (const size of [WIDE, NARROW]) {
+    await page.setViewportSize(size);
+    await page.goto(url("reader.html"), { waitUntil: "load" });
+    await page.locator("#drop:not([hidden])").waitFor({ timeout: 15000 }).catch(() => {});
+    await check(page, lang, "reader, empty", { scope: READER_OWN });
+    await page.setInputFiles("#file", { name: "document.pdf", mimeType: "application/pdf", buffer: TEST_PDF });
+    await readerRead(page).catch(() => {});
+    await pdfChips(page);
+    await check(page, lang, "reader, reading", { scope: READER_OWN });
+  }
+
+  // A web page with chips (all three AI-generated under the fixture's text-seeded scores, so
+  // the panel lists them), a chip's card pinned open, and the ball's panel open over it.
+  const OURS = "[data-anagram]";
+  for (const size of [WIDE, NARROW]) {
+    await page.setViewportSize(size);
+    await page.goto(server.url("/article.html"), { waitUntil: "load" });
+    await page.waitForFunction(
+      () => [...document.querySelectorAll('[data-anagram="host"]:not(#anagram-fab)')].filter((h) => h.shadowRoot?.querySelector(".pill:not(.pending)")).length >= 3,
+      null,
+      { timeout: 20000 },
+    ).catch(() => {});
+    await check(page, lang, "chips on a page", { scope: OURS });
+    await page.locator('[data-anagram="host"]:not(#anagram-fab) .pill').first().click().catch(() => {});
+    await page.waitForFunction(() => [...document.querySelectorAll('[data-anagram="host"]')].some((h) => h.shadowRoot?.querySelector(".card.open")), null, { timeout: 10000 }).catch(() => {});
+    await check(page, lang, "a chip's card", { scope: OURS });
+    // Unpinned, and the pointer off it, so the card does not stay up for the panel.
+    await page.locator('[data-anagram="host"]:not(#anagram-fab) .pill').first().click().catch(() => {});
+    await page.mouse.move(1, 1);
+    await page.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    await page.waitForFunction(() => !!document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".panel.open"), null, { timeout: 10000 }).catch(() => {});
+    await check(page, lang, "panel", { scope: OURS });
+  }
+  await page.close();
+}
+
+async function run(lang, launch) {
+  const { context, sw, extId, fixture } = await launchExtension(launch);
+  try {
+    if (launch.extDir) await waitForRegistration(sw);
+    const got = await uiLanguageOf(sw);
+    const want = lang === "zh-CN" ? "zh-CN" : "en";
+    if (!got?.startsWith(want.slice(0, 2)) || (want === "zh-CN" && !/^zh/i.test(got))) {
+      record(`${lang}: the browser came up in that language`, null, `it is in ${got}`);
+      return;
+    }
+    await pages(context, extId, fixture, lang);
+  } finally {
+    await context.close();
+  }
+}
+
+const built = pseudoBuild();
+try {
+  await run("pseudo", { extDir: built.ext });
+  await run("zh-CN", uiLanguage("zh-CN"));
+  await run("en", {});
+} finally {
+  rmSync(built.dir, { recursive: true, force: true });
+  await server.close();
+}
+
+console.log("\n=== PSEUDO-LOCALE LAYOUT ===");
+for (const r of results) console.log(`${r.status.padEnd(4)}  ${r.name}${r.note && r.status !== "PASS" ? `  —  ${r.note}` : ""}`);
+const fails = results.filter((r) => r.status === "FAIL");
+const skips = results.filter((r) => r.status === "SKIP");
+console.log(`\n${results.length - fails.length - skips.length}/${results.length} checks passed${skips.length ? `, ${skips.length} skipped` : ""}`);
+console.log(fails.length === 0 ? "✅ PSEUDO-LOCALE GREEN" : "❌ PSEUDO-LOCALE FAILURES");
+process.exit(fails.length === 0 ? 0 : 1);

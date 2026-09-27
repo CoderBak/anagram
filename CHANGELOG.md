@@ -100,6 +100,8 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- The Copy report button in the panel keeps to one line when the panel's title needs more
+  room, as it does in a longer translation; the title wraps instead.
 - The legal fine print a site sets under its text or its offer is no longer read: boxes
   named as disclaimers or fine print, such as the numbered footnotes under a phone's product
   page or the fee and risk notices under a bank's calculator. On the web benchmark's

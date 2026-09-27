@@ -3,8 +3,11 @@ import http from "node:http";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { withFakeNative, requireBuild, BADGE_SEL } from "./harness.mjs";
-import { TEST_PDF, LOCKED_PDF, PDF_PASSWORD, openPdfInReader } from "./pdf-fixture.mjs";
+import { withFakeNative, requireBuild, closeServer } from "./harness.mjs";
+import {
+  TEST_PDF, LOCKED_PDF, PDF_PASSWORD,
+  openPdfInReader, readerReady, readerRead, readerState, pdfChipCount, pdfChips, pdfTabChip,
+} from "./pdf-fixture.mjs";
 
 requireBuild();
 
@@ -71,7 +74,7 @@ const files = await new Promise((resolve) => {
     const port = server.address().port;
     resolve({
       url: (path) => `http://localhost:${port}${path}`,
-      close: () => new Promise((r) => server.close(() => r())),
+      close: () => closeServer(server),
     });
   });
 });
@@ -125,7 +128,7 @@ const READER = `chrome-extension://${extId}/reader.html`;
 const driver = await context.newPage();
 await driver.goto(`chrome-extension://${extId}/popup.html`, { waitUntil: "load" });
 
-const ready = (page) => page.waitForFunction(() => !!window.PDFViewerApplication?.pdfDocument && document.querySelectorAll("#viewer .textLayer span").length > 5, null, {timeout:25000});
+const ready = (page) => readerReady(page);
 
 const setAutoOpen = (value) =>
   sw.evaluate((v) => new Promise((r) => chrome.storage.local.set({ autoOpenPdfs: v }, r)), value);
@@ -140,17 +143,28 @@ const tabState = (page) =>
     }))
     .catch(() => ({ contentType: null, chip: null, navigationType: null }));
 
-/** Open `url` in a tab of its own and give the worker time to move it if it means to. */
-async function visit(url, { settle = 4000 } = {}) {
+/** Open `url` in a tab of its own. */
+async function visit(url) {
   const page = await context.newPage();
   await page.goto(url, { waitUntil: "load" }).catch(() => {});
-  await page.waitForTimeout(settle);
   return page;
 }
+/** The worker has moved this tab into the reader, showing `src`. */
+const inReader = (page, src) =>
+  page
+    .waitForURL((u) => u.href.startsWith(`${READER}?src=`) && (!src || u.searchParams.get("src") === src), { timeout: 15000 })
+    .then(() => true, () => false);
+/** How long a check that something does NOT happen watches for it: there is no signal
+ *  for a navigation or a read that never comes. Everything that should happen is waited for. */
+const ABSENCE_MS = 3000;
+/** The reader has settled on a page it will not load: its file picker is up. It is also the
+ *  sign that the viewer has started — a file chosen before that is not taken. */
+const pickerShown = (page) => page.locator("#drop:not([hidden])").waitFor({ timeout: 15000 }).then(() => true, () => false);
 
 
 {
   const page = await visit("https://arxiv.org/pdf/2402.17764");
+  await pdfTabChip(page);
   const before = await tabState(page);
   await page
     .evaluate(() => document.getElementById("anagram-fab").shadowRoot.querySelector(".action").click())
@@ -167,7 +181,8 @@ async function visit(url, { settle = 4000 } = {}) {
 }
 
 {
-  const page = await visit("https://arxiv.org/pdf/2402.17764v1", { settle: 2500 });
+  const page = await visit("https://arxiv.org/pdf/2402.17764v1");
+  await pdfTabChip(page);
   const tabId = await sw.evaluate(async (url) => {
     const [tab] = await chrome.tabs.query({ url });
     return tab?.id ?? null;
@@ -176,7 +191,7 @@ async function visit(url, { settle = 4000 } = {}) {
     ([url, id]) => chrome.runtime.sendMessage({ action: "openPdfReader", url, tabId: id }),
     ["https://arxiv.org/pdf/2402.17764v1", tabId],
   );
-  await page.waitForTimeout(3000);
+  await inReader(page, "https://arxiv.org/pdf/2402.17764v1");
   record(
     "the popup's button takes the same route, and the version in the address is kept",
     new URL(page.url()).searchParams.get("src") === "https://arxiv.org/pdf/2402.17764v1",
@@ -197,7 +212,9 @@ async function visit(url, { settle = 4000 } = {}) {
 
 
 {
-  const page = await visit(files.url("/doc.pdf"), { settle: 3500 });
+  const page = await visit(files.url("/doc.pdf"));
+  await pdfTabChip(page);
+  await page.waitForTimeout(ABSENCE_MS);
   const state = await tabState(page);
   record(
     "off (the default): a PDF tab stays a PDF tab, with the ball offering Analyze PDF",
@@ -212,16 +229,17 @@ await setAutoOpen(true);
 
 {
   const page = await visit(files.url("/doc.pdf"));
-  await ready(page);
-  await page.waitForTimeout(2500);
+  await inReader(page);
+  await readerRead(page).catch(() => {});
+  const chips = await pdfChips(page);
   const reading = await page
-    .evaluate((sel) => ({
+    .evaluate(() => ({
       pages: document.querySelectorAll(".page").length,
       spans: document.querySelectorAll(".textLayer span").length,
-      chips: document.querySelectorAll(sel).length,
       title: document.title,
-    }), BADGE_SEL)
-    .catch(() => ({ pages: 0, spans: 0, chips: 0, title: null }));
+    }))
+    .catch(() => ({ pages: 0, spans: 0, title: null }));
+  reading.chips = chips;
   record(
     "on: the same PDF lands in the reading mode, with its pages and chips",
     page.url() === `${READER}?src=${encodeURIComponent(files.url("/doc.pdf"))}` &&
@@ -232,7 +250,8 @@ await setAutoOpen(true);
   );
 
   await page.goBack({ waitUntil: "load" }).catch(() => {});
-  await page.waitForTimeout(3500);
+  await pdfTabChip(page);
+  await page.waitForTimeout(ABSENCE_MS);
   const back = await tabState(page);
   record(
     "on + Back: the tab stays on the PDF and the ball offers Analyze PDF again",
@@ -246,7 +265,8 @@ await setAutoOpen(true);
 
 {
   const page = await visit(files.url("/doc.pdf?original"));
-  await page.waitForTimeout(2000);
+  await inReader(page);
+  await page.locator("#original:not([hidden])").waitFor({ timeout: 15000 }).catch(() => {});
   const clicked = await page
     .evaluate(() => {
       const button = document.getElementById("original");
@@ -255,7 +275,9 @@ await setAutoOpen(true);
       return "clicked";
     })
     .catch((e) => String(e));
-  await page.waitForTimeout(3500);
+  await page.waitForURL(files.url("/doc.pdf?original"), { timeout: 15000 }).catch(() => {});
+  await pdfTabChip(page);
+  await page.waitForTimeout(ABSENCE_MS);
   const original = await tabState(page);
   record(
     "on + Open original: the reader hands the tab back to the PDF and it stays there",
@@ -266,9 +288,8 @@ await setAutoOpen(true);
   );
 
   await page.goto(files.url("/ordinary.html"), { waitUntil: "load" }).catch(() => {});
-  await page.waitForTimeout(800);
   await page.goto(files.url("/doc.pdf?original"), { waitUntil: "load" }).catch(() => {});
-  await page.waitForTimeout(3500);
+  await inReader(page);
   record(
     "on: the pass is spent — the same PDF opened again goes to the reading mode",
     page.url().startsWith(`${READER}?src=`),
@@ -278,11 +299,11 @@ await setAutoOpen(true);
 }
 
 {
-  const front = await visit(files.url("/ordinary.html"), { settle: 1000 });
+  const front = await visit(files.url("/ordinary.html"));
   const background = await context.newPage();
   await background.goto(files.url("/background.pdf"), { waitUntil: "load" }).catch(() => {});
   await front.bringToFront();
-  await background.waitForTimeout(4000);
+  await inReader(background);
   record(
     "on: a PDF opened in a background tab moves THAT tab, and the foreground tab stays put",
     background.url().startsWith(`${READER}?src=`) && front.url() === files.url("/ordinary.html"),
@@ -312,7 +333,8 @@ await setAutoOpen(true);
     )
     .catch(() => false);
   const page = await visit(`file://${LOCAL_PDF}`);
-  await page.waitForTimeout(2000);
+  // Nothing on a file: page without file access can say it has been left alone.
+  await page.waitForTimeout(ABSENCE_MS);
   record(
     "on: a local PDF without its separate authorization remains in the native viewer",
     page.url() === `file://${LOCAL_PDF}`,
@@ -323,6 +345,7 @@ await setAutoOpen(true);
 
 {
   const page = await visit("https://arxiv.org/pdf/2402.17764");
+  await inReader(page, "https://arxiv.org/pdf/2402.17764");
   record(
     "on: an arXiv PDF tab goes to the reading mode showing that same PDF",
     new URL(page.url()).searchParams.get("src") === "https://arxiv.org/pdf/2402.17764",
@@ -335,7 +358,9 @@ await setAutoOpen(true);
 await setAutoOpen(false);
 
 {
-  const page = await visit(files.url("/after-off.pdf"), { settle: 3500 });
+  const page = await visit(files.url("/after-off.pdf"));
+  await pdfTabChip(page);
+  await page.waitForTimeout(ABSENCE_MS);
   const state = await tabState(page);
   record(
     "off again: the very next PDF stays a PDF, with no restart of anything",
@@ -361,6 +386,7 @@ await setAutoOpen(false);
     .catch(() => ({ hash: null, chars: 0 }));
   const dropped = await context.newPage();
   await dropped.goto(READER, { waitUntil: "load" });
+  await pickerShown(dropped);
   await dropped.setInputFiles("#file", { name: "exact.pdf", mimeType: "application/pdf", buffer: TEST_PDF });
   await ready(dropped);
   const direct = await dropped
@@ -386,7 +412,7 @@ await setAutoOpen(false);
 
 {
   const page = await openPdfInReader(context, files.url("/huge.pdf"), { timeout: 40000 });
-  await page.waitForTimeout(3000);
+  await pickerShown(page);
   const state = await page
     .evaluate(() => ({ notice: document.getElementById("notice")?.textContent ?? null, drop: !document.getElementById("drop").hidden }))
     .catch(() => ({ notice: null, drop: false }));
@@ -403,7 +429,7 @@ await setAutoOpen(false);
 
 {
   const page = await openPdfInReader(context, files.url("/notreally.pdf"), { timeout: 40000 });
-  await page.waitForTimeout(2500);
+  await pickerShown(page);
   const notice = await page.evaluate(() => document.getElementById("notice")?.textContent ?? null).catch(() => null);
   record(
     "handoff: a page that is not a PDF is refused on its first bytes, not on its content type",
@@ -422,7 +448,8 @@ await setAutoOpen(false);
     if (f === page.mainFrame()) visits.push(f.url());
   });
   await page.goto(`${READER}?src=${encodeURIComponent(src)}`, { waitUntil: "load" }).catch(() => {});
-  await page.waitForTimeout(5000);
+  await pickerShown(page);
+  await page.waitForTimeout(ABSENCE_MS);
   const reader = visits.filter((u) => u.startsWith(READER)).length;
   record(
     "handoff: a pasted source does not navigate or read anything automatically",
@@ -437,7 +464,7 @@ await setAutoOpen(false);
 {
   const page = await context.newPage();
   await page.goto(`${READER}?src=${encodeURIComponent("javascript:window.__ran=1")}`, { waitUntil: "load" }).catch(() => {});
-  await page.waitForTimeout(2500);
+  await pickerShown(page);
   const state = await page
     .evaluate(() => ({
       ran: window.__ran ?? null,
@@ -463,7 +490,8 @@ await setAutoOpen(false);
     if (f === page.mainFrame()) visits.push(f.url());
   });
   await page.goto(`${READER}?src=${encodeURIComponent(src)}`, { waitUntil: "load" }).catch(() => {});
-  await page.waitForTimeout(8000);
+  await pickerShown(page);
+  await page.waitForTimeout(ABSENCE_MS);
   const pages = await page.evaluate(() => document.querySelectorAll(".page").length).catch(() => 0);
   record(
     "handoff: auto-open does not turn an arbitrary reader source query into a read permission",
@@ -527,39 +555,48 @@ await setAutoOpen(false);
 {
   // The panel's switch turns off the site the PDF came from. The reader's own host is the
   // extension's id, which is no site: no rule may name it, and a local file has no switch.
-  const rules = () => sw.evaluate(() => new Promise((r) => chrome.storage.local.get("siteOverrides", (v) => r(v.siteOverrides ?? {}))));
-  // The reader's own toolbar and notices are hosts too; a chip is a pill in a page's chip layer.
-  const PDF_CHIP = '.anagramPdfChips [data-anagram="host"]';
-  const chips = (p) => p.evaluate((sel) => [...document.querySelectorAll(sel)].filter((el) => el.shadowRoot?.querySelector(".pill")).length, PDF_CHIP).catch(() => -1);
+  // The rule as soon as the panel's write lands (it is not awaited before the reader stops).
+  const ruleWritten = () => sw.evaluate(() => new Promise((resolve) => {
+    const read = () => chrome.storage.local.get("siteOverrides", (v) => {
+      if (Object.keys(v.siteOverrides ?? {}).length) { chrome.storage.onChanged.removeListener(read); clearTimeout(timer); resolve(v.siteOverrides); }
+    });
+    const timer = setTimeout(() => { chrome.storage.onChanged.removeListener(read); chrome.storage.local.get("siteOverrides", (v) => resolve(v.siteOverrides ?? {})); }, 10000);
+    chrome.storage.onChanged.addListener(read);
+    read();
+  }));
+  const chips = pdfChipCount;
   const panelSwitch = (p) => p.evaluate(() => {
     const sr = document.getElementById("anagram-fab")?.shadowRoot;
     sr?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     return { open: !!sr?.querySelector(".phead"), label: sr?.querySelector(".psiteoff")?.textContent ?? null };
   }).catch(() => ({ open: false, label: null }));
-  const analyzed = (p) => p.waitForFunction((sel) => [...document.querySelectorAll(sel)].some((el) => el.shadowRoot?.querySelector(".pill")), PDF_CHIP, { timeout: 20000 }).catch(() => {});
 
   const page = await openPdfInReader(context, files.url("/site-off.pdf"));
-  await ready(page);
-  await analyzed(page);
-  const before = await chips(page);
+  // Counted once the structure worker's answer has re-laid the chips, not in the moment
+  // between its rescan taking them down and the cache putting them back.
+  await readerRead(page).catch(() => {});
+  const before = await pdfChips(page);
+  const beforeState = await readerState(page);
   const visibility = await page.evaluate(() => document.visibilityState).catch(() => null);
   const offered = await panelSwitch(page);
   await page.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".psiteoff")?.click()).catch(() => {});
-  await page.waitForTimeout(1000);
+  // A stopped reader takes its ball down with its chips (lib/render/fab.ts unmount).
+  await page.waitForFunction(() => !document.getElementById("anagram-fab"), null, { timeout: 10000 }).catch(() => {});
   const after = await chips(page);
-  const written = await rules();
+  const written = await ruleWritten();
   record(
     "reader: Turn off names the PDF's own site, writes the rule there, and stops the reader",
     before > 0 && offered.label === "Turn off on localhost" && after === 0 && JSON.stringify(written) === JSON.stringify({ localhost: "off" }),
-    JSON.stringify({ before, visibility, offered, after, written }),
+    JSON.stringify({ before, visibility, offered, after, written, reader: beforeState }),
   );
 
-  const next = await visit(files.url("/site-off-next.pdf"), { settle: 2500 });
+  const next = await visit(files.url("/site-off-next.pdf"));
+  await pdfTabChip(next);
   const tabId = await sw.evaluate(async (url) => (await chrome.tabs.query({ url }))[0]?.id ?? null, files.url("/site-off-next.pdf"));
   await driver.evaluate(([url, id]) => chrome.runtime.sendMessage({ action: "openPdfReader", url, tabId: id }), [files.url("/site-off-next.pdf"), tabId]);
   await next.waitForURL(/reader\.html/, { timeout: 10000 }).catch(() => {});
-  await ready(next);
-  await next.waitForTimeout(2500);
+  await readerRead(next).catch(() => {});
+  await next.waitForTimeout(ABSENCE_MS);
   record(
     "reader: the next PDF from a site turned off opens without being analyzed",
     next.url().startsWith(`${READER}?src=`) && (await chips(next)) === 0,
@@ -569,14 +606,16 @@ await setAutoOpen(false);
 
   const local = await context.newPage();
   await local.goto(READER, { waitUntil: "load" });
+  await pickerShown(local);
   await local.setInputFiles("#file", { name: "local.pdf", mimeType: "application/pdf", buffer: TEST_PDF });
-  await ready(local);
-  await analyzed(local);
+  await readerRead(local).catch(() => {});
+  await pdfChips(local);
+  const localState = await readerState(local);
   const localSwitch = await panelSwitch(local);
   record(
     "reader: a file from this computer has no site, so its panel offers no switch",
     localSwitch.open && localSwitch.label === null,
-    JSON.stringify(localSwitch),
+    JSON.stringify({ ...localSwitch, reader: localState }),
   );
   await local.close();
   await next.close();

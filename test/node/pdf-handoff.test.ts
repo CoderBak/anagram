@@ -6,7 +6,7 @@
 // here goes near a network), and the worker's ticket store. The fourth — two ports and a
 // tab navigation — is checked in a real browser by test/pdf-route-check.mjs.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fakeBrowser } from "wxt/testing";
+import { fakeBrowser } from "wxt/testing/fake-browser";
 import {
   base64Bytes,
   createPdfHandoff,

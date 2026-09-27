@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fakeBrowser } from "wxt/testing";
+import { fakeBrowser } from "wxt/testing/fake-browser";
 import type { ScoreBatchRequest } from "../../lib/contract";
 import type { Unit, Lane } from "../../lib/types";
 import type { ScoreCache } from "../../lib/capture/cache";

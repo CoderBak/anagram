@@ -1,6 +1,6 @@
 // test/node/clearCache.test.ts — "Clear cached verdicts" at the layer that owns the caches.
 import { describe, expect, it, beforeEach } from "vitest";
-import { fakeBrowser } from "wxt/testing";
+import { fakeBrowser } from "wxt/testing/fake-browser";
 import { fakeScoreStore } from "./scoreStore";
 import { createSwCache } from "../../lib/backend/swCache";
 import { NativeScoreError } from "../../lib/backend/nativeScoreClient";

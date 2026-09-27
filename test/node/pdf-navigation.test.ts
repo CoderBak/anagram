@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fakeBrowser } from "wxt/testing";
+import { fakeBrowser } from "wxt/testing/fake-browser";
 import { createPdfNavigation } from "../../lib/pdf/navigation";
 import { isInlinePdfResponse } from "../../lib/pdf/route";
 const ticks = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
