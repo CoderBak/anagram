@@ -7,7 +7,8 @@ import { ACTIONS, type ControlMessage, type TabState } from "../../lib/messaging
 import { setRangeLocator } from "../../lib/render/highlight";
 import { setOwnPageSite } from "../../lib/render/fab";
 import { extractPageText } from "../../lib/pdf/extract";
-import { reflowPdf, type PdfPageText, type ReflowBlock } from "../../lib/pdf/reflow";
+import { readReflowed } from "../../lib/pdf/reading";
+import type { PdfPageText, ReflowBlock } from "../../lib/pdf/reflow";
 import { createStructuredReader, type StructuredReader } from "../../lib/pdf/structured";
 import { readStructure } from "../../lib/pdf/structureWorker";
 import { createPdfUnitSource, type PdfUnitSource } from "../../lib/pdf/units";
@@ -88,7 +89,7 @@ function reflowRendered(rendered: PdfPageText[]): ReflowBlock[] {
   }
   const blocks: ReflowBlock[] = [];
   for (const group of groups) {
-    const reflow = reflowPdf(group);
+    const reflow = readReflowed(group);
     if (reflow[0] && blocks.length) reflow[0].columnBreak = true;
     blocks.push(...reflow);
   }

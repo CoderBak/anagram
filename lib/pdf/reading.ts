@@ -7,7 +7,7 @@
 // where the document spells the word with it, and what is no one's prose left out — the
 // glyphs of a formula, a citation mark, an accent set apart from its letter.
 import { skipGap } from "../dom/text";
-import { bracketCitations, dehyphenates, type PdfPageText, type PdfTextItem, type SourceRun, type Vocabulary } from "./reflow";
+import { SENTENCE_END, bracketCitations, dehyphenates, reflowPdf, type PdfPageText, type PdfTextItem, type ReflowBlock, type SourceRun, type Vocabulary } from "./reflow";
 
 /** One glyph: its rect on a 0-based page, in the space its reader measures in (Zotero's
  *  text: PDF user space). */
@@ -716,6 +716,119 @@ function citationMarks(pieces: Piece[], faces: (Box | null)[]): boolean[] {
       last = end;
     }
     i = end;
+  }
+  return out;
+}
+
+// ---- the reflow's paragraphs --------------------------------------------------------------
+
+/** The combining marks of the spacing accents pdf.js spells TeX's accents with, each before
+ *  the letter it is drawn over ("Tom´as", "Fran¸cois"). */
+const COMBINING: Record<string, string> = {
+  "´": "\u0301", "`": "\u0300", "¨": "\u0308", "ˆ": "\u0302", "˜": "\u0303", "¯": "\u0304", "˘": "\u0306",
+  "˙": "\u0307", "˚": "\u030A", "˝": "\u030B", "ˇ": "\u030C", "¸": "\u0327", "˛": "\u0328",
+};
+const ACCENTED = /^[\p{Script=Latin}ıȷ]$/u;
+/** A run this much smaller than the word before it and raised by this share of the word's
+ *  size is a superscript. */
+const RAISED = 0.15;
+
+/**
+ * A block of the reflow as the pieces its reading takes: every character of its text with the
+ * pdf.js run it came from, and a glyph box that says which line it is on and nothing of
+ * where on it — the reflow has put its word spaces in the text already, and a citation mark
+ * it left out would read as one. An accent set before its letter goes after it as a combining
+ * mark, and a raised number after a word is marked as the citation or footnote mark it is
+ * (citationMarks).
+ */
+function reflowPieces(block: ReflowBlock, pages: ReadonlyMap<number, PdfPageText>, boxes: ReadonlyMap<number, ReadonlyMap<number, Box>>): { pieces: Piece[]; located: Located } {
+  const pieces: Piece[] = [], sources: (Source | null)[] = [], faces: (Box | null)[] = [], items: (PdfTextItem | null)[] = [];
+  const runAt = new Array<SourceRun | null>(block.text.length).fill(null);
+  for (const r of block.runs) for (let k = 0; k < r.length; k++) runAt[r.at + k] = r;
+  for (let j = 0; j < block.text.length; j++) {
+    const ch = block.text[j], r = runAt[j];
+    const it = r ? pages.get(r.page)?.items[r.item] : undefined;
+    const box = r ? boxes.get(r.page)?.get(r.item) ?? null : null;
+    if (!r || !it) {
+      pieces.push({ ch, glyph: null });
+      sources.push(null);
+      faces.push(null);
+      items.push(null);
+      continue;
+    }
+    const offset = r.from + j - r.at;
+    pieces.push({ ch, glyph: { page: r.page - 1, x1: 0, y1: it.y - it.height * 0.8, x2: 0, y2: it.y + it.height * 0.2 } });
+    sources.push(box ? { page: r.page, item: r.item, offset, box } : null);
+    faces.push(box);
+    items.push(it);
+  }
+  for (let i = 0; i + 1 < pieces.length; i++) {
+    const mark = COMBINING[pieces[i].ch];
+    if (!mark || !ACCENTED.test(pieces[i + 1].ch)) continue;
+    [pieces[i], pieces[i + 1]] = [pieces[i + 1], { ...pieces[i], ch: mark }];
+    [sources[i], sources[i + 1]] = [sources[i + 1], sources[i]];
+    [faces[i], faces[i + 1]] = [faces[i + 1], faces[i]];
+    [items[i], items[i + 1]] = [items[i + 1], items[i]];
+    i++;
+  }
+  let word: PdfTextItem | null = null;
+  for (let i = 0; i < pieces.length;) {
+    const it = items[i];
+    let end = i + 1;
+    while (it !== null && end < pieces.length && items[end] === it) end++;
+    if (it && word && it !== word && it.height <= word.height * SCRIPT_SIZE && it.y < word.y - word.height * RAISED && MARK_NUMBERS.test(it.str.trim())) {
+      for (let k = i; k < end; k++) pieces[k].raised = true;
+    } else if (it && pieces.slice(i, end).some((p) => /\p{L}/u.test(p.ch))) word = it;
+    i = end;
+  }
+  return { pieces, located: { sources, faces } };
+}
+
+/**
+ * The reflow's paragraphs of a run of pages (lib/pdf/reflow.ts), read as the structured path
+ * reads Zotero's: a formula, a citation mark and a line's own layout left out by the same
+ * rules, as far as the page's runs tell them — pdf.js names a run's face once the page is
+ * drawn, and a reading surface (lib/surfaces/) knows no faces at all, so there only what
+ * needs no face is done. A block that was nothing but a formula is a display equation: it is
+ * passed over, the paragraph before it says its sentence runs on where it does
+ * (ReflowBlock.runsOn), and the one after it that carries the sentence on in lower case is
+ * read as one with it.
+ */
+export function readReflowed(pages: PdfPageText[]): ReflowBlock[] {
+  const blocks = reflowPdf(pages);
+  if (blocks.length === 0) return blocks;
+  const byNumber = new Map(pages.map((p) => [p.page, p]));
+  const indexes = new Map<number, PageIndex>();
+  for (const p of pages) indexes.set(p.page, indexPage(p));
+  const boxes = new Map([...indexes].map(([n, index]) => [n, new Map(index.boxes.map((b) => [b.item, b]))]));
+  const kinds = mathPagesOf(indexes);
+  const out: ReflowBlock[] = [];
+  /** A display equation stands between the last block read and this one. */
+  let display = false;
+  /** A block passed over opened a column or a page. */
+  let broken = false;
+  for (const block of blocks) {
+    const { pieces, located } = reflowPieces(block, byNumber, boxes);
+    const { text, runs } = assemble(pieces, located, null, kinds, { keepOpening: true });
+    const prev = out.at(-1);
+    const equation = !/\p{L}/u.test(text) && located.faces.some((f) => f?.math);
+    if (equation || text === "") {
+      if (equation) {
+        display = true;
+        if (prev && prev.kind === "paragraph" && !prev.apart && !SENTENCE_END.test(prev.text)) prev.runsOn = true;
+      }
+      broken ||= block.columnBreak;
+      continue;
+    }
+    const read: ReflowBlock = { ...block, text, runs, columnBreak: block.columnBreak || broken };
+    broken = false;
+    if (display && prev?.runsOn && read.kind === "paragraph" && !read.apart && /^\p{Ll}/u.test(text)) {
+      const base = prev.text.length + 1;
+      prev.text = `${prev.text} ${text}`;
+      prev.runs = [...prev.runs, ...runs.map((r) => ({ ...r, at: r.at + base }))];
+      delete prev.runsOn;
+    } else out.push(read);
+    display = false;
   }
   return out;
 }

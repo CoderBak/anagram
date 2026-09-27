@@ -276,6 +276,17 @@ local component and the installer all carry the same version.
   no longer taken for the script. On the benchmark's papers, against their HTML with the
   formulas taken out, the formula tokens left in the reading fell by 546 on the development
   papers and 208 on the held-out ones, and the prose read rose by 38 and 29 tokens.
+- The PDF reader's own reflow now reads a paragraph by the same rules as Zotero's structure:
+  a formula, what TeX sets of one in the text's face and a raised citation or footnote
+  number after a word are left out, a display equation is passed over and the sentence it
+  cuts in two read as one paragraph, and an accent pdf.js spells before its letter ("Tom´as",
+  "Fran¸cois") is written on the letter. The reflow reads a PDF until the structure is ready,
+  every page of one over 300 pages and every page when the worker fails; in the previews of
+  Google Drive, OneDrive and Overleaf, which name no fonts and set every line at one size,
+  only the accents change. On the PDF benchmark's papers the reflow's scored text that is
+  not their prose fell from 23% to 13% (development) and from 26% to 16% (held out), against
+  their HTML with the formulas taken out, and the prose it scores rose from 85% to 90% and
+  from 84% to 88%.
 - The PDF reader keeps a number the text writes next to an inline formula: "pores of 11.3 μm"
   read as "pores of m", "by Theorem 2, x is" as "by Theorem, is", and "(Federer, 1969,
   3.2.12)" lost its year. A number beside a formula went with it, because TeX sets a formula's

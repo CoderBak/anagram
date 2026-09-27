@@ -24,7 +24,8 @@
 // font. So marks and chips go in a layer of our own over the page box, placed from the lines'
 // own boxes in the page's proportions (percentages), which keeps them on the printed words at
 // any zoom without being drawn again.
-import { reflowPdf, type PdfPageText, type ReflowBlock } from "../pdf/reflow";
+import { readReflowed } from "../pdf/reading";
+import type { PdfPageText, ReflowBlock } from "../pdf/reflow";
 import { createPdfUnitSource } from "../pdf/units";
 import { scaleColor, SCALE_STEPS } from "../render/scale";
 import type { MarkPainter } from "../render/highlight";
@@ -104,7 +105,7 @@ function reflowRuns(pages: readonly LinePage[], sizes: ReadonlyMap<LinePage, num
   let run: PdfPageText[] = [];
   let last = -1;
   const flush = (): void => {
-    if (run.length > 0) blocks.push(...reflowPdf(run));
+    if (run.length > 0) blocks.push(...readReflowed(run));
     run = [];
   };
   for (const page of pages) {
