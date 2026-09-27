@@ -78,8 +78,8 @@ export function alignDocument(truth, engine) {
   engine.units.forEach((u, k) => { for (const b of u.blocks) unitOf[b] = k; });
 
   // ---- tokens of the reconstruction, in reading order --------------------------------
-  // A truth of some pages only (DocBank's) is measured on those pages: text read from any
-  // other page is neither leakage nor coverage.
+  // A truth of some pages only (DocBank's sampled pages, tags read on the first pages) is
+  // measured on those pages: text read from any other page is neither leakage nor coverage.
   const ours = [];
   const blocks = engine.blocks.map((block, bi) => {
     const toks = [];

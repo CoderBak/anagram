@@ -93,12 +93,16 @@ const LABEL_CODE = { body: "b", appendix: "a", ack: "k", runin: "r", mark: "m", 
 const CODE_LABEL = Object.fromEntries(Object.entries(LABEL_CODE).map(([k, v]) => [v, k]));
 
 /**
- * The truth for a document: arXiv's HTML where there is one, else the structure tree of a
+ * The truth for a document: arXiv's HTML where there is one, a labelled dataset's
+ * annotations (labelled.mjs) where the manifest names one, else the structure tree of a
  * Word-made PDF or of one the manifest marks `truth: "tagged"` (tagged.mjs), else none —
  * the document is still read and timed, and only the measures that need no truth are
  * reported for it.
  */
 async function truthFor(doc, wordMade, run = null) {
+  // A truth found not to describe its PDF (a stub page, tags without the text) is set aside:
+  // the manifest's `truth_rejected` gives the reason.
+  if (doc.truth_rejected) return { kind: null, truth: null };
   if (doc.has_html) {
     const truth = truthOf(readFileSync(join(CORPUS, doc.html), "utf8"));
     return { kind: "html", truth: argv.includes("--nomath") ? withoutMath(truth) : truth };
@@ -120,6 +124,9 @@ async function truthFor(doc, wordMade, run = null) {
   const { pdfjs } = await loadPipeline();
   const data = new Uint8Array(readFileSync(join(CORPUS, doc.file)));
   const truth = await taggedTruthOf(pdfjs, documentOptions(data), MAX_ANALYSIS_PAGES);
+  // The tags are read on the first MAX_ANALYSIS_PAGES; the structured path reads every page,
+  // and what it reads past them is not leakage.
+  if (truth) truth.pages = new Set(Array.from({ length: MAX_ANALYSIS_PAGES }, (_, i) => i + 1));
   return { kind: truth ? "tagged" : null, truth };
 }
 
