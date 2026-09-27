@@ -20,10 +20,19 @@ export async function surfaceScenarios({ context, fixture, record, artifact, BAD
   };
   context.on("request", onRequest);
 
-  // S1: Google Drive's preview. Four units on the two loaded pages, a fifth when page 3
-  // loads; what the engine is sent is the document's paragraphs, not the viewer's lines.
+  // S1: Google Drive's preview. Page 1 alone is two units, the second of them the two short
+  // paragraphs read with the first half of P4; page 2 is drawn once those have their chips,
+  // and P4 is then one paragraph across the page break, P2 and P3 are read again without it,
+  // and P5 is read: four units. Page 3 makes a fifth. What the engine is sent is the
+  // document's paragraphs, not the viewer's lines.
   {
-    const html = readFileSync(join(fixturesDir, "surfaces", "drive-preview.html"), "utf8");
+    const fixtureHtml = readFileSync(join(fixturesDir, "surfaces", "drive-preview.html"), "utf8");
+    const from = fixtureHtml.indexOf('<div class="kd-page" data-page-slot="2"');
+    const to = fixtureHtml.indexOf('<div class="kd-page" data-page-slot="3"');
+    const html =
+      fixtureHtml.slice(0, from) +
+      '<div class="kd-page" data-page-slot="2" style="padding-bottom: 129.4118%;"></div>\n' +
+      fixtureHtml.slice(to).replace("</body>", `<template id="page-2">${fixtureHtml.slice(from, to)}</template></body>`);
     await context.route("https://drive.google.com/**", (route) =>
       route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: html }),
     );
@@ -40,12 +49,17 @@ export async function surfaceScenarios({ context, fixture, record, artifact, BAD
         )
         .then(() => true)
         .catch(() => false);
+    // Pages load as scrolling to them would.
+    const draw = (n) =>
+      page.evaluate((n) => {
+        const slot = document.querySelector(`[data-page-slot="${n}"]`);
+        slot.replaceWith(document.getElementById(`page-${n}`).content.firstElementChild.cloneNode(true));
+      }, n);
+    const firstPage = await chipsOnPages(2);
+    const beforeDraw = fixture.textsSince(mark).length;
+    await draw(2);
     const firstPages = await chipsOnPages(4);
-    // Page 3 loads, as scrolling to it would.
-    await page.evaluate(() => {
-      const slot = document.querySelector('[data-page-slot="3"]');
-      slot.replaceWith(document.getElementById("page-3").content.firstElementChild.cloneNode(true));
-    });
+    await draw(3);
     const thirdPage = await chipsOnPages(5);
     await page.waitForTimeout(800);
     const r = await page.evaluate((sel) => ({
@@ -60,12 +74,14 @@ export async function surfaceScenarios({ context, fixture, record, artifact, BAD
     const want = [DRIVE.p1, `${DRIVE.p2} ${DRIVE.p3}`, DRIVE.p4, DRIVE.p5, DRIVE.p6];
     const missing = want.filter((t) => !sent.some((s) => flat(s) === t)).map((t) => t.slice(0, 40));
     const lines = sent.filter((t) => t.includes("north-") || /show\s*\n\s*the stones/.test(t));
+    // Page 1 alone read P4's first half with P2 and P3 before page 2 was drawn.
+    const halfFirst = sent.slice(0, beforeDraw).some((s) => flat(s).startsWith(DRIVE.p2) && flat(s).endsWith("We had never heard of these"));
     record(
       "ui",
-      "Google Drive preview: the document's paragraphs are read (lines joined, hyphens mended, pages sewn), chips and marks drawn over the page",
-      firstPages && thirdPage && missing.length === 0 && lines.length === 0 && r.bars > 20 && r.chips === 5 && r.inLayer === 0 &&
+      "Google Drive preview: the document's paragraphs are read (lines joined, hyphens mended, pages sewn — a page drawn after the first units were sent joins the paragraph running onto it), chips and marks drawn over the page",
+      firstPage && halfFirst && firstPages && thirdPage && missing.length === 0 && lines.length === 0 && r.bars > 20 && r.chips === 5 && r.inLayer === 0 &&
         (chunkLoads.get(page) ?? 0) > 0,
-      JSON.stringify({ firstPages, thirdPage, missing, lines: lines.length, ...r, chunk: chunkLoads.get(page) ?? 0 }),
+      JSON.stringify({ firstPage, halfFirst, firstPages, thirdPage, missing, lines: lines.length, ...r, chunk: chunkLoads.get(page) ?? 0 }),
     );
     await page.close();
     await context.unroute("https://drive.google.com/**");

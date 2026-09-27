@@ -120,10 +120,27 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- In Firefox, a web PDF without ".pdf" in its address now and then stayed in Firefox's own
+  viewer instead of opening in Anagram's reader, and a PDF the reader opened by itself, as
+  it does when one loads or is reloaded, could land on "This PDF could not be loaded". Both
+  happened on a busy computer, where Firefox reports a tab's loading, its navigation and the
+  response that says "PDF" out of order: a navigation announced a second time after its
+  response was taken for a new one that had said nothing yet, and the PDF tab's own late
+  "loading" for the tab moving on, which withdrew the reader's permission to read the file.
+- In Google Drive's preview and in a pdf.js viewer in a page (OneDrive, SharePoint,
+  Overleaf), a page drawn after the pages before it were read no longer leaves paragraphs
+  unread. The first half of a paragraph running onto the new page had been read with the
+  short paragraphs before it; joining the halves let go of that group, and the paragraphs
+  it held stayed unread, with no chip, until something else on the page changed. They are
+  read again as soon as the page is drawn, and a paragraph the page does not change keeps
+  its verdict.
 - A consent box a publisher builds itself, such as the Daily Mail's, is no longer read. No
   platform's name is on it; it is recognised by what it holds: a list of third parties, each
   linking to its own privacy policy, beside buttons that give or refuse consent. Its
   explanations were read on four Daily Mail pages of the web benchmark, 319 words each.
+  Buttons in Chinese (全部接受, 拒绝, 保存设置) count as well as English ones, and "Copy page
+  diagnostics" names such a box as the page chrome it is and counts its words with the
+  chrome, where it gave a wrong reason, such as the word floor, and counted them as prose.
 - A cookie banner a consent platform draws inside a shadow root of its own is no longer
   analyzed; only banners in the page itself were recognised.
 - Immersive Translate's "translation only" mode is recognised: the translation it shows in

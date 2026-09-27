@@ -479,15 +479,18 @@ const renderPdfPages = async (page) => {
     .catch(() => false);
   if (arrived) await dropPdf(p, TEST_PDF, "doc.pdf");
   const rendered = arrived && (await renderPdfPages(p));
+  // The paragraphs come from Zotero's document-worker once it has read the whole file: its
+  // pdf.js, and an ONNX model run by onnxruntime-web's WebAssembly under the MV2 policy. Its
+  // reading arrives seconds after the reflow's chips and collects every unit again (the
+  // reader rescans), so the chips are dropped and drawn anew: they are waited for after it,
+  // all three, or the snapshot below lands in the middle of that redraw.
+  const structured = rendered &&
+    (await waitFor(p, () => performance.getEntriesByName("anagram-structured").length > 0, { timeout: 30000 }));
   const scored = rendered &&
     (await waitFor(p, (sel) => {
       const pills = [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill"));
-      return pills.length > 0 && !pills.some((h) => h.shadowRoot.querySelector(".pill.pending"));
+      return pills.length >= 3 && !pills.some((h) => h.shadowRoot.querySelector(".pill.pending"));
     }, { timeout: 30000, arg: BADGE_SEL }));
-  // The paragraphs come from Zotero's document-worker once it has read the whole file: its
-  // pdf.js, and an ONNX model run by onnxruntime-web's WebAssembly under the MV2 policy.
-  const structured = rendered &&
-    (await waitFor(p, () => performance.getEntriesByName("anagram-structured").length > 0, { timeout: 30000 }));
   const pdf = arrived
     ? await p.evaluate((sel) => {
         const chips = [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill"));

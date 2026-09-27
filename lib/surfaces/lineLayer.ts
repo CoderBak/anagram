@@ -207,8 +207,25 @@ export function createLineLayerSurface(source: LineSource): Surface {
     for (const [id, unit] of mine) {
       if (!unit.parts.every((p) => p.nodes.every((n) => n.isConnected))) mine.delete(id);
     }
-    const fresh = units.collect(claim, mergeShorts);
-    for (const unit of fresh) mine.set(unit.id, unit);
+    // The claims take a paragraph whose every part a live unit owns exactly for that unit,
+    // and a live GROUP owns them all without being it. A page drawn since carries on the
+    // paragraph the group's last member began; the joined paragraph, asked for later,
+    // retires the group, and the members asked for before it stay unread until another
+    // burst, which a page that has finished drawing never makes. So the document is asked
+    // again until it hands out nothing new, what this answer handed out counting as owned:
+    // the units a drawn page changed are collected again and the rest are left alone, where
+    // the PDF reader collects everything again (lib/capture/orchestrator.ts's rescan). A
+    // re-collected paragraph whose text is unchanged takes its verdict from the cache.
+    const handed = new WeakSet<Text>();
+    const own = (nodes: Text[]): "take" | "skip" => (nodes.length > 0 && nodes.every((n) => handed.has(n)) ? "skip" : claim(nodes));
+    const fresh: Unit[] = [];
+    for (let batch = units.collect(own, mergeShorts); batch.length > 0; batch = units.collect(own, mergeShorts)) {
+      for (const unit of batch) {
+        for (const part of unit.parts) for (const node of part.nodes) handed.add(node);
+        mine.set(unit.id, unit);
+        fresh.push(unit);
+      }
+    }
     return fresh;
   }
 

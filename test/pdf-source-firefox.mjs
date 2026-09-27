@@ -37,6 +37,8 @@ try {
     const bg=await browser.runtime.getBackgroundPage();bg.__pdfSourceTrace=[];
     bg.browser.tabs.onUpdated.addListener((id,change)=>bg.__pdfSourceTrace.push({type:"tab",id,change}));
     bg.browser.webNavigation.onBeforeNavigate.addListener((value)=>bg.__pdfSourceTrace.push({type:"nav",value}));
+    bg.browser.webNavigation.onCommitted.addListener((value)=>bg.__pdfSourceTrace.push({type:"commit",value}));
+    bg.browser.webRequest.onHeadersReceived.addListener((value)=>bg.__pdfSourceTrace.push({type:"headers",url:value.url}),{urls:["http://localhost/*"],types:["main_frame"]});
     bg.browser.runtime.onConnect.addListener((port)=>{
       if(!port.name.startsWith("anagram-pdf"))return;
       bg.__pdfSourceTrace.push({type:"port",name:port.name,sender:port.sender});
@@ -52,6 +54,23 @@ try {
   await page.goto(source,{waitUntil:"domcontentloaded",timeout:10000}).catch(() => {});
   const tabId = await driver.evaluate(async (url) => (await browser.tabs.query({})).find((tab)=>tab.url===url)?.id, source);
   assert.ok(tabId!==undefined,"Native PDF tab must be observable under its granted source");
+  // What the background knows of the tab comes in events Firefox delivers on paths of their
+  // own, and under load after the page itself has loaded: the response's headers, which say
+  // that a suffixless address is a PDF; the tab's "loading" updates, a late one of which is
+  // a new navigation to the reader and refuses to open it; the commit that spends the pass
+  // "Open original" gives. Measured: up to 300 ms after the page's DOMContentLoaded, now
+  // and then after the question itself. So the test acts once the background has had the
+  // n-th load of the source whole: its headers, and after its start the commit and the
+  // tab's "complete". The trace's listeners run after the product's, added at startup.
+  const settled = (n) => until(driver, async ([url, id, n]) => {
+    const trace = (await browser.runtime.getBackgroundPage()).__pdfSourceTrace;
+    const began = trace.findLastIndex((e) => e.type === "nav" && e.value.tabId === id && e.value.frameId === 0 && e.value.url === url);
+    const since = trace.slice(began);
+    return began >= 0 && trace.filter((e) => e.type === "headers" && e.url === url).length >= n &&
+      since.some((e) => e.type === "commit" && e.value.tabId === id && e.value.frameId === 0 && e.value.url === url) &&
+      since.some((e) => e.type === "tab" && e.id === id && e.change.status === "complete");
+  }, {timeout:10000, arg:[source, tabId, n]});
+  await settled(1);
   const status = await driver.evaluate((id) => browser.runtime.sendMessage({action:"GET_PDF_STATUS",tabId:id}), tabId);
   assert.deepEqual(status,{pdf:true,source,local:false,authorized:true},"MIME recognizes suffixless native Firefox PDFs");
   assert.equal(await hrefOf(page),source,"Auto off preserves native viewer");
@@ -69,6 +88,7 @@ try {
   assert.ok(requests.slice(1).some((r) => r.cookie.includes("anagram_pdf_source=fixture")),"Authorized source read retains its cookie");
   await driver.evaluate(() => browser.storage.local.set({autoOpenPdfs:true}));
   await page.evaluate(()=>document.getElementById("original").click()); await until(page, (url) => location.href === url, {arg:source});
+  await settled(2);
   await new Promise((resolve) => setTimeout(resolve,600)); assert.equal(await hrefOf(page),source,"Open original bypass lasts for the whole navigation");
   handover = true;
   await page.reload({waitUntil:"domcontentloaded",timeout:2500}).catch(() => {});

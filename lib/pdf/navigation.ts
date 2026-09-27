@@ -48,6 +48,11 @@ export function createPdfNavigation(deps: Dependencies) {
         const pass = passes.get(details.tabId);
         const suppressed = !!pass && pass.expires > Date.now() && samePdfSource(pass.url, details.url);
         if (!suppressed) passes.delete(details.tabId);
+        // That second announcement comes on a path of its own, after the response's headers
+        // now and then: the same address, not yet committed, is the same navigation, and
+        // what its headers said stands.
+        const same = documents.get(details.tabId);
+        if (same && !same.committed && same.url === details.url) { same.suppressed ||= suppressed; return; }
         documents.set(details.tabId, {url: details.url, pdf: false, allowedMethod: false, committed: false, opening: false, suppressed});
       });
       // Chrome rejects a webRequest listener while the extension holds no host permission
