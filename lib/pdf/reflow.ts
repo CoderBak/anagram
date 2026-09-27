@@ -701,7 +701,7 @@ interface Band {
  * carrying a real share of the page's runs, rather than one gutter being sought in the
  * middle of the page.
  */
-function findGutters(lines: Line[], pageWidth: number): Gutters {
+function findGutters(lines: Line[], pageWidth: number, pageHeight: number): Gutters {
   if (lines.length < MIN_LINES_FOR_COLUMNS) return NO_GUTTERS;
   const items = lines.flatMap((l) => l.items);
   const left = Math.min(...lines.map((l) => l.x0));
@@ -712,6 +712,53 @@ function findGutters(lines: Line[], pageWidth: number): Gutters {
   const minWidth = Math.max(pageWidth * GUTTER_MIN_WIDTH, size * GUTTER_MIN_EMS);
 
   const cell = span / GUTTER_CELLS;
+  const { divides, withText } = bandsOf(items, left, cell);
+  if (withText === 0) return NO_GUTTERS;
+
+  const bands: Band[] = [];
+  let open = -1;
+  for (let c = 0; c <= GUTTER_CELLS; c++) {
+    const share = c < GUTTER_CELLS ? divides[c] / withText : 0;
+    if (share >= GUTTER_BAND_SHARE) {
+      if (open < 0) open = c;
+      continue;
+    }
+    if (open >= 0) {
+      if (whiteOf(open, c, cell) >= minWidth) bands.push(bandOf(divides, open, c, left, cell, withText));
+      open = -1;
+    }
+  }
+
+  // The bands that divide best first, each kept only while every column it would leave
+  // behind still carries its share of the runs.
+  bands.sort((a, b) => b.divides - a.divides || b.width - a.width);
+  const chosen: number[] = [];
+  for (const band of bands) {
+    if (chosen.length >= MAX_COLUMNS - 1) break;
+    const next = [...chosen, band.at].sort((a, b) => a - b);
+    if (columnsHold(items, next)) chosen.splice(0, chosen.length, ...next);
+  }
+  if (chosen.length > 0) return { at: chosen, from: -Infinity, to: Infinity };
+  // A running head, a page number and a journal's footer sit in the margins, set across the
+  // gutter: a stretch of columns is sought in the text between them (findMarginLines drops
+  // them later), where one band of them would cut it short.
+  const inBody = items.filter((it) => it.y > pageHeight * MARGIN_TOP && it.y < pageHeight * MARGIN_BOTTOM);
+  return stretchGutters(lines, items, bandsOf(inBody.length >= MIN_LINES_FOR_COLUMNS ? inBody : items, left, cell), { left, cell, minWidth });
+}
+
+/** The page cut into GUTTER_BANDS bands down the height these runs cover. */
+interface Banding {
+  top: number;
+  depth: number;
+  /** Per cell, how many bands it divides: no run covers it there, and runs stand on both
+   *  sides of it within the band. */
+  divides: Int32Array;
+  /** Per band, the cells that divide it; null for a band with no text in it at all. */
+  dividing: (Uint8Array | null)[];
+  withText: number;
+}
+
+function bandsOf(items: PdfTextItem[], left: number, cell: number): Banding {
   const top = Math.min(...items.map((it) => it.y));
   const depth = (Math.max(...items.map((it) => it.y)) - top) / GUTTER_BANDS || 1;
   // Which cells each band's runs cover, accumulated as differences so one pass over the
@@ -725,9 +772,7 @@ function findGutters(lines: Line[], pageWidth: number): Gutters {
     covers[band][from] += 1;
     covers[band][to + 1] -= 1;
   }
-
   const divides = new Int32Array(GUTTER_CELLS);
-  /** Per band, the cells that divide it; null for a band with no text in it at all. */
   const dividing: (Uint8Array | null)[] = [];
   let withText = 0;
   for (const band of covers) {
@@ -756,33 +801,7 @@ function findGutters(lines: Line[], pageWidth: number): Gutters {
     }
     dividing.push(here);
   }
-  if (withText === 0) return NO_GUTTERS;
-
-  const bands: Band[] = [];
-  let open = -1;
-  for (let c = 0; c <= GUTTER_CELLS; c++) {
-    const share = c < GUTTER_CELLS ? divides[c] / withText : 0;
-    if (share >= GUTTER_BAND_SHARE) {
-      if (open < 0) open = c;
-      continue;
-    }
-    if (open >= 0) {
-      if (whiteOf(open, c, cell) >= minWidth) bands.push(bandOf(divides, open, c, left, cell, withText));
-      open = -1;
-    }
-  }
-
-  // The bands that divide best first, each kept only while every column it would leave
-  // behind still carries its share of the runs.
-  bands.sort((a, b) => b.divides - a.divides || b.width - a.width);
-  const chosen: number[] = [];
-  for (const band of bands) {
-    if (chosen.length >= MAX_COLUMNS - 1) break;
-    const next = [...chosen, band.at].sort((a, b) => a - b);
-    if (columnsHold(items, next)) chosen.splice(0, chosen.length, ...next);
-  }
-  if (chosen.length > 0) return { at: chosen, from: -Infinity, to: Infinity };
-  return stretchGutters(lines, items, dividing, { left, cell, minWidth, top, depth });
+  return { top, depth, divides, dividing, withText };
 }
 
 /** How wide the white of cells [from, to) can be: a cell a run reaches into only part way
@@ -801,8 +820,10 @@ interface Gutters {
 
 const NO_GUTTERS: Gutters = { at: [], from: -Infinity, to: Infinity };
 
-/** The consecutive bands with text a stretch's gutter must divide: a third of the page. */
-const STRETCH_BANDS = 4;
+/** The consecutive bands with text a stretch's gutter must divide, a quarter of the page,
+ *  and the lines each of the stretch's columns must hold: a table's few rows do not. */
+const STRETCH_BANDS = 3;
+const STRETCH_LINES = 8;
 
 /**
  * Gutters that divide one stretch of the page and not the rest: the columns under a first
@@ -817,8 +838,8 @@ const STRETCH_BANDS = 4;
 function stretchGutters(
   lines: Line[],
   items: PdfTextItem[],
-  dividing: (Uint8Array | null)[],
-  g: { left: number; cell: number; minWidth: number; top: number; depth: number },
+  { top, depth, dividing }: Banding,
+  g: { left: number; cell: number; minWidth: number },
 ): Gutters {
   // Per cell, the longest run of bands with text it divides, and the bands it runs over.
   const length = new Int32Array(GUTTER_CELLS), first = new Int32Array(GUTTER_CELLS), last = new Int32Array(GUTTER_CELLS);
@@ -849,8 +870,8 @@ function stretchGutters(
   if (candidates.length === 0) return NO_GUTTERS;
   candidates.sort((a, b) => b.length - a.length || b.width - a.width);
   const best = candidates[0];
-  const runTop = g.top + best.first * g.depth;
-  const runBottom = g.top + (best.last + 1) * g.depth;
+  const runTop = top + best.first * depth;
+  const runBottom = top + (best.last + 1) * depth;
   let from = -Infinity, to = Infinity;
   for (const l of lines) {
     if (!l.items.some((it) => columnOf(it, [best.at]) < 0)) continue;
@@ -863,9 +884,19 @@ function stretchGutters(
     if (chosen.length >= MAX_COLUMNS - 1) break;
     if (c.first > best.last || c.last < best.first) continue;
     const next = [...chosen, c.at].sort((a, b) => a - b);
-    if (columnsHold(within, next)) chosen.splice(0, chosen.length, ...next);
+    if (columnsHold(within, next) && linesHold(within, next)) chosen.splice(0, chosen.length, ...next);
   }
   return chosen.length > 0 ? { at: chosen, from, to } : NO_GUTTERS;
+}
+
+/** Every column the gutters would leave holds STRETCH_LINES lines at least. */
+function linesHold(items: PdfTextItem[], gutters: number[]): boolean {
+  const lines = Array.from({ length: gutters.length + 1 }, () => new Set<number>());
+  for (const it of items) {
+    const col = columnOf(it, gutters);
+    if (col >= 0) lines[col].add(Math.round(it.y / Math.max(1, it.height * BASELINE_TOL)));
+  }
+  return lines.every((l) => l.size >= STRETCH_LINES);
 }
 
 /**
@@ -1636,7 +1667,7 @@ export function reflowPdf(pages: PdfPageText[]): ReflowBlock[] {
   const perPage = pages.map((whole) => {
     const p = numbers.size === 0 ? whole : { ...whole, items: whole.items.filter((it) => !numbers.has(it)) };
     const lines = groupIntoLines(p, index);
-    const gutters = findGutters(lines, p.width);
+    const gutters = findGutters(lines, p.width, p.height);
     return gutters.at.length === 0
       ? lines
       : orderColumns(splitColumns(p, lines, gutters, index), gutters.at.length + 1);

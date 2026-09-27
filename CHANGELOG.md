@@ -147,7 +147,7 @@ local component and the installer all carry the same version.
   of a page that has them in one stretch only: under a first page's title and abstract, or
   beside a figure set across the page, and of a page whose gutter is no wider than an em,
   as many conference templates and small books set it. It read such a page line by line
-  across both columns. On olmOCR-Bench's pages it passes 64% of the checks instead of 58%,
+  across both columns. On olmOCR-Bench's pages it passes 65% of the checks instead of 58%,
   and on two-column arXiv papers it puts 9 paragraphs out of order where it put 118.
 - In Firefox, a web PDF without ".pdf" in its address now and then stayed in Firefox's own
   viewer instead of opening in Anagram's reader, and a PDF the reader opened by itself, as

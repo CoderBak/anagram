@@ -461,6 +461,25 @@ describe("reflowPdf — two columns", () => {
     expect(texts(blocks).slice(-2)).toEqual([left.join(" "), right.join(" ")]);
   });
 
+  it("reads the columns of a first page's last quarter, its running head and page number set across them", () => {
+    // The title and a long abstract fill the page down to its last quarter; the columns
+    // start there. A running head and a page number stand across the gutter in the margins.
+    const abstract = Array.from({ length: 20 }, (_, i) => `the abstract runs across the whole measure of the page, line ${i}${i === 19 ? "." : ""}`);
+    const left = Array.from({ length: 12 }, (_, i) => `Left line ${i} of the page.`);
+    const right = Array.from({ length: 12 }, (_, i) => `Right line ${i} of it too.`);
+    const blocks = reflowPdf([
+      page(1, [
+        { text: "Journal of Examples, Vol. 5", x: 250, y: 40, size: 9, width: 120 },
+        { text: "A Title That Runs Across The Page", x: 72, y: 80, size: 16, font: "display", width: 400 },
+        ...column(abstract, 110, 72, 468),
+        ...column(left, 560, 72, 200),
+        ...column(right, 560, 320, 200),
+        { text: "Page 156 of 200", x: 262, y: 745, size: 9, width: 70 },
+      ]),
+    ]);
+    expect(texts(blocks).slice(-2)).toEqual([left.join(" "), right.join(" ")]);
+  });
+
   it("reads two columns whose gutter is no wider than the type is high", () => {
     // A conference template's gutter of 11 points under 11-point type: clear down every line
     // of the page, and still narrower than the gutter floor was.
