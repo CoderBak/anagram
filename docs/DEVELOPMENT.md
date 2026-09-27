@@ -21,7 +21,7 @@ service anywhere. Work on `dev`; `main` holds the published README only.
 | Setup, popup, settings | `entrypoints/onboarding/`, `entrypoints/popup/`, `entrypoints/options/`, `lib/ui/componentSettings.ts` |
 | PDF reader | `entrypoints/reader/`, `lib/pdf/structured.ts` (Zotero's structure onto pdf.js's text layer), `lib/pdf/reflow.ts` (the fallback), `lib/pdf/reading.ts` (what of either one's paragraphs is read), `lib/pdf/handoff.ts`, `vendor/pdfjs/`, `vendor/document-worker/` (pinned by `scripts/documentWorker.mjs`) |
 | Native host: protocol, ownership, lifecycle | `anagramd/native_host.py`, `anagramd/native_component.py` |
-| In-browser engine (the one-click build): the native host's contract in a Web Worker | `lib/webengine/engine.ts` (lifecycle, operations), `session.ts` (ONNX Runtime Web, WebGPU or WASM), `download.ts` and `storage.ts` (resumable, verified downloads into OPFS), `tokenizer.ts`, `clean.ts`, `fasttext.ts`; `client.ts` (the transport the background uses), `entrypoints/engine/` (Chrome's offscreen document); `scripts/webengine.mjs` builds `public-oneclick/vendor/engine/` |
+| In-browser engine (the one-click build): the native host's contract in a Web Worker | `lib/webengine/engine.ts` (lifecycle, operations), `session.ts` (ONNX Runtime Web, WebGPU or WASM), `download.ts` and `storage.ts` (resumable, verified downloads into OPFS), `autoSetup.ts` (the download started on install), `tokenizer.ts`, `clean.ts`, `fasttext.ts`; `client.ts` (the transport the background uses), `entrypoints/engine/` (Chrome's offscreen document); `scripts/webengine.mjs` builds `public-oneclick/vendor/engine/` |
 | Inference and runtime selection | `anagramd/engine.py`, `anagramd/runtime_controller.py`, `anagramd/runtime_adapters.py`, `anagramd/model_plan.py` |
 | Model download | `anagramd/download_modelkit.py`, `anagramd/hub_transfer.py`, `anagramd/prepare_models.py`, `anagramd/modelkit.json` |
 | Install, update, uninstall | `install.sh`, `install.ps1`, `installer/native_registration.py`, `installer/anagram` |
@@ -60,7 +60,7 @@ existed; each `*:oneclick` script runs the same command as that flavor.
 ```sh
 npm run build:oneclick             # build:oneclick:firefox, build:test:oneclick (output-test/oneclick-*)
 npm run typecheck:oneclick
-npm run test:oneclick              # setup from its button in Chromium, the model hosts served locally (test/webengine/model-server.mjs), popup and panel, EN and ZH; --real downloads the real files to Ready
+npm run test:oneclick              # setup in Chromium from install, with Hugging Face served locally (test/webengine/model-server.mjs), popup and panel, EN and ZH; --real downloads the real files to Ready
 npm run lint:firefox:oneclick
 npm run zip:oneclick               # zip:oneclick:firefox
 npm run release:oneclick           # after npm run release, which empties dist/
