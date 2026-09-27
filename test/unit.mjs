@@ -548,6 +548,16 @@ const results = await page.evaluate(() => {
   u = collect(`<div><div class="txt">${sent(40)}</div><div class="ttl">Finish early</div><div class="txt">${sent(40)}</div></div>`);
   check("on the bare page the same row is indistinguishable from a name row and ends the group (like a real heading)", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
 
+  // osCommerce sets a product's description as short paragraphs, each opened by a bold label in
+  // capitals and a <br>: "DISCMANIA G-LINE PLASTIC", "COLOR AND WEIGHT". Nobody's name, time or
+  // action row is written in capitals of several words — CSS that shows it so leaves the text
+  // as written — so on the bare page too such a line is the author's pseudo-heading.
+  u = collect(`<table><tr><td><p>${sent(30)}</p><p><b>DISCMANIA G-LINE PLASTIC<b><br>${sent(25)}</b></b></p><p><b>COLOR AND WEIGHT<br>${sent(25)}</b></p></td></tr></table>`);
+  check("a pseudo-heading in capitals is transparent on the bare page and no line of the text after it",
+    u.length === 1 && u[0].parts === 3 && u[0].words === 80 && !/DISCMANIA|COLOR/.test(u[0].text), JSON.stringify(u.map(x => [x.parts, x.words, x.text.slice(0, 30)])));
+  u = collect(`<div class="thread">${["ALICE", "BOB", "CAROL"].map((who) => `<div class="row head">${who}</div><div class="row msg">${sent(40)}</div>`).join("")}</div>`);
+  check("…while a one-word name row in capitals still keeps two voices apart", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+
   u = collect(`<p>${sent(40)}</p><div class="widget"><div class="bar"><div class="btns"><span style="display:block">Play</span></div></div></div><p>${sent(40)}</p>`);
   check("a label buried deeper than the text is a widget's crumb, not a boundary (MDN's live-sample 'Play')", u.length === 1 && u[0].parts === 2 && !u[0].text.includes("Play"), JSON.stringify(u.map(x => [x.parts, x.words])));
 

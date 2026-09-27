@@ -357,6 +357,25 @@ export function isAttribution(text: string): boolean {
   return ATTRIBUTION_RE.test(text) && ATTRIBUTION_DETAIL_RE.test(text);
 }
 
+/** Longer than this, a line in capitals is somebody shouting, not a heading. */
+const MAX_CAPS_HEADING_WORDS = 12;
+/** A word of two or more capitals: "COLOR", "LINE" — not the "G" of "G-LINE", not "I". */
+const CAPS_WORD_RE = /^\p{Lu}{2,}/u;
+
+/**
+ * A PSEUDO-HEADING in capitals: "COLOR AND WEIGHT", "THE CHOICE OF YOUR FRISBEE" over the
+ * paragraphs of a shop's description. Three words of capitals or more, no lower-case letter
+ * and no sentence end. Nobody's name, time or action row is written that way — CSS that
+ * shows one in capitals leaves its text as written — while one or two capitalised words
+ * ("REPLY", "JOHN SMITH") may be either, and are not counted.
+ */
+export function isCapsHeading(text: string, shape: WordShape = wordShape(text)): boolean {
+  if (shape.letterWords < 3 || shape.letterWords > MAX_CAPS_HEADING_WORDS || endsLikeProse(text) || /\p{Ll}/u.test(text)) return false;
+  let caps = 0;
+  for (const s of wordSegmenter().segment(text)) if (s.isWordLike && CAPS_WORD_RE.test(s.segment)) caps++;
+  return caps >= 3;
+}
+
 /** What a short run turns out to BE (shortRole). */
 export type ShortRole =
   /** A sentence, or long enough to be one without the full stop: it takes part in merging. */

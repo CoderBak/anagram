@@ -68,6 +68,7 @@ import {
   wordShape,
   shortRole,
   isAttribution,
+  isCapsHeading,
   quoteDepth,
   runQuoteDepth,
   unitPartText,
@@ -1637,6 +1638,12 @@ function createAssembler(
       note(f, r);
       return;
     }
+    // A pseudo-heading in capitals (text.ts, isCapsHeading) is passed over wherever it
+    // stands, as the author's pseudo-heading is inside a declared scope: it ends nothing, and
+    // it is no line of the text under it — osCommerce opens each paragraph of a product's
+    // description with "COLOR AND WEIGHT<br>", and the description was read as sections too
+    // short to judge, each headed by its label.
+    if (isCapsHeading(r.text)) return;
     const punctuated = endsLikeProse(r.text);
 
     if (f.block === r.container) {

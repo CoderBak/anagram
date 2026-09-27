@@ -83,6 +83,11 @@ local component and the installer all carry the same version.
 - A code block marked up for SyntaxHighlighter (`class="brush: xml; gutter: true"`) is no
   longer read as prose. Its settings were not recognised as a highlighter's, and a security
   advisory's exploit code was read as a 2,500-word paragraph.
+- A heading written in capitals over a paragraph ("COLOR AND WEIGHT", "THE CHOICE OF YOUR
+  FRISBEE") no longer cuts a text into sections too short to read, and is no longer read as
+  the first line of the paragraph under it. A shop's product description set as four short
+  paragraphs under such headings got nothing and is now read as one text, as a text under
+  bold headings inside an article already was. Real headings still end a section.
 - A section of a page is no longer skipped because of the words in its anchor. PostgreSQL's
   reference section on the locking clause is `SQL-FOR-UPDATE-SHARE`, Flask's documentation
   names its section on cookies `cookies`, and those ids read as a share bar and a cookie
