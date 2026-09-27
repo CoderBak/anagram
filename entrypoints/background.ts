@@ -38,6 +38,7 @@ import { settings, cacheModeStorage } from "../lib/settings/settings";
 import { t } from "../lib/i18n";
 import { handleNativePageMessage } from "../lib/backend/nativeBridge";
 import { readEngineSetup } from "../lib/backend/engineSetup";
+import { startSetupByItself } from "../lib/webengine/autoSetup";
 import { NATIVE_MESSAGE, NATIVE_UNINSTALL } from "../lib/backend/nativeProtocol";
 const EXTENSION_UPDATE_KEY = "extensionUpdatePending";
 
@@ -165,7 +166,15 @@ export default defineBackground(() => {
         });
       }
     });
-    if (details.reason === "install") {
+    if (import.meta.env.ANAGRAM_FLAVOR === "oneclick") {
+      // The in-browser engine sets itself up: its download starts before the setup page opens,
+      // which then shows it running (lib/webengine/autoSetup.ts says when it does not).
+      if (details.reason === "install" || details.reason === "update") {
+        void startSetupByItself((op) => engineTransport().request(op)).then(() => {
+          if (details.reason === "install") void browser.tabs.create({ url: browser.runtime.getURL("/onboarding.html") });
+        });
+      }
+    } else if (details.reason === "install") {
       void browser.tabs.create({ url: browser.runtime.getURL("/onboarding.html") });
     }
   });

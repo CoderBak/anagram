@@ -659,9 +659,13 @@
     "message": "Anagram's model runs right here in your browser, with nothing else to install. It needs a one-time download of $1.",
     "description": "In-browser edition, setup page before setup: what setting up means. $1 is the download's size, e.g. 1.4 GB."
   },
+  "engineSaveData": {
+    "message": "Data Saver is on in your browser, so the download waits until you start it.",
+    "description": "Oneclick setup, not set up: why the model download did not start by itself (navigator.connection.saveData)."
+  },
   "engineSetUpButton": {
     "message": "Set up (one-time $1 download)",
-    "description": "In-browser edition: the button that starts setup (the browser asks for the download sites, then the model downloads). $1 is the size, e.g. 1.4 GB."
+    "description": "In-browser edition: the button that starts the model download when it did not start by itself. $1 is the size, e.g. 1.4 GB."
   },
   "engineNotSetUp": {
     "message": "Not set up yet",
@@ -740,7 +744,7 @@
     "description": "In-browser edition: the download failed on the network, and how to fix it. Retry is the button's label (panelRetry)."
   },
   "engineDiskFull": {
-    "message": "There isn't enough free disk space. Free up at least $1, then click Retry.",
+    "message": "There isn't enough free disk space. Free up at least $1, then try again.",
     "description": "In-browser edition: the download stopped on a full disk; $1 is how much it still needs, e.g. 800 MB."
   },
   "engineServerDown": {

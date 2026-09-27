@@ -515,6 +515,9 @@
   "engineSetUpIntro": {
     "message": "Anagram 的模型直接在你的浏览器里运行，无需安装其他软件，只需一次性下载 $1。"
   },
+  "engineSaveData": {
+    "message": "浏览器开启了省流量模式，下载会等你手动开始。"
+  },
   "engineSetUpButton": {
     "message": "开始设置（一次性下载 $1）"
   },
@@ -576,7 +579,7 @@
     "message": "网络连接已中断。请确认已联网，然后点击“重试”，下载会从中断处继续。"
   },
   "engineDiskFull": {
-    "message": "磁盘可用空间不足。请至少腾出 $1，然后点击“重试”。"
+    "message": "磁盘可用空间不足。请至少腾出 $1，然后再试一次。"
   },
   "engineServerDown": {
     "message": "下载站点暂时没有响应。请等几分钟后点击“重试”。"
