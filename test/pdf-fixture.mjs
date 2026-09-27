@@ -342,6 +342,78 @@ export async function servePdfs(
   return { url: (path) => `http://localhost:${port}${path}`, close: () => new Promise((r) => server.close(() => r())) };
 }
 
+/** A chip in the reader: a pill in a page's chip layer (its toolbar and notices are hosts too). */
+export const PDF_CHIP = '.anagramPdfChips [data-anagram="host"]';
+
+/** The reader has the document and the text layer of the page on screen. */
+export const readerReady = (page, { timeout = 25000 } = {}) =>
+  page.waitForFunction(
+    () => !!window.PDFViewerApplication?.pdfDocument && document.querySelectorAll("#viewer .textLayer span").length > 5,
+    null,
+    { timeout },
+  );
+
+/**
+ * The reader has read the document as far as it will by itself: the page is up and
+ * Zotero's structure worker has answered or given up (lib/pdf/structureWorker.ts measures
+ * "anagram-structure" either way). Its answer re-lays every chip — the orchestrator's
+ * rescan takes them all down and puts them back from the cache — so a chip count taken
+ * before it can land in that gap and read zero.
+ */
+export const readerRead = (page, { timeout = 30000 } = {}) =>
+  page.waitForFunction(
+    () =>
+      !!window.PDFViewerApplication?.pdfDocument &&
+      document.querySelectorAll("#viewer .textLayer span").length > 5 &&
+      performance.getEntriesByName("anagram-structure").length > 0,
+    null,
+    { timeout },
+  );
+
+/** Where the reader has got to, for a failure's note. */
+export const readerState = (page) =>
+  page
+    .evaluate((sel) => ({
+      pdf: !!window.PDFViewerApplication?.pdfDocument,
+      spans: document.querySelectorAll("#viewer .textLayer span").length,
+      measures: performance.getEntriesByType("measure").filter((m) => m.name.startsWith("anagram")).map((m) => `${m.name}@${Math.round(m.startTime + m.duration)}`),
+      chips: [...document.querySelectorAll(sel)].filter((el) => el.shadowRoot?.querySelector(".pill")).length,
+      ball: !!document.getElementById("anagram-fab"),
+      notice: document.getElementById("notice")?.textContent ?? null,
+      visibility: document.visibilityState,
+      at: Math.round(performance.now()),
+    }), PDF_CHIP)
+    .catch((error) => ({ error: String(error).slice(0, 120) }));
+
+/** How many chips the reader shows now. */
+export const pdfChipCount = (page) =>
+  page
+    .evaluate((sel) => [...document.querySelectorAll(sel)].filter((el) => el.shadowRoot?.querySelector(".pill")).length, PDF_CHIP)
+    .catch(() => -1);
+
+/** Wait for the reader's chips and say how many there are then; 0 when none came. */
+export const pdfChips = (page, { timeout = 20000 } = {}) =>
+  page
+    .waitForFunction(
+      (sel) => [...document.querySelectorAll(sel)].filter((el) => el.shadowRoot?.querySelector(".pill")).length || false,
+      PDF_CHIP,
+      { timeout },
+    )
+    .then((handle) => handle.jsonValue())
+    .catch(() => 0);
+
+/** The ball on a tab showing a PDF offers its way into the reader: the content script is
+ *  up and has told the worker about the PDF. Resolves to the chip's label, or null. */
+export const pdfTabChip = (page, { timeout = 15000 } = {}) =>
+  page
+    .waitForFunction(
+      () => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".action")?.textContent || false,
+      null,
+      { timeout },
+    )
+    .then((handle) => handle.jsonValue())
+    .catch(() => null);
+
 /** Open through the authorized tab handoff; a reader `src` query never fetches bytes. */
 export async function openPdfInReader(context, url, { timeout = 25000 } = {}) {
   const page = await context.newPage();
