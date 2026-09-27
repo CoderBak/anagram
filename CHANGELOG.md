@@ -170,6 +170,10 @@ local component and the installer all carry the same version.
 - The PDF reader keeps the number a cross-reference names when a formula follows it with no
   comma between: "by Proposition 1 $f$ is bounded" and "Eq. (3) $x$" lost the "1" and the
   "(3)".
+- The PDF reader leaves out a name set against the bracket of a formula's argument, a
+  function applied to it: "\mathrm{Aug}(\mathcal{G})" read "Aug(" and "\operatorname{KL}(p\|q)"
+  read "KL(". On the development papers the paragraphs whose reading still held formula
+  text fell from 2,819 to 2,639.
 - The PDF reader keeps a number the text writes next to an inline formula: "pores of 11.3 μm"
   read as "pores of m", "by Theorem 2, x is" as "by Theorem, is", and "(Federer, 1969,
   3.2.12)" lost its year. A number beside a formula went with it, because TeX sets a formula's

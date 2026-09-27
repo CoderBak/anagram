@@ -745,6 +745,39 @@ describe("structuredBlocks — formulas", () => {
     expectRunsToMatch(blocks[0], pages);
   });
 
+  it("leaves out a name set against the bracket of a formula's argument", () => {
+    // "\mathrm{Aug}(\mathcal{G})" and "\operatorname{KL}(p\|q)" take their names from the
+    // text face; the bracket against the formula makes them a function applied to it.
+    const fonts = { f_text: "UTRHDZ+CMR10", f_math: "BXJUHM+CMMI10", f_sy: "CMSY10" };
+    const items: PdfTextItem[] = [];
+    const runs: (number | number[])[][] = [];
+    let text = "";
+    let x = 72;
+    const put = (s: string, font: string, gap = CW) => {
+      const d = drawn(1, { text: s, x, y: 100, font });
+      items.push(d.item);
+      runs.push(d.run);
+      text += s + (gap ? " " : "");
+      x += s.length * CW + gap;
+    };
+    put("the edge in", "f_text");
+    put("Aug(", "f_text", 0);
+    put("G", "f_sy", 0);
+    put(")", "f_text");
+    put("is kept, the model(s) agree, and", "f_text");
+    put("KL(", "f_text", 0);
+    put("p", "f_math", 0);
+    put("∥", "f_sy", 0);
+    put("q", "f_math", 0);
+    put(")", "f_text");
+    put("is small.", "f_text");
+    const n = { text, anchor: { textMap: JSON.stringify(runs) } };
+    const pages = [pageText(1, items, fonts)];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0].text).toBe("the edge in is kept, the model(s) agree, and is small.");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
   it("changes nothing in a document with no mathematics face", () => {
     const n = node(1, [{ text: "a plain sentence with x = 5 and (2 + 0.5) in it.", x: 72, y: 100 }]);
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), [pageText(1, n.items, { f_text: "Calibri" })]);

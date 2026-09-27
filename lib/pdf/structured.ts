@@ -662,6 +662,12 @@ function assemble(pieces: Piece[], located: Located, vocab: Vocabulary, mathPage
    *  "by Proposition 1 $f$ is", "Eq. (3) $x$". */
   const referenced = (k: number): boolean =>
     k > 0 && !drop[k - 1] && /^[(\[]?\p{N}/u.test(pieces[tokens[k].at[0]].ch + (pieces[tokens[k].at[1]]?.ch ?? "")) && REFERENCE.test(letters(tokens[k - 1]));
+  /** A name set against the bracket of the formula after it: a function applied,
+   *  "\mathrm{Aug}(\mathcal{G})", "\operatorname{KL}(p\|q)". */
+  const applied = (k: number): boolean => {
+    const t = tokens[k], next = tokens[k + 1];
+    return t.letters && /\p{L}[([]$/u.test(pieces[t.at[t.at.length - 2]]?.ch + pieces[t.at[t.at.length - 1]].ch) && next !== undefined && pieces[next.at[0] - 1]?.ch !== " ";
+  };
   const typedAfter = (k: number): boolean => {
     const t = tokens[k], before = tokens[k - 1];
     if (!before || !/^\p{N}/u.test(pieces[t.at[0]].ch) || !RELATION.test(pieces[before.at[before.at.length - 1]].ch)) return false;
@@ -727,7 +733,7 @@ function assemble(pieces: Piece[], located: Located, vocab: Vocabulary, mathPage
     if (drop[i - 1] && withFormula(tokens[i]) && !written(tokens[i]) && !typedAfter(i) && beside(tokens[i - 1], tokens[i])) drop[i] = true;
   }
   for (let i = tokens.length - 2; i >= 0; i--) {
-    if (drop[i + 1] && withFormula(tokens[i]) && !written(tokens[i]) && !closes(tokens[i]) && !referenced(i) && beside(tokens[i], tokens[i + 1])) drop[i] = true;
+    if (drop[i + 1] && (withFormula(tokens[i]) || applied(i)) && !written(tokens[i]) && !closes(tokens[i]) && !referenced(i) && beside(tokens[i], tokens[i + 1])) drop[i] = true;
   }
 
   // ---- the text ----
