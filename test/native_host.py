@@ -95,12 +95,19 @@ class FramingTests(unittest.TestCase):
         self.assertEqual([r["error"]["code"] for r in values], ["response_too_large", "invalid_response"])
         self.assertLess(len(output.getvalue()), 4096)
 
-    def test_busy_startup_never_constructs_or_starts_another_component(self):
-        output = io.BytesIO()
-        error = ComponentError("busy", "another browser owns this component", 409)
-        host.run_host(io.BytesIO(frame(request()) + frame(request("models.download", "2"))), output,
-                      startup_error=error)
-        self.assertEqual([r["status"] for r in replies(output.getvalue())], [409, 409])
+    def test_a_host_that_could_not_start_answers_once_and_exits(self):
+        # The browser's next request starts a fresh host, which tries the home again
+        # with the files then on disk; the extension need not reopen the port itself.
+        for error in (ComponentError("busy", "another browser owns this component", 409),
+                      ComponentError("not_installed", "The owned native component marker is missing", 503)):
+            with self.subTest(code=error.code):
+                output = io.BytesIO()
+                reader = io.BytesIO(frame(request()) + frame(request("models.download", "2")))
+                host.run_host(reader, output, startup_error=error)
+                answered = replies(output.getvalue())
+                self.assertEqual([(r["id"], r["status"], r["error"]["code"]) for r in answered],
+                                 [("request-1", error.status, error.code)])
+                self.assertLess(reader.tell(), len(reader.getvalue()))  # the second request was never read
 
     def test_completed_update_health_reply_retires_the_old_host(self):
         class Component:

@@ -132,7 +132,8 @@ def main():
                 try:
                     busy = peer.request("status")
                     assert not busy["ok"] and busy["status"] == 409 and busy["error"]["code"] == "busy", busy
-                    assert peer.request("models.download")["error"]["code"] == "busy"
+                    # It answers once and exits; the browser's next request starts another host.
+                    assert peer.process.wait(timeout=30) == 0
                 finally:
                     peer.close()
                 # Prepared files lead straight to an automatically selected, loaded runtime.
