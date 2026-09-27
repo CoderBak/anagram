@@ -38,7 +38,9 @@
     "test:csp": "playwright test csp",
     "test:matrix": "node test/matrix.mjs",
     "test:backend": "sh test/backend.sh",
-    "test:network-privacy": "python3 test/network-privacy.py"
+    "test:network-privacy": "python3 test/network-privacy.py",
+    "bench:pdf": "ANAGRAM_PDF_BENCH=${ANAGRAM_PDF_BENCH:-$HOME/anagram-bench/pdfbench/corpus} node test/pdf-bench/bench.mjs",
+    "bench:web": "ANAGRAM_WEB_BENCH=${ANAGRAM_WEB_BENCH:-$HOME/anagram-bench/webbench/corpus} node test/web-bench/bench.mjs"
   },
   "devDependencies": {
     "@floating-ui/dom": "^1.8.0",
