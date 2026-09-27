@@ -128,7 +128,9 @@ local component and the installer all carry the same version.
   pages of such prose aside as tables. The numbers are now told by where they stand — a
   bare number at the edge of each line, in a column clear of the text, counting on line by
   line — and left out; the lines Zotero read one by one are joined into the paragraphs
-  their indents and last lines show, and a page it took for a table is read. On 18
+  their indents and last lines show (in a manuscript set ragged right, where nearly every
+  line stops short of the margin, by their indents), and a page it took for a table is
+  read. On 18
   EarthArXiv manuscripts, those whose PDF carries its own paragraphs read 74% of their
   text instead of 60%, the paragraphs are found (boundary F1 81% instead of 58%), and the
   6% of scored words that were line numbers are gone.

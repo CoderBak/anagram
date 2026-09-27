@@ -380,6 +380,11 @@ const TOUCH = 0.15;
 const PARA_GAP = 1.45;
 const INDENT = 0.5;
 const SHORT_LINE = 2;
+/** A manuscript whose numbered lines end flush right fewer than this share of the time is
+ *  set ragged, and there only a line that ends before this share of the measure stopped
+ *  short. */
+const FLUSH_SHARE = 0.5;
+const RAGGED_SHORT = 0.7;
 /** A gap this many sizes wide inside a line is a table's, between two cells. */
 const CELL_GAP = 1.5;
 /** Share of a table's lines that must be numbered, and at most hold a cell's gap, for it to
@@ -568,9 +573,11 @@ const firstLetter = (pieces: Piece[]): string => pieces.find((p) => p.ch !== " "
  * margins and pitch (`pages`): a line below the last by more than PARA_GAP pitches, one
  * indented where the last was flush, one opening a sentence or a list item after a line
  * that stopped short, and every new page or column (the reading joins a paragraph carried
- * over one by its sentence, `continues`).
+ * over one by its sentence, `continues`). A manuscript is often set ragged right, where
+ * every line stops a word or two short of the margin and as often as not the next opens
+ * with a capital or a bracket: there a line has stopped short only well inside the measure.
  */
-function paragraphsOfRows(rows: Row[], pages: ReadonlyMap<number, { left: number; right: number; pitch: number }>): Row[][] {
+function paragraphsOfRows(rows: Row[], pages: ReadonlyMap<number, Margins>, ragged: boolean): Row[][] {
   const out: Row[][] = [];
   rows.forEach((b, i) => {
     const a = rows[i - 1];
@@ -579,7 +586,7 @@ function paragraphsOfRows(rows: Row[], pages: ReadonlyMap<number, { left: number
     const breaks = !a || !m || a.page !== b.page || b.top <= a.top
       || b.top - a.top > m.pitch * PARA_GAP
       || (b.x0 > m.left + b.h * INDENT && a.x0 <= m.left + a.h * INDENT)
-      || (a.x1 < m.right - a.h * SHORT_LINE && FRESH_START.test(opening))
+      || ((ragged ? a.x1 < m.left + (m.right - m.left) * RAGGED_SHORT : a.x1 < m.right - a.h * SHORT_LINE) && FRESH_START.test(opening))
       || LIST_OPENING.test(b.pieces.map((p) => p.ch).join("").trimStart());
     if (breaks) out.push([b]);
     else out[out.length - 1].push(b);
@@ -603,6 +610,13 @@ function joinRows(rows: Row[]): Piece[] {
   }
   while (out.length && out[0].ch === " ") out.shift();
   return out;
+}
+
+/** A page's numbered prose: its left and right margins, and its line pitch. */
+interface Margins {
+  left: number;
+  right: number;
+  pitch: number;
 }
 
 /** A reading as it is prepared when nothing of it is numbered. */
@@ -661,15 +675,20 @@ function numberedReadings(readings: (Reading | Marker)[], texts: (Piece[] | null
     const a = p.rows[i - 1];
     if (a && a.page === r.page && r.top > a.top && r.top - a.top < 3 * r.h) on.steps.push(r.top - a.top);
   });
-  const pages = new Map<number, { left: number; right: number; pitch: number }>();
+  const pages = new Map<number, Margins>();
+  let flush = 0, all = 0;
   for (const [n, { rows, steps }] of byPage) {
-    pages.set(n, { left: percentile(rows.map((r) => r.x0), 0.15), right: percentile(rows.map((r) => r.x1), 0.85), pitch: steps.length ? percentile(steps, 0.5) : rows[0].h * 1.2 });
+    const right = percentile(rows.map((r) => r.x1), 0.85);
+    pages.set(n, { left: percentile(rows.map((r) => r.x0), 0.15), right, pitch: steps.length ? percentile(steps, 0.5) : rows[0].h * 1.2 });
+    flush += rows.filter((r) => r.x1 >= right - r.h).length;
+    all += rows.length;
   }
+  const ragged = flush < all * FLUSH_SHARE;
   // Each pool's paragraphs, in the place the pool holds.
   const replaced = new Map<number, (Prepared | Marker)[]>();
   for (const p of pools) {
     const made: (Prepared | Marker)[] = [];
-    for (const rows of paragraphsOfRows(p.rows, pages)) {
+    for (const rows of paragraphsOfRows(p.rows, pages, ragged)) {
       const pieces = joinRows(rows);
       const text = pieces.map((q) => q.ch).join("");
       if (CAPTION.test(text) && text.split(/\s+/).length <= CAPTION_WORDS) { made.push("skip"); continue; }

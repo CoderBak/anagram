@@ -1153,6 +1153,20 @@ describe("structuredBlocks — a manuscript with numbered lines", () => {
     for (const b of blocks) expectRunsToMatch(b, pages);
   });
 
+  it("finds the paragraphs of numbered lines set ragged right by their indents", () => {
+    // Every line stops short of the margin by a word or two, and many of them are followed
+    // by a line opening with a capital or a bracket: only the indent opens a paragraph.
+    const ragged = [
+      { text: `The ${fill("a", 80)}`, x: 108 }, { text: fill("b", 78), x: 72 }, { text: `(Smith ${fill("c", 76)}`, x: 72 },
+      { text: `Jones ${fill("d", 78)}`, x: 72 }, { text: `${fill("e", 70)}.`, x: 72 },
+      { text: `Then ${fill("f", 76)}`, x: 108 }, { text: `(Doe ${fill("g", 82)}`, x: 72 }, { text: `${fill("h", 60)}.`, x: 72 },
+    ];
+    const set = lines(1, 84, 100, ragged);
+    const pages = [pageText(1, set.flatMap((l) => l.items))];
+    const blocks = structuredBlocks(structure([asList(set)]), pages);
+    expect(blocks.map((b) => b.text)).toEqual([ragged.slice(0, 5), ragged.slice(5)].map((p) => p.map((l) => l.text).join(" ")));
+  });
+
   it("reads a page of numbered prose Zotero took for a table", () => {
     const set = lines(1, 84, 100);
     const pages = [pageText(1, set.flatMap((l) => l.items))];
