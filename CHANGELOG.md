@@ -76,6 +76,10 @@ local component and the installer all carry the same version.
   page or the fee and risk notices under a bank's calculator. On the web benchmark's
   development pages this removes 3% of the words read that are not the page's content: a
   third of them on product pages and a tenth on service pages.
+- The author's bio box beside or under an article is no longer read as part of the page:
+  boxes named as an author box, an author bio or "about the author". A box of authors that
+  holds the article itself is still the article. On the web benchmark's development pages
+  this removes a further 2% of the words read that are not the page's content, on 32 pages.
 - A section of a page is no longer skipped because of the words in its anchor. PostgreSQL's
   reference section on the locking clause is `SQL-FOR-UPDATE-SHARE`, Flask's documentation
   names its section on cookies `cookies`, and those ids read as a share bar and a cookie

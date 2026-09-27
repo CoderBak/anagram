@@ -1188,6 +1188,11 @@ const results = await page.evaluate(() => {
   u = collect(`<p>${words(90)}</p><p>${words(90)}</p><div class="common-bottom-disclaimer"><ol><li>${words(80)}</li></ol></div><p class="pricing-disclaimer-text">${words(80)}</p><div class="fine-print">${words(80)}</div>`);
   check("legal fine print under the text is not read (Samsung's bottom disclaimer, a pricing disclaimer)",
     u.length === 2 && u.every((x) => x.words === 90), JSON.stringify(u.map(x => x.words)));
+  u = collect(`<p>${words(90)}</p><p>${words(90)}</p><div class="author-box"><a href="/author/ann">Ann Lee</a><p>${words(80)}</p></div><section class="about-the-author"><p>${words(80)}</p></section><div class="x9-AuthorBio">${words(80)}</div>`);
+  check("the author's bio box under the text is not read (author-box, about-the-author, a hashed AuthorBio)",
+    u.length === 2 && u.every((x) => x.words === 90), JSON.stringify(u.map(x => x.words)));
+  u = collect(`<div class="authors-container"><p>${words(90)}</p><p>${words(90)}</p></div><p>${words(40)}</p>`);
+  check("…while a box of authors that holds the article is the article (JMIR's authors-container)", u.length === 2, JSON.stringify(u.map(x => x.words)));
   {
     // The reply FORM is chrome; the comments are not. 博客园 wraps its comment LIST in boxes
     // carrying the same token, and a Greenhouse job application sets consent text among its

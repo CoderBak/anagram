@@ -132,6 +132,10 @@ export const CHROME_TOKEN_PATTERNS: string[] = [
   "outbrain", "taboola", "mgid", "revcontent",
   // article metadata rows (bylines/dates render as text but are not prose)
   "byline", "dateline", "post[-_]?meta", "entry[-_]?meta", "article[-_]?meta",
+  // the author's bio box beside or under the text — compound forms only, so a box of the
+  // paper's authors that holds the paper (JMIR's `authors-container`) is no bio
+  "author[-_]?(?:bio|box|info|card|profile|about|details|description|block|section|wrap|wrapper|footer)",
+  "about[-_]?(?:the[-_]?)?authors?", "bio[-_]?(?:box|card|block)",
   // site furniture. (No bare "toc": Wikipedia's <body> carries utility classes
   // like "vector-toc-pinned-clientpref-1" — a delimited "toc" token nuked the
   // whole page. TOC boxes are link lists; the link-density barrier owns them.)
