@@ -140,8 +140,10 @@ const MIN_LINES_FOR_COLUMNS = 6;
  * it is 0.167, which a table's stray gap or a ragged indent never reaches.
  */
 const COLUMN_EVEN_SHARE = 0.5;
-/** A gutter narrower than this share of the page width is just word spacing. */
+/** A gutter narrower than this share of the page width, or than the type is high, is just
+ *  word spacing. */
 const GUTTER_MIN_WIDTH = 0.015;
+const GUTTER_MIN_EMS = 1;
 /**
  * A gutter runs the height of the page. Cut the page's text into horizontal bands and a
  * real gutter is clear, with text on BOTH sides of it, in at least this share of the
@@ -707,7 +709,7 @@ function findGutters(lines: Line[], pageWidth: number): Gutters {
   const span = right - left;
   if (span < pageWidth * 0.4) return NO_GUTTERS;
   const size = median(lines.map((l) => l.size));
-  const minWidth = Math.max(pageWidth * GUTTER_MIN_WIDTH, size * 1.2);
+  const minWidth = Math.max(pageWidth * GUTTER_MIN_WIDTH, size * GUTTER_MIN_EMS);
 
   const cell = span / GUTTER_CELLS;
   const top = Math.min(...items.map((it) => it.y));
@@ -765,7 +767,7 @@ function findGutters(lines: Line[], pageWidth: number): Gutters {
       continue;
     }
     if (open >= 0) {
-      if ((c - open) * cell >= minWidth) bands.push(bandOf(divides, open, c, left, cell, withText));
+      if (whiteOf(open, c, cell) >= minWidth) bands.push(bandOf(divides, open, c, left, cell, withText));
       open = -1;
     }
   }
@@ -781,6 +783,12 @@ function findGutters(lines: Line[], pageWidth: number): Gutters {
   }
   if (chosen.length > 0) return { at: chosen, from: -Infinity, to: Infinity };
   return stretchGutters(lines, items, dividing, { left, cell, minWidth, top, depth });
+}
+
+/** How wide the white of cells [from, to) can be: a cell a run reaches into only part way
+ *  counts as covered, so the white may run up to a cell further on either side. */
+function whiteOf(from: number, to: number, cell: number): number {
+  return (to - from + 2) * cell;
 }
 
 /** Where a page's gutters run, and the stretch of the page between two baselines that they
@@ -831,7 +839,7 @@ function stretchGutters(
       if (open < 0) open = c;
       continue;
     }
-    if (open >= 0 && (c - open) * g.cell >= g.minWidth) {
+    if (open >= 0 && whiteOf(open, c, g.cell) >= g.minWidth) {
       const band = bandOf(length, open, c, g.left, g.cell, 1);
       const k = Math.min(c - 1, Math.max(open, Math.floor((band.at - g.left) / g.cell)));
       candidates.push({ at: band.at, length: length[k], first: first[k], last: last[k], width: band.width });

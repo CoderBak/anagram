@@ -461,6 +461,15 @@ describe("reflowPdf — two columns", () => {
     expect(texts(blocks).slice(-2)).toEqual([left.join(" "), right.join(" ")]);
   });
 
+  it("reads two columns whose gutter is no wider than the type is high", () => {
+    // A conference template's gutter of 11 points under 11-point type: clear down every line
+    // of the page, and still narrower than the gutter floor was.
+    const left = Array.from({ length: 10 }, (_, i) => `Left line ${i} of a page set narrow.`);
+    const right = Array.from({ length: 10 }, (_, i) => `Right line ${i} of it, beside it.`);
+    const blocks = reflowPdf([page(1, [...column(left, 120, 72, 229), ...column(right, 120, 312, 229)])]);
+    expect(texts(blocks)).toEqual([left.join(" "), right.join(" ")]);
+  });
+
   it("reads a page whose second column stops half way as two columns still", () => {
     const left = Array.from({ length: 12 }, (_, i) => `left line ${i} of the page.`);
     const right = Array.from({ length: 6 }, (_, i) => `Right line ${i} of it.`);

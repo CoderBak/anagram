@@ -145,8 +145,10 @@ local component and the installer all carry the same version.
 - The PDF reader's own reflow, which reads a document before Zotero's structure arrives, a
   long one past its 300 pages, and Google Drive's and OneDrive's previews, reads the columns
   of a page that has them in one stretch only: under a first page's title and abstract, or
-  beside a figure set across the page. It read such a page line by line across both
-  columns. On olmOCR-Bench's pages it passes 60% of the checks instead of 58%.
+  beside a figure set across the page, and of a page whose gutter is no wider than an em,
+  as many conference templates and small books set it. It read such a page line by line
+  across both columns. On olmOCR-Bench's pages it passes 64% of the checks instead of 58%,
+  and on two-column arXiv papers it puts 9 paragraphs out of order where it put 118.
 - In Firefox, a web PDF without ".pdf" in its address now and then stayed in Firefox's own
   viewer instead of opening in Anagram's reader, and a PDF the reader opened by itself, as
   it does when one loads or is reloaded, could land on "This PDF could not be loaded". Both
