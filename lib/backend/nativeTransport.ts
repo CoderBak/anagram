@@ -172,11 +172,11 @@ export class NativeTransport implements EngineTransport {
    *  at once, it would only be told the engine is not ready. */
   private async awaitModel(port: NativePort, until: number): Promise<void> {
     for (;;) {
-      let state: unknown;
+      let state: unknown = "loading";
       try {
         const reply = await this.create("status", {}, undefined, 5_000, port, true);
         state = reply.ok && isRecord(reply.data) ? reply.data.state : undefined;
-      } catch { return; } // the host went away again, and lost() has seen to it
+      } catch { /* unanswered: asked again below, unless the host is gone (lost() saw to it) */ }
       if (this.port !== port || !this.restarting) return;
       if ((state !== "starting" && state !== "loading") || Date.now() >= until) break;
       await new Promise((resolve) => setTimeout(resolve, RESTART_POLL_MS));
@@ -211,7 +211,8 @@ export class NativeTransport implements EngineTransport {
   private create(op: NativeOperation, payload: NativePayload, signal: AbortSignal | undefined, timeout: number,
     port: NativePort | null, internal: boolean): Promise<NativeReply> {
     if (signal?.aborted) return Promise.reject(new NativeTransportError("cancelled", "Request cancelled"));
-    if (this.pending.size >= 64) return Promise.reject(new NativeTransportError("busy", "Too many pending requests"));
+    // The restart's own question is never refused: what waits depends on it.
+    if (this.pending.size >= 64 && !internal) return Promise.reject(new NativeTransportError("busy", "Too many pending requests"));
     const id = `${this.prefix}-${++this.sequence}`;
     const message = {v: 1 as const, id, op, payload};
     try {

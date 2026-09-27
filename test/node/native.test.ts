@@ -157,6 +157,22 @@ describe("a host that dies with work in flight", () => {
     h.transport.close();
   });
 
+  it("asks a restarted host that is slow to answer again, and sends what waits once its model is loaded", async () => {
+    vi.useFakeTimers(); const h = hosts(); await running(h);
+    const score = h.transport.request("score", {v:"3.0",blocks:[{id:"a",text:"text"}]});
+    h.started[0].disconnect();
+    await vi.advanceTimersByTimeAsync(RESTART_BACKOFF_MS);
+    const second = h.started[1];
+    await vi.advanceTimersByTimeAsync(5_000); // the first status went unanswered
+    await vi.advanceTimersByTimeAsync(250);
+    expect(second.messages.map((m) => m.op)).toEqual(["status", "status"]);
+    statusOf(second, 1, "ready"); await vi.advanceTimersByTimeAsync(0);
+    expect(second.messages.map((m) => m.op)).toEqual(["status", "status", "score"]);
+    scoreReply(second, 2);
+    await expect(score).resolves.toMatchObject({ok:true});
+    h.transport.close();
+  });
+
   it("holds requests made while it restarts and sends them to the new host", async () => {
     vi.useFakeTimers(); const h = hosts(); await running(h);
     const inFlight = h.transport.request("tokens", {v:"3.0",texts:["a"]});
