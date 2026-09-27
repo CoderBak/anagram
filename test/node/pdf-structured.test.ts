@@ -716,6 +716,35 @@ describe("structuredBlocks — formulas", () => {
     expectRunsToMatch(blocks[0], pages);
   });
 
+  it("keeps the number a cross-reference names when a formula follows it", () => {
+    // "by Proposition 1 $f$ is bounded", "Eq. (3) $x$": no comma closes the clause before the
+    // formula, but the number is the reference's.
+    const fonts = { f_text: "NimbusRomNo9L-Regu", f_math: "BXJUHM+CMMI10" };
+    const items: PdfTextItem[] = [];
+    const runs: (number | number[])[][] = [];
+    let text = "";
+    let x = 72;
+    const put = (s: string, font: string, gap = CW) => {
+      const d = drawn(1, { text: s, x, y: 100, font });
+      items.push(d.item);
+      runs.push(d.run);
+      text += s + (gap ? " " : "");
+      x += s.length * CW + gap;
+    };
+    put("by Proposition 1", "f_text");
+    put("f", "f_math");
+    put("is bounded, and by Eq. (3)", "f_text");
+    put("x", "f_math");
+    put("holds, while a 2", "f_text");
+    put("x", "f_math");
+    put("stays.", "f_text");
+    const n = { text, anchor: { textMap: JSON.stringify(runs) } };
+    const pages = [pageText(1, items, fonts)];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0].text).toBe("by Proposition 1 is bounded, and by Eq. (3) holds, while a stays.");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
   it("changes nothing in a document with no mathematics face", () => {
     const n = node(1, [{ text: "a plain sentence with x = 5 and (2 + 0.5) in it.", x: 72, y: 100 }]);
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), [pageText(1, n.items, { f_text: "Calibri" })]);

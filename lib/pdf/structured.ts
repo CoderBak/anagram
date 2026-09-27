@@ -658,6 +658,10 @@ function assemble(pieces: Piece[], located: Located, vocab: Vocabulary, mathPage
    *  space after a relation inside a formula, outside a sub- or superscript, so "$\sim$10
    *  kHz" and "$\geq$50%" are the text's numbers, and "$\sim 10$" is not. What decides is
    *  pdf.js's runs, which keep the space Zotero's glyphs fold away. */
+  /** A number a cross-reference names, with nothing between it and the formula after it:
+   *  "by Proposition 1 $f$ is", "Eq. (3) $x$". */
+  const referenced = (k: number): boolean =>
+    k > 0 && !drop[k - 1] && /^[(\[]?\p{N}/u.test(pieces[tokens[k].at[0]].ch + (pieces[tokens[k].at[1]]?.ch ?? "")) && REFERENCE.test(letters(tokens[k - 1]));
   const typedAfter = (k: number): boolean => {
     const t = tokens[k], before = tokens[k - 1];
     if (!before || !/^\p{N}/u.test(pieces[t.at[0]].ch) || !RELATION.test(pieces[before.at[before.at.length - 1]].ch)) return false;
@@ -723,7 +727,7 @@ function assemble(pieces: Piece[], located: Located, vocab: Vocabulary, mathPage
     if (drop[i - 1] && withFormula(tokens[i]) && !written(tokens[i]) && !typedAfter(i) && beside(tokens[i - 1], tokens[i])) drop[i] = true;
   }
   for (let i = tokens.length - 2; i >= 0; i--) {
-    if (drop[i + 1] && withFormula(tokens[i]) && !written(tokens[i]) && !closes(tokens[i]) && beside(tokens[i], tokens[i + 1])) drop[i] = true;
+    if (drop[i + 1] && withFormula(tokens[i]) && !written(tokens[i]) && !closes(tokens[i]) && !referenced(i) && beside(tokens[i], tokens[i + 1])) drop[i] = true;
   }
 
   // ---- the text ----
