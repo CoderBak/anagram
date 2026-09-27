@@ -100,6 +100,15 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- A long session on a feed that keeps every post it shows, as Reddit's does, no longer costs
+  more with every minute. Counts and times a page rewrites in place (likes, scores, "5 hr.
+  ago") no longer make Anagram read the page again, and the page is read again only as often
+  as it can afford: reading a long page costs as much as the page is long, so after each
+  reading Anagram now waits in proportion to what it cost, which keeps it under a twentieth
+  of the page's time. On a Reddit-like test feed scrolled for five minutes to 800 posts, the
+  time spent on the page's changes in the last minute fell from 9% to under 5% and stopped
+  growing, the content script's time fell by a third and its longest pause from 160 to 80 ms.
+  The batching follows uBlock Origin's DOM watcher (GPL-3.0).
 - The Copy report button in the panel keeps to one line when the panel's title needs more
   room, as it does in a longer translation; the title wraps instead.
 - The legal fine print a site sets under its text or its offer is no longer read: boxes

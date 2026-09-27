@@ -64,6 +64,7 @@ APIs through its `parseAsync()`. `lib/dom/mainContent.ts` calls only its synchro
 | `lib/ui/basecoat-vega.cdn.min.css` | `https://tailwindcss.com` | the licence banner of the vendored Basecoat stylesheet |
 | `lib/diagnostics/anonymise.ts` | `https://schema.org/Article` | an example in a comment about `itemtype` vocabularies |
 | `lib/hash.ts` | `https://github.com/bryc/code` | the attribution of the cyrb53 hash, in a comment |
+| `lib/capture/observers.ts` | `https://github.com/gorhill/uBlock` | the attribution of the batched mutation handling adapted from uBlock Origin's DOM watcher, in a comment |
 | `lib/dom/scope.ts` | `https://github.com/mailgun/talon` | attribution of the quoted-mail markers, in a comment |
 | `lib/dom/scope.ts` | `https://github.com/lever/planer` | the same attribution, for the JavaScript port |
 | `lib/dom/text.ts` | `https://github.com/mailgun/talon` | attribution of the "On … wrote:" pattern, in a comment |

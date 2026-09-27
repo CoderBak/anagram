@@ -49,6 +49,17 @@ const DRAIN_DEBOUNCE_MS = 250;
 /** A trailing debounce alone never fires on a page that mutates continuously (live
  *  tickers, streaming chat): the drain is forced once dirt has waited this long. */
 const DRAIN_MAX_WAIT_MS = 1000;
+/**
+ * A drain waits this many times as long as the last ones took, so draining takes at most
+ * one part in twenty of the main thread however long the page grows. A walk costs about
+ * as much as the page is long (the scopes it surveys are the whole page's), and a feed
+ * that keeps every post it has shown grows for as long as it is read: without this, the
+ * same trickle of mutations cost more every minute. Mutations are collected as they come
+ * and handed over in batches, as uBlock Origin's DOM watcher does (vAPI.domWatcher in
+ * src/js/contentscript.js, https://github.com/gorhill/uBlock, GPL-3.0); the batch here
+ * waits in proportion to what the last ones cost rather than for the next frame.
+ */
+const DRAIN_COST_SPACING = 19;
 // Prefetch margin for the "near" lane: at reading-speed scrolling, ~1.5 screens ahead
 // keeps chips landing before the paragraph enters the viewport.
 const ROOT_MARGIN = "1200px 0px";
@@ -89,6 +100,9 @@ export function createObservers(opts: {
   let drainTimer: ReturnType<typeof setTimeout> | null = null;
   /** When the oldest undrained dirt arrived (max-wait guard). */
   let dirtySince: number | null = null;
+  /** What recent drains cost, in ms: the last one's, or half the one before if more. */
+  let drainCost = 0;
+  let lastDrainAt = 0;
   let documentReplaced = false;
   let started = false;
   /** Shadow roots the single MutationObserver also watches (it accepts many targets). */
@@ -188,8 +202,9 @@ export function createObservers(opts: {
     const now = Date.now();
     if (dirtySince === null) dirtySince = now;
     if (drainTimer !== null) clearTimeout(drainTimer);
-    const wait = Math.max(0, Math.min(DRAIN_DEBOUNCE_MS, dirtySince + DRAIN_MAX_WAIT_MS - now));
-    drainTimer = setTimeout(drain, wait);
+    const spacing = drainCost * DRAIN_COST_SPACING;
+    const debounced = Math.min(DRAIN_DEBOUNCE_MS, dirtySince + Math.max(DRAIN_MAX_WAIT_MS, spacing) - now);
+    drainTimer = setTimeout(drain, Math.max(0, debounced, lastDrainAt + spacing - now));
   }
 
   function drain(): void {
@@ -211,7 +226,10 @@ export function createObservers(opts: {
     dirty.clear();
     removed.clear();
     quiet.clear();
+    const began = performance.now();
     opts.onDirty(nodes, rem, still);
+    drainCost = Math.max(performance.now() - began, drainCost / 2);
+    lastDrainAt = Date.now();
   }
 
   // TWO observers: with a single rootMargin observer and threshold 0, no event
@@ -355,6 +373,8 @@ export function createObservers(opts: {
     reported.clear();
     seen = new WeakMap(); // disconnect() forgot every target: the next start asks afresh
     dirtySince = null;
+    drainCost = 0;
+    lastDrainAt = 0;
     observedRoots = new WeakSet(); // disconnect() dropped them; the next scan re-registers
     pendingRoots.clear();
   }
