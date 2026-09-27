@@ -154,6 +154,13 @@ local component and the installer all carry the same version.
   letter, and on the development papers leaving italic letters out as well cost about 190
   words of prose for almost no formula text. With bold letters out, the formula tokens left
   in the PDF's reading of those papers fell from 3,500 to 2,460.
+- The PDF reader leaves out what a page sets in a face it uses only for formulas. A paper
+  set in Times takes "$300$", "\mathrm{km}" and "\operatorname{var}(" from Computer Modern,
+  which sets none of its words; a numeral, a symbol, a word of up to three letters, an
+  operator name or a function applied in such a face now goes with the formulas. A longer
+  word, a sans-serif heading and code stay. On the development papers the formula tokens
+  left in the PDF's reading fell from 2,460 to 2,044, and the numbers of formulas it read
+  from 3,590 to 3,027.
 - The PDF reader keeps a number the text writes next to an inline formula: "pores of 11.3 μm"
   read as "pores of m", "by Theorem 2, x is" as "by Theorem, is", and "(Federer, 1969,
   3.2.12)" lost its year. A number beside a formula went with it, because TeX sets a formula's

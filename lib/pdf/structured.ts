@@ -171,6 +171,8 @@ interface Box {
   mono: boolean;
   /** The face, by the PDF's name for it. */
   font: string;
+  /** A text face that sets no prose on the page (formulaFaces). */
+  aside: boolean;
 }
 
 /** The page's runs by page number, boxed and sorted by baseline. */
@@ -181,17 +183,65 @@ interface PageIndex {
   transform: number[];
 }
 
-/** Typewriter faces: Courier and its clones, Computer and Latin Modern's, Inconsolata. */
-const MONO_FONT = /mono|monl|courier|consol|menlo|(?:cm|sf|lm|ec|tx|px)tt\d|^pcr/i;
+/** Typewriter faces: Courier and its clones, Computer and Latin Modern's, txfonts',
+ *  Inconsolata. */
+const MONO_FONT = /mono|monl|courier|consol|menlo|tt\d|tt$|^pcr/i;
+/** Sans-serif faces: a heading's or a label's, never TeX's for a formula. */
+const SANS_FONT = /sans|sanl|helvet|arial|biolinum|calibri|verdana|tahoma|segoe|roboto|^(?:cm|sf|lm)ss/i;
+/** Words of four letters or more a face must set on a page to be one the text is set in. */
+const PROSE_WORDS = 3;
+
+/** A face's family: the name without its subset tag, weight, shape and size. Computer
+ *  Modern's faces are one family (CMR10, CMBX12), and so are the EC fonts' (SFRM1095). */
+function familyOf(name: string): string {
+  const base = name.replace(/^[A-Z]{6}\+/, "").split(/[-,]/)[0].replace(/\d.*$/, "");
+  return /^CM[A-Z]/.test(base) ? "CM" : /^SF[A-Z]{2}/.test(base) ? "SF" : base;
+}
+
+function sameFamily(a: string, b: string): boolean {
+  const x = familyOf(a), y = familyOf(b);
+  return x === y || (x.length >= 5 && y.startsWith(x)) || (y.length >= 5 && x.startsWith(y));
+}
+
+/**
+ * The text faces a page uses only for formulas. A paper set in Times takes its formulas'
+ * digits, operators and upright names from Computer Modern ("$300$", "\mathrm{km}"), and
+ * one set in the EC fonts takes them from the older CM faces; neither is a face its words
+ * are set in. Such a face is of another family than the one that sets most of the page's
+ * letters, and sets hardly a word of four letters there; a typewriter face (code) and a
+ * sans-serif one (a heading) are never it.
+ */
+function formulaFaces(page: PdfPageText): Set<string> {
+  const letters = new Map<string, number>(), words = new Map<string, number>();
+  for (const it of page.items) {
+    const name = page.fonts?.[it.fontName ?? ""] ?? it.fontName ?? "";
+    for (const w of it.str.split(/\s+/)) {
+      const l = w.replace(/\P{L}/gu, "");
+      letters.set(name, (letters.get(name) ?? 0) + l.length);
+      if (l.length >= 4 && !OPERATOR.has(l)) words.set(name, (words.get(name) ?? 0) + 1);
+    }
+  }
+  let body = "";
+  for (const [name, n] of letters) if (n > (letters.get(body) ?? -1)) body = name;
+  const out = new Set<string>();
+  for (const name of letters.keys()) {
+    const base = name.replace(/^[A-Z]{6}\+/, "");
+    if (sameFamily(name, body) || isMathFont(name) || MONO_FONT.test(base) || SANS_FONT.test(base)) continue;
+    if ((words.get(name) ?? 0) < PROSE_WORDS) out.add(name);
+  }
+  return out;
+}
 
 function indexPage(page: PdfPageText): PageIndex {
   const boxes: Box[] = [];
+  const aside = formulaFaces(page);
   page.items.forEach((it, item) => {
     if (it.rotated || it.str.trim() === "" || !(it.height > 0)) return;
     const name = page.fonts?.[it.fontName ?? ""];
+    const font = name ?? it.fontName ?? "";
     boxes.push({
       page: page.page, item, it, x1: it.x, x2: it.x + it.width, y: it.y, h: it.height,
-      math: isMathFont(name), mono: MONO_FONT.test(name?.replace(/^[A-Z]{6}\+/, "") ?? ""), font: name ?? it.fontName ?? "",
+      math: isMathFont(name), mono: MONO_FONT.test(name?.replace(/^[A-Z]{6}\+/, "") ?? ""), font, aside: aside.has(font),
     });
   });
   boxes.sort((a, b) => a.y - b.y);
@@ -523,8 +573,9 @@ interface Assembled {
  * together. Then two decisions the reflow makes too, taken here on Zotero's glyphs:
  *
  *  - A FORMULA is left out. A token with a glyph in a mathematics font is one, and so are
- *    one of what a formula is made of in any face (formulaChars) and a letter set alone in
- *    a bold face of its own (alone). Beside one on the same line
+ *    one of what a formula is made of in any face (formulaChars), a letter set alone in a
+ *    bold face of its own (alone) and what is set in a face the page uses only for formulas
+ *    (formulaFaces). Beside one on the same line
  *    go the rest of what TeX takes from the text face: a letterless token (parentheses,
  *    digits, operators, punctuation), an operator name ("log", "sup") and a token set in
  *    a sub- or superscript's size ("init" of x_init). What remains is the sentence around
@@ -635,7 +686,22 @@ function assemble(pieces: Piece[], located: Located, vocab: Vocabulary, mathPage
     const same = (n: Token): boolean => faceOf(n)?.font === face.font;
     return around.some((n) => !same(n)) && !around.some((n) => same(n) && count(n) > 1);
   };
-  const drop = tokens.map((t, k) => t.math || alone(k));
+  /** Set in a face the page uses only for formulas (formulaFaces): a number, a symbol, a
+   *  word of three letters or fewer ("km", "SNR"), an operator name or a function applied
+   *  ("var(", "span("). A longer word is left to the text: a heading's, a name in small
+   *  capitals. */
+  const formulaFace = (t: Token): boolean => {
+    let any = false;
+    for (const i of t.at) {
+      const f = faces[i];
+      if (!f) continue;
+      if (!f.aside || !mathPages.has(f.page)) return false;
+      any = true;
+    }
+    const name = letters(t);
+    return any && (name.length <= 3 || OPERATOR.has(name) || /\p{L}\(/u.test(t.at.map((i) => pieces[i].ch).join("")));
+  };
+  const drop = tokens.map((t, k) => t.math || alone(k) || formulaFace(t));
   for (let i = 1; i < tokens.length; i++) if (drop[i - 1] && withFormula(tokens[i]) && !written(tokens[i]) && beside(tokens[i - 1], tokens[i])) drop[i] = true;
   for (let i = tokens.length - 2; i >= 0; i--) {
     if (drop[i + 1] && withFormula(tokens[i]) && !written(tokens[i]) && !closes(tokens[i]) && beside(tokens[i], tokens[i + 1])) drop[i] = true;

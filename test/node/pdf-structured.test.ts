@@ -644,6 +644,48 @@ describe("structuredBlocks — formulas", () => {
     expectRunsToMatch(blocks[0], pages);
   });
 
+  it("leaves out what is set in a face the page uses only for formulas", () => {
+    // A paper set in Times takes "$300$", "\mathrm{km}" and "\operatorname{var}(" from
+    // Computer Modern, which sets no words of the text. A word of its own in that face stays
+    // ("otherwise"), and so do the Times italic of "et al.", a sans-serif heading word and
+    // code in a typewriter face.
+    const fonts = { f_text: "NimbusRomNo9L-Regu", f_cmr: "UTRHDZ+CMR10", f_math: "BXJUHM+CMMI10", f_sans: "NimbusSanL-Bold", f_tt: "NimbusMonL-Regu", f_ital: "NimbusRomNo9L-ReguItal" };
+    const items: PdfTextItem[] = [];
+    const runs: (number | number[])[][] = [];
+    let text = "";
+    let x = 72;
+    const put = (s: string, font: string, gap = CW) => {
+      const d = drawn(1, { text: s, x, y: 100, font });
+      items.push(d.item);
+      runs.push(d.run);
+      text += s + (gap ? " " : "");
+      x += s.length * CW + gap;
+    };
+    put("We train the network for up to", "f_text");
+    put("300", "f_cmr");
+    put("epochs at", "f_text");
+    put("5", "f_cmr");
+    put("km", "f_cmr");
+    put("per second, keeping", "f_text");
+    put("var(", "f_cmr", 0);
+    put("x", "f_math", 0);
+    put(")", "f_cmr");
+    put("bounded, as the", "f_text");
+    put("Results", "f_sans");
+    put("section shows;", "f_text");
+    put("lr", "f_tt");
+    put("is tuned, and", "f_text");
+    put("otherwise", "f_cmr");
+    put("the", "f_text");
+    put("et al.", "f_ital");
+    put("method holds.", "f_text");
+    const n = { text, anchor: { textMap: JSON.stringify(runs) } };
+    const pages = [pageText(1, items, fonts)];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0].text).toBe("We train the network for up to epochs at per second, keeping bounded, as the Results section shows; lr is tuned, and otherwise the et al. method holds.");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
   it("changes nothing in a document with no mathematics face", () => {
     const n = node(1, [{ text: "a plain sentence with x = 5 and (2 + 0.5) in it.", x: 72, y: 100 }]);
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), [pageText(1, n.items, { f_text: "Calibri" })]);
