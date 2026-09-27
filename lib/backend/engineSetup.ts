@@ -65,6 +65,7 @@ export function engineSetup(s: ComponentSnapshot): EngineSetup | null {
   switch (stage.stage) {
     case "needed": return { state: "needed", percent: 0 };
     case "downloading": case "paused": case "failed": return { state: stage.stage, percent: percentOf(stage.received, stage.total) };
+    case "loading": return { state: "loading", percent: 100 };
     default: return null;
   }
 }

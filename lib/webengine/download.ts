@@ -159,6 +159,7 @@ async function attemptDownload(store: FileStore, entry: PinnedFile, part: string
   if (!response.body) throw new DownloadFailed(`The server sent no body for ${entry.name}`, true);
   const writer = await store.writer(part, resumed);
   const reader = response.body.getReader();
+  let oversized = false;
   try {
     for (;;) {
       let next: ReadableStreamReadResult<Uint8Array>;
@@ -169,7 +170,7 @@ async function attemptDownload(store: FileStore, entry: PinnedFile, part: string
       }
       if (next.done) break;
       const chunk = next.value;
-      if (offset + chunk.length > entry.size_bytes) throw new DownloadFailed(`${entry.name} is larger than its pinned size`);
+      if (offset + chunk.length > entry.size_bytes) { oversized = true; throw new DownloadFailed(`${entry.name} is larger than its pinned size`); }
       hasher.update(chunk);
       // A full disk stays full however often it is asked: no retry, and the part is kept
       // for when there is room again.
@@ -182,6 +183,9 @@ async function attemptDownload(store: FileStore, entry: PinnedFile, part: string
   } catch (error) {
     await writer.close().catch(() => {});
     reader.cancel().catch(() => {});
+    // More bytes than the pinned file has are not the pinned file: what arrived goes, as the
+    // setup page says of a damaged download.
+    if (oversized) await store.delete(part).catch(() => {});
     throw error;
   }
   await writer.close();

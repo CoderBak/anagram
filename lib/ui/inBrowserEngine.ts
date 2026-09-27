@@ -126,7 +126,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   dialog.setAttribute("aria-labelledby", dialogTitle.id); dialog.setAttribute("aria-describedby", dialogText.id);
   const dialogActions = element("div", undefined, "component-actions");
   const keep = makeButton("buttonCancel", () => dialog.close(), "outline");
-  const accept = makeButton("componentDeleteModels", () => { dialog.close(); if (confirming && !pending) run("models.delete"); }); accept.id = "engine-confirm";
+  const accept = makeButton("componentDeleteModels", () => { dialog.close(); if (confirming) run("models.delete"); }); accept.id = "engine-confirm";
   dialogActions.append(keep, accept); dialog.append(dialogTitle, dialogText, dialogActions);
   host.replaceChildren(summary, intro, note, progress, progressText, where, stored, error, details, actions, manage, dialog);
 
@@ -142,6 +142,8 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   let saveData = false, roomChecked = false;
   let actionError = "", actionDetail = "";
   let confirming: "cancel" | "delete" | undefined;
+  /** An operation asked for while a status read was out: it goes as soon as that is back. */
+  let queued: Operation | undefined;
   const speed = new Speedometer();
 
   /** What a download has put on disk so far: the engine counts its storage when a file
@@ -319,7 +321,11 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
         if (!destroyed && !ac.signal.aborted) paint(current);
       } else paint(reply);
     } catch { if (!destroyed && !ac.signal.aborted) paint({ kind: "unavailable" }); }
-    finally { pending = false; controller = undefined; paintButtons(); schedule(); }
+    finally {
+      pending = false; controller = undefined; paintButtons();
+      const next = queued; queued = undefined;
+      if (next && !destroyed) run(next); else schedule();
+    }
   }
 
   async function engineCrashed(): Promise<boolean> {
@@ -339,7 +345,10 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   }
 
   function run(op?: Operation): void {
-    if (pending || destroyed) return;
+    if (destroyed) return;
+    // The confirmation's button stays live while the page reads the status: what it asked
+    // for waits for the read instead of being dropped.
+    if (pending) { if (op) queued = op; return; }
     if (timer !== undefined) clearTimeout(timer);
     actionError = actionDetail = "";
     if (op === "models.download" || op === "models.delete") speed.reset();

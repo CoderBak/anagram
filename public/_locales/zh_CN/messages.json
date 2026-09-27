@@ -509,6 +509,9 @@
   "componentTitle": {
     "message": "本地引擎"
   },
+  "engineTitle": {
+    "message": "浏览器内引擎"
+  },
   "componentNotInstalled": {
     "message": "未安装"
   },
@@ -625,6 +628,9 @@
   },
   "panelSetupFailed": {
     "message": "Anagram 的设置未完成。新段落将等待设置完成后再分析。"
+  },
+  "panelSetupLoading": {
+    "message": "模型正在启动。新段落将等待模型就绪后再分析。"
   },
   "componentStarting": {
     "message": "正在启动…"
@@ -869,8 +875,14 @@
   "popupEngine": {
     "message": "本地引擎：$1"
   },
+  "popupEngineInBrowser": {
+    "message": "浏览器内引擎：$1"
+  },
   "popupEngineDown": {
     "message": "本地引擎未就绪"
+  },
+  "popupEngineInBrowserDown": {
+    "message": "浏览器内引擎未就绪"
   },
   "popupEngineOutdated": {
     "message": "本地引擎需要更新"

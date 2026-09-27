@@ -103,7 +103,7 @@ describe("what the popup leads with", () => {
 
   it("offers the in-browser engine's setup page where it has not been set up, on every page but a PDF", () => {
     // The oneclick flavor says what setup is doing; the native one never sets `setup`.
-    for (const state of ["needed", "downloading", "paused", "failed"] as const) {
+    for (const state of ["needed", "downloading", "paused", "failed", "loading"] as const) {
       const setup = { state, percent: 45 };
       for (const over of [{}, { tab: null }, { pattern: null }, { hasTab: false }]) {
         expect(lead({ ...over, daemon: "down", setup })).toEqual({ action: "setup", primary: true, status: "setup" });

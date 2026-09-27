@@ -159,7 +159,7 @@ function paint(): void {
       statusEl.textContent = t("popupUnsupportedPage");
       break;
     case "daemon":
-      statusEl.textContent = t(mismatch ? "popupEngineOutdated" : "popupEngineDown");
+      statusEl.textContent = t(mismatch ? "popupEngineOutdated" : ENGINE_DOWN);
       break;
     case "fileAccess":
       statusEl.textContent = t("popupFileAccessNeeded");
@@ -168,7 +168,7 @@ function paint(): void {
       const setup = facts.setup!;
       statusEl.textContent = setup.state === "downloading" ? t("popupSetupDownloading", setup.percent)
         : setup.state === "paused" ? t("popupSetupPaused", setup.percent)
-        : t(setup.state === "failed" ? "engineSetupFailed" : "popupSetupNeeded");
+        : t(setup.state === "failed" ? "engineSetupFailed" : setup.state === "loading" ? "engineLoading" : "popupSetupNeeded");
       break;
     }
     case "none":
@@ -187,8 +187,12 @@ function paint(): void {
 
 /** The setup button's words: start it, watch it, or carry on with it. */
 function setupLabel(setup: EngineSetup): MessageKey {
-  return setup.state === "needed" ? "engineSetUp" : setup.state === "downloading" ? "engineShowProgress" : "engineContinueSetup";
+  return setup.state === "needed" ? "engineSetUp" : setup.state === "downloading" || setup.state === "loading" ? "engineShowProgress" : "engineContinueSetup";
 }
+
+/** The engine's name in the popup: the in-browser edition's is not a program on this computer. */
+const ENGINE_LINE: MessageKey = import.meta.env.ANAGRAM_FLAVOR === "oneclick" ? "popupEngineInBrowser" : "popupEngine";
+const ENGINE_DOWN: MessageKey = import.meta.env.ANAGRAM_FLAVOR === "oneclick" ? "popupEngineInBrowserDown" : "popupEngineDown";
 
 /** The engine line at the foot, when the engine is up (the action block says the rest). */
 function paintModel(s: BackendStatus | undefined): void {
@@ -196,7 +200,7 @@ function paintModel(s: BackendStatus | undefined): void {
   backendEl.hidden = !up;
   if (!up || !s) { backendEl.textContent = ""; return; }
   backendEl.textContent = s.server.outdated ? t("popupEngineOutdated")
-    : t("popupEngine", t("componentReady") + (s.server.device ? " · " + s.server.device : ""));
+    : t(ENGINE_LINE, t("componentReady") + (s.server.device ? " · " + s.server.device : ""));
 }
 
 /** Is the local engine ready? If not, the action opens setup and Settings. */
