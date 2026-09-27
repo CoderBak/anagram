@@ -386,8 +386,7 @@ async function init(): Promise<void> {
         window.close();
         return;
       case "setup":
-        // The setup page: the browser's question about the download sites must be asked from
-        // a click there, since Chrome closes this popup to show a prompt.
+        // The setup page, where the download is started and followed.
         void browser.tabs.create({ url: browser.runtime.getURL("/onboarding.html") });
         window.close();
         return;

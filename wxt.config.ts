@@ -9,7 +9,7 @@ import {
   subsetMessages,
   unscanned,
 } from "./scripts/i18nSubset";
-import { ALL_SITES, MODEL_HOSTS } from "./lib/access/patterns";
+import { ALL_SITES } from "./lib/access/patterns";
 import { NOTICES_FILE, bundledPackages, packageOfModule, unlistedPackages } from "./scripts/notices.mjs";
 import { machinePaths } from "./scripts/machinePaths.mjs";
 import { ONECLICK_PUBLIC, buildsEntrypoint, flavorAliases, flavorOf, outDirTemplate } from "./scripts/flavor.mjs";
@@ -218,10 +218,9 @@ export default defineConfig({
     // Native Messaging reaches the local engine. The in-browser engine runs in an offscreen
     // document (Chrome; Firefox's background page has a DOM of its own) and keeps the model
     // in the extension's storage, which the browser must not evict.
+    // The model's download needs no host: Hugging Face answers it with CORS headers, and the
+    // language identifier ships in the package (lib/webengine/pin.ts).
     const engine = ONECLICK ? [...(browser === "firefox" ? [] : ["offscreen"]), "unlimitedStorage"] : ["nativeMessaging"];
-    // Optional, and oneclick only: where the model comes from, asked for with the click
-    // that starts its download (lib/access/patterns.ts).
-    const engineHosts = ONECLICK ? MODEL_HOSTS : [];
     return {
       name: productName,
       // The browser's own UI language picks the folder under public/_locales; English is
@@ -237,8 +236,8 @@ export default defineConfig({
             // Firefox clipboard copying asks permission only when the menu is used.
             // MV2 carries optional website patterns in the same list.
             optional_permissions: TEST_GRANT_ALL
-              ? ["clipboardWrite", "file:///*", ...engineHosts]
-              : ["clipboardWrite", ...ALL_SITES, "file:///*", ...engineHosts],
+              ? ["clipboardWrite", "file:///*"]
+              : ["clipboardWrite", ...ALL_SITES, "file:///*"],
             browser_specific_settings: {
               gecko: {
                 id: ONECLICK ? "anagram-oneclick@coderbak.dev" : "anagram@coderbak.dev",
@@ -291,7 +290,7 @@ export default defineConfig({
       ...(TEST_GRANT_ALL ? { host_permissions: [...ALL_SITES] } : {}),
       // OPTIONAL (Chrome MV3; Firefox MV2 carries them in optional_permissions above):
       // "all sites", which the onboarding page and the options page ask for in one click.
-      optional_host_permissions: TEST_GRANT_ALL ? ["file:///*", ...engineHosts] : [...ALL_SITES, "file:///*", ...engineHosts],
+      optional_host_permissions: TEST_GRANT_ALL ? ["file:///*"] : [...ALL_SITES, "file:///*"],
       // Only content-script imports are web accessible. Reader assets stay private;
       // Chrome rotates these chunk URLs per session to prevent stable-ID probing.
       web_accessible_resources: [

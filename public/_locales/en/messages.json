@@ -663,10 +663,6 @@
     "message": "Set up (one-time $1 download)",
     "description": "In-browser edition: the button that starts setup (the browser asks for the download sites, then the model downloads). $1 is the size, e.g. 1.4 GB."
   },
-  "engineSetUpHosts": {
-    "message": "Your browser will ask to let Anagram reach huggingface.co and dl.fbaipublicfiles.com, where the model is published. Anagram uses them for this download only.",
-    "description": "In-browser edition: under the setup button, what the browser's permission prompt will be about. Keep the two host names as they are."
-  },
   "engineNotSetUp": {
     "message": "Not set up yet",
     "description": "In-browser edition: engine status before the model was downloaded."
@@ -738,10 +734,6 @@
   "engineOnCpu": {
     "message": "Runs on your processor, which is much slower than a graphics card. If hardware acceleration is off in your browser's settings, turning it on may let Anagram use the graphics card.",
     "description": "In-browser edition, engine ready without a usable GPU: where the model runs, and how to get the faster path."
-  },
-  "enginePermissionRefused": {
-    "message": "Anagram needs your permission to download the model from huggingface.co and dl.fbaipublicfiles.com. Click the button again and choose Allow.",
-    "description": "In-browser edition: the browser's permission for the download sites was refused or withdrawn, and how to fix it."
   },
   "engineNetworkLost": {
     "message": "The connection was lost. Check that you're online, then click Retry: the download continues where it stopped.",

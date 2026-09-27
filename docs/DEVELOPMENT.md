@@ -52,7 +52,6 @@ existed; each `*:oneclick` script runs the same command as that flavor.
 | Engine | the local engine over Native Messaging (`lib/backend/nativeTransport.ts`) | ONNX Runtime Web in an offscreen document (`lib/webengine/client.ts`, `entrypoints/engine/`) |
 | Setup and Settings panel | `lib/ui/componentSettings.ts`, with the install command | `lib/ui/inBrowserEngine.ts`, no command |
 | Required permissions beyond reading | `nativeMessaging` | `offscreen` (Chrome), `unlimitedStorage` |
-| Optional hosts beyond sites and files | none | the model download's, `MODEL_HOSTS` in `lib/access/patterns.ts` |
 | Name, Firefox ID | Anagram for Chrome/Firefox, `anagram@coderbak.dev` | Anagram (in-browser), `anagram-oneclick@coderbak.dev` |
 | Browsers | Chrome, Firefox 140+ | Chrome 137+ (JSPI), Firefox 153+; Chrome's extension pages cross-origin isolated |
 | Build output | `output/chrome-mv3`, `output/firefox-mv2` | `output/oneclick-chrome-mv3`, `output/oneclick-firefox-mv2` |

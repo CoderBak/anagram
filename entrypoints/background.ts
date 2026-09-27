@@ -378,8 +378,8 @@ export default defineBackground(() => {
       case ACTIONS.OPEN_ENGINE_SETUP: {
         // The in-browser engine's only: the local engine has no setup page to open.
         if (import.meta.env.ANAGRAM_FLAVOR !== "oneclick") return {ok:false,error:"forbidden"};
-        // The setup page beside the tab: the browser's question about the model's download
-        // sites is asked from a click there, which a content script cannot make.
+        // The setup page beside the tab, where the download is started and followed; a content
+        // script cannot open an extension page.
         const tab=sender.tab as {id?:number;index?:number}|undefined;
         await browser.tabs.create({url:browser.runtime.getURL("/onboarding.html"),...(tab?.index !== undefined ? {index:tab.index+1} : {}),...(tab?.id !== undefined ? {openerTabId:tab.id} : {})});
         return {ok:true};

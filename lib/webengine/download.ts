@@ -6,7 +6,9 @@
 // Range header. The SHA-256 runs over the bytes as they stream, so the file is verified
 // the moment its last byte lands and is renamed into place only then; a mismatch drops
 // the part. Every request is anonymous, without credentials or referrer, to exactly the
-// pinned address, and follows the host's redirect to its storage.
+// pinned address, and follows the host's redirect to its storage. It is a CORS request, which
+// Hugging Face and its storage answer with the headers that let the extension read it (under
+// the pages' cross-origin isolation too), so the extension holds no permission for the host.
 import { Sha256 } from "./sha256";
 import type { FileStore } from "./storage";
 import type { PinnedFile } from "./pin";
@@ -126,6 +128,7 @@ async function attemptDownload(store: FileStore, entry: PinnedFile, part: string
   if (offset === entry.size_bytes) return finish(store, entry, part, hasher);
   const request: RequestInit = {
     method: "GET",
+    mode: "cors",
     headers: offset > 0 ? { Range: `bytes=${offset}-` } : {},
     cache: "no-store",
     credentials: "omit",

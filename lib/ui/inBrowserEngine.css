@@ -2,5 +2,4 @@
    component panel styles in componentSettings.css. */
 .component-settings .engine-intro { color:var(--foreground); }
 .component-settings .engine-progress { margin-top:-4px; font-variant-numeric:tabular-nums; }
-.component-settings .engine-hosts { font-size:12.5px; }
 .component-settings .engine-where { color:var(--foreground); }

@@ -518,9 +518,6 @@
   "engineSetUpButton": {
     "message": "开始设置（一次性下载 $1）"
   },
-  "engineSetUpHosts": {
-    "message": "浏览器会询问是否允许 Anagram 访问发布模型的 huggingface.co 和 dl.fbaipublicfiles.com。Anagram 仅在这次下载时使用它们。"
-  },
   "engineNotSetUp": {
     "message": "尚未设置"
   },
@@ -574,9 +571,6 @@
   },
   "engineOnCpu": {
     "message": "在处理器上运行，比显卡慢得多。如果浏览器设置中关闭了硬件加速，开启后 Anagram 可能就能使用显卡。"
-  },
-  "enginePermissionRefused": {
-    "message": "Anagram 需要你允许它从 huggingface.co 和 dl.fbaipublicfiles.com 下载模型。请再次点击按钮，并在浏览器询问时选择“允许”。"
   },
   "engineNetworkLost": {
     "message": "网络连接已中断。请确认已联网，然后点击“重试”，下载会从中断处继续。"
