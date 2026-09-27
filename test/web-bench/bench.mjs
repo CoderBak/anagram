@@ -73,6 +73,7 @@ function reasonClass(reason) {
     [/^no run survived/, () => "every block invisible or excluded"],
     [/^no letters/, () => "no letters"],
     [/^symbol noise/, () => "symbol noise"],
+    [/^unrendered shortcodes/, () => "unrendered shortcodes"],
     [/^preserved-whitespace/, () => "column gaps in preserved text"],
     [/^link-dense/, () => "link-dense"],
     [/^reads as a name list/, () => "name list"],

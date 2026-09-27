@@ -63,6 +63,7 @@ import {
   hasColumnGaps,
   isSeparatorRun,
   looksLikeNameList,
+  shortcodeShare,
   endsLikeProse,
   endsInColon,
   wordShape,
@@ -247,6 +248,8 @@ export interface CollectOptions {
 
 /** Max link-text fraction for a run to count as prose (nav/menu barrier above it). */
 const MAX_LINK_RATIO = 0.6;
+/** Max share of a run's characters in unrendered shortcodes (lib/dom/text.ts, shortcodeShare). */
+export const MAX_SHORTCODE_SHARE = 0.3;
 /** Words a text inside a card link needs, a sentence's end with them, to be prose. */
 const CARD_TEXT_WORDS = 20;
 
@@ -1803,11 +1806,11 @@ function createAssembler(
       if (isSeparatorRun(r.text)) barrier(r.container);
       return;
     }
-    if (symbolNoiseRatio(r.text) > 0.2 || (r.preserved && hasColumnGaps(r.raw))) {
+    if (symbolNoiseRatio(r.text) > 0.2 || shortcodeShare(r.text) > MAX_SHORTCODE_SHARE || (r.preserved && hasColumnGaps(r.raw))) {
       // ASCII diagrams / table rules / column-layout headers ("RFC 768   J.
-      // Postel"): machine layout, not prose — barrier, never merged. The
-      // column-gap check applies ONLY to preserved-whitespace runs: in normal
-      // HTML, interior space runs collapse invisibly and must not drop prose.
+      // Postel") and a page builder's unrendered shortcodes: machine layout, not prose —
+      // barrier, never merged. The column-gap check applies ONLY to preserved-whitespace
+      // runs: in normal HTML, interior space runs collapse invisibly and must not drop prose.
       barrier(r.container);
       return;
     }

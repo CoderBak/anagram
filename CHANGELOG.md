@@ -101,6 +101,10 @@ local component and the installer all carry the same version.
   twenty words or more, in a block of its own inside the link. The excerpts on a blog's front
   page were taken for menu items, because every word of the card is link text. A menu whose
   items are block links is still not read.
+- A WordPress page whose page builder is gone no longer has its layout read as prose. It
+  shows its shortcodes as text (`[vc_row type="in_container" …]`), and a row of them with all
+  their settings cleared the floor. A template's `[audience]` or a `[sic]` in a sentence is
+  still read.
 - A section of a page is no longer skipped because of the words in its anchor. PostgreSQL's
   reference section on the locking clause is `SQL-FOR-UPDATE-SHARE`, Flask's documentation
   names its section on cookies `cookies`, and those ids read as a share bar and a cookie

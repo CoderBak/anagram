@@ -13,6 +13,7 @@ export {
   modelText,
   isSeparatorRun,
   looksLikeNameList,
+  shortcodeShare,
   hasLetters,
   endsLikeProse,
   endsInColon,

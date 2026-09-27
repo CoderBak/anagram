@@ -463,6 +463,26 @@ export function looksLikeNameList(text: string): boolean {
   return capitalised / tokens.length >= 0.6 && commas >= tokens.length / 8;
 }
 
+// ---- unrendered shortcodes -----------------------------------------------------------
+
+/** A WordPress shortcode as a page builder writes it: a closing `[/vc_column_text]`, a name
+ *  of two parts (`[vc_row …]`, `[et_pb_section]`), or settings (`[gallery ids="…"]`). A
+ *  template's "[audience]" or "[doing this thing]" and a "[sic]" are none of these. */
+const SHORTCODE_RE = /\[\/[a-z][\w-]*\]|\[[a-z][a-z\d]*[_-][\w-]*(?:\s[^[\]]*)?\]|\[[a-z][\w-]*\s[^[\]]*=[^[\]]*\]/g;
+
+/**
+ * The share of a text's characters that stand in shortcodes. A WordPress page whose page
+ * builder is gone (WPBakery's `vc_row`, Divi's `et_pb_section`) shows its layout as text,
+ * and a row of it with all its settings clears any floor and read as prose. A sentence with
+ * a "[sic]" in it is not near.
+ */
+export function shortcodeShare(text: string): number {
+  if (text.indexOf("[") < 0) return 0;
+  let chars = 0;
+  for (const m of text.matchAll(SHORTCODE_RE)) chars += m[0].length;
+  return chars / text.length;
+}
+
 // ---- e-mail quotations ---------------------------------------------------------------
 
 /**

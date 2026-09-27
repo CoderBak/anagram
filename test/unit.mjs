@@ -1593,6 +1593,14 @@ const results = await page.evaluate(() => {
     u = collect(`<div class="docsum-citation">${names}</div>`);
     check("author-list block is never a unit", u.length === 0, JSON.stringify(u.map(x => x.words)));
   }
+  {
+    // A WordPress page whose builder plugin is gone shows its shortcodes as text.
+    const row = `[vc_row type=”in_container” full_screen_row_position=”middle” column_margin=”default” column_direction=”default” text_color=”dark” text_align=”left”][vc_column column_padding=”no-extra-padding” centered_text=”true”]`;
+    u = collect(`<p>${row}${row}[vc_column_text]A short line.[/vc_column_text]${row}</p><p>${row}[nectar_btn size=”small” text=”Click to get the pattern” url=”/p/1″][/vc_column][/vc_row]${row}</p>`);
+    const sic = collect(`<p>${words(70)} The report says it "was recieved [sic] on time" and nothing more.</p><p>${words(60)}</p><p>“Our app helps [audience] do [job]. How? By [doing this thing]. That lets them [achieve these benefits].”</p>`);
+    check("unrendered page-builder shortcodes are no prose; a [sic] or a template's [audience] in a sentence is",
+      u.length === 0 && sic.length === 2 && PW.shortcodeShare(row) > 0.9, JSON.stringify([u.map(x => x.words), sic.map(x => x.words)]));
+  }
 
   // ---- where the chip is inserted ---------------------------------------------------------
   {
