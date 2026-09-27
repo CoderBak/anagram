@@ -71,6 +71,11 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- The legal fine print a site sets under its text or its offer is no longer read: boxes
+  named as disclaimers or fine print, such as the numbered footnotes under a phone's product
+  page or the fee and risk notices under a bank's calculator. On the web benchmark's
+  development pages this removes 3% of the words read that are not the page's content: a
+  third of them on product pages and a tenth on service pages.
 - A section of a page is no longer skipped because of the words in its anchor. PostgreSQL's
   reference section on the locking clause is `SQL-FOR-UPDATE-SHARE`, Flask's documentation
   names its section on cookies `cookies`, and those ids read as a share bar and a cookie

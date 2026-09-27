@@ -1185,6 +1185,9 @@ const results = await page.evaluate(() => {
   check("login-form chrome skipped", u.length === 0);
   u = collect(`<div class="sharedwith">${words(80)}</div>`);
   check("token boundary: 'sharedwith' (no delimiter) KEPT", u.length === 1);
+  u = collect(`<p>${words(90)}</p><p>${words(90)}</p><div class="common-bottom-disclaimer"><ol><li>${words(80)}</li></ol></div><p class="pricing-disclaimer-text">${words(80)}</p><div class="fine-print">${words(80)}</div>`);
+  check("legal fine print under the text is not read (Samsung's bottom disclaimer, a pricing disclaimer)",
+    u.length === 2 && u.every((x) => x.words === 90), JSON.stringify(u.map(x => x.words)));
   {
     // The reply FORM is chrome; the comments are not. 博客园 wraps its comment LIST in boxes
     // carrying the same token, and a Greenhouse job application sets consent text among its

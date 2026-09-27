@@ -112,6 +112,9 @@ export const CHROME_TOKEN_PATTERNS: string[] = [
   "cookies?", "consent", "gdpr", "paywall", "subscribe", "subscription",
   "newsletter", "advert", "advertisement", "adsense", "sponsor", "sponsored",
   "promo",
+  // the legal fine print a site sets under its text or its offer: Samsung's
+  // `common-bottom-disclaimer`, a bank's `div.disclaimer`, a pricing disclaimer
+  "disclaimers?", "fine[-_]?print",
   // structural navigation (original set)
   "breadcrumbs?", "pagination", "pager", "skip[-_]?link",
   "site[-_]?(?:nav|header|footer)",
