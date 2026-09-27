@@ -132,12 +132,12 @@ try {
   // Delete, then download again with an interruption in the middle.
   reply = await browser.page.evaluate(() => window.engine.request("models.delete", { confirm: true }));
   check("models.delete empties the store", reply.ok && reply.data.state === "needs_models" && reply.data.operation?.status === "completed", JSON.stringify(reply).slice(0, 300));
-  await browser.close();
+  await browser.close({ keepProfile: false });
   await closeServer();
 } catch (error) {
   if (!error?.done) {
     check("no exception", false, String(error?.stack ?? error));
-    await browser.close().catch(() => {});
+    await browser.close({ keepProfile: false }).catch(() => {});
     await closeServer().catch(() => {});
   }
 }
