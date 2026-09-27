@@ -136,6 +136,12 @@ local component and the installer all carry the same version.
   carries its own paragraphs read 81% of their text instead of 60%, the paragraphs are
   found (boundary F1 82% instead of 58%), and the 6% of scored words that were line
   numbers are gone.
+- A report's footnotes are no longer read as its text. Government and agency reports set
+  each note as a raised number run into the note ("¹⁷DOD civilian personnel are funded …"),
+  and Zotero's reader took the notes at the foot of a page for the items of a numbered list
+  in the body. A block the text's raised mark links to, opening with a raised number, is now
+  the note it is, and so are the others of its list. On five reports the share of scored
+  text that is not the body falls from 22% to 9%.
 - In Firefox, a web PDF without ".pdf" in its address now and then stayed in Firefox's own
   viewer instead of opening in Anagram's reader, and a PDF the reader opened by itself, as
   it does when one loads or is reloaded, could land on "This PDF could not be loaded". Both

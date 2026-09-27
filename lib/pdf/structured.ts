@@ -59,6 +59,8 @@ export interface SdtBlock {
   /** Path of the block this one continues (a paragraph carried over a column or page). */
   previousPart?: number[];
   nextPart?: number[];
+  /** Paths of the text nodes that refer to this block: the raised mark of a note. */
+  backRefs?: number[][];
 }
 
 export interface SdtStructure {
@@ -320,6 +322,33 @@ function originOf(node: SdtBlock): string {
   return `${node.type}${node.flowClass ? `:${node.flowClass}` : ""}${node.reference ? ":ref" : ""}`;
 }
 
+/** The first text node of a block, however deep. */
+function firstText(block: SdtBlock): SdtTextNode | null {
+  for (const node of block.content ?? []) {
+    if (isTextNode(node)) { if (node.text.trim() !== "") return node; continue; }
+    const inner = firstText(node);
+    if (inner) return inner;
+  }
+  return null;
+}
+
+/**
+ * A note Zotero took for the body: it opens with a raised number and a raised mark of the
+ * text links to it. A report's footnotes are set as "¹⁷DOD civilian personnel …", and
+ * Zotero reads them as the items of a numbered list, yet links the body's "…by
+ * location.¹⁸" to the item all the same. Where it links one note of such a list, the others
+ * that open with a raised number are notes too: it can link a mark to the block after one.
+ */
+function isNote(block: SdtBlock): boolean {
+  return (block.backRefs?.length ?? 0) > 0 && opensRaised(block);
+}
+
+/** The block opens with a raised number. */
+function opensRaised(block: SdtBlock): boolean {
+  const first = firstText(block);
+  return first?.style?.sup === true && /^\s*\d{1,3}\s*$/u.test(first.text);
+}
+
 /** The readings of the content tree. A table is skipped like the rest of what is set aside,
  *  and a bibliography entry is a barrier, unless either is the prose of a manuscript with
  *  numbered lines (numberedReadings). */
@@ -333,12 +362,15 @@ function readingsOf(content: SdtBlock[], everything: boolean): (Reading | Marker
   };
   content.forEach((node, i) => {
     if (node.flowClass || node.reference) { aside(node, [i]); return; }
+    if (isNote(node) && !everything) { out.push("skip"); return; }
     if (node.type === "heading") out.push({ kind: "heading", block: node, path: [i], origin: originOf(node) });
     else if (node.type === "paragraph") out.push({ kind: "paragraph", block: node, path: [i], origin: originOf(node) });
     else if (node.type === "list" || node.type === "blockquote") {
+      const notes = (node.content ?? []).some((child) => !isTextNode(child) && isNote(child));
       (node.content ?? []).forEach((child, k) => {
         if (isTextNode(child)) return;
         if (child.reference || child.flowClass) { aside(child, [i, k]); return; }
+        if ((isNote(child) || (notes && opensRaised(child))) && !everything) { out.push("skip"); return; }
         if (child.type === "listitem" || child.type === "paragraph") {
           // A list item with nested blocks reads as its paragraphs.
           const inner = (child.content ?? []).filter((c): c is SdtBlock => !isTextNode(c));

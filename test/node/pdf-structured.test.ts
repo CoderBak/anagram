@@ -989,6 +989,32 @@ describe("structuredBlocks — the document", () => {
     for (const b of blocks) expectRunsToMatch(b, pages);
   });
 
+  it("leaves out a footnote Zotero took for an item of a list: it opens with the raised number a mark links to", () => {
+    // A report's notes open with their raised number, "17DOD civilian personnel…", and
+    // Zotero reads them as a numbered list of the body; it links the body's raised "18" to
+    // the note all the same (and a note of the same list it links no mark to is one too).
+    const body = node(1, [{ text: "the severity of those challenges varied by location.", x: 72, y: 100 }]);
+    const mark = drawn(1, { text: "18", x: 72 + 52 * CW, y: 96 });
+    const n17 = node(1, [{ text: "DOD civilian personnel are funded through two avenues.", x: 80, y: 700 }]);
+    const n18 = node(1, [{ text: "Our review focuses on the challenges of remote installations.", x: 80, y: 714 }]);
+    const sup = (text: string, y: number): SdtTextNode => {
+      const d = drawn(1, { text, x: 72, y: y - 4 });
+      return { text, anchor: { textMap: JSON.stringify([d.run]) }, style: { sup: true } };
+    };
+    const pages = [pageText(1, [...body.items, mark.item, ...n17.items, ...n18.items])];
+    const blocks = structuredBlocks(structure([
+      { type: "paragraph", content: [{ text: body.text, anchor: body.anchor }, { text: "18", anchor: { textMap: JSON.stringify([mark.run]) }, style: { sup: true }, refs: [[1, 1]] }] },
+      { type: "list", content: [
+        { type: "listitem", content: [sup("17", 700), { text: n17.text, anchor: n17.anchor }] },
+        { type: "listitem", backRefs: [[0, 1]], content: [sup("18", 714), { text: n18.text, anchor: n18.anchor }] },
+      ] },
+      paragraph(1, [node(1, [{ text: "A body paragraph after the notes.", x: 72, y: 300 }])]),
+    ]), pages);
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0].text).toMatch(/^the severity of those challenges varied by location\./);
+    expect(blocks[1].text).toBe("A body paragraph after the notes.");
+  });
+
   it("makes a paragraph carried over a page one block, with runs on both pages", () => {
     const first = node(1, [{ text: "the paragraph begins on one page and", x: 72, y: 700 }]);
     const second = node(2, [{ text: "ends on the next.", x: 72, y: 80 }]);
