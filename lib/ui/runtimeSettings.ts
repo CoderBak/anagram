@@ -90,7 +90,9 @@ export function mountRuntimeSettings(host: HTMLElement, onUpdate?: (reply: Runti
         c.id === s.fastest_id ? t("runtimeFastest") : "", c.experimental ? t("runtimeExperimental") : ""].filter(Boolean);
       for (const tag of tags) name.append(element("span", tag, "badge"));
       body.append(name, element("span", `${c.device} · ${c.runtime} · ${c.precision}`, "runtime-detail"));
-      if (!c.available) body.append(element("span", c.reason || t("runtimeUnavailable"), "runtime-detail"));
+      // An available configuration has a reason only when the engine passed it over for
+      // taking the process down while it started (anagramd/runtime_controller.py).
+      if (!c.available || c.reason) body.append(element("span", c.reason || t("runtimeUnavailable"), "runtime-detail"));
       const failed = s.benchmark.results.find((r) => r.candidate_id === c.id && r.status === "error");
       if (failed) body.append(element("span", failed.error || t("runtimeFailed"), "runtime-detail runtime-failed"));
       const measured = measuredLine(s, c.id);

@@ -50,7 +50,7 @@ describe("native-only scoring and settings migration", () => {
     const connect = vi.spyOn(fakeBrowser.runtime, "connectNative").mockImplementation(() => ({
       postMessage: (message: {id: string; op: string; payload: {blocks?: {id: string}[]}}) => {
         if (message.op === "score" && closeOnScore) { closeOnScore = false; disconnected(); return; }
-        receive({v:1,id:message.id,ok:true,status:200,data:message.op === "health" ? health :
+        receive({v:1,id:message.id,ok:true,status:200,data:message.op === "health" ? health : message.op === "status" ? {state:"ready"} :
           {v:"3.0",model,results:message.payload.blocks!.map(({id}) => ({id,bucket:0,probs:[1,0,0,0],score:0}))}});
       },
       disconnect: () => disconnected(),

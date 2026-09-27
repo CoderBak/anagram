@@ -971,6 +971,9 @@ export function createOrchestrator(
         // are all cache hits sends no request at all, so the probe is the only place
         // such a tab can ever notice.
         adoptBackend(s.model);
+      } else if (backendDown) {
+        // An engine that kept dying under its work is not merely "not ready": the panel says so.
+        fab.setBackendDown(true, s?.server.code === "engine_crashed");
       }
     } catch {
       /* worker restarting — next tick */
@@ -1165,9 +1168,9 @@ export function createOrchestrator(
     onFar(unit) {
       scheduler.requeue(unit, "background");
     },
-    onDirty(nodes, removed) {
+    onDirty(nodes, removed, quiet) {
       try {
-        handleDirty(nodes, removed);
+        handleDirty(nodes, removed, quiet);
       } catch (e) {
         log.warn("dirty re-scan failed", e);
       }
@@ -1184,9 +1187,23 @@ export function createOrchestrator(
     },
   });
 
-  function handleDirty(nodes: Node[], removed: Node[]): void {
+  function handleDirty(dirtyNodes: Node[], removed: Node[], quiet: Map<Text, Element> = new Map()): void {
     const startedAt = performance.now();
     const seedQueue = new Set<Element>();
+    const nodes = [...dirtyNodes];
+
+    // 0') Text that changed without changing shape (lib/capture/observers.ts): it matters
+    //     to a unit that owns it, and as the short text the coverage line counts, which is
+    //     read again where it stood. Anything else could not make or unmake a unit, and
+    //     costs no walk.
+    for (const [n, parent] of quiet) {
+      const owner = nodeOwner.get(n);
+      if (owner && unitsById.has(owner.id)) {
+        if (!n.isConnected || currentTextOf(owner) !== owner.text) invalidateUnit(owner, seedQueue);
+      } else if (!n.isConnected && shortTexts.delete(n) && parent.isConnected) {
+        nodes.push(parent);
+      }
+    }
 
     // 0) Direct hits: dirty/removed TEXT nodes owned by a live unit. This catches
     //    in-place characterData edits in MIDDLE parts and under nested inline
@@ -1248,7 +1265,7 @@ export function createOrchestrator(
     log.log(
       "dirty scan:", nodes.length, "dirty,", removed.length, "removed,",
       planned, "planned,", scanned.size, "roots,",
-      Math.round(performance.now() - startedAt), "ms",
+      Math.round(performance.now() - startedAt), "ms,", quiet.size, "quiet",
     );
   }
 

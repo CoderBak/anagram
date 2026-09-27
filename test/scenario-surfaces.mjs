@@ -56,6 +56,9 @@ export async function surfaceScenarios({ context, fixture, record, artifact, BAD
         slot.replaceWith(document.getElementById(`page-${n}`).content.firstElementChild.cloneNode(true));
       }, n);
     const firstPage = await chipsOnPages(2);
+    // A pending chip can answer that wait before the batch leaves: wait for page 1's two
+    // units to reach the engine, so "sent before page 2 was drawn" means what it says.
+    for (const until = Date.now() + 15000; fixture.textsSince(mark).length < 2 && Date.now() < until; ) await page.waitForTimeout(100);
     const beforeDraw = fixture.textsSince(mark).length;
     await draw(2);
     const firstPages = await chipsOnPages(4);

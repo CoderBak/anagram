@@ -111,7 +111,7 @@ class FrameWriter:
 
 def dispatch(component, request):
     from native_component import ComponentError
-    from runtime_controller import RuntimeBusy, RuntimeUnavailable
+    from runtime_controller import RuntimeBusy, RuntimeFailure, RuntimeUnavailable
     try:
         status, data = component.handle(request["op"], request["payload"])
         return {"v": 1, "id": request["id"], "ok": True, "status": status, "data": data}
@@ -121,6 +121,11 @@ def dispatch(component, request):
         return error_reply(request["id"], "busy", str(exc), 409)
     except RuntimeUnavailable as exc:
         return error_reply(request["id"], "not_ready", str(exc), 503)
+    except RuntimeFailure as exc:
+        # The runtime reported a failure on this batch and is still loaded: the browser
+        # may ask again (lib/backend/retry.ts retries a 503).
+        logging.warning("Runtime failed on a %s batch: %s", request["op"], exc)
+        return error_reply(request["id"], "engine_failed", str(exc), 503)
     except (Exception, SystemExit):
         # Only request validation is a client error (422, raised as ComponentError
         # by the component). Anything else, including invalid model output or a
