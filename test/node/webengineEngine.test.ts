@@ -173,6 +173,27 @@ describe("the engine's lifecycle", () => {
     expect(next.server.requests[0]).toEqual({ url: "https://example.test/model.onnx", range: "bytes=2000-" });
   });
 
+  it("says it is retrying a dropped connection only until the bytes come again", async () => {
+    // The first answer is cut after 50 bytes; the retry's delivers 200 more and then waits.
+    const cut = fakeServer(FILES, { cutAfter: 50 }), slow = fakeServer(FILES, { stallAfter: 200 });
+    let calls = 0;
+    const engine = new Engine({
+      pin: pin(), assets: ASSETS, version: "9.9.9", store: new MemoryStore(), retryWaits: [20],
+      transport: ((url: string, init?: RequestInit) => (calls++ === 0 ? cut : slow).fetch(url, init)) as typeof fetch,
+      createSession: async (candidate, model) => fakeSession(candidate, model, []), probe: async () => candidates(),
+    });
+    engines.push(engine);
+    await engine.handle("models.download", {});
+    type Download = { status: string; bytes_received: number; detail: string | null };
+    const seen: Download[] = [];
+    for (let i = 0; i < 400 && seen.at(-1)?.bytes_received !== 250; i++) {
+      seen.push(((await engine.handle("status", {})).data as { download: Download }).download);
+      await new Promise((r) => setTimeout(r, 2));
+    }
+    expect(seen.some((d) => d.detail === "Retrying model.onnx in 0 s")).toBe(true);
+    expect(seen.at(-1)).toMatchObject({ status: "running", bytes_received: 250, detail: null });
+  });
+
   it("reports a failed download and retries it on request", async () => {
     const m = track(make({ server: { status: 500 } }));
     await m.engine.handle("models.download", {});
