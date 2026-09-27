@@ -100,6 +100,9 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- Immersive Translate's "translation only" mode is recognised: the translation it shows in
+  place of a paragraph is marked `data-imt-translation-only`, as the stylesheet the
+  extension publishes says, and is no longer read as the page's own text.
 - The PHP warnings a forum running in debug mode prints above its pages ("[phpBB Debug] PHP
   Warning: in file … on line 483") are no longer read as a text; neither is the warning
   output of any PHP site. Two phpBB topics in the web benchmark lost 750 words each to them.

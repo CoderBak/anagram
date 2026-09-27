@@ -1339,6 +1339,12 @@ const results = await page.evaluate(() => {
     sandbox.innerHTML = `<p lang="en" dir="ltr" data-read-frog-translation-only="">MACHINE ${words(80)}</p><p>${words(80)}</p>`;
     const u = PW.collectUnits(sandbox);
     check("a paragraph a translator extension rewrote in place is not read; the one beside it is", u.length === 1 && !u[0].text.includes("MACHINE"), JSON.stringify(u.map((x) => x.text.slice(0, 20))));
+    // Immersive Translate's "translation only" state (`<html imt-state="translation">`) shows
+    // the translation in the paragraph's place, in an element marked `data-imt-translation-only`
+    // that no bilingual wrapper stands around.
+    sandbox.innerHTML = `<p data-immersive-translate-paragraph="1"><font class="immersive-translate-target-inner" data-imt-translation-only="1">MACHINE ${words(80)}</font></p><p>${words(80)}</p>`;
+    const imt = PW.collectUnits(sandbox);
+    check("…and so is Immersive Translate's translation shown in place of the original", imt.length === 1 && !imt[0].text.includes("MACHINE"), JSON.stringify(imt.map((x) => x.text.slice(0, 20))));
   }
   {
     // MediaWiki's furniture is its own only inside a wiki's content box: a list classed
