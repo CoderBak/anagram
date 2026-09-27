@@ -163,7 +163,7 @@ export class Session implements Backend {
       logSeverityLevel: 3,
       externalData: [{ path: MODEL_FILE, data: model }],
       // The CPU provider would repack every weight matrix into a copy of its own, and the
-      // memory the originals leave is never given back: 0.5 GB more for 5–7% speed.
+      // memory the originals leave is never given back: 0.5 GB more for 2–8% of speed.
       ...(candidate.id === WASM_ID ? { intraOpNumThreads: threads, extra: { session: { disable_prepacking: "1" } } } : {}),
     });
     if (signal?.aborted) { await session.release(); throw new Error("cancelled"); }
