@@ -3,7 +3,8 @@ import { CONTRACT_VERSION, type ModelInfo, type ScoreBlock, type ScoreClient, ty
 import type { BackendStatus } from "../messaging/protocol";
 import { componentIsBehind, parseHealth, parseScoreResponse, parseTokenCounts } from "./scoreProtocol";
 import { type NativeOperation, type NativePayload, type NativeReply } from "./nativeProtocol";
-import { nativeTransport, NativeTransportError, RECONNECT_MS } from "./nativeTransport";
+import { nativeTransport } from "./nativeTransport";
+import { NativeTransportError, RECONNECT_MS } from "./transport";
 
 const NONE: ModelInfo = {id:"none", ver:"0", calibration:"none"};
 function extensionVersion(): string {

@@ -1,6 +1,7 @@
 import { browser } from "#imports";
 import { parseComponent } from "./nativeClient";
-import { nativeTransport, NativeTransportError } from "./nativeTransport";
+import { nativeTransport } from "./nativeTransport";
+import { NativeTransportError } from "./transport";
 import { NATIVE_MESSAGE, NATIVE_UNINSTALL, isRecord, trustedNativePage, validPageRequest, type ComponentOperation, type NativeReply } from "./nativeProtocol";
 
 /** Operations after which the engine that answers is not the one that answered before, or
