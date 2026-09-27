@@ -105,7 +105,7 @@ export function glyphsOf(textMap: string | undefined): Glyph[] {
   const out: Glyph[] = [];
   for (const run of runs) {
     if (!Array.isArray(run) || run.length < 6) continue;
-    const [header, page, minX, minY, maxX, maxY] = run as number[];
+    const [header, page, minX, minY, maxX, maxY] = run as [number, number, number, number, number, number];
     const vertical = (((header >> AXIS_SHIFT) & 0b11) & 1) === 1;
     const widths = run.slice(6) as (number | [number, number])[];
     const positions: [number, number][] = [];
@@ -130,8 +130,8 @@ function centreOf(g: Glyph, m: number[]): { cx: number; cy: number; h: number } 
   const xs = [g.x1, g.x2], ys = [g.y1, g.y2];
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   for (const x of xs) for (const y of ys) {
-    const px = m[0] * x + m[2] * y + m[4];
-    const py = m[1] * x + m[3] * y + m[5];
+    const px = m[0]! * x + m[2]! * y + m[4]!;
+    const py = m[1]! * x + m[3]! * y + m[5]!;
     minX = Math.min(minX, px); maxX = Math.max(maxX, px);
     minY = Math.min(minY, py); maxY = Math.max(maxY, py);
   }
@@ -156,12 +156,12 @@ function boxesFor(index: PageIndex, g: Glyph): Box[] {
   // Baselines lie below a glyph's centre by up to its ascent; scan the band around it.
   let lo = 0, hi = boxes.length;
   const from = cy - 4 * h;
-  while (lo < hi) { const mid = (lo + hi) >> 1; if (boxes[mid].y < from) lo = mid + 1; else hi = mid; }
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (boxes[mid]!.y < from) lo = mid + 1; else hi = mid; }
   let best: Box | null = null, bestScore = Infinity;
   let near: Box | null = null, nearScore = Infinity;
   const right: Box[] = [];
   for (let i = lo; i < boxes.length; i++) {
-    const b = boxes[i];
+    const b = boxes[i]!;
     if (b.y > cy + 4 * h) break;
     const slack = b.h * BOX_SLACK;
     if (cy < b.y - b.h * ASCENT - slack || cy > b.y + b.h * DESCENT + slack) continue;
@@ -188,7 +188,7 @@ function isTextNode(node: SdtBlock | SdtTextNode): node is SdtTextNode {
 function piecesOf(block: SdtBlock, raised: (node: SdtTextNode) => boolean, out: Piece[] = []): Piece[] {
   for (const node of block.content ?? []) {
     if (!isTextNode(node)) {
-      if (out.length && out[out.length - 1].ch !== " ") out.push({ ch: " ", glyph: null });
+      if (out.length && out[out.length - 1]!.ch !== " ") out.push({ ch: " ", glyph: null });
       piecesOf(node, raised, out);
       continue;
     }
@@ -200,9 +200,9 @@ function piecesOf(block: SdtBlock, raised: (node: SdtTextNode) => boolean, out: 
     // A node whose glyph count does not fit its text is not trusted glyph by glyph.
     const trusted = glyphs.length === nonSpace;
     for (let i = 0; i < node.text.length; i++) {
-      const ch = node.text[i];
+      const ch = node.text[i]!;
       if (isSpace(ch)) out.push({ ch: " ", glyph: null, ...cite });
-      else out.push({ ch, glyph: trusted ? glyphs[k++] : null, ...cite, ...(i === 0 ? { opens: true } : {}) });
+      else out.push({ ch, glyph: trusted ? glyphs[k++]! : null, ...cite, ...(i === 0 ? { opens: true } : {}) });
     }
   }
   return out;
@@ -223,15 +223,15 @@ function placeMarks(pieces: Piece[]): Piece[] {
     if (!m.glyph || !ACCENT.test(m.ch)) return;
     const cx = (m.glyph.x1 + m.glyph.x2) / 2;
     const under = (j: number): boolean => {
-      const g = pieces[j].glyph;
-      return g !== null && g.page === m.glyph!.page && /\p{L}/u.test(pieces[j].ch) && g.x1 <= cx && cx <= g.x2 && sameLine(g, m.glyph!);
+      const g = pieces[j]!.glyph;
+      return g !== null && g.page === m.glyph!.page && /\p{L}/u.test(pieces[j]!.ch) && g.x1 <= cx && cx <= g.x2 && sameLine(g, m.glyph!);
     };
-    for (let j = i - 1, n = 0; j >= 0 && pieces[j].ch !== " " && n <= ACCENT_REACH; j--, n++) if (under(j)) return void home.set(i, j);
-    for (let j = i + 1, n = 0; j < pieces.length && pieces[j].ch !== " " && n <= ACCENT_REACH; j++, n++) if (under(j)) return void home.set(i, j);
+    for (let j = i - 1, n = 0; j >= 0 && pieces[j]!.ch !== " " && n <= ACCENT_REACH; j--, n++) if (under(j)) return void home.set(i, j);
+    for (let j = i + 1, n = 0; j < pieces.length && pieces[j]!.ch !== " " && n <= ACCENT_REACH; j++, n++) if (under(j)) return void home.set(i, j);
   });
   if (home.size === 0) return pieces;
   const after = new Map<number, Piece[]>();
-  for (const [i, j] of home) after.set(j, [...(after.get(j) ?? []), pieces[i]]);
+  for (const [i, j] of home) after.set(j, [...(after.get(j) ?? []), pieces[i]!]);
   const out: Piece[] = [];
   pieces.forEach((p, i) => {
     if (home.has(i)) return;
@@ -262,7 +262,7 @@ function locate(pieces: Piece[], pagesByNumber: Map<number, PageIndex>): Located
   const opens = (box: Box, ch: string): number => {
     const str = box.it.str;
     let k = cursor.get(box) ?? 0;
-    while (k < str.length && isSpace(str[k])) k++;
+    while (k < str.length && isSpace(str[k]!)) k++;
     return str[k] === ch ? k : -1;
   };
   pieces.forEach((p, i) => {
@@ -454,10 +454,10 @@ function lineNumberPieces(texts: Piece[][]): Set<Piece> {
   const marks: (NumberMark & { run: Piece[] })[] = [];
   for (const pieces of texts) {
     for (let i = 0; i < pieces.length; i++) {
-      const g = pieces[i].glyph;
-      if (!g || !DIGIT.test(pieces[i].ch)) continue;
+      const g = pieces[i]!.glyph;
+      if (!g || !DIGIT.test(pieces[i]!.ch)) continue;
       let j = i + 1;
-      while (j < pieces.length && DIGIT.test(pieces[j].ch) && glued(pieces[j - 1], pieces[j])) j++;
+      while (j < pieces.length && DIGIT.test(pieces[j]!.ch) && glued(pieces[j - 1], pieces[j])) j++;
       const run = pieces.slice(i, j);
       const text = run.map((p) => p.ch).join("");
       if (BARE_NUMBER.test(text) && !glued(pieces[i - 1], pieces[i]) && !glued(pieces[j - 1], pieces[j])) {
@@ -499,12 +499,12 @@ function lineNumberPieces(texts: Piece[][]): Set<Piece> {
   for (const m of marks) {
     const list = byPage.get(m.page)!;
     const own = new Set(m.run.map((p) => p.glyph));
-    const g = m.run[0].glyph!;
+    const g = m.run[0]!.glyph!;
     const mid = (m.x1 + m.x2) / 2;
     let lo = 0, hi = list.length;
-    while (lo < hi) { const k = (lo + hi) >> 1; if (down(list[k]) < m.y - 2 * m.h) lo = k + 1; else hi = k; }
-    for (let k = lo; k < list.length && down(list[k]) <= m.y + 2 * m.h; k++) {
-      const o = list[k];
+    while (lo < hi) { const k = (lo + hi) >> 1; if (down(list[k]!) < m.y - 2 * m.h) lo = k + 1; else hi = k; }
+    for (let k = lo; k < list.length && down(list[k]!) <= m.y + 2 * m.h; k++) {
+      const o = list[k]!;
       if (own.has(o) || !sameLine(o, g)) continue;
       if ((o.x1 + o.x2) / 2 < mid) m.first = false;
       else m.last = false;
@@ -523,14 +523,14 @@ function lineNumberPieces(texts: Piece[][]): Set<Piece> {
 function withoutNumbers(pieces: Piece[], numbers: ReadonlySet<Piece>): Piece[] {
   const out: Piece[] = [];
   for (let i = 0; i < pieces.length; i++) {
-    if (!numbers.has(pieces[i])) { out.push(pieces[i]); continue; }
+    if (!numbers.has(pieces[i]!)) { out.push(pieces[i]!); continue; }
     let j = i;
-    while (j < pieces.length && numbers.has(pieces[j])) j++;
+    while (j < pieces.length && numbers.has(pieces[j]!)) j++;
     let k = j;
-    while (k < pieces.length && pieces[k].ch === " ") k++;
+    while (k < pieces.length && pieces[k]!.ch === " ") k++;
     let t = out.length - 1;
-    while (t >= 0 && out[t].ch === " ") t--;
-    const runInto = out.length > 0 && out[out.length - 1].ch !== " ";
+    while (t >= 0 && out[t]!.ch === " ") t--;
+    const runInto = out.length > 0 && out[out.length - 1]!.ch !== " ";
     const prev = out[t], next = pieces[k];
     const broken = prev?.glyph && next?.glyph && !sameLine(prev.glyph, next.glyph);
     if (broken && HYPHEN_PIECE.test(prev.ch) && /\p{Ll}/u.test(next.ch)) {
@@ -638,7 +638,7 @@ function paragraphsOfRows(rows: Row[], pages: ReadonlyMap<number, Margins>, ragg
         || listItem(b);
     }
     if (breaks) out.push([b]);
-    else out[out.length - 1].push(b);
+    else out[out.length - 1]!.push(b);
   });
   return out;
 }
@@ -650,14 +650,14 @@ function joinRows(rows: Row[]): Piece[] {
   for (const r of rows) {
     const pieces = r.pieces;
     if (out.length > 0 && r.opens) {
-      while (out.length && out[out.length - 1].ch === " ") out.pop();
+      while (out.length && out[out.length - 1]!.ch === " ") out.pop();
       const first = pieces.find((p) => p.ch !== " ");
-      if (out.length && HYPHEN_PIECE.test(out[out.length - 1].ch) && first && /\p{Ll}/u.test(first.ch)) out.pop();
+      if (out.length && HYPHEN_PIECE.test(out[out.length - 1]!.ch) && first && /\p{Ll}/u.test(first.ch)) out.pop();
       else out.push({ ch: " ", glyph: null });
     }
     out.push(...pieces);
   }
-  while (out.length && out[0].ch === " ") out.shift();
+  while (out.length && out[0]!.ch === " ") out.shift();
   return out;
 }
 
@@ -735,7 +735,7 @@ function numberedReadings(readings: (Reading | Marker)[], texts: (Piece[] | null
   let flush = 0, all = 0;
   for (const [n, { rows, steps }] of byPage) {
     const right = percentile(rows.map((r) => r.x1), 0.85);
-    pages.set(n, { left: percentile(rows.map((r) => r.x0), 0.15), right, pitch: steps.length ? percentile(steps, 0.5) : rows[0].h * 1.2 });
+    pages.set(n, { left: percentile(rows.map((r) => r.x0), 0.15), right, pitch: steps.length ? percentile(steps, 0.5) : rows[0]!.h * 1.2 });
     flush += rows.filter((r) => r.x1 >= right - r.h).length;
     all += rows.length;
   }
@@ -748,11 +748,11 @@ function numberedReadings(readings: (Reading | Marker)[], texts: (Piece[] | null
       const pieces = joinRows(rows);
       const text = pieces.map((q) => q.ch).join("");
       if (CAPTION.test(text) && text.split(/\s+/).length <= CAPTION_WORDS) { made.push("skip"); continue; }
-      const sources = [...new Set(rows.map((r) => r.from))].map((i) => p.readings[i]);
-      const head = p.readings[rows[0].from];
+      const sources = [...new Set(rows.map((r) => r.from))].map((i) => p.readings[i]!);
+      const head = p.readings[rows[0]!.from]!;
       made.push({
-        kind: "paragraph", pieces, page: rows[0].page + 1, paths: sources.map((s) => s.path.join(".")),
-        ...(rows[0].opens && head.block.previousPart ? { previousPart: head.block.previousPart.join(".") } : {}), origin: head.origin,
+        kind: "paragraph", pieces, page: rows[0]!.page + 1, paths: sources.map((s) => s.path.join(".")),
+        ...(rows[0]!.opens && head.block.previousPart ? { previousPart: head.block.previousPart.join(".") } : {}), origin: head.origin,
       });
     }
     replaced.set(p.at, made);
@@ -780,7 +780,7 @@ function runsOn(pieces: Piece[]): boolean {
 /** 1-based page a block starts on, by its first rect. */
 function startPage(block: SdtBlock): number {
   const rect = block.anchor?.pageRects?.[0];
-  return rect ? rect[0] + 1 : 0;
+  return rect ? rect[0]! + 1 : 0;
 }
 
 /**
@@ -805,7 +805,7 @@ function written(pieces: Piece[]): string {
 /** 1-based page a block's text ends on, by its last glyph. */
 function endPage(draft: Draft): number {
   for (let i = draft.pieces.length - 1; i >= 0; i--) {
-    const g = draft.pieces[i].glyph;
+    const g = draft.pieces[i]!.glyph;
     if (g) return g.page + 1;
   }
   return draft.block.page;

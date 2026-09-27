@@ -96,7 +96,7 @@ function sampleNeedles(articleHtml: string): RegExp[] {
   const step = Math.max(1, Math.floor(blocks.length / MAX_NEEDLES));
   const out: RegExp[] = [];
   for (let i = 0; i < blocks.length && out.length < MAX_NEEDLES; i += step) {
-    const b = blocks[i];
+    const b = blocks[i]!;
     const start = Math.floor((b.length - NEEDLE_CHARS) / 2);
     const words = b.slice(start, start + NEEDLE_CHARS).split(" ");
     if (words.length > 2) {
@@ -135,8 +135,8 @@ function deepestContaining(root: Element, re: RegExp): Element | null {
 function lowestCommonAncestor(els: Element[]): Element | null {
   if (els.length === 0) return null;
   const chain = new Set<Element>();
-  for (let n: Element | null = els[0]; n; n = n.parentElement) chain.add(n);
-  let lca: Element | null = els[0];
+  for (let n: Element | null = els[0]!; n; n = n.parentElement) chain.add(n);
+  let lca: Element | null = els[0]!;
   for (const el of els.slice(1)) {
     let n: Element | null = el;
     while (n && !chain.has(n)) n = n.parentElement;

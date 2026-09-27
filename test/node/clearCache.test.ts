@@ -94,7 +94,7 @@ describe("clearing the cached verdicts", () => {
     client.fail(false);
     const calls = client.calls.length;
     const again = await router.handle(req(["a paragraph nobody can score right now"]));
-    expect(again.results[0].degraded).toBeUndefined();
+    expect(again.results[0]!.degraded).toBeUndefined();
     expect(client.calls.length).toBe(calls + 1);
   });
 
@@ -108,6 +108,6 @@ describe("clearing the cached verdicts", () => {
     const cancel = new AbortController();
     const abandoned = router.handle(req(["a paragraph its page left"]), { signal: cancel.signal });
     cancel.abort(); // only a clear or a mode change goes unanswered, not a page's own cancel
-    expect((await abandoned).results[0].degraded).toBe(true);
+    expect((await abandoned).results[0]!.degraded).toBe(true);
   });
 });

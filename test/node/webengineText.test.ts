@@ -106,18 +106,18 @@ describe("scoring arithmetic", () => {
     await scoreTexts({ ...backend, batchSize: 8 }, tokenizer(), texts);
     expect(seen.map((b) => b.length)).toEqual([8, 8, 8, 8, 3]);
     expect(results).toHaveLength(35);
-    expect(results[0].tokens).toBe(3);
-    expect(results[34].tokens).toBe(37);
-    expect(results[34].bucket).toBe(3);
-    expect(results[34].probs.reduce((a, b) => a + b)).toBeCloseTo(1, 3);
+    expect(results[0]!.tokens).toBe(3);
+    expect(results[34]!.tokens).toBe(37);
+    expect(results[34]!.bucket).toBe(3);
+    expect(results[34]!.probs.reduce((a, b) => a + b)).toBeCloseTo(1, 3);
     expect(results.every((r) => !r.truncated)).toBe(true);
   });
   it("truncates to the window, keeping the end token, and says so", async () => {
-    const backend = { async logits(ids: number[][]) { expect(ids[0]).toHaveLength(512); expect(ids[0][511]).toBe(2); return new Float32Array(4); } };
+    const backend = { async logits(ids: number[][]) { expect(ids[0]).toHaveLength(512); expect(ids[0]![511]).toBe(2); return new Float32Array(4); } };
     const [r] = await scoreTexts(backend, tokenizer(), ["the ".repeat(600)]);
-    expect(r.truncated).toBe(true);
-    expect(r.tokens).toBe(512);
-    expect(r.probs).toEqual([0.25, 0.25, 0.25, 0.25]);
-    expect(r.score).toBe(0.5);
+    expect(r!.truncated).toBe(true);
+    expect(r!.tokens).toBe(512);
+    expect(r!.probs).toEqual([0.25, 0.25, 0.25, 0.25]);
+    expect(r!.score).toBe(0.5);
   });
 });

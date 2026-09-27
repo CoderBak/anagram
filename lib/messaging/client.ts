@@ -99,8 +99,8 @@ export async function requestTokenCounts(texts: string[]): Promise<CountReply> {
   for (let at = 0; at < texts.length; ) {
     let end = at;
     let chars = 0;
-    while (end < texts.length && end - at < COUNT_TEXTS && (end === at || chars + texts[end].length <= COUNT_CHARS)) {
-      chars += texts[end].length;
+    while (end < texts.length && end - at < COUNT_TEXTS && (end === at || chars + texts[end]!.length <= COUNT_CHARS)) {
+      chars += texts[end]!.length;
       end++;
     }
     const slice = texts.slice(at, end);

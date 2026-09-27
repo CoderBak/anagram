@@ -298,7 +298,7 @@ function advanceRangeStartToNonWhitespace(range: Range): void {
 
     const text = node.textContent ?? "";
     if (text.length > range.startOffset) {
-      const firstChar = text[range.startOffset];
+      const firstChar = text[range.startOffset]!;
       if (!/\s/.test(firstChar)) return;
     }
 
@@ -392,12 +392,12 @@ function* getAllTextNodes(root: Node, range: Range): Generator<Text[]> {
 function getTextContent(nodes: Text[], startOffset: number, endOffset?: number): string {
   let str: string;
   if (nodes.length === 1) {
-    str = nodes[0].data.substring(startOffset, endOffset);
+    str = nodes[0]!.data.substring(startOffset, endOffset);
   } else {
     str =
-      nodes[0].data.substring(startOffset) +
+      nodes[0]!.data.substring(startOffset) +
       nodes.slice(1, -1).reduce((s, n) => s + n.data, "") +
-      nodes[nodes.length - 1].data.substring(0, endOffset);
+      nodes[nodes.length - 1]!.data.substring(0, endOffset);
   }
   return str.replace(/[\t\n\r ]+/g, " ");
 }
@@ -435,7 +435,7 @@ function findRangeFromNodeList(query: string, range: Range, textNodes: Text[], w
     const matchIndex = data.indexOf(normalizedQuery, searchStart);
     if (matchIndex === -1) return undefined;
     if (isWordBounded(data, matchIndex, normalizedQuery.length, wordSegmenter)) {
-      const normalizedStartOffset = normalizeString(textNodes[0].data.slice(0, startOffset)).length;
+      const normalizedStartOffset = normalizeString(textNodes[0]!.data.slice(0, startOffset)).length;
       start = getBoundaryPointAtIndex(normalizedStartOffset + matchIndex, textNodes, false);
       end = getBoundaryPointAtIndex(normalizedStartOffset + matchIndex + normalizedQuery.length, textNodes, true);
     }
@@ -471,7 +471,7 @@ function getBoundaryPointAtIndex(index: number, textNodes: Text[], isEnd: boolea
   let counted = 0;
   let normalizedData: string | undefined;
   for (let i = 0; i < textNodes.length; i++) {
-    const node = textNodes[i];
+    const node = textNodes[i]!;
     if (!normalizedData) normalizedData = normalizeString(node.data);
     let nodeEnd = counted + normalizedData.length;
     if (isEnd) nodeEnd += 1;
@@ -508,7 +508,7 @@ function getBoundaryPointAtIndex(index: number, textNodes: Text[], isEnd: boolea
     if (i + 1 < textNodes.length) {
       // A node that ends with whitespace before one that starts with it would be counted
       // twice relative to the normalized text.
-      const nextNormalizedData = normalizeString(textNodes[i + 1].data);
+      const nextNormalizedData = normalizeString(textNodes[i + 1]!.data);
       if (normalizedData.slice(-1) === " " && nextNormalizedData.slice(0, 1) === " ") counted -= 1;
       normalizedData = nextNormalizedData;
     }
@@ -1090,14 +1090,14 @@ function canUseExactMatch(range: Range): boolean {
 /** Where a forward traversal through `range` starts. */
 function getFirstNodeForBlockSearch(range: Range): Node {
   let node = range.startContainer;
-  if (isElement(node) && range.startOffset < node.childNodes.length) node = node.childNodes[range.startOffset];
+  if (isElement(node) && range.startOffset < node.childNodes.length) node = node.childNodes[range.startOffset]!;
   return node;
 }
 
 /** Where a backward traversal through `range` starts. */
 function getLastNodeForBlockSearch(range: Range): Node {
   let node = range.endContainer;
-  if (isElement(node) && range.endOffset > 0) node = node.childNodes[range.endOffset - 1];
+  if (isElement(node) && range.endOffset > 0) node = node.childNodes[range.endOffset - 1]!;
   return node;
 }
 
@@ -1215,8 +1215,8 @@ function expandToNearestWordBoundaryPointUsingSegments(wordSegmenter: Intl.Segme
   const foundSegment = segments.containing(offsetInText);
 
   if (!foundSegment) {
-    if (isRangeEnd) range.setEndAfter(allNodes[allNodes.length - 1]);
-    else range.setStartBefore(allNodes[0]);
+    if (isRangeEnd) range.setEndAfter(allNodes[allNodes.length - 1]!);
+    else range.setStartBefore(allNodes[0]!);
     return;
   }
 
@@ -1246,8 +1246,8 @@ function expandToNearestWordBoundaryPointUsingSegments(wordSegmenter: Intl.Segme
   }
 
   // The offset fell in no node: the start or end of the block.
-  if (isRangeEnd) range.setEndAfter(allNodes[allNodes.length - 1]);
-  else range.setStartBefore(allNodes[0]);
+  if (isRangeEnd) range.setEndAfter(allNodes[allNodes.length - 1]!);
+  else range.setStartBefore(allNodes[0]!);
 }
 
 /**

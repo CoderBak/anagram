@@ -20,7 +20,7 @@ function port() {
     onDisconnect: {addListener: (fn) => { disconnect = fn; }},
   };
   return {p,messages,receive:(value:unknown) => receive(value),disconnect:() => disconnect(),
-    answer:(index:number,data:unknown={}) => receive({v:1,id:messages[index].id,ok:true,status:200,data})};
+    answer:(index:number,data:unknown={}) => receive({v:1,id:messages[index]!.id,ok:true,status:200,data})};
 }
 beforeEach(() => fakeBrowser.reset());
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
@@ -72,13 +72,13 @@ describe("native port multiplexing and failure recovery", () => {
     const connect = vi.fn().mockReturnValueOnce(first.p).mockReturnValue(second.p);
     const transport = new NativeTransport(connect);
     const busy = transport.request("status");
-    first.receive({v:1,id:first.messages[0].id,ok:false,status:409,error:{code:"busy",message:"Another browser owns the component"}});
+    first.receive({v:1,id:first.messages[0]!.id,ok:false,status:409,error:{code:"busy",message:"Another browser owns the component"}});
     expect((await busy).error?.code).toBe("busy"); expect(first.p.disconnect).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(1501);
     const retried = transport.request("status"); second.answer(0,{state:"ready"});
     expect((await retried).data).toEqual({state:"ready"});
     const scoring = transport.request("score");
-    second.receive({v:1,id:second.messages[1].id,ok:false,status:409,error:{code:"busy",message:"Scoring queue full"}});
+    second.receive({v:1,id:second.messages[1]!.id,ok:false,status:409,error:{code:"busy",message:"Scoring queue full"}});
     await scoring; expect(second.p.disconnect).not.toHaveBeenCalled(); transport.close();
   });
   it("starts a fresh host after one that could not start answers and exits", async () => {
@@ -86,7 +86,7 @@ describe("native port multiplexing and failure recovery", () => {
     const connect = vi.fn().mockReturnValueOnce(first.p).mockReturnValue(second.p);
     const transport = new NativeTransport(connect); const disconnected = vi.fn(); transport.onDisconnect(disconnected);
     const health = transport.request("health");
-    first.receive({v:1,id:first.messages[0].id,ok:false,status:503,error:{code:"not_installed",message:"The owned native component marker is missing"}});
+    first.receive({v:1,id:first.messages[0]!.id,ok:false,status:503,error:{code:"not_installed",message:"The owned native component marker is missing"}});
     first.disconnect();
     expect((await health).error?.code).toBe("not_installed"); expect(disconnected).toHaveBeenCalledTimes(1);
     await expect(transport.request("health")).rejects.toMatchObject({code:"native_unavailable"});
@@ -98,7 +98,7 @@ describe("native port multiplexing and failure recovery", () => {
     vi.useFakeTimers(); const first = port(); const second = port();
     const transport = new NativeTransport(vi.fn().mockReturnValueOnce(first.p).mockReturnValue(second.p));
     const health = transport.request("health");
-    first.receive({v:1,id:first.messages[0].id,ok:false,status:503,error:{code:"component_updated",message:"Reconnect after update"}});
+    first.receive({v:1,id:first.messages[0]!.id,ok:false,status:503,error:{code:"component_updated",message:"Reconnect after update"}});
     expect((await health).error?.code).toBe("component_updated");
     expect(first.p.disconnect).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(1501);
@@ -116,9 +116,9 @@ describe("a host that dies with work in flight", () => {
     return {started, connect, transport: new NativeTransport(connect)};
   }
   const statusOf = (p: Port, index: number, state: string) =>
-    p.receive({v:1,id:p.messages[index].id,ok:true,status:200,data:{state}});
+    p.receive({v:1,id:p.messages[index]!.id,ok:true,status:200,data:{state}});
   const scoreReply = (p: Port, index: number) =>
-    p.receive({v:1,id:p.messages[index].id,ok:true,status:200,data:{v:"3.0",results:[]}});
+    p.receive({v:1,id:p.messages[index]!.id,ok:true,status:200,data:{v:"3.0",results:[]}});
   /** A host that was running: it has answered a health check. */
   async function running(h: ReturnType<typeof hosts>) {
     const health = h.transport.request("health"); h.started.at(-1)!.answer(h.started.at(-1)!.messages.length - 1); await health;
@@ -136,21 +136,21 @@ describe("a host that dies with work in flight", () => {
   it("starts it again, waits for its model and asks it what died with the first, once", async () => {
     vi.useFakeTimers(); const h = hosts(); const disconnected = vi.fn(); h.transport.onDisconnect(disconnected);
     await running(h);
-    const first = h.started[0];
+    const first = h.started[0]!;
     const score = h.transport.request("score", {v:"3.0",blocks:[{id:"a",text:"text"}]});
     const done = vi.fn(); void score.then(done, done);
     first.disconnect();
     await vi.advanceTimersByTimeAsync(RESTART_BACKOFF_MS - 1);
     expect(h.connect).toHaveBeenCalledTimes(1); expect(done).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
-    const second = h.started[1];
+    const second = h.started[1]!;
     // Loading: nothing is sent but the question how far it got.
     expect(second.messages.map((m) => m.op)).toEqual(["status"]);
     statusOf(second, 0, "loading"); await vi.advanceTimersByTimeAsync(250);
     expect(second.messages.map((m) => m.op)).toEqual(["status", "status"]);
     statusOf(second, 1, "ready"); await vi.advanceTimersByTimeAsync(0);
     expect(second.messages.map((m) => m.op)).toEqual(["status", "status", "score"]);
-    expect(second.messages[2].payload).toEqual(first.messages[1].payload);
+    expect(second.messages[2]!.payload).toEqual(first.messages[1]!.payload);
     scoreReply(second, 2);
     expect((await score).ok).toBe(true);
     expect(disconnected).not.toHaveBeenCalled(); // restarting is not down
@@ -160,9 +160,9 @@ describe("a host that dies with work in flight", () => {
   it("asks a restarted host that is slow to answer again, and sends what waits once its model is loaded", async () => {
     vi.useFakeTimers(); const h = hosts(); await running(h);
     const score = h.transport.request("score", {v:"3.0",blocks:[{id:"a",text:"text"}]});
-    h.started[0].disconnect();
+    h.started[0]!.disconnect();
     await vi.advanceTimersByTimeAsync(RESTART_BACKOFF_MS);
-    const second = h.started[1];
+    const second = h.started[1]!;
     await vi.advanceTimersByTimeAsync(5_000); // the first status went unanswered
     await vi.advanceTimersByTimeAsync(250);
     expect(second.messages.map((m) => m.op)).toEqual(["status", "status"]);
@@ -176,7 +176,7 @@ describe("a host that dies with work in flight", () => {
   it("holds requests made while it restarts and sends them to the new host", async () => {
     vi.useFakeTimers(); const h = hosts(); await running(h);
     const inFlight = h.transport.request("tokens", {v:"3.0",texts:["a"]});
-    h.started[0].disconnect();
+    h.started[0]!.disconnect();
     const later = h.transport.request("score", {v:"3.0",blocks:[{id:"b",text:"later"}]});
     expect(h.connect).toHaveBeenCalledTimes(1);
     const second = await restarted(h, RESTART_BACKOFF_MS);
@@ -192,7 +192,7 @@ describe("a host that dies with work in flight", () => {
     const score = h.transport.request("score", {v:"3.0",blocks:[{id:"a",text:"text"}]});
     const configFailed = expect(config).rejects.toMatchObject({code:"native_unavailable"});
     const scoreFailed = expect(score).rejects.toMatchObject({code:"engine_crashed"});
-    h.started[0].disconnect(); await configFailed;
+    h.started[0]!.disconnect(); await configFailed;
     const second = await restarted(h, RESTART_BACKOFF_MS);
     expect(second.messages.map((m) => m.op)).toEqual(["status", "score"]);
     second.disconnect(); await scoreFailed;
@@ -206,7 +206,7 @@ describe("a host that dies with work in flight", () => {
     const failed = expect(score).rejects.toMatchObject({code:"engine_crashed"});
     // Every host answers how far it got, then dies on the batch (a fresh one each time).
     let backoff = RESTART_BACKOFF_MS;
-    h.started[0].disconnect();
+    h.started[0]!.disconnect();
     for (let crash = 2; crash < CRASH_LIMIT; crash++) {
       const next = await restarted(h, backoff); backoff *= 2;
       const again = h.transport.request("score", {v:"3.0",blocks:[{id:`x${crash}`,text:"another"}]}).catch((e: unknown) => e);
@@ -247,12 +247,12 @@ describe("a host that dies with work in flight", () => {
     await running(h);
     const score = h.transport.request("score", {v:"3.0",blocks:[{id:"a",text:"text"}]});
     const failed = expect(score).rejects.toMatchObject({code:"native_unavailable"});
-    h.started[0].disconnect(); // crashed: it had answered
+    h.started[0]!.disconnect(); // crashed: it had answered
     await vi.advanceTimersByTimeAsync(RESTART_BACKOFF_MS);
-    h.started[1].disconnect(); // gone before a word: stopped or uninstalled, not crashing
+    h.started[1]!.disconnect(); // gone before a word: stopped or uninstalled, not crashing
     await failed; expect(disconnected).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(1501);
-    const health = h.transport.request("health"); h.started[2].answer(0, {ok:true});
+    const health = h.transport.request("health"); h.started[2]!.answer(0, {ok:true});
     await expect(health).resolves.toMatchObject({ok:true});
     h.transport.close();
   });
@@ -261,7 +261,7 @@ describe("a host that dies with work in flight", () => {
     vi.useFakeTimers(); const h = hosts(); await running(h);
     const score = h.transport.request("score", {v:"3.0",blocks:[{id:"a",text:"text"}]});
     const failed = expect(score).rejects.toMatchObject({code:"component_updated"});
-    h.started[0].disconnect();
+    h.started[0]!.disconnect();
     h.transport.close("component_updated", "Updated"); await failed;
     await vi.advanceTimersByTimeAsync(5_000);
     expect(h.connect).toHaveBeenCalledTimes(1);
@@ -274,7 +274,7 @@ describe("a host that dies with work in flight", () => {
     const score = h.transport.request("score", {v:"3.0",blocks:[{id:"a",text:"text"}]}, ctl.signal);
     const cancelled = expect(score).rejects.toMatchObject({code:"cancelled"});
     ctl.abort(); await cancelled;
-    h.started[0].disconnect(); // the host was still on it
+    h.started[0]!.disconnect(); // the host was still on it
     expect(disconnected).not.toHaveBeenCalled();
     const second = await restarted(h, RESTART_BACKOFF_MS);
     expect(second.messages.map((m) => m.op)).toEqual(["status"]); // and it is not asked again
@@ -286,7 +286,7 @@ describe("a host that dies with work in flight", () => {
     const ctl = new AbortController();
     const score = h.transport.request("score", {v:"3.0",blocks:[{id:"a",text:"text"}]}, ctl.signal);
     const cancelled = expect(score).rejects.toMatchObject({code:"cancelled"});
-    h.started[0].disconnect(); ctl.abort(); await cancelled;
+    h.started[0]!.disconnect(); ctl.abort(); await cancelled;
     const second = await restarted(h, RESTART_BACKOFF_MS);
     expect(second.messages.map((m) => m.op)).toEqual(["status"]);
     h.transport.close();
@@ -466,7 +466,7 @@ describe("native scoring lifecycle generation", () => {
     expect(batch.model).toEqual(MODEL);
     expect(await client.status(false)).toMatchObject({active:"server",model:MODEL,server:{ok:true}});
     expect(request.mock.calls.map(([operation]) => operation)).toEqual(["health", "score", "score"]);
-    expect(request.mock.calls[1][2]).toBe(controller.signal);
+    expect(request.mock.calls[1]![2]).toBe(controller.signal);
   });
 
   it("is down, saying why, when the engine kept dying under its work, and reads health again", async () => {

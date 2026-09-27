@@ -271,7 +271,7 @@ function isPersonLink(a: Element): boolean {
   const href = a.getAttribute("href") ?? "";
   if (!PERSON_HREF_RE.test(href)) return false;
   const host = /^(?:https?:)?\/\/([^/?#:]+)/i.exec(href);
-  if (host && siteOf(host[1].toLowerCase()) !== siteOf(location.hostname)) return false;
+  if (host && siteOf(host[1]!.toLowerCase()) !== siteOf(location.hostname)) return false;
   return (a.textContent ?? "").trim().length <= MAX_NAME_CHARS;
 }
 
@@ -482,7 +482,7 @@ function headerBlock(from: Element): Element[] | null {
   const labelsIn = (el: Element): void => {
     for (const b of el.querySelectorAll("b,strong")) {
       const m = HEADER_LABEL_RE.exec((b.textContent ?? "").trim());
-      if (m) labels.add(m[1]);
+      if (m) labels.add(m[1]!);
     }
   };
   labelsIn(block);
@@ -491,7 +491,7 @@ function headerBlock(from: Element): Element[] | null {
     const first = next.querySelector("b,strong");
     const label = first && HEADER_LABEL_RE.exec((first.textContent ?? "").trim());
     if (!label || !(next.textContent ?? "").trim().startsWith((first.textContent ?? "").trim())) break;
-    labels.add(label[1]);
+    labels.add(label[1]!);
     lines.push(next);
   }
   return labels.has("From") && labels.size >= MIN_HEADER_LABELS ? lines : null;
@@ -508,7 +508,7 @@ function surveyMail(doc: Document): MailHistory {
       const lines = headerBlock(el);
       if (!lines) continue;
       for (const line of lines) headers.add(line);
-      starts.add(wholeWrapper(lines[0]));
+      starts.add(wholeWrapper(lines[0]!));
     } else if (tag === "HR") {
       starts.add(el);
     } else if (QUOTE_ID_RE.test(el.id)) {

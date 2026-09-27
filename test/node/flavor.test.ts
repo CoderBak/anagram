@@ -85,7 +85,7 @@ describe("the modules each flavor links", () => {
     for (const rel of sources()) {
       for (const m of read(rel).matchAll(IMPORT)) {
         if (m[1]) continue;
-        const spec = m[2] ?? m[3];
+        const spec = m[2] ?? m[3]!;
         const target = join(rel, "..", spec).split(sep).join("/");
         if (swapped.has(target) || swapped.has(`${target}.ts`)) offenders.push(`${rel} → ${spec}`);
       }
@@ -131,7 +131,7 @@ function ownLiterals(files: string[]): string[] {
   const found = new Set<string>();
   for (const rel of files) {
     for (const m of read(rel).matchAll(/"([^"\\\n]{16,})"|`([^`\\$\n]{16,})`/g)) {
-      const literal = m[1] ?? m[2];
+      const literal = m[1] ?? m[2]!;
       if (!others.includes(literal) && !literal.startsWith("../") && !literal.startsWith("./")) found.add(literal);
     }
   }

@@ -51,13 +51,13 @@ const clamp = (x: number, [lo, hi]: Range): number => Math.min(Math.max(x, lo), 
 export function confidence(result: ScoreResult, passes = 1): number {
   const p = result.probs;
   const level = levelOf(result.score);
-  const shown = level === 0 ? p[0] : level === 3 ? p[3] : p[1] + p[2];
+  const shown = level === 0 ? p[0]! : level === 3 ? p[3]! : p[1]! + p[2]!;
   const tokensRead = Math.max(0, (result.tokens ?? 0) - 2 * passes);
-  const range = RANGES[level];
+  const range = RANGES[level]!;
   const z =
     INTERCEPT +
-    LEVEL[level] +
-    SCORE[level] * clamp(logit(result.score), range.score) +
+    LEVEL[level]! +
+    SCORE[level]! * clamp(logit(result.score), range.score) +
     TOKENS * clamp(Math.log(Math.max(1, tokensRead)), range.tokens) +
     SHOWN * clamp(logit(shown), range.shown) +
     SPREAD * clamp(spread(p), range.spread);

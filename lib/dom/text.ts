@@ -165,8 +165,8 @@ const CLOSING_RE = /[.,;:!?)]+(?=\s|$)/y;
 export function skipGap(text: string, at: number): [number, number] | null {
   let from = at;
   let to = at;
-  while (from > 0 && /\s/.test(text[from - 1])) from--;
-  while (to < text.length && /\s/.test(text[to])) to++;
+  while (from > 0 && /\s/.test(text[from - 1]!)) from--;
+  while (to < text.length && /\s/.test(text[to]!)) to++;
   if (from === to || from === 0) return null;
   CLOSING_RE.lastIndex = to;
   return CLOSING_RE.test(text) ? [from, to] : null;
@@ -281,10 +281,10 @@ const LONGEST_ABBREVIATION = 10;
 /** Does the break ICU puts at `at` follow one of those abbreviations, in the same paragraph? */
 function afterAbbreviation(text: string, at: number): boolean {
   let end = at;
-  while (end > 0 && /\s/.test(text[end - 1])) end--;
+  while (end > 0 && /\s/.test(text[end - 1]!)) end--;
   if (end === at || text[end - 1] !== "." || text.slice(end, at).includes("\n")) return false;
   let start = end;
-  while (start > 0 && !/\s/.test(text[start - 1])) if (end - --start > LONGEST_ABBREVIATION + 2) return false;
+  while (start > 0 && !/\s/.test(text[start - 1]!)) if (end - --start > LONGEST_ABBREVIATION + 2) return false;
   const word = text.slice(start, end).replace(/^[(\["'“‘«]+/, "");
   if (CLDR_SUPPRESSIONS.has(word)) return true;
   const bare = word.slice(0, -1).toLowerCase();
@@ -621,7 +621,7 @@ export function skipOffsets(nodes: readonly Text[], skips: readonly number[] | u
       out.push(at);
       k++;
     }
-    at += (nodes[n].textContent ?? "").length;
+    at += (nodes[n]!.textContent ?? "").length;
   }
   return out;
 }

@@ -404,10 +404,10 @@ export function createOrchestrator(
     const list = flaggedUnits();
     if (list.length === 0) return;
     const at = flaggedCursor === null ? -1 : list.findIndex((u) => u.id === flaggedCursor);
-    const onScreen = at >= 0 && intersectsViewport(list[at].container);
+    const onScreen = at >= 0 && intersectsViewport(list[at]!.container);
     let target: Unit;
     if (onScreen) {
-      target = list[(at + dir + list.length) % list.length];
+      target = list[(at + dir + list.length) % list.length]!;
     } else {
       // Nothing to continue from (first press, or the reader scrolled away): take the
       // nearest one in that direction from the middle of the viewport, wrapping around.
@@ -419,8 +419,8 @@ export function createOrchestrator(
       };
       target =
         dir === 1
-          ? (list.find((u) => mid(u) > ref + 4) ?? list[0])
-          : ([...list].reverse().find((u) => mid(u) < ref - 4) ?? list[list.length - 1]);
+          ? (list.find((u) => mid(u) > ref + 4) ?? list[0]!)
+          : ([...list].reverse().find((u) => mid(u) < ref - 4) ?? list[list.length - 1]!);
     }
     jumpTo(target.id);
   }
@@ -495,7 +495,7 @@ export function createOrchestrator(
       flagged.forEach(({ unit, v, r }, i) => {
         const score = formatScore(r.score);
         const dist = r.probs
-          .map((p, i) => `${bandLabel(BUCKET_BANDS[i])} ${Math.round(p * 100)}%`)
+          .map((p, i) => `${bandLabel(BUCKET_BANDS[i]!)} ${Math.round(p * 100)}%`)
           .join(" · ");
         const snippet = unit.text.replace(/\s+/g, " ").slice(0, 220);
         const ellipsis = unit.text.length > 220 ? "…" : "";
@@ -648,7 +648,7 @@ export function createOrchestrator(
       if (owners.size === 1) {
         const u = owners.values().next().value as Unit;
         if (unitsById.has(u.id)) {
-          const part = u.parts.find((p) => p.nodes.includes(nodes[0]));
+          const part = u.parts.find((p) => p.nodes.includes(nodes[0]!));
           if (
             part &&
             part.nodes.length === nodes.length &&

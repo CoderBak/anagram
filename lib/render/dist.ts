@@ -29,7 +29,7 @@ export function distributionHtml(r: ScoreResult): string {
       const centre = (i / (BUCKET_BANDS.length - 1)).toFixed(3);
       return (
         `<div class="drow"><span class="ddot" style="--s:${centre}"></span>` +
-        `<span class="dk">${bandLabel(BUCKET_BANDS[i])}</span><span class="dv">${percent(p)}%</span></div>`
+        `<span class="dk">${bandLabel(BUCKET_BANDS[i]!)}</span><span class="dv">${percent(p)}%</span></div>`
       );
     })
     .join("");

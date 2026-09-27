@@ -54,7 +54,7 @@ export interface LinePage {
   /** The page's size in the units of `boxes`. */
   width: number;
   height: number;
-  /** The page's lines, in the order the page gives them, and where each was set. */
+  /** The page's lines, in the order the page gives them, and where each was set (one box per line). */
   lines: HTMLElement[];
   boxes: LineBox[];
 }
@@ -93,8 +93,8 @@ function pageText(page: LinePage, sizes: readonly number[]): PdfPageText {
     width: page.width,
     height: page.height,
     items: page.lines.map((line, i) => {
-      const b = page.boxes[i];
-      return { str: line.textContent ?? "", x: b.x, y: b.top + sizes[i] * BASELINE, width: b.width, height: sizes[i] * GLYPH, rotated: b.rotated };
+      const b = page.boxes[i]!;
+      return { str: line.textContent ?? "", x: b.x, y: b.top + sizes[i]! * BASELINE, width: b.width, height: sizes[i]! * GLYPH, rotated: b.rotated };
     }),
   };
 }
@@ -189,7 +189,7 @@ export function createLineLayerSurface(source: LineSource): Surface {
     for (const page of pages) {
       const s = typeSizes(page.boxes);
       sizes.set(page, s);
-      page.lines.forEach((line, i) => lineAt.set(line, { page, i, size: s[i] }));
+      page.lines.forEach((line, i) => lineAt.set(line, { page, i, size: s[i]! }));
     }
     units.setBlocks(reflowRuns(pages, sizes));
   }
@@ -267,7 +267,7 @@ export function createLineLayerSurface(source: LineSource): Surface {
     const at = node?.isConnected ? lineOf(node) : null;
     if (!at) return false;
     const { page, i, size } = at;
-    const b = page.boxes[i];
+    const b = page.boxes[i]!;
     const px = Math.max(page.box.getBoundingClientRect().width, 1);
     const w = ((unitParagraphs(unit) > 1 ? CHIP_GROUP_PX : CHIP_PX) / px) * page.width;
     const h = (CHIP_HEIGHT_PX / px) * page.width;
@@ -325,7 +325,7 @@ export function createLineLayerSurface(source: LineSource): Surface {
           const f1 = Math.min(1, (at.before + to) / at.length);
           if (f1 <= f0) continue;
           const { page, i, size } = at;
-          const b = page.boxes[i];
+          const b = page.boxes[i]!;
           const left = pct(b.x + b.width * f0, page.width);
           const width = pct(b.width * (f1 - f0), page.width);
           const layer = overlayFor(page);

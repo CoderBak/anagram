@@ -64,7 +64,7 @@ describe("model download", () => {
     expect(notices).toEqual(["Retrying model.bin in 0 s"]);
     server.options.cutAfter = undefined;
     await downloadFile(store, entry(), { transport: server.fetch, ...NO_WAIT });
-    expect(server.requests[2].range).toBe("bytes=700-");
+    expect(server.requests[2]!.range).toBe("bytes=700-");
     expect(await store.read("model.bin")).toEqual(FILE);
     expect(await store.size("model.bin.part")).toBeNull();
   });
@@ -80,7 +80,7 @@ describe("model download", () => {
     expect(await store.size("model.bin.part")).toBe(200);
     server.options.stallAfter = undefined;
     await downloadFile(store, entry(), { transport: server.fetch, ...NO_WAIT });
-    expect(server.requests[1].range).toBe("bytes=200-");
+    expect(server.requests[1]!.range).toBe("bytes=200-");
     expect(await store.read("model.bin")).toEqual(FILE);
   });
 
@@ -91,7 +91,7 @@ describe("model download", () => {
     await writer.close();
     const server = fakeServer({ "/model.bin": FILE }, { ignoreRange: true });
     await downloadFile(store, entry(), { transport: server.fetch, ...NO_WAIT });
-    expect(server.requests[0].range).toBe("bytes=300-");
+    expect(server.requests[0]!.range).toBe("bytes=300-");
     expect(await store.read("model.bin")).toEqual(FILE);
   });
 
@@ -111,7 +111,7 @@ describe("model download", () => {
     await writer.close();
     const good = fakeServer({ "/model.bin": FILE });
     await downloadFile(store, entry(), { transport: good.fetch, ...NO_WAIT });
-    expect(good.requests[0].range).toBeNull();
+    expect(good.requests[0]!.range).toBeNull();
     expect(await store.read("model.bin")).toEqual(FILE);
   });
 

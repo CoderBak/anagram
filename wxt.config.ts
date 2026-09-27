@@ -176,7 +176,7 @@ export default defineConfig({
     // Each flavor builds its own pages only (scripts/flavor.mjs): the in-browser engine's
     // offscreen document is not in the native build.
     "entrypoints:found": (_wxt, infos) => {
-      for (let i = infos.length - 1; i >= 0; i--) if (!buildsEntrypoint(FLAVOR, infos[i].name)) infos.splice(i, 1);
+      for (let i = infos.length - 1; i >= 0; i--) if (!buildsEntrypoint(FLAVOR, infos[i]!.name)) infos.splice(i, 1);
     },
     // AGPL: every copy of the extension carries the licence text, and the notices of the
     // third-party work it contains. The oneclick flavor adds its engine's files, which
