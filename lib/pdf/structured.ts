@@ -29,6 +29,7 @@
 //
 // The textMap decoding follows structured-document-text/src/pdf/decode.js of
 // https://github.com/zotero/structured-document-text (AGPL-3.0).
+import { skipGap } from "../dom/text";
 import { SENTENCE_END, bracketCitations, dehyphenates, vocabularyOf, type PdfPageText, type PdfTextItem, type ReflowBlock, type SourceRun, type Vocabulary } from "./reflow";
 
 // ---- the structure, as far as this reads it ----------------------------------------------
@@ -565,6 +566,8 @@ interface Token {
   at: number[];
   math: boolean;
   letters: boolean;
+  /** A citation mark was left out right before it. */
+  marked?: true;
 }
 
 interface Assembled {
@@ -599,6 +602,8 @@ function assemble(pieces: Piece[], located: Located, vocab: Vocabulary, mathPage
   let prevSource: Source | null = null;
   let prevFormula: boolean | null = null;
   let spaced = true;
+  /** A citation mark was left out since the last piece kept. */
+  let marked = false;
   const cited = citationMarks(pieces, faces);
   const symbolic = formulaChars(pieces, located, mathPages);
   pieces.forEach((p, i) => {
@@ -616,12 +621,13 @@ function assemble(pieces: Piece[], located: Located, vocab: Vocabulary, mathPage
         || (prevGlyph !== null && p.glyph !== null && wordApart(prevGlyph, p.glyph))
         || (prevSource !== null && src !== null && runsApart(prevSource, src))
         || (prevFormula !== null && formula !== null && prevFormula !== formula);
-      if (apart || !open) { open = { at: [], math: false, letters: false }; tokens.push(open); }
+      if (apart || !open) { open = { at: [], math: false, letters: false, ...(marked ? { marked: true as const } : {}) }; tokens.push(open); }
       open.at.push(i);
       if (formula) open.math = true;
       if (/\p{L}/u.test(p.ch)) open.letters = true;
       spaced = false;
-    }
+      marked = false;
+    } else marked = true;
     if (p.glyph) prevGlyph = p.glyph;
     if (src) prevSource = src;
     if (formula !== null && !cited[i]) prevFormula = formula;
@@ -739,6 +745,8 @@ function assemble(pieces: Piece[], located: Located, vocab: Vocabulary, mathPage
   // ---- the text ----
   let text = "";
   let prov: (Source | null)[] = [];
+  /** Where a formula or a citation mark was left out of `text`. */
+  const skips: number[] = [];
   tokens.forEach((t, k) => {
     if (drop[k]) {
       // The formula goes; the full stop or the comma after it, set in the text face, stays
@@ -747,9 +755,11 @@ function assemble(pieces: Piece[], located: Located, vocab: Vocabulary, mathPage
       let tail = t.at.length;
       while (tail > 0 && CLAUSE_END.test(pieces[t.at[tail - 1]].ch) && !faces[t.at[tail - 1]]?.math) tail--;
       if (text === "") return;
+      skips.push(text.length);
       for (const i of t.at.slice(tail)) { text += pieces[i].ch; prov.push(sources[i]); }
       return;
     }
+    if (t.marked && text !== "") skips.push(text.length);
     if (text !== "") { text += " "; prov.push(null); }
     let previous: number | null = null;
     for (const i of t.at) {
@@ -771,6 +781,7 @@ function assemble(pieces: Piece[], located: Located, vocab: Vocabulary, mathPage
     }
   });
 
+  ({ text, prov } = closedUp(text, prov, skips));
   ({ text, prov } = composed(text, prov));
   ({ text, prov } = withoutCitations(text, prov));
 
@@ -790,6 +801,26 @@ function assemble(pieces: Piece[], located: Located, vocab: Vocabulary, mathPage
     if (run) runs.push(run);
   });
   return { text, runs };
+}
+
+/**
+ * The text without the space a formula or a citation mark left out leaves before punctuation
+ * (skipGap, lib/dom/text.ts): "as Dunne ⁴⁶." reads "as Dunne.", as the web walker reads the
+ * same sentence. A space the author set there stays.
+ */
+function closedUp(text: string, prov: (Source | null)[], skips: number[]): { text: string; prov: (Source | null)[] } {
+  const gaps = skips.map((at) => skipGap(text, at)).filter((gap) => gap !== null);
+  if (gaps.length === 0) return { text, prov };
+  const drop = new Array<boolean>(text.length).fill(false);
+  for (const [from, to] of gaps) drop.fill(true, from, to);
+  let out = "";
+  const kept: (Source | null)[] = [];
+  for (let i = 0; i < text.length; i++) {
+    if (drop[i]) continue;
+    out += text[i];
+    kept.push(prov[i]);
+  }
+  return { text: out, prov: kept };
 }
 
 /** TeX's dotless letters, which it accents instead of "i" and "j": \'{\i} is "í". */

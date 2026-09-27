@@ -11,6 +11,7 @@ export {
   symbolNoiseRatio,
   hasColumnGaps,
   modelText,
+  partTextOf,
   isSeparatorRun,
   looksLikeNameList,
   shortcodeShare,

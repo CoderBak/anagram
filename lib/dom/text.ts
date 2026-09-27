@@ -16,8 +16,12 @@ export interface UnitPart {
   container: Element;
   /** The run came from preserved-whitespace text (a mailing-list message, a plain-text
    *  document). Only there is a leading `>` a quote marker rather than prose, so only
-   *  there do the text and the offset map leave one out (stripQuoteMarkers). */
+   *  there do the text and the offset map leave one out (leftOutOf). */
   preserved?: boolean;
+  /** The walk left something out right before these nodes (indices into `nodes`): a formula,
+   *  a citation mark, an image. The space that leaves before punctuation is closed up
+   *  (skipGap). */
+  skips?: number[];
 }
 
 /** A scoreable segment (≥1 visual paragraph). */
@@ -141,14 +145,32 @@ const INVISIBLES_RE =
 const RAW_LATEX_RE = /\$[^$\n]*\\[A-Za-z]+[^$\n]*\$/g;
 
 /** Bump when the model form changes; caches from older rules must never match. */
-export const SCORING_NORMALIZATION_VERSION = "5";
+export const SCORING_NORMALIZATION_VERSION = "6";
+
+/** Closing punctuation that ends a word: not the ".5" of a number, not ":-)" in a sentence. */
+const CLOSING_RE = /[.,;:!?)]+(?=\s|$)/y;
 
 /**
- * A space before closing punctuation that ends a word: what is left where a formula or a
- * citation mark stood between a word and its full stop ("the bases [4]." read as "the
- * bases ."), not a way anybody writes. ".5" and "a :-)" inside a sentence are not matched.
+ * The space a READER leaves where it left something out between a word and the punctuation
+ * after it: a citation mark ("the bases [4]." read as "the bases ."), a formula ("for $x$,"
+ * as "for ,"), an image. Nobody wrote that space and the model reads it: on 1,464 paragraphs
+ * of arXiv papers read both from the PDF and from the HTML it lowered the HTML's score by
+ * 0.04 on average, and by 0.10 where citations were. `at` is where the thing left out stood
+ * in `text`; the answer is the whitespace around it, [from, to), when a word comes before
+ * it and closing punctuation after it, else null. Both readers close it up — the walker
+ * (unitPartText) and the PDF reader (lib/pdf/structured.ts, lib/pdf/reflow.ts) — and only
+ * there: a space an author typed before a full stop is part of what they wrote, and one
+ * human text in six of EditLens's has one.
  */
-const SPACED_PUNCTUATION_RE = / ([.,;:!?)]+)(?=\s|$)/g;
+export function skipGap(text: string, at: number): [number, number] | null {
+  let from = at;
+  let to = at;
+  while (from > 0 && /\s/.test(text[from - 1])) from--;
+  while (to < text.length && /\s/.test(text[to])) to++;
+  if (from === to || from === 0) return null;
+  CLOSING_RE.lastIndex = to;
+  return CLOSING_RE.test(text) ? [from, to] : null;
+}
 
 /**
  * The text the model reads, which is also what its verdicts are cached under.
@@ -162,11 +184,10 @@ const SPACED_PUNCTUATION_RE = / ([.,;:!?)]+)(?=\s|$)/g;
  * un-rendered LaTeX spans out (arXiv-like pages), a PDF's ligature glyphs (ﬁ, ﬄ) to their
  * letters, a letter and its combining accents to one character (NFC: a PDF gives "e" and a
  * combining acute where a page writes "é", and the tokenizer reads the two apart), runs of
- * spaces to one space, a run of whitespace that breaks a line to one
- * "\n" — the engine can drop an opening paragraph only where it sees one end — and the
- * space a skipped formula or citation mark leaves before punctuation closed up. The model
- * reads that space: on 1,464 paragraphs of arXiv papers read both from the PDF and from the
- * HTML it lowered the HTML's score by 0.04 on average, and by 0.10 where citations were.
+ * spaces to one space, and a run of whitespace that breaks a line to one "\n" — the engine
+ * can drop an opening paragraph only where it sees one end. A space before punctuation is
+ * the author's and stays; the one a reader leaves where it skipped a formula or a citation
+ * mark is closed up where it is made (skipGap).
  *
  * A FIXED POINT: m(m(x)) === m(x), so the worker can apply it again to what a page sends
  * and key its cache on the same bytes. Ligatures go first: "$\ﬁ$" is a LaTeX span only
@@ -180,7 +201,7 @@ export function modelText(s: string): string {
     if (next === s) break;
     s = next;
   }
-  return s.normalize("NFC").replace(/\s+/g, (run) => (/[\n\r\u2028\u2029]/.test(run) ? "\n" : " ")).trim().replace(SPACED_PUNCTUATION_RE, "$1");
+  return s.normalize("NFC").replace(/\s+/g, (run) => (/[\n\r\u2028\u2029]/.test(run) ? "\n" : " ")).trim();
 }
 
 /** True if the text contains at least one letter in ANY script (incl. CJK). */
@@ -540,27 +561,74 @@ export function runQuoteDepth(raw: string): number {
 const QUOTE_MARKER_RE = /^[ \t]*(?:>[ \t]*)*>[ \t]?/gm;
 
 /**
- * The `>` a mail client puts in front of every quoted line is how it DRAWS the quotation —
- * the indent a <blockquote> draws in HTML — and not a word of it. Scoring the markers sent
- * the model a text with a `>` at the head of every line, which is nothing anybody wrote.
- * They are stripped from the text of a preserved-whitespace run that speaks at a quote
- * depth (lists.debian.org, lore.kernel.org), and from nowhere else: a `>` at the start of
- * ordinary prose is a shell prompt or a quotation somebody typed, and ours to leave alone.
+ * Which characters of a run's RAW text are no part of its text, as a flag per character, or
+ * null for none — nearly always. Two kinds:
+ *
+ *  - The `>` a mail client puts in front of every quoted line is how it DRAWS the quotation —
+ *    the indent a <blockquote> draws in HTML — and not a word of it. Scoring the markers sent
+ *    the model a text with a `>` at the head of every line, which is nothing anybody wrote.
+ *    They are left out of a preserved-whitespace run that speaks at a quote depth
+ *    (lists.debian.org, lore.kernel.org), and nowhere else: a `>` at the start of ordinary
+ *    prose is a shell prompt or a quotation somebody typed, and ours to leave alone.
+ *  - The space the walk left where it skipped something before punctuation (skipGap), at
+ *    `skips`, offsets into `raw` (skipOffsets).
+ *
+ * unitPartText drops these and lib/dom/locate.ts steps over them: the two must drop exactly
+ * the same characters, or the text and the page disagree and every window falls back to
+ * marking the whole unit.
  */
-function stripQuoteMarkers(raw: string): string {
-  return runQuoteDepth(raw) === 0 ? raw : raw.replace(QUOTE_MARKER_RE, "");
+export function leftOutOf(raw: string, preserved: boolean, skips: readonly number[] = []): boolean[] | null {
+  let mask: boolean[] | null = null;
+  if (preserved && runQuoteDepth(raw) > 0) {
+    mask = new Array<boolean>(raw.length).fill(false);
+    for (const m of raw.matchAll(QUOTE_MARKER_RE)) mask.fill(true, m.index, m.index + m[0].length);
+  }
+  for (const at of skips) {
+    const gap = skipGap(raw, at);
+    if (!gap) continue;
+    mask ??= new Array<boolean>(raw.length).fill(false);
+    mask.fill(true, gap[0], gap[1]);
+  }
+  return mask;
+}
+
+/** Where in the joined text of `nodes` the walk left something out: the offsets of the
+ *  nodes UnitPart.skips names. */
+export function skipOffsets(nodes: readonly Text[], skips: readonly number[] | undefined): number[] {
+  if (!skips || skips.length === 0) return [];
+  const out: number[] = [];
+  let at = 0;
+  for (let n = 0, k = 0; n < nodes.length && k < skips.length; n++) {
+    if (skips[k] === n) {
+      out.push(at);
+      k++;
+    }
+    at += (nodes[n].textContent ?? "").length;
+  }
+  return out;
 }
 
 /**
- * From a run's RAW text to the text a unit carries: the `>` markers of a quoted mail run
- * out — they are the quotation's frame, not its words — and every whitespace run collapsed.
- * THREE places read one paragraph this way and they must agree character for character: the
- * walker writes it (walker.ts, `read`), the orchestrator recomputes it to ask whether a
- * unit's text changed (`currentTextOf`), and lib/dom/locate.ts maps offsets in it back to
- * the page. It lives here so there is one definition to agree with.
+ * From a run's RAW text to the text a unit carries: what is no part of it out (leftOutOf) and
+ * every whitespace run collapsed. THREE places read one paragraph this way and they must
+ * agree character for character: the walker writes it (walker.ts, `read`), the orchestrator
+ * recomputes it to ask whether a unit's text changed (`currentTextOf`), and
+ * lib/dom/locate.ts maps offsets in it back to the page. It lives here so there is one
+ * definition to agree with.
  */
-export function unitPartText(raw: string, preserved: boolean): string {
-  return (preserved ? stripQuoteMarkers(raw) : raw).replace(/\s+/g, " ").trim();
+export function unitPartText(raw: string, preserved: boolean, skips: readonly number[] = []): string {
+  const mask = leftOutOf(raw, preserved, skips);
+  let kept = raw;
+  if (mask) {
+    kept = "";
+    for (let i = 0; i < raw.length; ) {
+      let j = i;
+      while (j < raw.length && mask[j] === mask[i]) j++;
+      if (!mask[i]) kept += raw.slice(i, j);
+      i = j;
+    }
+  }
+  return kept.replace(/\s+/g, " ").trim();
 }
 
 /**
@@ -569,22 +637,7 @@ export function unitPartText(raw: string, preserved: boolean): string {
  * equal to itself, so every mutation near it threw the unit away and read it again.
  */
 export function partTextOf(part: UnitPart): string {
-  return unitPartText(extractPartText(part.nodes), part.preserved === true);
-}
-
-/**
- * The same markers as a flag per character of `raw`, for the map that leads from an offset
- * in a unit's text back to the page (lib/dom/locate.ts): the two must drop exactly the same
- * characters, or the text and the page disagree and every window falls back to marking the
- * whole unit. Null where there is no quotation at all — nearly always.
- */
-export function quoteMarkerMask(raw: string): boolean[] | null {
-  if (runQuoteDepth(raw) === 0) return null;
-  const mask = new Array<boolean>(raw.length).fill(false);
-  for (const m of raw.matchAll(QUOTE_MARKER_RE)) {
-    for (let i = m.index; i < m.index + m[0].length; i++) mask[i] = true;
-  }
-  return mask;
+  return unitPartText(extractPartText(part.nodes), part.preserved === true, skipOffsets(part.nodes, part.skips));
 }
 
 // ---- link density ------------------------------------------------------------------
