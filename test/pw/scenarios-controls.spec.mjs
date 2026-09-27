@@ -108,6 +108,12 @@ test("cached verdicts: a rescan is answered from the worker cache, the options p
   const opt = await context.newPage();
   await opt.goto(extension.url("options.html"), { waitUntil: "load" });
   const counted = "cached verdicts: the options page says how many are stored, and says zero once they are cleared";
+  // The worker writes its verdicts to the disk a moment after it has them, and the page
+  // counts the disk once, when it opens: it is opened again once the three are there.
+  await expect
+    .poll(() => opt.evaluate(async () => (await chrome.runtime.sendMessage({ action: "getCacheCount" }))?.entries), { message: `${counted} (on the disk)` })
+    .toBeGreaterThanOrEqual(3);
+  await opt.reload({ waitUntil: "load" });
   await expect(opt.locator("#cacheCount"), counted).toHaveText(/^[\d,]+ entr(y|ies)$/);
   await expect(opt.locator("#cacheCount"), counted).not.toHaveText("0 entries");
   await opt.click("#clearCache");

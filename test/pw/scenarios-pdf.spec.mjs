@@ -132,8 +132,10 @@ test("a PDF in the reader: its paragraphs read as written, drawn with a text lay
   await page.locator("#zoomInButton").click();
   await visitShortPdf(page);
   await expect.poll(() => readerChips(page)).toEqual({ chips: 3, pending: 0 });
-  const zoomed = await readReader(page);
   const zoom = "PDF reader: zoom restores chips and mapped marks without requesting the same scores again";
+  // The chips are back before every re-drawn text layer has its marks mapped again.
+  await expect.poll(async () => (await readReader(page)).marks, { message: `${zoom} (the marks)` }).toBe(read.marks);
+  const zoomed = await readReader(page);
   expect.soft(zoomed.scale, zoom).toBeGreaterThan(read.scale);
   expect.soft({ chips: zoomed.chips, marks: zoomed.marks }, zoom).toEqual({ chips: read.chips, marks: read.marks });
   expect.soft(zoomed.placed.filter((c) => !c.inPage || c.overText), zoom).toEqual([]);
