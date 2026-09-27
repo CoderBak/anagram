@@ -482,6 +482,11 @@ const OPERATOR = new Set([
 ]);
 /** A token set this much smaller than its block is a formula's sub- or superscript. */
 const SCRIPT_SIZE = 0.8;
+/** The relations TeX sets a thick space after inside a formula. */
+const RELATION = /^[=<>≤≥≈∼≃≅≡∝≲≳≪≫≠∈]$/u;
+/** A gap narrower than this share of the size, between two runs, is no space at all:
+ *  a thick space is 5/18 of the size. */
+const GLUED = 0.1;
 
 // ---- what a formula is made of ---------------------------------------------------------------
 //
@@ -649,6 +654,18 @@ function assemble(pieces: Piece[], located: Located, vocab: Vocabulary, mathPage
   /** The token ends its clause in the text face, so a formula after it starts after it:
    *  "by Theorem 2, $x$". */
   const closes = (t: Token): boolean => textStop(t.at[t.at.length - 1]);
+  /** A number set against the relation that ends the formula before it: TeX puts a thick
+   *  space after a relation inside a formula, outside a sub- or superscript, so "$\sim$10
+   *  kHz" and "$\geq$50%" are the text's numbers, and "$\sim 10$" is not. What decides is
+   *  pdf.js's runs, which keep the space Zotero's glyphs fold away. */
+  const typedAfter = (k: number): boolean => {
+    const t = tokens[k], before = tokens[k - 1];
+    if (!before || !/^\p{N}/u.test(pieces[t.at[0]].ch) || !RELATION.test(pieces[before.at[before.at.length - 1]].ch)) return false;
+    const a = sources[before.at[before.at.length - 1]], b = sources[t.at[0]];
+    if (!a || !b || a.page !== b.page || a.item === b.item || b.offset !== 0) return false;
+    if (a.offset !== a.box.it.str.trimEnd().length - 1 || b.box.h <= body * SCRIPT_SIZE) return false;
+    return Math.abs(a.box.y - b.box.y) < b.box.h * 0.5 && b.box.x1 - a.box.x2 < b.box.h * GLUED;
+  };
   /** The one text face a token's letters are set in, if there is one. */
   const faceOf = (t: Token): Box | null => {
     let face: Box | null = null;
@@ -702,7 +719,9 @@ function assemble(pieces: Piece[], located: Located, vocab: Vocabulary, mathPage
     return any && (name.length <= 3 || OPERATOR.has(name) || /\p{L}\(/u.test(t.at.map((i) => pieces[i].ch).join("")));
   };
   const drop = tokens.map((t, k) => t.math || alone(k) || formulaFace(t));
-  for (let i = 1; i < tokens.length; i++) if (drop[i - 1] && withFormula(tokens[i]) && !written(tokens[i]) && beside(tokens[i - 1], tokens[i])) drop[i] = true;
+  for (let i = 1; i < tokens.length; i++) {
+    if (drop[i - 1] && withFormula(tokens[i]) && !written(tokens[i]) && !typedAfter(i) && beside(tokens[i - 1], tokens[i])) drop[i] = true;
+  }
   for (let i = tokens.length - 2; i >= 0; i--) {
     if (drop[i + 1] && withFormula(tokens[i]) && !written(tokens[i]) && !closes(tokens[i]) && beside(tokens[i], tokens[i + 1])) drop[i] = true;
   }

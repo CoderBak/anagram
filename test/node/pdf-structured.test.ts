@@ -686,6 +686,36 @@ describe("structuredBlocks — formulas", () => {
     expectRunsToMatch(blocks[0], pages);
   });
 
+  it("keeps a number set against the relation that ends a formula, as TeX sets a typed one", () => {
+    // "$\geq$10 kHz": TeX puts a thick space after a relation inside a formula, so a number
+    // with none before it follows the formula and is the text's; "$x \geq 10$" is spaced.
+    const fonts = { f_text: "NimbusRomNo9L-Regu", f_math: "BXJUHM+CMMI10", f_sy: "CMSY10", f_cmr: "UTRHDZ+CMR10" };
+    const items: PdfTextItem[] = [];
+    const runs: (number | number[])[][] = [];
+    let text = "";
+    let x = 72;
+    const put = (s: string, font: string, gap = CW) => {
+      const d = drawn(1, { text: s, x, y: 100, font });
+      items.push(d.item);
+      runs.push(d.run);
+      text += s + (gap >= CW ? " " : "");
+      x += s.length * CW + gap;
+    };
+    put("recorded at a", "f_text");
+    put("≥", "f_sy", 0);
+    put("10", "f_text");
+    put("kHz rate, and the bound", "f_text");
+    put("x", "f_math", 3);
+    put("≥", "f_sy", 3);
+    put("10", "f_cmr");
+    put("holds.", "f_text");
+    const n = { text, anchor: { textMap: JSON.stringify(runs) } };
+    const pages = [pageText(1, items, fonts)];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0].text).toBe("recorded at a 10 kHz rate, and the bound holds.");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
   it("changes nothing in a document with no mathematics face", () => {
     const n = node(1, [{ text: "a plain sentence with x = 5 and (2 + 0.5) in it.", x: 72, y: 100 }]);
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), [pageText(1, n.items, { f_text: "Calibri" })]);
