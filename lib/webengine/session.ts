@@ -54,16 +54,18 @@ export interface Candidate {
 /** The word-embedding matrix, the largest single tensor the GPU binds. */
 export const EMBEDDING_BYTES = 50265 * 1024 * 4;
 /**
- * Texts per forward pass. The GPU provider keeps the activation buffers of the passes it
- * has run in its size buckets, to reuse them (its other cache modes either keep every
- * size seen or hold a whole pass's buffers until it ends, gigabytes at 512 tokens), so
- * the batch bounds what stays on the GPU after the weights. Measured on an M4 at the
- * product's shapes: four texts a pass keeps 0.3 GB where eight kept 0.6 GB, and scores 512
- * tokens a text 5% faster and 160 as fast; two or one keep 0.1–0.2 GB less but are
- * 7–15% slower on short texts. The extension's own requests hold a few texts each
- * (lib/backend/router.ts's character budget); the results do not depend on the batch.
+ * Texts per forward pass, by provider. The GPU provider keeps the activation buffers of
+ * the passes it has run in its size buckets, to reuse them (its other cache modes either
+ * keep every size seen or hold a whole pass's buffers until it ends, gigabytes at 512
+ * tokens), so the batch bounds what stays on the GPU after the weights. Measured on an M4
+ * at the product's shapes: four texts a pass keeps 0.3 GB where eight kept 0.6 GB, and
+ * scores 512 tokens a text 5% faster and 160 as fast; two or one keep 0.1–0.2 GB less but
+ * are 7–15% slower on short texts. The CPU provider frees what a pass allocates, and eight
+ * texts a pass are 6% faster there than four. The extension's own requests hold a few
+ * texts each (lib/backend/router.ts's character budget); the results do not depend on the
+ * batch.
  */
-export const SESSION_BATCH = 4;
+export const SESSION_BATCH = { webgpu: 4, wasm: 8 } as const;
 export const WEBGPU_ID = "webgpu:fp32";
 /** The name the graph gives the file its tensors lie in. */
 const MODEL_FILE = "model.onnx";
@@ -180,8 +182,8 @@ export class Session implements Backend {
     return out;
   }
 
-  get device(): string { return this.info.candidate.id === WEBGPU_ID ? "webgpu" : "wasm"; }
-  readonly batchSize = SESSION_BATCH;
+  get device(): "webgpu" | "wasm" { return this.info.candidate.id === WEBGPU_ID ? "webgpu" : "wasm"; }
+  get batchSize(): number { return SESSION_BATCH[this.device]; }
 
   async logits(inputIds: number[][], attentionMask: number[][], signal?: AbortSignal): Promise<Float32Array> {
     if (!this.session) throw new Error("session released");
