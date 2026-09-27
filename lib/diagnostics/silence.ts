@@ -15,7 +15,7 @@
 // answer for the barriers, and the floors are the constants the assembler uses. A copy of
 // a rule here would drift from the rule in lib/dom/ within a release, and the report would
 // then explain a page the product no longer reads that way.
-import { collectUnits, isExcludedByAncestry, isExpandLabel, isProsePre } from "../dom/walker";
+import { MAX_SHORTCODE_SHARE, collectUnits, isExcludedByAncestry, isExpandLabel, isProsePre } from "../dom/walker";
 import { asideApart, chromeNames, isBoilerplate, isConsentBanner, isNoTranslate, mediaWikiFurniture, referenceList } from "../dom/boilerplate";
 import { NO_SCORE_TAGS, isHeading, isHeadingLabel, tagOf } from "../dom/tags";
 import { isTranslatedInPlace } from "../dom/translation";
@@ -35,6 +35,8 @@ import {
   isSeparatorRun,
   linkTextRatio,
   looksLikeNameList,
+  shortcodeShare,
+  isRepetitive,
   symbolNoiseRatio,
   MIN_MERGE_WORDS,
   MIN_UNIT_WORDS,
@@ -441,6 +443,8 @@ function reasonFor(el: Element, cs: Styler): string {
   const linkDense = runs.filter((r) => r.linkRatio > MAX_LINK_RATIO);
   const noisy = runs.filter((r) => symbolNoiseRatio(r.text) > MAX_SYMBOL_NOISE);
   const names = runs.filter((r) => looksLikeNameList(r.text));
+  const shortcodes = runs.filter((r) => shortcodeShare(r.text) > MAX_SHORTCODE_SHARE);
+  const repeated = runs.filter((r) => isRepetitive(r.text));
   const half = Math.ceil(runs.length / 2);
 
   if (runs.every((r) => !hasLetters(r.text))) {
@@ -449,6 +453,12 @@ function reasonFor(el: Element, cs: Styler): string {
   }
   if (noisy.length >= half) {
     return `symbol noise over ${MAX_SYMBOL_NOISE} in ${noisy.length}/${runs.length} blocks — machine layout (ASCII art, a table rule), a barrier`;
+  }
+  if (repeated.length >= half) {
+    return `one phrase said over and over in ${repeated.length}/${runs.length} blocks — a marquee or a machine's output, a barrier`;
+  }
+  if (shortcodes.length >= half) {
+    return `unrendered shortcodes in ${shortcodes.length}/${runs.length} blocks — a page builder's layout shown as text, a barrier`;
   }
   if (runs.some((r) => r.preserved && hasColumnGaps(r.raw))) {
     return "preserved-whitespace text with interior column gaps — read as machine layout (an ASCII table, an RFC header), a barrier";

@@ -357,6 +357,25 @@ export function isAttribution(text: string): boolean {
   return ATTRIBUTION_RE.test(text) && ATTRIBUTION_DETAIL_RE.test(text);
 }
 
+/** Longer than this, a line in capitals is somebody shouting, not a heading. */
+const MAX_CAPS_HEADING_WORDS = 12;
+/** A word of two or more capitals: "COLOR", "LINE" — not the "G" of "G-LINE", not "I". */
+const CAPS_WORD_RE = /^\p{Lu}{2,}/u;
+
+/**
+ * A PSEUDO-HEADING in capitals: "COLOR AND WEIGHT", "THE CHOICE OF YOUR FRISBEE" over the
+ * paragraphs of a shop's description. Three words of capitals or more, no lower-case letter
+ * and no sentence end. Nobody's name, time or action row is written that way — CSS that
+ * shows one in capitals leaves its text as written — while one or two capitalised words
+ * ("REPLY", "JOHN SMITH") may be either, and are not counted.
+ */
+export function isCapsHeading(text: string, shape: WordShape = wordShape(text)): boolean {
+  if (shape.letterWords < 3 || shape.letterWords > MAX_CAPS_HEADING_WORDS || endsLikeProse(text) || /\p{Ll}/u.test(text)) return false;
+  let caps = 0;
+  for (const s of wordSegmenter().segment(text)) if (s.isWordLike && CAPS_WORD_RE.test(s.segment)) caps++;
+  return caps >= 3;
+}
+
 /** What a short run turns out to BE (shortRole). */
 export type ShortRole =
   /** A sentence, or long enough to be one without the full stop: it takes part in merging. */
@@ -442,6 +461,49 @@ export function looksLikeNameList(text: string): boolean {
   for (const t of tokens) if (/^[("]?\p{Lu}[\p{L}'’\-.]*[,;.)]?$/u.test(t)) capitalised++;
   const commas = (text.match(/,/g) ?? []).length;
   return capitalised / tokens.length >= 0.6 && commas >= tokens.length / 8;
+}
+
+// ---- repetition ------------------------------------------------------------------------
+
+/** A run this long that uses no more than MAX_REPEATED_WORDS different words is one phrase
+ *  said over and over. */
+const REPEAT_MIN_WORDS = 30;
+const MAX_REPEATED_WORDS = 8;
+
+/**
+ * A phrase a machine repeats: a marquee's "Book Now *Book Now *…" two hundred words long,
+ * set four times over for its animation. Thirty words of writing use more than eight
+ * different ones.
+ */
+export function isRepetitive(text: string): boolean {
+  const seen = new Set<string>();
+  let words = 0;
+  for (const s of wordSegmenter().segment(text)) {
+    if (!s.isWordLike) continue;
+    words++;
+    if (seen.size <= MAX_REPEATED_WORDS) seen.add(s.segment.toLowerCase());
+  }
+  return words >= REPEAT_MIN_WORDS && seen.size <= MAX_REPEATED_WORDS;
+}
+
+// ---- unrendered shortcodes -----------------------------------------------------------
+
+/** A WordPress shortcode as a page builder writes it: a closing `[/vc_column_text]`, a name
+ *  of two parts (`[vc_row …]`, `[et_pb_section]`), or settings (`[gallery ids="…"]`). A
+ *  template's "[audience]" or "[doing this thing]" and a "[sic]" are none of these. */
+const SHORTCODE_RE = /\[\/[a-z][\w-]*\]|\[[a-z][a-z\d]*[_-][\w-]*(?:\s[^[\]]*)?\]|\[[a-z][\w-]*\s[^[\]]*=[^[\]]*\]/g;
+
+/**
+ * The share of a text's characters that stand in shortcodes. A WordPress page whose page
+ * builder is gone (WPBakery's `vc_row`, Divi's `et_pb_section`) shows its layout as text,
+ * and a row of it with all its settings clears any floor and read as prose. A sentence with
+ * a "[sic]" in it is not near.
+ */
+export function shortcodeShare(text: string): number {
+  if (text.indexOf("[") < 0) return 0;
+  let chars = 0;
+  for (const m of text.matchAll(SHORTCODE_RE)) chars += m[0].length;
+  return chars / text.length;
 }
 
 // ---- e-mail quotations ---------------------------------------------------------------
@@ -530,7 +592,9 @@ export function quoteMarkerMask(raw: string): boolean[] | null {
 /**
  * Fraction of the run's text inside <a> links. Article prose has some links but is
  * mostly plain text; nav menus / story-title lists are ~all links. High ratio marks
- * a non-prose run that also acts as a merge barrier.
+ * a non-prose run that also acts as a merge barrier. A link is an <a> that goes somewhere:
+ * an old page's named anchor (`<a name=best>`), left open, holds the whole section after it
+ * in the DOM, and every paragraph of the section was a "link".
  */
 export function linkTextRatio(nodes: Text[]): number {
   let total = 0;
@@ -539,7 +603,7 @@ export function linkTextRatio(nodes: Text[]): number {
     const len = (n.textContent ?? "").trim().length;
     if (len === 0) continue;
     total += len;
-    if (n.parentElement && n.parentElement.closest("a")) link += len;
+    if (n.parentElement && n.parentElement.closest("a[href]")) link += len;
   }
   return total > 0 ? link / total : 0;
 }

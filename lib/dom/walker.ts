@@ -63,11 +63,14 @@ import {
   hasColumnGaps,
   isSeparatorRun,
   looksLikeNameList,
+  shortcodeShare,
+  isRepetitive,
   endsLikeProse,
   endsInColon,
   wordShape,
   shortRole,
   isAttribution,
+  isCapsHeading,
   quoteDepth,
   runQuoteDepth,
   unitPartText,
@@ -246,6 +249,22 @@ export interface CollectOptions {
 
 /** Max link-text fraction for a run to count as prose (nav/menu barrier above it). */
 const MAX_LINK_RATIO = 0.6;
+/** Max share of a run's characters in unrendered shortcodes (lib/dom/text.ts, shortcodeShare). */
+export const MAX_SHORTCODE_SHARE = 0.3;
+/** Words a text inside a card link needs, a sentence's end with them, to be prose. */
+const CARD_TEXT_WORDS = 20;
+
+/**
+ * Text in a block INSIDE a link is link text only because the whole card around it can be
+ * clicked: stackoverflow.blog sets each newsletter issue on its front page as one
+ * `a.d-block` holding a date, a title and a paragraph of prose, and the paragraph was a
+ * link-dense barrier like a menu item. A menu's link stands inside its block or is the block
+ * itself, and stays one; a card's text is read when it runs to a sentence of some length.
+ */
+function inCardLink(r: Run): boolean {
+  if (r.words < CARD_TEXT_WORDS || !endsLikeProse(r.text)) return false;
+  return r.container.parentElement?.closest("a[href]") != null;
+}
 /** An out-of-flow element with at most this much text is a marker (page number,
  *  badge, anchor label), not content — skipped without breaking the sentence. */
 const SMALL_OUT_OF_FLOW_CHARS = 40;
@@ -927,10 +946,10 @@ const CODE_PUNCT_CHARS = new Set(["(", ")", "{", "}", "[", "]", ";", "=", "<", "
 /** Markup that means "this is code", on the <pre> itself or just above it: the
  *  `<pre><code>` idiom, and the class tokens every highlighter and docs generator
  *  leaves behind (highlight.js, Pygments/Sphinx, Chroma, prettify, Prism's
- *  `language-*`, GitHub's `data-lang`). */
+ *  `language-*`, GitHub's `data-lang`, SyntaxHighlighter's `brush: xml; gutter: true`). */
 const CODE_MARKUP_SELECTOR = "code,samp,kbd,var";
 const CODE_CLASS_RE =
-  /(?:^|[\s_-])(?:code|codeblock|codehilite|highlight|highlighter|hljs|chroma|prettyprint|prettyprinted|linenums|sourcecode|syntax|snippet|terminal|console|repl|crayon|gist|diff|patch|listing|language-[\w+#.-]+|lang-[\w+#.-]+|brush:[\w+#.-]+)(?:[\s_-]|$)/i;
+  /(?:^|[\s_-])(?:code|codeblock|codehilite|highlight|highlighter|hljs|chroma|prettyprint|prettyprinted|linenums|sourcecode|syntax|snippet|terminal|console|repl|crayon|gist|diff|patch|listing|language-[\w+#.-]+|lang-[\w+#.-]+|brush:\s*[\w+#.-]+\S*)(?:[\s_-]|$)/i;
 /** How far above the <pre> the wrapper of a highlighter sits (Sphinx: `<div
  *  class="highlight-python"><div class="highlight"><pre>`). */
 const CODE_WRAPPER_LEVELS = 3;
@@ -1637,6 +1656,12 @@ function createAssembler(
       note(f, r);
       return;
     }
+    // A pseudo-heading in capitals (text.ts, isCapsHeading) is passed over wherever it
+    // stands, as the author's pseudo-heading is inside a declared scope: it ends nothing, and
+    // it is no line of the text under it — osCommerce opens each paragraph of a product's
+    // description with "COLOR AND WEIGHT<br>", and the description was read as sections too
+    // short to judge, each headed by its label.
+    if (isCapsHeading(r.text)) return;
     const punctuated = endsLikeProse(r.text);
 
     if (f.block === r.container) {
@@ -1782,15 +1807,16 @@ function createAssembler(
       if (isSeparatorRun(r.text)) barrier(r.container);
       return;
     }
-    if (symbolNoiseRatio(r.text) > 0.2 || (r.preserved && hasColumnGaps(r.raw))) {
+    if (symbolNoiseRatio(r.text) > 0.2 || shortcodeShare(r.text) > MAX_SHORTCODE_SHARE || (r.preserved && hasColumnGaps(r.raw)) || isRepetitive(r.text)) {
       // ASCII diagrams / table rules / column-layout headers ("RFC 768   J.
-      // Postel"): machine layout, not prose — barrier, never merged. The
-      // column-gap check applies ONLY to preserved-whitespace runs: in normal
-      // HTML, interior space runs collapse invisibly and must not drop prose.
+      // Postel"), a page builder's unrendered shortcodes and a phrase repeated a hundred
+      // times over: machine layout, not prose —
+      // barrier, never merged. The column-gap check applies ONLY to preserved-whitespace
+      // runs: in normal HTML, interior space runs collapse invisibly and must not drop prose.
       barrier(r.container);
       return;
     }
-    if (r.linkRatio > MAX_LINK_RATIO || looksLikeNameList(r.text)) {
+    if ((r.linkRatio > MAX_LINK_RATIO && !inCardLink(r)) || looksLikeNameList(r.text)) {
       // Nav/menu/story-title lists and author/citation strings: not prose AND a
       // section boundary.
       barrier(r.container);

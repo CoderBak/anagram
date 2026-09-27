@@ -118,6 +118,24 @@ const results = await page.evaluate(() => {
   u = collect(`<div><a href="#">${words(30)}</a><br><a href="#">${words(30)}</a></div>`);
   check("link-dense runs are barriers, not units", u.length === 0);
 
+  // An old page's named anchor (`<a name=best>`), left open, holds the whole section after it
+  // in the DOM: a place to link TO, not a link.
+  sandbox.innerHTML = "";
+  sandbox.insertAdjacentHTML("beforeend", `<h2>Fertility</h2><a name="best"><p>${words(80)}</p><p>${words(80)}</p></a>`);
+  u = PW.collectUnits(sandbox).map((x) => x.wordCount);
+  check("text inside a named anchor (no href) is no link text", u.length === 2, JSON.stringify(u));
+
+  {
+    // A card that is one link (stackoverflow.blog's front page: `a.d-block > time + h2 + p`):
+    // the excerpt is link text only because the whole card can be clicked.
+    const card = (i, text) => `<div class="item"><a href="/n/${i}" style="display:block"><time>May ${i}</time><h2>Issue ${i}</h2><p>${text}</p></a></div>`;
+    u = collect(`<div class="cards">${card(1, words(80))}${card(2, words(80))}</div>`);
+    const menu = collect(`<ul>${Array.from({ length: 8 }, (_, i) => `<li><a href="/p${i}" style="display:block"><span style="display:block">${words(12)}</span></a></li>`).join("")}</ul>` +
+      `<ul>${Array.from({ length: 8 }, (_, i) => `<li><a href="/q${i}" style="display:block">${words(12)}</a></li>`).join("")}</ul>`);
+    check("prose in a block inside a link that is a whole card is read; a menu of block links is still link-dense",
+      u.length === 2 && u.every((x) => x.words === 80) && menu.length === 0, JSON.stringify([u.map(x => x.words), menu.map(x => x.words)]));
+  }
+
   u = collect(`<div contenteditable="true">${words(80)}</div>`);
   check("contenteditable never scored", u.length === 0);
 
@@ -547,6 +565,16 @@ const results = await page.evaluate(() => {
 
   u = collect(`<div><div class="txt">${sent(40)}</div><div class="ttl">Finish early</div><div class="txt">${sent(40)}</div></div>`);
   check("on the bare page the same row is indistinguishable from a name row and ends the group (like a real heading)", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+  // osCommerce sets a product's description as short paragraphs, each opened by a bold label in
+  // capitals and a <br>: "DISCMANIA G-LINE PLASTIC", "COLOR AND WEIGHT". Nobody's name, time or
+  // action row is written in capitals of several words — CSS that shows it so leaves the text
+  // as written — so on the bare page too such a line is the author's pseudo-heading.
+  u = collect(`<table><tr><td><p>${sent(30)}</p><p><b>DISCMANIA G-LINE PLASTIC<b><br>${sent(25)}</b></b></p><p><b>COLOR AND WEIGHT<br>${sent(25)}</b></p></td></tr></table>`);
+  check("a pseudo-heading in capitals is transparent on the bare page and no line of the text after it",
+    u.length === 1 && u[0].parts === 3 && u[0].words === 80 && !/DISCMANIA|COLOR/.test(u[0].text), JSON.stringify(u.map(x => [x.parts, x.words, x.text.slice(0, 30)])));
+  u = collect(`<div class="thread">${["ALICE", "BOB", "CAROL"].map((who) => `<div class="row head">${who}</div><div class="row msg">${sent(40)}</div>`).join("")}</div>`);
+  check("…while a one-word name row in capitals still keeps two voices apart", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
 
   u = collect(`<p>${sent(40)}</p><div class="widget"><div class="bar"><div class="btns"><span style="display:block">Play</span></div></div></div><p>${sent(40)}</p>`);
   check("a label buried deeper than the text is a widget's crumb, not a boundary (MDN's live-sample 'Play')", u.length === 1 && u[0].parts === 2 && !u[0].text.includes("Play"), JSON.stringify(u.map(x => [x.parts, x.words])));
@@ -1173,6 +1201,9 @@ const results = await page.evaluate(() => {
   check("related-articles widget skipped", u.length === 0);
   u = collect(`<section class="related-work">${words(80)}</section>`);
   check("compound guard: 'related-work' prose section KEPT", u.length === 1);
+  u = collect(`<p>${words(90)}</p><p>${words(90)}</p><div class="resource-related_card-list"><div><p>${words(80)}</p></div></div><div class="yarpp yarpp-related"><p>${words(80)}</p></div><section class="you-may-like"><p>${words(80)}</p></section><div class="more-like-this"><p>${words(80)}</p></div>`);
+  check("boxes of related cards, YARPP's related posts, 'you may like' and 'more like this' are chrome",
+    u.length === 2 && u.every((x) => x.words === 90), JSON.stringify(u.map(x => x.words)));
   u = collect(`<div class="OUTBRAIN">${words(80)}</div>`);
   check("outbrain widget skipped", u.length === 0);
   u = collect(`<div role="complementary">${words(80)}</div>`);
@@ -1185,6 +1216,20 @@ const results = await page.evaluate(() => {
   check("login-form chrome skipped", u.length === 0);
   u = collect(`<div class="sharedwith">${words(80)}</div>`);
   check("token boundary: 'sharedwith' (no delimiter) KEPT", u.length === 1);
+  u = collect(`<p>${words(90)}</p><p>${words(90)}</p><section id="pg-footer"><p>${words(80)}</p></section><div class="FooterWrapper"><p>${words(80)}</p></div><div id="footer"><div class="widget">${words(80)}</div></div>`);
+  check("a box that names itself the page's footer is chrome like a <footer> (Project Gutenberg's licence, a blog's footer widgets)",
+    u.length === 2 && u.every((x) => x.words === 90), JSON.stringify(u.map(x => x.words)));
+  u = collect(`<div class="wsite-not-footer"><p>${words(90)}</p></div><div class="card"><p>${words(90)}</p><div class="card__footer">${words(80)}</div></div><main><div class="footer">${words(80)}</div></main><p>${words(40)}</p>`);
+  check("…not Weebly's content box (wsite-not-footer), a card's own footer, or a footer box inside <main>",
+    u.length === 4, JSON.stringify(u.map(x => x.words)));
+  u = collect(`<p>${words(90)}</p><p>${words(90)}</p><div class="common-bottom-disclaimer"><ol><li>${words(80)}</li></ol></div><p class="pricing-disclaimer-text">${words(80)}</p><div class="fine-print">${words(80)}</div>`);
+  check("legal fine print under the text is not read (Samsung's bottom disclaimer, a pricing disclaimer)",
+    u.length === 2 && u.every((x) => x.words === 90), JSON.stringify(u.map(x => x.words)));
+  u = collect(`<p>${words(90)}</p><p>${words(90)}</p><div class="author-box"><a href="/author/ann">Ann Lee</a><p>${words(80)}</p></div><section class="about-the-author"><p>${words(80)}</p></section><div class="x9-AuthorBio">${words(80)}</div>`);
+  check("the author's bio box under the text is not read (author-box, about-the-author, a hashed AuthorBio)",
+    u.length === 2 && u.every((x) => x.words === 90), JSON.stringify(u.map(x => x.words)));
+  u = collect(`<div class="authors-container"><p>${words(90)}</p><p>${words(90)}</p></div><p>${words(40)}</p>`);
+  check("…while a box of authors that holds the article is the article (JMIR's authors-container)", u.length === 2, JSON.stringify(u.map(x => x.words)));
   {
     // The reply FORM is chrome; the comments are not. 博客园 wraps its comment LIST in boxes
     // carrying the same token, and a Greenhouse job application sets consent text among its
@@ -1550,6 +1595,22 @@ const results = await page.evaluate(() => {
       PW.looksLikeNameList(names) && !PW.looksLikeNameList(words(60)) && !PW.looksLikeNameList("Im März 1952 wurde Turing wegen seiner Homosexualität, die damals noch als Straftat verfolgt wurde, zu einer Hormonbehandlung verurteilt, und im Jahr 2009 sprach der britische Premierminister Gordon Brown eine offizielle Entschuldigung im Namen der Regierung aus."));
     u = collect(`<div class="docsum-citation">${names}</div>`);
     check("author-list block is never a unit", u.length === 0, JSON.stringify(u.map(x => x.words)));
+  }
+  {
+    // What a machine repeats is no writing: a marquee's "Book Now *Book Now *…", set four
+    // times over for its animation.
+    u = collect(`<div class="marquee">${"Book Now *".repeat(100)}</div><div class="marquee">${"Shop the sale · Free shipping · ".repeat(20)}</div>`);
+    const refrain = collect(`<p>${"Nevermore, quoth the raven. ".repeat(3)}${words(70)}</p>`);
+    check("a phrase repeated a hundred times is no prose; a refrain inside a text is",
+      u.length === 0 && refrain.length === 1, JSON.stringify([u.map(x => x.words), refrain.map(x => x.words)]));
+  }
+  {
+    // A WordPress page whose builder plugin is gone shows its shortcodes as text.
+    const row = `[vc_row type=”in_container” full_screen_row_position=”middle” column_margin=”default” column_direction=”default” text_color=”dark” text_align=”left”][vc_column column_padding=”no-extra-padding” centered_text=”true”]`;
+    u = collect(`<p>${row}${row}[vc_column_text]A short line.[/vc_column_text]${row}</p><p>${row}[nectar_btn size=”small” text=”Click to get the pattern” url=”/p/1″][/vc_column][/vc_row]${row}</p>`);
+    const sic = collect(`<p>${words(70)} The report says it "was recieved [sic] on time" and nothing more.</p><p>${words(60)}</p><p>“Our app helps [audience] do [job]. How? By [doing this thing]. That lets them [achieve these benefits].”</p>`);
+    check("unrendered page-builder shortcodes are no prose; a [sic] or a template's [audience] in a sentence is",
+      u.length === 0 && sic.length === 2 && PW.shortcodeShare(row) > 0.9, JSON.stringify([u.map(x => x.words), sic.map(x => x.words)]));
   }
 
   // ---- where the chip is inserted ---------------------------------------------------------
@@ -2165,6 +2226,9 @@ const results = await page.evaluate(() => {
 
     u = collect(`<div class="highlight-python notranslate"><div class="highlight"><pre>${preProse(8)}</pre></div></div>`);
     check("…and so does a highlighter's wrapper (Sphinx, Pygments, Prism)", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
+
+    u = collect(`<pre class="brush: xml;gutter:true;auto-links: false">${preProse(8)}</pre><pre class="brush:js">${preProse(8)}</pre>`);
+    check("…and SyntaxHighlighter's `brush: xml;` settings, spaces and semicolons in them", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
 
     {
       const code = {

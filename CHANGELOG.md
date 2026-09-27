@@ -100,6 +100,46 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- The legal fine print a site sets under its text or its offer is no longer read: boxes
+  named as disclaimers or fine print, such as the numbered footnotes under a phone's product
+  page or the fee and risk notices under a bank's calculator. On the web benchmark's
+  development pages this removes 3% of the words read that are not the page's content: a
+  third of them on product pages and a tenth on service pages.
+- The author's bio box beside or under an article is no longer read as part of the page:
+  boxes named as an author box, an author bio or "about the author". A box of authors that
+  holds the article itself is still the article. On the web benchmark's development pages
+  this removes a further 2% of the words read that are not the page's content, on 32 pages.
+- A code block marked up for SyntaxHighlighter (`class="brush: xml; gutter: true"`) is no
+  longer read as prose. Its settings were not recognised as a highlighter's, and a security
+  advisory's exploit code was read as a 2,500-word paragraph.
+- A heading written in capitals over a paragraph ("COLOR AND WEIGHT", "THE CHOICE OF YOUR
+  FRISBEE") no longer cuts a text into sections too short to read, and is no longer read as
+  the first line of the paragraph under it. A shop's product description set as four short
+  paragraphs under such headings got nothing and is now read as one text, as a text under
+  bold headings inside an article already was. Real headings still end a section.
+- A page footer built from a `<div>` or a `<section>` is no longer read when it names itself
+  the footer (`footer`, `site-footer`, `footer-wrapper`), as a `<footer>` element outside the
+  article never was: Project Gutenberg's licence under every book, a blog's footer widgets,
+  a news site's advertising notice. A component's own footer (a card's, a banner's) and a
+  footer box inside the article or the main region are still read.
+- Text after a named anchor on an older page is read. `<a name="…">` marks a place to link
+  to, and a page that leaves it open holds the whole section after it inside the element;
+  every paragraph there was taken for link text, like a menu, and a North Carolina extension
+  bulletin of 1,900 words got nothing. Only an `<a>` that goes somewhere is a link now.
+- A paragraph inside a card that is one big link is read when it is prose: a sentence of
+  twenty words or more, in a block of its own inside the link. The excerpts on a blog's front
+  page were taken for menu items, because every word of the card is link text. A menu whose
+  items are block links is still not read.
+- A WordPress page whose page builder is gone no longer has its layout read as prose. It
+  shows its shortcodes as text (`[vc_row type="in_container" …]`), and a row of them with all
+  their settings cleared the floor. A template's `[audience]` or a `[sic]` in a sentence is
+  still read.
+- A phrase a page repeats over and over, such as a scrolling "Book Now * Book Now * …"
+  banner or a notice printed once per item, is no longer read as a paragraph: thirty words or
+  more that use no more than eight different ones.
+- More boxes of other articles are recognised by their names and left out: related cards,
+  resources, guides and videos, "you may also like", "more like this", "more stories", and
+  YARPP's related posts.
 - A section of a page is no longer skipped because of the words in its anchor. PostgreSQL's
   reference section on the locking clause is `SQL-FOR-UPDATE-SHARE`, Flask's documentation
   names its section on cookies `cookies`, and those ids read as a share bar and a cookie
