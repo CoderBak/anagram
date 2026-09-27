@@ -2,7 +2,7 @@
 //
 //   ANAGRAM_PDF_BENCH=<corpus> node test/pdf-bench/bench.mjs run [--name <run>] [--only <id,…>] [--window <pages>]
 //   ANAGRAM_PDF_BENCH=<corpus> node test/pdf-bench/bench.mjs zotero <raw dir> [--name <run>] [--features <run>]
-//   ANAGRAM_PDF_BENCH=<corpus> node test/pdf-bench/bench.mjs structured <raw dir> [--name <run>] [--only <id,…>]
+//   ANAGRAM_PDF_BENCH=<corpus> node test/pdf-bench/bench.mjs structured <raw dir> [--name <run>] [--only <id,…>] [--nomath]
 //   ANAGRAM_PDF_BENCH=<corpus> node test/pdf-bench/bench.mjs report <run> [<other run>…] [--split dev|test]
 //   ANAGRAM_PDF_BENCH=<corpus> node test/pdf-bench/bench.mjs diff <run> [--worst <n>] [--page <id>:<n>]
 //
@@ -17,11 +17,15 @@
 //
 // HELD OUT. Rules are tuned on the `dev` split only; `test` is the documents whose
 // manifest id's SHA-1 begins with a hex digit 0–4 (about 30%), and is only ever reported.
+//
+// --nomath measures against arXiv's HTML with its formulas taken out (truth.mjs
+// withoutMath), as consistency.mjs does: a formula glyph a reading keeps is then text the
+// truth does not have, and the words either side of a formula it left out meet.
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { LEAK, alignDocument, lineNumberItems, lineNumbersScored } from "./align.mjs";
-import { NEUTRAL, truthOf } from "./truth.mjs";
+import { NEUTRAL, truthOf, withoutMath } from "./truth.mjs";
 
 const CORPUS = process.env.ANAGRAM_PDF_BENCH;
 if (!CORPUS) throw new Error("set ANAGRAM_PDF_BENCH to the corpus directory (see corpus.mjs)");
@@ -94,7 +98,10 @@ const CODE_LABEL = Object.fromEntries(Object.entries(LABEL_CODE).map(([k, v]) =>
  * reported for it.
  */
 async function truthFor(doc, wordMade) {
-  if (doc.has_html) return { kind: "html", truth: truthOf(readFileSync(join(CORPUS, doc.html), "utf8")) };
+  if (doc.has_html) {
+    const truth = truthOf(readFileSync(join(CORPUS, doc.html), "utf8"));
+    return { kind: "html", truth: argv.includes("--nomath") ? withoutMath(truth) : truth };
+  }
   if (!wordMade && doc.truth !== "tagged") return { kind: null, truth: null };
   const { loadPipeline, documentOptions, MAX_ANALYSIS_PAGES } = await import("./anagram.mjs");
   const { taggedTruthOf } = await import("./tagged.mjs");
@@ -509,4 +516,4 @@ else if (command === "report") report(rest);
 else if (command === "diff") await diff(rest[0]);
 else if (command === "zotero") await zotero();
 else if (command === "structured") await structured();
-else console.log("usage: bench.mjs run [--name <run>] [--only <ids>] [--window <n>] | zotero <raw dir> [--name <run>] [--features <run>] | structured <raw dir> [--name <run>] [--only <ids>] | report <run> [<run>…] [--split dev|test] | diff <run> [--worst <n> | --page <id>:<n>]");
+else console.log("usage: bench.mjs run [--name <run>] [--only <ids>] [--window <n>] | zotero <raw dir> [--name <run>] [--features <run>] | structured <raw dir> [--name <run>] [--only <ids>] [--nomath] | report <run> [<run>…] [--split dev|test] | diff <run> [--worst <n> | --page <id>:<n>]");

@@ -1188,6 +1188,13 @@ SOFTWARE.
 - Copyright: Copyright (c) the Unclutter authors
 - In Anagram: The page-text share guard in lib/dom/boilerplate.ts.
 
+### BabelDOC (0.6.4, formula detection)
+
+- Project: https://github.com/funstory-ai/BabelDOC
+- Licence: AGPL-3.0 (the same text as LICENSE, which ships beside this file)
+- Copyright: Copyright (c) awwaawwa, funstory.ai and the BabelDOC contributors
+- In Anagram: How the PDF reader tells a formula's characters from the text's in lib/pdf/structured.ts (babeldoc/format/pdf/document_il/utils/formular_helper.py and midend/styles_and_formulas.py).
+
 ### mwparserfromhtml (Wikimedia html-dumps) (plain-text extraction rules)
 
 - Project: https://gitlab.wikimedia.org/repos/research/html-dumps

@@ -536,6 +536,248 @@ describe("structuredBlocks — formulas", () => {
     expectRunsToMatch(blocks[0], pages);
   });
 
+  it("leaves out the characters BabelDOC takes for a formula's in any face: operators, Greek, stray accents", () => {
+    // TeX sets the "=" of "$18 = 324$" and the Λ of "$\Lambda$CDM" in the text face, and
+    // Zotero runs a formula's letter or accent into the word before it when no run of
+    // pdf.js spells it ("Thusθ", "that̄"). A typewriter face is code; a symbol TeX would
+    // have drawn from a mathematics face was typed ("×", "α"), and so was an operator with
+    // no space around it ("J1351+0039"); "C++", "μm" and "Müller" are words, and a μ after a
+    // number is a unit's whatever pdf.js makes of it.
+    const fonts = { f_text: "NimbusRomNo9L-Regu", f_math: "BXJUHM+CMMI10", f_cmr: "UTRHDZ+CMR10", f_tt: "NimbusMonL-Regu" };
+    const items: PdfTextItem[] = [];
+    const runs: (number | number[])[][] = [];
+    let text = "";
+    let x = 72;
+    const put = (s: string, font: string, gap = CW) => {
+      const d = drawn(1, { text: s, x, y: 100, font });
+      items.push(d.item);
+      runs.push(d.run);
+      text += s + (gap ? " " : "");
+      x += s.length * CW + gap;
+    };
+    /** A glyph Zotero reads that no run of pdf.js holds: a formula's letter or accent. */
+    const lone = (ch: string, at: number) => {
+      runs.push([0, 0, at, HEIGHT - 102, at + CW, HEIGHT - 93]);
+      text += ch;
+    };
+    put("so all", "f_text");
+    put("18", "f_cmr");
+    put("=", "f_cmr");
+    put("324", "f_cmr");
+    put("pairs of", "f_text");
+    put("ΛCDM", "f_text");
+    put("fits of J1351+0039 on 2048 × 2048 pixels of an α-helix run in", "f_text");
+    put("C++", "f_text");
+    put("with", "f_text");
+    put("seed + 1", "f_tt");
+    put("at 5", "f_text");
+    put("μm, or 5–14", "f_text", 0);
+    lone("μ", x);
+    text += " ";
+    x += 2 * CW;
+    put("m,", "f_text");
+    put("where", "f_text");
+    put("x", "f_math");
+    put("is small.", "f_text");
+    put("Thus", "f_text", 0);
+    lone("θ", x);
+    text += " ";
+    x += 2 * CW;
+    put("is fixed, and", "f_text");
+    put("that", "f_text", 0);
+    lone("̄", x - CW);
+    text += " ";
+    x += CW;
+    put("ε", "f_math");
+    put("holds for Müller.", "f_text");
+    const n = { text, anchor: { textMap: JSON.stringify(runs) } };
+    const pages = [pageText(1, items, fonts)];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0].text).toBe("so all pairs of CDM fits of J1351+0039 on 2048 × 2048 pixels of an α-helix run in C++ with seed + 1 at 5 μm, or 5–14μ m, where is small. Thus is fixed, and that holds for Müller.");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
+  it("leaves out a letter set alone in a bold face: \\mathbf", () => {
+    // "\mathbf{h}" and "\mathbf{J}_0" are set in a bold face the words around them are not set
+    // in. A phrase in that face ("Part A") is the text's, and so are a label ("(A1)", "(B)",
+    // "Appendix C") and an italic letter, which is the writer's \textit as often as a
+    // formula's.
+    const fonts = { f_text: "NimbusRomNo9L-Regu", f_bold: "CMBX10", f_bold7: "CMR7", f_medi: "NimbusRomNo9L-Medi", f_ital: "NimbusRomNo9L-ReguItal", f_sy: "CMSY10" };
+    const items: PdfTextItem[] = [];
+    const runs: (number | number[])[][] = [];
+    let text = "";
+    let x = 72;
+    const put = (s: string, font: string, gap = CW, size = SIZE) => {
+      const d = drawn(1, { text: s, x, y: size < SIZE ? 102 : 100, font });
+      d.item.height = size;
+      items.push(d.item);
+      runs.push(d.run);
+      text += s + (gap ? " " : "");
+      x += s.length * CW + gap;
+    };
+    put("Let", "f_text");
+    put("h", "f_bold");
+    put("denote the state and", "f_text");
+    put("(v", "f_bold", 0);
+    put(",", "f_sy");
+    put("u)", "f_bold");
+    put("the readouts,", "f_text");
+    put("J", "f_bold", 0);
+    put("0", "f_bold7", CW, 7);
+    put("the matrix, and", "f_text");
+    put("R", "f_ital");
+    put("the ratio, as in", "f_text");
+    put("Part A", "f_medi");
+    put("under", "f_text");
+    put("(A1)", "f_medi");
+    put("and", "f_text");
+    put("(B)", "f_medi");
+    put("of Appendix", "f_text");
+    put("C", "f_medi");
+    put("with a", "f_text");
+    put("b", "f_text");
+    put("side.", "f_text");
+    const n = { text, anchor: { textMap: JSON.stringify(runs) } };
+    const pages = [pageText(1, items, fonts)];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0].text).toBe("Let denote the state and the readouts, the matrix, and R the ratio, as in Part A under (A1) and (B) of Appendix C with a b side.");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
+  it("leaves out what is set in a face the page uses only for formulas", () => {
+    // A paper set in Times takes "$300$", "\mathrm{km}" and "\operatorname{var}(" from
+    // Computer Modern, which sets no words of the text. A word of its own in that face stays
+    // ("otherwise"), and so do the Times italic of "et al.", a sans-serif heading word and
+    // code in a typewriter face.
+    const fonts = { f_text: "NimbusRomNo9L-Regu", f_cmr: "UTRHDZ+CMR10", f_math: "BXJUHM+CMMI10", f_sans: "NimbusSanL-Bold", f_tt: "NimbusMonL-Regu", f_ital: "NimbusRomNo9L-ReguItal" };
+    const items: PdfTextItem[] = [];
+    const runs: (number | number[])[][] = [];
+    let text = "";
+    let x = 72;
+    const put = (s: string, font: string, gap = CW) => {
+      const d = drawn(1, { text: s, x, y: 100, font });
+      items.push(d.item);
+      runs.push(d.run);
+      text += s + (gap ? " " : "");
+      x += s.length * CW + gap;
+    };
+    put("We train the network for up to", "f_text");
+    put("300", "f_cmr");
+    put("epochs at", "f_text");
+    put("5", "f_cmr");
+    put("km", "f_cmr");
+    put("per second, keeping", "f_text");
+    put("var(", "f_cmr", 0);
+    put("x", "f_math", 0);
+    put(")", "f_cmr");
+    put("bounded, as the", "f_text");
+    put("Results", "f_sans");
+    put("section shows;", "f_text");
+    put("lr", "f_tt");
+    put("is tuned, and", "f_text");
+    put("otherwise", "f_cmr");
+    put("the", "f_text");
+    put("et al.", "f_ital");
+    put("method holds.", "f_text");
+    const n = { text, anchor: { textMap: JSON.stringify(runs) } };
+    const pages = [pageText(1, items, fonts)];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0].text).toBe("We train the network for up to epochs at per second, keeping bounded, as the Results section shows; lr is tuned, and otherwise the et al. method holds.");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
+  it("keeps a number set against the relation that ends a formula, as TeX sets a typed one", () => {
+    // "$\geq$10 kHz": TeX puts a thick space after a relation inside a formula, so a number
+    // with none before it follows the formula and is the text's; "$x \geq 10$" is spaced.
+    const fonts = { f_text: "NimbusRomNo9L-Regu", f_math: "BXJUHM+CMMI10", f_sy: "CMSY10", f_cmr: "UTRHDZ+CMR10" };
+    const items: PdfTextItem[] = [];
+    const runs: (number | number[])[][] = [];
+    let text = "";
+    let x = 72;
+    const put = (s: string, font: string, gap = CW) => {
+      const d = drawn(1, { text: s, x, y: 100, font });
+      items.push(d.item);
+      runs.push(d.run);
+      text += s + (gap >= CW ? " " : "");
+      x += s.length * CW + gap;
+    };
+    put("recorded at a", "f_text");
+    put("≥", "f_sy", 0);
+    put("10", "f_text");
+    put("kHz rate, and the bound", "f_text");
+    put("x", "f_math", 3);
+    put("≥", "f_sy", 3);
+    put("10", "f_cmr");
+    put("holds.", "f_text");
+    const n = { text, anchor: { textMap: JSON.stringify(runs) } };
+    const pages = [pageText(1, items, fonts)];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0].text).toBe("recorded at a 10 kHz rate, and the bound holds.");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
+  it("keeps the number a cross-reference names when a formula follows it", () => {
+    // "by Proposition 1 $f$ is bounded", "Eq. (3) $x$": no comma closes the clause before the
+    // formula, but the number is the reference's.
+    const fonts = { f_text: "NimbusRomNo9L-Regu", f_math: "BXJUHM+CMMI10" };
+    const items: PdfTextItem[] = [];
+    const runs: (number | number[])[][] = [];
+    let text = "";
+    let x = 72;
+    const put = (s: string, font: string, gap = CW) => {
+      const d = drawn(1, { text: s, x, y: 100, font });
+      items.push(d.item);
+      runs.push(d.run);
+      text += s + (gap ? " " : "");
+      x += s.length * CW + gap;
+    };
+    put("by Proposition 1", "f_text");
+    put("f", "f_math");
+    put("is bounded, and by Eq. (3)", "f_text");
+    put("x", "f_math");
+    put("holds, while a 2", "f_text");
+    put("x", "f_math");
+    put("stays.", "f_text");
+    const n = { text, anchor: { textMap: JSON.stringify(runs) } };
+    const pages = [pageText(1, items, fonts)];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0].text).toBe("by Proposition 1 is bounded, and by Eq. (3) holds, while a stays.");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
+  it("leaves out a name set against the bracket of a formula's argument", () => {
+    // "\mathrm{Aug}(\mathcal{G})" and "\operatorname{KL}(p\|q)" take their names from the
+    // text face; the bracket against the formula makes them a function applied to it.
+    const fonts = { f_text: "UTRHDZ+CMR10", f_math: "BXJUHM+CMMI10", f_sy: "CMSY10" };
+    const items: PdfTextItem[] = [];
+    const runs: (number | number[])[][] = [];
+    let text = "";
+    let x = 72;
+    const put = (s: string, font: string, gap = CW) => {
+      const d = drawn(1, { text: s, x, y: 100, font });
+      items.push(d.item);
+      runs.push(d.run);
+      text += s + (gap ? " " : "");
+      x += s.length * CW + gap;
+    };
+    put("the edge in", "f_text");
+    put("Aug(", "f_text", 0);
+    put("G", "f_sy", 0);
+    put(")", "f_text");
+    put("is kept, the model(s) agree, and", "f_text");
+    put("KL(", "f_text", 0);
+    put("p", "f_math", 0);
+    put("∥", "f_sy", 0);
+    put("q", "f_math", 0);
+    put(")", "f_text");
+    put("is small.", "f_text");
+    const n = { text, anchor: { textMap: JSON.stringify(runs) } };
+    const pages = [pageText(1, items, fonts)];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0].text).toBe("the edge in is kept, the model(s) agree, and is small.");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
   it("changes nothing in a document with no mathematics face", () => {
     const n = node(1, [{ text: "a plain sentence with x = 5 and (2 + 0.5) in it.", x: 72, y: 100 }]);
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), [pageText(1, n.items, { f_text: "Calibri" })]);

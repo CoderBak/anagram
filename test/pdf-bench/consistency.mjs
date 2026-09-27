@@ -27,7 +27,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { alignDocument } from "./align.mjs";
 import { loadPipeline, runStructured } from "./anagram.mjs";
-import { PROSE, tokenize, truthOf } from "./truth.mjs";
+import { PROSE, tokenize, truthOf, withoutMath } from "./truth.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const DAEMON = join(ROOT, "anagramd");
@@ -129,26 +129,6 @@ async function readHtml(context, bundle, doc) {
   } finally {
     await page.close().catch(() => {});
   }
-}
-
-/**
- * The truth without its formulas. Neither reading keeps a formula (the walker skips
- * MathML, the PDF path the glyphs set in a mathematics face), so the words either side of
- * one meet in both, and the truth is made to read the same way: otherwise the anchors that
- * place a reading on the truth break at every formula and the words after it look missing.
- */
-function withoutMath(truth) {
-  const keep = [];
-  const remap = new Int32Array(truth.tokens.length + 1);
-  truth.tokens.forEach((t, q) => {
-    remap[q] = keep.length;
-    if (t.cat !== "inline-math" && t.cat !== "display-math") keep.push(t);
-  });
-  remap[truth.tokens.length] = keep.length;
-  return {
-    tokens: keep,
-    paras: truth.paras.map((p) => (p.start < 0 ? p : { ...p, start: remap[p.start], end: remap[p.end] })),
-  };
 }
 
 /** Each side's tokens on the truth: the unit that owns every truth token, and the text a

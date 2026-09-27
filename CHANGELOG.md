@@ -168,6 +168,41 @@ local component and the installer all carry the same version.
   a document until Zotero's structure is ready and wherever that is not used, and it reads
   the PDFs that Google Drive and OneDrive preview; "[4]" and "[19], [20]" reached the model
   from all of these. The label that opens an entry of a reference list stays.
+- The PDF reader leaves out what a formula is made of in any face, the way BabelDOC
+  (AGPL-3.0) tells a formula's characters from the text's: an "=" or "+" standing apart and
+  an upright capital Greek letter, which TeX takes from the text's face ("$18 = 324$", the Λ
+  of "$\Lambda$CDM"), an accent that is no letter's (a \hat or a \bar), and a formula's
+  letter the PDF does not map, which Zotero runs into the word before it ("Thusθ is"). A
+  symbol TeX draws from a mathematics face is typed text when it is set in the text's face
+  and stays ("2048 × 2048", "an α-helix"), and so do an operator with no space around it
+  ("J1351+0039", "C++") and the μ of a unit ("14 μm"). On the development papers of the PDF
+  benchmark, the paragraphs whose reading still held formula text fell from 3,798 to 3,391.
+- The PDF reader leaves out a letter set alone in a bold face, a formula's \mathbf ("the
+  state **h**", "**J**₀"). A phrase in that face, a label ("(A1)", "(B)", "Appendix C") and
+  an italic letter stay: the text's italic sets the writer's \textit as often as a formula's
+  letter, and on the development papers leaving italic letters out as well cost about 190
+  words of prose for almost no formula text. With bold letters out, the formula tokens left
+  in the PDF's reading of those papers fell from 3,500 to 2,460.
+- The PDF reader leaves out what a page sets in a face it uses only for formulas. A paper
+  set in Times takes "$300$", "\mathrm{km}" and "\operatorname{var}(" from Computer Modern,
+  which sets none of its words; a numeral, a symbol, a word of up to three letters, an
+  operator name or a function applied in such a face now goes with the formulas. A longer
+  word, a sans-serif heading and code stay. On the development papers the formula tokens
+  left in the PDF's reading fell from 2,460 to 2,044, and the numbers of formulas it read
+  from 3,590 to 3,027.
+- The PDF reader keeps a number set right against the relation that ends a formula:
+  "recorded at a $\geq$10 kHz rate" and "($\sim$50%)" lost their numbers, which arXiv's HTML
+  reads. TeX puts a thick space after a relation inside a formula, outside a sub- or
+  superscript, so a number with none before it was typed after the formula; pdf.js's runs
+  keep that space where Zotero's glyphs lose it. On the development papers the prose numbers
+  the HTML reads and the PDF left out fell from 1,392 to 1,346.
+- The PDF reader keeps the number a cross-reference names when a formula follows it with no
+  comma between: "by Proposition 1 $f$ is bounded" and "Eq. (3) $x$" lost the "1" and the
+  "(3)".
+- The PDF reader leaves out a name set against the bracket of a formula's argument, a
+  function applied to it: "\mathrm{Aug}(\mathcal{G})" read "Aug(" and "\operatorname{KL}(p\|q)"
+  read "KL(". On the development papers the paragraphs whose reading still held formula
+  text fell from 2,819 to 2,639.
 - The PDF reader keeps a number the text writes next to an inline formula: "pores of 11.3 μm"
   read as "pores of m", "by Theorem 2, x is" as "by Theorem, is", and "(Federer, 1969,
   3.2.12)" lost its year. A number beside a formula went with it, because TeX sets a formula's
