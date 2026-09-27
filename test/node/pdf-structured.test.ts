@@ -536,6 +536,67 @@ describe("structuredBlocks — formulas", () => {
     expectRunsToMatch(blocks[0], pages);
   });
 
+  it("leaves out the characters BabelDOC takes for a formula's in any face: operators, Greek, stray accents", () => {
+    // TeX sets the "=" of "$18 = 324$" and the Λ of "$\Lambda$CDM" in the text face, and
+    // Zotero runs a formula's letter or accent into the word before it when no run of
+    // pdf.js spells it ("Thusθ", "that̄"). A typewriter face is code; a symbol TeX would
+    // have drawn from a mathematics face was typed ("×", "α"), and so was an operator with
+    // no space around it ("J1351+0039"); "C++", "μm" and "Müller" are words, and a μ after a
+    // number is a unit's whatever pdf.js makes of it.
+    const fonts = { f_text: "NimbusRomNo9L-Regu", f_math: "BXJUHM+CMMI10", f_cmr: "UTRHDZ+CMR10", f_tt: "NimbusMonL-Regu" };
+    const items: PdfTextItem[] = [];
+    const runs: (number | number[])[][] = [];
+    let text = "";
+    let x = 72;
+    const put = (s: string, font: string, gap = CW) => {
+      const d = drawn(1, { text: s, x, y: 100, font });
+      items.push(d.item);
+      runs.push(d.run);
+      text += s + (gap ? " " : "");
+      x += s.length * CW + gap;
+    };
+    /** A glyph Zotero reads that no run of pdf.js holds: a formula's letter or accent. */
+    const lone = (ch: string, at: number) => {
+      runs.push([0, 0, at, HEIGHT - 102, at + CW, HEIGHT - 93]);
+      text += ch;
+    };
+    put("so all", "f_text");
+    put("18", "f_cmr");
+    put("=", "f_cmr");
+    put("324", "f_cmr");
+    put("pairs of", "f_text");
+    put("ΛCDM", "f_text");
+    put("fits of J1351+0039 on 2048 × 2048 pixels of an α-helix run in", "f_text");
+    put("C++", "f_text");
+    put("with", "f_text");
+    put("seed + 1", "f_tt");
+    put("at 5", "f_text");
+    put("μm, or 5–14", "f_text", 0);
+    lone("μ", x);
+    text += " ";
+    x += 2 * CW;
+    put("m,", "f_text");
+    put("where", "f_text");
+    put("x", "f_math");
+    put("is small.", "f_text");
+    put("Thus", "f_text", 0);
+    lone("θ", x);
+    text += " ";
+    x += 2 * CW;
+    put("is fixed, and", "f_text");
+    put("that", "f_text", 0);
+    lone("̄", x - CW);
+    text += " ";
+    x += CW;
+    put("ε", "f_math");
+    put("holds for Müller.", "f_text");
+    const n = { text, anchor: { textMap: JSON.stringify(runs) } };
+    const pages = [pageText(1, items, fonts)];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0].text).toBe("so all pairs of CDM fits of J1351+0039 on 2048 × 2048 pixels of an α-helix run in C++ with seed + 1 at 5 μm, or 5–14μ m, where is small. Thus is fixed, and that holds for Müller.");
+    expectRunsToMatch(blocks[0], pages);
+  });
+
   it("changes nothing in a document with no mathematics face", () => {
     const n = node(1, [{ text: "a plain sentence with x = 5 and (2 + 0.5) in it.", x: 72, y: 100 }]);
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), [pageText(1, n.items, { f_text: "Calibri" })]);

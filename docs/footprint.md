@@ -78,6 +78,7 @@ APIs through its `parseAsync()`. `lib/dom/mainContent.ts` calls only its synchro
 | `lib/dom/shadow.ts` | `https://github.com/mozilla-firefox/firefox` | the attribution of adapted Firefox code in a comment |
 | `lib/pdf/structured.ts` | `https://github.com/zotero/document-worker` | the attribution of Zotero's document-worker, whose reading of a PDF this translates, in a comment |
 | `lib/pdf/structured.ts` | `https://github.com/zotero/structured-document-text` | the attribution of the glyph-map decoding adapted from Zotero's library, in a comment |
+| `lib/pdf/structured.ts` | `https://github.com/funstory-ai/BabelDOC` | the attribution of the formula-character rules adapted from BabelDOC, in a comment |
 | `entrypoints/shadow.content.ts` | `https://github.com/FluentRead/FluentRead` | the attribution of adapted FluentRead code in a comment |
 | `lib/surfaces/drive.ts` | `https://github.com/ken107/read-aloud` | the attribution of Read Aloud's Google Drive adapters, which the Drive preview surface follows, in a comment |
 | `lib/surfaces/pdfjs.ts` | `https://github.com/ken107/read-aloud` | the attribution of Read Aloud's OneDrive adapter, whose pdf.js selectors the pdf.js surface starts from, in a comment |

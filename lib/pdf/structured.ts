@@ -167,6 +167,8 @@ interface Box {
   y: number;
   h: number;
   math: boolean;
+  /** A typewriter face: code, whose "x = 5" is the text's. */
+  mono: boolean;
 }
 
 /** The page's runs by page number, boxed and sorted by baseline. */
@@ -177,13 +179,17 @@ interface PageIndex {
   transform: number[];
 }
 
+/** Typewriter faces: Courier and its clones, Computer and Latin Modern's, Inconsolata. */
+const MONO_FONT = /mono|monl|courier|consol|menlo|(?:cm|sf|lm|ec|tx|px)tt\d|^pcr/i;
+
 function indexPage(page: PdfPageText): PageIndex {
   const boxes: Box[] = [];
   page.items.forEach((it, item) => {
     if (it.rotated || it.str.trim() === "" || !(it.height > 0)) return;
+    const name = page.fonts?.[it.fontName ?? ""];
     boxes.push({
       page: page.page, item, it, x1: it.x, x2: it.x + it.width, y: it.y, h: it.height,
-      math: isMathFont(page.fonts?.[it.fontName ?? ""]),
+      math: isMathFont(name), mono: MONO_FONT.test(name?.replace(/^[A-Z]{6}\+/, "") ?? ""),
     });
   });
   boxes.sort((a, b) => a.y - b.y);
@@ -425,6 +431,67 @@ const OPERATOR = new Set([
 /** A token set this much smaller than its block is a formula's sub- or superscript. */
 const SCRIPT_SIZE = 0.8;
 
+// ---- what a formula is made of ---------------------------------------------------------------
+//
+// BabelDOC (https://github.com/funstory-ai/BabelDOC, AGPL-3.0, Copyright (c) awwaawwa,
+// funstory.ai and the BabelDOC contributors) tells a formula's characters from the text's
+// one at a time, by face and by what the character is (babeldoc/format/pdf/document_il/
+// utils/formular_helper.py, is_formulas_start_char): a mathematical symbol, a modifier
+// accent, a nonspacing mark, a private-use glyph, a Greek letter and a glyph the font does
+// not map are a formula's, and a change between the two is where a formula starts or stops
+// (midend/styles_and_formulas.py, _classify_characters_in_composition). TeX narrows this:
+// it draws a formula's symbols and lower-case Greek from its mathematics faces, which the
+// face already tells, so one of those in a text face was typed in the text ("2048 × 2048",
+// "an α-helix"). What it takes from the text face is "+", "=" and the upright capitals.
+
+/** The operators a formula takes from the text face. */
+const TEXT_OPERATOR = /^[+=]$/u;
+const CAPITAL_GREEK = /^(?=\p{Lu})\p{Script=Greek}$/u;
+const GREEK = /^\p{Script=Greek}$/u;
+/** The spacing accents \hat, \tilde, \bar and \dot are drawn with. */
+const SPACING_ACCENT = /^[\^¨¯´¸ˆˇˉ˘˙˚˛˜˝]$/u;
+const MARK = /^\p{Mn}$/u;
+const ALNUM = /^[\p{Script=Latin}\p{N}]$/u;
+
+/**
+ * Which pieces are a formula's by what they are, on a page that sets mathematics in a
+ * mathematics face and outside a typewriter face: a "+" or "=" standing apart (TeX spaces
+ * the operators of a formula; "J1351+0039" and "stol=0.5" were typed), an upright capital
+ * Greek letter ("$\Lambda$CDM"), an accent that is no letter's (a formula's \hat or \bar,
+ * not the one of "Müller" or "Jureˇcková"), a private-use glyph, and a symbol or a Greek
+ * letter that pdf.js spells otherwise — a glyph of a formula Zotero ran into the word
+ * before it ("Thusθ"), though not the μ of a unit after a number ("14 μm").
+ */
+function formulaChars(pieces: Piece[], { sources, faces }: Located, mathPages: ReadonlySet<number>): boolean[] {
+  const letter = (i: number): boolean => i >= 0 && i < pieces.length && /\p{L}/u.test(pieces[i].ch);
+  /** The next piece past at most one space. */
+  const near = (i: number, step: number): string => (pieces[i + step]?.ch === " " ? pieces[i + 2 * step] : pieces[i + step])?.ch ?? " ";
+  /** The μ of a quantity's unit, "14 μm", "4μ B". */
+  const unit = (i: number): boolean => pieces[i].ch === "μ" && /\p{N}/u.test(near(i, -1)) && /\p{Script=Latin}/u.test(near(i, 1));
+  /** A letter or digit stands against the i-th piece, past any more of it ("C++"). */
+  const glued = (i: number, step: number): boolean => {
+    let j = i + step;
+    while (j >= 0 && j < pieces.length && pieces[j].ch === pieces[i].ch) j += step;
+    return j >= 0 && j < pieces.length && ALNUM.test(pieces[j].ch);
+  };
+  return pieces.map((p, i) => {
+    const page = faces[i]?.page ?? (p.glyph ? p.glyph.page + 1 : 0);
+    if (!mathPages.has(page) || faces[i]?.mono) return false;
+    const ch = p.ch;
+    if (/^\p{Co}$/u.test(ch)) return true;
+    if (/^\p{Sm}$/u.test(ch)) return sources[i] === null || (TEXT_OPERATOR.test(ch) && !glued(i, -1) && !glued(i, 1));
+    if (GREEK.test(ch)) return CAPITAL_GREEK.test(ch) || (sources[i] === null && !unit(i));
+    if (SPACING_ACCENT.test(ch)) return !(letter(i - 1) && letter(i + 1));
+    if (!MARK.test(ch) || /[\uFE00-\uFE0F]/u.test(ch)) return false;
+    // A mark stays with its letter where the two make one character.
+    let j = i - 1;
+    while (j >= 0 && MARK.test(pieces[j].ch)) j--;
+    if (!letter(j)) return true;
+    const cluster = (DOTLESS[pieces[j].ch] ?? pieces[j].ch) + pieces.slice(j + 1, i + 1).map((q) => q.ch).join("");
+    return /\p{Mn}/u.test(cluster.normalize("NFC"));
+  });
+}
+
 /** A token of the text: consecutive glyphs with no word space among them. */
 interface Token {
   /** Indices into `pieces`, spaces left out. */
@@ -443,8 +510,8 @@ interface Assembled {
  * space goes in wherever two glyphs stand a word apart and Zotero's text runs them
  * together. Then two decisions the reflow makes too, taken here on Zotero's glyphs:
  *
- *  - A FORMULA is left out. A token with a glyph in a mathematics font is one, and so is,
- *    on a page that has such a font, a token of capital Greek. Beside one on the same line
+ *  - A FORMULA is left out. A token with a glyph in a mathematics font is one, and so is
+ *    one of what a formula is made of in any face (formulaChars). Beside one on the same line
  *    go the rest of what TeX takes from the text face: a letterless token (parentheses,
  *    digits, operators, punctuation), an operator name ("log", "sup") and a token set in
  *    a sub- or superscript's size ("init" of x_init). What remains is the sentence around
@@ -454,37 +521,41 @@ interface Assembled {
  *    becomes "languageonly". The hyphen is still in pdf.js's run, and the document's own
  *    vocabulary says whether the word is spelt with it (lib/pdf/reflow.ts).
  */
-function assemble(pieces: Piece[], { sources, faces }: Located, vocab: Vocabulary, mathPages: ReadonlySet<number>): Assembled {
+function assemble(pieces: Piece[], located: Located, vocab: Vocabulary, mathPages: ReadonlySet<number>): Assembled {
+  const { sources, faces } = located;
   // ---- tokens: where a word space belongs ----
   const tokens: Token[] = [];
   let open: Token | null = null;
   let prevGlyph: Glyph | null = null;
   let prevSource: Source | null = null;
-  let prevFace: Box | null = null;
+  let prevFormula: boolean | null = null;
   let spaced = true;
   const cited = citationMarks(pieces, faces);
+  const symbolic = formulaChars(pieces, located, mathPages);
   pieces.forEach((p, i) => {
     if (p.ch === " ") { spaced = true; return; }
     const src = sources[i];
-    const face = faces[i];
+    // A formula's by its face or by what it is; unknown with no face and no such character.
+    const formula = symbolic[i] ? true : faces[i] ? faces[i]!.math : null;
     // A citation mark is left out, but the text after it follows it on the page: "errors¹⁻⁴."
     // is a word and its full stop.
     if (!cited[i]) {
-      // A change of face between text and mathematics is a word boundary too, however tight
-      // TeX set it: "with" and the "C" of "withC :=" are two words.
+      // A change between text and mathematics is a word boundary too, however tight TeX set
+      // it or Zotero ran it together: "with" and the "C" of "withC :=", "Thus" and the θ of
+      // "Thusθ is" are two words.
       const apart = spaced
         || (prevGlyph !== null && p.glyph !== null && wordApart(prevGlyph, p.glyph))
         || (prevSource !== null && src !== null && runsApart(prevSource, src))
-        || (prevFace !== null && face !== null && prevFace.math !== face.math);
+        || (prevFormula !== null && formula !== null && prevFormula !== formula);
       if (apart || !open) { open = { at: [], math: false, letters: false }; tokens.push(open); }
       open.at.push(i);
-      if (face?.math) open.math = true;
+      if (formula) open.math = true;
       if (/\p{L}/u.test(p.ch)) open.letters = true;
       spaced = false;
     }
     if (p.glyph) prevGlyph = p.glyph;
     if (src) prevSource = src;
-    if (face) prevFace = face;
+    if (formula !== null && !cited[i]) prevFormula = formula;
   });
 
   // ---- formulas: the math tokens and the letterless tokens beside them ----
@@ -500,12 +571,10 @@ function assemble(pieces: Piece[], { sources, faces }: Located, vocab: Vocabular
   const sizes = pieces.flatMap((p, i) => (faces[i] && /\p{L}/u.test(p.ch) ? [faces[i].h] : [])).sort((a, b) => a - b);
   const body = sizes[sizes.length >> 1] ?? 0;
   const script = (t: Token): boolean => t.at.every((i) => faces[i] !== null && faces[i].h <= body * SCRIPT_SIZE);
-  const greek = (t: Token): boolean => {
-    const face = t.at.map((i) => faces[i]).find((f) => f !== null);
-    return face !== undefined && mathPages.has(face.page) && /^(?:(?=\p{Lu})\p{Script=Greek})+$/u.test(letters(t));
-  };
-  /** What stands beside a formula and goes with it. */
-  const withFormula = (t: Token): boolean => !t.letters || OPERATOR.has(letters(t)) || script(t);
+  /** What stands beside a formula and goes with it; not a word it is hyphened to, the
+   *  "liminf" of "$\Gamma$-liminf". */
+  const withFormula = (t: Token): boolean =>
+    !t.letters || ((OPERATOR.has(letters(t)) || script(t)) && !/^[-‐]\p{L}/u.test(pieces[t.at[0]].ch + (pieces[t.at[1]]?.ch ?? "")));
   /** A comma or a full stop in the text face. TeX sets a formula's own in its mathematics
    *  face — the point of "$0.5$", the comma of "$x, y$" — so this one is the text's. */
   const textStop = (i: number): boolean => (pieces[i].ch === "." || pieces[i].ch === ",") && faces[i] !== null && !faces[i]!.math;
@@ -516,7 +585,7 @@ function assemble(pieces: Piece[], { sources, faces }: Located, vocab: Vocabular
   /** The token ends its clause in the text face, so a formula after it starts after it:
    *  "by Theorem 2, $x$". */
   const closes = (t: Token): boolean => textStop(t.at[t.at.length - 1]);
-  const drop = tokens.map((t) => t.math || (t.letters && greek(t)));
+  const drop = tokens.map((t) => t.math);
   for (let i = 1; i < tokens.length; i++) if (drop[i - 1] && withFormula(tokens[i]) && !written(tokens[i]) && beside(tokens[i - 1], tokens[i])) drop[i] = true;
   for (let i = tokens.length - 2; i >= 0; i--) {
     if (drop[i + 1] && withFormula(tokens[i]) && !written(tokens[i]) && !closes(tokens[i]) && beside(tokens[i], tokens[i + 1])) drop[i] = true;
