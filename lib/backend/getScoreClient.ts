@@ -1,14 +1,14 @@
-// All inference requests share the background worker's Native Messaging client.
+// All inference requests share the background worker's engine client.
 import { NativeScoreClient } from "./nativeScoreClient";
-import { nativeTransport } from "./nativeTransport";
+import { engineTransport } from "#flavor/engine-transport";
 
 let client: NativeScoreClient | undefined;
 
 export function getScoreClient(): NativeScoreClient {
   if (!client) {
     const created = new NativeScoreClient();
-    // Health is valid only while its native connection survives, even when idle.
-    nativeTransport().onDisconnect(() => created.disconnected());
+    // Health is valid only while its engine connection survives, even when idle.
+    engineTransport().onDisconnect(() => created.disconnected());
     client = created;
   }
   return client;

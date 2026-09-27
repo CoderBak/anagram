@@ -824,7 +824,7 @@ All rights not expressly granted are reserved.
 - Project: https://github.com/microsoft/onnxruntime
 - Licence: MIT
 - Copyright: Copyright (c) Microsoft Corporation
-- In Anagram: Its JavaScript is bundled into vendor/document-worker/worker.js, and vendor/document-worker/onnx/ort-wasm-simd-threaded.wasm is copied from the pinned npm package. The WebAssembly build links third-party libraries whose notices Microsoft publishes with ONNX Runtime; they ship verbatim as vendor/document-worker/ThirdPartyNotices.onnxruntime-web.txt.
+- In Anagram: Its JavaScript is bundled into vendor/document-worker/worker.js, and vendor/document-worker/onnx/ort-wasm-simd-threaded.wasm is copied from the pinned npm package. The in-browser (oneclick) edition also ships the package's WebGPU build, vendor/engine/ort.bundle.min.mjs and vendor/engine/ort-wasm-simd-threaded.jsep.wasm, unmodified. The WebAssembly build links third-party libraries whose notices Microsoft publishes with ONNX Runtime; they ship verbatim as vendor/document-worker/ThirdPartyNotices.onnxruntime-web.txt.
 
 ```text
 ONNX Runtime (onnxruntime-web, https://github.com/microsoft/onnxruntime)

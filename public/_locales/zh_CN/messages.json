@@ -8,6 +8,12 @@
   "extDescription": {
     "message": "显示每个段落经 AI 编辑的程度，全部在本机评分。"
   },
+  "extNameInBrowser": {
+    "message": "Anagram（浏览器内运行）"
+  },
+  "extDescriptionInBrowser": {
+    "message": "显示每个段落经 AI 编辑的程度，在浏览器内评分，无需安装其他软件。"
+  },
   "cmdOpenPanel": {
     "message": "打开存疑段落列表"
   },

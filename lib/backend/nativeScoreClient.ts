@@ -3,7 +3,7 @@ import { CONTRACT_VERSION, type ModelInfo, type ScoreBlock, type ScoreClient, ty
 import type { BackendStatus } from "../messaging/protocol";
 import { componentIsBehind, parseHealth, parseScoreResponse, parseTokenCounts } from "./scoreProtocol";
 import { type NativeOperation, type NativePayload, type NativeReply } from "./nativeProtocol";
-import { nativeTransport } from "./nativeTransport";
+import { engineTransport } from "#flavor/engine-transport";
 import { NativeTransportError, RECONNECT_MS } from "./transport";
 
 const NONE: ModelInfo = {id:"none", ver:"0", calibration:"none"};
@@ -21,7 +21,7 @@ export class NativeScoreClient implements ScoreClient {
     server:{ok:false, checkedAt:0, reason:"unreachable"}};
   private probing: Promise<void> | undefined;
   private generation = 0;
-  constructor(private readonly request: Request = (op, payload, signal) => nativeTransport().request(op, payload, signal)) {}
+  constructor(private readonly request: Request = (op, payload, signal) => engineTransport().request(op, payload, signal)) {}
   /** The runtime changed: work in flight belongs to the old one, and health must be read again. */
   invalidate(): void { this.generation++; this.disconnected(); }
   /** The port closed. Every request on it was refused, so none can answer late and no

@@ -11,6 +11,14 @@
     "message": "Shows how heavily each paragraph looks AI-edited. Scored on your own computer.",
     "description": "Store listing description. The name stays 'Anagram'."
   },
+  "extNameInBrowser": {
+    "message": "Anagram (in-browser)",
+    "description": "Extension name of the edition that runs the model inside the browser, so it can be told apart from the one with the local engine."
+  },
+  "extDescriptionInBrowser": {
+    "message": "Shows how heavily each paragraph looks AI-edited. Scored inside your browser, with nothing else to install.",
+    "description": "Store listing description of the in-browser edition. The name stays 'Anagram'."
+  },
   "cmdOpenPanel": {
     "message": "Open the flagged-paragraphs list",
     "description": "Keyboard command, Alt+Shift+L."

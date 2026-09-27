@@ -82,14 +82,15 @@ function resolveImport(spec: string, importer: string, root: string): string | u
 /**
  * Every source file reachable from `entries`, entries included.
  *
- * Only our OWN imports are followed — relative, or through one of WXT's root aliases:
+ * Only our OWN imports are followed — relative, through one of WXT's root aliases, or
+ * through `aliases` (a flavor's "#flavor/…" modules as absolute files, scripts/flavor.mjs):
  * every other specifier is a dependency or one of WXT's virtual modules, and nothing
  * under node_modules asks us for a message. A specifier that resolves to nothing is left
  * alone rather than thrown at — the scan reads comments too, and a path in a comment is
  * not a build error. The module-graph check at the end of the build is what makes a
  * genuinely missed import impossible.
  */
-export function reachableSources(entries: string[], root: string): string[] {
+export function reachableSources(entries: string[], root: string, aliases: Record<string, string> = {}): string[] {
   const seen = new Set<string>();
   const queue = [...entries];
   while (queue.length > 0) {
@@ -104,8 +105,9 @@ export function reachableSources(entries: string[], root: string): string[] {
       for (const m of text.matchAll(SPECIFIER)) specs.push(m[1] ?? m[2] ?? m[3]);
     }
     for (const spec of specs) {
-      if (!spec.startsWith(".") && !spec.startsWith("/") && !ALIAS.test(spec)) continue;
-      const target = resolveImport(spec, file, root);
+      const aliased = Object.hasOwn(aliases, spec) ? aliases[spec] : undefined;
+      if (!aliased && !spec.startsWith(".") && !spec.startsWith("/") && !ALIAS.test(spec)) continue;
+      const target = aliased ?? resolveImport(spec, file, root);
       // Code and pages only. The one other thing our sources import is the English file
       // itself, and reading THAT for keys would of course find every one of them.
       if (!target || seen.has(target)) continue;

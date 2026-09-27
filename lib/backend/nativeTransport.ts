@@ -1,5 +1,5 @@
 // One native port per background worker; all tabs share it. Never import this in a page.
-// Implements the engine transport interface (lib/backend/transport.ts).
+// The native flavor's engine transport (lib/backend/transport.ts).
 import { browser } from "#imports";
 import { MAX_NATIVE_BYTES, NATIVE_HOST, parseNativeReply, type NativeOperation, type NativePayload, type NativeReply } from "./nativeProtocol";
 import { NativeTransportError, RECONNECT_MS, type EngineTransport } from "./transport";
@@ -111,3 +111,5 @@ export class NativeTransport implements EngineTransport {
 
 let instance: NativeTransport | undefined;
 export function nativeTransport(): NativeTransport { return instance ??= new NativeTransport(); }
+/** What "#flavor/engine-transport" names in the native flavor. */
+export { nativeTransport as engineTransport };

@@ -5,14 +5,16 @@
 // Each accepted warning was read and kept on purpose, counted, so that one more of the same
 // kind in the same file is looked at too: fix it, or raise the count with its reason.
 //
-//   npm run lint:firefox      # builds the Firefox target first
+//   npm run lint:firefox            # builds the Firefox target first
+//   npm run lint:firefox:oneclick   # the same for output/oneclick-firefox-mv2
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { flavorOf, outputDir } from "./flavor.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const SOURCE = join(ROOT, "output", "firefox-mv2");
+const SOURCE = join(ROOT, "output", outputDir(flavorOf(), "firefox", 2));
 
 const INNER_HTML = /^Unsafe assignment to innerHTML$/;
 const IMPORT = /^Unsafe call to import for argument 0$/;
@@ -47,7 +49,7 @@ const ACCEPTED = [
 ];
 
 if (!existsSync(join(SOURCE, "manifest.json"))) {
-  console.error("No Firefox build in output/firefox-mv2: run npm run build:firefox first.");
+  console.error(`No Firefox build in ${SOURCE}: run npm run build:firefox (or build:oneclick:firefox) first.`);
   process.exit(2);
 }
 
