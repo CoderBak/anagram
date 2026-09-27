@@ -81,8 +81,16 @@ except ComponentError as exc:
     sys.exit(exc.message)
 try:
     fd = lock.maintenance_fd()
-    subprocess.run([sys.executable, "-I", str(home / "app/native_registration.py"), sys.argv[2],
-                    "--lock-fd", str(fd), "--home", str(home)], pass_fds=(fd,), check=True)
+    helper = subprocess.Popen([sys.executable, "-I", str(home / "app/native_registration.py"), sys.argv[2],
+                               "--lock-fd", str(fd), "--home", str(home)], pass_fds=(fd,))
+    # Ctrl-C reaches the helper and its installer too. Wait for the installer's rollback;
+    # subprocess.run would kill the helper a quarter of a second into it.
+    while helper.returncode is None:
+        try:
+            helper.wait()
+        except KeyboardInterrupt:
+            pass
+    sys.exit(helper.returncode)
 finally:
     lock.close()
 PYEOF

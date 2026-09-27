@@ -10,6 +10,8 @@
 //   node scripts/buildTest.mjs --firefox   # Firefox MV2 → output-test/firefox-mv2
 //   node scripts/buildTest.mjs --all
 //
+// As the oneclick flavor (npm run build:test:oneclick), into output-test/oneclick-*.
+//
 // It is a node script rather than an env var in package.json because `VAR=1 cmd` is not a
 // command on Windows, and the suites run there too.
 import { spawnSync } from "node:child_process";

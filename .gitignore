@@ -16,6 +16,8 @@ public/vendor/start/
 public/vendor/pdfjs/
 # Copied from the hash-verified build under vendor/document-worker/ and from onnxruntime-web.
 public/vendor/document-worker/
+# The oneclick flavor's engine files, copied from onnxruntime-web (scripts/vendor.mjs).
+public-oneclick/
 # Pinned Zotero sources and their build, kept by scripts/documentWorker.mjs.
 .cache/
 *.log

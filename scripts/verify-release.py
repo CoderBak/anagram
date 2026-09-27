@@ -5,20 +5,32 @@ import re
 import zipfile
 from pathlib import Path
 
-REQUIRED = {"storage", "activeTab", "contextMenus", "scripting", "nativeMessaging", "webNavigation", "webRequest"}
+BASE = {"storage", "activeTab", "contextMenus", "scripting", "webNavigation", "webRequest"}
 OPTIONAL = {"https://*/*", "http://*/*", "file:///*"}
+# The oneclick flavor's one-time model download (lib/access/patterns.ts MODEL_HOSTS).
+MODEL_HOSTS = {"https://huggingface.co/*", "https://*.hf.co/*", "https://dl.fbaipublicfiles.com/*"}
+ENGINE_FILES = ("vendor/engine/ort.bundle.min.mjs", "vendor/engine/ort-wasm-simd-threaded.jsep.wasm")
 
 
-def verify(path):
+def required(flavor, manifest_version):
+    """The native flavor talks to the local engine; the oneclick one runs it in the browser."""
+    if flavor == "native":
+        return BASE | {"nativeMessaging"}
+    return BASE | {"unlimitedStorage"} | ({"offscreen"} if manifest_version == 3 else set())
+
+
+def verify(path, flavor):
     with zipfile.ZipFile(path) as archive:
         names = set(archive.namelist())
         manifest = json.loads(archive.read("manifest.json"))
         assert not manifest.get("host_permissions"), "Required website grants must be absent"
         assert not manifest.get("content_scripts"), "Shipping package must use permission-based registration"
         permissions = set(manifest["permissions"])
-        assert permissions == REQUIRED, f"Unexpected required permissions: {permissions}"
+        assert permissions == required(flavor, manifest["manifest_version"]), f"Unexpected required permissions: {permissions}"
         optional_key = "optional_host_permissions" if manifest["manifest_version"] == 3 else "optional_permissions"
         expected_optional = OPTIONAL if manifest["manifest_version"] == 3 else OPTIONAL | {"clipboardWrite"}
+        if flavor == "oneclick":
+            expected_optional = expected_optional | MODEL_HOSTS
         assert set(manifest.get(optional_key, [])) == expected_optional, "Unexpected optional permissions"
         csp = manifest["content_security_policy"]
         if isinstance(csp, dict): csp = csp["extension_pages"]
@@ -41,13 +53,21 @@ def verify(path):
                     relative = (Path(name).parent / source).as_posix() if not source.startswith("/") else source[1:]
                     assert relative in names, f"Unpackaged script: {relative}"
         assert any(name.endswith(".wasm") for name in names), "Packaged PDF WASM decoders missing"
+        # Each flavor carries its own engine and not the other's.
+        if flavor == "oneclick":
+            assert all(name in names for name in ENGINE_FILES), "In-browser engine runtime missing"
+        else:
+            carried = [name for name in (*ENGINE_FILES, "engine.html") if name in names]
+            assert not carried, f"Native package carries the in-browser engine: {carried}"
         for notice in ("LICENSE", "THIRD_PARTY_NOTICES.md"):
             assert notice in names, f"Missing {notice}"
-    print(f"PASS {path.name}: shipping permissions, pages, CSP and executable assets")
+    print(f"PASS {path.name}: {flavor} permissions, pages, CSP and executable assets")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--flavor", choices=("native", "oneclick"), default="native")
     parser.add_argument("archives", nargs="+", type=Path)
-    for path in parser.parse_args().archives:
-        verify(path)
+    arguments = parser.parse_args()
+    for path in arguments.archives:
+        verify(path, arguments.flavor)

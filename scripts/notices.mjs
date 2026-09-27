@@ -90,7 +90,8 @@ const composed = (kind, copyright) =>
 // reproduced verbatim — the component's own licence carrying its own copyright — or
 // { compose: "MIT" | "Zlib" } to write the short licence out with `copyright`), packages
 // (npm packages whose code is bundled; checked against the build) and chunk (the vendor/
-// chunk scripts/vendor.mjs builds them into, when it is not the extension build), adapted
+// chunk scripts/vendor.mjs builds them into, when it is not the extension build), flavor
+// ("oneclick" for packages only that flavor's build bundles, scripts/flavor.mjs), adapted
 // (files of Anagram's own source that adapt it; checked to still name it), note.
 
 /** @type {{ title: string, intro: string, components: () => object[] }[]} */
@@ -190,7 +191,7 @@ const GROUPS = [
         where: "vendor/document-worker/block-seg/ (ONNX models and their statistics). They carry no licence of their own; they are distributed as part of document-worker." },
       { name: "ONNX Runtime Web", version: workerPin().onnxruntime_web.version, url: "https://github.com/microsoft/onnxruntime",
         licence: "MIT", copyright: "Copyright (c) Microsoft Corporation",
-        where: "Its JavaScript is bundled into vendor/document-worker/worker.js, and vendor/document-worker/onnx/ort-wasm-simd-threaded.wasm is copied from the pinned npm package. The WebAssembly build links third-party libraries whose notices Microsoft publishes with ONNX Runtime; they ship verbatim as vendor/document-worker/ThirdPartyNotices.onnxruntime-web.txt.",
+        where: "Its JavaScript is bundled into vendor/document-worker/worker.js, and vendor/document-worker/onnx/ort-wasm-simd-threaded.wasm is copied from the pinned npm package. The in-browser (oneclick) edition also ships the package's WebGPU build, vendor/engine/ort.bundle.min.mjs and vendor/engine/ort-wasm-simd-threaded.jsep.wasm, unmodified. The WebAssembly build links third-party libraries whose notices Microsoft publishes with ONNX Runtime; they ship verbatim as vendor/document-worker/ThirdPartyNotices.onnxruntime-web.txt.",
         notice: ["vendor/document-worker/LICENSE.onnxruntime-web"] },
       { name: "pako", version: "2.1.0", url: "https://github.com/nodeca/pako",
         licence: "MIT AND Zlib", copyright: "Copyright (C) 2014-2017 by Vitaly Puzrin and Andrei Tuputcyn",
@@ -304,11 +305,12 @@ export function components() {
 /**
  * The npm packages the extension may bundle: each with its component and, for the
  * on-demand chunks scripts/vendor.mjs builds, the chunk it is built into. The rest are
- * what the extension build itself (wxt.config.ts) compiles into Anagram's scripts.
+ * what the extension build itself (wxt.config.ts) compiles into Anagram's scripts: all of
+ * them in every flavor, or in the one `flavor` names.
  */
 export function bundledPackages() {
   const out = new Map();
-  for (const c of components()) for (const p of c.packages ?? []) out.set(p, { component: c.name, chunk: c.chunk });
+  for (const c of components()) for (const p of c.packages ?? []) out.set(p, { component: c.name, chunk: c.chunk, flavor: c.flavor });
   return out;
 }
 

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeBrowser } from "wxt/testing/fake-browser";
-import { NativeTransport, NativeTransportError, nativeTransport, type NativePort } from "../../lib/backend/nativeTransport";
+import { NativeTransport, nativeTransport, type NativePort } from "../../lib/backend/nativeTransport";
+import { NativeTransportError } from "../../lib/backend/transport";
 import { trustedNativePage, validPageRequest, parseNativeReply, type NativeReply } from "../../lib/backend/nativeProtocol";
 import { NativeScoreClient } from "../../lib/backend/nativeScoreClient";
 import { parseComponent } from "../../lib/backend/nativeClient";

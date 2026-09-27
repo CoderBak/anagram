@@ -20,6 +20,7 @@ import { copyFileSync, cpSync, mkdirSync, readdirSync, rmSync, statSync, writeFi
 import { vendorPdfViewer } from "./pdfjsViewer.mjs";
 import { vendorDocumentWorker } from "./documentWorker.mjs";
 import { NOTICES_FILE, bundledPackages, packageOfModule, unlistedPackages } from "./notices.mjs";
+import { ONECLICK_PUBLIC, flavorOf } from "./flavor.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 vendorPdfViewer(ROOT);
@@ -200,3 +201,27 @@ for (const [name, { from, only }] of Object.entries(trees)) {
 // from its npm package. After the trees above, because the worker reads the CMaps, fonts
 // and decoders from those copies and the check that they are the fork's own files runs here.
 vendorDocumentWorker(ROOT);
+
+// The oneclick flavor's engine (scripts/flavor.mjs): ONNX Runtime Web's WebGPU (JSEP)
+// bundle and its WebAssembly, copied verbatim from the npm package, whose version the
+// document-worker pin has just checked, with the licences that pin keeps. They go to
+// public-oneclick/, not public/, which every build copies: only that flavor's builds take
+// them (wxt.config.ts), and a native run never writes there.
+if (flavorOf() === "oneclick") {
+  const base = join(ROOT, ONECLICK_PUBLIC);
+  const engine = join(base, "vendor", "engine");
+  rmSync(base, { recursive: true, force: true });
+  mkdirSync(engine, { recursive: true });
+  const files = {
+    "ort.bundle.min.mjs": "node_modules/onnxruntime-web/dist/ort.bundle.min.mjs",
+    "ort-wasm-simd-threaded.jsep.wasm": "node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.wasm",
+    "LICENSE.onnxruntime-web": "vendor/document-worker/LICENSE.onnxruntime-web",
+    "ThirdPartyNotices.onnxruntime-web.txt": "vendor/document-worker/ThirdPartyNotices.onnxruntime-web.txt",
+  };
+  let bytes = 0;
+  for (const [file, from] of Object.entries(files)) {
+    copyFileSync(join(ROOT, from), join(engine, file));
+    bytes += statSync(join(engine, file)).size;
+  }
+  console.log(`${ONECLICK_PUBLIC}/vendor/engine/  ${Object.keys(files).length} files, ${(bytes / 1024).toFixed(1)} kB (oneclick flavor)`);
+}

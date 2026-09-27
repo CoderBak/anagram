@@ -1,6 +1,6 @@
 // Retry only native failures that can recover: a busy/loading engine or a broken port.
 // Protocol errors, invalid requests and programming errors are final for this batch.
-import { RECONNECT_MS } from "./nativeTransport";
+import { RECONNECT_MS } from "./transport";
 
 const TRANSIENT_STATUS = new Set([429, 502, 503, 504]);
 export const RETRY_BACKOFF_MS = 150;

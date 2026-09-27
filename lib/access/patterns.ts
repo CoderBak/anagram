@@ -13,6 +13,14 @@
 export const ALL_SITES = ["https://*/*", "http://*/*"];
 
 /**
+ * Optional, in the oneclick flavor only: where the in-browser engine downloads its files,
+ * once — the pinned model from Hugging Face, whose `resolve` URLs redirect large files to
+ * its CDN under hf.co, and fastText's language-ID file, which is served without CORS
+ * headers. Asked for with the click that starts the download, not at install.
+ */
+export const MODEL_HOSTS = ["https://huggingface.co/*", "https://*.hf.co/*", "https://dl.fbaipublicfiles.com/*"];
+
+/**
  * Hosts no extension may run on, so asking for them would open a prompt that buys the
  * user nothing. The browsers' own pages are excluded by their scheme already; these are
  * ordinary https pages that the browser guards all the same.

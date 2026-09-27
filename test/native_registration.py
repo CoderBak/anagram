@@ -306,7 +306,7 @@ fcntl.flock(9, fcntl.LOCK_EX | fcntl.LOCK_NB)
         lock = self.HomeLock(self.home)
         try:
             fd = lock.maintenance_fd()
-            with patch.object(reg.Path, 'home', return_value=self.user), patch.object(reg.subprocess, 'run') as run:
+            with patch.object(reg.Path, 'home', return_value=self.user), patch.object(reg, 'run_to_end') as run:
                 reg.update(self.home, lock_fd=fd)
             kwargs = run.call_args.kwargs
             self.assertEqual(kwargs['env']['ANAGRAM_MAINTENANCE_FD'], str(fd))
@@ -319,7 +319,7 @@ fcntl.flock(9, fcntl.LOCK_EX | fcntl.LOCK_NB)
         lock = self.HomeLock(self.home)
         try:
             fd = lock.maintenance_fd()
-            with patch.object(reg.Path, 'home', return_value=self.user), patch.object(reg.subprocess, 'run') as run, \
+            with patch.object(reg.Path, 'home', return_value=self.user), patch.object(reg, 'run_to_end') as run, \
                     patch.dict(os.environ, {'ANAGRAM_RELEASE_URL': 'https://example.com/elsewhere'}):
                 reg.update(self.home, lock_fd=fd)
                 self.assertNotIn('ANAGRAM_RELEASE_URL', run.call_args.kwargs['env'])
@@ -333,6 +333,37 @@ fcntl.flock(9, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 run.assert_not_called()
         finally:
             lock.close()
+
+    def test_ctrl_c_during_terminal_update_waits_for_the_installer_rollback(self):
+        # Ctrl-C reaches every process of `anagram update`: the command, its Python, the
+        # helper and the installer. The installer rolls back (here for a second); the
+        # Python processes above it must wait for that, not kill it.
+        app = self.home / 'app'
+        for name in ('native_component.py', 'download_modelkit.py', 'runtime_controller.py', 'safe_files.py'):
+            shutil.copyfile(SOURCE.parents[1] / 'anagramd' / name, app / name)
+        shutil.copyfile(SOURCE, app / 'native_registration.py')
+        (app / 'install.sh').write_text('trap \'sleep 1; : > "$ANAGRAM_HOME/rolled-back"; exit 130\' INT\n'
+                                        ': > "$ANAGRAM_HOME/installing"\nwhile :; do sleep 0.05; done\n')
+        command = self.home / 'bin/anagram'
+        shutil.copyfile(SOURCE.parent / 'anagram', command); command.chmod(0o700)
+        (self.home / 'venv/bin').mkdir(parents=True)
+        (self.home / 'venv/bin/python').write_text('#!/bin/sh\nexec ' + shlex.quote(sys.executable) + ' "$@"\n')
+        (self.home / 'venv/bin/python').chmod(0o700)
+        env = {k: v for k, v in os.environ.items() if k not in ('ANAGRAM_HOME', 'ANAGRAM_MAINTENANCE_FD')}
+        process = subprocess.Popen([str(command), 'update'], env={**env, 'HOME': str(self.user)}, start_new_session=True,
+                                   stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            deadline = time.monotonic() + 10
+            while not (self.home / 'installing').exists():
+                self.assertIsNone(process.poll()); self.assertLess(time.monotonic(), deadline); time.sleep(.01)
+            os.killpg(process.pid, signal.SIGINT)
+            self.assertNotEqual(process.wait(timeout=10), 0)
+            self.assertTrue((self.home / 'rolled-back').exists(), 'the installer was killed during its rollback')
+            self.HomeLock(self.home).close()
+        finally:
+            try: os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError: pass
+            process.wait(timeout=2)
 
     def test_installer_grandchild_keeps_lock_after_owner_and_helper_are_killed(self):
         # Exercise real Python -> helper -> /bin/sh -> fake installer, with no

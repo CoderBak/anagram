@@ -404,8 +404,22 @@ def update(home, worker=False, lock_fd=None, release=None):
         installer = safe_path(home / "app/install.sh", home)
         command = ["/bin/sh", str(installer)]
         kwargs = {"pass_fds": (fd,)} if fd is not None else {}
-        subprocess.run(command, env=env, stdout=sys.stderr, stderr=sys.stderr, check=True, **kwargs)
+        run_to_end(command, env=env, stdout=sys.stderr, stderr=sys.stderr, **kwargs)
     return {"status": "completed"}
+
+
+def run_to_end(command, **kwargs):
+    """subprocess.run with check=True that never kills its child. A terminal's Ctrl-C
+    reaches the installer too, which rolls back and exits; subprocess.run would SIGKILL
+    it 0.25 s into that rollback and leave its lock for the next installer to recover."""
+    process = subprocess.Popen(command, **kwargs)
+    while process.returncode is None:
+        try:
+            process.wait()
+        except KeyboardInterrupt:
+            pass
+    if process.returncode:
+        raise subprocess.CalledProcessError(process.returncode, command)
 
 
 def remove_home(home):
