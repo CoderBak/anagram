@@ -426,6 +426,41 @@ describe("reflowPdf — two columns", () => {
     expect(texts(blocks)).toEqual([left.join(" "), right.join(" ")]);
   });
 
+  it("reads the columns under a full-width title and abstract that fill most of the page", () => {
+    // A first page: the title and the abstract run the whole measure down two thirds of
+    // it, the two columns start below. Their gutter is clear in a third of the page only.
+    const abstract = Array.from({ length: 14 }, (_, i) => `the abstract runs across the whole measure of the page, line ${i}${i === 13 ? "." : ""}`);
+    const left = Array.from({ length: 8 }, (_, i) => `Left line ${i} of the page.`);
+    const right = Array.from({ length: 8 }, (_, i) => `Right line ${i} of it too.`);
+    const blocks = reflowPdf([
+      page(1, [
+        { text: "A Title That Runs Across The Page", x: 72, y: 76, size: 16, font: "display", width: 400 },
+        ...column(abstract, 100, 72, 468),
+        ...column(left, 320, 72, 200),
+        ...column(right, 320, 320, 200),
+      ]),
+    ]);
+    expect(texts(blocks).slice(-2)).toEqual([left.join(" "), right.join(" ")]);
+    expect(blocks[1].text).toBe(abstract.join(" "));
+  });
+
+  it("reads the columns of a page's lower half and leaves a table above them whole", () => {
+    // Where the gutter is found in one stretch of the page only, the rest of the page is
+    // not cut by it: a table's row above the columns stays one line.
+    const rows = ["one", "two", "three"].map((n, i) => [
+      { text: `row ${n} left`, x: 72, y: 100 + i * PITCH, width: 150 },
+      { text: `row ${n} right`, x: 300, y: 100 + i * PITCH, width: 150 },
+    ]);
+    const prose = Array.from({ length: 10 }, (_, i) => `a full-width paragraph line ${i} of prose under the table${i === 9 ? "." : ""}`);
+    const left = Array.from({ length: 8 }, (_, i) => `Left line ${i} of the page.`);
+    const right = Array.from({ length: 8 }, (_, i) => `Right line ${i} of it too.`);
+    const blocks = reflowPdf([
+      page(1, [...rows.flat(), ...column(prose, 160, 72, 468), ...column(left, 320, 72, 200), ...column(right, 320, 320, 200)]),
+    ]);
+    expect(blocks[0].text).toContain("row one left row one right");
+    expect(texts(blocks).slice(-2)).toEqual([left.join(" "), right.join(" ")]);
+  });
+
   it("reads a page whose second column stops half way as two columns still", () => {
     const left = Array.from({ length: 12 }, (_, i) => `left line ${i} of the page.`);
     const right = Array.from({ length: 6 }, (_, i) => `Right line ${i} of it.`);

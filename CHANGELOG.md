@@ -142,6 +142,11 @@ local component and the installer all carry the same version.
   in the body. A block the text's raised mark links to, opening with a raised number, is now
   the note it is, and so are the others of its list. On five reports the share of scored
   text that is not the body falls from 22% to 9%.
+- The PDF reader's own reflow, which reads a document before Zotero's structure arrives, a
+  long one past its 300 pages, and Google Drive's and OneDrive's previews, reads the columns
+  of a page that has them in one stretch only: under a first page's title and abstract, or
+  beside a figure set across the page. It read such a page line by line across both
+  columns. On olmOCR-Bench's pages it passes 60% of the checks instead of 58%.
 - In Firefox, a web PDF without ".pdf" in its address now and then stayed in Firefox's own
   viewer instead of opening in Anagram's reader, and a PDF the reader opened by itself, as
   it does when one loads or is reloaded, could land on "This PDF could not be loaded". Both
