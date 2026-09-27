@@ -31,6 +31,8 @@ const MAX_LENGTH = 512;
 const level = (score) => CUTS.filter((cut) => score >= cut).length;
 const median = (a) => { const s = [...a].sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 
+const profile = join(tmpdir(), "anagram-webengine-parity-profile");
+if (flag("clean")) { rmSync(profile, { recursive: true, force: true }); console.log("removed", profile); process.exit(0); }
 if (process.env.CI) { console.log("SKIP  web engine parity — never in CI"); process.exit(0); }
 const kit = process.env.ANAGRAM_MODELKIT, lid = process.env.ANAGRAM_LID_MODEL, samplePath = process.env.ANAGRAM_PARITY_SAMPLE;
 const missing = [["ANAGRAM_MODELKIT", kit], ["ANAGRAM_LID_MODEL", lid], ["ANAGRAM_PARITY_SAMPLE", samplePath]].filter(([, v]) => !v).map(([k]) => k);
@@ -47,11 +49,10 @@ for (const [path, file] of [["onnx/model.onnx", modelPath], ["tokenizer.json", j
 }
 const sample = JSON.parse(readFileSync(samplePath, "utf8"));
 const runtimes = opt("runtimes", "webgpu,wasm").split(",").filter(Boolean);
-const profile = join(tmpdir(), "anagram-webengine-parity-profile");
-if (flag("clean")) { rmSync(profile, { recursive: true, force: true }); console.log("removed", profile); if (!kit) process.exit(0); }
 mkdirSync(profile, { recursive: true });
 
-const { base, close: closeServer } = await serve({ "/kit/": kit, "/lid/": join(lid, "..") });
+const firefox = opt("firefox");
+const { base, close: closeServer } = await serve({ "/kit/": kit, "/lid/": join(lid, "..") }, { pageCsp: !firefox });
 const pin = {
   files: [
     { name: "model.onnx", size_bytes: entry("onnx/model.onnx").size_bytes, sha256: entry("onnx/model.onnx").sha256, url: `${base}/kit/onnx/model.onnx` },
@@ -81,7 +82,6 @@ function watchMemory(substring) {
 }
 
 const report = { started: new Date().toISOString(), sample: sample.length, longer_than_512: sample.filter((t) => t.length > MAX_LENGTH).length, runtimes: {} };
-const firefox = opt("firefox");
 const browser = firefox ? await launchFirefox(base, firefox, { prefs: { "dom.webgpu.enabled": true } }) : await launchChromium(base, { profile });
 let memory = watchMemory(firefox ? browser.profile : profile);
 report.browser = browser.version;

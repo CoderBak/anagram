@@ -11,7 +11,10 @@
 //     package's default JSEP build: on this model its WebGPU kernels answer wrongly
 //     (test/webengine/parity.mjs found every text off; ORT 1.27 and 1.30 alike), the
 //     native provider answers as the CPU does, and its JSPI variant runs several times
-//     faster than its Asyncify one. JSPI needs Chrome 137 or Firefox 139.
+//     faster than its Asyncify one. JSPI needs Chrome 137 or Firefox 139, and Firefox
+//     140 ESR ships without it, so the package's plain WebAssembly build (ort.wasm.min.mjs,
+//     ort-wasm-simd-threaded.mjs and .wasm: the CPU provider only) goes beside it for a
+//     browser that has no JSPI; lib/webengine/session.ts picks.
 //   · the engine's worker (worker.min.mjs), bundled by esbuild from lib/webengine/worker.ts
 //     the way the diagnostics chunk is. It is our own code with our own JSON data and must
 //     take nothing from node_modules: the runtime is imported at run time by URL, and a
@@ -27,7 +30,7 @@ import { ONECLICK_PUBLIC } from "./flavor.mjs";
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 /** The runtime files, from node_modules/onnxruntime-web/dist. */
-export const ORT_FILES = ["ort.jspi.min.mjs", "ort-wasm-simd-threaded.jspi.mjs", "ort-wasm-simd-threaded.jspi.wasm"];
+export const ORT_FILES = ["ort.jspi.min.mjs", "ort-wasm-simd-threaded.jspi.mjs", "ort-wasm-simd-threaded.jspi.wasm", "ort.wasm.min.mjs", "ort-wasm-simd-threaded.mjs", "ort-wasm-simd-threaded.wasm"];
 /** The runtime's licence and the notices of what its WebAssembly links, kept by the document-worker pin. */
 const LICENCES = ["LICENSE.onnxruntime-web", "ThirdPartyNotices.onnxruntime-web.txt"];
 

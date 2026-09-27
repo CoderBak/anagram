@@ -16,8 +16,19 @@
 // the GPU falls back to the CPU provider on its own.
 import type { Backend } from "./scoring";
 
-/** The files scripts/webengine.mjs copies, by URL. */
-export interface RuntimeAssets { ort: string; mjs: string; wasm: string }
+/** One ONNX Runtime Web build: the library, its loader and its WebAssembly, by URL. */
+export interface RuntimeBuild { ort: string; mjs: string; wasm: string }
+/**
+ * The files scripts/webengine.mjs copies: the JSPI build, which carries both providers,
+ * and the plain WebAssembly build for a browser without JSPI (Firefox 140 ESR), which
+ * then has the CPU provider only.
+ */
+export interface RuntimeAssets { jspi: RuntimeBuild; plain: RuntimeBuild }
+
+/** Whether this browser runs the JSPI build: WebAssembly JavaScript Promise Integration. */
+export function hasJspi(): boolean {
+  return typeof (globalThis.WebAssembly as { Suspending?: unknown } | undefined)?.Suspending === "function";
+}
 
 /** One runtime configuration, as the native engine lists its candidates. */
 export interface Candidate {
@@ -33,6 +44,14 @@ export interface Candidate {
 
 /** The word-embedding matrix, the largest single tensor the GPU binds. */
 export const EMBEDDING_BYTES = 50265 * 1024 * 4;
+/**
+ * Texts per forward pass. The runtime keeps every activation buffer of the largest batch
+ * it has seen (32 texts of 512 tokens took the GPU process past 12 GB of unified memory,
+ * measured by test/webengine/parity.mjs), and the extension's own requests hold a few
+ * texts each (lib/backend/router.ts's character budget), so a long batch is scored eight
+ * texts at a time; the results do not depend on the batch.
+ */
+export const SESSION_BATCH = 8;
 export const WEBGPU_ID = "webgpu:fp32";
 export const WASM_ID = "wasm:fp32";
 
@@ -63,7 +82,8 @@ interface GpuAdapterLike {
 export async function probeRuntimes(): Promise<Candidate[]> {
   const webgpu: Candidate = { id: WEBGPU_ID, label: "GPU (WebGPU, FP32)", device: "gpu", runtime: "onnxruntime-web/webgpu", precision: "fp32", experimental: false, available: false, reason: null };
   const gpu = (globalThis.navigator as { gpu?: { requestAdapter(o?: unknown): Promise<GpuAdapterLike | null> } }).gpu;
-  if (!gpu) webgpu.reason = "This browser offers no WebGPU here";
+  if (!hasJspi()) webgpu.reason = "This browser has no WebAssembly JSPI, which the WebGPU runtime needs";
+  else if (!gpu) webgpu.reason = "This browser offers no WebGPU here";
   else {
     try {
       const adapter = await gpu.requestAdapter({ powerPreference: "high-performance" });
@@ -92,11 +112,12 @@ export function wasmThreads(): number {
 let runtime: Promise<OrtModule> | undefined;
 
 function loadRuntime(assets: RuntimeAssets): Promise<OrtModule> {
+  const build = hasJspi() ? assets.jspi : assets.plain;
   // The package's own module, unmodified, from the extension; see scripts/webengine.mjs.
-  runtime ??= import(/* @vite-ignore */ assets.ort).then((module) => {
+  runtime ??= import(/* @vite-ignore */ build.ort).then((module) => {
     const ort = module as OrtModule;
     ort.env.logLevel = "error";
-    ort.env.wasm.wasmPaths = { mjs: assets.mjs, wasm: assets.wasm };
+    ort.env.wasm.wasmPaths = { mjs: build.mjs, wasm: build.wasm };
     ort.env.wasm.proxy = false;
     ort.env.webgpu.powerPreference = "high-performance";
     return ort;
@@ -139,6 +160,7 @@ export class Session implements Backend {
   }
 
   get device(): string { return this.info.candidate.id === WEBGPU_ID ? "webgpu" : "wasm"; }
+  readonly batchSize = SESSION_BATCH;
 
   async logits(inputIds: number[][], attentionMask: number[][], signal?: AbortSignal): Promise<Float32Array> {
     if (!this.session) throw new Error("session released");

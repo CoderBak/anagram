@@ -74,7 +74,12 @@ window.engine = {
       await new Promise((r) => setTimeout(r, 250));
     }
   },
-  gpu: async () => { const a = navigator.gpu ? await navigator.gpu.requestAdapter() : null; return a ? { vendor: a.info?.vendor, architecture: a.info?.architecture, maxStorageBufferBindingSize: a.limits.maxStorageBufferBindingSize } : null; },
+  gpu: async () => {
+    try {
+      const a = navigator.gpu ? await navigator.gpu.requestAdapter() : null;
+      return a ? { vendor: a.info?.vendor, architecture: a.info?.architecture, maxStorageBufferBindingSize: a.limits.maxStorageBufferBindingSize } : null;
+    } catch (e) { return { error: String(e?.message ?? e) }; }
+  },
   isolated: () => crossOriginIsolated,
 };
 window.__ready = true;
@@ -84,7 +89,12 @@ window.__ready = true;
  * Serve the engine's vendor files and the given directories. `mounts` maps a URL prefix
  * ("/model/") to a directory. Range requests are honoured, so a download can resume.
  */
-export async function serve(mounts = {}, { isolate = true, csp = EXTENSION_CSP } = {}) {
+/**
+ * `csp` goes on every response; with `pageCsp` false only the worker's script carries it
+ * (a dedicated worker takes its policy from its script's response), for a driver whose
+ * page.evaluate is itself dynamic code under the page's policy (Firefox 140 over BiDi).
+ */
+export async function serve(mounts = {}, { isolate = true, csp = EXTENSION_CSP, pageCsp = true } = {}) {
   await ensureEngineBuild();
   const roots = [["/vendor/engine/", VENDOR], ...Object.entries(mounts)];
   const requests = [];
@@ -93,7 +103,7 @@ export async function serve(mounts = {}, { isolate = true, csp = EXTENSION_CSP }
     requests.push({ path: url.pathname, range: req.headers.range ?? null });
     const headers = { "Cache-Control": "no-store", "Cross-Origin-Resource-Policy": "same-origin" };
     if (isolate) Object.assign(headers, { "Cross-Origin-Opener-Policy": "same-origin", "Cross-Origin-Embedder-Policy": "require-corp" });
-    if (csp) headers["Content-Security-Policy"] = csp;
+    if (csp && (pageCsp || url.pathname.startsWith("/vendor/engine/"))) headers["Content-Security-Policy"] = csp;
     if (url.pathname === "/" || url.pathname === "/index.html") {
       res.writeHead(200, { ...headers, "Content-Type": TYPES[".html"] });
       res.end(PAGE);
@@ -141,7 +151,8 @@ export function pinFor(base, files) {
 
 /** The worker's init message against `base`. */
 export function initFor(base, pin, version = "0.0.0-test") {
-  return { pin, assets: { ort: `${base}/vendor/engine/ort.jspi.min.mjs`, mjs: `${base}/vendor/engine/ort-wasm-simd-threaded.jspi.mjs`, wasm: `${base}/vendor/engine/ort-wasm-simd-threaded.jspi.wasm` }, version };
+  const build = (lib, suffix) => ({ ort: `${base}/vendor/engine/${lib}`, mjs: `${base}/vendor/engine/ort-wasm-simd-threaded${suffix}.mjs`, wasm: `${base}/vendor/engine/ort-wasm-simd-threaded${suffix}.wasm` });
+  return { pin, assets: { jspi: build("ort.jspi.min.mjs", ".jspi"), plain: build("ort.wasm.min.mjs", "") }, version };
 }
 
 /**

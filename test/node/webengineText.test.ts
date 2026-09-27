@@ -102,6 +102,9 @@ describe("scoring arithmetic", () => {
     const texts = Array.from({ length: 35 }, (_, i) => "the ".repeat(i + 1).trim());
     const results = await scoreTexts(backend, tokenizer(), texts);
     expect(seen.map((b) => b.length)).toEqual([32, 3]);
+    seen.length = 0;
+    await scoreTexts({ ...backend, batchSize: 8 }, tokenizer(), texts);
+    expect(seen.map((b) => b.length)).toEqual([8, 8, 8, 8, 3]);
     expect(results).toHaveLength(35);
     expect(results[0].tokens).toBe(3);
     expect(results[34].tokens).toBe(37);

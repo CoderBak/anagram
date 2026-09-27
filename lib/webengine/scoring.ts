@@ -12,13 +12,15 @@ import type { Tokenizer } from "./tokenizer";
 
 /** The model's window in tokens, its two special tokens included (config.json's 512). */
 export const MAX_LENGTH = 512;
-/** Texts per forward pass, the native engine's default. */
+/** Texts per forward pass when the backend does not say: the native engine's default. */
 export const BATCH_SIZE = 32;
 export const N_BUCKETS = BUCKET_COUNT;
 
 export interface Backend {
   /** The logits of one padded batch: `rows` × N_BUCKETS, row-major. */
   logits(inputIds: number[][], attentionMask: number[][], signal?: AbortSignal): Promise<Float32Array>;
+  /** Texts per forward pass, when the backend bounds them (its memory grows with the batch). */
+  batchSize?: number;
 }
 
 export interface Scored {
@@ -66,9 +68,10 @@ export async function scoreTexts(backend: Backend, tokenizer: Tokenizer, texts: 
   const eos = tokenizer.sepId;
   const order = [...allIds.keys()].sort((a, b) => lengths[a] - lengths[b]);
   const out: Scored[] = new Array(texts.length);
-  for (let start = 0; start < order.length; start += BATCH_SIZE) {
+  const batch = backend.batchSize ?? BATCH_SIZE;
+  for (let start = 0; start < order.length; start += batch) {
     if (signal?.aborted) throw new Error("cancelled");
-    const chunk = order.slice(start, start + BATCH_SIZE);
+    const chunk = order.slice(start, start + batch);
     const rows = chunk.map((i) => (lengths[i] <= MAX_LENGTH ? allIds[i] : [...allIds[i].slice(0, MAX_LENGTH - 1), eos]));
     const { inputIds, attentionMask } = pad(rows, tokenizer.padId);
     const logits = await backend.logits(inputIds, attentionMask, signal);

@@ -1,6 +1,7 @@
 // test/webengine/engine-browser.mjs — the real worker build on the tiny model, in Chromium.
 //
-//   node test/webengine/engine-browser.mjs            # after node scripts/webengine.mjs
+//   node test/webengine/engine-browser.mjs                       # Chromium
+//   node test/webengine/engine-browser.mjs --firefox <binary>    # a Firefox ESR under test (no restart or deletion: its profile is not kept)
 //
 // The worker (public/vendor/engine/worker.min.mjs) runs in a blank page of a temporary
 // profile over a local server (test/webengine/harness.mjs): it downloads the tiny
@@ -13,7 +14,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { initFor, launchChromium, pinFor, ROOT, serve } from "./harness.mjs";
+import { initFor, launchChromium, launchFirefox, pinFor, ROOT, serve } from "./harness.mjs";
 import { tinyTokenizerJson } from "../fixtures/webengine/tinyTokenizer.mjs";
 
 const FIXTURES = join(ROOT, "test", "fixtures", "webengine");
@@ -34,7 +35,9 @@ const files = {
 // tokenizer.json is not a fixture on disk: written next to the run.
 const generated = mkdtempSync(join(tmpdir(), "anagram-webengine-fixtures-"));
 writeFileSync(join(generated, "tokenizer.json"), tokenizerJson);
-const { base, requests, close: closeServer } = await serve({ "/files/": FIXTURES, "/generated/": generated });
+const firefoxAt = process.argv.indexOf("--firefox");
+const firefox = firefoxAt >= 0 ? process.argv[firefoxAt + 1] : null;
+const { base, requests, close: closeServer } = await serve({ "/files/": FIXTURES, "/generated/": generated }, { pageCsp: !firefox });
 const pinFiles = [
   { name: "model.onnx", path: "/files/tiny.onnx", size_bytes: files["model.onnx"].length, sha256: sha256(files["model.onnx"]) },
   { name: "tokenizer.json", path: "/generated/tokenizer.json", size_bytes: tokenizerJson.length, sha256: sha256(tokenizerJson) },
@@ -42,8 +45,8 @@ const pinFiles = [
 ];
 const pin = pinFor(base, pinFiles);
 
-let browser = await launchChromium(base);
-console.log(`Chromium ${browser.version}, cross-origin isolated: ${await browser.page.evaluate(() => crossOriginIsolated)}, adapter: ${JSON.stringify(await browser.page.evaluate(() => window.engine.gpu()))}, under the extension's CSP`);
+let browser = firefox ? await launchFirefox(base, firefox, { prefs: { "dom.webgpu.enabled": true } }) : await launchChromium(base);
+console.log(`${browser.version}, cross-origin isolated: ${await browser.page.evaluate(() => crossOriginIsolated)}, adapter: ${JSON.stringify(await browser.page.evaluate(() => window.engine.gpu()))}, under the extension's CSP`);
 try {
   const { page } = browser;
   const request = (op, payload) => page.evaluate(([op, payload]) => window.engine.request(op, payload), [op, payload ?? {}]);
@@ -53,7 +56,7 @@ try {
   // worker takes its policy from its script's response); the automation's own evaluate
   // is exempt from CSP, so what is checked is the header on the worker's script.
   const csp = await page.evaluate(() => fetch("/vendor/engine/worker.min.mjs", { method: "HEAD" }).then((r) => r.headers.get("content-security-policy")));
-  check("the worker's script carries the extension's CSP (no unsafe-eval)", csp && csp.includes("script-src 'self' 'wasm-unsafe-eval'") && !csp.includes("unsafe-eval'"), csp);
+  check("the worker's script carries the extension's CSP (no unsafe-eval)", csp && csp.includes("script-src 'self' 'wasm-unsafe-eval'") && !/(?<!wasm-)'unsafe-eval'/.test(csp), csp);
   await page.evaluate((init) => window.engine.start(init), initFor(base, pin));
   let reply = await request("status");
   check("fresh profile: needs_models", reply.ok && reply.data.state === "needs_models", JSON.stringify(reply).slice(0, 300));
@@ -69,7 +72,7 @@ try {
   const runtime = reply.data.runtime;
   console.log("runtime:", JSON.stringify(runtime.candidates), "active", runtime.active_id, "load", JSON.stringify(runtime.benchmark.results));
   const gpu = await page.evaluate(() => window.engine.gpu());
-  check("the GPU is the automatic pick when an adapter exists", gpu ? runtime.active_id === "webgpu:fp32" : runtime.active_id === "wasm:fp32", runtime.active_id);
+  check("the GPU is the automatic pick when an adapter exists", gpu && !gpu.error ? runtime.active_id === "webgpu:fp32" : runtime.active_id === "wasm:fp32", runtime.active_id);
 
   const health = await request("health");
   check("health: contract 3.0, FP32, four buckets", health.ok && health.data.contract === "3.0" && health.data.dtype === "fp32" && health.data.n_buckets === 4 && health.data.max_tokens === 512, JSON.stringify(health).slice(0, 300));
@@ -116,6 +119,7 @@ try {
   reply = await request("score", { v: "3.0", blocks: [{ id: "x", text: "hello world" }] });
   check("a score wakes the engine", reply.ok && reply.data.results[0].lang === "en", JSON.stringify(reply).slice(0, 300));
 
+  if (firefox) { await browser.close(); await closeServer(); throw { done: true }; }
   const before = requests.length;
   await browser.close({ keepProfile: true });
   browser = await launchChromium(base, { profile: browser.profile });
@@ -129,9 +133,11 @@ try {
   await browser.close();
   await closeServer();
 } catch (error) {
-  check("no exception", false, String(error?.stack ?? error));
-  await browser.close().catch(() => {});
-  await closeServer().catch(() => {});
+  if (!error?.done) {
+    check("no exception", false, String(error?.stack ?? error));
+    await browser.close().catch(() => {});
+    await closeServer().catch(() => {});
+  }
 }
 rmSync(generated, { recursive: true, force: true });
 if (browser.errors.length) console.log("console:", browser.errors.slice(0, 10).join("\n"));

@@ -9,35 +9,13 @@
 // it hosts the worker itself. Either way the transport speaks the native host's contract,
 // and lib/backend/nativeScoreClient.ts and nativeClient.ts need no change.
 import { browser } from "#imports";
-import type { PublicPath } from "wxt/browser";
 import { PortTransport, type NativePort } from "../backend/portTransport";
 import type { EngineTransport } from "../backend/transport";
+import { WORKER_URL, workerInit } from "./assets";
 import { EngineHost } from "./host";
-import { pin } from "./pin";
 import { ENGINE_PORT } from "./protocol";
-import type { WorkerInit } from "./worker";
 
 const OFFSCREEN_PATH = "/engine.html";
-
-const url = (path: string): string => browser.runtime.getURL(path as PublicPath);
-
-/** The worker's first message: the pin, the runtime files' URLs and the extension version. */
-export function workerInit(): Omit<WorkerInit, "type"> {
-  let version: string | null = null;
-  try { version = browser.runtime.getManifest().version; } catch { /* outside an extension */ }
-  return {
-    pin: pin(),
-    assets: {
-      ort: url("/vendor/engine/ort.jspi.min.mjs"),
-      mjs: url("/vendor/engine/ort-wasm-simd-threaded.jspi.mjs"),
-      wasm: url("/vendor/engine/ort-wasm-simd-threaded.jspi.wasm"),
-    },
-    version,
-  };
-}
-
-/** The worker script, wherever the host runs. */
-export const WORKER_URL = (): string => url("/vendor/engine/worker.min.mjs");
 
 interface OffscreenApi {
   createDocument(options: { url: string; reasons: string[]; justification: string }): Promise<void>;

@@ -8,7 +8,7 @@
 import { browser } from "#imports";
 import { EngineHost } from "../../lib/webengine/host";
 import { ENGINE_PORT } from "../../lib/webengine/protocol";
-import { WORKER_URL, workerInit } from "../../lib/webengine/client";
+import { WORKER_URL, workerInit } from "../../lib/webengine/assets";
 
 const host = new EngineHost({ workerUrl: WORKER_URL(), init: workerInit() });
 const owners = new Map<string, { postMessage(message: unknown): void; disconnect(): void }>();

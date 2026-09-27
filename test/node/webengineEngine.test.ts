@@ -25,7 +25,7 @@ const pin = () => ({
   model: { id: "editlens_roberta-large", calibration: "editlens-4bucket-cosine(0.03,0.15)" },
   license: "CC-BY-NC-SA-4.0",
 });
-const ASSETS = { ort: "x", mjs: "x", wasm: "x" };
+const ASSETS = { jspi: { ort: "x", mjs: "x", wasm: "x" }, plain: { ort: "x", mjs: "x", wasm: "x" } };
 
 /** make-fixtures.py's table: what the tiny ONNX model computes. */
 const row = (i: number) => [((i % 7) / 7 - 0.5) * 0.4, ((i % 11) / 11 - 0.5) * 0.4, ((i % 13) / 13 - 0.5) * 0.4, ((i % 17) / 17 - 0.5) * 0.4];
