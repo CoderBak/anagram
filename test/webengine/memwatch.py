@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Peak memory of a browser's processes on macOS, for test/webengine/parity.mjs.
+"""Peak memory of a browser's processes on macOS or Linux, for test/webengine/parity.mjs.
 
   python3 test/webengine/memwatch.py <substring of the command line> <out.json> [interval s]
 
 Every process whose command line holds the substring (a temporary profile directory)
 is sampled through proc_pid_rusage: `phys_footprint` is what Activity Monitor calls
 Memory and includes the Metal buffers a process owns, which resident size does not.
+On Linux the same fields come from /proc: `phys` is the proportional set size, so pages
+the browser's processes share are counted once in the total.
 Peaks per process kind (browser, renderer, gpu-process, utility; Firefox's content and
 GPU helpers) are written to out.json on SIGTERM. Stock python3; no dependencies.
 """
@@ -16,7 +18,7 @@ import subprocess
 import sys
 import time
 
-_lib = ctypes.CDLL("/usr/lib/libproc.dylib")
+_lib = ctypes.CDLL("/usr/lib/libproc.dylib") if sys.platform == "darwin" else None
 _FIELDS = ["user_time", "system_time", "pkg_idle_wkups", "interrupt_wkups", "pageins", "wired_size",
            "resident_size", "phys_footprint", "proc_start_abstime", "proc_exit_abstime", "child_user_time",
            "child_system_time", "child_pkg_idle_wkups", "child_interrupt_wkups", "child_pageins",
@@ -31,7 +33,25 @@ class RusageV4(ctypes.Structure):
     _fields_ = [("uuid", ctypes.c_uint8 * 16)] + [(f, ctypes.c_uint64) for f in _FIELDS]
 
 
+def _proc_kib(path, fields):
+    """The given `Name:  <n> kB` fields of a /proc file, in bytes."""
+    values = {}
+    with open(path) as f:
+        for line in f:
+            name, _, rest = line.partition(":")
+            if name in fields:
+                values[name] = int(rest.split()[0]) * 1024
+    return values
+
+
 def usage(pid):
+    if _lib is None:
+        try:
+            status = _proc_kib(f"/proc/{pid}/status", ("VmRSS", "VmHWM"))
+            pss = _proc_kib(f"/proc/{pid}/smaps_rollup", ("Pss",))["Pss"]
+        except (OSError, KeyError):
+            return None
+        return status.get("VmRSS", 0), pss, status.get("VmHWM", 0)
     info = RusageV4()
     if _lib.proc_pid_rusage(int(pid), 4, ctypes.byref(info)) != 0:
         return None
