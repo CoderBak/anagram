@@ -1015,6 +1015,49 @@ describe("structuredBlocks — the document", () => {
     expect(blocks[1]!.text).toBe("A body paragraph after the notes.");
   });
 
+  it("leaves out a thesis's contents and list of figures: entries that end in a dot leader and a page number", () => {
+    // Zotero reads each entry as a paragraph or a list item; a list of figures is every
+    // caption over again. Entries it cut into paragraphs: the part with the leader does not
+    // open with the entry's number, the part that does comes before it. In a list of
+    // entries, one set too full for a leader, and one left two dots.
+    const lines: [string, number][] = [
+      ["The abstract ends here.", 100],
+      ["1 Introduction . . . . . . . . 1", 130],
+      ["1.1 A robot traversing a right pull door. . . . . . . . 2", 160],
+      ["4.7 A simulation of the rough terrain behavior. A video is available at", 190],
+      ["https://youtu.be/abc. . . . . . . . 47", 204],
+      ["4.17 A presentation of teleoperation features.", 230],
+      ["In the center, a view of the camera is shown.", 244],
+      ["This clears debris and opens doors. . . . . . . . 60", 258],
+      ["5.16 Pion form factors compared to the lattice results [219]146", 290],
+      ["5.17 Quark and gluon contributions to the form factor.. .147", 304],
+      ["5.18 Nucleon trace form factor . . . . . . . . 149", 318],
+      ["The first chapter begins.", 400],
+    ];
+    const nodes = lines.map(([text, y]) => node(1, [{ text, x: 72, y }]));
+    const pages = [pageText(1, nodes.flatMap((n) => n.items))];
+    const [abstract, toc, lof1, cutA, cutB, longA, longB, longC, item1, item2, item3, body] = nodes;
+    const item = (n: typeof body): SdtBlock => ({ type: "listitem", content: [n!] });
+    const blocks = structuredBlocks(structure([
+      paragraph(1, [abstract!]),
+      { type: "heading", content: [toc!] },
+      paragraph(1, [lof1!]), paragraph(1, [cutA!]), paragraph(1, [cutB!]),
+      paragraph(1, [longA!]), paragraph(1, [longB!]), paragraph(1, [longC!]),
+      { type: "list", content: [item(item1), item(item2), item(item3)] },
+      paragraph(1, [body!]),
+    ]), pages);
+    expect(blocks.map((b) => b.text)).toEqual(["The abstract ends here.", "The first chapter begins."]);
+    expect(blocks[1]!.columnBreak).toBe(true);
+  });
+
+  it("keeps a paragraph that ends in a number after a full stop, and one that opens with a number", () => {
+    const a = node(1, [{ text: "2.3 Results are summarized in the appendix, p. 12", x: 72, y: 100 }]);
+    const b = node(1, [{ text: "The ratio rose from 1. to 3. 4", x: 72, y: 130 }]);
+    const pages = [pageText(1, [...a.items, ...b.items])];
+    const blocks = structuredBlocks(structure([paragraph(1, [a]), paragraph(1, [b])]), pages);
+    expect(blocks.map((x) => x.text)).toEqual([a.text, b.text]);
+  });
+
   it("makes a paragraph carried over a page one block, with runs on both pages", () => {
     const first = node(1, [{ text: "the paragraph begins on one page and", x: 72, y: 700 }]);
     const second = node(2, [{ text: "ends on the next.", x: 72, y: 80 }]);

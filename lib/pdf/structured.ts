@@ -380,7 +380,71 @@ function readingsOf(content: SdtBlock[], everything: boolean): (Reading | Marker
       });
     } else aside(node, [i]);
   });
+  if (!everything) leaveOutContents(out);
   return out;
+}
+
+/** A block's text as Zotero has it, a nested block's a space apart. */
+function plainText(block: SdtBlock): string {
+  let out = "";
+  for (const node of block.content ?? []) out += isTextNode(node) ? node.text : ` ${plainText(node)} `;
+  return out.replace(/\s+/gu, " ").trim();
+}
+
+/** An entry of a table of contents or of a list of figures or tables: a dot leader, then
+ *  the page it points to. An entry whose caption fills its last line keeps a leader of two
+ *  or three dots ("…prediction [276].. .187"), taken only where the entry opens with its
+ *  number. */
+const CONTENTS_ENTRY = /(?:[.·…]\s*){4,}(?:\d{1,4}|[ivxlc]{1,7})$/iu;
+const SHORT_LEADER = /[^.\s](?:\s*\.){2,3}\s*(?:\d{1,4}|[ivxlc]{1,7})$/iu;
+/** What an entry opens with: its figure's, table's or section's number. */
+const ENTRY_NUMBER = /^(?:[A-Z]\.?)?\d/u;
+/** How many paragraphs Zotero may cut one entry into. */
+const ENTRY_PARTS = 4;
+
+/**
+ * A thesis's or a report's contents, and its lists of figures and tables. Zotero reads an
+ * entry as a paragraph or a list item, and a list of figures is the captions of the whole
+ * document over again, so each was read and scored: "4.7 A simulation example of the rough
+ * terrain … . . . . 50". Each entry ends in a dot leader and a page number, and the writing
+ * stops there, as at a bibliography. So does every item of a list at least half of whose
+ * items are entries (one set too full for a leader: "…the lattice results [219]146"). An
+ * entry Zotero cut into paragraphs ("1.1 IHMC's fully electric Alex … A video is available
+ * at" / "https://youtu.be/… . . . 2") is one: the part with the leader, which does not open
+ * with a number, and the paragraphs before it back to the one that does.
+ */
+function leaveOutContents(out: (Reading | Marker)[]): void {
+  const isEntry = (r: Reading | Marker): boolean => {
+    if (typeof r === "string" || r.kind === "reference" || r.kind === "table") return false;
+    const text = plainText(r.block);
+    return CONTENTS_ENTRY.test(text) || (SHORT_LEADER.test(text) && ENTRY_NUMBER.test(text));
+  };
+  const entries = out.map(isEntry);
+  // The items of each list, by the list's place in the tree.
+  const lists = new Map<number, number[]>();
+  out.forEach((r, k) => {
+    if (typeof r !== "string" && r.path.length > 1) lists.set(r.path[0]!, [...(lists.get(r.path[0]!) ?? []), k]);
+  });
+  for (const items of lists.values()) {
+    if (items.filter((k) => entries[k]).length * 2 >= items.length) for (const k of items) entries[k] = true;
+  }
+  entries.forEach((entry, k) => {
+    const r = out[k]!;
+    if (!entry || typeof r === "string") return;
+    out[k] = "barrier";
+    if (ENTRY_NUMBER.test(plainText(r.block))) return;
+    const parts: number[] = [];
+    for (let j = k - 1; j >= 0 && parts.length < ENTRY_PARTS; j--) {
+      const p = out[j]!;
+      if (p === "skip") continue;
+      if (typeof p === "string" || p.kind !== "paragraph") return;
+      parts.push(j);
+      if (ENTRY_NUMBER.test(plainText(p.block))) {
+        for (const q of parts) out[q] = "barrier";
+        return;
+      }
+    }
+  });
 }
 
 /** A reading with its pieces: what the drafts are made of. `paths` are the content tree's

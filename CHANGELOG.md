@@ -580,6 +580,7 @@ local component and the installer all carry the same version.
   put the old engine back, but the command's own Python processes killed it a quarter of
   a second into that, before it released its lock, and Anagram would not start until the
   update was run again. They now wait for the installer to finish.
+- The PDF reader no longer scores a thesis's or report's table of contents and lists of figures and tables, whose entries repeat every caption: an entry ending in a dot leader and a page number ends the writing, as a bibliography does; on the theses of the PDF benchmark the scored text that is not prose fell from 9.3% to 6.2%.
 
 ## [0.7.0] — 2026-09-26
 
