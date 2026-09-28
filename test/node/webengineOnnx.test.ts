@@ -35,8 +35,8 @@ describe("weightlessGraph", () => {
     });
     const whole = await ort.InferenceSession.create(MODEL);
     const split = await ort.InferenceSession.create(graph.model, { externalData: [{ path: "model.onnx", data: MODEL }] });
-    const expected = (await whole.run(feeds())).logits.data as Float32Array;
-    const got = (await split.run(feeds())).logits.data as Float32Array;
+    const expected = (await whole.run(feeds())).logits!.data as Float32Array;
+    const got = (await split.run(feeds())).logits!.data as Float32Array;
     expect(Array.from(got)).toEqual(Array.from(expected));
     await whole.release();
     await split.release();

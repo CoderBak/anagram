@@ -44,7 +44,7 @@ async function daemonFacts(): Promise<DaemonFacts> {
     /* the worker is gone, or the extension context was invalidated */
   }
   if (!status) return { state: "unknown" };
-  if (status.active === "idle") return {state: "idle"};
+  if (status.active === "idle" || status.active === "loading") return {state: status.active};
   if (status.active === "server") {
     return {
       state: "up",

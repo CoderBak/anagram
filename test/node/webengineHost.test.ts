@@ -33,7 +33,7 @@ describe("EngineHost", () => {
   it("queues requests until the engine is up, then passes replies on", () => {
     const { h, replies } = host();
     h.postMessage({ id: "a" });
-    const [w] = FakeWorker.all;
+    const w = FakeWorker.all[0]!;
     expect(w.posted).toEqual([{ type: "init", pin: {}, assets: {}, version: "1", idle: false }]);
     w.emit({ type: "ready" });
     expect(w.posted.slice(1)).toEqual([{ type: "request", request: { id: "a" } }]);
@@ -44,7 +44,7 @@ describe("EngineHost", () => {
   it("ends an idle worker once nothing waits on it, and starts the next one idle", () => {
     const { h, replies, disconnects } = host();
     h.postMessage({ id: "a" });
-    const [first] = FakeWorker.all;
+    const first = FakeWorker.all[0]!;
     first.emit({ type: "ready" });
     first.emit({ type: "idle" });
     expect(first.terminated).toBe(false);
@@ -53,7 +53,7 @@ describe("EngineHost", () => {
     expect(h.running).toBe(false);
     expect(disconnects()).toBe(0);
     h.postMessage({ id: "b" });
-    const second = FakeWorker.all[1];
+    const second = FakeWorker.all[1]!;
     expect(second.posted[0]).toMatchObject({ type: "init", idle: true });
     second.emit({ type: "ready" });
     second.emit({ type: "reply", reply: { id: "b" }, idle: true });
@@ -61,13 +61,13 @@ describe("EngineHost", () => {
     expect(replies).toEqual([{ id: "a" }, { id: "b" }]);
     h.disconnect();
     h.postMessage({ id: "c" });
-    expect(FakeWorker.all[2].posted[0]).toMatchObject({ type: "init", idle: false });
+    expect(FakeWorker.all[2]!.posted[0]).toMatchObject({ type: "init", idle: false });
   });
 
   it("keeps a worker that a request woke before the idle notice was acted on", () => {
     const { h } = host();
     h.postMessage({ id: "a" });
-    const [w] = FakeWorker.all;
+    const w = FakeWorker.all[0]!;
     w.emit({ type: "ready" });
     w.emit({ type: "reply", reply: { id: "a" }, idle: false });
     h.postMessage({ id: "score" });
@@ -82,9 +82,9 @@ describe("EngineHost", () => {
   it("turns a crashed worker into a disconnect", () => {
     const { h, disconnects } = host();
     h.postMessage({ id: "a" });
-    FakeWorker.all[0].onerror?.({ message: "boom" });
+    FakeWorker.all[0]!.onerror?.({ message: "boom" });
     expect(disconnects()).toBe(1);
     expect(h.error?.message).toBe("boom");
-    expect(FakeWorker.all[0].terminated).toBe(true);
+    expect(FakeWorker.all[0]!.terminated).toBe(true);
   });
 });

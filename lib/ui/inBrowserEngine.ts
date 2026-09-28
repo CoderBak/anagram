@@ -66,12 +66,12 @@ class Speedometer {
     const last = this.samples[this.samples.length - 1];
     if (last && bytes < last.bytes) this.samples = [];
     this.samples.push({ at, bytes });
-    while (this.samples.length > 2 && at - this.samples[0].at > 8_000) this.samples.shift();
+    while (this.samples.length > 2 && at - this.samples[0]!.at > 8_000) this.samples.shift();
   }
   reset(): void { this.samples = []; }
   get perSecond(): number | null {
     const first = this.samples[0], last = this.samples[this.samples.length - 1];
-    if (!first || last.at - first.at < 1_500 || last.bytes <= first.bytes) return null;
+    if (!first || !last || last.at - first.at < 1_500 || last.bytes <= first.bytes) return null;
     return ((last.bytes - first.bytes) * 1000) / (last.at - first.at);
   }
 }

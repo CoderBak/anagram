@@ -6,13 +6,14 @@
 // library, its WebAssembly loader and the one WebAssembly binary that carries both the
 // native WebGPU execution provider (the GPU path) and the CPU one (the WASM path), in
 // the JSPI build (see scripts/webengine.mjs for why not the package's default JSEP one).
+// WebAssembly JSPI is in every browser the flavor's manifest admits: Chrome 137 and
+// Firefox 153 (wxt.config.ts).
 //
 // The model reaches the runtime as its graph without the weights, with the file itself as
 // external data (lib/webengine/onnx.ts): the JSPI build reads each tensor from the file
 // as it creates it, onto the GPU, or once into WebAssembly memory for the CPU provider,
-// so the 1.4 GB of weights never pass whole through the worker's memory. (The plain
-// build, for a browser without JSPI, reads the file whole first, then does the same.) A
-// worker's WebAssembly memory never shrinks, so the worker is ended when the engine lets
+// so the 1.4 GB of weights never pass whole through the worker's memory. A worker's
+// WebAssembly memory never shrinks, so the worker is ended when the engine lets
 // the model go (lib/webengine/host.ts).
 //
 // The choice is automatic and FP32 either way, as the native engine's: WebGPU when the
@@ -25,16 +26,10 @@
 import { weightlessGraph } from "./onnx";
 import type { Backend } from "./scoring";
 
-/** One ONNX Runtime Web build: the library, its loader and its WebAssembly, by URL. */
-export interface RuntimeBuild { ort: string; mjs: string; wasm: string }
-/**
- * The files scripts/webengine.mjs copies: the JSPI build, which carries both providers,
- * and the plain WebAssembly build for a browser without JSPI (Firefox 140 ESR), which
- * then has the CPU provider only.
- */
-export interface RuntimeAssets { jspi: RuntimeBuild; plain: RuntimeBuild }
+/** The runtime's files by URL, as scripts/webengine.mjs copies them: the library, its loader and its WebAssembly. */
+export interface RuntimeAssets { ort: string; mjs: string; wasm: string }
 
-/** Whether this browser runs the JSPI build: WebAssembly JavaScript Promise Integration. */
+/** Whether this browser runs the runtime's build: WebAssembly JavaScript Promise Integration. */
 export function hasJspi(): boolean {
   return typeof (globalThis.WebAssembly as { Suspending?: unknown } | undefined)?.Suspending === "function";
 }
@@ -94,11 +89,14 @@ interface GpuAdapterLike {
   isFallbackAdapter?: boolean;
 }
 
+const NO_JSPI = "This browser has no WebAssembly JSPI, which the runtime needs";
+
 /** The candidates on this browser, most preferred first. */
 export async function probeRuntimes(): Promise<Candidate[]> {
   const webgpu: Candidate = { id: WEBGPU_ID, label: "GPU (WebGPU, FP32)", device: "gpu", runtime: "onnxruntime-web/webgpu", precision: "fp32", experimental: false, available: false, reason: null };
   const gpu = (globalThis.navigator as { gpu?: { requestAdapter(o?: unknown): Promise<GpuAdapterLike | null> } }).gpu;
-  if (!hasJspi()) webgpu.reason = "This browser has no WebAssembly JSPI, which the WebGPU runtime needs";
+  const jspi = hasJspi();
+  if (!jspi) webgpu.reason = NO_JSPI;
   else if (!gpu) webgpu.reason = "This browser offers no WebGPU here";
   else {
     try {
@@ -114,7 +112,7 @@ export async function probeRuntimes(): Promise<Candidate[]> {
     } catch (error) { webgpu.reason = `WebGPU adapter request failed: ${(error as Error).message}`; }
   }
   const threads = wasmThreads();
-  const wasm: Candidate = { id: WASM_ID, label: `CPU (WebAssembly, FP32, ${threads} thread${threads === 1 ? "" : "s"})`, device: "cpu", runtime: "onnxruntime-web/wasm", precision: "fp32", experimental: false, available: true, reason: null };
+  const wasm: Candidate = { id: WASM_ID, label: `CPU (WebAssembly, FP32, ${threads} thread${threads === 1 ? "" : "s"})`, device: "cpu", runtime: "onnxruntime-web/wasm", precision: "fp32", experimental: false, available: jspi, reason: jspi ? null : NO_JSPI };
   return [webgpu, wasm];
 }
 
@@ -128,12 +126,11 @@ export function wasmThreads(): number {
 let runtime: Promise<OrtModule> | undefined;
 
 function loadRuntime(assets: RuntimeAssets): Promise<OrtModule> {
-  const build = hasJspi() ? assets.jspi : assets.plain;
   // The package's own module, unmodified, from the extension; see scripts/webengine.mjs.
-  runtime ??= import(/* @vite-ignore */ build.ort).then((module) => {
+  runtime ??= import(/* @vite-ignore */ assets.ort).then((module) => {
     const ort = module as OrtModule;
     ort.env.logLevel = "error";
-    ort.env.wasm.wasmPaths = { mjs: build.mjs, wasm: build.wasm };
+    ort.env.wasm.wasmPaths = { mjs: assets.mjs, wasm: assets.wasm };
     ort.env.wasm.proxy = false;
     ort.env.webgpu.powerPreference = "high-performance";
     return ort;
@@ -189,15 +186,18 @@ export class Session implements Backend {
     if (!this.session) throw new Error("session released");
     if (signal?.aborted) throw new Error("cancelled");
     const rows = inputIds.length;
-    const width = inputIds[0].length;
+    // A padded batch (scoring.pad): at least one row, and every row of both as wide.
+    const width = inputIds[0]!.length;
     const ids = new BigInt64Array(rows * width);
     const mask = new BigInt64Array(rows * width);
     for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < width; c++) { ids[r * width + c] = BigInt(inputIds[r][c]); mask[r * width + c] = BigInt(attentionMask[r][c]); }
+      const idRow = inputIds[r]!, maskRow = attentionMask[r]!;
+      for (let c = 0; c < width; c++) { ids[r * width + c] = BigInt(idRow[c]!); mask[r * width + c] = BigInt(maskRow[c]!); }
     }
     const feeds = { input_ids: new this.ort.Tensor("int64", ids, [rows, width]), attention_mask: new this.ort.Tensor("int64", mask, [rows, width]) };
     const result = await this.session.run(feeds);
     const logits = result.logits;
+    if (!logits) throw new Error("the model has no logits output");
     const data = logits.data as ArrayLike<number>;
     const out = Float32Array.from(data as ArrayLike<number>);
     logits.dispose?.();

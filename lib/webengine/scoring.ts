@@ -66,28 +66,33 @@ export async function scoreTexts(backend: Backend, tokenizer: Tokenizer, texts: 
   const allIds = cleaned.map((text) => tokenizer.encode(text, true));
   const lengths = allIds.map((ids) => ids.length);
   const eos = tokenizer.sepId;
-  const order = [...allIds.keys()].sort((a, b) => lengths[a] - lengths[b]);
+  const order = [...allIds.keys()].sort((a, b) => lengths[a]! - lengths[b]!);
   const out: Scored[] = new Array(texts.length);
   const batch = backend.batchSize ?? BATCH_SIZE;
   for (let start = 0; start < order.length; start += batch) {
     if (signal?.aborted) throw new Error("cancelled");
     const chunk = order.slice(start, start + batch);
-    const rows = chunk.map((i) => (lengths[i] <= MAX_LENGTH ? allIds[i] : [...allIds[i].slice(0, MAX_LENGTH - 1), eos]));
+    // `order`, and so every `i` below, holds the indices of `allIds` and `lengths`.
+    const rows = chunk.map((i) => {
+      const ids = allIds[i]!;
+      return ids.length <= MAX_LENGTH ? ids : [...ids.slice(0, MAX_LENGTH - 1), eos];
+    });
     const { inputIds, attentionMask } = pad(rows, tokenizer.padId);
     const logits = await backend.logits(inputIds, attentionMask, signal);
     if (logits.length !== chunk.length * N_BUCKETS || !logits.every(Number.isFinite)) throw new Error("runtime returned invalid EditLens logits");
     chunk.forEach((i, row) => {
       const p = softmax(logits.subarray(row * N_BUCKETS, (row + 1) * N_BUCKETS));
+      const length = lengths[i]!;
       let bucket = 0;
-      for (let k = 1; k < N_BUCKETS; k++) if (p[k] > p[bucket]) bucket = k;
+      for (let k = 1; k < N_BUCKETS; k++) if (p[k]! > p[bucket]!) bucket = k;
       let weighted = 0;
-      for (let k = 0; k < N_BUCKETS; k++) weighted += p[k] * k;
+      for (let k = 0; k < N_BUCKETS; k++) weighted += p[k]! * k;
       out[i] = {
         bucket,
         probs: p.map((x) => pyRound(x, 4)),
         score: pyRound(weighted / (N_BUCKETS - 1), 4),
-        tokens: Math.min(lengths[i], MAX_LENGTH),
-        truncated: lengths[i] > MAX_LENGTH,
+        tokens: Math.min(length, MAX_LENGTH),
+        truncated: length > MAX_LENGTH,
       };
     });
   }

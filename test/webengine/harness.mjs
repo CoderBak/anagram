@@ -201,8 +201,8 @@ export function pinFor(base, files) {
 
 /** The worker's init message against `base`. */
 export function initFor(base, pin, version = "0.0.0-test") {
-  const build = (lib, suffix) => ({ ort: `${base}/vendor/engine/${lib}`, mjs: `${base}/vendor/engine/ort-wasm-simd-threaded${suffix}.mjs`, wasm: `${base}/vendor/engine/ort-wasm-simd-threaded${suffix}.wasm` });
-  return { pin, assets: { jspi: build("ort.jspi.min.mjs", ".jspi"), plain: build("ort.wasm.min.mjs", "") }, version };
+  const assets = { ort: `${base}/vendor/engine/ort.jspi.min.mjs`, mjs: `${base}/vendor/engine/ort-wasm-simd-threaded.jspi.mjs`, wasm: `${base}/vendor/engine/ort-wasm-simd-threaded.jspi.wasm` };
+  return { pin, assets, version };
 }
 
 /**

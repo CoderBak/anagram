@@ -58,7 +58,7 @@ export function tokenizeEmoji(text: string, keepZwj: boolean): EmojiToken[] {
   let i = 0;
   while (i < length) {
     let consumed = false;
-    const char = chars[i];
+    const char = chars[i]!;
     if (ignore.has(i)) {
       i++;
       if (char === ZWJ && keepZwj) result.push({ chars: char });
@@ -69,7 +69,7 @@ export function tokenizeEmoji(text: string, keepZwj: boolean): EmojiToken[] {
       let j = i + 1;
       let sub = first;
       while (j < length) {
-        const next = sub.next?.get(chars[j]);
+        const next = sub.next?.get(chars[j]!);
         if (!next || ignore.has(j)) break;
         sub = next;
         j++;
@@ -79,12 +79,12 @@ export function tokenizeEmoji(text: string, keepZwj: boolean): EmojiToken[] {
         i = j - 1;
         consumed = true;
       }
-    } else if (char === ZWJ && result.length > 0 && table!.has(result[result.length - 1].chars) &&
-               i > 0 && root.next?.has(chars[i - 1])) {
+    } else if (char === ZWJ && result.length > 0 && table!.has(result[result.length - 1]!.chars) &&
+               i > 0 && root.next?.has(chars[i - 1]!)) {
       // A joiner right after an emoji: read the sequence again from before that emoji, with
       // the joiner skipped, so "👨‍👩‍👧" is found as one match where the data lists it.
       ignore.add(i);
-      const last = result[result.length - 1];
+      const last = result[result.length - 1]!;
       if (table!.get(last.chars)![1] === COMPONENT) {
         // The last match was a component: ZWJ+EMOJI+COMPONENT or ZWJ+COMPONENT.
         let back = 0;

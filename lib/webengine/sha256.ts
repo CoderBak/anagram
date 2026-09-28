@@ -81,31 +81,33 @@ export class Sha256 {
     return hex;
   }
 
+  // Every index here is in range: a whole 64-byte block from `offset` (update and digest
+  // pass only those), 64 words, 64 constants, 8 state words.
   private compress(data: Uint8Array, offset: number): void {
     const w = this.words;
     for (let i = 0; i < 16; i++, offset += 4) {
-      w[i] = (data[offset] << 24) | (data[offset + 1] << 16) | (data[offset + 2] << 8) | data[offset + 3];
+      w[i] = (data[offset]! << 24) | (data[offset + 1]! << 16) | (data[offset + 2]! << 8) | data[offset + 3]!;
     }
     for (let i = 16; i < 64; i++) {
-      const x = w[i - 15];
-      const y = w[i - 2];
+      const x = w[i - 15]!;
+      const y = w[i - 2]!;
       const s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);
       const s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);
-      w[i] = (w[i - 16] + s0 + w[i - 7] + s1) | 0;
+      w[i] = (w[i - 16]! + s0 + w[i - 7]! + s1) | 0;
     }
     const s = this.state;
-    let a = s[0], b = s[1], c = s[2], d = s[3], e = s[4], f = s[5], g = s[6], h = s[7];
+    let a = s[0]!, b = s[1]!, c = s[2]!, d = s[3]!, e = s[4]!, f = s[5]!, g = s[6]!, h = s[7]!;
     for (let i = 0; i < 64; i++) {
       const S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));
       const ch = (e & f) ^ (~e & g);
-      const t1 = (h + S1 + ch + K[i] + w[i]) | 0;
+      const t1 = (h + S1 + ch + K[i]! + w[i]!) | 0;
       const S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));
       const maj = (a & b) ^ (a & c) ^ (b & c);
       const t2 = (S0 + maj) | 0;
       h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;
     }
-    s[0] = (s[0] + a) | 0; s[1] = (s[1] + b) | 0; s[2] = (s[2] + c) | 0; s[3] = (s[3] + d) | 0;
-    s[4] = (s[4] + e) | 0; s[5] = (s[5] + f) | 0; s[6] = (s[6] + g) | 0; s[7] = (s[7] + h) | 0;
+    s[0] = (s[0]! + a) | 0; s[1] = (s[1]! + b) | 0; s[2] = (s[2]! + c) | 0; s[3] = (s[3]! + d) | 0;
+    s[4] = (s[4]! + e) | 0; s[5] = (s[5]! + f) | 0; s[6] = (s[6]! + g) | 0; s[7] = (s[7]! + h) | 0;
   }
 }
 

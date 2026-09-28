@@ -944,7 +944,7 @@ The oneclick flavor, whose scoring runs inside the browser (lib/webengine/, entr
 - Project: https://github.com/microsoft/onnxruntime
 - Licence: MIT
 - Copyright: Copyright (c) Microsoft Corporation
-- In Anagram: The engine's own pin of the npm package (installed as onnxruntime-web-engine; scripts/webengine.mjs), unmodified: its native WebGPU execution provider in the JSPI build (vendor/engine/ort.jspi.min.mjs, ort-wasm-simd-threaded.jspi.mjs and ort-wasm-simd-threaded.jspi.wasm) and its plain WebAssembly build for browsers without JSPI (ort.wasm.min.mjs, ort-wasm-simd-threaded.mjs and ort-wasm-simd-threaded.wasm), with this licence beside them as vendor/engine/LICENSE.onnxruntime-web. The WebAssembly builds link third-party libraries whose notices Microsoft publishes with ONNX Runtime; those of this version's tag ship verbatim as vendor/engine/ThirdPartyNotices.onnxruntime-web.txt.
+- In Anagram: The engine's own pin of the npm package (installed as onnxruntime-web-engine; scripts/webengine.mjs), unmodified: its JSPI build, which carries the native WebGPU execution provider and the CPU one (vendor/engine/ort.jspi.min.mjs, ort-wasm-simd-threaded.jspi.mjs and ort-wasm-simd-threaded.jspi.wasm), with this licence beside them as vendor/engine/LICENSE.onnxruntime-web. The WebAssembly build links third-party libraries whose notices Microsoft publishes with ONNX Runtime; those of this version's tag ship verbatim as vendor/engine/ThirdPartyNotices.onnxruntime-web.txt.
 
 ```text
 ONNX Runtime (onnxruntime-web, https://github.com/microsoft/onnxruntime)

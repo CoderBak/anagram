@@ -40,7 +40,7 @@ worker it hosts is what performs those downloads, into the extension's own stora
 | `lib/pdf/loader.ts` | `XMLHttpRequest` | reads bytes for an authorized local PDF after checking file access, size and PDF signature | the exact authorized local file URL; remote-host file URLs are rejected |
 | `lib/lazy.ts` | `import(` | loads one of the vendored chunks that ship inside the extension (Defuddle, DOMPurify, the diagnostics chunk, the surfaces chunk, the report's paragraph links, pdf.js) | `chrome-extension://<this extension>/vendor/…` |
 | `lib/webengine/download.ts` | `fetch(` | downloads the pinned model files once, resumably, verifying each against its pinned SHA-256 as it streams; anonymous, no credentials, no referrer; and reads lid.176.ftz, which the package ships, checking it against its pinned SHA-256 whenever the model loads (the in-browser engine build only) | the exact pinned addresses in `lib/webengine/pin.ts`: the modelkit on huggingface.co (following its redirect to its storage), and `chrome-extension://<this extension>/vendor/engine/lid.176.ftz` |
-| `lib/webengine/session.ts` | `import(` | loads ONNX Runtime Web, which ships inside the extension, into the engine's worker | `chrome-extension://<this extension>/vendor/engine/ort.jspi.min.mjs` (or `ort.wasm.min.mjs` in a browser without JSPI) |
+| `lib/webengine/session.ts` | `import(` | loads ONNX Runtime Web, which ships inside the extension, into the engine's worker | `chrome-extension://<this extension>/vendor/engine/ort.jspi.min.mjs` |
 
 There is no analytics, error-reporting or telemetry endpoint. The component update
 notice compares versions locally; it does not poll GitHub.
