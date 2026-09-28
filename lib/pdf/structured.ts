@@ -509,19 +509,25 @@ const NAMES_NEXT = /(?:^|\s)(?:in|of|see|at|from|to|by|on|with|and|or|than|under
  * plots…" — is set aside as Zotero's own captions are, but not where the paragraph before
  * it stops at a word that names a figure: that is its own sentence carried over the float,
  * "…as shown in" / "Figure 6.32. Notice this node…". So is a paragraph that carries on the
- * caption set right above it (continuesCaption). A reading whose lines are numbered is not
- * one Zotero's paragraph stands for (numberedReadings): `numbered` says which.
+ * caption set right above it (continuesCaption), and one that is the note set under a table
+ * (notesTable). A reading whose lines are numbered is not one Zotero's paragraph stands for
+ * (numberedReadings): `numbered` says which.
  */
 function leaveOutCaptions(out: (Reading | Marker)[], content: SdtBlock[], numbered: (k: number) => boolean): void {
   let before: Reading | null = null;
-  /** Paragraphs of the tree, by place, read as the rest of the caption above them. */
-  const carried = new Set<number>();
-  const restOfCaption = (r: Reading): boolean => {
+  /** Paragraphs of the tree, by place, read as the rest of the caption or the table above. */
+  const carried = new Map<number, "caption" | "table">();
+  let body: number | null = null;
+  const bodySize = (): number => (body ??= median(content.flatMap((b) => (b.type === "paragraph" && !b.flowClass ? runHeights(b) : []))));
+  const restOfFloat = (r: Reading): boolean => {
     if (r.path.length !== 1 || r.block.previousPart) return false;
     const at = r.path[0]!;
     const above = content[at - 1];
-    if (!above || !((above.type === "caption" && above.flowClass) || carried.has(at - 1)) || !continuesCaption(above, r.block)) return false;
-    carried.add(at);
+    if (!above) return false;
+    const float = carried.get(at - 1) ?? (above.type === "caption" && above.flowClass ? "caption" : above.type === "table" ? "table" : null);
+    if (float === null) return false;
+    if (!(float === "caption" ? continuesCaption(above, r.block) : notesTable(above, r.block, bodySize))) return false;
+    carried.set(at, float);
     return true;
   };
   out.forEach((r, k) => {
@@ -532,7 +538,7 @@ function leaveOutCaptions(out: (Reading | Marker)[], content: SdtBlock[], number
     const prev = before;
     before = r;
     if (r.kind !== "paragraph" || numbered(k)) return;
-    if (!restOfCaption(r)) {
+    if (!restOfFloat(r)) {
       if (!CAPTION_LABEL.test(plainText(r.block))) return;
       if (prev?.kind === "paragraph" && NAMES_NEXT.test(plainText(prev.block))) return;
     }
@@ -569,16 +575,62 @@ function extentOn(block: SdtBlock, which: "first" | "last"): number[] | null {
  * marks the median…". The rest starts where the caption's next line would, and under it.
  */
 function continuesCaption(caption: SdtBlock, para: SdtBlock): boolean {
-  const c = extentOn(caption, "last"), p = extentOn(para, "first");
+  const text = plainText(caption);
+  return setUnder(caption, para, BARE_LABEL.test(text) ? CAPTION_LABEL_GAP : SENTENCE_END.test(text) ? CAPTION_GAP : CAPTION_RUN_ON_GAP);
+}
+
+/** A table's note is set off from the table by at least this many of its line heights and at
+ *  most this many, and smaller than the body: its lines under this share of the body's. A
+ *  paragraph of the body after a table is set at the body's size; one right against what
+ *  Zotero took for a table is the table's own text, or text Zotero mistook for a table. */
+const NOTE_SET_OFF = 0.5;
+const NOTE_GAP = 1.3;
+const NOTE_SIZE = 0.95;
+
+/**
+ * The paragraph is the note set under a table: "BC, bounded coalescent; SC, standard
+ * coalescent; …", "Notes. Columns: (1) PAH band(s) included in the ratio; …", "Agreement is the
+ * percentage of replicates in which…". Zotero sets the table aside and reads its note as body
+ * text. `bodySize` is the size of the document's body lines.
+ */
+function notesTable(table: SdtBlock, para: SdtBlock, bodySize: () => number): boolean {
+  return setUnder(table, para, NOTE_GAP, table.type === "table" ? NOTE_SET_OFF : -1) && median(runHeights(para)) < NOTE_SIZE * bodySize();
+}
+
+/** The paragraph starts on the page `above` ends on, under it (sharing this much of the
+ *  narrower of the two's width), at least `least` and at most `limit` of its line heights
+ *  below it. */
+function setUnder(above: SdtBlock, para: SdtBlock, limit: number, least = -1): boolean {
+  const c = extentOn(above, "last"), p = extentOn(para, "first");
   const glyph = glyphsOf(firstText(para)?.anchor?.textMap)[0];
   if (!c || !p || !glyph || c[0] !== p[0]) return false;
   const h = glyph.y2 - glyph.y1;
   const overlap = Math.min(c[3]!, p[3]!) - Math.max(c[1]!, p[1]!);
   if (!(h > 0) || overlap < CAPTION_OVERLAP * Math.min(c[3]! - c[1]!, p[3]! - p[1]!)) return false;
-  const text = plainText(caption);
-  const limit = BARE_LABEL.test(text) ? CAPTION_LABEL_GAP : SENTENCE_END.test(text) ? CAPTION_GAP : CAPTION_RUN_ON_GAP;
   const gap = c[2]! - p[4]!;
-  return gap >= -h && gap <= h * limit;
+  return gap >= h * least && gap <= h * limit;
+}
+
+/** The heights of the runs of a block's text, as its glyph maps give them. */
+function runHeights(block: SdtBlock, out: number[] = []): number[] {
+  for (const node of block.content ?? []) {
+    if (!isTextNode(node)) { runHeights(node, out); continue; }
+    let runs: unknown;
+    try {
+      runs = JSON.parse(node.anchor?.textMap ?? "[]");
+    } catch {
+      continue;
+    }
+    if (!Array.isArray(runs)) continue;
+    for (const run of runs) if (Array.isArray(run) && run.length >= 6) out.push((run[5] as number) - (run[3] as number));
+  }
+  return out;
+}
+
+function median(values: number[]): number {
+  if (values.length === 0) return NaN;
+  const s = [...values].sort((a, b) => a - b);
+  return s[s.length >> 1]!;
 }
 
 // ---- the order of a page's columns -----------------------------------------------------------

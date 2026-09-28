@@ -1123,6 +1123,32 @@ describe("structuredBlocks — the document", () => {
     expect(blocks[2]!.text).toMatch(/H NMR spectra were recorded/);
   });
 
+  it("leaves out a table's note, set small right under the table, and keeps the body after a table", () => {
+    /** One line at (72, y from the top) in `size`, its rect as Zotero gives it. */
+    const set = (text: string, y: number, size: number, kind: Partial<SdtBlock> = {}): { block: SdtBlock; items: PdfTextItem[] } => {
+      const n = node(1, [{ text, x: 72, y, size }]);
+      const rect = [0, 72, HEIGHT - y - 0.2 * size, 72 + text.length * CW, HEIGHT - y + 0.7 * size];
+      return { block: { type: "paragraph", anchor: { pageRects: [rect] }, content: [n], ...kind }, items: n.items };
+    };
+    const body = [100, 114, 128].map((y) => set(`A body paragraph of the paper set at its own size at ${y}.`, y, 10));
+    const table = set("Model Accuracy Recall Precision of the first table", 200, 8, { type: "table", flowClass: "auxiliary" });
+    const note = set("BC, bounded coalescent; SC, standard coalescent; RI, random integral.", 213, 8);
+    const more = set("Performance is evaluated on a regular grid of points for each dataset.", 222, 8);
+    const table2 = set("Model Accuracy Recall Precision of the second table", 300, 8, { type: "table", flowClass: "auxiliary" });
+    const after = set("The results show that the smaller model is worse at every size tried.", 314, 10);
+    // A dictionary's quotation Zotero took for a table, and the entry set right against it.
+    const quoted = set("Then was the tre ful of ripe perysse, And began down to falle.", 400, 8, { type: "table", flowClass: "auxiliary" });
+    const entry = set("PERYSSE. Pears. Then was the tre ful of ripe perysse.", 408, 8);
+    const all = [...body, table, note, more, table2, after, quoted, entry];
+    const pages = [pageText(1, all.flatMap((x) => x.items))];
+    const blocks = structuredBlocks(structure(all.map((x) => x.block)), pages);
+    expect(blocks.map((b) => b.text)).toEqual([
+      ...body.map((b) => (b.block.content![0] as SdtTextNode).text),
+      "The results show that the smaller model is worse at every size tried.",
+      "PERYSSE. Pears. Then was the tre ful of ripe perysse.",
+    ]);
+  });
+
   describe("the order of a page's columns", () => {
     /** A block of `lines` lines at (x, y from the top), its rect in PDF space as Zotero gives it. */
     const placed = (label: string, x: number, y: number, lines = 1): { block: SdtBlock; items: PdfTextItem[]; label: string } => {
