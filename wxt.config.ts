@@ -239,9 +239,9 @@ export default defineConfig({
                 // 140 (an ESR) is where CSS.highlights arrived, which draws every underline.
                 // What it still lacks is made up for in lib/dom/shadow.ts (adoptSheets) and
                 // lib/pdf/upsert.ts; test/firefox.mjs runs against it. The in-browser engine
-                // needs 153 (the ESR after it): 140 has no WebAssembly JSPI and no WebGPU, so
-                // it would score on one CPU thread, seconds per paragraph, and its support
-                // ends in September 2026 (lib/webengine/session.ts).
+                // needs 153 (the ESR after it): 140 has no WebAssembly JSPI, which the engine's
+                // runtime needs on both paths, and no WebGPU, and its support ends in
+                // September 2026 (lib/webengine/session.ts).
                 strict_min_version: ONECLICK ? "153.0" : "140.0",
                 // AMO's data-collection disclosure: nothing is collected or transmitted.
                 data_collection_permissions: { required: ["none"] },
@@ -251,8 +251,8 @@ export default defineConfig({
         : {}),
       ...(ONECLICK && browser !== "firefox"
         ? {
-            // The engine's GPU path is ONNX Runtime Web's WebGPU provider in its JSPI build
-            // (lib/webengine/session.ts): WebAssembly JSPI shipped in Chrome 137.
+            // The engine's runtime is ONNX Runtime Web's JSPI build, the GPU and the CPU
+            // path alike (lib/webengine/session.ts): WebAssembly JSPI shipped in Chrome 137.
             minimum_chrome_version: "137",
             // Cross-origin isolation for every extension page, so that the offscreen
             // document's worker has SharedArrayBuffer and the CPU path four threads instead

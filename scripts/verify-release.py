@@ -7,10 +7,14 @@ from pathlib import Path
 
 BASE = {"storage", "activeTab", "contextMenus", "scripting", "webNavigation", "webRequest"}
 OPTIONAL = {"https://*/*", "http://*/*", "file:///*"}
-# The oneclick flavor's engine (scripts/webengine.mjs): its runtime, its worker and the
-# language identifier it reads from the package. Its model download needs no host permission.
-ENGINE_FILES = ("vendor/engine/ort.jspi.min.mjs", "vendor/engine/ort-wasm-simd-threaded.jspi.wasm",
-                "vendor/engine/worker.min.mjs", "vendor/engine/lid.176.ftz")
+# The oneclick flavor's engine (scripts/webengine.mjs), all of vendor/engine/: ONNX Runtime
+# Web's JSPI build, which runs both the GPU and the CPU path, with its licence and notices,
+# the engine's worker and the language identifier it reads from the package. Its model
+# download needs no host permission.
+ENGINE_FILES = {"vendor/engine/ort.jspi.min.mjs", "vendor/engine/ort-wasm-simd-threaded.jspi.mjs",
+                "vendor/engine/ort-wasm-simd-threaded.jspi.wasm", "vendor/engine/LICENSE.onnxruntime-web",
+                "vendor/engine/ThirdPartyNotices.onnxruntime-web.txt", "vendor/engine/worker.min.mjs",
+                "vendor/engine/lid.176.ftz"}
 
 
 def required(flavor, manifest_version):
@@ -54,7 +58,8 @@ def verify(path, flavor):
         assert any(name.endswith(".wasm") for name in names), "Packaged PDF WASM decoders missing"
         # Each flavor carries its own engine and not the other's.
         if flavor == "oneclick":
-            assert all(name in names for name in ENGINE_FILES), "In-browser engine runtime missing"
+            engine = {name for name in names if name.startswith("vendor/engine/")}
+            assert engine == ENGINE_FILES, f"In-browser engine files: missing {sorted(ENGINE_FILES - engine)}, unexpected {sorted(engine - ENGINE_FILES)}"
         else:
             carried = [name for name in (*ENGINE_FILES, "engine.html") if name in names]
             assert not carried, f"Native package carries the in-browser engine: {carried}"

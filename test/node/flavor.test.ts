@@ -188,11 +188,11 @@ describe("what each flavor's build carries", () => {
   });
 
   it.skipIf(!native || !oneclick)("only the oneclick build ships the engine's runtime", () => {
-    // The files scripts/webengine.mjs prepares: the runtime's two builds, the engine's worker
+    // The files scripts/webengine.mjs prepares, and nothing else: the runtime's JSPI build
+    // (both paths; no plain WebAssembly build), its licence and notices, the engine's worker
     // and the language identifier.
-    for (const file of [...ORT_FILES, "worker.min.mjs", LID.name]) {
-      expect(existsSync(join(oneclick!, "vendor", "engine", file)), file).toBe(true);
-    }
+    expect(readdirSync(join(oneclick!, "vendor", "engine")).sort()).toEqual(
+      [...ORT_FILES, "LICENSE.onnxruntime-web", "ThirdPartyNotices.onnxruntime-web.txt", "worker.min.mjs", LID.name].sort());
     const lid = readFileSync(join(oneclick!, LID_PATH));
     expect([lid.length, createHash("sha256").update(lid).digest("hex")]).toEqual([LID.size_bytes, LID.sha256]);
     expect(existsSync(join(native!, "vendor", "engine"))).toBe(false);
