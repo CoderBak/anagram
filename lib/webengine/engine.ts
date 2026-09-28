@@ -448,6 +448,8 @@ export class Engine {
       case "health": {
         checkPayloadKeys(payload);
         if (this.state === "idle") throw new EngineError("engine_idle", "The engine was unloaded while idle; scoring will reload it", 503);
+        // Not "not ready": a score or count sent now waits for the model (wakeAndWait).
+        if (this.state === "loading") throw new EngineError("engine_loading", "The model is loading; what is sent waits for it", 503);
         if (!this.loaded || this.state !== "ready") throw new EngineError("not_ready", "The local engine is not ready; open component settings", 503);
         return { status: 200, data: this.info(this.loaded) };
       }

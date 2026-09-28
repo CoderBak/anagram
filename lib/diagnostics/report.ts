@@ -32,7 +32,7 @@ export const MAX_SILENT = 15;
 
 /** What the daemon is doing, reduced to the four answers that change what to do next. */
 export interface DaemonFacts {
-  state: "up" | "idle" | "down" | "contract" | "unknown";
+  state: "up" | "idle" | "loading" | "down" | "contract" | "unknown";
   /** Model identity when it is up — it decides the verdicts and belongs in a bug report. */
   model?: string;
   device?: string;
@@ -103,6 +103,8 @@ function daemonLine(daemon: DaemonFacts): string {
       return `daemon: up · ${daemon.model ?? "no model reported"}${daemon.device ? ` on ${daemon.device}` : ""}`;
     case "idle":
       return "daemon: idle (model unloaded; scoring wakes it automatically)";
+    case "loading":
+      return "daemon: loading its model (scoring waits for it)";
     case "contract":
       return `daemon: CONTRACT MISMATCH — it speaks ${daemon.contract ?? "?"}, this build speaks another major`;
     case "down":

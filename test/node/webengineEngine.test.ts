@@ -52,7 +52,7 @@ async function fakeSession(candidate: Candidate, model: Blob, log: string[]): Pr
 }
 
 interface Made { engine: Engine; store: MemoryStore; log: string[]; server: ReturnType<typeof fakeServer>; clock: { now: number } }
-function make(options: { store?: MemoryStore; server?: FakeServerOptions; failing?: string[]; probe?: Candidate[]; idle?: boolean; lid?: Uint8Array } = {}): Made {
+function make(options: { store?: MemoryStore; server?: FakeServerOptions; failing?: string[]; probe?: Candidate[]; idle?: boolean; lid?: Uint8Array; hold?: Promise<void> } = {}): Made {
   const store = options.store ?? new MemoryStore();
   const log: string[] = [];
   const server = fakeServer(FILES, options.server);
@@ -61,6 +61,7 @@ function make(options: { store?: MemoryStore; server?: FakeServerOptions; failin
     pin: pin(options.lid), assets: ASSETS, version: "9.9.9", store, transport: server.fetch, retryWaits: [0],
     createSession: async (candidate, model) => {
       if (options.failing?.includes(candidate.id)) { log.push(`fail ${candidate.id}`); throw new Error("no such device"); }
+      await options.hold; // a model that takes its time to load
       return fakeSession(candidate, model, log);
     },
     probe: async () => options.probe ?? candidates(),
@@ -253,6 +254,24 @@ describe("the engine's lifecycle", () => {
     expect((data as { results: Array<{ lang: string }> }).results[0]!.lang).toBe("en");
     expect(m.log).toEqual(["create webgpu:fp32"]);
     expect(m.server.requests).toEqual([]);
+  });
+
+  it("says it is loading, not down, while the model loads, and holds a score until it is in", async () => {
+    const first = track(make());
+    await first.engine.handle("models.download", {});
+    await ready(first.engine);
+    await first.engine.close();
+    let loaded!: () => void;
+    const m = track(make({ store: first.store, hold: new Promise<void>((resolve) => { loaded = resolve; }) }));
+    expect(((await m.engine.handle("status", {})).data as { state: string }).state).toBe("loading");
+    await fails(m.engine.handle("health", {}), "engine_loading", 503);
+    let answered = false;
+    const score = m.engine.handle("score", { v: "3.0", blocks: [{ id: "a", text: "hello world" }] }).finally(() => { answered = true; });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(answered).toBe(false);
+    loaded();
+    expect(((await score).data as { results: Array<{ lang: string }> }).results[0]!.lang).toBe("en");
+    expect((await m.engine.handle("health", {})).data).toMatchObject({ ok: true, device: "webgpu" });
   });
 
   it("stops and resumes, and deletes the model files", async () => {

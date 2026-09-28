@@ -58,7 +58,10 @@ export function backendFor(name, { crashed = false } = {}) {
     : s.state === "loading" ? { state: "loading", percent: 100 } : null;
   return up
     ? { active: "server", model: { id: "editlens_roberta-large", ver: "sha256:test-web1", calibration: "editlens-4bucket-cosine(0.03,0.15)" }, server: { ok: true, checkedAt: 1, device: "webgpu", dtype: "fp32" } }
-    : { active: "down", model: null, server: { ok: false, checkedAt: 1, reason: "unreachable", code: crashed ? "engine_crashed" : "not_ready" }, setup };
+    // A model loading answers health with engine_loading: reachable, not down.
+    : s.state === "loading" && !crashed
+      ? { active: "loading", model: null, server: { ok: false, checkedAt: 1, reason: "unreachable", code: "engine_loading" }, setup }
+      : { active: "down", model: null, server: { ok: false, checkedAt: 1, reason: "unreachable", code: crashed ? "engine_crashed" : "not_ready" }, setup };
 }
 
 /**

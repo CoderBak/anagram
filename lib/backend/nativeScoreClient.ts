@@ -62,9 +62,12 @@ export class NativeScoreClient implements ScoreClient {
               outdated:componentIsBehind(h.app_version,extensionVersion())}};
         } else {
           // Idle is unload-for-memory, not an explicit stop. Preserve known provenance;
-          // a subsequent score is allowed to wake the engine, health never wakes it.
-          const idle = reply.error?.code === "engine_idle";
-          this.current = {active:idle ? "idle" : "down",model:idle ? this.current.model : null,
+          // a subsequent score is allowed to wake the engine, health never wakes it. The
+          // in-browser engine loading its model is reachable the same way: what it is sent
+          // waits for the model. (The local engine says "not ready" while it loads: down.)
+          const code = reply.error?.code;
+          const active = code === "engine_idle" ? "idle" : code === "engine_loading" ? "loading" : "down";
+          this.current = {active,model:active === "down" ? null : this.current.model,
             server:{ok:false,checkedAt:Date.now(),reason:result && !result.ok ? result.reason : "unreachable",
               contract:result && !result.ok ? result.contract : undefined,code:reply.error?.code,error:reply.error?.message}};
         }
@@ -97,7 +100,7 @@ export class NativeScoreClient implements ScoreClient {
   }
   async scoreBatch(blocks: ScoreBlock[], signal?: AbortSignal): Promise<ScoredBatch> {
     await this.probe();
-    if (!this.isUp() && this.current.server.code !== "engine_idle") throw new Error("Local inference is not ready");
+    if (!this.isUp() && this.current.active === "down") throw new Error("Local inference is not ready");
     const generation = this.generation;
     try {
       const reply = await this.request("score",{v:CONTRACT_VERSION,blocks:blocks.map(({id,text}) => ({id,text}))}, signal);
