@@ -483,11 +483,22 @@ const NAMES_NEXT = /(?:^|\s)(?:in|of|see|at|from|to|by|on|with|and|or|than|under
  * conditioning rungs…", "FIG. 1. The partition sum…", "Figure 8 Difference of density
  * plots…" — is set aside as Zotero's own captions are, but not where the paragraph before
  * it stops at a word that names a figure: that is its own sentence carried over the float,
- * "…as shown in" / "Figure 6.32. Notice this node…". A reading whose lines are numbered is
- * not one Zotero's paragraph stands for (numberedReadings): `numbered` says which.
+ * "…as shown in" / "Figure 6.32. Notice this node…". So is a paragraph that carries on the
+ * caption set right above it (continuesCaption). A reading whose lines are numbered is not
+ * one Zotero's paragraph stands for (numberedReadings): `numbered` says which.
  */
-function leaveOutCaptions(out: (Reading | Marker)[], numbered: (k: number) => boolean): void {
+function leaveOutCaptions(out: (Reading | Marker)[], content: SdtBlock[], numbered: (k: number) => boolean): void {
   let before: Reading | null = null;
+  /** Paragraphs of the tree, by place, read as the rest of the caption above them. */
+  const carried = new Set<number>();
+  const restOfCaption = (r: Reading): boolean => {
+    if (r.path.length !== 1 || r.block.previousPart) return false;
+    const at = r.path[0]!;
+    const above = content[at - 1];
+    if (!above || !((above.type === "caption" && above.flowClass) || carried.has(at - 1)) || !continuesCaption(above, r.block)) return false;
+    carried.add(at);
+    return true;
+  };
   out.forEach((r, k) => {
     if (typeof r === "string") {
       if (r === "barrier") before = null;
@@ -495,11 +506,54 @@ function leaveOutCaptions(out: (Reading | Marker)[], numbered: (k: number) => bo
     }
     const prev = before;
     before = r;
-    if (r.kind !== "paragraph" || numbered(k) || !CAPTION_LABEL.test(plainText(r.block))) return;
-    if (prev?.kind === "paragraph" && NAMES_NEXT.test(plainText(prev.block))) return;
+    if (r.kind !== "paragraph" || numbered(k)) return;
+    if (!restOfCaption(r)) {
+      if (!CAPTION_LABEL.test(plainText(r.block))) return;
+      if (prev?.kind === "paragraph" && NAMES_NEXT.test(plainText(prev.block))) return;
+    }
     out[k] = "skip";
     before = prev;
   });
+}
+
+/** The rest of a caption Zotero read as a paragraph starts where the caption's next line
+ *  would: at most this many of the paragraph's line heights below it, this many where the
+ *  caption stops mid-sentence, and this many below a caption that is its label alone
+ *  ("Figure 3.["). Body text after a float is set further off. */
+const CAPTION_GAP = 0.25;
+const CAPTION_RUN_ON_GAP = 0.6;
+const CAPTION_LABEL_GAP = 1.5;
+/** …and under it: this share of the narrower of the two. */
+const CAPTION_OVERLAP = 0.8;
+const BARE_LABEL = /^(?:fig(?:ure)?s?\.?|table|tab\.)\s*[A-Z]?\d+(?:[.\-–]\d+)*[a-z]?\s*[.:|]?\s*[[(]?$/iu;
+
+/** A block's extent on its first or its last page, over its rects there: [page, x1, y1, x2,
+ *  y2] in PDF space, y upward. */
+function extentOn(block: SdtBlock, which: "first" | "last"): number[] | null {
+  const rects = block.anchor?.pageRects;
+  if (!rects?.length) return null;
+  const page = rects[which === "first" ? 0 : rects.length - 1]![0]!;
+  const on = rects.filter((r) => r[0] === page);
+  return [page, Math.min(...on.map((r) => r[1]!)), Math.min(...on.map((r) => r[2]!)), Math.max(...on.map((r) => r[3]!)), Math.max(...on.map((r) => r[4]!))];
+}
+
+/**
+ * The paragraph carries on the caption set right above it. Zotero can take a caption's first
+ * lines for the caption and the rest for body text: "Figure 4 | Held-out accuracy at M4 under
+ * five exploration conditions. Each dot is one system;" / "the horizontal line in each column
+ * marks the median…". The rest starts where the caption's next line would, and under it.
+ */
+function continuesCaption(caption: SdtBlock, para: SdtBlock): boolean {
+  const c = extentOn(caption, "last"), p = extentOn(para, "first");
+  const glyph = glyphsOf(firstText(para)?.anchor?.textMap)[0];
+  if (!c || !p || !glyph || c[0] !== p[0]) return false;
+  const h = glyph.y2 - glyph.y1;
+  const overlap = Math.min(c[3]!, p[3]!) - Math.max(c[1]!, p[1]!);
+  if (!(h > 0) || overlap < CAPTION_OVERLAP * Math.min(c[3]! - c[1]!, p[3]! - p[1]!)) return false;
+  const text = plainText(caption);
+  const limit = BARE_LABEL.test(text) ? CAPTION_LABEL_GAP : SENTENCE_END.test(text) ? CAPTION_GAP : CAPTION_RUN_ON_GAP;
+  const gap = c[2]! - p[4]!;
+  return gap >= -h && gap <= h * limit;
 }
 
 /** A reading with its pieces: what the drafts are made of. `paths` are the content tree's
@@ -984,7 +1038,7 @@ export function createStructuredReader(structure: SdtStructure, options: Structu
   }
   // Numbered lines are read again as the paragraphs they make, and a caption among them is
   // told there, once its lines are one paragraph (numberedReadings).
-  if (!everything) leaveOutCaptions(readings, (k) => texts[k]?.some((p) => numbers.has(p)) === true);
+  if (!everything) leaveOutCaptions(readings, structure.content, (k) => texts[k]?.some((p) => numbers.has(p)) === true);
   const prepared = numbers.size > 0
     ? numberedReadings(readings, texts, numbers, everything)
     : readings.map((r, k) => (typeof r === "string" ? r : plain(r, texts[k] ?? [])));

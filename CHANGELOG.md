@@ -583,6 +583,7 @@ local component and the installer all carry the same version.
 - The PDF reader no longer scores a thesis's or report's table of contents and lists of figures and tables, whose entries repeat every caption: an entry ending in a dot leader and a page number ends the writing, as a bibliography does; on the theses of the PDF benchmark the scored text that is not prose fell from 9.3% to 6.2%.
 - The PDF reader no longer scores a figure's or table's caption that its paragraph engine took for body text, told by the label it opens with ("Table S7:", "FIG. 1.", "Figure 8 Difference of…") and never a sentence that names a figure ("Figure 3 compares…", "…as shown in Figure 6.32. Notice…"); on the benchmark's development papers the scored text that is not prose fell from 4.44% to 4.13%.
 - The PDF reader no longer scores the bibliography of a physics paper set with no References heading (REVTeX, JHEP): a list whose entries open with a bracketed number and cite a year is taken for the references and ends the writing; on the benchmark's development papers the scored text that is not prose fell from 4.13% to 3.76%.
+- The PDF reader no longer scores the rest of a caption that its paragraph engine cut off from the caption and took for body text ("…Each dot is one system;" / "the horizontal line in each column marks the median…"): a paragraph set right under a caption, where the caption's next line would be, is read as the caption's; on the benchmark's development papers the scored text that is not prose fell from 3.76% to 3.67%.
 
 ## [0.7.0] — 2026-09-26
 

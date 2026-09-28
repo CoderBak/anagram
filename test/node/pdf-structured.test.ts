@@ -1067,6 +1067,32 @@ describe("structuredBlocks — the document", () => {
     expect(blocks.map((b) => b.text)).toEqual([0, 4, 5, 6, 7].map((i) => lines[i]![0]));
   });
 
+  it("leaves out the rest of a caption Zotero read as a paragraph under it, and keeps the body set off below a float", () => {
+    // Glyph boxes run from a fifth of the size below the baseline to seven tenths above: a
+    // line pitch of 11 leaves a caption's next line 2 below it, a paragraph 20 below is body.
+    const set = (text: string, y: number, kind: Partial<SdtBlock> = {}): { block: SdtBlock; items: PdfTextItem[] } => {
+      const n = node(1, [{ text, x: 72, y }]);
+      const rect = [0, 72, HEIGHT - y - 0.2 * SIZE, 72 + text.length * CW, HEIGHT - y + 0.7 * SIZE];
+      return { block: { type: "paragraph", anchor: { pageRects: [rect] }, content: [n], ...kind }, items: n.items };
+    };
+    const before = set("The body text before the figure is a sentence.", 100);
+    const caption = set("Figure 4 | Held-out accuracy under five conditions. Each dot is one system;", 300, { type: "caption", flowClass: "auxiliary" });
+    const rest = set("the horizontal line marks the median over the ten systems.", 311);
+    const after = set("The next paragraph of the body is set well below the figure.", 340);
+    const label = set("Figure 3.[", 400, { type: "caption", flowClass: "auxiliary" });
+    const labelled = set("Absolute spectra of the three dwarfs]Bottom: the ratios of the spectra.", 412);
+    const caption2 = set("Figure 5: Results on the chosen twelve backends.", 500, { type: "caption", flowClass: "auxiliary" });
+    const body = set("The results show a worse performance by the smaller model.", 512.4);
+    const all = [before, caption, rest, after, label, labelled, caption2, body];
+    const pages = [pageText(1, all.flatMap((x) => x.items))];
+    const blocks = structuredBlocks(structure(all.map((x) => x.block)), pages);
+    expect(blocks.map((b) => b.text)).toEqual([
+      "The body text before the figure is a sentence.",
+      "The next paragraph of the body is set well below the figure.",
+      "The results show a worse performance by the smaller model.",
+    ]);
+  });
+
   it("takes a list of bracketed, dated entries for the bibliography Zotero did not find, and keeps a list of steps", () => {
     // REVTeX sets no References heading, and Zotero reads the bibliography as a list of the body.
     const lines: [string, number][] = [
