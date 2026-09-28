@@ -492,6 +492,17 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(factory.loaded, [FP32.id])
         self.assertEqual(json.loads(self.path.read_text())["selected_id"], FP32.id)
 
+    def test_a_saved_choice_whose_runtime_was_uninstalled_falls_back_without_an_error(self):
+        # Linux without an NVIDIA GPU drops PyTorch on update; its candidate is no longer listed.
+        controller, _ = self.make((ONNX32, FP32))
+        self.setup_complete(controller, ONNX32)
+        self.select(controller, FP32)
+        controller.close()
+        restarted, factory = self.make((ONNX32, INT8))
+        self.setup_complete(restarted, ONNX32)
+        self.assertEqual(factory.loaded, [ONNX32.id])
+        self.assertIsNone(restarted.snapshot()["error"])
+
     def test_cancelled_first_load_leaves_an_idle_runtime_that_a_score_wakes(self):
         entered, release = threading.Event(), threading.Event()
         controller, factory = self.make()
@@ -1028,19 +1039,23 @@ runpy.run_path(sys.argv[1], run_name="__main__")
         self.host_loads.append(candidate.id)
         return FakeEngine(Factory(Clock()), candidate)
 
+    def settle(self, controller):
+        # Each candidate starts a Python worker of its own, which a loaded machine can take
+        # seconds to do. A worker or controller that hangs still fails here, with its state.
+        controller.thread.join(60)
+        self.assertFalse(controller.thread.is_alive(), controller.snapshot())
+
     def test_each_candidate_has_a_fresh_process_and_distinct_resource_stages(self):
         self.host_loads = []
         controller = RuntimeController(self.home / "runtime.json", lambda: ([FP32, FP16], "isolated"),
                                        self.host_factory, benchmark_runner=self.runner(), max_runs=3)
         self.addCleanup(controller.close)
         controller.start()
-        controller.thread.join(5)
-        self.assertFalse(controller.thread.is_alive())
+        self.settle(controller)
         self.assertEqual(controller.snapshot()["state"], "ready")
         self.assertFalse((self.home / "workers").exists())
         controller.request_benchmark(10)
-        controller.thread.join(5)
-        self.assertFalse(controller.thread.is_alive())
+        self.settle(controller)
         snapshot = controller.snapshot()
         self.assertEqual(snapshot["state"], "ready", snapshot)
         self.assertEqual(self.host_loads, [FP32.id, FP32.id])

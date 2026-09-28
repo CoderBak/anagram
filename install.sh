@@ -164,7 +164,7 @@ case "$OS/$ARCH" in
       die "the locked model runtimes require glibc 2.28+; musl Linux is not supported"
     fi
     LIBC=gnu
-    RUNTIMES="PyTorch"
+    RUNTIMES=""
     GLIBC_VERSION="$(getconf GNU_LIBC_VERSION 2>/dev/null | awk '{print $2}')" || true
     printf '%s\n' "$GLIBC_VERSION" | awk -F. 'NF >= 2 && ($1 > 2 || ($1 == 2 && $2 >= 28)) {ok=1} END {exit !ok}' \
       || die "the locked model runtimes require glibc 2.28+ (found ${GLIBC_VERSION:-unknown})"
@@ -174,6 +174,12 @@ case "$OS/$ARCH" in
     esac ;;
   *) die "unsupported platform: $OS $ARCH (macOS 14+ Apple Silicon or glibc Linux x86_64/arm64)" ;;
 esac
+# PyPI's Linux PyTorch is the CUDA build, about 5 GB with its libraries, and serves only an
+# NVIDIA GPU; ONNX Runtime runs the CPU. ANAGRAM_TEST_ROOT stands in for / in the tests.
+CUDA=""
+if [ "$OS" = Linux ] && { [ -r "${ANAGRAM_TEST_ROOT:-}/proc/driver/nvidia/version" ] || nvidia-smi -L >/dev/null 2>&1; }; then
+  CUDA=1; RUNTIMES="PyTorch"
+fi
 
 # One installer at a time, including first install before private Python exists. The
 # lock holds its installer's process ID, so the lock of one that was killed or lost
@@ -336,12 +342,15 @@ fi
 step 3 "$(tr_msg 'Installing private Python' '正在安装独立 Python') $PYTHON_VERSION"
 run_uv python install "$PYTHON_VERSION"
 step 4 "$(tr_msg 'Installing locked runtime packages' '正在安装版本锁定的运行依赖')"
-note "$(tr_msg "Downloading and installing $RUNTIMES, ONNX Runtime and other dependencies; progress appears below." "正在下载并安装 ${RUNTIMES}、ONNX Runtime 等依赖；具体进度显示在下方。")"
+note "$(tr_msg "Downloading and installing ${RUNTIMES:+$RUNTIMES, }ONNX Runtime and other dependencies; progress appears below." "正在下载并安装 ${RUNTIMES:+${RUNTIMES}、}ONNX Runtime 等依赖；具体进度显示在下方。")"
+if [ "$OS" = Linux ] && [ -z "$CUDA" ] && ls -d "$ANAGRAM_HOME"/venv/lib/python*/site-packages/torch >/dev/null 2>&1; then
+  note "$(tr_msg 'No NVIDIA GPU: PyTorch and its CUDA libraries (about 5 GB) are removed; ONNX Runtime runs on the CPU.' '未检测到 NVIDIA GPU：移除 PyTorch 及其 CUDA 库（约 5 GB），由 ONNX Runtime 在 CPU 上运行。')"
+fi
 note "$(tr_msg 'Device-selected model weights will download here after registration.' '注册完成后，将在此下载适合本机设备的模型权重。')"
 CREATED_VENV=1
 # --no-build everywhere: every locked package resolves to a wheel on each supported
 # platform, so no toolchain is ever required to complete an installation.
-( cd "$ANAGRAM_HOME/app" && run_uv sync --frozen --no-dev --no-build --python "$PYTHON_VERSION" )
+( cd "$ANAGRAM_HOME/app" && run_uv sync --frozen --no-dev --no-build ${CUDA:+--extra cuda} --python "$PYTHON_VERSION" )
 [ -x "$ANAGRAM_HOME/venv.next/bin/python" ] || die "staged virtual environment was not created"
 # Python discovers its venv relative to the executable. The component invokes this
 # interpreter directly, never the generated console scripts with staging shebangs.

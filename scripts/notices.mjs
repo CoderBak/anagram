@@ -313,7 +313,7 @@ const GROUPS = [
         where: "Downloaded from its GitHub releases; it installs the Python runtime and the packages below." },
       { name: "Python and the engine's Python packages", version: "locked in anagramd/uv.lock", url: "https://pypi.org/",
         licence: "Each package's own", copyright: "Their respective authors",
-        where: "A Python runtime from uv's distributions and the packages anagramd/pyproject.toml names (MLX on Apple silicon, PyTorch and Transformers elsewhere, ONNX Runtime, tokenizers, fastText and others), installed from PyPI by uv at the exact versions of anagramd/uv.lock." },
+        where: "A Python runtime from uv's distributions and the packages anagramd/pyproject.toml names (MLX on Apple silicon, PyTorch and Transformers on Windows and on Linux with an NVIDIA GPU, ONNX Runtime, tokenizers, fastText and others), installed from PyPI by uv at the exact versions of anagramd/uv.lock." },
       { name: "EditLens RoBERTa-large", version: "pinned in anagramd/modelkit.json", url: "https://huggingface.co/pangram/editlens_roberta-large",
         urls: ["https://huggingface.co/CoderBak/editlens_roberta_modelkit"],
         licence: "CC-BY-NC-SA-4.0", copyright: "Pangram Labs",

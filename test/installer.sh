@@ -216,7 +216,7 @@ out="$(HOME="$FAKE_HOME" LC_ALL=en_US.UTF-8 ANAGRAM_HOME="$HFIRST" ANAGRAM_RELEA
 if [ $rc -eq 0 ] && [ -f "$HFIRST/.native-component.json" ] && [ ! -f "$HFIRST/config" ] && echo "$out" | grep -q "the browser finishes setup automatically"; then
   ok "fresh installation registers native host and invokes terminal preparation without a listener config"
 else bad "fresh native install" "rc=$rc $out"; fi
-if echo "$out" | grep -q "Downloading and installing [A-Za-z]*, ONNX Runtime" && ! echo "$out" | grep -q "unbound variable"; then
+if echo "$out" | grep -q "Downloading and installing \([A-Za-z]*, \)\{0,1\}ONNX Runtime" && ! echo "$out" | grep -q "unbound variable"; then
   ok "the runtime packages step names its runtime in a UTF-8 locale"
 else bad "runtime packages note" "$(echo "$out" | grep -A1 '\[4/7\]')"; fi
 out="$(HOME="$FAKE_HOME" ANAGRAM_HOME="$HFIRST" ANAGRAM_RELEASE_URL="file://$RELDIR" sh "$ROOT/install.sh" 2>&1)"; rc=$?
@@ -224,6 +224,42 @@ if [ $rc -eq 0 ] && [ ! -f "$HFIRST/config" ]; then
   ok "installer rerun updates exact owned registration without a listener config"
 else bad "installer native rerun" "rc=$rc $out"; fi
 HOME="$FAKE_HOME" "$PY3" "$ROOT/installer/native_registration.py" unregister --home "$HFIRST" >/dev/null 2>&1
+# Linux gets PyTorch (the cuda extra) only beside an NVIDIA GPU: a driver in /proc, or a GPU
+# nvidia-smi lists. Fake commands stand in for the machine and a temporary root for /.
+FAKE_OS="$T/fake-os"; mkdir -p "$FAKE_OS/bin"
+printf '#!/bin/sh\necho "ldd (GNU libc) 2.39"\n' > "$FAKE_OS/bin/ldd"
+printf '#!/bin/sh\necho "glibc 2.39"\n' > "$FAKE_OS/bin/getconf"
+printf '#!/bin/sh\necho 15.0\n' > "$FAKE_OS/bin/sw_vers"
+os_install() { # name "os arch" gpu(none|proc|smi): an update of a home whose environment has PyTorch
+  h="$T/os-$1"; make_home "$h"; mkdir -p "$h/venv/lib/python3.12/site-packages/torch"
+  printf '#!/bin/sh\necho "uv %s"\nif [ "$1" = sync ]; then echo "$*" > "$(dirname "$0")/../sync-args"; mkdir -p "$UV_PROJECT_ENVIRONMENT/bin"; cp "$(dirname "$0")/../venv/bin/python" "$UV_PROJECT_ENVIRONMENT/bin/python"; fi\nexit 0\n' "$UVV" > "$h/bin/uv"; chmod +x "$h/bin/uv"
+  printf '#!/bin/sh\n[ "$1" = -s ] && echo %s || echo %s\n' $2 > "$FAKE_OS/bin/uname"
+  rm -rf "$FAKE_OS/root"; mkdir -p "$FAKE_OS/root/proc/driver"
+  [ "$3" != proc ] || { mkdir "$FAKE_OS/root/proc/driver/nvidia"; echo "NVRM version: NVIDIA UNIX Open Kernel Module  580.82.07" > "$FAKE_OS/root/proc/driver/nvidia/version"; }
+  if [ "$3" = smi ]; then printf '#!/bin/sh\n[ "$1" = -L ] && echo "GPU 0: NVIDIA L4 (UUID: GPU-0)"\n' > "$FAKE_OS/bin/nvidia-smi"
+  else printf '#!/bin/sh\necho "No devices were found"; exit 6\n' > "$FAKE_OS/bin/nvidia-smi"; fi
+  chmod +x "$FAKE_OS/bin/"*
+  out="$(HOME="$FAKE_HOME" PATH="$FAKE_OS/bin:$PATH" ANAGRAM_TEST_ROOT="$FAKE_OS/root" ANAGRAM_HOME="$h" ANAGRAM_RELEASE_URL="file://$RELDIR" sh "$ROOT/install.sh" 2>&1)"; rc=$?
+  HOME="$FAKE_HOME" "$PY3" "$ROOT/installer/native_registration.py" unregister --home "$h" >/dev/null 2>&1
+  args="$(cat "$h/sync-args" 2>/dev/null)"
+}
+os_install linux-cpu "Linux x86_64" none
+if [ $rc -eq 0 ] && [ "${args#*--extra}" = "$args" ] && echo "$out" | grep -q "Downloading and installing ONNX Runtime and" \
+   && [ "$(echo "$out" | grep -c 'No NVIDIA GPU: PyTorch and its CUDA libraries (about 5 GB) are removed')" -eq 1 ] && [ ! -e "$h/venv/lib/python3.12/site-packages/torch" ]; then
+  ok "Linux without an NVIDIA GPU syncs without PyTorch and says in one line that the update removes it"
+else bad "Linux CPU sync" "rc=$rc args=$args $out"; fi
+os_install linux-driver "Linux aarch64" proc
+if [ $rc -eq 0 ] && echo " $args " | grep -q ' --extra cuda ' && echo "$out" | grep -q "Downloading and installing PyTorch, ONNX Runtime" && ! echo "$out" | grep -q 'No NVIDIA GPU'; then
+  ok "Linux with the NVIDIA driver in /proc syncs the cuda extra"
+else bad "Linux NVIDIA driver sync" "rc=$rc args=$args $out"; fi
+os_install linux-smi "Linux x86_64" smi
+if [ $rc -eq 0 ] && echo " $args " | grep -q ' --extra cuda ' && ! echo "$out" | grep -q 'No NVIDIA GPU'; then
+  ok "Linux where nvidia-smi lists a GPU syncs the cuda extra"
+else bad "Linux nvidia-smi sync" "rc=$rc args=$args $out"; fi
+os_install mac-smi "Darwin arm64" smi
+if [ $rc -eq 0 ] && [ -n "$args" ] && [ "${args#*--extra}" = "$args" ] && ! echo "$out" | grep -q 'No NVIDIA GPU'; then
+  ok "macOS never syncs the cuda extra"
+else bad "macOS sync" "rc=$rc args=$args $out"; fi
 # A browser registration conflict must restore the previous app and private env.
 HROLL="$T/rollback-home"; make_home "$HROLL"
 printf '#!/bin/sh\necho "uv %s"\nif [ "$1" = sync ]; then mkdir -p "$UV_PROJECT_ENVIRONMENT/bin"; cp "$(dirname "$0")/../venv/bin/python" "$UV_PROJECT_ENVIRONMENT/bin/python"; fi\nexit 0\n' "$UVV" > "$HROLL/bin/uv"; chmod +x "$HROLL/bin/uv"

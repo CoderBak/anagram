@@ -8,7 +8,8 @@ for the exact extension ID and prepares the pinned
 fastText language model in the terminal (`prepare_models.py`, also `bin/anagram download`).
 When the browser reconnects, the component verifies the files, picks the best available
 FP32 configuration itself (Torch CUDA, MLX, Torch MPS, ONNX CUDA, ONNX CPU, then Torch
-CPU), loads it and becomes ready; Apple silicon installs MLX, the other platforms Torch. The
+CPU), loads it and becomes ready; Apple silicon installs MLX, Windows Torch, and Linux Torch
+only beside an NVIDIA GPU (the `cuda` extra). The
 choice is saved in `runtime.json` and reused; switching it or measuring candidates is optional. Inference is offline; Pangram's **CC BY-NC-SA 4.0** applies.
 
 ## Operations
