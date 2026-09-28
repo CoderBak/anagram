@@ -45,23 +45,50 @@ const logit = (x: number): number => {
 const clamp = (x: number, [lo, hi]: Range): number => Math.min(Math.max(x, lo), hi);
 
 /**
- * The chance that `result`'s word is right, from its four probabilities and the text
- * tokens the model read (the engine's `tokens` less the two special tokens of each pass).
+ * SHORT TEXTS. The model above was fitted on texts of 75 words or more — some 100 text tokens
+ * (70 to 80-word EditLens texts read 96 at the median) — and holds its length input inside the
+ * range it saw, so a 30-word text got the dot of a 75-word one: on the EditLens test split the
+ * dots of 25–49-word texts were 0.044 fuller on average than their word was right (0.021 at 50–74
+ * words). Under 100 tokens the dot therefore falls with the length, by this slope per unit of
+ * ln(tokens), fitted on EditLens val prefixes of 25 to 74 words and taken at the 95th percentile
+ * of 200 bootstrap fits, so that it errs towards doubt: on the test split the gap is 0.001 at
+ * 25–49 words and 0.009 at 50–74, and nothing of 100 tokens or more changes.
  */
-export function confidence(result: ScoreResult, passes = 1): number {
+const SHORT_TOKENS = 100;
+const SHORT_SLOPE = 0.37;
+
+/** The fitted model's log-odds that `result`'s word is right. */
+function fittedLogit(result: ScoreResult, tokensRead: number): number {
   const p = result.probs;
   const level = levelOf(result.score);
   const shown = level === 0 ? p[0]! : level === 3 ? p[3]! : p[1]! + p[2]!;
-  const tokensRead = Math.max(0, (result.tokens ?? 0) - 2 * passes);
   const range = RANGES[level]!;
-  const z =
+  return (
     INTERCEPT +
     LEVEL[level]! +
     SCORE[level]! * clamp(logit(result.score), range.score) +
     TOKENS * clamp(Math.log(Math.max(1, tokensRead)), range.tokens) +
     SHOWN * clamp(logit(shown), range.shown) +
-    SPREAD * clamp(spread(p), range.spread);
-  return 1 / (1 + Math.exp(-z));
+    SPREAD * clamp(spread(p), range.spread)
+  );
+}
+
+const tokensReadOf = (result: ScoreResult, passes: number): number => Math.max(0, (result.tokens ?? 0) - 2 * passes);
+
+/** The fitted model alone, without the short-text slope (what the fitting script computed). */
+export function fittedConfidence(result: ScoreResult, passes = 1): number {
+  return 1 / (1 + Math.exp(-fittedLogit(result, tokensReadOf(result, passes))));
+}
+
+/**
+ * The chance that `result`'s word is right, from its four probabilities and the text
+ * tokens the model read (the engine's `tokens` less the two special tokens of each pass),
+ * lower for a text under the model's training minimum (SHORT TEXTS).
+ */
+export function confidence(result: ScoreResult, passes = 1): number {
+  const tokensRead = tokensReadOf(result, passes);
+  const short = SHORT_SLOPE * Math.min(0, Math.log(Math.max(1, tokensRead)) - Math.log(SHORT_TOKENS));
+  return 1 / (1 + Math.exp(-(fittedLogit(result, tokensRead) + short)));
 }
 
 /** A unit's verdict: its aggregate, over the passes that were scored. */

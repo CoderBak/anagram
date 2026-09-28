@@ -37,7 +37,7 @@ import { band, bandLabel, isNoVerdict, languageName, type Band } from "./band";
 import { formatScore } from "./score";
 import { clearActiveUnit, setActiveUnit } from "./highlight";
 import { countWords, hasLetters, unitParagraphs } from "../dom/text";
-import { coverageNote, windowScores, windowReadout } from "./coverage";
+import { coverageNote, shortTextNote, windowScores, windowReadout } from "./coverage";
 import { distributionHtml, swatchHtml } from "./dist";
 import { verdictConfidence } from "./confidence";
 import { BADGE_CSS } from "./badge.css";
@@ -509,9 +509,11 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
         : b === "unsupported"
           ? t("cardFootUnsupported")
           : coverageNote(verdict, "paragraph", unit.text) + t("cardFootEstimate");
+    const short = isNoVerdict(b) ? "" : shortTextNote(unit.wordCount);
     card.innerHTML =
       `<div class="head"><span class="verdict band-${b}">${isNoVerdict(b) ? "" : swatchHtml(result, verdictConfidence(verdict))}${bandLabel(b)}</span>` +
       `<span class="big" title="${t("cardScaleTitle")}">${isNoVerdict(b) ? "—" : score}</span></div>` +
+      (short ? `<div class="short">${short}</div>` : "") +
       dist +
       langRow +
       partsRow +

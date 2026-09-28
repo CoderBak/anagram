@@ -81,11 +81,31 @@ export function unitParagraphs(unit: Unit): number {
 // ---- thresholds -------------------------------------------------------------------
 
 /**
- * Evidence floor per unit: a unit is only emitted at ≥ this. The open EditLens model was
- * trained and evaluated only on texts of at least 75 words, and scores shorter ones
- * unreliably: on 50-word openings a quarter of human texts read as AI-edited.
+ * The open EditLens model was trained and evaluated only on texts of at least 75 words, and
+ * scores shorter ones less reliably. A text under this still gets a verdict when the reader's
+ * minimum length allows it, and every place that shows one says it is short (coverageNote).
  */
-export const MIN_UNIT_WORDS = 75;
+export const MODEL_MIN_WORDS = 75;
+
+/** The minimum lengths Settings offers, in words: the evidence floor a unit is emitted at.
+ *  What the floor decides is which paragraphs are read at all, and how far short ones are
+ *  grouped before they are (lib/plan/group.ts). */
+export const MIN_WORDS_CHOICES = [25, 50, 75, 100, 150] as const;
+export type MinWords = (typeof MIN_WORDS_CHOICES)[number];
+
+/** The shipped floor: the minimum of Pangram's commercial product, under the open model's
+ *  training minimum. Short texts are shown with that said (MODEL_MIN_WORDS). */
+export const DEFAULT_MIN_WORDS: MinWords = 50;
+
+/** A stored or passed value as a floor: one of the choices, else the default. */
+export function minWordsOf(value: unknown): MinWords {
+  return (MIN_WORDS_CHOICES as readonly unknown[]).includes(value) ? (value as MinWords) : DEFAULT_MIN_WORDS;
+}
+
+/** A verdict on this few words is outside what the model was trained on. */
+export function isShortText(words: number): boolean {
+  return words < MODEL_MIN_WORDS;
+}
 
 /**
  * Prose by LENGTH: a short run that does not end like a sentence (a bullet item

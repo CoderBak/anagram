@@ -212,10 +212,14 @@ test("a script rewriting the pre-wrap post it owns shows exactly its new text, w
   const rewritten = "a script rewriting the pre-wrap post it owns shows exactly its new text, and the new text is what gets scored";
   await expect(settledChips(page, "#post").first(), rewritten).toBeAttached();
   expect(await page.evaluate(() => [...document.getElementById("post").childNodes].filter((n) => n.nodeType === Node.TEXT_NODE).length), `${rewritten} (the walker cut the node)`).toBeGreaterThan(1);
+  const opened = nativeHost.textMark();
   await page.evaluate(() => document.getElementById("more").click());
   await expect.poll(() => page.evaluate(() => document.getElementById("post").textContent), { message: rewritten }).toBe(FULL);
-  // The old chip stays up until the new verdict replaces it, so wait for the request itself.
-  await expect.poll(() => nativeHost.textsSince(mark).some((t) => t.includes("FWTAIL") && t.includes("FWHEAD")), { message: rewritten }).toBe(true);
+  // The old chip stays up until the new verdict replaces it, so wait for the request itself:
+  // the text only the rewrite holds is sent (with the head paragraph at the model's 75 words,
+  // in a unit of its own at the shipped 50, where the head clears the minimum by itself).
+  await expect.poll(() => nativeHost.textsSince(opened).some((t) => t.includes("FWTAIL")), { message: rewritten }).toBe(true);
+  expect(nativeHost.textsSince(mark).some((t) => t.includes("FWHEAD")), rewritten).toBe(true);
   await expect(settledChips(page, "#post").first(), rewritten).toBeAttached();
 
   await page.evaluate(() => window.__dropPost());

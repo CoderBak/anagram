@@ -1,7 +1,6 @@
 // lib/render/report.ts — rules the copied report follows that are worth stating once.
 // The report itself is assembled where the verdicts live (lib/capture/orchestrator.ts).
 import type { UnitVerdict } from "../capture/windows";
-import { MIN_UNIT_WORDS } from "../dom/text";
 import { t, tn } from "../i18n";
 import { verdictConfidence } from "./confidence";
 import { SCORE_CUTS } from "./scale";
@@ -42,12 +41,12 @@ export function isCloseCall(v: UnitVerdict): boolean {
  * list of verdicts reads as settled when half of them are close calls. Null when the counts
  * speak for themselves.
  */
-export function reportState(c: ReportCounts, closeCalls: number): string | null {
+export function reportState(c: ReportCounts, closeCalls: number, minWords: number): string | null {
   if (c.analyzed === 0) {
     if (c.pending > 0) return t("reportStatePending");
     if (c.unavailable > 0) return t("reportStateUnavailable");
     if (c.skipped > 0) return t("reportStateNotEnglish");
-    return t("reportStateShort", MIN_UNIT_WORDS);
+    return t("reportStateShort", minWords);
   }
   return closeCalls > 0 && closeCalls * 2 >= c.analyzed ? tn("reportStateUncertain", closeCalls, c.analyzed) : null;
 }

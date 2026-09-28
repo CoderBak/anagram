@@ -1,0 +1,126 @@
+<!doctype html>
+<!--
+  Yelp business page, "Recommended Reviews". SYNTHETIC: yelp.com refused a plain request
+  (403, 2026-09-28); the markup is modelled on its public review list: `ul > li` rows with
+  hashed `y-css-…` classes, the user passport (a picture and a name, both linking to
+  `/user_details?userid=…`), the stars as `div[role=img][aria-label="5 star rating"]`, the
+  date, the text in `p.comment__… > span.raw__…[lang]` with <br>s between paragraphs, and the
+  Helpful / Thanks / Love this / Oh no reaction buttons. Names and ids are placeholders, text
+  synthetic.
+
+  Read by structure: the person links (`?userid=`) and now the rating make each row one of
+  several alike, each its own voice.
+
+  Annotation: see x-timeline.html. Every review's text carries data-voice and data-expect for
+  the shipped 50-word minimum (test/unit.mjs walks it at 50, and at 25 and 75 for the invariants).
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: Yelp reviews</title>
+<style>
+  body { margin: 0; font: 16px/24px "Open Sans", Arial, sans-serif; color: #2d2e2f; }
+  section { max-width: 700px; margin: 16px auto; }
+  ul { list-style: none; padding: 0; }
+  li { border-bottom: 1px solid #ebebeb; padding: 20px 0; }
+  .user-passport-info { display: flex; gap: 12px; align-items: center; }
+  .y-css-scqtta { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
+  .y-css-dnttlc { width: 108px; height: 20px; background: #fb433c; }
+  button { font: inherit; border: 1px solid #c8c9ca; border-radius: 20px; background: none; margin-right: 6px; }
+</style></head>
+<body>
+<main>
+<section aria-label="Recommended Reviews">
+  <h2 class="y-css-hcgwj4">Recommended Reviews</h2>
+<ul class="list__09f24__ynIEd">
+  <li class="y-css-1sqelp2">
+    <div class="y-css-1iy1dwt">
+      <div class="y-css-mhg9c5" data-chrome><div class="user-passport-info y-css-1iy1dwt">
+        <div class="y-css-ezbzye"><a href="/user_details?userid=EXAMPLE1" role="link" aria-label="Photo of Reviewer 1"><img class="y-css-xwst0t" alt="Photo of Reviewer 1" height="40" width="40" src="https://s3-media0.fl.yelpcdn.com/photo/placeholder/60s.jpg"></a></div>
+        <span class="fs-block y-css-ln6dey"><a href="/user_details?userid=EXAMPLE1" role="link" class="y-css-12ly5yx">Reviewer 1.</a></span>
+        <div class="y-css-1wh3ctk"><span class="y-css-h9c2fl">San Francisco, CA</span></div>
+      </div></div>
+      <div class="y-css-scqtta" data-chrome>
+        <div class="y-css-dnttlc" aria-label="5 star rating" role="img"><div class="y-css-1xvd6wc"></div></div>
+        <div class="y-css-1d8mpv1"><span class="y-css-1d8mpv1">Mar 3, 2026</span></div>
+      </div>
+      <p class="comment__09f24__D0cxf y-css-1wfz87z" data-voice="reviewer-1" data-expect="unit" data-parts="1"><span lang="en" class="raw__09f24__T4Ezm">The staff at the front desk were friendly and answered every question we had. Our table was ready on time even though the room was completely full that night. The color is a little darker than the photos suggest but I still like it. I would have given five stars if the lid did not rattle when the motor runs. We walked across at sunset and the view of the city was worth the cold wind. The soup came out hot and the bread was clearly baked the same morning. My daughter uses it every evening.</span></p>
+      <div class="y-css-1r2guq2" data-chrome><span class="y-css-1b4e6vv"><button type="button" class="y-css-1i4mzxj"><span class="y-css-11ogfn5">Helpful 1</span></button><button type="button" class="y-css-1i4mzxj"><span class="y-css-11ogfn5">Thanks 0</span></button><button type="button" class="y-css-1i4mzxj"><span class="y-css-11ogfn5">Love this 0</span></button><button type="button" class="y-css-1i4mzxj"><span class="y-css-11ogfn5">Oh no 0</span></button></span></div>
+    </div>
+  </li>
+  <li class="y-css-1sqelp2">
+    <div class="y-css-1iy1dwt">
+      <div class="y-css-mhg9c5" data-chrome><div class="user-passport-info y-css-1iy1dwt">
+        <div class="y-css-ezbzye"><a href="/user_details?userid=EXAMPLE2" role="link" aria-label="Photo of Reviewer 2"><img class="y-css-xwst0t" alt="Photo of Reviewer 2" height="40" width="40" src="https://s3-media0.fl.yelpcdn.com/photo/placeholder/60s.jpg"></a></div>
+        <span class="fs-block y-css-ln6dey"><a href="/user_details?userid=EXAMPLE2" role="link" class="y-css-12ly5yx">Reviewer 2.</a></span>
+        <div class="y-css-1wh3ctk"><span class="y-css-h9c2fl">San Francisco, CA</span></div>
+      </div></div>
+      <div class="y-css-scqtta" data-chrome>
+        <div class="y-css-dnttlc" aria-label="4 star rating" role="img"><div class="y-css-1xvd6wc"></div></div>
+        <div class="y-css-1d8mpv1"><span class="y-css-1d8mpv1">Mar 1, 2026</span></div>
+      </div>
+      <p class="comment__09f24__D0cxf y-css-1wfz87z" data-voice="reviewer-2" data-expect="none"><span lang="en" class="raw__09f24__T4Ezm">I would have given five stars if the lid did not rattle when the motor runs. We walked.</span></p>
+      <div class="y-css-1r2guq2" data-chrome><span class="y-css-1b4e6vv"><button type="button" class="y-css-1i4mzxj"><span class="y-css-11ogfn5">Helpful 2</span></button><button type="button" class="y-css-1i4mzxj"><span class="y-css-11ogfn5">Thanks 0</span></button><button type="button" class="y-css-1i4mzxj"><span class="y-css-11ogfn5">Love this 1</span></button><button type="button" class="y-css-1i4mzxj"><span class="y-css-11ogfn5">Oh no 0</span></button></span></div>
+    </div>
+  </li>
+  <li class="y-css-1sqelp2">
+    <div class="y-css-1iy1dwt">
+      <div class="y-css-mhg9c5" data-chrome><div class="user-passport-info y-css-1iy1dwt">
+        <div class="y-css-ezbzye"><a href="/user_details?userid=EXAMPLE3" role="link" aria-label="Photo of Reviewer 3"><img class="y-css-xwst0t" alt="Photo of Reviewer 3" height="40" width="40" src="https://s3-media0.fl.yelpcdn.com/photo/placeholder/60s.jpg"></a></div>
+        <span class="fs-block y-css-ln6dey"><a href="/user_details?userid=EXAMPLE3" role="link" class="y-css-12ly5yx">Reviewer 3.</a></span>
+        <div class="y-css-1wh3ctk"><span class="y-css-h9c2fl">San Francisco, CA</span></div>
+      </div></div>
+      <div class="y-css-scqtta" data-chrome>
+        <div class="y-css-dnttlc" aria-label="3 star rating" role="img"><div class="y-css-1xvd6wc"></div></div>
+        <div class="y-css-1d8mpv1"><span class="y-css-1d8mpv1">Feb 26, 2026</span></div>
+      </div>
+      <p class="comment__09f24__D0cxf y-css-1wfz87z" data-voice="reviewer-3" data-expect="unit" data-parts="1"><span lang="en" class="raw__09f24__T4Ezm">My daughter uses it every evening and the lessons keep her attention for once. Customer service replaced the cracked part without asking for a receipt. Parking nearby is hard to find on weekends so plan to arrive before noon. The fabric feels sturdy and it survived the washing machine without shrinking. The app crashed twice during the first.</span></p>
+      <div class="y-css-1r2guq2" data-chrome><span class="y-css-1b4e6vv"><button type="button" class="y-css-1i4mzxj"><span class="y-css-11ogfn5">Helpful 3</span></button><button type="button" class="y-css-1i4mzxj"><span class="y-css-11ogfn5">Thanks 0</span></button><button type="button" class="y-css-1i4mzxj"><span class="y-css-11ogfn5">Love this 2</span></button><button type="button" class="y-css-1i4mzxj"><span class="y-css-11ogfn5">Oh no 0</span></button></span></div>
+    </div>
+  </li>
+  <li class="y-css-1sqelp2">
+    <div class="y-css-1iy1dwt">
+      <div class="y-css-mhg9c5" data-chrome><div class="user-passport-info y-css-1iy1dwt">
+        <div class="y-css-ezbzye"><a href="/user_details?userid=EXAMPLE4" role="link" aria-label="Photo of Reviewer 4"><img class="y-css-xwst0t" alt="Photo of Reviewer 4" height="40" width="40" src="https://s3-media0.fl.yelpcdn.com/photo/placeholder/60s.jpg"></a></div>
+        <span class="fs-block y-css-ln6dey"><a href="/user_details?userid=EXAMPLE4" role="link" class="y-css-12ly5yx">Reviewer 4.</a></span>
+        <div class="y-css-1wh3ctk"><span class="y-css-h9c2fl">San Francisco, CA</span></div>
+      </div></div>
+      <div class="y-css-scqtta" data-chrome>
+        <div class="y-css-dnttlc" aria-label="5 star rating" role="img"><div class="y-css-1xvd6wc"></div></div>
+        <div class="y-css-1d8mpv1"><span class="y-css-1d8mpv1">Feb 20, 2026</span></div>
+      </div>
+      <p class="comment__09f24__D0cxf y-css-1wfz87z" data-voice="reviewer-4" data-expect="none"><span lang="en" class="raw__09f24__T4Ezm">The fabric feels sturdy and it survived the washing machine without shrinking. The app crashed twice during the first week but an update seems to have fixed it. For the price it.</span></p>
+      <div class="y-css-1r2guq2" data-chrome><span class="y-css-1b4e6vv"><button type="button" class="y-css-1i4mzxj"><span class="y-css-11ogfn5">Helpful 4</span></button><button type="button" class="y-css-1i4mzxj"><span class="y-css-11ogfn5">Thanks 0</span></button><button type="button" class="y-css-1i4mzxj"><span class="y-css-11ogfn5">Love this 3</span></button><button type="button" class="y-css-1i4mzxj"><span class="y-css-11ogfn5">Oh no 0</span></button></span></div>
+    </div>
+  </li>
+  <li class="y-css-1sqelp2">
+    <div class="y-css-1iy1dwt">
+      <div class="y-css-mhg9c5" data-chrome><div class="user-passport-info y-css-1iy1dwt">
+        <div class="y-css-ezbzye"><a href="/user_details?userid=EXAMPLE5" role="link" aria-label="Photo of Reviewer 5"><img class="y-css-xwst0t" alt="Photo of Reviewer 5" height="40" width="40" src="https://s3-media0.fl.yelpcdn.com/photo/placeholder/60s.jpg"></a></div>
+        <span class="fs-block y-css-ln6dey"><a href="/user_details?userid=EXAMPLE5" role="link" class="y-css-12ly5yx">Reviewer 5.</a></span>
+        <div class="y-css-1wh3ctk"><span class="y-css-h9c2fl">San Francisco, CA</span></div>
+      </div></div>
+      <div class="y-css-scqtta" data-chrome>
+        <div class="y-css-dnttlc" aria-label="2 star rating" role="img"><div class="y-css-1xvd6wc"></div></div>
+        <div class="y-css-1d8mpv1"><span class="y-css-1d8mpv1">Feb 11, 2026</span></div>
+      </div>
+      <p class="comment__09f24__D0cxf y-css-1wfz87z" data-voice="reviewer-5" data-expect="unit" data-parts="3"><span lang="en" class="raw__09f24__T4Ezm">The guide knew the history of every building and kept the group moving. Delivery was slow but the seller kept us informed.<br><br>Delivery was slow but the seller kept us informed about every delay. The chapters in the middle drag.<br><br>The chapters in the middle drag a little before the ending pulls it together. Our room faced the courtyard so the nights were quiet and the.</span></p>
+      <div class="y-css-1r2guq2" data-chrome><span class="y-css-1b4e6vv"><button type="button" class="y-css-1i4mzxj"><span class="y-css-11ogfn5">Helpful 5</span></button><button type="button" class="y-css-1i4mzxj"><span class="y-css-11ogfn5">Thanks 0</span></button><button type="button" class="y-css-1i4mzxj"><span class="y-css-11ogfn5">Love this 4</span></button><button type="button" class="y-css-1i4mzxj"><span class="y-css-11ogfn5">Oh no 0</span></button></span></div>
+    </div>
+  </li>
+  <li class="y-css-1sqelp2">
+    <div class="y-css-1iy1dwt">
+      <div class="y-css-mhg9c5" data-chrome><div class="user-passport-info y-css-1iy1dwt">
+        <div class="y-css-ezbzye"><a href="/user_details?userid=EXAMPLE6" role="link" aria-label="Photo of Reviewer 6"><img class="y-css-xwst0t" alt="Photo of Reviewer 6" height="40" width="40" src="https://s3-media0.fl.yelpcdn.com/photo/placeholder/60s.jpg"></a></div>
+        <span class="fs-block y-css-ln6dey"><a href="/user_details?userid=EXAMPLE6" role="link" class="y-css-12ly5yx">Reviewer 6.</a></span>
+        <div class="y-css-1wh3ctk"><span class="y-css-h9c2fl">San Francisco, CA</span></div>
+      </div></div>
+      <div class="y-css-scqtta" data-chrome>
+        <div class="y-css-dnttlc" aria-label="1 star rating" role="img"><div class="y-css-1xvd6wc"></div></div>
+        <div class="y-css-1d8mpv1"><span class="y-css-1d8mpv1">Jan 30, 2026</span></div>
+      </div>
+      <p class="comment__09f24__D0cxf y-css-1wfz87z" data-voice="reviewer-6" data-expect="unit" data-parts="1"><span lang="en" class="raw__09f24__T4Ezm">Our room faced the courtyard so the nights were quiet and the mornings bright. The handle got warm after an hour of use which I did not expect. Two of the six glasses arrived chipped and the replacements took a month. The trail was muddy after the rain but the markers were easy to follow. The package arrived two days early and everything inside was well protected. Setup took about ten minutes and the instructions were clear enough for me. After three weeks of daily use the battery still lasts through a full afternoon. The staff at the front desk were friendly and answered every question we had. Our table was ready on time even though the room was completely full that night. The color is a little darker than the photos suggest but I still like it. I would.</span></p>
+      <div class="y-css-1r2guq2" data-chrome><span class="y-css-1b4e6vv"><button type="button" class="y-css-1i4mzxj"><span class="y-css-11ogfn5">Helpful 6</span></button><button type="button" class="y-css-1i4mzxj"><span class="y-css-11ogfn5">Thanks 0</span></button><button type="button" class="y-css-1i4mzxj"><span class="y-css-11ogfn5">Love this 5</span></button><button type="button" class="y-css-1i4mzxj"><span class="y-css-11ogfn5">Oh no 0</span></button></span></div>
+    </div>
+  </li>
+</ul>
+</section>
+</main>
+</body></html>

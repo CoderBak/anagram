@@ -1,0 +1,222 @@
+<!doctype html>
+<!--
+  Amazon product page, "Top reviews from the United States". SYNTHETIC: a plain request for a
+  product page (2026-09-28) answers with the page and its ratings summary but without the
+  review list, which is filled in later; the markup is modelled on the public product and
+  review pages: `ul#cm-cr-dp-review-list > li[data-hook=review]`, a profile link to
+  `/gp/profile/amzn1.account.…` around an avatar from amazon-avatars-global, the stars as a
+  link `title="5.0 out of 5 stars"`, the review's title link, "Reviewed in the United States
+  on …", the format strip with "Verified Purchase", the text in `span[data-hook=review-body]`
+  inside an `a-expander` box capped at 300 px with "Read more", and "N people found this
+  helpful" over the Helpful and Report controls. Names and ids are placeholders, text synthetic.
+
+  Read by structure, as before this fixture: each card is one of several alike, each with a
+  profile link and an avatar of its own (lib/dom/scope.ts), so each review is its own voice
+  and a short one is read by nobody rather than with its neighbour. Under the 75-word floor
+  only the 96- and 140-word reviews were read; at 50 the 58-word one and the three short
+  paragraphs of one review (66 words, one unit ×3) are read too.
+
+  Annotation: see x-timeline.html. Every review's text carries data-voice and data-expect for
+  the shipped 50-word minimum (test/unit.mjs walks it at 50, and at 25 and 75 for the invariants).
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: Amazon product reviews</title>
+<style>
+  body { margin: 0; font: 14px/20px Arial, sans-serif; color: #0f1111; }
+  #cm-cr-dp-review-list { max-width: 720px; margin: 16px auto; padding: 0; list-style: none; }
+  li.review { margin-bottom: 24px; }
+  .a-profile { display: flex; align-items: center; gap: 8px; color: inherit; text-decoration: none; }
+  .a-profile-avatar img { width: 34px; height: 34px; border-radius: 50%; }
+  .a-row { display: block; }
+  .a-color-secondary, .review-date { color: #565959; }
+  .a-expander-collapsed-height { overflow: hidden; }
+  .a-button-text { display: inline-block; border: 1px solid #d5d9d9; border-radius: 8px; padding: 2px 10px; }
+</style></head>
+<body>
+<div id="reviewsMedley" class="a-section">
+  <h3 data-hook="dp-local-reviews-header">Top reviews from the United States</h3>
+  <div id="cm-cr-dp-review-list" class="a-section review-views celwidget">
+<ul id="cm-cr-dp-review-list" class="a-unordered-list a-nostyle a-vertical">
+  <li data-hook="review" class="review aok-relative">
+    <div id="customer_review-R1EXAMPLE" class="a-section celwidget">
+      <div data-hook="genome-widget" class="a-row a-spacing-mini" data-chrome>
+        <a href="/gp/profile/amzn1.account.EXAMPLE1/ref=cm_cr_dp_d_gw_tr?ie=UTF8" class="a-profile" data-a-size="small">
+          <div aria-hidden="true" class="a-profile-avatar-wrapper"><div class="a-profile-avatar"><img src="https://images-na.ssl-images-amazon.com/images/S/amazon-avatars-global/default.png" class="" alt=""></div></div>
+          <div class="a-profile-content"><span class="a-profile-name">Reviewer 1</span></div>
+        </a>
+      </div>
+      <div class="a-row" data-chrome>
+        <a class="a-link-normal" title="5.0 out of 5 stars" href="/gp/customer-reviews/R1EXAMPLE/ref=cm_cr_dp_d_rvw_ttl?ie=UTF8"><i data-hook="review-star-rating" class="a-icon a-icon-star a-star-5 review-rating"><span class="a-icon-alt">5.0 out of 5 stars</span></i></a>
+        <span class="a-letter-space"></span>
+        <a data-hook="review-title" class="a-size-base a-link-normal review-title a-color-base review-title-content a-text-bold" href="/gp/customer-reviews/R1EXAMPLE/ref=cm_cr_dp_d_rvw_ttl?ie=UTF8"><span>Worth every penny</span></a>
+      </div>
+      <span data-hook="review-date" class="a-size-base a-color-secondary review-date" data-chrome>Reviewed in the United States on March 3, 2026</span>
+      <div class="a-row a-spacing-mini review-data review-format-strip" data-chrome><span data-hook="format-strip-linkless" class="a-color-secondary">Color: Midnight</span><i class="a-icon a-icon-text-separator" role="img" aria-label="|"></i><span data-hook="avp-badge-linkless" class="a-size-mini a-color-state a-text-bold">Verified Purchase</span></div>
+      <div class="a-row a-spacing-small review-data">
+        <span data-hook="review-body" class="a-size-base review-text">
+          <div data-a-expander-name="review_text_read_more" data-a-expander-collapsed-height="300" class="a-expander-collapsed-height a-row a-expander-container a-expander-partial-collapse-container" style="max-height:300px">
+            <div data-hook="review-collapsed" aria-expanded="false" class="a-expander-content reviewText review-text-content a-expander-partial-collapse-content" data-voice="reviewer-1" data-expect="unit" data-parts="1"><span>The staff at the front desk were friendly and answered every question we had. Our table was ready on time even though the room was completely full that night. The color is a little darker than the photos suggest but I still like it. I would have given five stars if the lid did not rattle when the motor runs. We walked across at sunset and the view of the city was worth the cold wind. The soup came out hot and the bread was clearly baked the same morning. My daughter uses it every evening.</span></div>
+            <div class="a-expander-header a-expander-partial-collapse-header" data-chrome><div class="a-expander-content-fade"></div><a href="javascript:void(0)" aria-expanded="false" role="button" data-action="a-expander-toggle" class="a-declarative"><span class="a-expander-prompt">Read more</span></a></div>
+          </div>
+        </span>
+      </div>
+      <div class="a-row review-comments cr-vote-action-bar" data-chrome>
+        <span class="cr-vote"><div class="a-row a-spacing-small"><span data-hook="helpful-vote-statement" class="a-size-base a-color-tertiary cr-vote-text">3 people found this helpful</span></div>
+        <span class="a-button a-button-base"><span class="a-button-inner"><a href="/hz/reviews-render/vote?reviewId=R1EXAMPLE" class="a-button-text" role="button">Helpful</a></span></span>
+        <span class="a-letter-space"></span><a class="a-link-normal a-color-secondary" href="/hz/reviews-render/report?reviewId=R1EXAMPLE">Report</a></span>
+      </div>
+    </div>
+  </li>
+  <li data-hook="review" class="review aok-relative">
+    <div id="customer_review-R2EXAMPLE" class="a-section celwidget">
+      <div data-hook="genome-widget" class="a-row a-spacing-mini" data-chrome>
+        <a href="/gp/profile/amzn1.account.EXAMPLE2/ref=cm_cr_dp_d_gw_tr?ie=UTF8" class="a-profile" data-a-size="small">
+          <div aria-hidden="true" class="a-profile-avatar-wrapper"><div class="a-profile-avatar"><img src="https://images-na.ssl-images-amazon.com/images/S/amazon-avatars-global/default.png" class="" alt=""></div></div>
+          <div class="a-profile-content"><span class="a-profile-name">Reviewer 2</span></div>
+        </a>
+      </div>
+      <div class="a-row" data-chrome>
+        <a class="a-link-normal" title="4.0 out of 5 stars" href="/gp/customer-reviews/R2EXAMPLE/ref=cm_cr_dp_d_rvw_ttl?ie=UTF8"><i data-hook="review-star-rating" class="a-icon a-icon-star a-star-4 review-rating"><span class="a-icon-alt">4.0 out of 5 stars</span></i></a>
+        <span class="a-letter-space"></span>
+        <a data-hook="review-title" class="a-size-base a-link-normal review-title a-color-base review-title-content a-text-bold" href="/gp/customer-reviews/R2EXAMPLE/ref=cm_cr_dp_d_rvw_ttl?ie=UTF8"><span>Fine for now</span></a>
+      </div>
+      <span data-hook="review-date" class="a-size-base a-color-secondary review-date" data-chrome>Reviewed in the United States on March 1, 2026</span>
+      <div class="a-row a-spacing-mini review-data review-format-strip" data-chrome><span data-hook="format-strip-linkless" class="a-color-secondary">Color: Midnight</span><i class="a-icon a-icon-text-separator" role="img" aria-label="|"></i><span data-hook="avp-badge-linkless" class="a-size-mini a-color-state a-text-bold">Verified Purchase</span></div>
+      <div class="a-row a-spacing-small review-data">
+        <span data-hook="review-body" class="a-size-base review-text">
+          <div data-a-expander-name="review_text_read_more" data-a-expander-collapsed-height="300" class="a-expander-collapsed-height a-row a-expander-container a-expander-partial-collapse-container" style="max-height:300px">
+            <div data-hook="review-collapsed" aria-expanded="false" class="a-expander-content reviewText review-text-content a-expander-partial-collapse-content" data-voice="reviewer-2" data-expect="none"><span>I would have given five stars if the lid did not rattle when the motor runs. We walked.</span></div>
+            <div class="a-expander-header a-expander-partial-collapse-header" data-chrome><div class="a-expander-content-fade"></div><a href="javascript:void(0)" aria-expanded="false" role="button" data-action="a-expander-toggle" class="a-declarative"><span class="a-expander-prompt">Read more</span></a></div>
+          </div>
+        </span>
+      </div>
+      <div class="a-row review-comments cr-vote-action-bar" data-chrome>
+        <span class="cr-vote"><div class="a-row a-spacing-small"><span data-hook="helpful-vote-statement" class="a-size-base a-color-tertiary cr-vote-text">6 people found this helpful</span></div>
+        <span class="a-button a-button-base"><span class="a-button-inner"><a href="/hz/reviews-render/vote?reviewId=R2EXAMPLE" class="a-button-text" role="button">Helpful</a></span></span>
+        <span class="a-letter-space"></span><a class="a-link-normal a-color-secondary" href="/hz/reviews-render/report?reviewId=R2EXAMPLE">Report</a></span>
+      </div>
+    </div>
+  </li>
+  <li data-hook="review" class="review aok-relative">
+    <div id="customer_review-R3EXAMPLE" class="a-section celwidget">
+      <div data-hook="genome-widget" class="a-row a-spacing-mini" data-chrome>
+        <a href="/gp/profile/amzn1.account.EXAMPLE3/ref=cm_cr_dp_d_gw_tr?ie=UTF8" class="a-profile" data-a-size="small">
+          <div aria-hidden="true" class="a-profile-avatar-wrapper"><div class="a-profile-avatar"><img src="https://images-na.ssl-images-amazon.com/images/S/amazon-avatars-global/default.png" class="" alt=""></div></div>
+          <div class="a-profile-content"><span class="a-profile-name">Reviewer 3</span></div>
+        </a>
+      </div>
+      <div class="a-row" data-chrome>
+        <a class="a-link-normal" title="3.0 out of 5 stars" href="/gp/customer-reviews/R3EXAMPLE/ref=cm_cr_dp_d_rvw_ttl?ie=UTF8"><i data-hook="review-star-rating" class="a-icon a-icon-star a-star-3 review-rating"><span class="a-icon-alt">3.0 out of 5 stars</span></i></a>
+        <span class="a-letter-space"></span>
+        <a data-hook="review-title" class="a-size-base a-link-normal review-title a-color-base review-title-content a-text-bold" href="/gp/customer-reviews/R3EXAMPLE/ref=cm_cr_dp_d_rvw_ttl?ie=UTF8"><span>Does the job</span></a>
+      </div>
+      <span data-hook="review-date" class="a-size-base a-color-secondary review-date" data-chrome>Reviewed in the United States on February 26, 2026</span>
+      <div class="a-row a-spacing-mini review-data review-format-strip" data-chrome><span data-hook="format-strip-linkless" class="a-color-secondary">Color: Midnight</span><i class="a-icon a-icon-text-separator" role="img" aria-label="|"></i><span data-hook="avp-badge-linkless" class="a-size-mini a-color-state a-text-bold">Verified Purchase</span></div>
+      <div class="a-row a-spacing-small review-data">
+        <span data-hook="review-body" class="a-size-base review-text">
+          <div data-a-expander-name="review_text_read_more" data-a-expander-collapsed-height="300" class="a-expander-collapsed-height a-row a-expander-container a-expander-partial-collapse-container" style="max-height:300px">
+            <div data-hook="review-collapsed" aria-expanded="false" class="a-expander-content reviewText review-text-content a-expander-partial-collapse-content" data-voice="reviewer-3" data-expect="unit" data-parts="1"><span>My daughter uses it every evening and the lessons keep her attention for once. Customer service replaced the cracked part without asking for a receipt. Parking nearby is hard to find on weekends so plan to arrive before noon. The fabric feels sturdy and it survived the washing machine without shrinking. The app crashed twice during the first.</span></div>
+            <div class="a-expander-header a-expander-partial-collapse-header" data-chrome><div class="a-expander-content-fade"></div><a href="javascript:void(0)" aria-expanded="false" role="button" data-action="a-expander-toggle" class="a-declarative"><span class="a-expander-prompt">Read more</span></a></div>
+          </div>
+        </span>
+      </div>
+      <div class="a-row review-comments cr-vote-action-bar" data-chrome>
+        <span class="cr-vote"><div class="a-row a-spacing-small"><span data-hook="helpful-vote-statement" class="a-size-base a-color-tertiary cr-vote-text">9 people found this helpful</span></div>
+        <span class="a-button a-button-base"><span class="a-button-inner"><a href="/hz/reviews-render/vote?reviewId=R3EXAMPLE" class="a-button-text" role="button">Helpful</a></span></span>
+        <span class="a-letter-space"></span><a class="a-link-normal a-color-secondary" href="/hz/reviews-render/report?reviewId=R3EXAMPLE">Report</a></span>
+      </div>
+    </div>
+  </li>
+  <li data-hook="review" class="review aok-relative">
+    <div id="customer_review-R4EXAMPLE" class="a-section celwidget">
+      <div data-hook="genome-widget" class="a-row a-spacing-mini" data-chrome>
+        <a href="/gp/profile/amzn1.account.EXAMPLE4/ref=cm_cr_dp_d_gw_tr?ie=UTF8" class="a-profile" data-a-size="small">
+          <div aria-hidden="true" class="a-profile-avatar-wrapper"><div class="a-profile-avatar"><img src="https://images-na.ssl-images-amazon.com/images/S/amazon-avatars-global/default.png" class="" alt=""></div></div>
+          <div class="a-profile-content"><span class="a-profile-name">Reviewer 4</span></div>
+        </a>
+      </div>
+      <div class="a-row" data-chrome>
+        <a class="a-link-normal" title="5.0 out of 5 stars" href="/gp/customer-reviews/R4EXAMPLE/ref=cm_cr_dp_d_rvw_ttl?ie=UTF8"><i data-hook="review-star-rating" class="a-icon a-icon-star a-star-5 review-rating"><span class="a-icon-alt">5.0 out of 5 stars</span></i></a>
+        <span class="a-letter-space"></span>
+        <a data-hook="review-title" class="a-size-base a-link-normal review-title a-color-base review-title-content a-text-bold" href="/gp/customer-reviews/R4EXAMPLE/ref=cm_cr_dp_d_rvw_ttl?ie=UTF8"><span>Nice color</span></a>
+      </div>
+      <span data-hook="review-date" class="a-size-base a-color-secondary review-date" data-chrome>Reviewed in the United States on February 20, 2026</span>
+      <div class="a-row a-spacing-mini review-data review-format-strip" data-chrome><span data-hook="format-strip-linkless" class="a-color-secondary">Color: Midnight</span><i class="a-icon a-icon-text-separator" role="img" aria-label="|"></i><span data-hook="avp-badge-linkless" class="a-size-mini a-color-state a-text-bold">Verified Purchase</span></div>
+      <div class="a-row a-spacing-small review-data">
+        <span data-hook="review-body" class="a-size-base review-text">
+          <div data-a-expander-name="review_text_read_more" data-a-expander-collapsed-height="300" class="a-expander-collapsed-height a-row a-expander-container a-expander-partial-collapse-container" style="max-height:300px">
+            <div data-hook="review-collapsed" aria-expanded="false" class="a-expander-content reviewText review-text-content a-expander-partial-collapse-content" data-voice="reviewer-4" data-expect="none"><span>The fabric feels sturdy and it survived the washing machine without shrinking. The app crashed twice during the first week but an update seems to have fixed it. For the price it.</span></div>
+            <div class="a-expander-header a-expander-partial-collapse-header" data-chrome><div class="a-expander-content-fade"></div><a href="javascript:void(0)" aria-expanded="false" role="button" data-action="a-expander-toggle" class="a-declarative"><span class="a-expander-prompt">Read more</span></a></div>
+          </div>
+        </span>
+      </div>
+      <div class="a-row review-comments cr-vote-action-bar" data-chrome>
+        <span class="cr-vote"><div class="a-row a-spacing-small"><span data-hook="helpful-vote-statement" class="a-size-base a-color-tertiary cr-vote-text">12 people found this helpful</span></div>
+        <span class="a-button a-button-base"><span class="a-button-inner"><a href="/hz/reviews-render/vote?reviewId=R4EXAMPLE" class="a-button-text" role="button">Helpful</a></span></span>
+        <span class="a-letter-space"></span><a class="a-link-normal a-color-secondary" href="/hz/reviews-render/report?reviewId=R4EXAMPLE">Report</a></span>
+      </div>
+    </div>
+  </li>
+  <li data-hook="review" class="review aok-relative">
+    <div id="customer_review-R5EXAMPLE" class="a-section celwidget">
+      <div data-hook="genome-widget" class="a-row a-spacing-mini" data-chrome>
+        <a href="/gp/profile/amzn1.account.EXAMPLE5/ref=cm_cr_dp_d_gw_tr?ie=UTF8" class="a-profile" data-a-size="small">
+          <div aria-hidden="true" class="a-profile-avatar-wrapper"><div class="a-profile-avatar"><img src="https://images-na.ssl-images-amazon.com/images/S/amazon-avatars-global/default.png" class="" alt=""></div></div>
+          <div class="a-profile-content"><span class="a-profile-name">Reviewer 5</span></div>
+        </a>
+      </div>
+      <div class="a-row" data-chrome>
+        <a class="a-link-normal" title="2.0 out of 5 stars" href="/gp/customer-reviews/R5EXAMPLE/ref=cm_cr_dp_d_rvw_ttl?ie=UTF8"><i data-hook="review-star-rating" class="a-icon a-icon-star a-star-2 review-rating"><span class="a-icon-alt">2.0 out of 5 stars</span></i></a>
+        <span class="a-letter-space"></span>
+        <a data-hook="review-title" class="a-size-base a-link-normal review-title a-color-base review-title-content a-text-bold" href="/gp/customer-reviews/R5EXAMPLE/ref=cm_cr_dp_d_rvw_ttl?ie=UTF8"><span>Mixed feelings</span></a>
+      </div>
+      <span data-hook="review-date" class="a-size-base a-color-secondary review-date" data-chrome>Reviewed in the United States on February 11, 2026</span>
+      <div class="a-row a-spacing-mini review-data review-format-strip" data-chrome><span data-hook="format-strip-linkless" class="a-color-secondary">Color: Midnight</span><i class="a-icon a-icon-text-separator" role="img" aria-label="|"></i><span data-hook="avp-badge-linkless" class="a-size-mini a-color-state a-text-bold">Verified Purchase</span></div>
+      <div class="a-row a-spacing-small review-data">
+        <span data-hook="review-body" class="a-size-base review-text">
+          <div data-a-expander-name="review_text_read_more" data-a-expander-collapsed-height="300" class="a-expander-collapsed-height a-row a-expander-container a-expander-partial-collapse-container" style="max-height:300px">
+            <div data-hook="review-collapsed" aria-expanded="false" class="a-expander-content reviewText review-text-content a-expander-partial-collapse-content" data-voice="reviewer-5" data-expect="unit" data-parts="3"><span>The guide knew the history of every building and kept the group moving. Delivery was slow but the seller kept us informed.<br><br>Delivery was slow but the seller kept us informed about every delay. The chapters in the middle drag.<br><br>The chapters in the middle drag a little before the ending pulls it together. Our room faced the courtyard so the nights were quiet and the.</span></div>
+            <div class="a-expander-header a-expander-partial-collapse-header" data-chrome><div class="a-expander-content-fade"></div><a href="javascript:void(0)" aria-expanded="false" role="button" data-action="a-expander-toggle" class="a-declarative"><span class="a-expander-prompt">Read more</span></a></div>
+          </div>
+        </span>
+      </div>
+      <div class="a-row review-comments cr-vote-action-bar" data-chrome>
+        <span class="cr-vote"><div class="a-row a-spacing-small"><span data-hook="helpful-vote-statement" class="a-size-base a-color-tertiary cr-vote-text">15 people found this helpful</span></div>
+        <span class="a-button a-button-base"><span class="a-button-inner"><a href="/hz/reviews-render/vote?reviewId=R5EXAMPLE" class="a-button-text" role="button">Helpful</a></span></span>
+        <span class="a-letter-space"></span><a class="a-link-normal a-color-secondary" href="/hz/reviews-render/report?reviewId=R5EXAMPLE">Report</a></span>
+      </div>
+    </div>
+  </li>
+  <li data-hook="review" class="review aok-relative">
+    <div id="customer_review-R6EXAMPLE" class="a-section celwidget">
+      <div data-hook="genome-widget" class="a-row a-spacing-mini" data-chrome>
+        <a href="/gp/profile/amzn1.account.EXAMPLE6/ref=cm_cr_dp_d_gw_tr?ie=UTF8" class="a-profile" data-a-size="small">
+          <div aria-hidden="true" class="a-profile-avatar-wrapper"><div class="a-profile-avatar"><img src="https://images-na.ssl-images-amazon.com/images/S/amazon-avatars-global/default.png" class="" alt=""></div></div>
+          <div class="a-profile-content"><span class="a-profile-name">Reviewer 6</span></div>
+        </a>
+      </div>
+      <div class="a-row" data-chrome>
+        <a class="a-link-normal" title="1.0 out of 5 stars" href="/gp/customer-reviews/R6EXAMPLE/ref=cm_cr_dp_d_rvw_ttl?ie=UTF8"><i data-hook="review-star-rating" class="a-icon a-icon-star a-star-1 review-rating"><span class="a-icon-alt">1.0 out of 5 stars</span></i></a>
+        <span class="a-letter-space"></span>
+        <a data-hook="review-title" class="a-size-base a-link-normal review-title a-color-base review-title-content a-text-bold" href="/gp/customer-reviews/R6EXAMPLE/ref=cm_cr_dp_d_rvw_ttl?ie=UTF8"><span>Broke after a month</span></a>
+      </div>
+      <span data-hook="review-date" class="a-size-base a-color-secondary review-date" data-chrome>Reviewed in the United States on January 30, 2026</span>
+      <div class="a-row a-spacing-mini review-data review-format-strip" data-chrome><span data-hook="format-strip-linkless" class="a-color-secondary">Color: Midnight</span><i class="a-icon a-icon-text-separator" role="img" aria-label="|"></i><span data-hook="avp-badge-linkless" class="a-size-mini a-color-state a-text-bold">Verified Purchase</span></div>
+      <div class="a-row a-spacing-small review-data">
+        <span data-hook="review-body" class="a-size-base review-text">
+          <div data-a-expander-name="review_text_read_more" data-a-expander-collapsed-height="300" class="a-expander-collapsed-height a-row a-expander-container a-expander-partial-collapse-container" style="max-height:300px">
+            <div data-hook="review-collapsed" aria-expanded="false" class="a-expander-content reviewText review-text-content a-expander-partial-collapse-content" data-voice="reviewer-6" data-expect="unit" data-parts="1"><span>Our room faced the courtyard so the nights were quiet and the mornings bright. The handle got warm after an hour of use which I did not expect. Two of the six glasses arrived chipped and the replacements took a month. The trail was muddy after the rain but the markers were easy to follow. The package arrived two days early and everything inside was well protected. Setup took about ten minutes and the instructions were clear enough for me. After three weeks of daily use the battery still lasts through a full afternoon. The staff at the front desk were friendly and answered every question we had. Our table was ready on time even though the room was completely full that night. The color is a little darker than the photos suggest but I still like it. I would.</span></div>
+            <div class="a-expander-header a-expander-partial-collapse-header" data-chrome><div class="a-expander-content-fade"></div><a href="javascript:void(0)" aria-expanded="false" role="button" data-action="a-expander-toggle" class="a-declarative"><span class="a-expander-prompt">Read more</span></a></div>
+          </div>
+        </span>
+      </div>
+      <div class="a-row review-comments cr-vote-action-bar" data-chrome>
+        <span class="cr-vote"><div class="a-row a-spacing-small"><span data-hook="helpful-vote-statement" class="a-size-base a-color-tertiary cr-vote-text">18 people found this helpful</span></div>
+        <span class="a-button a-button-base"><span class="a-button-inner"><a href="/hz/reviews-render/vote?reviewId=R6EXAMPLE" class="a-button-text" role="button">Helpful</a></span></span>
+        <span class="a-letter-space"></span><a class="a-link-normal a-color-secondary" href="/hz/reviews-render/report?reviewId=R6EXAMPLE">Report</a></span>
+      </div>
+    </div>
+  </li>
+</ul>
+  </div>
+</div>
+</body></html>

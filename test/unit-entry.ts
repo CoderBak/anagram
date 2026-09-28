@@ -2,7 +2,19 @@
 // esbuild bundles this to an IIFE exposing `PW` on the page; test/unit.mjs
 // injects it into a real Chromium page (the walker needs real computed styles,
 // which jsdom cannot provide) and runs table-driven cases against it.
-export { collectUnits, inPageOrder } from "../lib/dom/walker";
+import { collectUnits as walk, type CollectOptions } from "../lib/dom/walker";
+import { MODEL_MIN_WORDS } from "../lib/dom/text";
+
+/**
+ * The walker at the open model's training minimum, 75 words: the floor every case and every
+ * structural fixture here was written for, when it was the only one. A case about the
+ * minimum length Settings offers passes `minWords` itself (and the fixtures are also walked
+ * at every other floor, for the invariants that hold at any: no two voices, no chrome).
+ */
+export function collectUnits(root?: ParentNode, opts: CollectOptions = {}) {
+  return walk(root, { minWords: MODEL_MIN_WORDS, ...opts });
+}
+export { inPageOrder } from "../lib/dom/walker";
 export { noteShadowHost } from "../lib/dom/shadow";
 export { createScopes } from "../lib/dom/scope";
 export {
@@ -19,7 +31,10 @@ export {
   endsLikeProse,
   endsInColon,
   wordShape,
-  MIN_UNIT_WORDS,
+  MODEL_MIN_WORDS,
+  DEFAULT_MIN_WORDS,
+  MIN_WORDS_CHOICES,
+  isShortText,
   MIN_MERGE_WORDS,
   MIN_SENTENCE_WORDS,
   MIN_LINE_WORDS,
@@ -57,7 +72,7 @@ export {
 // engine's count (the engine's real counts are checked in test/node/windows.test.ts).
 export { planText as planWindows, spanTokens } from "./node/fakeCounts";
 export { fakeTokens } from "./fakeTokens.mjs";
-export { windowReadout, coverageNote } from "../lib/render/coverage";
+export { windowReadout, coverageNote, shortTextNote } from "../lib/render/coverage";
 // The page diagnostics ship as an on-demand chunk that touches no extension API at all
 // (lib/diagnostics/chunk.ts), which is exactly what lets the privacy check run them here,
 // in an ordinary page, and read every character they produce.

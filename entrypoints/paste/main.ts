@@ -4,7 +4,9 @@ import { localizePage } from "../../lib/ui/localize";
 import { followSystemTheme } from "../../lib/ui/theme";
 import { t } from "../../lib/i18n";
 import { CONTRACT_VERSION, type ModelInfo, type ScoreResult } from "../../lib/contract";
-import { countWords, MIN_UNIT_WORDS } from "../../lib/dom/text";
+import { countWords } from "../../lib/dom/text";
+import { readMinWords } from "../../lib/settings/settings";
+import { shortTextNote } from "../../lib/render/coverage";
 import { hasLookalikes } from "../../lib/dom/lookalikes";
 import { readInWindows, unitVerdict, type WindowVerdict } from "../../lib/capture/windows";
 import { requestScores, requestTokenCounts } from "../../lib/messaging/client";
@@ -51,7 +53,10 @@ analyze.addEventListener("click", async () => {
   const text = input.value.trim();
   const seq = ++generation; clearResult();
   if (text.length > 200_000) { status.textContent = t("pasteTooLarge"); return; }
-  if (countWords(text) < MIN_UNIT_WORDS) { status.textContent = t("pasteShort", MIN_UNIT_WORDS); return; }
+  const words = countWords(text);
+  const floor = await readMinWords();
+  if (seq !== generation) return;
+  if (words < floor) { status.textContent = t("pasteShort", floor); return; }
   analyze.disabled = true; status.textContent = t("pasteBusy");
   let producing: ModelInfo | null = null;
   let uncounted = false;
@@ -81,6 +86,7 @@ analyze.addEventListener("click", async () => {
     const coverage = t("pasteCoverage", scored.length, read.length,
       read.filter((w) => w.result.unsupported).length, read.filter((w) => w.result.degraded).length,
       read.filter((w) => w.result.truncated).length) +
+      (shortTextNote(words) ? ` · ${shortTextNote(words)}` : "") +
       (hasLookalikes(text) ? ` · ${t("coverageLookalikes").trim()}` : "");
     document.getElementById("coverage")!.textContent = coverage;
     document.getElementById("summary")!.textContent = readout(unitVerdict("paste", text.length, read).result);

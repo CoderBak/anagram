@@ -3,11 +3,11 @@
 // bench.mjs bundles this for Node. An extractor such as Trafilatura or MinerU-HTML returns
 // the main content as Markdown; to compare it with our reading of the live page, its
 // paragraphs go through the same grouping rules the walker and the PDF reader use
-// (lib/plan/group.ts): the 75-word floor, short neighbours read together up to one model
+// (lib/plan/group.ts): the minimum length, short neighbours read together up to one model
 // window, a heading or a table row a barrier nothing is read across. Words are counted
 // with the walker's own countWords.
 import { groupBlocks, type PlanBlock } from "../../lib/plan/group";
-import { countWords } from "../../lib/dom/text";
+import { countWords, DEFAULT_MIN_WORDS } from "../../lib/dom/text";
 
 interface Block extends PlanBlock {
   text: string;
@@ -55,7 +55,7 @@ function blocksOf(markdown: string): Block[] {
 }
 
 /** The units a Markdown text becomes: their texts, "\n\n" between paragraphs. */
-export function unitsOfMarkdown(markdown: string): string[] {
+export function unitsOfMarkdown(markdown: string, minWords: number = DEFAULT_MIN_WORDS): string[] {
   const blocks = blocksOf(markdown);
-  return groupBlocks(blocks).map((group) => group.map((i) => blocks[i]!.text).join("\n\n"));
+  return groupBlocks(blocks, minWords).map((group) => group.map((i) => blocks[i]!.text).join("\n\n"));
 }

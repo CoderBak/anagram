@@ -1,0 +1,149 @@
+<!doctype html>
+<!--
+  Trustpilot company page, the review list. SYNTHETIC: trustpilot.com refused a plain request
+  (403, 2026-09-28); the markup is modelled on its public review cards: an <article> per review
+  (`data-service-review-card-paper`), the consumer's <aside> (profile link, initials, country,
+  review count), the stars as `img[alt="Rated 5 out of 5 stars"]`, a <time>, the title as an
+  <h2> in a link, the text in `p[data-service-review-text-typography]` with <br>s, "Date of
+  experience: …", Useful and Share — and the page's JSON-LD @graph, which lists every review
+  with its `reviewBody`. Names and ids are placeholders, text synthetic.
+
+  Read before as each <article> is: one voice. The JSON-LD now says which paragraph is the
+  review (lib/dom/scope.ts, REVIEW'S TEXT): found by its words, it is the only text of the
+  card that is read, so "Date of experience" and the consumer's details never can be.
+
+  Annotation: see x-timeline.html. Every review's text carries data-voice and data-expect for
+  the shipped 50-word minimum (test/unit.mjs walks it at 50, and at 25 and 75 for the invariants).
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: Trustpilot reviews</title>
+<style>
+  body { margin: 0; font: 16px/24px Helvetica, Arial, sans-serif; color: #191919; }
+  .styles_reviewListContainer__2bg_p { max-width: 720px; margin: 16px auto; }
+  article { border: 1px solid #e5e5dd; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  aside a { display: flex; gap: 8px; align-items: center; color: inherit; text-decoration: none; }
+  .avatar_avatar__EOQy9 { width: 44px; height: 44px; border-radius: 50%; background: #e5e5dd; display: grid; place-items: center; }
+  .styles_reviewHeader__DzoAZ { display: flex; justify-content: space-between; margin: 12px 0; }
+  h2 { font-size: 18px; margin: 0 0 8px; }
+  button { font: inherit; background: none; border: 0; margin-right: 12px; }
+</style></head>
+<body>
+<main>
+<script type="application/ld+json" data-business-unit-json-ld="true">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://www.trustpilot.com/#/schema/Organization/1","name":"Trustpilot"},{"@type":"LocalBusiness","@id":"https://www.trustpilot.com/#/schema/Organization/example","name":"Example Shop","aggregateRating":{"@type":"AggregateRating","bestRating":"5","worstRating":"1","ratingValue":"3.8","reviewCount":"1204"}},{"@type":"Review","@id":"https://www.trustpilot.com/#/schema/Review/example.com/1","itemReviewed":{"@id":"https://www.trustpilot.com/#/schema/Organization/example"},"author":{"@type":"Person","name":"Reviewer 1","url":"https://www.trustpilot.com/users/1"},"datePublished":"2026-03-03T10:00:00.000Z","headline":"Quick and easy","reviewBody":"The staff at the front desk were friendly and answered every question we had. Our table was ready on time even though the room was completely full that night. The color is a little darker than the photos suggest but I still like it. I would have given five stars if the lid did not rattle when the motor runs. We walked across at sunset and the view of the city was worth the cold wind. The soup came out hot and the bread was clearly baked the same morning. My daughter uses it every evening.","reviewRating":{"@type":"Rating","bestRating":"5","worstRating":"1","ratingValue":"5"},"inLanguage":"en"},{"@type":"Review","@id":"https://www.trustpilot.com/#/schema/Review/example.com/2","itemReviewed":{"@id":"https://www.trustpilot.com/#/schema/Organization/example"},"author":{"@type":"Person","name":"Reviewer 2","url":"https://www.trustpilot.com/users/2"},"datePublished":"2026-03-03T10:00:00.000Z","headline":"Fine","reviewBody":"I would have given five stars if the lid did not rattle when the motor runs. We walked.","reviewRating":{"@type":"Rating","bestRating":"5","worstRating":"1","ratingValue":"4"},"inLanguage":"en"},{"@type":"Review","@id":"https://www.trustpilot.com/#/schema/Review/example.com/3","itemReviewed":{"@id":"https://www.trustpilot.com/#/schema/Organization/example"},"author":{"@type":"Person","name":"Reviewer 3","url":"https://www.trustpilot.com/users/3"},"datePublished":"2026-03-03T10:00:00.000Z","headline":"Slow refund","reviewBody":"My daughter uses it every evening and the lessons keep her attention for once. Customer service replaced the cracked part without asking for a receipt. Parking nearby is hard to find on weekends so plan to arrive before noon. The fabric feels sturdy and it survived the washing machine without shrinking. The app crashed twice during the first.","reviewRating":{"@type":"Rating","bestRating":"5","worstRating":"1","ratingValue":"3"},"inLanguage":"en"},{"@type":"Review","@id":"https://www.trustpilot.com/#/schema/Review/example.com/4","itemReviewed":{"@id":"https://www.trustpilot.com/#/schema/Organization/example"},"author":{"@type":"Person","name":"Reviewer 4","url":"https://www.trustpilot.com/users/4"},"datePublished":"2026-03-03T10:00:00.000Z","headline":"Great","reviewBody":"The fabric feels sturdy and it survived the washing machine without shrinking. The app crashed twice during the first week but an update seems to have fixed it. For the price it.","reviewRating":{"@type":"Rating","bestRating":"5","worstRating":"1","ratingValue":"5"},"inLanguage":"en"},{"@type":"Review","@id":"https://www.trustpilot.com/#/schema/Review/example.com/5","itemReviewed":{"@id":"https://www.trustpilot.com/#/schema/Organization/example"},"author":{"@type":"Person","name":"Reviewer 5","url":"https://www.trustpilot.com/users/5"},"datePublished":"2026-03-03T10:00:00.000Z","headline":"Hit and miss","reviewBody":"The guide knew the history of every building and kept the group moving. Delivery was slow but the seller kept us informed.\n\nDelivery was slow but the seller kept us informed about every delay. The chapters in the middle drag.\n\nThe chapters in the middle drag a little before the ending pulls it together. Our room faced the courtyard so the nights were quiet and the.","reviewRating":{"@type":"Rating","bestRating":"5","worstRating":"1","ratingValue":"2"},"inLanguage":"en"},{"@type":"Review","@id":"https://www.trustpilot.com/#/schema/Review/example.com/6","itemReviewed":{"@id":"https://www.trustpilot.com/#/schema/Organization/example"},"author":{"@type":"Person","name":"Reviewer 6","url":"https://www.trustpilot.com/users/6"},"datePublished":"2026-03-03T10:00:00.000Z","headline":"Never again","reviewBody":"Our room faced the courtyard so the nights were quiet and the mornings bright. The handle got warm after an hour of use which I did not expect. Two of the six glasses arrived chipped and the replacements took a month. The trail was muddy after the rain but the markers were easy to follow. The package arrived two days early and everything inside was well protected. Setup took about ten minutes and the instructions were clear enough for me. After three weeks of daily use the battery still lasts through a full afternoon. The staff at the front desk were friendly and answered every question we had. Our table was ready on time even though the room was completely full that night. The color is a little darker than the photos suggest but I still like it. I would.","reviewRating":{"@type":"Rating","bestRating":"5","worstRating":"1","ratingValue":"1"},"inLanguage":"en"}]}</script>
+<section class="styles_reviewListContainer__2bg_p" data-nosnippet="false">
+  <div class="styles_cardWrapper__g8amG styles_show__Z8n7u" style="--delay:1">
+    <article class="paper_paper__EGeEb paper_outline__bqVmn card_card__yyGgu card_noPadding__OOiac styles_reviewCard__Qwhpy" data-service-review-card-paper="true">
+      <div class="styles_reviewCardInnerHeader__8Xqy8" data-chrome>
+        <aside class="styles_consumerInfoWrapper__6HN5O" aria-label="Info for Reviewer 1"><div class="styles_consumerDetailsWrapper__4eZod">
+          <a href="/users/1" name="consumer-profile" class="link_internal__Eam_b link_wrapper__ahpyq styles_consumerDetails__POC79" data-consumer-profile-link="true"><div class="avatar_avatar__EOQy9"><span class="typography_heading-xxs__QKBS8">R1</span></div><span class="typography_heading-xs__osRhC typography_appearance-default__t8iAq" data-consumer-name-typography="true">Reviewer 1</span></a>
+          <div class="styles_consumerExtraDetails__NY6RP" data-consumer-reviews-count="1"><span class="typography_body-m__k2UI7" data-consumer-country-typography="true">US</span><span class="typography_body-m__k2UI7" data-consumer-reviews-count-typography="true">1 reviews</span></div>
+        </div></aside>
+      </div>
+      <section class="styles_reviewContentwrapper__K2aRu" aria-disabled="false">
+        <div class="styles_reviewHeader__DzoAZ" data-service-review-rating="5" data-chrome><div class="star-rating_starRating__sdbkn star-rating_medium__Oj7C9"><img src="https://cdn.trustpilot.net/brand-assets/4.1.0/stars/stars-5.svg" alt="Rated 5 out of 5 stars"></div><div class="typography_body-m__k2UI7 typography_appearance-subtle__PYOVM"><time datetime="2026-03-03T10:00:00.000Z" data-service-review-date-time-ago="true">March 3, 2026</time></div></div>
+        <div class="styles_reviewContent__SCYfD" aria-hidden="false" data-review-content="true">
+          <a href="/reviews/example1" class="link_internal__Eam_b link_wrapper__ahpyq" data-review-title-typography="true" data-chrome><h2 class="typography_heading-xs__osRhC typography_appearance-default__t8iAq">Quick and easy</h2></a>
+          <p class="typography_body-l__v5JLj typography_appearance-default__t8iAq" data-service-review-text-typography="true" data-voice="reviewer-1" data-expect="unit" data-parts="1">The staff at the front desk were friendly and answered every question we had. Our table was ready on time even though the room was completely full that night. The color is a little darker than the photos suggest but I still like it. I would have given five stars if the lid did not rattle when the motor runs. We walked across at sunset and the view of the city was worth the cold wind. The soup came out hot and the bread was clearly baked the same morning. My daughter uses it every evening.</p>
+          <p class="typography_body-m__k2UI7 typography_appearance-default__t8iAq" data-service-review-date-of-experience-typography="true" data-chrome><b class="typography_body-m-bold__Jk6a0">Date of experience:</b> March 3, 2026</p>
+        </div>
+      </section>
+      <div class="styles_reviewFooter__bWwB2" data-chrome><button class="link_internal__Eam_b" type="button" data-review-helpful-button="true">Useful</button><button type="button" data-review-share-button="true">Share</button></div>
+    </article>
+  </div>
+  <div class="styles_cardWrapper__g8amG styles_show__Z8n7u" style="--delay:2">
+    <article class="paper_paper__EGeEb paper_outline__bqVmn card_card__yyGgu card_noPadding__OOiac styles_reviewCard__Qwhpy" data-service-review-card-paper="true">
+      <div class="styles_reviewCardInnerHeader__8Xqy8" data-chrome>
+        <aside class="styles_consumerInfoWrapper__6HN5O" aria-label="Info for Reviewer 2"><div class="styles_consumerDetailsWrapper__4eZod">
+          <a href="/users/2" name="consumer-profile" class="link_internal__Eam_b link_wrapper__ahpyq styles_consumerDetails__POC79" data-consumer-profile-link="true"><div class="avatar_avatar__EOQy9"><span class="typography_heading-xxs__QKBS8">R2</span></div><span class="typography_heading-xs__osRhC typography_appearance-default__t8iAq" data-consumer-name-typography="true">Reviewer 2</span></a>
+          <div class="styles_consumerExtraDetails__NY6RP" data-consumer-reviews-count="2"><span class="typography_body-m__k2UI7" data-consumer-country-typography="true">US</span><span class="typography_body-m__k2UI7" data-consumer-reviews-count-typography="true">2 reviews</span></div>
+        </div></aside>
+      </div>
+      <section class="styles_reviewContentwrapper__K2aRu" aria-disabled="false">
+        <div class="styles_reviewHeader__DzoAZ" data-service-review-rating="4" data-chrome><div class="star-rating_starRating__sdbkn star-rating_medium__Oj7C9"><img src="https://cdn.trustpilot.net/brand-assets/4.1.0/stars/stars-4.svg" alt="Rated 4 out of 5 stars"></div><div class="typography_body-m__k2UI7 typography_appearance-subtle__PYOVM"><time datetime="2026-03-03T10:00:00.000Z" data-service-review-date-time-ago="true">March 1, 2026</time></div></div>
+        <div class="styles_reviewContent__SCYfD" aria-hidden="false" data-review-content="true">
+          <a href="/reviews/example2" class="link_internal__Eam_b link_wrapper__ahpyq" data-review-title-typography="true" data-chrome><h2 class="typography_heading-xs__osRhC typography_appearance-default__t8iAq">Fine</h2></a>
+          <p class="typography_body-l__v5JLj typography_appearance-default__t8iAq" data-service-review-text-typography="true" data-voice="reviewer-2" data-expect="none">I would have given five stars if the lid did not rattle when the motor runs. We walked.</p>
+          <p class="typography_body-m__k2UI7 typography_appearance-default__t8iAq" data-service-review-date-of-experience-typography="true" data-chrome><b class="typography_body-m-bold__Jk6a0">Date of experience:</b> March 1, 2026</p>
+        </div>
+      </section>
+      <div class="styles_reviewFooter__bWwB2" data-chrome><button class="link_internal__Eam_b" type="button" data-review-helpful-button="true">Useful</button><button type="button" data-review-share-button="true">Share</button></div>
+    </article>
+  </div>
+  <div class="styles_cardWrapper__g8amG styles_show__Z8n7u" style="--delay:3">
+    <article class="paper_paper__EGeEb paper_outline__bqVmn card_card__yyGgu card_noPadding__OOiac styles_reviewCard__Qwhpy" data-service-review-card-paper="true">
+      <div class="styles_reviewCardInnerHeader__8Xqy8" data-chrome>
+        <aside class="styles_consumerInfoWrapper__6HN5O" aria-label="Info for Reviewer 3"><div class="styles_consumerDetailsWrapper__4eZod">
+          <a href="/users/3" name="consumer-profile" class="link_internal__Eam_b link_wrapper__ahpyq styles_consumerDetails__POC79" data-consumer-profile-link="true"><div class="avatar_avatar__EOQy9"><span class="typography_heading-xxs__QKBS8">R3</span></div><span class="typography_heading-xs__osRhC typography_appearance-default__t8iAq" data-consumer-name-typography="true">Reviewer 3</span></a>
+          <div class="styles_consumerExtraDetails__NY6RP" data-consumer-reviews-count="3"><span class="typography_body-m__k2UI7" data-consumer-country-typography="true">US</span><span class="typography_body-m__k2UI7" data-consumer-reviews-count-typography="true">3 reviews</span></div>
+        </div></aside>
+      </div>
+      <section class="styles_reviewContentwrapper__K2aRu" aria-disabled="false">
+        <div class="styles_reviewHeader__DzoAZ" data-service-review-rating="3" data-chrome><div class="star-rating_starRating__sdbkn star-rating_medium__Oj7C9"><img src="https://cdn.trustpilot.net/brand-assets/4.1.0/stars/stars-3.svg" alt="Rated 3 out of 5 stars"></div><div class="typography_body-m__k2UI7 typography_appearance-subtle__PYOVM"><time datetime="2026-03-03T10:00:00.000Z" data-service-review-date-time-ago="true">February 26, 2026</time></div></div>
+        <div class="styles_reviewContent__SCYfD" aria-hidden="false" data-review-content="true">
+          <a href="/reviews/example3" class="link_internal__Eam_b link_wrapper__ahpyq" data-review-title-typography="true" data-chrome><h2 class="typography_heading-xs__osRhC typography_appearance-default__t8iAq">Slow refund</h2></a>
+          <p class="typography_body-l__v5JLj typography_appearance-default__t8iAq" data-service-review-text-typography="true" data-voice="reviewer-3" data-expect="unit" data-parts="1">My daughter uses it every evening and the lessons keep her attention for once. Customer service replaced the cracked part without asking for a receipt. Parking nearby is hard to find on weekends so plan to arrive before noon. The fabric feels sturdy and it survived the washing machine without shrinking. The app crashed twice during the first.</p>
+          <p class="typography_body-m__k2UI7 typography_appearance-default__t8iAq" data-service-review-date-of-experience-typography="true" data-chrome><b class="typography_body-m-bold__Jk6a0">Date of experience:</b> February 26, 2026</p>
+        </div>
+      </section>
+      <div class="styles_reviewFooter__bWwB2" data-chrome><button class="link_internal__Eam_b" type="button" data-review-helpful-button="true">Useful</button><button type="button" data-review-share-button="true">Share</button></div>
+    </article>
+  </div>
+  <div class="styles_cardWrapper__g8amG styles_show__Z8n7u" style="--delay:4">
+    <article class="paper_paper__EGeEb paper_outline__bqVmn card_card__yyGgu card_noPadding__OOiac styles_reviewCard__Qwhpy" data-service-review-card-paper="true">
+      <div class="styles_reviewCardInnerHeader__8Xqy8" data-chrome>
+        <aside class="styles_consumerInfoWrapper__6HN5O" aria-label="Info for Reviewer 4"><div class="styles_consumerDetailsWrapper__4eZod">
+          <a href="/users/4" name="consumer-profile" class="link_internal__Eam_b link_wrapper__ahpyq styles_consumerDetails__POC79" data-consumer-profile-link="true"><div class="avatar_avatar__EOQy9"><span class="typography_heading-xxs__QKBS8">R4</span></div><span class="typography_heading-xs__osRhC typography_appearance-default__t8iAq" data-consumer-name-typography="true">Reviewer 4</span></a>
+          <div class="styles_consumerExtraDetails__NY6RP" data-consumer-reviews-count="4"><span class="typography_body-m__k2UI7" data-consumer-country-typography="true">US</span><span class="typography_body-m__k2UI7" data-consumer-reviews-count-typography="true">4 reviews</span></div>
+        </div></aside>
+      </div>
+      <section class="styles_reviewContentwrapper__K2aRu" aria-disabled="false">
+        <div class="styles_reviewHeader__DzoAZ" data-service-review-rating="5" data-chrome><div class="star-rating_starRating__sdbkn star-rating_medium__Oj7C9"><img src="https://cdn.trustpilot.net/brand-assets/4.1.0/stars/stars-5.svg" alt="Rated 5 out of 5 stars"></div><div class="typography_body-m__k2UI7 typography_appearance-subtle__PYOVM"><time datetime="2026-03-03T10:00:00.000Z" data-service-review-date-time-ago="true">February 20, 2026</time></div></div>
+        <div class="styles_reviewContent__SCYfD" aria-hidden="false" data-review-content="true">
+          <a href="/reviews/example4" class="link_internal__Eam_b link_wrapper__ahpyq" data-review-title-typography="true" data-chrome><h2 class="typography_heading-xs__osRhC typography_appearance-default__t8iAq">Great</h2></a>
+          <p class="typography_body-l__v5JLj typography_appearance-default__t8iAq" data-service-review-text-typography="true" data-voice="reviewer-4" data-expect="none">The fabric feels sturdy and it survived the washing machine without shrinking. The app crashed twice during the first week but an update seems to have fixed it. For the price it.</p>
+          <p class="typography_body-m__k2UI7 typography_appearance-default__t8iAq" data-service-review-date-of-experience-typography="true" data-chrome><b class="typography_body-m-bold__Jk6a0">Date of experience:</b> February 20, 2026</p>
+        </div>
+      </section>
+      <div class="styles_reviewFooter__bWwB2" data-chrome><button class="link_internal__Eam_b" type="button" data-review-helpful-button="true">Useful</button><button type="button" data-review-share-button="true">Share</button></div>
+    </article>
+  </div>
+  <div class="styles_cardWrapper__g8amG styles_show__Z8n7u" style="--delay:5">
+    <article class="paper_paper__EGeEb paper_outline__bqVmn card_card__yyGgu card_noPadding__OOiac styles_reviewCard__Qwhpy" data-service-review-card-paper="true">
+      <div class="styles_reviewCardInnerHeader__8Xqy8" data-chrome>
+        <aside class="styles_consumerInfoWrapper__6HN5O" aria-label="Info for Reviewer 5"><div class="styles_consumerDetailsWrapper__4eZod">
+          <a href="/users/5" name="consumer-profile" class="link_internal__Eam_b link_wrapper__ahpyq styles_consumerDetails__POC79" data-consumer-profile-link="true"><div class="avatar_avatar__EOQy9"><span class="typography_heading-xxs__QKBS8">R5</span></div><span class="typography_heading-xs__osRhC typography_appearance-default__t8iAq" data-consumer-name-typography="true">Reviewer 5</span></a>
+          <div class="styles_consumerExtraDetails__NY6RP" data-consumer-reviews-count="5"><span class="typography_body-m__k2UI7" data-consumer-country-typography="true">US</span><span class="typography_body-m__k2UI7" data-consumer-reviews-count-typography="true">5 reviews</span></div>
+        </div></aside>
+      </div>
+      <section class="styles_reviewContentwrapper__K2aRu" aria-disabled="false">
+        <div class="styles_reviewHeader__DzoAZ" data-service-review-rating="2" data-chrome><div class="star-rating_starRating__sdbkn star-rating_medium__Oj7C9"><img src="https://cdn.trustpilot.net/brand-assets/4.1.0/stars/stars-2.svg" alt="Rated 2 out of 5 stars"></div><div class="typography_body-m__k2UI7 typography_appearance-subtle__PYOVM"><time datetime="2026-03-03T10:00:00.000Z" data-service-review-date-time-ago="true">February 11, 2026</time></div></div>
+        <div class="styles_reviewContent__SCYfD" aria-hidden="false" data-review-content="true">
+          <a href="/reviews/example5" class="link_internal__Eam_b link_wrapper__ahpyq" data-review-title-typography="true" data-chrome><h2 class="typography_heading-xs__osRhC typography_appearance-default__t8iAq">Hit and miss</h2></a>
+          <p class="typography_body-l__v5JLj typography_appearance-default__t8iAq" data-service-review-text-typography="true" data-voice="reviewer-5" data-expect="unit" data-parts="3">The guide knew the history of every building and kept the group moving. Delivery was slow but the seller kept us informed.<br><br>Delivery was slow but the seller kept us informed about every delay. The chapters in the middle drag.<br><br>The chapters in the middle drag a little before the ending pulls it together. Our room faced the courtyard so the nights were quiet and the.</p>
+          <p class="typography_body-m__k2UI7 typography_appearance-default__t8iAq" data-service-review-date-of-experience-typography="true" data-chrome><b class="typography_body-m-bold__Jk6a0">Date of experience:</b> February 11, 2026</p>
+        </div>
+      </section>
+      <div class="styles_reviewFooter__bWwB2" data-chrome><button class="link_internal__Eam_b" type="button" data-review-helpful-button="true">Useful</button><button type="button" data-review-share-button="true">Share</button></div>
+    </article>
+  </div>
+  <div class="styles_cardWrapper__g8amG styles_show__Z8n7u" style="--delay:6">
+    <article class="paper_paper__EGeEb paper_outline__bqVmn card_card__yyGgu card_noPadding__OOiac styles_reviewCard__Qwhpy" data-service-review-card-paper="true">
+      <div class="styles_reviewCardInnerHeader__8Xqy8" data-chrome>
+        <aside class="styles_consumerInfoWrapper__6HN5O" aria-label="Info for Reviewer 6"><div class="styles_consumerDetailsWrapper__4eZod">
+          <a href="/users/6" name="consumer-profile" class="link_internal__Eam_b link_wrapper__ahpyq styles_consumerDetails__POC79" data-consumer-profile-link="true"><div class="avatar_avatar__EOQy9"><span class="typography_heading-xxs__QKBS8">R6</span></div><span class="typography_heading-xs__osRhC typography_appearance-default__t8iAq" data-consumer-name-typography="true">Reviewer 6</span></a>
+          <div class="styles_consumerExtraDetails__NY6RP" data-consumer-reviews-count="6"><span class="typography_body-m__k2UI7" data-consumer-country-typography="true">US</span><span class="typography_body-m__k2UI7" data-consumer-reviews-count-typography="true">6 reviews</span></div>
+        </div></aside>
+      </div>
+      <section class="styles_reviewContentwrapper__K2aRu" aria-disabled="false">
+        <div class="styles_reviewHeader__DzoAZ" data-service-review-rating="1" data-chrome><div class="star-rating_starRating__sdbkn star-rating_medium__Oj7C9"><img src="https://cdn.trustpilot.net/brand-assets/4.1.0/stars/stars-1.svg" alt="Rated 1 out of 5 stars"></div><div class="typography_body-m__k2UI7 typography_appearance-subtle__PYOVM"><time datetime="2026-03-03T10:00:00.000Z" data-service-review-date-time-ago="true">January 30, 2026</time></div></div>
+        <div class="styles_reviewContent__SCYfD" aria-hidden="false" data-review-content="true">
+          <a href="/reviews/example6" class="link_internal__Eam_b link_wrapper__ahpyq" data-review-title-typography="true" data-chrome><h2 class="typography_heading-xs__osRhC typography_appearance-default__t8iAq">Never again</h2></a>
+          <p class="typography_body-l__v5JLj typography_appearance-default__t8iAq" data-service-review-text-typography="true" data-voice="reviewer-6" data-expect="unit" data-parts="1">Our room faced the courtyard so the nights were quiet and the mornings bright. The handle got warm after an hour of use which I did not expect. Two of the six glasses arrived chipped and the replacements took a month. The trail was muddy after the rain but the markers were easy to follow. The package arrived two days early and everything inside was well protected. Setup took about ten minutes and the instructions were clear enough for me. After three weeks of daily use the battery still lasts through a full afternoon. The staff at the front desk were friendly and answered every question we had. Our table was ready on time even though the room was completely full that night. The color is a little darker than the photos suggest but I still like it. I would.</p>
+          <p class="typography_body-m__k2UI7 typography_appearance-default__t8iAq" data-service-review-date-of-experience-typography="true" data-chrome><b class="typography_body-m-bold__Jk6a0">Date of experience:</b> January 30, 2026</p>
+        </div>
+      </section>
+      <div class="styles_reviewFooter__bWwB2" data-chrome><button class="link_internal__Eam_b" type="button" data-review-helpful-button="true">Useful</button><button type="button" data-review-share-button="true">Share</button></div>
+    </article>
+  </div>
+</section>
+</main>
+</body></html>

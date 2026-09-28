@@ -57,8 +57,28 @@ const results = await page.evaluate(() => {
   {
     const below = collect(`<p>${words(74)}</p>`);
     const at = collect(`<p>${words(75)}</p>`);
-    check("the floor is the open model's training minimum: 74 words alone are not read, 75 are",
-      PW.MIN_UNIT_WORDS === 75 && below.length === 0 && at.length === 1 && at[0].words === 75, JSON.stringify([below.length, at.map(x => x.words)]));
+    check("at the open model's training minimum (these cases' floor): 74 words alone are not read, 75 are",
+      PW.MODEL_MIN_WORDS === 75 && below.length === 0 && at.length === 1 && at[0].words === 75, JSON.stringify([below.length, at.map(x => x.words)]));
+  }
+  {
+    // THE MINIMUM LENGTH is the reader's (Settings): 25, 50, 75, 100 or 150 words, 50 unless
+    // chosen. It decides what is read at all and what short paragraphs are grouped up to.
+    const floorOf = (n, minWords) => collect(`<p>${words(n)}</p>`, minWords === undefined ? { minWords: undefined } : { minWords }).length;
+    check("the shipped minimum length is 50 words, one of 25 / 50 / 75 / 100 / 150",
+      PW.DEFAULT_MIN_WORDS === 50 && JSON.stringify(PW.MIN_WORDS_CHOICES) === "[25,50,75,100,150]" && floorOf(49) === 0 && floorOf(50) === 1,
+      JSON.stringify([PW.DEFAULT_MIN_WORDS, floorOf(49), floorOf(50)]));
+    const at = PW.MIN_WORDS_CHOICES.map((f) => [floorOf(f - 1, f), floorOf(f, f)]);
+    check("each choice is the floor: one word under it is not read, it is", at.every(([under, on]) => under === 0 && on === 1), JSON.stringify(at));
+    // The grouping target moves with it: two 30-word paragraphs are one unit from a floor of
+    // 50 on, and at 25 each stands alone; at 75 they are read by nobody.
+    const pair = `<p>${words(30)}</p><p>${words(30)}</p>`;
+    const shapes = [25, 50, 75].map((f) => collect(pair, { minWords: f }).map((x) => x.parts));
+    check("the grouping target is the floor: [30, 30] → two units at 25, one of two parts at 50, none at 75",
+      JSON.stringify(shapes) === "[[1,1],[2],[]]", JSON.stringify(shapes));
+    // Texts under the model's own minimum carry a line that says so, whatever the floor.
+    check("a verdict on a text under 75 words is marked short; 75 and over is not",
+      PW.isShortText(74) && !PW.isShortText(75) && PW.shortTextNote(40) === "Short text: less reliable (under 75 words)" && PW.shortTextNote(75) === "",
+      JSON.stringify([PW.shortTextNote(40), PW.shortTextNote(75)]));
   }
 
   u = collect(`<p>${words(80)}</p><p>${words(85)}</p>`);
@@ -715,7 +735,7 @@ const results = await page.evaluate(() => {
     got = PW.collectUnits(sandbox);
     check("a 6000-word run → ceil(length / window) groups, none above a window, none below the floor, as even as the lines allow",
       got.length === Math.ceil((got.reduce((n, x) => n + x.text.length, 0) + 2 * (got.length - 1)) / PW.WINDOW_CHARS) && got.reduce((n, x) => n + x.parts.length, 0) === 300 && got.reduce((n, x) => n + x.wordCount, 0) === 6000 &&
-      got.every((x) => x.text.length <= PW.WINDOW_CHARS && x.wordCount >= PW.MIN_UNIT_WORDS && Math.abs(x.parts.length - 300 / got.length) <= 1), sized(got));
+      got.every((x) => x.text.length <= PW.WINDOW_CHARS && x.wordCount >= PW.MODEL_MIN_WORDS && Math.abs(x.parts.length - 300 / got.length) <= 1), sized(got));
 
     u = collect(Array.from({ length: 7 }, (_, i) => `<p>P${i} ${sent(79)}</p>`).join("").replace(/<p>P3 [^<]*<\/p>/, `<p>P3 ${sent(19)}</p>`));
     check("full paragraphs are never grouped with each other, however short", u.length === 6 && u.filter((x) => x.parts === 2).length === 1, shape(u));
@@ -772,10 +792,11 @@ const results = await page.evaluate(() => {
     // with no DOM anywhere (lib/pdf/units.ts). The same paragraphs, expressed as <p>s and as
     // bare word/character counts, must come out grouped the same way; if they ever did not,
     // a paper and a web page would be read by two different rules.
+    // At every minimum length Settings offers.
     const asPlan = (ns) => ns.map((n) => ({ words: n, chars: words(n).length }));
-    const planShape = (ns) =>
-      JSON.stringify(PW.groupBlocks(asPlan(ns)).map((g) => [g.length, g.reduce((sum, i) => sum + ns[i], 0)]));
-    const walkShape = (ns) => shape(collect(ns.map((n) => `<p>${words(n)}</p>`).join("")));
+    const planShape = (ns, floor) =>
+      JSON.stringify(PW.groupBlocks(asPlan(ns), floor).map((g) => [g.length, g.reduce((sum, i) => sum + ns[i], 0)]));
+    const walkShape = (ns, floor) => shape(collect(ns.map((n) => `<p>${words(n)}</p>`).join(""), { minWords: floor }));
     for (const ns of [
       [30, 30, 30],
       [20, 80, 20],
@@ -790,8 +811,10 @@ const results = await page.evaluate(() => {
       Array.from({ length: 50 }, () => 20),
     ]) {
       const label = ns.length > 6 ? `${ns.length}×${ns[0]} words` : `[${ns}]`;
-      check(`the walker and the source-free rule group ${label} the same way`, walkShape(ns) === planShape(ns),
-        `walker ${walkShape(ns)} · plan ${planShape(ns)}`);
+      for (const floor of PW.MIN_WORDS_CHOICES) {
+        check(`the walker and the source-free rule group ${label} the same way at ${floor} words`, walkShape(ns, floor) === planShape(ns, floor),
+          `walker ${walkShape(ns, floor)} · plan ${planShape(ns, floor)}`);
+      }
     }
   }
   {
@@ -913,6 +936,50 @@ const results = await page.evaluate(() => {
       [`<p>On <time>3 March</time> the council voted to keep the ferry and to pay for it.</p>`, `<p>Fixed in the spring release by <a href="/u/bob">@bob</a>, with thanks from all of us.</p>`,
         `<img alt="" width="27" height="27">`, `<a title="Special:BookSources/978-0-19-825079-1" href="/b">ISBN</a>`, `<span title="John 3:16">verse</span>`, `<a href="https://web.archive.org/web/2020/https://example.org/author/alice">Archived</a>`]
         .every((ev) => recognised(two(`<div class="m">${ev}</div>`), ".x").every((r) => !r)));
+
+    // CUSTOMER REVIEWS (lib/dom/scope.ts). Each review is one person's, however short, and where
+    // the page says which element holds its text, only that text is read.
+    const rated = (rating) => [1, 2, 3].map((n) => `<div class="card"><div class="m"><span>Reviewer ${n}</span>${rating}</div><p>${sent(20)}</p></div>`).join("");
+    check("a rating is byline evidence: stars in an aria-label, an alt, a title or an SVG's <title> (Google Maps and Play cards carry nothing else)",
+      [`<span role="img" aria-label=" 5 stars "></span>`, `<div role="img" aria-label="Rated 3 stars out of five stars"></div>`, `<img alt="Rated 4 out of 5 stars">`,
+        `<a href="/r/1" title="4.0 out of 5 stars">★</a>`, `<svg aria-labelledby="t"><title>5.0 of 5 bubbles</title></svg>`, `<ol class="stars" aria-label="5 星"></ol>`]
+        .every((ev) => recognised(rated(ev), ".card").every(Boolean)));
+    check("…and a carousel's page, a count, or a control that asks for stars is none",
+      [`<span aria-label="3 of 5"></span>`, `<span aria-label="12 people found this helpful"></span>`, `<div role="radio" aria-label="5 stars"></div>`, `<button aria-label="4 stars">★</button>`]
+        .every((ev) => recognised(rated(ev), ".card").every((r) => !r)));
+    const micro = (n, w) => `<div itemprop="review" itemscope itemtype="https://schema.org/Review"><p class="meta">By <span itemprop="author">Reviewer ${n}</span> on <time itemprop="datePublished">March 3</time>, a verified buyer who rated it well.</p><div itemprop="reviewBody">R${n} ${sent(w - 1)}</div></div>`;
+    u = collect(`<section>${micro(1, 60)}${micro(2, 30)}${micro(3, 60)}</section>`, { minWords: 50 });
+    check("schema.org microdata: each review a voice, only its reviewBody read — the punctuated \"By … on …\" line is the card's — and a short one read by nobody",
+      u.length === 2 && u.every((x) => x.parts === 1 && /^R[13] /.test(x.text)), shape(u));
+    const rdfa = (n) => `<div property="review" typeof="Review"><p>By <span property="author">Reviewer ${n}</span>, who wrote this in March and rated it four.</p><div property="reviewBody"><p>D${n} ${sent(29)}</p><p>${sent(30)}</p></div></div>`;
+    u = collect(`<section vocab="https://schema.org/">${rdfa(1)}${rdfa(2)}</section>`, { minWords: 50 });
+    check("…and RDFa: a review's two paragraphs one unit, its byline sentence left out", u.length === 2 && u.every((x) => x.parts === 2 && /^D\d /.test(x.text)), shape(u));
+    const ld = (texts) => `<script type="application/ld+json">${JSON.stringify({ "@context": "https://schema.org", "@type": "Product", review: texts.map((t) => ({ "@type": "Review", reviewBody: t })) })}</script>`;
+    const found = [1, 2, 3].map((n) => `J${n} ${sent(59)}`);
+    u = collect(`${ld(found)}<div class="list">${found.map((t, i) => `<div class="c"><div class="who">Reviewer ${i + 1}, a regular here, wrote this in March.</div><p>${t}</p></div>`).join("")}</div>`, { minWords: 50 });
+    check("the reviews of the page's JSON-LD, found in the page by their words: each card a voice, only the review's text read",
+      u.length === 3 && u.every((x) => x.parts === 1 && /^J\d /.test(x.text)), shape(u));
+    u = collect(`${ld([found[0]])}<p>INTRO ${sent(59)}</p><div class="c"><div class="who">Reviewer 1 wrote this.</div><p>${found[0]}</p></div>`, { minWords: 50 });
+    check("…but ONE review in JSON-LD says nothing about where its card ends: the page around it is read as it always was", u.length === 2 && u[0].text.startsWith("INTRO"), shape(u));
+    const reviewCard = (n, own = "") => `<div class="r"><span class="who">Reviewer ${n}</span> <time>2h</time><p>S${n} ${sent(29)}</p>${own}</div>`;
+    const disclaimer = `<p class="d">This review is the opinion of a member and not of the site, which checks every review it shows.</p>`;
+    u = collect(`<div class="list">${[1, 2, 3, 4].map((n) => reviewCard(n, disclaimer)).join("")}</div>`, { minWords: 25 });
+    check("a sentence every card of a list repeats is the site's (Tripadvisor's disclaimer): at a 25-word minimum each review is read, the disclaimer never",
+      u.length === 4 && u.every((x) => x.parts === 1 && /^S\d /.test(x.text)), shape(u));
+    u = collect(`<div class="list">${[1, 2, 3, 4, 5, 6].map((n) => reviewCard(n, n <= 2 ? "<p>Would buy again from this shop without a second thought.</p>" : "")).join("")}</div>`, { minWords: 25 });
+    check("…while a sentence two reviews of six happen to share stays theirs", u.length === 6 && u.filter((x) => x.parts === 2).length === 2, shape(u));
+    // What the web benchmark caught the first version of these rules doing.
+    u = collect(`<div class="page"><nav class="side"><p>Install the package with the tool.</p></nav><article class="doc"><p>A ${sent(199)}</p><p>S1 ${sent(29)}</p><h2>Install the package with the tool.</h2><p>S2 ${sent(29)}</p><p>B ${sent(199)}</p></article><aside class="toc"><p>Install the package with the tool.</p></aside></div>`, { minWords: 50 });
+    check("…but a column beside two sidebars is no list of cards: a heading its table of contents repeats stays a heading, and a boundary",
+      u.length === 2 && u.every((x) => x.parts === 2), shape(u));
+    const quoting = (n) => `<div class="post"><div class="m"><a href="/u/p${n}">p${n}</a> <time>2h</time></div><blockquote><p>Q ${sent(29)}</p></blockquote><p>R${n} ${sent(29)}</p></div>`;
+    u = collect(`<div class="topic"><div class="post"><div class="m"><a href="/u/op">op</a> <time>3h</time></div><p>Q ${sent(29)}</p><p>OP ${sent(29)}</p></div>${[1, 2, 3].map(quoting).join("")}</div>`, { minWords: 50 });
+    check("…and a post three replies quote is still its author's: the quoted paragraph stays in the opening post",
+      u.some((x) => x.parts === 2 && x.text.startsWith("Q ") && x.text.includes("OP ")), shape(u));
+    const mover = (n) => `<section class="mover"><h3>Mover ${n}</h3><div class="summary"><p>M${n} ${sent(24)}</p><a href="/q">Get a quote</a></div><div class="info"><p>E${n} ${sent(59)}</p><p>${sent(40)}</p></div></section>`;
+    u = collect(`${ld([1, 2, 3].map((n) => `M${n} ${sent(24)}`))}${[1, 2, 3].map(mover).join("")}`, { minWords: 50 });
+    check("a card known from JSON-LD holds no more than a card's name, stars and date beside the review: the editor's text beside it is read (movebuddha)",
+      u.length === 3 && u.every((x) => /^E\d /.test(x.text)), shape(u));
 
     // A pure function of the page: whichever element is asked first, the answers are the same.
     {
@@ -2546,7 +2613,8 @@ const results = await page.evaluate(() => {
 //   data-expect         "unit": some unit covers text in here · "none": no unit does
 //   data-parts          "n": exactly ONE unit covers text in here, and it has n parts
 const FIXTURES = join(__dirname, "fixtures");
-/** [units, multi-part units] per fixture — a change here is a change of behaviour. */
+/** [units, multi-part units, the floor it was annotated at when not 75] per fixture — a change
+ *  here is a change of behaviour. */
 const EXPECTED = {
   "amp-article": [1, 1],
   "article-list-table": [6, 5],
@@ -2584,6 +2652,15 @@ const EXPECTED = {
   "reddit-thread": [3, 2],
   "reference-lists": [6, 0],
   "review-cards": [2, 1],
+  "reviews-amazon": [4, 1, 50],
+  "reviews-appstore": [2, 0, 50],
+  "reviews-goodreads": [4, 1, 50],
+  "reviews-googlemaps": [5, 1, 50],
+  "reviews-googleplay": [4, 0, 50],
+  "reviews-schema": [8, 2, 50],
+  "reviews-tripadvisor": [4, 1, 50],
+  "reviews-trustpilot": [4, 1, 50],
+  "reviews-yelp": [4, 1, 50],
   "rfc-html": [3, 0],
   "slack-channel": [2, 1],
   "stackoverflow-question": [5, 2],
@@ -2615,50 +2692,58 @@ for (const file of fixtureFiles) {
   const fx = await browser.newPage();
   await fx.goto(pathToFileURL(join(FIXTURES, file)).href);
   await fx.addScriptTag({ path: BUNDLE });
-  const r = await fx.evaluate(() => {
-    const units = PW.collectUnits(document.body);
-    // The COMPOSED tree, as the walker sees it: Bilibili's comments are nested open shadow
-    // roots, which closest(), contains() and querySelectorAll() do not look into.
-    const up = (e) => e.parentElement ?? (e.getRootNode() instanceof ShadowRoot ? e.getRootNode().host : null);
-    const nearest = (e, attr) => { for (; e; e = up(e)) if (e.hasAttribute(attr)) return e; return null; };
-    const holds = (el, inner) => { for (let e = inner; e; e = up(e)) if (e === el) return true; return false; };
-    const everywhere = (root, sel, acc = []) => {
-      acc.push(...root.querySelectorAll(sel));
-      for (const host of root.querySelectorAll("*")) if (host.shadowRoot) everywhere(host.shadowRoot, sel, acc);
-      return acc;
-    };
-    const voiceOf = (part) => nearest(part.nodes[0].parentElement, "data-voice")?.getAttribute("data-voice") ?? "(none)";
-    const mixed = [];
-    const chrome = [];
-    const covered = new Set();
-    for (const u of units) {
-      const voices = [...new Set(u.parts.map(voiceOf))];
-      if (voices.length > 1) mixed.push(voices.join("+"));
-      for (const part of u.parts) for (const n of part.nodes) {
-        if (nearest(n.parentElement, "data-chrome")) chrome.push(n.textContent.trim().slice(0, 30));
-        for (let e = n.parentElement; e; e = up(e)) covered.add(e);
+  // Each fixture is annotated at the floor it was written for (EXPECTED's third entry; the
+  // model's 75 words when it has none) and is walked again at 25, 50 and 75 words, where what
+  // must hold at any floor is checked: no two voices in a unit,
+  // no name, time or action row in one.
+  const [wantUnits, wantMerged, written = 75] = EXPECTED[name] ?? [-1, -1];
+  for (const floor of [written, ...[25, 50, 75].filter((f) => f !== written)]) {
+    const r = await fx.evaluate((floor) => {
+      const units = PW.collectUnits(document.body, { minWords: floor });
+      // The COMPOSED tree, as the walker sees it: Bilibili's comments are nested open shadow
+      // roots, which closest(), contains() and querySelectorAll() do not look into.
+      const up = (e) => e.parentElement ?? (e.getRootNode() instanceof ShadowRoot ? e.getRootNode().host : null);
+      const nearest = (e, attr) => { for (; e; e = up(e)) if (e.hasAttribute(attr)) return e; return null; };
+      const holds = (el, inner) => { for (let e = inner; e; e = up(e)) if (e === el) return true; return false; };
+      const everywhere = (root, sel, acc = []) => {
+        acc.push(...root.querySelectorAll(sel));
+        for (const host of root.querySelectorAll("*")) if (host.shadowRoot) everywhere(host.shadowRoot, sel, acc);
+        return acc;
+      };
+      const voiceOf = (part) => nearest(part.nodes[0].parentElement, "data-voice")?.getAttribute("data-voice") ?? "(none)";
+      const mixed = [];
+      const chrome = [];
+      const covered = new Set();
+      for (const u of units) {
+        const voices = [...new Set(u.parts.map(voiceOf))];
+        if (voices.length > 1) mixed.push(voices.join("+"));
+        for (const part of u.parts) for (const n of part.nodes) {
+          if (nearest(n.parentElement, "data-chrome")) chrome.push(n.textContent.trim().slice(0, 30));
+          for (let e = n.parentElement; e; e = up(e)) covered.add(e);
+        }
       }
-    }
-    const wrong = [];
-    const annotated = everywhere(document, "[data-expect]");
-    for (const el of annotated) {
-      const want = el.getAttribute("data-expect") === "unit";
-      if (covered.has(el) !== want) wrong.push(`${want ? "no unit for" : "unexpected unit on"} "${el.textContent.trim().slice(0, 40)}"`);
-      // data-parts="n": ONE unit covers this block, and it has exactly n parts ("3+1": two units).
-      if (el.hasAttribute("data-parts")) {
-        const mine = units.filter((u) => u.parts.some((part) => holds(el, part.container)));
-        const got = mine.map((u) => u.parts.length).join("+");
-        if (got !== el.getAttribute("data-parts")) wrong.push(`${got || "no"} parts instead of ${el.getAttribute("data-parts")} on "${el.textContent.trim().slice(0, 40)}"`);
+      const wrong = [];
+      const annotated = everywhere(document, "[data-expect]");
+      for (const el of annotated) {
+        const want = el.getAttribute("data-expect") === "unit";
+        if (covered.has(el) !== want) wrong.push(`${want ? "no unit for" : "unexpected unit on"} "${el.textContent.trim().slice(0, 40)}"`);
+        // data-parts="n": ONE unit covers this block, and it has exactly n parts ("3+1": two units).
+        if (el.hasAttribute("data-parts")) {
+          const mine = units.filter((u) => u.parts.some((part) => holds(el, part.container)));
+          const got = mine.map((u) => u.parts.length).join("+");
+          if (got !== el.getAttribute("data-parts")) wrong.push(`${got || "no"} parts instead of ${el.getAttribute("data-parts")} on "${el.textContent.trim().slice(0, 40)}"`);
+        }
       }
-    }
-    return { units: units.length, merged: units.filter((u) => u.parts.length > 1).length, mixed, chrome, wrong, annotated: annotated.length };
-  });
+      return { units: units.length, merged: units.filter((u) => u.parts.length > 1).length, mixed, chrome, wrong, annotated: annotated.length };
+    }, floor);
+    const at = floor === written ? "" : ` at ${floor} words`;
+    results.push({ name: `fixture ${name}: no unit mixes two voices${at}`, ok: r.mixed.length === 0, note: r.mixed.join(" | ") });
+    results.push({ name: `fixture ${name}: no name / time / action row inside a unit${at}`, ok: r.chrome.length === 0, note: r.chrome.join(" | ") });
+    if (floor !== written) continue;
+    results.push({ name: `fixture ${name}: covered exactly where expected (${r.annotated} annotated blocks)`, ok: r.annotated > 0 && r.wrong.length === 0, note: r.wrong.join(" | ") });
+    results.push({ name: `fixture ${name}: ${wantUnits} units, ${wantMerged} of them multi-part`, ok: r.units === wantUnits && r.merged === wantMerged, note: `${r.units} units, ${r.merged} multi-part` });
+  }
   await fx.close();
-  const [wantUnits, wantMerged] = EXPECTED[name] ?? [-1, -1];
-  results.push({ name: `fixture ${name}: no unit mixes two voices`, ok: r.mixed.length === 0, note: r.mixed.join(" | ") });
-  results.push({ name: `fixture ${name}: no name / time / action row inside a unit`, ok: r.chrome.length === 0, note: r.chrome.join(" | ") });
-  results.push({ name: `fixture ${name}: covered exactly where expected (${r.annotated} annotated blocks)`, ok: r.annotated > 0 && r.wrong.length === 0, note: r.wrong.join(" | ") });
-  results.push({ name: `fixture ${name}: ${wantUnits} units, ${wantMerged} of them multi-part`, ok: r.units === wantUnits && r.merged === wantMerged, note: `${r.units} units, ${r.merged} multi-part` });
 }
 
 // ---- a mailing-list quotation: the markers are the frame, not the words -------------------
