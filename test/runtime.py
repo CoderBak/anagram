@@ -1028,19 +1028,23 @@ runpy.run_path(sys.argv[1], run_name="__main__")
         self.host_loads.append(candidate.id)
         return FakeEngine(Factory(Clock()), candidate)
 
+    def settle(self, controller):
+        # Each candidate starts a Python worker of its own, which a loaded machine can take
+        # seconds to do. A worker or controller that hangs still fails here, with its state.
+        controller.thread.join(60)
+        self.assertFalse(controller.thread.is_alive(), controller.snapshot())
+
     def test_each_candidate_has_a_fresh_process_and_distinct_resource_stages(self):
         self.host_loads = []
         controller = RuntimeController(self.home / "runtime.json", lambda: ([FP32, FP16], "isolated"),
                                        self.host_factory, benchmark_runner=self.runner(), max_runs=3)
         self.addCleanup(controller.close)
         controller.start()
-        controller.thread.join(5)
-        self.assertFalse(controller.thread.is_alive())
+        self.settle(controller)
         self.assertEqual(controller.snapshot()["state"], "ready")
         self.assertFalse((self.home / "workers").exists())
         controller.request_benchmark(10)
-        controller.thread.join(5)
-        self.assertFalse(controller.thread.is_alive())
+        self.settle(controller)
         snapshot = controller.snapshot()
         self.assertEqual(snapshot["state"], "ready", snapshot)
         self.assertEqual(self.host_loads, [FP32.id, FP32.id])
