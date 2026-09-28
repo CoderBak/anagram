@@ -7,7 +7,7 @@ import { Engine, type LoadedSession } from "../../lib/webengine/engine";
 import { parseEngineRequest, parseScorePayload, parseTokensPayload } from "../../lib/webengine/protocol";
 import { sha256Hex } from "../../lib/webengine/sha256";
 import { MemoryStore } from "../../lib/webengine/storage";
-import { probeRuntimes, type Candidate } from "../../lib/webengine/session";
+import { probeRuntimes, wasmThreads, type Candidate } from "../../lib/webengine/session";
 import { tinyTokenizerJson } from "../fixtures/webengine/tinyTokenizer.mjs";
 import { fakeServer, type FakeServerOptions } from "./webengineFake";
 
@@ -40,7 +40,7 @@ async function fakeSession(candidate: Candidate, model: Blob, log: string[]): Pr
   expect(new Uint8Array(await model.arrayBuffer())).toEqual(MODEL);
   log.push(`create ${candidate.id}`);
   return {
-    info: { candidate, threads: 1, createMs: 5, firstRunMs: 1 },
+    info: { candidate, createMs: 5, firstRunMs: 1 },
     device: candidate.id === "webgpu:fp32" ? "webgpu" : "wasm",
     async logits(ids, mask) {
       const out = new Float32Array(ids.length * 4);
@@ -350,5 +350,33 @@ describe("the runtimes a browser offers", () => {
     expect(withJspi.map((c) => [c.id, c.available])).toEqual([["webgpu:fp32", false], ["wasm:fp32", true]]);
     expect(withJspi[0]!.reason).toMatch(/no WebGPU/);
   });
+
+  it("takes a software WebGPU adapter for no GPU, unless the engine's own suites ask", async () => {
+    wasm.Suspending = function Suspending() {};
+    const limits = { maxStorageBufferBindingSize: 2 ** 31, maxBufferSize: 2 ** 31 };
+    const offer = (adapter: object) => vi.stubGlobal("navigator", { hardwareConcurrency: 10, gpu: { requestAdapter: async () => adapter } });
+    try {
+      // SwiftShader, which Chrome offers a machine without a usable GPU when WebGPU is forced on.
+      offer({ limits, info: { vendor: "google", architecture: "swiftshader", isFallbackAdapter: true } });
+      const [software, cpu] = await probeRuntimes();
+      expect(software).toMatchObject({ id: "webgpu:fp32", available: false, reason: expect.stringMatching(/software/) });
+      expect(cpu).toMatchObject({ id: "wasm:fp32", available: true });
+      expect((await probeRuntimes({ softwareGpu: true }))[0]).toMatchObject({ available: true, label: "GPU (WebGPU, FP32) — google swiftshader" });
+      // Browsers before GPUAdapterInfo carried the flag on the adapter.
+      offer({ limits, isFallbackAdapter: true });
+      expect((await probeRuntimes())[0]!.available).toBe(false);
+      offer({ limits, info: { vendor: "apple", architecture: "metal-3", isFallbackAdapter: false } });
+      expect((await probeRuntimes())[0]).toMatchObject({ available: true, reason: null });
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it("gives the CPU path two threads fewer than the processor has, at most eight, and one without isolation", () => {
+    const threads = (cores: number, isolated = true) => {
+      vi.stubGlobal("navigator", { hardwareConcurrency: cores });
+      vi.stubGlobal("crossOriginIsolated", isolated);
+      try { return wasmThreads(); } finally { vi.unstubAllGlobals(); }
+    };
+    expect([1, 2, 4, 6, 8, 10, 16, 64].map((cores) => threads(cores))).toEqual([1, 1, 2, 4, 6, 8, 8, 8]);
+    expect(threads(10, false)).toBe(1);
+  });
 });
-void vi;
