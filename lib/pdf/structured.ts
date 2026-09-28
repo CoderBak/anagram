@@ -39,8 +39,8 @@ export { isMathFont } from "./reading";
 export interface SdtTextNode {
   text: string;
   anchor?: { textMap?: string };
-  /** How the text is set; `sup` is a raised run. */
-  style?: { sup?: boolean };
+  /** How the text is set; `sup` is a raised run, `monospace` one in a typewriter face. */
+  style?: { sup?: boolean; monospace?: boolean };
   /** Paths of the blocks the text refers to: the bibliography entries a citation names,
    *  a figure, an equation. */
   refs?: number[][];
@@ -349,6 +349,64 @@ function opensRaised(block: SdtBlock): boolean {
   return first?.style?.sup === true && /^\s*\d{1,3}\s*$/u.test(first.text);
 }
 
+/** A raised mark an author's name or an affiliation carries: "1", "2,3", "a", "∗", "†". */
+const AFFILIATION_MARK = /^(?:\d{1,2}(?:\s*,\s*\d{1,2})*,?|[a-h]|[∗*†‡§¶#]+)$/u;
+/** What an affiliation or a title page's note names. */
+const AFFILIATION = /universit|institut|department|dept\.|laborator|school|college|faculty|cent(?:er|re)\b|academy|hospital|clinic|corporation|\binc\b|\bltd\b|gmbh|e-?mail|@|correspond|contributed equally|equal contribution/iu;
+/** An author list carries this many raised marks at least, one every this many words. */
+const AUTHOR_MARKS = 3;
+const WORDS_PER_MARK = 5;
+
+/**
+ * A paper's authors and affiliations, which Zotero reads as paragraphs of the first page:
+ * "Alexandre Andre¹, Shivashriganesh P. Mahato¹, …", "¹Department of Physics, University of
+ * …", "∗Corresponding author: …". An affiliation or a title page's note opens with its mark
+ * and names an institution or an address; an author list carries a raised mark every few
+ * words.
+ */
+function isTitlePageMatter(block: SdtBlock): boolean {
+  if (startPage(block) !== 1) return false;
+  const text = plainText(block);
+  const first = firstText(block);
+  if (AFFILIATION.test(text) && ((first?.style?.sup === true && AFFILIATION_MARK.test(first.text.trim())) || /^[∗*†‡§¶]/u.test(text))) return true;
+  let marks = 0;
+  for (const node of block.content ?? []) if (isTextNode(node) && node.style?.sup && AFFILIATION_MARK.test(node.text.trim())) marks++;
+  return marks >= AUTHOR_MARKS && text.split(" ").length <= marks * WORDS_PER_MARK;
+}
+
+/** A paragraph this much of whose letters are set in a typewriter face, and this long, is
+ *  code, a listing, or a prompt quoted as typed; unless the document's own paragraphs are
+ *  mostly set in one (a screenplay, a typed filing), where the face is the body's. */
+const CODE_SHARE = 0.9;
+const CODE_CHARS = 20;
+const TYPED_BODY = 0.5;
+
+/** The letters of a block, and those of them Zotero styles monospace. */
+function typewriter(block: SdtBlock, out = { mono: 0, all: 0 }): { mono: number; all: number } {
+  for (const node of block.content ?? []) {
+    if (!isTextNode(node)) { typewriter(node, out); continue; }
+    const n = node.text.replace(/\s+/gu, "").length;
+    out.all += n;
+    if (node.style?.monospace) out.mono += n;
+  }
+  return out;
+}
+
+/**
+ * Whether a paragraph Zotero read as body text is code: a listing, a JSON record, a prompt
+ * quoted as typed (`" final_comment " : " Both i n q u i r i e s …`). Never in a document
+ * whose paragraphs are mostly set in a typewriter face.
+ */
+function codeTest(content: SdtBlock[]): (block: SdtBlock) => boolean {
+  const doc = { mono: 0, all: 0 };
+  for (const node of content) if (!node.flowClass && !node.reference && (node.type === "paragraph" || node.type === "list")) typewriter(node, doc);
+  if (doc.mono >= TYPED_BODY * doc.all) return () => false;
+  return (block) => {
+    const t = typewriter(block);
+    return t.all >= CODE_CHARS && t.mono >= CODE_SHARE * t.all;
+  };
+}
+
 /** The readings of the content tree. A table is skipped like the rest of what is set aside,
  *  and a bibliography entry is a barrier, unless either is the prose of a manuscript with
  *  numbered lines (numberedReadings). */
@@ -360,17 +418,20 @@ function readingsOf(content: SdtBlock[], everything: boolean): (Reading | Marker
     else if (node.type === "table") out.push({ kind: "table", block: node, path, origin: originOf(node) });
     else out.push(node.type === "math" ? "display" : "skip");
   };
+  const isCode = everything ? (): boolean => false : codeTest(content);
   content.forEach((node, i) => {
     if (node.flowClass || node.reference) { aside(node, [i]); return; }
-    if (isNote(node) && !everything) { out.push("skip"); return; }
+    if ((isNote(node) || (node.type === "paragraph" && (isTitlePageMatter(node) || isCode(node)))) && !everything) { out.push("skip"); return; }
     if (node.type === "heading") out.push({ kind: "heading", block: node, path: [i], origin: originOf(node) });
     else if (node.type === "paragraph") out.push({ kind: "paragraph", block: node, path: [i], origin: originOf(node) });
     else if (node.type === "list" || node.type === "blockquote") {
       const notes = (node.content ?? []).some((child) => !isTextNode(child) && isNote(child));
+      const bibliography = !everything && node.type === "list" && isBibliography(node);
       (node.content ?? []).forEach((child, k) => {
         if (isTextNode(child)) return;
+        if (bibliography) { out.push({ kind: "reference", block: child, path: [i, k], origin: originOf(child) }); return; }
         if (child.reference || child.flowClass) { aside(child, [i, k]); return; }
-        if ((isNote(child) || (notes && opensRaised(child))) && !everything) { out.push("skip"); return; }
+        if ((isNote(child) || (notes && opensRaised(child)) || isTitlePageMatter(child) || isCode(child)) && !everything) { out.push("skip"); return; }
         if (child.type === "listitem" || child.type === "paragraph") {
           // A list item with nested blocks reads as its paragraphs.
           const inner = (child.content ?? []).filter((c): c is SdtBlock => !isTextNode(c));
@@ -380,7 +441,325 @@ function readingsOf(content: SdtBlock[], everything: boolean): (Reading | Marker
       });
     } else aside(node, [i]);
   });
+  if (!everything) leaveOutContents(out);
   return out;
+}
+
+/** A block's text as Zotero has it, a nested block's a space apart. */
+function plainText(block: SdtBlock): string {
+  let out = "";
+  for (const node of block.content ?? []) out += isTextNode(node) ? node.text : ` ${plainText(node)} `;
+  return out.replace(/\s+/gu, " ").trim();
+}
+
+/** A bibliography entry's label, "[12]", and the year an entry cites. */
+const ENTRY_LABEL = /^\[\d{1,4}\]/u;
+const YEAR = /\b(?:1[5-9]|20)\d\d[a-z]?\b/u;
+/** Shares of a list's items that must open with a label, and cite a year. */
+const LABELLED_ITEMS = 0.6;
+const DATED_ITEMS = 0.5;
+
+/**
+ * A bibliography Zotero did not find: a list whose items mostly open with a bracketed number
+ * and cite a year, "[11]R. Saha, F. Fauth, … Phys. Rev. B 94, 064420 (2016)." A paper set
+ * in REVTeX or JHEP's style has no References heading, and Zotero then reads the whole
+ * bibliography as a list of the body. Every such list of the benchmark's corpora is one.
+ */
+function isBibliography(list: SdtBlock): boolean {
+  const items = (list.content ?? []).filter((c): c is SdtBlock => !isTextNode(c)).map(plainText);
+  return items.length > 0
+    && items.filter((t) => ENTRY_LABEL.test(t)).length >= items.length * LABELLED_ITEMS
+    && items.filter((t) => YEAR.test(t)).length >= items.length * DATED_ITEMS;
+}
+
+/** An entry of a table of contents or of a list of figures or tables: a dot leader, then
+ *  the page it points to. An entry whose caption fills its last line keeps a leader of two
+ *  or three dots ("…prediction [276].. .187"), taken only where the entry opens with its
+ *  number. */
+const CONTENTS_ENTRY = /(?:[.·…]\s*){4,}(?:\d{1,4}|[ivxlc]{1,7})$/iu;
+const SHORT_LEADER = /[^.\s](?:\s*\.){2,3}\s*(?:\d{1,4}|[ivxlc]{1,7})$/iu;
+/** What an entry opens with: its figure's, table's or section's number. */
+const ENTRY_NUMBER = /^(?:[A-Z]\.?)?\d/u;
+/** How many paragraphs Zotero may cut one entry into. */
+const ENTRY_PARTS = 4;
+
+/**
+ * A thesis's or a report's contents, and its lists of figures and tables. Zotero reads an
+ * entry as a paragraph or a list item, and a list of figures is the captions of the whole
+ * document over again, so each was read and scored: "4.7 A simulation example of the rough
+ * terrain … . . . . 50". Each entry ends in a dot leader and a page number, and the writing
+ * stops there, as at a bibliography. So does every item of a list at least half of whose
+ * items are entries (one set too full for a leader: "…the lattice results [219]146"). An
+ * entry Zotero cut into paragraphs ("1.1 IHMC's fully electric Alex … A video is available
+ * at" / "youtu.be/… . . . 2") is one: the part with the leader, which does not open with a
+ * number, and the paragraphs before it back to the one that does.
+ */
+function leaveOutContents(out: (Reading | Marker)[]): void {
+  const isEntry = (r: Reading | Marker): boolean => {
+    if (typeof r === "string" || r.kind === "reference" || r.kind === "table") return false;
+    const text = plainText(r.block);
+    return CONTENTS_ENTRY.test(text) || (SHORT_LEADER.test(text) && ENTRY_NUMBER.test(text));
+  };
+  const entries = out.map(isEntry);
+  // The items of each list, by the list's place in the tree.
+  const lists = new Map<number, number[]>();
+  out.forEach((r, k) => {
+    if (typeof r !== "string" && r.path.length > 1) lists.set(r.path[0]!, [...(lists.get(r.path[0]!) ?? []), k]);
+  });
+  for (const items of lists.values()) {
+    if (items.filter((k) => entries[k]).length * 2 >= items.length) for (const k of items) entries[k] = true;
+  }
+  entries.forEach((entry, k) => {
+    const r = out[k]!;
+    if (!entry || typeof r === "string") return;
+    out[k] = "barrier";
+    if (ENTRY_NUMBER.test(plainText(r.block))) return;
+    const parts: number[] = [];
+    for (let j = k - 1; j >= 0 && parts.length < ENTRY_PARTS; j--) {
+      const p = out[j]!;
+      if (p === "skip") continue;
+      if (typeof p === "string" || p.kind !== "paragraph") return;
+      parts.push(j);
+      if (ENTRY_NUMBER.test(plainText(p.block))) {
+        for (const q of parts) out[q] = "barrier";
+        return;
+      }
+    }
+  });
+}
+
+/** A caption's label, and what sets it off from the caption: "Figure 3:", "FIG. 1.", "Table
+ *  S7:", "Figure 4 |", "Fig 3. GNSS…", "Figure-SI 4 Variability…", "TABLE IV COMPARISON".
+ *  Never a sentence that names one: "Figure 3 compares", "Figure 4.21 shows", "Table 4.c
+ *  shows", "Figures 4–7 establish", "Figure 1 (upper panel) presents". */
+const CAPTION_LABEL = /^(?:(?:Supplementary|Suppl\.|Extended Data|Appendix)\s+)?(?:Fig(?:ure)?s?\.?|FIG(?:URE)?S?\.?|Tab(?:le)?\.?|TABLE|Chart|Scheme|Algorithm|Listing|Exhibit|Plate)[\s-]*(?:[A-Z]{1,2}[\s.-]?)?(?:\d+(?:[.\-–]\d+)*[a-z]?|[IVXLC]+)(?:\s*[:|]|\s+[—–]\s|\.(?=\s)|\s+(?=\p{Lu}))/u;
+/** The words a sentence names a figure after: what follows them on the next line is that
+ *  sentence ("…as shown in" / "Figure 6.32. Notice …"). */
+const NAMES_NEXT = /(?:^|\s)(?:in|of|see|at|from|to|by|on|with|and|or|than|under|into|per|via|cf\.|e\.g\.,?|i\.e\.,?|the|a|an|this|that|these|those|our|shown)$/iu;
+
+/**
+ * Captions Zotero took for paragraphs. One that opens with its label — "Table S7: All five
+ * conditioning rungs…", "FIG. 1. The partition sum…", "Figure 8 Difference of density
+ * plots…" — is set aside as Zotero's own captions are, but not where the paragraph before
+ * it stops at a word that names a figure: that is its own sentence carried over the float,
+ * "…as shown in" / "Figure 6.32. Notice this node…". So is a paragraph that carries on the
+ * caption set right above it (continuesCaption), and one that is the note set under a table
+ * (notesTable). A reading whose lines are numbered is not one Zotero's paragraph stands for
+ * (numberedReadings): `numbered` says which.
+ */
+function leaveOutCaptions(out: (Reading | Marker)[], content: SdtBlock[], numbered: (k: number) => boolean): void {
+  let before: Reading | null = null;
+  /** Paragraphs of the tree, by place, read as the rest of the caption or the table above. */
+  const carried = new Map<number, "caption" | "table">();
+  let body: number | null = null;
+  const bodySize = (): number => (body ??= median(content.flatMap((b) => (b.type === "paragraph" && !b.flowClass ? runHeights(b) : []))));
+  const restOfFloat = (r: Reading): boolean => {
+    if (r.path.length !== 1 || r.block.previousPart) return false;
+    const at = r.path[0]!;
+    const above = content[at - 1];
+    if (!above) return false;
+    const float = carried.get(at - 1) ?? (above.type === "caption" && above.flowClass ? "caption" : above.type === "table" ? "table" : null);
+    if (float === null) return false;
+    if (!(float === "caption" ? continuesCaption(above, r.block) : notesTable(above, r.block, bodySize))) return false;
+    carried.set(at, float);
+    return true;
+  };
+  out.forEach((r, k) => {
+    if (typeof r === "string") {
+      if (r === "barrier") before = null;
+      return;
+    }
+    const prev = before;
+    before = r;
+    if (r.kind !== "paragraph" || numbered(k)) return;
+    if (!restOfFloat(r)) {
+      if (!CAPTION_LABEL.test(plainText(r.block))) return;
+      if (prev?.kind === "paragraph" && NAMES_NEXT.test(plainText(prev.block))) return;
+    }
+    out[k] = "skip";
+    before = prev;
+  });
+}
+
+/** The rest of a caption Zotero read as a paragraph starts where the caption's next line
+ *  would: at most this many of the paragraph's line heights below it, this many where the
+ *  caption stops mid-sentence, and this many below a caption that is its label alone
+ *  ("Figure 3.["). Body text after a float is set further off. */
+const CAPTION_GAP = 0.25;
+const CAPTION_RUN_ON_GAP = 0.6;
+const CAPTION_LABEL_GAP = 1.5;
+/** …and under it: this share of the narrower of the two. */
+const CAPTION_OVERLAP = 0.8;
+const BARE_LABEL = /^(?:fig(?:ure)?s?\.?|table|tab\.)\s*[A-Z]?\d+(?:[.\-–]\d+)*[a-z]?\s*[.:|]?\s*[[(]?$/iu;
+
+/** A block's extent on its first or its last page, over its rects there: [page, x1, y1, x2,
+ *  y2] in PDF space, y upward. */
+function extentOn(block: SdtBlock, which: "first" | "last"): number[] | null {
+  const rects = block.anchor?.pageRects;
+  if (!rects?.length) return null;
+  const page = rects[which === "first" ? 0 : rects.length - 1]![0]!;
+  const on = rects.filter((r) => r[0] === page);
+  return [page, Math.min(...on.map((r) => r[1]!)), Math.min(...on.map((r) => r[2]!)), Math.max(...on.map((r) => r[3]!)), Math.max(...on.map((r) => r[4]!))];
+}
+
+/**
+ * The paragraph carries on the caption set right above it. Zotero can take a caption's first
+ * lines for the caption and the rest for body text: "Figure 4 | Held-out accuracy at M4 under
+ * five exploration conditions. Each dot is one system;" / "the horizontal line in each column
+ * marks the median…". The rest starts where the caption's next line would, and under it.
+ */
+function continuesCaption(caption: SdtBlock, para: SdtBlock): boolean {
+  const text = plainText(caption);
+  return setUnder(caption, para, BARE_LABEL.test(text) ? CAPTION_LABEL_GAP : SENTENCE_END.test(text) ? CAPTION_GAP : CAPTION_RUN_ON_GAP);
+}
+
+/** A table's note is set off from the table by at least this many of its line heights and at
+ *  most this many, and smaller than the body: its lines under this share of the body's. A
+ *  paragraph of the body after a table is set at the body's size; one right against what
+ *  Zotero took for a table is the table's own text, or text Zotero mistook for a table. */
+const NOTE_SET_OFF = 0.5;
+const NOTE_GAP = 1.3;
+const NOTE_SIZE = 0.95;
+
+/**
+ * The paragraph is the note set under a table: "BC, bounded coalescent; SC, standard
+ * coalescent; …", "Notes. Columns: (1) PAH band(s) included in the ratio; …", "Agreement is the
+ * percentage of replicates in which…". Zotero sets the table aside and reads its note as body
+ * text. `bodySize` is the size of the document's body lines.
+ */
+function notesTable(table: SdtBlock, para: SdtBlock, bodySize: () => number): boolean {
+  return setUnder(table, para, NOTE_GAP, table.type === "table" ? NOTE_SET_OFF : -1) && median(runHeights(para)) < NOTE_SIZE * bodySize();
+}
+
+/** The paragraph starts on the page `above` ends on, under it (sharing this much of the
+ *  narrower of the two's width), at least `least` and at most `limit` of its line heights
+ *  below it. */
+function setUnder(above: SdtBlock, para: SdtBlock, limit: number, least = -1): boolean {
+  const c = extentOn(above, "last"), p = extentOn(para, "first");
+  const glyph = glyphsOf(firstText(para)?.anchor?.textMap)[0];
+  if (!c || !p || !glyph || c[0] !== p[0]) return false;
+  const h = glyph.y2 - glyph.y1;
+  const overlap = Math.min(c[3]!, p[3]!) - Math.max(c[1]!, p[1]!);
+  if (!(h > 0) || overlap < CAPTION_OVERLAP * Math.min(c[3]! - c[1]!, p[3]! - p[1]!)) return false;
+  const gap = c[2]! - p[4]!;
+  return gap >= h * least && gap <= h * limit;
+}
+
+/** The heights of the runs of a block's text, as its glyph maps give them. */
+function runHeights(block: SdtBlock, out: number[] = []): number[] {
+  for (const node of block.content ?? []) {
+    if (!isTextNode(node)) { runHeights(node, out); continue; }
+    let runs: unknown;
+    try {
+      runs = JSON.parse(node.anchor?.textMap ?? "[]");
+    } catch {
+      continue;
+    }
+    if (!Array.isArray(runs)) continue;
+    for (const run of runs) if (Array.isArray(run) && run.length >= 6) out.push((run[5] as number) - (run[3] as number));
+  }
+  return out;
+}
+
+function median(values: number[]): number {
+  if (values.length === 0) return NaN;
+  const s = [...values].sort((a, b) => a - b);
+  return s[s.length >> 1]!;
+}
+
+// ---- the order of a page's columns -----------------------------------------------------------
+//
+// Zotero reads a page column by column, but a magazine's or a newsletter's page it can read in
+// the wrong order of columns: under a photograph set across the page, the middle and right
+// columns before the left one ("- a definite favourite for many curious families…" before
+// "and information centres. The first day took off…"); a framed article on the right before
+// the two boxes to its left, and the lower of those before the upper one. The runs of blocks
+// it read down one column are kept as it read them, and the runs of a page are put in the
+// order the page sets them: a run before any run it stands above in the same column, and
+// before any run it stands left of in the same band of the page. Where Zotero's order keeps
+// both, as on a paper's pages, nothing moves.
+
+/** How far, in points, two blocks may overlap and still be one above or left of the other. */
+const ORDER_SLACK = 3;
+/** The share of the narrower (or the shorter) of two runs they must have in common to be in
+ *  one column (or one band). */
+const SHARED = 0.5;
+
+/** A block's extent on its first page, [x1, y1, x2, y2] in PDF space (y upward), and whether
+ *  it goes on to another page. */
+function boxOf(block: SdtBlock): { page: number; box: number[]; spans: boolean } | null {
+  const rects = block.anchor?.pageRects;
+  if (!rects?.length) return null;
+  const page = rects[0]![0]!;
+  const on = rects.filter((r) => r[0] === page);
+  return {
+    page,
+    box: [Math.min(...on.map((r) => r[1]!)), Math.min(...on.map((r) => r[2]!)), Math.max(...on.map((r) => r[3]!)), Math.max(...on.map((r) => r[4]!))],
+    spans: on.length < rects.length,
+  };
+}
+
+const shared = (a1: number, a2: number, b1: number, b2: number): number => Math.min(a2, b2) - Math.max(a1, b1);
+const inColumn = (a: number[], b: number[]): boolean => shared(a[0]!, a[2]!, b[0]!, b[2]!) >= SHARED * Math.min(a[2]! - a[0]!, b[2]! - b[0]!);
+const inBand = (a: number[], b: number[]): boolean => shared(a[1]!, a[3]!, b[1]!, b[3]!) >= SHARED * Math.min(a[3]! - a[1]!, b[3]! - b[1]!);
+/** `a` is to be read before `b`: above it in its column, or left of it in its band. */
+const readsBefore = (a: number[], b: number[]): boolean =>
+  (a[1]! >= b[3]! - ORDER_SLACK && inColumn(a, b)) || (a[2]! <= b[0]! + ORDER_SLACK && inBand(a, b));
+
+/** The readings with each page's runs of blocks in the page's order of columns. A reading
+ *  keeps the markers after it; a bibliography entry, a barrier, a block that goes on to the
+ *  next page and one with no rects end the stretch of a page that can move. */
+function readInColumns(out: (Reading | Marker)[]): (Reading | Marker)[] {
+  interface Item { parts: (Reading | Marker)[]; box: number[] }
+  const result: (Reading | Marker)[] = [];
+  let stretch: Item[] = [];
+  let page = -1;
+  const flush = (): void => {
+    for (const item of orderRuns(stretch)) result.push(...item.parts);
+    stretch = [];
+  };
+  for (const r of out) {
+    if (typeof r === "string") {
+      if (stretch.length) stretch[stretch.length - 1]!.parts.push(r);
+      else result.push(r);
+      if (r === "barrier") flush();
+      continue;
+    }
+    const at = r.kind === "reference" ? null : boxOf(r.block);
+    if (!at) { flush(); result.push(r); page = -1; continue; }
+    if (at.page !== page) flush();
+    page = at.page;
+    stretch.push({ parts: [r], box: at.box });
+    if (at.spans) { flush(); page = -1; }
+  }
+  flush();
+  return result;
+
+  function orderRuns<T extends { box: number[] }>(items: T[]): T[] {
+    if (items.length < 3) return items;
+    // Runs: each block below the one before it, in its column.
+    const runs: { items: T[]; box: number[] }[] = [];
+    for (const item of items) {
+      const run = runs[runs.length - 1];
+      const last = run?.items[run.items.length - 1];
+      if (run && last && item.box[3]! <= last.box[1]! + ORDER_SLACK && inColumn(item.box, last.box)) {
+        run.items.push(item);
+        run.box = [Math.min(run.box[0]!, item.box[0]!), Math.min(run.box[1]!, item.box[1]!), Math.max(run.box[2]!, item.box[2]!), Math.max(run.box[3]!, item.box[3]!)];
+      } else runs.push({ items: [item], box: [...item.box] });
+    }
+    if (runs.length < 2) return items;
+    // The page's order, Zotero's where the page leaves it open; Zotero's if it goes round.
+    const before = runs.map((a, i) => runs.map((b, j) => i !== j && readsBefore(a.box, b.box)));
+    const done = runs.map(() => false);
+    const order: number[] = [];
+    while (order.length < runs.length) {
+      const next = runs.findIndex((_, j) => !done[j] && runs.every((_, i) => done[i] || !before[i]![j]));
+      if (next < 0) return items;
+      done[next] = true;
+      order.push(next);
+    }
+    return order.flatMap((i) => runs[i]!.items);
+  }
 }
 
 /** A reading with its pieces: what the drafts are made of. `paths` are the content tree's
@@ -425,9 +804,6 @@ const CELL_GAP = 1.5;
  *  be prose. */
 const NUMBERED_TABLE = 0.9;
 const GAPPED_TABLE = 0.1;
-/** A caption: its label, and at most this many words (lib/pdf/reflow.ts CAPTION_LABEL). */
-const CAPTION = /^(?:fig(?:ure)?s?\.?|table|tab\.|chart|scheme)\s*[A-Z]?\d/i;
-const CAPTION_WORDS = 60;
 const LIST_OPENING = /^(?:[•▪◦‣·∙*]|[–—-]\s)/u;
 /** The heading of a bibliography, numbered or not. */
 const REFERENCES_HEAD = /^(?:[\dIVX]+(?:\.\d+)*\.?\s*)?(?:references|bibliography|literature cited|works cited|reference list|cited literature)\s*:?$/iu;
@@ -747,7 +1123,7 @@ function numberedReadings(readings: (Reading | Marker)[], texts: (Piece[] | null
     for (const rows of paragraphsOfRows(p.rows, pages, ragged)) {
       const pieces = joinRows(rows);
       const text = pieces.map((q) => q.ch).join("");
-      if (CAPTION.test(text) && text.split(/\s+/).length <= CAPTION_WORDS) { made.push("skip"); continue; }
+      if (CAPTION_LABEL.test(text)) { made.push("skip"); continue; }
       const sources = [...new Set(rows.map((r) => r.from))].map((i) => p.readings[i]!);
       const head = p.readings[rows[0]!.from]!;
       made.push({
@@ -854,7 +1230,7 @@ export interface StructuredReader {
 
 export function createStructuredReader(structure: SdtStructure, options: StructuredOptions = {}): StructuredReader {
   const everything = options.everything === true;
-  const readings = readingsOf(structure.content, everything);
+  const readings = readInColumns(readingsOf(structure.content, everything));
   const read = (r: Reading): Piece[] => placeMarks(piecesOf(r.block, (node) => isRaisedCitation(node, structure.content)));
   // A bibliography is read only where the lines are numbered, and asked about then.
   const texts = readings.map((r) => (typeof r === "string" || r.kind === "reference" ? null : read(r)));
@@ -863,6 +1239,9 @@ export function createStructuredReader(structure: SdtStructure, options: Structu
     readings.forEach((r, k) => { if (typeof r !== "string" && r.kind === "reference") texts[k] = read(r); });
     numbers = lineNumberPieces(texts.filter((t): t is Piece[] => t !== null));
   }
+  // Numbered lines are read again as the paragraphs they make, and a caption among them is
+  // told there, once its lines are one paragraph (numberedReadings).
+  if (!everything) leaveOutCaptions(readings, structure.content, (k) => texts[k]?.some((p) => numbers.has(p)) === true);
   const prepared = numbers.size > 0
     ? numberedReadings(readings, texts, numbers, everything)
     : readings.map((r, k) => (typeof r === "string" ? r : plain(r, texts[k] ?? [])));

@@ -1015,6 +1015,225 @@ describe("structuredBlocks — the document", () => {
     expect(blocks[1]!.text).toBe("A body paragraph after the notes.");
   });
 
+  it("leaves out a thesis's contents and list of figures: entries that end in a dot leader and a page number", () => {
+    // Zotero reads each entry as a paragraph or a list item; a list of figures is every
+    // caption over again. Entries it cut into paragraphs: the part with the leader does not
+    // open with the entry's number, the part that does comes before it. In a list of
+    // entries, one set too full for a leader, and one left two dots.
+    const lines: [string, number][] = [
+      ["The abstract ends here.", 100],
+      ["1 Introduction . . . . . . . . 1", 130],
+      ["1.1 A robot traversing a right pull door. . . . . . . . 2", 160],
+      ["4.7 A simulation of the rough terrain behavior. A video is available at", 190],
+      ["https://youtu.be/abc. . . . . . . . 47", 204],
+      ["4.17 A presentation of teleoperation features.", 230],
+      ["In the center, a view of the camera is shown.", 244],
+      ["This clears debris and opens doors. . . . . . . . 60", 258],
+      ["5.16 Pion form factors compared to the lattice results [219]146", 290],
+      ["5.17 Quark and gluon contributions to the form factor.. .147", 304],
+      ["5.18 Nucleon trace form factor . . . . . . . . 149", 318],
+      ["The first chapter begins.", 400],
+    ];
+    const nodes = lines.map(([text, y]) => node(1, [{ text, x: 72, y }]));
+    const pages = [pageText(1, nodes.flatMap((n) => n.items))];
+    const [abstract, toc, lof1, cutA, cutB, longA, longB, longC, item1, item2, item3, body] = nodes;
+    const item = (n: typeof body): SdtBlock => ({ type: "listitem", content: [n!] });
+    const blocks = structuredBlocks(structure([
+      paragraph(1, [abstract!]),
+      { type: "heading", content: [toc!] },
+      paragraph(1, [lof1!]), paragraph(1, [cutA!]), paragraph(1, [cutB!]),
+      paragraph(1, [longA!]), paragraph(1, [longB!]), paragraph(1, [longC!]),
+      { type: "list", content: [item(item1), item(item2), item(item3)] },
+      paragraph(1, [body!]),
+    ]), pages);
+    expect(blocks.map((b) => b.text)).toEqual(["The abstract ends here.", "The first chapter begins."]);
+    expect(blocks[1]!.columnBreak).toBe(true);
+  });
+
+  it("leaves out a caption Zotero took for a paragraph by its label, and keeps a sentence that names a figure", () => {
+    const lines: [string, number][] = [
+      ["Results follow.", 100],
+      ["Table S7: All five conditioning rungs, all four families.", 130],
+      ["FIG. 1. The partition sum in the ninth equation.", 160],
+      ["Figure 8 Difference of density plots of the fractions.", 190],
+      ["Figure 3 compares the spectra of the two dwarfs.", 220],
+      ["Figure 4.21 shows an improved version of the behavior.", 250],
+      ["we add the spine action to turn the spine as shown in", 280],
+      ["Figure 6.32. Notice this node is a sibling of the fallback.", 310],
+    ];
+    const nodes = lines.map(([text, y]) => node(1, [{ text, x: 72, y }]));
+    const pages = [pageText(1, nodes.flatMap((n) => n.items))];
+    const blocks = structuredBlocks(structure(nodes.map((n) => paragraph(1, [n]))), pages);
+    expect(blocks.map((b) => b.text)).toEqual([0, 4, 5, 6, 7].map((i) => lines[i]![0]));
+  });
+
+  it("leaves out the rest of a caption Zotero read as a paragraph under it, and keeps the body set off below a float", () => {
+    // Glyph boxes run from a fifth of the size below the baseline to seven tenths above: a
+    // line pitch of 11 leaves a caption's next line 2 below it, a paragraph 20 below is body.
+    const set = (text: string, y: number, kind: Partial<SdtBlock> = {}): { block: SdtBlock; items: PdfTextItem[] } => {
+      const n = node(1, [{ text, x: 72, y }]);
+      const rect = [0, 72, HEIGHT - y - 0.2 * SIZE, 72 + text.length * CW, HEIGHT - y + 0.7 * SIZE];
+      return { block: { type: "paragraph", anchor: { pageRects: [rect] }, content: [n], ...kind }, items: n.items };
+    };
+    const before = set("The body text before the figure is a sentence.", 100);
+    const caption = set("Figure 4 | Held-out accuracy under five conditions. Each dot is one system;", 300, { type: "caption", flowClass: "auxiliary" });
+    const rest = set("the horizontal line marks the median over the ten systems.", 311);
+    const after = set("The next paragraph of the body is set well below the figure.", 340);
+    const label = set("Figure 3.[", 400, { type: "caption", flowClass: "auxiliary" });
+    const labelled = set("Absolute spectra of the three dwarfs]Bottom: the ratios of the spectra.", 412);
+    const caption2 = set("Figure 5: Results on the chosen twelve backends.", 500, { type: "caption", flowClass: "auxiliary" });
+    const body = set("The results show a worse performance by the smaller model.", 512.4);
+    const all = [before, caption, rest, after, label, labelled, caption2, body];
+    const pages = [pageText(1, all.flatMap((x) => x.items))];
+    const blocks = structuredBlocks(structure(all.map((x) => x.block)), pages);
+    expect(blocks.map((b) => b.text)).toEqual([
+      "The body text before the figure is a sentence.",
+      "The next paragraph of the body is set well below the figure.",
+      "The results show a worse performance by the smaller model.",
+    ]);
+  });
+
+  it("leaves out a paper's authors and affiliations on its first page, and keeps a paragraph with a raised mark or two", () => {
+    // Zotero reads the title page's lines as paragraphs: the author list carries a raised
+    // mark after every name, an affiliation opens with its mark and names its institution.
+    /** A line of runs, each [text, raised], set on from the margin. */
+    const line = (y: number, parts: [string, boolean][]): { block: SdtBlock; items: PdfTextItem[] } => {
+      let x = 72;
+      const nodes: SdtTextNode[] = [], items: PdfTextItem[] = [];
+      for (const [text, sup] of parts) {
+        const d = drawn(1, { text, x, y: sup ? y - 4 : y });
+        nodes.push({ text, anchor: { textMap: JSON.stringify([d.run]) }, ...(sup ? { style: { sup: true } } : {}) });
+        items.push(d.item);
+        x += text.length * CW;
+      }
+      return { block: { type: "paragraph", anchor: { pageRects: [[0, 72, HEIGHT - y - 2, x, HEIGHT - y + 7]] }, content: nodes }, items };
+    };
+    const authors = line(90, [["Ann Author", false], ["1", true], [", Bob Writer", false], ["2", true], [", Cat Scholar", false], ["1,3", true]]);
+    const affiliation = line(104, [["1", true], ["Department of Physics, University of Somewhere, Nowhere 12345", false]]);
+    const note = line(118, [["∗Corresponding author: ann@example.org", false]]);
+    const abstract = line(150, [["We study the long-term behaviour of a process on a half-line.", false]]);
+    const cited = line(170, [["The effect was reported before", false], ["2,3", true], [" and measured again later", false], ["4", true], [".", false]]);
+    const nmr = line(190, [["1", true], ["H NMR spectra were recorded at room temperature for every sample.", false]]);
+    const all = [authors, affiliation, note, abstract, cited, nmr];
+    const pages = [pageText(1, all.flatMap((x) => x.items))];
+    const blocks = structuredBlocks(structure(all.map((x) => x.block)), pages);
+    expect(blocks).toHaveLength(3);
+    expect(blocks[0]!.text).toBe("We study the long-term behaviour of a process on a half-line.");
+    expect(blocks[1]!.text).toMatch(/^The effect was reported before/);
+    expect(blocks[2]!.text).toMatch(/H NMR spectra were recorded/);
+  });
+
+  it("leaves out a table's note, set small right under the table, and keeps the body after a table", () => {
+    /** One line at (72, y from the top) in `size`, its rect as Zotero gives it. */
+    const set = (text: string, y: number, size: number, kind: Partial<SdtBlock> = {}): { block: SdtBlock; items: PdfTextItem[] } => {
+      const n = node(1, [{ text, x: 72, y, size }]);
+      const rect = [0, 72, HEIGHT - y - 0.2 * size, 72 + text.length * CW, HEIGHT - y + 0.7 * size];
+      return { block: { type: "paragraph", anchor: { pageRects: [rect] }, content: [n], ...kind }, items: n.items };
+    };
+    const body = [100, 114, 128].map((y) => set(`A body paragraph of the paper set at its own size at ${y}.`, y, 10));
+    const table = set("Model Accuracy Recall Precision of the first table", 200, 8, { type: "table", flowClass: "auxiliary" });
+    const note = set("BC, bounded coalescent; SC, standard coalescent; RI, random integral.", 213, 8);
+    const more = set("Performance is evaluated on a regular grid of points for each dataset.", 222, 8);
+    const table2 = set("Model Accuracy Recall Precision of the second table", 300, 8, { type: "table", flowClass: "auxiliary" });
+    const after = set("The results show that the smaller model is worse at every size tried.", 314, 10);
+    // A dictionary's quotation Zotero took for a table, and the entry set right against it.
+    const quoted = set("Then was the tre ful of ripe perysse, And began down to falle.", 400, 8, { type: "table", flowClass: "auxiliary" });
+    const entry = set("PERYSSE. Pears. Then was the tre ful of ripe perysse.", 408, 8);
+    const all = [...body, table, note, more, table2, after, quoted, entry];
+    const pages = [pageText(1, all.flatMap((x) => x.items))];
+    const blocks = structuredBlocks(structure(all.map((x) => x.block)), pages);
+    expect(blocks.map((b) => b.text)).toEqual([
+      ...body.map((b) => (b.block.content![0] as SdtTextNode).text),
+      "The results show that the smaller model is worse at every size tried.",
+      "PERYSSE. Pears. Then was the tre ful of ripe perysse.",
+    ]);
+  });
+
+  it("leaves out code and prompts set in a typewriter face, and reads a document typed throughout", () => {
+    const typed = (text: string, y: number): SdtBlock => {
+      const n = node(1, [{ text, x: 72, y }]);
+      return { type: "paragraph", content: [{ ...n, style: { monospace: true } }] };
+    };
+    const prose = (text: string, y: number): SdtBlock => paragraph(1, [node(1, [{ text, x: 72, y }])]);
+    const lines = [
+      "The body of the paper describes the method in prose, at some length and in its own words.",
+      "\" final_comment \" : \" Both inquiries are about directions to the airport. \",",
+      "You are an expert Python coding assistant. Write clean code.",
+      "The appendix goes on in prose after the listing, as the body of the paper did before it.",
+      "A last paragraph of prose closes the appendix and the paper with a sentence or two more.",
+    ];
+    const items = lines.map((text, i) => node(1, [{ text, x: 72, y: 100 + 14 * i }])).flatMap((n) => n.items);
+    const pages = [pageText(1, items)];
+    const blocks = structuredBlocks(structure(lines.map((text, i) => (i === 1 || i === 2 ? typed : prose)(text, 100 + 14 * i))), pages);
+    expect(blocks.map((b) => b.text)).toEqual([lines[0], lines[3], lines[4]]);
+    // A screenplay or a typed filing: every paragraph in a typewriter face.
+    const all = structuredBlocks(structure(lines.map((text, i) => typed(text, 100 + 14 * i))), pages);
+    expect(all).toHaveLength(5);
+  });
+
+  describe("the order of a page's columns", () => {
+    /** A block of `lines` lines at (x, y from the top), its rect in PDF space as Zotero gives it. */
+    const placed = (label: string, x: number, y: number, lines = 1): { block: SdtBlock; items: PdfTextItem[]; label: string } => {
+      const n = node(1, Array.from({ length: lines }, (_, i) => ({ text: `${label} line ${i} of the block.`, x, y: y + i * 14 })));
+      const width = `${label} line 0 of the block.`.length * CW;
+      const rect = [0, x, HEIGHT - (y + (lines - 1) * 14) - 0.2 * SIZE, x + width, HEIGHT - y + 0.7 * SIZE];
+      return { block: { type: "paragraph", anchor: { pageRects: [rect] }, content: [n] }, items: n.items, label };
+    };
+    const read = (order: ReturnType<typeof placed>[]): string[] => {
+      const pages = [pageText(1, order.flatMap((b) => b.items))];
+      return structuredBlocks(structure(order.map((b) => b.block)), pages).map((b) => b.text.split(" ")[0]!);
+    };
+
+    it("reads a page's left column before its right one, and a column from the top, where Zotero read them otherwise", () => {
+      // A framed article on the right read first, then the lower box to its left, then the upper.
+      const topLeft = placed("TopLeft", 40, 100, 3), bottomLeft = placed("BottomLeft", 40, 400, 3), right = placed("Right", 320, 80, 30);
+      expect(read([right, bottomLeft, topLeft])).toEqual(["TopLeft", "BottomLeft", "Right"]);
+    });
+
+    it("reads the columns under a photograph set across the page from the left", () => {
+      const title = placed("Title", 40, 60), lead = placed("Lead", 40, 90, 2);
+      const left = placed("Left", 40, 600, 4), middle = placed("Middle", 220, 600, 4), right = placed("Right", 400, 600, 4);
+      expect(read([title, lead, middle, right, left])).toEqual(["Title", "Lead", "Left", "Middle", "Right"]);
+    });
+
+    it("keeps Zotero's order of a paper's page: the left column, then the right, around a float", () => {
+      const a = placed("A", 60, 80, 10), b = placed("B", 60, 500, 10), c = placed("C", 320, 80, 10), d = placed("D", 320, 500, 10);
+      expect(read([a, b, c, d])).toEqual(["A", "B", "C", "D"]);
+    });
+  });
+
+  it("takes a list of bracketed, dated entries for the bibliography Zotero did not find, and keeps a list of steps", () => {
+    // REVTeX sets no References heading, and Zotero reads the bibliography as a list of the body.
+    const lines: [string, number][] = [
+      ["The body ends here with a sentence long enough to read.", 100],
+      ["[1] Collect the measurements of every station", 130],
+      ["[2] Fit the model to the measurements", 144],
+      ["[1]R. Moessner and J. T. Chalker, Properties of a classical spin liquid, Phys. Rev. Lett. 80, 2929 (1998).", 200],
+      ["[2]A. B. Harris, Ordering by quantum fluctuations, Phys. Rev. B 45, 2899 (1992).", 214],
+      ["Seitsonen and R. M. Wentzcovitch, J. Phys. Condens. Matter 21, 395502 (2009).", 228],
+      ["An appendix paragraph after the bibliography.", 300],
+    ];
+    const nodes = lines.map(([text, y]) => node(1, [{ text, x: 72, y }]));
+    const pages = [pageText(1, nodes.flatMap((n) => n.items))];
+    const item = (n: typeof nodes[number]): SdtBlock => ({ type: "listitem", content: [n] });
+    const blocks = structuredBlocks(structure([
+      paragraph(1, [nodes[0]!]),
+      { type: "list", content: [item(nodes[1]!), item(nodes[2]!)] },
+      { type: "list", content: [item(nodes[3]!), item(nodes[4]!), item(nodes[5]!)] },
+      paragraph(1, [nodes[6]!]),
+    ]), pages);
+    expect(blocks.map((b) => b.text)).toEqual([lines[0]![0], "Collect the measurements of every station", "Fit the model to the measurements", lines[6]![0]]);
+    expect(blocks[3]!.columnBreak).toBe(true);
+  });
+
+  it("keeps a paragraph that ends in a number after a full stop, and one that opens with a number", () => {
+    const a = node(1, [{ text: "2.3 Results are summarized in the appendix, p. 12", x: 72, y: 100 }]);
+    const b = node(1, [{ text: "The ratio rose from 1. to 3. 4", x: 72, y: 130 }]);
+    const pages = [pageText(1, [...a.items, ...b.items])];
+    const blocks = structuredBlocks(structure([paragraph(1, [a]), paragraph(1, [b])]), pages);
+    expect(blocks.map((x) => x.text)).toEqual([a.text, b.text]);
+  });
+
   it("makes a paragraph carried over a page one block, with runs on both pages", () => {
     const first = node(1, [{ text: "the paragraph begins on one page and", x: 72, y: 700 }]);
     const second = node(2, [{ text: "ends on the next.", x: 72, y: 80 }]);
@@ -1236,6 +1455,28 @@ describe("structuredBlocks — a manuscript with numbered lines", () => {
     const pages = [pageText(1, [...set.flatMap((l) => l.items), ...caption.flatMap((l) => l.items), ...rows.flatMap((r) => r.items)])];
     const blocks = structuredBlocks(structure([asList(set), { type: "table", flowClass: "auxiliary", content: [textOf([...caption, ...rows])] }]), pages);
     expect(blocks.map((b) => b.text)).toEqual(PARAGRAPHS);
+  });
+
+  it("leaves out a caption Zotero took for a paragraph among numbered lines, where the caption's own lines are not numbered", () => {
+    const set = lines(1, 84, 100);
+    const words = Array.from({ length: 80 }, (_, i) => `word${i}`).join(" ");
+    const caption = node(1, [{ text: `Figure 8 Difference of density plots of all reference fractions ${words}.`, x: 72, y: 300 }]);
+    const pages = [pageText(1, [...set.flatMap((l) => l.items), ...caption.items])];
+    const blocks = structuredBlocks(structure([asList(set), paragraph(1, [caption])]), pages);
+    expect(blocks.map((b) => b.text)).toEqual(PARAGRAPHS);
+  });
+
+  it("leaves out a long caption whose lines are numbered, by its label, and keeps a numbered paragraph that names a figure", () => {
+    const set = lines(1, 84, 100);
+    const captionLines = [
+      { text: `Figure 8 Difference of density plots ${fill("j", 70)}`, x: 72 }, { text: fill("k", 90), x: 72 },
+      { text: fill("l", 90), x: 72 }, { text: fill("m", 90), x: 72 }, { text: `${fill("n", 40)}.`, x: 72 },
+    ];
+    const caption = lines(1, 94, 100 + 11 * PITCH, captionLines);
+    const naming = lines(1, 99, 100 + 18 * PITCH, [{ text: `Figure 3 compares ${fill("o", 70)}`, x: 108 }, { text: `${fill("p", 40)}.`, x: 72 }]);
+    const pages = [pageText(1, [...set, ...caption, ...naming].flatMap((l) => l.items))];
+    const blocks = structuredBlocks(structure([asList(set), asList(caption), asList(naming)]), pages);
+    expect(blocks.map((b) => b.text)).toEqual([...PARAGRAPHS, [...naming].map((l) => l.text.replace(/^\d+ /, "")).join(" ")]);
   });
 
   it("leaves a paper's own numbers alone: a table of years under a paragraph", () => {
