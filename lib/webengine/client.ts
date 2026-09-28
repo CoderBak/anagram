@@ -93,6 +93,13 @@ class WebEngineTransport extends PortTransport {
   protected override lastError(): string | undefined { return browser.runtime.lastError?.message; }
 }
 
+/** Whether the engine's offscreen document is there (Chrome), so that asking the engine
+ *  something cannot start it; false where there is none, or no such API (Firefox). */
+export async function webEngineRunning(): Promise<boolean> {
+  const api = offscreenApi();
+  try { return !!api?.hasDocument && (await api.hasDocument()); } catch { return false; }
+}
+
 let instance: EngineTransport | undefined;
 
 /**

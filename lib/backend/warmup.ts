@@ -24,8 +24,14 @@ export interface WarmupOptions {
   reads(url: string): Promise<boolean>;
   /** Whether the tab is the one in front of its window. */
   inFront(tabId: number): Promise<boolean>;
-  /** The engine's state as the background last knew it (a health read never loads it). */
-  state(): Promise<BackendStatus["active"]>;
+  /** The engine's state as the background last knew it, without asking. */
+  known(): BackendStatus["active"];
+  /** Whether the engine is running (its offscreen document is there), so that asking it cannot
+   *  start it: a request starts an engine that is not, and one that went away mid-download,
+   *  as when the browser closed, would carry on with the download. */
+  running(): Promise<boolean>;
+  /** Ask the engine how it is (a health read, which never loads the model). */
+  ask(): Promise<BackendStatus["active"]>;
   /** Ask the engine to start loading. */
   warm(): Promise<unknown>;
 }
@@ -38,8 +44,11 @@ export function createWarmup(options: WarmupOptions): (navigation: Navigation) =
       if ((await options.engine()) !== "inbrowser") return false;
       if (!(await options.reads(url)) || !(await options.inFront(tabId))) return false;
       // Idle, or thought loaded: the engine may have let the model go since, and a warm-up of a
-      // loaded engine changes nothing. Not set up, loading or failing: nothing to warm.
-      const state = await options.state();
+      // loaded engine changes nothing. Not known since the background woke: asked, if it is
+      // running. Not set up, downloading, loading, failing, or not running: nothing to warm, and
+      // nothing is started.
+      let state = options.known();
+      if (state !== "idle" && state !== "server" && (await options.running())) state = await options.ask();
       if (state !== "idle" && state !== "server") return false;
       await options.warm();
       return true;

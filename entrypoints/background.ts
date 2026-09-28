@@ -40,7 +40,7 @@ import { t } from "../lib/i18n";
 import { handleNativePageMessage } from "../lib/backend/nativeBridge";
 import { readEngineSetup } from "../lib/backend/engineSetup";
 import { deleteEngineFiles, startSetupByItself } from "../lib/webengine/autoSetup";
-import { closeWebEngine } from "../lib/webengine/client";
+import { closeWebEngine, webEngineRunning } from "../lib/webengine/client";
 import { createSetupFeed, type SetupListener } from "../lib/backend/setupFeed";
 import { createWarmup } from "../lib/backend/warmup";
 import { NATIVE_MESSAGE, NATIVE_UNINSTALL } from "../lib/backend/nativeProtocol";
@@ -146,7 +146,9 @@ export default defineBackground(() => {
       return (await browser.permissions.contains({origins: [`${protocol}//${hostname}/*`]}).catch(() => false)) && (await enabledForSite(hostname));
     },
     inFront: async (tabId) => (await browser.tabs.get(tabId).catch(() => null))?.active === true,
-    state: async () => (await getScoreClient().status(false)).active,
+    known: () => getScoreClient().known(),
+    running: webEngineRunning,
+    ask: async () => (await getScoreClient().status(false)).active,
     warm: () => transportOf("inbrowser").request("warm"),
   });
   browser.webNavigation.onBeforeNavigate.addListener((details) => void warmup(details));

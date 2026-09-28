@@ -724,6 +724,15 @@ for (const lang of ["en", "zh-CN"]) {
     const restartAt = server.requests.length;
     await sleep(2500);
     check(`${lang}: with the engine gone mid-download, nothing starts it again by itself`, server.requests.length === restartAt, JSON.stringify(server.requests.slice(restartAt)));
+    // Nor a page Anagram would read starting to open in the tab in front: the warm-up asks only
+    // an engine that is running (lib/backend/warmup.ts). This one never arrives, so no content
+    // script asks either.
+    const opening = await context.newPage();
+    await opening.bringToFront();
+    await opening.goto("http://unreachable.test/").catch(() => {});
+    await sleep(3000);
+    check(`${lang}: …nor a page starting to open in the tab in front`, server.requests.length === restartAt, JSON.stringify(server.requests.slice(restartAt)));
+    await opening.close();
     await saveData(sw, true);
     await updated(sw);
     await sleep(3000);

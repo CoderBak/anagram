@@ -38,6 +38,8 @@ export class NativeScoreClient implements ScoreClient {
     this.probing = undefined;
   }
   isUp(): boolean { return this.current.server.ok; }
+  /** The engine's state as last read, without asking it: asking starts an engine that is not running. */
+  known(): BackendStatus["active"] { return this.current.active; }
   model(): ModelInfo { return { ...(this.current.model ?? NONE) }; }
   revision(): number { return this.generation; }
   private observeModel(model: ModelInfo): void {
