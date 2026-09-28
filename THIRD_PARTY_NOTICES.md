@@ -937,7 +937,7 @@ SOFTWARE.
 
 ## The in-browser engine
 
-The oneclick flavor, whose scoring runs inside the browser (lib/webengine/, entrypoints/engine/), ships ONNX Runtime Web under vendor/engine/ and the emoji names EditLens's preprocessing spells emoji out with. Its model files are downloaded by the user, verified, and kept in the browser's own storage; they are the modelkit and language model listed under the component package below.
+The oneclick flavor, whose scoring runs inside the browser (lib/webengine/, entrypoints/engine/), ships ONNX Runtime Web under vendor/engine/, the emoji names EditLens's preprocessing spells emoji out with, and fastText's language identifier. Its model files are downloaded once, verified, and kept in the browser's own storage; they are the modelkit listed under the component package below.
 
 ### ONNX Runtime Web (1.30.0)
 
@@ -971,6 +971,13 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+### fastText language identification (lid.176.ftz) (lid.176)
+
+- Project: https://fasttext.cc/docs/en/language-identification.html
+- Licence: CC-BY-SA-3.0
+- Copyright: Copyright (c) Facebook, Inc.
+- In Anagram: The oneclick package carries the model unmodified as vendor/engine/lid.176.ftz (938,013 bytes, SHA-256 8f3472cfe8738a7b6099e8e999c3cbfae0dcd15696aac7d7738a8039db603e83): the build fetches it from https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz and refuses any other bytes (scripts/webengine.mjs), and the engine reads it from the package, checking the hash again, to tell English from other languages. The local component's installer downloads the same file, with the same check, instead of shipping it. fastText's authors distribute the model under the Creative Commons Attribution-Share Alike 3.0 licence, https://creativecommons.org/licenses/by-sa/3.0/, and ask that it be cited as A. Joulin, E. Grave, P. Bojanowski, T. Mikolov, Bag of Tricks for Efficient Text Classification (2016), and A. Joulin, E. Grave, P. Bojanowski, M. Douze, H. Jégou, T. Mikolov, FastText.zip: Compressing text classification models (2016).
 
 ### emoji (data) (2.15.0)
 
@@ -1445,7 +1452,7 @@ SOFTWARE.
 
 ## The local component package
 
-The component archive (anagram.tar.gz, anagram.zip) holds Anagram's own engine, installer and native launcher, the two browser builds above with this file, LICENSE and this file. Nothing below is in it: the installer downloads each at install time from its publisher, and each keeps its own licence.
+The component archive (anagram.tar.gz, anagram.zip) holds Anagram's own engine, installer and native launcher, the two browser builds above with this file, LICENSE and this file. Nothing below is in it: the installer downloads each at install time from its publisher, and each keeps its own licence. It downloads fastText's language identifier too, listed under the in-browser engine above.
 
 ### uv (pinned in install.sh and install.ps1)
 
@@ -1460,13 +1467,6 @@ The component archive (anagram.tar.gz, anagram.zip) holds Anagram's own engine, 
 - Licence: Each package's own
 - Copyright: Their respective authors
 - In Anagram: A Python runtime from uv's distributions and the packages anagramd/pyproject.toml names (MLX on Apple silicon, PyTorch and Transformers elsewhere, ONNX Runtime, tokenizers, fastText and others), installed from PyPI by uv at the exact versions of anagramd/uv.lock.
-
-### fastText language identification (lid.176.ftz) (lid.176)
-
-- Project: https://fasttext.cc/docs/en/language-identification.html
-- Licence: CC-BY-SA-3.0
-- Copyright: Copyright (c) Facebook, Inc.
-- In Anagram: Downloaded with SHA-256 verification; it tells English from other languages in the engine.
 
 ### EditLens RoBERTa-large (pinned in anagramd/modelkit.json)
 

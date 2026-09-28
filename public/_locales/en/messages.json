@@ -651,6 +651,10 @@
     "message": "Local engine",
     "description": "Name of the native component, used everywhere."
   },
+  "engineTitle": {
+    "message": "In-browser engine",
+    "description": "In-browser edition: the title of the engine's card on the setup page and in Settings, in place of componentTitle."
+  },
   "componentNotInstalled": {
     "message": "Not installed",
     "description": "Engine state: the local engine has never connected."
@@ -659,13 +663,13 @@
     "message": "Anagram's model runs right here in your browser, with nothing else to install. It needs a one-time download of $1.",
     "description": "In-browser edition, setup page before setup: what setting up means. $1 is the download's size, e.g. 1.4 GB."
   },
+  "engineSaveData": {
+    "message": "Data Saver is on in your browser, so the download waits until you start it.",
+    "description": "Oneclick setup, not set up: why the model download did not start by itself (navigator.connection.saveData)."
+  },
   "engineSetUpButton": {
     "message": "Set up (one-time $1 download)",
-    "description": "In-browser edition: the button that starts setup (the browser asks for the download sites, then the model downloads). $1 is the size, e.g. 1.4 GB."
-  },
-  "engineSetUpHosts": {
-    "message": "Your browser will ask to let Anagram reach huggingface.co and dl.fbaipublicfiles.com, where the model is published. Anagram uses them for this download only.",
-    "description": "In-browser edition: under the setup button, what the browser's permission prompt will be about. Keep the two host names as they are."
+    "description": "In-browser edition: the button that starts the model download when it did not start by itself. $1 is the size, e.g. 1.4 GB."
   },
   "engineNotSetUp": {
     "message": "Not set up yet",
@@ -739,16 +743,12 @@
     "message": "Runs on your processor, which is much slower than a graphics card. If hardware acceleration is off in your browser's settings, turning it on may let Anagram use the graphics card.",
     "description": "In-browser edition, engine ready without a usable GPU: where the model runs, and how to get the faster path."
   },
-  "enginePermissionRefused": {
-    "message": "Anagram needs your permission to download the model from huggingface.co and dl.fbaipublicfiles.com. Click the button again and choose Allow.",
-    "description": "In-browser edition: the browser's permission for the download sites was refused or withdrawn, and how to fix it."
-  },
   "engineNetworkLost": {
     "message": "The connection was lost. Check that you're online, then click Retry: the download continues where it stopped.",
     "description": "In-browser edition: the download failed on the network, and how to fix it. Retry is the button's label (panelRetry)."
   },
   "engineDiskFull": {
-    "message": "There isn't enough free disk space. Free up at least $1, then click Retry.",
+    "message": "There isn't enough free disk space. Free up at least $1, then try again.",
     "description": "In-browser edition: the download stopped on a full disk; $1 is how much it still needs, e.g. 800 MB."
   },
   "engineServerDown": {
@@ -810,6 +810,10 @@
   "panelSetupFailed": {
     "message": "Anagram's setup didn't finish. New paragraphs wait until it does.",
     "description": "In-browser edition, the in-page panel: the setup download stopped on an error."
+  },
+  "panelSetupLoading": {
+    "message": "The model is starting. New paragraphs wait until it's ready.",
+    "description": "In-browser edition, the panel's notice while the downloaded model loads."
   },
   "componentStarting": {
     "message": "Starting…",
@@ -1135,9 +1139,17 @@
     "message": "Local engine: $1",
     "description": "Engine status line at the foot of the popup; $1 is the state."
   },
+  "popupEngineInBrowser": {
+    "message": "In-browser engine: $1",
+    "description": "In-browser edition: engine status line at the foot of the popup; $1 is the state."
+  },
   "popupEngineDown": {
     "message": "Local engine is not ready",
     "description": "Status when the engine is unavailable."
+  },
+  "popupEngineInBrowserDown": {
+    "message": "In-browser engine is not ready",
+    "description": "In-browser edition: status when the engine is unavailable for a reason other than setup."
   },
   "popupEngineOutdated": {
     "message": "Local engine needs an update",

@@ -1,18 +1,19 @@
 // The engine panel of the oneclick flavor, in place of lib/ui/componentSettings.ts: the
 // setup page and Settings import either as "#flavor/engine-panel" (scripts/flavor.mjs), so
 // this exports the same names with the same types. There is nothing to install and no
-// command: one button asks the browser for the model's download hosts, inside the click as
-// the browser requires (fastText's host sends no CORS headers, so the grant must come before
-// the download), then asks the engine for `models.download`. The rest is the engine's
-// `status`, told in plain words (lib/backend/engineSetup.ts): progress with speed and time
-// left, Pause, Resume and Cancel, what stopped a download and how to fix it, and once it is
-// ready, whether the model runs on the graphics card or the processor. Benchmarks, updates
-// and uninstalling belong to the local engine and are not here.
+// command: the download starts by itself when the extension is installed
+// (lib/webengine/autoSetup.ts), and one button asks the engine for `models.download` when it
+// did not: the browser asks sites to save data or has too little room, which the panel says,
+// or the person cancelled, paused or deleted. Hugging Face answers the engine's requests
+// with CORS headers, so no host permission is asked for. The rest is the
+// engine's `status`, told in plain words (lib/backend/engineSetup.ts): progress with speed
+// and time left, Pause, Resume and Cancel, what stopped a download and how to fix it, and
+// once it is ready, whether the model runs on the graphics card or the processor.
+// Benchmarks, updates and uninstalling belong to the local engine and are not here.
 import { browser } from "#imports";
 import { t, tn, type MessageKey } from "../i18n";
 import { requestComponent, type ComponentReply, type ComponentSnapshot } from "../backend/nativeClient";
-import { percentOf, setupStage, type SetupStage } from "../backend/engineSetup";
-import { MODEL_HOSTS } from "../access/patterns";
+import { percentOf, roomShort, setupStage, type SetupStage } from "../backend/engineSetup";
 import { pinnedFiles } from "../webengine/pin";
 import { ACTIONS, type BackendStatus } from "../messaging/protocol";
 import "./componentSettings.css";
@@ -86,6 +87,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
 
   const summary = element("p", t("componentStarting"), "component-status"); summary.setAttribute("role", "status");
   const intro = element("p", t("engineSetUpIntro", formatSize(DOWNLOAD_BYTES)), "engine-intro"); intro.hidden = true;
+  const note = element("p", t("engineSaveData"), "engine-note"); note.hidden = true;
   const progress = element("progress"); progress.hidden = true;
   const progressText = element("p", "", "engine-progress"); progressText.id = "engine-progress"; progressText.hidden = true;
   progress.setAttribute("aria-describedby", progressText.id);
@@ -103,7 +105,6 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   primary.id = "component-primary"; primary.hidden = true;
   const cancel = makeButton("engineCancelDownload", () => confirm("cancel"), "outline"); cancel.id = "engine-cancel"; cancel.hidden = true;
   actions.append(primary, cancel);
-  const hosts = element("p", t("engineSetUpHosts"), "engine-hosts"); hosts.hidden = true;
 
   const manage = element("details", undefined, "component-fold"); manage.id = "manage"; manage.hidden = true;
   const idleField = element("div", undefined, "field"); idleField.dataset.orientation = "horizontal";
@@ -125,40 +126,36 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   dialog.setAttribute("aria-labelledby", dialogTitle.id); dialog.setAttribute("aria-describedby", dialogText.id);
   const dialogActions = element("div", undefined, "component-actions");
   const keep = makeButton("buttonCancel", () => dialog.close(), "outline");
-  const accept = makeButton("componentDeleteModels", () => { dialog.close(); if (confirming && !pending) run("models.delete"); }); accept.id = "engine-confirm";
+  const accept = makeButton("componentDeleteModels", () => { dialog.close(); if (confirming) run("models.delete"); }); accept.id = "engine-confirm";
   dialogActions.append(keep, accept); dialog.append(dialogTitle, dialogText, dialogActions);
-  host.replaceChildren(summary, intro, progress, progressText, where, stored, error, details, actions, hosts, manage, dialog);
+  host.replaceChildren(summary, intro, note, progress, progressText, where, stored, error, details, actions, manage, dialog);
 
   let snapshot: ComponentSnapshot | undefined;
   let stage: SetupStage | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let controller: AbortController | undefined;
-  let destroyed = false, pending = false, asking = false, everConnected = false, crashed = false;
-  /** The browser said no to the download hosts: at the click (refused) or since (withdrawn). */
-  let refused = false;
-  let hostsGranted = true;
+  let destroyed = false, pending = false, checking = false, everConnected = false, crashed = false;
   /** Setup cannot start: the browser's storage estimate leaves less room than the download needs. */
   let noRoom: number | null = null;
+  /** Not set up: whether the browser asks sites to save data and the room was looked at, which
+   *  is why a download did not start by itself (lib/webengine/autoSetup.ts). */
+  let saveData = false, roomChecked = false;
   let actionError = "", actionDetail = "";
   let confirming: "cancel" | "delete" | undefined;
+  /** An operation asked for while a status read was out: it goes as soon as that is back. */
+  let queued: Operation | undefined;
   const speed = new Speedometer();
 
-  const readHosts = (): void => {
-    void browser.permissions.contains({ origins: [...MODEL_HOSTS] }).then((granted) => {
-      if (destroyed || granted === hostsGranted) return;
-      hostsGranted = granted;
-      if (granted) refused = false;
-      repaint();
-    }, () => undefined);
-  };
-  browser.permissions.onAdded.addListener(readHosts);
-  browser.permissions.onRemoved.addListener(readHosts);
-  readHosts();
+  /** What a download has put on disk so far: the engine counts its storage when a file
+   *  completes, the download its bytes as they arrive. */
+  function downloadedBytes(): number {
+    return Math.max(snapshot?.storage.models_bytes ?? 0, stage && "received" in stage ? stage.received : 0);
+  }
 
   function confirm(what: "cancel" | "delete"): void {
     if (!snapshot || pending) return;
     confirming = what;
-    const bytes = snapshot.storage.models_bytes;
+    const bytes = what === "cancel" ? downloadedBytes() : snapshot.storage.models_bytes;
     dialogTitle.textContent = t(what === "cancel" ? "engineCancelDownload" : "componentDeleteModels");
     dialogText.textContent = what === "cancel" ? t("engineCancelConfirm", formatSize(bytes)) : t("engineDeleteConfirm", formatSize(bytes));
     keep.textContent = t(what === "cancel" ? "engineKeepDownloading" : "buttonCancel");
@@ -166,21 +163,15 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     dialog.showModal(); keep.focus();
   }
 
-  /**
-   * Set up, Resume and Retry: the browser's question about the download hosts comes first
-   * and synchronously in the click — nothing may be awaited before it, or the browser refuses
-   * to ask — then the room on disk, then the download. Already granted, there is no prompt.
-   */
+  /** Set up, Resume and Retry: the room on disk first, then the download. */
   function download(): void {
-    if (pending || asking) return;
-    const granted = browser.permissions.request({ origins: [...MODEL_HOSTS] }).catch(() => false);
-    asking = true; paintButtons();
-    void granted.then(async (ok) => {
-      asking = false;
+    if (pending || checking) return;
+    checking = true; paintButtons();
+    void roomNeeded().then((room) => {
+      checking = false;
       if (destroyed) return;
-      hostsGranted = ok; refused = !ok; noRoom = null;
-      if (ok) noRoom = await roomNeeded();
-      if (!ok || noRoom !== null) { actionError = actionDetail = ""; repaint(); return; }
+      noRoom = room;
+      if (noRoom !== null) { actionError = actionDetail = ""; repaint(); return; }
       run("models.download");
     });
   }
@@ -189,20 +180,16 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
    *  (or the browser gives no estimate). */
   async function roomNeeded(): Promise<number | null> {
     try {
-      const { quota, usage } = await navigator.storage.estimate();
-      if (quota === undefined || usage === undefined) return null;
-      const needed = Math.max(0, DOWNLOAD_BYTES - (snapshot?.storage.models_bytes ?? 0));
-      return quota - usage < needed ? needed - Math.max(0, quota - usage) : null;
+      return roomShort(await navigator.storage.estimate(), Math.max(0, DOWNLOAD_BYTES - (snapshot?.storage.models_bytes ?? 0)));
     } catch { return null; }
   }
 
   /** Why the last download stopped, and what to do about it; empty when nothing did. */
   function failureText(s: SetupStage): string {
-    if (refused || ((s.stage === "failed" || s.stage === "paused") && !hostsGranted)) return t("enginePermissionRefused");
     if (noRoom !== null) return t("engineDiskFull", formatSize(noRoom));
     if (s.stage !== "failed") return "";
     switch (s.failure) {
-      case "network": return t(hostsGranted ? "engineNetworkLost" : "enginePermissionRefused");
+      case "network": return t("engineNetworkLost");
       case "storage": return t("engineDiskFull", formatSize(Math.max(0, s.total - s.received)));
       case "server": return t("engineServerDown");
       case "damaged": return t("engineDamaged");
@@ -225,23 +212,25 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     else switch (s.stage) {
       case "needed": setPrimary("engineSetUpButton", download, true, formatSize(DOWNLOAD_BYTES)); break;
       case "downloading": setPrimary("componentPauseDownload", () => run("models.pause"), false); break;
-      case "paused": setPrimary(refused || !hostsGranted ? "panelRetry" : "componentResumeDownload", download); break;
+      case "paused": setPrimary("componentResumeDownload", download); break;
       case "failed": setPrimary("panelRetry", download); break;
       case "stopped": setPrimary("componentResume", () => run("engine.resume")); break;
       case "error": setPrimary("panelRetry", () => run("engine.resume")); break;
       default: setPrimary(null);
     }
-    const downloadOnDisk = !!s && ["downloading", "paused", "failed"].includes(s.stage) && (snapshot?.storage.models_bytes ?? 0) > 0;
+    // A running download can always be cancelled; a stopped one once it left bytes on disk.
+    const downloadOnDisk = !!s && (s.stage === "downloading" || ((s.stage === "paused" || s.stage === "failed") && downloadedBytes() > 0));
     cancel.hidden = crashed || !downloadOnDisk;
     const modelOnDisk = !!s && ["ready", "loading", "stopped", "error"].includes(s.stage) && (snapshot?.storage.models_bytes ?? 0) > 0;
     manage.hidden = crashed || !modelOnDisk;
-    primary.disabled = cancel.disabled = removeModel.disabled = idleSelect.disabled = pending || asking;
+    primary.disabled = cancel.disabled = removeModel.disabled = idleSelect.disabled = pending || checking;
   }
 
   function repaint(): void {
     if (destroyed) return;
     const s = stage;
-    hosts.hidden = intro.hidden = !(s?.stage === "needed" && !crashed);
+    intro.hidden = !(s?.stage === "needed" && !crashed);
+    note.hidden = intro.hidden || !saveData;
     const counting = s && (s.stage === "downloading" || s.stage === "paused" || s.stage === "failed") ? s : null;
     progressText.hidden = !counting || crashed;
     // While the model loads there is no count to show, only that something is happening.
@@ -290,6 +279,13 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     stage = setupStage(s);
     if (stage.stage === "downloading") speed.add(stage.received); else speed.reset();
     if (stage.stage !== "needed" && stage.stage !== "paused" && stage.stage !== "failed") noRoom = null;
+    if (stage.stage !== "needed") roomChecked = false;
+    else if (!roomChecked) {
+      // What kept the download from starting by itself, said beside Set up.
+      roomChecked = true;
+      saveData = (navigator as { connection?: { saveData?: boolean } }).connection?.saveData === true;
+      void roomNeeded().then((room) => { if (!destroyed && stage?.stage === "needed" && room !== null) { noRoom = room; repaint(); } });
+    }
     summary.textContent = crashed ? t("componentNeedsAttention") : t(stageKeys[stage.stage]);
     if (s.settings) {
       const value = String(s.settings.idle_unload_s);
@@ -325,7 +321,11 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
         if (!destroyed && !ac.signal.aborted) paint(current);
       } else paint(reply);
     } catch { if (!destroyed && !ac.signal.aborted) paint({ kind: "unavailable" }); }
-    finally { pending = false; controller = undefined; paintButtons(); schedule(); }
+    finally {
+      pending = false; controller = undefined; paintButtons();
+      const next = queued; queued = undefined;
+      if (next && !destroyed) run(next); else schedule();
+    }
   }
 
   async function engineCrashed(): Promise<boolean> {
@@ -345,7 +345,10 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   }
 
   function run(op?: Operation): void {
-    if (pending || destroyed) return;
+    if (destroyed) return;
+    // The confirmation's button stays live while the page reads the status: what it asked
+    // for waits for the read instead of being dropped.
+    if (pending) { if (op) queued = op; return; }
     if (timer !== undefined) clearTimeout(timer);
     actionError = actionDetail = "";
     if (op === "models.download" || op === "models.delete") speed.reset();
@@ -361,6 +364,5 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     destroyed = true; controller?.abort(); if (timer !== undefined) clearTimeout(timer);
     if (dialog.open) dialog.close();
     document.removeEventListener("visibilitychange", visibility);
-    browser.permissions.onAdded.removeListener(readHosts); browser.permissions.onRemoved.removeListener(readHosts);
   } };
 }

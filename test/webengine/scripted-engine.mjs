@@ -5,10 +5,10 @@
 // minutes or a machine to reach for real — a finished 1.4 GB download, a GPU, a full disk,
 // a model that failed to load — so the layout, accessibility and copy suites script them:
 // an init script answers the page's own contract requests and backend-status question with
-// a snapshot of the engine's exact shape, and can stand in for the browser's permission
-// answer and storage estimate. Everything else the page asks goes to the real extension.
-// test/oneclick.mjs drives the real engine through the same states it can reach.
-const TOTAL = 1_426_397_568;
+// a snapshot of the engine's exact shape, and can stand in for the browser's storage
+// estimate and its Save-Data setting. Everything else the page asks goes to the real
+// extension. test/oneclick.mjs drives the real engine through the same states it can reach.
+const TOTAL = 1_425_459_555;
 
 const download = (over = {}) => ({ status: "idle", bytes_received: 0, total_bytes: 0, file: null, error: null, phase: "detecting", detail: null, ...over });
 const runtime = (active, selected = active ?? "webgpu:fp32") => ({
@@ -54,7 +54,8 @@ export function backendFor(name, { crashed = false } = {}) {
     : s.download.status === "running" ? { state: "downloading", percent }
     : s.download.status === "paused" ? { state: "paused", percent }
     : s.download.status === "failed" ? { state: "failed", percent }
-    : s.state === "needs_models" ? { state: "needed", percent: 0 } : null;
+    : s.state === "needs_models" ? { state: "needed", percent: 0 }
+    : s.state === "loading" ? { state: "loading", percent: 100 } : null;
   return up
     ? { active: "server", model: { id: "editlens_roberta-large", ver: "sha256:test-web1", calibration: "editlens-4bucket-cosine(0.03,0.15)" }, server: { ok: true, checkedAt: 1, device: "webgpu", dtype: "fp32" } }
     : { active: "down", model: null, server: { ok: false, checkedAt: 1, reason: "unreachable", code: crashed ? "engine_crashed" : "not_ready" }, setup };
@@ -63,11 +64,11 @@ export function backendFor(name, { crashed = false } = {}) {
 /**
  * Before `page` loads: its contract requests are answered with STATES[name] (the page can
  * switch with `window.__engineState = name` later), its backend-status question with
- * backendFor(name), and — when given — the permission prompt with `permission` and the
- * storage estimate with `estimate`. Requests the page made are in `window.__engineOps`.
+ * backendFor(name), and — when given — the storage estimate with `estimate` and the
+ * browser's Save-Data setting with `saveData`. Requests the page made are in `window.__engineOps`.
  */
-export async function scriptEngine(page, name, { crashed = false, permission, estimate } = {}) {
-  await page.addInitScript(({ states, name, backends, permission, estimate }) => {
+export async function scriptEngine(page, name, { crashed = false, estimate, saveData } = {}) {
+  await page.addInitScript(({ states, name, backends, estimate, saveData }) => {
     window.__engineState = name;
     window.__engineOps = [];
     const api = globalThis.chrome;
@@ -80,10 +81,7 @@ export async function scriptEngine(page, name, { crashed = false, permission, es
       if (message?.action === "getBackendStatus") return Promise.resolve(backends[window.__engineState]);
       return send(message, ...rest);
     };
-    if (permission !== undefined) {
-      api.permissions.request = (request) => { window.__engineOps.push(`permissions.request ${request.origins.join(" ")}`); return Promise.resolve(permission); };
-      api.permissions.contains = () => Promise.resolve(permission);
-    }
     if (estimate) navigator.storage.estimate = () => Promise.resolve(estimate);
-  }, { states: STATES, name, backends: Object.fromEntries(Object.keys(STATES).map((n) => [n, backendFor(n, { crashed })])), permission, estimate });
+    if (saveData !== undefined) Object.defineProperty(navigator, "connection", { configurable: true, value: { saveData } });
+  }, { states: STATES, name, backends: Object.fromEntries(Object.keys(STATES).map((n) => [n, backendFor(n, { crashed })])), estimate, saveData });
 }

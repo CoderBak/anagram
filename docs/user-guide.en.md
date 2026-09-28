@@ -29,14 +29,12 @@ with `xpinstall.signatures.required` set to false in `about:config`; elsewhere,
 Anagram (in-browser) runs the same model inside the browser, with nothing else to install.
 It needs Chrome 137 or later, or Firefox 153 or later.
 
-1. Install the extension; the setup page opens.
-2. Click **Set up (one-time 1.4 GB download)**. The browser asks to let Anagram reach
-   huggingface.co and dl.fbaipublicfiles.com: choose Allow. The model comes from Hugging
-   Face and the language-detection file from fastText's site, once, into the browser's own
-   storage.
-3. The page shows progress, speed and time left. You can pause, resume or cancel. A
+1. Install the extension. The setup page opens with the model already downloading: 1.4 GB,
+   once, from Hugging Face into the browser's own storage. With Data Saver on, or too little
+   disk space, it waits for **Set up (one-time 1.4 GB download)** instead.
+2. The page shows progress, speed and time left. You can pause, resume or cancel. A
    download that stops says why; **Retry** continues where it left off.
-4. When it says **Ready**, allow sites as described below.
+3. When it says **Ready**, allow sites as described below.
 
 The model runs on the graphics card through WebGPU, or on the processor, much more slowly,
 where the browser offers no usable GPU. Even on the GPU it is about two to three times

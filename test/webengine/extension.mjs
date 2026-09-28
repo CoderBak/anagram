@@ -1,7 +1,7 @@
 // test/webengine/extension.mjs — the oneclick build scoring for real: background, offscreen
 // document, worker, model, in a temporary Chromium profile.
 //
-//   ANAGRAM_MODELKIT=<modelkit dir> ANAGRAM_LID_MODEL=<lid.176.ftz> [ANAGRAM_PARITY_SAMPLE=<sample.json>] \
+//   ANAGRAM_MODELKIT=<modelkit dir> [ANAGRAM_PARITY_SAMPLE=<sample.json>] \
 //     node test/webengine/extension.mjs [--idle]
 //
 // test/oneclick.mjs stops where the engine says it has no model files. This goes on: the
@@ -22,12 +22,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ensureTestBuild } from "../test-build.mjs";
 import { ROOT, serve, watchMemory } from "./harness.mjs";
+import { NO_MODEL_HOSTS, cancelAutoSetup } from "./model-server.mjs";
 
 const argv = process.argv.slice(2);
 if (process.env.CI) { console.log("SKIP  extension scoring — never in CI"); process.exit(0); }
-const kit = process.env.ANAGRAM_MODELKIT, lid = process.env.ANAGRAM_LID_MODEL;
-if (!kit || !lid || !existsSync(join(kit, "onnx", "model.onnx")) || !existsSync(lid)) {
-  console.log("SKIP  extension scoring — set ANAGRAM_MODELKIT and ANAGRAM_LID_MODEL to the pinned files");
+const kit = process.env.ANAGRAM_MODELKIT;
+if (!kit || !existsSync(join(kit, "onnx", "model.onnx"))) {
+  console.log("SKIP  extension scoring — set ANAGRAM_MODELKIT to the pinned modelkit");
   process.exit(0);
 }
 const modelkit = JSON.parse(readFileSync(join(ROOT, "anagramd", "modelkit.json"), "utf8"));
@@ -35,7 +36,6 @@ const entry = (path) => modelkit.files.find((f) => f.path === path);
 const FILES = [
   { name: "model.onnx", url: "/kit/onnx/model.onnx", sha256: entry("onnx/model.onnx").sha256, size: entry("onnx/model.onnx").size_bytes },
   { name: "tokenizer.json", url: "/kit/tokenizer.json", sha256: entry("tokenizer.json").sha256, size: entry("tokenizer.json").size_bytes },
-  { name: "lid.176.ftz", url: `/lid/${lid.split("/").pop()}`, sha256: "8f3472cfe8738a7b6099e8e999c3cbfae0dcd15696aac7d7738a8039db603e83", size: 938013 },
 ];
 const samplePath = process.env.ANAGRAM_PARITY_SAMPLE;
 const sample = samplePath && existsSync(samplePath) ? JSON.parse(readFileSync(samplePath, "utf8")) : null;
@@ -49,11 +49,12 @@ const EXT = ensureTestBuild("oneclick-chrome-mv3");
 const results = [];
 const check = (name, ok, note = "") => { results.push({ name, ok: !!ok, note: String(note) }); console.log(`${ok ? "ok  " : "FAIL"} ${name}${ok ? "" : ` — ${note}`}`); };
 
-const { base, close: closeServer } = await serve({ "/kit/": kit, "/lid/": join(lid, "..") }, { csp: null, isolate: false });
+const { base, close: closeServer } = await serve({ "/kit/": kit }, { csp: null, isolate: false });
 const profile = mkdtempSync(join(tmpdir(), "anagram-webengine-ext-"));
 const context = await chromium.launchPersistentContext(profile, {
   headless: process.env.HEADED !== "1", channel: "chromium",
-  args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`, "--no-first-run", "--no-default-browser-check"],
+  // Installing starts the model's download (lib/webengine/autoSetup.ts): Hugging Face resolves to nothing here.
+  args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`, "--no-first-run", "--no-default-browser-check", NO_MODEL_HOSTS],
   env: { ...process.env, HOME: profile },
 });
 const problems = [];
@@ -63,11 +64,14 @@ try {
   sw.on("console", (m) => { if (m.type() === "error") problems.push(`worker: ${m.text()}`); });
   const extId = new URL(sw.url()).host;
   console.log(`Chromium ${context.browser()?.version()}, extension ${extId}`);
+  // What installing started is cancelled before the files are put in its place.
+  await cancelAutoSetup(context, extId);
 
   // Seed the engine's store: the same files, verified by the same hashes. From the engine
   // page, the one extension page whose connect-src is the manifest's (every other page
   // tightens it to 'self' with a meta tag); it is closed again before the engine is asked
-  // anything, so that only the offscreen document answers the background's port.
+  // for the model, so that only the offscreen document answers the background's port. The
+  // engine, started at install, verifies the files it finds when asked for them.
   const seed = await context.newPage();
   await seed.goto(`chrome-extension://${extId}/engine.html`);
   const t0 = Date.now();

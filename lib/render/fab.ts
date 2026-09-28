@@ -1019,12 +1019,12 @@ export function createFab(opts: {
       text.textContent = !setup ? t(engineCrashed ? "panelEngineCrashed" : "panelDaemonDown")
         : setup.state === "downloading" ? t("panelSetupDownloading", setup.percent)
         : setup.state === "paused" ? t("panelSetupPaused", setup.percent)
-        : t(setup.state === "failed" ? "panelSetupFailed" : "panelSetupNeeded");
+        : t(setup.state === "failed" ? "panelSetupFailed" : setup.state === "loading" ? "panelSetupLoading" : "panelSetupNeeded");
       const retry = document.createElement("button");
       retry.type = "button";
       retry.className = "fchip";
       retry.textContent = t(!setup ? "panelRetry" : setup.state === "needed" ? "engineSetUp"
-        : setup.state === "downloading" ? "engineShowProgress" : "engineContinueSetup");
+        : setup.state === "downloading" || setup.state === "loading" ? "engineShowProgress" : "engineContinueSetup");
       retry.addEventListener("click", (e) => {
         e.stopPropagation();
         if (setup) opts.onSetup?.();

@@ -2,19 +2,23 @@
 //
 // The flavor swaps the engine transport and the setup/Settings engine panel
 // (scripts/flavor.mjs). This starts the test build for real, in English and in Chinese, each
-// in a temporary profile, with the model's download hosts answered on this machine
-// (test/webengine/model-server.mjs: Chromium resolves huggingface.co and
-// dl.fbaipublicfiles.com to a local HTTPS server, and nothing else resolves at all):
+// in a temporary profile, with Hugging Face answered on this machine
+// (test/webengine/model-server.mjs: Chromium resolves its names to a local HTTPS server that
+// answers CORS as Hugging Face does, and nothing else resolves at all):
 //
-//   - the worker starts without Native Messaging, a contract request reaches the in-browser
-//     engine in its offscreen document, and every page shows the in-browser block and no
-//     install command;
-//   - the popup and the in-page panel say setup is needed and open the setup page;
-//   - setup from its one button: the browser's permission for the download hosts first
-//     (refused, then granted), a server error and Retry, the download with progress, speed
-//     and time left, the popup's and the panel's progress line, Pause and Resume from the
-//     bytes on disk, a dropped connection retried by itself, Cancel, and a disk too full
-//     to start;
+//   - installing is setting up: the model's download starts by itself and the setup page
+//     opens on it running, with Pause and Cancel; the manifest names no model host, and with
+//     the shipped permissions (no host at all) the download goes by CORS alone; the package
+//     carries lid.176.ftz;
+//   - the download with progress, speed and time left, the popup's and the panel's progress
+//     line, a dropped connection retried by itself, Pause and Resume from the bytes on disk,
+//     and Cancel;
+//   - not set up: every page shows the in-browser block and no install command, the popup and
+//     the in-page panel say setup is needed and open the setup page, Save-Data and a disk too
+//     full say why the download waits, a server error and Retry;
+//   - an engine gone mid-download is not started again by itself; an update resumes the
+//     download, unless the browser asks to save data; after a Cancel neither an update nor a
+//     browser relaunch starts it;
 //   - the states that take a finished download, a GPU or a failure to reach (ready on the
 //     graphics card or the processor, loading, each kind of failure, a model that would not
 //     load, an engine that kept crashing) scripted into the page (test/webengine/scripted-engine.mjs);
@@ -23,13 +27,13 @@
 //
 // The downloads are zeros from the local server: a paused, cancelled or failed download is
 // never verified. `--real` adds one run with the real files, the whole way to Ready and a
-// score (ANAGRAM_MODELKIT and ANAGRAM_LID_MODEL, or ~/anagram-bench's copies): 1.4 GB into a
+// score without a click (ANAGRAM_MODELKIT, or ~/anagram-bench's copy): 1.4 GB into a
 // temporary profile that is deleted after; never in CI.
 //
 //   npm run test:oneclick              # builds output-test/oneclick-chrome-mv3 when stale
 //   node test/oneclick.mjs --real      # and the real download, load and score
 import { chromium } from "playwright";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { serveHtml, uiLanguage } from "./harness.mjs";
@@ -37,10 +41,11 @@ import { ensureTestBuild } from "./test-build.mjs";
 import { TEST_PDF } from "./pdf-fixture.mjs";
 import { DOWNLOAD_BYTES, modelServer, realFiles } from "./webengine/model-server.mjs";
 import { STATES, scriptEngine } from "./webengine/scripted-engine.mjs";
+import { LID } from "../scripts/webengine.mjs";
 
 const EXT = ensureTestBuild("oneclick-chrome-mv3");
 const REAL = process.argv.includes("--real");
-const MODEL_HOSTS = ["https://huggingface.co/*", "https://*.hf.co/*", "https://dl.fbaipublicfiles.com/*"];
+const HUGGING_FACE = /^(huggingface\.co|[\w.-]+\.hf\.co)$/;
 
 const results = [];
 const check = (name, ok, note = "") => {
@@ -68,50 +73,103 @@ const site = await serveHtml({
   "/article.html": `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>article</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">${[1, 2, 3].map((n) => `<p>${PARA(n)}</p>`).join("\n")}</body></html>`,
 });
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, timeout = 15000, step = 200) => {
   const end = Date.now() + timeout;
   for (;;) {
     const value = await fn().catch(() => undefined);
     if (value) return value;
     if (Date.now() > end) return value;
-    await new Promise((r) => setTimeout(r, step));
+    await sleep(step);
   }
 };
 
-async function launch(lang, server) {
-  const profile = mkdtempSync(join(tmpdir(), "anagram-oneclick-"));
+/** A browser on `profile` (a new temporary one unless given), with the extension loaded;
+ *  close() keeps the profile only when asked, for a restart. */
+async function launch(lang, server, profile = mkdtempSync(join(tmpdir(), "anagram-oneclick-")), extension = EXT) {
   const localized = lang === "en" ? {} : uiLanguage(lang);
   const context = await chromium.launchPersistentContext(profile, {
     headless: true, channel: "chromium", ...localized, viewport: { width: 1100, height: 900 },
-    args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`, "--no-first-run", "--no-default-browser-check", ...server.args, ...(localized.args ?? [])],
+    args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, "--no-first-run", "--no-default-browser-check", ...server.args, ...(localized.args ?? [])],
   });
   let [sw] = context.serviceWorkers();
   if (!sw) sw = await context.waitForEvent("serviceworker", { timeout: 15000 }).catch(() => null);
-  return { context, sw, profile, close: async () => { await context.close().catch(() => {}); rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } };
+  return {
+    context, sw, profile,
+    close: async ({ keep = false } = {}) => {
+      await context.close().catch(() => {});
+      if (!keep) rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    },
+  };
 }
 
 /** A page of the extension, failing the run on any uncaught error in it. */
 async function extPage(context, extId, path, problems, script) {
   const page = await context.newPage();
-  page.on("pageerror", (e) => problems.push(`${path}: ${e.message}`));
-  page.on("console", (m) => { if (m.type() === "error") problems.push(`${path}: ${m.text()}`); });
+  watch(page, path, problems);
   if (script) await script(page);
   await page.goto(`chrome-extension://${extId}/${path}`);
   return page;
 }
+function watch(page, name, problems) {
+  page.on("pageerror", (e) => problems.push(`${name}: ${e.message}`));
+  page.on("console", (m) => { if (m.type() === "error") problems.push(`${name}: ${m.text()}`); });
+}
 const statusOf = (page) => page.evaluate(() => document.querySelector("#componentSettings .component-status")?.textContent ?? "");
 const textOf = (page, selector) => page.evaluate((s) => { const el = document.querySelector(s); return el && !el.hidden ? el.textContent : null; }, selector);
 const engine = (page, op, payload = {}) => page.evaluate(([op, payload]) => chrome.runtime.sendMessage({ action: "anagram.nativeRequest", op, payload }), [op, payload]);
+/** onInstalled as the browser fires it on an extension update, into the extension's worker. */
+const updated = (sw) => sw.evaluate(() => chrome.runtime.onInstalled.dispatch({ reason: "update", previousVersion: "0.0.1" }));
+/** The worker as the browser asks sites to save data. Chromium has no switch for Save-Data,
+ *  so its answer is stood in for, where the worker reads it. */
+const saveData = (sw, on) => sw.evaluate((on) => Object.defineProperty(navigator, "connection", { configurable: true, value: { saveData: on } }), on);
+
+// ---- as shipped: no host granted at all -----------------------------------------------------------
+
+// The test build requires every site (test/test-build.mjs), which lets the extension read any
+// host without CORS. The shipped one holds no host: this copy of the test build asks for what
+// the shipped manifest asks for, so the download has only Hugging Face's CORS answer to go on.
+{
+  const server = await modelServer({ rate: 15e6 });
+  const copy = mkdtempSync(join(tmpdir(), "anagram-oneclick-shipped-"));
+  cpSync(EXT, copy, { recursive: true });
+  const manifest = JSON.parse(readFileSync(join(copy, "manifest.json"), "utf8"));
+  delete manifest.host_permissions;
+  manifest.optional_host_permissions = ["https://*/*", "http://*/*", "file:///*"];
+  writeFileSync(join(copy, "manifest.json"), JSON.stringify(manifest));
+  const run = await launch("en", server, undefined, copy);
+  try {
+    const extId = new URL(run.sw.url()).host;
+    const granted = await run.sw.evaluate(() => chrome.permissions.getAll());
+    check("shipped: nothing is granted but the required permissions, no host at all", (granted.origins ?? []).length === 0, JSON.stringify(granted));
+    const first = await until(async () => server.requests.find((r) => !r.preflight && r.file === "model.onnx"), 20000);
+    check("shipped: the download starts by itself, a CORS request from the extension's own origin", first?.host === "huggingface.co" && first.origin === `chrome-extension://${extId}`, JSON.stringify(first));
+    const cdn = await until(async () => server.requests.find((r) => r.host.endsWith(".hf.co") && r.file === "model.onnx"));
+    check("shipped: the redirect to Hugging Face's CDN is followed with an opaque origin, which it answers with *", cdn?.origin === "null", JSON.stringify(cdn));
+    const setup = run.context.pages().find((p) => p.url().endsWith("/onboarding.html")) ??
+      await run.context.waitForEvent("page", { predicate: (p) => p.url().endsWith("/onboarding.html"), timeout: 20000 }).catch(() => null);
+    const bytes = setup && await until(async () => {
+      const reply = await engine(setup, "status");
+      return reply?.data?.download?.status === "running" && reply.data.download.bytes_received > 20e6 ? reply.data.download.bytes_received : null;
+    }, 20000);
+    check("shipped: the bytes arrive, under the pages' cross-origin isolation", bytes > 20e6 && (await setup.evaluate(() => crossOriginIsolated)), bytes);
+    await setup?.evaluate(() => chrome.runtime.sendMessage({ action: "anagram.nativeRequest", op: "models.delete", payload: { confirm: true } }));
+  } finally {
+    await run.close();
+    await server.close();
+    rmSync(copy, { recursive: true, force: true });
+  }
+}
 
 // ---- the flow, in each language ---------------------------------------------------------------
 
 for (const lang of ["en", "zh-CN"]) {
   const w = words(lang);
   const server = await modelServer({ rate: 15e6 });
-  const run = await launch(lang, server);
-  const { context, sw } = run;
+  let run = await launch(lang, server);
   const problems = [];
   try {
+    const { context, sw } = run;
     check(`${lang}: the background worker starts`, sw);
     if (!sw) continue;
     sw.on("console", (m) => { if (m.type() === "error") problems.push(`worker: ${m.text()}`); });
@@ -122,117 +180,34 @@ for (const lang of ["en", "zh-CN"]) {
     const worker = await sw.evaluate(() => ({ manifest: chrome.runtime.getManifest(), connectNative: typeof chrome.runtime.connectNative }));
     check(`${lang}: no nativeMessaging permission, and no connectNative to call`,
       !worker.manifest.permissions.includes("nativeMessaging") && worker.connectNative === "undefined", JSON.stringify(worker.manifest.permissions));
+    check(`${lang}: the manifest names no model host`, !/huggingface|hf\.co|fbaipublicfiles/.test(JSON.stringify(worker.manifest)), JSON.stringify(worker.manifest.optional_host_permissions));
 
-    // The setup page and Settings: the in-browser block, what it needs, and no command.
-    for (const name of ["onboarding", "options"]) {
-      const page = await extPage(context, extId, `${name}.html`, problems);
-      await until(async () => (await statusOf(page)) === w("engineNotSetUp"), 15000);
-      const seen = await page.evaluate(() => ({
-        block: !!document.querySelector('#componentSettings[data-engine="in-browser"]'),
-        installUi: !!document.querySelector("#install, #install-cmd, #install-copy"),
-        text: document.body.innerText,
-        version: document.getElementById("version")?.textContent ?? "",
-        primary: document.getElementById("component-primary")?.textContent ?? "",
-        isolated: crossOriginIsolated,
-      }));
-      check(`${lang}: ${name} shows the in-browser engine block, not set up`, seen.block && (await statusOf(page)) === w("engineNotSetUp"), await statusOf(page));
-      check(`${lang}: ${name} offers the one-time download by its size`, seen.primary === w("engineSetUpButton", size(DOWNLOAD_BYTES)) &&
-        seen.text.includes(w("engineSetUpIntro", size(DOWNLOAD_BYTES))) && seen.text.includes(w("engineSetUpHosts")), seen.primary);
-      check(`${lang}: ${name} shows no install command, update, uninstall or benchmark`,
-        !seen.installUi && !/curl|Invoke-RestMethod|install\.sh|Terminal|终端/.test(seen.text) &&
-        ![w("componentUpdate"), w("componentUninstall"), w("runtimeBenchmark")].some((label) => seen.text.includes(label)), seen.text.slice(0, 300));
-      check(`${lang}: ${name} is cross-origin isolated (the manifest's keys)`, seen.isolated === true);
-      if (name === "options") check(`${lang}: Settings' version line carries the engine state`, seen.version.includes(w("engineNotSetUp")), seen.version);
-      if (name === "onboarding") {
-        const reply = await engine(page, "status");
-        check(`${lang}: a contract request reaches the in-browser engine through the offscreen document`,
-          reply?.ok === true && reply.data?.state === "needs_models" && reply.data?.home === "opfs:anagram-engine", JSON.stringify(reply).slice(0, 300));
-        const status = await page.evaluate(() => chrome.runtime.sendMessage({ action: "getBackendStatus", probe: true }));
-        check(`${lang}: the worker reports scoring down for want of setup`, status?.active === "down" && status.setup?.state === "needed", JSON.stringify(status));
-      }
-      await page.close();
-    }
+    // Installed: the download started by itself, and the setup page opened on it.
+    const setup = context.pages().find((p) => p.url().endsWith("/onboarding.html")) ??
+      await context.waitForEvent("page", { predicate: (p) => p.url().endsWith("/onboarding.html"), timeout: 20000 }).catch(() => null);
+    check(`${lang}: installing opens the setup page`, setup, context.pages().map((p) => p.url()).join(" "));
+    if (!setup) continue;
+    watch(setup, "onboarding.html", problems);
+    await setup.bringToFront();
+    const running = await until(async () => (await statusOf(setup)) === w("engineDownloading"), 20000);
+    check(`${lang}: the setup page opens on the download already running, with Pause and Cancel`, running &&
+      (await textOf(setup, "#component-primary")) === w("componentPauseDownload") && (await textOf(setup, "#engine-cancel")) === w("engineCancelDownload"),
+      `${await statusOf(setup)} · ${await textOf(setup, "#component-primary")} · ${await textOf(setup, "#engine-cancel")}`);
+    check(`${lang}: its card is the in-browser engine's`, (await setup.evaluate(() => document.querySelector("#componentSettings")?.closest(".card")?.querySelector("h2")?.textContent)) === w("engineTitle"));
+    const first = server.requests.find((r) => !r.preflight);
+    check(`${lang}: the first request is the model, without a click`, first?.host === "huggingface.co" && first.file === "model.onnx", JSON.stringify(first));
+    const cdn = await until(async () => server.requests.find((r) => r.host.endsWith(".hf.co") && r.file === "model.onnx"));
+    check(`${lang}: Hugging Face's redirect to its CDN is followed`, cdn, JSON.stringify(server.requests.slice(0, 4)));
+    check(`${lang}: nothing is asked of any host but Hugging Face's`, server.requests.every((r) => HUGGING_FACE.test(r.host) && r.file !== "lid.176.ftz"),
+      JSON.stringify(server.requests.filter((r) => !HUGGING_FACE.test(r.host))));
+    const lid = await setup.evaluate(async (path) => {
+      const bytes = new Uint8Array(await (await fetch(chrome.runtime.getURL(path))).arrayBuffer());
+      const hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((b) => b.toString(16).padStart(2, "0")).join("");
+      return { size: bytes.length, hash };
+    }, "vendor/engine/lid.176.ftz");
+    check(`${lang}: the package carries the pinned lid.176.ftz`, lid.size === LID.size_bytes && lid.hash === LID.sha256, JSON.stringify(lid));
 
-    // The popup: not set up, one button, and it opens setup.
-    const popup = await extPage(context, extId, "popup.html", problems);
-    await until(() => popup.evaluate(() => !document.getElementById("action").disabled));
-    const popupSeen = await popup.evaluate(() => ({ status: document.getElementById("status").textContent, action: document.getElementById("action").textContent, text: document.body.innerText }));
-    check(`${lang}: the popup says setup is needed, with one button for it`, popupSeen.status === w("popupSetupNeeded") && popupSeen.action === w("engineSetUp"), JSON.stringify(popupSeen));
-    check(`${lang}: the popup shows no install command`, !/curl|Invoke-RestMethod|install\.sh/.test(popupSeen.text));
-    const opened = context.waitForEvent("page", { timeout: 10000 }).catch(() => null);
-    await popup.click("#action");
-    const setupTab = await opened;
-    check(`${lang}: the popup's button opens the setup page`, setupTab?.url().endsWith("/onboarding.html"), setupTab?.url());
-    await setupTab?.close();
-    if (!popup.isClosed()) await popup.close();
-
-    // The panel on a web page: the ball's "!", the notice, and its button to setup.
-    const article = await context.newPage();
-    article.on("pageerror", (e) => problems.push(`article: ${e.message}`));
-    await article.goto(site.url("/article.html"));
-    const down = await until(() => article.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.textContent === "!"), 30000);
-    check(`${lang}: the ball shows the engine is not ready`, down);
-    const panelNotice = () => article.evaluate(() => {
-      const root = document.getElementById("anagram-fab")?.shadowRoot;
-      if (!root?.querySelector(".panel.open")) root?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      const notice = root?.querySelector(".panel .pnotice");
-      return notice ? { text: notice.querySelector("span")?.textContent, button: notice.querySelector("button")?.textContent } : null;
-    });
-    const notice = await until(async () => { const n = await panelNotice(); return n?.text === w("panelSetupNeeded") ? n : null; }, 15000);
-    check(`${lang}: the panel says setup is needed and offers it`, notice?.button === w("engineSetUp"), JSON.stringify(await panelNotice()));
-    const fromPanel = context.waitForEvent("page", { timeout: 10000 }).catch(() => null);
-    await article.evaluate(() => document.getElementById("anagram-fab").shadowRoot.querySelector(".panel .pnotice button").click());
-    const panelTab = await fromPanel;
-    check(`${lang}: the panel's button opens the setup page beside the article`, panelTab?.url().endsWith("/onboarding.html"), panelTab?.url());
-    await panelTab?.close();
-
-    // Setup, refused: the browser's question is asked, the answer is no, nothing downloads.
-    const refused = await extPage(context, extId, "onboarding.html", problems, (p) => p.addInitScript(() => {
-      window.__asked = [];
-      chrome.permissions.request = (request) => { window.__asked.push(request.origins); return Promise.resolve(false); };
-    }));
-    await until(async () => (await statusOf(refused)) === w("engineNotSetUp"));
-    await refused.click("#component-primary");
-    const refusal = await until(() => textOf(refused, "#componentSettings .component-error"));
-    check(`${lang}: a refused permission says how to fix it, and downloads nothing`,
-      refusal === w("enginePermissionRefused") && server.requests.length === 0, `${refusal} · ${server.requests.length} requests`);
-    check(`${lang}: the question named exactly the download hosts`, JSON.stringify(await refused.evaluate(() => window.__asked)) === JSON.stringify([MODEL_HOSTS]));
-    check(`${lang}: the button still offers setup after a refusal`, (await textOf(refused, "#component-primary")) === w("engineSetUpButton", size(DOWNLOAD_BYTES)));
-    await refused.close();
-
-    // A disk too full to start: the browser's estimate is short, and nothing downloads.
-    const full = await extPage(context, extId, "onboarding.html", problems, (p) => p.addInitScript(() => {
-      navigator.storage.estimate = () => Promise.resolve({ quota: 500e6, usage: 100e6 });
-    }));
-    await until(async () => (await statusOf(full)) === w("engineNotSetUp"));
-    await full.click("#component-primary");
-    const fullText = await until(() => textOf(full, "#componentSettings .component-error"));
-    check(`${lang}: a disk too full to start says how much room to make`, fullText === w("engineDiskFull", size(DOWNLOAD_BYTES - 400e6)) && server.requests.length === 0, fullText);
-    await full.close();
-
-    // Setup, granted, against a server that fails: the permission comes first, then the download; Retry.
-    server.set({ status: 404 });
-    const setup = await extPage(context, extId, "onboarding.html", problems, (p) => p.addInitScript(() => {
-      window.__order = [];
-      const request = chrome.permissions.request.bind(chrome.permissions);
-      chrome.permissions.request = (r) => { window.__order.push("permissions.request"); return request(r); };
-      const send = chrome.runtime.sendMessage.bind(chrome.runtime);
-      chrome.runtime.sendMessage = (m, ...rest) => { if (m?.op && m.op !== "status") window.__order.push(m.op); return send(m, ...rest); };
-    }));
-    await until(async () => (await statusOf(setup)) === w("engineNotSetUp"));
-    await setup.click("#component-primary");
-    const failed = await until(async () => (await statusOf(setup)) === w("engineSetupFailed"), 20000);
-    check(`${lang}: the permission is asked for before the download starts`,
-      JSON.stringify(await setup.evaluate(() => window.__order)) === JSON.stringify(["permissions.request", "models.download"]), JSON.stringify(await setup.evaluate(() => window.__order)));
-    check(`${lang}: a server that refuses the download is a failed setup, with what to do and Retry`, failed &&
-      (await textOf(setup, "#componentSettings .component-error")) === w("engineServerDown") && (await textOf(setup, "#component-primary")) === w("panelRetry") &&
-      !!(await textOf(setup, "#componentSettings .component-details")), await textOf(setup, "#componentSettings .component-error"));
-
-    // Retry, and the download runs: progress, speed, time left, in the popup and the panel too.
-    server.set({ status: 0 });
-    await setup.click("#component-primary");
-    const downloading = await until(async () => (await statusOf(setup)) === w("engineDownloading"), 15000);
-    check(`${lang}: Retry downloads`, downloading, await statusOf(setup));
+    // The download: progress, speed, time left, in the popup and the panel too.
     const withSpeed = await until(async () => {
       const line = await textOf(setup, "#engine-progress");
       return line && line.includes(w("engineSpeed", "").trim()) ? line : null;
@@ -241,21 +216,32 @@ for (const lang of ["en", "zh-CN"]) {
     check(`${lang}: the progress line has percent, bytes, speed and time left`,
       withSpeed && /^\d+% · /.test(withSpeed) && withSpeed.includes(size(DOWNLOAD_BYTES)) && left.some((re) => re.test(withSpeed)), withSpeed);
     check(`${lang}: the progress bar moves`, await setup.evaluate(() => { const p = document.querySelector("#componentSettings progress"); return !p.hidden && p.value > 0 && p.max > p.value; }));
-    check(`${lang}: while it downloads, Pause and Cancel`, (await textOf(setup, "#component-primary")) === w("componentPauseDownload") && (await textOf(setup, "#engine-cancel")) === w("engineCancelDownload"));
-    const popup2 = await extPage(context, extId, "popup.html", problems);
+    const popup = await extPage(context, extId, "popup.html", problems);
     const popupLine = await until(async () => {
-      const line = await popup2.evaluate(() => document.getElementById("status").textContent);
+      const line = await popup.evaluate(() => document.getElementById("status").textContent);
       return /\d/.test(line) ? line : null;
     });
     const percent = Number(/(\d+)%/.exec(popupLine ?? "")?.[1]);
     check(`${lang}: the popup shows the download's progress`, popupLine === w("popupSetupDownloading", percent) &&
-      (await popup2.evaluate(() => document.getElementById("action").textContent)) === w("engineShowProgress"), popupLine);
-    await popup2.close();
+      (await popup.evaluate(() => document.getElementById("action").textContent)) === w("engineShowProgress"), popupLine);
+    await popup.close();
+    const article = await context.newPage();
+    article.on("pageerror", (e) => problems.push(`article: ${e.message}`));
+    await article.goto(site.url("/article.html"));
+    const down = await until(() => article.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.textContent === "!"), 30000);
+    check(`${lang}: the ball shows the engine is not ready yet`, down);
+    const panelNotice = () => article.evaluate(() => {
+      const root = document.getElementById("anagram-fab")?.shadowRoot;
+      if (!root?.querySelector(".panel.open")) root?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      const notice = root?.querySelector(".panel .pnotice");
+      return notice ? { text: notice.querySelector("span")?.textContent, button: notice.querySelector("button")?.textContent } : null;
+    });
     const panelLine = await until(async () => { const n = await panelNotice(); return n && /\d/.test(n.text ?? "") ? n : null; }, 15000);
     const panelPercent = Number(/(\d+)%/.exec(panelLine?.text ?? "")?.[1]);
     check(`${lang}: the panel shows the download's progress`, panelLine?.text === w("panelSetupDownloading", panelPercent) && panelLine?.button === w("engineShowProgress"), JSON.stringify(panelLine));
 
     // A connection that drops is retried by the engine on its own.
+    await setup.bringToFront();
     server.set({ status: 503 });
     server.drop();
     const retrying = await until(async () => (await textOf(setup, "#engine-progress"))?.includes(w("engineRetrying")), 15000);
@@ -273,10 +259,10 @@ for (const lang of ["en", "zh-CN"]) {
     const pausedLine = await textOf(setup, "#engine-progress");
     check(`${lang}: Pause stops the download and keeps its progress`, paused && /^\d+% · /.test(pausedLine ?? "") && !pausedLine.includes(w("engineSpeed", "").trim()) &&
       (await textOf(setup, "#component-primary")) === w("componentResumeDownload"), pausedLine);
-    const before = server.requests.length;
+    let before = server.requests.length;
     await setup.click("#component-primary");
     await until(async () => (await statusOf(setup)) === w("engineDownloading"), 15000);
-    const resumedAt = await until(async () => server.requests.slice(before).find((r) => r.file === "model.onnx")?.range);
+    const resumedAt = await until(async () => server.requests.slice(before).find((r) => r.file === "model.onnx" && !r.preflight)?.range);
     check(`${lang}: Resume asks for the rest of the file`, /^bytes=[1-9]\d*-$/.test(resumedAt ?? ""), resumedAt);
 
     // Cancel: a confirmation, then the parts go and setup starts over.
@@ -288,12 +274,152 @@ for (const lang of ["en", "zh-CN"]) {
     const after = await engine(setup, "status");
     check(`${lang}: Cancel deletes what arrived and setup starts over`, cancelled && after?.data?.state === "needs_models" && after.data.storage.models_bytes < 10000,
       JSON.stringify(after?.data?.storage));
+    // An update after a Cancel does not start it again.
+    before = server.requests.length;
+    await updated(sw);
+    await sleep(3000);
+    check(`${lang}: after Cancel, an update does not start the download again`,
+      server.requests.length === before && (await engine(setup, "status"))?.data?.state === "needs_models", JSON.stringify(server.requests.slice(before)));
     await setup.close();
+
+    // Not set up: the setup page and Settings show the in-browser block, what it needs, and no command.
+    for (const name of ["onboarding", "options"]) {
+      const page = await extPage(context, extId, `${name}.html`, problems);
+      await until(async () => (await statusOf(page)) === w("engineNotSetUp"), 15000);
+      const seen = await page.evaluate(() => ({
+        block: !!document.querySelector('#componentSettings[data-engine="in-browser"]'),
+        installUi: !!document.querySelector("#install, #install-cmd, #install-copy"),
+        text: document.body.innerText,
+        version: document.getElementById("version")?.textContent ?? "",
+        primary: document.getElementById("component-primary")?.textContent ?? "",
+        note: (e => e && !e.hidden ? e.textContent : null)(document.querySelector("#componentSettings .engine-note")),
+        isolated: crossOriginIsolated,
+      }));
+      check(`${lang}: ${name} shows the in-browser engine block, not set up`, seen.block && (await statusOf(page)) === w("engineNotSetUp"), await statusOf(page));
+      check(`${lang}: ${name} offers the one-time download by its size, with no word of a permission`, seen.primary === w("engineSetUpButton", size(DOWNLOAD_BYTES)) &&
+        seen.text.includes(w("engineSetUpIntro", size(DOWNLOAD_BYTES))) && seen.note === null && !/huggingface|dl\.fbaipublicfiles/.test(seen.text), seen.primary);
+      check(`${lang}: ${name} shows no install command, update, uninstall or benchmark`,
+        !seen.installUi && !/curl|Invoke-RestMethod|install\.sh|Terminal|终端/.test(seen.text) &&
+        ![w("componentUpdate"), w("componentUninstall"), w("runtimeBenchmark")].some((label) => seen.text.includes(label)), seen.text.slice(0, 300));
+      check(`${lang}: ${name} is cross-origin isolated (the manifest's keys)`, seen.isolated === true);
+      if (name === "options") check(`${lang}: Settings' version line carries the engine state`, seen.version.includes(w("engineNotSetUp")), seen.version);
+      if (name === "onboarding") {
+        const reply = await engine(page, "status");
+        check(`${lang}: a contract request reaches the in-browser engine through the offscreen document`,
+          reply?.ok === true && reply.data?.state === "needs_models" && reply.data?.home === "opfs:anagram-engine", JSON.stringify(reply).slice(0, 300));
+        const status = await page.evaluate(() => chrome.runtime.sendMessage({ action: "getBackendStatus", probe: true }));
+        check(`${lang}: the worker reports scoring down for want of setup`, status?.active === "down" && status.setup?.state === "needed", JSON.stringify(status));
+      }
+      await page.close();
+    }
+
+    // The popup: not set up, one button, and it opens setup.
+    const popup2 = await extPage(context, extId, "popup.html", problems);
+    await until(() => popup2.evaluate(() => !document.getElementById("action").disabled && /\S/.test(document.getElementById("status").textContent)));
+    const popupSeen = await popup2.evaluate(() => ({ status: document.getElementById("status").textContent, action: document.getElementById("action").textContent, text: document.body.innerText }));
+    check(`${lang}: the popup says setup is needed, with one button for it`, popupSeen.status === w("popupSetupNeeded") && popupSeen.action === w("engineSetUp"), JSON.stringify(popupSeen));
+    check(`${lang}: the popup shows no install command`, !/curl|Invoke-RestMethod|install\.sh/.test(popupSeen.text));
+    const opened = context.waitForEvent("page", { timeout: 10000 }).catch(() => null);
+    await popup2.click("#action");
+    const setupTab = await opened;
+    check(`${lang}: the popup's button opens the setup page`, setupTab?.url().endsWith("/onboarding.html"), setupTab?.url());
+    await setupTab?.close();
+    if (!popup2.isClosed()) await popup2.close();
+
+    // The panel on the article: set up needed now, and its button to setup.
+    await article.bringToFront();
+    const notice = await until(async () => { const n = await panelNotice(); return n?.text === w("panelSetupNeeded") ? n : null; }, 20000);
+    check(`${lang}: the panel says setup is needed and offers it`, notice?.button === w("engineSetUp"), JSON.stringify(await panelNotice()));
+    const fromPanel = context.waitForEvent("page", { timeout: 10000 }).catch(() => null);
+    await article.evaluate(() => document.getElementById("anagram-fab").shadowRoot.querySelector(".panel .pnotice button").click());
+    const panelTab = await fromPanel;
+    check(`${lang}: the panel's button opens the setup page beside the article`, panelTab?.url().endsWith("/onboarding.html"), panelTab?.url());
+    await panelTab?.close();
     await article.close();
+
+    // Save-Data: the setup page says why the download waits, beside Set up.
+    const saving = await extPage(context, extId, "onboarding.html", problems, (p) => p.addInitScript(() => {
+      Object.defineProperty(navigator, "connection", { configurable: true, value: { saveData: true } });
+    }));
+    await until(async () => (await statusOf(saving)) === w("engineNotSetUp"));
+    check(`${lang}: with Save-Data on, the setup page says the download waits, and offers Set up`,
+      (await until(() => textOf(saving, "#componentSettings .engine-note"))) === w("engineSaveData") &&
+      (await textOf(saving, "#component-primary")) === w("engineSetUpButton", size(DOWNLOAD_BYTES)), await textOf(saving, "#componentSettings .engine-note"));
+    await saving.close();
+
+    // A disk too full to start: said as the page opens, and a click downloads nothing.
+    before = server.requests.length;
+    const full = await extPage(context, extId, "onboarding.html", problems, (p) => p.addInitScript(() => {
+      navigator.storage.estimate = () => Promise.resolve({ quota: 500e6, usage: 100e6 });
+    }));
+    await until(async () => (await statusOf(full)) === w("engineNotSetUp"));
+    const fullText = await until(() => textOf(full, "#componentSettings .component-error"));
+    await full.click("#component-primary");
+    await sleep(500);
+    check(`${lang}: a disk too full to start says how much room to make, and downloads nothing`,
+      fullText === w("engineDiskFull", size(DOWNLOAD_BYTES - 400e6)) && (await textOf(full, "#componentSettings .component-error")) === fullText && server.requests.length === before, fullText);
+    await full.close();
+
+    // Set up against a server that fails: a failed setup, with what to do and Retry; Retry downloads.
+    server.set({ status: 404 });
+    const again = await extPage(context, extId, "onboarding.html", problems);
+    await until(async () => (await statusOf(again)) === w("engineNotSetUp"));
+    await again.click("#component-primary");
+    const failed = await until(async () => (await statusOf(again)) === w("engineSetupFailed"), 20000);
+    check(`${lang}: a server that refuses the download is a failed setup, with what to do and Retry`, failed &&
+      (await textOf(again, "#componentSettings .component-error")) === w("engineServerDown") && (await textOf(again, "#component-primary")) === w("panelRetry") &&
+      !!(await textOf(again, "#componentSettings .component-details")), await textOf(again, "#componentSettings .component-error"));
+    server.set({ status: 0 });
+    await again.click("#component-primary");
+    const downloading = await until(async () => (await statusOf(again)) === w("engineDownloading") && (await textOf(again, "#engine-progress"))?.match(/^[1-9]\d*% /), 20000);
+    check(`${lang}: Retry downloads`, downloading, await statusOf(again));
+    await again.close();
+
+    // The engine goes away during the download Retry started, as it does when the browser
+    // closes: its offscreen document is closed. Nothing starts it again by itself. On an
+    // update the background resumes the download, unless the browser asks to save data.
+    // (A relaunch with --load-extension fires onInstalled "install" every time, which a
+    // browser that installed the extension once never does; so the worker's own events
+    // stand in for the restart and the update.)
+    const bytesOnDisk = await (async () => {
+      const page = await extPage(context, extId, "options.html", problems);
+      const s = await until(async () => { const r = await engine(page, "status"); return r?.data?.download?.bytes_received > 0 ? r.data : null; });
+      await page.close();
+      return s?.download?.bytes_received ?? 0;
+    })();
+    await sw.evaluate(() => chrome.offscreen.closeDocument());
+    await sleep(1500);
+    const restartAt = server.requests.length;
+    await sleep(2500);
+    check(`${lang}: with the engine gone mid-download, nothing starts it again by itself`, server.requests.length === restartAt, JSON.stringify(server.requests.slice(restartAt)));
+    await saveData(sw, true);
+    await updated(sw);
+    await sleep(3000);
+    check(`${lang}: an update while the browser asks to save data does not start the download`, server.requests.length === restartAt, JSON.stringify(server.requests.slice(restartAt)));
+    await saveData(sw, false);
+    await updated(sw);
+    const resumed = await until(async () => server.requests.slice(restartAt).find((r) => r.file === "model.onnx" && !r.preflight && r.range), 20000);
+    check(`${lang}: an update resumes a download that was under way, from the bytes on disk`,
+      bytesOnDisk > 0 && Number(/^bytes=(\d+)-$/.exec(resumed?.range ?? "")?.[1]) > 0, JSON.stringify(resumed));
+    // Cancelled, nothing starts it again: not an update (above), not a relaunch of the browser.
+    const settings = await extPage(context, extId, "options.html", problems);
+    const gone = await engine(settings, "models.delete", { confirm: true });
+    check(`${lang}: cancelled again`, gone?.data?.state === "needs_models", JSON.stringify(gone?.data).slice(0, 200));
+    await settings.close();
+    await run.close({ keep: true });
+    const lastAt = server.requests.length;
+    run = await launch(lang, server, run.profile);
+    check(`${lang}: the browser comes back, with the same extension`, run.sw && new URL(run.sw.url()).host === extId, run.sw?.url());
+    await sleep(3000);
+    const last = await extPage(run.context, extId, "options.html", problems);
+    const state = await until(async () => (await engine(last, "status"))?.data?.state);
+    check(`${lang}: after a Cancel, a browser relaunch does not start the download again`,
+      state === "needs_models" && server.requests.length === lastAt, `${state} · ${JSON.stringify(server.requests.slice(lastAt))}`);
+    await last.close();
 
     // States the local server cannot reach quickly, in this language's words.
     const scripted = async (name, options = {}) => {
-      const page = await extPage(context, extId, "options.html", problems, (p) => scriptEngine(p, name, options));
+      const page = await extPage(run.context, extId, "options.html", problems, (p) => scriptEngine(p, name, options));
       await until(async () => { const s = await statusOf(page); return s && s !== w("componentStarting"); });
       await page.waitForTimeout(200);
       const seen = await page.evaluate(() => ({
@@ -314,8 +440,6 @@ for (const lang of ["en", "zh-CN"]) {
       check(`${lang}: a download stopped by ${name} says what to do, with Retry`,
         seen.status === w("engineSetupFailed") && seen.error === want && seen.primary === w("panelRetry"), JSON.stringify(seen));
     }
-    const lost = await scripted("network", { permission: false });
-    check(`${lang}: a failed download without the host grant asks for it again`, lost.error === w("enginePermissionRefused"), lost.error);
     const gpu = await scripted("ready_gpu");
     check(`${lang}: ready on the GPU, in plain words, with the storage used and idle unloading`,
       gpu.status === w("componentReady") && gpu.where === w("engineOnGpu") && gpu.stored === w("componentStorage", "1.4 GB") && gpu.manage && gpu.idle && !gpu.primary, JSON.stringify(gpu));
@@ -327,20 +451,25 @@ for (const lang of ["en", "zh-CN"]) {
     check(`${lang}: a model that will not load says what to do, with Retry`, broken.error === w("engineLoadFailed") && broken.primary === w("panelRetry"), JSON.stringify(broken));
     const crashed = await scripted("ready_gpu", { crashed: true });
     check(`${lang}: an engine given up on for crashing says so, with Retry`, crashed.error === w("componentEngineCrashed") && crashed.primary === w("panelRetry"), JSON.stringify(crashed));
+    const loadingPopup = await extPage(run.context, extId, "popup.html", problems, (p) => scriptEngine(p, "loading"));
+    await until(() => loadingPopup.evaluate(() => !document.getElementById("action").disabled));
+    const loadingSeen = await loadingPopup.evaluate(() => ({ status: document.getElementById("status").textContent, action: document.getElementById("action").textContent }));
+    check(`${lang}: while the model starts, the popup says so rather than "not ready"`,
+      loadingSeen.status === w("engineLoading") && loadingSeen.action === w("engineShowProgress"), JSON.stringify(loadingSeen));
+    await loadingPopup.close();
 
     // The rest of the extension's pages under cross-origin isolation: the reader opens a PDF.
-    const reader = await extPage(context, extId, "reader.html", problems);
+    const reader = await extPage(run.context, extId, "reader.html", problems);
     await reader.locator("#drop:not([hidden])").waitFor({ timeout: 15000 }).catch(() => {});
     await reader.setInputFiles("#file", { name: "document.pdf", mimeType: "application/pdf", buffer: TEST_PDF });
     const rendered = await until(() => reader.evaluate(() => document.querySelectorAll(".textLayer span").length > 0), 20000);
     check(`${lang}: the reader opens a PDF, isolated`, rendered && (await reader.evaluate(() => crossOriginIsolated)), "");
     await reader.close();
     for (const name of ["popup", "paste"]) {
-      const page = await extPage(context, extId, `${name}.html`, problems);
+      const page = await extPage(run.context, extId, `${name}.html`, problems);
       check(`${lang}: the ${name} page is cross-origin isolated`, await until(() => page.evaluate(() => crossOriginIsolated)));
       await page.close();
     }
-
     check(`${lang}: no errors in the worker or the pages`, problems.length === 0, problems.join(" | "));
   } finally {
     await run.close();
@@ -351,9 +480,8 @@ for (const lang of ["en", "zh-CN"]) {
 // ---- once, with the real files: the whole way to Ready, a score and deletion --------------------
 
 if (REAL) {
-  const files = realFiles(process.env.ANAGRAM_MODELKIT ?? join(homedir(), "anagram-bench", "bench", "model"),
-    process.env.ANAGRAM_LID_MODEL ?? join(homedir(), "anagram-bench", "bench", "lid", "lid.176.ftz"));
-  if (process.env.CI || !files) console.log("SKIP  the real download — set ANAGRAM_MODELKIT and ANAGRAM_LID_MODEL to the pinned files");
+  const files = realFiles(process.env.ANAGRAM_MODELKIT ?? join(homedir(), "anagram-bench", "bench", "model"));
+  if (process.env.CI || !files) console.log("SKIP  the real download — set ANAGRAM_MODELKIT to the pinned modelkit");
   else await realRun(files);
 }
 
@@ -363,17 +491,20 @@ async function realRun(files) {
   const run = await launch("en", server);
   const problems = [];
   try {
-    const extId = new URL(run.sw.url()).host;
-    const setup = await extPage(run.context, extId, "onboarding.html", problems);
-    await until(async () => (await statusOf(setup)) === w("engineNotSetUp"));
     const began = Date.now();
-    await setup.click("#component-primary");
+    const extId = new URL(run.sw.url()).host;
+    const setup = run.context.pages().find((p) => p.url().endsWith("/onboarding.html")) ??
+      await run.context.waitForEvent("page", { predicate: (p) => p.url().endsWith("/onboarding.html"), timeout: 20000 });
+    watch(setup, "onboarding.html", problems);
+    await setup.bringToFront();
     const ready = await until(async () => {
       const s = await statusOf(setup);
       return s === w("componentReady") || s === w("engineSetupFailed") || s === w("componentNeedsAttention") ? s : null;
     }, 15 * 60_000, 1000);
     console.log(`real: ${ready} after ${((Date.now() - began) / 1000).toFixed(0)} s`);
-    check("real: the pinned files download, verify and load to Ready", ready === w("componentReady"), `${ready}: ${await textOf(setup, "#componentSettings .component-error")}`);
+    check("real: from install alone, the pinned files download, verify and load to Ready", ready === w("componentReady"), `${ready}: ${await textOf(setup, "#componentSettings .component-error")}`);
+    check("real: the language identifier came from the package, not the network", server.requests.every((r) => HUGGING_FACE.test(r.host) && r.file !== "lid.176.ftz"),
+      JSON.stringify(server.requests.map((r) => `${r.host}${r.path}`)));
     const where = await textOf(setup, "#componentSettings .engine-where");
     check("real: the model runs on the GPU, said in plain words", where === w("engineOnGpu"), where);
     check("real: the storage used is the model's", (await textOf(setup, "#componentSettings .engine-stored")) === w("componentStorage", size(DOWNLOAD_BYTES)));

@@ -3,3 +3,5 @@ export const ORT_PACKAGE: string;
 export const ORT_FILES: string[];
 export const ENGINE_DIR: string;
 export function vendorWebEngine(root: string): Promise<void>;
+export const LID: { name: string; url: string; size_bytes: number; sha256: string };
+export function packagedLid(root: string): Promise<string>;

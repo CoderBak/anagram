@@ -67,8 +67,10 @@ describe("the stage setup is in", () => {
     expect(setupStage(snapshot({ state: "idle", runtime: runtime(null, "wasm:fp32") }))).toEqual({ stage: "ready", device: "cpu" });
     expect(setupStage(snapshot({ state: "stopped", runtime: runtime(null) }))).toEqual({ stage: "stopped" });
     expect(setupStage(snapshot({ state: "error", runtime: runtime(null), error: { code: "not_ready", message: "no" } }))).toEqual({ stage: "error" });
+    // Loading is the last stage of setup, which the popup and the panel say rather than "not ready".
+    expect(engineSetup(snapshot({ state: "loading", download: done, runtime: runtime(null) }))).toEqual({ state: "loading", percent: 100 });
     // Nothing left to set up: the popup and the panel say what they always say.
-    for (const state of ["loading", "ready", "idle", "stopped", "error"] as const) expect(engineSetup(snapshot({ state, runtime: runtime(null) }))).toBeNull();
+    for (const state of ["ready", "idle", "stopped", "error"] as const) expect(engineSetup(snapshot({ state, runtime: runtime(null) }))).toBeNull();
   });
 
   it("rounds a percentage down, so 100% means done", () => {

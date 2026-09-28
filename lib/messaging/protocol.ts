@@ -148,7 +148,8 @@ export interface BackendStatus {
 
 /** How far the in-browser engine's one-time setup has got (lib/backend/engineSetup.ts). */
 export interface EngineSetup {
-  state: "needed" | "downloading" | "paused" | "failed";
+  /** "loading": downloaded, and the model is starting. */
+  state: "needed" | "downloading" | "paused" | "failed" | "loading";
   /** Of the model download, 0–100. */
   percent: number;
 }

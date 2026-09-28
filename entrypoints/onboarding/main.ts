@@ -5,12 +5,19 @@ import "../../lib/ui/basecoat-vega.cdn.min.css";
 import { followSystemTheme } from "../../lib/ui/theme";
 import { localizePage } from "../../lib/ui/localize";
 import { linkSourceCode } from "../../lib/ui/sourceCode";
-import { messageLocale } from "../../lib/i18n";
+import { messageLocale, t } from "../../lib/i18n";
 import { ALL_SITES } from "../../lib/access/patterns";
 import { accessSummary, requestAccess } from "../../lib/access/grant";
 import { mountComponentSettings, componentReady } from "#flavor/engine-panel";
 import { scaleColorCss } from "../../lib/render/scale";
 
+// The in-browser edition's engine card is named for what it is (localizePage leaves an
+// English page's markup as it is, so the text is set here too).
+if (import.meta.env.ANAGRAM_FLAVOR === "oneclick") {
+  const title = document.querySelector<HTMLElement>('[data-i18n="componentTitle"]')!;
+  title.dataset.i18n = "engineTitle";
+  title.textContent = t("engineTitle");
+}
 localizePage();
 followSystemTheme();
 linkSourceCode();
