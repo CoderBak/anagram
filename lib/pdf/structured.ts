@@ -367,8 +367,10 @@ function readingsOf(content: SdtBlock[], everything: boolean): (Reading | Marker
     else if (node.type === "paragraph") out.push({ kind: "paragraph", block: node, path: [i], origin: originOf(node) });
     else if (node.type === "list" || node.type === "blockquote") {
       const notes = (node.content ?? []).some((child) => !isTextNode(child) && isNote(child));
+      const bibliography = !everything && node.type === "list" && isBibliography(node);
       (node.content ?? []).forEach((child, k) => {
         if (isTextNode(child)) return;
+        if (bibliography) { out.push({ kind: "reference", block: child, path: [i, k], origin: originOf(child) }); return; }
         if (child.reference || child.flowClass) { aside(child, [i, k]); return; }
         if ((isNote(child) || (notes && opensRaised(child))) && !everything) { out.push("skip"); return; }
         if (child.type === "listitem" || child.type === "paragraph") {
@@ -389,6 +391,26 @@ function plainText(block: SdtBlock): string {
   let out = "";
   for (const node of block.content ?? []) out += isTextNode(node) ? node.text : ` ${plainText(node)} `;
   return out.replace(/\s+/gu, " ").trim();
+}
+
+/** A bibliography entry's label, "[12]", and the year an entry cites. */
+const ENTRY_LABEL = /^\[\d{1,4}\]/u;
+const YEAR = /\b(?:1[5-9]|20)\d\d[a-z]?\b/u;
+/** Shares of a list's items that must open with a label, and cite a year. */
+const LABELLED_ITEMS = 0.6;
+const DATED_ITEMS = 0.5;
+
+/**
+ * A bibliography Zotero did not find: a list whose items mostly open with a bracketed number
+ * and cite a year, "[11]R. Saha, F. Fauth, … Phys. Rev. B 94, 064420 (2016)." A paper set
+ * in REVTeX or JHEP's style has no References heading, and Zotero then reads the whole
+ * bibliography as a list of the body. Every such list of the benchmark's corpora is one.
+ */
+function isBibliography(list: SdtBlock): boolean {
+  const items = (list.content ?? []).filter((c): c is SdtBlock => !isTextNode(c)).map(plainText);
+  return items.length > 0
+    && items.filter((t) => ENTRY_LABEL.test(t)).length >= items.length * LABELLED_ITEMS
+    && items.filter((t) => YEAR.test(t)).length >= items.length * DATED_ITEMS;
 }
 
 /** An entry of a table of contents or of a list of figures or tables: a dot leader, then

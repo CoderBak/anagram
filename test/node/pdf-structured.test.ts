@@ -1067,6 +1067,30 @@ describe("structuredBlocks — the document", () => {
     expect(blocks.map((b) => b.text)).toEqual([0, 4, 5, 6, 7].map((i) => lines[i]![0]));
   });
 
+  it("takes a list of bracketed, dated entries for the bibliography Zotero did not find, and keeps a list of steps", () => {
+    // REVTeX sets no References heading, and Zotero reads the bibliography as a list of the body.
+    const lines: [string, number][] = [
+      ["The body ends here with a sentence long enough to read.", 100],
+      ["[1] Collect the measurements of every station", 130],
+      ["[2] Fit the model to the measurements", 144],
+      ["[1]R. Moessner and J. T. Chalker, Properties of a classical spin liquid, Phys. Rev. Lett. 80, 2929 (1998).", 200],
+      ["[2]A. B. Harris, Ordering by quantum fluctuations, Phys. Rev. B 45, 2899 (1992).", 214],
+      ["Seitsonen and R. M. Wentzcovitch, J. Phys. Condens. Matter 21, 395502 (2009).", 228],
+      ["An appendix paragraph after the bibliography.", 300],
+    ];
+    const nodes = lines.map(([text, y]) => node(1, [{ text, x: 72, y }]));
+    const pages = [pageText(1, nodes.flatMap((n) => n.items))];
+    const item = (n: typeof nodes[number]): SdtBlock => ({ type: "listitem", content: [n] });
+    const blocks = structuredBlocks(structure([
+      paragraph(1, [nodes[0]!]),
+      { type: "list", content: [item(nodes[1]!), item(nodes[2]!)] },
+      { type: "list", content: [item(nodes[3]!), item(nodes[4]!), item(nodes[5]!)] },
+      paragraph(1, [nodes[6]!]),
+    ]), pages);
+    expect(blocks.map((b) => b.text)).toEqual([lines[0]![0], "Collect the measurements of every station", "Fit the model to the measurements", lines[6]![0]]);
+    expect(blocks[3]!.columnBreak).toBe(true);
+  });
+
   it("keeps a paragraph that ends in a number after a full stop, and one that opens with a number", () => {
     const a = node(1, [{ text: "2.3 Results are summarized in the appendix, p. 12", x: 72, y: 100 }]);
     const b = node(1, [{ text: "The ratio rose from 1. to 3. 4", x: 72, y: 130 }]);
