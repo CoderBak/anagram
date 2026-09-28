@@ -101,6 +101,9 @@
   "coverageLookalikes": {
     "message": "评分前已将形近字母替换回拉丁字母。"
   },
+  "coverageShort": {
+    "message": "短文本：可靠性较低（不足 $1 个词）"
+  },
   "coverageOpeningParagraph": {
     "message": "只对该段落的开头评了分。"
   },
@@ -1003,6 +1006,15 @@
   },
   "optMerge": {
     "message": "合并短段落"
+  },
+  "optMinWords": {
+    "message": "最短长度"
+  },
+  "optMinWordsValue": {
+    "message": "$1 个词"
+  },
+  "optMinWordsNote": {
+    "message": "模型的训练文本都在 75 个词以上；更短的文本可靠性较低，结果中会注明。"
   },
   "optAutoOpenPdfs": {
     "message": "在 Anagram 中打开 PDF"

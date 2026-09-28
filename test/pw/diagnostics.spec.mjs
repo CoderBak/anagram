@@ -118,7 +118,7 @@ test("the header: version, browser, languages, the hostname alone, the page, the
     has("document language `en`") && has(/viewport \d+×\d+/) && has(`${dom.elements} elements`) && has("hydration marker: none"),
     "header: document language, viewport, element count, hydration marker",
   ).toBe(true);
-  expect.soft(text, "header: scope, merge and display settings").toContain("scope `page` · merge short paragraphs on · show `all`");
+  expect.soft(text, "header: scope, merge, minimum length and display settings").toContain("scope `page` · merge short paragraphs on · minimum 50 words · show `all`");
   expect.soft(has("state: running") && has("daemon: up ·"), `header: the state and the fixture: ${line("- daemon")}`).toBe(true);
 });
 
@@ -140,8 +140,8 @@ test("the silence: every quiet shape named with the reason the walk had", async 
   const silence = report.text.split("## Why the rest is silent")[1]?.split("## Frames")[0] ?? "";
   const entryFor = (path) => (silence.split(/\n(?=\s*\d+\. )/).find((block) => block.includes(path)) ?? "").replace(/\s+/g, " ").slice(0, 200);
   expect.soft(
-    /div\.post > p`/.test(silence) && /under the 75-word floor: longest paragraph 22 words/.test(entryFor("div.post > p")),
-    `silent: a sub-floor post in a feed — under the 75-word floor, with its word count: ${entryFor("div.post > p")}`,
+    /div\.post > p`/.test(silence) && /under the 50-word floor: longest paragraph 22 words/.test(entryFor("div.post > p")),
+    `silent: a sub-floor post in a feed — under the 50-word floor, with its word count: ${entryFor("div.post > p")}`,
   ).toBe(true);
   expect.soft(silence, "silent: the nav — page chrome, named by the branch of the filter that fired").toMatch(/page chrome nav\.site-nav — <nav> is chrome wherever it stands/);
   expect.soft(silence, "silent: a list of links outside any landmark — link-dense, with the ratio").toMatch(/link-dense: \d+\/\d+ blocks over the 0\.6 link-text ratio \(worst [\d.]+\)/);
@@ -229,7 +229,7 @@ test("a site switched off by rule still answers, says which rule, and the walk s
   // on: the units it would make are still counted, and the boxes it would refuse are still
   // named. What is missing is only the chips, which is what "DISABLED" above explains.
   expect.soft(
-    /chips on the page 0/.test(text ?? "") && /- units [1-9]/.test(text ?? "") && /under the 75-word floor/.test(text ?? "") && /<nav> is chrome wherever it stands/.test(text ?? ""),
+    /chips on the page 0/.test(text ?? "") && /- units [1-9]/.test(text ?? "") && /under the 50-word floor/.test(text ?? "") && /<nav> is chrome wherever it stands/.test(text ?? ""),
     `…and the walk still explains the page: units counted, no chips, the structural reasons still named: ${((text ?? "").split("## Why the rest is silent")[1] ?? "").replace(/\s+/g, " ").slice(0, 160)}`,
   ).toBe(true);
 });

@@ -24,7 +24,7 @@ import { collectUnits, inPageOrder, type CollectOptions } from "../dom/walker";
 import { restoreSplits } from "../dom/splits";
 import { findMainContent, useDefuddle } from "../dom/mainContent";
 import { loadDefuddle, loadFragments } from "../lazy";
-import { partTextOf, MAX_UNIT_TEXT_CHARS } from "../dom/text";
+import { partTextOf, minWordsOf, DEFAULT_MIN_WORDS, MAX_UNIT_TEXT_CHARS, type MinWords } from "../dom/text";
 import { hasLookalikes } from "../dom/lookalikes";
 import { createObservers, type Observers } from "./observers";
 import { createScheduler, type Scheduler } from "./scheduler";
@@ -45,7 +45,7 @@ import { createFab, type Fab, type PanelCounts } from "../render/fab";
 import { t, tn } from "../i18n";
 import { band, bandLabel, BUCKET_BANDS, isFlagged } from "../render/band";
 import { formatScore } from "../render/score";
-import { windowReadout } from "../render/coverage";
+import { shortTextNote, windowReadout } from "../render/coverage";
 import { isCloseCall, mayLinkParagraphs, reportState } from "../render/report";
 import { settings } from "../settings/settings";
 import { createLogger } from "../log";
@@ -155,6 +155,7 @@ interface SettingsSnapshot {
   showHighlights: boolean;
   displayMode: "all" | "flagged";
   mergeShorts: boolean;
+  minWords: MinWords;
   analysisScope: "page" | "main";
 }
 
@@ -163,6 +164,7 @@ const DEFAULT_SNAPSHOT: SettingsSnapshot = {
   showHighlights: true,
   displayMode: "all",
   mergeShorts: true,
+  minWords: DEFAULT_MIN_WORDS,
   analysisScope: "page",
 };
 
@@ -253,12 +255,14 @@ export function createOrchestrator(
   let highlightsEnabled = true;
   let displayMode: "all" | "flagged" = "all";
   let mergeShorts = true;
+  let minWords: MinWords = DEFAULT_MIN_WORDS;
   let analysisScope: "page" | "main" = "page";
   /** Resolved scope root when analysisScope === "main"; null → whole page. */
   let scopeRoot: Element | null = null;
   let unwatchHighlights: (() => void) | null = null;
   let unwatchDisplay: (() => void) | null = null;
   let unwatchMerge: (() => void) | null = null;
+  let unwatchMinWords: (() => void) | null = null;
   let unwatchScope: (() => void) | null = null;
   let lastBadgeSent = -1;
   /** Backend identity the L1 cache currently belongs to (from the last reply). */
@@ -480,7 +484,7 @@ export function createOrchestrator(
     lines.push("");
     // What the counts add up to, where they would mislead on their own: "Flagged: 0" on a
     // page where nothing was judged, or a list of verdicts half of which are close calls.
-    const state = reportState({ analyzed, unavailable, skipped, pending }, closeCalls);
+    const state = reportState({ analyzed, unavailable, skipped, pending }, closeCalls, minWords);
     if (state) lines.push(state, "");
     // The caveat travels with every report, whoever it is forwarded to.
     lines.push(t("reportCaveat"));
@@ -513,6 +517,8 @@ export function createOrchestrator(
             `(${close}${dist}; ${t("reportWords", unit.wordCount)}${windows})`,
         );
         // Before the quotation: a line after it would be read as part of the quotation.
+        const short = shortTextNote(unit.wordCount);
+        if (short) lines.push(`   ${short}`);
         if (hasLookalikes(unit.text)) lines.push(`   ${t("coverageLookalikes").trim()}`);
         if (links[i]) lines.push(`   ${t("reportLink", links[i]!)}`);
         if (includeText) lines.push(`   > ${snippet}${ellipsis}`);
@@ -672,6 +678,7 @@ export function createOrchestrator(
     const options: CollectOptions = {
       claimFilter,
       mergeShorts,
+      minWords,
       onShortText: (nodes) => {
         if (nodes[0]) shortTexts.add(nodes[0]);
       },
@@ -1116,6 +1123,14 @@ export function createOrchestrator(
     if (started) rescan();
   }
 
+  /** The minimum length decides what is read and what is grouped: the same re-collection. */
+  function applyMinWords(v: unknown): void {
+    const next = minWordsOf(v);
+    if (next === minWords) return;
+    minWords = next;
+    if (started) rescan();
+  }
+
   /** Scope is structural too: WHAT gets collected changes. */
   function applyScope(v: "page" | "main"): void {
     if (opts.lockScope) return; // pinned (Docs editor) — user scope not applied
@@ -1503,16 +1518,18 @@ export function createOrchestrator(
   /** One awaited read of every setting the first collect depends on. */
   async function readSettings(): Promise<SettingsSnapshot> {
     try {
-      const [showHighlights, mode, merge, scope] = await Promise.all([
+      const [showHighlights, mode, merge, floor, scope] = await Promise.all([
         settings.showHighlights.getValue(),
         settings.displayMode.getValue(),
         settings.mergeShorts.getValue(),
+        settings.minWords.getValue(),
         settings.analysisScope.getValue(),
       ]);
       return {
         showHighlights,
         displayMode: mode,
         mergeShorts: merge,
+        minWords: minWordsOf(floor),
         analysisScope: scope,
       };
     } catch (e) {
@@ -1530,6 +1547,7 @@ export function createOrchestrator(
     highlightsEnabled = s.showHighlights;
     displayMode = s.displayMode;
     mergeShorts = s.mergeShorts;
+    minWords = s.minWords;
     if (!opts.lockScope) analysisScope = s.analysisScope;
     setHighlightsVisible(visible && highlightsEnabled);
   }
@@ -1543,6 +1561,8 @@ export function createOrchestrator(
       unwatchDisplay = settings.displayMode.watch(applyDisplayMode);
       unwatchMerge?.();
       unwatchMerge = settings.mergeShorts.watch(applyMergeShorts);
+      unwatchMinWords?.();
+      unwatchMinWords = settings.minWords.watch(applyMinWords);
       unwatchScope?.();
       unwatchScope = settings.analysisScope.watch(applyScope);
     } catch (e) {
@@ -1640,6 +1660,8 @@ export function createOrchestrator(
     unwatchDisplay = null;
     unwatchMerge?.();
     unwatchMerge = null;
+    unwatchMinWords?.();
+    unwatchMinWords = null;
     unwatchScope?.();
     unwatchScope = null;
     // The worker is still at this run's batches, and a new document session is what makes

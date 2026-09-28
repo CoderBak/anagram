@@ -3,8 +3,19 @@
 // pass has nothing to add here; everything below is about the long ones.
 import { isScoredWindow, type UnitVerdict } from "../capture/windows";
 import { hasLookalikes } from "../dom/lookalikes";
+import { isShortText, MODEL_MIN_WORDS } from "../dom/text";
 import { t } from "../i18n";
 import { formatScore } from "./score";
+
+/**
+ * The line a verdict on a short text carries, or "": a text under the model's training
+ * minimum (MODEL_MIN_WORDS) is read only because the reader's minimum length allows it, and
+ * its verdict is less reliable. The hover card, the selection card, the report and the text
+ * analysis page all say it the same way.
+ */
+export function shortTextNote(words: number): string {
+  return isShortText(words) ? t("coverageShort", MODEL_MIN_WORDS) : "";
+}
 
 export interface WindowReadout {
   /** Passes the text was read in (2 or more). */

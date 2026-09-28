@@ -50,6 +50,8 @@ export interface DiagnosticsEnv {
   messageLocale: string;
   analysisScope: string;
   mergeShorts: boolean;
+  /** The minimum length in words (Settings). */
+  minWords: number;
   displayMode: string;
   /** The per-site rule that decides this host, and the global switch behind it. */
   siteRule: { host: string; mode: string } | null;
@@ -200,7 +202,7 @@ function regionFor(target: Element | null): { el: Element; why: string } {
 // ---- the report --------------------------------------------------------------------------
 
 export async function buildDiagnostics(env: DiagnosticsEnv): Promise<string> {
-  const survey = surveyPage({ running: env.running, max: MAX_SILENT });
+  const survey = surveyPage({ running: env.running, max: MAX_SILENT, minWords: env.minWords });
   const coverage = survey.proseWords > 0 ? Math.round((survey.wordsJudged / survey.proseWords) * 100) : 0;
 
   const lines: string[] = [];
@@ -219,7 +221,7 @@ export async function buildDiagnostics(env: DiagnosticsEnv): Promise<string> {
       `${document.getElementsByTagName("*").length} elements · hydration marker: ${hydrationMarker()}`,
   );
   lines.push(
-    `- scope \`${env.analysisScope}\` · merge short paragraphs ${env.mergeShorts ? "on" : "off"} · show \`${env.displayMode}\``,
+    `- scope \`${env.analysisScope}\` · merge short paragraphs ${env.mergeShorts ? "on" : "off"} · minimum ${env.minWords} words · show \`${env.displayMode}\``,
   );
   lines.push(`- ${stateLine(env)}`);
   lines.push(`- ${daemonLine(env.daemon)}`);

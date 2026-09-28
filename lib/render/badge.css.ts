@@ -231,6 +231,8 @@ export const BADGE_CSS: string = `
    numbers wrap under each other, flush right like every other value. */
 .card .row.wins .k { flex: none; }
 .card .row.wins .v { text-align: right; }
+/* A verdict on a text under the model's training minimum says so, on a line of its own. */
+.card .short { color: #737373; font-style: italic; margin-bottom: 4px; }
 
 .card .actions {
   display: flex;
@@ -281,7 +283,7 @@ export const BADGE_CSS: string = `
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 }
 :host(.pg-dark) .card .big { color: #fafafa; }
-:host(.pg-dark) .card .row .k { color: #a3a3a3; }
+:host(.pg-dark) .card .row .k, :host(.pg-dark) .card .short { color: #a3a3a3; }
 :host(.pg-dark) .card .row .v { color: #fafafa; }
 :host(.pg-dark) .card .verdict { color: #fafafa; }
 :host(.pg-dark) .card .verdict.band-unknown { color: #b9c0c8; }

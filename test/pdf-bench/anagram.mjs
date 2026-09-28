@@ -96,7 +96,7 @@ export async function readPages({ pipeline, pdfjs }, file, { fonts = false } = {
  * the reader's default (short paragraphs read together). `window` > 0 instead reflows
  * runs of that many pages, the way a reader holding only a few pages sees the document.
  */
-export async function runAnagram(engine, file, { window = 0 } = {}) {
+export async function runAnagram(engine, file, { window = 0, minWords } = {}) {
   const { pipeline } = engine;
   const { numPages, producer, creator, pages, extractMs } = await readPages(engine, file, { fonts: true });
   const runs = [];
@@ -108,7 +108,7 @@ export async function runAnagram(engine, file, { window = 0 } = {}) {
   return {
     numPages, producer, creator, pages, blocks,
     words: pipeline.planWords(blocks),
-    units: pipeline.unitsOf(blocks),
+    units: pipeline.unitsOf(blocks, true, minWords),
     timing: { extractMs, reflowMs, totalMs: extractMs.reduce((a, b) => a + b, 0) + reflowMs },
   };
 }
@@ -119,7 +119,7 @@ export async function runAnagram(engine, file, { window = 0 } = {}) {
  * pages (lib/pdf/structured.ts), the units grouped as above. `structureMs` is what the
  * worker took to produce the structure, counted into the total.
  */
-export async function runStructured(engine, file, structure, structureMs = 0, options = {}) {
+export async function runStructured(engine, file, structure, structureMs = 0, { minWords, ...options } = {}) {
   const { pipeline } = engine;
   const { numPages, producer, creator, pages, extractMs } = await readPages(engine, file, { fonts: true });
   const began = performance.now();
@@ -128,7 +128,7 @@ export async function runStructured(engine, file, structure, structureMs = 0, op
   return {
     numPages, producer, creator, pages, blocks,
     words: pipeline.planWords(blocks),
-    units: pipeline.unitsOf(blocks),
+    units: pipeline.unitsOf(blocks, true, minWords),
     timing: { extractMs, reflowMs, structureMs, totalMs: extractMs.reduce((a, b) => a + b, 0) + reflowMs + structureMs },
   };
 }

@@ -15,9 +15,9 @@
 // hands over the whole sequence at once and takes the groups back. Both get the same
 // floor, the same window and the same even division, because there is one copy of them.
 //
-// The thresholds themselves are NOT redefined here — the floor is the model's training
-// minimum (lib/dom/text.ts) and the window is the model's (lib/capture/windows.ts).
-import { MIN_UNIT_WORDS } from "../dom/text";
+// The thresholds themselves are NOT defined here — the floor is the reader's minimum length
+// (Settings; lib/dom/text.ts has the choices), handed in by every caller, and the window is
+// the model's (lib/capture/windows.ts).
 import { WINDOW_CHARS } from "../capture/windows";
 
 /** All the rules ever read of a block: how much writing it is. */
@@ -41,9 +41,9 @@ export function groupWords(blocks: readonly Sized[]): number {
   return total;
 }
 
-/** Enough writing to be judged at all (the model was never trained on less). */
-export function clearsFloor(blocks: readonly Sized[]): boolean {
-  return groupWords(blocks) >= MIN_UNIT_WORDS;
+/** Enough writing to be judged at all: `floor` words, the reader's minimum length. */
+export function clearsFloor(blocks: readonly Sized[], floor: number): boolean {
+  return groupWords(blocks) >= floor;
 }
 
 /** Little enough for the model to read in ONE pass — one window, some 300 words. */
@@ -84,9 +84,9 @@ function evenPieces<T extends Sized>(blocks: readonly T[], n: number): T[][] {
  * group keeps the evidence floor; only where that cannot be had inside a window (words of
  * thirty letters) is a group longer, and read in windows like any long paragraph.
  */
-export function modelSized<T extends Sized>(blocks: readonly T[]): T[][] {
+export function modelSized<T extends Sized>(blocks: readonly T[], minWords: number): T[][] {
   if (fitsWindow(blocks)) return [[...blocks]];
-  const floor = (pieces: T[][]): boolean => pieces.every((p) => clearsFloor(p));
+  const floor = (pieces: T[][]): boolean => pieces.every((p) => clearsFloor(p, minWords));
   const first = Math.ceil(groupChars(blocks) / WINDOW_CHARS);
   let best: T[][] | null = null;
   for (let n = first; n <= blocks.length; n++) {
@@ -171,7 +171,7 @@ export interface PlanBlock extends Sized {
  * voices nested inside voices — so it calls the pieces above instead, and
  * test/unit.mjs checks that the two roads meet.
  */
-export function groupBlocks(blocks: readonly PlanBlock[]): number[][] {
+export function groupBlocks(blocks: readonly PlanBlock[], floor: number): number[][] {
   interface Item extends Sized {
     index: number;
   }
@@ -189,8 +189,8 @@ export function groupBlocks(blocks: readonly PlanBlock[]): number[][] {
     const g = group;
     group = [];
     let lead: Item[] = [];
-    if (g.length > 0 && clearsFloor(g)) {
-      for (const piece of modelSized(g)) done.push(piece);
+    if (g.length > 0 && clearsFloor(g, floor)) {
+      for (const piece of modelSized(g, floor)) done.push(piece);
     } else if (g.length > 0) {
       const home = orphanHome(g, prev, following, () => true);
       if (home === "before") (prev as Item[]).push(...g);
@@ -213,10 +213,10 @@ export function groupBlocks(blocks: readonly PlanBlock[]): number[][] {
     }
     if (role === "apart") {
       endGroup(null);
-      if (clearsFloor([item])) done.push([item]);
+      if (clearsFloor([item], floor)) done.push([item]);
       return;
     }
-    if (clearsFloor([item])) {
+    if (clearsFloor([item], floor)) {
       const lead = endGroup(item);
       prev = [...lead, item];
       return;

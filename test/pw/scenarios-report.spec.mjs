@@ -213,7 +213,8 @@ test("copied report: a page with nothing long enough to judge says there was too
     text = await report(page);
     expect(text).toMatch(/Analyzed: 0 units · Flagged: 0 · Too short: [1-9]/);
   }, short).toPass({ timeout: 30_000 });
-  expect.soft(text, short).toContain("Too little text to judge: no passage reached the 75 words the model needs for a verdict.");
+  // The floor is the reader's minimum length, 50 words unless Settings says otherwise.
+  expect.soft(text, short).toContain("Too little text to judge: no passage reached the 50 words the model needs for a verdict.");
   expect.soft(text, short).not.toContain("No paragraphs were flagged");
   expect.soft(text, short).not.toContain("did not answer");
   expect.soft(text, short).toContain("high-stakes decisions");

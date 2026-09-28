@@ -1,0 +1,124 @@
+<!doctype html>
+<!--
+  Reviews declared in schema.org's vocabulary, as shop platforms emit them. SYNTHETIC: two
+  lists modelled on what review widgets write into product pages — Shopify's product reviews
+  widget (`div#shopify-product-reviews`, `li.spr-review`) in microdata, each
+  `itemprop="review" itemtype="https://schema.org/Review"` with its stars, title, "<author> on
+  <date>" and `itemprop="reviewBody"`, and a plain RDFa list (`typeof="Review"`,
+  `property="reviewBody"`) with "By <name>, <date> — 4/5" on the line above each text.
+  Names are placeholders, text synthetic.
+
+  What this guards: a review the page declares is one voice (lib/dom/scope.ts, DECLARED), and
+  where it says which element holds the review's text only that is read — "By Reviewer 1,
+  March 3, 2026 — 5/5" is written in running text around a <span>, a line nothing else could
+  tell from a short sentence.
+
+  Annotation: see x-timeline.html. Every review's text carries data-voice and data-expect for
+  the shipped 50-word minimum (test/unit.mjs walks it at 50, and at 25 and 75 for the invariants).
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: schema.org reviews</title>
+<style>
+  body { margin: 0; font: 15px/22px Georgia, serif; color: #222; }
+  main { max-width: 680px; margin: 16px auto; }
+  ul { list-style: none; padding: 0; }
+  .spr-review, .review-item { border-top: 1px solid #ddd; padding: 16px 0; }
+  .spr-review-header-title { font-size: 16px; margin: 4px 0; }
+  .spr-starratings { display: inline-block; width: 80px; height: 14px; background: #f5a623; }
+  .review-meta { color: #666; font-size: 13px; }
+</style></head>
+<body>
+<main>
+<h1>Linen shirt</h1>
+<div id="shopify-product-reviews" class="spr-container" itemscope itemtype="https://schema.org/Product">
+  <meta itemprop="name" content="Linen shirt">
+  <h2 class="spr-header-title">Customer Reviews</h2>
+  <div class="spr-reviews">
+  <ul>
+    <li class="spr-review" itemprop="review" itemscope itemtype="https://schema.org/Review" id="spr-review-1">
+      <div class="spr-review-header" data-chrome>
+        <span class="spr-starratings spr-review-header-starratings" aria-label="5 of 5 stars" role="img" itemprop="reviewRating" itemscope itemtype="https://schema.org/Rating"><meta itemprop="ratingValue" content="5"><i class="spr-icon spr-icon-star"></i></span>
+        <h3 class="spr-review-header-title" itemprop="name">Love it</h3>
+        <span class="spr-review-header-byline"><strong itemprop="author">Reviewer 1</strong> on <strong><time itemprop="datePublished" datetime="2026-03-03">March 3, 2026</time></strong></span>
+      </div>
+      <div class="spr-review-content"><p class="spr-review-content-body" itemprop="reviewBody" data-voice="reviewer-1" data-expect="unit" data-parts="1">The staff at the front desk were friendly and answered every question we had. Our table was ready on time even though the room was completely full that night. The color is a little darker than the photos suggest but I still like it. I would have given five stars if the lid did not rattle when the motor runs. We walked across at sunset and the view of the city was worth the cold wind. The soup came out hot and the bread was clearly baked the same morning. My daughter uses it every evening.</p></div>
+      <div class="spr-review-footer" data-chrome><a href="#" class="spr-review-reportreview">Report as Inappropriate</a></div>
+    </li>
+    <li class="spr-review" itemprop="review" itemscope itemtype="https://schema.org/Review" id="spr-review-2">
+      <div class="spr-review-header" data-chrome>
+        <span class="spr-starratings spr-review-header-starratings" aria-label="4 of 5 stars" role="img" itemprop="reviewRating" itemscope itemtype="https://schema.org/Rating"><meta itemprop="ratingValue" content="4"><i class="spr-icon spr-icon-star"></i></span>
+        <h3 class="spr-review-header-title" itemprop="name">OK</h3>
+        <span class="spr-review-header-byline"><strong itemprop="author">Reviewer 2</strong> on <strong><time itemprop="datePublished" datetime="2026-03-03">March 1, 2026</time></strong></span>
+      </div>
+      <div class="spr-review-content"><p class="spr-review-content-body" itemprop="reviewBody" data-voice="reviewer-2" data-expect="none">I would have given five stars if the lid did not rattle when the motor runs. We walked.</p></div>
+      <div class="spr-review-footer" data-chrome><a href="#" class="spr-review-reportreview">Report as Inappropriate</a></div>
+    </li>
+    <li class="spr-review" itemprop="review" itemscope itemtype="https://schema.org/Review" id="spr-review-3">
+      <div class="spr-review-header" data-chrome>
+        <span class="spr-starratings spr-review-header-starratings" aria-label="3 of 5 stars" role="img" itemprop="reviewRating" itemscope itemtype="https://schema.org/Rating"><meta itemprop="ratingValue" content="3"><i class="spr-icon spr-icon-star"></i></span>
+        <h3 class="spr-review-header-title" itemprop="name">Runs small</h3>
+        <span class="spr-review-header-byline"><strong itemprop="author">Reviewer 3</strong> on <strong><time itemprop="datePublished" datetime="2026-03-03">February 26, 2026</time></strong></span>
+      </div>
+      <div class="spr-review-content"><p class="spr-review-content-body" itemprop="reviewBody" data-voice="reviewer-3" data-expect="unit" data-parts="1">My daughter uses it every evening and the lessons keep her attention for once. Customer service replaced the cracked part without asking for a receipt. Parking nearby is hard to find on weekends so plan to arrive before noon. The fabric feels sturdy and it survived the washing machine without shrinking. The app crashed twice during the first.</p></div>
+      <div class="spr-review-footer" data-chrome><a href="#" class="spr-review-reportreview">Report as Inappropriate</a></div>
+    </li>
+    <li class="spr-review" itemprop="review" itemscope itemtype="https://schema.org/Review" id="spr-review-4">
+      <div class="spr-review-header" data-chrome>
+        <span class="spr-starratings spr-review-header-starratings" aria-label="5 of 5 stars" role="img" itemprop="reviewRating" itemscope itemtype="https://schema.org/Rating"><meta itemprop="ratingValue" content="5"><i class="spr-icon spr-icon-star"></i></span>
+        <h3 class="spr-review-header-title" itemprop="name">Soft</h3>
+        <span class="spr-review-header-byline"><strong itemprop="author">Reviewer 4</strong> on <strong><time itemprop="datePublished" datetime="2026-03-03">February 20, 2026</time></strong></span>
+      </div>
+      <div class="spr-review-content"><p class="spr-review-content-body" itemprop="reviewBody" data-voice="reviewer-4" data-expect="none">The fabric feels sturdy and it survived the washing machine without shrinking. The app crashed twice during the first week but an update seems to have fixed it. For the price it.</p></div>
+      <div class="spr-review-footer" data-chrome><a href="#" class="spr-review-reportreview">Report as Inappropriate</a></div>
+    </li>
+    <li class="spr-review" itemprop="review" itemscope itemtype="https://schema.org/Review" id="spr-review-5">
+      <div class="spr-review-header" data-chrome>
+        <span class="spr-starratings spr-review-header-starratings" aria-label="2 of 5 stars" role="img" itemprop="reviewRating" itemscope itemtype="https://schema.org/Rating"><meta itemprop="ratingValue" content="2"><i class="spr-icon spr-icon-star"></i></span>
+        <h3 class="spr-review-header-title" itemprop="name">Hmm</h3>
+        <span class="spr-review-header-byline"><strong itemprop="author">Reviewer 5</strong> on <strong><time itemprop="datePublished" datetime="2026-03-03">February 11, 2026</time></strong></span>
+      </div>
+      <div class="spr-review-content"><p class="spr-review-content-body" itemprop="reviewBody" data-voice="reviewer-5" data-expect="unit" data-parts="3">The guide knew the history of every building and kept the group moving. Delivery was slow but the seller kept us informed.<br>
+<br>Delivery was slow but the seller kept us informed about every delay. The chapters in the middle drag.<br>
+<br>The chapters in the middle drag a little before the ending pulls it together. Our room faced the courtyard so the nights were quiet and the.</p></div>
+      <div class="spr-review-footer" data-chrome><a href="#" class="spr-review-reportreview">Report as Inappropriate</a></div>
+    </li>
+    <li class="spr-review" itemprop="review" itemscope itemtype="https://schema.org/Review" id="spr-review-6">
+      <div class="spr-review-header" data-chrome>
+        <span class="spr-starratings spr-review-header-starratings" aria-label="1 of 5 stars" role="img" itemprop="reviewRating" itemscope itemtype="https://schema.org/Rating"><meta itemprop="ratingValue" content="1"><i class="spr-icon spr-icon-star"></i></span>
+        <h3 class="spr-review-header-title" itemprop="name">Returned it</h3>
+        <span class="spr-review-header-byline"><strong itemprop="author">Reviewer 6</strong> on <strong><time itemprop="datePublished" datetime="2026-03-03">January 30, 2026</time></strong></span>
+      </div>
+      <div class="spr-review-content"><p class="spr-review-content-body" itemprop="reviewBody" data-voice="reviewer-6" data-expect="unit" data-parts="1">Our room faced the courtyard so the nights were quiet and the mornings bright. The handle got warm after an hour of use which I did not expect. Two of the six glasses arrived chipped and the replacements took a month. The trail was muddy after the rain but the markers were easy to follow. The package arrived two days early and everything inside was well protected. Setup took about ten minutes and the instructions were clear enough for me. After three weeks of daily use the battery still lasts through a full afternoon. The staff at the front desk were friendly and answered every question we had. Our table was ready on time even though the room was completely full that night. The color is a little darker than the photos suggest but I still like it. I would.</p></div>
+      <div class="spr-review-footer" data-chrome><a href="#" class="spr-review-reportreview">Report as Inappropriate</a></div>
+    </li>
+  </ul>
+  </div>
+</div>
+<section id="rdfa-reviews" vocab="https://schema.org/" typeof="Product">
+  <h2><span property="name">Linen trousers</span> — reviews</h2>
+    <div class="review-item" property="review" typeof="Review">
+      <p class="review-meta" data-chrome>By <span property="author" typeof="Person"><span property="name">Reviewer 1</span></span>, <span property="datePublished" content="2026-03-03">March 3, 2026</span> — <span property="reviewRating" typeof="Rating"><span property="ratingValue">5</span>/<span property="bestRating">5</span></span></p>
+      <div property="reviewBody" data-voice="rdfa-reviewer-1" data-expect="unit" data-parts="1"><p>The color is a little darker than the photos suggest but I still like it. I would have given five stars if the lid did not rattle when the motor runs. We walked across at sunset and the view of the city was worth the cold wind. The soup came out hot and the bread was clearly baked the same morning. My daughter uses it every evening and the lessons keep her attention for once. Customer service replaced the cracked part without asking for a receipt. Parking nearby is hard to find on weekends so plan.</p></div>
+    </div>
+    <div class="review-item" property="review" typeof="Review">
+      <p class="review-meta" data-chrome>By <span property="author" typeof="Person"><span property="name">Reviewer 2</span></span>, <span property="datePublished" content="2026-03-03">March 1, 2026</span> — <span property="reviewRating" typeof="Rating"><span property="ratingValue">4</span>/<span property="bestRating">5</span></span></p>
+      <div property="reviewBody" data-voice="rdfa-reviewer-2" data-expect="none"><p>Customer service replaced the cracked part without asking for a receipt. Parking nearby is hard to find on.</p></div>
+    </div>
+    <div class="review-item" property="review" typeof="Review">
+      <p class="review-meta" data-chrome>By <span property="author" typeof="Person"><span property="name">Reviewer 3</span></span>, <span property="datePublished" content="2026-03-03">February 26, 2026</span> — <span property="reviewRating" typeof="Rating"><span property="ratingValue">3</span>/<span property="bestRating">5</span></span></p>
+      <div property="reviewBody" data-voice="rdfa-reviewer-3" data-expect="unit" data-parts="1"><p>The guide knew the history of every building and kept the group moving. Delivery was slow but the seller kept us informed about every delay. The chapters in the middle drag a little before the ending pulls it together. Our room faced the courtyard so the nights were quiet and the mornings bright. The handle got warm after.</p></div>
+    </div>
+    <div class="review-item" property="review" typeof="Review">
+      <p class="review-meta" data-chrome>By <span property="author" typeof="Person"><span property="name">Reviewer 4</span></span>, <span property="datePublished" content="2026-03-03">February 20, 2026</span> — <span property="reviewRating" typeof="Rating"><span property="ratingValue">5</span>/<span property="bestRating">5</span></span></p>
+      <div property="reviewBody" data-voice="rdfa-reviewer-4" data-expect="none"><p>Two of the six glasses arrived chipped and the replacements took a month. The trail was muddy after the rain but the markers were easy to follow. The package arrived two days.</p></div>
+    </div>
+    <div class="review-item" property="review" typeof="Review">
+      <p class="review-meta" data-chrome>By <span property="author" typeof="Person"><span property="name">Reviewer 5</span></span>, <span property="datePublished" content="2026-03-03">February 11, 2026</span> — <span property="reviewRating" typeof="Rating"><span property="ratingValue">2</span>/<span property="bestRating">5</span></span></p>
+      <div property="reviewBody" data-voice="rdfa-reviewer-5" data-expect="unit" data-parts="3"><p>The staff at the front desk were friendly and answered every question we had. Our table was ready on time even though.</p><p>Our table was ready on time even though the room was completely full that night. The color is.</p><p>The color is a little darker than the photos suggest but I still like it. I would have given five stars if the lid did not.</p></div>
+    </div>
+    <div class="review-item" property="review" typeof="Review">
+      <p class="review-meta" data-chrome>By <span property="author" typeof="Person"><span property="name">Reviewer 6</span></span>, <span property="datePublished" content="2026-03-03">January 30, 2026</span> — <span property="reviewRating" typeof="Rating"><span property="ratingValue">1</span>/<span property="bestRating">5</span></span></p>
+      <div property="reviewBody" data-voice="rdfa-reviewer-6" data-expect="unit" data-parts="1"><p>The soup came out hot and the bread was clearly baked the same morning. My daughter uses it every evening and the lessons keep her attention for once. Customer service replaced the cracked part without asking for a receipt. Parking nearby is hard to find on weekends so plan to arrive before noon. The fabric feels sturdy and it survived the washing machine without shrinking. The app crashed twice during the first week but an update seems to have fixed it. For the price it does exactly what the listing promised and nothing more. The guide knew the history of every building and kept the group moving. Delivery was slow but the seller kept us informed about every delay. The chapters in the middle drag a little before the ending pulls it together. Our room faced the courtyard so the.</p></div>
+    </div>
+</section>
+</main>
+</body></html>

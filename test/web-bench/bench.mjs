@@ -1,6 +1,6 @@
 // test/web-bench/bench.mjs — how well the content script reads web pages, measured offline.
 //
-//   ANAGRAM_WEB_BENCH=<corpus> node test/web-bench/bench.mjs run [--name <run>] [--scope page|main] [--extractor defuddle|none]
+//   ANAGRAM_WEB_BENCH=<corpus> node test/web-bench/bench.mjs run [--name <run>] [--scope page|main] [--extractor defuddle|none] [--min-words <n>]
 //                                    [--only <id,…>] [--datasets wcxb,wmb,…] [--concurrency <n>] [--no-explain] [--css [--js]]
 //   ANAGRAM_WEB_BENCH=<corpus> node test/web-bench/bench.mjs styles [--only <id,…>] [--datasets wcxb,wmb,…] [--scripts [--sample <n>]]
 //   ANAGRAM_WEB_BENCH=<corpus> node test/web-bench/bench.mjs external <name> <outputs.jsonl> --truth-from <run>
@@ -225,7 +225,7 @@ async function measurePage(context, bundle, entry, opts) {
     await page.evaluate(bundle);
     const measured = await Promise.race([
       page.evaluate((o) => WB.measure(o), {
-        scope: opts.scope, extractor: opts.extractor,
+        scope: opts.scope, extractor: opts.extractor, minWords: opts.minWords,
         truthHtml: truth.kind === "html" ? truth.html : null,
         xpaths: truth.kind === "segments", explain: opts.explain && truth.kind !== "segments",
       }),
@@ -321,6 +321,8 @@ async function run() {
   const only = flag("only")?.split(",");
   const datasets = flag("datasets")?.split(",");
   const explain = !has("no-explain");
+  // The minimum length in words (Settings); the shipped default when unset.
+  const minWords = flag("min-words") ? Number(flag("min-words")) : undefined;
   const dir = join(OUT, name);
   // A run of the whole corpus starts afresh; one restricted by --only or --datasets
   // re-measures those pages inside the run it names.
@@ -333,7 +335,7 @@ async function run() {
   const styles = css ? styleStore(false) : null;
   const entries = manifest().filter((e) => (!only || only.includes(e.id)) && (!datasets || datasets.includes(e.dataset)) &&
     (!styled || (styledFully(styled[e.id]) && (!scripts || styled[e.id].js))));
-  const meta = { scope, extractor, explain, date: new Date().toISOString(), js: scripts, css };
+  const meta = { scope, extractor, explain, minWords, date: new Date().toISOString(), js: scripts, css };
   writeFileSync(join(dir, "run.json"), JSON.stringify(meta));
 
   // Nothing leaves the machine: the harness answers the one document itself and refuses
@@ -349,7 +351,7 @@ async function run() {
       if (!entry) return;
       const file = join(dir, "docs", `${safe(entry.id)}.json`);
       try {
-        const { truth, measured, requests, wallMs } = await measurePage(context, bundle, entry, { scope, extractor, explain, styles, scripts });
+        const { truth, measured, requests, wallMs } = await measurePage(context, bundle, entry, { scope, extractor, explain, styles, scripts, minWords });
         writeFileSync(file, JSON.stringify(record(entry, truth, measured, requests, wallMs, meta)));
       } catch (error) {
         writeFileSync(file, JSON.stringify({ id: entry.id, dataset: entry.dataset, type: entry.type, split: splitOf(entry.id), error: String(error?.message ?? error) }));

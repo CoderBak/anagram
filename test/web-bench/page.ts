@@ -6,8 +6,8 @@
 // vendor chunk is built from, imported the same way scripts/vendor.mjs imports it), and the
 // units are lib/dom/walker.ts' collectUnits() under that scope with the orchestrator's
 // options for a first scan — merge short paragraphs on (the shipped default), no claimed
-// nodes. The 75-word floor is the walker's own. What this adds is only what a benchmark
-// needs to see: which units read as comments, where each unit sits, the text of the scope,
+// nodes, the shipped minimum length unless the run names another. What this adds is only
+// what a benchmark needs to see: which units read as comments, where each unit sits, the text of the scope,
 // the truth an HTML subtree stands for, and — through the product's own diagnostics
 // (lib/diagnostics/silence.ts) — why a block of prose got no unit.
 import Defuddle from "defuddle";
@@ -25,6 +25,8 @@ export interface MeasureOptions {
   truthHtml?: string | null;
   /** Report each scored text node's XPath (Webis-WebSeg-20 names nodes that way). */
   xpaths?: boolean;
+  /** The minimum length in words (Settings); the shipped default when left out. */
+  minWords?: number;
   /** Run the page diagnostics' survey of prose that got no unit, and why. */
   explain?: boolean;
 }
@@ -151,7 +153,7 @@ export function measure(opts: MeasureOptions) {
   }
   const base = root ?? document.body;
   const t = performance.now();
-  const units: Unit[] = base ? inPageOrder(collectUnits(base, { mergeShorts: true })) : [];
+  const units: Unit[] = base ? inPageOrder(collectUnits(base, { mergeShorts: true, minWords: opts.minWords })) : [];
   const collectMs = performance.now() - t;
 
   const out = {
@@ -181,7 +183,7 @@ export function measure(opts: MeasureOptions) {
     timing: { scopeMs, collectMs, totalMs: 0 },
   };
   if (opts.explain) {
-    const survey = surveyPage({ running: false, max: 60 });
+    const survey = surveyPage({ running: false, max: 60, minWords: opts.minWords });
     out.silent = survey.silent.map((s) => ({
       path: whereOf(s.el), words: s.words, reason: s.reason, note: s.note, undrawn: s.undrawn,
       text: ((s.el as HTMLElement).innerText ?? s.el.textContent ?? "").slice(0, 4000),

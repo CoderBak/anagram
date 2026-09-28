@@ -112,6 +112,11 @@
               <input id="mergeShorts" type="checkbox" role="switch" />
             </div>
             <div class="field" data-orientation="horizontal">
+              <label for="minWords" data-i18n="optMinWords">Minimum length</label>
+              <select id="minWords" aria-describedby="minWordsNote"></select>
+            </div>
+            <p id="minWordsNote" class="form-note" data-i18n="optMinWordsNote">The model was trained on texts of 75 words or more; shorter ones are less reliable and say so.</p>
+            <div class="field" data-orientation="horizontal">
               <label for="autoOpenPdfs" data-i18n="optAutoOpenPdfs">Open PDFs in Anagram</label>
               <input id="autoOpenPdfs" type="checkbox" role="switch" />
             </div>
