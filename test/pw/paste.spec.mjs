@@ -20,7 +20,7 @@ const test = base.extend({
 // Shipping package, no website grants.
 test.use({ build: "shipping" });
 
-// Exactly 75 words, the evidence floor; the same text one word shorter is refused.
+// Exactly 75 words; with the minimum length at 75, the same text one word shorter is refused.
 const TEXT =
   "The local library opens every morning and welcomes readers from across the town. Its staff help visitors find books, learn new skills, and share ideas with neighbors. Last week I borrowed a history book and spent the afternoon reading beside a sunny window. I plan to return tomorrow because the quiet room makes it easier to concentrate on difficult passages. On Saturdays the reading room fills with families, and a volunteer reads old stories aloud.";
 
@@ -31,7 +31,8 @@ async function analyze(page, text) {
   await page.locator("#results").waitFor({ state: "visible" });
 }
 
-test("the evidence floor refuses 74 words without waking the idle engine, and the first score wakes it", async ({ page, extension, nativeHost }) => {
+test("the minimum length (75 words here) refuses 74 words without waking the idle engine, and the first score wakes it", async ({ page, extension, nativeHost, storage }) => {
+  await storage.set({ minWords: 75 });
   await page.goto(extension.url("paste.html"));
   await page.locator("#text").fill(TEXT.replace(/ aloud\.$/, "."));
   await page.locator("#analyze").click();
