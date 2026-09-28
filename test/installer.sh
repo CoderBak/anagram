@@ -230,12 +230,13 @@ FAKE_OS="$T/fake-os"; mkdir -p "$FAKE_OS/bin"
 printf '#!/bin/sh\necho "ldd (GNU libc) 2.39"\n' > "$FAKE_OS/bin/ldd"
 printf '#!/bin/sh\necho "glibc 2.39"\n' > "$FAKE_OS/bin/getconf"
 printf '#!/bin/sh\necho 15.0\n' > "$FAKE_OS/bin/sw_vers"
-os_install() { # name "os arch" gpu(none|proc|smi): an update of a home whose environment has PyTorch
+os_install() { # name "os arch" gpu(none|proc|smi|wsl): an update of a home whose environment has PyTorch
   h="$T/os-$1"; make_home "$h"; mkdir -p "$h/venv/lib/python3.12/site-packages/torch"
   printf '#!/bin/sh\necho "uv %s"\nif [ "$1" = sync ]; then echo "$*" > "$(dirname "$0")/../sync-args"; mkdir -p "$UV_PROJECT_ENVIRONMENT/bin"; cp "$(dirname "$0")/../venv/bin/python" "$UV_PROJECT_ENVIRONMENT/bin/python"; fi\nexit 0\n' "$UVV" > "$h/bin/uv"; chmod +x "$h/bin/uv"
   printf '#!/bin/sh\n[ "$1" = -s ] && echo %s || echo %s\n' $2 > "$FAKE_OS/bin/uname"
   rm -rf "$FAKE_OS/root"; mkdir -p "$FAKE_OS/root/proc/driver"
   [ "$3" != proc ] || { mkdir "$FAKE_OS/root/proc/driver/nvidia"; echo "NVRM version: NVIDIA UNIX Open Kernel Module  580.82.07" > "$FAKE_OS/root/proc/driver/nvidia/version"; }
+  [ "$3" != wsl ] || { mkdir -p "$FAKE_OS/root/usr/lib/wsl/lib"; printf '#!/bin/sh\n[ "$1" = -L ] && echo "GPU 0: NVIDIA GeForce RTX 4070 (UUID: GPU-0)"\n' > "$FAKE_OS/root/usr/lib/wsl/lib/nvidia-smi"; chmod +x "$FAKE_OS/root/usr/lib/wsl/lib/nvidia-smi"; }
   if [ "$3" = smi ]; then printf '#!/bin/sh\n[ "$1" = -L ] && echo "GPU 0: NVIDIA L4 (UUID: GPU-0)"\n' > "$FAKE_OS/bin/nvidia-smi"
   else printf '#!/bin/sh\necho "No devices were found"; exit 6\n' > "$FAKE_OS/bin/nvidia-smi"; fi
   chmod +x "$FAKE_OS/bin/"*
@@ -256,6 +257,10 @@ os_install linux-smi "Linux x86_64" smi
 if [ $rc -eq 0 ] && echo " $args " | grep -q ' --extra cuda ' && ! echo "$out" | grep -q 'No NVIDIA GPU'; then
   ok "Linux where nvidia-smi lists a GPU syncs the cuda extra"
 else bad "Linux nvidia-smi sync" "rc=$rc args=$args $out"; fi
+os_install linux-wsl "Linux x86_64" wsl
+if [ $rc -eq 0 ] && echo " $args " | grep -q ' --extra cuda ' && ! echo "$out" | grep -q 'No NVIDIA GPU'; then
+  ok "WSL2, whose nvidia-smi is off the PATH, syncs the cuda extra"
+else bad "WSL2 nvidia-smi sync" "rc=$rc args=$args $out"; fi
 os_install mac-smi "Darwin arm64" smi
 if [ $rc -eq 0 ] && [ -n "$args" ] && [ "${args#*--extra}" = "$args" ] && ! echo "$out" | grep -q 'No NVIDIA GPU'; then
   ok "macOS never syncs the cuda extra"

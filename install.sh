@@ -175,9 +175,11 @@ case "$OS/$ARCH" in
   *) die "unsupported platform: $OS $ARCH (macOS 14+ Apple Silicon or glibc Linux x86_64/arm64)" ;;
 esac
 # PyPI's Linux PyTorch is the CUDA build, about 5 GB with its libraries, and serves only an
-# NVIDIA GPU; ONNX Runtime runs the CPU. ANAGRAM_TEST_ROOT stands in for / in the tests.
+# NVIDIA GPU; ONNX Runtime runs the CPU. WSL2 has no /proc driver and keeps nvidia-smi out
+# of the PATH `anagram update` runs with. ANAGRAM_TEST_ROOT stands in for / in the tests.
 CUDA=""
-if [ "$OS" = Linux ] && { [ -r "${ANAGRAM_TEST_ROOT:-}/proc/driver/nvidia/version" ] || nvidia-smi -L >/dev/null 2>&1; }; then
+if [ "$OS" = Linux ] && { [ -r "${ANAGRAM_TEST_ROOT:-}/proc/driver/nvidia/version" ] || nvidia-smi -L >/dev/null 2>&1 \
+    || "${ANAGRAM_TEST_ROOT:-}/usr/lib/wsl/lib/nvidia-smi" -L >/dev/null 2>&1; }; then
   CUDA=1; RUNTIMES="PyTorch"
 fi
 
