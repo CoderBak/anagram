@@ -28,6 +28,7 @@ const json = (rel) => JSON.parse(read(rel));
 const npm = (name) => json(`node_modules/${name}/package.json`).version;
 const pdfjsPin = () => json("vendor/pdfjs/upstream.json");
 const workerPin = () => json("vendor/document-worker/upstream.json");
+const confusablesPin = () => json("lib/dom/confusables.json");
 const short = (commit) => commit.slice(0, 7);
 
 // ---- licences --------------------------------------------------------------------------------
@@ -243,6 +244,11 @@ const GROUPS = [
         licence: "Unicode-3.0", copyright: "Copyright (c) 2001-2026 Unicode, Inc.",
         where: "The abbreviations list in lib/dom/text.ts (common/segments/en.xml).", notice: ["scripts/licences/Unicode-3.0.CLDR.txt"],
         adapted: ["lib/dom/text.ts"] },
+      { name: "Unicode Security Mechanisms (UTS #39)", version: `confusables.txt, Unicode ${confusablesPin().unicode}`, url: "https://www.unicode.org/reports/tr39/",
+        urls: ["https://www.unicode.org/Public/"],
+        licence: "Unicode-3.0", copyright: "Copyright (c) 1991-2026 Unicode, Inc.",
+        where: `lib/dom/confusables.json: the Greek, Coptic, Cyrillic, Armenian, Cherokee and Lisu letters that confusables.txt (SHA-256 ${confusablesPin().sha256}) finds confusable with one ASCII letter or digit, and that letter, written by scripts/confusables.mjs. lib/dom/lookalikes.ts folds English words disguised with them back to Latin letters.`,
+        notice: ["scripts/licences/Unicode-3.0.txt"] },
       { name: "pySBD", version: "standard abbreviations", url: "https://github.com/nipunsadvilkar/pySBD",
         licence: "MIT", copyright: "Copyright (c) 2019 Nipun Sadvilkar",
         where: "The prepositive and number abbreviations in lib/dom/text.ts (pysbd/lang/common/standard.py).", notice: { compose: "MIT" },

@@ -7,6 +7,7 @@
 // one article or one comment) are merged into multi-part units so text below the
 // per-paragraph evidence floor still gets covered instead of being silently skipped,
 // and a post that fits one model window is one unit whole (lib/dom/walker.ts).
+import { foldLookalikes } from "./lookalikes";
 
 /** One visual paragraph inside a unit: an inline run of text nodes + its block. */
 export interface UnitPart {
@@ -145,7 +146,7 @@ const INVISIBLES_RE =
 const RAW_LATEX_RE = /\$[^$\n]*\\[A-Za-z]+[^$\n]*\$/g;
 
 /** Bump when the model form changes; caches from older rules must never match. */
-export const SCORING_NORMALIZATION_VERSION = "6";
+export const SCORING_NORMALIZATION_VERSION = "7";
 
 /** Closing punctuation that ends a word: not the ".5" of a number, not ":-)" in a sentence. */
 const CLOSING_RE = /[.,;:!?)]+(?=\s|$)/y;
@@ -187,14 +188,27 @@ export function skipGap(text: string, at: number): [number, number] | null {
  * spaces to one space, and a run of whitespace that breaks a line to one "\n" — the engine
  * can drop an opening paragraph only where it sees one end. A space before punctuation is
  * the author's and stays; the one a reader leaves where it skipped a formula or a citation
- * mark is closed up where it is made (skipGap).
+ * mark is closed up where it is made (skipGap). One thing a reader would not notice is
+ * undone too, although EditLens's own pipeline does not: English words written with
+ * Cyrillic or Greek look-alike letters get their Latin letters back (lib/dom/lookalikes.ts).
  *
  * A FIXED POINT: m(m(x)) === m(x), so the worker can apply it again to what a page sends
  * and key its cache on the same bytes. Ligatures go first: "$\ﬁ$" is a LaTeX span only
  * once spelled out. Removing an invisible, an escape or a span can join what stood on
- * either side of it into another, so those steps repeat until none applies.
+ * either side of it into another, so those steps repeat until none applies, and so does
+ * the whole after look-alikes are folded: "$\аlpha$" is a LaTeX span only then.
  */
 export function modelText(s: string): string {
+  for (;;) {
+    s = modelForm(s);
+    const folded = foldLookalikes(s);
+    if (folded === s) return s;
+    s = folded;
+  }
+}
+
+/** modelText without the look-alike fold: a word of a text already folded as a whole. */
+export function modelForm(s: string): string {
   s = s.replace(/[\uFB00-\uFB06]/g, (ligature) => ligature.normalize("NFKC"));
   for (;;) {
     const next = s.replace(INVISIBLES_RE, "").replace(/\\+([%&_#$])/g, "$1").replace(RAW_LATEX_RE, "");

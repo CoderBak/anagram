@@ -104,6 +104,9 @@
   "cardFootEstimate": {
     "message": "这个数字是 EditLens 的估计，衡量文本距离纯人工写作有多远、离完全 AI 生成有多近，既不是 AI 撰写词语的占比，也不是证据。"
   },
+  "coverageLookalikes": {
+    "message": "评分前已将形近字母替换回拉丁字母。"
+  },
   "coverageOpeningParagraph": {
     "message": "只对该段落的开头评了分。"
   },

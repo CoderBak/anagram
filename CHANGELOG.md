@@ -142,6 +142,7 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- English disguised with Cyrillic or Greek look-alike letters gets a verdict: they are turned back into Latin letters before scoring (Unicode's confusables), and the card and the report say so; on RAID's homoglyph texts no verdict becomes the verdicts of the undisguised texts.
 - A PDF manuscript with numbered lines, as preprints and papers under review are set, is
   read without its line numbers. Word's line numbering and LaTeX's lineno put a number
   beside every line, and both of the reader's readings took it for a word: "84 Vertical
