@@ -3,10 +3,10 @@
 // must stay (nearly) bare. A site that fails to LOAD, or answers with a bot check, is skipped:
 // that says nothing about the extension. A loaded site that breaks its expectation fails, and
 // so does any console error from the extension. These are the only tests that go to the
-// network; they are a project of their own (playwright.config.mjs), which `--project chromium`
-// leaves out.
+// network; their project exists only with ANAGRAM_LIVE=1 (playwright.config.mjs), which
+// `npm run test:scenarios` sets.
 //
-//   npx playwright test --project live
+//   ANAGRAM_LIVE=1 npx playwright test --project live
 import { test, expect, BADGE_SEL, chipCounts } from "./kit.mjs";
 
 const LIVE = [

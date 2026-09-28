@@ -93,7 +93,7 @@ npm run test:native                # real stdio host fixture, EN and ZH setup
 npm run test:paste                 # the paste page, pass readout and report
 npm run test:pseudo-locale         # every page in a stretched pseudo-locale, Chinese and English: nothing cut off, off-page or overlapping
 npm run test:pdf-viewer            # upstream reader: find, zoom, recycling, file limits
-npx playwright test                # the suites in test/pw/ (Playwright Test), the real sites among them; --repeat-each 10 hunts a flake, a failure keeps its trace
+npx playwright test                # the suites in test/pw/ (Playwright Test), no network; ANAGRAM_LIVE=1 adds the real sites; --repeat-each 10 hunts a flake, a failure keeps its trace
 npm run test:pdf-install           # PDF setup and local-file access flow, EN and ZH
 ANAGRAM_FIREFOX=<path to firefox> npm run test:firefox   # the Firefox build in Firefox 140+, e.g. an ESR from archive.mozilla.org, never installed
 npm run lint:firefox               # Mozilla's add-on linter on the Firefox build; accepted warnings in scripts/lintFirefox.mjs
