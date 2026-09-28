@@ -1,4 +1,4 @@
-// lib/webengine/client.ts — the oneclick flavor's engine transport (lib/backend/transport.ts).
+// lib/webengine/client.ts — the in-browser engine's transport (lib/backend/transport.ts).
 //
 // The same multiplexing as the native host's (lib/backend/nativeTransport.ts: request(op,
 // payload, signal, timeout) → the host's reply, onDisconnect, close), over a different
@@ -96,10 +96,24 @@ class WebEngineTransport extends PortTransport {
 let instance: EngineTransport | undefined;
 
 /**
- * What "#flavor/engine-transport" names in the oneclick flavor: the offscreen document's
- * port on Chrome, a worker in this page on Firefox, behind the same request
- * multiplexing, timeouts and reconnection as the native transport.
+ * The in-browser engine: the offscreen document's port on Chrome, a worker in this page on
+ * Firefox, behind the same request multiplexing, timeouts and reconnection as the local
+ * engine's transport.
  */
-export function engineTransport(): EngineTransport {
+export function webEngineTransport(): EngineTransport {
   return instance ??= new WebEngineTransport();
+}
+
+/**
+ * The in-browser engine is no longer the one in use: what it was asked is refused, and it
+ * lets its model go — Chrome's offscreen document is closed, Firefox's worker ended (closing
+ * the transport ends it). The next request starts it afresh.
+ */
+export async function closeWebEngine(): Promise<void> {
+  instance?.close("native_unavailable", "The engine was switched");
+  const api = offscreenApi() as (OffscreenApi & { closeDocument?(): Promise<void> }) | undefined;
+  try {
+    await creating?.catch(() => undefined);
+    if (api?.closeDocument && (!api.hasDocument || (await api.hasDocument()))) await api.closeDocument();
+  } catch { /* already closed */ }
 }

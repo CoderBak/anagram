@@ -8,12 +8,6 @@
   "extDescription": {
     "message": "显示每个段落经 AI 编辑的程度，全部在本机评分。"
   },
-  "extNameInBrowser": {
-    "message": "Anagram（浏览器内运行）"
-  },
-  "extDescriptionInBrowser": {
-    "message": "显示每个段落经 AI 编辑的程度，在浏览器内评分，无需安装其他软件。"
-  },
   "cmdOpenPanel": {
     "message": "打开存疑段落列表"
   },
@@ -199,6 +193,12 @@
   },
   "panelEngineCrashed": {
     "message": "本地引擎接连意外停止，Anagram 已不再自动重启它。新段落将等待你重试后再分析。"
+  },
+  "panelInBrowserDown": {
+    "message": "浏览器内引擎尚未就绪。请打开 Anagram 设置；新段落将等待引擎就绪后再分析。"
+  },
+  "panelInBrowserCrashed": {
+    "message": "浏览器内引擎接连意外停止，Anagram 已不再自动重启它。新段落将等待你重试后再分析。"
   },
   "panelRetry": {
     "message": "重试"
@@ -517,6 +517,84 @@
   },
   "engineTitle": {
     "message": "浏览器内引擎"
+  },
+  "engineChooseTitle": {
+    "message": "选择 Anagram 的运行方式"
+  },
+  "engineChooseIntro": {
+    "message": "两种方式下，模型都在这台电脑上运行，你读的内容不会发往任何地方。"
+  },
+  "engineOneClick": {
+    "message": "一键"
+  },
+  "engineRecommended": {
+    "message": "推荐"
+  },
+  "engineOneClickWhat": {
+    "message": "在浏览器内运行，无需安装其他程序。"
+  },
+  "engineOneClickCost": {
+    "message": "每段约 $1 毫秒 · 内存最多 $2 GB"
+  },
+  "engineOneClickButton": {
+    "message": "设置（下载 $1）"
+  },
+  "engineTerminal": {
+    "message": "终端"
+  },
+  "engineTerminalWhat": {
+    "message": "在终端中运行一条命令安装本地引擎。更快，也更省内存。"
+  },
+  "engineTerminalWhatWindows": {
+    "message": "在 PowerShell 中运行一条命令安装本地引擎。更快，也更省内存。"
+  },
+  "engineTerminalWhatNvidia": {
+    "message": "在终端中运行一条命令安装本地引擎，它在你的 NVIDIA 显卡上运行。"
+  },
+  "engineTerminalWhatNvidiaWindows": {
+    "message": "在 PowerShell 中运行一条命令安装本地引擎，它在你的 NVIDIA 显卡上运行。"
+  },
+  "engineTerminalCost": {
+    "message": "每段约 $1 毫秒 · 内存约 $2 GB"
+  },
+  "engineTerminalButton": {
+    "message": "使用本地引擎"
+  },
+  "engineMeasured": {
+    "message": "速度和内存在 M4 Mac 上测得。"
+  },
+  "engineJspiNote": {
+    "message": "Firefox 153 及以上版本也能运行一键引擎。"
+  },
+  "engineTight": {
+    "message": "Anagram 评分时，这台电脑可能会变慢。"
+  },
+  "engineNativeRefused": {
+    "message": "Anagram 未获准与本地引擎通信，因此没有任何改动。准备好后请重新选择。"
+  },
+  "engineCannotTitle": {
+    "message": "Anagram 无法在此运行"
+  },
+  "engineCannotRun": {
+    "message": "这台设备的内存或可用磁盘空间不足以运行 Anagram 的模型，因此没有下载任何内容。Anagram 从不把你的文字发往别处评分。"
+  },
+  "engineCannotRunBrowser": {
+    "message": "这个版本的 Firefox 无法运行 Anagram 的模型，本地引擎也不能安装在这台电脑上。Firefox 153 及以上版本可以在浏览器中运行它。"
+  },
+  "engineSwitchToInBrowser": {
+    "message": "切换到浏览器内引擎"
+  },
+  "engineSwitchToNative": {
+    "message": "切换到本地引擎"
+  },
+  "engineSwitchFailed": {
+    "message": "无法切换引擎，请重试。"
+  },
+  "engineLeftover": {
+    "message": "浏览器内引擎的模型文件仍占用 $1。"
+  },
+  "engineLeftoverDelete": {
+    "message": "删除这些文件"
   },
   "componentNotInstalled": {
     "message": "未安装"
@@ -889,6 +967,9 @@
   },
   "popupEngineInBrowserDown": {
     "message": "浏览器内引擎未就绪"
+  },
+  "popupEngineCrashed": {
+    "message": "本地引擎接连意外停止"
   },
   "popupEngineOutdated": {
     "message": "本地引擎需要更新"

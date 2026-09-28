@@ -15,7 +15,6 @@ import {
   reachableSources,
   unscanned,
 } from "../../scripts/i18nSubset";
-import { flavorAliases } from "../../scripts/flavor.mjs";
 
 interface Entry {
   message: string;
@@ -271,20 +270,15 @@ describe("the English each bundle carries", () => {
       expect(files.some((f) => f.endsWith("messages.json"))).toBe(false);
     });
 
-    it("follows a #flavor/ import to that flavor's module, and never to the other flavor's", () => {
-      // Each flavor's bundles carry the English of their own engine panel and transport
-      // (scripts/flavor.mjs): the native pages the install command's, the oneclick ones not.
-      const scan = (surface: string[], flavor: "native" | "oneclick") => reachableSources(surface, ROOT, flavorAliases(flavor, ROOT));
-      const nativePages = scan(SURFACES.pages, "native"), oneclickPages = scan(SURFACES.pages, "oneclick");
-      expect(nativePages).toContain(entry("lib", "ui", "installationCommand.ts"));
-      expect(nativePages).not.toContain(entry("lib", "ui", "inBrowserEngine.ts"));
-      expect(oneclickPages).toContain(entry("lib", "ui", "inBrowserEngine.ts"));
-      for (const file of ["componentSettings.ts", "installationCommand.ts", "runtimeSettings.ts"]) {
-        expect(oneclickPages).not.toContain(entry("lib", "ui", file));
+    it("follows the pages to both engines' panels and the worker to both transports", () => {
+      // One extension carries both engines: the pages the English of the install command and
+      // of the in-browser setup, the worker both transports.
+      const pages = reachableSources(SURFACES.pages, ROOT), background = reachableSources(SURFACES.background, ROOT);
+      for (const file of ["engineCard.ts", "componentSettings.ts", "installationCommand.ts", "inBrowserEngine.ts"]) {
+        expect(pages).toContain(entry("lib", "ui", file));
       }
-      expect(scan(SURFACES.background, "native")).toContain(entry("lib", "backend", "nativeTransport.ts"));
-      expect(scan(SURFACES.background, "oneclick")).toContain(entry("lib", "webengine", "client.ts"));
-      expect(scan(SURFACES.background, "oneclick")).not.toContain(entry("lib", "backend", "nativeTransport.ts"));
+      expect(background).toContain(entry("lib", "backend", "nativeTransport.ts"));
+      expect(background).toContain(entry("lib", "webengine", "client.ts"));
     });
 
     it("finds a key that is only ever held in a table, not written at a t() call", () => {
@@ -391,7 +385,7 @@ describe("the English each bundle carries", () => {
     it.skipIf(!ready)("compiles in every key its own sources can name", () => {
       for (const [surface, rel] of Object.entries(carriers())) {
         const { keys } = keysUsedBy(
-          reachableSources(SURFACES[surface as keyof typeof SURFACES], ROOT, flavorAliases("native", ROOT)),
+          reachableSources(SURFACES[surface as keyof typeof SURFACES], ROOT),
           EN,
         );
         const compiled = compiledKeys(readFileSync(join(OUT, rel), "utf8"));

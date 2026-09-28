@@ -10,7 +10,8 @@ import { defineBackground, browser } from "#imports";
 import type { PublicPath } from "wxt/browser";
 import { createRouter } from "../lib/backend/router";
 import { getScoreClient } from "../lib/backend/getScoreClient";
-import { engineTransport } from "#flavor/engine-transport";
+import { engineChoice, engineTransport, nativeGranted, transportOf } from "../lib/backend/engines";
+import type { SetEngineReply } from "../lib/backend/engineChoice";
 import { createTokenCounter } from "../lib/backend/tokenCounts";
 import { createCacheModeController } from "../lib/backend/cacheMode";
 import { ACTIONS } from "../lib/messaging/protocol";
@@ -38,7 +39,8 @@ import { settings, cacheModeStorage } from "../lib/settings/settings";
 import { t } from "../lib/i18n";
 import { handleNativePageMessage } from "../lib/backend/nativeBridge";
 import { readEngineSetup } from "../lib/backend/engineSetup";
-import { startSetupByItself } from "../lib/webengine/autoSetup";
+import { deleteEngineFiles, startSetupByItself } from "../lib/webengine/autoSetup";
+import { closeWebEngine } from "../lib/webengine/client";
 import { NATIVE_MESSAGE, NATIVE_UNINSTALL } from "../lib/backend/nativeProtocol";
 const EXTENSION_UPDATE_KEY = "extensionUpdatePending";
 
@@ -166,17 +168,23 @@ export default defineBackground(() => {
         });
       }
     });
-    if (import.meta.env.ANAGRAM_FLAVOR === "oneclick") {
-      // The in-browser engine sets itself up: its download starts before the setup page opens,
-      // which then shows it running (lib/webengine/autoSetup.ts says when it does not).
-      if (details.reason === "install" || details.reason === "update") {
-        void startSetupByItself((op) => engineTransport().request(op)).then(() => {
-          if (details.reason === "install") void browser.tabs.create({ url: browser.runtime.getURL("/onboarding.html") });
-        });
-      }
-    } else if (details.reason === "install") {
+    // The setup page decides which engine this device runs (lib/device.ts) and starts the
+    // in-browser one's download where there is no choice. An update carries on a download
+    // the in-browser engine had under way (lib/webengine/autoSetup.ts says when it does not).
+    if (details.reason === "install") {
       void browser.tabs.create({ url: browser.runtime.getURL("/onboarding.html") });
+    } else if (details.reason === "update") {
+      void engineTransport().current().then((engine) => {
+        if (engine === "inbrowser") void startSetupByItself((op) => transportOf("inbrowser").request(op));
+      });
     }
+  });
+
+  // Native Messaging taken back (Firefox's add-on page lets the person do that): the local
+  // engine cannot be reached, so the choice is asked again on the setup page.
+  browser.permissions.onRemoved.addListener((removed) => {
+    if (!removed.permissions?.includes("nativeMessaging")) return;
+    void engineChoice.getValue().then((chosen) => chosen === "native" ? engineChoice.setValue(null) : undefined).catch(() => undefined);
   });
 
   /**
@@ -378,15 +386,34 @@ export default defineBackground(() => {
       case ACTIONS.GET_BACKEND_STATUS: {
         // A probe is somebody's Retry: an engine given up on after it kept dying may start again.
         if (msg.probe===true) engineTransport().retry?.();
+        const engine=await engineTransport().current();
         const status=await getScoreClient().status(msg.probe===true);
+        // No engine yet: setup is what is missing, and its page decides which.
+        if (engine === null) return {...status,engine,setup:{state:"needed",percent:0}} satisfies BackendStatus;
         // The in-browser engine is down until it is set up, and then loading: the popup and the
         // panel say how far setup has got, and offer its page, instead of "not ready".
-        if (import.meta.env.ANAGRAM_FLAVOR !== "oneclick" || (status.active !== "down" && status.active !== "loading") || status.server.code === "engine_crashed") return status;
-        return {...status,setup:await readEngineSetup((op) => engineTransport().request(op))} satisfies BackendStatus;
+        if (engine !== "inbrowser" || (status.active !== "down" && status.active !== "loading") || status.server.code === "engine_crashed") return {...status,engine} satisfies BackendStatus;
+        return {...status,engine,setup:await readEngineSetup((op) => engineTransport().request(op))} satisfies BackendStatus;
+      }
+      case ACTIONS.GET_ENGINE:
+        return {engine:await engineTransport().current()};
+      case ACTIONS.SET_ENGINE: {
+        // The local engine only once Native Messaging is granted: the page asked in its click.
+        if (msg.engine === "native" && !(await nativeGranted())) return {ok:false,error:"permission"} satisfies SetEngineReply;
+        await engineChoice.setValue(msg.engine);
+        const engine=await engineTransport().refresh();
+        getScoreClient().invalidate();
+        const setup=engine === "inbrowser" && msg.setup
+          ? await startSetupByItself((op) => transportOf("inbrowser").request(op),{asked:msg.setup === "now"}) : undefined;
+        return {ok:engine === msg.engine,engine,setup} satisfies SetEngineReply;
+      }
+      case ACTIONS.DELETE_INBROWSER_MODEL: {
+        // Settings, after a switch to the local engine: the files the in-browser one kept.
+        if ((await engineTransport().current()) === "inbrowser") return {ok:false,error:"in_use"};
+        await closeWebEngine();
+        try { await deleteEngineFiles(); return {ok:true}; } catch { return {ok:false,error:"delete_failed"}; }
       }
       case ACTIONS.OPEN_ENGINE_SETUP: {
-        // The in-browser engine's only: the local engine has no setup page to open.
-        if (import.meta.env.ANAGRAM_FLAVOR !== "oneclick") return {ok:false,error:"forbidden"};
         // The setup page beside the tab, where the download is started and followed; a content
         // script cannot open an extension page.
         const tab=sender.tab as {id?:number;index?:number}|undefined;

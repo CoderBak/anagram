@@ -1,8 +1,8 @@
 // What the background worker needs from whatever runs the model: the native host over
 // Native Messaging (lib/backend/nativeTransport.ts) or the in-browser engine
-// (lib/webengine/client.ts). Each flavor links exactly one, as `engineTransport()` from
-// "#flavor/engine-transport" (scripts/flavor.mjs). Both answer the same contract
-// operations with the same replies (lib/backend/nativeProtocol.ts, lib/backend/scoreProtocol.ts).
+// (lib/webengine/client.ts). The extension carries both, and `engineTransport()` in
+// lib/backend/engines.ts is the one in use. Both answer the same contract operations with
+// the same replies (lib/backend/nativeProtocol.ts, lib/backend/scoreProtocol.ts).
 import type { NativeOperation, NativePayload, NativeReply } from "./nativeProtocol";
 
 /** A transport that closed, or could not open, is not opened again before this. */

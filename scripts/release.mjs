@@ -5,16 +5,14 @@
 //   dist/install.sh · dist/install.ps1 + checksums   native component installers
 // Usage: node scripts/release.mjs        (builds and packages both browsers)
 //
-// The oneclick flavor (npm run release:oneclick) has no component and no installer: it adds
-// dist/anagram-oneclick-{chrome,firefox}-<ver>.zip + checksums beside what dist/ holds, and
-// replaces nothing else. The native release empties dist/ first, so it runs before.
+// Each browser package carries both engines: the in-browser one, and the page that sets up
+// the local component this release also builds.
 import { execFileSync } from "node:child_process";
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { machinePaths } from "./machinePaths.mjs";
-import { flavorOf } from "./flavor.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = join(ROOT, "dist");
@@ -24,20 +22,6 @@ const releaseEnv = { ...process.env, VITE_ANAGRAM_RELEASE_BUILD: "1" };
 // WXT's zip command already builds; do not compile each target twice.
 for (const command of ["zip", "zip:firefox"]) {
   execFileSync("npm", ["run", command], { cwd: ROOT, stdio: "inherit", env: releaseEnv });
-}
-
-if (flavorOf() === "oneclick") {
-  mkdirSync(DIST, { recursive: true });
-  const names = ["chrome", "firefox"].map((browser) => {
-    const name = `anagram-oneclick-${browser}-${version}.zip`;
-    cpSync(join(ROOT, "output", `anagram-extension-oneclick-${version}-${browser}.zip`), join(DIST, name));
-    const digest = createHash("sha256").update(readFileSync(join(DIST, name))).digest("hex");
-    writeFileSync(join(DIST, name + ".sha256"), `${digest}  ${name}\n`);
-    return name;
-  });
-  execFileSync("python3", [join(ROOT, "scripts", "verify-release.py"), "--flavor", "oneclick", ...names.map((name) => join(DIST, name))], {stdio: "inherit"});
-  console.log(`release ${version}, oneclick flavor: Chrome/Firefox ZIPs with checksums in dist/`);
-  process.exit(0);
 }
 
 rmSync(DIST, { recursive: true, force: true });

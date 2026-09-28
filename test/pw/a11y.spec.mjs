@@ -900,16 +900,16 @@ test("the fixture-down notice in the panel", async ({ nativeHost, open, site, ax
 });
 
 // =====================================================================================
-// PART 5 — the in-browser engine's setup (the oneclick build)
+// PART 5 — the in-browser engine's setup (a device with no choice)
 // =====================================================================================
 // Its panel on the setup page in each state people meet on the way to Ready, scripted into
-// the page (test/webengine/scripted-engine.mjs; test/oneclick.mjs drives the real engine
+// the page (test/webengine/scripted-engine.mjs; test/inbrowser.mjs drives the real engine
 // through them), the reason a download waits for Set up, the confirmation before a download
 // is cancelled, the popup offering setup, and the panel's notice on a page while the engine is
-// not set up: a fresh profile's own download, cancelled. A fresh profile starts that download
-// by itself, so Hugging Face resolves to nothing here (NO_MODEL_HOSTS).
-test.describe("the in-browser engine's setup (oneclick build)", () => {
-  test.use({ build: join(TEST_DIR, "..", "output-test", "oneclick-chrome-mv3"), launch: { args: [NO_MODEL_HOSTS] } });
+// not set up: a fresh profile's own download, cancelled. On a device with no choice a fresh
+// profile starts that download by itself, so Hugging Face resolves to nothing here (NO_MODEL_HOSTS).
+test.describe("the in-browser engine's setup", () => {
+  test.use({ build: join(TEST_DIR, "..", "output-test", "devices", "linux-cpu-chrome"), launch: { args: [NO_MODEL_HOSTS] } });
   const painted = (page) => page.waitForFunction(() => (document.querySelector("#componentSettings .component-status")?.textContent ?? "Starting…") !== "Starting…", null, { timeout: 15000 });
 
   for (const scheme of ["light", "dark"]) {
@@ -965,5 +965,86 @@ test.describe("the in-browser engine's setup (oneclick build)", () => {
     await still(page);
     await axe.scan(page, "ball (panel open, setup notice)", "#anagram-fab");
     await ourTextContrast(axe, page, "panel (setup notice)", "#anagram-fab");
+  });
+});
+
+// =====================================================================================
+// PART 6 — which engine: the choice, the local engine alone, a device that cannot run
+// the model, Settings' switch and the crash fallback
+// =====================================================================================
+// Each on a copy of the test build that stands in for a device (test/test-build.mjs
+// deviceBuild, test/pw/devices.mjs). Nothing downloads on these screens.
+const device = (name, granted = false) => join(TEST_DIR, "..", "output-test", "devices", `${name}-chrome${granted ? "-granted" : ""}`);
+const choiceUp = (page, selector) => page.waitForFunction((s) => { const el = document.querySelector(s); return !!el && el.getClientRects().length > 0; }, selector, { timeout: 15000 });
+
+for (const [name, what, selector] of [["apple-silicon", "the choice of engines", "#engine-pick-inbrowser"], ["no-jspi", "the local engine alone", "#engine-pick-native"], ["linux-2gb", "a device that cannot run the model", ".engine-cannot"]]) {
+  test.describe(`the setup page: ${what}`, () => {
+    test.use({ build: device(name), launch: { args: [NO_MODEL_HOSTS] } });
+    for (const scheme of ["light", "dark"]) {
+      test(`${what} [${scheme}]`, async ({ extension, open, axe }) => {
+        const page = await open(extension.url("onboarding.html"), { scheme, viewport: { width: 1100, height: 900 } });
+        await choiceUp(page, selector);
+        await settle(page, scheme);
+        await axe.scan(page, `setup page, ${what} [${scheme}]`);
+        if (scheme === "light") judgeStops(axe, `setup page, ${what}`, await tabWalk(page, { max: 80 }));
+      });
+    }
+  });
+}
+
+test.describe("the setup page: the local engine refused", () => {
+  test.use({ build: device("apple-silicon"), launch: { args: [NO_MODEL_HOSTS] } });
+  test("a refused permission, back at the choice", async ({ extension, open, axe }) => {
+    // The browser's prompt, which no automation can click, answered No.
+    const page = await open(extension.url("onboarding.html"), { viewport: { width: 1100, height: 900 },
+      script: (p) => p.addInitScript(() => { chrome.permissions.request = async () => false; }) });
+    await choiceUp(page, "#engine-pick-native");
+    await page.click("#engine-pick-native");
+    await choiceUp(page, ".engine-choice .engine-error");
+    await settle(page);
+    expect(await page.evaluate(() => document.querySelector(".engine-choice .engine-error")?.getAttribute("role")), "the reason is announced").toBe("alert");
+    await axe.scan(page, "setup page, the local engine refused");
+  });
+});
+
+test.describe("Settings: switching engines", () => {
+  test.use({ build: device("linux-cpu"), launch: { args: [NO_MODEL_HOSTS] } });
+  test("the switch, and the in-browser engine's files offered for deletion", async ({ extension, open, axe }) => {
+    // Files the in-browser engine left, as a download cut short leaves them, beside the local engine in use.
+    const seed = await open(extension.url("options.html"));
+    await seed.evaluate(async () => {
+      const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle("anagram-engine", { create: true });
+      const writable = await (await dir.getFileHandle("model.onnx.part", { create: true })).createWritable();
+      await writable.write(new Uint8Array(3e6)); await writable.close();
+    });
+    await seed.close();
+    for (const scheme of ["light", "dark"]) {
+      const page = await open(extension.url("options.html"), { scheme, viewport: { width: 1100, height: 900 }, script: (p) => scriptEngine(p, "needed", { engine: "native" }) });
+      await choiceUp(page, "#engine-delete-leftover");
+      await choiceUp(page, "#engine-switch");
+      await settle(page, scheme);
+      await axe.scan(page, `Settings, switch and leftover files [${scheme}]`);
+      if (scheme === "light") judgeStops(axe, "Settings, switch and leftover files", await tabWalk(page, { max: 120 }));
+      await page.close();
+    }
+  });
+});
+
+test.describe("the local engine kept crashing", () => {
+  test.use({ build: device("apple-silicon", true) });
+  test("the setup page and the popup offer the in-browser engine beside Retry", async ({ extension, open, axe }) => {
+    const setup = await open(extension.url("onboarding.html"), { viewport: { width: 1100, height: 900 }, script: (p) => scriptEngine(p, "ready_gpu", { engine: "native", crashed: true }) });
+    await choiceUp(setup, "#engine-crash-switch");
+    expect(await setup.evaluate(() => document.getElementById("component-primary")?.textContent), "Retry beside it").toBe("Retry");
+    await settle(setup);
+    await axe.scan(setup, "setup page, the local engine crashing");
+    judgeStops(axe, "setup page, the local engine crashing", await tabWalk(setup, { max: 80 }));
+    const popup = await open(extension.url("popup.html"), { viewport: { width: 300, height: 600 }, script: (p) => scriptEngine(p, "ready_gpu", { engine: "native", crashed: true }) });
+    await choiceUp(popup, "#switchEngine");
+    expect(await popup.evaluate(() => [document.getElementById("status")?.textContent, document.getElementById("action")?.textContent]), "the popup says why, with Retry")
+      .toEqual(["The local engine kept stopping unexpectedly", "Retry"]);
+    await settle(popup);
+    await axe.scan(popup, "popup, the local engine crashing");
+    judgeStops(axe, "popup, the local engine crashing", await tabWalk(popup, { max: 20 }));
   });
 });

@@ -1,7 +1,6 @@
 // lib/webengine/assets.ts — where the engine's worker and runtime are, in this extension.
 //
-// Shared by the background's transport (lib/webengine/client.ts, the flavor-swapped
-// module) and the offscreen document (entrypoints/engine/main.ts), which starts the
+// Shared by the background's transport (lib/webengine/client.ts) and the offscreen document (entrypoints/engine/main.ts), which starts the
 // worker itself: the first message the worker gets carries the pin, the runtime files'
 // URLs and the extension version, so the worker imports no extension API at all.
 import { browser } from "#imports";

@@ -1,0 +1,18 @@
+/* The engine card's choice, its notes and Settings' switch row (lib/ui/engineCard.ts). */
+.engine-choice { display:flex; flex-direction:column; gap:12px; min-width:0; }
+.engine-choice p, .engine-cannot, .engine-tight, .engine-switch p { margin:0; font-size:13px; line-height:1.55; color:var(--muted-foreground); }
+.engine-choice .engine-choice-intro, .engine-cannot { color:var(--foreground); }
+.engine-choice-cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap:12px; }
+.engine-choice-card { display:flex; flex-direction:column; gap:8px; min-width:0; padding:14px; border:1px solid var(--border); border-radius:10px; background:var(--card); }
+.engine-choice-card[hidden] { display:none; }
+.engine-choice-card[data-recommended] { border:2px solid var(--primary); padding:13px; }
+.engine-choice-card h3 { margin:0; font-size:15px; font-weight:600; color:var(--foreground); }
+.engine-choice-head { display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; }
+.engine-choice-card .engine-cost { color:var(--foreground); font-variant-numeric:tabular-nums; }
+.engine-choice-card .btn { margin-top:auto; width:100%; white-space:normal; height:auto; min-height:36px; padding-block:6px; text-align:center; }
+.engine-choice .engine-note, .engine-tight { font-size:12.5px; }
+.engine-choice .engine-error { color:var(--destructive); }
+.engine-switch { display:flex; flex-direction:column; gap:8px; border-top:1px solid var(--border); padding-top:12px; }
+.engine-switch .component-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.engine-switch .engine-error { color:var(--destructive); }
+.engine-choice[hidden], .engine-switch[hidden], .engine-cannot[hidden], .engine-tight[hidden], .engine-switch [hidden] { display:none !important; }

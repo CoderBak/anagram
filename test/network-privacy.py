@@ -1,9 +1,9 @@
 """Offline source-policy checks; stdlib only, no inference imports or downloads.
 
-These regressions pin our own model-loading policy, per flavor, as PRIVACY.md
-promises it: the native engine's "offline mode" (anagramd/), and the oneclick
-flavor's in-browser engine (lib/webengine/), whose only network use is the
-one-time download of the pinned model from Hugging Face. They are not a sandbox
+These regressions pin our own model-loading policy, per engine, as PRIVACY.md
+promises it: the native engine's "offline mode" (anagramd/), and the in-browser
+engine (lib/webengine/), whose only network use is the one-time download of the
+pinned model from Hugging Face. They are not a sandbox
 or an audit of the transitive dependencies.
 """
 import ast
@@ -92,18 +92,18 @@ class NetworkPrivacyTests(unittest.TestCase):
 
 
 def web_engine_sources():
-    """The oneclick flavor's engine: its transport and its offscreen document."""
+    """The in-browser engine: its transport and its offscreen document."""
     roots = [ROOT / "lib" / "webengine", ROOT / "entrypoints" / "engine"]
     return sorted(path for root in roots if root.exists() for path in root.rglob("*")
                   if path.suffix in {".ts", ".html"})
 
 
 class InBrowserEnginePrivacyTests(unittest.TestCase):
-    """The oneclick flavor scores in the browser and downloads its files once."""
+    """The in-browser engine scores in the browser and downloads its files once."""
 
     def test_no_host_permission_is_declared_for_the_download(self):
         # Hugging Face answers the engine with CORS headers and the language identifier
-        # ships in the package, so neither flavor names a model host among its permissions.
+        # ships in the package, so the manifest names no model host among its permissions.
         for path in (ROOT / "lib" / "access" / "patterns.ts", ROOT / "wxt.config.ts"):
             with self.subTest(file=str(path.relative_to(ROOT))):
                 self.assertNotRegex(path.read_text(), r"huggingface|hf\.co|fbaipublicfiles|MODEL_HOSTS")

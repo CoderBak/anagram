@@ -2,16 +2,16 @@
 
 Anagram is a Chrome extension (WXT, TypeScript) and a Python Native Messaging host.
 Content scripts extract prose, the background worker authorizes and batches requests,
-and the local engine under `~/.anagram` scores them with EditLens. The oneclick flavor
-runs the same model inside the browser instead (Flavors, below). There is no HTTP
-service anywhere. Work on `dev`; `main` holds the published README only.
+and one of two engines scores them with EditLens: the same model inside the browser, or
+the local engine under `~/.anagram` (Engines, below). There is no HTTP service anywhere.
+Work on `dev`; `main` holds the published README only.
 
 ## Code map
 
 | Area | Start here |
 | --- | --- |
 | Manifest, CSP, builds | `wxt.config.ts`, `scripts/release.mjs`, `scripts/verify-release.py` |
-| Flavors: what differs and how it is swapped | `scripts/flavor.mjs`, `lib/backend/transport.ts`, `lib/webengine/`, `lib/ui/inBrowserEngine.ts` |
+| Engines: which one a device runs, and the switch | `lib/device.ts`, `lib/ui/engineCard.ts`, `lib/backend/engines.ts`, `lib/backend/transport.ts` |
 | Third-party notices | `scripts/notices.mjs` writes `THIRD_PARTY_NOTICES.md`; the build and `test/node/notices.test.ts` refuse what it does not list |
 | Background: authorization, site access, message ACL | `entrypoints/background.ts`, `lib/access/`, `lib/messaging/protocol.ts` |
 | Scoring router and cache | `lib/backend/router.ts`, `lib/backend/swCache.ts`, `lib/backend/nativeTransport.ts` |
@@ -21,7 +21,7 @@ service anywhere. Work on `dev`; `main` holds the published README only.
 | Setup, popup, settings | `entrypoints/onboarding/`, `entrypoints/popup/`, `entrypoints/options/`, `lib/ui/componentSettings.ts` |
 | PDF reader | `entrypoints/reader/`, `lib/pdf/structured.ts` (Zotero's structure onto pdf.js's text layer), `lib/pdf/reflow.ts` (the fallback), `lib/pdf/reading.ts` (what of either one's paragraphs is read), `lib/pdf/handoff.ts`, `vendor/pdfjs/`, `vendor/document-worker/` (pinned by `scripts/documentWorker.mjs`) |
 | Native host: protocol, ownership, lifecycle | `anagramd/native_host.py`, `anagramd/native_component.py` |
-| In-browser engine (the one-click build): the native host's contract in a Web Worker | `lib/webengine/engine.ts` (lifecycle, operations), `session.ts` (ONNX Runtime Web, WebGPU or WASM), `onnx.ts` (the graph whose weights are read from the file), `host.ts` (the worker as a port; ends it when idle), `download.ts` and `storage.ts` (resumable, verified downloads into OPFS), `autoSetup.ts` (the download started on install), `tokenizer.ts`, `clean.ts`, `fasttext.ts`; `client.ts` (the transport the background uses), `entrypoints/engine/` (Chrome's offscreen document); `scripts/webengine.mjs` builds `public-oneclick/vendor/engine/` |
+| In-browser engine: the native host's contract in a Web Worker | `lib/webengine/engine.ts` (lifecycle, operations), `session.ts` (ONNX Runtime Web, WebGPU or WASM), `onnx.ts` (the graph whose weights are read from the file), `host.ts` (the worker as a port; ends it when idle), `download.ts` and `storage.ts` (resumable, verified downloads into OPFS), `autoSetup.ts` (the download started by itself), `tokenizer.ts`, `clean.ts`, `fasttext.ts`; `client.ts` (the transport the background uses), `entrypoints/engine/` (Chrome's offscreen document); `scripts/webengine.mjs` builds `public/vendor/engine/` |
 | Inference and runtime selection | `anagramd/engine.py`, `anagramd/runtime_controller.py`, `anagramd/runtime_adapters.py`, `anagramd/model_plan.py` |
 | Model download | `anagramd/download_modelkit.py`, `anagramd/hub_transfer.py`, `anagramd/prepare_models.py`, `anagramd/modelkit.json` |
 | Install, update, uninstall | `install.sh`, `install.ps1`, `installer/native_registration.py`, `installer/anagram` |
@@ -41,37 +41,19 @@ service anywhere. Work on `dev`; `main` holds the published README only.
   regenerated from the pinned commits by `scripts/documentWorker.mjs`). The reader's own
   reflow stays as the fallback while the worker runs and where it cannot.
 
-## Flavors
+## Engines
 
-`ANAGRAM_FLAVOR` decides what a build makes (`scripts/flavor.mjs`). Unset means `native`,
-so every command in this file builds exactly what it did before the oneclick flavor
-existed; each `*:oneclick` script runs the same command as that flavor.
-
-| | native (default) | oneclick |
-| --- | --- | --- |
-| Engine | the local engine over Native Messaging (`lib/backend/nativeTransport.ts`) | ONNX Runtime Web in an offscreen document (`lib/webengine/client.ts`, `entrypoints/engine/`) |
-| Setup and Settings panel | `lib/ui/componentSettings.ts`, with the install command | `lib/ui/inBrowserEngine.ts`, no command |
-| Required permissions beyond reading | `nativeMessaging` | `offscreen` (Chrome), `unlimitedStorage` |
-| Name, Firefox ID | Anagram for Chrome/Firefox, `anagram@coderbak.dev` | Anagram (in-browser), `anagram-oneclick@coderbak.dev` |
-| Browsers | Chrome, Firefox 140+ | Chrome 137+ (JSPI), Firefox 153+; Chrome's extension pages cross-origin isolated |
-| Build output | `output/chrome-mv3`, `output/firefox-mv2` | `output/oneclick-chrome-mv3`, `output/oneclick-firefox-mv2` |
-| Release | `dist/anagram-{chrome,firefox}-<ver>.zip`, component, installers | `dist/anagram-oneclick-{chrome,firefox}-<ver>.zip` only |
-
-```sh
-npm run build:oneclick             # build:oneclick:firefox, build:test:oneclick (output-test/oneclick-*)
-npm run typecheck:oneclick
-npm run test:oneclick              # setup in Chromium from install, with Hugging Face served locally (test/webengine/model-server.mjs), popup and panel, EN and ZH; --real downloads the real files to Ready
-npm run lint:firefox:oneclick
-npm run zip:oneclick               # zip:oneclick:firefox
-npm run release:oneclick           # after npm run release, which empties dist/
-```
-
-Code that differs is a module imported as `#flavor/…`: the build links that flavor's file
-(`FLAVOR_MODULES`) and never reads the other's, so no bundle carries the other flavor's
-code or English. Both files export the same names and types. Pages only one flavor builds
-are listed in `FLAVOR_ENTRYPOINTS`; files only oneclick ships are generated into
-`public-oneclick/` by `scripts/vendor.mjs`. `import.meta.env.ANAGRAM_FLAVOR` serves small
-branches. `test/node/flavor.test.ts` and `test/node/permissions.test.ts` read both builds.
+One extension carries both engines; the person's choice (`storage.local` `engine`) decides
+at run time, and `engineTransport()` (`lib/backend/engines.ts`) is the one in use. Before
+anything is chosen the setup page decides (`lib/device.ts`, `lib/ui/engineCard.ts`): the
+choice on Apple Silicon and beside an NVIDIA GPU, the in-browser engine by itself elsewhere,
+the local engine alone without WebAssembly JSPI (Firefox 140), nothing where the model does
+not fit. Native Messaging is optional and asked for when the local engine is picked; where
+it is granted and nothing was chosen (an update from 0.7.0, which required it) the local
+engine is the one in use. The test build requires it, so the fake-host suites drive the
+local engine; the suites stand in for other devices with copies of the test build carrying
+`test-device.json` (`test/test-build.mjs` `deviceBuild`, `test/pw/devices.mjs`), which only
+the test build reads.
 
 ## Checks
 
@@ -90,15 +72,17 @@ npm run test:scenarios             # the scenario matrix over fixture pages, the
 npm run test:scenarios -- --project chromium   # the same without the real sites: no network
 npm run test:a11y
 npm run test:native                # real stdio host fixture, EN and ZH setup
+npm run test:inbrowser             # the engine choice per device and the in-browser engine's setup, with Hugging Face served locally (test/webengine/model-server.mjs), EN and ZH; --real downloads the real files to Ready
 npm run test:paste                 # the paste page, pass readout and report
 npm run test:pseudo-locale         # every page in a stretched pseudo-locale, Chinese and English: nothing cut off, off-page or overlapping
 npm run test:pdf-viewer            # upstream reader: find, zoom, recycling, file limits
 npx playwright test                # the suites in test/pw/ (Playwright Test), no network; ANAGRAM_LIVE=1 adds the real sites; --repeat-each 10 hunts a flake, a failure keeps its trace
 npm run test:pdf-install           # PDF setup and local-file access flow, EN and ZH
 ANAGRAM_FIREFOX=<path to firefox> npm run test:firefox   # the Firefox build in Firefox 140+, e.g. an ESR from archive.mozilla.org, never installed
+ANAGRAM_FIREFOX=<path to firefox> node test/webengine/firefox-extension.mjs   # the engine choice in Firefox, Native Messaging granted at run time; in 153+ the in-browser engine's worker in the background page (--hf: 20 MB from Hugging Face)
 npm run lint:firefox               # Mozilla's add-on linter on the Firefox build; accepted warnings in scripts/lintFirefox.mjs
 npm run test:pdf-route             # PDF routing, handoff caps and privacy
-npm run test:network-privacy       # the network promises in PRIVACY.md, for both flavors
+npm run test:network-privacy       # the network promises in PRIVACY.md, for both engines
 npm run bench:pdf -- run           # PDF reading benchmark, never in CI; ANAGRAM_PDF_BENCH is the corpus from test/pdf-bench/corpus.mjs, ~/anagram-bench/pdfbench/corpus when unset
 ANAGRAM_PDF_BENCH=<corpus dir> node test/pdf-bench/bench.mjs structured <dumps>   # the shipping path, over test/pdf-bench/zotero-dump.mjs output; tune on --split dev, report --split test
 node test/pdf-bench/olmocr.mjs <olmOCR-Bench bench_data> <out> --structure <dumps>   # olmOCR-Bench's column, page-furniture and small-print pages; scored by test/pdf-bench/olmocr-check.py with upstream's checks, never in CI
@@ -107,8 +91,7 @@ npm run bench:web -- run --scope page   # web reading benchmark (or --scope main
 ANAGRAM_EDITLENS_DATA=<EditLens checkout + data> ANAGRAM_MODELKIT=<modelkit> ANAGRAM_LID_MODEL=<lid.176.ftz> python test/editlens-parity.py   # the native host against Pangram's official inference, never in CI
 node test/webengine/engine-browser.mjs   # the in-browser engine's worker build on a tiny model in a temporary Chromium, under the extension's CSP: download, WebGPU and WASM, idle unload, restart, deletion
 ANAGRAM_MODELKIT=<modelkit> ANAGRAM_LID_MODEL=<lid.176.ftz> ANAGRAM_PARITY_SAMPLE=<sample.json> node test/webengine/parity.mjs   # the in-browser engine (WebGPU and WASM) against the official probabilities and the native counts, with speed and memory, in a Chromium profile under the temp directory (--clean removes it; --firefox <binary> for a Firefox ESR); the sample comes from test/webengine/parity-sample.py; never in CI
-ANAGRAM_MODELKIT=<modelkit> node test/webengine/extension.mjs   # the oneclick build scoring for real through background, offscreen document and worker, model files seeded into OPFS from a local server, with the browser's peak memory; --idle waits out the idle unload and checks the memory is given back; never in CI
-ANAGRAM_FIREFOX=<path to firefox 153+> node test/webengine/firefox-extension.mjs   # the oneclick Firefox build: its background page hosts the engine's worker, which starts the download at install and answers the contract after Cancel; --hf lets that download reach Hugging Face (20 MB, no host permission)
+ANAGRAM_MODELKIT=<modelkit> node test/webengine/extension.mjs   # the in-browser engine scoring for real through background, offscreen document and worker, model files seeded into OPFS from a local server, with the browser's peak memory; --idle waits out the idle unload and checks the memory is given back; never in CI
 ```
 
 Backend and installer tests need a Python venv with the test dependencies only:
@@ -129,8 +112,7 @@ real-model checks; they need existing verified weights and `(cd anagramd && uv s
 
 `npm run bump <version>` rewrites the version in package files, `anagramd/pyproject.toml`
 and `uv.lock`. `npm run release` builds both browser ZIPs, the component archive and
-installers under `dist/` and runs `scripts/verify-release.py` on the ZIPs;
-`npm run release:oneclick` then adds the oneclick ZIPs. Publishing is
+installers under `dist/` and runs `scripts/verify-release.py` on the ZIPs. Publishing is
 manual. The install command shown in the extension is pinned to its own version, so a
 release must ship matching assets.
 

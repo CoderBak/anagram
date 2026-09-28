@@ -1,10 +1,12 @@
-// test/webengine/extension.mjs — the oneclick build scoring for real: background, offscreen
+// test/webengine/extension.mjs — the in-browser engine scoring for real: background, offscreen
 // document, worker, model, in a temporary Chromium profile.
 //
 //   ANAGRAM_MODELKIT=<modelkit dir> [ANAGRAM_PARITY_SAMPLE=<sample.json>] \
 //     node test/webengine/extension.mjs [--idle]
 //
-// test/oneclick.mjs stops where the engine says it has no model files. This goes on: the
+// test/inbrowser.mjs stops where the engine says it has no model files. This goes on, on a
+// copy of the test build that stands in for a device with no choice (test/test-build.mjs
+// deviceBuild), where the in-browser engine is the one in use from install: the
 // pinned files are put into the extension origin's OPFS from a local server (the same
 // bytes the engine would download, verified by the same hashes; the engine's state file
 // says so), `models.download` from the setup page finds them and loads the model, and the
@@ -20,7 +22,8 @@ import { chromium } from "playwright";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ensureTestBuild } from "../test-build.mjs";
+import { deviceBuild } from "../test-build.mjs";
+import { DEVICES } from "../pw/devices.mjs";
 import { ROOT, serve, watchMemory } from "./harness.mjs";
 import { NO_MODEL_HOSTS, cancelAutoSetup } from "./model-server.mjs";
 
@@ -44,8 +47,7 @@ const chosen = sample?.find((t) => t.length <= 400 && t.length >= 120 && t.text.
 const TEXT = chosen?.text ?? ("The committee met on Tuesday to review the proposal, and after a long discussion about the budget, the timeline and the risks that nobody had wanted to name aloud, it agreed to fund the first phase and to revisit the rest in the spring. " +
   "Several members asked for clearer milestones. The chair promised a written plan within two weeks, and the meeting closed a little after six, with the usual reminders about parking and the next date.");
 
-process.env.ANAGRAM_FLAVOR = "oneclick";
-const EXT = ensureTestBuild("oneclick-chrome-mv3");
+const EXT = deviceBuild("linux-cpu", DEVICES["linux-cpu"]);
 const results = [];
 const check = (name, ok, note = "") => { results.push({ name, ok: !!ok, note: String(note) }); console.log(`${ok ? "ok  " : "FAIL"} ${name}${ok ? "" : ` — ${note}`}`); };
 
@@ -53,7 +55,7 @@ const { base, close: closeServer } = await serve({ "/kit/": kit }, { csp: null, 
 const profile = mkdtempSync(join(tmpdir(), "anagram-webengine-ext-"));
 const context = await chromium.launchPersistentContext(profile, {
   headless: process.env.HEADED !== "1", channel: "chromium",
-  // Installing starts the model's download (lib/webengine/autoSetup.ts): Hugging Face resolves to nothing here.
+  // Installing starts the model's download on this device (lib/webengine/autoSetup.ts): Hugging Face resolves to nothing here.
   args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`, "--no-first-run", "--no-default-browser-check", NO_MODEL_HOSTS],
   env: { ...process.env, HOME: profile },
 });

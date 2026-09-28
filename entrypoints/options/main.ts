@@ -25,7 +25,7 @@ import { commentOriginOfHost } from "../../lib/access/commentFrames";
 import { ACTIONS } from "../../lib/messaging/protocol";
 import { getFileAccess, openFileAccessSettings, requestFileAccess } from "../../lib/pdf/fileAccess";
 import type { CacheCountReply } from "../../lib/messaging/protocol";
-import { mountComponentSettings, componentConnectionLabel } from "#flavor/engine-panel";
+import { engineLabel, mountEngineCard } from "../../lib/ui/engineCard";
 import { bindConfirmedToggle } from "../../lib/ui/confirmedToggle";
 import { bindSelect, bindToggle } from "../../lib/ui/boundSetting";
 import { createLogger } from "../../lib/log";
@@ -170,13 +170,6 @@ addHostEl.addEventListener("input", () => {
   addNoteEl.hidden = true;
 });
 
-// The in-browser edition's engine card is named for what it is (localizePage leaves an
-// English page's markup as it is, so the text is set here too).
-if (import.meta.env.ANAGRAM_FLAVOR === "oneclick") {
-  const title = document.querySelector<HTMLElement>('[data-i18n="componentTitle"]')!;
-  title.dataset.i18n = "engineTitle";
-  title.textContent = t("engineTitle");
-}
 localizePage();
 followSystemTheme();
 linkSourceCode();
@@ -329,8 +322,11 @@ void renderComments().then(() => {
   if (!commentsAllowEl.hidden) commentsAllowEl.focus({ preventScroll: true });
 });
 
-mountComponentSettings(document.getElementById("componentSettings")!, (reply) => {
-  versionEl.textContent = `v${version} · ${componentConnectionLabel(reply)}`;
+mountEngineCard({
+  title: document.getElementById("engineTitle")!,
+  panelHost: document.getElementById("componentSettings")!,
+  settings: true,
+  onUpdate: (engine, reply) => { versionEl.textContent = `v${version} · ${engineLabel(engine, reply)}`; },
 });
 
 const CLEAR_LABEL = clearCacheEl.textContent ?? t("optClearCache");

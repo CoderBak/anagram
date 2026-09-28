@@ -6,25 +6,20 @@
 // kind in the same file is looked at too: fix it, or raise the count with its reason.
 //
 //   npm run lint:firefox            # builds the Firefox target first
-//   npm run lint:firefox:oneclick   # the same for output/oneclick-firefox-mv2
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { flavorOf, outputDir } from "./flavor.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const FLAVOR = flavorOf();
-const SOURCE = join(ROOT, "output", outputDir(FLAVOR, "firefox", 2));
+const SOURCE = join(ROOT, "output", "firefox-mv2");
 
 const INNER_HTML = /^Unsafe assignment to innerHTML$/;
 const IMPORT = /^Unsafe call to import for argument 0$/;
-/** The warnings Anagram's Firefox build carries on purpose, and how many of each. An entry
- *  with a `flavor` counts only in that flavor's build (scripts/flavor.mjs). */
+/** The warnings Anagram's Firefox build carries on purpose, and how many of each. */
 const ACCEPTED = [
   {
-    // The oneclick build asks for Firefox 153 (wxt.config.ts), past where Android reads it.
-    flavor: "native", code: "KEY_FIREFOX_ANDROID_UNSUPPORTED_BY_MIN_VERSION", file: /^manifest\.json$/, count: 1,
+    code: "KEY_FIREFOX_ANDROID_UNSUPPORTED_BY_MIN_VERSION", file: /^manifest\.json$/, count: 1,
     why: "data_collection_permissions (AMO's disclosure: nothing collected) is read by Firefox " +
       "for Android only after 140; Anagram is a desktop extension.",
   },
@@ -50,21 +45,21 @@ const ACCEPTED = [
       "PDF.js's worker and decoders, and the document worker's modules. Nothing remote.",
   },
   {
-    flavor: "oneclick", code: "UNSAFE_VAR_ASSIGNMENT", message: IMPORT, file: /^vendor\/engine\/(ort\.jspi\.min|worker\.min)\.mjs$/, count: 2,
+    code: "UNSAFE_VAR_ASSIGNMENT", message: IMPORT, file: /^vendor\/engine\/(ort\.jspi\.min|worker\.min)\.mjs$/, count: 2,
     why: "ONNX Runtime Web as published: import() of its Emscripten glue, ort-wasm-simd-threaded.jspi.mjs, " +
       "from the extension's own vendor/engine/; and the engine's worker importing that runtime by its " +
       "extension URL (lib/webengine/session.ts). Nothing remote.",
   },
   {
-    flavor: "oneclick", code: "DANGEROUS_EVAL", file: /^vendor\/engine\/ort-wasm-simd-threaded\.jspi\.mjs$/, count: 1,
+    code: "DANGEROUS_EVAL", file: /^vendor\/engine\/ort-wasm-simd-threaded\.jspi\.mjs$/, count: 1,
     why: "ONNX Runtime Web as published: Emscripten embind's method caller builds a function with " +
       "new Function. The extension's CSP has no 'unsafe-eval', so that path throws rather than runs; " +
       "the engine never reaches it (test/webengine/engine-browser.mjs runs the worker under that CSP).",
   },
-].filter((entry) => !entry.flavor || entry.flavor === FLAVOR);
+];
 
 if (!existsSync(join(SOURCE, "manifest.json"))) {
-  console.error(`No Firefox build in ${SOURCE}: run npm run build:firefox (or build:oneclick:firefox) first.`);
+  console.error(`No Firefox build in ${SOURCE}: run npm run build:firefox first.`);
   process.exit(2);
 }
 
