@@ -113,8 +113,13 @@ export const CHROME_TOKEN_PATTERNS: string[] = [
   "newsletter", "advert", "advertisement", "adsense", "sponsor", "sponsored",
   "promo",
   // the legal fine print a site sets under its text or its offer: Samsung's
-  // `common-bottom-disclaimer`, a bank's `div.disclaimer`, a pricing disclaimer
+  // `common-bottom-disclaimer`, a bank's `div.disclaimer`, a pricing disclaimer — and a box
+  // whose name ENDS in "legal", the thing it is (Mailchimp's `copy-legal` footnotes under its
+  // prices, Steam's `game_area_legal` licence terms), or that is legal text by name; never a
+  // bare or leading "legal", which a law firm's `legal-services` is too, nor the block
+  // editor's `has-legal-font-size`, a size a university's own tuition notes are set in
   "disclaimers?", "fine[-_]?print",
+  "[a-z\\d]+[-_]{1,2}legal(?=\\s|$)", "legal[-_]?(?:text|copy|notices?|notes?|info|lines?|small|footer)",
   // structural navigation (original set)
   "breadcrumbs?", "pagination", "pager", "skip[-_]?link",
   "site[-_]?(?:nav|header|footer)",
