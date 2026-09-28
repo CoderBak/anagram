@@ -447,6 +447,39 @@ function leaveOutContents(out: (Reading | Marker)[]): void {
   });
 }
 
+/** A caption's label, and what sets it off from the caption: "Figure 3:", "FIG. 1.", "Table
+ *  S7:", "Figure 4 |", "Fig 3. GNSS…", "Figure-SI 4 Variability…", "TABLE IV COMPARISON".
+ *  Never a sentence that names one: "Figure 3 compares", "Figure 4.21 shows", "Table 4.c
+ *  shows", "Figures 4–7 establish", "Figure 1 (upper panel) presents". */
+const CAPTION_LABEL = /^(?:(?:Supplementary|Suppl\.|Extended Data|Appendix)\s+)?(?:Fig(?:ure)?s?\.?|FIG(?:URE)?S?\.?|Tab(?:le)?\.?|TABLE|Chart|Scheme|Algorithm|Listing|Exhibit|Plate)[\s-]*(?:[A-Z]{1,2}[\s.-]?)?(?:\d+(?:[.\-–]\d+)*[a-z]?|[IVXLC]+)(?:\s*[:|]|\s+[—–]\s|\.(?=\s)|\s+(?=\p{Lu}))/u;
+/** The words a sentence names a figure after: what follows them on the next line is that
+ *  sentence ("…as shown in" / "Figure 6.32. Notice …"). */
+const NAMES_NEXT = /(?:^|\s)(?:in|of|see|at|from|to|by|on|with|and|or|than|under|into|per|via|cf\.|e\.g\.,?|i\.e\.,?|the|a|an|this|that|these|those|our|shown)$/iu;
+
+/**
+ * Captions Zotero took for paragraphs. One that opens with its label — "Table S7: All five
+ * conditioning rungs…", "FIG. 1. The partition sum…", "Figure 8 Difference of density
+ * plots…" — is set aside as Zotero's own captions are, but not where the paragraph before
+ * it stops at a word that names a figure: that is its own sentence carried over the float,
+ * "…as shown in" / "Figure 6.32. Notice this node…". A reading whose lines are numbered is
+ * not one Zotero's paragraph stands for (numberedReadings): `numbered` says which.
+ */
+function leaveOutCaptions(out: (Reading | Marker)[], numbered: (k: number) => boolean): void {
+  let before: Reading | null = null;
+  out.forEach((r, k) => {
+    if (typeof r === "string") {
+      if (r === "barrier") before = null;
+      return;
+    }
+    const prev = before;
+    before = r;
+    if (r.kind !== "paragraph" || numbered(k) || !CAPTION_LABEL.test(plainText(r.block))) return;
+    if (prev?.kind === "paragraph" && NAMES_NEXT.test(plainText(prev.block))) return;
+    out[k] = "skip";
+    before = prev;
+  });
+}
+
 /** A reading with its pieces: what the drafts are made of. `paths` are the content tree's
  *  paths it reads, for the parts Zotero says continue it. */
 interface Prepared {
@@ -927,6 +960,9 @@ export function createStructuredReader(structure: SdtStructure, options: Structu
     readings.forEach((r, k) => { if (typeof r !== "string" && r.kind === "reference") texts[k] = read(r); });
     numbers = lineNumberPieces(texts.filter((t): t is Piece[] => t !== null));
   }
+  // Numbered lines are read again as the paragraphs they make, and a caption among them is
+  // told there, once its lines are one paragraph (numberedReadings).
+  if (!everything) leaveOutCaptions(readings, (k) => texts[k]?.some((p) => numbers.has(p)) === true);
   const prepared = numbers.size > 0
     ? numberedReadings(readings, texts, numbers, everything)
     : readings.map((r, k) => (typeof r === "string" ? r : plain(r, texts[k] ?? [])));

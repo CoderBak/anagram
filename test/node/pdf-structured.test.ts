@@ -1050,6 +1050,23 @@ describe("structuredBlocks — the document", () => {
     expect(blocks[1]!.columnBreak).toBe(true);
   });
 
+  it("leaves out a caption Zotero took for a paragraph by its label, and keeps a sentence that names a figure", () => {
+    const lines: [string, number][] = [
+      ["Results follow.", 100],
+      ["Table S7: All five conditioning rungs, all four families.", 130],
+      ["FIG. 1. The partition sum in the ninth equation.", 160],
+      ["Figure 8 Difference of density plots of the fractions.", 190],
+      ["Figure 3 compares the spectra of the two dwarfs.", 220],
+      ["Figure 4.21 shows an improved version of the behavior.", 250],
+      ["we add the spine action to turn the spine as shown in", 280],
+      ["Figure 6.32. Notice this node is a sibling of the fallback.", 310],
+    ];
+    const nodes = lines.map(([text, y]) => node(1, [{ text, x: 72, y }]));
+    const pages = [pageText(1, nodes.flatMap((n) => n.items))];
+    const blocks = structuredBlocks(structure(nodes.map((n) => paragraph(1, [n]))), pages);
+    expect(blocks.map((b) => b.text)).toEqual([0, 4, 5, 6, 7].map((i) => lines[i]![0]));
+  });
+
   it("keeps a paragraph that ends in a number after a full stop, and one that opens with a number", () => {
     const a = node(1, [{ text: "2.3 Results are summarized in the appendix, p. 12", x: 72, y: 100 }]);
     const b = node(1, [{ text: "The ratio rose from 1. to 3. 4", x: 72, y: 130 }]);
@@ -1278,6 +1295,15 @@ describe("structuredBlocks — a manuscript with numbered lines", () => {
     });
     const pages = [pageText(1, [...set.flatMap((l) => l.items), ...caption.flatMap((l) => l.items), ...rows.flatMap((r) => r.items)])];
     const blocks = structuredBlocks(structure([asList(set), { type: "table", flowClass: "auxiliary", content: [textOf([...caption, ...rows])] }]), pages);
+    expect(blocks.map((b) => b.text)).toEqual(PARAGRAPHS);
+  });
+
+  it("leaves out a caption Zotero took for a paragraph among numbered lines, where the caption's own lines are not numbered", () => {
+    const set = lines(1, 84, 100);
+    const words = Array.from({ length: 80 }, (_, i) => `word${i}`).join(" ");
+    const caption = node(1, [{ text: `Figure 8 Difference of density plots of all reference fractions ${words}.`, x: 72, y: 300 }]);
+    const pages = [pageText(1, [...set.flatMap((l) => l.items), ...caption.items])];
+    const blocks = structuredBlocks(structure([asList(set), paragraph(1, [caption])]), pages);
     expect(blocks.map((b) => b.text)).toEqual(PARAGRAPHS);
   });
 
