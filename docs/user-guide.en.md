@@ -79,9 +79,14 @@ off until you switch it on again.
   misspellings lowered detection by 2 points at most. Swapping in synonyms lowered it from
   29% to 18%, and paraphrasing with another model to 6%. Text whose letters were replaced
   with look-alike Cyrillic ones gets no verdict: it shows as another language.
-- The model needs 75 words. Shorter paragraphs are scored together with their neighbours
-  in the same section, never across a heading; a ×2 on a chip means it covers two
-  paragraphs, and a short paragraph with nothing to join is not scored.
+- A paragraph needs 50 words to be scored; **Minimum length** in Settings offers 25, 50,
+  75, 100 or 150. Shorter paragraphs are scored together with their neighbours in the same
+  section, never across a heading; a ×2 on a chip means it covers two paragraphs, and a
+  short paragraph with nothing to join is not scored. The open model was trained on texts
+  of 75 words or more, so a verdict on fewer says "Short text: less reliable" and its dot
+  is thinner. On EditLens test texts cut to length, the word was right for 67% of texts of
+  25–49 words, 72% of 50–74 and 79% of 75–149, and 2% of human texts under 75 words read
+  as AI-generated, against 0.8% at 75–149 words.
 - Only the writing is scored. Reference marks such as [4] or a raised ¹, formulas inside a
   sentence and cookie banners are left out; author–year citations stay. A post the site
   has cut short behind "See more" is read once you open it. A page the browser has
@@ -112,7 +117,7 @@ The toolbar icon's gear opens Settings.
   compare them. FP32 is always the automatic choice; FP16 is optional.
 - **Marks**: whether text is marked in place, and whether chips appear on every
   paragraph or only on flagged ones.
-- **Scope**: the whole page, or the main article only.
+- **Reading**: the whole page or the main article only, and the minimum length.
 - **Sites**: grants and per-site rules.
 - **Privacy**: score cache retention, clearing, and what copied reports include.
 

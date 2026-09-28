@@ -96,6 +96,7 @@ local component and the installer all carry the same version.
 
 ### Changed
 
+- **Minimum length** in Settings: 25, 50, 75, 100 or 150 words, 50 by default (it was a fixed 75), for pages, PDFs, selections and pasted text; a verdict on under 75 words, the model's training minimum, says "Short text: less reliable" and its dot is thinner.
 - The small script Anagram runs in a page's own context no longer gives it away: its event is named at random for each page, told to the extension before the page's first script, and the attachShadow it watches, and Function.prototype.toString, answer the usual checks as the browser's own functions do.
 - Linux installs PyTorch and its CUDA libraries only beside an NVIDIA GPU (ONNX Runtime ran
   the processor anyway): the installation shrinks from 6.9 GB to 1.7 GB, and an update removes them.
