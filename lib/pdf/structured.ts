@@ -457,8 +457,8 @@ const ENTRY_PARTS = 4;
  * stops there, as at a bibliography. So does every item of a list at least half of whose
  * items are entries (one set too full for a leader: "…the lattice results [219]146"). An
  * entry Zotero cut into paragraphs ("1.1 IHMC's fully electric Alex … A video is available
- * at" / "https://youtu.be/… . . . 2") is one: the part with the leader, which does not open
- * with a number, and the paragraphs before it back to the one that does.
+ * at" / "youtu.be/… . . . 2") is one: the part with the leader, which does not open with a
+ * number, and the paragraphs before it back to the one that does.
  */
 function leaveOutContents(out: (Reading | Marker)[]): void {
   const isEntry = (r: Reading | Marker): boolean => {
