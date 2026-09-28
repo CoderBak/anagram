@@ -22,7 +22,7 @@ import {
   shortRole,
   unitPartText,
   MAX_UNIT_TEXT_CHARS,
-  MIN_UNIT_WORDS,
+  DEFAULT_MIN_WORDS,
   type Unit,
 } from "../dom/text";
 import { groupBlocks, type BlockRole, type PlanBlock } from "../plan/group";
@@ -52,8 +52,8 @@ function textNodes(el: Element): Text[] {
   return out;
 }
 
-function roleOf(text: string, words: number): BlockRole {
-  if (words >= MIN_UNIT_WORDS) return "prose";
+function roleOf(text: string, words: number, floor: number): BlockRole {
+  if (words >= floor) return "prose";
   if (!hasLetters(text)) return isSeparatorRun(text) ? "barrier" : "skip";
   if (looksLikeNameList(text)) return "barrier";
   const role = shortRole(text);
@@ -68,7 +68,7 @@ export function createParagraphSurface(source: ParagraphSource): Surface {
     active: () => source.paragraphs() !== null,
     ranges: () => undefined,
     place: () => null,
-    collect(claim, mergeShorts) {
+    collect(claim, mergeShorts, minWords = DEFAULT_MIN_WORDS) {
       if (answered) return [];
       answered = true;
       queueMicrotask(() => {
@@ -79,13 +79,13 @@ export function createParagraphSurface(source: ParagraphSource): Surface {
         const nodes = textNodes(p.el);
         const text = unitPartText(extractPartText(nodes), false);
         const words = countWords(text);
-        return { p, nodes, text, words, chars: text.length, role: roleOf(text, words), barrierBefore: p.breakBefore };
+        return { p, nodes, text, words, chars: text.length, role: roleOf(text, words, minWords), barrierBefore: p.breakBefore };
       });
       const usable = blocks.filter((b) => b.nodes.length > 0 && b.text !== "");
       const plan: PlanBlock[] = usable;
       const groups = mergeShorts
-        ? groupBlocks(plan)
-        : usable.flatMap((b, i) => (b.role === "prose" && b.words >= MIN_UNIT_WORDS ? [[i]] : []));
+        ? groupBlocks(plan, minWords)
+        : usable.flatMap((b, i) => (b.role === "prose" && b.words >= minWords ? [[i]] : []));
       const out: Unit[] = [];
       for (const group of groups) {
         const members = group.map((i) => usable[i]!);

@@ -13,11 +13,11 @@ import { readReflowed } from "../../lib/pdf/reading";
 import { reflowPdf, type PdfPageText, type ReflowBlock } from "../../lib/pdf/reflow";
 import { structuredBlocks } from "../../lib/pdf/structured";
 import { groupsOf, planOf } from "../../lib/pdf/units";
-import { MAX_UNIT_TEXT_CHARS, MIN_UNIT_WORDS, modelText } from "../../lib/dom/text";
+import { DEFAULT_MIN_WORDS, MAX_UNIT_TEXT_CHARS, modelText } from "../../lib/dom/text";
 import { readInWindows, requestSlices, unitVerdict } from "../../lib/capture/windows";
 import { levelOf } from "../../lib/render/scale";
 
-export { loadPdfjs, extractPageText, reflowPdf, structuredBlocks, MIN_UNIT_WORDS };
+export { loadPdfjs, extractPageText, reflowPdf, structuredBlocks, DEFAULT_MIN_WORDS };
 // How a unit is read and judged (consistency.mjs): passes, the one verdict, its word.
 export { modelText, readInWindows, requestSlices, unitVerdict, levelOf };
 
@@ -41,9 +41,9 @@ export function reflowRuns(groups: PdfPageText[][]): ReflowBlock[] {
 }
 
 /** What lib/pdf/units.ts hands the orchestrator for these blocks, minus the DOM. */
-export function unitsOf(blocks: ReflowBlock[], mergeShorts = true): BenchUnit[] {
-  const plan = planOf(blocks);
-  return groupsOf(blocks, mergeShorts).map((group) => {
+export function unitsOf(blocks: ReflowBlock[], mergeShorts = true, minWords: number = DEFAULT_MIN_WORDS): BenchUnit[] {
+  const plan = planOf(blocks, minWords);
+  return groupsOf(blocks, mergeShorts, minWords).map((group) => {
     let text = "";
     for (const at of group) text = text.length === 0 ? blocks[at]!.text : `${text}\n\n${blocks[at]!.text}`;
     let words = 0;
@@ -53,5 +53,5 @@ export function unitsOf(blocks: ReflowBlock[], mergeShorts = true): BenchUnit[] 
 }
 
 export function planWords(blocks: ReflowBlock[]): number[] {
-  return planOf(blocks).map((b) => b.words);
+  return planOf(blocks, DEFAULT_MIN_WORDS).map((b) => b.words);
 }

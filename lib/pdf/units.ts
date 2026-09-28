@@ -38,7 +38,7 @@ import {
   wordShape,
   MAX_UNIT_TEXT_CHARS,
   MIN_SENTENCE_WORDS,
-  MIN_UNIT_WORDS,
+  DEFAULT_MIN_WORDS,
   type Unit,
   type UnitPart,
 } from "../dom/text";
@@ -72,9 +72,10 @@ export interface PdfUnitSource {
    * The document's units, as `OrchestratorOptions.collect` asks for them: everything a
    * live unit already owns exactly is left alone, and the rest comes back fresh.
    * `mergeShorts` is the reader's own setting, exactly as the walker takes it: false is
-   * strict per-paragraph mode, in which a paragraph under the floor is read by nobody.
+   * strict per-paragraph mode, in which a paragraph under the floor is read by nobody, and
+   * `minWords` is that floor (Settings, CollectOptions.minWords).
    */
-  collect(claim: (nodes: Text[]) => "take" | "skip", mergeShorts?: boolean): Unit[];
+  collect(claim: (nodes: Text[]) => "take" | "skip", mergeShorts?: boolean, minWords?: number): Unit[];
   /**
    * Ranges over the page's own glyphs for each of `spans` — what lib/render/highlight.ts
    * paints instead of re-deriving the text from the nodes, which for a PDF never matches.
@@ -120,10 +121,10 @@ const MAX_SYMBOL_NOISE = 0.2;
  * page number that escaped the margin rule and a caption label are not somebody's prose
  * and nothing is grouped across them.
  */
-function roleOf(block: ReflowBlock, words: number): BlockRole {
+function roleOf(block: ReflowBlock, words: number, floor: number): BlockRole {
   if (block.kind === "heading") return "barrier";
-  if (block.apart) return words >= MIN_UNIT_WORDS ? "apart" : "barrier";
-  if (words >= MIN_UNIT_WORDS) return "prose";
+  if (block.apart) return words >= floor ? "apart" : "barrier";
+  if (words >= floor) return "prose";
   if (!hasLetters(block.text)) return isSeparatorRun(block.text) ? "barrier" : "skip";
   if (symbolNoiseRatio(block.text) > MAX_SYMBOL_NOISE) return "barrier";
   if (looksLikeNameList(block.text)) return "barrier";
@@ -140,20 +141,20 @@ function roleOf(block: ReflowBlock, words: number): BlockRole {
 
 /** The document's blocks as the grouping rules see them — word counts, lengths, roles and
  *  the breaks between them, and nothing of the page they were printed on. */
-export function planOf(blocks: readonly ReflowBlock[]): PlanBlock[] {
+export function planOf(blocks: readonly ReflowBlock[], floor: number): PlanBlock[] {
   return blocks.map((block) => {
     const text = block.text.slice(0, MAX_UNIT_TEXT_CHARS);
     const words = countWords(text);
-    return { words, chars: text.length, role: roleOf(block, words), barrierBefore: block.columnBreak };
+    return { words, chars: text.length, role: roleOf(block, words, floor), barrierBefore: block.columnBreak };
   });
 }
 
 /** Strict per-paragraph mode, as the walker means it (CollectOptions.mergeShorts false):
  *  every block that clears the floor by itself, and nothing else. */
-function soloGroups(plan: readonly PlanBlock[]): number[][] {
+function soloGroups(plan: readonly PlanBlock[], floor: number): number[][] {
   const out: number[][] = [];
   plan.forEach((b, i) => {
-    if (b.role !== "barrier" && b.role !== "skip" && b.words >= MIN_UNIT_WORDS) out.push([i]);
+    if (b.role !== "barrier" && b.role !== "skip" && b.words >= floor) out.push([i]);
   });
   return out;
 }
@@ -162,9 +163,9 @@ function soloGroups(plan: readonly PlanBlock[]): number[][] {
  * Which blocks are read together, as groups of indices into `blocks`. Pure — the vitest
  * suite drives it with reflowed pages and nothing else (test/node/pdfGroup.test.ts).
  */
-export function groupsOf(blocks: readonly ReflowBlock[], mergeShorts = true): number[][] {
-  const plan = planOf(blocks);
-  return mergeShorts ? groupBlocks(plan) : soloGroups(plan);
+export function groupsOf(blocks: readonly ReflowBlock[], mergeShorts = true, floor: number = DEFAULT_MIN_WORDS): number[][] {
+  const plan = planOf(blocks, floor);
+  return mergeShorts ? groupBlocks(plan, floor) : soloGroups(plan, floor);
 }
 
 /** Search highlights split PDF.js item spans into nested text nodes. */
@@ -200,8 +201,9 @@ export function createPdfUnitSource(): PdfUnitSource {
   const placed = new Map<string, Blueprint>();
   /** The blueprints of the current blocks, rebuilt when the reconstruction changes. */
   let built: Blueprint[] | null = null;
-  /** The setting the blueprints were built under: changing it changes the segmentation. */
+  /** The settings the blueprints were built under: changing either changes the segmentation. */
   let merged = true;
+  let builtFloor: number = DEFAULT_MIN_WORDS;
 
   function setBlocks(next: ReflowBlock[]): void {
     blocks = next;
@@ -288,11 +290,12 @@ export function createPdfUnitSource(): PdfUnitSource {
     return { parts, text, words, paragraphs: members.length, order, topElement, container, runs, nodes, minted: null };
   }
 
-  function rebuild(mergeShorts: boolean): Blueprint[] {
-    if (built && merged === mergeShorts && built.every((b) => b.nodes.every((n) => n.isConnected))) return built;
+  function rebuild(mergeShorts: boolean, floor: number): Blueprint[] {
+    if (built && merged === mergeShorts && builtFloor === floor && built.every((b) => b.nodes.every((n) => n.isConnected))) return built;
     merged = mergeShorts;
-    const plan = planOf(blocks);
-    const groups = mergeShorts ? groupBlocks(plan) : soloGroups(plan);
+    builtFloor = floor;
+    const plan = planOf(blocks, floor);
+    const groups = mergeShorts ? groupBlocks(plan, floor) : soloGroups(plan, floor);
     const out: Blueprint[] = [];
     groups.forEach((group, i) => {
       const p = build(group.map((at) => blocks[at]!), group.map((at) => plan[at]!.words), i);
@@ -322,12 +325,12 @@ export function createPdfUnitSource(): PdfUnitSource {
     return unit;
   }
 
-  function collect(claim: (nodes: Text[]) => "take" | "skip", mergeShorts = true): Unit[] {
+  function collect(claim: (nodes: Text[]) => "take" | "skip", mergeShorts = true, minWords: number = DEFAULT_MIN_WORDS): Unit[] {
     const out: Unit[] = [];
     for (const [id, blueprint] of placed) {
       if (blueprint.nodes.some((node) => !node.isConnected)) placed.delete(id);
     }
-    for (const candidate of rebuild(mergeShorts)) {
+    for (const candidate of rebuild(mergeShorts, minWords)) {
       // The walker's protocol, run by hand: a part a live unit owns EXACTLY is skipped,
       // and a paragraph all of whose parts are skipped IS that live unit and is not
       // emitted again. One part answering differently means the paragraph is not what it

@@ -40,7 +40,7 @@ import {
   isServerDiagnostic,
   symbolNoiseRatio,
   MIN_MERGE_WORDS,
-  MIN_UNIT_WORDS,
+  DEFAULT_MIN_WORDS,
   type Unit,
 } from "../dom/text";
 import { MARK_ATTR } from "../types";
@@ -125,7 +125,8 @@ function containsComposed(ancestor: Element, node: Element): boolean {
 
 // ---- the survey -----------------------------------------------------------------------
 
-export function surveyPage(opts: { running: boolean; max: number }): PageSurvey {
+export function surveyPage(opts: { running: boolean; max: number; minWords?: number }): PageSurvey {
+  const floor = opts.minWords ?? DEFAULT_MIN_WORDS;
   const styles = createStyleCache();
   const cs = (el: Element): CSSStyleDeclaration | null => styles.get(el);
   const body = document.body;
@@ -135,7 +136,7 @@ export function surveyPage(opts: { running: boolean; max: number }): PageSurvey 
   // writes is a text-node split at a blank line in preserved-whitespace text, which the
   // first scan already made. This chunk carries its own copy of the module, so the unit
   // ids it hands out cannot collide with the ones the live page is rendering.
-  const units = body ? collectUnits(body) : [];
+  const units = body ? collectUnits(body, { minWords: floor }) : [];
   const partContainers = units.map((u) => u.parts.map((p) => p.container));
 
   // A unit is "drawn" when a chip sits inside one of its parts, or just after it — the
@@ -236,7 +237,7 @@ export function surveyPage(opts: { running: boolean; max: number }): PageSurvey 
       el,
       path: pathOf(el),
       words,
-      reason: hits.length > 0 ? "" : reasonFor(el, cs, consentBoxes),
+      reason: hits.length > 0 ? "" : reasonFor(el, cs, consentBoxes, floor),
       note: siteNote(el, cs),
       undrawn: hits.length > 0,
     });
@@ -426,7 +427,7 @@ function runsIn(root: Element, cs: Styler): RunLike[] {
  * Why this box produced nothing. The order mirrors the walk: what it refuses outright
  * first, then what it cannot see, then how the assembler routed the runs it did read.
  */
-function reasonFor(el: Element, cs: Styler, consentBoxes: ReadonlySet<Element>): string {
+function reasonFor(el: Element, cs: Styler, consentBoxes: ReadonlySet<Element>, floor: number): string {
   const ancestry = ancestryReason(el, consentBoxes);
   if (ancestry) return ancestry;
   const heading = headingReason(el);
@@ -490,9 +491,9 @@ function reasonFor(el: Element, cs: Styler, consentBoxes: ReadonlySet<Element>):
   if (names.length >= half) {
     return `reads as a name list (${names.length}/${runs.length} blocks) — an author or citation row, not prose`;
   }
-  if (longest < MIN_UNIT_WORDS) {
+  if (longest < floor) {
     return (
-      `under the ${MIN_UNIT_WORDS}-word floor: longest paragraph ${longest} words over ${runs.length} block(s), ` +
+      `under the ${floor}-word floor: longest paragraph ${longest} words over ${runs.length} block(s), ` +
       "and no neighbour of the same voice to merge with"
     );
   }
@@ -502,7 +503,7 @@ function reasonFor(el: Element, cs: Styler, consentBoxes: ReadonlySet<Element>):
   const formulas = el.querySelectorAll("math,mjx-container,.katex,.mwe-math-element,.ltx_Math,.MathJax").length;
   return (
     `no unit although the longest block measures ${longest} words here — the walk counts less ` +
-    `(${marks} sup/cite marks and ${formulas} formulas are skipped mid-sentence), leaving it under the ${MIN_UNIT_WORDS}-word floor`
+    `(${marks} sup/cite marks and ${formulas} formulas are skipped mid-sentence), leaving it under the ${floor}-word floor`
   );
 }
 

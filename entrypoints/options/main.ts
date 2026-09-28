@@ -29,6 +29,7 @@ import { mountComponentSettings, componentConnectionLabel } from "#flavor/engine
 import { bindConfirmedToggle } from "../../lib/ui/confirmedToggle";
 import { bindSelect, bindToggle } from "../../lib/ui/boundSetting";
 import { createLogger } from "../../lib/log";
+import { MIN_WORDS_CHOICES, minWordsOf } from "../../lib/dom/text";
 
 const log = createLogger("options");
 
@@ -251,6 +252,19 @@ bindSelect<"all" | "off">(underlineEl, {
   setValue: (v) => settings.showHighlights.setValue(v === "all"),
 });
 bindSelect(analysisScopeEl, settings.analysisScope);
+
+// --- minimum length ----------------------------------------------------------------------
+// What is read at all, and what short paragraphs are grouped up to. Open pages re-read
+// themselves when it changes (lib/capture/orchestrator.ts watches it).
+{
+  const minWordsEl = document.getElementById("minWords") as HTMLSelectElement;
+  for (const n of MIN_WORDS_CHOICES) minWordsEl.add(new Option(t("optMinWordsValue", n), String(n)));
+  bindSelect<string>(minWordsEl, {
+    getValue: async () => String(minWordsOf(await settings.minWords.getValue())),
+    setValue: (v) => settings.minWords.setValue(minWordsOf(Number(v))),
+  });
+}
+
 showSites();
 settings.siteOverrides.watch(showSites);
 const version = browser.runtime.getManifest().version;

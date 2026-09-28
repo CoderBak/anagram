@@ -52,24 +52,28 @@ describe("what the report says the verdicts add up to", () => {
   const counts = { analyzed: 0, unavailable: 0, skipped: 0, pending: 0 };
 
   it("says plainly that there was too little text when nothing reached the floor", () => {
-    expect(reportState(counts, 0)).toBe(
+    expect(reportState(counts, 0, 75)).toBe(
       "Too little text to judge: no passage reached the 75 words the model needs for a verdict.",
+    );
+    // The floor is the reader's minimum length (Settings), whatever it is.
+    expect(reportState(counts, 0, 50)).toBe(
+      "Too little text to judge: no passage reached the 50 words the model needs for a verdict.",
     );
   });
 
   it("gives the reason there is no verdict when there was text", () => {
-    expect(reportState({ ...counts, skipped: 3 }, 0)).toMatch(/^No verdict: .*not in English/);
-    expect(reportState({ ...counts, skipped: 3, unavailable: 2 }, 0)).toMatch(/^No verdict: the local engine did not answer/);
-    expect(reportState({ ...counts, unavailable: 2, pending: 4 }, 0)).toMatch(/^No verdict yet: /);
+    expect(reportState({ ...counts, skipped: 3 }, 0, 50)).toMatch(/^No verdict: .*not in English/);
+    expect(reportState({ ...counts, skipped: 3, unavailable: 2 }, 0, 50)).toMatch(/^No verdict: the local engine did not answer/);
+    expect(reportState({ ...counts, unavailable: 2, pending: 4 }, 0, 50)).toMatch(/^No verdict yet: /);
   });
 
   it("calls the verdicts mixed or uncertain when half or more of them are close calls", () => {
-    expect(reportState({ ...counts, analyzed: 4 }, 2)).toBe(
+    expect(reportState({ ...counts, analyzed: 4 }, 2, 50)).toBe(
       "Mixed or uncertain: 2 of 4 verdicts are close calls, next to the line between two verdicts or more likely wrong than right. Read them as estimates, not labels.",
     );
-    expect(reportState({ ...counts, analyzed: 2 }, 1)).toMatch(/^Mixed or uncertain: 1 of 2 verdicts is a close call, .* Read it as an estimate, not a label\.$/);
-    expect(reportState({ ...counts, analyzed: 5 }, 2)).toBeNull();
-    expect(reportState({ ...counts, analyzed: 5, pending: 9 }, 0)).toBeNull();
+    expect(reportState({ ...counts, analyzed: 2 }, 1, 50)).toMatch(/^Mixed or uncertain: 1 of 2 verdicts is a close call, .* Read it as an estimate, not a label\.$/);
+    expect(reportState({ ...counts, analyzed: 5 }, 2, 50)).toBeNull();
+    expect(reportState({ ...counts, analyzed: 5, pending: 9 }, 0, 50)).toBeNull();
   });
 
   it("carries the fixed caveat in the words the product uses elsewhere", () => {

@@ -1,6 +1,6 @@
 // test/pdf-bench/bench.mjs — how well the PDF reader reads papers, measured, not guessed.
 //
-//   ANAGRAM_PDF_BENCH=<corpus> node test/pdf-bench/bench.mjs run [--name <run>] [--only <id,…>] [--window <pages>]
+//   ANAGRAM_PDF_BENCH=<corpus> node test/pdf-bench/bench.mjs run [--name <run>] [--only <id,…>] [--window <pages>] [--min-words <n>]
 //   ANAGRAM_PDF_BENCH=<corpus> node test/pdf-bench/bench.mjs zotero <raw dir> [--name <run>] [--features <run>]
 //   ANAGRAM_PDF_BENCH=<corpus> node test/pdf-bench/bench.mjs structured <raw dir> [--name <run>] [--only <id,…>] [--nomath]
 //   ANAGRAM_PDF_BENCH=<corpus> node test/pdf-bench/bench.mjs report <run> [<other run>…] [--split dev|test]
@@ -36,6 +36,8 @@ const flag = (name, fallback = null) => {
   return at >= 0 ? argv[at + 1] : fallback;
 };
 const OUT = flag("out", join(dirname(CORPUS), "out"));
+/** The minimum length in words the units are grouped to (Settings); the shipped default when unset. */
+const MIN_WORDS = flag("min-words") ? Number(flag("min-words")) : undefined;
 const manifest = () => JSON.parse(readFileSync(join(CORPUS, "manifest.json"), "utf8"));
 /** Which split a document is in, by its id alone: "test" is held out, "dev" is tuned on. */
 export const splitOf = (id) => (/^[0-4]/.test(createHash("sha1").update(id).digest("hex")) ? "test" : "dev");
@@ -199,7 +201,7 @@ async function run() {
   for (const doc of docs) {
     i++;
     try {
-      const result = await runAnagram(engine, join(CORPUS, doc.file), { window });
+      const result = await runAnagram(engine, join(CORPUS, doc.file), { window, minWords: MIN_WORDS });
       const record = scoreDocument(dir, doc, result, await truthFor(doc, isWordMade(result.producer, result.creator), result));
       const m = record.metrics;
       console.log(`${i}/${docs.length} ${doc.id} ${result.pages.length}p ${m ? `cov ${(m.coverage.scored / Math.max(1, m.coverage.body)).toFixed(2)} leak ${m.leak.scoredShare.toFixed(2)} F1 ${m.bounds.f1.toFixed(2)} tau ${m.order.tau.toFixed(2)}` : "(no truth)"}`);
@@ -271,7 +273,7 @@ async function zotero() {
     const known = base.get(doc.id);
     const result = {
       numPages: z.pages, analysedPages: z.pages, producer: known?.producer ?? "", creator: known?.creator ?? "",
-      blocks, words: pipeline.planWords(blocks), units: pipeline.unitsOf(blocks),
+      blocks, words: pipeline.planWords(blocks), units: pipeline.unitsOf(blocks, true, MIN_WORDS),
       timing: { totalMs: z.ms }, features: known?.features ?? { twoColumn: false, lineNumbered: false, wordMade: false, mathShare: null },
     };
     const record = scoreDocument(dir, doc, result, await truthFor(doc, result.features.wordMade));
@@ -290,7 +292,7 @@ async function structured() {
   const only = flag("only")?.split(",");
   // --all reads every block Zotero produced, tagged with what Zotero called it: an
   // accounting run, to see where body text the reader leaves out is hiding.
-  const options = argv.includes("--all") ? { everything: true } : {};
+  const options = { ...(argv.includes("--all") ? { everything: true } : {}), minWords: MIN_WORDS };
   const { loadPipeline, runStructured } = await import("./anagram.mjs");
   const engine = await loadPipeline();
   const dir = join(OUT, name);

@@ -130,7 +130,7 @@ async function startAnalysis(owned: number): Promise<void> {
       answered = true;
       queueMicrotask(() => { answered = false; });
       prune();
-      return currentSource.collect(claim, options.mergeShorts);
+      return currentSource.collect(claim, options.mergeShorts, options.minWords);
     },
     placeBadge: (unit, host) => placeChip({pageOf: (layer) => [...pages.values()].find(({view}) => view.layer === layer)?.view}, unit, host),
     // The panel's "Turn off on <site>" wrote the rule for the document's own site.

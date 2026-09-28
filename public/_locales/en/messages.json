@@ -143,6 +143,10 @@
     "message": "Look-alike letters were replaced before scoring. ",
     "description": "Card footnote sentence, also a line of the copied report and of the text analysis page: the text wrote Latin letters with Cyrillic or Greek look-alikes (a disguise), which were changed back before the model read it. The trailing space joins it to the next sentence."
   },
+  "coverageShort": {
+    "message": "Short text: less reliable (under $1 words)",
+    "description": "A line of the chip card, the selection card, the copied report and the text analysis page, for a verdict on a text shorter than the model's training minimum. $1 = 75."
+  },
   "coverageOpeningParagraph": {
     "message": "Only the opening of this paragraph was scored. ",
     "description": "Card footnote sentence; the trailing space joins it to the next sentence."
@@ -1202,6 +1206,18 @@
   "optMerge": {
     "message": "Group short paragraphs",
     "description": "Switch: analyze short neighbouring paragraphs together."
+  },
+  "optMinWords": {
+    "message": "Minimum length",
+    "description": "Settings, Reading: label of the select that sets how many words a paragraph (or a group of short ones) needs to be analyzed."
+  },
+  "optMinWordsValue": {
+    "message": "$1 words",
+    "description": "Settings, Reading: one choice of the minimum length. $1 = a number of words (25, 50, 75, 100 or 150)."
+  },
+  "optMinWordsNote": {
+    "message": "The model was trained on texts of 75 words or more; shorter ones are less reliable and say so.",
+    "description": "Settings, Reading: the note under the minimum length."
   },
   "optAutoOpenPdfs": {
     "message": "Open PDFs in Anagram",

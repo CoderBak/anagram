@@ -57,8 +57,28 @@ const results = await page.evaluate(() => {
   {
     const below = collect(`<p>${words(74)}</p>`);
     const at = collect(`<p>${words(75)}</p>`);
-    check("the floor is the open model's training minimum: 74 words alone are not read, 75 are",
-      PW.MIN_UNIT_WORDS === 75 && below.length === 0 && at.length === 1 && at[0].words === 75, JSON.stringify([below.length, at.map(x => x.words)]));
+    check("at the open model's training minimum (these cases' floor): 74 words alone are not read, 75 are",
+      PW.MODEL_MIN_WORDS === 75 && below.length === 0 && at.length === 1 && at[0].words === 75, JSON.stringify([below.length, at.map(x => x.words)]));
+  }
+  {
+    // THE MINIMUM LENGTH is the reader's (Settings): 25, 50, 75, 100 or 150 words, 50 unless
+    // chosen. It decides what is read at all and what short paragraphs are grouped up to.
+    const floorOf = (n, minWords) => collect(`<p>${words(n)}</p>`, minWords === undefined ? { minWords: undefined } : { minWords }).length;
+    check("the shipped minimum length is 50 words, one of 25 / 50 / 75 / 100 / 150",
+      PW.DEFAULT_MIN_WORDS === 50 && JSON.stringify(PW.MIN_WORDS_CHOICES) === "[25,50,75,100,150]" && floorOf(49) === 0 && floorOf(50) === 1,
+      JSON.stringify([PW.DEFAULT_MIN_WORDS, floorOf(49), floorOf(50)]));
+    const at = PW.MIN_WORDS_CHOICES.map((f) => [floorOf(f - 1, f), floorOf(f, f)]);
+    check("each choice is the floor: one word under it is not read, it is", at.every(([under, on]) => under === 0 && on === 1), JSON.stringify(at));
+    // The grouping target moves with it: two 30-word paragraphs are one unit from a floor of
+    // 50 on, and at 25 each stands alone; at 75 they are read by nobody.
+    const pair = `<p>${words(30)}</p><p>${words(30)}</p>`;
+    const shapes = [25, 50, 75].map((f) => collect(pair, { minWords: f }).map((x) => x.parts));
+    check("the grouping target is the floor: [30, 30] → two units at 25, one of two parts at 50, none at 75",
+      JSON.stringify(shapes) === "[[1,1],[2],[]]", JSON.stringify(shapes));
+    // Texts under the model's own minimum carry a line that says so, whatever the floor.
+    check("a verdict on a text under 75 words is marked short; 75 and over is not",
+      PW.isShortText(74) && !PW.isShortText(75) && PW.shortTextNote(40) === "Short text: less reliable (under 75 words)" && PW.shortTextNote(75) === "",
+      JSON.stringify([PW.shortTextNote(40), PW.shortTextNote(75)]));
   }
 
   u = collect(`<p>${words(80)}</p><p>${words(85)}</p>`);
@@ -715,7 +735,7 @@ const results = await page.evaluate(() => {
     got = PW.collectUnits(sandbox);
     check("a 6000-word run → ceil(length / window) groups, none above a window, none below the floor, as even as the lines allow",
       got.length === Math.ceil((got.reduce((n, x) => n + x.text.length, 0) + 2 * (got.length - 1)) / PW.WINDOW_CHARS) && got.reduce((n, x) => n + x.parts.length, 0) === 300 && got.reduce((n, x) => n + x.wordCount, 0) === 6000 &&
-      got.every((x) => x.text.length <= PW.WINDOW_CHARS && x.wordCount >= PW.MIN_UNIT_WORDS && Math.abs(x.parts.length - 300 / got.length) <= 1), sized(got));
+      got.every((x) => x.text.length <= PW.WINDOW_CHARS && x.wordCount >= PW.MODEL_MIN_WORDS && Math.abs(x.parts.length - 300 / got.length) <= 1), sized(got));
 
     u = collect(Array.from({ length: 7 }, (_, i) => `<p>P${i} ${sent(79)}</p>`).join("").replace(/<p>P3 [^<]*<\/p>/, `<p>P3 ${sent(19)}</p>`));
     check("full paragraphs are never grouped with each other, however short", u.length === 6 && u.filter((x) => x.parts === 2).length === 1, shape(u));
@@ -772,10 +792,11 @@ const results = await page.evaluate(() => {
     // with no DOM anywhere (lib/pdf/units.ts). The same paragraphs, expressed as <p>s and as
     // bare word/character counts, must come out grouped the same way; if they ever did not,
     // a paper and a web page would be read by two different rules.
+    // At every minimum length Settings offers.
     const asPlan = (ns) => ns.map((n) => ({ words: n, chars: words(n).length }));
-    const planShape = (ns) =>
-      JSON.stringify(PW.groupBlocks(asPlan(ns)).map((g) => [g.length, g.reduce((sum, i) => sum + ns[i], 0)]));
-    const walkShape = (ns) => shape(collect(ns.map((n) => `<p>${words(n)}</p>`).join("")));
+    const planShape = (ns, floor) =>
+      JSON.stringify(PW.groupBlocks(asPlan(ns), floor).map((g) => [g.length, g.reduce((sum, i) => sum + ns[i], 0)]));
+    const walkShape = (ns, floor) => shape(collect(ns.map((n) => `<p>${words(n)}</p>`).join(""), { minWords: floor }));
     for (const ns of [
       [30, 30, 30],
       [20, 80, 20],
@@ -790,8 +811,10 @@ const results = await page.evaluate(() => {
       Array.from({ length: 50 }, () => 20),
     ]) {
       const label = ns.length > 6 ? `${ns.length}×${ns[0]} words` : `[${ns}]`;
-      check(`the walker and the source-free rule group ${label} the same way`, walkShape(ns) === planShape(ns),
-        `walker ${walkShape(ns)} · plan ${planShape(ns)}`);
+      for (const floor of PW.MIN_WORDS_CHOICES) {
+        check(`the walker and the source-free rule group ${label} the same way at ${floor} words`, walkShape(ns, floor) === planShape(ns, floor),
+          `walker ${walkShape(ns, floor)} · plan ${planShape(ns, floor)}`);
+      }
     }
   }
   {
@@ -2546,7 +2569,8 @@ const results = await page.evaluate(() => {
 //   data-expect         "unit": some unit covers text in here · "none": no unit does
 //   data-parts          "n": exactly ONE unit covers text in here, and it has n parts
 const FIXTURES = join(__dirname, "fixtures");
-/** [units, multi-part units] per fixture — a change here is a change of behaviour. */
+/** [units, multi-part units, the floor it was annotated at when not 75] per fixture — a change
+ *  here is a change of behaviour. */
 const EXPECTED = {
   "amp-article": [1, 1],
   "article-list-table": [6, 5],
@@ -2615,50 +2639,58 @@ for (const file of fixtureFiles) {
   const fx = await browser.newPage();
   await fx.goto(pathToFileURL(join(FIXTURES, file)).href);
   await fx.addScriptTag({ path: BUNDLE });
-  const r = await fx.evaluate(() => {
-    const units = PW.collectUnits(document.body);
-    // The COMPOSED tree, as the walker sees it: Bilibili's comments are nested open shadow
-    // roots, which closest(), contains() and querySelectorAll() do not look into.
-    const up = (e) => e.parentElement ?? (e.getRootNode() instanceof ShadowRoot ? e.getRootNode().host : null);
-    const nearest = (e, attr) => { for (; e; e = up(e)) if (e.hasAttribute(attr)) return e; return null; };
-    const holds = (el, inner) => { for (let e = inner; e; e = up(e)) if (e === el) return true; return false; };
-    const everywhere = (root, sel, acc = []) => {
-      acc.push(...root.querySelectorAll(sel));
-      for (const host of root.querySelectorAll("*")) if (host.shadowRoot) everywhere(host.shadowRoot, sel, acc);
-      return acc;
-    };
-    const voiceOf = (part) => nearest(part.nodes[0].parentElement, "data-voice")?.getAttribute("data-voice") ?? "(none)";
-    const mixed = [];
-    const chrome = [];
-    const covered = new Set();
-    for (const u of units) {
-      const voices = [...new Set(u.parts.map(voiceOf))];
-      if (voices.length > 1) mixed.push(voices.join("+"));
-      for (const part of u.parts) for (const n of part.nodes) {
-        if (nearest(n.parentElement, "data-chrome")) chrome.push(n.textContent.trim().slice(0, 30));
-        for (let e = n.parentElement; e; e = up(e)) covered.add(e);
+  // Each fixture is annotated at the floor it was written for (EXPECTED's third entry; the
+  // model's 75 words when it has none) and is walked again at the lower minimum lengths
+  // Settings offers, where what must hold at any floor is checked: no two voices in a unit,
+  // no name, time or action row in one.
+  const [wantUnits, wantMerged, written = 75] = EXPECTED[name] ?? [-1, -1];
+  for (const floor of [written, ...[25, 50].filter((f) => f !== written)]) {
+    const r = await fx.evaluate((floor) => {
+      const units = PW.collectUnits(document.body, { minWords: floor });
+      // The COMPOSED tree, as the walker sees it: Bilibili's comments are nested open shadow
+      // roots, which closest(), contains() and querySelectorAll() do not look into.
+      const up = (e) => e.parentElement ?? (e.getRootNode() instanceof ShadowRoot ? e.getRootNode().host : null);
+      const nearest = (e, attr) => { for (; e; e = up(e)) if (e.hasAttribute(attr)) return e; return null; };
+      const holds = (el, inner) => { for (let e = inner; e; e = up(e)) if (e === el) return true; return false; };
+      const everywhere = (root, sel, acc = []) => {
+        acc.push(...root.querySelectorAll(sel));
+        for (const host of root.querySelectorAll("*")) if (host.shadowRoot) everywhere(host.shadowRoot, sel, acc);
+        return acc;
+      };
+      const voiceOf = (part) => nearest(part.nodes[0].parentElement, "data-voice")?.getAttribute("data-voice") ?? "(none)";
+      const mixed = [];
+      const chrome = [];
+      const covered = new Set();
+      for (const u of units) {
+        const voices = [...new Set(u.parts.map(voiceOf))];
+        if (voices.length > 1) mixed.push(voices.join("+"));
+        for (const part of u.parts) for (const n of part.nodes) {
+          if (nearest(n.parentElement, "data-chrome")) chrome.push(n.textContent.trim().slice(0, 30));
+          for (let e = n.parentElement; e; e = up(e)) covered.add(e);
+        }
       }
-    }
-    const wrong = [];
-    const annotated = everywhere(document, "[data-expect]");
-    for (const el of annotated) {
-      const want = el.getAttribute("data-expect") === "unit";
-      if (covered.has(el) !== want) wrong.push(`${want ? "no unit for" : "unexpected unit on"} "${el.textContent.trim().slice(0, 40)}"`);
-      // data-parts="n": ONE unit covers this block, and it has exactly n parts ("3+1": two units).
-      if (el.hasAttribute("data-parts")) {
-        const mine = units.filter((u) => u.parts.some((part) => holds(el, part.container)));
-        const got = mine.map((u) => u.parts.length).join("+");
-        if (got !== el.getAttribute("data-parts")) wrong.push(`${got || "no"} parts instead of ${el.getAttribute("data-parts")} on "${el.textContent.trim().slice(0, 40)}"`);
+      const wrong = [];
+      const annotated = everywhere(document, "[data-expect]");
+      for (const el of annotated) {
+        const want = el.getAttribute("data-expect") === "unit";
+        if (covered.has(el) !== want) wrong.push(`${want ? "no unit for" : "unexpected unit on"} "${el.textContent.trim().slice(0, 40)}"`);
+        // data-parts="n": ONE unit covers this block, and it has exactly n parts ("3+1": two units).
+        if (el.hasAttribute("data-parts")) {
+          const mine = units.filter((u) => u.parts.some((part) => holds(el, part.container)));
+          const got = mine.map((u) => u.parts.length).join("+");
+          if (got !== el.getAttribute("data-parts")) wrong.push(`${got || "no"} parts instead of ${el.getAttribute("data-parts")} on "${el.textContent.trim().slice(0, 40)}"`);
+        }
       }
-    }
-    return { units: units.length, merged: units.filter((u) => u.parts.length > 1).length, mixed, chrome, wrong, annotated: annotated.length };
-  });
+      return { units: units.length, merged: units.filter((u) => u.parts.length > 1).length, mixed, chrome, wrong, annotated: annotated.length };
+    }, floor);
+    const at = floor === written ? "" : ` at ${floor} words`;
+    results.push({ name: `fixture ${name}: no unit mixes two voices${at}`, ok: r.mixed.length === 0, note: r.mixed.join(" | ") });
+    results.push({ name: `fixture ${name}: no name / time / action row inside a unit${at}`, ok: r.chrome.length === 0, note: r.chrome.join(" | ") });
+    if (floor !== written) continue;
+    results.push({ name: `fixture ${name}: covered exactly where expected (${r.annotated} annotated blocks)`, ok: r.annotated > 0 && r.wrong.length === 0, note: r.wrong.join(" | ") });
+    results.push({ name: `fixture ${name}: ${wantUnits} units, ${wantMerged} of them multi-part`, ok: r.units === wantUnits && r.merged === wantMerged, note: `${r.units} units, ${r.merged} multi-part` });
+  }
   await fx.close();
-  const [wantUnits, wantMerged] = EXPECTED[name] ?? [-1, -1];
-  results.push({ name: `fixture ${name}: no unit mixes two voices`, ok: r.mixed.length === 0, note: r.mixed.join(" | ") });
-  results.push({ name: `fixture ${name}: no name / time / action row inside a unit`, ok: r.chrome.length === 0, note: r.chrome.join(" | ") });
-  results.push({ name: `fixture ${name}: covered exactly where expected (${r.annotated} annotated blocks)`, ok: r.annotated > 0 && r.wrong.length === 0, note: r.wrong.join(" | ") });
-  results.push({ name: `fixture ${name}: ${wantUnits} units, ${wantMerged} of them multi-part`, ok: r.units === wantUnits && r.merged === wantMerged, note: `${r.units} units, ${r.merged} multi-part` });
 }
 
 // ---- a mailing-list quotation: the markers are the frame, not the words -------------------

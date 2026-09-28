@@ -443,7 +443,7 @@ export async function surfaceChecks(browser, bundle, fixtures, results) {
       };
       const walked = PW.collectUnits(document.body);
       const s = PW.createSurface("webnovel", document);
-      const units = s.collect(() => "take", true);
+      const units = s.collect(() => "take", true, PW.MODEL_MIN_WORDS);
       const chapterOf = (el) => el.closest("[data-voice]")?.getAttribute("data-voice");
       return {
         walkedMissing: coverage(walked),
@@ -513,7 +513,7 @@ export async function surfaceChecks(browser, bundle, fixtures, results) {
       ["drive", "pdfjs", "kindle", "webnovel"].map((id) => {
         const s = PW.createSurface(id, document);
         const wrapped = PW.asPageSurface(s);
-        const opts = {};
+        const opts = { minWords: PW.DEFAULT_MIN_WORDS };
         const viaSurface = wrapped.collect(document.body, () => "take", opts).map((u) => u.text);
         const walked = PW.collectUnits(document.body, opts).map((u) => u.text);
         const unit = { id: "u_x", parts: [], text: "" };

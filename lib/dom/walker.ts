@@ -9,8 +9,8 @@
 //           <em>, links, drop caps — never splits a sentence, and neither does a
 //           sidenote floated into the margin: it is read after its paragraph. <br> and
 //           blank lines in preserved-whitespace contexts are paragraph breaks.
-//   asm   — a paragraph of ≥ MIN_UNIT_WORDS is a unit of its own. Consecutive SHORT runs
-//           of ONE VOICE (the lines of a post, list items, the short paragraphs of an
+//   asm   — a paragraph of at least the minimum length (Settings; CollectOptions.minWords)
+//           is a unit of its own. Consecutive SHORT runs of ONE VOICE (the lines of a post, list items, the short paragraphs of an
 //           article or of one comment) MERGE into multi-part units — short text gets
 //           covered instead of silently skipped. The stretch is read to its end and then
 //           divided, between paragraphs and evenly, into groups of at most ONE MODEL
@@ -76,7 +76,7 @@ import {
   runQuoteDepth,
   skipOffsets,
   unitPartText,
-  MIN_UNIT_WORDS,
+  DEFAULT_MIN_WORDS,
   MIN_LINE_WORDS,
   MAX_UNIT_TEXT_CHARS,
 } from "./text";
@@ -233,6 +233,12 @@ export interface CollectOptions {
    * mode: every full paragraph by itself, short runs skipped.
    */
   mergeShorts?: boolean;
+  /**
+   * The evidence floor in words — the reader's minimum length (Settings, lib/dom/text.ts):
+   * a paragraph this long is a unit of its own, and shorter ones of one voice are grouped
+   * until they reach it. Default DEFAULT_MIN_WORDS.
+   */
+  minWords?: number;
   /**
    * Prose the walk found and decided to leave unread: a stretch of short runs that stayed
    * under the evidence floor with nobody of its own voice to join. Called with its text
@@ -397,7 +403,7 @@ export function collectUnits(
   // A consent box known by what it holds can stand around a re-scan's root (its second tab).
   for (const banner of consentBanners) if (banner !== startEl && banner.contains(startEl)) return [];
   const pageText = pageTextSize(document);
-  const asm = createAssembler(scopes, opts.mergeShorts ?? true, startEl, read, (nodes) => opts.claimFilter?.(nodes) !== "skip", opts.onShortText);
+  const asm = createAssembler(scopes, opts.mergeShorts ?? true, opts.minWords ?? DEFAULT_MIN_WORDS, startEl, read, (nodes) => opts.claimFilter?.(nodes) !== "skip", opts.onShortText);
 
   // ---- run accumulation ------------------------------------------------------------
 
@@ -1347,6 +1353,8 @@ function createAssembler(
   /** The voices of this scan (see scopesOfScan). */
   scopes: Scopes,
   mergeShorts: boolean,
+  /** The evidence floor (CollectOptions.minWords). */
+  minWords: number,
   walkRoot: Element,
   /** Read a found run; null when there is nothing to read (invisible, empty). */
   read: (found: Found, claimed: boolean) => Run | null,
@@ -1437,8 +1445,8 @@ function createAssembler(
     const g = f.group;
     f.group = [];
     let lead: Run[] = [];
-    if (g.length > 0 && clearsFloor(g)) {
-      for (const runs of modelSized(g)) out(f, runs);
+    if (g.length > 0 && clearsFloor(g, minWords)) {
+      for (const runs of modelSized(g, minWords)) out(f, runs);
     } else if (g.length > 0) {
       const beside = (a: Run, b: Run): boolean => together(f, a.container, b.container);
       // A preview the site cut takes nobody in: it is not read, and what joined it would not be.
@@ -1507,9 +1515,9 @@ function createAssembler(
       f.held = [];
       return;
     }
-    if (!f.partial && clearsFloor(f.prose) && fitsWindow(f.prose)) {
+    if (!f.partial && clearsFloor(f.prose, minWords) && fitsWindow(f.prose)) {
       for (const runs of standingTogether(f.prose, (a, b) => together(f, a, b))) {
-        if (clearsFloor(runs)) release(runs);
+        if (clearsFloor(runs, minWords)) release(runs);
         else onShortText?.(runs.flatMap((r) => r.nodes));
       }
     } else {
@@ -1521,7 +1529,7 @@ function createAssembler(
         !f.partial &&
         owned.length > 1 &&
         owned.length < f.prose.length &&
-        clearsFloor(owned) &&
+        clearsFloor(owned, minWords) &&
         fitsWindow(owned) &&
         retake(owned.flatMap((r) => r.nodes))
       ) {
@@ -1859,7 +1867,7 @@ function createAssembler(
       barrier(r.container);
       return;
     }
-    if (r.words >= MIN_UNIT_WORDS) full(r);
+    if (r.words >= minWords) full(r);
     else if (mergeShorts) short(r); // strict per-paragraph mode: sub-floor runs skipped
   }
 

@@ -1,6 +1,7 @@
 // Storage-backed reading preferences and per-site rules.
 import { storage } from "#imports";
 import type { ScoreCacheMode } from "../cachePolicy";
+import { DEFAULT_MIN_WORDS, minWordsOf, type MinWords } from "../dom/text";
 export type { ScoreCacheMode } from "../cachePolicy";
 
 export const cacheModeStorage = storage.defineItem<ScoreCacheMode>("local:cacheMode", { fallback: "persistent" });
@@ -25,6 +26,10 @@ export const settings = {
   }),
   // Group short neighbors to reach the evidence floor; otherwise skip short paragraphs.
   mergeShorts: storage.defineItem<boolean>("local:mergeShorts", { fallback: true }),
+  // The minimum length in words: what is read at all, and what short paragraphs are grouped
+  // up to (lib/dom/text.ts has the choices). Read through minWordsOf, which answers a value
+  // that is not one of them with the default.
+  minWords: storage.defineItem<number>("local:minWords", { fallback: DEFAULT_MIN_WORDS }),
   // "main" restricts analysis to the region Defuddle finds, excluding outside comments/sidebars.
   analysisScope: storage.defineItem<"page" | "main">("local:analysisScope", {
     fallback: "page",
@@ -37,6 +42,15 @@ export const settings = {
     fallback: {},
   }),
 };
+
+/** The minimum length as a floor, the default when storage holds something else or nothing. */
+export async function readMinWords(): Promise<MinWords> {
+  try {
+    return minWordsOf(await settings.minWords.getValue());
+  } catch {
+    return DEFAULT_MIN_WORDS; // dead extension context
+  }
+}
 
 // Per-site rules inherit from parent domains; the most specific wins. Ignore leading www.
 

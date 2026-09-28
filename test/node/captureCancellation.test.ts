@@ -56,7 +56,7 @@ vi.mock("../../lib/settings/settings", () => {
   const setting = (value: unknown) => ({getValue: async () => value, watch: () => () => {}});
   return {settings: {
     debug: setting(false),
-    showHighlights: setting(false), displayMode: setting("all"), mergeShorts: setting(true),
+    showHighlights: setting(false), displayMode: setting("all"), mergeShorts: setting(true), minWords: setting(75),
     analysisScope: {getValue: async () => calls.scope, watch: () => () => {}},
     reportIncludeText: setting(false), reportIncludeUrl: setting(false),
   }};

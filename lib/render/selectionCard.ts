@@ -16,10 +16,11 @@ import { modelDim } from "../backend/router";
 import { messageLocale, t } from "../i18n";
 import { band, bandLabel, isNoVerdict, languageName, type Band } from "./band";
 import { formatScore } from "./score";
-import { coverageNote, windowScores, windowReadout } from "./coverage";
+import { coverageNote, shortTextNote, windowScores, windowReadout } from "./coverage";
 import { DIST_CSS, distributionHtml, swatchHtml } from "./dist";
 import { verdictConfidence } from "./confidence";
-import { countWords, MIN_UNIT_WORDS } from "../dom/text";
+import { countWords } from "../dom/text";
+import { readMinWords } from "../settings/settings";
 import { isDarkPage } from "./theme";
 import { adoptSheets } from "../dom/shadow";
 
@@ -48,6 +49,7 @@ const CARD_CSS = `
 .row .v { font-variant-numeric: tabular-nums; }
 .row.wins .k { flex: none; }
 .row.wins .v { text-align: right; }
+.short { color: #737373; font-style: italic; margin-bottom: 4px; }
 .foot { margin-top: 6px; padding-top: 6px; border-top: 1px solid #f0f0f0; color: #737373; font-size: 10px; }
 .close {
   position: absolute; top: 6px; right: 8px;
@@ -73,7 +75,7 @@ const CARD_CSS = `
   color: #fafafa;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 }
-:host(.pg-dark) .row .k { color: #a3a3a3; }
+:host(.pg-dark) .row .k, :host(.pg-dark) .short { color: #a3a3a3; }
 :host(.pg-dark) .foot { border-top-color: rgba(255, 255, 255, 0.08); color: #8a8a8a; }
 :host(.pg-dark) .verdict.band-unknown { color: #b9c0c8; }
 ` + DIST_CSS;
@@ -200,12 +202,16 @@ export async function analyzeSelection(): Promise<void> {
   // computation, so without it the control announces as the glyph "✕".
   const closeBtn = `<button class="close" type="button" aria-label="${t("selClose")}" title="${t("selClose")}">✕</button>`;
 
-  if (words < MIN_UNIT_WORDS) {
+  // The reader's minimum length (Settings) is the selection's floor as it is a paragraph's.
+  const floor = await readMinWords();
+  if (_host !== host) return; // dismissed while the setting was read
+
+  if (words < floor) {
     card.innerHTML =
       closeBtn +
       `<div class="head"><span class="verdict band-unknown">${t("selTooShort")}</span><span class="big">—</span></div>` +
       row(t("selWordsSelected"), String(words)) +
-      row(t("selNeeded"), `${MIN_UNIT_WORDS}+`) +
+      row(t("selNeeded"), `${floor}+`) +
       `<div class="foot">${t("selFootTooShort")}</div>`;
     place();
   } else {
@@ -269,10 +275,12 @@ export async function analyzeSelection(): Promise<void> {
       const analyzed = partial
         ? verdict.windows.filter(isScoredWindow).reduce((n, w) => n + countWords(text.slice(w.start, w.end)), 0)
         : words;
+      const short = isNoVerdict(b) ? "" : shortTextNote(words);
       card.innerHTML =
         closeBtn +
         `<div class="head"><span class="verdict band-${b}">${isNoVerdict(b) ? "" : swatchHtml(r, verdictConfidence(verdict))}${bandLabel(b)}</span>` +
         `<span class="big" title="${t("cardScaleTitle")}">${isNoVerdict(b) ? "—" : score}</span></div>` +
+        (short ? `<div class="short">${short}</div>` : "") +
         (isNoVerdict(b) ? "" : distributionHtml(r)) +
         (b === "unsupported" ? row(t("cardDetectedLang"), `${languageName(r.lang)} · ${Math.round((r.lang_prob ?? 0) * 100)}%`) : "") +
         row(t("selWordsSelected"), String(words)) +
