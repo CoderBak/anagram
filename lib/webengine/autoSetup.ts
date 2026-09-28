@@ -78,6 +78,14 @@ async function readSaved(): Promise<{ saved: SavedSetup | null; bytes: number } 
   }
 }
 
+/** The bytes the engine's directory holds, read without starting the engine; 0 when unreadable. */
+export async function storedModelBytes(): Promise<number> {
+  try {
+    const read = await readSaved();
+    return read === "unreadable" ? 0 : read.bytes;
+  } catch { return 0; }
+}
+
 /**
  * On install or update: start the model's download when it is wanted and nothing stands in
  * the way. Resolves once the engine has taken the request, or after OPEN_AFTER_MS, with
