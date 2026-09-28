@@ -80,7 +80,7 @@ async function pausedPage(status: BackendStatus) {
   controller.start(); await settle();
   await calls.sends[0]!([unit], "viewport");
   expect(calls.pause).toHaveBeenCalled();
-  expect(calls.down).toHaveBeenLastCalledWith(true);
+  expect(calls.down).toHaveBeenCalledWith(true);
   calls.pause.mockClear(); calls.resume.mockClear(); calls.down.mockClear();
   calls.message.mockImplementation(async (m: {action: string}) => m.action === "getBackendStatus" ? status : undefined);
   // The page's own recheck of a down engine, every five seconds.
@@ -106,10 +106,11 @@ describe("a page paused while the engine was down", () => {
     const controller = await pausedPage(STATUS.down!);
     try {
       expect(calls.resume).not.toHaveBeenCalled();
-      expect(calls.down).toHaveBeenLastCalledWith(true, false, undefined);
+      expect(calls.down).toHaveBeenLastCalledWith(true, false, undefined, false);
       await vi.advanceTimersByTimeAsync(5000); await settle();
       expect(calls.resume).not.toHaveBeenCalled();
-      expect(calls.message.mock.calls.filter(([m]) => m.action === "getBackendStatus")).toHaveLength(2);
+      // Once as it went down (the panel says at once when setup is why), then every five seconds.
+      expect(calls.message.mock.calls.filter(([m]) => m.action === "getBackendStatus")).toHaveLength(3);
     } finally {controller.stop();}
   });
 });

@@ -1,5 +1,5 @@
-/* The oneclick flavor's engine panel (lib/ui/inBrowserEngine.ts), beside the shared
-   component panel styles in componentSettings.css. */
+/* The in-browser engine's panel (lib/ui/inBrowserEngine.ts), beside the shared component
+   panel styles in componentSettings.css. */
 .component-settings .engine-intro { color:var(--foreground); }
 .component-settings .engine-progress { margin-top:-4px; font-variant-numeric:tabular-nums; }
 .component-settings .engine-note { font-size:12.5px; }

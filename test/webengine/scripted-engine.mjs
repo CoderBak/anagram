@@ -1,13 +1,14 @@
 // test/webengine/scripted-engine.mjs — the in-browser engine's states, handed to one page.
 //
-// The oneclick build's setup page, popup and panel paint whatever the engine's `status`
-// says (lib/ui/inBrowserEngine.ts, lib/backend/engineSetup.ts). Some of those states take
-// minutes or a machine to reach for real — a finished 1.4 GB download, a GPU, a full disk,
-// a model that failed to load — so the layout, accessibility and copy suites script them:
-// an init script answers the page's own contract requests and backend-status question with
-// a snapshot of the engine's exact shape, and can stand in for the browser's storage
-// estimate and its Save-Data setting. Everything else the page asks goes to the real
-// extension. test/oneclick.mjs drives the real engine through the same states it can reach.
+// The setup page, popup and panel paint whatever the engine's `status` says
+// (lib/ui/inBrowserEngine.ts, lib/backend/engineSetup.ts). Some of those states take minutes
+// or a machine to reach for real — a finished 1.4 GB download, a GPU, a full disk, a model
+// that failed to load, a local engine that kept crashing — so the layout, accessibility and
+// copy suites script them: an init script answers the page's own contract requests, its
+// question which engine is in use and its backend-status question with a snapshot of the
+// engine's exact shape, and can stand in for the browser's storage estimate and its
+// Save-Data setting. Everything else the page asks goes to the real extension.
+// test/inbrowser.mjs drives the real engine through the same states it can reach.
 const TOTAL = 1_425_459_555;
 
 const download = (over = {}) => ({ status: "idle", bytes_received: 0, total_bytes: 0, file: null, error: null, phase: "detecting", detail: null, ...over });
@@ -46,32 +47,46 @@ export const STATES = {
 };
 
 /** What the background says about the engine while it is in `state` (entrypoints/background.ts). */
-export function backendFor(name, { crashed = false } = {}) {
+export function backendFor(name, { crashed = false, engine = "inbrowser" } = {}) {
   const s = STATES[name];
   const up = s.state === "ready" && !crashed;
   const percent = s.download.total_bytes ? Math.floor((Math.max(s.download.bytes_received, s.storage.models_bytes) * 100) / s.download.total_bytes) : 0;
-  const setup = crashed ? undefined
+  const setup = crashed || engine === "native" ? undefined
     : s.download.status === "running" ? { state: "downloading", percent }
     : s.download.status === "paused" ? { state: "paused", percent }
     : s.download.status === "failed" ? { state: "failed", percent }
     : s.state === "needs_models" ? { state: "needed", percent: 0 }
     : s.state === "loading" ? { state: "loading", percent: 100 } : null;
   return up
-    ? { active: "server", model: { id: "editlens_roberta-large", ver: "sha256:test-web1", calibration: "editlens-4bucket-cosine(0.03,0.15)" }, server: { ok: true, checkedAt: 1, device: "webgpu", dtype: "fp32" } }
+    ? { active: "server", engine, model: { id: "editlens_roberta-large", ver: "sha256:test-web1", calibration: "editlens-4bucket-cosine(0.03,0.15)" }, server: { ok: true, checkedAt: 1, device: "webgpu", dtype: "fp32" } }
     // A model loading answers health with engine_loading: reachable, not down.
     : s.state === "loading" && !crashed
-      ? { active: "loading", model: null, server: { ok: false, checkedAt: 1, reason: "unreachable", code: "engine_loading" }, setup }
-      : { active: "down", model: null, server: { ok: false, checkedAt: 1, reason: "unreachable", code: crashed ? "engine_crashed" : "not_ready" }, setup };
+      ? { active: "loading", engine, model: null, server: { ok: false, checkedAt: 1, reason: "unreachable", code: "engine_loading" }, setup }
+      : { active: "down", engine, model: null, server: { ok: false, checkedAt: 1, reason: "unreachable", code: crashed ? "engine_crashed" : "not_ready" }, setup };
+}
+
+/**
+ * Before `page` loads: the stand-in device the test build reads (lib/ui/deviceInputs.ts) is
+ * `device`, as test/test-build.mjs deviceBuild would package it, for this page alone.
+ */
+export async function scriptDevice(page, device) {
+  await page.addInitScript((device) => {
+    const real = window.fetch.bind(window);
+    window.fetch = (input, init) => String(input?.url ?? input).endsWith("/test-device.json")
+      ? Promise.resolve(new Response(JSON.stringify(device), { headers: { "content-type": "application/json" } }))
+      : real(input, init);
+  }, device);
 }
 
 /**
  * Before `page` loads: its contract requests are answered with STATES[name] (the page can
- * switch with `window.__engineState = name` later), its backend-status question with
+ * switch with `window.__engineState = name` later), which engine is in use with `engine`
+ * (the in-browser one unless it says "native", or null for none chosen yet), its backend-status question with
  * backendFor(name), and — when given — the storage estimate with `estimate` and the
  * browser's Save-Data setting with `saveData`. Requests the page made are in `window.__engineOps`.
  */
-export async function scriptEngine(page, name, { crashed = false, estimate, saveData } = {}) {
-  await page.addInitScript(({ states, name, backends, estimate, saveData }) => {
+export async function scriptEngine(page, name, { crashed = false, engine = "inbrowser", estimate, saveData } = {}) {
+  await page.addInitScript(({ states, name, backends, engine, estimate, saveData }) => {
     window.__engineState = name;
     window.__engineOps = [];
     const api = globalThis.chrome;
@@ -82,9 +97,10 @@ export async function scriptEngine(page, name, { crashed = false, estimate, save
         return Promise.resolve({ v: 1, id: "scripted", ok: true, status: 200, data: states[window.__engineState] });
       }
       if (message?.action === "getBackendStatus") return Promise.resolve(backends[window.__engineState]);
+      if (message?.action === "getEngine") return Promise.resolve({ engine });
       return send(message, ...rest);
     };
     if (estimate) navigator.storage.estimate = () => Promise.resolve(estimate);
     if (saveData !== undefined) Object.defineProperty(navigator, "connection", { configurable: true, value: { saveData } });
-  }, { states: STATES, name, backends: Object.fromEntries(Object.keys(STATES).map((n) => [n, backendFor(n, { crashed })])), estimate, saveData });
+  }, { states: STATES, name, backends: Object.fromEntries(Object.keys(STATES).map((n) => [n, backendFor(n, { crashed, engine })])), engine, estimate, saveData });
 }

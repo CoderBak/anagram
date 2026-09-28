@@ -9,26 +9,30 @@ local component and the installer all carry the same version.
 
 ### Added
 
-- Anagram (in-browser), a second edition that runs the same pinned model inside the browser
-  (ONNX Runtime Web on WebGPU, in an offscreen document) with nothing else to install. Right
-  after install its model downloads by itself, once, from Hugging Face into the browser's
-  storage, with no permission to grant (fastText's language file ships in the package): the
-  setup page shows progress, speed and time left, Pause, Resume and Cancel, and offers
-  **Set up (one-time 1.4 GB download)** when Data Saver or a full disk held it back. A
-  download that stops says why and how to fix it (connection lost, disk full, server not
-  answering, a damaged file) and resumes where it left off. When ready,
-  Settings says whether the model runs on the graphics card or the processor, the storage it
-  takes, and holds the idle unload and **Delete model files**. Until then the popup and the
-  panel say setup is needed, or how far the download has got, with a button to the setup
-  page. It needs Chrome 137 or Firefox 153; its Chrome pages are cross-origin isolated, so
-  the processor path runs on up to eight threads, two fewer than the processor has: on an
-  M4 eight texts of 512 tokens take 10.7 s, against 14.4 s on four. The model's weights
-  are read from the browser's storage a tensor at a time, straight onto the graphics card,
-  and never held twice: on an M4 the browser takes 2.3 GB while the model loads and at
-  most 2.5 GB while scoring on the graphics card (2.0 GB on the processor), where holding
-  the model file whole had taken it to 7.2 GB, and when the idle time lets the model go
-  the engine's worker ends with it and the memory is given back. The engine runs on ONNX
-  Runtime Web 1.30 (MIT). The local engine's edition is unchanged.
+- One extension, two engines: Anagram can now run the same pinned model inside the browser
+  (ONNX Runtime Web on WebGPU, in an offscreen document) with nothing else to install, beside
+  the local engine. The setup page decides from what the browser says about the computer. On
+  an Apple Silicon Mac, or a Windows or Linux PC with an NVIDIA graphics card, it offers both,
+  the in-browser one highlighted, each with its speed and memory (on an M4, 92 ms a paragraph
+  and up to 2.5 GB in the browser, 43 ms and about 1.8 GB for the local engine), and nothing
+  downloads until you pick. Elsewhere the in-browser engine's model downloads by itself, once,
+  from Hugging Face into the browser's storage, with no permission to grant (fastText's
+  language file ships in the package); Firefox 140, which lacks WebAssembly JSPI, gets the
+  local engine alone; a computer with under 4 GB of memory or too little disk is told so and
+  downloads nothing, and 4 GB runs with a note that it may slow down. Picking the local engine
+  asks for Native Messaging, now an optional permission (an update keeps the grant 0.7.0 had),
+  then shows the install command; a refusal goes back to the choice. The in-browser setup
+  shows progress, speed and time left, Pause, Resume and Cancel, says why a download stopped
+  and resumes where it left off; when ready, Settings says whether the model runs on the
+  graphics card or the processor, and holds the idle unload and **Delete model files**.
+  Settings switches engines both ways and offers to delete what the in-browser engine left;
+  the popup and the panel name the engine in use; a local engine that keeps crashing is
+  offered the in-browser one beside Retry. The model's weights are read from the browser's
+  storage a tensor at a time, straight onto the graphics card: on an M4 the browser takes
+  2.3 GB while the model loads and at most 2.5 GB while scoring (2.0 GB on the processor,
+  on up to eight threads under the pages' cross-origin isolation), and an idle model's
+  worker ends and gives the memory back. Anagram now needs Chrome 137; Firefox stays at 140.
+  The engine runs on ONNX Runtime Web 1.30 (MIT).
 - A page whose comments come from another site's frame — Disqus, Facebook's comments
   plugin, utterances, giscus — says so in the panel and offers to allow that site. Anagram
   reads a frame only with access to its own site, so those threads went unread without a

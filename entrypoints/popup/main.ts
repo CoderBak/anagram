@@ -30,6 +30,9 @@ import type { BackendStatus, ControlMessage, EngineSetup, TabState } from "../..
 import { looksLikePdfUrl, READER_PAGE } from "../../lib/pdf/source";
 import { PDF_TAB_SCRIPTS_RUN } from "../../lib/surface";
 import { getFileAccess } from "../../lib/pdf/fileAccess";
+import { chooseEngine } from "../../lib/backend/engineChoice";
+import { decide } from "../../lib/device";
+import { readDeviceInputs } from "../../lib/ui/deviceInputs";
 
 const siteEl = document.getElementById("siteEnabled") as HTMLInputElement;
 const siteHostEl = document.getElementById("siteHost") as HTMLElement;
@@ -37,6 +40,7 @@ const actionEl = document.getElementById("action") as HTMLButtonElement;
 const statusEl = document.getElementById("status") as HTMLElement;
 const gearEl = document.getElementById("gear") as HTMLButtonElement;
 const backendEl = document.getElementById("backend") as HTMLElement;
+const switchEngineEl = document.getElementById("switchEngine") as HTMLButtonElement;
 // The one segmented control left is a Basecoat tab list (buttons with aria-selected).
 const displayModeEls = segButtons("displayMode");
 
@@ -139,7 +143,8 @@ function paint(): void {
   lead = popupLead(facts);
   (document.getElementById("localFileSettings") as HTMLButtonElement).hidden = lead.status !== "fileAccess";
   const down = lead.status === "daemon";
-  statusEl.classList.toggle("down", down);
+  statusEl.classList.toggle("down", down || lead.status === "crashed");
+  switchEngineEl.hidden = !(lead.status === "crashed" && canSwitch);
   const mismatch = facts.daemon === "mismatch";
 
   switch (lead.status) {
@@ -159,7 +164,10 @@ function paint(): void {
       statusEl.textContent = t("popupUnsupportedPage");
       break;
     case "daemon":
-      statusEl.textContent = t(mismatch ? "popupEngineOutdated" : ENGINE_DOWN);
+      statusEl.textContent = t(mismatch ? "popupEngineOutdated" : inBrowser ? "popupEngineInBrowserDown" : "popupEngineDown");
+      break;
+    case "crashed":
+      statusEl.textContent = t("popupEngineCrashed");
       break;
     case "fileAccess":
       statusEl.textContent = t("popupFileAccessNeeded");
@@ -190,9 +198,10 @@ function setupLabel(setup: EngineSetup): MessageKey {
   return setup.state === "needed" ? "engineSetUp" : setup.state === "downloading" || setup.state === "loading" ? "engineShowProgress" : "engineContinueSetup";
 }
 
-/** The engine's name in the popup: the in-browser edition's is not a program on this computer. */
-const ENGINE_LINE: MessageKey = import.meta.env.ANAGRAM_FLAVOR === "oneclick" ? "popupEngineInBrowser" : "popupEngine";
-const ENGINE_DOWN: MessageKey = import.meta.env.ANAGRAM_FLAVOR === "oneclick" ? "popupEngineInBrowserDown" : "popupEngineDown";
+/** The engine in use is the in-browser one, which is not a program on this computer. */
+let inBrowser = false;
+/** The local engine kept crashing and this device runs the in-browser engine: offer it. */
+let canSwitch = false;
 
 /** The engine line at the foot, when the engine is up (the action block says the rest). */
 function paintModel(s: BackendStatus | undefined): void {
@@ -200,7 +209,7 @@ function paintModel(s: BackendStatus | undefined): void {
   backendEl.hidden = !up;
   if (!up || !s) { backendEl.textContent = ""; return; }
   backendEl.textContent = s.server.outdated ? t("popupEngineOutdated")
-    : t(ENGINE_LINE, t("componentReady") + (s.server.device ? " · " + s.server.device : ""));
+    : t(inBrowser ? "popupEngineInBrowser" : "popupEngine", t("componentReady") + (s.server.device ? " · " + s.server.device : ""));
 }
 
 /** Is the local engine ready? If not, the action opens setup and Settings. */
@@ -214,6 +223,10 @@ async function refreshBackend(probe = false): Promise<void> {
     const there = s.server.reason === "contract";
     facts.daemon = (s.active === "server" && s.model) || s.active === "idle" ? "up" : there ? "mismatch" : "down";
     facts.setup = s.setup ?? null;
+    inBrowser = s.engine === "inbrowser";
+    facts.crashed = s.engine === "native" && s.server.code === "engine_crashed";
+    // The in-browser engine is offered beside Retry only where this device runs it.
+    if (facts.crashed && !canSwitch) canSwitch = (await readDeviceInputs().then(decide).catch(() => null))?.path != null;
     paintModel(s);
   } catch {
     // No worker to ask at all: say nothing about a model, and leave the page's own state
@@ -389,6 +402,11 @@ async function init(): Promise<void> {
         void browser.runtime.openOptionsPage();
         window.close();
         return;
+      case "retryEngine":
+        // A probe is a Retry: the worker may start the engine it gave up on once more.
+        actionEl.disabled = true;
+        void refreshBackend(true);
+        return;
       case "setup":
         // The setup page, where the download is started and followed.
         void browser.tabs.create({ url: browser.runtime.getURL("/onboarding.html") });
@@ -401,6 +419,16 @@ async function init(): Promise<void> {
         setTimeout(() => void refreshStatus(tab?.id), 1500);
         return;
     }
+  });
+
+  switchEngineEl.addEventListener("click", () => {
+    switchEngineEl.disabled = true;
+    // The download starts now, and the setup page shows it.
+    void chooseEngine("inbrowser", "now").then((reply) => {
+      if (!reply.ok) { switchEngineEl.disabled = false; statusEl.textContent = t("engineSwitchFailed"); return; }
+      void browser.tabs.create({ url: browser.runtime.getURL("/onboarding.html") });
+      window.close();
+    });
   });
 
   gearEl.addEventListener("click", () => {

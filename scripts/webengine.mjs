@@ -1,7 +1,7 @@
-// scripts/webengine.mjs — the in-browser engine's files under public-oneclick/vendor/engine/.
+// scripts/webengine.mjs — the in-browser engine's files under public/vendor/engine/.
 //
-// Three things, on every oneclick build (scripts/vendor.mjs calls vendorWebEngine in that
-// flavor; the engine's own suites call it too):
+// Three things, on every build (scripts/vendor.mjs calls vendorWebEngine; the engine's own
+// suites call it too):
 //   · ONNX Runtime Web, copied verbatim from the npm package installed under the alias
 //     onnxruntime-web-engine (package.json): the engine's own pin, apart from the
 //     onnxruntime-web that Zotero's document-worker is built with and verified against
@@ -17,9 +17,9 @@
 //     default JSEP build: on this model its WebGPU kernels answer wrongly
 //     (test/webengine/parity.mjs found every text off; ORT 1.27 and 1.30 alike), the
 //     native provider answers as the CPU does, and its JSPI variant runs several times
-//     faster than its Asyncify one. JSPI is in Chrome 137 and Firefox 153, the flavor's
-//     minimums (wxt.config.ts), so the package's plain WebAssembly build is not copied:
-//     this one binary serves the CPU path too. The package carries no licence file: its
+//     faster than its Asyncify one. JSPI is in Chrome 137, the manifest's minimum, and in
+//     Firefox 153 (on Firefox 140 the setup page offers the local engine only), so the
+//     package's plain WebAssembly build is not copied: this one binary serves the CPU path too. The package carries no licence file: its
 //     MIT licence is the document-worker pin's copy (the same text at
 //     every tag) and the notices of the libraries its WebAssembly links are ONNX Runtime's
 //     ThirdPartyNotices.txt at the installed version's tag, kept in scripts/licences/.
@@ -35,13 +35,12 @@
 //     fails on any other bytes. lib/webengine/pin.ts pins the same file for the engine, which
 //     checks it again whenever it loads the model.
 //
-//   node scripts/webengine.mjs      rebuild public-oneclick/vendor/engine/
+//   node scripts/webengine.mjs      rebuild public/vendor/engine/
 import { build } from "esbuild";
 import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ONECLICK_PUBLIC } from "./flavor.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -51,7 +50,7 @@ export const ORT_PACKAGE = "onnxruntime-web-engine";
 export const ORT_FILES = ["ort.jspi.min.mjs", "ort-wasm-simd-threaded.jspi.mjs", "ort-wasm-simd-threaded.jspi.wasm"];
 
 /** Where the files go, under the root. */
-export const ENGINE_DIR = join(ONECLICK_PUBLIC, "vendor", "engine");
+export const ENGINE_DIR = join("public", "vendor", "engine");
 
 /** The language identifier the package carries: download_modelkit.py's LID_URL and LID_ENTRY. */
 export const LID = {
@@ -87,7 +86,7 @@ export async function vendorWebEngine(root) {
   const version = JSON.parse(readFileSync(join(root, "node_modules", ORT_PACKAGE, "package.json"), "utf8")).version;
   const notices = join(root, "scripts", "licences", `ThirdPartyNotices.onnxruntime-web-${version}.txt`);
   if (!existsSync(notices)) throw new Error(`${ORT_PACKAGE} is onnxruntime-web ${version}: put ONNX Runtime's ThirdPartyNotices.txt at tag v${version} in ${notices}`);
-  rmSync(join(root, ONECLICK_PUBLIC), { recursive: true, force: true });
+  rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
   for (const name of ORT_FILES) copyFileSync(join(root, "node_modules", ORT_PACKAGE, "dist", name), join(out, name));
   copyFileSync(join(root, "vendor", "document-worker", "LICENSE.onnxruntime-web"), join(out, "LICENSE.onnxruntime-web"));
@@ -106,7 +105,7 @@ export async function vendorWebEngine(root) {
   const foreign = Object.values(metafile.outputs).flatMap((o) => Object.keys(o.inputs)).filter((id) => id.includes("node_modules/"));
   if (foreign.length > 0) throw new Error(`${ENGINE_DIR}/worker.min.mjs bundles code from node_modules, which needs a notice and its own chunk:\n  ${foreign.join("\n  ")}`);
   const sizes = [...ORT_FILES, "worker.min.mjs", LID.name].map((name) => `${name} ${(statSync(join(out, name)).size / 1024).toFixed(0)} kB`);
-  console.log(`${ENGINE_DIR}/  ${sizes.join(", ")} (onnxruntime-web ${version}, oneclick flavor)`);
+  console.log(`${ENGINE_DIR}/  ${sizes.join(", ")} (onnxruntime-web ${version})`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

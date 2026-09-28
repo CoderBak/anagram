@@ -1,16 +1,17 @@
 // scripts/buildTest.mjs — build the TEST variant of the extension into output-test/.
 //
-// The shipping build installs with access to no site, and a permission prompt is native
-// browser UI that no automation can click. The variant differs in exactly one way: the two
-// optional site patterns are REQUIRED host permissions instead (see ANAGRAM_TEST_GRANT_ALL
-// in wxt.config.ts), so the very same runtime registration runs and finds everything
-// granted. Everything else — the code, the pages, the messages — is identical.
+// The shipping build installs with access to no site and without Native Messaging, and a
+// permission prompt is native browser UI that no automation can click. The variant differs
+// in two ways: the two optional site patterns and nativeMessaging are REQUIRED instead (see
+// ANAGRAM_TEST_GRANT_ALL in wxt.config.ts), so the very same runtime registration runs and
+// finds everything granted, and the local engine is the one in use unless a suite chooses;
+// and its pages read a stand-in device from test-device.json when a suite puts one in a
+// copy of the build (lib/ui/deviceInputs.ts, test/test-build.mjs). The shipping build has no
+// such code. Everything else — the pages, the messages — is identical.
 //
 //   node scripts/buildTest.mjs             # Chrome MV3  → output-test/chrome-mv3
 //   node scripts/buildTest.mjs --firefox   # Firefox MV2 → output-test/firefox-mv2
 //   node scripts/buildTest.mjs --all
-//
-// As the oneclick flavor (npm run build:test:oneclick), into output-test/oneclick-*.
 //
 // It is a node script rather than an env var in package.json because `VAR=1 cmd` is not a
 // command on Windows, and the suites run there too.

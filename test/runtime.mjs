@@ -6,9 +6,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { launchExtension } from "./harness.mjs";
 import { createNativeFixture } from "./fake-native.mjs";
+import { shippingWithNative } from "./test-build.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const EXT = join(ROOT, "output/chrome-mv3");
+// The shipping build, with Native Messaging granted as picking the local engine grants it.
+const EXT = shippingWithNative();
 const manifest = JSON.parse(readFileSync(join(EXT, "manifest.json"), "utf8"));
 assert.equal(manifest.host_permissions, undefined, "Use a shipping build with no host permissions");
 const candidates = [

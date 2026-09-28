@@ -20,14 +20,14 @@ worker-src 'self'; frame-src 'self'; form-action 'none'; base-uri 'none'
 Every ordinary extension page tightens `connect-src` to `'self'` with a meta tag. The
 wide manifest value exists only for the private PDF loader frame, which sets a policy
 naming the exact authorized source right before its single read. Scoring goes over
-Native Messaging, which is outside `connect-src`; the local component runs with the
-user's ordinary OS privileges and is not sandboxed by browser CSP. The oneclick flavor
-(`scripts/flavor.mjs`) has no Native Messaging: it scores inside the browser
-(`lib/webengine/`), and its only requests are the one-time model downloads from Hugging
-Face (`lib/webengine/pin.ts` below), which answers them with CORS headers, so no host
-permission is held for them; the language-ID file ships in the package. Its engine page
-(`engine.html`, Chrome's offscreen document) keeps the manifest's `connect-src`: the
-worker it hosts is what performs those downloads, into the extension's own storage.
+Native Messaging when the local engine is the one in use, which is outside `connect-src`;
+the local component runs with the user's ordinary OS privileges and is not sandboxed by
+browser CSP. The in-browser engine scores inside the browser (`lib/webengine/`), and its
+only requests are the one-time model downloads from Hugging Face (`lib/webengine/pin.ts`
+below), which answers them with CORS headers, so no host permission is held for them; the
+language-ID file ships in the package. Its engine page (`engine.html`, Chrome's offscreen
+document) keeps the manifest's `connect-src`: the worker it hosts is what performs those
+downloads, into the extension's own storage.
 
 ### Every call site
 
@@ -39,7 +39,8 @@ worker it hosts is what performs those downloads, into the extension's own stora
 | `lib/pdf/loader.ts` | `fetch(` | reads an online PDF only after the private loader validates its one-use source ticket and current website access; rejects redirects | the exact authorized original HTTP(S) PDF URL, with normal browser credentials and no referrer |
 | `lib/pdf/loader.ts` | `XMLHttpRequest` | reads bytes for an authorized local PDF after checking file access, size and PDF signature | the exact authorized local file URL; remote-host file URLs are rejected |
 | `lib/lazy.ts` | `import(` | loads one of the vendored chunks that ship inside the extension (Defuddle, DOMPurify, the diagnostics chunk, the surfaces chunk, the report's paragraph links, pdf.js) | `chrome-extension://<this extension>/vendor/…` |
-| `lib/webengine/download.ts` | `fetch(` | downloads the pinned model files once, resumably, verifying each against its pinned SHA-256 as it streams; anonymous, no credentials, no referrer; and reads lid.176.ftz, which the package ships, checking it against its pinned SHA-256 whenever the model loads (the in-browser engine build only) | the exact pinned addresses in `lib/webengine/pin.ts`: the modelkit on huggingface.co (following its redirect to its storage), and `chrome-extension://<this extension>/vendor/engine/lid.176.ftz` |
+| `lib/webengine/download.ts` | `fetch(` | downloads the pinned model files once, resumably, verifying each against its pinned SHA-256 as it streams; anonymous, no credentials, no referrer; and reads lid.176.ftz, which the package ships, checking it against its pinned SHA-256 whenever the model loads (the in-browser engine only) | the exact pinned addresses in `lib/webengine/pin.ts`: the modelkit on huggingface.co (following its redirect to its storage), and `chrome-extension://<this extension>/vendor/engine/lid.176.ftz` |
+| `lib/ui/deviceInputs.ts` | `fetch(` | the test build only (absent from the shipping bundles): reads the stand-in device a suite put beside the pages | `chrome-extension://<this extension>/test-device.json` |
 | `lib/webengine/session.ts` | `import(` | loads ONNX Runtime Web, which ships inside the extension, into the engine's worker | `chrome-extension://<this extension>/vendor/engine/ort.jspi.min.mjs` |
 
 There is no analytics, error-reporting or telemetry endpoint. The component update
@@ -130,6 +131,7 @@ Nothing is written to `storage.sync`, `storage.session` or `storage.managed`.
 | Key | What it holds |
 | --- | --- |
 | `extensionUpdatePending` | version of a browser extension update waiting for the user to reload |
+| `engine` | the engine the user chose, `native` or `inbrowser`; unset until the setup page or Settings has one |
 | `enabled` | the master switch |
 | `siteOverrides` | per-site on/off rules, as hostnames the user chose |
 | `showHighlights` | whether analyzed text is underlined in place |
@@ -160,11 +162,11 @@ rows expire 30 days after they were written.
 - The packaged PDF.js viewer uses `localStorage` keys `pdfjs.history` (up to 20 document
   fingerprints with view state, no text or password) and `pdfjs.preferences`. These are
   not erased by "Clear cached verdicts".
-- The in-browser engine build keeps its model files in the extension origin's private
-  file system (OPFS), directory `anagram-engine`: the verified model and tokenizer
-  files, `.part` files of an unfinished download, and `state.json` (the
-  engine's preferences and which files were verified). Deleted by "Delete model files";
-  never page text.
+- The in-browser engine keeps its model files in the extension origin's private file
+  system (OPFS), directory `anagram-engine`: the verified model and tokenizer files, `.part`
+  files of an unfinished download, and `state.json` (the engine's preferences and which
+  files were verified). Deleted by "Delete model files", or in Settings once the local
+  engine is in use; never page text.
 
 ## On disk, outside the browser
 

@@ -17,7 +17,9 @@
 //
 // Options, with test.use():
 //   build       "test" (output-test/, which grants every site), "shipping" (output/, what
-//               `npm run build` makes) or the path of an unpacked build
+//               `npm run build` makes, with Native Messaging granted as picking the local
+//               engine grants it: test/test-build.mjs shippingWithNative) or the path of an
+//               unpacked build
 //   launch      extra launchExtension() options: viewport, colorScheme, …
 //   uiLanguage  the browser's UI language ("zh-CN"); a test the browser does not come up
 //               in that language for is skipped, never run against English
@@ -32,9 +34,9 @@ import { isAbsolute, join } from "node:path";
 import { test as base, expect } from "@playwright/test";
 import { closeServer, launchExtension, uiLanguage as uiLanguageLaunch, uiLanguageOf } from "../harness.mjs";
 import { createNativeFixture } from "../fake-native.mjs";
+import { shippingWithNative } from "../test-build.mjs";
 import { LOCKED_PDF, TEST_PDF } from "../pdf-fixture.mjs";
 
-const SHIPPING = join(import.meta.dirname, "..", "..", "output", "chrome-mv3");
 
 /** What a route answers: an HTML string, bytes (a PDF when the path says so) or a handler. */
 function answer(route, path, req, res) {
@@ -73,7 +75,7 @@ export const test = base.extend({
   },
 
   extension: async ({ build, launch, uiLanguage, tracing, nativeHost }, use, testInfo) => {
-    const extDir = build === "shipping" ? SHIPPING : isAbsolute(build) ? build : undefined;
+    const extDir = build === "shipping" ? shippingWithNative() : isAbsolute(build) ? build : undefined;
     const language = uiLanguage ? uiLanguageLaunch(uiLanguage) : {};
     const launched = await launchExtension({ nativeFixture: nativeHost, extDir, ...language, ...launch });
     if (!launched.extId) {

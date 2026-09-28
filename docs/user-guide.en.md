@@ -4,43 +4,47 @@
 
 ## Install
 
-1. Get the Chrome ZIP from the [latest release](https://github.com/CoderBak/anagram/releases).
-   Extract it to a folder you will keep. Open `chrome://extensions`, turn on Developer
-   mode, click **Load unpacked** and pick that folder. Do not move the folder later; its
-   location is part of the extension's identity.
-2. The setup page opens. Copy the command it shows and run it in Terminal. No
-   administrator password or system Python is needed. The command installs the local
-   engine under `~/.anagram`, registers it for this exact extension, and downloads the
-   model files with progress in the terminal. If the download is interrupted, run
-   `~/.anagram/bin/anagram download` to resume.
-3. Go back to the browser. The engine detects your hardware, loads the best
-   configuration, and the setup page says **Ready**.
+Get the Chrome ZIP from the [latest release](https://github.com/CoderBak/anagram/releases)
+(Chrome 137 or later). Extract it to a folder you will keep. Open `chrome://extensions`,
+turn on Developer mode, click **Load unpacked** and pick that folder. Do not move the folder
+later; its location is part of the extension's identity.
 
-The command shown in a development build is disabled because no matching release
-exists for it yet.
+The setup page opens and decides how Anagram runs its model. Either way the model runs on
+this computer:
 
-Anagram also runs in Firefox 140 or later, ESR included, from its Firefox ZIP, with the
-same setup. Firefox keeps an unsigned add-on only in ESR, Developer Edition and Nightly
-with `xpinstall.signatures.required` set to false in `about:config`; elsewhere,
-`about:debugging` loads it until Firefox restarts.
+- **On most computers** it runs inside the browser, and its model starts downloading at once:
+  1.4 GB, one time, from Hugging Face into the browser's own storage. With Data Saver on, or
+  too little disk space, it waits for **Set up (one-time 1.4 GB download)** instead.
+- **On an Apple Silicon Mac, or a Windows or Linux PC with an NVIDIA graphics card**, where a
+  local engine is clearly faster, the page asks first, and nothing downloads until you pick:
+  **One click** runs in the browser as above. **Terminal** asks the browser to let Anagram
+  talk to a local engine, then shows one command: run it in Terminal. No administrator
+  password or system Python is needed. It installs the engine under `~/.anagram`, registers
+  it for this exact extension, and downloads the model files with progress in the terminal
+  (`~/.anagram/bin/anagram download` resumes an interrupted download). On an M4 the local
+  engine scores a paragraph in about 43 ms with about 1.8 GB of memory; the browser takes
+  about 92 ms and up to 2.5 GB.
+- **A computer with less than 4 GB of memory**, or too little free disk space, is told so,
+  and nothing is downloaded; with exactly 4 GB it runs, and may slow down while it scores.
 
-## The in-browser edition
+The in-browser download shows progress, speed and time left, with Pause, Resume and Cancel;
+a download that stops says why, and **Retry** continues where it left off. The model runs on
+the graphics card through WebGPU, or on the processor, much more slowly, where the browser
+offers no usable GPU. The local engine detects your hardware and loads the best
+configuration itself. When the setup page says **Ready**, allow sites as described below.
 
-Anagram (in-browser) runs the same model inside the browser, with nothing else to install.
-It needs Chrome 137 or later, or Firefox 153 or later.
+Settings switches between the two engines later. Switching to the local engine keeps the
+in-browser engine's model files until you delete them there. If the local engine keeps
+stopping unexpectedly, the setup page and the popup offer the in-browser engine beside Retry.
 
-1. Install the extension. The setup page opens with the model already downloading: 1.4 GB,
-   once, from Hugging Face into the browser's own storage. With Data Saver on, or too little
-   disk space, it waits for **Set up (one-time 1.4 GB download)** instead.
-2. The page shows progress, speed and time left. You can pause, resume or cancel. A
-   download that stops says why; **Retry** continues where it left off.
-3. When it says **Ready**, allow sites as described below.
+The command shown in a development build is disabled because no matching release exists
+for it yet.
 
-The model runs on the graphics card through WebGPU, or on the processor, much more slowly,
-where the browser offers no usable GPU. Even on the GPU it is about two to three times
-slower than the local engine, and it uses more memory: several gigabytes while it scores.
-It unloads after five minutes without work (Settings, **Manage**). **Delete model files**
-there frees the 1.4 GB, and removing the extension removes them too.
+Anagram also runs in Firefox 140 or later, ESR included, from its Firefox ZIP. Firefox 140
+runs the local engine only; the in-browser engine needs Firefox 153. Firefox keeps an
+unsigned add-on only in ESR, Developer Edition and Nightly with
+`xpinstall.signatures.required` set to false in `about:config`; elsewhere, `about:debugging`
+loads it until Firefox restarts.
 
 ## Read
 
@@ -102,9 +106,10 @@ off until you switch it on again.
 
 The toolbar icon's gear opens Settings.
 
-- **Local engine**: status, update, delete model files, uninstall. **Advanced** lists
-  the configurations that work on this computer, lets you switch, and can run a
-  benchmark to compare them. FP32 is always the automatic choice; FP16 is optional.
+- **Local engine** or **In-browser engine**: status, delete model files, and the switch to
+  the other engine. The local engine adds update and uninstall, and **Advanced** lists the
+  configurations that work on this computer, lets you switch, and can run a benchmark to
+  compare them. FP32 is always the automatic choice; FP16 is optional.
 - **Marks**: whether text is marked in place, and whether chips appear on every
   paragraph or only on flagged ones.
 - **Scope**: the whole page, or the main article only.
@@ -117,7 +122,8 @@ The engine unloads the model after five minutes without work and reloads on dema
 ## Update and remove
 
 To update the extension, replace the files in the same folder and press Reload on
-`chrome://extensions`. Update the local engine from Settings when it asks.
+`chrome://extensions`. Update the local engine from Settings when it asks. Removing the
+extension removes the in-browser engine's model files with it.
 
 **Uninstall** in Settings removes the engine, the model files, the browser registration
 and then the extension. Removing the extension from Chrome alone leaves the engine on
@@ -127,6 +133,7 @@ everything inside it.
 
 ## Privacy
 
-Scoring is local. The engine uses the network only to download models and updates.
+Scoring is local, in either engine; nothing is scored on a server. The engines use the
+network only to download the model and, for the local engine, updates.
 Opening an online PDF or a Google Doc re-reads that document from its source. See
 [PRIVACY.md](../PRIVACY.md) for the full data boundary.

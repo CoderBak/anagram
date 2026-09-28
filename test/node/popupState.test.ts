@@ -101,8 +101,8 @@ describe("what the popup leads with", () => {
     }
   });
 
-  it("offers the in-browser engine's setup page where it has not been set up, on every page but a PDF", () => {
-    // The oneclick flavor says what setup is doing; the native one never sets `setup`.
+  it("offers the setup page where no engine is set up yet, or the in-browser one is not, on every page but a PDF", () => {
+    // The worker says what setup is doing; for the local engine it never sets `setup`.
     for (const state of ["needed", "downloading", "paused", "failed", "loading"] as const) {
       const setup = { state, percent: 45 };
       for (const over of [{}, { tab: null }, { pattern: null }, { hasTab: false }]) {
@@ -113,6 +113,15 @@ describe("what the popup leads with", () => {
       expect(lead({ daemon: "up", setup })).toEqual({ action: "rescan", primary: false, status: "counts" });
     }
     expect(lead({ daemon: "down", setup: null })).toEqual({ action: "retry", primary: true, status: "daemon" });
+  });
+
+  it("offers Retry where the local engine kept crashing, on every page but a PDF", () => {
+    // The popup puts the in-browser engine beside it (./main.ts) where the device runs it.
+    for (const over of [{}, { tab: null }, { pattern: null }, { hasTab: false }]) {
+      expect(lead({ ...over, daemon: "down", crashed: true })).toEqual({ action: "retryEngine", primary: true, status: "crashed" });
+    }
+    expect(lead({ pdfTab: true, daemon: "down", crashed: true })).toEqual({ action: "readPdf", primary: true, status: "none" });
+    expect(lead({ daemon: "up", crashed: true })).toEqual({ action: "rescan", primary: false, status: "counts" });
   });
 
   it("keeps PDF reading available before engine setup and with the engine stopped", () => {

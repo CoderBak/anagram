@@ -20,7 +20,9 @@ export type PopupAction =
   | "openReader"
   /** the local engine is unavailable — open Settings */
   | "retry"
-  /** the in-browser engine is not set up yet — open its setup page */
+  /** the local engine kept crashing and is no longer restarted — start it once more */
+  | "retryEngine"
+  /** no engine is set up yet, or the in-browser one is not — open the setup page */
   | "setup";
 
 /** Which line goes above the button. */
@@ -37,7 +39,9 @@ export type PopupStatus =
   | "noTab"
   /** the local engine is unavailable — show its state and the Settings action */
   | "daemon"
-  /** the in-browser engine is not set up yet, or is downloading its model */
+  /** the local engine kept crashing — say so, with Retry (and the in-browser engine beside it) */
+  | "crashed"
+  /** no engine is set up yet, or the in-browser one is not yet, or is downloading its model */
   | "setup"
   | "fileAccess"
   /** the button says everything there is to say */
@@ -59,8 +63,10 @@ export interface PageFacts {
   tab: { enabled: boolean; translated?: boolean } | null;
   /** The local daemon. Everything else is beside the point while this is not "up". */
   daemon: "up" | "down" | "mismatch";
-  /** The in-browser engine's setup, while that is why it is down (the oneclick flavor only). */
+  /** Setup, while that is why the engine is down: none chosen yet, or the in-browser one's. */
   setup?: EngineSetup | null;
+  /** The local engine kept crashing and was given up on (lib/backend/portTransport.ts). */
+  crashed?: boolean;
 }
 
 export interface PopupLead {
@@ -78,6 +84,7 @@ export const ACTION_LABEL: Record<PopupAction, MessageKey> = {
   readPdf: "popupReadPdf",
   openReader: "popupOpenReader",
   retry: "onbOpenSettings",
+  retryEngine: "panelRetry",
   setup: "engineSetUp",
 };
 
@@ -88,7 +95,10 @@ export function popupLead(f: PageFacts): PopupLead {
       ? { action: "readPdf", primary: true, status: "none" }
       : { action: "openReader", primary: false, status: "fileAccess" };
   }
-  if (f.daemon !== "up") return f.setup ? { action: "setup", primary: true, status: "setup" } : { action: "retry", primary: true, status: "daemon" };
+  if (f.daemon !== "up") {
+    if (f.setup) return { action: "setup", primary: true, status: "setup" };
+    return f.crashed ? { action: "retryEngine", primary: true, status: "crashed" } : { action: "retry", primary: true, status: "daemon" };
+  }
   if (!f.hasTab) return { action: "openReader", primary: false, status: "noTab" };
   // Neither a rescan nor a one-off run reads a translated page, so neither is offered.
   if (f.tab?.translated === true) return { action: "openReader", primary: false, status: "translated" };

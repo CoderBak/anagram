@@ -83,9 +83,17 @@ export const ACTIONS = {
    *  cannot ask the browser for a site, so the worker opens the settings page, where the
    *  reader's click can. */
   OPEN_COMMENT_ACCESS: "openCommentAccess",
-  /** content (top frame) / reader → SW: the panel's button when the in-browser engine is not
-   *  set up. A content script cannot open an extension page, so the worker opens setup. */
+  /** content (top frame) / reader → SW: the panel's button when no engine is set up yet, or
+   *  the in-browser one is not. A content script cannot open an extension page, so the worker
+   *  opens setup. */
   OPEN_ENGINE_SETUP: "openEngineSetup",
+  /** setup page / Settings / popup → SW: which engine scores (lib/backend/engines.ts). */
+  GET_ENGINE: "getEngine",
+  /** setup page / Settings / popup → SW: score with this engine from now on, and start the
+   *  in-browser one's setup when asked (lib/backend/engineChoice.ts). */
+  SET_ENGINE: "setEngine",
+  /** Settings → SW: delete the in-browser engine's model files while the local engine is in use. */
+  DELETE_INBROWSER_MODEL: "deleteInBrowserModel",
 } as const;
 
 /** SW → content (response to COMMENT_ACCESS): the providers' patterns nothing grants. */
@@ -143,9 +151,11 @@ export interface BackendStatus {
     /** A compatible component reports an older release than this extension. */
     outdated?: boolean;
   };
-  /** The in-browser engine (the oneclick flavor) while it is down because it is not set up:
-   *  what its setup is doing. Never set by the local engine. */
+  /** While scoring is down because the in-browser engine is not set up, or no engine is
+   *  chosen yet ("needed"): what setup is doing. Never set for the local engine. */
   setup?: EngineSetup | null;
+  /** The engine in use; null before one is chosen (lib/backend/engines.ts). */
+  engine?: "native" | "inbrowser" | null;
 }
 
 /** How far the in-browser engine's one-time setup has got (lib/backend/engineSetup.ts). */

@@ -1,10 +1,9 @@
-// The engine panel of the oneclick flavor, in place of lib/ui/componentSettings.ts: the
-// setup page and Settings import either as "#flavor/engine-panel" (scripts/flavor.mjs), so
-// this exports the same names with the same types. There is nothing to install and no
-// command: the download starts by itself when the extension is installed
-// (lib/webengine/autoSetup.ts), and one button asks the engine for `models.download` when it
-// did not: the browser asks sites to save data or has too little room, which the panel says,
-// or the person cancelled, paused or deleted. Hugging Face answers the engine's requests
+// The in-browser engine's panel, in place of lib/ui/componentSettings.ts when that engine is
+// the one in use (lib/ui/engineCard.ts), so this exports the same names with the same types.
+// There is nothing to install and no command: the download starts when the engine is picked,
+// or by itself on a device with no choice (lib/webengine/autoSetup.ts), and one button asks
+// the engine for `models.download` when it did not: the browser asks sites to save data or
+// has too little room, which the panel says, or the person cancelled, paused or deleted. Hugging Face answers the engine's requests
 // with CORS headers, so no host permission is asked for. The rest is the
 // engine's `status`, told in plain words (lib/backend/engineSetup.ts): progress with speed
 // and time left, Pause, Resume and Cancel, what stopped a download and how to fix it, and
@@ -76,7 +75,7 @@ class Speedometer {
   }
 }
 
-export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: ComponentReply) => void): { refresh(): void; destroy(): void } {
+export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: ComponentReply) => void, _options: { crashAction?: HTMLButtonElement } = {}): { refresh(): void; destroy(): void } {
   host.classList.add("component-settings");
   host.dataset.engine = "in-browser";
   const makeButton = (key: MessageKey, handler: () => void, variant?: string): HTMLButtonElement => {
