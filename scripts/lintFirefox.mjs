@@ -50,8 +50,8 @@ const ACCEPTED = [
       "PDF.js's worker and decoders, and the document worker's modules. Nothing remote.",
   },
   {
-    flavor: "oneclick", code: "UNSAFE_VAR_ASSIGNMENT", message: IMPORT, file: /^vendor\/engine\/(ort\.jspi\.min|ort\.wasm\.min|worker\.min)\.mjs$/, count: 3,
-    why: "ONNX Runtime Web as published: import() of its Emscripten glue, ort-wasm-simd-threaded[.jspi].mjs, " +
+    flavor: "oneclick", code: "UNSAFE_VAR_ASSIGNMENT", message: IMPORT, file: /^vendor\/engine\/(ort\.jspi\.min|worker\.min)\.mjs$/, count: 2,
+    why: "ONNX Runtime Web as published: import() of its Emscripten glue, ort-wasm-simd-threaded.jspi.mjs, " +
       "from the extension's own vendor/engine/; and the engine's worker importing that runtime by its " +
       "extension URL (lib/webengine/session.ts). Nothing remote.",
   },

@@ -18,16 +18,9 @@ export function workerInit(): Omit<WorkerInit, "type"> {
   return {
     pin: pin(url(LID_PATH)),
     assets: {
-      jspi: {
-        ort: url("/vendor/engine/ort.jspi.min.mjs"),
-        mjs: url("/vendor/engine/ort-wasm-simd-threaded.jspi.mjs"),
-        wasm: url("/vendor/engine/ort-wasm-simd-threaded.jspi.wasm"),
-      },
-      plain: {
-        ort: url("/vendor/engine/ort.wasm.min.mjs"),
-        mjs: url("/vendor/engine/ort-wasm-simd-threaded.mjs"),
-        wasm: url("/vendor/engine/ort-wasm-simd-threaded.wasm"),
-      },
+      ort: url("/vendor/engine/ort.jspi.min.mjs"),
+      mjs: url("/vendor/engine/ort-wasm-simd-threaded.jspi.mjs"),
+      wasm: url("/vendor/engine/ort-wasm-simd-threaded.jspi.wasm"),
     },
     version,
   };

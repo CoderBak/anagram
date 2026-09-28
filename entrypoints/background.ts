@@ -379,9 +379,9 @@ export default defineBackground(() => {
         // A probe is somebody's Retry: an engine given up on after it kept dying may start again.
         if (msg.probe===true) engineTransport().retry?.();
         const status=await getScoreClient().status(msg.probe===true);
-        // The in-browser engine is down until it is set up: the popup and the panel say how far
-        // setup has got, and offer its page, instead of "not ready".
-        if (import.meta.env.ANAGRAM_FLAVOR !== "oneclick" || status.active !== "down" || status.server.code === "engine_crashed") return status;
+        // The in-browser engine is down until it is set up, and then loading: the popup and the
+        // panel say how far setup has got, and offer its page, instead of "not ready".
+        if (import.meta.env.ANAGRAM_FLAVOR !== "oneclick" || (status.active !== "down" && status.active !== "loading") || status.server.code === "engine_crashed") return status;
         return {...status,setup:await readEngineSetup((op) => engineTransport().request(op))} satisfies BackendStatus;
       }
       case ACTIONS.OPEN_ENGINE_SETUP: {

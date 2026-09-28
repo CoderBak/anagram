@@ -448,6 +448,8 @@ export class Engine {
       case "health": {
         checkPayloadKeys(payload);
         if (this.state === "idle") throw new EngineError("engine_idle", "The engine was unloaded while idle; scoring will reload it", 503);
+        // Not "not ready": a score or count sent now waits for the model (wakeAndWait).
+        if (this.state === "loading") throw new EngineError("engine_loading", "The model is loading; what is sent waits for it", 503);
         if (!this.loaded || this.state !== "ready") throw new EngineError("not_ready", "The local engine is not ready; open component settings", 503);
         return { status: 200, data: this.info(this.loaded) };
       }
@@ -604,7 +606,7 @@ export class Engine {
       }
       const scored = todo.length ? await scoreTexts(loaded.session, loaded.tokenizer, todo.map((b) => b.text)) : [];
       todo.forEach((block, i) => {
-        const r = scored[i];
+        const r = scored[i]!; // one result per text, in order (scoreTexts)
         results.set(block.id, { id: block.id, bucket: r.bucket, probs: r.probs, score: r.score, tokens: r.tokens, truncated: r.truncated, lang: block.lang, lang_prob: pyRound(block.prob, 3) });
       });
       this.lastActivity = this.now();

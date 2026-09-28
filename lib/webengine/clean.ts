@@ -29,13 +29,13 @@ function normalizeWhitespace(text: string): string {
 function removeThinkTag(text: string): string {
   // Python: text.split("</think>")[1].strip() — the part between the first and the second tag.
   if (!text.includes("</think>")) return text;
-  return pyStrip(text.split("</think>")[1]);
+  return pyStrip(text.split("</think>")[1]!);
 }
 
 function removeAiHeader(text: string): string {
   const paragraphs = text.split("\n").filter((p) => !ONLY_SPACE.test(p));
   if (paragraphs.length === 0) return text;
-  let first = paragraphs[0].replace(/^[^a-zA-Z0-9]*/, "");
+  let first = paragraphs[0]!.replace(/^[^a-zA-Z0-9]*/, "");
   first = removeEmoji(first);
   if (BOILERPLATE_STARTS.some((p) => first.startsWith(p)) && paragraphs.length > 1) return paragraphs.slice(1).join("\n");
   return text;

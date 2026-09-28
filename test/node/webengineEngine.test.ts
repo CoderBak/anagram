@@ -7,7 +7,7 @@ import { Engine, type LoadedSession } from "../../lib/webengine/engine";
 import { parseEngineRequest, parseScorePayload, parseTokensPayload } from "../../lib/webengine/protocol";
 import { sha256Hex } from "../../lib/webengine/sha256";
 import { MemoryStore } from "../../lib/webengine/storage";
-import type { Candidate } from "../../lib/webengine/session";
+import { probeRuntimes, type Candidate } from "../../lib/webengine/session";
 import { tinyTokenizerJson } from "../fixtures/webengine/tinyTokenizer.mjs";
 import { fakeServer, type FakeServerOptions } from "./webengineFake";
 
@@ -27,7 +27,7 @@ const pin = (lid: Uint8Array = LID) => ({
   model: { id: "editlens_roberta-large", calibration: "editlens-4bucket-cosine(0.03,0.15)" },
   license: "CC-BY-NC-SA-4.0",
 });
-const ASSETS = { jspi: { ort: "x", mjs: "x", wasm: "x" }, plain: { ort: "x", mjs: "x", wasm: "x" } };
+const ASSETS = { ort: "x", mjs: "x", wasm: "x" };
 
 /** make-fixtures.py's table: what the tiny ONNX model computes. */
 const row = (i: number) => [((i % 7) / 7 - 0.5) * 0.4, ((i % 11) / 11 - 0.5) * 0.4, ((i % 13) / 13 - 0.5) * 0.4, ((i % 17) / 17 - 0.5) * 0.4];
@@ -52,7 +52,7 @@ async function fakeSession(candidate: Candidate, model: Blob, log: string[]): Pr
 }
 
 interface Made { engine: Engine; store: MemoryStore; log: string[]; server: ReturnType<typeof fakeServer>; clock: { now: number } }
-function make(options: { store?: MemoryStore; server?: FakeServerOptions; failing?: string[]; probe?: Candidate[]; idle?: boolean; lid?: Uint8Array } = {}): Made {
+function make(options: { store?: MemoryStore; server?: FakeServerOptions; failing?: string[]; probe?: Candidate[]; idle?: boolean; lid?: Uint8Array; hold?: Promise<void> } = {}): Made {
   const store = options.store ?? new MemoryStore();
   const log: string[] = [];
   const server = fakeServer(FILES, options.server);
@@ -61,6 +61,7 @@ function make(options: { store?: MemoryStore; server?: FakeServerOptions; failin
     pin: pin(options.lid), assets: ASSETS, version: "9.9.9", store, transport: server.fetch, retryWaits: [0],
     createSession: async (candidate, model) => {
       if (options.failing?.includes(candidate.id)) { log.push(`fail ${candidate.id}`); throw new Error("no such device"); }
+      await options.hold; // a model that takes its time to load
       return fakeSession(candidate, model, log);
     },
     probe: async () => options.probe ?? candidates(),
@@ -255,6 +256,24 @@ describe("the engine's lifecycle", () => {
     expect(m.server.requests).toEqual([]);
   });
 
+  it("says it is loading, not down, while the model loads, and holds a score until it is in", async () => {
+    const first = track(make());
+    await first.engine.handle("models.download", {});
+    await ready(first.engine);
+    await first.engine.close();
+    let loaded!: () => void;
+    const m = track(make({ store: first.store, hold: new Promise<void>((resolve) => { loaded = resolve; }) }));
+    expect(((await m.engine.handle("status", {})).data as { state: string }).state).toBe("loading");
+    await fails(m.engine.handle("health", {}), "engine_loading", 503);
+    let answered = false;
+    const score = m.engine.handle("score", { v: "3.0", blocks: [{ id: "a", text: "hello world" }] }).finally(() => { answered = true; });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(answered).toBe(false);
+    loaded();
+    expect(((await score).data as { results: Array<{ lang: string }> }).results[0]!.lang).toBe("en");
+    expect((await m.engine.handle("health", {})).data).toMatchObject({ ok: true, device: "webgpu" });
+  });
+
   it("stops and resumes, and deletes the model files", async () => {
     const m = track(make());
     await m.engine.handle("models.download", {});
@@ -313,6 +332,23 @@ describe("the engine's lifecycle", () => {
     const settled = await Promise.allSettled(many);
     expect(settled.filter((s) => s.status === "rejected")).toHaveLength(1);
     expect((settled[8] as PromiseRejectedResult).reason).toMatchObject({ code: "busy", status: 409 });
+  });
+});
+
+describe("the runtimes a browser offers", () => {
+  const wasm = globalThis.WebAssembly as { Suspending?: unknown };
+  afterEach(() => { delete wasm.Suspending; });
+
+  it("needs WebAssembly JSPI on both paths, the runtime's only build", async () => {
+    delete wasm.Suspending;
+    const without = await probeRuntimes();
+    expect(without.map((c) => [c.id, c.available])).toEqual([["webgpu:fp32", false], ["wasm:fp32", false]]);
+    expect(without.every((c) => c.reason?.includes("JSPI"))).toBe(true);
+    wasm.Suspending = function Suspending() {};
+    const withJspi = await probeRuntimes();
+    // Node offers no WebGPU: the CPU path only.
+    expect(withJspi.map((c) => [c.id, c.available])).toEqual([["webgpu:fp32", false], ["wasm:fp32", true]]);
+    expect(withJspi[0]!.reason).toMatch(/no WebGPU/);
   });
 });
 void vi;

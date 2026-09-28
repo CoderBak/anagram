@@ -124,8 +124,10 @@ export interface ScoreBatchReply {
 
 /** SW → popup/options/content (response to GET_BACKEND_STATUS). */
 export interface BackendStatus {
-  /** Idle is reachable and wakes for scoring; health checks alone never load it. */
-  active: "server" | "idle" | "down";
+  /** Idle is reachable and wakes for scoring; health checks alone never load it. Loading
+   *  (the in-browser engine only; the local engine says "not ready") is reachable too: what
+   *  is sent waits for the model. */
+  active: "server" | "idle" | "loading" | "down";
   /** The local engine's model when up; null when down. */
   model: ModelInfo | null;
   server: {

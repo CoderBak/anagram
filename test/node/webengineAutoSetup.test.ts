@@ -54,7 +54,7 @@ function engineOn(store: MemoryStore, stallAfter?: number): Engine {
   const server = fakeServer({ "/model.onnx": MODEL, "/tokenizer.json": TOKENIZER }, { stallAfter, chunk: 512 });
   return new Engine({
     pin: { files: tiny, lid: { name: "lid.176.ftz", size_bytes: 0, sha256: "", url: "data:," }, model: { id: "m", calibration: "c" }, license: "l" },
-    assets: { jspi: { ort: "x", mjs: "x", wasm: "x" }, plain: { ort: "x", mjs: "x", wasm: "x" } },
+    assets: { ort: "x", mjs: "x", wasm: "x" },
     version: "9.9.9", store, transport: server.fetch, retryWaits: [0], probe: async () => candidates(),
     createSession: async () => { throw new Error("no model here"); },
   });

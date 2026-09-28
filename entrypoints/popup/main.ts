@@ -56,7 +56,7 @@ function bindSeg(els: HTMLButtonElement[], onPick: (value: string) => void): voi
     el.addEventListener("keydown", (e) => {
       if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
       e.preventDefault();
-      const next = els[(i + (e.key === "ArrowRight" ? 1 : els.length - 1)) % els.length];
+      const next = els[(i + (e.key === "ArrowRight" ? 1 : els.length - 1)) % els.length]!;
       next.focus();
       next.click();
     });
@@ -251,7 +251,7 @@ const ruleSaysOn = (): boolean => (siteRule ? siteRule.mode === "on" : globalDef
 async function refreshSite(host: string): Promise<void> {
   globalDefault = await settings.enabled.getValue();
   granted = await hasAccess(facts.pattern);
-  framesGranted = frames.length === 0 || (await hasAccess(frames[0], frames.slice(1)));
+  framesGranted = frames.length === 0 || (await hasAccess(frames[0]!, frames.slice(1)));
   if (!host) {
     siteEl.checked = false;
     siteHostEl.textContent = "";

@@ -216,8 +216,8 @@ describe("the oneclick flavor", () => {
     expect(firefox.manifest.browser_specific_settings?.gecko?.id).toBe("anagram-oneclick@coderbak.dev");
   });
 
-  it.skipIf(!chrome.ready || !firefox.ready)("requires the browsers its GPU path runs in: Chrome 137, Firefox 153", () => {
-    // WebAssembly JSPI, which the WebGPU runtime's build needs (lib/webengine/session.ts).
+  it.skipIf(!chrome.ready || !firefox.ready)("requires the browsers its runtime runs in: Chrome 137, Firefox 153", () => {
+    // WebAssembly JSPI, which the runtime's only build needs (lib/webengine/session.ts).
     expect(chrome.manifest.minimum_chrome_version).toBe("137");
     expect(firefox.manifest.browser_specific_settings?.gecko?.strict_min_version).toBe("153.0");
   });

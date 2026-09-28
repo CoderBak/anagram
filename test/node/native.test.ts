@@ -506,6 +506,24 @@ describe("native scoring lifecycle generation", () => {
     expect(request.mock.calls.map(([operation]) => operation)).toEqual(["health"]);
   });
 
+  it("reads an in-browser engine loading its model as loading, not down, and sends it the batch", async () => {
+    const loading = {v:1,id:"health",ok:false,status:503,error:{code:"engine_loading",message:"The model is loading; what is sent waits for it"}};
+    const request = vi.fn().mockResolvedValueOnce(loading).mockResolvedValueOnce(reply({v:"3.0",model:MODEL,results:[result]}));
+    const client = new NativeScoreClient(request);
+    expect(await client.status(false)).toMatchObject({active:"loading",model:null,server:{ok:false,code:"engine_loading"}});
+    expect(client.isUp()).toBe(false);
+    // Within RECONNECT_MS of that health read, which is not read again: the batch is sent,
+    // the engine answers once its model is in, and the client is up.
+    expect((await client.scoreBatch([{id:"block",text:"sample"}])).model).toEqual(MODEL);
+    expect(await client.status(false)).toMatchObject({active:"server",model:MODEL,server:{ok:true}});
+    expect(request.mock.calls.map(([operation]) => operation)).toEqual(["health", "score"]);
+    // The local engine says "not ready" while it loads: down, and the batch is refused, as before.
+    const native = vi.fn().mockResolvedValue({v:1,id:"health",ok:false,status:503,error:{code:"not_ready",message:"Loading"}});
+    const nativeClient = new NativeScoreClient(native);
+    expect(await nativeClient.status(false)).toMatchObject({active:"down",model:null,server:{code:"not_ready"}});
+    await expect(nativeClient.scoreBatch([{id:"block",text:"sample"}])).rejects.toThrow(/not ready/);
+  });
+
   it("keeps the engine up and the other batches running when one request runs out of time", async () => {
     const { deferred } = await import("./scoreStore");
     const held = deferred<ReturnType<typeof reply>>();
