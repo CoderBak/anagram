@@ -229,11 +229,14 @@ async function tabWalk(page, { max = 60, startFromTop = true } = {}) {
     if (await page.evaluate(() => document.activeElement?.id === "anagram-fab")) await still(page);
     // Identity, not a selector, decides when the walk has wrapped: two rows of the same
     // verdict band have the same path, and a name-based check would stop at the second.
-    const stop = await page.evaluate((n) => {
+    const stop = await page.evaluate(async (n) => {
       const el = window.__a11y.deepActive();
       if (!el || el === document.body || el === document.documentElement) return null;
       if (el.hasAttribute("data-a11y-stop")) return { repeat: true };
       el.setAttribute("data-a11y-stop", String(n));
+      // A ring that transitions in (Basecoat's buttons transition `all`) is read once it has
+      // arrived: read at its first frame it is still the unfocused style.
+      await Promise.all(el.getAnimations({ subtree: true }).filter((a) => a.effect?.getComputedTiming().endTime !== Infinity).map((a) => a.finished.catch(() => {})));
       return {
         key: String(n),
         path: window.__a11y.path(el),
@@ -250,17 +253,21 @@ async function tabWalk(page, { max = 60, startFromTop = true } = {}) {
     stops.push(stop);
   }
   // The same elements with nothing focused, so a ring is a CHANGE, not a guess.
-  const blurred = await page.evaluate(() => {
+  const blurred = await page.evaluate(async () => {
     window.__a11y.deepActive()?.blur?.();
-    const out = {};
+    const stops = [];
     const walk = (r) => {
-      for (const el of r.querySelectorAll("[data-a11y-stop]")) {
-        out[el.getAttribute("data-a11y-stop")] = window.__a11y.focusStyle(el);
-        el.removeAttribute("data-a11y-stop");
-      }
+      stops.push(...r.querySelectorAll("[data-a11y-stop]"));
       for (const el of r.querySelectorAll("*")) if (el.shadowRoot) walk(el.shadowRoot);
     };
     walk(document);
+    // The ring transitions out as it came in: read once it has gone.
+    await Promise.all(stops.flatMap((el) => el.getAnimations({ subtree: true })).filter((a) => a.effect?.getComputedTiming().endTime !== Infinity).map((a) => a.finished.catch(() => {})));
+    const out = {};
+    for (const el of stops) {
+      out[el.getAttribute("data-a11y-stop")] = window.__a11y.focusStyle(el);
+      el.removeAttribute("data-a11y-stop");
+    }
     return out;
   });
   for (const s of stops) s.ring = blurred[s.key] !== undefined && blurred[s.key] !== s.focused;

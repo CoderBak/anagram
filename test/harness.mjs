@@ -8,8 +8,8 @@
 // opens nothing on the desktop, takes no focus and leaves no Dock icon. The profile is a
 // throwaway directory; the user's own Chrome is never touched.
 //
-//   node test/e2e.mjs            # headless (default)
-//   HEADED=1 node test/e2e.mjs   # watch it run — or run it under Xvfb in the sandbox
+//   npm run test:e2e            # headless (default)
+//   HEADED=1 npm run test:e2e   # watch it run — or run it under Xvfb in the sandbox
 //
 // Only the two interactive tools (npm run browser / npm run play) always open a window.
 import { chromium } from "playwright";

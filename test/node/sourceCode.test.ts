@@ -1,5 +1,5 @@
 // test/node/sourceCode.test.ts — the AGPL "Source code" link in the Settings and setup footers.
-// test/scenarios.mjs reads the rendered link (Chinese copy and the running version's tag).
+// test/pw/scenarios-i18n.spec.mjs reads the rendered link (Chinese copy and the running version's tag).
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";

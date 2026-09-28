@@ -18,7 +18,7 @@
 //   switched off — a site turned off by rule still answers, and says so.
 //
 // The menu entry itself cannot be clicked from Playwright (it is native chrome), so the
-// worker's own click handler is driven the way test/scenarios.mjs drives the page entry:
+// worker's own click handler is driven the way test/pw/scenarios-controls.spec.mjs drives the page entry:
 // the message it sends, to the frame it sends it to. The Firefox copy path is
 // test/diagnostics-firefox.mjs.
 //

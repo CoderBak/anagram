@@ -1290,7 +1290,7 @@ const results = await page.evaluate(() => {
   }
   {
     // A consent platform's banner in a frame of its own is known by the frame's address
-    // (the frame itself is exercised in test/scenarios.mjs).
+    // (the frame itself is exercised in test/pw/scenarios-frames.spec.mjs).
     const frame = (href) => PW.isConsentFrame(new URL(href));
     const yes = [
       "https://cdn.privacy-mgmt.com/index.html?message_id=1000&consentUUID=x",
@@ -3160,7 +3160,7 @@ for (const file of fixtureFiles) {
 // ---- a link to a flagged paragraph: the fewest words that name it and nothing else ----------
 // The copied report links each flagged paragraph with a text fragment. The browser highlights
 // the FIRST place a fragment matches, so it must match exactly one: checked here with the
-// same search the generator checks itself against (the browser's own is in scenarios.mjs).
+// same search the generator checks itself against (the browser's own is in test/pw/scenarios-report.spec.mjs).
 {
   const lp = await browser.newPage();
   await lp.setContent('<!doctype html><html lang="en"><body></body></html>');
