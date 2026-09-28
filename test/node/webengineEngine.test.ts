@@ -351,6 +351,25 @@ describe("the runtimes a browser offers", () => {
     expect(withJspi[0]!.reason).toMatch(/no WebGPU/);
   });
 
+  it("takes a software WebGPU adapter for no GPU, unless the engine's own suites ask", async () => {
+    wasm.Suspending = function Suspending() {};
+    const limits = { maxStorageBufferBindingSize: 2 ** 31, maxBufferSize: 2 ** 31 };
+    const offer = (adapter: object) => vi.stubGlobal("navigator", { hardwareConcurrency: 10, gpu: { requestAdapter: async () => adapter } });
+    try {
+      // SwiftShader, which Chrome offers a machine without a usable GPU when WebGPU is forced on.
+      offer({ limits, info: { vendor: "google", architecture: "swiftshader", isFallbackAdapter: true } });
+      const [software, cpu] = await probeRuntimes();
+      expect(software).toMatchObject({ id: "webgpu:fp32", available: false, reason: expect.stringMatching(/software/) });
+      expect(cpu).toMatchObject({ id: "wasm:fp32", available: true });
+      expect((await probeRuntimes({ softwareGpu: true }))[0]).toMatchObject({ available: true, label: "GPU (WebGPU, FP32) — google swiftshader" });
+      // Browsers before GPUAdapterInfo carried the flag on the adapter.
+      offer({ limits, isFallbackAdapter: true });
+      expect((await probeRuntimes())[0]!.available).toBe(false);
+      offer({ limits, info: { vendor: "apple", architecture: "metal-3", isFallbackAdapter: false } });
+      expect((await probeRuntimes())[0]).toMatchObject({ available: true, reason: null });
+    } finally { vi.unstubAllGlobals(); }
+  });
+
   it("gives the CPU path two threads fewer than the processor has, at most eight, and one without isolation", () => {
     const threads = (cores: number, isolated = true) => {
       vi.stubGlobal("navigator", { hardwareConcurrency: cores });

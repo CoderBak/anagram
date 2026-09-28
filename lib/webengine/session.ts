@@ -17,7 +17,9 @@
 // the model go (lib/webengine/host.ts).
 //
 // The choice is automatic and FP32 either way, as the native engine's: WebGPU when the
-// browser offers an adapter whose storage-buffer limit can hold the word-embedding matrix
+// browser offers a hardware adapter (not a software one such as SwiftShader, which Chrome
+// gives a machine without a usable GPU when WebGPU is forced on, and which is far slower
+// than the CPU provider) whose storage-buffer limit can hold the word-embedding matrix
 // (50 265 × 1024 floats, 206 MB, which the Gather kernel binds as one buffer; WebGPU's
 // default limit is 128 MiB, and the runtime asks the adapter for its maximum), otherwise
 // the CPU provider, with as many threads as wasmThreads allows (one, unless the page is
@@ -85,14 +87,17 @@ interface OrtModule {
 
 interface GpuAdapterLike {
   limits: { maxStorageBufferBindingSize: number; maxBufferSize: number };
-  info?: { vendor?: string; architecture?: string; description?: string };
+  info?: { vendor?: string; architecture?: string; description?: string; isFallbackAdapter?: boolean };
+  /** Where browsers carried it before GPUAdapterInfo did. */
   isFallbackAdapter?: boolean;
 }
 
 const NO_JSPI = "This browser has no WebAssembly JSPI, which the runtime needs";
 
-/** The candidates on this browser, most preferred first. */
-export async function probeRuntimes(): Promise<Candidate[]> {
+/** The candidates on this browser, most preferred first. `softwareGpu` takes a software
+ *  adapter for a GPU: for the engine's own suites only (test/webengine/harness.mjs), so a
+ *  machine without a GPU still runs the GPU path's kernels; the extension never sets it. */
+export async function probeRuntimes({ softwareGpu = false }: { softwareGpu?: boolean } = {}): Promise<Candidate[]> {
   const webgpu: Candidate = { id: WEBGPU_ID, label: "GPU (WebGPU, FP32)", device: "gpu", runtime: "onnxruntime-web/webgpu", precision: "fp32", experimental: false, available: false, reason: null };
   const gpu = (globalThis.navigator as { gpu?: { requestAdapter(o?: unknown): Promise<GpuAdapterLike | null> } }).gpu;
   const jspi = hasJspi();
@@ -102,7 +107,9 @@ export async function probeRuntimes(): Promise<Candidate[]> {
     try {
       const adapter = await gpu.requestAdapter({ powerPreference: "high-performance" });
       if (!adapter) webgpu.reason = "No WebGPU adapter";
-      else if (adapter.limits.maxStorageBufferBindingSize < EMBEDDING_BYTES || adapter.limits.maxBufferSize < EMBEDDING_BYTES) {
+      else if ((adapter.info?.isFallbackAdapter ?? adapter.isFallbackAdapter) === true && !softwareGpu) {
+        webgpu.reason = "The only WebGPU adapter is a software one, slower than the processor";
+      } else if (adapter.limits.maxStorageBufferBindingSize < EMBEDDING_BYTES || adapter.limits.maxBufferSize < EMBEDDING_BYTES) {
         webgpu.reason = `The GPU binds at most ${Math.floor(adapter.limits.maxStorageBufferBindingSize / 1048576)} MiB per buffer; the model needs ${Math.ceil(EMBEDDING_BYTES / 1048576)} MiB`;
       } else {
         webgpu.available = true;
