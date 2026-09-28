@@ -155,6 +155,46 @@ ${LINK_TAGS.map((t, i) => `<div style="height:1600px"></div>\n<p id="l${i + 1}">
   expect(landed[1], `${links} (the second further down)`).toBeGreaterThan(landed[0]);
 });
 
+// English written with Cyrillic and Greek look-alike letters, as RAID's homoglyph attack
+// writes it: the engine reads it with its Latin letters back, and the card and the report
+// say that it was disguised. Russian and Greek are no disguise: sent as written, refused.
+const LOOK = { a: "а", e: "е", o: "о", i: "і", c: "с", p: "р", y: "у", x: "х", I: "Ι", T: "Τ", A: "Α", H: "Н", M: "М", B: "Β", N: "Ν", P: "Р", C: "С" };
+const disguise = (s) => s.replace(/[aeoicpyxITAHMBNPC]/g, (ch) => LOOK[ch]);
+const LOOK_PARA = (tag) => `${tag} This paragraph was written in plain English and then disguised letter by letter, the way a homoglyph attack does it: most of its vowels and several consonants were swapped for Cyrillic and Greek letters that look exactly the same on screen, so a reader notices nothing while a language detector sees Ukrainian and a detector of machine writing reads a text that nobody wrote. The extension has to give it its Latin letters back before the model reads it.`;
+let LOOK_TAG = null;
+for (let n = 1; !LOOK_TAG && n < 1000; n++) if (fakeScore(LOOK_PARA(`LOOK-${n}`)).score >= 0.88) LOOK_TAG = `LOOK-${n}`;
+const RUSSIAN = "Вечером мы долго гуляли по старому городу. Узкие улицы были почти пустыми, только иногда мимо проезжал трамвай, и его звонок отражался от каменных стен. Мы зашли в маленькое кафе на углу площади, где пахло корицей и свежим хлебом. Хозяйка рассказала нам, что кафе открыл её дед сразу после войны, и с тех пор меню почти не изменилось. Мы заказали чай с вареньем и пирог с яблоками, а потом ещё долго сидели у окна и смотрели, как на площади зажигаются фонари. Домой вернулись поздно, уставшие, но очень довольные этим тихим вечером.";
+const GREEK = "Το πρωί ξυπνήσαμε νωρίς για να προλάβουμε το πρώτο πλοίο για το νησί. Ο καιρός ήταν καθαρός και η θάλασσα ήρεμη, οπότε το ταξίδι κράτησε λιγότερο από δύο ώρες. Στο λιμάνι μας περίμενε ένας φίλος με το αυτοκίνητό του και μας πήγε στο χωριό του, ψηλά στο βουνό. Εκεί φάγαμε σε μια μικρή ταβέρνα με θέα τον κόλπο, ενώ ο ιδιοκτήτης μας έλεγε ιστορίες για τους ψαράδες που ζούσαν παλιά στο νησί. Το απόγευμα κατεβήκαμε στην παραλία και κολυμπήσαμε μέχρι να δύσει ο ήλιος πίσω από τα βράχια.";
+
+test("look-alike letters: a disguised English paragraph is read with its Latin letters back and its card and the report say so; Russian and Greek are refused as written", async ({ page, pages, nativeHost, report }) => {
+  const look = "look-alike letters: a disguised English paragraph is read with its Latin letters back and its card and the report say so; Russian and Greek are refused as written";
+  expect(LOOK_TAG, look).not.toBeNull();
+  const english = LOOK_PARA(LOOK_TAG);
+  pages.serve({
+    "/lookalikes.html": PAGE("look-alike letters fixture", `<h1>Look-alike letters</h1>
+<p id="dis">${disguise(english)}</p>
+<p id="ru" lang="ru">${RUSSIAN}</p>
+<p id="el" lang="el">${GREEK}</p>`),
+  });
+  const mark = nativeHost.textMark();
+  await page.goto(pages.url("/lookalikes.html"), { waitUntil: "load" });
+  await expect(page.locator(`#dis ${BADGE_SEL} .num`), look).toHaveText(SCORE);
+  // What the engine was sent: the paragraph as it was written before the disguise.
+  const sent = nativeHost.textsSince(mark);
+  expect(sent, look).toContain(english);
+  expect(sent.some((t) => /[а-яё]/i.test(t) && /[a-z]{3}/.test(t)), `${look} (no mixed text sent)`).toBe(false);
+  const foot = (id) => page.evaluate((args) => document.querySelector(`#${args.id} ${args.sel}`)?.shadowRoot?.querySelector(".card .foot")?.textContent ?? null, { id, sel: BADGE_SEL });
+  expect(await foot("dis"), look).toContain("Look-alike letters were replaced before scoring.");
+  // The other two never reach the model, whichever gate refuses them (the browser's or the host's).
+  for (const id of ["ru", "el"]) {
+    await expect(page.locator(`#${id} ${BADGE_SEL} .pill.band-unsupported`), `${look} (${id})`).toHaveCount(1);
+    expect(await foot(id), `${look} (${id})`).not.toContain("Look-alike");
+  }
+  expect(sent.filter((t) => t.includes("Вечером") || t.includes("πρωί")).every((t) => t === RUSSIAN || t === GREEK), `${look} (sent as written)`).toBe(true);
+  const text = await report(page);
+  expect(text, look).toMatch(/^1\. \*\*AI-generated · [^\n]*\n {3}Look-alike letters were replaced before scoring\.$/m);
+});
+
 // "Flagged: 0" on a page where nothing reached the floor is not a clean page, it is a page
 // that was not judged.
 test("copied report: a page with nothing long enough to judge says there was too little text, not that nothing was flagged", async ({ page, pages, report }) => {

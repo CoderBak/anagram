@@ -508,7 +508,7 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
         ? t("cardFootUnavailable")
         : b === "unsupported"
           ? t("cardFootUnsupported")
-          : coverageNote(verdict, "paragraph") + t("cardFootEstimate");
+          : coverageNote(verdict, "paragraph", unit.text) + t("cardFootEstimate");
     card.innerHTML =
       `<div class="head"><span class="verdict band-${b}">${isNoVerdict(b) ? "" : swatchHtml(result, verdictConfidence(verdict))}${bandLabel(b)}</span>` +
       `<span class="big" title="${t("cardScaleTitle")}">${isNoVerdict(b) ? "—" : score}</span></div>` +

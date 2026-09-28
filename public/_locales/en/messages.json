@@ -131,6 +131,10 @@
     "message": "The number is EditLens's estimate of how far this text sits from untouched human writing toward fully AI-generated — not a share of words, not proof.",
     "description": "Chip card footnote: what the percentage means. The same claim appears in the report and the options footer."
   },
+  "coverageLookalikes": {
+    "message": "Look-alike letters were replaced before scoring. ",
+    "description": "Card footnote sentence, also a line of the copied report and of the text analysis page: the text wrote Latin letters with Cyrillic or Greek look-alikes (a disguise), which were changed back before the model read it. The trailing space joins it to the next sentence."
+  },
   "coverageOpeningParagraph": {
     "message": "Only the opening of this paragraph was scored. ",
     "description": "Card footnote sentence; the trailing space joins it to the next sentence."

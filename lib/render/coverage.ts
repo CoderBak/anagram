@@ -2,6 +2,7 @@
 // selection card and the copied report share. A unit that went through the model in one
 // pass has nothing to add here; everything below is about the long ones.
 import { isScoredWindow, type UnitVerdict } from "../capture/windows";
+import { hasLookalikes } from "../dom/lookalikes";
 import { t } from "../i18n";
 import { formatScore } from "./score";
 
@@ -37,11 +38,13 @@ export function windowScores(read: WindowReadout): string {
 
 /**
  * The sentences that go in front of a card's footer when the number needs explaining:
- * it combines several passes, and whatever was NOT read is said here, in words.
+ * the text was read with look-alike letters replaced, it combines several passes, and
+ * whatever was NOT read is said here, in words.
  */
-export function coverageNote(v: UnitVerdict, what: "paragraph" | "selection"): string {
+export function coverageNote(v: UnitVerdict, what: "paragraph" | "selection", text: string): string {
   const read = windowReadout(v);
   return (
+    (hasLookalikes(text) ? t("coverageLookalikes") : "") +
     (v.unreadChars > 0
       ? t(what === "selection" ? "coverageOpeningSelection" : "coverageOpeningParagraph")
       : "") +

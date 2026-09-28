@@ -586,6 +586,123 @@ test("a shadow root attached after the walk, or filled after it, is read: a late
   await expect(settledChips(page, "#panel2"), filled).toHaveCount(1);
 });
 
+// The page-world script (entrypoints/shadow.content.ts) wraps attachShadow, and a page must
+// not be able to tell. This page does what a page looking for Anagram would: its first script
+// asks attachShadow and Function.prototype.toString everything the natives answer (text, name,
+// length, prototype, property flags, `new`, errors and their stacks), listens for the names
+// Anagram once used, watches dispatchEvent, the window's globals and its messages, and every
+// answer must be the native's. The roots it attaches late, open and closed, are read all the
+// same: the event still reaches the content script, under a name the page never learns.
+test("the page cannot tell the page-world script is there: attachShadow and toString answer as natives, and no name, global or message gives Anagram away", async ({ page, pages }) => {
+  const quiet = "the page cannot tell the page-world script is there";
+  pages.serve({
+    "/quiet.html": `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>quiet fixture</title><script>
+window.__seen = { events: 0, dispatched: 0, messages: [] };
+for (const type of ["anagram-shadow-attached", "anagram-shadow-port"]) {
+  document.addEventListener(type, () => __seen.events++, true);
+  window.addEventListener(type, () => __seen.events++, true);
+}
+addEventListener("message", (e) => __seen.messages.push(JSON.stringify(e.data) ?? String(e.data)));
+window.__first = (() => {
+  const out = {};
+  const f = Element.prototype.attachShadow;
+  const ts = Function.prototype.toString;
+  const err = (fn) => { try { fn(); return "no error"; } catch (e) { return { name: e.constructor.name, message: e.message, stack: String(e.stack) }; } };
+  out.text = ts.call(f); out.textMethod = f.toString(); out.name = f.name; out.length = f.length;
+  out.prototype = Object.prototype.hasOwnProperty.call(f, "prototype"); out.keys = Reflect.ownKeys(f).map(String).join(",");
+  const d = Object.getOwnPropertyDescriptor(Element.prototype, "attachShadow");
+  out.flags = [d.writable, d.enumerable, d.configurable].join(",");
+  out.newf = err(() => new f()).message; out.construct = err(() => Reflect.construct(f, [])).message; out.extends = err(() => { class X extends f {} }).message;
+  out.illegal = err(() => f.call({})); out.badMode = err(() => document.createElement("div").attachShadow({ mode: "nope" }));
+  out.unsupported = err(() => document.createElement("input").attachShadow({ mode: "open" }));
+  out.twice = err(() => { const el = document.createElement("div"); el.attachShadow({ mode: "open" }); el.attachShadow({ mode: "open" }); });
+  out.tsText = ts.call(ts); out.tsName = ts.name + "/" + ts.length; out.tsPrototype = Object.prototype.hasOwnProperty.call(ts, "prototype");
+  const t = Object.getOwnPropertyDescriptor(Function.prototype, "toString"); out.tsFlags = [t.writable, t.enumerable, t.configurable].join(",");
+  out.tsError = err(() => ts.call({})); out.tsErrorNull = err(() => ts.call(null));
+  // A prototype chain that leads back to the function: the native refuses it, a Proxy alone
+  // would not look past itself and take it. And one of null: nothing to convert it with.
+  out.cycle = err(() => Object.setPrototypeOf(f, Object.create(f)));
+  out.cycleProto = err(() => { f.__proto__ = Object.create(f); });
+  out.tsCycle = err(() => Object.setPrototypeOf(ts, Object.create(ts)));
+  out.afterCycle = [ts.call(f), typeof f.call, Object.getPrototypeOf(f) === Function.prototype].join(" | ");
+  Object.setPrototypeOf(f, null); out.nullConvert = err(() => f + ""); Object.setPrototypeOf(f, Function.prototype);
+  out.plainToString = ts.call(function plain(a, b) { return a + b; });
+  out.globals = Object.getOwnPropertyNames(window).filter((n) => /anagram|wxt/i.test(n) || n === "shadow" || n === "shadowPort");
+  out.attributes = [...document.documentElement.attributes].map((a) => a.name);
+  const dispatch = EventTarget.prototype.dispatchEvent;
+  EventTarget.prototype.dispatchEvent = function (e) { __seen.dispatched++; return dispatch.call(this, e); };
+  const host = document.createElement("div"); host.attachShadow({ mode: "closed" });
+  EventTarget.prototype.dispatchEvent = dispatch;
+  return out;
+})();
+</script></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+<h1>A page that looks for Anagram</h1>
+<quiet-card id="qc"></quiet-card>
+<div id="qd"></div>
+<script>
+  const LONG = ${LATE.toString()};
+  window.__closed = {};
+  setTimeout(() => customElements.define("quiet-card", class extends HTMLElement {
+    connectedCallback() { this.attachShadow({ mode: "open" }).innerHTML = "<p>" + LONG("QUIETCARD") + "</p>"; }
+  }), 1200);
+  setTimeout(() => {
+    window.__closed.qd = document.getElementById("qd").attachShadow({ mode: "closed" });
+    window.__closed.qd.innerHTML = "<p>" + LONG("QUIETDIV") + "</p>";
+  }, 1800);
+</script></body></html>`,
+  });
+  await page.goto(pages.url("/quiet.html"), { waitUntil: "load" });
+  const first = await page.evaluate(() => window.__first);
+  // A native's error, as V8 writes it: the native's own frame on top where it has one
+  // ("    at Object.toString (<anonymous>)"), then the page's frames, and nothing else.
+  const own = (stack) => !/-extension:\/\//.test(stack) &&
+    stack.split("\n").slice(1).every((line, i) => line.includes("/quiet.html") || (i === 0 && /^ {4}at [\w. _]+ \(<anonymous>\)$/.test(line)));
+  expect.soft(first.text, quiet).toBe("function attachShadow() { [native code] }");
+  expect.soft(first.textMethod, quiet).toBe("function attachShadow() { [native code] }");
+  expect.soft([first.name, first.length, first.prototype, first.keys, first.flags], quiet).toEqual(["attachShadow", 1, false, "length,name", "true,true,true"]);
+  expect.soft([first.newf, first.construct, first.extends], quiet).toEqual([
+    "f is not a constructor",
+    "function attachShadow() { [native code] } is not a constructor",
+    "Class extends value function attachShadow() { [native code] } is not a constructor or null",
+  ]);
+  for (const [what, e, message] of [
+    ["illegal", first.illegal, "Illegal invocation"],
+    ["badMode", first.badMode, /^Failed to execute 'attachShadow' on 'Element': .*'nope' is not a valid enum value/],
+    ["unsupported", first.unsupported, "Failed to execute 'attachShadow' on 'Element': This element does not support attachShadow"],
+    ["twice", first.twice, /^Failed to execute 'attachShadow' on 'Element': Shadow root cannot be created on a host which already hosts a shadow tree/],
+  ]) {
+    expect.soft(e.message, `${quiet}: ${what}`).toMatch(message);
+    expect.soft(own(e.stack), `${quiet}: the ${what} error's stack is the page's own: ${e.stack}`).toBe(true);
+  }
+  expect.soft([first.tsText, first.tsName, first.tsPrototype, first.tsFlags], quiet).toEqual(["function toString() { [native code] }", "toString/0", false, "true,false,true"]);
+  expect.soft(first.plainToString, quiet).toBe("function plain(a, b) { return a + b; }");
+  for (const [what, e, message] of [
+    ["a cycle", first.cycle, "Cyclic __proto__ value"],
+    ["a cycle through __proto__", first.cycleProto, "Cyclic __proto__ value"],
+    ["a cycle of toString's", first.tsCycle, "Cyclic __proto__ value"],
+    ["a null prototype", first.nullConvert, "Cannot convert object to primitive value"],
+  ]) {
+    expect.soft([e.name, e.message], `${quiet}: ${what}`).toEqual(["TypeError", message]);
+    expect.soft(own(e.stack), `${quiet}: the stack of ${what} is the page's own: ${e.stack}`).toBe(true);
+  }
+  expect.soft(first.afterCycle, quiet).toBe("function attachShadow() { [native code] } | function | true");
+  for (const e of [first.tsError, first.tsErrorNull]) {
+    expect.soft(e.message, quiet).toBe("Function.prototype.toString requires that 'this' be a Function");
+    // V8 lists the native toString's own frame, and then the caller's: nothing between them.
+    expect.soft(e.stack.split("\n")[1], quiet).toMatch(/^ {4}at (Object\.)?toString \(<anonymous>\)$/);
+    expect.soft(own(e.stack), `${quiet}: the toString error's stack is the page's own: ${e.stack}`).toBe(true);
+  }
+  expect.soft(first.globals, `${quiet}: no global of its own`).toEqual([]);
+  expect.soft(first.attributes, `${quiet}: nothing on <html>`).toEqual(["lang"]);
+  // The roots it attaches late are read all the same, the content script started meanwhile.
+  await expect(settledChips(page, "#qc"), `${quiet}: a late open root is read`).toHaveCount(1);
+  await expect.poll(() => page.evaluate((sel) => window.__closed.qd?.querySelectorAll(sel).length ?? -1, BADGE_SEL), { message: `${quiet}: a late closed root is read` }).toBe(1);
+  const seen = await page.evaluate(() => window.__seen);
+  expect.soft(seen.dispatched, `${quiet}: the event is not dispatched through anything the page can replace`).toBe(0);
+  expect.soft(seen.events, `${quiet}: nothing under a name Anagram ever used`).toBe(0);
+  expect.soft(seen.messages.filter((m) => /wxt|anagram|-extension:|[a-p]{32}/i.test(m)), `${quiet}: no message names the extension`).toEqual([]);
+});
+
 // A closed root keeps the page's other scripts out, not the extension: Chrome gives a content
 // script every root through chrome.dom.openOrClosedShadowRoot. The page keeps its own
 // references in window.__closed, which is how this test looks inside.

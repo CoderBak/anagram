@@ -28,6 +28,7 @@ const json = (rel) => JSON.parse(read(rel));
 const npm = (name) => json(`node_modules/${name}/package.json`).version;
 const pdfjsPin = () => json("vendor/pdfjs/upstream.json");
 const workerPin = () => json("vendor/document-worker/upstream.json");
+const confusablesPin = () => json("lib/dom/confusables.json");
 const short = (commit) => commit.slice(0, 7);
 
 // ---- licences --------------------------------------------------------------------------------
@@ -242,6 +243,11 @@ const GROUPS = [
         licence: "Unicode-3.0", copyright: "Copyright (c) 2001-2026 Unicode, Inc.",
         where: "The abbreviations list in lib/dom/text.ts (common/segments/en.xml).", notice: ["scripts/licences/Unicode-3.0.CLDR.txt"],
         adapted: ["lib/dom/text.ts"] },
+      { name: "Unicode Security Mechanisms (UTS #39)", version: `confusables.txt, Unicode ${confusablesPin().unicode}`, url: "https://www.unicode.org/reports/tr39/",
+        urls: ["https://www.unicode.org/Public/"],
+        licence: "Unicode-3.0", copyright: "Copyright (c) 1991-2026 Unicode, Inc.",
+        where: `lib/dom/confusables.json: the Greek, Coptic, Cyrillic, Armenian, Cherokee and Lisu letters that confusables.txt (SHA-256 ${confusablesPin().sha256}) finds confusable with one ASCII letter or digit, and that letter, written by scripts/confusables.mjs. lib/dom/lookalikes.ts folds English words disguised with them back to Latin letters.`,
+        notice: ["scripts/licences/Unicode-3.0.txt"] },
       { name: "pySBD", version: "standard abbreviations", url: "https://github.com/nipunsadvilkar/pySBD",
         licence: "MIT", copyright: "Copyright (c) 2019 Nipun Sadvilkar",
         where: "The prepositive and number abbreviations in lib/dom/text.ts (pysbd/lang/common/standard.py).", notice: { compose: "MIT" },
@@ -271,9 +277,10 @@ const GROUPS = [
       { name: "FluentRead", version: "src/platform/shadow-ui/pageBridgeCore.ts", url: "https://github.com/FluentRead/FluentRead",
         licence: "GPL-3.0", copyright: "Copyright (c) the FluentRead contributors",
         where: "The attachShadow wrapper in entrypoints/shadow.content.ts.", adapted: ["entrypoints/shadow.content.ts"] },
-      { name: "uBlock Origin", version: "src/js/contentscript.js (vAPI.domWatcher)", url: "https://github.com/gorhill/uBlock",
+      { name: "uBlock Origin", version: "src/js/contentscript.js (vAPI.domWatcher), src/js/resources/proxy-apply.js (proxyToStringFn)", url: "https://github.com/gorhill/uBlock",
         licence: "GPL-3.0", copyright: "Copyright (C) 2014-present Raymond Hill",
-        where: "The DOM mutations handed over in batches, at a rate the page can afford, in lib/capture/observers.ts.", adapted: ["lib/capture/observers.ts"] },
+        where: "The DOM mutations handed over in batches, at a rate the page can afford, in lib/capture/observers.ts; the Function.prototype.toString that answers for a proxied function with the native function's text, in entrypoints/shadow.content.ts.",
+        adapted: ["lib/capture/observers.ts", "entrypoints/shadow.content.ts"] },
       { name: "Firefox translations", version: "translations-document.sys.mjs", url: "https://github.com/mozilla-firefox/firefox",
         licence: "MPL-2.0", copyright: "Copyright (c) Mozilla Foundation and contributors",
         where: "The shadow-root walk in lib/dom/shadow.ts (TranslationsDocument#addShadowRootsToObserver), available in source form in Anagram's repository.",

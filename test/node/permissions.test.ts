@@ -119,6 +119,7 @@ describe("the hosts each target asks for", () => {
     // would leave the extension unable to run anywhere.
     expect(existsSync(join(ROOT, "output", "chrome-mv3", "content-scripts", "content.js"))).toBe(true);
     expect(existsSync(join(ROOT, "output", "chrome-mv3", "content-scripts", "shadow.js"))).toBe(true);
+    expect(existsSync(join(ROOT, "output", "chrome-mv3", "content-scripts", "shadowPort.js"))).toBe(true);
   });
 
   it.skipIf(!chrome.ready)("asks for nothing at all in the SHIPPING build, whatever the test build does", () => {

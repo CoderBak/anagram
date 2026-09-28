@@ -25,6 +25,7 @@ import { restoreSplits } from "../dom/splits";
 import { findMainContent, useDefuddle } from "../dom/mainContent";
 import { loadDefuddle, loadFragments } from "../lazy";
 import { partTextOf, MAX_UNIT_TEXT_CHARS } from "../dom/text";
+import { hasLookalikes } from "../dom/lookalikes";
 import { createObservers, type Observers } from "./observers";
 import { createScheduler, type Scheduler } from "./scheduler";
 import { createScoreCache, type ScoreCache } from "./cache";
@@ -512,6 +513,7 @@ export function createOrchestrator(
             `(${close}${dist}; ${t("reportWords", unit.wordCount)}${windows})`,
         );
         // Before the quotation: a line after it would be read as part of the quotation.
+        if (hasLookalikes(unit.text)) lines.push(`   ${t("coverageLookalikes").trim()}`);
         if (links[i]) lines.push(`   ${t("reportLink", links[i]!)}`);
         if (includeText) lines.push(`   > ${snippet}${ellipsis}`);
       });

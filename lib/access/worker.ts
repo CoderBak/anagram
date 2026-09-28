@@ -38,6 +38,11 @@ const CONTENT_SCRIPT = "/content-scripts/content.js";
  *  tells the content script when the page attaches a shadow root. */
 const SHADOW_SCRIPT_ID = "anagram-shadow";
 const SHADOW_SCRIPT = "/content-scripts/shadow.js";
+/** The isolated script that hears the page-world one's first word, the name of its event
+ *  (entrypoints/shadowPort.content.ts). It has to run first: scripts of one moment run in
+ *  the order they were registered, in Chrome and in Firefox, and its id sorts first too. */
+const SHADOW_PORT_ID = "anagram-port";
+const SHADOW_PORT = "/content-scripts/shadowPort.js";
 
 /** How long `ensureInjected` waits for a freshly injected script to start listening.
  *  executeScript resolves when the file has been evaluated, which is before the async
@@ -62,35 +67,50 @@ async function grantedMatches(): Promise<string[]> {
 type Registration = Parameters<typeof browser.scripting.registerContentScripts>[0][number];
 
 /**
- * The scripts the granted origins ask for, the content script first. Both also run in the
+ * The scripts the granted origins ask for, the content script first. All also run in the
  * frames of a granted page that have no address of their own — about:blank and srcdoc
  * frames, blob: documents — by the origin they take from it, which the browser reports on
  * their messages (lib/access/messages.ts): an EPUB reader shows every chapter in a srcdoc
  * frame. Chrome 119+ and Firefox 140 ESR both do.
  */
-function registrations(matches: string[]): Registration[] {
+function registrations(matches: string[]): Registration[][] {
   return [
     // The same options the manifest declaration carried before this was dynamic.
-    {
-      id: SCRIPT_ID,
-      matches,
-      js: [CONTENT_SCRIPT],
-      allFrames: true,
-      matchOriginAsFallback: true,
-      runAt: "document_end",
-      persistAcrossSessions: true,
-    },
-    // Before the page's own scripts, so that no attachShadow() goes unannounced.
-    {
-      id: SHADOW_SCRIPT_ID,
-      matches,
-      js: [SHADOW_SCRIPT],
-      allFrames: true,
-      matchOriginAsFallback: true,
-      runAt: "document_start",
-      world: "MAIN",
-      persistAcrossSessions: true,
-    },
+    [
+      {
+        id: SCRIPT_ID,
+        matches,
+        js: [CONTENT_SCRIPT],
+        allFrames: true,
+        matchOriginAsFallback: true,
+        runAt: "document_end",
+        persistAcrossSessions: true,
+      },
+    ],
+    // Before the page's own scripts, so that no attachShadow() goes unannounced: the
+    // isolated listener, then the page-world script it listens to, always registered
+    // together and in this order.
+    [
+      {
+        id: SHADOW_PORT_ID,
+        matches,
+        js: [SHADOW_PORT],
+        allFrames: true,
+        matchOriginAsFallback: true,
+        runAt: "document_start",
+        persistAcrossSessions: true,
+      },
+      {
+        id: SHADOW_SCRIPT_ID,
+        matches,
+        js: [SHADOW_SCRIPT],
+        allFrames: true,
+        matchOriginAsFallback: true,
+        runAt: "document_start",
+        world: "MAIN",
+        persistAcrossSessions: true,
+      },
+    ],
   ];
 }
 
@@ -102,43 +122,65 @@ function differs(current: Registration, script: Registration): boolean {
   );
 }
 
-/** Register `script`, or bring the one under its id up to date. A browser that does not know
- *  `matchOriginAsFallback` (Chrome before 119) refuses the whole script: it gets it without. */
-async function ensureScript(script: Registration, current: Registration | undefined): Promise<void> {
-  const put = async (s: Registration): Promise<void> => {
-    if (!current) {
-      // A registration that survived a restart but was not reported (or a duplicate id
-      // from a race we lost) is an update, not a failure.
-      await browser.scripting.registerContentScripts([s]).catch(() => browser.scripting.updateContentScripts([s]));
-    } else if (differs(current, s)) {
-      await browser.scripting.updateContentScripts([s]);
+/** Register `group`, or bring the ones under its ids up to date. Scripts of one group run in
+ *  the order given, so a group any of whose scripts is missing is registered anew, whole. A
+ *  browser that does not know `matchOriginAsFallback` (Chrome before 119) refuses the whole
+ *  call: it gets them without. */
+async function ensureGroup(group: Registration[], registered: Registration[]): Promise<void> {
+  const ids = group.map((s) => s.id);
+  const put = async (scripts: Registration[], known: Registration[]): Promise<void> => {
+    const current = scripts.map((s) => known.find((r) => r.id === s.id));
+    if (current.every(Boolean)) {
+      const stale = scripts.filter((s, i) => differs(current[i]!, s));
+      if (stale.length > 0) await browser.scripting.updateContentScripts(stale);
+      return;
     }
+    const present = known.filter((r) => ids.includes(r.id)).map((r) => r.id);
+    if (present.length > 0) await browser.scripting.unregisterContentScripts({ ids: present });
+    // One call each: Chrome runs the scripts of one call by id, and scripts of separate
+    // calls in the order they came (a restart keeps it). The ids sort in this order too.
+    for (const script of scripts) await browser.scripting.registerContentScripts([script]);
   };
-  if (!script.matchOriginAsFallback) return put(script);
-  await put(script).catch(() => {
-    const { matchOriginAsFallback: _, ...plain } = script;
-    return put(plain);
-  });
+  // After a failure, from what the browser says is registered now.
+  const again = async (scripts: Registration[]): Promise<void> =>
+    put(scripts, await browser.scripting.getRegisteredContentScripts({ ids }).catch(() => []));
+  const plain = group.map(({ matchOriginAsFallback: _, ...s }) => s);
+  try {
+    await put(group, registered);
+  } catch {
+    try {
+      // A registration that survived a restart but was not reported, or one a race put there.
+      await again(group);
+    } catch {
+      try {
+        await again(plain);
+      } catch (e) {
+        // Nothing of a group stays half-registered.
+        await browser.scripting.unregisterContentScripts({ ids }).catch(() => undefined);
+        throw e;
+      }
+    }
+  }
 }
 
 async function syncNow(): Promise<void> {
   try {
     const matches = await grantedMatches();
     const registered = await browser.scripting
-      .getRegisteredContentScripts({ ids: [SCRIPT_ID, SHADOW_SCRIPT_ID] })
+      .getRegisteredContentScripts({ ids: [SCRIPT_ID, SHADOW_PORT_ID, SHADOW_SCRIPT_ID] })
       .catch(() => []);
     if (matches.length === 0) {
       if (registered.length > 0) await browser.scripting.unregisterContentScripts({ ids: registered.map((s) => s.id) });
       log.log("no site access — content script unregistered");
       return;
     }
-    // One at a time: a browser that refuses the page-world companion still gets the
+    // One group at a time: a browser that refuses the page-world companion still gets the
     // content script, which reads everything but a shadow root attached after its walk.
-    for (const script of registrations(matches)) {
+    for (const group of registrations(matches)) {
       try {
-        await ensureScript(script, registered.find((s) => s.id === script.id));
+        await ensureGroup(group, registered);
       } catch (e) {
-        if (script.id === SCRIPT_ID) throw e;
+        if (group[0]!.id === SCRIPT_ID) throw e;
         log.log("page-world script not registered", e);
       }
     }
