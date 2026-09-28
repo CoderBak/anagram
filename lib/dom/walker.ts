@@ -78,6 +78,7 @@ import {
   unitPartText,
   DEFAULT_MIN_WORDS,
   MIN_LINE_WORDS,
+  MODEL_MIN_WORDS,
   MAX_UNIT_TEXT_CHARS,
 } from "./text";
 import { type Scopes, createScopes } from "./scope";
@@ -320,6 +321,71 @@ export function isExpandLabel(label: string): boolean {
   return EXPAND_LABELS.has(bare);
 }
 
+/**
+ * A text the site cut where it ends: "…", "...", "[…]" (WordPress' excerpt), "(…)", with at
+ * most a "Read more" after the mark in the same line. What follows the mark is group 1.
+ */
+const CUT_END_RE = /(?:\u2026|\.\.\.|[[(]\s*(?:\u2026|\.\.\.)\s*[\])])[\s\u200b]*([^\s.\u2026][^.\u2026]{0,39})?[\s\u200b]*$/;
+
+function endsCut(text: string): boolean {
+  const m = CUT_END_RE.exec(text);
+  return m !== null && (m[1] === undefined || isExpandLabel(m[1].trim()));
+}
+
+/** How far above a teaser's text its card is looked for, and the most words a card holds. */
+const TEASER_CARD_LEVELS = 3;
+const TEASER_CARD_WORDS = 150;
+
+/** A link that opens another page: not a fragment of this one, not a script. */
+function opensAnotherPage(a: Element): boolean {
+  const href = a.getAttribute("href") ?? "";
+  if (href === "" || href.startsWith("#") || /^\s*javascript:/i.test(href)) return false;
+  try {
+    const doc = a.ownerDocument;
+    return new URL(href, doc.baseURI).href.replace(/#.*$/, "") !== doc.URL.replace(/#.*$/, "");
+  } catch {
+    return false;
+  }
+}
+
+/** A heading that is all one link to another page: a card's title. */
+function isTitleLink(h: Element): boolean {
+  const text = (h.textContent ?? "").trim();
+  if (text === "") return false;
+  const a = h.querySelector("a[href]") ?? h.closest("a[href]");
+  return a !== null && (a.textContent ?? "").trim().length >= text.length * 0.9 && opensAnotherPage(a);
+}
+
+/**
+ * A TEASER: the opening of another page's text, cut by the site where the card ends. A front
+ * page, a "related posts" row under an article, a site's list of events set each card as a
+ * title that links to the page, a few sentences of it, and "…", "[…]" or "… Read more"; at a
+ * minimum length of 50 words those excerpts cleared the floor one by one, and each got a
+ * verdict on a text nobody wrote to end there. It is the rule for a preview cut behind "See
+ * more" (markCut), for a cut whose rest is on another page: a text that ends in the site's
+ * cut mark, in a small card — the box around it holds no more than a card's words — whose
+ * title is a link to another page, or that is itself inside such a link, or that holds a
+ * "Read more" to one. A paragraph that trails off in an ellipsis in an article, a post or a
+ * comment has no such card around it. Only under the model's own minimum (MODEL_MIN_WORDS):
+ * a longer excerpt was read at every floor before, and on a blog's index, where the excerpts
+ * are what the page holds, they are.
+ */
+function isTeaserCut(container: Element, text: string): boolean {
+  if (!endsCut(text)) return false;
+  const card = container.closest("a[href]");
+  if (card !== null) return opensAnotherPage(card) && countWords(card.textContent ?? "") <= TEASER_CARD_WORDS;
+  let box = container;
+  for (let up = 0; up < TEASER_CARD_LEVELS; up++) {
+    const parent = box.parentElement;
+    if (!parent || parent === box.ownerDocument.body || tagOf(parent) === "MAIN") return false;
+    box = parent;
+    if (countWords(box.textContent ?? "") > TEASER_CARD_WORDS) return false;
+    for (const h of box.querySelectorAll('h1,h2,h3,h4,h5,h6,[role="heading"]')) if (!h.contains(container) && isTitleLink(h)) return true;
+    for (const a of box.querySelectorAll("a[href]")) if (isExpandLabel((a.textContent ?? "").trim()) && opensAnotherPage(a)) return true;
+  }
+  return false;
+}
+
 let _unitSeq = 0;
 
 /**
@@ -520,13 +586,14 @@ export function collectUnits(
     // `raw` keeps the `>` markers, because the depth and the column-gap tests read them.
     const text = unitPartText(raw, preserved, skipOffsets(nodes, skips));
     if (!text) return null;
+    const words = countWords(text);
     return {
       nodes,
       container,
       text,
       raw,
       preserved,
-      words: countWords(text),
+      words,
       chars: text.length,
       linkRatio: linkTextRatio(nodes),
       formulas,
@@ -534,7 +601,8 @@ export function collectUnits(
       index: 0,
       claimed,
       note,
-      truncated,
+      // A teaser's excerpt is cut by the site as well, and its rest is on another page.
+      truncated: truncated || (words < MODEL_MIN_WORDS && isTeaserCut(container, text)),
     };
   }
 

@@ -155,6 +155,21 @@ const results = await page.evaluate(() => {
     check("prose in a block inside a link that is a whole card is read; a menu of block links is still link-dense",
       u.length === 2 && u.every((x) => x.words === 80) && menu.length === 0, JSON.stringify([u.map(x => x.words), menu.map(x => x.words)]));
   }
+  {
+    // TEASERS: the opening of another page's text in a card titled by a link to that page, cut
+    // by the site ("[…]", "…", "... Read more"). Under the model's 75-word minimum none is read;
+    // an article's paragraph that trails off in an ellipsis is, and so is a longer excerpt.
+    const cut = (n, end) => `${words(n).slice(0, -1)}${end}`;
+    const teaser = (i, text) => `<div class="post"><h3><a href="https://example.org/post-${i}">Post ${i}</a></h3><p>${text}</p><span>May ${i}</span></div>`;
+    u = collect(`<p>${words(90)}</p>${teaser(1, cut(60, " […]"))}${teaser(2, cut(60, "…"))}${teaser(3, cut(60, "... Read more"))}`, { minWords: 50 });
+    const linked = collect(`<a href="https://example.org/p" style="display:block"><h3>Title</h3><p>${cut(60, "…")}</p></a>`, { minWords: 50 });
+    const trailing = collect(`<article><h2>Notes</h2><p>${words(90)}</p><p>${cut(60, "…")}</p></article>`, { minWords: 50 });
+    const long = collect(teaser(4, cut(80, " […]")), { minWords: 50 });
+    const uncut = collect(teaser(5, words(60)), { minWords: 50 });
+    check("a teaser's excerpt cut by the site in a card titled by a link elsewhere, or inside one, is not read under 75 words; an article's trailing ellipsis, a longer excerpt and an uncut one are",
+      u.length === 1 && u[0].words === 90 && linked.length === 0 && trailing.length === 1 && trailing[0].words === 150 && long.length === 1 && uncut.length === 1,
+      JSON.stringify([u.map((x) => x.words), linked.length, trailing.map((x) => x.words), long.length, uncut.length]));
+  }
 
   u = collect(`<div contenteditable="true">${words(80)}</div>`);
   check("contenteditable never scored", u.length === 0);
