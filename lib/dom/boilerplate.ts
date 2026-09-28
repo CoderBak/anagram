@@ -136,8 +136,9 @@ export const CHROME_TOKEN_PATTERNS: string[] = [
   // article metadata rows (bylines/dates render as text but are not prose)
   "byline", "dateline", "post[-_]?meta", "entry[-_]?meta", "article[-_]?meta",
   // the author's bio box beside or under the text — compound forms only, so a box of the
-  // paper's authors that holds the paper (JMIR's `authors-container`) is no bio
-  "author[-_]?(?:bio|box|info|card|profile|about|details|description|block|section|wrap|wrapper|footer)",
+  // paper's authors that holds the paper (JMIR's `authors-container`) is no bio; BEM names
+  // count too, with one element between (`author__bio`, `author-row__bio`, `author_desc`)
+  "author(?:[-_]{1,2}[a-z]+)?[-_]{0,2}(?:bio|box|info|card|profile|about|details|desc|description|block|section|wrap|wrapper|footer)",
   "about[-_]?(?:the[-_]?)?authors?", "bio[-_]?(?:box|card|block)",
   // site furniture. (No bare "toc": Wikipedia's <body> carries utility classes
   // like "vector-toc-pinned-clientpref-1" — a delimited "toc" token nuked the

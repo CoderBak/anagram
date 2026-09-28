@@ -581,6 +581,7 @@ local component and the installer all carry the same version.
   a second into that, before it released its lock, and Anagram would not start until the
   update was run again. They now wait for the installer to finish.
 - A teaser of another page is no longer read as prose: an excerpt under 75 words that the site cut with "…", "[…]" or "… Read more", in a small card titled by a link to that page (a blog's related posts, a list of events), got a verdict on a text nobody wrote to end there once the minimum length went down to 50 words.
+- An author's bio box named the BEM way (`author__bio`, `author-row__bio`, `ala-author__description`, `author_desc`) is left out like the `author-box` and `author-bio` boxes already were.
 
 ## [0.7.0] — 2026-09-26
 

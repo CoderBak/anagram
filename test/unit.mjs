@@ -1310,6 +1310,9 @@ const results = await page.evaluate(() => {
   u = collect(`<p>${words(90)}</p><p>${words(90)}</p><div class="author-box"><a href="/author/ann">Ann Lee</a><p>${words(80)}</p></div><section class="about-the-author"><p>${words(80)}</p></section><div class="x9-AuthorBio">${words(80)}</div>`);
   check("the author's bio box under the text is not read (author-box, about-the-author, a hashed AuthorBio)",
     u.length === 2 && u.every((x) => x.words === 90), JSON.stringify(u.map(x => x.words)));
+  u = collect(`<p>${words(90)}</p><p>${words(90)}</p><div class="author-row"><div class="author-row__bio"><p>${words(80)}</p></div></div><div class="ala-author"><div class="ala-author__description">${words(80)}</div></div><div id="author_desc"><p>${words(80)}</p></div>`);
+  check("…and so is one named the BEM way (author-row__bio, ala-author__description, author_desc)",
+    u.length === 2 && u.every((x) => x.words === 90), JSON.stringify(u.map(x => x.words)));
   u = collect(`<div class="authors-container"><p>${words(90)}</p><p>${words(90)}</p></div><p>${words(40)}</p>`);
   check("…while a box of authors that holds the article is the article (JMIR's authors-container)", u.length === 2, JSON.stringify(u.map(x => x.words)));
   {
