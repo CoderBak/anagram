@@ -1093,6 +1093,36 @@ describe("structuredBlocks — the document", () => {
     ]);
   });
 
+  it("leaves out a paper's authors and affiliations on its first page, and keeps a paragraph with a raised mark or two", () => {
+    // Zotero reads the title page's lines as paragraphs: the author list carries a raised
+    // mark after every name, an affiliation opens with its mark and names its institution.
+    /** A line of runs, each [text, raised], set on from the margin. */
+    const line = (y: number, parts: [string, boolean][]): { block: SdtBlock; items: PdfTextItem[] } => {
+      let x = 72;
+      const nodes: SdtTextNode[] = [], items: PdfTextItem[] = [];
+      for (const [text, sup] of parts) {
+        const d = drawn(1, { text, x, y: sup ? y - 4 : y });
+        nodes.push({ text, anchor: { textMap: JSON.stringify([d.run]) }, ...(sup ? { style: { sup: true } } : {}) });
+        items.push(d.item);
+        x += text.length * CW;
+      }
+      return { block: { type: "paragraph", anchor: { pageRects: [[0, 72, HEIGHT - y - 2, x, HEIGHT - y + 7]] }, content: nodes }, items };
+    };
+    const authors = line(90, [["Ann Author", false], ["1", true], [", Bob Writer", false], ["2", true], [", Cat Scholar", false], ["1,3", true]]);
+    const affiliation = line(104, [["1", true], ["Department of Physics, University of Somewhere, Nowhere 12345", false]]);
+    const note = line(118, [["∗Corresponding author: ann@example.org", false]]);
+    const abstract = line(150, [["We study the long-term behaviour of a process on a half-line.", false]]);
+    const cited = line(170, [["The effect was reported before", false], ["2,3", true], [" and measured again later", false], ["4", true], [".", false]]);
+    const nmr = line(190, [["1", true], ["H NMR spectra were recorded at room temperature for every sample.", false]]);
+    const all = [authors, affiliation, note, abstract, cited, nmr];
+    const pages = [pageText(1, all.flatMap((x) => x.items))];
+    const blocks = structuredBlocks(structure(all.map((x) => x.block)), pages);
+    expect(blocks).toHaveLength(3);
+    expect(blocks[0]!.text).toBe("We study the long-term behaviour of a process on a half-line.");
+    expect(blocks[1]!.text).toMatch(/^The effect was reported before/);
+    expect(blocks[2]!.text).toMatch(/H NMR spectra were recorded/);
+  });
+
   it("takes a list of bracketed, dated entries for the bibliography Zotero did not find, and keeps a list of steps", () => {
     // REVTeX sets no References heading, and Zotero reads the bibliography as a list of the body.
     const lines: [string, number][] = [

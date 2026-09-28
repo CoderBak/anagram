@@ -349,6 +349,31 @@ function opensRaised(block: SdtBlock): boolean {
   return first?.style?.sup === true && /^\s*\d{1,3}\s*$/u.test(first.text);
 }
 
+/** A raised mark an author's name or an affiliation carries: "1", "2,3", "a", "∗", "†". */
+const AFFILIATION_MARK = /^(?:\d{1,2}(?:\s*,\s*\d{1,2})*,?|[a-h]|[∗*†‡§¶#]+)$/u;
+/** What an affiliation or a title page's note names. */
+const AFFILIATION = /universit|institut|department|dept\.|laborator|school|college|faculty|cent(?:er|re)\b|academy|hospital|clinic|corporation|\binc\b|\bltd\b|gmbh|e-?mail|@|correspond|contributed equally|equal contribution/iu;
+/** An author list carries this many raised marks at least, one every this many words. */
+const AUTHOR_MARKS = 3;
+const WORDS_PER_MARK = 5;
+
+/**
+ * A paper's authors and affiliations, which Zotero reads as paragraphs of the first page:
+ * "Alexandre Andre¹, Shivashriganesh P. Mahato¹, …", "¹Department of Physics, University of
+ * …", "∗Corresponding author: …". An affiliation or a title page's note opens with its mark
+ * and names an institution or an address; an author list carries a raised mark every few
+ * words.
+ */
+function isTitlePageMatter(block: SdtBlock): boolean {
+  if (startPage(block) !== 1) return false;
+  const text = plainText(block);
+  const first = firstText(block);
+  if (AFFILIATION.test(text) && ((first?.style?.sup === true && AFFILIATION_MARK.test(first.text.trim())) || /^[∗*†‡§¶]/u.test(text))) return true;
+  let marks = 0;
+  for (const node of block.content ?? []) if (isTextNode(node) && node.style?.sup && AFFILIATION_MARK.test(node.text.trim())) marks++;
+  return marks >= AUTHOR_MARKS && text.split(" ").length <= marks * WORDS_PER_MARK;
+}
+
 /** The readings of the content tree. A table is skipped like the rest of what is set aside,
  *  and a bibliography entry is a barrier, unless either is the prose of a manuscript with
  *  numbered lines (numberedReadings). */
@@ -362,7 +387,7 @@ function readingsOf(content: SdtBlock[], everything: boolean): (Reading | Marker
   };
   content.forEach((node, i) => {
     if (node.flowClass || node.reference) { aside(node, [i]); return; }
-    if (isNote(node) && !everything) { out.push("skip"); return; }
+    if ((isNote(node) || (node.type === "paragraph" && isTitlePageMatter(node))) && !everything) { out.push("skip"); return; }
     if (node.type === "heading") out.push({ kind: "heading", block: node, path: [i], origin: originOf(node) });
     else if (node.type === "paragraph") out.push({ kind: "paragraph", block: node, path: [i], origin: originOf(node) });
     else if (node.type === "list" || node.type === "blockquote") {
@@ -372,7 +397,7 @@ function readingsOf(content: SdtBlock[], everything: boolean): (Reading | Marker
         if (isTextNode(child)) return;
         if (bibliography) { out.push({ kind: "reference", block: child, path: [i, k], origin: originOf(child) }); return; }
         if (child.reference || child.flowClass) { aside(child, [i, k]); return; }
-        if ((isNote(child) || (notes && opensRaised(child))) && !everything) { out.push("skip"); return; }
+        if ((isNote(child) || (notes && opensRaised(child)) || isTitlePageMatter(child)) && !everything) { out.push("skip"); return; }
         if (child.type === "listitem" || child.type === "paragraph") {
           // A list item with nested blocks reads as its paragraphs.
           const inner = (child.content ?? []).filter((c): c is SdtBlock => !isTextNode(c));
