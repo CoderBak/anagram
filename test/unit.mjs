@@ -1313,6 +1313,11 @@ const results = await page.evaluate(() => {
   u = collect(`<p>${words(90)}</p><p>${words(90)}</p><div class="author-row"><div class="author-row__bio"><p>${words(80)}</p></div></div><div class="ala-author"><div class="ala-author__description">${words(80)}</div></div><div id="author_desc"><p>${words(80)}</p></div>`);
   check("…and so is one named the BEM way (author-row__bio, ala-author__description, author_desc)",
     u.length === 2 && u.every((x) => x.words === 90), JSON.stringify(u.map(x => x.words)));
+  u = collect(`<ul class="notices notices--block"><li class="notice"><div class="notice-content">${words(80)}</div></li></ul>` +
+    `<form id="notices" class="notices"><input type="hidden" name="t" value="x"><ol><li id="navbar_notice_1">${words(80)}</li></ol></form>` +
+    `<p>${words(90)}</p><div class="notices info"><p>${words(80)}</p></div>`);
+  check("a forum's list of site notices (XenForo's ul.notices, vBulletin's form#notices) is not read; a box named notices that holds a paragraph (Hugo's call-out) is",
+    u.length === 2 && u[0].words === 90 && u[1].words === 80, JSON.stringify(u.map(x => x.words)));
   u = collect(`<div class="authors-container"><p>${words(90)}</p><p>${words(90)}</p></div><p>${words(40)}</p>`);
   check("…while a box of authors that holds the article is the article (JMIR's authors-container)", u.length === 2, JSON.stringify(u.map(x => x.words)));
   {

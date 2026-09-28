@@ -334,6 +334,31 @@ function holdsAList(el: Element, depth = 2): boolean {
   return false;
 }
 
+/**
+ * A forum's list of SITE NOTICES, set over every page: XenForo's `ul.notices`, vBulletin's
+ * `ul#notices` and `form#notices > ol` — "If this is your first visit, be sure to check out the
+ * FAQ", "Please be sure to read the rules", a scam alert, a meetup. Each notice is a paragraph
+ * of the forum's staff above whatever thread is open, and at a minimum length of 50 words each
+ * was read beside the posts. Named `notices`, as a whole token, and a list: a box of that name
+ * that holds no list is a theme's call-out in the text (Hugo's `div.notices`).
+ */
+const NOTICES_NAME_RE = /(?:^|\s)notices(?:\s|$)/i;
+
+/** Is this a forum's list of site notices (see above)? Exported for the page diagnostics. */
+export function siteNotices(el: Element): boolean {
+  if (!NOTICES_NAME_RE.test(chromeNames(el))) return false;
+  const tag = el.nodeName.toUpperCase();
+  if (tag === "UL" || tag === "OL") return true;
+  // A box around the list (vBulletin's form, with its hidden fields beside the <ol>).
+  let list = false;
+  for (const child of el.children) {
+    const t = child.nodeName.toUpperCase();
+    if (t === "UL" || t === "OL") list = true;
+    else if (t === "P") return false;
+  }
+  return list;
+}
+
 /** A box carrying a reply-form token is the form itself only when there is something in it
  *  to type in, and when it is not the list of comments (or the box around both). */
 function isReplyForm(el: Element): boolean {
@@ -572,6 +597,7 @@ export function isBoilerplate(el: Element, page: PageTextSize = pageTextSize(el.
     if (cls && mediaWikiFurniture(el) !== null) return true;
   }
   if (referenceList(el) !== null) return true;
+  if ((cls || id) && siteNotices(el)) return true;
 
   return false;
 }
