@@ -1466,7 +1466,7 @@ The component archive (anagram.tar.gz, anagram.zip) holds Anagram's own engine, 
 - Project: https://pypi.org/
 - Licence: Each package's own
 - Copyright: Their respective authors
-- In Anagram: A Python runtime from uv's distributions and the packages anagramd/pyproject.toml names (MLX on Apple silicon, PyTorch and Transformers elsewhere, ONNX Runtime, tokenizers, fastText and others), installed from PyPI by uv at the exact versions of anagramd/uv.lock.
+- In Anagram: A Python runtime from uv's distributions and the packages anagramd/pyproject.toml names (MLX on Apple silicon, PyTorch and Transformers on Windows and on Linux with an NVIDIA GPU, ONNX Runtime, tokenizers, fastText and others), installed from PyPI by uv at the exact versions of anagramd/uv.lock.
 
 ### EditLens RoBERTa-large (pinned in anagramd/modelkit.json)
 

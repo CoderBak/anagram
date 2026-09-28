@@ -91,6 +91,8 @@ local component and the installer all carry the same version.
 
 ### Changed
 
+- Linux installs PyTorch and its CUDA libraries only beside an NVIDIA GPU (ONNX Runtime ran
+  the processor anyway): the installation shrinks from 6.9 GB to 1.7 GB, and an update removes them.
 - On Apple silicon the local engine runs the model in MLX (MIT) on the GPU instead of
   PyTorch, still in FP32 from the same model.safetensors, and PyTorch and Transformers are
   no longer installed there: the engine's Python packages shrink from 780 MB to 340 MB.

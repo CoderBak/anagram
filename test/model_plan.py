@@ -263,6 +263,37 @@ assert not {'torch', 'mlx', 'onnxruntime'} & set(sys.modules)
         self.assertEqual(torch["candidate_ids"], ["torch:cpu:fp32"])
         self.assertEqual(self.weights(torch), {"model.safetensors"})
 
+    def test_linux_without_torch_plans_and_lists_onnx_cpu_alone(self):
+        # Linux installs PyTorch only beside an NVIDIA GPU. Without it no PyTorch candidate
+        # is planned or listed, so Settings shows no unavailable runtime and no reason.
+        def load(name):
+            if name == "onnxruntime":
+                return FakeOrt()
+            raise ModuleNotFoundError(f"No module named '{name.split('.')[0]}'")
+        with patch.object(model_plan.importlib, "import_module", side_effect=load), \
+                patch.object(model_plan.platform, "system", return_value="Linux"):
+            found = discover_hardware()
+        self.assertFalse(found["torch"]["available"])
+        fake_api = SimpleNamespace(LanguageId=lambda _: object(), pipeline_manifest=lambda *_: {"test": True})
+        for profile, ids in (("recommended", ["onnx:cpu:fp32"]), ("expanded", ["onnx:cpu:fp32", "onnx:cpu:int8"])):
+            plan = build_plan(self.pin, found, profile)
+            self.assertEqual(plan["candidate_ids"], ids)
+            self.assertNotIn("model.safetensors", self.weights(plan))
+            with tempfile.TemporaryDirectory() as directory:
+                model = Path(directory) / "model"
+                (model / "onnx").mkdir(parents=True)
+                (model / "config.json").write_text("{}")
+                for name in ARTIFACT_PATHS.values():
+                    (model / name).write_bytes(b"tiny placeholder; never loaded")
+                with patch("runtime_adapters.discover_hardware", return_value=found), \
+                        patch("runtime_adapters.execution_environment", return_value={}):
+                    controller = create_controller(model, Path(directory) / "runtime.json", Path(directory) / "lid",
+                                                   api=fake_api, plan=plan)
+                    candidates, *_ = controller.discover()
+                controller.close()
+            self.assertEqual([c.id for c in candidates], ids)
+            self.assertTrue(all(c.available and c.reason is None for c in candidates))
+
     def test_recommended_ort_cuda_uses_only_fp32_with_same_file_cpu_fallback(self):
         plan = build_plan(self.pin, hardware(torch=False, ort_cuda=True))
         self.assertEqual(plan["candidate_ids"], ["onnx:cpu:fp32", "onnx:cuda:0:fp32"])
