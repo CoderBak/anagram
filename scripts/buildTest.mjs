@@ -18,14 +18,19 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { clearStamp, inputsHash, writeStamp } from "./buildStamp.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const OUT = join(ROOT, "output-test");
 const args = process.argv.slice(2);
 const targets = args.includes("--all")
   ? [[], ["-b", "firefox"]]
   : args.includes("--firefox")
     ? [["-b", "firefox"]]
     : [[]];
+const dirOf = (target) => (target.includes("firefox") ? "firefox-mv2" : "chrome-mv3");
+// No stamp until the build is whole (scripts/buildStamp.mjs).
+for (const target of targets) clearStamp(OUT, dirOf(target));
 
 // The on-demand chunks first, exactly as `npm run build` does: public/vendor/*.mjs is
 // generated, not tracked, so in a fresh checkout it is not there — and a variant built
@@ -34,6 +39,7 @@ const targets = args.includes("--all")
 const vendor = spawnSync(process.execPath, [join(ROOT, "scripts", "vendor.mjs")], { cwd: ROOT, stdio: "inherit" });
 if (vendor.status !== 0) process.exit(vendor.status ?? 1);
 
+const inputs = inputsHash(ROOT);
 for (const target of targets) {
   const run = spawnSync("npx", ["wxt", "build", ...target], {
     cwd: ROOT,
@@ -43,3 +49,6 @@ for (const target of targets) {
   });
   if (run.status !== 0) process.exit(run.status ?? 1);
 }
+// Stamped with what it was built from, unless that changed while it was built.
+if (inputsHash(ROOT) === inputs) for (const target of targets) writeStamp(OUT, dirOf(target), inputs);
+else console.warn("The sources changed during the test build; it is left unstamped, and the next suite builds it again.");

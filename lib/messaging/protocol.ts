@@ -94,6 +94,9 @@ export const ACTIONS = {
   SET_ENGINE: "setEngine",
   /** Settings → SW: delete the in-browser engine's model files while the local engine is in use. */
   DELETE_INBROWSER_MODEL: "deleteInBrowserModel",
+  /** SW → content / popup: the in-browser engine's download has moved, while it runs and they
+   *  show it (lib/backend/setupFeed.ts). */
+  ENGINE_SETUP: "engineSetup",
 } as const;
 
 /** SW → content (response to COMMENT_ACCESS): the providers' patterns nothing grants. */
@@ -319,6 +322,13 @@ export interface CacheClearedMessage {
   action: typeof ACTIONS.CACHE_CLEARED;
 }
 
+/** SW → content / popup: how far the in-browser engine's setup has got now. Answered with
+ *  `{ok: true}` by whoever still shows it; anything else ends the pushes to it. */
+export interface EngineSetupMessage {
+  action: typeof ACTIONS.ENGINE_SETUP;
+  setup: EngineSetup | null;
+}
+
 /** Union of all control messages the content script may receive. */
 export type ControlMessage =
   | RescanMessage
@@ -335,4 +345,5 @@ export type ControlMessage =
   | RetryBackendMessage
   | CacheClearedMessage
   | PingMessage
-  | AccessGrantedMessage;
+  | AccessGrantedMessage
+  | EngineSetupMessage;
