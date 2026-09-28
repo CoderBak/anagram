@@ -113,8 +113,13 @@ export const CHROME_TOKEN_PATTERNS: string[] = [
   "newsletter", "advert", "advertisement", "adsense", "sponsor", "sponsored",
   "promo",
   // the legal fine print a site sets under its text or its offer: Samsung's
-  // `common-bottom-disclaimer`, a bank's `div.disclaimer`, a pricing disclaimer
+  // `common-bottom-disclaimer`, a bank's `div.disclaimer`, a pricing disclaimer — and a box
+  // whose name ENDS in "legal", the thing it is (Mailchimp's `copy-legal` footnotes under its
+  // prices, Steam's `game_area_legal` licence terms), or that is legal text by name; never a
+  // bare or leading "legal", which a law firm's `legal-services` is too, nor the block
+  // editor's `has-legal-font-size`, a size a university's own tuition notes are set in
   "disclaimers?", "fine[-_]?print",
+  "[a-z\\d]+[-_]{1,2}legal(?=\\s|$)", "legal[-_]?(?:text|copy|notices?|notes?|info|lines?|small|footer)",
   // structural navigation (original set)
   "breadcrumbs?", "pagination", "pager", "skip[-_]?link",
   "site[-_]?(?:nav|header|footer)",
@@ -136,8 +141,9 @@ export const CHROME_TOKEN_PATTERNS: string[] = [
   // article metadata rows (bylines/dates render as text but are not prose)
   "byline", "dateline", "post[-_]?meta", "entry[-_]?meta", "article[-_]?meta",
   // the author's bio box beside or under the text — compound forms only, so a box of the
-  // paper's authors that holds the paper (JMIR's `authors-container`) is no bio
-  "author[-_]?(?:bio|box|info|card|profile|about|details|description|block|section|wrap|wrapper|footer)",
+  // paper's authors that holds the paper (JMIR's `authors-container`) is no bio; BEM names
+  // count too, with one element between (`author__bio`, `author-row__bio`, `author_desc`)
+  "author(?:[-_]{1,2}[a-z]+)?[-_]{0,2}(?:bio|box|info|card|profile|about|details|desc|description|block|section|wrap|wrapper|footer)",
   "about[-_]?(?:the[-_]?)?authors?", "bio[-_]?(?:box|card|block)",
   // site furniture. (No bare "toc": Wikipedia's <body> carries utility classes
   // like "vector-toc-pinned-clientpref-1" — a delimited "toc" token nuked the
@@ -331,6 +337,31 @@ function holdsAList(el: Element, depth = 2): boolean {
     if (depth > 1 && holdsAList(child, depth - 1)) return true;
   }
   return false;
+}
+
+/**
+ * A forum's list of SITE NOTICES, set over every page: XenForo's `ul.notices`, vBulletin's
+ * `ul#notices` and `form#notices > ol` — "If this is your first visit, be sure to check out the
+ * FAQ", "Please be sure to read the rules", a scam alert, a meetup. Each notice is a paragraph
+ * of the forum's staff above whatever thread is open, and at a minimum length of 50 words each
+ * was read beside the posts. Named `notices`, as a whole token, and a list: a box of that name
+ * that holds no list is a theme's call-out in the text (Hugo's `div.notices`).
+ */
+const NOTICES_NAME_RE = /(?:^|\s)notices(?:\s|$)/i;
+
+/** Is this a forum's list of site notices (see above)? Exported for the page diagnostics. */
+export function siteNotices(el: Element): boolean {
+  if (!NOTICES_NAME_RE.test(chromeNames(el))) return false;
+  const tag = el.nodeName.toUpperCase();
+  if (tag === "UL" || tag === "OL") return true;
+  // A box around the list (vBulletin's form, with its hidden fields beside the <ol>).
+  let list = false;
+  for (const child of el.children) {
+    const t = child.nodeName.toUpperCase();
+    if (t === "UL" || t === "OL") list = true;
+    else if (t === "P") return false;
+  }
+  return list;
 }
 
 /** A box carrying a reply-form token is the form itself only when there is something in it
@@ -571,6 +602,7 @@ export function isBoilerplate(el: Element, page: PageTextSize = pageTextSize(el.
     if (cls && mediaWikiFurniture(el) !== null) return true;
   }
   if (referenceList(el) !== null) return true;
+  if ((cls || id) && siteNotices(el)) return true;
 
   return false;
 }

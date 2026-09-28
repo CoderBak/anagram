@@ -155,6 +155,21 @@ const results = await page.evaluate(() => {
     check("prose in a block inside a link that is a whole card is read; a menu of block links is still link-dense",
       u.length === 2 && u.every((x) => x.words === 80) && menu.length === 0, JSON.stringify([u.map(x => x.words), menu.map(x => x.words)]));
   }
+  {
+    // TEASERS: the opening of another page's text in a card titled by a link to that page, cut
+    // by the site ("[…]", "…", "... Read more"). Under the model's 75-word minimum none is read;
+    // an article's paragraph that trails off in an ellipsis is, and so is a longer excerpt.
+    const cut = (n, end) => `${words(n).slice(0, -1)}${end}`;
+    const teaser = (i, text) => `<div class="post"><h3><a href="https://example.org/post-${i}">Post ${i}</a></h3><p>${text}</p><span>May ${i}</span></div>`;
+    u = collect(`<p>${words(90)}</p>${teaser(1, cut(60, " […]"))}${teaser(2, cut(60, "…"))}${teaser(3, cut(60, "... Read more"))}`, { minWords: 50 });
+    const linked = collect(`<a href="https://example.org/p" style="display:block"><h3>Title</h3><p>${cut(60, "…")}</p></a>`, { minWords: 50 });
+    const trailing = collect(`<article><h2>Notes</h2><p>${words(90)}</p><p>${cut(60, "…")}</p></article>`, { minWords: 50 });
+    const long = collect(teaser(4, cut(80, " […]")), { minWords: 50 });
+    const uncut = collect(teaser(5, words(60)), { minWords: 50 });
+    check("a teaser's excerpt cut by the site in a card titled by a link elsewhere, or inside one, is not read under 75 words; an article's trailing ellipsis, a longer excerpt and an uncut one are",
+      u.length === 1 && u[0].words === 90 && linked.length === 0 && trailing.length === 1 && trailing[0].words === 150 && long.length === 1 && uncut.length === 1,
+      JSON.stringify([u.map((x) => x.words), linked.length, trailing.map((x) => x.words), long.length, uncut.length]));
+  }
 
   u = collect(`<div contenteditable="true">${words(80)}</div>`);
   check("contenteditable never scored", u.length === 0);
@@ -1292,9 +1307,21 @@ const results = await page.evaluate(() => {
   u = collect(`<p>${words(90)}</p><p>${words(90)}</p><div class="common-bottom-disclaimer"><ol><li>${words(80)}</li></ol></div><p class="pricing-disclaimer-text">${words(80)}</p><div class="fine-print">${words(80)}</div>`);
   check("legal fine print under the text is not read (Samsung's bottom disclaimer, a pricing disclaimer)",
     u.length === 2 && u.every((x) => x.words === 90), JSON.stringify(u.map(x => x.words)));
+  u = collect(`<p>${words(90)}</p><div class="module"><div class="copy-legal"><ol><li>${words(80)}</li></ol></div></div><div id="game_area_legal"><p>${words(80)}</p></div><div class="legal-text">${words(80)}</div>` +
+    `<section class="legal-services"><p>${words(85)}</p></section><p class="has-legal-font-size">${words(95)}</p>`);
+  check("a box named for the legal text it is (copy-legal, game_area_legal, legal-text) is not read; a law firm's legal-services and the editor's has-legal-font-size are",
+    JSON.stringify(u.map((x) => x.words)) === "[90,85,95]", JSON.stringify(u.map((x) => x.words)));
   u = collect(`<p>${words(90)}</p><p>${words(90)}</p><div class="author-box"><a href="/author/ann">Ann Lee</a><p>${words(80)}</p></div><section class="about-the-author"><p>${words(80)}</p></section><div class="x9-AuthorBio">${words(80)}</div>`);
   check("the author's bio box under the text is not read (author-box, about-the-author, a hashed AuthorBio)",
     u.length === 2 && u.every((x) => x.words === 90), JSON.stringify(u.map(x => x.words)));
+  u = collect(`<p>${words(90)}</p><p>${words(90)}</p><div class="author-row"><div class="author-row__bio"><p>${words(80)}</p></div></div><div class="ala-author"><div class="ala-author__description">${words(80)}</div></div><div id="author_desc"><p>${words(80)}</p></div>`);
+  check("…and so is one named the BEM way (author-row__bio, ala-author__description, author_desc)",
+    u.length === 2 && u.every((x) => x.words === 90), JSON.stringify(u.map(x => x.words)));
+  u = collect(`<ul class="notices notices--block"><li class="notice"><div class="notice-content">${words(80)}</div></li></ul>` +
+    `<form id="notices" class="notices"><input type="hidden" name="t" value="x"><ol><li id="navbar_notice_1">${words(80)}</li></ol></form>` +
+    `<p>${words(90)}</p><div class="notices info"><p>${words(80)}</p></div>`);
+  check("a forum's list of site notices (XenForo's ul.notices, vBulletin's form#notices) is not read; a box named notices that holds a paragraph (Hugo's call-out) is",
+    u.length === 2 && u[0].words === 90 && u[1].words === 80, JSON.stringify(u.map(x => x.words)));
   u = collect(`<div class="authors-container"><p>${words(90)}</p><p>${words(90)}</p></div><p>${words(40)}</p>`);
   check("…while a box of authors that holds the article is the article (JMIR's authors-container)", u.length === 2, JSON.stringify(u.map(x => x.words)));
   {
