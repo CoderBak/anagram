@@ -9,7 +9,9 @@ import { sha256Hex } from "../../lib/webengine/sha256";
 import { MemoryStore } from "../../lib/webengine/storage";
 import { probeRuntimes, wasmThreads, type Candidate } from "../../lib/webengine/session";
 import { tinyTokenizerJson } from "../fixtures/webengine/tinyTokenizer.mjs";
-import { fakeServer, type FakeServerOptions } from "./webengineFake";
+import { fakeServer, FullDisk, type FakeServerOptions } from "./webengineFake";
+import { parseComponent } from "../../lib/backend/nativeClient";
+import { engineSetup, setupStage } from "../../lib/backend/engineSetup";
 
 const FIXTURES = join(__dirname, "..", "fixtures", "webengine");
 const MODEL = new Uint8Array(readFileSync(join(FIXTURES, "tiny.onnx")));
@@ -102,7 +104,8 @@ describe("the engine's lifecycle", () => {
     // lid.176.ftz is the package's: setup downloads and counts the model and tokenizer only.
     const total = MODEL.length + TOKENIZER.length;
     expect(data).toMatchObject({ download: { status: "completed", phase: "complete", bytes_received: total, total_bytes: total }, storage: { models_bytes: expect.any(Number) } });
-    expect((data as { storage: { models_bytes: number } }).storage.models_bytes).toBeGreaterThan(total);
+    // The model files, not the state file beside them.
+    expect((data as { storage: { models_bytes: number } }).storage.models_bytes).toBe(total);
     expect(m.server.requests.map((r) => r.url)).toEqual(["https://example.test/model.onnx", "https://example.test/tokenizer.json"]);
     expect(await m.store.list()).toEqual(["model.onnx", "state.json", "tokenizer.json"]);
     expect(m.log).toEqual(["create webgpu:fp32"]);
@@ -220,6 +223,58 @@ describe("the engine's lifecycle", () => {
     m.server.options.status = undefined;
     await m.engine.handle("models.download", {});
     expect((await ready(m.engine)).state).toBe("ready");
+  });
+
+  it("stops at once on a disk that fills up mid-download, says how much room to make, and Retry carries on from the part", async () => {
+    // The state file is written first; then 2,000 bytes of the model fit, and every write after
+    // that, the state file's included, is refused as a full disk refuses it.
+    const store = new FullDisk(Infinity);
+    const m = track(make({ store }));
+    await m.engine.handle("status", {});
+    store.room = store.used() + 400 + 2000;
+    await m.engine.handle("models.download", {});
+    const status = await ready(m.engine) as unknown as { state: string; download: { error: string } };
+    expect(status).toMatchObject({ state: "error", error: { code: "download_failed" }, download: { status: "failed", file: "model.onnx" } });
+    expect(status.download.error).toBe("There is not enough free disk space for model.onnx");
+    // One request, no retry; the part keeps every byte the disk took.
+    expect(m.server.requests).toEqual([{ url: "https://example.test/model.onnx", range: null }]);
+    const kept = (await store.size("model.onnx.part"))!;
+    expect(kept).toBeGreaterThan(1900);
+    // What the setup page, the popup and the panel make of it: a disk-full failure, and the
+    // room it asks for is what is left to download.
+    const snapshot = parseComponent(status)!;
+    const stage = setupStage(snapshot);
+    const total = MODEL.length + TOKENIZER.length;
+    expect(stage).toMatchObject({ stage: "failed", failure: "storage", total });
+    expect(stage.stage === "failed" && stage.total - stage.received).toBe(total - kept);
+    expect(engineSetup(snapshot)).toEqual({ state: "failed", percent: Math.floor((kept * 100) / total) });
+    // The browser restarts, the disk still full: the same failure is said, over the same bytes.
+    await m.engine.close();
+    const next = track(make({ store }));
+    let again: { download: { status: string; error: string } } | undefined;
+    for (let i = 0; i < 200 && again?.download.status !== "failed"; i++) {
+      again = (await next.engine.handle("status", {})).data as typeof again;
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    expect(again!.download).toMatchObject({ status: "failed", error: "There is not enough free disk space for model.onnx" });
+    expect(await store.size("model.onnx.part")).toBe(kept);
+    // Room again, and Retry: the rest of the model only, then the tokenizer, then ready.
+    store.room = Infinity;
+    await next.engine.handle("models.download", {});
+    expect((await ready(next.engine)).state).toBe("ready");
+    expect(next.server.requests.at(-2)).toEqual({ url: "https://example.test/model.onnx", range: `bytes=${kept}-` });
+  });
+
+  it("says why a failed download stopped after a restart too", async () => {
+    const m = track(make({ server: { status: 404 } }));
+    await m.engine.handle("models.download", {});
+    const failed = (await ready(m.engine) as unknown as { download: { error: string } }).download.error;
+    expect(failed).toBe("The server answered model.onnx with status 404");
+    await m.engine.close();
+    const next = track(make({ store: m.store }));
+    const { data } = await next.engine.handle("status", {});
+    expect(data).toMatchObject({ state: "needs_models", download: { status: "failed", error: failed }, error: { code: "download_failed", message: failed } });
+    expect(next.server.requests).toEqual([]);
   });
 
   it("lets the model go when idle and loads it again for the next score", async () => {

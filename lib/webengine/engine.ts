@@ -6,7 +6,7 @@
 // with the native host's shapes, errors and status numbers, and lets the model go after
 // the same idle time. One engine per worker; lib/webengine/worker.ts feeds it requests.
 import type { ScoreResult } from "../contract";
-import { downloadFile, DownloadFailed, DownloadPaused, readPackaged, verifyFile } from "./download";
+import { downloadFile, DownloadFailed, DownloadPaused, noRoomFor, outOfSpace, readPackaged, verifyFile } from "./download";
 import { FastText } from "./fasttext";
 import { BUCKET_LABELS, CALIBRATION, MODEL_ID, SUPPORTED_LANGUAGES, type Pin, type PinnedFile } from "./pin";
 import { CONTRACT_VERSION, EngineError, checkPayloadKeys, parseScorePayload, parseTokensPayload, type EngineOperation } from "./protocol";
@@ -40,6 +40,8 @@ interface Settings {
   selected_id: string | null;
   /** The pinned hashes of the files verified so far, by name. */
   verified: Record<string, string>;
+  /** Why the failed download stopped, said again after a restart (a full disk is still full). */
+  download_error?: string;
 }
 const STATE_DEFAULT: Settings = {
   schema_version: 1, initialized: false, download_pending: false, download_paused: false, download_failed: false,
@@ -134,9 +136,11 @@ export class Engine {
       }
       if (this.settings.download_paused) { this.state = "paused"; this.download = { ...this.download, status: "paused", ...this.totals() }; return; }
       if (this.settings.download_failed) {
+        const said = this.settings.download_error;
+        const message = typeof said === "string" && said ? said.slice(0, 2000) : "Retry the model download to continue setup";
         this.state = "needs_models";
-        this.download = { ...this.download, status: "failed", error: "Retry the model download to continue setup", ...this.totals() };
-        this.error = { code: "download_failed", message: "Retry the model download to continue setup" };
+        this.download = { ...this.download, status: "failed", error: message, ...this.totals() };
+        this.error = { code: "download_failed", message };
         return;
       }
       if (this.settings.download_pending && !this.settings.engine_stopped) { this.beginDownload(); return; }
@@ -176,14 +180,23 @@ export class Engine {
     }
   }
 
+  /** Save the settings. A disk too full to take them leaves them as they are in memory, and
+   *  the next save tries again: the model's own bytes then meet the full disk and say so. */
   private async writeSettings(): Promise<void> {
-    const writer = await this.store.writer(STATE_FILE, false);
-    await writer.write(new TextEncoder().encode(JSON.stringify(this.settings)));
-    await writer.close();
+    try {
+      const writer = await this.store.writer(STATE_FILE, false);
+      try { await writer.write(new TextEncoder().encode(JSON.stringify(this.settings))); }
+      catch (error) { await writer.close().catch(() => {}); throw error; }
+      await writer.close();
+    } catch (error) {
+      if (!outOfSpace(error)) throw error;
+    }
   }
 
+  /** The model files and their parts on disk, as lib/webengine/autoSetup.ts counts them: the
+   *  room a failed download asks for is what they still lack. */
   private async refreshStorage(): Promise<void> {
-    this.storageBytes = (await this.store.estimate()).used;
+    this.storageBytes = (await this.store.estimate()).used - ((await this.store.size(STATE_FILE)) ?? 0);
   }
 
   private totals(): { total_bytes: number; bytes_received: number } {
@@ -253,13 +266,14 @@ export class Engine {
         if (this.state === "downloading") this.state = "paused";
         return;
       }
-      const message = error instanceof DownloadFailed ? error.message : asText(error);
+      const message = error instanceof DownloadFailed ? error.message : outOfSpace(error) ? noRoomFor(this.download.file ?? "the model").message : asText(error);
       this.download = { ...this.download, status: "failed", error: message, detail: null };
       this.settings.download_pending = false;
       this.settings.download_failed = true;
-      await this.writeSettings();
+      this.settings.download_error = message;
       this.error = { code: "download_failed", message };
       this.state = "error";
+      await this.writeSettings().catch(() => {});
     }
   }
 

@@ -579,6 +579,7 @@ local component and the installer all carry the same version.
   put the old engine back, but the command's own Python processes killed it a quarter of
   a second into that, before it released its lock, and Anagram would not start until the
   update was run again. They now wait for the installer to finish.
+- A disk that fills up while the in-browser engine's model downloads stops the download at once and says how much room to make, keeping what arrived for Retry, and says so again after a restart. Chrome reports a really full disk to it as an odd byte count rather than an error, and the download used to retry for half a minute and then say only that it had stopped.
 
 ## [0.7.0] — 2026-09-26
 
