@@ -1149,6 +1149,28 @@ describe("structuredBlocks — the document", () => {
     ]);
   });
 
+  it("leaves out code and prompts set in a typewriter face, and reads a document typed throughout", () => {
+    const typed = (text: string, y: number): SdtBlock => {
+      const n = node(1, [{ text, x: 72, y }]);
+      return { type: "paragraph", content: [{ ...n, style: { monospace: true } }] };
+    };
+    const prose = (text: string, y: number): SdtBlock => paragraph(1, [node(1, [{ text, x: 72, y }])]);
+    const lines = [
+      "The body of the paper describes the method in prose, at some length and in its own words.",
+      "\" final_comment \" : \" Both inquiries are about directions to the airport. \",",
+      "You are an expert Python coding assistant. Write clean code.",
+      "The appendix goes on in prose after the listing, as the body of the paper did before it.",
+      "A last paragraph of prose closes the appendix and the paper with a sentence or two more.",
+    ];
+    const items = lines.map((text, i) => node(1, [{ text, x: 72, y: 100 + 14 * i }])).flatMap((n) => n.items);
+    const pages = [pageText(1, items)];
+    const blocks = structuredBlocks(structure(lines.map((text, i) => (i === 1 || i === 2 ? typed : prose)(text, 100 + 14 * i))), pages);
+    expect(blocks.map((b) => b.text)).toEqual([lines[0], lines[3], lines[4]]);
+    // A screenplay or a typed filing: every paragraph in a typewriter face.
+    const all = structuredBlocks(structure(lines.map((text, i) => typed(text, 100 + 14 * i))), pages);
+    expect(all).toHaveLength(5);
+  });
+
   describe("the order of a page's columns", () => {
     /** A block of `lines` lines at (x, y from the top), its rect in PDF space as Zotero gives it. */
     const placed = (label: string, x: number, y: number, lines = 1): { block: SdtBlock; items: PdfTextItem[]; label: string } => {

@@ -39,8 +39,8 @@ export { isMathFont } from "./reading";
 export interface SdtTextNode {
   text: string;
   anchor?: { textMap?: string };
-  /** How the text is set; `sup` is a raised run. */
-  style?: { sup?: boolean };
+  /** How the text is set; `sup` is a raised run, `monospace` one in a typewriter face. */
+  style?: { sup?: boolean; monospace?: boolean };
   /** Paths of the blocks the text refers to: the bibliography entries a citation names,
    *  a figure, an equation. */
   refs?: number[][];
@@ -374,6 +374,39 @@ function isTitlePageMatter(block: SdtBlock): boolean {
   return marks >= AUTHOR_MARKS && text.split(" ").length <= marks * WORDS_PER_MARK;
 }
 
+/** A paragraph this much of whose letters are set in a typewriter face, and this long, is
+ *  code, a listing, or a prompt quoted as typed; unless the document's own paragraphs are
+ *  mostly set in one (a screenplay, a typed filing), where the face is the body's. */
+const CODE_SHARE = 0.9;
+const CODE_CHARS = 20;
+const TYPED_BODY = 0.5;
+
+/** The letters of a block, and those of them Zotero styles monospace. */
+function typewriter(block: SdtBlock, out = { mono: 0, all: 0 }): { mono: number; all: number } {
+  for (const node of block.content ?? []) {
+    if (!isTextNode(node)) { typewriter(node, out); continue; }
+    const n = node.text.replace(/\s+/gu, "").length;
+    out.all += n;
+    if (node.style?.monospace) out.mono += n;
+  }
+  return out;
+}
+
+/**
+ * Whether a paragraph Zotero read as body text is code: a listing, a JSON record, a prompt
+ * quoted as typed (`" final_comment " : " Both i n q u i r i e s …`). Never in a document
+ * whose paragraphs are mostly set in a typewriter face.
+ */
+function codeTest(content: SdtBlock[]): (block: SdtBlock) => boolean {
+  const doc = { mono: 0, all: 0 };
+  for (const node of content) if (!node.flowClass && !node.reference && (node.type === "paragraph" || node.type === "list")) typewriter(node, doc);
+  if (doc.mono >= TYPED_BODY * doc.all) return () => false;
+  return (block) => {
+    const t = typewriter(block);
+    return t.all >= CODE_CHARS && t.mono >= CODE_SHARE * t.all;
+  };
+}
+
 /** The readings of the content tree. A table is skipped like the rest of what is set aside,
  *  and a bibliography entry is a barrier, unless either is the prose of a manuscript with
  *  numbered lines (numberedReadings). */
@@ -385,9 +418,10 @@ function readingsOf(content: SdtBlock[], everything: boolean): (Reading | Marker
     else if (node.type === "table") out.push({ kind: "table", block: node, path, origin: originOf(node) });
     else out.push(node.type === "math" ? "display" : "skip");
   };
+  const isCode = everything ? (): boolean => false : codeTest(content);
   content.forEach((node, i) => {
     if (node.flowClass || node.reference) { aside(node, [i]); return; }
-    if ((isNote(node) || (node.type === "paragraph" && isTitlePageMatter(node))) && !everything) { out.push("skip"); return; }
+    if ((isNote(node) || (node.type === "paragraph" && (isTitlePageMatter(node) || isCode(node)))) && !everything) { out.push("skip"); return; }
     if (node.type === "heading") out.push({ kind: "heading", block: node, path: [i], origin: originOf(node) });
     else if (node.type === "paragraph") out.push({ kind: "paragraph", block: node, path: [i], origin: originOf(node) });
     else if (node.type === "list" || node.type === "blockquote") {
@@ -397,7 +431,7 @@ function readingsOf(content: SdtBlock[], everything: boolean): (Reading | Marker
         if (isTextNode(child)) return;
         if (bibliography) { out.push({ kind: "reference", block: child, path: [i, k], origin: originOf(child) }); return; }
         if (child.reference || child.flowClass) { aside(child, [i, k]); return; }
-        if ((isNote(child) || (notes && opensRaised(child)) || isTitlePageMatter(child)) && !everything) { out.push("skip"); return; }
+        if ((isNote(child) || (notes && opensRaised(child)) || isTitlePageMatter(child) || isCode(child)) && !everything) { out.push("skip"); return; }
         if (child.type === "listitem" || child.type === "paragraph") {
           // A list item with nested blocks reads as its paragraphs.
           const inner = (child.content ?? []).filter((c): c is SdtBlock => !isTextNode(c));
