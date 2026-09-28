@@ -704,6 +704,14 @@ function locateTexts(doc: Document, texts: string[]): Element[] {
   return found;
 }
 
+/** Most words a card known by its body alone holds beside the body: the reviewer's name, a
+ *  location, a count of reviews, the date, a title, "Date of experience", Useful and Share. */
+const CARD_EXTRA_WORDS = 60;
+
+function wordCount(s: string): number {
+  return s.match(/\S+/g)?.length ?? 0;
+}
+
 function isPageLevelBox(el: Element): boolean {
   const tag = tagOf(el);
   return tag === "HTML" || tag === "BODY" || tag === "MAIN" || el.getAttribute("role") === "main";
@@ -725,11 +733,20 @@ function surveyReviews(doc: Document): Reviews {
     let card: Element | null = body.parentElement?.closest(REVIEW_SCOPE_SELECTOR) ?? null;
     if (card && holdsAnother(card, body)) continue; // one card, two texts: say nothing
     if (!card) {
-      // Known by its body alone: the largest box that holds no other review's text. On a page
-      // with ONE such body nothing says where its review ends, and the page is no card.
+      // Known by its body alone: the largest box that holds no other review's text, and no
+      // more beside it than a card's name, stars, date and buttons. On a page with ONE such
+      // body nothing says where its review ends, and the page is no card. movebuddha.com's
+      // JSON-LD gives each mover's summary as a Review, in a section that also holds the
+      // editor's description of the mover: that is no card's furniture.
       if (bodies.size < 2) continue;
+      const own = wordCount(body.textContent ?? "");
       let box = body;
-      while (box.parentElement && !isPageLevelBox(box.parentElement) && !holdsAnother(box.parentElement, body)) box = box.parentElement;
+      while (
+        box.parentElement &&
+        !isPageLevelBox(box.parentElement) &&
+        !holdsAnother(box.parentElement, body) &&
+        wordCount(box.parentElement.textContent ?? "") - own <= CARD_EXTRA_WORDS
+      ) box = box.parentElement;
       if (box === body || isPageLevelBox(box)) continue;
       card = box;
       reviews.cards.add(card);
@@ -755,6 +772,9 @@ const MAX_CARD_BLOCKS = 400;
 /** Cards of one list that are read for it: the template repeats itself long before a feed of
  *  six thousand posts ends. */
 const MAX_LIST_CARDS = 60;
+/** What another voice says in a card: a reply that quotes a post repeats it word for word, and
+ *  a post that three replies quote is still its author's. */
+const QUOTATION = "blockquote,q";
 
 /** An element with text of its own, beside its children. */
 function ownText(el: Element): boolean {
@@ -762,13 +782,23 @@ function ownText(el: Element): boolean {
   return false;
 }
 
-/** The box that holds `post` among several cards, or null. */
-function listOf(post: Element): Element | null {
+/** A card's shape: its tag and leading class token, as `shapeOf` compares posts. */
+function cardShape(el: Element): string {
+  return `${el.localName}.${(el.getAttribute("class") ?? "").trim().split(/\s+/, 1)[0]}`;
+}
+
+/** The box that holds `post` among several cards OF ITS OWN SHAPE, and the card it stands in,
+ *  or null. A column beside two sidebars is three children and no list of cards. */
+function listOf(post: Element): { list: Element; card: Element } | null {
   let card = post;
   for (let up = 0; up < LIST_LEVELS; up++) {
     const parent = card.parentElement;
     if (!parent || isPageLevelBox(parent)) return null;
-    if (parent.childElementCount >= SHARED_MIN) return parent;
+    if (parent.childElementCount >= SHARED_MIN) {
+      const shape = cardShape(card);
+      let alike = 0;
+      for (const child of parent.children) if (cardShape(child) === shape && ++alike >= SHARED_MIN) return { list: parent, card };
+    }
     card = parent;
   }
   return null;
@@ -776,26 +806,29 @@ function listOf(post: Element): Element | null {
 
 /** A list's shared texts across scans, while its cards are the same ones: a feed is re-scanned
  *  on every mutation, and the template it repeats does not change between two of them. */
-const listTexts = new WeakMap<Element, { count: number; first: Element | null; last: Element | null; texts: Set<string> }>();
+const listTexts = new WeakMap<Element, Map<string, { count: number; first: Element | null; last: Element | null; texts: Set<string> }>>();
 
-/** The texts at least SHARED_MIN of `list`'s cards, and half of them, hold word for word. */
-function textsSharedIn(list: Element): Set<string> {
-  const known = listTexts.get(list);
+/** The texts at least SHARED_MIN of `list`'s cards of `shape`, and half of them, hold word for
+ *  word. */
+function textsSharedIn(list: Element, shape: string): Set<string> {
+  let byShape = listTexts.get(list);
+  if (!byShape) listTexts.set(list, (byShape = new Map()));
+  const known = byShape.get(shape);
   if (known && known.count === list.childElementCount && known.first === list.firstElementChild && known.last === list.lastElementChild) return known.texts;
-  const texts = countSharedIn(list);
-  listTexts.set(list, { count: list.childElementCount, first: list.firstElementChild, last: list.lastElementChild, texts });
+  const texts = countSharedIn(list, shape);
+  byShape.set(shape, { count: list.childElementCount, first: list.firstElementChild, last: list.lastElementChild, texts });
   return texts;
 }
 
-function countSharedIn(list: Element): Set<string> {
+function countSharedIn(list: Element, shape: string): Set<string> {
   const counts = new Map<string, number>();
   let cards = 0;
-  for (const card of [...list.children].slice(0, MAX_LIST_CARDS)) {
+  for (const card of [...list.children].filter((c) => cardShape(c) === shape).slice(0, MAX_LIST_CARDS)) {
     const seen = new Set<string>();
     let blocks = 0;
     for (const el of card.querySelectorAll("*")) {
       if (++blocks > MAX_CARD_BLOCKS) break;
-      if (!ownText(el)) continue;
+      if (!ownText(el) || el.closest(QUOTATION)) continue;
       const text = wordsOnly(el.textContent ?? "");
       if (text.length >= SHARED_MIN_CHARS) seen.add(text);
     }
@@ -824,8 +857,6 @@ export function createScopes(doc: Document = document): Scopes {
   const nearest = new Map<Element, Element | null>();
   let mail: MailHistory | null = null;
   let reviews: Reviews | null = null;
-  /** Per list of cards: the texts enough of its cards repeat (sharedByTheList). */
-  const sharedTexts = new Map<Element, Set<string>>();
 
   /** The quoted history `el` stands in at its own level: the last marker among its siblings
    *  at or before it. */
@@ -1016,17 +1047,18 @@ export function createScopes(doc: Document = document): Scopes {
    * punctuated paragraph of that length is prose to every other rule, a unit of its own at a
    * 25-word minimum. So a block with text of its own, inside a post, whose text stands word for
    * word in at least SHARED_MIN of the cards of its list, and in half of them, is left out
-   * like a name row. The list is the nearest box above the post, a few levels up at most, that
-   * holds several cards; its texts are counted once per scan.
+   * like a name row — never a heading, which is a boundary and would take the boundary with
+   * it, and never a quotation, nor counted from one (QUOTATION). The list is the nearest box
+   * above the post, a few levels up at most, that holds several cards of the post's own shape;
+   * its texts are counted once while its cards stay.
    */
   function sharedByTheList(el: Element): boolean {
-    if (!ownText(el)) return false;
+    if (!ownText(el) || /^H[1-6]$/.test(tagOf(el)) || el.getAttribute("role") === "heading" || el.closest(QUOTATION)) return false;
     const scope = api.of(el);
     if (!scope || scope === el) return false;
-    const list = listOf(scope);
-    if (!list) return false;
-    let texts = sharedTexts.get(list);
-    if (!texts) sharedTexts.set(list, (texts = textsSharedIn(list)));
+    const found = listOf(scope);
+    if (!found) return false;
+    const texts = textsSharedIn(found.list, cardShape(found.card));
     return texts.size > 0 && texts.has(wordsOnly(el.textContent ?? ""));
   }
 

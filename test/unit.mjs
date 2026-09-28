@@ -968,6 +968,18 @@ const results = await page.evaluate(() => {
       u.length === 4 && u.every((x) => x.parts === 1 && /^S\d /.test(x.text)), shape(u));
     u = collect(`<div class="list">${[1, 2, 3, 4, 5, 6].map((n) => reviewCard(n, n <= 2 ? "<p>Would buy again from this shop without a second thought.</p>" : "")).join("")}</div>`, { minWords: 25 });
     check("…while a sentence two reviews of six happen to share stays theirs", u.length === 6 && u.filter((x) => x.parts === 2).length === 2, shape(u));
+    // What the web benchmark caught the first version of these rules doing.
+    u = collect(`<div class="page"><nav class="side"><p>Install the package with the tool.</p></nav><article class="doc"><p>A ${sent(199)}</p><p>S1 ${sent(29)}</p><h2>Install the package with the tool.</h2><p>S2 ${sent(29)}</p><p>B ${sent(199)}</p></article><aside class="toc"><p>Install the package with the tool.</p></aside></div>`, { minWords: 50 });
+    check("…but a column beside two sidebars is no list of cards: a heading its table of contents repeats stays a heading, and a boundary",
+      u.length === 2 && u.every((x) => x.parts === 2), shape(u));
+    const quoting = (n) => `<div class="post"><div class="m"><a href="/u/p${n}">p${n}</a> <time>2h</time></div><blockquote><p>Q ${sent(29)}</p></blockquote><p>R${n} ${sent(29)}</p></div>`;
+    u = collect(`<div class="topic"><div class="post"><div class="m"><a href="/u/op">op</a> <time>3h</time></div><p>Q ${sent(29)}</p><p>OP ${sent(29)}</p></div>${[1, 2, 3].map(quoting).join("")}</div>`, { minWords: 50 });
+    check("…and a post three replies quote is still its author's: the quoted paragraph stays in the opening post",
+      u.some((x) => x.parts === 2 && x.text.startsWith("Q ") && x.text.includes("OP ")), shape(u));
+    const mover = (n) => `<section class="mover"><h3>Mover ${n}</h3><div class="summary"><p>M${n} ${sent(24)}</p><a href="/q">Get a quote</a></div><div class="info"><p>E${n} ${sent(59)}</p><p>${sent(40)}</p></div></section>`;
+    u = collect(`${ld([1, 2, 3].map((n) => `M${n} ${sent(24)}`))}${[1, 2, 3].map(mover).join("")}`, { minWords: 50 });
+    check("a card known from JSON-LD holds no more than a card's name, stars and date beside the review: the editor's text beside it is read (movebuddha)",
+      u.length === 3 && u.every((x) => /^E\d /.test(x.text)), shape(u));
 
     // A pure function of the page: whichever element is asked first, the answers are the same.
     {
