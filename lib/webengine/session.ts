@@ -20,7 +20,7 @@
 // browser offers an adapter whose storage-buffer limit can hold the word-embedding matrix
 // (50 265 × 1024 floats, 206 MB, which the Gather kernel binds as one buffer; WebGPU's
 // default limit is 128 MiB, and the runtime asks the adapter for its maximum), otherwise
-// the CPU provider, with as many threads as the page allows (one, unless it is
+// the CPU provider, with as many threads as wasmThreads allows (one, unless the page is
 // cross-origin isolated and SharedArrayBuffer exists). A session that fails to build on
 // the GPU falls back to the CPU provider on its own.
 import { weightlessGraph } from "./onnx";
@@ -116,11 +116,17 @@ export async function probeRuntimes(): Promise<Candidate[]> {
   return [webgpu, wasm];
 }
 
-/** Threads the CPU provider may use: more than one needs SharedArrayBuffer. */
+/**
+ * Threads the CPU provider may use: more than one needs SharedArrayBuffer. Two of the
+ * processor's threads are left to the browser and the page, and eight at most (more is not
+ * measured). On a 10-thread M4 left to itself, 8×512 tokens took 10.7 s on eight threads,
+ * 14.4 on four and 10.1 on all ten; with other programs busy, 16.4, 22.0 and 17.8, the ten
+ * now sharing the cores with the browser's own. The count changes no result.
+ */
 export function wasmThreads(): number {
   const isolated = typeof SharedArrayBuffer !== "undefined" && (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated === true;
   if (!isolated) return 1;
-  return Math.max(1, Math.min(4, Math.floor((navigator.hardwareConcurrency || 2) / 2)));
+  return Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 2) - 2));
 }
 
 let runtime: Promise<OrtModule> | undefined;
@@ -138,7 +144,7 @@ function loadRuntime(assets: RuntimeAssets): Promise<OrtModule> {
   return runtime;
 }
 
-export interface SessionInfo { candidate: Candidate; threads: number; createMs: number; firstRunMs: number }
+export interface SessionInfo { candidate: Candidate; createMs: number; firstRunMs: number }
 
 /** One loaded model on one execution provider. */
 export class Session implements Backend {
@@ -150,8 +156,12 @@ export class Session implements Backend {
    */
   static async create(assets: RuntimeAssets, candidate: Candidate, model: Blob, signal?: AbortSignal): Promise<Session> {
     const ort = await loadRuntime(assets);
-    const threads = candidate.id === WASM_ID ? wasmThreads() : 1;
-    ort.env.wasm.numThreads = threads;
+    // The runtime's one thread pool (the session's own thread options are not read), made
+    // when its WebAssembly starts: once a worker, by the first session. The GPU session asks
+    // for the CPU path's threads too, so a CPU session after a GPU one that failed has them
+    // rather than one (2 s for one text of 160 tokens instead of 1); on the GPU they change
+    // neither speed nor memory measurably (0.03 GB).
+    ort.env.wasm.numThreads = wasmThreads();
     const began = performance.now();
     const graph = await weightlessGraph(async (offset, length) => new Uint8Array(await model.slice(offset, offset + length).arrayBuffer()), model.size, MODEL_FILE);
     if (signal?.aborted) throw new Error("cancelled");
@@ -163,13 +173,13 @@ export class Session implements Backend {
       externalData: [{ path: MODEL_FILE, data: model }],
       // The CPU provider would repack every weight matrix into a copy of its own, and the
       // memory the originals leave is never given back: 0.5 GB more for 2–8% of speed.
-      ...(candidate.id === WASM_ID ? { intraOpNumThreads: threads, extra: { session: { disable_prepacking: "1" } } } : {}),
+      ...(candidate.id === WASM_ID ? { extra: { session: { disable_prepacking: "1" } } } : {}),
     });
     if (signal?.aborted) { await session.release(); throw new Error("cancelled"); }
     const createMs = performance.now() - began;
     for (const name of ["input_ids", "attention_mask"]) if (!session.inputNames.includes(name)) { await session.release(); throw new Error(`the model has no ${name} input`); }
     if (!session.outputNames.includes("logits")) { await session.release(); throw new Error("the model has no logits output"); }
-    const out = new Session(ort, session, { candidate, threads, createMs, firstRunMs: 0 });
+    const out = new Session(ort, session, { candidate, createMs, firstRunMs: 0 });
     // The first pass compiles the GPU shaders (or warms the CPU kernels), as the native engine
     // warms up. A session that cannot run is let go here, or its weights stay on the GPU.
     const warm = performance.now();
