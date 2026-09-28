@@ -41,6 +41,7 @@ import { handleNativePageMessage } from "../lib/backend/nativeBridge";
 import { readEngineSetup } from "../lib/backend/engineSetup";
 import { deleteEngineFiles, startSetupByItself } from "../lib/webengine/autoSetup";
 import { closeWebEngine } from "../lib/webengine/client";
+import { createSetupFeed, type SetupListener } from "../lib/backend/setupFeed";
 import { NATIVE_MESSAGE, NATIVE_UNINSTALL } from "../lib/backend/nativeProtocol";
 const EXTENSION_UPDATE_KEY = "extensionUpdatePending";
 
@@ -83,6 +84,7 @@ export default defineBackground(() => {
   browser.tabs.onRemoved.addListener((tabId) => {
     badgeText.delete(tabId);
     pdfNavigation.forget(tabId);
+    setupFeed.forget(tabId);
     wants.delete(tabId);
     handoff.forget(tabId);
   });
@@ -123,6 +125,17 @@ export default defineBackground(() => {
   const pdfNavigation = createPdfNavigation({setting: () => settings.autoOpenPdfs.getValue(), open: handoff.open});
   pdfNavigation.serve();
   const wants = new Set<number>();
+
+  // The in-browser engine's download, pushed to the popup and the panels that show it.
+  const setupFeed = createSetupFeed({
+    read: async () => (await engineTransport().current()) === "inbrowser" ? readEngineSetup((op) => engineTransport().request(op)) : null,
+    tell: async (listener, setup) => {
+      const message = {action: ACTIONS.ENGINE_SETUP, setup};
+      const reply = listener === "pages" ? await browser.runtime.sendMessage(message)
+        : await browser.tabs.sendMessage(listener.tabId, message, {frameId: listener.frameId, ...(listener.documentId ? {documentId: listener.documentId} : {})});
+      return (reply as {ok?: unknown} | undefined)?.ok === true;
+    },
+  });
 
   // Context menus; recreated idempotently on install/update. The PDF entry is offered on
   // LINKS to a .pdf, which is where a reader decides to open one — the tab that is
@@ -393,7 +406,11 @@ export default defineBackground(() => {
         // The in-browser engine is down until it is set up, and then loading: the popup and the
         // panel say how far setup has got, and offer its page, instead of "not ready".
         if (engine !== "inbrowser" || (status.active !== "down" && status.active !== "loading") || status.server.code === "engine_crashed") return {...status,engine} satisfies BackendStatus;
-        return {...status,engine,setup:await readEngineSetup((op) => engineTransport().request(op))} satisfies BackendStatus;
+        const setup=await readEngineSetup((op) => engineTransport().request(op));
+        // A running download is then pushed to the popup and the panel as it moves.
+        const listener:SetupListener|null=role === "popup" ? "pages" : role === "content" ? {tabId:sender.tab!.id!,frameId:sender.frameId ?? 0,documentId:sender.documentId} : null;
+        if (listener) setupFeed.follow(listener,setup);
+        return {...status,engine,setup} satisfies BackendStatus;
       }
       case ACTIONS.GET_ENGINE:
         return {engine:await engineTransport().current()};

@@ -15,7 +15,7 @@ import { cancelDocumentSession, documentSessionId, sendDocumentMessage } from ".
 // flickering still-valid badges. The popup Rescan button remains the full teardown+rescan.
 import { browser, type ContentScriptContext } from "#imports";
 import { ACTIONS } from "../messaging/protocol";
-import type { BackendStatus, CommentAccessReply } from "../messaging/protocol";
+import type { BackendStatus, CommentAccessReply, EngineSetup } from "../messaging/protocol";
 import { commentOriginsIn } from "../access/commentFrames";
 import type { Unit, Lane } from "../types";
 import type { ModelInfo, ScoreBlock, ScoreResult, ScoreBatchRequest } from "../contract";
@@ -137,6 +137,9 @@ export interface Orchestrator {
   setFabAction(label: string | null, onAction?: () => void, opts?: { attention?: boolean }): void;
   /** Popup/panel "Retry": re-probe the daemon now; re-queue every "Unavailable" unit. */
   retryBackend(): void;
+  /** The worker's push while the in-browser engine's model downloads; false when this page no
+   *  longer shows the download. */
+  setupProgress(setup: EngineSetup | null): boolean;
   /** Drop the per-tab verdict cache and leave the page exactly as it is (options →
    *  "Clear cached verdicts"): the next scan or Rescan asks the backend again. */
   forgetCached(): void;
@@ -1033,6 +1036,15 @@ export function createOrchestrator(
     else retryUnavailable();
   }
 
+  /** The panel shows each figure of a running download as the worker pushes it
+   *  (lib/backend/setupFeed.ts); whatever comes after the download is asked for at once. */
+  function setupProgress(setup: EngineSetup | null): boolean {
+    if (!started || frozen || !backendDown) return false;
+    if (setup?.state === "downloading") fab.setBackendDown(true, false, setup, true);
+    else void checkBackend(false);
+    return true;
+  }
+
   /**
    * The worker's caches were cleared, so this layer — which answers before them — has to go
    * too. Nothing is re-scanned or repainted: the verdicts on the page were real when they
@@ -1724,6 +1736,7 @@ export function createOrchestrator(
     unavailableCount,
     setFabAction,
     retryBackend,
+    setupProgress,
     forgetCached,
     openPanel,
     jumpFlagged,

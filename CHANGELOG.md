@@ -144,6 +144,7 @@ local component and the installer all carry the same version.
 
 - Anagram's code is now licensed under the GNU AGPL v3.0 or later. The licence text ships
   in the extension and in the local component. The model keeps its CC BY-NC-SA 4.0 licence.
+- While the in-browser engine's model downloads, the popup and the panel on a page move with it and show the same figure, each within about half a second of the download; the panel used to catch up every five seconds, and the popup kept the figure it opened with.
 
 ### Fixed
 

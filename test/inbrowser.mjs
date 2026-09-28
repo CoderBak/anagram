@@ -22,8 +22,8 @@
 //     names no model host, and with the shipped permissions (no host at all) the download
 //     goes by CORS alone; the package carries lid.176.ftz;
 //   - the download with progress, speed and time left, the popup's and the panel's progress
-//     line, a dropped connection retried by itself, Pause and Resume from the bytes on disk,
-//     and Cancel;
+//     line (pushed as it moves, the same figure in both), a dropped connection retried by
+//     itself, Pause and Resume from the bytes on disk, and Cancel;
 //   - not set up: every page shows the in-browser block and no install command, the popup and
 //     the in-page panel say setup is needed and open the setup page, Save-Data and a disk too
 //     full say why the download waits, a server error and Retry;
@@ -516,6 +516,31 @@ for (const lang of ["en", "zh-CN"]) {
     const panelPercent = Number(/(\d+)%/.exec(panelLine?.text ?? "")?.[1]);
     check(`${lang}: the panel shows the download's progress`, panelLine?.text === w("panelSetupDownloading", panelPercent) && panelLine?.button === w("engineShowProgress"), JSON.stringify(panelLine));
 
+    // Pushed, not polled (lib/backend/setupFeed.ts): the popup and the panel move with the
+    // download together, each figure within a second of the engine's own; the panel used to ask
+    // every five seconds, and the popup not at all.
+    const live = await extPage(context, extId, "popup.html", problems);
+    await live.evaluate(() => { window.__pushes = 0; chrome.runtime.onMessage.addListener((m) => { if (m?.action === "engineSetup") window.__pushes++; }); });
+    const firstSeen = { engine: new Map(), popup: new Map(), panel: new Map() };
+    const saw = (which) => (text) => { const p = /(\d+)%/.exec(text ?? "")?.[1]; if (p !== undefined && !firstSeen[which].has(p)) firstSeen[which].set(p, Date.now()); };
+    for (const end = Date.now() + 6000; Date.now() < end; await sleep(40)) {
+      await Promise.all([
+        engine(setup, "status").then((s) => { const d = s?.data?.download; if (d?.status === "running") saw("engine")(`${Math.floor((d.bytes_received * 100) / d.total_bytes)}%`); }),
+        live.evaluate(() => document.getElementById("status").textContent).then(saw("popup")),
+        panelNotice().then((n) => saw("panel")(n?.text)),
+      ]);
+    }
+    // Figures the engine reached while it was watched: the first one it was already showing.
+    const reached = [...firstSeen.engine.keys()].slice(1);
+    const lag = (which) => reached.filter((p) => firstSeen[which].has(p)).map((p) => firstSeen[which].get(p) - firstSeen.engine.get(p));
+    const [panelLag, popupLag] = [lag("panel"), lag("popup")];
+    const apart = reached.filter((p) => firstSeen.panel.has(p) && firstSeen.popup.has(p)).map((p) => Math.abs(firstSeen.panel.get(p) - firstSeen.popup.get(p)));
+    const pushNote = JSON.stringify({ reached, panelLag, popupLag, apart });
+    console.log(`${lang}: pushed progress, ms after the engine: panel ${panelLag.join(" ")}; popup ${popupLag.join(" ")}; apart ${apart.join(" ")}`);
+    check(`${lang}: the popup and the panel follow the download together, each new figure within a second of the engine's`,
+      reached.length >= 3 && panelLag.length >= reached.length - 1 && popupLag.length >= reached.length - 1 &&
+      Math.max(...panelLag, ...popupLag) <= 1000 && Math.max(...apart) <= 1000, pushNote);
+
     // A connection that drops is retried by the engine on its own.
     await setup.bringToFront();
     server.set({ status: 503 });
@@ -535,6 +560,15 @@ for (const lang of ["en", "zh-CN"]) {
     const pausedLine = await textOf(setup, "#engine-progress");
     check(`${lang}: Pause stops the download and keeps its progress`, paused && /^\d+% · /.test(pausedLine ?? "") && !pausedLine.includes(w("engineSpeed", "").trim()) &&
       (await textOf(setup, "#component-primary")) === w("componentResumeDownload"), pausedLine);
+    const pausedAt = Date.now();
+    const panelPaused = await until(async () => pattern(lang, "panelSetupPaused").test((await panelNotice())?.text ?? ""), 5000, 50);
+    const panelPausedMs = Date.now() - pausedAt;
+    const popupPaused = await until(async () => pattern(lang, "popupSetupPaused").test(await live.evaluate(() => document.getElementById("status").textContent)), 5000, 50);
+    const pushes = await live.evaluate(() => window.__pushes);
+    await sleep(3000);
+    check(`${lang}: the panel and the popup say paused at once, and nothing is pushed while no download runs`,
+      panelPaused && panelPausedMs <= 1500 && popupPaused && (await live.evaluate(() => window.__pushes)) === pushes, `${panelPausedMs} ms, ${pushes} pushes`);
+    await live.close();
     let before = server.requests.length;
     await setup.click("#component-primary");
     await until(async () => (await statusOf(setup)) === w("engineDownloading"), 15000);
