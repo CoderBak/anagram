@@ -1,0 +1,122 @@
+<!doctype html>
+<!--
+  Google Maps, a place's reviews. SYNTHETIC: Maps draws its reviews with script, so a plain
+  request (2026-09-28) holds none; the markup is modelled on the public review list:
+  `div.jftiEf[data-review-id][aria-label=<name>]` cards with obfuscated class names, the
+  reviewer's picture in a BUTTON whose `data-href` names their contributions (no link, no
+  <time>, no picture called an avatar anywhere), "Local Guide · N reviews", the stars as
+  `span[role=img][aria-label=" 5 stars "]`, "2 weeks ago", the text in `span.wiI7pd` with
+  line breaks as newlines (white-space: pre-wrap), Like and Share, and — under one review — the
+  place's "Response from the owner". A long review arrives cut, ending in "…", behind "More".
+  Names and ids are placeholders, text synthetic.
+
+  What this guards: nothing on a Maps card was byline evidence, so the cards were read as the
+  bare page — each name row still ended the text before it, but no card was a voice. The
+  stars are evidence now (a rating in an aria-label), which makes every card one of several
+  alike. The owner's response stays a text of its own under its "Response from the owner" row,
+  and the cut preview is not read.
+
+  Annotation: see x-timeline.html. Every review's text carries data-voice and data-expect for
+  the shipped 50-word minimum (test/unit.mjs walks it at 50, and at 25 and 75 for the invariants).
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: Google Maps reviews</title>
+<style>
+  body { margin: 0; font: 14px/20px Roboto, Arial, sans-serif; color: #202124; }
+  .m6QErb { width: 408px; margin: 16px auto; }
+  .jftiEf { padding: 16px 0; border-bottom: 1px solid #e8eaed; }
+  .NsCY4 { display: flex; gap: 8px; align-items: center; }
+  .RfnDt { color: #70757a; font-size: 12px; }
+  .DU9Pgb { display: flex; gap: 8px; margin: 8px 0; }
+  .kvMYJc { display: inline-block; width: 70px; height: 12px; background: #fbbc04; }
+  .wiI7pd { white-space: pre-wrap; }
+  .CDe7pd { margin: 8px 0 0 16px; }
+  button { font: inherit; background: none; border: 0; }
+</style></head>
+<body>
+<div class="m6QErb DxyBCb kA9KIf dS8AEf" aria-label="Golden Gate Bridge" role="main">
+  <div class="m6QErb XiKgde">
+  <div class="jftiEf fontBodyMedium" aria-label="Reviewer 1" data-review-id="ChZDSUhNMG9nS0VJQ0FnSUR1" jsaction="mouseover:pane.wfvdle12">
+    <div class="GHT2ce">
+      <div class="GHT2ce NsCY4" data-chrome>
+        <button class="WEBjve" aria-label="Photo of Reviewer 1" data-href="https://www.google.com/maps/contrib/100000000000000000001/reviews?hl=en"><img class="NBa7we" alt="" src="https://lh3.googleusercontent.com/a-/placeholder=w36-h36-p-rp-mo-br100" loading="lazy"></button>
+        <div class="d4r55">Reviewer 1</div><div class="RfnDt">Local Guide · 7 reviews · 12 photos</div>
+      </div>
+      <div class="DU9Pgb" data-chrome><span class="kvMYJc" role="img" aria-label=" 5 stars "><span class="hCCjke google-symbols NhBTye elGi1d"></span></span><span class="rsqaWe">1 weeks ago</span></div>
+      <div class="MyEned" lang="en" id="ChZDSUhNMG9nS0VJQ0FnSUR1" data-voice="reviewer-1" data-expect="unit" data-parts="1"><span class="wiI7pd">The staff at the front desk were friendly and answered every question we had. Our table was ready on time even though the room was completely full that night. The color is a little darker than the photos suggest but I still like it. I would have given five stars if the lid did not rattle when the motor runs. We walked across at sunset and the view of the city was worth the cold wind. The soup came out hot and the bread was clearly baked the same morning. My daughter uses it every evening.</span></div>
+      <div class="k8MTF" data-chrome><button class="GBkF3d" aria-label="Like"><span class="pkWtMe">1</span></button><button class="PP3Y3d" aria-label="Share"></button></div>
+    </div>
+  </div>
+  <div class="jftiEf fontBodyMedium" aria-label="Reviewer 2" data-review-id="ChZDSUhNMG9nS0VJQ0FnSUR2" jsaction="mouseover:pane.wfvdle12">
+    <div class="GHT2ce">
+      <div class="GHT2ce NsCY4" data-chrome>
+        <button class="WEBjve" aria-label="Photo of Reviewer 2" data-href="https://www.google.com/maps/contrib/100000000000000000002/reviews?hl=en"><img class="NBa7we" alt="" src="https://lh3.googleusercontent.com/a-/placeholder=w36-h36-p-rp-mo-br100" loading="lazy"></button>
+        <div class="d4r55">Reviewer 2</div><div class="RfnDt">Local Guide · 14 reviews · 24 photos</div>
+      </div>
+      <div class="DU9Pgb" data-chrome><span class="kvMYJc" role="img" aria-label=" 4 stars "><span class="hCCjke google-symbols NhBTye elGi1d"></span></span><span class="rsqaWe">2 weeks ago</span></div>
+      <div class="MyEned" lang="en" id="ChZDSUhNMG9nS0VJQ0FnSUR2" data-voice="reviewer-2" data-expect="none"><span class="wiI7pd">I would have given five stars if the lid did not rattle when the motor runs. We walked.</span></div>
+      <div class="k8MTF" data-chrome><button class="GBkF3d" aria-label="Like"><span class="pkWtMe">2</span></button><button class="PP3Y3d" aria-label="Share"></button></div>
+    </div>
+  </div>
+  <div class="jftiEf fontBodyMedium" aria-label="Reviewer 3" data-review-id="ChZDSUhNMG9nS0VJQ0FnSUR3" jsaction="mouseover:pane.wfvdle12">
+    <div class="GHT2ce">
+      <div class="GHT2ce NsCY4" data-chrome>
+        <button class="WEBjve" aria-label="Photo of Reviewer 3" data-href="https://www.google.com/maps/contrib/100000000000000000003/reviews?hl=en"><img class="NBa7we" alt="" src="https://lh3.googleusercontent.com/a-/placeholder=w36-h36-p-rp-mo-br100" loading="lazy"></button>
+        <div class="d4r55">Reviewer 3</div><div class="RfnDt">Local Guide · 21 reviews · 36 photos</div>
+      </div>
+      <div class="DU9Pgb" data-chrome><span class="kvMYJc" role="img" aria-label=" 3 stars "><span class="hCCjke google-symbols NhBTye elGi1d"></span></span><span class="rsqaWe">3 weeks ago</span></div>
+      <div class="MyEned" lang="en" id="ChZDSUhNMG9nS0VJQ0FnSUR3" data-voice="reviewer-3" data-expect="unit" data-parts="1"><span class="wiI7pd">My daughter uses it every evening and the lessons keep her attention for once. Customer service replaced the cracked part without asking for a receipt. Parking nearby is hard to find on weekends so plan to arrive before noon. The fabric feels sturdy and it survived the washing machine without shrinking. The app crashed twice during the first.</span></div>
+      <div class="k8MTF" data-chrome><button class="GBkF3d" aria-label="Like"><span class="pkWtMe">3</span></button><button class="PP3Y3d" aria-label="Share"></button></div>
+      <div class="CDe7pd" data-voice="owner"><div class="nM6d2c" data-chrome><span class="fontTitleSmall">Response from the owner</span> <span class="DZSIDd">1 week ago</span></div><div class="wiI7pd" data-expect="unit" data-parts="1">After three weeks of daily use the battery still lasts through a full afternoon. The staff at the front desk were friendly and answered every question we had. Our table was ready on time even though the room was completely full that night. The color is a little darker than the photos suggest but I still like it. I would.</div></div>
+    </div>
+  </div>
+  <div class="jftiEf fontBodyMedium" aria-label="Reviewer 4" data-review-id="ChZDSUhNMG9nS0VJQ0FnSUR4" jsaction="mouseover:pane.wfvdle12">
+    <div class="GHT2ce">
+      <div class="GHT2ce NsCY4" data-chrome>
+        <button class="WEBjve" aria-label="Photo of Reviewer 4" data-href="https://www.google.com/maps/contrib/100000000000000000004/reviews?hl=en"><img class="NBa7we" alt="" src="https://lh3.googleusercontent.com/a-/placeholder=w36-h36-p-rp-mo-br100" loading="lazy"></button>
+        <div class="d4r55">Reviewer 4</div><div class="RfnDt">Local Guide · 28 reviews · 48 photos</div>
+      </div>
+      <div class="DU9Pgb" data-chrome><span class="kvMYJc" role="img" aria-label=" 5 stars "><span class="hCCjke google-symbols NhBTye elGi1d"></span></span><span class="rsqaWe">4 weeks ago</span></div>
+      <div class="MyEned" lang="en" id="ChZDSUhNMG9nS0VJQ0FnSUR4" data-voice="reviewer-4" data-expect="none"><span class="wiI7pd">The fabric feels sturdy and it survived the washing machine without shrinking. The app crashed twice during the first week but an update seems to have fixed it. For the price it.</span></div>
+      <div class="k8MTF" data-chrome><button class="GBkF3d" aria-label="Like"><span class="pkWtMe">4</span></button><button class="PP3Y3d" aria-label="Share"></button></div>
+    </div>
+  </div>
+  <div class="jftiEf fontBodyMedium" aria-label="Reviewer 5" data-review-id="ChZDSUhNMG9nS0VJQ0FnSUR5" jsaction="mouseover:pane.wfvdle12">
+    <div class="GHT2ce">
+      <div class="GHT2ce NsCY4" data-chrome>
+        <button class="WEBjve" aria-label="Photo of Reviewer 5" data-href="https://www.google.com/maps/contrib/100000000000000000005/reviews?hl=en"><img class="NBa7we" alt="" src="https://lh3.googleusercontent.com/a-/placeholder=w36-h36-p-rp-mo-br100" loading="lazy"></button>
+        <div class="d4r55">Reviewer 5</div><div class="RfnDt">Local Guide · 35 reviews · 60 photos</div>
+      </div>
+      <div class="DU9Pgb" data-chrome><span class="kvMYJc" role="img" aria-label=" 2 stars "><span class="hCCjke google-symbols NhBTye elGi1d"></span></span><span class="rsqaWe">5 weeks ago</span></div>
+      <div class="MyEned" lang="en" id="ChZDSUhNMG9nS0VJQ0FnSUR5" data-voice="reviewer-5" data-expect="unit" data-parts="3"><span class="wiI7pd">The guide knew the history of every building and kept the group moving. Delivery was slow but the seller kept us informed.
+
+Delivery was slow but the seller kept us informed about every delay. The chapters in the middle drag.
+
+The chapters in the middle drag a little before the ending pulls it together. Our room faced the courtyard so the nights were quiet and the.</span></div>
+      <div class="k8MTF" data-chrome><button class="GBkF3d" aria-label="Like"><span class="pkWtMe">5</span></button><button class="PP3Y3d" aria-label="Share"></button></div>
+    </div>
+  </div>
+  <div class="jftiEf fontBodyMedium" aria-label="Reviewer 6" data-review-id="ChZDSUhNMG9nS0VJQ0FnSUR6" jsaction="mouseover:pane.wfvdle12">
+    <div class="GHT2ce">
+      <div class="GHT2ce NsCY4" data-chrome>
+        <button class="WEBjve" aria-label="Photo of Reviewer 6" data-href="https://www.google.com/maps/contrib/100000000000000000006/reviews?hl=en"><img class="NBa7we" alt="" src="https://lh3.googleusercontent.com/a-/placeholder=w36-h36-p-rp-mo-br100" loading="lazy"></button>
+        <div class="d4r55">Reviewer 6</div><div class="RfnDt">Local Guide · 42 reviews · 72 photos</div>
+      </div>
+      <div class="DU9Pgb" data-chrome><span class="kvMYJc" role="img" aria-label=" 1 stars "><span class="hCCjke google-symbols NhBTye elGi1d"></span></span><span class="rsqaWe">6 weeks ago</span></div>
+      <div class="MyEned" lang="en" id="ChZDSUhNMG9nS0VJQ0FnSUR6" data-voice="reviewer-6" data-expect="unit" data-parts="1"><span class="wiI7pd">Our room faced the courtyard so the nights were quiet and the mornings bright. The handle got warm after an hour of use which I did not expect. Two of the six glasses arrived chipped and the replacements took a month. The trail was muddy after the rain but the markers were easy to follow. The package arrived two days early and everything inside was well protected. Setup took about ten minutes and the instructions were clear enough for me. After three weeks of daily use the battery still lasts through a full afternoon. The staff at the front desk were friendly and answered every question we had. Our table was ready on time even though the room was completely full that night. The color is a little darker than the photos suggest but I still like it. I would.</span></div>
+      <div class="k8MTF" data-chrome><button class="GBkF3d" aria-label="Like"><span class="pkWtMe">6</span></button><button class="PP3Y3d" aria-label="Share"></button></div>
+    </div>
+  </div>
+  <div class="jftiEf fontBodyMedium" aria-label="Reviewer 7" data-review-id="ChZDSUhNMG9nS0VJQ0FnSUR7">
+    <div class="GHT2ce">
+      <div class="GHT2ce NsCY4" data-chrome>
+        <button class="WEBjve" aria-label="Photo of Reviewer 7" data-href="https://www.google.com/maps/contrib/100000000000000000007/reviews?hl=en"><img class="NBa7we" alt="" src="https://lh3.googleusercontent.com/a-/placeholder=w36-h36-p-rp-mo-br100" loading="lazy"></button>
+        <div class="d4r55">Reviewer 7</div><div class="RfnDt">12 reviews</div>
+      </div>
+      <div class="DU9Pgb" data-chrome><span class="kvMYJc" role="img" aria-label=" 4 stars "><span class="hCCjke google-symbols NhBTye elGi1d"></span></span><span class="rsqaWe">a month ago</span></div>
+      <div class="MyEned" lang="en" id="ChZDSUhNMG9nS0VJQ0FnSUR7" data-voice="reviewer-7" data-expect="none"><span class="wiI7pd">Our table was ready on time even though the room was completely full that night. The color is a little darker than the photos suggest but I still like it. I would have given five stars if the lid did. This is where the reviewer went on about the…</span><button class="w8nwRe kyuRq" aria-expanded="false" aria-label="See more" jsaction="pane.review.expandReview">More</button></div>
+      <div class="k8MTF" data-chrome><button class="GBkF3d" aria-label="Like"></button><button class="PP3Y3d" aria-label="Share"></button></div>
+    </div>
+  </div>
+  </div>
+</div>
+</body></html>

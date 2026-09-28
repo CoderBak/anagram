@@ -735,7 +735,9 @@ export function collectUnits(
       (cs !== null && (cs as any).contentVisibility === "hidden") ||
       // The From / Sent / To / Subject block over a quoted mail message, and the "On … wrote:"
       // line over a quotation: the mail program's words (lib/dom/scope.ts).
-      scopes.header(el);
+      scopes.header(el) ||
+      // The name, the stars, the date and "Helpful" of a review whose text the page declares.
+      scopes.furniture(el);
     if (excluded) {
       if (flow !== "inline" && flow !== "contents") closeRun();
       else leaveOut();
@@ -789,6 +791,7 @@ export function collectUnits(
 
   function visitText(tn: Text, ctx: Ctx): void {
     if (ctx.hidden) return;
+    if (scopes.furniture(tn)) return; // "by alice" beside a review's declared text (lib/dom/scope.ts)
     const s = tn.textContent ?? "";
     if (s.length <= MAX_EXPAND_LABEL_CHARS) {
       const label = s.trim();

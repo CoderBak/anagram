@@ -1,0 +1,108 @@
+<!doctype html>
+<!--
+  Tripadvisor attraction page, the review list. SYNTHETIC: tripadvisor.com refused a plain
+  request (403, 2026-09-28); the markup is modelled on its public review cards:
+  `div[data-automation=reviewCard]` with hashed classes, a picture and a name both linking to
+  `/Profile/…`, the bubbles as an SVG whose <title> says "5.0 of 5 bubbles", the title link,
+  "March 2026 • Couples", the text in `span.JguWG > span.yCeTE`, then "Written …" and the
+  same 38-word disclaimer in every card — "This review is the subjective opinion of a
+  Tripadvisor member and not of Tripadvisor LLC. …" — and a Helpful vote. Names and ids are
+  placeholders, text synthetic.
+
+  What this guards: the disclaimer is punctuated prose of 38 words, the site's and not the
+  reviewer's. It is the same sentence in every card, and a text every card of a list repeats
+  is the card's furniture (lib/dom/scope.ts, `shared`), never a unit of its own — at a
+  25-word minimum it would otherwise be one in every card.
+
+  Annotation: see x-timeline.html. Every review's text carries data-voice and data-expect for
+  the shipped 50-word minimum (test/unit.mjs walks it at 50, and at 25 and 75 for the invariants).
+-->
+<html lang="en"><head><meta charset="utf-8"><title>Fixture: Tripadvisor reviews</title>
+<style>
+  body { margin: 0; font: 14px/20px "Trip Sans", Arial, sans-serif; color: #000; }
+  #tab-data-qa-reviews-0 { max-width: 760px; margin: 16px auto; }
+  ._c { border-bottom: 1px solid #e0e0e0; padding: 20px 0; }
+  .mwPje { display: flex; gap: 12px; align-items: center; }
+  .JINyA span { margin-right: 8px; color: #555; }
+  .TreSq { color: #555; font-size: 12px; margin-top: 12px; }
+  button { font: inherit; background: none; border: 0; }
+</style></head>
+<body>
+<div id="tab-data-qa-reviews-0" data-automation="WebPresentation_PoiReviewsAndQAWeb">
+  <h2>Reviews</h2>
+  <div class="LbPSX">
+  <div data-automation="reviewCard" class="_c">
+    <div class="mwPje f M k" data-chrome>
+      <div class="XExLl f u o"><a href="/Profile/reviewer1" class="BMQDV _F Gv wSSLS SwZTJ FGwzt ukgoS" aria-label="Reviewer 1"><img src="https://dynamic-media-cdn.tripadvisor.com/media/photo-o/placeholder.jpg" width="40" height="40" alt=""></a></div>
+      <div class="QIHsu Zb"><span class="biGQs _P fiohW fOtGX"><a href="/Profile/reviewer1" class="BMQDV _F Gv wSSLS SwZTJ FGwzt ukgoS">Reviewer 1</a></span><div class="JINyA"><span>Chicago, IL</span><span>4 contributions</span></div></div>
+    </div>
+    <div class="OSBmi J k" data-chrome><svg class="UctUV d H0" viewBox="0 0 128 24" width="88" height="16" aria-labelledby=":lithium-r1:"><title id=":lithium-r1:">5.0 of 5 bubbles</title><path d="M 12 0C5.388 0 0 5.388 0 12s5.388 12 12 12 12-5.38 12-12c0-6.612-5.38-12-12-12z"></path></svg></div>
+    <div class="biGQs _P fiohW qWPrE ncFvv fOtGX" data-chrome><a href="/ShowUserReviews-g60713-d104675-r1-Example.html" class="BMQDV _F Gv wSSLS SwZTJ FGwzt ukgoS"><span class="yCeTE">Unforgettable walk</span></a></div>
+    <div class="RpeCd" data-chrome>March 2026 • Couples</div>
+    <div class="_T FKffI"><div class="fIrGe _T bgMZj" style="line-break: normal; cursor: auto;"><div class="biGQs _P pZUbB KxBGd" data-voice="reviewer-1" data-expect="unit" data-parts="1"><span class="JguWG"><span class="yCeTE">The staff at the front desk were friendly and answered every question we had. Our table was ready on time even though the room was completely full that night. The color is a little darker than the photos suggest but I still like it. I would have given five stars if the lid did not rattle when the motor runs. We walked across at sunset and the view of the city was worth the cold wind. The soup came out hot and the bread was clearly baked the same morning. My daughter uses it every evening.</span></span></div></div></div>
+    <div class="TreSq" data-chrome><div class="biGQs _P pZUbB ncFvv osNWb">Written March 3, 2026</div><div class="biGQs _P pZUbB xUqsL ncFvv osNWb">This review is the subjective opinion of a Tripadvisor member and not of Tripadvisor LLC. Tripadvisor performs checks on reviews as part of our industry-leading trust &amp; safety standards. Read our transparency report to learn more.</div></div>
+    <div class="HkkZD" data-chrome><button type="button" class="UikNM _G B- _S _W _T c G_ wSSLS" aria-label="Click to add helpful vote"><span class="biGQs _P XWJSj Wb">Helpful</span></button><button type="button" aria-label="Share">Share</button></div>
+  </div>
+  <div data-automation="reviewCard" class="_c">
+    <div class="mwPje f M k" data-chrome>
+      <div class="XExLl f u o"><a href="/Profile/reviewer2" class="BMQDV _F Gv wSSLS SwZTJ FGwzt ukgoS" aria-label="Reviewer 2"><img src="https://dynamic-media-cdn.tripadvisor.com/media/photo-o/placeholder.jpg" width="40" height="40" alt=""></a></div>
+      <div class="QIHsu Zb"><span class="biGQs _P fiohW fOtGX"><a href="/Profile/reviewer2" class="BMQDV _F Gv wSSLS SwZTJ FGwzt ukgoS">Reviewer 2</a></span><div class="JINyA"><span>Chicago, IL</span><span>8 contributions</span></div></div>
+    </div>
+    <div class="OSBmi J k" data-chrome><svg class="UctUV d H0" viewBox="0 0 128 24" width="88" height="16" aria-labelledby=":lithium-r2:"><title id=":lithium-r2:">4.0 of 5 bubbles</title><path d="M 12 0C5.388 0 0 5.388 0 12s5.388 12 12 12 12-5.38 12-12c0-6.612-5.38-12-12-12z"></path></svg></div>
+    <div class="biGQs _P fiohW qWPrE ncFvv fOtGX" data-chrome><a href="/ShowUserReviews-g60713-d104675-r2-Example.html" class="BMQDV _F Gv wSSLS SwZTJ FGwzt ukgoS"><span class="yCeTE">Windy</span></a></div>
+    <div class="RpeCd" data-chrome>March 2026 • Couples</div>
+    <div class="_T FKffI"><div class="fIrGe _T bgMZj" style="line-break: normal; cursor: auto;"><div class="biGQs _P pZUbB KxBGd" data-voice="reviewer-2" data-expect="none"><span class="JguWG"><span class="yCeTE">I would have given five stars if the lid did not rattle when the motor runs. We walked.</span></span></div></div></div>
+    <div class="TreSq" data-chrome><div class="biGQs _P pZUbB ncFvv osNWb">Written March 1, 2026</div><div class="biGQs _P pZUbB xUqsL ncFvv osNWb">This review is the subjective opinion of a Tripadvisor member and not of Tripadvisor LLC. Tripadvisor performs checks on reviews as part of our industry-leading trust &amp; safety standards. Read our transparency report to learn more.</div></div>
+    <div class="HkkZD" data-chrome><button type="button" class="UikNM _G B- _S _W _T c G_ wSSLS" aria-label="Click to add helpful vote"><span class="biGQs _P XWJSj Wb">Helpful</span></button><button type="button" aria-label="Share">Share</button></div>
+  </div>
+  <div data-automation="reviewCard" class="_c">
+    <div class="mwPje f M k" data-chrome>
+      <div class="XExLl f u o"><a href="/Profile/reviewer3" class="BMQDV _F Gv wSSLS SwZTJ FGwzt ukgoS" aria-label="Reviewer 3"><img src="https://dynamic-media-cdn.tripadvisor.com/media/photo-o/placeholder.jpg" width="40" height="40" alt=""></a></div>
+      <div class="QIHsu Zb"><span class="biGQs _P fiohW fOtGX"><a href="/Profile/reviewer3" class="BMQDV _F Gv wSSLS SwZTJ FGwzt ukgoS">Reviewer 3</a></span><div class="JINyA"><span>Chicago, IL</span><span>12 contributions</span></div></div>
+    </div>
+    <div class="OSBmi J k" data-chrome><svg class="UctUV d H0" viewBox="0 0 128 24" width="88" height="16" aria-labelledby=":lithium-r3:"><title id=":lithium-r3:">3.0 of 5 bubbles</title><path d="M 12 0C5.388 0 0 5.388 0 12s5.388 12 12 12 12-5.38 12-12c0-6.612-5.38-12-12-12z"></path></svg></div>
+    <div class="biGQs _P fiohW qWPrE ncFvv fOtGX" data-chrome><a href="/ShowUserReviews-g60713-d104675-r3-Example.html" class="BMQDV _F Gv wSSLS SwZTJ FGwzt ukgoS"><span class="yCeTE">Good but crowded</span></a></div>
+    <div class="RpeCd" data-chrome>February 2026 • Couples</div>
+    <div class="_T FKffI"><div class="fIrGe _T bgMZj" style="line-break: normal; cursor: auto;"><div class="biGQs _P pZUbB KxBGd" data-voice="reviewer-3" data-expect="unit" data-parts="1"><span class="JguWG"><span class="yCeTE">My daughter uses it every evening and the lessons keep her attention for once. Customer service replaced the cracked part without asking for a receipt. Parking nearby is hard to find on weekends so plan to arrive before noon. The fabric feels sturdy and it survived the washing machine without shrinking. The app crashed twice during the first.</span></span></div></div></div>
+    <div class="TreSq" data-chrome><div class="biGQs _P pZUbB ncFvv osNWb">Written February 26, 2026</div><div class="biGQs _P pZUbB xUqsL ncFvv osNWb">This review is the subjective opinion of a Tripadvisor member and not of Tripadvisor LLC. Tripadvisor performs checks on reviews as part of our industry-leading trust &amp; safety standards. Read our transparency report to learn more.</div></div>
+    <div class="HkkZD" data-chrome><button type="button" class="UikNM _G B- _S _W _T c G_ wSSLS" aria-label="Click to add helpful vote"><span class="biGQs _P XWJSj Wb">Helpful</span></button><button type="button" aria-label="Share">Share</button></div>
+  </div>
+  <div data-automation="reviewCard" class="_c">
+    <div class="mwPje f M k" data-chrome>
+      <div class="XExLl f u o"><a href="/Profile/reviewer4" class="BMQDV _F Gv wSSLS SwZTJ FGwzt ukgoS" aria-label="Reviewer 4"><img src="https://dynamic-media-cdn.tripadvisor.com/media/photo-o/placeholder.jpg" width="40" height="40" alt=""></a></div>
+      <div class="QIHsu Zb"><span class="biGQs _P fiohW fOtGX"><a href="/Profile/reviewer4" class="BMQDV _F Gv wSSLS SwZTJ FGwzt ukgoS">Reviewer 4</a></span><div class="JINyA"><span>Chicago, IL</span><span>16 contributions</span></div></div>
+    </div>
+    <div class="OSBmi J k" data-chrome><svg class="UctUV d H0" viewBox="0 0 128 24" width="88" height="16" aria-labelledby=":lithium-r4:"><title id=":lithium-r4:">5.0 of 5 bubbles</title><path d="M 12 0C5.388 0 0 5.388 0 12s5.388 12 12 12 12-5.38 12-12c0-6.612-5.38-12-12-12z"></path></svg></div>
+    <div class="biGQs _P fiohW qWPrE ncFvv fOtGX" data-chrome><a href="/ShowUserReviews-g60713-d104675-r4-Example.html" class="BMQDV _F Gv wSSLS SwZTJ FGwzt ukgoS"><span class="yCeTE">Go early</span></a></div>
+    <div class="RpeCd" data-chrome>February 2026 • Couples</div>
+    <div class="_T FKffI"><div class="fIrGe _T bgMZj" style="line-break: normal; cursor: auto;"><div class="biGQs _P pZUbB KxBGd" data-voice="reviewer-4" data-expect="none"><span class="JguWG"><span class="yCeTE">The fabric feels sturdy and it survived the washing machine without shrinking. The app crashed twice during the first week but an update seems to have fixed it. For the price it.</span></span></div></div></div>
+    <div class="TreSq" data-chrome><div class="biGQs _P pZUbB ncFvv osNWb">Written February 20, 2026</div><div class="biGQs _P pZUbB xUqsL ncFvv osNWb">This review is the subjective opinion of a Tripadvisor member and not of Tripadvisor LLC. Tripadvisor performs checks on reviews as part of our industry-leading trust &amp; safety standards. Read our transparency report to learn more.</div></div>
+    <div class="HkkZD" data-chrome><button type="button" class="UikNM _G B- _S _W _T c G_ wSSLS" aria-label="Click to add helpful vote"><span class="biGQs _P XWJSj Wb">Helpful</span></button><button type="button" aria-label="Share">Share</button></div>
+  </div>
+  <div data-automation="reviewCard" class="_c">
+    <div class="mwPje f M k" data-chrome>
+      <div class="XExLl f u o"><a href="/Profile/reviewer5" class="BMQDV _F Gv wSSLS SwZTJ FGwzt ukgoS" aria-label="Reviewer 5"><img src="https://dynamic-media-cdn.tripadvisor.com/media/photo-o/placeholder.jpg" width="40" height="40" alt=""></a></div>
+      <div class="QIHsu Zb"><span class="biGQs _P fiohW fOtGX"><a href="/Profile/reviewer5" class="BMQDV _F Gv wSSLS SwZTJ FGwzt ukgoS">Reviewer 5</a></span><div class="JINyA"><span>Chicago, IL</span><span>20 contributions</span></div></div>
+    </div>
+    <div class="OSBmi J k" data-chrome><svg class="UctUV d H0" viewBox="0 0 128 24" width="88" height="16" aria-labelledby=":lithium-r5:"><title id=":lithium-r5:">2.0 of 5 bubbles</title><path d="M 12 0C5.388 0 0 5.388 0 12s5.388 12 12 12 12-5.38 12-12c0-6.612-5.38-12-12-12z"></path></svg></div>
+    <div class="biGQs _P fiohW qWPrE ncFvv fOtGX" data-chrome><a href="/ShowUserReviews-g60713-d104675-r5-Example.html" class="BMQDV _F Gv wSSLS SwZTJ FGwzt ukgoS"><span class="yCeTE">Mixed</span></a></div>
+    <div class="RpeCd" data-chrome>February 2026 • Couples</div>
+    <div class="_T FKffI"><div class="fIrGe _T bgMZj" style="line-break: normal; cursor: auto;"><div class="biGQs _P pZUbB KxBGd" data-voice="reviewer-5" data-expect="unit" data-parts="3"><span class="JguWG"><span class="yCeTE">The guide knew the history of every building and kept the group moving. Delivery was slow but the seller kept us informed.<br><br>Delivery was slow but the seller kept us informed about every delay. The chapters in the middle drag.<br><br>The chapters in the middle drag a little before the ending pulls it together. Our room faced the courtyard so the nights were quiet and the.</span></span></div></div></div>
+    <div class="TreSq" data-chrome><div class="biGQs _P pZUbB ncFvv osNWb">Written February 11, 2026</div><div class="biGQs _P pZUbB xUqsL ncFvv osNWb">This review is the subjective opinion of a Tripadvisor member and not of Tripadvisor LLC. Tripadvisor performs checks on reviews as part of our industry-leading trust &amp; safety standards. Read our transparency report to learn more.</div></div>
+    <div class="HkkZD" data-chrome><button type="button" class="UikNM _G B- _S _W _T c G_ wSSLS" aria-label="Click to add helpful vote"><span class="biGQs _P XWJSj Wb">Helpful</span></button><button type="button" aria-label="Share">Share</button></div>
+  </div>
+  <div data-automation="reviewCard" class="_c">
+    <div class="mwPje f M k" data-chrome>
+      <div class="XExLl f u o"><a href="/Profile/reviewer6" class="BMQDV _F Gv wSSLS SwZTJ FGwzt ukgoS" aria-label="Reviewer 6"><img src="https://dynamic-media-cdn.tripadvisor.com/media/photo-o/placeholder.jpg" width="40" height="40" alt=""></a></div>
+      <div class="QIHsu Zb"><span class="biGQs _P fiohW fOtGX"><a href="/Profile/reviewer6" class="BMQDV _F Gv wSSLS SwZTJ FGwzt ukgoS">Reviewer 6</a></span><div class="JINyA"><span>Chicago, IL</span><span>24 contributions</span></div></div>
+    </div>
+    <div class="OSBmi J k" data-chrome><svg class="UctUV d H0" viewBox="0 0 128 24" width="88" height="16" aria-labelledby=":lithium-r6:"><title id=":lithium-r6:">1.0 of 5 bubbles</title><path d="M 12 0C5.388 0 0 5.388 0 12s5.388 12 12 12 12-5.38 12-12c0-6.612-5.38-12-12-12z"></path></svg></div>
+    <div class="biGQs _P fiohW qWPrE ncFvv fOtGX" data-chrome><a href="/ShowUserReviews-g60713-d104675-r6-Example.html" class="BMQDV _F Gv wSSLS SwZTJ FGwzt ukgoS"><span class="yCeTE">Disappointing visit</span></a></div>
+    <div class="RpeCd" data-chrome>January 2026 • Couples</div>
+    <div class="_T FKffI"><div class="fIrGe _T bgMZj" style="line-break: normal; cursor: auto;"><div class="biGQs _P pZUbB KxBGd" data-voice="reviewer-6" data-expect="unit" data-parts="1"><span class="JguWG"><span class="yCeTE">Our room faced the courtyard so the nights were quiet and the mornings bright. The handle got warm after an hour of use which I did not expect. Two of the six glasses arrived chipped and the replacements took a month. The trail was muddy after the rain but the markers were easy to follow. The package arrived two days early and everything inside was well protected. Setup took about ten minutes and the instructions were clear enough for me. After three weeks of daily use the battery still lasts through a full afternoon. The staff at the front desk were friendly and answered every question we had. Our table was ready on time even though the room was completely full that night. The color is a little darker than the photos suggest but I still like it. I would.</span></span></div></div></div>
+    <div class="TreSq" data-chrome><div class="biGQs _P pZUbB ncFvv osNWb">Written January 30, 2026</div><div class="biGQs _P pZUbB xUqsL ncFvv osNWb">This review is the subjective opinion of a Tripadvisor member and not of Tripadvisor LLC. Tripadvisor performs checks on reviews as part of our industry-leading trust &amp; safety standards. Read our transparency report to learn more.</div></div>
+    <div class="HkkZD" data-chrome><button type="button" class="UikNM _G B- _S _W _T c G_ wSSLS" aria-label="Click to add helpful vote"><span class="biGQs _P XWJSj Wb">Helpful</span></button><button type="button" aria-label="Share">Share</button></div>
+  </div>
+  </div>
+</div>
+</body></html>

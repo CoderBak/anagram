@@ -91,7 +91,8 @@ off until you switch it on again.
   sentence and cookie banners are left out; author–year citations stay. A post the site
   has cut short behind "See more" is read once you open it. A page the browser has
   translated is paused until you show the original, and text a translation extension
-  adds is skipped.
+  adds is skipped. On review pages each customer review is read by itself, never with
+  another one, and the reviewer's name, stars, date and "Helpful" row are left out.
 - Text in a frame is read where Anagram may read the frame, an EPUB reader's chapters
   included. Its chips are in the frame; the ball's list and report cover the page itself.
 - The floating ball shows or hides marks. Its counter shows how many paragraphs read as

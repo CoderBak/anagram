@@ -43,6 +43,17 @@
 //                             thread renderer is NOT named: it holds a comment AND the
 //                             replies under it. This table is for shadow-DOM components
 //                             only and holds tag names, never class names.
+//   [itemtype$=Review],     — a customer review, where the page says so in schema.org's
+//   [itemprop~=review],       vocabulary: microdata or RDFa. Each review is one person's,
+//   [typeof~=Review]          however short; a shop's list of them is no conversation.
+//
+// A REVIEW'S TEXT can be declared as well — `itemprop="reviewBody"` (microdata),
+// `property="reviewBody"` (RDFa), or the `reviewBody` of a Review in the page's JSON-LD,
+// found in the page by its words. Where it is, only that text is the review: the reviewer's
+// name, the stars, the date, the title and the "12 people found this helpful" row around it
+// are the card's (`furniture`). A body with no Review around it in the markup — JSON-LD only,
+// or microdata without the wrapper — is a review of its own in the largest box that holds no
+// other review's body, when the page holds several: a list of reviews.
 //
 // RECOGNISED — most sites declare nothing. A Zhihu answer is `div.List-item >
 // div.ContentItem.AnswerItem`, a GitHub comment a `div` with hashed class names in a
@@ -53,7 +64,8 @@
 //
 //   ONE OF SEVERAL LIKE IT, EACH WITH ITS OWN BYLINE.
 //
-//   byline   — evidence, inside the element, of who wrote it or when (see `isEvidence`).
+//   byline   — evidence, inside the element, of who wrote it or when, or of the rating a
+//              customer gave with it (see `isEvidence`).
 //              The paragraphs of an article repeat too, and so do bullet items and the
 //              rows of a prose table, but none of them carries a byline of its own: they
 //              stay one author's text, which is why <li> and <td> are no scopes by
@@ -139,11 +151,42 @@
 // quoted mail once (one more), lazily; every other answer is cached per element for the scan.
 import { INLINE_FALLBACK_TAGS, tagOf } from "./tags";
 
+/** A customer review in schema.org's vocabulary: microdata (`itemtype` Review, UserReview,
+ *  CriticReview …, or `itemprop="review"`) or RDFa (`typeof="Review"`). Never the page. */
+const REVIEW_SCOPE_SELECTOR =
+  '[itemtype$="Review"]:not(html,body,main),[itemprop~="review"]:not(html,body,main),[typeof~="Review"]:not(html,body,main),[typeof~="schema:Review"]:not(html,body,main)';
+
 const DECLARED_SCOPE_SELECTOR =
-  'article,[role="article"],blockquote,figure,[role="link"],[role="list"] [role="listitem"]:not(li),[role="feed"] [aria-posinset],bili-comment-renderer,bili-comment-reply-renderer';
+  'article,[role="article"],blockquote,figure,[role="link"],[role="list"] [role="listitem"]:not(li),[role="feed"] [aria-posinset],bili-comment-renderer,bili-comment-reply-renderer,' +
+  REVIEW_SCOPE_SELECTOR;
+
+/** The element that holds a review's own text, where the markup says which (see REVIEW'S TEXT). */
+const REVIEW_BODY_SELECTOR = '[itemprop~="reviewBody"],[property~="reviewBody"],[property~="schema:reviewBody"]';
 
 /** Everything that could be byline evidence; `isEvidence` decides. */
-const EVIDENCE_CANDIDATES = "time,relative-time,[datetime],[title],img,a[href]";
+const EVIDENCE_CANDIDATES = "time,relative-time,[datetime],[title],[aria-label],img,a[href],svg title";
+
+/**
+ * A RATING, as a star widget says it to a screen reader, in a tooltip or in its picture's
+ * alternative text: "Rated 3 stars out of five stars" (Google Play), " 5 stars " (Google Maps),
+ * "5 star rating" (Yelp), "Rating 4 out of 5" (Goodreads), "5.0 out of 5 stars" (Amazon),
+ * "5.0 of 5 bubbles" (Tripadvisor), "Rated 5 out of 5 stars" (Trustpilot), "5 Stars" / "5 星"
+ * (the App Store). A number with a unit of stars, or "out of" a scale, or after "rated" — "3 of
+ * 5" alone is a carousel's page.
+ */
+const RATING_UNIT = String.raw`(?:stars?|bubbles?|étoiles?|sterne?n?|estrellas?|stelle|estrelas?|звезд\p{L}*|(?:颗|顆)?星)`;
+const RATING_NUMBER = String.raw`\d{1,2}(?:[.,]\d{1,2})?`;
+const RATING_RE = new RegExp(
+  String.raw`^(?:(?:rated|rating|note|bewertung|calificación|valutazione|评分|評分)\b\D{0,12}${RATING_NUMBER}` +
+    String.raw`|${RATING_NUMBER}\s*(?:out\s+of\s+(?:${RATING_NUMBER}|five|ten)\b|(?:of|\/|von|sur|de|su|из)\s*(?:${RATING_NUMBER}|five|ten)\s*${RATING_UNIT}|-?\s*${RATING_UNIT}(?!\p{L})))`,
+  "iu",
+);
+const MAX_RATING_CHARS = 60;
+
+function saysRating(label: string | null): boolean {
+  const s = label?.trim() ?? "";
+  return s !== "" && s.length <= MAX_RATING_CHARS && RATING_RE.test(s);
+}
 
 /** A `title` that spells out a moment: Hacker News' `span.age[title="2026-09-18T07:00:00 …"]`,
  *  V2EX's `span.ago[title]`, Substack's `a[title="Sep 12, 2026, 3:04 PM"]` around "2h" — an
@@ -217,6 +260,9 @@ export interface Scopes {
   holds(outer: Element, inner: Element): boolean;
   /** A header block or an attribution line of a quoted mail message: never scored. */
   header(el: Element): boolean;
+  /** An element or a text of a review card that declares its text, standing outside that text:
+   *  the reviewer's name, the stars, the date, "Helpful" — never scored (REVIEW'S TEXT). */
+  furniture(node: Node): boolean;
 }
 
 function isText(node: Node | null): node is Text {
@@ -313,16 +359,22 @@ function picturedPlaces(doc: Document): Set<string> {
  */
 function isEvidence(el: Element, pictured: Set<string>): boolean {
   const tag = tagOf(el);
-  if (tag === "IMG") return isAvatar(el);
+  if (tag === "IMG") return isAvatar(el) || saysRating(el.getAttribute("alt"));
   // What it is comes first and is cheap; where it stands is asked of the few that qualify —
   // a Wikipedia article has some six thousand links with a `title`, none of them a moment.
   return isByKind(el, tag, pictured) && !inRunningText(el);
 }
 
+/** Controls say what they do, not what a reviewer thought: "Rate 5 stars" is a button. */
+const RATING_CONTROL_SELECTOR = 'button,input,select,option,[role="button"],[role="radio"],[role="slider"],[role="option"],[role="tab"]';
+
 function isByKind(el: Element, tag: string, pictured: Set<string>): boolean {
   if (tag === "TIME" || tag === "RELATIVE-TIME" || el.hasAttribute("datetime")) return true;
   const title = el.getAttribute("title");
   if (title && spellsOutMoment(title)) return true;
+  // WHAT THEY THOUGHT: the stars a review was given (RATING_RE), in a label, a tooltip or the
+  // <title> of the drawing — never a control that asks for a rating.
+  if ((tag === "TITLE" ? saysRating(el.textContent) : saysRating(el.getAttribute("aria-label")) || saysRating(title)) && !el.closest(RATING_CONTROL_SELECTOR)) return true;
   if (tag !== "A") return false;
   if (isPersonLink(el)) return true;
   if (pictured.size === 0) return false;
@@ -535,6 +587,227 @@ function surveyMail(doc: Document): MailHistory {
   return { starts, byParent, headers };
 }
 
+// ---- declared reviews and their text -------------------------------------------------------
+
+interface Reviews {
+  /** Review cards known only by their body (JSON-LD, or a reviewBody with no Review around it). */
+  cards: Set<Element>;
+  /** The elements from each card down to its body, the body left out: whatever else stands in
+   *  one of them is the card's, not the review's. */
+  path: Set<Element>;
+  /** The bodies themselves. */
+  bodies: Set<Element>;
+}
+
+const NO_REVIEWS: Reviews = { cards: new Set(), path: new Set(), bodies: new Set() };
+
+/** Words of a text for finding it again: letters and digits, one space between them. */
+function wordsOnly(s: string): string {
+  return s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+}
+
+/** A review body must be this long to be looked for by its words, and is looked for by this
+ *  many characters at each end. */
+const MIN_FOUND_CHARS = 24;
+const PROBE_CHARS = 32;
+/** How deep JSON-LD is searched for Review objects, and how many texts are looked for. */
+const MAX_LD_DEPTH = 12;
+const MAX_LD_REVIEWS = 200;
+
+/** The text of every Review in the page's JSON-LD: its `reviewBody`, else its `description`
+ *  (Yelp's LocalBusiness lists its reviews that way). */
+function jsonLdReviewTexts(doc: Document): string[] {
+  const out: string[] = [];
+  const visit = (x: unknown, depth: number): void => {
+    if (depth > MAX_LD_DEPTH || out.length >= MAX_LD_REVIEWS || x === null || typeof x !== "object") return;
+    if (Array.isArray(x)) {
+      for (const item of x) visit(item, depth + 1);
+      return;
+    }
+    const o = x as Record<string, unknown>;
+    const type = o["@type"];
+    const types = Array.isArray(type) ? type : [type];
+    if (types.some((t) => typeof t === "string" && /Review$/.test(t))) {
+      const text = typeof o.reviewBody === "string" ? o.reviewBody : typeof o.description === "string" ? o.description : null;
+      if (text) out.push(text);
+    }
+    for (const value of Object.values(o)) visit(value, depth + 1);
+  };
+  for (const script of doc.querySelectorAll('script[type="application/ld+json"]')) {
+    const source = script.textContent ?? "";
+    const known = ldTexts.get(script);
+    if (known && known.source === source) {
+      out.push(...known.texts);
+      continue;
+    }
+    const before = out.length;
+    try {
+      visit(JSON.parse(source), 0);
+    } catch {
+      // A page's broken JSON-LD says nothing.
+    }
+    ldTexts.set(script, { source, texts: out.slice(before) });
+  }
+  return out;
+}
+
+/** Each JSON-LD script's review texts, parsed once for as long as it says the same: every
+ *  scan asks, and a product page re-scans as its parts load. */
+const ldTexts = new WeakMap<Element, { source: string; texts: string[] }>();
+
+/** Where each review text was found last, by its opening and closing words: looked for again
+ *  only when that element has left the page or no longer holds it. Weak, so a feed that
+ *  virtualizes its reviews keeps nothing it dropped. */
+const locatedTexts = new Map<string, WeakRef<Element>>();
+const MAX_LOCATED = 2000;
+
+/** The elements that hold each of `texts` in the page: the text node its opening words stand
+ *  in, widened until it holds its closing words too. */
+function locateTexts(doc: Document, texts: string[]): Element[] {
+  const wanted = texts
+    .map(wordsOnly)
+    .filter((t) => t.length >= MIN_FOUND_CHARS)
+    .map((t) => ({ head: t.slice(0, PROBE_CHARS), tail: t.slice(-PROBE_CHARS), length: t.length }));
+  if (wanted.length === 0 || !doc.body) return [];
+  const found: Element[] = [];
+  const keyOf = (w: { head: string; tail: string }): string => `${w.head}\u0000${w.tail}`;
+  for (let i = wanted.length - 1; i >= 0; i--) {
+    const w = wanted[i]!;
+    const el = locatedTexts.get(keyOf(w))?.deref();
+    if (!el || !el.isConnected || el.ownerDocument !== doc) continue;
+    const text = wordsOnly(el.textContent ?? "");
+    if (!text.includes(w.head) || !text.includes(w.tail)) continue;
+    found.push(el);
+    wanted.splice(i, 1);
+  }
+  if (locatedTexts.size > MAX_LOCATED) locatedTexts.clear();
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node && wanted.length > 0; node = walker.nextNode()) {
+    const parent = node.parentElement;
+    if (!parent || parent.closest("script,style,noscript,template")) continue;
+    const words = wordsOnly(node.textContent ?? "");
+    if (words.length < MIN_FOUND_CHARS / 2) continue;
+    const at = wanted.findIndex((w) => words.includes(w.head.slice(0, Math.min(w.head.length, words.length))) || w.head.startsWith(words));
+    if (at < 0) continue;
+    const w = wanted[at]!;
+    for (let el: Element | null = parent; el && el !== doc.body; el = el.parentElement) {
+      const text = wordsOnly(el.textContent ?? "");
+      if (text.length > 2 * w.length + 400) break; // past the review: the list it stands in
+      if (text.includes(w.tail)) {
+        found.push(el);
+        locatedTexts.set(keyOf(w), new WeakRef(el));
+        wanted.splice(at, 1);
+        break;
+      }
+    }
+  }
+  return found;
+}
+
+function isPageLevelBox(el: Element): boolean {
+  const tag = tagOf(el);
+  return tag === "HTML" || tag === "BODY" || tag === "MAIN" || el.getAttribute("role") === "main";
+}
+
+/** The reviews whose text the page declares, and what of their cards is not that text. */
+function surveyReviews(doc: Document): Reviews {
+  const bodies = new Set<Element>(doc.querySelectorAll(REVIEW_BODY_SELECTOR));
+  if (doc.querySelector('script[type="application/ld+json"]')) for (const el of locateTexts(doc, jsonLdReviewTexts(doc))) bodies.add(el);
+  if (bodies.size === 0) return NO_REVIEWS;
+  const reviews: Reviews = { cards: new Set(), path: new Set(), bodies: new Set() };
+  const holdsAnother = (box: Element, own: Element): boolean => {
+    for (const other of bodies) if (other !== own && box.contains(other)) return true;
+    return false;
+  };
+  for (const body of bodies) {
+    // A body inside another one (a quotation with its own markup) is that review's text.
+    if ([...bodies].some((other) => other !== body && other.contains(body))) continue;
+    let card: Element | null = body.parentElement?.closest(REVIEW_SCOPE_SELECTOR) ?? null;
+    if (card && holdsAnother(card, body)) continue; // one card, two texts: say nothing
+    if (!card) {
+      // Known by its body alone: the largest box that holds no other review's text. On a page
+      // with ONE such body nothing says where its review ends, and the page is no card.
+      if (bodies.size < 2) continue;
+      let box = body;
+      while (box.parentElement && !isPageLevelBox(box.parentElement) && !holdsAnother(box.parentElement, body)) box = box.parentElement;
+      if (box === body || isPageLevelBox(box)) continue;
+      card = box;
+      reviews.cards.add(card);
+    }
+    reviews.bodies.add(body);
+    for (let at = body.parentElement; at; at = at.parentElement) {
+      reviews.path.add(at);
+      if (at === card) break;
+    }
+  }
+  return reviews;
+}
+
+// ---- the list's own words ----------------------------------------------------------------
+
+/** A text is the list's when at least this many of its cards repeat it, and half of them. */
+const SHARED_MIN = 3;
+/** Shorter than this a text is a label or an aside, which no rule reads anyway. */
+const SHARED_MIN_CHARS = 16;
+/** How far above a post the box of cards is looked for, and how much of a card is read. */
+const LIST_LEVELS = 3;
+const MAX_CARD_BLOCKS = 400;
+/** Cards of one list that are read for it: the template repeats itself long before a feed of
+ *  six thousand posts ends. */
+const MAX_LIST_CARDS = 60;
+
+/** An element with text of its own, beside its children. */
+function ownText(el: Element): boolean {
+  for (let n = el.firstChild; n; n = n.nextSibling) if (n.nodeType === Node.TEXT_NODE && (n.textContent ?? "").trim() !== "") return true;
+  return false;
+}
+
+/** The box that holds `post` among several cards, or null. */
+function listOf(post: Element): Element | null {
+  let card = post;
+  for (let up = 0; up < LIST_LEVELS; up++) {
+    const parent = card.parentElement;
+    if (!parent || isPageLevelBox(parent)) return null;
+    if (parent.childElementCount >= SHARED_MIN) return parent;
+    card = parent;
+  }
+  return null;
+}
+
+/** A list's shared texts across scans, while its cards are the same ones: a feed is re-scanned
+ *  on every mutation, and the template it repeats does not change between two of them. */
+const listTexts = new WeakMap<Element, { count: number; first: Element | null; last: Element | null; texts: Set<string> }>();
+
+/** The texts at least SHARED_MIN of `list`'s cards, and half of them, hold word for word. */
+function textsSharedIn(list: Element): Set<string> {
+  const known = listTexts.get(list);
+  if (known && known.count === list.childElementCount && known.first === list.firstElementChild && known.last === list.lastElementChild) return known.texts;
+  const texts = countSharedIn(list);
+  listTexts.set(list, { count: list.childElementCount, first: list.firstElementChild, last: list.lastElementChild, texts });
+  return texts;
+}
+
+function countSharedIn(list: Element): Set<string> {
+  const counts = new Map<string, number>();
+  let cards = 0;
+  for (const card of [...list.children].slice(0, MAX_LIST_CARDS)) {
+    const seen = new Set<string>();
+    let blocks = 0;
+    for (const el of card.querySelectorAll("*")) {
+      if (++blocks > MAX_CARD_BLOCKS) break;
+      if (!ownText(el)) continue;
+      const text = wordsOnly(el.textContent ?? "");
+      if (text.length >= SHARED_MIN_CHARS) seen.add(text);
+    }
+    if (seen.size === 0) continue;
+    cards++;
+    for (const text of seen) counts.set(text, (counts.get(text) ?? 0) + 1);
+  }
+  const shared = new Set<string>();
+  for (const [text, n] of counts) if (n >= SHARED_MIN && 2 * n >= cards) shared.add(text);
+  return shared;
+}
+
 /** The scopes of one scan of `doc`. Cheap to create: the page is surveyed on first use. */
 export function createScopes(doc: Document = document): Scopes {
   /** Every element with byline evidence below it (light DOM) → the FIRST such evidence. */
@@ -550,6 +823,9 @@ export function createScopes(doc: Document = document): Scopes {
   const posts = new Map<Element, boolean>();
   const nearest = new Map<Element, Element | null>();
   let mail: MailHistory | null = null;
+  let reviews: Reviews | null = null;
+  /** Per list of cards: the texts enough of its cards repeat (sharedByTheList). */
+  const sharedTexts = new Map<Element, Set<string>>();
 
   /** The quoted history `el` stands in at its own level: the last marker among its siblings
    *  at or before it. */
@@ -733,7 +1009,28 @@ export function createScopes(doc: Document = document): Scopes {
     return false;
   }
 
-  return {
+  /**
+   * THE LIST'S OWN WORDS. A sentence every card of a list repeats is the site's, not the
+   * writer's: Tripadvisor ends each review with the same 38 words — "This review is the
+   * subjective opinion of a Tripadvisor member and not of Tripadvisor LLC. …" — and a
+   * punctuated paragraph of that length is prose to every other rule, a unit of its own at a
+   * 25-word minimum. So a block with text of its own, inside a post, whose text stands word for
+   * word in at least SHARED_MIN of the cards of its list, and in half of them, is left out
+   * like a name row. The list is the nearest box above the post, a few levels up at most, that
+   * holds several cards; its texts are counted once per scan.
+   */
+  function sharedByTheList(el: Element): boolean {
+    if (!ownText(el)) return false;
+    const scope = api.of(el);
+    if (!scope || scope === el) return false;
+    const list = listOf(scope);
+    if (!list) return false;
+    let texts = sharedTexts.get(list);
+    if (!texts) sharedTexts.set(list, (texts = textsSharedIn(list)));
+    return texts.size > 0 && texts.has(wordsOnly(el.textContent ?? ""));
+  }
+
+  const api: Scopes = {
     of(el: Element): Element | null {
       const path: Element[] = [];
       let scope: Element | null = null;
@@ -744,7 +1041,7 @@ export function createScopes(doc: Document = document): Scopes {
           break;
         }
         path.push(cur);
-        if (cur.matches(DECLARED_SCOPE_SELECTOR) || isPost(cur)) {
+        if (cur.matches(DECLARED_SCOPE_SELECTOR) || (reviews ??= surveyReviews(doc)).cards.has(cur) || isPost(cur)) {
           scope = cur;
           break;
         }
@@ -759,7 +1056,7 @@ export function createScopes(doc: Document = document): Scopes {
     },
 
     recognised(scope: Element | null): boolean {
-      return scope !== null && !scope.matches(DECLARED_SCOPE_SELECTOR) && !(mail ??= surveyMail(doc)).starts.has(scope);
+      return scope !== null && !scope.matches(DECLARED_SCOPE_SELECTOR) && !(reviews ??= surveyReviews(doc)).cards.has(scope) && !(mail ??= surveyMail(doc)).starts.has(scope);
     },
 
     oneBody(a: Element, b: Element, scope: Element): boolean {
@@ -787,5 +1084,15 @@ export function createScopes(doc: Document = document): Scopes {
     header(el: Element): boolean {
       return (mail ??= surveyMail(doc)).headers.has(el);
     },
+
+    furniture(node: Node): boolean {
+      const r = (reviews ??= surveyReviews(doc));
+      const parent = node.parentElement;
+      // A text standing directly in a box between the card and its body is outside the body;
+      // so is an element, unless it is the body or leads down to it.
+      if (parent && r.path.has(parent)) return node.nodeType === Node.TEXT_NODE || (!r.path.has(node as Element) && !r.bodies.has(node as Element));
+      return node.nodeType === Node.ELEMENT_NODE && sharedByTheList(node as Element);
+    },
   };
+  return api;
 }

@@ -937,6 +937,38 @@ const results = await page.evaluate(() => {
         `<img alt="" width="27" height="27">`, `<a title="Special:BookSources/978-0-19-825079-1" href="/b">ISBN</a>`, `<span title="John 3:16">verse</span>`, `<a href="https://web.archive.org/web/2020/https://example.org/author/alice">Archived</a>`]
         .every((ev) => recognised(two(`<div class="m">${ev}</div>`), ".x").every((r) => !r)));
 
+    // CUSTOMER REVIEWS (lib/dom/scope.ts). Each review is one person's, however short, and where
+    // the page says which element holds its text, only that text is read.
+    const rated = (rating) => [1, 2, 3].map((n) => `<div class="card"><div class="m"><span>Reviewer ${n}</span>${rating}</div><p>${sent(20)}</p></div>`).join("");
+    check("a rating is byline evidence: stars in an aria-label, an alt, a title or an SVG's <title> (Google Maps and Play cards carry nothing else)",
+      [`<span role="img" aria-label=" 5 stars "></span>`, `<div role="img" aria-label="Rated 3 stars out of five stars"></div>`, `<img alt="Rated 4 out of 5 stars">`,
+        `<a href="/r/1" title="4.0 out of 5 stars">★</a>`, `<svg aria-labelledby="t"><title>5.0 of 5 bubbles</title></svg>`, `<ol class="stars" aria-label="5 星"></ol>`]
+        .every((ev) => recognised(rated(ev), ".card").every(Boolean)));
+    check("…and a carousel's page, a count, or a control that asks for stars is none",
+      [`<span aria-label="3 of 5"></span>`, `<span aria-label="12 people found this helpful"></span>`, `<div role="radio" aria-label="5 stars"></div>`, `<button aria-label="4 stars">★</button>`]
+        .every((ev) => recognised(rated(ev), ".card").every((r) => !r)));
+    const micro = (n, w) => `<div itemprop="review" itemscope itemtype="https://schema.org/Review"><p class="meta">By <span itemprop="author">Reviewer ${n}</span> on <time itemprop="datePublished">March 3</time>, a verified buyer who rated it well.</p><div itemprop="reviewBody">R${n} ${sent(w - 1)}</div></div>`;
+    u = collect(`<section>${micro(1, 60)}${micro(2, 30)}${micro(3, 60)}</section>`, { minWords: 50 });
+    check("schema.org microdata: each review a voice, only its reviewBody read — the punctuated \"By … on …\" line is the card's — and a short one read by nobody",
+      u.length === 2 && u.every((x) => x.parts === 1 && /^R[13] /.test(x.text)), shape(u));
+    const rdfa = (n) => `<div property="review" typeof="Review"><p>By <span property="author">Reviewer ${n}</span>, who wrote this in March and rated it four.</p><div property="reviewBody"><p>D${n} ${sent(29)}</p><p>${sent(30)}</p></div></div>`;
+    u = collect(`<section vocab="https://schema.org/">${rdfa(1)}${rdfa(2)}</section>`, { minWords: 50 });
+    check("…and RDFa: a review's two paragraphs one unit, its byline sentence left out", u.length === 2 && u.every((x) => x.parts === 2 && /^D\d /.test(x.text)), shape(u));
+    const ld = (texts) => `<script type="application/ld+json">${JSON.stringify({ "@context": "https://schema.org", "@type": "Product", review: texts.map((t) => ({ "@type": "Review", reviewBody: t })) })}</script>`;
+    const found = [1, 2, 3].map((n) => `J${n} ${sent(59)}`);
+    u = collect(`${ld(found)}<div class="list">${found.map((t, i) => `<div class="c"><div class="who">Reviewer ${i + 1}, a regular here, wrote this in March.</div><p>${t}</p></div>`).join("")}</div>`, { minWords: 50 });
+    check("the reviews of the page's JSON-LD, found in the page by their words: each card a voice, only the review's text read",
+      u.length === 3 && u.every((x) => x.parts === 1 && /^J\d /.test(x.text)), shape(u));
+    u = collect(`${ld([found[0]])}<p>INTRO ${sent(59)}</p><div class="c"><div class="who">Reviewer 1 wrote this.</div><p>${found[0]}</p></div>`, { minWords: 50 });
+    check("…but ONE review in JSON-LD says nothing about where its card ends: the page around it is read as it always was", u.length === 2 && u[0].text.startsWith("INTRO"), shape(u));
+    const reviewCard = (n, own = "") => `<div class="r"><span class="who">Reviewer ${n}</span> <time>2h</time><p>S${n} ${sent(29)}</p>${own}</div>`;
+    const disclaimer = `<p class="d">This review is the opinion of a member and not of the site, which checks every review it shows.</p>`;
+    u = collect(`<div class="list">${[1, 2, 3, 4].map((n) => reviewCard(n, disclaimer)).join("")}</div>`, { minWords: 25 });
+    check("a sentence every card of a list repeats is the site's (Tripadvisor's disclaimer): at a 25-word minimum each review is read, the disclaimer never",
+      u.length === 4 && u.every((x) => x.parts === 1 && /^S\d /.test(x.text)), shape(u));
+    u = collect(`<div class="list">${[1, 2, 3, 4, 5, 6].map((n) => reviewCard(n, n <= 2 ? "<p>Would buy again from this shop without a second thought.</p>" : "")).join("")}</div>`, { minWords: 25 });
+    check("…while a sentence two reviews of six happen to share stays theirs", u.length === 6 && u.filter((x) => x.parts === 2).length === 2, shape(u));
+
     // A pure function of the page: whichever element is asked first, the answers are the same.
     {
       const html = post("alice", sent(30)).replace(/<\/div>$/, `<div class="replies">${post("bob", sent(30))}</div></div>`) + post("carol", sent(30)) + post("dan", sent(30));
@@ -2608,6 +2640,15 @@ const EXPECTED = {
   "reddit-thread": [3, 2],
   "reference-lists": [6, 0],
   "review-cards": [2, 1],
+  "reviews-amazon": [4, 1, 50],
+  "reviews-appstore": [2, 0, 50],
+  "reviews-goodreads": [4, 1, 50],
+  "reviews-googlemaps": [5, 1, 50],
+  "reviews-googleplay": [4, 0, 50],
+  "reviews-schema": [8, 2, 50],
+  "reviews-tripadvisor": [4, 1, 50],
+  "reviews-trustpilot": [4, 1, 50],
+  "reviews-yelp": [4, 1, 50],
   "rfc-html": [3, 0],
   "slack-channel": [2, 1],
   "stackoverflow-question": [5, 2],
@@ -2640,11 +2681,11 @@ for (const file of fixtureFiles) {
   await fx.goto(pathToFileURL(join(FIXTURES, file)).href);
   await fx.addScriptTag({ path: BUNDLE });
   // Each fixture is annotated at the floor it was written for (EXPECTED's third entry; the
-  // model's 75 words when it has none) and is walked again at the lower minimum lengths
-  // Settings offers, where what must hold at any floor is checked: no two voices in a unit,
+  // model's 75 words when it has none) and is walked again at 25, 50 and 75 words, where what
+  // must hold at any floor is checked: no two voices in a unit,
   // no name, time or action row in one.
   const [wantUnits, wantMerged, written = 75] = EXPECTED[name] ?? [-1, -1];
-  for (const floor of [written, ...[25, 50].filter((f) => f !== written)]) {
+  for (const floor of [written, ...[25, 50, 75].filter((f) => f !== written)]) {
     const r = await fx.evaluate((floor) => {
       const units = PW.collectUnits(document.body, { minWords: floor });
       // The COMPOSED tree, as the walker sees it: Bilibili's comments are nested open shadow
