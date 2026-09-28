@@ -598,9 +598,6 @@ const CELL_GAP = 1.5;
  *  be prose. */
 const NUMBERED_TABLE = 0.9;
 const GAPPED_TABLE = 0.1;
-/** A caption: its label, and at most this many words (lib/pdf/reflow.ts CAPTION_LABEL). */
-const CAPTION = /^(?:fig(?:ure)?s?\.?|table|tab\.|chart|scheme)\s*[A-Z]?\d/i;
-const CAPTION_WORDS = 60;
 const LIST_OPENING = /^(?:[•▪◦‣·∙*]|[–—-]\s)/u;
 /** The heading of a bibliography, numbered or not. */
 const REFERENCES_HEAD = /^(?:[\dIVX]+(?:\.\d+)*\.?\s*)?(?:references|bibliography|literature cited|works cited|reference list|cited literature)\s*:?$/iu;
@@ -920,7 +917,7 @@ function numberedReadings(readings: (Reading | Marker)[], texts: (Piece[] | null
     for (const rows of paragraphsOfRows(p.rows, pages, ragged)) {
       const pieces = joinRows(rows);
       const text = pieces.map((q) => q.ch).join("");
-      if (CAPTION.test(text) && text.split(/\s+/).length <= CAPTION_WORDS) { made.push("skip"); continue; }
+      if (CAPTION_LABEL.test(text)) { made.push("skip"); continue; }
       const sources = [...new Set(rows.map((r) => r.from))].map((i) => p.readings[i]!);
       const head = p.readings[rows[0]!.from]!;
       made.push({

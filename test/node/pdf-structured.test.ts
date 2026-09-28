@@ -1357,6 +1357,19 @@ describe("structuredBlocks — a manuscript with numbered lines", () => {
     expect(blocks.map((b) => b.text)).toEqual(PARAGRAPHS);
   });
 
+  it("leaves out a long caption whose lines are numbered, by its label, and keeps a numbered paragraph that names a figure", () => {
+    const set = lines(1, 84, 100);
+    const captionLines = [
+      { text: `Figure 8 Difference of density plots ${fill("j", 70)}`, x: 72 }, { text: fill("k", 90), x: 72 },
+      { text: fill("l", 90), x: 72 }, { text: fill("m", 90), x: 72 }, { text: `${fill("n", 40)}.`, x: 72 },
+    ];
+    const caption = lines(1, 94, 100 + 11 * PITCH, captionLines);
+    const naming = lines(1, 99, 100 + 18 * PITCH, [{ text: `Figure 3 compares ${fill("o", 70)}`, x: 108 }, { text: `${fill("p", 40)}.`, x: 72 }]);
+    const pages = [pageText(1, [...set, ...caption, ...naming].flatMap((l) => l.items))];
+    const blocks = structuredBlocks(structure([asList(set), asList(caption), asList(naming)]), pages);
+    expect(blocks.map((b) => b.text)).toEqual([...PARAGRAPHS, [...naming].map((l) => l.text.replace(/^\d+ /, "")).join(" ")]);
+  });
+
   it("leaves a paper's own numbers alone: a table of years under a paragraph", () => {
     // Ten years counting on, each first on its line: but the paragraph's lines start where
     // the years do, so they are the table's first column, not a margin's.
