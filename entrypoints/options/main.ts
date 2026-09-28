@@ -169,6 +169,13 @@ addHostEl.addEventListener("input", () => {
   addNoteEl.hidden = true;
 });
 
+// The in-browser edition's engine card is named for what it is (localizePage leaves an
+// English page's markup as it is, so the text is set here too).
+if (import.meta.env.ANAGRAM_FLAVOR === "oneclick") {
+  const title = document.querySelector<HTMLElement>('[data-i18n="componentTitle"]')!;
+  title.dataset.i18n = "engineTitle";
+  title.textContent = t("engineTitle");
+}
 localizePage();
 followSystemTheme();
 linkSourceCode();

@@ -7,9 +7,10 @@ from pathlib import Path
 
 BASE = {"storage", "activeTab", "contextMenus", "scripting", "webNavigation", "webRequest"}
 OPTIONAL = {"https://*/*", "http://*/*", "file:///*"}
-# The oneclick flavor's one-time model download (lib/access/patterns.ts MODEL_HOSTS).
-MODEL_HOSTS = {"https://huggingface.co/*", "https://*.hf.co/*", "https://dl.fbaipublicfiles.com/*"}
-ENGINE_FILES = ("vendor/engine/ort.bundle.min.mjs", "vendor/engine/ort-wasm-simd-threaded.jsep.wasm")
+# The oneclick flavor's engine (scripts/webengine.mjs): its runtime, its worker and the
+# language identifier it reads from the package. Its model download needs no host permission.
+ENGINE_FILES = ("vendor/engine/ort.jspi.min.mjs", "vendor/engine/ort-wasm-simd-threaded.jspi.wasm",
+                "vendor/engine/worker.min.mjs", "vendor/engine/lid.176.ftz")
 
 
 def required(flavor, manifest_version):
@@ -29,8 +30,6 @@ def verify(path, flavor):
         assert permissions == required(flavor, manifest["manifest_version"]), f"Unexpected required permissions: {permissions}"
         optional_key = "optional_host_permissions" if manifest["manifest_version"] == 3 else "optional_permissions"
         expected_optional = OPTIONAL if manifest["manifest_version"] == 3 else OPTIONAL | {"clipboardWrite"}
-        if flavor == "oneclick":
-            expected_optional = expected_optional | MODEL_HOSTS
         assert set(manifest.get(optional_key, [])) == expected_optional, "Unexpected optional permissions"
         csp = manifest["content_security_policy"]
         if isinstance(csp, dict): csp = csp["extension_pages"]

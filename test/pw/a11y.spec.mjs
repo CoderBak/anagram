@@ -51,6 +51,7 @@ import { SMALL_PDF } from "../a11y-pdf.mjs";
 import { LOCKED_PDF } from "../pdf-fixture.mjs";
 import { installProbe, settle, settleAll, still, fabReady, untuck, chipsSettled } from "../a11y-probe.mjs";
 import { scriptEngine } from "../webengine/scripted-engine.mjs";
+import { NO_MODEL_HOSTS, cancelAutoSetup } from "../webengine/model-server.mjs";
 
 const TEST_DIR = join(import.meta.dirname, "..");
 const AXE_SRC = readFileSync(join(TEST_DIR, "..", "node_modules", "axe-core", "axe.min.js"), "utf8");
@@ -896,11 +897,12 @@ test("the fixture-down notice in the panel", async ({ nativeHost, open, site, ax
 // =====================================================================================
 // Its panel on the setup page in each state people meet on the way to Ready, scripted into
 // the page (test/webengine/scripted-engine.mjs; test/oneclick.mjs drives the real engine
-// through them), the confirmation before a download is cancelled, the popup offering setup,
-// and the panel's notice on a page while the engine is not set up, which is the real state
-// of a fresh profile.
+// through them), the reason a download waits for Set up, the confirmation before a download
+// is cancelled, the popup offering setup, and the panel's notice on a page while the engine is
+// not set up: a fresh profile's own download, cancelled. A fresh profile starts that download
+// by itself, so Hugging Face resolves to nothing here (NO_MODEL_HOSTS).
 test.describe("the in-browser engine's setup (oneclick build)", () => {
-  test.use({ build: join(TEST_DIR, "..", "output-test", "oneclick-chrome-mv3") });
+  test.use({ build: join(TEST_DIR, "..", "output-test", "oneclick-chrome-mv3"), launch: { args: [NO_MODEL_HOSTS] } });
   const painted = (page) => page.waitForFunction(() => (document.querySelector("#componentSettings .component-status")?.textContent ?? "Starting…") !== "Starting…", null, { timeout: 15000 });
 
   for (const scheme of ["light", "dark"]) {
@@ -915,6 +917,17 @@ test.describe("the in-browser engine's setup (oneclick build)", () => {
       });
     }
   }
+
+  test("the setup page when the download waits for Set up (Save-Data, no room)", async ({ extension, open, axe }) => {
+    const page = await open(extension.url("onboarding.html"), { viewport: { width: 1100, height: 900 },
+      script: (p) => scriptEngine(p, "needed", { saveData: true, estimate: { quota: 500e6, usage: 100e6 } }) });
+    await painted(page);
+    await page.waitForSelector("#componentSettings .engine-note:not([hidden])");
+    await page.waitForSelector("#componentSettings .component-error:not([hidden])");
+    await settle(page);
+    await axe.scan(page, "setup page, waiting for Set up");
+    judgeStops(axe, "setup page, waiting for Set up", await tabWalk(page, { max: 80 }));
+  });
 
   test("the confirmation before a download is cancelled", async ({ extension, open, axe }) => {
     const page = await open(extension.url("onboarding.html"), { viewport: { width: 1100, height: 900 }, script: (p) => scriptEngine(p, "paused") });
@@ -936,6 +949,7 @@ test.describe("the in-browser engine's setup (oneclick build)", () => {
 
   test("the panel's notice while the engine is not set up", async ({ extension, open, site, axe }) => {
     await waitForRegistration(extension.sw);
+    await cancelAutoSetup(extension.context, extension.extId);
     const page = await open(site("/keyboard.html"));
     await page.waitForFunction(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.textContent === "!", null, { timeout: 25000 });
     await untuck(page);

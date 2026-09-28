@@ -106,6 +106,8 @@ describe("model download", () => {
     const store = new MemoryStore();
     const server = fakeServer({ "/model.bin": bytes(1200) });
     await expect(downloadFile(store, entry(), { transport: server.fetch, ...NO_WAIT })).rejects.toThrow(/larger than its pinned size/);
+    // What arrived is removed, as the setup page says of a damaged file.
+    expect(await store.list()).toEqual([]);
     const writer = await store.writer("model.bin.part", false);
     await writer.write(bytes(1500));
     await writer.close();

@@ -57,11 +57,10 @@ mode.
 In the in-browser edition, to the engine inside the extension itself: a hidden extension
 page running ONNX Runtime Web on the model files stored in your browser. The same request,
 paragraph IDs and text only, goes from the extension's background to that page and to no
-server. Before the first score it downloads the pinned model files from Hugging Face
-(`huggingface.co` and its file CDN under `hf.co`) and fastText's language-ID file from
-`dl.fbaipublicfiles.com`, once, after you allow those three hosts with the click that
-starts the download. Those requests carry normal download metadata and never page text;
-after them, scoring needs no network.
+server. Right after you install it, the extension downloads the pinned model files from
+Hugging Face (`huggingface.co` and its file CDN under `hf.co`) by itself, once; fastText's
+language-ID file ships inside the extension. Those requests carry normal download metadata
+and never page text; after them, scoring needs no network.
 
 Deciding what to read happens inside the browser, with code that ships in the extension.
 **Main content only** runs Defuddle on a copy of the page and uses only its offline
@@ -113,7 +112,6 @@ normal download metadata and never page text.
 | `webNavigation`, `webRequest` | Recognize PDF navigations. Reading still requires a grant. |
 | `https://*/*`, `http://*/*` (optional) | The sites you choose. Never held at install. |
 | `file:///*` (optional) | Open a local PDF already in a tab. Picking a file needs no grant. |
-| `https://huggingface.co/*`, `https://*.hf.co/*`, `https://dl.fbaipublicfiles.com/*` (optional, in-browser edition) | The one-time model download, asked for when you start it. |
 
 ## Removal
 

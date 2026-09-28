@@ -30,6 +30,7 @@ import { EXT, artifact, launchExtension, requireBuild, serveHtml, uiLanguage, ui
 import { TEST_PDF, pdfChips, readerRead } from "./pdf-fixture.mjs";
 import { ensureTestBuild } from "./test-build.mjs";
 import { scriptEngine } from "./webengine/scripted-engine.mjs";
+import { NO_MODEL_HOSTS, cancelAutoSetup } from "./webengine/model-server.mjs";
 
 requireBuild();
 
@@ -320,8 +321,8 @@ async function pages(context, extId, fixture, lang) {
 // ---- the oneclick build's setup ----------------------------------------------------------------
 
 /** The in-browser engine's panel in each state people meet on the way to Ready, scripted into
- *  the page (test/webengine/scripted-engine.mjs); the panel's notice is the real engine's, which
- *  a fresh profile has not set up. */
+ *  the page (test/webengine/scripted-engine.mjs); the panel's notice is the real engine's: the
+ *  download a fresh profile starts by itself, cancelled (runOneclick). */
 async function oneclickPages(context, extId, lang) {
   const url = (p) => `chrome-extension://${extId}/${p}`;
   const painted = (page) =>
@@ -335,11 +336,11 @@ async function oneclickPages(context, extId, lang) {
   };
   for (const size of [WIDE, NARROW]) {
     for (const state of ["needed", "downloading", "paused", "network", "storage", "ready_gpu", "ready_cpu", "load_failed"]) {
-      const page = await scripted("onboarding.html", state, size, state === "needed" ? { permission: false } : {});
+      // Waiting for Set up, with Save-Data on and too little room, is the longest the needed
+      // state gets: the reason and the error over the button.
+      const page = await scripted("onboarding.html", state, size, state === "needed" ? { saveData: true, estimate: { quota: 500e6, usage: 100e6 } } : {});
       await painted(page);
       await page.waitForTimeout(300);
-      // A refused permission is the longest the needed state gets: its error over the button.
-      if (state === "needed") await page.click("#component-primary").catch(() => {});
       await page.evaluate(() => { const manage = document.getElementById("manage"); if (manage && !manage.hidden) manage.open = true; });
       await check(page, lang, `oneclick setup, ${state}`);
       if (state === "paused") {
@@ -354,7 +355,7 @@ async function oneclickPages(context, extId, lang) {
     await check(settings, lang, "oneclick settings, downloading");
     await settings.close();
   }
-  for (const state of ["needed", "downloading", "paused"]) {
+  for (const state of ["needed", "downloading", "paused", "loading"]) {
     const popup = await scripted("popup.html", state, { width: 300, height: 600 });
     await popup.waitForFunction(() => !document.getElementById("action").disabled, null, { timeout: 10000 }).catch(() => {});
     await check(popup, lang, `oneclick popup, setup ${state}`);
@@ -374,7 +375,8 @@ async function oneclickPages(context, extId, lang) {
 }
 
 async function runOneclick(lang, launch) {
-  const { context, sw, extId } = await launchExtension(launch);
+  // A fresh profile starts the model's download by itself: Hugging Face resolves to nothing here.
+  const { context, sw, extId } = await launchExtension({ ...launch, args: [...(launch.args ?? []), NO_MODEL_HOSTS] });
   await context.route("https://disqus.com/**", (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>comments</title>" }));
   try {
     const got = await uiLanguageOf(sw);
@@ -384,6 +386,7 @@ async function runOneclick(lang, launch) {
       return;
     }
     await waitForRegistration(sw);
+    await cancelAutoSetup(context, extId);
     await oneclickPages(context, extId, lang);
   } finally {
     await context.close();

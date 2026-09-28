@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { ALL_SITES, MODEL_HOSTS } from "../../lib/access/patterns";
+import { ALL_SITES } from "../../lib/access/patterns";
 
 const ROOT = join(__dirname, "..", "..");
 
@@ -167,11 +167,11 @@ describe("the test build cannot be mistaken for the store package", () => {
 });
 
 /**
- * The oneclick flavor (scripts/flavor.mjs): the same reading permissions as native, the
- * in-browser engine's in place of Native Messaging, and the hosts the model downloads from
- * as optional grants, asked for with the click that starts the download. Named apart, so
- * both flavors install side by side. Checks run on `npm run build:oneclick` and
- * `build:oneclick:firefox` output.
+ * The oneclick flavor (scripts/flavor.mjs): the same reading permissions as native and the
+ * in-browser engine's in place of Native Messaging. The model downloads without any host
+ * permission (Hugging Face answers with CORS headers; the language identifier ships in the
+ * package). Named apart, so both flavors install side by side. Checks run on
+ * `npm run build:oneclick` and `build:oneclick:firefox` output.
  */
 describe("the oneclick flavor", () => {
   const chrome = target("oneclick-chrome-mv3");
@@ -197,16 +197,15 @@ describe("the oneclick flavor", () => {
     }
   });
 
-  it.skipIf(!chrome.ready || !firefox.ready)("requires no host, and offers the model's download hosts beside the sites", () => {
+  it.skipIf(!chrome.ready || !firefox.ready)("requires no host and offers the same optional hosts as native: none for the model", () => {
     expect(chrome.manifest.host_permissions).toBeUndefined();
-    expect(chrome.manifest.optional_host_permissions).toEqual([...OPTIONAL_HOSTS, ...MODEL_HOSTS]);
+    expect(chrome.manifest.optional_host_permissions).toEqual(OPTIONAL_HOSTS);
     expect((firefox.manifest.permissions ?? []).filter((p) => p.includes("://"))).toEqual([]);
-    expect(firefox.manifest.optional_permissions).toEqual(["clipboardWrite", ...OPTIONAL_HOSTS, ...MODEL_HOSTS]);
-    for (const { manifest } of [chrome, firefox]) expect(manifest.content_scripts).toBeUndefined();
-  });
-
-  it("downloads from Hugging Face, its CDN and fastText's file host, and nowhere else", () => {
-    expect(MODEL_HOSTS).toEqual(["https://huggingface.co/*", "https://*.hf.co/*", "https://dl.fbaipublicfiles.com/*"]);
+    expect(firefox.manifest.optional_permissions).toEqual(["clipboardWrite", ...OPTIONAL_HOSTS]);
+    for (const { manifest } of [chrome, firefox]) {
+      expect(manifest.content_scripts).toBeUndefined();
+      expect(JSON.stringify(manifest)).not.toMatch(/huggingface|hf\.co|fbaipublicfiles/);
+    }
   });
 
   it.skipIf(!chrome.ready || !firefox.ready)("is named apart from the native flavor, in Chrome and in Firefox", () => {
@@ -242,6 +241,6 @@ describe("the oneclick flavor", () => {
 
   it.skipIf(!variant.ready)("its test variant requires the site patterns, as the native one does", () => {
     expect(variant.manifest.host_permissions ?? []).toEqual([...ALL_SITES]);
-    expect(variant.manifest.optional_host_permissions).toEqual(["file:///*", ...MODEL_HOSTS]);
+    expect(variant.manifest.optional_host_permissions).toEqual(["file:///*"]);
   });
 });

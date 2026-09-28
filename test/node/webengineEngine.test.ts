@@ -15,13 +15,15 @@ const FIXTURES = join(__dirname, "..", "fixtures", "webengine");
 const MODEL = new Uint8Array(readFileSync(join(FIXTURES, "tiny.onnx")));
 const LID = new Uint8Array(readFileSync(join(FIXTURES, "tiny-lid.bin")));
 const TOKENIZER = new TextEncoder().encode(JSON.stringify(tinyTokenizerJson()));
-const FILES = { "/model.onnx": MODEL, "/tokenizer.json": TOKENIZER, "/lid.176.ftz": LID };
-const pin = () => ({
+const FILES = { "/model.onnx": MODEL, "/tokenizer.json": TOKENIZER };
+/** The package's lid.176.ftz, as the engine fetches it: here a data: URL of `bytes`. */
+const packaged = (bytes: Uint8Array) => `data:application/octet-stream;base64,${Buffer.from(bytes).toString("base64")}`;
+const pin = (lid: Uint8Array = LID) => ({
   files: [
     { name: "model.onnx", size_bytes: MODEL.length, sha256: sha256Hex(MODEL), url: "https://example.test/model.onnx" },
     { name: "tokenizer.json", size_bytes: TOKENIZER.length, sha256: sha256Hex(TOKENIZER), url: "https://example.test/tokenizer.json" },
-    { name: "lid.176.ftz", size_bytes: LID.length, sha256: sha256Hex(LID), url: "https://example.test/lid.176.ftz" },
   ],
+  lid: { name: "lid.176.ftz", size_bytes: LID.length, sha256: sha256Hex(LID), url: packaged(lid) },
   model: { id: "editlens_roberta-large", calibration: "editlens-4bucket-cosine(0.03,0.15)" },
   license: "CC-BY-NC-SA-4.0",
 });
@@ -50,13 +52,13 @@ async function fakeSession(candidate: Candidate, model: Blob, log: string[]): Pr
 }
 
 interface Made { engine: Engine; store: MemoryStore; log: string[]; server: ReturnType<typeof fakeServer>; clock: { now: number } }
-function make(options: { store?: MemoryStore; server?: FakeServerOptions; failing?: string[]; probe?: Candidate[]; idle?: boolean } = {}): Made {
+function make(options: { store?: MemoryStore; server?: FakeServerOptions; failing?: string[]; probe?: Candidate[]; idle?: boolean; lid?: Uint8Array } = {}): Made {
   const store = options.store ?? new MemoryStore();
   const log: string[] = [];
   const server = fakeServer(FILES, options.server);
   const clock = { now: 1_000_000 };
   const engine = new Engine({
-    pin: pin(), assets: ASSETS, version: "9.9.9", store, transport: server.fetch, retryWaits: [0],
+    pin: pin(options.lid), assets: ASSETS, version: "9.9.9", store, transport: server.fetch, retryWaits: [0],
     createSession: async (candidate, model) => {
       if (options.failing?.includes(candidate.id)) { log.push(`fail ${candidate.id}`); throw new Error("no such device"); }
       return fakeSession(candidate, model, log);
@@ -96,16 +98,29 @@ describe("the engine's lifecycle", () => {
     const status = await ready(m.engine);
     expect(status.state).toBe("ready");
     ({ data } = await m.engine.handle("status", {}));
-    const total = MODEL.length + TOKENIZER.length + LID.length;
+    // lid.176.ftz is the package's: setup downloads and counts the model and tokenizer only.
+    const total = MODEL.length + TOKENIZER.length;
     expect(data).toMatchObject({ download: { status: "completed", phase: "complete", bytes_received: total, total_bytes: total }, storage: { models_bytes: expect.any(Number) } });
     expect((data as { storage: { models_bytes: number } }).storage.models_bytes).toBeGreaterThan(total);
-    expect(m.server.requests.map((r) => r.url)).toEqual(["https://example.test/model.onnx", "https://example.test/tokenizer.json", "https://example.test/lid.176.ftz"]);
+    expect(m.server.requests.map((r) => r.url)).toEqual(["https://example.test/model.onnx", "https://example.test/tokenizer.json"]);
+    expect(await m.store.list()).toEqual(["model.onnx", "state.json", "tokenizer.json"]);
     expect(m.log).toEqual(["create webgpu:fp32"]);
     ({ data } = await m.engine.handle("health", {}));
     expect(data).toMatchObject({ ok: true, contract: "3.0", app_version: "9.9.9", model: { id: "editlens_roberta-large", calibration: "editlens-4bucket-cosine(0.03,0.15)" }, n_buckets: 4, max_tokens: 512, device: "webgpu", dtype: "fp32", lid: "fasttext-lid.176" });
     expect((data as { model: { ver: string } }).model.ver).toMatch(/^sha256:[0-9a-f]{12}-p[0-9a-f]{8}-web1$/);
     ({ data } = await m.engine.handle("runtime", {}));
     expect(data).toMatchObject({ state: "ready", active_id: "webgpu:fp32", recommended_id: "webgpu:fp32", selected_id: "webgpu:fp32", benchmark: { status: "idle", results: [{ candidate_id: "webgpu:fp32", status: "ok" }] } });
+  });
+
+  it("reads lid.176.ftz from the package whenever it loads, and refuses bytes that are not the pinned ones", async () => {
+    const tampered = LID.slice();
+    tampered[100] = tampered[100]! ^ 0xff;
+    const m = track(make({ lid: tampered }));
+    await m.engine.handle("models.download", {});
+    const status = await ready(m.engine);
+    expect(status).toMatchObject({ state: "error", error: { code: "not_ready", message: "lid.176.ftz in the extension is not the pinned file" } });
+    expect(m.log).toEqual([]);
+    expect(m.server.requests.map((r) => r.url)).not.toContain(expect.stringContaining("lid"));
   });
 
   it("scores English through the gate and refuses the rest, in the contract's shapes", async () => {

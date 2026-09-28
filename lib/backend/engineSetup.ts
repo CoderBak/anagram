@@ -26,6 +26,15 @@ export function percentOf(received: number, total: number): number {
   return total > 0 ? Math.min(100, Math.floor((received * 100) / total)) : 0;
 }
 
+/** How much more room `needed` bytes take than the browser's storage estimate leaves, or null
+ *  when they fit or the browser gives no estimate. */
+export function roomShort(estimate: { quota?: number; usage?: number }, needed: number): number | null {
+  const { quota, usage } = estimate;
+  if (quota === undefined || usage === undefined) return null;
+  const free = Math.max(0, quota - usage);
+  return free < needed ? needed - free : null;
+}
+
 /** Where the model runs, or will when it is loaded again: the active configuration, else the selected one. */
 function deviceOf(s: ComponentSnapshot): "gpu" | "cpu" | null {
   const id = s.runtime?.active_id ?? s.runtime?.selected_id;
@@ -56,6 +65,7 @@ export function engineSetup(s: ComponentSnapshot): EngineSetup | null {
   switch (stage.stage) {
     case "needed": return { state: "needed", percent: 0 };
     case "downloading": case "paused": case "failed": return { state: stage.stage, percent: percentOf(stage.received, stage.total) };
+    case "loading": return { state: "loading", percent: 100 };
     default: return null;
   }
 }

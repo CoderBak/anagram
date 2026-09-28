@@ -509,17 +509,20 @@
   "componentTitle": {
     "message": "本地引擎"
   },
+  "engineTitle": {
+    "message": "浏览器内引擎"
+  },
   "componentNotInstalled": {
     "message": "未安装"
   },
   "engineSetUpIntro": {
     "message": "Anagram 的模型直接在你的浏览器里运行，无需安装其他软件，只需一次性下载 $1。"
   },
+  "engineSaveData": {
+    "message": "浏览器开启了省流量模式，下载会等你手动开始。"
+  },
   "engineSetUpButton": {
     "message": "开始设置（一次性下载 $1）"
-  },
-  "engineSetUpHosts": {
-    "message": "浏览器会询问是否允许 Anagram 访问发布模型的 huggingface.co 和 dl.fbaipublicfiles.com。Anagram 仅在这次下载时使用它们。"
   },
   "engineNotSetUp": {
     "message": "尚未设置"
@@ -575,14 +578,11 @@
   "engineOnCpu": {
     "message": "在处理器上运行，比显卡慢得多。如果浏览器设置中关闭了硬件加速，开启后 Anagram 可能就能使用显卡。"
   },
-  "enginePermissionRefused": {
-    "message": "Anagram 需要你允许它从 huggingface.co 和 dl.fbaipublicfiles.com 下载模型。请再次点击按钮，并在浏览器询问时选择“允许”。"
-  },
   "engineNetworkLost": {
     "message": "网络连接已中断。请确认已联网，然后点击“重试”，下载会从中断处继续。"
   },
   "engineDiskFull": {
-    "message": "磁盘可用空间不足。请至少腾出 $1，然后点击“重试”。"
+    "message": "磁盘可用空间不足。请至少腾出 $1，然后再试一次。"
   },
   "engineServerDown": {
     "message": "下载站点暂时没有响应。请等几分钟后点击“重试”。"
@@ -628,6 +628,9 @@
   },
   "panelSetupFailed": {
     "message": "Anagram 的设置未完成。新段落将等待设置完成后再分析。"
+  },
+  "panelSetupLoading": {
+    "message": "模型正在启动。新段落将等待模型就绪后再分析。"
   },
   "componentStarting": {
     "message": "正在启动…"
@@ -872,8 +875,14 @@
   "popupEngine": {
     "message": "本地引擎：$1"
   },
+  "popupEngineInBrowser": {
+    "message": "浏览器内引擎：$1"
+  },
   "popupEngineDown": {
     "message": "本地引擎未就绪"
+  },
+  "popupEngineInBrowserDown": {
+    "message": "浏览器内引擎未就绪"
   },
   "popupEngineOutdated": {
     "message": "本地引擎需要更新"

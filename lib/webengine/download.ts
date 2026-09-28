@@ -6,7 +6,9 @@
 // Range header. The SHA-256 runs over the bytes as they stream, so the file is verified
 // the moment its last byte lands and is renamed into place only then; a mismatch drops
 // the part. Every request is anonymous, without credentials or referrer, to exactly the
-// pinned address, and follows the host's redirect to its storage.
+// pinned address, and follows the host's redirect to its storage. It is a CORS request, which
+// Hugging Face and its storage answer with the headers that let the extension read it (under
+// the pages' cross-origin isolation too), so the extension holds no permission for the host.
 import { Sha256 } from "./sha256";
 import type { FileStore } from "./storage";
 import type { PinnedFile } from "./pin";
@@ -64,6 +66,17 @@ export async function verifyFile(store: FileStore, entry: PinnedFile, name = ent
   return hasher.digest() === entry.sha256;
 }
 
+/** A file the extension ships (lid.176.ftz), read from the package and checked against its pin. */
+export async function readPackaged(entry: PinnedFile): Promise<Uint8Array> {
+  const response = await fetch(entry.url);
+  if (!response.ok) throw new Error(`${entry.name} is missing from the extension (status ${response.status})`);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const hasher = new Sha256();
+  hasher.update(bytes);
+  if (bytes.length !== entry.size_bytes || hasher.digest() !== entry.sha256) throw new Error(`${entry.name} in the extension is not the pinned file`);
+  return bytes;
+}
+
 /**
  * Bring `entry` into the store, verified. Resolves when the file is in place; throws
  * DownloadPaused when `signal` aborts (the part stays), DownloadFailed otherwise.
@@ -115,6 +128,7 @@ async function attemptDownload(store: FileStore, entry: PinnedFile, part: string
   if (offset === entry.size_bytes) return finish(store, entry, part, hasher);
   const request: RequestInit = {
     method: "GET",
+    mode: "cors",
     headers: offset > 0 ? { Range: `bytes=${offset}-` } : {},
     cache: "no-store",
     credentials: "omit",
@@ -145,6 +159,7 @@ async function attemptDownload(store: FileStore, entry: PinnedFile, part: string
   if (!response.body) throw new DownloadFailed(`The server sent no body for ${entry.name}`, true);
   const writer = await store.writer(part, resumed);
   const reader = response.body.getReader();
+  let oversized = false;
   try {
     for (;;) {
       let next: ReadableStreamReadResult<Uint8Array>;
@@ -155,7 +170,7 @@ async function attemptDownload(store: FileStore, entry: PinnedFile, part: string
       }
       if (next.done) break;
       const chunk = next.value;
-      if (offset + chunk.length > entry.size_bytes) throw new DownloadFailed(`${entry.name} is larger than its pinned size`);
+      if (offset + chunk.length > entry.size_bytes) { oversized = true; throw new DownloadFailed(`${entry.name} is larger than its pinned size`); }
       hasher.update(chunk);
       // A full disk stays full however often it is asked: no retry, and the part is kept
       // for when there is room again.
@@ -168,6 +183,9 @@ async function attemptDownload(store: FileStore, entry: PinnedFile, part: string
   } catch (error) {
     await writer.close().catch(() => {});
     reader.cancel().catch(() => {});
+    // More bytes than the pinned file has are not the pinned file: what arrived goes, as the
+    // setup page says of a damaged download.
+    if (oversized) await store.delete(part).catch(() => {});
     throw error;
   }
   await writer.close();

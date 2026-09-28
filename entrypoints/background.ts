@@ -38,6 +38,7 @@ import { settings, cacheModeStorage } from "../lib/settings/settings";
 import { t } from "../lib/i18n";
 import { handleNativePageMessage } from "../lib/backend/nativeBridge";
 import { readEngineSetup } from "../lib/backend/engineSetup";
+import { startSetupByItself } from "../lib/webengine/autoSetup";
 import { NATIVE_MESSAGE, NATIVE_UNINSTALL } from "../lib/backend/nativeProtocol";
 const EXTENSION_UPDATE_KEY = "extensionUpdatePending";
 
@@ -165,7 +166,15 @@ export default defineBackground(() => {
         });
       }
     });
-    if (details.reason === "install") {
+    if (import.meta.env.ANAGRAM_FLAVOR === "oneclick") {
+      // The in-browser engine sets itself up: its download starts before the setup page opens,
+      // which then shows it running (lib/webengine/autoSetup.ts says when it does not).
+      if (details.reason === "install" || details.reason === "update") {
+        void startSetupByItself((op) => engineTransport().request(op)).then(() => {
+          if (details.reason === "install") void browser.tabs.create({ url: browser.runtime.getURL("/onboarding.html") });
+        });
+      }
+    } else if (details.reason === "install") {
       void browser.tabs.create({ url: browser.runtime.getURL("/onboarding.html") });
     }
   });
@@ -378,8 +387,8 @@ export default defineBackground(() => {
       case ACTIONS.OPEN_ENGINE_SETUP: {
         // The in-browser engine's only: the local engine has no setup page to open.
         if (import.meta.env.ANAGRAM_FLAVOR !== "oneclick") return {ok:false,error:"forbidden"};
-        // The setup page beside the tab: the browser's question about the model's download
-        // sites is asked from a click there, which a content script cannot make.
+        // The setup page beside the tab, where the download is started and followed; a content
+        // script cannot open an extension page.
         const tab=sender.tab as {id?:number;index?:number}|undefined;
         await browser.tabs.create({url:browser.runtime.getURL("/onboarding.html"),...(tab?.index !== undefined ? {index:tab.index+1} : {}),...(tab?.id !== undefined ? {openerTabId:tab.id} : {})});
         return {ok:true};

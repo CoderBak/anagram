@@ -6,7 +6,7 @@
 // URLs and the extension version, so the worker imports no extension API at all.
 import { browser } from "#imports";
 import type { PublicPath } from "wxt/browser";
-import { pin } from "./pin";
+import { LID_PATH, pin } from "./pin";
 import type { WorkerInit } from "./worker";
 
 const url = (path: string): string => browser.runtime.getURL(path as PublicPath);
@@ -16,7 +16,7 @@ export function workerInit(): Omit<WorkerInit, "type"> {
   let version: string | null = null;
   try { version = browser.runtime.getManifest().version; } catch { /* outside an extension */ }
   return {
-    pin: pin(),
+    pin: pin(url(LID_PATH)),
     assets: {
       jspi: {
         ort: url("/vendor/engine/ort.jspi.min.mjs"),

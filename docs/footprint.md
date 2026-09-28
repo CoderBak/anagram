@@ -23,8 +23,9 @@ naming the exact authorized source right before its single read. Scoring goes ov
 Native Messaging, which is outside `connect-src`; the local component runs with the
 user's ordinary OS privileges and is not sandboxed by browser CSP. The oneclick flavor
 (`scripts/flavor.mjs`) has no Native Messaging: it scores inside the browser
-(`lib/webengine/`), and its only requests are the one-time model and language-ID
-downloads from the hosts listed under `lib/access/patterns.ts` below. Its engine page
+(`lib/webengine/`), and its only requests are the one-time model downloads from Hugging
+Face (`lib/webengine/pin.ts` below), which answers them with CORS headers, so no host
+permission is held for them; the language-ID file ships in the package. Its engine page
 (`engine.html`, Chrome's offscreen document) keeps the manifest's `connect-src`: the
 worker it hosts is what performs those downloads, into the extension's own storage.
 
@@ -38,7 +39,7 @@ worker it hosts is what performs those downloads, into the extension's own stora
 | `lib/pdf/loader.ts` | `fetch(` | reads an online PDF only after the private loader validates its one-use source ticket and current website access; rejects redirects | the exact authorized original HTTP(S) PDF URL, with normal browser credentials and no referrer |
 | `lib/pdf/loader.ts` | `XMLHttpRequest` | reads bytes for an authorized local PDF after checking file access, size and PDF signature | the exact authorized local file URL; remote-host file URLs are rejected |
 | `lib/lazy.ts` | `import(` | loads one of the vendored chunks that ship inside the extension (Defuddle, DOMPurify, the diagnostics chunk, the surfaces chunk, the report's paragraph links, pdf.js) | `chrome-extension://<this extension>/vendor/…` |
-| `lib/webengine/download.ts` | `fetch(` | downloads the pinned model files once, resumably, verifying each against its pinned SHA-256 as it streams; anonymous, no credentials, no referrer (the in-browser engine build only) | the exact pinned addresses in `lib/webengine/pin.ts`: the modelkit on huggingface.co (following its redirect to its storage) and lid.176.ftz on dl.fbaipublicfiles.com |
+| `lib/webengine/download.ts` | `fetch(` | downloads the pinned model files once, resumably, verifying each against its pinned SHA-256 as it streams; anonymous, no credentials, no referrer; and reads lid.176.ftz, which the package ships, checking it against its pinned SHA-256 whenever the model loads (the in-browser engine build only) | the exact pinned addresses in `lib/webengine/pin.ts`: the modelkit on huggingface.co (following its redirect to its storage), and `chrome-extension://<this extension>/vendor/engine/lid.176.ftz` |
 | `lib/webengine/session.ts` | `import(` | loads ONNX Runtime Web, which ships inside the extension, into the engine's worker | `chrome-extension://<this extension>/vendor/engine/ort.jspi.min.mjs` (or `ort.wasm.min.mjs` in a browser without JSPI) |
 
 There is no analytics, error-reporting or telemetry endpoint. The component update
@@ -61,9 +62,6 @@ APIs through its `parseAsync()`. `lib/dom/mainContent.ts` calls only its synchro
 | `lib/access/patterns.ts` | `http://localhost/*` | an example in the comment that explains why a match pattern carries no port |
 | `lib/access/patterns.ts` | `https://*/*` | the optional site access the user may grant |
 | `lib/access/patterns.ts` | `http://*/*` | the same, for plain http |
-| `lib/access/patterns.ts` | `https://huggingface.co/*` | oneclick flavor: optional grant for the one-time download of the pinned model; asked for with the click that starts it |
-| `lib/access/patterns.ts` | `https://*.hf.co/*` | oneclick flavor: the same grant for Hugging Face's file CDN, where its `resolve` URLs redirect large files |
-| `lib/access/patterns.ts` | `https://dl.fbaipublicfiles.com/*` | oneclick flavor: the same grant for fastText's language-ID file, which is served without CORS headers |
 | `lib/pdf/navigation.ts` | `http://*/*` | filters main-frame response observations used to recognize a PDF; does not initiate a request |
 | `lib/pdf/navigation.ts` | `https://*/*` | the corresponding HTTPS response-observation filter |
 | `lib/docs.ts` | `https://docs.google.com/document/d/` | builds the address of the document the tab is on |
@@ -90,7 +88,6 @@ APIs through its `parseAsync()`. `lib/dom/mainContent.ts` calls only its synchro
 | `lib/pdf/structured.ts` | `https://github.com/zotero/document-worker` | the attribution of Zotero's document-worker, whose reading of a PDF this translates, in a comment |
 | `lib/pdf/structured.ts` | `https://github.com/zotero/structured-document-text` | the attribution of the glyph-map decoding adapted from Zotero's library, in a comment |
 | `lib/webengine/pin.ts` | `https://huggingface.co/` | builds the pinned modelkit files' download addresses (`anagramd/modelkit.json`'s repository and revision), the native installer's |
-| `lib/webengine/pin.ts` | `https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz` | the language model's download address, the native installer's |
 | `lib/webengine/emoji.ts` | `https://github.com/carpedm20/emoji` | the attribution of the emoji tokenizer port, in a comment |
 | `lib/webengine/fasttext.ts` | `https://github.com/facebookresearch/fastText` | the attribution of the fastText prediction port, in a comment |
 | `lib/pdf/reading.ts` | `https://github.com/funstory-ai/BabelDOC` | the attribution of the formula-character rules adapted from BabelDOC, in a comment |
@@ -163,8 +160,8 @@ rows expire 30 days after they were written.
   fingerprints with view state, no text or password) and `pdfjs.preferences`. These are
   not erased by "Clear cached verdicts".
 - The in-browser engine build keeps its model files in the extension origin's private
-  file system (OPFS), directory `anagram-engine`: the verified model, tokenizer and
-  language-model files, `.part` files of an unfinished download, and `state.json` (the
+  file system (OPFS), directory `anagram-engine`: the verified model and tokenizer
+  files, `.part` files of an unfinished download, and `state.json` (the
   engine's preferences and which files were verified). Deleted by "Delete model files";
   never page text.
 

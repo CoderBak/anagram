@@ -3,8 +3,8 @@
 These regressions pin our own model-loading policy, per flavor, as PRIVACY.md
 promises it: the native engine's "offline mode" (anagramd/), and the oneclick
 flavor's in-browser engine (lib/webengine/), whose only network use is the
-one-time download of the pinned model and the language-ID file. They are not a
-sandbox or an audit of the transitive dependencies.
+one-time download of the pinned model from Hugging Face. They are not a sandbox
+or an audit of the transitive dependencies.
 """
 import ast
 import json
@@ -16,8 +16,6 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 INFERENCE = ("engine.py", "runtime_adapters.py", "scoring.py", "mlx_roberta.py",
              "benchmark_worker.py", "model_plan.py")
-# The oneclick flavor's download hosts, as lib/access/patterns.ts grants them.
-MODEL_HOSTS = ["https://huggingface.co/*", "https://*.hf.co/*", "https://dl.fbaipublicfiles.com/*"]
 
 
 def source(name):
@@ -103,18 +101,19 @@ def web_engine_sources():
 class InBrowserEnginePrivacyTests(unittest.TestCase):
     """The oneclick flavor scores in the browser and downloads its files once."""
 
-    def test_the_download_hosts_are_huggingface_and_fasttext_only(self):
-        patterns = (ROOT / "lib" / "access" / "patterns.ts").read_text()
-        declared = re.search(r"export const MODEL_HOSTS = (\[[^\]]*\])", patterns)
-        self.assertIsNotNone(declared)
-        self.assertEqual(json.loads(declared.group(1)), MODEL_HOSTS)
+    def test_no_host_permission_is_declared_for_the_download(self):
+        # Hugging Face answers the engine with CORS headers and the language identifier
+        # ships in the package, so neither flavor names a model host among its permissions.
+        for path in (ROOT / "lib" / "access" / "patterns.ts", ROOT / "wxt.config.ts"):
+            with self.subTest(file=str(path.relative_to(ROOT))):
+                self.assertNotRegex(path.read_text(), r"huggingface|hf\.co|fbaipublicfiles|MODEL_HOSTS")
 
     def test_the_engine_addresses_only_the_download_hosts(self):
         # Page text never leaves the browser: any address the engine writes down is one
         # of the model's download hosts, and never a loopback or other inference server.
         # Comment lines are the attributions THIRD_PARTY_NOTICES.md requires of the
         # adapted code (test/node/notices.test.ts) and name nothing the code reaches.
-        allowed = re.compile(r"^https://(huggingface\.co|[\w.-]+\.hf\.co|dl\.fbaipublicfiles\.com)/")
+        allowed = re.compile(r"^https://(huggingface\.co|[\w.-]+\.hf\.co)/")
         sources = web_engine_sources()
         self.assertTrue(sources, "No in-browser engine source was inspected")
         for path in sources:

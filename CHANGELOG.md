@@ -10,12 +10,13 @@ local component and the installer all carry the same version.
 ### Added
 
 - Anagram (in-browser), a second edition that runs the same pinned model inside the browser
-  (ONNX Runtime Web on WebGPU, in an offscreen document) with nothing else to install. Its
-  setup page has one button, **Set up (one-time 1.4 GB download)**: the browser asks to
-  let it reach Hugging Face and fastText's file host, and the model downloads once into the
-  browser's storage, with progress, speed and time left, Pause, Resume and Cancel. A
-  download that stops says why and how to fix it (permission refused, connection lost, disk
-  full, server not answering, a damaged file) and resumes where it left off. When ready,
+  (ONNX Runtime Web on WebGPU, in an offscreen document) with nothing else to install. Right
+  after install its model downloads by itself, once, from Hugging Face into the browser's
+  storage, with no permission to grant (fastText's language file ships in the package): the
+  setup page shows progress, speed and time left, Pause, Resume and Cancel, and offers
+  **Set up (one-time 1.4 GB download)** when Data Saver or a full disk held it back. A
+  download that stops says why and how to fix it (connection lost, disk full, server not
+  answering, a damaged file) and resumes where it left off. When ready,
   Settings says whether the model runs on the graphics card or the processor, the storage it
   takes, and holds the idle unload and **Delete model files**. Until then the popup and the
   panel say setup is needed, or how far the download has got, with a button to the setup
