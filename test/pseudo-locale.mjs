@@ -337,6 +337,8 @@ async function enginePages(context, extId, lang) {
     await page.goto(url(path), { waitUntil: "load" });
     return page;
   };
+  // The local engine's folds open, as the settings pages above are checked.
+  const openFolds = (page) => page.evaluate(() => document.querySelectorAll("details").forEach((d) => d.setAttribute("open", "")));
   const up = (page, selector) => page.waitForFunction((s) => { const el = document.querySelector(s); return !!el && el.getClientRects().length > 0; }, selector, { timeout: 15000 })
     .then(() => true, () => false);
   const faces = [["apple-silicon", "#engine-pick-inbrowser", "the choice of engines"], ["no-jspi", "#engine-pick-native", "the local engine alone"],
@@ -359,11 +361,11 @@ async function enginePages(context, extId, lang) {
     else record(`${lang}: setup page, 4 GB of memory at ${size.width} px`, false, "the note never showed");
     await tight.close();
     const crashing = await open("onboarding.html", size, async (p) => { await scriptEngine(p, "ready_gpu", { engine: "native", crashed: true }); await scriptDevice(p, DEVICES["apple-silicon"]); });
-    if (await up(crashing, "#engine-crash-switch")) await check(crashing, lang, "setup page, the local engine crashing");
+    if (await up(crashing, "#engine-crash-switch")) { await openFolds(crashing); await check(crashing, lang, "setup page, the local engine crashing"); }
     else record(`${lang}: setup page, the local engine crashing at ${size.width} px`, false, "the switch never showed");
     await crashing.close();
     const settings = await open("options.html", size, async (p) => { await scriptEngine(p, "needed", { engine: "native" }); await scriptDevice(p, DEVICES["linux-cpu"]); });
-    if (await up(settings, "#engine-delete-leftover") && await up(settings, "#engine-switch")) await check(settings, lang, "settings, the switch and the files left behind");
+    if (await up(settings, "#engine-delete-leftover") && await up(settings, "#engine-switch")) { await openFolds(settings); await check(settings, lang, "settings, the switch and the files left behind"); }
     else record(`${lang}: settings, the switch and the files left behind at ${size.width} px`, false, "they never showed");
     await settings.close();
   }
