@@ -1,7 +1,7 @@
 // test/node/report.test.ts — the copied report's rules that need no page: what the verdicts
 // add up to, when a flagged paragraph gets a link, and how that link is written. Generating
 // the fragment itself needs a real DOM and is checked in test/unit.mjs; opening it, in
-// test/scenarios.mjs.
+// test/pw/scenarios-report.spec.mjs.
 import { describe, expect, it } from "vitest";
 import type { ScoreResult } from "../../lib/contract";
 import { unitVerdict, type UnitVerdict } from "../../lib/capture/windows";
