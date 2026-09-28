@@ -12,9 +12,14 @@
 // set, which loads the model again only when a score asks.
 import { Engine, type EngineInit } from "./engine";
 import { EngineError, fail, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, ok, parseEngineRequest, type EngineReply } from "./protocol";
+import { probeRuntimes } from "./session";
 import { OpfsStore } from "./storage";
 
-export interface WorkerInit { type: "init"; pin: EngineInit["pin"]; assets: EngineInit["assets"]; version: string | null; idle?: boolean }
+export interface WorkerInit {
+  type: "init"; pin: EngineInit["pin"]; assets: EngineInit["assets"]; version: string | null; idle?: boolean;
+  /** The engine's own suites only (test/webengine/harness.mjs): a software WebGPU adapter counts as a GPU. */
+  softwareGpu?: boolean;
+}
 export type WorkerMessage = WorkerInit | { type: "request"; request: unknown };
 export type WorkerReply = { type: "ready" } | { type: "reply"; reply: EngineReply; idle: boolean } | { type: "idle" };
 
@@ -54,6 +59,7 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
       engine = new Engine({
         pin: message.pin, assets: message.assets, version: message.version, store, idle: message.idle === true,
         onIdle: () => post({ type: "idle" }),
+        ...(message.softwareGpu === true ? { probe: () => probeRuntimes({ softwareGpu: true }) } : {}),
       });
       await engine.start();
       post({ type: "ready" });

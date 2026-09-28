@@ -113,7 +113,9 @@ export function readyComponent(home) {
  * the next `times` ones (-1: every one) take their host down `delayMs` after they arrive,
  * unanswered, with whatever else it was working on. `startupMs` is how long a new host
  * takes to load its model: meanwhile its status says `loading` and health, tokens and score
- * answer `not_ready`, as the real one's do. */
+ * answer `not_ready`, as the real one's do. With `loadingWaits` it answers as the in-browser
+ * engine does instead: health says `engine_loading`, and tokens and score wait for the
+ * model. A request that arrives while the model loads is logged with `loading: true`. */
 const fixtureHomes = new Set();
 process.once("exit", () => { for (const home of fixtureHomes) rmSync(home, { recursive: true, force: true }); });
 export async function createNativeFixture(options = {}) {
@@ -184,6 +186,7 @@ async function serveNative(stateFile, logFile) {
     return true;
   };
   const loading = (s) => Date.now() - bornAt < (s.startupMs ?? 0);
+  const loaded = (s) => new Promise((r) => setTimeout(r, bornAt + (s.startupMs ?? 0) - Date.now()));
   const ok = (request, data) => send(request, { ok: true, status: 200, data });
   const failed = (request, status, code, message) => send(request, { ok: false, status, error: { code, message } });
   // A closed fixture breaks the native pipe, including an otherwise idle connection.
@@ -192,8 +195,12 @@ async function serveNative(stateFile, logFile) {
   async function handle(request) {
     const s = readState();
     if (!s.enabled) process.exit(0);
-    appendFileSync(logFile, JSON.stringify({ ...request, pid: process.pid }) + "\n");
+    appendFileSync(logFile, JSON.stringify({ ...request, pid: process.pid, ...(loading(s) ? { loading: true } : {}) }) + "\n");
     const component = s.component;
+    if (s.loadingWaits && loading(s) && component.state === "ready") {
+      if (request.op === "health") return failed(request, 503, "engine_loading", "Fixture engine loading its model");
+      if (request.op === "tokens" || request.op === "score") await loaded(s);
+    }
     if (request.op === "health") {
       if (component.state === "idle") return failed(request, 503, "engine_idle", "Fixture engine unloaded while idle");
       if (component.state !== "ready" || loading(s)) return failed(request, 503, "not_ready", "Fixture engine not ready");

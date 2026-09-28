@@ -926,8 +926,10 @@ export function createOrchestrator(
 
   // --- daemon down / back --------------------------------------------------------------
   // In-flight batches render "Unavailable" (degraded results, never cached). Nothing
-  // else is dispatched until the worker's probe succeeds again; then every Unavailable
-  // unit is re-observed so it re-dispatches by visibility, and the queue resumes.
+  // else is dispatched until the worker's probe finds the engine up, idle or loading
+  // again; then every Unavailable unit is re-observed so it re-dispatches by visibility,
+  // and the queue resumes. Loading is the in-browser engine's, which holds what it is sent
+  // until its model is in (the local engine says "not ready" while it loads: down).
 
   function enterDown(): void {
     if (backendDown) return;
@@ -968,7 +970,7 @@ export function createOrchestrator(
         | BackendStatus
         | undefined;
       if (generation !== captureGeneration) return;
-      if (s?.active === "server" || s?.active === "idle") {
+      if (s?.active === "server" || s?.active === "idle" || s?.active === "loading") {
         leaveDown();
         // The daemon may have come back as a DIFFERENT model. A page whose paragraphs
         // are all cache hits sends no request at all, so the probe is the only place

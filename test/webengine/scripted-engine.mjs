@@ -15,7 +15,7 @@ const runtime = (active, selected = active ?? "webgpu:fp32") => ({
   schema_version: 1, state: active ? "ready" : "idle", active_id: active, selected_id: selected, recommended_id: selected, fastest_id: null,
   candidates: [
     { id: "webgpu:fp32", label: "GPU (WebGPU, FP32) — apple metal-3", device: "gpu", runtime: "onnxruntime-web/webgpu", precision: "fp32", experimental: false, available: selected === "webgpu:fp32", reason: null },
-    { id: "wasm:fp32", label: "CPU (WebAssembly, FP32, 4 threads)", device: "cpu", runtime: "onnxruntime-web/wasm", precision: "fp32", experimental: false, available: true, reason: null },
+    { id: "wasm:fp32", label: "CPU (WebAssembly, FP32, 8 threads)", device: "cpu", runtime: "onnxruntime-web/wasm", precision: "fp32", experimental: false, available: true, reason: null },
   ],
   benchmark: { status: "idle", budget_s: 0, elapsed_s: 0, measurement_s: 0, phase: "idle", current_id: null, completed: 0, total: 0, results: [] },
   error: null,
