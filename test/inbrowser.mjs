@@ -283,14 +283,22 @@ for (const lang of ["en", "zh-CN"]) {
 
 // ---- what the device can afford, and a browser without JSPI --------------------------------------
 
-for (const [name, want] of [["linux-2gb", "cannot"], ["linux-4gb", "tight"], ["no-jspi", "terminal"]]) {
+for (const [name, want] of [["windows-nvidia", "nvidia"], ["linux-2gb", "cannot"], ["linux-4gb", "tight"], ["no-jspi", "terminal"]]) {
   const w = words("en");
   const server = await modelServer({ rate: 15e6 });
   const run = await launch("en", server, undefined, deviceBuild(name, DEVICES[name]));
   try {
     const setup = run.context.pages().find((p) => p.url().endsWith("/onboarding.html")) ??
       await run.context.waitForEvent("page", { predicate: (p) => p.url().endsWith("/onboarding.html"), timeout: 20000 }).catch(() => null);
-    if (want === "cannot") {
+    if (want === "nvidia") {
+      await until(() => shown(setup, "#engine-pick-native"), 15000);
+      await sleep(2000);
+      const seen = await setup.evaluate(() => ({
+        terminal: document.querySelector('.engine-choice-card[data-engine="native"]')?.innerText.replace(/\s+/g, " ").trim() ?? "",
+        figures: [...document.querySelectorAll(".engine-choice .engine-cost, .engine-choice > .engine-note")].filter((el) => !el.hidden).map((el) => el.textContent) }));
+      check("NVIDIA on Windows: the choice, the local engine said to run on the NVIDIA card, and no M4 figures", seen.terminal.includes(w("engineTerminalWhatNvidiaWindows")) &&
+        seen.figures.length === 0 && server.requests.length === 0, JSON.stringify(seen));
+    } else if (want === "cannot") {
       const said = await until(() => textOf(setup, ".engine-cannot"), 15000);
       await sleep(2000);
       check("too little memory: the setup page says so plainly and downloads nothing", said === w("engineCannotRun") &&

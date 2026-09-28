@@ -699,6 +699,14 @@
     "message": "Installs the local engine with one command in PowerShell. Faster, and lighter on memory.",
     "description": "Setup page, local engine card on Windows: what it is."
   },
+  "engineTerminalWhatNvidia": {
+    "message": "Installs the local engine with one command in Terminal. It runs on your NVIDIA graphics card.",
+    "description": "The terminal card on Linux beside an NVIDIA GPU."
+  },
+  "engineTerminalWhatNvidiaWindows": {
+    "message": "Installs the local engine with one command in PowerShell. It runs on your NVIDIA graphics card.",
+    "description": "The terminal card on Windows beside an NVIDIA GPU."
+  },
   "engineTerminalCost": {
     "message": "About $1 ms a paragraph · about $2 GB of memory",
     "description": "Setup page, local engine card: its measured speed and memory. $1 is milliseconds, $2 gigabytes."

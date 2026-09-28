@@ -545,6 +545,12 @@
   "engineTerminalWhatWindows": {
     "message": "在 PowerShell 中运行一条命令安装本地引擎。更快，也更省内存。"
   },
+  "engineTerminalWhatNvidia": {
+    "message": "在终端中运行一条命令安装本地引擎，它在你的 NVIDIA 显卡上运行。"
+  },
+  "engineTerminalWhatNvidiaWindows": {
+    "message": "在 PowerShell 中运行一条命令安装本地引擎，它在你的 NVIDIA 显卡上运行。"
+  },
   "engineTerminalCost": {
     "message": "每段约 $1 毫秒 · 内存约 $2 GB"
   },

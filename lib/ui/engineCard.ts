@@ -81,8 +81,8 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
   oneClickButton.id = "engine-pick-inbrowser";
   oneClickButton.setAttribute("aria-describedby", "engine-choice-inbrowser");
   oneClick.setAttribute("aria-labelledby", oneClickTitle.id);
-  oneClick.append(oneClickHead, element("p", t("engineOneClickWhat")),
-    element("p", t("engineOneClickCost", String(MEASURED.inbrowser.ms), String(MEASURED.inbrowser.gb)), "engine-cost"), oneClickTight, oneClickButton);
+  const oneClickCost = element("p", t("engineOneClickCost", String(MEASURED.inbrowser.ms), String(MEASURED.inbrowser.gb)), "engine-cost");
+  oneClick.append(oneClickHead, element("p", t("engineOneClickWhat")), oneClickCost, oneClickTight, oneClickButton);
   const terminal = element("section", undefined, "engine-choice-card"); terminal.dataset.engine = "native";
   const terminalTitle = element("h3", t("engineTerminal")); terminalTitle.id = "engine-choice-native";
   const terminalWhat = element("p", t("engineTerminalWhat"));
@@ -90,8 +90,8 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
   terminalButton.id = "engine-pick-native";
   terminalButton.setAttribute("aria-describedby", "engine-choice-native");
   terminal.setAttribute("aria-labelledby", terminalTitle.id);
-  terminal.append(terminalTitle, terminalWhat,
-    element("p", t("engineTerminalCost", String(MEASURED.native.ms), String(MEASURED.native.gb)), "engine-cost"), terminalButton);
+  const terminalCost = element("p", t("engineTerminalCost", String(MEASURED.native.ms), String(MEASURED.native.gb)), "engine-cost");
+  terminal.append(terminalTitle, terminalWhat, terminalCost, terminalButton);
   cards.append(oneClick, terminal);
   const measured = element("p", t("engineMeasured"), "engine-note");
   const jspiNote = element("p", t("engineJspiNote"), "engine-note"); jspiNote.hidden = true;
@@ -163,9 +163,14 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
       oneClick.hidden = d.offer === "terminal-only";
       terminal.hidden = d.offer === "auto-inbrowser";
       jspiNote.hidden = !(d.offer === "terminal-only" && d.reason === "no-jspi");
-      measured.hidden = d.offer === "terminal-only";
+      // The figures are the M4's: shown on Apple Silicon only, never as a promise elsewhere.
+      const measuredHere = d.machine === "apple-silicon";
+      oneClickCost.hidden = terminalCost.hidden = !measuredHere;
+      measured.hidden = d.offer === "terminal-only" || !measuredHere;
       oneClickTight.hidden = !d.tight;
-      terminalWhat.textContent = t(d.os === "windows" ? "engineTerminalWhatWindows" : "engineTerminalWhat");
+      terminalWhat.textContent = t(d.machine === "nvidia"
+        ? (d.os === "windows" ? "engineTerminalWhatNvidiaWindows" : "engineTerminalWhatNvidia")
+        : d.os === "windows" ? "engineTerminalWhatWindows" : "engineTerminalWhat");
       if (d.offer === "terminal-only") { delete terminalButton.dataset.variant; } else terminalButton.dataset.variant = "outline";
     }
     options.onUpdate?.(null, null);
