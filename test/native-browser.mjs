@@ -8,9 +8,14 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { uiLanguage } from "./harness.mjs";
+import { shippingWithNative } from "./test-build.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const EXT = join(ROOT, "output/chrome-mv3");
+const shipped = JSON.parse(readFileSync(join(ROOT, "output/chrome-mv3", "manifest.json"), "utf8"));
+assert.deepEqual(shipped.optional_permissions, ["nativeMessaging"], "The shipping build asks for Native Messaging when the local engine is picked");
+// The shipping build with it granted, as picking the local engine grants it (test/inbrowser.mjs
+// drives the pick itself): the local engine's setup, from its install command.
+const EXT = shippingWithNative();
 const manifest = JSON.parse(readFileSync(join(EXT, "manifest.json"), "utf8"));
 assert.ok(manifest.permissions.includes("nativeMessaging"));
 assert.equal(manifest.host_permissions, undefined);

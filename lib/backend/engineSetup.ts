@@ -1,7 +1,7 @@
 // lib/backend/engineSetup.ts — the in-browser engine's status, in the few stages people are
 // told about: nothing yet, downloading, paused, stopped short, starting, ready.
 //
-// The oneclick flavor's engine answers the native host's `status` (lib/webengine/engine.ts);
+// The in-browser engine answers the native host's `status` (lib/webengine/engine.ts);
 // its setup page (lib/ui/inBrowserEngine.ts) reads the whole of it, and the background
 // passes the popup and the in-page panel the short form, `EngineSetup`, beside "not ready"
 // (entrypoints/background.ts). The stages are pure, so each is settled without a browser

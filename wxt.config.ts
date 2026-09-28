@@ -1,6 +1,6 @@
 import { defineConfig } from "wxt";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { dirname, relative, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   entryFilesOf,
@@ -12,14 +12,9 @@ import {
 import { ALL_SITES } from "./lib/access/patterns";
 import { NOTICES_FILE, bundledPackages, packageOfModule, unlistedPackages } from "./scripts/notices.mjs";
 import { machinePaths } from "./scripts/machinePaths.mjs";
-import { ONECLICK_PUBLIC, buildsEntrypoint, flavorAliases, flavorOf, outDirTemplate } from "./scripts/flavor.mjs";
 
-// Which Anagram this is (scripts/flavor.mjs): `native` unless ANAGRAM_FLAVOR says otherwise.
-const FLAVOR = flavorOf();
-const ONECLICK = FLAVOR === "oneclick";
-
-// Page-reading tests pregrant website access in a separate output-test directory.
-// Shipping installs keep website access optional.
+// Page-reading tests pregrant website access and Native Messaging in a separate
+// output-test directory. Shipping installs keep both optional.
 const TEST_GRANT_ALL = process.env.ANAGRAM_TEST_GRANT_ALL === "1";
 
 // Never package the variant that requires access to every website.
@@ -34,8 +29,6 @@ if (TEST_GRANT_ALL && process.argv.slice(2).includes("zip")) {
 // Each bundle gets only the English fallback messages its source graph can use.
 // Fail on unknown message keys or unscanned bundled modules; tests keep all messages.
 const ROOT = fileURLToPath(new URL(".", import.meta.url)).replace(/[/\\]$/, "");
-// The modules this flavor links for the "#flavor/…" imports; the scan below follows them too.
-const FLAVOR_MODULES = flavorAliases(FLAVOR, ROOT);
 const EN_MESSAGES = fileURLToPath(new URL("./public/_locales/en/messages.json", import.meta.url));
 const EN_MESSAGES_ID = "\0anagram:en-messages";
 
@@ -50,7 +43,7 @@ function englishFallback() {
     enforce: "pre" as const,
     configResolved(config: Parameters<typeof entryFilesOf>[0]) {
       entries = entryFilesOf(config);
-      scanned = entries ? reachableSources(entries, ROOT, FLAVOR_MODULES) : [];
+      scanned = entries ? reachableSources(entries, ROOT) : [];
     },
     transform(_code: string, id: string) {
       loaded.add(id);
@@ -132,62 +125,37 @@ const CSP = [
   "base-uri 'none'",
 ].join("; ");
 
-/** Every file under `dir`, relative to it. */
-function filesUnder(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true, recursive: true })
-    .filter((entry) => entry.isFile())
-    .map((entry) => relative(dir, resolve(entry.parentPath, entry.name)).split("\\").join("/"))
-    .sort();
-}
-
 // WXT config: manifest keys, permissions, targets.
 // Icons are committed as PNGs under public/icons/ and copied into the build as-is.
 export default defineConfig({
-  // Build into ./output (not WXT's default ./.output) so it's visible in Finder. The
-  // oneclick flavor builds beside it, into oneclick-chrome-mv3 and oneclick-firefox-mv2.
+  // Build into ./output (not WXT's default ./.output) so it's visible in Finder.
   outDir: TEST_GRANT_ALL ? "output-test" : "output",
-  outDirTemplate: outDirTemplate(FLAVOR),
-  alias: FLAVOR_MODULES,
   zip: {
     // Keep generated output out of Firefox's review source archive. WXT excludes
     // output/ and node_modules itself, but does not apply our .gitignore.
     excludeSources: [
-      "dist/**", "output-test/**", "test-results/**", ".cache/**", `${ONECLICK_PUBLIC}/**`,
+      "dist/**", "output-test/**", "test-results/**", ".cache/**",
       "**/__pycache__/**", "**/*.pyc", "**/*.log", "**/*.ses",
       "test/*.png", "test/matrix.json", "test/survey.json",
     ],
-    // The oneclick packages are named apart from the native ones, which they never replace.
-    ...(ONECLICK ? {
-      artifactTemplate: "{{name}}-oneclick-{{packageVersion}}-{{browser}}.zip",
-      sourcesTemplate: "{{name}}-oneclick-{{packageVersion}}-sources.zip",
-    } : {}),
   },
   // A dev build is never shipped, and WXT's reloader pulls in code no shipping build has.
   vite: ({ command }) => ({
-    define: { "import.meta.env.ANAGRAM_FLAVOR": JSON.stringify(FLAVOR) },
+    // The test build reads a stand-in device (lib/ui/deviceInputs.ts); the shipping one has no such code.
+    define: { "import.meta.env.ANAGRAM_TEST_BUILD": JSON.stringify(TEST_GRANT_ALL ? "1" : "") },
     plugins: [englishFallback(), ...(command === "serve" ? [] : [thirdPartyNotices()])],
   }),
   hooks: {
-    // Each flavor builds its own pages only (scripts/flavor.mjs): the in-browser engine's
-    // offscreen document is not in the native build.
-    "entrypoints:found": (_wxt, infos) => {
-      for (let i = infos.length - 1; i >= 0; i--) if (!buildsEntrypoint(FLAVOR, infos[i]!.name)) infos.splice(i, 1);
-    },
     // AGPL: every copy of the extension carries the licence text, and the notices of the
-    // third-party work it contains. The oneclick flavor adds its engine's files, which
-    // scripts/vendor.mjs prepares for it (public/ goes into every build).
+    // third-party work it contains.
     "build:publicAssets": (_wxt, files) => {
       for (const name of ["LICENSE", NOTICES_FILE]) files.push({ absoluteSrc: resolve(ROOT, name), relativeDest: name });
-      if (!ONECLICK) return;
-      const engine = resolve(ROOT, ONECLICK_PUBLIC);
-      if (!existsSync(engine)) throw new Error(`${ONECLICK_PUBLIC}/ is missing: run npm run build:oneclick, which prepares it (scripts/vendor.mjs)`);
-      for (const name of filesUnder(engine)) files.push({ absoluteSrc: resolve(engine, name), relativeDest: name });
     },
     "build:before": () => shippedPackages.clear(),
     "build:done": (wxt) => {
       if (wxt.config.command === "serve") return;
       const gone = [...bundledPackages()]
-        .filter(([name, { chunk, flavor }]) => !chunk && (!flavor || flavor === FLAVOR) && !shippedPackages.has(name))
+        .filter(([name, { chunk }]) => !chunk && !shippedPackages.has(name))
         .map(([name]) => name);
       if (gone.length > 0) {
         throw new Error(
@@ -208,21 +176,23 @@ export default defineConfig({
     },
   },
   manifest: ({ browser }) => {
-    // The oneclick flavor is named apart, so both can be installed side by side.
-    const productName = ONECLICK ? "__MSG_extNameInBrowser__" : browser === "firefox" ? "Anagram for Firefox" : "Anagram for Chrome";
-    // Native Messaging reaches the local engine. The in-browser engine runs in an offscreen
-    // document (Chrome; Firefox's background page has a DOM of its own) and keeps the model
-    // in the extension's storage, which the browser must not evict.
-    // The model's download needs no host: Hugging Face answers it with CORS headers, and the
-    // language identifier ships in the package (lib/webengine/pin.ts).
-    const engine = ONECLICK ? [...(browser === "firefox" ? [] : ["offscreen"]), "unlimitedStorage"] : ["nativeMessaging"];
+    const productName = browser === "firefox" ? "Anagram for Firefox" : "Anagram for Chrome";
+    // Two engines, chosen at run time (lib/backend/engines.ts). The in-browser one runs in an
+    // offscreen document (Chrome; Firefox's background page has a DOM of its own) and keeps
+    // the model in the extension's storage, which the browser must not evict. Its download
+    // needs no host: Hugging Face answers it with CORS headers, and the language identifier
+    // ships in the package (lib/webengine/pin.ts). Native Messaging reaches the local engine
+    // and is asked for only when the person picks it; the test build requires it, for the
+    // suites that drive the fake host.
+    const engine = [...(browser === "firefox" ? [] : ["offscreen"]), "unlimitedStorage", ...(TEST_GRANT_ALL ? ["nativeMessaging"] : [])];
+    const optionalNative = TEST_GRANT_ALL ? [] : ["nativeMessaging"];
     return {
       name: productName,
       // The browser's own UI language picks the folder under public/_locales; English is
       // what it falls back to, which is also what every __MSG_* below is written in.
       default_locale: "en",
-      description: ONECLICK ? "__MSG_extDescriptionInBrowser__" : "__MSG_extDescription__",
-      // The engine's permissions provide inference; activeTab/scripting provide opt-in reading.
+      description: "__MSG_extDescription__",
+      // The engines' permissions provide inference; activeTab/scripting provide opt-in reading.
       permissions: ["storage", "activeTab", "contextMenus", "scripting", ...engine, "webNavigation", "webRequest"],
       // See CSP above. MV3 keys it under `extension_pages`; MV2 is the bare string.
       content_security_policy: browser === "firefox" ? CSP : { extension_pages: CSP },
@@ -232,36 +202,37 @@ export default defineConfig({
             // MV2 carries optional website patterns in the same list.
             optional_permissions: TEST_GRANT_ALL
               ? ["clipboardWrite", "file:///*"]
-              : ["clipboardWrite", ...ALL_SITES, "file:///*"],
+              : ["clipboardWrite", ...optionalNative, ...ALL_SITES, "file:///*"],
             browser_specific_settings: {
               gecko: {
-                id: ONECLICK ? "anagram-oneclick@coderbak.dev" : "anagram@coderbak.dev",
+                // The ID the local engine's installer registers (installer/native_registration.py).
+                id: "anagram@coderbak.dev",
                 // 140 (an ESR) is where CSS.highlights arrived, which draws every underline.
                 // What it still lacks is made up for in lib/dom/shadow.ts (adoptSheets) and
-                // lib/pdf/upsert.ts; test/firefox.mjs runs against it. The in-browser engine
-                // needs 153 (the ESR after it): 140 has no WebAssembly JSPI, which the engine's
-                // runtime needs on both paths, and no WebGPU, and its support ends in
-                // September 2026 (lib/webengine/session.ts).
-                strict_min_version: ONECLICK ? "153.0" : "140.0",
+                // lib/pdf/upsert.ts; test/firefox.mjs runs against it. It has no WebAssembly
+                // JSPI, which the in-browser engine's runtime needs on both paths, so there the
+                // setup page offers the local engine only (lib/device.ts); 153 runs both.
+                strict_min_version: "140.0",
                 // AMO's data-collection disclosure: nothing is collected or transmitted.
                 data_collection_permissions: { required: ["none"] },
               },
             },
           }
-        : {}),
-      ...(ONECLICK && browser !== "firefox"
-        ? {
-            // The engine's runtime is ONNX Runtime Web's JSPI build, the GPU and the CPU
-            // path alike (lib/webengine/session.ts): WebAssembly JSPI shipped in Chrome 137.
+        : {
+            // Native Messaging, optional: Chrome 137 accepts it so, and an update keeps the
+            // grant a release that required it had (test/inbrowser.mjs).
+            optional_permissions: optionalNative,
+            // The in-browser engine's runtime is ONNX Runtime Web's JSPI build, the GPU and the
+            // CPU path alike (lib/webengine/session.ts): WebAssembly JSPI shipped in Chrome 137.
             minimum_chrome_version: "137",
             // Cross-origin isolation for every extension page, so that the offscreen
-            // document's worker has SharedArrayBuffer and the CPU path four threads instead
-            // of one. The pages load nothing cross-origin but by fetch (test/oneclick.mjs
-            // checks each one isolated, and the reader opening a PDF).
+            // document's worker has SharedArrayBuffer and the CPU path its threads. The pages
+            // load nothing cross-origin but by fetch (test/inbrowser.mjs checks each one
+            // isolated and the reader opening a PDF; the suites drive the local engine's pages
+            // under it too).
             cross_origin_embedder_policy: { value: "require-corp" },
             cross_origin_opener_policy: { value: "same-origin" },
-          }
-        : {}),
+          }),
       // Chrome permits four suggested shortcuts. Avoid its Alt+Shift+T/B/I bindings.
       commands: {
         "toggle-overlay": {
@@ -281,7 +252,7 @@ export default defineConfig({
           description: "__MSG_cmdPrevFlagged__",
         },
       },
-      // Website access is optional; nativeMessaging has its own install warning.
+      // Website access is optional.
       ...(TEST_GRANT_ALL ? { host_permissions: [...ALL_SITES] } : {}),
       // OPTIONAL (Chrome MV3; Firefox MV2 carries them in optional_permissions above):
       // "all sites", which the onboarding page and the options page ask for in one click.

@@ -1,23 +1,17 @@
-// Setup page: the engine panel reports its own lifecycle; this page adds the site grant
-// once the engine is ready and points at the guide in the reader's language.
+// Setup page: the engine card decides which engine this device runs, or lets the person
+// choose, and its panel reports its own lifecycle (lib/ui/engineCard.ts); this page adds the
+// site grant once the engine is ready and points at the guide in the reader's language.
 import { browser } from "#imports";
 import "../../lib/ui/basecoat-vega.cdn.min.css";
 import { followSystemTheme } from "../../lib/ui/theme";
 import { localizePage } from "../../lib/ui/localize";
 import { linkSourceCode } from "../../lib/ui/sourceCode";
-import { messageLocale, t } from "../../lib/i18n";
+import { messageLocale } from "../../lib/i18n";
 import { ALL_SITES } from "../../lib/access/patterns";
 import { accessSummary, requestAccess } from "../../lib/access/grant";
-import { mountComponentSettings, componentReady } from "#flavor/engine-panel";
+import { engineReady, mountEngineCard } from "../../lib/ui/engineCard";
 import { scaleColorCss } from "../../lib/render/scale";
 
-// The in-browser edition's engine card is named for what it is (localizePage leaves an
-// English page's markup as it is, so the text is set here too).
-if (import.meta.env.ANAGRAM_FLAVOR === "oneclick") {
-  const title = document.querySelector<HTMLElement>('[data-i18n="componentTitle"]')!;
-  title.dataset.i18n = "engineTitle";
-  title.textContent = t("engineTitle");
-}
 localizePage();
 followSystemTheme();
 linkSourceCode();
@@ -50,9 +44,15 @@ accessGrant.addEventListener("click", () => { void requestAccess(ALL_SITES).then
 browser.permissions.onAdded.addListener(() => void renderAccess());
 browser.permissions.onRemoved.addListener(() => void renderAccess());
 void renderAccess();
-mountComponentSettings(document.getElementById("componentSettings")!, (reply) => {
-  ready = reply.kind === "ok" && componentReady(reply.snapshot);
-  render();
+mountEngineCard({
+  title: document.getElementById("engineTitle")!,
+  panelHost: document.getElementById("componentSettings")!,
+  settings: false,
+  onUpdate: (engine, reply) => {
+    ready = engineReady(engine, reply);
+    // The next step belongs right under the status line, above the Manage and Advanced folds.
+    const manage = document.getElementById("manage");
+    if (manage && manage.previousElementSibling !== readyBlock) manage.before(readyBlock);
+    render();
+  },
 });
-// The next step belongs right under the status line, above the Manage and Advanced folds.
-document.getElementById("manage")?.before(readyBlock);

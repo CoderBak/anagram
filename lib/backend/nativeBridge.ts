@@ -1,6 +1,6 @@
 import { browser } from "#imports";
 import { parseComponent } from "./nativeClient";
-import { engineTransport } from "#flavor/engine-transport";
+import { engineTransport } from "./engines";
 import { NativeTransportError } from "./transport";
 import { NATIVE_MESSAGE, NATIVE_UNINSTALL, isRecord, trustedNativePage, validPageRequest, type ComponentOperation, type NativeReply } from "./nativeProtocol";
 

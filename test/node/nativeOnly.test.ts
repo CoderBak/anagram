@@ -9,7 +9,12 @@ import { fakeScoreStore } from "./scoreStore";
 const model = {id:"local",ver:"fp32",calibration:"buckets"};
 const health = {ok:true,contract:"3.0",model,n_buckets:4,buckets:["a","b","c","d"],max_tokens:512,device:"cpu",app_version:"0.4.0"};
 let nativeClock = Date.now();
-beforeEach(() => { fakeBrowser.reset(); getScoreClient().invalidate(); });
+/** The local engine is the one in use: Native Messaging granted, as an update from a
+ *  release that required it leaves it (lib/backend/engines.ts). */
+function nativeGranted(): void {
+  Object.assign(fakeBrowser.permissions as unknown as Record<string, unknown>, { contains: async () => true });
+}
+beforeEach(() => { fakeBrowser.reset(); nativeGranted(); getScoreClient().invalidate(); });
 afterEach(() => { nativeTransport().close(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("native-only scoring and settings migration", () => {

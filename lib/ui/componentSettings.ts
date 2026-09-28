@@ -52,8 +52,11 @@ function element<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string, c
   return el;
 }
 
-export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: ComponentReply) => void): { refresh(): void; destroy(): void } {
+/** `crashAction`: a button shown beside Retry while the engine keeps crashing (the setup
+ *  page's switch to the in-browser engine, lib/ui/engineCard.ts). */
+export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: ComponentReply) => void, { crashAction }: { crashAction?: HTMLButtonElement } = {}): { refresh(): void; destroy(): void } {
   host.classList.add("component-settings");
+  delete host.dataset.engine;
   const makeButton = (key: MessageKey, handler: () => void, variant = "outline"): HTMLButtonElement => {
     const button = element("button", t(key), "btn"); button.type = "button"; button.dataset.variant = variant; button.dataset.size = "sm";
     button.addEventListener("click", handler); return button;
@@ -98,7 +101,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   });
   primary.id = "component-primary"; primary.hidden = true;
   const finishRemoval = makeButton("componentRemoveExtension", () => void finishUninstall()); finishRemoval.hidden = true;
-  actions.append(primary, finishRemoval);
+  actions.append(primary, ...(crashAction ? [crashAction] : []), finishRemoval);
 
   const manage = element("details", undefined, "component-fold"); manage.id = "manage"; manage.hidden = true;
   const storage = element("p");
@@ -212,6 +215,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     removeModels.disabled = pending || busy || !s || s.storage.models_bytes === 0;
     stop.disabled = pending || s?.error?.code === "busy" || s?.operation?.status === "running" || s?.operation?.status === "scheduled";
     finishRemoval.hidden = !terminal; finishRemoval.disabled = removingExtension;
+    if (crashAction) crashAction.hidden = !crashed || terminal;
   }
 
   function showRuntime(s?: ComponentSnapshot): void {

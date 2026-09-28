@@ -85,8 +85,9 @@ export interface Fab {
   /** The scoring daemon stopped answering (counter shows "!", panel explains + Retry);
    *  `crashed`: it kept dying under its work and is not started again until Retry;
    *  `setup`: the in-browser engine is down because it is not set up, and how far that got
-   *  (the panel says so and offers setup instead of Retry). */
-  setBackendDown(down: boolean, crashed?: boolean, setup?: EngineSetup | null): void;
+   *  (the panel says so and offers setup instead of Retry); `inBrowser`: the engine in use
+   *  is the in-browser one, which the notice names instead of the local engine. */
+  setBackendDown(down: boolean, crashed?: boolean, setup?: EngineSetup | null, inBrowser?: boolean): void;
   /** Update the flagged-paragraph counter. */
   setCount(flagged: number): void;
   /** Show (label + callback) or hide (null) the secondary action chip. */
@@ -580,6 +581,7 @@ export function createFab(opts: {
   let backendDown = false;
   let engineCrashed = false;
   let engineSetup: EngineSetup | null = null;
+  let engineInBrowser = false;
   let side: Side = "right";
   let tuckTimer: ReturnType<typeof setTimeout> | null = null;
   let liveEl: HTMLElement | null = null;
@@ -929,12 +931,14 @@ export function createFab(opts: {
     countEl.classList.toggle("zero", flagged === 0);
   }
 
-  function setBackendDown(down: boolean, crashed = false, setup: EngineSetup | null = null): void {
+  function setBackendDown(down: boolean, crashed = false, setup: EngineSetup | null = null, inBrowser = engineInBrowser): void {
     const next = down && !crashed ? setup : null;
-    if (down === backendDown && (down && crashed) === engineCrashed && next?.state === engineSetup?.state && next?.percent === engineSetup?.percent) return;
+    if (down === backendDown && (down && crashed) === engineCrashed && next?.state === engineSetup?.state && next?.percent === engineSetup?.percent &&
+      inBrowser === engineInBrowser) return;
     backendDown = down;
     engineCrashed = down && crashed;
     engineSetup = next;
+    engineInBrowser = inBrowser;
     setCount(lastFlagged);
     if (panelEl?.classList.contains("open")) renderPanel();
   }
@@ -1016,7 +1020,7 @@ export function createFab(opts: {
       notice.className = "pnotice";
       const text = document.createElement("span");
       const setup = engineSetup;
-      text.textContent = !setup ? t(engineCrashed ? "panelEngineCrashed" : "panelDaemonDown")
+      text.textContent = !setup ? t(engineInBrowser ? (engineCrashed ? "panelInBrowserCrashed" : "panelInBrowserDown") : engineCrashed ? "panelEngineCrashed" : "panelDaemonDown")
         : setup.state === "downloading" ? t("panelSetupDownloading", setup.percent)
         : setup.state === "paused" ? t("panelSetupPaused", setup.percent)
         : t(setup.state === "failed" ? "panelSetupFailed" : setup.state === "loading" ? "panelSetupLoading" : "panelSetupNeeded");

@@ -113,7 +113,8 @@ export async function launchExtension({
     if (testPort) detach = await attachTestPort(sw, fixture);
     else registerTestHost(join(profile, "NativeMessagingHosts", HOST_NAME + ".json"), fixture, "chrome", extId);
     if (!extDir) await waitForRegistration(sw);
-    // A build without Native Messaging (the oneclick flavor) never reaches the fixture.
+    // A build without Native Messaging granted (a copy that stands in for a device as shipped)
+    // never reaches the fixture.
     const native = JSON.parse(readFileSync(join(extension, "manifest.json"), "utf8")).permissions?.includes("nativeMessaging");
     if (native && fixture.state().enabled && fixture.state().component.state === "ready") {
       const probe = await context.newPage();

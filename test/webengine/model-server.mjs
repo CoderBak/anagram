@@ -1,6 +1,6 @@
 // test/webengine/model-server.mjs — Hugging Face, on this machine.
 //
-// The oneclick build downloads from the exact addresses it pins (lib/webengine/pin.ts): the
+// The in-browser engine downloads from the exact addresses it pins (lib/webengine/pin.ts): the
 // modelkit's model and tokenizer on huggingface.co. Its language identifier ships in the
 // package, so nothing else is fetched. A suite that drives setup cannot hand the engine
 // other addresses, so the browser is pointed here instead: Chromium resolves Hugging Face's
@@ -43,9 +43,9 @@ export const PINNED = {
 export const DOWNLOAD_BYTES = Object.values(PINNED).reduce((n, f) => n + f.size, 0);
 
 /**
- * Chromium's switch that sends Hugging Face nowhere. A fresh profile of the oneclick build
- * starts the model's download by itself (lib/webengine/autoSetup.ts): a suite that is not
- * about the download passes this, and the download fails on a name that does not resolve.
+ * Chromium's switch that sends Hugging Face nowhere. A fresh profile on a device with no
+ * choice starts the model's download by itself (lib/webengine/autoSetup.ts): a suite that is
+ * not about the download passes this, and the download fails on a name that does not resolve.
  */
 export const NO_MODEL_HOSTS = `--host-resolver-rules=MAP ${HF} ~NOTFOUND, MAP *.hf.co ~NOTFOUND`;
 

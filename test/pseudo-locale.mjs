@@ -4,9 +4,12 @@
 // for "Add" has to hold whatever the next language says there. This renders every page a
 // reader sees — setup (with and without an engine), settings (and its row that allows a
 // comment site), popup, the PDF reader's own chrome, chips, a chip's card, the ball's panel
-// (and its offer to allow that site), and the oneclick build's setup page in each state on the
-// way to Ready, its cancel confirmation, its popup and its panel offering setup — at 1280 and
-// 400 px, three times: in a
+// (and its offer to allow that site), the choice between the two engines (and a refused
+// permission), the local engine alone, a device that cannot run the model, Settings' switch and
+// its offer to delete the in-browser engine's files, the offer of the in-browser engine when the
+// local one keeps crashing, and the in-browser engine's setup page in each state on the way to
+// Ready, its cancel confirmation, its popup and its panel offering setup — at 1280 and 400 px,
+// three times: in a
 // pseudo-locale (every English message accented and stretched by the pseudo-localization
 // package, placeholders kept), in Chinese, and in English. On each it looks for the ways
 // a longer label breaks a layout:
@@ -28,8 +31,9 @@ import { join } from "node:path";
 import { pseudoLocalizeString } from "pseudo-localization";
 import { EXT, artifact, launchExtension, requireBuild, serveHtml, uiLanguage, uiLanguageOf, waitForRegistration } from "./harness.mjs";
 import { TEST_PDF, pdfChips, readerRead } from "./pdf-fixture.mjs";
-import { ensureTestBuild } from "./test-build.mjs";
-import { scriptEngine } from "./webengine/scripted-engine.mjs";
+import { deviceBuild } from "./test-build.mjs";
+import { DEVICES } from "./pw/devices.mjs";
+import { scriptDevice, scriptEngine } from "./webengine/scripted-engine.mjs";
 import { NO_MODEL_HOSTS, cancelAutoSetup } from "./webengine/model-server.mjs";
 
 requireBuild();
@@ -318,12 +322,75 @@ async function pages(context, extId, fixture, lang) {
   await page.close();
 }
 
-// ---- the oneclick build's setup ----------------------------------------------------------------
+// ---- which engine ----------------------------------------------------------------------------------
+
+/** The engine card before an engine is chosen, on the devices that see each of its faces (the
+ *  page's stand-in device scripted, test/webengine/scripted-engine.mjs), Settings' switch with
+ *  the in-browser engine's files left behind, and the offer of the in-browser engine when the
+ *  local one keeps crashing. Nothing is downloaded on any of them. */
+async function enginePages(context, extId, lang) {
+  const url = (p) => `chrome-extension://${extId}/${p}`;
+  const open = async (path, size, script) => {
+    const page = await context.newPage();
+    await script(page);
+    await page.setViewportSize(size);
+    await page.goto(url(path), { waitUntil: "load" });
+    return page;
+  };
+  const up = (page, selector) => page.waitForFunction((s) => { const el = document.querySelector(s); return !!el && el.getClientRects().length > 0; }, selector, { timeout: 15000 })
+    .then(() => true, () => false);
+  const faces = [["apple-silicon", "#engine-pick-inbrowser", "the choice of engines"], ["no-jspi", "#engine-pick-native", "the local engine alone"],
+    ["linux-2gb", ".engine-cannot", "a device that cannot run the model"]];
+  for (const size of [WIDE, NARROW]) {
+    for (const [device, selector, what] of faces) {
+      const page = await open("onboarding.html", size, async (p) => { await scriptEngine(p, "needed", { engine: null }); await scriptDevice(p, DEVICES[device]); });
+      if (await up(page, selector)) await check(page, lang, `setup page, ${what}`);
+      else record(`${lang}: setup page, ${what} at ${size.width} px`, false, "it never showed");
+      if (device === "apple-silicon") {
+        await page.evaluate(() => { chrome.permissions.request = async () => false; });
+        await page.click("#engine-pick-native").catch(() => {});
+        if (await up(page, ".engine-choice .engine-error")) await check(page, lang, "setup page, the local engine refused");
+        else record(`${lang}: setup page, the local engine refused at ${size.width} px`, false, "the reason never showed");
+      }
+      await page.close();
+    }
+    const tight = await open("onboarding.html", size, async (p) => { await scriptEngine(p, "downloading"); await scriptDevice(p, DEVICES["linux-4gb"]); });
+    if (await up(tight, ".engine-tight")) await check(tight, lang, "setup page, 4 GB of memory");
+    else record(`${lang}: setup page, 4 GB of memory at ${size.width} px`, false, "the note never showed");
+    await tight.close();
+    const crashing = await open("onboarding.html", size, async (p) => { await scriptEngine(p, "ready_gpu", { engine: "native", crashed: true }); await scriptDevice(p, DEVICES["apple-silicon"]); });
+    if (await up(crashing, "#engine-crash-switch")) await check(crashing, lang, "setup page, the local engine crashing");
+    else record(`${lang}: setup page, the local engine crashing at ${size.width} px`, false, "the switch never showed");
+    await crashing.close();
+    const settings = await open("options.html", size, async (p) => { await scriptEngine(p, "needed", { engine: "native" }); await scriptDevice(p, DEVICES["linux-cpu"]); });
+    if (await up(settings, "#engine-delete-leftover") && await up(settings, "#engine-switch")) await check(settings, lang, "settings, the switch and the files left behind");
+    else record(`${lang}: settings, the switch and the files left behind at ${size.width} px`, false, "they never showed");
+    await settings.close();
+  }
+  const popup = await open("popup.html", { width: 300, height: 600 }, async (p) => { await scriptEngine(p, "ready_gpu", { engine: "native", crashed: true }); await scriptDevice(p, DEVICES["apple-silicon"]); });
+  if (await up(popup, "#switchEngine")) await check(popup, lang, "popup, the local engine crashing");
+  else record(`${lang}: popup, the local engine crashing`, false, "the switch never showed");
+  await popup.close();
+}
+
+/** Files the in-browser engine left, as a download cut short leaves them, in the extension's storage. */
+async function seedLeftover(context, extId) {
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extId}/options.html`);
+  await page.evaluate(async () => {
+    const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle("anagram-engine", { create: true });
+    const writable = await (await dir.getFileHandle("model.onnx.part", { create: true })).createWritable();
+    await writable.write(new Uint8Array(3e6)); await writable.close();
+  });
+  await page.close();
+}
+
+// ---- the in-browser engine's setup --------------------------------------------------------------
 
 /** The in-browser engine's panel in each state people meet on the way to Ready, scripted into
  *  the page (test/webengine/scripted-engine.mjs); the panel's notice is the real engine's: the
- *  download a fresh profile starts by itself, cancelled (runOneclick). */
-async function oneclickPages(context, extId, lang) {
+ *  download a fresh profile starts by itself, cancelled (runInBrowser). */
+async function inBrowserPages(context, extId, lang) {
   const url = (p) => `chrome-extension://${extId}/${p}`;
   const painted = (page) =>
     page.waitForFunction(() => (document.querySelector("#componentSettings .component-status")?.textContent ?? "") !== "", null, { timeout: 15000 }).catch(() => {});
@@ -342,23 +409,23 @@ async function oneclickPages(context, extId, lang) {
       await painted(page);
       await page.waitForTimeout(300);
       await page.evaluate(() => { const manage = document.getElementById("manage"); if (manage && !manage.hidden) manage.open = true; });
-      await check(page, lang, `oneclick setup, ${state}`);
+      await check(page, lang, `in-browser setup, ${state}`);
       if (state === "paused") {
         await page.click("#engine-cancel").catch(() => {});
         await page.waitForSelector("#componentSettings dialog[open]", { timeout: 5000 }).catch(() => {});
-        await check(page, lang, "oneclick setup, cancel confirmation");
+        await check(page, lang, "in-browser setup, cancel confirmation");
       }
       await page.close();
     }
     const settings = await scripted("options.html", "downloading", size);
     await painted(settings);
-    await check(settings, lang, "oneclick settings, downloading");
+    await check(settings, lang, "in-browser settings, downloading");
     await settings.close();
   }
   for (const state of ["needed", "downloading", "paused", "loading"]) {
     const popup = await scripted("popup.html", state, { width: 300, height: 600 });
     await popup.waitForFunction(() => !document.getElementById("action").disabled, null, { timeout: 10000 }).catch(() => {});
-    await check(popup, lang, `oneclick popup, setup ${state}`);
+    await check(popup, lang, `in-browser popup, setup ${state}`);
     await popup.close();
   }
   const page = await context.newPage();
@@ -368,26 +435,29 @@ async function oneclickPages(context, extId, lang) {
     await page.waitForFunction(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.textContent === "!", null, { timeout: 25000 }).catch(() => {});
     await page.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     const shown = await page.waitForFunction(() => !!document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".panel.open .pnotice button"), null, { timeout: 15000 }).then(() => true, () => false);
-    if (shown) await check(page, lang, "oneclick panel, setup needed", { scope: "[data-anagram]" });
-    else record(`${lang}: oneclick panel, setup needed at ${size.width} px`, false, "the panel's setup notice never showed");
+    if (shown) await check(page, lang, "in-browser panel, setup needed", { scope: "[data-anagram]" });
+    else record(`${lang}: in-browser panel, setup needed at ${size.width} px`, false, "the panel's setup notice never showed");
   }
   await page.close();
 }
 
-async function runOneclick(lang, launch) {
-  // A fresh profile starts the model's download by itself: Hugging Face resolves to nothing here.
+async function runInBrowser(lang, launch) {
+  // On a device with no choice a fresh profile starts the model's download by itself: Hugging
+  // Face resolves to nothing here.
   const { context, sw, extId } = await launchExtension({ ...launch, args: [...(launch.args ?? []), NO_MODEL_HOSTS] });
   await context.route("https://disqus.com/**", (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>comments</title>" }));
   try {
     const got = await uiLanguageOf(sw);
     const want = lang === "zh-CN" ? "zh-CN" : "en";
     if (!got?.startsWith(want.slice(0, 2)) || (want === "zh-CN" && !/^zh/i.test(got))) {
-      record(`${lang}: the oneclick browser came up in that language`, null, `it is in ${got}`);
+      record(`${lang}: the in-browser engine's browser came up in that language`, null, `it is in ${got}`);
       return;
     }
     await waitForRegistration(sw);
     await cancelAutoSetup(context, extId);
-    await oneclickPages(context, extId, lang);
+    await inBrowserPages(context, extId, lang);
+    await seedLeftover(context, extId);
+    await enginePages(context, extId, lang);
   } finally {
     await context.close();
   }
@@ -412,18 +482,19 @@ async function run(lang, launch) {
 }
 
 const built = pseudoBuild();
-const ONECLICK = ensureTestBuild("oneclick-chrome-mv3");
-const builtOneclick = pseudoBuild(ONECLICK, { siteOnly: false });
+// A device with no choice: the in-browser engine sets up from install.
+const INBROWSER = deviceBuild("linux-cpu", DEVICES["linux-cpu"]);
+const builtInBrowser = pseudoBuild(INBROWSER, { siteOnly: false });
 try {
   await run("pseudo", { extDir: built.ext });
   await run("zh-CN", uiLanguage("zh-CN"));
   await run("en", {});
-  await runOneclick("pseudo", { extDir: builtOneclick.ext });
-  await runOneclick("zh-CN", { extDir: ONECLICK, ...uiLanguage("zh-CN") });
-  await runOneclick("en", { extDir: ONECLICK });
+  await runInBrowser("pseudo", { extDir: builtInBrowser.ext });
+  await runInBrowser("zh-CN", { extDir: INBROWSER, ...uiLanguage("zh-CN") });
+  await runInBrowser("en", { extDir: INBROWSER });
 } finally {
   rmSync(built.dir, { recursive: true, force: true });
-  rmSync(builtOneclick.dir, { recursive: true, force: true });
+  rmSync(builtInBrowser.dir, { recursive: true, force: true });
   await server.close();
 }
 

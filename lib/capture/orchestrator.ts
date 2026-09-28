@@ -937,8 +937,8 @@ export function createOrchestrator(
     syncDispatch();
     fab.setBackendDown(true);
     if (downTimer === null) downTimer = setInterval(() => void checkBackend(false), DOWN_POLL_MS);
-    // The in-browser engine may be down for want of setup, which the panel says at once.
-    if (import.meta.env.ANAGRAM_FLAVOR === "oneclick") void checkBackend(false);
+    // The engine may be down for want of setup, which the panel says at once.
+    void checkBackend(false);
     log.warn("scoring daemon not answering — dispatch paused, re-checking every", DOWN_POLL_MS, "ms");
   }
 
@@ -978,7 +978,7 @@ export function createOrchestrator(
         adoptBackend(s.model);
       } else if (backendDown) {
         // An engine that kept dying under its work is not merely "not ready": the panel says so.
-        fab.setBackendDown(true, s?.server.code === "engine_crashed", s?.setup);
+        fab.setBackendDown(true, s?.server.code === "engine_crashed", s?.setup, s?.engine === "inbrowser");
       }
     } catch {
       /* worker restarting — next tick */

@@ -1,6 +1,6 @@
-// Shipping builds require their engine's permissions — Native Messaging in the native
-// flavor, an offscreen document and unevictable storage in the oneclick one — and request
-// website access separately. Firefox clipboard access is optional; Chrome needs no
+// Shipping builds require the in-browser engine's permissions — an offscreen document
+// (Chrome) and unevictable storage — and offer Native Messaging, for the local engine, and
+// website access as optional grants. Firefox clipboard access is optional; Chrome needs no
 // clipboard permission. Manifest assertions require a build newer than wxt.config.ts.
 import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync, statSync } from "node:fs";
@@ -26,7 +26,9 @@ interface Manifest {
 
 const CLIPBOARD = ["clipboardWrite", "clipboardRead"];
 // PDF detection observes navigation and response types without blocking requests.
-const REQUIRED = ["storage", "activeTab", "contextMenus", "scripting", "nativeMessaging", "webNavigation", "webRequest"];
+const CHROME_REQUIRED = ["storage", "activeTab", "contextMenus", "scripting", "offscreen", "unlimitedStorage", "webNavigation", "webRequest"];
+// Firefox's background page is a document: it hosts the engine's worker without an offscreen one.
+const FIREFOX_REQUIRED = CHROME_REQUIRED.filter((p) => p !== "offscreen");
 const OPTIONAL_HOSTS = [...ALL_SITES, "file:///*"];
 const DECIDES = join(ROOT, "wxt.config.ts");
 
@@ -42,8 +44,8 @@ describe("the permissions each target asks for", () => {
   const chrome = target("chrome-mv3");
   const firefox = target("firefox-mv2");
 
-  it.skipIf(!chrome.ready)("Chrome asks for no clipboard permission at all, required or optional", () => {
-    expect(chrome.manifest.permissions ?? []).toEqual(REQUIRED);
+  it.skipIf(!chrome.ready)("Chrome requires the in-browser engine's permissions, and no clipboard permission at all", () => {
+    expect(chrome.manifest.permissions ?? []).toEqual(CHROME_REQUIRED);
     expect((chrome.manifest.optional_permissions ?? []).filter((p) => CLIPBOARD.includes(p))).toEqual([]);
   });
 
@@ -51,22 +53,23 @@ describe("the permissions each target asks for", () => {
     expect((firefox.manifest.permissions ?? []).filter((p) => CLIPBOARD.includes(p))).toEqual([]);
     // MV2 has no optional_host_permissions, so the site patterns are optional permissions
     // beside it — the same offer, spelt the way this manifest version spells it.
-    expect(firefox.manifest.optional_permissions ?? []).toEqual(["clipboardWrite", ...OPTIONAL_HOSTS]);
+    expect(firefox.manifest.optional_permissions ?? []).toEqual(["clipboardWrite", "nativeMessaging", ...OPTIONAL_HOSTS]);
   });
 
-  it.skipIf(!firefox.ready)("…and asks for nothing else on top of what Chrome asks for", () => {
+  it.skipIf(!firefox.ready)("…and asks for nothing else on top of what Chrome asks for, but the offscreen document", () => {
     // MV2 carries host permissions in the same list, so they are taken out here: what is
     // left is what a reader reads, and it has to stay the same entries everywhere.
     expect(
       (firefox.manifest.permissions ?? []).filter((p) => !p.includes("://") && p !== "<all_urls>"),
-    ).toEqual(REQUIRED);
+    ).toEqual(FIREFOX_REQUIRED);
   });
 
-  it.skipIf(!chrome.ready || !firefox.ready)("native messaging is required, never an optional grant", () => {
+  it.skipIf(!chrome.ready || !firefox.ready)("native messaging is an optional grant, asked for when the local engine is picked", () => {
     for (const { manifest } of [chrome, firefox]) {
-      expect(manifest.permissions).toContain("nativeMessaging");
-      expect(manifest.optional_permissions ?? []).not.toContain("nativeMessaging");
+      expect(manifest.permissions).not.toContain("nativeMessaging");
+      expect(manifest.optional_permissions ?? []).toContain("nativeMessaging");
     }
+    expect(chrome.manifest.optional_permissions).toEqual(["nativeMessaging"]);
   });
 
   it.skipIf(!chrome.ready || !firefox.ready)("observes PDF requests without blocking, debugger, or broad tabs permissions", () => {
@@ -167,59 +170,32 @@ describe("the test build cannot be mistaken for the store package", () => {
 });
 
 /**
- * The oneclick flavor (scripts/flavor.mjs): the same reading permissions as native and the
- * in-browser engine's in place of Native Messaging. The model downloads without any host
- * permission (Hugging Face answers with CORS headers; the language identifier ships in the
- * package). Named apart, so both flavors install side by side. Checks run on
- * `npm run build:oneclick` and `build:oneclick:firefox` output.
+ * What the in-browser engine needs besides: the browsers its runtime runs in, and cross-origin
+ * isolated pages in Chrome. The model downloads without any host permission (Hugging Face
+ * answers with CORS headers; the language identifier ships in the package).
  */
-describe("the oneclick flavor", () => {
-  const chrome = target("oneclick-chrome-mv3");
-  const firefox = target("oneclick-firefox-mv2");
-  const nativeChrome = target("chrome-mv3");
-  const variant = target("oneclick-chrome-mv3", "output-test");
+describe("the in-browser engine", () => {
+  const chrome = target("chrome-mv3");
+  const firefox = target("firefox-mv2");
+  const variant = target("chrome-mv3", "output-test");
 
-  it.skipIf(!chrome.ready)("Chrome swaps nativeMessaging for an offscreen document and unevictable storage", () => {
-    expect(chrome.manifest.permissions).toEqual(
-      ["storage", "activeTab", "contextMenus", "scripting", "offscreen", "unlimitedStorage", "webNavigation", "webRequest"],
-    );
+  it.skipIf(!chrome.ready || !firefox.ready)("names no model host, required or optional", () => {
+    for (const { manifest } of [chrome, firefox]) expect(JSON.stringify(manifest)).not.toMatch(/huggingface|hf\.co|fbaipublicfiles/);
   });
 
-  it.skipIf(!firefox.ready)("Firefox takes unevictable storage and no offscreen document: its background page is one", () => {
-    expect((firefox.manifest.permissions ?? []).filter((p) => !p.includes("://"))).toEqual(
-      ["storage", "activeTab", "contextMenus", "scripting", "unlimitedStorage", "webNavigation", "webRequest"],
-    );
+  it.skipIf(!chrome.ready || !firefox.ready)("is one extension, named as ever, with the ID the local engine's installer registers", () => {
+    expect(chrome.manifest.name).toBe("Anagram for Chrome");
+    expect(firefox.manifest.name).toBe("Anagram for Firefox");
+    for (const { manifest } of [chrome, firefox]) expect(manifest.description).toBe("__MSG_extDescription__");
+    // installer/native_registration.py's FIREFOX_ID, install.sh's and install.ps1's check.
+    expect(firefox.manifest.browser_specific_settings?.gecko?.id).toBe("anagram@coderbak.dev");
   });
 
-  it.skipIf(!chrome.ready || !firefox.ready)("asks for Native Messaging nowhere, required or optional", () => {
-    for (const { manifest } of [chrome, firefox]) {
-      expect([...(manifest.permissions ?? []), ...(manifest.optional_permissions ?? [])]).not.toContain("nativeMessaging");
-    }
-  });
-
-  it.skipIf(!chrome.ready || !firefox.ready)("requires no host and offers the same optional hosts as native: none for the model", () => {
-    expect(chrome.manifest.host_permissions).toBeUndefined();
-    expect(chrome.manifest.optional_host_permissions).toEqual(OPTIONAL_HOSTS);
-    expect((firefox.manifest.permissions ?? []).filter((p) => p.includes("://"))).toEqual([]);
-    expect(firefox.manifest.optional_permissions).toEqual(["clipboardWrite", ...OPTIONAL_HOSTS]);
-    for (const { manifest } of [chrome, firefox]) {
-      expect(manifest.content_scripts).toBeUndefined();
-      expect(JSON.stringify(manifest)).not.toMatch(/huggingface|hf\.co|fbaipublicfiles/);
-    }
-  });
-
-  it.skipIf(!chrome.ready || !firefox.ready)("is named apart from the native flavor, in Chrome and in Firefox", () => {
-    for (const { manifest } of [chrome, firefox]) {
-      expect(manifest.name).toBe("__MSG_extNameInBrowser__");
-      expect(manifest.description).toBe("__MSG_extDescriptionInBrowser__");
-    }
-    expect(firefox.manifest.browser_specific_settings?.gecko?.id).toBe("anagram-oneclick@coderbak.dev");
-  });
-
-  it.skipIf(!chrome.ready || !firefox.ready)("requires the browsers its runtime runs in: Chrome 137, Firefox 153", () => {
-    // WebAssembly JSPI, which the runtime's only build needs (lib/webengine/session.ts).
+  it.skipIf(!chrome.ready || !firefox.ready)("requires Chrome 137, where its runtime runs, and keeps Firefox at 140, where the local engine does", () => {
+    // WebAssembly JSPI, which the runtime's only build needs (lib/webengine/session.ts); Firefox
+    // has it from 153, and the setup page offers the local engine alone before (lib/device.ts).
     expect(chrome.manifest.minimum_chrome_version).toBe("137");
-    expect(firefox.manifest.browser_specific_settings?.gecko?.strict_min_version).toBe("153.0");
+    expect(firefox.manifest.browser_specific_settings?.gecko?.strict_min_version).toBe("140.0");
   });
 
   it.skipIf(!chrome.ready || !firefox.ready)("isolates Chrome's extension pages, so the engine's WebAssembly gets threads", () => {
@@ -229,18 +205,8 @@ describe("the oneclick flavor", () => {
     expect(firefox.manifest.cross_origin_embedder_policy).toBeUndefined();
   });
 
-  it.skipIf(!nativeChrome.ready)("leaves the native flavor's browsers and isolation as they were", () => {
-    expect(nativeChrome.manifest.minimum_chrome_version).toBeUndefined();
-    expect(nativeChrome.manifest.cross_origin_embedder_policy).toBeUndefined();
-    expect(nativeChrome.manifest.cross_origin_opener_policy).toBeUndefined();
-  });
-
-  it.skipIf(!chrome.ready || !nativeChrome.ready)("keeps the native flavor's Content-Security-Policy", () => {
-    expect(chrome.manifest.content_security_policy).toEqual(nativeChrome.manifest.content_security_policy);
-  });
-
-  it.skipIf(!variant.ready)("its test variant requires the site patterns, as the native one does", () => {
-    expect(variant.manifest.host_permissions ?? []).toEqual([...ALL_SITES]);
-    expect(variant.manifest.optional_host_permissions).toEqual(["file:///*"]);
+  it.skipIf(!variant.ready)("the test variant requires Native Messaging, for the suites that drive the fake host", () => {
+    expect(variant.manifest.permissions).toContain("nativeMessaging");
+    expect(variant.manifest.optional_permissions ?? []).not.toContain("nativeMessaging");
   });
 });

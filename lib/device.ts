@@ -54,6 +54,7 @@ export type Reason =
 export interface Decision {
   offer: Offer;
   reason: Reason;
+  os: Os;
   machine: Machine;
   /** The path the in-browser engine is expected to take here, or null where it cannot run. */
   path: "webgpu" | "cpu" | null;
@@ -88,7 +89,7 @@ export const DISK_MARGIN = 200e6;
 /** The measured speed and memory each engine is described by (on an M4 Mac). */
 export const MEASURED = { inbrowser: { ms: 92, gb: 2.5 }, native: { ms: 43, gb: 1.8 } } as const;
 
-type Os = "mac" | "windows" | "linux" | "other";
+export type Os = "mac" | "windows" | "linux" | "other";
 
 function osOf(i: DeviceInputs): Os {
   const p = (i.platform || i.navigatorPlatform || "").toLowerCase();
@@ -157,7 +158,7 @@ export function decide(i: DeviceInputs): Decision {
   const machine = machineOf(i, os);
   const native = nativeInstalls(os, machine, i);
   const path: "webgpu" | "cpu" = i.gpu && i.gpu.fits !== false ? "webgpu" : "cpu";
-  const base = { machine, native, tight: false, tier: null, path: null };
+  const base = { os, machine, native, tight: false, tier: null, path: null };
   if (!i.jspi) {
     // Firefox 140: the runtime's only build needs JSPI, which Firefox has from 153.
     return { ...base, offer: native ? "terminal-only" : "cannot-run", reason: "no-jspi" };

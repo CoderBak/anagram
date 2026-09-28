@@ -1,10 +1,12 @@
-// lib/webengine/autoSetup.ts — the model's download, started by itself when the oneclick
-// build is installed.
+// lib/webengine/autoSetup.ts — the model's download, started by itself when the in-browser
+// engine is the one in use.
 //
-// Adding the extension is the whole of setup: on install (runtime.onInstalled, "install") the
-// background asks the engine for `models.download` before it opens the setup page, which
-// then shows the download running, with Pause and Cancel. On an update it does the same when
-// a download was under way, or when the model is not there and nobody chose otherwise. What
+// On a device with no choice (lib/device.ts) adding the extension is the whole of setup: the
+// setup page, which opens on install, makes the in-browser engine the one in use and the
+// background asks it for `models.download`; the page shows the download running, with Pause
+// and Cancel. On a device with a choice the person's pick does the same, as asked. On an
+// update the background does it when the in-browser engine is in use and a download was
+// under way, or the model is not there and nobody chose otherwise. What
 // the person chose is in the engine's state file, read here from the extension's storage
 // before the engine is started (starting it would load a model that is there): never after
 // Cancel or Delete model files, a pause, a failed download or a stopped engine. A plain
@@ -53,7 +55,7 @@ export function blockedBy(env: { saveData?: boolean; quota?: number; usage?: num
   return roomShort(env, needed) !== null ? "no_room" : null;
 }
 
-/** The engine's saved state and the bytes its directory holds, read without starting it:
+/** The engine's saved state and the bytes of its files but that state, read without starting it:
  *  null state for a fresh install, "unreadable" for a file the engine would not trust either. */
 async function readSaved(): Promise<{ saved: SavedSetup | null; bytes: number } | "unreadable"> {
   let dir: FileSystemDirectoryHandle;
@@ -67,8 +69,8 @@ async function readSaved(): Promise<{ saved: SavedSetup | null; bytes: number } 
     for await (const [name, handle] of (dir as unknown as { entries(): AsyncIterable<[string, FileSystemHandle]> }).entries()) {
       if (handle.kind !== "file") continue;
       const file = await (handle as FileSystemFileHandle).getFile();
-      bytes += file.size;
       if (name === STATE_FILE) text = await file.text();
+      else bytes += file.size;
     }
     if (text === null) return { saved: null, bytes };
     const saved = JSON.parse(text) as unknown;
@@ -78,7 +80,15 @@ async function readSaved(): Promise<{ saved: SavedSetup | null; bytes: number } 
   }
 }
 
-/** The bytes the engine's directory holds, read without starting the engine; 0 when unreadable. */
+/** Remove the engine's directory, its model files and its state, as if it had never been set
+ *  up. Only while the engine is not running (lib/webengine/client.ts closeWebEngine). */
+export async function deleteEngineFiles(): Promise<void> {
+  const root = await navigator.storage.getDirectory();
+  try { await root.removeEntry(DIRECTORY, { recursive: true }); }
+  catch (error) { if ((error as { name?: string }).name !== "NotFoundError") throw error; }
+}
+
+/** The bytes of the engine's model files and downloads, read without starting it; 0 when unreadable. */
 export async function storedModelBytes(): Promise<number> {
   try {
     const read = await readSaved();
@@ -91,19 +101,22 @@ export async function storedModelBytes(): Promise<number> {
  * the way. Resolves once the engine has taken the request, or after OPEN_AFTER_MS, with
  * "started" or why not; never rejects.
  */
-export async function startSetupByItself(request: (op: "models.download") => Promise<NativeReply>): Promise<"started" | "unavailable" | Skipped> {
+export async function startSetupByItself(request: (op: "models.download") => Promise<NativeReply>, { asked = false } = {}):
+  Promise<"started" | "unavailable" | Skipped> {
   try {
     const read = await readSaved();
     if (read === "unreadable") return "unreadable";
-    if (!wantsDownload(read.saved)) return "not_wanted";
+    // Asked for (the person picked the engine): whatever they chose before, and whatever the
+    // browser says about saving data. Room is still room.
+    if (!asked && !wantsDownload(read.saved)) return "not_wanted";
     const total = pinnedFiles().reduce((n, f) => n + f.size_bytes, 0);
     let estimate: { quota?: number; usage?: number } = {};
     try { estimate = await navigator.storage.estimate(); } catch { /* no estimate: room is not known to be short */ }
     const connection = (navigator as { connection?: { saveData?: boolean } }).connection;
-    const blocked = blockedBy({ saveData: connection?.saveData, ...estimate }, Math.max(0, total - read.bytes));
+    const blocked = blockedBy({ saveData: !asked && connection?.saveData, ...estimate }, Math.max(0, total - read.bytes));
     if (blocked) return blocked;
-    const asked = request("models.download").then(() => "started" as const, () => "unavailable" as const);
-    return await Promise.race([asked, new Promise<"started">((resolve) => setTimeout(() => resolve("started"), OPEN_AFTER_MS))]);
+    const taken = request("models.download").then(() => "started" as const, () => "unavailable" as const);
+    return await Promise.race([taken, new Promise<"started">((resolve) => setTimeout(() => resolve("started"), OPEN_AFTER_MS))]);
   } catch {
     return "unreadable";
   }

@@ -90,8 +90,7 @@ const composed = (kind, copyright) =>
 // reproduced verbatim — the component's own licence carrying its own copyright — or
 // { compose: "MIT" | "Zlib" } to write the short licence out with `copyright`), packages
 // (npm packages whose code is bundled; checked against the build) and chunk (the vendor/
-// chunk scripts/vendor.mjs builds them into, when it is not the extension build), flavor
-// ("oneclick" for packages only that flavor's build bundles, scripts/flavor.mjs), adapted
+// chunk scripts/vendor.mjs builds them into, when it is not the extension build), adapted
 // (files of Anagram's own source that adapt it; checked to still name it), note.
 
 /** @type {{ title: string, intro: string, components: () => object[] }[]} */
@@ -204,7 +203,7 @@ const GROUPS = [
   },
   {
     title: "The in-browser engine",
-    intro: "The oneclick flavor, whose scoring runs inside the browser (lib/webengine/, entrypoints/engine/), ships ONNX Runtime Web under vendor/engine/, the emoji names EditLens's preprocessing spells emoji out with, and fastText's language identifier. Its model files are downloaded once, verified, and kept in the browser's own storage; they are the modelkit listed under the component package below.",
+    intro: "The in-browser engine, which scores inside the browser when it is the engine chosen (lib/webengine/, entrypoints/engine/), ships ONNX Runtime Web under vendor/engine/, the emoji names EditLens's preprocessing spells emoji out with, and fastText's language identifier. Its model files are downloaded once, verified, and kept in the browser's own storage; they are the modelkit listed under the component package below.",
     components: () => [
       { name: "ONNX Runtime Web", version: npm("onnxruntime-web-engine"), url: "https://github.com/microsoft/onnxruntime",
         licence: "MIT", copyright: "Copyright (c) Microsoft Corporation",
@@ -212,7 +211,7 @@ const GROUPS = [
         notice: ["vendor/document-worker/LICENSE.onnxruntime-web"] },
       { name: "fastText language identification (lid.176.ftz)", version: "lid.176", url: "https://fasttext.cc/docs/en/language-identification.html",
         licence: "CC-BY-SA-3.0", copyright: "Copyright (c) Facebook, Inc.",
-        where: "The oneclick package carries the model unmodified as vendor/engine/lid.176.ftz (938,013 bytes, SHA-256 8f3472cfe8738a7b6099e8e999c3cbfae0dcd15696aac7d7738a8039db603e83): the build fetches it from https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz and refuses any other bytes (scripts/webengine.mjs), and the engine reads it from the package, checking the hash again, to tell English from other languages. The local component's installer downloads the same file, with the same check, instead of shipping it. fastText's authors distribute the model under the Creative Commons Attribution-Share Alike 3.0 licence, https://creativecommons.org/licenses/by-sa/3.0/, and ask that it be cited as A. Joulin, E. Grave, P. Bojanowski, T. Mikolov, Bag of Tricks for Efficient Text Classification (2016), and A. Joulin, E. Grave, P. Bojanowski, M. Douze, H. Jégou, T. Mikolov, FastText.zip: Compressing text classification models (2016)." },
+        where: "The browser package carries the model unmodified as vendor/engine/lid.176.ftz (938,013 bytes, SHA-256 8f3472cfe8738a7b6099e8e999c3cbfae0dcd15696aac7d7738a8039db603e83): the build fetches it from https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz and refuses any other bytes (scripts/webengine.mjs), and the engine reads it from the package, checking the hash again, to tell English from other languages. The local component's installer downloads the same file, with the same check, instead of shipping it. fastText's authors distribute the model under the Creative Commons Attribution-Share Alike 3.0 licence, https://creativecommons.org/licenses/by-sa/3.0/, and ask that it be cited as A. Joulin, E. Grave, P. Bojanowski, T. Mikolov, Bag of Tricks for Efficient Text Classification (2016), and A. Joulin, E. Grave, P. Bojanowski, M. Douze, H. Jégou, T. Mikolov, FastText.zip: Compressing text classification models (2016)." },
       { name: "emoji (data)", version: "2.15.0", url: "https://github.com/carpedm20/emoji",
         licence: "BSD-3-Clause", copyright: "Copyright (c) 2014-2025, Taehoon Kim, Kevin Wurster",
         where: "lib/webengine/emoji.data.json: the package's English emoji names and qualification statuses (its emoji.json, from Unicode's emoji-test.txt), written by scripts/emojiData.py from the version anagramd/uv.lock pins, so the browser engine spells emoji out as the native engine does.",
@@ -330,12 +329,11 @@ export function components() {
 /**
  * The npm packages the extension may bundle: each with its component and, for the
  * on-demand chunks scripts/vendor.mjs builds, the chunk it is built into. The rest are
- * what the extension build itself (wxt.config.ts) compiles into Anagram's scripts: all of
- * them in every flavor, or in the one `flavor` names.
+ * what the extension build itself (wxt.config.ts) compiles into Anagram's scripts.
  */
 export function bundledPackages() {
   const out = new Map();
-  for (const c of components()) for (const p of c.packages ?? []) out.set(p, { component: c.name, chunk: c.chunk, flavor: c.flavor });
+  for (const c of components()) for (const p of c.packages ?? []) out.set(p, { component: c.name, chunk: c.chunk });
   return out;
 }
 

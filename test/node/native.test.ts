@@ -22,7 +22,12 @@ function port() {
   return {p,messages,receive:(value:unknown) => receive(value),disconnect:() => disconnect(),
     answer:(index:number,data:unknown={}) => receive({v:1,id:messages[index]!.id,ok:true,status:200,data})};
 }
-beforeEach(() => fakeBrowser.reset());
+/** The local engine is the one in use: Native Messaging granted, as an update from a
+ *  release that required it leaves it (lib/backend/engines.ts). */
+function nativeGranted(): void {
+  Object.assign(fakeBrowser.permissions as unknown as Record<string, unknown>, { contains: async () => true });
+}
+beforeEach(() => { fakeBrowser.reset(); nativeGranted(); });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("native port multiplexing and failure recovery", () => {

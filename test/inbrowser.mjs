@@ -1,15 +1,26 @@
-// test/oneclick.mjs — the oneclick flavor's test build, set up the way a person sets it up.
+// test/inbrowser.mjs — the in-browser engine of the test build, set up the way a person sets it up.
 //
-// The flavor swaps the engine transport and the setup/Settings engine panel
-// (scripts/flavor.mjs). This starts the test build for real, in English and in Chinese, each
-// in a temporary profile, with Hugging Face answered on this machine
-// (test/webengine/model-server.mjs: Chromium resolves its names to a local HTTPS server that
-// answers CORS as Hugging Face does, and nothing else resolves at all):
+// One extension carries both engines, and the setup page decides which a device runs
+// (lib/device.ts, lib/ui/engineCard.ts). This starts copies of the test build that stand in
+// for devices (test/test-build.mjs deviceBuild: Native Messaging optional, as shipped) for
+// real, in English and in Chinese, each in a temporary profile, with Hugging Face answered on
+// this machine (test/webengine/model-server.mjs: Chromium resolves its names to a local HTTPS
+// server that answers CORS as Hugging Face does, and nothing else resolves at all):
 //
-//   - installing is setting up: the model's download starts by itself and the setup page
-//     opens on it running, with Pause and Cancel; the manifest names no model host, and with
-//     the shipped permissions (no host at all) the download goes by CORS alone; the package
-//     carries lid.176.ftz;
+//   - on an Apple Silicon Mac the setup page offers both engines, the in-browser one
+//     highlighted, and nothing downloads until one is picked; picking it starts the download;
+//     picking the local engine asks for Native Messaging and shows the install command, and a
+//     refusal comes back to the choice saying so (a permission prompt is browser UI no
+//     automation can click: the browser's answer is stood in for, in the page and the worker);
+//   - where the model does not fit nothing downloads and the page says why; on 4 GB it runs
+//     with a note; without JSPI (Firefox 140, stood in for) the local engine alone is offered;
+//   - Native Messaging is accepted as optional and kept across an update from a release that
+//     required it, with the local host reached after it (Chrome cannot be granted it at run
+//     time without its prompt; test/webengine/firefox-extension.mjs grants it in Firefox);
+//   - on a device with no choice installing is setting up: the model's download starts by
+//     itself and the setup page opens on it running, with Pause and Cancel; the manifest
+//     names no model host, and with the shipped permissions (no host at all) the download
+//     goes by CORS alone; the package carries lid.176.ftz;
 //   - the download with progress, speed and time left, the popup's and the panel's progress
 //     line, a dropped connection retried by itself, Pause and Resume from the bytes on disk,
 //     and Cancel;
@@ -23,27 +34,33 @@
 //     graphics card or the processor, loading, each kind of failure, a model that would not
 //     load, an engine that kept crashing) scripted into the page (test/webengine/scripted-engine.mjs);
 //   - every extension page is cross-origin isolated under the manifest's keys, and the
-//     reader still opens a PDF.
+//     reader still opens a PDF;
+//   - Settings switches to the local engine and back, and offers to delete what the
+//     in-browser engine left.
 //
 // The downloads are zeros from the local server: a paused, cancelled or failed download is
 // never verified. `--real` adds one run with the real files, the whole way to Ready and a
 // score without a click (ANAGRAM_MODELKIT, or ~/anagram-bench's copy): 1.4 GB into a
 // temporary profile that is deleted after; never in CI.
 //
-//   npm run test:oneclick              # builds output-test/oneclick-chrome-mv3 when stale
-//   node test/oneclick.mjs --real      # and the real download, load and score
+//   npm run test:inbrowser             # builds output-test/chrome-mv3 when stale
+//   node test/inbrowser.mjs --real     # and the real download, load and score
 import { chromium } from "playwright";
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { serveHtml, uiLanguage } from "./harness.mjs";
-import { ensureTestBuild } from "./test-build.mjs";
+import { deviceBuild } from "./test-build.mjs";
+import { DEVICES } from "./pw/devices.mjs";
 import { TEST_PDF } from "./pdf-fixture.mjs";
 import { DOWNLOAD_BYTES, modelServer, realFiles } from "./webengine/model-server.mjs";
 import { STATES, scriptEngine } from "./webengine/scripted-engine.mjs";
 import { LID } from "../scripts/webengine.mjs";
+/** The numbers the choice describes the engines by (lib/device.ts MEASURED, measured on an M4). */
+const MEASURED = { inbrowser: { ms: 92, gb: 2.5 }, native: { ms: 43, gb: 1.8 } };
 
-const EXT = ensureTestBuild("oneclick-chrome-mv3");
+/** A device with no choice: the in-browser engine, set up from install. */
+const EXT = deviceBuild("linux-cpu", DEVICES["linux-cpu"]);
 const REAL = process.argv.includes("--real");
 const HUGGING_FACE = /^(huggingface\.co|[\w.-]+\.hf\.co)$/;
 
@@ -86,7 +103,7 @@ const until = async (fn, timeout = 15000, step = 200) => {
 
 /** A browser on `profile` (a new temporary one unless given), with the extension loaded;
  *  close() keeps the profile only when asked, for a restart. */
-async function launch(lang, server, profile = mkdtempSync(join(tmpdir(), "anagram-oneclick-")), extension = EXT) {
+async function launch(lang, server, profile = mkdtempSync(join(tmpdir(), "anagram-inbrowser-")), extension = EXT) {
   const localized = lang === "en" ? {} : uiLanguage(lang);
   const context = await chromium.launchPersistentContext(profile, {
     headless: true, channel: "chromium", ...localized, viewport: { width: 1100, height: 900 },
@@ -131,7 +148,7 @@ const saveData = (sw, on) => sw.evaluate((on) => Object.defineProperty(navigator
 // the shipped manifest asks for, so the download has only Hugging Face's CORS answer to go on.
 {
   const server = await modelServer({ rate: 15e6 });
-  const copy = mkdtempSync(join(tmpdir(), "anagram-oneclick-shipped-"));
+  const copy = mkdtempSync(join(tmpdir(), "anagram-inbrowser-shipped-"));
   cpSync(EXT, copy, { recursive: true });
   const manifest = JSON.parse(readFileSync(join(copy, "manifest.json"), "utf8"));
   delete manifest.host_permissions;
@@ -161,6 +178,240 @@ const saveData = (sw, on) => sw.evaluate((on) => Object.defineProperty(navigator
   }
 }
 
+// ---- a device with a choice: nothing downloads until one is picked --------------------------------
+
+/** The browser's answer to the Native Messaging prompt, which no automation can click, stood
+ *  in for: in the page that asks, and in the worker that checks before it switches. */
+const answerPrompt = (page, yes) => page.addInitScript((yes) => {
+  chrome.permissions.request = async () => yes;
+}, yes);
+const grantInWorker = (sw) => sw.evaluate(() => { chrome.permissions.contains = async () => true; });
+const engineOf = async (page) => (await page.evaluate(() => chrome.runtime.sendMessage({ action: "getEngine" })))?.engine ?? null;
+const shown = (page, selector) => page.evaluate((s) => { const el = document.querySelector(s); return !!el && !el.hidden && el.getClientRects().length > 0; }, selector);
+
+const CHOICE = deviceBuild("apple-silicon", DEVICES["apple-silicon"]);
+for (const lang of ["en", "zh-CN"]) {
+  const w = words(lang);
+  const server = await modelServer({ rate: 15e6 });
+  const run = await launch(lang, server, undefined, CHOICE);
+  const problems = [];
+  try {
+    const { context, sw } = run;
+    const extId = new URL(sw.url()).host;
+    const language = await sw.evaluate(() => chrome.i18n.getUILanguage());
+    if (!language.toLowerCase().startsWith(lang.split("-")[0])) { console.log(`SKIP  ${lang}: the browser came up in ${language}`); continue; }
+    const setup = context.pages().find((p) => p.url().endsWith("/onboarding.html")) ??
+      await context.waitForEvent("page", { predicate: (p) => p.url().endsWith("/onboarding.html"), timeout: 20000 }).catch(() => null);
+    check(`${lang} choice: installing opens the setup page`, setup);
+    if (!setup) continue;
+    watch(setup, "onboarding.html", problems);
+    await setup.bringToFront();
+    const offered = await until(() => shown(setup, "#engine-pick-inbrowser"), 15000);
+    const seen = await setup.evaluate(() => {
+      const card = (engine) => document.querySelector(`.engine-choice-card[data-engine="${engine}"]`);
+      const text = (el) => el?.innerText.replace(/\s+/g, " ").trim() ?? "";
+      return { title: document.getElementById("engineTitle")?.textContent, oneClick: text(card("inbrowser")), terminal: text(card("native")),
+        highlighted: card("inbrowser")?.hasAttribute("data-recommended") && !card("native")?.hasAttribute("data-recommended"),
+        filled: !document.getElementById("engine-pick-inbrowser")?.dataset.variant, outline: document.getElementById("engine-pick-native")?.dataset.variant === "outline",
+        panel: !document.getElementById("componentSettings")?.hidden };
+    });
+    check(`${lang} choice: an Apple Silicon Mac is offered both engines, the in-browser one highlighted`, offered && seen.title === w("engineChooseTitle") &&
+      seen.highlighted && seen.filled && seen.outline && !seen.panel, JSON.stringify(seen));
+    check(`${lang} choice: each card says what it is, its speed and its memory`,
+      seen.oneClick.includes(w("engineOneClickWhat")) && seen.oneClick.includes(w("engineOneClickCost", MEASURED.inbrowser.ms, MEASURED.inbrowser.gb)) &&
+      seen.oneClick.includes(w("engineOneClickButton", size(DOWNLOAD_BYTES))) && seen.oneClick.includes(w("engineRecommended")) &&
+      seen.terminal.includes(w("engineTerminalWhat")) && seen.terminal.includes(w("engineTerminalCost", MEASURED.native.ms, MEASURED.native.gb)) &&
+      seen.terminal.includes(w("engineTerminalButton")), JSON.stringify(seen));
+    await sleep(3000);
+    check(`${lang} choice: nothing downloads before a pick, and no engine is in use`, server.requests.length === 0 && (await engineOf(setup)) === null,
+      JSON.stringify(server.requests.slice(0, 3)));
+    const popup = await extPage(context, extId, "popup.html", problems);
+    await until(() => popup.evaluate((want) => !document.getElementById("action").disabled && document.getElementById("status").textContent === want, w("popupSetupNeeded")));
+    check(`${lang} choice: the popup says setup is needed and offers it`, (await popup.evaluate(() => document.getElementById("action").textContent)) === w("engineSetUp"));
+    await popup.close();
+
+    // The local engine, refused: back to the choice, saying why; nothing changed.
+    const refusing = await extPage(context, extId, "onboarding.html", problems, (p) => answerPrompt(p, false));
+    await until(() => shown(refusing, "#engine-pick-native"));
+    await refusing.click("#engine-pick-native");
+    const reason = await until(() => textOf(refusing, ".engine-choice .engine-error"));
+    check(`${lang} choice: a refused permission comes back to the choice with a line saying so`, reason === w("engineNativeRefused") &&
+      (await shown(refusing, "#engine-pick-inbrowser")) && (await engineOf(refusing)) === null && server.requests.length === 0, reason);
+    await refusing.close();
+
+    // The in-browser engine: its download starts, and its panel follows it.
+    await setup.bringToFront();
+    await setup.click("#engine-pick-inbrowser");
+    const started = await until(async () => server.requests.find((r) => !r.preflight && r.file === "model.onnx"), 20000);
+    const running = await until(async () => (await statusOf(setup)) === w("engineDownloading"), 20000);
+    check(`${lang} choice: picking the in-browser engine starts its download, with Pause and Cancel`, started && running &&
+      (await textOf(setup, "#component-primary")) === w("componentPauseDownload") && (await engineOf(setup)) === "inbrowser" &&
+      (await setup.evaluate(() => document.getElementById("engineTitle")?.textContent)) === w("engineTitle"), await statusOf(setup));
+    await engine(setup, "models.delete", { confirm: true });
+    check(`${lang} choice: no errors in the pages`, problems.length === 0, problems.join(" | "));
+  } finally {
+    await run.close();
+    await server.close();
+  }
+}
+
+// The local engine, granted: its panel with the install command, and the engine in use.
+{
+  const w = words("en");
+  const server = await modelServer({ rate: 15e6 });
+  const run = await launch("en", server, undefined, CHOICE);
+  try {
+    const extId = new URL(run.sw.url()).host;
+    const page = await extPage(run.context, extId, "onboarding.html", [], (p) => answerPrompt(p, true));
+    await until(() => shown(page, "#engine-pick-native"));
+    // Granted once the choice is up: a grant nobody chose for makes the local engine the one in use.
+    await grantInWorker(run.sw);
+    await page.click("#engine-pick-native");
+    const command = await until(() => textOf(page, "#install-cmd"), 15000);
+    check("choice: picking the local engine with the permission granted shows its install command", /^curl -fsSL '.*install\.sh'/.test(command ?? "") &&
+      (await engineOf(page)) === "native" && (await page.evaluate(() => document.getElementById("engineTitle")?.textContent)) === w("componentTitle") &&
+      !(await shown(page, ".engine-choice")), command);
+    await sleep(1000);
+    check("choice: and downloads nothing into the browser", server.requests.length === 0, JSON.stringify(server.requests.slice(0, 3)));
+  } finally {
+    await run.close();
+    await server.close();
+  }
+}
+
+// ---- what the device can afford, and a browser without JSPI --------------------------------------
+
+for (const [name, want] of [["linux-2gb", "cannot"], ["linux-4gb", "tight"], ["no-jspi", "terminal"]]) {
+  const w = words("en");
+  const server = await modelServer({ rate: 15e6 });
+  const run = await launch("en", server, undefined, deviceBuild(name, DEVICES[name]));
+  try {
+    const setup = run.context.pages().find((p) => p.url().endsWith("/onboarding.html")) ??
+      await run.context.waitForEvent("page", { predicate: (p) => p.url().endsWith("/onboarding.html"), timeout: 20000 }).catch(() => null);
+    if (want === "cannot") {
+      const said = await until(() => textOf(setup, ".engine-cannot"), 15000);
+      await sleep(2000);
+      check("too little memory: the setup page says so plainly and downloads nothing", said === w("engineCannotRun") &&
+        (await setup.evaluate(() => document.getElementById("engineTitle")?.textContent)) === w("engineCannotTitle") &&
+        server.requests.length === 0 && (await engineOf(setup)) === null && !(await shown(setup, ".engine-choice")), said);
+    } else if (want === "tight") {
+      const note = await until(() => textOf(setup, ".engine-tight"), 20000);
+      check("4 GB: the in-browser engine sets up, with a line that the computer may slow down", note === w("engineTight") &&
+        (await until(async () => server.requests.find((r) => !r.preflight && r.file === "model.onnx"), 20000)), note);
+      await engine(setup, "models.delete", { confirm: true });
+    } else {
+      await until(() => shown(setup, "#engine-pick-native"), 15000);
+      const seen = await setup.evaluate(() => ({ oneClick: !document.querySelector('.engine-choice-card[data-engine="inbrowser"]')?.hidden,
+        title: document.getElementById("engineTitle")?.textContent, filled: !document.getElementById("engine-pick-native")?.dataset.variant }));
+      check("no JSPI (Firefox 140): the local engine alone, with a line that Firefox 153 runs the in-browser one", !seen.oneClick && seen.filled &&
+        seen.title === w("componentTitle") && (await textOf(setup, ".engine-choice .engine-note:not([hidden])")) === w("engineJspiNote") && server.requests.length === 0,
+        JSON.stringify(seen));
+    }
+  } finally {
+    await run.close();
+    await server.close();
+  }
+}
+
+// ---- Native Messaging: optional, and kept across an update from a release that required it -------
+
+// A profile installs the test build as it was (Native Messaging required, as 0.7.0 shipped it),
+// then the browser comes back with the same extension where it is optional: the grant is kept,
+// the local engine stays the one in use, and its host answers. Taken back, it is gone: the
+// local engine cannot be reached, and asking again is the browser's prompt.
+{
+  const { createNativeFixture, HOST_NAME } = await import("./fake-native.mjs");
+  const { blockNativeHostInProfile, registerTestHost } = await import("./native-test-host.mjs");
+  const fixture = await createNativeFixture();
+  const server = await modelServer({ rate: 15e6 });
+  const dir = mkdtempSync(join(tmpdir(), "anagram-update-"));
+  const extension = join(dir, "extension");
+  const profile = join(dir, "profile");
+  mkdirSync(profile);
+  blockNativeHostInProfile(profile);
+  const manifestOf = (required) => {
+    const manifest = JSON.parse(readFileSync(join(EXT, "manifest.json"), "utf8"));
+    manifest.permissions = manifest.permissions.filter((p) => p !== "nativeMessaging");
+    if (required) { manifest.permissions.push("nativeMessaging"); manifest.optional_permissions = []; manifest.version = "0.6.9"; }
+    else manifest.optional_permissions = ["nativeMessaging"];
+    return JSON.stringify(manifest);
+  };
+  cpSync(EXT, extension, { recursive: true });
+  rmSync(join(extension, "test-device.json"));
+  writeFileSync(join(extension, "manifest.json"), manifestOf(true));
+  let run = await launch("en", server, profile, extension);
+  try {
+    const extId = new URL(run.sw.url()).host;
+    registerTestHost(join(run.profile, "NativeMessagingHosts", `${HOST_NAME}.json`), fixture, "chrome", extId);
+    const before = await run.sw.evaluate(async () => await chrome.permissions.contains({ permissions: ["nativeMessaging"] }));
+    await run.close({ keep: true });
+    writeFileSync(join(extension, "manifest.json"), manifestOf(false));
+    run = await launch("en", server, run.profile, extension);
+    const after = await run.sw.evaluate(async () => ({ granted: await chrome.permissions.contains({ permissions: ["nativeMessaging"] }), optional: chrome.runtime.getManifest().optional_permissions }));
+    const page = await extPage(run.context, extId, "options.html", []);
+    const health = await until(async () => { const s = await page.evaluate(() => chrome.runtime.sendMessage({ action: "getBackendStatus", probe: true })); return s?.active === "server" ? s : null; }, 20000);
+    check("update: Native Messaging, now optional, is kept granted, the local engine stays in use and its host answers",
+      before === true && after.granted === true && after.optional.includes("nativeMessaging") && (await engineOf(page)) === "native" && health?.engine === "native",
+      JSON.stringify({ before, after, health }));
+    const removed = await page.evaluate(async () => chrome.permissions.remove({ permissions: ["nativeMessaging"] }));
+    const gone = await until(async () => (await engineOf(page)) === null, 10000);
+    const status = await page.evaluate(() => chrome.runtime.sendMessage({ action: "getBackendStatus", probe: true }));
+    check("taken back: the local engine cannot be reached, and setup asks again which engine", removed && gone && status?.active === "down" && status.setup?.state === "needed", JSON.stringify(status));
+    await page.close();
+  } finally {
+    await run.close();
+    await server.close();
+    fixture.dispose();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ---- Settings: to the local engine and back ------------------------------------------------------
+
+{
+  const w = words("en");
+  const server = await modelServer({ rate: 15e6 });
+  const run = await launch("en", server);
+  const problems = [];
+  try {
+    const extId = new URL(run.sw.url()).host;
+    const setup = run.context.pages().find((p) => p.url().endsWith("/onboarding.html")) ??
+      await run.context.waitForEvent("page", { predicate: (p) => p.url().endsWith("/onboarding.html"), timeout: 20000 });
+    await until(async () => (await engine(setup, "status"))?.data?.download?.bytes_received > 5e6, 20000);
+    await engine(setup, "models.pause");
+    await setup.close();
+    await grantInWorker(run.sw);
+    const settings = await extPage(run.context, extId, "options.html", problems, (p) => answerPrompt(p, true));
+    const offer = await until(async () => (await shown(settings, "#engine-switch")) && textOf(settings, "#engine-switch"), 15000);
+    check("Settings: the in-browser engine in use offers the local engine", offer === w("engineSwitchToNative"), offer);
+    await settings.click("#engine-switch");
+    const command = await until(() => textOf(settings, "#install-cmd"), 15000);
+    const left = await until(() => textOf(settings, ".engine-leftover"), 10000);
+    check("Settings: switching asks for the permission, then shows the install command, and the engine in use is the local one",
+      /^curl /.test(command ?? "") && (await engineOf(settings)) === "native" && (await settings.evaluate(() => document.getElementById("engineTitle")?.textContent)) === w("componentTitle"), command);
+    check("Settings: it offers to delete what the in-browser engine left, and deletes nothing by itself",
+      /^The in-browser engine's model files still take \d+ MB\.$/.test(left ?? "") && (await textOf(settings, "#engine-delete-leftover")) === w("engineLeftoverDelete") &&
+      (await settings.evaluate(async () => { try { await (await navigator.storage.getDirectory()).getDirectoryHandle("anagram-engine"); return true; } catch { return false; } })), left);
+    await settings.click("#engine-delete-leftover");
+    const deleted = await until(async () => (await textOf(settings, ".engine-leftover")) === null &&
+      settings.evaluate(async () => { try { await (await navigator.storage.getDirectory()).getDirectoryHandle("anagram-engine"); return false; } catch { return true; } }), 10000);
+    check("Settings: Delete them removes the in-browser engine's files", deleted);
+    const back = await until(async () => (await shown(settings, "#engine-switch")) && textOf(settings, "#engine-switch"));
+    check("Settings: the local engine in use offers the in-browser one", back === w("engineSwitchToInBrowser"), back);
+    const before = server.requests.length;
+    await settings.click("#engine-switch");
+    const downloading = await until(async () => (await statusOf(settings)) === w("engineDownloading"), 20000);
+    check("Settings: switching back starts the in-browser engine's setup", downloading && (await engineOf(settings)) === "inbrowser" &&
+      server.requests.slice(before).some((r) => r.file === "model.onnx" && !r.preflight) &&
+      (await settings.evaluate(() => document.getElementById("engineTitle")?.textContent)) === w("engineTitle"), await statusOf(settings));
+    await engine(settings, "models.delete", { confirm: true });
+    check("Settings: no errors in the pages", problems.length === 0, problems.join(" | "));
+  } finally {
+    await run.close();
+    await server.close();
+  }
+}
+
 // ---- the flow, in each language ---------------------------------------------------------------
 
 for (const lang of ["en", "zh-CN"]) {
@@ -177,9 +428,11 @@ for (const lang of ["en", "zh-CN"]) {
     const language = await sw.evaluate(() => chrome.i18n.getUILanguage());
     if (!language.toLowerCase().startsWith(lang.split("-")[0])) { console.log(`SKIP  ${lang}: the browser came up in ${language}`); continue; }
 
-    const worker = await sw.evaluate(() => ({ manifest: chrome.runtime.getManifest(), connectNative: typeof chrome.runtime.connectNative }));
-    check(`${lang}: no nativeMessaging permission, and no connectNative to call`,
-      !worker.manifest.permissions.includes("nativeMessaging") && worker.connectNative === "undefined", JSON.stringify(worker.manifest.permissions));
+    const worker = await sw.evaluate(async () => ({ manifest: chrome.runtime.getManifest(), connectNative: typeof chrome.runtime.connectNative,
+      granted: await chrome.permissions.contains({ permissions: ["nativeMessaging"] }) }));
+    check(`${lang}: Native Messaging is optional and not granted, and there is no connectNative to call`,
+      !worker.manifest.permissions.includes("nativeMessaging") && worker.manifest.optional_permissions.includes("nativeMessaging") &&
+      !worker.granted && worker.connectNative === "undefined", JSON.stringify(worker.manifest.permissions));
     check(`${lang}: the manifest names no model host`, !/huggingface|hf\.co|fbaipublicfiles/.test(JSON.stringify(worker.manifest)), JSON.stringify(worker.manifest.optional_host_permissions));
 
     // Installed: the download started by itself, and the setup page opened on it.
@@ -298,6 +551,9 @@ for (const lang of ["en", "zh-CN"]) {
       check(`${lang}: ${name} shows the in-browser engine block, not set up`, seen.block && (await statusOf(page)) === w("engineNotSetUp"), await statusOf(page));
       check(`${lang}: ${name} offers the one-time download by its size, with no word of a permission`, seen.primary === w("engineSetUpButton", size(DOWNLOAD_BYTES)) &&
         seen.text.includes(w("engineSetUpIntro", size(DOWNLOAD_BYTES))) && seen.note === null && !/huggingface|dl\.fbaipublicfiles/.test(seen.text), seen.primary);
+      check(`${lang}: ${name} shows the in-browser engine in use, and ${name === "options" ? "offers the local engine" : "no switch"}`,
+        (await page.evaluate(() => chrome.runtime.sendMessage({ action: "getEngine" })))?.engine === "inbrowser" &&
+        (name === "options" ? (await shown(page, "#engine-switch")) && (await textOf(page, "#engine-switch")) === w("engineSwitchToNative") : !(await shown(page, "#engine-switch"))));
       check(`${lang}: ${name} shows no install command, update, uninstall or benchmark`,
         !seen.installUi && !/curl|Invoke-RestMethod|install\.sh|Terminal|终端/.test(seen.text) &&
         ![w("componentUpdate"), w("componentUninstall"), w("runtimeBenchmark")].some((label) => seen.text.includes(label)), seen.text.slice(0, 300));
@@ -537,5 +793,5 @@ async function realRun(files) {
 await site.close();
 for (const r of results) if (r.ok) console.log(`PASS  ${r.name}`);
 const failedCount = results.filter((r) => !r.ok).length;
-console.log(failedCount ? `❌ ${failedCount} ONECLICK CHECKS FAILED` : `✅ ${results.length} ONECLICK CHECKS GREEN`);
+console.log(failedCount ? `❌ ${failedCount} IN-BROWSER CHECKS FAILED` : `✅ ${results.length} IN-BROWSER CHECKS GREEN`);
 process.exit(failedCount ? 1 : 0);

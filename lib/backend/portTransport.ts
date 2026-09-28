@@ -4,9 +4,9 @@
 // What both engine transports share (lib/backend/transport.ts): requests go out on one
 // port with an id each and replies come back by id, in any order; a request is bounded
 // by a timeout and an abort signal; a port that closes rejects everything pending and is
-// not opened again before RECONNECT_MS; the pending set is bounded. The native flavor
-// opens a Native Messaging port to the local host (lib/backend/nativeTransport.ts), the
-// oneclick flavor a port to its offscreen document or a worker (lib/webengine/client.ts).
+// not opened again before RECONNECT_MS; the pending set is bounded. The local engine's
+// transport opens a Native Messaging port to the host (lib/backend/nativeTransport.ts), the
+// in-browser engine's a port to its offscreen document or a worker (lib/webengine/client.ts).
 //
 // An engine that dies with work in flight is started again and that work is asked of the
 // new one, once: the native engine aborts the whole process on some GPU failures (MLX ends

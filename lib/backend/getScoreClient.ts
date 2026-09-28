@@ -1,6 +1,6 @@
 // All inference requests share the background worker's engine client.
 import { NativeScoreClient } from "./nativeScoreClient";
-import { engineTransport } from "#flavor/engine-transport";
+import { engineTransport } from "./engines";
 
 let client: NativeScoreClient | undefined;
 

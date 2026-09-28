@@ -937,7 +937,7 @@ SOFTWARE.
 
 ## The in-browser engine
 
-The oneclick flavor, whose scoring runs inside the browser (lib/webengine/, entrypoints/engine/), ships ONNX Runtime Web under vendor/engine/, the emoji names EditLens's preprocessing spells emoji out with, and fastText's language identifier. Its model files are downloaded once, verified, and kept in the browser's own storage; they are the modelkit listed under the component package below.
+The in-browser engine, which scores inside the browser when it is the engine chosen (lib/webengine/, entrypoints/engine/), ships ONNX Runtime Web under vendor/engine/, the emoji names EditLens's preprocessing spells emoji out with, and fastText's language identifier. Its model files are downloaded once, verified, and kept in the browser's own storage; they are the modelkit listed under the component package below.
 
 ### ONNX Runtime Web (1.30.0)
 
@@ -977,7 +977,7 @@ SOFTWARE.
 - Project: https://fasttext.cc/docs/en/language-identification.html
 - Licence: CC-BY-SA-3.0
 - Copyright: Copyright (c) Facebook, Inc.
-- In Anagram: The oneclick package carries the model unmodified as vendor/engine/lid.176.ftz (938,013 bytes, SHA-256 8f3472cfe8738a7b6099e8e999c3cbfae0dcd15696aac7d7738a8039db603e83): the build fetches it from https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz and refuses any other bytes (scripts/webengine.mjs), and the engine reads it from the package, checking the hash again, to tell English from other languages. The local component's installer downloads the same file, with the same check, instead of shipping it. fastText's authors distribute the model under the Creative Commons Attribution-Share Alike 3.0 licence, https://creativecommons.org/licenses/by-sa/3.0/, and ask that it be cited as A. Joulin, E. Grave, P. Bojanowski, T. Mikolov, Bag of Tricks for Efficient Text Classification (2016), and A. Joulin, E. Grave, P. Bojanowski, M. Douze, H. Jégou, T. Mikolov, FastText.zip: Compressing text classification models (2016).
+- In Anagram: The browser package carries the model unmodified as vendor/engine/lid.176.ftz (938,013 bytes, SHA-256 8f3472cfe8738a7b6099e8e999c3cbfae0dcd15696aac7d7738a8039db603e83): the build fetches it from https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz and refuses any other bytes (scripts/webengine.mjs), and the engine reads it from the package, checking the hash again, to tell English from other languages. The local component's installer downloads the same file, with the same check, instead of shipping it. fastText's authors distribute the model under the Creative Commons Attribution-Share Alike 3.0 licence, https://creativecommons.org/licenses/by-sa/3.0/, and ask that it be cited as A. Joulin, E. Grave, P. Bojanowski, T. Mikolov, Bag of Tricks for Efficient Text Classification (2016), and A. Joulin, E. Grave, P. Bojanowski, M. Douze, H. Jégou, T. Mikolov, FastText.zip: Compressing text classification models (2016).
 
 ### emoji (data) (2.15.0)
 

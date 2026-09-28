@@ -79,6 +79,9 @@ export async function attachTestPort(target, fixture) {
         disconnect() { scope.__anagramTestNative.queue.push({ type: "disconnect", id }); },
         onMessage: { addListener(fn) { messages.push(fn); } }, onDisconnect: { addListener(fn) { disconnects.push(fn); } } };
     };
+    // Without Native Messaging granted nothing chooses the local engine by itself
+    // (lib/backend/engines.ts): the relay stands for it, so the suite chooses it.
+    await (scope.browser ?? scope.chrome).storage.local.set({ engine: "native" });
   });
   let stopped = false, timer;
   const children = new Map();

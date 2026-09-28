@@ -33,6 +33,9 @@ const test = base.extend({
       expect(manifest.host_permissions, "the shipping manifest declares no host permissions").toBeUndefined();
       manifest.name += " — FILE GRANT TEST ONLY";
       manifest.host_permissions = ["file:///*"];
+      // And Native Messaging, as picking the local engine grants it: the fake host scores.
+      manifest.permissions.push("nativeMessaging");
+      manifest.optional_permissions = manifest.optional_permissions.filter((p) => p !== "nativeMessaging");
       manifest.optional_host_permissions = manifest.optional_host_permissions.filter((origin) => origin !== "file:///*");
       writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
       await use(build);

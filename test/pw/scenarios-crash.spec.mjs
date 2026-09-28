@@ -9,6 +9,8 @@
 //   npx playwright test scenarios-crash
 import { test as base, expect, BADGE_SEL, PAGE } from "./kit.mjs";
 import { GROUPED_PDF, TEST_PDF, PDF_CHIP, openPdfInReader } from "../pdf-fixture.mjs";
+import { join } from "node:path";
+import { NO_MODEL_HOSTS } from "../webengine/model-server.mjs";
 
 const test = base.extend({
   /** What the host is told before the browser starts: the browser's first host has then
@@ -208,5 +210,49 @@ test.describe("the engine dies on every batch", () => {
     const mended = "engine mended: Retry brings verdicts back to the page, and the reader follows";
     await expect.poll(() => chipStates(page), { message: `${mended} (the page)`, timeout: 30_000 }).toEqual(Array(6).fill("verdict"));
     await expect.poll(async () => allVerdicts(await chipStates(reader, PDF_CHIP)), { message: `${mended} (the reader)`, timeout: 30_000 }).toBe(true);
+  });
+});
+
+// An Apple Silicon Mac (test/pw/devices.mjs) whose local engine keeps dying: the setup page
+// and the popup offer the in-browser engine beside Retry, and the popup's switch sets it up.
+test.describe("the local engine dies on every batch, where the in-browser engine runs", () => {
+  test.use({
+    build: join(import.meta.dirname, "..", "..", "output-test", "devices", "apple-silicon-chrome-granted"),
+    launch: { args: [NO_MODEL_HOSTS] },
+    hostState: { crash: { skip: 0, times: -1, delayMs: 150 }, startupMs: 300 },
+  });
+
+  test("given up on: the setup page and the popup offer the in-browser engine beside Retry, and the popup's switch sets it up", async ({ context, page, pages, extension, nativeHost }) => {
+    test.setTimeout(3 * 60_000);
+    pages.serve({ "/fallback.html": PARAS("FALLBACK", 6) });
+    await page.goto(pages.url("/fallback.html"), { waitUntil: "load" });
+    await expect.poll(() => ball(page), { message: "the page shows the engine down", timeout: 60_000 }).toBe("!");
+    // Given up on once no host has died for 12 s: a request that killed two hosts takes the
+    // engine down for a moment too, and health brings it back until the starts are counted out.
+    let last = nativeHost.crashes(), still = Date.now();
+    await expect.poll(() => {
+      if (nativeHost.crashes() !== last) { last = nativeHost.crashes(); still = Date.now(); }
+      return Date.now() - still >= 12_000;
+    }, { message: "the engine is given up on", timeout: 90_000, intervals: [500] }).toBe(true);
+    const setup = await context.newPage();
+    await setup.goto(extension.url("onboarding.html"));
+    const code = () => setup.evaluate(() => chrome.runtime.sendMessage({ action: "getBackendStatus" }).then((s) => s?.server?.code ?? null));
+    await expect.poll(code, { message: "the engine is given up on" }).toBe("engine_crashed");
+    const offer = "the setup page offers the in-browser engine beside Retry";
+    await expect(setup.locator("#engine-crash-switch"), offer).toBeVisible({ timeout: 15_000 });
+    await expect(setup.locator("#engine-crash-switch"), offer).toHaveText("Switch to the in-browser engine");
+    await expect(setup.locator("#component-primary"), offer).toHaveText("Retry");
+    const popup = await context.newPage();
+    await popup.goto(extension.url("popup.html"));
+    const says = "the popup says the local engine keeps stopping, with Retry and the in-browser engine";
+    await expect(popup.locator("#status"), says).toHaveText("The local engine kept stopping unexpectedly");
+    await expect(popup.locator("#action"), says).toHaveText("Retry");
+    await expect(popup.locator("#switchEngine"), says).toBeVisible();
+    const opened = context.waitForEvent("page", { predicate: (p) => p.url().endsWith("/onboarding.html"), timeout: 15_000 });
+    await popup.locator("#switchEngine").click();
+    const next = await opened;
+    const switched = "the popup's switch makes the in-browser engine the one in use and opens its setup";
+    await expect.poll(() => next.evaluate(() => chrome.runtime.sendMessage({ action: "getEngine" }).then((r) => r?.engine)), { message: switched }).toBe("inbrowser");
+    await expect(next.locator("#engineTitle"), switched).toHaveText("In-browser engine");
   });
 });

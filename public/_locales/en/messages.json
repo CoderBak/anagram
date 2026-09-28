@@ -11,14 +11,6 @@
     "message": "Shows how heavily each paragraph looks AI-edited. Scored on your own computer.",
     "description": "Store listing description. The name stays 'Anagram'."
   },
-  "extNameInBrowser": {
-    "message": "Anagram (in-browser)",
-    "description": "Extension name of the edition that runs the model inside the browser, so it can be told apart from the one with the local engine."
-  },
-  "extDescriptionInBrowser": {
-    "message": "Shows how heavily each paragraph looks AI-edited. Scored inside your browser, with nothing else to install.",
-    "description": "Store listing description of the in-browser edition. The name stays 'Anagram'."
-  },
   "cmdOpenPanel": {
     "message": "Open the flagged-paragraphs list",
     "description": "Keyboard command, Alt+Shift+L."
@@ -258,6 +250,14 @@
   "panelEngineCrashed": {
     "message": "The local engine kept stopping unexpectedly, so Anagram stopped restarting it. New paragraphs wait until you retry.",
     "description": "Notice at the top of the triage panel when the local engine died several times in a row while scoring and is no longer restarted automatically."
+  },
+  "panelInBrowserDown": {
+    "message": "The in-browser engine is not ready. Open Anagram Settings; new paragraphs wait until it is ready.",
+    "description": "Notice at the top of the triage panel while the in-browser engine is not ready for a reason other than setup."
+  },
+  "panelInBrowserCrashed": {
+    "message": "The in-browser engine kept stopping unexpectedly, so Anagram stopped restarting it. New paragraphs wait until you retry.",
+    "description": "Notice at the top of the triage panel when the in-browser engine died several times in a row."
   },
   "panelRetry": {
     "message": "Retry",
@@ -654,6 +654,102 @@
   "engineTitle": {
     "message": "In-browser engine",
     "description": "In-browser edition: the title of the engine's card on the setup page and in Settings, in place of componentTitle."
+  },
+  "engineChooseTitle": {
+    "message": "Choose how Anagram runs",
+    "description": "Setup page and Settings: the engine card's title while no engine is chosen yet, above the two ways to run the model."
+  },
+  "engineChooseIntro": {
+    "message": "Either way the model runs on this computer, and nothing you read is sent anywhere.",
+    "description": "Setup page: the line above the two engine cards."
+  },
+  "engineOneClick": {
+    "message": "One click",
+    "description": "Setup page: title of the card for the in-browser engine, the recommended choice."
+  },
+  "engineRecommended": {
+    "message": "Recommended",
+    "description": "Setup page: badge on the in-browser engine's card."
+  },
+  "engineOneClickWhat": {
+    "message": "Runs inside the browser. Nothing else to install.",
+    "description": "Setup page, in-browser engine card: what it is."
+  },
+  "engineOneClickCost": {
+    "message": "About $1 ms a paragraph · up to $2 GB of memory",
+    "description": "Setup page, in-browser engine card: its measured speed and memory. $1 is milliseconds, $2 gigabytes."
+  },
+  "engineOneClickButton": {
+    "message": "Set up ($1 download)",
+    "description": "Setup page, in-browser engine card: its button. $1 is the size of the one-time download."
+  },
+  "engineTerminal": {
+    "message": "Terminal",
+    "description": "Setup page: title of the card for the local engine, installed with one command in a terminal."
+  },
+  "engineTerminalWhat": {
+    "message": "Installs the local engine with one command in Terminal. Faster, and lighter on memory.",
+    "description": "Setup page, local engine card on macOS and Linux: what it is."
+  },
+  "engineTerminalWhatWindows": {
+    "message": "Installs the local engine with one command in PowerShell. Faster, and lighter on memory.",
+    "description": "Setup page, local engine card on Windows: what it is."
+  },
+  "engineTerminalCost": {
+    "message": "About $1 ms a paragraph · about $2 GB of memory",
+    "description": "Setup page, local engine card: its measured speed and memory. $1 is milliseconds, $2 gigabytes."
+  },
+  "engineTerminalButton": {
+    "message": "Use the local engine",
+    "description": "Setup page, local engine card: its button. It asks the browser to let Anagram talk to the engine, then shows the install command."
+  },
+  "engineMeasured": {
+    "message": "Speed and memory measured on an M4 Mac.",
+    "description": "Setup page: under the engine cards, where the numbers on them come from."
+  },
+  "engineJspiNote": {
+    "message": "Firefox 153 or later also runs the one-click engine.",
+    "description": "Setup page in Firefox 140, which can run the local engine only."
+  },
+  "engineTight": {
+    "message": "This computer may slow down while Anagram scores.",
+    "description": "Setup page: under the in-browser engine on a computer with 4 GB of memory, just enough for the model."
+  },
+  "engineNativeRefused": {
+    "message": "Anagram wasn't allowed to talk to the local engine, so nothing changed. Choose again when you're ready.",
+    "description": "Setup page and Settings: the browser's permission for the local engine was refused."
+  },
+  "engineCannotTitle": {
+    "message": "Anagram can't run here",
+    "description": "Setup page: the engine card's title on a device that cannot run the model."
+  },
+  "engineCannotRun": {
+    "message": "This device doesn't have enough memory or free disk space for Anagram's model, so nothing was downloaded. Anagram never sends your text anywhere else to be scored.",
+    "description": "Setup page on a device with less than 4 GB of memory or too little free disk space for the model."
+  },
+  "engineCannotRunBrowser": {
+    "message": "This version of Firefox can't run Anagram's model, and the local engine doesn't install on this computer. Firefox 153 or later runs it in the browser.",
+    "description": "Setup page in Firefox 140 on a computer the local engine does not install on."
+  },
+  "engineSwitchToInBrowser": {
+    "message": "Switch to the in-browser engine",
+    "description": "Settings, and beside Retry when the local engine keeps crashing: score with the in-browser engine instead."
+  },
+  "engineSwitchToNative": {
+    "message": "Switch to the local engine",
+    "description": "Settings: score with the local engine instead of the in-browser one."
+  },
+  "engineSwitchFailed": {
+    "message": "The engine couldn't be switched. Try again.",
+    "description": "Settings: switching engines failed."
+  },
+  "engineLeftover": {
+    "message": "The in-browser engine's model files still take $1.",
+    "description": "Settings, with the local engine in use: what the in-browser engine left on disk. $1 is a size."
+  },
+  "engineLeftoverDelete": {
+    "message": "Delete them",
+    "description": "Settings: button beside engineLeftover."
   },
   "componentNotInstalled": {
     "message": "Not installed",
@@ -1150,6 +1246,10 @@
   "popupEngineInBrowserDown": {
     "message": "In-browser engine is not ready",
     "description": "In-browser edition: status when the engine is unavailable for a reason other than setup."
+  },
+  "popupEngineCrashed": {
+    "message": "The local engine kept stopping unexpectedly",
+    "description": "Popup status when the local engine died several times in a row and is no longer restarted."
   },
   "popupEngineOutdated": {
     "message": "Local engine needs an update",
