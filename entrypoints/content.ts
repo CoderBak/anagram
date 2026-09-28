@@ -106,6 +106,10 @@ export default defineContentScript({
   matches: ["<all_urls>"],
   runAt: "document_end",
   allFrames: true,
+  // WXT posts a "started" note to the window by default, and any page reading its messages
+  // would find the extension's id in it. Nothing here needs it: ALREADY_RUNNING keeps a
+  // second copy out.
+  noScriptStartedPostMessage: true,
   async main(ctx) {
     const world = window as unknown as Record<string, boolean>;
     if (world[ALREADY_RUNNING]) return;

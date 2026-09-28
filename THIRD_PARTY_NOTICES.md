@@ -1340,12 +1340,12 @@ SOFTWARE.
 - Copyright: Copyright (c) the FluentRead contributors
 - In Anagram: The attachShadow wrapper in entrypoints/shadow.content.ts.
 
-### uBlock Origin (src/js/contentscript.js (vAPI.domWatcher))
+### uBlock Origin (src/js/contentscript.js (vAPI.domWatcher), src/js/resources/proxy-apply.js (proxyToStringFn))
 
 - Project: https://github.com/gorhill/uBlock
 - Licence: GPL-3.0 (full text under Licence texts below)
 - Copyright: Copyright (C) 2014-present Raymond Hill
-- In Anagram: The DOM mutations handed over in batches, at a rate the page can afford, in lib/capture/observers.ts.
+- In Anagram: The DOM mutations handed over in batches, at a rate the page can afford, in lib/capture/observers.ts; the Function.prototype.toString that answers for a proxied function with the native function's text, in entrypoints/shadow.content.ts.
 
 ### Firefox translations (translations-document.sys.mjs)
 
