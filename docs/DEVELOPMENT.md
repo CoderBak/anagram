@@ -91,7 +91,7 @@ npm run bench:web -- run --scope page   # web reading benchmark (or --scope main
 ANAGRAM_EDITLENS_DATA=<EditLens checkout + data> ANAGRAM_MODELKIT=<modelkit> ANAGRAM_LID_MODEL=<lid.176.ftz> python test/editlens-parity.py   # the native host against Pangram's official inference, never in CI
 node test/webengine/engine-browser.mjs   # the in-browser engine's worker build on a tiny model in a temporary Chromium, under the extension's CSP: download, WebGPU and WASM, idle unload, restart, deletion
 ANAGRAM_MODELKIT=<modelkit> ANAGRAM_LID_MODEL=<lid.176.ftz> ANAGRAM_PARITY_SAMPLE=<sample.json> node test/webengine/parity.mjs   # the in-browser engine (WebGPU and WASM) against the official probabilities and the native counts, with speed and memory, in a Chromium profile under the temp directory (--clean removes it; --firefox <binary> for a Firefox ESR); the sample comes from test/webengine/parity-sample.py; never in CI
-ANAGRAM_MODELKIT=<modelkit> node test/webengine/extension.mjs   # the in-browser engine scoring for real through background, offscreen document and worker, model files seeded into OPFS from a local server, with the browser's peak memory; --idle waits out the idle unload and checks the memory is given back; never in CI
+ANAGRAM_MODELKIT=<modelkit> node test/webengine/extension.mjs   # the in-browser engine scoring for real through background, offscreen document and worker, model files seeded into OPFS from a local server, with the browser's peak memory; --idle waits out the idle unload and checks the memory is given back; --warm times the first verdict after it, with and without the warm-up a page opening in front gives the engine; never in CI
 ```
 
 Backend and installer tests need a Python venv with the test dependencies only:
@@ -114,7 +114,8 @@ real-model checks; they need existing verified weights and `(cd anagramd && uv s
 and `uv.lock`. `npm run release` builds both browser ZIPs, the component archive and
 installers under `dist/` and runs `scripts/verify-release.py` on the ZIPs. Publishing is
 manual. The install command shown in the extension is pinned to its own version, so a
-release must ship matching assets.
+release must ship matching assets. `npm run source-bundle` writes the source Firefox Add-ons
+asks for, `dist/anagram-source-<version>.zip` (HEAD without `test/`, with its BUILDING.md).
 
 ## Open work
 

@@ -1,9 +1,9 @@
 // test/node/webengineDownload.test.ts — resumable, verified downloads into the engine's store.
-import { describe, expect, it } from "vitest";
-import { downloadFile, DownloadFailed, DownloadPaused, failureKind, secure, verifyFile } from "../../lib/webengine/download";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { downloadFile, DownloadFailed, DownloadPaused, failureKind, outOfSpace, secure, verifyFile } from "../../lib/webengine/download";
 import { sha256Hex } from "../../lib/webengine/sha256";
-import { MemoryStore } from "../../lib/webengine/storage";
-import { fakeServer } from "./webengineFake";
+import { MemoryStore, OpfsStore } from "../../lib/webengine/storage";
+import { fakeServer, FullDisk } from "./webengineFake";
 
 function bytes(n: number, seed = 1): Uint8Array {
   const out = new Uint8Array(n);
@@ -14,23 +14,6 @@ function bytes(n: number, seed = 1): Uint8Array {
 const FILE = bytes(1000);
 const entry = (sha = sha256Hex(FILE)) => ({ name: "model.bin", size_bytes: FILE.length, sha256: sha, url: "https://example.test/model.bin" });
 const NO_WAIT = { retryWaits: [0, 0, 0] };
-
-/** A store on a disk that fills up after `room` bytes, as the browser says it: a QuotaExceededError. */
-class FullDisk extends MemoryStore {
-  constructor(private readonly room: number) { super(); }
-  override async writer(name: string, append: boolean) {
-    const inner = await super.writer(name, append);
-    return {
-      write: async (chunk: Uint8Array) => {
-        let used = 0;
-        for (const file of this.files.values()) used += file.length;
-        if (used + chunk.length > this.room) throw new DOMException("The disk is full", "QuotaExceededError");
-        await inner.write(chunk);
-      },
-      close: () => inner.close(),
-    };
-  }
-}
 
 /** The message a failed download leaves, as the engine reports it in `download.error`. */
 async function failure(run: Promise<void>): Promise<string> {
@@ -148,11 +131,47 @@ describe("model download", () => {
   it("stops at once when the disk is full, keeping what arrived, and says so", async () => {
     const store = new FullDisk(400);
     const server = fakeServer({ "/model.bin": FILE });
-    const message = await failure(downloadFile(store, entry(), { transport: server.fetch, ...NO_WAIT }));
+    const progress: number[] = [];
+    const message = await failure(downloadFile(store, entry(), { transport: server.fetch, onProgress: (n) => progress.push(n), ...NO_WAIT }));
+    expect(message).toBe("There is not enough free disk space for model.bin");
     expect(failureKind(message)).toBe("storage");
-    // Retrying cannot make room: one request, and the part stays for when there is some.
+    // Retrying cannot make room: one request, and the part stays for when there is some,
+    // every byte the disk took, which is what the download last said it had.
     expect(server.requests).toHaveLength(1);
-    expect(await store.size("model.bin.part")).toBeGreaterThan(0);
+    const kept = (await store.size("model.bin.part"))!;
+    expect(kept).toBeGreaterThan(390);
+    expect(progress.at(-1)).toBe(kept);
+    // Room again: Retry asks for the rest only.
+    store.room = Infinity;
+    await downloadFile(store, entry(), { transport: server.fetch, ...NO_WAIT });
+    expect(server.requests[1]!.range).toBe(`bytes=${kept}-`);
+    expect(await store.read("model.bin")).toEqual(FILE);
+  });
+
+  it("takes the file system's other ways of saying the disk is full for one", async () => {
+    // Chrome's other error for a write the file system refused names its code; a flush that
+    // finds the disk full as the file is closed; a file that cannot even be opened for writing.
+    const refusals: Array<[string, (store: FullDisk) => void]> = [
+      ["the file system's code", (store) => { store.refuse = () => new DOMException("An error occurred while writing to the file: FILE_ERROR_NO_SPACE", "InvalidStateError"); }],
+      ["a flush", (store) => {
+        store.room = Infinity;
+        const writer = store.writer.bind(store);
+        store.writer = async (name, append) => ({ ...(await writer(name, append)), close: async () => { throw new DOMException("No space available for this operation", "QuotaExceededError"); } });
+      }],
+      ["opening the part", (store) => { store.writer = async () => { throw new DOMException("No space available for this operation", "QuotaExceededError"); }; }],
+    ];
+    for (const [how, refuse] of refusals) {
+      const store = new FullDisk(400);
+      refuse(store);
+      const server = fakeServer({ "/model.bin": FILE });
+      const message = await failure(downloadFile(store, entry(), { transport: server.fetch, ...NO_WAIT }));
+      expect(failureKind(message), how).toBe("storage");
+      expect(server.requests, how).toHaveLength(1);
+    }
+    expect(outOfSpace(new DOMException("x", "QuotaExceededError"))).toBe(true);
+    expect(outOfSpace(new Error("No space left on device"))).toBe(true);
+    expect(outOfSpace(new TypeError("Failed to fetch"))).toBe(false);
+    expect(outOfSpace(null)).toBe(false);
   });
 
   it("names every way a download fails in the terms the setup page explains", async () => {
@@ -176,5 +195,145 @@ describe("model download", () => {
     expect(secure("http://localhost/model.bin")).toBe(true);
     expect(secure("http://127.0.0.1.example.test/model.bin")).toBe(false);
     expect(secure("ftp://127.0.0.1/model.bin")).toBe(false);
+  });
+});
+
+/** What Chrome 149's FileSystemSyncAccessHandle.write() returns when the disk itself is full
+ *  under unlimitedStorage (a 400 MB disk image, the engine's own download): base::File's
+ *  FILE_ERROR_NO_SPACE, -8, read as an unsigned count. */
+const NO_SPACE_COUNT = 2 ** 32 - 8;
+
+/**
+ * The origin-private file system as the engine's worker sees it through synchronous access
+ * handles, on a disk with `room` bytes: a write that does not fit takes what fits and says how
+ * much (`partial`), or takes nothing and answers Chrome's NO_SPACE_COUNT (`code`); a file with
+ * an open handle cannot be opened again.
+ */
+function fakeOpfs(room: number, full: "partial" | "code" = "partial") {
+  const files = new Map<string, Uint8Array>();
+  const open = new Set<string>();
+  const disk = { files, open, room, flushFails: false };
+  const used = () => [...files.values()].reduce((n, f) => n + f.length, 0);
+  const handle = (name: string) => ({
+    kind: "file",
+    getFile: async () => new Blob([files.get(name)! as Uint8Array<ArrayBuffer>]),
+    move: async (to: string) => { files.set(to, files.get(name)!); files.delete(name); },
+    createSyncAccessHandle: async () => {
+      if (open.has(name)) throw new DOMException("Access Handles cannot be created if there is another open Access Handle", "NoModificationAllowedError");
+      open.add(name);
+      return {
+        getSize: () => files.get(name)!.length,
+        truncate: (n: number) => { files.set(name, files.get(name)!.slice(0, n)); },
+        read: (buffer: Uint8Array, { at }: { at: number }) => {
+          const part = files.get(name)!.subarray(at, at + buffer.length);
+          buffer.set(part);
+          return part.length;
+        },
+        write: (buffer: Uint8Array, { at }: { at: number }) => {
+          const file = files.get(name)!;
+          const fits = Math.max(0, Math.min(buffer.length, disk.room - used() + Math.max(0, file.length - at)));
+          if (fits < buffer.length && full === "code") return NO_SPACE_COUNT;
+          const next = new Uint8Array(Math.max(file.length, at + fits));
+          next.set(file);
+          next.set(buffer.subarray(0, fits), at);
+          files.set(name, next);
+          return fits;
+        },
+        flush: () => { if (disk.flushFails) throw new DOMException("No space available for this operation", "QuotaExceededError"); },
+        close: () => { open.delete(name); },
+      };
+    },
+  });
+  const dir = {
+    getFileHandle: async (name: string, { create = false } = {}) => {
+      if (!files.has(name)) {
+        if (!create) throw new DOMException("not found", "NotFoundError");
+        files.set(name, new Uint8Array(0));
+      }
+      return handle(name);
+    },
+    removeEntry: async (name: string) => {
+      if (!files.delete(name)) throw new DOMException("not found", "NotFoundError");
+    },
+    keys: async function* () { yield* files.keys(); },
+  };
+  vi.stubGlobal("navigator", { storage: { getDirectory: async () => ({ getDirectoryHandle: async () => dir }), estimate: async () => ({}) } });
+  return disk;
+}
+
+describe("the origin-private file system, full", () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("a write the disk takes only part of is a full disk, and the part keeps what it took", async () => {
+    const disk = fakeOpfs(1000);
+    const store = await OpfsStore.open();
+    const writer = await store.writer("model.bin.part", false);
+    await writer.write(new Uint8Array(600).fill(1));
+    const refused = await writer.write(new Uint8Array(600).fill(2)).then(() => null, (e: unknown) => e);
+    expect(refused).toMatchObject({ name: "QuotaExceededError" });
+    expect(outOfSpace(refused)).toBe(true);
+    await writer.close();
+    expect(await store.size("model.bin.part")).toBe(1000);
+    expect(disk.open.size).toBe(0);
+  });
+
+  it("closes the file when the flush finds the disk full, so that Retry can open it again", async () => {
+    const disk = fakeOpfs(10_000);
+    const store = await OpfsStore.open();
+    const writer = await store.writer("state.json", false);
+    await writer.write(new Uint8Array(10));
+    disk.flushFails = true;
+    await expect(writer.close()).rejects.toMatchObject({ name: "QuotaExceededError" });
+    expect(disk.open.size).toBe(0);
+    disk.flushFails = false;
+    await (await store.writer("state.json", true)).close();
+  });
+
+  it("writes a file over its old bytes and cuts it to the new ones; a disk that refuses them leaves the old", async () => {
+    const disk = fakeOpfs(1000, "code");
+    const store = await OpfsStore.open();
+    const save = async (text: string) => {
+      const writer = await store.writer("state.json", false);
+      try { await writer.write(new TextEncoder().encode(text)); } finally { await writer.close(); }
+    };
+    await save('{"download_pending":true,"verified":{}}');
+    await save('{"a":1}');
+    expect(new TextDecoder().decode(await store.read("state.json"))).toBe('{"a":1}');
+    disk.room = disk.files.get("state.json")!.length;
+    await expect(save('{"download_failed":true}')).rejects.toMatchObject({ name: "QuotaExceededError" });
+    expect(new TextDecoder().decode(await store.read("state.json"))).toBe('{"a":1}');
+    expect(disk.open.size).toBe(0);
+  });
+
+  it("takes Chrome's error code for a count as a full disk too, and writes nothing past it", async () => {
+    const disk = fakeOpfs(1000, "code");
+    const store = await OpfsStore.open();
+    const writer = await store.writer("model.bin.part", false);
+    await writer.write(new Uint8Array(600).fill(1));
+    const refused = await writer.write(new Uint8Array(600).fill(2)).then(() => null, (e: unknown) => e);
+    expect(refused).toMatchObject({ name: "QuotaExceededError", message: `The disk took 0 of 600 bytes (${NO_SPACE_COUNT})` });
+    await writer.close();
+    expect(await store.size("model.bin.part")).toBe(600);
+    expect(disk.open.size).toBe(0);
+  });
+
+  it("stops a download there, and Retry carries on from the part once there is room", async () => {
+    for (const full of ["partial", "code"] as const) {
+      const disk = fakeOpfs(400, full);
+      const store = await OpfsStore.open();
+      const server = fakeServer({ "/model.bin": FILE });
+      const message = await failure(downloadFile(store, entry(), { transport: server.fetch, ...NO_WAIT }));
+      expect(failureKind(message), full).toBe("storage");
+      expect(server.requests, full).toHaveLength(1);
+      // Every byte the disk took, in 7-byte chunks: a code takes none of the chunk that did not fit.
+      const kept = full === "partial" ? 400 : 399;
+      expect(await store.size("model.bin.part"), full).toBe(kept);
+      expect(disk.open.size, full).toBe(0);
+      disk.room = Infinity;
+      await downloadFile(store, entry(), { transport: server.fetch, ...NO_WAIT });
+      expect(server.requests[1]!.range, full).toBe(`bytes=${kept}-`);
+      expect(await store.read("model.bin"), full).toEqual(FILE);
+      vi.unstubAllGlobals();
+    }
   });
 });

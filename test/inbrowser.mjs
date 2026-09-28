@@ -22,11 +22,14 @@
 //     names no model host, and with the shipped permissions (no host at all) the download
 //     goes by CORS alone; the package carries lid.176.ftz;
 //   - the download with progress, speed and time left, the popup's and the panel's progress
-//     line, a dropped connection retried by itself, Pause and Resume from the bytes on disk,
-//     and Cancel;
+//     line (pushed as it moves, the same figure in both), a dropped connection retried by
+//     itself, Pause and Resume from the bytes on disk, and Cancel;
 //   - not set up: every page shows the in-browser block and no install command, the popup and
 //     the in-page panel say setup is needed and open the setup page, Save-Data and a disk too
 //     full say why the download waits, a server error and Retry;
+//   - a disk that fills up mid-download, both ways Chrome says so (the engine worker's writes
+//     made to fail over the DevTools protocol): stopped at once, the room to make said, the
+//     bytes kept, and Retry carries on from them;
 //   - an engine gone mid-download is not started again by itself; an update resumes the
 //     download, unless the browser asks to save data; after a Cancel neither an update nor a
 //     browser relaunch starts it;
@@ -48,6 +51,7 @@
 //   ANAGRAM_CHROME=<binary> npm run test:inbrowser   # the Native Messaging checks in that Chrome
 //                                      # too, e.g. Chrome for Testing 137, the manifest's minimum
 import { chromium } from "playwright";
+import puppeteer from "puppeteer-core";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -105,11 +109,11 @@ const until = async (fn, timeout = 15000, step = 200) => {
 
 /** A browser on `profile` (a new temporary one unless given), with the extension loaded;
  *  close() keeps the profile only when asked, for a restart. */
-async function launch(lang, server, profile = mkdtempSync(join(tmpdir(), "anagram-inbrowser-")), extension = EXT, executablePath = undefined) {
+async function launch(lang, server, profile = mkdtempSync(join(tmpdir(), "anagram-inbrowser-")), extension = EXT, executablePath = undefined, args = []) {
   const localized = lang === "en" ? {} : uiLanguage(lang);
   const context = await chromium.launchPersistentContext(profile, {
     headless: true, ...(executablePath ? { executablePath } : { channel: "chromium" }), ...localized, viewport: { width: 1100, height: 900 },
-    args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, "--no-first-run", "--no-default-browser-check", ...server.args, ...(localized.args ?? [])],
+    args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, "--no-first-run", "--no-default-browser-check", ...server.args, ...(localized.args ?? []), ...args],
   });
   let [sw] = context.serviceWorkers();
   if (!sw) sw = await context.waitForEvent("serviceworker", { timeout: 15000 }).catch(() => null);
@@ -119,6 +123,20 @@ async function launch(lang, server, profile = mkdtempSync(join(tmpdir(), "anagra
       await context.close().catch(() => {});
       if (!keep) rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     },
+  };
+}
+
+/** The in-browser engine's worker, which Playwright does not reach, over the DevTools protocol
+ *  of a browser launched with DEVTOOLS_PORT: evaluate(expression) in it. */
+const DEVTOOLS_PORT = "--remote-debugging-port=0";
+async function engineWorker(profile) {
+  const port = readFileSync(join(profile, "DevToolsActivePort"), "utf8").split("\n")[0];
+  const browser = await puppeteer.connect({ browserURL: `http://127.0.0.1:${port}`, defaultViewport: null });
+  const target = await browser.waitForTarget((t) => t.url().endsWith("/vendor/engine/worker.min.mjs"), { timeout: 20000 });
+  const session = await target.createCDPSession();
+  return {
+    evaluate: async (expression) => (await session.send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true })).result.value,
+    close: () => browser.disconnect(),
   };
 }
 
@@ -516,6 +534,31 @@ for (const lang of ["en", "zh-CN"]) {
     const panelPercent = Number(/(\d+)%/.exec(panelLine?.text ?? "")?.[1]);
     check(`${lang}: the panel shows the download's progress`, panelLine?.text === w("panelSetupDownloading", panelPercent) && panelLine?.button === w("engineShowProgress"), JSON.stringify(panelLine));
 
+    // Pushed, not polled (lib/backend/setupFeed.ts): the popup and the panel move with the
+    // download together, each figure within a second of the engine's own; the panel used to ask
+    // every five seconds, and the popup not at all.
+    const live = await extPage(context, extId, "popup.html", problems);
+    await live.evaluate(() => { window.__pushes = 0; chrome.runtime.onMessage.addListener((m) => { if (m?.action === "engineSetup") window.__pushes++; }); });
+    const firstSeen = { engine: new Map(), popup: new Map(), panel: new Map() };
+    const saw = (which) => (text) => { const p = /(\d+)%/.exec(text ?? "")?.[1]; if (p !== undefined && !firstSeen[which].has(p)) firstSeen[which].set(p, Date.now()); };
+    for (const end = Date.now() + 6000; Date.now() < end; await sleep(40)) {
+      await Promise.all([
+        engine(setup, "status").then((s) => { const d = s?.data?.download; if (d?.status === "running") saw("engine")(`${Math.floor((d.bytes_received * 100) / d.total_bytes)}%`); }),
+        live.evaluate(() => document.getElementById("status").textContent).then(saw("popup")),
+        panelNotice().then((n) => saw("panel")(n?.text)),
+      ]);
+    }
+    // Figures the engine reached while it was watched: the first one it was already showing.
+    const reached = [...firstSeen.engine.keys()].slice(1);
+    const lag = (which) => reached.filter((p) => firstSeen[which].has(p)).map((p) => firstSeen[which].get(p) - firstSeen.engine.get(p));
+    const [panelLag, popupLag] = [lag("panel"), lag("popup")];
+    const apart = reached.filter((p) => firstSeen.panel.has(p) && firstSeen.popup.has(p)).map((p) => Math.abs(firstSeen.panel.get(p) - firstSeen.popup.get(p)));
+    const pushNote = JSON.stringify({ reached, panelLag, popupLag, apart });
+    console.log(`${lang}: pushed progress, ms after the engine: panel ${panelLag.join(" ")}; popup ${popupLag.join(" ")}; apart ${apart.join(" ")}`);
+    check(`${lang}: the popup and the panel follow the download together, each new figure within a second of the engine's`,
+      reached.length >= 3 && panelLag.length >= reached.length - 1 && popupLag.length >= reached.length - 1 &&
+      Math.max(...panelLag, ...popupLag) <= 1000 && Math.max(...apart) <= 1000, pushNote);
+
     // A connection that drops is retried by the engine on its own.
     await setup.bringToFront();
     server.set({ status: 503 });
@@ -535,6 +578,15 @@ for (const lang of ["en", "zh-CN"]) {
     const pausedLine = await textOf(setup, "#engine-progress");
     check(`${lang}: Pause stops the download and keeps its progress`, paused && /^\d+% · /.test(pausedLine ?? "") && !pausedLine.includes(w("engineSpeed", "").trim()) &&
       (await textOf(setup, "#component-primary")) === w("componentResumeDownload"), pausedLine);
+    const pausedAt = Date.now();
+    const panelPaused = await until(async () => pattern(lang, "panelSetupPaused").test((await panelNotice())?.text ?? ""), 5000, 50);
+    const panelPausedMs = Date.now() - pausedAt;
+    const popupPaused = await until(async () => pattern(lang, "popupSetupPaused").test(await live.evaluate(() => document.getElementById("status").textContent)), 5000, 50);
+    const pushes = await live.evaluate(() => window.__pushes);
+    await sleep(3000);
+    check(`${lang}: the panel and the popup say paused at once, and nothing is pushed while no download runs`,
+      panelPaused && panelPausedMs <= 1500 && popupPaused && (await live.evaluate(() => window.__pushes)) === pushes, `${panelPausedMs} ms, ${pushes} pushes`);
+    await live.close();
     let before = server.requests.length;
     await setup.click("#component-primary");
     await until(async () => (await statusOf(setup)) === w("engineDownloading"), 15000);
@@ -672,6 +724,15 @@ for (const lang of ["en", "zh-CN"]) {
     const restartAt = server.requests.length;
     await sleep(2500);
     check(`${lang}: with the engine gone mid-download, nothing starts it again by itself`, server.requests.length === restartAt, JSON.stringify(server.requests.slice(restartAt)));
+    // Nor a page Anagram would read starting to open in the tab in front: the warm-up asks only
+    // an engine that is running (lib/backend/warmup.ts). This one never arrives, so no content
+    // script asks either.
+    const opening = await context.newPage();
+    await opening.bringToFront();
+    await opening.goto("http://unreachable.test/").catch(() => {});
+    await sleep(3000);
+    check(`${lang}: …nor a page starting to open in the tab in front`, server.requests.length === restartAt, JSON.stringify(server.requests.slice(restartAt)));
+    await opening.close();
     await saveData(sw, true);
     await updated(sw);
     await sleep(3000);
@@ -752,6 +813,73 @@ for (const lang of ["en", "zh-CN"]) {
     }
     check(`${lang}: no errors in the worker or the pages`, problems.length === 0, problems.join(" | "));
   } finally {
+    await run.close();
+    await server.close();
+  }
+}
+
+// ---- a disk that fills up mid-download -------------------------------------------------------------
+
+// The storage estimate Set up checks can promise room that is not there, so the write that finds
+// the disk full is what stops the download. The engine worker's writes to the origin-private file
+// system are made to fail over the DevTools protocol (nothing of the extension changes), both ways
+// a full disk fails them: a quota's end throws QuotaExceededError, and a disk that is itself full
+// under unlimitedStorage answers Chrome's FILE_ERROR_NO_SPACE (-8) as the count written, 2^32 - 8
+// (Chrome 149 on a 400 MB disk image). Each time, Retry with room again carries on.
+{
+  const w = words("en");
+  const server = await modelServer({ rate: 40e6 });
+  const run = await launch("en", server, undefined, EXT, undefined, [DEVTOOLS_PORT]);
+  const problems = [];
+  let worker;
+  try {
+    const setup = run.context.pages().find((p) => p.url().endsWith("/onboarding.html")) ??
+      await run.context.waitForEvent("page", { predicate: (p) => p.url().endsWith("/onboarding.html"), timeout: 20000 });
+    watch(setup, "onboarding.html", problems);
+    let onDisk = 0;
+    for (const refusal of ["thrown", "counted"]) {
+      await until(async () => (await engine(setup, "status"))?.data?.download?.bytes_received > onDisk + 40e6, 30000);
+      worker ??= await engineWorker(run.profile);
+      await worker.evaluate(`(() => {
+        if (!self.__write) {
+          self.__write = FileSystemSyncAccessHandle.prototype.write;
+          FileSystemSyncAccessHandle.prototype.write = function (buffer, options) {
+            if (self.__diskFull === "thrown") throw new DOMException("No space available for this operation", "QuotaExceededError");
+            if (self.__diskFull === "counted") return 2 ** 32 - 8;
+            return self.__write.call(this, buffer, options);
+          };
+        }
+        self.__diskFull = ${JSON.stringify(refusal)};
+      })()`);
+      const filledAt = Date.now();
+      const failed = await until(async () => (await engine(setup, "status"))?.data?.download?.status === "failed", 10000, 50);
+      const stoppedMs = Date.now() - filledAt;
+      const requests = server.requests.length;
+      const shown = await until(async () => (await statusOf(setup)) === w("engineSetupFailed") && textOf(setup, "#componentSettings .component-error"), 10000);
+      await sleep(3000);
+      const { data } = await engine(setup, "status");
+      const received = Math.min(data.download.total_bytes, Math.max(data.download.bytes_received, data.storage.models_bytes));
+      console.log(`full disk (${refusal}): stopped ${stoppedMs} ms after the disk filled, at ${data.storage.models_bytes} bytes; "${shown}"`);
+      check(`full disk (${refusal}): a write that finds the disk full stops the download at once, without a retry`,
+        failed && stoppedMs < 2000 && server.requests.length === requests && data.download.error === "There is not enough free disk space for model.onnx",
+        JSON.stringify({ stoppedMs, error: data.download.error, after: server.requests.slice(requests) }));
+      check(`full disk (${refusal}): the setup page says how much room to make, from what is left to download, with Retry`,
+        shown === w("engineDiskFull", size(DOWNLOAD_BYTES - received)) && (await textOf(setup, "#component-primary")) === w("panelRetry"), shown);
+      check(`full disk (${refusal}): what arrived stays on disk`, data.storage.models_bytes > onDisk + 40e6 && data.storage.models_bytes === data.download.bytes_received,
+        JSON.stringify(data.storage));
+      onDisk = data.storage.models_bytes;
+      // Room again: Retry asks for the rest of the file, from the bytes on disk.
+      await worker.evaluate("self.__diskFull = null");
+      const before = server.requests.length;
+      await setup.click("#component-primary");
+      const resumed = await until(async () => server.requests.slice(before).find((r) => r.file === "model.onnx" && !r.preflight)?.range, 15000);
+      const running = await until(async () => (await statusOf(setup)) === w("engineDownloading"), 15000);
+      check(`full disk (${refusal}): with room again, Retry carries on from the bytes on disk`, resumed === `bytes=${onDisk}-` && running, resumed);
+    }
+    await engine(setup, "models.delete", { confirm: true });
+    check("full disk: no errors in the pages", problems.length === 0, problems.join(" | "));
+  } finally {
+    await worker?.close();
     await run.close();
     await server.close();
   }

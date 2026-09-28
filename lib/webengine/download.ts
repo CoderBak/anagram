@@ -49,8 +49,19 @@ export function failureKind(message: string | null | undefined): DownloadFailure
   return "other";
 }
 
-/** The browser's word for a disk (or an origin's quota) with no room left. */
-const outOfSpace = (error: unknown): boolean => (error as { name?: string } | null)?.name === "QuotaExceededError";
+/**
+ * A disk (or an origin's quota) with no room left. The browser's word for it is
+ * QuotaExceededError: the origin-private file system's writes throw it when a quota runs out,
+ * and lib/webengine/storage.ts does for a write the disk took only part of or answered with an
+ * error code. Chrome's other errors from those writes name the file system's own code.
+ */
+export function outOfSpace(error: unknown): boolean {
+  const { name, message } = (error ?? {}) as { name?: unknown; message?: unknown };
+  return name === "QuotaExceededError" || /NO_SPACE|no space (?:left|available)|disk is full/i.test(String(message ?? ""));
+}
+
+/** What a full disk stops a download with: never retried, and the part stays for when there is room. */
+export const noRoomFor = (name: string): DownloadFailed => new DownloadFailed(`There is not enough free disk space for ${name}`);
 
 /** HTTPS, or plain HTTP to this machine only (the suites serve the files themselves). */
 export function secure(url: string): boolean {
@@ -93,6 +104,8 @@ export async function downloadFile(store: FileStore, entry: PinnedFile, options:
       return;
     } catch (error) {
       if (error instanceof DownloadPaused) throw error;
+      // A full disk stays full however often it is asked, whichever write found it so.
+      if (outOfSpace(error)) throw noRoomFor(entry.name);
       const retryable = error instanceof DownloadFailed ? error.retryable : true;
       const wait = retryWaits[attempt];
       if (!retryable || wait === undefined) {
@@ -172,10 +185,9 @@ async function attemptDownload(store: FileStore, entry: PinnedFile, part: string
       const chunk = next.value;
       if (offset + chunk.length > entry.size_bytes) { oversized = true; throw new DownloadFailed(`${entry.name} is larger than its pinned size`); }
       hasher.update(chunk);
-      // A full disk stays full however often it is asked: no retry, and the part is kept
-      // for when there is room again.
-      try { await writer.write(chunk); }
-      catch (error) { throw outOfSpace(error) ? new DownloadFailed(`There is not enough free disk space for ${entry.name}`) : error; }
+      // A write that fails stops the download here: the response is cancelled and the part
+      // keeps what the disk took (downloadFile says why).
+      await writer.write(chunk);
       offset += chunk.length;
       onProgress(offset);
       paused();

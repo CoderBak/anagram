@@ -10,8 +10,9 @@
 // `FileStore` is the seam; the suite runs the engine on the in-memory store.
 
 export interface FileWriter {
+  /** Throws QuotaExceededError when the disk has no room for the chunk (lib/webengine/download.ts outOfSpace). */
   write(chunk: Uint8Array): Promise<void>;
-  /** Flush and close, keeping the file. */
+  /** Flush and close, keeping the file; the file is closed even when the flush fails. */
   close(): Promise<void>;
 }
 
@@ -24,7 +25,9 @@ export interface FileStore {
   file(name: string): Promise<Blob>;
   /** The file's bytes from the start, in chunks. */
   stream(name: string, chunkBytes?: number): AsyncIterable<Uint8Array>;
-  /** A writer at the end of the file (`append`) or over a new empty file. */
+  /** A writer at the end of the file (`append`), or over it from its start: cut to what was
+   *  written when it is closed, unless a write failed, which leaves the file as the disk left it
+   *  (a state file too full a disk refused keeps its old bytes). */
   writer(name: string, append: boolean): Promise<FileWriter>;
   /** Cut the file to `length` bytes. */
   truncate(name: string, length: number): Promise<void>;
@@ -117,14 +120,28 @@ export class OpfsStore implements FileStore {
     const file = (await this.handle(name, true))!;
     const access = await file.createSyncAccessHandle();
     let at = append ? access.getSize() : 0;
-    if (!append) access.truncate(0);
+    let whole = true;
     return {
       write: async (chunk) => {
+        // A full disk. Chrome throws QuotaExceededError only where a quota runs out: the disk
+        // itself running out (the extension holds unlimitedStorage) comes back as a count,
+        // base::File's FILE_ERROR_NO_SPACE (-8) read as unsigned, 2^32 - 8 (Chrome 149 on
+        // macOS). A write the disk took part of is the same. The file keeps what it took.
         const wrote = access.write(chunk, { at });
-        if (wrote !== chunk.length) { access.close(); throw new Error("short write to the origin-private file system"); }
-        at += wrote;
+        const took = wrote >= 0 && wrote <= chunk.length ? wrote : 0;
+        at += took;
+        if (took !== chunk.length) {
+          whole = false;
+          throw new DOMException(`The disk took ${took} of ${chunk.length} bytes (${wrote})`, "QuotaExceededError");
+        }
       },
-      close: async () => { access.flush(); access.close(); },
+      // Closed whatever the flush says: an open handle would lock the file until the worker ends.
+      close: async () => {
+        try {
+          if (!append && whole) access.truncate(at);
+          access.flush();
+        } finally { access.close(); }
+      },
     };
   }
 
@@ -150,7 +167,8 @@ export class OpfsStore implements FileStore {
       for (let at = 0; at < size; ) {
         const got = source.read(chunk, { at });
         if (got <= 0) throw new Error("short read from the origin-private file system");
-        sink.write(chunk.subarray(0, got), { at });
+        const wrote = sink.write(chunk.subarray(0, got), { at });
+        if (wrote !== got) throw new DOMException(`The disk took ${wrote} of ${got} bytes`, "QuotaExceededError");
         at += got;
       }
       sink.flush();
@@ -197,19 +215,18 @@ export class MemoryStore implements FileStore {
     for (let at = 0; at < file.length; at += chunkBytes) yield file.subarray(at, Math.min(file.length, at + chunkBytes));
   }
   async writer(name: string, append: boolean): Promise<FileWriter> {
-    const parts: Uint8Array[] = [];
-    if (append && this.files.has(name)) parts.push(this.files.get(name)!);
-    else this.files.set(name, new Uint8Array(0));
-    const flush = () => {
-      const total = parts.reduce((n, p) => n + p.length, 0);
-      const out = new Uint8Array(total);
-      let at = 0;
-      for (const p of parts) { out.set(p, at); at += p.length; }
-      this.files.set(name, out);
-    };
+    if (!this.files.has(name)) this.files.set(name, new Uint8Array(0));
+    let at = append ? this.files.get(name)!.length : 0;
     return {
-      write: async (chunk) => { parts.push(chunk.slice()); flush(); },
-      close: async () => { flush(); },
+      write: async (chunk) => {
+        const file = this.files.get(name)!;
+        const next = new Uint8Array(Math.max(file.length, at + chunk.length));
+        next.set(file);
+        next.set(chunk, at);
+        this.files.set(name, next);
+        at += chunk.length;
+      },
+      close: async () => { if (!append) this.files.set(name, this.files.get(name)!.slice(0, at)); },
     };
   }
   async truncate(name: string, length: number): Promise<void> {

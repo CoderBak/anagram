@@ -437,7 +437,8 @@ hydrating("torn down while chips waited for hydration: none is drawn afterwards,
 
 // ---- following the reader: a fast scroll, a hidden tab -------------------------------------
 // Every paragraph is its own unit and every text is new to the caches, so each is
-// dispatched exactly once, and the moment its "analyzing…" chip goes in is when it was.
+// dispatched exactly once, and its "analyzing…" chip goes in once the browser has said
+// what language it is in.
 const VOCAB = "the quick brown fox jumps over a lazy dog while rain falls gently on rooftops and children read books near warm windows during long quiet evenings a timetable moved off paper and nobody noticed until the trains ran on time".split(" ");
 const para = (tag, i) => `${tag}-${i} ` + Array.from({ length: 84 }, (_, k) => VOCAB[(i * 7 + k * 13) % VOCAB.length]).join(" ") + ".";
 function chipClock() {
@@ -450,13 +451,45 @@ function chipClock() {
   }).observe(document, { childList: true, subtree: true });
 }
 
-test("a fast scroll: what is on screen when it stops is sent before anything scrolled far past", async ({ page, pages, nativeHost }) => {
+/**
+ * The order the content script sends paragraphs in, as `window.__sent` in the page: a batch
+ * asks the browser's language detector about each of its paragraphs in the task that sends
+ * it (lib/capture/langGate.ts), and each question's first words are recorded there. The
+ * detector itself still answers. Hooked as the content script's world appears; a question
+ * asked before that is not recorded, and it was asked before any scroll.
+ */
+async function sendOrder(context, page) {
+  await page.addInitScript(() => {
+    window.__sent = [];
+    addEventListener("anagram-test-sent", (event) => window.__sent.push(event.detail));
+  });
+  const cdp = await context.newCDPSession(page);
+  const hooked = new Set();
+  cdp.on("Runtime.executionContextCreated", ({ context: c }) => {
+    if (c.auxData?.type !== "isolated" || !c.origin.startsWith("chrome-extension://") || hooked.has(c.id)) return;
+    hooked.add(c.id);
+    void cdp.send("Runtime.evaluate", {
+      contextId: c.id,
+      expression: `for (const api of new Set([globalThis.chrome, globalThis.browser].filter((a) => a?.i18n?.detectLanguage))) {
+        const detect = api.i18n.detectLanguage.bind(api.i18n);
+        api.i18n.detectLanguage = (text, ...rest) => {
+          dispatchEvent(new CustomEvent("anagram-test-sent", { detail: String(text).slice(0, 24) }));
+          return detect(text, ...rest);
+        };
+      }`,
+    }).catch(() => {});
+  });
+  await cdp.send("Runtime.enable");
+}
+
+test("a fast scroll: what is on screen when it stops is sent before anything scrolled far past", async ({ context, page, pages, nativeHost }) => {
   // A reader flicks through ninety paragraphs to the end of the page while the engine is
   // slow. What was on screen for a moment and is far behind now must wait for what the
   // reader stopped at, not the other way round.
   pages.serve({ "/scroll.html": PAGE("scroll fixture", Array.from({ length: 90 }, (_, i) => `<p id="sp${i}">${para("SCROLLPAST", i)}</p>`).join("\n")) });
   nativeHost.setState({ latency: [700, 700] });
   await page.addInitScript(chipClock);
+  await sendOrder(context, page);
   await page.goto(pages.url("/scroll.html"), { waitUntil: "load" });
   await expect.poll(() => page.evaluate(() => Object.keys(window.__chipAt).length)).toBeGreaterThan(0);
   const end = await page.evaluate(async () => {
@@ -472,6 +505,8 @@ test("a fast scroll: what is on screen when it stops is sent before anything scr
     const rows = [...document.querySelectorAll("p[id]")].map((el) => ({ id: el.id, box: el.getBoundingClientRect() }));
     return {
       t0: performance.now(),
+      // How many paragraphs had been sent when the scroll stopped.
+      sentBefore: window.__sent.length,
       onScreen: rows.filter((r) => r.box.bottom > 0 && r.box.top < innerHeight).map((r) => r.id),
       // Well outside the 1200 px the prefetch margin reaches above the viewport.
       far: rows.filter((r) => r.box.bottom < -1500).map((r) => r.id),
@@ -481,21 +516,26 @@ test("a fast scroll: what is on screen when it stops is sent before anything scr
   await expect
     .poll(() => page.evaluate((ids) => ids.filter((id) => !(id in window.__chipAt)), end.onScreen), { message: `${fast} (every paragraph on screen is sent)`, timeout: 40_000 })
     .toEqual([]);
-  const r = await page.evaluate(({ onScreen, far, t0 }) => {
+  const r = await page.evaluate(({ onScreen, far, t0, sentBefore }) => {
     const at = window.__chipAt;
     const last = Math.max(...onScreen.map((id) => at[id]));
-    // A batch dispatched as the scroll stopped may put its chips up a moment later.
-    const after = t0 + 100;
+    // A paragraph sent while the scroll went past it may put its chip up after the scroll
+    // stopped; only what was sent after it stopped has to wait for what is on screen.
+    const sentAt = new Map(window.__sent.map((words, i) => [`sp${/^SCROLLPAST-(\d+) /.exec(words)?.[1]}`, i]).reverse());
+    const sentAfter = (id) => (sentAt.get(id) ?? -1) >= sentBefore;
     return {
       onScreen: onScreen.length,
       far: far.length,
-      farFirst: far.filter((id) => at[id] > after && at[id] < last).length,
+      sent: [sentBefore, window.__sent.length],
+      farFirst: far.filter((id) => sentAfter(id) && at[id] < last).length,
       waitMs: Math.round(last - t0),
     };
   }, end);
   const note = `${fast}: ${JSON.stringify(r)}`;
   expect.soft(r.onScreen, note).toBeGreaterThan(0);
   expect.soft(r.far, note).toBeGreaterThan(20);
+  // The order was heard: what the reader stopped at was sent after the scroll stopped.
+  expect.soft(r.sent[1], note).toBeGreaterThan(r.sent[0]);
   expect.soft(r.farFirst, note).toBe(0);
 });
 

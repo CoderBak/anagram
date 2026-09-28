@@ -2,7 +2,7 @@
 // document, worker, model, in a temporary Chromium profile.
 //
 //   ANAGRAM_MODELKIT=<modelkit dir> [ANAGRAM_PARITY_SAMPLE=<sample.json>] \
-//     node test/webengine/extension.mjs [--idle]
+//     node test/webengine/extension.mjs [--idle] [--warm]
 //
 // test/inbrowser.mjs stops where the engine says it has no model files. This goes on, on a
 // copy of the test build that stands in for a device with no choice (test/test-build.mjs
@@ -17,7 +17,10 @@
 // keys, wxt.config.ts). The browser's peak memory while the model loads and scores is
 // printed; --idle then waits the engine's shortest idle time (a minute) and checks that
 // the offscreen document ended the worker and gave its memory back, and that a score
-// brings it back. Skips when the paths are missing or CI is set; never part of CI.
+// brings it back. --warm times the first verdict on a page after the idle unload, opened in a
+// tab behind (not warmed) and in the tab in front (warmed as it starts to load), and checks
+// that a tab switch warms nothing and that a model warmed for nothing is let go again. Skips
+// when the paths are missing or CI is set; never part of CI.
 import { chromium } from "playwright";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -25,6 +28,7 @@ import { join } from "node:path";
 import { deviceBuild } from "../test-build.mjs";
 import { DEVICES } from "../pw/devices.mjs";
 import { ROOT, serve, watchMemory } from "./harness.mjs";
+import { serveHtml } from "../harness.mjs";
 import { NO_MODEL_HOSTS, cancelAutoSetup } from "./model-server.mjs";
 
 const argv = process.argv.slice(2);
@@ -173,6 +177,74 @@ try {
     }
     check("a score brings the engine back", reply?.data?.state === "ready" && reply.data.runtime?.active_id === "webgpu:fp32", JSON.stringify(reply?.data).slice(0, 300));
     await request("engine.settings", { idle_unload_s: 300 });
+  }
+
+  if (argv.includes("--warm")) {
+    // The first verdict on a page Anagram reads, the engine let go while idle: opened in a tab
+    // behind (not warmed, as every page was before lib/backend/warmup.ts), then in the tab in
+    // front (warmed as it starts loading). Headless Chromium never hides a tab, so both read.
+    reply = await request("engine.settings", { idle_unload_s: 60 });
+    const state = async () => (await request("status"))?.data?.state;
+    /** Waits for the engine to say `want`, asking afresh each time; its last word. */
+    const until = async (want, seconds) => {
+      let now;
+      for (let i = 0; i < seconds * 4; i++) { now = await state(); if (now === want) break; await new Promise((r) => setTimeout(r, 250)); }
+      return now;
+    };
+    const paragraphs = (tag) => [1, 2, 3].map((n) => `<p>${tag} ${n}. ${TEXT}</p>`).join("");
+    const site = await serveHtml({
+      "/cold.html": `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>cold</title></head><body>${paragraphs("Behind")}</body></html>`,
+      "/warm.html": `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>warm</title></head><body>${paragraphs("In front")}</body></html>`,
+      "/short.html": `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>short</title></head><body><p>Nothing here to read.</p></body></html>`,
+    });
+    // The first settled chip, in milliseconds from the navigation's start.
+    const clock = () => {
+      const started = setInterval(() => {
+        const pill = [...document.querySelectorAll('[data-anagram="host"]:not(#anagram-fab)')].map((h) => h.shadowRoot?.querySelector(".pill")).find((p) => p && !p.classList.contains("pending"));
+        if (pill) { window.__firstVerdict = performance.now(); clearInterval(started); }
+      }, 5);
+    };
+    const firstVerdict = async (page) => {
+      await page.waitForFunction(() => window.__firstVerdict !== undefined, undefined, { timeout: 60_000, polling: 50 });
+      return Math.round(await page.evaluate(() => window.__firstVerdict));
+    };
+    try {
+      const behind = await context.newPage();
+      await behind.addInitScript(clock);
+      const front = await context.newPage();
+      await front.addInitScript(clock);
+      await front.bringToFront();
+      check("the model is let go after the idle time", (await until("idle", 120)) === "idle");
+      await behind.goto(site.url("/short.html"));
+      await new Promise((r) => setTimeout(r, 3000));
+      const afterBehind = await state();
+      check("a page opening in a tab behind does not warm the engine", afterBehind === "idle", afterBehind);
+      await behind.goto(site.url("/cold.html"));
+      const cold = await firstVerdict(behind);
+      console.log(`first verdict after an idle unload, not warmed (a tab behind): ${cold} ms`);
+      check("the model is let go after the idle time (before the switches)", (await until("idle", 120)) === "idle");
+      await behind.bringToFront();
+      await new Promise((r) => setTimeout(r, 3000));
+      await front.bringToFront();
+      await new Promise((r) => setTimeout(r, 3000));
+      const afterSwitch = await state();
+      check("switching tabs does not warm it", afterSwitch === "idle", afterSwitch);
+      await front.goto(site.url("/warm.html"));
+      const warm = await firstVerdict(front);
+      console.log(`first verdict after an idle unload, warmed (the tab in front): ${warm} ms (${cold - warm} ms sooner)`);
+      check("the first verdict after an idle unload comes sooner when the page's opening warms the engine", warm < cold, `${warm} vs ${cold} ms`);
+      // Warmed, and nothing to read there: the model loads, and is let go after the idle time.
+      check("the model is let go after the idle time (before a page with nothing to read)", (await until("idle", 120)) === "idle");
+      const warmedAt = Date.now();
+      await front.goto(site.url("/short.html"));
+      const warmed = await until("ready", 15);
+      check("a page with nothing to read, opening in front, warms the engine all the same", warmed === "ready", warmed);
+      const released = await until("idle", 120);
+      check("…and the warmed model, never asked for, is let go after the idle time", released === "idle" && Date.now() - warmedAt >= 60_000, `${released} after ${Math.round((Date.now() - warmedAt) / 1000)} s`);
+    } finally {
+      await site.close();
+      await request("engine.settings", { idle_unload_s: 300 });
+    }
   }
   check("no errors in the worker or the pages", problems.length === 0, problems.join(" | "));
 } catch (error) {

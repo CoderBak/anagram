@@ -236,6 +236,18 @@ async function refreshBackend(probe = false): Promise<void> {
   paint();
 }
 
+// While the in-browser engine's model downloads the worker pushes each new figure here, as it
+// does to the in-page panel (lib/backend/setupFeed.ts); whatever follows the download is asked for.
+browser.runtime.onMessage.addListener((message: unknown, sender, sendResponse): undefined => {
+  const pushed = message as { action?: unknown; setup?: EngineSetup | null } | null;
+  if (pushed?.action !== ACTIONS.ENGINE_SETUP || sender.tab) return;
+  if (pushed.setup?.state === "downloading") {
+    facts.setup = pushed.setup;
+    paint();
+  } else void refreshBackend();
+  sendResponse({ ok: true });
+});
+
 /**
  * What "This site" is showing, kept here because the switch has to act INSIDE the click
  * that flipped it: asking the browser for a site is only allowed as part of the user's

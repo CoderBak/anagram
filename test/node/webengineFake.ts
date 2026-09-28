@@ -2,7 +2,10 @@
 //
 // `fakeServer` answers fetch calls for the files given, with HTTP Range as a real server
 // does (206 with Content-Range, 200 for a whole file), and can be told to cut a response
-// after so many bytes, to ignore ranges, or to fail. Requests are recorded.
+// after so many bytes, to ignore ranges, or to fail. Requests are recorded. `FullDisk` is the
+// engine's store on a disk that fills up.
+import { MemoryStore } from "../../lib/webengine/storage";
+
 export interface FakeServerOptions {
   /** End the response body after this many bytes (of the requested range), as a lost connection. */
   cutAfter?: number;
@@ -65,4 +68,31 @@ export function fakeServer(files: Record<string, Uint8Array>, options: FakeServe
     return new Response(stream, { status, headers: responseHeaders });
   }) as typeof fetch;
   return server;
+}
+
+/**
+ * The store on a disk that fills up after `room` bytes: every write, the state file's too,
+ * throws what the browser throws when a write finds the disk full (`refuse`). `room` may grow
+ * again, as when somebody frees space.
+ */
+export class FullDisk extends MemoryStore {
+  refuse = (): Error => new DOMException("No space available for this operation", "QuotaExceededError");
+  constructor(public room: number) { super(); }
+  used(): number {
+    let used = 0;
+    for (const file of this.files.values()) used += file.length;
+    return used;
+  }
+  override async writer(name: string, append: boolean) {
+    const inner = await super.writer(name, append);
+    let failed = false;
+    return {
+      write: async (chunk: Uint8Array) => {
+        if (this.used() + chunk.length > this.room) { failed = true; throw this.refuse(); }
+        await inner.write(chunk);
+      },
+      // A write refused leaves the file as the disk left it, as the store's own writers do.
+      close: async () => { if (!failed) await inner.close(); },
+    };
+  }
 }
