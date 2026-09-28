@@ -45,6 +45,8 @@
 //
 //   npm run test:inbrowser             # builds output-test/chrome-mv3 when stale
 //   node test/inbrowser.mjs --real     # and the real download, load and score
+//   ANAGRAM_CHROME=<binary> npm run test:inbrowser   # the Native Messaging checks in that Chrome
+//                                      # too, e.g. Chrome for Testing 137, the manifest's minimum
 import { chromium } from "playwright";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -103,10 +105,10 @@ const until = async (fn, timeout = 15000, step = 200) => {
 
 /** A browser on `profile` (a new temporary one unless given), with the extension loaded;
  *  close() keeps the profile only when asked, for a restart. */
-async function launch(lang, server, profile = mkdtempSync(join(tmpdir(), "anagram-inbrowser-")), extension = EXT) {
+async function launch(lang, server, profile = mkdtempSync(join(tmpdir(), "anagram-inbrowser-")), extension = EXT, executablePath = undefined) {
   const localized = lang === "en" ? {} : uiLanguage(lang);
   const context = await chromium.launchPersistentContext(profile, {
-    headless: true, channel: "chromium", ...localized, viewport: { width: 1100, height: 900 },
+    headless: true, ...(executablePath ? { executablePath } : { channel: "chromium" }), ...localized, viewport: { width: 1100, height: 900 },
     args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, "--no-first-run", "--no-default-browser-check", ...server.args, ...(localized.args ?? [])],
   });
   let [sw] = context.serviceWorkers();
@@ -316,10 +318,11 @@ for (const [name, want] of [["linux-2gb", "cannot"], ["linux-4gb", "tight"], ["n
 // ---- Native Messaging: optional, and kept across an update from a release that required it -------
 
 // A profile installs the test build as it was (Native Messaging required, as 0.7.0 shipped it),
-// then the browser comes back with the same extension where it is optional: the grant is kept,
-// the local engine stays the one in use, and its host answers. Taken back, it is gone: the
-// local engine cannot be reached, and asking again is the browser's prompt.
-{
+// then the browser comes back with the same extension where it is optional: the browser takes
+// it as optional without a warning, the grant is kept, the local engine stays the one in use,
+// and its host answers. Taken back, it is gone: the local engine cannot be reached, and asking
+// again is the browser's prompt. In Playwright's Chromium, and in ANAGRAM_CHROME when set.
+async function nativeOptional(label, executablePath) {
   const { createNativeFixture, HOST_NAME } = await import("./fake-native.mjs");
   const { blockNativeHostInProfile, registerTestHost } = await import("./native-test-host.mjs");
   const fixture = await createNativeFixture();
@@ -339,24 +342,34 @@ for (const [name, want] of [["linux-2gb", "cannot"], ["linux-4gb", "tight"], ["n
   cpSync(EXT, extension, { recursive: true });
   rmSync(join(extension, "test-device.json"));
   writeFileSync(join(extension, "manifest.json"), manifestOf(true));
-  let run = await launch("en", server, profile, extension);
+  let run = await launch("en", server, profile, extension, executablePath);
   try {
     const extId = new URL(run.sw.url()).host;
+    const version = await run.sw.evaluate(() => /Chrome\/([\d.]+)/.exec(navigator.userAgent)?.[1] ?? "?");
+    label = `${label} (Chrome ${version})`;
     registerTestHost(join(run.profile, "NativeMessagingHosts", `${HOST_NAME}.json`), fixture, "chrome", extId);
     const before = await run.sw.evaluate(async () => await chrome.permissions.contains({ permissions: ["nativeMessaging"] }));
     await run.close({ keep: true });
     writeFileSync(join(extension, "manifest.json"), manifestOf(false));
-    run = await launch("en", server, run.profile, extension);
+    run = await launch("en", server, run.profile, extension, executablePath);
     const after = await run.sw.evaluate(async () => ({ granted: await chrome.permissions.contains({ permissions: ["nativeMessaging"] }), optional: chrome.runtime.getManifest().optional_permissions }));
+    // What chrome://extensions lists under the extension's errors: an optional permission the
+    // browser does not take as one is dropped with a warning there.
+    const manager = await run.context.newPage();
+    await manager.goto(`chrome://extensions/?id=${extId}`);
+    await manager.waitForFunction(() => typeof chrome.developerPrivate?.getExtensionInfo === "function");
+    const warnings = await manager.evaluate((id) => chrome.developerPrivate.getExtensionInfo(id).then((info) => [...(info.installWarnings ?? []), ...(info.manifestErrors ?? []).map((e) => e.message)]), extId);
+    await manager.close();
+    check(`${label}: nativeMessaging is taken as an optional permission, without a warning`, after.optional.includes("nativeMessaging") && warnings.length === 0, JSON.stringify(warnings));
     const page = await extPage(run.context, extId, "options.html", []);
     const health = await until(async () => { const s = await page.evaluate(() => chrome.runtime.sendMessage({ action: "getBackendStatus", probe: true })); return s?.active === "server" ? s : null; }, 20000);
-    check("update: Native Messaging, now optional, is kept granted, the local engine stays in use and its host answers",
-      before === true && after.granted === true && after.optional.includes("nativeMessaging") && (await engineOf(page)) === "native" && health?.engine === "native",
+    check(`${label}: an update keeps Native Messaging granted, the local engine stays in use and connectNative reaches its host`,
+      before === true && after.granted === true && (await engineOf(page)) === "native" && health?.engine === "native",
       JSON.stringify({ before, after, health }));
     const removed = await page.evaluate(async () => chrome.permissions.remove({ permissions: ["nativeMessaging"] }));
     const gone = await until(async () => (await engineOf(page)) === null, 10000);
     const status = await page.evaluate(() => chrome.runtime.sendMessage({ action: "getBackendStatus", probe: true }));
-    check("taken back: the local engine cannot be reached, and setup asks again which engine", removed && gone && status?.active === "down" && status.setup?.state === "needed", JSON.stringify(status));
+    check(`${label}: taken back, the local engine cannot be reached, and setup asks again which engine`, removed && gone && status?.active === "down" && status.setup?.state === "needed", JSON.stringify(status));
     await page.close();
   } finally {
     await run.close();
@@ -365,6 +378,8 @@ for (const [name, want] of [["linux-2gb", "cannot"], ["linux-4gb", "tight"], ["n
     rmSync(dir, { recursive: true, force: true });
   }
 }
+await nativeOptional("Chromium");
+if (process.env.ANAGRAM_CHROME) await nativeOptional("ANAGRAM_CHROME", process.env.ANAGRAM_CHROME);
 
 // ---- Settings: to the local engine and back ------------------------------------------------------
 
