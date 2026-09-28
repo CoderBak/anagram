@@ -189,15 +189,18 @@ export class Session implements Backend {
     if (!this.session) throw new Error("session released");
     if (signal?.aborted) throw new Error("cancelled");
     const rows = inputIds.length;
-    const width = inputIds[0].length;
+    // A padded batch (scoring.pad): at least one row, and every row of both as wide.
+    const width = inputIds[0]!.length;
     const ids = new BigInt64Array(rows * width);
     const mask = new BigInt64Array(rows * width);
     for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < width; c++) { ids[r * width + c] = BigInt(inputIds[r][c]); mask[r * width + c] = BigInt(attentionMask[r][c]); }
+      const idRow = inputIds[r]!, maskRow = attentionMask[r]!;
+      for (let c = 0; c < width; c++) { ids[r * width + c] = BigInt(idRow[c]!); mask[r * width + c] = BigInt(maskRow[c]!); }
     }
     const feeds = { input_ids: new this.ort.Tensor("int64", ids, [rows, width]), attention_mask: new this.ort.Tensor("int64", mask, [rows, width]) };
     const result = await this.session.run(feeds);
     const logits = result.logits;
+    if (!logits) throw new Error("the model has no logits output");
     const data = logits.data as ArrayLike<number>;
     const out = Float32Array.from(data as ArrayLike<number>);
     logits.dispose?.();

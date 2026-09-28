@@ -168,11 +168,6 @@ export default defineConfig({
     plugins: [englishFallback(), ...(command === "serve" ? [] : [thirdPartyNotices()])],
   }),
   hooks: {
-    // WXT 0.21's generated tsconfig adds noUncheckedIndexedAccess, which the code base does
-    // not meet yet (about 800 indexed reads, most in lib/pdf/). The other options hold.
-    "prepare:tsconfig": (_wxt, { tsconfig }) => {
-      delete tsconfig.compilerOptions.noUncheckedIndexedAccess;
-    },
     // Each flavor builds its own pages only (scripts/flavor.mjs): the in-browser engine's
     // offscreen document is not in the native build.
     "entrypoints:found": (_wxt, infos) => {

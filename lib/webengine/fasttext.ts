@@ -29,7 +29,7 @@ const encoder = new TextEncoder();
 
 function latin1(bytes: Uint8Array): string {
   let out = "";
-  for (let i = 0; i < bytes.length; i++) out += String.fromCharCode(bytes[i]);
+  for (let i = 0; i < bytes.length; i++) out += String.fromCharCode(bytes[i]!);
   return out;
 }
 
@@ -37,7 +37,7 @@ function latin1(bytes: Uint8Array): string {
 function hash(bytes: Uint8Array): number {
   let h = 2166136261;
   for (let i = 0; i < bytes.length; i++) {
-    h = (h ^ ((bytes[i] << 24) >> 24)) >>> 0;
+    h = (h ^ ((bytes[i]! << 24) >> 24)) >>> 0;
     h = Math.imul(h, 16777619) >>> 0;
   }
   return h;
@@ -98,11 +98,11 @@ class ProductQuantizer {
     let d = this.dsub;
     const base = this.nsubq * row;
     for (let m = 0; m < this.nsubq; m++) {
-      const c = this.centroidOffset(m, codes[base + m]);
+      const c = this.centroidOffset(m, codes[base + m]!);
       if (m === this.nsubq - 1) d = this.lastdsub;
       for (let n = 0; n < d; n++) {
         const at = m * this.dsub + n;
-        x[at] = fround(x[at] + alpha * this.centroids[c + n]);
+        x[at] = fround(x[at]! + alpha * this.centroids[c + n]!);
       }
     }
   }
@@ -111,9 +111,9 @@ class ProductQuantizer {
     let d = this.dsub;
     const base = this.nsubq * row;
     for (let m = 0; m < this.nsubq; m++) {
-      const c = this.centroidOffset(m, codes[base + m]);
+      const c = this.centroidOffset(m, codes[base + m]!);
       if (m === this.nsubq - 1) d = this.lastdsub;
-      for (let n = 0; n < d; n++) res = fround(res + x[m * this.dsub + n] * this.centroids[c + n]);
+      for (let n = 0; n < d; n++) res = fround(res + x[m * this.dsub + n]! * this.centroids[c + n]!);
     }
     return fround(res * alpha);
   }
@@ -141,7 +141,7 @@ class QuantMatrix implements Matrix {
   }
   private norm(row: number): number {
     if (!this.qnorm) return 1;
-    return this.npq!.centroids[this.npq!.centroidOffset(0, this.normCodes![row])];
+    return this.npq!.centroids[this.npq!.centroidOffset(0, this.normCodes![row]!)]!;
   }
   addRowToVector(x: Float32Array, row: number): void { this.pq.addcode(x, this.codes, row, this.norm(row)); }
   dotRow(vec: Float32Array, row: number): number { return this.pq.mulcode(vec, this.codes, row, this.norm(row)); }
@@ -158,12 +158,12 @@ class DenseMatrix implements Matrix {
   }
   addRowToVector(x: Float32Array, row: number): void {
     const base = row * this.cols;
-    for (let j = 0; j < this.cols; j++) x[j] = fround(x[j] + this.data[base + j]);
+    for (let j = 0; j < this.cols; j++) x[j] = fround(x[j]! + this.data[base + j]!);
   }
   dotRow(vec: Float32Array, row: number): number {
     const base = row * this.cols;
     let d = 0;
-    for (let j = 0; j < this.cols; j++) d = fround(d + this.data[base + j] * vec[j]);
+    for (let j = 0; j < this.cols; j++) d = fround(d + this.data[base + j]! * vec[j]!);
     return d;
   }
 }
@@ -212,6 +212,9 @@ export class FastText {
     const size = r.int32();
     this.nwords = r.int32();
     this.nlabels = r.int32();
+    // The words come first, then the labels (Dictionary::threshold); the tree and the
+    // prediction index the labels as entries[nwords + i].
+    if (this.nwords + this.nlabels !== size) throw new Error("fastText dictionary does not match its counts");
     r.int64(); // ntokens
     this.pruneidxSize = r.int64();
     for (let i = 0; i < size; i++) {
@@ -228,7 +231,7 @@ export class FastText {
     // Dictionary::initNgrams
     const eos = encoder.encode(EOS);
     for (let i = 0; i < size; i++) {
-      const entry = this.entries[i];
+      const entry = this.entries[i]!;
       entry.subwords.push(i);
       if (latin1(entry.word) !== latin1(eos)) this.computeSubwords(this.wrap(entry.word), entry.subwords);
     }
@@ -243,18 +246,18 @@ export class FastText {
     const count = new Float64Array(nodes).fill(1e15);
     this.left = new Int32Array(nodes).fill(-1);
     this.right = new Int32Array(nodes).fill(-1);
-    for (let i = 0; i < osz; i++) count[i] = this.entries[this.nwords + i].count;
+    for (let i = 0; i < osz; i++) count[i] = this.entries[this.nwords + i]!.count;
     let leaf = osz - 1;
     let node = osz;
     for (let i = osz; i < nodes; i++) {
-      const mini = [0, 0];
+      const mini: [number, number] = [0, 0];
       for (let j = 0; j < 2; j++) {
-        if (leaf >= 0 && count[leaf] < count[node]) mini[j] = leaf--;
+        if (leaf >= 0 && count[leaf]! < count[node]!) mini[j] = leaf--;
         else mini[j] = node++;
       }
       this.left[i] = mini[0];
       this.right[i] = mini[1];
-      count[i] = count[mini[0]] + count[mini[1]];
+      count[i] = count[mini[0]]! + count[mini[1]]!;
     }
   }
 
@@ -279,11 +282,11 @@ export class FastText {
   /** Dictionary::computeSubwords: the character n-grams of a word, on its UTF-8 bytes. */
   private computeSubwords(word: Uint8Array, ngrams: number[]): void {
     for (let i = 0; i < word.length; i++) {
-      if ((word[i] & 0xc0) === 0x80) continue;
+      if ((word[i]! & 0xc0) === 0x80) continue;
       const ngram: number[] = [];
       for (let j = i, n = 1; j < word.length && n <= this.maxn; n++) {
-        ngram.push(word[j++]);
-        while (j < word.length && (word[j] & 0xc0) === 0x80) ngram.push(word[j++]);
+        ngram.push(word[j++]!);
+        while (j < word.length && (word[j]! & 0xc0) === 0x80) ngram.push(word[j++]!);
         if (n >= this.minn && !(n === 1 && (i === 0 || j === word.length))) {
           this.pushHash(ngrams, hash(Uint8Array.from(ngram)) % this.bucket);
         }
@@ -315,22 +318,22 @@ export class FastText {
       const key = latin1(token);
       const h = hash(token);
       const wid = this.ids.get(key) ?? -1;
-      const label = wid < 0 ? key.startsWith(LABEL_PREFIX) : this.entries[wid].label;
+      const label = wid < 0 ? key.startsWith(LABEL_PREFIX) : this.entries[wid]!.label;
       if (!label) {
         // Dictionary::addSubwords
         if (wid < 0) { if (key !== EOS) this.computeSubwords(this.wrap(token), words); }
         else if (this.maxn <= 0) words.push(wid);
-        else words.push(...this.entries[wid].subwords);
+        else words.push(...this.entries[wid]!.subwords);
         wordHashes.push(h);
       }
       if (key === EOS) break;
     }
     // Dictionary::addWordNgrams
     for (let i = 0; i < wordHashes.length; i++) {
-      let h = wordHashes[i];
+      let h = wordHashes[i]!;
       for (let j = i + 1; j < wordHashes.length && j < i + this.wordNgrams; j++) {
         // uint64 arithmetic in C++; the product stays exact below 2^53 only when reduced first.
-        h = Number((BigInt(h) * 116049371n + BigInt(wordHashes[j])) & 0xffffffffffffffffn);
+        h = Number((BigInt(h) * 116049371n + BigInt(wordHashes[j]!)) & 0xffffffffffffffffn);
         this.pushHash(words, Number(BigInt(h) % BigInt(this.bucket)));
       }
     }
@@ -345,7 +348,7 @@ export class FastText {
     const hidden = new Float32Array(this.dim);
     for (const row of words) this.input.addRowToVector(hidden, row);
     const scale = fround(1 / words.length);
-    for (let i = 0; i < this.dim; i++) hidden[i] = fround(hidden[i] * scale);
+    for (let i = 0; i < this.dim; i++) hidden[i] = fround(hidden[i]! * scale);
     // HierarchicalSoftmaxLoss::dfs from the root, keeping the best leaf; a later leaf of
     // the same score replaces an earlier one, as the C++ heap does.
     const osz = this.nlabels;
@@ -363,12 +366,12 @@ export class FastText {
       // C++: f = 1. / (1 + std::exp(-f)) on a float f, so expf and a float sum, then a double division.
       let f = this.output.dotRow(hidden, node - osz);
       f = fround(1 / fround(1 + fround(Math.exp(-f))));
-      dfs(this.left[node], fround(score + stdLog(1 - f)));
-      dfs(this.right[node], fround(score + stdLog(f)));
+      dfs(this.left[node]!, fround(score + stdLog(1 - f)));
+      dfs(this.right[node]!, fround(score + stdLog(f)));
     };
     dfs(2 * osz - 2, 0);
     if (bestLeaf < 0) return null;
-    const label = new TextDecoder().decode(this.entries[this.nwords + bestLeaf].word);
+    const label = new TextDecoder().decode(this.entries[this.nwords + bestLeaf]!.word);
     // FastText::predictLine: std::exp on the float score, so a float probability.
     return { label: label.startsWith(LABEL_PREFIX) ? label.slice(LABEL_PREFIX.length) : label, prob: fround(Math.exp(bestScore)) };
   }

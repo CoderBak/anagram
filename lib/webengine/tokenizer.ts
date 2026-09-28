@@ -96,8 +96,8 @@ export class Tokenizer {
         const after = end < text.length ? text[end] : "";
         if ((before && /[\p{L}\p{N}]/u.test(before)) || (after && /[\p{L}\p{N}]/u.test(after))) { i++; continue; }
       }
-      if (found.lstrip) while (start > 0 && WHITESPACE.test(text[start - 1])) start--;
-      if (found.rstrip) while (end < text.length && WHITESPACE.test(text[end])) end++;
+      if (found.lstrip) while (start > 0 && WHITESPACE.test(text[start - 1]!)) start--;
+      if (found.rstrip) while (end < text.length && WHITESPACE.test(text[end]!)) end++;
       const previous = out[out.length - 1];
       if (previous && previous.end > start) previous.end = start;
       out.push({ start, end, id: found.id });
@@ -132,12 +132,13 @@ export class Tokenizer {
         if (rank !== undefined && rank < best) { best = rank; at = i; }
       }
       if (at < 0) break;
-      const first = symbols[at];
-      const second = symbols[at + 1];
+      // `at` is a pair the loop above found, so both symbols exist.
+      const first = symbols[at]!;
+      const second = symbols[at + 1]!;
       const merged: string[] = [];
       for (let i = 0; i < symbols.length; i++) {
         if (i + 1 < symbols.length && symbols[i] === first && symbols[i + 1] === second) { merged.push(first + second); i++; }
-        else merged.push(symbols[i]);
+        else merged.push(symbols[i]!);
       }
       symbols = merged;
       if (symbols.length === 1) break;

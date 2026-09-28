@@ -604,7 +604,7 @@ export class Engine {
       }
       const scored = todo.length ? await scoreTexts(loaded.session, loaded.tokenizer, todo.map((b) => b.text)) : [];
       todo.forEach((block, i) => {
-        const r = scored[i];
+        const r = scored[i]!; // one result per text, in order (scoreTexts)
         results.set(block.id, { id: block.id, bucket: r.bucket, probs: r.probs, score: r.score, tokens: r.tokens, truncated: r.truncated, lang: block.lang, lang_prob: pyRound(block.prob, 3) });
       });
       this.lastActivity = this.now();

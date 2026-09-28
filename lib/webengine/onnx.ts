@@ -55,8 +55,9 @@ class Cursor {
     let value = 0;
     let scale = 1;
     for (let i = 0; i < head.length; i++) {
-      value += (head[i] & 0x7f) * scale;
-      if (head[i] < 0x80) return [value, offset + i + 1];
+      const byte = head[i]!;
+      value += (byte & 0x7f) * scale;
+      if (byte < 0x80) return [value, offset + i + 1];
       scale *= 128;
     }
     throw new Error("the model file is truncated or not ONNX");
