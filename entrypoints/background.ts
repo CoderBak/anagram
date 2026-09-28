@@ -35,13 +35,14 @@ import { READER_PAGE, readerQuery } from "../lib/pdf/source";
 import { createPdfNavigation } from "../lib/pdf/navigation";
 import { createPdfHandoff } from "../lib/pdf/handoff";
 import { PDF_TAB_SCRIPTS_RUN } from "../lib/surface";
-import { settings, cacheModeStorage } from "../lib/settings/settings";
+import { settings, cacheModeStorage, enabledForSite } from "../lib/settings/settings";
 import { t } from "../lib/i18n";
 import { handleNativePageMessage } from "../lib/backend/nativeBridge";
 import { readEngineSetup } from "../lib/backend/engineSetup";
 import { deleteEngineFiles, startSetupByItself } from "../lib/webengine/autoSetup";
 import { closeWebEngine } from "../lib/webengine/client";
 import { createSetupFeed, type SetupListener } from "../lib/backend/setupFeed";
+import { createWarmup } from "../lib/backend/warmup";
 import { NATIVE_MESSAGE, NATIVE_UNINSTALL } from "../lib/backend/nativeProtocol";
 const EXTENSION_UPDATE_KEY = "extensionUpdatePending";
 
@@ -136,6 +137,19 @@ export default defineBackground(() => {
       return (reply as {ok?: unknown} | undefined)?.ok === true;
     },
   });
+
+  // A page Anagram reads, opening in the tab in front: an idle in-browser engine starts loading beside it.
+  const warmup = createWarmup({
+    engine: () => engineTransport().current(),
+    reads: async (url) => {
+      const {protocol, hostname} = new URL(url);
+      return (await browser.permissions.contains({origins: [`${protocol}//${hostname}/*`]}).catch(() => false)) && (await enabledForSite(hostname));
+    },
+    inFront: async (tabId) => (await browser.tabs.get(tabId).catch(() => null))?.active === true,
+    state: async () => (await getScoreClient().status(false)).active,
+    warm: () => transportOf("inbrowser").request("warm"),
+  });
+  browser.webNavigation.onBeforeNavigate.addListener((details) => void warmup(details));
 
   // Context menus; recreated idempotently on install/update. The PDF entry is offered on
   // LINKS to a .pdf, which is where a reader decides to open one — the tab that is

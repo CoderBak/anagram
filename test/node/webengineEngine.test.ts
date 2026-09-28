@@ -295,6 +295,59 @@ describe("the engine's lifecycle", () => {
     expect((data as { state: string }).state).toBe("ready");
   }, 10_000);
 
+  it("warms an idle model on request, which the first score then finds loaded, and lets a warmed model go when nothing asks", async () => {
+    const m = track(make());
+    await m.engine.handle("models.download", {});
+    await ready(m.engine);
+    await m.engine.handle("engine.settings", { idle_unload_s: 60 });
+    m.clock.now += 61_000;
+    await new Promise((r) => setTimeout(r, 1100));
+    expect(m.log).toEqual(["create webgpu:fp32", "release webgpu:fp32", "idle"]);
+    // Warmed: it loads without a score, and answers one with the model already in.
+    let { data } = await m.engine.handle("warm", {});
+    expect(data).toEqual({ state: "loading" });
+    expect((await ready(m.engine)).state).toBe("ready");
+    expect(m.log.at(-1)).toBe("create webgpu:fp32");
+    ({ data } = await m.engine.handle("score", { v: "3.0", blocks: [{ id: "a", text: "hello world" }] }));
+    expect((data as { results: Array<{ lang: string }> }).results[0]!.lang).toBe("en");
+    expect(m.log.filter((l) => l.startsWith("create"))).toHaveLength(2);
+    // A warm-up of a loaded model changes nothing, not even the idle clock: sixty seconds
+    // after the score, warmed again all along, the model is let go as it would be anyway.
+    for (let i = 0; i < 6; i++) {
+      m.clock.now += 10_000;
+      ({ data } = await m.engine.handle("warm", {}));
+      expect(data).toEqual({ state: "ready" });
+    }
+    m.clock.now += 1_000;
+    await new Promise((r) => setTimeout(r, 1100));
+    expect((await m.engine.handle("status", {})).data).toMatchObject({ state: "idle" });
+    // Warmed and then never asked for: let go after the idle time too.
+    await m.engine.handle("warm", {});
+    expect((await ready(m.engine)).state).toBe("ready");
+    const idles = m.log.filter((l) => l === "idle").length;
+    m.clock.now += 61_000;
+    await new Promise((r) => setTimeout(r, 1100));
+    expect((await m.engine.handle("status", {})).data).toMatchObject({ state: "idle" });
+    expect(m.log.filter((l) => l === "idle")).toHaveLength(idles + 1);
+  }, 15_000);
+
+  it("warms nothing that is not set up, and nothing it was not asked to", async () => {
+    const m = track(make());
+    expect((await m.engine.handle("warm", {})).data).toEqual({ state: "needs_models" });
+    await fails(m.engine.handle("warm", { now: true }), "invalid_request", 422);
+    expect(m.log).toEqual([]);
+    expect(m.server.requests).toEqual([]);
+    // A worker that starts idle after an idle one loads on a warm-up as it would on a score.
+    const first = track(make());
+    await first.engine.handle("models.download", {});
+    await ready(first.engine);
+    await first.engine.close();
+    const next = track(make({ store: first.store, idle: true }));
+    expect((await next.engine.handle("warm", {})).data).toEqual({ state: "loading" });
+    expect((await ready(next.engine)).state).toBe("ready");
+    expect(next.log).toEqual(["create webgpu:fp32"]);
+  });
+
   it("starts idle in the worker that follows an idle one, and loads for the next score", async () => {
     const first = track(make());
     await first.engine.handle("models.download", {});

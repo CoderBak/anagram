@@ -498,6 +498,17 @@ export class Engine {
       }
       case "score":
         return { status: 200, data: await this.score(parseScorePayload(payload).blocks) };
+      case "warm":
+        // A page the engine will read is opening (lib/backend/warmup.ts): a model let go while
+        // idle starts loading now, beside the page, as the page's first score would start it.
+        // Anything else is left as it is, and the idle clock is not touched: a model loaded so
+        // and never asked for is let go after the idle time like any other.
+        checkPayloadKeys(payload);
+        if (this.state === "idle" && !this.loaded && !this.loading) {
+          this.state = "loading";
+          void this.load();
+        }
+        return { status: 200, data: { state: this.state } };
       case "models.download":
         checkPayloadKeys(payload);
         return { status: 200, data: await this.startDownload() };

@@ -145,6 +145,7 @@ local component and the installer all carry the same version.
 - Anagram's code is now licensed under the GNU AGPL v3.0 or later. The licence text ships
   in the extension and in the local component. The model keeps its CC BY-NC-SA 4.0 licence.
 - While the in-browser engine's model downloads, the popup and the panel on a page move with it and show the same figure, each within about half a second of the download; the panel used to catch up every five seconds, and the popup kept the figure it opened with.
+- When a page Anagram reads starts opening in the tab in front, an in-browser engine that let its model go while idle starts loading it right away, beside the page, instead of when the page first asks for a verdict: the reload (about 3 seconds on an M4) overlaps the page's own loading, which on a page that opens at once saves 0.2 s (3.0 to 2.8 s to the first verdict) and on a slower page up to the whole reload. A tab switch, a tab in the background or a site Anagram does not read warms nothing, and a model warmed for nothing is let go after the idle time as before.
 
 ### Fixed
 

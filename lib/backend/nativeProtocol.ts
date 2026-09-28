@@ -10,7 +10,8 @@ export const PAGE_OPERATIONS = [
   "component.update", "component.uninstall",
 ] as const;
 export type ComponentOperation = typeof PAGE_OPERATIONS[number];
-export type NativeOperation = ComponentOperation | "health" | "score" | "tokens";
+/** `warm` is the in-browser engine's alone (lib/backend/warmup.ts); the local engine is never sent it. */
+export type NativeOperation = ComponentOperation | "health" | "score" | "tokens" | "warm";
 export type NativePayload = Record<string, unknown>;
 export interface NativeReply {
   v: 1;
