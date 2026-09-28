@@ -420,3 +420,36 @@ for (const [path, repeat] of [["score", 1], ["count", 2]]) {
     await expect.poll(bubble, { message: back }).not.toBe("!");
   });
 }
+
+// The in-browser engine loading its model says so, and holds what it is sent until the model is
+// in (the fixture's `loadingWaits`): a page paused while the engine was away goes on as soon as
+// its recheck hears the engine is loading, so its paragraphs are read the moment the model is.
+// The local engine says "not ready" while it loads, and a page waits for ready (above).
+test("the host comes back loading its model, as the in-browser engine does: the paused page is sent while it loads", async ({ page, fixturesUrl, nativeHost }) => {
+  await page.goto(fixturesUrl, { waitUntil: "load" });
+  await expect(settledChips(page, "#topedge")).toHaveCount(1);
+  const bubble = () => page.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.textContent ?? null);
+  const pill = page.locator(`#loading1 ${BADGE_SEL} .pill`);
+  await nativeHost.close();
+  await page.evaluate(() => {
+    const el = document.createElement("p");
+    el.id = "loading1";
+    el.textContent = "LOADING1 paragraph is appended while the scoring fixture is stopped, and it is still waiting when the " +
+      "engine comes back and starts to load its model, which takes a while in the browser: the page must not wait for the " +
+      "model to be ready before it sends the paragraph again, because the engine holds what it is sent until the model is in, " +
+      "and a paragraph sent early is read the moment the model is.";
+    document.querySelector("main").prepend(el);
+  });
+  const down = "fixture down: the paragraph is Unavailable and the ball shows !";
+  await expect(pill, down).toHaveClass(/band-unknown/);
+  await expect(pill, down).not.toHaveClass(/pending/);
+  await expect.poll(bubble, { message: down }).toBe("!");
+
+  nativeHost.setState({ startupMs: 12_000, loadingWaits: true });
+  await nativeHost.resume();
+  const sent = "fixture back and loading its model: the paused page sends the paragraph while the model loads";
+  const sentWhileLoading = () => nativeHost.requests().some((r) => r.op === "score" && r.loading === true && r.payload.blocks.some((b) => b.text.includes("LOADING1")));
+  await expect.poll(sentWhileLoading, { message: sent, timeout: 15_000 }).toBe(true);
+  expect(await bubble(), sent).not.toBe("!");
+  await expect(pill, "and it is read once the model is in").not.toHaveClass(/band-unknown|pending/, { timeout: 30_000 });
+});
