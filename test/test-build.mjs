@@ -12,44 +12,34 @@
 // differs. It lives in output-test/, so `npm run build` is always the shipping build and
 // test/node/permissions.test.ts can pin what that one asks for.
 //
-// The variant is built HERE when it is missing or older than the sources, so a suite run
-// straight from a checkout — or after a `npm run build` and nothing else — keeps working.
+// The variant is built HERE when it is missing or was built from other sources than those
+// on disk (its stamp, scripts/buildStamp.mjs), so a suite run straight from a checkout — or
+// after a `npm run build` and nothing else — keeps working, and one that changed nothing
+// does not wait for a build.
 import { execFileSync } from "node:child_process";
 import { existsSync, linkSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { inputsHash, readStamp } from "../scripts/buildStamp.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 /** Where the variant is built. `npm run build` never writes here. */
 export const TEST_OUT = join(ROOT, "output-test");
 
-/** Everything whose change means the build on disk is stale. */
-const SOURCES = ["entrypoints", "lib", "public", "scripts", "wxt.config.ts", "package.json"];
-
-function newestMtime(path) {
-  let stat;
-  try {
-    stat = statSync(path);
-  } catch {
-    return 0;
-  }
-  if (!stat.isDirectory()) return stat.mtimeMs;
-  let newest = stat.mtimeMs;
-  for (const name of readdirSync(path)) {
-    newest = Math.max(newest, newestMtime(join(path, name)));
-  }
-  return newest;
-}
+/** The builds this process has found current: every launch asks, and one look is enough. */
+const current = new Set();
 
 /**
- * Make sure output-test/<dir> is there and not older than the sources; build it if not.
+ * Make sure output-test/<dir> is there and built from the sources on disk; build it if not.
  * `dir` is "chrome-mv3" or "firefox-mv2".
  */
 export function ensureTestBuild(dir = "chrome-mv3") {
   const manifest = join(TEST_OUT, dir, "manifest.json");
-  const builtAt = existsSync(manifest) ? statSync(manifest).mtimeMs : 0;
-  const sourceAt = Math.max(...SOURCES.map((s) => newestMtime(join(ROOT, s))));
-  if (builtAt > sourceAt) return join(TEST_OUT, dir);
+  if (current.has(dir)) return join(TEST_OUT, dir);
+  if (existsSync(manifest) && readStamp(TEST_OUT, dir) === inputsHash(ROOT)) {
+    current.add(dir);
+    return join(TEST_OUT, dir);
+  }
   console.log(`building the test extension (output-test/${dir})…`);
   execFileSync(
     process.execPath,
@@ -60,6 +50,7 @@ export function ensureTestBuild(dir = "chrome-mv3") {
     console.error(`the test build produced no ${dir} manifest`);
     process.exit(2);
   }
+  current.add(dir);
   return join(TEST_OUT, dir);
 }
 
