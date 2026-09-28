@@ -92,6 +92,7 @@ APIs through its `parseAsync()`. `lib/dom/mainContent.ts` calls only its synchro
 | `lib/webengine/fasttext.ts` | `https://github.com/facebookresearch/fastText` | the attribution of the fastText prediction port, in a comment |
 | `lib/pdf/reading.ts` | `https://github.com/funstory-ai/BabelDOC` | the attribution of the formula-character rules adapted from BabelDOC, in a comment |
 | `entrypoints/shadow.content.ts` | `https://github.com/FluentRead/FluentRead` | the attribution of adapted FluentRead code in a comment |
+| `entrypoints/shadow.content.ts` | `https://github.com/gorhill/uBlock` | the attribution of the masked Function.prototype.toString adapted from uBlock Origin, in a comment |
 | `lib/render/textFragment.ts` | `https://github.com/GoogleChromeLabs/text-fragments-polyfill` | the attribution of the text-fragment generation the copied report links flagged paragraphs with, in a comment |
 | `lib/render/textFragment.ts` | `https://www.apache.org/licenses/LICENSE-2.0` | the retained Apache-2.0 notice of that code, in a comment |
 | `lib/surfaces/drive.ts` | `https://github.com/ken107/read-aloud` | the attribution of Read Aloud's Google Drive adapters, which the Drive preview surface follows, in a comment |

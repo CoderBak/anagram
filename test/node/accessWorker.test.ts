@@ -14,6 +14,7 @@ import { ensureInjected, installAccess, syncRegistration } from "../../lib/acces
 
 const SCRIPT = "/content-scripts/content.js";
 const SHADOW_SCRIPT = "/content-scripts/shadow.js";
+const SHADOW_PORT = "/content-scripts/shadowPort.js";
 
 interface Listener<A extends unknown[]> {
   addListener(fn: (...args: A) => void): void;
@@ -199,12 +200,12 @@ describe("the registration follows the grant", () => {
     const env = environment();
     env.grant("https://example.com/*");
     await syncRegistration();
-    expect(env.registered.map((s) => [s.id, s.matchOriginAsFallback])).toEqual([["anagram-content", true], ["anagram-shadow", true]]);
+    expect(env.registered.map((s) => [s.id, s.matchOriginAsFallback])).toEqual([["anagram-content", true], ["anagram-port", true], ["anagram-shadow", true]]);
     // Chrome before 119 knows no such option and refuses the whole script over it.
     const old = environment([], [], { refuseFallback: true });
     old.grant("https://example.com/*");
     await syncRegistration();
-    expect(old.registered.map((s) => [s.id, s.matchOriginAsFallback])).toEqual([["anagram-content", undefined], ["anagram-shadow", undefined]]);
+    expect(old.registered.map((s) => [s.id, s.matchOriginAsFallback])).toEqual([["anagram-content", undefined], ["anagram-port", undefined], ["anagram-shadow", undefined]]);
   });
 
   it("updates a registration made without the frames option", async () => {
@@ -229,12 +230,32 @@ describe("the registration follows the grant", () => {
       world: "MAIN",
       persistAcrossSessions: true,
     });
+    // Its isolated listener runs first: scripts of one moment run in the order registered.
+    expect(env.registered.map((s) => s.id)).toEqual(["anagram-content", "anagram-port", "anagram-shadow"]);
+    expect(env.registered.find((s) => s.id === "anagram-port")).toMatchObject({
+      matches: ["https://example.com/*"],
+      js: [SHADOW_PORT],
+      allFrames: true,
+      runAt: "document_start",
+      persistAcrossSessions: true,
+    });
+    expect(env.registered.find((s) => s.id === "anagram-port")?.world).toBeUndefined();
     env.grant(...ALL_SITES);
     await syncRegistration();
     expect(env.registered.find((s) => s.id === "anagram-shadow")?.matches).toEqual(["https://example.com/*", ...ALL_SITES]);
+    expect(env.registered.find((s) => s.id === "anagram-port")?.matches).toEqual(["https://example.com/*", ...ALL_SITES]);
+    expect(env.registered.map((s) => s.id)).toEqual(["anagram-content", "anagram-port", "anagram-shadow"]);
     env.withdraw("https://example.com/*", ...ALL_SITES);
     await syncRegistration();
     expect(env.registered).toEqual([]);
+  });
+
+  it("puts the page-world script back behind its listener when an earlier version registered it alone", async () => {
+    const env = environment();
+    env.grant("https://example.com/*");
+    env.registered.push({ id: "anagram-shadow", matches: ["https://example.com/*"], js: [SHADOW_SCRIPT], world: "MAIN", matchOriginAsFallback: true });
+    await syncRegistration();
+    expect(env.registered.map((s) => s.id)).toEqual(["anagram-content", "anagram-port", "anagram-shadow"]);
   });
 
   it("still registers the content script where the page world is refused", async () => {
@@ -263,7 +284,7 @@ describe("the registration follows the grant", () => {
     await syncRegistration();
     expect(env.calls.register).toHaveLength(1);
     expect(env.calls.update).toEqual([["https://a.com/*", ...ALL_SITES]]);
-    expect(env.registered).toHaveLength(2);
+    expect(env.registered).toHaveLength(3);
   });
 
   it("does nothing when a sync finds what is already registered", async () => {
@@ -294,7 +315,7 @@ describe("the registration follows the grant", () => {
     env.grant(...ALL_SITES);
     await Promise.all([syncRegistration(), syncRegistration(), syncRegistration()]);
     expect(env.calls.register).toHaveLength(1);
-    expect(env.registered).toHaveLength(2);
+    expect(env.registered).toHaveLength(3);
   });
 
   it("re-asserts itself on install, on startup and when the worker wakes", async () => {

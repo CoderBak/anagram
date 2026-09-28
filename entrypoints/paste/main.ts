@@ -5,6 +5,7 @@ import { followSystemTheme } from "../../lib/ui/theme";
 import { t } from "../../lib/i18n";
 import { CONTRACT_VERSION, type ModelInfo, type ScoreResult } from "../../lib/contract";
 import { countWords, MIN_UNIT_WORDS } from "../../lib/dom/text";
+import { hasLookalikes } from "../../lib/dom/lookalikes";
 import { readInWindows, unitVerdict, type WindowVerdict } from "../../lib/capture/windows";
 import { requestScores, requestTokenCounts } from "../../lib/messaging/client";
 import { modelDim } from "../../lib/backend/router";
@@ -79,7 +80,8 @@ analyze.addEventListener("click", async () => {
     const scored = read.filter((w) => !w.result.unsupported && !w.result.degraded);
     const coverage = t("pasteCoverage", scored.length, read.length,
       read.filter((w) => w.result.unsupported).length, read.filter((w) => w.result.degraded).length,
-      read.filter((w) => w.result.truncated).length);
+      read.filter((w) => w.result.truncated).length) +
+      (hasLookalikes(text) ? ` · ${t("coverageLookalikes").trim()}` : "");
     document.getElementById("coverage")!.textContent = coverage;
     document.getElementById("summary")!.textContent = readout(unitVerdict("paste", text.length, read).result);
     for (const window of read) {

@@ -92,6 +92,7 @@ local component and the installer all carry the same version.
 
 ### Changed
 
+- The small script Anagram runs in a page's own context no longer gives it away: its event is named at random for each page, told to the extension before the page's first script, and the attachShadow it watches, and Function.prototype.toString, answer the usual checks as the browser's own functions do.
 - Linux installs PyTorch and its CUDA libraries only beside an NVIDIA GPU (ONNX Runtime ran
   the processor anyway): the installation shrinks from 6.9 GB to 1.7 GB, and an update removes them.
 - On Apple silicon the local engine runs the model in MLX (MIT) on the GPU instead of
@@ -142,6 +143,7 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- English disguised with Cyrillic or Greek look-alike letters gets a verdict: they are turned back into Latin letters before scoring (Unicode's confusables), and the card and the report say so; on RAID's homoglyph texts no verdict becomes the verdicts of the undisguised texts.
 - A PDF manuscript with numbered lines, as preprints and papers under review are set, is
   read without its line numbers. Word's line numbering and LaTeX's lineno put a number
   beside every line, and both of the reader's readings took it for a word: "84 Vertical

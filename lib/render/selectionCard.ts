@@ -285,7 +285,7 @@ export async function analyzeSelection(): Promise<void> {
             ? t("selFootUnavailable")
             : b === "unsupported"
               ? t("selFootUnsupported")
-              : coverageNote(verdict, "selection") + t("cardFootEstimate")
+              : coverageNote(verdict, "selection", text) + t("cardFootEstimate")
         }</div>`;
     }
     place();

@@ -22,7 +22,8 @@
 // mapping of a stretch back to text nodes lives in lib/dom/locate.ts.
 import type { ScoreBlock, ScoreResult, TokenCounts } from "../contract";
 import { BUCKET_COUNT } from "../contract";
-import { modelText, sentenceStarts } from "../dom/text";
+import { foldLookalikes } from "../dom/lookalikes";
+import { modelForm, modelText, sentenceStarts } from "../dom/text";
 
 // ---- the budget ---------------------------------------------------------------------
 
@@ -225,14 +226,16 @@ export function chunksOf(text: string, end = text.length): Chunk[] {
   return out;
 }
 
-/** A text's chunks up to readEnd, and the model form of each: what the engine counts. */
+/** A text's chunks up to readEnd, and the model form of each: what the engine counts. The
+ *  text comes with its look-alikes folded as a whole (readInWindows), and a word is not
+ *  folded again on its own: "рiс" alone looks like a disguise, in a Ukrainian text it is not. */
 export function wordsOf(text: string): { chunks: Chunk[]; words: string[] } {
   const chunks = chunksOf(text, readEnd(text));
   const model = new Map<string, string>();
   const words = chunks.map((c) => {
     const raw = text.slice(c.start, c.end).trimEnd();
     let word = model.get(raw);
-    if (word === undefined) model.set(raw, (word = modelText(raw)));
+    if (word === undefined) model.set(raw, (word = modelForm(raw)));
     return word;
   });
   return { chunks, words };
@@ -571,10 +574,17 @@ async function ask(slots: Slot[], scoreBlocks: ScoreBlocks): Promise<Map<string,
  * and only the missing one is asked for again.
  */
 export async function readInWindows(
-  items: Readable[],
+  given: Readable[],
   scoreBlocks: ScoreBlocks,
   countTokens: CountTokens,
 ): Promise<Map<string, WindowVerdict[]>> {
+  // Look-alike letters are folded for the whole text before it is cut, as the model form
+  // folds them (lib/dom/lookalikes.ts): a lone Cyrillic "а" is folded for the company it
+  // keeps, which one word or one pass alone may not show. Folding keeps every offset.
+  const items = given.map((item) => {
+    const text = foldLookalikes(item.text);
+    return text === item.text ? item : { id: item.id, order: item.order, text };
+  });
   let slots: Slot[] = [];
   // Only a text that may not fit one pass waits for a count; the rest start reading at
   // once, as they always have.

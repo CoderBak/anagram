@@ -30,7 +30,7 @@ import { MARK_ATTR, type Unit } from "../types";
 import { NO_SCORE_TAGS } from "../dom/tags";
 import { countWords } from "../dom/text";
 import { repairSplits } from "../dom/splits";
-import { SHADOW_ATTACHED_EVENT, eachShadowRoot, noteShadowHost } from "../dom/shadow";
+import { eachShadowRoot, noteShadowHost, shadowAttachedEvent } from "../dom/shadow";
 
 export interface Observers {
   observeUnit(unit: Unit): void;
@@ -354,12 +354,14 @@ export function createObservers(opts: {
     pendingRoots.clear();
     // …and every shadow root already on the page, walked into or not.
     eachShadowRoot(document, observeRoot);
-    document.addEventListener(SHADOW_ATTACHED_EVENT, onShadowAttached, true);
+    const attached = shadowAttachedEvent();
+    if (attached) document.addEventListener(attached, onShadowAttached, true);
   }
 
   function stop(): void {
     started = false;
-    document.removeEventListener(SHADOW_ATTACHED_EVENT, onShadowAttached, true);
+    const attached = shadowAttachedEvent();
+    if (attached) document.removeEventListener(attached, onShadowAttached, true);
     ioNear.disconnect();
     ioViewport.disconnect();
     mo.disconnect();
