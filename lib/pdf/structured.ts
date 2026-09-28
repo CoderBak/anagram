@@ -581,6 +581,101 @@ function continuesCaption(caption: SdtBlock, para: SdtBlock): boolean {
   return gap >= -h && gap <= h * limit;
 }
 
+// ---- the order of a page's columns -----------------------------------------------------------
+//
+// Zotero reads a page column by column, but a magazine's or a newsletter's page it can read in
+// the wrong order of columns: under a photograph set across the page, the middle and right
+// columns before the left one ("- a definite favourite for many curious families…" before
+// "and information centres. The first day took off…"); a framed article on the right before
+// the two boxes to its left, and the lower of those before the upper one. The runs of blocks
+// it read down one column are kept as it read them, and the runs of a page are put in the
+// order the page sets them: a run before any run it stands above in the same column, and
+// before any run it stands left of in the same band of the page. Where Zotero's order keeps
+// both, as on a paper's pages, nothing moves.
+
+/** How far, in points, two blocks may overlap and still be one above or left of the other. */
+const ORDER_SLACK = 3;
+/** The share of the narrower (or the shorter) of two runs they must have in common to be in
+ *  one column (or one band). */
+const SHARED = 0.5;
+
+/** A block's extent on its first page, [x1, y1, x2, y2] in PDF space (y upward), and whether
+ *  it goes on to another page. */
+function boxOf(block: SdtBlock): { page: number; box: number[]; spans: boolean } | null {
+  const rects = block.anchor?.pageRects;
+  if (!rects?.length) return null;
+  const page = rects[0]![0]!;
+  const on = rects.filter((r) => r[0] === page);
+  return {
+    page,
+    box: [Math.min(...on.map((r) => r[1]!)), Math.min(...on.map((r) => r[2]!)), Math.max(...on.map((r) => r[3]!)), Math.max(...on.map((r) => r[4]!))],
+    spans: on.length < rects.length,
+  };
+}
+
+const shared = (a1: number, a2: number, b1: number, b2: number): number => Math.min(a2, b2) - Math.max(a1, b1);
+const inColumn = (a: number[], b: number[]): boolean => shared(a[0]!, a[2]!, b[0]!, b[2]!) >= SHARED * Math.min(a[2]! - a[0]!, b[2]! - b[0]!);
+const inBand = (a: number[], b: number[]): boolean => shared(a[1]!, a[3]!, b[1]!, b[3]!) >= SHARED * Math.min(a[3]! - a[1]!, b[3]! - b[1]!);
+/** `a` is to be read before `b`: above it in its column, or left of it in its band. */
+const readsBefore = (a: number[], b: number[]): boolean =>
+  (a[1]! >= b[3]! - ORDER_SLACK && inColumn(a, b)) || (a[2]! <= b[0]! + ORDER_SLACK && inBand(a, b));
+
+/** The readings with each page's runs of blocks in the page's order of columns. A reading
+ *  keeps the markers after it; a bibliography entry, a barrier, a block that goes on to the
+ *  next page and one with no rects end the stretch of a page that can move. */
+function readInColumns(out: (Reading | Marker)[]): (Reading | Marker)[] {
+  interface Item { parts: (Reading | Marker)[]; box: number[] }
+  const result: (Reading | Marker)[] = [];
+  let stretch: Item[] = [];
+  let page = -1;
+  const flush = (): void => {
+    for (const item of orderRuns(stretch)) result.push(...item.parts);
+    stretch = [];
+  };
+  for (const r of out) {
+    if (typeof r === "string") {
+      if (stretch.length) stretch[stretch.length - 1]!.parts.push(r);
+      else result.push(r);
+      if (r === "barrier") flush();
+      continue;
+    }
+    const at = r.kind === "reference" ? null : boxOf(r.block);
+    if (!at) { flush(); result.push(r); page = -1; continue; }
+    if (at.page !== page) flush();
+    page = at.page;
+    stretch.push({ parts: [r], box: at.box });
+    if (at.spans) { flush(); page = -1; }
+  }
+  flush();
+  return result;
+
+  function orderRuns<T extends { box: number[] }>(items: T[]): T[] {
+    if (items.length < 3) return items;
+    // Runs: each block below the one before it, in its column.
+    const runs: { items: T[]; box: number[] }[] = [];
+    for (const item of items) {
+      const run = runs[runs.length - 1];
+      const last = run?.items[run.items.length - 1];
+      if (run && last && item.box[3]! <= last.box[1]! + ORDER_SLACK && inColumn(item.box, last.box)) {
+        run.items.push(item);
+        run.box = [Math.min(run.box[0]!, item.box[0]!), Math.min(run.box[1]!, item.box[1]!), Math.max(run.box[2]!, item.box[2]!), Math.max(run.box[3]!, item.box[3]!)];
+      } else runs.push({ items: [item], box: [...item.box] });
+    }
+    if (runs.length < 2) return items;
+    // The page's order, Zotero's where the page leaves it open; Zotero's if it goes round.
+    const before = runs.map((a, i) => runs.map((b, j) => i !== j && readsBefore(a.box, b.box)));
+    const done = runs.map(() => false);
+    const order: number[] = [];
+    while (order.length < runs.length) {
+      const next = runs.findIndex((_, j) => !done[j] && runs.every((_, i) => done[i] || !before[i]![j]));
+      if (next < 0) return items;
+      done[next] = true;
+      order.push(next);
+    }
+    return order.flatMap((i) => runs[i]!.items);
+  }
+}
+
 /** A reading with its pieces: what the drafts are made of. `paths` are the content tree's
  *  paths it reads, for the parts Zotero says continue it. */
 interface Prepared {
@@ -1049,7 +1144,7 @@ export interface StructuredReader {
 
 export function createStructuredReader(structure: SdtStructure, options: StructuredOptions = {}): StructuredReader {
   const everything = options.everything === true;
-  const readings = readingsOf(structure.content, everything);
+  const readings = readInColumns(readingsOf(structure.content, everything));
   const read = (r: Reading): Piece[] => placeMarks(piecesOf(r.block, (node) => isRaisedCitation(node, structure.content)));
   // A bibliography is read only where the lines are numbered, and asked about then.
   const texts = readings.map((r) => (typeof r === "string" || r.kind === "reference" ? null : read(r)));

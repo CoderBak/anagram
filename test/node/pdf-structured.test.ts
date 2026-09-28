@@ -1123,6 +1123,37 @@ describe("structuredBlocks — the document", () => {
     expect(blocks[2]!.text).toMatch(/H NMR spectra were recorded/);
   });
 
+  describe("the order of a page's columns", () => {
+    /** A block of `lines` lines at (x, y from the top), its rect in PDF space as Zotero gives it. */
+    const placed = (label: string, x: number, y: number, lines = 1): { block: SdtBlock; items: PdfTextItem[]; label: string } => {
+      const n = node(1, Array.from({ length: lines }, (_, i) => ({ text: `${label} line ${i} of the block.`, x, y: y + i * 14 })));
+      const width = `${label} line 0 of the block.`.length * CW;
+      const rect = [0, x, HEIGHT - (y + (lines - 1) * 14) - 0.2 * SIZE, x + width, HEIGHT - y + 0.7 * SIZE];
+      return { block: { type: "paragraph", anchor: { pageRects: [rect] }, content: [n] }, items: n.items, label };
+    };
+    const read = (order: ReturnType<typeof placed>[]): string[] => {
+      const pages = [pageText(1, order.flatMap((b) => b.items))];
+      return structuredBlocks(structure(order.map((b) => b.block)), pages).map((b) => b.text.split(" ")[0]!);
+    };
+
+    it("reads a page's left column before its right one, and a column from the top, where Zotero read them otherwise", () => {
+      // A framed article on the right read first, then the lower box to its left, then the upper.
+      const topLeft = placed("TopLeft", 40, 100, 3), bottomLeft = placed("BottomLeft", 40, 400, 3), right = placed("Right", 320, 80, 30);
+      expect(read([right, bottomLeft, topLeft])).toEqual(["TopLeft", "BottomLeft", "Right"]);
+    });
+
+    it("reads the columns under a photograph set across the page from the left", () => {
+      const title = placed("Title", 40, 60), lead = placed("Lead", 40, 90, 2);
+      const left = placed("Left", 40, 600, 4), middle = placed("Middle", 220, 600, 4), right = placed("Right", 400, 600, 4);
+      expect(read([title, lead, middle, right, left])).toEqual(["Title", "Lead", "Left", "Middle", "Right"]);
+    });
+
+    it("keeps Zotero's order of a paper's page: the left column, then the right, around a float", () => {
+      const a = placed("A", 60, 80, 10), b = placed("B", 60, 500, 10), c = placed("C", 320, 80, 10), d = placed("D", 320, 500, 10);
+      expect(read([a, b, c, d])).toEqual(["A", "B", "C", "D"]);
+    });
+  });
+
   it("takes a list of bracketed, dated entries for the bibliography Zotero did not find, and keeps a list of steps", () => {
     // REVTeX sets no References heading, and Zotero reads the bibliography as a list of the body.
     const lines: [string, number][] = [
