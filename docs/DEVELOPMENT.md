@@ -114,7 +114,8 @@ real-model checks; they need existing verified weights and `(cd anagramd && uv s
 and `uv.lock`. `npm run release` builds both browser ZIPs, the component archive and
 installers under `dist/` and runs `scripts/verify-release.py` on the ZIPs. Publishing is
 manual. The install command shown in the extension is pinned to its own version, so a
-release must ship matching assets.
+release must ship matching assets. `npm run source-bundle` writes the source Firefox Add-ons
+asks for, `dist/anagram-source-<version>.zip` (HEAD without `test/`, with its BUILDING.md).
 
 ## Open work
 
