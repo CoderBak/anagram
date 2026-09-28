@@ -315,7 +315,8 @@ for (const lang of ["en", "zh-CN"]) {
 
     // The popup: not set up, one button, and it opens setup.
     const popup2 = await extPage(context, extId, "popup.html", problems);
-    await until(() => popup2.evaluate(() => !document.getElementById("action").disabled && /\S/.test(document.getElementById("status").textContent)));
+    // The popup paints the tab's own state first and the engine's once the worker answers.
+    await until(() => popup2.evaluate((want) => !document.getElementById("action").disabled && document.getElementById("status").textContent === want, w("popupSetupNeeded")));
     const popupSeen = await popup2.evaluate(() => ({ status: document.getElementById("status").textContent, action: document.getElementById("action").textContent, text: document.body.innerText }));
     check(`${lang}: the popup says setup is needed, with one button for it`, popupSeen.status === w("popupSetupNeeded") && popupSeen.action === w("engineSetUp"), JSON.stringify(popupSeen));
     check(`${lang}: the popup shows no install command`, !/curl|Invoke-RestMethod|install\.sh/.test(popupSeen.text));
