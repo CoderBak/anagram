@@ -2,7 +2,8 @@
 
 Anagram marks English prose in your browser with a local estimate of how much an AI
 edited it: human, lightly edited, heavily edited or AI-generated. Scoring runs on your
-own computer with Pangram's EditLens model. Nothing you read leaves your machine.
+own computer with Pangram's EditLens model, inside the browser or in a local engine.
+Nothing you read leaves your machine.
 
 [User guide](docs/user-guide.en.md) · [中文指南](docs/user-guide.zh-CN.md) · [Privacy](PRIVACY.md)
 
@@ -10,14 +11,18 @@ own computer with Pangram's EditLens model. Nothing you read leaves your machine
 
 1. Download the Chrome ZIP from the [latest release](https://github.com/CoderBak/anagram/releases),
    extract it to a folder you will keep, and load that folder at `chrome://extensions`
-   with Developer mode on and **Load unpacked**.
-2. The setup page shows one terminal command. Run it once. It installs a private Python
-   runtime, registers the extension, and downloads about 1.4 GB of model files.
-3. Return to the browser. Anagram picks the best configuration for your hardware and is
-   ready. Grant a site, or use **Analyze this page** from the toolbar icon for one page.
+   with Developer mode on and **Load unpacked**. Chrome 137 or later.
+2. The setup page opens. On most computers the model (1.4 GB) downloads into the browser
+   by itself. On an Apple Silicon Mac, or a Windows or Linux PC with an NVIDIA graphics
+   card, it asks first: **One click** runs the model in the browser; **Terminal** installs
+   a faster local engine with one command, which installs a private Python runtime,
+   registers the extension and downloads the model files. Settings switches later.
+3. When it says Ready, grant a site, or use **Analyze this page** from the toolbar icon for
+   one page.
 
 Apple Silicon Macs are the tested platform. Linux and Windows installers exist but have
-not been exercised on real machines. Firefox has a build but is not the focus.
+not been exercised on real machines. Firefox 140+ has a build but is not the focus; its
+in-browser engine needs Firefox 153.
 
 ## Use
 
@@ -25,7 +30,7 @@ Every analyzed paragraph gets a small chip with a score from .00 (human) to 1.0
 (AI-generated). Hover it for the four-way breakdown. The floating ball counts and
 lists paragraphs that read as AI-generated, and copies a report. PDFs open in a
 built-in reader. Google Docs get a reading view. Settings covers site access, marks,
-cache and the local engine.
+cache and the engine.
 
 ## Develop
 

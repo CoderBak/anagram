@@ -1,19 +1,25 @@
 # Anagram Privacy Policy
 
-Last updated: 2026-09-28. Applies to both editions of the Anagram browser extension, and
-to the local engine the first of them installs on your computer:
+Last updated: 2026-09-28. Applies to the Anagram browser extension and to the local engine
+it can install on your computer. The extension scores with one of two engines, both on
+your computer:
 
-- **Anagram** scores with that local engine, over the browser's Native Messaging pipe.
-- **Anagram (in-browser)** runs the same pinned model inside the browser and installs
-  nothing else.
+- **The in-browser engine** runs the pinned model inside the browser and installs nothing
+  else.
+- **The local engine** is a program you install with one terminal command, reached over the
+  browser's Native Messaging pipe.
+
+The setup page picks the in-browser engine by itself, or, on a computer where the local
+engine is clearly faster, lets you choose; Settings switches between them. Choosing the
+device is done in the browser from what it reports about itself (platform, graphics
+adapter, memory, free storage) and is not sent anywhere.
 
 **The short version.** Anagram reads the text of pages you allow it to read, scores it on
-your own computer — in the local engine, or inside the browser in the in-browser edition —
-and shows the score next to the paragraph. Page text never leaves your machine. There is
-no account, sign-in, analytics or telemetry. The engine uses the network only to download
-model files and updates you request; the in-browser edition downloads its model files
-once and uses the network for nothing else. Opening an online PDF or a Google Doc re-reads
-that document from its source.
+your own computer and shows the score next to the paragraph. Page text never leaves your
+machine, and nothing is ever scored on a server. There is no account, sign-in, analytics or
+telemetry. The in-browser engine downloads its model files once and uses the network for
+nothing else; the local engine uses the network only to download model files and updates
+you request. Opening an online PDF or a Google Doc re-reads that document from its source.
 
 The full inventory of network calls, address literals and storage keys is in
 [docs/footprint.md](docs/footprint.md), checked against the code by a test on every run.
@@ -48,19 +54,18 @@ The full inventory of network calls, address literals and storage keys is in
 
 ## Where it goes
 
-To the local engine, over the browser's Native Messaging pipe. The engine is registered
-for your exact extension ID and accepts a fixed list of operations, never file paths or
-commands from a page. The scoring request carries paragraph IDs and text only: no URL,
-no cookies, no account data. Inference runs from files on disk in Hugging Face offline
-mode.
+To the engine you use, and to nothing else. The scoring request carries paragraph IDs and
+text only: no URL, no cookies, no account data.
 
-In the in-browser edition, to the engine inside the extension itself: a hidden extension
-page running ONNX Runtime Web on the model files stored in your browser. The same request,
-paragraph IDs and text only, goes from the extension's background to that page and to no
-server. Right after you install it, the extension downloads the pinned model files from
-Hugging Face (`huggingface.co` and its file CDN under `hf.co`) by itself, once; fastText's
-language-ID file ships inside the extension. Those requests carry normal download metadata
-and never page text; after them, scoring needs no network.
+- **The in-browser engine** is inside the extension itself: a hidden extension page (the
+  background page in Firefox) running ONNX Runtime Web on the model files stored in your
+  browser. When it is set up, the extension downloads the pinned model files from Hugging
+  Face (`huggingface.co` and its file CDN under `hf.co`), once; fastText's language-ID file
+  ships inside the extension. Those requests carry normal download metadata and never page
+  text; after them, scoring needs no network.
+- **The local engine** is reached over the browser's Native Messaging pipe. It is registered
+  for your exact extension ID and accepts a fixed list of operations, never file paths or
+  commands from a page. Inference runs from files on disk in Hugging Face offline mode.
 
 Deciding what to read happens inside the browser, with code that ships in the extension.
 **Main content only** runs Defuddle on a copy of the page and uses only its offline
@@ -91,8 +96,10 @@ normal download metadata and never page text.
   (Windows): the runtime, model files, the saved configuration and registration records.
   A small registration manifest also lives in the browser's user-level
   NativeMessagingHosts location. Nothing from your browsing is written there.
-- **The in-browser edition's model files**, about 1.4 GB, in the extension's own storage in
-  your browser profile. Nothing from your browsing is written with them.
+- **The in-browser engine's model files**, about 1.4 GB, in the extension's own storage in
+  your browser profile. Nothing from your browsing is written with them. They stay when you
+  switch to the local engine until you delete them there, in Settings.
+- **Which engine you chose**, in `chrome.storage.local`.
 - **Your clipboard**, only when you click Copy. A copied report holds the page's title and
   address, and passage text, only when Settings includes them; its links to flagged
   paragraphs carry words of each paragraph, so they appear only with both. Diagnostics
@@ -102,9 +109,9 @@ normal download metadata and never page text.
 
 | Permission | Why |
 | --- | --- |
-| `nativeMessaging` | Talk to the local engine. Not in the in-browser edition. |
-| `offscreen` (in-browser edition, Chrome) | Run the engine in a hidden extension page. |
-| `unlimitedStorage` (in-browser edition) | Keep the model files in the browser without the browser evicting them. |
+| `offscreen` (Chrome) | Run the in-browser engine in a hidden extension page. |
+| `unlimitedStorage` | Keep the in-browser engine's model files without the browser evicting them. |
+| `nativeMessaging` (optional) | Talk to the local engine. Asked for only when you pick it. |
 | `storage` | The settings above. |
 | `activeTab` | One-off actions on the page in front of you. |
 | `contextMenus` | The right-click entries. |
@@ -115,10 +122,10 @@ normal download metadata and never page text.
 
 ## Removal
 
-**Uninstall** in Settings removes the engine, models and registration, then the extension.
-Removing the extension from the browser alone leaves the engine on disk. Uninstall
-removes the whole `~/.anagram` directory, including anything you put inside it.
-Removing the in-browser edition removes its model files with it.
+Removing the extension removes the in-browser engine's model files with it. For the local
+engine, **Uninstall** in Settings removes the engine, models and registration, then the
+extension; removing the extension from the browser alone leaves the engine on disk.
+Uninstall removes the whole `~/.anagram` directory, including anything you put inside it.
 
 ## Contact
 
