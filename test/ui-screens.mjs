@@ -30,10 +30,17 @@ const PARA = (tag) =>
   "be one key press away and read out in words rather than shown only as a colour.";
 // Tags whose fixture scores are .05, .30, .60 and .95 (test/fake-native.mjs fakeScore).
 const CHIP_TAGS = ["S2197", "S366", "S1643", "S1430"];
+// One paragraph under the reader's 50 words (not scored) and one of 60 (scored, "less reliable").
+const SHORT_NOTE = "The committee met on Thursday and agreed to move the review to the following week.";
+const MID_NOTE = "The harbor road closes at dusk, and the ferry keeps its own timetable through the winter months, which surprises most visitors. " + "Locals plan around it: they buy bread early, post letters before noon and leave the last crossing for emergencies. ".repeat(2) + "Nobody complains.";
 const chipsHtml = (dark) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Chips</title></head>
 <body style="margin:0;${dark ? "background:#0d1117;color:#e6edf3" : "background:#fff;color:#1a1a1a"}"><div style="max-width:680px;margin:0 auto;padding:32px 24px;font:16px/1.65 Georgia,serif">
 <h1 style="font:600 22px system-ui">A page read by Anagram</h1>
-${CHIP_TAGS.map((t) => `<p>${PARA(t)}</p>`).join("\n")}</div></body></html>`;
+${CHIP_TAGS.map((t) => `<p>${PARA(t)}</p>`).join("\n")}
+<h2 style="font:600 18px system-ui">Notes</h2>
+<p>${SHORT_NOTE}</p>
+<h2 style="font:600 18px system-ui">Shorter than the model's minimum</h2>
+<p>${MID_NOTE}</p></div></body></html>`;
 
 async function painted(page) {
   await page.waitForFunction(() => {
@@ -101,6 +108,16 @@ for (const [lang, tag] of LANGS) {
         await chip.hover();
         await page.waitForTimeout(900);
         await page.screenshot({ path: name("chips"), fullPage: true });
+        // The ball, and the panel open beside it (flagged out of read, then what was too short).
+        await page.mouse.move(5, 5);
+        await page.evaluate(() => scrollTo(0, 0));
+        await page.waitForTimeout(400);
+        const stack = page.locator("#anagram-fab .stack");
+        const box = await stack.boundingBox();
+        await page.screenshot({ path: name("ball"), clip: { x: box.x - 24, y: box.y - 24, width: box.width + 48, height: box.height + 48 } });
+        await page.evaluate(() => document.getElementById("anagram-fab").shadowRoot.querySelector(".count").click());
+        await page.waitForTimeout(600);
+        await page.screenshot({ path: name("panel"), fullPage: false });
         await page.close();
       } finally { await site.close(); }
     });
