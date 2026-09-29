@@ -4,12 +4,13 @@ The PDF reader's paragraphs come from Zotero's
 [document-worker](https://github.com/zotero/document-worker) (AGPL-3.0): its pdf.js fork
 (Apache-2.0), its structured-document-text library (AGPL-3.0) and its block-segmentation
 models, run in a Web Worker with onnxruntime-web (MIT). `upstream.json` records the exact
-commits, the archive hashes, the SHA-256 of every file here and of the ONNX runtime's wasm
-that `scripts/vendor.mjs` takes from the pinned npm package at build time. The models
-carry no licence of their own in the repository; they are distributed as part of it. The ONNX
-runtime's npm package carries no licence file, so its MIT licence and the notices of the
-libraries its WebAssembly build links (`ThirdPartyNotices.onnxruntime-web.txt`, ONNX
-Runtime's own file at the pinned tag) are kept here and pinned with the rest.
+commits, the archive hashes, the SHA-256 of every file here and of the ONNX runtime's wasm.
+That wasm is not here: the extension ships one ONNX Runtime, the JSPI build of the pinned npm
+package that the in-browser engine runs (`public/vendor/engine/`), and the worker's bundle
+is built from that package's JSPI entry and reads that binary. The models carry no licence
+of their own in the repository; they are distributed as part of it. The ONNX runtime's npm
+package carries no licence file, so its MIT licence is kept here and pinned with the rest
+(the notices of the libraries its WebAssembly links ship with the binary).
 
 `worker.js` is built from `src/worker.js` — Anagram's entry, one `getStructure` call —
 by the worker's own webpack build, then minified. `scripts/documentWorker.mjs` regenerates

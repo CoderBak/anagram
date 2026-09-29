@@ -15,9 +15,9 @@
     }
   },
   "onnxruntime_web": {
-    "version": "1.27.0",
-    "file": "dist/ort-wasm-simd-threaded.wasm",
-    "sha256": "d1ab1b94b16a65b29d710d0b587b29e7bed336827577623913479b8afe8113e6"
+    "version": "1.30.0",
+    "file": "dist/ort-wasm-simd-threaded.jspi.wasm",
+    "sha256": "a54c76f86b0f0d9572380cf1c6292a7b3903716ffcbcd6b0e5c7050bf430eb93"
   },
   "shared": {
     "cmaps": "5237c4107eaddda3371908f52e4dfa6d1620b6c12aaaa40e8de91c4232a4b68f",
@@ -28,12 +28,11 @@
     "LICENSE.document-worker": "0bc6acc735089ddddd0f5ec30d2c472c9387d1c004871ee1bddf4d782ccfbeb4",
     "LICENSE.onnxruntime-web": "aa904cc230fc11e1514816224d896a9ee6907b620e91fd1abd6b21fed0faec02",
     "LICENSE.pdfjs": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
-    "ThirdPartyNotices.onnxruntime-web.txt": "0e07b95f3a8d6230037707c5c4a2b554d12c4cb67369669ac255635528ffcee2",
     "block-seg/classifier/model.onnx": "572077354eea61583982a31a3f443c5abd8d92c04e2dbfd105299c1ca1d131f7",
     "block-seg/classifier/stats.bin": "abc86d6fa7cfb9aa18bafc2fd8cbcbf656350a7190b08fab2239efba5c673e95",
     "block-seg/clusterer/model.onnx": "5cb6f8645a0f4c8f4396d5e8b1da70d9c8d8fff8c98f324889b8c6e271575350",
     "block-seg/clusterer/repair.onnx": "7fd29831c26f09cefa5a4f92c797e559bda5f513f6691d339d6c323bd563a789",
     "block-seg/clusterer/runtime.bin": "a0d71f9be6c63404393457ec31875ae799b5f4ba48dc17736112446a4f82ca26",
-    "worker.js": "b10bcda684ee6b76ed5ec960dc084302f609581e5577542118fe992b04022a4e"
+    "worker.js": "0e30f19c165e255afe1dfe1517d203a619e7d5eaf53ea50a430f047f23732dfa"
   }
 }

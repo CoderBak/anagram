@@ -16,6 +16,12 @@ module.exports = {
 		clean: false,
 		globalObject: 'this',
 	},
+	// The extension ships one ONNX Runtime binary, the JSPI build, so the runtime the worker
+	// imports is the package's JSPI entry: the same API, with its loader inside the bundle.
+	resolve: {
+		...base.resolve,
+		alias: { ...base.resolve?.alias, 'onnxruntime-web/wasm$': 'onnxruntime-web/jspi' },
+	},
 	// Built from the pinned sources alone, never from an earlier build's cache.
 	cache: false,
 	plugins: [

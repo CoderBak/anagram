@@ -933,7 +933,7 @@ for (const how of ["lang", "ids"]) {
   const missing = [
     ["LICENSE", "GNU AFFERO GENERAL PUBLIC LICENSE"],
     ["THIRD_PARTY_NOTICES.md", "# Third-party notices"],
-    ["vendor/document-worker/ThirdPartyNotices.onnxruntime-web.txt", "THIRD PARTY SOFTWARE NOTICES"],
+    ["vendor/engine/ThirdPartyNotices.onnxruntime-web.txt", "THIRD PARTY SOFTWARE NOTICES"],
     ["vendor/pdfjs/LICENSE", "Apache License"],
     ["vendor/document-worker/LICENSE.document-worker", "GNU AFFERO GENERAL PUBLIC LICENSE"],
     ["vendor/document-worker/LICENSE.pdfjs", "Apache License"],

@@ -2,10 +2,9 @@
 //
 // Three things, on every build (scripts/vendor.mjs calls vendorWebEngine; the engine's own
 // suites call it too):
-//   · ONNX Runtime Web, copied verbatim from the npm package installed under the alias
-//     onnxruntime-web-engine (package.json): the engine's own pin, apart from the
-//     onnxruntime-web that Zotero's document-worker is built with and verified against
-//     (scripts/documentWorker.mjs), because the engine needs a newer one. From 1.29 the
+//   · ONNX Runtime Web, copied verbatim from the npm package (package.json): the one pin,
+//     which Zotero's document-worker is built with and verified against too
+//     (scripts/documentWorker.mjs), and whose one WebAssembly binary it reads. From 1.29 the
 //     JSPI build reads a model's external data from a Blob one tensor at a time, straight
 //     onto the GPU, so the weights never sit whole in the worker's memory
 //     (lib/webengine/onnx.ts, session.ts). What is copied: the library module of its
@@ -17,9 +16,9 @@
 //     default JSEP build: on this model its WebGPU kernels answer wrongly
 //     (test/webengine/parity.mjs found every text off; ORT 1.27 and 1.30 alike), the
 //     native provider answers as the CPU does, and its JSPI variant runs several times
-//     faster than its Asyncify one. JSPI is in Chrome 137, the manifest's minimum, and in
-//     Firefox 153, the manifests' minimums, so the
-//     package's plain WebAssembly build is not copied: this one binary serves the CPU path too. The package carries no licence file: its
+//     faster than its Asyncify one. JSPI is in Chrome 137 and in
+//     Firefox 153, the manifests' minimums, so the package's plain WebAssembly build is not
+//     copied: this one binary serves the CPU path and the document-worker too. The package carries no licence file: its
 //     MIT licence is the document-worker pin's copy (the same text at
 //     every tag) and the notices of the libraries its WebAssembly links are ONNX Runtime's
 //     ThirdPartyNotices.txt at the installed version's tag, kept in scripts/licences/.
@@ -44,9 +43,9 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-/** The engine's runtime package: an alias of onnxruntime-web (package.json). */
-export const ORT_PACKAGE = "onnxruntime-web-engine";
-/** The runtime files, from node_modules/onnxruntime-web-engine/dist. */
+/** The runtime package (package.json): the engine's and the PDF document-worker's. */
+export const ORT_PACKAGE = "onnxruntime-web";
+/** The runtime files, from node_modules/onnxruntime-web/dist. */
 export const ORT_FILES = ["ort.jspi.min.mjs", "ort-wasm-simd-threaded.jspi.mjs", "ort-wasm-simd-threaded.jspi.wasm"];
 
 /** Where the files go, under the root. */

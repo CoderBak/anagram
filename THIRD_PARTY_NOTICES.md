@@ -819,39 +819,6 @@ All rights not expressly granted are reserved.
 - Copyright: Copyright (c) Corporation for Digital Scholarship
 - In Anagram: vendor/document-worker/block-seg/ (ONNX models and their statistics). They carry no licence of their own; they are distributed as part of document-worker.
 
-### ONNX Runtime Web (1.27.0)
-
-- Project: https://github.com/microsoft/onnxruntime
-- Licence: MIT
-- Copyright: Copyright (c) Microsoft Corporation
-- In Anagram: Its JavaScript is bundled into vendor/document-worker/worker.js, and vendor/document-worker/onnx/ort-wasm-simd-threaded.wasm is copied from the pinned npm package. The WebAssembly build links third-party libraries whose notices Microsoft publishes with ONNX Runtime; they ship verbatim as vendor/document-worker/ThirdPartyNotices.onnxruntime-web.txt.
-
-```text
-ONNX Runtime (onnxruntime-web, https://github.com/microsoft/onnxruntime)
-
-MIT License
-
-Copyright (c) Microsoft Corporation
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
 ### pako (2.1.0)
 
 - Project: https://github.com/nodeca/pako
@@ -944,7 +911,7 @@ The in-browser engine, which scores inside the browser when it is the engine cho
 - Project: https://github.com/microsoft/onnxruntime
 - Licence: MIT
 - Copyright: Copyright (c) Microsoft Corporation
-- In Anagram: The engine's own pin of the npm package (installed as onnxruntime-web-engine; scripts/webengine.mjs), unmodified: its JSPI build, which carries the native WebGPU execution provider and the CPU one (vendor/engine/ort.jspi.min.mjs, ort-wasm-simd-threaded.jspi.mjs and ort-wasm-simd-threaded.jspi.wasm), with this licence beside them as vendor/engine/LICENSE.onnxruntime-web. The WebAssembly build links third-party libraries whose notices Microsoft publishes with ONNX Runtime; those of this version's tag ship verbatim as vendor/engine/ThirdPartyNotices.onnxruntime-web.txt.
+- In Anagram: The one pin of the npm package (scripts/webengine.mjs), unmodified: its JSPI build, which carries the native WebGPU execution provider and the CPU one (vendor/engine/ort.jspi.min.mjs, ort-wasm-simd-threaded.jspi.mjs and ort-wasm-simd-threaded.jspi.wasm), with this licence beside them as vendor/engine/LICENSE.onnxruntime-web. The WebAssembly build links third-party libraries whose notices Microsoft publishes with ONNX Runtime; those of this version's tag ship verbatim as vendor/engine/ThirdPartyNotices.onnxruntime-web.txt. The PDF reader's document-worker runs the same build: its JavaScript is bundled into vendor/document-worker/worker.js, and it reads the one WebAssembly binary above.
 
 ```text
 ONNX Runtime (onnxruntime-web, https://github.com/microsoft/onnxruntime)

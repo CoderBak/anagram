@@ -18,9 +18,13 @@
 // checkout, runs the worker's own `npm ci` and webpack build, minifies the bundle, copies it
 // with the models and the licences into vendor/document-worker/, and writes the hashes back
 // into upstream.json. The checkout is left in the cache: test/pdf-bench/zotero-dump.mjs runs
-// from it. The ONNX runtime's wasm is not committed: like pdf.js's own data files it comes
-// from the npm package (onnxruntime-web, pinned exactly in package.json) at build time, and
-// the pin records its hash too.
+// from it. The ONNX runtime is the extension's one: the checkout's lockfile pins an older
+// onnxruntime-web, so the rebuild installs the version pinned in package.json into the
+// checkout (not into its lockfile) and bundles the package's JSPI entry in place of the plain
+// WebAssembly one (anagram/webpack.config.cjs). Its wasm is not committed and not copied here:
+// the worker reads the JSPI binary the in-browser engine ships (scripts/webengine.mjs), and
+// the pin records that binary's hash so that a build proves it is the one the bundle was
+// built for.
 //
 // vendorDocumentWorker(root) is what scripts/vendor.mjs calls on every build: it verifies
 // the committed files against the pin and copies what the reader needs into public/vendor/.
@@ -45,16 +49,15 @@ const MODELS = [
   "block-seg/clusterer/runtime.bin",
 ];
 /** Licences kept beside the artefacts, copied from the checkout: the worker's and its
- *  pdf.js fork's. The ONNX runtime's npm package carries neither its licence (MIT) nor the
- *  notices of the libraries its WebAssembly build links; both are written down here (the
- *  notices are ONNX Runtime's ThirdPartyNotices.txt at the pinned version's tag) and pinned
- *  like the rest. */
+ *  pdf.js fork's. The ONNX runtime's npm package carries no licence (MIT); it is written down
+ *  here and pinned like the rest (the notices of the libraries its WebAssembly build links are
+ *  scripts/licences/, shipped with the binary in vendor/engine/). */
 const LICENCES = {
   "LICENSE.document-worker": "COPYING",
   // Not "….js": linters, AMO's among them, would parse the licence as a script.
   "LICENSE.pdfjs": "pdf.js/LICENSE",
 };
-const ORT_FILES = ["LICENSE.onnxruntime-web", "ThirdPartyNotices.onnxruntime-web.txt"];
+const ORT_FILES = ["LICENSE.onnxruntime-web"];
 
 const sha256 = (file) => createHash("sha256").update(readFileSync(file)).digest("hex");
 
@@ -117,16 +120,14 @@ export function vendorDocumentWorker(root) {
   }
   const output = join(root, "public/vendor/document-worker");
   rmSync(output, { recursive: true, force: true });
-  mkdirSync(join(output, "onnx"), { recursive: true });
+  mkdirSync(output, { recursive: true });
   let bytes = 0;
   for (const name of expected) {
     mkdirSync(dirname(join(output, name)), { recursive: true });
     cpSync(join(source, name), join(output, name));
     bytes += statSync(join(output, name)).size;
   }
-  cpSync(wasm, join(output, "onnx", "ort-wasm-simd-threaded.wasm"));
-  bytes += statSync(wasm).size;
-  console.log(`vendor/document-worker/  ${expected.length + 1} files, ${(bytes / 1024).toFixed(1)} kB (onnxruntime-web ${installed})`);
+  console.log(`vendor/document-worker/  ${expected.length} files, ${(bytes / 1024).toFixed(1)} kB (onnxruntime-web ${installed})`);
 }
 
 // ---- rebuild (by hand, when the pin moves) -------------------------------------------------
@@ -169,6 +170,10 @@ async function rebuild(cache) {
   // Anagram's entry, beside the worker's own sources, built by the worker's own toolchain.
   cpSync(join(VENDOR, "src"), join(checkout, "anagram"), { recursive: true });
   if (!existsSync(join(checkout, "node_modules"))) run("npm", ["ci", "--ignore-scripts", "--no-audit", "--no-fund"], checkout);
+  const installedOrt = () => JSON.parse(readFileSync(join(checkout, "node_modules/onnxruntime-web/package.json"), "utf8")).version;
+  if (installedOrt() !== pin.onnxruntime_web.version) {
+    run("npm", ["install", "--no-save", "--ignore-scripts", "--no-audit", "--no-fund", `onnxruntime-web@${pin.onnxruntime_web.version}`], checkout);
+  }
   run("npx", ["webpack", "--mode", "production", "--config", "anagram/webpack.config.cjs"], checkout);
 
   // Minified here: the worker's bundle is unminified by design (Zotero reads it in its
@@ -192,8 +197,7 @@ async function rebuild(cache) {
   for (const name of ["worker.js", ...MODELS, ...Object.keys(LICENCES), ...ORT_FILES].sort()) pin.files[name] = sha256(join(VENDOR, name));
   pin.shared = {};
   for (const [name, { fork, keep }] of Object.entries(SHARED)) pin.shared[name] = sharedDigest(join(checkout, fork), keep);
-  const ortVersion = JSON.parse(readFileSync(join(checkout, "node_modules/onnxruntime-web/package.json"), "utf8")).version;
-  if (ortVersion !== pin.onnxruntime_web.version) throw new Error(`the worker's lockfile installs onnxruntime-web ${ortVersion}; pin ${pin.onnxruntime_web.version} in upstream.json and package.json`);
+  if (installedOrt() !== pin.onnxruntime_web.version) throw new Error(`the checkout has onnxruntime-web ${installedOrt()}; pin ${pin.onnxruntime_web.version} in upstream.json and package.json`);
   pin.onnxruntime_web.sha256 = sha256(join(checkout, "node_modules/onnxruntime-web", pin.onnxruntime_web.file));
   writeFileSync(PIN, `${JSON.stringify(pin, null, 2)}\n`);
   console.log(`vendor/document-worker rebuilt from ${pin.commit.slice(0, 7)}; checkout kept in ${checkout}`);

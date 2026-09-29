@@ -103,6 +103,7 @@ local component and the installer all carry the same version.
 ### Changed
 
 - Firefox 153 is the minimum (it was 140, an ESR whose support has ended and which lacks WebAssembly JSPI): the in-browser engine now runs in every supported Firefox.
+- The PDF reader's paragraph worker runs on ONNX Runtime Web 1.30, the same build and the same WebAssembly binary as the in-browser engine, instead of a second copy of 1.27: the package is 3.4 MB smaller (11 MB unpacked).
 - Customer reviews are read one by one: the stars a review card shows mark it as a voice of its own (Google Maps and Google Play cards carried nothing else), a review declared in schema.org microdata, RDFa or the page's JSON-LD is read without its name, stars and date, and a sentence every card of a list repeats, such as Tripadvisor's disclaimer, is left out.
 - **Minimum length** in Settings: 25, 50, 75, 100 or 150 words, 50 by default (it was a fixed 75), for pages, PDFs, selections and pasted text; a verdict on under 75 words, the model's training minimum, says "Short text: less reliable" and its dot is thinner.
 - The small script Anagram runs in a page's own context no longer gives it away: its event is named at random for each page, told to the extension before the page's first script, and the attachShadow it watches, and Function.prototype.toString, answer the usual checks as the browser's own functions do.
